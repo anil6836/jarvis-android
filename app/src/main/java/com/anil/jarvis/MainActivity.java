@@ -57,12 +57,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listener, Store.Listener {
+public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listener, Store.Listener, LiveSession.Listener {
     static final String EXTRA_WAKE = "wake";
     /** True from the moment Anil starts talking until Jarvis has finished answering. */
     static volatile boolean inConversation;
 
-    private static final int REQ_CAMERA = 11, REQ_GALLERY = 12, REQ_PERMS = 21, REQ_MIC = 22;
+    private static final int REQ_CAMERA = 11, REQ_GALLERY = 12, REQ_PERMS = 21, REQ_MIC = 22, REQ_LIVE = 23;
 
     private Prefs prefs;
     private Store store;
@@ -93,6 +93,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private boolean lastWasVoice;
     private int generation;            // increases with every request, so a stopped answer is ignored
     private Runnable pendingUndo;
+    private LiveSession live;          // an open real-time voice conversation, or null
+    private TextView liveBubble;       // Jarvis's reply while it is still being spoken
 
     // ================================================================ lifecycle
 
@@ -101,9 +103,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         prefs = new Prefs(this);
         store = Store.get(this);
         store.listener = this;
-        tools = new Tools(this, store);
+        tools = new Tools(this, store, prefs);
         brain = new Brain(prefs, store, tools);
-        voice = new VoiceIO(this, this);
+        voice = new VoiceIO(this, prefs, this);
         setContentView(buildUi());
         renderChat();
         onStoreChanged();
@@ -123,8 +125,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         store.listener = this;
         orb.invalidate();
         updateSetup();
-        if (!busy && !voice.listening && !voice.speaking) setIdle();
-        if (!busy) renderChat();
+        if (live == null && !busy && !voice.listening && !voice.speaking) setIdle();
+        if (live == null && !busy) renderChat();
         syncWakeService();
     }
 
@@ -144,6 +146,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onDestroy() {
         if (store.listener == this) store.listener = null;
+        if (live != null) live.stop("destroy");
         voice.shutdown();
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
@@ -167,7 +170,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         inConversation = true;
         beep();
-        main.postDelayed(this::startListening, 300);
+        main.postDelayed(this::startConversation, 300);
     }
 
     private void syncWakeService() {
@@ -195,6 +198,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         super.onRequestPermissionsResult(code, perms, results);
         updateSetup();
+        if (code == REQ_LIVE) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startLive();
+            else Toast.makeText(this, "మాట్లాడాలంటే మైక్ అనుమతి కావాలి", Toast.LENGTH_LONG).show();
+        }
         if (code == REQ_MIC) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startListening();
             else Toast.makeText(this, "మాట్లాడాలంటే మైక్ అనుమతి కావాలి", Toast.LENGTH_LONG).show();
@@ -461,6 +468,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         TextView chip = Ui.pill(this, label);
         chip.setOnClickListener(v -> {
             if (busy) return;
+            if (prompt != null && live != null && live.isOpen()) {
+                store.addChat("user", label, false);
+                addMessage("user", label, System.currentTimeMillis(), null);
+                live.sendText(prompt);
+                return;
+            }
             if (prompt == null) pickPhoto();
             else send(prompt, label, false);
         });
@@ -684,7 +697,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         int bg = Ui.GOLD;
         int fg = Ui.GOLD_INK;
         String desc;
-        if (busy || voice.speaking) { icon = IconView.STOP; bg = Ui.RED; fg = 0xFF2A0703; desc = "ఆపు"; }
+        if (live != null) { icon = IconView.STOP; bg = Ui.RED; fg = 0xFF2A0703; desc = "Live సంభాషణ ఆపు"; }
+        else if (busy || voice.speaking) { icon = IconView.STOP; bg = Ui.RED; fg = 0xFF2A0703; desc = "ఆపు"; }
         else if (voice.listening) { icon = IconView.STOP; desc = "వినడం ఆపు"; }
         else if (input.getText().toString().trim().length() > 0 || pendingPhoto != null) { icon = IconView.SEND; desc = "పంపు"; }
         else { icon = IconView.MIC; desc = "మాట్లాడండి"; }
@@ -695,6 +709,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void onActionPressed() {
+        if (live != null) {
+            live.stop("user");
+            return;
+        }
         if (busy) {
             generation++; // ignore the answer that is still on its way
             busy = false;
@@ -716,8 +734,95 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             input.setText("");
             send(text, null, false);
         } else {
-            startListening();
+            startConversation();
         }
+    }
+
+    /** Live real-time talk when it is switched on, otherwise the classic listen-then-answer. */
+    private void startConversation() {
+        if (prefs.liveReady()) startLive(); else startListening();
+    }
+
+    // ================================================================ live (real-time) conversation
+
+    private void startLive() {
+        if (live != null || busy) return;
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_LIVE);
+            return;
+        }
+        voice.stopSpeaking();
+        if (voice.listening) voice.cancelListening();
+        inConversation = true;
+        WakeService.pause(this);
+        showTab(0);
+        input.setHint("Live: మాట్లాడండి, ఆపాలంటే ఎరుపు బటన్");
+        live = new LiveSession(this, prefs, tools, this);
+        live.start(brain.liveInstructions(store.chat()));
+        refreshAction();
+    }
+
+    @Override public void onLiveState(int orbState, String text) {
+        orb.setState(orbState);
+        status.setText(text);
+    }
+
+    @Override public void onLiveUser(String text) {
+        store.addChat("user", text, false);
+        TextView t = addMessage("user", text, System.currentTimeMillis(), null);
+        if (liveBubble != null) {
+            // Keep the order right: Anil's words above the reply that is already streaming.
+            View userWrap = (View) t.getParent();
+            View replyWrap = (View) liveBubble.getParent();
+            chatList.removeView(userWrap);
+            chatList.addView(userWrap, chatList.indexOfChild(replyWrap));
+        }
+    }
+
+    @Override public void onLiveJarvisPartial(String text) {
+        if (liveBubble == null) liveBubble = addMessage("assistant", text, System.currentTimeMillis(), null);
+        else {
+            liveBubble.setText(text);
+            scrollToEnd();
+        }
+    }
+
+    @Override public void onLiveJarvis(String text) {
+        if (liveBubble != null) liveBubble.setText(text);
+        else addMessage("assistant", text, System.currentTimeMillis(), null);
+        liveBubble = null;
+        store.addChat("assistant", text, false);
+    }
+
+    @Override public void onLiveLevel(float level) { orb.setLevel(level); }
+
+    @Override public void onLiveError(String message) {
+        TextView t = addMessage("assistant", describeLive(message), System.currentTimeMillis(), null);
+        t.setTextColor(Ui.RED);
+    }
+
+    @Override public void onLiveEnded(String reason) {
+        live = null;
+        liveBubble = null;
+        finishTurn();
+        if ("idle".equals(reason)) status.setText("నిశ్శబ్దంగా ఉంది, Live సంభాషణ ఆపేశాను");
+    }
+
+    private String describeLive(String m) {
+        String low = String.valueOf(m).toLowerCase(Locale.ROOT);
+        String te;
+        if (low.contains("401") || low.contains("api key") || low.contains("api_key"))
+            te = "OpenAI key పనిచేయడం లేదు. సెట్టింగ్స్‌లో OpenAI key చెక్ చేయండి.";
+        else if (low.contains("quota") || low.contains("billing") || low.contains("insufficient") || low.contains("credit"))
+            te = "OpenAI అకౌంట్‌లో బ్యాలెన్స్ అయిపోయింది. క్రెడిట్ జోడించండి.";
+        else if (low.contains("model") || low.contains("403") || low.contains("404"))
+            te = "Live మోడల్ \"" + prefs.realtimeModel() + "\" పనిచేయలేదు. సెట్టింగ్స్‌లో మోడల్ మార్చండి లేదా Live ఆఫ్ చేయండి.";
+        else if (low.contains("unable to resolve host") || low.contains("failed to connect") || low.contains("timeout"))
+            te = "ఇంటర్నెట్ కనెక్షన్ సమస్య. నెట్ చెక్ చేసి మళ్లీ ప్రయత్నించండి.";
+        else if (low.contains("మైక్") || low.contains("mic"))
+            te = "మైక్ తెరవలేకపోయాను. వేరే యాప్ మైక్ వాడుతుంటే మూసేసి మళ్లీ ప్రయత్నించండి.";
+        else te = "Live సంభాషణలో సమస్య వచ్చింది.";
+        return te + "\n(" + (m.length() > 180 ? m.substring(0, 180) : m) + ")";
     }
 
     private void startListening() {
@@ -909,7 +1014,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void finishTurn() {
-        if (busy) return;
+        if (busy || live != null) return;
         setIdle();
         inConversation = false;
         if (prefs.wakeReady()) WakeService.resume(this);

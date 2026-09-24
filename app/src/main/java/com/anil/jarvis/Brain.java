@@ -44,7 +44,27 @@ final class Brain {
 
     // ---------------------------------------------------------------- prompt
 
-    private String systemPrompt() {
+    /** Instructions for a live voice session: the usual persona plus live-talk rules and recent context. */
+    String liveInstructions(List<JSONObject> history) {
+        StringBuilder recent = new StringBuilder();
+        String name = prefs.name();
+        for (int i = Math.max(0, history.size() - 8); i < history.size(); i++) {
+            JSONObject h = history.get(i);
+            String c = h.optString("content", "").trim();
+            if (c.isEmpty()) continue;
+            if (c.length() > 400) c = c.substring(0, 400) + "…";
+            recent.append("assistant".equals(h.optString("role")) ? "Jarvis: " : name + ": ").append(c).append('\n');
+        }
+        return systemPrompt()
+                + "\nLive conversation rules:\n"
+                + "- This is a live, real-time voice conversation through the phone's speaker. Speak natural, warm Telugu, like a person talking, in 1-3 short sentences. " + name + " may interrupt you at any time; if he does, stop and listen.\n"
+                + "- Before using a tool that takes time (web_search, weather, reading messages), say a very short phrase first, like 'ఒక్క క్షణం'.\n"
+                + "- When reading his messages aloud, say who sent it and the gist; ask before replying on his behalf.\n"
+                + "- When he says bye, చాలు, ఆపు or that he is done, say a short goodbye and call end_conversation.\n"
+                + (recent.length() == 0 ? "" : "\nRecent conversation, for context:\n" + recent);
+    }
+
+    String systemPrompt() {
         String name = prefs.name();
         SimpleDateFormat f = new SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", Locale.ENGLISH);
         String now = f.format(new Date()) + " (" + TimeZone.getDefault().getID() + ")";
@@ -71,7 +91,7 @@ final class Brain {
                 + "- Address him as \"" + name + "\" now and then, naturally, the way a butler would. Never \"sir\", never \"Tony\".\n"
                 + "- Your reply is spoken aloud: keep it to 1-3 short sentences unless he asks for detail. No markdown, bullet lists, emoji, or URLs.\n"
                 + "- Helpful first, witty second. A light dry remark is welcome; never mock him.\n"
-                + "- You can act on the phone with your tools: phone calls, SMS, WhatsApp messages, alarms, timers, weather, web search, opening apps, maps and navigation, YouTube, the flashlight, battery status, and his memories and missions. When he asks for one of these, use the tool; don't just describe it.\n"
+                + "- You can act on the phone with your tools: phone calls, SMS, WhatsApp messages, alarms, timers, weather, web search, opening apps, maps and navigation, YouTube, the flashlight, battery status, reading and replying to the message notifications on his phone (WhatsApp, SMS, Telegram), and his memories and missions. When he asks for one of these, use the tool; don't just describe it.\n"
                 + "- Calls and SMS: the app shows its own confirmation screen, so don't ask \"shall I?\" yourself. If the contact or time is unclear, ask one short question instead of guessing.\n"
                 + "- Contact names: pass them the way they are probably saved in his phone, usually in English letters (for example 'Ravi', 'Amma', 'Office Suresh').\n"
                 + "- Place names for weather and maps: use English spelling (for example 'Hyderabad', 'Vijayawada').\n"

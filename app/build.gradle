@@ -50,4 +50,6 @@ android {
 dependencies {
     // On-device "Hey Jarvis" wake word (openWakeWord models run with ONNX Runtime)
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
+    // WebSocket for the live (real-time) voice conversation
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }

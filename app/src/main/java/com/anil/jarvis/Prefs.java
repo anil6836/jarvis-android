@@ -45,5 +45,20 @@ final class Prefs {
     String listenLang() { return sp.getString("lang", "te-IN"); }
 
     boolean hasBrain() { return !apiKey().isEmpty(); }
+
+    // ---- natural voice (OpenAI text-to-speech)
+    boolean naturalVoice() { return sp.getBoolean("natural_voice", true); }
+    String naturalVoiceName() { return sp.getString("natural_voice_name", "cedar"); }
+
+    // ---- live (real-time) conversation
+    static final String DEFAULT_REALTIME_MODEL = "gpt-realtime-2.1-mini";
+    boolean liveMode() { return sp.getBoolean("live", false); }
+    String realtimeModel() {
+        String m = sp.getString("realtime_model", DEFAULT_REALTIME_MODEL);
+        return m == null || m.trim().isEmpty() ? DEFAULT_REALTIME_MODEL : m.trim();
+    }
+    /** Let Anil interrupt Jarvis mid-sentence. Turn off if Jarvis keeps interrupting itself. */
+    boolean bargeIn() { return sp.getBoolean("barge_in", true); }
+    boolean liveReady() { return liveMode() && !openAiKey().trim().isEmpty(); }
     boolean wakeReady() { return wakeWord(); }
 }

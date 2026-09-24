@@ -46,10 +46,12 @@ final class Tools {
 
     private final Host host;
     private final Store store;
+    private final Prefs prefs;
 
-    Tools(Host host, Store store) {
+    Tools(Host host, Store store, Prefs prefs) {
         this.host = host;
         this.store = store;
+        this.prefs = prefs;
     }
 
     // ================================================================ definitions
@@ -116,6 +118,13 @@ final class Tools {
         DEFS.add(new Def("device_status",
                 "Battery level, charging state and the current date and time.",
                 schema(new String[][]{})));
+        DEFS.add(new Def("read_notifications",
+                "Read the latest messages that arrived as phone notifications (WhatsApp, SMS, Telegram, Instagram, email apps and others), newest first. Each has an id, app, sender and text, and whether it can be replied to.",
+                schema(new String[][]{{"app", "string", "Optional app filter, e.g. 'WhatsApp', 'Messages', 'Telegram'. Empty for all apps."},
+                        {"limit", "integer", "How many to return (default 8, max 20)"}})));
+        DEFS.add(new Def("reply_to_notification",
+                "Reply to one of the notifications from read_notifications using its reply button (works for WhatsApp, SMS, Telegram and most chat apps). The app asks Anil to confirm before sending.",
+                schema(new String[][]{{"id", "integer", "Notification id from read_notifications"}, {"message", "string", "The reply text"}}, "id", "message")));
         DEFS.add(new Def("save_memory",
                 "Save one lasting fact about Anil (a preference, a person, a date, a plan) to his permanent memory.",
                 schema(new String[][]{{"text", "string", "The fact as one short Telugu sentence"}}, "text")));
@@ -128,6 +137,18 @@ final class Tools {
         DEFS.add(new Def("complete_mission",
                 "Mark one mission as done by its id (ids are in the system prompt).",
                 schema(new String[][]{{"id", "string", "Mission id"}}, "id")));
+    }
+
+    /** Extra tools for the live (real-time) voice session, which has no built-in web search. */
+    static JSONArray liveOnlyTools() throws Exception {
+        JSONArray a = new JSONArray();
+        a.put(new JSONObject().put("type", "function").put("name", "web_search")
+                .put("description", "Search the internet for current information (news, cricket scores, prices, film releases, anything that changes). Returns a short summary.")
+                .put("parameters", schema(new String[][]{{"query", "string", "What to search for, in English"}}, "query")));
+        a.put(new JSONObject().put("type", "function").put("name", "end_conversation")
+                .put("description", "End the live voice conversation. Call it when Anil says goodbye, is done, or asks you to stop listening (for example 'bye', 'చాలు', 'ఆపు', 'సరే Jarvis, అంతే'). Say a short goodbye first.")
+                .put("parameters", schema(new String[][]{})));
+        return a;
     }
 
     JSONArray openAiTools() throws Exception {
@@ -159,6 +180,9 @@ final class Tools {
             case "get_weather": return "వాతావరణం చూస్తున్నాను…";
             case "open_app": case "open_maps": case "play_youtube": return "తెరుస్తున్నాను…";
             case "save_memory": return "గుర్తుంచుకుంటున్నాను…";
+            case "read_notifications": return "మెసేజ్‌లు చూస్తున్నాను…";
+            case "reply_to_notification": return "రిప్లై సిద్ధం చేస్తున్నాను…";
+            case "web_search": return "ఇంటర్నెట్‌లో వెతుకుతున్నాను…";
             case "add_mission": return "మిషన్ జోడిస్తున్నాను…";
             default: return "పని చేస్తున్నాను…";
         }
@@ -181,6 +205,9 @@ final class Tools {
                 case "play_youtube": return youtube(a.optString("query"));
                 case "flashlight": return flashlight(a.optBoolean("on", true));
                 case "device_status": return deviceStatus();
+                case "read_notifications": return readNotifications(a.optString("app", ""), a.optInt("limit", 8));
+                case "reply_to_notification": return replyNotification(a.optInt("id", -1), a.optString("message"));
+                case "web_search": return webSearch(a.optString("query"));
                 case "save_memory": {
                     JSONObject m = store.addMemory(a.optString("text"));
                     if (m == null) return err("empty", "Nothing to save.");
@@ -584,6 +611,61 @@ final class Tools {
             }
         }
         return err("no_flash", "This phone has no flashlight.");
+    }
+
+    private String readNotifications(String app, int limit) throws Exception {
+        if (!NotifyListener.enabled(act())) {
+            onUi(() -> act().startActivity(NotifyListener.settingsIntent()));
+            return err("notification_access_off", "Jarvis does not have notification access yet. The settings screen was opened: Anil must switch on 'Jarvis' under Notification access, then ask again.");
+        }
+        limit = Math.max(1, Math.min(20, limit <= 0 ? 8 : limit));
+        List<NotifyListener.Item> list = NotifyListener.recent(app, limit);
+        JSONArray arr = new JSONArray();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM HH:mm", Locale.ENGLISH);
+        for (NotifyListener.Item i : list) {
+            arr.put(new JSONObject().put("id", i.id).put("app", i.app).put("from", i.from)
+                    .put("text", i.text).put("time", f.format(new java.util.Date(i.when)))
+                    .put("can_reply", i.reply != null));
+        }
+        JSONObject o = ok().put("notifications", arr);
+        if (list.isEmpty()) o.put("note", "No recent notifications" + (app.isEmpty() ? "" : " from " + app) + ". Only messages that arrived after notification access was switched on can be read.");
+        return o.toString();
+    }
+
+    private String replyNotification(int id, String message) throws Exception {
+        if (message == null || message.trim().isEmpty()) return err("missing", "What should the reply say?");
+        NotifyListener.Item item = NotifyListener.get(id);
+        if (item == null) return err("not_found", "That notification is gone. Call read_notifications again.");
+        if (item.reply == null) return err("no_reply_button", item.app + " does not allow replies from the notification. Offer to open the app instead.");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        String to = item.from.isEmpty() ? item.app : item.from + " (" + item.app + ")";
+        if (!host.confirm("రిప్లై పంపాలా?", "ఎవరికి: " + to + "\n\n" + message, "పంపు", 0)) return err("cancelled", "Anil cancelled the reply.");
+        NotifyListener.reply(act(), item, message);
+        return ok().put("replied_to", to).toString();
+    }
+
+    /** Internet search through the OpenAI Responses API (used by the live voice mode). */
+    private String webSearch(String query) throws Exception {
+        if (query == null || query.trim().isEmpty()) return err("missing", "What should I search for?");
+        String key = prefs.openAiKey().trim();
+        if (key.isEmpty()) return err("no_key", "Web search needs an OpenAI key in settings.");
+        JSONObject body = new JSONObject()
+                .put("model", prefs.openAiModel().trim().isEmpty() ? Prefs.DEFAULT_OPENAI_MODEL : prefs.openAiModel().trim())
+                .put("tools", new JSONArray().put(new JSONObject().put("type", "web_search")))
+                .put("input", "Search the web and answer in at most 6 short factual sentences, with dates where relevant: " + query);
+        JSONObject res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
+        StringBuilder said = new StringBuilder();
+        JSONArray out = res.optJSONArray("output");
+        for (int i = 0; out != null && i < out.length(); i++) {
+            JSONObject item = out.getJSONObject(i);
+            if (!"message".equals(item.optString("type"))) continue;
+            JSONArray parts = item.optJSONArray("content");
+            for (int k = 0; parts != null && k < parts.length(); k++) {
+                JSONObject p = parts.getJSONObject(k);
+                if ("output_text".equals(p.optString("type"))) said.append(p.optString("text"));
+            }
+        }
+        return ok().put("result", said.toString().trim()).toString();
     }
 
     private String deviceStatus() throws Exception {

@@ -18,7 +18,9 @@ import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
+import android.widget.ArrayAdapter;
 import android.widget.SeekBar;
+import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -30,7 +32,11 @@ public class SettingsActivity extends Activity {
     private Prefs prefs;
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
     private RadioGroup provider, lang;
-    private Switch web, voice, followUp, wake;
+    private Switch web, voice, followUp, wake, natural, liveMode, bargeIn;
+    private Spinner voicePick;
+    private EditText realtimeModel;
+    private TextView voiceInfo, notifyInfo;
+    private final NaturalVoice tester = new NaturalVoice();
     private SeekBar rate, sensitivity;
     private TextView rateLabel, sensitivityLabel, wakeInfo;
     private LinearLayout box;
@@ -104,6 +110,32 @@ public class SettingsActivity extends Activity {
         box.addView(lang);
         note("Jarvis తెలుగులో మాట్లాడకపోతే: ఫోన్ Settings → Text-to-speech → Google → తెలుగు వాయిస్ డౌన్‌లోడ్ చేయండి.");
 
+        // ---- natural voice
+        section("సహజ గొంతు (OpenAI)");
+        note("సినిమాలోలా మనిషి గొంతుతో మాట్లాడుతుంది. OpenAI key కావాలి, కొంచెం ఖర్చు అవుతుంది. తెలుగు ఉచ్చారణ నచ్చకపోతే ఇది ఆఫ్ చేస్తే Google గొంతుకి మారుతుంది.");
+        natural = toggle("సహజ గొంతు వాడు", prefs.naturalVoice());
+        TextView vl = Ui.text(this, "గొంతు ఎంచుకోండి (cedar = లోతైన మగ గొంతు, సిఫార్సు)", 14, Ui.MUTED);
+        vl.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
+        box.addView(vl);
+        voicePick = new Spinner(this);
+        ArrayAdapter<String> va = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, NaturalVoice.VOICES);
+        voicePick.setAdapter(va);
+        voicePick.setBackground(Ui.round(this, Ui.DEEP, Ui.LINE2, 12));
+        int current = 0;
+        for (int i = 0; i < NaturalVoice.VOICES.length; i++) if (NaturalVoice.VOICES[i].equals(prefs.naturalVoiceName())) current = i;
+        voicePick.setSelection(current);
+        box.addView(voicePick, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+        button("ఈ గొంతు వినిపించు", v -> testVoice());
+        voiceInfo = Ui.text(this, "", 14, Ui.MUTED);
+        box.addView(voiceInfo);
+
+        // ---- live conversation
+        section("Live సంభాషణ (Real-time)");
+        note("మనిషితో ఫోన్‌లో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. OpenAI key కావాలి. సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది; 45 సెకన్లు ఎవరూ మాట్లాడకపోతే తనంతట తానే ఆగిపోతుంది.");
+        liveMode = toggle("Live సంభాషణ ఆన్ (మైక్ బటన్, Hey Jarvis రెండింటికీ)", prefs.liveMode());
+        bargeIn = toggle("మధ్యలో ఆపి మాట్లాడటం (Jarvis తనంతట తానే ఆగిపోతుంటే ఇది ఆఫ్ చేయండి)", prefs.bargeIn());
+        realtimeModel = field("Live మోడల్", prefs.realtimeModel(), false);
+
         // ---- wake word
         section("\"Hey Jarvis\" వేక్ వర్డ్");
         note("ఫోన్ లాక్‌లో ఉన్నా \"Hey Jarvis\" అని పిలిస్తే తెరుచుకుంటుంది. ఏ key అవసరం లేదు. వినడం అంతా ఫోన్‌లోనే జరుగుతుంది, ఏ ఆడియో బయటికి వెళ్లదు.");
@@ -135,6 +167,15 @@ public class SettingsActivity extends Activity {
         box.addView(wakeInfo);
 
         // ---- permissions & data
+        // ---- notifications
+        section("మెసేజ్ నోటిఫికేషన్లు");
+        note("\"WhatsApp లో ఎవరు మెసేజ్ చేశారు?\", \"రవికి సరే అని రిప్లై ఇవ్వు\" లాంటివి అడగాలంటే ఈ అనుమతి ఇవ్వండి. Jarvis మీరు అడిగినప్పుడే మెసేజ్‌లు చదువుతుంది; అప్పుడు ఆ టెక్స్ట్ సమాధానం కోసం AI కి వెళ్తుంది. రిప్లై పంపే ముందు మిమ్మల్ని అడుగుతుంది.");
+        button("నోటిఫికేషన్ యాక్సెస్ ఇవ్వండి", v -> {
+            try { startActivity(NotifyListener.settingsIntent()); } catch (Exception ignored) {}
+        });
+        notifyInfo = Ui.text(this, "", 14, Ui.MUTED);
+        box.addView(notifyInfo);
+
         section("అనుమతులు, డేటా");
         button("అన్ని అనుమతులు ఇవ్వండి", v -> requestPermissions(MainActivity.corePermissions(), 5));
         button("సంభాషణ చెరిపేయి (జ్ఞాపకాలు, మిషన్లు అలాగే ఉంటాయి)", v -> {
@@ -162,6 +203,9 @@ public class SettingsActivity extends Activity {
         s.append(exempt ? "✓ బ్యాటరీ సేవర్ మినహాయింపు: ఉంది" : "✗ బ్యాటరీ సేవర్ మినహాయింపు: లేదు (ఫోన్ వేక్ వర్డ్‌ని ఆపేయవచ్చు)");
         if (WakeService.lastError != null) s.append("\nచివరి సమస్య: ").append(WakeService.lastError);
         wakeInfo.setText(s.toString());
+        notifyInfo.setText(NotifyListener.enabled(this) ? "✓ నోటిఫికేషన్ యాక్సెస్: ఇచ్చారు" : "✗ నోటిఫికేషన్ యాక్సెస్: ఇవ్వలేదు");
+        notifyInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
+        voiceInfo.setText(VoiceIO.naturalError == null ? "" : "చివరిసారి సహజ గొంతు పనిచేయలేదు: " + VoiceIO.naturalError);
     }
 
     private void store() {
@@ -176,6 +220,14 @@ public class SettingsActivity extends Activity {
         e.putBoolean("web_search", web.isChecked());
         e.putBoolean("voice", voice.isChecked());
         e.putBoolean("follow_up", followUp.isChecked());
+        e.putBoolean("natural_voice", natural.isChecked());
+        e.putString("natural_voice_name", NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())]);
+        e.putBoolean("live", liveMode.isChecked());
+        e.putBoolean("barge_in", bargeIn.isChecked());
+        e.putString("realtime_model", realtimeModel.getText().toString().trim());
+        if ((liveMode.isChecked() || natural.isChecked()) && openAiKey.getText().toString().trim().isEmpty()) {
+            Toast.makeText(this, "సహజ గొంతు, Live సంభాషణకి OpenAI key కావాలి", Toast.LENGTH_LONG).show();
+        }
         e.putFloat("rate", 0.5f + rate.getProgress() / 100f);
         e.putString("lang", lang.getCheckedRadioButtonId() == 12 ? "en-IN" : "te-IN");
         e.putBoolean("wake", wake.isChecked());
@@ -194,6 +246,27 @@ public class SettingsActivity extends Activity {
         float r = 0.5f + rate.getProgress() / 100f;
         rateLabel.setText(String.format(Locale.ENGLISH, "మాట్లాడే వేగం: %.2fx", r));
         rateLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
+    }
+
+    private void testVoice() {
+        String key = openAiKey.getText().toString().trim();
+        if (key.isEmpty()) {
+            Toast.makeText(this, "ముందు OpenAI key పెట్టండి", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String v = NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())];
+        String n = name.getText().toString().trim();
+        voiceInfo.setText("వినిపిస్తున్నాను…");
+        tester.speak(key, v, "నమస్కారం " + (n.isEmpty() ? "Anil" : n) + ". నేను Jarvis. మీ సేవలో ఎప్పుడూ సిద్ధంగా ఉంటాను.", new NaturalVoice.Callback() {
+            @Override public void onStart() { voiceInfo.setText("గొంతు: " + v); }
+            @Override public void onDone() { voiceInfo.setText("గొంతు: " + v + " ✓"); }
+            @Override public void onError(String message) { voiceInfo.setText("పనిచేయలేదు: " + message); }
+        });
+    }
+
+    @Override protected void onPause() {
+        super.onPause();
+        tester.stop();
     }
 
     private void showSensitivity() {
