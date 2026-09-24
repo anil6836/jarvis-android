@@ -65,6 +65,8 @@ final class Prefs {
     boolean jarvisWord() { return sp.getBoolean("wake_jarvis", true); }
     /** When the wake word may use the mic: "screen_on" (default), "charging" or "always". */
     String wakeWhen() { return sp.getString("wake_when", "screen_on"); }
+    /** Start listening as soon as Jarvis is opened (e.g. "Hey Google, open Jarvis"). */
+    boolean listenOnOpen() { return sp.getBoolean("listen_on_open", true); }
 
     // ---- incoming calls
     boolean announceCalls() { return sp.getBoolean("announce_calls", true); }

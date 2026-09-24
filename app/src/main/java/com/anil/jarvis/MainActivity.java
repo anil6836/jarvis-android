@@ -173,6 +173,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void handleIntent(Intent i) {
         if (i == null) return;
+        // Opened from the launcher or by "Hey Google, open Jarvis": start listening right away.
+        boolean launcher = Intent.ACTION_MAIN.equals(i.getAction()) && i.hasCategory(Intent.CATEGORY_LAUNCHER);
+        if (launcher && !i.getBooleanExtra("jarvis_handled", false)) {
+            i.putExtra("jarvis_handled", true);
+            if (prefs.listenOnOpen() && prefs.hasBrain()
+                    && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                inConversation = true;
+                main.postDelayed(this::startConversation, 450);
+            }
+            return;
+        }
         if (i.getBooleanExtra(EXTRA_BRIEF, false)) {
             i.removeExtra(EXTRA_BRIEF);
             main.postDelayed(() -> send(BRIEF_PROMPT, "శుభోదయం బ్రీఫింగ్", false), 500);
