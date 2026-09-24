@@ -60,5 +60,17 @@ final class Prefs {
     /** Let Anil interrupt Jarvis mid-sentence. Turn off if Jarvis keeps interrupting itself. */
     boolean bargeIn() { return sp.getBoolean("barge_in", true); }
     boolean liveReady() { return liveMode() && !openAiKey().trim().isEmpty(); }
+
+    // ---- wake words: "Jarvis" is the main one, "Hey Jarvis" the second
+    boolean jarvisWord() { return sp.getBoolean("wake_jarvis", true); }
+
+    // ---- incoming calls
+    boolean announceCalls() { return sp.getBoolean("announce_calls", true); }
+
+    // ---- daily morning briefing
+    boolean briefingOn() { return sp.getBoolean("briefing", false); }
+    int briefingHour() { return sp.getInt("briefing_hour", 7); }
+    int briefingMinute() { return sp.getInt("briefing_minute", 0); }
+    boolean briefingSpeak() { return sp.getBoolean("briefing_speak", true); }
     boolean wakeReady() { return wakeWord(); }
 }

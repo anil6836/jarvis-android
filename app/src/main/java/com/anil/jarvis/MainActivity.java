@@ -59,6 +59,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listener, Store.Listener, LiveSession.Listener {
     static final String EXTRA_WAKE = "wake";
+    static final String EXTRA_BRIEF = "brief";
+    /** True while the Jarvis screen is in front (then a fresh screenshot would only show Jarvis). */
+    static volatile boolean visible;
+    private static final String BRIEF_PROMPT = "నాకు ఇప్పటి బ్రీఫింగ్ ఇవ్వు: సమయానికి తగ్గ పలకరింపు, ఈరోజు తేదీ, నా లొకేషన్‌లో వాతావరణం (get_weather వాడు), ఈరోజు క్యాలెండర్, రిమైండర్లు, నా యాక్టివ్ మిషన్లలో ముఖ్యమైనవి, బ్యాటరీ తక్కువగా ఉంటే అది కూడా. 6 వాక్యాలు మించకుండా.";
+    private static final int REQ_CAMERA_PERM = 24, REQ_PHOTO_CAM = 25;
+    private CameraPanel camera;
+    private FrameLayout cameraBox;
+    private LinearLayout reminderList;
+    private TextView reminderLabel;
     /** True from the moment Anil starts talking until Jarvis has finished answering. */
     static volatile boolean inConversation;
 
@@ -122,7 +131,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override protected void onResume() {
         super.onResume();
         paused = false;
+        visible = true;
         store.listener = this;
+        Reminders.scheduleBriefing(this);
         orb.invalidate();
         updateSetup();
         if (live == null && !busy && !voice.listening && !voice.speaking) setIdle();
@@ -133,6 +144,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override protected void onPause() {
         super.onPause();
         paused = true;
+        visible = false;
+        if (camera != null && camera.isOpen()) {
+            camera.close();
+            cameraBox.setVisibility(View.GONE);
+        }
         if (voice.listening) {
             voice.cancelListening();
             finishTurn();
@@ -147,6 +163,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override protected void onDestroy() {
         if (store.listener == this) store.listener = null;
         if (live != null) live.stop("destroy");
+        if (camera != null) camera.close();
         voice.shutdown();
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
@@ -156,11 +173,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void handleIntent(Intent i) {
         if (i == null) return;
+        if (i.getBooleanExtra(EXTRA_BRIEF, false)) {
+            i.removeExtra(EXTRA_BRIEF);
+            main.postDelayed(() -> send(BRIEF_PROMPT, "శుభోదయం బ్రీఫింగ్", false), 500);
+            return;
+        }
         boolean wake = i.getBooleanExtra(EXTRA_WAKE, false);
-        boolean assist = Intent.ACTION_ASSIST.equals(i.getAction());
+        boolean assist = Intent.ACTION_ASSIST.equals(i.getAction()) || Intent.ACTION_VOICE_COMMAND.equals(i.getAction());
         if (!wake && !assist) return;
         i.removeExtra(EXTRA_WAKE);
-        if (wake) {
+        if (assist) i.setAction(Intent.ACTION_MAIN); // handle a long-press only once
+        if (wake || assist) {
             if (Build.VERSION.SDK_INT >= 27) {
                 setShowWhenLocked(true);
                 setTurnScreenOn(true);
@@ -186,6 +209,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         p.add(Manifest.permission.SEND_SMS);
         p.add(Manifest.permission.READ_CONTACTS);
         p.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        p.add(Manifest.permission.READ_CALENDAR);
+        p.add(Manifest.permission.WRITE_CALENDAR);
+        p.add(Manifest.permission.CAMERA);
         if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS);
         return p.toArray(new String[0]);
     }
@@ -198,6 +224,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         super.onRequestPermissionsResult(code, perms, results);
         updateSetup();
+        if (code == REQ_CAMERA_PERM && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) toggleCamera();
+        if (code == REQ_PHOTO_CAM && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) openCamera();
         if (code == REQ_LIVE) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startLive();
             else Toast.makeText(this, "మాట్లాడాలంటే మైక్ అనుమతి కావాలి", Toast.LENGTH_LONG).show();
@@ -292,6 +320,24 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         rule.setBackgroundColor(Ui.LINE);
         root.addView(rule, new LinearLayout.LayoutParams(-1, dp(1)));
 
+        // ---- live camera (hidden until the "Live కెమెరా" button is tapped)
+        camera = new CameraPanel(this);
+        cameraBox = new FrameLayout(this);
+        cameraBox.setBackground(Ui.round(this, 0xFF000000, Ui.CYAN_DIM, 12));
+        cameraBox.setPadding(dp(2), dp(2), dp(2), dp(2));
+        cameraBox.addView(camera.view, new FrameLayout.LayoutParams(-1, -1));
+        TextView camLabel = Ui.mono(this, "● LIVE", 12, Ui.RED);
+        camLabel.setPadding(dp(10), dp(6), dp(10), dp(6));
+        cameraBox.addView(camLabel, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
+        TextView camClose = Ui.text(this, "✕", 18, Ui.TEXT);
+        camClose.setPadding(dp(12), dp(4), dp(12), dp(4));
+        camClose.setOnClickListener(v -> toggleCamera());
+        cameraBox.addView(camClose, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
+        cameraBox.setVisibility(View.GONE);
+        LinearLayout.LayoutParams cblp = new LinearLayout.LayoutParams(-1, dp(240));
+        cblp.topMargin = dp(8);
+        root.addView(cameraBox, cblp);
+
         // ---- panels
         FrameLayout stage = new FrameLayout(this);
         chatScroll = new ScrollView(this);
@@ -337,10 +383,18 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         chipScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout chips = new LinearLayout(this);
         chips.setPadding(0, dp(8), 0, dp(8));
-        addChip(chips, "శుభోదయం బ్రీఫింగ్", "నాకు ఇప్పటి బ్రీఫింగ్ ఇవ్వు: సమయానికి తగ్గ పలకరింపు, ఈరోజు తేదీ, నా లొకేషన్‌లో వాతావరణం (get_weather వాడు), నా యాక్టివ్ మిషన్లలో ముఖ్యమైనవి, బ్యాటరీ తక్కువగా ఉంటే అది కూడా. 5 వాక్యాలు మించకుండా.");
+        addChip(chips, "శుభోదయం బ్రీఫింగ్", BRIEF_PROMPT);
         addChip(chips, "వార్తలు", "ఈరోజు ముఖ్యమైన 3 వార్తలు చెప్పు: ఒకటి భారతదేశం, ఒకటి తెలంగాణ లేదా ఆంధ్రప్రదేశ్, ఒకటి టెక్నాలజీ. ఇంటర్నెట్‌లో వెతికి, చిన్నగా చెప్పు.");
         addChip(chips, "వాతావరణం", "ఇప్పుడు ఇక్కడ వాతావరణం ఎలా ఉంది? రేపు వర్షం పడే అవకాశం ఉందా?");
         addChip(chips, "ఫోటో స్కాన్", null);
+        TextView camChip = Ui.pill(this, "Live కెమెరా");
+        camChip.setOnClickListener(v -> toggleCamera());
+        LinearLayout.LayoutParams ccl = new LinearLayout.LayoutParams(-2, -2);
+        ccl.rightMargin = dp(8);
+        chips.addView(camChip, ccl);
+        addChip(chips, "స్క్రీన్ చూడు", "నా స్క్రీన్‌లో ఏముందో చూసి చెప్పు (look_at_screen వాడు).");
+        addChip(chips, "మెసేజ్‌లు", "నాకు వచ్చిన కొత్త మెసేజ్‌లు చదివి చెప్పు (read_notifications వాడు).");
+        addChip(chips, "రిమైండర్లు", "నా రాబోయే రిమైండర్లు, ఈరోజు క్యాలెండర్ చెప్పు.");
         addChip(chips, "మిషన్ స్టేటస్", "నా మిషన్ల స్టేటస్ చెప్పు. ఎన్ని పెండింగ్‌లో ఉన్నాయి, ముందు ఏది చేయాలో ఒక్కటి సూచించు.");
         addChip(chips, "ఫోకస్ మోడ్", "నేను ఇప్పుడు 25 నిమిషాలు ఫోకస్ చేయాలి. నా మిషన్ల నుంచి ఒకటి ఎంచుకుని మూడు చిన్న స్టెప్స్ చెప్పు, తర్వాత 25 నిమిషాల టైమర్ పెట్టు.");
         addChip(chips, "సూట్ అప్", "Jarvis, సూట్ అప్! ఈరోజుని ఎదుర్కోవడానికి నన్ను సిద్ధం చేయి.");
@@ -456,6 +510,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             doneList = new LinearLayout(this);
             doneList.setOrientation(LinearLayout.VERTICAL);
             box.addView(doneList);
+            reminderLabel = Ui.mono(this, "రాబోయే రిమైండర్లు", 12, Ui.FAINT);
+            reminderLabel.setPadding(dp(2), dp(22), 0, dp(4));
+            box.addView(reminderLabel);
+            reminderList = new LinearLayout(this);
+            reminderList.setOrientation(LinearLayout.VERTICAL);
+            box.addView(reminderList);
         } else {
             memoryList = list;
             memoryEmpty = empty;
@@ -634,6 +694,64 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         for (int i = mem.size() - 1; i >= 0; i--) memoryList.addView(itemRow(mem.get(i), false));
         memoryEmpty.setVisibility(mem.isEmpty() ? View.VISIBLE : View.GONE);
         memoryCount.setText(String.valueOf(mem.size()));
+
+        reminderList.removeAllViews();
+        List<JSONObject> rs = store.reminders();
+        rs.sort((x, y) -> Long.compare(x.optLong("at"), y.optLong("at")));
+        long now = System.currentTimeMillis();
+        for (JSONObject r : rs) {
+            if (r.optBoolean("done") || r.optLong("at") < now) continue;
+            reminderList.addView(reminderRow(r));
+        }
+        reminderLabel.setVisibility(reminderList.getChildCount() == 0 ? View.GONE : View.VISIBLE);
+    }
+
+    private View reminderRow(JSONObject r) {
+        String id = r.optString("id");
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(10), 0, dp(10));
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.addView(Ui.text(this, "⏰ " + r.optString("text"), 16, Ui.TEXT));
+        TextView w = Ui.mono(this, new SimpleDateFormat("EEE d MMM · HH:mm", Locale.ENGLISH).format(new Date(r.optLong("at"))), 11.5f, Ui.GOLD);
+        w.setLetterSpacing(0.04f);
+        col.addView(w);
+        row.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
+        IconView del = new IconView(this, IconView.TRASH, Ui.FAINT);
+        del.setContentDescription("రిమైండర్ తీసేయి");
+        del.setOnClickListener(v -> {
+            Reminders.cancel(this, id);
+            JSONObject gone = store.removeReminder(id);
+            if (gone != null) showUndo("రిమైండర్ తీసేశాను", () -> {
+                store.addReminder(gone.optString("text"), gone.optLong("at"));
+                for (JSONObject x : store.reminders()) if (x.optLong("at") == gone.optLong("at") && !x.optBoolean("done")) Reminders.schedule(this, x);
+            });
+        });
+        row.addView(del, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        wrap.addView(row);
+        View line = new View(this);
+        line.setBackgroundColor(Ui.LINE);
+        wrap.addView(line, new LinearLayout.LayoutParams(-1, dp(1)));
+        return wrap;
+    }
+
+    private void toggleCamera() {
+        if (camera.isOpen()) {
+            camera.close();
+            cameraBox.setVisibility(View.GONE);
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA_PERM);
+            return;
+        }
+        showTab(0);
+        cameraBox.setVisibility(View.VISIBLE);
+        camera.open();
+        Toast.makeText(this, "Live కెమెరా ఆన్. ఏం కనిపిస్తోందో Jarvis ని అడగండి.", Toast.LENGTH_SHORT).show();
     }
 
     private View itemRow(JSONObject item, boolean mission) {
@@ -921,7 +1039,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void send(String prompt, String label, boolean byVoice) {
         if (busy) return;
         String shown = label != null ? label : prompt;
-        final String photo = pendingPhoto;
+        String photoNow = pendingPhoto;
+        // With the live camera open, every question carries the current camera picture.
+        if (photoNow == null && camera != null && camera.isOpen()) photoNow = CameraPanel.latestFrame;
+        final String photo = photoNow;
         final Bitmap thumb = pendingThumb;
         if ((shown == null || shown.isEmpty()) && photo == null) return;
         if (shown == null || shown.isEmpty()) shown = "ఈ ఫోటోలో ఏముందో చెప్పు.";
@@ -1047,6 +1168,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void openCamera() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_PHOTO_CAM);
+            return;
+        }
         File f = PhotoProvider.file(this);
         if (f.exists()) f.delete();
         Uri out = PhotoProvider.uri();

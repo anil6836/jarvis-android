@@ -35,6 +35,9 @@ public class WakeService extends Service {
     private static final int ALERT_ID = 8;
 
     static volatile boolean running;
+    /** Progress or problem with the "Jarvis" word detector, shown in settings; null when fine. */
+    static volatile String wordStatus;
+    private static final String WAKE_HINT = "\"Jarvis\" లేదా \"Hey Jarvis\" అని పిలవండి";
     static volatile String lastError;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -81,7 +84,7 @@ public class WakeService extends Service {
             return START_NOT_STICKY;
         }
         try {
-            goForeground("\"Hey Jarvis\" అని పిలవండి");
+            goForeground(wordStatus != null ? wordStatus : WAKE_HINT);
         } catch (Exception e) {
             lastError = e.getMessage();
             stopSelf();
@@ -117,8 +120,15 @@ public class WakeService extends Service {
     private void startEngine() {
         if (engineOn) return;
         if (engine == null) {
-            engine = new WakeEngine(this, new Prefs(this).wakeThreshold(), new WakeEngine.Listener() {
+            Prefs p = new Prefs(this);
+            engine = new WakeEngine(this, p.wakeThreshold(), p.jarvisWord(), new WakeEngine.Listener() {
                 @Override public void onWake(float score) { main.post(WakeService.this::onWake); }
+                @Override public void onStatus(String text) {
+                    main.post(() -> {
+                        wordStatus = "ready".equals(text) ? null : text;
+                        if (running) goForeground(wordStatus != null ? wordStatus : WAKE_HINT);
+                    });
+                }
                 @Override public void onError(String message) {
                     main.post(() -> {
                         lastError = message;
@@ -143,6 +153,14 @@ public class WakeService extends Service {
         stopEngine(); // free the microphone for the conversation
         Vibrator v = getSystemService(Vibrator.class);
         if (v != null) v.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE));
+        // Look at the screen first (for "what's on my screen?"), then open Jarvis on top.
+        final boolean[] opened = {false};
+        Runnable open = () -> { if (!opened[0]) { opened[0] = true; openJarvis(); } };
+        main.postDelayed(open, 700);
+        JarvisAccessibility.capture(() -> main.post(open));
+    }
+
+    private void openJarvis() {
 
         Intent open = new Intent(this, MainActivity.class)
                 .putExtra(MainActivity.EXTRA_WAKE, true)

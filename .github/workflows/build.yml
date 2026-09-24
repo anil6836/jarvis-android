@@ -31,6 +31,20 @@ jobs:
           done
           ls -la app/src/main/assets
 
+      - name: Check that the "Jarvis" word is in the Vosk vocabulary
+        shell: bash
+        run: |
+          echo "ఫోన్‌లో Jarvis.apk డౌన్‌లోడ్ చేసి ఇన్‌స్టాల్ చేయండి." > release-notes.md
+          if curl -fsSL --retry 2 -o /tmp/vosk.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip; then
+            mkdir -p /tmp/vosk && unzip -q /tmp/vosk.zip -d /tmp/vosk
+            W=$(find /tmp/vosk -name words.txt | head -1)
+            if [ -n "$W" ] && grep -qiw "jarvis" "$W"; then echo "VOSK_JARVIS=yes ($W)" >> release-notes.md; else echo "VOSK_JARVIS=no (${W:-no words.txt})" >> release-notes.md; fi
+            (cd /tmp/vosk && find . -maxdepth 3 | head -40) >> release-notes.md
+          else
+            echo "VOSK_JARVIS=unknown (download failed)" >> release-notes.md
+          fi
+          cat release-notes.md
+
       - name: Build signed APK
         shell: bash
         run: |
@@ -64,6 +78,6 @@ jobs:
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: Jarvis 1.0.${{ github.run_number }}
-          body: ఫోన్‌లో Jarvis.apk డౌన్‌లోడ్ చేసి ఇన్‌స్టాల్ చేయండి.
+          body_path: release-notes.md
           files: Jarvis.apk
           make_latest: true

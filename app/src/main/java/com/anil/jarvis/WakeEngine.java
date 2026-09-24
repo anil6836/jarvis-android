@@ -30,6 +30,8 @@ final class WakeEngine {
     interface Listener {
         void onWake(float score);
         void onError(String message);
+        /** Progress of preparing the single-word "Jarvis" detector. */
+        default void onStatus(String text) {}
     }
 
     private static final int RATE = 16000;
@@ -43,6 +45,11 @@ final class WakeEngine {
     private final Context ctx;
     private final Listener listener;
     private final float threshold;
+    private final boolean jarvisWord;
+    private final double voskConf;
+    private volatile org.vosk.Recognizer vosk;
+    private volatile boolean voskLoading;
+    private org.vosk.Model voskModel;
 
     private OrtEnvironment env;
     private OrtSession mel, emb, ww;
@@ -56,10 +63,56 @@ final class WakeEngine {
     private final short[] previous = new short[CONTEXT];
     private int scored;
 
-    WakeEngine(Context c, float threshold, Listener listener) {
+    WakeEngine(Context c, float threshold, boolean jarvisWord, Listener listener) {
         this.ctx = c.getApplicationContext();
         this.threshold = threshold;
+        this.jarvisWord = jarvisWord;
+        // threshold 0.25 (sensitive) .. 0.75 (strict) -> word confidence 0.83 .. 0.98
+        this.voskConf = 0.75 + threshold * 0.3;
         this.listener = listener;
+    }
+
+    /** Loads the "Jarvis" word detector in the background (downloads its model the first time). */
+    private void loadJarvisWord() {
+        if (!jarvisWord || vosk != null || voskLoading) return;
+        voskLoading = true;
+        new Thread(() -> {
+            try {
+                java.io.File dir = VoskModel.ensure(ctx, listener::onStatus);
+                org.vosk.LibVosk.setLogLevel(org.vosk.LogLevel.WARNINGS);
+                org.vosk.Model m = new org.vosk.Model(dir.getAbsolutePath());
+                org.vosk.Recognizer r = new org.vosk.Recognizer(m, (float) RATE, "[\"jarvis\", \"hey jarvis\", \"[unk]\"]");
+                r.setWords(true);
+                voskModel = m;
+                vosk = r;
+                listener.onStatus("ready");
+            } catch (Throwable e) {
+                listener.onStatus("\"Jarvis\" పదం సిద్ధం కాలేదు (" + e.getMessage() + "). \"Hey Jarvis\" పనిచేస్తుంది.");
+            } finally {
+                voskLoading = false;
+            }
+        }, "jarvis-word-load").start();
+    }
+
+    /** Feeds audio to the "Jarvis" word detector; true when the word was heard clearly. */
+    private boolean jarvisHeard(short[] chunk) {
+        org.vosk.Recognizer r = vosk;
+        if (r == null) return false;
+        byte[] b = new byte[chunk.length * 2];
+        for (int i = 0; i < chunk.length; i++) {
+            b[2 * i] = (byte) (chunk[i] & 0xFF);
+            b[2 * i + 1] = (byte) ((chunk[i] >> 8) & 0xFF);
+        }
+        if (!r.acceptWaveForm(b, b.length)) return false;
+        try {
+            org.json.JSONObject res = new org.json.JSONObject(r.getResult());
+            org.json.JSONArray words = res.optJSONArray("result");
+            for (int i = 0; words != null && i < words.length(); i++) {
+                org.json.JSONObject w = words.getJSONObject(i);
+                if ("jarvis".equals(w.optString("word")) && w.optDouble("conf", 0) >= voskConf) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     synchronized void start() {
@@ -84,6 +137,10 @@ final class WakeEngine {
         try { if (emb != null) emb.close(); } catch (Exception ignored) {}
         try { if (ww != null) ww.close(); } catch (Exception ignored) {}
         mel = emb = ww = null;
+        try { if (vosk != null) vosk.close(); } catch (Throwable ignored) {}
+        try { if (voskModel != null) voskModel.close(); } catch (Throwable ignored) {}
+        vosk = null;
+        voskModel = null;
     }
 
     private byte[] asset(String name) throws Exception {
@@ -128,6 +185,7 @@ final class WakeEngine {
         try {
             load();
             reset();
+            loadJarvisWord();
             int min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             rec = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, CHUNK * 2 * 4));
@@ -144,8 +202,9 @@ final class WakeEngine {
                 }
                 if (!running) break;
                 float score = step(chunk);
+                boolean word = jarvisHeard(chunk);
                 long now = SystemClock.elapsedRealtime();
-                if (score >= threshold && now > quietUntil) {
+                if ((score >= threshold || word) && now > quietUntil) {
                     quietUntil = now + 2000;
                     listener.onWake(score);
                 }

@@ -125,6 +125,35 @@ final class Tools {
         DEFS.add(new Def("reply_to_notification",
                 "Reply to one of the notifications from read_notifications using its reply button (works for WhatsApp, SMS, Telegram and most chat apps). The app asks Anil to confirm before sending.",
                 schema(new String[][]{{"id", "integer", "Notification id from read_notifications"}, {"message", "string", "The reply text"}}, "id", "message")));
+        DEFS.add(new Def("set_reminder",
+                "Remind Anil about something at a date and time (he gets a notification and Jarvis says it aloud). Use this for 'remind me' / గుర్తుచేయి requests, not set_alarm.",
+                schema(new String[][]{{"text", "string", "What to remind him about, short Telugu phrase"},
+                        {"when", "string", "Local date and time 'yyyy-MM-dd HH:mm' (compute it from the current date/time in the system prompt)"}}, "text", "when")));
+        DEFS.add(new Def("list_reminders", "List Anil's upcoming reminders with their ids.", schema(new String[][]{})));
+        DEFS.add(new Def("cancel_reminder", "Cancel one reminder by id (from list_reminders).",
+                schema(new String[][]{{"id", "string", "Reminder id"}}, "id")));
+        DEFS.add(new Def("calendar_events",
+                "Read events from the phone's calendar (Google Calendar) starting today.",
+                schema(new String[][]{{"days", "integer", "How many days from today, 1 = today only (max 14)"}})));
+        DEFS.add(new Def("add_calendar_event",
+                "Add an event to Anil's calendar (with a 15-minute alert).",
+                schema(new String[][]{{"title", "string", "Event title"}, {"start", "string", "Local start 'yyyy-MM-dd HH:mm'"},
+                        {"minutes", "integer", "Duration in minutes (default 60)"}, {"location", "string", "Optional place"}}, "title", "start")));
+        DEFS.add(new Def("send_email",
+                "Write an email and open it in Gmail ready to send (Anil taps send). 'to' can be an email address or a contact name.",
+                schema(new String[][]{{"to", "string", "Email address or contact name"}, {"subject", "string", "Subject"},
+                        {"body", "string", "Email body, in the language he asked for"}}, "to", "subject", "body")));
+        DEFS.add(new Def("media_control",
+                "Control music/video that is playing on the phone and the media volume.",
+                schema(new String[][]{{"action", "string", "One of: play, pause, toggle, next, previous, volume_up, volume_down, set_volume, mute, unmute"},
+                        {"percent", "integer", "Volume 0-100, only for set_volume"}}, "action")));
+        DEFS.add(new Def("now_playing", "Which song or video is playing now, and in which app.", schema(new String[][]{})));
+        DEFS.add(new Def("look_at_screen",
+                "Look at what is on Anil's phone screen (the app he was using when he called Jarvis) and answer a question about it, e.g. 'what is on my screen', 'what should I reply to this message', 'explain this'.",
+                schema(new String[][]{{"question", "string", "What Anil wants to know about the screen"}}, "question")));
+        DEFS.add(new Def("look_through_camera",
+                "Look through the live camera (when Anil has it open in Jarvis) and answer a question about what it sees.",
+                schema(new String[][]{{"question", "string", "What Anil wants to know"}}, "question")));
         DEFS.add(new Def("save_memory",
                 "Save one lasting fact about Anil (a preference, a person, a date, a plan) to his permanent memory.",
                 schema(new String[][]{{"text", "string", "The fact as one short Telugu sentence"}}, "text")));
@@ -183,6 +212,12 @@ final class Tools {
             case "read_notifications": return "మెసేజ్‌లు చూస్తున్నాను…";
             case "reply_to_notification": return "రిప్లై సిద్ధం చేస్తున్నాను…";
             case "web_search": return "ఇంటర్నెట్‌లో వెతుకుతున్నాను…";
+            case "set_reminder": return "రిమైండర్ పెడుతున్నాను…";
+            case "calendar_events": case "add_calendar_event": return "క్యాలెండర్ చూస్తున్నాను…";
+            case "send_email": return "మెయిల్ సిద్ధం చేస్తున్నాను…";
+            case "media_control": case "now_playing": return "మ్యూజిక్…";
+            case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
+            case "look_through_camera": return "కెమెరాలో చూస్తున్నాను…";
             case "add_mission": return "మిషన్ జోడిస్తున్నాను…";
             default: return "పని చేస్తున్నాను…";
         }
@@ -208,6 +243,16 @@ final class Tools {
                 case "read_notifications": return readNotifications(a.optString("app", ""), a.optInt("limit", 8));
                 case "reply_to_notification": return replyNotification(a.optInt("id", -1), a.optString("message"));
                 case "web_search": return webSearch(a.optString("query"));
+                case "set_reminder": return setReminder(a.optString("text"), a.optString("when"));
+                case "list_reminders": return listReminders();
+                case "cancel_reminder": return cancelReminder(a.optString("id"));
+                case "calendar_events": return calendarEvents(a.optInt("days", 1));
+                case "add_calendar_event": return addCalendarEvent(a.optString("title"), a.optString("start"), a.optInt("minutes", 60), a.optString("location", ""));
+                case "send_email": return sendEmail(a.optString("to"), a.optString("subject"), a.optString("body"));
+                case "media_control": return mediaControl(a.optString("action"), a.optInt("percent", 50));
+                case "now_playing": return nowPlaying();
+                case "look_at_screen": return lookAtScreen(a.optString("question"));
+                case "look_through_camera": return lookThroughCamera(a.optString("question"));
                 case "save_memory": {
                     JSONObject m = store.addMemory(a.optString("text"));
                     if (m == null) return err("empty", "Nothing to save.");
@@ -476,6 +521,14 @@ final class Tools {
     }
 
     private String weather(String place) throws Exception {
+        if ((place == null || place.trim().isEmpty()) && !has(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+            return needPermission(Manifest.permission.ACCESS_COARSE_LOCATION, "location for local weather");
+        }
+        return weatherJson(act(), place);
+    }
+
+    /** Weather as JSON for a place, or for the phone's last known location when place is empty. */
+    static String weatherJson(android.content.Context ctx, String place) throws Exception {
         double lat, lon;
         String where;
         if (place != null && !place.trim().isEmpty()) {
@@ -488,8 +541,7 @@ final class Tools {
             lon = r.getDouble("longitude");
             where = r.optString("name") + ", " + r.optString("admin1") + ", " + r.optString("country");
         } else {
-            if (!has(Manifest.permission.ACCESS_COARSE_LOCATION)) return needPermission(Manifest.permission.ACCESS_COARSE_LOCATION, "location for local weather");
-            Location loc = lastLocation();
+            Location loc = lastLocation(ctx);
             if (loc == null) return err("no_location", "Phone location is not known yet. Ask Anil which city.");
             lat = loc.getLatitude();
             lon = loc.getLongitude();
@@ -529,8 +581,8 @@ final class Tools {
         return out.toString();
     }
 
-    private Location lastLocation() {
-        LocationManager lm = (LocationManager) act().getSystemService(Activity.LOCATION_SERVICE);
+    private static Location lastLocation(android.content.Context ctx) {
+        LocationManager lm = (LocationManager) ctx.getSystemService(Activity.LOCATION_SERVICE);
         if (lm == null) return null;
         Location best = null;
         try {
@@ -666,6 +718,287 @@ final class Tools {
             }
         }
         return ok().put("result", said.toString().trim()).toString();
+    }
+
+    // ================================================================ reminders & calendar
+
+    private static final String[] TIME_FORMATS = {"yyyy-MM-dd HH:mm", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss"};
+
+    /** Parses a local date-time like "2026-09-25 17:00"; returns -1 if it cannot. */
+    static long parseLocal(String s) {
+        if (s == null) return -1;
+        s = s.trim();
+        for (String f : TIME_FORMATS) {
+            try {
+                java.text.SimpleDateFormat p = new java.text.SimpleDateFormat(f, Locale.ENGLISH);
+                p.setLenient(false);
+                java.util.Date d = p.parse(s);
+                if (d != null) return d.getTime();
+            } catch (Exception ignored) {}
+        }
+        return -1;
+    }
+
+    private static String fmt(long t) {
+        return new java.text.SimpleDateFormat("EEE d MMM yyyy, HH:mm", Locale.ENGLISH).format(new java.util.Date(t));
+    }
+
+    private String setReminder(String text, String when) throws Exception {
+        long at = parseLocal(when);
+        if (at < 0) return err("bad_time", "Give the time as 'yyyy-MM-dd HH:mm' in local time.");
+        if (at <= System.currentTimeMillis()) return err("in_past", "That time has already passed. Ask Anil for a future time.");
+        JSONObject r = store.addReminder(text, at);
+        if (r == null) return err("empty", "What should I remind him about?");
+        Reminders.schedule(act(), r);
+        host.notice("రిమైండర్ పెట్టాను");
+        return ok().put("id", r.optString("id")).put("at", fmt(at)).put("text", r.optString("text")).toString();
+    }
+
+    private String listReminders() throws Exception {
+        JSONArray arr = new JSONArray();
+        long now = System.currentTimeMillis();
+        List<JSONObject> list = store.reminders();
+        list.sort((x, y) -> Long.compare(x.optLong("at"), y.optLong("at")));
+        for (JSONObject r : list) {
+            if (r.optBoolean("done") || r.optLong("at") < now) continue;
+            arr.put(new JSONObject().put("id", r.optString("id")).put("text", r.optString("text")).put("at", fmt(r.optLong("at"))));
+        }
+        return ok().put("upcoming", arr).toString();
+    }
+
+    private String cancelReminder(String id) throws Exception {
+        JSONObject r = store.removeReminder(id);
+        if (r == null) return err("not_found", "No reminder with that id. Call list_reminders.");
+        Reminders.cancel(act(), id);
+        return ok().put("cancelled", r.optString("text")).toString();
+    }
+
+    /** Calendar events from today for the given number of days, as JSON. */
+    static String calendarJson(android.content.Context ctx, int days) throws Exception {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        cal.set(java.util.Calendar.MINUTE, 0);
+        cal.set(java.util.Calendar.SECOND, 0);
+        cal.set(java.util.Calendar.MILLISECOND, 0);
+        long start = cal.getTimeInMillis();
+        long end = start + days * 24L * 60 * 60 * 1000;
+        android.net.Uri.Builder b = android.provider.CalendarContract.Instances.CONTENT_URI.buildUpon();
+        android.content.ContentUris.appendId(b, start);
+        android.content.ContentUris.appendId(b, end);
+        String[] cols = {android.provider.CalendarContract.Instances.TITLE,
+                android.provider.CalendarContract.Instances.BEGIN,
+                android.provider.CalendarContract.Instances.END,
+                android.provider.CalendarContract.Instances.ALL_DAY,
+                android.provider.CalendarContract.Instances.EVENT_LOCATION};
+        JSONArray arr = new JSONArray();
+        try (Cursor c = ctx.getContentResolver().query(b.build(), cols, null, null,
+                android.provider.CalendarContract.Instances.BEGIN + " ASC")) {
+            while (c != null && c.moveToNext() && arr.length() < 30) {
+                JSONObject e = new JSONObject().put("title", c.getString(0));
+                boolean allDay = c.getInt(3) == 1;
+                e.put("all_day", allDay);
+                if (!allDay) e.put("start", fmt(c.getLong(1))).put("end", fmt(c.getLong(2)));
+                else e.put("date", new java.text.SimpleDateFormat("EEE d MMM", Locale.ENGLISH).format(new java.util.Date(c.getLong(1))));
+                String loc = c.getString(4);
+                if (loc != null && !loc.isEmpty()) e.put("location", loc);
+                arr.put(e);
+            }
+        }
+        return ok().put("events", arr).toString();
+    }
+
+    private String calendarEvents(int days) throws Exception {
+        if (!has(Manifest.permission.READ_CALENDAR)) return needPermission(Manifest.permission.READ_CALENDAR, "reading the calendar");
+        return calendarJson(act(), Math.max(1, Math.min(14, days <= 0 ? 1 : days)));
+    }
+
+    private String addCalendarEvent(String title, String start, int minutes, String location) throws Exception {
+        if (!has(Manifest.permission.WRITE_CALENDAR)) {
+            host.askPermissions(new String[]{Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR});
+            return err("permission_needed", "Anil must allow calendar access. A permission prompt was shown; ask him to allow it and try again.");
+        }
+        long begin = parseLocal(start);
+        if (begin < 0) return err("bad_time", "Give the start as 'yyyy-MM-dd HH:mm'.");
+        long calId = pickCalendar();
+        if (calId < 0) return err("no_calendar", "No writable calendar on this phone. Ask Anil to sign in to Google Calendar.");
+        android.content.ContentValues v = new android.content.ContentValues();
+        v.put(android.provider.CalendarContract.Events.CALENDAR_ID, calId);
+        v.put(android.provider.CalendarContract.Events.TITLE, title);
+        v.put(android.provider.CalendarContract.Events.DTSTART, begin);
+        v.put(android.provider.CalendarContract.Events.DTEND, begin + Math.max(5, minutes <= 0 ? 60 : minutes) * 60000L);
+        v.put(android.provider.CalendarContract.Events.EVENT_TIMEZONE, java.util.TimeZone.getDefault().getID());
+        if (location != null && !location.isEmpty()) v.put(android.provider.CalendarContract.Events.EVENT_LOCATION, location);
+        android.net.Uri u = act().getContentResolver().insert(android.provider.CalendarContract.Events.CONTENT_URI, v);
+        if (u == null) return err("failed", "The calendar did not accept the event.");
+        try {
+            android.content.ContentValues rv = new android.content.ContentValues();
+            rv.put(android.provider.CalendarContract.Reminders.EVENT_ID, android.content.ContentUris.parseId(u));
+            rv.put(android.provider.CalendarContract.Reminders.MINUTES, 15);
+            rv.put(android.provider.CalendarContract.Reminders.METHOD, android.provider.CalendarContract.Reminders.METHOD_ALERT);
+            act().getContentResolver().insert(android.provider.CalendarContract.Reminders.CONTENT_URI, rv);
+        } catch (Exception ignored) {}
+        return ok().put("added", title).put("start", fmt(begin)).toString();
+    }
+
+    private long pickCalendar() {
+        String[] cols = {android.provider.CalendarContract.Calendars._ID,
+                android.provider.CalendarContract.Calendars.ACCOUNT_NAME,
+                android.provider.CalendarContract.Calendars.OWNER_ACCOUNT,
+                android.provider.CalendarContract.Calendars.ACCOUNT_TYPE};
+        String where = android.provider.CalendarContract.Calendars.VISIBLE + "=1 AND "
+                + android.provider.CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL + ">=" + android.provider.CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR;
+        long first = -1;
+        try (Cursor c = act().getContentResolver().query(android.provider.CalendarContract.Calendars.CONTENT_URI, cols, where, null, null)) {
+            while (c != null && c.moveToNext()) {
+                long id = c.getLong(0);
+                if (first < 0) first = id;
+                String acct = c.getString(1), owner = c.getString(2), type = c.getString(3);
+                if ("com.google".equals(type) && acct != null && acct.equals(owner)) return id;
+            }
+        } catch (SecurityException e) {
+            return -1;
+        }
+        return first;
+    }
+
+    // ================================================================ email
+
+    private String sendEmail(String to, String subject, String body) throws Exception {
+        if (to == null || to.trim().isEmpty()) return err("missing", "Who should the email go to?");
+        String address = to.trim();
+        String name = address;
+        if (!address.contains("@")) {
+            if (!has(Manifest.permission.READ_CONTACTS)) return needPermission(Manifest.permission.READ_CONTACTS, "reading contacts");
+            address = null;
+            try (Cursor c = act().getContentResolver().query(ContactsContract.CommonDataKinds.Email.CONTENT_URI,
+                    new String[]{ContactsContract.CommonDataKinds.Email.DISPLAY_NAME_PRIMARY, ContactsContract.CommonDataKinds.Email.ADDRESS},
+                    ContactsContract.CommonDataKinds.Email.DISPLAY_NAME_PRIMARY + " LIKE ?", new String[]{"%" + to.trim() + "%"}, null)) {
+                if (c != null && c.moveToNext()) { name = c.getString(0); address = c.getString(1); }
+            }
+            if (address == null) return err("no_email", "No email address saved for '" + to + "'. Ask Anil for the address.");
+        }
+        Intent i = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + Uri.encode(address)))
+                .putExtra(Intent.EXTRA_EMAIL, new String[]{address})
+                .putExtra(Intent.EXTRA_SUBJECT, subject == null ? "" : subject)
+                .putExtra(Intent.EXTRA_TEXT, body == null ? "" : body)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (act().getPackageManager().getLaunchIntentForPackage("com.google.android.gm") != null) i.setPackage("com.google.android.gm");
+        try {
+            start(i);
+        } catch (ActivityNotFoundException e) {
+            return err("no_mail_app", "No email app on this phone.");
+        }
+        return ok().put("draft_opened_for", name + " <" + address + ">").put("note", "Gmail is open with the email ready; Anil taps send.").toString();
+    }
+
+    // ================================================================ music
+
+    private android.media.session.MediaController activeMedia() {
+        if (!NotifyListener.enabled(act())) return null;
+        try {
+            android.media.session.MediaSessionManager msm = act().getSystemService(android.media.session.MediaSessionManager.class);
+            List<android.media.session.MediaController> list = msm.getActiveSessions(new android.content.ComponentName(act(), NotifyListener.class));
+            android.media.session.MediaController fallback = null;
+            for (android.media.session.MediaController mc : list) {
+                android.media.session.PlaybackState st = mc.getPlaybackState();
+                if (st != null && st.getState() == android.media.session.PlaybackState.STATE_PLAYING) return mc;
+                if (fallback == null) fallback = mc;
+            }
+            return fallback;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void mediaKey(android.media.AudioManager am, int code) {
+        long t = android.os.SystemClock.uptimeMillis();
+        am.dispatchMediaKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_DOWN, code, 0));
+        am.dispatchMediaKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_UP, code, 0));
+    }
+
+    private String mediaControl(String action, int percent) throws Exception {
+        android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
+        if (am == null) return err("no_audio", "No audio service.");
+        android.media.session.MediaController mc = activeMedia();
+        android.media.session.MediaController.TransportControls tc = mc == null ? null : mc.getTransportControls();
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        switch (a) {
+            case "play": if (tc != null) tc.play(); else mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PLAY); break;
+            case "pause": case "stop": if (tc != null) tc.pause(); else mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE); break;
+            case "toggle": mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE); break;
+            case "next": if (tc != null) tc.skipToNext(); else mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_NEXT); break;
+            case "previous": if (tc != null) tc.skipToPrevious(); else mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS); break;
+            case "volume_up":
+                am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_RAISE, android.media.AudioManager.FLAG_SHOW_UI);
+                am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_RAISE, 0);
+                break;
+            case "volume_down":
+                am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI);
+                am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_LOWER, 0);
+                break;
+            case "mute": am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_MUTE, android.media.AudioManager.FLAG_SHOW_UI); break;
+            case "unmute": am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, android.media.AudioManager.FLAG_SHOW_UI); break;
+            case "set_volume": {
+                int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+                int v = Math.round(max * Math.max(0, Math.min(100, percent)) / 100f);
+                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, v, android.media.AudioManager.FLAG_SHOW_UI);
+                break;
+            }
+            default:
+                return err("bad_action", "Use play, pause, toggle, next, previous, volume_up, volume_down, set_volume, mute or unmute.");
+        }
+        int vol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) * 100 / Math.max(1, am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC));
+        return ok().put("done", a).put("volume_pct", vol).toString();
+    }
+
+    private String nowPlaying() throws Exception {
+        if (!NotifyListener.enabled(act())) {
+            onUi(() -> act().startActivity(NotifyListener.settingsIntent()));
+            return err("notification_access_off", "To see what is playing, Anil must switch on notification access for Jarvis (settings opened).");
+        }
+        android.media.session.MediaController mc = activeMedia();
+        if (mc == null) return ok().put("playing", false).put("note", "Nothing is playing.").toString();
+        JSONObject o = ok().put("app", mc.getPackageName());
+        android.media.MediaMetadata md = mc.getMetadata();
+        if (md != null) {
+            o.put("title", md.getString(android.media.MediaMetadata.METADATA_KEY_TITLE));
+            o.put("artist", md.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST));
+        }
+        android.media.session.PlaybackState st = mc.getPlaybackState();
+        o.put("playing", st != null && st.getState() == android.media.session.PlaybackState.STATE_PLAYING);
+        return o.toString();
+    }
+
+    // ================================================================ screen & camera
+
+    private static final String VISION_SYSTEM =
+            "You look at an image from Anil's phone for his assistant Jarvis. Answer his question about it in English, "
+            + "in 2-6 short sentences. Mention the important text, names, numbers, prices and dates you can read. "
+            + "If the image is unclear, say so.";
+
+    private String lookAtScreen(String question) throws Exception {
+        if (!JarvisAccessibility.enabled()) {
+            onUi(() -> act().startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+            return err("screen_access_off", "Jarvis cannot see the screen yet. Accessibility settings were opened: Anil must switch on 'Jarvis స్క్రీన్'. On Android 13+, if it is greyed out: App info → ⋮ → Allow restricted settings.");
+        }
+        JarvisAccessibility.Capture cap = JarvisAccessibility.recent(120000);
+        if (cap == null && !MainActivity.visible) cap = JarvisAccessibility.captureBlocking(4000);
+        if (cap == null) {
+            return err("no_recent_screen", "Jarvis's own screen is covering the phone. Ask Anil to open the screen he wants, then call you with the wake word 'Jarvis' and ask again.");
+        }
+        String q = question == null || question.trim().isEmpty() ? "What is on this screen?" : question;
+        String prompt = "Question: " + q + "\nApp on screen: " + cap.pkg
+                + "\nText read from the screen:\n" + (cap.text.length() > 3000 ? cap.text.substring(0, 3000) : cap.text);
+        String answer = Brain.oneShot(prefs, VISION_SYSTEM, prompt, cap.jpeg, false);
+        return ok().put("app", cap.pkg).put("answer", answer).toString();
+    }
+
+    private String lookThroughCamera(String question) throws Exception {
+        String frame = CameraPanel.latestFrame;
+        if (frame == null) return err("camera_off", "The live camera is not open. Ask Anil to tap the 'Live కెమెరా' button first.");
+        String q = question == null || question.trim().isEmpty() ? "What do you see?" : question;
+        String answer = Brain.oneShot(prefs, VISION_SYSTEM, "Question: " + q + "\n(This is a live camera frame.)", frame, false);
+        return ok().put("answer", answer).toString();
     }
 
     private String deviceStatus() throws Exception {

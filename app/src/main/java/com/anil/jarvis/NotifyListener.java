@@ -69,6 +69,10 @@ public class NotifyListener extends NotificationListenerService {
     private void add(StatusBarNotification sbn) {
         if (sbn == null || getPackageName().equals(sbn.getPackageName())) return;
         Notification n = sbn.getNotification();
+        if (n != null && Notification.CATEGORY_CALL.equals(n.category)) {
+            announceCall(sbn, n);
+            return;
+        }
         if (n == null || sbn.isOngoing()) return;
         if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
         Bundle x = n.extras;
@@ -109,6 +113,41 @@ public class NotifyListener extends NotificationListenerService {
             items.put(it.key, it); // re-insert at the end = newest
             prune();
         }
+    }
+
+    private static final Map<String, Long> announced = new java.util.HashMap<>();
+
+    /** "Anil, Ravi నుంచి కాల్ వస్తోంది" when a phone or WhatsApp call starts ringing. */
+    private void announceCall(StatusBarNotification sbn, Notification n) {
+        Prefs p = new Prefs(this);
+        if (!p.announceCalls() || n.extras == null) return;
+        boolean incoming = n.fullScreenIntent != null;
+        if (Build.VERSION.SDK_INT >= 31) {
+            int type = n.extras.getInt(Notification.EXTRA_CALL_TYPE, 0);
+            if (type == Notification.CallStyle.CALL_TYPE_INCOMING) incoming = true;
+            else if (type == Notification.CallStyle.CALL_TYPE_ONGOING || type == Notification.CallStyle.CALL_TYPE_SCREENING) incoming = false;
+        }
+        if (!incoming) return;
+        long now = System.currentTimeMillis();
+        synchronized (announced) {
+            Long prev = announced.get(sbn.getKey());
+            if (prev != null && now - prev < 60000) return;
+            announced.put(sbn.getKey(), now);
+        }
+        String who = "";
+        if (Build.VERSION.SDK_INT >= 31) {
+            Object person = n.extras.getParcelable(Notification.EXTRA_CALL_PERSON);
+            if (person instanceof Person) who = str(((Person) person).getName());
+        }
+        if (who.isEmpty()) who = str(n.extras.getCharSequence(Notification.EXTRA_TITLE));
+        String pkg = sbn.getPackageName().toLowerCase(Locale.ROOT);
+        boolean phone = pkg.contains("dialer") || pkg.contains("telecom") || pkg.contains("incallui") || pkg.contains("phone") || pkg.contains("contacts");
+        String app = sbn.getPackageName();
+        try {
+            PackageManager pm = getPackageManager();
+            app = String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(sbn.getPackageName(), 0)));
+        } catch (Exception ignored) {}
+        Announcer.say(this, p.name() + ", " + (who.isEmpty() ? "ఎవరో" : who) + " నుంచి " + (phone ? "" : app + " ") + "కాల్ వస్తోంది");
     }
 
     /** Text of the last few messages in a chat-style notification, "sender: text" per line. */

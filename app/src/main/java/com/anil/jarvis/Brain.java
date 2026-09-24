@@ -91,12 +91,14 @@ final class Brain {
                 + "- Address him as \"" + name + "\" now and then, naturally, the way a butler would. Never \"sir\", never \"Tony\".\n"
                 + "- Your reply is spoken aloud: keep it to 1-3 short sentences unless he asks for detail. No markdown, bullet lists, emoji, or URLs.\n"
                 + "- Helpful first, witty second. A light dry remark is welcome; never mock him.\n"
-                + "- You can act on the phone with your tools: phone calls, SMS, WhatsApp messages, alarms, timers, weather, web search, opening apps, maps and navigation, YouTube, the flashlight, battery status, reading and replying to the message notifications on his phone (WhatsApp, SMS, Telegram), and his memories and missions. When he asks for one of these, use the tool; don't just describe it.\n"
+                + "- You can act on the phone with your tools: phone calls, SMS, WhatsApp messages, alarms, timers, weather, web search, opening apps, maps and navigation, YouTube, the flashlight, battery status, reading and replying to the message notifications on his phone (WhatsApp, SMS, Telegram), reminders and his calendar, drafting emails in Gmail, controlling music and volume, looking at his screen and through the live camera, and his memories and missions. When he asks for one of these, use the tool; don't just describe it.\n"
                 + "- Calls and SMS: the app shows its own confirmation screen, so don't ask \"shall I?\" yourself. If the contact or time is unclear, ask one short question instead of guessing.\n"
                 + "- Contact names: pass them the way they are probably saved in his phone, usually in English letters (for example 'Ravi', 'Amma', 'Office Suresh').\n"
                 + "- Place names for weather and maps: use English spelling (for example 'Hyderabad', 'Vijayawada').\n"
                 + "- For anything that changes over time (news, prices, scores, cricket, film releases, current office holders) use web search if available; never invent such facts.\n"
                 + "- When he says remember / గుర్తుంచుకో, or shares a lasting fact about himself, call save_memory. Tasks and goals to track go to add_mission.\n"
+                + "- 'Remind me' / గుర్తుచేయి at a time -> set_reminder (compute the exact date and time from Now below). Wake-up alarms -> set_alarm.\n"
+                + "- Questions about what is on his screen, a message he is reading, or 'what should I reply' -> look_at_screen. Questions about what the camera sees -> look_through_camera (or the attached camera picture).\n"
                 + "- If a tool reports an error, tell him briefly what went wrong and what he can do.\n"
                 + "- If he sends a photo, look at it carefully and answer about what is actually in it.\n\n"
                 + "Now: " + now + "\n\n"
@@ -127,6 +129,74 @@ final class Brain {
         // The new message is a user turn, so history must end on an assistant turn.
         if (!out.isEmpty() && out.get(out.size() - 1)[0].equals("user")) out.remove(out.size() - 1);
         return out;
+    }
+
+    // ---------------------------------------------------------------- one-shot calls
+
+    /**
+     * A single question without phone tools: used for the morning briefing and for
+     * looking at screenshots / camera frames. Optional image (base64 JPEG) and web search.
+     */
+    static String oneShot(Prefs prefs, String system, String prompt, String jpegB64, boolean web) throws Exception {
+        String key = prefs.apiKey();
+        if (key.isEmpty()) throw new Http.ApiError(401, "no API key");
+        if (prefs.isOpenAi()) {
+            JSONArray content = new JSONArray().put(new JSONObject().put("type", "input_text").put("text", prompt));
+            if (jpegB64 != null) content.put(new JSONObject().put("type", "input_image").put("image_url", "data:image/jpeg;base64," + jpegB64));
+            JSONObject body = new JSONObject()
+                    .put("model", prefs.model())
+                    .put("instructions", system)
+                    .put("input", new JSONArray().put(new JSONObject().put("role", "user").put("content", content)));
+            if (web) body.put("tools", new JSONArray().put(new JSONObject().put("type", "web_search")));
+            JSONObject res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
+            StringBuilder said = new StringBuilder();
+            JSONArray out = res.optJSONArray("output");
+            for (int i = 0; out != null && i < out.length(); i++) {
+                JSONObject item = out.getJSONObject(i);
+                if (!"message".equals(item.optString("type"))) continue;
+                JSONArray parts = item.optJSONArray("content");
+                for (int k = 0; parts != null && k < parts.length(); k++) {
+                    JSONObject p = parts.getJSONObject(k);
+                    if ("output_text".equals(p.optString("type"))) said.append(p.optString("text"));
+                }
+            }
+            String r = said.toString().trim();
+            if (r.isEmpty()) throw new Http.ApiError(0, "empty reply");
+            return r;
+        }
+        JSONArray content = new JSONArray();
+        if (jpegB64 != null) {
+            content.put(new JSONObject().put("type", "image").put("source", new JSONObject()
+                    .put("type", "base64").put("media_type", "image/jpeg").put("data", jpegB64)));
+        }
+        content.put(new JSONObject().put("type", "text").put("text", prompt));
+        JSONArray messages = new JSONArray().put(new JSONObject().put("role", "user").put("content", content));
+        for (int round = 0; round < 5; round++) {
+            JSONObject body = new JSONObject()
+                    .put("model", prefs.model())
+                    .put("max_tokens", 1200)
+                    .put("system", system)
+                    .put("messages", messages);
+            if (web) body.put("tools", new JSONArray().put(new JSONObject()
+                    .put("type", "web_search_20250305").put("name", "web_search").put("max_uses", 3)));
+            JSONObject res = Http.post("https://api.anthropic.com/v1/messages", body,
+                    "x-api-key", key, "anthropic-version", "2023-06-01");
+            JSONArray blocks = res.optJSONArray("content");
+            if (blocks == null) blocks = new JSONArray();
+            if ("pause_turn".equals(res.optString("stop_reason"))) {
+                messages.put(new JSONObject().put("role", "assistant").put("content", blocks));
+                continue;
+            }
+            StringBuilder said = new StringBuilder();
+            for (int i = 0; i < blocks.length(); i++) {
+                JSONObject b = blocks.getJSONObject(i);
+                if ("text".equals(b.optString("type"))) said.append(b.optString("text"));
+            }
+            String r = said.toString().trim();
+            if (r.isEmpty()) throw new Http.ApiError(0, "empty reply");
+            return r;
+        }
+        throw new Http.ApiError(0, "too many rounds");
     }
 
     // ---------------------------------------------------------------- OpenAI

@@ -32,7 +32,9 @@ public class SettingsActivity extends Activity {
     private Prefs prefs;
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
     private RadioGroup provider, lang;
-    private Switch web, voice, followUp, wake, natural, liveMode, bargeIn;
+    private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak;
+    private TextView briefingTime, screenInfo;
+    private int briefHour, briefMinute;
     private Spinner voicePick;
     private EditText realtimeModel;
     private TextView voiceInfo, notifyInfo;
@@ -140,6 +142,8 @@ public class SettingsActivity extends Activity {
         section("\"Hey Jarvis\" వేక్ వర్డ్");
         note("ఫోన్ లాక్‌లో ఉన్నా \"Hey Jarvis\" అని పిలిస్తే తెరుచుకుంటుంది. ఏ key అవసరం లేదు. వినడం అంతా ఫోన్‌లోనే జరుగుతుంది, ఏ ఆడియో బయటికి వెళ్లదు.");
         wake = toggle("వేక్ వర్డ్ ఆన్", prefs.wakeWord());
+        jarvisWord = toggle("\"Jarvis\" ఒక్క పదంతో కూడా మేల్కొను (ప్రధానం; \"Hey Jarvis\" ఎప్పుడూ పనిచేస్తుంది)", prefs.jarvisWord());
+        note("\"Jarvis\" పదం కోసం మొదటిసారి సుమారు 40 MB ఫైల్ ఒక్కసారి డౌన్‌లోడ్ అవుతుంది (Wi-Fi లో ఉంటే మంచిది). టీవీ, మాటల్లో \"Jarvis\" వినిపించి తప్పుగా మేల్కొంటుంటే ఇది ఆఫ్ చేయండి.");
         sensitivityLabel = Ui.text(this, "", 15, Ui.MUTED);
         box.addView(sensitivityLabel);
         sensitivity = new SeekBar(this);
@@ -167,6 +171,48 @@ public class SettingsActivity extends Activity {
         box.addView(wakeInfo);
 
         // ---- permissions & data
+        // ---- calls, reminders, morning briefing
+        section("కాల్స్, ఉదయం బ్రీఫింగ్");
+        announceCalls = toggle("కాల్ వస్తే ఎవరో పైకి చెప్పు (నోటిఫికేషన్ యాక్సెస్ కావాలి)", prefs.announceCalls());
+        briefing = toggle("రోజూ ఉదయం బ్రీఫింగ్ తనంతట తానే", prefs.briefingOn());
+        briefHour = prefs.briefingHour();
+        briefMinute = prefs.briefingMinute();
+        briefingTime = Ui.text(this, "", 15.5f, Ui.CYAN);
+        briefingTime.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        briefingTime.setOnClickListener(v -> new android.app.TimePickerDialog(this, (tp, h, m) -> {
+            briefHour = h;
+            briefMinute = m;
+            showBriefingTime();
+        }, briefHour, briefMinute, true).show());
+        box.addView(briefingTime);
+        showBriefingTime();
+        briefingSpeak = toggle("బ్రీఫింగ్‌ని పైకి వినిపించు", prefs.briefingSpeak());
+
+        // ---- screen
+        section("స్క్రీన్ చూడటం");
+        note("\"నా స్క్రీన్‌లో ఏముంది?\", \"ఈ మెసేజ్‌కి ఏం రిప్లై ఇవ్వాలి?\" అని అడగాలంటే Accessibility లో \"Jarvis స్క్రీన్\" ఆన్ చేయండి. మీరు Jarvis ని పిలిచిన క్షణంలో ఉన్న స్క్రీన్‌ని మాత్రమే చూస్తుంది, మీరు అడిగినప్పుడే AI కి పంపుతుంది.");
+        button("Accessibility తెరవండి", v -> {
+            try { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); } catch (Exception ignored) {}
+        });
+        screenInfo = Ui.text(this, "", 14, Ui.MUTED);
+        box.addView(screenInfo);
+        note("Android 13 పైన స్విచ్ బూడిద రంగులో ఉండి నొక్కలేకపోతే: కింది బటన్ → పైన కుడివైపు ⋮ → \"Allow restricted settings\" → మళ్లీ ప్రయత్నించండి. నోటిఫికేషన్ యాక్సెస్‌కి కూడా ఇదే.");
+        button("Jarvis App info తెరవండి", v -> {
+            try {
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+            } catch (Exception ignored) {}
+        });
+
+        // ---- power button
+        section("పవర్ బటన్ అసిస్టెంట్");
+        note("పవర్/హోమ్ బటన్ నొక్కి పట్టుకుంటే Jarvis రావాలంటే: కింది బటన్ → Digital assistant app → Jarvis ఎంచుకోండి. Samsung లో: Settings → Advanced features → Side button → \"Press and hold\" → Digital assistant. లేదా \"Double press\" → Open app → Jarvis.");
+        button("Default apps తెరవండి", v -> {
+            try { startActivity(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)); }
+            catch (Exception e) {
+                try { startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)); } catch (Exception ignored) {}
+            }
+        });
+
         // ---- notifications
         section("మెసేజ్ నోటిఫికేషన్లు");
         note("\"WhatsApp లో ఎవరు మెసేజ్ చేశారు?\", \"రవికి సరే అని రిప్లై ఇవ్వు\" లాంటివి అడగాలంటే ఈ అనుమతి ఇవ్వండి. Jarvis మీరు అడిగినప్పుడే మెసేజ్‌లు చదువుతుంది; అప్పుడు ఆ టెక్స్ట్ సమాధానం కోసం AI కి వెళ్తుంది. రిప్లై పంపే ముందు మిమ్మల్ని అడుగుతుంది.");
@@ -204,6 +250,11 @@ public class SettingsActivity extends Activity {
         if (WakeService.lastError != null) s.append("\nచివరి సమస్య: ").append(WakeService.lastError);
         wakeInfo.setText(s.toString());
         notifyInfo.setText(NotifyListener.enabled(this) ? "✓ నోటిఫికేషన్ యాక్సెస్: ఇచ్చారు" : "✗ నోటిఫికేషన్ యాక్సెస్: ఇవ్వలేదు");
+        screenInfo.setText(JarvisAccessibility.enabled() ? "✓ స్క్రీన్ యాక్సెస్: ఆన్" : "✗ స్క్రీన్ యాక్సెస్: ఆఫ్");
+        screenInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
+        if (WakeService.wordStatus != null) s.append("\n\"Jarvis\" పదం: ").append(WakeService.wordStatus);
+        else if (VoskModel.ready(this)) s.append("\n✓ \"Jarvis\" పదం: సిద్ధం");
+        wakeInfo.setText(s.toString());
         notifyInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
         voiceInfo.setText(VoiceIO.naturalError == null ? "" : "చివరిసారి సహజ గొంతు పనిచేయలేదు: " + VoiceIO.naturalError);
     }
@@ -221,6 +272,12 @@ public class SettingsActivity extends Activity {
         e.putBoolean("voice", voice.isChecked());
         e.putBoolean("follow_up", followUp.isChecked());
         e.putBoolean("natural_voice", natural.isChecked());
+        e.putBoolean("wake_jarvis", jarvisWord.isChecked());
+        e.putBoolean("announce_calls", announceCalls.isChecked());
+        e.putBoolean("briefing", briefing.isChecked());
+        e.putInt("briefing_hour", briefHour);
+        e.putInt("briefing_minute", briefMinute);
+        e.putBoolean("briefing_speak", briefingSpeak.isChecked());
         e.putString("natural_voice_name", NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())]);
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("barge_in", bargeIn.isChecked());
@@ -233,6 +290,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("wake", wake.isChecked());
         e.putFloat("wake_threshold", 0.75f - sensitivity.getProgress() / 100f);
         e.apply();
+        Reminders.scheduleBriefing(this);
         WakeService.stop(this); // restarts with the new settings when the main screen opens
         if (wake.isChecked() && Build.VERSION.SDK_INT >= 33) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 6);
@@ -246,6 +304,10 @@ public class SettingsActivity extends Activity {
         float r = 0.5f + rate.getProgress() / 100f;
         rateLabel.setText(String.format(Locale.ENGLISH, "మాట్లాడే వేగం: %.2fx", r));
         rateLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
+    }
+
+    private void showBriefingTime() {
+        briefingTime.setText(String.format(Locale.ENGLISH, "బ్రీఫింగ్ సమయం: %02d:%02d  (మార్చడానికి నొక్కండి)", briefHour, briefMinute));
     }
 
     private void testVoice() {

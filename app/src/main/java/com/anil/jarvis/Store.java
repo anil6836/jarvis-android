@@ -26,6 +26,7 @@ final class Store {
     private final List<JSONObject> memories;
     private final List<JSONObject> missions;
     private final List<JSONObject> chat;
+    private final List<JSONObject> reminders;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Random rnd = new Random();
     Listener listener;
@@ -43,6 +44,7 @@ final class Store {
         memories = load("memory.json");
         missions = load("missions.json");
         chat = load("chat.json");
+        reminders = load("reminders.json");
     }
 
     // ---------- files ----------
@@ -184,6 +186,53 @@ final class Store {
         missions.add(o);
         save("missions.json", missions);
         changed();
+    }
+
+    // ---------- reminders ----------
+
+    synchronized List<JSONObject> reminders() { return copy(reminders); }
+
+    synchronized JSONObject addReminder(String text, long at) {
+        text = text == null ? "" : text.trim();
+        if (text.isEmpty()) return null;
+        if (text.length() > 300) text = text.substring(0, 300);
+        try {
+            JSONObject o = new JSONObject().put("id", newId("r")).put("text", text).put("at", at).put("done", false);
+            reminders.add(o);
+            // keep the list small: drop old finished reminders first
+            while (reminders.size() > 150) {
+                int k = -1;
+                for (int i = 0; i < reminders.size(); i++) if (reminders.get(i).optBoolean("done")) { k = i; break; }
+                reminders.remove(k >= 0 ? k : 0);
+            }
+            save("reminders.json", reminders);
+            changed();
+            return o;
+        } catch (Exception e) { return null; }
+    }
+
+    synchronized JSONObject removeReminder(String id) {
+        for (int i = 0; i < reminders.size(); i++) {
+            if (reminders.get(i).optString("id").equals(id)) {
+                JSONObject gone = reminders.remove(i);
+                save("reminders.json", reminders);
+                changed();
+                return gone;
+            }
+        }
+        return null;
+    }
+
+    synchronized JSONObject markReminderDone(String id) {
+        for (JSONObject r : reminders) {
+            if (r.optString("id").equals(id)) {
+                try { r.put("done", true); } catch (Exception ignored) {}
+                save("reminders.json", reminders);
+                changed();
+                return r;
+            }
+        }
+        return null;
     }
 
     // ---------- conversation ----------

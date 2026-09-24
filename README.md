@@ -17,6 +17,10 @@ Anil's personal Telugu voice assistant for Android.
 - సహజమైన మనిషి గొంతు (OpenAI text-to-speech), Google గొంతు బ్యాకప్‌గా
 - Live సంభాషణ (OpenAI Realtime): మనిషితో మాట్లాడినట్టే, మధ్యలో ఆపి మాట్లాడొచ్చు
 - మెసేజ్ నోటిఫికేషన్లు చదవడం, వాటికి రిప్లై ఇవ్వడం (WhatsApp, SMS, Telegram)
+- "Jarvis" ఒక్క పదంతో మేల్కోవడం ([Vosk](https://alphacephei.com/vosk/), ఫోన్‌లోనే) + "Hey Jarvis"
+- కాల్ వస్తే ఎవరో పైకి చెప్పడం, రిమైండర్లు, క్యాలెండర్, రోజూ ఉదయం బ్రీఫింగ్
+- స్క్రీన్ చూడటం (Accessibility), Gmail లో మెయిల్ సిద్ధం చేయడం, Live కెమెరా
+- పవర్ బటన్ అసిస్టెంట్, మ్యూజిక్ కంట్రోల్
 
 ## సెటప్
 

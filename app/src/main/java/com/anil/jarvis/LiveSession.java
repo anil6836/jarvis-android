@@ -76,6 +76,7 @@ final class LiveSession {
     private int oldMode;
     private final StringBuilder partial = new StringBuilder();
     private long lastLevelPost;
+    private String lastFrameSent;
 
     LiveSession(Context c, Prefs prefs, Tools tools, Listener l) {
         this.ctx = c.getApplicationContext();
@@ -216,6 +217,7 @@ final class LiveSession {
         switch (type) {
             case "input_audio_buffer.speech_started":
                 lastActivity = SystemClock.elapsedRealtime();
+                sendCameraFrame();
                 if (prefs.bargeIn() && (jarvisSpeaking || !playQueue.isEmpty())) {
                     playQueue.clear();
                     flushRequested = true;
@@ -271,6 +273,17 @@ final class LiveSession {
             default:
                 break;
         }
+    }
+
+    /** With the live camera open, Jarvis gets the current picture each time Anil starts talking. */
+    private void sendCameraFrame() {
+        String f = CameraPanel.latestFrame;
+        if (f == null || f.equals(lastFrameSent)) return;
+        lastFrameSent = f;
+        send(safe(() -> new JSONObject().put("type", "conversation.item.create").put("item", new JSONObject()
+                .put("type", "message").put("role", "user")
+                .put("content", new JSONArray().put(new JSONObject()
+                        .put("type", "input_image").put("image_url", "data:image/jpeg;base64," + f))))));
     }
 
     private void onResponseDone(JSONObject r) throws Exception {
