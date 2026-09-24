@@ -808,6 +808,7 @@ final class Tools {
                 }
             } catch (Exception ignored) {}
         }
+        if (mc == null && pkg.equals(YT_MUSIC)) return false; // it only lets Google's own apps start songs this way
         if (mc == null) {
             List<ResolveInfo> svc = act().getPackageManager().queryIntentServices(
                     new Intent(android.service.media.MediaBrowserService.SERVICE_INTERFACE).setPackage(pkg), 0);
@@ -821,7 +822,7 @@ final class Tools {
                 }, null);
                 browser[0].connect();
             });
-            connected.await(6, TimeUnit.SECONDS);
+            connected.await(4, TimeUnit.SECONDS);
             if (browser[0] == null || !browser[0].isConnected()) {
                 if (browser[0] != null) onUi(browser[0]::disconnect);
                 return false;
@@ -833,7 +834,7 @@ final class Tools {
             boolean wasPlaying = before != null && before.getState() == android.media.session.PlaybackState.STATE_PLAYING;
             String oldTitle = title(mc);
             mc.getTransportControls().playFromSearch(query, new android.os.Bundle());
-            long end = android.os.SystemClock.elapsedRealtime() + 8000;
+            long end = android.os.SystemClock.elapsedRealtime() + 6000;
             boolean left = false;
             while (android.os.SystemClock.elapsedRealtime() < end) {
                 Thread.sleep(300);
@@ -854,6 +855,57 @@ final class Tools {
     private static String title(android.media.session.MediaController mc) {
         android.media.MediaMetadata m = mc.getMetadata();
         return m == null ? null : m.getString(android.media.MediaMetadata.METADATA_KEY_TITLE);
+    }
+
+    /** Opens the song's own YouTube Music link, which starts playing (a plain search only opens the app). */
+    private boolean playOnYtMusic(String q) throws InterruptedException {
+        if (!installed(YT_MUSIC)) return false;
+        String id = topVideoId(q);
+        if (id == null) id = topVideoId(q + " song");
+        if (id == null) return false;
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://music.youtube.com/watch?v=" + id))
+                .setPackage(YT_MUSIC)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            start(i);
+        } catch (Exception e) {
+            return false;
+        }
+        nudgePlay(YT_MUSIC);
+        return true;
+    }
+
+    /**
+     * Some apps open on the song but wait for a tap. Watches the app's player for a few seconds
+     * and presses play on it if it is still paused (needs notification access to see the player).
+     */
+    private void nudgePlay(String pkg) {
+        if (!NotifyListener.enabled(act())) return;
+        android.content.Context app = act().getApplicationContext();
+        new Thread(() -> {
+            try {
+                android.media.session.MediaSessionManager msm = app.getSystemService(android.media.session.MediaSessionManager.class);
+                android.content.ComponentName cn = new android.content.ComponentName(app, NotifyListener.class);
+                int still = 0;
+                for (int tick = 0; tick < 12; tick++) {
+                    Thread.sleep(1000);
+                    android.media.session.MediaController mine = null;
+                    for (android.media.session.MediaController c : msm.getActiveSessions(cn)) {
+                        if (pkg.equals(c.getPackageName())) { mine = c; break; }
+                    }
+                    if (mine == null) continue;
+                    android.media.session.PlaybackState st = mine.getPlaybackState();
+                    int state = st == null ? android.media.session.PlaybackState.STATE_NONE : st.getState();
+                    if (state == android.media.session.PlaybackState.STATE_PLAYING) return;
+                    if (state == android.media.session.PlaybackState.STATE_BUFFERING
+                            || state == android.media.session.PlaybackState.STATE_CONNECTING) { still = 0; continue; }
+                    if (tick >= 2 && ++still >= 3) {
+                        mine.getTransportControls().play();
+                        return;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }, "jarvis-play-nudge").start();
     }
 
     private static final String LOCKED_NOTE = "YouTube and YouTube Music (without Premium) pause by their own rule when the screen is locked or off; "
@@ -886,7 +938,13 @@ final class Tools {
             }
             if (pkg.equals(YT)) {
                 a = "youtube"; // fall through to the YouTube video path below
+            } else if (pkg.equals(YT_MUSIC) && playOnYtMusic(q)) {
+                // YouTube Music only opens for a search request; a song link makes it play.
+                JSONObject o = ok().put("playing_on", "YouTube Music").put("query", q);
+                if (lockedNow) o.put("note", LOCKED_NOTE);
+                return o.toString();
             } else if (supportsPlayFromSearch(pkg) && playFromSearch(pkg, q)) {
+                nudgePlay(pkg);
                 JSONObject o = ok().put("playing_on", label(pkg)).put("query", q);
                 if (lockedNow && pkg.equals(YT_MUSIC)) o.put("note", LOCKED_NOTE);
                 return o.toString();
@@ -918,7 +976,7 @@ final class Tools {
                 return o.toString();
             } catch (ActivityNotFoundException ignored) {}
         }
-        if (a.isEmpty() && installed(YT_MUSIC) && playFromSearch(YT_MUSIC, q)) {
+        if (a.isEmpty() && installed(YT_MUSIC) && playOnYtMusic(q)) {
             return ok().put("playing_on", "YouTube Music").put("query", q).toString();
         }
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + URLEncoder.encode(q, "UTF-8")));
