@@ -113,9 +113,9 @@ final class Tools {
                 "Show a place in Google Maps, or start navigation to it.",
                 schema(new String[][]{{"place", "string", "Place or address"}, {"navigate", "boolean", "true to start turn-by-turn navigation"}}, "place")));
         DEFS.add(new Def("play_youtube",
-                "Play a song, music or a video. It plays in the app Anil names (YouTube, YouTube Music, Spotify, JioSaavn, Gaana, Wynk, Amazon Music or any other installed app) and starts playing by itself; with no app named it plays the top YouTube video.",
+                "Play a song, music or a video. It plays in the app Anil names (YouTube, YouTube Music, Spotify, JioSaavn, Gaana, Wynk, Amazon Music or any other installed app) and starts playing by itself (in YouTube Music it plays the song itself, not the music video); with no app named it plays the top YouTube video.",
                 schema(new String[][]{{"query", "string", "What to play, e.g. 'Ghantasala old songs' or a film song name with the film"},
-                        {"app", "string", "The app he named, exactly as he said it (e.g. 'Spotify', 'JioSaavn'). Empty when he did not name one."}}, "query")));
+                        {"app", "string", "The app he named, in English letters (e.g. 'YouTube Music', 'Spotify', 'JioSaavn'). Empty when he did not name one."}}, "query")));
         DEFS.add(new Def("flashlight",
                 "Turn the phone's flashlight on or off.",
                 schema(new String[][]{{"on", "boolean", "true = on, false = off"}}, "on")));
@@ -772,7 +772,11 @@ final class Tools {
             {"jiosaavn", "com.jio.media.jiobeats"}, {"saavn", "com.jio.media.jiobeats"},
             {"gaana", "com.gaana"}, {"wynk", "com.bsbportal.music"}, {"amazon music", "com.amazon.mp3"},
             {"apple music", "com.apple.android.music"}, {"resso", "com.moonvideo.android.resso"},
-            {"hungama", "com.hungama.myplay.activity"}, {"soundcloud", "com.soundcloud.android"}};
+            {"hungama", "com.hungama.myplay.activity"}, {"soundcloud", "com.soundcloud.android"},
+            // the same names written in Telugu
+            {"యూట్యూబ్ మ్యూజిక్", YT_MUSIC}, {"యూట్యూబ్ మ్యూసిక్", YT_MUSIC}, {"స్పాటిఫై", SPOTIFY},
+            {"జియోసావన్", "com.jio.media.jiobeats"}, {"జియో సావన్", "com.jio.media.jiobeats"}, {"సావన్", "com.jio.media.jiobeats"},
+            {"గానా", "com.gaana"}, {"వింక్", "com.bsbportal.music"}};
 
     private boolean supportsPlayFromSearch(String pkg) {
         Intent i = new Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).setPackage(pkg);
@@ -797,7 +801,7 @@ final class Tools {
      * Starts a song inside a music app without opening its screen, the way Android Auto and
      * Google Assistant do, so it works while the phone stays locked. Returns true once it plays.
      */
-    private boolean playWithoutScreen(String pkg, String query) throws InterruptedException {
+    private boolean playWithoutScreen(String pkg, String query, Uri song) throws InterruptedException {
         android.media.session.MediaController mc = null;
         final android.media.browse.MediaBrowser[] browser = {null};
         if (NotifyListener.enabled(act())) {
@@ -808,7 +812,6 @@ final class Tools {
                 }
             } catch (Exception ignored) {}
         }
-        if (mc == null && pkg.equals(YT_MUSIC)) return false; // it only lets Google's own apps start songs this way
         if (mc == null) {
             List<ResolveInfo> svc = act().getPackageManager().queryIntentServices(
                     new Intent(android.service.media.MediaBrowserService.SERVICE_INTERFACE).setPackage(pkg), 0);
@@ -830,19 +833,14 @@ final class Tools {
             mc = new android.media.session.MediaController(act(), browser[0].getSessionToken());
         }
         try {
-            android.media.session.PlaybackState before = mc.getPlaybackState();
-            boolean wasPlaying = before != null && before.getState() == android.media.session.PlaybackState.STATE_PLAYING;
-            String oldTitle = title(mc);
-            mc.getTransportControls().playFromSearch(query, new android.os.Bundle());
-            long end = android.os.SystemClock.elapsedRealtime() + 6000;
-            boolean left = false;
-            while (android.os.SystemClock.elapsedRealtime() < end) {
-                Thread.sleep(300);
-                android.media.session.PlaybackState st = mc.getPlaybackState();
-                boolean playing = st != null && st.getState() == android.media.session.PlaybackState.STATE_PLAYING;
-                if (!playing) left = true;
-                if (playing && (!wasPlaying || left || !String.valueOf(title(mc)).equals(String.valueOf(oldTitle)))) return true;
-            }
+            // The same request Google Assistant sends: "play <song>" to the app's player.
+            android.os.Bundle extras = new android.os.Bundle();
+            extras.putString(android.app.SearchManager.QUERY, query);
+            extras.putString(android.provider.MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/audio");
+            final android.media.session.MediaController player = mc;
+            if (startsPlaying(player, () -> mc2(player).playFromSearch(query, extras), 4500)) return true;
+            // Some players take the song's link instead.
+            if (song != null && startsPlaying(player, () -> mc2(player).playFromUri(song, new android.os.Bundle()), 3500)) return true;
             return false;
         } catch (Exception e) {
             return false;
@@ -852,18 +850,112 @@ final class Tools {
         }
     }
 
+    private static android.media.session.MediaController.TransportControls mc2(android.media.session.MediaController mc) {
+        return mc.getTransportControls();
+    }
+
+    /** Sends a request to a player and waits up to ms for it to start playing something new. */
+    private static boolean startsPlaying(android.media.session.MediaController mc, Runnable request, long ms) throws InterruptedException {
+        android.media.session.PlaybackState before = mc.getPlaybackState();
+        boolean wasPlaying = before != null && before.getState() == android.media.session.PlaybackState.STATE_PLAYING;
+        String oldTitle = title(mc);
+        try { request.run(); } catch (Exception e) { return false; }
+        long end = android.os.SystemClock.elapsedRealtime() + ms;
+        boolean left = false;
+        while (android.os.SystemClock.elapsedRealtime() < end) {
+            Thread.sleep(300);
+            android.media.session.PlaybackState st = mc.getPlaybackState();
+            boolean playing = st != null && st.getState() == android.media.session.PlaybackState.STATE_PLAYING;
+            if (!playing) left = true;
+            if (playing && (!wasPlaying || left || !String.valueOf(title(mc)).equals(String.valueOf(oldTitle)))) return true;
+        }
+        return false;
+    }
+
     private static String title(android.media.session.MediaController mc) {
         android.media.MediaMetadata m = mc.getMetadata();
         return m == null ? null : m.getString(android.media.MediaMetadata.METADATA_KEY_TITLE);
     }
 
-    /** Opens the song's own YouTube Music link, which starts playing (a plain search only opens the app). */
-    private boolean playOnYtMusic(String q) throws InterruptedException {
+    private static final String YTM_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0";
+    private static volatile String ytmVisitor;
+
+    /**
+     * The top "song" on YouTube Music for a search: the audio version (the Song tab), not the
+     * music video. Uses YouTube Music's own search, with the Songs filter.
+     */
+    static String ytMusicSongId(String query) {
+        if (ytmVisitor == null) {
+            String v = "";
+            try {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"VISITOR_DATA\"\\s*:\\s*\"([^\"]+)\"")
+                        .matcher(Http.getText("https://music.youtube.com/"));
+                if (m.find()) v = m.group(1);
+            } catch (Exception ignored) {}
+            ytmVisitor = v;
+        }
+        String version = "1." + new java.text.SimpleDateFormat("yyyyMMdd", Locale.ROOT).format(new java.util.Date()) + ".01.00";
+        for (String params : new String[]{"EgWKAQIIAWoMEA4QChADEAQQCRAF", null}) {
+            try {
+                JSONObject client = new JSONObject().put("clientName", "WEB_REMIX").put("clientVersion", version)
+                        .put("hl", "en").put("gl", "IN");
+                JSONObject body = new JSONObject()
+                        .put("context", new JSONObject().put("client", client).put("user", new JSONObject()))
+                        .put("query", query);
+                if (params != null) body.put("params", params);
+                JSONObject res = ytmVisitor.isEmpty()
+                        ? Http.post("https://music.youtube.com/youtubei/v1/search?alt=json&prettyPrint=false", body,
+                                "User-Agent", YTM_UA, "Origin", "https://music.youtube.com", "Referer", "https://music.youtube.com/")
+                        : Http.post("https://music.youtube.com/youtubei/v1/search?alt=json&prettyPrint=false", body,
+                                "User-Agent", YTM_UA, "Origin", "https://music.youtube.com", "Referer", "https://music.youtube.com/",
+                                "X-Goog-Visitor-Id", ytmVisitor);
+                String id = firstSong(res, 0);
+                if (id != null) return id;
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    /** First watchEndpoint marked as a song (MUSIC_VIDEO_TYPE_ATV), in page order. */
+    private static String firstSong(Object o, int depth) {
+        if (depth > 60 || o == null) return null;
+        if (o instanceof JSONObject) {
+            JSONObject j = (JSONObject) o;
+            JSONObject we = j.optJSONObject("watchEndpoint");
+            if (we != null && we.has("videoId")) {
+                JSONObject cfg = we.optJSONObject("watchEndpointMusicSupportedConfigs");
+                JSONObject mc = cfg == null ? null : cfg.optJSONObject("watchEndpointMusicConfig");
+                if (mc != null && "MUSIC_VIDEO_TYPE_ATV".equals(mc.optString("musicVideoType"))) return we.optString("videoId");
+            }
+            java.util.Iterator<String> keys = j.keys();
+            while (keys.hasNext()) {
+                String r = firstSong(j.opt(keys.next()), depth + 1);
+                if (r != null) return r;
+            }
+        } else if (o instanceof JSONArray) {
+            JSONArray a = (JSONArray) o;
+            for (int i = 0; i < a.length(); i++) {
+                String r = firstSong(a.opt(i), depth + 1);
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+
+    private static Uri ytMusicLink(String id) {
+        return Uri.parse("https://music.youtube.com/watch?v=" + id);
+    }
+
+    /**
+     * Opens the song in YouTube Music so it plays as a song (audio), not as the music video.
+     * A plain search request only opens the app, so the song's own link is used.
+     */
+    private boolean playOnYtMusic(String q, String songId) throws InterruptedException {
         if (!installed(YT_MUSIC)) return false;
-        String id = topVideoId(q);
-        if (id == null) id = topVideoId(q + " song");
+        String id = songId != null ? songId : ytMusicSongId(q);
+        if (id == null) id = topVideoId(q); // last resort: may open as a video
         if (id == null) return false;
-        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://music.youtube.com/watch?v=" + id))
+        Intent i = new Intent(Intent.ACTION_VIEW, ytMusicLink(id))
                 .setPackage(YT_MUSIC)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
@@ -917,7 +1009,7 @@ final class Tools {
         String a = app == null ? "" : app.trim().toLowerCase(Locale.ROOT);
 
         // Anil named an app other than plain YouTube: play inside that app.
-        if (!a.isEmpty() && !a.equals("youtube") && !a.equals("yt")) {
+        if (!a.isEmpty() && !a.equals("youtube") && !a.equals("yt") && !a.equals("యూట్యూబ్")) {
             String pkg = null;
             for (String[] m : MUSIC_APPS) if (a.contains(m[0]) && installed(m[1])) { pkg = m[1]; break; }
             if (pkg == null) {
@@ -926,9 +1018,10 @@ final class Tools {
             }
             if (pkg == null) return err("app_not_installed", "'" + app + "' is not installed on this phone. Offer to play it on YouTube instead.");
             boolean lockedNow = !pkg.equals(YT) && locked();
+            String songId = pkg.equals(YT_MUSIC) ? ytMusicSongId(q) : null;
             if (lockedNow) {
-                // Phone locked: try to start the song without unlocking first.
-                if (playWithoutScreen(pkg, q)) {
+                // Phone locked: try to start the song without unlocking first, the way Google Assistant does.
+                if (playWithoutScreen(pkg, q, songId == null ? null : ytMusicLink(songId))) {
                     return ok().put("playing_on", label(pkg)).put("query", q).put("phone_locked", true).toString();
                 }
                 if (!unlocked()) {
@@ -938,7 +1031,7 @@ final class Tools {
             }
             if (pkg.equals(YT)) {
                 a = "youtube"; // fall through to the YouTube video path below
-            } else if (pkg.equals(YT_MUSIC) && playOnYtMusic(q)) {
+            } else if (pkg.equals(YT_MUSIC) && playOnYtMusic(q, songId)) {
                 // YouTube Music only opens for a search request; a song link makes it play.
                 JSONObject o = ok().put("playing_on", "YouTube Music").put("query", q);
                 if (lockedNow) o.put("note", LOCKED_NOTE);
@@ -976,7 +1069,7 @@ final class Tools {
                 return o.toString();
             } catch (ActivityNotFoundException ignored) {}
         }
-        if (a.isEmpty() && installed(YT_MUSIC) && playOnYtMusic(q)) {
+        if (a.isEmpty() && installed(YT_MUSIC) && playOnYtMusic(q, null)) {
             return ok().put("playing_on", "YouTube Music").put("query", q).toString();
         }
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + URLEncoder.encode(q, "UTF-8")));
