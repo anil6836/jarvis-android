@@ -825,7 +825,7 @@ final class Tools {
                 }, null);
                 browser[0].connect();
             });
-            connected.await(4, TimeUnit.SECONDS);
+            connected.await(3, TimeUnit.SECONDS);
             if (browser[0] == null || !browser[0].isConnected()) {
                 if (browser[0] != null) onUi(browser[0]::disconnect);
                 return false;
@@ -838,7 +838,7 @@ final class Tools {
             extras.putString(android.app.SearchManager.QUERY, query);
             extras.putString(android.provider.MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/audio");
             final android.media.session.MediaController player = mc;
-            if (startsPlaying(player, () -> mc2(player).playFromSearch(query, extras), 4500)) return true;
+            if (startsPlaying(player, () -> mc2(player).playFromSearch(query, extras), 4000)) return true;
             // Some players take the song's link instead.
             if (song != null && startsPlaying(player, () -> mc2(player).playFromUri(song, new android.os.Bundle()), 3500)) return true;
             return false;
@@ -848,6 +848,66 @@ final class Tools {
             android.media.browse.MediaBrowser b = browser[0];
             if (b != null) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(b::disconnect, 30000);
         }
+    }
+
+    /** The app's current player, if Jarvis may see it (needs notification access). */
+    private android.media.session.MediaController sessionOf(String pkg) {
+        if (!NotifyListener.enabled(act())) return null;
+        try {
+            android.media.session.MediaSessionManager msm = act().getSystemService(android.media.session.MediaSessionManager.class);
+            for (android.media.session.MediaController c : msm.getActiveSessions(new android.content.ComponentName(act(), NotifyListener.class))) {
+                if (pkg.equals(c.getPackageName())) return c;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /**
+     * Phone locked: opens the song link in the app behind the lock screen (nothing is unlocked).
+     * YouTube Music with Premium starts playing there. Returns true once music is heard playing.
+     */
+    private boolean playBehindLock(String pkg, Uri link) throws InterruptedException {
+        android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
+        boolean wasActive = am != null && am.isMusicActive();
+        Intent i = new Intent(Intent.ACTION_VIEW, link).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try { start(i); } catch (Exception e) { return false; }
+        long end = android.os.SystemClock.elapsedRealtime() + 8000;
+        while (android.os.SystemClock.elapsedRealtime() < end) {
+            Thread.sleep(400);
+            android.media.session.MediaController mc = sessionOf(pkg);
+            if (mc != null) {
+                android.media.session.PlaybackState st = mc.getPlaybackState();
+                if (st != null && st.getState() == android.media.session.PlaybackState.STATE_PLAYING) return true;
+            } else if (am != null && am.isMusicActive() && !wasActive) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Waits (up to 90 s) for Anil to unlock, then makes sure the app's song is playing. */
+    private void playAfterUnlock(String pkg) {
+        android.content.Context app = act().getApplicationContext();
+        KeyguardManager km = (KeyguardManager) app.getSystemService(Activity.KEYGUARD_SERVICE);
+        if (km == null) return;
+        new Thread(() -> {
+            try {
+                long end = android.os.SystemClock.elapsedRealtime() + 90000;
+                while (km.isKeyguardLocked()) {
+                    if (android.os.SystemClock.elapsedRealtime() > end) return;
+                    Thread.sleep(500);
+                }
+                Thread.sleep(2500);
+                android.media.session.MediaController mc = sessionOf(pkg);
+                if (mc == null) return;
+                android.media.session.PlaybackState st = mc.getPlaybackState();
+                int state = st == null ? android.media.session.PlaybackState.STATE_NONE : st.getState();
+                if (state != android.media.session.PlaybackState.STATE_PLAYING
+                        && state != android.media.session.PlaybackState.STATE_BUFFERING) {
+                    mc.getTransportControls().play();
+                }
+            } catch (Exception ignored) {}
+        }, "jarvis-play-after-unlock").start();
     }
 
     private static android.media.session.MediaController.TransportControls mc2(android.media.session.MediaController mc) {
@@ -1021,8 +1081,20 @@ final class Tools {
             String songId = pkg.equals(YT_MUSIC) ? ytMusicSongId(q) : null;
             if (lockedNow) {
                 // Phone locked: try to start the song without unlocking first, the way Google Assistant does.
-                if (playWithoutScreen(pkg, q, songId == null ? null : ytMusicLink(songId))) {
+                if (playWithoutScreen(pkg, q, null)) {
                     return ok().put("playing_on", label(pkg)).put("query", q).put("phone_locked", true).toString();
+                }
+                if (pkg.equals(YT_MUSIC) && songId != null) {
+                    // With Premium, YouTube Music can start the song behind the lock screen.
+                    if (playBehindLock(YT_MUSIC, ytMusicLink(songId))) {
+                        return ok().put("playing_on", "YouTube Music").put("query", q).put("phone_locked", true).toString();
+                    }
+                    playAfterUnlock(YT_MUSIC);
+                    return ok().put("ready_on", "YouTube Music").put("query", q)
+                            .put("note", "The song is open in YouTube Music behind the lock screen but did not start while locked. "
+                                    + "Tell Anil to unlock with his fingerprint; it plays as soon as he unlocks. If it never plays with the "
+                                    + "phone locked, YouTube Music's background play may be off or the phone's battery saver may be putting YouTube Music to sleep.")
+                            .toString();
                 }
                 if (!unlocked()) {
                     return err("locked", label(pkg) + " can only start this song after the phone is unlocked, and it was not unlocked. "
