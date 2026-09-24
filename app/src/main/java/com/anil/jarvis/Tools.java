@@ -186,6 +186,13 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "add (default), list or cancel"}, {"place", "string", "Saved place name or address, English"},
                         {"text", "string", "What to remind him"}, {"when", "string", "arrive (default) or leave"},
                         {"id", "string", "For cancel: the reminder id from list"}})));
+        DEFS.add(new Def("ride_app",
+                "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself.",
+                schema(new String[][]{{"app", "string", "Uber, Ola or Rapido"}, {"pickup", "string", "Pickup place in English; empty = current location"},
+                        {"drop", "string", "Drop place in English"}}, "app", "drop")));
+        DEFS.add(new Def("food_app",
+                "Open Zomato, Swiggy or Blinkit at a search for the food or item Anil wants. Jarvis does not order or pay: Anil picks, orders and pays himself.",
+                schema(new String[][]{{"app", "string", "Zomato, Swiggy or Blinkit"}, {"query", "string", "What he wants, e.g. 'chicken biryani', 'milk'"}}, "app", "query")));
         DEFS.add(new Def("driving_mode",
                 "Driving mode on/off: every new message is read aloud and calls are announced for voice answering. Optionally start navigation.",
                 schema(new String[][]{{"on", "boolean", "true to start, false to stop"}, {"destination", "string", "Optional place to navigate to"}}, "on")));
@@ -284,6 +291,8 @@ final class Tools {
             case "save_place": return "ఈ చోటు గుర్తుపెట్టుకుంటున్నాను…";
             case "location_reminder": return "లొకేషన్ రిమైండర్…";
             case "driving_mode": return "డ్రైవింగ్ మోడ్…";
+            case "ride_app": return "రైడ్ యాప్ తెరుస్తున్నాను…";
+            case "food_app": return "వెతుకుతున్నాను…";
             case "night_mode": return "నైట్ మోడ్…";
             case "find_phone": return "ఇక్కడే ఉన్నాను!";
             case "add_expense": return "ఖర్చు రాస్తున్నాను…";
@@ -332,6 +341,8 @@ final class Tools {
                 case "call_control": return callControl(a.optString("action"));
                 case "bank_spending": return bankSpending(a.optInt("days", 30));
                 case "save_place": return savePlace(a.optString("name"));
+                case "ride_app": return rideApp(a.optString("app"), a.optString("pickup", ""), a.optString("drop"));
+                case "food_app": return foodApp(a.optString("app"), a.optString("query"));
                 case "driving_mode": return drivingMode(a.optBoolean("on", true), a.optString("destination", ""));
                 case "night_mode": return nightMode(a.optBoolean("on", true), a.optString("alarm", ""));
                 case "find_phone": return findPhone();
@@ -2263,6 +2274,107 @@ final class Tools {
             o.put("opened", true);
         }
         return o.toString();
+    }
+
+
+    // ================================================================ rides and food (Anil books and pays himself)
+
+    private double[] geocode(String place) {
+        if (place == null || place.trim().isEmpty()) return null;
+        double[] saved = GeoReminders.place(act(), place);
+        if (saved != null) return saved;
+        try {
+            List<android.location.Address> a = new android.location.Geocoder(act(), Locale.ENGLISH).getFromLocationName(place, 1);
+            if (a != null && !a.isEmpty()) return new double[]{a.get(0).getLatitude(), a.get(0).getLongitude()};
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private boolean openIn(String pkg, String url) {
+        try {
+            start(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean launch(String pkg) throws InterruptedException {
+        Intent l = act().getPackageManager().getLaunchIntentForPackage(pkg);
+        if (l == null) return false;
+        start(l.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        return true;
+    }
+
+    /** Opens a ride app with the trip filled in where the app allows it. Anil checks the prices and books himself. */
+    private String rideApp(String app, String pickup, String drop) throws Exception {
+        String a = app == null ? "" : app.trim().toLowerCase(Locale.ROOT);
+        if (drop == null || drop.trim().isEmpty()) return err("missing", "Where to?");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        double[] to = geocode(drop);
+        double[] from = pickup == null || pickup.trim().isEmpty() ? null : geocode(pickup);
+        String name, pkg;
+        boolean filled = false;
+        if (a.contains("uber")) {
+            name = "Uber"; pkg = "com.ubercab";
+            if (!installed(pkg)) return err("not_installed", "Uber is not installed.");
+            StringBuilder u = new StringBuilder("uber://?action=setPickup");
+            if (from != null) u.append("&pickup[latitude]=").append(from[0]).append("&pickup[longitude]=").append(from[1])
+                    .append("&pickup[nickname]=").append(Uri.encode(pickup));
+            else u.append("&pickup=my_location");
+            if (to != null) u.append("&dropoff[latitude]=").append(to[0]).append("&dropoff[longitude]=").append(to[1]);
+            u.append("&dropoff[nickname]=").append(Uri.encode(drop)).append("&dropoff[formatted_address]=").append(Uri.encode(drop));
+            filled = openIn(pkg, u.toString());
+            if (!filled) launch(pkg);
+        } else if (a.contains("ola")) {
+            name = "Ola"; pkg = "com.olacabs.customer";
+            if (!installed(pkg)) return err("not_installed", "Ola is not installed.");
+            if (to != null) {
+                StringBuilder u = new StringBuilder("olacabs://app/launch?drop_lat=").append(to[0]).append("&drop_lng=").append(to[1]);
+                if (from != null) u.append("&lat=").append(from[0]).append("&lng=").append(from[1]);
+                filled = openIn(pkg, u.toString());
+            }
+            if (!filled) launch(pkg);
+        } else if (a.contains("rapido")) {
+            name = "Rapido"; pkg = "com.rapido.passenger";
+            if (!launch(pkg)) return err("not_installed", "Rapido is not installed.");
+        } else {
+            return err("unknown_app", "Use Uber, Ola or Rapido.");
+        }
+        return ok().put("opened", name).put("trip_filled_in", filled).put("from", pickup == null || pickup.isEmpty() ? "current location" : pickup).put("to", drop)
+                .put("next", (filled ? "The trip is filled in. " : name + " does not accept a trip from other apps, so Anil types the drop place. ")
+                        + "When the fares show, he can say 'Jarvis, ధరలు చెప్పు' and you read them with look_at_screen. Anil taps Book himself; Jarvis never books or pays.")
+                .toString();
+    }
+
+    /** Opens a food / grocery app at a search for what Anil wants. He picks, orders and pays himself. */
+    private String foodApp(String app, String query) throws Exception {
+        String a = app == null ? "" : app.trim().toLowerCase(Locale.ROOT);
+        if (query == null || query.trim().isEmpty()) return err("missing", "Ask Anil what he wants to eat or buy first.");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        String q = Uri.encode(query.trim());
+        String name, pkg;
+        boolean searched;
+        if (a.contains("zomato")) {
+            name = "Zomato"; pkg = "com.application.zomato";
+            if (!installed(pkg)) return err("not_installed", "Zomato is not installed.");
+            searched = openIn(pkg, "zomato://search?q=" + q) || openIn(pkg, "https://www.zomato.com/search?q=" + q);
+        } else if (a.contains("swiggy") || a.contains("instamart")) {
+            name = "Swiggy"; pkg = "in.swiggy.android";
+            if (!installed(pkg)) return err("not_installed", "Swiggy is not installed.");
+            searched = openIn(pkg, "swiggy://explore?query=" + q) || openIn(pkg, "https://www.swiggy.com/search?query=" + q);
+        } else if (a.contains("blinkit")) {
+            name = "Blinkit"; pkg = "com.grofers.customer";
+            if (!installed(pkg)) return err("not_installed", "Blinkit is not installed.");
+            searched = openIn(pkg, "https://blinkit.com/s/?q=" + q);
+        } else {
+            return err("unknown_app", "Use Zomato, Swiggy or Blinkit.");
+        }
+        if (!searched) launch(pkg);
+        return ok().put("opened", name).put("searched_for", query).put("search_opened", searched)
+                .put("next", (searched ? "The search is open. " : name + " opened on its home screen; Anil searches for it. ")
+                        + "He can say 'Jarvis, మెనూ, ధరలు చెప్పు' and you read the items and prices with look_at_screen. Anil adds to cart, orders and pays himself; Jarvis never orders or pays.")
+                .toString();
     }
 
     // ================================================================ places & location reminders

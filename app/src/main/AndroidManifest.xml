@@ -74,6 +74,14 @@
         <package android:name="com.spotify.music" />
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
+        <package android:name="com.ubercab" />
+        <package android:name="com.olacabs.customer" />
+        <package android:name="com.rapido.passenger" />
+        <package android:name="com.application.zomato" />
+        <package android:name="in.swiggy.android" />
+        <package android:name="com.grofers.customer" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.instagram.android" />
     </queries>
 
     <application

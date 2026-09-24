@@ -114,6 +114,7 @@ final class Brain {
                 + "- A bill or receipt photo he wants to note -> read the total and call add_expense. 'పెట్రోల్ 500 రాసుకో' -> add_expense. QR code / barcode -> scan_qr.\n"
                 + "- 'ఈరోజు ఏం జరిగింది?' / day summary -> day_summary; tell it in 4-6 short sentences, missed calls first.\n"
                 + "- A message just read aloud to him has its notification id in brackets in the chat; if he dictates a reply, read it back and ask 'పంపమంటారా?', then reply_to_notification with that id after he says send.\n"
+                + "- Rides: 'X నుంచి Y కి Uber/Rapido/Ola' -> ride_app. Food/groceries: first ask what he wants if he did not say, then food_app. After that, when he asks for fares or the menu, use look_at_screen and read the options with prices (bike/auto/car/AC; dishes). You never book, order or pay: he taps those himself.\n"
                 + "- 'Remind me' / గుర్తుచేయి at a time -> set_reminder (compute the exact date and time from Now below). Wake-up alarms -> set_alarm.\n"
                 + "- Questions about what is on his screen, a message he is reading, or 'what should I reply' -> look_at_screen. Questions about what the camera sees -> look_through_camera (or the attached camera picture).\n"
                 + "- If a tool reports an error, tell him briefly what went wrong and what he can do.\n"
