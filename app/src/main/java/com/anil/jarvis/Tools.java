@@ -148,8 +148,10 @@ final class Tools {
                 schema(new String[][]{{"to", "string", "Email address or contact name"}, {"subject", "string", "Subject"},
                         {"body", "string", "Email body, in the language he asked for"}}, "to", "subject", "body")));
         DEFS.add(new Def("media_control",
-                "Control music/video that is playing on the phone and the media volume.",
-                schema(new String[][]{{"action", "string", "One of: play, pause, toggle, next, previous, volume_up, volume_down, set_volume, mute, unmute"},
+                "Control the song or video playing in any app (YouTube, YouTube Music, Spotify, JioSaavn, Gaana, Amazon Music...) and the media volume. "
+                        + "pause = song off / పాట ఆపు / ఆఫ్ చేయి (keeps its place); play = continue the paused song from where it stopped; "
+                        + "stop = music stop: stops the music AND fully closes that music app.",
+                schema(new String[][]{{"action", "string", "One of: pause, play, stop, next, previous, toggle, volume_up, volume_down, set_volume, mute, unmute"},
                         {"percent", "integer", "Volume 0-100, only for set_volume"}}, "action")));
         DEFS.add(new Def("now_playing", "Which song or video is playing now, and in which app.", schema(new String[][]{})));
         DEFS.add(new Def("look_at_screen",
@@ -330,7 +332,9 @@ final class Tools {
     }
 
     /** If the phone is locked, ask Anil to unlock first. Returns true when it is safe to continue. */
-    private boolean unlocked() throws InterruptedException {
+    private boolean unlocked() throws InterruptedException { return unlocked(45); }
+
+    private boolean unlocked(int seconds) throws InterruptedException {
         KeyguardManager km = (KeyguardManager) act().getSystemService(Activity.KEYGUARD_SERVICE);
         if (km == null || !km.isKeyguardLocked()) return true;
         CountDownLatch done = new CountDownLatch(1);
@@ -340,7 +344,7 @@ final class Tools {
             @Override public void onDismissCancelled() { done.countDown(); }
             @Override public void onDismissError() { done.countDown(); }
         }));
-        done.await(45, TimeUnit.SECONDS);
+        done.await(seconds, TimeUnit.SECONDS);
         return ok.get();
     }
 
@@ -645,7 +649,13 @@ final class Tools {
             pkg = r.activityInfo.packageName;
         }
         if (pkg.equals(act().getPackageName())) return err("self", "That is Jarvis itself; Anil can close it with the back button.");
+        return closePackage(pkg, 45);
+    }
+
+    /** Stops what the app plays, then force-stops it. unlockSeconds: how long to wait for a locked phone to be unlocked. */
+    private String closePackage(String pkg, int unlockSeconds) throws Exception {
         String name2 = label(pkg);
+        if (pkg.equals(lastMediaPkg)) lastMediaPkg = null;
 
         // 1) stop anything it is playing (so it does not keep going in the background)
         boolean mediaStopped = false;
@@ -673,7 +683,7 @@ final class Tools {
         // 2) close it completely with "Force stop" (needs Jarvis's accessibility switch)
         String why;
         if (JarvisAccessibility.enabled()) {
-            if (unlocked()) {
+            if (unlocked(unlockSeconds)) {
                 String r = JarvisAccessibility.forceStop(pkg);
                 if ("stopped".equals(r) || "already_stopped".equals(r)) {
                     return ok().put("closed", name2).put("fully_closed", true).put("playback_stopped", mediaStopped).toString();
@@ -1063,7 +1073,27 @@ final class Tools {
     private static final String LOCKED_NOTE = "YouTube and YouTube Music (without Premium) pause by their own rule when the screen is locked or off; "
             + "for music with the screen off, Spotify, JioSaavn, Gaana or Wynk keep playing, or YouTube Premium.";
 
+    /** The app Jarvis last started or paused music in, so "play" resumes it and "stop" closes it. */
+    static volatile String lastMediaPkg;
+
     private String youtube(String query, String app) throws Exception {
+        String r = youtubeInner(query, app);
+        try {
+            JSONObject o = new JSONObject(r);
+            String on = o.optString("playing_on", o.optString("ready_on", ""));
+            if (!on.isEmpty()) {
+                if (on.equals("YouTube")) lastMediaPkg = YT;
+                else if (on.equals("YouTube Music")) lastMediaPkg = YT_MUSIC;
+                else {
+                    ResolveInfo ri = findApp(on);
+                    if (ri != null) lastMediaPkg = ri.activityInfo.packageName;
+                }
+            }
+        } catch (Exception ignored) {}
+        return r;
+    }
+
+    private String youtubeInner(String query, String app) throws Exception {
         if (query == null || query.trim().isEmpty()) return err("missing", "What should I play?");
         String q = query.trim();
         String a = app == null ? "" : app.trim().toLowerCase(Locale.ROOT);
@@ -1414,6 +1444,96 @@ final class Tools {
         am.dispatchMediaKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_UP, code, 0));
     }
 
+    private static boolean isPlaying(android.media.session.MediaController mc) {
+        android.media.session.PlaybackState st = mc.getPlaybackState();
+        return st != null && (st.getState() == android.media.session.PlaybackState.STATE_PLAYING
+                || st.getState() == android.media.session.PlaybackState.STATE_BUFFERING);
+    }
+
+    private List<android.media.session.MediaController> sessions() {
+        if (!NotifyListener.enabled(act())) return new ArrayList<>();
+        try {
+            android.media.session.MediaSessionManager msm = act().getSystemService(android.media.session.MediaSessionManager.class);
+            return msm.getActiveSessions(new android.content.ComponentName(act(), NotifyListener.class));
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    /** "పాట ఆపు / ఆఫ్ చేయి": pauses whatever is playing, keeping its place. */
+    private String pauseMedia(android.media.AudioManager am) throws Exception {
+        List<android.media.session.MediaController> list = sessions();
+        String paused = null;
+        for (android.media.session.MediaController mc : list) {
+            if (isPlaying(mc)) {
+                mc.getTransportControls().pause();
+                if (paused == null) paused = mc.getPackageName();
+            }
+        }
+        if (paused == null && am.isMusicActive()) mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE);
+        if (paused == null && list.isEmpty() && !am.isMusicActive() && lastMediaPkg == null) {
+            return ok().put("done", "pause").put("note", "Nothing seems to be playing.").toString();
+        }
+        if (paused != null) lastMediaPkg = paused;
+        return ok().put("done", "pause").put("paused", label(paused != null ? paused : lastMediaPkg != null ? lastMediaPkg : ""))
+                .put("resume_hint", "Saying 'play' continues from the same place.").toString();
+    }
+
+    /** "ప్లే చేయి": continues the paused song or video from where it stopped. */
+    private String resumeMedia(android.media.AudioManager am) throws Exception {
+        List<android.media.session.MediaController> list = sessions();
+        for (android.media.session.MediaController mc : list) {
+            if (isPlaying(mc)) return ok().put("done", "play").put("already_playing", label(mc.getPackageName())).toString();
+        }
+        android.media.session.MediaController pick = null;
+        for (android.media.session.MediaController mc : list) {
+            if (mc.getPackageName().equals(lastMediaPkg)) { pick = mc; break; }
+        }
+        if (pick == null) {
+            for (android.media.session.MediaController mc : list) {
+                android.media.session.PlaybackState st = mc.getPlaybackState();
+                if (st != null && st.getState() == android.media.session.PlaybackState.STATE_PAUSED) { pick = mc; break; }
+            }
+        }
+        if (pick == null && !list.isEmpty()) pick = list.get(0);
+        if (pick != null) {
+            final android.media.session.MediaController player = pick;
+            if (startsPlaying(player, () -> player.getTransportControls().play(), 2500)) {
+                lastMediaPkg = player.getPackageName();
+                return ok().put("done", "play").put("resumed", label(player.getPackageName())).toString();
+            }
+        }
+        // No player visible to Jarvis (or it ignored the request): press the phone's play button.
+        mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PLAY);
+        for (int i = 0; i < 8; i++) {
+            Thread.sleep(500);
+            if (am.isMusicActive() || (pick != null && isPlaying(pick))) return ok().put("done", "play").toString();
+        }
+        String app = pick != null ? pick.getPackageName() : lastMediaPkg;
+        if (YT.equals(app) && locked()) {
+            return err("youtube_locked", "YouTube videos cannot play while the phone is locked (that needs YouTube Premium). Anil must unlock first.");
+        }
+        return err("nothing_to_resume", "Nothing paused could be resumed. Ask Anil what to play, then use play_youtube.");
+    }
+
+    /** "మ్యూజిక్ స్టాప్": stops the music and closes that music app completely. */
+    private String stopAndCloseMedia(android.media.AudioManager am) throws Exception {
+        String pkg = null;
+        for (android.media.session.MediaController mc : sessions()) {
+            if (isPlaying(mc)) { pkg = mc.getPackageName(); break; }
+        }
+        if (pkg == null) pkg = lastMediaPkg;
+        if (pkg == null) {
+            List<android.media.session.MediaController> list = sessions();
+            if (!list.isEmpty()) pkg = list.get(0).getPackageName();
+        }
+        if (pkg == null || pkg.equals(act().getPackageName())) {
+            mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_STOP);
+            return ok().put("done", "stop").put("note", "Music stopped. Jarvis could not tell which app was playing, so none was closed.").toString();
+        }
+        return closePackage(pkg, 25);
+    }
+
     private String mediaControl(String action, int percent) throws Exception {
         android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
         if (am == null) return err("no_audio", "No audio service.");
@@ -1421,8 +1541,9 @@ final class Tools {
         android.media.session.MediaController.TransportControls tc = mc == null ? null : mc.getTransportControls();
         String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
         switch (a) {
-            case "play": if (tc != null) tc.play(); else mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PLAY); break;
-            case "pause": case "stop": if (tc != null) tc.pause(); else mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE); break;
+            case "play": case "resume": return resumeMedia(am);
+            case "pause": case "off": return pauseMedia(am);
+            case "stop": case "close": return stopAndCloseMedia(am);
             case "toggle": mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE); break;
             case "next": if (tc != null) tc.skipToNext(); else mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_NEXT); break;
             case "previous": if (tc != null) tc.skipToPrevious(); else mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS); break;
@@ -1443,7 +1564,7 @@ final class Tools {
                 break;
             }
             default:
-                return err("bad_action", "Use play, pause, toggle, next, previous, volume_up, volume_down, set_volume, mute or unmute.");
+                return err("bad_action", "Use play, pause, stop, toggle, next, previous, volume_up, volume_down, set_volume, mute or unmute.");
         }
         int vol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) * 100 / Math.max(1, am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC));
         return ok().put("done", a).put("volume_pct", vol).toString();

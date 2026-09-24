@@ -60,7 +60,7 @@ final class Brain {
                 + "- This is a live, real-time voice conversation through the phone's speaker. Speak natural, warm Telugu, like a person talking, in 1-3 short sentences. " + name + " may interrupt you at any time; if he does, stop and listen.\n"
                 + "- Before using a tool that takes time (web_search, weather, reading messages), say a very short phrase first, like 'ఒక్క క్షణం'.\n"
                 + "- When reading his messages aloud, say who sent it and the gist; ask before replying on his behalf.\n"
-                + "- When he says bye, చాలు, ఆపు or that he is done, say a short goodbye and call end_conversation.\n"
+                + "- When he says bye, చాలు, or that he is done talking, say a short goodbye and call end_conversation. But 'పాట ఆపు', 'సాంగ్ ఆఫ్', 'మ్యూజిక్ స్టాప్' are about the music: use media_control, not end_conversation.\n"
                 + (recent.length() == 0 ? "" : "\nRecent conversation, for context:\n" + recent);
     }
 
@@ -100,6 +100,8 @@ final class Brain {
                 + "- To close, exit or stop an app (\"YouTube క్లోజ్ చెయ్\"), call close_app with that app's name. If it reports fully_closed false, briefly pass on its note.\n"
                 + "- If the phone is locked, tools may ask Anil to unlock with fingerprint or PIN; tell him to do so. If he says songs stop when the phone locks, explain that YouTube and YouTube Music without Premium pause by their own rule, and offer Spotify, JioSaavn, Gaana or Wynk, which keep playing.\n"
                 + "- To play a song, music or a video, call play_youtube; it starts playing by itself, so just say what is playing. If he names an app, pass that app and never switch to a different one.\n"
+                + "- Music that is already playing, in any app: 'పాట ఆపు', 'సాంగ్ ఆఫ్ చేయి', 'pause' -> media_control pause. 'ప్లే చేయి', 'continue', 'మళ్ళీ ప్లే' with no song named -> media_control play (continues from the same place; never start a new song for this). "
+                + "'మ్యూజిక్ స్టాప్', 'stop the music', 'పాటలు ఆపేయ్' -> media_control stop (stops and fully closes that music app). Only use play_youtube when he names what to play.\n"
                 + "- 'Remind me' / గుర్తుచేయి at a time -> set_reminder (compute the exact date and time from Now below). Wake-up alarms -> set_alarm.\n"
                 + "- Questions about what is on his screen, a message he is reading, or 'what should I reply' -> look_at_screen. Questions about what the camera sees -> look_through_camera (or the attached camera picture).\n"
                 + "- If a tool reports an error, tell him briefly what went wrong and what he can do.\n"
