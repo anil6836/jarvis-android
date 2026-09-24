@@ -1,6 +1,7 @@
 package com.anil.jarvis;
 
 import android.Manifest;
+import android.content.pm.PackageManager;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -32,7 +33,10 @@ public class SettingsActivity extends Activity {
     private Prefs prefs;
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
     private RadioGroup provider, lang, wakeWhen;
-    private Switch callVoice, readMessages, batteryWarn;
+    private Switch callVoice, readMessages, batteryWarn, voiceLock, proactive, sfx;
+    private SeekBar lockSlider;
+    private TextView lockInfo, docsInfo;
+    private EditText sosContacts;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
@@ -173,6 +177,28 @@ public class SettingsActivity extends Activity {
         });
         box.addView(sensitivity);
         showSensitivity();
+        voiceLock = toggle("నా గొంతుకి మాత్రమే పలుకు (ప్రయోగాత్మకం)", prefs.voiceLock());
+        note("టీవీలో, వేరేవాళ్లు \"Jarvis\" అంటే పలకదు. ముందు కింది బటన్‌తో మీ గొంతు నేర్పించండి (సుమారు 13 MB ఒక్కసారి డౌన్‌లోడ్). మీరు పిలిచినా పలకకపోతే స్లైడర్ కుడివైపు జరపండి.");
+        button("మీ గొంతు నేర్పించండి (5 సార్లు \"Jarvis\" అనండి)", v -> {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 7);
+                return;
+            }
+            VoiceEnroll.start(this);
+        });
+        lockInfo = Ui.text(this, "", 14, Ui.MUTED);
+        lockInfo.setPadding(0, Ui.dp(this, 8), 0, 0);
+        box.addView(lockInfo);
+        lockSlider = new SeekBar(this);
+        lockSlider.setMax(60); // 0.30 .. 0.90
+        lockSlider.setProgress(Math.round((prefs.voiceLockMax() - 0.30f) * 100));
+        lockSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar s, int p, boolean u) { showLock(); }
+            @Override public void onStartTrackingTouch(SeekBar s) {}
+            @Override public void onStopTrackingTouch(SeekBar s) {}
+        });
+        box.addView(lockSlider);
+        showLock();
         button("\"Display over other apps\" అనుమతి ఇవ్వండి", v -> {
             startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
         });
@@ -241,6 +267,32 @@ public class SettingsActivity extends Activity {
         notifyInfo = Ui.text(this, "", 14, Ui.MUTED);
         box.addView(notifyInfo);
 
+        section("Jarvis తనంతట తానే");
+        proactive = toggle("అడగకుండానే ముఖ్యమైనవి చెప్పు: మీటింగ్ దగ్గర పడితే, వర్షం వస్తే, ఇష్టమైనవాళ్లకి చాలా రోజులుగా ఫోన్ చేయకపోతే, మీ అలవాట్లు, నీళ్లు, ధర హెచ్చరికలు", prefs.proactive());
+        note("రాత్రి మోడ్‌లో, కాల్ మాట్లాడుతున్నప్పుడు, Do Not Disturb లో మాట్లాడదు. \"ఇష్టమైనవాళ్లు\" = Contacts లో ⭐ పెట్టినవాళ్లు.");
+
+        section("అత్యవసరం (SOS)");
+        note("\"Jarvis help\" / \"కాపాడు\" అంటే 5 సెకన్ల తర్వాత (మధ్యలో ఆపొచ్చు) మీ లొకేషన్ వీళ్లకి SMS వెళ్తుంది, మొదటివాళ్లకి కాల్ వెళ్తుంది.");
+        sosContacts = field("కాంటాక్ట్ పేర్లు లేదా నంబర్లు, కామాతో (ఉదా: Amma, Ravi)", prefs.sosContacts(), false);
+
+        section("డాక్యుమెంట్లు");
+        note("ఒక ఫోల్డర్ ఎంచుకుంటే అందులోని PDF లు, ఫోటోలు చదివి \"నా బైక్ ఇన్సూరెన్స్ ఎప్పుడు అయిపోతుంది?\" లాంటివి చెబుతుంది. ఆ పేజీలు జవాబు కోసం AI కి వెళ్తాయి.");
+        button("డాక్యుమెంట్ల ఫోల్డర్ ఎంచుకోండి", v -> {
+            try {
+                startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), 41);
+            } catch (Exception e) {
+                Toast.makeText(this, "ఫోల్డర్ ఎంచుకునే పేజీ తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
+            }
+        });
+        docsInfo = Ui.text(this, prefs.docsTree().isEmpty() ? "ఇంకా ఎంచుకోలేదు" : "ఎంచుకున్నారు ✓", 14, Ui.MUTED);
+        box.addView(docsInfo);
+
+        section("ఆరోగ్యం, ఇతరాలు");
+        sfx = toggle("Iron Man సౌండ్ ఎఫెక్ట్ (పిలవగానే చిన్న శబ్దం)", prefs.sfx());
+        button("అడుగుల లెక్కకి అనుమతి (Physical activity)", v -> requestPermissions(new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, 8));
+        note("హోమ్ స్క్రీన్ విడ్జెట్: హోమ్ స్క్రీన్ మీద ఖాళీ చోట నొక్కి పట్టుకుని → Widgets → Jarvis.");
+        note("బ్లూటూత్ ఇయర్‌ఫోన్: బటన్ నొక్కి పట్టుకుంటే Jarvis ప్యానెల్ వస్తుంది (మొదటిసారి ఏ యాప్ అని అడిగితే Jarvis ఎంచుకోండి).");
+
         section("అనుమతులు, డేటా");
         button("అన్ని అనుమతులు ఇవ్వండి", v -> requestPermissions(MainActivity.corePermissions(), 5));
         button("సంభాషణ చెరిపేయి (జ్ఞాపకాలు, మిషన్లు అలాగే ఉంటాయి)", v -> {
@@ -261,6 +313,7 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        showLock();
         StringBuilder s = new StringBuilder();
         s.append(Settings.canDrawOverlays(this) ? "✓ Display over other apps: ఇచ్చారు\n" : "✗ Display over other apps: ఇవ్వలేదు (లేకపోతే పిలిచినప్పుడు నోటిఫికేషన్ మాత్రమే వస్తుంది)\n");
         PowerManager pm = getSystemService(PowerManager.class);
@@ -315,6 +368,11 @@ public class SettingsActivity extends Activity {
         e.putString("lang", lang.getCheckedRadioButtonId() == 12 ? "en-IN" : "te-IN");
         e.putBoolean("wake", wake.isChecked());
         e.putBoolean("wake_paused", false);
+        e.putBoolean("voice_lock", voiceLock.isChecked() && VoiceLock.print(this) != null);
+        e.putFloat("voice_lock_max", 0.30f + lockSlider.getProgress() / 100f);
+        e.putBoolean("proactive", proactive.isChecked());
+        e.putBoolean("sfx", sfx.isChecked());
+        e.putString("sos_contacts", sosContacts.getText().toString().trim());
         e.putFloat("wake_threshold", 0.75f - sensitivity.getProgress() / 100f);
         e.apply();
         Reminders.scheduleBriefing(this);
@@ -364,6 +422,32 @@ public class SettingsActivity extends Activity {
                 : p < 34 ? "మధ్యస్థం" : "ఎక్కువ (సులువుగా మేల్కొంటుంది, అప్పుడప్పుడు పొరపాటున కూడా)";
         sensitivityLabel.setText("సున్నితత్వం: " + level);
         sensitivityLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
+    }
+
+    private void showLock() {
+        if (lockInfo == null || lockSlider == null) return;
+        float max = 0.30f + lockSlider.getProgress() / 100f;
+        StringBuilder b = new StringBuilder();
+        b.append(VoiceLock.print(this) == null ? "గొంతు ఇంకా నేర్పించలేదు." : "గొంతు నేర్చుకున్నాను ✓");
+        b.append("  పరిమితి: ").append(String.format(Locale.ROOT, "%.2f", max)).append(" (ఎడమ = కఠినం, కుడి = సులభం)");
+        if (VoiceLock.lastDistance >= 0) {
+            b.append("\nచివరి పిలుపు దూరం: ").append(String.format(Locale.ROOT, "%.2f", VoiceLock.lastDistance))
+                    .append(VoiceLock.lastAccepted ? " → పలికాను" : " → మీ గొంతు కాదనుకుని పలకలేదు");
+        }
+        lockInfo.setText(b.toString());
+    }
+
+    @Override protected void onActivityResult(int code, int result, Intent data) {
+        super.onActivityResult(code, result, data);
+        if (code == 41 && result == RESULT_OK && data != null && data.getData() != null) {
+            try {
+                getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                getSharedPreferences("jarvis", MODE_PRIVATE).edit().putString("docs_tree", data.getData().toString()).apply();
+                docsInfo.setText("ఎంచుకున్నారు ✓");
+            } catch (Exception e) {
+                Toast.makeText(this, "ఆ ఫోల్డర్‌కి అనుమతి రాలేదు", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private void section(String s) {

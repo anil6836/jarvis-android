@@ -235,6 +235,19 @@ final class Store {
         return null;
     }
 
+    /** Changes one field of a reminder (used to move a repeating reminder to its next time). */
+    synchronized JSONObject updateReminder(String id, String key, Object value) {
+        for (JSONObject r : reminders) {
+            if (r.optString("id").equals(id)) {
+                try { r.put(key, value); } catch (Exception ignored) {}
+                save("reminders.json", reminders);
+                changed();
+                return r;
+            }
+        }
+        return null;
+    }
+
     // ---------- conversation ----------
 
     synchronized List<JSONObject> chat() { return copy(chat); }

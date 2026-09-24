@@ -96,7 +96,7 @@ final class VoiceIO {
     void speak(String text, float rate) {
         if (text == null || text.trim().isEmpty()) return;
         String key = prefs.openAiKey().trim();
-        if (prefs.naturalVoice() && !key.isEmpty()) {
+        if (prefs.naturalVoice() && !key.isEmpty() && Net.online(ctx)) {
             speakNatural(key, text, rate);
             return;
         }
@@ -192,6 +192,7 @@ final class VoiceIO {
         i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.getPackageName());
+        if (!Net.online(ctx)) i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true); // Telugu offline pack, if downloaded
         listening = true;
         sr.startListening(i);
     }

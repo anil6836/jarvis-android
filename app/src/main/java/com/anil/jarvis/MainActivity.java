@@ -58,6 +58,8 @@ import java.util.concurrent.TimeUnit;
 public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listener, Store.Listener, LiveSession.Listener {
     static final String EXTRA_WAKE = "wake";
     static final String EXTRA_BRIEF = "brief";
+    /** Opened from a notification with a question to ask Jarvis right away. */
+    static final String EXTRA_ASK = "jarvis_ask";
     /** True while the Jarvis screen is in front (then a fresh screenshot would only show Jarvis). */
     static volatile boolean visible;
     private static final String BRIEF_PROMPT = "నాకు ఇప్పటి బ్రీఫింగ్ ఇవ్వు: సమయానికి తగ్గ పలకరింపు, ఈరోజు తేదీ, నా లొకేషన్‌లో వాతావరణం (get_weather వాడు), ఈరోజు క్యాలెండర్, రిమైండర్లు, నా యాక్టివ్ మిషన్లలో ముఖ్యమైనవి, బ్యాటరీ తక్కువగా ఉంటే అది కూడా. 6 వాక్యాలు మించకుండా.";
@@ -134,6 +136,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         // Opening Jarvis switches the wake word back on after "ఆపు" in the notification.
         if (prefs.wakePaused()) prefs.setWakePaused(false);
         Reminders.scheduleBriefing(this);
+        Proactive.schedule(this);
+        JarvisWidget.refresh(this);
         orb.invalidate();
         updateSetup();
         if (live == null && !busy && !voice.listening && !voice.speaking) setIdle();
@@ -184,6 +188,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             }
             return;
         }
+        String askNow = i.getStringExtra(EXTRA_ASK);
+        if (askNow != null) {
+            i.removeExtra(EXTRA_ASK);
+            main.postDelayed(() -> send(askNow, null, false), 500);
+            return;
+        }
         if (i.getBooleanExtra(EXTRA_BRIEF, false)) {
             i.removeExtra(EXTRA_BRIEF);
             main.postDelayed(() -> send(BRIEF_PROMPT, "శుభోదయం బ్రీఫింగ్", false), 500);
@@ -225,6 +235,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         p.add(Manifest.permission.CAMERA);
         p.add(Manifest.permission.ANSWER_PHONE_CALLS);
         p.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        p.add(Manifest.permission.READ_CALL_LOG);
+        p.add(Manifest.permission.ACTIVITY_RECOGNITION);
         if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS);
         return p.toArray(new String[0]);
     }
@@ -266,7 +278,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         hud.setPadding(0, dp(12), 0, dp(8));
         orb = new OrbView(this);
         orb.setOnClickListener(v -> onActionPressed());
-        hud.addView(orb, new LinearLayout.LayoutParams(dp(62), dp(62)));
+        // Iron Man style: rotating HUD rings around the arc-reactor orb
+        FrameLayout reactor = new FrameLayout(this);
+        reactor.addView(new HudView(this), new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams olp = new FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER);
+        reactor.addView(orb, olp);
+        hud.addView(reactor, new LinearLayout.LayoutParams(dp(84), dp(84)));
 
         LinearLayout ident = new LinearLayout(this);
         ident.setOrientation(LinearLayout.VERTICAL);
@@ -871,7 +888,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** Live real-time talk when it is switched on, otherwise the classic listen-then-answer. */
     private void startConversation() {
-        if (prefs.liveReady()) startLive(); else startListening();
+        if (prefs.liveReady() && Net.online(this)) startLive(); else startListening();
     }
 
     // ================================================================ live (real-time) conversation

@@ -138,7 +138,8 @@ final class Tools {
         DEFS.add(new Def("set_reminder",
                 "Remind Anil about something at a date and time (he gets a notification and Jarvis says it aloud). Use this for 'remind me' / గుర్తుచేయి requests, not set_alarm.",
                 schema(new String[][]{{"text", "string", "What to remind him about, short Telugu phrase"},
-                        {"when", "string", "Local date and time 'yyyy-MM-dd HH:mm' (compute it from the current date/time in the system prompt)"}}, "text", "when")));
+                        {"when", "string", "Local date and time 'yyyy-MM-dd HH:mm' (compute it from the current date/time in the system prompt)"},
+                        {"repeat", "string", "'daily' or 'weekly' for repeating reminders such as medicines; empty for once"}}, "text", "when")));
         DEFS.add(new Def("list_reminders", "List Anil's upcoming reminders with their ids.", schema(new String[][]{})));
         DEFS.add(new Def("cancel_reminder", "Cancel one reminder by id (from list_reminders).",
                 schema(new String[][]{{"id", "string", "Reminder id"}}, "id")));
@@ -186,6 +187,33 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "add (default), list or cancel"}, {"place", "string", "Saved place name or address, English"},
                         {"text", "string", "What to remind him"}, {"when", "string", "arrive (default) or leave"},
                         {"id", "string", "For cancel: the reminder id from list"}})));
+        DEFS.add(new Def("routine",
+                "Anil's own multi-step commands. save: store steps under a name ('ఆఫీస్ మోడ్' = silent, Wi-Fi off, navigate to office). run: get the steps, then do them with your tools. list / delete.",
+                schema(new String[][]{{"action", "string", "save, run, list or delete"}, {"name", "string", "Routine name as he says it"},
+                        {"steps", "string", "For save: the steps in plain words, in order"}}, "action")));
+        DEFS.add(new Def("notes",
+                "Voice notes and diary. add: note his words; list: notes of the last N days (for a weekly summary); search: find notes containing a word; delete: by id.",
+                schema(new String[][]{{"action", "string", "add, list, search or delete"}, {"text", "string", "For add: the note; for search: the word; for delete: the id"},
+                        {"days", "integer", "For list: how many days back (default 7)"}}, "action")));
+        DEFS.add(new Def("sos",
+                "EMERGENCY ONLY ('Jarvis help', 'SOS', 'ప్రమాదం', 'కాపాడు'): after a 5-second cancel countdown, SMS his location to his SOS contacts and call the first one.",
+                schema(new String[][]{{"message", "string", "Optional short detail of what happened"}})));
+        DEFS.add(new Def("ask_document",
+                "Answer questions from his saved documents (PDFs and photos in the folder he chose): insurance, bills, certificates, tickets. name = words from the file name, or 'list'.",
+                schema(new String[][]{{"name", "string", "Words from the document's file name, e.g. 'bike insurance'; 'list' to see files"},
+                        {"question", "string", "What he wants to know, e.g. 'when does it expire?'"}}, "name")));
+        DEFS.add(new Def("price_alert",
+                "Watch a price (gold 22k per gram, petrol in his city, a share, a crypto) and tell him when it goes above or below his number. add / list / cancel.",
+                schema(new String[][]{{"action", "string", "add, list or cancel"}, {"item", "string", "What to watch, precise, e.g. 'gold 22 carat per gram Hyderabad', 'TCS share NSE'"},
+                        {"when", "string", "above or below"}, {"target", "number", "Price in rupees"}, {"id", "string", "For cancel"}}, "action")));
+        DEFS.add(new Def("train_status",
+                "Indian train live running status by train number, or PNR status (10 digits).",
+                schema(new String[][]{{"query", "string", "Train number (e.g. 12727) or PNR"}}, "query")));
+        DEFS.add(new Def("water_reminder",
+                "Remind him to drink water every few hours during the day. on=false stops it.",
+                schema(new String[][]{{"on", "boolean", "true to start"}, {"every_hours", "integer", "1-4, default 2"},
+                        {"from_hour", "integer", "Start hour, default 8"}, {"to_hour", "integer", "End hour, default 22"}}, "on")));
+        DEFS.add(new Def("steps_today", "How many steps he has walked today (phone's step counter).", schema(new String[][]{})));
         DEFS.add(new Def("ride_app",
                 "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself.",
                 schema(new String[][]{{"app", "string", "Uber, Ola or Rapido"}, {"pickup", "string", "Pickup place in English; empty = current location"},
@@ -292,6 +320,14 @@ final class Tools {
             case "location_reminder": return "లొకేషన్ రిమైండర్…";
             case "driving_mode": return "డ్రైవింగ్ మోడ్…";
             case "ride_app": return "రైడ్ యాప్ తెరుస్తున్నాను…";
+            case "routine": return "రొటీన్…";
+            case "notes": return "నోట్స్…";
+            case "sos": return "🆘 SOS…";
+            case "ask_document": return "డాక్యుమెంట్ చదువుతున్నాను…";
+            case "price_alert": return "ధర హెచ్చరిక…";
+            case "train_status": return "రైలు వివరాలు చూస్తున్నాను…";
+            case "water_reminder": return "నీళ్ల రిమైండర్…";
+            case "steps_today": return "అడుగులు లెక్కపెడుతున్నాను…";
             case "food_app": return "వెతుకుతున్నాను…";
             case "night_mode": return "నైట్ మోడ్…";
             case "find_phone": return "ఇక్కడే ఉన్నాను!";
@@ -328,7 +364,7 @@ final class Tools {
                 case "read_notifications": return readNotifications(a.optString("app", ""), a.optInt("limit", 8));
                 case "reply_to_notification": return replyNotification(a.optInt("id", -1), a.optString("message"));
                 case "web_search": return webSearch(a.optString("query"));
-                case "set_reminder": return setReminder(a.optString("text"), a.optString("when"));
+                case "set_reminder": return setReminder(a.optString("text"), a.optString("when"), a.optString("repeat", ""));
                 case "list_reminders": return listReminders();
                 case "cancel_reminder": return cancelReminder(a.optString("id"));
                 case "calendar_events": return calendarEvents(a.optInt("days", 1));
@@ -341,6 +377,14 @@ final class Tools {
                 case "call_control": return callControl(a.optString("action"));
                 case "bank_spending": return bankSpending(a.optInt("days", 30));
                 case "save_place": return savePlace(a.optString("name"));
+                case "routine": return routine(a.optString("action", "list"), a.optString("name", ""), a.optString("steps", ""));
+                case "notes": return notes(a.optString("action", "list"), a.optString("text", ""), a.optInt("days", 7));
+                case "sos": return sos(a.optString("message", ""));
+                case "ask_document": return askDocument(a.optString("name", ""), a.optString("question", ""));
+                case "price_alert": return priceAlert(a.optString("action", "list"), a.optString("item", ""), a.optString("when", "above"), a.optDouble("target", 0), a.optString("id", ""));
+                case "train_status": return trainStatus(a.optString("query"));
+                case "water_reminder": return water(a.optBoolean("on", true), a.optInt("every_hours", 2), a.optInt("from_hour", 8), a.optInt("to_hour", 22));
+                case "steps_today": return steps();
                 case "ride_app": return rideApp(a.optString("app"), a.optString("pickup", ""), a.optString("drop"));
                 case "food_app": return foodApp(a.optString("app"), a.optString("query"));
                 case "driving_mode": return drivingMode(a.optBoolean("on", true), a.optString("destination", ""));
@@ -546,6 +590,7 @@ final class Tools {
         Intent i = new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(c.number)));
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         start(i);
+        Habits.log(act(), "call", c.name, null);
         return ok().put("calling", c.name).put("number", c.number).toString();
     }
 
@@ -939,6 +984,7 @@ final class Tools {
         if (launch == null) return err("cannot_open", "That app cannot be opened directly.");
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         start(launch);
+        Habits.log(act(), "app", String.valueOf(best.loadLabel(pm)), null);
         return ok().put("opened", String.valueOf(best.loadLabel(pm))).toString();
     }
 
@@ -1304,6 +1350,7 @@ final class Tools {
                     ResolveInfo ri = findApp(on);
                     if (ri != null) lastMediaPkg = ri.activityInfo.packageName;
                 }
+                Habits.log(act(), "music", on, query);
             }
         } catch (Exception ignored) {}
         return r;
@@ -1486,13 +1533,16 @@ final class Tools {
         return new java.text.SimpleDateFormat("EEE d MMM yyyy, HH:mm", Locale.ENGLISH).format(new java.util.Date(t));
     }
 
-    private String setReminder(String text, String when) throws Exception {
+    private String setReminder(String text, String when, String repeat) throws Exception {
         long at = parseLocal(when);
         if (at < 0) return err("bad_time", "Give the time as 'yyyy-MM-dd HH:mm' in local time.");
         if (at <= System.currentTimeMillis()) return err("in_past", "That time has already passed. Ask Anil for a future time.");
         JSONObject r = store.addReminder(text, at);
         if (r == null) return err("empty", "What should I remind him about?");
+        String rep = repeat == null ? "" : repeat.trim().toLowerCase(Locale.ROOT);
+        if (rep.equals("daily") || rep.equals("weekly")) r = store.updateReminder(r.optString("id"), "repeat", rep);
         Reminders.schedule(act(), r);
+        JarvisWidget.refresh(act());
         host.notice("రిమైండర్ పెట్టాను");
         return ok().put("id", r.optString("id")).put("at", fmt(at)).put("text", r.optString("text")).toString();
     }
@@ -2375,6 +2425,335 @@ final class Tools {
                 .put("next", (searched ? "The search is open. " : name + " opened on its home screen; Anil searches for it. ")
                         + "He can say 'Jarvis, మెనూ, ధరలు చెప్పు' and you read the items and prices with look_at_screen. Anil adds to cart, orders and pays himself; Jarvis never orders or pays.")
                 .toString();
+    }
+
+
+    // ================================================================ routines, notes, SOS, documents, prices, trains, health
+
+    /** Anil's own multi-step commands ("ఆఫీస్ మోడ్"): Jarvis stores the steps and carries them out with its tools. */
+    private String routine(String action, String name, String steps) throws Exception {
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        String n = name == null ? "" : name.trim();
+        switch (a) {
+            case "save": {
+                if (n.isEmpty() || steps == null || steps.trim().isEmpty()) return err("missing", "Need the routine name and its steps.");
+                Notes.remove(act(), "routines", "name", n);
+                Notes.add(act(), "routines", new JSONObject().put("name", n).put("steps", steps.trim()).put("t", System.currentTimeMillis()), 50);
+                return ok().put("saved", n).put("steps", steps.trim()).toString();
+            }
+            case "run": {
+                for (JSONObject r : Notes.list(act(), "routines")) {
+                    if (r.optString("name").equalsIgnoreCase(n)) {
+                        return ok().put("routine", n).put("steps", r.optString("steps"))
+                                .put("next", "Now carry out these steps in order with your tools, then say in one line what you did. "
+                                        + "Steps that send messages still need his 'పంపు'; never pay or order.").toString();
+                    }
+                }
+                return err("not_found", "No routine called '" + n + "'. Offer to create it.");
+            }
+            case "delete":
+                return Notes.remove(act(), "routines", "name", n) ? ok().put("deleted", n).toString() : err("not_found", "No routine called '" + n + "'.");
+            default: {
+                JSONArray arr = new JSONArray();
+                for (JSONObject r : Notes.list(act(), "routines")) arr.put(new JSONObject().put("name", r.optString("name")).put("steps", r.optString("steps")));
+                return ok().put("routines", arr).toString();
+            }
+        }
+    }
+
+    private String notes(String action, String text, int days) throws Exception {
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        if (a.equals("add")) {
+            if (text == null || text.trim().isEmpty()) return err("missing", "What should I note?");
+            Notes.add(act(), "notes", new JSONObject().put("id", Notes.id("n")).put("text", text.trim()).put("t", System.currentTimeMillis()), 2000);
+            return ok().put("noted", text.trim()).toString();
+        }
+        if (a.equals("delete")) {
+            return Notes.remove(act(), "notes", "id", text == null ? "" : text.trim()) ? ok().put("deleted", text).toString() : err("not_found", "No note with that id.");
+        }
+        long since = System.currentTimeMillis() - Math.max(1, days <= 0 ? 7 : days) * 86400000L;
+        String q = a.equals("search") && text != null ? text.trim().toLowerCase(Locale.ROOT) : "";
+        JSONArray arr = new JSONArray();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("EEE d MMM HH:mm", Locale.ENGLISH);
+        List<JSONObject> all = Notes.list(act(), "notes");
+        for (int i = all.size() - 1; i >= 0 && arr.length() < 80; i--) {
+            JSONObject o = all.get(i);
+            if (q.isEmpty() && o.optLong("t") < since) continue;
+            if (!q.isEmpty() && !o.optString("text").toLowerCase(Locale.ROOT).contains(q)) continue;
+            arr.put(new JSONObject().put("id", o.optString("id")).put("when", f.format(new java.util.Date(o.optLong("t")))).put("text", o.optString("text")));
+        }
+        return ok().put("notes", arr).toString();
+    }
+
+    /** Emergency: sends his location by SMS to his SOS contacts and calls the first one. */
+    private String sos(String message) throws Exception {
+        String list = prefs.sosContacts().trim();
+        if (list.isEmpty()) return err("no_contacts", "No SOS contacts are set. Anil adds them in Jarvis settings > 'అత్యవసరం (SOS)'. If he is in danger, tell him to call 112 now.");
+        if (!has(Manifest.permission.SEND_SMS)) return needPermission(Manifest.permission.SEND_SMS, "sending the SOS SMS");
+        // A short countdown so a misheard "help" can be stopped.
+        if (!host.confirm("🆘 SOS పంపుతున్నాను", "మీ లొకేషన్‌తో SOS మెసేజ్ మీ అత్యవసర కాంటాక్ట్స్‌కి వెళ్తుంది, తర్వాత కాల్.", "ఇప్పుడే పంపు", 5)) {
+            return err("cancelled", "Anil stopped the SOS.");
+        }
+        Location l = null;
+        if (has(Manifest.permission.ACCESS_FINE_LOCATION) || has(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+            l = lastLocation(act());
+            if (l == null || System.currentTimeMillis() - l.getTime() > 10 * 60000L) {
+                Location fresh = freshLocation();
+                if (fresh != null) l = fresh;
+            }
+        }
+        String where = l == null ? "(లొకేషన్ దొరకలేదు)" : "https://maps.google.com/?q=" + l.getLatitude() + "," + l.getLongitude();
+        String text = "🆘 " + prefs.name() + " కి సహాయం కావాలి. " + (message == null || message.isEmpty() ? "" : message + ". ") + "లొకేషన్: " + where;
+        SmsManager sm = Build.VERSION.SDK_INT >= 31 ? act().getSystemService(SmsManager.class) : SmsManager.getDefault();
+        JSONArray sent = new JSONArray();
+        String firstNumber = null;
+        for (String who : list.split(",")) {
+            if (who.trim().isEmpty()) continue;
+            Target t = resolve(who.trim());
+            if (t.error != null || t.contact == null) continue;
+            try {
+                sm.sendMultipartTextMessage(t.contact.number, null, sm.divideMessage(text), null, null);
+                sent.put(t.contact.name);
+                if (firstNumber == null) firstNumber = t.contact.number;
+            } catch (Exception ignored) {}
+        }
+        JSONObject o = ok().put("sms_sent_to", sent).put("location", where);
+        if (firstNumber != null && has(Manifest.permission.CALL_PHONE)) {
+            start(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(firstNumber))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            o.put("calling", sent.optString(0));
+        }
+        if (sent.length() == 0) o.put("note", "None of the SOS contacts could be found in his contacts. Tell him to call 112.");
+        return o.toString();
+    }
+
+    /** Reads a PDF or photo from the folder Anil chose, and answers his question about it. */
+    private String askDocument(String name, String question) throws Exception {
+        String tree = prefs.docsTree();
+        if (tree.isEmpty()) {
+            return err("no_folder", "Anil must choose his documents folder once: Jarvis settings > 'డాక్యుమెంట్లు' > folder button. Then ask again.");
+        }
+        List<String[]> files = new ArrayList<>(); // {name, uri, mime}
+        Uri treeUri = Uri.parse(tree);
+        listTree(treeUri, android.provider.DocumentsContract.getTreeDocumentId(treeUri), files, 0);
+        if (files.isEmpty()) return err("empty", "No PDFs or photos found in the chosen folder.");
+        String q = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty() || q.equals("list")) {
+            JSONArray arr = new JSONArray();
+            for (String[] f : files) if (arr.length() < 60) arr.put(f[0]);
+            return ok().put("documents", arr).put("next", "Ask him which one, or pick the one whose name fits his question and call again with it.").toString();
+        }
+        String[] best = null;
+        int bestScore = 0;
+        for (String[] f : files) {
+            String low = f[0].toLowerCase(Locale.ROOT);
+            int score = 0;
+            for (String w : q.split("[\\s_\\-.]+")) if (w.length() > 1 && low.contains(w)) score++;
+            if (score > bestScore) { bestScore = score; best = f; }
+        }
+        if (best == null) {
+            JSONArray arr = new JSONArray();
+            for (String[] f : files) if (arr.length() < 40) arr.put(f[0]);
+            return err("not_found", "No document name matches '" + name + "'. Files: " + arr);
+        }
+        String jpeg = best[2].startsWith("image/") ? imageB64(Uri.parse(best[1])) : pdfB64(Uri.parse(best[1]));
+        if (jpeg == null) return err("cannot_read", "Could not open " + best[0]);
+        String answer = Brain.oneShot(prefs, VISION_SYSTEM, "Document '" + best[0] + "'. Question: "
+                + (question == null || question.isEmpty() ? "Summarise the important details (names, numbers, dates, amounts, expiry)." : question), jpeg, false);
+        return ok().put("document", best[0]).put("answer", answer).toString();
+    }
+
+    private void listTree(Uri tree, String docId, List<String[]> out, int depth) {
+        if (depth > 3 || out.size() > 300) return;
+        Uri children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId);
+        try (Cursor c = act().getContentResolver().query(children, new String[]{
+                android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
+            while (c != null && c.moveToNext()) {
+                String id = c.getString(0), n = c.getString(1), mime = c.getString(2);
+                if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    listTree(tree, id, out, depth + 1);
+                } else if (mime != null && (mime.equals("application/pdf") || mime.startsWith("image/"))) {
+                    out.add(new String[]{n, android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id).toString(), mime});
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private String imageB64(Uri u) {
+        try (java.io.InputStream in = act().getContentResolver().openInputStream(u)) {
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inSampleSize = 2;
+            android.graphics.Bitmap b = android.graphics.BitmapFactory.decodeStream(in, null, o);
+            return b == null ? null : jpeg(b);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** The first pages of a PDF, stacked into one picture for the vision model. */
+    private String pdfB64(Uri u) {
+        try (android.os.ParcelFileDescriptor fd = act().getContentResolver().openFileDescriptor(u, "r");
+             android.graphics.pdf.PdfRenderer r = new android.graphics.pdf.PdfRenderer(fd)) {
+            int pages = Math.min(3, r.getPageCount());
+            int w = 1000;
+            List<android.graphics.Bitmap> bits = new ArrayList<>();
+            int total = 0;
+            for (int i = 0; i < pages; i++) {
+                try (android.graphics.pdf.PdfRenderer.Page p = r.openPage(i)) {
+                    int h = Math.round(w * (p.getHeight() / (float) p.getWidth()));
+                    android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+                    b.eraseColor(android.graphics.Color.WHITE);
+                    p.render(b, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                    bits.add(b);
+                    total += h;
+                }
+            }
+            android.graphics.Bitmap all = android.graphics.Bitmap.createBitmap(w, Math.max(1, total), android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas cv = new android.graphics.Canvas(all);
+            int y = 0;
+            for (android.graphics.Bitmap b : bits) { cv.drawBitmap(b, 0, y, null); y += b.getHeight(); b.recycle(); }
+            return jpeg(all);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String jpeg(android.graphics.Bitmap b) {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out);
+        return android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP);
+    }
+
+    private String priceAlert(String action, String item, String when, double target, String id) throws Exception {
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        if (a.equals("add")) {
+            if (item == null || item.trim().isEmpty() || target <= 0) return err("missing", "Need what to watch and the price.");
+            JSONObject o = new JSONObject().put("id", Notes.id("p")).put("item", item.trim()).put("target", target)
+                    .put("when", "below".equalsIgnoreCase(when) ? "below" : "above");
+            Notes.add(act(), "price_alerts", o, 20);
+            return ok().put("watching", o).put("note", "Jarvis checks about every 3 hours using web search (small OpenAI cost per check).").toString();
+        }
+        if (a.equals("cancel")) return Notes.remove(act(), "price_alerts", "id", id == null ? "" : id) ? ok().put("cancelled", id).toString() : err("not_found", "No such alert.");
+        JSONArray arr = new JSONArray();
+        for (JSONObject o : Notes.list(act(), "price_alerts")) arr.put(o);
+        return ok().put("price_alerts", arr).toString();
+    }
+
+    private String trainStatus(String query) throws Exception {
+        if (query == null || query.trim().isEmpty()) return err("missing", "Which train number or PNR?");
+        String q = query.trim();
+        boolean pnr = q.replaceAll("[^0-9]", "").length() == 10;
+        String r = webSearch((pnr ? "Indian Railways PNR status " : "live running status today of Indian train ") + q
+                + ". Give current location or status, delay, expected arrival at the next stations.");
+        JSONObject o = new JSONObject(r);
+        if (pnr) o.put("note", "PNR status is often not public on the web; if the answer is unclear, offer to open the IRCTC or Where is my Train app.");
+        String wimt = "com.whereismytrain.android";
+        if (installed(wimt)) o.put("app_available", "Where is my Train (open_app)");
+        return o.toString();
+    }
+
+    private String water(boolean on, int every, int from, int to) throws Exception {
+        Health.setWater(act(), on, every <= 0 ? 2 : every, from <= 0 ? 8 : from, to <= 0 ? 22 : to);
+        return ok().put("water_reminders", on).put("every_hours", every <= 0 ? 2 : every).toString();
+    }
+
+    private String steps() throws Exception {
+        if (!Health.canCount(act())) return needPermission(Manifest.permission.ACTIVITY_RECOGNITION, "counting steps (physical activity)");
+        int n = Health.stepsToday(act());
+        if (n < 0) return err("no_sensor", "This phone has no step counter.");
+        return ok().put("steps_today", n).put("note", n == 0 ? "Counting may have just started today; it will be right from tomorrow." : "").toString();
+    }
+
+
+    // ================================================================ offline commands
+
+    boolean online() { return Net.online(act()); }
+
+    private static boolean any(String t, String... words) {
+        for (String w : words) if (t.contains(w)) return true;
+        return false;
+    }
+
+    private static int firstNumber(String t) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,4})").matcher(t);
+        return m.find() ? Integer.parseInt(m.group(1)) : -1;
+    }
+
+    /** No internet: the everyday commands, understood on the phone without AI. Returns what to say. */
+    String offlineCommand(String text) {
+        String t = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        boolean off = any(t, "ఆఫ్", " off", "ఆపు", "ఆపేయ్", "బంద్");
+        try {
+            if (any(t, "టార్చ్", "ఫ్లాష్", "torch", "flash", "లైట్")) {
+                flashlight(!off);
+                return off ? "టార్చ్ ఆఫ్ చేశాను." : "టార్చ్ ఆన్ చేశాను.";
+            }
+            if (any(t, "wifi", "వైఫై", "వై ఫై", "wi-fi")) {
+                String r = phoneSetting("wifi", off ? "off" : "on");
+                return new JSONObject(r).optBoolean("ok") ? "WiFi " + (off ? "ఆఫ్" : "ఆన్") + " చేశాను." : "WiFi మార్చలేకపోయాను.";
+            }
+            if (any(t, "డేటా", "data", "నెట్")) {
+                phoneSetting("mobile_data", off ? "off" : "on");
+                return "మొబైల్ డేటా పేజీ తెరిచాను.";
+            }
+            if (any(t, "ఎక్కడున్నావ్", "ఎక్కడ ఉన్నావ్", "where are you")) {
+                findPhone();
+                return "ఇక్కడే ఉన్నాను!";
+            }
+            if (any(t, "బ్యాటరీ", "battery", "ఛార్జ్")) {
+                JSONObject o = new JSONObject(deviceStatus());
+                return "బ్యాటరీ " + o.optInt("battery_pct", o.optInt("battery", -1)) + " శాతం ఉంది.";
+            }
+            if (any(t, "టైమ్", "సమయం", "time", "ఎంత అయింది", "తేదీ", "date")) {
+                return new java.text.SimpleDateFormat("h:mm a, EEEE d MMMM", Locale.ENGLISH).format(new java.util.Date()) + ".";
+            }
+            if (any(t, "కాల్", "call", "ఫోన్ చెయ్", "ఫోన్ చేయి")) {
+                String who = t.replaceAll("(కాల్|call|చెయ్యి|చెయ్|చేయి|చేయండి|ఫోన్|please|ప్లీజ్)", " ")
+                        .replaceAll("\\s(కి|కు|కీ)\\s", " ").replaceAll("(కి|కు)$", "").trim();
+                if (who.isEmpty()) return "ఎవరికి కాల్ చేయాలి?";
+                JSONObject o = new JSONObject(call(who));
+                return o.optBoolean("ok") ? o.optString("calling") + " కి కాల్ చేస్తున్నాను." : "ఆ పేరుతో కాంటాక్ట్ దొరకలేదు.";
+            }
+            if (any(t, "అలారం", "alarm")) {
+                int h = firstNumber(t);
+                if (h < 0 || h > 23) return "ఏ టైమ్‌కి అలారం పెట్టాలి?";
+                int m = 0;
+                java.util.regex.Matcher mm = java.util.regex.Pattern.compile("\\d{1,2}[:.](\\d{2})").matcher(t);
+                if (mm.find()) m = Integer.parseInt(mm.group(1));
+                if (h < 12 && any(t, "సాయంత్రం", "రాత్రి", "మధ్యాహ్నం", "pm", "evening", "night")) h += 12;
+                alarm(h, m, "Jarvis");
+                return String.format(Locale.ENGLISH, "%d:%02d కి అలారం పెట్టాను.", h, m);
+            }
+            if (any(t, "టైమర్", "timer")) {
+                int n = firstNumber(t);
+                if (n <= 0) return "ఎన్ని నిమిషాల టైమర్?";
+                int secs = any(t, "సెకన్", "second") ? n : any(t, "గంట", "hour") ? n * 3600 : n * 60;
+                timer(secs, "Jarvis");
+                return "టైమర్ పెట్టాను.";
+            }
+            if (any(t, "వాల్యూమ్", "volume", "సౌండ్")) {
+                mediaControl(any(t, "తగ్గించు", "తగ్గించ", "down", "తక్కువ") ? "volume_down" : "volume_up", 50);
+                return "సరే.";
+            }
+            if (any(t, "పాట", "సాంగ్", "song", "music", "మ్యూజిక్", "ప్లే", "play", "pause")) {
+                String action = any(t, "తర్వాత", "next", "నెక్స్ట్") ? "next" : any(t, "ముందు", "previous") ? "previous"
+                        : any(t, "స్టాప్", "stop") ? "stop" : off || any(t, "pause") ? "pause" : "play";
+                mediaControl(action, 50);
+                return "సరే.";
+            }
+            if (any(t, "సైలెంట్", "silent")) { phoneSetting("silent", "on"); return "సైలెంట్ చేశాను."; }
+            if (any(t, "వైబ్రేట్", "vibrate")) { phoneSetting("vibrate", "on"); return "వైబ్రేట్ చేశాను."; }
+            if (any(t, "తెరువు", "ఓపెన్", "open")) {
+                String app = t.replaceAll("(తెరువు|ఓపెన్ చెయ్|ఓపెన్ చేయి|ఓపెన్|open|యాప్|app)", " ").trim();
+                if (app.isEmpty()) return "ఏ యాప్ తెరవాలి?";
+                JSONObject o = new JSONObject(openApp(app));
+                return o.optBoolean("ok") ? o.optString("opened") + " తెరిచాను." : "ఆ యాప్ దొరకలేదు.";
+            }
+        } catch (Exception e) {
+            return "అది చేయలేకపోయాను.";
+        }
+        return "ఇంటర్నెట్ లేదు, " + prefs.name() + ". ఇప్పుడు టార్చ్, కాల్, అలారం, టైమర్, పాటలు, వాల్యూమ్, యాప్ తెరవడం, WiFi ఆన్ చేయడం, బ్యాటరీ, టైమ్ మాత్రమే చేయగలను.";
     }
 
     // ================================================================ places & location reminders

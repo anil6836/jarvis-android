@@ -101,6 +101,17 @@ final class Prefs {
     /** Night: quiet, nothing is read out until "good morning". */
     boolean night() { return sp.getBoolean("night", false); }
     void set(String key, boolean v) { sp.edit().putBoolean(key, v).apply(); }
+    /** Jarvis speaks up on his own (meetings, rain, habits...). */
+    boolean proactive() { return sp.getBoolean("proactive", true); }
+    /** Iron Man style sound effects. */
+    boolean sfx() { return sp.getBoolean("sfx", true); }
+    /** Comma-separated contact names or numbers for SOS. */
+    String sosContacts() { return sp.getString("sos_contacts", ""); }
+    /** Folder picked for "read my documents" (a content:// tree), or "". */
+    String docsTree() { return sp.getString("docs_tree", ""); }
+    /** Only Anil's own voice wakes Jarvis. */
+    boolean voiceLock() { return sp.getBoolean("voice_lock", false); }
+    float voiceLockMax() { return sp.getFloat("voice_lock_max", 0.55f); }
 
     // ---- daily morning briefing
     boolean briefingOn() { return sp.getBoolean("briefing", false); }

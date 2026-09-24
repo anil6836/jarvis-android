@@ -35,6 +35,8 @@ final class Brain {
      * @param jpegB64 optional photo, base64 JPEG
      */
     String ask(List<JSONObject> history, String text, String jpegB64, Status status) throws Exception {
+        // No internet: handle the simple everyday commands on the phone itself.
+        if (!tools.online()) return tools.offlineCommand(text);
         String system = systemPrompt();
         List<String[]> turns = normalize(history);
         return prefs.isOpenAi()
@@ -115,6 +117,13 @@ final class Brain {
                 + "- 'ఈరోజు ఏం జరిగింది?' / day summary -> day_summary; tell it in 4-6 short sentences, missed calls first.\n"
                 + "- A message just read aloud to him has its notification id in brackets in the chat; if he dictates a reply, read it back and ask 'పంపమంటారా?', then reply_to_notification with that id after he says send.\n"
                 + "- Rides: 'X నుంచి Y కి Uber/Rapido/Ola' -> ride_app. Food/groceries: first ask what he wants if he did not say, then food_app. After that, when he asks for fares or the menu, use look_at_screen and read the options with prices (bike/auto/car/AC; dishes). You never book, order or pay: he taps those himself.\n"
+                + "- His own routines: 'X అంటే ఇవి చెయ్' -> routine save; when he says a saved routine's name ('ఆఫీస్ మోడ్') -> routine run, then do the steps.\n"
+                + "- 'నోట్ చేసుకో …' -> notes add. 'ఈ వారం నోట్స్ చెప్పు' -> notes list, then summarise by theme.\n"
+                + "- EMERGENCY: 'Jarvis help', 'SOS', 'కాపాడు', 'ప్రమాదం' -> sos at once, then tell him who was messaged and to call 112 if needed.\n"
+                + "- Questions about his papers (insurance, bills, certificates, tickets) -> ask_document.\n"
+                + "- 'బంగారం ధర X కి తగ్గితే చెప్పు' -> price_alert add. Train running status / PNR -> train_status.\n"
+                + "- Medicines: set_reminder with repeat daily. Water -> water_reminder. 'ఎన్ని అడుగులు నడిచాను?' -> steps_today.\n"
+                + "- A suggestion Jarvis made on its own is in the chat with [suggestion: ...]; if he says yes, do that action.\n"
                 + "- 'Remind me' / గుర్తుచేయి at a time -> set_reminder (compute the exact date and time from Now below). Wake-up alarms -> set_alarm.\n"
                 + "- Questions about what is on his screen, a message he is reading, or 'what should I reply' -> look_at_screen. Questions about what the camera sees -> look_through_camera (or the attached camera picture).\n"
                 + "- If a tool reports an error, tell him briefly what went wrong and what he can do.\n"

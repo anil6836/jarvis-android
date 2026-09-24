@@ -55,6 +55,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     /** Opened to read a new message aloud, then offer a reply. */
     static final String EXTRA_ANNOUNCE = "jarvis_announce";
     static final String EXTRA_ANNOUNCE_CONTEXT = "jarvis_announce_ctx";
+    /** The question after the announcement (default: "రిప్లై ఇవ్వమంటారా?"). */
+    static final String EXTRA_ANNOUNCE_ASK = "jarvis_announce_ask";
     private String callText;      // non-null while asking about a ringing call
     private int callTries;
     private boolean ringMuted;
@@ -248,9 +250,10 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             closeSheet();
             return;
         }
+        Sfx.chirp(this, prefs);
         Greeting.play(this, prefs, () -> {
             if (isFinishing()) return;
-            if (prefs.liveReady()) startLive(); else listen();
+            if (prefs.liveReady() && Net.online(this)) startLive(); else listen();
         });
     }
 
@@ -304,10 +307,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacks(autoClose);
         MainActivity.inConversation = true;
         WakeService.pause(this);
-        String said = text + ". రిప్లై ఇవ్వమంటారా?";
+        String ask = i.getStringExtra(EXTRA_ANNOUNCE_ASK);
+        String said = text + (ask == null ? ". రిప్లై ఇవ్వమంటారా?" : " " + ask);
         store.addChat("assistant", said + (ctx == null ? "" : ctx), false);
         heard.setVisibility(View.GONE);
-        status.setText("కొత్త మెసేజ్");
+        status.setText(ask == null ? "కొత్త మెసేజ్" : "Jarvis సూచన");
         showReply(text, false);
         setAction(IconView.STOP);
         orb.setState(OrbView.SPEAKING);

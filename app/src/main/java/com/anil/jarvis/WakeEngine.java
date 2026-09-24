@@ -50,6 +50,15 @@ final class WakeEngine {
     private volatile org.vosk.Recognizer vosk;
     private volatile boolean voskLoading;
     private org.vosk.Model voskModel;
+    private org.vosk.SpeakerModel spkModel;
+
+    // "only my voice": Anil's voice print, and the last voice vector Vosk produced
+    private final float[] voicePrint;
+    private final float lockMax;
+    private volatile float[] lastSpk;
+    private volatile long lastSpkAt;
+    private long pendingAt;       // a wake word was heard; waiting for its voice vector
+    private float pendingScore;
 
     private OrtEnvironment env;
     private OrtSession mel, emb, ww;
@@ -70,11 +79,14 @@ final class WakeEngine {
         // threshold 0.25 (sensitive) .. 0.75 (strict) -> word confidence 0.83 .. 0.98
         this.voskConf = 0.75 + threshold * 0.3;
         this.listener = listener;
+        Prefs p = new Prefs(c);
+        this.voicePrint = p.voiceLock() ? VoiceLock.print(c) : null;
+        this.lockMax = p.voiceLockMax();
     }
 
     /** Loads the "Jarvis" word detector in the background (downloads its model the first time). */
     private void loadJarvisWord() {
-        if (!jarvisWord || vosk != null || voskLoading) return;
+        if ((!jarvisWord && voicePrint == null) || vosk != null || voskLoading) return;
         voskLoading = true;
         new Thread(() -> {
             try {
@@ -83,6 +95,15 @@ final class WakeEngine {
                 org.vosk.Model m = new org.vosk.Model(dir.getAbsolutePath());
                 org.vosk.Recognizer r = new org.vosk.Recognizer(m, (float) RATE, "[\"jarvis\", \"hey jarvis\", \"[unk]\"]");
                 r.setWords(true);
+                if (voicePrint != null) {
+                    try {
+                        java.io.File sd = VoskModel.ensureSpk(ctx, listener::onStatus);
+                        spkModel = new org.vosk.SpeakerModel(sd.getAbsolutePath());
+                        r.setSpeakerModel(spkModel);
+                    } catch (Throwable e) {
+                        listener.onStatus("గొంతు గుర్తింపు సిద్ధం కాలేదు (" + e.getMessage() + "); అందరి గొంతుకీ పలుకుతుంది.");
+                    }
+                }
                 voskModel = m;
                 vosk = r;
                 listener.onStatus("ready");
@@ -105,7 +126,13 @@ final class WakeEngine {
         }
         if (!r.acceptWaveForm(b, b.length)) return false;
         try {
-            org.json.JSONObject res = new org.json.JSONObject(r.getResult());
+            String json = r.getResult();
+            if (spkModel != null) {
+                float[] v = VoiceLock.vector(json);
+                if (v != null) { lastSpk = v; lastSpkAt = SystemClock.elapsedRealtime(); }
+            }
+            if (!jarvisWord) return false;
+            org.json.JSONObject res = new org.json.JSONObject(json);
             org.json.JSONArray words = res.optJSONArray("result");
             for (int i = 0; words != null && i < words.length(); i++) {
                 org.json.JSONObject w = words.getJSONObject(i);
@@ -139,6 +166,8 @@ final class WakeEngine {
         mel = emb = ww = null;
         try { if (vosk != null) vosk.close(); } catch (Throwable ignored) {}
         try { if (voskModel != null) voskModel.close(); } catch (Throwable ignored) {}
+        try { if (spkModel != null) spkModel.close(); } catch (Throwable ignored) {}
+        spkModel = null;
         vosk = null;
         voskModel = null;
     }
@@ -225,7 +254,22 @@ final class WakeEngine {
                     now = SystemClock.elapsedRealtime();
                     if ((score >= threshold || word) && now > quietUntil) {
                         quietUntil = now + 2000;
-                        listener.onWake(score);
+                        if (spkModel == null || voicePrint == null || vosk == null) {
+                            listener.onWake(score);
+                        } else {
+                            pendingAt = now;
+                            pendingScore = score;
+                        }
+                    }
+                    if (pendingAt > 0) {
+                        // Only Anil's voice: compare the voice that said it with his voice print.
+                        if (lastSpkAt >= pendingAt - 400) {
+                            decide(lastSpk);
+                        } else if (now - pendingAt > 700) {
+                            float[] v = null;
+                            try { v = VoiceLock.vector(vosk.getFinalResult()); } catch (Throwable ignored) {}
+                            decide(v);
+                        }
                     }
                 }
             }
@@ -238,6 +282,20 @@ final class WakeEngine {
                 rec.release();
             }
         }
+    }
+
+    private void decide(float[] v) {
+        pendingAt = 0;
+        if (v == null) { // no voice vector (too short): don't lock Anil out
+            VoiceLock.lastDistance = -1;
+            VoiceLock.lastAccepted = true;
+            listener.onWake(pendingScore);
+            return;
+        }
+        double d = VoiceLock.distance(v, voicePrint);
+        VoiceLock.lastDistance = d;
+        VoiceLock.lastAccepted = d <= lockMax;
+        if (d <= lockMax) listener.onWake(pendingScore);
     }
 
     /** Feeds 1280 new samples; returns the wake-word score (0 while warming up). */

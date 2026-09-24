@@ -16,6 +16,8 @@ final class VoskModel {
     interface Progress { void update(String text); }
 
     private static final String URL_ZIP = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip";
+    /** Speaker (voice print) model for "only my voice", about 13 MB. */
+    private static final String SPK_ZIP = "https://alphacephei.com/vosk/models/vosk-model-spk-0.4.zip";
 
     private VoskModel() {}
 
@@ -24,15 +26,25 @@ final class VoskModel {
     static boolean ready(Context c) { return new File(dir(c), ".ready").exists(); }
 
     /** Returns the model folder, downloading about 40 MB the first time. */
-    static synchronized File ensure(Context c, Progress progress) throws Exception {
-        File dir = dir(c);
+    static File ensure(Context c, Progress progress) throws Exception {
+        return ensure(c, URL_ZIP, dir(c), "\"Jarvis\" పదం", progress);
+    }
+
+    static File spkDir(Context c) { return new File(c.getFilesDir(), "vosk-spk"); }
+
+    /** The voice-print model, downloading it the first time. */
+    static File ensureSpk(Context c, Progress progress) throws Exception {
+        return ensure(c, SPK_ZIP, spkDir(c), "గొంతు గుర్తింపు", progress);
+    }
+
+    private static synchronized File ensure(Context c, String url, File dir, String what, Progress progress) throws Exception {
         File ok = new File(dir, ".ready");
         if (ok.exists()) return dir;
         deleteTree(dir);
         if (!dir.mkdirs() && !dir.isDirectory()) throw new IllegalStateException("cannot create model folder");
 
-        File zip = new File(c.getCacheDir(), "vosk-en.zip");
-        HttpURLConnection conn = (HttpURLConnection) new URL(URL_ZIP).openConnection();
+        File zip = new File(c.getCacheDir(), dir.getName() + ".zip");
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(20000);
         conn.setReadTimeout(60000);
         conn.setInstanceFollowRedirects(true);
@@ -48,14 +60,14 @@ final class VoskModel {
                 got += n;
                 if (got - lastShown > 2_000_000) {
                     lastShown = got;
-                    progress.update("\"Jarvis\" పదం సిద్ధం చేస్తున్నాను: " + (got >> 20) + (total > 0 ? "/" + (total >> 20) : "") + " MB");
+                    progress.update(what + " సిద్ధం చేస్తున్నాను: " + (got >> 20) + (total > 0 ? "/" + (total >> 20) : "") + " MB");
                 }
             }
         } finally {
             conn.disconnect();
         }
 
-        progress.update("\"Jarvis\" పదం సిద్ధం చేస్తున్నాను: అన్‌జిప్…");
+        progress.update(what + " సిద్ధం చేస్తున్నాను: అన్‌జిప్…");
         String root = dir.getCanonicalPath() + File.separator;
         try (ZipInputStream zin = new ZipInputStream(new java.io.FileInputStream(zip))) {
             ZipEntry e;

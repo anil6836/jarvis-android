@@ -20,7 +20,17 @@ public class AlarmReceiver extends BroadcastReceiver {
                 JSONObject r = null;
                 for (JSONObject x : s.reminders()) if (x.optString("id").equals(id)) r = x;
                 if (r == null || r.optBoolean("done")) return;
-                s.markReminderDone(id);
+                String repeat = r.optString("repeat", "");
+                if (repeat.equals("daily") || repeat.equals("weekly")) {
+                    // medicine and other repeating reminders: move to the next time instead of finishing
+                    long next = r.optLong("at");
+                    long step = repeat.equals("daily") ? 86400000L : 7 * 86400000L;
+                    while (next <= System.currentTimeMillis()) next += step;
+                    JSONObject moved = s.updateReminder(id, "at", next);
+                    if (moved != null) Reminders.schedule(c, moved);
+                } else {
+                    s.markReminderDone(id);
+                }
                 String text = r.optString("text");
                 Reminders.notify(c, "⏰ Jarvis రిమైండర్", text, id == null ? 1 : id.hashCode());
                 PendingResult pr = goAsync();
@@ -45,6 +55,7 @@ public class AlarmReceiver extends BroadcastReceiver {
             case Intent.ACTION_TIMEZONE_CHANGED:
                 Reminders.rescheduleAll(c);
                 GeoReminders.rearmAll(c);
+                Proactive.schedule(c);
                 break;
             default:
                 break;
