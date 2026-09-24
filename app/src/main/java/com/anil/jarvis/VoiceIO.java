@@ -144,6 +144,7 @@ final class VoiceIO {
         int max = TextToSpeech.getMaxSpeechInputLength() - 10;
         if (clean.length() > max) clean = clean.substring(0, max);
         tts.setSpeechRate(rate);
+        try { tts.setLanguage(Lang.of(clean)); } catch (Exception ignored) {} // Hindi etc. for translations
         utterance++;
         speaking = true;
         tts.speak(clean, TextToSpeech.QUEUE_FLUSH, new Bundle(), "j" + utterance);

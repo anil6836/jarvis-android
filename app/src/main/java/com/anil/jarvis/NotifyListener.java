@@ -117,6 +117,65 @@ public class NotifyListener extends NotificationListenerService {
             items.put(it.key, it); // re-insert at the end = newest
             prune();
         }
+        maybeReadAloud(sbn, n, x, app, title, text);
+    }
+
+    // ---------------------------------------------------------------- read new messages aloud
+
+    private static final Map<String, String> spoken = new java.util.HashMap<>();
+    private static final Map<String, Long> lastFrom = new java.util.HashMap<>();
+
+    private boolean chatApp(String pkg) {
+        if (pkg.startsWith("com.whatsapp") || pkg.startsWith("org.telegram") || pkg.equals("org.thunderdog.challegram")
+                || pkg.equals("com.google.android.apps.messaging") || pkg.equals("com.samsung.android.messaging")
+                || pkg.equals("com.instagram.android")) return true;
+        String sms = android.provider.Telephony.Sms.getDefaultSmsPackage(this);
+        return pkg.equals(sms);
+    }
+
+    /** A new chat message: Jarvis says who sent it and what, then asks "రిప్లై ఇవ్వమంటారా?". */
+    private void maybeReadAloud(StatusBarNotification sbn, Notification n, Bundle x, String app, String from, String text) {
+        Prefs p = new Prefs(this);
+        boolean driving = p.driving();
+        if (!(p.readMessages() || driving) || (p.night() && !driving)) return;
+        if (!chatApp(sbn.getPackageName())) return;
+        if (x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false) && !driving) return; // groups are too chatty
+        if (MainActivity.inConversation || CallControl.busyWithCall()) return;
+        if (!driving) {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) return; // Do Not Disturb
+        }
+        String[] lines = text.split("\n");
+        String last = lines[lines.length - 1].trim();
+        if (last.isEmpty()) return;
+        if (last.length() > 220) last = last.substring(0, 220) + "…";
+        long now = System.currentTimeMillis();
+        synchronized (spoken) {
+            if (last.equals(spoken.get(sbn.getKey()))) return; // the same message posted again
+            spoken.put(sbn.getKey(), last);
+            Long prev = lastFrom.get(from);
+            if (prev != null && now - prev < 20000) return; // several quick messages: read the first only
+            lastFrom.put(from, now);
+        }
+        if (now - sbn.getPostTime() > 60000) return; // old ones shown again after a reboot
+        int id = 0;
+        boolean canReply = false;
+        synchronized (items) {
+            Item it = items.get(sbn.getKey());
+            if (it != null) { id = it.id; canReply = it.reply != null; }
+        }
+        String say = p.name() + ", " + (from.isEmpty() ? app : from) + " నుంచి " + app + " మెసేజ్: " + last;
+        String context = " [notification id " + id + ", " + app + (canReply ? ", can reply with reply_to_notification" : "") + "]";
+        if (android.provider.Settings.canDrawOverlays(this)) {
+            try {
+                startActivity(new android.content.Intent(this, SheetActivity.class)
+                        .putExtra(SheetActivity.EXTRA_ANNOUNCE, say)
+                        .putExtra(SheetActivity.EXTRA_ANNOUNCE_CONTEXT, context)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));
+                return;
+            } catch (Exception ignored) {}
+        }
+        Announcer.say(this, say);
     }
 
     private static final Map<String, Long> announced = new java.util.HashMap<>();

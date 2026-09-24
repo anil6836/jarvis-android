@@ -186,6 +186,24 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "add (default), list or cancel"}, {"place", "string", "Saved place name or address, English"},
                         {"text", "string", "What to remind him"}, {"when", "string", "arrive (default) or leave"},
                         {"id", "string", "For cancel: the reminder id from list"}})));
+        DEFS.add(new Def("driving_mode",
+                "Driving mode on/off: every new message is read aloud and calls are announced for voice answering. Optionally start navigation.",
+                schema(new String[][]{{"on", "boolean", "true to start, false to stop"}, {"destination", "string", "Optional place to navigate to"}}, "on")));
+        DEFS.add(new Def("night_mode",
+                "'గుడ్ నైట్' = on: phone quiet (Do Not Disturb or vibrate), low brightness, nothing read aloud, optional wake-up alarm. 'గుడ్ మార్నింగ్' = off: sound back on, then brief him.",
+                schema(new String[][]{{"on", "boolean", "true for good night, false for good morning"}, {"alarm", "string", "Optional wake-up time 'HH:mm' (24h)"}}, "on")));
+        DEFS.add(new Def("find_phone",
+                "Anil cannot find his phone ('ఎక్కడున్నావ్?', 'where are you'): ring loudly and blink the flashlight.",
+                schema(new String[][]{})));
+        DEFS.add(new Def("add_expense",
+                "Write down an expense (e.g. from a bill photo he shows, or 'petrol 500 రాసుకో'). It counts in bank_spending and day_summary.",
+                schema(new String[][]{{"amount", "number", "Amount in rupees"}, {"what", "string", "Short description, e.g. 'Groceries - More supermarket'"}}, "amount")));
+        DEFS.add(new Def("day_summary",
+                "Summary of today: calls (missed ones), messages and who sent them, money spent, reminders, missions done. For 'ఈరోజు ఏం జరిగింది?'.",
+                schema(new String[][]{})));
+        DEFS.add(new Def("scan_qr",
+                "Read a QR code or barcode from the live camera, or else from the newest photo/screenshot. UPI codes show the payee; Jarvis never pays.",
+                schema(new String[][]{{"open", "boolean", "true to open the link / UPI app after reading (only when he asks)"}})));
         DEFS.add(new Def("now_playing", "Which song or video is playing now, and in which app.", schema(new String[][]{})));
         DEFS.add(new Def("look_at_screen",
                 "Look at what is on Anil's phone screen (the app he was using when he called Jarvis) and answer a question about it, e.g. 'what is on my screen', 'what should I reply to this message', 'explain this'.",
@@ -265,6 +283,12 @@ final class Tools {
             case "bank_spending": return "బ్యాంక్ మెసేజ్‌లు లెక్కపెడుతున్నాను…";
             case "save_place": return "ఈ చోటు గుర్తుపెట్టుకుంటున్నాను…";
             case "location_reminder": return "లొకేషన్ రిమైండర్…";
+            case "driving_mode": return "డ్రైవింగ్ మోడ్…";
+            case "night_mode": return "నైట్ మోడ్…";
+            case "find_phone": return "ఇక్కడే ఉన్నాను!";
+            case "add_expense": return "ఖర్చు రాస్తున్నాను…";
+            case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
+            case "scan_qr": return "QR చదువుతున్నాను…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
             case "look_through_camera": return "కెమెరాలో చూస్తున్నాను…";
             case "add_mission": return "మిషన్ జోడిస్తున్నాను…";
@@ -308,6 +332,12 @@ final class Tools {
                 case "call_control": return callControl(a.optString("action"));
                 case "bank_spending": return bankSpending(a.optInt("days", 30));
                 case "save_place": return savePlace(a.optString("name"));
+                case "driving_mode": return drivingMode(a.optBoolean("on", true), a.optString("destination", ""));
+                case "night_mode": return nightMode(a.optBoolean("on", true), a.optString("alarm", ""));
+                case "find_phone": return findPhone();
+                case "add_expense": return addExpense(a.optDouble("amount", 0), a.optString("what", ""));
+                case "day_summary": return daySummary();
+                case "scan_qr": return scanQr(a.optBoolean("open", false));
                 case "location_reminder": return locationReminder(a.optString("action", "add"), a.optString("place"),
                         a.optString("text"), a.optString("when", "arrive"), a.optString("id"));
                 case "now_playing": return nowPlaying();
@@ -2009,7 +2039,12 @@ final class Tools {
     private String bankSpending(int days) throws Exception {
         if (!has(Manifest.permission.READ_SMS)) return needPermission(Manifest.permission.READ_SMS, "reading bank SMS");
         days = Math.max(1, Math.min(92, days <= 0 ? 30 : days));
-        long since = System.currentTimeMillis() - days * 86400000L;
+        JSONObject o = spendingSince(System.currentTimeMillis() - days * 86400000L, 60);
+        return o.put("days", days).toString();
+    }
+
+    /** Bank/UPI SMS plus expenses Anil added himself (bills), since a time. */
+    private JSONObject spendingSince(long since, int maxItems) throws Exception {
         double spent = 0, received = 0;
         JSONArray items = new JSONArray();
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM", Locale.ENGLISH);
@@ -2032,7 +2067,7 @@ final class Tools {
                 try { amt = Double.parseDouble(m.group(1).replace(",", "")); } catch (Exception ex) { continue; }
                 boolean isCredit = credit && !(low.indexOf("debited") >= 0 && low.indexOf("debited") < Math.max(0, low.indexOf("credited")));
                 if (isCredit) received += amt; else spent += amt;
-                if (n++ < 60) {
+                if (n++ < maxItems) {
                     String snippet = body.replaceAll("\\s+", " ").replaceAll("[0-9Xx*]{6,}", "…");
                     if (snippet.length() > 110) snippet = snippet.substring(0, 110);
                     items.put(new JSONObject().put("date", f.format(new java.util.Date(c.getLong(2))))
@@ -2041,9 +2076,193 @@ final class Tools {
                 }
             }
         }
-        return ok().put("days", days).put("total_spent", Math.round(spent)).put("total_received", Math.round(received))
+        double manual = 0;
+        JSONArray bills = new JSONArray();
+        for (JSONObject e : Money.expenses(act())) {
+            if (e.optLong("t") < since) continue;
+            manual += e.optDouble("amount");
+            if (bills.length() < maxItems) bills.put(e);
+        }
+        return ok().put("total_spent_sms", Math.round(spent)).put("total_received", Math.round(received))
+                .put("bills_added_by_anil", Math.round(manual)).put("bills", bills)
+                .put("total_spent", Math.round(spent + manual))
                 .put("transactions", n).put("recent", items)
-                .put("note", "Estimated from bank/UPI SMS on this phone only; card or app payments without an SMS are missing.").toString();
+                .put("note", "Estimated from bank/UPI SMS on this phone plus bills Anil added; card or app payments without an SMS are missing.");
+    }
+
+
+    // ================================================================ modes, find phone, bills, day summary, QR
+
+    private String drivingMode(boolean on, String destination) throws Exception {
+        prefs.set("driving", on);
+        if (on) prefs.set("night", false);
+        JSONObject o = ok().put("driving_mode", on);
+        if (on) {
+            android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
+            if (nm != null && nm.isNotificationPolicyAccessGranted()) nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
+            if (destination != null && !destination.trim().isEmpty()) {
+                maps(destination.trim(), true);
+                o.put("navigating_to", destination.trim());
+            }
+            o.put("note", "Every new message is read aloud and calls are announced; he answers by voice. Say 'డ్రైవింగ్ అయిపోయింది' to stop.");
+        }
+        return o.toString();
+    }
+
+    private String nightMode(boolean on, String alarmTime) throws Exception {
+        prefs.set("night", on);
+        android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
+        android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
+        boolean dnd = nm != null && nm.isNotificationPolicyAccessGranted();
+        boolean canWrite = android.provider.Settings.System.canWrite(act());
+        JSONObject o = ok().put("night_mode", on);
+        if (on) {
+            prefs.set("driving", false);
+            if (dnd) nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY);
+            else try { am.setRingerMode(android.media.AudioManager.RINGER_MODE_VIBRATE); } catch (Exception ignored) {}
+            o.put("phone", dnd ? "do not disturb (alarms still ring)" : "vibrate");
+            if (canWrite) {
+                android.provider.Settings.System.putInt(act().getContentResolver(), android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+                android.provider.Settings.System.putInt(act().getContentResolver(), android.provider.Settings.System.SCREEN_BRIGHTNESS, 20);
+                o.put("brightness", "low");
+            }
+            if (alarmTime != null && alarmTime.matches("\\s*\\d{1,2}[:.]\\d{2}\\s*")) {
+                String[] hm = alarmTime.trim().split("[:.]");
+                alarm(Integer.parseInt(hm[0]), Integer.parseInt(hm[1]), "Good morning");
+                o.put("alarm", alarmTime.trim());
+            }
+            if (!dnd) o.put("tip", "For full Do Not Disturb, Anil can allow 'Do Not Disturb access' for Jarvis once.");
+        } else {
+            if (dnd) nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
+            try { am.setRingerMode(android.media.AudioManager.RINGER_MODE_NORMAL); } catch (Exception ignored) {}
+            if (canWrite) android.provider.Settings.System.putInt(act().getContentResolver(), android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC);
+            o.put("next", "Sound is back on. Now give him a short good-morning briefing: call get_weather and list_reminders / calendar_events for today, then say it in 3-4 sentences.");
+        }
+        return o.toString();
+    }
+
+    private String findPhone() throws Exception {
+        FindPhone.start(act());
+        return ok().put("ringing", true).put("note", "The phone rings loudly and the flashlight blinks for 40 seconds, or until he unlocks it.").toString();
+    }
+
+    private String addExpense(double amount, String what) throws Exception {
+        if (amount <= 0) return err("missing", "How much was it?");
+        JSONObject e = Money.add(act(), amount, what == null ? "" : what.trim());
+        return ok().put("added", e).put("month_total_bills", Math.round(Money.totalSince(act(), monthStart()))).toString();
+    }
+
+    private static long dayStart() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.set(java.util.Calendar.HOUR_OF_DAY, 0); c.set(java.util.Calendar.MINUTE, 0);
+        c.set(java.util.Calendar.SECOND, 0); c.set(java.util.Calendar.MILLISECOND, 0);
+        return c.getTimeInMillis();
+    }
+
+    private static long monthStart() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.setTimeInMillis(dayStart());
+        c.set(java.util.Calendar.DAY_OF_MONTH, 1);
+        return c.getTimeInMillis();
+    }
+
+    private String daySummary() throws Exception {
+        long start = dayStart();
+        JSONObject o = ok();
+        // calls
+        if (has(Manifest.permission.READ_CALL_LOG)) {
+            int in = 0, out = 0, missed = 0;
+            JSONArray missedFrom = new JSONArray();
+            try (Cursor c = act().getContentResolver().query(android.provider.CallLog.Calls.CONTENT_URI,
+                    new String[]{android.provider.CallLog.Calls.TYPE, android.provider.CallLog.Calls.CACHED_NAME, android.provider.CallLog.Calls.NUMBER},
+                    android.provider.CallLog.Calls.DATE + " >= ?", new String[]{String.valueOf(start)}, null)) {
+                while (c != null && c.moveToNext()) {
+                    int t = c.getInt(0);
+                    if (t == android.provider.CallLog.Calls.INCOMING_TYPE) in++;
+                    else if (t == android.provider.CallLog.Calls.OUTGOING_TYPE) out++;
+                    else if (t == android.provider.CallLog.Calls.MISSED_TYPE) {
+                        missed++;
+                        String who = c.getString(1);
+                        if (missedFrom.length() < 8) missedFrom.put(who == null || who.isEmpty() ? c.getString(2) : who);
+                    }
+                }
+            } catch (Exception ignored) {}
+            o.put("calls", new JSONObject().put("incoming", in).put("outgoing", out).put("missed", missed).put("missed_from", missedFrom));
+        } else {
+            host.askPermissions(new String[]{Manifest.permission.READ_CALL_LOG});
+            o.put("calls", "Call history needs the call-log permission (a prompt was shown).");
+        }
+        // messages
+        java.util.Map<String, Integer> senders = new java.util.LinkedHashMap<>();
+        int msgs = 0;
+        for (NotifyListener.Item it : NotifyListener.recent("", 60)) {
+            if (it.when < start) continue;
+            msgs++;
+            String k = (it.from.isEmpty() ? it.app : it.from) + " (" + it.app + ")";
+            senders.put(k, senders.containsKey(k) ? senders.get(k) + 1 : 1);
+        }
+        o.put("messages", new JSONObject().put("count", msgs).put("from", new JSONObject(senders)));
+        // money
+        if (has(Manifest.permission.READ_SMS)) {
+            JSONObject m = spendingSince(start, 8);
+            o.put("money_today", new JSONObject().put("spent", m.optLong("total_spent")).put("received", m.optLong("total_received")).put("items", m.optJSONArray("recent")));
+        } else {
+            o.put("money_today", new JSONObject().put("bills_added", Math.round(Money.totalSince(act(), start))));
+        }
+        // reminders and missions
+        JSONArray remDone = new JSONArray(), remLeft = new JSONArray(), doneMissions = new JSONArray();
+        for (JSONObject r : store.reminders()) {
+            long at = r.optLong("at");
+            if (at < start || at >= start + 86400000L) continue;
+            (r.optBoolean("done") ? remDone : remLeft).put(r.optString("text"));
+        }
+        int active = 0;
+        for (JSONObject m : store.missions()) {
+            if (m.optBoolean("done") && m.optLong("doneAt") >= start) doneMissions.put(m.optString("text"));
+            if (!m.optBoolean("done")) active++;
+        }
+        o.put("reminders_done", remDone).put("reminders_left_today", remLeft)
+                .put("missions_completed_today", doneMissions).put("missions_still_active", active);
+        return o.toString();
+    }
+
+    private String scanQr(boolean open) throws Exception {
+        android.graphics.Bitmap bmp = null;
+        String source;
+        String frame = CameraPanel.latestFrame;
+        if (frame != null) {
+            byte[] jpg = android.util.Base64.decode(frame, android.util.Base64.DEFAULT);
+            bmp = android.graphics.BitmapFactory.decodeByteArray(jpg, 0, jpg.length);
+            source = "live camera";
+        } else {
+            String e = photoPermission();
+            if (e != null) return e;
+            List<Uri> last = findPhotos("", 1, true);
+            if (last.isEmpty()) return err("no_image", "Open the live camera and point it at the QR code, or take a screenshot of it, then ask again.");
+            android.graphics.BitmapFactory.Options opt = new android.graphics.BitmapFactory.Options();
+            opt.inSampleSize = 2;
+            try (java.io.InputStream in = act().getContentResolver().openInputStream(last.get(0))) {
+                bmp = android.graphics.BitmapFactory.decodeStream(in, null, opt);
+            }
+            source = "newest photo/screenshot";
+        }
+        if (bmp == null) return err("no_image", "Could not read the picture.");
+        String text = QrReader.read(bmp);
+        if (text == null) return err("no_qr", "No QR code or barcode found in the " + source + ". Hold it steady and closer, then ask again.");
+        JSONObject o = ok().put("source", source).put("qr", text);
+        if (text.toLowerCase(Locale.ROOT).startsWith("upi:")) {
+            Uri u = Uri.parse(text);
+            o.put("upi_payee", u.getQueryParameter("pn")).put("upi_id", u.getQueryParameter("pa")).put("amount", u.getQueryParameter("am"))
+                    .put("note", "A UPI payment code. Jarvis never pays by itself; if he wants to pay, call scan_qr again with open=true and he finishes in his UPI app with his PIN.");
+        }
+        if (open && (text.startsWith("http") || text.toLowerCase(Locale.ROOT).startsWith("upi:"))) {
+            if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+            start(Intent.createChooser(new Intent(Intent.ACTION_VIEW, Uri.parse(text)), "తెరవండి").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            o.put("opened", true);
+        }
+        return o.toString();
     }
 
     // ================================================================ places & location reminders

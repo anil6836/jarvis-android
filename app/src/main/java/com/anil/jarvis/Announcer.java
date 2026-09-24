@@ -68,6 +68,7 @@ final class Announcer {
             return;
         }
         if (!ready) { waiting.add(text); return; }
+        try { tts.setLanguage(Lang.of(text)); } catch (Exception ignored) {}
         tts.speak(text, TextToSpeech.QUEUE_ADD, null, "a" + (n++));
     }
 }

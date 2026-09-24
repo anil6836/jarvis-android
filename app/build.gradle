@@ -52,6 +52,7 @@ dependencies {
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
     // WebSocket for the live (real-time) voice conversation
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.zxing:core:3.5.3'
     // Offline "Jarvis" single-word detection (model downloaded on the phone the first time)
     implementation 'com.alphacephei:vosk-android:0.3.47@aar'
     implementation 'net.java.dev.jna:jna:5.13.0@aar'

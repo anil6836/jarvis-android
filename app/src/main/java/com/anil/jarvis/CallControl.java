@@ -55,6 +55,9 @@ final class CallControl {
 
     static String ringingWho() { return ringingWho; }
 
+    /** A call is ringing or in progress: don't talk over it. */
+    static boolean busyWithCall() { return isRinging() || ongoing != null; }
+
     // ---------------------------------------------------------------- actions
 
     private static boolean canTelecom(Context c) {

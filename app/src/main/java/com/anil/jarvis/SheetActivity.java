@@ -52,6 +52,9 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     /** Opened for an incoming call: the text to say ("Anil, Ravi నుంచి కాల్ వస్తోంది"). */
     static final String EXTRA_CALL = "jarvis_call";
+    /** Opened to read a new message aloud, then offer a reply. */
+    static final String EXTRA_ANNOUNCE = "jarvis_announce";
+    static final String EXTRA_ANNOUNCE_CONTEXT = "jarvis_announce_ctx";
     private String callText;      // non-null while asking about a ringing call
     private int callTries;
     private boolean ringMuted;
@@ -82,12 +85,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         brain = new Brain(prefs, store, tools);
         voice = new VoiceIO(this, prefs, this);
         setContentView(buildUi());
-        if (!startCallMode(getIntent())) begin();
+        if (!startCallMode(getIntent()) && !startAnnounce(getIntent())) begin();
     }
 
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (startCallMode(intent)) return;
+        if (live == null && !busy && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
         if (live == null && !busy && !voice.listening) begin(); // called again while the panel is open
     }
 
@@ -125,7 +129,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     private View buildUi() {
         FrameLayout root = new FrameLayout(this);
-        root.setOnClickListener(v -> closeSheet()); // tap outside the card to dismiss
+        root.setOnClickListener(v -> { FindPhone.stop(this); closeSheet(); }); // tap outside the card to dismiss
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -288,6 +292,27 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         voice.speak(text + ". ఎత్తమంటారా?", prefs.speechRate());
         main.removeCallbacks(watchCall);
         main.postDelayed(watchCall, 2000);
+        return true;
+    }
+
+    /** Reads a new message aloud, then listens once for "reply …" (the brain handles the answer). */
+    private boolean startAnnounce(Intent i) {
+        String text = i == null ? null : i.getStringExtra(EXTRA_ANNOUNCE);
+        if (text == null) return false;
+        String ctx = i.getStringExtra(EXTRA_ANNOUNCE_CONTEXT);
+        i.removeExtra(EXTRA_ANNOUNCE);
+        main.removeCallbacks(autoClose);
+        MainActivity.inConversation = true;
+        WakeService.pause(this);
+        String said = text + ". రిప్లై ఇవ్వమంటారా?";
+        store.addChat("assistant", said + (ctx == null ? "" : ctx), false);
+        heard.setVisibility(View.GONE);
+        status.setText("కొత్త మెసేజ్");
+        showReply(text, false);
+        setAction(IconView.STOP);
+        orb.setState(OrbView.SPEAKING);
+        followUpUsed = false;
+        voice.speak(said, prefs.speechRate());
         return true;
     }
 

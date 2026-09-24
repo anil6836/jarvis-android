@@ -92,6 +92,15 @@ final class Prefs {
     boolean announceCalls() { return sp.getBoolean("announce_calls", true); }
     /** After saying who is calling, listen for "ఎత్తు" / "కట్" and answer or decline. */
     boolean callByVoice() { return sp.getBoolean("call_voice", true); }
+    /** Read new WhatsApp / SMS / Telegram messages aloud and offer to reply. */
+    boolean readMessages() { return sp.getBoolean("read_messages", true); }
+    /** Warn by voice when the battery gets low. */
+    boolean batteryWarn() { return sp.getBoolean("battery_warn", true); }
+    /** Driving: everything by voice, messages always read out. */
+    boolean driving() { return sp.getBoolean("driving", false); }
+    /** Night: quiet, nothing is read out until "good morning". */
+    boolean night() { return sp.getBoolean("night", false); }
+    void set(String key, boolean v) { sp.edit().putBoolean(key, v).apply(); }
 
     // ---- daily morning briefing
     boolean briefingOn() { return sp.getBoolean("briefing", false); }

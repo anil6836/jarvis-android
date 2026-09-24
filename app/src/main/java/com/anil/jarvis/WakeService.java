@@ -96,7 +96,42 @@ public class WakeService extends Service {
         f.addAction(Intent.ACTION_POWER_CONNECTED);
         f.addAction(Intent.ACTION_POWER_DISCONNECTED);
         registerReceiver(phoneState, f);
+        registerReceiver(battery, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
     }
+
+    // ---------- low battery warning ----------
+
+    private int warnedAt = 101;
+
+    private final android.content.BroadcastReceiver battery = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            int level = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+            int scale = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
+            int plugged = i.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0);
+            if (level < 0 || scale <= 0) return;
+            int pct = level * 100 / scale;
+            if (plugged != 0 || pct > 20) { warnedAt = 101; return; }
+            Prefs p = new Prefs(c);
+            if (!p.batteryWarn()) return;
+            int step = pct <= 5 ? 5 : pct <= 15 ? 15 : 101;
+            if (step >= warnedAt || step == 101) return;
+            warnedAt = step;
+            String say = p.name() + ", బ్యాటరీ " + pct + " శాతం మాత్రమే ఉంది. ఛార్జింగ్ పెట్టండి"
+                    + (step == 15 ? ", లేదా పవర్ సేవింగ్ ఆన్ చేయండి." : ".");
+            if (!p.night() && !CallControl.busyWithCall()) Announcer.say(c, say);
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ALERT, "Jarvis పిలుపు", NotificationManager.IMPORTANCE_HIGH));
+            PendingIntent saver = PendingIntent.getActivity(c, 9,
+                    new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE);
+            nm.notify(9, new Notification.Builder(c, CHANNEL_ALERT)
+                    .setSmallIcon(android.R.drawable.ic_lock_idle_low_battery)
+                    .setContentTitle("బ్యాటరీ " + pct + "%")
+                    .setContentText("పవర్ సేవింగ్ ఆన్ చేయడానికి నొక్కండి")
+                    .setContentIntent(saver)
+                    .setAutoCancel(true)
+                    .build());
+        }
+    };
 
     /** Whether the wake word may listen right now, per the "when to listen" setting. */
     private boolean allowedNow() {
@@ -153,6 +188,7 @@ public class WakeService extends Service {
 
     @Override public void onDestroy() {
         try { unregisterReceiver(phoneState); } catch (Exception ignored) {}
+        try { unregisterReceiver(battery); } catch (Exception ignored) {}
         running = false;
         main.removeCallbacksAndMessages(null);
         engineOn = false;
