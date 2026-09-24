@@ -35,7 +35,17 @@ final class Prefs {
     String openAiModel() { return sp.getString("openai_model", DEFAULT_OPENAI_MODEL); }
     String anthropicModel() { return sp.getString("anthropic_model", DEFAULT_ANTHROPIC_MODEL); }
 
-    boolean wakeWord() { return sp.getBoolean("wake", false); }
+    boolean wakeWord() {
+        if (!sp.getBoolean("wake_v3", false)) {
+            // Older versions switched the wake word off for good with the notification's "ఆపు";
+            // now that is only a pause, so switch it back on once for anyone who has set it up before.
+            SharedPreferences.Editor e = sp.edit().putBoolean("wake_v3", true);
+            if (sp.contains("wake_threshold")) e.putBoolean("wake", true);
+            e.apply();
+            if (sp.contains("wake_threshold")) return true;
+        }
+        return sp.getBoolean("wake", false);
+    }
     /** Score needed to wake (lower = wakes more easily). */
     float wakeThreshold() { return sp.getFloat("wake_threshold", 0.5f); }
     boolean voiceReplies() { return sp.getBoolean("voice", true); }
@@ -63,8 +73,16 @@ final class Prefs {
 
     // ---- wake words: "Jarvis" is the main one, "Hey Jarvis" the second
     boolean jarvisWord() { return sp.getBoolean("wake_jarvis", true); }
-    /** When the wake word may use the mic: "screen_on" (default), "charging" or "always". */
-    String wakeWhen() { return sp.getString("wake_when", "screen_on"); }
+    /**
+     * When the wake word may use the mic: "always" (default, so "Jarvis" also wakes a dark screen),
+     * "screen_on" or "charging". Older versions defaulted to "screen_on"; move them over once.
+     */
+    String wakeWhen() {
+        if (!sp.getBoolean("wake_when_v2", false)) {
+            sp.edit().putString("wake_when", "always").putBoolean("wake_when_v2", true).apply();
+        }
+        return sp.getString("wake_when", "always");
+    }
     /** Start listening as soon as Jarvis is opened (e.g. "Hey Google, open Jarvis"). */
     boolean listenOnOpen() { return sp.getBoolean("listen_on_open", true); }
     /** "Jarvis" opens a small Google-style panel over the current app instead of the full screen. */
@@ -78,5 +96,9 @@ final class Prefs {
     int briefingHour() { return sp.getInt("briefing_hour", 7); }
     int briefingMinute() { return sp.getInt("briefing_minute", 0); }
     boolean briefingSpeak() { return sp.getBoolean("briefing_speak", true); }
-    boolean wakeReady() { return wakeWord(); }
+    /** The wake word is on and not paused from the notification's "ఆపు" button. */
+    boolean wakeReady() { return wakeWord() && !wakePaused(); }
+    /** "ఆపు" in the notification pauses the mic only until Jarvis is opened again. */
+    boolean wakePaused() { return sp.getBoolean("wake_paused", false); }
+    void setWakePaused(boolean paused) { sp.edit().putBoolean("wake_paused", paused).apply(); }
 }

@@ -15,6 +15,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.Settings;
@@ -44,6 +45,8 @@ public class WakeService extends Service {
     private final Handler main = new Handler(Looper.getMainLooper());
     private WakeEngine engine;
     private boolean engineOn;
+    /** Keeps the phone's processor awake while listening with the screen off. */
+    private PowerManager.WakeLock cpu;
     private final Runnable fallbackResume = () -> {
         if (!MainActivity.inConversation) startEngine();
     };
@@ -117,7 +120,8 @@ public class WakeService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
-            getSharedPreferences("jarvis", MODE_PRIVATE).edit().putBoolean("wake", false).apply();
+            // Only a pause: the wake word stays switched on and comes back when Jarvis is opened.
+            new Prefs(this).setWakePaused(true);
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -152,6 +156,7 @@ public class WakeService extends Service {
         running = false;
         main.removeCallbacksAndMessages(null);
         engineOn = false;
+        holdCpu(false);
         if (engine != null) {
             engine.close();
             engine = null;
@@ -185,6 +190,7 @@ public class WakeService extends Service {
         }
         engine.start();
         engineOn = true;
+        holdCpu(true);
         lastError = null;
         goForeground(wordStatus != null ? wordStatus : WAKE_HINT);
     }
@@ -192,11 +198,41 @@ public class WakeService extends Service {
     private void stopEngine() {
         if (engine != null) engine.stop();
         engineOn = false;
+        holdCpu(false);
+    }
+
+    private void holdCpu(boolean on) {
+        try {
+            if (on) {
+                if (cpu == null) {
+                    PowerManager pm = getSystemService(PowerManager.class);
+                    if (pm == null) return;
+                    cpu = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "jarvis:listen");
+                    cpu.setReferenceCounted(false);
+                }
+                if (!cpu.isHeld()) cpu.acquire();
+            } else if (cpu != null && cpu.isHeld()) {
+                cpu.release();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /** Lights up a dark screen when Anil calls "Jarvis" (the panel also asks for this itself). */
+    @SuppressWarnings("deprecation")
+    private void wakeScreen() {
+        try {
+            PowerManager pm = getSystemService(PowerManager.class);
+            if (pm == null || pm.isInteractive()) return;
+            PowerManager.WakeLock wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                    | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "jarvis:screen");
+            wl.acquire(4000);
+        } catch (Exception ignored) {}
     }
 
     private void onWake() {
         if (!engineOn) return;
         stopEngine(); // free the microphone for the conversation
+        wakeScreen();
         Vibrator v = getSystemService(Vibrator.class);
         if (v != null) v.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE));
         // Look at the screen first (for "what's on my screen?"), then open Jarvis on top.

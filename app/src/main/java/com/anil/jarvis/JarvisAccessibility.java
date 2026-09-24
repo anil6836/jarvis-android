@@ -12,6 +12,8 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.io.ByteArrayOutputStream;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -41,6 +43,96 @@ public class JarvisAccessibility extends AccessibilityService {
     static boolean goHome() {
         JarvisAccessibility s = instance;
         return s != null && s.performGlobalAction(GLOBAL_ACTION_HOME);
+    }
+
+    // ------------------------------------------------------------------ force stop
+
+    /** How the "Force stop" button reads on the phone, in the languages Anil's phone may use. */
+    private static final String[] FORCE_STOP = {
+            "force stop", "బలవంతంగా ఆపు", "బలవంతంగా ఆపివేయి", "ఫోర్స్ స్టాప్",
+            "बलपूर्वक रोकें", "ज़बरदस्ती रोकें", "फ़ोर्स स्टॉप", "फोर्स स्टॉप"};
+    /** The "OK" button of the "Force stop?" question. */
+    private static final String[] CONFIRM = {"ok", "force stop", "సరే", "బలవంతంగా ఆపు", "ठीक है", "हां"};
+
+    /**
+     * Closes an app completely, the way Anil would by hand: opens its "App info" page,
+     * presses "Force stop", answers OK, and goes back. Call from a background thread.
+     * Returns "stopped", "already_stopped", "no_accessibility", "no_button" or "no_confirm".
+     */
+    static String forceStop(String pkg) {
+        JarvisAccessibility s = instance;
+        if (s == null) return "no_accessibility";
+        android.content.Intent i = new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:" + pkg))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        | android.content.Intent.FLAG_ACTIVITY_NO_HISTORY | android.content.Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+        try { s.startActivity(i); } catch (Exception e) { return "no_button"; }
+
+        // 1) wait for the App info page and find its "Force stop" button
+        AccessibilityNodeInfo button = null;
+        long end = SystemClock.uptimeMillis() + 7000;
+        while (button == null && SystemClock.uptimeMillis() < end) {
+            SystemClock.sleep(300);
+            AccessibilityNodeInfo root = s.getRootInActiveWindow();
+            if (root == null || s.getPackageName().contentEquals(String.valueOf(root.getPackageName()))) continue;
+            button = find(root, FORCE_STOP, false);
+        }
+        if (button == null) { s.performGlobalAction(GLOBAL_ACTION_BACK); return "no_button"; }
+        AccessibilityNodeInfo target = clickable(button);
+        if (!button.isEnabled() || (target != null && !target.isEnabled())) {
+            s.performGlobalAction(GLOBAL_ACTION_BACK); // greyed out: the app is not running any more
+            return "already_stopped";
+        }
+        if (target == null || !target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            s.performGlobalAction(GLOBAL_ACTION_BACK);
+            return "no_button";
+        }
+
+        // 2) answer the "Force stop?" question with OK
+        boolean confirmed = false;
+        end = SystemClock.uptimeMillis() + 5000;
+        while (!confirmed && SystemClock.uptimeMillis() < end) {
+            SystemClock.sleep(300);
+            AccessibilityNodeInfo root = s.getRootInActiveWindow();
+            if (root == null) continue;
+            AccessibilityNodeInfo ok = null;
+            List<AccessibilityNodeInfo> b1 = root.findAccessibilityNodeInfosByViewId("android:id/button1");
+            if (b1 != null && !b1.isEmpty()) ok = b1.get(0);
+            if (ok == null) {
+                // Only a dialog has a "cancel" button next to it; don't press the page's own button again.
+                List<AccessibilityNodeInfo> b2 = root.findAccessibilityNodeInfosByViewId("android:id/button2");
+                if (b2 != null && !b2.isEmpty()) ok = find(root, CONFIRM, true);
+            }
+            if (ok == null) continue;
+            AccessibilityNodeInfo t = clickable(ok);
+            confirmed = t != null && t.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        }
+        SystemClock.sleep(700);
+        s.performGlobalAction(GLOBAL_ACTION_BACK); // leave the App info page
+        return confirmed ? "stopped" : "no_confirm";
+    }
+
+    /** A short label (a button, not a sentence) matching one of the words. */
+    private static AccessibilityNodeInfo find(AccessibilityNodeInfo root, String[] words, boolean exact) {
+        for (String w : words) {
+            List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByText(w);
+            if (list == null) continue;
+            for (AccessibilityNodeInfo n : list) {
+                CharSequence t = n.getText();
+                if (t == null) t = n.getContentDescription();
+                if (t == null) continue;
+                String label = t.toString().trim().toLowerCase(Locale.ROOT);
+                if (label.length() > 24) continue; // a sentence such as the warning text
+                if (exact ? label.equals(w) : label.contains(w)) return n;
+            }
+        }
+        return null;
+    }
+
+    private static AccessibilityNodeInfo clickable(AccessibilityNodeInfo n) {
+        int hops = 0;
+        while (n != null && !n.isClickable() && hops++ < 5) n = n.getParent();
+        return n;
     }
 
     @Override protected void onServiceConnected() { instance = this; }

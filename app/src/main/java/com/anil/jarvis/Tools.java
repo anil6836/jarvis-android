@@ -107,7 +107,7 @@ final class Tools {
                 "Open an installed app by its name, e.g. 'WhatsApp', 'YouTube', 'PhonePe', 'Camera'.",
                 schema(new String[][]{{"app", "string", "App name"}}, "app")));
         DEFS.add(new Def("close_app",
-                "Close an app: stops what it is playing, sends it away from the screen and clears it from the phone's memory. Leave app empty to close the app Anil is using right now.",
+                "Close an app completely: stops what it is playing and force-stops it (the phone's App info page flashes for a second while Jarvis presses Force stop), so nothing keeps running in the background. Leave app empty to close the app Anil is using right now.",
                 schema(new String[][]{{"app", "string", "App name, e.g. 'YouTube'. Empty = the app currently on screen."}})));
         DEFS.add(new Def("open_maps",
                 "Show a place in Google Maps, or start navigation to it.",
@@ -670,7 +670,23 @@ final class Tools {
             }
         }
 
-        // 2) if it is on screen (Jarvis working in the background), leave it with Home
+        // 2) close it completely with "Force stop" (needs Jarvis's accessibility switch)
+        String why;
+        if (JarvisAccessibility.enabled()) {
+            if (unlocked()) {
+                String r = JarvisAccessibility.forceStop(pkg);
+                if ("stopped".equals(r) || "already_stopped".equals(r)) {
+                    return ok().put("closed", name2).put("fully_closed", true).put("playback_stopped", mediaStopped).toString();
+                }
+                why = "The automatic Force stop did not go through (" + r + ").";
+            } else {
+                why = "The phone is locked, so the Force stop screen could not be opened.";
+            }
+        } else {
+            why = "For a complete close (Force stop), Anil must switch on Jarvis under Settings > Accessibility once (Jarvis settings > 'స్క్రీన్ చూడటం' has the button).";
+        }
+
+        // 3) fallback: if it is on screen (Jarvis working in the background), leave it with Home
         boolean wentHome = false;
         if (!MainActivity.visible && pkg.equals(JarvisAccessibility.currentPackage())) {
             final boolean[] ok = {false};
@@ -678,13 +694,13 @@ final class Tools {
             wentHome = ok[0];
         }
 
-        // 3) clear it from memory once it is in the background
+        // and clear it from memory once it is in the background
         Thread.sleep(800);
         android.app.ActivityManager am = act().getSystemService(android.app.ActivityManager.class);
         if (am != null) am.killBackgroundProcesses(pkg);
 
-        return ok().put("closed", name2).put("playback_stopped", mediaStopped).put("left_screen", wentHome)
-                .put("note", "Android does not let apps force-stop other apps completely; its card may still show in Recents, but it is stopped and cleared from memory.")
+        return ok().put("closed", name2).put("fully_closed", false).put("playback_stopped", mediaStopped).put("left_screen", wentHome)
+                .put("note", why + " It was stopped and cleared from memory, but may still run a background service.")
                 .toString();
     }
 
@@ -772,6 +788,77 @@ final class Tools {
         }
     }
 
+    private boolean locked() {
+        KeyguardManager km = (KeyguardManager) act().getSystemService(Activity.KEYGUARD_SERVICE);
+        return km != null && km.isKeyguardLocked();
+    }
+
+    /**
+     * Starts a song inside a music app without opening its screen, the way Android Auto and
+     * Google Assistant do, so it works while the phone stays locked. Returns true once it plays.
+     */
+    private boolean playWithoutScreen(String pkg, String query) throws InterruptedException {
+        android.media.session.MediaController mc = null;
+        final android.media.browse.MediaBrowser[] browser = {null};
+        if (NotifyListener.enabled(act())) {
+            try {
+                android.media.session.MediaSessionManager msm = act().getSystemService(android.media.session.MediaSessionManager.class);
+                for (android.media.session.MediaController c : msm.getActiveSessions(new android.content.ComponentName(act(), NotifyListener.class))) {
+                    if (pkg.equals(c.getPackageName())) { mc = c; break; }
+                }
+            } catch (Exception ignored) {}
+        }
+        if (mc == null) {
+            List<ResolveInfo> svc = act().getPackageManager().queryIntentServices(
+                    new Intent(android.service.media.MediaBrowserService.SERVICE_INTERFACE).setPackage(pkg), 0);
+            if (svc == null || svc.isEmpty()) return false;
+            android.content.ComponentName cn = new android.content.ComponentName(pkg, svc.get(0).serviceInfo.name);
+            CountDownLatch connected = new CountDownLatch(1);
+            onUi(() -> {
+                browser[0] = new android.media.browse.MediaBrowser(act(), cn, new android.media.browse.MediaBrowser.ConnectionCallback() {
+                    @Override public void onConnected() { connected.countDown(); }
+                    @Override public void onConnectionFailed() { connected.countDown(); }
+                }, null);
+                browser[0].connect();
+            });
+            connected.await(6, TimeUnit.SECONDS);
+            if (browser[0] == null || !browser[0].isConnected()) {
+                if (browser[0] != null) onUi(browser[0]::disconnect);
+                return false;
+            }
+            mc = new android.media.session.MediaController(act(), browser[0].getSessionToken());
+        }
+        try {
+            android.media.session.PlaybackState before = mc.getPlaybackState();
+            boolean wasPlaying = before != null && before.getState() == android.media.session.PlaybackState.STATE_PLAYING;
+            String oldTitle = title(mc);
+            mc.getTransportControls().playFromSearch(query, new android.os.Bundle());
+            long end = android.os.SystemClock.elapsedRealtime() + 8000;
+            boolean left = false;
+            while (android.os.SystemClock.elapsedRealtime() < end) {
+                Thread.sleep(300);
+                android.media.session.PlaybackState st = mc.getPlaybackState();
+                boolean playing = st != null && st.getState() == android.media.session.PlaybackState.STATE_PLAYING;
+                if (!playing) left = true;
+                if (playing && (!wasPlaying || left || !String.valueOf(title(mc)).equals(String.valueOf(oldTitle)))) return true;
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            android.media.browse.MediaBrowser b = browser[0];
+            if (b != null) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(b::disconnect, 30000);
+        }
+    }
+
+    private static String title(android.media.session.MediaController mc) {
+        android.media.MediaMetadata m = mc.getMetadata();
+        return m == null ? null : m.getString(android.media.MediaMetadata.METADATA_KEY_TITLE);
+    }
+
+    private static final String LOCKED_NOTE = "YouTube and YouTube Music (without Premium) pause by their own rule when the screen is locked or off; "
+            + "for music with the screen off, Spotify, JioSaavn, Gaana or Wynk keep playing, or YouTube Premium.";
+
     private String youtube(String query, String app) throws Exception {
         if (query == null || query.trim().isEmpty()) return err("missing", "What should I play?");
         String q = query.trim();
@@ -786,10 +873,23 @@ final class Tools {
                 if (r != null) pkg = r.activityInfo.packageName;
             }
             if (pkg == null) return err("app_not_installed", "'" + app + "' is not installed on this phone. Offer to play it on YouTube instead.");
+            boolean lockedNow = !pkg.equals(YT) && locked();
+            if (lockedNow) {
+                // Phone locked: try to start the song without unlocking first.
+                if (playWithoutScreen(pkg, q)) {
+                    return ok().put("playing_on", label(pkg)).put("query", q).put("phone_locked", true).toString();
+                }
+                if (!unlocked()) {
+                    return err("locked", label(pkg) + " can only start this song after the phone is unlocked, and it was not unlocked. "
+                            + "Tell Anil to unlock with fingerprint or PIN when asked, then ask again.");
+                }
+            }
             if (pkg.equals(YT)) {
                 a = "youtube"; // fall through to the YouTube video path below
             } else if (supportsPlayFromSearch(pkg) && playFromSearch(pkg, q)) {
-                return ok().put("playing_on", label(pkg)).put("query", q).toString();
+                JSONObject o = ok().put("playing_on", label(pkg)).put("query", q);
+                if (lockedNow && pkg.equals(YT_MUSIC)) o.put("note", LOCKED_NOTE);
+                return o.toString();
             } else {
                 Intent launch = act().getPackageManager().getLaunchIntentForPackage(pkg);
                 if (launch != null) {
@@ -799,6 +899,12 @@ final class Tools {
                 return ok().put("opened", label(pkg)).put("note", label(pkg) + " does not let other apps start a song. It is open; Anil must search and tap play. Offer YouTube if he prefers automatic play.").toString();
             }
         }
+        // YouTube cannot start a video behind the lock screen: ask for fingerprint/PIN first.
+        boolean wasLocked = locked();
+        if (wasLocked && !unlocked()) {
+            return err("locked", "YouTube can only play after the phone is unlocked, and it was not unlocked. "
+                    + "Tell Anil to unlock with fingerprint or PIN when asked and ask again, or to name a music app such as Spotify or JioSaavn, which can start on the lock screen.");
+        }
         // Default: open the top YouTube video directly, so it starts playing by itself.
         String id = topVideoId(q);
         if (id != null) {
@@ -807,7 +913,9 @@ final class Tools {
             if (installed(YT)) i.setPackage(YT);
             try {
                 start(i);
-                return ok().put("playing_on", "YouTube").put("query", q).toString();
+                JSONObject o = ok().put("playing_on", "YouTube").put("query", q);
+                if (wasLocked) o.put("note", LOCKED_NOTE);
+                return o.toString();
             } catch (ActivityNotFoundException ignored) {}
         }
         if (a.isEmpty() && installed(YT_MUSIC) && playFromSearch(YT_MUSIC, q)) {

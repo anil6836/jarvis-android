@@ -60,6 +60,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         } else {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
+        // The panel only stays open while Anil and Jarvis talk, so keep the screen lit meanwhile.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prefs = new Prefs(this);
         store = Store.get(this);
         tools = new Tools(this, store, prefs);

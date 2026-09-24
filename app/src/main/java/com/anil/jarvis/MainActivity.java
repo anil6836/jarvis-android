@@ -131,6 +131,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         paused = false;
         visible = true;
         store.listener = this;
+        // Opening Jarvis switches the wake word back on after "ఆపు" in the notification.
+        if (prefs.wakePaused()) prefs.setWakePaused(false);
         Reminders.scheduleBriefing(this);
         orb.invalidate();
         updateSetup();
@@ -882,6 +884,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (voice.listening) voice.cancelListening();
         inConversation = true;
         WakeService.pause(this);
+        keepScreenOn();
         showTab(0);
         input.setHint("Live: మాట్లాడండి, ఆపాలంటే ఎరుపు బటన్");
         live = new LiveSession(this, prefs, tools, this);
@@ -965,6 +968,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         inConversation = true;
         WakeService.pause(this);
+        keepScreenOn();
         showTab(0);
         voice.listen(prefs.listenLang());
         orb.setState(OrbView.LISTENING);
@@ -1022,6 +1026,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onLevel(float level) { orb.setLevel(level); }
 
     @Override public void onSpeakStart() {
+        keepScreenOn();
         orb.setState(OrbView.SPEAKING);
         status.setText("మాట్లాడుతున్నాను…");
         refreshAction();
@@ -1076,6 +1081,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         busy = true;
         inConversation = true;
         WakeService.pause(this);
+        keepScreenOn();
         orb.setState(OrbView.THINKING);
         status.setText("ఆలోచిస్తున్నాను…");
         refreshAction();
@@ -1150,7 +1156,22 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (prefs.wakeReady()) WakeService.resume(this);
     }
 
+    /** While Anil and Jarvis are talking the screen must not go dark. */
+    private final Runnable letScreenSleep = () -> getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+    private void keepScreenOn() {
+        main.removeCallbacks(letScreenSleep);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    /** After the talk ends, let the screen turn off on its own a little later. */
+    private void screenMaySleepSoon() {
+        main.removeCallbacks(letScreenSleep);
+        main.postDelayed(letScreenSleep, 20000);
+    }
+
     private void setIdle() {
+        screenMaySleepSoon();
         orb.setState(prefs.hasBrain() ? OrbView.IDLE : OrbView.OFFLINE);
         status.setText(prefs.hasBrain() ? "సిద్ధంగా ఉన్నాను, " + prefs.name() : "మెదడు ఆఫ్‌లైన్: API key కావాలి");
         input.setHint("Jarvis తో మాట్లాడండి…");

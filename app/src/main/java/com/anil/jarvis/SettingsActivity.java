@@ -149,12 +149,13 @@ public class SettingsActivity extends Activity {
         ww.setPadding(0, Ui.dp(this, 8), 0, 0);
         box.addView(ww);
         wakeWhen = new RadioGroup(this);
-        wakeWhen.addView(radio(21, "స్క్రీన్ ఆన్‌లో ఉన్నప్పుడు మాత్రమే (సిఫార్సు)"));
+        wakeWhen.addView(radio(23, "ఎప్పుడూ: స్క్రీన్ ఆఫ్‌లో ఉన్నా \"Jarvis\" అంటే స్క్రీన్ ఆన్ అయి వింటుంది (సిఫార్సు)"));
+        wakeWhen.addView(radio(21, "స్క్రీన్ ఆన్‌లో ఉన్నప్పుడు మాత్రమే (బ్యాటరీ ఆదా)"));
         wakeWhen.addView(radio(22, "ఛార్జింగ్‌లో ఉన్నప్పుడు మాత్రమే"));
-        wakeWhen.addView(radio(23, "ఎప్పుడూ"));
         String when = prefs.wakeWhen();
-        wakeWhen.check("charging".equals(when) ? 22 : "always".equals(when) ? 23 : 21);
+        wakeWhen.check("charging".equals(when) ? 22 : "screen_on".equals(when) ? 21 : 23);
         box.addView(wakeWhen);
+        note("నోటిఫికేషన్‌లో \"ఆపు\" నొక్కితే మైక్ కాసేపు ఆగుతుంది; Jarvis యాప్ మళ్లీ తెరవగానే తనంతట తానే ఆన్ అవుతుంది.");
         note("\"Hey Google\" కోసం ఫోన్‌లో ఒక ప్రత్యేక చిన్న చిప్ ఉంటుంది, అది Google కి మాత్రమే అందుబాటులో ఉంటుంది. అందుకే \"Jarvis\" అని పిలవడం వినాలంటే మైక్ ఆన్‌లో ఉండాలి. మైక్ పూర్తిగా ఆఫ్ ఉండాలంటే వేక్ వర్డ్ ఆఫ్ చేసి, కింది మార్గాల్లో పిలవండి: పవర్ బటన్ నొక్కి పట్టుకోవడం, పైనుంచి కిందికి స్వైప్ చేసి \"Jarvis\" టైల్ నొక్కడం, లేదా Jarvis ఐకాన్ నొక్కి పట్టుకుని \"Jarvis తో మాట్లాడు\" షార్ట్‌కట్.");
         jarvisWord = toggle("\"Jarvis\" ఒక్క పదంతో కూడా మేల్కొను (ప్రధానం; \"Hey Jarvis\" ఎప్పుడూ పనిచేస్తుంది)", prefs.jarvisWord());
         note("\"Jarvis\" పదం కోసం మొదటిసారి సుమారు 40 MB ఫైల్ ఒక్కసారి డౌన్‌లోడ్ అవుతుంది (Wi-Fi లో ఉంటే మంచిది). టీవీ, మాటల్లో \"Jarvis\" వినిపించి తప్పుగా మేల్కొంటుంటే ఇది ఆఫ్ చేయండి.");
@@ -290,7 +291,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("listen_on_open", listenOnOpen.isChecked());
         e.putBoolean("compact_panel", compactPanel.isChecked());
         int ww = wakeWhen.getCheckedRadioButtonId();
-        e.putString("wake_when", ww == 22 ? "charging" : ww == 23 ? "always" : "screen_on");
+        e.putString("wake_when", ww == 22 ? "charging" : ww == 21 ? "screen_on" : "always");
         e.putBoolean("announce_calls", announceCalls.isChecked());
         e.putBoolean("briefing", briefing.isChecked());
         e.putInt("briefing_hour", briefHour);
@@ -306,6 +307,7 @@ public class SettingsActivity extends Activity {
         e.putFloat("rate", 0.5f + rate.getProgress() / 100f);
         e.putString("lang", lang.getCheckedRadioButtonId() == 12 ? "en-IN" : "te-IN");
         e.putBoolean("wake", wake.isChecked());
+        e.putBoolean("wake_paused", false);
         e.putFloat("wake_threshold", 0.75f - sensitivity.getProgress() / 100f);
         e.apply();
         Reminders.scheduleBriefing(this);
