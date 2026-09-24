@@ -135,6 +135,78 @@ public class JarvisAccessibility extends AccessibilityService {
         return n;
     }
 
+    // ------------------------------------------------------------------ tap "Send"
+
+    /** How the send button reads / is named in the messaging and mail apps. */
+    private static final String[] SEND_DESC = {"send", "పంపు", "పంపించు", "मैसेज भेजें", "भेजें", "पेजें", "send message", "send sms"};
+
+    /**
+     * Types are already filled in by the app (WhatsApp/Telegram share link, Gmail draft). This taps
+     * that app's Send button once the compose screen is up. Call from a background thread.
+     * Returns "sent", "no_accessibility", or "no_button".
+     */
+    static String clickSend(String pkg, long timeoutMs) {
+        JarvisAccessibility s = instance;
+        if (s == null) return "no_accessibility";
+        long end = SystemClock.uptimeMillis() + timeoutMs;
+        while (SystemClock.uptimeMillis() < end) {
+            SystemClock.sleep(350);
+            AccessibilityNodeInfo root = s.windowRoot(pkg);
+            if (root == null) continue;
+            AccessibilityNodeInfo btn = findSend(root, pkg);
+            if (btn == null) continue;
+            AccessibilityNodeInfo target = clickable(btn);
+            if (target != null && target.isEnabled() && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "sent";
+        }
+        return "no_button";
+    }
+
+    /** The visible window that belongs to pkg (its compose screen), or the active one if it matches. */
+    private AccessibilityNodeInfo windowRoot(String pkg) {
+        try {
+            for (android.view.accessibility.AccessibilityWindowInfo w : getWindows()) {
+                AccessibilityNodeInfo r = w.getRoot();
+                if (r != null && pkg.contentEquals(String.valueOf(r.getPackageName()))) return r;
+            }
+        } catch (Exception ignored) {}
+        AccessibilityNodeInfo active = getRootInActiveWindow();
+        if (active != null && pkg.contentEquals(String.valueOf(active.getPackageName()))) return active;
+        return null;
+    }
+
+    /** The Send button: first by a resource id ending in /send, then by its "Send" label. */
+    private static AccessibilityNodeInfo findSend(AccessibilityNodeInfo root, String pkg) {
+        AccessibilityNodeInfo byId = findBySendId(root);
+        if (byId != null) return byId;
+        // by label, but never an editable text box (some apps label the box "Message")
+        for (String w : SEND_DESC) {
+            List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByText(w);
+            if (list == null) continue;
+            for (AccessibilityNodeInfo n : list) {
+                if (n.isEditable()) continue;
+                CharSequence d = n.getContentDescription();
+                if (d == null) d = n.getText();
+                if (d == null) continue;
+                String label = d.toString().trim().toLowerCase(Locale.ROOT);
+                if (label.length() > 16) continue; // a sentence, not a button
+                if (label.equals(w) || label.startsWith(w)) return n;
+            }
+        }
+        return null;
+    }
+
+    private static AccessibilityNodeInfo findBySendId(AccessibilityNodeInfo n) {
+        if (n == null) return null;
+        String id = n.getViewIdResourceName();
+        if (id != null && (id.endsWith("/send") || id.endsWith("/send_button") || id.endsWith("/fab_send"))
+                && n.isVisibleToUser()) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo r = findBySendId(n.getChild(i));
+            if (r != null) return r;
+        }
+        return null;
+    }
+
     @Override protected void onServiceConnected() { instance = this; }
 
     @Override public boolean onUnbind(android.content.Intent intent) {

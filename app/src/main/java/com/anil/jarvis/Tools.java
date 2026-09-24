@@ -91,7 +91,7 @@ final class Tools {
                 "Send an SMS text message. The app asks Anil to confirm before sending. Write the message in the language he asked for.",
                 schema(new String[][]{{"who", "string", "Contact name or phone number"}, {"message", "string", "The message text"}}, "who", "message")));
         DEFS.add(new Def("whatsapp_message",
-                "Open WhatsApp with a message ready for a contact. Anil taps send himself.",
+                "Send a WhatsApp message to a contact. The app asks Anil to confirm; when he says yes, Jarvis sends it itself (he does not tap send). Write the message in the language he asked for.",
                 schema(new String[][]{{"who", "string", "Contact name or phone number"}, {"message", "string", "The message text"}}, "who", "message")));
         DEFS.add(new Def("set_alarm",
                 "Set an alarm in the phone's clock app.",
@@ -144,7 +144,7 @@ final class Tools {
                 schema(new String[][]{{"title", "string", "Event title"}, {"start", "string", "Local start 'yyyy-MM-dd HH:mm'"},
                         {"minutes", "integer", "Duration in minutes (default 60)"}, {"location", "string", "Optional place"}}, "title", "start")));
         DEFS.add(new Def("send_email",
-                "Write an email and open it in Gmail ready to send (Anil taps send). 'to' can be an email address or a contact name.",
+                "Send an email through Gmail. It asks Anil to confirm; when he says yes, Jarvis sends it itself. 'to' can be an email address or a contact name.",
                 schema(new String[][]{{"to", "string", "Email address or contact name"}, {"subject", "string", "Subject"},
                         {"body", "string", "Email body, in the language he asked for"}}, "to", "subject", "body")));
         DEFS.add(new Def("media_control",
@@ -482,22 +482,42 @@ final class Tools {
     }
 
     private String whatsapp(String who, String message) throws Exception {
+        if (message == null || message.trim().isEmpty()) return err("missing", "What should the message say?");
         Target t = resolve(who);
         if (t.error != null) return t.error;
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
-        String url = "https://wa.me/" + whatsappNumber(t.contact.number) + "?text=" + URLEncoder.encode(message == null ? "" : message, "UTF-8");
+        // Ask Anil first; only send when he says yes.
+        if (!host.confirm("WhatsApp పంపాలా?", "ఎవరికి: " + t.contact.name + "\n\n" + message, "పంపు", 0))
+            return err("cancelled", "Anil said no; nothing was sent.");
+        String url = "https://wa.me/" + whatsappNumber(t.contact.number) + "?text=" + URLEncoder.encode(message, "UTF-8");
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        String pkg = null;
         PackageManager pm = act().getPackageManager();
-        for (String pkg : new String[]{"com.whatsapp", "com.whatsapp.w4b"}) {
-            if (pm.getLaunchIntentForPackage(pkg) != null) { i.setPackage(pkg); break; }
+        for (String p : new String[]{"com.whatsapp", "com.whatsapp.w4b"}) {
+            if (pm.getLaunchIntentForPackage(p) != null) { pkg = p; i.setPackage(p); break; }
         }
         try {
             start(i);
         } catch (ActivityNotFoundException e) {
             return err("no_whatsapp", "WhatsApp is not installed.");
         }
-        return ok().put("opened_whatsapp_for", t.contact.name).put("note", "Anil must tap send in WhatsApp.").toString();
+        return finishSend(pkg, t.contact.name, "WhatsApp");
+    }
+
+    /**
+     * After the app opens with the message ready, tap its Send button through the accessibility
+     * service so Anil does not have to. Falls back to asking him to tap send if that is not possible.
+     */
+    private String finishSend(String pkg, String to, String appName) throws Exception {
+        if (pkg != null && JarvisAccessibility.enabled()) {
+            String r = JarvisAccessibility.clickSend(pkg, 9000);
+            if ("sent".equals(r)) return ok().put("sent_to", to).put("app", appName).toString();
+        }
+        String why = !JarvisAccessibility.enabled()
+                ? "To send it himself Jarvis needs the accessibility switch on (Jarvis settings > 'స్క్రీన్ చూడటం'); until then Anil taps send."
+                : "Jarvis could not find the Send button, so Anil must tap send once.";
+        return ok().put("opened_for", to).put("app", appName).put("sent", false).put("note", why).toString();
     }
 
     private String alarm(int hour, int minute, String label) throws Exception {
@@ -1410,13 +1430,16 @@ final class Tools {
                 .putExtra(Intent.EXTRA_SUBJECT, subject == null ? "" : subject)
                 .putExtra(Intent.EXTRA_TEXT, body == null ? "" : body)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (act().getPackageManager().getLaunchIntentForPackage("com.google.android.gm") != null) i.setPackage("com.google.android.gm");
+        if (!host.confirm("మెయిల్ పంపాలా?", "ఎవరికి: " + name + " <" + address + ">\nసబ్జెక్ట్: " + (subject == null ? "" : subject) + "\n\n" + (body == null ? "" : body), "పంపు", 0))
+            return err("cancelled", "Anil said no; the email was not sent.");
+        String gmail = act().getPackageManager().getLaunchIntentForPackage("com.google.android.gm") != null ? "com.google.android.gm" : null;
+        if (gmail != null) i.setPackage(gmail);
         try {
             start(i);
         } catch (ActivityNotFoundException e) {
             return err("no_mail_app", "No email app on this phone.");
         }
-        return ok().put("draft_opened_for", name + " <" + address + ">").put("note", "Gmail is open with the email ready; Anil taps send.").toString();
+        return finishSend(gmail, name + " <" + address + ">", "Gmail");
     }
 
     // ================================================================ music
