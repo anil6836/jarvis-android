@@ -159,6 +159,33 @@ final class Tools {
                         + "stop = music stop: stops the music AND fully closes that music app.",
                 schema(new String[][]{{"action", "string", "One of: pause, play, stop, next, previous, toggle, volume_up, volume_down, set_volume, mute, unmute"},
                         {"percent", "integer", "Volume 0-100, only for set_volume"}}, "action")));
+        DEFS.add(new Def("phone_setting",
+                "Change a phone setting: wifi, bluetooth, mobile_data, airplane, location, hotspot (on/off, flipped on the settings page through accessibility), "
+                        + "brightness (value = percent), auto_brightness, auto_rotate, silent, vibrate, sound (ringer back on), dnd (Do Not Disturb).",
+                schema(new String[][]{{"setting", "string", "wifi, bluetooth, mobile_data, airplane, location, hotspot, brightness, auto_brightness, auto_rotate, silent, vibrate, sound, dnd"},
+                        {"value", "string", "'on' or 'off'; for brightness a percent like '30'"}}, "setting")));
+        DEFS.add(new Def("photos",
+                "His phone's photos. action show = open them in the gallery; count = how many; send = send them on WhatsApp to a contact "
+                        + "(opens WhatsApp with the photos attached as a draft; then ask 'పంపమంటారా?' and use send_draft).",
+                schema(new String[][]{{"action", "string", "show, send or count"},
+                        {"when", "string", "latest (default), today, yesterday, this week, this month, or a date yyyy-MM-dd"},
+                        {"who", "string", "For send: contact name"}, {"count", "integer", "For send: how many of the newest (default 1, max 10)"},
+                        {"caption", "string", "For send: optional message with the photo"},
+                        {"screenshots", "boolean", "Include screenshots (default false)"}}, "action")));
+        DEFS.add(new Def("call_control",
+                "Answer or decline the ringing call, or end the call in progress (phone, WhatsApp and other app calls).",
+                schema(new String[][]{{"action", "string", "answer, decline or end"}}, "action")));
+        DEFS.add(new Def("bank_spending",
+                "Money spent and received, estimated from bank and UPI SMS on the phone for the last N days, with recent transactions.",
+                schema(new String[][]{{"days", "integer", "How many days back (default 30, max 92)"}})));
+        DEFS.add(new Def("save_place",
+                "Remember where the phone is right now under a name (home, office, gym...), for location reminders.",
+                schema(new String[][]{{"name", "string", "Place name in English, e.g. 'home', 'office'"}}, "name")));
+        DEFS.add(new Def("location_reminder",
+                "Remind Anil when he arrives at or leaves a place ('ఇంటికి చేరగానే గుర్తుచేయి'). Place = a saved place (home, office) or an address. Also list or cancel them.",
+                schema(new String[][]{{"action", "string", "add (default), list or cancel"}, {"place", "string", "Saved place name or address, English"},
+                        {"text", "string", "What to remind him"}, {"when", "string", "arrive (default) or leave"},
+                        {"id", "string", "For cancel: the reminder id from list"}})));
         DEFS.add(new Def("now_playing", "Which song or video is playing now, and in which app.", schema(new String[][]{})));
         DEFS.add(new Def("look_at_screen",
                 "Look at what is on Anil's phone screen (the app he was using when he called Jarvis) and answer a question about it, e.g. 'what is on my screen', 'what should I reply to this message', 'explain this'.",
@@ -232,6 +259,12 @@ final class Tools {
             case "calendar_events": case "add_calendar_event": return "క్యాలెండర్ చూస్తున్నాను…";
             case "send_email": return "మెయిల్ సిద్ధం చేస్తున్నాను…";
             case "media_control": case "now_playing": return "మ్యూజిక్…";
+            case "phone_setting": return "సెట్టింగ్ మారుస్తున్నాను…";
+            case "photos": return "ఫోటోలు చూస్తున్నాను…";
+            case "call_control": return "కాల్…";
+            case "bank_spending": return "బ్యాంక్ మెసేజ్‌లు లెక్కపెడుతున్నాను…";
+            case "save_place": return "ఈ చోటు గుర్తుపెట్టుకుంటున్నాను…";
+            case "location_reminder": return "లొకేషన్ రిమైండర్…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
             case "look_through_camera": return "కెమెరాలో చూస్తున్నాను…";
             case "add_mission": return "మిషన్ జోడిస్తున్నాను…";
@@ -269,6 +302,14 @@ final class Tools {
                 case "add_calendar_event": return addCalendarEvent(a.optString("title"), a.optString("start"), a.optInt("minutes", 60), a.optString("location", ""));
                 case "send_email": return sendEmail(a.optString("to"), a.optString("subject"), a.optString("body"));
                 case "media_control": return mediaControl(a.optString("action"), a.optInt("percent", 50));
+                case "phone_setting": return phoneSetting(a.optString("setting"), a.optString("value", "on"));
+                case "photos": return photos(a.optString("action", "show"), a.optString("when", ""), a.optString("who", ""),
+                        a.optInt("count", 1), a.optString("caption", ""), a.optBoolean("screenshots", false));
+                case "call_control": return callControl(a.optString("action"));
+                case "bank_spending": return bankSpending(a.optInt("days", 30));
+                case "save_place": return savePlace(a.optString("name"));
+                case "location_reminder": return locationReminder(a.optString("action", "add"), a.optString("place"),
+                        a.optString("text"), a.optString("when", "arrive"), a.optString("id"));
                 case "now_playing": return nowPlaying();
                 case "look_at_screen": return lookAtScreen(a.optString("question"));
                 case "look_through_camera": return lookThroughCamera(a.optString("question"));
@@ -1721,6 +1762,355 @@ final class Tools {
         }
         android.media.session.PlaybackState st = mc.getPlaybackState();
         o.put("playing", st != null && st.getState() == android.media.session.PlaybackState.STATE_PLAYING);
+        return o.toString();
+    }
+
+    // ================================================================ phone settings
+
+    private static boolean offWord(String v) {
+        String x = v == null ? "" : v.trim().toLowerCase(Locale.ROOT);
+        return x.equals("off") || x.equals("false") || x.equals("disable") || x.equals("0") || x.contains("ఆఫ్") || x.contains("ఆపు") || x.equals("no");
+    }
+
+    private String phoneSetting(String setting, String value) throws Exception {
+        String s = setting == null ? "" : setting.trim().toLowerCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
+        boolean on = !offWord(value);
+        switch (s) {
+            case "wifi": case "wi_fi":
+                return viaSettings(Build.VERSION.SDK_INT >= 29 ? new Intent(android.provider.Settings.Panel.ACTION_WIFI)
+                        : new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS), null, on, "Wi-Fi");
+            case "bluetooth":
+                return viaSettings(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS), null, on, "Bluetooth");
+            case "mobile_data": case "data": case "internet":
+                return viaSettings(Build.VERSION.SDK_INT >= 29 ? new Intent(android.provider.Settings.Panel.ACTION_INTERNET_CONNECTIVITY)
+                                : new Intent(android.provider.Settings.ACTION_DATA_ROAMING_SETTINGS),
+                        new String[]{"mobile data", "మొబైల్ డేటా", "mobile network", "sim"}, on, "Mobile data");
+            case "airplane": case "airplane_mode": case "flight_mode":
+                return viaSettings(new Intent(android.provider.Settings.ACTION_AIRPLANE_MODE_SETTINGS),
+                        new String[]{"airplane", "aeroplane", "flight", "విమాన"}, on, "Airplane mode");
+            case "location": case "gps":
+                return viaSettings(new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS), null, on, "Location");
+            case "hotspot":
+                return viaSettings(new Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS),
+                        new String[]{"hotspot", "హాట్‌స్పాట్", "tethering"}, on, "Hotspot");
+            case "brightness": {
+                int pct = 50;
+                try { pct = Integer.parseInt(value.replaceAll("[^0-9]", "")); } catch (Exception ignored) {
+                    if (offWord(value) || value.contains("తగ్గ") || value.contains("low")) pct = 15;
+                    else if (value.contains("full") || value.contains("max") || value.contains("పూర్తి")) pct = 100;
+                }
+                pct = Math.max(1, Math.min(100, pct));
+                String e = needWriteSettings();
+                if (e != null) return e;
+                android.content.ContentResolver cr = act().getContentResolver();
+                android.provider.Settings.System.putInt(cr, android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+                android.provider.Settings.System.putInt(cr, android.provider.Settings.System.SCREEN_BRIGHTNESS, Math.round(pct * 255 / 100f));
+                return ok().put("brightness_pct", pct).toString();
+            }
+            case "auto_brightness": case "adaptive_brightness": {
+                String e = needWriteSettings();
+                if (e != null) return e;
+                android.provider.Settings.System.putInt(act().getContentResolver(), android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        on ? android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC : android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+                return ok().put("auto_brightness", on).toString();
+            }
+            case "auto_rotate": case "rotation": {
+                String e = needWriteSettings();
+                if (e != null) return e;
+                android.provider.Settings.System.putInt(act().getContentResolver(), android.provider.Settings.System.ACCELEROMETER_ROTATION, on ? 1 : 0);
+                return ok().put("auto_rotate", on).toString();
+            }
+            case "silent": case "vibrate": case "sound": case "ring": case "normal": {
+                android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
+                android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
+                int mode = s.equals("vibrate") ? android.media.AudioManager.RINGER_MODE_VIBRATE
+                        : s.equals("silent") && on ? android.media.AudioManager.RINGER_MODE_SILENT
+                        : android.media.AudioManager.RINGER_MODE_NORMAL;
+                try {
+                    am.setRingerMode(mode);
+                } catch (SecurityException se) {
+                    return needDndAccess(nm);
+                }
+                if (am.getRingerMode() != mode && nm != null && !nm.isNotificationPolicyAccessGranted()) return needDndAccess(nm);
+                return ok().put("ringer", mode == 0 ? "silent" : mode == 1 ? "vibrate" : "sound on").toString();
+            }
+            case "dnd": case "do_not_disturb": {
+                android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
+                if (nm == null || !nm.isNotificationPolicyAccessGranted()) return needDndAccess(nm);
+                nm.setInterruptionFilter(on ? android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                        : android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
+                return ok().put("do_not_disturb", on).toString();
+            }
+            default:
+                return err("unknown_setting", "Use wifi, bluetooth, mobile_data, airplane, location, hotspot, brightness, auto_brightness, auto_rotate, silent, vibrate, sound or dnd. Volume is media_control.");
+        }
+    }
+
+    private String needWriteSettings() throws Exception {
+        if (android.provider.Settings.System.canWrite(act())) return null;
+        start(new Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:" + act().getPackageName()))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        return err("permission_needed", "Anil must switch on 'Modify system settings' for Jarvis once (the page is open), then ask again.");
+    }
+
+    private String needDndAccess(android.app.NotificationManager nm) throws Exception {
+        start(new Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        return err("permission_needed", "Silent / Do Not Disturb needs 'Do Not Disturb access' for Jarvis. The page is open: Anil switches Jarvis on there once, then asks again.");
+    }
+
+    /** Opens a settings page or quick panel and flips its switch through accessibility, then comes back. */
+    private String viaSettings(Intent page, String[] labels, boolean on, String name) throws Exception {
+        page.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        try {
+            start(page);
+        } catch (Exception e) {
+            return err("no_page", "This phone has no " + name + " settings page Jarvis can open.");
+        }
+        if (!JarvisAccessibility.enabled()) {
+            return ok().put("opened", name).put("switched", false)
+                    .put("note", "Android lets only the user flip " + name + ". The switch is open on screen for Anil to tap. With Jarvis's accessibility switch on, Jarvis flips it itself.").toString();
+        }
+        String r = JarvisAccessibility.setSwitch(labels, on, 6000);
+        Thread.sleep(300);
+        JarvisAccessibility.back();
+        Thread.sleep(500);
+        backToJarvis();
+        if ("done".equals(r) || "already".equals(r)) return ok().put(name, on ? "on" : "off").put("was_already", "already".equals(r)).toString();
+        return err("no_switch", "Jarvis could not find the " + name + " switch on that page. Anil can flip it himself in quick settings.");
+    }
+
+    // ================================================================ photos
+
+    private String photoPermission() {
+        String perm = Build.VERSION.SDK_INT >= 33 ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (has(perm)) return null;
+        if (Build.VERSION.SDK_INT >= 34 && has(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)) return null;
+        return needPermission(perm, "reading photos (choose 'Allow all')");
+    }
+
+    /** [from, to) in milliseconds for "today", "yesterday", "this week", "yyyy-MM-dd"; null = no limit. */
+    private static long[] range(String when) {
+        String w = when == null ? "" : when.trim().toLowerCase(Locale.ROOT);
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.set(java.util.Calendar.HOUR_OF_DAY, 0); c.set(java.util.Calendar.MINUTE, 0);
+        c.set(java.util.Calendar.SECOND, 0); c.set(java.util.Calendar.MILLISECOND, 0);
+        long today = c.getTimeInMillis(), day = 86400000L;
+        if (w.isEmpty() || w.equals("last") || w.equals("latest") || w.equals("recent")) return null;
+        if (w.contains("today") || w.contains("ఈరోజు") || w.contains("ఈ రోజు")) return new long[]{today, today + day};
+        if (w.contains("yesterday") || w.contains("నిన్న")) return new long[]{today - day, today};
+        if (w.contains("week") || w.contains("వారం")) return new long[]{today - 7 * day, today + day};
+        if (w.contains("month") || w.contains("నెల")) return new long[]{today - 30 * day, today + day};
+        try {
+            java.util.Date d = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(w);
+            if (d != null) return new long[]{d.getTime(), d.getTime() + day};
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private List<Uri> findPhotos(String when, int max, boolean screenshots) {
+        List<Uri> out = new ArrayList<>();
+        Uri base = android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+        long[] r = range(when);
+        String sel = null;
+        String[] args = null;
+        if (r != null) {
+            sel = "(" + android.provider.MediaStore.Images.Media.DATE_TAKEN + " >= ? AND " + android.provider.MediaStore.Images.Media.DATE_TAKEN + " < ?) OR ("
+                    + android.provider.MediaStore.Images.Media.DATE_TAKEN + " IS NULL AND " + android.provider.MediaStore.Images.Media.DATE_ADDED + " >= ? AND "
+                    + android.provider.MediaStore.Images.Media.DATE_ADDED + " < ?)";
+            args = new String[]{String.valueOf(r[0]), String.valueOf(r[1]), String.valueOf(r[0] / 1000), String.valueOf(r[1] / 1000)};
+        }
+        try (Cursor c = act().getContentResolver().query(base,
+                new String[]{android.provider.MediaStore.Images.Media._ID, android.provider.MediaStore.Images.Media.BUCKET_DISPLAY_NAME},
+                sel, args, android.provider.MediaStore.Images.Media.DATE_ADDED + " DESC")) {
+            while (c != null && c.moveToNext() && out.size() < max) {
+                String bucket = c.getString(1);
+                if (!screenshots && bucket != null && bucket.toLowerCase(Locale.ROOT).contains("screenshot")) continue;
+                out.add(android.content.ContentUris.withAppendedId(base, c.getLong(0)));
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    private String photos(String action, String when, String who, int count, String caption, boolean screenshots) throws Exception {
+        String e = photoPermission();
+        if (e != null) return e;
+        String a = action == null ? "show" : action.trim().toLowerCase(Locale.ROOT);
+        if (a.equals("count")) {
+            int n = findPhotos(when, 5000, screenshots).size();
+            return ok().put("photos", n).put("when", when).toString();
+        }
+        if (a.equals("send")) {
+            int max = Math.max(1, Math.min(10, count <= 0 ? 1 : count));
+            List<Uri> list = findPhotos(when, max, screenshots);
+            if (list.isEmpty()) return err("no_photos", "No photos found for '" + when + "'.");
+            Target t = resolve(who);
+            if (t.error != null) return t.error;
+            if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+            String pkg = null;
+            for (String p : new String[]{"com.whatsapp", "com.whatsapp.w4b"}) if (installed(p)) { pkg = p; break; }
+            if (pkg == null) return err("no_whatsapp", "WhatsApp is not installed.");
+            Intent i;
+            if (list.size() == 1) {
+                i = new Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, list.get(0));
+            } else {
+                i = new Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, new ArrayList<>(list));
+            }
+            android.content.ClipData clip = android.content.ClipData.newRawUri("photo", list.get(0));
+            for (int k = 1; k < list.size(); k++) clip.addItem(new android.content.ClipData.Item(list.get(k)));
+            i.setClipData(clip);
+            i.setType("image/*").setPackage(pkg)
+                    .putExtra("jid", whatsappNumber(t.contact.number) + "@s.whatsapp.net")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            if (caption != null && !caption.trim().isEmpty()) i.putExtra(Intent.EXTRA_TEXT, caption.trim());
+            try {
+                start(i);
+            } catch (ActivityNotFoundException ex) {
+                return err("no_whatsapp", "WhatsApp could not open the photo.");
+            }
+            String what = list.size() == 1 ? "1 photo" : list.size() + " photos";
+            return draftReady(pkg, t.contact.name, t.contact.number, "WhatsApp",
+                    what + (caption == null || caption.isEmpty() ? "" : " with: " + caption), false);
+        }
+        // show
+        List<Uri> list = findPhotos(when, 500, screenshots);
+        if (list.isEmpty()) return err("no_photos", "No photos found for '" + when + "'.");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        Intent v = new Intent(Intent.ACTION_VIEW).setDataAndType(list.get(0), "image/*")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            start(v);
+        } catch (ActivityNotFoundException ex) {
+            return err("no_gallery", "No gallery app to show photos.");
+        }
+        return ok().put("showing", list.size()).put("note", "Opened the newest one; he can swipe for the others.").toString();
+    }
+
+    // ================================================================ calls
+
+    private String callControl(String action) throws Exception {
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        String r;
+        if (a.startsWith("ans") || a.equals("accept") || a.equals("pick")) r = CallControl.answer(act());
+        else if (a.startsWith("dec") || a.equals("reject")) r = CallControl.decline(act());
+        else r = CallControl.hangUp(act());
+        if ("need_permission".equals(r)) return needPermission(Manifest.permission.ANSWER_PHONE_CALLS, "answering and ending calls");
+        if ("no_call".equals(r)) return err("no_call", "There is no call to " + a + " right now.");
+        if ("failed".equals(r)) return err("failed", "The call app did not accept that; Anil must tap the button himself.");
+        return ok().put("done", r).toString();
+    }
+
+    // ================================================================ money from bank SMS
+
+    private static final java.util.regex.Pattern AMOUNT = java.util.regex.Pattern.compile(
+            "(?:rs\\.?|inr|₹)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    private String bankSpending(int days) throws Exception {
+        if (!has(Manifest.permission.READ_SMS)) return needPermission(Manifest.permission.READ_SMS, "reading bank SMS");
+        days = Math.max(1, Math.min(92, days <= 0 ? 30 : days));
+        long since = System.currentTimeMillis() - days * 86400000L;
+        double spent = 0, received = 0;
+        JSONArray items = new JSONArray();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM", Locale.ENGLISH);
+        int n = 0;
+        try (Cursor c = act().getContentResolver().query(Uri.parse("content://sms/inbox"),
+                new String[]{"address", "body", "date"}, "date >= ?", new String[]{String.valueOf(since)}, "date DESC")) {
+            while (c != null && c.moveToNext()) {
+                String body = c.getString(1);
+                if (body == null) continue;
+                String low = body.toLowerCase(Locale.ROOT);
+                if (low.contains("otp") || low.contains("one time password") || low.contains("will be debited")
+                        || low.contains("due") && !low.contains("debited") || low.contains("request")) continue;
+                boolean debit = low.contains("debited") || low.contains("spent") || low.contains("withdrawn") || low.contains("paid")
+                        || low.contains("sent") || low.contains("purchase") || low.contains(" dr ") || low.contains("debit");
+                boolean credit = low.contains("credited") || low.contains("received") || low.contains("deposited") || low.contains("refund");
+                if (!debit && !credit) continue;
+                java.util.regex.Matcher m = AMOUNT.matcher(body);
+                if (!m.find()) continue;
+                double amt;
+                try { amt = Double.parseDouble(m.group(1).replace(",", "")); } catch (Exception ex) { continue; }
+                boolean isCredit = credit && !(low.indexOf("debited") >= 0 && low.indexOf("debited") < Math.max(0, low.indexOf("credited")));
+                if (isCredit) received += amt; else spent += amt;
+                if (n++ < 60) {
+                    String snippet = body.replaceAll("\\s+", " ").replaceAll("[0-9Xx*]{6,}", "…");
+                    if (snippet.length() > 110) snippet = snippet.substring(0, 110);
+                    items.put(new JSONObject().put("date", f.format(new java.util.Date(c.getLong(2))))
+                            .put("type", isCredit ? "credit" : "debit").put("amount", amt)
+                            .put("from", c.getString(0)).put("sms", snippet));
+                }
+            }
+        }
+        return ok().put("days", days).put("total_spent", Math.round(spent)).put("total_received", Math.round(received))
+                .put("transactions", n).put("recent", items)
+                .put("note", "Estimated from bank/UPI SMS on this phone only; card or app payments without an SMS are missing.").toString();
+    }
+
+    // ================================================================ places & location reminders
+
+    private Location freshLocation() throws InterruptedException {
+        LocationManager lm = (LocationManager) act().getSystemService(Activity.LOCATION_SERVICE);
+        if (lm == null) return null;
+        if (Build.VERSION.SDK_INT >= 30) {
+            String provider = Build.VERSION.SDK_INT >= 31 && lm.hasProvider(LocationManager.FUSED_PROVIDER) ? LocationManager.FUSED_PROVIDER
+                    : lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ? LocationManager.GPS_PROVIDER : LocationManager.NETWORK_PROVIDER;
+            final Location[] got = {null};
+            CountDownLatch done = new CountDownLatch(1);
+            try {
+                lm.getCurrentLocation(provider, null, act().getMainExecutor(), l -> { got[0] = l; done.countDown(); });
+                done.await(20, TimeUnit.SECONDS);
+            } catch (SecurityException | IllegalArgumentException ignored) {}
+            if (got[0] != null) return got[0];
+        }
+        return lastLocation(act());
+    }
+
+    private String savePlace(String name) throws Exception {
+        if (name == null || name.trim().isEmpty()) return err("missing", "What should I call this place (home, office...)?");
+        if (!has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
+        Location l = freshLocation();
+        if (l == null) return err("no_location", "Could not get the phone's location. Is Location on?");
+        GeoReminders.savePlace(act(), name.trim(), l.getLatitude(), l.getLongitude());
+        return ok().put("saved_place", name.trim()).put("accuracy_m", Math.round(l.getAccuracy())).toString();
+    }
+
+    private String locationReminder(String action, String place, String text, String when, String id) throws Exception {
+        String a = action == null || action.isEmpty() ? "add" : action.trim().toLowerCase(Locale.ROOT);
+        if (a.equals("list")) {
+            JSONArray arr = new JSONArray();
+            for (JSONObject r : GeoReminders.all(act())) {
+                arr.put(new JSONObject().put("id", r.optString("id")).put("place", r.optString("place"))
+                        .put("when", r.optBoolean("arrive") ? "arrive" : "leave").put("text", r.optString("text")));
+            }
+            return ok().put("location_reminders", arr).put("saved_places", GeoReminders.places(act())).toString();
+        }
+        if (a.equals("cancel")) {
+            return GeoReminders.cancel(act(), id) ? ok().put("cancelled", id).toString() : err("not_found", "No location reminder with id " + id);
+        }
+        if (place == null || place.trim().isEmpty() || text == null || text.trim().isEmpty()) return err("missing", "Need the place and what to remind.");
+        if (!has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
+        double[] ll = GeoReminders.place(act(), place);
+        if (ll == null) {
+            try {
+                List<android.location.Address> found = new android.location.Geocoder(act(), Locale.ENGLISH).getFromLocationName(place, 1);
+                if (found != null && !found.isEmpty()) ll = new double[]{found.get(0).getLatitude(), found.get(0).getLongitude()};
+            } catch (Exception ignored) {}
+        }
+        if (ll == null) {
+            return err("unknown_place", "'" + place + "' is not a saved place and could not be found on the map. When Anil is there, he can say 'ఈ place ని " + place + " గా సేవ్ చెయ్' (save_place).");
+        }
+        boolean arrive = when == null || !when.toLowerCase(Locale.ROOT).startsWith("leav");
+        Location here = lastLocation(act());
+        boolean inside = here != null && GeoReminders.distance(here.getLatitude(), here.getLongitude(), ll[0], ll[1]) < GeoReminders.RADIUS_M;
+        JSONObject r = GeoReminders.add(act(), place.trim(), ll[0], ll[1], text.trim(), arrive, inside);
+        JSONObject o = ok().put("id", r.optString("id")).put("place", place).put("when", arrive ? "arrive" : "leave").put("text", text);
+        if (Build.VERSION.SDK_INT >= 29 && !has(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
+            host.askPermissions(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION});
+            o.put("note", "Set. For it to work when Jarvis is closed, Anil must choose 'Allow all the time' for Jarvis's location (the page was opened).");
+        } else {
+            o.put("note", "Android checks location every few minutes when the phone is idle, so it may come a little after he arrives.");
+        }
+        if (inside && arrive) o.put("already_there", "He is there now; it will remind him the next time he arrives.");
         return o.toString();
     }
 

@@ -223,6 +223,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         p.add(Manifest.permission.READ_CALENDAR);
         p.add(Manifest.permission.WRITE_CALENDAR);
         p.add(Manifest.permission.CAMERA);
+        p.add(Manifest.permission.ANSWER_PHONE_CALLS);
+        p.add(Manifest.permission.ACCESS_FINE_LOCATION);
         if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS);
         return p.toArray(new String[0]);
     }

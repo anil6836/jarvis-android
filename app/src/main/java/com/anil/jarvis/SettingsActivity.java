@@ -32,6 +32,7 @@ public class SettingsActivity extends Activity {
     private Prefs prefs;
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
     private RadioGroup provider, lang, wakeWhen;
+    private Switch callVoice;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
@@ -189,6 +190,7 @@ public class SettingsActivity extends Activity {
         // ---- calls, reminders, morning briefing
         section("కాల్స్, ఉదయం బ్రీఫింగ్");
         announceCalls = toggle("కాల్ వస్తే ఎవరో పైకి చెప్పు (నోటిఫికేషన్ యాక్సెస్ కావాలి)", prefs.announceCalls());
+        callVoice = toggle("తర్వాత \"ఎత్తు\" అంటే కాల్ ఎత్తు, \"కట్\" అంటే కట్ చెయ్", prefs.callByVoice());
         briefing = toggle("రోజూ ఉదయం బ్రీఫింగ్ తనంతట తానే", prefs.briefingOn());
         briefHour = prefs.briefingHour();
         briefMinute = prefs.briefingMinute();
@@ -293,6 +295,7 @@ public class SettingsActivity extends Activity {
         int ww = wakeWhen.getCheckedRadioButtonId();
         e.putString("wake_when", ww == 22 ? "charging" : ww == 21 ? "screen_on" : "always");
         e.putBoolean("announce_calls", announceCalls.isChecked());
+        e.putBoolean("call_voice", callVoice.isChecked());
         e.putBoolean("briefing", briefing.isChecked());
         e.putInt("briefing_hour", briefHour);
         e.putInt("briefing_minute", briefMinute);

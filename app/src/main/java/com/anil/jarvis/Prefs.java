@@ -90,6 +90,8 @@ final class Prefs {
 
     // ---- incoming calls
     boolean announceCalls() { return sp.getBoolean("announce_calls", true); }
+    /** After saying who is calling, listen for "ఎత్తు" / "కట్" and answer or decline. */
+    boolean callByVoice() { return sp.getBoolean("call_voice", true); }
 
     // ---- daily morning briefing
     boolean briefingOn() { return sp.getBoolean("briefing", false); }

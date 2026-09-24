@@ -163,6 +163,62 @@ public class JarvisAccessibility extends AccessibilityService {
 
     /** The visible window that belongs to pkg (its compose screen), or the active one if it matches. */
     /**
+     * Flips an on/off switch on the settings page or quick panel that is on screen now.
+     * labels: words of the row to use ("Mobile data"); null = the first switch (e.g. "Use Wi-Fi").
+     * Returns "done", "already", "no_switch" or "no_accessibility".
+     */
+    static String setSwitch(String[] labels, boolean on, long timeoutMs) {
+        JarvisAccessibility s = instance;
+        if (s == null) return "no_accessibility";
+        long end = SystemClock.uptimeMillis() + timeoutMs;
+        while (SystemClock.uptimeMillis() < end) {
+            SystemClock.sleep(400);
+            AccessibilityNodeInfo root = s.getRootInActiveWindow();
+            if (root == null || s.getPackageName().contentEquals(String.valueOf(root.getPackageName()))) continue;
+            AccessibilityNodeInfo sw = null;
+            if (labels != null) {
+                outer:
+                for (String w : labels) {
+                    List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByText(w);
+                    if (list == null) continue;
+                    for (AccessibilityNodeInfo n : list) {
+                        AccessibilityNodeInfo row = n;
+                        for (int up = 0; up < 4 && row != null; up++) {
+                            AccessibilityNodeInfo found = firstCheckable(row, 0);
+                            if (found != null) { sw = found; break outer; }
+                            row = row.getParent();
+                        }
+                    }
+                }
+            } else {
+                sw = firstCheckable(root, 0);
+            }
+            if (sw == null) continue;
+            if (sw.isChecked() == on) return "already";
+            AccessibilityNodeInfo t = clickable(sw);
+            if (t == null || !t.performAction(AccessibilityNodeInfo.ACTION_CLICK)) continue;
+            SystemClock.sleep(700);
+            return "done";
+        }
+        return "no_switch";
+    }
+
+    private static AccessibilityNodeInfo firstCheckable(AccessibilityNodeInfo n, int depth) {
+        if (n == null || depth > 40) return null;
+        if (n.isCheckable() && n.isVisibleToUser()) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo r = firstCheckable(n.getChild(i), depth + 1);
+            if (r != null) return r;
+        }
+        return null;
+    }
+
+    static void back() {
+        JarvisAccessibility s = instance;
+        if (s != null) s.performGlobalAction(GLOBAL_ACTION_BACK);
+    }
+
+    /**
      * Makes sure the message is in the app's message box: if the app did not fill it in from the
      * link, types it there. Returns "typed", "already", "no_box" or "no_accessibility".
      */

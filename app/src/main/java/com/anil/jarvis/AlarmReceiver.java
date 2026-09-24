@@ -28,6 +28,13 @@ public class AlarmReceiver extends BroadcastReceiver {
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
                 break;
             }
+            case GeoReminders.ACTION_GEO: {
+                boolean entering = i.getBooleanExtra(android.location.LocationManager.KEY_PROXIMITY_ENTERING, false);
+                PendingResult pr = goAsync();
+                GeoReminders.fired(c, i.getStringExtra("id"), entering);
+                new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
+                break;
+            }
             case Reminders.ACTION_BRIEFING:
                 BriefingService.start(c);
                 Reminders.scheduleBriefing(c); // tomorrow
@@ -37,6 +44,7 @@ public class AlarmReceiver extends BroadcastReceiver {
             case Intent.ACTION_TIME_CHANGED:
             case Intent.ACTION_TIMEZONE_CHANGED:
                 Reminders.rescheduleAll(c);
+                GeoReminders.rearmAll(c);
                 break;
             default:
                 break;

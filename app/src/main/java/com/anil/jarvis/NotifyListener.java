@@ -66,6 +66,10 @@ public class NotifyListener extends NotificationListenerService {
         add(sbn);
     }
 
+    @Override public void onNotificationRemoved(StatusBarNotification sbn) {
+        if (sbn != null) CallControl.onRemoved(sbn.getKey());
+    }
+
     private void add(StatusBarNotification sbn) {
         if (sbn == null || getPackageName().equals(sbn.getPackageName())) return;
         Notification n = sbn.getNotification();
@@ -120,14 +124,19 @@ public class NotifyListener extends NotificationListenerService {
     /** "Anil, Ravi నుంచి కాల్ వస్తోంది" when a phone or WhatsApp call starts ringing. */
     private void announceCall(StatusBarNotification sbn, Notification n) {
         Prefs p = new Prefs(this);
-        if (!p.announceCalls() || n.extras == null) return;
+        if (n.extras == null) return;
         boolean incoming = n.fullScreenIntent != null;
         if (Build.VERSION.SDK_INT >= 31) {
             int type = n.extras.getInt(Notification.EXTRA_CALL_TYPE, 0);
             if (type == Notification.CallStyle.CALL_TYPE_INCOMING) incoming = true;
             else if (type == Notification.CallStyle.CALL_TYPE_ONGOING || type == Notification.CallStyle.CALL_TYPE_SCREENING) incoming = false;
         }
-        if (!incoming) return;
+        String pkgLow = sbn.getPackageName().toLowerCase(Locale.ROOT);
+        boolean isPhone = pkgLow.contains("dialer") || pkgLow.contains("telecom") || pkgLow.contains("incallui") || pkgLow.contains("phone") || pkgLow.contains("contacts");
+        if (!incoming) {
+            CallControl.onOngoing(sbn.getKey(), n, isPhone);
+            return;
+        }
         long now = System.currentTimeMillis();
         synchronized (announced) {
             Long prev = announced.get(sbn.getKey());
@@ -147,7 +156,19 @@ public class NotifyListener extends NotificationListenerService {
             PackageManager pm = getPackageManager();
             app = String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(sbn.getPackageName(), 0)));
         } catch (Exception ignored) {}
-        Announcer.say(this, p.name() + ", " + (who.isEmpty() ? "ఎవరో" : who) + " నుంచి " + (phone ? "" : app + " ") + "కాల్ వస్తోంది");
+        CallControl.onIncoming(sbn.getKey(), n, phone, who);
+        if (!p.announceCalls()) return;
+        String say = p.name() + ", " + (who.isEmpty() ? "ఎవరో" : who) + " నుంచి " + (phone ? "" : app + " ") + "కాల్ వస్తోంది";
+        if (p.callByVoice() && android.provider.Settings.canDrawOverlays(this)) {
+            // Show the Jarvis panel: it says who is calling, asks "ఎత్తమంటారా?" and listens for the answer.
+            try {
+                startActivity(new android.content.Intent(this, SheetActivity.class)
+                        .putExtra(SheetActivity.EXTRA_CALL, say)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));
+                return;
+            } catch (Exception ignored) {}
+        }
+        Announcer.say(this, say);
     }
 
     /** Text of the last few messages in a chat-style notification, "sender: text" per line. */
