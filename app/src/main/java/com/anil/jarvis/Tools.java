@@ -110,9 +110,9 @@ final class Tools {
                 "Show a place in Google Maps, or start navigation to it.",
                 schema(new String[][]{{"place", "string", "Place or address"}, {"navigate", "boolean", "true to start turn-by-turn navigation"}}, "place")));
         DEFS.add(new Def("play_youtube",
-                "Play a song, music or a video: it opens and STARTS PLAYING by itself (top YouTube video, or YouTube Music / Spotify when he names that app).",
+                "Play a song, music or a video. It plays in the app Anil names (YouTube, YouTube Music, Spotify, JioSaavn, Gaana, Wynk, Amazon Music or any other installed app) and starts playing by itself; with no app named it plays the top YouTube video.",
                 schema(new String[][]{{"query", "string", "What to play, e.g. 'Ghantasala old songs' or a film song name with the film"},
-                        {"app", "string", "Optional: 'youtube' (default), 'youtube music' or 'spotify'"}}, "query")));
+                        {"app", "string", "The app he named, exactly as he said it (e.g. 'Spotify', 'JioSaavn'). Empty when he did not name one."}}, "query")));
         DEFS.add(new Def("flashlight",
                 "Turn the phone's flashlight on or off.",
                 schema(new String[][]{{"on", "boolean", "true = on, false = off"}}, "on")));
@@ -611,8 +611,9 @@ final class Tools {
         return "unknown";
     }
 
-    private String openApp(String name) throws Exception {
-        if (name == null || name.trim().isEmpty()) return err("missing", "Which app?");
+    /** The installed app whose name best matches, or null. */
+    private ResolveInfo findApp(String name) {
+        if (name == null || name.trim().isEmpty()) return null;
         String q = name.trim().toLowerCase(Locale.ROOT);
         PackageManager pm = act().getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
@@ -624,6 +625,13 @@ final class Tools {
             int score = label.equals(q) ? 3 : label.startsWith(q) ? 2 : (label.contains(q) || q.contains(label)) ? 1 : 0;
             if (score > bestScore) { bestScore = score; best = r; }
         }
+        return best;
+    }
+
+    private String openApp(String name) throws Exception {
+        if (name == null || name.trim().isEmpty()) return err("missing", "Which app?");
+        PackageManager pm = act().getPackageManager();
+        ResolveInfo best = findApp(name);
         if (best == null) return err("not_found", "No installed app called '" + name + "'.");
         Intent launch = pm.getLaunchIntentForPackage(best.activityInfo.packageName);
         if (launch == null) return err("cannot_open", "That app cannot be opened directly.");
@@ -682,15 +690,54 @@ final class Tools {
         return null;
     }
 
+    /** Well-known music apps by the names people say. */
+    private static final String[][] MUSIC_APPS = {
+            {"youtube music", YT_MUSIC}, {"yt music", YT_MUSIC}, {"spotify", SPOTIFY},
+            {"jiosaavn", "com.jio.media.jiobeats"}, {"saavn", "com.jio.media.jiobeats"},
+            {"gaana", "com.gaana"}, {"wynk", "com.bsbportal.music"}, {"amazon music", "com.amazon.mp3"},
+            {"apple music", "com.apple.android.music"}, {"resso", "com.moonvideo.android.resso"},
+            {"hungama", "com.hungama.myplay.activity"}, {"soundcloud", "com.soundcloud.android"}};
+
+    private boolean supportsPlayFromSearch(String pkg) {
+        Intent i = new Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).setPackage(pkg);
+        return !act().getPackageManager().queryIntentActivities(i, 0).isEmpty();
+    }
+
+    private String label(String pkg) {
+        try {
+            PackageManager pm = act().getPackageManager();
+            return String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)));
+        } catch (Exception e) {
+            return pkg;
+        }
+    }
+
     private String youtube(String query, String app) throws Exception {
         if (query == null || query.trim().isEmpty()) return err("missing", "What should I play?");
         String q = query.trim();
-        String a = app == null ? "" : app.toLowerCase(Locale.ROOT);
-        if (a.contains("spotify") && installed(SPOTIFY) && playFromSearch(SPOTIFY, q)) {
-            return ok().put("playing_on", "Spotify").put("query", q).toString();
-        }
-        if (a.contains("music") && installed(YT_MUSIC) && playFromSearch(YT_MUSIC, q)) {
-            return ok().put("playing_on", "YouTube Music").put("query", q).toString();
+        String a = app == null ? "" : app.trim().toLowerCase(Locale.ROOT);
+
+        // Anil named an app other than plain YouTube: play inside that app.
+        if (!a.isEmpty() && !a.equals("youtube") && !a.equals("yt")) {
+            String pkg = null;
+            for (String[] m : MUSIC_APPS) if (a.contains(m[0]) && installed(m[1])) { pkg = m[1]; break; }
+            if (pkg == null) {
+                ResolveInfo r = findApp(a);
+                if (r != null) pkg = r.activityInfo.packageName;
+            }
+            if (pkg == null) return err("app_not_installed", "'" + app + "' is not installed on this phone. Offer to play it on YouTube instead.");
+            if (pkg.equals(YT)) {
+                a = "youtube"; // fall through to the YouTube video path below
+            } else if (supportsPlayFromSearch(pkg) && playFromSearch(pkg, q)) {
+                return ok().put("playing_on", label(pkg)).put("query", q).toString();
+            } else {
+                Intent launch = act().getPackageManager().getLaunchIntentForPackage(pkg);
+                if (launch != null) {
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    start(launch);
+                }
+                return ok().put("opened", label(pkg)).put("note", label(pkg) + " does not let other apps start a song. It is open; Anil must search and tap play. Offer YouTube if he prefers automatic play.").toString();
+            }
         }
         // Default: open the top YouTube video directly, so it starts playing by itself.
         String id = topVideoId(q);
@@ -703,7 +750,7 @@ final class Tools {
                 return ok().put("playing_on", "YouTube").put("query", q).toString();
             } catch (ActivityNotFoundException ignored) {}
         }
-        if (installed(YT_MUSIC) && playFromSearch(YT_MUSIC, q)) {
+        if (a.isEmpty() && installed(YT_MUSIC) && playFromSearch(YT_MUSIC, q)) {
             return ok().put("playing_on", "YouTube Music").put("query", q).toString();
         }
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + URLEncoder.encode(q, "UTF-8")));
