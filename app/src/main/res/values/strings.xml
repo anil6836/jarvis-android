@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Jarvis</string>
+    <string name="shortcut_talk">Jarvis తో మాట్లాడు</string>
     <string name="accessibility_desc">మీరు \"Jarvis\" అని పిలిచినప్పుడు ఉన్న స్క్రీన్‌ని చూసి, \"నా స్క్రీన్‌లో ఏముంది?\" లాంటి ప్రశ్నలకు జవాబు ఇవ్వడానికి. మీరు అడిగినప్పుడే స్క్రీన్ AI కి పంపబడుతుంది.</string>
 </resources>

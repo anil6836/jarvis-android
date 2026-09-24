@@ -31,7 +31,7 @@ import java.util.Locale;
 public class SettingsActivity extends Activity {
     private Prefs prefs;
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
-    private RadioGroup provider, lang;
+    private RadioGroup provider, lang, wakeWhen;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
@@ -142,6 +142,17 @@ public class SettingsActivity extends Activity {
         section("\"Hey Jarvis\" వేక్ వర్డ్");
         note("ఫోన్ లాక్‌లో ఉన్నా \"Hey Jarvis\" అని పిలిస్తే తెరుచుకుంటుంది. ఏ key అవసరం లేదు. వినడం అంతా ఫోన్‌లోనే జరుగుతుంది, ఏ ఆడియో బయటికి వెళ్లదు.");
         wake = toggle("వేక్ వర్డ్ ఆన్", prefs.wakeWord());
+        TextView ww = Ui.text(this, "మైక్ ఎప్పుడు వినాలి?", 15, Ui.MUTED);
+        ww.setPadding(0, Ui.dp(this, 8), 0, 0);
+        box.addView(ww);
+        wakeWhen = new RadioGroup(this);
+        wakeWhen.addView(radio(21, "స్క్రీన్ ఆన్‌లో ఉన్నప్పుడు మాత్రమే (సిఫార్సు)"));
+        wakeWhen.addView(radio(22, "ఛార్జింగ్‌లో ఉన్నప్పుడు మాత్రమే"));
+        wakeWhen.addView(radio(23, "ఎప్పుడూ"));
+        String when = prefs.wakeWhen();
+        wakeWhen.check("charging".equals(when) ? 22 : "always".equals(when) ? 23 : 21);
+        box.addView(wakeWhen);
+        note("\"Hey Google\" కోసం ఫోన్‌లో ఒక ప్రత్యేక చిన్న చిప్ ఉంటుంది, అది Google కి మాత్రమే అందుబాటులో ఉంటుంది. అందుకే \"Jarvis\" అని పిలవడం వినాలంటే మైక్ ఆన్‌లో ఉండాలి. మైక్ పూర్తిగా ఆఫ్ ఉండాలంటే వేక్ వర్డ్ ఆఫ్ చేసి, కింది మార్గాల్లో పిలవండి: పవర్ బటన్ నొక్కి పట్టుకోవడం, పైనుంచి కిందికి స్వైప్ చేసి \"Jarvis\" టైల్ నొక్కడం, లేదా Jarvis ఐకాన్ నొక్కి పట్టుకుని \"Jarvis తో మాట్లాడు\" షార్ట్‌కట్.");
         jarvisWord = toggle("\"Jarvis\" ఒక్క పదంతో కూడా మేల్కొను (ప్రధానం; \"Hey Jarvis\" ఎప్పుడూ పనిచేస్తుంది)", prefs.jarvisWord());
         note("\"Jarvis\" పదం కోసం మొదటిసారి సుమారు 40 MB ఫైల్ ఒక్కసారి డౌన్‌లోడ్ అవుతుంది (Wi-Fi లో ఉంటే మంచిది). టీవీ, మాటల్లో \"Jarvis\" వినిపించి తప్పుగా మేల్కొంటుంటే ఇది ఆఫ్ చేయండి.");
         sensitivityLabel = Ui.text(this, "", 15, Ui.MUTED);
@@ -273,6 +284,8 @@ public class SettingsActivity extends Activity {
         e.putBoolean("follow_up", followUp.isChecked());
         e.putBoolean("natural_voice", natural.isChecked());
         e.putBoolean("wake_jarvis", jarvisWord.isChecked());
+        int ww = wakeWhen.getCheckedRadioButtonId();
+        e.putString("wake_when", ww == 22 ? "charging" : ww == 23 ? "always" : "screen_on");
         e.putBoolean("announce_calls", announceCalls.isChecked());
         e.putBoolean("briefing", briefing.isChecked());
         e.putInt("briefing_hour", briefHour);

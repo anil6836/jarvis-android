@@ -71,6 +71,48 @@ public class WakeService extends Service {
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
+    /** Turns the wake-word mic off when the screen goes off (or charging stops), and back on. */
+    private final android.content.BroadcastReceiver phoneState = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            if (!running) return;
+            if (allowedNow()) {
+                if (!MainActivity.inConversation) startEngine();
+            } else {
+                stopEngine();
+                sleeping();
+            }
+        }
+    };
+
+    @Override public void onCreate() {
+        super.onCreate();
+        android.content.IntentFilter f = new android.content.IntentFilter();
+        f.addAction(Intent.ACTION_SCREEN_ON);
+        f.addAction(Intent.ACTION_SCREEN_OFF);
+        f.addAction(Intent.ACTION_POWER_CONNECTED);
+        f.addAction(Intent.ACTION_POWER_DISCONNECTED);
+        registerReceiver(phoneState, f);
+    }
+
+    /** Whether the wake word may listen right now, per the "when to listen" setting. */
+    private boolean allowedNow() {
+        String when = new Prefs(this).wakeWhen();
+        if ("always".equals(when)) return true;
+        if ("charging".equals(when)) {
+            android.os.BatteryManager bm = getSystemService(android.os.BatteryManager.class);
+            return bm != null && bm.isCharging();
+        }
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        return pm == null || pm.isInteractive();
+    }
+
+    private void sleeping() {
+        String when = new Prefs(this).wakeWhen();
+        goForeground("charging".equals(when)
+                ? "మైక్ ఆఫ్. ఛార్జింగ్ పెట్టినప్పుడు మళ్లీ వింటాడు"
+                : "మైక్ ఆఫ్. స్క్రీన్ ఆన్ చేసినప్పుడు మళ్లీ వింటాడు");
+    }
+
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
@@ -105,6 +147,7 @@ public class WakeService extends Service {
     }
 
     @Override public void onDestroy() {
+        try { unregisterReceiver(phoneState); } catch (Exception ignored) {}
         running = false;
         main.removeCallbacksAndMessages(null);
         engineOn = false;
@@ -119,6 +162,7 @@ public class WakeService extends Service {
 
     private void startEngine() {
         if (engineOn) return;
+        if (!allowedNow()) { sleeping(); return; }
         if (engine == null) {
             Prefs p = new Prefs(this);
             engine = new WakeEngine(this, p.wakeThreshold(), p.jarvisWord(), new WakeEngine.Listener() {
@@ -141,6 +185,7 @@ public class WakeService extends Service {
         engine.start();
         engineOn = true;
         lastError = null;
+        goForeground(wordStatus != null ? wordStatus : WAKE_HINT);
     }
 
     private void stopEngine() {
