@@ -22,6 +22,15 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Download "Hey Jarvis" wake word models (openWakeWord)
+        shell: bash
+        run: |
+          mkdir -p app/src/main/assets
+          for f in melspectrogram.onnx embedding_model.onnx hey_jarvis_v0.1.onnx; do
+            curl -fsSL --retry 3 -o "app/src/main/assets/$f" "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/$f"
+          done
+          ls -la app/src/main/assets
+
       - name: Build signed APK
         shell: bash
         run: |

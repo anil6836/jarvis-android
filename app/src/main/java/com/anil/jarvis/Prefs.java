@@ -35,8 +35,9 @@ final class Prefs {
     String openAiModel() { return sp.getString("openai_model", DEFAULT_OPENAI_MODEL); }
     String anthropicModel() { return sp.getString("anthropic_model", DEFAULT_ANTHROPIC_MODEL); }
 
-    String picoKey() { return sp.getString("pico_key", "").trim(); }
     boolean wakeWord() { return sp.getBoolean("wake", false); }
+    /** Score needed to wake (lower = wakes more easily). */
+    float wakeThreshold() { return sp.getFloat("wake_threshold", 0.5f); }
     boolean voiceReplies() { return sp.getBoolean("voice", true); }
     boolean followUp() { return sp.getBoolean("follow_up", true); }
     boolean webSearch() { return sp.getBoolean("web_search", true); }
@@ -44,5 +45,5 @@ final class Prefs {
     String listenLang() { return sp.getString("lang", "te-IN"); }
 
     boolean hasBrain() { return !apiKey().isEmpty(); }
-    boolean wakeReady() { return wakeWord() && !picoKey().isEmpty(); }
+    boolean wakeReady() { return wakeWord(); }
 }

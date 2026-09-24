@@ -19,11 +19,8 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.Settings;
 
-import ai.picovoice.porcupine.Porcupine;
-import ai.picovoice.porcupine.PorcupineManager;
-
 /**
- * Listens for the word "Jarvis" in the background (Picovoice Porcupine, on-device)
+ * Listens for "Hey Jarvis" in the background (openWakeWord, fully on the phone)
  * and opens Jarvis ready to listen when it hears it.
  */
 public class WakeService extends Service {
@@ -41,7 +38,7 @@ public class WakeService extends Service {
     static volatile String lastError;
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    private PorcupineManager porcupine;
+    private WakeEngine engine;
     private boolean engineOn;
     private final Runnable fallbackResume = () -> {
         if (!MainActivity.inConversation) startEngine();
@@ -84,7 +81,7 @@ public class WakeService extends Service {
             return START_NOT_STICKY;
         }
         try {
-            goForeground("\"Jarvis\" అని పిలవండి");
+            goForeground("\"Hey Jarvis\" అని పిలవండి");
         } catch (Exception e) {
             lastError = e.getMessage();
             stopSelf();
@@ -107,10 +104,10 @@ public class WakeService extends Service {
     @Override public void onDestroy() {
         running = false;
         main.removeCallbacksAndMessages(null);
-        stopEngine();
-        if (porcupine != null) {
-            try { porcupine.delete(); } catch (Exception ignored) {}
-            porcupine = null;
+        engineOn = false;
+        if (engine != null) {
+            engine.close();
+            engine = null;
         }
         super.onDestroy();
     }
@@ -119,34 +116,30 @@ public class WakeService extends Service {
 
     private void startEngine() {
         if (engineOn) return;
-        String key = new Prefs(this).picoKey();
-        if (key.isEmpty()) { lastError = "Picovoice key లేదు"; stopSelf(); return; }
-        try {
-            if (porcupine == null) {
-                porcupine = new PorcupineManager.Builder()
-                        .setAccessKey(key)
-                        .setKeyword(Porcupine.BuiltInKeyword.JARVIS)
-                        .setSensitivity(0.65f)
-                        .build(getApplicationContext(), keywordIndex -> main.post(this::onWake));
-            }
-            porcupine.start();
-            engineOn = true;
-            lastError = null;
-            goForeground("\"Jarvis\" అని పిలవండి");
-        } catch (Exception e) {
-            lastError = "Picovoice: " + e.getMessage();
-            engineOn = false;
-            goForeground("వేక్ వర్డ్ పనిచేయలేదు. Picovoice key చెక్ చేయండి.");
+        if (engine == null) {
+            engine = new WakeEngine(this, new Prefs(this).wakeThreshold(), new WakeEngine.Listener() {
+                @Override public void onWake(float score) { main.post(WakeService.this::onWake); }
+                @Override public void onError(String message) {
+                    main.post(() -> {
+                        lastError = message;
+                        engineOn = false;
+                        if (running) goForeground("వేక్ వర్డ్ ఆగిపోయింది: " + message);
+                    });
+                }
+            });
         }
+        engine.start();
+        engineOn = true;
+        lastError = null;
     }
 
     private void stopEngine() {
-        if (!engineOn || porcupine == null) { engineOn = false; return; }
-        try { porcupine.stop(); } catch (Exception ignored) {}
+        if (engine != null) engine.stop();
         engineOn = false;
     }
 
     private void onWake() {
+        if (!engineOn) return;
         stopEngine(); // free the microphone for the conversation
         Vibrator v = getSystemService(Vibrator.class);
         if (v != null) v.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE));

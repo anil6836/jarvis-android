@@ -28,11 +28,11 @@ import java.util.Locale;
 /** Keys, voice and wake-word settings. */
 public class SettingsActivity extends Activity {
     private Prefs prefs;
-    private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel, picoKey;
+    private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
     private RadioGroup provider, lang;
     private Switch web, voice, followUp, wake;
-    private SeekBar rate;
-    private TextView rateLabel, wakeInfo;
+    private SeekBar rate, sensitivity;
+    private TextView rateLabel, sensitivityLabel, wakeInfo;
     private LinearLayout box;
 
     @Override protected void onCreate(Bundle b) {
@@ -105,11 +105,22 @@ public class SettingsActivity extends Activity {
         note("Jarvis తెలుగులో మాట్లాడకపోతే: ఫోన్ Settings → Text-to-speech → Google → తెలుగు వాయిస్ డౌన్‌లోడ్ చేయండి.");
 
         // ---- wake word
-        section("\"Jarvis\" వేక్ వర్డ్");
-        note("ఫోన్ లాక్‌లో ఉన్నా \"Jarvis\" అని పిలిస్తే తెరుచుకుంటుంది. Picovoice ఉచిత AccessKey కావాలి. వినడం అంతా ఫోన్‌లోనే జరుగుతుంది.");
+        section("\"Hey Jarvis\" వేక్ వర్డ్");
+        note("ఫోన్ లాక్‌లో ఉన్నా \"Hey Jarvis\" అని పిలిస్తే తెరుచుకుంటుంది. ఏ key అవసరం లేదు. వినడం అంతా ఫోన్‌లోనే జరుగుతుంది, ఏ ఆడియో బయటికి వెళ్లదు.");
         wake = toggle("వేక్ వర్డ్ ఆన్", prefs.wakeWord());
-        picoKey = field("Picovoice AccessKey", prefs.picoKey(), true);
-        link("Picovoice AccessKey ఇక్కడ తీసుకోండి", "https://console.picovoice.ai/");
+        sensitivityLabel = Ui.text(this, "", 15, Ui.MUTED);
+        box.addView(sensitivityLabel);
+        sensitivity = new SeekBar(this);
+        sensitivity.setMax(50);
+        // left = strict (0.75), right = sensitive (0.25)
+        sensitivity.setProgress(Math.round((0.75f - prefs.wakeThreshold()) * 100));
+        sensitivity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar s, int p, boolean u) { showSensitivity(); }
+            @Override public void onStartTrackingTouch(SeekBar s) {}
+            @Override public void onStopTrackingTouch(SeekBar s) {}
+        });
+        box.addView(sensitivity);
+        showSensitivity();
         button("\"Display over other apps\" అనుమతి ఇవ్వండి", v -> {
             startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
         });
@@ -168,11 +179,9 @@ public class SettingsActivity extends Activity {
         e.putFloat("rate", 0.5f + rate.getProgress() / 100f);
         e.putString("lang", lang.getCheckedRadioButtonId() == 12 ? "en-IN" : "te-IN");
         e.putBoolean("wake", wake.isChecked());
-        e.putString("pico_key", picoKey.getText().toString().trim());
+        e.putFloat("wake_threshold", 0.75f - sensitivity.getProgress() / 100f);
         e.apply();
-        if (wake.isChecked() && picoKey.getText().toString().trim().isEmpty()) {
-            Toast.makeText(this, "వేక్ వర్డ్‌కి Picovoice AccessKey పెట్టండి", Toast.LENGTH_LONG).show();
-        }
+        WakeService.stop(this); // restarts with the new settings when the main screen opens
         if (wake.isChecked() && Build.VERSION.SDK_INT >= 33) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 6);
         }
@@ -185,6 +194,14 @@ public class SettingsActivity extends Activity {
         float r = 0.5f + rate.getProgress() / 100f;
         rateLabel.setText(String.format(Locale.ENGLISH, "మాట్లాడే వేగం: %.2fx", r));
         rateLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
+    }
+
+    private void showSensitivity() {
+        int p = sensitivity.getProgress();
+        String level = p < 17 ? "తక్కువ (తప్పుగా మేల్కొనదు, కానీ గట్టిగా పిలవాలి)"
+                : p < 34 ? "మధ్యస్థం" : "ఎక్కువ (సులువుగా మేల్కొంటుంది, అప్పుడప్పుడు పొరపాటున కూడా)";
+        sensitivityLabel.setText("సున్నితత్వం: " + level);
+        sensitivityLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
     }
 
     private void section(String s) {

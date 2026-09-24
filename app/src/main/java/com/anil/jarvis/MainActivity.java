@@ -590,7 +590,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             hello = greetingWord() + ", " + n + ". మళ్లీ కలవడం సంతోషం.";
         } else {
             hello = greetingWord() + ", " + n + ". అన్ని వ్యవస్థలు ఆన్‌లైన్‌లో ఉన్నాయి. కింద మైక్ నొక్కి మాట్లాడండి"
-                    + (prefs.wakeReady() ? ", లేదా ఎప్పుడైనా \"Jarvis\" అని పిలవండి." : ".");
+                    + (prefs.wakeReady() ? ", లేదా ఎప్పుడైనా \"Hey Jarvis\" అని పిలవండి." : ".");
         }
         addMessage("assistant", hello, System.currentTimeMillis(), null);
     }
