@@ -1,0 +1,48 @@
+package com.anil.jarvis;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+/** Everything the user sets on the settings screen. Keys stay on the phone only. */
+final class Prefs {
+    static final String OPENAI = "openai";
+    static final String ANTHROPIC = "anthropic";
+    static final String DEFAULT_OPENAI_MODEL = "gpt-6-luna";
+    static final String DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
+
+    final SharedPreferences sp;
+
+    Prefs(Context c) {
+        sp = c.getSharedPreferences("jarvis", Context.MODE_PRIVATE);
+    }
+
+    String name() { return sp.getString("name", "Anil"); }
+    String provider() { return sp.getString("provider", OPENAI); }
+    boolean isOpenAi() { return OPENAI.equals(provider()); }
+
+    String apiKey() { return sp.getString(isOpenAi() ? "openai_key" : "anthropic_key", "").trim(); }
+    String openAiKey() { return sp.getString("openai_key", ""); }
+    String anthropicKey() { return sp.getString("anthropic_key", ""); }
+
+    String model() {
+        String m = isOpenAi()
+                ? sp.getString("openai_model", DEFAULT_OPENAI_MODEL)
+                : sp.getString("anthropic_model", DEFAULT_ANTHROPIC_MODEL);
+        m = m == null ? "" : m.trim();
+        if (m.isEmpty()) m = isOpenAi() ? DEFAULT_OPENAI_MODEL : DEFAULT_ANTHROPIC_MODEL;
+        return m;
+    }
+    String openAiModel() { return sp.getString("openai_model", DEFAULT_OPENAI_MODEL); }
+    String anthropicModel() { return sp.getString("anthropic_model", DEFAULT_ANTHROPIC_MODEL); }
+
+    String picoKey() { return sp.getString("pico_key", "").trim(); }
+    boolean wakeWord() { return sp.getBoolean("wake", false); }
+    boolean voiceReplies() { return sp.getBoolean("voice", true); }
+    boolean followUp() { return sp.getBoolean("follow_up", true); }
+    boolean webSearch() { return sp.getBoolean("web_search", true); }
+    float speechRate() { return sp.getFloat("rate", 1.0f); }
+    String listenLang() { return sp.getString("lang", "te-IN"); }
+
+    boolean hasBrain() { return !apiKey().isEmpty(); }
+    boolean wakeReady() { return wakeWord() && !picoKey().isEmpty(); }
+}
