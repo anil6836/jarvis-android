@@ -36,7 +36,8 @@ public class SettingsActivity extends Activity {
     private Switch callVoice, readMessages, batteryWarn, voiceLock, proactive, sfx;
     private SeekBar lockSlider;
     private TextView lockInfo, docsInfo;
-    private EditText sosContacts;
+    private EditText sosContacts, smartUrls, smartApp;
+    private Switch alexaSpeak;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
@@ -271,6 +272,26 @@ public class SettingsActivity extends Activity {
         proactive = toggle("అడగకుండానే ముఖ్యమైనవి చెప్పు: మీటింగ్ దగ్గర పడితే, వర్షం వస్తే, ఇష్టమైనవాళ్లకి చాలా రోజులుగా ఫోన్ చేయకపోతే, మీ అలవాట్లు, నీళ్లు, ధర హెచ్చరికలు", prefs.proactive());
         note("రాత్రి మోడ్‌లో, కాల్ మాట్లాడుతున్నప్పుడు, Do Not Disturb లో మాట్లాడదు. \"ఇష్టమైనవాళ్లు\" = Contacts లో ⭐ పెట్టినవాళ్లు.");
 
+        section("స్మార్ట్ హోమ్ (లైట్లు, ఫ్యాన్లు)");
+        note("మూడు మార్గాలు, Jarvis వరుసగా ప్రయత్నిస్తుంది:\n1) Alexa రొటీన్ లింక్‌లు (అన్నింటికన్నా నమ్మకమైనది): Voice Monkey లేదా URL Routine Trigger అనే Alexa skill లో ఒక్కో పనికి ఒక trigger చేసి, Alexa యాప్‌లో ఆ trigger తో రొటీన్ (ఉదా: హాల్ లైట్ ఆఫ్) పెట్టండి. ఆ trigger లింక్‌ను కింద \"పేరు = లింక్\" గా ఒక్కో లైన్‌లో పెట్టండి.\n2) మీ స్మార్ట్ హోమ్ యాప్ తెరిచి ఆ లైట్ స్విచ్ Jarvis నొక్కుతుంది (Accessibility కావాలి).\n3) దగ్గర్లో Echo ఉంటే Jarvis \"Alexa, …\" అని పైకి చెబుతుంది.");
+        TextView su = Ui.text(this, "Alexa రొటీన్ లింక్‌లు (ఉదా: hall light off = https://…)", 14, Ui.MUTED);
+        su.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4));
+        box.addView(su);
+        smartUrls = new EditText(this);
+        smartUrls.setText(prefs.smartUrls());
+        smartUrls.setTextColor(Ui.TEXT);
+        smartUrls.setTextSize(14);
+        smartUrls.setSingleLine(false);
+        smartUrls.setMinLines(4);
+        smartUrls.setGravity(Gravity.TOP | Gravity.START);
+        smartUrls.setBackground(Ui.round(this, Ui.DEEP, Ui.LINE2, 12));
+        int sp = Ui.dp(this, 12);
+        smartUrls.setPadding(sp, sp, sp, sp);
+        smartUrls.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        box.addView(smartUrls, new LinearLayout.LayoutParams(-1, -2));
+        smartApp = field("మీ స్మార్ట్ హోమ్ యాప్ పేరు (ఉదా: Homemate, Zeb Home, Wipro Next)", prefs.smartApp(), false);
+        alexaSpeak = toggle("దగ్గర్లో Echo ఉంది: అవసరమైతే Jarvis \"Alexa, …\" అని పైకి చెప్పనివ్వు", prefs.alexaSpeak());
+
         section("అత్యవసరం (SOS)");
         note("\"Jarvis help\" / \"కాపాడు\" అంటే 5 సెకన్ల తర్వాత (మధ్యలో ఆపొచ్చు) మీ లొకేషన్ వీళ్లకి SMS వెళ్తుంది, మొదటివాళ్లకి కాల్ వెళ్తుంది.");
         sosContacts = field("కాంటాక్ట్ పేర్లు లేదా నంబర్లు, కామాతో (ఉదా: Amma, Ravi)", prefs.sosContacts(), false);
@@ -373,6 +394,9 @@ public class SettingsActivity extends Activity {
         e.putBoolean("proactive", proactive.isChecked());
         e.putBoolean("sfx", sfx.isChecked());
         e.putString("sos_contacts", sosContacts.getText().toString().trim());
+        e.putString("smart_urls", smartUrls.getText().toString().trim());
+        e.putString("smart_app", smartApp.getText().toString().trim());
+        e.putBoolean("alexa_speak", alexaSpeak.isChecked());
         e.putFloat("wake_threshold", 0.75f - sensitivity.getProgress() / 100f);
         e.apply();
         Reminders.scheduleBriefing(this);

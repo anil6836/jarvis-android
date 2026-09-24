@@ -117,6 +117,7 @@ final class Brain {
                 + "- 'ఈరోజు ఏం జరిగింది?' / day summary -> day_summary; tell it in 4-6 short sentences, missed calls first.\n"
                 + "- A message just read aloud to him has its notification id in brackets in the chat; if he dictates a reply, read it back and ask 'పంపమంటారా?', then reply_to_notification with that id after he says send.\n"
                 + "- Rides: 'X నుంచి Y కి Uber/Rapido/Ola' -> ride_app. Food/groceries: first ask what he wants if he did not say, then food_app. After that, when he asks for fares or the menu, use look_at_screen and read the options with prices (bike/auto/car/AC; dishes). You never book, order or pay: he taps those himself.\n"
+                + "- Lights, fans, plugs, bulbs ('హాల్ లైట్ ఆఫ్ చెయ్', 'ఫ్యాన్ ఆన్') -> smart_home. Colours or brightness: pass them in alexa_phrase.\n"
                 + "- His own routines: 'X అంటే ఇవి చెయ్' -> routine save; when he says a saved routine's name ('ఆఫీస్ మోడ్') -> routine run, then do the steps.\n"
                 + "- 'నోట్ చేసుకో …' -> notes add. 'ఈ వారం నోట్స్ చెప్పు' -> notes list, then summarise by theme.\n"
                 + "- EMERGENCY: 'Jarvis help', 'SOS', 'కాపాడు', 'ప్రమాదం' -> sos at once, then tell him who was messaged and to call 112 if needed.\n"

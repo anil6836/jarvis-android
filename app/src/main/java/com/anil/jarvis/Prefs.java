@@ -105,6 +105,12 @@ final class Prefs {
     boolean proactive() { return sp.getBoolean("proactive", true); }
     /** Iron Man style sound effects. */
     boolean sfx() { return sp.getBoolean("sfx", true); }
+    /** Smart home: one command per line, "name = URL" (Voice Monkey / URL Routine Trigger links). */
+    String smartUrls() { return sp.getString("smart_urls", ""); }
+    /** The app that controls the lights (Homemate, Zeb Home, Wipro Next...), used as a fallback. */
+    String smartApp() { return sp.getString("smart_app", "Homemate"); }
+    /** An Echo is near the phone: Jarvis may say "Alexa, ..." aloud. */
+    boolean alexaSpeak() { return sp.getBoolean("alexa_speak", false); }
     /** Comma-separated contact names or numbers for SOS. */
     String sosContacts() { return sp.getString("sos_contacts", ""); }
     /** Folder picked for "read my documents" (a content:// tree), or "". */

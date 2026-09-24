@@ -187,6 +187,13 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "add (default), list or cancel"}, {"place", "string", "Saved place name or address, English"},
                         {"text", "string", "What to remind him"}, {"when", "string", "arrive (default) or leave"},
                         {"id", "string", "For cancel: the reminder id from list"}})));
+        DEFS.add(new Def("smart_home",
+                "Control his smart lights, fans and plugs (Wipro, Syska, Homemate, Zeb Home, anything in Alexa): turn on/off, or run a saved scene. "
+                        + "command 'list' shows his saved commands.",
+                schema(new String[][]{{"command", "string", "What he wants in short English, e.g. 'hall light', 'bedroom fan', 'good night scene'; or 'list'"},
+                        {"device", "string", "The device name as it appears in his app, English"},
+                        {"on", "boolean", "true = on, false = off"},
+                        {"alexa_phrase", "string", "The same request as he would say it to Alexa in English, e.g. 'turn off the hall light'"}}, "command")));
         DEFS.add(new Def("routine",
                 "Anil's own multi-step commands. save: store steps under a name ('ఆఫీస్ మోడ్' = silent, Wi-Fi off, navigate to office). run: get the steps, then do them with your tools. list / delete.",
                 schema(new String[][]{{"action", "string", "save, run, list or delete"}, {"name", "string", "Routine name as he says it"},
@@ -321,6 +328,7 @@ final class Tools {
             case "driving_mode": return "డ్రైవింగ్ మోడ్…";
             case "ride_app": return "రైడ్ యాప్ తెరుస్తున్నాను…";
             case "routine": return "రొటీన్…";
+            case "smart_home": return "లైట్లు…";
             case "notes": return "నోట్స్…";
             case "sos": return "🆘 SOS…";
             case "ask_document": return "డాక్యుమెంట్ చదువుతున్నాను…";
@@ -377,6 +385,8 @@ final class Tools {
                 case "call_control": return callControl(a.optString("action"));
                 case "bank_spending": return bankSpending(a.optInt("days", 30));
                 case "save_place": return savePlace(a.optString("name"));
+                case "smart_home": return smartHome(a.optString("command", ""), a.optString("device", ""),
+                        a.optBoolean("on", true), a.optString("alexa_phrase", ""));
                 case "routine": return routine(a.optString("action", "list"), a.optString("name", ""), a.optString("steps", ""));
                 case "notes": return notes(a.optString("action", "list"), a.optString("text", ""), a.optInt("days", 7));
                 case "sos": return sos(a.optString("message", ""));
@@ -2665,6 +2675,89 @@ final class Tools {
         return ok().put("steps_today", n).put("note", n == 0 ? "Counting may have just started today; it will be right from tomorrow." : "").toString();
     }
 
+
+
+    // ================================================================ smart home
+
+    /** Saved "name = URL" lines from settings. */
+    private List<String[]> smartCommands() {
+        List<String[]> out = new ArrayList<>();
+        for (String line : prefs.smartUrls().split("\n")) {
+            int eq = line.indexOf('=');
+            if (eq <= 0) continue;
+            String name = line.substring(0, eq).trim(), url = line.substring(eq + 1).trim();
+            if (!name.isEmpty() && url.startsWith("http")) out.add(new String[]{name, url});
+        }
+        return out;
+    }
+
+    private static java.util.Set<String> words(String s) {
+        java.util.Set<String> w = new java.util.HashSet<>();
+        for (String x : s.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) if (!x.isEmpty()) w.add(x);
+        return w;
+    }
+
+    /**
+     * Lights, fans and plugs: 1) an Alexa routine link saved in settings, 2) flipping the switch in
+     * his smart-home app, 3) saying "Alexa, ..." aloud to a nearby Echo.
+     */
+    private String smartHome(String command, String device, boolean on, String alexaPhrase) throws Exception {
+        String cmd = command == null ? "" : command.trim();
+        List<String[]> saved = smartCommands();
+        if (cmd.equalsIgnoreCase("list")) {
+            JSONArray arr = new JSONArray();
+            for (String[] c : saved) arr.put(c[0]);
+            return ok().put("saved_commands", arr).put("app", prefs.smartApp()).put("alexa_speak", prefs.alexaSpeak()).toString();
+        }
+        // 1) Alexa routine link
+        java.util.Set<String> want = words(cmd + " " + (device == null ? "" : device) + " " + (on ? "on" : "off"));
+        String[] best = null;
+        double bestScore = 0;
+        for (String[] c : saved) {
+            java.util.Set<String> have = words(c[0]);
+            if (have.isEmpty()) continue;
+            boolean nameOn = have.contains("on") || have.contains("ఆన్"), nameOff = have.contains("off") || have.contains("ఆఫ్");
+            if ((on && nameOff && !nameOn) || (!on && nameOn && !nameOff)) continue; // wrong direction
+            int hit = 0;
+            for (String w : have) if (want.contains(w)) hit++;
+            double score = hit / (double) have.size();
+            if (score > bestScore) { bestScore = score; best = c; }
+        }
+        if (best != null && bestScore >= 0.6) {
+            try {
+                String r = Http.getText(best[1]);
+                return ok().put("done", best[0]).put("via", "Alexa routine").put("reply", r.length() > 120 ? r.substring(0, 120) : r).toString();
+            } catch (Exception e) {
+                return err("link_failed", "The Alexa routine link for '" + best[0] + "' did not answer (" + e.getMessage() + "). Check internet or the link in settings.");
+            }
+        }
+        // 2) the smart-home app's own switch
+        String dev = device == null || device.trim().isEmpty() ? cmd : device.trim();
+        ResolveInfo app = prefs.smartApp().trim().isEmpty() ? null : findApp(prefs.smartApp().trim());
+        if (app != null && JarvisAccessibility.enabled() && !dev.isEmpty()) {
+            if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+            Intent l = act().getPackageManager().getLaunchIntentForPackage(app.activityInfo.packageName);
+            if (l != null) {
+                start(l.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                String r = JarvisAccessibility.setSwitch(new String[]{dev}, on, 8000);
+                Thread.sleep(400);
+                backToJarvis();
+                if ("done".equals(r) || "already".equals(r)) {
+                    return ok().put("done", dev + (on ? " on" : " off")).put("via", label(app.activityInfo.packageName)).toString();
+                }
+            }
+        }
+        // 3) ask a nearby Echo
+        if (prefs.alexaSpeak()) {
+            String phrase = alexaPhrase == null || alexaPhrase.trim().isEmpty()
+                    ? "turn " + (on ? "on" : "off") + " the " + dev : alexaPhrase.trim();
+            Announcer.say(act(), "Alexa, " + phrase);
+            return ok().put("done", "asked Alexa aloud: " + phrase).put("note", "Only works if an Echo is close enough to hear the phone.").toString();
+        }
+        return err("not_set_up", "No saved Alexa routine link matches, and "
+                + (app == null ? "the smart-home app '" + prefs.smartApp() + "' was not found" : "its switch for '" + dev + "' was not found")
+                + ". Anil can add links in Jarvis settings > 'స్మార్ట్ హోమ్', or turn on 'Echo nearby'.");
+    }
 
     // ================================================================ offline commands
 
