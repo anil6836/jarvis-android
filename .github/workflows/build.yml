@@ -37,9 +37,13 @@ jobs:
           echo "ఫోన్‌లో Jarvis.apk డౌన్‌లోడ్ చేసి ఇన్‌స్టాల్ చేయండి." > release-notes.md
           if curl -fsSL --retry 2 -o /tmp/vosk.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip; then
             mkdir -p /tmp/vosk && unzip -q /tmp/vosk.zip -d /tmp/vosk
-            W=$(find /tmp/vosk -name words.txt | head -1)
-            if [ -n "$W" ] && grep -qiw "jarvis" "$W"; then echo "VOSK_JARVIS=yes ($W)" >> release-notes.md; else echo "VOSK_JARVIS=no (${W:-no words.txt})" >> release-notes.md; fi
-            (cd /tmp/vosk && find . -maxdepth 3 | head -40) >> release-notes.md
+            G=$(find /tmp/vosk -name Gr.fst | head -1)
+            python3 - "$G" >> release-notes.md <<'PY'
+          import sys, struct
+          data = open(sys.argv[1], 'rb').read()
+          for w in [b'jarvis', b'hey', b'travis', b'service']:
+              print('VOSK_WORD', w.decode(), 'yes' if struct.pack('<i', len(w)) + w in data else 'no')
+          PY
           else
             echo "VOSK_JARVIS=unknown (download failed)" >> release-notes.md
           fi
