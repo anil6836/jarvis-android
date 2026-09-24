@@ -88,11 +88,17 @@ final class Tools {
                 "Look up contacts whose saved name contains the text. Returns names and numbers. Use it when unsure which contact he means.",
                 schema(new String[][]{{"name", "string", "Part of the saved contact name, English letters"}}, "name")));
         DEFS.add(new Def("send_sms",
-                "Send an SMS text message. The app asks Anil to confirm before sending. Write the message in the language he asked for.",
+                "Write an SMS: opens his messages app with the text typed in as a draft. It is NOT sent yet: then read him the message and ask 'పంపమంటారా?'; send only with send_draft when he says send. Write the message in the language he asked for.",
                 schema(new String[][]{{"who", "string", "Contact name or phone number"}, {"message", "string", "The message text"}}, "who", "message")));
         DEFS.add(new Def("whatsapp_message",
-                "Send a WhatsApp message to a contact. The app asks Anil to confirm; when he says yes, Jarvis sends it itself (he does not tap send). Write the message in the language he asked for.",
+                "Write a WhatsApp message: opens the chat with the text typed in as a draft. It is NOT sent yet: then read him the message and ask 'పంపమంటారా?'; send only with send_draft when he says send. Write the message in the language he asked for.",
                 schema(new String[][]{{"who", "string", "Contact name or phone number"}, {"message", "string", "The message text"}}, "who", "message")));
+        DEFS.add(new Def("telegram_message",
+                "Write a Telegram message: opens the chat with the text typed in as a draft. It is NOT sent yet: then read him the message and ask 'పంపమంటారా?'; send only with send_draft when he says send.",
+                schema(new String[][]{{"who", "string", "Contact name, phone number, or @username"}, {"message", "string", "The message text"}}, "who", "message")));
+        DEFS.add(new Def("send_draft",
+                "Press Send on the message or email draft Jarvis just prepared (WhatsApp, Telegram, SMS, Gmail). Call ONLY after Anil has heard the message and clearly said to send it (పంపు, సెండ్ చెయ్, yes send).",
+                schema(new String[][]{})));
         DEFS.add(new Def("set_alarm",
                 "Set an alarm in the phone's clock app.",
                 schema(new String[][]{{"hour", "integer", "Hour 0-23 in local time"}, {"minute", "integer", "Minute 0-59"},
@@ -127,7 +133,7 @@ final class Tools {
                 schema(new String[][]{{"app", "string", "Optional app filter, e.g. 'WhatsApp', 'Messages', 'Telegram'. Empty for all apps."},
                         {"limit", "integer", "How many to return (default 8, max 20)"}})));
         DEFS.add(new Def("reply_to_notification",
-                "Reply to one of the notifications from read_notifications using its reply button (works for WhatsApp, SMS, Telegram and most chat apps). The app asks Anil to confirm before sending.",
+                "Reply to one of the notifications from read_notifications using its reply button (works for WhatsApp, SMS, Telegram, Instagram and most chat apps). This sends immediately, so first read him the reply and ask 'పంపమంటారా?', and call it only after he says send.",
                 schema(new String[][]{{"id", "integer", "Notification id from read_notifications"}, {"message", "string", "The reply text"}}, "id", "message")));
         DEFS.add(new Def("set_reminder",
                 "Remind Anil about something at a date and time (he gets a notification and Jarvis says it aloud). Use this for 'remind me' / గుర్తుచేయి requests, not set_alarm.",
@@ -144,7 +150,7 @@ final class Tools {
                 schema(new String[][]{{"title", "string", "Event title"}, {"start", "string", "Local start 'yyyy-MM-dd HH:mm'"},
                         {"minutes", "integer", "Duration in minutes (default 60)"}, {"location", "string", "Optional place"}}, "title", "start")));
         DEFS.add(new Def("send_email",
-                "Send an email through Gmail. It asks Anil to confirm; when he says yes, Jarvis sends it itself. 'to' can be an email address or a contact name.",
+                "Write an email in Gmail: opens it as a draft with to, subject and body filled in. It is NOT sent yet: then tell him the subject and gist and ask 'పంపమంటారా?'; send only with send_draft when he says send. 'to' can be an email address or a contact name.",
                 schema(new String[][]{{"to", "string", "Email address or contact name"}, {"subject", "string", "Subject"},
                         {"body", "string", "Email body, in the language he asked for"}}, "to", "subject", "body")));
         DEFS.add(new Def("media_control",
@@ -209,7 +215,9 @@ final class Tools {
             case "call_contact": return "కాల్ సిద్ధం చేస్తున్నాను…";
             case "find_contact": return "కాంటాక్ట్స్‌లో వెతుకుతున్నాను…";
             case "send_sms": return "మెసేజ్ సిద్ధం చేస్తున్నాను…";
-            case "whatsapp_message": return "WhatsApp తెరుస్తున్నాను…";
+            case "whatsapp_message": return "WhatsApp లో మెసేజ్ టైప్ చేస్తున్నాను…";
+            case "telegram_message": return "Telegram లో మెసేజ్ టైప్ చేస్తున్నాను…";
+            case "send_draft": return "పంపుతున్నాను…";
             case "set_alarm": return "అలారం పెడుతున్నాను…";
             case "set_timer": return "టైమర్ పెడుతున్నాను…";
             case "get_weather": return "వాతావరణం చూస్తున్నాను…";
@@ -240,6 +248,8 @@ final class Tools {
                 case "find_contact": return findContact(a.optString("name"));
                 case "send_sms": return sms(a.optString("who"), a.optString("message"));
                 case "whatsapp_message": return whatsapp(a.optString("who"), a.optString("message"));
+                case "telegram_message": return telegram(a.optString("who"), a.optString("message"));
+                case "send_draft": return sendDraft();
                 case "set_alarm": return alarm(a.optInt("hour", -1), a.optInt("minute", -1), a.optString("label", "Jarvis"));
                 case "set_timer": return timer(a.optInt("seconds", 0), a.optString("label", "Jarvis"));
                 case "get_weather": return weather(a.optString("place", ""));
@@ -459,17 +469,22 @@ final class Tools {
 
     private String sms(String who, String message) throws Exception {
         if (message == null || message.trim().isEmpty()) return err("missing", "What should the message say?");
-        if (!has(Manifest.permission.SEND_SMS)) return needPermission(Manifest.permission.SEND_SMS, "sending SMS");
         Target t = resolve(who);
         if (t.error != null) return t.error;
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
         Contact c = t.contact;
         String to = c.name.equals(c.number) ? c.number : c.name + " (" + c.number + ")";
-        if (!host.confirm("SMS పంపాలా?", "ఎవరికి: " + to + "\n\n" + message, "పంపు", 0)) return err("cancelled", "Anil cancelled the SMS.");
-        SmsManager sm = Build.VERSION.SDK_INT >= 31 ? act().getSystemService(SmsManager.class) : SmsManager.getDefault();
-        ArrayList<String> parts = sm.divideMessage(message);
-        sm.sendMultipartTextMessage(c.number, null, parts, null, null);
-        return ok().put("sent_to", c.name).toString();
+        String pkg = android.provider.Telephony.Sms.getDefaultSmsPackage(act());
+        Intent i = new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(c.number)))
+                .putExtra("sms_body", message)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (pkg != null) i.setPackage(pkg);
+        try {
+            start(i);
+        } catch (ActivityNotFoundException e) {
+            return err("no_sms_app", "No messages app on this phone.");
+        }
+        return draftReady(pkg, to, c.number, "SMS", message, true);
     }
 
     private static String whatsappNumber(String number) {
@@ -486,9 +501,6 @@ final class Tools {
         Target t = resolve(who);
         if (t.error != null) return t.error;
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
-        // Ask Anil first; only send when he says yes.
-        if (!host.confirm("WhatsApp పంపాలా?", "ఎవరికి: " + t.contact.name + "\n\n" + message, "పంపు", 0))
-            return err("cancelled", "Anil said no; nothing was sent.");
         String url = "https://wa.me/" + whatsappNumber(t.contact.number) + "?text=" + URLEncoder.encode(message, "UTF-8");
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -502,22 +514,124 @@ final class Tools {
         } catch (ActivityNotFoundException e) {
             return err("no_whatsapp", "WhatsApp is not installed.");
         }
-        return finishSend(pkg, t.contact.name, "WhatsApp");
+        return draftReady(pkg, t.contact.name, t.contact.number, "WhatsApp", message, true);
     }
 
-    /**
-     * After the app opens with the message ready, tap its Send button through the accessibility
-     * service so Anil does not have to. Falls back to asking him to tap send if that is not possible.
-     */
-    private String finishSend(String pkg, String to, String appName) throws Exception {
-        if (pkg != null && JarvisAccessibility.enabled()) {
-            String r = JarvisAccessibility.clickSend(pkg, 9000);
-            if ("sent".equals(r)) return ok().put("sent_to", to).put("app", appName).toString();
+    private static final String[] TELEGRAMS = {"org.telegram.messenger", "org.telegram.messenger.web", "org.thunderdog.challegram", "org.telegram.plus"};
+
+    private String telegram(String who, String message) throws Exception {
+        if (message == null || message.trim().isEmpty()) return err("missing", "What should the message say?");
+        String pkg = null;
+        for (String p : TELEGRAMS) if (installed(p)) { pkg = p; break; }
+        if (pkg == null) return err("no_telegram", "Telegram is not installed.");
+        String w = who == null ? "" : who.trim();
+        String link, to;
+        if (w.startsWith("@")) {
+            link = "tg://resolve?domain=" + Uri.encode(w.substring(1)) + "&text=" + Uri.encode(message);
+            to = w;
+        } else {
+            Target t = resolve(w);
+            if (t.error != null) return t.error;
+            link = "tg://resolve?phone=" + whatsappNumber(t.contact.number) + "&text=" + Uri.encode(message);
+            to = t.contact.name;
         }
-        String why = !JarvisAccessibility.enabled()
-                ? "To send it himself Jarvis needs the accessibility switch on (Jarvis settings > 'స్క్రీన్ చూడటం'); until then Anil taps send."
-                : "Jarvis could not find the Send button, so Anil must tap send once.";
-        return ok().put("opened_for", to).put("app", appName).put("sent", false).put("note", why).toString();
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        try {
+            start(new Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (ActivityNotFoundException e) {
+            return err("no_telegram", "Telegram could not open that chat.");
+        }
+        return draftReady(pkg, to, null, "Telegram", message, true);
+    }
+
+    // ---------------------------------------------------------------- drafts: write, ask, then send
+
+    private static final class Draft {
+        String pkg, to, number, app, message;
+        long time;
+    }
+
+    /** The message Jarvis typed and is waiting for Anil's "send" on. */
+    private static volatile Draft pendingDraft;
+
+    /**
+     * The app is open with the message typed in. Makes sure the text is in the box, remembers the
+     * draft, and brings Jarvis back so Anil can say "send" by voice.
+     */
+    private String draftReady(String pkg, String to, String number, String app, String message, boolean typeIt) throws Exception {
+        boolean typed = false;
+        if (pkg != null && typeIt && JarvisAccessibility.enabled()) {
+            String r = JarvisAccessibility.typeInto(pkg, message, 7000);
+            typed = "typed".equals(r) || "already".equals(r);
+        } else {
+            Thread.sleep(1500);
+        }
+        Draft d = new Draft();
+        d.pkg = pkg; d.to = to; d.number = number; d.app = app; d.message = message;
+        d.time = android.os.SystemClock.elapsedRealtime();
+        pendingDraft = d;
+        Thread.sleep(500);
+        backToJarvis();
+        JSONObject o = ok().put("draft_ready", true).put("app", app).put("to", to).put("message", message)
+                .put("sent", false)
+                .put("next", "Not sent yet. Read him the message in one short line and ask 'పంపమంటారా?'. Call send_draft only when he clearly says send. "
+                        + "If he wants changes, call this tool again with the new text. If he says no, leave it unsent.");
+        if (!JarvisAccessibility.enabled()) {
+            o.put("note", "Jarvis's accessibility switch is off, so it cannot press Send by voice; Anil can tap send himself, or switch on Jarvis in Settings > Accessibility.");
+        } else if (typeIt && !typed) {
+            o.put("note", "The text may not be in the message box; ask Anil to check the draft.");
+        }
+        return o.toString();
+    }
+
+    /** Brings the Jarvis panel (or screen) back on top of the app, so the voice conversation continues. */
+    private void backToJarvis() {
+        try {
+            Activity a = act();
+            start(new Intent(a, a.getClass()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+        } catch (Exception ignored) {}
+    }
+
+    private String sendDraft() throws Exception {
+        Draft d = pendingDraft;
+        if (d == null || android.os.SystemClock.elapsedRealtime() - d.time > 30 * 60 * 1000L) {
+            return err("no_draft", "There is no message waiting to be sent. Ask Anil what to send and to whom.");
+        }
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        if (d.pkg == null || !JarvisAccessibility.enabled()) {
+            if ("SMS".equals(d.app) && d.number != null && has(Manifest.permission.SEND_SMS)) {
+                SmsManager sm = Build.VERSION.SDK_INT >= 31 ? act().getSystemService(SmsManager.class) : SmsManager.getDefault();
+                sm.sendMultipartTextMessage(d.number, null, sm.divideMessage(d.message), null, null);
+                pendingDraft = null;
+                return ok().put("sent_to", d.to).put("app", "SMS")
+                        .put("note", "Sent directly; the typed copy may still sit in the messages app as a draft.").toString();
+            }
+            return err("no_accessibility", "Jarvis cannot press Send without its accessibility switch (Settings > Accessibility > Jarvis). The message is ready in " + d.app + "; Anil can tap send.");
+        }
+        // 1) the app may still be visible under the Jarvis panel
+        String r = JarvisAccessibility.clickSend(d.pkg, 1500);
+        // 2) step Jarvis aside so the app is in front, then press Send
+        if (!"sent".equals(r)) {
+            onUi(() -> act().moveTaskToBack(true));
+            Thread.sleep(700);
+            r = JarvisAccessibility.clickSend(d.pkg, 6000);
+        }
+        // 3) last try: bring the app forward by its icon
+        if (!"sent".equals(r)) {
+            Intent l = act().getPackageManager().getLaunchIntentForPackage(d.pkg);
+            if (l != null) {
+                l.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try { start(l); } catch (Exception ignored) {}
+                Thread.sleep(900);
+                r = JarvisAccessibility.clickSend(d.pkg, 5000);
+            }
+        }
+        if (!"sent".equals(r)) {
+            return err("no_send_button", "Jarvis could not find " + d.app + "'s Send button. The message is ready there; ask Anil to tap send once.");
+        }
+        pendingDraft = null;
+        return ok().put("sent_to", d.to).put("app", d.app).toString();
     }
 
     private String alarm(int hour, int minute, String label) throws Exception {
@@ -1239,7 +1353,6 @@ final class Tools {
         if (item.reply == null) return err("no_reply_button", item.app + " does not allow replies from the notification. Offer to open the app instead.");
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
         String to = item.from.isEmpty() ? item.app : item.from + " (" + item.app + ")";
-        if (!host.confirm("రిప్లై పంపాలా?", "ఎవరికి: " + to + "\n\n" + message, "పంపు", 0)) return err("cancelled", "Anil cancelled the reply.");
         NotifyListener.reply(act(), item, message);
         return ok().put("replied_to", to).toString();
     }
@@ -1430,8 +1543,7 @@ final class Tools {
                 .putExtra(Intent.EXTRA_SUBJECT, subject == null ? "" : subject)
                 .putExtra(Intent.EXTRA_TEXT, body == null ? "" : body)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (!host.confirm("మెయిల్ పంపాలా?", "ఎవరికి: " + name + " <" + address + ">\nసబ్జెక్ట్: " + (subject == null ? "" : subject) + "\n\n" + (body == null ? "" : body), "పంపు", 0))
-            return err("cancelled", "Anil said no; the email was not sent.");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
         String gmail = act().getPackageManager().getLaunchIntentForPackage("com.google.android.gm") != null ? "com.google.android.gm" : null;
         if (gmail != null) i.setPackage(gmail);
         try {
@@ -1439,7 +1551,8 @@ final class Tools {
         } catch (ActivityNotFoundException e) {
             return err("no_mail_app", "No email app on this phone.");
         }
-        return finishSend(gmail, name + " <" + address + ">", "Gmail");
+        return draftReady(gmail, name + " <" + address + ">", null, "Gmail",
+                (subject == null ? "" : subject + ": ") + (body == null ? "" : body), false);
     }
 
     // ================================================================ music

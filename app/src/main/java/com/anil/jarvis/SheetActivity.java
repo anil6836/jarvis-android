@@ -76,6 +76,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (live == null && !busy && !voice.listening) begin(); // called again while the panel is open
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        stopped = false; // back on top (e.g. after Jarvis typed a message in WhatsApp)
+    }
+
     @Override protected void onStop() {
         super.onStop();
         stopped = true;

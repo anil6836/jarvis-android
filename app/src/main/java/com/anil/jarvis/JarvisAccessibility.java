@@ -162,6 +162,58 @@ public class JarvisAccessibility extends AccessibilityService {
     }
 
     /** The visible window that belongs to pkg (its compose screen), or the active one if it matches. */
+    /**
+     * Makes sure the message is in the app's message box: if the app did not fill it in from the
+     * link, types it there. Returns "typed", "already", "no_box" or "no_accessibility".
+     */
+    static String typeInto(String pkg, String text, long timeoutMs) {
+        JarvisAccessibility s = instance;
+        if (s == null) return "no_accessibility";
+        String want = text == null ? "" : text.trim();
+        String head = want.substring(0, Math.min(12, want.length()));
+        long end = SystemClock.uptimeMillis() + timeoutMs;
+        while (SystemClock.uptimeMillis() < end) {
+            SystemClock.sleep(400);
+            AccessibilityNodeInfo root = s.windowRoot(pkg);
+            if (root == null) continue;
+            AccessibilityNodeInfo box = messageBox(root);
+            if (box == null) continue;
+            CharSequence cur = box.getText();
+            boolean hint = Build.VERSION.SDK_INT >= 26 && box.isShowingHintText();
+            if (!hint && cur != null && cur.toString().contains(head)) return "already";
+            SystemClock.sleep(300); // give the app a moment to fill it in itself
+            cur = box.getText();
+            hint = Build.VERSION.SDK_INT >= 26 && box.isShowingHintText();
+            if (!hint && cur != null && cur.toString().contains(head)) return "already";
+            android.os.Bundle b = new android.os.Bundle();
+            b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, want);
+            box.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            if (box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT)) return "typed";
+        }
+        return "no_box";
+    }
+
+    /** The message box: the focused text field, otherwise the lowest one on the screen. */
+    private static AccessibilityNodeInfo messageBox(AccessibilityNodeInfo root) {
+        List<AccessibilityNodeInfo> boxes = new java.util.ArrayList<>();
+        collectEditable(root, boxes, 0);
+        for (AccessibilityNodeInfo n : boxes) if (n.isFocused()) return n;
+        AccessibilityNodeInfo best = null;
+        int bestY = -1;
+        android.graphics.Rect r = new android.graphics.Rect();
+        for (AccessibilityNodeInfo n : boxes) {
+            n.getBoundsInScreen(r);
+            if (r.bottom > bestY) { bestY = r.bottom; best = n; }
+        }
+        return best;
+    }
+
+    private static void collectEditable(AccessibilityNodeInfo n, List<AccessibilityNodeInfo> out, int depth) {
+        if (n == null || depth > 50) return;
+        if (n.isEditable() && n.isVisibleToUser()) out.add(n);
+        for (int i = 0; i < n.getChildCount(); i++) collectEditable(n.getChild(i), out, depth + 1);
+    }
+
     private AccessibilityNodeInfo windowRoot(String pkg) {
         try {
             for (android.view.accessibility.AccessibilityWindowInfo w : getWindows()) {
@@ -198,8 +250,12 @@ public class JarvisAccessibility extends AccessibilityService {
     private static AccessibilityNodeInfo findBySendId(AccessibilityNodeInfo n) {
         if (n == null) return null;
         String id = n.getViewIdResourceName();
-        if (id != null && (id.endsWith("/send") || id.endsWith("/send_button") || id.endsWith("/fab_send"))
-                && n.isVisibleToUser()) return n;
+        if (id != null && n.isVisibleToUser() && !n.isEditable()) {
+            String last = id.substring(id.indexOf('/') + 1);
+            // WhatsApp "send", Gmail "send", Google Messages "send_message_button_icon", Samsung "send_button1"...
+            if (last.equals("send") || last.equals("fab_send") || last.startsWith("send_button")
+                    || last.startsWith("send_message_button") || last.equals("send_icon")) return n;
+        }
         for (int i = 0; i < n.getChildCount(); i++) {
             AccessibilityNodeInfo r = findBySendId(n.getChild(i));
             if (r != null) return r;
