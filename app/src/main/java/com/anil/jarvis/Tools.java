@@ -106,6 +106,9 @@ final class Tools {
         DEFS.add(new Def("open_app",
                 "Open an installed app by its name, e.g. 'WhatsApp', 'YouTube', 'PhonePe', 'Camera'.",
                 schema(new String[][]{{"app", "string", "App name"}}, "app")));
+        DEFS.add(new Def("close_app",
+                "Close an app: stops what it is playing, sends it away from the screen and clears it from the phone's memory. Leave app empty to close the app Anil is using right now.",
+                schema(new String[][]{{"app", "string", "App name, e.g. 'YouTube'. Empty = the app currently on screen."}})));
         DEFS.add(new Def("open_maps",
                 "Show a place in Google Maps, or start navigation to it.",
                 schema(new String[][]{{"place", "string", "Place or address"}, {"navigate", "boolean", "true to start turn-by-turn navigation"}}, "place")));
@@ -209,6 +212,7 @@ final class Tools {
             case "set_timer": return "టైమర్ పెడుతున్నాను…";
             case "get_weather": return "వాతావరణం చూస్తున్నాను…";
             case "open_app": case "open_maps": return "తెరుస్తున్నాను…";
+            case "close_app": return "మూసేస్తున్నాను…";
             case "play_youtube": return "ప్లే చేస్తున్నాను…";
             case "save_memory": return "గుర్తుంచుకుంటున్నాను…";
             case "read_notifications": return "మెసేజ్‌లు చూస్తున్నాను…";
@@ -238,6 +242,7 @@ final class Tools {
                 case "set_timer": return timer(a.optInt("seconds", 0), a.optString("label", "Jarvis"));
                 case "get_weather": return weather(a.optString("place", ""));
                 case "open_app": return openApp(a.optString("app"));
+                case "close_app": return closeApp(a.optString("app", ""));
                 case "open_maps": return maps(a.optString("place"), a.optBoolean("navigate", false));
                 case "play_youtube": return youtube(a.optString("query"), a.optString("app", ""));
                 case "flashlight": return flashlight(a.optBoolean("on", true));
@@ -626,6 +631,61 @@ final class Tools {
             if (score > bestScore) { bestScore = score; best = r; }
         }
         return best;
+    }
+
+    private String closeApp(String name) throws Exception {
+        String pkg;
+        String n = name == null ? "" : name.trim();
+        if (n.isEmpty() || n.equalsIgnoreCase("this") || n.contains("ఈ")) {
+            pkg = JarvisAccessibility.currentPackage();
+            if (pkg == null || pkg.isEmpty()) return err("which_app", "Which app should I close? Ask Anil for the app name.");
+        } else {
+            ResolveInfo r = findApp(n);
+            if (r == null) return err("not_found", "No installed app called '" + n + "'.");
+            pkg = r.activityInfo.packageName;
+        }
+        if (pkg.equals(act().getPackageName())) return err("self", "That is Jarvis itself; Anil can close it with the back button.");
+        String name2 = label(pkg);
+
+        // 1) stop anything it is playing (so it does not keep going in the background)
+        boolean mediaStopped = false;
+        if (NotifyListener.enabled(act())) {
+            try {
+                android.media.session.MediaSessionManager msm = act().getSystemService(android.media.session.MediaSessionManager.class);
+                for (android.media.session.MediaController mc : msm.getActiveSessions(new android.content.ComponentName(act(), NotifyListener.class))) {
+                    if (pkg.equals(mc.getPackageName())) { mc.getTransportControls().stop(); mediaStopped = true; }
+                }
+            } catch (Exception ignored) {}
+        } else {
+            for (String[] m : MUSIC_APPS) {
+                if (m[1].equals(pkg)) {
+                    android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
+                    if (am != null) { mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_STOP); mediaStopped = true; }
+                    break;
+                }
+            }
+            if (!mediaStopped && pkg.equals(YT)) {
+                android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
+                if (am != null) { mediaKey(am, android.view.KeyEvent.KEYCODE_MEDIA_STOP); mediaStopped = true; }
+            }
+        }
+
+        // 2) if it is on screen (Jarvis working in the background), leave it with Home
+        boolean wentHome = false;
+        if (!MainActivity.visible && pkg.equals(JarvisAccessibility.currentPackage())) {
+            final boolean[] ok = {false};
+            onUi(() -> ok[0] = JarvisAccessibility.goHome());
+            wentHome = ok[0];
+        }
+
+        // 3) clear it from memory once it is in the background
+        Thread.sleep(800);
+        android.app.ActivityManager am = act().getSystemService(android.app.ActivityManager.class);
+        if (am != null) am.killBackgroundProcesses(pkg);
+
+        return ok().put("closed", name2).put("playback_stopped", mediaStopped).put("left_screen", wentHome)
+                .put("note", "Android does not let apps force-stop other apps completely; its card may still show in Recents, but it is stopped and cleared from memory.")
+                .toString();
     }
 
     private String openApp(String name) throws Exception {

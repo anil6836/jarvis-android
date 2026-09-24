@@ -34,6 +34,15 @@ public class JarvisAccessibility extends AccessibilityService {
 
     static boolean enabled() { return instance != null; }
 
+    /** The app that was last in front (not Jarvis itself), or "" if unknown. */
+    static String currentPackage() { return currentPkg; }
+
+    /** Presses the Home button, like Anil would. */
+    static boolean goHome() {
+        JarvisAccessibility s = instance;
+        return s != null && s.performGlobalAction(GLOBAL_ACTION_HOME);
+    }
+
     @Override protected void onServiceConnected() { instance = this; }
 
     @Override public boolean onUnbind(android.content.Intent intent) {
