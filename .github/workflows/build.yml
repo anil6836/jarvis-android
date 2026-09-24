@@ -23,7 +23,24 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build signed APK
-        run: gradle assembleRelease --stacktrace --no-daemon
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle assembleRelease --stacktrace --no-daemon 2>&1 | tee build.log
+
+      - name: Save build log when the build fails
+        if: failure()
+        shell: bash
+        run: |
+          tail -n 600 build.log > /tmp/last-build.log || true
+          git config user.name "jarvis-build"
+          git config user.email "jarvis-build@users.noreply.github.com"
+          git checkout --orphan build-logs
+          git rm -rf --cached . > /dev/null
+          cp /tmp/last-build.log last-build.log
+          git add -f last-build.log
+          git commit -m "Build log for run ${{ github.run_number }}"
+          git push -f origin build-logs
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk Jarvis.apk
