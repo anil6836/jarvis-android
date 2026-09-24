@@ -191,9 +191,12 @@ final class WakeEngine {
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, CHUNK * 2 * 4));
             if (rec.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException("మైక్ తెరవలేకపోయాను");
             rec.startRecording();
-            short[] chunk = new short[CHUNK];
             long quietUntil = 0;
+            long openUntil = 0;             // keep the detectors running until this time
+            double noise = 0;               // slowly tracked background loudness
+            ArrayDeque<short[]> preroll = new ArrayDeque<>();
             while (running) {
+                short[] chunk = new short[CHUNK];
                 int n = 0;
                 while (n < CHUNK && running) {
                     int r = rec.read(chunk, n, CHUNK - n);
@@ -201,12 +204,29 @@ final class WakeEngine {
                     n += r;
                 }
                 if (!running) break;
-                float score = step(chunk);
-                boolean word = jarvisHeard(chunk);
+
+                // Battery saver: in silence, only measure loudness; wake the detectors when someone speaks.
+                double sum = 0;
+                for (short s : chunk) sum += (double) s * s;
+                double rms = Math.sqrt(sum / CHUNK);
+                noise = noise == 0 ? rms : (rms < noise ? noise * 0.9 + rms * 0.1 : noise * 0.995 + rms * 0.005);
                 long now = SystemClock.elapsedRealtime();
-                if ((score >= threshold || word) && now > quietUntil) {
-                    quietUntil = now + 2000;
-                    listener.onWake(score);
+                if (rms > Math.max(180, noise * 2.2)) openUntil = now + 2500;
+                if (now > openUntil) {
+                    preroll.addLast(chunk);            // keep ~0.25 s so the start of "Jarvis" is not lost
+                    while (preroll.size() > 3) preroll.removeFirst();
+                    continue;
+                }
+                preroll.addLast(chunk);
+                while (!preroll.isEmpty() && running) {
+                    short[] c = preroll.removeFirst();
+                    float score = step(c);
+                    boolean word = jarvisHeard(c);
+                    now = SystemClock.elapsedRealtime();
+                    if ((score >= threshold || word) && now > quietUntil) {
+                        quietUntil = now + 2000;
+                        listener.onWake(score);
+                    }
                 }
             }
         } catch (Throwable e) {

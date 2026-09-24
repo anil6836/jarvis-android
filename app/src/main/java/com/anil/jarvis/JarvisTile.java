@@ -17,9 +17,10 @@ public class JarvisTile extends TileService {
     }
 
     @Override public void onClick() {
-        Intent i = new Intent(this, MainActivity.class)
-                .putExtra(MainActivity.EXTRA_WAKE, true)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        Intent i = new Prefs(this).compactPanel()
+                ? new Intent(this, SheetActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                : new Intent(this, MainActivity.class).putExtra(MainActivity.EXTRA_WAKE, true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(PendingIntent.getActivity(this, 11, i,
                     PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));

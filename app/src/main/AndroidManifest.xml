@@ -94,6 +94,15 @@
         </activity>
 
         <activity
+            android:name=".SheetActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity="com.anil.jarvis.panel"
+            android:theme="@style/JarvisSheet"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+
+        <activity
             android:name=".SettingsActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

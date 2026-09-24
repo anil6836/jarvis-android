@@ -29,7 +29,8 @@ public class WakeService extends Service {
     private static final String ACTION_RESUME = "com.anil.jarvis.WAKE_RESUME";
     private static final String ACTION_STOP = "com.anil.jarvis.WAKE_STOP";
     private static final String EXTRA_PAUSED = "paused";
-    private static final String CHANNEL = "jarvis_wake";
+    private static final String CHANNEL = "jarvis_wake_quiet";
+    private static final String OLD_CHANNEL = "jarvis_wake";
     private static final String CHANNEL_ALERT = "jarvis_wake_alert";
     private static final int NOTE_ID = 7;
     private static final int ALERT_ID = 8;
@@ -207,9 +208,10 @@ public class WakeService extends Service {
 
     private void openJarvis() {
 
-        Intent open = new Intent(this, MainActivity.class)
-                .putExtra(MainActivity.EXTRA_WAKE, true)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        Intent open = new Prefs(this).compactPanel()
+                ? new Intent(this, SheetActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                : new Intent(this, MainActivity.class).putExtra(MainActivity.EXTRA_WAKE, true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         boolean opened = false;
         if (Settings.canDrawOverlays(this)) {
             try { startActivity(open); opened = true; } catch (Exception ignored) {}
@@ -237,7 +239,11 @@ public class WakeService extends Service {
 
     private void goForeground(String text) {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Jarvis వేక్ వర్డ్", NotificationManager.IMPORTANCE_LOW));
+        nm.deleteNotificationChannel(OLD_CHANNEL);
+        NotificationChannel ch = new NotificationChannel(CHANNEL, "Jarvis వింటున్నాడు (నిశ్శబ్దం)", NotificationManager.IMPORTANCE_MIN);
+        ch.setShowBadge(false);
+        ch.setSound(null, null);
+        nm.createNotificationChannel(ch);
         PendingIntent open = PendingIntent.getActivity(this, 0,
                 new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);

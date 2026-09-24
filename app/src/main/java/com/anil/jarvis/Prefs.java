@@ -67,6 +67,8 @@ final class Prefs {
     String wakeWhen() { return sp.getString("wake_when", "screen_on"); }
     /** Start listening as soon as Jarvis is opened (e.g. "Hey Google, open Jarvis"). */
     boolean listenOnOpen() { return sp.getBoolean("listen_on_open", true); }
+    /** "Jarvis" opens a small Google-style panel over the current app instead of the full screen. */
+    boolean compactPanel() { return sp.getBoolean("compact_panel", true); }
 
     // ---- incoming calls
     boolean announceCalls() { return sp.getBoolean("announce_calls", true); }

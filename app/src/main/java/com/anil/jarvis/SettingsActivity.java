@@ -32,7 +32,7 @@ public class SettingsActivity extends Activity {
     private Prefs prefs;
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
     private RadioGroup provider, lang, wakeWhen;
-    private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen;
+    private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
     private Spinner voicePick;
@@ -141,6 +141,7 @@ public class SettingsActivity extends Activity {
         // ---- wake word
         section("\"Hey Jarvis\" వేక్ వర్డ్");
         note("ఫోన్ లాక్‌లో ఉన్నా \"Hey Jarvis\" అని పిలిస్తే తెరుచుకుంటుంది. ఏ key అవసరం లేదు. వినడం అంతా ఫోన్‌లోనే జరుగుతుంది, ఏ ఆడియో బయటికి వెళ్లదు.");
+        compactPanel = toggle("పిలిస్తే Google లాగా చిన్న ప్యానెల్ (\"చెప్పండి Anil?\")", prefs.compactPanel());
         listenOnOpen = toggle("యాప్ తెరవగానే వినడం మొదలుపెట్టు", prefs.listenOnOpen());
         note("దీనితో \"Hey Google, open Jarvis\" అంటే Google తన చిప్‌తో విని Jarvis ని తెరుస్తుంది, Jarvis వెంటనే మీ మాట వింటుంది. ఈ పద్ధతిలో Jarvis మైక్ బ్యాక్‌గ్రౌండ్‌లో అసలు ఆన్ అవ్వదు. అప్పుడు కింది వేక్ వర్డ్ ఆఫ్ చేయవచ్చు.");
         wake = toggle("వేక్ వర్డ్ ఆన్", prefs.wakeWord());
@@ -287,6 +288,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("natural_voice", natural.isChecked());
         e.putBoolean("wake_jarvis", jarvisWord.isChecked());
         e.putBoolean("listen_on_open", listenOnOpen.isChecked());
+        e.putBoolean("compact_panel", compactPanel.isChecked());
         int ww = wakeWhen.getCheckedRadioButtonId();
         e.putString("wake_when", ww == 22 ? "charging" : ww == 23 ? "always" : "screen_on");
         e.putBoolean("announce_calls", announceCalls.isChecked());

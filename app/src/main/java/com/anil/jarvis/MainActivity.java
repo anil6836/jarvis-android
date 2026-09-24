@@ -51,11 +51,9 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listener, Store.Listener, LiveSession.Listener {
     static final String EXTRA_WAKE = "wake";
@@ -1277,39 +1275,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public Activity activity() { return this; }
 
     @Override public boolean confirm(String title, String message, String yes, int autoSeconds) {
-        if (isFinishing()) return false;
-        CountDownLatch done = new CountDownLatch(1);
-        AtomicBoolean ok = new AtomicBoolean(false);
-        runOnUiThread(() -> {
-            AlertDialog d = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                    .setTitle(title)
-                    .setMessage(message)
-                    .setPositiveButton(yes, (x, w) -> ok.set(true))
-                    .setNegativeButton("వద్దు", (x, w) -> ok.set(false))
-                    .setOnDismissListener(x -> done.countDown())
-                    .create();
-            d.show();
-            if (autoSeconds > 0) {
-                final int[] left = {autoSeconds};
-                Runnable[] step = new Runnable[1];
-                step[0] = () -> {
-                    if (!d.isShowing()) return;
-                    if (left[0] <= 0) { ok.set(true); d.dismiss(); return; }
-                    Button b = d.getButton(AlertDialog.BUTTON_POSITIVE);
-                    if (b != null) b.setText(yes + " (" + left[0] + ")");
-                    left[0]--;
-                    main.postDelayed(step[0], 1000);
-                };
-                step[0].run();
-            }
-        });
-        try {
-            if (!done.await(90, TimeUnit.SECONDS)) return false;
-        } catch (InterruptedException e) {
-            return false;
-        }
-        return ok.get();
+        return Dialogs.confirm(this, title, message, yes, autoSeconds);
     }
+
 
     @Override public void askPermissions(String[] permissions) {
         runOnUiThread(() -> requestPermissions(permissions, REQ_PERMS));
