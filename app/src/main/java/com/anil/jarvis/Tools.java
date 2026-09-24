@@ -110,8 +110,9 @@ final class Tools {
                 "Show a place in Google Maps, or start navigation to it.",
                 schema(new String[][]{{"place", "string", "Place or address"}, {"navigate", "boolean", "true to start turn-by-turn navigation"}}, "place")));
         DEFS.add(new Def("play_youtube",
-                "Open YouTube search results for songs, videos or channels.",
-                schema(new String[][]{{"query", "string", "What to search on YouTube"}}, "query")));
+                "Play a song, music or a video: it opens and STARTS PLAYING by itself (top YouTube video, or YouTube Music / Spotify when he names that app).",
+                schema(new String[][]{{"query", "string", "What to play, e.g. 'Ghantasala old songs' or a film song name with the film"},
+                        {"app", "string", "Optional: 'youtube' (default), 'youtube music' or 'spotify'"}}, "query")));
         DEFS.add(new Def("flashlight",
                 "Turn the phone's flashlight on or off.",
                 schema(new String[][]{{"on", "boolean", "true = on, false = off"}}, "on")));
@@ -207,7 +208,8 @@ final class Tools {
             case "set_alarm": return "అలారం పెడుతున్నాను…";
             case "set_timer": return "టైమర్ పెడుతున్నాను…";
             case "get_weather": return "వాతావరణం చూస్తున్నాను…";
-            case "open_app": case "open_maps": case "play_youtube": return "తెరుస్తున్నాను…";
+            case "open_app": case "open_maps": return "తెరుస్తున్నాను…";
+            case "play_youtube": return "ప్లే చేస్తున్నాను…";
             case "save_memory": return "గుర్తుంచుకుంటున్నాను…";
             case "read_notifications": return "మెసేజ్‌లు చూస్తున్నాను…";
             case "reply_to_notification": return "రిప్లై సిద్ధం చేస్తున్నాను…";
@@ -237,7 +239,7 @@ final class Tools {
                 case "get_weather": return weather(a.optString("place", ""));
                 case "open_app": return openApp(a.optString("app"));
                 case "open_maps": return maps(a.optString("place"), a.optBoolean("navigate", false));
-                case "play_youtube": return youtube(a.optString("query"));
+                case "play_youtube": return youtube(a.optString("query"), a.optString("app", ""));
                 case "flashlight": return flashlight(a.optBoolean("on", true));
                 case "device_status": return deviceStatus();
                 case "read_notifications": return readNotifications(a.optString("app", ""), a.optInt("limit", 8));
@@ -645,11 +647,69 @@ final class Tools {
         return ok().put(navigate ? "navigating_to" : "showing", place).toString();
     }
 
-    private String youtube(String query) throws Exception {
-        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + URLEncoder.encode(query, "UTF-8")));
+    private static final String YT = "com.google.android.youtube";
+    private static final String YT_MUSIC = "com.google.android.apps.youtube.music";
+    private static final String SPOTIFY = "com.spotify.music";
+
+    private boolean installed(String pkg) {
+        return act().getPackageManager().getLaunchIntentForPackage(pkg) != null;
+    }
+
+    /** Asks a music app to find and start playing something by itself (the same way Google Assistant does). */
+    private boolean playFromSearch(String pkg, String query) {
+        Intent i = new Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
+                .setPackage(pkg)
+                .putExtra(android.app.SearchManager.QUERY, query)
+                .putExtra(android.provider.MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            start(i);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Finds the top YouTube video for a search (reads the public results page). */
+    private static String topVideoId(String query) {
+        try {
+            String html = Http.getText("https://www.youtube.com/results?search_query=" + URLEncoder.encode(query, "UTF-8"));
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"videoRenderer\":\\{\"videoId\":\"([A-Za-z0-9_-]{11})\"").matcher(html);
+            if (m.find()) return m.group(1);
+            m = java.util.regex.Pattern.compile("\"videoId\":\"([A-Za-z0-9_-]{11})\"").matcher(html);
+            if (m.find()) return m.group(1);
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private String youtube(String query, String app) throws Exception {
+        if (query == null || query.trim().isEmpty()) return err("missing", "What should I play?");
+        String q = query.trim();
+        String a = app == null ? "" : app.toLowerCase(Locale.ROOT);
+        if (a.contains("spotify") && installed(SPOTIFY) && playFromSearch(SPOTIFY, q)) {
+            return ok().put("playing_on", "Spotify").put("query", q).toString();
+        }
+        if (a.contains("music") && installed(YT_MUSIC) && playFromSearch(YT_MUSIC, q)) {
+            return ok().put("playing_on", "YouTube Music").put("query", q).toString();
+        }
+        // Default: open the top YouTube video directly, so it starts playing by itself.
+        String id = topVideoId(q);
+        if (id != null) {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + id))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (installed(YT)) i.setPackage(YT);
+            try {
+                start(i);
+                return ok().put("playing_on", "YouTube").put("query", q).toString();
+            } catch (ActivityNotFoundException ignored) {}
+        }
+        if (installed(YT_MUSIC) && playFromSearch(YT_MUSIC, q)) {
+            return ok().put("playing_on", "YouTube Music").put("query", q).toString();
+        }
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + URLEncoder.encode(q, "UTF-8")));
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         start(i);
-        return ok().put("youtube_search", query).toString();
+        return ok().put("youtube_search_opened", q).put("note", "Could not start playback automatically; the search results are open. Ask Anil to tap the first video.").toString();
     }
 
     private String flashlight(boolean on) throws Exception {

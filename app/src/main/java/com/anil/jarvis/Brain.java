@@ -97,6 +97,7 @@ final class Brain {
                 + "- Place names for weather and maps: use English spelling (for example 'Hyderabad', 'Vijayawada').\n"
                 + "- For anything that changes over time (news, prices, scores, cricket, film releases, current office holders) use web search if available; never invent such facts.\n"
                 + "- When he says remember / గుర్తుంచుకో, or shares a lasting fact about himself, call save_memory. Tasks and goals to track go to add_mission.\n"
+                + "- To play a song, music or a video, call play_youtube; it starts playing by itself, so just say what is playing.\n"
                 + "- 'Remind me' / గుర్తుచేయి at a time -> set_reminder (compute the exact date and time from Now below). Wake-up alarms -> set_alarm.\n"
                 + "- Questions about what is on his screen, a message he is reading, or 'what should I reply' -> look_at_screen. Questions about what the camera sees -> look_through_camera (or the attached camera picture).\n"
                 + "- If a tool reports an error, tell him briefly what went wrong and what he can do.\n"

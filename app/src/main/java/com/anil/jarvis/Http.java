@@ -27,6 +27,22 @@ final class Http {
         return send("POST", url, body, headers);
     }
 
+    /** Plain text GET (for web pages), with a browser-like User-Agent. */
+    static String getText(String url) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        try {
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(20000);
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36");
+            c.setRequestProperty("Accept-Language", "en-IN,en;q=0.9");
+            int status = c.getResponseCode();
+            if (status >= 400) throw new IOException("HTTP " + status);
+            return readAll(c.getInputStream());
+        } finally {
+            c.disconnect();
+        }
+    }
+
     static JSONObject get(String url) throws IOException, ApiError {
         return send("GET", url, null);
     }
