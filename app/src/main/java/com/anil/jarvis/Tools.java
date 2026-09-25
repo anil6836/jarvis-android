@@ -116,8 +116,9 @@ final class Tools {
                 "Close an app completely: stops what it is playing and force-stops it (the phone's App info page flashes for a second while Jarvis presses Force stop), so nothing keeps running in the background. Leave app empty to close the app Anil is using right now.",
                 schema(new String[][]{{"app", "string", "App name, e.g. 'YouTube'. Empty = the app currently on screen."}})));
         DEFS.add(new Def("open_maps",
-                "Show a place in Google Maps, or start navigation to it.",
-                schema(new String[][]{{"place", "string", "Place or address"}, {"navigate", "boolean", "true to start turn-by-turn navigation"}}, "place")));
+                "Show a place on a map, or start navigation to it. Google Maps unless he names another maps app (Waze, HERE WeGo, Sygic, Mappls MapmyIndia, Citymapper, Google Earth, NaviMaps).",
+                schema(new String[][]{{"place", "string", "Place or address, or 'lat,lon'"}, {"navigate", "boolean", "true to start turn-by-turn navigation"},
+                        {"app", "string", "Maps app he named; empty = Google Maps"}}, "place")));
         DEFS.add(new Def("play_youtube",
                 "Play a song, music or a video. It plays in the app Anil names (YouTube, YouTube Music, Spotify, JioSaavn, Gaana, Wynk, Amazon Music or any other installed app) and starts playing by itself (in YouTube Music it plays the song itself, not the music video); with no app named it plays the top YouTube video.",
                 schema(new String[][]{{"query", "string", "What to play, e.g. 'Ghantasala old songs' or a film song name with the film"},
@@ -234,11 +235,22 @@ final class Tools {
                         {"app", "string", "Player app name; empty for the default"}}, "kind", "query")));
         DEFS.add(new Def("app_search",
                 "Open one of his apps at a search: shopping (Amazon, Flipkart, Meesho, Snapdeal, Tata CLiQ, Reliance Digital), OTT (Netflix, Prime Video, JioHotstar, ZEE5, Sun NXT...), "
-                        + "phones (Smartprix, 91mobiles, GSMArena), cars (CarDekho, CarWale, ZigWheels), tickets/hotels/trains (BookMyShow, District, Agoda, trivago, Goibibo, IRCTC, ixigo, ConfirmTkt...). "
+                        + "phones (Smartprix, 91mobiles, GSMArena), cars (CarDekho, CarWale, ZigWheels), tickets/hotels/trains (BookMyShow, District, Agoda, trivago, Goibibo, Booking.com, Tripadvisor, IRCTC, ixigo, ConfirmTkt...), "
+                        + "car spare parts (boodmo, AutoDukan, e-DUKAAN). "
                         + "Apps without a search link just open. He buys, books and pays himself.",
                 schema(new String[][]{{"app", "string", "App name as on his phone"}, {"query", "string", "What to search for"}}, "app")));
-        DEFS.add(new Def("samsung_note", "Write a note into Samsung Notes (opens it with the text).",
-                schema(new String[][]{{"text", "string", "The note"}}, "text")));
+        DEFS.add(new Def("note_in_app", "Write a note into his notes app (opens it with the text): Samsung Notes by default, or ColorNote, Notion, WeNote, Mind Notes, EasyNotes.",
+                schema(new String[][]{{"text", "string", "The note"}, {"app", "string", "Notes app he named; empty = Samsung Notes"}}, "text")));
+        DEFS.add(new Def("news", "Latest Telugu news headlines (top stories, or about a topic/place like 'Hyderabad', 'Andhra Pradesh', 'cricket', 'business').",
+                schema(new String[][]{{"topic", "string", "Topic or place; empty for top stories"}, {"count", "integer", "How many headlines (default 6)"}})));
+        DEFS.add(new Def("ev_chargers", "EV charging stations nearest to him (or to a place), with distance and plug types; optionally opens his charger app (Statiq, ElectricPe, Bolt.Earth, eDrive BPCL, Tecell, Spider Energy, Voltran, eHUB by MG).",
+                schema(new String[][]{{"place", "string", "Place to search near; empty = where he is now"}, {"app", "string", "Charger app to open; empty = none"}})));
+        DEFS.add(new Def("travel_search", "Open his flight or bus app at a search from -> to on a date (Skyscanner, MakeMyTrip, ixigo, EaseMyTrip, Trip.com / redBus, AbhiBus, IntrCity, FlixBus, TGSRTC). He books and pays himself.",
+                schema(new String[][]{{"kind", "string", "flight or bus"}, {"from", "string", "Flights: 3-letter airport code (HYD). Bus: city in English"},
+                        {"to", "string", "Flights: airport code (BLR). Bus: city in English"}, {"date", "string", "YYYY-MM-DD; empty = today"},
+                        {"app", "string", "App he named; empty = the first one installed"}}, "kind", "from", "to")));
+        DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
+        DEFS.add(new Def("bank_balance", "His account balance as given in the newest SMS from each bank.", schema(new String[][]{})));
         DEFS.add(new Def("voice_recorder", "Open the Voice Recorder app to record.", schema(new String[][]{})));
         DEFS.add(new Def("mobile_plan", "His Jio/Airtel/Vi data used, plan validity and recharge messages (from SMS).", schema(new String[][]{})));
         DEFS.add(new Def("routine",
@@ -378,7 +390,12 @@ final class Tools {
             case "bible": return "బైబిల్ తెరుస్తున్నాను…";
             case "local_media": return "ఫోన్‌లో వెతుకుతున్నాను…";
             case "app_search": return "యాప్‌లో వెతుకుతున్నాను…";
-            case "samsung_note": return "నోట్ రాస్తున్నాను…";
+            case "note_in_app": return "నోట్ రాస్తున్నాను…";
+            case "news": return "వార్తలు తెస్తున్నాను…";
+            case "ev_chargers": return "ఛార్జింగ్ స్టేషన్లు వెతుకుతున్నాను…";
+            case "travel_search": return "టికెట్లు వెతుకుతున్నాను…";
+            case "my_trips": return "మీ ప్రయాణాలు చూస్తున్నాను…";
+            case "bank_balance": return "బ్యాలెన్స్ చూస్తున్నాను…";
             case "voice_recorder": return "రికార్డర్ తెరుస్తున్నాను…";
             case "mobile_plan": return "మీ ప్లాన్ చూస్తున్నాను…";
             case "whatsapp_media": return "WhatsApp మీడియా…";
@@ -431,7 +448,7 @@ final class Tools {
                 case "get_weather": return weather(a.optString("place", ""));
                 case "open_app": return openApp(a.optString("app"));
                 case "close_app": return closeApp(a.optString("app", ""));
-                case "open_maps": return maps(a.optString("place"), a.optBoolean("navigate", false));
+                case "open_maps": return maps(a.optString("place"), a.optBoolean("navigate", false), a.optString("app", ""));
                 case "play_youtube": return youtube(a.optString("query"), a.optString("app", ""));
                 case "flashlight": return flashlight(a.optBoolean("on", true));
                 case "device_status": return deviceStatus();
@@ -471,7 +488,12 @@ final class Tools {
                         a.optBoolean("daily", false));
                 case "local_media": return localMedia(a.optString("kind", "song"), a.optString("query", ""), a.optString("app", ""));
                 case "app_search": return appSearch(a.optString("app"), a.optString("query", ""));
-                case "samsung_note": return samsungNote(a.optString("text"));
+                case "note_in_app": return noteInApp(a.optString("text"), a.optString("app", ""));
+                case "news": return news(a.optString("topic", ""), a.optInt("count", 6));
+                case "ev_chargers": return evChargers(a.optString("place", ""), a.optString("app", ""));
+                case "travel_search": return travelSearch(a.optString("kind", "flight"), a.optString("from"), a.optString("to"), a.optString("date", ""), a.optString("app", ""));
+                case "my_trips": return myTrips();
+                case "bank_balance": return bankBalance();
                 case "voice_recorder": return voiceRecorder();
                 case "mobile_plan": return mobilePlan();
                 case "routine": return routine(a.optString("action", "list"), a.optString("name", ""), a.optString("steps", ""));
@@ -3141,7 +3163,8 @@ final class Tools {
             {"gsmarena", "https://www.gsmarena.com/res.php3?sSearch="}, {"cardekho", "https://www.cardekho.com/search/result?q="},
             {"carwale", "https://www.carwale.com/search/?q="}, {"zigwheels", "https://www.zigwheels.com/search?q="},
             {"moglix", "https://www.moglix.com/search?search="}, {"alibaba", "https://www.alibaba.com/trade/search?SearchText="},
-            {"banggood", "https://www.banggood.com/search/"}};
+            {"banggood", "https://www.banggood.com/search/"}, {"boodmo", "https://boodmo.com/search/?q="},
+            {"booking", "https://www.booking.com/searchresults.html?ss="}, {"tripadvisor", "https://www.tripadvisor.in/Search?q="}};
 
     /** Opens an app at a search for something (shopping, OTT, phones, cars...). Buying/paying is his. */
     private String appSearch(String app, String query) throws Exception {
@@ -3168,20 +3191,35 @@ final class Tools {
                         + "Anil chooses, books, buys and pays himself; Jarvis never does.").toString();
     }
 
-    private String samsungNote(String text) throws Exception {
+    /** Writes a note into the notes app he names (Samsung Notes by default; ColorNote, Notion, WeNote, Mind Notes, EasyNotes...). */
+    private String noteInApp(String text, String app) throws Exception {
         if (text == null || text.trim().isEmpty()) return err("missing", "What should the note say?");
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
-        String pkg = "com.samsung.android.app.notes";
-        Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text.trim())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (installed(pkg)) i.setPackage(pkg);
-        try {
-            start(installed(pkg) ? i : Intent.createChooser(i, "నోట్").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } catch (ActivityNotFoundException e) {
-            return err("no_notes_app", "No notes app accepted it. Offer Jarvis's own notes instead.");
+        String pkg = null;
+        if (app != null && !app.trim().isEmpty() && !app.toLowerCase(Locale.ROOT).contains("samsung")) {
+            ResolveInfo r = findApp(app.trim());
+            if (r == null) return err("not_installed", "'" + app + "' is not installed.");
+            pkg = r.activityInfo.packageName;
+        } else if (installed("com.samsung.android.app.notes")) {
+            pkg = "com.samsung.android.app.notes";
         }
-        return ok().put("note_opened_in", installed(pkg) ? "Samsung Notes" : "notes app").put("text", text.trim())
-                .put("next", "Tell him the note is open with the text; it saves when he goes back.").toString();
+        Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text.trim())
+                .putExtra(Intent.EXTRA_SUBJECT, text.trim().length() > 40 ? text.trim().substring(0, 40) : text.trim())
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        String where = pkg == null ? "notes app" : label(pkg);
+        try {
+            if (pkg != null) i.setPackage(pkg);
+            start(pkg != null ? i : Intent.createChooser(i, "నోట్").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (ActivityNotFoundException e) {
+            // this app does not take shared text: copy it and open the app, he pastes
+            android.content.ClipboardManager cm = act().getSystemService(android.content.ClipboardManager.class);
+            if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("note", text.trim()));
+            if (pkg == null || !launch(pkg)) return err("no_notes_app", "No notes app accepted it. Offer Jarvis's own notes instead.");
+            return ok().put("opened", where).put("copied", true)
+                    .put("next", where + " does not accept text from other apps, so the note is copied: tell him to make a new note and long-press, Paste.").toString();
+        }
+        return ok().put("note_opened_in", where).put("text", text.trim())
+                .put("next", "Tell him the note is open in " + where + " with the text; it saves when he taps save or goes back.").toString();
     }
 
     private String voiceRecorder() throws Exception {
@@ -3207,13 +3245,268 @@ final class Tools {
             String low = m[1] == null ? "" : m[1].toLowerCase(Locale.ROOT);
             if (!(low.contains("data") || low.contains("valid") || low.contains("expir") || low.contains("plan") || low.contains("recharge") || low.contains("balance"))) continue;
             if (low.contains("otp")) continue;
+            String s = m[1].replaceAll("\\s+", " ");
             out.put(new JSONObject().put("when", f.format(new java.util.Date(Long.parseLong(m[2])))).put("from", m[0])
-                    .put("sms", m[1].replaceAll("\\s+", " ").substring(0, Math.min(220, m[1].length()))));
+                    .put("sms", s.substring(0, Math.min(220, s.length()))));
             if (out.length() >= 12) break;
         }
         if (out.length() == 0) return err("none", "No recent Jio/Airtel plan or data SMS. Offer to open MyJio or the Airtel app.");
         return ok().put("operator_messages", out)
                 .put("next", "From the newest messages tell him: data used/left today, plan validity or expiry date, and any recharge reminder. Recharging is done by him in MyJio/Airtel.").toString();
+    }
+
+    // ================================================================ news, EV chargers, travel, trips, bank balance, other maps apps
+
+    private static String unxml(String s) {
+        if (s == null) return "";
+        s = s.replaceAll("<!\\[CDATA\\[|\\]\\]>", "").replaceAll("<[^>]+>", " ");
+        return s.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'")
+                .replace("&lt;", "<").replace("&gt;", ">").replace("&nbsp;", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    private static String xmlTag(String xml, String name) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("<" + name + "(?:\\s[^>]*)?>([\\s\\S]*?)</" + name + ">").matcher(xml);
+        return m.find() ? unxml(m.group(1)) : "";
+    }
+
+    /** Telugu news headlines (Google News, Telugu edition); a topic or place narrows them. */
+    private String news(String topic, int count) throws Exception {
+        count = Math.max(3, Math.min(10, count <= 0 ? 6 : count));
+        String t = topic == null ? "" : topic.trim();
+        String url = t.isEmpty() ? "https://news.google.com/rss?hl=te&gl=IN&ceid=IN:te"
+                : "https://news.google.com/rss/search?q=" + URLEncoder.encode(t + " when:2d", "UTF-8") + "&hl=te&gl=IN&ceid=IN:te";
+        String xml;
+        try {
+            xml = Http.getText(url);
+        } catch (Exception e) {
+            return webSearch("ఈరోజు ముఖ్యమైన తెలుగు వార్తలు " + t);
+        }
+        JSONArray items = new JSONArray();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("<item>([\\s\\S]*?)</item>").matcher(xml);
+        java.text.SimpleDateFormat in = new java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.ENGLISH);
+        long now = System.currentTimeMillis();
+        while (m.find() && items.length() < count) {
+            String it = m.group(1);
+            String title = xmlTag(it, "title"), source = xmlTag(it, "source");
+            if (title.isEmpty()) continue;
+            if (!source.isEmpty() && title.endsWith(" - " + source)) title = title.substring(0, title.length() - source.length() - 3);
+            JSONObject o = new JSONObject().put("headline", title).put("source", source);
+            try { o.put("minutes_ago", (now - in.parse(xmlTag(it, "pubDate")).getTime()) / 60000); } catch (Exception ignored) {}
+            items.put(o);
+        }
+        if (items.length() == 0) return webSearch("ఈరోజు ముఖ్యమైన తెలుగు వార్తలు " + t);
+        return ok().put("topic", t.isEmpty() ? "top stories" : t).put("headlines", items)
+                .put("next", "Read the headlines one by one in short Telugu with the source, e.g. 'ఈనాడు: …'. Then ask if he wants more on any one "
+                        + "(web search for details). For Way2News or Dailyhunt: open_app, then read_screen.").toString();
+    }
+
+    /** EV charging stations near him (or near a place), from OpenStreetMap; opens his charger app if he names one. */
+    private String evChargers(String place, String app) throws Exception {
+        double lat, lon;
+        String near;
+        if (place != null && !place.trim().isEmpty()) {
+            double[] p = geocode(place.trim());
+            if (p == null) return err("unknown_place", "Could not find '" + place + "'.");
+            lat = p[0]; lon = p[1]; near = place.trim();
+        } else {
+            if (!has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "finding chargers near you");
+            Location l = freshLocation();
+            if (l == null) return err("no_location", "Could not get the phone's location. Is Location on?");
+            lat = l.getLatitude(); lon = l.getLongitude(); near = "current location";
+        }
+        List<JSONObject> list = new ArrayList<>();
+        try {
+            String q = "[out:json][timeout:20];(node(around:15000," + lat + "," + lon + ")[amenity=charging_station];"
+                    + "way(around:15000," + lat + "," + lon + ")[amenity=charging_station];);out center 80;";
+            JSONArray el = Http.get("https://overpass-api.de/api/interpreter?data=" + URLEncoder.encode(q, "UTF-8")).optJSONArray("elements");
+            for (int i = 0; el != null && i < el.length(); i++) {
+                JSONObject e = el.getJSONObject(i);
+                JSONObject c = e.has("lat") ? e : e.optJSONObject("center");
+                if (c == null) continue;
+                double la = c.optDouble("lat"), lo = c.optDouble("lon");
+                JSONObject tags = e.optJSONObject("tags");
+                if (tags == null) tags = new JSONObject();
+                String name = tags.optString("name", tags.optString("operator", tags.optString("brand", tags.optString("network", "Charging station"))));
+                StringBuilder plugs = new StringBuilder();
+                java.util.Iterator<String> keys = tags.keys();
+                while (keys.hasNext()) {
+                    String k = keys.next();
+                    if (!k.startsWith("socket:") || k.indexOf(':', 7) > 0) continue;
+                    String type = k.substring(7).replace("type2_combo", "CCS2").replace("type2", "Type 2").replace("chademo", "CHAdeMO")
+                            .replace("gb_t_dc", "GB/T DC").replace("gb_t", "GB/T").replace("_", " ");
+                    if (plugs.length() > 0) plugs.append(", ");
+                    plugs.append(type).append(" x").append(tags.optString(k));
+                }
+                list.add(new JSONObject().put("name", name).put("operator", tags.optString("operator", tags.optString("network", "")))
+                        .put("km", Math.round(GeoReminders.distance(lat, lon, la, lo) / 100f) / 10.0)
+                        .put("plugs", plugs.toString()).put("hours", tags.optString("opening_hours", ""))
+                        .put("maps_place", la + "," + lo));
+            }
+        } catch (Exception ignored) {}
+        list.sort((x, y) -> Double.compare(x.optDouble("km"), y.optDouble("km")));
+        JSONArray near6 = new JSONArray();
+        for (int i = 0; i < Math.min(6, list.size()); i++) near6.put(list.get(i));
+        String opened = "";
+        if (app != null && !app.trim().isEmpty()) {
+            ResolveInfo r = findApp(app.trim());
+            if (r != null && unlocked() && launch(r.activityInfo.packageName)) opened = label(r.activityInfo.packageName);
+        }
+        if (near6.length() == 0) {
+            if (opened.isEmpty() && unlocked()) {
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:" + lat + "," + lon + "?q=" + Uri.encode("EV charging station")))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try { start(i); opened = "Google Maps"; } catch (ActivityNotFoundException ignored) {}
+            }
+            return ok().put("near", near).put("chargers", near6).put("opened", opened)
+                    .put("next", "The free map lists no chargers within 15 km" + (opened.isEmpty() ? "" : "; " + opened + " is open to look")
+                            + ". His charger apps (Statiq, ElectricPe, Bolt.Earth, eDrive BPCL, Tecell, Spider, Voltran, eHUB by MG) show live chargers.").toString();
+        }
+        return ok().put("near", near).put("chargers", near6).put("opened", opened)
+                .put("next", "Tell him the nearest 2-3 with distance and plug types. To go: open_maps with navigate=true and place = its maps_place. "
+                        + "Whether a charger is free right now, and paying, are in his charger app; he starts and pays there.").toString();
+    }
+
+    /** Flight or bus search in his travel apps, filled in where the app accepts it. He books and pays himself. */
+    private String travelSearch(String kind, String from, String to, String date, String app) throws Exception {
+        boolean bus = kind != null && kind.trim().toLowerCase(Locale.ROOT).startsWith("bus");
+        if (from == null || from.trim().isEmpty() || to == null || to.trim().isEmpty()) return err("missing", "From where to where?");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        java.util.Calendar d = java.util.Calendar.getInstance();
+        if (date != null && date.trim().matches("\\d{4}-\\d{2}-\\d{2}")) {
+            String s = date.trim();
+            d.set(Integer.parseInt(s.substring(0, 4)), Integer.parseInt(s.substring(5, 7)) - 1, Integer.parseInt(s.substring(8, 10)));
+        }
+        ResolveInfo r = null;
+        if (app != null && !app.trim().isEmpty()) {
+            r = findApp(app.trim());
+            if (r == null) return err("not_installed", "'" + app + "' is not installed.");
+        } else {
+            for (String p : bus ? new String[]{"redBus", "AbhiBus", "IntrCity", "FlixBus", "TGSRTC"}
+                    : new String[]{"Skyscanner", "MakeMyTrip", "ixigo", "EaseMyTrip", "Trip.com"}) {
+                r = findApp(p);
+                if (r != null) break;
+            }
+            if (r == null) return err("no_app", "No " + (bus ? "bus" : "flight") + " booking app found.");
+        }
+        String pkg = r.activityInfo.packageName;
+        String a = ((app == null ? "" : app) + " " + label(pkg)).toLowerCase(Locale.ROOT);
+        String f = from.trim(), t = to.trim(), url = null;
+        Locale en = Locale.ENGLISH;
+        if (bus) {
+            String fs = f.toLowerCase(en).replaceAll("[^a-z0-9]+", "-"), ts = t.toLowerCase(en).replaceAll("[^a-z0-9]+", "-");
+            if (a.contains("redbus")) url = "https://www.redbus.in/bus-tickets/" + fs + "-to-" + ts;
+        } else if (f.matches("[A-Za-z]{3}") && t.matches("[A-Za-z]{3}")) {
+            String F = f.toUpperCase(en), T = t.toUpperCase(en);
+            if (a.contains("skyscanner")) url = "https://www.skyscanner.co.in/transport/flights/" + F.toLowerCase(en) + "/" + T.toLowerCase(en) + "/"
+                    + new java.text.SimpleDateFormat("yyMMdd", en).format(d.getTime()) + "/";
+            else if (a.contains("makemytrip")) url = "https://www.makemytrip.com/flight/search?itinerary=" + F + "-" + T + "-"
+                    + new java.text.SimpleDateFormat("dd/MM/yyyy", en).format(d.getTime()) + "&tripType=O&paxType=A-1_C-0_I-0&intl=false&cabinClass=E";
+            else if (a.contains("ixigo")) url = "https://www.ixigo.com/search/result/flight?from=" + F + "&to=" + T + "&date="
+                    + new java.text.SimpleDateFormat("ddMMyyyy", en).format(d.getTime()) + "&adults=1&children=0&infants=0&class=e";
+            else if (a.contains("trip.com")) url = "https://in.trip.com/flights/showfarefirst?dcity=" + F.toLowerCase(en) + "&acity=" + T.toLowerCase(en)
+                    + "&ddate=" + new java.text.SimpleDateFormat("yyyy-MM-dd", en).format(d.getTime()) + "&triptype=ow&class=y&quantity=1";
+        }
+        boolean filled = url != null && openIn(pkg, url);
+        if (!filled) launch(pkg);
+        String day = new java.text.SimpleDateFormat("EEE d MMM", en).format(d.getTime());
+        return ok().put("opened", label(pkg)).put("kind", bus ? "bus" : "flight").put("from", f).put("to", t).put("date", day).put("search_filled_in", filled)
+                .put("next", (filled ? "The search is filled in; check that the date shows " + day + ". "
+                                : label(pkg) + " opened on its home screen; he types " + f + " → " + t + " and the date. ")
+                        + "When results show and he asks, use look_at_screen and read the 3-4 cheapest or best with times and prices. Anil books and pays himself; Jarvis never does.")
+                .toString();
+    }
+
+    private static final String[] TRIP_SENDERS = {"REDBUS", "ABHIBS", "ABHIBUS", "INTRCT", "FLIXBS", "FLXBUS", "TSRTC", "TGSRTC", "APSRTC",
+            "IRCTC", "INDIGO", "6EINDG", "AIRIND", "AIINDA", "AKASA", "SPJETT", "SPICEJ", "MMTRIP", "MKMYTP", "MAKEMY", "IXIGO", "EMTRIP",
+            "EASEMY", "GOIBIB", "CLRTRP", "YATRA", "CNFTKT", "RAILYT", "AGODA", "BOOKNG", "TRVAGO"};
+
+    /** His bus / train / flight / hotel bookings, from confirmation SMS. */
+    private String myTrips() throws Exception {
+        if (!has(Manifest.permission.READ_SMS)) return needPermission(Manifest.permission.READ_SMS, "reading ticket SMS");
+        JSONArray out = new JSONArray();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("EEE d MMM HH:mm", Locale.ENGLISH);
+        for (String[] m : Life.sms(act(), System.currentTimeMillis() - 45 * 86400000L, 1500)) {
+            if (m[1] == null) continue;
+            String from = m[0] == null ? "" : m[0].toUpperCase(Locale.ROOT), low = m[1].toLowerCase(Locale.ROOT);
+            if (low.contains("otp") || low.contains("one time password")) continue;
+            boolean sender = false;
+            for (String s : TRIP_SENDERS) if (from.contains(s)) { sender = true; break; }
+            boolean booking = any(low, "pnr", "booking id", "booking ref", "ticket no", "confirmed", "boarding", "check-in", "e-ticket");
+            boolean travel = any(low, "journey", "departure", "dep:", "doj", "flight", "bus", "train", "boarding", "check-in", "hotel");
+            if (!(sender ? booking || travel : booking && travel)) continue;
+            if (!low.contains("pnr") && any(low, "offer", "sale", "discount", "cashback", "% off")) continue; // promotions
+            String s = m[1].replaceAll("\\s+", " ");
+            out.put(new JSONObject().put("received", f.format(new java.util.Date(Long.parseLong(m[2])))).put("from", m[0])
+                    .put("sms", s.substring(0, Math.min(320, s.length()))));
+            if (out.length() >= 10) break;
+        }
+        if (out.length() == 0) return err("none", "No bus, train, flight or hotel booking SMS in the last 45 days. Tickets that came only by email or in an app are not visible here; offer to open that app.");
+        return ok().put("trip_messages", out).put("today", new java.text.SimpleDateFormat("EEE d MMM yyyy", Locale.ENGLISH).format(new java.util.Date()))
+                .put("next", "From these, work out his journeys from today onwards: date, time, from → to, bus operator / train / flight, PNR, seat, boarding point. "
+                        + "Tell the nearest one first; skip past trips unless he asks.").toString();
+    }
+
+    private static final java.util.regex.Pattern BALANCE = java.util.regex.Pattern.compile(
+            "\\b(?:(?:avl|avbl|avail|available|a/c|ac|acct|clear|clr)\\.?\\s*)?bal(?:ance)?\\b[^0-9₹]{0,25}(?:rs\\.?|inr|₹)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /** Account balance as given in the newest SMS from each bank. */
+    private String bankBalance() throws Exception {
+        if (!has(Manifest.permission.READ_SMS)) return needPermission(Manifest.permission.READ_SMS, "reading bank SMS");
+        java.util.LinkedHashMap<String, JSONObject> byBank = new java.util.LinkedHashMap<>();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("EEE d MMM HH:mm", Locale.ENGLISH);
+        for (String[] m : Life.sms(act(), System.currentTimeMillis() - 60 * 86400000L, 2000)) {
+            if (m[1] == null || m[0] == null) continue;
+            String low = m[1].toLowerCase(Locale.ROOT);
+            if (low.contains("otp") || low.contains("limit") && !low.contains("bal")) continue;
+            java.util.regex.Matcher b = BALANCE.matcher(m[1]);
+            if (!b.find()) continue;
+            String bank = "";
+            for (String part : m[0].toUpperCase(Locale.ROOT).split("-")) if (part.length() > bank.length()) bank = part;
+            if (byBank.containsKey(bank)) continue; // newest first: keep only the latest per bank
+            double bal;
+            try { bal = Double.parseDouble(b.group(1).replace(",", "")); } catch (Exception e) { continue; }
+            byBank.put(bank, new JSONObject().put("bank_sender", bank).put("balance", bal)
+                    .put("as_of", f.format(new java.util.Date(Long.parseLong(m[2])))));
+            if (byBank.size() >= 6) break;
+        }
+        if (byBank.isEmpty()) return err("none", "No bank SMS with a balance in the last 60 days. For the balance he opens his bank app (YONO SBI, iMobile, Axis Mobile) and enters his PIN himself.");
+        JSONArray arr = new JSONArray();
+        for (JSONObject o : byBank.values()) arr.put(o);
+        return ok().put("balances", arr)
+                .put("next", "Say each bank (from the sender code, e.g. SBIINB = SBI, ICICIB/ICICIT = ICICI, AXISBK = Axis, HDFCBK = HDFC) with the balance and the date of that SMS. "
+                        + "It is the balance in the latest SMS; spends after it may not be counted. Never read account numbers. The exact balance is in his bank app with his PIN.").toString();
+    }
+
+    /** A place in another maps app he names (Waze, HERE WeGo, Sygic, Mappls, Citymapper, Google Earth...). */
+    private String maps(String place, boolean navigate, String app) throws Exception {
+        if (app == null || app.trim().isEmpty() || app.toLowerCase(Locale.ROOT).replace(" ", "").contains("googlemaps"))
+            return maps(place, navigate);
+        if (place == null || place.trim().isEmpty()) return err("missing", "Which place?");
+        ResolveInfo r = findApp(app.trim());
+        if (r == null) return err("not_installed", "'" + app + "' is not installed.");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        String pkg = r.activityInfo.packageName, a = (app + " " + label(pkg)).toLowerCase(Locale.ROOT);
+        String p = place.trim(), enc = Uri.encode(p);
+        double[] ll = null;
+        if (p.matches("-?\\d+(\\.\\d+)?\\s*,\\s*-?\\d+(\\.\\d+)?")) {
+            String[] xy = p.split(",");
+            ll = new double[]{Double.parseDouble(xy[0].trim()), Double.parseDouble(xy[1].trim())};
+        } else {
+            ll = geocode(p);
+        }
+        boolean done;
+        if (a.contains("waze")) {
+            done = openIn(pkg, (ll != null ? "https://waze.com/ul?ll=" + ll[0] + "," + ll[1] : "https://waze.com/ul?q=" + enc) + (navigate ? "&navigate=yes" : ""));
+        } else if (a.contains("citymapper")) {
+            done = ll != null && openIn(pkg, "https://citymapper.com/directions?endcoord=" + ll[0] + "%2C" + ll[1] + "&endname=" + enc);
+        } else {
+            done = openIn(pkg, ll != null ? "geo:" + ll[0] + "," + ll[1] + "?q=" + ll[0] + "," + ll[1] + "(" + enc + ")" : "geo:0,0?q=" + enc);
+        }
+        if (!done) launch(pkg);
+        return ok().put("app", label(pkg)).put(navigate ? "navigating_to" : "showing", p).put("place_filled_in", done)
+                .put("next", !done ? label(pkg) + " opened, but it does not take a place from other apps; he searches there."
+                        : navigate && !a.contains("waze") ? "The place is open; he taps Directions / Go to start." : "").toString();
     }
 
     // ================================================================ offline commands
