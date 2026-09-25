@@ -3635,7 +3635,7 @@ final class Tools {
             + "- Seats: pick available seats (not sold, not greyed) side by side in the area he wants, near the middle of the row. Use zoom on the seat map first to see seat numbers clearly, "
             + "then tap_xy each seat using screen pixel coordinates from the grid. After tapping, check that exactly those seats show as selected; fix mistakes. "
             + "Then ask him to confirm the seat numbers and the total price shown, unless he already confirmed these exact seats.\n"
-            + "- Close pop-ups and ads (Skip, Not now, No thanks, ✕). Do not add food, insurance, donations or extras unless he asked.\n"
+            + "- Close pop-ups and ads (Skip, Not now, No thanks, ✕). Do not add food, insurance, ₹1 donations ('book a smile'), BMS Club membership or other extras unless he asked; leave those boxes unticked.\n"
             + "- Prefer tap by element number; use tap_xy only for things with no element (seat maps, pictures). Use wait if the screen is still loading.\n"
             + "- If you cannot find something after a few scrolls, ask him or fail with the reason. Keep why short.";
 
@@ -3715,6 +3715,8 @@ final class Tools {
     }
 
     private String runAppTask(AppTask t) throws Exception {
+        String asked = (t.goal + " " + t.answers).toLowerCase(Locale.ROOT);
+        JarvisAccessibility.extrasAllowed = asked.contains("club") || asked.contains("donat") || asked.contains("insurance") || asked.contains("క్లబ్");
         long end = android.os.SystemClock.elapsedRealtime() + 170_000;
         int waits = 0;
         for (int step = 0; step < 30 && android.os.SystemClock.elapsedRealtime() < end && appTask == t; step++) {
@@ -3803,6 +3805,12 @@ final class Tools {
                     return err("could_not", a.optString("reason", "It did not work.") + " Tell him simply; he can answer to continue (phone_task answer=…) or do it by hand.");
                 default:
                     result = "unknown action";
+            }
+            if (result.startsWith("blocked:extra:")) {
+                // a paid extra (BMS Club, ₹1 donation, insurance) he did not ask for: leave it and carry on
+                t.steps.add(action + " → REFUSED: paid extras (Club membership, ₹1 donation, insurance) are not added unless Anil asks. Leave it unticked and go on.");
+                Thread.sleep(300);
+                continue;
             }
             if (result.startsWith("blocked:over:") && t.paying) {
                 // The final total (with fees and taxes) is more than he agreed to: ask him once more with the real total.

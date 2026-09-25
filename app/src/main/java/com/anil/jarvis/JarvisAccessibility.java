@@ -462,6 +462,20 @@ public class JarvisAccessibility extends AccessibilityService {
         return commit == null ? null : "blocked:" + commit;
     }
 
+    /** Paid extras Jarvis never adds by itself: memberships (BMS Club), ₹1 donations, insurance. */
+    static final java.util.regex.Pattern EXTRAS = java.util.regex.Pattern.compile(
+            "(?i)(add ?(₹|rs\\.?) ?\\d|add club|club purchase|club membership|book a smile|donat|insurance|protect your (ticket|booking))");
+    /** He asked for an extra himself (e.g. "Club కూడా తీసుకో"). Set per task by Tools. */
+    static volatile boolean extrasAllowed;
+
+    private static String extraCheck(AccessibilityNodeInfo n) {
+        if (extrasAllowed) return null;
+        String words = label(n) + " " + (buttonSized(n) ? allText(n, 0) : "");
+        AccessibilityNodeInfo c = clickable(n);
+        if (c != null && c != n && c.isClickable() && buttonSized(c)) words += " " + allText(c, 0);
+        return EXTRAS.matcher(words).find() ? "blocked:extra:" + words.trim() : null;
+    }
+
     /** What is on the app's screen now: numbered elements, a screenshot, and the nodes behind the numbers. */
     static final class Screen {
         String pkg = "";
@@ -578,6 +592,8 @@ public class JarvisAccessibility extends AccessibilityService {
         if (sc == null || idx < 0 || idx >= sc.nodes.size()) return "no_element";
         AccessibilityNodeInfo n = sc.nodes.get(idx);
         n.refresh();
+        String extra = extraCheck(n);
+        if (extra != null) return extra;
         String refused = payCheck(sc, n);
         if (refused != null) return refused;
         if (n.isPassword()) return "password";
@@ -595,6 +611,8 @@ public class JarvisAccessibility extends AccessibilityService {
         AccessibilityNodeInfo root = s.windowRoot(sc.pkg);
         AccessibilityNodeInfo hit = root == null ? null : deepestAt(root, x, y, 0);
         if (hit != null) {
+            String extra = extraCheck(hit);
+            if (extra != null) return extra;
             String refused = payCheck(sc, hit);
             if (refused != null) return refused;
             if (hit.isPassword()) return "password";
