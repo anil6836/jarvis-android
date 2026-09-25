@@ -3552,6 +3552,40 @@ final class Tools {
         return "";
     }
 
+    /**
+     * Everything is selected and the next step is paying. With wallet payment on: ask him "₹X MobiKwik
+     * వాలెట్ నుంచి పే చేయమంటారా?". Otherwise (or above his limit): he taps Pay himself.
+     */
+    private String reachedPayment(AppTask t, JarvisAccessibility.Screen sc, String summary, String button) throws Exception {
+        t.time = android.os.SystemClock.elapsedRealtime();
+        double amt = button == null ? -1 : JarvisAccessibility.rupees(button);
+        if (amt <= 0) amt = JarvisAccessibility.payButtonAmount(sc);      // "Pay ₹472" on the screen
+        if (amt <= 0) amt = JarvisAccessibility.rupees(summary);          // the total the model read
+        if (amt <= 0) amt = JarvisAccessibility.rupees(sc.list.toString()); // the biggest amount shown
+        if (walletPayOk(t) && amt > 0 && amt <= prefs.walletPayMax()) {
+            t.pendingAmount = amt;
+            t.awaiting = true;
+            backToJarvis();
+            return ok().put("status", "confirm_payment").put("amount", Math.round(amt)).put("summary", summary).put("app", t.app)
+                    .put("his_answers", t.answers)
+                    .put("next", "Tell him in one short sentence what is selected (movie, theatre, date, time, seats), then ask exactly: '₹"
+                            + Math.round(amt) + " MobiKwik వాలెట్ నుంచి పే చేయమంటారా?'. Only if he clearly says yes (అవును / పే చేయి), call phone_task with "
+                            + "answer = his words and pay = true. Jarvis then presses Pay, chooses the MobiKwik wallet and pays. If he says no, do not pay.").toString();
+        }
+        String why;
+        if (walletPayOk(t) && amt > prefs.walletPayMax()) {
+            why = "₹" + Math.round(amt) + " is more than his wallet limit of ₹" + prefs.walletPayMax() + " (Jarvis settings → టికెట్ పేమెంట్), so Jarvis stopped. ";
+        } else if (walletPayOk(t)) {
+            why = "Jarvis could not read the total on the screen, so it stopped to be safe. ";
+        } else if (t.app.toLowerCase(Locale.ROOT).replace(" ", "").contains("bookmyshow") || t.pkg.equals("com.bt.bms")) {
+            why = "Wallet payment by Jarvis is switched OFF: tell him that to let Jarvis pay from MobiKwik, he opens Jarvis settings → 'టికెట్ పేమెంట్ (BookMyShow)', switches it on and taps Save. ";
+        } else {
+            why = "";
+        }
+        return ok().put("status", "payment_ready").put("summary", summary).put("amount", amt > 0 ? Math.round(amt) : 0).put("app", t.app)
+                .put("next", why + "Tell him in 1-2 short sentences what is selected, then: 'ఇప్పుడు Pay బటన్ మీరు నొక్కి పేమెంట్ పూర్తి చేయండి.'").toString();
+    }
+
     private boolean walletPayOk(AppTask t) {
         return prefs.walletPay() && (t.pkg.equals("com.bt.bms") || t.app.toLowerCase(Locale.ROOT).replace(" ", "").contains("bookmyshow"));
     }
@@ -3602,7 +3636,7 @@ final class Tools {
         }
         if (Build.VERSION.SDK_INT < 30) return err("old_android", "Working inside apps needs Android 11 or newer.");
         AppTask t = appTask;
-        boolean fresh = goal != null && !goal.trim().isEmpty() && (t == null || answer == null || answer.trim().isEmpty());
+        boolean fresh = !pay && goal != null && !goal.trim().isEmpty() && (t == null || answer == null || answer.trim().isEmpty());
         if (fresh) {
             if (app == null || app.trim().isEmpty()) return err("missing", "Which app (BookMyShow, District...)?");
             ResolveInfo r = findApp(app.trim());
@@ -3614,6 +3648,8 @@ final class Tools {
             if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
             t = new AppTask();
             t.pkg = pkg; t.app = label(pkg); t.goal = goal.trim();
+            if (walletPayOk(t)) t.goal += ". (His wallet payment is on: after selecting the seats do NOT ask him to confirm them separately; "
+                    + "reply payment with the movie, theatre, date, time, seat numbers and the total, and Jarvis asks him once.)";
             appTask = t;
             launch(pkg);
             Thread.sleep(3500);
@@ -3735,10 +3771,7 @@ final class Tools {
                         t.steps.add("replied payment, but Anil already confirmed: continue paying with the MobiKwik wallet");
                         continue;
                     }
-                    t.time = android.os.SystemClock.elapsedRealtime();
-                    return ok().put("status", "payment_ready").put("summary", a.optString("summary")).put("app", t.app)
-                            .put("next", "Everything is selected and the app is on the screen. Tell him in 1-2 short sentences what is selected (from summary), "
-                                    + "then: 'ఇప్పుడు Pay బటన్ మీరు నొక్కి పేమెంట్ పూర్తి చేయండి.' Jarvis never pays.").toString();
+                    return reachedPayment(t, sc, a.optString("summary"), null);
                 }
                 case "done":
                     appTask = null;
@@ -3766,24 +3799,7 @@ final class Tools {
                 }
                 JarvisAccessibility.clearPayment();
                 t.time = android.os.SystemClock.elapsedRealtime();
-                if (!t.paying && walletPayOk(t)) {
-                    double amt = JarvisAccessibility.rupees(button);
-                    if (amt <= 0) amt = JarvisAccessibility.rupees(sc.list.toString()); // the total shown on the page
-                    if (amt > 0 && amt <= prefs.walletPayMax()) {
-                        t.pendingAmount = amt;
-                        t.awaiting = true;
-                        backToJarvis();
-                        return ok().put("status", "confirm_payment").put("amount", Math.round(amt)).put("app", t.app).put("his_answers", t.answers)
-                                .put("next", "Tell him in one short sentence what is selected (movie, theatre, time, seats from this conversation), then ask exactly: '₹"
-                                        + Math.round(amt) + " MobiKwik వాలెట్ నుంచి పే చేయమంటారా?'. Only if he clearly says yes (అవును / పే చేయి), call phone_task with "
-                                        + "answer = his words and pay = true. If he says no or hesitates, do not pay; he can tap Pay himself.").toString();
-                    }
-                    if (amt > prefs.walletPayMax()) {
-                        return ok().put("status", "payment_ready").put("amount", Math.round(amt)).put("app", t.app)
-                                .put("next", "₹" + Math.round(amt) + " is more than his wallet limit of ₹" + prefs.walletPayMax()
-                                        + ", so Jarvis stopped. Tell him what is selected and that he taps Pay and pays himself.").toString();
-                    }
-                }
+                if (!t.paying) return reachedPayment(t, sc, "", button);
                 if (t.paying) {
                     t.paying = false;
                     return ok().put("status", "payment_stopped").put("button", button).put("app", t.app)

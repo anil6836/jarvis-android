@@ -382,6 +382,23 @@ public class JarvisAccessibility extends AccessibilityService {
         return best;
     }
 
+    /** The amount on the Pay button on this screen ("Pay ₹472.00"), or -1. */
+    static double payButtonAmount(Screen sc) {
+        if (sc == null) return -1;
+        for (AccessibilityNodeInfo n : sc.nodes) {
+            String l = label(n);
+            if (!COMMIT.matcher(l).find()) continue;
+            double amt = rupees(l);
+            if (amt > 0) return amt;
+            AccessibilityNodeInfo c = clickable(n);
+            if (c != null && c.isClickable() && buttonSized(c)) {
+                amt = rupees(allText(c, 0));
+                if (amt > 0) return amt;
+            }
+        }
+        return -1;
+    }
+
     /** null = this tap is fine; otherwise why it is refused ("blocked:<label>"). */
     private static String payCheck(Screen sc, AccessibilityNodeInfo n) {
         String pkg = sc.pkg;
