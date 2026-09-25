@@ -105,6 +105,8 @@ final class Prefs {
     boolean proactive() { return sp.getBoolean("proactive", true); }
     /** Iron Man style sound effects. */
     boolean sfx() { return sp.getBoolean("sfx", true); }
+    /** After "Jarvis", keep listening at least this long for Anil to start speaking. */
+    int listenWindowSeconds() { return sp.getInt("listen_window", 5); }
     /** Smart home: one command per line, "name = URL" (Voice Monkey / URL Routine Trigger links). */
     String smartUrls() { return sp.getString("smart_urls", ""); }
     /** The app that controls the lights (Homemate, Zeb Home, Wipro Next...), used as a fallback. */

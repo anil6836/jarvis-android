@@ -34,7 +34,8 @@ public class SettingsActivity extends Activity {
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
     private RadioGroup provider, lang, wakeWhen;
     private Switch callVoice, readMessages, batteryWarn, voiceLock, proactive, sfx;
-    private SeekBar lockSlider;
+    private SeekBar lockSlider, listenWindow;
+    private TextView listenWindowLabel;
     private TextView lockInfo, docsInfo;
     private EditText sosContacts, smartUrls, smartApp;
     private Switch alexaSpeak;
@@ -96,6 +97,18 @@ public class SettingsActivity extends Activity {
         section("వాయిస్");
         voice = toggle("సమాధానాలు పైకి చదివి వినిపించు", prefs.voiceReplies());
         followUp = toggle("సమాధానం తర్వాత మళ్లీ వినడం (సంభాషణ మోడ్)", prefs.followUp());
+        listenWindowLabel = Ui.text(this, "", 15, Ui.MUTED);
+        box.addView(listenWindowLabel);
+        listenWindow = new SeekBar(this);
+        listenWindow.setMax(7); // 3 .. 10 seconds
+        listenWindow.setProgress(Math.max(0, Math.min(7, prefs.listenWindowSeconds() - 3)));
+        listenWindow.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar s, int p, boolean u) { showListenWindow(); }
+            @Override public void onStartTrackingTouch(SeekBar s) {}
+            @Override public void onStopTrackingTouch(SeekBar s) {}
+        });
+        box.addView(listenWindow);
+        showListenWindow();
         rateLabel = Ui.text(this, "", 15, Ui.MUTED);
         box.addView(rateLabel);
         rate = new SeekBar(this);
@@ -393,6 +406,7 @@ public class SettingsActivity extends Activity {
         e.putFloat("voice_lock_max", 0.30f + lockSlider.getProgress() / 100f);
         e.putBoolean("proactive", proactive.isChecked());
         e.putBoolean("sfx", sfx.isChecked());
+        e.putInt("listen_window", listenWindow.getProgress() + 3);
         e.putString("sos_contacts", sosContacts.getText().toString().trim());
         e.putString("smart_urls", smartUrls.getText().toString().trim());
         e.putString("smart_app", smartApp.getText().toString().trim());
@@ -446,6 +460,10 @@ public class SettingsActivity extends Activity {
                 : p < 34 ? "మధ్యస్థం" : "ఎక్కువ (సులువుగా మేల్కొంటుంది, అప్పుడప్పుడు పొరపాటున కూడా)";
         sensitivityLabel.setText("సున్నితత్వం: " + level);
         sensitivityLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
+    }
+
+    private void showListenWindow() {
+        if (listenWindowLabel != null) listenWindowLabel.setText("పిలిచాక మీరు మాట్లాడటం మొదలుపెట్టే దాకా వినే సమయం: " + (listenWindow.getProgress() + 3) + " సెకన్లు");
     }
 
     private void showLock() {

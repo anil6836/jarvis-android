@@ -163,24 +163,54 @@ final class VoiceIO {
         return SpeechRecognizer.isRecognitionAvailable(ctx);
     }
 
+    // Keep the mic open for a few seconds after "Jarvis": the phone's recognizer gives up
+    // quickly in silence (or on the tail of Jarvis's own greeting), so quietly start it again.
+    private long windowUntil;
+    private boolean heardSpeech;
+    private Intent lastIntent;
+
+    private static boolean retryable(int error) {
+        return error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                || error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
+                || error == SpeechRecognizer.ERROR_AUDIO; // the wake-word mic may still be letting go
+    }
+
+    private boolean restartIfEarly(int error) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (heardSpeech || lastIntent == null || sr == null || now > windowUntil - 400 || !retryable(error)) return false;
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            if (!listening || sr == null || lastIntent == null) return;
+            try { sr.cancel(); sr.startListening(lastIntent); } catch (Exception e) { listening = false; l.onListenFailed(error); }
+        }, error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ? 350 : 150);
+        return true;
+    }
+
     void listen(String lang) {
         stopSpeaking();
+        windowUntil = android.os.SystemClock.elapsedRealtime() + prefs.listenWindowSeconds() * 1000L;
+        heardSpeech = false;
         if (sr == null) {
             sr = SpeechRecognizer.createSpeechRecognizer(ctx);
             sr.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle params) { l.onListening(); }
-                @Override public void onBeginningOfSpeech() {}
+                @Override public void onBeginningOfSpeech() { heardSpeech = true; }
                 @Override public void onRmsChanged(float rmsdB) { l.onLevel((rmsdB + 2f) / 12f); }
                 @Override public void onBufferReceived(byte[] buffer) {}
                 @Override public void onEndOfSpeech() {}
-                @Override public void onError(int error) { listening = false; l.onListenFailed(error); }
-                @Override public void onResults(Bundle results) {
+                @Override public void onError(int error) {
+                    if (listening && restartIfEarly(error)) return; // still inside the listening window
                     listening = false;
-                    l.onHeard(first(results));
+                    l.onListenFailed(error);
+                }
+                @Override public void onResults(Bundle results) {
+                    String heard = first(results);
+                    if (heard.isEmpty() && listening && restartIfEarly(SpeechRecognizer.ERROR_NO_MATCH)) return;
+                    listening = false;
+                    l.onHeard(heard);
                 }
                 @Override public void onPartialResults(Bundle partial) {
                     String s = first(partial);
-                    if (!s.isEmpty()) l.onPartial(s);
+                    if (!s.isEmpty()) { heardSpeech = true; l.onPartial(s); }
                 }
                 @Override public void onEvent(int eventType, Bundle params) {}
             });
@@ -193,6 +223,11 @@ final class VoiceIO {
         i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.getPackageName());
         if (!Net.online(ctx)) i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true); // Telugu offline pack, if downloaded
+        // ask for a patient recognizer (some phones ignore these; the restart above covers them)
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, prefs.listenWindowSeconds() * 1000L);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L);
+        lastIntent = i;
         listening = true;
         sr.startListening(i);
     }
@@ -208,6 +243,7 @@ final class VoiceIO {
     }
 
     void cancelListening() {
+        windowUntil = 0;
         if (sr != null) sr.cancel();
         listening = false;
     }
