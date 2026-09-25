@@ -249,6 +249,13 @@ final class Tools {
                 schema(new String[][]{{"kind", "string", "flight or bus"}, {"from", "string", "Flights: 3-letter airport code (HYD). Bus: city in English"},
                         {"to", "string", "Flights: airport code (BLR). Bus: city in English"}, {"date", "string", "YYYY-MM-DD; empty = today"},
                         {"app", "string", "App he named; empty = the first one installed"}}, "kind", "from", "to")));
+        DEFS.add(new Def("phone_task",
+                "Do a task inside one of his apps step by step, the way he would tap it: book movie or event tickets in BookMyShow or District "
+                        + "(movie, date, theatre, show time, number of tickets, seats), or a bus in redBus/AbhiBus. Jarvis asks him the choices, "
+                        + "selects everything and stops at the Pay button: he pays himself. Start: app + goal. Continue: answer (his reply to the question). Cancel: stop=true.",
+                schema(new String[][]{{"app", "string", "App name, e.g. BookMyShow"},
+                        {"goal", "string", "Everything he said in English: e.g. 'Book 2 tickets for OG (Telugu) tomorrow evening at AMB Cinemas Gachibowli, middle rows, seats together'"},
+                        {"answer", "string", "His answer to the question Jarvis just asked (continue)"}, {"stop", "boolean", "true to cancel"}})));
         DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
         DEFS.add(new Def("bank_balance", "His account balance as given in the newest SMS from each bank.", schema(new String[][]{})));
         DEFS.add(new Def("voice_recorder", "Open the Voice Recorder app to record.", schema(new String[][]{})));
@@ -395,6 +402,7 @@ final class Tools {
             case "ev_chargers": return "ఛార్జింగ్ స్టేషన్లు వెతుకుతున్నాను…";
             case "travel_search": return "టికెట్లు వెతుకుతున్నాను…";
             case "my_trips": return "మీ ప్రయాణాలు చూస్తున్నాను…";
+            case "phone_task": return "యాప్‌లో చేస్తున్నాను…";
             case "bank_balance": return "బ్యాలెన్స్ చూస్తున్నాను…";
             case "voice_recorder": return "రికార్డర్ తెరుస్తున్నాను…";
             case "mobile_plan": return "మీ ప్లాన్ చూస్తున్నాను…";
@@ -493,6 +501,7 @@ final class Tools {
                 case "ev_chargers": return evChargers(a.optString("place", ""), a.optString("app", ""));
                 case "travel_search": return travelSearch(a.optString("kind", "flight"), a.optString("from"), a.optString("to"), a.optString("date", ""), a.optString("app", ""));
                 case "my_trips": return myTrips();
+                case "phone_task": return phoneTask(a.optString("app", ""), a.optString("goal", ""), a.optString("answer", ""), a.optBoolean("stop", false));
                 case "bank_balance": return bankBalance();
                 case "voice_recorder": return voiceRecorder();
                 case "mobile_plan": return mobilePlan();
@@ -3507,6 +3516,208 @@ final class Tools {
         return ok().put("app", label(pkg)).put(navigate ? "navigating_to" : "showing", p).put("place_filled_in", done)
                 .put("next", !done ? label(pkg) + " opened, but it does not take a place from other apps; he searches there."
                         : navigate && !a.contains("waze") ? "The place is open; he taps Directions / Go to start." : "").toString();
+    }
+
+    // ================================================================ doing a task inside an app, step by step (tickets)
+
+    private static final class AppTask {
+        String pkg, app, goal;
+        final JSONArray answers = new JSONArray();
+        final java.util.ArrayList<String> steps = new java.util.ArrayList<>();
+        android.graphics.Rect zoom;
+        long time;
+        volatile boolean awaiting;
+    }
+
+    private static volatile AppTask appTask;
+
+    /** Jarvis asked Anil a choice for an app task (theatre, time, seats) and waits for his spoken answer. */
+    static boolean awaitingAnswer() {
+        AppTask t = appTask;
+        return t != null && t.awaiting && android.os.SystemClock.elapsedRealtime() - t.time < 5 * 60 * 1000L;
+    }
+
+    /** Apps Jarvis never operates: payments and banking stay in Anil's own hands. */
+    private static final String[] NO_AGENT = {"phonepe", "paisa", "paytm", "payzapp", "sbi", "axis", "icici", "hdfc", "cred", "mobikwik",
+            "paypal", "bajaj", "bank", "upi", "wallet", "bhim"};
+
+    private static final String AGENT_SYSTEM =
+            "You operate an Android app on Anil's phone for his assistant Jarvis, one step per reply, to reach his goal. "
+            + "Each turn you get the goal, his answers so far, your previous steps, the numbered elements on the screen with their centre in screen pixels, "
+            + "and a screenshot with a pink grid labelled in screen pixels.\n"
+            + "Reply with ONE JSON object and nothing else:\n"
+            + "{\"action\":\"tap\",\"element\":N,\"why\":\"…\"} | {\"action\":\"tap_xy\",\"x\":X,\"y\":Y,\"why\":\"…\"} | {\"action\":\"type\",\"element\":N,\"text\":\"…\"} | "
+            + "{\"action\":\"scroll\",\"direction\":\"down|up|left|right\"} | {\"action\":\"zoom\",\"left\":X1,\"top\":Y1,\"right\":X2,\"bottom\":Y2} | {\"action\":\"back\"} | {\"action\":\"wait\"} | "
+            + "{\"action\":\"ask\",\"question\":\"…\"} | {\"action\":\"payment\",\"summary\":\"…\"} | {\"action\":\"done\",\"summary\":\"…\"} | {\"action\":\"fail\",\"reason\":\"…\"}\n"
+            + "Rules:\n"
+            + "- NEVER tap anything that pays, places an order or confirms a booking or ride (Pay, Pay ₹…, Proceed to pay, Place order, Buy now, Book ride, Confirm pickup). "
+            + "When that is the next step, reply payment with a short summary of what is selected (movie/event, theatre, date, time, seats, number of tickets, total shown). Anil pays himself.\n"
+            + "- Never type card numbers, UPI IDs, PINs, OTPs or passwords, never log in, never change account settings. A login or OTP screen -> ask him to do it.\n"
+            + "- Ask (one short, simple Telugu question, with the options you can see) whenever a choice is his and not already in the goal or his answers: "
+            + "which theatre and show time (list the theatres with their times), the date, how many tickets, which seat area (front / middle / back). Never guess his choices.\n"
+            + "- Seats: pick available seats (not sold, not greyed) side by side in the area he wants, near the middle of the row. Use zoom on the seat map first to see seat numbers clearly, "
+            + "then tap_xy each seat using screen pixel coordinates from the grid. After tapping, check that exactly those seats show as selected; fix mistakes. "
+            + "Then ask him to confirm the seat numbers and the total price shown, unless he already confirmed these exact seats.\n"
+            + "- Close pop-ups and ads (Skip, Not now, No thanks, ✕). Do not add food, insurance, donations or extras unless he asked.\n"
+            + "- Prefer tap by element number; use tap_xy only for things with no element (seat maps, pictures). Use wait if the screen is still loading.\n"
+            + "- If you cannot find something after a few scrolls, ask him or fail with the reason. Keep why short.";
+
+    private String phoneTask(String app, String goal, String answer, boolean stop) throws Exception {
+        if (stop) {
+            appTask = null;
+            return ok().put("stopped", true).toString();
+        }
+        if (!JarvisAccessibility.enabled()) {
+            onUi(() -> act().startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+            return err("screen_access_off", "Jarvis needs its screen switch to work inside apps. Accessibility settings were opened: Anil must switch on 'Jarvis స్క్రీన్'.");
+        }
+        if (Build.VERSION.SDK_INT < 30) return err("old_android", "Working inside apps needs Android 11 or newer.");
+        AppTask t = appTask;
+        boolean fresh = goal != null && !goal.trim().isEmpty() && (t == null || answer == null || answer.trim().isEmpty());
+        if (fresh) {
+            if (app == null || app.trim().isEmpty()) return err("missing", "Which app (BookMyShow, District...)?");
+            ResolveInfo r = findApp(app.trim());
+            if (r == null) return err("not_installed", "'" + app + "' is not installed.");
+            String pkg = r.activityInfo.packageName, low = (pkg + " " + label(pkg)).toLowerCase(Locale.ROOT);
+            for (String no : NO_AGENT) {
+                if (low.contains(no)) return err("not_allowed", "Jarvis does not operate payment or banking apps; Anil uses " + label(pkg) + " himself. open_app can open it.");
+            }
+            if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+            t = new AppTask();
+            t.pkg = pkg; t.app = label(pkg); t.goal = goal.trim();
+            appTask = t;
+            launch(pkg);
+            Thread.sleep(3500);
+        } else {
+            if (t == null || android.os.SystemClock.elapsedRealtime() - t.time > 20 * 60 * 1000L) {
+                appTask = null;
+                return err("no_task", "There is no app task going on. Start again with app and goal.");
+            }
+            if (answer != null && !answer.trim().isEmpty()) t.answers.put(answer.trim());
+            if (goal != null && !goal.trim().isEmpty() && !goal.trim().equals(t.goal)) t.goal = t.goal + ". Change: " + goal.trim();
+            if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+            onUi(() -> act().moveTaskToBack(true)); // step aside so the app is in front again
+            Thread.sleep(1200);
+        }
+        t.time = android.os.SystemClock.elapsedRealtime();
+        t.awaiting = false;
+        android.os.PowerManager pm = act().getSystemService(android.os.PowerManager.class);
+        @SuppressWarnings("deprecation")
+        android.os.PowerManager.WakeLock lit = pm == null ? null
+                : pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK | android.os.PowerManager.ON_AFTER_RELEASE, "jarvis:apptask");
+        if (lit != null) lit.acquire(4 * 60 * 1000L);
+        try {
+            return runAppTask(t);
+        } finally {
+            if (lit != null && lit.isHeld()) lit.release();
+        }
+    }
+
+    private String runAppTask(AppTask t) throws Exception {
+        long end = android.os.SystemClock.elapsedRealtime() + 170_000;
+        int waits = 0;
+        for (int step = 0; step < 30 && android.os.SystemClock.elapsedRealtime() < end && appTask == t; step++) {
+            JarvisAccessibility.Screen sc = JarvisAccessibility.screen(t.pkg);
+            if (sc == null) {
+                t.awaiting = true;
+                backToJarvis();
+                return err("app_not_on_screen", t.app + " is not on the screen any more (another app or a payment page came up). Ask him what he sees; phone_task answer=… continues.");
+            }
+            String img = t.zoom != null ? JarvisAccessibility.gridJpeg(sc, t.zoom, 1400) : JarvisAccessibility.gridJpeg(sc, null, 1500);
+            boolean zoomed = t.zoom != null && img != null;
+            if (img == null) img = JarvisAccessibility.gridJpeg(sc, null, 1500);
+            android.graphics.Rect zoomRect = t.zoom;
+            t.zoom = null;
+            StringBuilder p = new StringBuilder();
+            p.append("Goal: ").append(t.goal).append("\nApp: ").append(t.app)
+                    .append("\nToday: ").append(new java.text.SimpleDateFormat("EEE d MMM yyyy", Locale.ENGLISH).format(new java.util.Date()))
+                    .append("\nHis answers so far: ").append(t.answers.length() == 0 ? "(none)" : t.answers.toString())
+                    .append("\nYour previous steps:\n");
+            int from = Math.max(0, t.steps.size() - 14);
+            for (int i = from; i < t.steps.size(); i++) p.append("- ").append(t.steps.get(i)).append('\n');
+            if (t.steps.isEmpty()) p.append("(none yet)\n");
+            p.append("Screen ").append(sc.w).append('x').append(sc.h).append(" px.");
+            if (zoomed) p.append(" The picture is a ZOOMED part of the screen (x ").append(zoomRect.left).append('-').append(zoomRect.right)
+                    .append(", y ").append(zoomRect.top).append('-').append(zoomRect.bottom).append("); grid labels are still screen pixels.");
+            p.append("\nElements on screen:\n").append(sc.list.length() > 9000 ? sc.list.substring(0, 9000) + "…\n" : sc.list);
+            if (img == null) p.append("\n(No screenshot available; use the elements.)");
+            String reply = Brain.oneShot(prefs, AGENT_SYSTEM, p.toString(), img, false);
+            if (sc.shot != null) sc.shot.recycle();
+            JSONObject a;
+            try {
+                a = new JSONObject(reply.substring(reply.indexOf('{'), reply.lastIndexOf('}') + 1));
+            } catch (Exception e) {
+                t.steps.add("(reply was not JSON; answer with one JSON object)");
+                continue;
+            }
+            String action = a.optString("action");
+            String why = a.optString("why", "");
+            String result;
+            switch (action) {
+                case "tap": result = JarvisAccessibility.tapElement(sc, a.optInt("element", -1)); break;
+                case "tap_xy": result = JarvisAccessibility.tapPoint(sc, a.optInt("x", -1), a.optInt("y", -1)); break;
+                case "type": result = JarvisAccessibility.typeElement(sc, a.optInt("element", -1), a.optString("text")); break;
+                case "scroll": result = JarvisAccessibility.scroll(sc, a.optString("direction", "down")); break;
+                case "zoom":
+                    t.zoom = new android.graphics.Rect(a.optInt("left"), a.optInt("top"), a.optInt("right"), a.optInt("bottom"));
+                    result = "ok";
+                    break;
+                case "back": JarvisAccessibility.back(); result = "ok"; break;
+                case "wait": result = "ok"; waits++; Thread.sleep(1500); break;
+                case "ask": {
+                    String q = a.optString("question", "ఏది కావాలి?");
+                    t.steps.add("asked Anil: " + q);
+                    t.time = android.os.SystemClock.elapsedRealtime();
+                    t.awaiting = true;
+                    backToJarvis();
+                    return ok().put("status", "question").put("question", q).put("app", t.app)
+                            .put("next", "Say this question to him exactly (short). When he answers, call phone_task with answer = his words (same app). "
+                                    + "If he says stop or cancel, call phone_task stop=true.").toString();
+                }
+                case "payment": {
+                    t.time = android.os.SystemClock.elapsedRealtime();
+                    return ok().put("status", "payment_ready").put("summary", a.optString("summary")).put("app", t.app)
+                            .put("next", "Everything is selected and the app is on the screen. Tell him in 1-2 short sentences what is selected (from summary), "
+                                    + "then: 'ఇప్పుడు Pay బటన్ మీరు నొక్కి పేమెంట్ పూర్తి చేయండి.' Jarvis never pays.").toString();
+                }
+                case "done":
+                    appTask = null;
+                    backToJarvis();
+                    return ok().put("status", "done").put("summary", a.optString("summary")).toString();
+                case "fail":
+                    t.awaiting = true;
+                    t.time = android.os.SystemClock.elapsedRealtime();
+                    backToJarvis();
+                    return err("could_not", a.optString("reason", "It did not work.") + " Tell him simply; he can answer to continue (phone_task answer=…) or do it by hand.");
+                default:
+                    result = "unknown action";
+            }
+            if (result.startsWith("blocked:")) {
+                // the model tried to press a pay / order / book button: that is Anil's
+                t.time = android.os.SystemClock.elapsedRealtime();
+                return ok().put("status", "payment_ready").put("button", result.substring(8).trim()).put("app", t.app)
+                        .put("next", "The next button pays or confirms, so Jarvis stopped there. Tell him what is selected (read it with look_at_screen only if unsure) "
+                                + "and: 'ఇప్పుడు ఆ బటన్ మీరు నొక్కి పేమెంట్ పూర్తి చేయండి.' Jarvis never pays.").toString();
+            }
+            if (result.equals("password")) result = "refused: password field (ask Anil to type it himself)";
+            String desc = action + (a.has("element") ? " [" + a.optInt("element") + "]" : "") + (a.has("x") ? " (" + a.optInt("x") + "," + a.optInt("y") + ")" : "")
+                    + (action.equals("type") ? " '" + a.optString("text") + "'" : "") + (action.equals("scroll") ? " " + a.optString("direction") : "")
+                    + (why.isEmpty() ? "" : " – " + why) + " → " + result;
+            t.steps.add(desc);
+            if (waits > 6) {
+                t.awaiting = true;
+                backToJarvis();
+                return err("slow", t.app + " is taking too long to load. Ask him to check the internet; answer to continue.");
+            }
+            if (!action.equals("zoom") && !action.equals("wait")) Thread.sleep(1300);
+        }
+        if (appTask != t) return ok().put("stopped", true).toString();
+        t.awaiting = true;
+        backToJarvis();
+        t.time = android.os.SystemClock.elapsedRealtime();
+        return ok().put("status", "paused").put("steps_done", t.steps.size())
+                .put("next", "It is taking many steps. Tell him where it got to (last steps: " + t.steps.subList(Math.max(0, t.steps.size() - 3), t.steps.size())
+                        + ") and ask if Jarvis should continue (phone_task answer='continue').").toString();
     }
 
     // ================================================================ offline commands

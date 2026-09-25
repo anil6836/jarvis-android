@@ -129,6 +129,11 @@ public class JarvisAccessibility extends AccessibilityService {
         return null;
     }
 
+    private static boolean tappable(AccessibilityNodeInfo n) {
+        AccessibilityNodeInfo c = clickable(n);
+        return c != null && c.isClickable();
+    }
+
     private static AccessibilityNodeInfo clickable(AccessibilityNodeInfo n) {
         int hops = 0;
         while (n != null && !n.isClickable() && hops++ < 5) n = n.getParent();
@@ -317,6 +322,261 @@ public class JarvisAccessibility extends AccessibilityService {
             if (r != null) return r;
         }
         return null;
+    }
+
+    // ------------------------------------------------------------------ operating an app step by step (tickets etc.)
+
+    /**
+     * Buttons that pay, place an order or confirm a booking/ride. Jarvis never taps these: Anil does
+     * the payment himself. Checked in code on every tap, whatever the model asks for.
+     */
+    static final java.util.regex.Pattern COMMIT = java.util.regex.Pattern.compile(
+            "(?i)(\\bpay\\b|payment|proceed to pay|place (your )?order|buy now|check ?out|make payment|confirm (and|&) pay"
+                    + "|confirm (booking|order|ride|pickup|purchase)|request (ride|uber|ola)|book (ride|bike|auto|cab|uber|ola|rapido)"
+                    + "|slide to (pay|book|confirm)|upi pin|చెల్లించ|చెల్లింపు|భుగతాన|भुगतान)");
+
+    /** What is on the app's screen now: numbered elements, a screenshot, and the nodes behind the numbers. */
+    static final class Screen {
+        String pkg = "";
+        final List<AccessibilityNodeInfo> nodes = new java.util.ArrayList<>();
+        final StringBuilder list = new StringBuilder();
+        Bitmap shot;  // full resolution, software bitmap; may be null
+        int w, h;
+    }
+
+    /** Reads the app's window (pkg) and takes a screenshot. Background thread only. null = the app is not on screen. */
+    static Screen screen(String pkg) {
+        JarvisAccessibility s = instance;
+        if (s == null) return null;
+        AccessibilityNodeInfo root = null;
+        for (int i = 0; i < 12 && root == null; i++) {
+            root = s.windowRoot(pkg);
+            if (root == null) SystemClock.sleep(400);
+        }
+        if (root == null) return null;
+        Screen sc = new Screen();
+        sc.pkg = pkg;
+        android.util.DisplayMetrics dm = s.getResources().getDisplayMetrics();
+        sc.w = dm.widthPixels;
+        sc.h = dm.heightPixels;
+        collect(root, sc, 0);
+        if (Build.VERSION.SDK_INT >= 30) {
+            CountDownLatch done = new CountDownLatch(1);
+            try {
+                s.takeScreenshot(Display.DEFAULT_DISPLAY, s.getMainExecutor(), new TakeScreenshotCallback() {
+                    @Override public void onSuccess(ScreenshotResult r) {
+                        try {
+                            HardwareBuffer hb = r.getHardwareBuffer();
+                            Bitmap hw = Bitmap.wrapHardwareBuffer(hb, r.getColorSpace());
+                            if (hw != null) {
+                                sc.shot = hw.copy(Bitmap.Config.ARGB_8888, false);
+                                hw.recycle();
+                            }
+                            hb.close();
+                        } catch (Exception ignored) {}
+                        done.countDown();
+                    }
+                    @Override public void onFailure(int errorCode) { done.countDown(); }
+                });
+                done.await(4, TimeUnit.SECONDS);
+            } catch (Exception ignored) {}
+            if (sc.shot != null) { sc.w = sc.shot.getWidth(); sc.h = sc.shot.getHeight(); }
+        }
+        return sc;
+    }
+
+    private static void collect(AccessibilityNodeInfo n, Screen sc, int depth) {
+        if (n == null || depth > 45 || sc.nodes.size() >= 260) return;
+        if (n.isVisibleToUser()) {
+            String label = label(n);
+            boolean act = n.isClickable() || n.isEditable() || n.isCheckable();
+            if (!label.isEmpty() || n.isEditable() || (act && n.getChildCount() == 0)) {
+                android.graphics.Rect r = new android.graphics.Rect();
+                n.getBoundsInScreen(r);
+                if (r.width() > 2 && r.height() > 2) {
+                    int idx = sc.nodes.size();
+                    sc.nodes.add(n);
+                    String kind = n.isEditable() ? "field" : n.isCheckable() ? (n.isChecked() ? "checked" : "unchecked")
+                            : tappable(n) ? "button" : "text";
+                    if (!n.isEnabled()) kind += ",disabled";
+                    if (n.isSelected()) kind += ",selected";
+                    sc.list.append('[').append(idx).append("] ").append(kind).append(" \"")
+                            .append(label.length() > 70 ? label.substring(0, 70) + "…" : label)
+                            .append("\" at ").append(r.centerX()).append(',').append(r.centerY()).append('\n');
+                }
+            }
+        }
+        for (int i = 0; i < n.getChildCount(); i++) collect(n.getChild(i), sc, depth + 1);
+    }
+
+    private static String label(AccessibilityNodeInfo n) {
+        CharSequence t = n.getText();
+        String a = t == null ? "" : t.toString().trim();
+        CharSequence d = n.getContentDescription();
+        String b = d == null ? "" : d.toString().trim();
+        String l = a.isEmpty() ? b : b.isEmpty() || b.equals(a) ? a : a + " (" + b + ")";
+        return l.replaceAll("\\s+", " ");
+    }
+
+    /** All words on a node and inside it (for the payment check). */
+    private static String allText(AccessibilityNodeInfo n, int depth) {
+        if (n == null || depth > 4) return "";
+        StringBuilder sb = new StringBuilder(label(n));
+        for (int i = 0; i < n.getChildCount() && sb.length() < 200; i++) sb.append(' ').append(allText(n.getChild(i), depth + 1));
+        return sb.toString();
+    }
+
+    /** The label of a button that pays / orders / books, or null when the tap is fine. */
+    private static String commitLabel(AccessibilityNodeInfo n) {
+        StringBuilder words = new StringBuilder(label(n));
+        if (buttonSized(n)) words.append(' ').append(allText(n, 0));
+        AccessibilityNodeInfo c = clickable(n);
+        if (c != null && c != n && c.isClickable() && buttonSized(c)) words.append(' ').append(allText(c, 0));
+        java.util.regex.Matcher m = COMMIT.matcher(words);
+        return m.find() ? words.toString().trim() : null;
+    }
+
+    /** A button or a row, not a whole page or seat map (whose text would include the Pay bar). */
+    private static boolean buttonSized(AccessibilityNodeInfo n) {
+        JarvisAccessibility s = instance;
+        android.graphics.Rect r = new android.graphics.Rect();
+        n.getBoundsInScreen(r);
+        if (s == null) return r.height() < 400;
+        android.util.DisplayMetrics dm = s.getResources().getDisplayMetrics();
+        return r.height() < dm.heightPixels / 5 && (long) r.width() * r.height() < (long) dm.widthPixels * dm.heightPixels / 8;
+    }
+
+    /** Taps element idx. Returns "ok", "blocked:<label>", "password", "no_element" or "failed". */
+    static String tapElement(Screen sc, int idx) {
+        if (sc == null || idx < 0 || idx >= sc.nodes.size()) return "no_element";
+        AccessibilityNodeInfo n = sc.nodes.get(idx);
+        n.refresh();
+        String commit = commitLabel(n);
+        if (commit != null) return "blocked:" + commit;
+        if (n.isPassword()) return "password";
+        AccessibilityNodeInfo c = clickable(n);
+        if (c != null && c.isClickable() && c.isEnabled() && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "ok";
+        android.graphics.Rect r = new android.graphics.Rect();
+        n.getBoundsInScreen(r);
+        return gesture(r.centerX(), r.centerY(), r.centerX(), r.centerY(), 60) ? "ok" : "failed";
+    }
+
+    /** Taps a point on the screen (seat maps and other drawings that have no elements). */
+    static String tapPoint(Screen sc, int x, int y) {
+        JarvisAccessibility s = instance;
+        if (s == null) return "failed";
+        AccessibilityNodeInfo root = s.windowRoot(sc.pkg);
+        AccessibilityNodeInfo hit = root == null ? null : deepestAt(root, x, y, 0);
+        if (hit != null) {
+            String commit = commitLabel(hit);
+            if (commit != null) return "blocked:" + commit;
+            if (hit.isPassword()) return "password";
+        }
+        return gesture(x, y, x, y, 60) ? "ok" : "failed";
+    }
+
+    private static AccessibilityNodeInfo deepestAt(AccessibilityNodeInfo n, int x, int y, int depth) {
+        if (n == null || depth > 45 || !n.isVisibleToUser()) return null;
+        android.graphics.Rect r = new android.graphics.Rect();
+        n.getBoundsInScreen(r);
+        if (!r.contains(x, y)) return null;
+        for (int i = n.getChildCount() - 1; i >= 0; i--) {
+            AccessibilityNodeInfo d = deepestAt(n.getChild(i), x, y, depth + 1);
+            if (d != null) return d;
+        }
+        return n;
+    }
+
+    /** Types into a text field. Never into a password field. */
+    static String typeElement(Screen sc, int idx, String text) {
+        if (sc == null || idx < 0 || idx >= sc.nodes.size()) return "no_element";
+        AccessibilityNodeInfo n = sc.nodes.get(idx);
+        if (n.isPassword()) return "password";
+        if (!n.isEditable()) {
+            AccessibilityNodeInfo c = clickable(n);
+            if (c != null) c.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            SystemClock.sleep(600);
+            return "not_a_field";
+        }
+        n.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+        n.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        android.os.Bundle b = new android.os.Bundle();
+        b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text == null ? "" : text);
+        return n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT) ? "ok" : "failed";
+    }
+
+    /** Scrolls the page (down = show what is below). */
+    static String scroll(Screen sc, String dir) {
+        String d = dir == null ? "down" : dir.toLowerCase(Locale.ROOT);
+        int w = sc.w, h = sc.h;
+        boolean ok;
+        switch (d) {
+            case "up": ok = gesture(w / 2, h * 3 / 10, w / 2, h * 7 / 10, 350); break;
+            case "left": ok = gesture(w * 3 / 10, h / 2, w * 8 / 10, h / 2, 300); break;   // show what is on the left
+            case "right": ok = gesture(w * 8 / 10, h / 2, w * 2 / 10, h / 2, 300); break;  // show what is on the right
+            default: ok = gesture(w / 2, h * 7 / 10, w / 2, h * 3 / 10, 350);
+        }
+        return ok ? "ok" : "failed";
+    }
+
+    /** A tap (same start and end) or a swipe, and waits for it to finish. */
+    private static boolean gesture(int x1, int y1, int x2, int y2, long ms) {
+        JarvisAccessibility s = instance;
+        if (s == null) return false;
+        android.graphics.Path p = new android.graphics.Path();
+        p.moveTo(Math.max(0, x1), Math.max(0, y1));
+        if (x1 != x2 || y1 != y2) p.lineTo(Math.max(0, x2), Math.max(0, y2));
+        android.accessibilityservice.GestureDescription g = new android.accessibilityservice.GestureDescription.Builder()
+                .addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(p, 0, ms)).build();
+        CountDownLatch done = new CountDownLatch(1);
+        final boolean[] ok = {false};
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            boolean sent = s.dispatchGesture(g, new GestureResultCallback() {
+                @Override public void onCompleted(android.accessibilityservice.GestureDescription gd) { ok[0] = true; done.countDown(); }
+                @Override public void onCancelled(android.accessibilityservice.GestureDescription gd) { done.countDown(); }
+            }, null);
+            if (!sent) done.countDown();
+        });
+        try { done.await(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+        return ok[0];
+    }
+
+    /**
+     * The screenshot (or a part of it) as JPEG base64, with a light grid labelled in screen pixels so
+     * the model can say where to tap. crop null = whole screen.
+     */
+    static String gridJpeg(Screen sc, android.graphics.Rect crop, int maxDim) {
+        if (sc == null || sc.shot == null) return null;
+        android.graphics.Rect c = crop == null ? new android.graphics.Rect(0, 0, sc.shot.getWidth(), sc.shot.getHeight()) : new android.graphics.Rect(crop);
+        if (!c.intersect(0, 0, sc.shot.getWidth(), sc.shot.getHeight()) || c.width() < 20 || c.height() < 20) return null;
+        float scale = Math.min(1f, (float) maxDim / Math.max(c.width(), c.height()));
+        if (crop != null) scale = Math.min(2.5f, (float) maxDim / Math.max(c.width(), c.height())); // zoom in on a part
+        int ow = Math.max(1, Math.round(c.width() * scale)), oh = Math.max(1, Math.round(c.height() * scale));
+        Bitmap out = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(out);
+        cv.drawBitmap(sc.shot, c, new android.graphics.Rect(0, 0, ow, oh), new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
+        int step = crop == null ? 100 : (c.width() > 700 ? 100 : 50);
+        android.graphics.Paint line = new android.graphics.Paint();
+        line.setColor(0x66FF00FF);
+        line.setStrokeWidth(1);
+        android.graphics.Paint txt = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        txt.setColor(0xFFFF00FF);
+        txt.setTextSize(Math.max(11, 13 * Math.min(1.6f, scale * 2)));
+        txt.setShadowLayer(2, 0, 0, 0xFFFFFFFF);
+        for (int x = (c.left / step + 1) * step; x < c.right; x += step) {
+            float px = (x - c.left) * scale;
+            cv.drawLine(px, 0, px, oh, line);
+            cv.drawText(String.valueOf(x), px + 2, txt.getTextSize(), txt);
+        }
+        for (int y = (c.top / step + 1) * step; y < c.bottom; y += step) {
+            float py = (y - c.top) * scale;
+            cv.drawLine(0, py, ow, py, line);
+            cv.drawText(String.valueOf(y), 2, py - 2, txt);
+        }
+        ByteArrayOutputStream bo = new ByteArrayOutputStream();
+        out.compress(Bitmap.CompressFormat.JPEG, 82, bo);
+        out.recycle();
+        return Base64.encodeToString(bo.toByteArray(), Base64.NO_WRAP);
     }
 
     @Override protected void onServiceConnected() { instance = this; }

@@ -1060,7 +1060,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onSpeakDone() {
         String lang = Tools.takeInterpreter();
         if (lang != null && live == null && !busy) { startLive(Brain.interpreterInstructions(prefs.name(), lang)); return; }
-        if (lastWasVoice && prefs.followUp() && !paused && !busy) {
+        if (lastWasVoice && (prefs.followUp() || Tools.awaitingAnswer()) && !paused && !busy) {
             lastWasVoice = false;
             main.postDelayed(this::startListening, 250);
         } else {

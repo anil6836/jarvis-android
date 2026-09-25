@@ -464,6 +464,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             return;
         }
         if (stopped) { closeSheet(); return; }
+        // Booking in an app: Jarvis asked him a choice (theatre, time, seats): listen for the answer.
+        if (Tools.awaitingAnswer()) { main.postDelayed(this::listen, 250); return; }
         // One follow-up question without saying "Jarvis" again, like a real conversation.
         if ((prefs.followUp() || dialog) && followUps > 0) {
             followUps--;
