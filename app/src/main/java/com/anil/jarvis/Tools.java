@@ -219,6 +219,10 @@ final class Tools {
         DEFS.add(new Def("air_quality", "Air quality (AQI) where he is now, and any severe weather warning for today.", schema(new String[][]{})));
         DEFS.add(new Def("cricket_watch", "Tell him live cricket updates (wickets, innings, result) for a team's match; on=false stops.",
                 schema(new String[][]{{"team", "string", "Team, default India"}, {"on", "boolean", "true to watch"}}, "on")));
+        DEFS.add(new Def("whatsapp_media",
+                "The newest WhatsApp voice message, audio, video or photo he received: play a voice message aloud (or turn it into text), play a video, show a photo or describe it. Only after he said yes.",
+                schema(new String[][]{{"kind", "string", "voice, audio, video or photo"},
+                        {"action", "string", "voice/audio: play or text; video: play; photo: show or describe"}}, "kind")));
         DEFS.add(new Def("routine",
                 "Anil's own multi-step commands. save: store steps under a name ('ఆఫీస్ మోడ్' = silent, Wi-Fi off, navigate to office). run: get the steps, then do them with your tools. list / delete.",
                 schema(new String[][]{{"action", "string", "save, run, list or delete"}, {"name", "string", "Routine name as he says it"},
@@ -353,6 +357,7 @@ final class Tools {
             case "driving_mode": return "డ్రైవింగ్ మోడ్…";
             case "ride_app": return "రైడ్ యాప్ తెరుస్తున్నాను…";
             case "routine": return "రొటీన్…";
+            case "whatsapp_media": return "WhatsApp మీడియా…";
             case "parking": return "పార్కింగ్…";
             case "bills_due": return "బిల్లులు చూస్తున్నాను…";
             case "parcels": return "పార్సెల్స్ చూస్తున్నాను…";
@@ -437,6 +442,7 @@ final class Tools {
                 case "app_limit": return appLimit(a.optString("app", ""), a.optInt("minutes", 0));
                 case "air_quality": return airQuality();
                 case "cricket_watch": return cricketWatch(a.optString("team", "India"), a.optBoolean("on", true));
+                case "whatsapp_media": return whatsappMedia(a.optString("kind", "voice"), a.optString("action", ""));
                 case "routine": return routine(a.optString("action", "list"), a.optString("name", ""), a.optString("steps", ""));
                 case "notes": return notes(a.optString("action", "list"), a.optString("text", ""), a.optInt("days", 7));
                 case "sos": return sos(a.optString("message", ""));
@@ -2969,6 +2975,68 @@ final class Tools {
         Life.watchCricket(act(), team.trim());
         return ok().put("watching", team.trim())
                 .put("note", "Checked about every 15 minutes (each check is a small web-search cost) for up to 12 hours; stops when the match ends.").toString();
+    }
+
+
+    // ================================================================ WhatsApp voice notes, videos, photos
+
+    private String whatsappMedia(String kind, String action) throws Exception {
+        String k = kind == null ? "voice" : kind.trim().toLowerCase(Locale.ROOT);
+        if (k.startsWith("vid")) k = "video"; else if (k.startsWith("pho") || k.startsWith("im") || k.startsWith("pic")) k = "photo";
+        else if (k.startsWith("aud") || k.startsWith("song") || k.startsWith("music")) k = "audio"; else k = "voice";
+        String a = action == null || action.trim().isEmpty() ? (k.equals("photo") ? "show" : "play") : action.trim().toLowerCase(Locale.ROOT);
+        List<WaMedia.Found> f = WaMedia.newest(act(), k, 1);
+        if (f.isEmpty()) { Thread.sleep(3000); f = WaMedia.newest(act(), k, 1); } // may still be downloading
+        if (f.isEmpty()) {
+            if (WaMedia.tree(act()).isEmpty()) {
+                if (!k.equals("voice") && !k.equals("audio")) {
+                    String perm = Build.VERSION.SDK_INT >= 33 ? (k.equals("video") ? Manifest.permission.READ_MEDIA_VIDEO : Manifest.permission.READ_MEDIA_IMAGES)
+                            : Manifest.permission.READ_EXTERNAL_STORAGE;
+                    if (!has(perm)) return needPermission(perm, "seeing WhatsApp " + k + "s");
+                }
+                return err("no_folder", "Jarvis cannot see WhatsApp's media yet. Anil must allow it once: Jarvis settings > 'WhatsApp మీడియా' > folder button > 'Use this folder' > Allow. Meanwhile offer to open WhatsApp.");
+            }
+            return err("not_found", "The " + k + " is not on the phone yet (WhatsApp may not have downloaded it). Offer to open WhatsApp so he can tap it.");
+        }
+        WaMedia.Found x = f.get(0);
+        String when = new java.text.SimpleDateFormat("h:mm a", Locale.ENGLISH).format(new java.util.Date(x.modified));
+        JSONObject o = ok().put("file_time", when);
+        if (System.currentTimeMillis() - x.modified > 2 * 3600000L) o.put("note", "This is the newest one Jarvis found, from " + when + "; it may not be the latest message.");
+        switch (k) {
+            case "voice":
+            case "audio":
+                if (a.startsWith("text") || a.startsWith("read") || a.startsWith("trans")) {
+                    String key = prefs.openAiKey().trim();
+                    if (key.isEmpty() || !online()) {
+                        WaMedia.play(act(), x.uri);
+                        return o.put("played", true).put("note", "Turning speech into text needs an OpenAI key and internet, so Jarvis played it instead.").toString();
+                    }
+                    String text = WaMedia.transcribe(act(), key, x.uri);
+                    return o.put("said", text.isEmpty() ? "(no words heard)" : text)
+                            .put("next", "Tell him what they said in their words (translate to Telugu if needed), then ask 'రిప్లై ఇవ్వమంటారా?'.").toString();
+                }
+                boolean ok = WaMedia.play(act(), x.uri);
+                if (!ok) return err("cannot_play", "The voice message could not be played on this phone. Offer to open WhatsApp.");
+                return o.put("played", true).put("next", "Ask 'రిప్లై ఇవ్వమంటారా?'. If he wants the words, call again with action text.").toString();
+            case "video": {
+                if (!unlocked()) return err("locked", "Videos play only after the phone is unlocked, and it was not unlocked.");
+                start(new Intent(Intent.ACTION_VIEW).setDataAndType(x.uri, "video/*")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION));
+                return o.put("playing_video", x.name).toString();
+            }
+            default: {
+                if (a.startsWith("desc") || a.startsWith("tell") || a.startsWith("what")) {
+                    String jpeg = imageB64(x.uri);
+                    if (jpeg == null) return err("cannot_read", "Could not open the photo.");
+                    String d = Brain.oneShot(prefs, VISION_SYSTEM, "A photo someone sent Anil on WhatsApp. Describe what is in it and read any text.", jpeg, false);
+                    return o.put("photo", d).put("next", "Tell him in Telugu in 2-3 sentences, then ask 'రిప్లై ఇవ్వమంటారా?'.").toString();
+                }
+                if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+                start(new Intent(Intent.ACTION_VIEW).setDataAndType(x.uri, "image/*")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION));
+                return o.put("showing_photo", x.name).toString();
+            }
+        }
     }
 
     // ================================================================ offline commands

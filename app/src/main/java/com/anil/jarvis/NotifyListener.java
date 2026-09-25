@@ -127,6 +127,16 @@ public class NotifyListener extends NotificationListenerService {
     private static final Map<String, String> spoken = new java.util.HashMap<>();
     private static final Map<String, Long> lastFrom = new java.util.HashMap<>();
 
+    /** What a WhatsApp notification is about: voice, audio, video, photo, or null for text. */
+    private static String mediaKind(String t) {
+        String l = t.toLowerCase(Locale.ROOT).trim();
+        if (t.contains("🎤") || l.contains("voice message") || l.contains("వాయిస్")) return "voice";
+        if (t.contains("🎵") || l.startsWith("audio")) return "audio";
+        if (t.contains("🎥") || t.contains("📹") || l.startsWith("video") || l.startsWith("వీడియో")) return "video";
+        if (t.contains("📷") || l.startsWith("photo") || l.startsWith("image") || l.startsWith("ఫోటో")) return "photo";
+        return null;
+    }
+
     /** Chat and social apps whose messages Jarvis offers to read. */
     private static final String[] CHAT_APPS = {"com.whatsapp", "org.telegram", "org.thunderdog.challegram",
             "com.google.android.apps.messaging", "com.samsung.android.messaging", "com.instagram.android",
@@ -174,23 +184,47 @@ public class NotifyListener extends NotificationListenerService {
             if (it != null) { id = it.id; canReply = it.reply != null; }
         }
         // First only who and where; the message itself is read only if Anil says yes.
-        String say = p.name() + ", " + (from.isEmpty() ? app : from) + " నుంచి " + app + " లో మెసేజ్ వచ్చింది.";
-        String context = " [new message, notification id " + id + " (" + app + (canReply ? ", can reply with reply_to_notification" : "")
-                + "). Its text: \"" + last + "\". Read it to him ONLY if he says yes (అవును/చదువు); if he says no, just say సరే. "
-                + "After reading, ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send only after he says send.]";
+        String who = from.isEmpty() ? app : from;
+        String media = sbn.getPackageName().startsWith("com.whatsapp") ? mediaKind(last) : null;
+        String reply = " Then ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send with reply_to_notification (id "
+                + id + ") only after he says send.]";
+        String say, ask, context;
+        if ("voice".equals(media) || "audio".equals(media)) {
+            say = p.name() + ", " + who + " నుంచి WhatsApp లో " + ("voice".equals(media) ? "వాయిస్ మెసేజ్" : "ఆడియో") + " వచ్చింది.";
+            ask = "వినిపించమంటారా?";
+            context = " [new WhatsApp " + media + " message from " + who + ". ONLY if he says yes: whatsapp_media kind=" + media
+                    + " action=play; if he wants the words ('ఏం చెప్పారు'), action=text. If no, say సరే." + reply;
+        } else if ("video".equals(media)) {
+            String cap = last.replaceAll("^[🎥📹]\\s*", "").replaceAll("(?i)^video\\s*", "").trim();
+            say = p.name() + ", " + who + " నుంచి WhatsApp లో వీడియో వచ్చింది" + (cap.isEmpty() ? "." : ": " + cap);
+            ask = "ప్లే చేయమంటారా?";
+            context = " [new WhatsApp video from " + who + ". ONLY if he says yes: whatsapp_media kind=video action=play. If no, say సరే." + reply;
+        } else if ("photo".equals(media)) {
+            String cap = last.replaceAll("^📷\\s*", "").replaceAll("(?i)^(photo|image)\\s*", "").trim();
+            say = p.name() + ", " + who + " నుంచి WhatsApp లో ఫోటో వచ్చింది" + (cap.isEmpty() ? "." : ": " + cap);
+            ask = "చూపించమంటారా, లేక ఏముందో చెప్పమంటారా?";
+            context = " [new WhatsApp photo from " + who + ". If he says show: whatsapp_media kind=photo action=show; if 'ఏముంది/చెప్పు': action=describe. If no, say సరే." + reply;
+        } else {
+            say = p.name() + ", " + who + " నుంచి " + app + " లో మెసేజ్ వచ్చింది.";
+            ask = "చదవమంటారా?";
+            context = " [new message, notification id " + id + " (" + app + (canReply ? ", can reply with reply_to_notification" : "")
+                    + "). Its text: \"" + last + "\". Read it to him ONLY if he says yes (అవును/చదువు); if he says no, just say సరే. "
+                    + "After reading, ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send only after he says send.]";
+        }
         if (android.provider.Settings.canDrawOverlays(this)) {
             try {
                 startActivity(new android.content.Intent(this, SheetActivity.class)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE, say)
-                        .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, "చదవమంటారా?")
+                        .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, ask)
+                        .putExtra(SheetActivity.EXTRA_IS_MESSAGE, true)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE_CONTEXT, context)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));
                 return;
             } catch (Exception ignored) {}
         }
         // No panel: say only who wrote; if he calls Jarvis and says "చదువు", the brain has the message.
-        Store.get(this).addChat("assistant", say + " చదవమంటారా?" + context, false);
-        Announcer.say(this, say + " చదవాలంటే Jarvis అని పిలిచి, చదువు అనండి.");
+        Store.get(this).addChat("assistant", say + " " + ask + context, false);
+        Announcer.say(this, say + " కావాలంటే Jarvis అని పిలిచి చెప్పండి.");
     }
 
     private static final Map<String, Long> announced = new java.util.HashMap<>();

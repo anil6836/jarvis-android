@@ -238,6 +238,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         p.add(Manifest.permission.READ_CALL_LOG);
         p.add(Manifest.permission.ACTIVITY_RECOGNITION);
         p.add(Manifest.permission.READ_SMS);
+        if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.READ_MEDIA_VIDEO);
         if (Build.VERSION.SDK_INT >= 31) p.add(Manifest.permission.BLUETOOTH_CONNECT);
         if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS);
         return p.toArray(new String[0]);

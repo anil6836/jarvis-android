@@ -61,6 +61,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     static final String EXTRA_ANNOUNCE_CONTEXT = "jarvis_announce_ctx";
     /** The question after the announcement (default: "రిప్లై ఇవ్వమంటారా?"). */
     static final String EXTRA_ANNOUNCE_ASK = "jarvis_announce_ask";
+    static final String EXTRA_IS_MESSAGE = "jarvis_is_message";
     /** Opened to carry out a command straight away (arrived at office, nightly summary...). */
     static final String EXTRA_RUN = "jarvis_run";
     private String callText;      // non-null while asking about a ringing call
@@ -117,6 +118,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     @Override protected void onDestroy() {
+        WaMedia.stop();
         muteRing(false);
         if (live != null) live.stop("closed");
         voice.shutdown();
@@ -331,7 +333,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         String said = text + (ask == null ? ". రిప్లై ఇవ్వమంటారా?" : " " + ask);
         store.addChat("assistant", said + (ctx == null ? "" : ctx), false);
         heard.setVisibility(View.GONE);
-        status.setText(ask == null || "చదవమంటారా?".equals(ask) ? "కొత్త మెసేజ్" : "Jarvis సూచన");
+        status.setText(ask == null || i.getBooleanExtra(EXTRA_IS_MESSAGE, false) ? "కొత్త మెసేజ్" : "Jarvis సూచన");
         showReply(text, false);
         setAction(IconView.STOP);
         orb.setState(OrbView.SPEAKING);
@@ -409,6 +411,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     private void onAction() {
+        WaMedia.stop(); // a voice message playing: the stop button stops it
         if (callText != null) { endCallMode(); closeSheet(); return; }
         if (live != null) { live.stop("user"); return; }
         if (busy) { generation++; busy = false; closeSheet(); return; }
