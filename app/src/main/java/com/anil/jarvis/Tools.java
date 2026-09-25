@@ -3559,8 +3559,10 @@ final class Tools {
      */
     private String reachedPayment(AppTask t, JarvisAccessibility.Screen sc, String summary, String button) throws Exception {
         t.time = android.os.SystemClock.elapsedRealtime();
-        double amt = button == null ? -1 : JarvisAccessibility.rupees(button);
-        if (amt <= 0) amt = JarvisAccessibility.payButtonAmount(sc);      // "Pay ₹472" on the screen
+        double amt = button == null ? -1 : JarvisAccessibility.payAmount(button); // "Pay ₹472"
+        if (amt <= 0) amt = JarvisAccessibility.pagePayable(sc);          // "Amount Payable ₹229.50"
+        if (amt <= 0) amt = JarvisAccessibility.payButtonAmount(sc);      // a Pay button on the screen
+        if (amt <= 0 && button != null && !button.toLowerCase(Locale.ROOT).contains("mobikwik")) amt = JarvisAccessibility.rupees(button);
         if (amt <= 0) amt = JarvisAccessibility.rupees(summary);          // the total the model read
         if (amt <= 0) amt = JarvisAccessibility.rupees(sc.list.toString()); // the biggest amount shown
         if (walletPayOk(t) && amt > 0 && amt <= prefs.walletPayMax()) {
@@ -3688,7 +3690,8 @@ final class Tools {
                 t.paying = true;
                 t.refusals = 0;
                 t.goal = t.goal + ". Anil CONFIRMED paying ₹" + Math.round(t.pendingAmount) + " from his MobiKwik wallet. Now pay: press the Pay / Proceed buttons; "
-                        + "on the page with ways to pay, choose Wallets → MobiKwik (never UPI, cards, net banking, pay later or any other wallet), then Pay. "
+                        + "on the payment page tap the MobiKwik row (under PREFERRED PAYMENTS, or inside Mobile Wallets; its '₹1000' is his wallet balance, not the price). "
+                        + "Never UPI, PhonePe, CRED, cards, net banking, pay later or any other wallet. Then press Pay / Proceed on the next screens. "
                         + "If MobiKwik asks for a PIN, OTP or password, ask Anil to enter it. When the booking is confirmed, reply done with the booking ID, seats, theatre, show time and the amount paid.";
             }
             if (answer != null && !answer.trim().isEmpty()) t.answers.put(answer.trim());

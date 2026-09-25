@@ -382,17 +382,43 @@ public class JarvisAccessibility extends AccessibilityService {
         return best;
     }
 
+    private static final java.util.regex.Pattern PAY_AMOUNT = java.util.regex.Pattern.compile(
+            "(?i)pay(?:ing)?\\s*(?:now\\s*)?(?:₹|rs\\.?|inr)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)");
+
+    /** "Pay ₹229.50" → 229.50; -1 when the words have no amount right after "Pay". */
+    static double payAmount(String words) {
+        java.util.regex.Matcher m = PAY_AMOUNT.matcher(words == null ? "" : words);
+        if (!m.find()) return -1;
+        try { return Double.parseDouble(m.group(1).replace(",", "")); } catch (Exception e) { return -1; }
+    }
+
+    /** The amount the page says he has to pay ("Amount Payable ₹229.50", "Total ₹…"), or -1. */
+    static double pagePayable(Screen sc) {
+        if (sc == null) return -1;
+        String[] lines = sc.list.toString().split("\n");
+        for (String key : new String[]{"payable", "amount to pay", "to be paid", "grand total", "total amount", "order total", "total"}) {
+            for (int i = 0; i < lines.length; i++) {
+                if (!lines[i].toLowerCase(Locale.ROOT).contains(key)) continue;
+                for (int k = i; k < Math.min(lines.length, i + 3); k++) {
+                    double v = rupees(lines[k]);
+                    if (v > 0) return v;
+                }
+            }
+        }
+        return -1;
+    }
+
     /** The amount on the Pay button on this screen ("Pay ₹472.00"), or -1. */
     static double payButtonAmount(Screen sc) {
         if (sc == null) return -1;
         for (AccessibilityNodeInfo n : sc.nodes) {
             String l = label(n);
-            if (!COMMIT.matcher(l).find()) continue;
-            double amt = rupees(l);
+            if (!COMMIT.matcher(l).find() || l.toLowerCase(Locale.ROOT).contains("mobikwik")) continue; // a wallet row shows its balance, not the price
+            double amt = payAmount(l);
             if (amt > 0) return amt;
             AccessibilityNodeInfo c = clickable(n);
             if (c != null && c.isClickable() && buttonSized(c)) {
-                amt = rupees(allText(c, 0));
+                amt = payAmount(allText(c, 0));
                 if (amt > 0) return amt;
             }
         }
@@ -409,19 +435,26 @@ public class JarvisAccessibility extends AccessibilityService {
             String words = label(n) + " " + (buttonSized(n) ? allText(n, 0) : "");
             AccessibilityNodeInfo c = clickable(n);
             if (c != null && c != n && c.isClickable() && buttonSized(c)) words += " " + allText(c, 0);
-            // never another way of paying, only the MobiKwik wallet
-            boolean mk = words.toLowerCase(Locale.ROOT).contains("mobikwik");
-            if (OTHER_METHOD.matcher(words).find() && !mk) return "blocked:" + words.trim() + " (only the MobiKwik wallet is allowed)";
-            if (commit == null) {
-                if (mk) a.walletChosen = true;
+            double payable = pagePayable(sc);
+            if (words.toLowerCase(Locale.ROOT).contains("mobikwik")) {
+                // Choosing the MobiKwik wallet. Its row can say "Pay using Mobikwik" and show the wallet
+                // balance (₹1000): that is not the price. The price is the page's "Amount Payable".
+                if (payable > a.amount + 1) return "blocked:over:" + payable + "|" + words.trim();
+                a.walletChosen = true;
+                if (commit != null) a.taps--;
                 return null;
             }
+            // never another way of paying, only the MobiKwik wallet
+            if (OTHER_METHOD.matcher(words).find()) return "blocked:" + words.trim() + " (only the MobiKwik wallet is allowed)";
+            if (commit == null) return null;
             // on the page that lists ways to pay, MobiKwik must have been chosen first
             String page = sc.list.toString().toLowerCase(Locale.ROOT);
             boolean methodPage = page.contains("upi") || page.contains("net banking") || page.contains("netbanking")
                     || page.contains("wallets") || page.contains("credit card") || page.contains("debit card");
-            if (methodPage && !a.walletChosen) return "blocked:" + words.trim() + " (tap MobiKwik first)";
-            double amt = rupees(words);
+            if (methodPage && !a.walletChosen) return "blocked:" + words.trim() + " (tap the MobiKwik row first)";
+            double amt = payAmount(words);                 // "Pay ₹229.50"
+            if (amt <= 0) amt = payable;                   // "Amount Payable ₹229.50" on the page
+            if (amt <= 0) amt = rupees(words);
             if (amt > a.amount + 1) return "blocked:over:" + amt + "|" + words.trim(); // more than he agreed: Tools asks him again
             a.taps--;
             return null;
