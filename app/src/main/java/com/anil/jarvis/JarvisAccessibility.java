@@ -335,6 +335,83 @@ public class JarvisAccessibility extends AccessibilityService {
                     + "|confirm (booking|order|ride|pickup|purchase)|request (ride|uber|ola)|book (ride|bike|auto|cab|uber|ola|rapido)"
                     + "|slide to (pay|book|confirm)|upi pin|చెల్లించ|చెల్లింపు|భుగతాన|भुगतान)");
 
+    /**
+     * A one-time permission to press payment buttons: Anil said "yes" to this exact amount by voice,
+     * wallet payment is switched on in Settings, and the amount is within his limit. Only in that app,
+     * only for a few minutes and a few taps, never above the amount, and only the MobiKwik wallet.
+     */
+    private static final class PayAllowance {
+        String pkg;
+        double amount;
+        long until;
+        int taps;
+        boolean walletChosen;  // Jarvis tapped "MobiKwik" on the payment options page
+    }
+
+    private static volatile PayAllowance pay;
+
+    /** Other ways to pay that Jarvis must never choose (he agreed to the MobiKwik wallet only). */
+    static final java.util.regex.Pattern OTHER_METHOD = java.util.regex.Pattern.compile(
+            "(?i)(\\bupi\\b|card|net ?banking|pay ?later|\\bemi\\b|simpl|lazypay|gpay|google pay|phonepe|paytm|amazon ?pay|cred\\b|freecharge|airtel|jio|bhim|olamoney|ola money)");
+    private static final java.util.regex.Pattern RUPEES = java.util.regex.Pattern.compile(
+            "(?:₹|rs\\.?|inr)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    static void allowPayment(String pkg, double amount, long ms) {
+        PayAllowance a = new PayAllowance();
+        a.pkg = pkg;
+        a.amount = amount;
+        a.until = SystemClock.elapsedRealtime() + ms;
+        a.taps = 5;
+        pay = a;
+    }
+
+    static void clearPayment() { pay = null; }
+
+    static boolean paymentAllowed() {
+        PayAllowance a = pay;
+        return a != null && SystemClock.elapsedRealtime() < a.until && a.taps > 0;
+    }
+
+    /** The biggest rupee amount in a label, or -1. */
+    static double rupees(String words) {
+        double best = -1;
+        java.util.regex.Matcher m = RUPEES.matcher(words == null ? "" : words);
+        while (m.find()) {
+            try { best = Math.max(best, Double.parseDouble(m.group(1).replace(",", ""))); } catch (Exception ignored) {}
+        }
+        return best;
+    }
+
+    /** null = this tap is fine; otherwise why it is refused ("blocked:<label>"). */
+    private static String payCheck(Screen sc, AccessibilityNodeInfo n) {
+        String pkg = sc.pkg;
+        String commit = commitLabel(n);
+        PayAllowance a = pay;
+        boolean allowed = a != null && a.pkg.equals(pkg) && SystemClock.elapsedRealtime() < a.until && a.taps > 0;
+        if (allowed) {
+            String words = label(n) + " " + (buttonSized(n) ? allText(n, 0) : "");
+            AccessibilityNodeInfo c = clickable(n);
+            if (c != null && c != n && c.isClickable() && buttonSized(c)) words += " " + allText(c, 0);
+            // never another way of paying, only the MobiKwik wallet
+            boolean mk = words.toLowerCase(Locale.ROOT).contains("mobikwik");
+            if (OTHER_METHOD.matcher(words).find() && !mk) return "blocked:" + words.trim() + " (only the MobiKwik wallet is allowed)";
+            if (commit == null) {
+                if (mk) a.walletChosen = true;
+                return null;
+            }
+            // on the page that lists ways to pay, MobiKwik must have been chosen first
+            String page = sc.list.toString().toLowerCase(Locale.ROOT);
+            boolean methodPage = page.contains("upi") || page.contains("net banking") || page.contains("netbanking")
+                    || page.contains("wallets") || page.contains("credit card") || page.contains("debit card");
+            if (methodPage && !a.walletChosen) return "blocked:" + words.trim() + " (tap MobiKwik first)";
+            double amt = rupees(words);
+            if (amt > a.amount + 1) return "blocked:" + words.trim() + " (more than the ₹" + Math.round(a.amount) + " he agreed)";
+            a.taps--;
+            return null;
+        }
+        return commit == null ? null : "blocked:" + commit;
+    }
+
     /** What is on the app's screen now: numbered elements, a screenshot, and the nodes behind the numbers. */
     static final class Screen {
         String pkg = "";
@@ -451,8 +528,8 @@ public class JarvisAccessibility extends AccessibilityService {
         if (sc == null || idx < 0 || idx >= sc.nodes.size()) return "no_element";
         AccessibilityNodeInfo n = sc.nodes.get(idx);
         n.refresh();
-        String commit = commitLabel(n);
-        if (commit != null) return "blocked:" + commit;
+        String refused = payCheck(sc, n);
+        if (refused != null) return refused;
         if (n.isPassword()) return "password";
         AccessibilityNodeInfo c = clickable(n);
         if (c != null && c.isClickable() && c.isEnabled() && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "ok";
@@ -468,8 +545,8 @@ public class JarvisAccessibility extends AccessibilityService {
         AccessibilityNodeInfo root = s.windowRoot(sc.pkg);
         AccessibilityNodeInfo hit = root == null ? null : deepestAt(root, x, y, 0);
         if (hit != null) {
-            String commit = commitLabel(hit);
-            if (commit != null) return "blocked:" + commit;
+            String refused = payCheck(sc, hit);
+            if (refused != null) return refused;
             if (hit.isPassword()) return "password";
         }
         return gesture(x, y, x, y, 60) ? "ok" : "failed";

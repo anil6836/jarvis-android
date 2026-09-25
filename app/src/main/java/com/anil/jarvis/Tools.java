@@ -255,7 +255,8 @@ final class Tools {
                         + "selects everything and stops at the Pay button: he pays himself. Start: app + goal. Continue: answer (his reply to the question). Cancel: stop=true.",
                 schema(new String[][]{{"app", "string", "App name, e.g. BookMyShow"},
                         {"goal", "string", "Everything he said in English: e.g. 'Book 2 tickets for OG (Telugu) tomorrow evening at AMB Cinemas Gachibowli, middle rows, seats together'"},
-                        {"answer", "string", "His answer to the question Jarvis just asked (continue)"}, {"stop", "boolean", "true to cancel"}})));
+                        {"answer", "string", "His answer to the question Jarvis just asked (continue)"}, {"stop", "boolean", "true to cancel"},
+                        {"pay", "boolean", "true ONLY right after phone_task returned confirm_payment AND he clearly said yes to that amount"}})));
         DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
         DEFS.add(new Def("bank_balance", "His account balance as given in the newest SMS from each bank.", schema(new String[][]{})));
         DEFS.add(new Def("voice_recorder", "Open the Voice Recorder app to record.", schema(new String[][]{})));
@@ -501,7 +502,8 @@ final class Tools {
                 case "ev_chargers": return evChargers(a.optString("place", ""), a.optString("app", ""));
                 case "travel_search": return travelSearch(a.optString("kind", "flight"), a.optString("from"), a.optString("to"), a.optString("date", ""), a.optString("app", ""));
                 case "my_trips": return myTrips();
-                case "phone_task": return phoneTask(a.optString("app", ""), a.optString("goal", ""), a.optString("answer", ""), a.optBoolean("stop", false));
+                case "phone_task": return phoneTask(a.optString("app", ""), a.optString("goal", ""), a.optString("answer", ""), a.optBoolean("stop", false),
+                        a.optBoolean("pay", false));
                 case "bank_balance": return bankBalance();
                 case "voice_recorder": return voiceRecorder();
                 case "mobile_plan": return mobilePlan();
@@ -3527,6 +3529,31 @@ final class Tools {
         android.graphics.Rect zoom;
         long time;
         volatile boolean awaiting;
+        double pendingAmount = -1;  // the amount Jarvis asked "పే చేయమంటారా?" for
+        boolean paying;             // he said yes: paying from the MobiKwik wallet now
+        int refusals;
+    }
+
+    /** Words that mean yes / no in his answer to "₹… పే చేయమంటారా?". */
+    private static final java.util.regex.Pattern SAID_YES = java.util.regex.Pattern.compile(
+            "(?i)(అవును|ఔను|పే చెయ్|పే చేయి|పే చేయండి|పే చేసెయ్|చేసెయ్|చెయ్యి|చేయి|ఓకే|సరే|\\byes\\b|\\bpay\\b|\\bok\\b|\\bokay\\b|హా)");
+    private static final java.util.regex.Pattern SAID_NO = java.util.regex.Pattern.compile(
+            "(?i)(ద్దు|వద్ద|కాదు|ఆపు|ఆగు|తర్వాత|\\bno\\b|\\bnot\\b|don't|cancel|wait)");
+
+    /** What Anil actually said last (not what the model thinks he said). */
+    private String lastUserWords() {
+        List<JSONObject> chat = store.chat();
+        for (int i = chat.size() - 1; i >= 0; i--) {
+            JSONObject o = chat.get(i);
+            if ("user".equals(o.optString("role"))) {
+                return System.currentTimeMillis() - o.optLong("t") < 3 * 60 * 1000L ? o.optString("content") : "";
+            }
+        }
+        return "";
+    }
+
+    private boolean walletPayOk(AppTask t) {
+        return prefs.walletPay() && (t.pkg.equals("com.bt.bms") || t.app.toLowerCase(Locale.ROOT).replace(" ", "").contains("bookmyshow"));
     }
 
     private static volatile AppTask appTask;
@@ -3550,8 +3577,9 @@ final class Tools {
             + "{\"action\":\"scroll\",\"direction\":\"down|up|left|right\"} | {\"action\":\"zoom\",\"left\":X1,\"top\":Y1,\"right\":X2,\"bottom\":Y2} | {\"action\":\"back\"} | {\"action\":\"wait\"} | "
             + "{\"action\":\"ask\",\"question\":\"…\"} | {\"action\":\"payment\",\"summary\":\"…\"} | {\"action\":\"done\",\"summary\":\"…\"} | {\"action\":\"fail\",\"reason\":\"…\"}\n"
             + "Rules:\n"
-            + "- NEVER tap anything that pays, places an order or confirms a booking or ride (Pay, Pay ₹…, Proceed to pay, Place order, Buy now, Book ride, Confirm pickup). "
-            + "When that is the next step, reply payment with a short summary of what is selected (movie/event, theatre, date, time, seats, number of tickets, total shown). Anil pays himself.\n"
+            + "- Unless the goal says Anil CONFIRMED paying, NEVER tap anything that pays, places an order or confirms a booking or ride (Pay, Pay ₹…, Proceed to pay, Place order, Buy now, Book ride, Confirm pickup). "
+            + "If the goal says he CONFIRMED paying, pay only with the MobiKwik wallet as the goal says; a step marked REFUSED was not allowed, so choose MobiKwik and try again. "
+            + "When paying is the next step and he has not confirmed, reply payment with a short summary of what is selected (movie/event, theatre, date, time, seats, number of tickets, total shown). Anil pays himself.\n"
             + "- Never type card numbers, UPI IDs, PINs, OTPs or passwords, never log in, never change account settings. A login or OTP screen -> ask him to do it.\n"
             + "- Ask (one short, simple Telugu question, with the options you can see) whenever a choice is his and not already in the goal or his answers: "
             + "which theatre and show time (list the theatres with their times), the date, how many tickets, which seat area (front / middle / back). Never guess his choices.\n"
@@ -3562,9 +3590,10 @@ final class Tools {
             + "- Prefer tap by element number; use tap_xy only for things with no element (seat maps, pictures). Use wait if the screen is still loading.\n"
             + "- If you cannot find something after a few scrolls, ask him or fail with the reason. Keep why short.";
 
-    private String phoneTask(String app, String goal, String answer, boolean stop) throws Exception {
+    private String phoneTask(String app, String goal, String answer, boolean stop, boolean pay) throws Exception {
         if (stop) {
             appTask = null;
+            JarvisAccessibility.clearPayment();
             return ok().put("stopped", true).toString();
         }
         if (!JarvisAccessibility.enabled()) {
@@ -3593,6 +3622,26 @@ final class Tools {
                 appTask = null;
                 return err("no_task", "There is no app task going on. Start again with app and goal.");
             }
+            if (pay) {
+                // The payment: only with the switch on, only in BookMyShow, only the amount he was asked about,
+                // and only when his own last words were a clear yes.
+                if (!walletPayOk(t)) return err("wallet_pay_off", "Wallet payment by Jarvis is off (Jarvis settings → టికెట్ పేమెంట్). Tell him to tap Pay himself.");
+                if (t.pendingAmount <= 0) return err("nothing_to_pay", "Jarvis has not asked him about a payment yet.");
+                String said = lastUserWords();
+                if (!SAID_YES.matcher(said).find() || SAID_NO.matcher(said).find()) {
+                    t.awaiting = true;
+                    t.time = android.os.SystemClock.elapsedRealtime();
+                    return err("no_clear_yes", "Jarvis did not hear a clear yes (he said: '" + said + "'). Ask again: '₹" + Math.round(t.pendingAmount)
+                            + " MobiKwik వాలెట్ నుంచి పే చేయమంటారా?' Only a clear yes pays.");
+                }
+                if (t.pendingAmount > prefs.walletPayMax()) return err("over_limit", "₹" + Math.round(t.pendingAmount) + " is above his limit of ₹" + prefs.walletPayMax() + "; he pays himself.");
+                JarvisAccessibility.allowPayment(t.pkg, t.pendingAmount, 4 * 60 * 1000L);
+                t.paying = true;
+                t.refusals = 0;
+                t.goal = t.goal + ". Anil CONFIRMED paying ₹" + Math.round(t.pendingAmount) + " from his MobiKwik wallet. Now pay: press the Pay / Proceed buttons; "
+                        + "on the page with ways to pay, choose Wallets → MobiKwik (never UPI, cards, net banking, pay later or any other wallet), then Pay. "
+                        + "If MobiKwik asks for a PIN, OTP or password, ask Anil to enter it. When the booking is confirmed, reply done with the booking ID, seats, theatre and show time.";
+            }
             if (answer != null && !answer.trim().isEmpty()) t.answers.put(answer.trim());
             if (goal != null && !goal.trim().isEmpty() && !goal.trim().equals(t.goal)) t.goal = t.goal + ". Change: " + goal.trim();
             if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
@@ -3619,6 +3668,12 @@ final class Tools {
         for (int step = 0; step < 30 && android.os.SystemClock.elapsedRealtime() < end && appTask == t; step++) {
             JarvisAccessibility.Screen sc = JarvisAccessibility.screen(t.pkg);
             if (sc == null) {
+                if (t.paying) {
+                    JarvisAccessibility.clearPayment();
+                    t.paying = false;
+                    return ok().put("status", "wallet_step").put("app", t.app)
+                            .put("next", "The payment moved to a MobiKwik page (PIN / OTP). Tell him to enter it himself to finish; then the ticket is booked.").toString();
+                }
                 t.awaiting = true;
                 backToJarvis();
                 return err("app_not_on_screen", t.app + " is not on the screen any more (another app or a payment page came up). Ask him what he sees; phone_task answer=… continues.");
@@ -3675,6 +3730,11 @@ final class Tools {
                                     + "If he says stop or cancel, call phone_task stop=true.").toString();
                 }
                 case "payment": {
+                    if (t.paying && JarvisAccessibility.paymentAllowed() && t.refusals < 3) {
+                        t.refusals++;
+                        t.steps.add("replied payment, but Anil already confirmed: continue paying with the MobiKwik wallet");
+                        continue;
+                    }
                     t.time = android.os.SystemClock.elapsedRealtime();
                     return ok().put("status", "payment_ready").put("summary", a.optString("summary")).put("app", t.app)
                             .put("next", "Everything is selected and the app is on the screen. Tell him in 1-2 short sentences what is selected (from summary), "
@@ -3682,9 +3742,12 @@ final class Tools {
                 }
                 case "done":
                     appTask = null;
+                    JarvisAccessibility.clearPayment();
                     backToJarvis();
                     return ok().put("status", "done").put("summary", a.optString("summary")).toString();
                 case "fail":
+                    JarvisAccessibility.clearPayment();
+                    t.paying = false;
                     t.awaiting = true;
                     t.time = android.os.SystemClock.elapsedRealtime();
                     backToJarvis();
@@ -3693,8 +3756,40 @@ final class Tools {
                     result = "unknown action";
             }
             if (result.startsWith("blocked:")) {
-                // the model tried to press a pay / order / book button: that is Anil's
+                String button = result.substring(8).trim();
+                if (t.paying && JarvisAccessibility.paymentAllowed() && t.refusals < 3) {
+                    // paying, but that tap was not allowed (another way to pay, or MobiKwik not chosen yet): let it correct itself
+                    t.refusals++;
+                    t.steps.add(action + " → REFUSED: " + button);
+                    Thread.sleep(500);
+                    continue;
+                }
+                JarvisAccessibility.clearPayment();
                 t.time = android.os.SystemClock.elapsedRealtime();
+                if (!t.paying && walletPayOk(t)) {
+                    double amt = JarvisAccessibility.rupees(button);
+                    if (amt <= 0) amt = JarvisAccessibility.rupees(sc.list.toString()); // the total shown on the page
+                    if (amt > 0 && amt <= prefs.walletPayMax()) {
+                        t.pendingAmount = amt;
+                        t.awaiting = true;
+                        backToJarvis();
+                        return ok().put("status", "confirm_payment").put("amount", Math.round(amt)).put("app", t.app).put("his_answers", t.answers)
+                                .put("next", "Tell him in one short sentence what is selected (movie, theatre, time, seats from this conversation), then ask exactly: '₹"
+                                        + Math.round(amt) + " MobiKwik వాలెట్ నుంచి పే చేయమంటారా?'. Only if he clearly says yes (అవును / పే చేయి), call phone_task with "
+                                        + "answer = his words and pay = true. If he says no or hesitates, do not pay; he can tap Pay himself.").toString();
+                    }
+                    if (amt > prefs.walletPayMax()) {
+                        return ok().put("status", "payment_ready").put("amount", Math.round(amt)).put("app", t.app)
+                                .put("next", "₹" + Math.round(amt) + " is more than his wallet limit of ₹" + prefs.walletPayMax()
+                                        + ", so Jarvis stopped. Tell him what is selected and that he taps Pay and pays himself.").toString();
+                    }
+                }
+                if (t.paying) {
+                    t.paying = false;
+                    return ok().put("status", "payment_stopped").put("button", button).put("app", t.app)
+                            .put("next", "Jarvis stopped the payment because a step was not the MobiKwik wallet or the amount did not match. "
+                                    + "Tell him to look at the screen and finish the payment himself if he wants.").toString();
+                }
                 return ok().put("status", "payment_ready").put("button", result.substring(8).trim()).put("app", t.app)
                         .put("next", "The next button pays or confirms, so Jarvis stopped there. Tell him what is selected (read it with look_at_screen only if unsure) "
                                 + "and: 'ఇప్పుడు ఆ బటన్ మీరు నొక్కి పేమెంట్ పూర్తి చేయండి.' Jarvis never pays.").toString();

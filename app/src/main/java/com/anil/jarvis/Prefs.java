@@ -129,6 +129,10 @@ final class Prefs {
     String docsTree() { return sp.getString("docs_tree", ""); }
     /** Only Anil's own voice wakes Jarvis. */
     boolean voiceLock() { return sp.getBoolean("voice_lock", false); }
+    /** BookMyShow: Jarvis may pay from the MobiKwik wallet after Anil's spoken "yes" to the exact amount. Off by default. */
+    boolean walletPay() { return sp.getBoolean("wallet_pay", false); }
+    /** Most Jarvis may pay in one booking, in rupees. */
+    int walletPayMax() { return sp.getInt("wallet_pay_max", 1000); }
     float voiceLockMax() { return sp.getFloat("voice_lock_max", 0.55f); }
 
     // ---- daily morning briefing

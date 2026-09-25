@@ -38,7 +38,8 @@ public class SettingsActivity extends Activity {
     private SeekBar lockSlider, listenWindow;
     private TextView listenWindowLabel;
     private TextView lockInfo, docsInfo, waInfo;
-    private EditText sosContacts, smartUrls, smartApp;
+    private EditText sosContacts, smartUrls, smartApp, walletMax;
+    private Switch walletPay;
     private Switch alexaSpeak;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
@@ -310,6 +311,14 @@ public class SettingsActivity extends Activity {
         note("\"Jarvis help\" / \"కాపాడు\" అంటే 5 సెకన్ల తర్వాత (మధ్యలో ఆపొచ్చు) మీ లొకేషన్ వీళ్లకి SMS వెళ్తుంది, మొదటివాళ్లకి కాల్ వెళ్తుంది.");
         sosContacts = field("కాంటాక్ట్ పేర్లు లేదా నంబర్లు, కామాతో (ఉదా: Amma, Ravi)", prefs.sosContacts(), false);
 
+        section("టికెట్ పేమెంట్ (BookMyShow)");
+        note("ఆన్ చేస్తే, BookMyShow లో సీట్లు సెలెక్ట్ చేశాక Jarvis \"₹___ MobiKwik వాలెట్ నుంచి పే చేయమంటారా?\" అని అడుగుతుంది. మీరు \"అవును, పే చేయి\" అంటేనే "
+                + "MobiKwik వాలెట్ నుంచి పే చేస్తుంది. UPI, కార్డ్, నెట్ బ్యాంకింగ్ ఎప్పుడూ వాడదు; PIN, OTP ఎప్పుడూ టైప్ చేయదు (అడిగితే మీరే ఎంటర్ చేయాలి). "
+                + "కింద పెట్టిన అమౌంట్ కంటే ఎక్కువైతే పే చేయదు. వాలెట్‌లో ఎంత ఉంచాలో మీ ఇష్టం. వేరేవాళ్ల గొంతుకి పలకకుండా \"నా గొంతుకి మాత్రమే పలుకు\" కూడా ఆన్ చేయడం మంచిది.");
+        walletPay = toggle("BookMyShow లో MobiKwik వాలెట్ నుంచి Jarvis పే చేయాలి (మీ \"అవును\" తర్వాతే)", prefs.walletPay());
+        walletMax = field("ఒక్క బుకింగ్‌కి గరిష్ఠంగా ఎంత వరకు (₹)", String.valueOf(prefs.walletPayMax()), false);
+        walletMax.setInputType(InputType.TYPE_CLASS_NUMBER);
+
         section("WhatsApp మీడియా");
         note("WhatsApp వాయిస్ మెసేజ్‌లు వినిపించడానికి, వీడియోలు, ఫోటోలు చూపించడానికి Jarvis కి WhatsApp మీడియా ఫోల్డర్ అనుమతి ఒక్కసారి ఇవ్వాలి. తెరుచుకునే పేజీలో కింద \"Use this folder\" → \"Allow\" నొక్కండి (ఫోల్డర్ మార్చకండి).");
         button("WhatsApp మీడియా ఫోల్డర్‌కి అనుమతి ఇవ్వండి", v -> {
@@ -440,6 +449,10 @@ public class SettingsActivity extends Activity {
         e.putString("smart_urls", smartUrls.getText().toString().trim());
         e.putString("smart_app", smartApp.getText().toString().trim());
         e.putBoolean("alexa_speak", alexaSpeak.isChecked());
+        e.putBoolean("wallet_pay", walletPay.isChecked());
+        int max = 1000;
+        try { max = Integer.parseInt(walletMax.getText().toString().trim()); } catch (Exception ignored) {}
+        e.putInt("wallet_pay_max", Math.max(0, Math.min(10000, max)));
         e.putFloat("wake_threshold", 0.75f - sensitivity.getProgress() / 100f);
         e.apply();
         Reminders.scheduleBriefing(this);
