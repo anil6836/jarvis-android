@@ -422,7 +422,7 @@ public class JarvisAccessibility extends AccessibilityService {
                     || page.contains("wallets") || page.contains("credit card") || page.contains("debit card");
             if (methodPage && !a.walletChosen) return "blocked:" + words.trim() + " (tap MobiKwik first)";
             double amt = rupees(words);
-            if (amt > a.amount + 1) return "blocked:" + words.trim() + " (more than the ₹" + Math.round(a.amount) + " he agreed)";
+            if (amt > a.amount + 1) return "blocked:over:" + amt + "|" + words.trim(); // more than he agreed: Tools asks him again
             a.taps--;
             return null;
         }

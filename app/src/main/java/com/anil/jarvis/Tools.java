@@ -3530,6 +3530,7 @@ final class Tools {
         long time;
         volatile boolean awaiting;
         double pendingAmount = -1;  // the amount Jarvis asked "పే చేయమంటారా?" for
+        double pendingCeiling = -1; // most he agreed to pay (tickets + convenience fee + GST)
         boolean paying;             // he said yes: paying from the MobiKwik wallet now
         int refusals;
     }
@@ -3564,13 +3565,17 @@ final class Tools {
         if (amt <= 0) amt = JarvisAccessibility.rupees(sc.list.toString()); // the biggest amount shown
         if (walletPayOk(t) && amt > 0 && amt <= prefs.walletPayMax()) {
             t.pendingAmount = amt;
+            t.pendingCeiling = feeCeiling(amt);
             t.awaiting = true;
             backToJarvis();
-            return ok().put("status", "confirm_payment").put("amount", Math.round(amt)).put("summary", summary).put("app", t.app)
-                    .put("his_answers", t.answers)
-                    .put("next", "Tell him in one short sentence what is selected (movie, theatre, date, time, seats), then ask exactly: '₹"
-                            + Math.round(amt) + " MobiKwik వాలెట్ నుంచి పే చేయమంటారా?'. Only if he clearly says yes (అవును / పే చేయి), call phone_task with "
-                            + "answer = his words and pay = true. Jarvis then presses Pay, chooses the MobiKwik wallet and pays. If he says no, do not pay.").toString();
+            String ask = t.pendingCeiling > amt + 1
+                    ? "టికెట్లు ₹" + Math.round(amt) + ", ఫీజు, GST కలిపి ₹" + Math.round(t.pendingCeiling) + " లోపు. MobiKwik వాలెట్ నుంచి పే చేయమంటారా?"
+                    : "₹" + Math.round(amt) + " MobiKwik వాలెట్ నుంచి పే చేయమంటారా?";
+            return ok().put("status", "confirm_payment").put("amount", Math.round(amt)).put("up_to", Math.round(t.pendingCeiling)).put("summary", summary)
+                    .put("app", t.app).put("his_answers", t.answers)
+                    .put("next", "Tell him in one short sentence what is selected (movie, theatre, date, time, seats), then ask exactly: '" + ask
+                            + "'. Only if he clearly says yes (అవును / పే చేయి), call phone_task with answer = his words and pay = true. "
+                            + "Jarvis then presses Pay, chooses the MobiKwik wallet and pays. If he says no, do not pay.").toString();
         }
         String why;
         if (walletPayOk(t) && amt > prefs.walletPayMax()) {
@@ -3584,6 +3589,14 @@ final class Tools {
         }
         return ok().put("status", "payment_ready").put("summary", summary).put("amount", amt > 0 ? Math.round(amt) : 0).put("app", t.app)
                 .put("next", why + "Tell him in 1-2 short sentences what is selected, then: 'ఇప్పుడు Pay బటన్ మీరు నొక్కి పేమెంట్ పూర్తి చేయండి.'").toString();
+    }
+
+    /**
+     * BookMyShow adds a convenience fee and GST after the seats (about 10-20% more). When he says yes to the
+     * ticket price, the most Jarvis may pay is this, and never above his own limit.
+     */
+    private double feeCeiling(double amt) {
+        return Math.min(prefs.walletPayMax(), Math.ceil(amt * 1.25 + 30));
     }
 
     private boolean walletPayOk(AppTask t) {
@@ -3671,12 +3684,12 @@ final class Tools {
                             + " MobiKwik వాలెట్ నుంచి పే చేయమంటారా?' Only a clear yes pays.");
                 }
                 if (t.pendingAmount > prefs.walletPayMax()) return err("over_limit", "₹" + Math.round(t.pendingAmount) + " is above his limit of ₹" + prefs.walletPayMax() + "; he pays himself.");
-                JarvisAccessibility.allowPayment(t.pkg, t.pendingAmount, 4 * 60 * 1000L);
+                JarvisAccessibility.allowPayment(t.pkg, t.pendingCeiling > 0 ? t.pendingCeiling : t.pendingAmount, 4 * 60 * 1000L);
                 t.paying = true;
                 t.refusals = 0;
                 t.goal = t.goal + ". Anil CONFIRMED paying ₹" + Math.round(t.pendingAmount) + " from his MobiKwik wallet. Now pay: press the Pay / Proceed buttons; "
                         + "on the page with ways to pay, choose Wallets → MobiKwik (never UPI, cards, net banking, pay later or any other wallet), then Pay. "
-                        + "If MobiKwik asks for a PIN, OTP or password, ask Anil to enter it. When the booking is confirmed, reply done with the booking ID, seats, theatre and show time.";
+                        + "If MobiKwik asks for a PIN, OTP or password, ask Anil to enter it. When the booking is confirmed, reply done with the booking ID, seats, theatre, show time and the amount paid.";
             }
             if (answer != null && !answer.trim().isEmpty()) t.answers.put(answer.trim());
             if (goal != null && !goal.trim().isEmpty() && !goal.trim().equals(t.goal)) t.goal = t.goal + ". Change: " + goal.trim();
@@ -3787,6 +3800,28 @@ final class Tools {
                     return err("could_not", a.optString("reason", "It did not work.") + " Tell him simply; he can answer to continue (phone_task answer=…) or do it by hand.");
                 default:
                     result = "unknown action";
+            }
+            if (result.startsWith("blocked:over:") && t.paying) {
+                // The final total (with fees and taxes) is more than he agreed to: ask him once more with the real total.
+                String rest = result.substring(13);
+                double total = -1;
+                try { total = Double.parseDouble(rest.substring(0, rest.indexOf('|'))); } catch (Exception ignored) {}
+                JarvisAccessibility.clearPayment();
+                t.paying = false;
+                t.time = android.os.SystemClock.elapsedRealtime();
+                if (total > 0 && total <= prefs.walletPayMax()) {
+                    t.pendingAmount = total;
+                    t.pendingCeiling = total + 2;
+                    t.awaiting = true;
+                    backToJarvis();
+                    String ask = "ఫీజు, GST తో మొత్తం ₹" + Math.round(total) + " అయింది. MobiKwik వాలెట్ నుంచి పే చేయమంటారా?";
+                    return ok().put("status", "confirm_payment").put("amount", Math.round(total)).put("app", t.app)
+                            .put("next", "The final total is more than before. Ask exactly: '" + ask + "'. Only if he clearly says yes, call phone_task with "
+                                    + "answer = his words and pay = true. If he says no, do not pay.").toString();
+                }
+                return ok().put("status", "payment_ready").put("amount", Math.round(total)).put("app", t.app)
+                        .put("next", "The final total ₹" + Math.round(total) + " is more than his wallet limit of ₹" + prefs.walletPayMax()
+                                + " (Jarvis settings → టికెట్ పేమెంట్), so Jarvis stopped. Tell him to tap Pay and pay himself, or raise the limit.").toString();
             }
             if (result.startsWith("blocked:")) {
                 String button = result.substring(8).trim();
