@@ -223,6 +223,24 @@ final class Tools {
                 "The newest WhatsApp voice message, audio, video or photo he received: play a voice message aloud (or turn it into text), play a video, show a photo or describe it. Only after he said yes.",
                 schema(new String[][]{{"kind", "string", "voice, audio, video or photo"},
                         {"action", "string", "voice/audio: play or text; video: play; photo: show or describe"}}, "kind")));
+        DEFS.add(new Def("bible",
+                "Read the Telugu Bible (IRV 2019) aloud: a chapter or verses ('యోహాను 3:16 చదువు', 'కీర్తన 23'), or today's verse (daily=true).",
+                schema(new String[][]{{"book", "string", "Book name in English, e.g. John, Psalms, 1 Corinthians"}, {"chapter", "integer", "Chapter"},
+                        {"from_verse", "integer", "First verse (0 = from the start)"}, {"to_verse", "integer", "Last verse (0 = just from_verse, or ~12 verses)"},
+                        {"daily", "boolean", "true for today's verse"}})));
+        DEFS.add(new Def("local_media",
+                "Play a song or video saved ON THE PHONE (not online) in the player he names: Poweramp, jetAudio, Samsung Music, VLC, MX Player...",
+                schema(new String[][]{{"kind", "string", "song or video"}, {"query", "string", "Title, artist or file name words"},
+                        {"app", "string", "Player app name; empty for the default"}}, "kind", "query")));
+        DEFS.add(new Def("app_search",
+                "Open one of his apps at a search: shopping (Amazon, Flipkart, Meesho, Snapdeal, Tata CLiQ, Reliance Digital), OTT (Netflix, Prime Video, JioHotstar, ZEE5, Sun NXT...), "
+                        + "phones (Smartprix, 91mobiles, GSMArena), cars (CarDekho, CarWale, ZigWheels), tickets/hotels/trains (BookMyShow, District, Agoda, trivago, Goibibo, IRCTC, ixigo, ConfirmTkt...). "
+                        + "Apps without a search link just open. He buys, books and pays himself.",
+                schema(new String[][]{{"app", "string", "App name as on his phone"}, {"query", "string", "What to search for"}}, "app")));
+        DEFS.add(new Def("samsung_note", "Write a note into Samsung Notes (opens it with the text).",
+                schema(new String[][]{{"text", "string", "The note"}}, "text")));
+        DEFS.add(new Def("voice_recorder", "Open the Voice Recorder app to record.", schema(new String[][]{})));
+        DEFS.add(new Def("mobile_plan", "His Jio/Airtel/Vi data used, plan validity and recharge messages (from SMS).", schema(new String[][]{})));
         DEFS.add(new Def("routine",
                 "Anil's own multi-step commands. save: store steps under a name ('ఆఫీస్ మోడ్' = silent, Wi-Fi off, navigate to office). run: get the steps, then do them with your tools. list / delete.",
                 schema(new String[][]{{"action", "string", "save, run, list or delete"}, {"name", "string", "Routine name as he says it"},
@@ -357,6 +375,12 @@ final class Tools {
             case "driving_mode": return "డ్రైవింగ్ మోడ్…";
             case "ride_app": return "రైడ్ యాప్ తెరుస్తున్నాను…";
             case "routine": return "రొటీన్…";
+            case "bible": return "బైబిల్ తెరుస్తున్నాను…";
+            case "local_media": return "ఫోన్‌లో వెతుకుతున్నాను…";
+            case "app_search": return "యాప్‌లో వెతుకుతున్నాను…";
+            case "samsung_note": return "నోట్ రాస్తున్నాను…";
+            case "voice_recorder": return "రికార్డర్ తెరుస్తున్నాను…";
+            case "mobile_plan": return "మీ ప్లాన్ చూస్తున్నాను…";
             case "whatsapp_media": return "WhatsApp మీడియా…";
             case "parking": return "పార్కింగ్…";
             case "bills_due": return "బిల్లులు చూస్తున్నాను…";
@@ -443,6 +467,13 @@ final class Tools {
                 case "air_quality": return airQuality();
                 case "cricket_watch": return cricketWatch(a.optString("team", "India"), a.optBoolean("on", true));
                 case "whatsapp_media": return whatsappMedia(a.optString("kind", "voice"), a.optString("action", ""));
+                case "bible": return bible(a.optString("book", ""), a.optInt("chapter", 1), a.optInt("from_verse", 0), a.optInt("to_verse", 0),
+                        a.optBoolean("daily", false));
+                case "local_media": return localMedia(a.optString("kind", "song"), a.optString("query", ""), a.optString("app", ""));
+                case "app_search": return appSearch(a.optString("app"), a.optString("query", ""));
+                case "samsung_note": return samsungNote(a.optString("text"));
+                case "voice_recorder": return voiceRecorder();
+                case "mobile_plan": return mobilePlan();
                 case "routine": return routine(a.optString("action", "list"), a.optString("name", ""), a.optString("steps", ""));
                 case "notes": return notes(a.optString("action", "list"), a.optString("text", ""), a.optInt("days", 7));
                 case "sos": return sos(a.optString("message", ""));
@@ -3037,6 +3068,152 @@ final class Tools {
                 return o.put("showing_photo", x.name).toString();
             }
         }
+    }
+
+
+    // ================================================================ his apps: Bible, local songs/videos, shopping/OTT search, Samsung tools, mobile plan
+
+    private String bible(String book, int chapter, int from, int to, boolean daily) throws Exception {
+        if (!online()) return err("offline", "The Bible text needs internet.");
+        try {
+            JSONObject r = daily ? Bible.daily() : Bible.read(book, chapter <= 0 ? 1 : chapter, from, to);
+            return ok().put("bible", r).put("next", "Read the verses aloud exactly as given (they are Telugu Bible text), with the reference first, e.g. 'యోహాను 3:16'. No commentary unless he asks.").toString();
+        } catch (IllegalArgumentException e) {
+            return err("unknown_book", "Pass the book's English name, e.g. John, Psalms, 1 Corinthians.");
+        }
+    }
+
+    /** A song or video saved on the phone, played in the player he names (Poweramp, jetAudio, Samsung Music, VLC, MX Player...). */
+    private String localMedia(String kind, String query, String app) throws Exception {
+        boolean video = kind != null && kind.toLowerCase(Locale.ROOT).startsWith("v");
+        String perm = Build.VERSION.SDK_INT >= 33 ? (video ? Manifest.permission.READ_MEDIA_VIDEO : Manifest.permission.READ_MEDIA_AUDIO)
+                : Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (!has(perm)) return needPermission(perm, video ? "reading videos on the phone" : "reading songs on the phone");
+        Uri base = video ? android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI : android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+        String q = query == null ? "" : query.trim();
+        String sel = null;
+        String[] args = null;
+        if (!q.isEmpty()) {
+            sel = video ? android.provider.MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ? OR " + android.provider.MediaStore.MediaColumns.TITLE + " LIKE ?"
+                    : android.provider.MediaStore.Audio.Media.TITLE + " LIKE ? OR " + android.provider.MediaStore.Audio.Media.ARTIST + " LIKE ? OR "
+                    + android.provider.MediaStore.Audio.Media.ALBUM + " LIKE ?";
+            args = video ? new String[]{"%" + q + "%", "%" + q + "%"} : new String[]{"%" + q + "%", "%" + q + "%", "%" + q + "%"};
+        }
+        List<Uri> uris = new ArrayList<>();
+        JSONArray names = new JSONArray();
+        try (Cursor c = act().getContentResolver().query(base, new String[]{android.provider.MediaStore.MediaColumns._ID, android.provider.MediaStore.MediaColumns.TITLE},
+                sel, args, android.provider.MediaStore.MediaColumns.DATE_ADDED + " DESC")) {
+            while (c != null && c.moveToNext() && uris.size() < 20) {
+                uris.add(android.content.ContentUris.withAppendedId(base, c.getLong(0)));
+                names.put(c.getString(1));
+            }
+        }
+        if (uris.isEmpty()) return err("not_found", "No " + (video ? "video" : "song") + " matching '" + q + "' is saved on the phone. Offer YouTube instead.");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(uris.get(0), video ? "video/*" : "audio/*")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        String player = "";
+        if (app != null && !app.trim().isEmpty()) {
+            ResolveInfo r = findApp(app.trim());
+            if (r == null) return err("app_not_installed", "'" + app + "' is not installed.");
+            i.setPackage(r.activityInfo.packageName);
+            player = label(r.activityInfo.packageName);
+        }
+        try {
+            start(i);
+        } catch (ActivityNotFoundException e) {
+            i.setPackage(null);
+            start(i);
+            player = "(default player; " + app + " did not accept it)";
+        }
+        if (!player.isEmpty()) lastMediaPkg = i.getPackage();
+        return ok().put("playing", names.optString(0)).put("player", player).put("other_matches", names.length() - 1).toString();
+    }
+
+    /** Search links that these apps open themselves ({name words, url prefix}). */
+    private static final String[][] SEARCH_LINKS = {
+            {"amazon", "https://www.amazon.in/s?k="}, {"flipkart", "https://www.flipkart.com/search?q="},
+            {"meesho", "https://www.meesho.com/search?q="}, {"snapdeal", "https://www.snapdeal.com/search?keyword="},
+            {"tata cliq", "https://www.tatacliq.com/search/?text="}, {"reliance digital", "https://www.reliancedigital.in/search?q="},
+            {"netflix", "https://www.netflix.com/search?q="}, {"prime video", "https://www.primevideo.com/search/ref=atv_nb_sug?phrase="},
+            {"zee5", "https://www.zee5.com/search?q="}, {"hotstar", "https://www.hotstar.com/in/explore?search_query="},
+            {"smartprix", "https://www.smartprix.com/products/?q="}, {"91mobiles", "https://www.91mobiles.com/search_page.php?q="},
+            {"gsmarena", "https://www.gsmarena.com/res.php3?sSearch="}, {"cardekho", "https://www.cardekho.com/search/result?q="},
+            {"carwale", "https://www.carwale.com/search/?q="}, {"zigwheels", "https://www.zigwheels.com/search?q="},
+            {"moglix", "https://www.moglix.com/search?search="}, {"alibaba", "https://www.alibaba.com/trade/search?SearchText="},
+            {"banggood", "https://www.banggood.com/search/"}};
+
+    /** Opens an app at a search for something (shopping, OTT, phones, cars...). Buying/paying is his. */
+    private String appSearch(String app, String query) throws Exception {
+        if (app == null || app.trim().isEmpty()) return err("missing", "Which app?");
+        String a = app.trim().toLowerCase(Locale.ROOT);
+        ResolveInfo r = findApp(app.trim());
+        if (r == null) return err("not_installed", "'" + app + "' is not installed on this phone.");
+        String pkg = r.activityInfo.packageName;
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        String q = query == null ? "" : query.trim();
+        boolean searched = false;
+        if (!q.isEmpty()) {
+            for (String[] l : SEARCH_LINKS) {
+                if (!a.contains(l[0]) && !label(pkg).toLowerCase(Locale.ROOT).contains(l[0])) continue;
+                String url = l[1] + Uri.encode(q) + (l[0].equals("banggood") ? ".html" : "");
+                searched = openIn(pkg, url);
+                break;
+            }
+        }
+        if (!searched) launch(pkg);
+        return ok().put("opened", label(pkg)).put("searched_for", q).put("search_opened", searched)
+                .put("next", (searched || q.isEmpty() ? "" : "The app opened on its home screen; Anil searches there. ")
+                        + "When results show, he can say 'Jarvis, స్క్రీన్ చూసి చెప్పు' and you read names and prices with look_at_screen. "
+                        + "Anil chooses, books, buys and pays himself; Jarvis never does.").toString();
+    }
+
+    private String samsungNote(String text) throws Exception {
+        if (text == null || text.trim().isEmpty()) return err("missing", "What should the note say?");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        String pkg = "com.samsung.android.app.notes";
+        Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text.trim())
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (installed(pkg)) i.setPackage(pkg);
+        try {
+            start(installed(pkg) ? i : Intent.createChooser(i, "నోట్").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (ActivityNotFoundException e) {
+            return err("no_notes_app", "No notes app accepted it. Offer Jarvis's own notes instead.");
+        }
+        return ok().put("note_opened_in", installed(pkg) ? "Samsung Notes" : "notes app").put("text", text.trim())
+                .put("next", "Tell him the note is open with the text; it saves when he goes back.").toString();
+    }
+
+    private String voiceRecorder() throws Exception {
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        Intent i = new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (installed("com.sec.android.app.voicenote")) i.setPackage("com.sec.android.app.voicenote");
+        try {
+            start(i);
+        } catch (ActivityNotFoundException e) {
+            if (!launch("com.sec.android.app.voicenote")) return err("no_recorder", "No voice recorder app.");
+        }
+        return ok().put("opened", "Voice Recorder").put("next", "Tell him to tap the red button to start recording.").toString();
+    }
+
+    /** Jio / Airtel / Vi plan, data and validity messages from SMS. */
+    private String mobilePlan() throws Exception {
+        if (!has(Manifest.permission.READ_SMS)) return needPermission(Manifest.permission.READ_SMS, "reading Jio/Airtel SMS");
+        JSONArray out = new JSONArray();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("EEE d MMM HH:mm", Locale.ENGLISH);
+        for (String[] m : Life.sms(act(), System.currentTimeMillis() - 35 * 86400000L, 800)) {
+            String from = m[0] == null ? "" : m[0].toUpperCase(Locale.ROOT);
+            if (!(from.contains("JIO") || from.contains("AIRTEL") || from.contains("AIRTL") || from.contains("VIINFO") || from.contains("VI-") || from.contains("BSNL"))) continue;
+            String low = m[1] == null ? "" : m[1].toLowerCase(Locale.ROOT);
+            if (!(low.contains("data") || low.contains("valid") || low.contains("expir") || low.contains("plan") || low.contains("recharge") || low.contains("balance"))) continue;
+            if (low.contains("otp")) continue;
+            out.put(new JSONObject().put("when", f.format(new java.util.Date(Long.parseLong(m[2])))).put("from", m[0])
+                    .put("sms", m[1].replaceAll("\\s+", " ").substring(0, Math.min(220, m[1].length()))));
+            if (out.length() >= 12) break;
+        }
+        if (out.length() == 0) return err("none", "No recent Jio/Airtel plan or data SMS. Offer to open MyJio or the Airtel app.");
+        return ok().put("operator_messages", out)
+                .put("next", "From the newest messages tell him: data used/left today, plan validity or expiry date, and any recharge reminder. Recharging is done by him in MyJio/Airtel.").toString();
     }
 
     // ================================================================ offline commands
