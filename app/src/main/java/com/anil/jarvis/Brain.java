@@ -154,7 +154,7 @@ final class Brain {
                 + "- Another maps app ('Waze లో ఆఫీస్ కి', 'Google Earth లో తాజ్ మహల్ చూపించు') -> open_maps with app. Family Locator, Geo Tracker, Findnumber, GPS Photo Location, Satellite Director -> open_app (then look_at_screen if he asks what it shows).\n"
                 + "- 'బ్యాలెన్స్ ఎంత?' -> bank_balance (bank name, amount, date of that SMS; never account numbers). PhonePe, GPay, Paytm, YONO SBI, iMobile, Axis Mobile, CRED, SBI Card, PayZapp, MobiKwik, PayPal, Bajaj Finserv -> open_app. "
                 + "Sending or paying money is always done by him with his PIN; a QR to pay -> scan_qr. Card bill due -> bills_due.\n"
-                + "- Movie or event tickets ('BookMyShow లో OG సినిమాకి 2 టికెట్లు బుక్ చెయ్'), and bus seats in redBus/AbhiBus -> phone_task. First make sure you know the movie, the day and how many tickets "
+                + "- Movie or event tickets ('BookMyShow లో OG సినిమాకి 2 టికెట్లు బుక్ చెయ్', 'District లో … బుక్ చెయ్'; app = the one he names, BookMyShow if he names none), and bus seats in redBus/AbhiBus -> phone_task. First make sure you know the movie, the day and how many tickets "
                 + "(ask one short question for what is missing; theatre, time and seats can be chosen on the way). Put everything he said in goal. "
                 + "When phone_task returns a question, say it exactly; pass his reply as answer. When it returns payment_ready, say what is selected in one sentence and "
                 + "'ఇప్పుడు Pay బటన్ మీరు నొక్కి పేమెంట్ పూర్తి చేయండి'. 'ఆపు / వద్దు' during booking -> phone_task stop=true.\n"

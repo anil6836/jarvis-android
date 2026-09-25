@@ -3560,17 +3560,21 @@ final class Tools {
     private String reachedPayment(AppTask t, JarvisAccessibility.Screen sc, String summary, String button) throws Exception {
         t.time = android.os.SystemClock.elapsedRealtime();
         double amt = button == null ? -1 : JarvisAccessibility.payAmount(button); // "Pay ₹472"
-        if (amt <= 0) amt = JarvisAccessibility.pagePayable(sc);          // "Amount Payable ₹229.50"
+        boolean finalTotal = false;
+        if (amt <= 0) {
+            amt = JarvisAccessibility.pagePayable(sc);                    // "Amount Payable ₹229.50"
+            finalTotal = amt > 0 && JarvisAccessibility.methodPage(sc);   // on the payment page: fees and GST are already in it
+        }
         if (amt <= 0) amt = JarvisAccessibility.payButtonAmount(sc);      // a Pay button on the screen
         if (amt <= 0 && button != null && !button.toLowerCase(Locale.ROOT).contains("mobikwik")) amt = JarvisAccessibility.rupees(button);
         if (amt <= 0) amt = JarvisAccessibility.rupees(summary);          // the total the model read
         if (amt <= 0) amt = JarvisAccessibility.rupees(sc.list.toString()); // the biggest amount shown
         if (walletPayOk(t) && amt > 0 && amt <= prefs.walletPayMax()) {
             t.pendingAmount = amt;
-            t.pendingCeiling = feeCeiling(amt);
+            t.pendingCeiling = finalTotal ? amt + 2 : feeCeiling(amt);
             t.awaiting = true;
             backToJarvis();
-            String ask = t.pendingCeiling > amt + 1
+            String ask = t.pendingCeiling > amt + 2
                     ? "టికెట్లు ₹" + Math.round(amt) + ", ఫీజు, GST కలిపి ₹" + Math.round(t.pendingCeiling) + " లోపు. MobiKwik వాలెట్ నుంచి పే చేయమంటారా?"
                     : "₹" + Math.round(amt) + " MobiKwik వాలెట్ నుంచి పే చేయమంటారా?";
             return ok().put("status", "confirm_payment").put("amount", Math.round(amt)).put("up_to", Math.round(t.pendingCeiling)).put("summary", summary)
@@ -3584,8 +3588,9 @@ final class Tools {
             why = "₹" + Math.round(amt) + " is more than his wallet limit of ₹" + prefs.walletPayMax() + " (Jarvis settings → టికెట్ పేమెంట్), so Jarvis stopped. ";
         } else if (walletPayOk(t)) {
             why = "Jarvis could not read the total on the screen, so it stopped to be safe. ";
-        } else if (t.app.toLowerCase(Locale.ROOT).replace(" ", "").contains("bookmyshow") || t.pkg.equals("com.bt.bms")) {
-            why = "Wallet payment by Jarvis is switched OFF: tell him that to let Jarvis pay from MobiKwik, he opens Jarvis settings → 'టికెట్ పేమెంట్ (BookMyShow)', switches it on and taps Save. ";
+        } else if (t.app.toLowerCase(Locale.ROOT).replace(" ", "").contains("bookmyshow") || t.pkg.equals("com.bt.bms")
+                || t.app.toLowerCase(Locale.ROOT).startsWith("district")) {
+            why = "Wallet payment by Jarvis is switched OFF: tell him that to let Jarvis pay from MobiKwik, he opens Jarvis settings → 'టికెట్ పేమెంట్ (BookMyShow, District)', switches it on and taps Save. ";
         } else {
             why = "";
         }
@@ -3602,7 +3607,8 @@ final class Tools {
     }
 
     private boolean walletPayOk(AppTask t) {
-        return prefs.walletPay() && (t.pkg.equals("com.bt.bms") || t.app.toLowerCase(Locale.ROOT).replace(" ", "").contains("bookmyshow"));
+        String name = t.app.toLowerCase(Locale.ROOT).replace(" ", "");
+        return prefs.walletPay() && (t.pkg.equals("com.bt.bms") || name.contains("bookmyshow") || name.startsWith("district"));
     }
 
     private static volatile AppTask appTask;
@@ -3676,7 +3682,7 @@ final class Tools {
             if (pay) {
                 // The payment: only with the switch on, only in BookMyShow, only the amount he was asked about,
                 // and only when his own last words were a clear yes.
-                if (!walletPayOk(t)) return err("wallet_pay_off", "Wallet payment by Jarvis is off (Jarvis settings → టికెట్ పేమెంట్). Tell him to tap Pay himself.");
+                if (!walletPayOk(t)) return err("wallet_pay_off", "Wallet payment by Jarvis is off, or this app is not BookMyShow / District (Jarvis settings → టికెట్ పేమెంట్). Tell him to tap Pay himself.");
                 if (t.pendingAmount <= 0) return err("nothing_to_pay", "Jarvis has not asked him about a payment yet.");
                 String said = lastUserWords();
                 if (!SAID_YES.matcher(said).find() || SAID_NO.matcher(said).find()) {
@@ -3690,7 +3696,7 @@ final class Tools {
                 t.paying = true;
                 t.refusals = 0;
                 t.goal = t.goal + ". Anil CONFIRMED paying ₹" + Math.round(t.pendingAmount) + " from his MobiKwik wallet. Now pay: press the Pay / Proceed buttons; "
-                        + "on the payment page tap the MobiKwik row (under PREFERRED PAYMENTS, or inside Mobile Wallets; its '₹1000' is his wallet balance, not the price). "
+                        + "on the payment page tap the MobiKwik row (under PREFERRED PAYMENTS, or inside Wallets / Mobile Wallets; an amount next to it is his wallet balance, not the price). "
                         + "Never UPI, PhonePe, CRED, cards, net banking, pay later or any other wallet. Then press Pay / Proceed on the next screens. "
                         + "If MobiKwik asks for a PIN, OTP or password, ask Anil to enter it. When the booking is confirmed, reply done with the booking ID, seats, theatre, show time and the amount paid.";
             }

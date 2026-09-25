@@ -352,7 +352,8 @@ public class JarvisAccessibility extends AccessibilityService {
 
     /** Other ways to pay that Jarvis must never choose (he agreed to the MobiKwik wallet only). */
     static final java.util.regex.Pattern OTHER_METHOD = java.util.regex.Pattern.compile(
-            "(?i)(\\bupi\\b|card|net ?banking|pay ?later|\\bemi\\b|simpl|lazypay|gpay|google pay|phonepe|paytm|amazon ?pay|cred\\b|freecharge|airtel|jio|bhim|olamoney|ola money)");
+            "(?i)(\\bupi\\b|card|net ?banking|pay ?later|\\bemi\\b|simpl|lazypay|gpay|google pay|phonepe|paytm|amazon ?pay|cred\\b|freecharge|airtel|jio|bhim|olamoney|ola money"
+                    + "|zomato (money|credits?|pay)|district (money|credits?|cash)|sodexo|pluxee|zeta)");
     private static final java.util.regex.Pattern RUPEES = java.util.regex.Pattern.compile(
             "(?:₹|rs\\.?|inr)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", java.util.regex.Pattern.CASE_INSENSITIVE);
 
@@ -448,10 +449,7 @@ public class JarvisAccessibility extends AccessibilityService {
             if (OTHER_METHOD.matcher(words).find()) return "blocked:" + words.trim() + " (only the MobiKwik wallet is allowed)";
             if (commit == null) return null;
             // on the page that lists ways to pay, MobiKwik must have been chosen first
-            String page = sc.list.toString().toLowerCase(Locale.ROOT);
-            boolean methodPage = page.contains("upi") || page.contains("net banking") || page.contains("netbanking")
-                    || page.contains("wallets") || page.contains("credit card") || page.contains("debit card");
-            if (methodPage && !a.walletChosen) return "blocked:" + words.trim() + " (tap the MobiKwik row first)";
+            if (methodPage(sc) && !a.walletChosen) return "blocked:" + words.trim() + " (tap the MobiKwik row first)";
             double amt = payAmount(words);                 // "Pay ₹229.50"
             if (amt <= 0) amt = payable;                   // "Amount Payable ₹229.50" on the page
             if (amt <= 0) amt = rupees(words);
@@ -459,12 +457,30 @@ public class JarvisAccessibility extends AccessibilityService {
             a.taps--;
             return null;
         }
-        return commit == null ? null : "blocked:" + commit;
+        if (commit != null) return "blocked:" + commit;
+        // Before his "yes": on a payment page, choosing a way to pay can itself start the payment
+        // (a linked wallet pays in one tap), so it counts as the Pay step and Jarvis asks him first.
+        String words = label(n) + " " + (buttonSized(n) ? allText(n, 0) : "");
+        String low = words.toLowerCase(Locale.ROOT);
+        boolean method = low.contains("mobikwik") || low.contains("wallet") || OTHER_METHOD.matcher(words).find();
+        if (method && methodPage(sc)) return "blocked:" + words.trim();
+        return null;
+    }
+
+    /** A page that lists ways to pay (UPI, cards, wallets, net banking). */
+    static boolean methodPage(Screen sc) {
+        String page = sc.list.toString().toLowerCase(Locale.ROOT);
+        int hits = 0;
+        for (String k : new String[]{"upi", "net banking", "netbanking", "wallet", "credit card", "debit card", "debit/credit", "credit/debit", "pay later"}) {
+            if (page.contains(k)) hits++;
+        }
+        return hits >= 2;
     }
 
     /** Paid extras Jarvis never adds by itself: memberships (BMS Club), ₹1 donations, insurance. */
     static final java.util.regex.Pattern EXTRAS = java.util.regex.Pattern.compile(
-            "(?i)(add ?(₹|rs\\.?) ?\\d|add club|club purchase|club membership|book a smile|donat|insurance|protect your (ticket|booking))");
+            "(?i)(add ?(₹|rs\\.?) ?\\d|add club|club purchase|club membership|book a smile|donat|insurance|protect your (ticket|booking)"
+                    + "|feeding india|contribute ₹|add tip|district pass|zomato gold|gold membership)");
     /** He asked for an extra himself (e.g. "Club కూడా తీసుకో"). Set per task by Tools. */
     static volatile boolean extrasAllowed;
 
