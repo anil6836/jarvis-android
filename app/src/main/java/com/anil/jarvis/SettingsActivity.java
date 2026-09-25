@@ -33,7 +33,8 @@ public class SettingsActivity extends Activity {
     private Prefs prefs;
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
     private RadioGroup provider, lang, wakeWhen;
-    private Switch callVoice, readMessages, batteryWarn, voiceLock, proactive, sfx;
+    private Switch callVoice, readMessages, batteryWarn, voiceLock, proactive, sfx, shakeWake, faceDown, nightSummary;
+    private TextView carInfo;
     private SeekBar lockSlider, listenWindow;
     private TextView listenWindowLabel;
     private TextView lockInfo, docsInfo;
@@ -321,6 +322,18 @@ public class SettingsActivity extends Activity {
         docsInfo = Ui.text(this, prefs.docsTree().isEmpty() ? "ఇంకా ఎంచుకోలేదు" : "ఎంచుకున్నారు ✓", 14, Ui.MUTED);
         box.addView(docsInfo);
 
+        section("కార్/బైక్, కదలికలు");
+        note("మీ కార్/బైక్ బ్లూటూత్ ఎంచుకుంటే: కనెక్ట్ అవ్వగానే డ్రైవింగ్ మోడ్ ఆన్, దిగగానే ఆఫ్, బండి పెట్టిన చోటు గుర్తుపెట్టుకుంటుంది.");
+        button("కార్/బైక్ బ్లూటూత్ ఎంచుకోండి", v -> chooseCar());
+        carInfo = Ui.text(this, prefs.carBluetooth().isEmpty() ? "ఇంకా ఎంచుకోలేదు" : "ఎంచుకున్నారు ✓", 14, Ui.MUTED);
+        box.addView(carInfo);
+        shakeWake = toggle("ఫోన్ రెండుసార్లు ఊపితే Jarvis రావాలి", prefs.shakeWake());
+        faceDown = toggle("ఫోన్ బోర్లా పెడితే సైలెంట్ (ఎత్తితే మళ్లీ సౌండ్)", prefs.faceDownSilent());
+        nightSummary = toggle("రోజూ రాత్రి 9:30 కి ఈరోజు, రేపటి సారాంశం చెప్పు", prefs.nightSummary());
+        button("స్క్రీన్ టైమ్ కోసం \"Usage access\" ఇవ్వండి", v -> {
+            try { startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); } catch (Exception ignored) {}
+        });
+
         section("ఆరోగ్యం, ఇతరాలు");
         sfx = toggle("Iron Man సౌండ్ ఎఫెక్ట్ (పిలవగానే చిన్న శబ్దం)", prefs.sfx());
         button("అడుగుల లెక్కకి అనుమతి (Physical activity)", v -> requestPermissions(new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, 8));
@@ -406,6 +419,9 @@ public class SettingsActivity extends Activity {
         e.putFloat("voice_lock_max", 0.30f + lockSlider.getProgress() / 100f);
         e.putBoolean("proactive", proactive.isChecked());
         e.putBoolean("sfx", sfx.isChecked());
+        e.putBoolean("shake_wake", shakeWake.isChecked());
+        e.putBoolean("facedown_silent", faceDown.isChecked());
+        e.putBoolean("night_summary", nightSummary.isChecked());
         e.putInt("listen_window", listenWindow.getProgress() + 3);
         e.putString("sos_contacts", sosContacts.getText().toString().trim());
         e.putString("smart_urls", smartUrls.getText().toString().trim());
@@ -460,6 +476,30 @@ public class SettingsActivity extends Activity {
                 : p < 34 ? "మధ్యస్థం" : "ఎక్కువ (సులువుగా మేల్కొంటుంది, అప్పుడప్పుడు పొరపాటున కూడా)";
         sensitivityLabel.setText("సున్నితత్వం: " + level);
         sensitivityLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private void chooseCar() {
+        if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, 9);
+            Toast.makeText(this, "Allow చేసి మళ్లీ నొక్కండి", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.bluetooth.BluetoothManager bm = getSystemService(android.bluetooth.BluetoothManager.class);
+        android.bluetooth.BluetoothAdapter ad = bm == null ? null : bm.getAdapter();
+        if (ad == null) { Toast.makeText(this, "ఈ ఫోన్‌లో బ్లూటూత్ లేదు", Toast.LENGTH_LONG).show(); return; }
+        java.util.List<android.bluetooth.BluetoothDevice> list = new java.util.ArrayList<>(ad.getBondedDevices());
+        if (list.isEmpty()) { Toast.makeText(this, "ముందు కార్/బైక్‌ని ఫోన్‌తో బ్లూటూత్ జత (pair) చేయండి", Toast.LENGTH_LONG).show(); return; }
+        String[] names = new String[list.size()];
+        for (int i = 0; i < names.length; i++) names[i] = list.get(i).getName() == null ? list.get(i).getAddress() : list.get(i).getName();
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("మీ కార్/బైక్ ఏది?")
+                .setItems(names, (d, which) -> {
+                    getSharedPreferences("jarvis", MODE_PRIVATE).edit().putString("car_bt", list.get(which).getAddress()).apply();
+                    carInfo.setText("ఎంచుకున్నారు: " + names[which] + " ✓");
+                })
+                .setNegativeButton("వద్దు", null)
+                .show();
     }
 
     private void showListenWindow() {

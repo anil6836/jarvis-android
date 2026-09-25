@@ -259,7 +259,42 @@ final class Store {
             chat.add(o);
             while (chat.size() > 60) chat.remove(0);
             save("chat.json", chat);
+            archive(o);
         } catch (Exception ignored) {}
+    }
+
+    /** Every conversation line is also kept in a long archive, for "what did I tell you last week?". */
+    private void archive(JSONObject o) {
+        try {
+            File f = new File(dir, "chat_archive.jsonl");
+            if (f.length() > 3_000_000L) { // keep the newer half
+                java.util.List<String> lines = java.nio.file.Files.readAllLines(f.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+                java.nio.file.Files.write(f.toPath(), lines.subList(lines.size() / 2, lines.size()), java.nio.charset.StandardCharsets.UTF_8);
+            }
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f, true)) {
+                out.write((o.toString() + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /** Old conversation lines containing all the words, newest first. */
+    synchronized java.util.List<JSONObject> searchArchive(String query, long since, int max) {
+        java.util.List<JSONObject> out = new java.util.ArrayList<>();
+        String[] words = query == null ? new String[0] : query.toLowerCase(java.util.Locale.ROOT).trim().split("\\s+");
+        try {
+            File f = new File(dir, "chat_archive.jsonl");
+            if (!f.exists()) return out;
+            java.util.List<String> lines = java.nio.file.Files.readAllLines(f.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+            for (int i = lines.size() - 1; i >= 0 && out.size() < max; i--) {
+                JSONObject o = new JSONObject(lines.get(i));
+                if (o.optLong("t") < since) break;
+                String text = o.optString("content").toLowerCase(java.util.Locale.ROOT);
+                boolean all = true;
+                for (String w : words) if (!w.isEmpty() && !text.contains(w)) { all = false; break; }
+                if (all) out.add(o);
+            }
+        } catch (Exception ignored) {}
+        return out;
     }
 
     synchronized void clearChat() {

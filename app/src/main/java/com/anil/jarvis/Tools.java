@@ -185,7 +185,9 @@ final class Tools {
         DEFS.add(new Def("location_reminder",
                 "Remind Anil when he arrives at or leaves a place ('ఇంటికి చేరగానే గుర్తుచేయి'). Place = a saved place (home, office) or an address. Also list or cancel them.",
                 schema(new String[][]{{"action", "string", "add (default), list or cancel"}, {"place", "string", "Saved place name or address, English"},
-                        {"text", "string", "What to remind him"}, {"when", "string", "arrive (default) or leave"},
+                        {"text", "string", "What to remind him, or for automatic: what Jarvis should do there (e.g. 'phone silent', 'Wi-Fi on and hall light on')"},
+                        {"when", "string", "arrive (default) or leave"},
+                        {"automatic", "boolean", "true = an automatic mode Jarvis carries out every time he arrives/leaves (not a one-time reminder)"},
                         {"id", "string", "For cancel: the reminder id from list"}})));
         DEFS.add(new Def("smart_home",
                 "Control his smart lights, fans and plugs (Wipro, Syska, Homemate, Zeb Home, anything in Alexa): turn on/off, or run a saved scene. "
@@ -194,6 +196,29 @@ final class Tools {
                         {"device", "string", "The device name as it appears in his app, English"},
                         {"on", "boolean", "true = on, false = off"},
                         {"alexa_phrase", "string", "The same request as he would say it to Alexa in English, e.g. 'turn off the hall light'"}}, "command")));
+        DEFS.add(new Def("parking", "Where he parked: save = remember this spot ('బండి ఇక్కడ పెట్టాను'); find = walk him back to it ('నా బండి ఎక్కడ?').",
+                schema(new String[][]{{"action", "string", "save or find"}}, "action")));
+        DEFS.add(new Def("bills_due", "Upcoming bill due dates (credit card, electricity, phone...) found in his SMS.", schema(new String[][]{})));
+        DEFS.add(new Def("parcels", "His online orders and deliveries (Amazon, Flipkart...) from SMS and notifications: 'నా పార్సెల్ ఎప్పుడు వస్తుంది?'.", schema(new String[][]{})));
+        DEFS.add(new Def("group_summary", "Summary of today's WhatsApp/Telegram group chat messages (from notifications).",
+                schema(new String[][]{{"group", "string", "Part of the group name; empty for all groups"}})));
+        DEFS.add(new Def("budget", "Set his monthly spending budget in rupees (0 removes it); Jarvis warns at 80% and 100%.",
+                schema(new String[][]{{"amount", "integer", "Rupees per month"}}, "amount")));
+        DEFS.add(new Def("interpreter", "Start a live two-way interpreter between Telugu and another language for a conversation with someone ('హిందీ అనువాదకుడిగా ఉండు').",
+                schema(new String[][]{{"language", "string", "The other person's language, e.g. Hindi, English, Tamil"}}, "language")));
+        DEFS.add(new Def("read_screen", "Read the article/page on his screen aloud (mode read) or summarise it (mode summary).",
+                schema(new String[][]{{"mode", "string", "read or summary"}})));
+        DEFS.add(new Def("jarvis_mood", "Change how Jarvis talks: normal, serious, funny, english (reply in English), short (very brief).",
+                schema(new String[][]{{"mode", "string", "normal, serious, funny, english or short"}}, "mode")));
+        DEFS.add(new Def("search_history", "Search old conversations with Jarvis ('last week I told you a phone number...').",
+                schema(new String[][]{{"query", "string", "Key words to look for"}, {"days", "integer", "How far back (default 90)"}}, "query")));
+        DEFS.add(new Def("screen_time", "How long he used the phone today (or the last N days) and on which apps.",
+                schema(new String[][]{{"days", "integer", "1 = today (default), up to 7"}})));
+        DEFS.add(new Def("app_limit", "Daily time limit for an app; Jarvis tells him when he passes it. minutes 0 removes it; app 'list' shows limits.",
+                schema(new String[][]{{"app", "string", "App name or 'list'"}, {"minutes", "integer", "Minutes per day"}}, "app")));
+        DEFS.add(new Def("air_quality", "Air quality (AQI) where he is now, and any severe weather warning for today.", schema(new String[][]{})));
+        DEFS.add(new Def("cricket_watch", "Tell him live cricket updates (wickets, innings, result) for a team's match; on=false stops.",
+                schema(new String[][]{{"team", "string", "Team, default India"}, {"on", "boolean", "true to watch"}}, "on")));
         DEFS.add(new Def("routine",
                 "Anil's own multi-step commands. save: store steps under a name ('ఆఫీస్ మోడ్' = silent, Wi-Fi off, navigate to office). run: get the steps, then do them with your tools. list / delete.",
                 schema(new String[][]{{"action", "string", "save, run, list or delete"}, {"name", "string", "Routine name as he says it"},
@@ -328,6 +353,18 @@ final class Tools {
             case "driving_mode": return "డ్రైవింగ్ మోడ్…";
             case "ride_app": return "రైడ్ యాప్ తెరుస్తున్నాను…";
             case "routine": return "రొటీన్…";
+            case "parking": return "పార్కింగ్…";
+            case "bills_due": return "బిల్లులు చూస్తున్నాను…";
+            case "parcels": return "పార్సెల్స్ చూస్తున్నాను…";
+            case "group_summary": return "గ్రూప్ మెసేజ్‌లు చదువుతున్నాను…";
+            case "budget": return "బడ్జెట్…";
+            case "interpreter": return "అనువాదకుడు…";
+            case "read_screen": return "స్క్రీన్ చదువుతున్నాను…";
+            case "jarvis_mood": return "సరే…";
+            case "search_history": return "పాత మాటల్లో వెతుకుతున్నాను…";
+            case "screen_time": case "app_limit": return "స్క్రీన్ టైమ్ చూస్తున్నాను…";
+            case "air_quality": return "గాలి నాణ్యత చూస్తున్నాను…";
+            case "cricket_watch": return "క్రికెట్…";
             case "smart_home": return "లైట్లు…";
             case "notes": return "నోట్స్…";
             case "sos": return "🆘 SOS…";
@@ -387,6 +424,19 @@ final class Tools {
                 case "save_place": return savePlace(a.optString("name"));
                 case "smart_home": return smartHome(a.optString("command", ""), a.optString("device", ""),
                         a.optBoolean("on", true), a.optString("alexa_phrase", ""));
+                case "parking": return parking(a.optString("action", "find"));
+                case "bills_due": return billsDue();
+                case "parcels": return parcels();
+                case "group_summary": return groupSummary(a.optString("group", ""));
+                case "budget": return budget(a.optInt("amount", 0));
+                case "interpreter": return interpreter(a.optString("language"));
+                case "read_screen": return readScreen(a.optString("mode", "read"));
+                case "jarvis_mood": return mood(a.optString("mode", "normal"));
+                case "search_history": return searchHistory(a.optString("query"), a.optInt("days", 90));
+                case "screen_time": return screenTime(a.optInt("days", 1));
+                case "app_limit": return appLimit(a.optString("app", ""), a.optInt("minutes", 0));
+                case "air_quality": return airQuality();
+                case "cricket_watch": return cricketWatch(a.optString("team", "India"), a.optBoolean("on", true));
                 case "routine": return routine(a.optString("action", "list"), a.optString("name", ""), a.optString("steps", ""));
                 case "notes": return notes(a.optString("action", "list"), a.optString("text", ""), a.optInt("days", 7));
                 case "sos": return sos(a.optString("message", ""));
@@ -404,7 +454,7 @@ final class Tools {
                 case "day_summary": return daySummary();
                 case "scan_qr": return scanQr(a.optBoolean("open", false));
                 case "location_reminder": return locationReminder(a.optString("action", "add"), a.optString("place"),
-                        a.optString("text"), a.optString("when", "arrive"), a.optString("id"));
+                        a.optString("text"), a.optString("when", "arrive"), a.optString("id"), a.optBoolean("automatic", false));
                 case "now_playing": return nowPlaying();
                 case "look_at_screen": return lookAtScreen(a.optString("question"));
                 case "look_through_camera": return lookThroughCamera(a.optString("question"));
@@ -863,7 +913,7 @@ final class Tools {
         return out.toString();
     }
 
-    private static Location lastLocation(android.content.Context ctx) {
+    static Location lastLocation(android.content.Context ctx) {
         LocationManager lm = (LocationManager) ctx.getSystemService(Activity.LOCATION_SERVICE);
         if (lm == null) return null;
         Location best = null;
@@ -2115,12 +2165,12 @@ final class Tools {
     }
 
     /** Bank/UPI SMS plus expenses Anil added himself (bills), since a time. */
-    private JSONObject spendingSince(long since, int maxItems) throws Exception {
+    static JSONObject spendingSince(android.content.Context ctx, long since, int maxItems) throws Exception {
         double spent = 0, received = 0;
         JSONArray items = new JSONArray();
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM", Locale.ENGLISH);
         int n = 0;
-        try (Cursor c = act().getContentResolver().query(Uri.parse("content://sms/inbox"),
+        try (Cursor c = ctx.getContentResolver().query(Uri.parse("content://sms/inbox"),
                 new String[]{"address", "body", "date"}, "date >= ?", new String[]{String.valueOf(since)}, "date DESC")) {
             while (c != null && c.moveToNext()) {
                 String body = c.getString(1);
@@ -2149,17 +2199,22 @@ final class Tools {
         }
         double manual = 0;
         JSONArray bills = new JSONArray();
-        for (JSONObject e : Money.expenses(act())) {
+        for (JSONObject e : Money.expenses(ctx)) {
             if (e.optLong("t") < since) continue;
             manual += e.optDouble("amount");
             if (bills.length() < maxItems) bills.put(e);
         }
-        return ok().put("total_spent_sms", Math.round(spent)).put("total_received", Math.round(received))
+        return new JSONObject().put("ok", true).put("total_spent_sms", Math.round(spent)).put("total_received", Math.round(received))
                 .put("bills_added_by_anil", Math.round(manual)).put("bills", bills)
                 .put("total_spent", Math.round(spent + manual))
                 .put("transactions", n).put("recent", items)
                 .put("note", "Estimated from bank/UPI SMS on this phone plus bills Anil added; card or app payments without an SMS are missing.");
     }
+
+    private JSONObject spendingSince(long since, int maxItems) throws Exception {
+        return spendingSince(act(), since, maxItems);
+    }
+
 
 
     // ================================================================ modes, find phone, bills, day summary, QR
@@ -2759,6 +2814,163 @@ final class Tools {
                 + ". Anil can add links in Jarvis settings > 'స్మార్ట్ హోమ్', or turn on 'Echo nearby'.");
     }
 
+
+    // ================================================================ everyday life (bills, parcels, groups, budget, screen time, cricket...)
+
+    private String parking(String action) throws Exception {
+        String a = action == null ? "find" : action.trim().toLowerCase(Locale.ROOT);
+        if (a.startsWith("save")) {
+            String r = savePlace("parking");
+            if (new JSONObject(r).optBoolean("ok")) Life.markParked(act());
+            return r;
+        }
+        double[] ll = GeoReminders.place(act(), "parking");
+        if (ll == null) return err("not_saved", "No parking spot saved. When he parks, he can say 'బండి ఇక్కడ పెట్టాను'.");
+        long at = Life.parkedAt(act());
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        start(Life.walkTo(ll[0], ll[1]));
+        JSONObject o = ok().put("walking_to", "parking");
+        if (at > 0) o.put("parked", new java.text.SimpleDateFormat("EEE h:mm a", Locale.ENGLISH).format(new java.util.Date(at)));
+        return o.toString();
+    }
+
+    private String billsDue() throws Exception {
+        if (!has(Manifest.permission.READ_SMS)) return needPermission(Manifest.permission.READ_SMS, "reading bill SMS");
+        return ok().put("bills_due", Life.billsDue(act())).put("note", "Found in SMS; a bill paid without an SMS may still show.").toString();
+    }
+
+    private String parcels() throws Exception {
+        if (!has(Manifest.permission.READ_SMS)) return needPermission(Manifest.permission.READ_SMS, "reading delivery SMS");
+        return ok().put("delivery_messages", Life.parcels(act()))
+                .put("next", "Group by order; for each say the shop, what stage (ordered/shipped/out for delivery/delivered) and the expected day.").toString();
+    }
+
+    private String groupSummary(String name) throws Exception {
+        if (!NotifyListener.enabled(act())) return err("notification_access_off", "Notification access is needed to see group messages.");
+        String q = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        JSONArray out = new JSONArray();
+        int chars = 0;
+        for (NotifyListener.Item it : NotifyListener.recent("", 150)) {
+            if (!it.group && !(it.from.contains(":") || it.text.contains(":"))) continue;
+            if (!q.isEmpty() && !it.from.toLowerCase(Locale.ROOT).contains(q)) continue;
+            if (chars > 6000) break;
+            chars += it.text.length();
+            out.put(new JSONObject().put("app", it.app).put("group", it.from).put("messages", it.text));
+        }
+        if (out.length() == 0) return err("none", "No recent group messages" + (q.isEmpty() ? "" : " from '" + name + "'") + " (only messages from the last day that came as notifications).");
+        return ok().put("groups", out).put("next", "Summarise per group: main topics, decisions, anything asked of Anil. 3-6 sentences.").toString();
+    }
+
+    private String budget(int amount) throws Exception {
+        act().getSharedPreferences("jarvis", Activity.MODE_PRIVATE).edit().putInt("budget", Math.max(0, amount)).apply();
+        JSONObject o = ok().put("monthly_budget", amount);
+        if (has(Manifest.permission.READ_SMS)) o.put("spent_this_month", spendingSince(Life.monthStart(), 0).optLong("total_spent"));
+        return o.put("note", amount > 0 ? "Jarvis warns at 80% and 100%." : "Budget removed.").toString();
+    }
+
+    /** Live interpreter: after this reply, a live voice session translates both ways. */
+    static volatile String interpreterLang;
+
+    static String takeInterpreter() {
+        String l = interpreterLang;
+        interpreterLang = null;
+        return l;
+    }
+
+    private String interpreter(String language) throws Exception {
+        if (language == null || language.trim().isEmpty()) return err("missing", "Which language does the other person speak?");
+        if (prefs.openAiKey().trim().isEmpty()) return err("no_openai", "The live interpreter needs an OpenAI key in settings.");
+        if (!online()) return err("offline", "The live interpreter needs internet.");
+        interpreterLang = language.trim();
+        return ok().put("interpreter", language.trim())
+                .put("next", "Say one short line: the interpreter is starting, speak one at a time; say 'అనువాదం ఆపు' to stop.").toString();
+    }
+
+    private String readScreen(String mode) throws Exception {
+        if (!JarvisAccessibility.enabled()) return err("screen_access_off", "Jarvis needs its accessibility switch to read the screen.");
+        JarvisAccessibility.Capture cap = JarvisAccessibility.recent(90000);
+        if (cap == null || cap.text.trim().isEmpty()) cap = JarvisAccessibility.captureBlocking(2500);
+        if (cap == null || cap.text.trim().isEmpty()) return err("no_text", "No readable text on the screen.");
+        StringBuilder b = new StringBuilder();
+        for (String line : cap.text.split("\n")) {
+            String t = line.trim();
+            if (t.length() >= 25 || (t.length() > 3 && t.endsWith("."))) b.append(t).append('\n'); // skip buttons and menus
+        }
+        String text = b.length() > 0 ? b.toString() : cap.text;
+        if (text.length() > 6000) text = text.substring(0, 6000);
+        boolean summary = mode != null && mode.toLowerCase(Locale.ROOT).startsWith("sum");
+        return ok().put("app", label(cap.pkg)).put("text", text)
+                .put("next", summary ? "Summarise it in Telugu in 3-5 sentences."
+                        : "Read it aloud: reply with the article text itself (in its own language, cleaned of menus), up to about 2000 characters, no comments.")
+                .toString();
+    }
+
+    private String mood(String mode) throws Exception {
+        String m = mode == null ? "normal" : mode.trim().toLowerCase(Locale.ROOT);
+        if (!m.matches("normal|serious|funny|english|short")) m = "normal";
+        act().getSharedPreferences("jarvis", Activity.MODE_PRIVATE).edit().putString("mood", m).apply();
+        return ok().put("mood", m).toString();
+    }
+
+    private String searchHistory(String query, int days) throws Exception {
+        long since = System.currentTimeMillis() - Math.max(1, days <= 0 ? 90 : days) * 86400000L;
+        JSONArray out = new JSONArray();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("EEE d MMM HH:mm", Locale.ENGLISH);
+        for (JSONObject o : store.searchArchive(query, since, 25)) {
+            String t = o.optString("content");
+            out.put(new JSONObject().put("when", f.format(new java.util.Date(o.optLong("t"))))
+                    .put("who", "assistant".equals(o.optString("role")) ? "Jarvis" : prefs.name())
+                    .put("said", t.length() > 400 ? t.substring(0, 400) + "…" : t));
+        }
+        if (out.length() == 0) return err("none", "Nothing found for '" + query + "'. Try other words (the archive starts from this version).");
+        return ok().put("found", out).toString();
+    }
+
+    private String screenTime(int days) throws Exception {
+        if (!Life.usageAllowed(act())) {
+            start(new Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return err("usage_access_off", "Screen time needs 'Usage access' for Jarvis. The page is open: Anil switches Jarvis on there, then asks again.");
+        }
+        return Life.screenTime(act(), days <= 0 ? 1 : Math.min(7, days)).toString();
+    }
+
+    private String appLimit(String app, int minutes) throws Exception {
+        if (!Life.usageAllowed(act())) {
+            start(new Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return err("usage_access_off", "App limits need 'Usage access' for Jarvis (page opened).");
+        }
+        if (app == null || app.trim().isEmpty() || app.equalsIgnoreCase("list")) {
+            JSONObject l = Life.limits(act());
+            JSONArray arr = new JSONArray();
+            java.util.Iterator<String> it = l.keys();
+            while (it.hasNext()) { String p = it.next(); arr.put(new JSONObject().put("app", label(p)).put("minutes", l.optInt(p))); }
+            return ok().put("limits", arr).toString();
+        }
+        ResolveInfo r = findApp(app.trim());
+        if (r == null) return err("not_found", "No installed app called '" + app + "'.");
+        Life.setLimit(act(), r.activityInfo.packageName, minutes);
+        return ok().put("app", label(r.activityInfo.packageName)).put("daily_minutes", minutes)
+                .put("note", minutes > 0 ? "Jarvis tells him when he passes it (it cannot lock the app)." : "Limit removed.").toString();
+    }
+
+    private String airQuality() throws Exception {
+        JSONObject a = Life.air(act());
+        if (a == null) return err("unavailable", "Could not get air quality (location or internet).");
+        JSONObject o = ok().put("air", a);
+        String severe = Life.severeToday(act());
+        if (severe != null) o.put("weather_warning", severe);
+        return o.toString();
+    }
+
+    private String cricketWatch(String team, boolean on) throws Exception {
+        if (!on) { Life.stopCricket(act()); return ok().put("cricket_updates", false).toString(); }
+        if (team == null || team.trim().isEmpty()) team = "India";
+        if (prefs.apiKey().isEmpty()) return err("no_key", "Needs an API key with web search.");
+        Life.watchCricket(act(), team.trim());
+        return ok().put("watching", team.trim())
+                .put("note", "Checked about every 15 minutes (each check is a small web-search cost) for up to 12 hours; stops when the match ends.").toString();
+    }
+
     // ================================================================ offline commands
 
     boolean online() { return Net.online(act()); }
@@ -2877,7 +3089,7 @@ final class Tools {
         return ok().put("saved_place", name.trim()).put("accuracy_m", Math.round(l.getAccuracy())).toString();
     }
 
-    private String locationReminder(String action, String place, String text, String when, String id) throws Exception {
+    private String locationReminder(String action, String place, String text, String when, String id, boolean automatic) throws Exception {
         String a = action == null || action.isEmpty() ? "add" : action.trim().toLowerCase(Locale.ROOT);
         if (a.equals("list")) {
             JSONArray arr = new JSONArray();
@@ -2905,7 +3117,7 @@ final class Tools {
         boolean arrive = when == null || !when.toLowerCase(Locale.ROOT).startsWith("leav");
         Location here = lastLocation(act());
         boolean inside = here != null && GeoReminders.distance(here.getLatitude(), here.getLongitude(), ll[0], ll[1]) < GeoReminders.RADIUS_M;
-        JSONObject r = GeoReminders.add(act(), place.trim(), ll[0], ll[1], text.trim(), arrive, inside);
+        JSONObject r = GeoReminders.add(act(), place.trim(), ll[0], ll[1], text.trim(), arrive, inside, automatic);
         JSONObject o = ok().put("id", r.optString("id")).put("place", place).put("when", arrive ? "arrive" : "leave").put("text", text);
         if (Build.VERSION.SDK_INT >= 29 && !has(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
             host.askPermissions(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION});

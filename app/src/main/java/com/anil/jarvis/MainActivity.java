@@ -237,6 +237,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         p.add(Manifest.permission.ACCESS_FINE_LOCATION);
         p.add(Manifest.permission.READ_CALL_LOG);
         p.add(Manifest.permission.ACTIVITY_RECOGNITION);
+        p.add(Manifest.permission.READ_SMS);
+        if (Build.VERSION.SDK_INT >= 31) p.add(Manifest.permission.BLUETOOTH_CONNECT);
         if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS);
         return p.toArray(new String[0]);
     }
@@ -893,7 +895,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     // ================================================================ live (real-time) conversation
 
-    private void startLive() {
+    private void startLive() { startLive(null); }
+
+    private void startLive(String instructions) {
         if (live != null || busy) return;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_LIVE);
@@ -907,7 +911,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         showTab(0);
         input.setHint("Live: మాట్లాడండి, ఆపాలంటే ఎరుపు బటన్");
         live = new LiveSession(this, prefs, tools, this);
-        live.start(brain.liveInstructions(store.chat()));
+        live.start(instructions != null ? instructions : brain.liveInstructions(store.chat()));
         refreshAction();
     }
 
@@ -1052,6 +1056,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onSpeakDone() {
+        String lang = Tools.takeInterpreter();
+        if (lang != null && live == null && !busy) { startLive(Brain.interpreterInstructions(prefs.name(), lang)); return; }
         if (lastWasVoice && prefs.followUp() && !paused && !busy) {
             lastWasVoice = false;
             main.postDelayed(this::startListening, 250);

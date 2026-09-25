@@ -84,6 +84,44 @@ public class Proactive extends BroadcastReceiver {
         if (!quiet) Health.waterTick(c, p);
         priceAlerts(c, p, quiet);
         if (now.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY && hour >= 19 && hour < 22) weeklyNotes(c);
+        if (!quiet && hour >= 9 && hour < 12) billsDue(c, p);
+        if (!quiet && hour >= 19 && hour < 21 && onceToday(c, "budget")) Life.budgetCheck(c, p);
+        if (!quiet) Life.limitTick(c, p);
+        if (!quiet) Life.cricketTick(c, p);
+        if (!quiet && p.nightSummary() && (hour == 21 && now.get(Calendar.MINUTE) >= 30 || hour == 22) && onceToday(c, "night_summary")) {
+            run(c, "రాత్రి సారాంశం: day_summary తో ఈరోజు ఏం జరిగిందో, calendar_events మరియు list_reminders తో రేపు ఏం ఉందో 4-5 వాక్యాల్లో చెప్పు.");
+        }
+    }
+
+    /** Opens the panel and has Jarvis do something on his own (nightly summary, arriving somewhere). */
+    static void run(Context c, String command) {
+        if (android.provider.Settings.canDrawOverlays(c) && !MainActivity.inConversation) {
+            try {
+                c.startActivity(new Intent(c, SheetActivity.class).putExtra(SheetActivity.EXTRA_RUN, command)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+                return;
+            } catch (Exception ignored) {}
+        }
+        Reminders.notify(c, "Jarvis", command, command.hashCode());
+    }
+
+    /** Bills due today or tomorrow, found in SMS: said once per bill. */
+    private static void billsDue(Context c, Prefs p) {
+        if (!onceToday(c, "bills")) return;
+        JSONArray due = Life.billsDue(c);
+        long tomorrowEnd = Life.dayStart() + 2 * 86400000L;
+        int told = 0;
+        for (int i = 0; i < due.length() && told < 3; i++) {
+            JSONObject b = due.optJSONObject(i);
+            if (b == null || b.optLong("due_ms") >= tomorrowEnd) continue;
+            String key = "bill_" + b.optString("from") + b.optLong("due_ms");
+            if (state(c).getBoolean(key, false)) continue;
+            state(c).edit().putBoolean(key, true).apply();
+            boolean today = b.optLong("due_ms") < Life.dayStart() + 86400000L;
+            say(c, p.name() + ", " + b.optString("from") + " బిల్ " + (b.optString("amount").isEmpty() ? "" : b.optString("amount") + " రూపాయలు ")
+                    + (today ? "ఈరోజే" : "రేపు") + " కట్టాలి.", null, null);
+            told++;
+        }
     }
 
     private static boolean dnd(Context c) {
@@ -145,9 +183,15 @@ public class Proactive extends BroadcastReceiver {
             JSONArray days = w.optJSONArray("forecast");
             if (days == null || days.length() == 0) return;
             int chance = days.getJSONObject(0).optInt("rain_chance_pct", 0);
-            if (chance >= 50) {
-                say(c, p.name() + ", ఈరోజు వర్షం పడే అవకాశం " + chance + " శాతం ఉంది. బయటికి వెళ్తే గొడుగు తీసుకెళ్లండి.", null, null);
+            StringBuilder b = new StringBuilder();
+            if (chance >= 50) b.append("ఈరోజు వర్షం పడే అవకాశం ").append(chance).append(" శాతం ఉంది. బయటికి వెళ్తే గొడుగు తీసుకెళ్లండి. ");
+            String severe = Life.severeToday(c);
+            if (severe != null) b.append(severe).append(" ");
+            JSONObject air = Life.air(c);
+            if (air != null && air.optInt("us_aqi") > 150) {
+                b.append("గాలి నాణ్యత బాగాలేదు (AQI ").append(air.optInt("us_aqi")).append("). బయటికి వెళ్తే మాస్క్ పెట్టుకోండి.");
             }
+            if (b.length() > 0) say(c, p.name() + ", " + b.toString().trim(), null, null);
         } catch (Exception ignored) {}
     }
 

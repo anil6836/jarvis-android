@@ -57,6 +57,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     static final String EXTRA_ANNOUNCE_CONTEXT = "jarvis_announce_ctx";
     /** The question after the announcement (default: "రిప్లై ఇవ్వమంటారా?"). */
     static final String EXTRA_ANNOUNCE_ASK = "jarvis_announce_ask";
+    /** Opened to carry out a command straight away (arrived at office, nightly summary...). */
+    static final String EXTRA_RUN = "jarvis_run";
     private String callText;      // non-null while asking about a ringing call
     private int callTries;
     private boolean ringMuted;
@@ -87,13 +89,14 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         brain = new Brain(prefs, store, tools);
         voice = new VoiceIO(this, prefs, this);
         setContentView(buildUi());
-        if (!startCallMode(getIntent()) && !startAnnounce(getIntent())) begin();
+        if (!startCallMode(getIntent()) && !startAnnounce(getIntent()) && !startRun(getIntent())) begin();
     }
 
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (startCallMode(intent)) return;
         if (live == null && !busy && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
+        if (live == null && !busy && !voice.listening && !voice.speaking && startRun(intent)) return;
         if (live == null && !busy && !voice.listening) begin(); // called again while the panel is open
     }
 
@@ -298,6 +301,19 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         return true;
     }
 
+    /** Runs a command without asking first (sent by Jarvis itself, e.g. when he reaches the office). */
+    private boolean startRun(Intent i) {
+        String text = i == null ? null : i.getStringExtra(EXTRA_RUN);
+        if (text == null) return false;
+        i.removeExtra(EXTRA_RUN);
+        main.removeCallbacks(autoClose);
+        MainActivity.inConversation = true;
+        WakeService.pause(this);
+        followUpUsed = false;
+        ask(text);
+        return true;
+    }
+
     /** Reads a new message aloud, then listens once for "reply …" (the brain handles the answer). */
     private boolean startAnnounce(Intent i) {
         String text = i == null ? null : i.getStringExtra(EXTRA_ANNOUNCE);
@@ -432,6 +448,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onSpeakDone() {
         if (callText != null) { main.postDelayed(this::listen, 150); return; }
+        String lang = Tools.takeInterpreter();
+        if (lang != null) { // "హిందీ అనువాదకుడిగా ఉండు": a live two-way interpreter from now on
+            live = new LiveSession(this, prefs, tools, this);
+            live.start(Brain.interpreterInstructions(prefs.name(), lang));
+            return;
+        }
         if (stopped) { closeSheet(); return; }
         // One follow-up question without saying "Jarvis" again, like a real conversation.
         if (prefs.followUp() && !followUpUsed) {

@@ -107,6 +107,16 @@ final class Prefs {
     boolean sfx() { return sp.getBoolean("sfx", true); }
     /** After "Jarvis", keep listening at least this long for Anil to start speaking. */
     int listenWindowSeconds() { return sp.getInt("listen_window", 5); }
+    /** Monthly budget in rupees (0 = none). */
+    int budget() { return sp.getInt("budget", 0); }
+    /** Bluetooth address of his car/bike; connecting turns on driving mode. */
+    String carBluetooth() { return sp.getString("car_bt", ""); }
+    /** How Jarvis talks: normal, serious, funny, english, short. */
+    String mood() { return sp.getString("mood", "normal"); }
+    boolean shakeWake() { return sp.getBoolean("shake_wake", true); }
+    boolean faceDownSilent() { return sp.getBoolean("facedown_silent", true); }
+    /** Every night around 9:30 Jarvis sums up the day and tomorrow. */
+    boolean nightSummary() { return sp.getBoolean("night_summary", true); }
     /** Smart home: one command per line, "name = URL" (Voice Monkey / URL Routine Trigger links). */
     String smartUrls() { return sp.getString("smart_urls", ""); }
     /** The app that controls the lights (Homemate, Zeb Home, Wipro Next...), used as a fallback. */

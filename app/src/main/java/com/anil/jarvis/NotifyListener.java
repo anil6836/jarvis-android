@@ -33,11 +33,12 @@ public class NotifyListener extends NotificationListenerService {
         int id;
         String key, pkg, app, from, text;
         long when;
+        boolean group;
         Notification.Action reply;
     }
 
-    private static final int MAX = 60;
-    private static final long KEEP_MS = 12L * 60 * 60 * 1000;
+    private static final int MAX = 150;
+    private static final long KEEP_MS = 24L * 60 * 60 * 1000;
     private static final Map<String, Item> items = new LinkedHashMap<>();
     private static int nextId = 1;
 
@@ -114,6 +115,7 @@ public class NotifyListener extends NotificationListenerService {
             it.text = text;
             it.when = sbn.getPostTime();
             it.reply = reply;
+            it.group = x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false);
             items.put(it.key, it); // re-insert at the end = newest
             prune();
         }

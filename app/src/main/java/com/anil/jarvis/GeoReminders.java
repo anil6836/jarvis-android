@@ -87,7 +87,12 @@ final class GeoReminders {
 
     /** Adds and arms a reminder. insideNow: Anil is already there, so the first "arrived" is ignored. */
     static JSONObject add(Context c, String place, double lat, double lon, String text, boolean arrive, boolean insideNow) throws Exception {
-        JSONObject r = new JSONObject()
+        return add(c, place, lat, lon, text, arrive, insideNow, false);
+    }
+
+    /** command = true: "text" is something for Jarvis to do there (silent, lights on...), not a reminder. */
+    static JSONObject add(Context c, String place, double lat, double lon, String text, boolean arrive, boolean insideNow, boolean command) throws Exception {
+        JSONObject r = new JSONObject().put("command", command)
                 .put("id", "g" + Long.toString(System.currentTimeMillis() % 100000000L, 36))
                 .put("place", place).put("lat", lat).put("lon", lon)
                 .put("text", text).put("arrive", arrive).put("skip_first", insideNow);
@@ -160,11 +165,17 @@ final class GeoReminders {
                 saveAll(c, list);
                 return;
             }
+            String where = r.optString("place");
+            String text = r.optString("text");
+            if (r.optBoolean("command")) {
+                // an automatic mode for this place: keep it, and let Jarvis carry it out
+                saveAll(c, list);
+                Proactive.run(c, "(" + where + (entering ? " చేరారు" : " నుంచి బయలుదేరారు") + ", ఆటోమేటిక్‌గా) " + text);
+                return;
+            }
             disarm(c, r);
             list.remove(i);
             saveAll(c, list);
-            String where = r.optString("place");
-            String text = r.optString("text");
             Reminders.notify(c, "📍 " + where + (entering ? " చేరారు" : " నుంచి బయలుదేరారు"), text, id.hashCode());
             Announcer.say(c, new Prefs(c).name() + ", " + where + (entering ? " చేరారు. " : " నుంచి బయలుదేరారు. ") + "గుర్తుచేస్తున్నాను: " + text);
             return;

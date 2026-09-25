@@ -47,6 +47,8 @@ public class WakeService extends Service {
     private boolean engineOn;
     /** Keeps the phone's processor awake while listening with the screen off. */
     private PowerManager.WakeLock cpu;
+    /** Shake to call Jarvis, face down to silence. */
+    private Motion motion;
     private final Runnable fallbackResume = () -> {
         if (!MainActivity.inConversation) startEngine();
     };
@@ -97,6 +99,8 @@ public class WakeService extends Service {
         f.addAction(Intent.ACTION_POWER_DISCONNECTED);
         registerReceiver(phoneState, f);
         registerReceiver(battery, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        motion = new Motion(this, () -> main.post(this::onShake));
+        motion.start();
     }
 
     // ---------- low battery warning ----------
@@ -189,6 +193,7 @@ public class WakeService extends Service {
     @Override public void onDestroy() {
         try { unregisterReceiver(phoneState); } catch (Exception ignored) {}
         try { unregisterReceiver(battery); } catch (Exception ignored) {}
+        if (motion != null) motion.stop();
         running = false;
         main.removeCallbacksAndMessages(null);
         engineOn = false;
@@ -263,6 +268,16 @@ public class WakeService extends Service {
                     | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "jarvis:screen");
             wl.acquire(4000);
         } catch (Exception ignored) {}
+    }
+
+    /** Two shakes: open Jarvis just like saying "Jarvis". */
+    private void onShake() {
+        if (MainActivity.inConversation) return;
+        stopEngine();
+        wakeScreen();
+        Vibrator v = getSystemService(Vibrator.class);
+        if (v != null) v.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE));
+        openJarvis();
     }
 
     private void onWake() {
