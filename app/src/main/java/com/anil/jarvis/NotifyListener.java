@@ -127,20 +127,27 @@ public class NotifyListener extends NotificationListenerService {
     private static final Map<String, String> spoken = new java.util.HashMap<>();
     private static final Map<String, Long> lastFrom = new java.util.HashMap<>();
 
-    private boolean chatApp(String pkg) {
-        if (pkg.startsWith("com.whatsapp") || pkg.startsWith("org.telegram") || pkg.equals("org.thunderdog.challegram")
-                || pkg.equals("com.google.android.apps.messaging") || pkg.equals("com.samsung.android.messaging")
-                || pkg.equals("com.instagram.android")) return true;
-        String sms = android.provider.Telephony.Sms.getDefaultSmsPackage(this);
-        return pkg.equals(sms);
+    /** Chat and social apps whose messages Jarvis offers to read. */
+    private static final String[] CHAT_APPS = {"com.whatsapp", "org.telegram", "org.thunderdog.challegram",
+            "com.google.android.apps.messaging", "com.samsung.android.messaging", "com.instagram.android",
+            "com.facebook.orca", "com.facebook.katana", "com.facebook.mlite", "com.snapchat.android",
+            "org.thoughtcrime.securesms", "com.linkedin.android", "com.twitter.android", "com.discord",
+            "in.mohalla.sharechat", "jp.naver.line.android", "com.viber.voip", "com.imo.android.imoim",
+            "com.truecaller", "com.microsoft.teams", "com.Slack", "com.skype.raider", "com.kakao.talk", "com.google.android.apps.dynamite"};
+
+    private boolean chatApp(String pkg, Notification n, Bundle x) {
+        for (String c : CHAT_APPS) if (pkg.startsWith(c)) return true;
+        if (pkg.equals(android.provider.Telephony.Sms.getDefaultSmsPackage(this))) return true;
+        // any other app that posts a chat message (message category or a conversation)
+        return Notification.CATEGORY_MESSAGE.equals(n.category) || x.containsKey(Notification.EXTRA_MESSAGES);
     }
 
-    /** A new chat message: Jarvis says who sent it and what, then asks "రిప్లై ఇవ్వమంటారా?". */
+    /** A new chat message: Jarvis says who sent it and asks "చదవమంటారా?" before reading it. */
     private void maybeReadAloud(StatusBarNotification sbn, Notification n, Bundle x, String app, String from, String text) {
         Prefs p = new Prefs(this);
         boolean driving = p.driving();
         if (!(p.readMessages() || driving) || (p.night() && !driving)) return;
-        if (!chatApp(sbn.getPackageName())) return;
+        if (!chatApp(sbn.getPackageName(), n, x)) return;
         if (x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false) && !driving) return; // groups are too chatty
         if (MainActivity.inConversation || CallControl.busyWithCall()) return;
         if (!driving) {
@@ -166,18 +173,24 @@ public class NotifyListener extends NotificationListenerService {
             Item it = items.get(sbn.getKey());
             if (it != null) { id = it.id; canReply = it.reply != null; }
         }
-        String say = p.name() + ", " + (from.isEmpty() ? app : from) + " నుంచి " + app + " మెసేజ్: " + last;
-        String context = " [notification id " + id + ", " + app + (canReply ? ", can reply with reply_to_notification" : "") + "]";
+        // First only who and where; the message itself is read only if Anil says yes.
+        String say = p.name() + ", " + (from.isEmpty() ? app : from) + " నుంచి " + app + " లో మెసేజ్ వచ్చింది.";
+        String context = " [new message, notification id " + id + " (" + app + (canReply ? ", can reply with reply_to_notification" : "")
+                + "). Its text: \"" + last + "\". Read it to him ONLY if he says yes (అవును/చదువు); if he says no, just say సరే. "
+                + "After reading, ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send only after he says send.]";
         if (android.provider.Settings.canDrawOverlays(this)) {
             try {
                 startActivity(new android.content.Intent(this, SheetActivity.class)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE, say)
+                        .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, "చదవమంటారా?")
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE_CONTEXT, context)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));
                 return;
             } catch (Exception ignored) {}
         }
-        Announcer.say(this, say);
+        // No panel: say only who wrote; if he calls Jarvis and says "చదువు", the brain has the message.
+        Store.get(this).addChat("assistant", say + " చదవమంటారా?" + context, false);
+        Announcer.say(this, say + " చదవాలంటే Jarvis అని పిలిచి, చదువు అనండి.");
     }
 
     private static final Map<String, Long> announced = new java.util.HashMap<>();

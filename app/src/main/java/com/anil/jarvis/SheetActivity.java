@@ -45,7 +45,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private OrbView orb;
     private TextView status, heard, reply;
     private IconView action;
-    private boolean busy, followUpUsed, stopped;
+    private boolean busy, stopped;
+    /** How many more times to listen after Jarvis speaks without "Jarvis" again (a conversation). */
+    private int followUps = 1;
+    /** A message/suggestion flow: keep listening for the answers even if follow-up is off. */
+    private boolean dialog;
     private int generation;
 
     private final Runnable autoClose = this::closeSheet;
@@ -309,12 +313,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacks(autoClose);
         MainActivity.inConversation = true;
         WakeService.pause(this);
-        followUpUsed = false;
+        followUps = 2;
         ask(text);
         return true;
     }
 
-    /** Reads a new message aloud, then listens once for "reply …" (the brain handles the answer). */
+    /** Says who sent a message and asks before reading it; then listens for the answers (the brain handles them). */
     private boolean startAnnounce(Intent i) {
         String text = i == null ? null : i.getStringExtra(EXTRA_ANNOUNCE);
         if (text == null) return false;
@@ -327,11 +331,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         String said = text + (ask == null ? ". రిప్లై ఇవ్వమంటారా?" : " " + ask);
         store.addChat("assistant", said + (ctx == null ? "" : ctx), false);
         heard.setVisibility(View.GONE);
-        status.setText(ask == null ? "కొత్త మెసేజ్" : "Jarvis సూచన");
+        status.setText(ask == null || "చదవమంటారా?".equals(ask) ? "కొత్త మెసేజ్" : "Jarvis సూచన");
         showReply(text, false);
         setAction(IconView.STOP);
         orb.setState(OrbView.SPEAKING);
-        followUpUsed = false;
+        // "చదవమంటారా?" -> read -> "రిప్లై ఇవ్వమంటారా?" -> his reply -> "పంపమంటారా?" -> send
+        followUps = 4;
+        dialog = true;
         voice.speak(said, prefs.speechRate());
         return true;
     }
@@ -456,8 +462,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         }
         if (stopped) { closeSheet(); return; }
         // One follow-up question without saying "Jarvis" again, like a real conversation.
-        if (prefs.followUp() && !followUpUsed) {
-            followUpUsed = true;
+        if ((prefs.followUp() || dialog) && followUps > 0) {
+            followUps--;
             main.postDelayed(this::listen, 250);
         } else {
             idle();

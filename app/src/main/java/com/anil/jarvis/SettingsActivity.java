@@ -231,7 +231,7 @@ public class SettingsActivity extends Activity {
         // ---- calls, reminders, morning briefing
         section("కాల్స్, ఉదయం బ్రీఫింగ్");
         announceCalls = toggle("కాల్ వస్తే ఎవరో పైకి చెప్పు (నోటిఫికేషన్ యాక్సెస్ కావాలి)", prefs.announceCalls());
-        readMessages = toggle("కొత్త WhatsApp/SMS/Telegram మెసేజ్ వస్తే పైకి చదివి, రిప్లై ఇవ్వమంటారా అని అడుగు", prefs.readMessages());
+        readMessages = toggle("కొత్త మెసేజ్ వస్తే (WhatsApp, SMS, Telegram, Instagram, Facebook, Snapchat...) ఎవరి నుంచో చెప్పి, \"చదవమంటారా?\" అని అడుగు", prefs.readMessages());
         batteryWarn = toggle("బ్యాటరీ 15%, 5% కి పడితే గొంతుతో చెప్పు", prefs.batteryWarn());
         callVoice = toggle("తర్వాత \"ఎత్తు\" అంటే కాల్ ఎత్తు, \"కట్\" అంటే కట్ చెయ్", prefs.callByVoice());
         briefing = toggle("రోజూ ఉదయం బ్రీఫింగ్ తనంతట తానే", prefs.briefingOn());
