@@ -1,10 +1,14 @@
 package com.anil.jarvis;
 
 import android.Manifest;
+import android.app.ActivityOptions;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.media.AudioManager;
+import android.os.Build;
+import android.os.Bundle;
 import android.os.SystemClock;
 import android.telecom.TelecomManager;
 
@@ -64,13 +68,23 @@ final class CallControl {
         return c.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED;
     }
 
+    /** The phone's own ringtone is playing (an incoming phone call), readable without phone-state permission. */
+    private static boolean phoneRingtone(Context c) {
+        try {
+            AudioManager am = c.getSystemService(AudioManager.class);
+            return am != null && am.getMode() == AudioManager.MODE_RINGTONE;
+        } catch (Exception e) { return false; }
+    }
+
     /** Returns "answered", "no_call", "need_permission" or "failed". */
     @SuppressWarnings("deprecation")
     static String answer(Context c) {
         Notification n = ringing;
-        if (n == null && !ringingIsPhone) {
-            // Maybe a phone call Jarvis did not see: still try the phone service.
-            if (!canTelecom(c)) return "no_call";
+        if (n == null) {
+            // Maybe a phone call Jarvis did not see: try the phone service only if something is really ringing,
+            // since acceptRingingCall() gives no result and would otherwise report "answered" for nothing.
+            if (!phoneRingtone(c)) return "no_call";
+            if (!canTelecom(c)) return "need_permission";
         }
         if (n == null || ringingIsPhone) {
             if (canTelecom(c)) {
@@ -80,7 +94,7 @@ final class CallControl {
                 } catch (Exception ignored) {}
             }
         }
-        if (n != null && press(n, "android.answerIntent", ANSWER)) { ringing = null; return "answered"; }
+        if (n != null && press(c, n, "android.answerIntent", ANSWER)) { ringing = null; return "answered"; }
         if (ringingIsPhone && !canTelecom(c)) return "need_permission";
         return n == null ? "no_call" : "failed";
     }
@@ -89,6 +103,8 @@ final class CallControl {
     @SuppressWarnings("deprecation")
     static String decline(Context c) {
         Notification n = ringing;
+        // nothing seen ringing and no ringtone: endCall() would hang up the call in progress instead
+        if (n == null && !phoneRingtone(c)) return "no_call";
         if (n == null || ringingIsPhone) {
             if (canTelecom(c)) {
                 try {
@@ -97,7 +113,7 @@ final class CallControl {
                 } catch (Exception ignored) {}
             }
         }
-        if (n != null && press(n, "android.declineIntent", DECLINE)) { ringing = null; return "declined"; }
+        if (n != null && press(c, n, "android.declineIntent", DECLINE)) { ringing = null; return "declined"; }
         if (ringingIsPhone && !canTelecom(c)) return "need_permission";
         return n == null ? "no_call" : "failed";
     }
@@ -114,29 +130,41 @@ final class CallControl {
                 } catch (Exception ignored) {}
             }
         }
-        if (n != null && press(n, "android.hangUpIntent", HANG_UP)) { ongoing = null; return "ended"; }
-        if (n != null && press(n, "android.declineIntent", DECLINE)) { ongoing = null; return "ended"; }
+        if (n != null && press(c, n, "android.hangUpIntent", HANG_UP)) { ongoing = null; return "ended"; }
+        if (n != null && press(c, n, "android.declineIntent", DECLINE)) { ongoing = null; return "ended"; }
         if (!canTelecom(c)) return "need_permission";
         return n == null ? "no_call" : "failed";
     }
 
     /** Presses a call-notification button: the call-style intent first, then a button with a matching name. */
-    private static boolean press(Notification n, String extraKey, String[] words) {
+    private static boolean press(Context c, Notification n, String extraKey, String[] words) {
         try {
             if (n.extras != null) {
                 Object pi = n.extras.getParcelable(extraKey);
-                if (pi instanceof PendingIntent) { ((PendingIntent) pi).send(); return true; }
+                if (pi instanceof PendingIntent) { send(c, (PendingIntent) pi); return true; }
             }
             if (n.actions != null) {
                 for (Notification.Action a : n.actions) {
                     if (a == null || a.title == null || a.actionIntent == null) continue;
                     String t = a.title.toString().toLowerCase(Locale.ROOT);
                     for (String w : words) {
-                        if (t.contains(w)) { a.actionIntent.send(); return true; }
+                        if (t.contains(w)) { send(c, a.actionIntent); return true; }
                     }
                 }
             }
         } catch (Exception ignored) {}
         return false;
+    }
+
+    /** Android 14+ does not pass our background-start allowance to the app's call screen unless we opt in. */
+    private static void send(Context c, PendingIntent pi) throws PendingIntent.CanceledException {
+        if (Build.VERSION.SDK_INT >= 34) {
+            Bundle opts = ActivityOptions.makeBasic()
+                    .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                    .toBundle();
+            pi.send(c, 0, null, null, null, null, opts);
+        } else {
+            pi.send();
+        }
     }
 }

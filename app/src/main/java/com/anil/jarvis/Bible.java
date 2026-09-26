@@ -6,7 +6,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.Calendar;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
@@ -37,22 +37,37 @@ final class Bible {
             {"james", "యాకోబుపత్రిక"}, {"1 peter", "1పేతురుపత్రిక"}, {"2 peter", "2పేతురుపత్రిక"}, {"1 john", "1యోహానుపత్రిక"},
             {"2 john", "2యోహానుపత్రిక"}, {"3 john", "3యోహానుపత్రిక"}, {"jude", "యూదాపత్రిక"}, {"revelation", "ప్రకటనగ్రంథం"}};
 
-    private static final Map<String, String> ALIAS = new HashMap<>();
+    /** Book names (normalized with norm(), so "1 samuel", "1samuel" and "1సమూ" all match) -> folder; in book order. */
+    private static final Map<String, String> ALIAS = new LinkedHashMap<>();
     static {
-        for (String[] b : BOOKS) { ALIAS.put(b[0], b[1]); ALIAS.put(b[1], b[1]); }
+        for (String[] b : BOOKS) { put(b[0], b[1]); put(b[1], b[1]); }
         String[][] more = {{"psalm", "కీర్తన"}, {"కీర్తనలు", "కీర్తన"}, {"సామెతలు", "సామెత"}, {"ఆదికాండము", "ఆది"}, {"నిర్గమకాండము", "నిర్గమ"},
                 {"యోహాను సువార్త", "యోహాను"}, {"మత్తయి సువార్త", "మత్తయి"}, {"మార్కు సువార్త", "మార్కు"}, {"లూకా సువార్త", "లూకా"},
                 {"రోమా", "రోమాపత్రిక"}, {"హెబ్రీ", "హెబ్రీపత్రిక"}, {"ప్రకటన", "ప్రకటనగ్రంథం"}, {"అపొస్తలుల కార్యములు", "అపొస్తలులకార్యములు"},
                 {"songs", "పరమ"}, {"song of songs", "పరమ"}, {"యెషయా గ్రంథము", "యెషయా"}, {"revelations", "ప్రకటనగ్రంథం"}};
-        for (String[] m : more) ALIAS.put(m[0], m[1]);
+        for (String[] m : more) put(m[0], m[1]);
+    }
+
+    private static void put(String name, String folder) {
+        String k = norm(name);
+        if (!ALIAS.containsKey(k)) ALIAS.put(k, folder);
+    }
+
+    /** Lower case, "first/i/1st" -> "1" etc., and no spaces at all, the same for the question and the book list. */
+    private static String norm(String s) {
+        return s.trim().toLowerCase(Locale.ROOT)
+                .replaceAll("^(first|i|1st)\\s+", "1").replaceAll("^(second|ii|2nd)\\s+", "2").replaceAll("^(third|iii|3rd)\\s+", "3")
+                .replaceAll("[\\s\\u200c\\u200d]+", "");
     }
 
     static String folder(String book) {
         if (book == null) return null;
-        String b = book.trim().toLowerCase(Locale.ROOT).replaceAll("^(first|i)\\s+", "1 ").replaceAll("^(second|ii)\\s+", "2 ")
-                .replaceAll("^(third|iii)\\s+", "3 ").replaceAll("^(\\d)(\\S)", "$1 $2");
+        String b = norm(book);
+        if (b.isEmpty()) return null;
         String f = ALIAS.get(b);
         if (f != null) return f;
+        // a partial name: only when there is enough of it ("" or "1" would match every book)
+        if (b.length() < 3) return null;
         for (Map.Entry<String, String> e : ALIAS.entrySet()) if (e.getKey().startsWith(b) || b.startsWith(e.getKey())) return e.getValue();
         return null;
     }

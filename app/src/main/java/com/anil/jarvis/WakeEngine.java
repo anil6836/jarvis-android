@@ -65,6 +65,8 @@ final class WakeEngine {
     private String melIn, embIn, wwIn;
 
     private volatile boolean running;
+    /** Set by close(): a model still loading in the background must free itself instead of being kept. */
+    private volatile boolean closed;
     private Thread thread;
 
     private final ArrayDeque<float[]> melFrames = new ArrayDeque<>();
@@ -86,30 +88,47 @@ final class WakeEngine {
 
     /** Loads the "Jarvis" word detector in the background (downloads its model the first time). */
     private void loadJarvisWord() {
-        if ((!jarvisWord && voicePrint == null) || vosk != null || voskLoading) return;
+        if ((!jarvisWord && voicePrint == null) || vosk != null || voskLoading || closed) return;
         voskLoading = true;
         new Thread(() -> {
+            org.vosk.Model m = null;
+            org.vosk.Recognizer r = null;
+            org.vosk.SpeakerModel spk = null;
+            boolean published = false;
             try {
                 java.io.File dir = VoskModel.ensure(ctx, listener::onStatus);
+                if (closed) return; // the service went away while downloading
                 org.vosk.LibVosk.setLogLevel(org.vosk.LogLevel.WARNINGS);
-                org.vosk.Model m = new org.vosk.Model(dir.getAbsolutePath());
-                org.vosk.Recognizer r = new org.vosk.Recognizer(m, (float) RATE, "[\"jarvis\", \"hey jarvis\", \"[unk]\"]");
+                m = new org.vosk.Model(dir.getAbsolutePath());
+                r = new org.vosk.Recognizer(m, (float) RATE, "[\"jarvis\", \"hey jarvis\", \"[unk]\"]");
                 r.setWords(true);
-                if (voicePrint != null) {
+                if (voicePrint != null && !closed) {
                     try {
                         java.io.File sd = VoskModel.ensureSpk(ctx, listener::onStatus);
-                        spkModel = new org.vosk.SpeakerModel(sd.getAbsolutePath());
-                        r.setSpeakerModel(spkModel);
+                        spk = new org.vosk.SpeakerModel(sd.getAbsolutePath());
+                        r.setSpeakerModel(spk);
                     } catch (Throwable e) {
-                        listener.onStatus("గొంతు గుర్తింపు సిద్ధం కాలేదు (" + e.getMessage() + "); అందరి గొంతుకీ పలుకుతుంది.");
+                        if (!closed) listener.onStatus("గొంతు గుర్తింపు సిద్ధం కాలేదు (" + e.getMessage() + "); అందరి గొంతుకీ పలుకుతుంది.");
                     }
                 }
-                voskModel = m;
-                vosk = r;
-                listener.onStatus("ready");
+                synchronized (WakeEngine.this) {
+                    // close() may have run meanwhile: then nobody would ever free these
+                    if (!closed) {
+                        spkModel = spk;
+                        voskModel = m;
+                        vosk = r;
+                        published = true;
+                    }
+                }
+                if (published) listener.onStatus("ready");
             } catch (Throwable e) {
-                listener.onStatus("\"Jarvis\" పదం సిద్ధం కాలేదు (" + e.getMessage() + "). \"Hey Jarvis\" పనిచేస్తుంది.");
+                if (!closed) listener.onStatus("\"Jarvis\" పదం సిద్ధం కాలేదు (" + e.getMessage() + "). \"Hey Jarvis\" పనిచేస్తుంది.");
             } finally {
+                if (!published) {
+                    try { if (r != null) r.close(); } catch (Throwable ignored) {}
+                    try { if (m != null) m.close(); } catch (Throwable ignored) {}
+                    try { if (spk != null) spk.close(); } catch (Throwable ignored) {}
+                }
                 voskLoading = false;
             }
         }, "jarvis-word-load").start();
@@ -159,17 +178,26 @@ final class WakeEngine {
     }
 
     void close() {
+        closed = true;
         stop();
         try { if (mel != null) mel.close(); } catch (Exception ignored) {}
         try { if (emb != null) emb.close(); } catch (Exception ignored) {}
         try { if (ww != null) ww.close(); } catch (Exception ignored) {}
         mel = emb = ww = null;
-        try { if (vosk != null) vosk.close(); } catch (Throwable ignored) {}
-        try { if (voskModel != null) voskModel.close(); } catch (Throwable ignored) {}
-        try { if (spkModel != null) spkModel.close(); } catch (Throwable ignored) {}
-        spkModel = null;
-        vosk = null;
-        voskModel = null;
+        org.vosk.Recognizer r;
+        org.vosk.Model m;
+        org.vosk.SpeakerModel sm;
+        synchronized (this) { // pairs with the loader thread publishing its models
+            r = vosk;
+            m = voskModel;
+            sm = spkModel;
+            spkModel = null;
+            vosk = null;
+            voskModel = null;
+        }
+        try { if (r != null) r.close(); } catch (Throwable ignored) {}
+        try { if (m != null) m.close(); } catch (Throwable ignored) {}
+        try { if (sm != null) sm.close(); } catch (Throwable ignored) {}
     }
 
     private byte[] asset(String name) throws Exception {

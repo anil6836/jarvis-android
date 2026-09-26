@@ -44,7 +44,8 @@ final class LiveSession {
         void onLiveJarvis(String text);
         void onLiveLevel(float level);
         void onLiveError(String message);
-        void onLiveEnded(String reason);
+        /** session is the one that ended; a host ignores it when it is no longer its current session. */
+        void onLiveEnded(LiveSession session, String reason);
     }
 
     private static final int RATE = 24000;
@@ -60,8 +61,15 @@ final class LiveSession {
 
     private final Context ctx;
     private final Prefs prefs;
+    private final Store store;
     private final Tools tools;
     private final Listener l;
+    /** Anil's turns whose transcript has not arrived yet (committed audio minus finished transcriptions). */
+    private final Object transcripts = new Object();
+    private int pendingTranscripts;
+    /** Set when the interpreter tool ran: this session ends and the host starts the interpreter. */
+    private volatile String interpreterLang;
+    private volatile String endReason = "bye";
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService toolRunner = Executors.newSingleThreadExecutor();
     private final LinkedBlockingQueue<Chunk> playQueue = new LinkedBlockingQueue<>();
@@ -81,9 +89,13 @@ final class LiveSession {
     LiveSession(Context c, Prefs prefs, Tools tools, Listener l) {
         this.ctx = c.getApplicationContext();
         this.prefs = prefs;
+        this.store = Store.get(c);
         this.tools = tools;
         this.l = l;
     }
+
+    /** The language to interpret next, when this session ended to hand over to the live interpreter. */
+    String interpreterLang() { return interpreterLang; }
 
     // ================================================================ start / stop
 
@@ -140,11 +152,12 @@ final class LiveSession {
             try { t.join(800); } catch (InterruptedException ignored) {}
         }
         toolRunner.shutdownNow();
+        synchronized (transcripts) { transcripts.notifyAll(); }
         restoreAudio();
         if (client != null) {
             try { client.dispatcher().executorService().shutdown(); } catch (Exception ignored) {}
         }
-        main.post(() -> l.onLiveEnded(reason));
+        main.post(() -> l.onLiveEnded(this, reason));
     }
 
     boolean isOpen() { return open && !closed; }
@@ -228,11 +241,24 @@ final class LiveSession {
                 lastActivity = SystemClock.elapsedRealtime();
                 state(OrbView.THINKING, "ఆలోచిస్తున్నాను…");
                 break;
+            case "input_audio_buffer.committed":
+                // Anil's turn is final; its transcript follows (completed or failed).
+                synchronized (transcripts) { pendingTranscripts++; }
+                break;
             case "conversation.item.input_audio_transcription.completed": {
                 String t = e.optString("transcript", "").trim();
+                // Saved here, not on the main thread, so the tools of this turn can check his exact words.
+                if (!t.isEmpty()) store.addChat("user", t, false);
+                transcriptDone();
                 if (!t.isEmpty()) main.post(() -> l.onLiveUser(t));
                 break;
             }
+            case "conversation.item.input_audio_transcription.failed":
+                // His words are unknown: save an empty turn so a check of "what did he say last"
+                // (payment / send confirmations) fails safe instead of reading an older "yes".
+                store.addChat("user", "", false);
+                transcriptDone();
+                break;
             case "response.created":
                 responseActive = true;
                 synchronized (partial) { partial.setLength(0); }
@@ -320,6 +346,33 @@ final class LiveSession {
         }
     }
 
+    private void transcriptDone() {
+        synchronized (transcripts) {
+            if (pendingTranscripts > 0) pendingTranscripts--;
+            transcripts.notifyAll();
+        }
+    }
+
+    /** Waits (up to 5 s) until Anil's words of this turn are in the Store, so tools can check them. */
+    private void awaitTranscripts() {
+        long until = SystemClock.elapsedRealtime() + 5000;
+        synchronized (transcripts) {
+            while (pendingTranscripts > 0 && !closed) {
+                long left = until - SystemClock.elapsedRealtime();
+                if (left <= 0) {
+                    pendingTranscripts = 0; // treat them as lost, so later tools don't wait for them again
+                    break;
+                }
+                try {
+                    transcripts.wait(left);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+    }
+
     private void runTool(String name, String callId, String rawArgs) {
         String result;
         if ("end_conversation".equals(name)) {
@@ -327,9 +380,20 @@ final class LiveSession {
             main.postDelayed(() -> stop("bye"), 12000); // hang up even if no goodbye arrives
             result = "{\"ok\":true}";
         } else {
+            awaitTranscripts();
+            if (closed) return; // stopped while waiting: don't act any more
             JSONObject args;
             try { args = new JSONObject(rawArgs); } catch (Exception ex) { args = new JSONObject(); }
             result = tools.execute(name, args);
+            // The interpreter can't run inside this session: after the short "starting" line,
+            // end it and let the screen start a live interpreter session.
+            String lang = Tools.takeInterpreter();
+            if (lang != null) {
+                interpreterLang = lang;
+                endReason = "interpreter";
+                endRequested = true;
+                main.postDelayed(() -> stop("interpreter"), 12000);
+            }
         }
         final String res = result;
         send(safe(() -> new JSONObject().put("type", "conversation.item.create").put("item", new JSONObject()
@@ -342,7 +406,7 @@ final class LiveSession {
             main.postDelayed(() -> waitAndClose(tries + 1), 250);
             return;
         }
-        stop("bye");
+        stop(endReason);
     }
 
     private interface JsonMaker { JSONObject make() throws Exception; }

@@ -50,7 +50,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private int followUps = 1;
     /** A message/suggestion flow: keep listening for the answers even if follow-up is off. */
     private boolean dialog;
-    private int generation;
+    /** Bumped to drop (and stop the tools of) an answer that is still on its way. */
+    private volatile int generation;
+    /** What the recognizer has heard so far in the current listen() only (partial results). */
+    private String partialHeard = "";
+    /** "చెప్పండి, Anil?" is playing; only the callback of the latest greeting may start listening. */
+    private boolean greeting;
+    private int greetToken;
 
     private final Runnable autoClose = this::closeSheet;
 
@@ -100,9 +106,9 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (startCallMode(intent)) return;
-        if (live == null && !busy && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
-        if (live == null && !busy && !voice.listening && !voice.speaking && startRun(intent)) return;
-        if (live == null && !busy && !voice.listening) begin(); // called again while the panel is open
+        if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
+        if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startRun(intent)) return;
+        if (live == null && !busy && !greeting && !voice.listening) begin(); // called again while the panel is open
     }
 
     @Override protected void onStart() {
@@ -118,6 +124,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     @Override protected void onDestroy() {
+        generation++; // a reply still on its way is dropped, and its remaining tools don't run
+        greetToken++;
         WaMedia.stop();
         muteRing(false);
         if (live != null) live.stop("closed");
@@ -249,6 +257,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     private void begin() {
         main.removeCallbacks(autoClose);
+        followUps = 1;
+        dialog = false;
         MainActivity.inConversation = true;
         WakeService.pause(this);
         orb.setState(OrbView.SPEAKING);
@@ -260,13 +270,28 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             return;
         }
         Sfx.chirp(this, prefs);
+        final int token = ++greetToken;
+        greeting = true;
         Greeting.play(this, prefs, () -> {
+            if (token != greetToken) return; // a newer greeting, a call or stop took over
+            greeting = false;
             if (isFinishing()) return;
             if (prefs.liveReady() && Net.online(this)) startLive(); else listen();
         });
     }
 
+    /** Forget a greeting that is still playing, so its callback does nothing. */
+    private void cancelGreeting() {
+        greetToken++;
+        greeting = false;
+    }
+
     private void listen() {
+        main.removeCallbacks(autoClose);
+        // Only partial words heard in THIS listen may be sent on a timeout, never the previous turn's.
+        partialHeard = "";
+        heard.setText("");
+        heard.setVisibility(View.GONE);
         if (!voice.canListen()) {
             showReply("ఈ ఫోన్‌లో Google వాయిస్ టైపింగ్ లేదు.", true);
             main.postDelayed(autoClose, 4000);
@@ -284,6 +309,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         String text = i == null ? null : i.getStringExtra(EXTRA_CALL);
         if (text == null) return false;
         i.removeExtra(EXTRA_CALL);
+        cancelGreeting();
         if (live != null) live.stop("call");
         voice.stopSpeaking();
         if (voice.listening) voice.cancelListening();
@@ -344,14 +370,29 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         return true;
     }
 
-    private static final String[] CALL_NO = {"కట్", "cut", "reject", "వద్దు", "decline", "తర్వాత", "busy", "బిజీ", "no", "నో", "తీయకు", "ఎత్తకు"};
-    private static final String[] CALL_YES = {"ఎత్తు", "ఎత్తండి", "ఎత్తి", "లిఫ్ట్", "lift", "answer", "attend", "pick", "yes", "అవును", "ఓకే", "ok", "సరే", "మాట్లాడ", "ఆన్సర్"};
+    private static final String[] CALL_NO = {"కట్", "cut", "reject", "వద్దు", "decline", "తర్వాత", "busy", "బిజీ", "no", "నో", "తీయకు", "ఎత్తకు", "ఎత్తొద్దు"};
+    private static final String[] CALL_YES = {"ఎత్తు", "ఎత్తండి", "ఎత్తి", "లిఫ్ట్", "lift", "answer", "attend", "pick", "yes", "అవును", "ఓకే", "ok", "okay", "సరే", "మాట్లాడ", "ఆన్సర్"};
 
     private void onCallWords(String t) {
         String low = t.toLowerCase(Locale.ROOT);
-        for (String w : CALL_NO) if (low.contains(w)) { doCall(false); return; }
-        for (String w : CALL_YES) if (low.contains(w)) { doCall(true); return; }
+        if (hasWord(low, CALL_NO)) { doCall(false); return; }
+        if (hasWord(low, CALL_YES)) { doCall(true); return; }
         askCallAgain();
+    }
+
+    /**
+     * Whole-word match, so "no" doesn't match "now", "not" or "know". English words must match a whole
+     * word; Telugu words may carry an ending (ఎత్తండి, వద్దులే, మాట్లాడతా), so they match the word's start.
+     */
+    private static boolean hasWord(String low, String[] words) {
+        for (String tok : low.split("[^\\p{L}\\p{M}\\p{N}]+")) {
+            if (tok.isEmpty()) continue;
+            for (String w : words) {
+                if (tok.equals(w)) return true;
+                if (w.charAt(0) > 0x7F && tok.startsWith(w)) return true;
+            }
+        }
+        return false;
     }
 
     private void askCallAgain() {
@@ -413,6 +454,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private void onAction() {
         WaMedia.stop(); // a voice message playing: the stop button stops it
         if (callText != null) { endCallMode(); closeSheet(); return; }
+        if (greeting) { cancelGreeting(); closeSheet(); return; } // stop pressed during "చెప్పండి"
         if (live != null) { live.stop("user"); return; }
         if (busy) { generation++; busy = false; closeSheet(); return; }
         if (voice.speaking) { voice.stopSpeaking(); closeSheet(); return; }
@@ -422,9 +464,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onListening() { status.setText("వింటున్నాను… మాట్లాడండి"); }
 
-    @Override public void onPartial(String text) { showHeard(text); }
+    @Override public void onPartial(String text) {
+        partialHeard = text == null ? "" : text.trim();
+        showHeard(text);
+    }
 
     @Override public void onHeard(String text) {
+        partialHeard = "";
         if (callText != null) {
             if (text == null || text.trim().isEmpty()) askCallAgain(); else onCallWords(text);
             return;
@@ -434,12 +480,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     @Override public void onListenFailed(int error) {
+        String partial = partialHeard; // heard in this listen only (reset by listen())
+        partialHeard = "";
         if (callText != null) {
-            String p = heard.getVisibility() == View.VISIBLE ? heard.getText().toString() : "";
-            if (!p.trim().isEmpty()) onCallWords(p); else askCallAgain();
+            if (!partial.isEmpty()) onCallWords(partial); else askCallAgain();
             return;
         }
-        String partial = heard.getVisibility() == View.VISIBLE ? heard.getText().toString().replace("“", "").replace("”", "").trim() : "";
         if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && !partial.isEmpty()) {
             ask(partial);
             return;
@@ -458,9 +504,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onSpeakDone() {
         if (callText != null) { main.postDelayed(this::listen, 150); return; }
         String lang = Tools.takeInterpreter();
-        if (lang != null) { // "హిందీ అనువాదకుడిగా ఉండు": a live two-way interpreter from now on
-            live = new LiveSession(this, prefs, tools, this);
-            live.start(Brain.interpreterInstructions(prefs.name(), lang));
+        if (lang != null && live == null) { // "హిందీ అనువాదకుడిగా ఉండు": a live two-way interpreter from now on
+            startInterpreter(lang);
             return;
         }
         if (stopped) { closeSheet(); return; }
@@ -478,6 +523,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onVoiceReady() {}
 
     private void idle() {
+        Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         orb.setState(OrbView.IDLE);
         status.setText("ఇంకేమైనా కావాలంటే మైక్ నొక్కండి");
         setAction(IconView.MIC);
@@ -486,6 +532,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     private void ask(String text) {
+        main.removeCallbacks(autoClose);
         if (!prefs.hasBrain()) {
             showReply("నా మెదడుకి API key లేదు. Jarvis యాప్ సెట్టింగ్స్‌లో పెట్టండి.", true);
             idle();
@@ -499,10 +546,16 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         status.setText("ఆలోచిస్తున్నాను…");
         setAction(IconView.STOP);
         final int gen = ++generation;
+        Brain.Status progress = new Brain.Status() {
+            @Override public void update(String s) { main.post(() -> { if (gen == generation) status.setText(s); }); }
+            @Override public boolean cancelled() { return gen != generation; } // stop pressed / panel closed
+        };
         worker.submit(() -> {
             String answer = null, error = null;
             try {
-                answer = brain.ask(history, text, null, s -> main.post(() -> { if (gen == generation) status.setText(s); }));
+                answer = brain.ask(history, text, null, progress);
+            } catch (java.util.concurrent.CancellationException e) {
+                return; // Anil stopped it: no error bubble
             } catch (Http.ApiError e) {
                 error = e.status == 401 || e.status == 403 ? "API key పనిచేయడం లేదు. సెట్టింగ్స్ చూడండి."
                         : e.status == 429 ? "కొంచెం ఆగి మళ్లీ అడగండి (లిమిట్/బ్యాలెన్స్)."
@@ -527,8 +580,17 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     // ================================================================ live mode
 
     private void startLive() {
+        if (live != null) return;
+        Tools.takeInterpreter(); // a stale request from an earlier turn
         live = new LiveSession(this, prefs, tools, this);
         live.start(brain.liveInstructions(store.chat()));
+    }
+
+    private void startInterpreter(String lang) {
+        if (live != null) return;
+        main.removeCallbacks(autoClose);
+        live = new LiveSession(this, prefs, tools, this);
+        live.start(Brain.interpreterInstructions(prefs.name(), lang));
     }
 
     @Override public void onLiveState(int orbState, String text) {
@@ -537,8 +599,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     @Override public void onLiveUser(String text) {
-        store.addChat("user", text, false);
-        showHeard(text);
+        showHeard(text); // LiveSession has already saved it to the Store
     }
 
     @Override public void onLiveJarvisPartial(String text) { showReply(text, false); }
@@ -552,8 +613,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onLiveError(String message) { showReply("సమస్య: " + message, true); }
 
-    @Override public void onLiveEnded(String reason) {
+    @Override public void onLiveEnded(LiveSession session, String reason) {
+        if (session != live) return; // an older session: the current one is still running
         live = null;
+        if (isFinishing() || callText != null) return; // a call took over: keep the panel for it
+        String lang = session.interpreterLang();
+        if (lang != null) { startInterpreter(lang); return; } // the interpreter tool ran in live mode
         main.postDelayed(autoClose, 1200);
     }
 

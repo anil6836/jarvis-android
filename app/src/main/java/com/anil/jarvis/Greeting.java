@@ -22,6 +22,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Jarvis's instant reply when called: "చెప్పండి, Anil?".
@@ -39,8 +40,9 @@ final class Greeting {
     /** Plays the greeting, then runs done on the main thread (always, even on failure). */
     static void play(Context c, Prefs p, Runnable done) {
         Context app = c.getApplicationContext();
-        final boolean[] fired = {false};
-        Runnable once = () -> { if (!fired[0]) { fired[0] = true; done.run(); } };
+        // Once done has run (normally, or by the 6 s fallback) the mic may be open: never play after that.
+        final AtomicBoolean fired = new AtomicBoolean(false);
+        Runnable once = () -> { if (fired.compareAndSet(false, true)) done.run(); };
         main.postDelayed(once, 6000); // never leave Anil waiting
         String key = p.openAiKey().trim();
         if (p.naturalVoice() && !key.isEmpty()) {
@@ -48,14 +50,14 @@ final class Greeting {
                 try {
                     File f = new File(app.getFilesDir(), "greet_" + p.naturalVoiceName() + "_" + Integer.toHexString(text(p).hashCode()) + ".pcm");
                     if (!f.exists()) download(key, p.naturalVoiceName(), text(p), f);
-                    playPcm(f);
+                    if (!fired.get()) playPcm(f, fired); // a slow first download: the fallback already started listening
                     main.post(once);
                 } catch (Exception e) {
-                    main.post(() -> google(app, p, once));
+                    main.post(() -> google(app, p, once, fired));
                 }
             }, "jarvis-greet").start();
         } else {
-            google(app, p, once);
+            google(app, p, once, fired);
         }
     }
 
@@ -92,7 +94,7 @@ final class Greeting {
         }
     }
 
-    private static void playPcm(File f) throws Exception {
+    private static void playPcm(File f, AtomicBoolean fired) throws Exception {
         byte[] pcm;
         try (InputStream in = new FileInputStream(f)) {
             pcm = new byte[(int) f.length() & ~1];
@@ -114,34 +116,46 @@ final class Greeting {
                 .build();
         try {
             t.write(pcm, 0, pcm.length);
+            if (fired.get()) return;
             t.play();
             long ms = pcm.length / 2 * 1000L / RATE;
-            SystemClock.sleep(ms + 120);
+            long end = SystemClock.elapsedRealtime() + ms + 120;
+            // Stop at once if the fallback opens the mic meanwhile.
+            while (SystemClock.elapsedRealtime() < end && !fired.get()) SystemClock.sleep(20);
             t.stop();
         } finally {
             t.release();
         }
     }
 
-    private static void google(Context app, Prefs p, Runnable done) {
+    private static void google(Context app, Prefs p, Runnable done, AtomicBoolean fired) {
+        if (fired.get()) return; // already listening: stay quiet
         if (tts != null) {
-            speak(p, done);
+            speak(p, done, fired);
             return;
         }
         tts = new TextToSpeech(app, status -> main.post(() -> {
-            if (status != TextToSpeech.SUCCESS) { done.run(); return; }
+            if (status != TextToSpeech.SUCCESS || tts == null) {
+                // Drop the broken engine so the next greeting tries again.
+                TextToSpeech dead = tts;
+                tts = null;
+                if (dead != null) try { dead.shutdown(); } catch (Exception ignored) {}
+                done.run();
+                return;
+            }
             tts.setLanguage(Locale.forLanguageTag("te-IN"));
-            speak(p, done);
+            speak(p, done, fired);
         }));
     }
 
-    private static void speak(Prefs p, Runnable done) {
+    private static void speak(Prefs p, Runnable done, AtomicBoolean fired) {
+        if (fired.get()) return;
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String id) {}
             @Override public void onDone(String id) { main.post(done); }
             @Override public void onError(String id) { main.post(done); }
         });
         tts.setSpeechRate(Math.max(1.0f, p.speechRate()));
-        tts.speak(text(p), TextToSpeech.QUEUE_FLUSH, null, "greet");
+        if (tts.speak(text(p), TextToSpeech.QUEUE_FLUSH, null, "greet") != TextToSpeech.SUCCESS) main.post(done);
     }
 }

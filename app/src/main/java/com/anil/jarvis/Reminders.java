@@ -42,6 +42,19 @@ final class Reminders {
         for (JSONObject r : s.reminders()) {
             if (r.optBoolean("done")) continue;
             long at = r.optLong("at");
+            String repeat = r.optString("repeat", "");
+            if (at <= now && at > 0 && (repeat.equals("daily") || repeat.equals("weekly"))) {
+                // a repeating reminder (medicine etc.) that passed while the phone was off:
+                // move it to its next time, like AlarmReceiver does when it fires
+                boolean missed = now - at < 12L * 60 * 60 * 1000;
+                long step = repeat.equals("daily") ? 86400000L : 7 * 86400000L;
+                long next = at;
+                while (next <= now) next += step;
+                JSONObject moved = s.updateReminder(r.optString("id"), "at", next);
+                if (moved != null) schedule(c, moved);
+                if (missed) notify(c, "తప్పిపోయిన రిమైండర్", r.optString("text"), r.optString("id").hashCode());
+                continue;
+            }
             if (at > now) {
                 schedule(c, r);
             } else if (now - at < 12L * 60 * 60 * 1000) {

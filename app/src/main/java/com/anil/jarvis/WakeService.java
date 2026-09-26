@@ -45,6 +45,9 @@ public class WakeService extends Service {
     private final Handler main = new Handler(Looper.getMainLooper());
     private WakeEngine engine;
     private boolean engineOn;
+    /** For retrying after the engine fails: when it last started, and failures in a row. */
+    private long engineStartedAt;
+    private int engineErrors;
     /** Keeps the phone's processor awake while listening with the screen off. */
     private PowerManager.WakeLock cpu;
     /** Shake to call Jarvis, face down to silence. */
@@ -78,14 +81,24 @@ public class WakeService extends Service {
     @Override public IBinder onBind(Intent intent) { return null; }
 
     /** Turns the wake-word mic off when the screen goes off (or charging stops), and back on. */
+    private final Runnable applyPhoneState = () -> {
+        if (!running) return;
+        if (allowedNow()) {
+            if (!MainActivity.inConversation) startEngine();
+        } else {
+            stopEngine();
+            sleeping();
+        }
+    };
+
     private final android.content.BroadcastReceiver phoneState = new android.content.BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
-            if (!running) return;
-            if (allowedNow()) {
-                if (!MainActivity.inConversation) startEngine();
-            } else {
-                stopEngine();
-                sleeping();
+            applyPhoneState.run();
+            String a = i == null ? null : i.getAction();
+            if (Intent.ACTION_POWER_CONNECTED.equals(a) || Intent.ACTION_POWER_DISCONNECTED.equals(a)) {
+                // the battery status can lag the plug event by a moment: look again shortly
+                main.removeCallbacks(applyPhoneState);
+                main.postDelayed(applyPhoneState, 3000);
             }
         }
     };
@@ -142,8 +155,15 @@ public class WakeService extends Service {
         String when = new Prefs(this).wakeWhen();
         if ("always".equals(when)) return true;
         if ("charging".equals(when)) {
-            android.os.BatteryManager bm = getSystemService(android.os.BatteryManager.class);
-            return bm != null && bm.isCharging();
+            // "plugged in", from the sticky battery broadcast: BatteryManager.isCharging() is still false
+            // right when the charger is connected (and when full), so the mic would stay off.
+            try {
+                Intent b = registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+                return b != null && b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0;
+            } catch (Exception e) {
+                android.os.BatteryManager bm = getSystemService(android.os.BatteryManager.class);
+                return bm != null && bm.isCharging();
+            }
         }
         android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
         return pm == null || pm.isInteractive();
@@ -223,14 +243,27 @@ public class WakeService extends Service {
                 @Override public void onError(String message) {
                     main.post(() -> {
                         lastError = message;
+                        boolean wasOn = engineOn;
                         engineOn = false;
-                        if (running) goForeground("వేక్ వర్డ్ ఆగిపోయింది: " + message);
+                        holdCpu(false); // the listening thread is gone: don't keep the processor awake for nothing
+                        if (!running) return;
+                        goForeground("వేక్ వర్డ్ ఆగిపోయింది: " + message);
+                        if (wasOn) {
+                            // try again shortly (the mic may have been busy), backing off if it keeps failing
+                            long now = android.os.SystemClock.elapsedRealtime();
+                            if (now - engineStartedAt > 60000) engineErrors = 0;
+                            long delay = Math.min(60000L, 5000L << Math.min(engineErrors, 4));
+                            engineErrors++;
+                            main.removeCallbacks(fallbackResume);
+                            main.postDelayed(fallbackResume, delay);
+                        }
                     });
                 }
             });
         }
         engine.start();
         engineOn = true;
+        engineStartedAt = android.os.SystemClock.elapsedRealtime();
         holdCpu(true);
         lastError = null;
         goForeground(wordStatus != null ? wordStatus : WAKE_HINT);

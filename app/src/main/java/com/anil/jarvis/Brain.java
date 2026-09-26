@@ -9,13 +9,22 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.concurrent.CancellationException;
 
 /**
  * Talks to the language model (OpenAI Responses API or Anthropic Messages API),
  * runs the phone tools it asks for, and returns Jarvis's final spoken reply.
  */
 final class Brain {
-    interface Status { void update(String text); }
+    interface Status {
+        void update(String text);
+        /** True once Anil pressed stop: no further model rounds or tools are run for this question. */
+        default boolean cancelled() { return false; }
+    }
+
+    private static void checkCancelled(Status s) {
+        if (s != null && s.cancelled()) throw new CancellationException("stopped");
+    }
 
     private static final int MAX_ROUNDS = 8;
 
@@ -287,6 +296,7 @@ final class Brain {
         String previous = null;
         JSONArray next = input;
         for (int round = 0; round < MAX_ROUNDS; round++) {
+            checkCancelled(status);
             JSONObject body = new JSONObject()
                     .put("model", prefs.model())
                     .put("instructions", system)
@@ -315,6 +325,7 @@ final class Brain {
                         status.update(Tools.statusFor(name));
                         JSONObject args;
                         try { args = new JSONObject(item.optString("arguments", "{}")); } catch (Exception e) { args = new JSONObject(); }
+                        checkCancelled(status);
                         String result = tools.execute(name, args);
                         results.put(new JSONObject()
                                 .put("type", "function_call_output")
@@ -357,6 +368,7 @@ final class Brain {
         }
 
         for (int round = 0; round < MAX_ROUNDS; round++) {
+            checkCancelled(status);
             JSONObject body = new JSONObject()
                     .put("model", prefs.model())
                     .put("max_tokens", 1024)
@@ -378,6 +390,7 @@ final class Brain {
                     String name = b.optString("name");
                     status.update(Tools.statusFor(name));
                     JSONObject args = b.optJSONObject("input");
+                    checkCancelled(status);
                     String result = tools.execute(name, args == null ? new JSONObject() : args);
                     results.put(new JSONObject()
                             .put("type", "tool_result")

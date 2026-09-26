@@ -88,9 +88,13 @@ final class WaMedia {
         return out.size() > max ? out.subList(0, max) : out;
     }
 
+    /** Files enough to be sure the newest ones are among them, once week folders are walked newest first. */
+    private static final int ENOUGH = 100;
+
     private static void walk(Context c, Uri tree, String docId, String kind, boolean inside, List<Found> out, int depth) {
-        if (depth > 5 || out.size() > 400) return;
+        if (depth > 5) return;
         Uri kids = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId);
+        List<String[]> dirs = new ArrayList<>(); // {document id, lower-case name, "1" if inside the kind folder}
         try (Cursor cur = c.getContentResolver().query(kids, new String[]{
                 DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
                 DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_LAST_MODIFIED}, null, null, null)) {
@@ -103,13 +107,23 @@ final class WaMedia {
                     boolean match = inside || low.equals(folder(kind)) || low.equals(folder(kind).replace("whatsapp", "whatsapp business"));
                     // stay on the path towards the right folder: Media, WhatsApp, the kind folder, week folders
                     if (match || low.equals("media") || low.equals("whatsapp") || low.equals("whatsapp business") || low.equals("com.whatsapp") || low.equals("com.whatsapp.w4b")) {
-                        walk(c, tree, id, kind, match, out, depth + 1);
+                        dirs.add(new String[]{id, low, match ? "1" : ""});
                     }
                 } else if (inside && name != null && fileFits(kind, name)) {
                     out.add(new Found(DocumentsContract.buildDocumentUriUsingTree(tree, id), name, mod));
                 }
             }
         } catch (Exception ignored) {}
+        if (inside) {
+            // week folders ("202638" = year + week): newest first, and stop once enough files are found,
+            // so the current week is never skipped in favour of old ones
+            dirs.sort((a, b) -> b[1].compareTo(a[1]));
+        }
+        int start = out.size();
+        for (String[] d : dirs) {
+            if (inside && out.size() - start >= ENOUGH) break;
+            walk(c, tree, d[0], kind, !d[2].isEmpty(), out, depth + 1);
+        }
     }
 
     private static void mediaStore(Context c, String kind, List<Found> out) {

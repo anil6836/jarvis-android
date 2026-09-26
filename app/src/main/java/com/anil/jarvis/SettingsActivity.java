@@ -36,6 +36,14 @@ public class SettingsActivity extends Activity {
     private Switch callVoice, readMessages, batteryWarn, voiceLock, proactive, sfx, shakeWake, faceDown, nightSummary;
     private TextView carInfo;
     private SeekBar lockSlider, listenWindow;
+    /** Where the voice-lock slider started: Save only writes it if Anil moved it (enrolling saves its own calibrated value). */
+    private int lockStart = -1;
+    private final SharedPreferences.OnSharedPreferenceChangeListener lockCalibrated = (sp, key) -> {
+        if (!"voice_lock_max".equals(key) || lockSlider == null) return;
+        lockSlider.setProgress(Math.round((prefs.voiceLockMax() - 0.30f) * 100));
+        lockStart = lockSlider.getProgress();
+        showLock();
+    };
     private TextView listenWindowLabel;
     private TextView lockInfo, docsInfo, waInfo;
     private EditText sosContacts, smartUrls, smartApp, walletMax;
@@ -208,6 +216,8 @@ public class SettingsActivity extends Activity {
         lockSlider = new SeekBar(this);
         lockSlider.setMax(60); // 0.30 .. 0.90
         lockSlider.setProgress(Math.round((prefs.voiceLockMax() - 0.30f) * 100));
+        lockStart = lockSlider.getProgress();
+        prefs.sp.registerOnSharedPreferenceChangeListener(lockCalibrated);
         lockSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean u) { showLock(); }
             @Override public void onStartTrackingTouch(SeekBar s) {}
@@ -438,7 +448,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("wake", wake.isChecked());
         e.putBoolean("wake_paused", false);
         e.putBoolean("voice_lock", voiceLock.isChecked() && VoiceLock.print(this) != null);
-        e.putFloat("voice_lock_max", 0.30f + lockSlider.getProgress() / 100f);
+        if (lockSlider.getProgress() != lockStart) e.putFloat("voice_lock_max", 0.30f + lockSlider.getProgress() / 100f);
         e.putBoolean("proactive", proactive.isChecked());
         e.putBoolean("sfx", sfx.isChecked());
         e.putBoolean("shake_wake", shakeWake.isChecked());
@@ -450,7 +460,7 @@ public class SettingsActivity extends Activity {
         e.putString("smart_app", smartApp.getText().toString().trim());
         e.putBoolean("alexa_speak", alexaSpeak.isChecked());
         e.putBoolean("wallet_pay", walletPay.isChecked());
-        int max = 1000;
+        int max = prefs.walletPayMax(); // an empty or bad field keeps the saved limit (never raises it)
         try { max = Integer.parseInt(walletMax.getText().toString().trim()); } catch (Exception ignored) {}
         e.putInt("wallet_pay_max", Math.max(0, Math.min(10000, max)));
         e.putFloat("wake_threshold", 0.75f - sensitivity.getProgress() / 100f);
@@ -494,6 +504,11 @@ public class SettingsActivity extends Activity {
     @Override protected void onPause() {
         super.onPause();
         tester.stop();
+    }
+
+    @Override protected void onDestroy() {
+        try { prefs.sp.unregisterOnSharedPreferenceChangeListener(lockCalibrated); } catch (Exception ignored) {}
+        super.onDestroy();
     }
 
     private void showSensitivity() {

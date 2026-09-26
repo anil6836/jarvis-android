@@ -33,10 +33,14 @@ public class JarvisAccessibility extends AccessibilityService {
     private static volatile JarvisAccessibility instance;
     private static volatile Capture last;
     private static volatile String currentPkg = "";
+    private static volatile String frontPkg = "";  // any window last in front (also home screen, keyboard, Settings), for captures
 
     static boolean enabled() { return instance != null; }
 
-    /** The app that was last in front (not Jarvis itself), or "" if unknown. */
+    /**
+     * The app that was last in front (not Jarvis itself, and not the status bar, home screen, keyboard
+     * or Settings), or "" if unknown.
+     */
     static String currentPackage() { return currentPkg; }
 
     /** Presses the Home button, like Anil would. */
@@ -249,7 +253,7 @@ public class JarvisAccessibility extends AccessibilityService {
             android.os.Bundle b = new android.os.Bundle();
             b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, want);
             box.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
-            if (box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT)) return "typed";
+            if (box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) return "typed";
         }
         return "no_box";
     }
@@ -352,10 +356,12 @@ public class JarvisAccessibility extends AccessibilityService {
 
     /** Other ways to pay that Jarvis must never choose (he agreed to the MobiKwik wallet only). */
     static final java.util.regex.Pattern OTHER_METHOD = java.util.regex.Pattern.compile(
-            "(?i)(\\bupi\\b|card|net ?banking|pay ?later|\\bemi\\b|simpl|lazypay|gpay|google pay|phonepe|paytm|amazon ?pay|cred\\b|freecharge|airtel|jio|bhim|olamoney|ola money"
+            "(?i)(\\bupi\\b|card|net ?banking|pay ?later|\\bemi\\b|\\bsimpl\\b|lazypay|gpay|google pay|phonepe|paytm|amazon ?pay|cred\\b|freecharge|airtel|jio|bhim|olamoney|ola money"
+                    + "|payzapp|bajaj|samsung ?pay|flexipay|zestmoney|paypal|mobikwik ?zip\\b"
                     + "|zomato (money|credits?|pay)|district (money|credits?|cash)|sodexo|pluxee|zeta)");
+    /** ₹ / Rs / INR followed by an amount; "rs" only as its own word (not "Offers 50", "Users 1,00,000"). */
     private static final java.util.regex.Pattern RUPEES = java.util.regex.Pattern.compile(
-            "(?:₹|rs\\.?|inr)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", java.util.regex.Pattern.CASE_INSENSITIVE);
+            "(?:₹|(?<![a-z])(?:rs\\.?|inr))\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", java.util.regex.Pattern.CASE_INSENSITIVE);
 
     static void allowPayment(String pkg, double amount, long ms) {
         PayAllowance a = new PayAllowance();
@@ -437,17 +443,27 @@ public class JarvisAccessibility extends AccessibilityService {
             AccessibilityNodeInfo c = clickable(n);
             if (c != null && c != n && c.isClickable() && buttonSized(c)) words += " " + allText(c, 0);
             double payable = pagePayable(sc);
+            boolean other = OTHER_METHOD.matcher(words).find();
             if (words.toLowerCase(Locale.ROOT).contains("mobikwik")) {
+                // A "MobiKwik" tile in a list of UPI apps, MobiKwik ZIP (pay later) etc. is not the wallet.
+                if (other) return "blocked:" + words.trim() + " (only the MobiKwik wallet is allowed, not UPI / card / pay later)";
                 // Choosing the MobiKwik wallet. Its row can say "Pay using Mobikwik" and show the wallet
                 // balance (₹1000): that is not the price. The price is the page's "Amount Payable".
-                if (payable > a.amount + 1) return "blocked:over:" + payable + "|" + words.trim();
+                double amt = payable > 0 ? payable : payAmount(words);
+                if (amt > a.amount + 1) return "blocked:over:" + amt + "|" + words.trim();
                 a.walletChosen = true;
                 if (commit != null) a.taps--;
                 return null;
             }
             // never another way of paying, only the MobiKwik wallet
-            if (OTHER_METHOD.matcher(words).find()) return "blocked:" + words.trim() + " (only the MobiKwik wallet is allowed)";
-            if (commit == null) return null;
+            if (other) return "blocked:" + words.trim() + " (only the MobiKwik wallet is allowed)";
+            if (commit == null) {
+                // Choosing something else on the payment options page after MobiKwik (another wallet / bank the
+                // patterns do not know) may change the way of paying: MobiKwik must be chosen again before Pay.
+                // Plain "Continue" / "Proceed" buttons do not choose a way of paying.
+                if (a.walletChosen && methodPage(sc) && !NAV_ONLY.matcher(shortLabel(n)).matches()) a.walletChosen = false;
+                return null;
+            }
             // on the page that lists ways to pay, MobiKwik must have been chosen first
             if (methodPage(sc) && !a.walletChosen) return "blocked:" + words.trim() + " (tap the MobiKwik row first)";
             double amt = payAmount(words);                 // "Pay ₹229.50"
@@ -467,6 +483,18 @@ public class JarvisAccessibility extends AccessibilityService {
         return null;
     }
 
+    /** A button that only moves on ("Continue", "Proceed →"), without choosing anything. */
+    private static final java.util.regex.Pattern NAV_ONLY = java.util.regex.Pattern.compile(
+            "(?i)(continue|proceed|next|ok|okay|done|got it)\\W*");
+
+    /** The node's own label, or its clickable parent's when the node has none. */
+    private static String shortLabel(AccessibilityNodeInfo n) {
+        String l = label(n);
+        if (!l.isEmpty()) return l;
+        AccessibilityNodeInfo c = clickable(n);
+        return c == null ? "" : label(c);
+    }
+
     /** A page that lists ways to pay (UPI, cards, wallets, net banking). */
     static boolean methodPage(Screen sc) {
         String page = sc.list.toString().toLowerCase(Locale.ROOT);
@@ -484,10 +512,17 @@ public class JarvisAccessibility extends AccessibilityService {
     /** He asked for an extra himself (e.g. "Club కూడా తీసుకో"). Set per task by Tools. */
     static volatile boolean extrasAllowed;
 
+    /** Buttons that leave an extra out ("Remove", "No thanks", "Skip"): always fine. */
+    private static final java.util.regex.Pattern OPT_OUT = java.util.regex.Pattern.compile(
+            "(?i)^(remove|no|no thanks|not now|skip|don[’']?t|do not)\\b.*");
+
     private static String extraCheck(AccessibilityNodeInfo n) {
         if (extrasAllowed) return null;
-        String words = label(n) + " " + (buttonSized(n) ? allText(n, 0) : "");
         AccessibilityNodeInfo c = clickable(n);
+        // Unticking a ticked box (e.g. a pre-ticked donation) takes the extra out: allowed.
+        if ((n.isCheckable() && n.isChecked()) || (c != null && c.isCheckable() && c.isChecked())) return null;
+        if (OPT_OUT.matcher(label(n)).matches() || (c != null && OPT_OUT.matcher(label(c)).matches())) return null;
+        String words = label(n) + " " + (buttonSized(n) ? allText(n, 0) : "");
         if (c != null && c != n && c.isClickable() && buttonSized(c)) words += " " + allText(c, 0);
         return EXTRAS.matcher(words).find() ? "blocked:extra:" + words.trim() : null;
     }
@@ -607,7 +642,7 @@ public class JarvisAccessibility extends AccessibilityService {
     static String tapElement(Screen sc, int idx) {
         if (sc == null || idx < 0 || idx >= sc.nodes.size()) return "no_element";
         AccessibilityNodeInfo n = sc.nodes.get(idx);
-        n.refresh();
+        if (!n.refresh()) return "no_element"; // gone from the screen: never act on a stale node or its old position
         String extra = extraCheck(n);
         if (extra != null) return extra;
         String refused = payCheck(sc, n);
@@ -626,13 +661,13 @@ public class JarvisAccessibility extends AccessibilityService {
         if (s == null) return "failed";
         AccessibilityNodeInfo root = s.windowRoot(sc.pkg);
         AccessibilityNodeInfo hit = root == null ? null : deepestAt(root, x, y, 0);
-        if (hit != null) {
-            String extra = extraCheck(hit);
-            if (extra != null) return extra;
-            String refused = payCheck(sc, hit);
-            if (refused != null) return refused;
-            if (hit.isPassword()) return "password";
-        }
+        // No node of the app there (its window is gone, or another app is in front): the tap cannot be checked.
+        if (hit == null) return "no_element";
+        String extra = extraCheck(hit);
+        if (extra != null) return extra;
+        String refused = payCheck(sc, hit);
+        if (refused != null) return refused;
+        if (hit.isPassword()) return "password";
         return gesture(x, y, x, y, 60) ? "ok" : "failed";
     }
 
@@ -654,8 +689,9 @@ public class JarvisAccessibility extends AccessibilityService {
         AccessibilityNodeInfo n = sc.nodes.get(idx);
         if (n.isPassword()) return "password";
         if (!n.isEditable()) {
-            AccessibilityNodeInfo c = clickable(n);
-            if (c != null) c.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            // Not a text box: tapping it goes through the same pay / extras checks as any tap.
+            String r = tapElement(sc, idx);
+            if (!"ok".equals(r)) return r;
             SystemClock.sleep(600);
             return "not_a_field";
         }
@@ -663,7 +699,7 @@ public class JarvisAccessibility extends AccessibilityService {
         n.performAction(AccessibilityNodeInfo.ACTION_CLICK);
         android.os.Bundle b = new android.os.Bundle();
         b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text == null ? "" : text);
-        return n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT) ? "ok" : "failed";
+        return n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b) ? "ok" : "failed";
     }
 
     /** Scrolls the page (down = show what is below). */
@@ -740,7 +776,37 @@ public class JarvisAccessibility extends AccessibilityService {
         return Base64.encodeToString(bo.toByteArray(), Base64.NO_WRAP);
     }
 
-    @Override protected void onServiceConnected() { instance = this; }
+    @Override protected void onServiceConnected() {
+        instance = this;
+        loadNotApps();
+    }
+
+    /** Windows that are not "the app Anil is in": the status bar / panels, the home screen, the keyboard, Settings. */
+    private static volatile java.util.Set<String> notApps = java.util.Collections.emptySet();
+
+    private void loadNotApps() {
+        java.util.Set<String> s = new java.util.HashSet<>();
+        s.add("com.android.systemui");
+        s.add("com.android.settings");
+        try {
+            android.content.pm.ResolveInfo home = getPackageManager().resolveActivity(
+                    new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME),
+                    android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+            // "android" is the chooser shown when no home app is the default
+            if (home != null && home.activityInfo != null && !"android".equals(home.activityInfo.packageName)) s.add(home.activityInfo.packageName);
+        } catch (Exception e) {}
+        try {
+            android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
+            if (imm != null) for (android.view.inputmethod.InputMethodInfo im : imm.getEnabledInputMethodList()) s.add(im.getPackageName());
+        } catch (Exception e) {}
+        notApps = s;
+    }
+
+    private static boolean notAnApp(String p) {
+        if (notApps.contains(p)) return true;
+        String l = p.toLowerCase(Locale.ROOT);
+        return l.contains("inputmethod") || l.contains("keyboard") || l.contains("honeyboard") || l.contains("launcher");
+    }
 
     @Override public boolean onUnbind(android.content.Intent intent) {
         instance = null;
@@ -755,7 +821,10 @@ public class JarvisAccessibility extends AccessibilityService {
     @Override public void onAccessibilityEvent(AccessibilityEvent e) {
         if (e != null && e.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && e.getPackageName() != null) {
             String p = e.getPackageName().toString();
-            if (!p.equals(getPackageName())) currentPkg = p;
+            if (!p.equals(getPackageName())) {
+                frontPkg = p;
+                if (!notAnApp(p)) currentPkg = p; // "close this app" must not pick the keyboard, home screen, Settings...
+            }
         }
     }
 
@@ -773,7 +842,7 @@ public class JarvisAccessibility extends AccessibilityService {
         if (s == null) { then.run(); return; }
         Capture c = new Capture();
         c.time = SystemClock.elapsedRealtime();
-        c.pkg = currentPkg;
+        c.pkg = frontPkg;
         try { c.text = s.screenText(); } catch (Exception ignored) {}
         if (Build.VERSION.SDK_INT < 30) { last = c; then.run(); return; }
         try {

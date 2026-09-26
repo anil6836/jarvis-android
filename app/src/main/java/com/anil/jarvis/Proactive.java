@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.CalendarContract;
 import android.provider.CallLog;
 import android.provider.ContactsContract;
@@ -20,6 +22,9 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Jarvis speaking up on his own, about every 15 minutes: meetings coming up, rain this morning,
@@ -41,8 +46,14 @@ public class Proactive extends BroadcastReceiver {
     @Override public void onReceive(Context c, Intent i) {
         PendingResult pr = goAsync();
         Context app = c.getApplicationContext();
+        // tick() can do slow network work (prices, weather, cricket); a broadcast held past ~60 s gets the
+        // whole process killed (taking the wake-word service with it), so let go of it after 8 s and
+        // let the work thread carry on by itself.
+        AtomicBoolean finished = new AtomicBoolean(false);
+        Runnable finishOnce = () -> { if (finished.compareAndSet(false, true)) pr.finish(); };
+        new Handler(Looper.getMainLooper()).postDelayed(finishOnce, 8000);
         new Thread(() -> {
-            try { tick(app); } catch (Throwable ignored) {} finally { pr.finish(); }
+            try { tick(app); } catch (Throwable ignored) {} finally { finishOnce.run(); }
         }, "jarvis-proactive").start();
     }
 
@@ -69,6 +80,7 @@ public class Proactive extends BroadcastReceiver {
     }
 
     static void tick(Context c) {
+        pruneSeen(c);
         Prefs p = new Prefs(c);
         Health.recordStepBaseline(c);
         JarvisWidget.refresh(c);
@@ -93,6 +105,27 @@ public class Proactive extends BroadcastReceiver {
         }
     }
 
+    /** "Already told" marks for bills (bill_…) and meetings (ev_…) hold the time they were set; drop ones older than 2 days. */
+    private static void pruneSeen(Context c) {
+        try {
+            SharedPreferences s = state(c);
+            long now = System.currentTimeMillis();
+            SharedPreferences.Editor e = null;
+            for (Map.Entry<String, ?> en : s.getAll().entrySet()) {
+                String k = en.getKey();
+                if (!k.startsWith("bill_") && !k.startsWith("ev_")) continue;
+                Object v = en.getValue();
+                if (e == null) e = s.edit();
+                if (v instanceof Long) {
+                    if (now - (Long) v > 2 * 86400000L) e.remove(k);
+                } else {
+                    e.putLong(k, now); // older marks were plain true: date them now so they age out
+                }
+            }
+            if (e != null) e.apply();
+        } catch (Exception ignored) {}
+    }
+
     /** Opens the panel and has Jarvis do something on his own (nightly summary, arriving somewhere). */
     static void run(Context c, String command) {
         if (android.provider.Settings.canDrawOverlays(c) && !MainActivity.inConversation) {
@@ -115,8 +148,8 @@ public class Proactive extends BroadcastReceiver {
             JSONObject b = due.optJSONObject(i);
             if (b == null || b.optLong("due_ms") >= tomorrowEnd) continue;
             String key = "bill_" + b.optString("from") + b.optLong("due_ms");
-            if (state(c).getBoolean(key, false)) continue;
-            state(c).edit().putBoolean(key, true).apply();
+            if (state(c).contains(key)) continue;
+            state(c).edit().putLong(key, System.currentTimeMillis()).apply();
             boolean today = b.optLong("due_ms") < Life.dayStart() + 86400000L;
             say(c, p.name() + ", " + b.optString("from") + " బిల్ " + (b.optString("amount").isEmpty() ? "" : b.optString("amount") + " రూపాయలు ")
                     + (today ? "ఈరోజే" : "రేపు") + " కట్టాలి.", null, null);
@@ -163,8 +196,8 @@ public class Proactive extends BroadcastReceiver {
                 long begin = cur.getLong(2);
                 if (begin < from) continue;
                 String key = "ev_" + cur.getLong(0) + "_" + begin;
-                if (state(c).getBoolean(key, false)) continue;
-                state(c).edit().putBoolean(key, true).apply();
+                if (state(c).contains(key)) continue;
+                state(c).edit().putLong(key, System.currentTimeMillis()).apply();
                 int mins = Math.round((begin - now) / 60000f);
                 String where = cur.getString(3);
                 say(c, p.name() + ", " + mins + " నిమిషాల్లో \"" + cur.getString(1) + "\""
@@ -252,20 +285,29 @@ public class Proactive extends BroadcastReceiver {
 
     // ---------------------------------------------------------------- prices
 
+    private static final Pattern FIRST_NUMBER = Pattern.compile("\\d[\\d,]*(?:\\.\\d+)?");
+
     private static void priceAlerts(Context c, Prefs p, boolean quiet) {
         List<JSONObject> alerts = Notes.list(c, "price_alerts");
         if (alerts.isEmpty() || p.apiKey().isEmpty()) return;
         long last = state(c).getLong("price_check", 0);
         if (System.currentTimeMillis() - last < 3 * 3600000L) return;
-        state(c).edit().putLong("price_check", System.currentTimeMillis()).apply();
-        int checked = 0;
-        for (JSONObject a : alerts) {
-            if (checked++ >= 3) break;
+        // at most 3 look-ups per check, taking turns so every alert gets checked, not only the first 3
+        int n = alerts.size();
+        int start = Math.floorMod(state(c).getInt("price_offset", 0), n);
+        int count = Math.min(3, n);
+        state(c).edit().putLong("price_check", System.currentTimeMillis())
+                .putInt("price_offset", (start + count) % n).apply();
+        for (int j = 0; j < count; j++) {
+            JSONObject a = alerts.get((start + j) % n);
             try {
                 String item = a.optString("item");
                 String ans = Brain.oneShot(p, "You look up live prices on the web. Reply with only the number, no words, no currency sign.",
                         "Current price in India, in INR, of: " + item + ". Only the number.", null, true);
-                double price = Double.parseDouble(ans.replaceAll("[^0-9.]", ""));
+                // first number only: "₹7,150 per gram (22K)" is 7150, not 715022
+                Matcher num = FIRST_NUMBER.matcher(ans == null ? "" : ans);
+                if (!num.find()) continue;
+                double price = Double.parseDouble(num.group().replace(",", ""));
                 double target = a.optDouble("target");
                 boolean below = "below".equals(a.optString("when"));
                 if (below ? price <= target : price >= target) {

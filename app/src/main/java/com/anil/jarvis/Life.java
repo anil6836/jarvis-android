@@ -132,10 +132,11 @@ final class Life {
             if (seen.containsKey(key)) continue;
             seen.put(key, true);
             Matcher a = AMOUNT.matcher(body);
+            String clean = body.replaceAll("\\s+", " ").replaceAll("[0-9Xx*]{6,}", "…");
             try {
                 out.put(new JSONObject().put("from", who).put("due", f.format(new Date(due))).put("due_ms", due)
                         .put("amount", a.find() ? a.group(1) : "")
-                        .put("sms", body.replaceAll("\\s+", " ").replaceAll("[0-9Xx*]{6,}", "…").substring(0, Math.min(140, body.length()))));
+                        .put("sms", clean.substring(0, Math.min(140, clean.length()))));
             } catch (Exception ignored) {}
         }
         return out;
@@ -160,9 +161,10 @@ final class Life {
             for (String s : SHOPS) if (low.contains(s)) { shop = true; break; }
             for (String s : STATUS) if (low.contains(s)) { status = true; break; }
             if (!shop || !status || low.contains("otp is") || out.length() >= 25) continue;
+            String clean = body.replaceAll("\\s+", " ");
             try {
                 out.put(new JSONObject().put("when", f.format(new Date(Long.parseLong(m[2])))).put("from", m[0])
-                        .put("text", body.replaceAll("\\s+", " ").substring(0, Math.min(200, body.length()))));
+                        .put("text", clean.substring(0, Math.min(200, clean.length()))));
             } catch (Exception ignored) {}
         }
         return out;

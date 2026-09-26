@@ -37,6 +37,10 @@ final class VoiceIO {
     private final Handler main = new Handler(Looper.getMainLooper());
     private TextToSpeech tts;
     private boolean ttsReady;
+    /** The phone's text-to-speech could not start: speech is skipped (onSpeakDone still arrives). */
+    private boolean ttsFailed;
+    /** shutdown() was called: the screen is gone, so stay silent and call nobody back. */
+    private boolean shut;
     private String pending;
     private float pendingRate = 1f;
     private int utterance;
@@ -57,10 +61,14 @@ final class VoiceIO {
     }
 
     private void onTtsInit(int status) {
+        if (shut || tts == null) return; // shut down before the engine answered
         ttsChecked = true;
-        if (status != TextToSpeech.SUCCESS || tts == null) {
+        if (status != TextToSpeech.SUCCESS) {
             voiceInfo = "ఈ ఫోన్‌లో Text-to-speech పనిచేయడం లేదు.";
+            ttsFailed = true;
             l.onVoiceReady();
+            // A reply was waiting for the engine: it can't be spoken, so finish that turn anyway.
+            if (pending != null) failSpeak();
             return;
         }
         int r = tts.setLanguage(Locale.forLanguageTag("te-IN"));
@@ -94,7 +102,7 @@ final class VoiceIO {
     }
 
     void speak(String text, float rate) {
-        if (text == null || text.trim().isEmpty()) return;
+        if (shut || text == null || text.trim().isEmpty()) return;
         String key = prefs.openAiKey().trim();
         if (prefs.naturalVoice() && !key.isEmpty() && Net.online(ctx)) {
             speakNatural(key, text, rate);
@@ -128,6 +136,7 @@ final class VoiceIO {
     }
 
     private void stopGoogle() {
+        pending = null; // a reply still waiting for the engine is replaced too
         if (tts != null) {
             utterance++;
             tts.stop();
@@ -135,9 +144,12 @@ final class VoiceIO {
     }
 
     private void speakGoogle(String text, float rate) {
+        if (shut || tts == null) { speaking = false; pending = null; return; }
+        if (ttsFailed) { failSpeak(); return; }
         if (!ttsReady) {
             pending = text;
             pendingRate = rate;
+            speaking = true; // waiting for the engine counts as speaking (onSpeakDone follows either way)
             return;
         }
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
@@ -147,7 +159,22 @@ final class VoiceIO {
         try { tts.setLanguage(Lang.of(clean)); } catch (Exception ignored) {} // Hindi etc. for translations
         utterance++;
         speaking = true;
-        tts.speak(clean, TextToSpeech.QUEUE_FLUSH, new Bundle(), "j" + utterance);
+        int r;
+        try { r = tts.speak(clean, TextToSpeech.QUEUE_FLUSH, new Bundle(), "j" + utterance); }
+        catch (Exception e) { r = TextToSpeech.ERROR; }
+        if (r != TextToSpeech.SUCCESS) failSpeak(); // no progress callbacks will come for it
+    }
+
+    /** Speech could not start: end this turn as if it had been spoken, so the screen doesn't hang. */
+    private void failSpeak() {
+        pending = null;
+        speaking = true;
+        final int u = ++utterance;
+        main.post(() -> {
+            if (shut || u != utterance || !speaking) return; // stopped or replaced meanwhile
+            speaking = false;
+            l.onSpeakDone();
+        });
     }
 
     void stopSpeaking() {
@@ -186,6 +213,7 @@ final class VoiceIO {
     }
 
     void listen(String lang) {
+        if (shut) return;
         stopSpeaking();
         windowUntil = android.os.SystemClock.elapsedRealtime() + prefs.listenWindowSeconds() * 1000L;
         heardSpeech = false;
@@ -249,8 +277,17 @@ final class VoiceIO {
     }
 
     void shutdown() {
+        shut = true;
+        ttsReady = false;
+        pending = null;
+        speaking = false;
+        listening = false;
         natural.stop();
         if (sr != null) { sr.destroy(); sr = null; }
-        if (tts != null) { tts.stop(); tts.shutdown(); tts = null; }
+        if (tts != null) {
+            TextToSpeech t = tts;
+            tts = null;
+            try { t.stop(); t.shutdown(); } catch (Exception ignored) {}
+        }
     }
 }

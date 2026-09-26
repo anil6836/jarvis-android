@@ -127,6 +127,14 @@ public class NotifyListener extends NotificationListenerService {
     private static final Map<String, String> spoken = new java.util.HashMap<>();
     private static final Map<String, Long> lastFrom = new java.util.HashMap<>();
 
+    /** A leading "Name: " (chat lines carry the sender's name); a caption with a colon after the media emoji is left alone. */
+    private static final java.util.regex.Pattern SENDER = java.util.regex.Pattern.compile("^[^:\\n🎤🎵🎥📹📷]{1,80}:\\s+");
+
+    private static String withoutSender(String line) {
+        java.util.regex.Matcher m = SENDER.matcher(line);
+        return m.find() ? line.substring(m.end()).trim() : line;
+    }
+
     /** What a WhatsApp notification is about: voice, audio, video, photo, or null for text. */
     private static String mediaKind(String t) {
         String l = t.toLowerCase(Locale.ROOT).trim();
@@ -185,7 +193,8 @@ public class NotifyListener extends NotificationListenerService {
         }
         // First only who and where; the message itself is read only if Anil says yes.
         String who = from.isEmpty() ? app : from;
-        String media = sbn.getPackageName().startsWith("com.whatsapp") ? mediaKind(last) : null;
+        String body = withoutSender(last); // "Ravi: 📷 Photo" -> "📷 Photo"
+        String media = sbn.getPackageName().startsWith("com.whatsapp") ? mediaKind(body) : null;
         String reply = " Then ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send with reply_to_notification (id "
                 + id + ") only after he says send.]";
         String say, ask, context;
@@ -195,12 +204,12 @@ public class NotifyListener extends NotificationListenerService {
             context = " [new WhatsApp " + media + " message from " + who + ". ONLY if he says yes: whatsapp_media kind=" + media
                     + " action=play; if he wants the words ('ఏం చెప్పారు'), action=text. If no, say సరే." + reply;
         } else if ("video".equals(media)) {
-            String cap = last.replaceAll("^[🎥📹]\\s*", "").replaceAll("(?i)^video\\s*", "").trim();
+            String cap = body.replaceAll("^[🎥📹]\\s*", "").replaceAll("(?i)^video\\s*", "").trim();
             say = p.name() + ", " + who + " నుంచి WhatsApp లో వీడియో వచ్చింది" + (cap.isEmpty() ? "." : ": " + cap);
             ask = "ప్లే చేయమంటారా?";
             context = " [new WhatsApp video from " + who + ". ONLY if he says yes: whatsapp_media kind=video action=play. If no, say సరే." + reply;
         } else if ("photo".equals(media)) {
-            String cap = last.replaceAll("^📷\\s*", "").replaceAll("(?i)^(photo|image)\\s*", "").trim();
+            String cap = body.replaceAll("^📷\\s*", "").replaceAll("(?i)^(photo|image)\\s*", "").trim();
             say = p.name() + ", " + who + " నుంచి WhatsApp లో ఫోటో వచ్చింది" + (cap.isEmpty() ? "." : ": " + cap);
             ask = "చూపించమంటారా, లేక ఏముందో చెప్పమంటారా?";
             context = " [new WhatsApp photo from " + who + ". If he says show: whatsapp_media kind=photo action=show; if 'ఏముంది/చెప్పు': action=describe. If no, say సరే." + reply;

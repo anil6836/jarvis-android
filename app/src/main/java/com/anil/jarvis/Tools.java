@@ -648,10 +648,14 @@ final class Tools {
         return out;
     }
 
-    private List<Contact> matches(String who) {
+    /** partial (may be null): set true when the full name is not saved and only the first name matched. */
+    private List<Contact> matches(String who, boolean[] partial) {
         String q = who.trim();
         List<Contact> list = queryContacts(q);
-        if (list.isEmpty() && q.contains(" ")) list = queryContacts(q.split("\\s+")[0]);
+        if (list.isEmpty() && q.contains(" ")) {
+            list = queryContacts(q.split("\\s+")[0]);
+            if (partial != null) partial[0] = !list.isEmpty();
+        }
         // Prefer exact name matches when there are several.
         List<Contact> exact = new ArrayList<>();
         for (Contact c : list) if (c.name != null && c.name.trim().equalsIgnoreCase(q)) exact.add(c);
@@ -678,6 +682,8 @@ final class Tools {
     private static final class Target {
         Contact contact;
         String error;
+        boolean partial;        // only his first name matched a saved contact (the full name he said is not saved)
+        List<Contact> options;  // several contacts matched (error is "ambiguous")
     }
 
     private Target resolve(String who) throws Exception {
@@ -685,7 +691,10 @@ final class Tools {
         if (who == null || who.trim().isEmpty()) { t.error = err("missing", "Who should I contact?"); return t; }
         if (looksLikeNumber(who)) { t.contact = new Contact(who.trim(), who.trim(), 0); return t; }
         if (!has(Manifest.permission.READ_CONTACTS)) { t.error = needPermission(Manifest.permission.READ_CONTACTS, "reading contacts"); return t; }
-        List<Contact> m = matches(who);
+        boolean[] partial = {false};
+        List<Contact> m = matches(who, partial);
+        t.partial = partial[0];
+        if (m.size() > 1) t.options = m;
         if (m.isEmpty()) {
             t.error = err("not_found", "No contact matching '" + who + "'. Ask Anil for the exact saved name or the number.");
         } else if (m.size() > 1) {
@@ -713,6 +722,13 @@ final class Tools {
         if (!has(Manifest.permission.CALL_PHONE)) return needPermission(Manifest.permission.CALL_PHONE, "phone calls");
         Target t = resolve(who);
         if (t.error != null) return t.error;
+        if (t.partial) {
+            // Only his first name matched: never ring the wrong person automatically, ask first.
+            return new JSONObject().put("ok", false).put("error", "partial_match")
+                    .put("detail", "No contact is saved as '" + who.trim() + "'. The closest is '" + t.contact.name + "' (" + t.contact.number
+                            + "). Ask Anil if he means them; only if he says yes, call call_contact again with who = '" + t.contact.name + "'.")
+                    .put("closest", new JSONObject().put("name", t.contact.name).put("number", t.contact.number)).toString();
+        }
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
         Contact c = t.contact;
         String label = c.name.equals(c.number) ? c.number : c.name + "\n" + c.number;
@@ -725,6 +741,7 @@ final class Tools {
     }
 
     private String sms(String who, String message) throws Exception {
+        pendingDraft = null; // a new draft: the old one can no longer be sent by mistake
         if (message == null || message.trim().isEmpty()) return err("missing", "What should the message say?");
         Target t = resolve(who);
         if (t.error != null) return t.error;
@@ -754,6 +771,7 @@ final class Tools {
     }
 
     private String whatsapp(String who, String message) throws Exception {
+        pendingDraft = null; // a new draft: the old one can no longer be sent by mistake
         if (message == null || message.trim().isEmpty()) return err("missing", "What should the message say?");
         Target t = resolve(who);
         if (t.error != null) return t.error;
@@ -777,6 +795,7 @@ final class Tools {
     private static final String[] TELEGRAMS = {"org.telegram.messenger", "org.telegram.messenger.web", "org.thunderdog.challegram", "org.telegram.plus"};
 
     private String telegram(String who, String message) throws Exception {
+        pendingDraft = null; // a new draft: the old one can no longer be sent by mistake
         if (message == null || message.trim().isEmpty()) return err("missing", "What should the message say?");
         String pkg = null;
         for (String p : TELEGRAMS) if (installed(p)) { pkg = p; break; }
@@ -806,6 +825,7 @@ final class Tools {
     private static final class Draft {
         String pkg, to, number, app, message;
         long time;
+        long wall;  // System.currentTimeMillis() when the draft was ready: his "send" must come after it
     }
 
     /** The message Jarvis typed and is waiting for Anil's "send" on. */
@@ -826,6 +846,7 @@ final class Tools {
         Draft d = new Draft();
         d.pkg = pkg; d.to = to; d.number = number; d.app = app; d.message = message;
         d.time = android.os.SystemClock.elapsedRealtime();
+        d.wall = System.currentTimeMillis();
         pendingDraft = d;
         Thread.sleep(500);
         backToJarvis();
@@ -854,6 +875,11 @@ final class Tools {
         Draft d = pendingDraft;
         if (d == null || android.os.SystemClock.elapsedRealtime() - d.time > 30 * 60 * 1000L) {
             return err("no_draft", "There is no message waiting to be sent. Ask Anil what to send and to whom.");
+        }
+        // Not only the model's word: Anil must have said something after the draft was made (his "పంపు").
+        // Live-mode transcripts can arrive a moment after the tool call, so wait a little for it.
+        if (userTurnAfter(d.wall, 3000) == null) {
+            return err("not_confirmed", "Anil has not said send after hearing this draft. Read it to him and ask 'పంపమంటారా?'.");
         }
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
         if (d.pkg == null || !JarvisAccessibility.enabled()) {
@@ -1018,12 +1044,30 @@ final class Tools {
         PackageManager pm = act().getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         List<ResolveInfo> apps = pm.queryIntentActivities(main, 0);
+        String[] labels = new String[apps.size()];
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = String.valueOf(apps.get(i).loadLabel(pm)).toLowerCase(Locale.ROOT).trim();
+            if (labels[i].equals(q)) return apps.get(i); // an app whose name is exactly what he said wins
+        }
+        // Then the known music-app names, so "YouTube Music" / "yt music" never ends up in YouTube.
+        for (String[] m : MUSIC_APPS) {
+            if (!q.contains(m[0])) continue;
+            for (ResolveInfo r : apps) if (m[1].equals(r.activityInfo.packageName)) return r;
+        }
         ResolveInfo best = null;
-        int bestScore = 0;
-        for (ResolveInfo r : apps) {
-            String label = String.valueOf(r.loadLabel(pm)).toLowerCase(Locale.ROOT);
-            int score = label.equals(q) ? 3 : label.startsWith(q) ? 2 : (label.contains(q) || q.contains(label)) ? 1 : 0;
-            if (score > bestScore) { bestScore = score; best = r; }
+        int bestScore = 0, bestGap = Integer.MAX_VALUE;
+        for (int i = 0; i < labels.length; i++) {
+            ResolveInfo r = apps.get(i);
+            String label = labels[i];
+            if (label.isEmpty()) continue;
+            boolean longEnough = label.length() >= 3; // a 1-2 letter label is inside almost any name
+            // the name at the END of what he said is the app ("google maps" → Maps, "amazon prime video" → Prime Video)
+            int score = longEnough && q.endsWith(label) ? 5
+                    : longEnough && q.startsWith(label) ? 4  // "whatsapp business app" → WhatsApp Business
+                    : label.startsWith(q) ? 3
+                    : (q.length() >= 3 && label.contains(q)) || (longEnough && q.contains(label)) ? 1 : 0;
+            int gap = Math.abs(label.length() - q.length()); // on a tie, the name closest in length ("YouTube Music" over "YouTube")
+            if (score > bestScore || (score == bestScore && score > 0 && gap < bestGap)) { bestScore = score; bestGap = gap; best = r; }
         }
         return best;
     }
@@ -1031,7 +1075,8 @@ final class Tools {
     private String closeApp(String name) throws Exception {
         String pkg;
         String n = name == null ? "" : name.trim();
-        if (n.isEmpty() || n.equalsIgnoreCase("this") || n.contains("ఈ")) {
+        // "ఈ యాప్" = this app; but not an app whose name starts with ఈ (ఈనాడు)
+        if (n.isEmpty() || n.equalsIgnoreCase("this") || n.equalsIgnoreCase("this app") || n.equals("ఈ") || n.startsWith("ఈ ")) {
             pkg = JarvisAccessibility.currentPackage();
             if (pkg == null || pkg.isEmpty()) return err("which_app", "Which app should I close? Ask Anil for the app name.");
         } else {
@@ -1095,13 +1140,17 @@ final class Tools {
             wentHome = ok[0];
         }
 
-        // and clear it from memory once it is in the background
-        Thread.sleep(800);
-        android.app.ActivityManager am = act().getSystemService(android.app.ActivityManager.class);
-        if (am != null) am.killBackgroundProcesses(pkg);
+        // and clear it from memory once it is in the background (Android 14+ no longer lets apps do this to other apps)
+        boolean cleared = false;
+        if (Build.VERSION.SDK_INT < 34) {
+            Thread.sleep(800);
+            android.app.ActivityManager am = act().getSystemService(android.app.ActivityManager.class);
+            if (am != null) { am.killBackgroundProcesses(pkg); cleared = true; }
+        }
 
         return ok().put("closed", name2).put("fully_closed", false).put("playback_stopped", mediaStopped).put("left_screen", wentHome)
-                .put("note", why + " It was stopped and cleared from memory, but may still run a background service.")
+                .put("note", why + (cleared ? " It was stopped and cleared from memory, but may still run a background service."
+                        : " It is not fully closed: this Android version does not let Jarvis clear it from memory, so it may still run in the background."))
                 .toString();
     }
 
@@ -1287,19 +1336,24 @@ final class Tools {
         return false;
     }
 
+    /** Bumped by every play request, pause and stop: a waiting playAfterUnlock gives up when it changes. */
+    private static volatile int playGen;
+
     /** Waits (up to 90 s) for Anil to unlock, then makes sure the app's song is playing. */
     private void playAfterUnlock(String pkg) {
         android.content.Context app = act().getApplicationContext();
         KeyguardManager km = (KeyguardManager) app.getSystemService(Activity.KEYGUARD_SERVICE);
         if (km == null) return;
+        final int gen = playGen;
         new Thread(() -> {
             try {
                 long end = android.os.SystemClock.elapsedRealtime() + 90000;
                 while (km.isKeyguardLocked()) {
-                    if (android.os.SystemClock.elapsedRealtime() > end) return;
+                    if (android.os.SystemClock.elapsedRealtime() > end || playGen != gen) return;
                     Thread.sleep(500);
                 }
                 Thread.sleep(2500);
+                if (playGen != gen) return; // he paused, stopped or asked for something else meanwhile
                 android.media.session.MediaController mc = sessionOf(pkg);
                 if (mc == null) return;
                 android.media.session.PlaybackState st = mc.getPlaybackState();
@@ -1469,6 +1523,7 @@ final class Tools {
     static volatile String lastMediaPkg;
 
     private String youtube(String query, String app) throws Exception {
+        playGen++; // a new play request: an older one waiting for the unlock must not start its song
         String r = youtubeInner(query, app);
         try {
             JSONObject o = new JSONObject(r);
@@ -1642,18 +1697,25 @@ final class Tools {
 
     // ================================================================ reminders & calendar
 
-    private static final String[] TIME_FORMATS = {"yyyy-MM-dd HH:mm", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss"};
+    private static final String[] TIME_FORMATS = {"yyyy-MM-dd HH:mm", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd h:mm a", "yyyy-MM-dd h:mma", "yyyy-MM-dd'T'h:mm a"};
 
-    /** Parses a local date-time like "2026-09-25 17:00"; returns -1 if it cannot. */
+    /**
+     * Parses a local date-time like "2026-09-25 17:00" (or "2026-09-25 5:00 PM"); returns -1 if it cannot.
+     * The whole text must be read: "2026-09-26 5:00 PM" must not become 05:00 by ignoring the "PM".
+     */
     static long parseLocal(String s) {
         if (s == null) return -1;
         s = s.trim();
+        // A trailing zone ("Z", "+05:30") or fraction of a second was always ignored (local time): keep it so.
+        s = s.replaceFirst("(\\d{2}:\\d{2}(?::\\d{2})?)(?:\\.\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?$", "$1");
         for (String f : TIME_FORMATS) {
             try {
                 java.text.SimpleDateFormat p = new java.text.SimpleDateFormat(f, Locale.ENGLISH);
                 p.setLenient(false);
-                java.util.Date d = p.parse(s);
-                if (d != null) return d.getTime();
+                java.text.ParsePosition pos = new java.text.ParsePosition(0);
+                java.util.Date d = p.parse(s, pos);
+                if (d != null && pos.getIndex() == s.length()) return d.getTime();
             } catch (Exception ignored) {}
         }
         return -1;
@@ -1787,6 +1849,7 @@ final class Tools {
     // ================================================================ email
 
     private String sendEmail(String to, String subject, String body) throws Exception {
+        pendingDraft = null; // a new draft: the old one can no longer be sent by mistake
         if (to == null || to.trim().isEmpty()) return err("missing", "Who should the email go to?");
         String address = to.trim();
         String name = address;
@@ -1860,6 +1923,7 @@ final class Tools {
 
     /** "పాట ఆపు / ఆఫ్ చేయి": pauses whatever is playing, keeping its place. */
     private String pauseMedia(android.media.AudioManager am) throws Exception {
+        playGen++; // a song waiting for the unlock must not start after this
         List<android.media.session.MediaController> list = sessions();
         String paused = null;
         for (android.media.session.MediaController mc : list) {
@@ -1879,6 +1943,7 @@ final class Tools {
 
     /** "ప్లే చేయి": continues the paused song or video from where it stopped. */
     private String resumeMedia(android.media.AudioManager am) throws Exception {
+        playGen++; // this play request replaces one still waiting for the unlock
         List<android.media.session.MediaController> list = sessions();
         for (android.media.session.MediaController mc : list) {
             if (isPlaying(mc)) return ok().put("done", "play").put("already_playing", label(mc.getPackageName())).toString();
@@ -1916,6 +1981,7 @@ final class Tools {
 
     /** "మ్యూజిక్ స్టాప్": stops the music and closes that music app completely. */
     private String stopAndCloseMedia(android.media.AudioManager am) throws Exception {
+        playGen++; // a song waiting for the unlock must not start after this
         String pkg = null;
         for (android.media.session.MediaController mc : sessions()) {
             if (isPlaying(mc)) { pkg = mc.getPackageName(); break; }
@@ -2045,9 +2111,17 @@ final class Tools {
             case "silent": case "vibrate": case "sound": case "ring": case "normal": {
                 android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
                 android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
-                int mode = s.equals("vibrate") ? android.media.AudioManager.RINGER_MODE_VIBRATE
-                        : s.equals("silent") && on ? android.media.AudioManager.RINGER_MODE_SILENT
-                        : android.media.AudioManager.RINGER_MODE_NORMAL;
+                int mode;
+                if (s.equals("vibrate")) {
+                    mode = on ? android.media.AudioManager.RINGER_MODE_VIBRATE : android.media.AudioManager.RINGER_MODE_NORMAL;
+                } else if (s.equals("silent")) {
+                    mode = on ? android.media.AudioManager.RINGER_MODE_SILENT : android.media.AudioManager.RINGER_MODE_NORMAL;
+                } else if (on) { // sound / ring / normal on
+                    mode = android.media.AudioManager.RINGER_MODE_NORMAL;
+                } else {         // sound off: silent, or vibrate when Jarvis has no Do Not Disturb access
+                    mode = nm != null && nm.isNotificationPolicyAccessGranted() ? android.media.AudioManager.RINGER_MODE_SILENT
+                            : android.media.AudioManager.RINGER_MODE_VIBRATE;
+                }
                 try {
                     am.setRingerMode(mode);
                 } catch (SecurityException se) {
@@ -2163,6 +2237,7 @@ final class Tools {
             return ok().put("photos", n).put("when", when).toString();
         }
         if (a.equals("send")) {
+            pendingDraft = null; // a new draft: the old one can no longer be sent by mistake
             int max = Math.max(1, Math.min(10, count <= 0 ? 1 : count));
             List<Uri> list = findPhotos(when, max, screenshots);
             if (list.isEmpty()) return err("no_photos", "No photos found for '" + when + "'.");
@@ -2213,9 +2288,11 @@ final class Tools {
     private String callControl(String action) throws Exception {
         String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
         String r;
-        if (a.startsWith("ans") || a.equals("accept") || a.equals("pick")) r = CallControl.answer(act());
-        else if (a.startsWith("dec") || a.equals("reject")) r = CallControl.decline(act());
-        else r = CallControl.hangUp(act());
+        // An unknown word must never end up rejecting a ringing call.
+        if (a.matches("(ans|accept|pick|lift|receive|attend).*")) r = CallControl.answer(act());
+        else if (a.matches("(dec|reject).*")) r = CallControl.decline(act());
+        else if (a.matches("(end|hang|cut|disconnect).*")) r = CallControl.hangUp(act());
+        else return err("bad_action", "Unknown call action '" + action + "'. Use answer, decline or end.");
         if ("need_permission".equals(r)) return needPermission(Manifest.permission.ANSWER_PHONE_CALLS, "answering and ending calls");
         if ("no_call".equals(r)) return err("no_call", "There is no call to " + a + " right now.");
         if ("failed".equals(r)) return err("failed", "The call app did not accept that; Anil must tap the button himself.");
@@ -2225,7 +2302,40 @@ final class Tools {
     // ================================================================ money from bank SMS
 
     private static final java.util.regex.Pattern AMOUNT = java.util.regex.Pattern.compile(
-            "(?:rs\\.?|inr|₹)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", java.util.regex.Pattern.CASE_INSENSITIVE);
+            "(?:₹|(?<![a-z])(?:rs\\.?|inr))\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", java.util.regex.Pattern.CASE_INSENSITIVE);
+    /** SBI style "debited by 20.0" (no Rs / INR / ₹). */
+    private static final java.util.regex.Pattern AMOUNT_BY = java.util.regex.Pattern.compile(
+            "(?:debited|credited) by\\s*([0-9][0-9,.]*)", java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern SMS_DEBIT = java.util.regex.Pattern.compile(
+            "\\b(debited|spent|withdrawn|paid|sent|purchased?|dr|debit)\\b");
+    private static final java.util.regex.Pattern SMS_CREDIT = java.util.regex.Pattern.compile(
+            "\\b(credited|received|deposited|refund(ed)?)\\b");
+    /** OTPs and codes: never counted, never read out. */
+    private static final java.util.regex.Pattern SMS_CODE = java.util.regex.Pattern.compile(
+            "\\botp|otp\\b|one-time password|one time password|verification code|secure code|\\bpin\\b");
+    /** Recharge plans and offers ("₹299 prepaid pack", "cashback offer"): not his spending unless money was debited. */
+    private static final java.util.regex.Pattern SMS_PROMO = java.util.regex.Pattern.compile(
+            "\\b(prepaid|postpaid|cashback|offers?|recharge offers?)\\b");
+    private static final java.util.regex.Pattern SMS_REAL_TXN = java.util.regex.Pattern.compile(
+            "debited|credited|paid to|sent to|\\ba/c\\b|\\bacct\\b|upi ref|\\btxn\\b|\\bref no");
+    /** Long numbers (account, card, reference, UPI ref) in a snippet, and the currency word that marks an amount. */
+    private static final java.util.regex.Pattern LONG_NUMBER = java.util.regex.Pattern.compile("[Xx*]*(?<!\\d)\\d{4,}(?!\\d)|[Xx*]{4,}");
+    private static final java.util.regex.Pattern MONEY_BEFORE = java.util.regex.Pattern.compile(
+            "(?i)(?:₹|(?<![a-z])(?:rs\\.?|inr)|(?:debited|credited) by)\\s*$");
+
+    /** Hides account / card / reference numbers (4+ digits) in an SMS snippet, keeping the amounts. */
+    static String maskNumbers(String s) {
+        java.util.regex.Matcher m = LONG_NUMBER.matcher(s);
+        StringBuilder out = new StringBuilder();
+        int last = 0;
+        while (m.find()) {
+            out.append(s, last, m.start());
+            boolean amount = m.group().matches("\\d+") && MONEY_BEFORE.matcher(s.substring(Math.max(0, m.start() - 12), m.start())).find();
+            out.append(amount ? m.group() : "…");
+            last = m.end();
+        }
+        return out.append(s.substring(last)).toString();
+    }
 
     private String bankSpending(int days) throws Exception {
         if (!has(Manifest.permission.READ_SMS)) return needPermission(Manifest.permission.READ_SMS, "reading bank SMS");
@@ -2246,20 +2356,24 @@ final class Tools {
                 String body = c.getString(1);
                 if (body == null) continue;
                 String low = body.toLowerCase(Locale.ROOT);
-                if (low.contains("otp") || low.contains("one time password") || low.contains("will be debited")
+                if (SMS_CODE.matcher(low).find() || low.contains("will be debited")
                         || low.contains("due") && !low.contains("debited") || low.contains("request")) continue;
-                boolean debit = low.contains("debited") || low.contains("spent") || low.contains("withdrawn") || low.contains("paid")
-                        || low.contains("sent") || low.contains("purchase") || low.contains(" dr ") || low.contains("debit");
-                boolean credit = low.contains("credited") || low.contains("received") || low.contains("deposited") || low.contains("refund");
+                // an offer / plan message, unless money actually left his account ("Paid Rs.299 to Jio prepaid")
+                if (SMS_PROMO.matcher(low).find() && !SMS_REAL_TXN.matcher(low).find()) continue;
+                boolean debit = SMS_DEBIT.matcher(low).find();
+                boolean credit = SMS_CREDIT.matcher(low).find();
                 if (!debit && !credit) continue;
                 java.util.regex.Matcher m = AMOUNT.matcher(body);
-                if (!m.find()) continue;
+                if (!m.find()) {
+                    m = AMOUNT_BY.matcher(body);
+                    if (!m.find()) continue;
+                }
                 double amt;
-                try { amt = Double.parseDouble(m.group(1).replace(",", "")); } catch (Exception ex) { continue; }
+                try { amt = Double.parseDouble(m.group(1).replace(",", "").replaceAll("\\.+$", "")); } catch (Exception ex) { continue; }
                 boolean isCredit = credit && !(low.indexOf("debited") >= 0 && low.indexOf("debited") < Math.max(0, low.indexOf("credited")));
                 if (isCredit) received += amt; else spent += amt;
                 if (n++ < maxItems) {
-                    String snippet = body.replaceAll("\\s+", " ").replaceAll("[0-9Xx*]{6,}", "…");
+                    String snippet = maskNumbers(body.replaceAll("\\s+", " "));
                     if (snippet.length() > 110) snippet = snippet.substring(0, 110);
                     items.put(new JSONObject().put("date", f.format(new java.util.Date(c.getLong(2))))
                             .put("type", isCredit ? "credit" : "debit").put("amount", amt)
@@ -2325,8 +2439,9 @@ final class Tools {
             }
             if (alarmTime != null && alarmTime.matches("\\s*\\d{1,2}[:.]\\d{2}\\s*")) {
                 String[] hm = alarmTime.trim().split("[:.]");
-                alarm(Integer.parseInt(hm[0]), Integer.parseInt(hm[1]), "Good morning");
-                o.put("alarm", alarmTime.trim());
+                JSONObject set = new JSONObject(alarm(Integer.parseInt(hm[0]), Integer.parseInt(hm[1]), "Good morning"));
+                if (set.optBoolean("ok")) o.put("alarm", alarmTime.trim());
+                else o.put("alarm_not_set", set.optString("detail", "The alarm could not be set."));
             }
             if (!dnd) o.put("tip", "For full Do Not Disturb, Anil can allow 'Do Not Disturb access' for Jarvis once.");
         } else {
@@ -2453,9 +2568,11 @@ final class Tools {
             o.put("upi_payee", u.getQueryParameter("pn")).put("upi_id", u.getQueryParameter("pa")).put("amount", u.getQueryParameter("am"))
                     .put("note", "A UPI payment code. Jarvis never pays by itself; if he wants to pay, call scan_qr again with open=true and he finishes in his UPI app with his PIN.");
         }
-        if (open && (text.startsWith("http") || text.toLowerCase(Locale.ROOT).startsWith("upi:"))) {
+        Uri link = Uri.parse(text.trim()).normalizeScheme(); // "HTTPS://…" and "UPI://…" too
+        String scheme = link.getScheme();
+        if (open && ("http".equals(scheme) || "https".equals(scheme) || "upi".equals(scheme))) {
             if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
-            start(Intent.createChooser(new Intent(Intent.ACTION_VIEW, Uri.parse(text)), "తెరవండి").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            start(Intent.createChooser(new Intent(Intent.ACTION_VIEW, link), "తెరవండి").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             o.put("opened", true);
         }
         return o.toString();
@@ -2640,19 +2757,29 @@ final class Tools {
         String where = l == null ? "(లొకేషన్ దొరకలేదు)" : "https://maps.google.com/?q=" + l.getLatitude() + "," + l.getLongitude();
         String text = "🆘 " + prefs.name() + " కి సహాయం కావాలి. " + (message == null || message.isEmpty() ? "" : message + ". ") + "లొకేషన్: " + where;
         SmsManager sm = Build.VERSION.SDK_INT >= 31 ? act().getSystemService(SmsManager.class) : SmsManager.getDefault();
-        JSONArray sent = new JSONArray();
+        JSONArray sent = new JSONArray(), skipped = new JSONArray(), guessed = new JSONArray();
         String firstNumber = null;
         for (String who : list.split(",")) {
             if (who.trim().isEmpty()) continue;
             Target t = resolve(who.trim());
-            if (t.error != null || t.contact == null) continue;
+            Contact c = t.contact;
+            if (c == null && t.options != null && !t.options.isEmpty()) {
+                // Several contacts match the saved SOS name: in an emergency send to the first rather than to nobody.
+                c = t.options.get(0);
+                guessed.put(who.trim() + " → " + c.name);
+            }
+            if (c == null) { skipped.put(who.trim()); continue; }
             try {
-                sm.sendMultipartTextMessage(t.contact.number, null, sm.divideMessage(text), null, null);
-                sent.put(t.contact.name);
-                if (firstNumber == null) firstNumber = t.contact.number;
-            } catch (Exception ignored) {}
+                sm.sendMultipartTextMessage(c.number, null, sm.divideMessage(text), null, null);
+                sent.put(c.name);
+                if (firstNumber == null) firstNumber = c.number;
+            } catch (Exception e) {
+                skipped.put(who.trim());
+            }
         }
         JSONObject o = ok().put("sms_sent_to", sent).put("location", where);
+        if (skipped.length() > 0) o.put("not_sent_to", skipped).put("not_sent_note", "Tell him these SOS contacts could not be found or messaged; he can fix them in Jarvis settings > 'అత్యవసరం (SOS)'.");
+        if (guessed.length() > 0) o.put("several_matched_sent_to_first", guessed);
         if (firstNumber != null && has(Manifest.permission.CALL_PHONE)) {
             start(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(firstNumber))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             o.put("calling", sent.optString(0));
@@ -2959,7 +3086,11 @@ final class Tools {
     private String readScreen(String mode) throws Exception {
         if (!JarvisAccessibility.enabled()) return err("screen_access_off", "Jarvis needs its accessibility switch to read the screen.");
         JarvisAccessibility.Capture cap = JarvisAccessibility.recent(90000);
-        if (cap == null || cap.text.trim().isEmpty()) cap = JarvisAccessibility.captureBlocking(2500);
+        // A fresh capture only when Jarvis's own screen is not in front (it would read Jarvis's chat).
+        if ((cap == null || cap.text.trim().isEmpty()) && !MainActivity.visible) cap = JarvisAccessibility.captureBlocking(2500);
+        if ((cap == null || cap.text.trim().isEmpty()) && MainActivity.visible) {
+            return err("no_recent_screen", "Jarvis's own screen is covering the phone. Ask Anil to open the page he wants read, then call you with the wake word 'Jarvis' and ask again.");
+        }
         if (cap == null || cap.text.trim().isEmpty()) return err("no_text", "No readable text on the screen.");
         StringBuilder b = new StringBuilder();
         for (String line : cap.text.split("\n")) {
@@ -3531,26 +3662,44 @@ final class Tools {
         volatile boolean awaiting;
         double pendingAmount = -1;  // the amount Jarvis asked "పే చేయమంటారా?" for
         double pendingCeiling = -1; // most he agreed to pay (tickets + convenience fee + GST)
+        long askedAt;               // System.currentTimeMillis() when Jarvis asked "పే చేయమంటారా?": his yes must come after it
         boolean paying;             // he said yes: paying from the MobiKwik wallet now
         int refusals;
     }
 
     /** Words that mean yes / no in his answer to "₹… పే చేయమంటారా?". */
     private static final java.util.regex.Pattern SAID_YES = java.util.regex.Pattern.compile(
-            "(?i)(అవును|ఔను|పే చెయ్|పే చేయి|పే చేయండి|పే చేసెయ్|చేసెయ్|చెయ్యి|చేయి|ఓకే|సరే|\\byes\\b|\\bpay\\b|\\bok\\b|\\bokay\\b|హా)");
+            "(?i)(అవును|ఔను|పే చెయ్|పే చేయి|పే చేయండి|పే చేసెయ్|ఓకే|సరే|\\byes\\b|\\bpay\\b|\\bok\\b|\\bokay\\b)");
     private static final java.util.regex.Pattern SAID_NO = java.util.regex.Pattern.compile(
             "(?i)(ద్దు|వద్ద|కాదు|ఆపు|ఆగు|తర్వాత|\\bno\\b|\\bnot\\b|don't|cancel|wait)");
 
-    /** What Anil actually said last (not what the model thinks he said). */
-    private String lastUserWords() {
-        List<JSONObject> chat = store.chat();
-        for (int i = chat.size() - 1; i >= 0; i--) {
-            JSONObject o = chat.get(i);
-            if ("user".equals(o.optString("role"))) {
-                return System.currentTimeMillis() - o.optLong("t") < 3 * 60 * 1000L ? o.optString("content") : "";
+    /**
+     * What Anil actually said last (not what the model thinks he said), only if he said it after
+     * {@code after} (wall clock, e.g. after Jarvis asked the payment question); "" otherwise.
+     */
+    private String lastUserWords(long after) throws InterruptedException {
+        JSONObject o = userTurnAfter(after, 5000);
+        return o == null ? "" : o.optString("content");
+    }
+
+    /**
+     * Anil's newest line in the conversation if it came after {@code after} (System.currentTimeMillis()),
+     * else null. Waits up to waitMs, polling, since a live-mode transcript can arrive after the tool call.
+     */
+    private JSONObject userTurnAfter(long after, long waitMs) throws InterruptedException {
+        long end = android.os.SystemClock.elapsedRealtime() + waitMs;
+        while (true) {
+            List<JSONObject> chat = store.chat();
+            for (int i = chat.size() - 1; i >= 0; i--) {
+                JSONObject o = chat.get(i);
+                if ("user".equals(o.optString("role"))) {
+                    if (o.optLong("t") > after) return o;
+                    break;
+                }
             }
+            if (android.os.SystemClock.elapsedRealtime() >= end) return null;
+            Thread.sleep(250);
         }
-        return "";
     }
 
     /**
@@ -3558,6 +3707,9 @@ final class Tools {
      * వాలెట్ నుంచి పే చేయమంటారా?". Otherwise (or above his limit): he taps Pay himself.
      */
     private String reachedPayment(AppTask t, JarvisAccessibility.Screen sc, String summary, String button) throws Exception {
+        // A new question about paying: no earlier "yes" or permission to press Pay carries over.
+        JarvisAccessibility.clearPayment();
+        t.paying = false;
         t.time = android.os.SystemClock.elapsedRealtime();
         double amt = button == null ? -1 : JarvisAccessibility.payAmount(button); // "Pay ₹472"
         boolean finalTotal = false;
@@ -3571,7 +3723,8 @@ final class Tools {
         if (amt <= 0) amt = JarvisAccessibility.rupees(sc.list.toString()); // the biggest amount shown
         if (walletPayOk(t) && amt > 0 && amt <= prefs.walletPayMax()) {
             t.pendingAmount = amt;
-            t.pendingCeiling = finalTotal ? amt + 2 : feeCeiling(amt);
+            t.pendingCeiling = Math.min(prefs.walletPayMax(), finalTotal ? amt + 2 : feeCeiling(amt));
+            t.askedAt = System.currentTimeMillis();
             t.awaiting = true;
             backToJarvis();
             String ask = t.pendingCeiling > amt + 2
@@ -3671,6 +3824,7 @@ final class Tools {
             t.pkg = pkg; t.app = label(pkg); t.goal = goal.trim();
             if (walletPayOk(t)) t.goal += ". (His wallet payment is on: after selecting the seats do NOT ask him to confirm them separately; "
                     + "reply payment with the movie, theatre, date, time, seat numbers and the total, and Jarvis asks him once.)";
+            JarvisAccessibility.clearPayment(); // nothing from an earlier task may pay in this one
             appTask = t;
             launch(pkg);
             Thread.sleep(3500);
@@ -3684,10 +3838,12 @@ final class Tools {
                 // and only when his own last words were a clear yes.
                 if (!walletPayOk(t)) return err("wallet_pay_off", "Wallet payment by Jarvis is off, or this app is not BookMyShow / District (Jarvis settings → టికెట్ పేమెంట్). Tell him to tap Pay himself.");
                 if (t.pendingAmount <= 0) return err("nothing_to_pay", "Jarvis has not asked him about a payment yet.");
-                String said = lastUserWords();
-                if (!SAID_YES.matcher(said).find() || SAID_NO.matcher(said).find()) {
+                // His own words, said after Jarvis asked the question (not an older "yes"), short and clearly yes.
+                String said = lastUserWords(t.askedAt).trim();
+                if (said.length() > 60 || !SAID_YES.matcher(said).find() || SAID_NO.matcher(said).find()) {
                     t.awaiting = true;
                     t.time = android.os.SystemClock.elapsedRealtime();
+                    t.askedAt = System.currentTimeMillis(); // the question is asked again now: only a yes after it counts
                     return err("no_clear_yes", "Jarvis did not hear a clear yes (he said: '" + said + "'). Ask again: '₹" + Math.round(t.pendingAmount)
                             + " MobiKwik వాలెట్ నుంచి పే చేయమంటారా?' Only a clear yes pays.");
                 }
@@ -3699,6 +3855,11 @@ final class Tools {
                         + "on the payment page tap the MobiKwik row (under PREFERRED PAYMENTS, or inside Wallets / Mobile Wallets; an amount next to it is his wallet balance, not the price). "
                         + "Never UPI, PhonePe, CRED, cards, net banking, pay later or any other wallet. Then press Pay / Proceed on the next screens. "
                         + "If MobiKwik asks for a PIN, OTP or password, ask Anil to enter it. When the booking is confirmed, reply done with the booking ID, seats, theatre, show time and the amount paid.";
+            }
+            if (!pay) {
+                // A normal answer: the payment question (if any) is over; it must be asked again before paying.
+                t.pendingAmount = -1;
+                t.pendingCeiling = -1;
             }
             if (answer != null && !answer.trim().isEmpty()) t.answers.put(answer.trim());
             if (goal != null && !goal.trim().isEmpty() && !goal.trim().equals(t.goal)) t.goal = t.goal + ". Change: " + goal.trim();
@@ -3720,9 +3881,23 @@ final class Tools {
         }
     }
 
+    private static final java.util.regex.Pattern EXTRA_ASKED = java.util.regex.Pattern.compile("club|donat|insurance|క్లబ్");
+    private static final java.util.regex.Pattern EXTRA_REFUSED = java.util.regex.Pattern.compile(
+            "\\bno\\b|\\bnot\\b|without|don[’']?t|\\bskip|వద్దు|లేకుండా|తీసుకోకు");
+
+    /** He asked for a paid extra himself ("Club కూడా తీసుకో") — not "insurance వద్దు" / "no BMS Club". */
+    static boolean askedForExtras(String asked) {
+        java.util.regex.Matcher m = EXTRA_ASKED.matcher(asked);
+        while (m.find()) {
+            String around = asked.substring(Math.max(0, m.start() - 25), Math.min(asked.length(), m.end() + 25));
+            if (!EXTRA_REFUSED.matcher(around).find()) return true;
+        }
+        return false;
+    }
+
     private String runAppTask(AppTask t) throws Exception {
         String asked = (t.goal + " " + t.answers).toLowerCase(Locale.ROOT);
-        JarvisAccessibility.extrasAllowed = asked.contains("club") || asked.contains("donat") || asked.contains("insurance") || asked.contains("క్లబ్");
+        JarvisAccessibility.extrasAllowed = askedForExtras(asked);
         long end = android.os.SystemClock.elapsedRealtime() + 170_000;
         int waits = 0;
         for (int step = 0; step < 30 && android.os.SystemClock.elapsedRealtime() < end && appTask == t; step++) {
@@ -3828,7 +4003,8 @@ final class Tools {
                 t.time = android.os.SystemClock.elapsedRealtime();
                 if (total > 0 && total <= prefs.walletPayMax()) {
                     t.pendingAmount = total;
-                    t.pendingCeiling = total + 2;
+                    t.pendingCeiling = Math.min(prefs.walletPayMax(), total + 2);
+                    t.askedAt = System.currentTimeMillis();
                     t.awaiting = true;
                     backToJarvis();
                     String ask = "ఫీజు, GST తో మొత్తం ₹" + Math.round(total) + " అయింది. MobiKwik వాలెట్ నుంచి పే చేయమంటారా?";
@@ -3922,6 +4098,14 @@ final class Tools {
                 JSONObject o = new JSONObject(deviceStatus());
                 return "బ్యాటరీ " + o.optInt("battery_pct", o.optInt("battery", -1)) + " శాతం ఉంది.";
             }
+            // before the time check: "timer" contains "time"
+            if (any(t, "టైమర్", "timer")) {
+                int n = firstNumber(t);
+                if (n <= 0) return "ఎన్ని నిమిషాల టైమర్?";
+                int secs = any(t, "సెకన్", "second") ? n : any(t, "గంట", "hour") ? n * 3600 : n * 60;
+                timer(secs, "Jarvis");
+                return "టైమర్ పెట్టాను.";
+            }
             if (any(t, "టైమ్", "సమయం", "time", "ఎంత అయింది", "తేదీ", "date")) {
                 return new java.text.SimpleDateFormat("h:mm a, EEEE d MMMM", Locale.ENGLISH).format(new java.util.Date()) + ".";
             }
@@ -3941,13 +4125,6 @@ final class Tools {
                 if (h < 12 && any(t, "సాయంత్రం", "రాత్రి", "మధ్యాహ్నం", "pm", "evening", "night")) h += 12;
                 alarm(h, m, "Jarvis");
                 return String.format(Locale.ENGLISH, "%d:%02d కి అలారం పెట్టాను.", h, m);
-            }
-            if (any(t, "టైమర్", "timer")) {
-                int n = firstNumber(t);
-                if (n <= 0) return "ఎన్ని నిమిషాల టైమర్?";
-                int secs = any(t, "సెకన్", "second") ? n : any(t, "గంట", "hour") ? n * 3600 : n * 60;
-                timer(secs, "Jarvis");
-                return "టైమర్ పెట్టాను.";
             }
             if (any(t, "వాల్యూమ్", "volume", "సౌండ్")) {
                 mediaControl(any(t, "తగ్గించు", "తగ్గించ", "down", "తక్కువ") ? "volume_down" : "volume_up", 50);

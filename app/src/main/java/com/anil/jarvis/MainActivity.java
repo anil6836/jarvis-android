@@ -100,7 +100,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private boolean busy;
     private boolean paused;
     private boolean lastWasVoice;
-    private int generation;            // increases with every request, so a stopped answer is ignored
+    private volatile int generation;   // increases with every request, so a stopped answer is ignored (and its tools stop)
     private Runnable pendingUndo;
     private LiveSession live;          // an open real-time voice conversation, or null
     private TextView liveBubble;       // Jarvis's reply while it is still being spoken
@@ -165,6 +165,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override protected void onDestroy() {
+        generation++; // late replies (onReply) are dropped and the Brain stops running tools
         if (store.listener == this) store.listener = null;
         if (live != null) live.stop("destroy");
         if (camera != null) camera.close();
@@ -172,6 +173,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
         inConversation = false;
+        if (prefs.wakeReady()) WakeService.resume(this); // it was paused while Anil and Jarvis talked
         super.onDestroy();
     }
 
@@ -245,13 +247,70 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         return p.toArray(new String[0]);
     }
 
+    /** Core permissions still missing. */
+    private List<String> missingPermissionList() {
+        // Android 14 "Select photos and videos" grants only READ_MEDIA_VISUAL_USER_SELECTED: that is his
+        // choice, so photos/videos count as answered (asking again would never make the card go away).
+        boolean partialMedia = Build.VERSION.SDK_INT >= 34
+                && checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED;
+        List<String> out = new ArrayList<>();
+        for (String p : corePermissions()) {
+            if (checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED) continue;
+            if (partialMedia && (Manifest.permission.READ_MEDIA_VIDEO.equals(p) || Manifest.permission.READ_MEDIA_IMAGES.equals(p))) continue;
+            out.add(p);
+        }
+        return out;
+    }
+
     private boolean missingPermissions() {
-        for (String p : corePermissions()) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) return true;
-        return false;
+        return !missingPermissionList().isEmpty();
+    }
+
+    /** Permissions Android no longer shows a dialog for ("Don't allow" twice / "don't ask again"). */
+    private java.util.Set<String> blockedPermissions() {
+        try {
+            return new java.util.HashSet<>(getPreferences(MODE_PRIVATE).getStringSet("perm_blocked", new java.util.HashSet<>()));
+        } catch (Exception e) {
+            return new java.util.HashSet<>();
+        }
+    }
+
+    /** The setup card: ask for what can still be asked; if Android won't ask any more, open Jarvis's app settings. */
+    private void askCorePermissions() {
+        java.util.Set<String> blocked = blockedPermissions();
+        List<String> ask = new ArrayList<>();
+        for (String p : missingPermissionList()) {
+            if (!blocked.contains(p) || shouldShowRequestPermissionRationale(p)) ask.add(p);
+        }
+        if (!ask.isEmpty()) {
+            requestPermissions(ask.toArray(new String[0]), REQ_PERMS);
+            return;
+        }
+        try {
+            startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", getPackageName(), null)));
+            Toast.makeText(this, "అనుమతులు (Permissions) తెరిచి Allow ఇవ్వండి", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Settings → Apps → Jarvis → Permissions లో Allow ఇవ్వండి", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** Remembers which permissions were refused without a dialog being possible any more. */
+    private void notePermissionResults(String[] perms, int[] results) {
+        java.util.Set<String> blocked = blockedPermissions();
+        boolean changed = false;
+        for (int i = 0; i < perms.length && i < results.length; i++) {
+            boolean nowBlocked = results[i] != PackageManager.PERMISSION_GRANTED && !shouldShowRequestPermissionRationale(perms[i]);
+            changed |= nowBlocked ? blocked.add(perms[i]) : blocked.remove(perms[i]);
+        }
+        if (changed) {
+            try { getPreferences(MODE_PRIVATE).edit().putStringSet("perm_blocked", blocked).apply(); } catch (Exception ignored) {}
+        }
     }
 
     @Override public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         super.onRequestPermissionsResult(code, perms, results);
+        if (perms != null && results != null) notePermissionResults(perms, results);
         updateSetup();
         if (code == REQ_CAMERA_PERM && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) toggleCamera();
         if (code == REQ_PHOTO_CAM && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) openCamera();
@@ -608,7 +667,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             setupCard.setVisibility(View.VISIBLE);
         } else if (missingPermissions()) {
             setupCard.setText("కాల్స్, SMS, కాంటాక్ట్స్, మైక్, లొకేషన్ వాడాలంటే అనుమతులు కావాలి. ఇక్కడ నొక్కి Allow ఇవ్వండి.");
-            setupCard.setOnClickListener(v -> requestPermissions(corePermissions(), REQ_PERMS));
+            setupCard.setOnClickListener(v -> askCorePermissions());
             setupCard.setVisibility(View.VISIBLE);
         } else if (voice != null && voice.ttsChecked && !voice.teluguVoice && prefs.voiceReplies()) {
             setupCard.setText("ఈ ఫోన్‌లో తెలుగు వాయిస్ ఇన్‌స్టాల్ అవ్వలేదు, అందుకే Jarvis తెలుగు సరిగ్గా పలకలేడు. ఇక్కడ నొక్కి Google Text-to-speech లో తెలుగు వాయిస్ డౌన్‌లోడ్ చేయండి.");
@@ -688,6 +747,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         List<JSONObject> turns = store.chat();
         for (JSONObject o : turns) {
             String c = o.optString("content");
+            if (c.trim().isEmpty() && !o.optBoolean("photo")) continue; // e.g. a live turn that could not be transcribed
             if (o.optBoolean("photo")) c = "📷 " + c;
             addMessage(o.optString("role"), c, o.optLong("t", System.currentTimeMillis()), null);
         }
@@ -912,6 +972,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         keepScreenOn();
         showTab(0);
         input.setHint("Live: మాట్లాడండి, ఆపాలంటే ఎరుపు బటన్");
+        Tools.takeInterpreter(); // a stale request from an earlier turn must not start later
         live = new LiveSession(this, prefs, tools, this);
         live.start(instructions != null ? instructions : brain.liveInstructions(store.chat()));
         refreshAction();
@@ -923,7 +984,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onLiveUser(String text) {
-        store.addChat("user", text, false);
+        // LiveSession has already saved it to the Store (before any tool of that turn ran).
         TextView t = addMessage("user", text, System.currentTimeMillis(), null);
         if (liveBubble != null) {
             // Keep the order right: Anil's words above the reply that is already streaming.
@@ -956,9 +1017,16 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         t.setTextColor(Ui.RED);
     }
 
-    @Override public void onLiveEnded(String reason) {
+    @Override public void onLiveEnded(LiveSession session, String reason) {
+        if (session != live) return; // an older session ended; the current one is still running
         live = null;
         liveBubble = null;
+        String lang = session.interpreterLang();
+        if (lang != null && !isFinishing() && !isDestroyed()) {
+            // The interpreter tool ran in live mode: continue as the live two-way interpreter.
+            startLive(Brain.interpreterInstructions(prefs.name(), lang));
+            if (live != null) return;
+        }
         finishTurn();
         if ("idle".equals(reason)) status.setText("నిశ్శబ్దంగా ఉంది, Live సంభాషణ ఆపేశాను");
     }
@@ -1114,14 +1182,23 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         refreshAction();
 
         final int gen = ++generation;
-        worker.submit(() -> {
-            String reply = null, error = null;
-            try {
-                reply = brain.ask(history, ask, photo, s -> main.post(() -> {
+        Brain.Status progress = new Brain.Status() {
+            @Override public void update(String s) {
+                main.post(() -> {
                     if (gen != generation) return;
                     status.setText(s);
                     if (thinkingView != null) thinkingView.setText(s);
-                }));
+                });
+            }
+            // The red stop button (or leaving the screen) bumps generation: stop before the next round/tool.
+            @Override public boolean cancelled() { return gen != generation; }
+        };
+        worker.submit(() -> {
+            String reply = null, error = null;
+            try {
+                reply = brain.ask(history, ask, photo, progress);
+            } catch (java.util.concurrent.CancellationException e) {
+                return; // stopped by Anil: no error bubble
             } catch (Http.ApiError e) {
                 error = describe(e);
             } catch (UnknownHostException e) {
@@ -1178,6 +1255,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void finishTurn() {
         if (busy || live != null) return;
+        Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         setIdle();
         inConversation = false;
         if (prefs.wakeReady()) WakeService.resume(this);
