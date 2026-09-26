@@ -58,7 +58,6 @@ import java.util.concurrent.TimeUnit;
 public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listener, Store.Listener, LiveSession.Listener {
     static final String EXTRA_WAKE = "wake";
     static final String EXTRA_BRIEF = "brief";
-    static final String EXTRA_UPDATE = "jarvis_update";
     /** Opened from a notification with a question to ask Jarvis right away. */
     static final String EXTRA_ASK = "jarvis_ask";
     /** True while the Jarvis screen is in front (then a fresh screenshot would only show Jarvis). */
@@ -151,18 +150,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (live == null && !busy) renderChat();
         syncWakeService();
         if (hudDash != null) hudDash.start();
-        UpdateJob.schedule(this);
-        Updater.autoCheck(this, new Updater.Callback() {
-            @Override public void onReady(int build) { maybeOfferUpdate(); }
-            @Override public void onNothing(String message) {}
-        });
-        maybeOfferUpdate();
-    }
-
-    /** A new version is downloaded: ask (one tap) only when Jarvis is on screen and not in a conversation. */
-    private void maybeOfferUpdate() {
-        if (!visible || paused || busy || live != null || voice == null || voice.listening || voice.speaking || isFinishing()) return;
-        Updater.offer(this);
+        UpdateJob.schedule(this); // "new version" notification when a build is out
+        new Thread(() -> Updater.cleanupOld(getApplicationContext()), "jarvis-cleanup").start();
     }
 
     @Override protected void onPause() {
@@ -209,11 +198,6 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 inConversation = true;
                 main.postDelayed(this::startConversation, 450);
             }
-            return;
-        }
-        if (i.getBooleanExtra(EXTRA_UPDATE, false)) { // tapped the "new version" notification
-            i.removeExtra(EXTRA_UPDATE);
-            main.postDelayed(() -> Updater.updateNow(this), 400);
             return;
         }
         String askNow = i.getStringExtra(EXTRA_ASK);
@@ -1398,7 +1382,6 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         status.setText(prefs.hasBrain() ? "సిద్ధంగా ఉన్నాను, " + prefs.name() : "మెదడు ఆఫ్‌లైన్: API key కావాలి");
         input.setHint("Jarvis తో మాట్లాడండి…");
         refreshAction();
-        main.post(this::maybeOfferUpdate);
     }
 
     private void beep() {

@@ -57,6 +57,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 GeoReminders.rearmAll(c);
                 Proactive.schedule(c);
                 UpdateJob.schedule(c);
+                if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) Updater.cancelNotice(c);
                 break;
             default:
                 break;

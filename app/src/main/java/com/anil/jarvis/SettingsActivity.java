@@ -49,8 +49,7 @@ public class SettingsActivity extends Activity {
     private EditText sosContacts, smartUrls, smartApp, walletMax;
     private Switch walletPay, emotions;
     private Switch alexaSpeak;
-    private Switch bargeCallVoice, autoUpdate;
-    private TextView updateInfo;
+    private Switch bargeCallVoice;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
@@ -391,30 +390,25 @@ public class SettingsActivity extends Activity {
 
         section("అప్డేట్లు");
         note("ఇప్పుడున్న వెర్షన్: 1.0." + Updater.currentBuild(this)
-                + ". Jarvis తెరిచినప్పుడు కొత్త వెర్షన్ ఉంటే తనే డౌన్‌లోడ్ చేసి, \"అప్డేట్ చేయి\" అని ఒక్కసారి అడుగుతుంది. మొదటిసారి మాత్రమే Android కూడా ఒకసారి అడుగుతుంది; తర్వాత నుంచి ఒక్క ట్యాప్ చాలు.");
-        autoUpdate = toggle("కొత్త వెర్షన్ తనంతట తానే డౌన్‌లోడ్ చేయి (సుమారు 55 MB)", prefs.autoUpdate());
-        updateInfo = Ui.text(this, "", 14, Ui.MUTED);
-        box.addView(updateInfo);
-        button("ఇప్పుడే అప్డేట్ కోసం చూడు", v -> {
-            Toast.makeText(this, "కొత్త వెర్షన్ కోసం చూస్తున్నాను…", Toast.LENGTH_SHORT).show();
-            updateInfo.setText("కొత్త వెర్షన్ కోసం చూస్తున్నాను… (డౌన్‌లోడ్‌కి ఒక నిమిషం పట్టొచ్చు)");
-            Updater.check(this, new Updater.Callback() {
-                @Override public void onReady(int build) {
+                + ". కొత్త వెర్షన్ వస్తే Jarvis నోటిఫికేషన్ చూపిస్తుంది; దాన్ని నొక్కితే డౌన్‌లోడ్ లింక్ తెరుచుకుంటుంది, మీరే ఇన్‌స్టాల్ చేయండి. యాప్ తనంతట తాను ఏదీ డౌన్‌లోడ్ లేదా ఇన్‌స్టాల్ చేయదు.");
+        button("కొత్త వెర్షన్ ఉందేమో చూడు", v -> {
+            Toast.makeText(this, "చూస్తున్నాను…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                int latest = Updater.latestBuild(), cur = Updater.currentBuild(this);
+                runOnUiThread(() -> {
                     if (isFinishing()) return;
-                    updateInfo.setText(Updater.status);
-                    new android.app.AlertDialog.Builder(SettingsActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                            .setTitle("Jarvis కొత్త వెర్షన్ 1.0." + build)
-                            .setMessage("ఇప్పుడే అప్డేట్ చేయాలా? (ఈ పేజీలో సేవ్ చేయని మార్పులు పోతాయి.)")
-                            .setPositiveButton("అప్డేట్ చేయి", (d, w) -> Updater.install(SettingsActivity.this, build))
+                    if (latest < 0) { Toast.makeText(this, "GitHub చేరలేకపోయాను, తర్వాత చూడండి", Toast.LENGTH_LONG).show(); return; }
+                    if (latest <= cur) { Toast.makeText(this, "ఇదే తాజా వెర్షన్ (1.0." + cur + ")", Toast.LENGTH_LONG).show(); return; }
+                    new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                            .setTitle("కొత్త వెర్షన్ 1.0." + latest)
+                            .setMessage("డౌన్‌లోడ్ లింక్ తెరవాలా? డౌన్‌లోడ్ అయ్యాక మీరే ఇన్‌స్టాల్ చేయండి.")
+                            .setPositiveButton("లింక్ తెరువు", (d, w) -> {
+                                try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(Updater.APK_LINK))); } catch (Exception ignored) {}
+                            })
                             .setNegativeButton("తర్వాత", null)
                             .show();
-                }
-                @Override public void onNothing(String message) {
-                    if (isFinishing()) return;
-                    updateInfo.setText(message);
-                    Toast.makeText(SettingsActivity.this, message, Toast.LENGTH_LONG).show();
-                }
-            });
+                });
+            }, "jarvis-update-check").start();
         });
 
         section("అనుమతులు, డేటా");
@@ -447,7 +441,6 @@ public class SettingsActivity extends Activity {
         wakeInfo.setText(s.toString());
         notifyInfo.setText(NotifyListener.enabled(this) ? "✓ నోటిఫికేషన్ యాక్సెస్: ఇచ్చారు" : "✗ నోటిఫికేషన్ యాక్సెస్: ఇవ్వలేదు");
         screenInfo.setText(JarvisAccessibility.enabled() ? "✓ స్క్రీన్ యాక్సెస్: ఆన్" : "✗ స్క్రీన్ యాక్సెస్: ఆఫ్");
-        if (updateInfo != null) updateInfo.setText(Updater.status);
         screenInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
         if (WakeService.wordStatus != null) s.append("\n\"Jarvis\" పదం: ").append(WakeService.wordStatus);
         else if (VoskModel.ready(this)) s.append("\n✓ \"Jarvis\" పదం: సిద్ధం");
@@ -488,7 +481,6 @@ public class SettingsActivity extends Activity {
         e.putBoolean("barge_in", bargeIn.isChecked());
         e.putInt("barge_sens", bargeSens.getProgress());
         e.putBoolean("barge_call_voice", bargeCallVoice.isChecked());
-        e.putBoolean("auto_update", autoUpdate.isChecked());
         e.putString("realtime_model", realtimeModel.getText().toString().trim());
         if ((liveMode.isChecked() || natural.isChecked()) && openAiKey.getText().toString().trim().isEmpty()) {
             Toast.makeText(this, "సహజ గొంతు, Live సంభాషణకి OpenAI key కావాలి", Toast.LENGTH_LONG).show();
