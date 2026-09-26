@@ -21,9 +21,11 @@ final class BargeIn {
 
     private static final int RATE = 16000;
     private static final int FRAME = 320;          // 20 ms
-    private static final int NEED_FRAMES = 9;      // ~180 ms of speech in a row
-    private static final int WARMUP_FRAMES = 20;   // first 400 ms: learn the echo level
-    private static final double MIN_RMS = 900;     // quieter than this is never him talking
+    private static final int NEED_FRAMES = 16;     // ~320 ms of his voice in a row (a word, not a click)
+    private static final int WARMUP_FRAMES = 50;   // first 1 s: learn how loud Jarvis's own echo gets
+    private static final double MIN_RMS = 1600;    // quieter than this is never him talking
+    private static final double OVER_ECHO = 2.6;   // his voice must be this much louder than Jarvis's echo peaks
+    private static final double DECAY = 0.997;     // echo peak memory: halves in about 4-5 s
 
     private final Context ctx;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -77,8 +79,9 @@ final class BargeIn {
                 double rms = Math.sqrt(sum / n);
                 frames++;
                 if (frames <= WARMUP_FRAMES) { floor = Math.max(floor, rms); continue; }
-                // his voice: clearly above the echo that remains, for a moment
-                if (rms > Math.max(MIN_RMS, floor * 3.0)) {
+                // His voice: clearly louder than the LOUDEST recent echo of Jarvis's own speech, for ~1/3 s.
+                // (Following the echo peaks, not its average, is what keeps Jarvis from stopping itself.)
+                if (rms > Math.max(MIN_RMS, floor * OVER_ECHO)) {
                     if (++loud >= NEED_FRAMES) {
                         running = false;
                         main.post(cb::onVoice);
@@ -86,7 +89,7 @@ final class BargeIn {
                     }
                 } else {
                     loud = 0;
-                    floor = floor * 0.98 + rms * 0.02; // follow Jarvis's echo level slowly
+                    floor = Math.max(rms, floor * DECAY); // remember echo peaks, forget them slowly
                 }
             }
         } catch (Exception ignored) {
