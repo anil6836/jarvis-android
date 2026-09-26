@@ -250,11 +250,15 @@ final class Tools {
                         {"to", "string", "Flights: airport code (BLR). Bus: city in English"}, {"date", "string", "YYYY-MM-DD; empty = today"},
                         {"app", "string", "App he named; empty = the first one installed"}}, "kind", "from", "to")));
         DEFS.add(new Def("phone_task",
-                "Do a task inside one of his apps step by step, the way he would tap it: book movie or event tickets in BookMyShow or District "
-                        + "(movie, date, theatre, show time, number of tickets, seats), or a bus in redBus/AbhiBus. Jarvis asks him the choices, "
-                        + "selects everything and stops at the Pay button: he pays himself. Start: app + goal. Continue: answer (his reply to the question). Cancel: stop=true.",
-                schema(new String[][]{{"app", "string", "App name, e.g. BookMyShow"},
-                        {"goal", "string", "Everything he said in English: e.g. 'Book 2 tickets for OG (Telugu) tomorrow evening at AMB Cinemas Gachibowli, middle rows, seats together'"},
+                "Use his phone for him, like a person with his fingers (seeing the screen, tapping, typing, scrolling, opening apps, going from one app to another): "
+                        + "any task he asks to be DONE on the phone that no other tool does directly, e.g. change a setting, search or play something in an app, "
+                        + "fill a form, find and forward something, copy from one app into another, order-page selections; and book movie/event tickets in "
+                        + "BookMyShow or District or a bus in redBus/AbhiBus (Jarvis asks his choices, selects everything and stops at Pay). "
+                        + "A bar on his screen shows what Jarvis is doing, with a stop button. Jarvis asks before sending, posting, deleting or calling, "
+                        + "never pays (except the MobiKwik ticket flow), never types passwords/OTPs, never uses banking or payment apps. "
+                        + "Start: goal (+ app if one app is obvious; empty = start from the home screen). Continue: answer (his reply to the question). Cancel: stop=true.",
+                schema(new String[][]{{"app", "string", "App to start in, e.g. BookMyShow, YouTube, Settings; empty if the task spans apps or starts from home"},
+                        {"goal", "string", "Everything he said, in English: e.g. 'Book 2 tickets for OG (Telugu) tomorrow evening at AMB Cinemas Gachibowli, middle rows' or 'Turn on dark mode' or 'In YouTube play the new Devara song'"},
                         {"answer", "string", "His answer to the question Jarvis just asked (continue)"}, {"stop", "boolean", "true to cancel"},
                         {"pay", "boolean", "true ONLY right after phone_task returned confirm_payment AND he clearly said yes to that amount"}})));
         DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
@@ -403,7 +407,7 @@ final class Tools {
             case "ev_chargers": return "ఛార్జింగ్ స్టేషన్లు వెతుకుతున్నాను…";
             case "travel_search": return "టికెట్లు వెతుకుతున్నాను…";
             case "my_trips": return "మీ ప్రయాణాలు చూస్తున్నాను…";
-            case "phone_task": return "యాప్‌లో చేస్తున్నాను…";
+            case "phone_task": return "మీ ఫోన్‌లో చేస్తున్నాను…";
             case "bank_balance": return "బ్యాలెన్స్ చూస్తున్నాను…";
             case "voice_recorder": return "రికార్డర్ తెరుస్తున్నాను…";
             case "mobile_plan": return "మీ ప్లాన్ చూస్తున్నాను…";
@@ -3665,6 +3669,20 @@ final class Tools {
         long askedAt;               // System.currentTimeMillis() when Jarvis asked "పే చేయమంటారా?": his yes must come after it
         boolean paying;             // he said yes: paying from the MobiKwik wallet now
         int refusals;
+        boolean general;            // any app, moving between apps (not a ticket booking in one app)
+        String confirmLabel;        // Jarvis asked "… చేయమంటారా?" before a send / post / delete / call button
+    }
+
+    /** His yes to "పంపమంటారా / చేయమంటారా?". */
+    private static final java.util.regex.Pattern CONFIRM_YES = java.util.regex.Pattern.compile(
+            "(?i)(అవును|ఔను|ఓకే|సరే|పంపు|పంపించు|పంపండి|పంపెయ్|చేయి|చెయ్|చేయండి|చేసెయ్|కానివ్వు|డిలీట్ చెయ్|కాల్ చెయ్|\\byes\\b|\\bok\\b|\\bokay\\b|\\bsend\\b|go ahead|do it)");
+
+    /** The ⏹ on the screen bar: stop the phone task now. */
+    static void stopAgent() {
+        appTask = null;
+        JarvisAccessibility.clearPayment();
+        JarvisAccessibility.clearConfirmed();
+        JarvisAccessibility.hideControl();
     }
 
     /** Words that mean yes / no in his answer to "₹… పే చేయమంటారా?". */
@@ -3777,14 +3795,23 @@ final class Tools {
             "paypal", "bajaj", "bank", "upi", "wallet", "bhim"};
 
     private static final String AGENT_SYSTEM =
-            "You operate an Android app on Anil's phone for his assistant Jarvis, one step per reply, to reach his goal. "
-            + "Each turn you get the goal, his answers so far, your previous steps, the numbered elements on the screen with their centre in screen pixels, "
-            + "and a screenshot with a pink grid labelled in screen pixels.\n"
+            "You use Anil's Android phone for his assistant Jarvis, like a person with his fingers, one step per reply, to reach his goal. "
+            + "Each turn you get the goal, his answers so far, your previous steps, the app in front, the numbered elements on the screen with their centre in screen pixels, "
+            + "and a screenshot with a pink grid labelled in screen pixels. A small Jarvis bar at the very top and a thin blue border are Jarvis's own: ignore them.\n"
             + "Reply with ONE JSON object and nothing else:\n"
             + "{\"action\":\"tap\",\"element\":N,\"why\":\"…\"} | {\"action\":\"tap_xy\",\"x\":X,\"y\":Y,\"why\":\"…\"} | {\"action\":\"type\",\"element\":N,\"text\":\"…\"} | "
-            + "{\"action\":\"scroll\",\"direction\":\"down|up|left|right\"} | {\"action\":\"zoom\",\"left\":X1,\"top\":Y1,\"right\":X2,\"bottom\":Y2} | {\"action\":\"back\"} | {\"action\":\"wait\"} | "
-            + "{\"action\":\"ask\",\"question\":\"…\"} | {\"action\":\"payment\",\"summary\":\"…\"} | {\"action\":\"done\",\"summary\":\"…\"} | {\"action\":\"fail\",\"reason\":\"…\"}\n"
+            + "{\"action\":\"long_press\",\"element\":N} | {\"action\":\"scroll\",\"direction\":\"down|up|left|right\"} | {\"action\":\"zoom\",\"left\":X1,\"top\":Y1,\"right\":X2,\"bottom\":Y2} | "
+            + "{\"action\":\"open_app\",\"name\":\"…\"} | {\"action\":\"home\"} | {\"action\":\"back\"} | {\"action\":\"wait\"} | "
+            + "{\"action\":\"ask\",\"question\":\"…\"} | {\"action\":\"payment\",\"summary\":\"…\"} | {\"action\":\"done\",\"summary\":\"…\",\"stay\":true|false} | {\"action\":\"fail\",\"reason\":\"…\"}\n"
+            + "\"why\" is 2-6 simple Telugu words saying what you are doing (it is shown to Anil on his screen), e.g. \"Settings తెరుస్తున్నాను\". "
+            + "done: summary = what was done, in one short sentence; stay = true when he will want to see or use the result there (a video playing, a page or chat opened), else false.\n"
             + "Rules:\n"
+            + "- Go step by step and check the screen after each step. open_app opens an installed app by its name; home goes to the home screen.\n"
+            + "- Before anything that cannot be undone or that others will see, tap it only after he agrees: sending a message or mail, posting or sharing, "
+            + "deleting, calling, submitting a form, uninstalling, resetting. First ask one short Telugu question that says exactly what will happen "
+            + "(e.g. 'Ravi కి \"సాయంత్రం 6 కి వస్తా\" అని పంపమంటారా?'), unless his goal or answers already say yes to exactly that. "
+            + "If a tap comes back REFUSED: ask first, ask him with such a question.\n"
+            + "- Never open or use banking, UPI or payment apps, never change passwords, security, lock screen or account settings, and never install apps unless he asked.\n"
             + "- Unless the goal says Anil CONFIRMED paying, NEVER tap anything that pays, places an order or confirms a booking or ride (Pay, Pay ₹…, Proceed to pay, Place order, Buy now, Book ride, Confirm pickup). "
             + "If the goal says he CONFIRMED paying, pay only with the MobiKwik wallet as the goal says; a step marked REFUSED was not allowed, so choose MobiKwik and try again. "
             + "When paying is the next step and he has not confirmed, reply payment with a short summary of what is selected (movie/event, theatre, date, time, seats, number of tickets, total shown). Anil pays himself.\n"
@@ -3812,22 +3839,25 @@ final class Tools {
         AppTask t = appTask;
         boolean fresh = !pay && goal != null && !goal.trim().isEmpty() && (t == null || answer == null || answer.trim().isEmpty());
         if (fresh) {
-            if (app == null || app.trim().isEmpty()) return err("missing", "Which app (BookMyShow, District...)?");
-            ResolveInfo r = findApp(app.trim());
-            if (r == null) return err("not_installed", "'" + app + "' is not installed.");
-            String pkg = r.activityInfo.packageName, low = (pkg + " " + label(pkg)).toLowerCase(Locale.ROOT);
-            for (String no : NO_AGENT) {
-                if (low.contains(no)) return err("not_allowed", "Jarvis does not operate payment or banking apps; Anil uses " + label(pkg) + " himself. open_app can open it.");
+            String pkg = "";
+            if (app != null && !app.trim().isEmpty()) {
+                ResolveInfo r = findApp(app.trim());
+                if (r == null) return err("not_installed", "'" + app + "' is not installed.");
+                pkg = r.activityInfo.packageName;
+                if (noAgent(pkg) || noAgent(label(pkg))) return err("not_allowed", "Jarvis does not operate payment or banking apps; Anil uses " + label(pkg) + " himself. open_app can open it.");
             }
             if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
             t = new AppTask();
-            t.pkg = pkg; t.app = label(pkg); t.goal = goal.trim();
+            t.pkg = pkg; t.app = pkg.isEmpty() ? "ఫోన్" : label(pkg); t.goal = goal.trim();
+            t.general = pkg.isEmpty() || !ticketApp(pkg, t.app);
             if (walletPayOk(t)) t.goal += ". (His wallet payment is on: after selecting the seats do NOT ask him to confirm them separately; "
                     + "reply payment with the movie, theatre, date, time, seat numbers and the total, and Jarvis asks him once.)";
             JarvisAccessibility.clearPayment(); // nothing from an earlier task may pay in this one
+            JarvisAccessibility.clearConfirmed();
             appTask = t;
-            launch(pkg);
-            Thread.sleep(3500);
+            if (!pkg.isEmpty()) launch(pkg);
+            else onUi(JarvisAccessibility::goHome); // start from the home screen
+            Thread.sleep(pkg.isEmpty() ? 1500 : 3500);
         } else {
             if (t == null || android.os.SystemClock.elapsedRealtime() - t.time > 20 * 60 * 1000L) {
                 appTask = null;
@@ -3861,6 +3891,20 @@ final class Tools {
                 t.pendingAmount = -1;
                 t.pendingCeiling = -1;
             }
+            if (t.confirmLabel != null) {
+                // his own words after the question decide (not what the model thinks he said)
+                String said = lastUserWords(t.askedAt).trim();
+                if (said.isEmpty() && answer != null) said = answer.trim();
+                boolean yes = said.length() <= 80 && CONFIRM_YES.matcher(said).find() && !SAID_NO.matcher(said).find();
+                if (yes) {
+                    JarvisAccessibility.allowConfirmed(3 * 60 * 1000L);
+                    t.steps.add("Anil said YES to '" + t.confirmLabel + "': press that button now (once).");
+                } else {
+                    JarvisAccessibility.clearConfirmed();
+                    t.steps.add("Anil did NOT agree to '" + t.confirmLabel + "' (he said: " + said + "). Do not press it; follow what he said.");
+                }
+                t.confirmLabel = null;
+            }
             if (answer != null && !answer.trim().isEmpty()) t.answers.put(answer.trim());
             if (goal != null && !goal.trim().isEmpty() && !goal.trim().equals(t.goal)) t.goal = t.goal + ". Change: " + goal.trim();
             if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
@@ -3873,12 +3917,25 @@ final class Tools {
         @SuppressWarnings("deprecation")
         android.os.PowerManager.WakeLock lit = pm == null ? null
                 : pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK | android.os.PowerManager.ON_AFTER_RELEASE, "jarvis:apptask");
-        if (lit != null) lit.acquire(4 * 60 * 1000L);
+        if (lit != null) lit.acquire(5 * 60 * 1000L);
+        JarvisAccessibility.showControl("మీ ఫోన్ వాడుతోంది…", Tools::stopAgent);
         try {
             return runAppTask(t);
         } finally {
+            JarvisAccessibility.hideControl();
             if (lit != null && lit.isHeld()) lit.release();
         }
+    }
+
+    private static boolean noAgent(String pkg) {
+        String low = pkg.toLowerCase(Locale.ROOT);
+        for (String no : NO_AGENT) if (low.contains(no)) return true;
+        return false;
+    }
+
+    private static boolean ticketApp(String pkg, String label) {
+        String n = (pkg + " " + label).toLowerCase(Locale.ROOT).replace(" ", "");
+        return pkg.equals("com.bt.bms") || n.contains("bookmyshow") || n.contains("district") || n.contains("redbus") || n.contains("abhibus");
     }
 
     private static final java.util.regex.Pattern EXTRA_ASKED = java.util.regex.Pattern.compile("club|donat|insurance|క్లబ్");
@@ -3898,10 +3955,22 @@ final class Tools {
     private String runAppTask(AppTask t) throws Exception {
         String asked = (t.goal + " " + t.answers).toLowerCase(Locale.ROOT);
         JarvisAccessibility.extrasAllowed = askedForExtras(asked);
-        long end = android.os.SystemClock.elapsedRealtime() + 170_000;
+        long end = android.os.SystemClock.elapsedRealtime() + 240_000;
         int waits = 0;
-        for (int step = 0; step < 30 && android.os.SystemClock.elapsedRealtime() < end && appTask == t; step++) {
-            JarvisAccessibility.Screen sc = JarvisAccessibility.screen(t.pkg);
+        for (int step = 0; step < 40 && android.os.SystemClock.elapsedRealtime() < end && appTask == t; step++) {
+            JarvisAccessibility.Screen sc = t.general ? JarvisAccessibility.frontScreen() : JarvisAccessibility.screen(t.pkg);
+            if (sc != null && t.general && (noAgent(sc.pkg) || noAgent(label(sc.pkg)))) {
+                // a banking / payment app came up: Jarvis never works there
+                appTask = null;
+                JarvisAccessibility.clearConfirmed();
+                backToJarvis();
+                return err("not_allowed", label(sc.pkg) + " is a banking or payment app: Jarvis stopped and does not work there. Tell him to do that part himself.");
+            }
+            if (sc == null && t.general) {
+                t.awaiting = true;
+                backToJarvis();
+                return err("no_screen", "Jarvis could not read the screen. Ask him to unlock the phone / check that 'Jarvis స్క్రీన్' is on; answer to continue.");
+            }
             if (sc == null) {
                 if (t.paying) {
                     JarvisAccessibility.clearPayment();
@@ -3919,7 +3988,7 @@ final class Tools {
             android.graphics.Rect zoomRect = t.zoom;
             t.zoom = null;
             StringBuilder p = new StringBuilder();
-            p.append("Goal: ").append(t.goal).append("\nApp: ").append(t.app)
+            p.append("Goal: ").append(t.goal).append("\nApp in front: ").append(t.general ? label(sc.pkg) + " (" + sc.pkg + ")" : t.app)
                     .append("\nToday: ").append(new java.text.SimpleDateFormat("EEE d MMM yyyy", Locale.ENGLISH).format(new java.util.Date()))
                     .append("\nHis answers so far: ").append(t.answers.length() == 0 ? "(none)" : t.answers.toString())
                     .append("\nYour previous steps:\n");
@@ -3933,6 +4002,7 @@ final class Tools {
             if (img == null) p.append("\n(No screenshot available; use the elements.)");
             String reply = Brain.oneShot(prefs, AGENT_SYSTEM, p.toString(), img, false);
             if (sc.shot != null) sc.shot.recycle();
+            if (appTask != t) break; // ⏹ pressed while thinking: do nothing more
             JSONObject a;
             try {
                 a = new JSONObject(reply.substring(reply.indexOf('{'), reply.lastIndexOf('}') + 1));
@@ -3942,8 +4012,20 @@ final class Tools {
             }
             String action = a.optString("action");
             String why = a.optString("why", "");
+            if (!why.isEmpty()) JarvisAccessibility.updateControl(why);
             String result;
             switch (action) {
+                case "long_press": result = JarvisAccessibility.longPress(sc, a.optInt("element", -1), a.optInt("x", -1), a.optInt("y", -1)); break;
+                case "open_app": {
+                    ResolveInfo r = findApp(a.optString("name", ""));
+                    if (r == null) { result = "not installed"; break; }
+                    String op = r.activityInfo.packageName;
+                    if (noAgent(op) || noAgent(label(op))) { result = "REFUSED: banking / payment apps are Anil's own"; break; }
+                    result = launch(op) ? "ok" : "failed";
+                    Thread.sleep(2200);
+                    break;
+                }
+                case "home": JarvisAccessibility.goHome(); result = "ok"; break;
                 case "tap": result = JarvisAccessibility.tapElement(sc, a.optInt("element", -1)); break;
                 case "tap_xy": result = JarvisAccessibility.tapPoint(sc, a.optInt("x", -1), a.optInt("y", -1)); break;
                 case "type": result = JarvisAccessibility.typeElement(sc, a.optInt("element", -1), a.optString("text")); break;
@@ -3975,7 +4057,8 @@ final class Tools {
                 case "done":
                     appTask = null;
                     JarvisAccessibility.clearPayment();
-                    backToJarvis();
+                    JarvisAccessibility.clearConfirmed();
+                    if (!(t.general && a.optBoolean("stay", false))) backToJarvis(); // a video playing / a chat opened: leave it on screen
                     return ok().put("status", "done").put("summary", a.optString("summary")).toString();
                 case "fail":
                     JarvisAccessibility.clearPayment();
@@ -3986,6 +4069,20 @@ final class Tools {
                     return err("could_not", a.optString("reason", "It did not work.") + " Tell him simply; he can answer to continue (phone_task answer=…) or do it by hand.");
                 default:
                     result = "unknown action";
+            }
+            if (result.startsWith("blocked:confirm:")) {
+                // send / post / delete / call: only after he says yes
+                String label = result.substring(16).trim();
+                t.confirmLabel = label;
+                t.askedAt = System.currentTimeMillis();
+                t.time = android.os.SystemClock.elapsedRealtime();
+                t.awaiting = true;
+                t.steps.add(action + " '" + label + "' → REFUSED: ask first");
+                backToJarvis();
+                String q = why.isEmpty() ? "'" + label + "' నొక్కమంటారా?" : why + " — చేయమంటారా?";
+                return ok().put("status", "confirm").put("question", q).put("button", label).put("app", label(sc.pkg))
+                        .put("next", "Before pressing '" + label + "' Jarvis must ask. Say in one short Telugu question exactly what will happen "
+                                + "(who/what, e.g. the message text), based on: '" + q + "'. When he answers, call phone_task with answer = his words.").toString();
             }
             if (result.startsWith("blocked:extra:")) {
                 // a paid extra (BMS Club, ₹1 donation, insurance) he did not ask for: leave it and carry on

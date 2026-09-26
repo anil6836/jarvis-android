@@ -546,6 +546,38 @@ public class JarvisAccessibility extends AccessibilityService {
             if (root == null) SystemClock.sleep(400);
         }
         if (root == null) return null;
+        return build(s, root, pkg);
+    }
+
+    /** Whatever app is in front (home screen included, never Jarvis itself), with a screenshot. Background thread only. */
+    static Screen frontScreen() {
+        JarvisAccessibility s = instance;
+        if (s == null) return null;
+        AccessibilityNodeInfo root = null;
+        for (int i = 0; i < 10 && root == null; i++) {
+            root = s.frontRoot();
+            if (root == null) SystemClock.sleep(400);
+        }
+        if (root == null) return null;
+        return build(s, root, String.valueOf(root.getPackageName()));
+    }
+
+    /** The top app window that is not Jarvis's own (its screens or its overlay). */
+    private AccessibilityNodeInfo frontRoot() {
+        String mine = getPackageName();
+        AccessibilityNodeInfo active = getRootInActiveWindow();
+        if (active != null && !mine.contentEquals(String.valueOf(active.getPackageName()))) return active;
+        try {
+            for (android.view.accessibility.AccessibilityWindowInfo w : getWindows()) {
+                if (w.getType() != android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                AccessibilityNodeInfo r = w.getRoot();
+                if (r != null && !mine.contentEquals(String.valueOf(r.getPackageName()))) return r;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private static Screen build(JarvisAccessibility s, AccessibilityNodeInfo root, String pkg) {
         Screen sc = new Screen();
         sc.pkg = pkg;
         android.util.DisplayMetrics dm = s.getResources().getDisplayMetrics();
@@ -647,6 +679,8 @@ public class JarvisAccessibility extends AccessibilityService {
         if (extra != null) return extra;
         String refused = payCheck(sc, n);
         if (refused != null) return refused;
+        String ask = confirmCheck(n);
+        if (ask != null) return ask;
         if (n.isPassword()) return "password";
         AccessibilityNodeInfo c = clickable(n);
         if (c != null && c.isClickable() && c.isEnabled() && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "ok";
@@ -667,8 +701,152 @@ public class JarvisAccessibility extends AccessibilityService {
         if (extra != null) return extra;
         String refused = payCheck(sc, hit);
         if (refused != null) return refused;
+        String ask = confirmCheck(hit);
+        if (ask != null) return ask;
         if (hit.isPassword()) return "password";
         return gesture(x, y, x, y, 60) ? "ok" : "failed";
+    }
+
+    /** Long-presses an element or a point (menus that open on a long press). Same checks as a tap. */
+    static String longPress(Screen sc, int idx, int x, int y) {
+        AccessibilityNodeInfo n = null;
+        if (idx >= 0 && idx < sc.nodes.size()) {
+            n = sc.nodes.get(idx);
+            if (!n.refresh()) return "no_element";
+            android.graphics.Rect r = new android.graphics.Rect();
+            n.getBoundsInScreen(r);
+            x = r.centerX();
+            y = r.centerY();
+        } else {
+            JarvisAccessibility s = instance;
+            AccessibilityNodeInfo root = s == null ? null : s.windowRoot(sc.pkg);
+            n = root == null ? null : deepestAt(root, x, y, 0);
+            if (n == null) return "no_element";
+        }
+        if (payCheck(sc, n) != null) return "blocked:" + label(n);
+        return gesture(x, y, x, y, 800) ? "ok" : "failed";
+    }
+
+    // ------------------------------------------------------------------ ask first: send, post, delete, call
+
+    /** Buttons that send, post, delete, call or submit: the agent presses one only right after Anil said yes. */
+    private static final java.util.regex.Pattern CONFIRM_FIRST = java.util.regex.Pattern.compile(
+            "(?i)(send|send message|send now|send sms|post|publish|share|tweet|delete|delete for everyone|delete for me|delete all|delete chat"
+                    + "|remove account|uninstall|erase|reset|factory reset|clear data|clear storage|call|voice call|video call|audio call|dial|submit"
+                    + "|పంపు|పంపించు|పంపండి|డిలీట్|తొలగించు|తొలగించండి|కాల్|కాల్ చేయి|వీడియో కాల్|షేర్|అన్‌ఇన్‌స్టాల్)[.!]?");
+    private static volatile int confirmTaps;
+    private static volatile long confirmUntil;
+
+    /** Anil said yes to the thing Jarvis asked about: one such button may be pressed in the next minutes. */
+    static void allowConfirmed(long ms) { confirmTaps = 1; confirmUntil = SystemClock.elapsedRealtime() + ms; }
+
+    static void clearConfirmed() { confirmTaps = 0; }
+
+    private static String confirmCheck(AccessibilityNodeInfo n) {
+        String hit = null;
+        String l = label(n).trim();
+        if (l.length() <= 30 && CONFIRM_FIRST.matcher(l).matches()) hit = l;
+        AccessibilityNodeInfo c = clickable(n);
+        if (hit == null && c != null && c != n && buttonSized(c)) {
+            String cl = label(c).trim();
+            if (cl.length() <= 30 && CONFIRM_FIRST.matcher(cl).matches()) hit = cl;
+        }
+        if (hit == null) return null;
+        if (confirmTaps > 0 && SystemClock.elapsedRealtime() < confirmUntil) { confirmTaps--; return null; }
+        return "blocked:confirm:" + hit;
+    }
+
+    // ------------------------------------------------------------------ "Jarvis is using your phone" overlay
+
+    private android.view.View controlBar, controlGlow;
+    private android.widget.TextView controlText;
+
+    /** A thin glowing border and a small bar at the top ("Jarvis మీ ఫోన్ వాడుతోంది" + ⏹ ఆపు) while the agent works. */
+    static void showControl(String text, Runnable onStop) {
+        JarvisAccessibility s = instance;
+        if (s == null) return;
+        s.getMainExecutor().execute(() -> s.addControl(text, onStop));
+    }
+
+    static void updateControl(String text) {
+        JarvisAccessibility s = instance;
+        if (s == null) return;
+        s.getMainExecutor().execute(() -> { if (s.controlText != null) s.controlText.setText("Jarvis · " + text); });
+    }
+
+    static void hideControl() {
+        JarvisAccessibility s = instance;
+        if (s == null) return;
+        s.getMainExecutor().execute(s::removeControl);
+    }
+
+    private void addControl(String text, Runnable onStop) {
+        if (controlBar != null) { if (controlText != null) controlText.setText("Jarvis · " + text); return; }
+        try {
+            android.view.WindowManager wm = (android.view.WindowManager) getSystemService(WINDOW_SERVICE);
+            float d = getResources().getDisplayMetrics().density;
+            int barH = (int) (30 * d);
+            int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            if (id > 0) barH = Math.max((int) (22 * d), Math.min(barH, getResources().getDimensionPixelSize(id)));
+
+            android.graphics.drawable.GradientDrawable border = new android.graphics.drawable.GradientDrawable();
+            border.setColor(0x00000000);
+            border.setStroke((int) (3 * d), 0xCC48D1FF);
+            border.setCornerRadius(18 * d);
+            controlGlow = new android.view.View(this);
+            controlGlow.setBackground(border);
+            android.view.WindowManager.LayoutParams gp = new android.view.WindowManager.LayoutParams(
+                    android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                    android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    android.graphics.PixelFormat.TRANSLUCENT);
+            wm.addView(controlGlow, gp);
+
+            android.widget.LinearLayout bar = new android.widget.LinearLayout(this);
+            bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setColor(0xEE071A24);
+            bg.setStroke((int) (1 * d), 0xFF48D1FF);
+            bg.setCornerRadius(barH / 2f);
+            bar.setBackground(bg);
+            bar.setPadding((int) (12 * d), 0, (int) (4 * d), 0);
+            controlText = new android.widget.TextView(this);
+            controlText.setText("Jarvis · " + text);
+            controlText.setTextColor(0xFF9BE8FF);
+            controlText.setTextSize(11.5f);
+            controlText.setSingleLine(true);
+            controlText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            controlText.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.62f));
+            bar.addView(controlText);
+            android.widget.TextView stop = new android.widget.TextView(this);
+            stop.setText("  ⏹ ఆపు  ");
+            stop.setTextColor(0xFFFF8A80);
+            stop.setTextSize(12f);
+            stop.setGravity(android.view.Gravity.CENTER);
+            stop.setOnClickListener(v -> { removeControl(); if (onStop != null) onStop.run(); });
+            bar.addView(stop, new android.widget.LinearLayout.LayoutParams(-2, -1));
+            android.view.WindowManager.LayoutParams bp = new android.view.WindowManager.LayoutParams(
+                    android.view.WindowManager.LayoutParams.WRAP_CONTENT, barH,
+                    android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                            | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    android.graphics.PixelFormat.TRANSLUCENT);
+            bp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
+            wm.addView(bar, bp);
+            controlBar = bar;
+        } catch (Exception e) {
+            removeControl();
+        }
+    }
+
+    private void removeControl() {
+        android.view.WindowManager wm = (android.view.WindowManager) getSystemService(WINDOW_SERVICE);
+        try { if (controlBar != null) wm.removeView(controlBar); } catch (Exception ignored) {}
+        try { if (controlGlow != null) wm.removeView(controlGlow); } catch (Exception ignored) {}
+        controlBar = null;
+        controlGlow = null;
+        controlText = null;
     }
 
     private static AccessibilityNodeInfo deepestAt(AccessibilityNodeInfo n, int x, int y, int depth) {
