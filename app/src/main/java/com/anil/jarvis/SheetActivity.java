@@ -46,6 +46,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private TextView status, heard, reply;
     private IconView action;
     private FrameLayout pauseBtn;   // ⏸/▶ at the bottom right while Jarvis is speaking
+    private final Karaoke karaoke = new Karaoke();   // highlights the word being spoken
+    private ScrollView textScroll;
     private IconView pauseIcon;
     private boolean busy, stopped;
     /** How many more times to listen after Jarvis speaks without "Jarvis" again (a conversation). */
@@ -111,6 +113,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (startCallMode(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startRun(intent)) return;
+        if (live == null && !busy && !greeting && !voice.listening && voice.isPaused()) { // "Jarvis" while paused
+            MainActivity.inConversation = true;
+            WakeService.pause(this);
+            listen();
+            return;
+        }
         if (live == null && !busy && !greeting && !voice.listening) begin(); // called again while the panel is open
     }
 
@@ -230,6 +238,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         texts.addView(reply);
         scroll.addView(texts);
         card.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
+        textScroll = scroll;
 
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
@@ -262,18 +271,41 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         boolean show = live == null && callText == null && voice != null && voice.speaking;
         pauseBtn.setVisibility(show ? View.VISIBLE : View.GONE);
         if (show) pauseIcon.setIcon(voice.isPaused() ? IconView.PLAY : IconView.PAUSE);
+        if (!show) karaoke.clear();
+    }
+
+    @Override public void onWord(String spoken, int start, int end) {
+        if (reply.getVisibility() == View.VISIBLE) karaoke.word(spoken, start, end, java.util.Collections.singletonList(reply), textScroll);
     }
 
     private void togglePause() {
         if (voice == null || !voice.speaking) { syncPause(); return; }
         if (voice.isPaused()) {
             voice.resume();
-            orb.setState(OrbView.SPEAKING);
-            status.setText("మాట్లాడుతున్నాను…");
+            afterPaused(VoiceIO.RESUMED);
         } else {
             voice.pause();
+            afterPaused(VoiceIO.HELD);
+        }
+    }
+
+    /** The panel after a pause / carry-on (by button or by voice). */
+    private void afterPaused(int r) {
+        main.removeCallbacks(autoClose);
+        if (r == VoiceIO.HELD) {
             orb.setState(OrbView.IDLE);
-            status.setText("ఆపాను. ▶ నొక్కితే కొనసాగిస్తాను");
+            status.setText("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి");
+            MainActivity.inConversation = false;
+            if (prefs.wakeReady()) WakeService.resume(this); // "Jarvis" can be heard while paused
+            setAction(IconView.STOP);
+        } else if (r == VoiceIO.RESUMED) {
+            orb.setState(OrbView.SPEAKING);
+            status.setText("మాట్లాడుతున్నాను…");
+            MainActivity.inConversation = true;
+            WakeService.pause(this);
+            setAction(IconView.STOP);
+        } else if (r == VoiceIO.STOPPED) {
+            idle();
         }
         syncPause();
     }
@@ -511,6 +543,10 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             if (text == null || text.trim().isEmpty()) askCallAgain(); else onCallWords(text);
             return;
         }
+        if (voice.isPaused()) { // "ఆపు" / "కొనసాగించు" / "చాలు", or a new question
+            int r = voice.pausedHeard(text);
+            if (r != VoiceIO.NEW) { afterPaused(r); return; }
+        }
         if (text == null || text.trim().isEmpty()) { idle(); return; }
         ask(text.trim());
     }
@@ -520,6 +556,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         partialHeard = "";
         if (callText != null) {
             if (!partial.isEmpty()) onCallWords(partial); else askCallAgain();
+            return;
+        }
+        if (voice.isPaused()) { // nothing (clear) heard while paused: carry on, or stay paused if he paused it
+            int r = voice.pausedHeard(partial);
+            if (r != VoiceIO.NEW) { afterPaused(r); return; }
+            ask(partial);
             return;
         }
         if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && !partial.isEmpty()) {

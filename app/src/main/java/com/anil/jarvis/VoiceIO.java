@@ -27,8 +27,36 @@ final class VoiceIO {
         void onSpeakStart();
         void onSpeakDone();
         void onVoiceReady();
-        /** He started talking while Jarvis was speaking: speech is already stopped; listen to him now. */
-        default void onBargeIn() { onSpeakDone(); }
+        /** He started talking while Jarvis was speaking: speech is paused (not lost); listen to him now. */
+        void onBargeIn();
+        /** The word being spoken now: [start, end) in the spoken text (to highlight it on screen). */
+        default void onWord(String spoken, int start, int end) {}
+    }
+
+    // What he said while Jarvis's speech was paused (see pausedHeard).
+    static final int NEW = 0, HELD = 1, RESUMED = 2, STOPPED = 3;
+    private static final int CMD_NONE = 0, CMD_PAUSE = 1, CMD_RESUME = 2, CMD_STOP = 3;
+    private static final String[] STOP_WORDS = {"చాలు", "వద్దు", "cancel", "క్యాన్సిల్", "enough"};
+    private static final String[] RESUME_WORDS = {"కొనసాగించు", "కొనసాగించండి", "కొనసాగు", "కంటిన్యూ", "continue", "resume",
+            "తర్వాత ఏమైంది", "గో ఆన్", "go on", "కానివ్వు"};
+    /** Only when said on their own ("చెప్పు" inside "సినిమా గురించి చెప్పు" is a new question). */
+    private static final String[] RESUME_ALONE = {"చెప్పు", "చెప్పండి", "ఇంకా చెప్పు", "తర్వాత చెప్పు", "ఆ తర్వాత", "తర్వాత", "ప్లే", "play",
+            "ప్లే చెయ్", "ప్లే చేయి", "మళ్ళీ మొదలుపెట్టు", "మళ్లీ మొదలుపెట్టు", "ఓకే చెప్పు", "సరే చెప్పు"};
+    private static final String[] PAUSE_WORDS = {"ఆపు", "ఆపండి", "ఆగు", "ఆగండి", "ఆపేయ్", "ఆపేయి", "ఆపెయ్", "ఆపవా", "ఆగవా", "స్టాప్", "stop",
+            "pause", "పాజ్", "wait", "వెయిట్", "ఒక్క నిమిషం", "ఒక నిమిషం", "hold", "హోల్డ్"};
+
+    /** A short spoken command about the speech itself ("ఆపు", "కొనసాగించు", "చాలు"), or CMD_NONE. */
+    static int command(String heard) {
+        String t = heard == null ? "" : heard.toLowerCase(Locale.ROOT)
+                .replaceAll("[\\p{Punct}।]", " ")
+                .replaceAll("జార్విస్|జార్వీస్|జార్విస|jarvis|ప్లీజ్|please|ఇక", " ")
+                .replaceAll("\\s+", " ").trim();
+        if (t.isEmpty() || t.split(" ").length > 4) return CMD_NONE; // a real question, not a command
+        for (String w : STOP_WORDS) if (t.contains(w)) return CMD_STOP;
+        for (String w : RESUME_WORDS) if (t.contains(w)) return CMD_RESUME;
+        for (String w : RESUME_ALONE) if (t.equals(w)) return CMD_RESUME;
+        if (t.split(" ").length <= 3) for (String w : PAUSE_WORDS) if (t.contains(w)) return CMD_PAUSE;
+        return CMD_NONE;
     }
 
     private final BargeIn barge;
@@ -47,8 +75,8 @@ final class VoiceIO {
     private void watchBargeIn() {
         if (shut || paused || !prefs.bargeIn()) return;
         barge.start(() -> {
-            if (!speaking || shut) return;
-            stopSpeaking();
+            if (!speaking || shut || paused) return;
+            pause(false); // hold, don't lose it: "కొనసాగించు" (or silence) carries on from here
             l.onBargeIn();
         });
     }
@@ -72,11 +100,18 @@ final class VoiceIO {
     private int utterance;
     /** ⏸ pressed: speech holds until ▶ (speaking stays true, so the screen waits). */
     private boolean paused;
+    /** Paused on purpose (button or "ఆపు"), not just to hear him out: silence then does not resume it. */
+    private boolean pausedByUser;
+    /** Natural voice: the text being spoken and its reading-speed weights, for the word highlight. */
+    private String naturalText = "";
+    private float[] naturalWeight = new float[0];
     /** The natural (OpenAI) voice is the one speaking now (not the phone's voice). */
     private boolean naturalNow;
     /** Phone voice: what is being said, where it has got to, and how fast (to carry on after ▶). */
     private String googleText = "";
     private volatile int googlePos;
+    /** Where the utterance now being spoken starts inside googleText (after ▶ it is the rest only). */
+    private volatile int googleBase;
     private float googleRate = 1f;
     private SpeechRecognizer sr;
     boolean listening;
@@ -121,7 +156,11 @@ final class VoiceIO {
             @Override public void onError(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onStop(String id, boolean interrupted) { main.post(() -> finishSpeaking(id)); }
             @Override public void onRangeStart(String id, int start, int end, int frame) {
-                if (("j" + utterance).equals(id)) googlePos = start;
+                if (!("j" + utterance).equals(id)) return;
+                final int a = googleBase + start, b = googleBase + end;
+                googlePos = a;
+                final String full = googleText;
+                main.post(() -> { if (speaking && !paused && !naturalNow) l.onWord(full, a, b); });
             }
         });
         ttsReady = true;
@@ -146,6 +185,8 @@ final class VoiceIO {
         if (shut || text == null || text.trim().isEmpty()) return;
         feeling = prefs.emotions() ? Emotion.forText(text) : Emotion.CALM;
         paused = false;
+        pausedByUser = false;
+        main.removeCallbacks(wordTicker);
         enterCall();
         String key = prefs.openAiKey().trim();
         if (prefs.naturalVoice() && !key.isEmpty() && Net.online(ctx)) {
@@ -163,15 +204,20 @@ final class VoiceIO {
         if (clean.length() > 3500) clean = clean.substring(0, 3500);
         speaking = true;
         final String said = clean;
+        naturalText = said;
+        naturalWeight = weights(said);
         natural.voiceCall = callVoice();
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
                 watchBargeIn();
                 l.onSpeakStart();
+                main.removeCallbacks(wordTicker);
+                main.post(wordTicker);
             }
             @Override public void onDone() {
                 barge.stop();
+                main.removeCallbacks(wordTicker);
                 if (!speaking) return;
                 speaking = false;
                 call.exit();
@@ -203,6 +249,12 @@ final class VoiceIO {
             return;
         }
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
+        speakGoogleFrom(clean, 0, rate);
+    }
+
+    /** Phone voice: says full from position from (0 = all of it; later = carrying on after ▶). */
+    private void speakGoogleFrom(String full, int from, float rate) {
+        String clean = full.substring(from);
         int max = TextToSpeech.getMaxSpeechInputLength() - 10;
         if (clean.length() > max) clean = clean.substring(0, max);
         try {
@@ -211,8 +263,9 @@ final class VoiceIO {
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
         } catch (Exception ignored) {}
         naturalNow = false;
-        googleText = clean;
-        googlePos = 0;
+        googleText = full;
+        googleBase = from;
+        googlePos = from;
         googleRate = rate;
         tts.setSpeechRate(rate * Emotion.pace(feeling));
         tts.setPitch(Emotion.pitch(feeling));
@@ -223,6 +276,59 @@ final class VoiceIO {
         try { r = tts.speak(clean, TextToSpeech.QUEUE_FLUSH, new Bundle(), "j" + utterance); }
         catch (Exception e) { r = TextToSpeech.ERROR; }
         if (r != TextToSpeech.SUCCESS) failSpeak(); // no progress callbacks will come for it
+    }
+
+    /** Natural voice has no word timings: estimate the word from how much sound has played. */
+    private final Runnable wordTicker = new Runnable() {
+        @Override public void run() {
+            if (shut || !speaking || !naturalNow) return;
+            if (!paused) {
+                int at = naturalWordAt();
+                if (at >= 0) {
+                    String t = naturalText;
+                    int a = at, b = at;
+                    while (a > 0 && !Character.isWhitespace(t.charAt(a - 1))) a--;
+                    while (b < t.length() && !Character.isWhitespace(t.charAt(b))) b++;
+                    if (b > a) l.onWord(t, a, b);
+                }
+                main.postDelayed(this, 120);
+            }
+        }
+    };
+
+    private int naturalWordAt() {
+        float[] w = naturalWeight;
+        if (w.length == 0) return -1;
+        long played = natural.playedFrames();
+        if (played <= 0) return 0;
+        float total = w[w.length - 1];
+        double frames = natural.downloaded()
+                ? natural.totalFrames()
+                : Math.max(natural.totalFrames(), total * NaturalVoice.RATE / 12.0); // ~12 letters a second until known
+        double goal = Math.min(1.0, played / Math.max(1.0, frames)) * total;
+        int lo = 0, hi = w.length - 1;
+        while (lo < hi) { int mid = (lo + hi) >>> 1; if (w[mid] < goal) lo = mid + 1; else hi = mid; }
+        return lo;
+    }
+
+    /** Cumulative reading time per character: letters 1, vowel signs less, pauses at commas and full stops. */
+    private static float[] weights(String t) {
+        float[] w = new float[t.length()];
+        float sum = 0;
+        for (int i = 0; i < t.length(); i++) {
+            char ch = t.charAt(i);
+            int type = Character.getType(ch);
+            float x;
+            if (ch == '.' || ch == '!' || ch == '?' || ch == '।' || ch == '\n') x = 6f;
+            else if (ch == ',' || ch == ';' || ch == ':') x = 3f;
+            else if (Character.isWhitespace(ch)) x = 0.6f;
+            else if (type == Character.NON_SPACING_MARK || type == Character.COMBINING_SPACING_MARK) x = 0.35f;
+            else if (Character.isLetterOrDigit(ch)) x = 1f;
+            else x = 0.5f;
+            sum += x;
+            w[i] = sum;
+        }
+        return w;
     }
 
     /** Speech could not start: end this turn as if it had been spoken, so the screen doesn't hang. */
@@ -241,9 +347,13 @@ final class VoiceIO {
     boolean isPaused() { return paused && speaking; }
 
     /** ⏸: hold Jarvis's speech right where it is. */
-    void pause() {
-        if (!speaking || paused || shut) return;
+    void pause() { pause(true); }
+
+    private void pause(boolean byUser) {
+        if (!speaking || shut) return;
+        if (paused) { pausedByUser |= byUser; return; }
         paused = true;
+        pausedByUser = byUser;
         barge.stop();
         call.exit();
         if (naturalNow) {
@@ -258,15 +368,40 @@ final class VoiceIO {
     void resume() {
         if (!paused || shut) return;
         paused = false;
+        pausedByUser = false;
         if (!speaking) return;
         enterCall();
         if (naturalNow) {
             natural.resume();
             watchBargeIn();
+            main.post(wordTicker);
         } else if (ttsReady) {
-            String rest = googleText.substring(sentenceStart(googleText, googlePos)).trim();
-            if (rest.isEmpty()) { speaking = false; call.exit(); l.onSpeakDone(); return; }
-            speakGoogle(rest, googleRate);
+            String full = googleText;
+            int from = sentenceStart(full, googlePos);
+            while (from < full.length() && Character.isWhitespace(full.charAt(from))) from++;
+            if (from >= full.length()) { speaking = false; call.exit(); l.onSpeakDone(); return; }
+            speakGoogleFrom(full, from, googleRate);
+        }
+    }
+
+    /**
+     * He spoke while the speech was paused. Returns HELD (stays paused: he said "ఆపు", or nothing after
+     * pausing on purpose), RESUMED ("కొనసాగించు", or nothing after a talk-over), STOPPED ("చాలు"), or
+     * NEW: it is a new request, and the paused speech has been dropped.
+     */
+    int pausedHeard(String heard) {
+        if (!isPaused()) return NEW;
+        String t = heard == null ? "" : heard.trim();
+        if (t.isEmpty()) {
+            if (pausedByUser) return HELD;
+            resume();
+            return RESUMED;
+        }
+        switch (command(t)) {
+            case CMD_PAUSE: pausedByUser = true; return HELD;
+            case CMD_RESUME: resume(); return RESUMED;
+            case CMD_STOP: stopSpeaking(); return STOPPED;
+            default: stopSpeaking(); return NEW;
         }
     }
 
@@ -282,6 +417,8 @@ final class VoiceIO {
 
     void stopSpeaking() {
         paused = false;
+        pausedByUser = false;
+        main.removeCallbacks(wordTicker);
         barge.stop();
         call.exit();
         pending = null;
@@ -320,7 +457,8 @@ final class VoiceIO {
 
     void listen(String lang) {
         if (shut) return;
-        stopSpeaking();
+        if (paused && speaking) barge.stop(); // keep the paused speech: he may say "కొనసాగించు"
+        else stopSpeaking();
         windowUntil = android.os.SystemClock.elapsedRealtime() + prefs.listenWindowSeconds() * 1000L;
         heardSpeech = false;
         if (sr == null) {
@@ -386,6 +524,7 @@ final class VoiceIO {
     void shutdown() {
         shut = true;
         paused = false;
+        main.removeCallbacks(wordTicker);
         barge.stop();
         call.exit();
         ttsReady = false;

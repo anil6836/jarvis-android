@@ -94,6 +94,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private ImageView attachThumb;
     private EditText input;
     private FrameLayout actionBtn;
+    private final Karaoke karaoke = new Karaoke();                 // highlights the word being spoken
+    private final List<TextView> jarvisBodies = new ArrayList<>();   // Jarvis's reply bubbles, oldest first
     private FrameLayout pauseBtn;   // ⏸/▶ while Jarvis is speaking (like Google Assistant)
     private IconView pauseIcon;
     private IconView actionIcon;
@@ -724,7 +726,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** He talked over Jarvis: speech already stopped, listen to him now. */
     @Override public void onBargeIn() {
         syncPause();
-        if (busy || live != null || paused || isFinishing()) { finishTurn(); return; }
+        if (busy || live != null || isFinishing()) { voice.stopSpeaking(); finishTurn(); return; }
+        if (paused) { voice.resume(); return; } // screen not in front: don't start listening, just carry on
         main.postDelayed(this::startListening, 100);
     }
 
@@ -765,6 +768,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         } else {
             body.setBackground(new Ui.Brackets(this));
             body.setPadding(dp(14), dp(9), dp(14), dp(10));
+            jarvisBodies.add(body);
             IconView replay = new IconView(this, IconView.SPEAKER, Ui.CYAN2);
             replay.setContentDescription("మళ్లీ వినిపించు");
             replay.setOnClickListener(v -> {
@@ -785,7 +789,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void renderChat() {
+        karaoke.clear();
         chatList.removeAllViews();
+        jarvisBodies.clear();
         List<JSONObject> turns = store.chat();
         for (JSONObject o : turns) {
             String c = o.optString("content");
@@ -969,20 +975,46 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         boolean show = live == null && voice != null && voice.speaking;
         pauseBtn.setVisibility(show ? View.VISIBLE : View.GONE);
         if (show) pauseIcon.setIcon(voice.isPaused() ? IconView.PLAY : IconView.PAUSE);
+        if (!show) karaoke.clear();
     }
+
+    @Override public void onWord(String spoken, int start, int end) {
+        if (showingChat()) karaoke.word(spoken, start, end, jarvisBodies, chatScroll);
+    }
+
+    private boolean showingChat() { return chatScroll != null && chatScroll.getVisibility() == View.VISIBLE; }
 
     private void togglePause() {
         if (voice == null || !voice.speaking) { syncPause(); return; }
         if (voice.isPaused()) {
             voice.resume();
-            orb.setState(OrbView.SPEAKING);
-            status.setText("మాట్లాడుతున్నాను…");
+            afterPaused(VoiceIO.RESUMED);
         } else {
             voice.pause();
-            orb.setState(OrbView.IDLE);
-            status.setText("ఆపాను. ▶ నొక్కితే కొనసాగిస్తాను");
+            afterPaused(VoiceIO.HELD);
         }
-        syncPause();
+    }
+
+    /** The screen after a pause / carry-on (by button or by voice). */
+    private void afterPaused(int r) {
+        input.setHint("Jarvis తో మాట్లాడండి…");
+        if (r == VoiceIO.HELD) {
+            orb.setState(OrbView.IDLE);
+            status.setText("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి");
+            // let "Jarvis" be heard again while paused, so he can say "కొనసాగించు" later
+            inConversation = false;
+            if (prefs.wakeReady()) WakeService.resume(this);
+            screenMaySleepSoon();
+        } else if (r == VoiceIO.RESUMED) {
+            orb.setState(OrbView.SPEAKING);
+            status.setText("మాట్లాడుతున్నాను…");
+            inConversation = true;
+            WakeService.pause(this);
+            keepScreenOn();
+        } else if (r == VoiceIO.STOPPED) {
+            finishTurn();
+        }
+        refreshAction();
     }
 
     private void onActionPressed() {
@@ -1017,6 +1049,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** Live real-time talk when it is switched on, otherwise the classic listen-then-answer. */
     private void startConversation() {
+        if (voice.isPaused()) { startListening(); return; } // "Jarvis" while paused: hear "కొనసాగించు" or a new question
         if (prefs.liveReady() && Net.online(this)) startLive(); else startListening();
     }
 
@@ -1148,6 +1181,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onHeard(String text) {
         input.setHint("Jarvis తో మాట్లాడండి…");
         input.setText("");
+        if (voice.isPaused()) { // "ఆపు" / "కొనసాగించు" / "చాలు", or a new question
+            int r = voice.pausedHeard(text);
+            if (r != VoiceIO.NEW) { afterPaused(r); return; }
+        }
         if (text == null || text.trim().isEmpty()) { finishTurn(); return; }
         send(text.trim(), null, true);
     }
@@ -1155,6 +1192,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onListenFailed(int error) {
         input.setHint("Jarvis తో మాట్లాడండి…");
         String partial = input.getText().toString().trim();
+        if (voice.isPaused()) { // nothing (clear) heard while paused: carry on, or stay paused if he paused it
+            input.setText("");
+            int r = voice.pausedHeard(partial);
+            if (r != VoiceIO.NEW) { afterPaused(r); return; }
+            send(partial, null, true);
+            return;
+        }
         if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && !partial.isEmpty()) {
             input.setText("");
             send(partial, null, true);

@@ -28,7 +28,7 @@ final class NaturalVoice {
     }
 
     static final String[] VOICES = {"cedar", "marin", "ash", "ballad", "verse", "echo", "sage", "coral", "alloy", "shimmer"};
-    private static final int RATE = 24000;
+    static final int RATE = 24000;
     private static final String STYLE =
             "Voice: calm, refined and quietly warm, like JARVIS the British butler AI from the Iron Man films. "
             + "Language: the text is Telugu. Speak ONLY Telugu, with a native Andhra/Telangana Telugu accent and pronunciation. "
@@ -58,6 +58,17 @@ final class NaturalVoice {
 
     boolean isPaused() { return paused; }
 
+    // For the word highlight: how much sound has arrived / played so far.
+    private volatile long arrived;
+    private volatile boolean complete;
+    long totalFrames() { return arrived; }
+    boolean downloaded() { return complete; }
+    long playedFrames() {
+        AudioTrack t = track;
+        if (t == null) return 0;
+        try { return t.getPlaybackHeadPosition() & 0xFFFFFFFFL; } catch (Exception e) { return 0; }
+    }
+
     /** Speaks text; any earlier speech stops. Callbacks arrive on the main thread. */
     void speak(String apiKey, String voice, String text, Callback cb) {
         speak(apiKey, voice, text, Emotion.CALM, cb);
@@ -67,6 +78,8 @@ final class NaturalVoice {
     void speak(String apiKey, String voice, String text, String emotion, Callback cb) {
         final int gen = ++generation;
         paused = false;
+        arrived = 0;
+        complete = false;
         stopTrack();
         final String style = STYLE + Emotion.style(emotion);
         new Thread(() -> run(gen, apiKey, voice, text, style, cb), "jarvis-tts").start();
@@ -179,10 +192,12 @@ final class NaturalVoice {
                         main.post(() -> { if (gen == generation) cb.onStart(); });
                     }
                     frames += len / 2;
+                    arrived = frames;
                     flushHeld(t, held, gen);
                     play(t, buf, 0, len, held, gen);
                 }
             }
+            complete = true;
             // The download is complete; if paused, wait for ▶ and then play what was held back.
             while (gen == generation && (paused || held.size() > 0)) {
                 if (paused) { SystemClock.sleep(50); continue; }
