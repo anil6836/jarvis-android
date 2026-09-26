@@ -981,8 +981,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (!show) karaoke.clear();
     }
 
-    @Override public void onWord(String spoken, int start, int end) {
-        if (showingChat()) karaoke.word(spoken, start, end, jarvisBodies, chatScroll);
+    @Override public void onWord(String spoken, int start, int end, boolean highlight) {
+        if (showingChat()) karaoke.word(spoken, start, end, highlight, jarvisBodies, chatScroll);
     }
 
     private boolean showingChat() { return chatScroll != null && chatScroll.getVisibility() == View.VISIBLE; }

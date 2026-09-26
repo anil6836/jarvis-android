@@ -29,8 +29,8 @@ final class VoiceIO {
         void onVoiceReady();
         /** He started talking while Jarvis was speaking: speech is paused (not lost); listen to him now. */
         void onBargeIn();
-        /** The word being spoken now: [start, end) in the spoken text (to highlight it on screen). */
-        default void onWord(String spoken, int start, int end) {}
+        /** The word being spoken now: [start, end) in the spoken text (scroll along; highlight it for stories/jokes). */
+        default void onWord(String spoken, int start, int end, boolean highlight) {}
     }
 
     // What he said while Jarvis's speech was paused (see pausedHeard).
@@ -101,7 +101,7 @@ final class VoiceIO {
     private int utterance;
     /** ⏸ pressed: speech holds until ▶ (speaking stays true, so the screen waits). */
     private boolean paused;
-    /** Speaking a story or joke: only then the word highlight and "ఆపు" / "కొనసాగించు" on talk-over (⏸/▶ is for every answer). */
+    /** Speaking a story or joke: only then the word highlight and "ఆపు" / "కొనసాగించు" on talk-over (⏸/▶ and scrolling are for every answer). */
     private boolean story;
 
     boolean storyMode() { return story && speaking; }
@@ -166,7 +166,7 @@ final class VoiceIO {
                 final int a = googleBase + start, b = googleBase + end;
                 googlePos = a;
                 final String full = googleText;
-                main.post(() -> { if (speaking && story && !paused && !naturalNow) l.onWord(full, a, b); });
+                main.post(() -> { if (speaking && !paused && !naturalNow) l.onWord(full, a, b, story); });
             }
         });
         ttsReady = true;
@@ -288,7 +288,7 @@ final class VoiceIO {
     /** Natural voice has no word timings: estimate the word from how much sound has played. */
     private final Runnable wordTicker = new Runnable() {
         @Override public void run() {
-            if (shut || !speaking || !naturalNow || !story) return;
+            if (shut || !speaking || !naturalNow) return;
             if (!paused) {
                 int at = naturalWordAt();
                 if (at >= 0) {
@@ -296,7 +296,7 @@ final class VoiceIO {
                     int a = at, b = at;
                     while (a > 0 && !Character.isWhitespace(t.charAt(a - 1))) a--;
                     while (b < t.length() && !Character.isWhitespace(t.charAt(b))) b++;
-                    if (b > a) l.onWord(t, a, b);
+                    if (b > a) l.onWord(t, a, b, story);
                 }
                 main.postDelayed(this, 120);
             }

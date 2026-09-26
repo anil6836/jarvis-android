@@ -274,8 +274,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (!show) karaoke.clear();
     }
 
-    @Override public void onWord(String spoken, int start, int end) {
-        if (reply.getVisibility() == View.VISIBLE) karaoke.word(spoken, start, end, java.util.Collections.singletonList(reply), textScroll);
+    @Override public void onWord(String spoken, int start, int end, boolean highlight) {
+        if (reply.getVisibility() == View.VISIBLE) karaoke.word(spoken, start, end, highlight, java.util.Collections.singletonList(reply), textScroll);
     }
 
     private void togglePause() {

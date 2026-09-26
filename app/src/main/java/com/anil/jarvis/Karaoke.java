@@ -11,7 +11,7 @@ import android.widget.TextView;
 import java.util.List;
 
 /**
- * Highlights the word Jarvis is saying in the reply on screen and keeps it in view (scrolls along),
+ * Keeps the line Jarvis is saying in view (scrolls along) and, for stories and jokes, highlights the word,
  * like reading along with a karaoke line. The spoken text is the reply with markdown symbols and
  * links taken out, so its positions are mapped back onto the text shown.
  */
@@ -25,7 +25,7 @@ final class Karaoke {
     private int lastLine = -1;
 
     /** Finds which reply (newest first) is being spoken, the first time a new spoken text comes in. */
-    void word(String spokenText, int start, int end, List<TextView> candidates, ScrollView sv) {
+    void word(String spokenText, int start, int end, boolean highlight, List<TextView> candidates, ScrollView sv) {
         if (spokenText == null || start < 0 || end <= start) return;
         if (!spokenText.equals(spoken) || view == null) {
             clear();
@@ -47,8 +47,10 @@ final class Karaoke {
         Spannable sp = (Spannable) cs;
         sp.removeSpan(bg);
         sp.removeSpan(fg);
-        sp.setSpan(bg, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        sp.setSpan(fg, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if (highlight) { // stories and jokes; other answers only scroll along
+            sp.setSpan(bg, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sp.setSpan(fg, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
         follow(s);
     }
 
