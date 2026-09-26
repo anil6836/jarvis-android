@@ -727,10 +727,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onBargeIn() {
         syncPause();
         if (busy || live != null || isFinishing()) { voice.stopSpeaking(); finishTurn(); return; }
-        if (paused) { // screen not in front: don't start listening; a paused story just carries on
-            if (voice.isPaused()) voice.resume(); else finishTurn();
-            return;
-        }
+        if (paused) { voice.resume(); return; } // screen not in front: don't start listening, just carry on
         main.postDelayed(this::startListening, 100);
     }
 
@@ -981,8 +978,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (!show) karaoke.clear();
     }
 
-    @Override public void onWord(String spoken, int start, int end, boolean highlight) {
-        if (showingChat()) karaoke.word(spoken, start, end, highlight, jarvisBodies, chatScroll);
+    @Override public void onWord(String spoken, int start, int end) {
+        if (showingChat()) karaoke.word(spoken, start, end, jarvisBodies, chatScroll);
     }
 
     private boolean showingChat() { return chatScroll != null && chatScroll.getVisibility() == View.VISIBLE; }

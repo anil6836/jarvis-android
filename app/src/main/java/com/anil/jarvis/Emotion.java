@@ -19,45 +19,6 @@ final class Emotion {
     private static final Pattern LEAD = Pattern.compile("^\\s*\\[(" + NAMES + ")\\]\\s*", Pattern.CASE_INSENSITIVE);
     private static final Pattern ANY = Pattern.compile("\\s*\\[(" + NAMES + ")\\]\\s*", Pattern.CASE_INSENSITIVE);
 
-    // Stories and jokes: only then Jarvis shows ⏸/▶, highlights the words, and obeys "ఆపు" / "కొనసాగించు".
-    private static final Pattern STORY_TAG = Pattern.compile("\\s*\\[story\\]\\s*", Pattern.CASE_INSENSITIVE);
-    private static final String[] STORY_ASK = {"కథ", "కధ", "స్టోరీ", "story", "జోక్", "జోకు", "joke", "నవ్వించు", "కామెడీ", "comedy",
-            "పద్యం", "poem", "పొడుపు కథ"};
-    private static volatile String storyKey = "";
-    private static volatile long storyAt;
-
-    /** Added to the brain's instructions: mark stories and jokes with [story]. */
-    static String storyRule() {
-        return "- Only when this reply IS a story, a joke, a poem or a long fun narration he asked for, put the tag [story] at the very start "
-                + "(before any feeling tag). It is never shown or spoken. Never use it for ordinary answers.\n";
-    }
-
-    /** Is this reply a story/joke (the brain's [story] tag, or he asked for one)? */
-    static boolean isStoryReply(String userText, String reply) {
-        if (reply != null && STORY_TAG.matcher(reply).find()) return true;
-        String u = userText == null ? "" : userText.toLowerCase(Locale.ROOT);
-        for (String w : STORY_ASK) if (u.contains(w)) return true;
-        return false;
-    }
-
-    static String dropStoryTag(String reply) {
-        return reply == null ? null : STORY_TAG.matcher(reply).replaceAll(" ").trim();
-    }
-
-    /** Remembers which final reply text is a story, so the voice knows when it speaks it. */
-    static void rememberStory(String text, boolean story) {
-        if (!story || text == null) return;
-        storyKey = key(text);
-        storyAt = SystemClock.elapsedRealtime();
-    }
-
-    /** Text about to be spoken: is it the story/joke (also when replayed within half an hour)? */
-    static boolean isStory(String text) {
-        if (text == null || storyKey.isEmpty() || SystemClock.elapsedRealtime() - storyAt > 30 * 60 * 1000L) return false;
-        String k = key(text);
-        return !k.isEmpty() && (k.startsWith(storyKey) || storyKey.startsWith(k));
-    }
-
     private static volatile String lastEmotion = CALM;
     private static volatile String lastText = "";
     private static volatile long lastAt;

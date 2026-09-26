@@ -29,8 +29,8 @@ final class VoiceIO {
         void onVoiceReady();
         /** He started talking while Jarvis was speaking: speech is paused (not lost); listen to him now. */
         void onBargeIn();
-        /** The word being spoken now: [start, end) in the spoken text (scroll along; highlight it for stories/jokes). */
-        default void onWord(String spoken, int start, int end, boolean highlight) {}
+        /** The word being spoken now: [start, end) in the spoken text (highlighted and scrolled into view). */
+        default void onWord(String spoken, int start, int end) {}
     }
 
     // What he said while Jarvis's speech was paused (see pausedHeard).
@@ -76,8 +76,7 @@ final class VoiceIO {
         if (shut || paused || !prefs.bargeIn()) return;
         barge.start(() -> {
             if (!speaking || shut || paused) return;
-            if (story) pause(false); // story/joke: hold it; "కొనసాగించు" (or silence) carries on from here
-            else stopSpeaking();     // ordinary answer: stop and listen, as before
+            pause(false); // hold, don't lose it: "కొనసాగించు" (or silence) carries on from here
             l.onBargeIn();
         });
     }
@@ -101,11 +100,6 @@ final class VoiceIO {
     private int utterance;
     /** ⏸ pressed: speech holds until ▶ (speaking stays true, so the screen waits). */
     private boolean paused;
-    /** Speaking a story or joke: only then the word highlight and "ఆపు" / "కొనసాగించు" on talk-over (⏸/▶ and scrolling are for every answer). */
-    private boolean story;
-
-    boolean storyMode() { return story && speaking; }
-
     /** Paused on purpose (button or "ఆపు"), not just to hear him out: silence then does not resume it. */
     private boolean pausedByUser;
     /** Natural voice: the text being spoken and its reading-speed weights, for the word highlight. */
@@ -166,7 +160,7 @@ final class VoiceIO {
                 final int a = googleBase + start, b = googleBase + end;
                 googlePos = a;
                 final String full = googleText;
-                main.post(() -> { if (speaking && !paused && !naturalNow) l.onWord(full, a, b, story); });
+                main.post(() -> { if (speaking && !paused && !naturalNow) l.onWord(full, a, b); });
             }
         });
         ttsReady = true;
@@ -190,7 +184,6 @@ final class VoiceIO {
     void speak(String text, float rate) {
         if (shut || text == null || text.trim().isEmpty()) return;
         feeling = prefs.emotions() ? Emotion.forText(text) : Emotion.CALM;
-        story = Emotion.isStory(text);
         paused = false;
         pausedByUser = false;
         main.removeCallbacks(wordTicker);
@@ -296,7 +289,7 @@ final class VoiceIO {
                     int a = at, b = at;
                     while (a > 0 && !Character.isWhitespace(t.charAt(a - 1))) a--;
                     while (b < t.length() && !Character.isWhitespace(t.charAt(b))) b++;
-                    if (b > a) l.onWord(t, a, b, story);
+                    if (b > a) l.onWord(t, a, b);
                 }
                 main.postDelayed(this, 120);
             }
