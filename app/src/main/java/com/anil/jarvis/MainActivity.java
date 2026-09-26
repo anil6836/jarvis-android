@@ -82,6 +82,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private OrbView orb;
+    private HudDashboard hudDash;      // status tiles under the header (chat tab only)
     private TextView status, clock, dateView, setupCard, undoBar;
     private LinearLayout chatList, missionList, doneList, memoryList;
     private TextView missionEmpty, memoryEmpty, doneLabel, missionCount, memoryCount;
@@ -143,10 +144,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (live == null && !busy && !voice.listening && !voice.speaking) setIdle();
         if (live == null && !busy) renderChat();
         syncWakeService();
+        if (hudDash != null) hudDash.start();
     }
 
     @Override protected void onPause() {
         super.onPause();
+        if (hudDash != null) hudDash.stop();
         paused = true;
         visible = false;
         if (camera != null && camera.isOpen()) {
@@ -413,6 +416,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         rule.setBackgroundColor(Ui.LINE);
         root.addView(rule, new LinearLayout.LayoutParams(-1, dp(1)));
 
+        // ---- HUD dashboard: time, battery, network, weather, next reminder, wake word (collapsible)
+        hudDash = new HudDashboard(this, prefs);
+        LinearLayout.LayoutParams hdlp = new LinearLayout.LayoutParams(-1, -2);
+        hdlp.topMargin = dp(6);
+        root.addView(hudDash, hdlp);
+
         // ---- live camera (hidden until the "Live కెమెరా" button is tapped)
         camera = new CameraPanel(this);
         cameraBox = new FrameLayout(this);
@@ -642,6 +651,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             tabLines[i].setBackgroundColor(i == idx ? Ui.CYAN : 0);
         }
         dock.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
+        if (hudDash != null) hudDash.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
         if (idx == 0) scrollToEnd();
     }
 
@@ -685,6 +695,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onVoiceReady() { updateSetup(); }
+
+    /** He talked over Jarvis: speech already stopped, listen to him now. */
+    @Override public void onBargeIn() {
+        if (busy || live != null || paused || isFinishing()) { finishTurn(); return; }
+        main.postDelayed(this::startListening, 100);
+    }
 
     // ================================================================ chat rendering
 

@@ -30,7 +30,9 @@ final class NaturalVoice {
     private static final int RATE = 24000;
     private static final String STYLE =
             "Voice: calm, refined and quietly warm, like JARVIS the British butler AI from the Iron Man films. "
-            + "Language: the text is Telugu; pronounce every Telugu word clearly and naturally, like a native Telugu speaker. "
+            + "Language: the text is Telugu. Speak ONLY Telugu, with a native Andhra/Telangana Telugu accent and pronunciation. "
+            + "Never switch to Tamil, Kannada, Malayalam or Hindi pronunciation, not even for single words; similar-looking words must still sound Telugu. "
+            + "English words in the text are said the way Telugu speakers say them. "
             + "Pace: natural and unhurried. Tone: polite, confident, with a hint of dry wit.";
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -39,9 +41,15 @@ final class NaturalVoice {
 
     /** Speaks text; any earlier speech stops. Callbacks arrive on the main thread. */
     void speak(String apiKey, String voice, String text, Callback cb) {
+        speak(apiKey, voice, text, Emotion.CALM, cb);
+    }
+
+    /** Speaks with a feeling (Emotion names: happy, laugh, sad...). */
+    void speak(String apiKey, String voice, String text, String emotion, Callback cb) {
         final int gen = ++generation;
         stopTrack();
-        new Thread(() -> run(gen, apiKey, voice, text, cb), "jarvis-tts").start();
+        final String style = STYLE + Emotion.style(emotion);
+        new Thread(() -> run(gen, apiKey, voice, text, style, cb), "jarvis-tts").start();
     }
 
     void stop() {
@@ -58,7 +66,7 @@ final class NaturalVoice {
         }
     }
 
-    private void run(int gen, String apiKey, String voice, String text, Callback cb) {
+    private void run(int gen, String apiKey, String voice, String text, String style, Callback cb) {
         HttpURLConnection c = null;
         AudioTrack t = null;
         boolean started = false;
@@ -67,7 +75,7 @@ final class NaturalVoice {
                     .put("model", "gpt-4o-mini-tts")
                     .put("voice", voice)
                     .put("input", text)
-                    .put("instructions", STYLE)
+                    .put("instructions", style)
                     .put("response_format", "pcm");
             byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
             c = (HttpURLConnection) new URL("https://api.openai.com/v1/audio/speech").openConnection();

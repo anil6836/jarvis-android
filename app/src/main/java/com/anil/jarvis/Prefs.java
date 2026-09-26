@@ -58,6 +58,8 @@ final class Prefs {
 
     // ---- natural voice (OpenAI text-to-speech)
     boolean naturalVoice() { return sp.getBoolean("natural_voice", true); }
+    /** Speak with feelings: laugh, happy, sad, excited... (on by default). */
+    boolean emotions() { return sp.getBoolean("emotions", true); }
     String naturalVoiceName() { return sp.getString("natural_voice_name", "cedar"); }
 
     // ---- live (real-time) conversation

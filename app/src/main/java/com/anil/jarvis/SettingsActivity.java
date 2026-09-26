@@ -47,7 +47,7 @@ public class SettingsActivity extends Activity {
     private TextView listenWindowLabel;
     private TextView lockInfo, docsInfo, waInfo;
     private EditText sosContacts, smartUrls, smartApp, walletMax;
-    private Switch walletPay;
+    private Switch walletPay, emotions;
     private Switch alexaSpeak;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
@@ -145,6 +145,7 @@ public class SettingsActivity extends Activity {
         section("సహజ గొంతు (OpenAI)");
         note("సినిమాలోలా మనిషి గొంతుతో మాట్లాడుతుంది. OpenAI key కావాలి, కొంచెం ఖర్చు అవుతుంది. తెలుగు ఉచ్చారణ నచ్చకపోతే ఇది ఆఫ్ చేస్తే Google గొంతుకి మారుతుంది.");
         natural = toggle("సహజ గొంతు వాడు", prefs.naturalVoice());
+        emotions = toggle("భావాలతో మాట్లాడు (నవ్వు, సంతోషం, ఉత్సాహం, బాధ… సందర్భానికి తగ్గట్టు)", prefs.emotions());
         TextView vl = Ui.text(this, "గొంతు ఎంచుకోండి (cedar = లోతైన మగ గొంతు, సిఫార్సు)", 14, Ui.MUTED);
         vl.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         box.addView(vl);
@@ -164,7 +165,7 @@ public class SettingsActivity extends Activity {
         section("Live సంభాషణ (Real-time)");
         note("మనిషితో ఫోన్‌లో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. OpenAI key కావాలి. సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది; 45 సెకన్లు ఎవరూ మాట్లాడకపోతే తనంతట తానే ఆగిపోతుంది.");
         liveMode = toggle("Live సంభాషణ ఆన్ (మైక్ బటన్, Hey Jarvis రెండింటికీ)", prefs.liveMode());
-        bargeIn = toggle("మధ్యలో ఆపి మాట్లాడటం (Jarvis తనంతట తానే ఆగిపోతుంటే ఇది ఆఫ్ చేయండి)", prefs.bargeIn());
+        bargeIn = toggle("Jarvis మాట్లాడుతుండగా మధ్యలో మాట్లాడితే ఆగి వినాలి (Jarvis తనంతట తానే ఆగిపోతుంటే ఇది ఆఫ్ చేయండి)", prefs.bargeIn());
         realtimeModel = field("Live మోడల్", prefs.realtimeModel(), false);
 
         // ---- wake word
@@ -423,6 +424,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("voice", voice.isChecked());
         e.putBoolean("follow_up", followUp.isChecked());
         e.putBoolean("natural_voice", natural.isChecked());
+        e.putBoolean("emotions", emotions.isChecked());
         e.putBoolean("wake_jarvis", jarvisWord.isChecked());
         e.putBoolean("listen_on_open", listenOnOpen.isChecked());
         e.putBoolean("compact_panel", compactPanel.isChecked());

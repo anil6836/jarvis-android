@@ -27,6 +27,8 @@ final class Brain {
     }
 
     private static final int MAX_ROUNDS = 8;
+    /** The chosen OpenAI model rejected the "reasoning" option once: don't send it again. */
+    private static volatile boolean noReasoningOption;
 
     private final Prefs prefs;
     private final Store store;
@@ -46,11 +48,14 @@ final class Brain {
     String ask(List<JSONObject> history, String text, String jpegB64, Status status) throws Exception {
         // No internet: handle the simple everyday commands on the phone itself.
         if (!tools.online()) return tools.offlineCommand(text);
-        String system = systemPrompt();
+        boolean feel = prefs.emotions();
+        String system = systemPrompt() + (feel ? Emotion.rule() : "");
         List<String[]> turns = normalize(history);
-        return prefs.isOpenAi()
+        String reply = prefs.isOpenAi()
                 ? openAi(system, turns, text, jpegB64, status)
                 : anthropic(system, turns, text, jpegB64, status);
+        // the feeling tag ([happy], [sad]...) is for the voice only: take it off the text
+        return feel ? Emotion.strip(reply) : reply;
     }
 
     // ---------------------------------------------------------------- prompt
@@ -68,10 +73,12 @@ final class Brain {
         }
         return systemPrompt()
                 + "\nLive conversation rules:\n"
+                + "- Speak ONLY Telugu with a native Andhra/Telangana accent; never Tamil, Kannada or Hindi words or pronunciation (unless he asks for a translation).\n"
                 + "- This is a live, real-time voice conversation through the phone's speaker. Speak natural, warm Telugu, like a person talking, in 1-3 short sentences. " + name + " may interrupt you at any time; if he does, stop and listen.\n"
                 + "- Before using a tool that takes time (web_search, weather, reading messages), say a very short phrase first, like 'ఒక్క క్షణం'.\n"
                 + "- When reading his messages aloud, say who sent it and the gist; ask before replying on his behalf.\n"
                 + "- When he says bye, చాలు, or that he is done talking, say a short goodbye and call end_conversation. But 'పాట ఆపు', 'సాంగ్ ఆఫ్', 'మ్యూజిక్ స్టాప్' are about the music: use media_control, not end_conversation.\n"
+                + (prefs.emotions() ? Emotion.liveRule() : "")
                 + (recent.length() == 0 ? "" : "\nRecent conversation, for context:\n" + recent);
     }
 
@@ -116,7 +123,7 @@ final class Brain {
 
         return "You are JARVIS, " + name + "'s personal AI assistant living on his Android phone, in the spirit of the JARVIS from the Iron Man films: calm, precise, quietly loyal, with dry British-butler wit.\n\n"
                 + "Rules:\n"
-                + "- Always reply in natural, spoken Telugu (Telugu script). Everyday English tech words are fine where Telugu speakers use them.\n"
+                + "- Always reply in natural, spoken Telugu (Telugu script), Andhra/Telangana style; never Tamil words. Everyday English tech words are fine where Telugu speakers use them.\n"
                 + moodRule()
                 + "- Address him as \"" + name + "\" now and then, naturally, the way a butler would. Never \"sir\", never \"Tony\".\n"
                 + "- Your reply is spoken aloud: keep it to 1-3 short sentences unless he asks for detail. No markdown, bullet lists, emoji, or URLs.\n"
@@ -303,7 +310,17 @@ final class Brain {
                     .put("input", next)
                     .put("tools", toolList);
             if (previous != null) body.put("previous_response_id", previous);
-            JSONObject res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
+            // Quick answers: a voice assistant should not "think" for long (models without this option ignore it below).
+            if (!noReasoningOption) body.put("reasoning", new JSONObject().put("effort", "low"));
+            JSONObject res;
+            try {
+                res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
+            } catch (Http.ApiError e) {
+                if (noReasoningOption || e.status != 400 || String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT).indexOf("reasoning") < 0) throw e;
+                noReasoningOption = true; // this model has no reasoning setting: ask again without it
+                body.remove("reasoning");
+                res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
+            }
             previous = res.optString("id", null);
 
             JSONArray out = res.optJSONArray("output");

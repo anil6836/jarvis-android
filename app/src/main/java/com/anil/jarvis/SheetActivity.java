@@ -522,6 +522,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onVoiceReady() {}
 
+    /** He talked over Jarvis: listen to him straight away (not only as a limited follow-up). */
+    @Override public void onBargeIn() {
+        if (live != null || isFinishing()) return;
+        if (callText != null) { main.postDelayed(this::listen, 100); return; }
+        main.postDelayed(this::listen, 100);
+    }
+
     private void idle() {
         Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         orb.setState(OrbView.IDLE);

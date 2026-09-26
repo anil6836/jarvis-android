@@ -26,6 +26,20 @@ final class VoiceIO {
         void onSpeakStart();
         void onSpeakDone();
         void onVoiceReady();
+        /** He started talking while Jarvis was speaking: speech is already stopped; listen to him now. */
+        default void onBargeIn() { onSpeakDone(); }
+    }
+
+    private final BargeIn barge;
+
+    /** Start watching for Anil talking over Jarvis (setting "మధ్యలో ఆపి మాట్లాడటం"). */
+    private void watchBargeIn() {
+        if (shut || !prefs.bargeIn()) return;
+        barge.start(() -> {
+            if (!speaking || shut) return;
+            stopSpeaking();
+            l.onBargeIn();
+        });
     }
 
     private final Context ctx;
@@ -43,6 +57,7 @@ final class VoiceIO {
     private boolean shut;
     private String pending;
     private float pendingRate = 1f;
+    private volatile String feeling = Emotion.CALM; // the tone of what is being said now
     private int utterance;
     private SpeechRecognizer sr;
     boolean listening;
@@ -54,6 +69,7 @@ final class VoiceIO {
     String voiceInfo = "వాయిస్ సిద్ధం అవుతోంది…";
 
     VoiceIO(Context c, Prefs prefs, Listener l) {
+        this.barge = new BargeIn(c);
         this.ctx = c.getApplicationContext();
         this.prefs = prefs;
         this.l = l;
@@ -80,7 +96,7 @@ final class VoiceIO {
             voiceInfo = "తెలుగు వాయిస్ లేదు. Settings → Text-to-speech → Google → తెలుగు డౌన్‌లోడ్ చేయండి.";
         }
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override public void onStart(String id) { main.post(() -> { speaking = true; l.onSpeakStart(); }); }
+            @Override public void onStart(String id) { main.post(() -> { speaking = true; watchBargeIn(); l.onSpeakStart(); }); }
             @Override public void onDone(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onError(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onStop(String id, boolean interrupted) { main.post(() -> finishSpeaking(id)); }
@@ -98,11 +114,13 @@ final class VoiceIO {
         if (!("j" + utterance).equals(id)) return; // an older utterance that was replaced
         if (!speaking) return;
         speaking = false;
+        barge.stop();
         l.onSpeakDone();
     }
 
     void speak(String text, float rate) {
         if (shut || text == null || text.trim().isEmpty()) return;
+        feeling = prefs.emotions() ? Emotion.forText(text) : Emotion.CALM;
         String key = prefs.openAiKey().trim();
         if (prefs.naturalVoice() && !key.isEmpty() && Net.online(ctx)) {
             speakNatural(key, text, rate);
@@ -118,12 +136,14 @@ final class VoiceIO {
         if (clean.length() > 3500) clean = clean.substring(0, 3500);
         speaking = true;
         final String said = clean;
-        natural.speak(key, prefs.naturalVoiceName(), said, new NaturalVoice.Callback() {
+        natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
+                watchBargeIn();
                 l.onSpeakStart();
             }
             @Override public void onDone() {
+                barge.stop();
                 if (!speaking) return;
                 speaking = false;
                 l.onSpeakDone();
@@ -155,7 +175,8 @@ final class VoiceIO {
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
         int max = TextToSpeech.getMaxSpeechInputLength() - 10;
         if (clean.length() > max) clean = clean.substring(0, max);
-        tts.setSpeechRate(rate);
+        tts.setSpeechRate(rate * Emotion.pace(feeling));
+        tts.setPitch(Emotion.pitch(feeling));
         try { tts.setLanguage(Lang.of(clean)); } catch (Exception ignored) {} // Hindi etc. for translations
         utterance++;
         speaking = true;
@@ -178,6 +199,7 @@ final class VoiceIO {
     }
 
     void stopSpeaking() {
+        barge.stop();
         pending = null;
         natural.stop();
         if (speaking) {
@@ -252,9 +274,10 @@ final class VoiceIO {
         i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.getPackageName());
         if (!Net.online(ctx)) i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true); // Telugu offline pack, if downloaded
         // ask for a patient recognizer (some phones ignore these; the restart above covers them)
-        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, prefs.listenWindowSeconds() * 1000L);
-        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L);
-        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L);
+        // No minimum length: when he stops talking, answer right away. The listen window (waiting for him to START
+        // talking) is kept by restartIfEarly(). A short pause of ~1 s ends his sentence.
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
         lastIntent = i;
         listening = true;
         sr.startListening(i);
@@ -278,6 +301,7 @@ final class VoiceIO {
 
     void shutdown() {
         shut = true;
+        barge.stop();
         ttsReady = false;
         pending = null;
         speaking = false;
