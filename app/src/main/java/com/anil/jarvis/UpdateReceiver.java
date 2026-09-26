@@ -39,6 +39,7 @@ public class UpdateReceiver extends BroadcastReceiver {
     /** The new version is in: tidy up, tell him, and bring Jarvis back on screen. */
     private static void updated(Context c) {
         Updater.cleanup(c);
+        Updater.cancelNotice(c);
         String v = "1.0." + Updater.currentBuild(c);
         try {
             NotificationManager nm = c.getSystemService(NotificationManager.class);

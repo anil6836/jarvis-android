@@ -114,7 +114,16 @@ public class WakeService extends Service {
         registerReceiver(battery, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         motion = new Motion(this, () -> main.post(this::onShake));
         motion.start();
+        main.postDelayed(updatePoll, 60 * 1000L);
     }
+
+    /** While the wake word runs: every 5 minutes, a new Jarvis build? (a notification comes right away) */
+    private final Runnable updatePoll = new Runnable() {
+        @Override public void run() {
+            new Thread(() -> Updater.backgroundCheck(getApplicationContext()), "jarvis-update-poll").start();
+            main.postDelayed(this, 5 * 60 * 1000L);
+        }
+    };
 
     // ---------- low battery warning ----------
 

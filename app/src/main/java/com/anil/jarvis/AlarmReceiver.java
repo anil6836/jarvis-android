@@ -56,6 +56,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 Reminders.rescheduleAll(c);
                 GeoReminders.rearmAll(c);
                 Proactive.schedule(c);
+                UpdateJob.schedule(c);
                 break;
             default:
                 break;

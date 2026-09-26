@@ -113,6 +113,9 @@ final class Prefs {
     /** Jarvis looks for and downloads new versions by itself. */
     boolean autoUpdate() { return sp.getBoolean("auto_update", true); }
     long updateCheckedAt() { return sp.getLong("update_checked_at", 0); }
+    /** The newest build he was already told about (one notification per build). */
+    int notifiedBuild() { return sp.getInt("notified_build", 0); }
+    void setNotifiedBuild(int b) { sp.edit().putInt("notified_build", b).apply(); }
     void setUpdateCheckedAt(long t) { sp.edit().putLong("update_checked_at", t).apply(); }
     /** After "Jarvis", keep listening at least this long for Anil to start speaking. */
     int listenWindowSeconds() { return sp.getInt("listen_window", 5); }

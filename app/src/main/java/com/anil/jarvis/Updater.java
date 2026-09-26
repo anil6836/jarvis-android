@@ -102,6 +102,76 @@ final class Updater {
             f.delete();
     }
 
+    static final int NOTE_ID = 7802;
+    private static final String CHANNEL = "jarvis_update";
+    private static final AtomicBoolean bgBusy = new AtomicBoolean();
+
+    /**
+     * In the background (every few minutes from the wake-word service, every 15 minutes otherwise):
+     * a new build on GitHub? Tell him with a notification (once per build), and download it quietly.
+     * Call on a background thread.
+     */
+    static void backgroundCheck(Context ctx) {
+        Context c = ctx.getApplicationContext();
+        if (!bgBusy.compareAndSet(false, true)) return;
+        try {
+            if (!Net.online(c)) return;
+            int cur = currentBuild(c);
+            int latest = latestBuild();
+            if (latest <= cur) return;
+            Prefs p = new Prefs(c);
+            if (p.notifiedBuild() != latest) {
+                p.setNotifiedBuild(latest);
+                notifyNew(c, latest);
+            }
+            if (p.autoUpdate() && readyBuild(c) < latest) {
+                check(c, new Callback() {
+                    @Override public void onReady(int build) {}
+                    @Override public void onNothing(String message) {}
+                });
+            }
+        } catch (Exception ignored) {
+        } finally {
+            bgBusy.set(false);
+        }
+    }
+
+    private static void notifyNew(Context c, int build) {
+        try {
+            android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+            if (nm == null) return;
+            nm.createNotificationChannel(new android.app.NotificationChannel(CHANNEL, "Jarvis అప్డేట్లు", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+            Intent open = new Intent(c, MainActivity.class).putExtra(MainActivity.EXTRA_UPDATE, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pi = PendingIntent.getActivity(c, 79, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            nm.notify(NOTE_ID, new android.app.Notification.Builder(c, CHANNEL)
+                    .setSmallIcon(android.R.drawable.stat_sys_download)
+                    .setContentTitle("Jarvis కొత్త వెర్షన్ 1.0." + build + " వచ్చింది")
+                    .setContentText("అప్డేట్ చేయడానికి నొక్కండి")
+                    .setContentIntent(pi)
+                    .addAction(new android.app.Notification.Action.Builder(null, "అప్డేట్ చేయి", pi).build())
+                    .setAutoCancel(true)
+                    .build());
+        } catch (Exception ignored) {}
+    }
+
+    static void cancelNotice(Context c) {
+        try {
+            android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+            if (nm != null) nm.cancel(NOTE_ID);
+        } catch (Exception ignored) {}
+    }
+
+    /** Tapped "అప్డేట్ చేయి" in the notification: download if needed, then install. */
+    static void updateNow(Activity a) {
+        cancelNotice(a);
+        Toast.makeText(a, "కొత్త వెర్షన్ సిద్ధం చేస్తున్నాను…", Toast.LENGTH_SHORT).show();
+        check(a, new Callback() {
+            @Override public void onReady(int build) { if (!a.isFinishing()) install(a, build); }
+            @Override public void onNothing(String message) { if (!a.isFinishing()) Toast.makeText(a, message, Toast.LENGTH_LONG).show(); }
+        });
+    }
+
     /** On opening Jarvis: at most once an hour, quietly look for and download a newer build. */
     static void autoCheck(Context c, Callback cb) {
         Prefs p = new Prefs(c);
