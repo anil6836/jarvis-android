@@ -206,6 +206,9 @@ final class VoiceIO {
         final String said = clean;
         naturalText = said;
         naturalWeight = weights(said);
+        naturalBounds = bounds(said, naturalWeight);
+        matched = new long[0][];
+        matchedFor = -1;
         natural.voiceCall = callVoice();
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
@@ -218,6 +221,7 @@ final class VoiceIO {
             @Override public void onDone() {
                 barge.stop();
                 main.removeCallbacks(wordTicker);
+                learnPace();
                 if (!speaking) return;
                 speaking = false;
                 call.exit();
@@ -296,19 +300,129 @@ final class VoiceIO {
         }
     };
 
+    /** Sound frames per unit of reading weight for this voice (learned from finished replies). */
+    private static volatile double framesPerWeight = NaturalVoice.RATE / 10.0;
+    /** Pauses in the text (commas, full stops): {weight where speech stops, weight where it starts again}. */
+    private float[][] naturalBounds = new float[0][];
+
+    private void learnPace() {
+        float[] w = naturalWeight;
+        if (w.length == 0 || !natural.downloaded() || natural.totalFrames() <= 0) return;
+        double fpw = natural.totalFrames() / (double) w[w.length - 1];
+        if (fpw > NaturalVoice.RATE / 40.0 && fpw < NaturalVoice.RATE / 3.0) framesPerWeight = framesPerWeight * 0.6 + fpw * 0.4;
+    }
+
+    // Pauses matched to the text (recomputed only when a new pause has arrived): {pauseStart, pauseEnd, boundary}.
+    private long[][] matched = new long[0][];
+    private double matchedFpw;
+    private int matchedFor = -1;
+    private boolean matchedDone;
+
+    /**
+     * The character being spoken now. The voice's own pauses are matched to the commas and full stops
+     * of the text (trying a range of speaking speeds and keeping the one that lines up best), so within
+     * each sentence the highlight moves from where it really started to where it really ends.
+     */
     private int naturalWordAt() {
         float[] w = naturalWeight;
         if (w.length == 0) return -1;
         long played = natural.playedFrames();
-        if (played <= 0) return 0;
         float total = w[w.length - 1];
-        double frames = natural.downloaded()
-                ? natural.totalFrames()
-                : Math.max(natural.totalFrames(), total * NaturalVoice.RATE / 12.0); // ~12 letters a second until known
-        double goal = Math.min(1.0, played / Math.max(1.0, frames)) * total;
+        boolean done = natural.downloaded() && natural.totalFrames() > 0;
+        long first = Math.max(0, natural.firstSound());
+        if (played <= first) return 0;
+
+        java.util.List<long[]> pz = natural.pauses();
+        if (pz.size() != matchedFor || done != matchedDone) {
+            double[] grid;
+            if (done) grid = new double[]{natural.totalFrames() / (double) total};
+            else {
+                grid = new double[16];
+                for (int k = 0; k < 16; k++) grid[k] = framesPerWeight * (5 + k) / 10.0; // half to double the usual pace
+            }
+            double bestScore = -1e9;
+            for (double f : grid) {
+                double[] outFpw = new double[1];
+                java.util.ArrayList<long[]> m = new java.util.ArrayList<>();
+                double score = match(naturalBounds, pz, first, f, m, outFpw);
+                if (score > bestScore) { bestScore = score; matched = m.toArray(new long[0][]); matchedFpw = outFpw[0]; }
+            }
+            matchedFor = pz.size();
+            matchedDone = done;
+        }
+        float[][] bs = naturalBounds;
+        long aF = first;
+        double aW = 0, goal = -1;
+        for (long[] m : matched) {
+            long ps = m[0], pe = m[1];
+            float[] b = bs[(int) m[2]];
+            if (played < ps) { goal = aW + (played - aF) * (b[0] - aW) / (double) Math.max(1, ps - aF); break; }
+            if (played < pe) { goal = b[0]; break; } // in the pause: stay on the last word
+            aF = pe;
+            aW = b[1];
+        }
+        if (goal < 0) {
+            if (done && natural.totalFrames() > aF) goal = aW + (played - aF) * (total - aW) / (double) (natural.totalFrames() - aF);
+            else goal = aW + (played - aF) / matchedFpw;
+        }
+        goal = Math.max(0, Math.min(total, goal));
         int lo = 0, hi = w.length - 1;
         while (lo < hi) { int mid = (lo + hi) >>> 1; if (w[mid] < goal) lo = mid + 1; else hi = mid; }
         return lo;
+    }
+
+    /** Lines the voice's pauses up with the text's commas/full stops at pace fpw; returns how well it fits. */
+    private static double match(float[][] bs, java.util.List<long[]> pz, long first, double fpw, java.util.List<long[]> out, double[] outFpw) {
+        long aF = first;
+        double aW = 0, dev = 0, f = fpw;
+        int lastB = -1;
+        for (long[] p : pz) {
+            long ps = p[0], pe = p[1];
+            if (ps <= aF) continue;
+            boolean longPause = pe - ps >= NaturalVoice.RATE * 3 / 10; // 300 ms+: a full stop, not a comma
+            double pred = aW + (ps - aF) / f;
+            int best = -1;
+            double bd = Double.MAX_VALUE;
+            for (int i = lastB + 1; i < bs.length; i++) {
+                if (longPause && bs[i][2] == 0) continue;
+                double d = Math.abs(bs[i][0] - pred);
+                if (d < bd) { bd = d; best = i; }
+                if (bs[i][0] > pred + bd) break; // further ones only get worse
+            }
+            if (best < 0 || bd > Math.max(3.0, 0.25 * (pred - aW))) continue; // a pause the text has no mark for
+            double seg = bs[best][0] - aW;
+            if (seg > 5) f = f * 0.5 + ((ps - aF) / seg) * 0.5; // follow the voice's real pace
+            dev += bd / Math.max(1.0, pred - aW);
+            out.add(new long[]{ps, pe, best});
+            aF = pe;
+            aW = bs[best][1];
+            lastB = best;
+        }
+        outFpw[0] = f;
+        return out.size() - dev * 0.5;
+    }
+
+    /** Commas and full stops: {weight just before the mark, weight at the next word, 1 if a full stop}. */
+    private static float[][] bounds(String t, float[] w) {
+        java.util.ArrayList<float[]> out = new java.util.ArrayList<>();
+        int n = t.length();
+        for (int i = 0; i < n; i++) {
+            if (!isMark(t.charAt(i))) continue;
+            int j = i;
+            while (j + 1 < n && (isMark(t.charAt(j + 1)) || Character.isWhitespace(t.charAt(j + 1)))) j++;
+            int next = j + 1;
+            if (next >= n) break;
+            float end = i > 0 ? w[i - 1] : 0, start = w[next - 1];
+            boolean stop = false;
+            for (int k = i; k <= j; k++) { char c = t.charAt(k); if (c == '.' || c == '!' || c == '?' || c == '।' || c == '\n') stop = true; }
+            out.add(new float[]{end, start, stop ? 1 : 0});
+            i = j;
+        }
+        return out.toArray(new float[0][]);
+    }
+
+    private static boolean isMark(char c) {
+        return c == ',' || c == ';' || c == ':' || c == '.' || c == '!' || c == '?' || c == '।' || c == '\n';
     }
 
     /** Cumulative reading time per character: letters 1, vowel signs less, pauses at commas and full stops. */

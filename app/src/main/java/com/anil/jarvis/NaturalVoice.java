@@ -2,6 +2,7 @@ package com.anil.jarvis;
 
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
+import android.media.AudioTimestamp;
 import android.media.AudioTrack;
 import android.os.Handler;
 import android.os.Looper;
@@ -58,15 +59,66 @@ final class NaturalVoice {
 
     boolean isPaused() { return paused; }
 
-    // For the word highlight: how much sound has arrived / played so far.
+    // For the word highlight: how much sound has arrived / played so far, and where the pauses are.
     private volatile long arrived;
     private volatile boolean complete;
     long totalFrames() { return arrived; }
     boolean downloaded() { return complete; }
+    private final AudioTimestamp stamp = new AudioTimestamp();
+
+    /** The sound frame coming out of the speaker right now (output delay included). */
     long playedFrames() {
         AudioTrack t = track;
         if (t == null) return 0;
-        try { return t.getPlaybackHeadPosition() & 0xFFFFFFFFL; } catch (Exception e) { return 0; }
+        try {
+            if (!paused && t.getTimestamp(stamp)) {
+                long now = System.nanoTime();
+                long f = stamp.framePosition + (now - stamp.nanoTime) * RATE / 1_000_000_000L;
+                long head = t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+                return Math.max(0, Math.min(f, head));
+            }
+            return t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    // Pauses in the voice (between sentences / at commas): [start, end] frames, in order.
+    private static final int BLOCK = RATE / 50;          // 20 ms
+    private static final double QUIET = 300;             // quieter than this = a pause in the speech
+    private static final int MIN_PAUSE_BLOCKS = 8;       // 160 ms or longer counts as a pause
+    private final java.util.ArrayList<long[]> pauses = new java.util.ArrayList<>();
+    private double blockSum;
+    private int blockN, quietRun;
+    private long blockIndex, quietFrom = -1;
+
+    private volatile long firstSound = -1;
+
+    synchronized java.util.List<long[]> pauses() { return new java.util.ArrayList<>(pauses); }
+
+    /** Frame where the voice actually starts (after the short silence at the beginning), or -1. */
+    long firstSound() { return firstSound; }
+
+    private synchronized void resetPauses() { pauses.clear(); blockSum = 0; blockN = 0; quietRun = 0; blockIndex = 0; quietFrom = -1; firstSound = -1; }
+
+    /** Finds pauses in the arriving sound (16-bit little-endian mono). */
+    private synchronized void scanPauses(byte[] b, int len) {
+        for (int i = 0; i + 1 < len; i += 2) {
+            int x = (short) ((b[i] & 0xFF) | (b[i + 1] << 8));
+            blockSum += (double) x * x;
+            if (++blockN < BLOCK) continue;
+            double rms = Math.sqrt(blockSum / blockN);
+            blockSum = 0;
+            blockN = 0;
+            if (rms < QUIET) {
+                if (quietRun++ == 0) quietFrom = blockIndex * BLOCK;
+            } else {
+                if (firstSound < 0) firstSound = blockIndex * BLOCK;
+                else if (quietRun >= MIN_PAUSE_BLOCKS && quietFrom > 0) pauses.add(new long[]{quietFrom, blockIndex * BLOCK});
+                quietRun = 0;
+            }
+            blockIndex++;
+        }
     }
 
     /** Speaks text; any earlier speech stops. Callbacks arrive on the main thread. */
@@ -80,6 +132,7 @@ final class NaturalVoice {
         paused = false;
         arrived = 0;
         complete = false;
+        resetPauses();
         stopTrack();
         final String style = STYLE + Emotion.style(emotion);
         new Thread(() -> run(gen, apiKey, voice, text, style, cb), "jarvis-tts").start();
@@ -192,6 +245,7 @@ final class NaturalVoice {
                         main.post(() -> { if (gen == generation) cb.onStart(); });
                     }
                     frames += len / 2;
+                    scanPauses(buf, len);
                     arrived = frames;
                     flushHeld(t, held, gen);
                     play(t, buf, 0, len, held, gen);

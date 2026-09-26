@@ -66,7 +66,7 @@ final class Karaoke {
         lastLine = -1;
     }
 
-    /** Scrolls so the line being read stays in the upper-middle of the screen. */
+    /** Scrolls so the line being read stays a little above the middle of the screen. */
     private void follow(int offset) {
         if (scroll == null || view == null) return;
         Layout layout = view.getLayout();
@@ -83,7 +83,8 @@ final class Karaoke {
         }
         int h = scroll.getHeight();
         int top = scroll.getScrollY();
-        if (y < top + h / 8 || y > top + h * 3 / 5) scroll.smoothScrollTo(0, Math.max(0, y - h / 3));
+        // keep the line being read a little above the middle; move gently, a line or two at a time
+        if (y < top + h / 8 || y > top + h / 2) scroll.smoothScrollTo(0, Math.max(0, y - h * 2 / 5));
     }
 
     /**
