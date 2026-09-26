@@ -4192,7 +4192,10 @@ final class Tools {
 
     private String runPython(String task) throws Exception {
         if (task == null || task.trim().isEmpty()) return err("missing", "What should the Python do?");
-        JSONObject r = Coder.runPython(act(), prefs, task.trim());
+        JobProgress p = new JobProgress(act(), 7911, "Python");
+        p.tick(5, 95, 40_000, "కోడ్ రాసి రన్ చేస్తున్నాను");
+        JSONObject r;
+        try { r = Coder.runPython(act(), prefs, task.trim()); } finally { p.end(); }
         JSONArray files = r.optJSONArray("files");
         if (files == null) files = new JSONArray();
         if (files.length() > 0) {
@@ -4210,7 +4213,10 @@ final class Tools {
     }
 
     private String makeWebsite(String description, String change) throws Exception {
-        JSONObject r = Coder.makeWebsite(act(), prefs, description, change);
+        JobProgress p = new JobProgress(act(), 7912, "వెబ్‌సైట్");
+        p.tick(5, 95, 50_000, change != null && !change.trim().isEmpty() ? "మార్పులు చేస్తున్నాను" : "వెబ్‌సైట్ రాస్తున్నాను");
+        JSONObject r;
+        try { r = Coder.makeWebsite(act(), prefs, description, change); } finally { p.end(); }
         String title = r.optString("title", "వెబ్‌సైట్"), file = r.optString("file"), uri = r.optString("uri"), slug = r.optString("slug");
         onUi(() -> WebActivity.show(act(), WebActivity.KIND_SITE, title.isEmpty() ? "వెబ్‌సైట్" : title, file, uri, slug));
         return ok().put("title", title).put("saved", r.optString("saved"))
@@ -4221,7 +4227,10 @@ final class Tools {
     private String publishWebsite() throws Exception {
         if (prefs.githubToken().trim().isEmpty()) return err("no_github_token", "Putting a website online needs his GitHub token. " + GITHUB_HELP);
         if (prefs.lastSite().isEmpty()) return err("no_website", "No website made yet: make_website first.");
-        String link = Coder.publish(act(), prefs, prefs.lastSite());
+        JobProgress p = new JobProgress(act(), 7914, "ఆన్‌లైన్");
+        p.tick(10, 95, 15_000, "GitHub లో పెడుతున్నాను");
+        String link;
+        try { link = Coder.publish(act(), prefs, prefs.lastSite()); } finally { p.end(); }
         onUi(() -> {
             android.content.ClipboardManager cm = act().getSystemService(android.content.ClipboardManager.class);
             if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("website", link));
@@ -4231,7 +4240,10 @@ final class Tools {
 
     private String writeCode(String filename, String description) throws Exception {
         if (description == null || description.trim().isEmpty()) return err("missing", "What should the program do?");
-        JSONObject r = Coder.writeCode(act(), prefs, filename, description.trim());
+        JobProgress p = new JobProgress(act(), 7913, "కోడ్");
+        p.tick(5, 95, 40_000, "కోడ్ రాస్తున్నాను");
+        JSONObject r;
+        try { r = Coder.writeCode(act(), prefs, filename, description.trim()); } finally { p.end(); }
         String name = r.optString("name"), file = r.optString("file"), uri = r.optString("uri");
         onUi(() -> WebActivity.show(act(), WebActivity.KIND_CODE, name, file, uri, null));
         return ok().put("name", name).put("saved", r.optString("saved")).put("lines", r.optInt("lines"))
@@ -4242,12 +4254,20 @@ final class Tools {
         if (prefs.githubToken().trim().isEmpty()) return err("no_github_token", "Making an Android app needs his GitHub token (the app is built there). " + GITHUB_HELP);
         boolean changing = change != null && !change.trim().isEmpty();
         if (!changing && (description == null || description.trim().isEmpty())) return err("missing", "What should the app do?");
-        JSONObject r = AppMaker.make(act(), prefs, name, description, change);
+        JobProgress p = new JobProgress(act(), 7915, (changing ? prefs.lastAppName() : (name == null || name.trim().isEmpty() ? "యాప్" : name.trim())) + " యాప్");
+        JSONObject r;
+        try {
+            r = AppMaker.make(act(), prefs, name, description, change, p);
+        } catch (Exception e) {
+            p.end();
+            throw e;
+        }
+        p.leaveUi(); // the build goes on in the background: the notification (and the preview screen) show its progress
         String app = r.optString("app"), preview = r.optString("preview");
         onUi(() -> WebActivity.show(act(), WebActivity.KIND_APP, app + " · ప్రివ్యూ", preview, null, null));
         return ok().put("app", app).put("repo", r.optString("repo"))
                 .put("next", "Tell him in 1-2 short Telugu sentences: the app's preview is on screen; the real app (APK) is being built on his GitHub and takes about "
-                        + "3-5 minutes; a notification '" + app + " యాప్ సిద్ధం' will come and tapping it installs it. He can say changes to rebuild.").toString();
+                        + "3-5 minutes; the notification bar shows how far it has got (%, time left), and when it is ready a notification '" + app + " యాప్ సిద్ధం' comes; tapping it installs it. He can say changes to rebuild.").toString();
     }
 
     // ================================================================ offline commands

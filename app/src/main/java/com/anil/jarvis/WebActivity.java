@@ -54,6 +54,17 @@ public class WebActivity extends Activity {
         if (uri != null && !uri.isEmpty() && !"null".equals(uri)) bar.addView(barButton("షేర్", v -> share(uri, kind)));
         bar.addView(barButton("✕", v -> finish()));
         root.addView(bar);
+        if (KIND_APP.equals(kind)) {
+            TextView prog = Ui.text(this, "", 13, Ui.CYAN2);
+            prog.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), Ui.dp(this, 8));
+            prog.setVisibility(android.view.View.GONE);
+            root.addView(prog);
+            JobProgress.screen = line -> {
+                if (line == null) { prog.setText("బిల్డ్ పూర్తయింది. నోటిఫికేషన్ చూడండి."); return; }
+                prog.setVisibility(android.view.View.VISIBLE);
+                prog.setText("⏳ " + line);
+            };
+        }
 
         web = new WebView(this);
         WebSettings s = web.getSettings();
@@ -135,6 +146,11 @@ public class WebActivity extends Activity {
                 runOnUiThread(() -> Toast.makeText(this, "ఆన్‌లైన్ పెట్టలేకపోయాను: " + e.getMessage(), Toast.LENGTH_LONG).show());
             }
         }, "jarvis-publish").start();
+    }
+
+    @Override protected void onDestroy() {
+        if (KIND_APP.equals(getIntent().getStringExtra(EXTRA_KIND))) JobProgress.screen = null;
+        super.onDestroy();
     }
 
     @Override public void onBackPressed() {

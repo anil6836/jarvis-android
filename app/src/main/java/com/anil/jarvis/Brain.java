@@ -350,6 +350,7 @@ final class Brain {
                     } else if ("function_call".equals(type)) {
                         String name = item.optString("name");
                         status.update(Tools.statusFor(name));
+                        JobProgress.ui = status;
                         JSONObject args;
                         try { args = new JSONObject(item.optString("arguments", "{}")); } catch (Exception e) { args = new JSONObject(); }
                         checkCancelled(status);
@@ -416,6 +417,7 @@ final class Brain {
                     if (!"tool_use".equals(b.optString("type"))) continue;
                     String name = b.optString("name");
                     status.update(Tools.statusFor(name));
+                        JobProgress.ui = status;
                     JSONObject args = b.optJSONObject("input");
                     checkCancelled(status);
                     String result = tools.execute(name, args == null ? new JSONObject() : args);

@@ -51,7 +51,7 @@ final class AppMaker {
             + "Reply with ONLY the HTML, starting with <!DOCTYPE html>.";
 
     /** Starts building an app; returns at once (the build runs on GitHub, a notification comes when it is ready). */
-    static JSONObject make(Context ctx, Prefs prefs, String name, String description, String change) throws Exception {
+    static JSONObject make(Context ctx, Prefs prefs, String name, String description, String change, JobProgress p) throws Exception {
         Context c = ctx.getApplicationContext();
         String token = prefs.githubToken().trim();
         if (token.isEmpty()) throw new IllegalStateException("no_token");
@@ -61,6 +61,7 @@ final class AppMaker {
 
         boolean changing = change != null && !change.trim().isEmpty() && !prefs.lastAppRepo().isEmpty();
         String slug, appName, html;
+        p.tick(3, 30, 60_000, changing ? "మార్పులు రాస్తున్నాను" : "యాప్ రాస్తున్నాను");
         if (changing) {
             slug = prefs.lastAppRepo().replaceFirst("^jarvis-app-", "");
             appName = prefs.lastAppName();
@@ -74,6 +75,8 @@ final class AppMaker {
             slug = slug(appName);
             html = Coder.ask(prefs, APP_SYSTEM, "App name: " + appName + "\nWhat the app must do: " + description.trim(), 14000);
         }
+        p.stopTick();
+        p.set(32, "GitHub కి పంపుతున్నాను", 200);
         html = cleanHtml(html);
         File local = htmlFile(c, slug);
         //noinspection ResultOfMethodCallIgnored
@@ -110,7 +113,8 @@ final class AppMaker {
         request("PATCH", api + "/git/refs/heads/main", new JSONObject().put("sha", commit), auth);
 
         prefs.setLastApp(repo, appName);
-        watch(c, token, login + "/" + repo, commit, appName);
+        p.set(38, "బిల్డ్ మొదలవుతోంది", 190);
+        watch(c, token, login + "/" + repo, commit, appName, p);
         return new JSONObject().put("app", appName).put("repo", login + "/" + repo).put("package", pkg).put("preview", local.getPath())
                 .put("page", "https://github.com/" + login + "/" + repo);
     }
@@ -118,29 +122,78 @@ final class AppMaker {
     static File htmlFile(Context c, String slug) { return new File(new File(c.getFilesDir(), "apps"), slug + ".html"); }
 
     /** Watches the GitHub build of that commit; a notification when the APK is ready (or the build failed). */
-    private static void watch(Context c, String token, String repo, String commit, String appName) {
+    /** Usual length of the whole GitHub build, for the "time left" (learned from the last build). */
+    private static volatile long buildMs = 170_000;
+
+    private static void watch(Context c, String token, String repo, String commit, String appName, JobProgress p) {
         new Thread(() -> {
             String[] auth = auth(token);
             long end = System.currentTimeMillis() + 15 * 60 * 1000L;
+            long waitStart = System.currentTimeMillis();
             try {
-                Thread.sleep(20000);
+                Thread.sleep(5000);
                 while (System.currentTimeMillis() < end) {
                     JSONObject runs = request("GET", "https://api.github.com/repos/" + repo + "/actions/runs?head_sha=" + commit + "&per_page=1", null, auth);
                     JSONArray list = runs.optJSONArray("workflow_runs");
-                    if (list != null && list.length() > 0) {
-                        JSONObject r = list.getJSONObject(0);
-                        if ("completed".equals(r.optString("status"))) {
-                            boolean ok = "success".equals(r.optString("conclusion"));
-                            if (ok) Thread.sleep(8000); // the release upload finishes right after
-                            notify(c, repo, appName, ok);
-                            return;
-                        }
+                    if (list == null || list.length() == 0) {
+                        long w = System.currentTimeMillis() - waitStart;
+                        p.set(38 + (int) Math.min(4, w / 10_000), "GitHub బిల్డ్ కోసం వేచి ఉంది", (buildMs + 15_000 - w) / 1000);
+                        Thread.sleep(5000);
+                        continue;
                     }
-                    Thread.sleep(15000);
+                    JSONObject r = list.getJSONObject(0);
+                    if ("completed".equals(r.optString("status"))) {
+                        boolean ok = "success".equals(r.optString("conclusion"));
+                        if (ok) {
+                            p.set(98, "యాప్ ఫైల్ సిద్ధం చేస్తున్నాను", 8);
+                            long took = System.currentTimeMillis() - waitStart;
+                            if (took > 60_000 && took < 15 * 60_000) buildMs = (buildMs + took) / 2;
+                            Thread.sleep(8000); // the release upload finishes right after
+                        }
+                        p.end();
+                        notify(c, repo, appName, ok);
+                        return;
+                    }
+                    // which step of the build is running (Set up, Java, Gradle, Build APK, Publish…)
+                    int done = 0, total = 0;
+                    String now = "బిల్డ్ అవుతోంది";
+                    try {
+                        JSONObject jobs = request("GET", "https://api.github.com/repos/" + repo + "/actions/runs/" + r.optLong("id") + "/jobs", null, auth);
+                        JSONArray js = jobs.optJSONArray("jobs");
+                        JSONArray steps = js != null && js.length() > 0 ? js.getJSONObject(0).optJSONArray("steps") : null;
+                        for (int i = 0; steps != null && i < steps.length(); i++) {
+                            JSONObject st = steps.getJSONObject(i);
+                            total++;
+                            if ("completed".equals(st.optString("status"))) done++;
+                            else if ("in_progress".equals(st.optString("status"))) now = stepName(st.optString("name"));
+                        }
+                    } catch (Exception ignored) {}
+                    long el = System.currentTimeMillis() - waitStart;
+                    double byTime = Math.min(0.95, el / (double) buildMs);
+                    double bySteps = total > 0 ? done / (double) total : 0;
+                    int pct = 42 + (int) Math.round(55 * Math.max(byTime, bySteps * 0.9));
+                    p.set(pct, now, Math.max(5, (buildMs - el) / 1000));
+                    Thread.sleep(6000);
                 }
+                p.end();
                 notify(c, repo, appName, false);
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                p.end();
+            }
         }, "jarvis-app-build").start();
+    }
+
+    /** GitHub's step names in simple Telugu. */
+    private static String stepName(String n) {
+        String s = n == null ? "" : n.toLowerCase(Locale.ROOT);
+        if (s.contains("checkout")) return "కోడ్ తీసుకుంటోంది";
+        if (s.contains("java")) return "Java సిద్ధం చేస్తోంది";
+        if (s.contains("gradle")) return "బిల్డ్ టూల్స్ సిద్ధం చేస్తోంది";
+        if (s.contains("build apk")) return "యాప్ బిల్డ్ అవుతోంది";
+        if (s.contains("rename")) return "యాప్ ఫైల్ సిద్ధం చేస్తోంది";
+        if (s.contains("release") || s.contains("publish")) return "యాప్ ఫైల్ అప్‌లోడ్ అవుతోంది";
+        if (s.contains("set up")) return "GitHub కంప్యూటర్ సిద్ధం అవుతోంది";
+        return "బిల్డ్ అవుతోంది";
     }
 
     private static void notify(Context c, String repo, String appName, boolean ok) {
