@@ -49,13 +49,17 @@ final class Brain {
         // No internet: handle the simple everyday commands on the phone itself.
         if (!tools.online()) return tools.offlineCommand(text);
         boolean feel = prefs.emotions();
-        String system = systemPrompt() + (feel ? Emotion.rule() : "");
+        String system = systemPrompt() + (feel ? Emotion.rule() : "") + Emotion.storyRule();
         List<String[]> turns = normalize(history);
         String reply = prefs.isOpenAi()
                 ? openAi(system, turns, text, jpegB64, status)
                 : anthropic(system, turns, text, jpegB64, status);
-        // the feeling tag ([happy], [sad]...) is for the voice only: take it off the text
-        return feel ? Emotion.strip(reply) : reply;
+        // [story] marks stories/jokes (pause button, word highlight); the feeling tag ([happy]...) is for the voice only
+        boolean story = Emotion.isStoryReply(text, reply);
+        reply = Emotion.dropStoryTag(reply);
+        String out = feel ? Emotion.strip(reply) : reply;
+        Emotion.rememberStory(out, story);
+        return out;
     }
 
     // ---------------------------------------------------------------- prompt

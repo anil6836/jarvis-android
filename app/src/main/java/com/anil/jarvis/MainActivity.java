@@ -727,7 +727,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onBargeIn() {
         syncPause();
         if (busy || live != null || isFinishing()) { voice.stopSpeaking(); finishTurn(); return; }
-        if (paused) { voice.resume(); return; } // screen not in front: don't start listening, just carry on
+        if (paused) { // screen not in front: don't start listening; a paused story just carries on
+            if (voice.isPaused()) voice.resume(); else finishTurn();
+            return;
+        }
         main.postDelayed(this::startListening, 100);
     }
 
@@ -972,7 +975,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** ⏸ shows only while Jarvis is speaking; ▶ while paused. */
     private void syncPause() {
         if (pauseBtn == null) return;
-        boolean show = live == null && voice != null && voice.speaking;
+        boolean show = live == null && voice != null && voice.storyMode();
         pauseBtn.setVisibility(show ? View.VISIBLE : View.GONE);
         if (show) pauseIcon.setIcon(voice.isPaused() ? IconView.PLAY : IconView.PAUSE);
         if (!show) karaoke.clear();
