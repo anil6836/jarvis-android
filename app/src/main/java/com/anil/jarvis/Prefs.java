@@ -110,6 +110,10 @@ final class Prefs {
     boolean proactive() { return sp.getBoolean("proactive", true); }
     /** Iron Man style sound effects. */
     boolean sfx() { return sp.getBoolean("sfx", true); }
+    /** Jarvis looks for and downloads new versions by itself. */
+    boolean autoUpdate() { return sp.getBoolean("auto_update", true); }
+    long updateCheckedAt() { return sp.getLong("update_checked_at", 0); }
+    void setUpdateCheckedAt(long t) { sp.edit().putLong("update_checked_at", t).apply(); }
     /** After "Jarvis", keep listening at least this long for Anil to start speaking. */
     int listenWindowSeconds() { return sp.getInt("listen_window", 5); }
     /** Monthly budget in rupees (0 = none). */

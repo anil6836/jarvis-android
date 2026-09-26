@@ -146,6 +146,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (live == null && !busy) renderChat();
         syncWakeService();
         if (hudDash != null) hudDash.start();
+        Updater.autoCheck(this, new Updater.Callback() {
+            @Override public void onReady(int build) { maybeOfferUpdate(); }
+            @Override public void onNothing(String message) {}
+        });
+        maybeOfferUpdate();
+    }
+
+    /** A new version is downloaded: ask (one tap) only when Jarvis is on screen and not in a conversation. */
+    private void maybeOfferUpdate() {
+        if (!visible || paused || busy || live != null || voice == null || voice.listening || voice.speaking || isFinishing()) return;
+        Updater.offer(this);
     }
 
     @Override protected void onPause() {
@@ -1298,6 +1309,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         status.setText(prefs.hasBrain() ? "సిద్ధంగా ఉన్నాను, " + prefs.name() : "మెదడు ఆఫ్‌లైన్: API key కావాలి");
         input.setHint("Jarvis తో మాట్లాడండి…");
         refreshAction();
+        main.post(this::maybeOfferUpdate);
     }
 
     private void beep() {
