@@ -301,7 +301,7 @@ final class VoiceIO {
     };
 
     /** Sound frames per unit of reading weight for this voice (learned from finished replies). */
-    private static volatile double framesPerWeight = NaturalVoice.RATE / 10.0;
+    private static volatile double framesPerWeight = NaturalVoice.RATE / 8.0; // Telugu: ~8 letters a second
     /** Pauses in the text (commas, full stops): {weight where speech stops, weight where it starts again}. */
     private float[][] naturalBounds = new float[0][];
 
@@ -337,14 +337,17 @@ final class VoiceIO {
             double[] grid;
             if (done) grid = new double[]{natural.totalFrames() / (double) total};
             else {
-                grid = new double[16];
-                for (int k = 0; k < 16; k++) grid[k] = framesPerWeight * (5 + k) / 10.0; // half to double the usual pace
+                // the usual pace first, then further away (half to double): with no pauses to go by, the usual pace wins
+                int[] order = {10, 9, 11, 8, 12, 7, 13, 6, 14, 15, 5, 16, 17, 18, 19, 20};
+                grid = new double[order.length];
+                for (int k = 0; k < order.length; k++) grid[k] = framesPerWeight * order[k] / 10.0;
             }
             double bestScore = -1e9;
             for (double f : grid) {
                 double[] outFpw = new double[1];
                 java.util.ArrayList<long[]> m = new java.util.ArrayList<>();
-                double score = match(naturalBounds, pz, first, f, m, outFpw);
+                double score = match(naturalBounds, pz, first, f, m, outFpw)
+                        - 0.3 * Math.abs(Math.log(f / framesPerWeight)); // a tie goes to the usual pace
                 if (score > bestScore) { bestScore = score; matched = m.toArray(new long[0][]); matchedFpw = outFpw[0]; }
             }
             matchedFor = pz.size();

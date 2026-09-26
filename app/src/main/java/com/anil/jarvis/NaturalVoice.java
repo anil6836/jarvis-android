@@ -10,12 +10,12 @@ import android.os.SystemClock;
 
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 /**
  * Natural-sounding voice from OpenAI text-to-speech, streamed as raw 24 kHz PCM
@@ -42,22 +42,77 @@ final class NaturalVoice {
     private volatile AudioTrack track;
     /** Play through the call path (talk-over on), so the phone's echo canceller can remove this voice. */
     volatile boolean voiceCall;
-    /** Paused by the ⏸ button: sound holds, the rest keeps downloading, ▶ carries on from the same word. */
+    /** Paused by ⏸ / "ఆపు": the speaker is stopped and emptied; ▶ plays again from where it was heard. */
     private volatile boolean paused;
+    private final Object lock = new Object();   // pause/resume vs. writing to the speaker
+    /** Sound frame the speaker's position 0 stands for (moves when the speaker is emptied at a pause). */
+    private volatile long base;
+    /** Where the writer must continue after a pause (bytes into pcm), or -1. */
+    private volatile long seekTo = -1;
+
+    /** The reply's sound as it downloads: append on one thread, read from any position on another. */
+    private static final class Pcm {
+        private byte[] data = new byte[1 << 20];
+        private int size;
+        private boolean finished;
+        private String error;
+        synchronized void reset() { size = 0; finished = false; error = null; }
+        synchronized void add(byte[] b, int len) {
+            if (size + len > data.length) data = Arrays.copyOf(data, Math.max(data.length * 2, size + len));
+            System.arraycopy(b, 0, data, size, len);
+            size += len;
+        }
+        synchronized void finish(String err) { finished = true; error = err; }
+        synchronized int size() { return size; }
+        /** Copies up to out.length bytes from pos; -1 = no more will come; 0 = wait. */
+        synchronized int read(long pos, byte[] out) {
+            int n = (int) Math.min(out.length, size - pos);
+            if (n <= 0) return finished ? -1 : 0;
+            n &= ~1;
+            System.arraycopy(data, (int) pos, out, 0, n);
+            return n;
+        }
+        synchronized boolean finished() { return finished; }
+        synchronized String error() { return error; }
+    }
 
     void pause() {
-        paused = true;
-        AudioTrack t = track;
-        if (t != null) try { t.pause(); } catch (Exception ignored) {}
+        synchronized (lock) {
+            if (paused) return;
+            AudioTrack t = track;
+            long heard = t == null ? 0 : playedFrames(t, false); // what has really come out of the speaker
+            paused = true;
+            if (t == null) return;
+            try {
+                t.pause();
+                t.flush();                                   // drop what was queued: we play it again from our copy
+                long head = t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+                long from = restartPoint(heard);
+                base = from - head;
+                seekTo = from * 2;
+                PlaybackLevel.begin(t, RATE, head);
+            } catch (Exception ignored) {}
+        }
     }
 
     void resume() {
-        paused = false;
-        AudioTrack t = track;
-        if (t != null) try { t.play(); } catch (Exception ignored) {}
+        synchronized (lock) {
+            paused = false;
+            AudioTrack t = track;
+            if (t != null) try { t.play(); } catch (Exception ignored) {}
+        }
     }
 
     boolean isPaused() { return paused; }
+
+    /** Carry on from the start of the phrase he was hearing (the last pause within 3 s), else 0.3 s back. */
+    private long restartPoint(long heard) {
+        long best = Math.max(0, heard - RATE * 3 / 10);
+        for (long[] p : pauses()) {
+            if (p[1] <= heard && heard - p[1] <= RATE * 3L) best = p[1] - RATE / 20; // just before the phrase starts
+        }
+        return Math.max(0, Math.min(best, heard));
+    }
 
     // For the word highlight: how much sound has arrived / played so far, and where the pauses are.
     private volatile long arrived;
@@ -66,29 +121,32 @@ final class NaturalVoice {
     boolean downloaded() { return complete; }
     private final AudioTimestamp stamp = new AudioTimestamp();
 
-    /** The sound frame coming out of the speaker right now (output delay included). */
+    /** The sound frame (from the start of the reply) coming out of the speaker right now. */
     long playedFrames() {
         AudioTrack t = track;
-        if (t == null) return 0;
+        return t == null ? 0 : playedFrames(t, true);
+    }
+
+    private long playedFrames(AudioTrack t, boolean extrapolate) {
         try {
+            long head = t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+            long pos = head;
             if (!paused && t.getTimestamp(stamp)) {
-                long now = System.nanoTime();
-                long f = stamp.framePosition + (now - stamp.nanoTime) * RATE / 1_000_000_000L;
-                long head = t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
-                return Math.max(0, Math.min(f, head));
+                long f = stamp.framePosition;
+                if (extrapolate) f += (System.nanoTime() - stamp.nanoTime) * RATE / 1_000_000_000L;
+                pos = Math.max(0, Math.min(f, head));   // output delay included
             }
-            return t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+            return Math.max(0, base + pos);
         } catch (Exception e) {
-            return 0;
+            return Math.max(0, base);
         }
     }
 
     // Pauses in the voice (between sentences / at commas): [start, end] frames, in order.
     private static final int BLOCK = RATE / 50;          // 20 ms
-    private static final double QUIET = 300;             // quieter than this = a pause in the speech
     private static final int MIN_PAUSE_BLOCKS = 8;       // 160 ms or longer counts as a pause
     private final java.util.ArrayList<long[]> pauses = new java.util.ArrayList<>();
-    private double blockSum;
+    private double blockSum, loudLevel;
     private int blockN, quietRun;
     private long blockIndex, quietFrom = -1;
 
@@ -99,9 +157,11 @@ final class NaturalVoice {
     /** Frame where the voice actually starts (after the short silence at the beginning), or -1. */
     long firstSound() { return firstSound; }
 
-    private synchronized void resetPauses() { pauses.clear(); blockSum = 0; blockN = 0; quietRun = 0; blockIndex = 0; quietFrom = -1; firstSound = -1; }
+    private synchronized void resetPauses() {
+        pauses.clear(); blockSum = 0; blockN = 0; quietRun = 0; blockIndex = 0; quietFrom = -1; firstSound = -1; loudLevel = 0;
+    }
 
-    /** Finds pauses in the arriving sound (16-bit little-endian mono). */
+    /** Finds pauses in the arriving sound (16-bit little-endian mono); "quiet" is judged against the voice's own loudness. */
     private synchronized void scanPauses(byte[] b, int len) {
         for (int i = 0; i + 1 < len; i += 2) {
             int x = (short) ((b[i] & 0xFF) | (b[i + 1] << 8));
@@ -110,9 +170,11 @@ final class NaturalVoice {
             double rms = Math.sqrt(blockSum / blockN);
             blockSum = 0;
             blockN = 0;
-            if (rms < QUIET) {
+            double quiet = Math.max(250, loudLevel * 0.12);
+            if (rms < quiet) {
                 if (quietRun++ == 0) quietFrom = blockIndex * BLOCK;
             } else {
+                loudLevel = loudLevel == 0 ? rms : loudLevel * 0.98 + rms * 0.02;
                 if (firstSound < 0) firstSound = blockIndex * BLOCK;
                 else if (quietRun >= MIN_PAUSE_BLOCKS && quietFrom > 0) pauses.add(new long[]{quietFrom, blockIndex * BLOCK});
                 quietRun = 0;
@@ -129,11 +191,11 @@ final class NaturalVoice {
     /** Speaks with a feeling (Emotion names: happy, laugh, sad...). */
     void speak(String apiKey, String voice, String text, String emotion, Callback cb) {
         final int gen = ++generation;
-        paused = false;
+        stopTrack();
+        synchronized (lock) { paused = false; base = 0; seekTo = -1; }
         arrived = 0;
         complete = false;
         resetPauses();
-        stopTrack();
         final String style = STYLE + Emotion.style(emotion);
         new Thread(() -> run(gen, apiKey, voice, text, style, cb), "jarvis-tts").start();
     }
@@ -154,30 +216,10 @@ final class NaturalVoice {
         }
     }
 
-    private void flushHeld(AudioTrack t, ByteArrayOutputStream held, int gen) {
-        if (paused || held.size() == 0) return;
-        byte[] h = held.toByteArray();
-        held.reset();
-        play(t, h, 0, h.length, held, gen);
-    }
-
-    /** Writes sound to the speaker; while paused it is kept in held instead (the download never stalls). */
-    private void play(AudioTrack t, byte[] b, int off, int len, ByteArrayOutputStream held, int gen) {
-        while (len > 0 && gen == generation) {
-            if (paused) { held.write(b, off, len); return; }
-            int w = t.write(b, off, len, AudioTrack.WRITE_NON_BLOCKING);
-            if (w < 0) throw new IllegalStateException("audio " + w);
-            if (w == 0) { SystemClock.sleep(10); continue; }
-            PlaybackLevel.feed(b, off, w);
-            off += w;
-            len -= w;
-        }
-    }
-
     private void run(int gen, String apiKey, String voice, String text, String style, Callback cb) {
         HttpURLConnection c = null;
         AudioTrack t = null;
-        boolean started = false;
+        final boolean[] started = {false};
         try {
             JSONObject body = new JSONObject()
                     .put("model", "gpt-4o-mini-tts")
@@ -223,51 +265,92 @@ final class NaturalVoice {
                     .setTransferMode(AudioTrack.MODE_STREAM)
                     .build();
             if (gen != generation) { t.release(); return; }
-            track = t;
-            PlaybackLevel.begin(t, RATE);
-            t.play();
-            if (paused) t.pause();
+            synchronized (lock) {
+                track = t;
+                PlaybackLevel.begin(t, RATE, 0);
+                if (!paused) t.play();
+            }
 
-            long frames = 0;
-            ByteArrayOutputStream held = new ByteArrayOutputStream(); // sound that arrived while paused
-            byte[] buf = new byte[8192];
-            int carry = -1; // an odd byte left over from the previous read
-            try (InputStream in = c.getInputStream()) {
-                int n;
-                while ((n = in.read(buf, carry >= 0 ? 1 : 0, buf.length - (carry >= 0 ? 1 : 0))) > 0) {
-                    if (gen != generation) return;
-                    int len = n;
-                    if (carry >= 0) { buf[0] = (byte) carry; len++; carry = -1; }
-                    if ((len & 1) == 1) { carry = buf[len - 1] & 0xFF; len--; }
-                    if (len == 0) continue;
-                    if (!started) {
-                        started = true;
-                        main.post(() -> { if (gen == generation) cb.onStart(); });
+            // Download on its own thread (never stalls, also while paused); this thread feeds the speaker.
+            // All sound of this reply is kept, so ▶ can carry on from exactly where it stopped.
+            final Pcm pcm = new Pcm();
+            final HttpURLConnection conn = c;
+            Thread reader = new Thread(() -> {
+                String err = null;
+                byte[] buf = new byte[8192];
+                int carry = -1; // an odd byte left over from the previous read
+                long frames = 0;
+                try (InputStream in = conn.getInputStream()) {
+                    int n;
+                    while ((n = in.read(buf, carry >= 0 ? 1 : 0, buf.length - (carry >= 0 ? 1 : 0))) > 0) {
+                        if (gen != generation) break;
+                        int len = n;
+                        if (carry >= 0) { buf[0] = (byte) carry; len++; carry = -1; }
+                        if ((len & 1) == 1) { carry = buf[len - 1] & 0xFF; len--; }
+                        if (len == 0) continue;
+                        pcm.add(buf, len);
+                        if (gen != generation) break;
+                        scanPauses(buf, len);
+                        frames += len / 2;
+                        arrived = frames;
                     }
-                    frames += len / 2;
-                    scanPauses(buf, len);
-                    arrived = frames;
-                    flushHeld(t, held, gen);
-                    play(t, buf, 0, len, held, gen);
+                } catch (Exception e) {
+                    err = String.valueOf(e.getMessage());
                 }
+                if (err == null && gen == generation) complete = true;
+                pcm.finish(err);
+            }, "jarvis-tts-download");
+            reader.start();
+
+            byte[] chunk = new byte[8192];
+            long pos = 0; // bytes of pcm handed to the speaker
+            while (gen == generation) {
+                if (paused) { SystemClock.sleep(20); continue; }
+                long seek = seekTo;
+                if (seek >= 0) { pos = seek; seekTo = -1; }
+                int n = pcm.read(pos, chunk);
+                if (n < 0) break;                                   // all written
+                if (n == 0) {
+                    if (pcm.finished() && pcm.error() != null) throw new IllegalStateException(pcm.error());
+                    SystemClock.sleep(10);
+                    continue;
+                }
+                int w;
+                synchronized (lock) {
+                    if (paused || seekTo >= 0 || gen != generation) continue; // paused meanwhile: don't queue stale sound
+                    w = t.write(chunk, 0, n, AudioTrack.WRITE_NON_BLOCKING);
+                    if (w > 0) PlaybackLevel.feed(chunk, 0, w);
+                }
+                if (w < 0) throw new IllegalStateException("audio " + w);
+                if (w == 0) { SystemClock.sleep(10); continue; }
+                if (!started[0]) {
+                    started[0] = true;
+                    main.post(() -> { if (gen == generation) cb.onStart(); });
+                }
+                pos += w;
             }
-            complete = true;
-            // The download is complete; if paused, wait for ▶ and then play what was held back.
-            while (gen == generation && (paused || held.size() > 0)) {
-                if (paused) { SystemClock.sleep(50); continue; }
-                flushHeld(t, held, gen);
-            }
-            // Wait until everything written has actually been played (pauses don't count).
-            long deadline = SystemClock.elapsedRealtime() + frames * 1000 / RATE + 1500;
-            while (gen == generation && t.getPlaybackHeadPosition() < frames) {
-                if (paused) { SystemClock.sleep(40); deadline += 40; continue; }
+            if (pcm.error() != null && !started[0]) throw new IllegalStateException(pcm.error());
+            // Wait until everything has actually been heard (pauses don't count; ▶ may seek back).
+            long total = pcm.size() / 2;
+            long deadline = SystemClock.elapsedRealtime() + total * 1000 / RATE + 1500;
+            while (gen == generation && playedFrames(t, false) < total) {
+                if (paused || seekTo >= 0) {
+                    SystemClock.sleep(40);
+                    deadline = SystemClock.elapsedRealtime() + (total - base) * 1000 / RATE + 1500;
+                    if (!paused && seekTo >= 0) { // ▶ after the download finished: play the rest again from the seek point
+                        long from = seekTo;
+                        seekTo = -1;
+                        writeRest(t, gen, from, pcm);
+                    }
+                    continue;
+                }
                 if (SystemClock.elapsedRealtime() > deadline) break;
                 SystemClock.sleep(40);
             }
             if (gen == generation) main.post(() -> { if (gen == generation) cb.onDone(); });
         } catch (Exception e) {
             if (gen == generation) {
-                final boolean playedSome = started;
+                final boolean playedSome = started[0];
                 final String msg = String.valueOf(e.getMessage());
                 main.post(() -> {
                     if (gen != generation) return;
@@ -282,6 +365,26 @@ final class NaturalVoice {
                 try { t.stop(); } catch (Exception ignored) {}
                 t.release();
             }
+        }
+    }
+
+    /** After a pause late in the reply: writes the sound again from byte position from to the end. */
+    private void writeRest(AudioTrack t, int gen, long from, Pcm pcm) {
+        byte[] chunk = new byte[8192];
+        long pos = from;
+        while (gen == generation) {
+            if (paused || seekTo >= 0) return; // paused again: the wait loop handles it
+            int n = pcm.read(pos, chunk);
+            if (n <= 0) return;
+            int w;
+            synchronized (lock) {
+                if (paused || seekTo >= 0) return;
+                w = t.write(chunk, 0, n, AudioTrack.WRITE_NON_BLOCKING);
+                if (w > 0) PlaybackLevel.feed(chunk, 0, w);
+            }
+            if (w < 0) return;
+            if (w == 0) { SystemClock.sleep(10); continue; }
+            pos += w;
         }
     }
 }

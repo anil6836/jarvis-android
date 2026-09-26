@@ -18,11 +18,17 @@ final class PlaybackLevel {
     private static double acc;
     private static int accN;
 
-    static synchronized void begin(AudioTrack t, int rate) {
+    private static volatile long headOffset;
+
+    static synchronized void begin(AudioTrack t, int rate) { begin(t, rate, 0); }
+
+    /** New start of the level record; headOffset = the speaker's position that counts as the first block. */
+    static synchronized void begin(AudioTrack t, int rate, long headOffset) {
         blockSamples = Math.max(1, rate / 50);
         written = 0;
         acc = 0;
         accN = 0;
+        PlaybackLevel.headOffset = headOffset;
         track = t;
     }
 
@@ -51,7 +57,7 @@ final class PlaybackLevel {
         AudioTrack t = track;
         if (t == null) return -1;
         long head;
-        try { head = (t.getPlaybackHeadPosition() & 0xFFFFFFFFL) / blockSamples; } catch (Exception e) { return -1; }
+        try { head = Math.max(0, (t.getPlaybackHeadPosition() & 0xFFFFFFFFL) - headOffset) / blockSamples; } catch (Exception e) { return -1; }
         long w = written;
         long from = Math.max(Math.max(0, w - SIZE + 1), head - 7), to = Math.min(w - 1, head + 1);
         double max = 0;
