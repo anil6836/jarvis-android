@@ -45,6 +45,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private OrbView orb;
     private TextView status, heard, reply;
     private IconView action;
+    private FrameLayout pauseBtn;   // ⏸/▶ at the bottom right while Jarvis is speaking
+    private IconView pauseIcon;
     private boolean busy, stopped;
     /** How many more times to listen after Jarvis speaks without "Jarvis" again (a conversation). */
     private int followUps = 1;
@@ -229,19 +231,52 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         scroll.addView(texts);
         card.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
 
+        LinearLayout bottom = new LinearLayout(this);
+        bottom.setGravity(Gravity.CENTER_VERTICAL);
+        bottom.setPadding(0, dp(12), 0, 0);
         TextView open = Ui.text(this, "Jarvis యాప్ తెరువు →", 14, Ui.CYAN2);
-        open.setPadding(0, dp(12), 0, 0);
         open.setOnClickListener(v -> {
             startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             closeSheet();
         });
-        card.addView(open);
+        bottom.addView(open, new LinearLayout.LayoutParams(0, -2, 1));
+        pauseBtn = new FrameLayout(this);
+        pauseBtn.setBackground(Ui.round(this, Ui.PANEL, Ui.CYAN2, 24));
+        pauseIcon = new IconView(this, IconView.PAUSE, Ui.CYAN);
+        pauseBtn.addView(pauseIcon, new FrameLayout.LayoutParams(-1, -1));
+        pauseBtn.setOnClickListener(v -> togglePause());
+        pauseBtn.setContentDescription("ఆపు / కొనసాగించు");
+        pauseBtn.setVisibility(View.GONE);
+        bottom.addView(pauseBtn, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        card.addView(bottom);
 
         root.addView(card, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
         return root;
     }
 
-    private void setAction(int icon) { action.setIcon(icon); }
+    private void setAction(int icon) { action.setIcon(icon); syncPause(); }
+
+    /** ⏸ shows only while Jarvis is speaking; ▶ while paused. */
+    private void syncPause() {
+        if (pauseBtn == null) return;
+        boolean show = live == null && callText == null && voice != null && voice.speaking;
+        pauseBtn.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (show) pauseIcon.setIcon(voice.isPaused() ? IconView.PLAY : IconView.PAUSE);
+    }
+
+    private void togglePause() {
+        if (voice == null || !voice.speaking) { syncPause(); return; }
+        if (voice.isPaused()) {
+            voice.resume();
+            orb.setState(OrbView.SPEAKING);
+            status.setText("మాట్లాడుతున్నాను…");
+        } else {
+            voice.pause();
+            orb.setState(OrbView.IDLE);
+            status.setText("ఆపాను. ▶ నొక్కితే కొనసాగిస్తాను");
+        }
+        syncPause();
+    }
 
     private void showHeard(String t) {
         heard.setText("“" + t + "”");
@@ -463,7 +498,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         listen(); // idle: tap to talk again
     }
 
-    @Override public void onListening() { status.setText("వింటున్నాను… మాట్లాడండి"); }
+    @Override public void onListening() { status.setText("వింటున్నాను… మాట్లాడండి"); syncPause(); }
 
     @Override public void onPartial(String text) {
         partialHeard = text == null ? "" : text.trim();
@@ -500,9 +535,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onSpeakStart() {
         orb.setState(OrbView.SPEAKING);
         status.setText("మాట్లాడుతున్నాను…");
+        syncPause();
     }
 
     @Override public void onSpeakDone() {
+        syncPause();
         if (callText != null) { main.postDelayed(this::listen, 150); return; }
         String lang = Tools.takeInterpreter();
         if (lang != null && live == null) { // "హిందీ అనువాదకుడిగా ఉండు": a live two-way interpreter from now on
@@ -525,6 +562,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     /** He talked over Jarvis: listen to him straight away (not only as a limited follow-up). */
     @Override public void onBargeIn() {
+        syncPause();
         if (live != null || isFinishing()) return;
         if (callText != null) { main.postDelayed(this::listen, 100); return; }
         main.postDelayed(this::listen, 100);

@@ -9,6 +9,7 @@ import android.os.SystemClock;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -40,6 +41,22 @@ final class NaturalVoice {
     private volatile AudioTrack track;
     /** Play through the call path (talk-over on), so the phone's echo canceller can remove this voice. */
     volatile boolean voiceCall;
+    /** Paused by the ⏸ button: sound holds, the rest keeps downloading, ▶ carries on from the same word. */
+    private volatile boolean paused;
+
+    void pause() {
+        paused = true;
+        AudioTrack t = track;
+        if (t != null) try { t.pause(); } catch (Exception ignored) {}
+    }
+
+    void resume() {
+        paused = false;
+        AudioTrack t = track;
+        if (t != null) try { t.play(); } catch (Exception ignored) {}
+    }
+
+    boolean isPaused() { return paused; }
 
     /** Speaks text; any earlier speech stops. Callbacks arrive on the main thread. */
     void speak(String apiKey, String voice, String text, Callback cb) {
@@ -49,6 +66,7 @@ final class NaturalVoice {
     /** Speaks with a feeling (Emotion names: happy, laugh, sad...). */
     void speak(String apiKey, String voice, String text, String emotion, Callback cb) {
         final int gen = ++generation;
+        paused = false;
         stopTrack();
         final String style = STYLE + Emotion.style(emotion);
         new Thread(() -> run(gen, apiKey, voice, text, style, cb), "jarvis-tts").start();
@@ -56,6 +74,7 @@ final class NaturalVoice {
 
     void stop() {
         generation++;
+        paused = false;
         stopTrack();
     }
 
@@ -66,6 +85,26 @@ final class NaturalVoice {
             PlaybackLevel.end(t);
             try { t.pause(); t.flush(); } catch (Exception ignored) {}
             try { t.release(); } catch (Exception ignored) {}
+        }
+    }
+
+    private void flushHeld(AudioTrack t, ByteArrayOutputStream held, int gen) {
+        if (paused || held.size() == 0) return;
+        byte[] h = held.toByteArray();
+        held.reset();
+        play(t, h, 0, h.length, held, gen);
+    }
+
+    /** Writes sound to the speaker; while paused it is kept in held instead (the download never stalls). */
+    private void play(AudioTrack t, byte[] b, int off, int len, ByteArrayOutputStream held, int gen) {
+        while (len > 0 && gen == generation) {
+            if (paused) { held.write(b, off, len); return; }
+            int w = t.write(b, off, len, AudioTrack.WRITE_NON_BLOCKING);
+            if (w < 0) throw new IllegalStateException("audio " + w);
+            if (w == 0) { SystemClock.sleep(10); continue; }
+            PlaybackLevel.feed(b, off, w);
+            off += w;
+            len -= w;
         }
     }
 
@@ -121,8 +160,10 @@ final class NaturalVoice {
             track = t;
             PlaybackLevel.begin(t, RATE);
             t.play();
+            if (paused) t.pause();
 
             long frames = 0;
+            ByteArrayOutputStream held = new ByteArrayOutputStream(); // sound that arrived while paused
             byte[] buf = new byte[8192];
             int carry = -1; // an odd byte left over from the previous read
             try (InputStream in = c.getInputStream()) {
@@ -137,14 +178,21 @@ final class NaturalVoice {
                         started = true;
                         main.post(() -> { if (gen == generation) cb.onStart(); });
                     }
-                    PlaybackLevel.feed(buf, 0, len);
-                    t.write(buf, 0, len);
                     frames += len / 2;
+                    flushHeld(t, held, gen);
+                    play(t, buf, 0, len, held, gen);
                 }
             }
-            // Wait until everything written has actually been played.
+            // The download is complete; if paused, wait for ▶ and then play what was held back.
+            while (gen == generation && (paused || held.size() > 0)) {
+                if (paused) { SystemClock.sleep(50); continue; }
+                flushHeld(t, held, gen);
+            }
+            // Wait until everything written has actually been played (pauses don't count).
             long deadline = SystemClock.elapsedRealtime() + frames * 1000 / RATE + 1500;
-            while (gen == generation && t.getPlaybackHeadPosition() < frames && SystemClock.elapsedRealtime() < deadline) {
+            while (gen == generation && t.getPlaybackHeadPosition() < frames) {
+                if (paused) { SystemClock.sleep(40); deadline += 40; continue; }
+                if (SystemClock.elapsedRealtime() > deadline) break;
                 SystemClock.sleep(40);
             }
             if (gen == generation) main.post(() -> { if (gen == generation) cb.onDone(); });

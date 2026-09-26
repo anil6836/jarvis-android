@@ -9,7 +9,7 @@ import android.view.View;
 
 /** Small line icons drawn in code so the app needs no image files. */
 final class IconView extends View {
-    static final int MIC = 0, SEND = 1, STOP = 2, CAMERA = 3, GEAR = 4, TRASH = 5, CHECK = 6, CLOSE = 7, SPEAKER = 8;
+    static final int MIC = 0, SEND = 1, STOP = 2, CAMERA = 3, GEAR = 4, TRASH = 5, CHECK = 6, CLOSE = 7, SPEAKER = 8, PAUSE = 9, PLAY = 10;
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -98,6 +98,18 @@ final class IconView extends View {
                 canvas.drawArc(r, -60, 120, false, p);
                 r.set(7, 5, 20, 19);
                 canvas.drawArc(r, -55, 110, false, p);
+                break;
+            case PAUSE:
+                p.setStyle(Paint.Style.FILL);
+                r.set(6.5f, 5, 10, 19);
+                canvas.drawRoundRect(r, 1.5f, 1.5f, p);
+                r.set(14, 5, 17.5f, 19);
+                canvas.drawRoundRect(r, 1.5f, 1.5f, p);
+                break;
+            case PLAY:
+                p.setStyle(Paint.Style.FILL);
+                path.moveTo(8, 5); path.lineTo(19, 12); path.lineTo(8, 19); path.close();
+                canvas.drawPath(path, p);
                 break;
             default:
                 break;

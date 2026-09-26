@@ -45,7 +45,7 @@ final class VoiceIO {
 
     /** Start watching for Anil talking over Jarvis (setting "మధ్యలో ఆపి మాట్లాడటం"). */
     private void watchBargeIn() {
-        if (shut || !prefs.bargeIn()) return;
+        if (shut || paused || !prefs.bargeIn()) return;
         barge.start(() -> {
             if (!speaking || shut) return;
             stopSpeaking();
@@ -70,6 +70,14 @@ final class VoiceIO {
     private float pendingRate = 1f;
     private volatile String feeling = Emotion.CALM; // the tone of what is being said now
     private int utterance;
+    /** ⏸ pressed: speech holds until ▶ (speaking stays true, so the screen waits). */
+    private boolean paused;
+    /** The natural (OpenAI) voice is the one speaking now (not the phone's voice). */
+    private boolean naturalNow;
+    /** Phone voice: what is being said, where it has got to, and how fast (to carry on after ▶). */
+    private String googleText = "";
+    private volatile int googlePos;
+    private float googleRate = 1f;
     private SpeechRecognizer sr;
     boolean listening;
     boolean speaking;
@@ -112,6 +120,9 @@ final class VoiceIO {
             @Override public void onDone(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onError(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onStop(String id, boolean interrupted) { main.post(() -> finishSpeaking(id)); }
+            @Override public void onRangeStart(String id, int start, int end, int frame) {
+                if (("j" + utterance).equals(id)) googlePos = start;
+            }
         });
         ttsReady = true;
         l.onVoiceReady();
@@ -134,6 +145,7 @@ final class VoiceIO {
     void speak(String text, float rate) {
         if (shut || text == null || text.trim().isEmpty()) return;
         feeling = prefs.emotions() ? Emotion.forText(text) : Emotion.CALM;
+        paused = false;
         enterCall();
         String key = prefs.openAiKey().trim();
         if (prefs.naturalVoice() && !key.isEmpty() && Net.online(ctx)) {
@@ -146,6 +158,7 @@ final class VoiceIO {
     /** OpenAI voice; falls back to the phone's Google voice if it fails before any sound. */
     private void speakNatural(String key, String text, float rate) {
         stopGoogle();
+        naturalNow = true;
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
         if (clean.length() > 3500) clean = clean.substring(0, 3500);
         speaking = true;
@@ -166,6 +179,7 @@ final class VoiceIO {
             }
             @Override public void onError(String message) {
                 naturalError = message;
+                naturalNow = false;
                 if (speaking) speakGoogle(said, rate);
             }
         });
@@ -196,6 +210,10 @@ final class VoiceIO {
                     .setUsage(callVoice() ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
         } catch (Exception ignored) {}
+        naturalNow = false;
+        googleText = clean;
+        googlePos = 0;
+        googleRate = rate;
         tts.setSpeechRate(rate * Emotion.pace(feeling));
         tts.setPitch(Emotion.pitch(feeling));
         try { tts.setLanguage(Lang.of(clean)); } catch (Exception ignored) {} // Hindi etc. for translations
@@ -220,7 +238,50 @@ final class VoiceIO {
         });
     }
 
+    boolean isPaused() { return paused && speaking; }
+
+    /** ⏸: hold Jarvis's speech right where it is. */
+    void pause() {
+        if (!speaking || paused || shut) return;
+        paused = true;
+        barge.stop();
+        call.exit();
+        if (naturalNow) {
+            natural.pause();
+        } else if (tts != null && ttsReady) {
+            utterance++;            // the stop below must not count as "finished speaking"
+            tts.stop();
+        }
+    }
+
+    /** ▶: carry on (natural voice from the same word; phone voice from the start of the sentence). */
+    void resume() {
+        if (!paused || shut) return;
+        paused = false;
+        if (!speaking) return;
+        enterCall();
+        if (naturalNow) {
+            natural.resume();
+            watchBargeIn();
+        } else if (ttsReady) {
+            String rest = googleText.substring(sentenceStart(googleText, googlePos)).trim();
+            if (rest.isEmpty()) { speaking = false; call.exit(); l.onSpeakDone(); return; }
+            speakGoogle(rest, googleRate);
+        }
+    }
+
+    /** Beginning of the sentence that contains pos. */
+    private static int sentenceStart(String t, int pos) {
+        int p = Math.max(0, Math.min(pos, t.length()));
+        for (int i = p - 1; i >= 0; i--) {
+            char ch = t.charAt(i);
+            if (ch == '.' || ch == '!' || ch == '?' || ch == '।' || ch == '\n') return i + 1;
+        }
+        return 0;
+    }
+
     void stopSpeaking() {
+        paused = false;
         barge.stop();
         call.exit();
         pending = null;
@@ -324,6 +385,7 @@ final class VoiceIO {
 
     void shutdown() {
         shut = true;
+        paused = false;
         barge.stop();
         call.exit();
         ttsReady = false;

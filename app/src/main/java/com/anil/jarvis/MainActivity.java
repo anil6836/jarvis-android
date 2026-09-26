@@ -94,6 +94,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private ImageView attachThumb;
     private EditText input;
     private FrameLayout actionBtn;
+    private FrameLayout pauseBtn;   // ⏸/▶ while Jarvis is speaking (like Google Assistant)
+    private IconView pauseIcon;
     private IconView actionIcon;
 
     private String pendingPhoto;       // base64 JPEG waiting to be sent
@@ -559,6 +561,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         ilp.rightMargin = dp(8);
         row.addView(input, ilp);
 
+        pauseBtn = new FrameLayout(this);
+        pauseBtn.setBackground(Ui.round(this, Ui.PANEL, Ui.CYAN2, 26));
+        pauseIcon = new IconView(this, IconView.PAUSE, Ui.CYAN);
+        pauseBtn.addView(pauseIcon, new FrameLayout.LayoutParams(-1, -1));
+        pauseBtn.setOnClickListener(v -> togglePause());
+        pauseBtn.setContentDescription("ఆపు / కొనసాగించు");
+        pauseBtn.setVisibility(View.GONE);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(52), dp(52));
+        plp.rightMargin = dp(8);
+        row.addView(pauseBtn, plp);
+
         actionBtn = new FrameLayout(this);
         actionBtn.setBackground(Ui.round(this, Ui.GOLD, 0, 26));
         actionIcon = new IconView(this, IconView.MIC, Ui.GOLD_INK);
@@ -710,6 +723,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** He talked over Jarvis: speech already stopped, listen to him now. */
     @Override public void onBargeIn() {
+        syncPause();
         if (busy || live != null || paused || isFinishing()) { finishTurn(); return; }
         main.postDelayed(this::startListening, 100);
     }
@@ -946,6 +960,29 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         actionIcon.setColor(fg);
         actionBtn.setBackground(Ui.round(this, bg, 0, 26));
         actionBtn.setContentDescription(desc);
+        syncPause();
+    }
+
+    /** ⏸ shows only while Jarvis is speaking; ▶ while paused. */
+    private void syncPause() {
+        if (pauseBtn == null) return;
+        boolean show = live == null && voice != null && voice.speaking;
+        pauseBtn.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (show) pauseIcon.setIcon(voice.isPaused() ? IconView.PLAY : IconView.PAUSE);
+    }
+
+    private void togglePause() {
+        if (voice == null || !voice.speaking) { syncPause(); return; }
+        if (voice.isPaused()) {
+            voice.resume();
+            orb.setState(OrbView.SPEAKING);
+            status.setText("మాట్లాడుతున్నాను…");
+        } else {
+            voice.pause();
+            orb.setState(OrbView.IDLE);
+            status.setText("ఆపాను. ▶ నొక్కితే కొనసాగిస్తాను");
+        }
+        syncPause();
     }
 
     private void onActionPressed() {
@@ -1100,6 +1137,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onListening() {
         status.setText("వింటున్నాను… మాట్లాడండి");
+        syncPause();
     }
 
     @Override public void onPartial(String text) {
