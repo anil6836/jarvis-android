@@ -50,6 +50,11 @@ public class SettingsActivity extends Activity {
     private Switch walletPay, emotions;
     private Switch alexaSpeak;
     private Switch bargeCallVoice;
+    /** Opened from the "new version" notification / note: go to Updates and start the update. */
+    static final String EXTRA_UPDATE_NOW = "update_now";
+    private View updatesHeader;
+    private TextView updateInfo, updateBtn;
+    private ScrollView pageScroll;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
@@ -72,6 +77,7 @@ public class SettingsActivity extends Activity {
         box.setPadding(pad, pad, pad, Ui.dp(this, 40));
         scroll.addView(box);
         setContentView(scroll);
+        pageScroll = scroll;
 
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
@@ -388,28 +394,15 @@ public class SettingsActivity extends Activity {
         note("హోమ్ స్క్రీన్ విడ్జెట్: హోమ్ స్క్రీన్ మీద ఖాళీ చోట నొక్కి పట్టుకుని → Widgets → Jarvis.");
         note("బ్లూటూత్ ఇయర్‌ఫోన్: బటన్ నొక్కి పట్టుకుంటే Jarvis ప్యానెల్ వస్తుంది (మొదటిసారి ఏ యాప్ అని అడిగితే Jarvis ఎంచుకోండి).");
 
-        section("అప్డేట్లు");
+        updatesHeader = section("అప్డేట్లు");
         note("ఇప్పుడున్న వెర్షన్: 1.0." + Updater.currentBuild(this)
-                + ". కొత్త వెర్షన్ వస్తే Jarvis నోటిఫికేషన్ చూపిస్తుంది; దాన్ని నొక్కితే డౌన్‌లోడ్ లింక్ తెరుచుకుంటుంది, మీరే ఇన్‌స్టాల్ చేయండి. యాప్ తనంతట తాను ఏదీ డౌన్‌లోడ్ లేదా ఇన్‌స్టాల్ చేయదు.");
-        button("కొత్త వెర్షన్ ఉందేమో చూడు", v -> {
-            Toast.makeText(this, "చూస్తున్నాను…", Toast.LENGTH_SHORT).show();
-            new Thread(() -> {
-                int latest = Updater.latestBuild(), cur = Updater.currentBuild(this);
-                runOnUiThread(() -> {
-                    if (isFinishing()) return;
-                    if (latest < 0) { Toast.makeText(this, "GitHub చేరలేకపోయాను, తర్వాత చూడండి", Toast.LENGTH_LONG).show(); return; }
-                    if (latest <= cur) { Toast.makeText(this, "ఇదే తాజా వెర్షన్ (1.0." + cur + ")", Toast.LENGTH_LONG).show(); return; }
-                    new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                            .setTitle("కొత్త వెర్షన్ 1.0." + latest)
-                            .setMessage("డౌన్‌లోడ్ లింక్ తెరవాలా? డౌన్‌లోడ్ అయ్యాక మీరే ఇన్‌స్టాల్ చేయండి.")
-                            .setPositiveButton("లింక్ తెరువు", (d, w) -> {
-                                try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(Updater.APK_LINK))); } catch (Exception ignored) {}
-                            })
-                            .setNegativeButton("తర్వాత", null)
-                            .show();
-                });
-            }, "jarvis-update-check").start();
-        });
+                + ". కొత్త వెర్షన్ వస్తే ఫోన్‌కి నోటిఫికేషన్, యాప్‌లో సందేశం వస్తాయి. Jarvis తనంతట తాను ఏదీ డౌన్‌లోడ్ చేయదు, ఇన్‌స్టాల్ చేయదు: మీరు కింది బటన్ నొక్కితేనే డౌన్‌లోడ్ అయి ఇన్‌స్టాల్ అవుతుంది (మొదటిసారి మాత్రమే Android ఒకసారి అడుగుతుంది).");
+        updateInfo = Ui.text(this, "", 15, Ui.CYAN);
+        updateInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(updateInfo);
+        updateBtn = button("", v -> startUpdate());
+        showUpdateState();
+        new Thread(() -> { Updater.backgroundCheck(getApplicationContext()); runOnUiThread(this::showUpdateState); }, "jarvis-update-look").start();
 
         section("అనుమతులు, డేటా");
         button("అన్ని అనుమతులు ఇవ్వండి", v -> requestPermissions(MainActivity.corePermissions(), 5));
@@ -427,11 +420,19 @@ public class SettingsActivity extends Activity {
         lp.topMargin = Ui.dp(this, 26);
         box.addView(save, lp);
         save.setOnClickListener(v -> { store(); finish(); });
+        updateFromIntent(getIntent());
     }
 
     @Override protected void onResume() {
         super.onResume();
         showLock();
+        // back from "Install unknown apps" after pressing update: carry on installing
+        int pendingBuild = Updater.installWhenAllowed;
+        if (pendingBuild > 0 && getPackageManager().canRequestPackageInstalls()) {
+            Updater.install(this, pendingBuild, (text, done) -> { if (!isFinishing()) updateInfo.setText(text); });
+        } else {
+            showUpdateState();
+        }
         StringBuilder s = new StringBuilder();
         s.append(Settings.canDrawOverlays(this) ? "✓ Display over other apps: ఇచ్చారు\n" : "✗ Display over other apps: ఇవ్వలేదు (లేకపోతే పిలిచినప్పుడు నోటిఫికేషన్ మాత్రమే వస్తుంది)\n");
         PowerManager pm = getSystemService(PowerManager.class);
@@ -632,13 +633,14 @@ public class SettingsActivity extends Activity {
         }
     }
 
-    private void section(String s) {
+    private View section(String s) {
         TextView t = Ui.mono(this, s.toUpperCase(Locale.ROOT), 13, Ui.CYAN2);
         t.setPadding(0, Ui.dp(this, 26), 0, Ui.dp(this, 8));
         box.addView(t);
         View line = new View(this);
         line.setBackgroundColor(Ui.LINE);
         box.addView(line, new LinearLayout.LayoutParams(-1, Ui.dp(this, 1)));
+        return t;
     }
 
     private void note(String s) {
@@ -697,7 +699,7 @@ public class SettingsActivity extends Activity {
         box.addView(t);
     }
 
-    private void button(String label, View.OnClickListener l) {
+    private TextView button(String label, View.OnClickListener l) {
         TextView t = Ui.text(this, label, 15.5f, Ui.TEXT);
         t.setBackground(Ui.round(this, Ui.PANEL, Ui.LINE2, 12));
         int p = Ui.dp(this, 13);
@@ -706,5 +708,49 @@ public class SettingsActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.topMargin = Ui.dp(this, 10);
         box.addView(t, lp);
+        return t;
+    }
+
+    // ---------------------------------------------------------------- updates (only when he presses)
+
+    private void showUpdateState() {
+        if (updateInfo == null || isFinishing()) return;
+        if (Updater.busy()) { updateInfo.setText(Updater.status); updateBtn.setText("అప్డేట్ అవుతోంది…"); return; }
+        if (Updater.newAvailable(this)) {
+            int v = Updater.knownLatest(this);
+            updateInfo.setText("⬆ కొత్త వెర్షన్ 1.0." + v + " వచ్చింది");
+            updateBtn.setText("1.0." + v + " కి అప్డేట్ చేయి (డౌన్‌లోడ్ సుమారు 55 MB)");
+        } else {
+            updateInfo.setText(Updater.status.isEmpty() ? "✓ ఇదే తాజా వెర్షన్" : Updater.status);
+            updateBtn.setText("కొత్త వెర్షన్ ఉందేమో చూడు");
+        }
+    }
+
+    private void startUpdate() {
+        updateBtn.setText("అప్డేట్ అవుతోంది…");
+        Updater.updateNow(this, (text, done) -> {
+            if (isFinishing()) return;
+            updateInfo.setText(text);
+            if (done) {
+                if (Updater.newAvailable(this)) updateBtn.setText("మళ్లీ ప్రయత్నించు");
+                else updateBtn.setText("కొత్త వెర్షన్ ఉందేమో చూడు");
+            }
+        });
+    }
+
+    /** From the notification: scroll to Updates and start right away. */
+    private void updateFromIntent(Intent i) {
+        if (i == null || !i.getBooleanExtra(EXTRA_UPDATE_NOW, false)) return;
+        i.removeExtra(EXTRA_UPDATE_NOW);
+        if (pageScroll != null && updatesHeader != null) {
+            pageScroll.post(() -> pageScroll.smoothScrollTo(0, Math.max(0, updatesHeader.getTop() - Ui.dp(this, 8))));
+        }
+        if (!Updater.busy()) startUpdate();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        updateFromIntent(intent);
     }
 }

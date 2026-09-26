@@ -113,6 +113,12 @@ final class Prefs {
     /** The newest build he was already told about (one notification per build). */
     int notifiedBuild() { return sp.getInt("notified_build", 0); }
     void setNotifiedBuild(int b) { sp.edit().putInt("notified_build", b).apply(); }
+    /** Newest Jarvis build seen on GitHub (the app shows "new version" when it is newer than this one). */
+    int latestBuild() { return sp.getInt("latest_build", 0); }
+    void setLatestBuild(int b) { sp.edit().putInt("latest_build", b).apply(); }
+    /** When he last started an update from Settings (to reopen Jarvis after it). */
+    long updateStartedAt() { return sp.getLong("update_started_at", 0); }
+    void setUpdateStartedAt(long t) { sp.edit().putLong("update_started_at", t).apply(); }
     /** After "Jarvis", keep listening at least this long for Anil to start speaking. */
     int listenWindowSeconds() { return sp.getInt("listen_window", 5); }
     /** Monthly budget in rupees (0 = none). */

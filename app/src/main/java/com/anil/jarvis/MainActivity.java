@@ -94,6 +94,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private ImageView attachThumb;
     private EditText input;
     private FrameLayout actionBtn;
+    private TextView updateBanner;                                  // "new version" note (never downloads by itself)
     private final Karaoke karaoke = new Karaoke();                 // highlights the word being spoken
     private final List<TextView> jarvisBodies = new ArrayList<>();   // Jarvis's reply bubbles, oldest first
     private FrameLayout pauseBtn;   // ⏸/▶ while Jarvis is speaking (like Google Assistant)
@@ -151,7 +152,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         syncWakeService();
         if (hudDash != null) hudDash.start();
         UpdateJob.schedule(this); // "new version" notification when a build is out
-        new Thread(() -> Updater.cleanupOld(getApplicationContext()), "jarvis-cleanup").start();
+        new Thread(() -> Updater.cleanup(getApplicationContext()), "jarvis-cleanup").start();
+        showUpdateBanner();
+        Updater.lookSoon(this, this::showUpdateBanner);
+    }
+
+    /** "New version" note at the top of the chat; tapping it opens the update in Settings. */
+    private void showUpdateBanner() {
+        if (updateBanner == null || isFinishing()) return;
+        boolean show = Updater.newAvailable(this);
+        updateBanner.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (show) updateBanner.setText("⬆  Jarvis కొత్త వెర్షన్ 1.0." + Updater.knownLatest(this) + " వచ్చింది. అప్డేట్ చేయడానికి నొక్కండి");
     }
 
     @Override protected void onPause() {
@@ -459,6 +470,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
         slp.bottomMargin = dp(14);
         chatBox.addView(setupCard, slp);
+        updateBanner = Ui.text(this, "", 15, Ui.CYAN);
+        updateBanner.setBackground(Ui.round(this, 0x1448D1FF, 0x7348D1FF, 12));
+        updateBanner.setPadding(dp(14), dp(12), dp(14), dp(12));
+        updateBanner.setVisibility(View.GONE);
+        updateBanner.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class).putExtra(SettingsActivity.EXTRA_UPDATE_NOW, true)));
+        LinearLayout.LayoutParams blp2 = new LinearLayout.LayoutParams(-1, -2);
+        blp2.bottomMargin = dp(14);
+        chatBox.addView(updateBanner, blp2);
         chatList = new LinearLayout(this);
         chatList.setOrientation(LinearLayout.VERTICAL);
         chatBox.addView(chatList);
