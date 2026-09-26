@@ -44,7 +44,7 @@ final class PlaybackLevel {
     static synchronized void end(AudioTrack t) { if (track == t) track = null; }
 
     /**
-     * Loudest output level from ~200 ms ago up to ~40 ms ahead of what is playing now (covers room
+     * Loudest output level from ~140 ms ago up to ~20 ms ahead of what is playing now (covers room
      * echo and timing slack), or -1 when there is no reference (the phone's own TTS voice).
      */
     static double now() {
@@ -53,7 +53,7 @@ final class PlaybackLevel {
         long head;
         try { head = (t.getPlaybackHeadPosition() & 0xFFFFFFFFL) / blockSamples; } catch (Exception e) { return -1; }
         long w = written;
-        long from = Math.max(Math.max(0, w - SIZE + 1), head - 10), to = Math.min(w - 1, head + 2);
+        long from = Math.max(Math.max(0, w - SIZE + 1), head - 7), to = Math.min(w - 1, head + 1);
         double max = 0;
         for (long i = from; i <= to; i++) max = Math.max(max, ring[(int) (i % SIZE)]);
         return max;

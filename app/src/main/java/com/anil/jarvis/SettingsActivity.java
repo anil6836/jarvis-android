@@ -178,7 +178,7 @@ public class SettingsActivity extends Activity {
         });
         box.addView(bargeSens);
         showBargeSens();
-        note("మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో బాగా పనిచేస్తుంది.");
+        note("మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇది ఆన్‌లో ఉంటే Jarvis గొంతు ఫోన్ కాల్ లాగా స్పీకర్‌లో వస్తుంది (అప్పుడే ఫోన్ తన ప్రతిధ్వనిని తీసేయగలదు); Jarvis మాట్లాడుతుండగా వాల్యూమ్ బటన్లతో గొంతు పెంచుకోవచ్చు. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో ఇంకా బాగా పనిచేస్తుంది.");
         realtimeModel = field("Live మోడల్", prefs.realtimeModel(), false);
 
         // ---- wake word
@@ -529,7 +529,9 @@ public class SettingsActivity extends Activity {
 
     private void showBargeSens() {
         String[] names = {"చాలా తక్కువ (గట్టిగా మాట్లాడితేనే ఆగుతుంది)", "తక్కువ", "మధ్యస్థం", "ఎక్కువ", "చాలా ఎక్కువ (మెల్లగా మాట్లాడినా ఆగుతుంది)"};
-        bargeSensLabel.setText("మధ్యలో మాట్లాడితే వినే సున్నితత్వం: " + names[Math.max(0, Math.min(4, bargeSens.getProgress()))]);
+        String last = BargeIn.lastInfo;
+        bargeSensLabel.setText("మధ్యలో మాట్లాడితే వినే సున్నితత్వం: " + names[Math.max(0, Math.min(4, bargeSens.getProgress()))]
+                + (last == null || last.isEmpty() ? "" : "\nచివరిసారి: " + last));
         bargeSensLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
     }
 

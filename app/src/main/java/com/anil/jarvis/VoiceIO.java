@@ -2,6 +2,7 @@ package com.anil.jarvis;
 
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioAttributes;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -31,6 +32,13 @@ final class VoiceIO {
     }
 
     private final BargeIn barge;
+    private final CallMode call;
+
+    /** Talk-over on: send Jarvis's voice through the call path so the echo canceller removes it from the mic. */
+    private void enterCall() {
+        if (shut || !prefs.bargeIn()) { call.exit(); return; }
+        call.enter();
+    }
 
     /** Start watching for Anil talking over Jarvis (setting "మధ్యలో ఆపి మాట్లాడటం"). */
     private void watchBargeIn() {
@@ -70,6 +78,7 @@ final class VoiceIO {
 
     VoiceIO(Context c, Prefs prefs, Listener l) {
         this.barge = new BargeIn(c);
+        this.call = new CallMode(c);
         this.ctx = c.getApplicationContext();
         this.prefs = prefs;
         this.l = l;
@@ -115,12 +124,14 @@ final class VoiceIO {
         if (!speaking) return;
         speaking = false;
         barge.stop();
+        call.exit();
         l.onSpeakDone();
     }
 
     void speak(String text, float rate) {
         if (shut || text == null || text.trim().isEmpty()) return;
         feeling = prefs.emotions() ? Emotion.forText(text) : Emotion.CALM;
+        enterCall();
         String key = prefs.openAiKey().trim();
         if (prefs.naturalVoice() && !key.isEmpty() && Net.online(ctx)) {
             speakNatural(key, text, rate);
@@ -136,6 +147,7 @@ final class VoiceIO {
         if (clean.length() > 3500) clean = clean.substring(0, 3500);
         speaking = true;
         final String said = clean;
+        natural.voiceCall = call.active();
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
@@ -146,6 +158,7 @@ final class VoiceIO {
                 barge.stop();
                 if (!speaking) return;
                 speaking = false;
+                call.exit();
                 l.onSpeakDone();
             }
             @Override public void onError(String message) {
@@ -175,6 +188,11 @@ final class VoiceIO {
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
         int max = TextToSpeech.getMaxSpeechInputLength() - 10;
         if (clean.length() > max) clean = clean.substring(0, max);
+        try {
+            tts.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(call.active() ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
+        } catch (Exception ignored) {}
         tts.setSpeechRate(rate * Emotion.pace(feeling));
         tts.setPitch(Emotion.pitch(feeling));
         try { tts.setLanguage(Lang.of(clean)); } catch (Exception ignored) {} // Hindi etc. for translations
@@ -194,12 +212,14 @@ final class VoiceIO {
         main.post(() -> {
             if (shut || u != utterance || !speaking) return; // stopped or replaced meanwhile
             speaking = false;
+            call.exit();
             l.onSpeakDone();
         });
     }
 
     void stopSpeaking() {
         barge.stop();
+        call.exit();
         pending = null;
         natural.stop();
         if (speaking) {
@@ -302,6 +322,7 @@ final class VoiceIO {
     void shutdown() {
         shut = true;
         barge.stop();
+        call.exit();
         ttsReady = false;
         pending = null;
         speaking = false;

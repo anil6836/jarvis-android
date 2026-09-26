@@ -38,6 +38,8 @@ final class NaturalVoice {
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile int generation;
     private volatile AudioTrack track;
+    /** Play through the call path (talk-over on), so the phone's echo canceller can remove this voice. */
+    volatile boolean voiceCall;
 
     /** Speaks text; any earlier speech stops. Callbacks arrive on the main thread. */
     void speak(String apiKey, String voice, String text, Callback cb) {
@@ -104,7 +106,7 @@ final class NaturalVoice {
             int min = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
             t = new AudioTrack.Builder()
                     .setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                            .setUsage(voiceCall ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_ASSISTANT)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build())
                     .setAudioFormat(new AudioFormat.Builder()
