@@ -61,6 +61,7 @@ final class NaturalVoice {
         AudioTrack t = track;
         track = null;
         if (t != null) {
+            PlaybackLevel.end(t);
             try { t.pause(); t.flush(); } catch (Exception ignored) {}
             try { t.release(); } catch (Exception ignored) {}
         }
@@ -116,6 +117,7 @@ final class NaturalVoice {
                     .build();
             if (gen != generation) { t.release(); return; }
             track = t;
+            PlaybackLevel.begin(t, RATE);
             t.play();
 
             long frames = 0;
@@ -133,6 +135,7 @@ final class NaturalVoice {
                         started = true;
                         main.post(() -> { if (gen == generation) cb.onStart(); });
                     }
+                    PlaybackLevel.feed(buf, 0, len);
                     t.write(buf, 0, len);
                     frames += len / 2;
                 }
@@ -154,6 +157,7 @@ final class NaturalVoice {
             }
         } finally {
             if (c != null) c.disconnect();
+            if (t != null) PlaybackLevel.end(t);
             if (t != null && track == t && gen == generation) {
                 track = null;
                 try { t.stop(); } catch (Exception ignored) {}

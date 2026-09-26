@@ -56,8 +56,8 @@ public class SettingsActivity extends Activity {
     private EditText realtimeModel;
     private TextView voiceInfo, notifyInfo;
     private final NaturalVoice tester = new NaturalVoice();
-    private SeekBar rate, sensitivity;
-    private TextView rateLabel, sensitivityLabel, wakeInfo;
+    private SeekBar rate, sensitivity, bargeSens;
+    private TextView rateLabel, sensitivityLabel, wakeInfo, bargeSensLabel;
     private LinearLayout box;
 
     @Override protected void onCreate(Bundle b) {
@@ -165,7 +165,20 @@ public class SettingsActivity extends Activity {
         section("Live సంభాషణ (Real-time)");
         note("మనిషితో ఫోన్‌లో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. OpenAI key కావాలి. సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది; 45 సెకన్లు ఎవరూ మాట్లాడకపోతే తనంతట తానే ఆగిపోతుంది.");
         liveMode = toggle("Live సంభాషణ ఆన్ (మైక్ బటన్, Hey Jarvis రెండింటికీ)", prefs.liveMode());
-        bargeIn = toggle("Jarvis మాట్లాడుతుండగా మధ్యలో మాట్లాడితే ఆగి వినాలి (Jarvis తనంతట తానే ఆగిపోతుంటే ఇది ఆఫ్ చేయండి)", prefs.bargeIn());
+        bargeIn = toggle("Jarvis మాట్లాడుతుండగా మధ్యలో మాట్లాడితే ఆగి వినాలి", prefs.bargeIn());
+        bargeSensLabel = Ui.text(this, "", 15, Ui.MUTED);
+        box.addView(bargeSensLabel);
+        bargeSens = new SeekBar(this);
+        bargeSens.setMax(4);
+        bargeSens.setProgress(Math.max(0, Math.min(4, prefs.bargeSens())));
+        bargeSens.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar s, int p, boolean u) { showBargeSens(); }
+            @Override public void onStartTrackingTouch(SeekBar s) {}
+            @Override public void onStopTrackingTouch(SeekBar s) {}
+        });
+        box.addView(bargeSens);
+        showBargeSens();
+        note("మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో బాగా పనిచేస్తుంది.");
         realtimeModel = field("Live మోడల్", prefs.realtimeModel(), false);
 
         // ---- wake word
@@ -441,6 +454,7 @@ public class SettingsActivity extends Activity {
         e.putString("natural_voice_name", NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())]);
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("barge_in", bargeIn.isChecked());
+        e.putInt("barge_sens", bargeSens.getProgress());
         e.putString("realtime_model", realtimeModel.getText().toString().trim());
         if ((liveMode.isChecked() || natural.isChecked()) && openAiKey.getText().toString().trim().isEmpty()) {
             Toast.makeText(this, "సహజ గొంతు, Live సంభాషణకి OpenAI key కావాలి", Toast.LENGTH_LONG).show();
@@ -511,6 +525,12 @@ public class SettingsActivity extends Activity {
     @Override protected void onDestroy() {
         try { prefs.sp.unregisterOnSharedPreferenceChangeListener(lockCalibrated); } catch (Exception ignored) {}
         super.onDestroy();
+    }
+
+    private void showBargeSens() {
+        String[] names = {"చాలా తక్కువ (గట్టిగా మాట్లాడితేనే ఆగుతుంది)", "తక్కువ", "మధ్యస్థం", "ఎక్కువ", "చాలా ఎక్కువ (మెల్లగా మాట్లాడినా ఆగుతుంది)"};
+        bargeSensLabel.setText("మధ్యలో మాట్లాడితే వినే సున్నితత్వం: " + names[Math.max(0, Math.min(4, bargeSens.getProgress()))]);
+        bargeSensLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
     }
 
     private void showSensitivity() {
