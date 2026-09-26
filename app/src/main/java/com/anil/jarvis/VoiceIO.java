@@ -101,7 +101,7 @@ final class VoiceIO {
     private int utterance;
     /** ⏸ pressed: speech holds until ▶ (speaking stays true, so the screen waits). */
     private boolean paused;
-    /** Speaking a story or joke: only then ⏸/▶, word highlight, and "ఆపు" / "కొనసాగించు" by voice. */
+    /** Speaking a story or joke: only then the word highlight and "ఆపు" / "కొనసాగించు" on talk-over (⏸/▶ is for every answer). */
     private boolean story;
 
     boolean storyMode() { return story && speaking; }

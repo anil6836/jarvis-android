@@ -268,7 +268,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     /** ⏸ shows only while Jarvis is speaking; ▶ while paused. */
     private void syncPause() {
         if (pauseBtn == null) return;
-        boolean show = live == null && callText == null && voice != null && voice.storyMode();
+        boolean show = live == null && callText == null && voice != null && voice.speaking; // ⏸/▶ for every answer
         pauseBtn.setVisibility(show ? View.VISIBLE : View.GONE);
         if (show) pauseIcon.setIcon(voice.isPaused() ? IconView.PLAY : IconView.PAUSE);
         if (!show) karaoke.clear();
