@@ -211,6 +211,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             }
             return;
         }
+        String installRepo = i.getStringExtra(AppMaker.EXTRA_INSTALL);
+        if (installRepo != null) { // tapped "<app> యాప్ సిద్ధం"
+            i.removeExtra(AppMaker.EXTRA_INSTALL);
+            main.postDelayed(() -> AppMaker.install(this, installRepo), 400);
+            return;
+        }
         String askNow = i.getStringExtra(EXTRA_ASK);
         if (askNow != null) {
             i.removeExtra(EXTRA_ASK);

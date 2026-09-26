@@ -13,13 +13,30 @@ import android.widget.Toast;
 /** Result of an update he started from Settings; after it went in, opens Jarvis again. */
 public class UpdateReceiver extends BroadcastReceiver {
     static final String ACTION = "com.anil.jarvis.UPDATE_STATUS";
+    static final String ACTION_APP = "com.anil.jarvis.APP_STATUS";
     private static final String CHANNEL = "jarvis_update";
 
     @Override public void onReceive(Context c, Intent i) {
         if (i == null) return;
         if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(i.getAction())) { updated(c); return; }
-        if (!ACTION.equals(i.getAction())) return;
+        boolean app = ACTION_APP.equals(i.getAction());
+        if (!ACTION.equals(i.getAction()) && !app) return;
         int st = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+        if (app) { // an app Jarvis made
+            if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);
+                if (confirm != null) {
+                    confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try { c.startActivity(confirm); } catch (Exception ignored) {}
+                }
+            } else if (st == PackageInstaller.STATUS_SUCCESS) {
+                Toast.makeText(c, "యాప్ ఇన్‌స్టాల్ అయింది ✓ హోమ్ స్క్రీన్‌లో చూడండి", Toast.LENGTH_LONG).show();
+            } else {
+                String msg = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+                Toast.makeText(c, "యాప్ ఇన్‌స్టాల్ కాలేదు" + (msg != null ? ": " + msg : ""), Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             // Android's own "Update this app?" (the first time Jarvis updates itself)
             Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);

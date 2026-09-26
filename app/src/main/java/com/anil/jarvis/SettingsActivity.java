@@ -59,7 +59,7 @@ public class SettingsActivity extends Activity {
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
     private Spinner voicePick;
-    private EditText realtimeModel;
+    private EditText realtimeModel, codeModel, githubToken;
     private TextView voiceInfo, notifyInfo;
     private final NaturalVoice tester = new NaturalVoice();
     private SeekBar rate, sensitivity, bargeSens;
@@ -109,6 +109,28 @@ public class SettingsActivity extends Activity {
         anthropicModel = field("Anthropic మోడల్", prefs.anthropicModel(), false);
         link("Anthropic key ఇక్కడ తీసుకోండి", "https://console.anthropic.com/settings/keys");
         web = toggle("ఇంటర్నెట్ సెర్చ్ (వార్తలు, స్కోర్లు, ధరలు)", prefs.webSearch());
+        note("Jarvis ఎంత తెలివిగా ఆలోచిస్తాడో పై మోడల్‌ని బట్టి ఉంటుంది. అత్యంత శక్తివంతమైనవి: OpenAI లో gpt-6-astra, Anthropic లో claude-opus-5-5 "
+                + "(ఇవి నెమ్మదిగా, ఖరీదుగా ఉంటాయి). రోజువారీ మాటలకి వేగమైన మోడల్ ఉంచి, కోడింగ్‌కి మాత్రమే శక్తివంతమైనది కింద 'కోడింగ్ మోడల్' లో పెట్టొచ్చు.");
+
+        // ---- coding, websites, apps
+        section("కోడింగ్, వెబ్‌సైట్లు, యాప్‌లు");
+        note("\"Python తో … లెక్కించు\", \"… వెబ్‌సైట్ తయారు చెయ్\", \"… యాప్ తయారు చెయ్\", \"… కోడ్ రాయి\" అని అడగండి. తయారైనవన్నీ Downloads/Jarvis లో సేవ్ అవుతాయి.");
+        codeModel = field("కోడింగ్ మోడల్ (ఖాళీ = పై మెదడే)", prefs.codeModel(), false);
+        LinearLayout presets = new LinearLayout(this);
+        TextView astra = Ui.text(this, "  GPT-6 Astra  ", 14, Ui.CYAN);
+        astra.setPadding(0, Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 8));
+        astra.setOnClickListener(v -> codeModel.setText("gpt-6-astra"));
+        TextView opus = Ui.text(this, "  Claude Opus 5.5  ", 14, Ui.CYAN);
+        opus.setPadding(0, Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 8));
+        opus.setOnClickListener(v -> codeModel.setText("claude-opus-5-5"));
+        presets.addView(astra);
+        presets.addView(opus);
+        box.addView(presets);
+        note("gpt-6-astra కి పైన OpenAI key, claude-opus-5-5 కి Anthropic key ఉండాలి. మోడల్ పేరు తప్పైతే Jarvis వేరే మోడల్‌కి మారకుండా తప్పు అని చెబుతుంది.");
+        githubToken = field("GitHub token (వెబ్‌సైట్ ఆన్‌లైన్, యాప్‌లు తయారీ కోసం)", prefs.githubToken(), true);
+        note("ఒక్కసారి: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → "
+                + "'repo', 'workflow' టిక్ చేసి Generate → వచ్చిన token ఇక్కడ పెట్టండి. ఇది మీ ఫోన్‌లో మాత్రమే ఉంటుంది. "
+                + "Jarvis మీ GitHub లో jarvis-sites (వెబ్‌సైట్లు), jarvis-app-… (యాప్‌లు) అనే పబ్లిక్ repos తయారు చేస్తుంది.");
 
         // ---- voice
         section("వాయిస్");
@@ -457,6 +479,8 @@ public class SettingsActivity extends Activity {
         e.putString("provider", provider.getCheckedRadioButtonId() == 2 ? Prefs.ANTHROPIC : Prefs.OPENAI);
         e.putString("openai_key", openAiKey.getText().toString().trim());
         e.putString("openai_model", openAiModel.getText().toString().trim());
+        e.putString("code_model", codeModel.getText().toString().trim());
+        e.putString("github_token", githubToken.getText().toString().trim());
         e.putString("anthropic_key", anthropicKey.getText().toString().trim());
         e.putString("anthropic_model", anthropicModel.getText().toString().trim());
         e.putBoolean("web_search", web.isChecked());

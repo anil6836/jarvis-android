@@ -261,6 +261,24 @@ final class Tools {
                         {"goal", "string", "Everything he said, in English: e.g. 'Book 2 tickets for OG (Telugu) tomorrow evening at AMB Cinemas Gachibowli, middle rows' or 'Turn on dark mode' or 'In YouTube play the new Devara song'"},
                         {"answer", "string", "His answer to the question Jarvis just asked (continue)"}, {"stop", "boolean", "true to cancel"},
                         {"pay", "boolean", "true ONLY right after phone_task returned confirm_payment AND he clearly said yes to that amount"}})));
+        DEFS.add(new Def("run_python",
+                "Write and RUN Python in the cloud and give the result: exact calculations (EMI, interest, statistics, unit conversions), data work, "
+                        + "charts/graphs (PNG), Excel/CSV tables, PDF/Word files, small programs he wants run. Files are saved in Downloads/Jarvis and the first one is opened.",
+                schema(new String[][]{{"task", "string", "Everything he wants, in English, with all numbers and details"}}, "task")));
+        DEFS.add(new Def("make_website",
+                "Build a website (one complete page) and show it on his screen; or change the last one. Saved in Downloads/Jarvis/websites.",
+                schema(new String[][]{{"description", "string", "New website: what it is for and what should be on it, in English (keep Telugu text he gives)"},
+                        {"change", "string", "Changes to the last website (instead of description)"}})));
+        DEFS.add(new Def("publish_website", "Put the last website online (GitHub Pages in his account) and give the link.", schema(new String[][]{})));
+        DEFS.add(new Def("write_code",
+                "Write a code file in any language (Python, Java, Kotlin, C, JavaScript, HTML...), save it in Downloads/Jarvis/code and show it.",
+                schema(new String[][]{{"filename", "string", "File name with extension, e.g. calculator.py"},
+                        {"description", "string", "What the program must do, in English, all details"}}, "filename", "description")));
+        DEFS.add(new Def("make_app",
+                "Make a real Android app (APK) for his phone: the app is written, built on his GitHub (3-5 minutes) and a notification lets him install it. "
+                        + "Good for calculators, to-do lists, games, trackers, quizzes, reference apps. Or change the last app (it is rebuilt).",
+                schema(new String[][]{{"name", "string", "App name (short)"}, {"description", "string", "What the app must do, in English, all features"},
+                        {"change", "string", "Changes to the last app (instead of name/description)"}})));
         DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
         DEFS.add(new Def("bank_balance", "His account balance as given in the newest SMS from each bank.", schema(new String[][]{})));
         DEFS.add(new Def("voice_recorder", "Open the Voice Recorder app to record.", schema(new String[][]{})));
@@ -408,6 +426,11 @@ final class Tools {
             case "travel_search": return "టికెట్లు వెతుకుతున్నాను…";
             case "my_trips": return "మీ ప్రయాణాలు చూస్తున్నాను…";
             case "phone_task": return "మీ ఫోన్‌లో చేస్తున్నాను…";
+            case "run_python": return "కోడ్ రాసి రన్ చేస్తున్నాను…";
+            case "make_website": return "వెబ్‌సైట్ తయారు చేస్తున్నాను…";
+            case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
+            case "write_code": return "కోడ్ రాస్తున్నాను…";
+            case "make_app": return "యాప్ తయారు చేస్తున్నాను…";
             case "bank_balance": return "బ్యాలెన్స్ చూస్తున్నాను…";
             case "voice_recorder": return "రికార్డర్ తెరుస్తున్నాను…";
             case "mobile_plan": return "మీ ప్లాన్ చూస్తున్నాను…";
@@ -508,6 +531,11 @@ final class Tools {
                 case "my_trips": return myTrips();
                 case "phone_task": return phoneTask(a.optString("app", ""), a.optString("goal", ""), a.optString("answer", ""), a.optBoolean("stop", false),
                         a.optBoolean("pay", false));
+                case "run_python": return runPython(a.optString("task", ""));
+                case "make_website": return makeWebsite(a.optString("description", ""), a.optString("change", ""));
+                case "publish_website": return publishWebsite();
+                case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
+                case "make_app": return makeApp(a.optString("name", ""), a.optString("description", ""), a.optString("change", ""));
                 case "bank_balance": return bankBalance();
                 case "voice_recorder": return voiceRecorder();
                 case "mobile_plan": return mobilePlan();
@@ -4154,6 +4182,72 @@ final class Tools {
         return ok().put("status", "paused").put("steps_done", t.steps.size())
                 .put("next", "It is taking many steps. Tell him where it got to (last steps: " + t.steps.subList(Math.max(0, t.steps.size() - 3), t.steps.size())
                         + ") and ask if Jarvis should continue (phone_task answer='continue').").toString();
+    }
+
+    // ================================================================ coding, websites, apps
+
+    private static final String GITHUB_HELP = "Anil saves a GitHub token once in Jarvis settings → 'కోడింగ్, వెబ్‌సైట్లు, యాప్‌లు' "
+            + "(github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate, tick 'repo' and 'workflow'). "
+            + "Tell him that in 1-2 short Telugu sentences.";
+
+    private String runPython(String task) throws Exception {
+        if (task == null || task.trim().isEmpty()) return err("missing", "What should the Python do?");
+        JSONObject r = Coder.runPython(act(), prefs, task.trim());
+        JSONArray files = r.optJSONArray("files");
+        if (files == null) files = new JSONArray();
+        if (files.length() > 0) {
+            JSONObject f = files.getJSONObject(0);
+            String uri = f.optString("uri");
+            if (!uri.isEmpty() && !"null".equals(uri)) {
+                try {
+                    start(new Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(uri), f.optString("mime"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION));
+                } catch (Exception ignored) {}
+            }
+        }
+        return ok().put("answer", r.optString("answer")).put("files", files)
+                .put("next", "Tell him the result in 1-2 short Telugu sentences" + (files.length() > 0 ? "; the files are saved in Downloads/Jarvis and the first one is open on screen." : ".")).toString();
+    }
+
+    private String makeWebsite(String description, String change) throws Exception {
+        JSONObject r = Coder.makeWebsite(act(), prefs, description, change);
+        String title = r.optString("title", "వెబ్‌సైట్"), file = r.optString("file"), uri = r.optString("uri"), slug = r.optString("slug");
+        onUi(() -> WebActivity.show(act(), WebActivity.KIND_SITE, title.isEmpty() ? "వెబ్‌సైట్" : title, file, uri, slug));
+        return ok().put("title", title).put("saved", r.optString("saved"))
+                .put("next", "Tell him in one or two short Telugu sentences: the website is ready and open on screen (saved in Downloads/Jarvis/websites); "
+                        + "he can say changes, or tap 🌐 ఆన్‌లైన్ / say 'ఆన్‌లైన్ పెట్టు' to get a link.").toString();
+    }
+
+    private String publishWebsite() throws Exception {
+        if (prefs.githubToken().trim().isEmpty()) return err("no_github_token", "Putting a website online needs his GitHub token. " + GITHUB_HELP);
+        if (prefs.lastSite().isEmpty()) return err("no_website", "No website made yet: make_website first.");
+        String link = Coder.publish(act(), prefs, prefs.lastSite());
+        onUi(() -> {
+            android.content.ClipboardManager cm = act().getSystemService(android.content.ClipboardManager.class);
+            if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("website", link));
+        });
+        return ok().put("link", link).put("next", "Tell him it is online, the link is copied (say the link simply), and it may take 1-2 minutes to open the first time.").toString();
+    }
+
+    private String writeCode(String filename, String description) throws Exception {
+        if (description == null || description.trim().isEmpty()) return err("missing", "What should the program do?");
+        JSONObject r = Coder.writeCode(act(), prefs, filename, description.trim());
+        String name = r.optString("name"), file = r.optString("file"), uri = r.optString("uri");
+        onUi(() -> WebActivity.show(act(), WebActivity.KIND_CODE, name, file, uri, null));
+        return ok().put("name", name).put("saved", r.optString("saved")).put("lines", r.optInt("lines"))
+                .put("next", "Tell him in one short Telugu sentence the code file is ready, shown on screen and saved in Downloads/Jarvis/code (he can share it). Do not read the code aloud.").toString();
+    }
+
+    private String makeApp(String name, String description, String change) throws Exception {
+        if (prefs.githubToken().trim().isEmpty()) return err("no_github_token", "Making an Android app needs his GitHub token (the app is built there). " + GITHUB_HELP);
+        boolean changing = change != null && !change.trim().isEmpty();
+        if (!changing && (description == null || description.trim().isEmpty())) return err("missing", "What should the app do?");
+        JSONObject r = AppMaker.make(act(), prefs, name, description, change);
+        String app = r.optString("app"), preview = r.optString("preview");
+        onUi(() -> WebActivity.show(act(), WebActivity.KIND_APP, app + " · ప్రివ్యూ", preview, null, null));
+        return ok().put("app", app).put("repo", r.optString("repo"))
+                .put("next", "Tell him in 1-2 short Telugu sentences: the app's preview is on screen; the real app (APK) is being built on his GitHub and takes about "
+                        + "3-5 minutes; a notification '" + app + " యాప్ సిద్ధం' will come and tapping it installs it. He can say changes to rebuild.").toString();
     }
 
     // ================================================================ offline commands

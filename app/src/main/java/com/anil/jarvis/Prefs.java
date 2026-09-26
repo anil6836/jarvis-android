@@ -116,6 +116,15 @@ final class Prefs {
     /** Newest Jarvis build seen on GitHub (the app shows "new version" when it is newer than this one). */
     int latestBuild() { return sp.getInt("latest_build", 0); }
     void setLatestBuild(int b) { sp.edit().putInt("latest_build", b).apply(); }
+    /** The AI for code, websites and apps (e.g. gpt-6-astra, claude-opus-5-5); empty = his normal brain. */
+    String codeModel() { return sp.getString("code_model", ""); }
+    /** GitHub token (on the phone only): puts websites online and builds his apps. */
+    String githubToken() { return sp.getString("github_token", ""); }
+    String lastSite() { return sp.getString("last_site", ""); }
+    void setLastSite(String s) { sp.edit().putString("last_site", s).apply(); }
+    String lastAppRepo() { return sp.getString("last_app_repo", ""); }
+    String lastAppName() { return sp.getString("last_app_name", ""); }
+    void setLastApp(String repo, String name) { sp.edit().putString("last_app_repo", repo).putString("last_app_name", name).apply(); }
     /** When he last started an update from Settings (to reopen Jarvis after it). */
     long updateStartedAt() { return sp.getLong("update_started_at", 0); }
     void setUpdateStartedAt(long t) { sp.edit().putLong("update_started_at", t).apply(); }
