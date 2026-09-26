@@ -110,6 +110,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        setVolumeControlStream(AudioManager.STREAM_MUSIC); // volume keys = Jarvis's voice, also during talk-over call mode
         prefs = new Prefs(this);
         store = Store.get(this);
         store.listener = this;

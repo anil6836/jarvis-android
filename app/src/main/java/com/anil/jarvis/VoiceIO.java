@@ -37,8 +37,11 @@ final class VoiceIO {
     /** Talk-over on: send Jarvis's voice through the call path so the echo canceller removes it from the mic. */
     private void enterCall() {
         if (shut || !prefs.bargeIn()) { call.exit(); return; }
-        call.enter();
+        call.enter(prefs.bargeCallVoice());
     }
+
+    /** Jarvis's voice itself through the call stream (only with the "call voice" setting). */
+    private boolean callVoice() { return call.active() && prefs.bargeCallVoice(); }
 
     /** Start watching for Anil talking over Jarvis (setting "మధ్యలో ఆపి మాట్లాడటం"). */
     private void watchBargeIn() {
@@ -147,7 +150,7 @@ final class VoiceIO {
         if (clean.length() > 3500) clean = clean.substring(0, 3500);
         speaking = true;
         final String said = clean;
-        natural.voiceCall = call.active();
+        natural.voiceCall = callVoice();
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
@@ -190,7 +193,7 @@ final class VoiceIO {
         if (clean.length() > max) clean = clean.substring(0, max);
         try {
             tts.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(call.active() ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
+                    .setUsage(callVoice() ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
         } catch (Exception ignored) {}
         tts.setSpeechRate(rate * Emotion.pace(feeling));

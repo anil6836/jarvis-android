@@ -86,6 +86,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC); // volume keys = Jarvis's voice
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);

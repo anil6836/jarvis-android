@@ -72,6 +72,8 @@ final class Prefs {
     /** Let Anil interrupt Jarvis mid-sentence. Turn off if Jarvis keeps interrupting itself. */
     boolean bargeIn() { return sp.getBoolean("barge_in", true); }
     int bargeSens() { return sp.getInt("barge_sens", 2); }
+    /** Talk-over: Jarvis's voice through the phone-call path (strongest echo cancelling, but sounds like a call). */
+    boolean bargeCallVoice() { return sp.getBoolean("barge_call_voice", false); }
     boolean liveReady() { return liveMode() && !openAiKey().trim().isEmpty(); }
 
     // ---- wake words: "Jarvis" is the main one, "Hey Jarvis" the second

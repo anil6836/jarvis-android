@@ -49,6 +49,7 @@ public class SettingsActivity extends Activity {
     private EditText sosContacts, smartUrls, smartApp, walletMax;
     private Switch walletPay, emotions;
     private Switch alexaSpeak;
+    private Switch bargeCallVoice;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
@@ -178,7 +179,8 @@ public class SettingsActivity extends Activity {
         });
         box.addView(bargeSens);
         showBargeSens();
-        note("మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇది ఆన్‌లో ఉంటే Jarvis గొంతు ఫోన్ కాల్ లాగా స్పీకర్‌లో వస్తుంది (అప్పుడే ఫోన్ తన ప్రతిధ్వనిని తీసేయగలదు); Jarvis మాట్లాడుతుండగా వాల్యూమ్ బటన్లతో గొంతు పెంచుకోవచ్చు. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో ఇంకా బాగా పనిచేస్తుంది.");
+        note("మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో ఇంకా బాగా పనిచేస్తుంది.");
+        bargeCallVoice = toggle("Jarvis గొంతుని ఫోన్ కాల్ మార్గంలో పంపు (ప్రతిధ్వని ఇంకా బాగా తీసేస్తుంది, కానీ గొంతు కాల్ లాగా, తక్కువగా ఉంటుంది. మామూలుగా ఆఫ్ ఉంచండి; Jarvis తనంతట తానే ఆగిపోతుంటే లేదా మీ మాట అసలు వినకపోతే మాత్రమే ఆన్ చేయండి)", prefs.bargeCallVoice());
         realtimeModel = field("Live మోడల్", prefs.realtimeModel(), false);
 
         // ---- wake word
@@ -455,6 +457,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("barge_in", bargeIn.isChecked());
         e.putInt("barge_sens", bargeSens.getProgress());
+        e.putBoolean("barge_call_voice", bargeCallVoice.isChecked());
         e.putString("realtime_model", realtimeModel.getText().toString().trim());
         if ((liveMode.isChecked() || natural.isChecked()) && openAiKey.getText().toString().trim().isEmpty()) {
             Toast.makeText(this, "సహజ గొంతు, Live సంభాషణకి OpenAI key కావాలి", Toast.LENGTH_LONG).show();

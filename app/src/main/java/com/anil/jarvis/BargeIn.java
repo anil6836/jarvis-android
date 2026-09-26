@@ -109,6 +109,7 @@ final class BargeIn {
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
             boolean headset = CallMode.headset(am);
             boolean callPath = am != null && am.getMode() == AudioManager.MODE_IN_COMMUNICATION;
+            boolean callVoice = callPath && new Prefs(ctx).bargeCallVoice();
 
             short[] buf = new short[FRAME];
             Window ratio = new Window();   // mic / Jarvis output, while Jarvis sounds (echo path strength)
@@ -149,7 +150,7 @@ final class BargeIn {
                 if (rms > peakRms) { peakRms = rms; peakLimit = limit; }
                 if (rms > limit) {
                     if (++loud >= need) {
-                        lastInfo = info(ref, callPath, rms, limit, peakRms, peakLimit, true);
+                        lastInfo = info(ref, callPath, callVoice, rms, limit, peakRms, peakLimit, true);
                         running = false;
                         main.post(cb::onVoice);
                         return;
@@ -157,7 +158,7 @@ final class BargeIn {
                 } else {
                     loud = Math.max(0, loud - 1); // a short dip inside a word does not reset everything
                 }
-                if (frames % 25 == 0) lastInfo = info(ref, callPath, rms, limit, peakRms, peakLimit, false);
+                if (frames % 25 == 0) lastInfo = info(ref, callPath, callVoice, rms, limit, peakRms, peakLimit, false);
             }
         } catch (Exception ignored) {
         } finally {
@@ -168,9 +169,9 @@ final class BargeIn {
         }
     }
 
-    private static String info(boolean ref, boolean callPath, double rms, double limit, double peak, double peakLimit, boolean fired) {
+    private static String info(boolean ref, boolean callPath, boolean callVoice, double rms, double limit, double peak, double peakLimit, boolean fired) {
         return String.format(Locale.ROOT, "%s · %s · %s · పెద్ద శబ్దం %.0f / హద్దు %.0f",
-                fired ? "ఆగింది" : "ఆగలేదు", ref ? "సహజ గొంతు" : "ఫోన్ గొంతు", callPath ? "call-mode" : "normal",
+                fired ? "ఆగింది" : "ఆగలేదు", ref ? "సహజ గొంతు" : "ఫోన్ గొంతు", callPath ? (callVoice ? "కాల్ గొంతు" : "అసలు గొంతు + echo-cancel") : "normal",
                 fired ? rms : peak, fired ? limit : peakLimit);
     }
 }

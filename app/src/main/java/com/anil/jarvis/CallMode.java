@@ -6,10 +6,10 @@ import android.media.AudioManager;
 import android.os.Build;
 
 /**
- * While Jarvis speaks with "talk over" on, its voice goes through the phone's call path (like Live mode
- * and phone calls). Only then does the phone's echo canceller really remove Jarvis's own voice from the
- * mic, so Anil's voice can be told apart. Loudspeaker stays on; call volume is matched to media volume
- * and everything is put back when Jarvis stops.
+ * While Jarvis speaks with "talk over" on, the phone is put in call (VoIP) mode, which turns on its
+ * full-strength echo canceller for the mic, so Anil's voice can be told apart from Jarvis's own.
+ * Jarvis's voice normally still plays as ordinary media (original sound and volume); only with the
+ * "call voice" setting does it go through the call stream too. Everything is put back when Jarvis stops.
  */
 final class CallMode {
     private final AudioManager am;
@@ -34,8 +34,12 @@ final class CallMode {
         return false;
     }
 
-    /** Switches to the call path; false when not needed (headphones) or not possible (a real call). */
-    boolean enter() {
+    /**
+     * Switches the mic side to the call path (full-strength echo cancelling); false when not needed
+     * (headphones) or not possible (a real call). matchCallVolume: Jarvis's voice itself also goes
+     * through the call stream, so set its volume like the media volume.
+     */
+    boolean enter(boolean matchCallVolume) {
         if (on) return true;
         if (am == null || headset(am)) return false;
         try {
@@ -44,7 +48,7 @@ final class CallMode {
             int music = am.getStreamVolume(AudioManager.STREAM_MUSIC);
             int musicMax = Math.max(1, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
             int callMax = am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL);
-            oldCallVol = am.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+            oldCallVol = matchCallVolume ? am.getStreamVolume(AudioManager.STREAM_VOICE_CALL) : -1;
             on = true;
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             if (Build.VERSION.SDK_INT >= 31) {
@@ -55,7 +59,7 @@ final class CallMode {
                 am.setSpeakerphoneOn(true);
             }
             int want = Math.max(1, Math.round(music * callMax / (float) musicMax));
-            if (want != oldCallVol) {
+            if (matchCallVolume && want != oldCallVol) {
                 try { am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, want, 0); } catch (Exception ignored) {}
             }
             return true;
