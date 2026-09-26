@@ -5,3 +5,6 @@ local.properties
 *.iml
 .idea/
 app/src/main/assets/*.onnx
+
+# signing key: only the encrypted copy is in git
+app/jarvis.keystore

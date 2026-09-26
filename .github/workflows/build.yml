@@ -31,8 +31,18 @@ jobs:
           done
           ls -la app/src/main/assets
 
+      - name: Unlock the signing key
+        shell: bash
+        env:
+          JARVIS_KEY_PASS: ${{ secrets.JARVIS_KEY_PASS }}
+        run: |
+          if [ -z "$JARVIS_KEY_PASS" ]; then echo "::error::Add the JARVIS_KEY_PASS secret (Settings > Secrets and variables > Actions)"; exit 1; fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in app/jarvis.keystore.enc -out app/jarvis.keystore -pass env:JARVIS_KEY_PASS
+
       - name: Build signed APK
         shell: bash
+        env:
+          JARVIS_KEY_PASS: ${{ secrets.JARVIS_KEY_PASS }}
         run: |
           set -o pipefail
           gradle assembleRelease --stacktrace --no-daemon 2>&1 | tee build.log

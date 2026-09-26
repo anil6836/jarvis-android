@@ -23,9 +23,10 @@ android {
     signingConfigs {
         release {
             storeFile file('jarvis.keystore')
-            storePassword 'jarvis-anil'
+            // decrypted by the build from jarvis.keystore.enc with the JARVIS_KEY_PASS secret
+            storePassword System.getenv('JARVIS_KEY_PASS') ?: ''
             keyAlias 'jarvis'
-            keyPassword 'jarvis-anil'
+            keyPassword System.getenv('JARVIS_KEY_PASS') ?: ''
         }
     }
 
