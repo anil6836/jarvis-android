@@ -49,7 +49,7 @@ final class Brain {
         // No internet: handle the simple everyday commands on the phone itself.
         if (!tools.online()) return tools.offlineCommand(text);
         boolean feel = prefs.emotions();
-        String system = systemPrompt() + (feel ? Emotion.rule() : "");
+        String system = systemPrompt() + (feel ? Emotion.rule() : "") + whoAmI();
         List<String[]> turns = normalize(history);
         String reply = prefs.isGemini()
                 ? gemini(system, turns, text, jpegB64, status)
@@ -308,6 +308,17 @@ final class Brain {
             return r;
         }
         throw new Http.ApiError(0, "too many rounds");
+    }
+
+    /** So he can ask "నువ్వు ఏ మోడల్?": the provider and the exact model this answer comes from. */
+    private String whoAmI() {
+        String model;
+        if (prefs.isGemini()) model = "Google Gemini, model " + geminiModel(prefs, prefs.apiKey());
+        else if (prefs.isOpenAi()) model = "OpenAI, model " + prefs.model();
+        else model = "Anthropic Claude, model " + prefs.model();
+        String code = prefs.codeModel().trim();
+        return "- You are running on " + model + (code.isEmpty() ? "" : " (code, websites and apps use " + code + ")")
+                + ". If he asks which AI or model you are, say exactly this.\n";
     }
 
     // ---------------------------------------------------------------- Gemini
