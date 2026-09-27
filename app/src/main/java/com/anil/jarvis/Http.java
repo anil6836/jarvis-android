@@ -93,7 +93,23 @@ final class Http {
         try {
             JSONObject o = new JSONObject(text);
             JSONObject e = o.optJSONObject("error");
-            if (e != null && e.has("message")) return e.optString("message");
+            if (e != null && e.has("message")) {
+                String msg = e.optString("message");
+                // Google: which limit ran out (per minute / per day, free tier) is only in the details
+                StringBuilder q = new StringBuilder();
+                org.json.JSONArray det = e.optJSONArray("details");
+                for (int i = 0; det != null && i < det.length(); i++) {
+                    org.json.JSONArray v = det.optJSONObject(i) == null ? null : det.optJSONObject(i).optJSONArray("violations");
+                    for (int j = 0; v != null && j < v.length(); j++) {
+                        String id = v.optJSONObject(j) == null ? "" : v.optJSONObject(j).optString("quotaId");
+                        if (!id.isEmpty() && q.indexOf(id) < 0) q.append(q.length() == 0 ? "" : ", ").append(id);
+                    }
+                }
+                String st = e.optString("status");
+                if (!st.isEmpty() && !msg.contains(st)) msg += " (" + st + ")";
+                if (q.length() > 0) msg += " [" + q + "]";
+                return msg;
+            }
             if (o.has("message")) return o.optString("message");
             if (o.has("reason")) return o.optString("reason");
         } catch (Exception ignored) {}

@@ -105,18 +105,25 @@ public class SettingsActivity extends Activity {
 
         openAiKey = field("OpenAI API key (sk-…)", prefs.openAiKey(), true);
         openAiModel = field("OpenAI మోడల్", prefs.openAiModel(), false);
+        modelPicker(Prefs.OPENAI, openAiKey, openAiModel, "openai_model");
         link("OpenAI key ఇక్కడ తీసుకోండి", "https://platform.openai.com/api-keys");
         anthropicKey = field("Anthropic API key (sk-ant-…)", prefs.anthropicKey(), true);
         anthropicModel = field("Anthropic మోడల్", prefs.anthropicModel(), false);
+        modelPicker(Prefs.ANTHROPIC, anthropicKey, anthropicModel, "anthropic_model");
         link("Anthropic key ఇక్కడ తీసుకోండి", "https://console.anthropic.com/settings/keys");
         geminiKey = field("Gemini API key (AIza…)", prefs.geminiKey(), true);
-        geminiModel = field("Gemini మోడల్ (ఖాళీ = Jarvis తనే ఎంచుకుంటుంది)", prefs.geminiModel(), false);
-        // empty box = automatic: show the model Jarvis picked, greyed out, inside the box
-        geminiModel.setHint(prefs.geminiAutoModel().isEmpty() ? "ఆటోమేటిక్ (మొదటి ప్రశ్నకి ఎంచుకుంటుంది)" : "ఆటోమేటిక్: " + prefs.geminiAutoModel());
+        geminiModel = field("Gemini మోడల్", prefs.geminiModel(), false);
+        geminiModel.setHint("కింద 'అన్ని మోడల్స్ చూపించు' నొక్కి ఎంచుకోండి");
+        modelPicker(Prefs.GEMINI, geminiKey, geminiModel, "gemini_model");
         link("Gemini key ఇక్కడ తీసుకోండి", "https://aistudio.google.com/apikey");
-        note("Gemini: ఉచిత ప్లాన్‌లో Flash మోడల్స్ మాత్రమే, నిమిషానికి సుమారు 10 ప్రశ్నలు, రోజుకి ~1,500. ఉచిత ప్లాన్‌లో మీరు పంపేవి (మాటలు, స్క్రీన్‌షాట్లు) "
-                + "Google తమ మోడల్స్ మెరుగుపరచడానికి వాడుకోవచ్చు. పైన 'Google (Gemini)' ఎంచుకుంటేనే వాడుతుంది; వాయిస్ (సహజ గొంతు), Live మోడ్ OpenAI తోనే ఉంటాయి."
-                + (prefs.geminiAutoModel().isEmpty() ? "" : " ఇప్పుడు వాడుతున్న మోడల్: " + prefs.geminiAutoModel()));
+        note("మోడల్ Jarvis తనంతట తాను ఎంచుకోడు: మీరు ఎంచుకున్నదే వాడతాడు. 'అన్ని మోడల్స్ చూపించు' మీ key తో ఆ కంపెనీ దగ్గర నుంచి "
+                + "ఇప్పుడున్న మోడల్స్ అన్నీ తెస్తుంది; ఒకటి నొక్కితే వెంటనే సేవ్ అవుతుంది. ఎప్పుడైనా మార్చుకోవచ్చు. పేరు మీరే టైప్ చేసినా సరే.");
+        note("Gemini: ఉచిత ప్లాన్‌లో Flash, Flash-Lite మోడల్స్ మాత్రమే; Pro మోడల్స్‌కి billing కావాలి. ప్రతి మోడల్‌కి వేరే నిమిషం/రోజు లిమిట్ ఉంటుంది: "
+                + "ఒక మోడల్ లిమిట్ అయిపోతే ఇంకో Flash మోడల్ ఎంచుకోండి. రోజు లిమిట్ మధ్యాహ్నం సుమారు 12:30–1:30 కి మళ్లీ వస్తుంది. "
+                + "Jarvis ఒక్క ప్రశ్నకి (యాప్ తెరవడం, సెర్చ్ లాంటి పనులుంటే) చాలా requests పంపుతాడు, అందుకే ఉచిత లిమిట్ త్వరగా అయిపోవచ్చు. "
+                + "Google AI Plus/Pro సబ్స్క్రిప్షన్ Gemini యాప్ కోసం; API లిమిట్‌కి దానితో సంబంధం లేదు. ఉచిత ప్లాన్‌లో మీరు పంపేవి (మాటలు, స్క్రీన్‌షాట్లు) "
+                + "Google తమ మోడల్స్ మెరుగుపరచడానికి వాడుకోవచ్చు. పైన 'Google (Gemini)' ఎంచుకుంటేనే వాడుతుంది; వాయిస్ (సహజ గొంతు), Live మోడ్ OpenAI తోనే ఉంటాయి.");
+        link("Gemini లిమిట్లు / billing (AI Studio)", "https://aistudio.google.com/usage");
         web = toggle("ఇంటర్నెట్ సెర్చ్ (వార్తలు, స్కోర్లు, ధరలు)", prefs.webSearch());
         note("Jarvis ఎంత తెలివిగా ఆలోచిస్తాడో పై మోడల్‌ని బట్టి ఉంటుంది. అత్యంత శక్తివంతమైనవి: OpenAI లో gpt-6-astra, Anthropic లో claude-opus-5-5 "
                 + "(ఇవి నెమ్మదిగా, ఖరీదుగా ఉంటాయి). రోజువారీ మాటలకి వేగమైన మోడల్ ఉంచి, కోడింగ్‌కి మాత్రమే శక్తివంతమైనది కింద 'కోడింగ్ మోడల్' లో పెట్టొచ్చు.");
@@ -135,6 +142,13 @@ public class SettingsActivity extends Activity {
         presets.addView(astra);
         presets.addView(opus);
         box.addView(presets);
+        TextView allCode = Ui.text(this, "📋 అన్ని కంపెనీల మోడల్స్ చూపించు, ఎంచుకో", 14.5f, Ui.CYAN);
+        allCode.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 8));
+        allCode.setOnClickListener(v -> Models.pick(this, "కోడింగ్ మోడల్ ఎంచుకోండి",
+                new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
+                new String[]{openAiKey.getText().toString(), anthropicKey.getText().toString(), geminiKey.getText().toString()},
+                codeModel.getText().toString(), it -> chose(codeModel, "code_model", it.id)));
+        box.addView(allCode);
         note("gpt-6-astra కి పైన OpenAI key, claude-opus-5-5 కి Anthropic key ఉండాలి. మోడల్ పేరు తప్పైతే Jarvis వేరే మోడల్‌కి మారకుండా తప్పు అని చెబుతుంది.");
         githubToken = field("GitHub token (వెబ్‌సైట్ ఆన్‌లైన్, యాప్‌లు తయారీ కోసం)", prefs.githubToken(), true);
         note("ఒక్కసారి: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → "
@@ -489,8 +503,10 @@ public class SettingsActivity extends Activity {
         e.putString("provider", chosen == 3 ? Prefs.GEMINI : chosen == 2 ? Prefs.ANTHROPIC : Prefs.OPENAI);
         e.putString("gemini_key", geminiKey.getText().toString().trim());
         String gm = geminiModel.getText().toString().trim();
-        if (!gm.equals(prefs.geminiModel())) e.putString("gemini_auto_model", ""); // a new choice: pick again
         e.putString("gemini_model", gm);
+        e.remove("gemini_auto_model"); // older versions picked a Gemini model by themselves
+        if (chosen == 3 && gm.isEmpty())
+            Toast.makeText(this, "Gemini మోడల్ ఇంకా ఎంచుకోలేదు: 'అన్ని మోడల్స్ చూపించు' నొక్కి ఒకటి ఎంచుకోండి", Toast.LENGTH_LONG).show();
         e.putString("openai_key", openAiKey.getText().toString().trim());
         e.putString("openai_model", openAiModel.getText().toString().trim());
         e.putString("code_model", codeModel.getText().toString().trim());
@@ -726,6 +742,22 @@ public class SettingsActivity extends Activity {
         r.setTextSize(16);
         r.setPadding(Ui.dp(this, 6), Ui.dp(this, 8), 0, Ui.dp(this, 8));
         return r;
+    }
+
+    /** "Show all models" under a model box: the live list for that key; a tap fills the box and saves it. */
+    private void modelPicker(String provider, EditText keyField, EditText into, String pref) {
+        TextView t = Ui.text(this, "📋 అన్ని మోడల్స్ చూపించు, ఎంచుకో", 14.5f, Ui.CYAN);
+        t.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
+        t.setOnClickListener(v -> Models.pick(this, Models.company(provider) + " మోడల్ ఎంచుకోండి",
+                new String[]{provider}, new String[]{keyField.getText().toString()},
+                into.getText().toString(), it -> chose(into, pref, it.id)));
+        box.addView(t);
+    }
+
+    private void chose(EditText into, String pref, String model) {
+        into.setText(model);
+        prefs.sp.edit().putString(pref, model).apply();
+        Toast.makeText(this, "✓ " + model + " పెట్టాను (సేవ్ అయింది)", Toast.LENGTH_SHORT).show();
     }
 
     private void link(String label, String url) {

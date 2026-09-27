@@ -645,7 +645,9 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             } catch (java.util.concurrent.CancellationException e) {
                 return; // Anil stopped it: no error bubble
             } catch (Http.ApiError e) {
-                error = e.status == 401 || e.status == 403 ? "API key పనిచేయడం లేదు. సెట్టింగ్స్ చూడండి."
+                String said = Models.explain(prefs, e);
+                error = said != null ? said
+                        : e.status == 401 || e.status == 403 ? "API key పనిచేయడం లేదు. సెట్టింగ్స్ చూడండి."
                         : e.status == 429 ? "కొంచెం ఆగి మళ్లీ అడగండి (లిమిట్/బ్యాలెన్స్)."
                         : "పొరపాటు జరిగింది (" + e.status + ").";
             } catch (UnknownHostException e) {

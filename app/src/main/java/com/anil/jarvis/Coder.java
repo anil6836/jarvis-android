@@ -59,7 +59,10 @@ final class Coder {
         }
         String key = p.apiKey().trim();
         if (key.isEmpty()) throw new IllegalStateException("API key లేదు (Jarvis settings).");
-        if (p.isGemini()) return new Engine(false, true, key, Brain.geminiModel(p, key));
+        if (p.isGemini()) {
+            if (p.model().isEmpty()) throw new IllegalStateException("Gemini మోడల్ ఇంకా ఎంచుకోలేదు (Jarvis settings → Jarvis మెదడు → Gemini మోడల్).");
+            return new Engine(false, true, key, p.model());
+        }
         return new Engine(p.isOpenAi(), false, key, p.model());
     }
 

@@ -313,7 +313,7 @@ final class Brain {
     /** So he can ask "నువ్వు ఏ మోడల్?": the provider and the exact model this answer comes from. */
     private String whoAmI() {
         String model;
-        if (prefs.isGemini()) model = "Google Gemini, model " + geminiModel(prefs, prefs.apiKey());
+        if (prefs.isGemini()) model = "Google Gemini, model " + prefs.model();
         else if (prefs.isOpenAi()) model = "OpenAI, model " + prefs.model();
         else model = "Anthropic Claude, model " + prefs.model();
         String code = prefs.codeModel().trim();
@@ -325,55 +325,15 @@ final class Brain {
 
     private static final String GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/";
 
-    /** The Gemini model to use: the one he typed, else the best Flash model his key can use (found once). */
-    static String geminiModel(Prefs p, String key) {
+    /** The Gemini model he chose in Settings. Jarvis never picks one on its own: none chosen = an honest error. */
+    static String geminiModel(Prefs p) throws Http.ApiError {
         String m = p.model();
-        if (!m.isEmpty()) return m;
-        String best = "gemini-2.5-flash";
-        try {
-            JSONObject res = Http.get(GEMINI_API + "models?pageSize=200", "x-goog-api-key", key);
-            JSONArray list = res.optJSONArray("models");
-            java.util.List<String> names = new java.util.ArrayList<>();
-            for (int i = 0; list != null && i < list.length(); i++) {
-                JSONObject o = list.getJSONObject(i);
-                JSONArray ways = o.optJSONArray("supportedGenerationMethods");
-                if (ways == null || !ways.toString().contains("generateContent")) continue;
-                String n = o.optString("name").replaceFirst("^models/", "");
-                String low = n.toLowerCase(Locale.ROOT);
-                if (!low.startsWith("gemini") || low.contains("image") || low.contains("tts") || low.contains("live")
-                        || low.contains("audio") || low.contains("embed") || low.contains("robotics") || low.contains("computer")) continue;
-                names.add(n);
-            }
-            // the free tier's models: Gemini 3 Flash, then 3.1 Flash-Lite, then older Flash
-            String[] order = {"gemini-3-flash", "gemini-3.0-flash", "gemini-3.1-flash-lite", "gemini-3-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"};
-            outer:
-            for (String prefix : order) {
-                String pick = null;
-                for (String n : names) {
-                    if (!n.startsWith(prefix)) continue;
-                    if (!prefix.contains("lite") && n.contains("lite")) continue;
-                    // a plain name beats a dated preview
-                    if (pick == null || (pick.contains("preview") && !n.contains("preview")) || (pick.contains("preview") == n.contains("preview") && n.length() < pick.length())) pick = n;
-                }
-                if (pick != null) { best = pick; break outer; }
-            }
-        } catch (Exception ignored) {}
-        p.setGeminiAutoModel(best);
-        return best;
+        if (m.isEmpty()) throw new Http.ApiError(400, Models.NO_GEMINI_MODEL);
+        return m;
     }
 
     static JSONObject geminiCall(Prefs p, String key, JSONObject body) throws Exception {
-        String model = geminiModel(p, key);
-        try {
-            return Http.post(GEMINI_API + "models/" + model + ":generateContent", body, "x-goog-api-key", key);
-        } catch (Http.ApiError e) {
-            // the auto-picked model went away: pick again once
-            if (e.status == 404 && p.geminiModel().trim().isEmpty()) {
-                p.setGeminiAutoModel("");
-                return Http.post(GEMINI_API + "models/" + geminiModel(p, key) + ":generateContent", body, "x-goog-api-key", key);
-            }
-            throw e;
-        }
+        return Http.post(GEMINI_API + "models/" + geminiModel(p) + ":generateContent", body, "x-goog-api-key", key);
     }
 
     /** The text of Gemini's first answer. */

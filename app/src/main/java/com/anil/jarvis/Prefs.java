@@ -24,17 +24,14 @@ final class Prefs {
 
     String apiKey() { return sp.getString(isGemini() ? "gemini_key" : isOpenAi() ? "openai_key" : "anthropic_key", "").trim(); }
     String geminiKey() { return sp.getString("gemini_key", ""); }
-    /** Gemini model he typed; empty = Jarvis picks the best Flash model his key can use. */
+    /** The Gemini model he chose in Settings (empty = not chosen yet: Jarvis asks him to choose, never picks one itself). */
     String geminiModel() { return sp.getString("gemini_model", ""); }
-    String geminiAutoModel() { return sp.getString("gemini_auto_model", ""); }
-    void setGeminiAutoModel(String m) { sp.edit().putString("gemini_auto_model", m).apply(); }
     String openAiKey() { return sp.getString("openai_key", ""); }
     String anthropicKey() { return sp.getString("anthropic_key", ""); }
 
     String model() {
         if (isGemini()) {
-            String g = geminiModel().trim();
-            return g.isEmpty() ? geminiAutoModel() : g; // may be empty: Brain resolves it
+            return geminiModel().trim(); // may be empty: the brain then asks him to choose one
         }
         String m = isOpenAi()
                 ? sp.getString("openai_model", DEFAULT_OPENAI_MODEL)

@@ -1366,13 +1366,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private String describe(Http.ApiError e) {
         String m = String.valueOf(e.getMessage());
         String low = m.toLowerCase(Locale.ROOT);
-        String te;
-        if (e.status == 401 || e.status == 403) te = "API key పనిచేయడం లేదు. సెట్టింగ్స్‌లో key సరిగ్గా పెట్టారో చెక్ చేయండి.";
-        else if (low.contains("credit") || low.contains("quota") || low.contains("billing") || low.contains("balance"))
-            te = "API అకౌంట్‌లో బ్యాలెన్స్ అయిపోయింది. OpenAI/Anthropic అకౌంట్‌లో క్రెడిట్ జోడించండి.";
+        String te = Models.explain(prefs, e); // limits / balance / no model chosen, for the company it came from
+        if (te != null) { /* said */ }
+        else if (e.status == 401 || e.status == 403) te = "API key పనిచేయడం లేదు. సెట్టింగ్స్‌లో key సరిగ్గా పెట్టారో చెక్ చేయండి.";
         else if (e.status == 429) te = "చాలా ఎక్కువ ప్రశ్నలు ఒకేసారి. కొంచెం ఆగి అడగండి.";
         else if ((e.status == 400 || e.status == 404) && low.contains("model"))
-            te = "మోడల్ పేరు \"" + prefs.model() + "\" పనిచేయలేదు. సెట్టింగ్స్‌లో మోడల్ మార్చండి.";
+            te = "మోడల్ పేరు \"" + prefs.model() + "\" పనిచేయలేదు. సెట్టింగ్స్‌లో 'అన్ని మోడల్స్ చూపించు' నొక్కి వేరే మోడల్ ఎంచుకోండి.";
         else if (e.status >= 500) te = "సర్వర్ బిజీగా ఉంది. కాసేపటి తర్వాత మళ్లీ అడగండి.";
         else if (e.status == 0) te = "సమాధానం రాలేదు. మళ్లీ అడగండి.";
         else te = "పొరపాటు జరిగింది (" + e.status + ").";
