@@ -7,6 +7,7 @@ import android.content.SharedPreferences;
 final class Prefs {
     static final String OPENAI = "openai";
     static final String ANTHROPIC = "anthropic";
+    static final String GEMINI = "gemini";
     static final String DEFAULT_OPENAI_MODEL = "gpt-6-luna";
     static final String DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
 
@@ -19,12 +20,22 @@ final class Prefs {
     String name() { return sp.getString("name", "Anil"); }
     String provider() { return sp.getString("provider", OPENAI); }
     boolean isOpenAi() { return OPENAI.equals(provider()); }
+    boolean isGemini() { return GEMINI.equals(provider()); }
 
-    String apiKey() { return sp.getString(isOpenAi() ? "openai_key" : "anthropic_key", "").trim(); }
+    String apiKey() { return sp.getString(isGemini() ? "gemini_key" : isOpenAi() ? "openai_key" : "anthropic_key", "").trim(); }
+    String geminiKey() { return sp.getString("gemini_key", ""); }
+    /** Gemini model he typed; empty = Jarvis picks the best Flash model his key can use. */
+    String geminiModel() { return sp.getString("gemini_model", ""); }
+    String geminiAutoModel() { return sp.getString("gemini_auto_model", ""); }
+    void setGeminiAutoModel(String m) { sp.edit().putString("gemini_auto_model", m).apply(); }
     String openAiKey() { return sp.getString("openai_key", ""); }
     String anthropicKey() { return sp.getString("anthropic_key", ""); }
 
     String model() {
+        if (isGemini()) {
+            String g = geminiModel().trim();
+            return g.isEmpty() ? geminiAutoModel() : g; // may be empty: Brain resolves it
+        }
         String m = isOpenAi()
                 ? sp.getString("openai_model", DEFAULT_OPENAI_MODEL)
                 : sp.getString("anthropic_model", DEFAULT_ANTHROPIC_MODEL);

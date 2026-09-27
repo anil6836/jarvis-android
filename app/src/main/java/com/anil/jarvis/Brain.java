@@ -51,7 +51,9 @@ final class Brain {
         boolean feel = prefs.emotions();
         String system = systemPrompt() + (feel ? Emotion.rule() : "");
         List<String[]> turns = normalize(history);
-        String reply = prefs.isOpenAi()
+        String reply = prefs.isGemini()
+                ? gemini(system, turns, text, jpegB64, status)
+                : prefs.isOpenAi()
                 ? openAi(system, turns, text, jpegB64, status)
                 : anthropic(system, turns, text, jpegB64, status);
         // the feeling tag ([happy], [sad]...) is for the voice only: take it off the text
@@ -238,6 +240,17 @@ final class Brain {
     static String oneShot(Prefs prefs, String system, String prompt, String jpegB64, boolean web) throws Exception {
         String key = prefs.apiKey();
         if (key.isEmpty()) throw new Http.ApiError(401, "no API key");
+        if (prefs.isGemini()) {
+            JSONArray parts = new JSONArray().put(new JSONObject().put("text", prompt));
+            if (jpegB64 != null) parts.put(new JSONObject().put("inlineData", new JSONObject().put("mimeType", "image/jpeg").put("data", jpegB64)));
+            JSONObject body = new JSONObject()
+                    .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", system))))
+                    .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", parts)));
+            if (web) body.put("tools", new JSONArray().put(new JSONObject().put("google_search", new JSONObject())));
+            String r = geminiText(geminiCall(prefs, key, body)).trim();
+            if (r.isEmpty()) throw new Http.ApiError(0, "empty reply");
+            return r;
+        }
         if (prefs.isOpenAi()) {
             JSONArray content = new JSONArray().put(new JSONObject().put("type", "input_text").put("text", prompt));
             if (jpegB64 != null) content.put(new JSONObject().put("type", "input_image").put("image_url", "data:image/jpeg;base64," + jpegB64));
@@ -295,6 +308,165 @@ final class Brain {
             return r;
         }
         throw new Http.ApiError(0, "too many rounds");
+    }
+
+    // ---------------------------------------------------------------- Gemini
+
+    private static final String GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/";
+
+    /** The Gemini model to use: the one he typed, else the best Flash model his key can use (found once). */
+    static String geminiModel(Prefs p, String key) {
+        String m = p.model();
+        if (!m.isEmpty()) return m;
+        String best = "gemini-2.5-flash";
+        try {
+            JSONObject res = Http.get(GEMINI_API + "models?pageSize=200", "x-goog-api-key", key);
+            JSONArray list = res.optJSONArray("models");
+            java.util.List<String> names = new java.util.ArrayList<>();
+            for (int i = 0; list != null && i < list.length(); i++) {
+                JSONObject o = list.getJSONObject(i);
+                JSONArray ways = o.optJSONArray("supportedGenerationMethods");
+                if (ways == null || !ways.toString().contains("generateContent")) continue;
+                String n = o.optString("name").replaceFirst("^models/", "");
+                String low = n.toLowerCase(Locale.ROOT);
+                if (!low.startsWith("gemini") || low.contains("image") || low.contains("tts") || low.contains("live")
+                        || low.contains("audio") || low.contains("embed") || low.contains("robotics") || low.contains("computer")) continue;
+                names.add(n);
+            }
+            // the free tier's models: Gemini 3 Flash, then 3.1 Flash-Lite, then older Flash
+            String[] order = {"gemini-3-flash", "gemini-3.0-flash", "gemini-3.1-flash-lite", "gemini-3-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"};
+            outer:
+            for (String prefix : order) {
+                String pick = null;
+                for (String n : names) {
+                    if (!n.startsWith(prefix)) continue;
+                    if (!prefix.contains("lite") && n.contains("lite")) continue;
+                    // a plain name beats a dated preview
+                    if (pick == null || (pick.contains("preview") && !n.contains("preview")) || (pick.contains("preview") == n.contains("preview") && n.length() < pick.length())) pick = n;
+                }
+                if (pick != null) { best = pick; break outer; }
+            }
+        } catch (Exception ignored) {}
+        p.setGeminiAutoModel(best);
+        return best;
+    }
+
+    static JSONObject geminiCall(Prefs p, String key, JSONObject body) throws Exception {
+        String model = geminiModel(p, key);
+        try {
+            return Http.post(GEMINI_API + "models/" + model + ":generateContent", body, "x-goog-api-key", key);
+        } catch (Http.ApiError e) {
+            // the auto-picked model went away: pick again once
+            if (e.status == 404 && p.geminiModel().trim().isEmpty()) {
+                p.setGeminiAutoModel("");
+                return Http.post(GEMINI_API + "models/" + geminiModel(p, key) + ":generateContent", body, "x-goog-api-key", key);
+            }
+            throw e;
+        }
+    }
+
+    /** The text of Gemini's first answer. */
+    static String geminiText(JSONObject res) throws Exception {
+        JSONArray c = res.optJSONArray("candidates");
+        if (c == null || c.length() == 0) {
+            JSONObject fb = res.optJSONObject("promptFeedback");
+            throw new Http.ApiError(0, "Gemini gave no answer" + (fb != null ? " (" + fb.optString("blockReason") + ")" : ""));
+        }
+        JSONObject content = c.getJSONObject(0).optJSONObject("content");
+        JSONArray parts = content == null ? null : content.optJSONArray("parts");
+        StringBuilder said = new StringBuilder();
+        for (int i = 0; parts != null && i < parts.length(); i++) {
+            JSONObject p = parts.getJSONObject(i);
+            if (p.has("text") && !p.optBoolean("thought")) said.append(p.optString("text"));
+        }
+        return said.toString();
+    }
+
+    private String gemini(String system, List<String[]> turns, String text, String img, Status status) throws Exception {
+        String key = prefs.apiKey();
+        JSONArray contents = new JSONArray();
+        for (String[] t : turns) {
+            contents.put(new JSONObject().put("role", "assistant".equals(t[0]) ? "model" : "user")
+                    .put("parts", new JSONArray().put(new JSONObject().put("text", t[1]))));
+        }
+        JSONArray parts = new JSONArray().put(new JSONObject().put("text", text));
+        if (img != null) parts.put(new JSONObject().put("inlineData", new JSONObject().put("mimeType", "image/jpeg").put("data", img)));
+        contents.put(new JSONObject().put("role", "user").put("parts", parts));
+
+        JSONArray decls = tools.geminiTools();
+        // Google Search cannot be mixed with Jarvis's own tools in one request: it is a tool of its own here.
+        if (prefs.webSearch()) {
+            decls.put(new JSONObject().put("name", "search_web")
+                    .put("description", "Search the internet (Google) for anything current: news, scores, prices, weather, facts, people. Returns a short answer with sources.")
+                    .put("parameters", new JSONObject().put("type", "object")
+                            .put("properties", new JSONObject().put("query", new JSONObject().put("type", "string").put("description", "What to search, in English")))
+                            .put("required", new JSONArray().put("query"))));
+        }
+        JSONArray toolList = new JSONArray().put(new JSONObject().put("functionDeclarations", decls));
+
+        for (int round = 0; round < MAX_ROUNDS; round++) {
+            checkCancelled(status);
+            JSONObject body = new JSONObject()
+                    .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", system))))
+                    .put("contents", contents)
+                    .put("tools", toolList)
+                    .put("generationConfig", new JSONObject().put("maxOutputTokens", 8192)); // its thinking counts too
+            JSONObject res = geminiCall(prefs, key, body);
+            JSONArray cands = res.optJSONArray("candidates");
+            if (cands == null || cands.length() == 0) return geminiText(res); // throws with the reason
+            JSONObject content = cands.getJSONObject(0).optJSONObject("content");
+            if (content == null) throw new Http.ApiError(0, "Gemini gave no answer (" + cands.getJSONObject(0).optString("finishReason") + ")");
+            if (!content.has("role")) content.put("role", "model");
+            contents.put(content); // sent back as it came (it may carry Gemini's thought signatures)
+
+            JSONArray ps = content.optJSONArray("parts");
+            StringBuilder said = new StringBuilder();
+            JSONArray answers = new JSONArray();
+            for (int i = 0; ps != null && i < ps.length(); i++) {
+                JSONObject p = ps.getJSONObject(i);
+                if (p.has("text") && !p.optBoolean("thought")) said.append(p.optString("text"));
+                JSONObject call = p.optJSONObject("functionCall");
+                if (call == null) continue;
+                String name = call.optString("name");
+                JSONObject args = call.optJSONObject("args");
+                if (args == null) args = new JSONObject();
+                checkCancelled(status);
+                String result;
+                if ("search_web".equals(name)) {
+                    status.update("ఇంటర్నెట్‌లో వెతుకుతున్నాను…");
+                    result = geminiSearch(key, args.optString("query"));
+                } else {
+                    status.update(Tools.statusFor(name));
+                    JobProgress.ui = status;
+                    result = tools.execute(name, args);
+                }
+                Object value;
+                try { value = new JSONObject(result); } catch (Exception e) { value = result; }
+                answers.put(new JSONObject().put("functionResponse", new JSONObject().put("name", name)
+                        .put("response", new JSONObject().put("result", value))));
+            }
+            if (answers.length() == 0) {
+                String reply = said.toString().trim();
+                if (reply.isEmpty()) throw new Http.ApiError(0, "empty reply");
+                return reply;
+            }
+            contents.put(new JSONObject().put("role", "user").put("parts", answers));
+            status.update("ఆలోచిస్తున్నాను…");
+        }
+        throw new Http.ApiError(0, "too many tool rounds");
+    }
+
+    /** One Google Search through Gemini; a short answer with its sources. */
+    private String geminiSearch(String key, String query) {
+        try {
+            JSONObject body = new JSONObject()
+                    .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", new JSONArray()
+                            .put(new JSONObject().put("text", "Search the web and answer briefly with the facts (numbers, dates, names) and where they come from: " + query)))))
+                    .put("tools", new JSONArray().put(new JSONObject().put("google_search", new JSONObject())));
+            return new JSONObject().put("ok", true).put("answer", geminiText(geminiCall(prefs, key, body))).toString();
+        } catch (Exception e) {
+            return "{\"ok\":false,\"error\":\"search failed: " + String.valueOf(e.getMessage()).replace("\"", "'") + "\"}";
+        }
     }
 
     // ---------------------------------------------------------------- OpenAI

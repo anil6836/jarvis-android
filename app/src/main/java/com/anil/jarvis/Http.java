@@ -47,6 +47,10 @@ final class Http {
         return send("GET", url, null);
     }
 
+    static JSONObject get(String url, String... headers) throws IOException, ApiError {
+        return send("GET", url, null, headers);
+    }
+
     private static JSONObject send(String method, String url, JSONObject body, String... headers) throws IOException, ApiError {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         try {

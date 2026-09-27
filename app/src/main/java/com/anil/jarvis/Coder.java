@@ -42,23 +42,30 @@ final class Coder {
 
     /** The AI used for code: his "coding model" (e.g. gpt-6-astra, claude-opus-5-5) if set, else his normal brain. */
     static final class Engine {
-        final boolean openAi;
+        final boolean openAi, gemini;
         final String key, model;
-        Engine(boolean openAi, String key, String model) { this.openAi = openAi; this.key = key; this.model = model; }
+        Engine(boolean openAi, boolean gemini, String key, String model) { this.openAi = openAi; this.gemini = gemini; this.key = key; this.model = model; }
     }
 
     static Engine engine(Prefs p) {
         String m = p.codeModel().trim();
         if (!m.isEmpty()) {
-            boolean claude = m.toLowerCase(Locale.ROOT).startsWith("claude");
-            String key = claude ? p.anthropicKey().trim() : p.openAiKey().trim();
+            String low = m.toLowerCase(Locale.ROOT);
+            boolean claude = low.startsWith("claude"), gem = low.startsWith("gemini");
+            String key = claude ? p.anthropicKey().trim() : gem ? p.geminiKey().trim() : p.openAiKey().trim();
             // an honest error, never a quiet switch to some other model
-            if (key.isEmpty()) throw new IllegalStateException("కోడింగ్ మోడల్ " + m + " కి " + (claude ? "Anthropic (Claude)" : "OpenAI") + " API key లేదు (Jarvis settings).");
-            return new Engine(!claude, key, m);
+            if (key.isEmpty()) throw new IllegalStateException("కోడింగ్ మోడల్ " + m + " కి " + (claude ? "Anthropic (Claude)" : gem ? "Google (Gemini)" : "OpenAI") + " API key లేదు (Jarvis settings).");
+            return new Engine(!claude && !gem, gem, key, m);
         }
         String key = p.apiKey().trim();
         if (key.isEmpty()) throw new IllegalStateException("API key లేదు (Jarvis settings).");
-        return new Engine(p.isOpenAi(), key, p.model());
+        if (p.isGemini()) return new Engine(false, true, key, Brain.geminiModel(p, key));
+        return new Engine(p.isOpenAi(), false, key, p.model());
+    }
+
+    /** One Gemini request with the given model (code, websites, Python). */
+    private static JSONObject gemini(Engine e, JSONObject body) throws Exception {
+        return Http.post("https://generativelanguage.googleapis.com/v1beta/models/" + e.model + ":generateContent", body, "x-goog-api-key", e.key);
     }
 
     // ================================================================ Python
@@ -73,7 +80,36 @@ final class Coder {
     /** Runs a Python task; returns {answer, files[]} and saves the files. */
     static JSONObject runPython(Context c, Prefs prefs, String task) throws Exception {
         Engine e = engine(prefs);
+        if (e.gemini) return pythonGemini(c, e, task);
         return e.openAi ? pythonOpenAi(c, e.key, e.model, task) : pythonClaude(e.key, e.model, task);
+    }
+
+    /** Gemini runs the Python itself (code execution); charts come back as pictures. */
+    private static JSONObject pythonGemini(Context c, Engine e, String task) throws Exception {
+        JSONObject body = new JSONObject()
+                .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text",
+                        PY_SYSTEM + " (Only charts/pictures can be sent to his phone from here, not other files: put tables and numbers in the answer.)"))))
+                .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", new JSONArray().put(new JSONObject().put("text", task)))))
+                .put("tools", new JSONArray().put(new JSONObject().put("code_execution", new JSONObject())));
+        JSONObject res = gemini(e, body);
+        StringBuilder said = new StringBuilder();
+        JSONArray files = new JSONArray();
+        JSONArray cands = res.optJSONArray("candidates");
+        JSONObject content = cands == null || cands.length() == 0 ? null : cands.getJSONObject(0).optJSONObject("content");
+        JSONArray parts = content == null ? null : content.optJSONArray("parts");
+        int pic = 0;
+        for (int i = 0; parts != null && i < parts.length(); i++) {
+            JSONObject p = parts.getJSONObject(i);
+            if (p.has("text") && !p.optBoolean("thought")) said.append(p.optString("text"));
+            JSONObject data = p.optJSONObject("inlineData");
+            if (data != null && data.optString("mimeType").startsWith("image/") && files.length() < 4) {
+                byte[] bytes = Base64.decode(data.optString("data"), Base64.DEFAULT);
+                String name = "chart_" + (System.currentTimeMillis() % 100000) + (pic++ > 0 ? "_" + pic : "") + ".png";
+                Made m = save(c, "Jarvis", name, "image/png", bytes);
+                files.put(new JSONObject().put("name", m.name).put("saved", m.where).put("uri", String.valueOf(m.uri)).put("mime", m.mime));
+            }
+        }
+        return new JSONObject().put("answer", cleanAnswer(said.toString())).put("files", files);
     }
 
     private static JSONObject pythonOpenAi(Context c, String key, String model, String task) throws Exception {
@@ -258,6 +294,15 @@ final class Coder {
     static String ask(Prefs prefs, String system, String prompt, int maxTokens) throws Exception {
         Engine e = engine(prefs);
         String key = e.key;
+        if (e.gemini) {
+            JSONObject body = new JSONObject()
+                    .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", system))))
+                    .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", new JSONArray().put(new JSONObject().put("text", prompt)))))
+                    .put("generationConfig", new JSONObject().put("maxOutputTokens", Math.max(maxTokens, 16000)));
+            String r = Brain.geminiText(gemini(e, body));
+            if (r.isEmpty()) throw new Http.ApiError(0, "empty reply");
+            return r;
+        }
         if (e.openAi) {
             JSONObject body = new JSONObject().put("model", e.model).put("instructions", system).put("input", prompt)
                     .put("max_output_tokens", maxTokens);

@@ -59,7 +59,7 @@ public class SettingsActivity extends Activity {
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
     private Spinner voicePick;
-    private EditText realtimeModel, codeModel, githubToken;
+    private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
     private TextView voiceInfo, notifyInfo;
     private final NaturalVoice tester = new NaturalVoice();
     private SeekBar rate, sensitivity, bargeSens;
@@ -99,7 +99,8 @@ public class SettingsActivity extends Activity {
         provider = new RadioGroup(this);
         provider.addView(radio(1, "OpenAI (GPT)"));
         provider.addView(radio(2, "Anthropic (Claude)"));
-        provider.check(prefs.isOpenAi() ? 1 : 2);
+        provider.addView(radio(3, "Google (Gemini)"));
+        provider.check(prefs.isGemini() ? 3 : prefs.isOpenAi() ? 1 : 2);
         box.addView(provider);
 
         openAiKey = field("OpenAI API key (sk-…)", prefs.openAiKey(), true);
@@ -108,6 +109,12 @@ public class SettingsActivity extends Activity {
         anthropicKey = field("Anthropic API key (sk-ant-…)", prefs.anthropicKey(), true);
         anthropicModel = field("Anthropic మోడల్", prefs.anthropicModel(), false);
         link("Anthropic key ఇక్కడ తీసుకోండి", "https://console.anthropic.com/settings/keys");
+        geminiKey = field("Gemini API key (AIza…)", prefs.geminiKey(), true);
+        geminiModel = field("Gemini మోడల్ (ఖాళీ = Jarvis తనే ఎంచుకుంటుంది)", prefs.geminiModel(), false);
+        link("Gemini key ఇక్కడ తీసుకోండి", "https://aistudio.google.com/apikey");
+        note("Gemini: ఉచిత ప్లాన్‌లో Flash మోడల్స్ మాత్రమే, నిమిషానికి సుమారు 10 ప్రశ్నలు, రోజుకి ~1,500. ఉచిత ప్లాన్‌లో మీరు పంపేవి (మాటలు, స్క్రీన్‌షాట్లు) "
+                + "Google తమ మోడల్స్ మెరుగుపరచడానికి వాడుకోవచ్చు. పైన 'Google (Gemini)' ఎంచుకుంటేనే వాడుతుంది; వాయిస్ (సహజ గొంతు), Live మోడ్ OpenAI తోనే ఉంటాయి."
+                + (prefs.geminiAutoModel().isEmpty() ? "" : " ఇప్పుడు వాడుతున్న మోడల్: " + prefs.geminiAutoModel()));
         web = toggle("ఇంటర్నెట్ సెర్చ్ (వార్తలు, స్కోర్లు, ధరలు)", prefs.webSearch());
         note("Jarvis ఎంత తెలివిగా ఆలోచిస్తాడో పై మోడల్‌ని బట్టి ఉంటుంది. అత్యంత శక్తివంతమైనవి: OpenAI లో gpt-6-astra, Anthropic లో claude-opus-5-5 "
                 + "(ఇవి నెమ్మదిగా, ఖరీదుగా ఉంటాయి). రోజువారీ మాటలకి వేగమైన మోడల్ ఉంచి, కోడింగ్‌కి మాత్రమే శక్తివంతమైనది కింద 'కోడింగ్ మోడల్' లో పెట్టొచ్చు.");
@@ -476,7 +483,12 @@ public class SettingsActivity extends Activity {
         SharedPreferences.Editor e = prefs.sp.edit();
         String n = name.getText().toString().trim();
         e.putString("name", n.isEmpty() ? "Anil" : n);
-        e.putString("provider", provider.getCheckedRadioButtonId() == 2 ? Prefs.ANTHROPIC : Prefs.OPENAI);
+        int chosen = provider.getCheckedRadioButtonId();
+        e.putString("provider", chosen == 3 ? Prefs.GEMINI : chosen == 2 ? Prefs.ANTHROPIC : Prefs.OPENAI);
+        e.putString("gemini_key", geminiKey.getText().toString().trim());
+        String gm = geminiModel.getText().toString().trim();
+        if (!gm.equals(prefs.geminiModel())) e.putString("gemini_auto_model", ""); // a new choice: pick again
+        e.putString("gemini_model", gm);
         e.putString("openai_key", openAiKey.getText().toString().trim());
         e.putString("openai_model", openAiModel.getText().toString().trim());
         e.putString("code_model", codeModel.getText().toString().trim());

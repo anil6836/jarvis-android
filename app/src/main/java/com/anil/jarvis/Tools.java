@@ -377,6 +377,18 @@ final class Tools {
         return a;
     }
 
+    /** Gemini function declarations (a tool without parameters sends no schema). */
+    JSONArray geminiTools() throws Exception {
+        JSONArray a = new JSONArray();
+        for (Def d : DEFS) {
+            JSONObject f = new JSONObject().put("name", d.name).put("description", d.description);
+            JSONObject props = d.params.optJSONObject("properties");
+            if (props != null && props.length() > 0) f.put("parameters", d.params);
+            a.put(f);
+        }
+        return a;
+    }
+
     JSONArray anthropicTools() throws Exception {
         JSONArray a = new JSONArray();
         for (Def d : DEFS) {
