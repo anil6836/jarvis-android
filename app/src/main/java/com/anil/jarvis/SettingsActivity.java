@@ -111,6 +111,8 @@ public class SettingsActivity extends Activity {
         link("Anthropic key ఇక్కడ తీసుకోండి", "https://console.anthropic.com/settings/keys");
         geminiKey = field("Gemini API key (AIza…)", prefs.geminiKey(), true);
         geminiModel = field("Gemini మోడల్ (ఖాళీ = Jarvis తనే ఎంచుకుంటుంది)", prefs.geminiModel(), false);
+        // empty box = automatic: show the model Jarvis picked, greyed out, inside the box
+        geminiModel.setHint(prefs.geminiAutoModel().isEmpty() ? "ఆటోమేటిక్ (మొదటి ప్రశ్నకి ఎంచుకుంటుంది)" : "ఆటోమేటిక్: " + prefs.geminiAutoModel());
         link("Gemini key ఇక్కడ తీసుకోండి", "https://aistudio.google.com/apikey");
         note("Gemini: ఉచిత ప్లాన్‌లో Flash మోడల్స్ మాత్రమే, నిమిషానికి సుమారు 10 ప్రశ్నలు, రోజుకి ~1,500. ఉచిత ప్లాన్‌లో మీరు పంపేవి (మాటలు, స్క్రీన్‌షాట్లు) "
                 + "Google తమ మోడల్స్ మెరుగుపరచడానికి వాడుకోవచ్చు. పైన 'Google (Gemini)' ఎంచుకుంటేనే వాడుతుంది; వాయిస్ (సహజ గొంతు), Live మోడ్ OpenAI తోనే ఉంటాయి."
