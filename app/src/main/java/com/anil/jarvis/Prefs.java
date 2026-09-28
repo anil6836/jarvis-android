@@ -15,6 +15,7 @@ final class Prefs {
 
     Prefs(Context c) {
         sp = c.getSharedPreferences("jarvis", Context.MODE_PRIVATE);
+        Usage.init(c); // the API cost meter needs somewhere to keep its totals
     }
 
     String name() { return sp.getString("name", "Anil"); }
@@ -85,6 +86,8 @@ final class Prefs {
     boolean liveReady() { return liveMode() && !openAiKey().trim().isEmpty(); }
     /** Live: wait until he has finished his thought (not just a short pause) before answering, like ChatGPT's voice mode. */
     boolean livePatient() { return sp.getBoolean("live_patient", true); }
+    /** Warn about scam-looking messages and new autopay mandates (checked on the phone only). */
+    boolean scamGuard() { return sp.getBoolean("scam_guard", true); }
 
     // ---- wake words: "Jarvis" is the main one, "Hey Jarvis" the second
     boolean jarvisWord() { return sp.getBoolean("wake_jarvis", true); }

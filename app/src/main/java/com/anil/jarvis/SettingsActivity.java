@@ -48,7 +48,8 @@ public class SettingsActivity extends Activity {
     private TextView lockInfo, docsInfo, waInfo;
     private EditText sosContacts, smartUrls, smartApp, walletMax;
     private Switch walletPay, emotions;
-    private Switch alexaSpeak, livePatient;
+    private Switch alexaSpeak, livePatient, scamGuard;
+    private EditText balGemini, balOpenAi, balAnthropic;
     private Switch bargeCallVoice;
     /** Opened from the "new version" notification / note: go to Updates and start the update. */
     static final String EXTRA_UPDATE_NOW = "update_now";
@@ -139,6 +140,23 @@ public class SettingsActivity extends Activity {
         web = toggle("ఇంటర్నెట్ సెర్చ్ (వార్తలు, స్కోర్లు, ధరలు)", prefs.webSearch());
         note("Jarvis ఎంత తెలివిగా ఆలోచిస్తాడో పై మోడల్‌ని బట్టి ఉంటుంది. అత్యంత శక్తివంతమైనవి: OpenAI లో gpt-6-astra, Anthropic లో claude-opus-5-5 "
                 + "(ఇవి నెమ్మదిగా, ఖరీదుగా ఉంటాయి). రోజువారీ మాటలకి వేగమైన మోడల్ ఉంచి, కోడింగ్‌కి మాత్రమే శక్తివంతమైనది కింద 'కోడింగ్ మోడల్' లో పెట్టొచ్చు.");
+
+        // ---- API cost meter
+        section("API ఖర్చు (ఈ నెల)");
+        note("Jarvis ఒక్కో ప్రశ్నకి ఎన్ని tokens వాడాడో లెక్కించి, ఆ కంపెనీ ధరలతో సుమారు ఖర్చు చూపిస్తాడు. Live మోడ్, సహజ గొంతు OpenAI ఖాతా నుంచే కట్ అవుతాయి.");
+        for (String p : Usage.PROVIDERS) {
+            TextView t = Ui.text(this, Usage.line(p), 14.5f, Usage.color(p));
+            t.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 2));
+            box.addView(t);
+        }
+        balGemini = moneyField("Gemini credit (₹) · AI Studio → Billing లో ఉన్నది", Usage.GEMINI);
+        balOpenAi = moneyField("OpenAI balance ($)", Usage.OPENAI);
+        balAnthropic = moneyField("Anthropic balance ($)", Usage.ANTHROPIC);
+        note("మీ ఇప్పటి balance ఒక్కసారి ఇక్కడ పెట్టండి (ఖాళీ = లెక్కించకు). Jarvis అక్కడి నుంచి తగ్గిస్తూ, 20%, 5% మిగిలినప్పుడు notification ఇస్తాడు. "
+                + "Credit కొన్నాక కొత్త balance మళ్లీ ఇక్కడ పెట్టండి. ఇవి అంచనాలు; ఖచ్చితమైన లెక్క కంపెనీ billing పేజీల్లో ఉంటుంది. \"API ఖర్చు ఎంత?\" అని Jarvis ని కూడా అడగొచ్చు.");
+        link("Gemini billing (AI Studio)", "https://aistudio.google.com/usage");
+        link("OpenAI billing", "https://platform.openai.com/settings/organization/billing/overview");
+        link("Anthropic billing", "https://console.anthropic.com/settings/billing");
 
         // ---- coding, websites, apps
         section("కోడింగ్, వెబ్‌సైట్లు, యాప్‌లు");
@@ -376,6 +394,12 @@ public class SettingsActivity extends Activity {
         notifyInfo = Ui.text(this, "", 14, Ui.MUTED);
         box.addView(notifyInfo);
 
+        section("మోసం గార్డ్");
+        scamGuard = toggle("మోసం మెసేజ్‌లు, కొత్త autopay లు వస్తే హెచ్చరించు", prefs.scamGuard());
+        note("SMS, WhatsApp, Telegram, Gmail లో వచ్చే కొత్త మెసేజ్‌లను Jarvis ఫోన్‌లోనే చెక్ చేస్తాడు (ఏదీ బయటికి పంపడు, ఖర్చు లేదు): fake KYC, "
+                + "\"OTP / PIN చెప్పండి\", అనుమానపు links, లాటరీ, కరెంట్ కట్ బెదిరింపు, APK ఫైల్స్, డబ్బు రావడానికి UPI PIN అడగడం… అనుమానం వస్తే వెంటనే notification. "
+                + "మీ card మీద కొత్త autopay / mandate పెట్టినట్టు SMS వస్తే కూడా చెప్తాడు. దీనికి పై 'నోటిఫికేషన్ యాక్సెస్' కావాలి.");
+
         section("Jarvis తనంతట తానే");
         proactive = toggle("అడగకుండానే ముఖ్యమైనవి చెప్పు: మీటింగ్ దగ్గర పడితే, వర్షం వస్తే, ఇష్టమైనవాళ్లకి చాలా రోజులుగా ఫోన్ చేయకపోతే, మీ అలవాట్లు, నీళ్లు, ధర హెచ్చరికలు", prefs.proactive());
         note("రాత్రి మోడ్‌లో, కాల్ మాట్లాడుతున్నప్పుడు, Do Not Disturb లో మాట్లాడదు. \"ఇష్టమైనవాళ్లు\" = Contacts లో ⭐ పెట్టినవాళ్లు.");
@@ -556,6 +580,10 @@ public class SettingsActivity extends Activity {
         e.putString("natural_voice_name", NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())]);
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("live_patient", livePatient.isChecked());
+        e.putBoolean("scam_guard", scamGuard.isChecked());
+        saveBalance(balGemini, Usage.GEMINI);
+        saveBalance(balOpenAi, Usage.OPENAI);
+        saveBalance(balAnthropic, Usage.ANTHROPIC);
         e.putBoolean("barge_in", bargeIn.isChecked());
         e.putInt("barge_sens", bargeSens.getProgress());
         e.putBoolean("barge_call_voice", bargeCallVoice.isChecked());
@@ -714,10 +742,11 @@ public class SettingsActivity extends Activity {
             {"మీరు", "👤"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
             {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
             {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
-            {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"}};
+            {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},
+            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}};
     private static final int[] CARD_COLORS = {Ui.C_SKY, Ui.C_VIOLET, Ui.C_BLUE, Ui.C_CYAN, Ui.C_PINK, Ui.C_BLUE, Ui.C_TEAL,
             Ui.C_GREEN, Ui.C_SKY, Ui.C_AMBER, Ui.C_GREEN, Ui.C_VIOLET, Ui.C_AMBER, 0xFFF43F5E, Ui.C_PINK, Ui.C_GREEN, Ui.C_ORANGE,
-            Ui.C_TEAL, 0xFFF43F5E, Ui.C_CYAN, Ui.C_AMBER};
+            Ui.C_TEAL, 0xFFF43F5E, Ui.C_CYAN, Ui.C_AMBER, Ui.C_GREEN, 0xFFF43F5E};
     private int cards;
 
     /** A new section: its own glass card in its own colour, with an emoji and the title. */
@@ -754,6 +783,22 @@ public class SettingsActivity extends Activity {
         page.addView(card, lp);
         box = card;
         return card;
+    }
+
+    /** A number box for a balance (empty when none is set). */
+    private EditText moneyField(String label, String provider) {
+        float b = Usage.balance(provider);
+        String v = b <= 0 ? "" : (b == Math.rint(b) ? String.valueOf((long) b) : String.format(Locale.ENGLISH, "%.2f", b));
+        EditText e = field(label, v, false);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        return e;
+    }
+
+    /** A changed balance starts a new count-down; an unchanged one keeps counting. */
+    private void saveBalance(EditText e, String provider) {
+        float v = 0;
+        try { v = Float.parseFloat(e.getText().toString().trim().replace(",", "")); } catch (Exception ignored) {}
+        if (Math.abs(v - Usage.balance(provider)) > 0.001f) Usage.setBalance(this, provider, v);
     }
 
     /** A darker inset box for typing, inside the glass cards. */

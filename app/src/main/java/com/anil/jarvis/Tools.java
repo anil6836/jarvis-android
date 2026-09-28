@@ -280,6 +280,7 @@ final class Tools {
                 schema(new String[][]{{"name", "string", "App name (short)"}, {"description", "string", "What the app must do, in English, all features"},
                         {"change", "string", "Changes to the last app (instead of name/description)"}})));
         DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
+        DEFS.add(new Def("api_usage", "How much Jarvis's own AI use (Gemini, OpenAI incl. Live and the natural voice, Claude) has cost this month, and what is left of the balance he entered. Use for 'API ఖర్చు ఎంత', 'Gemini credit ఎంత మిగిలింది'.", schema(new String[][]{})));
         DEFS.add(new Def("bank_balance", "His account balance as given in the newest SMS from each bank.", schema(new String[][]{})));
         DEFS.add(new Def("voice_recorder", "Open the Voice Recorder app to record.", schema(new String[][]{})));
         DEFS.add(new Def("mobile_plan", "His Jio/Airtel/Vi data used, plan validity and recharge messages (from SMS).", schema(new String[][]{})));
@@ -444,6 +445,7 @@ final class Tools {
             case "write_code": return "కోడ్ రాస్తున్నాను…";
             case "make_app": return "యాప్ తయారు చేస్తున్నాను…";
             case "bank_balance": return "బ్యాలెన్స్ చూస్తున్నాను…";
+            case "api_usage": return "API ఖర్చు లెక్క చూస్తున్నాను…";
             case "voice_recorder": return "రికార్డర్ తెరుస్తున్నాను…";
             case "mobile_plan": return "మీ ప్లాన్ చూస్తున్నాను…";
             case "whatsapp_media": return "WhatsApp మీడియా…";
@@ -549,6 +551,8 @@ final class Tools {
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app": return makeApp(a.optString("name", ""), a.optString("description", ""), a.optString("change", ""));
                 case "bank_balance": return bankBalance();
+                case "api_usage": return Usage.summary().put("ok", true)
+                        .put("next", "Say each company's estimated spend this month in rupees (dollars too for OpenAI/Claude) and what is left if a balance was entered. Say they are estimates; the exact amount is on the billing page.").toString();
                 case "voice_recorder": return voiceRecorder();
                 case "mobile_plan": return mobilePlan();
                 case "routine": return routine(a.optString("action", "list"), a.optString("name", ""), a.optString("steps", ""));

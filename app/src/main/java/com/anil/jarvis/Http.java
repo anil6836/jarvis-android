@@ -70,11 +70,14 @@ final class Http {
             InputStream in = status >= 400 ? c.getErrorStream() : c.getInputStream();
             String text = in == null ? "" : readAll(in);
             if (status >= 400) throw new ApiError(status, errorMessage(text));
+            JSONObject json;
             try {
-                return new JSONObject(text);
+                json = new JSONObject(text);
             } catch (Exception e) {
                 throw new ApiError(status, "Unexpected reply: " + text.substring(0, Math.min(200, text.length())));
             }
+            try { Usage.fromResponse(url, json); } catch (Throwable ignored) {} // the cost meter never breaks a request
+            return json;
         } finally {
             c.disconnect();
         }

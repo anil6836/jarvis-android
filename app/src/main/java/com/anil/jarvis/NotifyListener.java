@@ -120,6 +120,7 @@ public class NotifyListener extends NotificationListenerService {
             prune();
         }
         maybeReadAloud(sbn, n, x, app, title, text);
+        ScamGuard.check(this, sbn.getPackageName(), app, title, text); // scam-looking message or a new autopay: warn
     }
 
     // ---------------------------------------------------------------- read new messages aloud

@@ -338,6 +338,7 @@ final class LiveSession {
                 synchronized (transcripts) { pendingTranscripts++; }
                 break;
             case "conversation.item.input_audio_transcription.completed": {
+                Usage.transcription(e.optJSONObject("usage"));
                 String t = e.optString("transcript", "").trim();
                 // Saved here, not on the main thread, so the tools of this turn can check his exact words.
                 if (!t.isEmpty()) store.addChat("user", t, false);
@@ -417,6 +418,7 @@ final class LiveSession {
     private void onResponseDone(JSONObject r) throws Exception {
         responseActive = false;
         if (r == null) return;
+        Usage.realtime(prefs.realtimeModel(), r.optJSONObject("usage"));
         if ("failed".equals(r.optString("status"))) {
             JSONObject d = r.optJSONObject("status_details");
             JSONObject err = d == null ? null : d.optJSONObject("error");
