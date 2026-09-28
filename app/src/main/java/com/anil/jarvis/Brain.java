@@ -396,7 +396,36 @@ final class Brain {
     }
 
     static JSONObject geminiCall(Prefs p, String key, JSONObject body) throws Exception {
-        return Http.post(GEMINI_API + "models/" + geminiModel(p) + ":generateContent", body, "x-goog-api-key", key);
+        String model = geminiModel(p);
+        String url = GEMINI_API + "models/" + model + ":generateContent";
+        try {
+            return Http.post(url, body, "x-goog-api-key", key);
+        } catch (Http.ApiError e) {
+            JSONObject g = body.optJSONObject("generationConfig");
+            if (e.status != 400 || g == null || !g.has("thinkingConfig")
+                    || String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT).indexOf("thinking") < 0) throw e;
+            noThinkingModel = model; // this model has no thinking setting: ask the same model again without it
+            g.remove("thinkingConfig");
+            return Http.post(url, body, "x-goog-api-key", key);
+        }
+    }
+
+    /** The Gemini model that refused the thinking setting once (it is not sent to that model again). */
+    private static volatile String noThinkingModel = "";
+
+    /**
+     * Quick replies: unless told otherwise, Gemini 3.x Flash thinks at "medium" and Pro at "high" before every
+     * answer and after every tool, which made Jarvis slow to reply. "low" is plenty for a phone assistant (the
+     * OpenAI brain already uses effort "low"). Flash-Lite already thinks the least by default, so it is left alone.
+     */
+    static JSONObject geminiConfig(Prefs p, int maxTokens) throws Exception {
+        JSONObject g = new JSONObject();
+        if (maxTokens > 0) g.put("maxOutputTokens", maxTokens);
+        String m = p.model().toLowerCase(Locale.ROOT).replaceFirst("^models/", "");
+        java.util.regex.Matcher v = java.util.regex.Pattern.compile("^gemini-(\\d+)").matcher(m);
+        boolean three = (v.find() && Integer.parseInt(v.group(1)) >= 3) || m.matches("gemini-(flash|pro)-latest");
+        if (three && !m.contains("lite") && !m.equals(noThinkingModel)) g.put("thinkingConfig", new JSONObject().put("thinkingLevel", "low"));
+        return g;
     }
 
     /** The text of Gemini's first answer. */
@@ -446,7 +475,7 @@ final class Brain {
                     .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", system))))
                     .put("contents", contents)
                     .put("tools", toolList)
-                    .put("generationConfig", new JSONObject().put("maxOutputTokens", 8192)); // its thinking counts too
+                    .put("generationConfig", geminiConfig(prefs, 8192)); // its thinking counts too
             JSONObject res = geminiCall(prefs, key, body);
             JSONArray cands = res.optJSONArray("candidates");
             if (cands == null || cands.length() == 0) return geminiText(res); // throws with the reason
@@ -498,7 +527,8 @@ final class Brain {
             JSONObject body = new JSONObject()
                     .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", new JSONArray()
                             .put(new JSONObject().put("text", "Search the web and answer briefly with the facts (numbers, dates, names) and where they come from: " + query)))))
-                    .put("tools", new JSONArray().put(new JSONObject().put("google_search", new JSONObject())));
+                    .put("tools", new JSONArray().put(new JSONObject().put("google_search", new JSONObject())))
+                    .put("generationConfig", geminiConfig(prefs, 0));
             return new JSONObject().put("ok", true).put("answer", geminiText(geminiCall(prefs, key, body))).toString();
         } catch (Exception e) {
             return "{\"ok\":false,\"error\":\"search failed: " + String.valueOf(e.getMessage()).replace("\"", "'") + "\"}";
