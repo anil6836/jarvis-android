@@ -2,7 +2,6 @@ name: Build Jarvis APK
 
 on:
   push:
-    branches: [main]   # only main makes a release; work branches (e.g. from claude.ai/code) never reach the phone
   workflow_dispatch:
 
 permissions:
