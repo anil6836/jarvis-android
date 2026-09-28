@@ -62,6 +62,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     static final String EXTRA_BRIEF = "brief";
     /** Opened from a notification with a question to ask Jarvis right away. */
     static final String EXTRA_ASK = "jarvis_ask";
+    /** Open the document scanner (from the scan_document tool, possibly started from the Hey Jarvis panel). */
+    static final String EXTRA_SCAN = "jarvis_scan";
     /** True while the Jarvis screen is in front (then a fresh screenshot would only show Jarvis). */
     static volatile boolean visible;
     private static final String BRIEF_PROMPT = "నాకు ఇప్పటి బ్రీఫింగ్ ఇవ్వు: సమయానికి తగ్గ పలకరింపు, ఈరోజు తేదీ, నా లొకేషన్‌లో వాతావరణం (get_weather వాడు), ఈరోజు క్యాలెండర్, రిమైండర్లు, నా యాక్టివ్ మిషన్లలో ముఖ్యమైనవి, బ్యాటరీ తక్కువగా ఉంటే అది కూడా. 6 వాక్యాలు మించకుండా.";
@@ -162,6 +164,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         syncWakeService();
         if (hudDash != null) hudDash.start();
         UpdateJob.schedule(this); // "new version" notification when a build is out
+        Backup.schedule(this);    // the daily GitHub backup, when switched on
         new Thread(() -> Updater.cleanup(getApplicationContext()), "jarvis-cleanup").start();
         showUpdateBanner();
         Updater.lookSoon(this, this::showUpdateBanner);
@@ -225,6 +228,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (installRepo != null) { // tapped "<app> యాప్ సిద్ధం"
             i.removeExtra(AppMaker.EXTRA_INSTALL);
             main.postDelayed(() -> AppMaker.install(this, installRepo), 400);
+            return;
+        }
+        if (i.getBooleanExtra(EXTRA_SCAN, false)) {
+            i.removeExtra(EXTRA_SCAN);
+            main.postDelayed(() -> Scanner.start(this), 400);
             return;
         }
         String askNow = i.getStringExtra(EXTRA_ASK);
@@ -518,6 +526,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         addChip(chips, "📰", "వార్తలు", "ఈరోజు ముఖ్యమైన 3 వార్తలు చెప్పు: ఒకటి భారతదేశం, ఒకటి తెలంగాణ లేదా ఆంధ్రప్రదేశ్, ఒకటి టెక్నాలజీ. ఇంటర్నెట్‌లో వెతికి, చిన్నగా చెప్పు.");
         addChip(chips, "⛅", "వాతావరణం", "ఇప్పుడు ఇక్కడ వాతావరణం ఎలా ఉంది? రేపు వర్షం పడే అవకాశం ఉందా?");
         addChip(chips, "📷", "ఫోటో స్కాన్", null);
+        addAction(chips, "📄", "Scan → PDF", () -> Scanner.start(this));
         addAction(chips, "🎥", "Live కెమెరా", this::toggleCamera);
         addChip(chips, "📱", "స్క్రీన్ చూడు", "నా స్క్రీన్‌లో ఏముందో చూసి చెప్పు (look_at_screen వాడు).");
         addChip(chips, "💬", "మెసేజ్‌లు", "నాకు వచ్చిన కొత్త మెసేజ్‌లు చదివి చెప్పు (read_notifications వాడు).");
@@ -1573,6 +1582,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         attachItem(card, d, IconView.CAMERA, Ui.C_BLUE, "Camera", "కెమెరాతో ఫోటో తీయండి", this::openCamera);
         attachItem(card, d, IconView.IMAGE, Ui.C_PINK, "Photos", "గ్యాలరీ నుంచి ఫోటో", this::openGallery);
         attachItem(card, d, IconView.CLIP, Ui.C_AMBER, "Files", "PDF, టెక్స్ట్, కోడ్ ఫైల్స్", this::openFiles);
+        attachItem(card, d, IconView.SCAN, Ui.C_VIOLET, "Scan → PDF", "కాగితాలు స్కాన్ చేసి ఒక PDF", () -> Scanner.start(this));
         attachItem(card, d, IconView.VIDEO, Ui.C_GREEN, "Live కెమెరా", "Jarvis చూస్తూ మాట్లాడతాడు", this::toggleCamera);
         d.setContentView(card);
         android.view.Window w = d.getWindow();
@@ -1665,6 +1675,30 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         });
     }
 
+    /** A scan became a PDF: share it, open it, or ask Jarvis about it. */
+    private void scanDone(String name, byte[] pdf, int pages, Uri saved, String where) {
+        if (isFinishing()) return;
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("PDF సిద్ధం ✓ (" + pages + " పేజీ" + (pages == 1 ? "" : "లు") + ")")
+                .setMessage(where + "\n\nWhatsApp లో పంపాలంటే 'షేర్', Jarvis కి అందులో ఏముందో అడగాలంటే 'Jarvis ని అడుగు'.")
+                .setPositiveButton("షేర్", (dl, w) -> {
+                    try {
+                        startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("application/pdf")
+                                .putExtra(Intent.EXTRA_STREAM, saved).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "PDF షేర్ చేయండి"));
+                    } catch (Exception ignored) {}
+                })
+                .setNeutralButton("తెరువు", (dl, w) -> {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(saved, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+                    } catch (Exception e) { Toast.makeText(this, "PDF చూసే యాప్ లేదు", Toast.LENGTH_SHORT).show(); }
+                })
+                .setNegativeButton("Jarvis ని అడుగు", (dl, w) -> {
+                    if (pdf.length > 10 * 1024 * 1024) { Toast.makeText(this, "PDF 10 MB కంటే పెద్దది", Toast.LENGTH_LONG).show(); return; }
+                    showFileAttached(Brain.PDF + Base64.encodeToString(pdf, Base64.NO_WRAP) + "|" + name, null, name);
+                })
+                .show();
+    }
+
     private void toast(String s) { main.post(() -> Toast.makeText(this, s, Toast.LENGTH_LONG).show()); }
 
     private byte[] readAll(Uri uri, int max) throws Exception {
@@ -1724,6 +1758,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (result != RESULT_OK) return;
         final Uri uri;
         if (req == REQ_FILE && data != null && data.getData() != null) { attachFile(data.getData()); return; }
+        if ((req == Scanner.REQ_SCAN || req == Scanner.REQ_PICK) && data != null) { Scanner.onResult(this, req, data, this::scanDone); return; }
         if (req == REQ_CAMERA) uri = PhotoProvider.uri();
         else if (req == REQ_GALLERY && data != null && data.getData() != null) uri = data.getData();
         else return;

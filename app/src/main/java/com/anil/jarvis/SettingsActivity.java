@@ -48,7 +48,8 @@ public class SettingsActivity extends Activity {
     private TextView lockInfo, docsInfo, waInfo;
     private EditText sosContacts, smartUrls, smartApp, walletMax;
     private Switch walletPay, emotions;
-    private Switch alexaSpeak, livePatient, scamGuard;
+    private Switch alexaSpeak, livePatient, scamGuard, backupDaily;
+    private TextView backupInfo;
     private EditText balGemini, balOpenAi, balAnthropic;
     private Switch bargeCallVoice;
     /** Opened from the "new version" notification / note: go to Updates and start the update. */
@@ -489,6 +490,20 @@ public class SettingsActivity extends Activity {
         showUpdateState();
         new Thread(() -> { Updater.backgroundCheck(getApplicationContext()); runOnUiThread(this::showUpdateState); }, "jarvis-update-look").start();
 
+        section("Backup (GitHub, private)");
+        note("మీ జ్ఞాపకాలు, మిషన్లు, సంభాషణ, రిమైండర్లు మీ GitHub లో jarvis-backup అనే PRIVATE repo లో దాచుకుంటాడు. ఫోన్ మారినా, reset అయినా ఏదీ పోదు; "
+                + "తర్వాత వచ్చే PC Jarvis కూడా ఇవే వాడుకోవచ్చు. 'కోడింగ్' card లో పెట్టిన GitHub token తోనే పనిచేస్తుంది. Jarvis ని \"backup చెయ్\" అని కూడా అడగొచ్చు.");
+        backupDaily = toggle("రోజూ తనంతట తానే backup చెయ్", Backup.enabled(this));
+        backupInfo = Ui.text(this, Backup.status(this), 14, Ui.MUTED);
+        backupInfo.setPadding(0, Ui.dp(this, 4), 0, 0);
+        box.addView(backupInfo);
+        button("ఇప్పుడే backup చెయ్", v -> runBackup(false));
+        button("Backup నుంచి తిరిగి తెచ్చు (కొత్త ఫోన్‌లో)", v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Backup నుంచి తెచ్చేదా?")
+                .setMessage("ఈ ఫోన్‌లో ఉన్న జ్ఞాపకాలు, మిషన్లు, సంభాషణ, రిమైండర్లు backup లో ఉన్నవాటితో మారిపోతాయి.")
+                .setPositiveButton("అవును, తెచ్చు", (d, w) -> runBackup(true))
+                .setNegativeButton("వద్దు", null).show());
+
         section("అనుమతులు, డేటా");
         button("అన్ని అనుమతులు ఇవ్వండి", v -> requestPermissions(MainActivity.corePermissions(), 5));
         button("సంభాషణ చెరిపేయి (జ్ఞాపకాలు, మిషన్లు అలాగే ఉంటాయి)", v -> {
@@ -581,6 +596,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("live_patient", livePatient.isChecked());
         e.putBoolean("scam_guard", scamGuard.isChecked());
+        Backup.setEnabled(this, backupDaily.isChecked());
         saveBalance(balGemini, Usage.GEMINI);
         saveBalance(balOpenAi, Usage.OPENAI);
         saveBalance(balAnthropic, Usage.ANTHROPIC);
@@ -743,10 +759,10 @@ public class SettingsActivity extends Activity {
             {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
             {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
             {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},
-            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}};
+            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"Backup", "☁️"}};
     private static final int[] CARD_COLORS = {Ui.C_SKY, Ui.C_VIOLET, Ui.C_BLUE, Ui.C_CYAN, Ui.C_PINK, Ui.C_BLUE, Ui.C_TEAL,
             Ui.C_GREEN, Ui.C_SKY, Ui.C_AMBER, Ui.C_GREEN, Ui.C_VIOLET, Ui.C_AMBER, 0xFFF43F5E, Ui.C_PINK, Ui.C_GREEN, Ui.C_ORANGE,
-            Ui.C_TEAL, 0xFFF43F5E, Ui.C_CYAN, Ui.C_AMBER, Ui.C_GREEN, 0xFFF43F5E};
+            Ui.C_TEAL, 0xFFF43F5E, Ui.C_CYAN, Ui.C_AMBER, Ui.C_GREEN, 0xFFF43F5E, Ui.C_SKY};
     private int cards;
 
     /** A new section: its own glass card in its own colour, with an emoji and the title. */
@@ -783,6 +799,24 @@ public class SettingsActivity extends Activity {
         page.addView(card, lp);
         box = card;
         return card;
+    }
+
+    /** Backup now, or restore from it, in the background. */
+    private void runBackup(boolean restore) {
+        String typed = githubToken.getText().toString().trim();
+        if (!typed.isEmpty() && !typed.equals(prefs.githubToken().trim())) prefs.sp.edit().putString("github_token", typed).apply();
+        backupInfo.setText(restore ? "Backup నుంచి తెస్తున్నాను…" : "Backup చేస్తున్నాను…");
+        new Thread(() -> {
+            String msg;
+            try { msg = restore ? Backup.restore(getApplicationContext()) : Backup.run(getApplicationContext()); }
+            catch (Exception ex) { msg = "కాలేదు: " + ex.getMessage(); }
+            final String m = msg;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                backupInfo.setText(m + "\n" + Backup.status(this));
+                Toast.makeText(this, m, Toast.LENGTH_LONG).show();
+            });
+        }, "jarvis-backup-now").start();
     }
 
     /** A number box for a balance (empty when none is set). */

@@ -10,7 +10,7 @@ import android.view.View;
 /** Small line icons drawn in code so the app needs no image files. */
 final class IconView extends View {
     static final int MIC = 0, SEND = 1, STOP = 2, CAMERA = 3, GEAR = 4, TRASH = 5, CHECK = 6, CLOSE = 7, SPEAKER = 8, PAUSE = 9, PLAY = 10,
-            PLUS = 11, WAVE = 12, MIC_OFF = 13, DOWN = 14, IMAGE = 15, CLIP = 16, VIDEO = 17;
+            PLUS = 11, WAVE = 12, MIC_OFF = 13, DOWN = 14, IMAGE = 15, CLIP = 16, VIDEO = 17, SCAN = 18;
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -155,6 +155,16 @@ final class IconView extends View {
                 canvas.drawRoundRect(r, 2, 2, p);
                 path.moveTo(15, 10.5f); path.lineTo(21, 7.5f); path.lineTo(21, 16.5f); path.lineTo(15, 13.5f);
                 canvas.drawPath(path, p);
+                break;
+            case SCAN: // a page inside scanner corners
+                path.moveTo(3, 8); path.lineTo(3, 3); path.lineTo(8, 3);
+                path.moveTo(16, 3); path.lineTo(21, 3); path.lineTo(21, 8);
+                path.moveTo(21, 16); path.lineTo(21, 21); path.lineTo(16, 21);
+                path.moveTo(8, 21); path.lineTo(3, 21); path.lineTo(3, 16);
+                canvas.drawPath(path, p);
+                canvas.drawLine(8, 9, 16, 9, p);
+                canvas.drawLine(8, 12, 16, 12, p);
+                canvas.drawLine(8, 15, 13, 15, p);
                 break;
             case DOWN:
                 path.moveTo(6, 9); path.lineTo(12, 15); path.lineTo(18, 9);

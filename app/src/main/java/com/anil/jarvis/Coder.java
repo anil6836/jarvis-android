@@ -408,7 +408,7 @@ final class Coder {
         return m;
     }
 
-    private static JSONObject request(String method, String url, JSONObject body, String... headers) throws Exception {
+    static JSONObject request(String method, String url, JSONObject body, String... headers) throws Exception {
         HttpURLConnection h = (HttpURLConnection) new URL(url).openConnection();
         try {
             h.setRequestMethod(method);
@@ -436,7 +436,7 @@ final class Coder {
         }
     }
 
-    private static byte[] download(String url, String... headers) throws Exception {
+    static byte[] download(String url, String... headers) throws Exception {
         HttpURLConnection h = (HttpURLConnection) new URL(url).openConnection();
         try {
             h.setConnectTimeout(20000);

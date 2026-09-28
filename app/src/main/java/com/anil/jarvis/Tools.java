@@ -168,8 +168,10 @@ final class Tools {
                         {"value", "string", "'on' or 'off'; for brightness a percent like '30'"}}, "setting")));
         DEFS.add(new Def("photos",
                 "His phone's photos. action show = open them in the gallery; count = how many; send = send them on WhatsApp to a contact "
-                        + "(opens WhatsApp with the photos attached as a draft; then ask 'పంపమంటారా?' and use send_draft).",
-                schema(new String[][]{{"action", "string", "show, send or count"},
+                        + "(opens WhatsApp with the photos attached as a draft; then ask 'పంపమంటారా?' and use send_draft); "
+                        + "search = find photos of something by looking at them ('గత నెల బైక్ ఫోటోలు చూపించు', 'ఆ బిల్లు ఫోటో ఎక్కడ'), shown in a grid.",
+                schema(new String[][]{{"action", "string", "show, send, count or search"},
+                        {"what", "string", "For search: what the photos show, in English (e.g. motorcycle, bill or receipt, beach, my son)"},
                         {"when", "string", "latest (default), today, yesterday, this week, this month, or a date yyyy-MM-dd"},
                         {"who", "string", "For send: contact name"}, {"count", "integer", "For send: how many of the newest (default 1, max 10)"},
                         {"caption", "string", "For send: optional message with the photo"},
@@ -282,6 +284,9 @@ final class Tools {
                 schema(new String[][]{{"name", "string", "App name (short)"}, {"description", "string", "What the app must do, in English, all features"},
                         {"change", "string", "Changes to the last app (instead of name/description)"}})));
         DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
+        DEFS.add(new Def("scan_document", "Open the document scanner: he photographs paper pages (bills, certificates, forms) and gets one clean PDF saved in Downloads/Jarvis/scans, to share or ask about.", schema(new String[][]{})));
+        DEFS.add(new Def("backup", "Jarvis's backup of memories, missions, chat and reminders in his PRIVATE GitHub repo jarvis-backup. action now = back up now; restore = bring them back onto this phone (replaces what is here, asks him first); status = when the last backup was.",
+                schema(new String[][]{{"action", "string", "now, restore or status"}}, "action")));
         DEFS.add(new Def("api_usage", "How much Jarvis's own AI use (Gemini, OpenAI incl. Live and the natural voice, Claude) has cost this month, and what is left of the balance he entered. Use for 'API ఖర్చు ఎంత', 'Gemini credit ఎంత మిగిలింది'.", schema(new String[][]{})));
         DEFS.add(new Def("bank_balance", "His account balance as given in the newest SMS from each bank.", schema(new String[][]{})));
         DEFS.add(new Def("voice_recorder", "Open the Voice Recorder app to record.", schema(new String[][]{})));
@@ -448,6 +453,8 @@ final class Tools {
             case "make_app": return "యాప్ తయారు చేస్తున్నాను…";
             case "bank_balance": return "బ్యాలెన్స్ చూస్తున్నాను…";
             case "api_usage": return "API ఖర్చు లెక్క చూస్తున్నాను…";
+            case "scan_document": return "స్కానర్ తెరుస్తున్నాను…";
+            case "backup": return "Backup…";
             case "voice_recorder": return "రికార్డర్ తెరుస్తున్నాను…";
             case "mobile_plan": return "మీ ప్లాన్ చూస్తున్నాను…";
             case "whatsapp_media": return "WhatsApp మీడియా…";
@@ -516,7 +523,9 @@ final class Tools {
                 case "send_email": return sendEmail(a.optString("to"), a.optString("subject"), a.optString("body"));
                 case "media_control": return mediaControl(a.optString("action"), a.optInt("percent", 50));
                 case "phone_setting": return phoneSetting(a.optString("setting"), a.optString("value", "on"));
-                case "photos": return photos(a.optString("action", "show"), a.optString("when", ""), a.optString("who", ""),
+                case "photos":
+                    if ("search".equalsIgnoreCase(a.optString("action"))) return photoSearch(a.optString("what"), a.optString("when", ""), a.optBoolean("screenshots", false));
+                    return photos(a.optString("action", "show"), a.optString("when", ""), a.optString("who", ""),
                         a.optInt("count", 1), a.optString("caption", ""), a.optBoolean("screenshots", false));
                 case "call_control": return callControl(a.optString("action"));
                 case "bank_spending": return bankSpending(a.optInt("days", 30));
@@ -555,6 +564,11 @@ final class Tools {
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app": return makeApp(a.optString("name", ""), a.optString("description", ""), a.optString("change", ""));
                 case "bank_balance": return bankBalance();
+                case "scan_document":
+                    act().startActivity(new Intent(act(), MainActivity.class).putExtra(MainActivity.EXTRA_SCAN, true)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
+                    return ok().put("next", "Say the scanner is opening: photograph each page, then Save; the PDF goes to Downloads/Jarvis/scans and he can share it or ask about it.").toString();
+                case "backup": return backup(a.optString("action", "now"));
                 case "api_usage": return Usage.summary().put("ok", true)
                         .put("next", "Say each company's estimated spend this month in rupees (dollars too for OpenAI/Claude) and what is left if a balance was entered. Say they are estimates; the exact amount is on the billing page.").toString();
                 case "voice_recorder": return voiceRecorder();
@@ -2247,6 +2261,9 @@ final class Tools {
         if (w.isEmpty() || w.equals("last") || w.equals("latest") || w.equals("recent")) return null;
         if (w.contains("today") || w.contains("ఈరోజు") || w.contains("ఈ రోజు")) return new long[]{today, today + day};
         if (w.contains("yesterday") || w.contains("నిన్న")) return new long[]{today - day, today};
+        if (w.contains("last week") || w.contains("గత వారం") || w.contains("పోయిన వారం")) return new long[]{today - 14 * day, today - 6 * day};
+        if (w.contains("last month") || w.contains("గత నెల") || w.contains("పోయిన నెల")) return new long[]{today - 62 * day, today - 28 * day};
+        if (w.contains("year") || w.contains("సంవత్సరం")) return new long[]{today - 365 * day, today + day};
         if (w.contains("week") || w.contains("వారం")) return new long[]{today - 7 * day, today + day};
         if (w.contains("month") || w.contains("నెల")) return new long[]{today - 30 * day, today + day};
         try {
@@ -2254,6 +2271,73 @@ final class Tools {
             if (d != null) return new long[]{d.getTime(), d.getTime() + day};
         } catch (Exception ignored) {}
         return null;
+    }
+
+    /**
+     * Finds photos of something by looking at them: numbered contact sheets of up to 24 thumbnails go to the AI
+     * (the chosen brain, with vision), which names the matching numbers; the matches open in a grid.
+     */
+    private String photoSearch(String what, String when, boolean screenshots) throws Exception {
+        String e = photoPermission();
+        if (e != null) return e;
+        if (what == null || what.trim().isEmpty()) return err("missing", "What should the photos show?");
+        if (!online()) return err("offline", "Photo search needs internet (the AI looks at the photos).");
+        String w = when == null || when.trim().isEmpty() ? "this month" : when;
+        List<Uri> list = findPhotos(w, 96, screenshots);
+        if (list.isEmpty()) return err("no_photos", "No photos found for '" + w + "'.");
+        List<Uri> matches = new ArrayList<>();
+        for (int start = 0; start < list.size(); start += 24) {
+            List<Uri> part = list.subList(start, Math.min(start + 24, list.size()));
+            String sheet = contactSheet(part);
+            if (sheet == null) continue;
+            String ans = Brain.oneShot(prefs, "You find photos in a numbered contact sheet. Reply ONLY with the numbers of the matching photos, "
+                    + "separated by commas, or NONE.", "Which numbered photos show: " + what.trim() + "?", sheet, false);
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+").matcher(ans == null ? "" : ans);
+            while (m.find()) {
+                int n = Integer.parseInt(m.group());
+                if (n >= 1 && n <= part.size() && !matches.contains(part.get(n - 1))) matches.add(part.get(n - 1));
+            }
+        }
+        if (matches.isEmpty()) return ok().put("found", 0).put("checked", list.size()).put("when", w)
+                .put("next", "Say none of the " + list.size() + " photos from that time seemed to show it; he can name another time (this week, last month, this year, a date).").toString();
+        PhotoGridActivity.show(act(), what.trim(), matches);
+        return ok().put("found", matches.size()).put("checked", list.size()).put("when", w)
+                .put("next", "Say how many photos matched and that they are open on the screen; tapping one opens it big, 'షేర్' shares them.").toString();
+    }
+
+    /** Up to 24 thumbnails in a numbered 6x4 grid, as a base64 JPEG. */
+    private String contactSheet(List<Uri> part) {
+        int cols = 6, rows = (part.size() + cols - 1) / cols, cell = 200;
+        android.graphics.Bitmap sheet = android.graphics.Bitmap.createBitmap(cols * cell, rows * cell, android.graphics.Bitmap.Config.RGB_565);
+        android.graphics.Canvas cv = new android.graphics.Canvas(sheet);
+        cv.drawColor(0xFF000000);
+        android.graphics.Paint label = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        label.setTextSize(34);
+        label.setFakeBoldText(true);
+        android.graphics.Paint box = new android.graphics.Paint();
+        int drawn = 0;
+        for (int i = 0; i < part.size(); i++) {
+            android.graphics.Bitmap t = PhotoGridActivity.thumb(act(), part.get(i), cell);
+            int x = (i % cols) * cell, y = (i / cols) * cell;
+            if (t != null) {
+                float sc = Math.max(cell / (float) t.getWidth(), cell / (float) t.getHeight());
+                int w = Math.round(t.getWidth() * sc), h = Math.round(t.getHeight() * sc);
+                android.graphics.Rect dst = new android.graphics.Rect(x + (cell - w) / 2, y + (cell - h) / 2, x + (cell + w) / 2, y + (cell + h) / 2);
+                cv.save();
+                cv.clipRect(x + 2, y + 2, x + cell - 2, y + cell - 2);
+                cv.drawBitmap(t, null, dst, null);
+                cv.restore();
+                drawn++;
+            }
+            box.setColor(0xCC000000);
+            cv.drawRect(x + 2, y + 2, x + 58, y + 44, box);
+            label.setColor(0xFFFFFF00);
+            cv.drawText(String.valueOf(i + 1), x + 8, y + 36, label);
+        }
+        if (drawn == 0) return null;
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        sheet.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out);
+        return android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP);
     }
 
     private List<Uri> findPhotos(String when, int max, boolean screenshots) {
@@ -3124,6 +3208,23 @@ final class Tools {
         String l = interpreterLang;
         interpreterLang = null;
         return l;
+    }
+
+    private String backup(String action) throws Exception {
+        String a = action == null ? "now" : action.trim().toLowerCase(Locale.ROOT);
+        if (a.startsWith("stat")) return ok().put("status", Backup.status(act())).put("daily", Backup.enabled(act())).toString();
+        if (prefs.githubToken().trim().isEmpty()) return err("no_github", "Backup needs his GitHub token in Settings (coding section).");
+        if (!online()) return err("offline", "Backup needs internet.");
+        try {
+            if (a.startsWith("rest")) {
+                if (!host.confirm("Backup నుంచి తెచ్చేదా?", "ఈ ఫోన్‌లో ఉన్న జ్ఞాపకాలు, మిషన్లు, సంభాషణ, రిమైండర్లు backup లో ఉన్నవాటితో మారిపోతాయి.", "అవును, తెచ్చు", 0))
+                    return err("cancelled", "He said no; nothing changed.");
+                return ok().put("done", Backup.restore(act())).toString();
+            }
+            return ok().put("done", Backup.run(act())).put("note", "Private repo jarvis-backup in his GitHub.").toString();
+        } catch (Exception e) {
+            return err("backup_failed", String.valueOf(e.getMessage()));
+        }
     }
 
     /** Marks an English-practice session in the interpreter hand-over (a live session with the tutor's instructions). */

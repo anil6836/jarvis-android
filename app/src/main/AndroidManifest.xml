@@ -210,6 +210,15 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
+        <service
+            android:name=".Backup"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <activity
+            android:name=".PhotoGridActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".AlarmReceiver"
             android:exported="false">
