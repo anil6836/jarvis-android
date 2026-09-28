@@ -9,6 +9,8 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
 import android.media.ExifInterface;
 import android.media.ToneGenerator;
@@ -71,7 +73,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** True from the moment Anil starts talking until Jarvis has finished answering. */
     static volatile boolean inConversation;
 
-    private static final int REQ_CAMERA = 11, REQ_GALLERY = 12, REQ_PERMS = 21, REQ_MIC = 22, REQ_LIVE = 23;
+    private static final int REQ_CAMERA = 11, REQ_GALLERY = 12, REQ_FILE = 13, REQ_PERMS = 21, REQ_MIC = 22, REQ_LIVE = 23;
 
     private Prefs prefs;
     private Store store;
@@ -81,7 +83,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
 
-    private OrbView orb;
+    private HoloOrb orb;               // the hologram core in the header (same states as OrbView)
+    private TextView greeting;
     private HudDashboard hudDash;      // status tiles under the header (chat tab only)
     private TextView status, clock, dateView, setupCard, undoBar;
     private LinearLayout chatList, missionList, doneList, memoryList;
@@ -101,8 +104,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private IconView pauseIcon;
     private IconView actionIcon;
 
-    private String pendingPhoto;       // base64 JPEG waiting to be sent
+    private String pendingPhoto;       // base64 JPEG (or "pdf:..." for a PDF) waiting to be sent
     private Bitmap pendingThumb;
+    private String pendingFileText;    // a text file's contents waiting to be sent
+    private String pendingFileName;    // name of the attached file (PDF or text), or null
+    private TextView attachText;
     private boolean busy;
     private boolean paused;
     private boolean lastWasVoice;
@@ -125,6 +131,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         brain = new Brain(prefs, store, tools);
         voice = new VoiceIO(this, prefs, this);
         setContentView(buildUi());
+        getWindow().setStatusBarColor(Ui.BG_TOP);
+        getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
         renderChat();
         onStoreChanged();
         tick();
@@ -361,95 +369,80 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private View buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Ui.INK);
         root.setPadding(dp(16), 0, dp(16), 0);
 
-        // ---- HUD header
+        // ---- header: the hologram core, a greeting, what Jarvis is doing, settings
         LinearLayout hud = new LinearLayout(this);
         hud.setGravity(Gravity.CENTER_VERTICAL);
-        hud.setPadding(0, dp(12), 0, dp(8));
-        orb = new OrbView(this);
+        hud.setPadding(0, dp(10), 0, dp(10));
+        orb = new HoloOrb(this, 70);
+        orb.setContentDescription("Jarvis");
         orb.setOnClickListener(v -> {
             if (live != null) liveScreen.show();
             else if (busy || voice.speaking || voice.listening) onActionPressed();
             else startConversation(); // like "Hey Jarvis": Live when it is switched on, else listen
         });
-        // Iron Man style: rotating HUD rings around the arc-reactor orb
-        FrameLayout reactor = new FrameLayout(this);
-        reactor.addView(new HudView(this), new FrameLayout.LayoutParams(-1, -1));
-        FrameLayout.LayoutParams olp = new FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER);
-        reactor.addView(orb, olp);
-        hud.addView(reactor, new LinearLayout.LayoutParams(dp(84), dp(84)));
+        hud.addView(orb, new LinearLayout.LayoutParams(dp(78), dp(78)));
 
         LinearLayout ident = new LinearLayout(this);
         ident.setOrientation(LinearLayout.VERTICAL);
-        ident.setPadding(dp(12), 0, dp(8), 0);
-        TextView name = Ui.mono(this, "JARVIS", 20, Ui.CYAN);
-        name.setLetterSpacing(0.34f);
-        ident.addView(name);
-        status = Ui.text(this, "", 14, Ui.MUTED);
+        ident.setPadding(dp(10), 0, dp(8), 0);
+        TextView brand = Ui.mono(this, "JARVIS", 12.5f, Ui.C_CYAN);
+        brand.setLetterSpacing(0.42f);
+        Ui.gradientText(brand, Ui.C_CYAN, Ui.C_VIOLET);
+        ident.addView(brand);
+        greeting = Ui.text(this, "", 21, 0xFFFFFFFF);
+        greeting.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        greeting.setSingleLine(true);
+        greeting.setEllipsize(TextUtils.TruncateAt.END);
+        ident.addView(greeting);
+        status = Ui.text(this, "", 13.5f, Ui.MUTED);
         status.setSingleLine(true);
         status.setEllipsize(TextUtils.TruncateAt.END);
         ident.addView(status);
         hud.addView(ident, new LinearLayout.LayoutParams(0, -2, 1));
-
-        LinearLayout readout = new LinearLayout(this);
-        readout.setOrientation(LinearLayout.VERTICAL);
-        readout.setGravity(Gravity.END);
-        clock = Ui.mono(this, "--:--", 20, Ui.TEXT);
-        clock.setLetterSpacing(0.02f);
-        readout.addView(clock);
+        clock = Ui.text(this, "", 12, Ui.MUTED);    // (time and date live in the status tiles now)
         dateView = Ui.text(this, "", 12, Ui.MUTED);
-        readout.addView(dateView);
-        hud.addView(readout);
 
-        IconView gear = new IconView(this, IconView.GEAR, Ui.CYAN);
+        IconView gear = new IconView(this, IconView.GEAR, 0xFFFFFFFF);
         gear.setContentDescription("సెట్టింగ్స్");
-        gear.setBackground(Ui.round(this, 0, Ui.LINE2, 10));
+        gear.setBackground(Ui.glass(this, 22));
         gear.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
-        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(dp(42), dp(42));
-        glp.leftMargin = dp(10);
-        hud.addView(gear, glp);
+        hud.addView(gear, new LinearLayout.LayoutParams(dp(44), dp(44)));
         root.addView(hud);
 
-        // ---- tabs
+        // ---- tabs: a glass pill; the chosen one glows blue-violet
         LinearLayout tabs = new LinearLayout(this);
-        String[] names = {"సంభాషణ", "మిషన్లు", "జ్ఞాపకాలు"};
+        tabs.setBackground(Ui.glass(this, 24));
+        tabs.setPadding(dp(4), dp(4), dp(4), dp(4));
+        String[] names = {"💬 సంభాషణ", "🎯 మిషన్లు", "🧠 జ్ఞాపకాలు"};
         for (int i = 0; i < 3; i++) {
             final int idx = i;
             LinearLayout tab = new LinearLayout(this);
-            tab.setOrientation(LinearLayout.VERTICAL);
-            tab.setGravity(Gravity.CENTER_HORIZONTAL);
-            LinearLayout labelRow = new LinearLayout(this);
-            labelRow.setGravity(Gravity.CENTER);
-            tabLabels[i] = Ui.text(this, names[i], 15.5f, Ui.MUTED);
-            labelRow.addView(tabLabels[i]);
+            tab.setGravity(Gravity.CENTER);
+            tab.setPadding(0, dp(8), 0, dp(8));
+            tabLabels[i] = Ui.text(this, names[i], 14.5f, Ui.MUTED);
+            tabLabels[i].setSingleLine(true);
+            tab.addView(tabLabels[i]);
             if (i > 0) {
-                TextView count = Ui.mono(this, "0", 12, Ui.CYAN);
-                count.setLetterSpacing(0);
-                count.setBackground(Ui.round(this, Ui.PANEL2, 0, 9));
-                count.setPadding(dp(6), 0, dp(6), 0);
+                TextView count = Ui.text(this, "0", 11.5f, 0xFFFFFFFF);
+                count.setBackground(Ui.round(this, Ui.alpha(i == 1 ? Ui.C_PINK : Ui.C_AMBER, 0xD0), 0, 9));
+                count.setPadding(dp(6), 0, dp(6), dp(1));
                 LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-2, -2);
-                clp.leftMargin = dp(6);
-                labelRow.addView(count, clp);
+                clp.leftMargin = dp(5);
+                tab.addView(count, clp);
                 if (i == 1) missionCount = count; else memoryCount = count;
             }
-            labelRow.setPadding(0, dp(8), 0, dp(7));
-            tab.addView(labelRow, new LinearLayout.LayoutParams(-1, -2));
-            tabLines[i] = new View(this);
-            tab.addView(tabLines[i], new LinearLayout.LayoutParams(-1, dp(2)));
+            tabLines[i] = tab;
             tab.setOnClickListener(v -> showTab(idx));
             tabs.addView(tab, new LinearLayout.LayoutParams(0, -2, 1));
         }
         root.addView(tabs);
-        View rule = new View(this);
-        rule.setBackgroundColor(Ui.LINE);
-        root.addView(rule, new LinearLayout.LayoutParams(-1, dp(1)));
 
         // ---- HUD dashboard: time, battery, network, weather, next reminder, wake word (collapsible)
         hudDash = new HudDashboard(this, prefs);
         LinearLayout.LayoutParams hdlp = new LinearLayout.LayoutParams(-1, -2);
-        hdlp.topMargin = dp(6);
+        hdlp.topMargin = dp(10);
         root.addView(hudDash, hdlp);
 
         // ---- live camera (hidden until the "Live కెమెరా" button is tapped)
@@ -514,31 +507,29 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         // ---- dock
         dock = new LinearLayout(this);
         dock.setOrientation(LinearLayout.VERTICAL);
-        dock.setPadding(0, dp(8), 0, dp(12));
-        View dockRule = new View(this);
-        dockRule.setBackgroundColor(Ui.LINE);
-        dock.addView(dockRule, new LinearLayout.LayoutParams(-1, dp(1)));
+        dock.setPadding(0, dp(2), 0, dp(12));
 
         HorizontalScrollView chipScroll = new HorizontalScrollView(this);
         chipScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout chips = new LinearLayout(this);
-        chips.setPadding(0, dp(8), 0, dp(8));
-        addChip(chips, "శుభోదయం బ్రీఫింగ్", BRIEF_PROMPT);
-        addChip(chips, "వార్తలు", "ఈరోజు ముఖ్యమైన 3 వార్తలు చెప్పు: ఒకటి భారతదేశం, ఒకటి తెలంగాణ లేదా ఆంధ్రప్రదేశ్, ఒకటి టెక్నాలజీ. ఇంటర్నెట్‌లో వెతికి, చిన్నగా చెప్పు.");
-        addChip(chips, "వాతావరణం", "ఇప్పుడు ఇక్కడ వాతావరణం ఎలా ఉంది? రేపు వర్షం పడే అవకాశం ఉందా?");
-        addChip(chips, "ఫోటో స్కాన్", null);
-        TextView camChip = Ui.pill(this, "Live కెమెరా");
-        camChip.setOnClickListener(v -> toggleCamera());
-        LinearLayout.LayoutParams ccl = new LinearLayout.LayoutParams(-2, -2);
-        ccl.rightMargin = dp(8);
-        chips.addView(camChip, ccl);
-        addChip(chips, "స్క్రీన్ చూడు", "నా స్క్రీన్‌లో ఏముందో చూసి చెప్పు (look_at_screen వాడు).");
-        addChip(chips, "మెసేజ్‌లు", "నాకు వచ్చిన కొత్త మెసేజ్‌లు చదివి చెప్పు (read_notifications వాడు).");
-        addChip(chips, "రిమైండర్లు", "నా రాబోయే రిమైండర్లు, ఈరోజు క్యాలెండర్ చెప్పు.");
-        addChip(chips, "మిషన్ స్టేటస్", "నా మిషన్ల స్టేటస్ చెప్పు. ఎన్ని పెండింగ్‌లో ఉన్నాయి, ముందు ఏది చేయాలో ఒక్కటి సూచించు.");
-        addChip(chips, "ఫోకస్ మోడ్", "నేను ఇప్పుడు 25 నిమిషాలు ఫోకస్ చేయాలి. నా మిషన్ల నుంచి ఒకటి ఎంచుకుని మూడు చిన్న స్టెప్స్ చెప్పు, తర్వాత 25 నిమిషాల టైమర్ పెట్టు.");
-        addChip(chips, "సూట్ అప్", "Jarvis, సూట్ అప్! ఈరోజుని ఎదుర్కోవడానికి నన్ను సిద్ధం చేయి.");
-        addChip(chips, "ఒక జోక్", "నీ డ్రై బట్లర్ స్టైల్‌లో ఒక చిన్న తెలుగు జోక్ చెప్పు.");
+        chips.setPadding(0, dp(8), 0, dp(10));
+        // colourful quick actions; the last few start a request for him to finish typing
+        addChip(chips, "🌅", "శుభోదయం బ్రీఫింగ్", BRIEF_PROMPT);
+        addChip(chips, "📰", "వార్తలు", "ఈరోజు ముఖ్యమైన 3 వార్తలు చెప్పు: ఒకటి భారతదేశం, ఒకటి తెలంగాణ లేదా ఆంధ్రప్రదేశ్, ఒకటి టెక్నాలజీ. ఇంటర్నెట్‌లో వెతికి, చిన్నగా చెప్పు.");
+        addChip(chips, "⛅", "వాతావరణం", "ఇప్పుడు ఇక్కడ వాతావరణం ఎలా ఉంది? రేపు వర్షం పడే అవకాశం ఉందా?");
+        addChip(chips, "📷", "ఫోటో స్కాన్", null);
+        addAction(chips, "🎥", "Live కెమెరా", this::toggleCamera);
+        addChip(chips, "📱", "స్క్రీన్ చూడు", "నా స్క్రీన్‌లో ఏముందో చూసి చెప్పు (look_at_screen వాడు).");
+        addChip(chips, "💬", "మెసేజ్‌లు", "నాకు వచ్చిన కొత్త మెసేజ్‌లు చదివి చెప్పు (read_notifications వాడు).");
+        addChip(chips, "⏰", "రిమైండర్లు", "నా రాబోయే రిమైండర్లు, ఈరోజు క్యాలెండర్ చెప్పు.");
+        addAction(chips, "🌐", "వెబ్‌సైట్", () -> prefill("ఒక వెబ్‌సైట్ తయారు చెయ్: "));
+        addAction(chips, "📲", "యాప్", () -> prefill("ఒక Android యాప్ తయారు చెయ్: "));
+        addAction(chips, "🐍", "Python", () -> prefill("Python తో లెక్కించు: "));
+        addAction(chips, "💻", "కోడ్", () -> prefill("కోడ్ రాయి: "));
+        addChip(chips, "🎯", "మిషన్ స్టేటస్", "నా మిషన్ల స్టేటస్ చెప్పు. ఎన్ని పెండింగ్‌లో ఉన్నాయి, ముందు ఏది చేయాలో ఒక్కటి సూచించు.");
+        addChip(chips, "🧘", "ఫోకస్ మోడ్", "నేను ఇప్పుడు 25 నిమిషాలు ఫోకస్ చేయాలి. నా మిషన్ల నుంచి ఒకటి ఎంచుకుని మూడు చిన్న స్టెప్స్ చెప్పు, తర్వాత 25 నిమిషాల టైమర్ పెట్టు.");
+        addChip(chips, "🦾", "సూట్ అప్", "Jarvis, సూట్ అప్! ఈరోజుని ఎదుర్కోవడానికి నన్ను సిద్ధం చేయి.");
+        addChip(chips, "😄", "ఒక జోక్", "ఒక చిన్న తెలుగు జోక్ చెప్పు.");
         chipScroll.addView(chips);
         dock.addView(chipScroll);
 
@@ -548,7 +539,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         attachThumb = new ImageView(this);
         attachThumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
         attachRow.addView(attachThumb, new LinearLayout.LayoutParams(dp(46), dp(46)));
-        TextView attachText = Ui.text(this, "  ఫోటో జత చేశారు", 14, Ui.MUTED);
+        attachText = Ui.text(this, "  ఫోటో జత చేశారు", 14, Ui.MUTED);
+        attachText.setSingleLine(true);
+        attachText.setEllipsize(TextUtils.TruncateAt.MIDDLE);
         attachRow.addView(attachText, new LinearLayout.LayoutParams(0, -2, 1));
         TextView attachRemove = Ui.text(this, "తీసేయి", 14, Ui.RED);
         attachRemove.setPadding(dp(10), dp(8), dp(4), dp(8));
@@ -560,7 +553,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         // like ChatGPT: [+] message [mic] [blue Live button], all in one rounded box
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setBackground(Ui.round(this, Ui.DEEP, Ui.LINE2, 28));
+        row.setBackground(Ui.round(this, 0x1AFFFFFF, 0x33FFFFFF, 28));
         row.setPadding(dp(4), dp(4), dp(5), dp(4));
         IconView plus = new IconView(this, IconView.PLUS, Ui.TEXT);
         plus.setContentDescription("ఫోటో జత చేయి");
@@ -601,7 +594,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         row.addView(pauseBtn, plp);
 
         actionBtn = new FrameLayout(this);
-        actionBtn.setBackground(Ui.round(this, LiveScreen.blue(), 0, 23));
+        actionBtn.setBackground(actionBg(LiveScreen.blue()));
         actionIcon = new IconView(this, IconView.WAVE, 0xFFFFFFFF);
         actionBtn.addView(actionIcon, new FrameLayout.LayoutParams(-1, -1));
         actionBtn.setOnClickListener(v -> onActionPressed());
@@ -615,6 +608,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         showTab(0);
         // the full-screen Live view sits on top, hidden until Live starts
         FrameLayout top = new FrameLayout(this);
+        top.setBackground(new Ui.Aurora());
         top.addView(root, new FrameLayout.LayoutParams(-1, -1));
         liveScreen = new LiveScreen(this, this);
         liveScreen.setVisibility(View.GONE);
@@ -687,8 +681,52 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         return scroll;
     }
 
-    private void addChip(LinearLayout chips, String label, String prompt) {
-        TextView chip = Ui.pill(this, label);
+    /** The blue Live / send button: a blue-violet gradient; stop and listen keep their plain colours. */
+    private Drawable actionBg(int bg) {
+        if (bg != LiveScreen.blue()) return Ui.round(this, bg, 0, 23);
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Ui.C_BLUE, Ui.C_VIOLET});
+        g.setShape(GradientDrawable.OVAL);
+        return g;
+    }
+
+    private static final int[][] CHIP_COLORS = {
+            {Ui.C_CYAN, Ui.C_BLUE}, {Ui.C_VIOLET, Ui.C_PINK}, {Ui.C_AMBER, Ui.C_ORANGE}, {Ui.C_GREEN, Ui.C_TEAL},
+            {Ui.C_BLUE, Ui.C_VIOLET}, {Ui.C_PINK, Ui.C_ORANGE}, {Ui.C_TEAL, Ui.C_CYAN}, {Ui.C_ORANGE, Ui.C_PINK}};
+    private int chipIndex;
+
+    /** A colourful quick-action pill: emoji, words, its own soft gradient. */
+    private TextView chip(LinearLayout chips, String emoji, String label) {
+        int[] c = CHIP_COLORS[chipIndex++ % CHIP_COLORS.length];
+        TextView chip = Ui.text(this, emoji + "  " + label, 14, 0xFFFFFFFF);
+        chip.setSingleLine(true);
+        GradientDrawable g = Ui.grad(this, new int[]{Ui.alpha(c[0], 0x55), Ui.alpha(c[1], 0x33)}, 999, null);
+        g.setStroke(dp(1), Ui.alpha(c[0], 0x99));
+        chip.setBackground(g);
+        chip.setPadding(dp(13), dp(8), dp(14), dp(8));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.rightMargin = dp(8);
+        chips.addView(chip, lp);
+        return chip;
+    }
+
+    private void addAction(LinearLayout chips, String emoji, String label, Runnable action) {
+        chip(chips, emoji, label).setOnClickListener(v -> action.run());
+    }
+
+    /** Starts a request in the message box for him to finish ("ఒక వెబ్‌సైట్ తయారు చెయ్: …"). */
+    private void prefill(String start) {
+        if (live != null) { liveScreen.show(); return; }
+        input.setText(start);
+        input.setSelection(input.getText().length());
+        input.requestFocus();
+        try {
+            android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
+            if (imm != null) imm.showSoftInput(input, 0);
+        } catch (Exception ignored) {}
+    }
+
+    private void addChip(LinearLayout chips, String emoji, String label, String prompt) {
+        TextView chip = chip(chips, emoji, label);
         chip.setOnClickListener(v -> {
             if (busy) return;
             if (prompt != null && live != null && live.isOpen()) {
@@ -700,16 +738,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (prompt == null) pickPhoto();
             else send(prompt, label, false);
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-        lp.rightMargin = dp(8);
-        chips.addView(chip, lp);
     }
 
     private void showTab(int idx) {
         for (int i = 0; i < 3; i++) {
             panels[i].setVisibility(i == idx ? View.VISIBLE : View.GONE);
-            tabLabels[i].setTextColor(i == idx ? Ui.TEXT : Ui.MUTED);
-            tabLines[i].setBackgroundColor(i == idx ? Ui.CYAN : 0);
+            tabLabels[i].setTextColor(i == idx ? 0xFFFFFFFF : Ui.MUTED);
+            tabLines[i].setBackground(i == idx ? Ui.grad(this, new int[]{Ui.C_BLUE, Ui.C_VIOLET}, 20, null) : null);
         }
         dock.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
         if (hudDash != null) hudDash.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
@@ -719,8 +754,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void tick() {
         Date now = new Date();
         clock.setText(new SimpleDateFormat("HH:mm", Locale.ENGLISH).format(now));
+        if (greeting != null) greeting.setText(shortGreeting() + ", " + prefs.name());
         dateView.setText(new SimpleDateFormat("EEEE, d MMM", new Locale("te", "IN")).format(now));
         main.postDelayed(this::tick, 15000);
+    }
+
+    private String shortGreeting() {
+        int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        if (h >= 4 && h < 12) return "శుభోదయం";
+        if (h >= 12 && h < 17) return "శుభ మధ్యాహ్నం";
+        if (h >= 17 && h < 21) return "శుభ సాయంత్రం";
+        return "శుభ రాత్రి";
     }
 
     private String greetingWord() {
@@ -777,7 +821,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
         LinearLayout meta = new LinearLayout(this);
         meta.setGravity(Gravity.CENTER_VERTICAL);
-        TextView who = Ui.mono(this, (user ? prefs.name().toUpperCase(Locale.ROOT) : "JARVIS") + " · " + hhmm(t), 11.5f, user ? Ui.GOLD : Ui.CYAN2);
+        TextView who = Ui.mono(this, (user ? prefs.name().toUpperCase(Locale.ROOT) : "JARVIS") + " · " + hhmm(t), 11, user ? Ui.C_AMBER : Ui.C_CYAN);
         meta.addView(who);
         wrap.addView(meta);
 
@@ -796,14 +840,15 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         body.setLineSpacing(0, 1.25f);
         body.setTextIsSelectable(true);
         body.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.8f));
-        if (user) {
-            body.setBackground(Ui.round(this, Ui.PANEL, Ui.LINE2, 14));
-            body.setPadding(dp(13), dp(8), dp(13), dp(9));
-        } else {
-            body.setBackground(new Ui.Brackets(this));
+        if (user) { // blue-violet bubble, like a sent message
+            body.setTextColor(0xFFFFFFFF);
+            body.setBackground(Ui.corners(this, Ui.grad(this, new int[]{Ui.C_BLUE, Ui.C_VIOLET}, 0, GradientDrawable.Orientation.TL_BR), 20, 20, 6, 20));
             body.setPadding(dp(14), dp(9), dp(14), dp(10));
+        } else {    // frosted glass
+            body.setBackground(Ui.corners(this, Ui.round(this, 0x16FFFFFF, 0x26FFFFFF, 0), 6, 20, 20, 20));
+            body.setPadding(dp(14), dp(10), dp(14), dp(11));
             jarvisBodies.add(body);
-            IconView replay = new IconView(this, IconView.SPEAKER, Ui.CYAN2);
+            IconView replay = new IconView(this, IconView.SPEAKER, Ui.C_CYAN);
             replay.setContentDescription("మళ్లీ వినిపించు");
             replay.setOnClickListener(v -> {
                 lastWasVoice = false;
@@ -991,7 +1036,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         int bg = LiveScreen.blue();
         int fg = 0xFFFFFFFF;
         String desc;
-        boolean typed = input.getText().toString().trim().length() > 0 || pendingPhoto != null;
+        boolean typed = input.getText().toString().trim().length() > 0 || pendingPhoto != null || pendingFileText != null;
         if (live != null) { icon = IconView.WAVE; desc = "Live తెర చూపించు"; }
         else if (busy || voice.speaking) { icon = IconView.STOP; bg = Ui.RED; fg = 0xFF2A0703; desc = "ఆపు"; }
         else if (voice.listening) { icon = IconView.STOP; bg = Ui.GOLD; fg = Ui.GOLD_INK; desc = "వినడం ఆపు"; }
@@ -999,7 +1044,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         else { icon = IconView.WAVE; desc = "Live సంభాషణ"; }
         actionIcon.setIcon(icon);
         actionIcon.setColor(fg);
-        actionBtn.setBackground(Ui.round(this, bg, 0, 23));
+        actionBtn.setBackground(actionBg(bg));
         actionBtn.setContentDescription(desc);
         if (micIcon != null) {
             micIcon.setVisibility(live != null ? View.GONE : View.VISIBLE);
@@ -1078,7 +1123,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             return;
         }
         String text = input.getText().toString().trim();
-        if (!text.isEmpty() || pendingPhoto != null) {
+        if (!text.isEmpty() || pendingPhoto != null || pendingFileText != null) {
             input.setText("");
             send(text, null, false);
         } else {
@@ -1362,9 +1407,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (photoNow == null && camera != null && camera.isOpen()) photoNow = CameraPanel.latestFrame;
         final String photo = photoNow;
         final Bitmap thumb = pendingThumb;
-        if ((shown == null || shown.isEmpty()) && photo == null) return;
-        if (shown == null || shown.isEmpty()) shown = "ఈ ఫోటోలో ఏముందో చెప్పు.";
-        final String ask = prompt == null || prompt.isEmpty() ? shown : prompt;
+        final String fileText = pendingFileText, fileName = pendingFileName;
+        if ((shown == null || shown.isEmpty()) && photo == null && fileText == null) return;
+        if (shown == null || shown.isEmpty()) shown = fileName != null ? "ఈ ఫైల్‌లో ఏముందో చిన్నగా చెప్పు." : "ఈ ఫోటోలో ఏముందో చెప్పు.";
+        String q = prompt == null || prompt.isEmpty() ? shown : prompt;
+        if (fileText != null) q = q + "\n\n--- ఫైల్: " + fileName + " ---\n" + fileText; // a text file goes in as text
+        final String ask = q;
+        if (fileName != null) shown = "📎 " + fileName + "\n" + shown;
 
         if (!prefs.hasBrain()) {
             addMessage("assistant", "క్షమించండి " + prefs.name() + ", నా మెదడుకి ఇంకా API key లేదు. సెట్టింగ్స్‌లో పెట్టండి.", System.currentTimeMillis(), null);
@@ -1375,7 +1424,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         clearAttachment();
         showTab(0);
         List<JSONObject> history = store.chat();
-        store.addChat("user", shown, photo != null);
+        store.addChat("user", shown, photo != null && !Brain.isPdf(photo));
         addMessage("user", shown, System.currentTimeMillis(), thumb);
         thinkingView = addMessage("assistant", "ఆలోచిస్తున్నాను…", System.currentTimeMillis(), null);
         thinkingView.setTextColor(Ui.MUTED);
@@ -1501,13 +1550,133 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     // ================================================================ photos
 
+    /** The ➕ menu, like ChatGPT's: camera, photos, files, and the live camera. */
     private void pickPhoto() {
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("ఫోటో")
-                .setItems(new String[]{"కెమెరాతో తీయండి", "గ్యాలరీ నుంచి ఎంచుకోండి"}, (d, which) -> {
-                    if (which == 0) openCamera(); else openGallery();
-                })
-                .show();
+        android.app.Dialog d = new android.app.Dialog(this);
+        d.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(Ui.round(this, 0xF5121A33, 0x33FFFFFF, 24));
+        card.setPadding(dp(8), dp(10), dp(8), dp(10));
+        attachItem(card, d, IconView.CAMERA, Ui.C_BLUE, "Camera", "కెమెరాతో ఫోటో తీయండి", this::openCamera);
+        attachItem(card, d, IconView.IMAGE, Ui.C_PINK, "Photos", "గ్యాలరీ నుంచి ఫోటో", this::openGallery);
+        attachItem(card, d, IconView.CLIP, Ui.C_AMBER, "Files", "PDF, టెక్స్ట్, కోడ్ ఫైల్స్", this::openFiles);
+        attachItem(card, d, IconView.VIDEO, Ui.C_GREEN, "Live కెమెరా", "Jarvis చూస్తూ మాట్లాడతాడు", this::toggleCamera);
+        d.setContentView(card);
+        android.view.Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+            w.setLayout(dp(280), android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            android.view.WindowManager.LayoutParams lp = w.getAttributes();
+            lp.gravity = Gravity.BOTTOM | Gravity.START;
+            lp.x = dp(12);
+            lp.y = dp(78); // just above the message box
+            lp.dimAmount = 0.45f;
+            w.setAttributes(lp);
+            w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        }
+        d.show();
+    }
+
+    private void attachItem(LinearLayout card, android.app.Dialog d, int icon, int color, String title, String sub, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8), dp(7), dp(8), dp(7));
+        row.setBackground(Ui.ripple(this, 16));
+        FrameLayout circle = new FrameLayout(this);
+        circle.setBackground(Ui.round(this, (color & 0x00FFFFFF) | 0x33000000, 0, 22));
+        circle.addView(new IconView(this, icon, color), new FrameLayout.LayoutParams(-1, -1));
+        row.addView(circle, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setPadding(dp(14), 0, 0, 0);
+        texts.addView(Ui.text(this, title, 16.5f, Ui.TEXT));
+        texts.addView(Ui.text(this, sub, 12.5f, Ui.MUTED));
+        row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
+        row.setOnClickListener(v -> { d.dismiss(); action.run(); });
+        card.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void openFiles() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/pdf", "text/*", "image/*", "application/json",
+                        "application/xml", "application/javascript", "application/x-python"});
+        try {
+            startActivityForResult(i, REQ_FILE);
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫైల్స్ తెరవలేకపోయాను", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static final String[] TEXT_EXT = {".txt", ".md", ".csv", ".json", ".xml", ".html", ".htm", ".py", ".java", ".kt",
+            ".js", ".ts", ".css", ".c", ".cpp", ".h", ".sql", ".yaml", ".yml", ".log", ".ini", ".sh", ".gradle", ".srt"};
+
+    /** A picked file: photos go the photo way, a PDF goes to the AI as a document, a text/code file as text. */
+    private void attachFile(Uri uri) {
+        worker.submit(() -> {
+            String name = "file", mime = null;
+            long size = -1;
+            try (android.database.Cursor c = getContentResolver().query(uri, null, null, null, null)) {
+                if (c != null && c.moveToFirst()) {
+                    int ni = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                    int si = c.getColumnIndex(android.provider.OpenableColumns.SIZE);
+                    if (ni >= 0 && !c.isNull(ni)) name = c.getString(ni);
+                    if (si >= 0 && !c.isNull(si)) size = c.getLong(si);
+                }
+            } catch (Exception ignored) {}
+            try { mime = getContentResolver().getType(uri); } catch (Exception ignored) {}
+            String low = name.toLowerCase(Locale.ROOT);
+            boolean text = mime != null && (mime.startsWith("text/") || mime.contains("json") || mime.contains("xml") || mime.contains("javascript"));
+            for (String ext : TEXT_EXT) if (low.endsWith(ext)) text = true;
+            final String fname = name;
+            try {
+                if (mime != null && mime.startsWith("image/")) {
+                    main.post(() -> attachImage(uri));
+                } else if ("application/pdf".equals(mime) || low.endsWith(".pdf")) {
+                    if (size > 10L * 1024 * 1024) { toast("PDF 10 MB కంటే పెద్దది. చిన్న ఫైల్ ఎంచుకోండి."); return; }
+                    byte[] bytes = readAll(uri, 10 * 1024 * 1024 + 1);
+                    if (bytes.length > 10 * 1024 * 1024) { toast("PDF 10 MB కంటే పెద్దది. చిన్న ఫైల్ ఎంచుకోండి."); return; }
+                    String b64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
+                    main.post(() -> showFileAttached(Brain.PDF + b64 + "|" + fname, null, fname));
+                } else if (text) {
+                    byte[] bytes = readAll(uri, 400 * 1024);
+                    String content = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                    if (content.length() > 60000) content = content.substring(0, 60000) + "\n… (ఫైల్ ఇంకా ఉంది, మొదటి భాగం మాత్రమే)";
+                    final String body = content;
+                    main.post(() -> showFileAttached(null, body, fname));
+                } else {
+                    toast("ఈ రకం ఫైల్ ఇంకా చదవలేను. PDF, టెక్స్ట్/కోడ్ ఫైల్స్, ఫోటోలు మాత్రమే.");
+                }
+            } catch (Exception e) {
+                toast("ఫైల్ తెరవలేకపోయాను");
+            }
+        });
+    }
+
+    private void toast(String s) { main.post(() -> Toast.makeText(this, s, Toast.LENGTH_LONG).show()); }
+
+    private byte[] readAll(Uri uri, int max) throws Exception {
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new IllegalStateException("no stream");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) > 0 && out.size() < max) out.write(buf, 0, Math.min(n, max - out.size()));
+            return out.toByteArray();
+        }
+    }
+
+    private void showFileAttached(String pdf, String text, String name) {
+        clearAttachment();
+        pendingPhoto = pdf;
+        pendingFileText = text;
+        pendingFileName = name;
+        attachThumb.setVisibility(View.GONE);
+        attachText.setText((pdf != null ? "📄 " : "📝 ") + name);
+        attachRow.setVisibility(View.VISIBLE);
+        input.setHint("ఫైల్ గురించి ఏం అడగాలి? (ఖాళీగా పంపితే సారాంశం)");
+        showTab(0);
+        refreshAction();
     }
 
     private void openCamera() {
@@ -1542,9 +1711,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         super.onActivityResult(req, result, data);
         if (result != RESULT_OK) return;
         final Uri uri;
+        if (req == REQ_FILE && data != null && data.getData() != null) { attachFile(data.getData()); return; }
         if (req == REQ_CAMERA) uri = PhotoProvider.uri();
         else if (req == REQ_GALLERY && data != null && data.getData() != null) uri = data.getData();
         else return;
+        attachImage(uri);
+    }
+
+    private void attachImage(Uri uri) {
         worker.submit(() -> {
             try {
                 Bitmap bmp = loadScaled(uri, 1280);
@@ -1554,8 +1728,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 Bitmap thumb = Bitmap.createScaledBitmap(bmp, Math.max(1, bmp.getWidth() * 360 / Math.max(bmp.getWidth(), bmp.getHeight())),
                         Math.max(1, bmp.getHeight() * 360 / Math.max(bmp.getWidth(), bmp.getHeight())), true);
                 main.post(() -> {
+                    clearAttachment();
                     pendingPhoto = b64;
                     pendingThumb = thumb;
+                    attachThumb.setVisibility(View.VISIBLE);
+                    attachText.setText("  ఫోటో జత చేశారు");
                     attachThumb.setImageBitmap(thumb);
                     attachRow.setVisibility(View.VISIBLE);
                     input.setHint("ఫోటో గురించి ఏం అడగాలి? (ఖాళీగా పంపితే వివరిస్తాను)");
@@ -1599,6 +1776,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void clearAttachment() {
         pendingPhoto = null;
         pendingThumb = null;
+        pendingFileText = null;
+        pendingFileName = null;
         attachRow.setVisibility(View.GONE);
         input.setHint("Jarvis ని అడగండి");
         refreshAction();

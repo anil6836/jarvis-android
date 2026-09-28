@@ -10,7 +10,7 @@ import android.view.View;
 /** Small line icons drawn in code so the app needs no image files. */
 final class IconView extends View {
     static final int MIC = 0, SEND = 1, STOP = 2, CAMERA = 3, GEAR = 4, TRASH = 5, CHECK = 6, CLOSE = 7, SPEAKER = 8, PAUSE = 9, PLAY = 10,
-            PLUS = 11, WAVE = 12, MIC_OFF = 13, DOWN = 14;
+            PLUS = 11, WAVE = 12, MIC_OFF = 13, DOWN = 14, IMAGE = 15, CLIP = 16, VIDEO = 17;
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -131,6 +131,30 @@ final class IconView extends View {
                 canvas.drawLine(12, 17, 12, 21, p);
                 canvas.drawLine(8.5f, 21, 15.5f, 21, p);
                 canvas.drawLine(4, 3, 20, 20, p);
+                break;
+            case IMAGE: // photos
+                r.set(4, 5, 20, 19);
+                canvas.drawRoundRect(r, 2.5f, 2.5f, p);
+                canvas.drawCircle(15, 9.5f, 1.6f, p);
+                path.moveTo(4.5f, 17); path.lineTo(9, 12.5f); path.lineTo(13, 16.5f); path.lineTo(15.5f, 14); path.lineTo(19.5f, 18);
+                canvas.drawPath(path, p);
+                break;
+            case CLIP: // files
+                path.moveTo(15.5f, 7);
+                path.lineTo(15.5f, 16);
+                r.set(8.5f, 12.5f, 15.5f, 19.5f);
+                path.arcTo(r, 0, 180);
+                path.lineTo(8.5f, 6);
+                r.set(8.5f, 3.75f, 13, 8.25f);
+                path.arcTo(r, 180, 180);
+                path.lineTo(13, 15.5f);
+                canvas.drawPath(path, p);
+                break;
+            case VIDEO: // live camera
+                r.set(3, 7, 15, 17);
+                canvas.drawRoundRect(r, 2, 2, p);
+                path.moveTo(15, 10.5f); path.lineTo(21, 7.5f); path.lineTo(21, 16.5f); path.lineTo(15, 13.5f);
+                canvas.drawPath(path, p);
                 break;
             case DOWN:
                 path.moveTo(6, 9); path.lineTo(12, 15); path.lineTo(18, 9);

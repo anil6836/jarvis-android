@@ -18,22 +18,24 @@ import java.util.Random;
  * and pulses with Jarvis's own voice while speaking; sparks of light run along the wires.
  */
 final class HoloOrb extends View {
+    // the same numbers as OrbView's IDLE, LISTENING, THINKING, SPEAKING, OFFLINE, so either can show Jarvis's state
     static final int CONNECTING = 0, LISTENING = 1, THINKING = 2, SPEAKING = 3, MUTED = 4;
+    static final int IDLE = CONNECTING, OFFLINE = MUTED;
 
-    private static final int N = 150;          // nodes on the sphere
+    private final int N;                       // nodes on the sphere
     private static final int LINKS = 3;        // wires from each node to its nearest neighbours
-    private static final int SPARKS = 16;
+    private final int SPARKS;
     private static final int BUCKETS = 5;      // depth layers for the wires (back = faint, front = bright)
 
-    private final float[] ux = new float[N], uy = new float[N], uz = new float[N], seed = new float[N];
-    private final float[] px = new float[N], py = new float[N], pz = new float[N];
+    private final float[] ux, uy, uz, seed;
+    private final float[] px, py, pz;
     private int[] ea, eb;
     private int[][] nodeEdges;                 // the wires at each node, for sparks to travel on
     private final float[][] lines = new float[BUCKETS][];
     private final int[] lineCount = new int[BUCKETS];
-    private final int[] sparkEdge = new int[SPARKS];
-    private final float[] sparkPos = new float[SPARKS];
-    private final boolean[] sparkFwd = new boolean[SPARKS];
+    private final int[] sparkEdge;
+    private final float[] sparkPos;
+    private final boolean[] sparkFwd;
     private final Random rnd = new Random(7);
 
     private final Paint wire = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -44,14 +46,25 @@ final class HoloOrb extends View {
 
     private int state = CONNECTING;
     private volatile float mic, voice;         // loudness 0..1 of his mic / Jarvis's voice
+    private volatile long voiceAt;             // when Jarvis's voice level last came in
     private float lvl;                         // smoothed level that drives the motion
     private float rotY, ringA, ringB;
     private float cr = 0x3B, cg = 0xB7, cb = 0xD6; // the colour now (blends to the state's colour)
     private final long start = SystemClock.uptimeMillis();
     private long last;
 
-    HoloOrb(Context c) {
+    HoloOrb(Context c) { this(c, 150); }
+
+    /** nodes: 150 for the big Live core, fewer for a small one. */
+    HoloOrb(Context c, int nodes) {
         super(c);
+        N = nodes;
+        SPARKS = nodes >= 120 ? 16 : 8;
+        ux = new float[N]; uy = new float[N]; uz = new float[N]; seed = new float[N];
+        px = new float[N]; py = new float[N]; pz = new float[N];
+        sparkEdge = new int[SPARKS];
+        sparkPos = new float[SPARKS];
+        sparkFwd = new boolean[SPARKS];
         wire.setStyle(Paint.Style.STROKE);
         wire.setStrokeCap(Paint.Cap.ROUND);
         dot.setStyle(Paint.Style.FILL);
@@ -63,7 +76,9 @@ final class HoloOrb extends View {
 
     void setState(int s) { state = s; }
     void setMic(float l) { mic = clamp(l); }
-    void setVoice(float l) { voice = clamp(l); }
+    /** Same as setMic (OrbView's name for the mic level). */
+    void setLevel(float l) { mic = clamp(l); }
+    void setVoice(float l) { voice = clamp(l); voiceAt = SystemClock.uptimeMillis(); }
 
     private static float clamp(float v) { return Math.max(0f, Math.min(1f, v)); }
 
@@ -130,7 +145,7 @@ final class HoloOrb extends View {
             case THINKING: return 0xFF9D86FF;  // violet
             case SPEAKING: return 0xFF4FA3FF;  // electric blue
             case MUTED: return 0xFF62788A;     // grey-blue
-            default: return 0xFF3B9FD6;        // connecting: dim blue
+            default: return 0xFF38BDF8;        // idle / connecting: sky blue
         }
     }
 
@@ -144,7 +159,9 @@ final class HoloOrb extends View {
         float px1 = getResources().getDisplayMetrics().density;
 
         // level: quick to rise, slower to fall, like a VU meter
-        float target = state == LISTENING ? mic : state == SPEAKING ? voice : 0f;
+        // speaking without a live voice level (the phone's own voice): a gentle talking pulse
+        float talk = now - voiceAt > 400 ? 0.28f + 0.3f * (float) Math.abs(Math.sin(t * 8.5) * Math.sin(t * 3.1 + 1)) : voice;
+        float target = state == LISTENING ? mic : state == SPEAKING ? talk : 0f;
         lvl += (target - lvl) * Math.min(1f, dt * (target > lvl ? 14f : 5f));
         int tc = targetColor();
         float k = Math.min(1f, dt * 4f);

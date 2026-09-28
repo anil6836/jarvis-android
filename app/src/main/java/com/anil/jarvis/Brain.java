@@ -40,6 +40,21 @@ final class Brain {
         this.tools = tools;
     }
 
+    /** An attached PDF travels in the photo slot as "pdf:<base64>|<file name>" and is sent to the AI as a document. */
+    static final String PDF = "pdf:";
+
+    static boolean isPdf(String a) { return a != null && a.startsWith(PDF); }
+
+    static String pdfData(String a) {
+        int bar = a.indexOf('|');
+        return a.substring(PDF.length(), bar < 0 ? a.length() : bar);
+    }
+
+    static String pdfName(String a) {
+        int bar = a.indexOf('|');
+        return bar < 0 || bar == a.length() - 1 ? "document.pdf" : a.substring(bar + 1);
+    }
+
     /**
      * @param history earlier turns, oldest first, each {role, content}; the new message is NOT included
      * @param text    what Anil just said or typed
@@ -386,7 +401,9 @@ final class Brain {
                     .put("parts", new JSONArray().put(new JSONObject().put("text", t[1]))));
         }
         JSONArray parts = new JSONArray().put(new JSONObject().put("text", text));
-        if (img != null) parts.put(new JSONObject().put("inlineData", new JSONObject().put("mimeType", "image/jpeg").put("data", img)));
+        if (img != null) parts.put(new JSONObject().put("inlineData", isPdf(img)
+                ? new JSONObject().put("mimeType", "application/pdf").put("data", pdfData(img))
+                : new JSONObject().put("mimeType", "image/jpeg").put("data", img)));
         contents.put(new JSONObject().put("role", "user").put("parts", parts));
 
         JSONArray decls = tools.geminiTools();
@@ -472,7 +489,9 @@ final class Brain {
         JSONArray input = new JSONArray();
         for (String[] t : turns) input.put(new JSONObject().put("role", t[0]).put("content", t[1]));
         JSONArray content = new JSONArray().put(new JSONObject().put("type", "input_text").put("text", text));
-        if (img != null) content.put(new JSONObject().put("type", "input_image").put("image_url", "data:image/jpeg;base64," + img));
+        if (img != null) content.put(isPdf(img)
+                ? new JSONObject().put("type", "input_file").put("filename", pdfName(img)).put("file_data", "data:application/pdf;base64," + pdfData(img))
+                : new JSONObject().put("type", "input_image").put("image_url", "data:image/jpeg;base64," + img));
         input.put(new JSONObject().put("role", "user").put("content", content));
 
         JSONArray toolList = tools.openAiTools();
@@ -549,8 +568,11 @@ final class Brain {
         for (String[] t : turns) messages.put(new JSONObject().put("role", t[0]).put("content", t[1]));
         JSONArray content = new JSONArray();
         if (img != null) {
-            content.put(new JSONObject().put("type", "image").put("source", new JSONObject()
-                    .put("type", "base64").put("media_type", "image/jpeg").put("data", img)));
+            content.put(isPdf(img)
+                    ? new JSONObject().put("type", "document").put("source", new JSONObject()
+                        .put("type", "base64").put("media_type", "application/pdf").put("data", pdfData(img)))
+                    : new JSONObject().put("type", "image").put("source", new JSONObject()
+                        .put("type", "base64").put("media_type", "image/jpeg").put("data", img)));
         }
         content.put(new JSONObject().put("type", "text").put("text", text));
         messages.put(new JSONObject().put("role", "user").put("content", content));

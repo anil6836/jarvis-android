@@ -83,9 +83,9 @@ final class HudDashboard extends LinearLayout {
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(dp(2), dp(4), dp(2), dp(4));
         dot = new View(c);
-        dot.setBackground(Ui.round(c, Ui.CYAN, 0, 999));
+        dot.setBackground(Ui.round(c, Ui.C_GREEN, 0, 999));
         head.addView(dot, new LayoutParams(dp(6), dp(6)));
-        TextView title = Ui.mono(c, "SYSTEMS · స్థితి", 10.5f, Ui.CYAN2);
+        TextView title = Ui.mono(c, "SYSTEMS · స్థితి", 10.5f, Ui.C_CYAN);
         title.setPadding(dp(8), 0, dp(8), 0);
         head.addView(title);
         summary = Ui.mono(c, "", 10.5f, Ui.MUTED);
@@ -94,7 +94,7 @@ final class HudDashboard extends LinearLayout {
         summary.setEllipsize(TextUtils.TruncateAt.END);
         summary.setGravity(Gravity.END);
         head.addView(summary, new LayoutParams(0, -2, 1));
-        chevron = Ui.text(c, "", 12, Ui.CYAN);
+        chevron = Ui.text(c, "", 12, Ui.C_CYAN);
         chevron.setPadding(dp(8), 0, dp(2), 0);
         head.addView(chevron);
         head.setOnClickListener(v -> setCollapsed(!collapsed, true));
@@ -104,12 +104,13 @@ final class HudDashboard extends LinearLayout {
         grid = new LinearLayout(c);
         grid.setOrientation(VERTICAL);
         LinearLayout r1 = row(c), r2 = row(c);
-        tTime = new Tile(c, "TIME · సమయం");
-        tBattery = new Tile(c, "POWER · బ్యాటరీ");
-        tNet = new Tile(c, "LINK · నెట్");
-        tWeather = new Tile(c, "WX · వాతావరణం");
-        tNext = new Tile(c, "NEXT · తర్వాత");
-        tWake = new Tile(c, "WAKE · వినడం");
+        // each tile its own colour
+        tTime = new Tile(c, "🕐 సమయం", Ui.C_SKY);
+        tBattery = new Tile(c, "🔋 బ్యాటరీ", Ui.C_GREEN);
+        tNet = new Tile(c, "📶 నెట్", Ui.C_TEAL);
+        tWeather = new Tile(c, "⛅ వాతావరణం", Ui.C_AMBER);
+        tNext = new Tile(c, "⏰ తర్వాత", Ui.C_VIOLET);
+        tWake = new Tile(c, "🎙️ వినడం", Ui.C_PINK);
         addTile(r1, tTime, true);
         addTile(r1, tBattery, true);
         addTile(r1, tWeather, false);
@@ -118,7 +119,7 @@ final class HudDashboard extends LinearLayout {
         addTile(r2, tWake, false);
         grid.addView(r1);
         LayoutParams r2lp = new LayoutParams(-1, -2);
-        r2lp.topMargin = dp(6);
+        r2lp.topMargin = dp(8);
         grid.addView(r2, r2lp);
         addView(grid, new LayoutParams(-1, -2));
 
@@ -338,24 +339,26 @@ final class HudDashboard extends LinearLayout {
     }
 
     private void addTile(LinearLayout row, Tile t, boolean gapAfter) {
-        LayoutParams lp = new LayoutParams(0, dp(60), 1);
-        if (gapAfter) lp.rightMargin = dp(6);
+        LayoutParams lp = new LayoutParams(0, dp(64), 1);
+        if (gapAfter) lp.rightMargin = dp(8);
         row.addView(t, lp);
     }
 
-    /** One bracketed tile: small cyan label, white value, muted sub line. */
+    /** One tile in its own colour: a soft gradient card, coloured label, white value, muted sub line. */
     private static final class Tile extends LinearLayout {
         private final TextView value, sub;
 
-        Tile(Context c, String label) {
+        Tile(Context c, String label, int accent) {
             super(c);
             setOrientation(VERTICAL);
             setGravity(Gravity.CENTER_VERTICAL);
-            int p = Ui.dp(c, 8);
+            int p = Ui.dp(c, 9);
             setPadding(p, Ui.dp(c, 5), p, Ui.dp(c, 5));
-            setBackground(new Frame(c));
-            TextView l = Ui.mono(c, label, 9, Ui.CYAN2);
-            l.setLetterSpacing(0.08f);
+            android.graphics.drawable.GradientDrawable bg = Ui.grad(c, new int[]{Ui.alpha(accent, 0x38), Ui.alpha(accent, 0x0C)}, 14,
+                    android.graphics.drawable.GradientDrawable.Orientation.TL_BR);
+            bg.setStroke(Ui.dp(c, 1), Ui.alpha(accent, 0x60));
+            setBackground(bg);
+            TextView l = Ui.text(c, label, 10.5f, accent);
             l.setSingleLine(true);
             l.setEllipsize(TextUtils.TruncateAt.END);
             addView(l);
