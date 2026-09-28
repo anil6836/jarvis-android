@@ -64,26 +64,38 @@ public class SettingsActivity extends Activity {
     private final NaturalVoice tester = new NaturalVoice();
     private SeekBar rate, sensitivity, bargeSens;
     private TextView rateLabel, sensitivityLabel, wakeInfo, bargeSensLabel;
-    private LinearLayout box;
+    /** The card being filled (each section is its own coloured glass card); page holds the cards. */
+    private LinearLayout box, page;
+    private int accent = Ui.C_CYAN;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = new Prefs(this);
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(Ui.INK);
+        scroll.setBackground(new Ui.Aurora());
         box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        int pad = Ui.dp(this, 18);
-        box.setPadding(pad, pad, pad, Ui.dp(this, 40));
+        int pad = Ui.dp(this, 16);
+        box.setPadding(pad, Ui.dp(this, 14), pad, Ui.dp(this, 40));
         scroll.addView(box);
+        page = box;
         setContentView(scroll);
+        getWindow().setStatusBarColor(Ui.BG_TOP);
+        getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
         pageScroll = scroll;
 
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = Ui.text(this, "సెట్టింగ్స్", 24, Ui.TEXT);
-        head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        IconView close = new IconView(this, IconView.CLOSE, Ui.CYAN);
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        TextView title = Ui.text(this, "సెట్టింగ్స్", 27, 0xFFFFFFFF);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        Ui.gradientText(title, Ui.C_CYAN, Ui.C_VIOLET);
+        titles.addView(title);
+        titles.addView(Ui.text(this, "Jarvis ని మీకు నచ్చినట్టు మార్చుకోండి", 13.5f, Ui.MUTED));
+        head.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
+        IconView close = new IconView(this, IconView.CLOSE, 0xFFFFFFFF);
+        close.setBackground(Ui.glass(this, 22));
         close.setOnClickListener(v -> finish());
         close.setContentDescription("మూసేయి");
         head.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
@@ -204,7 +216,7 @@ public class SettingsActivity extends Activity {
         voicePick = new Spinner(this);
         ArrayAdapter<String> va = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, NaturalVoice.VOICES);
         voicePick.setAdapter(va);
-        voicePick.setBackground(Ui.round(this, Ui.DEEP, Ui.LINE2, 12));
+        voicePick.setBackground(fieldBg());
         int current = 0;
         for (int i = 0; i < NaturalVoice.VOICES.length; i++) if (NaturalVoice.VOICES[i].equals(prefs.naturalVoiceName())) current = i;
         voicePick.setSelection(current);
@@ -380,7 +392,7 @@ public class SettingsActivity extends Activity {
         smartUrls.setSingleLine(false);
         smartUrls.setMinLines(4);
         smartUrls.setGravity(Gravity.TOP | Gravity.START);
-        smartUrls.setBackground(Ui.round(this, Ui.DEEP, Ui.LINE2, 12));
+        smartUrls.setBackground(fieldBg());
         int sp = Ui.dp(this, 12);
         smartUrls.setPadding(sp, sp, sp, sp);
         smartUrls.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
@@ -460,15 +472,21 @@ public class SettingsActivity extends Activity {
             Toast.makeText(this, "సంభాషణ చెరిపేశాను", Toast.LENGTH_SHORT).show();
         });
 
+        box = page; // the save button sits under the cards
         Button save = new Button(this);
         save.setText("సేవ్ చేయి");
-        save.setTextColor(Ui.GOLD_INK);
+        save.setAllCaps(false);
+        save.setTextColor(0xFFFFFFFF);
         save.setTextSize(17);
-        save.setBackground(Ui.round(this, Ui.GOLD, 0, 14));
+        save.setBackground(Ui.grad(this, new int[]{Ui.C_BLUE, Ui.C_VIOLET}, 18, null));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 54));
         lp.topMargin = Ui.dp(this, 26);
         box.addView(save, lp);
         save.setOnClickListener(v -> { store(); finish(); });
+        for (int i = 0; i < page.getChildCount(); i++) { // switches, sliders, choices in their card's colour
+            View card = page.getChildAt(i);
+            if (card.getTag() instanceof Integer) tint(card, (Integer) card.getTag());
+        }
         updateFromIntent(getIntent());
     }
 
@@ -692,14 +710,74 @@ public class SettingsActivity extends Activity {
         }
     }
 
+    private static final String[][] LOOKS = {
+            {"మీరు", "👤"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
+            {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
+            {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
+            {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"}};
+    private static final int[] CARD_COLORS = {Ui.C_SKY, Ui.C_VIOLET, Ui.C_BLUE, Ui.C_CYAN, Ui.C_PINK, Ui.C_BLUE, Ui.C_TEAL,
+            Ui.C_GREEN, Ui.C_SKY, Ui.C_AMBER, Ui.C_GREEN, Ui.C_VIOLET, Ui.C_AMBER, 0xFFF43F5E, Ui.C_PINK, Ui.C_GREEN, Ui.C_ORANGE,
+            Ui.C_TEAL, 0xFFF43F5E, Ui.C_CYAN, Ui.C_AMBER};
+    private int cards;
+
+    /** A new section: its own glass card in its own colour, with an emoji and the title. */
     private View section(String s) {
-        TextView t = Ui.mono(this, s.toUpperCase(Locale.ROOT), 13, Ui.CYAN2);
-        t.setPadding(0, Ui.dp(this, 26), 0, Ui.dp(this, 8));
-        box.addView(t);
-        View line = new View(this);
-        line.setBackgroundColor(Ui.LINE);
-        box.addView(line, new LinearLayout.LayoutParams(-1, Ui.dp(this, 1)));
-        return t;
+        String emoji = "✦";
+        int color = CARD_COLORS[cards % CARD_COLORS.length];
+        for (int i = 0; i < LOOKS.length; i++) {
+            if (s.contains(LOOKS[i][0])) { emoji = LOOKS[i][1]; color = CARD_COLORS[i % CARD_COLORS.length]; break; }
+        }
+        cards++;
+        accent = color;
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        int p = Ui.dp(this, 16);
+        card.setPadding(p, Ui.dp(this, 14), p, Ui.dp(this, 16));
+        android.graphics.drawable.GradientDrawable bg = Ui.grad(this, new int[]{Ui.alpha(color, 0x24), Ui.alpha(color, 0x08)}, 20,
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR);
+        bg.setStroke(Ui.dp(this, 1), Ui.alpha(color, 0x55));
+        card.setBackground(bg);
+        card.setTag(color);
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView e = Ui.text(this, emoji, 18, 0xFFFFFFFF);
+        e.setBackground(Ui.round(this, Ui.alpha(color, 0x33), 0, 12));
+        e.setGravity(Gravity.CENTER);
+        head.addView(e, new LinearLayout.LayoutParams(Ui.dp(this, 36), Ui.dp(this, 36)));
+        TextView t = Ui.text(this, s, 17, color);
+        t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        t.setPadding(Ui.dp(this, 12), 0, 0, 0);
+        head.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+        card.addView(head);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = Ui.dp(this, 14);
+        page.addView(card, lp);
+        box = card;
+        return card;
+    }
+
+    /** A darker inset box for typing, inside the glass cards. */
+    private android.graphics.drawable.GradientDrawable fieldBg() { return Ui.round(this, 0x47000000, 0x2BFFFFFF, 14); }
+
+    /** Switches, sliders and choices inside a card take the card's colour. */
+    private void tint(View v, int color) {
+        android.content.res.ColorStateList on = android.content.res.ColorStateList.valueOf(color);
+        if (v instanceof SeekBar) {
+            SeekBar sb = (SeekBar) v;
+            sb.setProgressTintList(on);
+            sb.setThumbTintList(on);
+            sb.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x66FFFFFF));
+        } else if (v instanceof Switch) {
+            int[][] states = {{android.R.attr.state_checked}, {}};
+            ((Switch) v).setThumbTintList(new android.content.res.ColorStateList(states, new int[]{color, 0xFFB8C4CC}));
+            ((Switch) v).setTrackTintList(new android.content.res.ColorStateList(states, new int[]{Ui.alpha(color, 0x88), 0x44FFFFFF}));
+        } else if (v instanceof RadioButton) {
+            ((RadioButton) v).setButtonTintList(on);
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) tint(g.getChildAt(i), color);
+        }
     }
 
     private void note(String s) {
@@ -718,7 +796,7 @@ public class SettingsActivity extends Activity {
         e.setHintTextColor(Ui.FAINT);
         e.setTextSize(16);
         e.setSingleLine(true);
-        e.setBackground(Ui.round(this, Ui.DEEP, Ui.LINE2, 12));
+        e.setBackground(fieldBg());
         int p = Ui.dp(this, 12);
         e.setPadding(p, p, p, p);
         e.setInputType(secret
@@ -751,7 +829,7 @@ public class SettingsActivity extends Activity {
 
     /** "Show all models" under a model box: the live list for that key; a tap fills the box and saves it. */
     private void modelPicker(String provider, EditText keyField, EditText into, String pref) {
-        TextView t = Ui.text(this, "📋 అన్ని మోడల్స్ చూపించు, ఎంచుకో", 14.5f, Ui.CYAN);
+        TextView t = Ui.text(this, "📋 అన్ని మోడల్స్ చూపించు, ఎంచుకో", 14.5f, accent);
         t.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         t.setOnClickListener(v -> Models.pick(this, Models.company(provider) + " మోడల్ ఎంచుకోండి",
                 new String[]{provider}, new String[]{keyField.getText().toString()},
@@ -766,7 +844,7 @@ public class SettingsActivity extends Activity {
     }
 
     private void link(String label, String url) {
-        TextView t = Ui.text(this, label + " →", 14.5f, Ui.CYAN);
+        TextView t = Ui.text(this, label + " →", 14.5f, accent);
         t.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         t.setOnClickListener(v -> {
             try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
@@ -775,8 +853,10 @@ public class SettingsActivity extends Activity {
     }
 
     private TextView button(String label, View.OnClickListener l) {
-        TextView t = Ui.text(this, label, 15.5f, Ui.TEXT);
-        t.setBackground(Ui.round(this, Ui.PANEL, Ui.LINE2, 12));
+        TextView t = Ui.text(this, label, 15.5f, 0xFFFFFFFF);
+        android.graphics.drawable.GradientDrawable g = Ui.grad(this, new int[]{Ui.alpha(accent, 0x4D), Ui.alpha(accent, 0x22)}, 14, null);
+        g.setStroke(Ui.dp(this, 1), Ui.alpha(accent, 0x88));
+        t.setBackground(g);
         int p = Ui.dp(this, 13);
         t.setPadding(p, p, p, p);
         t.setOnClickListener(l);
