@@ -51,7 +51,8 @@ final class LiveSession {
     private static final int RATE = 24000;
     private static final int MIC_CHUNK = 2400;     // 100 ms of samples
     private static final int PLAY_CHUNK = 4800;    // 100 ms of bytes
-    private static final long IDLE_MS = 45000;
+    /** After this long with nobody talking, Jarvis says a short friendly line and hangs up. */
+    private static final long IDLE_MS = 120000;
 
     private static final class Chunk {
         final String item;
@@ -78,6 +79,14 @@ final class LiveSession {
     private WebSocket ws;
     private volatile boolean open, closed;
     private volatile boolean responseActive, jarvisSpeaking, flushRequested, endRequested;
+    /** The "I'm here when you need me" line after a long silence is playing (he may still answer it). */
+    private volatile boolean idleBye;
+    private int idleByes;
+    /** Headphones / Bluetooth in use (the mic is close to his mouth) rather than the phone's speaker. */
+    private volatile boolean headset;
+    /** The richer session settings were refused once: the plain ones are in use. */
+    private volatile boolean plainSession;
+    private String instructions = "";
     private volatile long lastActivity;
     private Thread micThread, playThread;
     private AudioManager am;
@@ -114,7 +123,8 @@ final class LiveSession {
             @Override public void onOpen(WebSocket webSocket, Response response) {
                 open = true;
                 lastActivity = SystemClock.elapsedRealtime();
-                sendSessionUpdate(instructions);
+                LiveSession.this.instructions = instructions;
+                sendSessionUpdate(instructions, true);
                 startPlayer();
                 startMic();
                 state(OrbView.LISTENING, "మాట్లాడండి…");
@@ -179,9 +189,11 @@ final class LiveSession {
         @Override public void run() {
             if (closed) return;
             long quiet = SystemClock.elapsedRealtime() - lastActivity;
-            if (!responseActive && !jarvisSpeaking && playQueue.isEmpty() && quiet > IDLE_MS) {
-                stop("idle");
-                return;
+            boolean calm = !responseActive && !jarvisSpeaking && playQueue.isEmpty();
+            if (idleBye && quiet > 20000) { stop("idle"); return; } // the line never came: hang up anyway
+            if (calm && !idleBye && !endRequested && quiet > IDLE_MS) {
+                if (idleByes > 0) { stop("idle"); return; } // already said it once: just hang up quietly
+                sayIdleBye();
             }
             main.postDelayed(this, 5000);
         }
@@ -194,26 +206,41 @@ final class LiveSession {
         if (w != null && !closed) w.send(o.toString());
     }
 
-    private void sendSessionUpdate(String instructions) {
+    /**
+     * rich = the ChatGPT-like settings: wait for the end of his thought (semantic turn detection), clean the
+     * mic for the speaker or headphones, and transcribe in his language. If the server refuses them, the
+     * plain settings are sent again (a refused update would leave the session without instructions or tools).
+     */
+    private void sendSessionUpdate(String instructions, boolean rich) {
         try {
             JSONArray toolList = tools.openAiTools();
             JSONArray extra = Tools.liveOnlyTools();
             for (int i = 0; i < extra.length(); i++) toolList.put(extra.get(i));
-            JSONObject turn = new JSONObject()
-                    .put("type", "server_vad")
-                    .put("threshold", 0.55)
-                    .put("prefix_padding_ms", 300)
-                    .put("silence_duration_ms", 700)
-                    .put("create_response", true)
-                    .put("interrupt_response", prefs.bargeIn());
+            JSONObject turn = rich && prefs.livePatient()
+                    ? new JSONObject()
+                        .put("type", "semantic_vad")
+                        .put("eagerness", "auto")
+                        .put("create_response", true)
+                        .put("interrupt_response", prefs.bargeIn())
+                    : new JSONObject()
+                        .put("type", "server_vad")
+                        .put("threshold", 0.55)
+                        .put("prefix_padding_ms", 300)
+                        .put("silence_duration_ms", 700)
+                        .put("create_response", true)
+                        .put("interrupt_response", prefs.bargeIn());
+            JSONObject transcription = new JSONObject().put("model", "gpt-4o-mini-transcribe");
+            if (rich) transcription.put("language", prefs.listenLang().startsWith("en") ? "en" : "te");
+            JSONObject input = new JSONObject()
+                    .put("format", new JSONObject().put("type", "audio/pcm").put("rate", RATE))
+                    .put("transcription", transcription)
+                    .put("turn_detection", turn);
+            if (rich) input.put("noise_reduction", new JSONObject().put("type", headset ? "near_field" : "far_field"));
             JSONObject session = new JSONObject()
                     .put("type", "realtime")
                     .put("instructions", instructions)
                     .put("audio", new JSONObject()
-                            .put("input", new JSONObject()
-                                    .put("format", new JSONObject().put("type", "audio/pcm").put("rate", RATE))
-                                    .put("transcription", new JSONObject().put("model", "gpt-4o-mini-transcribe"))
-                                    .put("turn_detection", turn))
+                            .put("input", input)
                             .put("output", new JSONObject()
                                     .put("format", new JSONObject().put("type", "audio/pcm"))
                                     .put("voice", prefs.naturalVoiceName())))
@@ -225,11 +252,39 @@ final class LiveSession {
         }
     }
 
+    /** A refused session setting (semantic turn detection, noise filter, transcription language). */
+    private static boolean sessionSettingRefused(JSONObject err) {
+        if (err == null) return false;
+        String all = (err.optString("param") + " " + err.optString("message") + " " + err.optString("code")).toLowerCase(java.util.Locale.ROOT);
+        return all.contains("semantic") || all.contains("eagerness") || all.contains("noise_reduction")
+                || all.contains("turn_detection") || all.contains("transcription") || all.contains("session.audio");
+    }
+
+    /** Long silence: one short, friendly line that he can call any time, then hang up (unless he answers it). */
+    private void sayIdleBye() {
+        idleBye = true;
+        idleByes++;
+        endRequested = true;
+        endReason = "idle";
+        lastActivity = SystemClock.elapsedRealtime();
+        String name = prefs.name();
+        send(safe(() -> new JSONObject().put("type", "response.create").put("response", new JSONObject()
+                .put("tool_choice", "none")
+                .put("instructions", "You are Jarvis, " + name + "'s friendly voice assistant. " + name + " has been quiet for a couple of minutes. "
+                        + "In ONE short, warm sentence of natural spoken Telugu (Andhra/Telangana style), say you are closing the live chat for now "
+                        + "and he can call you any time, like a friend would (for example 'సరే " + name + ", నేను ఇక్కడే ఉంటా, అవసరమైతే పిలవండి'; use your own words). Nothing else."))));
+    }
+
     private void handle(JSONObject e) throws Exception {
         String type = e.optString("type");
         switch (type) {
             case "input_audio_buffer.speech_started":
                 lastActivity = SystemClock.elapsedRealtime();
+                if (idleBye) { // he answered the "I'm closing" line: keep talking
+                    idleBye = false;
+                    endRequested = false;
+                    endReason = "bye";
+                }
                 sendCameraFrame();
                 if (prefs.bargeIn() && (jarvisSpeaking || !playQueue.isEmpty())) {
                     playQueue.clear();
@@ -291,6 +346,11 @@ final class LiveSession {
                 JSONObject err = e.optJSONObject("error");
                 String msg = err == null ? "unknown error" : err.optString("message", err.optString("code"));
                 String code = err == null ? "" : err.optString("code");
+                if (!plainSession && sessionSettingRefused(err)) {
+                    plainSession = true;
+                    sendSessionUpdate(instructions, false); // the plain settings, so instructions and tools are in place
+                    break;
+                }
                 // Truncation races and "no active response" are harmless; don't bother Anil with them.
                 if (code.contains("truncat") || code.contains("no_active_response") || msg.contains("truncat")) break;
                 main.post(() -> l.onLiveError(msg));
@@ -434,6 +494,7 @@ final class LiveSession {
                     if (t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || t == AudioDeviceInfo.TYPE_BLE_HEADSET
                             || t == AudioDeviceInfo.TYPE_WIRED_HEADSET || t == AudioDeviceInfo.TYPE_USB_HEADSET) { pick = d; break; }
                 }
+                headset = pick != null;
                 if (pick == null) {
                     for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
                         if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) { pick = d; break; }
@@ -442,6 +503,8 @@ final class LiveSession {
                 if (pick != null) am.setCommunicationDevice(pick);
             } else if (!am.isWiredHeadsetOn() && !am.isBluetoothScoOn()) {
                 am.setSpeakerphoneOn(true);
+            } else {
+                headset = true;
             }
         } catch (Exception ignored) {}
     }

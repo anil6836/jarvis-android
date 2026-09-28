@@ -48,7 +48,7 @@ public class SettingsActivity extends Activity {
     private TextView lockInfo, docsInfo, waInfo;
     private EditText sosContacts, smartUrls, smartApp, walletMax;
     private Switch walletPay, emotions;
-    private Switch alexaSpeak;
+    private Switch alexaSpeak, livePatient;
     private Switch bargeCallVoice;
     /** Opened from the "new version" notification / note: go to Updates and start the update. */
     static final String EXTRA_UPDATE_NOW = "update_now";
@@ -215,8 +215,10 @@ public class SettingsActivity extends Activity {
 
         // ---- live conversation
         section("Live సంభాషణ (Real-time)");
-        note("మనిషితో ఫోన్‌లో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. OpenAI key కావాలి. సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది; 45 సెకన్లు ఎవరూ మాట్లాడకపోతే తనంతట తానే ఆగిపోతుంది.");
+        note("ChatGPT వాయిస్ లాగా, ఫ్రెండ్‌తో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. OpenAI key కావాలి. "
+                + "సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది. 2 నిమిషాలు ఎవరూ మాట్లాడకపోతే \"అవసరమైతే పిలవండి\" అని చెప్పి ఆగిపోతుంది.");
         liveMode = toggle("Live సంభాషణ ఆన్ (మైక్ బటన్, Hey Jarvis రెండింటికీ)", prefs.liveMode());
+        livePatient = toggle("మీరు మాట పూర్తి చేసే వరకు ఆగి, తర్వాతే జవాబివ్వు (మధ్యలో ఆలోచిస్తూ ఆగినా కట్ చేయదు)", prefs.livePatient());
         bargeIn = toggle("Jarvis మాట్లాడుతుండగా మధ్యలో మాట్లాడితే ఆగి వినాలి", prefs.bargeIn());
         bargeSensLabel = Ui.text(this, "", 15, Ui.MUTED);
         box.addView(bargeSensLabel);
@@ -233,6 +235,8 @@ public class SettingsActivity extends Activity {
         note("మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో ఇంకా బాగా పనిచేస్తుంది.");
         bargeCallVoice = toggle("Jarvis గొంతుని ఫోన్ కాల్ మార్గంలో పంపు (ప్రతిధ్వని ఇంకా బాగా తీసేస్తుంది, కానీ గొంతు కాల్ లాగా, తక్కువగా ఉంటుంది. మామూలుగా ఆఫ్ ఉంచండి; Jarvis తనంతట తానే ఆగిపోతుంటే లేదా మీ మాట అసలు వినకపోతే మాత్రమే ఆన్ చేయండి)", prefs.bargeCallVoice());
         realtimeModel = field("Live మోడల్", prefs.realtimeModel(), false);
+        modelPicker(Models.REALTIME, openAiKey, realtimeModel, "realtime_model");
+        note("mini మోడల్ చవక, వేగం. పేరులో mini లేని పెద్ద మోడల్ ఇంకా సహజంగా, భావంతో మాట్లాడుతుంది కానీ ఖర్చు ఎక్కువ.");
 
         // ---- wake word
         section("\"Hey Jarvis\" వేక్ వర్డ్");
@@ -533,6 +537,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("briefing_speak", briefingSpeak.isChecked());
         e.putString("natural_voice_name", NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())]);
         e.putBoolean("live", liveMode.isChecked());
+        e.putBoolean("live_patient", livePatient.isChecked());
         e.putBoolean("barge_in", bargeIn.isChecked());
         e.putInt("barge_sens", bargeSens.getProgress());
         e.putBoolean("barge_call_voice", bargeCallVoice.isChecked());

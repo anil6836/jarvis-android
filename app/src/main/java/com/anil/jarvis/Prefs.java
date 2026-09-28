@@ -83,6 +83,8 @@ final class Prefs {
     /** Talk-over: Jarvis's voice through the phone-call path (strongest echo cancelling, but sounds like a call). */
     boolean bargeCallVoice() { return sp.getBoolean("barge_call_voice", false); }
     boolean liveReady() { return liveMode() && !openAiKey().trim().isEmpty(); }
+    /** Live: wait until he has finished his thought (not just a short pause) before answering, like ChatGPT's voice mode. */
+    boolean livePatient() { return sp.getBoolean("live_patient", true); }
 
     // ---- wake words: "Jarvis" is the main one, "Hey Jarvis" the second
     boolean jarvisWord() { return sp.getBoolean("wake_jarvis", true); }

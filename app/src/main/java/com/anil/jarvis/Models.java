@@ -34,6 +34,9 @@ import java.util.regex.Pattern;
 final class Models {
     private Models() {}
 
+    /** OpenAI's live voice (Realtime) models, for Live mode. */
+    static final String REALTIME = "openai_realtime";
+
     /** Thrown by the brain when Gemini is chosen but no Gemini model is. */
     static final String NO_GEMINI_MODEL = "No Gemini model chosen";
 
@@ -44,7 +47,8 @@ final class Models {
     }
 
     static String company(String provider) {
-        return Prefs.GEMINI.equals(provider) ? "Google Gemini" : Prefs.ANTHROPIC.equals(provider) ? "Anthropic Claude" : "OpenAI";
+        return Prefs.GEMINI.equals(provider) ? "Google Gemini" : Prefs.ANTHROPIC.equals(provider) ? "Anthropic Claude"
+                : REALTIME.equals(provider) ? "OpenAI Live" : "OpenAI";
     }
 
     // ---------------------------------------------------------------- the live lists
@@ -54,18 +58,22 @@ final class Models {
         List<Item> out = new ArrayList<>();
         if (Prefs.GEMINI.equals(provider)) gemini(key, out);
         else if (Prefs.ANTHROPIC.equals(provider)) anthropic(key, out);
-        else openAi(key, out);
+        else openAi(key, out, REALTIME.equals(provider));
         out.sort((a, b) -> a.rank != b.rank ? Double.compare(b.rank, a.rank) : a.id.compareTo(b.id));
         return out;
     }
 
-    private static void openAi(String key, List<Item> out) throws Exception {
+    private static void openAi(String key, List<Item> out, boolean live) throws Exception {
         JSONObject res = Http.get("https://api.openai.com/v1/models", "Authorization", "Bearer " + key);
         JSONArray data = res.optJSONArray("data");
         for (int i = 0; data != null && i < data.length(); i++) {
             JSONObject o = data.getJSONObject(i);
             String id = o.optString("id");
             String low = id.toLowerCase(Locale.ROOT);
+            if (live) { // the voice-to-voice models Live mode talks to
+                if (low.contains("realtime") && !low.contains("transcri")) out.add(new Item(REALTIME, id, "", o.optLong("created")));
+                continue;
+            }
             boolean chat = low.startsWith("gpt-") || low.startsWith("chatgpt-") || low.startsWith("codex-") || low.matches("^o\\d.*");
             // speech, pictures, embeddings, live audio and the like cannot be the brain
             if (!chat || has(low, "embed", "whisper", "tts", "dall-e", "moderation", "image", "audio", "realtime",
