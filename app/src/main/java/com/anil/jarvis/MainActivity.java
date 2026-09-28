@@ -164,7 +164,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         syncWakeService();
         if (hudDash != null) hudDash.start();
         UpdateJob.schedule(this); // "new version" notification when a build is out
-        Backup.schedule(this);    // the daily GitHub backup, when switched on
+        cancelOldBackupJob();
         new Thread(() -> Updater.cleanup(getApplicationContext()), "jarvis-cleanup").start();
         showUpdateBanner();
         Updater.lookSoon(this, this::showUpdateBanner);
@@ -1187,6 +1187,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onLiveMinimize() {
         liveScreen.hide();
         refreshAction();
+    }
+
+    /** The GitHub backup was taken out of Jarvis: if its daily job was switched on in an older version, stop it. */
+    private void cancelOldBackupJob() {
+        try {
+            android.app.job.JobScheduler js = getSystemService(android.app.job.JobScheduler.class);
+            if (js != null && js.getPendingJob(7401) != null) js.cancel(7401);
+        } catch (Exception ignored) {}
     }
 
     @Override public void onBackPressed() {

@@ -285,8 +285,6 @@ final class Tools {
                         {"change", "string", "Changes to the last app (instead of name/description)"}})));
         DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
         DEFS.add(new Def("scan_document", "Open the document scanner: he photographs paper pages (bills, certificates, forms) and gets one clean PDF saved in Downloads/Jarvis/scans, to share or ask about.", schema(new String[][]{})));
-        DEFS.add(new Def("backup", "Jarvis's backup of memories, missions, chat and reminders in his PRIVATE GitHub repo jarvis-backup. action now = back up now; restore = bring them back onto this phone (replaces what is here, asks him first); status = when the last backup was.",
-                schema(new String[][]{{"action", "string", "now, restore or status"}}, "action")));
         DEFS.add(new Def("api_usage", "How much Jarvis's own AI use (Gemini, OpenAI incl. Live and the natural voice, Claude) has cost this month, and what is left of the balance he entered. Use for 'API ఖర్చు ఎంత', 'Gemini credit ఎంత మిగిలింది'.", schema(new String[][]{})));
         DEFS.add(new Def("bank_balance", "His account balance as given in the newest SMS from each bank.", schema(new String[][]{})));
         DEFS.add(new Def("voice_recorder", "Open the Voice Recorder app to record.", schema(new String[][]{})));
@@ -454,7 +452,6 @@ final class Tools {
             case "bank_balance": return "బ్యాలెన్స్ చూస్తున్నాను…";
             case "api_usage": return "API ఖర్చు లెక్క చూస్తున్నాను…";
             case "scan_document": return "స్కానర్ తెరుస్తున్నాను…";
-            case "backup": return "Backup…";
             case "voice_recorder": return "రికార్డర్ తెరుస్తున్నాను…";
             case "mobile_plan": return "మీ ప్లాన్ చూస్తున్నాను…";
             case "whatsapp_media": return "WhatsApp మీడియా…";
@@ -568,7 +565,6 @@ final class Tools {
                     act().startActivity(new Intent(act(), MainActivity.class).putExtra(MainActivity.EXTRA_SCAN, true)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
                     return ok().put("next", "Say the scanner is opening: photograph each page, then Save; the PDF goes to Downloads/Jarvis/scans and he can share it or ask about it.").toString();
-                case "backup": return backup(a.optString("action", "now"));
                 case "api_usage": return Usage.summary().put("ok", true)
                         .put("next", "Say each company's estimated spend this month in rupees (dollars too for OpenAI/Claude) and what is left if a balance was entered. Say they are estimates; the exact amount is on the billing page.").toString();
                 case "voice_recorder": return voiceRecorder();
@@ -3208,23 +3204,6 @@ final class Tools {
         String l = interpreterLang;
         interpreterLang = null;
         return l;
-    }
-
-    private String backup(String action) throws Exception {
-        String a = action == null ? "now" : action.trim().toLowerCase(Locale.ROOT);
-        if (a.startsWith("stat")) return ok().put("status", Backup.status(act())).put("daily", Backup.enabled(act())).toString();
-        if (prefs.githubToken().trim().isEmpty()) return err("no_github", "Backup needs his GitHub token in Settings (coding section).");
-        if (!online()) return err("offline", "Backup needs internet.");
-        try {
-            if (a.startsWith("rest")) {
-                if (!host.confirm("Backup నుంచి తెచ్చేదా?", "ఈ ఫోన్‌లో ఉన్న జ్ఞాపకాలు, మిషన్లు, సంభాషణ, రిమైండర్లు backup లో ఉన్నవాటితో మారిపోతాయి.", "అవును, తెచ్చు", 0))
-                    return err("cancelled", "He said no; nothing changed.");
-                return ok().put("done", Backup.restore(act())).toString();
-            }
-            return ok().put("done", Backup.run(act())).put("note", "Private repo jarvis-backup in his GitHub.").toString();
-        } catch (Exception e) {
-            return err("backup_failed", String.valueOf(e.getMessage()));
-        }
     }
 
     /** Marks an English-practice session in the interpreter hand-over (a live session with the tutor's instructions). */

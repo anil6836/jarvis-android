@@ -47,15 +47,6 @@ final class Store {
         reminders = load("reminders.json");
     }
 
-    /** After a restore from the backup: read the files again and tell the screens. */
-    synchronized void reload() {
-        memories.clear(); memories.addAll(load("memory.json"));
-        missions.clear(); missions.addAll(load("missions.json"));
-        chat.clear(); chat.addAll(load("chat.json"));
-        reminders.clear(); reminders.addAll(load("reminders.json"));
-        changed();
-    }
-
     // ---------- files ----------
 
     private List<JSONObject> load(String name) {
