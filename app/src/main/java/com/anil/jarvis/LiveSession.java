@@ -131,9 +131,9 @@ final class LiveSession {
                 LiveSession.this.instructions = instructions;
                 sendSessionUpdate(instructions, true);
                 startPlayer();
-                startMic();
-                state(OrbView.LISTENING, "మాట్లాడండి…");
-                main.postDelayed(idleCheck, 5000);
+                // The mic opens only once OpenAI has accepted Jarvis's settings (session.updated):
+                // without them it would talk as a plain English assistant with no tools.
+                main.postDelayed(setupTimeout, 12000);
             }
             @Override public void onMessage(WebSocket webSocket, String text) {
                 try { handle(new JSONObject(text)); } catch (Exception ignored) {}
@@ -156,6 +156,7 @@ final class LiveSession {
         closed = true;
         open = false;
         main.removeCallbacks(idleCheck);
+        main.removeCallbacks(setupTimeout);
         try { if (ws != null) ws.close(1000, "bye"); } catch (Exception ignored) {}
         Thread m = micThread, p = playThread;
         micThread = null;
@@ -195,6 +196,27 @@ final class LiveSession {
             lastActivity = SystemClock.elapsedRealtime();
             state(OrbView.THINKING, "ఆలోచిస్తున్నాను…");
         } catch (Exception ignored) {}
+    }
+
+    private volatile boolean ready;
+
+    private final Runnable setupTimeout = new Runnable() {
+        @Override public void run() {
+            if (closed || ready) return;
+            l.onLiveError("OpenAI Live సెషన్ సిద్ధం కాలేదు (session setup timeout)");
+            stop("error");
+        }
+    };
+
+    /** OpenAI accepted the settings: now listen. */
+    private void onSessionReady() {
+        if (ready || closed) return;
+        ready = true;
+        main.removeCallbacks(setupTimeout);
+        lastActivity = SystemClock.elapsedRealtime();
+        startMic();
+        state(OrbView.LISTENING, "మాట్లాడండి…");
+        main.postDelayed(idleCheck, 5000);
     }
 
     private final Runnable idleCheck = new Runnable() {
@@ -254,7 +276,7 @@ final class LiveSession {
                     .put("audio", new JSONObject()
                             .put("input", input)
                             .put("output", new JSONObject()
-                                    .put("format", new JSONObject().put("type", "audio/pcm"))
+                                    .put("format", new JSONObject().put("type", "audio/pcm").put("rate", RATE))
                                     .put("voice", prefs.naturalVoiceName())))
                     .put("tools", toolList)
                     .put("tool_choice", "auto");
@@ -290,6 +312,9 @@ final class LiveSession {
     private void handle(JSONObject e) throws Exception {
         String type = e.optString("type");
         switch (type) {
+            case "session.updated":
+                main.post(this::onSessionReady);
+                break;
             case "input_audio_buffer.speech_started":
                 lastActivity = SystemClock.elapsedRealtime();
                 if (idleBye) { // he answered the "I'm closing" line: keep talking
@@ -358,9 +383,14 @@ final class LiveSession {
                 JSONObject err = e.optJSONObject("error");
                 String msg = err == null ? "unknown error" : err.optString("message", err.optString("code"));
                 String code = err == null ? "" : err.optString("code");
-                if (!plainSession && sessionSettingRefused(err)) {
-                    plainSession = true;
-                    sendSessionUpdate(instructions, false); // the plain settings, so instructions and tools are in place
+                if (!ready && sessionSettingRefused(err)) {
+                    if (!plainSession) {
+                        plainSession = true;
+                        sendSessionUpdate(instructions, false); // the plain settings, so instructions and tools are in place
+                        break;
+                    }
+                    // even the plain settings were refused: stop, rather than talk without Jarvis's instructions
+                    main.post(() -> { l.onLiveError("Live సెట్టింగ్స్ OpenAI ఒప్పుకోలేదు: " + msg); stop("error"); });
                     break;
                 }
                 // Truncation races and "no active response" are harmless; don't bother Anil with them.
