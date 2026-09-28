@@ -9,7 +9,8 @@ import android.view.View;
 
 /** Small line icons drawn in code so the app needs no image files. */
 final class IconView extends View {
-    static final int MIC = 0, SEND = 1, STOP = 2, CAMERA = 3, GEAR = 4, TRASH = 5, CHECK = 6, CLOSE = 7, SPEAKER = 8, PAUSE = 9, PLAY = 10;
+    static final int MIC = 0, SEND = 1, STOP = 2, CAMERA = 3, GEAR = 4, TRASH = 5, CHECK = 6, CLOSE = 7, SPEAKER = 8, PAUSE = 9, PLAY = 10,
+            PLUS = 11, WAVE = 12, MIC_OFF = 13, DOWN = 14;
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -109,6 +110,30 @@ final class IconView extends View {
             case PLAY:
                 p.setStyle(Paint.Style.FILL);
                 path.moveTo(8, 5); path.lineTo(19, 12); path.lineTo(8, 19); path.close();
+                canvas.drawPath(path, p);
+                break;
+            case PLUS:
+                canvas.drawLine(12, 5, 12, 19, p);
+                canvas.drawLine(5, 12, 19, 12, p);
+                break;
+            case WAVE: // Live voice: sound bars
+                p.setStrokeWidth(2.6f);
+                canvas.drawLine(5.5f, 10, 5.5f, 14, p);
+                canvas.drawLine(10, 6, 10, 18, p);
+                canvas.drawLine(14.5f, 8.5f, 14.5f, 15.5f, p);
+                canvas.drawLine(19, 10, 19, 14, p);
+                break;
+            case MIC_OFF:
+                r.set(9, 2, 15, 14);
+                canvas.drawRoundRect(r, 3, 3, p);
+                r.set(5, 6, 19, 17);
+                canvas.drawArc(r, 0, 180, false, p);
+                canvas.drawLine(12, 17, 12, 21, p);
+                canvas.drawLine(8.5f, 21, 15.5f, 21, p);
+                canvas.drawLine(4, 3, 20, 20, p);
+                break;
+            case DOWN:
+                path.moveTo(6, 9); path.lineTo(12, 15); path.lineTo(18, 9);
                 canvas.drawPath(path, p);
                 break;
             default:

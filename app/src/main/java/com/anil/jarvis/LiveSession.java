@@ -43,6 +43,8 @@ final class LiveSession {
         void onLiveJarvisPartial(String text);
         void onLiveJarvis(String text);
         void onLiveLevel(float level);
+        /** How loud Jarvis's own voice is right now (0..1), for the Live screen's animation. */
+        default void onLiveVoiceLevel(float level) {}
         void onLiveError(String message);
         /** session is the one that ended; a host ignores it when it is no longer its current session. */
         void onLiveEnded(LiveSession session, String reason);
@@ -82,6 +84,9 @@ final class LiveSession {
     /** The "I'm here when you need me" line after a long silence is playing (he may still answer it). */
     private volatile boolean idleBye;
     private int idleByes;
+    /** Mic muted from the Live screen: nothing is sent until he unmutes. */
+    private volatile boolean muted;
+    private long lastVoicePost;
     /** Headphones / Bluetooth in use (the mic is close to his mouth) rather than the phone's speaker. */
     private volatile boolean headset;
     /** The richer session settings were refused once: the plain ones are in use. */
@@ -171,6 +176,13 @@ final class LiveSession {
     }
 
     boolean isOpen() { return open && !closed; }
+
+    void setMuted(boolean m) {
+        muted = m;
+        if (!m) lastActivity = SystemClock.elapsedRealtime(); // a fresh start for the quiet timer
+    }
+
+    boolean isMuted() { return muted; }
 
     /** Sends a typed message (e.g. a protocol button) into the live conversation. */
     void sendText(String text) {
@@ -553,9 +565,10 @@ final class LiveSession {
                     long now = SystemClock.elapsedRealtime();
                     if (now - lastLevelPost > 100) {
                         lastLevelPost = now;
-                        float level = (float) Math.min(1.0, Math.sqrt(sum / (double) n) / 4000.0);
+                        float level = muted ? 0f : (float) Math.min(1.0, Math.sqrt(sum / (double) n) / 4000.0);
                         main.post(() -> l.onLiveLevel(level));
                     }
+                    if (muted) continue; // muted: send nothing
                     // Without barge-in, don't send the mic while Jarvis talks (stops it hearing itself).
                     if (!prefs.bargeIn() && (jarvisSpeaking || !playQueue.isEmpty())) continue;
                     String b64 = Base64.encodeToString(bytes, 0, n * 2, Base64.NO_WRAP);
@@ -576,6 +589,23 @@ final class LiveSession {
             }
         }, "jarvis-live-mic");
         micThread.start();
+    }
+
+    /** Loudness of a piece of Jarvis's voice (16-bit little-endian), sent to the screen about 20 times a second. */
+    private void voiceLevel(byte[] pcm, int off, int len) {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastVoicePost < 50) return;
+        lastVoicePost = now;
+        long sum = 0;
+        int n = 0;
+        for (int i = off; i + 1 < off + len; i += 2) {
+            int v = (short) ((pcm[i] & 0xFF) | (pcm[i + 1] << 8));
+            sum += (long) v * v;
+            n++;
+        }
+        if (n == 0) return;
+        float level = (float) Math.min(1.0, Math.sqrt(sum / (double) n) / 5000.0);
+        main.post(() -> l.onLiveVoiceLevel(level));
     }
 
     private void startPlayer() {
@@ -625,6 +655,7 @@ final class LiveSession {
                     if (c == null) {
                         if (jarvisSpeaking && t.getPlaybackHeadPosition() - base >= written) {
                             jarvisSpeaking = false;
+                            main.post(() -> l.onLiveVoiceLevel(0f));
                             if (!responseActive && !endRequested) state(OrbView.LISTENING, "మాట్లాడండి…");
                         }
                         continue;
@@ -639,6 +670,7 @@ final class LiveSession {
                     }
                     for (int off = 0; off < c.pcm.length && !flushRequested && !closed; off += PLAY_CHUNK) {
                         int len = Math.min(PLAY_CHUNK, c.pcm.length - off);
+                        voiceLevel(c.pcm, off, len);
                         int w = t.write(c.pcm, off, len);
                         if (w > 0) written += w / 2;
                     }

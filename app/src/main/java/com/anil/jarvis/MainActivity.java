@@ -55,7 +55,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listener, Store.Listener, LiveSession.Listener {
+public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listener, Store.Listener, LiveSession.Listener, LiveScreen.Actions {
     static final String EXTRA_WAKE = "wake";
     static final String EXTRA_BRIEF = "brief";
     /** Opened from a notification with a question to ask Jarvis right away. */
@@ -110,6 +110,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private Runnable pendingUndo;
     private LiveSession live;          // an open real-time voice conversation, or null
     private TextView liveBubble;       // Jarvis's reply while it is still being spoken
+    private LiveScreen liveScreen;     // the full-screen Live view (hologram core, mute, end)
+    private IconView micIcon;          // the mic inside the message box: speak instead of typing
 
     // ================================================================ lifecycle
 
@@ -367,7 +369,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         hud.setGravity(Gravity.CENTER_VERTICAL);
         hud.setPadding(0, dp(12), 0, dp(8));
         orb = new OrbView(this);
-        orb.setOnClickListener(v -> onActionPressed());
+        orb.setOnClickListener(v -> {
+            if (live != null) liveScreen.show();
+            else if (busy || voice.speaking || voice.listening) onActionPressed();
+            else startConversation(); // like "Hey Jarvis": Live when it is switched on, else listen
+        });
         // Iron Man style: rotating HUD rings around the arc-reactor orb
         FrameLayout reactor = new FrameLayout(this);
         reactor.addView(new HudView(this), new FrameLayout.LayoutParams(-1, -1));
@@ -551,57 +557,69 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         attachRow.setVisibility(View.GONE);
         dock.addView(attachRow);
 
+        // like ChatGPT: [+] message [mic] [blue Live button], all in one rounded box
         LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.BOTTOM);
-        IconView cam = new IconView(this, IconView.CAMERA, Ui.CYAN);
-        cam.setContentDescription("ఫోటో");
-        cam.setBackground(Ui.round(this, 0, Ui.LINE2, 12));
-        cam.setOnClickListener(v -> pickPhoto());
-        row.addView(cam, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackground(Ui.round(this, Ui.DEEP, Ui.LINE2, 28));
+        row.setPadding(dp(4), dp(4), dp(5), dp(4));
+        IconView plus = new IconView(this, IconView.PLUS, Ui.TEXT);
+        plus.setContentDescription("ఫోటో జత చేయి");
+        plus.setOnClickListener(v -> pickPhoto());
+        row.addView(plus, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         input = new EditText(this);
-        input.setHint("Jarvis తో మాట్లాడండి…");
+        input.setHint("Jarvis ని అడగండి");
         input.setTextColor(Ui.TEXT);
         input.setHintTextColor(Ui.FAINT);
         input.setTextSize(16.5f);
         input.setMaxLines(5);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         input.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        input.setBackground(Ui.round(this, Ui.DEEP, Ui.LINE2, 14));
-        input.setPadding(dp(13), dp(11), dp(13), dp(11));
+        input.setBackground(null);
+        input.setPadding(dp(4), dp(10), dp(4), dp(10));
         input.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void afterTextChanged(Editable s) { if (!voice.listening) refreshAction(); }
         });
-        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(0, -2, 1);
-        ilp.leftMargin = dp(8);
-        ilp.rightMargin = dp(8);
-        row.addView(input, ilp);
+        row.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
+
+        micIcon = new IconView(this, IconView.MIC, Ui.TEXT);
+        micIcon.setContentDescription("మాట్లాడి అడగండి");
+        micIcon.setOnClickListener(v -> onMicPressed());
+        row.addView(micIcon, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         pauseBtn = new FrameLayout(this);
-        pauseBtn.setBackground(Ui.round(this, Ui.PANEL, Ui.CYAN2, 26));
+        pauseBtn.setBackground(Ui.round(this, Ui.PANEL, Ui.CYAN2, 22));
         pauseIcon = new IconView(this, IconView.PAUSE, Ui.CYAN);
         pauseBtn.addView(pauseIcon, new FrameLayout.LayoutParams(-1, -1));
         pauseBtn.setOnClickListener(v -> togglePause());
         pauseBtn.setContentDescription("ఆపు / కొనసాగించు");
         pauseBtn.setVisibility(View.GONE);
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(52), dp(52));
-        plp.rightMargin = dp(8);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(44), dp(44));
+        plp.rightMargin = dp(4);
         row.addView(pauseBtn, plp);
 
         actionBtn = new FrameLayout(this);
-        actionBtn.setBackground(Ui.round(this, Ui.GOLD, 0, 26));
-        actionIcon = new IconView(this, IconView.MIC, Ui.GOLD_INK);
+        actionBtn.setBackground(Ui.round(this, LiveScreen.blue(), 0, 23));
+        actionIcon = new IconView(this, IconView.WAVE, 0xFFFFFFFF);
         actionBtn.addView(actionIcon, new FrameLayout.LayoutParams(-1, -1));
         actionBtn.setOnClickListener(v -> onActionPressed());
-        actionBtn.setContentDescription("మాట్లాడండి");
-        row.addView(actionBtn, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        actionBtn.setContentDescription("Live సంభాషణ");
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dp(46), dp(46));
+        alp.leftMargin = dp(2);
+        row.addView(actionBtn, alp);
         dock.addView(row);
         root.addView(dock);
 
         showTab(0);
-        return root;
+        // the full-screen Live view sits on top, hidden until Live starts
+        FrameLayout top = new FrameLayout(this);
+        top.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        liveScreen = new LiveScreen(this, this);
+        liveScreen.setVisibility(View.GONE);
+        top.addView(liveScreen, new FrameLayout.LayoutParams(-1, -1));
+        return top;
     }
 
     private View buildListPanel(boolean missions) {
@@ -970,18 +988,23 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void refreshAction() {
         int icon;
-        int bg = Ui.GOLD;
-        int fg = Ui.GOLD_INK;
+        int bg = LiveScreen.blue();
+        int fg = 0xFFFFFFFF;
         String desc;
-        if (live != null) { icon = IconView.STOP; bg = Ui.RED; fg = 0xFF2A0703; desc = "Live సంభాషణ ఆపు"; }
+        boolean typed = input.getText().toString().trim().length() > 0 || pendingPhoto != null;
+        if (live != null) { icon = IconView.WAVE; desc = "Live తెర చూపించు"; }
         else if (busy || voice.speaking) { icon = IconView.STOP; bg = Ui.RED; fg = 0xFF2A0703; desc = "ఆపు"; }
-        else if (voice.listening) { icon = IconView.STOP; desc = "వినడం ఆపు"; }
-        else if (input.getText().toString().trim().length() > 0 || pendingPhoto != null) { icon = IconView.SEND; desc = "పంపు"; }
-        else { icon = IconView.MIC; desc = "మాట్లాడండి"; }
+        else if (voice.listening) { icon = IconView.STOP; bg = Ui.GOLD; fg = Ui.GOLD_INK; desc = "వినడం ఆపు"; }
+        else if (typed) { icon = IconView.SEND; desc = "పంపు"; }
+        else { icon = IconView.WAVE; desc = "Live సంభాషణ"; }
         actionIcon.setIcon(icon);
         actionIcon.setColor(fg);
-        actionBtn.setBackground(Ui.round(this, bg, 0, 26));
+        actionBtn.setBackground(Ui.round(this, bg, 0, 23));
         actionBtn.setContentDescription(desc);
+        if (micIcon != null) {
+            micIcon.setVisibility(live != null ? View.GONE : View.VISIBLE);
+            micIcon.setColor(voice.listening ? Ui.GOLD : Ui.TEXT);
+        }
         syncPause();
     }
 
@@ -1013,7 +1036,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** The screen after a pause / carry-on (by button or by voice). */
     private void afterPaused(int r) {
-        input.setHint("Jarvis తో మాట్లాడండి…");
+        input.setHint("Jarvis ని అడగండి");
         if (r == VoiceIO.HELD) {
             orb.setState(OrbView.IDLE);
             status.setText("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి");
@@ -1034,8 +1057,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void onActionPressed() {
-        if (live != null) {
-            live.stop("user");
+        if (live != null) { // Live is running (screen minimised): back to the Live screen
+            liveScreen.show();
             return;
         }
         if (busy) {
@@ -1059,8 +1082,50 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             input.setText("");
             send(text, null, false);
         } else {
-            startConversation();
+            startLiveFromButton();
         }
+    }
+
+    /** The mic in the message box: speak instead of typing (the classic listen-then-answer). */
+    private void onMicPressed() {
+        if (live != null) { liveScreen.show(); return; }
+        if (busy || voice.speaking) { onActionPressed(); return; } // first press stops the answer
+        if (voice.listening) { voice.stopListening(); return; }
+        startListening();
+    }
+
+    /** The blue button: Live conversation, whether or not Live is set as the default for "Hey Jarvis". */
+    private void startLiveFromButton() {
+        if (prefs.openAiKey().trim().isEmpty()) {
+            Toast.makeText(this, "Live సంభాషణకి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!Net.online(this)) {
+            Toast.makeText(this, "ఇంటర్నెట్ లేదు. నెట్ ఆన్ చేసి మళ్లీ నొక్కండి.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        startLive();
+    }
+
+    // ---- the Live screen's buttons
+
+    @Override public void onLiveEnd() {
+        if (live != null) live.stop("user"); else liveScreen.hide();
+    }
+
+    @Override public void onLiveMute(boolean muted) {
+        if (live != null) live.setMuted(muted);
+        status.setText(muted ? "మైక్ ఆఫ్" : "మాట్లాడండి…");
+    }
+
+    @Override public void onLiveMinimize() {
+        liveScreen.hide();
+        refreshAction();
+    }
+
+    @Override public void onBackPressed() {
+        if (liveScreen != null && liveScreen.showing()) { onLiveEnd(); return; } // like ChatGPT: back ends the voice chat
+        super.onBackPressed();
     }
 
     /** Live real-time talk when it is switched on, otherwise the classic listen-then-answer. */
@@ -1085,9 +1150,15 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         WakeService.pause(this);
         keepScreenOn();
         showTab(0);
-        input.setHint("Live: మాట్లాడండి, ఆపాలంటే ఎరుపు బటన్");
+        input.setHint("Live నడుస్తోంది · నీలం బటన్ = Live తెర");
         Tools.takeInterpreter(); // a stale request from an earlier turn must not start later
         live = new LiveSession(this, prefs, tools, this);
+        // full screen, unless the live camera is open (then the chat and the camera stay in view)
+        liveScreen.open(cameraBox.getVisibility() != View.VISIBLE);
+        try {
+            android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
+            if (imm != null) imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+        } catch (Exception ignored) {}
         live.start(instructions != null ? instructions : brain.liveInstructions(store.chat()));
         refreshAction();
     }
@@ -1095,9 +1166,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onLiveState(int orbState, String text) {
         orb.setState(orbState);
         status.setText(text);
+        liveScreen.state(orbState, text);
     }
 
     @Override public void onLiveUser(String text) {
+        liveScreen.caption(text, false);
         // LiveSession has already saved it to the Store (before any tool of that turn ran).
         TextView t = addMessage("user", text, System.currentTimeMillis(), null);
         if (liveBubble != null) {
@@ -1110,6 +1183,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onLiveJarvisPartial(String text) {
+        liveScreen.caption(text, true);
         if (liveBubble == null) liveBubble = addMessage("assistant", text, System.currentTimeMillis(), null);
         else {
             liveBubble.setText(text);
@@ -1118,22 +1192,31 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onLiveJarvis(String text) {
+        liveScreen.caption(text, true);
         if (liveBubble != null) liveBubble.setText(text);
         else addMessage("assistant", text, System.currentTimeMillis(), null);
         liveBubble = null;
         store.addChat("assistant", text, false);
     }
 
-    @Override public void onLiveLevel(float level) { orb.setLevel(level); }
+    @Override public void onLiveLevel(float level) {
+        orb.setLevel(level);
+        liveScreen.orb.setMic(level);
+    }
+
+    @Override public void onLiveVoiceLevel(float level) { liveScreen.orb.setVoice(level); }
 
     @Override public void onLiveError(String message) {
-        TextView t = addMessage("assistant", describeLive(message), System.currentTimeMillis(), null);
+        String said = describeLive(message);
+        TextView t = addMessage("assistant", said, System.currentTimeMillis(), null);
         t.setTextColor(Ui.RED);
+        liveScreen.error(said);
     }
 
     @Override public void onLiveEnded(LiveSession session, String reason) {
         if (session != live) return; // an older session ended; the current one is still running
         live = null;
+        liveScreen.hide();
         liveBubble = null;
         String lang = session.interpreterLang();
         if (lang != null && !isFinishing() && !isDestroyed()) {
@@ -1195,7 +1278,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onHeard(String text) {
-        input.setHint("Jarvis తో మాట్లాడండి…");
+        input.setHint("Jarvis ని అడగండి");
         input.setText("");
         if (voice.isPaused()) { // "ఆపు" / "కొనసాగించు" / "చాలు", or a new question
             int r = voice.pausedHeard(text);
@@ -1206,7 +1289,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onListenFailed(int error) {
-        input.setHint("Jarvis తో మాట్లాడండి…");
+        input.setHint("Jarvis ని అడగండి");
         String partial = input.getText().toString().trim();
         if (voice.isPaused()) { // nothing (clear) heard while paused: carry on, or stay paused if he paused it
             input.setText("");
@@ -1404,7 +1487,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         screenMaySleepSoon();
         orb.setState(prefs.hasBrain() ? OrbView.IDLE : OrbView.OFFLINE);
         status.setText(prefs.hasBrain() ? "సిద్ధంగా ఉన్నాను, " + prefs.name() : "మెదడు ఆఫ్‌లైన్: API key కావాలి");
-        input.setHint("Jarvis తో మాట్లాడండి…");
+        input.setHint("Jarvis ని అడగండి");
         refreshAction();
     }
 
@@ -1517,7 +1600,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         pendingPhoto = null;
         pendingThumb = null;
         attachRow.setVisibility(View.GONE);
-        input.setHint("Jarvis తో మాట్లాడండి…");
+        input.setHint("Jarvis ని అడగండి");
         refreshAction();
     }
 
