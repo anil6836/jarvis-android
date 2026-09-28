@@ -42,7 +42,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
 
-    private OrbView orb;
+    private HoloOrb orb;               // the small hologram core (same states as OrbView)
     private TextView status, heard, reply;
     private IconView action;
     private FrameLayout pauseBtn;   // ⏸/▶ at the bottom right while Jarvis is speaking
@@ -157,40 +157,55 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     private int dp(float v) { return Ui.dp(this, v); }
 
+    private static final int SHEET_BOTTOM = 0xFF150C38;
+
     private View buildUi() {
         FrameLayout root = new FrameLayout(this);
         root.setOnClickListener(v -> { FindPhone.stop(this); closeSheet(); }); // tap outside the card to dismiss
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-        bg.setColor(Ui.INK);
-        float r = dp(26);
+        // the same colourful look as the app: deep indigo-violet card, glowing handle, hologram core
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF16225C, 0xFF0D1440, SHEET_BOTTOM});
+        float r = dp(28);
         bg.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
-        bg.setStroke(dp(1), Ui.LINE2);
+        bg.setStroke(dp(1), Ui.alpha(Ui.C_VIOLET, 0x77));
         card.setBackground(bg);
-        card.setPadding(dp(18), dp(16), dp(18), dp(22));
+        card.setPadding(dp(18), dp(10), dp(18), dp(22));
         card.setClickable(true); // taps inside the card don't close it
+        getWindow().setNavigationBarColor(SHEET_BOTTOM);
+
+        View handle = new View(this);
+        handle.setBackground(Ui.grad(this, new int[]{Ui.C_CYAN, Ui.C_VIOLET, Ui.C_PINK}, 2, null));
+        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(dp(46), dp(4));
+        hlp.gravity = Gravity.CENTER_HORIZONTAL;
+        hlp.bottomMargin = dp(8);
+        card.addView(handle, hlp);
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        orb = new OrbView(this);
-        top.addView(orb, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        orb = new HoloOrb(this, 60);
+        top.addView(orb, new LinearLayout.LayoutParams(dp(62), dp(62)));
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(12), 0, dp(8), 0);
-        TextView name = Ui.mono(this, "JARVIS", 15, Ui.CYAN);
-        name.setLetterSpacing(0.3f);
+        col.setPadding(dp(10), 0, dp(8), 0);
+        TextView name = Ui.mono(this, "JARVIS", 14, Ui.C_CYAN);
+        name.setLetterSpacing(0.4f);
+        Ui.gradientText(name, Ui.C_CYAN, Ui.C_VIOLET);
         col.addView(name);
-        status = Ui.text(this, Greeting.text(prefs), 17, Ui.TEXT);
+        status = Ui.text(this, Greeting.text(prefs), 17, 0xFFFFFFFF);
         status.setMaxLines(2);
         status.setEllipsize(TextUtils.TruncateAt.END);
         col.addView(status);
         top.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
 
         FrameLayout btn = new FrameLayout(this);
-        btn.setBackground(Ui.round(this, Ui.GOLD, 0, 24));
-        action = new IconView(this, IconView.STOP, Ui.GOLD_INK);
+        android.graphics.drawable.GradientDrawable ab = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR, new int[]{Ui.C_BLUE, Ui.C_VIOLET});
+        ab.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        btn.setBackground(ab);
+        action = new IconView(this, IconView.STOP, 0xFFFFFFFF);
         btn.addView(action, new FrameLayout.LayoutParams(-1, -1));
         btn.setOnClickListener(v -> onAction());
         btn.setContentDescription("ఆపు / మాట్లాడు");
@@ -201,15 +216,15 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         callRow = new LinearLayout(this);
         callRow.setPadding(0, dp(14), 0, 0);
         callRow.setVisibility(View.GONE);
-        TextView pick = Ui.text(this, "📞  ఎత్తు", 17, 0xFF06210F);
+        TextView pick = Ui.text(this, "📞  ఎత్తు", 17, 0xFFFFFFFF);
         pick.setGravity(Gravity.CENTER);
         pick.setPadding(0, dp(12), 0, dp(12));
-        pick.setBackground(Ui.round(this, 0xFF3DDC84, 0, 24));
+        pick.setBackground(Ui.grad(this, new int[]{Ui.C_GREEN, Ui.C_TEAL}, 24, null));
         pick.setOnClickListener(v -> doCall(true));
-        TextView cut = Ui.text(this, "✖  కట్", 17, 0xFF2A0703);
+        TextView cut = Ui.text(this, "✖  కట్", 17, 0xFFFFFFFF);
         cut.setGravity(Gravity.CENTER);
         cut.setPadding(0, dp(12), 0, dp(12));
-        cut.setBackground(Ui.round(this, Ui.RED, 0, 24));
+        cut.setBackground(Ui.grad(this, new int[]{0xFFF43F5E, Ui.C_ORANGE}, 24, null));
         cut.setOnClickListener(v -> doCall(false));
         LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, -2, 1);
         half.setMargins(0, 0, dp(6), 0);
@@ -228,14 +243,17 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         LinearLayout texts = new LinearLayout(this);
         texts.setOrientation(LinearLayout.VERTICAL);
         texts.setPadding(0, dp(10), 0, 0);
-        heard = Ui.text(this, "", 15, Ui.GOLD);
+        heard = Ui.text(this, "", 15, Ui.C_AMBER);
         heard.setVisibility(View.GONE);
         texts.addView(heard);
         reply = Ui.text(this, "", 16.5f, Ui.TEXT);
         reply.setLineSpacing(0, 1.25f);
-        reply.setPadding(0, dp(6), 0, 0);
+        reply.setBackground(Ui.corners(this, Ui.round(this, 0x16FFFFFF, 0x26FFFFFF, 0), 6, 18, 18, 18)); // frosted glass, like the app
+        reply.setPadding(dp(14), dp(10), dp(14), dp(11));
         reply.setVisibility(View.GONE);
-        texts.addView(reply);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-2, -2);
+        rlp.topMargin = dp(8);
+        texts.addView(reply, rlp);
         scroll.addView(texts);
         card.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         textScroll = scroll;
@@ -243,15 +261,15 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
         bottom.setPadding(0, dp(12), 0, 0);
-        TextView open = Ui.text(this, "Jarvis యాప్ తెరువు →", 14, Ui.CYAN2);
+        TextView open = Ui.text(this, "Jarvis యాప్ తెరువు →", 14, Ui.C_CYAN);
         open.setOnClickListener(v -> {
             startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             closeSheet();
         });
         bottom.addView(open, new LinearLayout.LayoutParams(0, -2, 1));
         pauseBtn = new FrameLayout(this);
-        pauseBtn.setBackground(Ui.round(this, Ui.PANEL, Ui.CYAN2, 24));
-        pauseIcon = new IconView(this, IconView.PAUSE, Ui.CYAN);
+        pauseBtn.setBackground(Ui.round(this, 0x1AFFFFFF, Ui.alpha(Ui.C_CYAN, 0xAA), 24));
+        pauseIcon = new IconView(this, IconView.PAUSE, Ui.C_CYAN);
         pauseBtn.addView(pauseIcon, new FrameLayout.LayoutParams(-1, -1));
         pauseBtn.setOnClickListener(v -> togglePause());
         pauseBtn.setContentDescription("ఆపు / కొనసాగించు");
