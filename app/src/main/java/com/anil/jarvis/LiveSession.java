@@ -264,7 +264,7 @@ final class LiveSession {
                         .put("create_response", true)
                         .put("interrupt_response", prefs.bargeIn());
             JSONObject transcription = new JSONObject().put("model", "gpt-4o-mini-transcribe");
-            if (rich) transcription.put("language", prefs.listenLang().startsWith("en") ? "en" : "te");
+            if (rich && !Brain.twoLanguages(instructions)) transcription.put("language", prefs.listenLang().startsWith("en") ? "en" : "te");
             JSONObject input = new JSONObject()
                     .put("format", new JSONObject().put("type", "audio/pcm").put("rate", RATE))
                     .put("transcription", transcription)

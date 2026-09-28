@@ -207,6 +207,8 @@ final class Tools {
                 schema(new String[][]{{"amount", "integer", "Rupees per month"}}, "amount")));
         DEFS.add(new Def("interpreter", "Start a live two-way interpreter between Telugu and another language for a conversation with someone ('హిందీ అనువాదకుడిగా ఉండు').",
                 schema(new String[][]{{"language", "string", "The other person's language, e.g. Hindi, English, Tamil"}}, "language")));
+        DEFS.add(new Def("english_practice", "Start a live spoken-English practice session: Jarvis talks in simple English, gently corrects his mistakes with a short Telugu explanation, and keeps the conversation going. Use for 'English practice', 'ఇంగ్లీష్ నేర్పించు', 'English మాట్లాడదాం'.",
+                schema(new String[][]{{"topic", "string", "Optional topic to talk about (job interview, travel, office, daily life…)"}})));
         DEFS.add(new Def("read_screen", "Read the article/page on his screen aloud (mode read) or summarise it (mode summary).",
                 schema(new String[][]{{"mode", "string", "read or summary"}})));
         DEFS.add(new Def("jarvis_mood", "Change how Jarvis talks: normal, serious, funny, english (reply in English), short (very brief).",
@@ -455,6 +457,7 @@ final class Tools {
             case "group_summary": return "గ్రూప్ మెసేజ్‌లు చదువుతున్నాను…";
             case "budget": return "బడ్జెట్…";
             case "interpreter": return "అనువాదకుడు…";
+            case "english_practice": return "English practice మొదలుపెడుతున్నాను…";
             case "read_screen": return "స్క్రీన్ చదువుతున్నాను…";
             case "jarvis_mood": return "సరే…";
             case "search_history": return "పాత మాటల్లో వెతుకుతున్నాను…";
@@ -526,6 +529,7 @@ final class Tools {
                 case "group_summary": return groupSummary(a.optString("group", ""));
                 case "budget": return budget(a.optInt("amount", 0));
                 case "interpreter": return interpreter(a.optString("language"));
+                case "english_practice": return englishPractice(a.optString("topic"));
                 case "read_screen": return readScreen(a.optString("mode", "read"));
                 case "jarvis_mood": return mood(a.optString("mode", "normal"));
                 case "search_history": return searchHistory(a.optString("query"), a.optInt("days", 90));
@@ -3120,6 +3124,25 @@ final class Tools {
         String l = interpreterLang;
         interpreterLang = null;
         return l;
+    }
+
+    /** Marks an English-practice session in the interpreter hand-over (a live session with the tutor's instructions). */
+    static final String TUTOR = "english-tutor";
+    static volatile String tutorTopic;
+
+    static String takeTutorTopic() {
+        String t = tutorTopic;
+        tutorTopic = null;
+        return t;
+    }
+
+    private String englishPractice(String topic) throws Exception {
+        if (prefs.openAiKey().trim().isEmpty()) return err("no_openai", "English practice runs in Live mode, which needs an OpenAI key in settings.");
+        if (!online()) return err("offline", "English practice needs internet.");
+        tutorTopic = topic == null || topic.trim().isEmpty() ? null : topic.trim();
+        interpreterLang = TUTOR;
+        return ok().put("english_practice", true)
+                .put("next", "Say one short, cheerful Telugu line: English practice is starting in Live; say 'practice ఆపు' to stop.").toString();
     }
 
     private String interpreter(String language) throws Exception {

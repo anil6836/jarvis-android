@@ -522,6 +522,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         addChip(chips, "📱", "స్క్రీన్ చూడు", "నా స్క్రీన్‌లో ఏముందో చూసి చెప్పు (look_at_screen వాడు).");
         addChip(chips, "💬", "మెసేజ్‌లు", "నాకు వచ్చిన కొత్త మెసేజ్‌లు చదివి చెప్పు (read_notifications వాడు).");
         addChip(chips, "⏰", "రిమైండర్లు", "నా రాబోయే రిమైండర్లు, ఈరోజు క్యాలెండర్ చెప్పు.");
+        addAction(chips, "🗣️", "English practice", this::startEnglishPractice);
         addAction(chips, "🌐", "వెబ్‌సైట్", () -> prefill("ఒక వెబ్‌సైట్ తయారు చెయ్: "));
         addAction(chips, "📲", "యాప్", () -> prefill("ఒక Android యాప్ తయారు చెయ్: "));
         addAction(chips, "🐍", "Python", () -> prefill("Python తో లెక్కించు: "));
@@ -1137,6 +1138,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (busy || voice.speaking) { onActionPressed(); return; } // first press stops the answer
         if (voice.listening) { voice.stopListening(); return; }
         startListening();
+    }
+
+    /** Spoken-English practice: a Live session with the friendly coach. */
+    private void startEnglishPractice() {
+        if (live != null) { liveScreen.show(); return; }
+        if (prefs.openAiKey().trim().isEmpty()) {
+            Toast.makeText(this, "English practice కి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!Net.online(this)) { Toast.makeText(this, "ఇంటర్నెట్ లేదు", Toast.LENGTH_LONG).show(); return; }
+        startLive(Brain.tutorInstructions(prefs.name(), null));
     }
 
     /** The blue button: Live conversation, whether or not Live is set as the default for "Hey Jarvis". */
