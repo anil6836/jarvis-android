@@ -139,8 +139,46 @@ public class NotifyListener extends NotificationListenerService {
             items.put(it.key, it); // re-insert at the end = newest
             prune();
         }
+        maybeReadNews(sbn, app, title, text);
         maybeReadAloud(sbn, n, x, app, title, text);
         ScamGuard.check(this, sbn.getPackageName(), app, title, text); // scam-looking message or a new autopay: warn
+    }
+
+    // ---------------------------------------------------------------- Way2News read aloud
+
+    /** Way2News and its other-language apps (Telugu: sun.way2sms.hyd.com, English: sun.way2english.hyd.com...). */
+    static boolean newsApp(String pkg, String label) {
+        String p = pkg == null ? "" : pkg.toLowerCase(Locale.ROOT);
+        if (p.contains("reporter") || p.contains("promoter")) return false;
+        return (p.startsWith("sun.way2") && p.endsWith(".hyd.com")) || p.contains("way2news")
+                || String.valueOf(label).toLowerCase(Locale.ROOT).replace(" ", "").contains("way2news");
+    }
+
+    private static final Map<String, Long> newsSaid = new LinkedHashMap<String, Long>() {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, Long> e) { return size() > 100; }
+    };
+
+    /** A Way2News headline: said as it comes (not at night, in a call, while talking, or on Do Not Disturb). */
+    private void maybeReadNews(StatusBarNotification sbn, String app, String title, String text) {
+        if (!newsApp(sbn.getPackageName(), app)) return;
+        Prefs p = new Prefs(this);
+        if (!p.readNews()) return;
+        long now = System.currentTimeMillis();
+        if (now - sbn.getPostTime() > 120000) return; // old ones shown again after a reboot
+        if (p.night() || MainActivity.busyTalking() || CallControl.busyWithCall()) return;
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) return;
+        String t = title == null ? "" : title.trim(), b = text == null ? "" : text.trim();
+        if (t.equalsIgnoreCase("way2news") || t.equalsIgnoreCase(app)) t = "";
+        String said = t.isEmpty() || b.contains(t) ? b : b.isEmpty() || t.contains(b) ? t : t + ". " + b;
+        said = said.replaceAll("https?://\\S+", "").replaceAll("(?i)(tap|click) (here )?to read( more)?\\.?", "").replaceAll("\\s+", " ").trim();
+        if (said.length() < 8) return;
+        if (said.length() > 350) said = said.substring(0, 350) + "…";
+        synchronized (newsSaid) {
+            if (newsSaid.containsKey(said)) return; // the same story posted again
+            newsSaid.put(said, now);
+        }
+        Announcer.say(this, "Way2News వార్త: " + said);
     }
 
     // ---------------------------------------------------------------- read new messages aloud
@@ -188,6 +226,7 @@ public class NotifyListener extends NotificationListenerService {
     }
 
     private void maybeReadAloud(StatusBarNotification sbn, Notification n, Bundle x, String app, String from, String text) {
+        if (newsApp(sbn.getPackageName(), app)) return; // news is read out by maybeReadNews
         if (!chatApp(sbn.getPackageName(), n, x)) return;
         if (System.currentTimeMillis() - sbn.getPostTime() > 60000) return; // old ones shown again after a reboot or reconnect
         Life.endNightIfMorning(this); // a night mode left on from last night ends in the morning

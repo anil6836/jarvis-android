@@ -112,6 +112,8 @@ final class Prefs {
     boolean callByVoice() { return sp.getBoolean("call_voice", true); }
     /** Read new WhatsApp / SMS / Telegram messages aloud and offer to reply. */
     boolean readMessages() { return sp.getBoolean("read_messages", true); }
+    /** Way2News: read each news notification aloud as it comes. */
+    boolean readNews() { return sp.getBoolean("read_news", true); }
     /** Warn by voice when the battery gets low. */
     boolean batteryWarn() { return sp.getBoolean("battery_warn", true); }
     /** Driving: everything by voice, messages always read out. */

@@ -53,7 +53,7 @@ public class SettingsActivity extends Activity {
     private TextView lockInfo, docsInfo, waInfo;
     private EditText sosContacts, smartUrls, smartApp, walletMax;
     private Switch walletPay, emotions;
-    private Switch alexaSpeak, livePatient, scamGuard;
+    private Switch alexaSpeak, livePatient, scamGuard, readNews;
     private EditText balGemini, balOpenAi, balAnthropic;
     private EditText bikeRange, bikeKwh, powerRate;
     private Switch weeklyReport;
@@ -361,6 +361,7 @@ public class SettingsActivity extends Activity {
         section("కాల్స్, ఉదయం బ్రీఫింగ్");
         announceCalls = toggle("కాల్ వస్తే ఎవరో పైకి చెప్పు (నోటిఫికేషన్ యాక్సెస్ కావాలి)", prefs.announceCalls());
         readMessages = toggle("కొత్త మెసేజ్ వస్తే (WhatsApp, SMS, Telegram, Instagram, Facebook, Snapchat...) ఎవరి నుంచో చెప్పి, \"చదవమంటారా?\" అని అడుగు", prefs.readMessages());
+        readNews = toggle("📰 Way2News వార్త వచ్చిన వెంటనే చదివి వినిపించు", prefs.readNews());
         batteryWarn = toggle("బ్యాటరీ 15%, 5% కి పడితే గొంతుతో చెప్పు", prefs.batteryWarn());
         callVoice = toggle("తర్వాత \"ఎత్తు\" అంటే కాల్ ఎత్తు, \"కట్\" అంటే కట్ చెయ్", prefs.callByVoice());
         briefing = toggle("రోజూ ఉదయం బ్రీఫింగ్ తనంతట తానే", prefs.briefingOn());
@@ -660,6 +661,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("announce_calls", announceCalls.isChecked());
         e.putBoolean("call_voice", callVoice.isChecked());
         e.putBoolean("read_messages", readMessages.isChecked());
+        e.putBoolean("read_news", readNews.isChecked());
         e.putBoolean("battery_warn", batteryWarn.isChecked());
         e.putBoolean("briefing", briefing.isChecked());
         e.putInt("briefing_hour", briefHour);
