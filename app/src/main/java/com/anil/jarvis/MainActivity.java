@@ -62,6 +62,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     static final String EXTRA_BRIEF = "brief";
     /** Opened from a notification with a question to ask Jarvis right away. */
     static final String EXTRA_ASK = "jarvis_ask";
+    /** From the features screen: what to show as his message for EXTRA_ASK, a request to finish typing, an action. */
+    static final String EXTRA_LABEL = "jarvis_label", EXTRA_FILL = "jarvis_fill", EXTRA_DO = "jarvis_do";
     /** Open the document scanner (from the scan_document tool, possibly started from the Hey Jarvis panel). */
     static final String EXTRA_SCAN = "jarvis_scan";
     /** True while the Jarvis screen is in front (then a fresh screenshot would only show Jarvis). */
@@ -263,10 +265,24 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             main.postDelayed(() -> Scanner.start(this), 400);
             return;
         }
+        String fillNow = i.getStringExtra(EXTRA_FILL);
+        if (fillNow != null) {
+            i.removeExtra(EXTRA_FILL);
+            main.postDelayed(() -> prefill(fillNow), 350);
+            return;
+        }
+        String doNow = i.getStringExtra(EXTRA_DO);
+        if (doNow != null) {
+            i.removeExtra(EXTRA_DO);
+            main.postDelayed(() -> doAction(doNow), 350);
+            return;
+        }
         String askNow = i.getStringExtra(EXTRA_ASK);
         if (askNow != null) {
+            String label = i.getStringExtra(EXTRA_LABEL);
             i.removeExtra(EXTRA_ASK);
-            main.postDelayed(() -> send(askNow, null, false), 500);
+            i.removeExtra(EXTRA_LABEL);
+            main.postDelayed(() -> askFromOutside(askNow, label), 500);
             return;
         }
         if (i.getBooleanExtra(EXTRA_BRIEF, false)) {
@@ -440,6 +456,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         clock = Ui.text(this, "", 12, Ui.MUTED);    // (time and date live in the status tiles now)
         dateView = Ui.text(this, "", 12, Ui.MUTED);
 
+        IconView all = new IconView(this, IconView.GRID, 0xFFFFFFFF);
+        all.setContentDescription("అన్ని ఫీచర్లు");
+        all.setBackground(Ui.glass(this, 22));
+        all.setOnClickListener(v -> startActivity(new Intent(this, FeaturesActivity.class)));
+        LinearLayout.LayoutParams allLp = new LinearLayout.LayoutParams(dp(44), dp(44));
+        allLp.rightMargin = dp(8);
+        hud.addView(all, allLp);
+
         IconView gear = new IconView(this, IconView.GEAR, 0xFFFFFFFF);
         gear.setContentDescription("సెట్టింగ్స్");
         gear.setBackground(Ui.glass(this, 22));
@@ -550,6 +574,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         LinearLayout chips = new LinearLayout(this);
         chips.setPadding(0, dp(8), 0, dp(10));
         // colourful quick actions; the last few start a request for him to finish typing
+        addAction(chips, "📂", "అన్ని ఫీచర్లు", () -> startActivity(new Intent(this, FeaturesActivity.class)));
         addChip(chips, "🌅", "శుభోదయం బ్రీఫింగ్", BRIEF_PROMPT);
         addChip(chips, "📰", "వార్తలు", "ఈరోజు ముఖ్యమైన 3 వార్తలు చెప్పు: ఒకటి భారతదేశం, ఒకటి తెలంగాణ లేదా ఆంధ్రప్రదేశ్, ఒకటి టెక్నాలజీ. ఇంటర్నెట్‌లో వెతికి, చిన్నగా చెప్పు.");
         addChip(chips, "⛅", "వాతావరణం", "ఇప్పుడు ఇక్కడ వాతావరణం ఎలా ఉంది? రేపు వర్షం పడే అవకాశం ఉందా?");
@@ -750,6 +775,39 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void addAction(LinearLayout chips, String emoji, String label, Runnable action) {
         chip(chips, emoji, label).setOnClickListener(v -> action.run());
+    }
+
+    /** A question from outside (a notification, the features screen): into Live when it is running, else a normal turn. */
+    private void askFromOutside(String prompt, String label) {
+        if (busy) {
+            Toast.makeText(this, "Jarvis ఇంకా జవాబిస్తున్నాడు. అయ్యాక మళ్లీ నొక్కండి.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (live != null && live.isOpen()) {
+            String shown = label != null ? label : prompt;
+            store.addChat("user", shown, false);
+            addMessage("user", shown, System.currentTimeMillis(), null);
+            live.sendText(prompt);
+            return;
+        }
+        send(prompt, label, false);
+    }
+
+    /** An action picked in the features screen. */
+    private void doAction(String code) {
+        switch (code) {
+            case "scan": Scanner.start(this); break;
+            case "bill": billPhoto(); break;
+            case "live": startLiveFromButton(); break;
+            case "english": startEnglishPractice(); break;
+            case "camera": toggleCamera(); break;
+            case "photo": pickPhoto(); break;
+            case "file": openFiles(); break;
+            case "brief": if (!busy) send(BRIEF_PROMPT, "🌅 శుభోదయం బ్రీఫింగ్", false); break;
+            case "missions": showTab(1); break;
+            case "memories": showTab(2); break;
+            default: break;
+        }
     }
 
     /** Starts a request in the message box for him to finish ("ఒక వెబ్‌సైట్ తయారు చెయ్: …"). */

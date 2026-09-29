@@ -10,7 +10,7 @@ import android.view.View;
 /** Small line icons drawn in code so the app needs no image files. */
 final class IconView extends View {
     static final int MIC = 0, SEND = 1, STOP = 2, CAMERA = 3, GEAR = 4, TRASH = 5, CHECK = 6, CLOSE = 7, SPEAKER = 8, PAUSE = 9, PLAY = 10,
-            PLUS = 11, WAVE = 12, MIC_OFF = 13, DOWN = 14, IMAGE = 15, CLIP = 16, VIDEO = 17, SCAN = 18;
+            PLUS = 11, WAVE = 12, MIC_OFF = 13, DOWN = 14, IMAGE = 15, CLIP = 16, VIDEO = 17, SCAN = 18, GRID = 19;
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -165,6 +165,12 @@ final class IconView extends View {
                 canvas.drawLine(8, 9, 16, 9, p);
                 canvas.drawLine(8, 12, 16, 12, p);
                 canvas.drawLine(8, 15, 13, 15, p);
+                break;
+            case GRID: // four tiles: all features by folder
+                canvas.drawRoundRect(4, 4, 10.5f, 10.5f, 1.8f, 1.8f, p);
+                canvas.drawRoundRect(13.5f, 4, 20, 10.5f, 1.8f, 1.8f, p);
+                canvas.drawRoundRect(4, 13.5f, 10.5f, 20, 1.8f, 1.8f, p);
+                canvas.drawRoundRect(13.5f, 13.5f, 20, 20, 1.8f, 1.8f, p);
                 break;
             case DOWN:
                 path.moveTo(6, 9); path.lineTo(12, 15); path.lineTo(18, 9);

@@ -30,6 +30,11 @@ import java.util.Locale;
 
 /** Keys, voice and wake-word settings. */
 public class SettingsActivity extends Activity {
+    /** Open Settings at the card whose title contains this text (from the features screen). */
+    static final String EXTRA_SECTION = "jarvis_section";
+    /** Each card with its title, to jump to one. */
+    private final java.util.List<Object[]> cardTitles = new java.util.ArrayList<>();
+
     private Prefs prefs;
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
     private RadioGroup provider, lang, wakeWhen;
@@ -854,6 +859,7 @@ public class SettingsActivity extends Activity {
         bg.setStroke(Ui.dp(this, 1), Ui.alpha(color, 0x55));
         card.setBackground(bg);
         card.setTag(color);
+        cardTitles.add(new Object[]{s, card});
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
         TextView e = Ui.text(this, emoji, 18, 0xFFFFFFFF);
@@ -1037,7 +1043,24 @@ public class SettingsActivity extends Activity {
     }
 
     /** From the notification: scroll to Updates and start right away. */
+    /** Scrolls to the card named in EXTRA_SECTION and makes it glow for a moment. */
+    private void jumpToSection(Intent i) {
+        String want = i == null ? null : i.getStringExtra(EXTRA_SECTION);
+        if (want == null || want.isEmpty() || pageScroll == null) return;
+        i.removeExtra(EXTRA_SECTION);
+        for (Object[] t : cardTitles) {
+            if (!((String) t[0]).contains(want)) continue;
+            final View card = (View) t[1];
+            pageScroll.post(() -> {
+                pageScroll.smoothScrollTo(0, Math.max(0, card.getTop() - Ui.dp(this, 8)));
+                card.animate().alpha(0.45f).setDuration(220).withEndAction(() -> card.animate().alpha(1f).setDuration(380).start()).start();
+            });
+            return;
+        }
+    }
+
     private void updateFromIntent(Intent i) {
+        jumpToSection(i);
         if (i == null || !i.getBooleanExtra(EXTRA_UPDATE_NOW, false)) return;
         i.removeExtra(EXTRA_UPDATE_NOW);
         if (pageScroll != null && updatesHeader != null) {

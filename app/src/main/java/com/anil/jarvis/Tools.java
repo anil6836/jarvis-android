@@ -346,6 +346,9 @@ final class Tools {
                         {"paid", "number", "Rupees paid at a public charger; 0 or empty = charged at home"}}, "from_percent", "to_percent")));
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
+        DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, travel, fun, code, jarvis; empty = all folders.",
+                schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
                 schema(new String[][]{})));
         DEFS.add(new Def("day_summary",
@@ -497,6 +500,7 @@ final class Tools {
             case "bike_charge": return "ఛార్జింగ్ రాస్తున్నాను…";
             case "bike_rides": return "రైడ్స్ చూస్తున్నాను…";
             case "weekly_report": return "ఈ వారం రిపోర్ట్ తయారు చేస్తున్నాను…";
+            case "show_features": return "ఫీచర్లు తెరుస్తున్నాను…";
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
@@ -605,6 +609,12 @@ final class Tools {
                 case "bike_charge": return Bike.addCharge(act(), a.optInt("from_percent", -1), a.optInt("to_percent", -1), a.optDouble("paid", 0)).toString();
                 case "bike_rides": return Bike.summary(act(), System.currentTimeMillis() - Math.max(1, Math.min(90, a.optInt("days", 7))) * 86400000L).toString();
                 case "weekly_report": return Weekly.report(act()).toString();
+                case "show_features": {
+                    String cat = a.optString("category", "");
+                    FeaturesActivity.show(act(), cat);
+                    return ok().put("opened", FeaturesActivity.find(cat) != null ? cat : "all folders")
+                            .put("note", "The screen is open; say one short line, he picks from it.").toString();
+                }
                 case "day_summary": return daySummary();
                 case "scan_qr": return scanQr(a.optBoolean("open", false));
                 case "location_reminder": return locationReminder(a.optString("action", "add"), a.optString("place"),
