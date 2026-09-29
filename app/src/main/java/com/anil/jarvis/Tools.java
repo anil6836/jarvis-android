@@ -373,12 +373,17 @@ final class Tools {
         DEFS.add(new Def("duty", "His shift duty calendar: 3 batches take turns, each does 2 days (48 hours) of duty then 4 days at home; other batches and their people too. "
                 + "next: his (or a person's / batch's) coming duties; on_date: who is on duty that day; month: duty days in a month; "
                 + "setup: a batch's first duty date, start time, members, which batch is his, duty/off days (one batch's date is enough, the others follow); "
-                + "set_day: he or someone is on duty / off on a date or dates (extra duty, leave); cover: he does someone's (or a batch's) duty, "
-                + "which makes 4 days on, and that person then does his next turn (8 days off); clear: undo changes on a date; open: show the calendar screen.",
-                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, set_day, cover, clear or open"},
+                + "setup_text: all batches at once from lines he pasted; "
+                + "set_day: he or someone is on duty / off on a date or dates (extra duty, leave); cover: one person does another's turn "
+                + "(he does someone's: by empty; someone does his: covered empty, by = that person), the doer is on 4 days in a row and the other then does the doer's next turn "
+                + "(8 days off); clear: undo changes on a date; open: show the calendar screen.",
+                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear or open"},
                         {"person", "string", "Whose duty: empty = his own; a name or a batch (A, B, C)"},
                         {"date", "string", "YYYY-MM-DD (on_date, set_day, cover, clear)"}, {"to_date", "string", "Last date YYYY-MM-DD for set_day / clear"},
-                        {"duty", "boolean", "For set_day: true = on duty, false = off"}, {"covered", "string", "For cover: whose duty he does (name or batch)"},
+                        {"duty", "boolean", "For set_day: true = on duty, false = off"},
+                        {"covered", "string", "For cover: whose duty is done by someone else (name or batch; empty = his own)"},
+                        {"by", "string", "For cover: who does it (name or batch; empty = he himself)"},
+                        {"text", "string", "For setup_text: lines 'నా బ్యాచ్: నేను, X | YYYY-MM-DD | HH:mm' / 'బ్యాచ్: Y, Z | date | time' in relieving order"},
                         {"batch", "string", "For setup: A, B or C"}, {"start_date", "string", "For setup: first day of one of that batch's duties, YYYY-MM-DD"},
                         {"time", "string", "For setup: duty start time HH:mm = when he relieves the batch before (his is 11:30)"},
                         {"leave_before", "integer", "For setup: minutes he needs to reach duty from home (default 90: leave 10:00 for 11:30)"},
@@ -4638,6 +4643,14 @@ final class Tools {
             DutyActivity.open(act(), a.optString("month", ""));
             return ok().put("opened", "duty calendar").toString();
         }
+        if (action.startsWith("setup_text") || (action.startsWith("setup") && !a.optString("text", "").isEmpty())) {
+            int n = Duty.fromText(r, a.optString("text", ""), myName);
+            if (n <= 0) return err("format", "Could not read it. One line per batch: 'నా బ్యాచ్: నేను, సోమయ్య | 2026-10-06 | 11:30'.");
+            Duty.save(act(), r);
+            JSONObject o = ok().put("batches", dutyBatches(r));
+            if (Duty.ready(r)) o.put("his_next_duties", dutyBlocks(r, Duty.ME, today, today.plusDays(60), 3));
+            return o.toString();
+        }
         if (action.startsWith("setup")) {
             if (a.has("on_days")) r.on = Math.max(1, Math.min(10, a.optInt("on_days", 2)));
             if (a.has("off_days")) r.off = Math.max(0, Math.min(30, a.optInt("off_days", 4)));
@@ -4697,14 +4710,20 @@ final class Tools {
             return ok().put("changed", whoName + ": " + (onDuty ? "on duty" : "off") + " " + d + (to.equals(d) ? "" : " to " + to)).toString();
         }
         if (action.startsWith("cover")) {
-            String covered = Duty.who(r, a.optString("covered", ""));
-            if (covered == null || Duty.ME.equals(covered)) return err("covered", "Whose duty is he doing (a name or a batch)?");
-            java.time.LocalDate[] res = r.cover(covered, d == null ? today : d, myName);
-            if (res == null) return err("not_found", "That person / batch has no duty near that date.");
+            String by = a.optString("by", "").trim(), cov = a.optString("covered", "").trim();
+            if (by.equalsIgnoreCase(myName)) by = "";
+            if (cov.equalsIgnoreCase(myName)) cov = "";
+            String doer = Duty.who(r, by), absent = Duty.who(r, cov);
+            if (doer == null || absent == null) return err("unknown_person", "Who? Batches: " + dutyBatches(r));
+            if (doer.equals(absent)) return err("same", "Ask who does whose duty (e.g. he does Sai's, or Sai does his).");
+            String doerName = Duty.ME.equals(doer) ? myName : doer.startsWith("batch:") ? doer.substring(6) + " batch" : doer;
+            String absentName = Duty.ME.equals(absent) ? myName : absent.startsWith("batch:") ? absent.substring(6) + " batch" : absent;
+            java.time.LocalDate[] res = r.swap(doer, absent, d == null ? today : d, doerName, absentName);
+            if (res == null) return err("not_found", absentName + " has no duty near that date.");
             Duty.save(act(), r);
-            JSONObject o = ok().put("anil_does", Duty.day(res[0]) + " to " + Duty.day(res[1]));
-            if (res[2] != null) o.put("they_do_anils_turn", Duty.day(res[2]) + " to " + Duty.day(res[3]));
-            return o.put("his_next_duties", dutyBlocks(r, Duty.ME, today, today.plusDays(60), 3)).toString();
+            JSONObject o = ok().put(doerName + "_does_" + absentName + "_duty", Duty.day(res[0]) + " to " + Duty.day(res[1]));
+            if (res[2] != null) o.put(absentName + "_does_" + doerName + "_next_turn", Duty.day(res[2]) + " to " + Duty.day(res[3]));
+            return o.put("his_next_duties", dutyBlocks(r, Duty.ME, today, today.plusDays(60), 4)).toString();
         }
         if (action.startsWith("clear")) {
             if (d == null) return err("date", "Which date?");

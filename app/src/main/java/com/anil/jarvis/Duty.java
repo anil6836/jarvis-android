@@ -198,35 +198,38 @@ final class Duty {
             }
         }
 
-        /**
-         * "I do X's duty": X's turn on/after that date becomes mine (with my own turn before it = 4 days on),
-         * and my next turn after it goes to X, so I get 8 days off. X = a person or a batch ("batch:B").
-         * Returns {their turn start, their turn end, my given-away turn start, end} or null.
-         */
+        /** "I do X's duty" (see swap): 4 days on, then X does my next turn and I get 8 days off. */
         LocalDate[] cover(String x, LocalDate date, String myName) {
-            Batch xb = x.startsWith("batch:") ? batch(x.substring(6)) : batchOf(x);
-            if (xb == null || xb.start == null) return null;
-            // X's turn that has this date, or the next one
+            String xName = x.startsWith("batch:") ? (batch(x.substring(6)) == null ? x : batch(x.substring(6)).name) : x;
+            return swap(ME, x, date, myName, xName);
+        }
+
+        /**
+         * A swap of turns: "doer" does "absent"'s turn on/after that date (right after or before his own, so he is on
+         * 4 days in a row), and "absent" then does doer's next turn after it (so absent is off 8 days, then on 4).
+         * Either side can be "me", a person or "batch:<id>". Returns {absent's turn start, end, doer's given turn start, end}.
+         */
+        LocalDate[] swap(String doer, String absent, LocalDate date, String doerName, String absentName) {
+            if (doer.equalsIgnoreCase(absent)) return null;
             LocalDate s = date;
-            for (int i = 0; i < cycle() && !isOn(x, s); i++) s = s.plusDays(1);
-            if (!isOn(x, s)) return null;
-            while (isOn(x, s.minusDays(1))) s = s.minusDays(1);
+            for (int i = 0; i < cycle() && !isOn(absent, s); i++) s = s.plusDays(1);
+            if (!isOn(absent, s)) return null;
+            while (isOn(absent, s.minusDays(1))) s = s.minusDays(1);
             LocalDate e = s;
-            while (isOn(x, e.plusDays(1))) e = e.plusDays(1);
-            String xName = x.startsWith("batch:") ? xb.name : x;
+            while (isOn(absent, e.plusDays(1))) e = e.plusDays(1);
             for (LocalDate d = s; !d.isAfter(e); d = d.plusDays(1)) {
-                set(ME, d, true, xName + " బదులు");
-                set(x, d, false, myName + " చేశారు");
+                set(doer, d, true, absentName + " బదులు");
+                set(absent, d, false, doerName + " చేశారు");
             }
-            // my next own turn after that: X does it, I rest
+            // doer's next own turn after that goes to absent
             LocalDate m = e.plusDays(1);
-            for (int i = 0; i < 3 * cycle() && !isOn(ME, m); i++) m = m.plusDays(1);
-            if (!isOn(ME, m)) return new LocalDate[]{s, e, null, null};
+            for (int i = 0; i < 3 * cycle() && !isOn(doer, m); i++) m = m.plusDays(1);
+            if (!isOn(doer, m)) return new LocalDate[]{s, e, null, null};
             LocalDate me = m;
-            while (isOn(ME, me.plusDays(1))) me = me.plusDays(1);
+            while (isOn(doer, me.plusDays(1))) me = me.plusDays(1);
             for (LocalDate d = m; !d.isAfter(me); d = d.plusDays(1)) {
-                set(ME, d, false, xName + " చేస్తారు (మీరు ముందు చేశారు)");
-                set(x, d, true, myName + " బదులు");
+                set(doer, d, false, absentName + " చేస్తారు (ముందు " + doerName + " చేశారు)");
+                set(absent, d, true, doerName + " బదులు");
             }
             return new LocalDate[]{s, e, m, me};
         }
@@ -400,6 +403,68 @@ final class Duty {
                     .setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text))
                     .setContentIntent(open).setAutoCancel(true).build());
         } catch (Exception ignored) {}
+    }
+
+    // ================================================================ set up from a few lines of text
+
+    private static final java.util.regex.Pattern ISO = java.util.regex.Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})");
+    private static final java.util.regex.Pattern DMY = java.util.regex.Pattern.compile("(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})");
+    private static final java.util.regex.Pattern HM = java.util.regex.Pattern.compile("(\\d{1,2})[:.](\\d{2})");
+
+    /**
+     * Batches from lines like
+     *   "నా బ్యాచ్: నేను, సోమయ్య | 2026-10-06 | 11:30"
+     *   "బ్యాచ్: శ్రీను, రామకృష్ణ | 2026-10-08 | 11:30"
+     *   "సైకిల్: 2 డ్యూటీ, 4 సెలవు"
+     * (one line per batch, in the order they relieve each other; the date is the first day of one of its duties).
+     * Replaces the batches; day-by-day changes are kept. Returns how many batches, or -1 if nothing was understood.
+     */
+    static int fromText(Roster r, String text, String myName) {
+        List<Batch> found = new ArrayList<>();
+        String mineId = null;
+        for (String raw : text.split("\n")) {
+            String line = raw.trim();
+            if (line.isEmpty()) continue;
+            String low = line.toLowerCase(Locale.ROOT);
+            if (low.startsWith("సైకిల్") || low.startsWith("cycle")) {
+                java.util.regex.Matcher n = java.util.regex.Pattern.compile("(\\d+)").matcher(line);
+                if (n.find()) r.on = Math.max(1, Math.min(10, Integer.parseInt(n.group(1))));
+                if (n.find()) r.off = Math.max(0, Math.min(30, Integer.parseInt(n.group(1))));
+                continue;
+            }
+            if (!line.contains("|")) continue;
+            String[] parts = line.split("\\|");
+            String who = parts[0];
+            boolean mine = low.startsWith("నా ") || low.startsWith("మా ") || low.startsWith("my ");
+            int colon = who.indexOf(':');
+            if (colon >= 0) who = who.substring(colon + 1);
+            Batch b = new Batch();
+            b.id = String.valueOf((char) ('A' + found.size()));
+            b.name = b.id + " బ్యాచ్";
+            for (String m : who.split("\\s*(?:,|،|–|-| మరియు | and )\\s*")) {
+                String n = m.trim();
+                if (n.isEmpty()) continue;
+                if (n.equals("నేను") || n.equalsIgnoreCase("me") || n.equalsIgnoreCase(myName)) { mine = true; continue; }
+                b.members.add(n);
+            }
+            for (int k = 1; k < parts.length; k++) {
+                String p = parts[k].trim();
+                java.util.regex.Matcher iso = ISO.matcher(p), dmy = DMY.matcher(p), hm = HM.matcher(p);
+                try {
+                    if (iso.find()) b.start = LocalDate.of(Integer.parseInt(iso.group(1)), Integer.parseInt(iso.group(2)), Integer.parseInt(iso.group(3)));
+                    else if (dmy.find()) b.start = LocalDate.of(Integer.parseInt(dmy.group(3)), Integer.parseInt(dmy.group(2)), Integer.parseInt(dmy.group(1)));
+                    else if (hm.find()) b.time = String.format(Locale.ENGLISH, "%02d:%02d", Integer.parseInt(hm.group(1)), Integer.parseInt(hm.group(2)));
+                } catch (Exception ignored) {}
+            }
+            if (mine) mineId = b.id;
+            found.add(b);
+        }
+        if (found.isEmpty()) return -1;
+        r.batches.clear();
+        r.batches.addAll(found);
+        if (mineId != null) r.mine = mineId;
+        r.fillStarts();
+        return found.size();
     }
 
     // ================================================================ for the duty tool

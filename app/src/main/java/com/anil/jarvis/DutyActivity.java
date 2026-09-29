@@ -102,6 +102,14 @@ public class DutyActivity extends Activity {
             go.setBackground(Ui.grad(this, new int[]{Ui.C_BLUE, Ui.C_VIOLET}, 16, null));
             go.setOnClickListener(v -> setup());
             content.addView(go);
+            TextView paste = Ui.text(this, "📋 టెక్స్ట్ పేస్ట్ చేసి సెటప్ (బ్యాచ్‌లు, తేదీలు ఒకేసారి)", 15, 0xFFFFFFFF);
+            paste.setGravity(Gravity.CENTER);
+            paste.setPadding(0, dp(13), 0, dp(13));
+            paste.setBackground(Ui.glass(this, 16));
+            paste.setOnClickListener(v -> fromText());
+            LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(-1, -2);
+            plp.topMargin = dp(10);
+            content.addView(paste, plp);
         } else {
             nextCard();
         }
@@ -350,6 +358,26 @@ public class DutyActivity extends Activity {
             items.add("🔁 " + b.name + " బదులు నేను చేస్తా (4 రోజులు + 8 సెలవు)");
             acts.add(() -> cover("batch:" + b.id, d, myName));
         }
+        if (mine) {
+            for (Duty.Batch b : roster.batches) {
+                if (b.id.equalsIgnoreCase(roster.mine)) continue;
+                List<String> ppl = new ArrayList<>(b.members);
+                if (ppl.isEmpty()) ppl.add("batch:" + b.id);
+                for (String p : ppl) {
+                    String shown = p.startsWith("batch:") ? b.name : p;
+                    items.add("🙋 నా డ్యూటీ " + shown + " చేస్తారు (వాళ్లకి 4 రోజులు, నాకు 8 సెలవు)");
+                    acts.add(() -> {
+                        LocalDate[] r = roster.swap(p, Duty.ME, d, shown, myName);
+                        if (r == null) { Toast.makeText(this, "కుదరలేదు: " + shown + " డ్యూటీ కనిపించలేదు", Toast.LENGTH_LONG).show(); return; }
+                        saveAndRender();
+                        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("🙋 మార్చాను ✓")
+                                .setMessage(Duty.day(r[0]) + " – " + Duty.day(r[1]) + " మీ డ్యూటీ " + shown + " చేస్తారు."
+                                        + (r[2] == null ? "" : " " + Duty.day(r[2]) + " – " + Duty.day(r[3]) + " " + shown + " డ్యూటీ మీరు చేస్తారు."))
+                                .setPositiveButton("సరే", null).show();
+                    });
+                }
+            }
+        }
         items.add("👤 వేరేవాళ్ల డ్యూటీ మార్చు");
         acts.add(() -> otherPerson(d));
         boolean changed = false;
@@ -495,6 +523,7 @@ public class DutyActivity extends Activity {
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("⚙️ బ్యాచ్‌లు, టైమింగ్స్")
                 .setView(sv)
+                .setNeutralButton("📋 టెక్స్ట్‌తో", (d, w) -> fromText())
                 .setPositiveButton("సేవ్", (d, w) -> {
                     try { roster.on = Math.max(1, Math.min(10, Integer.parseInt(on.getText().toString().trim()))); } catch (Exception ignored) {}
                     try { roster.off = Math.max(0, Math.min(30, Integer.parseInt(off.getText().toString().trim()))); } catch (Exception ignored) {}
@@ -514,6 +543,40 @@ public class DutyActivity extends Activity {
                     roster.fillStarts();
                     saveAndRender();
                     Toast.makeText(this, "సేవ్ చేశాను ✓", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("వద్దు", null)
+                .show();
+    }
+
+    /** Batches from pasted lines ("నా బ్యాచ్: నేను, సోమయ్య | 2026-10-06 | 11:30", one per batch). */
+    private void fromText() {
+        EditText box = new EditText(this);
+        box.setMinLines(5);
+        box.setGravity(Gravity.TOP);
+        box.setTextSize(14);
+        box.setHint("నా బ్యాచ్: నేను, సోమయ్య | 2026-10-06 | 11:30\nబ్యాచ్: శ్రీను, రామకృష్ణ | 2026-10-08 | 11:30\nబ్యాచ్: సాయి, వీరేంద్ర | 2026-10-10 | 11:30\nసైకిల్: 2 డ్యూటీ, 4 సెలవు");
+        StringBuilder now = new StringBuilder();
+        for (Duty.Batch b : roster.batches) {
+            if (b.start == null) continue;
+            boolean mine = b.id.equalsIgnoreCase(roster.mine);
+            List<String> ppl = new ArrayList<>();
+            if (mine) ppl.add("నేను");
+            ppl.addAll(b.members);
+            now.append(mine ? "నా బ్యాచ్: " : "బ్యాచ్: ").append(TextUtils.join(", ", ppl)).append(" | ").append(b.start).append(" | ").append(b.time).append("\n");
+        }
+        if (now.length() > 0) box.setText(now.append("సైకిల్: ").append(roster.on).append(" డ్యూటీ, ").append(roster.off).append(" సెలవు").toString());
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setPadding(dp(18), dp(6), dp(18), 0);
+        wrap.addView(box, new LinearLayout.LayoutParams(-1, -2));
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("📋 బ్యాచ్‌లు టెక్స్ట్‌తో")
+                .setMessage("ఒక్కో బ్యాచ్‌కి ఒక లైన్, రిలీవ్ చేసే వరుసలో: పేర్లు | ఒక డ్యూటీ మొదటి రోజు | రిలీవ్ టైమ్. మీ బ్యాచ్ లైన్ \"నా బ్యాచ్\" తో మొదలుపెట్టండి.")
+                .setView(wrap)
+                .setPositiveButton("సెట్ చెయ్", (d, w) -> {
+                    int n = Duty.fromText(roster, box.getText().toString(), new Prefs(this).name());
+                    if (n <= 0) { Toast.makeText(this, "అర్థం కాలేదు: పేర్లు | తేదీ | టైమ్ ఫార్మాట్‌లో రాయండి", Toast.LENGTH_LONG).show(); return; }
+                    saveAndRender();
+                    Toast.makeText(this, n + " బ్యాచ్‌లు సెట్ చేశాను ✓", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("వద్దు", null)
                 .show();
