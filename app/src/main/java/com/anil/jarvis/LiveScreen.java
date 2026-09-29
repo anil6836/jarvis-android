@@ -45,7 +45,7 @@ final class LiveScreen extends FrameLayout {
         // top: minimise (keep talking, see the chat), title, status
         FrameLayout top = new FrameLayout(c);
         IconView down = new IconView(c, IconView.DOWN, Ui.MUTED);
-        down.setContentDescription("చాట్ చూపించు (Live ఆగదు)");
+        down.setContentDescription(Tr.t("చాట్ చూపించు (Live ఆగదు)"));
         down.setOnClickListener(v -> actions.onLiveMinimize());
         top.addView(down, new LayoutParams(dp(48), dp(48), Gravity.START | Gravity.CENTER_VERTICAL));
         TextView title = Ui.mono(c, "JARVIS", 18, Ui.CYAN);
@@ -70,7 +70,7 @@ final class LiveScreen extends FrameLayout {
         col.addView(orb, new LinearLayout.LayoutParams(-1, 0, 1));
 
         // what is being said
-        caption = Ui.text(c, "", 16.5f, Ui.TEXT);
+        caption = Ui.plain(c, "", 16.5f, Ui.TEXT);
         caption.setGravity(Gravity.CENTER);
         caption.setMaxLines(4);
         caption.setEllipsize(TextUtils.TruncateAt.END);
@@ -91,7 +91,7 @@ final class LiveScreen extends FrameLayout {
         FrameLayout end = new FrameLayout(c);
         end.setBackground(Ui.round(c, Ui.RED, 0, 33));
         end.addView(new IconView(c, IconView.CLOSE, 0xFF2A0703), new LayoutParams(-1, -1));
-        end.setContentDescription("Live ఆపు");
+        end.setContentDescription(Tr.t("Live ఆపు"));
         end.setOnClickListener(v -> actions.onLiveEnd());
         controls.addView(end, new LinearLayout.LayoutParams(dp(66), dp(66)));
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-1, -2);
@@ -134,7 +134,7 @@ final class LiveScreen extends FrameLayout {
 
     /** LiveSession's state (OrbView states) and status line. */
     void state(int orbState, String text) {
-        status.setText(muted ? "మైక్ ఆఫ్ · " + text : text);
+        status.setText(muted ? Tr.t("మైక్ ఆఫ్ · ") + text : text);
         int s;
         switch (orbState) {
             case OrbView.LISTENING: s = HoloOrb.LISTENING; break;
@@ -167,14 +167,14 @@ final class LiveScreen extends FrameLayout {
         muteIcon.setIcon(m ? IconView.MIC_OFF : IconView.MIC);
         muteIcon.setColor(m ? Ui.RED : Ui.TEXT);
         muteBtn.setBackground(m ? Ui.round(getContext(), 0x33FF6B5E, Ui.RED, 33) : Ui.round(getContext(), Ui.PANEL2, Ui.LINE2, 33));
-        muteBtn.setContentDescription(m ? "మైక్ ఆన్ చేయి" : "మైక్ ఆఫ్ చేయి");
+        muteBtn.setContentDescription(m ? Tr.t("మైక్ ఆన్ చేయి") : Tr.t("మైక్ ఆఫ్ చేయి"));
         if (m) {
             orb.setMic(0f);
             if (lastOrb == HoloOrb.LISTENING) orb.setState(HoloOrb.MUTED);
-            status.setText("మైక్ ఆఫ్ · మాట్లాడాలంటే మైక్ బటన్ నొక్కండి");
+            status.setText(Tr.t("మైక్ ఆఫ్ · మాట్లాడాలంటే మైక్ బటన్ నొక్కండి"));
         } else {
             if (lastOrb == HoloOrb.LISTENING) orb.setState(HoloOrb.LISTENING);
-            if (tell) status.setText("మాట్లాడండి…");
+            if (tell) status.setText(Tr.t("మాట్లాడండి…"));
         }
         if (tell) actions.onLiveMute(m);
     }

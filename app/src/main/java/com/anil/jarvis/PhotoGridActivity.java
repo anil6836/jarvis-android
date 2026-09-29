@@ -53,9 +53,9 @@ public class PhotoGridActivity extends Activity {
 
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = Ui.text(this, "📸 \"" + getIntent().getStringExtra(EXTRA_TITLE) + "\" · " + uris.size() + " ఫోటోలు", 17, 0xFFFFFFFF);
+        TextView title = Ui.text(this, "📸 \"" + getIntent().getStringExtra(EXTRA_TITLE) + "\" · " + uris.size() + Tr.t(" ఫోటోలు"), 17, 0xFFFFFFFF);
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView share = Ui.text(this, "షేర్", 15, Ui.C_CYAN);
+        TextView share = Ui.text(this, Tr.t("షేర్"), 15, Ui.C_CYAN);
         share.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8));
         share.setOnClickListener(v -> shareAll(uris));
         head.addView(share);
@@ -64,7 +64,7 @@ public class PhotoGridActivity extends Activity {
         close.setOnClickListener(v -> finish());
         head.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
         root.addView(head);
-        TextView hint = Ui.text(this, "ఒకటి నొక్కితే పెద్దగా తెరుచుకుంటుంది", 13, Ui.MUTED);
+        TextView hint = Ui.text(this, Tr.t("ఒకటి నొక్కితే పెద్దగా తెరుచుకుంటుంది"), 13, Ui.MUTED);
         hint.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 10));
         root.addView(hint);
 

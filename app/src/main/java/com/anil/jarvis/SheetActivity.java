@@ -213,7 +213,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         action = new IconView(this, IconView.STOP, 0xFFFFFFFF);
         btn.addView(action, new FrameLayout.LayoutParams(-1, -1));
         btn.setOnClickListener(v -> onAction());
-        btn.setContentDescription("ఆపు / మాట్లాడు");
+        btn.setContentDescription(Tr.t("ఆపు / మాట్లాడు"));
         top.addView(btn, new LinearLayout.LayoutParams(dp(48), dp(48)));
         card.addView(top);
 
@@ -221,12 +221,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         callRow = new LinearLayout(this);
         callRow.setPadding(0, dp(14), 0, 0);
         callRow.setVisibility(View.GONE);
-        TextView pick = Ui.text(this, "📞  ఎత్తు", 17, 0xFFFFFFFF);
+        TextView pick = Ui.text(this, Tr.t("📞  ఎత్తు"), 17, 0xFFFFFFFF);
         pick.setGravity(Gravity.CENTER);
         pick.setPadding(0, dp(12), 0, dp(12));
         pick.setBackground(Ui.grad(this, new int[]{Ui.C_GREEN, Ui.C_TEAL}, 24, null));
         pick.setOnClickListener(v -> doCall(true));
-        TextView cut = Ui.text(this, "✖  కట్", 17, 0xFFFFFFFF);
+        TextView cut = Ui.text(this, Tr.t("✖  కట్"), 17, 0xFFFFFFFF);
         cut.setGravity(Gravity.CENTER);
         cut.setPadding(0, dp(12), 0, dp(12));
         cut.setBackground(Ui.grad(this, new int[]{0xFFF43F5E, Ui.C_ORANGE}, 24, null));
@@ -248,10 +248,10 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         LinearLayout texts = new LinearLayout(this);
         texts.setOrientation(LinearLayout.VERTICAL);
         texts.setPadding(0, dp(10), 0, 0);
-        heard = Ui.text(this, "", 15, Ui.C_AMBER);
+        heard = Ui.plain(this, "", 15, Ui.C_AMBER);
         heard.setVisibility(View.GONE);
         texts.addView(heard);
-        reply = Ui.text(this, "", 16.5f, Ui.TEXT);
+        reply = Ui.plain(this, "", 16.5f, Ui.TEXT);
         reply.setLineSpacing(0, 1.25f);
         reply.setBackground(Ui.corners(this, Ui.round(this, 0x16FFFFFF, 0x26FFFFFF, 0), 6, 18, 18, 18)); // frosted glass, like the app
         reply.setPadding(dp(14), dp(10), dp(14), dp(11));
@@ -266,7 +266,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
         bottom.setPadding(0, dp(12), 0, 0);
-        TextView open = Ui.text(this, "Jarvis యాప్ తెరువు →", 14, Ui.C_CYAN);
+        TextView open = Ui.text(this, Tr.t("Jarvis యాప్ తెరువు →"), 14, Ui.C_CYAN);
         open.setOnClickListener(v -> {
             startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             closeSheet();
@@ -277,7 +277,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         pauseIcon = new IconView(this, IconView.PAUSE, Ui.C_CYAN);
         pauseBtn.addView(pauseIcon, new FrameLayout.LayoutParams(-1, -1));
         pauseBtn.setOnClickListener(v -> togglePause());
-        pauseBtn.setContentDescription("ఆపు / కొనసాగించు");
+        pauseBtn.setContentDescription(Tr.t("ఆపు / కొనసాగించు"));
         pauseBtn.setVisibility(View.GONE);
         bottom.addView(pauseBtn, new LinearLayout.LayoutParams(dp(48), dp(48)));
         card.addView(bottom);
@@ -317,13 +317,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacks(autoClose);
         if (r == VoiceIO.HELD) {
             orb.setState(OrbView.IDLE);
-            status.setText("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి");
+            status.setText(Tr.t("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి"));
             MainActivity.talking(false);
             if (prefs.wakeReady()) WakeService.resume(this); // "Jarvis" can be heard while paused
             setAction(IconView.STOP);
         } else if (r == VoiceIO.RESUMED) {
             orb.setState(OrbView.SPEAKING);
-            status.setText("మాట్లాడుతున్నాను…");
+            status.setText(Tr.t("మాట్లాడుతున్నాను…"));
             MainActivity.talking(true);
             WakeService.pause(this);
             setAction(IconView.STOP);
@@ -356,7 +356,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         status.setText(Greeting.text(prefs));
         setAction(IconView.STOP);
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            Toast.makeText(this, "మైక్ అనుమతి కావాలి. Jarvis యాప్ తెరిచి Allow ఇవ్వండి.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, Tr.t("మైక్ అనుమతి కావాలి. Jarvis యాప్ తెరిచి Allow ఇవ్వండి."), Toast.LENGTH_LONG).show();
             closeSheet();
             return;
         }
@@ -390,7 +390,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         }
         voice.listen(prefs.listenLang());
         orb.setState(OrbView.LISTENING);
-        status.setText("వింటున్నాను…");
+        status.setText(Tr.t("వింటున్నాను…"));
         setAction(IconView.STOP);
     }
 
@@ -450,7 +450,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         String said = text + (ask == null ? ". రిప్లై ఇవ్వమంటారా?" : " " + ask);
         store.addChat("assistant", said + (ctx == null ? "" : ctx), false);
         heard.setVisibility(View.GONE);
-        status.setText(ask == null || i.getBooleanExtra(EXTRA_IS_MESSAGE, false) ? "కొత్త మెసేజ్" : "Jarvis సూచన");
+        status.setText(ask == null || i.getBooleanExtra(EXTRA_IS_MESSAGE, false) ? Tr.t("కొత్త మెసేజ్") : Tr.t("Jarvis సూచన"));
         showReply(text, false);
         setAction(IconView.STOP);
         orb.setState(OrbView.SPEAKING);
@@ -489,7 +489,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private void askCallAgain() {
         if (callText == null) return;
         if (++callTries >= 3 || !CallControl.isRinging()) {
-            status.setText("ఎత్తాలంటే ఆకుపచ్చ, కట్ చేయాలంటే ఎరుపు నొక్కండి");
+            status.setText(Tr.t("ఎత్తాలంటే ఆకుపచ్చ, కట్ చేయాలంటే ఎరుపు నొక్కండి"));
             orb.setState(OrbView.IDLE);
             return;
         }
@@ -553,7 +553,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         listen(); // idle: tap to talk again
     }
 
-    @Override public void onListening() { status.setText("వింటున్నాను… మాట్లాడండి"); syncPause(); }
+    @Override public void onListening() { status.setText(Tr.t("వింటున్నాను… మాట్లాడండి")); syncPause(); }
 
     @Override public void onPartial(String text) {
         partialHeard = text == null ? "" : text.trim();
@@ -599,7 +599,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onSpeakStart() {
         orb.setState(OrbView.SPEAKING);
-        status.setText("మాట్లాడుతున్నాను…");
+        status.setText(Tr.t("మాట్లాడుతున్నాను…"));
         syncPause();
     }
 
@@ -636,7 +636,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private void idle() {
         Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         orb.setState(OrbView.IDLE);
-        status.setText("ఇంకేమైనా కావాలంటే మైక్ నొక్కండి");
+        status.setText(Tr.t("ఇంకేమైనా కావాలంటే మైక్ నొక్కండి"));
         setAction(IconView.MIC);
         main.removeCallbacks(autoClose);
         main.postDelayed(autoClose, 5000);
@@ -654,7 +654,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         store.addChat("user", text, false);
         busy = true;
         orb.setState(OrbView.THINKING);
-        status.setText("ఆలోచిస్తున్నాను…");
+        status.setText(Tr.t("ఆలోచిస్తున్నాను…"));
         setAction(IconView.STOP);
         final int gen = ++generation;
         Brain.Status progress = new Brain.Status() {

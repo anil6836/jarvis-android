@@ -96,16 +96,16 @@ public class SettingsActivity extends Activity {
         head.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        TextView title = Ui.text(this, "సెట్టింగ్స్", 27, 0xFFFFFFFF);
+        TextView title = Ui.text(this, Tr.t("సెట్టింగ్స్"), 27, 0xFFFFFFFF);
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         Ui.gradientText(title, Ui.C_CYAN, Ui.C_VIOLET);
         titles.addView(title);
-        titles.addView(Ui.text(this, "Jarvis ని మీకు నచ్చినట్టు మార్చుకోండి", 13.5f, Ui.MUTED));
+        titles.addView(Ui.text(this, Tr.t("Jarvis ని మీకు నచ్చినట్టు మార్చుకోండి"), 13.5f, Ui.MUTED));
         head.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
         IconView close = new IconView(this, IconView.CLOSE, 0xFFFFFFFF);
         close.setBackground(Ui.glass(this, 22));
         close.setOnClickListener(v -> finish());
-        close.setContentDescription("మూసేయి");
+        close.setContentDescription(Tr.t("మూసేయి"));
         head.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
         box.addView(head);
 
@@ -122,6 +122,7 @@ public class SettingsActivity extends Activity {
         // ---- you
         section("మీరు");
         name = field("మీ పేరు (Jarvis మిమ్మల్ని ఇలా పిలుస్తాడు)", prefs.name(), false);
+        languageChooser();
 
         // ---- brain
         section("Jarvis మెదడు");
@@ -143,7 +144,7 @@ public class SettingsActivity extends Activity {
         link("Anthropic key ఇక్కడ తీసుకోండి", "https://console.anthropic.com/settings/keys");
         geminiKey = field("Gemini API key (AIza…)", prefs.geminiKey(), true);
         geminiModel = field("Gemini మోడల్", prefs.geminiModel(), false);
-        geminiModel.setHint("కింద 'అన్ని మోడల్స్ చూపించు' నొక్కి ఎంచుకోండి");
+        geminiModel.setHint(Tr.t("కింద 'అన్ని మోడల్స్ చూపించు' నొక్కి ఎంచుకోండి"));
         modelPicker(Prefs.GEMINI, geminiKey, geminiModel, "gemini_model");
         link("Gemini key ఇక్కడ తీసుకోండి", "https://aistudio.google.com/apikey");
         note("మోడల్ Jarvis తనంతట తాను ఎంచుకోడు: మీరు ఎంచుకున్నదే వాడతాడు. 'అన్ని మోడల్స్ చూపించు' మీ key తో ఆ కంపెనీ దగ్గర నుంచి "
@@ -189,7 +190,7 @@ public class SettingsActivity extends Activity {
         presets.addView(astra);
         presets.addView(opus);
         box.addView(presets);
-        TextView allCode = Ui.text(this, "📋 అన్ని కంపెనీల మోడల్స్ చూపించు, ఎంచుకో", 14.5f, Ui.CYAN);
+        TextView allCode = Ui.text(this, Tr.t("📋 అన్ని కంపెనీల మోడల్స్ చూపించు, ఎంచుకో"), 14.5f, Ui.CYAN);
         allCode.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 8));
         allCode.setOnClickListener(v -> Models.pick(this, "కోడింగ్ మోడల్ ఎంచుకోండి",
                 new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
@@ -230,7 +231,7 @@ public class SettingsActivity extends Activity {
         });
         box.addView(rate);
         showRate();
-        TextView langLabel = Ui.text(this, "మీరు మాట్లాడే భాష", 15, Ui.MUTED);
+        TextView langLabel = Ui.text(this, Tr.t("మీరు మాట్లాడే భాష"), 15, Ui.MUTED);
         langLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
         box.addView(langLabel);
         lang = new RadioGroup(this);
@@ -245,7 +246,7 @@ public class SettingsActivity extends Activity {
         note("సినిమాలోలా మనిషి గొంతుతో మాట్లాడుతుంది. OpenAI key కావాలి, కొంచెం ఖర్చు అవుతుంది. తెలుగు ఉచ్చారణ నచ్చకపోతే ఇది ఆఫ్ చేస్తే Google గొంతుకి మారుతుంది.");
         natural = toggle("సహజ గొంతు వాడు", prefs.naturalVoice());
         emotions = toggle("భావాలతో మాట్లాడు (నవ్వు, సంతోషం, ఉత్సాహం, బాధ… సందర్భానికి తగ్గట్టు)", prefs.emotions());
-        TextView vl = Ui.text(this, "గొంతు ఎంచుకోండి (cedar = లోతైన మగ గొంతు, సిఫార్సు)", 14, Ui.MUTED);
+        TextView vl = Ui.text(this, Tr.t("గొంతు ఎంచుకోండి (cedar = లోతైన మగ గొంతు, సిఫార్సు)"), 14, Ui.MUTED);
         vl.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         box.addView(vl);
         voicePick = new Spinner(this);
@@ -292,7 +293,7 @@ public class SettingsActivity extends Activity {
         listenOnOpen = toggle("యాప్ తెరవగానే వినడం మొదలుపెట్టు", prefs.listenOnOpen());
         note("దీనితో \"Hey Google, open Jarvis\" అంటే Google తన చిప్‌తో విని Jarvis ని తెరుస్తుంది, Jarvis వెంటనే మీ మాట వింటుంది. ఈ పద్ధతిలో Jarvis మైక్ బ్యాక్‌గ్రౌండ్‌లో అసలు ఆన్ అవ్వదు. అప్పుడు కింది వేక్ వర్డ్ ఆఫ్ చేయవచ్చు.");
         wake = toggle("వేక్ వర్డ్ ఆన్", prefs.wakeWord());
-        TextView ww = Ui.text(this, "మైక్ ఎప్పుడు వినాలి?", 15, Ui.MUTED);
+        TextView ww = Ui.text(this, Tr.t("మైక్ ఎప్పుడు వినాలి?"), 15, Ui.MUTED);
         ww.setPadding(0, Ui.dp(this, 8), 0, 0);
         box.addView(ww);
         wakeWhen = new RadioGroup(this);
@@ -423,7 +424,7 @@ public class SettingsActivity extends Activity {
 
         section("స్మార్ట్ హోమ్ (లైట్లు, ఫ్యాన్లు)");
         note("మూడు మార్గాలు, Jarvis వరుసగా ప్రయత్నిస్తుంది:\n1) Alexa రొటీన్ లింక్‌లు (అన్నింటికన్నా నమ్మకమైనది): Voice Monkey లేదా URL Routine Trigger అనే Alexa skill లో ఒక్కో పనికి ఒక trigger చేసి, Alexa యాప్‌లో ఆ trigger తో రొటీన్ (ఉదా: హాల్ లైట్ ఆఫ్) పెట్టండి. ఆ trigger లింక్‌ను కింద \"పేరు = లింక్\" గా ఒక్కో లైన్‌లో పెట్టండి.\n2) మీ స్మార్ట్ హోమ్ యాప్ తెరిచి ఆ లైట్ స్విచ్ Jarvis నొక్కుతుంది (Accessibility కావాలి).\n3) దగ్గర్లో Echo ఉంటే Jarvis \"Alexa, …\" అని పైకి చెబుతుంది.");
-        TextView su = Ui.text(this, "Alexa రొటీన్ లింక్‌లు (ఉదా: hall light off = https://…)", 14, Ui.MUTED);
+        TextView su = Ui.text(this, Tr.t("Alexa రొటీన్ లింక్‌లు (ఉదా: hall light off = https://…)"), 14, Ui.MUTED);
         su.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4));
         box.addView(su);
         smartUrls = new EditText(this);
@@ -460,10 +461,10 @@ public class SettingsActivity extends Activity {
                 startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                         .putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, WaMedia.pickerStart()), 42);
             } catch (Exception e) {
-                Toast.makeText(this, "ఫోల్డర్ పేజీ తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, Tr.t("ఫోల్డర్ పేజీ తెరవలేకపోయాను"), Toast.LENGTH_LONG).show();
             }
         });
-        waInfo = Ui.text(this, WaMedia.tree(this).isEmpty() ? "ఇంకా అనుమతి ఇవ్వలేదు" : "అనుమతి ఉంది ✓", 14, Ui.MUTED);
+        waInfo = Ui.text(this, WaMedia.tree(this).isEmpty() ? Tr.t("ఇంకా అనుమతి ఇవ్వలేదు") : Tr.t("అనుమతి ఉంది ✓"), 14, Ui.MUTED);
         box.addView(waInfo);
 
         section("డాక్యుమెంట్లు");
@@ -472,17 +473,17 @@ public class SettingsActivity extends Activity {
             try {
                 startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), 41);
             } catch (Exception e) {
-                Toast.makeText(this, "ఫోల్డర్ ఎంచుకునే పేజీ తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, Tr.t("ఫోల్డర్ ఎంచుకునే పేజీ తెరవలేకపోయాను"), Toast.LENGTH_LONG).show();
             }
         });
-        docsInfo = Ui.text(this, prefs.docsTree().isEmpty() ? "ఇంకా ఎంచుకోలేదు" : "ఎంచుకున్నారు ✓", 14, Ui.MUTED);
+        docsInfo = Ui.text(this, prefs.docsTree().isEmpty() ? Tr.t("ఇంకా ఎంచుకోలేదు") : Tr.t("ఎంచుకున్నారు ✓"), 14, Ui.MUTED);
         box.addView(docsInfo);
 
         section("కార్/బైక్, కదలికలు");
         note("మీ కార్/బైక్ బ్లూటూత్ (లేదా హెల్మెట్ బ్లూటూత్) ఎంచుకుంటే: కనెక్ట్ అవ్వగానే డ్రైవింగ్ మోడ్ ఆన్, ప్రతి రైడ్ కి.మీ, టైమ్ తనంతట తానే రాసుకుంటుంది; "
                 + "దిగగానే ఆఫ్, బండి పెట్టిన చోటు గుర్తుపెట్టుకుంటుంది.");
         button("కార్/బైక్ బ్లూటూత్ ఎంచుకోండి", v -> chooseCar());
-        carInfo = Ui.text(this, prefs.carBluetooth().isEmpty() ? "ఇంకా ఎంచుకోలేదు" : "ఎంచుకున్నారు ✓", 14, Ui.MUTED);
+        carInfo = Ui.text(this, prefs.carBluetooth().isEmpty() ? Tr.t("ఇంకా ఎంచుకోలేదు") : Tr.t("ఎంచుకున్నారు ✓"), 14, Ui.MUTED);
         box.addView(carInfo);
         bikeRange = numberField("బైక్ పూర్తి ఛార్జ్‌కి నిజంగా వచ్చే దూరం (కి.మీ)", String.valueOf(Bike.fullRangeKm(prefs)));
         bikeKwh = numberField("బైక్ బ్యాటరీ (kWh) · Aera 5000+ = 5", trimZero(Bike.batteryKwh(prefs)));
@@ -520,12 +521,12 @@ public class SettingsActivity extends Activity {
         button("అన్ని అనుమతులు ఇవ్వండి", v -> requestPermissions(MainActivity.corePermissions(), 5));
         button("సంభాషణ చెరిపేయి (జ్ఞాపకాలు, మిషన్లు అలాగే ఉంటాయి)", v -> {
             Store.get(this).clearChat();
-            Toast.makeText(this, "సంభాషణ చెరిపేశాను", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, Tr.t("సంభాషణ చెరిపేశాను"), Toast.LENGTH_SHORT).show();
         });
 
         box = page; // the save button sits under the cards
         Button save = new Button(this);
-        save.setText("సేవ్ చేయి");
+        save.setText(Tr.t("సేవ్ చేయి"));
         save.setAllCaps(false);
         save.setTextColor(0xFFFFFFFF);
         save.setTextSize(17);
@@ -552,20 +553,20 @@ public class SettingsActivity extends Activity {
             showUpdateState();
         }
         StringBuilder s = new StringBuilder();
-        s.append(Settings.canDrawOverlays(this) ? "✓ Display over other apps: ఇచ్చారు\n" : "✗ Display over other apps: ఇవ్వలేదు (లేకపోతే పిలిచినప్పుడు నోటిఫికేషన్ మాత్రమే వస్తుంది)\n");
+        s.append(Settings.canDrawOverlays(this) ? Tr.t("✓ Display over other apps: ఇచ్చారు\n") : Tr.t("✗ Display over other apps: ఇవ్వలేదు (లేకపోతే పిలిచినప్పుడు నోటిఫికేషన్ మాత్రమే వస్తుంది)\n"));
         PowerManager pm = getSystemService(PowerManager.class);
         boolean exempt = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
-        s.append(exempt ? "✓ బ్యాటరీ సేవర్ మినహాయింపు: ఉంది" : "✗ బ్యాటరీ సేవర్ మినహాయింపు: లేదు (ఫోన్ వేక్ వర్డ్‌ని ఆపేయవచ్చు)");
-        if (WakeService.lastError != null) s.append("\nచివరి సమస్య: ").append(WakeService.lastError);
+        s.append(exempt ? Tr.t("✓ బ్యాటరీ సేవర్ మినహాయింపు: ఉంది") : Tr.t("✗ బ్యాటరీ సేవర్ మినహాయింపు: లేదు (ఫోన్ వేక్ వర్డ్‌ని ఆపేయవచ్చు)"));
+        if (WakeService.lastError != null) s.append(Tr.t("\nచివరి సమస్య: ")).append(WakeService.lastError);
         wakeInfo.setText(s.toString());
-        notifyInfo.setText(NotifyListener.enabled(this) ? "✓ నోటిఫికేషన్ యాక్సెస్: ఇచ్చారు" : "✗ నోటిఫికేషన్ యాక్సెస్: ఇవ్వలేదు");
-        screenInfo.setText(JarvisAccessibility.enabled() ? "✓ స్క్రీన్ యాక్సెస్: ఆన్" : "✗ స్క్రీన్ యాక్సెస్: ఆఫ్");
+        notifyInfo.setText(NotifyListener.enabled(this) ? Tr.t("✓ నోటిఫికేషన్ యాక్సెస్: ఇచ్చారు") : Tr.t("✗ నోటిఫికేషన్ యాక్సెస్: ఇవ్వలేదు"));
+        screenInfo.setText(JarvisAccessibility.enabled() ? Tr.t("✓ స్క్రీన్ యాక్సెస్: ఆన్") : Tr.t("✗ స్క్రీన్ యాక్సెస్: ఆఫ్"));
         screenInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
-        if (WakeService.wordStatus != null) s.append("\n\"Jarvis\" పదం: ").append(WakeService.wordStatus);
-        else if (VoskModel.ready(this)) s.append("\n✓ \"Jarvis\" పదం: సిద్ధం");
+        if (WakeService.wordStatus != null) s.append(Tr.t("\n\"Jarvis\" పదం: ")).append(WakeService.wordStatus);
+        else if (VoskModel.ready(this)) s.append(Tr.t("\n✓ \"Jarvis\" పదం: సిద్ధం"));
         wakeInfo.setText(s.toString());
         notifyInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
-        voiceInfo.setText(VoiceIO.naturalError == null ? "" : "చివరిసారి సహజ గొంతు పనిచేయలేదు: " + VoiceIO.naturalError);
+        voiceInfo.setText(VoiceIO.naturalError == null ? "" : Tr.t("చివరిసారి సహజ గొంతు పనిచేయలేదు: ") + VoiceIO.naturalError);
         showCheck();
     }
 
@@ -579,39 +580,39 @@ public class SettingsActivity extends Activity {
         if (checkInfo == null) return;
         StringBuilder s = new StringBuilder();
         boolean access = NotifyListener.enabled(this);
-        s.append(!access ? "✗ నోటిఫికేషన్ యాక్సెస్ లేదు: మెసేజ్‌లు Jarvis కి అందవు\n"
+        s.append(!access ? Tr.t("✗ నోటిఫికేషన్ యాక్సెస్ లేదు: మెసేజ్‌లు Jarvis కి అందవు\n")
                 : NotifyListener.connected ? "✓ నోటిఫికేషన్లు Jarvis కి అందుతున్నాయి\n"
                 : "✗ యాక్సెస్ ఉంది, కానీ Android నోటిఫికేషన్లు పంపడం లేదు\n");
-        s.append(Settings.canDrawOverlays(this) ? "✓ Display over other apps: ఉంది\n"
+        s.append(Settings.canDrawOverlays(this) ? Tr.t("✓ Display over other apps: ఉంది\n")
                 : "✗ Display over other apps లేదు: panel తెరవలేను, గొంతుతో మాత్రమే చెప్తాను\n");
-        s.append(prefs.readMessages() ? "✓ కొత్త మెసేజ్ వస్తే చెప్పు: ఆన్\n" : "✗ కొత్త మెసేజ్ వస్తే చెప్పు: ఆఫ్\n");
-        s.append(prefs.night() ? "✗ నైట్ మోడ్ ఆన్: ఏ మెసేజ్ చదవను\n" : "✓ నైట్ మోడ్: ఆఫ్\n");
+        s.append(prefs.readMessages() ? Tr.t("✓ కొత్త మెసేజ్ వస్తే చెప్పు: ఆన్\n") : Tr.t("✗ కొత్త మెసేజ్ వస్తే చెప్పు: ఆఫ్\n"));
+        s.append(prefs.night() ? Tr.t("✗ నైట్ మోడ్ ఆన్: ఏ మెసేజ్ చదవను\n") : Tr.t("✓ నైట్ మోడ్: ఆఫ్\n"));
         android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
         boolean dnd = nm != null && nm.getCurrentInterruptionFilter() > android.app.NotificationManager.INTERRUPTION_FILTER_ALL;
-        s.append(dnd ? "✗ Do Not Disturb ఆన్: మెసేజ్‌లు చదవను (ఫోన్ quick settings లో ఆఫ్ చేయండి)\n" : "✓ Do Not Disturb: ఆఫ్\n");
+        s.append(dnd ? Tr.t("✗ Do Not Disturb ఆన్: మెసేజ్‌లు చదవను (ఫోన్ quick settings లో ఆఫ్ చేయండి)\n") : Tr.t("✓ Do Not Disturb: ఆఫ్\n"));
         PowerManager pm = getSystemService(PowerManager.class);
-        s.append(pm != null && pm.isIgnoringBatteryOptimizations(getPackageName()) ? "✓ బ్యాటరీ సేవర్ మినహాయింపు: ఉంది\n"
+        s.append(pm != null && pm.isIgnoringBatteryOptimizations(getPackageName()) ? Tr.t("✓ బ్యాటరీ సేవర్ మినహాయింపు: ఉంది\n")
                 : "✗ బ్యాటరీ సేవర్ మినహాయింపు లేదు: ఫోన్ Jarvis ని ఆపేయవచ్చు\n");
-        if (prefs.wakeReady()) s.append(WakeService.running ? "✓ \"Jarvis\" వేక్ వర్డ్: నడుస్తోంది\n" : "✗ \"Jarvis\" వేక్ వర్డ్: ఆగి ఉంది\n");
-        if (stuckTalking()) s.append("✗ Jarvis 'మాట్లాడుతున్నాను' అనే స్థితిలో ఇరుక్కుంది\n");
-        if (prefs.naturalVoice() && prefs.openAiKey().trim().isEmpty()) s.append("• సహజ గొంతుకి OpenAI key లేదు: ఫోన్ గొంతుతో మాట్లాడతాను\n");
+        if (prefs.wakeReady()) s.append(WakeService.running ? Tr.t("✓ \"Jarvis\" వేక్ వర్డ్: నడుస్తోంది\n") : Tr.t("✗ \"Jarvis\" వేక్ వర్డ్: ఆగి ఉంది\n"));
+        if (stuckTalking()) s.append(Tr.t("✗ Jarvis 'మాట్లాడుతున్నాను' అనే స్థితిలో ఇరుక్కుంది\n"));
+        if (prefs.naturalVoice() && prefs.openAiKey().trim().isEmpty()) s.append(Tr.t("• సహజ గొంతుకి OpenAI key లేదు: ఫోన్ గొంతుతో మాట్లాడతాను\n"));
         else if (prefs.naturalVoice() && VoiceIO.naturalError != null)
-            s.append("• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): ").append(VoiceIO.naturalError).append("\n");
+            s.append(Tr.t("• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): ")).append(VoiceIO.naturalError).append("\n");
         String last = NotifyListener.lastMessageNote;
-        s.append("\nచివరి మెసేజ్: ").append(last == null || last.isEmpty() ? "Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు" : last);
+        s.append(Tr.t("\nచివరి మెసేజ్: ")).append(last == null || last.isEmpty() ? Tr.t("Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు") : last);
         checkInfo.setText(s.toString().trim());
     }
 
     /** "సరిచేయి": fixes what Jarvis can fix itself, then opens the first permission only Anil can give. */
     private void fixCheck() {
         StringBuilder done = new StringBuilder();
-        if (prefs.night()) { Life.endNight(this); done.append("నైట్ మోడ్ ఆఫ్ చేశాను. "); }
+        if (prefs.night()) { Life.endNight(this); done.append(Tr.t("నైట్ మోడ్ ఆఫ్ చేశాను. ")); }
         if (!prefs.readMessages()) {
             prefs.set("read_messages", true);
             if (readMessages != null) readMessages.setChecked(true);
-            done.append("మెసేజ్‌లు చెప్పడం ఆన్ చేశాను. ");
+            done.append(Tr.t("మెసేజ్‌లు చెప్పడం ఆన్ చేశాను. "));
         }
-        if (stuckTalking()) { MainActivity.talking(false); done.append("ఇరుక్కున్న స్థితి తీసేశాను. "); }
+        if (stuckTalking()) { MainActivity.talking(false); done.append(Tr.t("ఇరుక్కున్న స్థితి తీసేశాను. ")); }
         NotifyListener.ensureBound(this);
         if (prefs.wakeReady() && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
             WakeService.start(this, false);
@@ -622,10 +623,10 @@ public class SettingsActivity extends Activity {
         else if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName()))
             open = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()));
         if (open != null) {
-            done.append("ఈ అనుమతి మీరే ఇవ్వాలి: తెరుస్తున్నాను.");
+            done.append(Tr.t("ఈ అనుమతి మీరే ఇవ్వాలి: తెరుస్తున్నాను."));
             try { startActivity(open); } catch (Exception ignored) {}
         }
-        Toast.makeText(this, done.length() == 0 ? "అంతా సరిచేశాను ✓" : done.toString().trim(), Toast.LENGTH_LONG).show();
+        Toast.makeText(this, done.length() == 0 ? Tr.t("అంతా సరిచేశాను ✓") : done.toString().trim(), Toast.LENGTH_LONG).show();
         checkInfo.postDelayed(this::showCheck, 1500);
     }
 
@@ -640,7 +641,7 @@ public class SettingsActivity extends Activity {
         e.putString("gemini_model", gm);
         e.remove("gemini_auto_model"); // older versions picked a Gemini model by themselves
         if (chosen == 3 && gm.isEmpty())
-            Toast.makeText(this, "Gemini మోడల్ ఇంకా ఎంచుకోలేదు: 'అన్ని మోడల్స్ చూపించు' నొక్కి ఒకటి ఎంచుకోండి", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, Tr.t("Gemini మోడల్ ఇంకా ఎంచుకోలేదు: 'అన్ని మోడల్స్ చూపించు' నొక్కి ఒకటి ఎంచుకోండి"), Toast.LENGTH_LONG).show();
         e.putString("openai_key", openAiKey.getText().toString().trim());
         e.putString("openai_model", openAiModel.getText().toString().trim());
         e.putString("code_model", codeModel.getText().toString().trim());
@@ -677,7 +678,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("barge_call_voice", bargeCallVoice.isChecked());
         e.putString("realtime_model", realtimeModel.getText().toString().trim());
         if ((liveMode.isChecked() || natural.isChecked()) && openAiKey.getText().toString().trim().isEmpty()) {
-            Toast.makeText(this, "సహజ గొంతు, Live సంభాషణకి OpenAI key కావాలి", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, Tr.t("సహజ గొంతు, Live సంభాషణకి OpenAI key కావాలి"), Toast.LENGTH_LONG).show();
         }
         e.putFloat("rate", 0.5f + rate.getProgress() / 100f);
         e.putString("lang", lang.getCheckedRadioButtonId() == 12 ? "en-IN" : "te-IN");
@@ -710,34 +711,34 @@ public class SettingsActivity extends Activity {
         if (wake.isChecked() && Build.VERSION.SDK_INT >= 33) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, 6);
         }
-        Toast.makeText(this, "సేవ్ చేశాను", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, Tr.t("సేవ్ చేశాను"), Toast.LENGTH_SHORT).show();
     }
 
     // ---------- little builders ----------
 
     private void showRate() {
         float r = 0.5f + rate.getProgress() / 100f;
-        rateLabel.setText(String.format(Locale.ENGLISH, "మాట్లాడే వేగం: %.2fx", r));
+        rateLabel.setText(String.format(Locale.ENGLISH, Tr.t("మాట్లాడే వేగం: %.2fx"), r));
         rateLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
     }
 
     private void showBriefingTime() {
-        briefingTime.setText(String.format(Locale.ENGLISH, "బ్రీఫింగ్ సమయం: %02d:%02d  (మార్చడానికి నొక్కండి)", briefHour, briefMinute));
+        briefingTime.setText(String.format(Locale.ENGLISH, Tr.t("బ్రీఫింగ్ సమయం: %02d:%02d  (మార్చడానికి నొక్కండి)"), briefHour, briefMinute));
     }
 
     private void testVoice() {
         String key = openAiKey.getText().toString().trim();
         if (key.isEmpty()) {
-            Toast.makeText(this, "ముందు OpenAI key పెట్టండి", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, Tr.t("ముందు OpenAI key పెట్టండి"), Toast.LENGTH_SHORT).show();
             return;
         }
         String v = NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())];
         String n = name.getText().toString().trim();
-        voiceInfo.setText("వినిపిస్తున్నాను…");
+        voiceInfo.setText(Tr.t("వినిపిస్తున్నాను…"));
         tester.speak(key, v, "నమస్కారం " + (n.isEmpty() ? "Anil" : n) + ". నేను Jarvis. మీ సేవలో ఎప్పుడూ సిద్ధంగా ఉంటాను.", new NaturalVoice.Callback() {
-            @Override public void onStart() { voiceInfo.setText("గొంతు: " + v); }
-            @Override public void onDone() { voiceInfo.setText("గొంతు: " + v + " ✓"); }
-            @Override public void onError(String message) { voiceInfo.setText("పనిచేయలేదు: " + message); }
+            @Override public void onStart() { voiceInfo.setText(Tr.t("గొంతు: ") + v); }
+            @Override public void onDone() { voiceInfo.setText(Tr.t("గొంతు: ") + v + " ✓"); }
+            @Override public void onError(String message) { voiceInfo.setText(Tr.t("పనిచేయలేదు: ") + message); }
         });
     }
 
@@ -754,7 +755,7 @@ public class SettingsActivity extends Activity {
     private void showBargeSens() {
         String[] names = {"చాలా తక్కువ (గట్టిగా మాట్లాడితేనే ఆగుతుంది)", "తక్కువ", "మధ్యస్థం", "ఎక్కువ", "చాలా ఎక్కువ (మెల్లగా మాట్లాడినా ఆగుతుంది)"};
         String last = BargeIn.lastInfo;
-        bargeSensLabel.setText("మధ్యలో మాట్లాడితే వినే సున్నితత్వం: " + names[Math.max(0, Math.min(4, bargeSens.getProgress()))]
+        bargeSensLabel.setText(Tr.t("మధ్యలో మాట్లాడితే వినే సున్నితత్వం: ") + names[Math.max(0, Math.min(4, bargeSens.getProgress()))]
                 + (last == null || last.isEmpty() ? "" : "\nచివరిసారి: " + last));
         bargeSensLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
     }
@@ -763,7 +764,7 @@ public class SettingsActivity extends Activity {
         int p = sensitivity.getProgress();
         String level = p < 17 ? "తక్కువ (తప్పుగా మేల్కొనదు, కానీ గట్టిగా పిలవాలి)"
                 : p < 34 ? "మధ్యస్థం" : "ఎక్కువ (సులువుగా మేల్కొంటుంది, అప్పుడప్పుడు పొరపాటున కూడా)";
-        sensitivityLabel.setText("సున్నితత్వం: " + level);
+        sensitivityLabel.setText(Tr.t("సున్నితత్వం: ") + level);
         sensitivityLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
     }
 
@@ -771,39 +772,39 @@ public class SettingsActivity extends Activity {
     private void chooseCar() {
         if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, 9);
-            Toast.makeText(this, "Allow చేసి మళ్లీ నొక్కండి", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, Tr.t("Allow చేసి మళ్లీ నొక్కండి"), Toast.LENGTH_SHORT).show();
             return;
         }
         android.bluetooth.BluetoothManager bm = getSystemService(android.bluetooth.BluetoothManager.class);
         android.bluetooth.BluetoothAdapter ad = bm == null ? null : bm.getAdapter();
-        if (ad == null) { Toast.makeText(this, "ఈ ఫోన్‌లో బ్లూటూత్ లేదు", Toast.LENGTH_LONG).show(); return; }
+        if (ad == null) { Toast.makeText(this, Tr.t("ఈ ఫోన్‌లో బ్లూటూత్ లేదు"), Toast.LENGTH_LONG).show(); return; }
         java.util.List<android.bluetooth.BluetoothDevice> list = new java.util.ArrayList<>(ad.getBondedDevices());
-        if (list.isEmpty()) { Toast.makeText(this, "ముందు కార్/బైక్‌ని ఫోన్‌తో బ్లూటూత్ జత (pair) చేయండి", Toast.LENGTH_LONG).show(); return; }
+        if (list.isEmpty()) { Toast.makeText(this, Tr.t("ముందు కార్/బైక్‌ని ఫోన్‌తో బ్లూటూత్ జత (pair) చేయండి"), Toast.LENGTH_LONG).show(); return; }
         String[] names = new String[list.size()];
         for (int i = 0; i < names.length; i++) names[i] = list.get(i).getName() == null ? list.get(i).getAddress() : list.get(i).getName();
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("మీ కార్/బైక్ ఏది?")
+                .setTitle(Tr.t("మీ కార్/బైక్ ఏది?"))
                 .setItems(names, (d, which) -> {
                     getSharedPreferences("jarvis", MODE_PRIVATE).edit().putString("car_bt", list.get(which).getAddress()).apply();
-                    carInfo.setText("ఎంచుకున్నారు: " + names[which] + " ✓");
+                    carInfo.setText(Tr.t("ఎంచుకున్నారు: ") + names[which] + " ✓");
                 })
-                .setNegativeButton("వద్దు", null)
+                .setNegativeButton(Tr.t("వద్దు"), null)
                 .show();
     }
 
     private void showListenWindow() {
-        if (listenWindowLabel != null) listenWindowLabel.setText("పిలిచాక మీరు మాట్లాడటం మొదలుపెట్టే దాకా వినే సమయం: " + (listenWindow.getProgress() + 3) + " సెకన్లు");
+        if (listenWindowLabel != null) listenWindowLabel.setText(Tr.t("పిలిచాక మీరు మాట్లాడటం మొదలుపెట్టే దాకా వినే సమయం: ") + (listenWindow.getProgress() + 3) + Tr.t(" సెకన్లు"));
     }
 
     private void showLock() {
         if (lockInfo == null || lockSlider == null) return;
         float max = 0.30f + lockSlider.getProgress() / 100f;
         StringBuilder b = new StringBuilder();
-        b.append(VoiceLock.print(this) == null ? "గొంతు ఇంకా నేర్పించలేదు." : "గొంతు నేర్చుకున్నాను ✓");
-        b.append("  పరిమితి: ").append(String.format(Locale.ROOT, "%.2f", max)).append(" (ఎడమ = కఠినం, కుడి = సులభం)");
+        b.append(VoiceLock.print(this) == null ? Tr.t("గొంతు ఇంకా నేర్పించలేదు.") : Tr.t("గొంతు నేర్చుకున్నాను ✓"));
+        b.append(Tr.t("  పరిమితి: ")).append(String.format(Locale.ROOT, "%.2f", max)).append(Tr.t(" (ఎడమ = కఠినం, కుడి = సులభం)"));
         if (VoiceLock.lastDistance >= 0) {
-            b.append("\nచివరి పిలుపు దూరం: ").append(String.format(Locale.ROOT, "%.2f", VoiceLock.lastDistance))
-                    .append(VoiceLock.lastAccepted ? " → పలికాను" : " → మీ గొంతు కాదనుకుని పలకలేదు");
+            b.append(Tr.t("\nచివరి పిలుపు దూరం: ")).append(String.format(Locale.ROOT, "%.2f", VoiceLock.lastDistance))
+                    .append(VoiceLock.lastAccepted ? Tr.t(" → పలికాను") : Tr.t(" → మీ గొంతు కాదనుకుని పలకలేదు"));
         }
         lockInfo.setText(b.toString());
     }
@@ -814,18 +815,18 @@ public class SettingsActivity extends Activity {
             try {
                 getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 getSharedPreferences("jarvis", MODE_PRIVATE).edit().putString("wa_tree", data.getData().toString()).apply();
-                waInfo.setText("అనుమతి ఉంది ✓");
+                waInfo.setText(Tr.t("అనుమతి ఉంది ✓"));
             } catch (Exception e) {
-                Toast.makeText(this, "ఆ ఫోల్డర్‌కి అనుమతి రాలేదు", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, Tr.t("ఆ ఫోల్డర్‌కి అనుమతి రాలేదు"), Toast.LENGTH_LONG).show();
             }
         }
         if (code == 41 && result == RESULT_OK && data != null && data.getData() != null) {
             try {
                 getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 getSharedPreferences("jarvis", MODE_PRIVATE).edit().putString("docs_tree", data.getData().toString()).apply();
-                docsInfo.setText("ఎంచుకున్నారు ✓");
+                docsInfo.setText(Tr.t("ఎంచుకున్నారు ✓"));
             } catch (Exception e) {
-                Toast.makeText(this, "ఆ ఫోల్డర్‌కి అనుమతి రాలేదు", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, Tr.t("ఆ ఫోల్డర్‌కి అనుమతి రాలేదు"), Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -924,6 +925,32 @@ public class SettingsActivity extends Activity {
         box.addView(t);
     }
 
+    /** తెలుగు / English for every label and option in the app (Jarvis's voice stays as it is). */
+    private void languageChooser() {
+        TextView l = Ui.plain(this, "యాప్ భాష · App language", 14, Ui.MUTED);
+        l.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 6));
+        box.addView(l);
+        LinearLayout row = new LinearLayout(this);
+        for (int k = 0; k < 2; k++) {
+            final boolean en = k == 1;
+            TextView b = Ui.plain(this, en ? "English" : "తెలుగు", 15.5f, 0xFFFFFFFF);
+            b.setGravity(Gravity.CENTER);
+            b.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 12));
+            b.setBackground(Tr.english() == en ? Ui.grad(this, new int[]{Ui.C_BLUE, Ui.C_VIOLET}, 14, null) : Ui.glass(this, 14));
+            b.setOnClickListener(v -> {
+                if (Tr.english() == en) return;
+                store(); // keep what he typed on this page
+                Tr.setEnglish(this, en);
+                recreate();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
+            if (k == 0) lp.rightMargin = Ui.dp(this, 8);
+            row.addView(b, lp);
+        }
+        box.addView(row);
+        note("ఆప్షన్లు, బటన్లు అన్నీ ఈ భాషలో చూపిస్తుంది. Jarvis మాట్లాడే భాష మారదు.");
+    }
+
     /** A box for a number (decimals allowed). */
     private EditText numberField(String label, String value) {
         EditText e = field(label, value, false);
@@ -957,7 +984,7 @@ public class SettingsActivity extends Activity {
 
     private Switch toggle(String label, boolean on) {
         Switch s = new Switch(this);
-        s.setText(label);
+        s.setText(Tr.t(label));
         s.setTextColor(Ui.TEXT);
         s.setTextSize(16);
         s.setChecked(on);
@@ -969,7 +996,7 @@ public class SettingsActivity extends Activity {
     private RadioButton radio(int id, String label) {
         RadioButton r = new RadioButton(this);
         r.setId(id);
-        r.setText(label);
+        r.setText(Tr.t(label));
         r.setTextColor(Ui.TEXT);
         r.setTextSize(16);
         r.setPadding(Ui.dp(this, 6), Ui.dp(this, 8), 0, Ui.dp(this, 8));
@@ -978,7 +1005,7 @@ public class SettingsActivity extends Activity {
 
     /** "Show all models" under a model box: the live list for that key; a tap fills the box and saves it. */
     private void modelPicker(String provider, EditText keyField, EditText into, String pref) {
-        TextView t = Ui.text(this, "📋 అన్ని మోడల్స్ చూపించు, ఎంచుకో", 14.5f, accent);
+        TextView t = Ui.text(this, Tr.t("📋 అన్ని మోడల్స్ చూపించు, ఎంచుకో"), 14.5f, accent);
         t.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         t.setOnClickListener(v -> Models.pick(this, Models.company(provider) + " మోడల్ ఎంచుకోండి",
                 new String[]{provider}, new String[]{keyField.getText().toString()},
@@ -989,7 +1016,7 @@ public class SettingsActivity extends Activity {
     private void chose(EditText into, String pref, String model) {
         into.setText(model);
         prefs.sp.edit().putString(pref, model).apply();
-        Toast.makeText(this, "✓ " + model + " పెట్టాను (సేవ్ అయింది)", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "✓ " + model + Tr.t(" పెట్టాను (సేవ్ అయింది)"), Toast.LENGTH_SHORT).show();
     }
 
     private void link(String label, String url) {
@@ -1019,25 +1046,25 @@ public class SettingsActivity extends Activity {
 
     private void showUpdateState() {
         if (updateInfo == null || isFinishing()) return;
-        if (Updater.busy()) { updateInfo.setText(Updater.status); updateBtn.setText("అప్డేట్ అవుతోంది…"); return; }
+        if (Updater.busy()) { updateInfo.setText(Updater.status); updateBtn.setText(Tr.t("అప్డేట్ అవుతోంది…")); return; }
         if (Updater.newAvailable(this)) {
             int v = Updater.knownLatest(this);
-            updateInfo.setText("⬆ కొత్త వెర్షన్ 1.0." + v + " వచ్చింది");
-            updateBtn.setText("1.0." + v + " కి అప్డేట్ చేయి (డౌన్‌లోడ్ సుమారు 55 MB)");
+            updateInfo.setText(Tr.t("⬆ కొత్త వెర్షన్ 1.0.") + v + Tr.t(" వచ్చింది"));
+            updateBtn.setText("1.0." + v + Tr.t(" కి అప్డేట్ చేయి (డౌన్‌లోడ్ సుమారు 55 MB)"));
         } else {
-            updateInfo.setText(Updater.status.isEmpty() ? "✓ ఇదే తాజా వెర్షన్" : Updater.status);
-            updateBtn.setText("కొత్త వెర్షన్ ఉందేమో చూడు");
+            updateInfo.setText(Updater.status.isEmpty() ? Tr.t("✓ ఇదే తాజా వెర్షన్") : Updater.status);
+            updateBtn.setText(Tr.t("కొత్త వెర్షన్ ఉందేమో చూడు"));
         }
     }
 
     private void startUpdate() {
-        updateBtn.setText("అప్డేట్ అవుతోంది…");
+        updateBtn.setText(Tr.t("అప్డేట్ అవుతోంది…"));
         Updater.updateNow(this, (text, done) -> {
             if (isFinishing()) return;
             updateInfo.setText(text);
             if (done) {
-                if (Updater.newAvailable(this)) updateBtn.setText("మళ్లీ ప్రయత్నించు");
-                else updateBtn.setText("కొత్త వెర్షన్ ఉందేమో చూడు");
+                if (Updater.newAvailable(this)) updateBtn.setText(Tr.t("మళ్లీ ప్రయత్నించు"));
+                else updateBtn.setText(Tr.t("కొత్త వెర్షన్ ఉందేమో చూడు"));
             }
         });
     }

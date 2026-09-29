@@ -1,0 +1,856 @@
+ఆపు	Stop
+⬆  Jarvis కొత్త వెర్షన్ 1.0.	⬆  New Jarvis version 1.0.
+ వచ్చింది. అప్డేట్ చేయడానికి నొక్కండి	 is out. Tap to update
+<app> యాప్ సిద్ధం	<app> app ready
+శుభోదయం బ్రీఫింగ్	Good morning briefing
+అనుమతులు (Permissions) తెరిచి Allow ఇవ్వండి	Open Permissions and tap Allow
+Settings → Apps → Jarvis → Permissions లో Allow ఇవ్వండి	Settings → Apps → Jarvis → Permissions: tap Allow
+మాట్లాడాలంటే మైక్ అనుమతి కావాలి	Microphone permission needed to talk
+అన్ని ఫీచర్లు	All features
+సెట్టింగ్స్	Settings
+💬 సంభాషణ	💬 Chat
+🎯 మిషన్లు	🎯 Missions
+🧠 జ్ఞాపకాలు	🧠 Memories
+Live కెమెరా	Live camera
+వార్తలు	News
+వాతావరణం	Weather
+ఫోటో స్కాన్	Photo scan
+బిల్లు → ఖర్చు	Bill → expense
+స్క్రీన్ చూడు	Look at screen
+మెసేజ్‌లు	Messages
+రిమైండర్లు	Reminders
+వెబ్‌సైట్	Website
+ఒక వెబ్‌సైట్ తయారు చెయ్: 	Make a website: 
+యాప్	App
+ఒక Android యాప్ తయారు చెయ్: 	Make an Android app: 
+Python తో లెక్కించు: 	Calculate with Python: 
+కోడ్	Code
+కోడ్ రాయి: 	Write code: 
+మిషన్ స్టేటస్	Mission status
+ఫోకస్ మోడ్	Focus mode
+సూట్ అప్	Suit up
+ఒక జోక్	A joke
+  ఫోటో జత చేశారు	  Photo attached
+తీసేయి	Remove
+ఫోటో జత చేయి	Attach photo
+Jarvis ని అడగండి	Ask Jarvis
+మాట్లాడి అడగండి	Ask by voice
+ఆపు / కొనసాగించు	Pause / continue
+Live సంభాషణ	Live talk
+కొత్త మిషన్ రాయండి	Write a new mission
+Jarvis గుర్తుంచుకోవాల్సిన విషయం	Something Jarvis should remember
+జోడించు	Add
+సేవ్	Save
+ఇంకా మిషన్లు లేవు. పైన రాయండి, లేదా Jarvis కి చెప్పండి: “రేపు ఉదయం బ్యాంక్ పని ఉంది, మిషన్‌గా పెట్టు”.	No missions yet. Write one above, or tell Jarvis: “I have bank work tomorrow morning, add it as a mission”.
+ఇంకా ఏమీ గుర్తుంచుకోలేదు. Jarvis కి చెప్పండి: “గుర్తుంచుకో: నాకు ఫిల్టర్ కాఫీ అంటే ఇష్టం”. ప్రతి సమాధానంలో ఇవన్నీ గుర్తుంటాయి.	Nothing remembered yet. Tell Jarvis: “Remember: I love filter coffee”. Jarvis keeps all of these in mind in every answer.
+పూర్తయినవి	Done
+రాబోయే రిమైండర్లు	Upcoming reminders
+Jarvis ఇంకా జవాబిస్తున్నాడు. అయ్యాక మళ్లీ నొక్కండి.	Jarvis is still answering. Tap again when it is done.
+🌅 శుభోదయం బ్రీఫింగ్	🌅 Good morning briefing
+ఒక వెబ్‌సైట్ తయారు చెయ్: …	Make a website: …
+శుభోదయం	Good morning
+శుభ మధ్యాహ్నం	Good afternoon
+శుభ సాయంత్రం	Good evening
+శుభ రాత్రి	Good night
+ఇంత రాత్రి వేళ కూడా పనిలోనే ఉన్నారా	Still working this late at night
+Jarvis మెదడుకి API key కావాలి. ఇక్కడ నొక్కి సెట్టింగ్స్‌లో మీ OpenAI (లేదా Anthropic) key పెట్టండి.	Jarvis's brain needs an API key. Tap here and add your OpenAI (or Anthropic) key in Settings.
+కాల్స్, SMS, కాంటాక్ట్స్, మైక్, లొకేషన్ వాడాలంటే అనుమతులు కావాలి. ఇక్కడ నొక్కి Allow ఇవ్వండి.	Calls, SMS, contacts, mic and location need permissions. Tap here and tap Allow.
+ఈ ఫోన్‌లో తెలుగు వాయిస్ ఇన్‌స్టాల్ అవ్వలేదు, అందుకే Jarvis తెలుగు సరిగ్గా పలకలేడు. ఇక్కడ నొక్కి Google Text-to-speech లో తెలుగు వాయిస్ డౌన్‌లోడ్ చేయండి.	Telugu voice is not installed on this phone, so Jarvis can't speak Telugu properly. Tap here and download the Telugu voice in Google Text-to-speech.
+మళ్లీ వినిపించు	Play again
+. మళ్లీ కలవడం సంతోషం.	. Good to see you again.
+. అన్ని వ్యవస్థలు ఆన్‌లైన్‌లో ఉన్నాయి. కింద మైక్ నొక్కి మాట్లాడండి	. All systems online. Tap the mic below to talk
+, లేదా ఎప్పుడైనా \"Hey Jarvis\" అని పిలవండి.	, or call \"Hey Jarvis\" anytime.
+రిమైండర్ తీసేయి	Remove reminder
+రిమైండర్ తీసేశాను	Reminder removed
+Live కెమెరా ఆన్. ఏం కనిపిస్తోందో Jarvis ని అడగండి.	Live camera on. Ask Jarvis what it sees.
+మళ్లీ యాక్టివ్ చేయి	Make active again
+పూర్తయింది	Done
+మిషన్ తీసేశాను	Mission removed
+జ్ఞాపకం తీసేశాను	Memory removed
+   ·   తిరిగి తీసుకురా	   ·   Undo
+Live తెర చూపించు	Show Live screen
+వినడం ఆపు	Stop listening
+పంపు	Send
+ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి	Paused. Say \"Jarvis, continue\" or tap ▶
+కొనసాగించు	Continue
+మాట్లాడుతున్నాను…	Speaking…
+English practice కి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)	English practice needs an OpenAI key (Settings → Jarvis brain)
+ఇంటర్నెట్ లేదు	No internet
+Live సంభాషణకి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)	Live talk needs an OpenAI key (Settings → Jarvis brain)
+ఇంటర్నెట్ లేదు. నెట్ ఆన్ చేసి మళ్లీ నొక్కండి.	No internet. Turn on the net and tap again.
+మైక్ ఆఫ్	Mic off
+మాట్లాడండి…	Speak…
+Live నడుస్తోంది · నీలం బటన్ = Live తెర	Live is on · blue button = Live screen
+నిశ్శబ్దంగా ఉంది, Live సంభాషణ ఆపేశాను	It went quiet, so I ended the Live talk
+OpenAI key పనిచేయడం లేదు. సెట్టింగ్స్‌లో OpenAI key చెక్ చేయండి.	The OpenAI key isn't working. Check the OpenAI key in Settings.
+OpenAI అకౌంట్‌లో బ్యాలెన్స్ అయిపోయింది. క్రెడిట్ జోడించండి.	The OpenAI account is out of balance. Add credit.
+Live మోడల్ \"	Live model \"
+\" పనిచేయలేదు. సెట్టింగ్స్‌లో మోడల్ మార్చండి లేదా Live ఆఫ్ చేయండి.	\" didn't work. Change the model in Settings or turn Live off.
+ఇంటర్నెట్ కనెక్షన్ సమస్య. నెట్ చెక్ చేసి మళ్లీ ప్రయత్నించండి.	Internet connection problem. Check the net and try again.
+మైక్	Mic
+మైక్ తెరవలేకపోయాను. వేరే యాప్ మైక్ వాడుతుంటే మూసేసి మళ్లీ ప్రయత్నించండి.	Couldn't open the mic. If another app is using it, close it and try again.
+Live సంభాషణలో సమస్య వచ్చింది.	Something went wrong in the Live talk.
+ఈ ఫోన్‌లో Google వాయిస్ టైపింగ్ లేదు. Google యాప్ ఇన్‌స్టాల్/అప్‌డేట్ చేయండి.	This phone has no Google voice typing. Install/update the Google app.
+వింటున్నాను…	Listening…
+వింటున్నాను… మాట్లాడండి	Listening… speak
+చాలు	Enough
+వాయిస్‌కి ఇంటర్నెట్ కావాలి	Voice needs internet
+మైక్ బిజీగా ఉంది, మళ్లీ నొక్కండి	Mic is busy, tap again
+తెలుగు వాయిస్ టైపింగ్ లేదు. Google యాప్ → Settings → Voice → Languages లో తెలుగు జోడించండి.	No Telugu voice typing. Add Telugu in Google app → Settings → Voice → Languages.
+ఈ ఫైల్‌లో ఏముందో చిన్నగా చెప్పు.	Briefly tell me what's in this file.
+ఈ ఫోటోలో ఏముందో చెప్పు.	Tell me what's in this photo.
+క్షమించండి 	Sorry 
+, నా మెదడుకి ఇంకా API key లేదు. సెట్టింగ్స్‌లో పెట్టండి.	, my brain has no API key yet. Add one in Settings.
+ఆలోచిస్తున్నాను…	Thinking…
+ఇంటర్నెట్ కనెక్షన్ లేదు. నెట్ ఆన్ చేసి మళ్లీ అడగండి.	No internet connection. Turn on the net and ask again.
+సమాధానం రావడానికి చాలా ఆలస్యం అయింది. మళ్లీ అడగండి.	The answer took too long. Ask again.
+ఏదో తప్పు జరిగింది: 	Something went wrong: 
+API key పనిచేయడం లేదు. సెట్టింగ్స్‌లో key సరిగ్గా పెట్టారో చెక్ చేయండి.	The API key isn't working. Check that the key in Settings is right.
+చాలా ఎక్కువ ప్రశ్నలు ఒకేసారి. కొంచెం ఆగి అడగండి.	Too many questions at once. Wait a little and ask.
+మోడల్ పేరు \"	Model name \"
+\" పనిచేయలేదు. సెట్టింగ్స్‌లో 'అన్ని మోడల్స్ చూపించు' నొక్కి వేరే మోడల్ ఎంచుకోండి.	\" didn't work. In Settings tap 'Show all models' and pick another model.
+సర్వర్ బిజీగా ఉంది. కాసేపటి తర్వాత మళ్లీ అడగండి.	The server is busy. Ask again in a while.
+సమాధానం రాలేదు. మళ్లీ అడగండి.	No answer came. Ask again.
+పొరపాటు జరిగింది (	Something went wrong (
+సిద్ధంగా ఉన్నాను, 	Ready, 
+మెదడు ఆఫ్‌లైన్: API key కావాలి	Brain offline: needs an API key
+కెమెరాతో ఫోటో తీయండి	Take a photo with the camera
+గ్యాలరీ నుంచి ఫోటో	Photo from gallery
+PDF, టెక్స్ట్, కోడ్ ఫైల్స్	PDF, text, code files
+కాగితాలు స్కాన్ చేసి ఒక PDF	Scan paper pages into one PDF
+Jarvis చూస్తూ మాట్లాడతాడు	Jarvis watches and talks
+ఫైల్స్ తెరవలేకపోయాను	Couldn't open Files
+PDF 10 MB కంటే పెద్దది. చిన్న ఫైల్ ఎంచుకోండి.	The PDF is bigger than 10 MB. Pick a smaller file.
+\n… (ఫైల్ ఇంకా ఉంది, మొదటి భాగం మాత్రమే)	\n… (the file goes on, only the first part)
+ఈ రకం ఫైల్ ఇంకా చదవలేను. PDF, టెక్స్ట్/కోడ్ ఫైల్స్, ఫోటోలు మాత్రమే.	Can't read this kind of file yet. Only PDF, text/code files and photos.
+ఫైల్ తెరవలేకపోయాను	Couldn't open the file
+PDF సిద్ధం ✓ (	PDF ready ✓ (
+ పేజీ	 page
+లు	s
+\n\nWhatsApp లో పంపాలంటే 'షేర్', Jarvis కి అందులో ఏముందో అడగాలంటే 'Jarvis ని అడుగు'.	\n\nTo send it on WhatsApp tap 'Share'; to ask Jarvis what's in it tap 'Ask Jarvis'.
+షేర్	Share
+PDF షేర్ చేయండి	Share the PDF
+తెరువు	Open
+PDF చూసే యాప్ లేదు	No app to view PDFs
+Jarvis ని అడుగు	Ask Jarvis
+PDF 10 MB కంటే పెద్దది	The PDF is bigger than 10 MB
+ఫైల్ గురించి ఏం అడగాలి? (ఖాళీగా పంపితే సారాంశం)	What should I ask about the file? (send empty for a summary)
+🧾 బిల్లు ఫోటో	🧾 Bill photo
+📷 ఇప్పుడు ఫోటో తీయి	📷 Take a photo now
+🖼️ గ్యాలరీ నుంచి ఎంచుకో	🖼️ Pick from gallery
+వద్దు	Cancel
+కెమెరా యాప్ తెరవలేకపోయాను. గ్యాలరీ నుంచి ఎంచుకోండి.	Couldn't open the camera app. Pick from the gallery.
+ఫోటో ఎంచుకోండి	Pick a photo
+గ్యాలరీ తెరవలేకపోయాను	Couldn't open the gallery
+ఫోటో గురించి ఏం అడగాలి? (ఖాళీగా పంపితే వివరిస్తాను)	What should I ask about the photo? (send empty and I'll describe it)
+🧾 ఈ బిల్లు నా ఖర్చుల్లో చేర్చు	🧾 Add this bill to my expenses
+ఫోటో తెరవలేకపోయాను	Couldn't open the photo
+Jarvis ని మీకు నచ్చినట్టు మార్చుకోండి	Make Jarvis your own
+మూసేయి	Close
+Jarvis చెక్	Jarvis check
+మెసేజ్ వచ్చినా Jarvis చెప్పకపోతే, లేదా మాట్లాడకపోతే: ఇక్కడ ✗ ఉన్నది చూసి 'సరిచేయి' నొక్కండి.	If Jarvis doesn't announce messages or doesn't speak: see what has ✗ here and tap 'Fix'.
+సరిచేయి	Fix
+మీరు	You
+మీ పేరు (Jarvis మిమ్మల్ని ఇలా పిలుస్తాడు)	Your name (Jarvis calls you this)
+Jarvis మెదడు	Jarvis brain
+ఏ కంపెనీ API key వాడతారో ఎంచుకోండి. Key మీ ఫోన్‌లో మాత్రమే ఉంటుంది.	Choose whose API key to use. The key stays only on your phone.
+OpenAI మోడల్	OpenAI model
+OpenAI key ఇక్కడ తీసుకోండి	Get an OpenAI key here
+Anthropic మోడల్	Anthropic model
+Anthropic key ఇక్కడ తీసుకోండి	Get an Anthropic key here
+Gemini మోడల్	Gemini model
+కింద 'అన్ని మోడల్స్ చూపించు' నొక్కి ఎంచుకోండి	Tap 'Show all models' below and pick one
+Gemini key ఇక్కడ తీసుకోండి	Get a Gemini key here
+మోడల్ Jarvis తనంతట తాను ఎంచుకోడు: మీరు ఎంచుకున్నదే వాడతాడు. 'అన్ని మోడల్స్ చూపించు' మీ key తో ఆ కంపెనీ దగ్గర నుంచి 	Jarvis never picks a model on its own: it uses the one you choose. 'Show all models' fetches, with your key, from that company 
+ఇప్పుడున్న మోడల్స్ అన్నీ తెస్తుంది; ఒకటి నొక్కితే వెంటనే సేవ్ అవుతుంది. ఎప్పుడైనా మార్చుకోవచ్చు. పేరు మీరే టైప్ చేసినా సరే.	all the models available now; tap one and it's saved right away. Change it anytime. Typing the name yourself works too.
+Gemini: ఉచిత ప్లాన్‌లో Flash, Flash-Lite మోడల్స్ మాత్రమే; Pro మోడల్స్‌కి billing కావాలి. ప్రతి మోడల్‌కి వేరే నిమిషం/రోజు లిమిట్ ఉంటుంది: 	Gemini: the free plan has only Flash and Flash-Lite models; Pro models need billing. Each model has its own per-minute/per-day limit: 
+ఒక మోడల్ లిమిట్ అయిపోతే ఇంకో Flash మోడల్ ఎంచుకోండి. రోజు లిమిట్ మధ్యాహ్నం సుమారు 12:30–1:30 కి మళ్లీ వస్తుంది. 	if one model hits its limit, pick another Flash model. The daily limit comes back around 12:30–1:30 pm. 
+Jarvis ఒక్క ప్రశ్నకి (యాప్ తెరవడం, సెర్చ్ లాంటి పనులుంటే) చాలా requests పంపుతాడు, అందుకే ఉచిత లిమిట్ త్వరగా అయిపోవచ్చు. 	Jarvis sends several requests for one question (when it opens apps, searches and so on), so the free limit can run out fast. 
+Google AI Plus/Pro సబ్స్క్రిప్షన్ Gemini యాప్ కోసం; API లిమిట్‌కి దానితో సంబంధం లేదు. ఉచిత ప్లాన్‌లో మీరు పంపేవి (మాటలు, స్క్రీన్‌షాట్లు) 	The Google AI Plus/Pro subscription is for the Gemini app; it has nothing to do with the API limit. On the free plan, what you send (words, screenshots) 
+Google తమ మోడల్స్ మెరుగుపరచడానికి వాడుకోవచ్చు. పైన 'Google (Gemini)' ఎంచుకుంటేనే వాడుతుంది; వాయిస్ (సహజ గొంతు), Live మోడ్ OpenAI తోనే ఉంటాయి.	may be used by Google to improve its models. It's used only when 'Google (Gemini)' is chosen above; the voice (natural voice) and Live mode stay on OpenAI.
+Gemini లిమిట్లు / billing (AI Studio)	Gemini limits / billing (AI Studio)
+ఇంటర్నెట్ సెర్చ్ (వార్తలు, స్కోర్లు, ధరలు)	Internet search (news, scores, prices)
+Jarvis ఎంత తెలివిగా ఆలోచిస్తాడో పై మోడల్‌ని బట్టి ఉంటుంది. అత్యంత శక్తివంతమైనవి: OpenAI లో gpt-6-astra, Anthropic లో claude-opus-5-5 	How cleverly Jarvis thinks depends on the model above. The most powerful: gpt-6-astra on OpenAI, claude-opus-5-5 on Anthropic 
+(ఇవి నెమ్మదిగా, ఖరీదుగా ఉంటాయి). రోజువారీ మాటలకి వేగమైన మోడల్ ఉంచి, కోడింగ్‌కి మాత్రమే శక్తివంతమైనది కింద 'కోడింగ్ మోడల్' లో పెట్టొచ్చు.	(these are slower and costlier). Keep a fast model for daily talk, and put the powerful one only for coding under 'Coding model' below.
+API ఖర్చు (ఈ నెల)	API cost (this month)
+Jarvis ఒక్కో ప్రశ్నకి ఎన్ని tokens వాడాడో లెక్కించి, ఆ కంపెనీ ధరలతో సుమారు ఖర్చు చూపిస్తాడు. Live మోడ్, సహజ గొంతు OpenAI ఖాతా నుంచే కట్ అవుతాయి.	Jarvis counts the tokens each question used and shows the approximate cost at that company's prices. Live mode and the natural voice are charged to the OpenAI account.
+Gemini credit (₹) · AI Studio → Billing లో ఉన్నది	Gemini credit (₹) · as shown in AI Studio → Billing
+మీ ఇప్పటి balance ఒక్కసారి ఇక్కడ పెట్టండి (ఖాళీ = లెక్కించకు). Jarvis అక్కడి నుంచి తగ్గిస్తూ, 20%, 5% మిగిలినప్పుడు notification ఇస్తాడు. 	Enter your current balance here once (empty = don't track). Jarvis counts down from it and notifies you at 20% and 5% left. 
+Credit కొన్నాక కొత్త balance మళ్లీ ఇక్కడ పెట్టండి. ఇవి అంచనాలు; ఖచ్చితమైన లెక్క కంపెనీ billing పేజీల్లో ఉంటుంది. \"API ఖర్చు ఎంత?\" అని Jarvis ని కూడా అడగొచ్చు.	After buying credit, enter the new balance here again. These are estimates; the exact figures are on the companies' billing pages. You can also ask Jarvis \"How much is the API cost?\".
+కోడింగ్, వెబ్‌సైట్లు, యాప్‌లు	Coding, websites, apps
+\"Python తో … లెక్కించు\", \"… వెబ్‌సైట్ తయారు చెయ్\", \"… యాప్ తయారు చెయ్\", \"… కోడ్ రాయి\" అని అడగండి. తయారైనవన్నీ Downloads/Jarvis లో సేవ్ అవుతాయి.	Ask \"Calculate … with Python\", \"Make a … website\", \"Make a … app\", \"Write … code\". Everything made is saved in Downloads/Jarvis.
+కోడింగ్ మోడల్ (ఖాళీ = పై మెదడే)	Coding model (empty = the brain above)
+📋 అన్ని కంపెనీల మోడల్స్ చూపించు, ఎంచుకో	📋 Show every company's models, pick one
+కోడింగ్ మోడల్ ఎంచుకోండి	Pick a coding model
+gpt-6-astra కి పైన OpenAI key, claude-opus-5-5 కి Anthropic key ఉండాలి. మోడల్ పేరు తప్పైతే Jarvis వేరే మోడల్‌కి మారకుండా తప్పు అని చెబుతుంది.	gpt-6-astra needs the OpenAI key above, claude-opus-5-5 the Anthropic key. If the model name is wrong, Jarvis says so instead of switching to another model.
+GitHub token (వెబ్‌సైట్ ఆన్‌లైన్, యాప్‌లు తయారీ కోసం)	GitHub token (to put websites online and build apps)
+ఒక్కసారి: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → 	Once: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → 
+'repo', 'workflow' టిక్ చేసి Generate → వచ్చిన token ఇక్కడ పెట్టండి. ఇది మీ ఫోన్‌లో మాత్రమే ఉంటుంది. 	tick 'repo' and 'workflow', Generate → paste the token here. It stays only on your phone. 
+Jarvis మీ GitHub లో jarvis-sites (వెబ్‌సైట్లు), jarvis-app-… (యాప్‌లు) అనే పబ్లిక్ repos తయారు చేస్తుంది.	Jarvis makes public repos in your GitHub named jarvis-sites (websites) and jarvis-app-… (apps).
+వాయిస్	Voice
+సమాధానాలు పైకి చదివి వినిపించు	Read answers aloud
+సమాధానం తర్వాత మళ్లీ వినడం (సంభాషణ మోడ్)	Listen again after answering (conversation mode)
+మీరు మాట్లాడే భాష	Language you speak
+తెలుగు	Telugu
+Jarvis తెలుగులో మాట్లాడకపోతే: ఫోన్ Settings → Text-to-speech → Google → తెలుగు వాయిస్ డౌన్‌లోడ్ చేయండి.	If Jarvis doesn't speak Telugu: phone Settings → Text-to-speech → Google → download the Telugu voice.
+సహజ గొంతు (OpenAI)	Natural voice (OpenAI)
+సినిమాలోలా మనిషి గొంతుతో మాట్లాడుతుంది. OpenAI key కావాలి, కొంచెం ఖర్చు అవుతుంది. తెలుగు ఉచ్చారణ నచ్చకపోతే ఇది ఆఫ్ చేస్తే Google గొంతుకి మారుతుంది.	Speaks with a human voice, like in the films. Needs an OpenAI key and costs a little. If you don't like the Telugu accent, turn this off to switch to the Google voice.
+సహజ గొంతు వాడు	Use natural voice
+భావాలతో మాట్లాడు (నవ్వు, సంతోషం, ఉత్సాహం, బాధ… సందర్భానికి తగ్గట్టు)	Speak with feeling (laughing, happy, excited, sad… as the moment needs)
+గొంతు ఎంచుకోండి (cedar = లోతైన మగ గొంతు, సిఫార్సు)	Choose a voice (cedar = deep male voice, recommended)
+ఈ గొంతు వినిపించు	Play this voice
+Live సంభాషణ (Real-time)	Live talk (Real-time)
+ChatGPT వాయిస్ లాగా, ఫ్రెండ్‌తో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. OpenAI key కావాలి. 	Like ChatGPT voice, just like talking to a friend: it listens while you speak, answers at once, and you can cut in anytime. Needs an OpenAI key. 
+సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది. 2 నిమిషాలు ఎవరూ మాట్లాడకపోతే \"అవసరమైతే పిలవండి\" అని చెప్పి ఆగిపోతుంది.	Costs more than the normal mode. If nobody speaks for 2 minutes it says \"call me if you need me\" and stops.
+\"Hey Jarvis\" అన్నా Live సంభాషణే మొదలవ్వాలి (నీలం బటన్‌తో Live ఎప్పుడైనా వస్తుంది)	\"Hey Jarvis\" should also start a Live talk (the blue button starts Live anytime)
+మీరు మాట పూర్తి చేసే వరకు ఆగి, తర్వాతే జవాబివ్వు (మధ్యలో ఆలోచిస్తూ ఆగినా కట్ చేయదు)	Wait until you finish what you're saying before answering (doesn't cut you off when you pause to think)
+Jarvis మాట్లాడుతుండగా మధ్యలో మాట్లాడితే ఆగి వినాలి	Stop and listen when you talk while Jarvis is speaking
+మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో ఇంకా బాగా పనిచేస్తుంది.	If it doesn't stop when you talk, move the slider right; if Jarvis keeps stopping at its own voice, move it left. Works even better with earphones/Bluetooth.
+Jarvis గొంతుని ఫోన్ కాల్ మార్గంలో పంపు (ప్రతిధ్వని ఇంకా బాగా తీసేస్తుంది, కానీ గొంతు కాల్ లాగా, తక్కువగా ఉంటుంది. మామూలుగా ఆఫ్ ఉంచండి; Jarvis తనంతట తానే ఆగిపోతుంటే లేదా మీ మాట అసలు వినకపోతే మాత్రమే ఆన్ చేయండి)	Send Jarvis's voice through the phone-call path (removes echo even better, but the voice sounds like a call and quieter. Keep it off normally; turn it on only if Jarvis keeps stopping by itself or doesn't hear you at all)
+Live మోడల్	Live model
+mini మోడల్ చవక, వేగం. పేరులో mini లేని పెద్ద మోడల్ ఇంకా సహజంగా, భావంతో మాట్లాడుతుంది కానీ ఖర్చు ఎక్కువ.	The mini model is cheap and fast. The bigger model without mini in its name talks more naturally, with more feeling, but costs more.
+\"Hey Jarvis\" వేక్ వర్డ్	\"Hey Jarvis\" wake word
+ఫోన్ లాక్‌లో ఉన్నా \"Hey Jarvis\" అని పిలిస్తే తెరుచుకుంటుంది. ఏ key అవసరం లేదు. వినడం అంతా ఫోన్‌లోనే జరుగుతుంది, ఏ ఆడియో బయటికి వెళ్లదు.	Even with the phone locked, calling \"Hey Jarvis\" opens it. No key needed. All listening happens on the phone; no audio leaves it.
+పిలిస్తే Google లాగా చిన్న ప్యానెల్ (\"చెప్పండి Anil?\")	When called, a small panel like Google (\"Yes Anil?\")
+యాప్ తెరవగానే వినడం మొదలుపెట్టు	Start listening as soon as the app opens
+దీనితో \"Hey Google, open Jarvis\" అంటే Google తన చిప్‌తో విని Jarvis ని తెరుస్తుంది, Jarvis వెంటనే మీ మాట వింటుంది. ఈ పద్ధతిలో Jarvis మైక్ బ్యాక్‌గ్రౌండ్‌లో అసలు ఆన్ అవ్వదు. అప్పుడు కింది వేక్ వర్డ్ ఆఫ్ చేయవచ్చు.	With this, saying \"Hey Google, open Jarvis\" lets Google listen with its own chip and open Jarvis, and Jarvis listens to you right away. This way Jarvis's mic is never on in the background. Then you can turn off the wake word below.
+వేక్ వర్డ్ ఆన్	Wake word on
+మైక్ ఎప్పుడు వినాలి?	When should the mic listen?
+ఎప్పుడూ: స్క్రీన్ ఆఫ్‌లో ఉన్నా \"Jarvis\" అంటే స్క్రీన్ ఆన్ అయి వింటుంది (సిఫార్సు)	Always: even with the screen off, saying \"Jarvis\" turns the screen on and it listens (recommended)
+స్క్రీన్ ఆన్‌లో ఉన్నప్పుడు మాత్రమే (బ్యాటరీ ఆదా)	Only while the screen is on (saves battery)
+ఛార్జింగ్‌లో ఉన్నప్పుడు మాత్రమే	Only while charging
+నోటిఫికేషన్‌లో \"ఆపు\" నొక్కితే మైక్ కాసేపు ఆగుతుంది; Jarvis యాప్ మళ్లీ తెరవగానే తనంతట తానే ఆన్ అవుతుంది.	Tapping \"Stop\" in the notification pauses the mic for a while; it turns back on by itself when you open the Jarvis app again.
+\"Hey Google\" కోసం ఫోన్‌లో ఒక ప్రత్యేక చిన్న చిప్ ఉంటుంది, అది Google కి మాత్రమే అందుబాటులో ఉంటుంది. అందుకే \"Jarvis\" అని పిలవడం వినాలంటే మైక్ ఆన్‌లో ఉండాలి. మైక్ పూర్తిగా ఆఫ్ ఉండాలంటే వేక్ వర్డ్ ఆఫ్ చేసి, కింది మార్గాల్లో పిలవండి: పవర్ బటన్ నొక్కి పట్టుకోవడం, పైనుంచి కిందికి స్వైప్ చేసి \"Jarvis\" టైల్ నొక్కడం, లేదా Jarvis ఐకాన్ నొక్కి పట్టుకుని \"Jarvis తో మాట్లాడు\" షార్ట్‌కట్.	Phones have a special small chip for \"Hey Google\", and only Google can use it. That's why the mic must be on to hear \"Jarvis\". For the mic fully off, turn the wake word off and call Jarvis these ways: press and hold the power button, swipe down and tap the \"Jarvis\" tile, or press and hold the Jarvis icon for the \"Talk to Jarvis\" shortcut.
+\"Jarvis\" ఒక్క పదంతో కూడా మేల్కొను (ప్రధానం; \"Hey Jarvis\" ఎప్పుడూ పనిచేస్తుంది)	Wake up on the single word \"Jarvis\" too (main; \"Hey Jarvis\" always works)
+\"Jarvis\" పదం కోసం మొదటిసారి సుమారు 40 MB ఫైల్ ఒక్కసారి డౌన్‌లోడ్ అవుతుంది (Wi-Fi లో ఉంటే మంచిది). టీవీ, మాటల్లో \"Jarvis\" వినిపించి తప్పుగా మేల్కొంటుంటే ఇది ఆఫ్ చేయండి.	For the word \"Jarvis\", a file of about 40 MB is downloaded once the first time (better on Wi-Fi). If it wakes up wrongly when \"Jarvis\" is heard on TV or in talk, turn this off.
+నా గొంతుకి మాత్రమే పలుకు (ప్రయోగాత్మకం)	Answer only my voice (experimental)
+టీవీలో, వేరేవాళ్లు \"Jarvis\" అంటే పలకదు. ముందు కింది బటన్‌తో మీ గొంతు నేర్పించండి (సుమారు 13 MB ఒక్కసారి డౌన్‌లోడ్). మీరు పిలిచినా పలకకపోతే స్లైడర్ కుడివైపు జరపండి.	It won't answer when the TV or someone else says \"Jarvis\". First teach it your voice with the button below (about 13 MB downloaded once). If it doesn't answer when you call, move the slider right.
+మీ గొంతు నేర్పించండి (5 సార్లు \"Jarvis\" అనండి)	Teach it your voice (say \"Jarvis\" 5 times)
+\"Display over other apps\" అనుమతి ఇవ్వండి	Allow \"Display over other apps\"
+బ్యాటరీ సేవర్ నుంచి మినహాయించండి	Exempt from battery saver
+కాల్స్, ఉదయం బ్రీఫింగ్	Calls, morning briefing
+కాల్ వస్తే ఎవరో పైకి చెప్పు (నోటిఫికేషన్ యాక్సెస్ కావాలి)	Say who is calling (needs notification access)
+కొత్త మెసేజ్ వస్తే (WhatsApp, SMS, Telegram, Instagram, Facebook, Snapchat...) ఎవరి నుంచో చెప్పి, \"చదవమంటారా?\" అని అడుగు	When a new message comes (WhatsApp, SMS, Telegram, Instagram, Facebook, Snapchat...), say who it's from and ask \"Shall I read it?\"
+బ్యాటరీ 15%, 5% కి పడితే గొంతుతో చెప్పు	Tell me by voice when the battery drops to 15% and 5%
+తర్వాత \"ఎత్తు\" అంటే కాల్ ఎత్తు, \"కట్\" అంటే కట్ చెయ్	Then \"answer\" picks up the call, \"cut\" rejects it
+రోజూ ఉదయం బ్రీఫింగ్ తనంతట తానే	Morning briefing every day by itself
+బ్రీఫింగ్‌ని పైకి వినిపించు	Read the briefing aloud
+స్క్రీన్ చూడటం	Screen reading
+\"నా స్క్రీన్‌లో ఏముంది?\", \"ఈ మెసేజ్‌కి ఏం రిప్లై ఇవ్వాలి?\" అని అడగాలంటే Accessibility లో \"Jarvis స్క్రీన్\" ఆన్ చేయండి. మీరు Jarvis ని పిలిచిన క్షణంలో ఉన్న స్క్రీన్‌ని మాత్రమే చూస్తుంది, మీరు అడిగినప్పుడే AI కి పంపుతుంది.	To ask \"What's on my screen?\" or \"What should I reply to this message?\", turn on \"Jarvis screen\" in Accessibility. It only looks at the screen at the moment you call Jarvis, and sends it to the AI only when you ask.
+Accessibility తెరవండి	Open Accessibility
+Android 13 పైన స్విచ్ బూడిద రంగులో ఉండి నొక్కలేకపోతే: కింది బటన్ → పైన కుడివైపు ⋮ → \"Allow restricted settings\" → మళ్లీ ప్రయత్నించండి. నోటిఫికేషన్ యాక్సెస్‌కి కూడా ఇదే.	On Android 13+, if the switch is grey and can't be tapped: the button below → ⋮ at the top right → \"Allow restricted settings\" → try again. Same for notification access.
+Jarvis App info తెరవండి	Open Jarvis App info
+పవర్ బటన్ అసిస్టెంట్	Power button assistant
+పవర్/హోమ్ బటన్ నొక్కి పట్టుకుంటే Jarvis రావాలంటే: కింది బటన్ → Digital assistant app → Jarvis ఎంచుకోండి. Samsung లో: Settings → Advanced features → Side button → \"Press and hold\" → Digital assistant. లేదా \"Double press\" → Open app → Jarvis.	For Jarvis to come when you press and hold the power/home button: the button below → Digital assistant app → choose Jarvis. On Samsung: Settings → Advanced features → Side button → \"Press and hold\" → Digital assistant. Or \"Double press\" → Open app → Jarvis.
+Default apps తెరవండి	Open Default apps
+మెసేజ్ నోటిఫికేషన్లు	Message notifications
+\"WhatsApp లో ఎవరు మెసేజ్ చేశారు?\", \"రవికి సరే అని రిప్లై ఇవ్వు\" లాంటివి అడగాలంటే ఈ అనుమతి ఇవ్వండి. Jarvis మీరు అడిగినప్పుడే మెసేజ్‌లు చదువుతుంది; అప్పుడు ఆ టెక్స్ట్ సమాధానం కోసం AI కి వెళ్తుంది. రిప్లై పంపే ముందు మిమ్మల్ని అడుగుతుంది.	To ask things like \"Who messaged me on WhatsApp?\" or \"Reply OK to Ravi\", give this permission. Jarvis reads messages only when you ask; then that text goes to the AI for the answer. It asks you before sending a reply.
+నోటిఫికేషన్ యాక్సెస్ ఇవ్వండి	Give notification access
+మోసం గార్డ్	Scam guard
+మోసం మెసేజ్‌లు, కొత్త autopay లు వస్తే హెచ్చరించు	Warn about scam messages and new autopays
+SMS, WhatsApp, Telegram, Gmail లో వచ్చే కొత్త మెసేజ్‌లను Jarvis ఫోన్‌లోనే చెక్ చేస్తాడు (ఏదీ బయటికి పంపడు, ఖర్చు లేదు): fake KYC, 	Jarvis checks new messages in SMS, WhatsApp, Telegram and Gmail on the phone itself (nothing is sent out, no cost): fake KYC, 
+\"OTP / PIN చెప్పండి\", అనుమానపు links, లాటరీ, కరెంట్ కట్ బెదిరింపు, APK ఫైల్స్, డబ్బు రావడానికి UPI PIN అడగడం… అనుమానం వస్తే వెంటనే notification. 	\"tell us the OTP / PIN\", suspicious links, lottery, power-cut threats, APK files, asking for a UPI PIN to receive money… a notification at once if anything looks wrong. 
+మీ card మీద కొత్త autopay / mandate పెట్టినట్టు SMS వస్తే కూడా చెప్తాడు. దీనికి పై 'నోటిఫికేషన్ యాక్సెస్' కావాలి.	It also tells you when an SMS says a new autopay / mandate was set up on your card. Needs the 'Notification access' above.
+Jarvis తనంతట తానే	Jarvis on its own
+అడగకుండానే ముఖ్యమైనవి చెప్పు: మీటింగ్ దగ్గర పడితే, వర్షం వస్తే, ఇష్టమైనవాళ్లకి చాలా రోజులుగా ఫోన్ చేయకపోతే, మీ అలవాట్లు, నీళ్లు, ధర హెచ్చరికలు	Tell me important things without being asked: a meeting coming up, rain, not calling loved ones for many days, your habits, water, price alerts
+రాత్రి మోడ్‌లో, కాల్ మాట్లాడుతున్నప్పుడు, Do Not Disturb లో మాట్లాడదు. \"ఇష్టమైనవాళ్లు\" = Contacts లో ⭐ పెట్టినవాళ్లు.	Stays quiet in night mode, during calls and in Do Not Disturb. \"Loved ones\" = contacts starred ⭐ in Contacts.
+స్మార్ట్ హోమ్ (లైట్లు, ఫ్యాన్లు)	Smart home (lights, fans)
+మూడు మార్గాలు, Jarvis వరుసగా ప్రయత్నిస్తుంది:\n1) Alexa రొటీన్ లింక్‌లు (అన్నింటికన్నా నమ్మకమైనది): Voice Monkey లేదా URL Routine Trigger అనే Alexa skill లో ఒక్కో పనికి ఒక trigger చేసి, Alexa యాప్‌లో ఆ trigger తో రొటీన్ (ఉదా: హాల్ లైట్ ఆఫ్) పెట్టండి. ఆ trigger లింక్‌ను కింద \"పేరు = లింక్\" గా ఒక్కో లైన్‌లో పెట్టండి.\n2) మీ స్మార్ట్ హోమ్ యాప్ తెరిచి ఆ లైట్ స్విచ్ Jarvis నొక్కుతుంది (Accessibility కావాలి).\n3) దగ్గర్లో Echo ఉంటే Jarvis \"Alexa, …\" అని పైకి చెబుతుంది.	Three ways, Jarvis tries them in order:\n1) Alexa routine links (the most reliable): in an Alexa skill called Voice Monkey or URL Routine Trigger, make one trigger per task, and in the Alexa app make a routine with that trigger (e.g. hall light off). Put each trigger link below as \"name = link\", one per line.\n2) Jarvis opens your smart home app and taps that light's switch (needs Accessibility).\n3) If an Echo is nearby, Jarvis says \"Alexa, …\" out loud.
+Alexa రొటీన్ లింక్‌లు (ఉదా: hall light off = https://…)	Alexa routine links (e.g. hall light off = https://…)
+మీ స్మార్ట్ హోమ్ యాప్ పేరు (ఉదా: Homemate, Zeb Home, Wipro Next)	Your smart home app's name (e.g. Homemate, Zeb Home, Wipro Next)
+దగ్గర్లో Echo ఉంది: అవసరమైతే Jarvis \"Alexa, …\" అని పైకి చెప్పనివ్వు	There's an Echo nearby: let Jarvis say \"Alexa, …\" out loud when needed
+అత్యవసరం (SOS)	Emergency (SOS)
+\"Jarvis help\" / \"కాపాడు\" అంటే 5 సెకన్ల తర్వాత (మధ్యలో ఆపొచ్చు) మీ లొకేషన్ వీళ్లకి SMS వెళ్తుంది, మొదటివాళ్లకి కాల్ వెళ్తుంది.	Saying \"Jarvis help\" / \"కాపాడు\" sends your location by SMS to these people after 5 seconds (you can stop it), and calls the first one.
+కాంటాక్ట్ పేర్లు లేదా నంబర్లు, కామాతో (ఉదా: Amma, Ravi)	Contact names or numbers, with commas (e.g. Amma, Ravi)
+టికెట్ పేమెంట్ (BookMyShow, District)	Ticket payment (BookMyShow, District)
+ఆన్ చేస్తే, BookMyShow లేదా District లో సీట్లు సెలెక్ట్ చేశాక Jarvis \"₹___ MobiKwik వాలెట్ నుంచి పే చేయమంటారా?\" అని అడుగుతుంది. మీరు \"అవును, పే చేయి\" అంటేనే 	When on, after you select seats in BookMyShow or District, Jarvis asks \"Shall I pay ₹___ from the MobiKwik wallet?\". Only when you say \"Yes, pay\" 
+MobiKwik వాలెట్ నుంచి పే చేస్తుంది. UPI, కార్డ్, నెట్ బ్యాంకింగ్ ఎప్పుడూ వాడదు; PIN, OTP ఎప్పుడూ టైప్ చేయదు (అడిగితే మీరే ఎంటర్ చేయాలి). 	does it pay from the MobiKwik wallet. It never uses UPI, cards or net banking, and never types a PIN or OTP (if asked, you enter it yourself). 
+కింద పెట్టిన అమౌంట్ కంటే ఎక్కువైతే పే చేయదు. వాలెట్‌లో ఎంత ఉంచాలో మీ ఇష్టం. వేరేవాళ్ల గొంతుకి పలకకుండా \"నా గొంతుకి మాత్రమే పలుకు\" కూడా ఆన్ చేయడం మంచిది.	It won't pay more than the amount set below. How much to keep in the wallet is up to you. It's good to also turn on \"Answer only my voice\" so it doesn't respond to others.
+BookMyShow, District లో MobiKwik వాలెట్ నుంచి Jarvis పే చేయాలి (మీ \"అవును\" తర్వాతే)	Jarvis should pay from the MobiKwik wallet in BookMyShow, District (only after your \"yes\")
+ఒక్క బుకింగ్‌కి గరిష్ఠంగా ఎంత వరకు (₹)	Maximum for one booking (₹)
+WhatsApp మీడియా	WhatsApp media
+WhatsApp వాయిస్ మెసేజ్‌లు వినిపించడానికి, వీడియోలు, ఫోటోలు చూపించడానికి Jarvis కి WhatsApp మీడియా ఫోల్డర్ అనుమతి ఒక్కసారి ఇవ్వాలి. తెరుచుకునే పేజీలో కింద \"Use this folder\" → \"Allow\" నొక్కండి (ఫోల్డర్ మార్చకండి).	To play WhatsApp voice messages and show videos and photos, give Jarvis access to the WhatsApp media folder once. On the page that opens, tap \"Use this folder\" → \"Allow\" at the bottom (don't change the folder).
+WhatsApp మీడియా ఫోల్డర్‌కి అనుమతి ఇవ్వండి	Give access to the WhatsApp media folder
+ఫోల్డర్ పేజీ తెరవలేకపోయాను	Couldn't open the folder page
+ఇంకా అనుమతి ఇవ్వలేదు	Not allowed yet
+అనుమతి ఉంది ✓	Allowed ✓
+డాక్యుమెంట్లు	Documents
+ఒక ఫోల్డర్ ఎంచుకుంటే అందులోని PDF లు, ఫోటోలు చదివి \"నా బైక్ ఇన్సూరెన్స్ ఎప్పుడు అయిపోతుంది?\" లాంటివి చెబుతుంది. ఆ పేజీలు జవాబు కోసం AI కి వెళ్తాయి.	Choose a folder and it reads the PDFs and photos in it to answer things like \"When does my bike insurance expire?\". Those pages go to the AI for the answer.
+డాక్యుమెంట్ల ఫోల్డర్ ఎంచుకోండి	Choose the documents folder
+ఫోల్డర్ ఎంచుకునే పేజీ తెరవలేకపోయాను	Couldn't open the folder picker
+ఇంకా ఎంచుకోలేదు	Not chosen yet
+ఎంచుకున్నారు ✓	Chosen ✓
+కార్/బైక్, కదలికలు	Car/bike, motion
+మీ కార్/బైక్ బ్లూటూత్ (లేదా హెల్మెట్ బ్లూటూత్) ఎంచుకుంటే: కనెక్ట్ అవ్వగానే డ్రైవింగ్ మోడ్ ఆన్, ప్రతి రైడ్ కి.మీ, టైమ్ తనంతట తానే రాసుకుంటుంది; 	Choose your car/bike Bluetooth (or helmet Bluetooth): when it connects, driving mode turns on and each ride's km and time are logged by themselves; 
+దిగగానే ఆఫ్, బండి పెట్టిన చోటు గుర్తుపెట్టుకుంటుంది.	when you get off it turns off and remembers where the bike is parked.
+కార్/బైక్ బ్లూటూత్ ఎంచుకోండి	Choose the car/bike Bluetooth
+బైక్ పూర్తి ఛార్జ్‌కి నిజంగా వచ్చే దూరం (కి.మీ)	Real distance on a full bike charge (km)
+బైక్ బ్యాటరీ (kWh) · Aera 5000+ = 5	Bike battery (kWh) · Aera 5000+ = 5
+ఇంట్లో కరెంట్ ఒక యూనిట్ ధర (₹)	Price of one unit of electricity at home (₹)
+రైడ్ కి.మీ సరిగ్గా రావాలంటే: లొకేషన్ \"Allow all the time\"	For exact ride km: location \"Allow all the time\"
+ఫోన్ రెండుసార్లు ఊపితే Jarvis రావాలి	Shaking the phone twice brings Jarvis
+ఫోన్ బోర్లా పెడితే సైలెంట్ (ఎత్తితే మళ్లీ సౌండ్)	Face down = silent (sound back when picked up)
+రోజూ రాత్రి 9:30 కి ఈరోజు, రేపటి సారాంశం చెప్పు	Every night at 9:30, a summary of today and tomorrow
+ప్రతి ఆదివారం రాత్రి 8కి వారపు రిపోర్ట్ (ఖర్చు, అడుగులు, ఫోన్ టైమ్, బైక్)	Weekly report every Sunday at 8 pm (spending, steps, phone time, bike)
+స్క్రీన్ టైమ్ కోసం \"Usage access\" ఇవ్వండి	Give \"Usage access\" for screen time
+ఆరోగ్యం, ఇతరాలు	Health, other
+Iron Man సౌండ్ ఎఫెక్ట్ (పిలవగానే చిన్న శబ్దం)	Iron Man sound effect (a small sound when called)
+అడుగుల లెక్కకి అనుమతి (Physical activity)	Permission to count steps (Physical activity)
+హోమ్ స్క్రీన్ విడ్జెట్: హోమ్ స్క్రీన్ మీద ఖాళీ చోట నొక్కి పట్టుకుని → Widgets → Jarvis.	Home screen widget: press and hold an empty spot on the home screen → Widgets → Jarvis.
+బ్లూటూత్ ఇయర్‌ఫోన్: బటన్ నొక్కి పట్టుకుంటే Jarvis ప్యానెల్ వస్తుంది (మొదటిసారి ఏ యాప్ అని అడిగితే Jarvis ఎంచుకోండి).	Bluetooth earphones: press and hold the button and the Jarvis panel comes (if it asks which app the first time, choose Jarvis).
+అప్డేట్లు	Updates
+ఇప్పుడున్న వెర్షన్: 1.0.	Current version: 1.0.
+. కొత్త వెర్షన్ వస్తే ఫోన్‌కి నోటిఫికేషన్, యాప్‌లో సందేశం వస్తాయి. Jarvis తనంతట తాను ఏదీ డౌన్‌లోడ్ చేయదు, ఇన్‌స్టాల్ చేయదు: మీరు కింది బటన్ నొక్కితేనే డౌన్‌లోడ్ అయి ఇన్‌స్టాల్ అవుతుంది (మొదటిసారి మాత్రమే Android ఒకసారి అడుగుతుంది).	. When a new version is out, you get a notification on the phone and a note in the app. Jarvis never downloads or installs anything on its own: it downloads and installs only when you tap the button below (Android asks once, only the first time).
+అనుమతులు, డేటా	Permissions, data
+అన్ని అనుమతులు ఇవ్వండి	Give all permissions
+సంభాషణ చెరిపేయి (జ్ఞాపకాలు, మిషన్లు అలాగే ఉంటాయి)	Clear the chat (memories and missions stay)
+సంభాషణ చెరిపేశాను	Chat cleared
+సేవ్ చేయి	Save
+✓ Display over other apps: ఇచ్చారు\n	✓ Display over other apps: given\n
+✗ Display over other apps: ఇవ్వలేదు (లేకపోతే పిలిచినప్పుడు నోటిఫికేషన్ మాత్రమే వస్తుంది)\n	✗ Display over other apps: not given (otherwise only a notification comes when you call)\n
+✓ బ్యాటరీ సేవర్ మినహాయింపు: ఉంది	✓ Battery saver exemption: yes
+✗ బ్యాటరీ సేవర్ మినహాయింపు: లేదు (ఫోన్ వేక్ వర్డ్‌ని ఆపేయవచ్చు)	✗ Battery saver exemption: no (the phone may stop the wake word)
+\nచివరి సమస్య: 	\nLast problem: 
+✓ నోటిఫికేషన్ యాక్సెస్: ఇచ్చారు	✓ Notification access: given
+✗ నోటిఫికేషన్ యాక్సెస్: ఇవ్వలేదు	✗ Notification access: not given
+✓ స్క్రీన్ యాక్సెస్: ఆన్	✓ Screen access: on
+✗ స్క్రీన్ యాక్సెస్: ఆఫ్	✗ Screen access: off
+\n\"Jarvis\" పదం: 	\n\"Jarvis\" word: 
+\n✓ \"Jarvis\" పదం: సిద్ధం	\n✓ \"Jarvis\" word: ready
+చివరిసారి సహజ గొంతు పనిచేయలేదు: 	Last time the natural voice didn't work: 
+✗ నోటిఫికేషన్ యాక్సెస్ లేదు: మెసేజ్‌లు Jarvis కి అందవు\n	✗ No notification access: messages don't reach Jarvis\n
+✓ నోటిఫికేషన్లు Jarvis కి అందుతున్నాయి\n	✓ Notifications are reaching Jarvis\n
+✗ యాక్సెస్ ఉంది, కానీ Android నోటిఫికేషన్లు పంపడం లేదు\n	✗ Access given, but Android isn't sending notifications\n
+✓ Display over other apps: ఉంది\n	✓ Display over other apps: yes\n
+✗ Display over other apps లేదు: panel తెరవలేను, గొంతుతో మాత్రమే చెప్తాను\n	✗ No Display over other apps: can't open the panel, will tell by voice only\n
+✓ కొత్త మెసేజ్ వస్తే చెప్పు: ఆన్\n	✓ Tell me about new messages: on\n
+✗ కొత్త మెసేజ్ వస్తే చెప్పు: ఆఫ్\n	✗ Tell me about new messages: off\n
+✗ నైట్ మోడ్ ఆన్: ఏ మెసేజ్ చదవను\n	✗ Night mode on: won't read any message\n
+✓ నైట్ మోడ్: ఆఫ్\n	✓ Night mode: off\n
+✗ Do Not Disturb ఆన్: మెసేజ్‌లు చదవను (ఫోన్ quick settings లో ఆఫ్ చేయండి)\n	✗ Do Not Disturb on: won't read messages (turn it off in the phone's quick settings)\n
+✓ Do Not Disturb: ఆఫ్\n	✓ Do Not Disturb: off\n
+✓ బ్యాటరీ సేవర్ మినహాయింపు: ఉంది\n	✓ Battery saver exemption: yes\n
+✗ బ్యాటరీ సేవర్ మినహాయింపు లేదు: ఫోన్ Jarvis ని ఆపేయవచ్చు\n	✗ No battery saver exemption: the phone may stop Jarvis\n
+✓ \"Jarvis\" వేక్ వర్డ్: నడుస్తోంది\n	✓ \"Jarvis\" wake word: running\n
+✗ \"Jarvis\" వేక్ వర్డ్: ఆగి ఉంది\n	✗ \"Jarvis\" wake word: stopped\n
+✗ Jarvis 'మాట్లాడుతున్నాను' అనే స్థితిలో ఇరుక్కుంది\n	✗ Jarvis is stuck in 'speaking' state\n
+• సహజ గొంతుకి OpenAI key లేదు: ఫోన్ గొంతుతో మాట్లాడతాను\n	• No OpenAI key for the natural voice: I'll speak with the phone's voice\n
+• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): 	• The natural voice didn't work last time (I spoke with the phone's voice): 
+\nచివరి మెసేజ్: 	\nLast message: 
+Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు	No message has come since Jarvis started
+నైట్ మోడ్ ఆఫ్ చేశాను. 	Turned night mode off. 
+మెసేజ్‌లు చెప్పడం ఆన్ చేశాను. 	Turned message announcements on. 
+ఇరుక్కున్న స్థితి తీసేశాను. 	Cleared the stuck state. 
+ఈ అనుమతి మీరే ఇవ్వాలి: తెరుస్తున్నాను.	You have to give this permission yourself: opening it.
+అంతా సరిచేశాను ✓	All fixed ✓
+Gemini మోడల్ ఇంకా ఎంచుకోలేదు: 'అన్ని మోడల్స్ చూపించు' నొక్కి ఒకటి ఎంచుకోండి	No Gemini model chosen yet: tap 'Show all models' and pick one
+సహజ గొంతు, Live సంభాషణకి OpenAI key కావాలి	The natural voice and Live talk need an OpenAI key
+సేవ్ చేశాను	Saved
+మాట్లాడే వేగం: %.2fx	Speaking speed: %.2fx
+బ్రీఫింగ్ సమయం: %02d:%02d  (మార్చడానికి నొక్కండి)	Briefing time: %02d:%02d  (tap to change)
+ముందు OpenAI key పెట్టండి	Add an OpenAI key first
+వినిపిస్తున్నాను…	Playing…
+నమస్కారం 	Hello 
+. నేను Jarvis. మీ సేవలో ఎప్పుడూ సిద్ధంగా ఉంటాను.	. I'm Jarvis. Always ready at your service.
+గొంతు: 	Voice: 
+పనిచేయలేదు: 	Didn't work: 
+చాలా తక్కువ (గట్టిగా మాట్లాడితేనే ఆగుతుంది)	Very low (stops only when you speak loudly)
+తక్కువ	Low
+మధ్యస్థం	Medium
+ఎక్కువ	High
+చాలా ఎక్కువ (మెల్లగా మాట్లాడినా ఆగుతుంది)	Very high (stops even when you speak softly)
+మధ్యలో మాట్లాడితే వినే సున్నితత్వం: 	Sensitivity to talking over it: 
+\nచివరిసారి: 	\nLast time: 
+తక్కువ (తప్పుగా మేల్కొనదు, కానీ గట్టిగా పిలవాలి)	Low (won't wake up wrongly, but call loudly)
+ఎక్కువ (సులువుగా మేల్కొంటుంది, అప్పుడప్పుడు పొరపాటున కూడా)	High (wakes up easily, sometimes by mistake too)
+సున్నితత్వం: 	Sensitivity: 
+Allow చేసి మళ్లీ నొక్కండి	Tap Allow and tap again
+ఈ ఫోన్‌లో బ్లూటూత్ లేదు	This phone has no Bluetooth
+ముందు కార్/బైక్‌ని ఫోన్‌తో బ్లూటూత్ జత (pair) చేయండి	First pair the car/bike with the phone over Bluetooth
+మీ కార్/బైక్ ఏది?	Which is your car/bike?
+ఎంచుకున్నారు: 	Chosen: 
+పిలిచాక మీరు మాట్లాడటం మొదలుపెట్టే దాకా వినే సమయం: 	How long it listens after being called, until you start talking: 
+ సెకన్లు	 seconds
+గొంతు ఇంకా నేర్పించలేదు.	Voice not taught yet.
+గొంతు నేర్చుకున్నాను ✓	Learned your voice ✓
+  పరిమితి: 	  Limit: 
+ (ఎడమ = కఠినం, కుడి = సులభం)	 (left = strict, right = easy)
+\nచివరి పిలుపు దూరం: 	\nLast call distance: 
+ → పలికాను	 → answered
+ → మీ గొంతు కాదనుకుని పలకలేదు	 → not your voice, didn't answer
+ఆ ఫోల్డర్‌కి అనుమతి రాలేదు	No access to that folder
+కోడింగ్	Coding
+సహజ గొంతు	Natural voice
+వేక్ వర్డ్	Wake word
+కాల్స్	Calls
+స్క్రీన్	Screen
+పవర్ బటన్	Power button
+మెసేజ్	Message
+తనంతట	On its own
+స్మార్ట్ హోమ్	Smart home
+అత్యవసరం	Emergency
+టికెట్	Ticket
+డాక్యుమెంట్	Document
+కార్	Car
+ఆరోగ్యం	Health
+అప్డేట్	Update
+అనుమతులు	Permissions
+API ఖర్చు	API cost
+మోసం	Scam
+చెక్	Check
+📋 అన్ని మోడల్స్ చూపించు, ఎంచుకో	📋 Show all models, pick one
+ మోడల్ ఎంచుకోండి	 Pick a model
+ పెట్టాను (సేవ్ అయింది)	 set (saved)
+అప్డేట్ అవుతోంది…	Updating…
+⬆ కొత్త వెర్షన్ 1.0.	⬆ New version 1.0.
+ వచ్చింది	 is out
+ కి అప్డేట్ చేయి (డౌన్‌లోడ్ సుమారు 55 MB)	 update to it (download about 55 MB)
+✓ ఇదే తాజా వెర్షన్	✓ This is the latest version
+కొత్త వెర్షన్ ఉందేమో చూడు	Check for a new version
+మళ్లీ ప్రయత్నించు	Try again
+బైక్ మోడ్	Bike mode
+రేంజ్, ఛార్జింగ్, రైడ్స్	Range, charging, rides
+ఎంత దూరం వెళ్లగలను?	How far can I go?
+బ్యాటరీ % చెప్తే మిగిలిన రేంజ్	Range left from the battery %
+ఛార్జింగ్ రాసుకో	Log a charge
+ఎంత % నుంచి ఎంత % కి, ఖర్చు ఎంత	From what % to what %, and the cost
+ఈ వారం రైడ్స్	This week's rides
+కి.మీ, టైమ్, ఛార్జింగ్ ఖర్చు	Km, time, charging cost
+ఈ నెల రైడ్స్	This month's rides
+గత 30 రోజుల మొత్తం	Total of the last 30 days
+దగ్గర్లో ఛార్జింగ్ స్టేషన్	Charging stations nearby
+దూరం, ప్లగ్‌లతో	With distance and plugs
+బండి ఎక్కడ పెట్టాను?	Where did I park the bike?
+పెట్టిన చోటుకి దారి	Directions back to it
+డ్రైవింగ్ మోడ్ ఆన్	Driving mode on
+మెసేజ్‌లు, కాల్స్ గొంతుతో	Messages and calls by voice
+బైక్ సెట్టింగ్స్	Bike settings
+బ్లూటూత్, రేంజ్, యూనిట్ ధర	Bluetooth, range, unit price
+కార్/బైక్	Car/bike
+డబ్బు, ఖర్చులు	Money, expenses
+ఖర్చులు, బిల్లులు, బడ్జెట్	Expenses, bills, budget
+బిల్లు ఫోటో → ఖర్చు	Bill photo → expense
+ఫోటో తీస్తే ఖర్చుల్లో చేరుస్తుంది	Take a photo and it's added to expenses
+ఖర్చు రాసుకో	Log an expense
+ఉదా: పెట్రోల్ 500	e.g. petrol 500
+ఖర్చు రాసుకో: 	Log an expense: 
+ఈ నెల ఖర్చు	This month's spending
+ఎంత, దేనికి ఎక్కువ	How much, on what
+బ్యాంక్ బ్యాలెన్స్	Bank balance
+బ్యాంక్ SMS నుంచి	From bank SMS
+నెల బడ్జెట్ పెట్టు	Set a monthly budget
+80%, 100% దాటితే చెప్తాను	I'll tell you when you pass 80% and 100%
+నా నెల బడ్జెట్ ₹	My monthly budget ₹
+కట్టాల్సిన బిల్లులు	Bills due
+గడువు దగ్గర ఉన్నవి	Due dates coming up
+ధర తగ్గితే చెప్పు	Tell me when the price drops
+ఏదైనా వస్తువు ధర అలర్ట్	Price alert for any item
+ఈ వస్తువు ధర తగ్గితే చెప్పు: 	Tell me when this item's price drops: 
+ఈ మెసేజ్ మోసమా?	Is this message a scam?
+అనుమానం ఉన్న మెసేజ్ చెక్	Check a suspicious message
+ఈ మెసేజ్ మోసమా చెక్ చేసి చెప్పు: 	Check whether this message is a scam: 
+మొబైల్ ప్లాన్	Mobile plan
+ఎప్పటి వరకు ఉంది	Valid till when
+కాల్స్, మెసేజ్‌లు	Calls, messages
+కాల్, WhatsApp, SMS, ఈమెయిల్	Call, WhatsApp, SMS, email
+కాల్ చెయ్	Call
+పేరు లేదా నంబర్	Name or number
+కాల్ చెయ్: 	Call: 
+WhatsApp మెసేజ్	WhatsApp message
+మీరు 'పంపు' అంటేనే వెళ్తుంది	Goes only when you say 'send'
+WhatsApp లో మెసేజ్ పంపు: 	Send a WhatsApp message: 
+SMS పంపు	Send SMS
+SMS పంపు: 	Send SMS: 
+కొత్త మెసేజ్‌లు చదువు	Read new messages
+వచ్చిన మెసేజ్‌లు	Messages that came
+గ్రూప్ సారాంశం	Group summary
+గ్రూప్‌లలో ఏం మాట్లాడారు	What was said in the groups
+ఈమెయిల్ రాయి	Write an email
+Gmail లో draft	Draft in Gmail
+ఈమెయిల్ రాయి: 	Write an email: 
+SOS కాంటాక్ట్స్	SOS contacts
+అత్యవసరంలో ఎవరికి చెప్పాలి	Who to tell in an emergency
+రోజు, రిమైండర్లు	Day, reminders
+బ్రీఫింగ్, రిమైండర్, క్యాలెండర్	Briefing, reminders, calendar
+వాతావరణం, క్యాలెండర్, పనులు	Weather, calendar, tasks
+రిమైండర్ పెట్టు	Set a reminder
+ఉదా: రేపు 9కి బ్యాంక్	e.g. bank at 9 tomorrow
+రిమైండర్ పెట్టు: 	Set a reminder: 
+రిమైండర్లు, ఈరోజు క్యాలెండర్	Reminders, today's calendar
+క్యాలెండర్‌లో పెట్టు	Add to calendar
+మీటింగ్, ఈవెంట్	Meeting, event
+క్యాలెండర్‌లో పెట్టు: 	Add to calendar: 
+అలారం / టైమర్	Alarm / timer
+ఉదా: 6 గంటలకి అలారం	e.g. alarm at 6
+అలారం పెట్టు: 	Set an alarm: 
+కాల్స్, మెసేజ్‌లు, ఖర్చు	Calls, messages, spending
+వారపు రిపోర్ట్	Weekly report
+ఈ వారం ఎలా గడిచింది	How this week went
+రొటీన్ పెట్టు	Set a routine
+ఉదా: రోజూ ఉదయం 7కి బ్రీఫింగ్	e.g. briefing every day at 7 am
+ఒక రొటీన్ పెట్టు: 	Set a routine: 
+మిషన్లు, నోట్స్	Missions, notes
+పనులు, నోట్స్, జ్ఞాపకాలు	Tasks, notes, memories
+కొత్త మిషన్	New mission
+చేయాల్సిన పని	Something to do
+కొత్త మిషన్: 	New mission: 
+ఏది ముందు చేయాలి	What to do first
+25 నిమిషాల ఫోకస్	25-minute focus
+మిషన్ల లిస్ట్	Mission list
+అన్ని మిషన్లు చూడు	See all missions
+నోట్ రాసుకో	Take a note
+ఏదైనా గుర్తుగా	Anything to remember
+నోట్ రాసుకో: 	Take a note: 
+నా నోట్స్	My notes
+రాసుకున్నవి చూపించు	Show what I noted
+గుర్తుపెట్టుకో	Remember
+Jarvis ఎప్పటికీ గుర్తుంచుకుంటుంది	Jarvis remembers it for good
+గుర్తుపెట్టుకో: 	Remember: 
+గతంలో ఏం చెప్పాను?	What did I say before?
+పాత సంభాషణల్లో వెతుకు	Search old conversations
+గతంలో నేను నీకు చెప్పింది వెతుకు: 	Search what I told you before: 
+కెమెరా, డాక్యుమెంట్లు	Camera, documents
+స్కాన్, PDF, ఫోటోలు	Scan, PDF, photos
+కాగితాలు స్కాన్ చేసి PDF	Scan paper pages into a PDF
+ఫోటో గురించి అడుగు	Ask about a photo
+ఫోటోలో ఏముంది	What's in the photo
+కెమెరాలో చూసి చెప్తాను	I look through the camera and tell you
+ఫైల్ / PDF గురించి అడుగు	Ask about a file / PDF
+సారాంశం, ప్రశ్నలు	Summary, questions
+ఫోటోలు వెతుకు	Search photos
+ఉదా: బీచ్ ఫోటోలు	e.g. beach photos
+నా ఫోటోల్లో వెతుకు: 	Search my photos: 
+నా డాక్యుమెంట్లలో అడుగు	Ask my documents
+ఫోల్డర్‌లోని ఫైల్స్‌లో	In the files of the folder
+నా డాక్యుమెంట్లలో వెతికి చెప్పు: 	Search my documents and tell me: 
+QR కోడ్ స్కాన్	QR code scan
+స్క్రీన్ లేదా కెమెరాలో	On the screen or in the camera
+Live, భాషలు	Live, languages
+Live మాటలు, English, అనువాదం	Live talk, English, translation
+ChatGPT లా మాట్లాడదాం	Let's talk like ChatGPT
+మాట్లాడుతూ English నేర్చుకో	Learn English by talking
+అనువాదకుడిగా ఉండు	Be an interpreter
+తెలుగు ↔ వేరే భాష, ఇద్దరి మధ్య	Telugu ↔ another language, between two people
+అనువాదకుడిగా ఉండు, భాష: 	Be an interpreter, language: 
+ఒక వాక్యం అనువదించు	Translate a sentence
+ఏ భాషలోకైనా	Into any language
+దీన్ని ఇంగ్లీష్‌లో చెప్పు: 	Say this in English: 
+ఫోన్ కంట్రోల్	Phone control
+స్క్రీన్, యాప్స్, స్క్రీన్ టైమ్	Screen, apps, screen time
+స్క్రీన్‌లో ఏముందో చెప్తాను	I tell you what's on the screen
+ఫోన్‌లో ఏదైనా పని	Any task on the phone
+Jarvis యాప్‌లు వాడి చేస్తుంది	Jarvis does it using the apps
+ఫోన్‌లో ఈ పని చేయి: 	Do this on the phone: 
+యాప్ తెరువు	Open an app
+ఉదా: YouTube	e.g. YouTube
+యాప్ తెరువు: 	Open app: 
+ఫోన్ స్టేటస్	Phone status
+బ్యాటరీ, స్టోరేజ్, నెట్	Battery, storage, net
+స్క్రీన్ టైమ్	Screen time
+ఈరోజు ఏ యాప్ ఎంత	Which app how long today
+యాప్ లిమిట్	App limit
+రోజూ ఇంత సేపు మాత్రమే	Only this long every day
+ఈ యాప్‌కి రోజూ లిమిట్ పెట్టు: 	Set a daily limit for this app: 
+టార్చ్ ఆన్	Torch on
+నైట్ మోడ్	Night mode
+నిశ్శబ్దం, ఉదయం దానంతట అదే ఆఫ్	Quiet; turns off by itself in the morning
+ఆరోగ్యం, ఇల్లు	Health, home
+అడుగులు, నీళ్లు, గాలి, లైట్లు	Steps, water, air, lights
+ఈరోజు అడుగులు	Today's steps
+ఎన్ని అడుగులు నడిచాను	How many steps I walked
+నీళ్లు తాగే రిమైండర్	Water reminder
+ప్రతి 2 గంటలకి	Every 2 hours
+గాలి నాణ్యత	Air quality
+ఇక్కడ AQI	AQI here
+లైట్లు / ఫ్యాన్	Lights / fan
+స్మార్ట్ హోమ్ ఆన్/ఆఫ్	Smart home on/off
+స్మార్ట్ హోమ్: 	Smart home: 
+స్మార్ట్ హోమ్ సెట్టింగ్స్	Smart home settings
+Alexa routine లింక్స్	Alexa routine links
+నా ప్రదేశాలు	My places
+సేవ్ చేసిన లొకేషన్లు, దారి	Saved locations, directions
+Google Maps నుంచి సేవ్	Save from Google Maps
+Maps లో చోటు → Share → Jarvis	Place in Maps → Share → Jarvis
+Google Maps లో ఆ చోటు తెరవండి → Share (షేర్) నొక్కండి → యాప్‌ల లిస్ట్‌లో Jarvis ఎంచుకోండి → పేరు పెట్టండి (ఉదా: సిస్టర్ ఇల్లు) → సేవ్.\n\n	Open the place in Google Maps → tap Share → choose Jarvis in the app list → give it a name (e.g. Sister's house) → Save.\n\n
+తర్వాత \"Jarvis, సిస్టర్ వాళ్ల లొకేషన్ చూపించు\" అంటే మ్యాప్‌లో చూపిస్తాను, \"అక్కడికి దారి చూపించు\" అంటే navigation మొదలుపెడతాను.	Later, say \"Jarvis, show sister's location\" and I'll show it on the map; say \"directions there\" and I'll start navigation.
+ఇప్పుడున్న చోటు సేవ్ చెయ్	Save where I am now
+ఉదా: ఇల్లు, ఆఫీస్, జిమ్	e.g. home, office, gym
+ఇప్పుడు నేను ఉన్న చోటుని ఈ పేరుతో సేవ్ చెయ్: 	Save where I am now under this name: 
+Maps లింక్ సేవ్ చెయ్	Save a Maps link
+లింక్ పేస్ట్ చేసి పేరు చెప్పండి	Paste the link and say a name
+ఈ Google Maps లింక్‌ని ఈ పేరుతో సేవ్ చెయ్ (పేరు, లింక్): 	Save this Google Maps link under this name (name, link): 
+అడ్రస్‌తో సేవ్ చెయ్	Save by address
+ఉదా: సిస్టర్ ఇల్లు - KPHB, Hyderabad	e.g. Sister's house - KPHB, Hyderabad
+ఈ అడ్రస్ సేవ్ చెయ్ (పేరు - అడ్రస్): 	Save this address (name - address): 
+సేవ్ చేసిన చోటుకి దారి	Directions to a saved place
+ఉదా: సిస్టర్ ఇల్లు	e.g. Sister's house
+సేవ్ చేసిన ఈ చోటుకి దారి చూపించు: 	Show directions to this saved place: 
+లొకేషన్ ఎవరికైనా పంపు	Send a location to someone
+WhatsApp లో మ్యాప్ లింక్	Map link on WhatsApp
+సేవ్ చేసిన ఈ లొకేషన్‌ని WhatsApp లో పంపు (చోటు, ఎవరికి): 	Send this saved location on WhatsApp (place, to whom): 
+ప్రయాణం, బయటకు	Travel, going out
+దారి, ట్రైన్, టికెట్లు, ఫుడ్	Directions, trains, tickets, food
+దారి చూపించు	Directions
+Maps లో navigation	Navigation in Maps
+దారి చూపించు: 	Show directions to: 
+ట్రైన్ స్టేటస్	Train status
+ట్రైన్ నంబర్ లేదా PNR	Train number or PNR
+ట్రైన్ స్టేటస్: 	Train status: 
+ఫ్లైట్ / బస్ వెతుకు	Search flights / buses
+ఎక్కడి నుంచి ఎక్కడికి, ఎప్పుడు	From where to where, when
+ఫ్లైట్ లేదా బస్ వెతుకు: 	Search flights or buses: 
+నా టికెట్లు	My tickets
+రాబోయే బుకింగ్స్	Upcoming bookings
+క్యాబ్ (Uber/Ola/Rapido)	Cab (Uber/Ola/Rapido)
+మీరే బుక్ చేస్తారు	You book it yourself
+క్యాబ్ యాప్ తెరువు: 	Open the cab app: 
+ఫుడ్ ఆర్డర్	Food order
+Swiggy / Zomato తెరుస్తాను	I'll open Swiggy / Zomato
+ఫుడ్ ఆర్డర్ కోసం తెరువు: 	Open for a food order: 
+నా పార్శిల్స్	My parcels
+ఎక్కడున్నాయి	Where they are
+అక్కడికి వెళ్తే గుర్తు చెయ్	Remind me when I get there
+చోటు చేరగానే రిమైండర్	A reminder on arriving at a place
+ఈ చోటికి వెళ్లినప్పుడు గుర్తు చెయ్: 	Remind me when I go to this place: 
+వార్తలు, వినోదం	News, fun
+వార్తలు, క్రికెట్, పాటలు	News, cricket, songs
+ముఖ్యమైన 3 వార్తలు	Top 3 news
+ఇప్పుడు, రేపు వర్షం	Now, and rain tomorrow
+క్రికెట్ లైవ్	Cricket live
+ఇండియా మ్యాచ్ అప్‌డేట్స్	India match updates
+YouTube లో ప్లే	Play on YouTube
+పాట, వీడియో	Song, video
+YouTube లో ప్లే చెయ్: 	Play on YouTube: 
+ఇది ఏ పాట?	What song is this?
+ఇప్పుడు ప్లే అవుతున్నది	What's playing now
+ఈరోజుకి సిద్ధం	Ready for today
+కోడింగ్, క్రియేట్	Coding, create
+వెబ్‌సైట్, యాప్, Python	Website, app, Python
+వెబ్‌సైట్ తయారు చెయ్	Make a website
+preview, లింక్	Preview, link
+Android యాప్	Android app
+APK తయారు చేస్తాను	I'll build an APK
+Python లెక్కలు	Python calculations
+చార్ట్, Excel, PDF	Charts, Excel, PDF
+కోడ్ రాయి	Write code
+ఏ భాషలోనైనా	In any language
+వెబ్‌సైట్ ఆన్‌లైన్ పెట్టు	Put the website online
+చివరి సైట్‌కి లింక్	Link to the last site
+ఖర్చు, చెక్, సెట్టింగ్స్	Cost, check, settings
+ఈ నెల ఎంత అయింది	How much this month
+ఏ మోడల్ మీద ఉన్నావ్?	Which model are you on?
+ఇప్పటి AI, మోడల్	Current AI and model
+మెసేజ్‌లు, గొంతు పనిచేయకపోతే	If messages or the voice don't work
+అన్ని సెట్టింగ్స్	All settings
+🔍  ఫీచర్ వెతకండి (బైక్, బిల్లు, రిమైండర్…)	🔍  Search features (bike, bill, reminder…)
+📂 అన్ని ఫీచర్లు	📂 All features
+ఫోల్డర్ నొక్కితే దాని ఆప్షన్లు వస్తాయి	Tap a folder to see its options
+ ఆప్షన్లు ›	 options ›
+సేవ్ చేసిన ప్రదేశాలు (	Saved places (
+ఇంకా ఏదీ సేవ్ చేయలేదు. పైన ఉన్న వాటిలో ఒకటి వాడండి, లేదా \"Jarvis, ఇది ఇంటి లొకేషన్‌గా సేవ్ చెయ్\" అనండి.	Nothing saved yet. Use one of the options above, or say \"Jarvis, save this as home\".
+నొక్కితే మ్యాప్‌లో · నొక్కి పట్టుకుంటే దారి / షేర్ / తీసేయి	Tap = on the map · hold = directions / share / remove
+మ్యాప్ లింక్	Map link
+🗺️ మ్యాప్‌లో చూపించు	🗺️ Show on map
+🧭 దారి చూపించు	🧭 Directions
+📤 లింక్ షేర్ చెయ్	📤 Share link
+🗑️ తీసేయి	🗑️ Remove
+ లొకేషన్ పంపండి	 — send location
+ తీసేయాలా?	 — remove?
+🔍 వెతుకుతున్నాను	🔍 Searching
+సేవ్ చేసిన చోటు · నొక్కితే మ్యాప్‌లో	Saved place · tap for the map
+\" కి ఏ ఫీచర్ దొరకలేదు. Jarvis ని నేరుగా అడగండి, చాలా పనులు చేయగలడు.	\": no feature found. Ask Jarvis directly, it can do a lot.
+సరే	OK
+చెప్పండి, Anil?	Yes, Anil?
+Anil, Ravi నుంచి కాల్ వస్తోంది	Anil, a call from Ravi
+రిప్లై ఇవ్వమంటారా?	Shall I reply?
+ఆపు / మాట్లాడు	Stop / talk
+📞  ఎత్తు	📞  Answer
+✖  కట్	✖  Cut
+Jarvis యాప్ తెరువు →	Open the Jarvis app →
+మైక్ అనుమతి కావాలి. Jarvis యాప్ తెరిచి Allow ఇవ్వండి.	Mic permission needed. Open the Jarvis app and tap Allow.
+ఈ ఫోన్‌లో Google వాయిస్ టైపింగ్ లేదు.	This phone has no Google voice typing.
+. రిప్లై ఇవ్వమంటారా?	. Shall I reply?
+కొత్త మెసేజ్	New message
+Jarvis సూచన	Jarvis suggestion
+చదవమంటారా?	Shall I read it?
+పంపమంటారా?	Shall I send it?
+కట్	Cut
+తర్వాత	Later
+బిజీ	Busy
+నో	No
+తీయకు	Don't pick up
+ఎత్తకు	Don't answer
+ఎత్తొద్దు	Don't answer
+ఎత్తు	Answer
+ఎత్తండి	Answer
+ఎత్తి	Answer
+లిఫ్ట్	Lift
+అవును	Yes
+ఓకే	OK
+మాట్లాడ	Talk
+ఆన్సర్	Answer
+ఎత్తాలంటే ఆకుపచ్చ, కట్ చేయాలంటే ఎరుపు నొక్కండి	Tap green to answer, red to cut
+కాల్ ఎత్తాను.	Call answered.
+కాల్ కట్ చేశాను.	Call cut.
+కాల్స్ ఎత్తడానికి/కట్ చేయడానికి అనుమతి కావాలి. Allow నొక్కండి, తర్వాత కాల్స్‌కి పనిచేస్తుంది.	Permission needed to answer/cut calls. Tap Allow; then it works for calls.
+కాల్ ఎత్తలేకపోయాను, మీరే నొక్కండి.	Couldn't answer the call, please tap it yourself.
+కాల్ కట్ చేయలేకపోయాను, మీరే నొక్కండి.	Couldn't cut the call, please tap it yourself.
+చెప్పండి	Tell me
+వాయిస్‌కి ఇంటర్నెట్ కావాలి.	Voice needs internet.
+హిందీ అనువాదకుడిగా ఉండు	Be a Hindi interpreter
+ఇంకేమైనా కావాలంటే మైక్ నొక్కండి	Tap the mic if you need anything else
+నా మెదడుకి API key లేదు. Jarvis యాప్ సెట్టింగ్స్‌లో పెట్టండి.	My brain has no API key. Add it in the Jarvis app's Settings.
+API key పనిచేయడం లేదు. సెట్టింగ్స్ చూడండి.	The API key isn't working. Check Settings.
+కొంచెం ఆగి మళ్లీ అడగండి (లిమిట్/బ్యాలెన్స్).	Wait a little and ask again (limit/balance).
+ఇంటర్నెట్ కనెక్షన్ లేదు.	No internet connection.
+సమస్య: 	Problem: 
+చాట్ చూపించు (Live ఆగదు)	Show chat (Live keeps going)
+Live ఆపు	Stop Live
+కనెక్ట్ అవుతున్నాను…	Connecting…
+మైక్ ఆఫ్ · 	Mic off · 
+మైక్ ఆన్ చేయి	Turn mic on
+మైక్ ఆఫ్ చేయి	Turn mic off
+మైక్ ఆఫ్ · మాట్లాడాలంటే మైక్ బటన్ నొక్కండి	Mic off · tap the mic button to talk
+SYSTEMS · స్థితి	SYSTEMS · status
+🕐 సమయం	🕐 Time
+🔋 బ్యాటరీ	🔋 Battery
+📶 నెట్	📶 Net
+⛅ వాతావరణం	⛅ Weather
+⏰ తర్వాత	⏰ Next
+🎙️ వినడం	🎙️ Listening
+స్థితి ప్యానెల్ మూసి ఉంది, తెరవడానికి నొక్కండి	Status panel is closed, tap to open
+స్థితి ప్యానెల్	Status panel
+పూర్తి · full	Full
+ఛార్జింగ్	Charging
+తక్కువ · low	Low
+బ్యాటరీపై	On battery
+నెట్ లేదు	No net
+ఆన్‌లైన్	Online
+రిమైండర్లు లేవు	No reminders
+స్క్రీన్ ✓	Screen ✓
+స్క్రీన్ ✗	Screen ✗
+Jarvis వింటున్నాడు · 	Jarvis is listening · 
+ఆపారు · 	Paused · 
+ఆఫ్ · 	Off · 
+నిర్మలం · clear	Clear
+కొంత మబ్బు	Partly cloudy
+మేఘావృతం	Overcast
+పొగమంచు · fog	Fog
+తుంపర	Drizzle
+వర్షం · rain	Rain
+మంచు · snow	Snow
+జల్లులు	Showers
+ఉరుములు · storm	Storm
+… ఫోటోలు చూపించు	… show photos
+ ఫోటోలు	 photos
+ఒకటి నొక్కితే పెద్దగా తెరుచుకుంటుంది	Tap one to open it big
+ఫోటోలు షేర్ చేయండి	Share photos
+సిస్టర్ ఇల్లు	Sister's house
+సిస్టర్ వాళ్ల లొకేషన్ చూపించు	Show sister's location
+ఉదా: సిస్టర్ ఇల్లు, ఆఫీస్	e.g. Sister's house, office
+📍 ఈ చోటుని ఏ పేరుతో గుర్తుపెట్టుకోవాలి?	📍 What name should I remember this place by?
+తర్వాత \"Jarvis, … లొకేషన్ చూపించు\" అంటే మ్యాప్‌లో చూపిస్తాను.	Later say \"Jarvis, show … location\" and I'll show it on the map.
+సేవ్ చేసిన చోటు	Saved place
+ సేవ్ చేస్తున్నాను…	 saving…
+ సేవ్ అయింది ✓	 saved ✓
+ (మ్యాప్ లింక్‌తో)	 (with the map link)
+ లొకేషన్ చూపించు\" అనండి	 location\" to see it
+సేవ్ కాలేదు: 	Not saved: 
+   \"Jarvis\" అని పిలవండి	   call \"Jarvis\"
+కాల్ సిద్ధం చేస్తున్నాను…	Getting the call ready…
+కాంటాక్ట్స్‌లో వెతుకుతున్నాను…	Searching contacts…
+మెసేజ్ సిద్ధం చేస్తున్నాను…	Getting the message ready…
+WhatsApp లో మెసేజ్ టైప్ చేస్తున్నాను…	Typing the message in WhatsApp…
+Telegram లో మెసేజ్ టైప్ చేస్తున్నాను…	Typing the message in Telegram…
+పంపుతున్నాను…	Sending…
+అలారం పెడుతున్నాను…	Setting the alarm…
+టైమర్ పెడుతున్నాను…	Setting the timer…
+వాతావరణం చూస్తున్నాను…	Checking the weather…
+తెరుస్తున్నాను…	Opening…
+మూసేస్తున్నాను…	Closing…
+ప్లే చేస్తున్నాను…	Playing…
+గుర్తుంచుకుంటున్నాను…	Remembering…
+మెసేజ్‌లు చూస్తున్నాను…	Checking messages…
+రిప్లై సిద్ధం చేస్తున్నాను…	Getting the reply ready…
+ఇంటర్నెట్‌లో వెతుకుతున్నాను…	Searching the internet…
+రిమైండర్ పెడుతున్నాను…	Setting the reminder…
+క్యాలెండర్ చూస్తున్నాను…	Checking the calendar…
+మెయిల్ సిద్ధం చేస్తున్నాను…	Getting the mail ready…
+మ్యూజిక్…	Music…
+సెట్టింగ్ మారుస్తున్నాను…	Changing the setting…
+ఫోటోలు చూస్తున్నాను…	Looking at photos…
+కాల్…	Call…
+బ్యాంక్ మెసేజ్‌లు లెక్కపెడుతున్నాను…	Counting bank messages…
+ఈ చోటు గుర్తుపెట్టుకుంటున్నాను…	Remembering this place…
+ప్రదేశాలు చూస్తున్నాను…	Checking places…
+లొకేషన్ రిమైండర్…	Location reminder…
+డ్రైవింగ్ మోడ్…	Driving mode…
+రైడ్ యాప్ తెరుస్తున్నాను…	Opening the ride app…
+రొటీన్…	Routine…
+బైబిల్ తెరుస్తున్నాను…	Opening the Bible…
+ఫోన్‌లో వెతుకుతున్నాను…	Searching the phone…
+యాప్‌లో వెతుకుతున్నాను…	Searching in the app…
+నోట్ రాస్తున్నాను…	Writing a note…
+వార్తలు తెస్తున్నాను…	Getting the news…
+ఛార్జింగ్ స్టేషన్లు వెతుకుతున్నాను…	Finding charging stations…
+టికెట్లు వెతుకుతున్నాను…	Finding tickets…
+మీ ప్రయాణాలు చూస్తున్నాను…	Checking your trips…
+మీ ఫోన్‌లో చేస్తున్నాను…	Doing it on your phone…
+కోడ్ రాసి రన్ చేస్తున్నాను…	Writing and running code…
+వెబ్‌సైట్ తయారు చేస్తున్నాను…	Making the website…
+ఆన్‌లైన్‌లో పెడుతున్నాను…	Putting it online…
+కోడ్ రాస్తున్నాను…	Writing code…
+యాప్ తయారు చేస్తున్నాను…	Building the app…
+బ్యాలెన్స్ చూస్తున్నాను…	Checking the balance…
+API ఖర్చు లెక్క చూస్తున్నాను…	Checking the API cost…
+స్కానర్ తెరుస్తున్నాను…	Opening the scanner…
+రికార్డర్ తెరుస్తున్నాను…	Opening the recorder…
+మీ ప్లాన్ చూస్తున్నాను…	Checking your plan…
+WhatsApp మీడియా…	WhatsApp media…
+పార్కింగ్…	Parking…
+బిల్లులు చూస్తున్నాను…	Checking bills…
+పార్సెల్స్ చూస్తున్నాను…	Checking parcels…
+గ్రూప్ మెసేజ్‌లు చదువుతున్నాను…	Reading group messages…
+బడ్జెట్…	Budget…
+అనువాదకుడు…	Interpreter…
+English practice మొదలుపెడుతున్నాను…	Starting English practice…
+స్క్రీన్ చదువుతున్నాను…	Reading the screen…
+సరే…	OK…
+పాత మాటల్లో వెతుకుతున్నాను…	Searching old conversations…
+స్క్రీన్ టైమ్ చూస్తున్నాను…	Checking screen time…
+గాలి నాణ్యత చూస్తున్నాను…	Checking air quality…
+క్రికెట్…	Cricket…
+లైట్లు…	Lights…
+నోట్స్…	Notes…
+డాక్యుమెంట్ చదువుతున్నాను…	Reading the document…
+ధర హెచ్చరిక…	Price alert…
+రైలు వివరాలు చూస్తున్నాను…	Checking train details…
+నీళ్ల రిమైండర్…	Water reminder…
+అడుగులు లెక్కపెడుతున్నాను…	Counting steps…
+వెతుకుతున్నాను…	Searching…
+నైట్ మోడ్…	Night mode…
+ఇక్కడే ఉన్నాను!	I'm right here!
+ఖర్చు రాస్తున్నాను…	Logging the expense…
+రేంజ్ లెక్కపెడుతున్నాను…	Working out the range…
+ఛార్జింగ్ రాస్తున్నాను…	Logging the charge…
+రైడ్స్ చూస్తున్నాను…	Checking rides…
+ఈ వారం రిపోర్ట్ తయారు చేస్తున్నాను…	Making this week's report…
+ఫీచర్లు తెరుస్తున్నాను…	Opening features…
+ఈరోజు లెక్క చూస్తున్నాను…	Checking today's summary…
+QR చదువుతున్నాను…	Reading the QR…
+స్క్రీన్ చూస్తున్నాను…	Looking at the screen…
+కెమెరాలో చూస్తున్నాను…	Looking through the camera…
+మిషన్ జోడిస్తున్నాను…	Adding the mission…
+పని చేస్తున్నాను…	Working…
+ఆప్షన్లు, బటన్లు అన్నీ ఈ భాషలో చూపిస్తుంది. Jarvis మాట్లాడే భాష మారదు.	Shows all options and buttons in this language. The language Jarvis speaks doesn't change.
+గొంతు టెస్ట్ (Jarvis మాట్లాడుతుందా?)	Voice test (does Jarvis speak?)
+మోడల్ Jarvis తనంతట తాను ఎంచుకోడు: మీరు ఎంచుకున్నదే వాడతాడు. 'అన్ని మోడల్స్ చూపించు' మీ key తో ఆ కంపెనీ దగ్గర నుంచి ఇప్పుడున్న మోడల్స్ అన్నీ తెస్తుంది; ఒకటి నొక్కితే వెంటనే సేవ్ అవుతుంది. ఎప్పుడైనా మార్చుకోవచ్చు. పేరు మీరే టైప్ చేసినా సరే.	Jarvis never picks a model on its own: it uses the one you choose. 'Show all models' fetches, with your key, from that company all the models available now; tap one and it's saved right away. Change it anytime. Typing the name yourself works too.
+Gemini: ఉచిత ప్లాన్‌లో Flash, Flash-Lite మోడల్స్ మాత్రమే; Pro మోడల్స్‌కి billing కావాలి. ప్రతి మోడల్‌కి వేరే నిమిషం/రోజు లిమిట్ ఉంటుంది: ఒక మోడల్ లిమిట్ అయిపోతే ఇంకో Flash మోడల్ ఎంచుకోండి. రోజు లిమిట్ మధ్యాహ్నం సుమారు 12:30–1:30 కి మళ్లీ వస్తుంది. Jarvis ఒక్క ప్రశ్నకి (యాప్ తెరవడం, సెర్చ్ లాంటి పనులుంటే) చాలా requests పంపుతాడు, అందుకే ఉచిత లిమిట్ త్వరగా అయిపోవచ్చు. Google AI Plus/Pro సబ్స్క్రిప్షన్ Gemini యాప్ కోసం; API లిమిట్‌కి దానితో సంబంధం లేదు. ఉచిత ప్లాన్‌లో మీరు పంపేవి (మాటలు, స్క్రీన్‌షాట్లు) Google తమ మోడల్స్ మెరుగుపరచడానికి వాడుకోవచ్చు. పైన 'Google (Gemini)' ఎంచుకుంటేనే వాడుతుంది; వాయిస్ (సహజ గొంతు), Live మోడ్ OpenAI తోనే ఉంటాయి.	Gemini: the free plan has only Flash and Flash-Lite models; Pro models need billing. Each model has its own per-minute/per-day limit: if one model hits its limit, pick another Flash model. The daily limit comes back around 12:30–1:30 pm. Jarvis sends several requests for one question (when it opens apps, searches and so on), so the free limit can run out fast. The Google AI Plus/Pro subscription is for the Gemini app; it has nothing to do with the API limit. On the free plan, what you send (words, screenshots) may be used by Google to improve its models. It's used only when 'Google (Gemini)' is chosen above; the voice (natural voice) and Live mode stay on OpenAI.
+Jarvis ఎంత తెలివిగా ఆలోచిస్తాడో పై మోడల్‌ని బట్టి ఉంటుంది. అత్యంత శక్తివంతమైనవి: OpenAI లో gpt-6-astra, Anthropic లో claude-opus-5-5 (ఇవి నెమ్మదిగా, ఖరీదుగా ఉంటాయి). రోజువారీ మాటలకి వేగమైన మోడల్ ఉంచి, కోడింగ్‌కి మాత్రమే శక్తివంతమైనది కింద 'కోడింగ్ మోడల్' లో పెట్టొచ్చు.	How cleverly Jarvis thinks depends on the model above. The most powerful: gpt-6-astra on OpenAI, claude-opus-5-5 on Anthropic (these are slower and costlier). Keep a fast model for daily talk, and put the powerful one only for coding under 'Coding model' below.
+మీ ఇప్పటి balance ఒక్కసారి ఇక్కడ పెట్టండి (ఖాళీ = లెక్కించకు). Jarvis అక్కడి నుంచి తగ్గిస్తూ, 20%, 5% మిగిలినప్పుడు notification ఇస్తాడు. Credit కొన్నాక కొత్త balance మళ్లీ ఇక్కడ పెట్టండి. ఇవి అంచనాలు; ఖచ్చితమైన లెక్క కంపెనీ billing పేజీల్లో ఉంటుంది. \"API ఖర్చు ఎంత?\" అని Jarvis ని కూడా అడగొచ్చు.	Enter your current balance here once (empty = don't track). Jarvis counts down from it and notifies you at 20% and 5% left. After buying credit, enter the new balance here again. These are estimates; the exact figures are on the companies' billing pages. You can also ask Jarvis \"How much is the API cost?\".
+ఒక్కసారి: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → 'repo', 'workflow' టిక్ చేసి Generate → వచ్చిన token ఇక్కడ పెట్టండి. ఇది మీ ఫోన్‌లో మాత్రమే ఉంటుంది. Jarvis మీ GitHub లో jarvis-sites (వెబ్‌సైట్లు), jarvis-app-… (యాప్‌లు) అనే పబ్లిక్ repos తయారు చేస్తుంది.	Once: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → tick 'repo' and 'workflow', Generate → paste the token here. It stays only on your phone. Jarvis makes public repos in your GitHub named jarvis-sites (websites) and jarvis-app-… (apps).
+ChatGPT వాయిస్ లాగా, ఫ్రెండ్‌తో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. OpenAI key కావాలి. సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది. 2 నిమిషాలు ఎవరూ మాట్లాడకపోతే \"అవసరమైతే పిలవండి\" అని చెప్పి ఆగిపోతుంది.	Like ChatGPT voice, just like talking to a friend: it listens while you speak, answers at once, and you can cut in anytime. Needs an OpenAI key. Costs more than the normal mode. If nobody speaks for 2 minutes it says \"call me if you need me\" and stops.
+SMS, WhatsApp, Telegram, Gmail లో వచ్చే కొత్త మెసేజ్‌లను Jarvis ఫోన్‌లోనే చెక్ చేస్తాడు (ఏదీ బయటికి పంపడు, ఖర్చు లేదు): fake KYC, \"OTP / PIN చెప్పండి\", అనుమానపు links, లాటరీ, కరెంట్ కట్ బెదిరింపు, APK ఫైల్స్, డబ్బు రావడానికి UPI PIN అడగడం… అనుమానం వస్తే వెంటనే notification. మీ card మీద కొత్త autopay / mandate పెట్టినట్టు SMS వస్తే కూడా చెప్తాడు. దీనికి పై 'నోటిఫికేషన్ యాక్సెస్' కావాలి.	Jarvis checks new messages in SMS, WhatsApp, Telegram and Gmail on the phone itself (nothing is sent out, no cost): fake KYC, \"tell us the OTP / PIN\", suspicious links, lottery, power-cut threats, APK files, asking for a UPI PIN to receive money… a notification at once if anything looks wrong. It also tells you when an SMS says a new autopay / mandate was set up on your card. Needs the 'Notification access' above.
+ఆన్ చేస్తే, BookMyShow లేదా District లో సీట్లు సెలెక్ట్ చేశాక Jarvis \"₹___ MobiKwik వాలెట్ నుంచి పే చేయమంటారా?\" అని అడుగుతుంది. మీరు \"అవును, పే చేయి\" అంటేనే MobiKwik వాలెట్ నుంచి పే చేస్తుంది. UPI, కార్డ్, నెట్ బ్యాంకింగ్ ఎప్పుడూ వాడదు; PIN, OTP ఎప్పుడూ టైప్ చేయదు (అడిగితే మీరే ఎంటర్ చేయాలి). కింద పెట్టిన అమౌంట్ కంటే ఎక్కువైతే పే చేయదు. వాలెట్‌లో ఎంత ఉంచాలో మీ ఇష్టం. వేరేవాళ్ల గొంతుకి పలకకుండా \"నా గొంతుకి మాత్రమే పలుకు\" కూడా ఆన్ చేయడం మంచిది.	When on, after you select seats in BookMyShow or District, Jarvis asks \"Shall I pay ₹___ from the MobiKwik wallet?\". Only when you say \"Yes, pay\" does it pay from the MobiKwik wallet. It never uses UPI, cards or net banking, and never types a PIN or OTP (if asked, you enter it yourself). It won't pay more than the amount set below. How much to keep in the wallet is up to you. It's good to also turn on \"Answer only my voice\" so it doesn't respond to others.
+మీ కార్/బైక్ బ్లూటూత్ (లేదా హెల్మెట్ బ్లూటూత్) ఎంచుకుంటే: కనెక్ట్ అవ్వగానే డ్రైవింగ్ మోడ్ ఆన్, ప్రతి రైడ్ కి.మీ, టైమ్ తనంతట తానే రాసుకుంటుంది; దిగగానే ఆఫ్, బండి పెట్టిన చోటు గుర్తుపెట్టుకుంటుంది.	Choose your car/bike Bluetooth (or helmet Bluetooth): when it connects, driving mode turns on and each ride's km and time are logged by themselves; when you get off it turns off and remembers where the bike is parked.
+Google Maps లో ఆ చోటు తెరవండి → Share (షేర్) నొక్కండి → యాప్‌ల లిస్ట్‌లో Jarvis ఎంచుకోండి → పేరు పెట్టండి (ఉదా: సిస్టర్ ఇల్లు) → సేవ్.\n\nతర్వాత \"Jarvis, సిస్టర్ వాళ్ల లొకేషన్ చూపించు\" అంటే మ్యాప్‌లో చూపిస్తాను, \"అక్కడికి దారి చూపించు\" అంటే navigation మొదలుపెడతాను.	Open the place in Google Maps → tap Share → choose Jarvis in the app list → give it a name (e.g. Sister's house) → Save.\n\nLater, say \"Jarvis, show sister's location\" and I'll show it on the map; say \"directions there\" and I'll start navigation.

@@ -16,6 +16,7 @@ final class Prefs {
     Prefs(Context c) {
         sp = c.getSharedPreferences("jarvis", Context.MODE_PRIVATE);
         Usage.init(c); // the API cost meter needs somewhere to keep its totals
+        Tr.init(c);    // the app's labels in Telugu or English
     }
 
     String name() { return sp.getString("name", "Anil"); }
