@@ -380,7 +380,9 @@ final class Tools {
                         {"date", "string", "YYYY-MM-DD (on_date, set_day, cover, clear)"}, {"to_date", "string", "Last date YYYY-MM-DD for set_day / clear"},
                         {"duty", "boolean", "For set_day: true = on duty, false = off"}, {"covered", "string", "For cover: whose duty he does (name or batch)"},
                         {"batch", "string", "For setup: A, B or C"}, {"start_date", "string", "For setup: first day of one of that batch's duties, YYYY-MM-DD"},
-                        {"time", "string", "For setup: duty start time HH:mm"}, {"members", "string", "For setup: people in that batch, comma separated"},
+                        {"time", "string", "For setup: duty start time HH:mm = when he relieves the batch before (his is 11:30)"},
+                        {"leave_before", "integer", "For setup: minutes he needs to reach duty from home (default 90: leave 10:00 for 11:30)"},
+                        {"members", "string", "For setup: people in that batch, comma separated"},
                         {"mine", "boolean", "For setup: true = this is his batch"}, {"on_days", "integer", "For setup: duty days in a row (2)"},
                         {"off_days", "integer", "For setup: days off (4)"}, {"month", "string", "For month / open: YYYY-MM"},
                         {"count", "integer", "For next: how many duties (default 3)"}}, "action")));
@@ -4620,7 +4622,9 @@ final class Tools {
             if (b[1].isBefore(from)) continue;
             long days = b[1].toEpochDay() - b[0].toEpochDay() + 1;
             out.put(new JSONObject().put("from", Duty.day(b[0]) + " " + b[0].getYear()).put("date", b[0].toString())
-                    .put("to", Duty.day(b[1])).put("start_time", r.timeOf(who)).put("hours", days * 24).put("when", Duty.whenText(b[0])));
+                    .put("relieve_at", r.timeOf(who)).put("until", Duty.day(b[1].plusDays(1)) + " " + r.timeOf(who))
+                    .put("leave_home_by", Duty.ME.equals(who) ? r.leaveTime(r.timeOf(who)) : "")
+                    .put("hours", days * 24).put("when", Duty.whenText(b[0])));
             if (out.length() >= max) break;
         }
         return out;
@@ -4656,6 +4660,7 @@ final class Tools {
                 for (String m : mem.split("\\s*(?:,|،| మరియు | and )\\s*")) if (!m.trim().isEmpty() && !m.trim().equalsIgnoreCase(myName)) b.members.add(m.trim());
             }
             if (a.optBoolean("mine", false)) r.mine = b.id;
+            if (a.has("leave_before")) r.leaveBefore = Math.max(0, Math.min(600, a.optInt("leave_before", 90)));
             r.fillStarts();
             Duty.save(act(), r);
             JSONObject o = ok().put("batches", dutyBatches(r)).put("cycle", r.on + " days duty, " + r.off + " days off");

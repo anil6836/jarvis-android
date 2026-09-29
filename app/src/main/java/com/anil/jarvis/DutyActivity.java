@@ -92,8 +92,8 @@ public class DutyActivity extends Activity {
         content.addView(head);
 
         if (!Duty.ready(roster)) {
-            TextView t = Ui.text(this, "ఇంకా సెటప్ చేయలేదు. ⚙️ నొక్కి మీ బ్యాచ్, మొదటి డ్యూటీ తేదీ, టైమ్ పెట్టండి; వేరే బ్యాచ్‌ల పేర్లు కూడా చేర్చొచ్చు.\n\n"
-                    + "లేదా Jarvis కి చెప్పండి: \"నా బ్యాచ్ A, అక్టోబర్ 1 ఉదయం 8కి డ్యూటీ మొదలు, 2 రోజులు డ్యూటీ 4 రోజులు సెలవు\".", 14.5f, Ui.MUTED);
+            TextView t = Ui.text(this, "ఇంకా సెటప్ చేయలేదు. ⚙️ నొక్కి మీ బ్యాచ్, మొదటి డ్యూటీ తేదీ, రిలీవ్ టైమ్ (11:30) పెట్టండి; వేరే బ్యాచ్‌ల పేర్లు కూడా చేర్చొచ్చు.\n\n"
+                    + "లేదా Jarvis కి చెప్పండి: \"నా బ్యాచ్ A, అక్టోబర్ 1 న 11:30 కి నా డ్యూటీ, 2 రోజులు డ్యూటీ 4 రోజులు సెలవు\".", 14.5f, Ui.MUTED);
             t.setPadding(dp(2), dp(14), dp(2), dp(10));
             content.addView(t);
             TextView go = Ui.text(this, "⚙️ ఇప్పుడే సెటప్ చేయి", 16, 0xFFFFFFFF);
@@ -145,6 +145,7 @@ public class DutyActivity extends Activity {
             more.append(n == 0 ? "తర్వాత: " : " · ").append(b[0].getDayOfMonth()).append(" ").append(Duty.monthName(b[0].getMonthValue()));
             if (++n == 3) break;
         }
+        if (next != null) card.addView(Ui.text(this, "🏍️ ఇంటి నుంచి " + roster.leaveTime(roster.timeOf(Duty.ME)) + " కల్లా బయలుదేరండి", 13.5f, 0xFFFFFFFF));
         if (more.length() > 0) card.addView(Ui.text(this, more.toString(), 13, 0xCCFFFFFF));
         content.addView(card, lp);
     }
@@ -263,7 +264,7 @@ public class DutyActivity extends Activity {
         StringBuilder s = new StringBuilder();
         for (Duty.Batch b : roster.batches) {
             TextView t = Ui.text(this, "■ " + b.name + (b.id.equalsIgnoreCase(roster.mine) ? " (మీ బ్యాచ్)" : "")
-                    + (b.start == null ? " · తేదీ పెట్టలేదు" : " · " + b.time + " నుంచి")
+                    + (b.start == null ? " · తేదీ పెట్టలేదు" : " · " + b.time + " కి రిలీవ్")
                     + (b.members.isEmpty() ? "" : " · " + TextUtils.join(", ", b.members)), 12.5f, colorOf(b));
             t.setPadding(0, dp(2), 0, dp(2));
             l.addView(t);
@@ -479,10 +480,14 @@ public class DutyActivity extends Activity {
         }
         f.addView(label("మీ బ్యాచ్ ఏది?"));
         f.addView(mine);
-        TextView hint = label("ఒక్క బ్యాచ్ తేదీ పెడితే చాలు: మిగతావి " + roster.on + " రోజుల తేడాతో తనంతట తానే వస్తాయి.");
+        TextView hint = label("ఒక్క బ్యాచ్ తేదీ పెడితే చాలు: మిగతావి " + roster.on + " రోజుల తేడాతో తనంతట తానే వస్తాయి. "
+                + "టైమ్ = ముందు బ్యాచ్‌ని రిలీవ్ చేసే టైమ్ (మీది 11:30).");
         f.addView(hint);
+        f.addView(label("ఇంటి నుంచి డ్యూటీకి వెళ్లడానికి ఎంత సేపు (నిమిషాలు) · 90 = 11:30 డ్యూటీకి 10:00 కి బయలుదేరాలి"));
+        EditText travel = number(String.valueOf(roster.leaveBefore));
+        f.addView(travel);
         Switch remind = new Switch(this);
-        remind.setText("గుర్తు చేయి: ఎల్లుండి, ముందు రోజు రాత్రి 8కి, మొదలయ్యే 1½ గంట ముందు");
+        remind.setText("గుర్తు చేయి: ఎల్లుండి, ముందు రోజు రాత్రి 8కి, బయలుదేరే గంట ముందు, బయలుదేరే టైమ్‌కి");
         remind.setChecked(roster.remind);
         remind.setPadding(0, dp(12), 0, dp(6));
         f.addView(remind);
@@ -505,6 +510,7 @@ public class DutyActivity extends Activity {
                     int chk = mine.getCheckedRadioButtonId();
                     if (chk >= 1000) roster.mine = roster.batches.get(chk - 1000).id;
                     roster.remind = remind.isChecked();
+                    try { roster.leaveBefore = Math.max(0, Math.min(600, Integer.parseInt(travel.getText().toString().trim()))); } catch (Exception ignored) {}
                     roster.fillStarts();
                     saveAndRender();
                     Toast.makeText(this, "సేవ్ చేశాను ✓", Toast.LENGTH_SHORT).show();

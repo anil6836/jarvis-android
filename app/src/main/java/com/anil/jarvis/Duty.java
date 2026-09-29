@@ -34,7 +34,7 @@ final class Duty {
     // ================================================================ the roster (plain Java, no Android)
 
     static final class Batch {
-        String id = "", name = "", time = "08:00";
+        String id = "", name = "", time = "11:30"; // he relieves the batch before him at 11:30
         LocalDate start;                       // one of its duty days (the first of a turn); null = not set yet
         final List<String> members = new ArrayList<>();
     }
@@ -50,6 +50,8 @@ final class Duty {
         int on = 2, off = 4;
         String mine = "A";
         boolean remind = true;
+        /** How long before the duty starts he leaves home (the ride there): 11:30 duty -> leave at 10:00. */
+        int leaveBefore = 90;
         final List<Batch> batches = new ArrayList<>();
         final List<Change> changes = new ArrayList<>();
 
@@ -161,7 +163,15 @@ final class Duty {
         String timeOf(String who) {
             Batch b = batchOf(who);
             if (b == null) b = myBatch();
-            return b == null ? "08:00" : b.time;
+            return b == null ? "11:30" : b.time;
+        }
+
+        /** When he should leave home for a duty starting at this time ("11:30" -> "10:00"). */
+        String leaveTime(String start) {
+            String[] hm = start.split(":");
+            int m = Integer.parseInt(hm[0]) * 60 + Integer.parseInt(hm[1]) - leaveBefore;
+            m = ((m % 1440) + 1440) % 1440;
+            return String.format(Locale.ENGLISH, "%02d:%02d", m / 60, m % 60);
         }
 
         void set(String who, LocalDate d, boolean duty, String note) {
@@ -248,13 +258,14 @@ final class Duty {
             r.off = o.optInt("off", 4);
             r.mine = o.optString("mine", "A");
             r.remind = o.optBoolean("remind", true);
+            r.leaveBefore = o.optInt("leave_before", 90);
             JSONArray bs = o.optJSONArray("batches");
             for (int i = 0; bs != null && i < bs.length(); i++) {
                 JSONObject j = bs.getJSONObject(i);
                 Batch b = new Batch();
                 b.id = j.optString("id");
                 b.name = j.optString("name", b.id + " బ్యాచ్");
-                b.time = j.optString("time", "08:00");
+                b.time = j.optString("time", "11:30");
                 String s = j.optString("start", "");
                 b.start = s.isEmpty() ? null : LocalDate.parse(s);
                 JSONArray ms = j.optJSONArray("members");
@@ -285,7 +296,8 @@ final class Duty {
 
     static synchronized void save(Context c, Roster r) {
         try {
-            JSONObject o = new JSONObject().put("on", r.on).put("off", r.off).put("mine", r.mine).put("remind", r.remind);
+            JSONObject o = new JSONObject().put("on", r.on).put("off", r.off).put("mine", r.mine).put("remind", r.remind)
+                    .put("leave_before", r.leaveBefore);
             JSONArray bs = new JSONArray();
             for (Batch b : r.batches) {
                 JSONArray ms = new JSONArray();
@@ -324,10 +336,11 @@ final class Duty {
         return n == 0 ? "ఈరోజు" : n == 1 ? "రేపు" : n == 2 ? "ఎల్లుండి" : n > 0 ? n + " రోజుల్లో" : (-n) + " రోజుల క్రితం";
     }
 
-    /** A block as text: "గురు 2 అక్టోబర్, 08:00 నుంచి 48 గంటలు (రేపు)". */
+    /** A block as text: "గురు 1 అక్టోబర్ 11:30 నుంచి శని 3 అక్టోబర్ 11:30 వరకు, 48 గంటలు (రేపు)". */
     static String blockText(Roster r, String who, LocalDate[] b) {
         long days = b[1].toEpochDay() - b[0].toEpochDay() + 1;
-        return day(b[0]) + ", " + r.timeOf(who) + " నుంచి " + (days * 24) + " గంటలు (" + whenText(b[0]) + ")";
+        String t = r.timeOf(who);
+        return day(b[0]) + " " + t + " నుంచి " + day(b[1].plusDays(1)) + " " + t + " వరకు, " + (days * 24) + " గంటలు (" + whenText(b[0]) + ")";
     }
 
     // ================================================================ reminders (Proactive's regular check)
@@ -340,7 +353,10 @@ final class Duty {
         return true;
     }
 
-    /** Two days before (a note), the evening before (note + voice), and 90 minutes before it starts. */
+    /**
+     * Two days before (a note); the evening before (note + voice, with the time to leave home); on the day an
+     * hour before leaving home, and again at the time to leave (the duty starts when he relieves the others).
+     */
     static void tick(Context c, Prefs p, boolean quiet) {
         Roster r = load(c);
         if (!r.remind || !ready(r)) return;
@@ -349,20 +365,26 @@ final class Duty {
         for (LocalDate[] b : r.blocks(ME, today, today.plusDays(3))) {
             LocalDate s = b[0];
             if (s.isBefore(today)) continue;
-            String[] hm = r.timeOf(ME).split(":");
+            String t = r.timeOf(ME), go = r.leaveTime(t);
+            String[] hm = t.split(":");
             LocalDateTime start = s.atTime(Integer.parseInt(hm[0]), Integer.parseInt(hm[1]));
+            LocalDateTime leave = start.minusMinutes(r.leaveBefore);
             long hours = (b[1].toEpochDay() - s.toEpochDay() + 1) * 24;
-            String when = r.timeOf(ME) + " నుంచి " + hours + " గంటలు";
+            String when = t + " కి రిలీవ్ చేయాలి, " + hours + " గంటలు (" + day(b[1].plusDays(1)) + " " + t + " వరకు)";
             if (s.equals(today.plusDays(2)) && now.getHour() >= 9 && now.getHour() < 12 && once(c, "two|" + s)) {
                 notify(c, ("two" + s).hashCode(), "🗓️ ఎల్లుండి డ్యూటీ", day(s) + ", " + when);
             }
             if (s.equals(today.plusDays(1)) && now.getHour() >= 20 && now.getHour() < 23 && once(c, "eve|" + s)) {
-                notify(c, ("eve" + s).hashCode(), "🗓️ రేపు మీ డ్యూటీ", day(s) + ", " + when);
-                if (!quiet) Announcer.say(c, p.name() + ", రేపు మీ డ్యూటీ, " + r.timeOf(ME) + " గంటలకి. " + hours + " గంటలు.");
+                notify(c, ("eve" + s).hashCode(), "🗓️ రేపు మీ డ్యూటీ", day(s) + ", " + when + ". ఇంటి నుంచి " + go + " కల్లా బయలుదేరండి.");
+                if (!quiet) Announcer.say(c, p.name() + ", రేపు మీ డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి.");
             }
-            if (!now.isBefore(start.minusMinutes(90)) && now.isBefore(start) && once(c, "day|" + s)) {
-                notify(c, ("day" + s).hashCode(), "🗓️ ఈరోజు డ్యూటీ " + r.timeOf(ME) + " కి", when + ". అన్నీ సిద్ధం చేసుకోండి.");
-                Announcer.say(c, p.name() + ", ఈరోజు " + r.timeOf(ME) + " గంటలకి డ్యూటీ మొదలు.");
+            if (!now.isBefore(leave.minusMinutes(60)) && now.isBefore(leave) && once(c, "day|" + s)) {
+                notify(c, ("day" + s).hashCode(), "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", when + ". అన్నీ సిద్ధం చేసుకోండి.");
+                Announcer.say(c, p.name() + ", ఈరోజు డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి.");
+            }
+            if (!now.isBefore(leave) && now.isBefore(start) && once(c, "go|" + s)) {
+                notify(c, ("go" + s).hashCode(), "🏍️ బయలుదేరే టైమ్ అయింది", t + " కి రిలీవ్ చేయాలి.");
+                Announcer.say(c, p.name() + ", బయలుదేరే టైమ్ అయింది. " + t + " కి రిలీవ్ చేయాలి. జాగ్రత్తగా వెళ్లండి.");
             }
         }
     }
