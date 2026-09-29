@@ -31,6 +31,15 @@ jobs:
           done
           ls -la app/src/main/assets
 
+      - name: Download the cough / sneeze sound model (YAMNet)
+        shell: bash
+        run: |
+          # Not fatal: without it the build still works, only cough detection is off.
+          curl -fsSL --retry 3 -o app/src/main/assets/yamnet.tflite "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/latest/yamnet.tflite" \
+            || curl -fsSL --retry 3 -o app/src/main/assets/yamnet.tflite "https://storage.googleapis.com/tfhub-lite-models/google/lite-model/yamnet/classification/tflite/1.tflite" \
+            || { rm -f app/src/main/assets/yamnet.tflite; echo "::warning::YAMNet model not downloaded; cough detection is off in this build"; }
+          ls -la app/src/main/assets
+
       - name: Unlock the signing key
         shell: bash
         env:

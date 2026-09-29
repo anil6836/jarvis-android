@@ -56,7 +56,7 @@ public class SettingsActivity extends Activity {
     private Switch alexaSpeak, livePatient, scamGuard, readNews;
     private Switch newsAuto;
     private EditText newsPlaces;
-    private Switch diaryAsk, holidayRemind, findPhone;
+    private Switch diaryAsk, holidayRemind, findPhone, coughAsk;
     private EditText priceCity, dailyPrices, findCode;
     private EditText balGemini, balOpenAi, balAnthropic;
     private EditText bikeRange, bikeKwh, powerRate;
@@ -518,6 +518,8 @@ public class SettingsActivity extends Activity {
         button("🔔 ఇప్పుడు 5 సెకన్లు మోగించి చూడు", v -> FindPhone.start(this, 5000));
 
         section("ఆరోగ్యం, ఇతరాలు");
+        coughAsk = toggle("🤧 దగ్గు / తుమ్ములు వినిపిస్తే \"సర్, ఏమైంది?\" అని అడుగు (\"Hey Jarvis\" వినే మైక్‌తోనే, ఫోన్‌లోనే; ఏదీ రికార్డ్ చేయదు; 3 గంటలకి ఒకసారి మించదు)", prefs.coughAsk());
+        if (!CoughDetector.status.isEmpty()) note(CoughDetector.status);
         sfx = toggle("Iron Man సౌండ్ ఎఫెక్ట్ (పిలవగానే చిన్న శబ్దం)", prefs.sfx());
         button("అడుగుల లెక్కకి అనుమతి (Physical activity)", v -> requestPermissions(new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, 8));
         note("హోమ్ స్క్రీన్ విడ్జెట్: హోమ్ స్క్రీన్ మీద ఖాళీ చోట నొక్కి పట్టుకుని → Widgets → Jarvis.");
@@ -680,6 +682,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("read_news", readNews.isChecked());
         e.putBoolean("news_auto", newsAuto.isChecked());
         e.putBoolean("diary_ask", diaryAsk.isChecked());
+        e.putBoolean("cough_ask", coughAsk.isChecked());
         e.putBoolean("holiday_remind", holidayRemind.isChecked());
         if (!priceCity.getText().toString().trim().isEmpty()) e.putString("price_city", priceCity.getText().toString().trim());
         e.putString("daily_prices", dailyPrices.getText().toString().trim());

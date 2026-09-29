@@ -42,6 +42,11 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    androidResources {
+        // the cough model is memory-mapped straight from the APK
+        noCompress 'tflite'
+    }
+
     lint {
         abortOnError false
         checkReleaseBuilds false
@@ -59,4 +64,6 @@ dependencies {
     // Offline "Jarvis" single-word detection (model downloaded on the phone the first time)
     implementation 'com.alphacephei:vosk-android:0.3.47@aar'
     implementation 'net.java.dev.jna:jna:5.13.0@aar'
+    // Hearing a cough / sneeze on the phone (Google's YAMNet sound model, downloaded by the build)
+    implementation 'org.tensorflow:tensorflow-lite:2.16.1'
 }

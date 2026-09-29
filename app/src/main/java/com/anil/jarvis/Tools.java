@@ -362,7 +362,7 @@ final class Tools {
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, debts, expiry, prices, diary, holidays, travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice), debts, expiry, prices, diary, holidays, travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
@@ -439,6 +439,12 @@ final class Tools {
                 + "on_date: that day's; add: a day of his own (date + name, e.g. ఊరి జాతర); remove. Also shown on the duty calendar.",
                 schema(new String[][]{{"action", "string", "list (default), on_date, add or remove"}, {"date", "string", "YYYY-MM-DD"},
                         {"name", "string", "For add: the name"}, {"days", "integer", "For list: days ahead"}})));
+        DEFS.add(new Def("health_advice", "Illness and health questions: fever, cough, cold, headache, throat, acidity, loose motions, vomiting, pains, allergy, "
+                + "tooth, eye, ear, wounds, burns, weakness, urine burning, sleep, chest pain, or any disease. want: home = home remedies (the default, give these first), "
+                + "tablet = the usual over-the-counter tablet with adult dose (when he asks which tablet), doctor = which doctor and when, all. "
+                + "Danger signs come back too. cough_listen on/off: Jarvis asking 'ఏమైంది?' when it hears him coughing or sneezing.",
+                schema(new String[][]{{"symptom", "string", "What he has, in his words (e.g. 'జలుబు', 'దగ్గు 3 రోజులుగా', 'కడుపు మంట')"},
+                        {"want", "string", "home (default), tablet, doctor or all"}, {"cough_listen", "string", "on or off (only to change that setting)"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
                 schema(new String[][]{})));
         DEFS.add(new Def("day_summary",
@@ -549,6 +555,7 @@ final class Tools {
             case "news": return "వార్తలు తెస్తున్నాను…";
             case "local_news": return "మీ ప్రాంతాల వార్తలు తెస్తున్నాను…";
             case "debts": return "అప్పులు, EMI లు చూస్తున్నాను…";
+            case "health_advice": return "చూస్తున్నాను…";
             case "expiry": return "గడువులు చూస్తున్నాను…";
             case "market_prices": return "ఈరోజు ధరలు వెతుకుతున్నాను…";
             case "diary": return "డైరీ…";
@@ -676,6 +683,7 @@ final class Tools {
                 case "news": return news(a.optString("topic", ""), a.optInt("count", 6));
                 case "local_news": return localNews(a);
                 case "debts": return debts(a);
+                case "health_advice": return healthAdvice(a);
                 case "expiry": return expiry(a);
                 case "market_prices": return marketPrices(a);
                 case "diary": return diary(a);
@@ -4670,6 +4678,18 @@ final class Tools {
             if (got[0] != null) return got[0];
         }
         return lastLocation(act());
+    }
+
+    private String healthAdvice(JSONObject a) throws Exception {
+        String listen = a.optString("cough_listen", "").trim().toLowerCase(Locale.ROOT);
+        if (listen.equals("on") || listen.equals("off")) {
+            prefs.set("cough_ask", listen.equals("on"));
+            JSONObject o = ok().put("cough_listen", listen);
+            if (listen.equals("on")) o.put("note", "Works while the wake word is listening (Settings), on the phone only; asks at most once in 3 hours. "
+                    + (CoughDetector.status.isEmpty() ? "" : CoughDetector.status));
+            return o.toString();
+        }
+        return Ailments.advice(act(), a.optString("symptom"), a.optString("want", "home")).toString();
     }
 
     private String debts(JSONObject a) throws Exception {

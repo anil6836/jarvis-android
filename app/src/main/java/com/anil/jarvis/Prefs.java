@@ -130,6 +130,8 @@ final class Prefs {
     boolean holidayRemind() { return sp.getBoolean("holiday_remind", true); }
     /** A message with this code (SMS / WhatsApp) makes the phone ring loud even on silent. */
     boolean findPhone() { return sp.getBoolean("find_phone", true); }
+    /** Hear coughing / sneezing on the wake-word microphone and ask "సర్, ఏమైంది?". */
+    boolean coughAsk() { return sp.getBoolean("cough_ask", true); }
     String findCode() {
         String c = sp.getString("find_code", "");
         if (c.isEmpty()) { // a different code on every phone, so strangers can't guess it

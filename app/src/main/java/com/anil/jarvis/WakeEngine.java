@@ -84,7 +84,11 @@ final class WakeEngine {
         Prefs p = new Prefs(c);
         this.voicePrint = p.voiceLock() ? VoiceLock.print(c) : null;
         this.lockMax = p.voiceLockMax();
+        this.cough = new CoughDetector(c);
     }
+
+    /** Listens for coughing on the same microphone (runs its model only on short loud sounds). */
+    private final CoughDetector cough;
 
     /** Loads the "Jarvis" word detector in the background (downloads its model the first time). */
     private void loadJarvisWord() {
@@ -180,6 +184,7 @@ final class WakeEngine {
     void close() {
         closed = true;
         stop();
+        try { cough.close(); } catch (Throwable ignored) {}
         try { if (mel != null) mel.close(); } catch (Exception ignored) {}
         try { if (emb != null) emb.close(); } catch (Exception ignored) {}
         try { if (ww != null) ww.close(); } catch (Exception ignored) {}
@@ -242,6 +247,7 @@ final class WakeEngine {
         try {
             load();
             reset();
+            cough.reset();
             loadJarvisWord();
             int min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             rec = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE,
@@ -268,6 +274,7 @@ final class WakeEngine {
                 double rms = Math.sqrt(sum / CHUNK);
                 noise = noise == 0 ? rms : (rms < noise ? noise * 0.9 + rms * 0.1 : noise * 0.995 + rms * 0.005);
                 long now = SystemClock.elapsedRealtime();
+                try { cough.feed(chunk, rms, noise); } catch (Throwable ignored) {}
                 if (rms > Math.max(180, noise * 2.2)) openUntil = now + 2500;
                 if (now > openUntil) {
                     preroll.addLast(chunk);            // keep ~0.25 s so the start of "Jarvis" is not lost
