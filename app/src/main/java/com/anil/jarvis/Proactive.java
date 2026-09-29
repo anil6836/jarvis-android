@@ -85,6 +85,7 @@ public class Proactive extends BroadcastReceiver {
         Health.recordStepBaseline(c);
         JarvisWidget.refresh(c);
         try { Weekly.maybeNotify(c, p); } catch (Throwable ignored) {}
+        try { Birthdays.tick(c, p, p.night() || CallControl.busyWithCall() || dnd(c)); } catch (Throwable ignored) {}
         if (!p.proactive()) return;
         boolean quiet = p.night() || CallControl.busyWithCall() || dnd(c);
         Calendar now = Calendar.getInstance();

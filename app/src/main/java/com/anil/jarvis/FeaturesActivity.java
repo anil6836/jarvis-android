@@ -133,6 +133,23 @@ public class FeaturesActivity extends Activity {
                     fill("🏠", "అడ్రస్‌తో సేవ్ చెయ్", "ఉదా: సిస్టర్ ఇల్లు - KPHB, Hyderabad", "ఈ అడ్రస్ సేవ్ చెయ్ (పేరు - అడ్రస్): "),
                     fill("🧭", "సేవ్ చేసిన చోటుకి దారి", "ఉదా: సిస్టర్ ఇల్లు", "సేవ్ చేసిన ఈ చోటుకి దారి చూపించు: "),
                     fill("📤", "లొకేషన్ ఎవరికైనా పంపు", "WhatsApp లో మ్యాప్ లింక్", "సేవ్ చేసిన ఈ లొకేషన్‌ని WhatsApp లో పంపు (చోటు, ఎవరికి): ")),
+            new Cat("shopping", "🛒", "షాపింగ్ లిస్ట్", "కొనాల్సినవి, కొన్నవి, షేర్", 0xFF84CC16,
+                    fill("➕", "లిస్ట్‌లో చేర్చు", "ఉదా: పాలు 2, గుడ్లు, బ్రెడ్", "షాపింగ్ లిస్ట్‌లో చేర్చు: "),
+                    fill("✅", "కొన్నాను", "ఉదా: పాలు, బ్రెడ్", "షాపింగ్ లిస్ట్‌లో ఇవి కొన్నాను: "),
+                    ask("📋", "లిస్ట్ చెప్పు", "ఇంకా కొనాల్సినవి", "నా షాపింగ్ లిస్ట్‌లో ఇంకా కొనాల్సినవి చెప్పు."),
+                    fill("📤", "లిస్ట్ WhatsApp లో పంపు", "ఎవరికో చెప్పండి", "నా షాపింగ్ లిస్ట్‌ని WhatsApp లో పంపు, ఎవరికి: "),
+                    ask("🧹", "కొన్నవి తీసేయి", "టిక్ చేసినవి లిస్ట్ నుంచి", "షాపింగ్ లిస్ట్‌లో కొన్నవి తీసేయి.")),
+            new Cat("medicine", "💊", "మందులు", "టైమ్‌కి గుర్తు, మాత్రల లెక్క", 0xFF2DD4BF,
+                    fill("➕", "మందు చేర్చు", "పేరు, టైమ్స్, ఎన్ని మాత్రలు ఉన్నాయి", "ఈ మందు రిమైండర్ పెట్టు (పేరు, టైమ్స్, డోస్, భోజనం ముందు/తర్వాత, ఎన్ని మాత్రలు ఉన్నాయి): "),
+                    fill("✅", "మాత్ర వేసుకున్నాను", "ఉదా: BP మాత్ర", "ఈ మాత్ర ఇప్పుడు వేసుకున్నాను: "),
+                    ask("📋", "నా మందులు", "టైమ్స్, ఈరోజు వేసుకున్నవి, మిగిలినవి", "నా మందులు, ఈరోజు వేసుకున్నవి, ఎన్ని మాత్రలు మిగిలాయో చెప్పు."),
+                    fill("🔢", "మాత్రల లెక్క మార్చు", "కొత్తగా కొన్నాక", "ఈ మందు మాత్రలు ఇప్పుడు ఇన్ని ఉన్నాయి (పేరు, ఎన్ని): "),
+                    ask("📊", "ఈ వారం వేసుకున్నది", "ఎన్ని సార్లు మర్చిపోయాను", "ఈ వారం నా మందులు ఎన్ని సార్లు వేసుకున్నానో చెప్పు (medicine history).")),
+            new Cat("birthdays", "🎂", "పుట్టినరోజులు", "పుట్టినరోజులు, పెళ్లిరోజులు, విషెస్", 0xFFF59E0B,
+                    fill("➕", "పుట్టినరోజు చేర్చు", "ఉదా: అమ్మ - మార్చి 5", "ఈ పుట్టినరోజు గుర్తుపెట్టుకో (పేరు, తేదీ): "),
+                    fill("💍", "పెళ్లిరోజు చేర్చు", "ఉదా: అక్క బావ - మే 20", "ఈ పెళ్లిరోజు గుర్తుపెట్టుకో (పేరు, తేదీ): "),
+                    ask("📅", "ఈ నెల పుట్టినరోజులు", "రాబోయే 30 రోజులు", "రాబోయే 30 రోజుల్లో పుట్టినరోజులు, పెళ్లిరోజులు చెప్పు."),
+                    fill("💬", "విషెస్ పంపు", "WhatsApp లో, మీరు 'పంపు' అంటేనే", "ఈ వ్యక్తికి పుట్టినరోజు విషెస్ WhatsApp లో సిద్ధం చెయ్: ")),
             new Cat("travel", "🌍", "ప్రయాణం, బయటకు", "దారి, ట్రైన్, టికెట్లు, ఫుడ్", 0xFF34D399,
                     fill("🗺️", "దారి చూపించు", "Maps లో navigation", "దారి చూపించు: "),
                     fill("🚆", "ట్రైన్ స్టేటస్", "ట్రైన్ నంబర్ లేదా PNR", "ట్రైన్ స్టేటస్: "),
@@ -335,6 +352,9 @@ public class FeaturesActivity extends Activity {
         content.addView(hint);
         for (Opt o : c.opts) content.addView(row(c, o, false), rowParams());
         if ("places".equals(c.id)) addSavedPlaces(c);
+        if ("shopping".equals(c.id)) addShopping(c);
+        if ("medicine".equals(c.id)) addMedicines(c);
+        if ("birthdays".equals(c.id)) addBirthdays(c);
         scroll.scrollTo(0, 0);
     }
 
@@ -360,6 +380,102 @@ public class FeaturesActivity extends Activity {
             View r = row(c, new Opt("📌", p.optString("name"), where, INFO, ""), false);
             r.setOnClickListener(v -> Places.open(this, p, false));
             r.setOnLongClickListener(v -> { placeMenu(p); return true; });
+            content.addView(r, rowParams());
+        }
+    }
+
+    private TextView header(Cat c, String text) {
+        TextView h = Ui.text(this, text, 14, c.color);
+        h.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        h.setPadding(dp(2), dp(18), 0, dp(2));
+        content.addView(h);
+        return h;
+    }
+
+    private void empty(String text) {
+        TextView none = Ui.text(this, text, 13, Ui.MUTED);
+        none.setPadding(dp(2), dp(6), dp(2), 0);
+        content.addView(none);
+    }
+
+    /** The list itself: tap = bought / not yet; hold = remove; a share button for what is left to buy. */
+    private void addShopping(Cat c) {
+        java.util.List<org.json.JSONObject> items = Shopping.items(this);
+        int left = 0;
+        for (org.json.JSONObject o : items) if (!o.optBoolean("done")) left++;
+        header(c, "లిస్ట్ (" + left + " కొనాలి, " + (items.size() - left) + " కొన్నవి)");
+        if (items.isEmpty()) { empty("లిస్ట్ ఖాళీగా ఉంది. \"Jarvis, లిస్ట్‌లో పాలు, గుడ్లు చేర్చు\" అనండి."); return; }
+        TextView tip = Ui.text(this, "నొక్కితే ✅ కొన్నట్టు · నొక్కి పట్టుకుంటే తీసేయి", 12, Ui.MUTED);
+        tip.setPadding(dp(2), 0, 0, 0);
+        content.addView(tip);
+        for (org.json.JSONObject o : items) {
+            boolean done = o.optBoolean("done");
+            View r = row(c, new Opt(done ? "✅" : "⬜", o.optString("item"), done ? "కొన్నారు" : "", INFO, ""), false);
+            if (done) r.setAlpha(0.55f);
+            String id = o.optString("id");
+            r.setOnClickListener(v -> { Shopping.toggle(this, id); showCat(c); });
+            r.setOnLongClickListener(v -> { Shopping.removeId(this, id); showCat(c); return true; });
+            content.addView(r, rowParams());
+        }
+        if (left > 0) {
+            View share = row(c, new Opt("📤", "ఇప్పుడే షేర్ చెయ్", "WhatsApp లేదా ఏ యాప్‌లోనైనా", INFO, ""), false);
+            share.setOnClickListener(v -> {
+                Intent s = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, Shopping.shareText(this));
+                try { startActivity(Intent.createChooser(s, "షాపింగ్ లిస్ట్ పంపండి")); } catch (Exception ignored) {}
+            });
+            content.addView(share, rowParams());
+        }
+    }
+
+    /** Each medicine with today's doses (✅ taken / ⬜ not yet); tap = mark the nearest dose taken. */
+    private void addMedicines(Cat c) {
+        java.util.List<org.json.JSONObject> meds = Medicine.all(this);
+        header(c, "నా మందులు (" + meds.size() + ")");
+        if (meds.isEmpty()) { empty("ఇంకా ఏ మందూ లేదు. \"Jarvis, BP మాత్ర రోజూ ఉదయం 8కి, రాత్రి 8కి గుర్తు చెయ్, 30 మాత్రలు ఉన్నాయి\" అనండి."); return; }
+        java.util.List<String> today = Medicine.todayLines(this);
+        TextView tip = Ui.text(this, "ఈరోజు: ✅ వేసుకున్నవి · ⬜ ఇంకా · నొక్కితే దగ్గర టైమ్ డోస్ వేసుకున్నట్టు", 12, Ui.MUTED);
+        tip.setPadding(dp(2), 0, 0, 0);
+        content.addView(tip);
+        for (int i = 0; i < meds.size(); i++) {
+            org.json.JSONObject m = meds.get(i);
+            String stock = m.optInt("stock", -1) >= 0 ? " · " + m.optInt("stock") + " మాత్రలు" : "";
+            View r = row(c, new Opt("💊", m.optString("name") + stock, i < today.size() ? today.get(i) : "", INFO, ""), false);
+            r.setOnClickListener(v -> {
+                org.json.JSONObject res = Medicine.taken(this, m, null);
+                android.widget.Toast.makeText(this, res.optBoolean("already") ? "ఈ డోస్ ఇప్పటికే వేసుకున్నారు ✓" : "✅ " + m.optString("name") + " వేసుకున్నారు", android.widget.Toast.LENGTH_SHORT).show();
+                showCat(c);
+            });
+            r.setOnLongClickListener(v -> {
+                new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setMessage(m.optString("name") + " రిమైండర్ తీసేయాలా?")
+                        .setPositiveButton("తీసేయి", (d, w) -> { Medicine.remove(this, m.optString("name")); showCat(c); })
+                        .setNegativeButton("వద్దు", null).show();
+                return true;
+            });
+            content.addView(r, rowParams());
+        }
+    }
+
+    /** The coming birthdays and anniversaries (next 60 days); tap = wishes on WhatsApp. */
+    private void addBirthdays(Cat c) {
+        java.util.List<org.json.JSONObject> list = Birthdays.upcoming(this, 60);
+        header(c, "రాబోయే 60 రోజులు (" + list.size() + ")");
+        if (list.isEmpty()) { empty("ఏవీ లేవు. కాంటాక్ట్స్‌లో పుట్టినరోజు సేవ్ చేసినవి తనంతట తానే వస్తాయి; లేదా పైన చేర్చండి."); return; }
+        TextView tip = Ui.text(this, "నొక్కితే WhatsApp విషెస్ సిద్ధం (మీరు 'పంపు' అంటేనే వెళ్తుంది)", 12, Ui.MUTED);
+        tip.setPadding(dp(2), 0, 0, 0);
+        content.addView(tip);
+        for (org.json.JSONObject b : list) {
+            String emoji = "anniversary".equals(b.optString("kind")) ? "💍" : "🎂";
+            View r = row(c, new Opt(emoji, Birthdays.label(b), Birthdays.when(b) + " · " + b.optString("date"), INFO, ""), false);
+            r.setOnClickListener(v -> {
+                String kind = "anniversary".equals(b.optString("kind")) ? "పెళ్లిరోజు" : "పుట్టినరోజు";
+                Intent i = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        .putExtra(MainActivity.EXTRA_ASK, b.optString("name") + " కి " + Birthdays.when(b) + " " + kind + ". WhatsApp లో తెలుగులో చిన్న, ఆత్మీయమైన "
+                                + kind + " విషెస్ సిద్ధం చెయ్ (whatsapp_message); పంపే ముందు నాకు చదివి వినిపించి అడుగు.")
+                        .putExtra(MainActivity.EXTRA_LABEL, emoji + " " + b.optString("name") + " కి " + kind + " విషెస్");
+                startActivity(i);
+                finish();
+            });
             content.addView(r, rowParams());
         }
     }
@@ -443,7 +559,7 @@ public class FeaturesActivity extends Activity {
         String sub = (showFolder ? c.emoji + " " + c.name + (o.desc.isEmpty() ? "" : " · ") : "") + o.desc;
         if (!sub.isEmpty()) col.addView(Ui.text(this, sub, 12.5f, Ui.MUTED));
         r.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
-        String mark = o.type == FILL ? "✎" : o.type == OPEN ? "⚙" : o.type == INFO ? (o.payload.isEmpty() ? "🗺️" : "ⓘ") : "›";
+        String mark = o.type == FILL ? "✎" : o.type == OPEN ? "⚙" : o.type == INFO ? (o.payload.isEmpty() ? "›" : "ⓘ") : "›";
         TextView m = Ui.text(this, mark, o.type == ASK || o.type == DO ? 24 : 17, c.color);
         r.addView(m);
         r.setOnClickListener(v -> run(o));

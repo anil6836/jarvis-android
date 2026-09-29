@@ -45,6 +45,15 @@ public class AlarmReceiver extends BroadcastReceiver {
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
                 break;
             }
+            case Medicine.ACTION_DUE:
+            case Medicine.ACTION_SNOOZE:
+            case Medicine.ACTION_CHECK:
+            case Medicine.ACTION_TAKEN: {
+                PendingResult pr = goAsync(); // time for Jarvis to say it
+                try { Medicine.onAlarm(c, action, i.getStringExtra("id"), i.getStringExtra("time")); } catch (Exception ignored) {}
+                new Handler(Looper.getMainLooper()).postDelayed(pr::finish, Medicine.ACTION_TAKEN.equals(action) ? 500 : 9000);
+                break;
+            }
             case Reminders.ACTION_BRIEFING:
                 BriefingService.start(c);
                 Reminders.scheduleBriefing(c); // tomorrow
@@ -54,6 +63,7 @@ public class AlarmReceiver extends BroadcastReceiver {
             case Intent.ACTION_TIME_CHANGED:
             case Intent.ACTION_TIMEZONE_CHANGED:
                 Reminders.rescheduleAll(c);
+                Medicine.rescheduleAll(c);
                 GeoReminders.rearmAll(c);
                 Proactive.schedule(c);
                 UpdateJob.schedule(c);

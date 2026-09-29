@@ -140,7 +140,7 @@ final class Tools {
                 "Remind Anil about something at a date and time (he gets a notification and Jarvis says it aloud). Use this for 'remind me' / గుర్తుచేయి requests, not set_alarm.",
                 schema(new String[][]{{"text", "string", "What to remind him about, short Telugu phrase"},
                         {"when", "string", "Local date and time 'yyyy-MM-dd HH:mm' (compute it from the current date/time in the system prompt)"},
-                        {"repeat", "string", "'daily' or 'weekly' for repeating reminders such as medicines; empty for once"}}, "text", "when")));
+                        {"repeat", "string", "'daily' or 'weekly' for repeating reminders; empty for once (medicines use the medicine tool)"}}, "text", "when")));
         DEFS.add(new Def("list_reminders", "List Anil's upcoming reminders with their ids.", schema(new String[][]{})));
         DEFS.add(new Def("cancel_reminder", "Cancel one reminder by id (from list_reminders).",
                 schema(new String[][]{{"id", "string", "Reminder id"}}, "id")));
@@ -353,8 +353,23 @@ final class Tools {
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, places, travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, places, shopping, medicine, birthdays, travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
+        DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
+                + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
+                schema(new String[][]{{"action", "string", "list (default), add or remove"}, {"name", "string", "Whose, as he calls them (e.g. 'అమ్మ', 'Ravi')"},
+                        {"date", "string", "MM-DD, or YYYY-MM-DD when he knows the year"}, {"kind", "string", "birthday (default) or anniversary"},
+                        {"days", "integer", "For list: how many days ahead (default 30)"}})));
+        DEFS.add(new Def("shopping_list", "His shopping list. add: items (comma separated, with quantity if he says); bought: tick them off; remove; list; "
+                + "clear: the bought ones (all=true for everything); share: the list text to send (then whatsapp_message / send_sms if he asked).",
+                schema(new String[][]{{"action", "string", "add, bought, remove, list, clear or share"}, {"items", "string", "Items, comma separated, e.g. 'పాలు 2 ప్యాకెట్లు, గుడ్లు 12, బ్రెడ్'"},
+                        {"all", "boolean", "For clear: true = empty the whole list"}}, "action")));
+        DEFS.add(new Def("medicine", "His medicine reminders (with 'taken' buttons and a tablet count). add: name, times, dose, food, stock; taken: he took a dose now; "
+                + "list: medicines, today's doses, tablets left; stock: tablets he has now; remove; history: doses taken in N days.",
+                schema(new String[][]{{"action", "string", "add, taken, list, stock, remove or history"}, {"name", "string", "Medicine name as he says it"},
+                        {"times", "string", "For add: times like '08:00, 20:00'"}, {"dose", "string", "e.g. '1 మాత్ర', '5 ml'"},
+                        {"food", "string", "e.g. 'భోజనం తర్వాత', 'పరగడుపున'"}, {"stock", "integer", "Tablets he has now (-1 = not counting)"},
+                        {"per_dose", "integer", "Tablets per dose (default 1)"}, {"days", "integer", "For history (default 7)"}}, "action")));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
                 schema(new String[][]{})));
         DEFS.add(new Def("day_summary",
@@ -507,6 +522,9 @@ final class Tools {
             case "bike_charge": return "ఛార్జింగ్ రాస్తున్నాను…";
             case "bike_rides": return "రైడ్స్ చూస్తున్నాను…";
             case "weekly_report": return "ఈ వారం రిపోర్ట్ తయారు చేస్తున్నాను…";
+            case "birthdays": return "పుట్టినరోజులు చూస్తున్నాను…";
+            case "shopping_list": return "షాపింగ్ లిస్ట్…";
+            case "medicine": return "మందులు…";
             case "show_features": return "ఫీచర్లు తెరుస్తున్నాను…";
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
@@ -618,6 +636,9 @@ final class Tools {
                 case "bike_charge": return Bike.addCharge(act(), a.optInt("from_percent", -1), a.optInt("to_percent", -1), a.optDouble("paid", 0)).toString();
                 case "bike_rides": return Bike.summary(act(), System.currentTimeMillis() - Math.max(1, Math.min(90, a.optInt("days", 7))) * 86400000L).toString();
                 case "weekly_report": return Weekly.report(act()).toString();
+                case "birthdays": return birthdays(a);
+                case "shopping_list": return shopping(a);
+                case "medicine": return medicine(a);
                 case "show_features": {
                     String cat = a.optString("category", "");
                     FeaturesActivity.show(act(), cat);
@@ -4549,6 +4570,53 @@ final class Tools {
             if (got[0] != null) return got[0];
         }
         return lastLocation(act());
+    }
+
+    private String birthdays(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT);
+        if (action.startsWith("add")) {
+            JSONObject b = Birthdays.add(act(), a.optString("name"), a.optString("date"), a.optString("kind", "birthday"));
+            if (b == null) return err("missing", "Ask him whose and which date (month and day).");
+            return ok().put("saved", b).put("note", "Reminds him the evening before and on the morning of the day.").toString();
+        }
+        if (action.startsWith("rem") || action.startsWith("del"))
+            return ok().put("removed", Birthdays.remove(act(), a.optString("name"), a.optString("kind", ""))).toString();
+        if (!has(Manifest.permission.READ_CONTACTS)) host.askPermissions(new String[]{Manifest.permission.READ_CONTACTS});
+        JSONArray l = new JSONArray();
+        for (JSONObject b : Birthdays.upcoming(act(), Math.max(1, Math.min(366, a.optInt("days", 30))))) l.put(b);
+        return ok().put("coming", l).put("note", l.length() == 0 ? "None in these days. Birthdays saved on contacts are found by themselves; others he can tell." : "").toString();
+    }
+
+    private String shopping(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT), items = a.optString("items", "");
+        if (action.startsWith("add")) return ok().put("added", Shopping.add(act(), items)).put("list", Shopping.listJson(act()).optJSONArray("to_buy")).toString();
+        if (action.startsWith("bought") || action.startsWith("done") || action.startsWith("tick")) return ok().put("ticked_off", Shopping.mark(act(), items, true)).toString();
+        if (action.startsWith("rem") || action.startsWith("del")) return ok().put("removed", Shopping.remove(act(), items)).toString();
+        if (action.startsWith("clear")) return ok().put("cleared", Shopping.clear(act(), a.optBoolean("all", false))).toString();
+        if (action.startsWith("share")) {
+            String text = Shopping.shareText(act());
+            if (text.isEmpty()) return err("empty", "The list has nothing to buy.");
+            return ok().put("text", text).put("note", "Send it only if he asked and after he confirms (whatsapp_message / send_sms).").toString();
+        }
+        return Shopping.listJson(act()).toString();
+    }
+
+    private String medicine(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT), name = a.optString("name", "");
+        if (action.startsWith("add")) {
+            JSONObject m = Medicine.add(act(), name, a.optString("times"), a.optString("dose"), a.optString("food"), a.optInt("stock", -1), a.optInt("per_dose", 1));
+            if (m == null) return err("missing", "Ask him the medicine's name and the times (e.g. 8 am and 8 pm).");
+            return ok().put("added", m.optString("name")).put("times", m.optJSONArray("times"))
+                    .put("note", "At each time: a notification with ✅ taken / ⏰ later buttons and Jarvis says it; one more reminder after 30 minutes if not marked.").toString();
+        }
+        if (action.startsWith("list")) return Medicine.listJson(act()).toString();
+        if (action.startsWith("hist")) return Medicine.history(act(), Math.max(1, Math.min(60, a.optInt("days", 7)))).toString();
+        JSONObject m = Medicine.find(act(), name);
+        if (m == null) return err("unknown", "No medicine like '" + name + "'. His medicines: " + Medicine.listJson(act()).optJSONArray("medicines"));
+        if (action.startsWith("taken") || action.startsWith("took")) return ok().put("result", Medicine.taken(act(), m, null)).toString();
+        if (action.startsWith("stock")) return ok().put("medicine", Medicine.setStock(act(), name, a.optInt("stock", -1))).toString();
+        if (action.startsWith("rem") || action.startsWith("del")) return ok().put("removed", Medicine.remove(act(), name)).toString();
+        return err("action", "Use add, taken, list, stock, remove or history.");
     }
 
     /** Saved places: save (link / address / here), show, navigate, share_link, list, delete. */

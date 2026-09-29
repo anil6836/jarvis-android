@@ -93,7 +93,7 @@ final class Reminders {
         return PendingIntent.getBroadcast(c, 0, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
-    private static void setAlarm(Context c, long at, PendingIntent pi) {
+    static void setAlarm(Context c, long at, PendingIntent pi) {
         AlarmManager am = c.getSystemService(AlarmManager.class);
         if (am == null) return;
         boolean exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms();
