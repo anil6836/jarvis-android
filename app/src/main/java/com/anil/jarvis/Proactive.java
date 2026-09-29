@@ -87,6 +87,7 @@ public class Proactive extends BroadcastReceiver {
         try { Weekly.maybeNotify(c, p); } catch (Throwable ignored) {}
         try { Birthdays.tick(c, p, p.night() || CallControl.busyWithCall() || dnd(c)); } catch (Throwable ignored) {}
         try { Duty.tick(c, p, p.night() || CallControl.busyWithCall() || dnd(c)); } catch (Throwable ignored) {}
+        try { LocalNews.tick(c, p, p.night() || CallControl.busyWithCall() || dnd(c) || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         if (!p.proactive()) return;
         boolean quiet = p.night() || CallControl.busyWithCall() || dnd(c);
         Calendar now = Calendar.getInstance();

@@ -54,6 +54,8 @@ public class SettingsActivity extends Activity {
     private EditText sosContacts, smartUrls, smartApp, walletMax;
     private Switch walletPay, emotions;
     private Switch alexaSpeak, livePatient, scamGuard, readNews;
+    private Switch newsAuto;
+    private EditText newsPlaces;
     private EditText balGemini, balOpenAi, balAnthropic;
     private EditText bikeRange, bikeKwh, powerRate;
     private Switch weeklyReport;
@@ -362,6 +364,9 @@ public class SettingsActivity extends Activity {
         announceCalls = toggle("కాల్ వస్తే ఎవరో పైకి చెప్పు (నోటిఫికేషన్ యాక్సెస్ కావాలి)", prefs.announceCalls());
         readMessages = toggle("కొత్త మెసేజ్ వస్తే (WhatsApp, SMS, Telegram, Instagram, Facebook, Snapchat...) ఎవరి నుంచో చెప్పి, \"చదవమంటారా?\" అని అడుగు", prefs.readMessages());
         readNews = toggle("📰 Way2News వార్త వచ్చిన వెంటనే చదివి వినిపించు", prefs.readNews());
+        newsPlaces = field("📍 లోకల్ వార్తల ప్రాంతాలు (కామాతో: రాష్ట్రాలు, జిల్లాలు, ఊర్లు)", prefs.newsPlaces(), false);
+        newsPlaces.setHint("తెలంగాణ, ఆంధ్రప్రదేశ్, మీ జిల్లా, మీ ఊరు");
+        newsAuto = toggle("📰 ఈ ప్రాంతాల కొత్త వార్తలు ఉదయం 8, మధ్యాహ్నం 1, సాయంత్రం 7 కి తనంతట తానే చదువు", prefs.newsAuto());
         batteryWarn = toggle("బ్యాటరీ 15%, 5% కి పడితే గొంతుతో చెప్పు", prefs.batteryWarn());
         callVoice = toggle("తర్వాత \"ఎత్తు\" అంటే కాల్ ఎత్తు, \"కట్\" అంటే కట్ చెయ్", prefs.callByVoice());
         briefing = toggle("రోజూ ఉదయం బ్రీఫింగ్ తనంతట తానే", prefs.briefingOn());
@@ -662,6 +667,8 @@ public class SettingsActivity extends Activity {
         e.putBoolean("call_voice", callVoice.isChecked());
         e.putBoolean("read_messages", readMessages.isChecked());
         e.putBoolean("read_news", readNews.isChecked());
+        e.putBoolean("news_auto", newsAuto.isChecked());
+        e.putString("news_places", newsPlaces.getText().toString().trim());
         e.putBoolean("battery_warn", batteryWarn.isChecked());
         e.putBoolean("briefing", briefing.isChecked());
         e.putInt("briefing_hour", briefHour);

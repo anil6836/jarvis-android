@@ -253,6 +253,13 @@ final class Tools {
                 schema(new String[][]{{"text", "string", "The note"}, {"app", "string", "Notes app he named; empty = Samsung Notes"}}, "text")));
         DEFS.add(new Def("news", "Latest Telugu news headlines (top stories, or about a topic/place like 'Hyderabad', 'Andhra Pradesh', 'cricket', 'business').",
                 schema(new String[][]{{"topic", "string", "Topic or place; empty for top stories"}, {"count", "integer", "How many headlines (default 6)"}})));
+        DEFS.add(new Def("local_news", "News from HIS places in Telugu (his states, districts and towns he saved, e.g. his home town and district): newest first, from the last day. "
+                + "read (default): headlines for all his places, or only one 'place'. set / add / remove: change his list of places (comma separated). list: show the places. "
+                + "New ones are also read out by themselves at 8 am, 1 pm and 7 pm (Settings switch).",
+                schema(new String[][]{{"action", "string", "read (default), add, remove, set or list"},
+                        {"places", "string", "For add/remove/set: places comma separated, in Telugu (e.g. 'నల్గొండ, ఖమ్మం')"},
+                        {"place", "string", "For read: only this one place; empty = all his places"},
+                        {"count", "integer", "How many headlines (default 8)"}})));
         DEFS.add(new Def("ev_chargers", "EV charging stations nearest to him (or to a place), with distance and plug types; optionally opens his charger app (Statiq, ElectricPe, Bolt.Earth, eDrive BPCL, Tecell, Spider Energy, Voltran, eHUB by MG).",
                 schema(new String[][]{{"place", "string", "Place to search near; empty = where he is now"}, {"app", "string", "Charger app to open; empty = none"}})));
         DEFS.add(new Def("travel_search", "Open his flight or bus app at a search from -> to on a date (Skyscanner, MakeMyTrip, ixigo, EaseMyTrip, Trip.com / redBus, AbhiBus, IntrCity, FlixBus, TGSRTC). He books and pays himself.",
@@ -499,6 +506,7 @@ final class Tools {
             case "app_search": return "యాప్‌లో వెతుకుతున్నాను…";
             case "note_in_app": return "నోట్ రాస్తున్నాను…";
             case "news": return "వార్తలు తెస్తున్నాను…";
+            case "local_news": return "మీ ప్రాంతాల వార్తలు తెస్తున్నాను…";
             case "ev_chargers": return "ఛార్జింగ్ స్టేషన్లు వెతుకుతున్నాను…";
             case "travel_search": return "టికెట్లు వెతుకుతున్నాను…";
             case "my_trips": return "మీ ప్రయాణాలు చూస్తున్నాను…";
@@ -620,6 +628,7 @@ final class Tools {
                 case "app_search": return appSearch(a.optString("app"), a.optString("query", ""));
                 case "note_in_app": return noteInApp(a.optString("text"), a.optString("app", ""));
                 case "news": return news(a.optString("topic", ""), a.optInt("count", 6));
+                case "local_news": return localNews(a);
                 case "ev_chargers": return evChargers(a.optString("place", ""), a.optString("app", ""));
                 case "travel_search": return travelSearch(a.optString("kind", "flight"), a.optString("from"), a.optString("to"), a.optString("date", ""), a.optString("app", ""));
                 case "my_trips": return myTrips();
@@ -4593,6 +4602,39 @@ final class Tools {
             if (got[0] != null) return got[0];
         }
         return lastLocation(act());
+    }
+
+    /** His own places' news in Telugu; also changes the list of places. */
+    private String localNews(JSONObject a) throws Exception {
+        String action = a.optString("action", "read").toLowerCase(Locale.ROOT);
+        java.util.List<String> have = LocalNews.places(prefs);
+        java.util.List<String> given = new java.util.ArrayList<>();
+        for (String x : a.optString("places", "").split("\\s*[,،\\n]\\s*")) if (!x.trim().isEmpty()) given.add(x.trim());
+        if (action.startsWith("set") || action.startsWith("add") || action.startsWith("rem") || action.startsWith("del")) {
+            if (given.isEmpty()) return err("missing", "Ask him which places (towns, districts, states).");
+            java.util.List<String> next = action.startsWith("set") ? new java.util.ArrayList<>() : new java.util.ArrayList<>(have);
+            if (action.startsWith("rem") || action.startsWith("del")) {
+                for (String g : given) next.removeIf(x -> x.equalsIgnoreCase(g) || x.startsWith(g) || g.startsWith(x));
+            } else {
+                for (String g : given) if (!next.contains(g)) next.add(g);
+            }
+            prefs.setNewsPlaces(String.join(", ", next));
+            return ok().put("places", new JSONArray(LocalNews.places(prefs)))
+                    .put("note", "Saved. Tell him the list in Telugu; he can say 'లోకల్ వార్తలు చెప్పు' any time.").toString();
+        }
+        if (action.startsWith("list"))
+            return ok().put("places", new JSONArray(have)).put("auto_read", prefs.newsAuto() ? "8 am, 1 pm, 7 pm" : "off").toString();
+        String one = a.optString("place", "").trim();
+        int count = Math.max(3, Math.min(15, a.optInt("count", 8)));
+        if (!one.isEmpty()) {
+            JSONArray l = new JSONArray();
+            for (JSONObject o : LocalNews.fetch(java.util.Collections.singletonList(one), count, count)) l.put(o);
+            return ok().put("place", one).put("headlines", l).put("next", l.length() == 0
+                    ? "No news found for this place in the last day (or no internet). Say so honestly."
+                    : "Read them one by one in short Telugu. Then ask if he wants details on one (web search).").toString();
+        }
+        if (have.isEmpty()) return err("no_places", "No places saved. Ask him which places (e.g. his town and district) and use action add.");
+        return LocalNews.forTool(prefs, count).toString();
     }
 
     private String birthdays(JSONObject a) throws Exception {

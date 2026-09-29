@@ -577,6 +577,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         addAction(chips, "📂", "అన్ని ఫీచర్లు", () -> startActivity(new Intent(this, FeaturesActivity.class)));
         addChip(chips, "🌅", "శుభోదయం బ్రీఫింగ్", BRIEF_PROMPT);
         addChip(chips, "📰", "వార్తలు", "ఈరోజు ముఖ్యమైన 3 వార్తలు చెప్పు: ఒకటి భారతదేశం, ఒకటి తెలంగాణ లేదా ఆంధ్రప్రదేశ్, ఒకటి టెక్నాలజీ. ఇంటర్నెట్‌లో వెతికి, చిన్నగా చెప్పు.");
+        addChip(chips, "📍", "లోకల్ వార్తలు", "నా ప్రాంతాల తాజా వార్తలు తెలుగులో చదివి వినిపించు (local_news).");
         addChip(chips, "⛅", "వాతావరణం", "ఇప్పుడు ఇక్కడ వాతావరణం ఎలా ఉంది? రేపు వర్షం పడే అవకాశం ఉందా?");
         addChip(chips, "📷", "ఫోటో స్కాన్", null);
         addAction(chips, "📄", "Scan → PDF", () -> Scanner.start(this));

@@ -114,6 +114,11 @@ final class Prefs {
     boolean readMessages() { return sp.getBoolean("read_messages", true); }
     /** Way2News: read each news notification aloud as it comes. */
     boolean readNews() { return sp.getBoolean("read_news", true); }
+    /** Places whose news he wants in Telugu (states, districts, towns), comma separated. He adds his own towns. */
+    String newsPlaces() { return sp.getString("news_places", "తెలంగాణ, ఆంధ్రప్రదేశ్"); }
+    void setNewsPlaces(String s) { sp.edit().putString("news_places", s == null ? "" : s.trim()).apply(); }
+    /** Read the new local headlines by themselves at 8 am, 1 pm and 7 pm. */
+    boolean newsAuto() { return sp.getBoolean("news_auto", true); }
     /** Warn by voice when the battery gets low. */
     boolean batteryWarn() { return sp.getBoolean("battery_warn", true); }
     /** Driving: everything by voice, messages always read out. */
