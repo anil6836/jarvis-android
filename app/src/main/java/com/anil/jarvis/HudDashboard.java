@@ -85,7 +85,7 @@ final class HudDashboard extends LinearLayout {
         dot = new View(c);
         dot.setBackground(Ui.round(c, Ui.C_GREEN, 0, 999));
         head.addView(dot, new LayoutParams(dp(6), dp(6)));
-        TextView title = Ui.mono(c, Tr.t("SYSTEMS · స్థితి"), 10.5f, Ui.C_CYAN);
+        TextView title = Ui.mono(c, "SYSTEMS · స్థితి", 10.5f, Ui.C_CYAN);
         title.setPadding(dp(8), 0, dp(8), 0);
         head.addView(title);
         summary = Ui.mono(c, "", 10.5f, Ui.MUTED);
@@ -178,7 +178,7 @@ final class HudDashboard extends LinearLayout {
         grid.setVisibility(c ? GONE : VISIBLE);
         summary.setVisibility(c ? VISIBLE : GONE);
         chevron.setText(c ? "▸" : "▾");
-        setContentDescription(c ? Tr.t("స్థితి ప్యానెల్ మూసి ఉంది, తెరవడానికి నొక్కండి") : Tr.t("స్థితి ప్యానెల్"));
+        setContentDescription(c ? "స్థితి ప్యానెల్ మూసి ఉంది, తెరవడానికి నొక్కండి" : "స్థితి ప్యానెల్");
         if (save) sp.edit().putBoolean("collapsed", c).apply();
         updateSummary();
     }

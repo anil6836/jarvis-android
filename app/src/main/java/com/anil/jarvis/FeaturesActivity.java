@@ -212,13 +212,13 @@ public class FeaturesActivity extends Activity {
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         IconView close = new IconView(this, IconView.CLOSE, 0xFFFFFFFF);
         close.setBackground(Ui.glass(this, 20));
-        close.setContentDescription(Tr.t("మూసేయి"));
+        close.setContentDescription("మూసేయి");
         close.setOnClickListener(v -> finish());
         head.addView(close, new LinearLayout.LayoutParams(dp(40), dp(40)));
         root.addView(head);
 
         search = new EditText(this);
-        search.setHint(Tr.t("🔍  ఫీచర్ వెతకండి (బైక్, బిల్లు, రిమైండర్…)"));
+        search.setHint("🔍  ఫీచర్ వెతకండి (బైక్, బిల్లు, రిమైండర్…)");
         search.setHintTextColor(Ui.MUTED);
         search.setTextColor(0xFFFFFFFF);
         search.setTextSize(15);
@@ -271,10 +271,10 @@ public class FeaturesActivity extends Activity {
         current = null;
         if (!search.getText().toString().isEmpty()) { search.setText(""); return; } // the box calls back here once it is empty
         backBtn.setVisibility(View.GONE);
-        title.setText(Tr.t("📂 అన్ని ఫీచర్లు"));
+        title.setText("📂 అన్ని ఫీచర్లు");
         Ui.gradientText(title, Ui.C_CYAN, Ui.C_VIOLET);
         content.removeAllViews();
-        TextView hint = Ui.text(this, Tr.t("ఫోల్డర్ నొక్కితే దాని ఆప్షన్లు వస్తాయి"), 13, Ui.MUTED);
+        TextView hint = Ui.text(this, "ఫోల్డర్ నొక్కితే దాని ఆప్షన్లు వస్తాయి", 13, Ui.MUTED);
         hint.setPadding(dp(2), dp(4), 0, dp(4));
         content.addView(hint);
         LinearLayout row = null;
@@ -314,7 +314,7 @@ public class FeaturesActivity extends Activity {
         bl.setMaxLines(1);
         bl.setEllipsize(android.text.TextUtils.TruncateAt.END);
         t.addView(bl);
-        TextView cnt = Ui.text(this, c.opts.length + Tr.t(" ఆప్షన్లు ›"), 12, c.color);
+        TextView cnt = Ui.text(this, c.opts.length + " ఆప్షన్లు ›", 12, c.color);
         cnt.setPadding(0, dp(4), 0, 0);
         t.addView(cnt);
         t.setOnClickListener(v -> showCat(c));
@@ -328,7 +328,7 @@ public class FeaturesActivity extends Activity {
         backBtn.setVisibility(View.VISIBLE);
         title.getPaint().setShader(null);
         title.setTextColor(0xFFFFFFFF);
-        title.setText(c.emoji + " " + Tr.t(c.name));
+        title.setText(c.emoji + " " + c.name);
         content.removeAllViews();
         TextView hint = Ui.text(this, c.blurb, 13, Ui.MUTED);
         hint.setPadding(dp(2), dp(4), 0, dp(2));
@@ -341,17 +341,17 @@ public class FeaturesActivity extends Activity {
     /** The places he saved: tap = on the map; hold = directions, share, delete. */
     private void addSavedPlaces(Cat c) {
         java.util.List<org.json.JSONObject> places = Places.all(this);
-        TextView h = Ui.text(this, Tr.t("సేవ్ చేసిన ప్రదేశాలు (") + places.size() + ")", 14, c.color);
+        TextView h = Ui.text(this, "సేవ్ చేసిన ప్రదేశాలు (" + places.size() + ")", 14, c.color);
         h.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         h.setPadding(dp(2), dp(18), 0, dp(2));
         content.addView(h);
         if (places.isEmpty()) {
-            TextView none = Ui.text(this, Tr.t("ఇంకా ఏదీ సేవ్ చేయలేదు. పైన ఉన్న వాటిలో ఒకటి వాడండి, లేదా \"Jarvis, ఇది ఇంటి లొకేషన్‌గా సేవ్ చెయ్\" అనండి."), 13, Ui.MUTED);
+            TextView none = Ui.text(this, "ఇంకా ఏదీ సేవ్ చేయలేదు. పైన ఉన్న వాటిలో ఒకటి వాడండి, లేదా \"Jarvis, ఇది ఇంటి లొకేషన్‌గా సేవ్ చెయ్\" అనండి.", 13, Ui.MUTED);
             none.setPadding(dp(2), dp(6), dp(2), 0);
             content.addView(none);
             return;
         }
-        TextView tip = Ui.text(this, Tr.t("నొక్కితే మ్యాప్‌లో · నొక్కి పట్టుకుంటే దారి / షేర్ / తీసేయి"), 12, Ui.MUTED);
+        TextView tip = Ui.text(this, "నొక్కితే మ్యాప్‌లో · నొక్కి పట్టుకుంటే దారి / షేర్ / తీసేయి", 12, Ui.MUTED);
         tip.setPadding(dp(2), 0, 0, 0);
         content.addView(tip);
         for (org.json.JSONObject p : places) {
@@ -368,7 +368,7 @@ public class FeaturesActivity extends Activity {
         String name = p.optString("name");
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("📌 " + name)
-                .setItems(new String[]{Tr.t("🗺️ మ్యాప్‌లో చూపించు"), Tr.t("🧭 దారి చూపించు"), Tr.t("📤 లింక్ షేర్ చెయ్"), Tr.t("🗑️ తీసేయి")}, (d, w) -> {
+                .setItems(new String[]{"🗺️ మ్యాప్‌లో చూపించు", "🧭 దారి చూపించు", "📤 లింక్ షేర్ చెయ్", "🗑️ తీసేయి"}, (d, w) -> {
                     if (w == 0) Places.open(this, p, false);
                     else if (w == 1) Places.open(this, p, true);
                     else if (w == 2) {
@@ -376,9 +376,9 @@ public class FeaturesActivity extends Activity {
                         try { startActivity(Intent.createChooser(s, name + " లొకేషన్ పంపండి")); } catch (Exception ignored) {}
                     } else {
                         new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                                .setMessage(name + Tr.t(" తీసేయాలా?"))
-                                .setPositiveButton(Tr.t("తీసేయి"), (d2, w2) -> { Places.remove(this, name); if (current != null) showCat(current); })
-                                .setNegativeButton(Tr.t("వద్దు"), null).show();
+                                .setMessage(name + " తీసేయాలా?")
+                                .setPositiveButton("తీసేయి", (d2, w2) -> { Places.remove(this, name); if (current != null) showCat(current); })
+                                .setNegativeButton("వద్దు", null).show();
                     }
                 })
                 .show();
@@ -389,14 +389,14 @@ public class FeaturesActivity extends Activity {
         backBtn.setVisibility(View.VISIBLE);
         title.getPaint().setShader(null);
         title.setTextColor(0xFFFFFFFF);
-        title.setText(Tr.t("🔍 వెతుకుతున్నాను"));
+        title.setText("🔍 వెతుకుతున్నాను");
         content.removeAllViews();
         String l = q.toLowerCase(Locale.ROOT);
         int n = 0;
         for (Cat c : CATS) {
-            boolean catHit = has(c.name, l) || has(c.blurb, l);
+            boolean catHit = c.name.toLowerCase(Locale.ROOT).contains(l) || c.blurb.toLowerCase(Locale.ROOT).contains(l);
             for (Opt o : c.opts) {
-                if (catHit || has(o.title, l) || has(o.desc, l)) {
+                if (catHit || o.title.toLowerCase(Locale.ROOT).contains(l) || o.desc.toLowerCase(Locale.ROOT).contains(l)) {
                     content.addView(row(c, o, true), rowParams());
                     n++;
                 }
@@ -412,15 +412,10 @@ public class FeaturesActivity extends Activity {
             n++;
         }
         if (n == 0) {
-            TextView none = Ui.text(this, "\"" + q + Tr.t("\" కి ఏ ఫీచర్ దొరకలేదు. Jarvis ని నేరుగా అడగండి, చాలా పనులు చేయగలడు."), 14, Ui.MUTED);
+            TextView none = Ui.text(this, "\"" + q + "\" కి ఏ ఫీచర్ దొరకలేదు. Jarvis ని నేరుగా అడగండి, చాలా పనులు చేయగలడు.", 14, Ui.MUTED);
             none.setPadding(dp(2), dp(12), dp(2), 0);
             content.addView(none);
         }
-    }
-
-    /** A label matches in Telugu or in its English (so "bike" and "బైక్" both find the bike folder). */
-    private static boolean has(String label, String q) {
-        return label.toLowerCase(Locale.ROOT).contains(q) || Tr.t(label).toLowerCase(Locale.ROOT).contains(q);
     }
 
     private LinearLayout.LayoutParams rowParams() {
@@ -445,7 +440,7 @@ public class FeaturesActivity extends Activity {
         col.setPadding(dp(12), 0, dp(8), 0);
         TextView t = Ui.text(this, o.title, 15.5f, 0xFFFFFFFF);
         col.addView(t);
-        String sub = (showFolder ? c.emoji + " " + Tr.t(c.name) + (o.desc.isEmpty() ? "" : " · ") : "") + Tr.t(o.desc);
+        String sub = (showFolder ? c.emoji + " " + c.name + (o.desc.isEmpty() ? "" : " · ") : "") + o.desc;
         if (!sub.isEmpty()) col.addView(Ui.text(this, sub, 12.5f, Ui.MUTED));
         r.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
         String mark = o.type == FILL ? "✎" : o.type == OPEN ? "⚙" : o.type == INFO ? (o.payload.isEmpty() ? "🗺️" : "ⓘ") : "›";
@@ -460,7 +455,7 @@ public class FeaturesActivity extends Activity {
         if (o.type == INFO) {
             if (o.payload.isEmpty()) return;
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                    .setTitle(o.emoji + " " + Tr.t(o.title)).setMessage(Tr.t(o.payload)).setPositiveButton(Tr.t("సరే"), null).show();
+                    .setTitle(o.emoji + " " + o.title).setMessage(o.payload).setPositiveButton("సరే", null).show();
             return;
         }
         if (o.type == OPEN) {
@@ -468,8 +463,8 @@ public class FeaturesActivity extends Activity {
             return;
         }
         Intent i = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        if (o.type == ASK) i.putExtra(MainActivity.EXTRA_ASK, o.payload).putExtra(MainActivity.EXTRA_LABEL, o.emoji + " " + Tr.t(o.title));
-        else if (o.type == FILL) i.putExtra(MainActivity.EXTRA_FILL, Tr.t(o.payload));
+        if (o.type == ASK) i.putExtra(MainActivity.EXTRA_ASK, o.payload).putExtra(MainActivity.EXTRA_LABEL, o.emoji + " " + o.title);
+        else if (o.type == FILL) i.putExtra(MainActivity.EXTRA_FILL, o.payload);
         else i.putExtra(MainActivity.EXTRA_DO, o.payload);
         startActivity(i);
         finish();

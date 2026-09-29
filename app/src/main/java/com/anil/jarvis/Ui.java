@@ -114,27 +114,8 @@ final class Ui {
         return g;
     }
 
-    /** A label: shown in English when he chose English for the app (Tr). */
-    static final class Label extends TextView {
-        Label(Context c) { super(c); }
-
-        @Override public void setText(CharSequence text, BufferType type) {
-            super.setText(text instanceof String ? Tr.t((String) text) : text, type);
-        }
-    }
-
-    /** Text that is never translated (chat, Jarvis's answers, what he said). */
-    static TextView plain(Context c, String s, float sp, int color) {
-        TextView t = new TextView(c);
-        t.setText(s);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
-        t.setTextColor(color);
-        t.setLineSpacing(0, 1.15f);
-        return t;
-    }
-
     static TextView text(Context c, String s, float sp, int color) {
-        TextView t = new Label(c);
+        TextView t = new TextView(c);
         t.setText(s);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         t.setTextColor(color);

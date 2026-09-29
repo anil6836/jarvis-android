@@ -154,7 +154,6 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         super.onCreate(b);
         setVolumeControlStream(AudioManager.STREAM_MUSIC); // volume keys = Jarvis's voice, also during talk-over call mode
         prefs = new Prefs(this);
-        builtEnglish = Tr.english(); // the labels below are built in this language
         store = Store.get(this);
         store.listener = this;
         tools = new Tools(this, store, prefs);
@@ -177,7 +176,6 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onResume() {
         super.onResume();
-        if (builtEnglish != Tr.english() && live == null && !busy) { recreate(); return; } // switched in Settings
         paused = false;
         visible = true;
         store.listener = this;
@@ -206,7 +204,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (updateBanner == null || isFinishing()) return;
         boolean show = Updater.newAvailable(this);
         updateBanner.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (show) updateBanner.setText(Tr.t("⬆  Jarvis కొత్త వెర్షన్ 1.0.") + Updater.knownLatest(this) + Tr.t(" వచ్చింది. అప్డేట్ చేయడానికి నొక్కండి"));
+        if (show) updateBanner.setText("⬆  Jarvis కొత్త వెర్షన్ 1.0." + Updater.knownLatest(this) + " వచ్చింది. అప్డేట్ చేయడానికి నొక్కండి");
     }
 
     @Override protected void onPause() {
@@ -380,9 +378,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         try {
             startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.fromParts("package", getPackageName(), null)));
-            Toast.makeText(this, Tr.t("అనుమతులు (Permissions) తెరిచి Allow ఇవ్వండి"), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "అనుమతులు (Permissions) తెరిచి Allow ఇవ్వండి", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
-            Toast.makeText(this, Tr.t("Settings → Apps → Jarvis → Permissions లో Allow ఇవ్వండి"), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Settings → Apps → Jarvis → Permissions లో Allow ఇవ్వండి", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -407,11 +405,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (code == REQ_PHOTO_CAM && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) openCamera();
         if (code == REQ_LIVE) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startLive();
-            else Toast.makeText(this, Tr.t("మాట్లాడాలంటే మైక్ అనుమతి కావాలి"), Toast.LENGTH_LONG).show();
+            else Toast.makeText(this, "మాట్లాడాలంటే మైక్ అనుమతి కావాలి", Toast.LENGTH_LONG).show();
         }
         if (code == REQ_MIC) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startListening();
-            else Toast.makeText(this, Tr.t("మాట్లాడాలంటే మైక్ అనుమతి కావాలి"), Toast.LENGTH_LONG).show();
+            else Toast.makeText(this, "మాట్లాడాలంటే మైక్ అనుమతి కావాలి", Toast.LENGTH_LONG).show();
         }
         syncWakeService();
     }
@@ -458,18 +456,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         clock = Ui.text(this, "", 12, Ui.MUTED);    // (time and date live in the status tiles now)
         dateView = Ui.text(this, "", 12, Ui.MUTED);
 
-        TextView lang = Ui.plain(this, Tr.english() ? "తె" : "EN", 14, 0xFFFFFFFF);
-        lang.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        lang.setGravity(Gravity.CENTER);
-        lang.setBackground(Ui.glass(this, 22));
-        lang.setContentDescription(Tr.english() ? "యాప్ తెలుగులో" : "App in English");
-        lang.setOnClickListener(v -> switchLanguage());
-        LinearLayout.LayoutParams langLp = new LinearLayout.LayoutParams(dp(44), dp(44));
-        langLp.rightMargin = dp(8);
-        hud.addView(lang, langLp);
-
         IconView all = new IconView(this, IconView.GRID, 0xFFFFFFFF);
-        all.setContentDescription(Tr.t("అన్ని ఫీచర్లు"));
+        all.setContentDescription("అన్ని ఫీచర్లు");
         all.setBackground(Ui.glass(this, 22));
         all.setOnClickListener(v -> startActivity(new Intent(this, FeaturesActivity.class)));
         LinearLayout.LayoutParams allLp = new LinearLayout.LayoutParams(dp(44), dp(44));
@@ -477,7 +465,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         hud.addView(all, allLp);
 
         IconView gear = new IconView(this, IconView.GEAR, 0xFFFFFFFF);
-        gear.setContentDescription(Tr.t("సెట్టింగ్స్"));
+        gear.setContentDescription("సెట్టింగ్స్");
         gear.setBackground(Ui.glass(this, 22));
         gear.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         hud.addView(gear, new LinearLayout.LayoutParams(dp(44), dp(44)));
@@ -615,11 +603,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         attachThumb = new ImageView(this);
         attachThumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
         attachRow.addView(attachThumb, new LinearLayout.LayoutParams(dp(46), dp(46)));
-        attachText = Ui.text(this, Tr.t("  ఫోటో జత చేశారు"), 14, Ui.MUTED);
+        attachText = Ui.text(this, "  ఫోటో జత చేశారు", 14, Ui.MUTED);
         attachText.setSingleLine(true);
         attachText.setEllipsize(TextUtils.TruncateAt.MIDDLE);
         attachRow.addView(attachText, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView attachRemove = Ui.text(this, Tr.t("తీసేయి"), 14, Ui.RED);
+        TextView attachRemove = Ui.text(this, "తీసేయి", 14, Ui.RED);
         attachRemove.setPadding(dp(10), dp(8), dp(4), dp(8));
         attachRemove.setOnClickListener(v -> clearAttachment());
         attachRow.addView(attachRemove);
@@ -632,12 +620,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         row.setBackground(Ui.round(this, 0x1AFFFFFF, 0x33FFFFFF, 28));
         row.setPadding(dp(4), dp(4), dp(5), dp(4));
         IconView plus = new IconView(this, IconView.PLUS, Ui.TEXT);
-        plus.setContentDescription(Tr.t("ఫోటో జత చేయి"));
+        plus.setContentDescription("ఫోటో జత చేయి");
         plus.setOnClickListener(v -> pickPhoto());
         row.addView(plus, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         input = new EditText(this);
-        input.setHint(Tr.t("Jarvis ని అడగండి"));
+        input.setHint("Jarvis ని అడగండి");
         input.setTextColor(Ui.TEXT);
         input.setHintTextColor(Ui.FAINT);
         input.setTextSize(16.5f);
@@ -654,7 +642,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         row.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
 
         micIcon = new IconView(this, IconView.MIC, Ui.TEXT);
-        micIcon.setContentDescription(Tr.t("మాట్లాడి అడగండి"));
+        micIcon.setContentDescription("మాట్లాడి అడగండి");
         micIcon.setOnClickListener(v -> onMicPressed());
         row.addView(micIcon, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
@@ -663,7 +651,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         pauseIcon = new IconView(this, IconView.PAUSE, Ui.CYAN);
         pauseBtn.addView(pauseIcon, new FrameLayout.LayoutParams(-1, -1));
         pauseBtn.setOnClickListener(v -> togglePause());
-        pauseBtn.setContentDescription(Tr.t("ఆపు / కొనసాగించు"));
+        pauseBtn.setContentDescription("ఆపు / కొనసాగించు");
         pauseBtn.setVisibility(View.GONE);
         LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(44), dp(44));
         plp.rightMargin = dp(4);
@@ -674,7 +662,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         actionIcon = new IconView(this, IconView.WAVE, 0xFFFFFFFF);
         actionBtn.addView(actionIcon, new FrameLayout.LayoutParams(-1, -1));
         actionBtn.setOnClickListener(v -> onActionPressed());
-        actionBtn.setContentDescription(Tr.t("Live సంభాషణ"));
+        actionBtn.setContentDescription("Live సంభాషణ");
         LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dp(46), dp(46));
         alp.leftMargin = dp(2);
         row.addView(actionBtn, alp);
@@ -700,7 +688,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
         LinearLayout add = new LinearLayout(this);
         EditText field = new EditText(this);
-        field.setHint(missions ? Tr.t("కొత్త మిషన్ రాయండి") : Tr.t("Jarvis గుర్తుంచుకోవాల్సిన విషయం"));
+        field.setHint(missions ? "కొత్త మిషన్ రాయండి" : "Jarvis గుర్తుంచుకోవాల్సిన విషయం");
         field.setTextColor(Ui.TEXT);
         field.setHintTextColor(Ui.FAINT);
         field.setTextSize(16);
@@ -709,7 +697,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         field.setPadding(dp(12), dp(10), dp(12), dp(10));
         add.addView(field, new LinearLayout.LayoutParams(0, -2, 1));
         Button go = new Button(this);
-        go.setText(missions ? Tr.t("జోడించు") : Tr.t("సేవ్"));
+        go.setText(missions ? "జోడించు" : "సేవ్");
         go.setTextColor(Ui.CYAN);
         go.setAllCaps(false);
         go.setBackground(Ui.round(this, Ui.PANEL, Ui.CYAN_DIM, 12));
@@ -737,13 +725,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (missions) {
             missionList = list;
             missionEmpty = empty;
-            doneLabel = Ui.mono(this, Tr.t("పూర్తయినవి"), 12, Ui.FAINT);
+            doneLabel = Ui.mono(this, "పూర్తయినవి", 12, Ui.FAINT);
             doneLabel.setPadding(dp(2), dp(22), 0, dp(4));
             box.addView(doneLabel);
             doneList = new LinearLayout(this);
             doneList.setOrientation(LinearLayout.VERTICAL);
             box.addView(doneList);
-            reminderLabel = Ui.mono(this, Tr.t("రాబోయే రిమైండర్లు"), 12, Ui.FAINT);
+            reminderLabel = Ui.mono(this, "రాబోయే రిమైండర్లు", 12, Ui.FAINT);
             reminderLabel.setPadding(dp(2), dp(22), 0, dp(4));
             box.addView(reminderLabel);
             reminderList = new LinearLayout(this);
@@ -773,7 +761,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** A colourful quick-action pill: emoji, words, its own soft gradient. */
     private TextView chip(LinearLayout chips, String emoji, String label) {
         int[] c = CHIP_COLORS[chipIndex++ % CHIP_COLORS.length];
-        TextView chip = Ui.text(this, emoji + "  " + Tr.t(label), 14, 0xFFFFFFFF);
+        TextView chip = Ui.text(this, emoji + "  " + label, 14, 0xFFFFFFFF);
         chip.setSingleLine(true);
         GradientDrawable g = Ui.grad(this, new int[]{Ui.alpha(c[0], 0x55), Ui.alpha(c[1], 0x33)}, 999, null);
         g.setStroke(dp(1), Ui.alpha(c[0], 0x99));
@@ -792,7 +780,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** A question from outside (a notification, the features screen): into Live when it is running, else a normal turn. */
     private void askFromOutside(String prompt, String label) {
         if (busy) {
-            Toast.makeText(this, Tr.t("Jarvis ఇంకా జవాబిస్తున్నాడు. అయ్యాక మళ్లీ నొక్కండి."), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Jarvis ఇంకా జవాబిస్తున్నాడు. అయ్యాక మళ్లీ నొక్కండి.", Toast.LENGTH_SHORT).show();
             return;
         }
         if (live != null && live.isOpen()) {
@@ -803,19 +791,6 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             return;
         }
         send(prompt, label, false);
-    }
-
-    /** The labels' language when this screen was built (rebuilt when he switches). */
-    private boolean builtEnglish;
-
-    /** తె / EN: all labels in Telugu or English (Jarvis's voice and answers stay as they are). */
-    private void switchLanguage() {
-        if (live != null || busy || voice.speaking || voice.listening) {
-            Toast.makeText(this, Tr.t("Jarvis ఇంకా జవాబిస్తున్నాడు. అయ్యాక మళ్లీ నొక్కండి."), Toast.LENGTH_SHORT).show();
-            return;
-        }
-        Tr.setEnglish(this, !Tr.english());
-        recreate();
     }
 
     /** An action picked in the features screen. */
@@ -838,7 +813,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** Starts a request in the message box for him to finish ("ఒక వెబ్‌సైట్ తయారు చెయ్: …"). */
     private void prefill(String start) {
         if (live != null) { liveScreen.show(); return; }
-        input.setText(Tr.t(start));
+        input.setText(start);
         input.setSelection(input.getText().length());
         input.requestFocus();
         try {
@@ -883,10 +858,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private String shortGreeting() {
         int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-        if (h >= 4 && h < 12) return Tr.t("శుభోదయం");
-        if (h >= 12 && h < 17) return Tr.t("శుభ మధ్యాహ్నం");
-        if (h >= 17 && h < 21) return Tr.t("శుభ సాయంత్రం");
-        return Tr.t("శుభ రాత్రి");
+        if (h >= 4 && h < 12) return "శుభోదయం";
+        if (h >= 12 && h < 17) return "శుభ మధ్యాహ్నం";
+        if (h >= 17 && h < 21) return "శుభ సాయంత్రం";
+        return "శుభ రాత్రి";
     }
 
     private String greetingWord() {
@@ -899,15 +874,15 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void updateSetup() {
         if (!prefs.hasBrain()) {
-            setupCard.setText(Tr.t("Jarvis మెదడుకి API key కావాలి. ఇక్కడ నొక్కి సెట్టింగ్స్‌లో మీ OpenAI (లేదా Anthropic) key పెట్టండి."));
+            setupCard.setText("Jarvis మెదడుకి API key కావాలి. ఇక్కడ నొక్కి సెట్టింగ్స్‌లో మీ OpenAI (లేదా Anthropic) key పెట్టండి.");
             setupCard.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
             setupCard.setVisibility(View.VISIBLE);
         } else if (missingPermissions()) {
-            setupCard.setText(Tr.t("కాల్స్, SMS, కాంటాక్ట్స్, మైక్, లొకేషన్ వాడాలంటే అనుమతులు కావాలి. ఇక్కడ నొక్కి Allow ఇవ్వండి."));
+            setupCard.setText("కాల్స్, SMS, కాంటాక్ట్స్, మైక్, లొకేషన్ వాడాలంటే అనుమతులు కావాలి. ఇక్కడ నొక్కి Allow ఇవ్వండి.");
             setupCard.setOnClickListener(v -> askCorePermissions());
             setupCard.setVisibility(View.VISIBLE);
         } else if (voice != null && voice.ttsChecked && !voice.teluguVoice && prefs.voiceReplies()) {
-            setupCard.setText(Tr.t("ఈ ఫోన్‌లో తెలుగు వాయిస్ ఇన్‌స్టాల్ అవ్వలేదు, అందుకే Jarvis తెలుగు సరిగ్గా పలకలేడు. ఇక్కడ నొక్కి Google Text-to-speech లో తెలుగు వాయిస్ డౌన్‌లోడ్ చేయండి."));
+            setupCard.setText("ఈ ఫోన్‌లో తెలుగు వాయిస్ ఇన్‌స్టాల్ అవ్వలేదు, అందుకే Jarvis తెలుగు సరిగ్గా పలకలేడు. ఇక్కడ నొక్కి Google Text-to-speech లో తెలుగు వాయిస్ డౌన్‌లోడ్ చేయండి.");
             setupCard.setOnClickListener(v -> {
                 try {
                     startActivity(new Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA));
@@ -958,7 +933,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             wrap.addView(img, plp);
         }
 
-        TextView body = Ui.plain(this, text, 16.5f, Ui.TEXT);
+        TextView body = Ui.text(this, text, 16.5f, Ui.TEXT);
         body.setLineSpacing(0, 1.25f);
         body.setTextIsSelectable(true);
         body.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.8f));
@@ -971,7 +946,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             body.setPadding(dp(14), dp(10), dp(14), dp(11));
             jarvisBodies.add(body);
             IconView replay = new IconView(this, IconView.SPEAKER, Ui.C_CYAN);
-            replay.setContentDescription(Tr.t("మళ్లీ వినిపించు"));
+            replay.setContentDescription("మళ్లీ వినిపించు");
             replay.setOnClickListener(v -> {
                 lastWasVoice = false;
                 voice.speak(body.getText().toString(), prefs.speechRate());
@@ -1062,7 +1037,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         col.addView(w);
         row.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
         IconView del = new IconView(this, IconView.TRASH, Ui.FAINT);
-        del.setContentDescription(Tr.t("రిమైండర్ తీసేయి"));
+        del.setContentDescription("రిమైండర్ తీసేయి");
         del.setOnClickListener(v -> {
             Reminders.cancel(this, id);
             JSONObject gone = store.removeReminder(id);
@@ -1094,7 +1069,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         showTab(0);
         cameraBox.setVisibility(View.VISIBLE);
         camera.open();
-        Toast.makeText(this, Tr.t("Live కెమెరా ఆన్. ఏం కనిపిస్తోందో Jarvis ని అడగండి."), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Live కెమెరా ఆన్. ఏం కనిపిస్తోందో Jarvis ని అడగండి.", Toast.LENGTH_SHORT).show();
     }
 
     private View itemRow(JSONObject item, boolean mission) {
@@ -1107,7 +1082,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (mission) {
             IconView check = new IconView(this, IconView.CHECK, done ? Ui.INK : 0x00000000);
             check.setBackground(Ui.round(this, done ? Ui.CYAN2 : 0, Ui.CYAN_DIM, 7));
-            check.setContentDescription(done ? Tr.t("మళ్లీ యాక్టివ్ చేయి") : Tr.t("పూర్తయింది"));
+            check.setContentDescription(done ? "మళ్లీ యాక్టివ్ చేయి" : "పూర్తయింది");
             check.setOnClickListener(v -> store.setMissionDone(id, !done));
             LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(26), dp(26));
             clp.rightMargin = dp(12);
@@ -1125,7 +1100,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         row.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
 
         IconView del = new IconView(this, IconView.TRASH, Ui.FAINT);
-        del.setContentDescription(Tr.t("తీసేయి"));
+        del.setContentDescription("తీసేయి");
         del.setOnClickListener(v -> {
             JSONObject gone = mission ? store.removeMission(id) : store.removeMemory(id);
             if (gone != null) showUndo(mission ? "మిషన్ తీసేశాను" : "జ్ఞాపకం తీసేశాను",
@@ -1144,7 +1119,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void showUndo(String text, Runnable undo) {
         if (pendingUndo != null) main.removeCallbacks(pendingUndo);
-        undoBar.setText(text + Tr.t("   ·   తిరిగి తీసుకురా"));
+        undoBar.setText(text + "   ·   తిరిగి తీసుకురా");
         undoBar.setVisibility(View.VISIBLE);
         undoBar.setOnClickListener(v -> { undo.run(); undoBar.setVisibility(View.GONE); });
         pendingUndo = () -> undoBar.setVisibility(View.GONE);
@@ -1203,17 +1178,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** The screen after a pause / carry-on (by button or by voice). */
     private void afterPaused(int r) {
-        input.setHint(Tr.t("Jarvis ని అడగండి"));
+        input.setHint("Jarvis ని అడగండి");
         if (r == VoiceIO.HELD) {
             orb.setState(OrbView.IDLE);
-            status.setText(Tr.t("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి"));
+            status.setText("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి");
             // let "Jarvis" be heard again while paused, so he can say "కొనసాగించు" later
             talking(false);
             if (prefs.wakeReady()) WakeService.resume(this);
             screenMaySleepSoon();
         } else if (r == VoiceIO.RESUMED) {
             orb.setState(OrbView.SPEAKING);
-            status.setText(Tr.t("మాట్లాడుతున్నాను…"));
+            status.setText("మాట్లాడుతున్నాను…");
             talking(true);
             WakeService.pause(this);
             keepScreenOn();
@@ -1265,21 +1240,21 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void startEnglishPractice() {
         if (live != null) { liveScreen.show(); return; }
         if (prefs.openAiKey().trim().isEmpty()) {
-            Toast.makeText(this, Tr.t("English practice కి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)"), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "English practice కి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
             return;
         }
-        if (!Net.online(this)) { Toast.makeText(this, Tr.t("ఇంటర్నెట్ లేదు"), Toast.LENGTH_LONG).show(); return; }
+        if (!Net.online(this)) { Toast.makeText(this, "ఇంటర్నెట్ లేదు", Toast.LENGTH_LONG).show(); return; }
         startLive(Brain.tutorInstructions(prefs.name(), null));
     }
 
     /** The blue button: Live conversation, whether or not Live is set as the default for "Hey Jarvis". */
     private void startLiveFromButton() {
         if (prefs.openAiKey().trim().isEmpty()) {
-            Toast.makeText(this, Tr.t("Live సంభాషణకి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)"), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Live సంభాషణకి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
             return;
         }
         if (!Net.online(this)) {
-            Toast.makeText(this, Tr.t("ఇంటర్నెట్ లేదు. నెట్ ఆన్ చేసి మళ్లీ నొక్కండి."), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "ఇంటర్నెట్ లేదు. నెట్ ఆన్ చేసి మళ్లీ నొక్కండి.", Toast.LENGTH_LONG).show();
             return;
         }
         startLive();
@@ -1293,7 +1268,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onLiveMute(boolean muted) {
         if (live != null) live.setMuted(muted);
-        status.setText(muted ? Tr.t("మైక్ ఆఫ్") : Tr.t("మాట్లాడండి…"));
+        status.setText(muted ? "మైక్ ఆఫ్" : "మాట్లాడండి…");
     }
 
     @Override public void onLiveMinimize() {
@@ -1336,7 +1311,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         WakeService.pause(this);
         keepScreenOn();
         showTab(0);
-        input.setHint(Tr.t("Live నడుస్తోంది · నీలం బటన్ = Live తెర"));
+        input.setHint("Live నడుస్తోంది · నీలం బటన్ = Live తెర");
         Tools.takeInterpreter(); // a stale request from an earlier turn must not start later
         live = new LiveSession(this, prefs, tools, this);
         liveOn = true;
@@ -1413,7 +1388,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (live != null) return;
         }
         finishTurn();
-        if ("idle".equals(reason)) status.setText(Tr.t("నిశ్శబ్దంగా ఉంది, Live సంభాషణ ఆపేశాను"));
+        if ("idle".equals(reason)) status.setText("నిశ్శబ్దంగా ఉంది, Live సంభాషణ ఆపేశాను");
     }
 
     private String describeLive(String m) {
@@ -1440,7 +1415,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             return;
         }
         if (!voice.canListen()) {
-            Toast.makeText(this, Tr.t("ఈ ఫోన్‌లో Google వాయిస్ టైపింగ్ లేదు. Google యాప్ ఇన్‌స్టాల్/అప్‌డేట్ చేయండి."), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "ఈ ఫోన్‌లో Google వాయిస్ టైపింగ్ లేదు. Google యాప్ ఇన్‌స్టాల్/అప్‌డేట్ చేయండి.", Toast.LENGTH_LONG).show();
             finishTurn();
             return;
         }
@@ -1450,13 +1425,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         showTab(0);
         voice.listen(prefs.listenLang());
         orb.setState(OrbView.LISTENING);
-        status.setText(Tr.t("వింటున్నాను…"));
-        input.setHint(Tr.t("వింటున్నాను…"));
+        status.setText("వింటున్నాను…");
+        input.setHint("వింటున్నాను…");
         refreshAction();
     }
 
     @Override public void onListening() {
-        status.setText(Tr.t("వింటున్నాను… మాట్లాడండి"));
+        status.setText("వింటున్నాను… మాట్లాడండి");
         syncPause();
     }
 
@@ -1466,7 +1441,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onHeard(String text) {
-        input.setHint(Tr.t("Jarvis ని అడగండి"));
+        input.setHint("Jarvis ని అడగండి");
         input.setText("");
         if (voice.isPaused()) { // "ఆపు" / "కొనసాగించు" / "చాలు", or a new question
             int r = voice.pausedHeard(text);
@@ -1477,7 +1452,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onListenFailed(int error) {
-        input.setHint(Tr.t("Jarvis ని అడగండి"));
+        input.setHint("Jarvis ని అడగండి");
         String partial = input.getText().toString().trim();
         if (voice.isPaused()) { // nothing (clear) heard while paused: carry on, or stay paused if he paused it
             input.setText("");
@@ -1495,17 +1470,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         switch (error) {
             case SpeechRecognizer.ERROR_NETWORK:
             case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
-                Toast.makeText(this, Tr.t("వాయిస్‌కి ఇంటర్నెట్ కావాలి"), Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "వాయిస్‌కి ఇంటర్నెట్ కావాలి", Toast.LENGTH_SHORT).show();
                 break;
             case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
-                Toast.makeText(this, Tr.t("మైక్ బిజీగా ఉంది, మళ్లీ నొక్కండి"), Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "మైక్ బిజీగా ఉంది, మళ్లీ నొక్కండి", Toast.LENGTH_SHORT).show();
                 break;
             case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
                 requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
                 break;
             case 12: // ERROR_LANGUAGE_NOT_SUPPORTED
             case 13: // ERROR_LANGUAGE_UNAVAILABLE
-                Toast.makeText(this, Tr.t("తెలుగు వాయిస్ టైపింగ్ లేదు. Google యాప్ → Settings → Voice → Languages లో తెలుగు జోడించండి."), Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "తెలుగు వాయిస్ టైపింగ్ లేదు. Google యాప్ → Settings → Voice → Languages లో తెలుగు జోడించండి.", Toast.LENGTH_LONG).show();
                 break;
             default:
                 break;
@@ -1518,7 +1493,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onSpeakStart() {
         keepScreenOn();
         orb.setState(OrbView.SPEAKING);
-        status.setText(Tr.t("మాట్లాడుతున్నాను…"));
+        status.setText("మాట్లాడుతున్నాను…");
         refreshAction();
     }
 
@@ -1579,7 +1554,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         WakeService.pause(this);
         keepScreenOn();
         orb.setState(OrbView.THINKING);
-        status.setText(Tr.t("ఆలోచిస్తున్నాను…"));
+        status.setText("ఆలోచిస్తున్నాను…");
         refreshAction();
 
         final int gen = ++generation;
@@ -1678,8 +1653,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void setIdle() {
         screenMaySleepSoon();
         orb.setState(prefs.hasBrain() ? OrbView.IDLE : OrbView.OFFLINE);
-        status.setText(prefs.hasBrain() ? Tr.t("సిద్ధంగా ఉన్నాను, ") + prefs.name() : Tr.t("మెదడు ఆఫ్‌లైన్: API key కావాలి"));
-        input.setHint(Tr.t("Jarvis ని అడగండి"));
+        status.setText(prefs.hasBrain() ? "సిద్ధంగా ఉన్నాను, " + prefs.name() : "మెదడు ఆఫ్‌లైన్: API key కావాలి");
+        input.setHint("Jarvis ని అడగండి");
         refreshAction();
     }
 
@@ -1748,7 +1723,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         try {
             startActivityForResult(i, REQ_FILE);
         } catch (Exception e) {
-            Toast.makeText(this, Tr.t("ఫైల్స్ తెరవలేకపోయాను"), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "ఫైల్స్ తెరవలేకపోయాను", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -1801,21 +1776,21 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void scanDone(String name, byte[] pdf, int pages, Uri saved, String where) {
         if (isFinishing()) return;
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(Tr.t("PDF సిద్ధం ✓ (") + pages + Tr.t(" పేజీ") + (pages == 1 ? "" : Tr.t("లు")) + ")")
-                .setMessage(where + Tr.t("\n\nWhatsApp లో పంపాలంటే 'షేర్', Jarvis కి అందులో ఏముందో అడగాలంటే 'Jarvis ని అడుగు'."))
-                .setPositiveButton(Tr.t("షేర్"), (dl, w) -> {
+                .setTitle("PDF సిద్ధం ✓ (" + pages + " పేజీ" + (pages == 1 ? "" : "లు") + ")")
+                .setMessage(where + "\n\nWhatsApp లో పంపాలంటే 'షేర్', Jarvis కి అందులో ఏముందో అడగాలంటే 'Jarvis ని అడుగు'.")
+                .setPositiveButton("షేర్", (dl, w) -> {
                     try {
                         startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("application/pdf")
                                 .putExtra(Intent.EXTRA_STREAM, saved).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "PDF షేర్ చేయండి"));
                     } catch (Exception ignored) {}
                 })
-                .setNeutralButton(Tr.t("తెరువు"), (dl, w) -> {
+                .setNeutralButton("తెరువు", (dl, w) -> {
                     try {
                         startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(saved, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
-                    } catch (Exception e) { Toast.makeText(this, Tr.t("PDF చూసే యాప్ లేదు"), Toast.LENGTH_SHORT).show(); }
+                    } catch (Exception e) { Toast.makeText(this, "PDF చూసే యాప్ లేదు", Toast.LENGTH_SHORT).show(); }
                 })
-                .setNegativeButton(Tr.t("Jarvis ని అడుగు"), (dl, w) -> {
-                    if (pdf.length > 10 * 1024 * 1024) { Toast.makeText(this, Tr.t("PDF 10 MB కంటే పెద్దది"), Toast.LENGTH_LONG).show(); return; }
+                .setNegativeButton("Jarvis ని అడుగు", (dl, w) -> {
+                    if (pdf.length > 10 * 1024 * 1024) { Toast.makeText(this, "PDF 10 MB కంటే పెద్దది", Toast.LENGTH_LONG).show(); return; }
                     showFileAttached(Brain.PDF + Base64.encodeToString(pdf, Base64.NO_WRAP) + "|" + name, null, name);
                 })
                 .show();
@@ -1842,7 +1817,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         attachThumb.setVisibility(View.GONE);
         attachText.setText((pdf != null ? "📄 " : "📝 ") + name);
         attachRow.setVisibility(View.VISIBLE);
-        input.setHint(Tr.t("ఫైల్ గురించి ఏం అడగాలి? (ఖాళీగా పంపితే సారాంశం)"));
+        input.setHint("ఫైల్ గురించి ఏం అడగాలి? (ఖాళీగా పంపితే సారాంశం)");
         showTab(0);
         refreshAction();
     }
@@ -1852,12 +1827,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (busy) return;
         if (live != null) { liveScreen.show(); return; }
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(Tr.t("🧾 బిల్లు ఫోటో"))
-                .setItems(new String[]{Tr.t("📷 ఇప్పుడు ఫోటో తీయి"), Tr.t("🖼️ గ్యాలరీ నుంచి ఎంచుకో")}, (d, w) -> {
+                .setTitle("🧾 బిల్లు ఫోటో")
+                .setItems(new String[]{"📷 ఇప్పుడు ఫోటో తీయి", "🖼️ గ్యాలరీ నుంచి ఎంచుకో"}, (d, w) -> {
                     autoPrompt = BILL_PROMPT;
                     if (w == 0) openCamera(); else openGallery();
                 })
-                .setNegativeButton(Tr.t("వద్దు"), null)
+                .setNegativeButton("వద్దు", null)
                 .show();
     }
 
@@ -1876,7 +1851,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         try {
             startActivityForResult(i, REQ_CAMERA);
         } catch (Exception e) {
-            Toast.makeText(this, Tr.t("కెమెరా యాప్ తెరవలేకపోయాను. గ్యాలరీ నుంచి ఎంచుకోండి."), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "కెమెరా యాప్ తెరవలేకపోయాను. గ్యాలరీ నుంచి ఎంచుకోండి.", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -1885,7 +1860,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         try {
             startActivityForResult(Intent.createChooser(i, "ఫోటో ఎంచుకోండి"), REQ_GALLERY);
         } catch (Exception e) {
-            Toast.makeText(this, Tr.t("గ్యాలరీ తెరవలేకపోయాను"), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "గ్యాలరీ తెరవలేకపోయాను", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -1918,10 +1893,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                     pendingPhoto = b64;
                     pendingThumb = thumb;
                     attachThumb.setVisibility(View.VISIBLE);
-                    attachText.setText(Tr.t("  ఫోటో జత చేశారు"));
+                    attachText.setText("  ఫోటో జత చేశారు");
                     attachThumb.setImageBitmap(thumb);
                     attachRow.setVisibility(View.VISIBLE);
-                    input.setHint(Tr.t("ఫోటో గురించి ఏం అడగాలి? (ఖాళీగా పంపితే వివరిస్తాను)"));
+                    input.setHint("ఫోటో గురించి ఏం అడగాలి? (ఖాళీగా పంపితే వివరిస్తాను)");
                     showTab(0);
                     refreshAction();
                     if (autoPrompt != null) { // the 🧾 bill chip: send it straight away
@@ -1931,7 +1906,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                     }
                 });
             } catch (Exception e) {
-                main.post(() -> Toast.makeText(this, Tr.t("ఫోటో తెరవలేకపోయాను"), Toast.LENGTH_SHORT).show());
+                main.post(() -> Toast.makeText(this, "ఫోటో తెరవలేకపోయాను", Toast.LENGTH_SHORT).show());
             }
         });
     }
@@ -1970,7 +1945,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         pendingFileText = null;
         pendingFileName = null;
         attachRow.setVisibility(View.GONE);
-        input.setHint(Tr.t("Jarvis ని అడగండి"));
+        input.setHint("Jarvis ని అడగండి");
         refreshAction();
     }
 
