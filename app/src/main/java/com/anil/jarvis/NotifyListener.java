@@ -184,8 +184,6 @@ public class NotifyListener extends NotificationListenerService {
 
     // ---------------------------------------------------------------- read new messages aloud
 
-    private static final Map<String, String> spoken = new java.util.HashMap<>();
-    private static final Map<String, Long> lastFrom = new java.util.HashMap<>();
 
     /** A leading "Name: " (chat lines carry the sender's name); a caption with a colon after the media emoji is left alone. */
     private static final java.util.regex.Pattern SENDER = java.util.regex.Pattern.compile("^[^:\\n🎤🎵🎥📹📷]{1,80}:\\s+");
@@ -235,9 +233,8 @@ public class NotifyListener extends NotificationListenerService {
         boolean driving = p.driving();
         if (!(p.readMessages() || driving)) { note(app, from, "చదవలేదు: Settings → కాల్స్ card లో 'కొత్త మెసేజ్ వస్తే… చెప్పు' ఆఫ్‌లో ఉంది"); return; }
         if (p.night() && !driving) { note(app, from, "చదవలేదు: నైట్ మోడ్ ఆన్‌లో ఉంది (\"గుడ్ మార్నింగ్\" అంటే ఆఫ్ అవుతుంది)"); return; }
-        if (x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false) && !driving) { note(app, from, "గ్రూప్ మెసేజ్: గ్రూప్‌లవి చదవను"); return; } // groups are too chatty
-        if (MainActivity.busyTalking()) { note(app, from, "చదవలేదు: అప్పుడు మీతో మాట్లాడుతున్నాను"); return; }
-        if (CallControl.busyWithCall()) { note(app, from, "చదవలేదు: అప్పుడు కాల్‌లో ఉన్నారు"); return; }
+        boolean group = x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false);
+        if (group && !driving && !p.readGroups()) { note(app, from, "గ్రూప్ మెసేజ్: Settings లో 'గ్రూప్ మెసేజ్‌లు కూడా' ఆఫ్‌లో ఉంది"); return; }
         if (!driving) {
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) { // Do Not Disturb
@@ -245,56 +242,195 @@ public class NotifyListener extends NotificationListenerService {
                 return;
             }
         }
-        String[] lines = text.split("\n");
-        String last = lines[lines.length - 1].trim();
-        if (last.isEmpty()) return;
-        if (last.length() > 220) last = last.substring(0, 220) + "…";
-        long now = System.currentTimeMillis();
-        synchronized (spoken) {
-            if (last.equals(spoken.get(sbn.getKey()))) return; // the same message posted again
-            spoken.put(sbn.getKey(), last);
-            Long prev = lastFrom.get(from);
-            if (prev != null && now - prev < 20000) return; // several quick messages: read the first only
-            lastFrom.put(from, now);
-        }
+        List<String> fresh = newMessages(sbn, x, text, group);
+        if (fresh.isEmpty()) return; // the same messages posted again, or his own reply
         int id = 0;
         boolean canReply = false;
         synchronized (items) {
             Item it = items.get(sbn.getKey());
             if (it != null) { id = it.id; canReply = it.reply != null; }
         }
+        long now = System.currentTimeMillis();
+        synchronized (queue) {
+            Pending q = queue.get(sbn.getKey());
+            if (q == null) {
+                q = new Pending();
+                q.key = sbn.getKey();
+                q.firstAt = now;
+                queue.put(q.key, q);
+            }
+            q.pkg = sbn.getPackageName();
+            q.app = app;
+            q.from = from;
+            q.group = group;
+            q.id = id;
+            q.canReply = canReply;
+            q.texts.addAll(fresh);
+            while (q.texts.size() > 12) q.texts.remove(0);
+            q.lastAt = now;
+        }
+        note(app, from, "వచ్చింది, వరుసలో ఉంది: చెప్తాను");
+        schedule(2500); // wait a moment: messages usually come in a burst, say them together
+    }
+
+    // ---------------------------------------------------------------- the queue: nothing is dropped while Jarvis is busy
+
+    /** Messages of one chat waiting to be said. */
+    private static final class Pending {
+        String key, pkg, app, from;
+        boolean group, canReply;
+        int id;
+        final List<String> texts = new ArrayList<>();
+        long firstAt, lastAt;
+    }
+
+    private static final LinkedHashMap<String, Pending> queue = new LinkedHashMap<>();
+    /** Per chat: the newest message time already taken, and the last text (for apps that give no times). */
+    private static final Map<String, Long> seenUpTo = new java.util.HashMap<>();
+    private static final Map<String, String> seenText = new java.util.HashMap<>();
+    private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable dispatcher = this::dispatch;
+    private long nextAllowed;
+
+    private void schedule(long ms) {
+        main.removeCallbacks(dispatcher);
+        main.postDelayed(dispatcher, ms);
+    }
+
+    /** The messages in this notification that are new since last time (never his own replies). */
+    private List<String> newMessages(StatusBarNotification sbn, Bundle x, String text, boolean group) {
+        List<String> out = new ArrayList<>();
+        String key = sbn.getKey();
+        long now = System.currentTimeMillis();
+        Parcelable[] arr = x.getParcelableArray(Notification.EXTRA_MESSAGES);
+        synchronized (seenUpTo) {
+            if (arr != null && arr.length > 0) {
+                Long seen = seenUpTo.get(key);
+                // first time for this chat: all of them (a chat notification holds the unread messages; after a spell
+                // without signal they arrive together with older send times, and none must be lost)
+                long since = seen != null ? seen : 0;
+                long newest = seen != null ? seen : 0;
+                boolean anyTime = false;
+                for (Parcelable pa : arr) {
+                    if (!(pa instanceof Bundle)) continue;
+                    Bundle b = (Bundle) pa;
+                    String t = str(b.getCharSequence("text"));
+                    long time = b.getLong("time", 0);
+                    if (time > 0) anyTime = true;
+                    if (t.isEmpty() || time <= since) continue;
+                    newest = Math.max(newest, time);
+                    String who = "";
+                    if (Build.VERSION.SDK_INT >= 28) {
+                        Object pp = b.getParcelable("sender_person");
+                        if (pp instanceof Person) who = str(((Person) pp).getName());
+                    }
+                    if (who.isEmpty()) who = str(b.getCharSequence("sender"));
+                    if (who.isEmpty()) continue; // no sender = his own message (a reply from another device)
+                    out.add(group ? who + ": " + t : t);
+                }
+                if (anyTime) {
+                    if (newest > 0) seenUpTo.put(key, newest);
+                    return out;
+                }
+                out.clear(); // an app that gives no message times: fall back to the text
+            }
+            String[] lines = text.split("\n");
+            String last = lines[lines.length - 1].trim();
+            if (last.isEmpty() || last.equals(seenText.get(key))) return out;
+            seenText.put(key, last);
+            out.add(last);
+            if (seenUpTo.size() > 300) seenUpTo.clear();
+            if (seenText.size() > 300) seenText.clear();
+        }
+        return out;
+    }
+
+    /** Says the oldest waiting chat when Jarvis is free; tries again every few seconds while he talks or is in a call. */
+    private void dispatch() {
+        long now = System.currentTimeMillis();
+        Pending next = null;
+        synchronized (queue) {
+            for (Iterator<Pending> it = queue.values().iterator(); it.hasNext(); ) {
+                Pending q = it.next();
+                if (now - q.firstAt > 30 * 60000L) { // busy for half an hour: too late to announce
+                    note(q.app, q.from, "చెప్పలేకపోయాను: అరగంట పాటు కాల్ / మాటల్లో ఉన్నారు (\"కొత్త మెసేజ్‌లు చదువు\" అంటే చదువుతాను)");
+                    it.remove();
+                }
+            }
+            if (queue.isEmpty()) return;
+            for (Pending q : queue.values()) if (now - q.lastAt >= 2500) { next = q; break; }
+        }
+        if (next == null) { schedule(1500); return; }
+        Prefs p = new Prefs(this);
+        if (p.night() && !p.driving()) {
+            synchronized (queue) { queue.clear(); }
+            note(next.app, next.from, "చదవలేదు: నైట్ మోడ్ ఆన్‌లో ఉంది");
+            return;
+        }
+        if (MainActivity.busyTalking() || CallControl.busyWithCall() || now < nextAllowed || FindPhone.running()) {
+            note(next.app, next.from, "వరుసలో ఉంది: " + (CallControl.busyWithCall() ? "కాల్ అయ్యాక" : "ఇప్పటి మాటలు అయ్యాక") + " చెప్తాను");
+            schedule(3000);
+            return;
+        }
+        synchronized (queue) { queue.remove(next.key); }
+        announce(next, p);
+        nextAllowed = now + 8000; // give the panel time to start speaking before the next one
+        synchronized (queue) { if (!queue.isEmpty()) schedule(8000); }
+    }
+
+    /** "Ravi నుంచి WhatsApp లో 3 మెసేజ్‌లు వచ్చాయి. చదవమంటారా?" and the texts go to the brain for when he says yes. */
+    private void announce(Pending q, Prefs p) {
+        String app = q.app, from = q.from;
+        int id = q.id, count = q.texts.size();
+        String last = q.texts.get(count - 1);
+        if (last.length() > 220) last = last.substring(0, 220) + "…";
         // First only who and where; the message itself is read only if Anil says yes.
         String who = from.isEmpty() ? app : from;
+        String where = q.group ? who + " గ్రూప్‌లో" : who + " నుంచి " + app + " లో";
         String body = withoutSender(last); // "Ravi: 📷 Photo" -> "📷 Photo"
-        String media = sbn.getPackageName().startsWith("com.whatsapp") ? mediaKind(body) : null;
+        String media = count == 1 && q.pkg.startsWith("com.whatsapp") ? mediaKind(body) : null;
         String reply = " Then ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send with reply_to_notification (id "
                 + id + ") only after he says send.]";
         String say, ask, context;
         if ("voice".equals(media) || "audio".equals(media)) {
-            say = p.name() + ", " + who + " నుంచి WhatsApp లో " + ("voice".equals(media) ? "వాయిస్ మెసేజ్" : "ఆడియో") + " వచ్చింది.";
+            say = p.name() + ", " + where + " " + ("voice".equals(media) ? "వాయిస్ మెసేజ్" : "ఆడియో") + " వచ్చింది.";
             ask = "వినిపించమంటారా?";
             context = " [new WhatsApp " + media + " message from " + who + ". ONLY if he says yes: whatsapp_media kind=" + media
                     + " action=play; if he wants the words ('ఏం చెప్పారు'), action=text. If no, say సరే." + reply;
         } else if ("video".equals(media)) {
             String cap = body.replaceAll("^[🎥📹]\\s*", "").replaceAll("(?i)^video\\s*", "").trim();
-            say = p.name() + ", " + who + " నుంచి WhatsApp లో వీడియో వచ్చింది" + (cap.isEmpty() ? "." : ": " + cap);
+            say = p.name() + ", " + where + " వీడియో వచ్చింది" + (cap.isEmpty() ? "." : ": " + cap);
             ask = "ప్లే చేయమంటారా?";
             context = " [new WhatsApp video from " + who + ". ONLY if he says yes: whatsapp_media kind=video action=play. If no, say సరే." + reply;
         } else if ("photo".equals(media)) {
             String cap = body.replaceAll("^📷\\s*", "").replaceAll("(?i)^(photo|image)\\s*", "").trim();
-            say = p.name() + ", " + who + " నుంచి WhatsApp లో ఫోటో వచ్చింది" + (cap.isEmpty() ? "." : ": " + cap);
+            say = p.name() + ", " + where + " ఫోటో వచ్చింది" + (cap.isEmpty() ? "." : ": " + cap);
             ask = "చూపించమంటారా, లేక ఏముందో చెప్పమంటారా?";
             context = " [new WhatsApp photo from " + who + ". If he says show: whatsapp_media kind=photo action=show; if 'ఏముంది/చెప్పు': action=describe. If no, say సరే." + reply;
-        } else {
-            say = p.name() + ", " + who + " నుంచి " + app + " లో మెసేజ్ వచ్చింది.";
+        } else if (count == 1) {
+            say = p.name() + ", " + where + " మెసేజ్ వచ్చింది.";
             ask = "చదవమంటారా?";
-            context = " [new message, notification id " + id + " (" + app + (canReply ? ", can reply with reply_to_notification" : "")
+            context = " [new message, notification id " + id + " (" + app + (q.canReply ? ", can reply with reply_to_notification" : "")
                     + "). Its text: \"" + last + "\". Read it to him ONLY if he says yes (అవును/చదువు); if he says no, just say సరే. "
+                    + "After reading, ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send only after he says send.]";
+        } else {
+            say = p.name() + ", " + where + " " + count + " మెసేజ్‌లు వచ్చాయి.";
+            ask = "చదవమంటారా?";
+            StringBuilder all = new StringBuilder();
+            for (int i = 0; i < count; i++) {
+                String t = q.texts.get(i);
+                if (t.length() > 200) t = t.substring(0, 200) + "…";
+                all.append(i + 1).append(") ").append(t).append(i < count - 1 ? " | " : "");
+            }
+            context = " [" + count + " new messages, notification id " + id + " (" + app + (q.group ? ", a group: say who wrote each" : "")
+                    + (q.canReply ? ", can reply with reply_to_notification" : "") + "). In order: " + all
+                    + ". Read ALL of them to him in order, briefly, ONLY if he says yes (అవును/చదువు); for a photo / voice / video line say what it is "
+                    + "(whatsapp_media works on the newest one). If he says no, just say సరే. "
                     + "After reading, ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send only after he says send.]";
         }
         if (android.provider.Settings.canDrawOverlays(this)) {
             try {
-                note(app, from, "చెప్పాను ✓ (panel తెరిచి)");
+                note(app, from, "చెప్పాను ✓ (panel తెరిచి)" + (count > 1 ? " · " + count + " మెసేజ్‌లు కలిపి" : ""));
                 startActivity(new android.content.Intent(this, SheetActivity.class)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE, say)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, ask)

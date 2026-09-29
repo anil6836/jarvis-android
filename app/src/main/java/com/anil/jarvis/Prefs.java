@@ -112,6 +112,8 @@ final class Prefs {
     boolean callByVoice() { return sp.getBoolean("call_voice", true); }
     /** Read new WhatsApp / SMS / Telegram messages aloud and offer to reply. */
     boolean readMessages() { return sp.getBoolean("read_messages", true); }
+    /** Group chat messages too (off: groups are chatty). */
+    boolean readGroups() { return sp.getBoolean("read_groups", false); }
     /** Way2News: read each news notification aloud as it comes. */
     boolean readNews() { return sp.getBoolean("read_news", true); }
     /** Places whose news he wants in Telugu (states, districts, towns), comma separated. He adds his own towns. */

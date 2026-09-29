@@ -56,7 +56,7 @@ public class SettingsActivity extends Activity {
     private Switch alexaSpeak, livePatient, scamGuard, readNews;
     private Switch newsAuto;
     private EditText newsPlaces;
-    private Switch diaryAsk, holidayRemind, findPhone, coughAsk;
+    private Switch diaryAsk, holidayRemind, findPhone, coughAsk, readGroups;
     private EditText priceCity, dailyPrices, findCode;
     private EditText balGemini, balOpenAi, balAnthropic;
     private EditText bikeRange, bikeKwh, powerRate;
@@ -367,6 +367,7 @@ public class SettingsActivity extends Activity {
         section("కాల్స్, ఉదయం బ్రీఫింగ్");
         announceCalls = toggle("కాల్ వస్తే ఎవరో పైకి చెప్పు (నోటిఫికేషన్ యాక్సెస్ కావాలి)", prefs.announceCalls());
         readMessages = toggle("కొత్త మెసేజ్ వస్తే (WhatsApp, SMS, Telegram, Instagram, Facebook, Snapchat...) ఎవరి నుంచో చెప్పి, \"చదవమంటారా?\" అని అడుగు", prefs.readMessages());
+        readGroups = toggle("👥 గ్రూప్ మెసేజ్‌లు కూడా చెప్పు (WhatsApp గ్రూప్‌లు; ఆఫ్ = మనుషులు నేరుగా పంపినవి మాత్రమే)", prefs.readGroups());
         readNews = toggle("📰 Way2News వార్త వచ్చిన వెంటనే చదివి వినిపించు", prefs.readNews());
         newsPlaces = field("📍 లోకల్ వార్తల ప్రాంతాలు (కామాతో: రాష్ట్రాలు, జిల్లాలు, ఊర్లు)", prefs.newsPlaces(), false);
         newsPlaces.setHint("తెలంగాణ, ఆంధ్రప్రదేశ్, మీ జిల్లా, మీ ఊరు");
@@ -700,6 +701,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("announce_calls", announceCalls.isChecked());
         e.putBoolean("call_voice", callVoice.isChecked());
         e.putBoolean("read_messages", readMessages.isChecked());
+        e.putBoolean("read_groups", readGroups.isChecked());
         e.putBoolean("read_news", readNews.isChecked());
         e.putBoolean("news_auto", newsAuto.isChecked());
         e.putBoolean("diary_ask", diaryAsk.isChecked());
