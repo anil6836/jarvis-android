@@ -353,7 +353,7 @@ final class Tools {
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, places, shopping, medicine, birthdays, travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
@@ -370,6 +370,20 @@ final class Tools {
                         {"times", "string", "For add: times like '08:00, 20:00'"}, {"dose", "string", "e.g. '1 మాత్ర', '5 ml'"},
                         {"food", "string", "e.g. 'భోజనం తర్వాత', 'పరగడుపున'"}, {"stock", "integer", "Tablets he has now (-1 = not counting)"},
                         {"per_dose", "integer", "Tablets per dose (default 1)"}, {"days", "integer", "For history (default 7)"}}, "action")));
+        DEFS.add(new Def("duty", "His shift duty calendar: 3 batches take turns, each does 2 days (48 hours) of duty then 4 days at home; other batches and their people too. "
+                + "next: his (or a person's / batch's) coming duties; on_date: who is on duty that day; month: duty days in a month; "
+                + "setup: a batch's first duty date, start time, members, which batch is his, duty/off days (one batch's date is enough, the others follow); "
+                + "set_day: he or someone is on duty / off on a date or dates (extra duty, leave); cover: he does someone's (or a batch's) duty, "
+                + "which makes 4 days on, and that person then does his next turn (8 days off); clear: undo changes on a date; open: show the calendar screen.",
+                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, set_day, cover, clear or open"},
+                        {"person", "string", "Whose duty: empty = his own; a name or a batch (A, B, C)"},
+                        {"date", "string", "YYYY-MM-DD (on_date, set_day, cover, clear)"}, {"to_date", "string", "Last date YYYY-MM-DD for set_day / clear"},
+                        {"duty", "boolean", "For set_day: true = on duty, false = off"}, {"covered", "string", "For cover: whose duty he does (name or batch)"},
+                        {"batch", "string", "For setup: A, B or C"}, {"start_date", "string", "For setup: first day of one of that batch's duties, YYYY-MM-DD"},
+                        {"time", "string", "For setup: duty start time HH:mm"}, {"members", "string", "For setup: people in that batch, comma separated"},
+                        {"mine", "boolean", "For setup: true = this is his batch"}, {"on_days", "integer", "For setup: duty days in a row (2)"},
+                        {"off_days", "integer", "For setup: days off (4)"}, {"month", "string", "For month / open: YYYY-MM"},
+                        {"count", "integer", "For next: how many duties (default 3)"}}, "action")));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
                 schema(new String[][]{})));
         DEFS.add(new Def("day_summary",
@@ -525,6 +539,7 @@ final class Tools {
             case "birthdays": return "పుట్టినరోజులు చూస్తున్నాను…";
             case "shopping_list": return "షాపింగ్ లిస్ట్…";
             case "medicine": return "మందులు…";
+            case "duty": return "డ్యూటీ క్యాలెండర్ చూస్తున్నాను…";
             case "show_features": return "ఫీచర్లు తెరుస్తున్నాను…";
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
@@ -639,6 +654,7 @@ final class Tools {
                 case "birthdays": return birthdays(a);
                 case "shopping_list": return shopping(a);
                 case "medicine": return medicine(a);
+                case "duty": return duty(a);
                 case "show_features": {
                     String cat = a.optString("category", "");
                     FeaturesActivity.show(act(), cat);
@@ -4585,6 +4601,117 @@ final class Tools {
         JSONArray l = new JSONArray();
         for (JSONObject b : Birthdays.upcoming(act(), Math.max(1, Math.min(366, a.optInt("days", 30))))) l.put(b);
         return ok().put("coming", l).put("note", l.length() == 0 ? "None in these days. Birthdays saved on contacts are found by themselves; others he can tell." : "").toString();
+    }
+
+    private static JSONArray dutyBatches(Duty.Roster r) throws Exception {
+        JSONArray bs = new JSONArray();
+        for (Duty.Batch b : r.batches) {
+            JSONArray ms = new JSONArray();
+            for (String m : b.members) ms.put(m);
+            bs.put(new JSONObject().put("batch", b.id).put("name", b.name).put("first_duty_date", b.start == null ? "not set" : b.start.toString())
+                    .put("time", b.time).put("members", ms).put("his", b.id.equalsIgnoreCase(r.mine)));
+        }
+        return bs;
+    }
+
+    private JSONArray dutyBlocks(Duty.Roster r, String who, java.time.LocalDate from, java.time.LocalDate to, int max) throws Exception {
+        JSONArray out = new JSONArray();
+        for (java.time.LocalDate[] b : r.blocks(who, from, to)) {
+            if (b[1].isBefore(from)) continue;
+            long days = b[1].toEpochDay() - b[0].toEpochDay() + 1;
+            out.put(new JSONObject().put("from", Duty.day(b[0]) + " " + b[0].getYear()).put("date", b[0].toString())
+                    .put("to", Duty.day(b[1])).put("start_time", r.timeOf(who)).put("hours", days * 24).put("when", Duty.whenText(b[0])));
+            if (out.length() >= max) break;
+        }
+        return out;
+    }
+
+    private String duty(JSONObject a) throws Exception {
+        Duty.Roster r = Duty.load(act());
+        String action = a.optString("action", "next").toLowerCase(Locale.ROOT), myName = prefs.name();
+        java.time.LocalDate today = java.time.LocalDate.now();
+        if (action.startsWith("open")) {
+            DutyActivity.open(act(), a.optString("month", ""));
+            return ok().put("opened", "duty calendar").toString();
+        }
+        if (action.startsWith("setup")) {
+            if (a.has("on_days")) r.on = Math.max(1, Math.min(10, a.optInt("on_days", 2)));
+            if (a.has("off_days")) r.off = Math.max(0, Math.min(30, a.optInt("off_days", 4)));
+            String id = a.optString("batch", "").trim();
+            Duty.Batch b = r.batch(id.isEmpty() ? r.mine : id);
+            if (b == null && id.length() <= 3 && !id.isEmpty()) {
+                b = new Duty.Batch();
+                b.id = id.toUpperCase(Locale.ROOT);
+                b.name = b.id + " బ్యాచ్";
+                r.batches.add(b);
+            }
+            if (b == null) return err("batch", "Which batch (A, B or C)?");
+            java.time.LocalDate s = Duty.parseDate(a.optString("start_date"));
+            if (s != null) b.start = s;
+            JSONArray t = Medicine.times(a.optString("time", ""));
+            if (t.length() > 0) b.time = t.optString(0);
+            String mem = a.optString("members", "").trim();
+            if (!mem.isEmpty()) {
+                b.members.clear();
+                for (String m : mem.split("\\s*(?:,|،| మరియు | and )\\s*")) if (!m.trim().isEmpty() && !m.trim().equalsIgnoreCase(myName)) b.members.add(m.trim());
+            }
+            if (a.optBoolean("mine", false)) r.mine = b.id;
+            r.fillStarts();
+            Duty.save(act(), r);
+            JSONObject o = ok().put("batches", dutyBatches(r)).put("cycle", r.on + " days duty, " + r.off + " days off");
+            if (Duty.ready(r)) o.put("his_next_duties", dutyBlocks(r, Duty.ME, today, today.plusDays(60), 3));
+            return o.put("note", "Say it briefly; he can see it in the duty calendar (duty open).").toString();
+        }
+        if (!Duty.ready(r)) return err("not_set_up", "His duty is not set up yet. Ask which batch he is in, the first day of one of his duties (date) and the start time, "
+                + "then use setup; or open the calendar (duty open) where ⚙️ sets it.");
+        String said = a.optString("person", "").trim();
+        if (said.equalsIgnoreCase(myName)) said = "";
+        String who = Duty.who(r, said);
+        if (who == null) return err("unknown_person", "No '" + said + "' in the batches: " + dutyBatches(r) + ". He can add people to a batch (setup members).");
+        String whoName = Duty.ME.equals(who) ? myName : who.startsWith("batch:") ? who.substring(6) + " batch" : who;
+        java.time.LocalDate d = Duty.parseDate(a.optString("date"));
+        if (action.startsWith("on") || action.startsWith("date")) {
+            if (d == null) d = today;
+            JSONArray on = new JSONArray();
+            for (String p : r.onDuty(d)) on.put(Duty.ME.equals(p) ? myName + " (Anil himself)" : p);
+            return ok().put("date", Duty.day(d) + " " + d.getYear()).put("on_duty", on).put("anil_on_duty", r.isOn(Duty.ME, d)).toString();
+        }
+        if (action.startsWith("month")) {
+            java.time.YearMonth ym;
+            try { ym = a.optString("month", "").isEmpty() ? java.time.YearMonth.now() : java.time.YearMonth.parse(a.optString("month")); } catch (Exception e) { ym = java.time.YearMonth.now(); }
+            return ok().put("whose", whoName).put("month", Duty.monthName(ym.getMonthValue()) + " " + ym.getYear())
+                    .put("duties", dutyBlocks(r, who, ym.atDay(1), ym.atEndOfMonth(), 20)).toString();
+        }
+        if (action.startsWith("set")) {
+            if (d == null) return err("date", "Which date?");
+            java.time.LocalDate to = Duty.parseDate(a.optString("to_date"));
+            if (to == null || to.isBefore(d)) to = d;
+            boolean onDuty = a.optBoolean("duty", true);
+            for (java.time.LocalDate x = d; !x.isAfter(to); x = x.plusDays(1)) r.set(who, x, onDuty, onDuty ? "ఎక్స్‌ట్రా" : "సెలవు");
+            Duty.save(act(), r);
+            return ok().put("changed", whoName + ": " + (onDuty ? "on duty" : "off") + " " + d + (to.equals(d) ? "" : " to " + to)).toString();
+        }
+        if (action.startsWith("cover")) {
+            String covered = Duty.who(r, a.optString("covered", ""));
+            if (covered == null || Duty.ME.equals(covered)) return err("covered", "Whose duty is he doing (a name or a batch)?");
+            java.time.LocalDate[] res = r.cover(covered, d == null ? today : d, myName);
+            if (res == null) return err("not_found", "That person / batch has no duty near that date.");
+            Duty.save(act(), r);
+            JSONObject o = ok().put("anil_does", Duty.day(res[0]) + " to " + Duty.day(res[1]));
+            if (res[2] != null) o.put("they_do_anils_turn", Duty.day(res[2]) + " to " + Duty.day(res[3]));
+            return o.put("his_next_duties", dutyBlocks(r, Duty.ME, today, today.plusDays(60), 3)).toString();
+        }
+        if (action.startsWith("clear")) {
+            if (d == null) return err("date", "Which date?");
+            java.time.LocalDate to = Duty.parseDate(a.optString("to_date"));
+            if (to == null || to.isBefore(d)) to = d;
+            for (java.time.LocalDate x = d; !x.isAfter(to); x = x.plusDays(1)) r.clear(x, said.isEmpty() ? null : who);
+            Duty.save(act(), r);
+            return ok().put("cleared", d + (to.equals(d) ? "" : " to " + to)).toString();
+        }
+        boolean onNow = r.isOn(who, today);
+        return ok().put("whose", whoName).put("on_duty_today", onNow)
+                .put("next", dutyBlocks(r, who, today, today.plusDays(120), Math.max(1, Math.min(10, a.optInt("count", 3))))).toString();
     }
 
     private String shopping(JSONObject a) throws Exception {

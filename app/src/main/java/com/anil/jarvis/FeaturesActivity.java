@@ -43,6 +43,8 @@ public class FeaturesActivity extends Activity {
         }
     }
 
+    private static final int GOLD_C = 0xFFFBBF24;
+
     private static Opt ask(String e, String t, String d, String prompt) { return new Opt(e, t, d, ASK, prompt); }
     private static Opt fill(String e, String t, String d, String start) { return new Opt(e, t, d, FILL, start); }
     private static Opt act(String e, String t, String d, String code) { return new Opt(e, t, d, DO, code); }
@@ -133,6 +135,15 @@ public class FeaturesActivity extends Activity {
                     fill("🏠", "అడ్రస్‌తో సేవ్ చెయ్", "ఉదా: సిస్టర్ ఇల్లు - KPHB, Hyderabad", "ఈ అడ్రస్ సేవ్ చెయ్ (పేరు - అడ్రస్): "),
                     fill("🧭", "సేవ్ చేసిన చోటుకి దారి", "ఉదా: సిస్టర్ ఇల్లు", "సేవ్ చేసిన ఈ చోటుకి దారి చూపించు: "),
                     fill("📤", "లొకేషన్ ఎవరికైనా పంపు", "WhatsApp లో మ్యాప్ లింక్", "సేవ్ చేసిన ఈ లొకేషన్‌ని WhatsApp లో పంపు (చోటు, ఎవరికి): ")),
+            new Cat("duty", "🗓️", "డ్యూటీ క్యాలెండర్", "షిఫ్ట్‌లు, బ్యాచ్‌లు, బదులు డ్యూటీ", GOLD_C,
+                    act("🗓️", "క్యాలెండర్ చూడు", "అందరి డ్యూటీలు తేదీల మీద", "duty_calendar"),
+                    ask("⭐", "నా తర్వాతి డ్యూటీ", "తేదీ, టైమ్", "నా తర్వాతి డ్యూటీ ఎప్పుడు?"),
+                    ask("📅", "ఈ నెల నా డ్యూటీలు", "అన్ని తేదీలు", "ఈ నెల నా డ్యూటీ తేదీలు చెప్పు."),
+                    fill("👤", "ఎవరి డ్యూటీ ఎప్పుడు?", "పేరు లేదా బ్యాచ్", "ఈ వ్యక్తి డ్యూటీ ఎప్పుడు: "),
+                    fill("🔁", "బదులు డ్యూటీ", "4 రోజులు డ్యూటీ, తర్వాత 8 సెలవు", "ఈ తేదీన ఈ వ్యక్తి బదులు నేను డ్యూటీ చేస్తున్నా (ఎవరు, తేదీ): "),
+                    fill("🏠", "సెలవు పెట్టు", "ఏ తేదీలు", "ఈ తేదీల్లో నాకు డ్యూటీ సెలవు: "),
+                    act("📤", "క్యాలెండర్ ఫోటో షేర్", "మిగతా బ్యాచ్‌లకి WhatsApp లో", "duty_calendar"),
+                    act("⚙️", "బ్యాచ్‌లు, టైమింగ్స్", "మొదటి డ్యూటీ తేదీ, పేర్లు", "duty_setup")),
             new Cat("shopping", "🛒", "షాపింగ్ లిస్ట్", "కొనాల్సినవి, కొన్నవి, షేర్", 0xFF84CC16,
                     fill("➕", "లిస్ట్‌లో చేర్చు", "ఉదా: పాలు 2, గుడ్లు, బ్రెడ్", "షాపింగ్ లిస్ట్‌లో చేర్చు: "),
                     fill("✅", "కొన్నాను", "ఉదా: పాలు, బ్రెడ్", "షాపింగ్ లిస్ట్‌లో ఇవి కొన్నాను: "),
@@ -572,6 +583,10 @@ public class FeaturesActivity extends Activity {
             if (o.payload.isEmpty()) return;
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                     .setTitle(o.emoji + " " + o.title).setMessage(o.payload).setPositiveButton("సరే", null).show();
+            return;
+        }
+        if (o.type == DO && o.payload.startsWith("duty_")) { // the duty calendar opens straight from here
+            startActivity(new Intent(this, DutyActivity.class).putExtra(DutyActivity.EXTRA_SETUP, o.payload.equals("duty_setup")));
             return;
         }
         if (o.type == OPEN) {

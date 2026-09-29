@@ -581,6 +581,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         addChip(chips, "📷", "ఫోటో స్కాన్", null);
         addAction(chips, "📄", "Scan → PDF", () -> Scanner.start(this));
         addAction(chips, "🧾", "బిల్లు → ఖర్చు", this::billPhoto);
+        addAction(chips, "🗓️", "డ్యూటీ", () -> startActivity(new Intent(this, DutyActivity.class)));
         addAction(chips, "🎥", "Live కెమెరా", this::toggleCamera);
         addChip(chips, "📱", "స్క్రీన్ చూడు", "నా స్క్రీన్‌లో ఏముందో చూసి చెప్పు (look_at_screen వాడు).");
         addChip(chips, "💬", "మెసేజ్‌లు", "నాకు వచ్చిన కొత్త మెసేజ్‌లు చదివి చెప్పు (read_notifications వాడు).");
