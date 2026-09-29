@@ -61,7 +61,7 @@ final class GeoReminders {
         return out;
     }
 
-    private static String key(String name) {
+    static String key(String name) {
         String k = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
         if (k.equals("ఇల్లు") || k.equals("ఇంటికి") || k.equals("ఇంట్లో") || k.equals("house") || k.equals("my home")) return "home";
         if (k.equals("ఆఫీస్") || k.equals("office") || k.equals("work") || k.equals("my office")) return "office";

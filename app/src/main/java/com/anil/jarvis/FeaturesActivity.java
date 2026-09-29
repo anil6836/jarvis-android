@@ -24,7 +24,7 @@ import java.util.Locale;
 public class FeaturesActivity extends Activity {
     static final String EXTRA_CATEGORY = "category";
 
-    private static final int ASK = 0, FILL = 1, DO = 2, OPEN = 3;
+    private static final int ASK = 0, FILL = 1, DO = 2, OPEN = 3, INFO = 4;
 
     static final class Opt {
         final String emoji, title, desc, payload;
@@ -47,6 +47,7 @@ public class FeaturesActivity extends Activity {
     private static Opt fill(String e, String t, String d, String start) { return new Opt(e, t, d, FILL, start); }
     private static Opt act(String e, String t, String d, String code) { return new Opt(e, t, d, DO, code); }
     private static Opt open(String e, String t, String d, String section) { return new Opt(e, t, d, OPEN, section); }
+    private static Opt info(String e, String t, String d, String text) { return new Opt(e, t, d, INFO, text); }
 
     /** The folders. ASK sends the question to Jarvis; FILL starts it in the message box for him to finish. */
     static final Cat[] CATS = {
@@ -123,6 +124,15 @@ public class FeaturesActivity extends Activity {
                     ask("🌬️", "గాలి నాణ్యత", "ఇక్కడ AQI", "ఇక్కడ గాలి నాణ్యత ఎలా ఉంది?"),
                     fill("💡", "లైట్లు / ఫ్యాన్", "స్మార్ట్ హోమ్ ఆన్/ఆఫ్", "స్మార్ట్ హోమ్: "),
                     open("🏠", "స్మార్ట్ హోమ్ సెట్టింగ్స్", "Alexa routine లింక్స్", "స్మార్ట్ హోమ్")),
+            new Cat("places", "📍", "నా ప్రదేశాలు", "సేవ్ చేసిన లొకేషన్లు, దారి", 0xFFE879F9,
+                    info("📤", "Google Maps నుంచి సేవ్", "Maps లో చోటు → Share → Jarvis",
+                            "Google Maps లో ఆ చోటు తెరవండి → Share (షేర్) నొక్కండి → యాప్‌ల లిస్ట్‌లో Jarvis ఎంచుకోండి → పేరు పెట్టండి (ఉదా: సిస్టర్ ఇల్లు) → సేవ్.\n\n"
+                            + "తర్వాత \"Jarvis, సిస్టర్ వాళ్ల లొకేషన్ చూపించు\" అంటే మ్యాప్‌లో చూపిస్తాను, \"అక్కడికి దారి చూపించు\" అంటే navigation మొదలుపెడతాను."),
+                    fill("📍", "ఇప్పుడున్న చోటు సేవ్ చెయ్", "ఉదా: ఇల్లు, ఆఫీస్, జిమ్", "ఇప్పుడు నేను ఉన్న చోటుని ఈ పేరుతో సేవ్ చెయ్: "),
+                    fill("🔗", "Maps లింక్ సేవ్ చెయ్", "లింక్ పేస్ట్ చేసి పేరు చెప్పండి", "ఈ Google Maps లింక్‌ని ఈ పేరుతో సేవ్ చెయ్ (పేరు, లింక్): "),
+                    fill("🏠", "అడ్రస్‌తో సేవ్ చెయ్", "ఉదా: సిస్టర్ ఇల్లు - KPHB, Hyderabad", "ఈ అడ్రస్ సేవ్ చెయ్ (పేరు - అడ్రస్): "),
+                    fill("🧭", "సేవ్ చేసిన చోటుకి దారి", "ఉదా: సిస్టర్ ఇల్లు", "సేవ్ చేసిన ఈ చోటుకి దారి చూపించు: "),
+                    fill("📤", "లొకేషన్ ఎవరికైనా పంపు", "WhatsApp లో మ్యాప్ లింక్", "సేవ్ చేసిన ఈ లొకేషన్‌ని WhatsApp లో పంపు (చోటు, ఎవరికి): ")),
             new Cat("travel", "🌍", "ప్రయాణం, బయటకు", "దారి, ట్రైన్, టికెట్లు, ఫుడ్", 0xFF34D399,
                     fill("🗺️", "దారి చూపించు", "Maps లో navigation", "దారి చూపించు: "),
                     fill("🚆", "ట్రైన్ స్టేటస్", "ట్రైన్ నంబర్ లేదా PNR", "ట్రైన్ స్టేటస్: "),
@@ -324,7 +334,54 @@ public class FeaturesActivity extends Activity {
         hint.setPadding(dp(2), dp(4), 0, dp(2));
         content.addView(hint);
         for (Opt o : c.opts) content.addView(row(c, o, false), rowParams());
+        if ("places".equals(c.id)) addSavedPlaces(c);
         scroll.scrollTo(0, 0);
+    }
+
+    /** The places he saved: tap = on the map; hold = directions, share, delete. */
+    private void addSavedPlaces(Cat c) {
+        java.util.List<org.json.JSONObject> places = Places.all(this);
+        TextView h = Ui.text(this, "సేవ్ చేసిన ప్రదేశాలు (" + places.size() + ")", 14, c.color);
+        h.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        h.setPadding(dp(2), dp(18), 0, dp(2));
+        content.addView(h);
+        if (places.isEmpty()) {
+            TextView none = Ui.text(this, "ఇంకా ఏదీ సేవ్ చేయలేదు. పైన ఉన్న వాటిలో ఒకటి వాడండి, లేదా \"Jarvis, ఇది ఇంటి లొకేషన్‌గా సేవ్ చెయ్\" అనండి.", 13, Ui.MUTED);
+            none.setPadding(dp(2), dp(6), dp(2), 0);
+            content.addView(none);
+            return;
+        }
+        TextView tip = Ui.text(this, "నొక్కితే మ్యాప్‌లో · నొక్కి పట్టుకుంటే దారి / షేర్ / తీసేయి", 12, Ui.MUTED);
+        tip.setPadding(dp(2), 0, 0, 0);
+        content.addView(tip);
+        for (org.json.JSONObject p : places) {
+            String where = p.optString("address", "");
+            if (where.isEmpty()) where = p.has("lat") ? String.format(Locale.ENGLISH, "%.5f, %.5f", p.optDouble("lat"), p.optDouble("lon")) : "మ్యాప్ లింక్";
+            View r = row(c, new Opt("📌", p.optString("name"), where, INFO, ""), false);
+            r.setOnClickListener(v -> Places.open(this, p, false));
+            r.setOnLongClickListener(v -> { placeMenu(p); return true; });
+            content.addView(r, rowParams());
+        }
+    }
+
+    private void placeMenu(org.json.JSONObject p) {
+        String name = p.optString("name");
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("📌 " + name)
+                .setItems(new String[]{"🗺️ మ్యాప్‌లో చూపించు", "🧭 దారి చూపించు", "📤 లింక్ షేర్ చెయ్", "🗑️ తీసేయి"}, (d, w) -> {
+                    if (w == 0) Places.open(this, p, false);
+                    else if (w == 1) Places.open(this, p, true);
+                    else if (w == 2) {
+                        Intent s = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, name + "\n" + Places.shareLink(p));
+                        try { startActivity(Intent.createChooser(s, name + " లొకేషన్ పంపండి")); } catch (Exception ignored) {}
+                    } else {
+                        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                                .setMessage(name + " తీసేయాలా?")
+                                .setPositiveButton("తీసేయి", (d2, w2) -> { Places.remove(this, name); if (current != null) showCat(current); })
+                                .setNegativeButton("వద్దు", null).show();
+                    }
+                })
+                .show();
     }
 
     /** Options from every folder that match what he typed. */
@@ -344,6 +401,15 @@ public class FeaturesActivity extends Activity {
                     n++;
                 }
             }
+        }
+        Cat places = find("places");
+        for (org.json.JSONObject p : Places.all(this)) {
+            if (places == null || !p.optString("name").toLowerCase(Locale.ROOT).contains(l)) continue;
+            View r = row(places, new Opt("📌", p.optString("name"), "సేవ్ చేసిన చోటు · నొక్కితే మ్యాప్‌లో", INFO, ""), false);
+            r.setOnClickListener(v -> Places.open(this, p, false));
+            r.setOnLongClickListener(v -> { placeMenu(p); return true; });
+            content.addView(r, rowParams());
+            n++;
         }
         if (n == 0) {
             TextView none = Ui.text(this, "\"" + q + "\" కి ఏ ఫీచర్ దొరకలేదు. Jarvis ని నేరుగా అడగండి, చాలా పనులు చేయగలడు.", 14, Ui.MUTED);
@@ -377,7 +443,7 @@ public class FeaturesActivity extends Activity {
         String sub = (showFolder ? c.emoji + " " + c.name + (o.desc.isEmpty() ? "" : " · ") : "") + o.desc;
         if (!sub.isEmpty()) col.addView(Ui.text(this, sub, 12.5f, Ui.MUTED));
         r.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
-        String mark = o.type == FILL ? "✎" : o.type == OPEN ? "⚙" : "›";
+        String mark = o.type == FILL ? "✎" : o.type == OPEN ? "⚙" : o.type == INFO ? (o.payload.isEmpty() ? "🗺️" : "ⓘ") : "›";
         TextView m = Ui.text(this, mark, o.type == ASK || o.type == DO ? 24 : 17, c.color);
         r.addView(m);
         r.setOnClickListener(v -> run(o));
@@ -386,6 +452,12 @@ public class FeaturesActivity extends Activity {
 
     /** ASK: Jarvis answers; FILL: the request waits in the message box; DO: the action; OPEN: that part of Settings. */
     private void run(Opt o) {
+        if (o.type == INFO) {
+            if (o.payload.isEmpty()) return;
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle(o.emoji + " " + o.title).setMessage(o.payload).setPositiveButton("సరే", null).show();
+            return;
+        }
         if (o.type == OPEN) {
             startActivity(new Intent(this, SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, o.payload));
             return;

@@ -182,9 +182,15 @@ final class Tools {
         DEFS.add(new Def("bank_spending",
                 "Money spent and received, estimated from bank and UPI SMS on the phone for the last N days, with recent transactions.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 30, max 92)"}})));
-        DEFS.add(new Def("save_place",
-                "Remember where the phone is right now under a name (home, office, gym...), for location reminders.",
-                schema(new String[][]{{"name", "string", "Place name in English, e.g. 'home', 'office'"}}, "name")));
+        DEFS.add(new Def("my_places",
+                "His saved places (sister's house, office, a shop...). save: under a name, from a Google Maps link he gives, an address, or where he is now (here=true). "
+                + "show: open it on the map ('సిస్టర్ వాళ్ల లొకేషన్ పెట్టు/చూపించు'); navigate: directions there; share_link: a map link to send (then whatsapp_message / send_sms); "
+                + "list; delete. Saved places also work for location reminders.",
+                schema(new String[][]{{"action", "string", "save, show, navigate, share_link, list or delete"},
+                        {"name", "string", "The place's name as he says it (any language), e.g. 'సిస్టర్ ఇల్లు'"},
+                        {"link", "string", "Google Maps link he gave (maps.app.goo.gl/... or google.com/maps/...)"},
+                        {"address", "string", "Address or place to save when there is no link"},
+                        {"here", "boolean", "true = save where the phone is right now"}}, "action")));
         DEFS.add(new Def("location_reminder",
                 "Remind Anil when he arrives at or leaves a place ('ఇంటికి చేరగానే గుర్తుచేయి'). Place = a saved place (home, office) or an address. Also list or cancel them.",
                 schema(new String[][]{{"action", "string", "add (default), list or cancel"}, {"place", "string", "Saved place name or address, English"},
@@ -347,7 +353,7 @@ final class Tools {
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, places, travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
                 schema(new String[][]{})));
@@ -447,6 +453,7 @@ final class Tools {
             case "call_control": return "కాల్…";
             case "bank_spending": return "బ్యాంక్ మెసేజ్‌లు లెక్కపెడుతున్నాను…";
             case "save_place": return "ఈ చోటు గుర్తుపెట్టుకుంటున్నాను…";
+            case "my_places": return "ప్రదేశాలు చూస్తున్నాను…";
             case "location_reminder": return "లొకేషన్ రిమైండర్…";
             case "driving_mode": return "డ్రైవింగ్ మోడ్…";
             case "ride_app": return "రైడ్ యాప్ తెరుస్తున్నాను…";
@@ -548,6 +555,8 @@ final class Tools {
                 case "call_control": return callControl(a.optString("action"));
                 case "bank_spending": return bankSpending(a.optInt("days", 30));
                 case "save_place": return savePlace(a.optString("name"));
+                case "my_places": return myPlaces(a.optString("action", "show"), a.optString("name", ""), a.optString("link", ""),
+                        a.optString("address", ""), a.optBoolean("here", false));
                 case "smart_home": return smartHome(a.optString("command", ""), a.optString("device", ""),
                         a.optBoolean("on", true), a.optString("alexa_phrase", ""));
                 case "parking": return parking(a.optString("action", "find"));
@@ -4542,6 +4551,47 @@ final class Tools {
         return lastLocation(act());
     }
 
+    /** Saved places: save (link / address / here), show, navigate, share_link, list, delete. */
+    private String myPlaces(String action, String name, String link, String address, boolean here) throws Exception {
+        String a = action == null || action.trim().isEmpty() ? "show" : action.trim().toLowerCase(Locale.ROOT);
+        if (a.startsWith("list")) return ok().put("places", Places.listJson(act())).toString();
+        if (a.startsWith("save")) {
+            if (name == null || name.trim().isEmpty()) return err("missing", "Ask him what to call this place (e.g. 'సిస్టర్ ఇల్లు').");
+            String url = Places.firstUrl(link);
+            if (url == null) url = Places.firstUrl(address);
+            JSONObject saved;
+            if (url != null) {
+                if (!online()) return err("offline", "Reading a Maps link needs internet.");
+                Places.Resolved r = Places.fromLink(url);
+                String addr = address == null || Places.firstUrl(address) != null ? r.title : address;
+                saved = Places.save(act(), name, r.lat, r.lon, addr, url);
+            } else if (address != null && !address.trim().isEmpty() && !here) {
+                double[] ll = Places.geocode(act(), address.trim());
+                saved = Places.save(act(), name, ll == null ? Double.NaN : ll[0], ll == null ? Double.NaN : ll[1], address, "");
+            } else {
+                if (!has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
+                Location l = freshLocation();
+                if (l == null) return err("no_location", "Could not get the phone's location. Is Location on?");
+                saved = Places.save(act(), name, l.getLatitude(), l.getLongitude(), "", "");
+            }
+            return ok().put("saved", saved.optString("name")).put("on_map", saved.has("lat") ? "exact point" : saved.has("link") ? "maps link only" : "address search")
+                    .put("note", "Later: 'X లొకేషన్ చూపించు' shows it, 'X కి దారి' navigates.").toString();
+        }
+        JSONObject p = Places.find(act(), name);
+        if (p == null) return err("unknown_place", "No saved place like '" + name + "'. Saved places: " + Places.listJson(act())
+                + ". If he meant one of them, use its exact name; otherwise offer to save it (a Google Maps link, an address, or when he is there).");
+        if (a.startsWith("share")) return ok().put("name", p.optString("name")).put("link", Places.shareLink(p))
+                .put("note", "Send it only if he asked, with whatsapp_message / send_sms (he confirms before it goes).").toString();
+        if (a.startsWith("del") || a.startsWith("remove")) {
+            Places.remove(act(), p.optString("name"));
+            return ok().put("deleted", p.optString("name")).toString();
+        }
+        boolean nav = a.startsWith("nav") || a.startsWith("dir");
+        final JSONObject place = p;
+        onUi(() -> Places.open(act(), place, nav));
+        return ok().put(nav ? "navigating_to" : "showing_on_map", p.optString("name")).put("address", p.optString("address", "")).toString();
+    }
+
     private String savePlace(String name) throws Exception {
         if (name == null || name.trim().isEmpty()) return err("missing", "What should I call this place (home, office...)?");
         if (!has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
@@ -4574,7 +4624,7 @@ final class Tools {
             } catch (Exception ignored) {}
         }
         if (ll == null) {
-            return err("unknown_place", "'" + place + "' is not a saved place and could not be found on the map. When Anil is there, he can say 'ఈ place ని " + place + " గా సేవ్ చెయ్' (save_place).");
+            return err("unknown_place", "'" + place + "' is not a saved place and could not be found on the map. When Anil is there, he can say 'ఈ place ని " + place + " గా సేవ్ చెయ్' (my_places save here=true).");
         }
         boolean arrive = when == null || !when.toLowerCase(Locale.ROOT).startsWith("leav");
         Location here = lastLocation(act());
