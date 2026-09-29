@@ -70,6 +70,8 @@ public class SettingsActivity extends Activity {
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
+    private int coughGap;
+    private TextView coughGapText;
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
     private TextView voiceInfo, notifyInfo, checkInfo;
@@ -518,7 +520,26 @@ public class SettingsActivity extends Activity {
         button("🔔 ఇప్పుడు 5 సెకన్లు మోగించి చూడు", v -> FindPhone.start(this, 5000));
 
         section("ఆరోగ్యం, ఇతరాలు");
-        coughAsk = toggle("🤧 దగ్గు / తుమ్ములు వినిపిస్తే \"సర్, ఏమైంది?\" అని అడుగు (\"Hey Jarvis\" వినే మైక్‌తోనే, ఫోన్‌లోనే; ఏదీ రికార్డ్ చేయదు; 3 గంటలకి ఒకసారి మించదు)", prefs.coughAsk());
+        coughAsk = toggle("🤧 దగ్గు / తుమ్ములు వినిపిస్తే \"సర్, ఏమైంది?\" అని అడుగు (\"Hey Jarvis\" వినే మైక్‌తోనే, ఫోన్‌లోనే; ఏదీ రికార్డ్ చేయదు)", prefs.coughAsk());
+        coughGap = prefs.coughGapMinutes();
+        coughGapText = Ui.text(this, "", 15.5f, Ui.CYAN);
+        coughGapText.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        coughGapText.setText("⏱️ ఒకసారి అడిగాక మళ్లీ అడగడానికి: " + Prefs.gapText(coughGap) + "  (మార్చడానికి నొక్కండి)");
+        final int[] gaps = {15, 30, 60, 120, 180, 360, 24 * 60};
+        coughGapText.setOnClickListener(v -> {
+            String[] names = new String[gaps.length];
+            int checked = 2;
+            for (int i = 0; i < gaps.length; i++) { names[i] = Prefs.gapText(gaps[i]); if (gaps[i] == coughGap) checked = i; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("దగ్గు గురించి మళ్లీ ఎప్పుడు అడగాలి?")
+                    .setSingleChoiceItems(names, checked, (d, w) -> {
+                        coughGap = gaps[w];
+                        coughGapText.setText("⏱️ ఒకసారి అడిగాక మళ్లీ అడగడానికి: " + Prefs.gapText(coughGap) + "  (మార్చడానికి నొక్కండి)");
+                        d.dismiss();
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        box.addView(coughGapText);
         if (!CoughDetector.status.isEmpty()) note(CoughDetector.status);
         sfx = toggle("Iron Man సౌండ్ ఎఫెక్ట్ (పిలవగానే చిన్న శబ్దం)", prefs.sfx());
         button("అడుగుల లెక్కకి అనుమతి (Physical activity)", v -> requestPermissions(new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, 8));
@@ -683,6 +704,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("news_auto", newsAuto.isChecked());
         e.putBoolean("diary_ask", diaryAsk.isChecked());
         e.putBoolean("cough_ask", coughAsk.isChecked());
+        e.putInt("cough_gap_min", coughGap);
         e.putBoolean("holiday_remind", holidayRemind.isChecked());
         if (!priceCity.getText().toString().trim().isEmpty()) e.putString("price_city", priceCity.getText().toString().trim());
         e.putString("daily_prices", dailyPrices.getText().toString().trim());

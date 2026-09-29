@@ -132,6 +132,13 @@ final class Prefs {
     boolean findPhone() { return sp.getBoolean("find_phone", true); }
     /** Hear coughing / sneezing on the wake-word microphone and ask "సర్, ఏమైంది?". */
     boolean coughAsk() { return sp.getBoolean("cough_ask", true); }
+    /** After asking about a cough, how long before asking again (minutes; default 1 hour). */
+    int coughGapMinutes() { return Math.max(10, Math.min(24 * 60, sp.getInt("cough_gap_min", 60))); }
+    static String gapText(int min) {
+        if (min >= 24 * 60) return "రోజుకి ఒకసారి";
+        if (min % 60 == 0) return (min / 60) + (min == 60 ? " గంట" : " గంటలు");
+        return min + " నిమిషాలు";
+    }
     String findCode() {
         String c = sp.getString("find_code", "");
         if (c.isEmpty()) { // a different code on every phone, so strangers can't guess it

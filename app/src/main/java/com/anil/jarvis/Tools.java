@@ -442,9 +442,11 @@ final class Tools {
         DEFS.add(new Def("health_advice", "Illness and health questions: fever, cough, cold, headache, throat, acidity, loose motions, vomiting, pains, allergy, "
                 + "tooth, eye, ear, wounds, burns, weakness, urine burning, sleep, chest pain, or any disease. want: home = home remedies (the default, give these first), "
                 + "tablet = the usual over-the-counter tablet with adult dose (when he asks which tablet), doctor = which doctor and when, all. "
-                + "Danger signs come back too. cough_listen on/off: Jarvis asking 'ఏమైంది?' when it hears him coughing or sneezing.",
+                + "Danger signs come back too. cough_listen on/off: Jarvis asking 'ఏమైంది?' when it hears him coughing or sneezing; "
+                + "cough_gap_minutes: how long before it asks again ('దగ్గు గురించి గంటకి ఒకసారి అడుగు' = 60).",
                 schema(new String[][]{{"symptom", "string", "What he has, in his words (e.g. 'జలుబు', 'దగ్గు 3 రోజులుగా', 'కడుపు మంట')"},
-                        {"want", "string", "home (default), tablet, doctor or all"}, {"cough_listen", "string", "on or off (only to change that setting)"}})));
+                        {"want", "string", "home (default), tablet, doctor or all"}, {"cough_listen", "string", "on or off (only to change that setting)"},
+                        {"cough_gap_minutes", "integer", "Only to change how long after asking about a cough Jarvis waits before asking again (e.g. 30, 60, 120; 1440 = once a day)"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
                 schema(new String[][]{})));
         DEFS.add(new Def("day_summary",
@@ -4681,11 +4683,16 @@ final class Tools {
     }
 
     private String healthAdvice(JSONObject a) throws Exception {
+        if (a.optInt("cough_gap_minutes", 0) > 0) {
+            int m = Math.max(10, Math.min(24 * 60, a.optInt("cough_gap_minutes")));
+            prefs.sp.edit().putInt("cough_gap_min", m).putBoolean("cough_ask", true).apply();
+            return ok().put("cough_gap", Prefs.gapText(m)).put("note", "Tell him: after asking once, Jarvis asks again only after " + Prefs.gapText(m) + ".").toString();
+        }
         String listen = a.optString("cough_listen", "").trim().toLowerCase(Locale.ROOT);
         if (listen.equals("on") || listen.equals("off")) {
             prefs.set("cough_ask", listen.equals("on"));
             JSONObject o = ok().put("cough_listen", listen);
-            if (listen.equals("on")) o.put("note", "Works while the wake word is listening (Settings), on the phone only; asks at most once in 3 hours. "
+            if (listen.equals("on")) o.put("note", "Works while the wake word is listening (Settings), on the phone only; asks at most once every " + Prefs.gapText(prefs.coughGapMinutes()) + ". "
                     + (CoughDetector.status.isEmpty() ? "" : CoughDetector.status));
             return o.toString();
         }

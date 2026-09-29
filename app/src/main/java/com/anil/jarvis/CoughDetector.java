@@ -18,7 +18,8 @@ import java.util.concurrent.Executors;
  * Hears Anil coughing (or sneezing) on the microphone the wake word already listens with, and asks if he is okay.
  * Google's YAMNet sound model (521 sounds; 42 = cough, 44 = sneeze) runs on the phone only when a short loud sound
  * happens, on its own thread; nothing is recorded or sent anywhere. A few coughs close together = he is coughing:
- * "సర్, ఏమైంది? దగ్గుతున్నారు." (at most once in 3 hours; not at night, in a call, or while Jarvis is talking).
+ * "సర్, ఏమైంది? దగ్గుతున్నారు." in different words each time (at most once per the gap he chose, 1 hour by default;
+ * not at night, in a call, or while Jarvis is talking).
  */
 final class CoughDetector {
     private static final int N = 15600;              // 0.975 s at 16 kHz: one YAMNet window
@@ -68,8 +69,8 @@ final class CoughDetector {
         if (now - prefsAt > 10000) {
             prefsAt = now;
             Prefs p = new Prefs(ctx);
-            // off, broken, or asked less than 3 hours ago: don't even run the model (battery)
-            on = p.coughAsk() && !failed && System.currentTimeMillis() - p.sp.getLong("cough_asked", 0) > 3 * 3600000L;
+            // off, broken, or asked a short while ago: don't even run the model (battery)
+            on = p.coughAsk() && !failed && System.currentTimeMillis() - p.sp.getLong("cough_asked", 0) > p.coughGapMinutes() * 60000L;
         }
         if (!on || !full || busy) return;
         // a cough is a short, sharp burst well above the room's background
@@ -174,7 +175,7 @@ final class CoughDetector {
         sneezes.clear();
         Prefs p = new Prefs(ctx);
         long last = p.sp.getLong("cough_asked", 0);
-        if (System.currentTimeMillis() - last < 3 * 3600000L) return;
+        if (System.currentTimeMillis() - last < p.coughGapMinutes() * 60000L) return;
         if (p.night() || CallControl.busyWithCall() || MainActivity.busyTalking()) return;
         // probably asleep: late night with the screen off, or the afternoon after coming off a 48-hour duty
         try {
@@ -193,16 +194,51 @@ final class CoughDetector {
             if (am != null && am.isMusicActive()) return; // a cough in a video on the phone
         } catch (Exception ignored) {}
         p.sp.edit().putLong("cough_asked", System.currentTimeMillis()).apply();
-        if (kind.equals("sneeze")) {
-            Proactive.say(ctx, "సర్, తుమ్ముతున్నారు, జలుబు చేసిందా?", "ఏమైనా సమస్య ఉందా? ముందు ఇంటి చిట్కాలు చెప్పనా, లేక జలుబు టాబ్లెట్ పేరు చెప్పనా?",
-                    " [health: Jarvis heard him sneezing again and again. If he says yes or tells what is wrong, use health_advice (cold / what he says): "
-                            + "home remedies first; the tablet name only when he asks for it; which doctor if it does not settle. If he says no / వద్దు, just say okay.]");
-        } else {
-            Proactive.say(ctx, "సర్, ఏమైంది? దగ్గుతున్నారు.", "ఏమైనా సమస్య ఉందా? ముందు ఇంటి చిట్కాలు చెప్పనా, లేక దగ్గు టాబ్లెట్ వేసుకుంటారా?",
-                    " [health: Jarvis heard him coughing several times. If he says yes or tells what is wrong, use health_advice (cough / what he says): "
-                            + "home remedies first; the tablet name and how to take it when he asks; which doctor if it does not settle. If he says no / వద్దు, just say okay.]");
-        }
+        boolean sneeze = kind.equals("sneeze");
+        String[][] lines = sneeze ? SNEEZE_ASK : (p.sp.getInt("cough_times_today", 0) > 0 && today(p) ? COUGH_AGAIN : COUGH_ASK);
+        // a different one each time: never the same words twice in a row
+        String key = sneeze ? "sneeze_line" : "cough_line";
+        int lastLine = p.sp.getInt(key, -1), i;
+        do { i = rnd.nextInt(lines.length); } while (lines.length > 1 && i == lastLine);
+        int times = today(p) ? p.sp.getInt("cough_times_today", 0) + 1 : 1;
+        android.content.SharedPreferences.Editor e = p.sp.edit().putInt(key, i);
+        if (!sneeze) e.putInt("cough_times_today", times).putString("cough_day", java.time.LocalDate.now().toString());
+        e.apply();
+        String hint = sneeze
+                ? " [health: Jarvis heard him sneezing again and again. If he says yes or tells what is wrong, use health_advice (cold / what he says): "
+                        + "home remedies first; the tablet name only when he asks for it; which doctor if it does not settle. If he says no / వద్దు, just say okay, in a few warm words.]"
+                : " [health: Jarvis heard him coughing several times" + (times > 1 ? " (Jarvis already asked " + (times - 1) + " time(s) about it today)" : "") + ". If he says yes or tells what is wrong, "
+                        + "use health_advice (cough / what he says): home remedies first; the tablet name and how to take it when he asks; which doctor if it does not settle"
+                        + (times > 2 ? "; as it keeps coming back today, gently suggest seeing a doctor" : "") + ". If he says no / వద్దు, just say okay, in a few warm words.]";
+        Proactive.say(ctx, lines[i][0], lines[i][1], hint);
     }
+
+    private static final java.util.Random rnd = new java.util.Random();
+
+    private static boolean today(Prefs p) { return java.time.LocalDate.now().toString().equals(p.sp.getString("cough_day", "")); }
+
+    /** {what Jarvis says, the question}: many ways, so it doesn't sound like a recording. */
+    private static final String[][] COUGH_ASK = {
+            {"సర్, ఏమైంది? దగ్గుతున్నారు.", "ఏమైనా సమస్య ఉందా? ముందు ఇంటి చిట్కాలు చెప్పనా, లేక దగ్గు టాబ్లెట్ వేసుకుంటారా?"},
+            {"సర్, దగ్గు వినిపిస్తోంది.", "ఒంట్లో బాగోలేదా? గోరువెచ్చని నీళ్లు తాగుతారా, లేక ఏదైనా చిట్కా చెప్పనా?"},
+            {"సర్, బాగున్నారా? కాసేపటి నుంచి దగ్గుతున్నారు.", "గొంతు ఇబ్బందిగా ఉందా? ఇంటి చిట్కా చెప్పనా, టాబ్లెట్ పేరు చెప్పనా?"},
+            {"సర్, దగ్గు ఎక్కువగా ఉన్నట్టుంది.", "జలుబు కూడా ఉందా? ఏం చేస్తే తగ్గుతుందో చెప్పమంటారా?"},
+            {"సర్, అంతా ఓకేనా? దగ్గుతున్నారు.", "తేనె-అల్లం లాంటి చిట్కా చెప్పనా, లేక దగ్గు సిరప్ పేరు కావాలా?"},
+            {"సర్, కొంచెం దగ్గుతున్నారు.", "గొంతు గరగరగా ఉందా? ఉప్పు నీళ్లతో పుక్కిలిస్తే బాగుంటుంది. ఇంకా ఏమైనా చెప్పనా?"},
+            {"సర్, జాగ్రత్త, దగ్గు వస్తోంది.", "ఏమైనా ఇబ్బందిగా ఉందా? చిట్కాలా, టాబ్లెట్టా, ఏది చెప్పమంటారు?"},
+    };
+    private static final String[][] COUGH_AGAIN = {
+            {"సర్, మళ్లీ దగ్గుతున్నారు.", "ఇంకా తగ్గలేదా? ఇంకో చిట్కా చెప్పనా, లేక టాబ్లెట్ వేసుకుంటారా?"},
+            {"సర్, దగ్గు ఇంకా ఆగలేదు.", "ఇబ్బందిగా ఉంటే టాబ్లెట్ పేరు చెప్పనా? తగ్గకపోతే ఏ డాక్టర్‌ని చూడాలో కూడా చెప్తాను."},
+            {"సర్, ఇవాళ దగ్గు ఎక్కువగానే ఉంది.", "గోరువెచ్చని నీళ్లు, ఆవిరి పట్టడం చేశారా? టాబ్లెట్ కావాలా?"},
+            {"సర్, మళ్లీ దగ్గు వినిపిస్తోంది.", "జ్వరం ఏమైనా ఉందా? ఏం చేయాలో చెప్పమంటారా?"},
+    };
+    private static final String[][] SNEEZE_ASK = {
+            {"సర్, తుమ్ముతున్నారు, జలుబు చేసిందా?", "ఏమైనా సమస్య ఉందా? ముందు ఇంటి చిట్కాలు చెప్పనా, లేక జలుబు టాబ్లెట్ పేరు చెప్పనా?"},
+            {"సర్, వరుసగా తుమ్ములు వస్తున్నాయి.", "జలుబా, లేక దుమ్ము అలర్జీనా? ఆవిరి పట్టడం లాంటి చిట్కా చెప్పనా?"},
+            {"సర్, బాగున్నారా? తుమ్ములు వినిపిస్తున్నాయి.", "ముక్కు కారుతుందా? ఏం చేస్తే తగ్గుతుందో చెప్పమంటారా?"},
+            {"సర్, జలుబు పట్టినట్టుంది.", "అల్లం టీ లాంటి ఇంటి చిట్కా చెప్పనా, లేక టాబ్లెట్ పేరు కావాలా?"},
+    };
 
     void close() {
         worker.execute(() -> {
