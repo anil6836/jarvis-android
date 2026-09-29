@@ -18,7 +18,11 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 
-/** "Jarvis, ఎక్కడున్నావ్?": rings loudly and blinks the flashlight until Anil picks the phone up. */
+/**
+ * "Jarvis, ఎక్కడున్నావ్?": rings loudly and blinks the flashlight until Anil picks the phone up.
+ * Also from another phone: his secret code (e.g. "JARVIS 4827") sent by SMS or WhatsApp makes it ring, even on
+ * silent (seen through the notification access used for reading messages). It only rings; nothing is sent back.
+ */
 final class FindPhone {
     private FindPhone() {}
 
@@ -30,8 +34,53 @@ final class FindPhone {
     private static volatile boolean blinking;
     private static BroadcastReceiver unlock;
 
-    static synchronized void start(Context c) {
+    static void start(Context c) { start(c, 40000); }
+
+    private static String norm(String s) { return s == null ? "" : s.replaceAll("[\\s\\p{Punct}]+", "").toUpperCase(java.util.Locale.ROOT); }
+
+    /** True when the message is the code (alone, or "Name: code"). */
+    static boolean isCode(String code, String text) {
+        String c = norm(code);
+        if (c.length() < 6 || text == null) return false;
+        for (String line : text.split("\n")) {
+            if (norm(line).equals(c)) return true;
+            String l = line.contains(": ") ? line.substring(line.lastIndexOf(": ") + 2) : line;
+            if (norm(l).equals(c)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * From the notification listener: the newest message in a notification; rings for 2 minutes if it is his code.
+     * posted = when the notification came (a lost phone may get the message late, so that is what counts as fresh);
+     * msgTime = the message's own time (0 if the app doesn't give one), so each message rings once, even after a restart.
+     */
+    static void check(Context c, String notificationKey, String lastMessage, long posted, long msgTime) {
+        try {
+            Prefs p = new Prefs(c);
+            if (!p.findPhone() || lastMessage == null || lastMessage.isEmpty()) return;
+            if (System.currentTimeMillis() - posted > 10 * 60000L) return; // an old one shown again after a reboot
+            if (!isCode(p.findCode(), lastMessage)) return;
+            android.content.SharedPreferences s = c.getSharedPreferences("jarvis_find", Context.MODE_PRIVATE);
+            String key = notificationKey + "|" + msgTime + "|" + lastMessage.hashCode();
+            long now = System.currentTimeMillis(), before = s.getLong(key, 0);
+            // the same message again: never with its own time; without one, not within 10 minutes (re-posts, repeat alerts)
+            if (before > 0 && (msgTime > 0 || now - before < 10 * 60000L)) return;
+            android.content.SharedPreferences.Editor e = s.edit();
+            if (s.getAll().size() > 40) e.clear();
+            e.putLong(key, now).apply();
+            main.post(() -> start(c, 120000));
+        } catch (Exception ignored) {}
+    }
+
+    private static long startedAt;
+
+    /** How long it has been ringing. */
+    static long age() { return System.currentTimeMillis() - startedAt; }
+
+    static synchronized void start(Context c, long ms) {
         Context app = c.getApplicationContext();
+        startedAt = System.currentTimeMillis();
         stop(app);
         AudioManager am = app.getSystemService(AudioManager.class);
         try {
@@ -50,7 +99,7 @@ final class FindPhone {
             player.start();
         } catch (Exception ignored) {}
         blink(app);
-        // Stop as soon as he unlocks the phone, from the notification, or after 40 seconds.
+        // Stop as soon as he unlocks the phone, from the notification, or after 40 seconds (2 minutes for the code).
         unlock = new BroadcastReceiver() {
             @Override public void onReceive(Context x, Intent i) { stop(x); }
         };
@@ -72,7 +121,7 @@ final class FindPhone {
                     .setOngoing(true)
                     .build());
         }
-        main.postDelayed(() -> stop(app), 40000);
+        main.postDelayed(() -> stop(app), ms);
     }
 
     static synchronized void stop(Context c) {

@@ -139,6 +139,7 @@ public class NotifyListener extends NotificationListenerService {
             items.put(it.key, it); // re-insert at the end = newest
             prune();
         }
+        findPhoneCode(sbn, x);
         maybeReadNews(sbn, app, title, text);
         maybeReadAloud(sbn, n, x, app, title, text);
         ScamGuard.check(this, sbn.getPackageName(), app, title, text); // scam-looking message or a new autopay: warn
@@ -386,6 +387,20 @@ public class NotifyListener extends NotificationListenerService {
     }
 
     private static String str(CharSequence c) { return c == null ? "" : c.toString().trim(); }
+
+    /** His find-my-phone code arriving by SMS / WhatsApp: only the newest message counts, and each message once. */
+    private void findPhoneCode(StatusBarNotification sbn, Bundle x) {
+        String last = "";
+        long msgTime = 0;
+        Parcelable[] arr = x.getParcelableArray(Notification.EXTRA_MESSAGES);
+        if (arr != null && arr.length > 0 && arr[arr.length - 1] instanceof Bundle) {
+            Bundle b = (Bundle) arr[arr.length - 1];
+            last = str(b.getCharSequence("text"));
+            msgTime = b.getLong("time", 0);
+        }
+        if (last.isEmpty()) last = str(x.getCharSequence(Notification.EXTRA_TEXT));
+        FindPhone.check(this, sbn.getKey(), last, sbn.getPostTime(), msgTime);
+    }
 
     private static void prune() {
         long cutoff = System.currentTimeMillis() - KEEP_MS;

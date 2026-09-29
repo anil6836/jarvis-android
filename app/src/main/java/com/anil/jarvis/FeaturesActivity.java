@@ -119,7 +119,10 @@ public class FeaturesActivity extends Activity {
                     ask("⏳", "స్క్రీన్ టైమ్", "ఈరోజు ఏ యాప్ ఎంత", "ఈరోజు ఫోన్ ఎంత సేపు వాడాను? ఏ యాప్ ఎక్కువ?"),
                     fill("🚫", "యాప్ లిమిట్", "రోజూ ఇంత సేపు మాత్రమే", "ఈ యాప్‌కి రోజూ లిమిట్ పెట్టు: "),
                     ask("🔦", "టార్చ్ ఆన్", "", "టార్చ్ ఆన్ చెయ్."),
-                    ask("🌙", "నైట్ మోడ్", "నిశ్శబ్దం, ఉదయం దానంతట అదే ఆఫ్", "నైట్ మోడ్ ఆన్ చెయ్.")),
+                    ask("🌙", "నైట్ మోడ్", "నిశ్శబ్దం, ఉదయం దానంతట అదే ఆఫ్", "నైట్ మోడ్ ఆన్ చెయ్."),
+                    ask("📳", "ఫోన్ వెతుకు కోడ్", "వేరే ఫోన్ నుంచి పంపితే మోగుతుంది", "ఫోన్ వెతుకు కోడ్ ఏంటి? ఎలా వాడాలి? (find_phone code)"),
+                    fill("✏️", "కోడ్ మార్చు", "కనీసం 6 అక్షరాలు/అంకెలు", "ఫోన్ వెతుకు కోడ్ ఇలా మార్చు (find_phone set_code): "),
+                    open("🔔", "ఫోన్ వెతుకు సెట్టింగ్స్", "ఆన్/ఆఫ్, మోగించి చూడు", "ఫోన్ వెతుకు")),
             new Cat("health", "❤️", "ఆరోగ్యం, ఇల్లు", "అడుగులు, నీళ్లు, గాలి, లైట్లు", 0xFFF43F5E,
                     ask("👣", "ఈరోజు అడుగులు", "ఎన్ని అడుగులు నడిచాను", "ఈరోజు ఎన్ని అడుగులు నడిచాను?"),
                     ask("💧", "నీళ్లు తాగే రిమైండర్", "ప్రతి 2 గంటలకి", "ఉదయం 9 నుంచి రాత్రి 9 వరకు ప్రతి 2 గంటలకి నీళ్లు తాగమని గుర్తు చెయ్."),
@@ -143,6 +146,9 @@ public class FeaturesActivity extends Activity {
                     fill("🔁", "బదులు డ్యూటీ", "4 రోజులు డ్యూటీ, తర్వాత 8 సెలవు", "ఈ తేదీన ఈ వ్యక్తి బదులు నేను డ్యూటీ చేస్తున్నా (ఎవరు, తేదీ): "),
                     fill("🏠", "సెలవు పెట్టు", "ఏ తేదీలు", "ఈ తేదీల్లో నాకు డ్యూటీ సెలవు: "),
                     act("📤", "క్యాలెండర్ ఫోటో షేర్", "మిగతా బ్యాచ్‌లకి WhatsApp లో", "duty_calendar"),
+                    ask("🌧️", "డ్యూటీ ప్రయాణ చెక్", "దారిలో వర్షం, బైక్ ఛార్జ్ సరిపోతుందా", "నా తర్వాతి డ్యూటీకి వెళ్లేటప్పుడు దారిలో వర్షం ఉందా, బైక్ ఛార్జ్ వెళ్లి రావడానికి సరిపోతుందా? (duty trip_check)"),
+                    fill("📏", "డ్యూటీకి దూరం", "ఇంటి నుంచి ఎన్ని కి.మీ (ఒక వైపు)", "ఇంటి నుంచి డ్యూటీకి దూరం ఇన్ని కి.మీ (duty setup trip_km): "),
+                    ask("🎉", "రాబోయే పండుగలు, సెలవులు", "ఏ రోజు డ్యూటీ ఉందో కూడా", "రాబోయే పండుగలు, సెలవులు చెప్పు, ఆ రోజుల్లో నాకు డ్యూటీ ఉందో లేదో కూడా (holidays)."),
                     act("⚙️", "బ్యాచ్‌లు, టైమింగ్స్", "మొదటి డ్యూటీ తేదీ, పేర్లు", "duty_setup")),
             new Cat("shopping", "🛒", "షాపింగ్ లిస్ట్", "కొనాల్సినవి, కొన్నవి, షేర్", 0xFF84CC16,
                     fill("➕", "లిస్ట్‌లో చేర్చు", "ఉదా: పాలు 2, గుడ్లు, బ్రెడ్", "షాపింగ్ లిస్ట్‌లో చేర్చు: "),
@@ -161,6 +167,42 @@ public class FeaturesActivity extends Activity {
                     fill("💍", "పెళ్లిరోజు చేర్చు", "ఉదా: అక్క బావ - మే 20", "ఈ పెళ్లిరోజు గుర్తుపెట్టుకో (పేరు, తేదీ): "),
                     ask("📅", "ఈ నెల పుట్టినరోజులు", "రాబోయే 30 రోజులు", "రాబోయే 30 రోజుల్లో పుట్టినరోజులు, పెళ్లిరోజులు చెప్పు."),
                     fill("💬", "విషెస్ పంపు", "WhatsApp లో, మీరు 'పంపు' అంటేనే", "ఈ వ్యక్తికి పుట్టినరోజు విషెస్ WhatsApp లో సిద్ధం చెయ్: ")),
+            new Cat("debts", "🤝", "అప్పులు, EMI, చిట్టీలు", "ఎవరికి ఇచ్చారు, ఎవరికి ఇవ్వాలి, నెలవారీ కట్టేవి", 0xFF10B981,
+                    fill("📤", "అప్పు ఇచ్చాను", "ఎవరికి, ఎంత, ఎప్పుడు ఇస్తానన్నారు", "నేను అప్పు ఇచ్చాను (ఎవరికి, ఎంత, తిరిగి ఎప్పుడు): "),
+                    fill("📥", "అప్పు తీసుకున్నాను", "ఎవరి దగ్గర, ఎంత, ఎప్పటిలోపు", "నేను అప్పు తీసుకున్నాను (ఎవరి దగ్గర, ఎంత, ఎప్పటిలోపు ఇవ్వాలి): "),
+                    fill("🏦", "EMI చేర్చు", "పేరు, నెలకి ఎంత, ఏ తేదీ, ఎన్ని నెలలు", "ఈ EMI గుర్తుపెట్టుకో (పేరు, నెలకి ఎంత, ప్రతి నెల ఏ తేదీ, మొత్తం ఎన్ని నెలలు, ఎన్ని కట్టాను): "),
+                    fill("👥", "చిట్టీ చేర్చు", "పేరు, నెలకి ఎంత, ఏ తేదీ, ఎన్ని నెలలు", "ఈ చిట్టీ గుర్తుపెట్టుకో (పేరు, నెలకి ఎంత, ప్రతి నెల ఏ తేదీ, మొత్తం ఎన్ని నెలలు, ఎన్ని కట్టాను): "),
+                    fill("✅", "కట్టాను / తిరిగి వచ్చింది", "ఏది, ఎంత", "ఇది కట్టాను / తిరిగి వచ్చింది (debts paid): "),
+                    ask("📋", "నా అప్పులు, EMI లు", "ఎవరు ఎంత, ఈ నెల కట్టాల్సినవి", "నా అప్పులు, EMI లు, చిట్టీలు అన్నీ చెప్పు: నాకు ఎవరు ఎంత ఇవ్వాలి, నేను ఎవరికి ఎంత ఇవ్వాలి, ఈ నెల కట్టాల్సినవి (debts list).")),
+            new Cat("expiry", "📄", "గడువుల రిమైండర్", "ఇన్సూరెన్స్, లైసెన్స్, సర్వీస్, గ్యాస్, రీఛార్జ్", 0xFFF97316,
+                    fill("🛡️", "బైక్ ఇన్సూరెన్స్ గడువు", "ఏ తేదీ వరకు", "బైక్ ఇన్సూరెన్స్ గడువు తేదీ (expiry add): "),
+                    fill("🪪", "డ్రైవింగ్ లైసెన్స్ గడువు", "ఏ తేదీ వరకు", "డ్రైవింగ్ లైసెన్స్ గడువు తేదీ (expiry add): "),
+                    fill("🛠️", "బైక్ సర్వీస్", "ప్రతి ఎన్ని కి.మీ", "బైక్ సర్వీస్ ప్రతి ఇన్ని కి.మీ కి గుర్తు చెయ్ (expiry add_km): "),
+                    fill("🔥", "గ్యాస్ బుకింగ్", "ఎన్ని రోజులకి ఒకసారి", "గ్యాస్ సిలిండర్ బుక్ చేశాను, ఇన్ని రోజులకి మళ్లీ గుర్తు చెయ్ (expiry add, repeat_days): "),
+                    fill("📶", "మొబైల్ రీఛార్జ్", "ఏ రోజు అయిపోతుంది, ప్లాన్ రోజులు", "మొబైల్ రీఛార్జ్ గడువు (తేదీ, ప్లాన్ ఎన్ని రోజులు) (expiry add): "),
+                    fill("➕", "ఇంకేదైనా గడువు", "PUC, RC, పాలసీ, ఫీజు…", "ఈ గడువు గుర్తుపెట్టుకో (ఏది, ఏ తేదీ): "),
+                    fill("✅", "రెన్యూ చేశాను", "ఏది, కొత్త తేదీ", "ఇది రెన్యూ చేశాను / అయింది (expiry renew): "),
+                    ask("📋", "నా గడువులు", "దగ్గర ఉన్నవి ముందు", "నా గడువులు అన్నీ చెప్పు, దగ్గర ఉన్నవి ముందు (expiry list).")),
+            new Cat("prices", "🪙", "బంగారం, మార్కెట్ ధరలు", "బంగారం, వెండి, మిర్చి, పత్తి, పెట్రోల్", 0xFFEAB308,
+                    ask("🪙", "ఈరోజు బంగారం, వెండి", "22K, 24K, వెండి కిలో", "ఈరోజు బంగారం 22 క్యారెట్, 24 క్యారెట్, వెండి ధరలు చెప్పు (market_prices)."),
+                    ask("🌶️", "మిర్చి ధర", "మార్కెట్ యార్డ్, క్వింటాకి", "ఈరోజు మిర్చి (తేజ) ధర మార్కెట్ యార్డ్‌లో ఎంత? (market_prices)"),
+                    ask("☁️", "పత్తి ధర", "క్వింటాకి", "ఈరోజు పత్తి ధర క్వింటాకి ఎంత? (market_prices)"),
+                    ask("🌾", "వడ్ల ధర", "క్వింటాకి", "ఈరోజు వడ్లు (ధాన్యం) ధర క్వింటాకి ఎంత? (market_prices)"),
+                    ask("⛽", "పెట్రోల్, డీజిల్", "లీటర్‌కి", "ఈరోజు పెట్రోల్, డీజిల్ ధర ఎంత? (market_prices)"),
+                    fill("🔔", "ఈ ధరకి వస్తే చెప్పు", "ఉదా: బంగారం 22K గ్రాము ₹7000 కి తగ్గితే", "ఈ ధరకి వస్తే చెప్పు (price_alert): "),
+                    fill("🌅", "రోజూ ఉదయం ధరలు", "ఉదా: బంగారం, మిర్చి · 'వద్దు' = ఆపు", "రోజూ ఉదయం 10 కి ఈ ధరలు చెప్పు (market_prices daily): ")),
+            new Cat("diary", "📔", "రోజు డైరీ", "ఈరోజు ఎలా గడిచింది, పాత రోజులు", 0xFFC084FC,
+                    ask("✍️", "ఈరోజు డైరీ రాయి", "Jarvis అడుగుతుంది, మీరు చెప్పండి", "ఈరోజు డైరీ రాద్దాం. నన్ను 'ఈరోజు ఎలా గడిచింది?' అని అడిగి, నేను చెప్పింది diary లో add చెయ్."),
+                    fill("🗓️", "ఆ రోజు ఏం చేశాను?", "ఉదా: గత నెల 10న", "ఈ రోజు ఏం చేశానో డైరీలో చూసి చెప్పు: "),
+                    ask("📖", "ఈ వారం డైరీ", "గత 7 రోజులు", "ఈ వారం నా డైరీ చదివి చిన్నగా చెప్పు (diary read)."),
+                    fill("🔎", "డైరీలో వెతుకు", "ఒక మాట, పేరు", "డైరీలో ఈ మాట ఉన్న రోజులు వెతుకు: "),
+                    open("⏰", "రాత్రి అడిగే టైమ్ / ఆన్-ఆఫ్", "Settings", "డైరీ")),
+            new Cat("holidays", "🎉", "పండుగలు, సెలవులు", "ప్రభుత్వ సెలవులు, పండుగలు, మీ రోజులు", 0xFFFB923C,
+                    ask("🎉", "రాబోయే పండుగలు", "45 రోజుల్లో, డ్యూటీ ఉందో లేదో", "రాబోయే పండుగలు, సెలవులు చెప్పు, ఆ రోజుల్లో నాకు డ్యూటీ ఉందో లేదో కూడా (holidays)."),
+                    ask("🏛️", "ఈ నెల ప్రభుత్వ సెలవులు", "తెలంగాణ", "ఈ నెల, వచ్చే నెల తెలంగాణ ప్రభుత్వ సెలవులు ఏవి? (holidays)"),
+                    fill("➕", "నా రోజు చేర్చు", "ఉదా: ఊరి జాతర - తేదీ", "ఈ రోజు నా క్యాలెండర్‌లో పండుగ/సెలవుగా చేర్చు (holidays add; తేదీ, పేరు): "),
+                    act("🗓️", "క్యాలెండర్‌లో చూడు", "డ్యూటీ క్యాలెండర్‌లో 🎉", "duty_calendar"),
+                    open("🔔", "గుర్తుచేయడం ఆన్/ఆఫ్", "Settings", "డైరీ")),
             new Cat("travel", "🌍", "ప్రయాణం, బయటకు", "దారి, ట్రైన్, టికెట్లు, ఫుడ్", 0xFF34D399,
                     fill("🗺️", "దారి చూపించు", "Maps లో navigation", "దారి చూపించు: "),
                     fill("🚆", "ట్రైన్ స్టేటస్", "ట్రైన్ నంబర్ లేదా PNR", "ట్రైన్ స్టేటస్: "),
@@ -374,6 +416,9 @@ public class FeaturesActivity extends Activity {
         if ("shopping".equals(c.id)) addShopping(c);
         if ("medicine".equals(c.id)) addMedicines(c);
         if ("birthdays".equals(c.id)) addBirthdays(c);
+        if ("debts".equals(c.id)) addDebts(c);
+        if ("expiry".equals(c.id)) addExpiry(c);
+        if ("holidays".equals(c.id)) addHolidays(c);
         scroll.scrollTo(0, 0);
     }
 
@@ -496,6 +541,89 @@ public class FeaturesActivity extends Activity {
                 finish();
             });
             content.addView(r, rowParams());
+        }
+    }
+
+    /** Open debts, EMIs and chits: tap = ask Jarvis about it (paid, remind them...). */
+    private void addDebts(Cat c) {
+        java.util.List<org.json.JSONObject> list = Debts.open(this);
+        header(c, "ఇప్పుడు ఉన్నవి (" + list.size() + ")");
+        if (list.isEmpty()) { empty("ఏవీ లేవు. పైన చేర్చండి, లేదా Jarvis కి చెప్పండి: \"రవికి 5000 అప్పు ఇచ్చాను, వచ్చే నెల 10న ఇస్తానన్నాడు\"."); return; }
+        for (org.json.JSONObject o : list) {
+            String k = o.optString("kind");
+            String emoji = k.equals("lent") ? "📤" : k.equals("borrowed") ? "📥" : k.equals("chit") ? "👥" : "🏦";
+            View r = row(c, new Opt(emoji, o.optString("name") + " · " + Debts.kindTe(k), Debts.line(o), INFO, ""), false);
+            r.setOnClickListener(v -> {
+                String[] opts = k.equals("lent") ? new String[]{"✅ తిరిగి ఇచ్చేశారు (మొత్తం)", "💬 గుర్తుచేస్తూ WhatsApp మెసేజ్", "🗑️ తీసేయి"}
+                        : k.equals("borrowed") ? new String[]{"✅ ఇచ్చేశాను (మొత్తం)", "🗑️ తీసేయి"}
+                        : new String[]{"✅ ఈ నెల కట్టాను", "🗑️ తీసేయి"};
+                new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle(emoji + " " + o.optString("name"))
+                        .setMessage(Debts.line(o))
+                        .setItems(opts, (d, w) -> {
+                            String pick = opts[w];
+                            try {
+                                if (pick.startsWith("✅")) Debts.pay(this, o.optString("id"), "", 0);
+                                else if (pick.startsWith("🗑️")) Notes.remove(this, Debts.KEY, "id", o.optString("id"));
+                                else {
+                                    Intent i = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                                            .putExtra(MainActivity.EXTRA_ASK, o.optString("name") + " నాకు " + Debts.money(Debts.left(o))
+                                                    + " ఇవ్వాలి. మర్యాదగా, చిన్నగా గుర్తుచేస్తూ తెలుగులో WhatsApp మెసేజ్ సిద్ధం చెయ్ (whatsapp_message); పంపే ముందు నాకు చదివి వినిపించి అడుగు.")
+                                            .putExtra(MainActivity.EXTRA_LABEL, "💬 " + o.optString("name") + " కి గుర్తు");
+                                    startActivity(i);
+                                    finish();
+                                    return;
+                                }
+                            } catch (Exception ignored) {}
+                            showCat(c);
+                        })
+                        .setNegativeButton("సరే", null).show();
+            });
+            content.addView(r, rowParams());
+        }
+    }
+
+    /** Saved expiry dates and km services, nearest first. */
+    private void addExpiry(Cat c) {
+        java.util.List<org.json.JSONObject> list = Expiry.all(this);
+        header(c, "నా గడువులు (" + list.size() + ")");
+        if (list.isEmpty()) { empty("ఏవీ లేవు. పైన చేర్చండి, లేదా చెప్పండి: \"బైక్ ఇన్సూరెన్స్ గడువు 2027 మార్చి 5\"."); return; }
+        for (org.json.JSONObject o : list) {
+            String line = Expiry.line(this, o);
+            View r = row(c, new Opt(o.has("km_every") ? "🛠️" : "📄", o.optString("what"), line.substring(Math.min(line.length(), o.optString("what").length() + 2)), INFO, ""), false);
+            r.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("📄 " + o.optString("what")).setMessage(line)
+                    .setItems(new String[]{"✅ రెన్యూ చేశాను / అయింది", "🗑️ తీసేయి"}, (d, w) -> {
+                        if (w == 0) {
+                            if (o.has("km_every") || o.optInt("repeat_days") > 0) {
+                                try { Expiry.renew(this, o.optString("id"), ""); } catch (Exception ignored) {}
+                                showCat(c);
+                            } else {
+                                Intent i = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                                        .putExtra(MainActivity.EXTRA_FILL, o.optString("what") + " రెన్యూ చేశాను, కొత్త గడువు తేదీ (expiry renew): ");
+                                startActivity(i);
+                                finish();
+                            }
+                        } else {
+                            Notes.remove(this, Expiry.KEY, "id", o.optString("id"));
+                            showCat(c);
+                        }
+                    }).setNegativeButton("సరే", null).show());
+            content.addView(r, rowParams());
+        }
+    }
+
+    /** The next 60 days' festivals and holidays. */
+    private void addHolidays(Cat c) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.util.List<Holidays.Day> list = new java.util.ArrayList<>();
+        for (Holidays.Day h : Holidays.between(this, today, today.plusDays(60))) if (h.big()) list.add(h);
+        header(c, "రాబోయే 60 రోజులు (" + list.size() + ")");
+        if (list.isEmpty()) { empty("ఏవీ లేవు."); return; }
+        Duty.Roster r = Duty.load(this);
+        boolean ready = Duty.ready(r);
+        for (Holidays.Day h : list) {
+            String sub = Duty.day(h.date) + " · " + h.kindTe() + (ready ? (r.isOn(Duty.ME, h.date) ? " · ⭐ మీకు డ్యూటీ" : " · 🏠 ఇంట్లో") : "");
+            content.addView(row(c, new Opt("🎉", h.name, sub, INFO, h.name + "\n" + sub), false), rowParams());
         }
     }
 

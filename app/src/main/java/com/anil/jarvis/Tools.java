@@ -307,7 +307,7 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "save, run, list or delete"}, {"name", "string", "Routine name as he says it"},
                         {"steps", "string", "For save: the steps in plain words, in order"}}, "action")));
         DEFS.add(new Def("notes",
-                "Voice notes and diary. add: note his words; list: notes of the last N days (for a weekly summary); search: find notes containing a word; delete: by id.",
+                "Voice notes (his day-by-day diary is the diary tool). add: note his words; list: notes of the last N days (for a weekly summary); search: find notes containing a word; delete: by id.",
                 schema(new String[][]{{"action", "string", "add, list, search or delete"}, {"text", "string", "For add: the note; for search: the word; for delete: the id"},
                         {"days", "integer", "For list: how many days back (default 7)"}}, "action")));
         DEFS.add(new Def("sos",
@@ -343,8 +343,10 @@ final class Tools {
                 "'గుడ్ నైట్' = on: phone quiet (Do Not Disturb or vibrate), low brightness, nothing read aloud, optional wake-up alarm. 'గుడ్ మార్నింగ్' = off: sound back on, then brief him.",
                 schema(new String[][]{{"on", "boolean", "true for good night, false for good morning"}, {"alarm", "string", "Optional wake-up time 'HH:mm' (24h)"}}, "on")));
         DEFS.add(new Def("find_phone",
-                "Anil cannot find his phone ('ఎక్కడున్నావ్?', 'where are you'): ring loudly and blink the flashlight.",
-                schema(new String[][]{})));
+                "Anil cannot find his phone ('ఎక్కడున్నావ్?', 'where are you'): ring loudly and blink the flashlight (action ring, the default). "
+                        + "From another phone he can send his secret code by SMS or WhatsApp and this phone rings even on silent: "
+                        + "code = tell him the code; set_code = change it (at least 6 letters/digits); on / off = the code feature; stop = stop ringing.",
+                schema(new String[][]{{"action", "string", "ring (default), code, set_code, on, off or stop"}, {"code", "string", "For set_code: the new code"}})));
         DEFS.add(new Def("add_expense",
                 "Write down an expense (e.g. from a bill photo he shows, or 'petrol 500 రాసుకో'). It counts in bank_spending, day_summary and weekly_report.",
                 schema(new String[][]{{"amount", "number", "Amount in rupees (for a bill: the grand total he paid, with tax)"},
@@ -360,7 +362,7 @@ final class Tools {
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, debts, expiry, prices, diary, holidays, travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
@@ -383,8 +385,9 @@ final class Tools {
                 + "setup_text: all batches at once from lines he pasted; "
                 + "set_day: he or someone is on duty / off on a date or dates (extra duty, leave); cover: one person does another's turn "
                 + "(he does someone's: by empty; someone does his: covered empty, by = that person), the doer is on 4 days in a row and the other then does the doer's next turn "
-                + "(8 days off); clear: undo changes on a date; open: show the calendar screen.",
-                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear or open"},
+                + "(8 days off); clear: undo changes on a date; open: show the calendar screen; "
+                + "trip_check: before his next duty, rain on the way and whether the bike's charge is enough to go and come back ('డ్యూటీకి వెళ్లొచ్చా?', 'బైక్ ఛార్జ్ సరిపోతుందా?').",
+                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear, open or trip_check"},
                         {"person", "string", "Whose duty: empty = his own; a name or a batch (A, B, C)"},
                         {"date", "string", "YYYY-MM-DD (on_date, set_day, cover, clear)"}, {"to_date", "string", "Last date YYYY-MM-DD for set_day / clear"},
                         {"duty", "boolean", "For set_day: true = on duty, false = off"},
@@ -394,10 +397,48 @@ final class Tools {
                         {"batch", "string", "For setup: A, B or C"}, {"start_date", "string", "For setup: first day of one of that batch's duties, YYYY-MM-DD"},
                         {"time", "string", "For setup: duty start time HH:mm = when he relieves the batch before (his is 11:30)"},
                         {"leave_before", "integer", "For setup: minutes he needs to reach duty from home (default 90: leave 10:00 for 11:30)"},
+                        {"trip_km", "integer", "For setup: km from home to duty, one way (for the bike charge check)"},
                         {"members", "string", "For setup: people in that batch, comma separated"},
                         {"mine", "boolean", "For setup: true = this is his batch"}, {"on_days", "integer", "For setup: duty days in a row (2)"},
                         {"off_days", "integer", "For setup: days off (4)"}, {"month", "string", "For month / open: YYYY-MM"},
                         {"count", "integer", "For next: how many duties (default 3)"}}, "action")));
+        DEFS.add(new Def("debts", "Money between him and others, and monthly payments: lent (he gave someone money, they owe him), borrowed (he owes someone), "
+                + "emi (a loan EMI on a day of the month), chit (చిట్టీ instalment on a day of the month). "
+                + "add: a new one; paid: he paid / got money back (lent/borrowed: amount, 0 = all; emi/chit: this month's instalment is paid); list: open ones and totals; remove. "
+                + "Jarvis reminds him the evening before and on each EMI / chit day until he says paid, and on the day money should come back.",
+                schema(new String[][]{{"action", "string", "list (default), add, paid or remove"},
+                        {"kind", "string", "lent, borrowed, emi or chit"}, {"name", "string", "The person, or the loan / chit name (e.g. 'Ravi', 'Bajaj bike loan', 'ఊరి చిట్టీ')"},
+                        {"amount", "number", "Rupees: the sum lent/borrowed, the monthly EMI / instalment, or for paid the part paid back"},
+                        {"date", "string", "For add lent/borrowed: the day it was given, YYYY-MM-DD (default today)"},
+                        {"due", "string", "For add lent/borrowed: the day it should be given back, YYYY-MM-DD (optional)"},
+                        {"day", "integer", "For add emi/chit: day of the month it is paid (1-31)"},
+                        {"months", "integer", "For add emi/chit: how many instalments in all (0 = not known)"},
+                        {"paid_months", "integer", "For add emi/chit: how many are already paid"},
+                        {"note", "string", "Anything else he said"}})));
+        DEFS.add(new Def("expiry", "Things that run out, with reminders before: bike insurance, driving licence, PUC, RC, gas cylinder booking, mobile recharge, bike service... "
+                + "add: what + last date (repeat_days for things that come back, e.g. recharge 28, gas 30); add_km: bike service every N km (counted from his rides); "
+                + "renew: done / renewed (new date, or + repeat days; km count starts again); list; remove. For a date in a saved document use ask_document first. "
+                + "Keep only the name and date, never policy or licence numbers.",
+                schema(new String[][]{{"action", "string", "list (default), add, add_km, renew or remove"},
+                        {"what", "string", "In Telugu as he says it, e.g. 'బైక్ ఇన్సూరెన్స్', 'డ్రైవింగ్ లైసెన్స్', 'గ్యాస్ బుకింగ్', 'Jio రీఛార్జ్', 'బైక్ సర్వీస్'"},
+                        {"date", "string", "Last date YYYY-MM-DD (add; renew with a new date)"},
+                        {"repeat_days", "integer", "For add: comes back every N days (0 = no)"},
+                        {"before_days", "integer", "For add: first reminder N days before (default 15; 2 for short repeats)"},
+                        {"every_km", "integer", "For add_km: service every N km (e.g. 3000)"}})));
+        DEFS.add(new Def("market_prices", "Today's prices from the web: gold 22K/24K and silver in his city, crops at the market yard (mirchi / Teja chilli, cotton, paddy, maize, turmeric) per quintal, petrol/diesel. "
+                + "action daily: say these prices every morning at 10 ('what' = the list, 'off' = stop). For 'tell me when gold falls to X' use price_alert.",
+                schema(new String[][]{{"what", "string", "What prices, in his words (empty = gold and silver)"},
+                        {"place", "string", "City or market yard (empty = his city for gold, his home market for crops)"},
+                        {"action", "string", "get (default) or daily"}})));
+        DEFS.add(new Def("diary", "His diary, by date. add: write his words (as he said them) for today or a date; read: a date or dates ('గత నెల 10న ఏం చేశాను?' = that date), "
+                + "with his duty and bike rides that day; search: days mentioning a word; delete. Jarvis also asks 'ఈరోజు ఎలా గడిచింది?' at night (time: hour 18-23; on/off).",
+                schema(new String[][]{{"action", "string", "add, read (default), search, delete, time, on or off"},
+                        {"text", "string", "For add: his words; for search: the word"}, {"date", "string", "YYYY-MM-DD (add / read / delete)"},
+                        {"to_date", "string", "For read: last date of a range"}, {"hour", "integer", "For time: hour to ask at night (18-23)"}})));
+        DEFS.add(new Def("holidays", "Festivals and holidays: Telangana government holidays, festivals, and days he added. list: coming ones (days ahead, default 45) with whether he has duty; "
+                + "on_date: that day's; add: a day of his own (date + name, e.g. ఊరి జాతర); remove. Also shown on the duty calendar.",
+                schema(new String[][]{{"action", "string", "list (default), on_date, add or remove"}, {"date", "string", "YYYY-MM-DD"},
+                        {"name", "string", "For add: the name"}, {"days", "integer", "For list: days ahead"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
                 schema(new String[][]{})));
         DEFS.add(new Def("day_summary",
@@ -507,6 +548,11 @@ final class Tools {
             case "note_in_app": return "నోట్ రాస్తున్నాను…";
             case "news": return "వార్తలు తెస్తున్నాను…";
             case "local_news": return "మీ ప్రాంతాల వార్తలు తెస్తున్నాను…";
+            case "debts": return "అప్పులు, EMI లు చూస్తున్నాను…";
+            case "expiry": return "గడువులు చూస్తున్నాను…";
+            case "market_prices": return "ఈరోజు ధరలు వెతుకుతున్నాను…";
+            case "diary": return "డైరీ…";
+            case "holidays": return "పండుగలు, సెలవులు చూస్తున్నాను…";
             case "ev_chargers": return "ఛార్జింగ్ స్టేషన్లు వెతుకుతున్నాను…";
             case "travel_search": return "టికెట్లు వెతుకుతున్నాను…";
             case "my_trips": return "మీ ప్రయాణాలు చూస్తున్నాను…";
@@ -629,6 +675,11 @@ final class Tools {
                 case "note_in_app": return noteInApp(a.optString("text"), a.optString("app", ""));
                 case "news": return news(a.optString("topic", ""), a.optInt("count", 6));
                 case "local_news": return localNews(a);
+                case "debts": return debts(a);
+                case "expiry": return expiry(a);
+                case "market_prices": return marketPrices(a);
+                case "diary": return diary(a);
+                case "holidays": return holidays(a);
                 case "ev_chargers": return evChargers(a.optString("place", ""), a.optString("app", ""));
                 case "travel_search": return travelSearch(a.optString("kind", "flight"), a.optString("from"), a.optString("to"), a.optString("date", ""), a.optString("app", ""));
                 case "my_trips": return myTrips();
@@ -660,7 +711,7 @@ final class Tools {
                 case "food_app": return foodApp(a.optString("app"), a.optString("query"));
                 case "driving_mode": return drivingMode(a.optBoolean("on", true), a.optString("destination", ""));
                 case "night_mode": return nightMode(a.optBoolean("on", true), a.optString("alarm", ""));
-                case "find_phone": return findPhone();
+                case "find_phone": return findPhone(a);
                 case "add_expense": return addExpense(a.optDouble("amount", 0), a.optString("what", ""), a.optString("shop", ""),
                         a.optString("category", ""), a.optString("date", ""));
                 case "bike_range": return Bike.range(act(), a.optInt("battery_percent", -1)).toString();
@@ -2683,7 +2734,24 @@ final class Tools {
         return o.toString();
     }
 
-    private String findPhone() throws Exception {
+    private String findPhone(JSONObject a) throws Exception {
+        String action = a.optString("action", "ring").toLowerCase(Locale.ROOT);
+        if (action.startsWith("stop")) { FindPhone.stop(act()); return ok().put("stopped", true).toString(); }
+        if (action.startsWith("set")) {
+            String code = a.optString("code", "").trim().replaceAll("\\s+", " ");
+            if (code.replaceAll("[\\s\\p{Punct}]+", "").length() < 6) return err("short", "The code needs at least 6 letters or digits, e.g. 'JARVIS 4827'.");
+            prefs.sp.edit().putString("find_code", code).putBoolean("find_phone", true).apply();
+            return ok().put("code", code).put("note", "Tell him: send exactly this from any phone by SMS or WhatsApp; it rings for 2 minutes or until he unlocks it.").toString();
+        }
+        if (action.equals("on") || action.equals("off")) {
+            prefs.set("find_phone", action.equals("on"));
+            return ok().put("find_by_code", action).put("code", prefs.findCode()).toString();
+        }
+        if (action.startsWith("code") || action.startsWith("info")) {
+            return ok().put("code", prefs.findCode()).put("on", prefs.findPhone())
+                    .put("how", "From any other phone, send exactly this code to his number by SMS, or to his WhatsApp: this phone rings loud even on silent, "
+                            + "for 2 minutes or until he unlocks it. Needs Jarvis's notification access (the same as reading messages). Nothing is sent back.").toString();
+        }
         FindPhone.start(act());
         return ok().put("ringing", true).put("note", "The phone rings loudly and the flashlight blinks for 40 seconds, or until he unlocks it.").toString();
     }
@@ -4526,7 +4594,7 @@ final class Tools {
                 return "మొబైల్ డేటా పేజీ తెరిచాను.";
             }
             if (any(t, "ఎక్కడున్నావ్", "ఎక్కడ ఉన్నావ్", "where are you")) {
-                findPhone();
+                FindPhone.start(act());
                 return "ఇక్కడే ఉన్నాను!";
             }
             if (any(t, "బ్యాటరీ", "battery", "ఛార్జ్")) {
@@ -4602,6 +4670,132 @@ final class Tools {
             if (got[0] != null) return got[0];
         }
         return lastLocation(act());
+    }
+
+    private String debts(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT);
+        if (action.startsWith("add")) {
+            JSONObject o = Debts.add(act(), a.optString("kind"), a.optString("name"), a.optDouble("amount", 0), a.optString("date"), a.optString("due"),
+                    a.optInt("day", 0), a.optInt("months", 0), a.optInt("paid_months", 0), a.optString("note"));
+            if (o == null) return err("missing", "Need: kind (lent/borrowed/emi/chit), name, amount; for emi/chit also the day of the month (1-31).");
+            return ok().put("saved", Debts.line(o)).put("note", o.optString("kind").matches("emi|chit")
+                    ? "Reminds him the evening before and on the day each month until he says paid." : o.has("due") ? "Reminds on the due day." : "").toString();
+        }
+        if (action.startsWith("paid") || action.startsWith("pay") || action.startsWith("got")) {
+            JSONObject o = Debts.pay(act(), a.optString("name"), a.optString("kind"), a.optDouble("amount", 0));
+            if (o == null) return err("not_found", "No open entry named '" + a.optString("name") + "'. Open ones: " + Debts.summary(act(), "").optJSONArray("items"));
+            return ok().put("now", Debts.line(o)).put("closed", o.optBoolean("closed")).toString();
+        }
+        if (action.startsWith("rem") || action.startsWith("del"))
+            return ok().put("removed", Debts.remove(act(), a.optString("name"), a.optString("kind"))).toString();
+        return Debts.summary(act(), a.optString("kind")).put("next", "Say the totals first, then each one in short Telugu. "
+                + "For someone who owes him, offer a polite WhatsApp reminder (whatsapp_message, sent only after he says send).").toString();
+    }
+
+    private String expiry(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT), what = a.optString("what");
+        if (action.equals("add_km") || (action.startsWith("add") && a.optInt("every_km", 0) > 0)) {
+            JSONObject o = Expiry.addKm(act(), what, a.optInt("every_km", 0));
+            if (o == null) return err("missing", "Need what and every how many km (e.g. 3000).");
+            return ok().put("saved", Expiry.line(act(), o)).put("note", "Counts km from the rides Jarvis logs (bike Bluetooth in Settings). Reminds when it is near.").toString();
+        }
+        if (action.startsWith("add")) {
+            JSONObject o = Expiry.addDate(act(), what, a.optString("date"), a.optInt("repeat_days", 0), a.optInt("before_days", 0));
+            if (o == null) return err("missing", "Need what and the last date.");
+            return ok().put("saved", Expiry.line(act(), o)).put("reminds", o.optInt("before_days") + " days before, 7 days, 1 day, on the day").toString();
+        }
+        if (action.startsWith("renew") || action.startsWith("done")) {
+            JSONObject o = Expiry.renew(act(), what, a.optString("date"));
+            if (o == null) return err("not_found", "Nothing named '" + what + "'. Saved: " + Expiry.listJson(act()).optJSONArray("items"));
+            if (o.optBoolean("need_date")) return err("need_date", "Ask him the new last date for " + o.optString("what") + ".");
+            return ok().put("now", Expiry.line(act(), o)).toString();
+        }
+        if (action.startsWith("rem") || action.startsWith("del")) return ok().put("removed", Expiry.remove(act(), what)).toString();
+        JSONObject o = Expiry.listJson(act());
+        if (o.optJSONArray("items").length() == 0) o.put("note", "Nothing saved yet. He can say e.g. 'బైక్ ఇన్సూరెన్స్ గడువు 2027 మార్చి 5' or 'బైక్ సర్వీస్ ప్రతి 3000 కి.మీ'.");
+        return o.toString();
+    }
+
+    private String marketPrices(JSONObject a) throws Exception {
+        if (a.optString("action", "get").toLowerCase(Locale.ROOT).startsWith("daily")) {
+            String w = a.optString("what", "").trim();
+            boolean off = w.isEmpty() || w.equalsIgnoreCase("off") || w.contains("వద్దు") || w.contains("ఆపు");
+            prefs.sp.edit().putString("daily_prices", off ? "" : w).apply();
+            return ok().put("daily_at_10am", off ? "off" : w).put("note", off ? "" : "One small AI web search each morning (his chosen AI).").toString();
+        }
+        if (prefs.apiKey().isEmpty()) return err("no_key", "Prices are looked up with the AI's web search; the AI key is missing in Settings.");
+        return Prices.lookup(prefs, a.optString("what"), a.optString("place")).toString();
+    }
+
+    private String diary(JSONObject a) throws Exception {
+        String action = a.optString("action", "read").toLowerCase(Locale.ROOT);
+        if (action.startsWith("add") || action.startsWith("write")) {
+            JSONObject o = Diary.add(act(), a.optString("text"), a.optString("date"));
+            if (o == null) return err("missing", "What should I write?");
+            return ok().put("written", o.optString("date")).toString();
+        }
+        if (action.startsWith("time")) {
+            int h = Math.max(18, Math.min(23, a.optInt("hour", 22)));
+            prefs.sp.edit().putInt("diary_hour", h).putBoolean("diary_ask", true).apply();
+            return ok().put("asks_at", h + ":00").toString();
+        }
+        if (action.equals("on") || action.equals("off")) {
+            prefs.set("diary_ask", action.equals("on"));
+            return ok().put("night_question", action).toString();
+        }
+        if (action.startsWith("del") || action.startsWith("rem")) {
+            String key = a.optString("date", "").trim();
+            return ok().put("deleted", Diary.remove(act(), key)).toString();
+        }
+        JSONArray days = new JSONArray();
+        if (action.startsWith("search")) {
+            for (JSONObject o : Diary.search(act(), a.optString("text"))) days.put(new JSONObject().put("date", o.optString("date")).put("text", o.optString("text")));
+            return ok().put("found", days).toString();
+        }
+        java.time.LocalDate from = Debts.parse(a.optString("date")), to = Debts.parse(a.optString("to_date"));
+        if (from == null) { to = java.time.LocalDate.now(); from = to.minusDays(6); }
+        if (to == null || to.isBefore(from)) to = from;
+        if (java.time.temporal.ChronoUnit.DAYS.between(from, to) > 62) to = from.plusDays(62);
+        for (java.time.LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            JSONArray texts = new JSONArray();
+            for (JSONObject o : Diary.between(act(), d, d)) texts.put(o.optString("text"));
+            JSONObject facts = Diary.dayFacts(act(), d);
+            if (!from.equals(to) && texts.length() == 0) continue; // a range: only the days he wrote
+            days.put(new JSONObject().put("date", d.toString()).put("day", Duty.day(d)).put("diary", texts).put("also", facts));
+        }
+        return ok().put("days", days).put("note", days.length() == 0 ? "Nothing written for these days." : "Tell him in short Telugu; say plainly if a day has no diary.").toString();
+    }
+
+    private String holidays(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT);
+        if (action.startsWith("add")) {
+            JSONObject o = Holidays.add(act(), a.optString("date"), a.optString("name"));
+            if (o == null) return err("missing", "Need the date and a name.");
+            return ok().put("added", o).toString();
+        }
+        if (action.startsWith("rem") || action.startsWith("del")) {
+            String k = a.optString("date", "").trim();
+            if (k.isEmpty()) k = a.optString("name", "");
+            return ok().put("removed", Holidays.remove(act(), k)).toString();
+        }
+        java.time.LocalDate from = java.time.LocalDate.now(), to;
+        if (action.startsWith("on")) {
+            java.time.LocalDate d = Debts.parse(a.optString("date"));
+            from = d == null ? from : d;
+            to = from;
+        } else {
+            to = from.plusDays(Math.max(1, Math.min(400, a.optInt("days", 45))));
+        }
+        Duty.Roster r = Duty.load(act());
+        boolean ready = Duty.ready(r);
+        JSONArray out = new JSONArray();
+        for (Holidays.Day h : Holidays.between(act(), from, to)) {
+            if (!action.startsWith("on") && !h.big() && out.length() > 25) continue;
+            JSONObject o = new JSONObject().put("date", h.date.toString()).put("day", Duty.day(h.date)).put("name", h.name).put("kind", h.kindTe());
+            if (ready) o.put("his_duty", r.isOn(Duty.ME, h.date));
+            out.put(o);
+        }
+        return ok().put("holidays", out).put("note", "Government holidays are Telangana's list; festivals come from the public holiday calendar.").toString();
     }
 
     /** His own places' news in Telugu; also changes the list of places. */
@@ -4693,7 +4887,13 @@ final class Tools {
             if (Duty.ready(r)) o.put("his_next_duties", dutyBlocks(r, Duty.ME, today, today.plusDays(60), 3));
             return o.toString();
         }
+        if (action.startsWith("setup") && a.has("trip_km") && !a.has("batch") && !a.has("start_date") && !a.has("members")) {
+            r.tripKm = Math.max(0, Math.min(500, a.optInt("trip_km", 0)));
+            Duty.save(act(), r);
+            return ok().put("trip_km", r.tripKm).put("note", "Saved: the bike charge check uses " + r.tripKm * 2 + " km there and back.").toString();
+        }
         if (action.startsWith("setup")) {
+            if (a.has("trip_km")) r.tripKm = Math.max(0, Math.min(500, a.optInt("trip_km", 0)));
             if (a.has("on_days")) r.on = Math.max(1, Math.min(10, a.optInt("on_days", 2)));
             if (a.has("off_days")) r.off = Math.max(0, Math.min(30, a.optInt("off_days", 4)));
             String id = a.optString("batch", "").trim();
@@ -4724,6 +4924,24 @@ final class Tools {
         }
         if (!Duty.ready(r)) return err("not_set_up", "His duty is not set up yet. Ask which batch he is in, the first day of one of his duties (date) and the start time, "
                 + "then use setup; or open the calendar (duty open) where ⚙️ sets it.");
+        if (action.startsWith("trip") || action.startsWith("check")) {
+            for (java.time.LocalDate[] b : r.blocks(Duty.ME, today, today.plusDays(30))) {
+                if (b[0].isBefore(today)) continue;
+                String[] hm = r.timeOf(Duty.ME).split(":");
+                java.time.LocalDateTime start = b[0].atTime(Integer.parseInt(hm[0]), Integer.parseInt(hm[1]));
+                if (start.isBefore(java.time.LocalDateTime.now())) continue;
+                java.time.LocalDateTime leave = start.minusMinutes(r.leaveBefore);
+                String check = Duty.tripCheck(act(), r, leave, start, !b[0].equals(today));
+                JSONObject o = ok().put("next_duty", Duty.day(b[0]) + " " + r.timeOf(Duty.ME)).put("leave_home_by", r.leaveTime(r.timeOf(Duty.ME)))
+                        .put("check", check.isEmpty() ? "nothing known" : check).put("trip_km_one_way", Duty.tripKm(act(), r))
+                        .put("bike_percent_estimate", Bike.estimatePct(act()));
+                if (Bike.estimatePct(act()) < 0) o.put("how_bike", "Bike % is known from the last charge he logged (bike_charge) and the rides since; ask the % on the dashboard and use bike_range.");
+                if (Duty.tripKm(act(), r) == 0) o.put("how_km", "Ask how many km home to duty is (one way) and save with duty setup trip_km.");
+                if (b[0].isAfter(today.plusDays(2))) o.put("note", "Rain forecast is only good for 2-3 days ahead.");
+                return o.toString();
+            }
+            return err("no_duty", "No duty for him in the next 30 days.");
+        }
         String said = a.optString("person", "").trim();
         if (said.equalsIgnoreCase(myName)) said = "";
         String who = Duty.who(r, said);

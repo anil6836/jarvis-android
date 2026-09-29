@@ -193,6 +193,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         UpdateJob.schedule(this); // "new version" notification when a build is out
         cancelOldBackupJob();
         NotifyListener.ensureBound(this); // Android has notification access for Jarvis but stopped sending messages: reconnect
+        if (FindPhone.running() && FindPhone.age() > 10000) FindPhone.stop(this); // found it (not the ring he just asked for)
         Life.endNightIfMorning(this);     // a night mode left on from last night
         new Thread(() -> Updater.cleanup(getApplicationContext()), "jarvis-cleanup").start();
         showUpdateBanner();

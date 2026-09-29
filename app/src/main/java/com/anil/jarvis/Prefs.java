@@ -119,6 +119,25 @@ final class Prefs {
     void setNewsPlaces(String s) { sp.edit().putString("news_places", s == null ? "" : s.trim()).apply(); }
     /** Read the new local headlines by themselves at 8 am, 1 pm and 7 pm. */
     boolean newsAuto() { return sp.getBoolean("news_auto", true); }
+    /** City for gold / silver / fuel prices. */
+    String priceCity() { return sp.getString("price_city", "హైదరాబాద్"); }
+    /** Prices said every morning at 10 (e.g. "బంగారం, వెండి, మిర్చి"); empty = off. */
+    String dailyPrices() { return sp.getString("daily_prices", "").trim(); }
+    /** Ask "ఈరోజు ఎలా గడిచింది?" at night and write the diary. */
+    boolean diaryAsk() { return sp.getBoolean("diary_ask", true); }
+    int diaryHour() { return Math.max(18, Math.min(23, sp.getInt("diary_hour", 22))); }
+    /** Festivals and government holidays: said the evening before and on the morning. */
+    boolean holidayRemind() { return sp.getBoolean("holiday_remind", true); }
+    /** A message with this code (SMS / WhatsApp) makes the phone ring loud even on silent. */
+    boolean findPhone() { return sp.getBoolean("find_phone", true); }
+    String findCode() {
+        String c = sp.getString("find_code", "");
+        if (c.isEmpty()) { // a different code on every phone, so strangers can't guess it
+            c = "JARVIS " + (1000 + new java.security.SecureRandom().nextInt(9000));
+            sp.edit().putString("find_code", c).apply();
+        }
+        return c;
+    }
     /** Warn by voice when the battery gets low. */
     boolean batteryWarn() { return sp.getBoolean("battery_warn", true); }
     /** Driving: everything by voice, messages always read out. */

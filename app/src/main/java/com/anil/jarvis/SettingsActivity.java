@@ -56,6 +56,8 @@ public class SettingsActivity extends Activity {
     private Switch alexaSpeak, livePatient, scamGuard, readNews;
     private Switch newsAuto;
     private EditText newsPlaces;
+    private Switch diaryAsk, holidayRemind, findPhone;
+    private EditText priceCity, dailyPrices, findCode;
     private EditText balGemini, balOpenAi, balAnthropic;
     private EditText bikeRange, bikeKwh, powerRate;
     private Switch weeklyReport;
@@ -506,6 +508,15 @@ public class SettingsActivity extends Activity {
             try { startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); } catch (Exception ignored) {}
         });
 
+        section("డైరీ, పండుగలు, ధరలు, ఫోన్ వెతుకు");
+        diaryAsk = toggle("📔 రాత్రి " + prefs.diaryHour() + " గంటలకి \"ఈరోజు ఎలా గడిచింది?\" అని అడిగి డైరీ రాయి", prefs.diaryAsk());
+        holidayRemind = toggle("🎉 పండుగలు, ప్రభుత్వ సెలవులు ముందు రోజు సాయంత్రం, ఆ రోజు ఉదయం చెప్పు (డ్యూటీ ఉందో లేదో కూడా)", prefs.holidayRemind());
+        priceCity = field("💰 బంగారం, వెండి, పెట్రోల్ ధరలకి మీ సిటీ", prefs.priceCity(), false);
+        dailyPrices = field("💰 రోజూ ఉదయం 10 కి ఈ ధరలు చెప్పు (ఉదా: బంగారం, వెండి, మిర్చి · ఖాళీ = వద్దు · రోజుకి ఒక చిన్న AI వెతుకులాట)", prefs.dailyPrices(), false);
+        findPhone = toggle("📱 వేరే ఫోన్ నుంచి కింది కోడ్ SMS / WhatsApp లో పంపితే ఫోన్ గట్టిగా మోగాలి (సైలెంట్‌లో ఉన్నా)", prefs.findPhone());
+        findCode = field("📱 ఫోన్ వెతుకు కోడ్ (ఇంట్లోవాళ్లకి చెప్పండి; కనీసం 6 అక్షరాలు/అంకెలు)", prefs.findCode(), false);
+        button("🔔 ఇప్పుడు 5 సెకన్లు మోగించి చూడు", v -> FindPhone.start(this, 5000));
+
         section("ఆరోగ్యం, ఇతరాలు");
         sfx = toggle("Iron Man సౌండ్ ఎఫెక్ట్ (పిలవగానే చిన్న శబ్దం)", prefs.sfx());
         button("అడుగుల లెక్కకి అనుమతి (Physical activity)", v -> requestPermissions(new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, 8));
@@ -668,6 +679,13 @@ public class SettingsActivity extends Activity {
         e.putBoolean("read_messages", readMessages.isChecked());
         e.putBoolean("read_news", readNews.isChecked());
         e.putBoolean("news_auto", newsAuto.isChecked());
+        e.putBoolean("diary_ask", diaryAsk.isChecked());
+        e.putBoolean("holiday_remind", holidayRemind.isChecked());
+        if (!priceCity.getText().toString().trim().isEmpty()) e.putString("price_city", priceCity.getText().toString().trim());
+        e.putString("daily_prices", dailyPrices.getText().toString().trim());
+        e.putBoolean("find_phone", findPhone.isChecked());
+        String code = findCode.getText().toString().trim().replaceAll("\\s+", " ");
+        if (code.replaceAll("[\\s\\p{Punct}]+", "").length() >= 6) e.putString("find_code", code);
         e.putString("news_places", newsPlaces.getText().toString().trim());
         e.putBoolean("battery_warn", batteryWarn.isChecked());
         e.putBoolean("briefing", briefing.isChecked());

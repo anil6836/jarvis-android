@@ -52,6 +52,8 @@ final class Duty {
         boolean remind = true;
         /** How long before the duty starts he leaves home (the ride there): 11:30 duty -> leave at 10:00. */
         int leaveBefore = 90;
+        /** Home to duty, one way, in km (0 = not told): to see if the bike's charge is enough to go and come back. */
+        int tripKm = 0;
         final List<Batch> batches = new ArrayList<>();
         final List<Change> changes = new ArrayList<>();
 
@@ -262,6 +264,7 @@ final class Duty {
             r.mine = o.optString("mine", "A");
             r.remind = o.optBoolean("remind", true);
             r.leaveBefore = o.optInt("leave_before", 90);
+            r.tripKm = o.optInt("trip_km", 0);
             JSONArray bs = o.optJSONArray("batches");
             for (int i = 0; bs != null && i < bs.length(); i++) {
                 JSONObject j = bs.getJSONObject(i);
@@ -300,7 +303,7 @@ final class Duty {
     static synchronized void save(Context c, Roster r) {
         try {
             JSONObject o = new JSONObject().put("on", r.on).put("off", r.off).put("mine", r.mine).put("remind", r.remind)
-                    .put("leave_before", r.leaveBefore);
+                    .put("leave_before", r.leaveBefore).put("trip_km", r.tripKm);
             JSONArray bs = new JSONArray();
             for (Batch b : r.batches) {
                 JSONArray ms = new JSONArray();
@@ -378,18 +381,149 @@ final class Duty {
                 notify(c, ("two" + s).hashCode(), "🗓️ ఎల్లుండి డ్యూటీ", day(s) + ", " + when);
             }
             if (s.equals(today.plusDays(1)) && now.getHour() >= 20 && now.getHour() < 23 && once(c, "eve|" + s)) {
-                notify(c, ("eve" + s).hashCode(), "🗓️ రేపు మీ డ్యూటీ", day(s) + ", " + when + ". ఇంటి నుంచి " + go + " కల్లా బయలుదేరండి.");
+                String base = day(s) + ", " + when + ". ఇంటి నుంచి " + go + " కల్లా బయలుదేరండి.";
+                int id = ("eve" + s).hashCode();
+                notify(c, id, "🗓️ రేపు మీ డ్యూటీ", base);
                 if (!quiet) Announcer.say(c, p.name() + ", రేపు మీ డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి.");
+                tripLater(c, r, leave, start, true, id, "🗓️ రేపు మీ డ్యూటీ", base, quiet);
             }
             if (!now.isBefore(leave.minusMinutes(60)) && now.isBefore(leave) && once(c, "day|" + s)) {
-                notify(c, ("day" + s).hashCode(), "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", when + ". అన్నీ సిద్ధం చేసుకోండి.");
+                String base = when + ". అన్నీ సిద్ధం చేసుకోండి.";
+                int id = ("day" + s).hashCode();
+                notify(c, id, "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", base);
                 Announcer.say(c, p.name() + ", ఈరోజు డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి.");
+                tripLater(c, r, leave, start, false, id, "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", base, false);
             }
             if (!now.isBefore(leave) && now.isBefore(start) && once(c, "go|" + s)) {
                 notify(c, ("go" + s).hashCode(), "🏍️ బయలుదేరే టైమ్ అయింది", t + " కి రిలీవ్ చేయాలి.");
                 Announcer.say(c, p.name() + ", బయలుదేరే టైమ్ అయింది. " + t + " కి రిలీవ్ చేయాలి. జాగ్రత్తగా వెళ్లండి.");
             }
         }
+    }
+
+    // ================================================================ travel check: rain on the way, bike charge
+
+    private static final String[] DUTY_PLACE = {"డ్యూటీ", "duty", "ఆఫీస్", "ఆఫీసు", "office"};
+    private static final String[] HOME_PLACE = {"ఇల్లు", "ఇంటి", "home", "house"};
+    private static final String[] NOT_IT = {"ఛార్జ", "charg", "post", "పోస్ట్", "bank", "బ్యాంక్"};
+
+    private static JSONObject placeLike(Context c, String[] words) {
+        for (JSONObject p : Places.all(c)) {
+            if (!p.has("lat")) continue;
+            String n = p.optString("name").toLowerCase(Locale.ROOT);
+            boolean skip = false;
+            for (String x : NOT_IT) if (n.contains(x)) skip = true;
+            if (skip) continue;
+            for (String w : words) if (n.contains(w)) return p;
+        }
+        return null;
+    }
+
+    /** The reminder goes out at once; rain and bike charge follow on their own thread and fill the same notification. */
+    private static void tripLater(Context c, Roster r, LocalDateTime leave, LocalDateTime start, boolean evening, int id, String title, String base, boolean quiet) {
+        new Thread(() -> {
+            String trip = tripCheck(c, r, leave, start, evening);
+            if (trip.isEmpty()) return;
+            notify(c, id, title, base + "\n" + trip);
+            if (!quiet && !CallControl.busyWithCall()) Announcer.say(c, trip);
+        }, "duty-trip").start();
+    }
+
+    private static double km(double la1, double lo1, double la2, double lo2) {
+        double r = 6371, dla = Math.toRadians(la2 - la1), dlo = Math.toRadians(lo2 - lo1);
+        double a = Math.sin(dla / 2) * Math.sin(dla / 2) + Math.cos(Math.toRadians(la1)) * Math.cos(Math.toRadians(la2)) * Math.sin(dlo / 2) * Math.sin(dlo / 2);
+        return 2 * r * Math.asin(Math.sqrt(a));
+    }
+
+    /** One way home -> duty in km: what he told, or from his saved places (straight line x 1.3 for the road); 0 = not known. */
+    static int tripKm(Context c, Roster r) {
+        if (r.tripKm > 0) return r.tripKm;
+        JSONObject home = placeLike(c, HOME_PLACE), duty = placeLike(c, DUTY_PLACE);
+        if (home == null || duty == null) return 0;
+        return (int) Math.round(km(home.optDouble("lat"), home.optDouble("lon"), duty.optDouble("lat"), duty.optDouble("lon")) * 1.3);
+    }
+
+    /** Rain chance (max %) and mm between these times, at this place; null if the forecast could not be had. */
+    private static double[] rain(double lat, double lon, LocalDateTime from, LocalDateTime to) {
+        try {
+            java.net.HttpURLConnection con = (java.net.HttpURLConnection) new java.net.URL(String.format(Locale.ENGLISH,
+                    "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
+                    + "&hourly=precipitation_probability,precipitation&timezone=auto&forecast_days=3", lat, lon)).openConnection();
+            con.setConnectTimeout(8000); // a reminder is waiting on this: short timeouts
+            con.setReadTimeout(8000);
+            JSONObject w;
+            try (java.io.InputStream in = con.getInputStream()) {
+                java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                byte[] b = new byte[8192];
+                int n;
+                while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+                w = new JSONObject(buf.toString("UTF-8"));
+            } finally {
+                con.disconnect();
+            }
+            JSONObject h = w.getJSONObject("hourly");
+            JSONArray times = h.getJSONArray("time"), prob = h.getJSONArray("precipitation_probability"), mm = h.getJSONArray("precipitation");
+            LocalDateTime a = from.withMinute(0).withSecond(0).withNano(0);
+            double maxP = -1, sum = 0;
+            for (int i = 0; i < times.length(); i++) {
+                LocalDateTime t = LocalDateTime.parse(times.getString(i));
+                if (t.isBefore(a) || t.isAfter(to)) continue;
+                maxP = Math.max(maxP, prob.optDouble(i, 0));
+                sum += mm.optDouble(i, 0);
+            }
+            return maxP < 0 ? null : new double[]{maxP, sum};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String hm(LocalDateTime t) { return String.format(Locale.ENGLISH, "%d:%02d", t.getHour(), t.getMinute()); }
+
+    /**
+     * Before going to duty, in short Telugu: rain on the way (at home and at duty if saved) and whether the bike's
+     * charge is enough to go and come back. Empty when nothing is known. evening = said the night before (charge tonight).
+     */
+    static String tripCheck(Context c, Roster r, LocalDateTime leave, LocalDateTime start, boolean evening) {
+        StringBuilder out = new StringBuilder();
+        try {
+            JSONObject home = placeLike(c, HOME_PLACE), duty = placeLike(c, DUTY_PLACE);
+            double lat, lon;
+            if (home != null) { lat = home.optDouble("lat"); lon = home.optDouble("lon"); }
+            else {
+                android.location.Location l = Tools.lastLocation(c);
+                if (l == null) { lat = Double.NaN; lon = Double.NaN; } else { lat = l.getLatitude(); lon = l.getLongitude(); }
+            }
+            double[] w = Double.isNaN(lat) ? null : rain(lat, lon, leave, start);
+            if (duty != null) {
+                double[] w2 = rain(duty.optDouble("lat"), duty.optDouble("lon"), leave, start);
+                if (w2 != null && (w == null || w2[0] > w[0])) w = w2;
+            }
+            if (w != null) {
+                String span = hm(leave) + "–" + hm(start);
+                if (w[0] >= 60 || w[1] >= 5) out.append("దారిలో (").append(span).append(") వర్షం పడే అవకాశం ").append(Math.round(w[0])).append("%")
+                        .append(w[1] >= 5 ? ", భారీగా పడొచ్చు. రెయిన్‌కోట్ తీసుకెళ్లండి, నెమ్మదిగా వెళ్లండి. " : ". రెయిన్‌కోట్ తీసుకెళ్లండి. ");
+                else if (w[0] >= 30) out.append("దారిలో (").append(span).append(") చిన్న జల్లులు పడొచ్చు (").append(Math.round(w[0])).append("%). ");
+                else out.append("దారిలో వర్షం సూచన లేదు. ");
+            }
+        } catch (Exception ignored) {}
+        try {
+            int pct = Bike.estimatePct(c), one = tripKm(c, r);
+            if (pct >= 0) {
+                Prefs p = new Prefs(c);
+                int full = Bike.fullRangeKm(p);
+                long range = Math.round(full * pct / 100.0), usable = Math.round(full * (pct - 10) / 100.0);
+                if (one > 0) {
+                    int need = one * 2;
+                    if (usable < need) out.append("బైక్‌లో సుమారు ").append(pct).append("% (").append(range).append(" కి.మీ) ఉంది, వెళ్లి రావడానికి ")
+                            .append(need).append(" కి.మీ కావాలి. ").append(evening ? "ఈ రాత్రే ఛార్జ్ పెట్టండి." : "బయలుదేరే ముందు ఛార్జ్ పెట్టండి.");
+                    else if (usable < need * 1.25) out.append("బైక్ ఛార్జ్ (సుమారు ").append(pct).append("%) సరిపోతుంది, కానీ మార్జిన్ తక్కువ; Eco మోడ్‌లో వెళ్లండి.");
+                    else out.append("బైక్ ఛార్జ్ (సుమారు ").append(pct).append("%) వెళ్లి రావడానికి సరిపోతుంది.");
+                } else {
+                    out.append("బైక్‌లో సుమారు ").append(pct).append("% (").append(range).append(" కి.మీ) ఉంది.");
+                }
+            }
+        } catch (Exception ignored) {}
+        return out.toString().trim();
     }
 
     private static void notify(Context c, int id, String title, String text) {

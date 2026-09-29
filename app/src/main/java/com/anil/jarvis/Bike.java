@@ -192,6 +192,23 @@ final class Bike {
                 .put("km_added_about", Math.round(kmAdded)).put("rupees_per_km", round2(cost / Math.max(1, kmAdded)));
     }
 
+    /**
+     * Battery % now, worked out from the last charge he logged minus the km ridden since; -1 when not known
+     * (no charge logged, or the last one is over 10 days old, so the guess would be poor).
+     */
+    static int estimatePct(Context c) {
+        JSONArray a = arr(sp(c), "charges");
+        if (a.length() == 0) return -1;
+        JSONObject last = a.optJSONObject(a.length() - 1);
+        if (last == null || System.currentTimeMillis() - last.optLong("t") > 10 * 86400000L) return -1;
+        // rides are only logged with the bike's Bluetooth chosen; without them only a very fresh charge says anything
+        if (new Prefs(c).carBluetooth().isEmpty() && System.currentTimeMillis() - last.optLong("t") > 12 * 3600000L) return -1;
+        double km = 0;
+        for (JSONObject r : list(c, "rides", last.optLong("t"))) km += r.optDouble("km");
+        int pct = (int) Math.round(last.optInt("to") - km * 100.0 / fullRangeKm(new Prefs(c)));
+        return Math.max(0, Math.min(100, pct));
+    }
+
     // ---------------------------------------------------------------- reports
 
     static List<JSONObject> list(Context c, String key, long since) {

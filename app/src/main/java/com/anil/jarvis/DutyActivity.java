@@ -68,8 +68,11 @@ public class DutyActivity extends Activity {
         render();
     }
 
+    private List<Holidays.Day> hols = new ArrayList<>();
+
     private void render() {
         roster = Duty.load(this);
+        hols = Holidays.between(this, month.atDay(1).minusDays(7), month.atEndOfMonth().plusDays(14));
         content.removeAllViews();
 
         LinearLayout head = new LinearLayout(this);
@@ -155,7 +158,33 @@ public class DutyActivity extends Activity {
         }
         if (next != null) card.addView(Ui.text(this, "🏍️ ఇంటి నుంచి " + roster.leaveTime(roster.timeOf(Duty.ME)) + " కల్లా బయలుదేరండి", 13.5f, 0xFFFFFFFF));
         if (more.length() > 0) card.addView(Ui.text(this, more.toString(), 13, 0xCCFFFFFF));
+        if (next != null && !next[0].isBefore(today)) {
+            LocalDate first = next[0];
+            TextView check = Ui.text(this, "🌧️ ప్రయాణ చెక్: దారిలో వర్షం, బైక్ ఛార్జ్ ▸", 13.5f, Ui.C_CYAN);
+            check.setPadding(0, dp(6), 0, 0);
+            check.setOnClickListener(v -> tripCheck(first));
+            card.addView(check);
+        }
         content.addView(card, lp);
+    }
+
+    /** Rain on the way and the bike's charge for that duty, worked out in the background. */
+    private void tripCheck(LocalDate d) {
+        Toast.makeText(this, "చూస్తున్నాను…", Toast.LENGTH_SHORT).show();
+        Duty.Roster r = roster;
+        new Thread(() -> {
+            String[] hm = r.timeOf(Duty.ME).split(":");
+            java.time.LocalDateTime start = d.atTime(Integer.parseInt(hm[0]), Integer.parseInt(hm[1]));
+            String s = Duty.tripCheck(this, r, start.minusMinutes(r.leaveBefore), start, !d.equals(LocalDate.now()));
+            if (s.isEmpty()) s = "ఇంకా ఏమీ తెలియలేదు. వాతావరణానికి ఇంటర్నెట్, లొకేషన్ కావాలి; బైక్ ఛార్జ్ కోసం చివరిసారి ఛార్జ్ చేసినప్పుడు Jarvis కి చెప్పండి (\"ఛార్జింగ్ రాసుకో\").";
+            if (d.isAfter(LocalDate.now().plusDays(2))) s += "\n\n(వాతావరణ సూచన 2-3 రోజుల ముందు మాత్రమే సరిగ్గా ఉంటుంది.)";
+            String msg = s;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("🌧️ " + Duty.day(d) + " డ్యూటీ ప్రయాణం")
+                        .setMessage(msg).setPositiveButton("సరే", null).show();
+            });
+        }, "duty-trip").start();
     }
 
     private void monthBar() {
@@ -239,7 +268,20 @@ public class DutyActivity extends Activity {
             id.setTypeface(Typeface.DEFAULT_BOLD);
             top.addView(id);
         }
+        List<Holidays.Day> today_h = new ArrayList<>();
+        for (Holidays.Day h : hols) if (h.date.equals(d)) today_h.add(h);
+        Holidays.Day hol = Holidays.shown(today_h);
+        if (hol != null) {
+            TextView star = Ui.text(this, "🎉", 9.5f, 0xFFFB923C);
+            top.addView(star);
+        }
         c.addView(top);
+        if (hol != null) {
+            TextView hn = Ui.text(this, hol.name, 9.5f, 0xFFFDBA74);
+            hn.setSingleLine(true);
+            hn.setEllipsize(TextUtils.TruncateAt.END);
+            c.addView(hn);
+        }
         if (mine) {
             TextView me = Ui.text(this, "★ నేను", 10.5f, GOLD);
             me.setTypeface(Typeface.DEFAULT_BOLD);
@@ -250,7 +292,7 @@ public class DutyActivity extends Activity {
         for (String p : roster.onDuty(d)) if (!Duty.ME.equals(p)) names.add(p);
         if (!names.isEmpty()) {
             TextView n = Ui.text(this, TextUtils.join(", ", names), 10, 0xDDFFFFFF);
-            n.setMaxLines(mine ? 2 : 3);
+            n.setMaxLines(Math.max(1, (mine ? 2 : 3) - (hol != null ? 1 : 0)));
             n.setEllipsize(TextUtils.TruncateAt.END);
             n.setLineSpacing(0, 1.0f);
             c.addView(n);
@@ -277,7 +319,7 @@ public class DutyActivity extends Activity {
             t.setPadding(0, dp(2), 0, dp(2));
             l.addView(t);
         }
-        l.addView(Ui.text(this, "★ బంగారు అంచు = మీ డ్యూటీ · ✎ = ఆ రోజు మార్పు ఉంది · " + roster.on + " రోజులు డ్యూటీ, " + roster.off + " రోజులు సెలవు · తేదీ నొక్కితే వివరాలు, మార్పులు", 12, Ui.MUTED));
+        l.addView(Ui.text(this, "★ బంగారు అంచు = మీ డ్యూటీ · ✎ = ఆ రోజు మార్పు ఉంది · 🎉 = పండుగ / సెలవు · " + roster.on + " రోజులు డ్యూటీ, " + roster.off + " రోజులు సెలవు · తేదీ నొక్కితే వివరాలు, మార్పులు", 12, Ui.MUTED));
         content.addView(l);
     }
 
@@ -334,6 +376,7 @@ public class DutyActivity extends Activity {
         }
         boolean mine = roster.isOn(Duty.ME, d);
         info.append("\n\nమీరు: ").append(mine ? "⭐ డ్యూటీ" : "🏠 సెలవు");
+        for (Holidays.Day h : Holidays.on(this, d)) info.append("\n🎉 ").append(h.name).append(" (").append(h.kindTe()).append(")");
         for (Duty.Change ch : roster.changes)
             if (ch.date.equals(d)) info.append("\n✎ ").append(ch.who.startsWith("batch:") ? ch.who.substring(6) + " బ్యాచ్" : Duty.name(this, ch.who))
                     .append(": ").append(ch.duty ? "డ్యూటీ" : "సెలవు").append(ch.note.isEmpty() ? "" : " (" + ch.note + ")");
@@ -380,6 +423,24 @@ public class DutyActivity extends Activity {
         }
         items.add("👤 వేరేవాళ్ల డ్యూటీ మార్చు");
         acts.add(() -> otherPerson(d));
+        items.add("🎉 ఈ రోజుకి పండుగ / సెలవు పేరు చేర్చు");
+        acts.add(() -> {
+            EditText e = text("ఉదా: ఊరి జాతర, పెళ్లి, ప్రత్యేక సెలవు", "");
+            LinearLayout box = new LinearLayout(this);
+            box.setPadding(dp(20), dp(8), dp(20), 0);
+            box.addView(e, new LinearLayout.LayoutParams(-1, -2));
+            new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("🎉 " + Duty.day(d))
+                    .setView(box)
+                    .setPositiveButton("చేర్చు", (x, w) -> {
+                        try { if (Holidays.add(this, d.toString(), e.getText().toString()) != null) render(); } catch (Exception ignored) {}
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        for (Holidays.Day h : Holidays.on(this, d)) {
+            if (!h.kind.equals("mine")) continue;
+            items.add("🗑️ " + h.name + " తీసేయి");
+            acts.add(() -> { Holidays.removeMine(this, h.date, h.name); render(); });
+        }
         boolean changed = false;
         for (Duty.Change ch : roster.changes) if (ch.date.equals(d)) { changed = true; break; }
         if (changed) {
@@ -514,8 +575,11 @@ public class DutyActivity extends Activity {
         f.addView(label("ఇంటి నుంచి డ్యూటీకి వెళ్లడానికి ఎంత సేపు (నిమిషాలు) · 90 = 11:30 డ్యూటీకి 10:00 కి బయలుదేరాలి"));
         EditText travel = number(String.valueOf(roster.leaveBefore));
         f.addView(travel);
+        f.addView(label("ఇంటి నుంచి డ్యూటీకి దూరం, ఒక వైపు (కి.మీ) · బైక్ ఛార్జ్ వెళ్లి రావడానికి సరిపోతుందా చెప్పడానికి · 0 = తెలియదు"));
+        EditText tripKm = number(String.valueOf(roster.tripKm));
+        f.addView(tripKm);
         Switch remind = new Switch(this);
-        remind.setText("గుర్తు చేయి: ఎల్లుండి, ముందు రోజు రాత్రి 8కి, బయలుదేరే గంట ముందు, బయలుదేరే టైమ్‌కి");
+        remind.setText("గుర్తు చేయి: ఎల్లుండి, ముందు రోజు రాత్రి 8కి, బయలుదేరే గంట ముందు, బయలుదేరే టైమ్‌కి (దారిలో వర్షం, బైక్ ఛార్జ్ కూడా చెప్తాను)");
         remind.setChecked(roster.remind);
         remind.setPadding(0, dp(12), 0, dp(6));
         f.addView(remind);
@@ -540,6 +604,7 @@ public class DutyActivity extends Activity {
                     if (chk >= 1000) roster.mine = roster.batches.get(chk - 1000).id;
                     roster.remind = remind.isChecked();
                     try { roster.leaveBefore = Math.max(0, Math.min(600, Integer.parseInt(travel.getText().toString().trim()))); } catch (Exception ignored) {}
+                    try { roster.tripKm = Math.max(0, Math.min(500, Integer.parseInt(tripKm.getText().toString().trim()))); } catch (Exception ignored) {}
                     roster.fillStarts();
                     saveAndRender();
                     Toast.makeText(this, "సేవ్ చేశాను ✓", Toast.LENGTH_SHORT).show();
