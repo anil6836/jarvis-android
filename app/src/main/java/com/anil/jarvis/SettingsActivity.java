@@ -50,6 +50,8 @@ public class SettingsActivity extends Activity {
     private Switch walletPay, emotions;
     private Switch alexaSpeak, livePatient, scamGuard;
     private EditText balGemini, balOpenAi, balAnthropic;
+    private EditText bikeRange, bikeKwh, powerRate;
+    private Switch weeklyReport;
     private Switch bargeCallVoice;
     /** Opened from the "new version" notification / note: go to Updates and start the update. */
     static final String EXTRA_UPDATE_NOW = "update_now";
@@ -472,13 +474,23 @@ public class SettingsActivity extends Activity {
         box.addView(docsInfo);
 
         section("కార్/బైక్, కదలికలు");
-        note("మీ కార్/బైక్ బ్లూటూత్ ఎంచుకుంటే: కనెక్ట్ అవ్వగానే డ్రైవింగ్ మోడ్ ఆన్, దిగగానే ఆఫ్, బండి పెట్టిన చోటు గుర్తుపెట్టుకుంటుంది.");
+        note("మీ కార్/బైక్ బ్లూటూత్ (లేదా హెల్మెట్ బ్లూటూత్) ఎంచుకుంటే: కనెక్ట్ అవ్వగానే డ్రైవింగ్ మోడ్ ఆన్, ప్రతి రైడ్ కి.మీ, టైమ్ తనంతట తానే రాసుకుంటుంది; "
+                + "దిగగానే ఆఫ్, బండి పెట్టిన చోటు గుర్తుపెట్టుకుంటుంది.");
         button("కార్/బైక్ బ్లూటూత్ ఎంచుకోండి", v -> chooseCar());
         carInfo = Ui.text(this, prefs.carBluetooth().isEmpty() ? "ఇంకా ఎంచుకోలేదు" : "ఎంచుకున్నారు ✓", 14, Ui.MUTED);
         box.addView(carInfo);
+        bikeRange = numberField("బైక్ పూర్తి ఛార్జ్‌కి నిజంగా వచ్చే దూరం (కి.మీ)", String.valueOf(Bike.fullRangeKm(prefs)));
+        bikeKwh = numberField("బైక్ బ్యాటరీ (kWh) · Aera 5000+ = 5", trimZero(Bike.batteryKwh(prefs)));
+        powerRate = numberField("ఇంట్లో కరెంట్ ఒక యూనిట్ ధర (₹)", trimZero(Bike.unitRate(prefs)));
+        button("రైడ్ కి.మీ సరిగ్గా రావాలంటే: లొకేషన్ \"Allow all the time\"", v -> {
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 9);
+            else requestPermissions(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 10);
+        });
         shakeWake = toggle("ఫోన్ రెండుసార్లు ఊపితే Jarvis రావాలి", prefs.shakeWake());
         faceDown = toggle("ఫోన్ బోర్లా పెడితే సైలెంట్ (ఎత్తితే మళ్లీ సౌండ్)", prefs.faceDownSilent());
         nightSummary = toggle("రోజూ రాత్రి 9:30 కి ఈరోజు, రేపటి సారాంశం చెప్పు", prefs.nightSummary());
+        weeklyReport = toggle("ప్రతి ఆదివారం రాత్రి 8కి వారపు రిపోర్ట్ (ఖర్చు, అడుగులు, ఫోన్ టైమ్, బైక్)", prefs.weeklyReport());
         button("స్క్రీన్ టైమ్ కోసం \"Usage access\" ఇవ్వండి", v -> {
             try { startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); } catch (Exception ignored) {}
         });
@@ -673,6 +685,10 @@ public class SettingsActivity extends Activity {
         e.putBoolean("shake_wake", shakeWake.isChecked());
         e.putBoolean("facedown_silent", faceDown.isChecked());
         e.putBoolean("night_summary", nightSummary.isChecked());
+        e.putBoolean("weekly_report", weeklyReport.isChecked());
+        try { e.putInt("bike_range_km", Math.max(20, Math.min(500, Integer.parseInt(bikeRange.getText().toString().trim())))); } catch (Exception ignored) {}
+        try { e.putFloat("bike_kwh", Math.max(0.5f, Math.min(50f, Float.parseFloat(bikeKwh.getText().toString().trim())))); } catch (Exception ignored) {}
+        try { e.putFloat("power_rate", Math.max(0f, Math.min(100f, Float.parseFloat(powerRate.getText().toString().trim())))); } catch (Exception ignored) {}
         e.putInt("listen_window", listenWindow.getProgress() + 3);
         e.putString("sos_contacts", sosContacts.getText().toString().trim());
         e.putString("smart_urls", smartUrls.getText().toString().trim());
@@ -900,6 +916,17 @@ public class SettingsActivity extends Activity {
         TextView t = Ui.text(this, s, 14, Ui.MUTED);
         t.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         box.addView(t);
+    }
+
+    /** A box for a number (decimals allowed). */
+    private EditText numberField(String label, String value) {
+        EditText e = field(label, value, false);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        return e;
+    }
+
+    private static String trimZero(float v) {
+        return v == Math.round(v) ? String.valueOf(Math.round(v)) : String.valueOf(v);
     }
 
     private EditText field(String label, String value, boolean secret) {

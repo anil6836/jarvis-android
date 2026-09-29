@@ -10,6 +10,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 
 import java.util.Calendar;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -53,7 +54,49 @@ final class Health {
         if (sp(c).getInt("day", 0) == today()) return;
         float now = counter(c);
         if (now < 0) return;
+        keepFinishedDay(c, now);
         sp(c).edit().putInt("day", today()).putFloat("base", now).apply();
+    }
+
+    /** A new day began: keep the steps of the day that just ended (for the weekly report; about 3 weeks kept). */
+    private static synchronized void keepFinishedDay(Context c, float now) {
+        int day = sp(c).getInt("day", 0);
+        if (day == 0 || day == today()) return;
+        float base = sp(c).getFloat("base", now);
+        int steps = Math.round(now >= base ? now - base : now); // the phone restarted: its counter began again from 0
+        try {
+            org.json.JSONObject h = new org.json.JSONObject(sp(c).getString("history", "{}"));
+            h.put(String.valueOf(day), steps);
+            java.util.List<String> keys = new java.util.ArrayList<>();
+            java.util.Iterator<String> it = h.keys();
+            while (it.hasNext()) keys.add(it.next());
+            java.util.Collections.sort(keys);
+            for (int i = 0; i < keys.size() - 21; i++) h.remove(keys.get(i));
+            sp(c).edit().putString("history", h.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** Steps of the last 7 days (today so far included), or null when steps can't be counted. */
+    static org.json.JSONObject week(Context c) throws Exception {
+        if (!canCount(c)) return null;
+        int todaySteps = stepsToday(c);
+        if (todaySteps < 0) return null;
+        org.json.JSONObject h = new org.json.JSONObject(sp(c).getString("history", "{}"));
+        org.json.JSONObject perDay = new org.json.JSONObject();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("EEE d", Locale.ENGLISH);
+        int total = 0, counted = 0;
+        for (int back = 6; back >= 0; back--) {
+            Calendar k = Calendar.getInstance();
+            k.add(Calendar.DAY_OF_YEAR, -back);
+            int key = k.get(Calendar.YEAR) * 1000 + k.get(Calendar.DAY_OF_YEAR);
+            int n = back == 0 ? todaySteps : h.optInt(String.valueOf(key), -1);
+            if (n < 0) continue;
+            perDay.put(f.format(k.getTime()) + (back == 0 ? " (today so far)" : ""), n);
+            total += n;
+            counted++;
+        }
+        return new org.json.JSONObject().put("total", total).put("days_counted", counted)
+                .put("daily_average", counted == 0 ? 0 : total / counted).put("per_day", perDay);
     }
 
     /** Steps today, or -1 when unknown. */
@@ -61,6 +104,7 @@ final class Health {
         float now = counter(c);
         if (now < 0) return -1;
         if (sp(c).getInt("day", 0) != today()) {
+            keepFinishedDay(c, now);
             sp(c).edit().putInt("day", today()).putFloat("base", now).apply();
             return 0;
         }

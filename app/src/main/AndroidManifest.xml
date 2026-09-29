@@ -215,6 +215,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".RideReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".AlarmReceiver"
             android:exported="false">
             <intent-filter>

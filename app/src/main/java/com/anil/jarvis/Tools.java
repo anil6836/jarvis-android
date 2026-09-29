@@ -333,8 +333,21 @@ final class Tools {
                 "Anil cannot find his phone ('ఎక్కడున్నావ్?', 'where are you'): ring loudly and blink the flashlight.",
                 schema(new String[][]{})));
         DEFS.add(new Def("add_expense",
-                "Write down an expense (e.g. from a bill photo he shows, or 'petrol 500 రాసుకో'). It counts in bank_spending and day_summary.",
-                schema(new String[][]{{"amount", "number", "Amount in rupees"}, {"what", "string", "Short description, e.g. 'Groceries - More supermarket'"}}, "amount")));
+                "Write down an expense (e.g. from a bill photo he shows, or 'petrol 500 రాసుకో'). It counts in bank_spending, day_summary and weekly_report.",
+                schema(new String[][]{{"amount", "number", "Amount in rupees (for a bill: the grand total he paid, with tax)"},
+                        {"what", "string", "Short description, e.g. 'Groceries - More supermarket'"},
+                        {"shop", "string", "Shop or restaurant name on the bill, if any"},
+                        {"category", "string", "One of: food, groceries, fuel, charging, shopping, medicine, bills, travel, other"},
+                        {"date", "string", "Date printed on the bill, YYYY-MM-DD (empty = today)"}}, "amount")));
+        DEFS.add(new Def("bike_range", "His electric bike (Matter Aera): how far he can go on the battery % he says ('బ్యాటరీ 40%, ఎంత దూరం వెళ్లగలను?').",
+                schema(new String[][]{{"battery_percent", "integer", "Battery % shown on the bike, 0-100"}}, "battery_percent")));
+        DEFS.add(new Def("bike_charge", "He charged his electric bike: record the battery % before and after (and the rupees paid at a public charger, if any). Returns the cost, units and cost per km.",
+                schema(new String[][]{{"from_percent", "integer", "Battery % before charging"}, {"to_percent", "integer", "Battery % after charging"},
+                        {"paid", "number", "Rupees paid at a public charger; 0 or empty = charged at home"}}, "from_percent", "to_percent")));
+        DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
+                schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
+        DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
+                schema(new String[][]{})));
         DEFS.add(new Def("day_summary",
                 "Summary of today: calls (missed ones), messages and who sent them, money spent, reminders, missions done. For 'ఈరోజు ఏం జరిగింది?'.",
                 schema(new String[][]{})));
@@ -480,6 +493,10 @@ final class Tools {
             case "night_mode": return "నైట్ మోడ్…";
             case "find_phone": return "ఇక్కడే ఉన్నాను!";
             case "add_expense": return "ఖర్చు రాస్తున్నాను…";
+            case "bike_range": return "రేంజ్ లెక్కపెడుతున్నాను…";
+            case "bike_charge": return "ఛార్జింగ్ రాస్తున్నాను…";
+            case "bike_rides": return "రైడ్స్ చూస్తున్నాను…";
+            case "weekly_report": return "ఈ వారం రిపోర్ట్ తయారు చేస్తున్నాను…";
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
@@ -582,7 +599,12 @@ final class Tools {
                 case "driving_mode": return drivingMode(a.optBoolean("on", true), a.optString("destination", ""));
                 case "night_mode": return nightMode(a.optBoolean("on", true), a.optString("alarm", ""));
                 case "find_phone": return findPhone();
-                case "add_expense": return addExpense(a.optDouble("amount", 0), a.optString("what", ""));
+                case "add_expense": return addExpense(a.optDouble("amount", 0), a.optString("what", ""), a.optString("shop", ""),
+                        a.optString("category", ""), a.optString("date", ""));
+                case "bike_range": return Bike.range(act(), a.optInt("battery_percent", -1)).toString();
+                case "bike_charge": return Bike.addCharge(act(), a.optInt("from_percent", -1), a.optInt("to_percent", -1), a.optDouble("paid", 0)).toString();
+                case "bike_rides": return Bike.summary(act(), System.currentTimeMillis() - Math.max(1, Math.min(90, a.optInt("days", 7))) * 86400000L).toString();
+                case "weekly_report": return Weekly.report(act()).toString();
                 case "day_summary": return daySummary();
                 case "scan_qr": return scanQr(a.optBoolean("open", false));
                 case "location_reminder": return locationReminder(a.optString("action", "add"), a.optString("place"),
@@ -2594,9 +2616,17 @@ final class Tools {
         return ok().put("ringing", true).put("note", "The phone rings loudly and the flashlight blinks for 40 seconds, or until he unlocks it.").toString();
     }
 
-    private String addExpense(double amount, String what) throws Exception {
+    private String addExpense(double amount, String what, String shop, String category, String date) throws Exception {
         if (amount <= 0) return err("missing", "How much was it?");
-        JSONObject e = Money.add(act(), amount, what == null ? "" : what.trim());
+        long when = System.currentTimeMillis();
+        if (date != null && date.trim().matches("\\d{4}-\\d{2}-\\d{2}")) {
+            try {
+                java.util.Date d = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).parse(date.trim());
+                // the bill's day (at noon); not in the future and not over a year old
+                if (d != null && d.getTime() + 12 * 3600000L <= when && when - d.getTime() < 366L * 86400000L) when = d.getTime() + 12 * 3600000L;
+            } catch (Exception ignored) {}
+        }
+        JSONObject e = Money.add(act(), amount, what == null ? "" : what.trim(), shop, category, when);
         return ok().put("added", e).put("month_total_bills", Math.round(Money.totalSince(act(), monthStart()))).toString();
     }
 

@@ -153,6 +153,8 @@ final class Prefs {
     boolean faceDownSilent() { return sp.getBoolean("facedown_silent", true); }
     /** Every night around 9:30 Jarvis sums up the day and tomorrow. */
     boolean nightSummary() { return sp.getBoolean("night_summary", true); }
+    /** Every Sunday evening: the week's report as a notification. */
+    boolean weeklyReport() { return sp.getBoolean("weekly_report", true); }
     /** Smart home: one command per line, "name = URL" (Voice Monkey / URL Routine Trigger links). */
     String smartUrls() { return sp.getString("smart_urls", ""); }
     /** The app that controls the lights (Homemate, Zeb Home, Wipro Next...), used as a fallback. */

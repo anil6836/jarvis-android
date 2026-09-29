@@ -429,12 +429,15 @@ final class Life {
         Prefs p = new Prefs(c);
         if (address == null || !address.equalsIgnoreCase(p.carBluetooth())) return;
         if (connected) {
+            Bike.rideStart(c); // the ride log: GPS km and time while the bike is connected
             if (p.driving()) return;
             p.set("driving", true);
             p.set("night", false);
             Announcer.say(c, p.name() + ", డ్రైవింగ్ మోడ్ ఆన్. మెసేజ్‌లు, కాల్స్ నేను చెబుతాను. జాగ్రత్తగా వెళ్లండి.");
         } else {
             p.set("driving", false);
+            JSONObject ride = Bike.rideEnd(c);
+            if (ride != null) Reminders.notify(c, "🏍️ రైడ్ అయిపోయింది", Bike.rideLine(c, ride) + ". \"ఈ వారం బైక్ రైడ్స్\" అని అడిగితే మొత్తం చెప్తాను.", 62);
             Location l = Tools.lastLocation(c);
             if (l != null) {
                 GeoReminders.savePlace(c, "parking", l.getLatitude(), l.getLongitude());

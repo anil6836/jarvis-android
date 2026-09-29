@@ -128,6 +128,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private IconView actionIcon;
 
     private String pendingPhoto;       // base64 JPEG (or "pdf:..." for a PDF) waiting to be sent
+    /** Sent by itself as soon as the photo is attached (the 🧾 bill chip). */
+    private String autoPrompt;
+    private static final String BILL_PROMPT = "ఈ ఫోటో ఒక బిల్లు / రసీదు. కట్టిన మొత్తం (Grand Total, GST తో), షాప్ పేరు, బిల్లు తేదీ చదివి, "
+            + "కేటగిరీ ఎంచుకుని add_expense తో నా ఖర్చుల్లో ఒక్కసారి చేర్చు. మొత్తం స్పష్టంగా కనిపించకపోతే చేర్చకుండా నన్ను అడుగు. చేర్చాక ఏం చేర్చావో ఒక వాక్యంలో చెప్పు.";
     private Bitmap pendingThumb;
     private String pendingFileText;    // a text file's contents waiting to be sent
     private String pendingFileName;    // name of the attached file (PDF or text), or null
@@ -551,6 +555,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         addChip(chips, "⛅", "వాతావరణం", "ఇప్పుడు ఇక్కడ వాతావరణం ఎలా ఉంది? రేపు వర్షం పడే అవకాశం ఉందా?");
         addChip(chips, "📷", "ఫోటో స్కాన్", null);
         addAction(chips, "📄", "Scan → PDF", () -> Scanner.start(this));
+        addAction(chips, "🧾", "బిల్లు → ఖర్చు", this::billPhoto);
         addAction(chips, "🎥", "Live కెమెరా", this::toggleCamera);
         addChip(chips, "📱", "స్క్రీన్ చూడు", "నా స్క్రీన్‌లో ఏముందో చూసి చెప్పు (look_at_screen వాడు).");
         addChip(chips, "💬", "మెసేజ్‌లు", "నాకు వచ్చిన కొత్త మెసేజ్‌లు చదివి చెప్పు (read_notifications వాడు).");
@@ -1759,6 +1764,20 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         refreshAction();
     }
 
+    /** 🧾 A bill photo (camera or gallery) goes straight into his expenses. */
+    private void billPhoto() {
+        if (busy) return;
+        if (live != null) { liveScreen.show(); return; }
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🧾 బిల్లు ఫోటో")
+                .setItems(new String[]{"📷 ఇప్పుడు ఫోటో తీయి", "🖼️ గ్యాలరీ నుంచి ఎంచుకో"}, (d, w) -> {
+                    autoPrompt = BILL_PROMPT;
+                    if (w == 0) openCamera(); else openGallery();
+                })
+                .setNegativeButton("వద్దు", null)
+                .show();
+    }
+
     private void openCamera() {
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_PHOTO_CAM);
@@ -1789,7 +1808,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onActivityResult(int req, int result, Intent data) {
         super.onActivityResult(req, result, data);
-        if (result != RESULT_OK) return;
+        if (result != RESULT_OK) {
+            if (req == REQ_CAMERA || req == REQ_GALLERY) autoPrompt = null; // the bill photo was cancelled
+            return;
+        }
         final Uri uri;
         if (req == REQ_FILE && data != null && data.getData() != null) { attachFile(data.getData()); return; }
         if ((req == Scanner.REQ_SCAN || req == Scanner.REQ_PICK) && data != null) { Scanner.onResult(this, req, data, this::scanDone); return; }
@@ -1819,6 +1841,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                     input.setHint("ఫోటో గురించి ఏం అడగాలి? (ఖాళీగా పంపితే వివరిస్తాను)");
                     showTab(0);
                     refreshAction();
+                    if (autoPrompt != null) { // the 🧾 bill chip: send it straight away
+                        String p = autoPrompt;
+                        autoPrompt = null;
+                        send(p, "🧾 ఈ బిల్లు నా ఖర్చుల్లో చేర్చు", false);
+                    }
                 });
             } catch (Exception e) {
                 main.post(() -> Toast.makeText(this, "ఫోటో తెరవలేకపోయాను", Toast.LENGTH_SHORT).show());
