@@ -128,7 +128,7 @@ public class Proactive extends BroadcastReceiver {
 
     /** Opens the panel and has Jarvis do something on his own (nightly summary, arriving somewhere). */
     static void run(Context c, String command) {
-        if (android.provider.Settings.canDrawOverlays(c) && !MainActivity.inConversation) {
+        if (android.provider.Settings.canDrawOverlays(c) && !MainActivity.busyTalking()) {
             try {
                 c.startActivity(new Intent(c, SheetActivity.class).putExtra(SheetActivity.EXTRA_RUN, command)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
@@ -164,7 +164,7 @@ public class Proactive extends BroadcastReceiver {
 
     /** Speaks up. With a question, opens the panel so Anil can answer by voice. */
     static void say(Context c, String text, String question, String context) {
-        if (question != null && android.provider.Settings.canDrawOverlays(c) && !MainActivity.inConversation) {
+        if (question != null && android.provider.Settings.canDrawOverlays(c) && !MainActivity.busyTalking()) {
             try {
                 c.startActivity(new Intent(c, SheetActivity.class)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE, text)

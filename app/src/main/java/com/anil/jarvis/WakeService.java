@@ -53,7 +53,18 @@ public class WakeService extends Service {
     /** Shake to call Jarvis, face down to silence. */
     private Motion motion;
     private final Runnable fallbackResume = () -> {
-        if (!MainActivity.inConversation) startEngine();
+        if (!MainActivity.busyTalking()) startEngine();
+    };
+    /**
+     * While paused for a talk, look again every minute: if the talk ended without telling the service
+     * (no "resume" came), "Jarvis" must not stay deaf.
+     */
+    private final Runnable watchdog = new Runnable() {
+        @Override public void run() {
+            if (!running || engineOn || !allowedNow()) return;
+            if (MainActivity.busyTalking()) { main.postDelayed(this, 60_000); return; }
+            startEngine();
+        }
     };
 
     // ---------- called by the screens ----------
@@ -84,7 +95,7 @@ public class WakeService extends Service {
     private final Runnable applyPhoneState = () -> {
         if (!running) return;
         if (allowedNow()) {
-            if (!MainActivity.inConversation) startEngine();
+            if (!MainActivity.busyTalking()) startEngine();
         } else {
             stopEngine();
             sleeping();
@@ -209,8 +220,11 @@ public class WakeService extends Service {
         if (ACTION_PAUSE.equals(action)) {
             main.removeCallbacks(fallbackResume);
             stopEngine();
+            main.removeCallbacks(watchdog);
+            main.postDelayed(watchdog, 60_000);
         } else if (ACTION_RESUME.equals(action)) {
             main.removeCallbacks(fallbackResume);
+            main.removeCallbacks(watchdog);
             startEngine();
         } else {
             boolean paused = intent != null && intent.getBooleanExtra(EXTRA_PAUSED, false);
@@ -314,7 +328,7 @@ public class WakeService extends Service {
 
     /** Two shakes: open Jarvis just like saying "Jarvis". */
     private void onShake() {
-        if (MainActivity.inConversation) return;
+        if (MainActivity.busyTalking()) return;
         stopEngine();
         wakeScreen();
         Vibrator v = getSystemService(Vibrator.class);

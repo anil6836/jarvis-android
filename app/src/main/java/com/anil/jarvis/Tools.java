@@ -2553,6 +2553,9 @@ final class Tools {
 
     private String nightMode(boolean on, String alarmTime) throws Exception {
         prefs.set("night", on);
+        // it ends by itself in the morning: at the alarm he gave, or at 7
+        if (on) prefs.sp.edit().putLong("night_until", Life.nightEnd(alarmTime)).apply();
+        else prefs.sp.edit().remove("night_until").apply();
         android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
         android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
         boolean dnd = nm != null && nm.isNotificationPolicyAccessGranted();

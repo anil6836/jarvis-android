@@ -72,8 +72,29 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private FrameLayout cameraBox;
     private LinearLayout reminderList;
     private TextView reminderLabel;
-    /** True from the moment Anil starts talking until Jarvis has finished answering. */
+    /** True from the moment Anil starts talking until Jarvis has finished answering. Set it with talking(). */
     static volatile boolean inConversation;
+    private static volatile long talkingSince;
+    /** A Live (real-time) talk is running on the main screen (it goes on while the screen is minimised). */
+    static volatile boolean liveOn;
+
+    static void talking(boolean on) {
+        if (on && !inConversation) talkingSince = System.currentTimeMillis();
+        inConversation = on;
+    }
+
+    /**
+     * True while Anil and Jarvis are really talking: then the wake word, message read-outs and Jarvis's own
+     * remarks wait. A flag left on by a talk that ended without saying so would keep them silent for good,
+     * so after 3 minutes with no Jarvis screen, panel or Live open it is let go.
+     */
+    static boolean busyTalking() {
+        if (!inConversation) return false;
+        if (visible || liveOn || SheetActivity.open) return true;
+        if (System.currentTimeMillis() - talkingSince < 3 * 60_000L) return true;
+        talking(false);
+        return false;
+    }
 
     private static final int REQ_CAMERA = 11, REQ_GALLERY = 12, REQ_FILE = 13, REQ_PERMS = 21, REQ_MIC = 22, REQ_LIVE = 23;
 
@@ -165,6 +186,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (hudDash != null) hudDash.start();
         UpdateJob.schedule(this); // "new version" notification when a build is out
         cancelOldBackupJob();
+        NotifyListener.ensureBound(this); // Android has notification access for Jarvis but stopped sending messages: reconnect
+        Life.endNightIfMorning(this);     // a night mode left on from last night
         new Thread(() -> Updater.cleanup(getApplicationContext()), "jarvis-cleanup").start();
         showUpdateBanner();
         Updater.lookSoon(this, this::showUpdateBanner);
@@ -202,11 +225,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         generation++; // late replies (onReply) are dropped and the Brain stops running tools
         if (store.listener == this) store.listener = null;
         if (live != null) live.stop("destroy");
+        liveOn = false;
         if (camera != null) camera.close();
         voice.shutdown();
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
-        inConversation = false;
+        talking(false);
         if (prefs.wakeReady()) WakeService.resume(this); // it was paused while Anil and Jarvis talked
         super.onDestroy();
     }
@@ -219,7 +243,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             i.putExtra("jarvis_handled", true);
             if (prefs.listenOnOpen() && prefs.hasBrain()
                     && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                inConversation = true;
+                talking(true);
                 main.postDelayed(this::startConversation, 450);
             }
             return;
@@ -259,7 +283,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
             }
         }
-        inConversation = true;
+        talking(true);
         beep();
         main.postDelayed(this::startConversation, 300);
     }
@@ -1096,13 +1120,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             orb.setState(OrbView.IDLE);
             status.setText("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి");
             // let "Jarvis" be heard again while paused, so he can say "కొనసాగించు" later
-            inConversation = false;
+            talking(false);
             if (prefs.wakeReady()) WakeService.resume(this);
             screenMaySleepSoon();
         } else if (r == VoiceIO.RESUMED) {
             orb.setState(OrbView.SPEAKING);
             status.setText("మాట్లాడుతున్నాను…");
-            inConversation = true;
+            talking(true);
             WakeService.pause(this);
             keepScreenOn();
         } else if (r == VoiceIO.STOPPED) {
@@ -1220,13 +1244,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         voice.stopSpeaking();
         if (voice.listening) voice.cancelListening();
-        inConversation = true;
+        talking(true);
         WakeService.pause(this);
         keepScreenOn();
         showTab(0);
         input.setHint("Live నడుస్తోంది · నీలం బటన్ = Live తెర");
         Tools.takeInterpreter(); // a stale request from an earlier turn must not start later
         live = new LiveSession(this, prefs, tools, this);
+        liveOn = true;
         // full screen, unless the live camera is open (then the chat and the camera stay in view)
         liveScreen.open(cameraBox.getVisibility() != View.VISIBLE);
         try {
@@ -1290,6 +1315,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onLiveEnded(LiveSession session, String reason) {
         if (session != live) return; // an older session ended; the current one is still running
         live = null;
+        liveOn = false;
         liveScreen.hide();
         liveBubble = null;
         String lang = session.interpreterLang();
@@ -1330,7 +1356,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             finishTurn();
             return;
         }
-        inConversation = true;
+        talking(true);
         WakeService.pause(this);
         keepScreenOn();
         showTab(0);
@@ -1461,7 +1487,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
         lastWasVoice = byVoice;
         busy = true;
-        inConversation = true;
+        talking(true);
         WakeService.pause(this);
         keepScreenOn();
         orb.setState(OrbView.THINKING);
@@ -1543,7 +1569,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (busy || live != null) return;
         Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         setIdle();
-        inConversation = false;
+        talking(false);
         if (prefs.wakeReady()) WakeService.resume(this);
     }
 

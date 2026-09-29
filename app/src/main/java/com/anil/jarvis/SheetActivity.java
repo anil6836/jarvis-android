@@ -42,6 +42,9 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
 
+    /** The panel is open (so a talk in it is real, see MainActivity.busyTalking). */
+    static volatile boolean open;
+
     private HoloOrb orb;               // the small hologram core (same states as OrbView)
     private TextView status, heard, reply;
     private IconView action;
@@ -99,6 +102,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         }
         // The panel only stays open while Anil and Jarvis talk, so keep the screen lit meanwhile.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        open = true;
         prefs = new Prefs(this);
         store = Store.get(this);
         tools = new Tools(this, store, prefs);
@@ -114,7 +118,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startRun(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && voice.isPaused()) { // "Jarvis" while paused
-            MainActivity.inConversation = true;
+            MainActivity.talking(true);
             WakeService.pause(this);
             listen();
             return;
@@ -143,7 +147,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         voice.shutdown();
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
-        MainActivity.inConversation = false;
+        MainActivity.talking(false);
+        open = false;
         if (prefs.wakeReady()) WakeService.resume(this);
         super.onDestroy();
     }
@@ -313,13 +318,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (r == VoiceIO.HELD) {
             orb.setState(OrbView.IDLE);
             status.setText("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి");
-            MainActivity.inConversation = false;
+            MainActivity.talking(false);
             if (prefs.wakeReady()) WakeService.resume(this); // "Jarvis" can be heard while paused
             setAction(IconView.STOP);
         } else if (r == VoiceIO.RESUMED) {
             orb.setState(OrbView.SPEAKING);
             status.setText("మాట్లాడుతున్నాను…");
-            MainActivity.inConversation = true;
+            MainActivity.talking(true);
             WakeService.pause(this);
             setAction(IconView.STOP);
         } else if (r == VoiceIO.STOPPED) {
@@ -345,7 +350,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacks(autoClose);
         followUps = 1;
         dialog = false;
-        MainActivity.inConversation = true;
+        MainActivity.talking(true);
         WakeService.pause(this);
         orb.setState(OrbView.SPEAKING);
         status.setText(Greeting.text(prefs));
@@ -402,7 +407,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         generation++;
         busy = false;
         main.removeCallbacks(autoClose);
-        MainActivity.inConversation = true;
+        MainActivity.talking(true);
         WakeService.pause(this);
         callText = text;
         callTries = 0;
@@ -425,7 +430,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (text == null) return false;
         i.removeExtra(EXTRA_RUN);
         main.removeCallbacks(autoClose);
-        MainActivity.inConversation = true;
+        MainActivity.talking(true);
         WakeService.pause(this);
         followUps = 2;
         ask(text);
@@ -439,7 +444,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         String ctx = i.getStringExtra(EXTRA_ANNOUNCE_CONTEXT);
         i.removeExtra(EXTRA_ANNOUNCE);
         main.removeCallbacks(autoClose);
-        MainActivity.inConversation = true;
+        MainActivity.talking(true);
         WakeService.pause(this);
         String ask = i.getStringExtra(EXTRA_ANNOUNCE_ASK);
         String said = text + (ask == null ? ". రిప్లై ఇవ్వమంటారా?" : " " + ask);

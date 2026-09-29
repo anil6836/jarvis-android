@@ -56,7 +56,27 @@ public class NotifyListener extends NotificationListenerService {
         return new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     }
 
+    /** Android is sending Jarvis the notifications right now. */
+    static volatile boolean connected;
+    /** What Jarvis did with the newest chat message (for the check in Settings). */
+    static volatile String lastMessageNote = "";
+
+    /**
+     * Opening Jarvis: if notification access is given but Android isn't sending the notifications
+     * (it can drop the link after an update or when the phone kills the app), ask it to connect again.
+     */
+    static void ensureBound(Context c) {
+        if (connected || !enabled(c)) return;
+        try { requestRebind(new ComponentName(c, NotifyListener.class)); } catch (Exception ignored) {}
+    }
+
+    @Override public void onListenerDisconnected() {
+        connected = false;
+        try { requestRebind(new ComponentName(this, NotifyListener.class)); } catch (Exception ignored) {}
+    }
+
     @Override public void onListenerConnected() {
+        connected = true;
         try {
             StatusBarNotification[] active = getActiveNotifications();
             if (active != null) for (StatusBarNotification sbn : active) add(sbn);
@@ -162,16 +182,28 @@ public class NotifyListener extends NotificationListenerService {
     }
 
     /** A new chat message: Jarvis says who sent it and asks "చదవమంటారా?" before reading it. */
+    private void note(String app, String from, String what) {
+        lastMessageNote = new java.text.SimpleDateFormat("h:mm a", Locale.ENGLISH).format(new java.util.Date())
+                + " · " + app + (from.isEmpty() ? "" : " · " + from) + "\n→ " + what;
+    }
+
     private void maybeReadAloud(StatusBarNotification sbn, Notification n, Bundle x, String app, String from, String text) {
+        if (!chatApp(sbn.getPackageName(), n, x)) return;
+        if (System.currentTimeMillis() - sbn.getPostTime() > 60000) return; // old ones shown again after a reboot or reconnect
+        Life.endNightIfMorning(this); // a night mode left on from last night ends in the morning
         Prefs p = new Prefs(this);
         boolean driving = p.driving();
-        if (!(p.readMessages() || driving) || (p.night() && !driving)) return;
-        if (!chatApp(sbn.getPackageName(), n, x)) return;
-        if (x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false) && !driving) return; // groups are too chatty
-        if (MainActivity.inConversation || CallControl.busyWithCall()) return;
+        if (!(p.readMessages() || driving)) { note(app, from, "చదవలేదు: Settings → కాల్స్ card లో 'కొత్త మెసేజ్ వస్తే… చెప్పు' ఆఫ్‌లో ఉంది"); return; }
+        if (p.night() && !driving) { note(app, from, "చదవలేదు: నైట్ మోడ్ ఆన్‌లో ఉంది (\"గుడ్ మార్నింగ్\" అంటే ఆఫ్ అవుతుంది)"); return; }
+        if (x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false) && !driving) { note(app, from, "గ్రూప్ మెసేజ్: గ్రూప్‌లవి చదవను"); return; } // groups are too chatty
+        if (MainActivity.busyTalking()) { note(app, from, "చదవలేదు: అప్పుడు మీతో మాట్లాడుతున్నాను"); return; }
+        if (CallControl.busyWithCall()) { note(app, from, "చదవలేదు: అప్పుడు కాల్‌లో ఉన్నారు"); return; }
         if (!driving) {
             NotificationManager nm = getSystemService(NotificationManager.class);
-            if (nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) return; // Do Not Disturb
+            if (nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) { // Do Not Disturb
+                note(app, from, "చదవలేదు: ఫోన్‌లో Do Not Disturb ఆన్‌లో ఉంది");
+                return;
+            }
         }
         String[] lines = text.split("\n");
         String last = lines[lines.length - 1].trim();
@@ -185,7 +217,6 @@ public class NotifyListener extends NotificationListenerService {
             if (prev != null && now - prev < 20000) return; // several quick messages: read the first only
             lastFrom.put(from, now);
         }
-        if (now - sbn.getPostTime() > 60000) return; // old ones shown again after a reboot
         int id = 0;
         boolean canReply = false;
         synchronized (items) {
@@ -223,6 +254,7 @@ public class NotifyListener extends NotificationListenerService {
         }
         if (android.provider.Settings.canDrawOverlays(this)) {
             try {
+                note(app, from, "చెప్పాను ✓ (panel తెరిచి)");
                 startActivity(new android.content.Intent(this, SheetActivity.class)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE, say)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, ask)
@@ -233,6 +265,8 @@ public class NotifyListener extends NotificationListenerService {
             } catch (Exception ignored) {}
         }
         // No panel: say only who wrote; if he calls Jarvis and says "చదువు", the brain has the message.
+        note(app, from, android.provider.Settings.canDrawOverlays(this) ? "చెప్పాను (గొంతుతో మాత్రమే: panel తెరవలేకపోయాను)"
+                : "చెప్పాను (గొంతుతో మాత్రమే: 'Display over other apps' అనుమతి లేదు)");
         Store.get(this).addChat("assistant", say + " " + ask + context, false);
         Announcer.say(this, say + " కావాలంటే Jarvis అని పిలిచి చెప్పండి.");
     }

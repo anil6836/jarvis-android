@@ -297,7 +297,7 @@ final class NaturalVoice {
                 } catch (Exception e) {
                     err = String.valueOf(e.getMessage());
                 }
-                Usage.tts(frames); // the voice is billed by the minute
+                try { Usage.tts(frames); } catch (Throwable ignored) {} // the cost meter never stops the voice
                 if (err == null && gen == generation) complete = true;
                 pcm.finish(err);
             }, "jarvis-tts-download");

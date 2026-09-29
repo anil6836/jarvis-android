@@ -149,6 +149,11 @@ final class HoloOrb extends View {
         }
     }
 
+    @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
+        super.onSizeChanged(w, h, ow, oh);
+        invalidate();
+    }
+
     @Override protected void onDraw(Canvas canvas) {
         long now = SystemClock.uptimeMillis();
         float dt = last == 0 ? 0.016f : Math.min(0.05f, (now - last) / 1000f);
@@ -156,6 +161,7 @@ final class HoloOrb extends View {
         float t = (now - start) / 1000f;
         float w = getWidth(), h = getHeight(), cx = w / 2f, cy = h / 2f;
         float R = Math.min(w, h) * 0.29f;
+        if (R < 1f) return; // not laid out yet: a glow of radius 0 would crash (onSizeChanged draws again)
         float px1 = getResources().getDisplayMetrics().density;
 
         // level: quick to rise, slower to fall, like a VU meter

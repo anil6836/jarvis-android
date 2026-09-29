@@ -55,7 +55,7 @@ final class Motion implements SensorEventListener {
             if (g > 2.7 && now - lastSpike > 200) {
                 spikes = now - lastSpike < 900 ? spikes + 1 : 1;
                 lastSpike = now;
-                if (spikes >= 2 && now - lastShake > 4000 && !MainActivity.inConversation) {
+                if (spikes >= 2 && now - lastShake > 4000 && !MainActivity.busyTalking()) {
                     spikes = 0;
                     lastShake = now;
                     listener.onShake();

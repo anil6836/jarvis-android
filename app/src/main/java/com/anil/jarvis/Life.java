@@ -363,6 +363,65 @@ final class Life {
         st(c).edit().remove("cricket_team").apply();
     }
 
+    // ================================================================ night mode ends in the morning
+
+    /** When night mode (switched on now, alarm "HH:MM" or empty) should end by itself: at that alarm, or 7 in the morning. */
+    static long nightEnd(String alarm) {
+        Calendar c = Calendar.getInstance();
+        int h = 7, m = 0;
+        if (alarm != null && alarm.matches("\\s*\\d{1,2}[:.]\\d{2}\\s*")) {
+            String[] hm = alarm.trim().split("[:.]");
+            h = Math.min(23, Integer.parseInt(hm[0]));
+            m = Math.min(59, Integer.parseInt(hm[1]));
+        }
+        c.set(Calendar.HOUR_OF_DAY, h);
+        c.set(Calendar.MINUTE, m);
+        c.set(Calendar.SECOND, 0);
+        c.set(Calendar.MILLISECOND, 0);
+        if (c.getTimeInMillis() <= System.currentTimeMillis()) c.add(Calendar.DAY_OF_MONTH, 1);
+        return c.getTimeInMillis();
+    }
+
+    /**
+     * Night mode used to stay on until he said "good morning": messages were not read and the phone stayed
+     * on Do Not Disturb the whole next day. Now it ends by itself in the morning (sound back on).
+     */
+    static void endNightIfMorning(Context c) {
+        Prefs p = new Prefs(c);
+        if (!p.night()) return;
+        long until = p.sp.getLong("night_until", 0);
+        if (until == 0) { // switched on by an older Jarvis, without an end time
+            int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+            if (h >= 7 && h < 20) { endNight(c); return; }
+            p.sp.edit().putLong("night_until", nightEnd(null)).apply();
+            return;
+        }
+        if (System.currentTimeMillis() >= until) endNight(c);
+    }
+
+    /** Night mode off: sound, Do Not Disturb and brightness back to normal. */
+    static void endNight(Context c) {
+        Prefs p = new Prefs(c);
+        p.set("night", false);
+        p.sp.edit().remove("night_until").apply();
+        try {
+            android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+            if (nm != null && nm.isNotificationPolicyAccessGranted()
+                    && nm.getCurrentInterruptionFilter() == android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
+        } catch (Exception ignored) {}
+        try {
+            android.media.AudioManager am = c.getSystemService(android.media.AudioManager.class);
+            if (am != null && am.getRingerMode() == android.media.AudioManager.RINGER_MODE_VIBRATE)
+                am.setRingerMode(android.media.AudioManager.RINGER_MODE_NORMAL);
+        } catch (Exception ignored) {}
+        try {
+            if (android.provider.Settings.System.canWrite(c))
+                android.provider.Settings.System.putInt(c.getContentResolver(), android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC);
+        } catch (Exception ignored) {}
+    }
+
     // ================================================================ car Bluetooth
 
     /** The car/bike connected or disconnected: driving mode, and remember where it was parked. */

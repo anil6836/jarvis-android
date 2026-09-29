@@ -61,7 +61,7 @@ public class SettingsActivity extends Activity {
     private int briefHour, briefMinute;
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
-    private TextView voiceInfo, notifyInfo;
+    private TextView voiceInfo, notifyInfo, checkInfo;
     private final NaturalVoice tester = new NaturalVoice();
     private SeekBar rate, sensitivity, bargeSens;
     private TextView rateLabel, sensitivityLabel, wakeInfo, bargeSensLabel;
@@ -101,6 +101,16 @@ public class SettingsActivity extends Activity {
         close.setContentDescription("మూసేయి");
         head.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
         box.addView(head);
+
+        // ---- a quick check for "messages aren't read out" / "Jarvis is silent"
+        section("Jarvis చెక్");
+        note("మెసేజ్ వచ్చినా Jarvis చెప్పకపోతే, లేదా మాట్లాడకపోతే: ఇక్కడ ✗ ఉన్నది చూసి 'సరిచేయి' నొక్కండి.");
+        checkInfo = Ui.text(this, "", 14, 0xFFFFFFFF);
+        checkInfo.setLineSpacing(0, 1.25f);
+        checkInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(checkInfo);
+        button("సరిచేయి", v -> fixCheck());
+        button("గొంతు టెస్ట్ (Jarvis మాట్లాడుతుందా?)", v -> Announcer.say(this, prefs.name() + ", నా గొంతు వినిపిస్తోందా? అంతా బాగుంది."));
 
         // ---- you
         section("మీరు");
@@ -539,6 +549,67 @@ public class SettingsActivity extends Activity {
         wakeInfo.setText(s.toString());
         notifyInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
         voiceInfo.setText(VoiceIO.naturalError == null ? "" : "చివరిసారి సహజ గొంతు పనిచేయలేదు: " + VoiceIO.naturalError);
+        showCheck();
+    }
+
+    /** A talk flag left on with no Jarvis screen, panel or Live open. */
+    private static boolean stuckTalking() {
+        return MainActivity.inConversation && !MainActivity.visible && !SheetActivity.open && !MainActivity.liveOn;
+    }
+
+    /** The "Jarvis చెక్" card: everything that stops Jarvis from telling him about messages or from speaking. */
+    private void showCheck() {
+        if (checkInfo == null) return;
+        StringBuilder s = new StringBuilder();
+        boolean access = NotifyListener.enabled(this);
+        s.append(!access ? "✗ నోటిఫికేషన్ యాక్సెస్ లేదు: మెసేజ్‌లు Jarvis కి అందవు\n"
+                : NotifyListener.connected ? "✓ నోటిఫికేషన్లు Jarvis కి అందుతున్నాయి\n"
+                : "✗ యాక్సెస్ ఉంది, కానీ Android నోటిఫికేషన్లు పంపడం లేదు\n");
+        s.append(Settings.canDrawOverlays(this) ? "✓ Display over other apps: ఉంది\n"
+                : "✗ Display over other apps లేదు: panel తెరవలేను, గొంతుతో మాత్రమే చెప్తాను\n");
+        s.append(prefs.readMessages() ? "✓ కొత్త మెసేజ్ వస్తే చెప్పు: ఆన్\n" : "✗ కొత్త మెసేజ్ వస్తే చెప్పు: ఆఫ్\n");
+        s.append(prefs.night() ? "✗ నైట్ మోడ్ ఆన్: ఏ మెసేజ్ చదవను\n" : "✓ నైట్ మోడ్: ఆఫ్\n");
+        android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
+        boolean dnd = nm != null && nm.getCurrentInterruptionFilter() > android.app.NotificationManager.INTERRUPTION_FILTER_ALL;
+        s.append(dnd ? "✗ Do Not Disturb ఆన్: మెసేజ్‌లు చదవను (ఫోన్ quick settings లో ఆఫ్ చేయండి)\n" : "✓ Do Not Disturb: ఆఫ్\n");
+        PowerManager pm = getSystemService(PowerManager.class);
+        s.append(pm != null && pm.isIgnoringBatteryOptimizations(getPackageName()) ? "✓ బ్యాటరీ సేవర్ మినహాయింపు: ఉంది\n"
+                : "✗ బ్యాటరీ సేవర్ మినహాయింపు లేదు: ఫోన్ Jarvis ని ఆపేయవచ్చు\n");
+        if (prefs.wakeReady()) s.append(WakeService.running ? "✓ \"Jarvis\" వేక్ వర్డ్: నడుస్తోంది\n" : "✗ \"Jarvis\" వేక్ వర్డ్: ఆగి ఉంది\n");
+        if (stuckTalking()) s.append("✗ Jarvis 'మాట్లాడుతున్నాను' అనే స్థితిలో ఇరుక్కుంది\n");
+        if (prefs.naturalVoice() && prefs.openAiKey().trim().isEmpty()) s.append("• సహజ గొంతుకి OpenAI key లేదు: ఫోన్ గొంతుతో మాట్లాడతాను\n");
+        else if (prefs.naturalVoice() && VoiceIO.naturalError != null)
+            s.append("• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): ").append(VoiceIO.naturalError).append("\n");
+        String last = NotifyListener.lastMessageNote;
+        s.append("\nచివరి మెసేజ్: ").append(last == null || last.isEmpty() ? "Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు" : last);
+        checkInfo.setText(s.toString().trim());
+    }
+
+    /** "సరిచేయి": fixes what Jarvis can fix itself, then opens the first permission only Anil can give. */
+    private void fixCheck() {
+        StringBuilder done = new StringBuilder();
+        if (prefs.night()) { Life.endNight(this); done.append("నైట్ మోడ్ ఆఫ్ చేశాను. "); }
+        if (!prefs.readMessages()) {
+            prefs.set("read_messages", true);
+            if (readMessages != null) readMessages.setChecked(true);
+            done.append("మెసేజ్‌లు చెప్పడం ఆన్ చేశాను. ");
+        }
+        if (stuckTalking()) { MainActivity.talking(false); done.append("ఇరుక్కున్న స్థితి తీసేశాను. "); }
+        NotifyListener.ensureBound(this);
+        if (prefs.wakeReady() && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+            WakeService.start(this, false);
+        Intent open = null;
+        PowerManager pm = getSystemService(PowerManager.class);
+        if (!NotifyListener.enabled(this)) open = NotifyListener.settingsIntent();
+        else if (!Settings.canDrawOverlays(this)) open = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+        else if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName()))
+            open = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()));
+        if (open != null) {
+            done.append("ఈ అనుమతి మీరే ఇవ్వాలి: తెరుస్తున్నాను.");
+            try { startActivity(open); } catch (Exception ignored) {}
+        }
+        Toast.makeText(this, done.length() == 0 ? "అంతా సరిచేశాను ✓" : done.toString().trim(), Toast.LENGTH_LONG).show();
+        checkInfo.postDelayed(this::showCheck, 1500);
     }
 
     private void store() {
@@ -743,10 +814,10 @@ public class SettingsActivity extends Activity {
             {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
             {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
             {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},
-            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}};
+            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"చెక్", "🩺"}};
     private static final int[] CARD_COLORS = {Ui.C_SKY, Ui.C_VIOLET, Ui.C_BLUE, Ui.C_CYAN, Ui.C_PINK, Ui.C_BLUE, Ui.C_TEAL,
             Ui.C_GREEN, Ui.C_SKY, Ui.C_AMBER, Ui.C_GREEN, Ui.C_VIOLET, Ui.C_AMBER, 0xFFF43F5E, Ui.C_PINK, Ui.C_GREEN, Ui.C_ORANGE,
-            Ui.C_TEAL, 0xFFF43F5E, Ui.C_CYAN, Ui.C_AMBER, Ui.C_GREEN, 0xFFF43F5E};
+            Ui.C_TEAL, 0xFFF43F5E, Ui.C_CYAN, Ui.C_AMBER, Ui.C_GREEN, 0xFFF43F5E, Ui.C_GREEN};
     private int cards;
 
     /** A new section: its own glass card in its own colour, with an emoji and the title. */
