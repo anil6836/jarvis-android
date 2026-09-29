@@ -71,6 +71,9 @@ public class SettingsActivity extends Activity {
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
     private int coughGap;
+    private Switch callNote, restMode, medIdOn, moviesWeekly, dailyFact;
+    private EditText medBlood, medAllergy, medNotes, medContact, bikeNumber, stepGoal, exerciseHour, factHour;
+    private TextView alarmSongInfo;
     private TextView coughGapText;
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
@@ -520,6 +523,37 @@ public class SettingsActivity extends Activity {
         findCode = field("📱 ఫోన్ వెతుకు కోడ్ (ఇంట్లోవాళ్లకి చెప్పండి; కనీసం 6 అక్షరాలు/అంకెలు)", prefs.findCode(), false);
         button("🔔 ఇప్పుడు 5 సెకన్లు మోగించి చూడు", v -> FindPhone.start(this, 5000));
 
+        section("అలారం, వ్యాయామం, అత్యవసర సమాచారం");
+        alarmSongInfo = Ui.text(this, "🎵 అలారం పాట: " + (prefs.alarmSong().isEmpty() ? "అలారం టోన్ (పాట ఎంచుకోలేదు)" : prefs.alarmSongName()), 14.5f, Ui.MUTED);
+        alarmSongInfo.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
+        box.addView(alarmSongInfo);
+        button("🎵 అలారం పాట ఎంచుకో (ఫోన్‌లోని పాట)", v -> {
+            try {
+                startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*"), 43);
+            } catch (Exception ex) {
+                Toast.makeText(this, "ఫైల్స్ తెరవలేకపోయాను", Toast.LENGTH_SHORT).show();
+            }
+        });
+        button("🔔 పాట వద్దు, అలారం టోన్ చాలు", v -> {
+            prefs.sp.edit().remove("alarm_song").remove("alarm_song_name").apply();
+            alarmSongInfo.setText("🎵 అలారం పాట: అలారం టోన్");
+        });
+        note("అలారం పెట్టడానికి Jarvis కి చెప్పండి: \"రోజూ ఉదయం 6 కి పాటతో లేపు\", \"డ్యూటీ రోజుల్లో 7 కి లేపు\". లేచి ఆపాక వాతావరణం, ఈరోజు డ్యూటీ చెప్తుంది.");
+        stepGoal = numberField("👣 రోజూ అడుగుల లక్ష్యం (0 = వద్దు; సాయంత్రం బాగా తక్కువైతే చెప్తుంది)", String.valueOf(prefs.stepGoal()));
+        exerciseHour = numberField("🧘 సెలవు రోజుల్లో ఉదయం ఇన్ని గంటలకి వ్యాయామం గుర్తుచేయి (0 = వద్దు)", String.valueOf(Math.max(0, prefs.exerciseHour())));
+        restMode = toggle("😴 48 గంటల డ్యూటీ అయ్యాక: ఫోన్ ఎక్కువ వాడితే \"పడుకోండి\" అని చెప్పు; పడుకున్నప్పుడు నిశ్శబ్దంగా ఉండి, మెసేజ్‌లు లేచాక చెప్పు", prefs.restMode());
+        callNote = toggle("📞 ఒక నిమిషం దాటిన కాల్ అయ్యాక \"ఏమైనా గుర్తుపెట్టుకోవాలా?\" అని అడుగు", prefs.callNote());
+        moviesWeekly = toggle("🎬 ప్రతి శుక్రవారం సాయంత్రం కొత్త తెలుగు సినిమాలు, OTT రిలీజ్‌లు చెప్పు", prefs.moviesWeekly());
+        dailyFact = toggle("💡 రోజూ ఉదయం ఒక కొత్త విషయం, ఒక ఇంగ్లీష్ పదం చెప్పు", prefs.dailyFact());
+        factHour = numberField("💡 ఎన్ని గంటలకి (6-21)", String.valueOf(prefs.factHour()));
+        bikeNumber = field("🏍️ బండి నంబర్ (చలాన్ చెక్ కోసం; ఫోన్‌లోనే ఉంటుంది)", prefs.bikeNumber(), false);
+        medIdOn = toggle("🆘 లాక్ స్క్రీన్ మీద అత్యవసర సమాచారం చూపించు (ప్రమాదం జరిగితే సహాయం చేసేవాళ్లకి)", prefs.medIdOn());
+        medBlood = field("🩸 బ్లడ్ గ్రూప్ (ఉదా: O+)", prefs.medBlood(), false);
+        medAllergy = field("⚠️ మందుల / ఇతర అలర్జీలు (లేకపోతే ఖాళీ)", prefs.medAllergy(), false);
+        medNotes = field("💊 ముఖ్యమైన ఆరోగ్య విషయాలు, వాడే మందులు (ఉదా: BP మాత్రలు; లేకపోతే ఖాళీ)", prefs.medNotes(), false);
+        medContact = field("📞 ఎమర్జెన్సీ కాంటాక్ట్ (పేరు, నంబర్)", prefs.medContact(), false);
+        note("ఇవి మీ ఫోన్‌లోనే ఉంటాయి. లాక్ స్క్రీన్ మీద కనిపించాలంటే ఫోన్ Settings → Notifications → Lock screen లో \"Show content\" ఆన్ ఉండాలి.");
+
         section("ఆరోగ్యం, ఇతరాలు");
         coughAsk = toggle("🤧 దగ్గు / తుమ్ములు వినిపిస్తే \"సర్, ఏమైంది?\" అని అడుగు (\"Hey Jarvis\" వినే మైక్‌తోనే, ఫోన్‌లోనే; ఏదీ రికార్డ్ చేయదు)", prefs.coughAsk());
         coughGap = prefs.coughGapMinutes();
@@ -758,7 +792,21 @@ public class SettingsActivity extends Activity {
         try { max = Integer.parseInt(walletMax.getText().toString().trim()); } catch (Exception ignored) {}
         e.putInt("wallet_pay_max", Math.max(0, Math.min(10000, max)));
         e.putFloat("wake_threshold", 0.75f - sensitivity.getProgress() / 100f);
+        e.putBoolean("call_note", callNote.isChecked());
+        e.putBoolean("rest_mode", restMode.isChecked());
+        e.putBoolean("movies_weekly", moviesWeekly.isChecked());
+        e.putBoolean("daily_fact", dailyFact.isChecked());
+        e.putBoolean("medid_on", medIdOn.isChecked());
+        e.putString("medid_blood", medBlood.getText().toString().trim());
+        e.putString("medid_allergy", medAllergy.getText().toString().trim());
+        e.putString("medid_notes", medNotes.getText().toString().trim());
+        e.putString("medid_contact", medContact.getText().toString().trim());
+        e.putString("bike_number", bikeNumber.getText().toString().trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", ""));
+        try { e.putInt("step_goal", Math.max(0, Math.min(40000, Integer.parseInt(stepGoal.getText().toString().trim())))); } catch (Exception ignored) {}
+        try { int h = Integer.parseInt(exerciseHour.getText().toString().trim()); e.putInt("exercise_hour", h <= 0 ? -1 : Math.max(5, Math.min(12, h))); } catch (Exception ignored) {}
+        try { e.putInt("fact_hour", Math.max(6, Math.min(21, Integer.parseInt(factHour.getText().toString().trim())))); } catch (Exception ignored) {}
         e.apply();
+        MedicalId.update(this);
         Reminders.scheduleBriefing(this);
         WakeService.stop(this); // restarts with the new settings when the main screen opens
         if (wake.isChecked() && Build.VERSION.SDK_INT >= 33) {
@@ -871,6 +919,19 @@ public class SettingsActivity extends Activity {
                 waInfo.setText("అనుమతి ఉంది ✓");
             } catch (Exception e) {
                 Toast.makeText(this, "ఆ ఫోల్డర్‌కి అనుమతి రాలేదు", Toast.LENGTH_LONG).show();
+            }
+        }
+        if (code == 43 && result == RESULT_OK && data != null && data.getData() != null) {
+            try {
+                getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                String name = "పాట";
+                try (android.database.Cursor cur = getContentResolver().query(data.getData(), new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                    if (cur != null && cur.moveToFirst()) name = cur.getString(0);
+                } catch (Exception ignored) {}
+                prefs.sp.edit().putString("alarm_song", data.getData().toString()).putString("alarm_song_name", name).apply();
+                alarmSongInfo.setText("🎵 అలారం పాట: " + name + " ✓");
+            } catch (Exception ex) {
+                Toast.makeText(this, "ఆ పాటకి అనుమతి రాలేదు", Toast.LENGTH_LONG).show();
             }
         }
         if (code == 41 && result == RESULT_OK && data != null && data.getData() != null) {

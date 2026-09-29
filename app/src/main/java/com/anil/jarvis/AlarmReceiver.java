@@ -54,6 +54,22 @@ public class AlarmReceiver extends BroadcastReceiver {
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, Medicine.ACTION_TAKEN.equals(action) ? 500 : 9000);
                 break;
             }
+            case SongAlarm.ACTION_RING:
+                SongAlarm.fire(c, i.getStringExtra(SongAlarm.EXTRA_ID), i.getIntExtra(SongAlarm.EXTRA_COUNT, 0));
+                break;
+            case SongAlarm.ACTION_STOP:
+                SongAlarm.clearRinging(c);
+                AlarmActivity.stopRinging();
+                AlarmActivity.greet(c.getApplicationContext());
+                break;
+            case SongAlarm.ACTION_SNOOZE:
+                SongAlarm.clearRinging(c);
+                AlarmActivity.stopRinging();
+                SongAlarm.snooze(c, i.getStringExtra(SongAlarm.EXTRA_ID), 5, i.getIntExtra(SongAlarm.EXTRA_COUNT, 0));
+                break;
+            case Exercise.ACTION_STOP:
+                Exercise.stop(c);
+                break;
             case Reminders.ACTION_BRIEFING:
                 BriefingService.start(c);
                 Reminders.scheduleBriefing(c); // tomorrow
@@ -64,6 +80,8 @@ public class AlarmReceiver extends BroadcastReceiver {
             case Intent.ACTION_TIMEZONE_CHANGED:
                 Reminders.rescheduleAll(c);
                 Medicine.rescheduleAll(c);
+                try { SongAlarm.rescheduleAll(c); } catch (Exception ignored) {}
+                MedicalId.update(c);
                 GeoReminders.rearmAll(c);
                 Proactive.schedule(c);
                 UpdateJob.schedule(c);

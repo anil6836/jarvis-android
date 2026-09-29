@@ -319,6 +319,7 @@ final class Duty {
             }
             sp(c).edit().putString("data", o.put("batches", bs).put("changes", cs).toString()).apply();
         } catch (Exception ignored) {}
+        try { SongAlarm.rescheduleAll(c); } catch (Exception ignored) {} // duty-day / day-off alarms follow the change
     }
 
     static boolean ready(Roster r) {
@@ -334,6 +335,44 @@ final class Duty {
     static String day(LocalDate d) { return DAYS[d.getDayOfWeek().getValue() - 1] + " " + d.getDayOfMonth() + " " + MONTHS[d.getMonthValue() - 1]; }
 
     static String monthName(int m) { return MONTHS[m - 1]; }
+
+    /** The morning he leaves home for duty (on duty today, not yesterday). */
+    static boolean startsDuty(Roster r, LocalDate d) { return r.isOn(ME, d) && !r.isOn(ME, d.minusDays(1)); }
+
+    /** A whole day at home: not on duty, and not the day a duty ends (at work till the relieve time). */
+    static boolean homeAllDay(Roster r, LocalDate d) { return !r.isOn(ME, d) && !r.isOn(ME, d.minusDays(1)); }
+
+    /**
+     * His month: duty days and hours, extra days (on duty outside his own turn), days off from his turn (leave, or someone
+     * did it), what each change was, and festivals / holidays he worked.
+     */
+    static JSONObject report(Context c, Roster r, java.time.YearMonth ym) throws Exception {
+        Batch mine = r.myBatch();
+        int days = 0;
+        JSONArray extra = new JSONArray(), off = new JSONArray(), festivals = new JSONArray(), dutyDays = new JSONArray();
+        List<Holidays.Day> hols = Holidays.between(c, ym.atDay(1), ym.atEndOfMonth());
+        for (LocalDate d = ym.atDay(1); !d.isAfter(ym.atEndOfMonth()); d = d.plusDays(1)) {
+            boolean on = r.isOn(ME, d), base = r.baseOn(mine, d);
+            Change ch = r.change(d, ME);
+            String note = ch == null ? "" : ch.note;
+            if (on) {
+                days++;
+                dutyDays.put(d.getDayOfMonth());
+                for (Holidays.Day h : hols) if (h.date.equals(d) && h.big()) festivals.put(day(d) + ": " + h.name);
+            }
+            if (on && !base) extra.put(day(d) + (note.isEmpty() ? "" : " (" + note + ")"));
+            if (!on && base) off.put(day(d) + (note.isEmpty() ? "" : " (" + note + ")"));
+        }
+        int regular = 0;
+        for (LocalDate d = ym.atDay(1); !d.isAfter(ym.atEndOfMonth()); d = d.plusDays(1)) if (r.baseOn(mine, d)) regular++;
+        return new JSONObject().put("ok", true).put("month", monthName(ym.getMonthValue()) + " " + ym.getYear())
+                .put("duty_days", days).put("hours", days * 24).put("his_regular_turn_days", regular)
+                .put("extra_days", extra.length()).put("extra", extra)
+                .put("days_off_from_his_turn", off.length()).put("off", off)
+                .put("worked_on_festivals", festivals).put("dates", dutyDays)
+                .put("note", ym.isAfter(java.time.YearMonth.now()) ? "A future month: from the plan as it stands." :
+                        ym.equals(java.time.YearMonth.now()) ? "This month: the rest of it is from the plan." : "");
+    }
 
     static String name(Context c, String who) { return ME.equals(who) ? new Prefs(c).name() : who; }
 

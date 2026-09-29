@@ -75,7 +75,32 @@ public class NotifyListener extends NotificationListenerService {
         try { requestRebind(new ComponentName(this, NotifyListener.class)); } catch (Exception ignored) {}
     }
 
+    /** Screen and unlock events for rest mode (this service always runs, the wake word may not). */
+    private final android.content.BroadcastReceiver screenEvents = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            String a = i == null ? null : i.getAction();
+            if (Intent.ACTION_SCREEN_ON.equals(a)) Rest.screen(true);
+            else if (Intent.ACTION_SCREEN_OFF.equals(a)) Rest.screen(false);
+            else if (Intent.ACTION_USER_PRESENT.equals(a)) { Rest.awake(); schedule(1500); } // held messages now
+        }
+    };
+    private boolean screenRegistered;
+
+    @Override public void onDestroy() {
+        if (screenRegistered) { try { unregisterReceiver(screenEvents); } catch (Exception ignored) {} screenRegistered = false; }
+        super.onDestroy();
+    }
+
     @Override public void onListenerConnected() {
+        if (!screenRegistered) {
+            try {
+                android.content.IntentFilter f = new android.content.IntentFilter(Intent.ACTION_SCREEN_ON);
+                f.addAction(Intent.ACTION_SCREEN_OFF);
+                f.addAction(Intent.ACTION_USER_PRESENT);
+                registerReceiver(screenEvents, f);
+                screenRegistered = true;
+            } catch (Exception ignored) {}
+        }
         connected = true;
         try {
             StatusBarNotification[] active = getActiveNotifications();
@@ -88,7 +113,10 @@ public class NotifyListener extends NotificationListenerService {
     }
 
     @Override public void onNotificationRemoved(StatusBarNotification sbn) {
-        if (sbn != null) CallControl.onRemoved(sbn.getKey());
+        if (sbn == null) return;
+        String[] call = CallControl.ended(sbn.getKey());
+        CallControl.onRemoved(sbn.getKey());
+        if (call != null) CallNote.after(this, call[0], Long.parseLong(call[1]));
     }
 
     private void add(StatusBarNotification sbn) {
@@ -278,7 +306,7 @@ public class NotifyListener extends NotificationListenerService {
     /** Messages of one chat waiting to be said. */
     private static final class Pending {
         String key, pkg, app, from;
-        boolean group, canReply;
+        boolean group, canReply, rested;
         int id;
         final List<String> texts = new ArrayList<>();
         long firstAt, lastAt;
@@ -350,14 +378,22 @@ public class NotifyListener extends NotificationListenerService {
         long now = System.currentTimeMillis();
         Pending next = null;
         synchronized (queue) {
+            boolean resting = Rest.resting(this);
             for (Iterator<Pending> it = queue.values().iterator(); it.hasNext(); ) {
                 Pending q = it.next();
-                if (now - q.firstAt > 30 * 60000L) { // busy for half an hour: too late to announce
+                if (resting) { q.rested = true; continue; } // sleeping after duty: they wait until he wakes
+                if (!q.rested && now - q.firstAt > 30 * 60000L) { // busy for half an hour: too late to announce
                     note(q.app, q.from, "చెప్పలేకపోయాను: అరగంట పాటు కాల్ / మాటల్లో ఉన్నారు (\"కొత్త మెసేజ్‌లు చదువు\" అంటే చదువుతాను)");
                     it.remove();
                 }
             }
             if (queue.isEmpty()) return;
+            if (resting) {
+                Pending first = queue.values().iterator().next();
+                note(first.app, first.from, "మీరు విశ్రాంతిలో ఉన్నారు: లేచాక చెప్తాను");
+                schedule(60000);
+                return;
+            }
             for (Pending q : queue.values()) if (now - q.lastAt >= 2500) { next = q; break; }
         }
         if (next == null) { schedule(1500); return; }
@@ -386,7 +422,7 @@ public class NotifyListener extends NotificationListenerService {
         if (last.length() > 220) last = last.substring(0, 220) + "…";
         // First only who and where; the message itself is read only if Anil says yes.
         String who = from.isEmpty() ? app : from;
-        String where = q.group ? who + " గ్రూప్‌లో" : who + " నుంచి " + app + " లో";
+        String where = (q.rested ? "మీరు పడుకున్నప్పుడు " : "") + (q.group ? who + " గ్రూప్‌లో" : who + " నుంచి " + app + " లో");
         String body = withoutSender(last); // "Ravi: 📷 Photo" -> "📷 Photo"
         String media = count == 1 && q.pkg.startsWith("com.whatsapp") ? mediaKind(body) : null;
         String reply = " Then ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send with reply_to_notification (id "

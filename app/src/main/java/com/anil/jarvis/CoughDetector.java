@@ -176,7 +176,7 @@ final class CoughDetector {
         Prefs p = new Prefs(ctx);
         long last = p.sp.getLong("cough_asked", 0);
         if (System.currentTimeMillis() - last < p.coughGapMinutes() * 60000L) return;
-        if (p.night() || CallControl.busyWithCall() || MainActivity.busyTalking()) return;
+        if (p.night() || CallControl.busyWithCall() || MainActivity.busyTalking() || Rest.resting(ctx)) return;
         // probably asleep: late night with the screen off, or the afternoon after coming off a 48-hour duty
         try {
             android.os.PowerManager pm = ctx.getSystemService(android.os.PowerManager.class);

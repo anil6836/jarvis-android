@@ -40,17 +40,45 @@ final class CallControl {
         ringingAt = SystemClock.elapsedRealtime();
     }
 
+    private static volatile long ongoingSince;
+    private static volatile String ongoingWho = "";
+
     static void onOngoing(String key, Notification n, boolean phone) {
+        if (key != null && !key.equals(ongoingKey)) {
+            ongoingSince = System.currentTimeMillis();
+            String who = "";
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= 31 && n.extras != null) {
+                    Object p = n.extras.getParcelable(Notification.EXTRA_CALL_PERSON);
+                    if (p instanceof android.app.Person && ((android.app.Person) p).getName() != null) who = ((android.app.Person) p).getName().toString();
+                }
+                if (who.isEmpty() && n.extras != null && n.extras.getCharSequence(Notification.EXTRA_TITLE) != null)
+                    who = n.extras.getCharSequence(Notification.EXTRA_TITLE).toString();
+            } catch (Exception ignored) {}
+            ongoingWho = who.trim();
+        }
         ongoing = n;
         ongoingKey = key;
         ongoingIsPhone = phone;
         if (key != null && key.equals(ringingKey)) ringing = null; // it was answered
     }
 
+    /** The call in progress ended with this notification: {who, seconds}, else null. */
+    static String[] ended(String key) {
+        if (key == null || !key.equals(ongoingKey) || ongoingSince == 0) return null;
+        return new String[]{ongoingWho, String.valueOf((System.currentTimeMillis() - ongoingSince) / 1000)};
+    }
+
     static void onRemoved(String key) {
         if (key == null) return;
         if (key.equals(ringingKey)) ringing = null;
-        if (key.equals(ongoingKey)) ongoing = null;
+        if (key.equals(ongoingKey)) {
+            // the dialer reuses one key for every call: forget this one completely
+            ongoing = null;
+            ongoingKey = null;
+            ongoingSince = 0;
+            ongoingWho = "";
+        }
     }
 
     static boolean isRinging() {

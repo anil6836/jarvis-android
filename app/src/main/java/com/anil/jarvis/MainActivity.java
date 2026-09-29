@@ -81,6 +81,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     static volatile boolean liveOn;
 
     static void talking(boolean on) {
+        if (on) Rest.awake();
         if (on && !inConversation) talkingSince = System.currentTimeMillis();
         inConversation = on;
     }
@@ -134,6 +135,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private String autoPrompt;
     private static final String BILL_PROMPT = "ఈ ఫోటో ఒక బిల్లు / రసీదు. కట్టిన మొత్తం (Grand Total, GST తో), షాప్ పేరు, బిల్లు తేదీ చదివి, "
             + "కేటగిరీ ఎంచుకుని add_expense తో నా ఖర్చుల్లో ఒక్కసారి చేర్చు. మొత్తం స్పష్టంగా కనిపించకపోతే చేర్చకుండా నన్ను అడుగు. చేర్చాక ఏం చేర్చావో ఒక వాక్యంలో చెప్పు.";
+    private static final String EXPIRY_PROMPT = "ఈ ఫోటో ఒక డాక్యుమెంట్ (ఇన్సూరెన్స్ / డ్రైవింగ్ లైసెన్స్ / PUC / RC / పాలసీ / వారంటీ లాంటిది). "
+            + "అది ఏ డాక్యుమెంట్, దాని గడువు తేదీ (valid till / expiry / valid upto) చదివి expiry add తో చేర్చు: what = తెలుగులో చిన్న పేరు (ఉదా: 'బైక్ ఇన్సూరెన్స్'), date = YYYY-MM-DD. "
+            + "పాలసీ / లైసెన్స్ / ఆధార్ నంబర్లు ఏవీ సేవ్ చేయకు, చెప్పకు. తేదీ స్పష్టంగా కనిపించకపోతే చేర్చకుండా నన్ను అడుగు. చేర్చాక ఒక వాక్యంలో చెప్పు.";
+    private static final String CARD_PROMPT = "ఈ ఫోటో ఒక విజిటింగ్ కార్డ్. పేరు, ఫోన్ నంబర్(లు), ఈమెయిల్, కంపెనీ, హోదా, అడ్రస్ చదివి చిన్నగా చెప్పు, "
+            + "తర్వాత save_contact తో కాంటాక్ట్స్ యాప్‌లో సేవ్ ఫారం తెరువు (నేను చూసి సేవ్ నొక్కుతాను). ఏదైనా స్పష్టంగా లేకపోతే ఆ వివరం వదిలేయి.";
     private Bitmap pendingThumb;
     private String pendingFileText;    // a text file's contents waiting to be sent
     private String pendingFileName;    // name of the attached file (PDF or text), or null
@@ -194,6 +200,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         cancelOldBackupJob();
         NotifyListener.ensureBound(this); // Android has notification access for Jarvis but stopped sending messages: reconnect
         if (FindPhone.running() && FindPhone.age() > 10000) FindPhone.stop(this); // found it (not the ring he just asked for)
+        MedicalId.update(this);
         Life.endNightIfMorning(this);     // a night mode left on from last night
         new Thread(() -> Updater.cleanup(getApplicationContext()), "jarvis-cleanup").start();
         showUpdateBanner();
@@ -801,6 +808,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         switch (code) {
             case "scan": Scanner.start(this); break;
             case "bill": billPhoto(); break;
+            case "expiry_doc": photoFor("📄 డాక్యుమెంట్ ఫోటో → గడువు", EXPIRY_PROMPT); break;
+            case "card": photoFor("🪪 విజిటింగ్ కార్డ్ ఫోటో", CARD_PROMPT); break;
             case "live": startLiveFromButton(); break;
             case "english": startEnglishPractice(); break;
             case "camera": toggleCamera(); break;
@@ -1833,6 +1842,20 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 .setTitle("🧾 బిల్లు ఫోటో")
                 .setItems(new String[]{"📷 ఇప్పుడు ఫోటో తీయి", "🖼️ గ్యాలరీ నుంచి ఎంచుకో"}, (d, w) -> {
                     autoPrompt = BILL_PROMPT;
+                    if (w == 0) openCamera(); else openGallery();
+                })
+                .setNegativeButton("వద్దు", null)
+                .show();
+    }
+
+    /** A photo (camera or gallery) that goes to Jarvis with this request. */
+    private void photoFor(String title, String prompt) {
+        if (busy) return;
+        if (live != null) { liveScreen.show(); return; }
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(title)
+                .setItems(new String[]{"📷 ఇప్పుడు ఫోటో తీయి", "🖼️ గ్యాలరీ నుంచి ఎంచుకో"}, (d, w) -> {
+                    autoPrompt = prompt;
                     if (w == 0) openCamera(); else openGallery();
                 })
                 .setNegativeButton("వద్దు", null)

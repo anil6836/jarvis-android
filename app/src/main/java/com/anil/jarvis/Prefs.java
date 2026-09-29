@@ -134,6 +134,31 @@ final class Prefs {
     boolean findPhone() { return sp.getBoolean("find_phone", true); }
     /** Hear coughing / sneezing on the wake-word microphone and ask "సర్, ఏమైంది?". */
     boolean coughAsk() { return sp.getBoolean("cough_ask", true); }
+    /** After a call of at least this long, ask "anything to remember?". */
+    boolean callNote() { return sp.getBoolean("call_note", true); }
+    int callNoteSeconds() { return Math.max(0, sp.getInt("call_note_sec", 60)); }
+    /** After a 48-hour duty: remind to sleep, and keep quiet while he sleeps. */
+    boolean restMode() { return sp.getBoolean("rest_mode", true); }
+    /** Lock-screen emergency card. */
+    boolean medIdOn() { return sp.getBoolean("medid_on", true); }
+    String medBlood() { return sp.getString("medid_blood", "").trim(); }
+    String medAllergy() { return sp.getString("medid_allergy", "").trim(); }
+    String medNotes() { return sp.getString("medid_notes", "").trim(); }
+    String medContact() { return sp.getString("medid_contact", "").trim(); }
+    /** His bike's registration number (for the e-challan check). */
+    String bikeNumber() { return sp.getString("bike_number", "").trim(); }
+    /** New Telugu films and OTT releases every Friday evening. */
+    boolean moviesWeekly() { return sp.getBoolean("movies_weekly", true); }
+    /** A new fact and an English word every morning. */
+    boolean dailyFact() { return sp.getBoolean("daily_fact", true); }
+    int factHour() { return Math.max(6, Math.min(21, sp.getInt("fact_hour", 9))); }
+    /** Steps a day; evening nudge when far short. 0 = no goal. */
+    int stepGoal() { return Math.max(0, sp.getInt("step_goal", 6000)); }
+    /** Morning stretches reminder on days off (hour, -1 = off). */
+    int exerciseHour() { return sp.getInt("exercise_hour", 8); }
+    /** Alarm song picked from the phone (content uri), or empty = the alarm tone. */
+    String alarmSong() { return sp.getString("alarm_song", ""); }
+    String alarmSongName() { return sp.getString("alarm_song_name", ""); }
     /** After asking about a cough, how long before asking again (minutes; default 1 hour). */
     int coughGapMinutes() { return Math.max(10, Math.min(24 * 60, sp.getInt("cough_gap_min", 60))); }
     static String gapText(int min) {

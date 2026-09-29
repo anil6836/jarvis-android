@@ -362,7 +362,7 @@ final class Tools {
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice), debts, expiry, prices, diary, holidays, travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (exercise, rest), alarm (song alarm), kids (stories), travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
@@ -386,8 +386,9 @@ final class Tools {
                 + "set_day: he or someone is on duty / off on a date or dates (extra duty, leave); cover: one person does another's turn "
                 + "(he does someone's: by empty; someone does his: covered empty, by = that person), the doer is on 4 days in a row and the other then does the doer's next turn "
                 + "(8 days off); clear: undo changes on a date; open: show the calendar screen; "
-                + "trip_check: before his next duty, rain on the way and whether the bike's charge is enough to go and come back ('డ్యూటీకి వెళ్లొచ్చా?', 'బైక్ ఛార్జ్ సరిపోతుందా?').",
-                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear, open or trip_check"},
+                + "trip_check: before his next duty, rain on the way and whether the bike's charge is enough to go and come back ('డ్యూటీకి వెళ్లొచ్చా?', 'బైక్ ఛార్జ్ సరిపోతుందా?'); "
+                + "report: his month (month YYYY-MM, default this month): duty days and hours, extra days, days off, covers, festivals worked.",
+                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear, open, trip_check or report"},
                         {"person", "string", "Whose duty: empty = his own; a name or a batch (A, B, C)"},
                         {"date", "string", "YYYY-MM-DD (on_date, set_day, cover, clear)"}, {"to_date", "string", "Last date YYYY-MM-DD for set_day / clear"},
                         {"duty", "boolean", "For set_day: true = on duty, false = off"},
@@ -447,6 +448,39 @@ final class Tools {
                 schema(new String[][]{{"symptom", "string", "What he has, in his words (e.g. 'జలుబు', 'దగ్గు 3 రోజులుగా', 'కడుపు మంట')"},
                         {"want", "string", "home (default), tablet, doctor or all"}, {"cough_listen", "string", "on or off (only to change that setting)"},
                         {"cough_gap_minutes", "integer", "Only to change how long after asking about a cough Jarvis waits before asking again (e.g. 30, 60, 120; 1440 = once a day)"}})));
+        DEFS.add(new Def("save_contact", "Open the phone's Contacts app with a new contact filled in (from a visiting card or what he said); he checks it and taps Save himself.",
+                schema(new String[][]{{"name", "string", "Full name"}, {"phone", "string", "Phone number"}, {"phone2", "string", "Second number"},
+                        {"email", "string", "Email"}, {"company", "string", "Company"}, {"title", "string", "Job title"},
+                        {"address", "string", "Address"}, {"note", "string", "Note, e.g. where he met them"}}, "name")));
+        DEFS.add(new Def("health_log", "His BP, sugar and weight readings, kept on the phone, with a word on each (normal / high / low) and when to see a doctor or call 108. "
+                + "add: one reading ('BP 130/85 పల్స్ 78', 'షుగర్ పరగడుపున 110', 'బరువు 72'); list / trend: readings of N days with weekly averages; delete_last.",
+                schema(new String[][]{{"action", "string", "add, list (default), trend or delete_last"}, {"kind", "string", "bp, sugar or weight"},
+                        {"sys", "integer", "BP upper number"}, {"dia", "integer", "BP lower number"}, {"pulse", "integer", "Pulse (optional)"},
+                        {"value", "number", "Sugar mg/dL or weight kg"}, {"when", "string", "Sugar: fasting (పరగడుపున), after_food or random"},
+                        {"days", "integer", "For list: days back (default 30)"}})));
+        DEFS.add(new Def("bike_challan", "Check traffic challans (fines) on his bike in Telangana: saves his bike number (once), copies it and opens the TS e-challan site; "
+                + "he types the captcha and pays himself if he wants.",
+                schema(new String[][]{{"number", "string", "Bike registration number, e.g. TS 04 AB 1234 (only to save / change it)"}})));
+        DEFS.add(new Def("new_movies", "New Telugu films in theatres and on OTT (Aha, Prime, Netflix, JioHotstar, ZEE5...) this week or next week, from the web. weekly on/off: every Friday evening by itself.",
+                schema(new String[][]{{"week", "string", "this (default) or next"}, {"weekly", "string", "on or off (only to change the Friday notice)"}})));
+        DEFS.add(new Def("compare_prices", "Where a product is cheapest online right now (Amazon, Flipkart, Meesho, JioMart, Croma, Reliance Digital, Tata CLiQ...), from the web. He buys himself.",
+                schema(new String[][]{{"product", "string", "The product as exactly as he said (model, size, variant)"}}, "product")));
+        DEFS.add(new Def("daily_fact", "A new interesting fact in Telugu and a useful English word with its meaning (now), or change the morning one: on / off, hour.",
+                schema(new String[][]{{"action", "string", "now (default), on, off or time"}, {"hour", "integer", "For time: hour of the morning one (6-21)"}})));
+        DEFS.add(new Def("exercise", "Gentle 5-minute neck, shoulder and back stretches for a bike rider, spoken step by step (start / stop); "
+                + "his daily step goal (goal); the morning stretch reminder on days off (hour, -1 = off).",
+                schema(new String[][]{{"action", "string", "start (default), stop, goal or reminder"}, {"steps", "integer", "For goal: steps a day (0 = no goal)"},
+                        {"hour", "integer", "For reminder: hour in the morning, 0 = off"}})));
+        DEFS.add(new Def("story", "Stories for children in Telugu (bedtime, moral stories): gives the titles already told so each one is new. "
+                + "action tell (default): then tell a NEW story yourself; action save: after telling, save its title.",
+                schema(new String[][]{{"action", "string", "tell (default) or save"}, {"title", "string", "For save: the story's title"},
+                        {"theme", "string", "Optional: animals, kings, honesty, friendship, Bible story, Panchatantra..."}})));
+        DEFS.add(new Def("song_alarm", "Jarvis's own alarm that wakes him with a song from his phone (chosen in Settings; else the alarm tone), then says good morning "
+                + "with the weather and whether today is a duty day. set: time + days (daily, once, weekdays, weekend, duty = only duty days, off = only days off); "
+                + "list; cancel (id or time); test (ring now); song (open Settings to pick the song). For a plain phone alarm use set_alarm.",
+                schema(new String[][]{{"action", "string", "set, list (default), cancel, test or song"}, {"time", "string", "HH:mm (24-hour)"},
+                        {"days", "string", "daily (default), once, weekdays, weekend, duty or off"}, {"label", "string", "Optional name, e.g. 'డ్యూటీ రోజు'"},
+                        {"id", "string", "For cancel: id or time"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
                 schema(new String[][]{})));
         DEFS.add(new Def("day_summary",
@@ -558,6 +592,15 @@ final class Tools {
             case "local_news": return "మీ ప్రాంతాల వార్తలు తెస్తున్నాను…";
             case "debts": return "అప్పులు, EMI లు చూస్తున్నాను…";
             case "health_advice": return "చూస్తున్నాను…";
+            case "save_contact": return "కాంటాక్ట్ ఫారం తెరుస్తున్నాను…";
+            case "health_log": return "రీడింగ్స్ చూస్తున్నాను…";
+            case "exercise": return "వ్యాయామం…";
+            case "song_alarm": return "అలారం…";
+            case "story": return "కథ…";
+            case "bike_challan": return "చలాన్ సైట్ తెరుస్తున్నాను…";
+            case "new_movies": return "కొత్త సినిమాలు వెతుకుతున్నాను…";
+            case "compare_prices": return "ధరలు పోలుస్తున్నాను…";
+            case "daily_fact": return "ఒక కొత్త విషయం…";
             case "expiry": return "గడువులు చూస్తున్నాను…";
             case "market_prices": return "ఈరోజు ధరలు వెతుకుతున్నాను…";
             case "diary": return "డైరీ…";
@@ -686,6 +729,15 @@ final class Tools {
                 case "local_news": return localNews(a);
                 case "debts": return debts(a);
                 case "health_advice": return healthAdvice(a);
+                case "save_contact": return saveContact(a);
+                case "health_log": return healthLog(a);
+                case "exercise": return exercise(a);
+                case "song_alarm": return songAlarm(a);
+                case "story": return story(a);
+                case "bike_challan": return bikeChallan(a);
+                case "new_movies": return newMovies(a);
+                case "compare_prices": return comparePrices(a);
+                case "daily_fact": return dailyFact(a);
                 case "expiry": return expiry(a);
                 case "market_prices": return marketPrices(a);
                 case "diary": return diary(a);
@@ -4682,6 +4734,160 @@ final class Tools {
         return lastLocation(act());
     }
 
+    private String songAlarm(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT);
+        if (action.startsWith("set") || action.startsWith("add")) {
+            JSONArray t = Medicine.times(a.optString("time", ""));
+            if (t.length() == 0) return err("missing", "What time (HH:mm)?");
+            String[] hm = t.optString(0).split(":");
+            JSONObject o = SongAlarm.add(act(), Integer.parseInt(hm[0]), Integer.parseInt(hm[1]), a.optString("days", "daily"), a.optString("label"));
+            if (o == null) return err("bad_time", "That time is not valid.");
+            JSONObject r = ok().put("alarms", SongAlarm.listJson(act()));
+            if (prefs.alarmSong().isEmpty()) r.put("song", "No song picked yet: it rings with the alarm tone. He can pick a song in Settings (action song).");
+            else r.put("song", prefs.alarmSongName());
+            if (!android.provider.Settings.canDrawOverlays(act()))
+                r.put("warning", "'Appear on top' (Display over other apps) is off for Jarvis: the alarm will ring as a notification; tap it to open the song screen. Suggest turning it on.");
+            String d = o.optString("days");
+            if ((d.equals("duty") || d.equals("off")) && !Duty.ready(Duty.load(act())))
+                r.put("duty_note", "His duty calendar is not set up, so this rings every day until it is.");
+            return r.toString();
+        }
+        if (action.startsWith("cancel") || action.startsWith("del") || action.startsWith("rem")) {
+            String k = a.optString("id", "").trim();
+            if (k.isEmpty()) k = a.optString("time", "");
+            return ok().put("cancelled", SongAlarm.remove(act(), k)).put("alarms", SongAlarm.listJson(act())).toString();
+        }
+        if (action.startsWith("test")) {
+            Intent i = new Intent(act(), AlarmActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            act().startActivity(i);
+            return ok().put("ringing", "now (test)").toString();
+        }
+        if (action.startsWith("song")) {
+            act().startActivity(new Intent(act(), SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, "అలారం").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return ok().put("opened", "Settings: tap 'అలారం పాట ఎంచుకో' and choose a song file").toString();
+        }
+        return ok().put("alarms", SongAlarm.listJson(act())).put("song", prefs.alarmSong().isEmpty() ? "alarm tone" : prefs.alarmSongName()).toString();
+    }
+
+    private String exercise(JSONObject a) throws Exception {
+        String action = a.optString("action", "start").toLowerCase(Locale.ROOT);
+        if (action.startsWith("stop")) { Exercise.stop(act()); return ok().put("stopped", true).toString(); }
+        if (action.startsWith("goal")) {
+            int g = Math.max(0, Math.min(40000, a.optInt("steps", 6000)));
+            prefs.sp.edit().putInt("step_goal", g).apply();
+            return ok().put("step_goal", g).put("today_steps", Health.stepsToday(act())).toString();
+        }
+        if (action.startsWith("rem")) {
+            int h = a.optInt("hour", 8);
+            prefs.sp.edit().putInt("exercise_hour", h <= 0 ? -1 : Math.max(5, Math.min(12, h))).apply();
+            return ok().put("morning_reminder", h <= 0 ? "off" : "days off at " + Math.max(5, Math.min(12, h)) + ":00").toString();
+        }
+        Exercise.start(act());
+        return ok().put("started", "5-minute stretches, spoken step by step").put("next", "Say nothing more; the steps are being spoken.").toString();
+    }
+
+    private String story(JSONObject a) throws Exception {
+        String action = a.optString("action", "tell").toLowerCase(Locale.ROOT);
+        if (action.startsWith("save")) {
+            String t = a.optString("title", "").trim();
+            if (!t.isEmpty()) Notes.add(act(), "stories", new JSONObject().put("title", t).put("t", System.currentTimeMillis()), 300);
+            return ok().put("saved", t).toString();
+        }
+        JSONArray told = new JSONArray();
+        java.util.List<JSONObject> l = Notes.list(act(), "stories");
+        for (int i = Math.max(0, l.size() - 60); i < l.size(); i++) told.put(l.get(i).optString("title"));
+        return ok().put("already_told", told).put("theme", a.optString("theme", ""))
+                .put("next", "Tell a NEW short children's story in simple spoken Telugu (about 2-3 minutes), not one of already_told"
+                        + (a.optString("theme").isEmpty() ? "" : ", on the theme asked") + ": a title, a warm beginning, a simple plot, and the moral (నీతి) at the end. "
+                        + "Then call story with action save and its title.").toString();
+    }
+
+    private String healthLog(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT);
+        if (action.startsWith("add")) {
+            JSONObject o = Vitals.add(act(), a.optString("kind"), a.optInt("sys", 0), a.optInt("dia", 0), a.optInt("pulse", 0), a.optDouble("value", 0), a.optString("when"));
+            if (o == null) return err("unclear", "Ask him the reading again (BP as upper/lower, sugar in mg/dL with fasting or after food, weight in kg).");
+            return ok().put("saved", Vitals.line(o)).put("status", o.optString("status")).put("advice", o.optString("advice"))
+                    .put("next", "Say the reading, the status and the advice in short Telugu. If the status is very high / very low, first ask about the "
+                            + "danger symptoms in the advice; only if he has any, tell him to call 108 now and offer to call. It is general guidance, not a doctor's diagnosis.").toString();
+        }
+        if (action.startsWith("del")) return ok().put("removed_last", Vitals.removeLast(act())).toString();
+        return Vitals.summary(act(), a.optString("kind"), a.optInt("days", 30))
+                .put("next", "Say the latest readings and the weekly averages / trend in short Telugu; if readings stay high, suggest the doctor.").toString();
+    }
+
+    private String bikeChallan(JSONObject a) throws Exception {
+        String n = a.optString("number", "").trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        if (!n.isEmpty()) prefs.sp.edit().putString("bike_number", n).apply();
+        String num = prefs.bikeNumber();
+        if (num.isEmpty()) return err("no_number", "Ask his bike's number (e.g. TS 04 AB 1234) and call again with it; it is kept on the phone.");
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            try {
+                android.content.ClipboardManager cm = act().getSystemService(android.content.ClipboardManager.class);
+                if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("bike", num));
+            } catch (Exception ignored) {}
+        });
+        try {
+            act().startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://echallan.tspolice.gov.in/publicview/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception e) {
+            return err("no_browser", "Could not open the browser.");
+        }
+        return ok().put("number", num).put("copied", true).put("opened", "TS e-challan (echallan.tspolice.gov.in)")
+                .put("next", "Tell him: the number is copied; on the page choose Vehicle Number, paste it, type the captcha and tap Go. "
+                        + "If there is a fine he pays himself there (Jarvis never pays).").toString();
+    }
+
+    private String newMovies(JSONObject a) throws Exception {
+        String w = a.optString("weekly", "").trim().toLowerCase(Locale.ROOT);
+        if (w.equals("on") || w.equals("off")) {
+            prefs.set("movies_weekly", w.equals("on"));
+            return ok().put("friday_notice", w).toString();
+        }
+        if (prefs.apiKey().isEmpty()) return err("no_key", "Needs the AI key in Settings (it searches the web).");
+        return WebLook.movies(prefs, a.optString("week", "this").toLowerCase(Locale.ROOT).startsWith("next")).toString();
+    }
+
+    private String comparePrices(JSONObject a) throws Exception {
+        String prod = a.optString("product", "").trim();
+        if (prod.isEmpty()) return err("missing", "Which product (model, size)?");
+        if (prefs.apiKey().isEmpty()) return err("no_key", "Needs the AI key in Settings (it searches the web).");
+        return WebLook.compare(prefs, prod).toString();
+    }
+
+    private String dailyFact(JSONObject a) throws Exception {
+        String action = a.optString("action", "now").toLowerCase(Locale.ROOT);
+        if (action.equals("on") || action.equals("off")) { prefs.set("daily_fact", action.equals("on")); return ok().put("daily_fact", action).toString(); }
+        if (action.startsWith("time")) {
+            int h = Math.max(6, Math.min(21, a.optInt("hour", 9)));
+            prefs.sp.edit().putInt("fact_hour", h).putBoolean("daily_fact", true).apply();
+            return ok().put("every_day_at", h + ":00").toString();
+        }
+        if (prefs.apiKey().isEmpty()) return err("no_key", "Needs the AI key in Settings.");
+        JSONObject f = WebLook.fact(act(), prefs);
+        return f.put("next", "Say the fact, then the English word, its meaning and the example, warmly and briefly.").toString();
+    }
+
+    private String saveContact(JSONObject a) throws Exception {
+        String name = a.optString("name", "").trim();
+        if (name.isEmpty() && a.optString("phone", "").trim().isEmpty()) return err("missing", "Need at least a name or a number.");
+        Intent i = new Intent(Intent.ACTION_INSERT, android.provider.ContactsContract.Contacts.CONTENT_URI);
+        if (!name.isEmpty()) i.putExtra(android.provider.ContactsContract.Intents.Insert.NAME, name);
+        if (!a.optString("phone").trim().isEmpty()) i.putExtra(android.provider.ContactsContract.Intents.Insert.PHONE, a.optString("phone").trim());
+        if (!a.optString("phone2").trim().isEmpty()) i.putExtra(android.provider.ContactsContract.Intents.Insert.SECONDARY_PHONE, a.optString("phone2").trim());
+        if (!a.optString("email").trim().isEmpty()) i.putExtra(android.provider.ContactsContract.Intents.Insert.EMAIL, a.optString("email").trim());
+        if (!a.optString("company").trim().isEmpty()) i.putExtra(android.provider.ContactsContract.Intents.Insert.COMPANY, a.optString("company").trim());
+        if (!a.optString("title").trim().isEmpty()) i.putExtra(android.provider.ContactsContract.Intents.Insert.JOB_TITLE, a.optString("title").trim());
+        if (!a.optString("address").trim().isEmpty()) i.putExtra(android.provider.ContactsContract.Intents.Insert.POSTAL, a.optString("address").trim());
+        if (!a.optString("note").trim().isEmpty()) i.putExtra(android.provider.ContactsContract.Intents.Insert.NOTES, a.optString("note").trim());
+        i.putExtra("finishActivityOnSaveCompleted", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            act().startActivity(i);
+        } catch (Exception e) {
+            return err("no_contacts_app", "Could not open the Contacts app.");
+        }
+        return ok().put("opened", "contacts form").put("note", "Tell him to check it and tap Save (సేవ్).").toString();
+    }
+
     private String healthAdvice(JSONObject a) throws Exception {
         if (a.optInt("cough_gap_minutes", 0) > 0) {
             int m = Math.max(10, Math.min(24 * 60, a.optInt("cough_gap_minutes")));
@@ -4951,6 +5157,11 @@ final class Tools {
         }
         if (!Duty.ready(r)) return err("not_set_up", "His duty is not set up yet. Ask which batch he is in, the first day of one of his duties (date) and the start time, "
                 + "then use setup; or open the calendar (duty open) where ⚙️ sets it.");
+        if (action.startsWith("report")) {
+            java.time.YearMonth ym = java.time.YearMonth.now();
+            try { if (!a.optString("month").trim().isEmpty()) ym = java.time.YearMonth.parse(a.optString("month").trim()); } catch (Exception ignored) {}
+            return Duty.report(act(), r, ym).put("next", "Say it in short Telugu: days and hours, extra days with whom, days off, festivals worked.").toString();
+        }
         if (action.startsWith("trip") || action.startsWith("check")) {
             for (java.time.LocalDate[] b : r.blocks(Duty.ME, today, today.plusDays(30))) {
                 if (b[0].isBefore(today)) continue;

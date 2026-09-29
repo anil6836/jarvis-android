@@ -85,9 +85,11 @@ public class Proactive extends BroadcastReceiver {
         Health.recordStepBaseline(c);
         JarvisWidget.refresh(c);
         try { Weekly.maybeNotify(c, p); } catch (Throwable ignored) {}
-        try { Birthdays.tick(c, p, p.night() || CallControl.busyWithCall() || dnd(c)); } catch (Throwable ignored) {}
-        try { Duty.tick(c, p, p.night() || CallControl.busyWithCall() || dnd(c)); } catch (Throwable ignored) {}
-        boolean hush = p.night() || CallControl.busyWithCall() || dnd(c);
+        boolean hush = p.night() || CallControl.busyWithCall() || dnd(c) || Rest.resting(c);
+        try { Birthdays.tick(c, p, hush); } catch (Throwable ignored) {}
+        try { Duty.tick(c, p, hush); } catch (Throwable ignored) {}
+        try { Rest.tick(c, p, hush); } catch (Throwable ignored) {}
+        try { Exercise.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Debts.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Expiry.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Diary.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
@@ -95,8 +97,9 @@ public class Proactive extends BroadcastReceiver {
         try { Holidays.tick(c, p, hush); } catch (Throwable ignored) {}
         try { LocalNews.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Prices.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
+        try { WebLook.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         if (!p.proactive()) return;
-        boolean quiet = p.night() || CallControl.busyWithCall() || dnd(c);
+        boolean quiet = hush;
         Calendar now = Calendar.getInstance();
         int hour = now.get(Calendar.HOUR_OF_DAY);
 
