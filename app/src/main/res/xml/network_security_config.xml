@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Everything stays https-only, except a few radio streams that exist only as plain http (music, no personal data). -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">cast6.my-control-panel.com</domain>
+        <domain includeSubdomains="false">rd.shalombeatsradio.com</domain>
+        <domain includeSubdomains="false">143.110.156.80</domain>
+    </domain-config>
+</network-security-config>

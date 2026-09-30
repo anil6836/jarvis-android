@@ -510,10 +510,13 @@ final class Tools {
         DEFS.add(new Def("split_bill", "Split a shared bill fairly and say who pays whom (fewest payments). paid: what each person paid, e.g. 'నేను 1200, రవి 800, సురేష్ 0'; "
                 + "shares: optional unequal shares, e.g. 'నేను 2, రవి 1' (default equal).",
                 schema(new String[][]{{"paid", "string", "Each person and the amount they paid"}, {"shares", "string", "Optional weights per person"}}, "paid")));
-        DEFS.add(new Def("sounds", "Sounds that play with the screen off: sleep sounds made on the phone (rain, fan, sea, white) and Telugu internet radio stations; "
-                + "stops by itself after minutes. stations = the list of Telugu stations; stop = stop.",
-                schema(new String[][]{{"action", "string", "rain, fan, sea, white, radio, stations or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
-                        {"station", "string", "For radio: station name or its number in the list (empty = the most popular)"}})));
+        DEFS.add(new Def("sounds", "Sounds that play with the screen off: sleep sounds made on the phone (rain, fan, sea, white) and HIS radio station list "
+                + "(Telugu film-music stations and Telugu Christian stations); stops by itself after minutes. "
+                + "radio without a station = shows his list on screen so you can ask which one; radio + station = play it. stations = his list. "
+                + "add = add a station or give a listed one its stream link (station + url, group film/christian); remove = take a station off his list; stop = stop.",
+                schema(new String[][]{{"action", "string", "rain, fan, sea, white, radio, stations, add, remove or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
+                        {"station", "string", "For radio: the station's name as written in his list (English) or its number; empty = ask him"},
+                        {"url", "string", "For add: the stream link (https)"}, {"group", "string", "For add: film or christian"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'. "
                 + "ahead=true: the COMING week instead (duty days, EMIs / money due, last dates, birthdays, holidays) for 'వచ్చే వారం ఏముంది'; plan on/off = the Sunday-evening notice.",
                 schema(new String[][]{{"ahead", "boolean", "true = the coming 7 days"}, {"plan", "string", "on or off (only to change the Sunday notice)"}})));
@@ -4231,7 +4234,8 @@ final class Tools {
     /** Jarvis asked Anil a choice for an app task (theatre, time, seats) and waits for his spoken answer. */
     static boolean awaitingAnswer() {
         AppTask t = appTask;
-        return t != null && t.awaiting && android.os.SystemClock.elapsedRealtime() - t.time < 5 * 60 * 1000L;
+        if (t != null && t.awaiting && android.os.SystemClock.elapsedRealtime() - t.time < 5 * 60 * 1000L) return true;
+        return Radio.awaiting(); // "ఏ స్టేషన్ ప్లే చేయమంటారు?"
     }
 
     /** Apps Jarvis never operates: payments and banking stay in Anil's own hands. */
@@ -4925,26 +4929,67 @@ final class Tools {
 
     private String sounds(JSONObject a) throws Exception {
         String action = a.optString("action", "rain").toLowerCase(Locale.ROOT);
-        if (action.startsWith("stop")) { SoundService.stop(act()); return ok().put("stopped", true).toString(); }
-        if (action.startsWith("station")) return ok().put("stations", SoundService.stations()).put("next", "Read out up to 8 names with numbers.").toString();
+        if (action.startsWith("stop")) { Radio.answered(); Radio.dismissPicker(); SoundService.stop(act()); return ok().put("stopped", true).toString(); }
+        int radioMin = Math.max(0, a.optInt("minutes", 0));
+        if (action.startsWith("add")) {
+            String bad = Radio.add(act(), a.optString("station"), a.optString("url"), a.optString("group"));
+            if (!bad.isEmpty()) return err("bad_link", bad);
+            JSONObject st = Radio.find(act(), a.optString("station"));
+            return ok().put("added", st == null ? a.optString("station") : st.optString("name")).put("number", st == null ? 0 : st.optInt("n"))
+                    .put("next", "Say in one line that it is in his radio list now (with its number). Offer to play it.").toString();
+        }
+        if (action.startsWith("remove") || action.startsWith("delete")) {
+            String gone = Radio.remove(act(), a.optString("station"));
+            if (gone.isEmpty()) return err("not_found", "No station by that name in his list.");
+            return ok().put("removed", gone).put("note", "A listed station comes back with sounds add + its name.").toString();
+        }
+        if (action.startsWith("station") || action.startsWith("list")) return radioAsk(radioMin, "").toString();
         if (action.startsWith("radio")) {
-            JSONArray st = SoundService.stations();
-            if (st.length() == 0) return err("no_stations", "No Telugu stations could be fetched (internet?).");
             String want = a.optString("station", "").trim();
-            JSONObject pick = st.getJSONObject(0);
-            if (!want.isEmpty()) {
-                try { int n = Integer.parseInt(want); if (n >= 1 && n <= st.length()) pick = st.getJSONObject(n - 1); }
-                catch (NumberFormatException ex) {
-                    for (int i = 0; i < st.length(); i++) if (st.getJSONObject(i).optString("name").toLowerCase(Locale.ROOT).contains(want.toLowerCase(Locale.ROOT))) { pick = st.getJSONObject(i); break; }
-                }
+            if (want.isEmpty()) return radioAsk(radioMin, "").toString();
+            JSONArray all = Radio.list(act());
+            JSONObject pick = Radio.find(all, want);
+            String only = Radio.onlyGroup(want);
+            if (!only.isEmpty() && !Radio.exact(pick, want)) return radioAsk(radioMin, only).toString(); // "క్రిస్టియన్ పాటలు", not "Telugu Christian Radio"
+            if (pick == null) {
+                String g = Radio.groupWord(want);
+                return radioAsk(radioMin, g.isEmpty() ? "No station in his list matches '" + want + "'. Say so in one line and ask again which one (the list is on screen)." : g).toString();
             }
-            SoundService.radio(act(), pick.optString("url"), pick.optString("name"), Math.max(0, a.optInt("minutes", 0)));
-            return ok().put("playing", pick.optString("name")).put("note", "Say its name in one line; 'Jarvis, ఆపు' or the notification stops it.").toString();
+            String[] urls = Radio.urls(act(), pick); // a station without a link is looked up here
+            if (urls.length == 0) {
+                Radio.asked();
+                return ok().put("no_link", pick.optString("name"))
+                        .put("next", "Say honestly in one line that no working stream link has been found for " + pick.optString("name")
+                                + " yet, and ask which other station to play. If he has its link, sounds add with station + url adds it.").toString();
+            }
+            Radio.play(act(), pick, urls, radioMin);
+            return ok().put("playing", pick.optString("name")).put("number", pick.optInt("n"))
+                    .put("note", "Say its name in one short line; 'Jarvis, ఆపు' or the notification stops it. If it doesn't start, Jarvis says so by itself.").toString();
         }
         String kind = action.startsWith("fan") ? "fan" : action.startsWith("sea") ? "sea" : action.startsWith("white") ? "white" : "rain";
         int min = a.has("minutes") ? Math.max(0, a.optInt("minutes")) : 30;
         SoundService.noise(act(), kind, min);
         return ok().put("playing", SoundService.label(kind)).put("minutes", min == 0 ? "until stopped" : String.valueOf(min)).toString();
+    }
+
+    /** "రేడియో పెట్టు": his list on screen (tap to play) and the names for Jarvis, who asks "ఏ స్టేషన్?". group = he named only a group. */
+    private JSONObject radioAsk(int minutes, String groupOrNote) throws Exception {
+        JSONArray all = Radio.list(act());
+        Radio.showPicker(act(), minutes);
+        Radio.asked();
+        boolean group = Radio.FILM.equals(groupOrNote) || Radio.CHRISTIAN.equals(groupOrNote);
+        JSONObject r = ok().put("ask", true).put("shown_on_screen", act() != null)
+                .put("film_music", Radio.names(all, Radio.FILM)).put("christian", Radio.names(all, Radio.CHRISTIAN));
+        String last = Radio.last(act());
+        if (!last.isEmpty()) r.put("last_played", last);
+        String how = "Do NOT read the list out. When he names one (by name, by number, or saying it in Telugu), call sounds radio with station = that station's "
+                + "name exactly as in the list (or its number). If he says only 'సినిమా పాటలు' or 'క్రిస్టియన్', say 5 or 6 names from that group and ask again.";
+        if (group) r.put("next", "He chose the " + (Radio.CHRISTIAN.equals(groupOrNote) ? "Christian" : "film music")
+                + " group. Say 5 or 6 station names from it in one short line and ask which one. " + how);
+        else if (!groupOrNote.isEmpty()) r.put("next", groupOrNote + " " + how);
+        else r.put("next", "Ask him in ONE short Telugu line: 'ఏ స్టేషన్ ప్లే చేయమంటారు? సినిమా పాటలా, క్రిస్టియన్ పాటలా? లిస్ట్ స్క్రీన్ మీద ఉంది.' "
+                + "(you may add 'పోయినసారి <last_played> విన్నారు'). " + how);
+        return r;
     }
 
     private String songAlarm(JSONObject a) throws Exception {

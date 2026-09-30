@@ -241,6 +241,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override protected void onDestroy() {
+        Radio.dismissPicker();
         generation++; // late replies (onReply) are dropped and the Brain stops running tools
         if (store.listener == this) store.listener = null;
         if (live != null) live.stop("destroy");
@@ -1519,7 +1520,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onSpeakDone() {
         String lang = Tools.takeInterpreter();
         if (lang != null && live == null && !busy) { startLive(Brain.interpreterInstructions(prefs.name(), lang)); return; }
-        if (lastWasVoice && (prefs.followUp() || Tools.awaitingAnswer()) && !paused && !busy) {
+        boolean asked = Tools.awaitingAnswer(); // read every time: the "which one?" flag is used up here
+        if (lastWasVoice && (prefs.followUp() || asked) && !paused && !busy) {
             lastWasVoice = false;
             main.postDelayed(this::startListening, 250);
         } else {
@@ -1997,5 +1999,16 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void notice(String text) {
         runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show());
+    }
+
+    /** He tapped a station in the radio list: stop talking / listening, so the mic doesn't take the radio for his voice. */
+    void radioPicked() {
+        runOnUiThread(() -> {
+            if (live != null) return;
+            if (voice.speaking) voice.stopSpeaking();
+            if (voice.listening) voice.cancelListening();
+            lastWasVoice = false;
+            finishTurn();
+        });
     }
 }

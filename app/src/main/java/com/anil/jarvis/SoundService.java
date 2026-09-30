@@ -17,14 +17,11 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
 import java.util.Random;
 
 /**
  * Sounds that keep playing with the screen off: soft noise to fall asleep to (rain, fan, sea, white, made on the phone,
- * nothing downloaded) and Telugu internet radio. Stops by itself after the minutes asked, fading out.
+ * nothing downloaded) and his radio stations (Radio.java). Stops by itself after the minutes asked, fading out.
  */
 public class SoundService extends Service {
     static final String ACTION_NOISE = "com.anil.jarvis.SOUND_NOISE", ACTION_RADIO = "com.anil.jarvis.SOUND_RADIO", ACTION_STOP = "com.anil.jarvis.SOUND_STOP";
@@ -36,6 +33,7 @@ public class SoundService extends Service {
     private volatile int gen; // each noise thread plays only while it is the current one
     private Thread noiseThread;
     private MediaPlayer radio;
+    private volatile boolean played; // this link is ready / played before it broke off: worth another try
     private android.net.wifi.WifiManager.WifiLock wifi;
     private volatile boolean ducked; // a call / Jarvis listening: quiet for now
 
@@ -44,10 +42,10 @@ public class SoundService extends Service {
         if (change == android.media.AudioManager.AUDIOFOCUS_LOSS) main.post(() -> { halt(); stopSelf(); });
         else if (change == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT || change == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
             ducked = true;
-            try { if (radio != null && radio.isPlaying()) radio.pause(); } catch (Exception ignored) {}
+            try { if (radio != null && played && radio.isPlaying()) radio.pause(); } catch (Exception ignored) {}
         } else if (change == android.media.AudioManager.AUDIOFOCUS_GAIN) {
             ducked = false;
-            try { if (radio != null && !radio.isPlaying()) radio.start(); } catch (Exception ignored) {}
+            try { if (radio != null && played && !radio.isPlaying()) radio.start(); } catch (Exception ignored) {} // not before it is ready
         }
     };
     private android.media.AudioFocusRequest focusReq;
@@ -72,8 +70,10 @@ public class SoundService extends Service {
         start(c, new Intent(c, SoundService.class).setAction(ACTION_NOISE).putExtra("kind", kind).putExtra("minutes", minutes));
     }
 
-    static void radio(Context c, String url, String name, int minutes) {
-        start(c, new Intent(c, SoundService.class).setAction(ACTION_RADIO).putExtra("url", url).putExtra("name", name).putExtra("minutes", minutes));
+    /** Plays a station; its links are tried in order until one plays. No links: looks one up by key first. */
+    static void radio(Context c, String[] urls, String name, String key, int minutes) {
+        start(c, new Intent(c, SoundService.class).setAction(ACTION_RADIO).putExtra("urls", urls).putExtra("name", name)
+                .putExtra("key", key).putExtra("minutes", minutes));
     }
 
     static void stop(Context c) {
@@ -97,9 +97,34 @@ public class SoundService extends Service {
             foreground(nowPlaying + (minutes > 0 ? " · " + minutes + " నిమిషాలు" : ""));
             startNoise(kind == null ? "rain" : kind);
         } else {
-            nowPlaying = "📻 " + i.getStringExtra("name");
-            foreground(nowPlaying + (minutes > 0 ? " · " + minutes + " నిమిషాలు" : ""));
-            startRadio(i.getStringExtra("url"));
+            String name = i.getStringExtra("name") == null ? "" : i.getStringExtra("name");
+            String[] links = i.getStringArrayExtra("urls");
+            nowPlaying = "📻 " + name;
+            String line = nowPlaying + (minutes > 0 ? " · " + minutes + " నిమిషాలు" : "");
+            if (links != null && links.length > 0) {
+                foreground(line);
+                startRadio(links, name);
+            } else { // no link known yet: look one up (a Telugu station of that name on radio-browser.info)
+                foreground(nowPlaying + " · లింక్ వెతుకుతున్నాను…");
+                String key = i.getStringExtra("key") == null ? name : i.getStringExtra("key");
+                final int my = lookupGen;
+                new Thread(() -> {
+                    String found = Radio.lookup(key);
+                    main.post(() -> {
+                        if (my != lookupGen) return; // stopped, or another sound asked for meanwhile
+                        if (found.isEmpty()) {
+                            nowPlaying = "";
+                            Announcer.say(this, name + " కి పనిచేసే లింక్ ఇంకా దొరకలేదు. ఇంకో స్టేషన్ చెప్పండి.");
+                            halt();
+                            stopSelf();
+                            return;
+                        }
+                        Radio.remember(this, name, found);
+                        foreground(line);
+                        startRadio(new String[]{found}, name);
+                    });
+                }, "jarvis-radio-lookup").start();
+            }
         }
         takeFocus();
         if (minutes > 0) main.postDelayed(this::fadeAndStop, minutes * 60000L);
@@ -181,30 +206,92 @@ public class SoundService extends Service {
 
     // ---------------------------------------------------------------- radio
 
-    private void startRadio(String url) {
+    private String[] urls;
+    private int urlAt, retries, attemptId, lookupGen;
+    private String radioName = "";
+    private boolean linkPlayed; // the current link played before (a drop is worth a few more tries)
+    private long playedAt;
+    private Runnable slow; // a dead link can hang in "preparing" for a long time
+
+    private void startRadio(String[] list, String name) {
+        urls = list;
+        urlAt = 0;
+        retries = 0;
+        linkPlayed = false;
+        radioName = name;
+        gain = 1f;
         try {
-            MediaPlayer mp = new MediaPlayer();
+            android.net.wifi.WifiManager wm = getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
+            if (wm != null) { wifi = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "jarvis:radio"); wifi.acquire(); }
+        } catch (Exception ignored) {}
+        playLink();
+    }
+
+    private void playLink() {
+        releasePlayer();
+        if (urls == null) return; // stopped meanwhile
+        if (urlAt >= urls.length) { allFailed(); return; }
+        played = false;
+        final int my = ++attemptId; // callbacks of older attempts are ignored
+        MediaPlayer mp = new MediaPlayer();
+        radio = mp;
+        try {
             mp.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
-            mp.setDataSource(url);
+            mp.setDataSource(urls[urlAt]);
             mp.setWakeMode(getApplicationContext(), android.os.PowerManager.PARTIAL_WAKE_LOCK); // keeps playing with the screen off
-            try {
-                android.net.wifi.WifiManager wm = getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
-                if (wm != null) { wifi = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "jarvis:radio"); wifi.acquire(); }
-            } catch (Exception ignored) {}
-            mp.setOnPreparedListener(MediaPlayer::start);
-            mp.setOnCompletionListener(m -> { halt(); stopSelf(); }); // the stream ended
-            mp.setOnErrorListener((m, w, e) -> {
-                nowPlaying = "";
-                Announcer.say(this, "ఈ రేడియో స్టేషన్ ఇప్పుడు పనిచేయడం లేదు. ఇంకో స్టేషన్ అడగండి.");
-                halt();
-                stopSelf();
-                return true;
+            mp.setOnPreparedListener(m -> {
+                if (my != attemptId) return;
+                if (slow != null) main.removeCallbacks(slow);
+                played = true;
+                linkPlayed = true;
+                playedAt = android.os.SystemClock.elapsedRealtime();
+                try { m.setVolume(Math.max(0, gain), Math.max(0, gain)); if (!ducked) m.start(); } catch (Exception ignored) {}
             });
+            mp.setOnCompletionListener(m -> { if (my == attemptId) linkFailed(); }); // a live stream doesn't end by itself: it broke off
+            mp.setOnErrorListener((m, w, e) -> { main.post(() -> { if (my == attemptId) linkFailed(); }); return true; });
             mp.prepareAsync();
-            radio = mp;
+            slow = () -> { if (my == attemptId) linkFailed(); };
+            main.postDelayed(slow, 25000);
         } catch (Exception e) {
-            nowPlaying = "";
-            stopSelf();
+            main.post(() -> { if (my == attemptId) linkFailed(); });
+        }
+    }
+
+    /** This link didn't play (or broke off): the same one again after a pause if it had been playing, else the next one. */
+    private void linkFailed() {
+        if (slow != null) main.removeCallbacks(slow);
+        if (urls == null) return; // already stopped
+        attemptId++; // anything more from this attempt is ignored
+        long wait;
+        if (linkPlayed && android.os.SystemClock.elapsedRealtime() - playedAt > 60000) retries = 0; // it had been playing fine
+        if (linkPlayed && retries < 3) {
+            retries++;
+            wait = retries == 1 ? 2000 : retries == 2 ? 5000 : 10000; // e.g. the network switching between wifi and mobile data
+        } else {
+            urlAt++;
+            retries = 0;
+            linkPlayed = false;
+            wait = 300;
+        }
+        releasePlayer();
+        main.postDelayed(this::playLink, wait);
+    }
+
+    private void allFailed() {
+        Radio.forget(this, radioName);
+        nowPlaying = "";
+        Announcer.say(this, (radioName.isEmpty() ? "ఈ" : radioName) + " స్టేషన్ ఇప్పుడు పనిచేయడం లేదు. ఇంకో స్టేషన్ చెప్పండి.");
+        halt();
+        stopSelf();
+    }
+
+    private void releasePlayer() {
+        if (radio != null) {
+            MediaPlayer mp = radio;
+            radio = null;
+            try { mp.setOnErrorListener(null); mp.setOnCompletionListener(null); mp.setOnPreparedListener(null); } catch (Exception ignored) {}
+            try { mp.stop(); } catch (Exception ignored) {}
+            try { mp.release(); } catch (Exception ignored) {}
         }
     }
 
@@ -224,11 +311,10 @@ public class SoundService extends Service {
         noiseOn = false;
         gen++;
         noiseThread = null;
-        if (radio != null) {
-            try { radio.stop(); } catch (Exception ignored) {}
-            try { radio.release(); } catch (Exception ignored) {}
-            radio = null;
-        }
+        urls = null;
+        attemptId++;
+        lookupGen++;
+        releasePlayer();
         try { if (wifi != null && wifi.isHeld()) wifi.release(); } catch (Exception ignored) {}
         wifi = null;
         ducked = false;
@@ -241,28 +327,4 @@ public class SoundService extends Service {
         super.onDestroy();
     }
 
-    // ---------------------------------------------------------------- Telugu stations (community list, radio-browser.info)
-
-    private static volatile JSONArray stations;
-    private static volatile long stationsAt;
-
-    /** Telugu stations that stream plain MP3 / AAC, most played first: {name, url, tags}. */
-    static JSONArray stations() throws Exception {
-        if (stations != null && System.currentTimeMillis() - stationsAt < 6 * 3600000L) return stations;
-        JSONArray out = new JSONArray();
-        String body = Http.getText("https://de1.api.radio-browser.info/json/stations/search?language=telugu&hidebroken=true&order=clickcount&reverse=true&limit=60");
-        JSONArray a = new JSONArray(body);
-        for (int i = 0; i < a.length() && out.length() < 25; i++) {
-            JSONObject s = a.getJSONObject(i);
-            String codec = s.optString("codec").toUpperCase(java.util.Locale.ROOT);
-            String url = s.optString("url_resolved", s.optString("url"));
-            // plain http is blocked for apps on Android 9+: https streams only
-            if (url.isEmpty() || !url.startsWith("https://") || s.optInt("hls") == 1 || url.contains(".m3u8")) continue;
-            if (!(codec.contains("MP3") || codec.contains("AAC"))) continue;
-            out.put(new JSONObject().put("name", s.optString("name").trim()).put("url", url).put("tags", s.optString("tags")));
-        }
-        stations = out;
-        stationsAt = System.currentTimeMillis();
-        return out;
-    }
 }

@@ -65,7 +65,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private boolean greeting;
     private int greetToken;
 
-    private final Runnable autoClose = this::closeSheet;
+    private final Runnable autoClose = new Runnable() {
+        @Override public void run() {
+            if (Radio.pickerShowing()) { main.postDelayed(this, 5000); return; } // his radio list is open: wait for his tap
+            closeSheet();
+        }
+    };
 
     /** Opened for an incoming call: the text to say ("Anil, Ravi నుంచి కాల్ వస్తోంది"). */
     static final String EXTRA_CALL = "jarvis_call";
@@ -139,6 +144,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     @Override protected void onDestroy() {
+        Radio.dismissPicker();
         generation++; // a reply still on its way is dropped, and its remaining tools don't run
         greetToken++;
         WaMedia.stop();
@@ -749,5 +755,16 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void notice(String text) {
         runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show());
+    }
+
+    /** He tapped a station in the radio list: stop talking / listening and close, so the mic doesn't take the radio for his voice. */
+    void radioPicked() {
+        main.removeCallbacks(autoClose);
+        runOnUiThread(() -> {
+            if (live != null || callText != null) return;
+            if (voice.speaking) voice.stopSpeaking();
+            if (voice.listening) voice.cancelListening();
+            closeSheet();
+        });
     }
 }
