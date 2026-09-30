@@ -74,6 +74,8 @@ public class SettingsActivity extends Activity {
     private Switch callNote, restMode, medIdOn, moviesWeekly, dailyFact;
     private EditText medBlood, medAllergy, medNotes, medContact, bikeNumber, stepGoal, exerciseHour, factHour;
     private TextView alarmSongInfo;
+    private Switch chargeRemind, weekPlan, dailyTip, stormAlert;
+    private EditText habitHour;
     private TextView coughGapText;
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
@@ -523,6 +525,13 @@ public class SettingsActivity extends Activity {
         findCode = field("📱 ఫోన్ వెతుకు కోడ్ (ఇంట్లోవాళ్లకి చెప్పండి; కనీసం 6 అక్షరాలు/అంకెలు)", prefs.findCode(), false);
         button("🔔 ఇప్పుడు 5 సెకన్లు మోగించి చూడు", v -> FindPhone.start(this, 5000));
 
+        section("రోజువారీ హెచ్చరికలు");
+        stormAlert = toggle("⛈️ గంటలోపు పిడుగులు / భారీ వర్షం వచ్చేలా ఉంటే చెప్పు", prefs.stormAlert());
+        chargeRemind = toggle("🔋 రాత్రి 9 కి బైక్ ఛార్జ్ తక్కువైతే (రేపు డ్యూటీ ఉంటే, లేదా 25% లోపు) \"ఛార్జ్ పెట్టండి\" అని చెప్పు", prefs.chargeRemind());
+        weekPlan = toggle("🗓️ ప్రతి ఆదివారం సాయంత్రం వచ్చే వారం ప్లాన్ చెప్పు", prefs.weekPlan());
+        dailyTip = toggle("📚 రోజూ ఒక Jarvis చిట్కా (తెలియని ఫీచర్) చెప్పు", prefs.dailyTip());
+        habitHour = numberField("🎯 అలవాట్లు చేశారా అని రాత్రి ఇన్ని గంటలకి అడుగు (0 = వద్దు)", String.valueOf(Math.max(0, prefs.habitHour())));
+
         section("అలారం, వ్యాయామం, అత్యవసర సమాచారం");
         alarmSongInfo = Ui.text(this, "🎵 అలారం పాట: " + (prefs.alarmSong().isEmpty() ? "అలారం టోన్ (పాట ఎంచుకోలేదు)" : prefs.alarmSongName()), 14.5f, Ui.MUTED);
         alarmSongInfo.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
@@ -793,6 +802,15 @@ public class SettingsActivity extends Activity {
         e.putInt("wallet_pay_max", Math.max(0, Math.min(10000, max)));
         e.putFloat("wake_threshold", 0.75f - sensitivity.getProgress() / 100f);
         e.putBoolean("call_note", callNote.isChecked());
+        e.putBoolean("storm_alert", stormAlert.isChecked());
+        e.putBoolean("charge_remind", chargeRemind.isChecked());
+        e.putBoolean("week_plan", weekPlan.isChecked());
+        e.putBoolean("daily_tip", dailyTip.isChecked());
+        try {
+            int hh = Integer.parseInt(habitHour.getText().toString().trim());
+            if (hh >= 1 && hh <= 11) hh += 12; // "9" means 9 pm
+            e.putInt("habit_hour", hh <= 0 ? -1 : Math.max(18, Math.min(23, hh)));
+        } catch (Exception ignored) {}
         e.putBoolean("rest_mode", restMode.isChecked());
         e.putBoolean("movies_weekly", moviesWeekly.isChecked());
         e.putBoolean("daily_fact", dailyFact.isChecked());

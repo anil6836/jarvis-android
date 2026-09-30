@@ -138,6 +138,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private static final String EXPIRY_PROMPT = "ఈ ఫోటో ఒక డాక్యుమెంట్ (ఇన్సూరెన్స్ / డ్రైవింగ్ లైసెన్స్ / PUC / RC / పాలసీ / వారంటీ లాంటిది). "
             + "అది ఏ డాక్యుమెంట్, దాని గడువు తేదీ (valid till / expiry / valid upto) చదివి expiry add తో చేర్చు: what = తెలుగులో చిన్న పేరు (ఉదా: 'బైక్ ఇన్సూరెన్స్'), date = YYYY-MM-DD. "
             + "పాలసీ / లైసెన్స్ / ఆధార్ నంబర్లు ఏవీ సేవ్ చేయకు, చెప్పకు. తేదీ స్పష్టంగా కనిపించకపోతే చేర్చకుండా నన్ను అడుగు. చేర్చాక ఒక వాక్యంలో చెప్పు.";
+    private static final String HOMEWORK_PROMPT = "ఈ ఫోటోలో పిల్లల హోంవర్క్ / ప్రశ్న ఉంది. జవాబు మాత్రమే చెప్పకు: పిల్లలకి అర్థమయ్యేలా సరళమైన తెలుగులో "
+            + "ఒక్కొక్క స్టెప్ నేర్పించు (లెక్క అయితే ప్రతి స్టెప్ ఎందుకో చెప్పు; ఇంగ్లీష్ / సైన్స్ అయితే అర్థం, ఉదాహరణ). చివర్లో ఇలాంటిదే ఒక చిన్న ప్రాక్టీస్ ప్రశ్న ఇవ్వు, జవాబు వాళ్లనే చెప్పమను.";
+    private static final String PLANT_PROMPT = "ఈ ఫోటోలో ఒక మొక్క / పంట / ఆకు ఉంది. ఏ మొక్కో, ఏ తెగులు / పురుగు / పోషక లోపం కావచ్చో చెప్పు (ఖచ్చితంగా తెలియకపోతే అలాగే చెప్పు). "
+            + "ముందు సహజ పద్ధతులు (వేప నూనె, కుళ్లిన ఆకులు తీసేయడం, నీళ్లు, ఎండ), తర్వాత అవసరమైతే మందు పేరు, లేబుల్ మీద మోతాదు ప్రకారం, గ్లోవ్స్ / మాస్క్ జాగ్రత్తలతో. "
+            + "పొలం అయితే దగ్గర్లోని రైతు వేదిక / వ్యవసాయ అధికారిని (AEO) సంప్రదించమని చెప్పు. చిన్నగా, తెలుగులో.";
     private static final String CARD_PROMPT = "ఈ ఫోటో ఒక విజిటింగ్ కార్డ్. పేరు, ఫోన్ నంబర్(లు), ఈమెయిల్, కంపెనీ, హోదా, అడ్రస్ చదివి చిన్నగా చెప్పు, "
             + "తర్వాత save_contact తో కాంటాక్ట్స్ యాప్‌లో సేవ్ ఫారం తెరువు (నేను చూసి సేవ్ నొక్కుతాను). ఏదైనా స్పష్టంగా లేకపోతే ఆ వివరం వదిలేయి.";
     private Bitmap pendingThumb;
@@ -810,6 +815,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             case "bill": billPhoto(); break;
             case "expiry_doc": photoFor("📄 డాక్యుమెంట్ ఫోటో → గడువు", EXPIRY_PROMPT); break;
             case "card": photoFor("🪪 విజిటింగ్ కార్డ్ ఫోటో", CARD_PROMPT); break;
+            case "homework": photoFor("📚 హోంవర్క్ ఫోటో", HOMEWORK_PROMPT); break;
+            case "plant": photoFor("🌿 మొక్క / పంట ఫోటో", PLANT_PROMPT); break;
             case "live": startLiveFromButton(); break;
             case "english": startEnglishPractice(); break;
             case "camera": toggleCamera(); break;

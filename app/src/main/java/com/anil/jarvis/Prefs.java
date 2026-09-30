@@ -159,6 +159,19 @@ final class Prefs {
     /** Alarm song picked from the phone (content uri), or empty = the alarm tone. */
     String alarmSong() { return sp.getString("alarm_song", ""); }
     String alarmSongName() { return sp.getString("alarm_song_name", ""); }
+    /** 9 pm: charge the bike tonight if it's low (before a duty, or under 25%). */
+    boolean chargeRemind() { return sp.getBoolean("charge_remind", true); }
+    /** Sunday evening: the coming week. */
+    boolean weekPlan() { return sp.getBoolean("week_plan", true); }
+    /** A Jarvis tip every day. */
+    boolean dailyTip() { return sp.getBoolean("daily_tip", true); }
+    /** Thunderstorm within the hour: warn. */
+    boolean stormAlert() { return sp.getBoolean("storm_alert", true); }
+    /** Monthly income and savings goal (rupees; 0 = not set). */
+    int income() { return Math.max(0, sp.getInt("income", 0)); }
+    int savingsGoal() { return Math.max(0, sp.getInt("savings_goal", 0)); }
+    /** Habits: ask at night whether he did them (hour, -1 = off). */
+    int habitHour() { return sp.getInt("habit_hour", 21); }
     /** After asking about a cough, how long before asking again (minutes; default 1 hour). */
     int coughGapMinutes() { return Math.max(10, Math.min(24 * 60, sp.getInt("cough_gap_min", 60))); }
     static String gapText(int min) {

@@ -211,8 +211,10 @@ final class Tools {
         DEFS.add(new Def("parcels", "His online orders and deliveries (Amazon, Flipkart...) from SMS and notifications: 'నా పార్సెల్ ఎప్పుడు వస్తుంది?'.", schema(new String[][]{})));
         DEFS.add(new Def("group_summary", "Summary of today's WhatsApp/Telegram group chat messages (from notifications).",
                 schema(new String[][]{{"group", "string", "Part of the group name; empty for all groups"}})));
-        DEFS.add(new Def("budget", "Set his monthly spending budget in rupees (0 removes it); Jarvis warns at 80% and 100%.",
-                schema(new String[][]{{"amount", "integer", "Rupees per month"}}, "amount")));
+        DEFS.add(new Def("budget", "Set his monthly spending budget in rupees (0 removes it); Jarvis warns at 80% and 100%. "
+                + "Also a savings goal: his monthly income and how much he wants to save; from the 10th Jarvis warns if spending at this pace would miss it.",
+                schema(new String[][]{{"amount", "integer", "Budget rupees per month (omit when only setting savings)"},
+                        {"income", "integer", "His monthly income / salary in rupees"}, {"savings_goal", "integer", "Rupees to save a month (0 = no goal)"}})));
         DEFS.add(new Def("interpreter", "Start a live two-way interpreter between Telugu and another language for a conversation with someone ('హిందీ అనువాదకుడిగా ఉండు').",
                 schema(new String[][]{{"language", "string", "The other person's language, e.g. Hindi, English, Tamil"}}, "language")));
         DEFS.add(new Def("english_practice", "Start a live spoken-English practice session: Jarvis talks in simple English, gently corrects his mistakes with a short Telugu explanation, and keeps the conversation going. Use for 'English practice', 'ఇంగ్లీష్ నేర్పించు', 'English మాట్లాడదాం'.",
@@ -362,7 +364,7 @@ final class Tools {
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (exercise, rest), alarm (song alarm), kids (stories), travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (exercise, rest, sleep sounds), alarm (song alarm), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
@@ -465,8 +467,9 @@ final class Tools {
                 schema(new String[][]{{"week", "string", "this (default) or next"}, {"weekly", "string", "on or off (only to change the Friday notice)"}})));
         DEFS.add(new Def("compare_prices", "Where a product is cheapest online right now (Amazon, Flipkart, Meesho, JioMart, Croma, Reliance Digital, Tata CLiQ...), from the web. He buys himself.",
                 schema(new String[][]{{"product", "string", "The product as exactly as he said (model, size, variant)"}}, "product")));
-        DEFS.add(new Def("daily_fact", "A new interesting fact in Telugu and a useful English word with its meaning (now), or change the morning one: on / off, hour.",
-                schema(new String[][]{{"action", "string", "now (default), on, off or time"}, {"hour", "integer", "For time: hour of the morning one (6-21)"}})));
+        DEFS.add(new Def("daily_fact", "A new interesting fact in Telugu and a useful English word with its meaning (now), or change the morning one: on / off, hour. "
+                + "action tip: the next 'Jarvis చిట్కా' (a feature he may not know, with how to ask); tip_on / tip_off: the daily tip.",
+                schema(new String[][]{{"action", "string", "now (default), on, off, time, tip, tip_on or tip_off"}, {"hour", "integer", "For time: hour of the morning one (6-21)"}})));
         DEFS.add(new Def("exercise", "Gentle 5-minute neck, shoulder and back stretches for a bike rider, spoken step by step (start / stop); "
                 + "his daily step goal (goal); the morning stretch reminder on days off (hour, -1 = off).",
                 schema(new String[][]{{"action", "string", "start (default), stop, goal or reminder"}, {"steps", "integer", "For goal: steps a day (0 = no goal)"},
@@ -481,8 +484,39 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "set, list (default), cancel, test or song"}, {"time", "string", "HH:mm (24-hour)"},
                         {"days", "string", "daily (default), once, weekdays, weekend, duty or off"}, {"label", "string", "Optional name, e.g. 'డ్యూటీ రోజు'"},
                         {"id", "string", "For cancel: id or time"}})));
-        DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'.",
-                schema(new String[][]{})));
+        DEFS.add(new Def("ride_plan", "Can he reach a place on his electric bike with the charge he has? Road distance and time, charge needed (one way or there and back), "
+                + "and chargers on the way / near there if it isn't enough ('విజయవాడకి బైక్ మీద వెళ్లగలనా?').",
+                schema(new String[][]{{"destination", "string", "Place / town"}, {"battery_percent", "integer", "Battery % on the dashboard (omit to use Jarvis's estimate)"},
+                        {"round_trip", "boolean", "true = there and back on this charge"}}, "destination")));
+        DEFS.add(new Def("handover", "Duty handover notes for the next batch: add a note, list, clear. Jarvis reminds him half an hour before he is relieved and can send them on WhatsApp (after he says send).",
+                schema(new String[][]{{"action", "string", "add (default), list or clear"}, {"text", "string", "For add: the note"}})));
+        DEFS.add(new Def("wish_card", "Make a greeting card picture on the phone (birthday, anniversary, festival like దీపావళి / క్రిస్మస్ / సంక్రాంతి, congratulations, get well) with the name "
+                + "and a warm line; action make shows it; action share opens WhatsApp with it (only after he says send; he picks the chat).",
+                schema(new String[][]{{"action", "string", "make (default) or share"}, {"name", "string", "Whose (as it should appear, e.g. 'అమ్మ', 'Ravi')"},
+                        {"occasion", "string", "birthday, anniversary, festival, congrats or get_well"}, {"festival", "string", "Festival name if a festival"},
+                        {"message", "string", "Optional warm line in Telugu (1-2 sentences)"}, {"from", "string", "Signature, e.g. his name or 'అనిల్ కుటుంబం'"}})));
+        DEFS.add(new Def("make_letter", "Make a letter as a PDF on the phone (Telugu or English): leave application, request / complaint to an officer, bank or school letter. "
+                + "Write the whole letter yourself in proper format (From, To, date, subject, respected sir, body, thanking, signature) in text; action make opens it, share sends it (after he says).",
+                schema(new String[][]{{"action", "string", "make (default) or share"}, {"title", "string", "Short title, e.g. 'సెలవు దరఖాస్తు'"},
+                        {"text", "string", "The full letter text with line breaks"}}, "text")));
+        DEFS.add(new Def("nearby_open", "Places near him right now from the free map: medical shop (pharmacy), ATM, hospital, clinic, petrol bunk, hotel / tiffin, tea, police, bank, EV charger; "
+                + "nearest first with km, 24-hour ones marked and opening hours when known.",
+                schema(new String[][]{{"what", "string", "What he needs, e.g. 'మెడికల్ షాప్', 'ATM', 'పెట్రోల్ బంక్'"}, {"radius_km", "integer", "How far to look (default 5)"}}, "what")));
+        DEFS.add(new Def("item_place", "Where he kept things: put ('తాళాలు బీరువా పై అరలో పెట్టాను'), find ('తాళాలు ఎక్కడ?'), list, remove.",
+                schema(new String[][]{{"action", "string", "put, find (default), list or remove"}, {"thing", "string", "The thing"}, {"place", "string", "For put: where"}})));
+        DEFS.add(new Def("habit_track", "Habits he wants to keep, with streaks: add, done (today or a date), undo, list, remove; reminder: the night check hour (-1 = off).",
+                schema(new String[][]{{"action", "string", "list (default), add, done, undo, remove or reminder"}, {"name", "string", "Habit, e.g. 'నడక', 'సిగరెట్ మానడం'"},
+                        {"date", "string", "YYYY-MM-DD (default today)"}, {"hour", "integer", "For reminder"}})));
+        DEFS.add(new Def("split_bill", "Split a shared bill fairly and say who pays whom (fewest payments). paid: what each person paid, e.g. 'నేను 1200, రవి 800, సురేష్ 0'; "
+                + "shares: optional unequal shares, e.g. 'నేను 2, రవి 1' (default equal).",
+                schema(new String[][]{{"paid", "string", "Each person and the amount they paid"}, {"shares", "string", "Optional weights per person"}}, "paid")));
+        DEFS.add(new Def("sounds", "Sounds that play with the screen off: sleep sounds made on the phone (rain, fan, sea, white) and Telugu internet radio stations; "
+                + "stops by itself after minutes. stations = the list of Telugu stations; stop = stop.",
+                schema(new String[][]{{"action", "string", "rain, fan, sea, white, radio, stations or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
+                        {"station", "string", "For radio: station name or its number in the list (empty = the most popular)"}})));
+        DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'. "
+                + "ahead=true: the COMING week instead (duty days, EMIs / money due, last dates, birthdays, holidays) for 'వచ్చే వారం ఏముంది'; plan on/off = the Sunday-evening notice.",
+                schema(new String[][]{{"ahead", "boolean", "true = the coming 7 days"}, {"plan", "string", "on or off (only to change the Sunday notice)"}})));
         DEFS.add(new Def("day_summary",
                 "Summary of today: calls (missed ones), messages and who sent them, money spent, reminders, missions done. For 'ఈరోజు ఏం జరిగింది?'.",
                 schema(new String[][]{})));
@@ -596,6 +630,15 @@ final class Tools {
             case "health_log": return "రీడింగ్స్ చూస్తున్నాను…";
             case "exercise": return "వ్యాయామం…";
             case "song_alarm": return "అలారం…";
+            case "ride_plan": return "దారి, ఛార్జ్ చూస్తున్నాను…";
+            case "handover": return "హ్యాండోవర్ నోట్స్…";
+            case "wish_card": return "కార్డ్ తయారు చేస్తున్నాను…";
+            case "make_letter": return "లెటర్ తయారు చేస్తున్నాను…";
+            case "nearby_open": return "దగ్గర్లో వెతుకుతున్నాను…";
+            case "item_place": return "…";
+            case "habit_track": return "అలవాట్లు…";
+            case "split_bill": return "లెక్కిస్తున్నాను…";
+            case "sounds": return "…";
             case "story": return "కథ…";
             case "bike_challan": return "చలాన్ సైట్ తెరుస్తున్నాను…";
             case "new_movies": return "కొత్త సినిమాలు వెతుకుతున్నాను…";
@@ -709,7 +752,7 @@ final class Tools {
                 case "bills_due": return billsDue();
                 case "parcels": return parcels();
                 case "group_summary": return groupSummary(a.optString("group", ""));
-                case "budget": return budget(a.optInt("amount", 0));
+                case "budget": return a.has("income") || a.has("savings_goal") ? savings(a) : budget(a.optInt("amount", 0));
                 case "interpreter": return interpreter(a.optString("language"));
                 case "english_practice": return englishPractice(a.optString("topic"));
                 case "read_screen": return readScreen(a.optString("mode", "read"));
@@ -733,6 +776,15 @@ final class Tools {
                 case "health_log": return healthLog(a);
                 case "exercise": return exercise(a);
                 case "song_alarm": return songAlarm(a);
+                case "ride_plan": return ridePlan(a);
+                case "handover": return handover(a);
+                case "wish_card": return wishCard(a);
+                case "make_letter": return makeLetter(a);
+                case "nearby_open": return nearbyOpen(a);
+                case "item_place": return itemPlace(a);
+                case "habit_track": return habitTrack(a);
+                case "split_bill": return splitBill(a);
+                case "sounds": return sounds(a);
                 case "story": return story(a);
                 case "bike_challan": return bikeChallan(a);
                 case "new_movies": return newMovies(a);
@@ -779,7 +831,12 @@ final class Tools {
                 case "bike_range": return Bike.range(act(), a.optInt("battery_percent", -1)).toString();
                 case "bike_charge": return Bike.addCharge(act(), a.optInt("from_percent", -1), a.optInt("to_percent", -1), a.optDouble("paid", 0)).toString();
                 case "bike_rides": return Bike.summary(act(), System.currentTimeMillis() - Math.max(1, Math.min(90, a.optInt("days", 7))) * 86400000L).toString();
-                case "weekly_report": return Weekly.report(act()).toString();
+                case "weekly_report": {
+                    String pl = a.optString("plan", "").trim().toLowerCase(Locale.ROOT);
+                    if (pl.equals("on") || pl.equals("off")) { prefs.set("week_plan", pl.equals("on")); return ok().put("sunday_plan", pl).toString(); }
+                    if (a.optBoolean("ahead", false)) return Plans.week(act()).put("next", "Say the coming week in short Telugu, day by day, the most important first.").toString();
+                    return Weekly.report(act()).toString();
+                }
                 case "birthdays": return birthdays(a);
                 case "shopping_list": return shopping(a);
                 case "medicine": return medicine(a);
@@ -2273,6 +2330,11 @@ final class Tools {
         android.media.session.MediaController mc = activeMedia();
         android.media.session.MediaController.TransportControls tc = mc == null ? null : mc.getTransportControls();
         String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        if (!SoundService.nowPlaying.isEmpty() && (a.equals("pause") || a.equals("off") || a.equals("stop") || a.equals("close") || a.equals("toggle"))) {
+            String was = SoundService.nowPlaying;
+            SoundService.stop(act()); // Jarvis's own rain sound / radio
+            return ok().put("stopped", was).toString();
+        }
         switch (a) {
             case "play": case "resume": return resumeMedia(am);
             case "pause": case "off": return pauseMedia(am);
@@ -4734,6 +4796,157 @@ final class Tools {
         return lastLocation(act());
     }
 
+    private String savings(JSONObject a) throws Exception {
+        int inc = a.optInt("income", 0), goal = a.optInt("savings_goal", -1);
+        int newIncome = inc > 0 ? inc : prefs.income();
+        if (goal > 0 && newIncome > 0 && goal >= newIncome) return err("goal_too_big", "The savings goal is not less than his income; ask again.");
+        android.content.SharedPreferences.Editor e = prefs.sp.edit();
+        if (inc > 0) e.putInt("income", inc);
+        // a goal of 0 removes it only when that is all he said ("పొదుపు లక్ష్యం తీసేయి")
+        if (goal > 0 || (goal == 0 && inc <= 0)) e.putInt("savings_goal", Math.max(0, goal));
+        if (a.optInt("amount", 0) > 0) e.putInt("budget", a.optInt("amount"));
+        e.apply();
+        JSONObject o = ok().put("income", prefs.income()).put("savings_goal", prefs.savingsGoal());
+        if (prefs.income() > 0 && prefs.savingsGoal() > 0) o.put("can_spend_a_month", prefs.income() - prefs.savingsGoal());
+        if (has(Manifest.permission.READ_SMS)) o.put("spent_this_month", spendingSince(Life.monthStart(), 0).optLong("total_spent"));
+        else o.put("note_sms", "Spending is read from bank SMS: needs the SMS permission.");
+        return o.put("note", "From the 10th, Jarvis warns once if spending at this pace would miss the goal, and once more if it is already past.").toString();
+    }
+
+    private String ridePlan(JSONObject a) throws Exception {
+        String to = a.optString("destination", "").trim();
+        double[] dest = geocode(to);
+        if (dest == null) return err("unknown_place", "Could not find '" + to + "'. Ask for the town / district.");
+        if (!has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "the distance from where you are");
+        Location l = freshLocation();
+        if (l == null) return err("no_location", "Could not get the phone's location. Is Location on?");
+        return Ride.plan(act(), l.getLatitude(), l.getLongitude(), dest[0], dest[1], to, a.has("battery_percent") ? a.optInt("battery_percent", -1) : -1,
+                a.optBoolean("round_trip", false)).toString();
+    }
+
+    private String handover(JSONObject a) throws Exception {
+        String action = a.optString("action", "add").toLowerCase(Locale.ROOT);
+        if (action.startsWith("clear") || action.startsWith("del")) { Plans.clearNotes(act()); return ok().put("cleared", true).toString(); }
+        if (action.startsWith("add") && !a.optString("text", "").trim().isEmpty()) Plans.addNote(act(), a.optString("text"));
+        return ok().put("notes", new JSONArray(Plans.notes(act()))).put("next_batch", Plans.nextBatch(act()))
+                .put("note", "Reminded half an hour before he is relieved; he can say 'హ్యాండోవర్ నోట్స్ పంపు'.").toString();
+    }
+
+    private String wishCard(JSONObject a) throws Exception {
+        String action = a.optString("action", "make").toLowerCase(Locale.ROOT);
+        if (action.startsWith("share") || action.startsWith("send")) {
+            if (Cards.lastCard == null) return err("no_card", "Make the card first (wish_card make).");
+            Cards.share(act(), Cards.lastCard, "");
+            return ok().put("opened", "WhatsApp with the card: he picks the chat and taps send").toString();
+        }
+        Coder.Made m = Cards.card(act(), a.optString("name"), a.optString("occasion"), a.optString("festival"), a.optString("message"), a.optString("from"));
+        try { Cards.view(act(), m); } catch (Exception ignored) {}
+        return ok().put("made", m.name).put("saved_in", m.where).put("next", "It is open on the screen. Ask: 'WhatsApp లో పంపనా?' If yes: wish_card share.").toString();
+    }
+
+    private String makeLetter(JSONObject a) throws Exception {
+        String action = a.optString("action", "make").toLowerCase(Locale.ROOT);
+        if (action.startsWith("share") || action.startsWith("send")) {
+            if (Cards.lastLetter == null) return err("no_letter", "Make the letter first.");
+            Cards.share(act(), Cards.lastLetter, "");
+            return ok().put("opened", "share with the PDF: he picks where and sends").toString();
+        }
+        String text = a.optString("text", "").trim();
+        if (text.length() < 20) return err("missing", "Write the whole letter in text.");
+        Coder.Made m = Cards.letter(act(), a.optString("title"), text);
+        try { Cards.view(act(), m); } catch (Exception ignored) {}
+        return ok().put("made", m.name).put("saved_in", m.where).put("next", "It is open. Ask if anything should change, or to share it (make_letter share).").toString();
+    }
+
+    private String nearbyOpen(JSONObject a) throws Exception {
+        String[] k = Nearby.kind(a.optString("what"));
+        if (k == null) return err("unknown", "Which kind of place? (medical shop, ATM, hospital, petrol bunk, hotel, tea, police, bank, EV charger)");
+        if (!has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "finding places near you");
+        Location l = freshLocation();
+        if (l == null) return err("no_location", "Could not get the phone's location. Is Location on?");
+        int r = Math.max(1, Math.min(20, a.optInt("radius_km", 5))) * 1000;
+        JSONArray out = new JSONArray();
+        for (JSONObject o : Nearby.find(l.getLatitude(), l.getLongitude(), k[2], r, 8)) out.put(o);
+        return ok().put("what", k[1]).put("time_now", new java.text.SimpleDateFormat("EEE HH:mm", Locale.ENGLISH).format(new java.util.Date())).put("places", out)
+                .put("next", out.length() == 0 ? "The free map shows none within " + r / 1000 + " km. Offer to search in Google Maps (open_maps)."
+                        : "Say the nearest 3 with km. Mark 24-hour ones; from the hours (OSM format) say if open now; if hours are unknown, say so. To go: open_maps navigate with maps_place.").toString();
+    }
+
+    private String itemPlace(JSONObject a) throws Exception {
+        String action = a.optString("action", "find").toLowerCase(Locale.ROOT), thing = a.optString("thing", "");
+        if (action.startsWith("put") || action.startsWith("save")) {
+            JSONObject o = Everyday.put(act(), thing, a.optString("place"));
+            if (o == null) return err("missing", "What, and where?");
+            return ok().put("saved", o.optString("thing") + " → " + o.optString("place")).put("was_before", o.optString("before")).toString();
+        }
+        if (action.startsWith("rem") || action.startsWith("del")) return ok().put("removed", Everyday.forget(act(), thing)).toString();
+        if (action.startsWith("list") || thing.trim().isEmpty()) {
+            JSONArray l = new JSONArray();
+            for (JSONObject o : Notes.list(act(), Everyday.ITEMS)) l.put(o.optString("thing") + " → " + o.optString("place"));
+            return ok().put("items", l).toString();
+        }
+        JSONObject o = Everyday.where(act(), thing);
+        if (o == null) return ok().put("found", false).put("note", "Not saved (or two things match). Say so and ask him to tell where it is next time.").toString();
+        return ok().put("thing", o.optString("thing")).put("place", o.optString("place"))
+                .put("saved_on", new java.text.SimpleDateFormat("d MMM yyyy", Locale.ENGLISH).format(new java.util.Date(o.optLong("t")))).toString();
+    }
+
+    private String habitTrack(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT), name = a.optString("name", "");
+        java.time.LocalDate d = Debts.parse(a.optString("date"));
+        if (d == null || d.isAfter(java.time.LocalDate.now())) d = java.time.LocalDate.now();
+        if (action.startsWith("rem") && action.contains("ind") || action.equals("reminder")) {
+            int h = a.optInt("hour", 21);
+            prefs.sp.edit().putInt("habit_hour", h < 0 ? -1 : Math.max(18, Math.min(23, h))).apply();
+            return ok().put("night_check", h < 0 ? "off" : Math.max(18, Math.min(23, h)) + ":00").toString();
+        }
+        if (action.startsWith("add")) {
+            if (Everyday.habit(act(), name, true) == null) return err("missing", "Which habit?");
+            return ok().put("added", name).put("habits", Everyday.habitsJson(act())).toString();
+        }
+        if (action.startsWith("done") || action.startsWith("undo")) {
+            JSONObject o = Everyday.mark(act(), name, d, action.startsWith("done"));
+            if (o == null) return err("not_found", "No habit '" + name + "'. Habits: " + Everyday.habitsJson(act()));
+            return ok().put("habit", o.optString("name")).put("streak_days", Everyday.streak(o)).put("best_streak", Everyday.best(o)).toString();
+        }
+        if (action.startsWith("rem") || action.startsWith("del")) {
+            JSONObject h = Everyday.habit(act(), name, false);
+            return ok().put("removed", h != null && Notes.remove(act(), Everyday.HABITS, "name", h.optString("name"))).toString();
+        }
+        return ok().put("habits", Everyday.habitsJson(act())).put("night_check", prefs.habitHour() < 0 ? "off" : prefs.habitHour() + ":00").toString();
+    }
+
+    private String splitBill(JSONObject a) throws Exception {
+        java.util.Map<String, Double> paid = Everyday.pairs(a.optString("paid"));
+        if (paid.size() < 2) return err("missing", "Need each person and what they paid, e.g. 'నేను 1200, రవి 800, సురేష్ 0'.");
+        return Everyday.split(paid, Everyday.pairs(a.optString("shares")))
+                .put("next", "Say the total, each share, and the transfers in short Telugu. Offer a WhatsApp message with the settlement (send only after he says).").toString();
+    }
+
+    private String sounds(JSONObject a) throws Exception {
+        String action = a.optString("action", "rain").toLowerCase(Locale.ROOT);
+        if (action.startsWith("stop")) { SoundService.stop(act()); return ok().put("stopped", true).toString(); }
+        if (action.startsWith("station")) return ok().put("stations", SoundService.stations()).put("next", "Read out up to 8 names with numbers.").toString();
+        if (action.startsWith("radio")) {
+            JSONArray st = SoundService.stations();
+            if (st.length() == 0) return err("no_stations", "No Telugu stations could be fetched (internet?).");
+            String want = a.optString("station", "").trim();
+            JSONObject pick = st.getJSONObject(0);
+            if (!want.isEmpty()) {
+                try { int n = Integer.parseInt(want); if (n >= 1 && n <= st.length()) pick = st.getJSONObject(n - 1); }
+                catch (NumberFormatException ex) {
+                    for (int i = 0; i < st.length(); i++) if (st.getJSONObject(i).optString("name").toLowerCase(Locale.ROOT).contains(want.toLowerCase(Locale.ROOT))) { pick = st.getJSONObject(i); break; }
+                }
+            }
+            SoundService.radio(act(), pick.optString("url"), pick.optString("name"), Math.max(0, a.optInt("minutes", 0)));
+            return ok().put("playing", pick.optString("name")).put("note", "Say its name in one line; 'Jarvis, ఆపు' or the notification stops it.").toString();
+        }
+        String kind = action.startsWith("fan") ? "fan" : action.startsWith("sea") ? "sea" : action.startsWith("white") ? "white" : "rain";
+        int min = a.has("minutes") ? Math.max(0, a.optInt("minutes")) : 30;
+        SoundService.noise(act(), kind, min);
+        return ok().put("playing", SoundService.label(kind)).put("minutes", min == 0 ? "until stopped" : String.valueOf(min)).toString();
+    }
+
     private String songAlarm(JSONObject a) throws Exception {
         String action = a.optString("action", "list").toLowerCase(Locale.ROOT);
         if (action.startsWith("set") || action.startsWith("add")) {
@@ -4856,6 +5069,8 @@ final class Tools {
 
     private String dailyFact(JSONObject a) throws Exception {
         String action = a.optString("action", "now").toLowerCase(Locale.ROOT);
+        if (action.equals("tip_on") || action.equals("tip_off")) { prefs.set("daily_tip", action.equals("tip_on")); return ok().put("daily_tip", action).toString(); }
+        if (action.startsWith("tip")) { String[] t = Plans.tip(act(), true); return ok().put("tip", t[0]).put("how", t[1]).put("next", "Say it warmly in one or two lines.").toString(); }
         if (action.equals("on") || action.equals("off")) { prefs.set("daily_fact", action.equals("on")); return ok().put("daily_fact", action).toString(); }
         if (action.startsWith("time")) {
             int h = Math.max(6, Math.min(21, a.optInt("hour", 9)));

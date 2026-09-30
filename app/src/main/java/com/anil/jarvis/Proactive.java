@@ -89,6 +89,8 @@ public class Proactive extends BroadcastReceiver {
         try { Birthdays.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Duty.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Rest.tick(c, p, hush); } catch (Throwable ignored) {}
+        try { Plans.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
+        try { Ride.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Exercise.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Debts.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Expiry.tick(c, p, hush); } catch (Throwable ignored) {}
@@ -98,6 +100,7 @@ public class Proactive extends BroadcastReceiver {
         try { LocalNews.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Prices.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { WebLook.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
+        try { Everyday.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {} // storm check fetches too
         if (!p.proactive()) return;
         boolean quiet = hush;
         Calendar now = Calendar.getInstance();
@@ -112,6 +115,7 @@ public class Proactive extends BroadcastReceiver {
         if (now.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY && hour >= 19 && hour < 22) weeklyNotes(c);
         if (!quiet && hour >= 9 && hour < 12) billsDue(c, p);
         if (!quiet && hour >= 19 && hour < 21 && onceToday(c, "budget")) Life.budgetCheck(c, p);
+        if (!quiet && hour >= 19 && hour < 21 && onceToday(c, "savings")) Life.savingsCheck(c, p);
         if (!quiet) Life.limitTick(c, p);
         if (!quiet) Life.cricketTick(c, p);
         if (!quiet && p.nightSummary() && (hour == 21 && now.get(Calendar.MINUTE) >= 30 || hour == 22) && onceToday(c, "night_summary")) {

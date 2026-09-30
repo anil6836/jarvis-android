@@ -188,6 +188,33 @@ final class Life {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * Savings goal: income minus the goal is what he can spend this month. From the 10th, if spending at this pace would
+     * go past it, say so once; if it is already past, say so once more.
+     */
+    static void savingsCheck(Context c, Prefs p) {
+        int income = p.income(), goal = p.savingsGoal();
+        if (income <= 0 || goal <= 0 || !has(c, Manifest.permission.READ_SMS)) return;
+        try {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            if (today.getDayOfMonth() < 10) return;
+            long spent = Tools.spendingSince(c, monthStart(), 0).optLong("total_spent");
+            long allowed = income - goal;
+            int days = today.lengthOfMonth();
+            long pace = spent * days / Math.max(1, today.getDayOfMonth());
+            String month = new SimpleDateFormat("yyyy-MM", Locale.ROOT).format(new Date());
+            int warned = st(c).getString("save_month", "").equals(month) ? st(c).getInt("save_warned", 0) : 0;
+            int level = spent > allowed ? 2 : pace > allowed ? 1 : 0;
+            if (level == 0 || level <= warned) return;
+            st(c).edit().putString("save_month", month).putInt("save_warned", level).apply();
+            String text = level == 2
+                    ? "ఈ నెల ఇప్పటికే " + spent + " రూపాయలు ఖర్చయ్యాయి. " + goal + " దాచాలంటే " + allowed + " లోపే ఖర్చు చేయాలి. ఇక జాగ్రత్తగా ఖర్చు పెట్టండి."
+                    : "ఈ నెల ఇప్పటికి " + spent + " రూపాయలు ఖర్చయ్యాయి. ఇదే వేగంతో అయితే నెల చివరికి సుమారు " + pace + " అవుతుంది, "
+                            + goal + " దాచే లక్ష్యం అందదు. మిగతా రోజుల్లో రోజుకి " + Math.max(0, (allowed - spent) / Math.max(1, days - today.getDayOfMonth())) + " లోపు ఖర్చు చేస్తే సరిపోతుంది.";
+            Proactive.say(c, p.name() + ", " + text, null, null);
+        } catch (Exception ignored) {}
+    }
+
     // ================================================================ air quality and severe weather
 
     static JSONObject air(Context c) {
