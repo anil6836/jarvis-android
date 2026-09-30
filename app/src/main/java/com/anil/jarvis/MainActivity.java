@@ -2005,6 +2005,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     void radioPicked() {
         runOnUiThread(() -> {
             if (live != null) return;
+            if (busy) { generation++; busy = false; removeThinking(); } // "ఏ స్టేషన్?" still on its way: not over the radio
             if (voice.speaking) voice.stopSpeaking();
             if (voice.listening) voice.cancelListening();
             lastWasVoice = false;

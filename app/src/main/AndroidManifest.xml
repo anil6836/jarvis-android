@@ -82,6 +82,7 @@
         <package android:name="com.google.android.youtube" />
         <package android:name="com.google.android.apps.youtube.music" />
         <package android:name="com.spotify.music" />
+        <package android:name="com.tamilradiosnet.telugu" />
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
         <package android:name="com.ubercab" />

@@ -87,6 +87,9 @@ public class AlarmReceiver extends BroadcastReceiver {
                 UpdateJob.schedule(c);
                 if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) Updater.cancelNotice(c);
                 break;
+            case AppRadio.ACTION_PAUSE: // "30 నిమిషాలు" for a station playing in the Telugu Radios app
+                if (SoundService.nowPlaying.isEmpty()) AppRadio.pauseNow(c);
+                break;
             default:
                 break;
         }

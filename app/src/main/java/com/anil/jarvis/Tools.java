@@ -512,7 +512,8 @@ final class Tools {
                 schema(new String[][]{{"paid", "string", "Each person and the amount they paid"}, {"shares", "string", "Optional weights per person"}}, "paid")));
         DEFS.add(new Def("sounds", "Sounds that play with the screen off: sleep sounds made on the phone (rain, fan, sea, white) and HIS radio station list "
                 + "(Telugu film-music stations and Telugu Christian stations); stops by itself after minutes. "
-                + "radio without a station = shows his list on screen so you can ask which one; radio + station = play it. stations = his list. "
+                + "radio without a station = shows his list on screen so you can ask which one; radio + station = play it "
+                + "(a station without a link is played by his Telugu Radios app when it is installed). stations = his list. "
                 + "add = add a station or give a listed one its stream link (station + url, group film/christian); remove = take a station off his list; stop = stop.",
                 schema(new String[][]{{"action", "string", "rain, fan, sea, white, radio, stations, add, remove or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
                         {"station", "string", "For radio: the station's name as written in his list (English) or its number; empty = ask him"},
@@ -4929,7 +4930,15 @@ final class Tools {
 
     private String sounds(JSONObject a) throws Exception {
         String action = a.optString("action", "rain").toLowerCase(Locale.ROOT);
-        if (action.startsWith("stop")) { Radio.answered(); Radio.dismissPicker(); SoundService.stop(act()); return ok().put("stopped", true).toString(); }
+        if (action.startsWith("stop")) {
+            Radio.answered();
+            Radio.dismissPicker();
+            SoundService.stop(act());
+            AppRadio.cancelPending();
+            AppRadio.pauseAfter(act(), 0);
+            if (AppRadio.startedRecently() && SoundService.nowPlaying.isEmpty()) AppRadio.pauseNow(act()); // a station playing in the Telugu Radios app
+            return ok().put("stopped", true).toString();
+        }
         int radioMin = Math.max(0, a.optInt("minutes", 0));
         if (action.startsWith("add")) {
             String bad = Radio.add(act(), a.optString("station"), a.optString("url"), a.optString("group"));
@@ -4955,12 +4964,29 @@ final class Tools {
                 String g = Radio.groupWord(want);
                 return radioAsk(radioMin, g.isEmpty() ? "No station in his list matches '" + want + "'. Say so in one line and ask again which one (the list is on screen)." : g).toString();
             }
-            String[] urls = Radio.urls(act(), pick); // a station without a link is looked up here
+            String[] urls = Radio.known(pick);
+            String appWhy = "";
+            if (urls.length == 0 && AppRadio.installed(act())) { // no link: his Telugu Radios app plays it
+                String[] r = AppRadio.playBlocking(act(), pick.optString("name"));
+                if (AppRadio.CANCELLED.equals(r[0])) return err("cancelled", "Stopped: another sound was asked for meanwhile.");
+                if (AppRadio.OK.equals(r[0])) {
+                    Radio.answered();
+                    Radio.dismissPicker();
+                    Radio.setLast(act(), pick.optString("name"));
+                    AppRadio.pauseAfter(act(), radioMin);
+                    return ok().put("playing", pick.optString("name")).put("number", pick.optInt("n")).put("via", "his Telugu Radios app")
+                            .put("app_title", r[1]).put("minutes", radioMin == 0 ? "until stopped" : String.valueOf(radioMin))
+                            .put("note", "Say in one short line that it is playing in the Telugu Radios app; 'Jarvis, ఆపు' stops it.").toString();
+                }
+                appWhy = AppRadio.why(r[0], pick.optString("name"));
+            }
+            if (urls.length == 0) urls = Radio.urls(act(), pick); // look the link up (radio-browser.info)
             if (urls.length == 0) {
                 Radio.asked();
-                return ok().put("no_link", pick.optString("name"))
-                        .put("next", "Say honestly in one line that no working stream link has been found for " + pick.optString("name")
-                                + " yet, and ask which other station to play. If he has its link, sounds add with station + url adds it.").toString();
+                return ok().put("no_link", pick.optString("name")).put("app_said", appWhy)
+                        .put("next", "Say honestly in one line that " + pick.optString("name") + " could not be played"
+                                + (appWhy.isEmpty() ? " (no working stream link found yet)" : " (say app_said in short)")
+                                + ", and ask which other station to play. If he has its link, sounds add with station + url adds it.").toString();
             }
             Radio.play(act(), pick, urls, radioMin);
             return ok().put("playing", pick.optString("name")).put("number", pick.optInt("n"))
@@ -4979,7 +5005,7 @@ final class Tools {
         Radio.asked();
         boolean group = Radio.FILM.equals(groupOrNote) || Radio.CHRISTIAN.equals(groupOrNote);
         JSONObject r = ok().put("ask", true).put("shown_on_screen", act() != null)
-                .put("film_music", Radio.names(all, Radio.FILM)).put("christian", Radio.names(all, Radio.CHRISTIAN));
+                .put("film_music", Radio.names(all, Radio.FILM, AppRadio.installed(act()))).put("christian", Radio.names(all, Radio.CHRISTIAN, AppRadio.installed(act())));
         String last = Radio.last(act());
         if (!last.isEmpty()) r.put("last_played", last);
         String how = "Do NOT read the list out. When he names one (by name, by number, or saying it in Telugu), call sounds radio with station = that station's "

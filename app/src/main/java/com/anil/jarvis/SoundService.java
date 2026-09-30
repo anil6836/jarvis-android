@@ -71,9 +71,9 @@ public class SoundService extends Service {
     }
 
     /** Plays a station; its links are tried in order until one plays. No links: looks one up by key first. */
-    static void radio(Context c, String[] urls, String name, String key, int minutes) {
+    static void radio(Context c, String[] urls, String name, String key, int minutes, String whyNone) {
         start(c, new Intent(c, SoundService.class).setAction(ACTION_RADIO).putExtra("urls", urls).putExtra("name", name)
-                .putExtra("key", key).putExtra("minutes", minutes));
+                .putExtra("key", key).putExtra("minutes", minutes).putExtra("why", whyNone));
     }
 
     static void stop(Context c) {
@@ -90,7 +90,10 @@ public class SoundService extends Service {
         String a = i == null ? null : i.getAction();
         if (ACTION_STOP.equals(a) || a == null) { halt(); stopSelf(); return START_NOT_STICKY; }
         halt();
+        AppRadio.cancelPending(); // a station the Telugu Radios app was about to start must not play over this
+        AppRadio.pauseAfter(this, 0);
         int minutes = Math.max(0, i.getIntExtra("minutes", 0));
+        stopAt = minutes > 0 ? System.currentTimeMillis() + minutes * 60000L : 0;
         if (ACTION_NOISE.equals(a)) {
             String kind = i.getStringExtra("kind");
             nowPlaying = label(kind);
@@ -99,6 +102,9 @@ public class SoundService extends Service {
         } else {
             String name = i.getStringExtra("name") == null ? "" : i.getStringExtra("name");
             String[] links = i.getStringArrayExtra("urls");
+            radioKey = i.getStringExtra("key") == null ? name : i.getStringExtra("key");
+            final String why = i.getStringExtra("why") == null ? "" : i.getStringExtra("why");
+            appTried = !why.isEmpty(); // the app was asked already (and couldn't)
             nowPlaying = "📻 " + name;
             String line = nowPlaying + (minutes > 0 ? " · " + minutes + " నిమిషాలు" : "");
             if (links != null && links.length > 0) {
@@ -106,7 +112,7 @@ public class SoundService extends Service {
                 startRadio(links, name);
             } else { // no link known yet: look one up (a Telugu station of that name on radio-browser.info)
                 foreground(nowPlaying + " · లింక్ వెతుకుతున్నాను…");
-                String key = i.getStringExtra("key") == null ? name : i.getStringExtra("key");
+                String key = radioKey;
                 final int my = lookupGen;
                 new Thread(() -> {
                     String found = Radio.lookup(key);
@@ -114,7 +120,8 @@ public class SoundService extends Service {
                         if (my != lookupGen) return; // stopped, or another sound asked for meanwhile
                         if (found.isEmpty()) {
                             nowPlaying = "";
-                            Announcer.say(this, name + " కి పనిచేసే లింక్ ఇంకా దొరకలేదు. ఇంకో స్టేషన్ చెప్పండి.");
+                            Announcer.say(this, why.isEmpty() ? name + " కి పనిచేసే లింక్ ఇంకా దొరకలేదు. ఇంకో స్టేషన్ చెప్పండి."
+                                    : why + " ఇంకో స్టేషన్ చెప్పండి.");
                             halt();
                             stopSelf();
                             return;
@@ -208,7 +215,9 @@ public class SoundService extends Service {
 
     private String[] urls;
     private int urlAt, retries, attemptId, lookupGen;
-    private String radioName = "";
+    private String radioName = "", radioKey = "";
+    private boolean appTried;
+    private long stopAt; // when his sleep timer ends (0 = none)
     private boolean linkPlayed; // the current link played before (a drop is worth a few more tries)
     private long playedAt;
     private Runnable slow; // a dead link can hang in "preparing" for a long time
@@ -277,12 +286,24 @@ public class SoundService extends Service {
         main.postDelayed(this::playLink, wait);
     }
 
+    /** None of the links plays: the Telugu Radios app may still have it; else say so. */
     private void allFailed() {
-        Radio.forget(this, radioName);
+        final String name = radioName;
+        final long left = stopAt > 0 ? stopAt - System.currentTimeMillis() : 0; // his sleep timer carries over
+        final Context app = getApplicationContext();
+        Radio.forget(this, name);
         nowPlaying = "";
-        Announcer.say(this, (radioName.isEmpty() ? "ఈ" : radioName) + " స్టేషన్ ఇప్పుడు పనిచేయడం లేదు. ఇంకో స్టేషన్ చెప్పండి.");
         halt();
         stopSelf();
+        final String sorry = (name.isEmpty() ? "ఈ" : name) + " స్టేషన్ ఇప్పుడు పనిచేయడం లేదు. ఇంకో స్టేషన్ చెప్పండి.";
+        if (!name.isEmpty() && !appTried && AppRadio.installed(app)) {
+            AppRadio.play(app, name, (status, title) -> {
+                if (AppRadio.OK.equals(status)) { if (left > 0) AppRadio.pauseAfter(app, (int) Math.max(1, (left + 59999) / 60000)); }
+                else if (!AppRadio.CANCELLED.equals(status)) Announcer.say(app, sorry);
+            });
+        } else {
+            Announcer.say(app, sorry);
+        }
     }
 
     private void releasePlayer() {

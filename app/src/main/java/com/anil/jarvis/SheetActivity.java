@@ -67,7 +67,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     private final Runnable autoClose = new Runnable() {
         @Override public void run() {
-            if (Radio.pickerShowing()) { main.postDelayed(this, 5000); return; } // his radio list is open: wait for his tap
+            if (Radio.holdPanel()) { main.postDelayed(this, 3000); return; } // his radio list is open / the radio app is being asked
             closeSheet();
         }
     };
@@ -762,9 +762,10 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacks(autoClose);
         runOnUiThread(() -> {
             if (live != null || callText != null) return;
+            if (busy) { generation++; busy = false; } // "ఏ స్టేషన్?" still on its way: not over the radio
             if (voice.speaking) voice.stopSpeaking();
             if (voice.listening) voice.cancelListening();
-            closeSheet();
+            idle(); // closes by itself shortly (after the radio app has answered, if it is being asked)
         });
     }
 }

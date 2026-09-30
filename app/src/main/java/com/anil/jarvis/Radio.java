@@ -164,12 +164,12 @@ final class Radio {
     }
 
     /** "12 SPB Hits" lines per group, for Jarvis to know the names (not to read them all out). */
-    static JSONArray names(JSONArray all, String group) {
+    static JSONArray names(JSONArray all, String group, boolean app) {
         JSONArray out = new JSONArray();
         for (int i = 0; i < all.length(); i++) {
             JSONObject o = all.optJSONObject(i);
             if (o == null || !group.equals(o.optString("group"))) continue;
-            out.put(o.optInt("n") + " " + o.optString("name") + (ready(o) ? "" : " (no link yet)"));
+            out.put(o.optInt("n") + " " + o.optString("name") + (ready(o) ? "" : app ? " (plays in his Telugu Radios app)" : " (no link yet)"));
         }
         return out;
     }
@@ -213,6 +213,13 @@ final class Radio {
             if (hit && Math.abs(k.length() - kw.length()) < bestDiff) { best = o; bestDiff = Math.abs(k.length() - kw.length()); }
         }
         return best;
+    }
+
+    /** Two names for the same station: the same words, or the same without "Radio", "FM", "Hits" ("Prema" = "Prema FM"). */
+    static boolean sameStation(String a, String b) {
+        if (norm(a).equals(norm(b))) return true;
+        String ka = key(a), kb = key(b);
+        return ka.length() >= 3 && !ka.equals("telugu") && ka.equals(kb);
     }
 
     /** He said this station's exact name or its number (not just a part of the name). */
@@ -394,7 +401,7 @@ final class Radio {
         st(c).edit().putString("last", st.optString("name")).apply();
         answered();
         dismissPicker();
-        SoundService.radio(c, urls, st.optString("name"), st.optString("key", st.optString("name")), minutes);
+        SoundService.radio(c, urls, st.optString("name"), st.optString("key", st.optString("name")), minutes, "");
     }
 
     static String last(Context c) { return st(c).getString("last", ""); }
@@ -439,6 +446,7 @@ final class Radio {
         if (a == null || a.isFinishing() || a.isDestroyed()) return;
         final Context app = a.getApplicationContext();
         final JSONArray all = list(app);
+        final boolean viaApp = AppRadio.installed(app);
         a.runOnUiThread(() -> {
             try {
                 if (a.isFinishing() || a.isDestroyed()) return;
@@ -467,9 +475,9 @@ final class Radio {
                         } else {
                             JSONObject s = (JSONObject) o;
                             boolean ok = ready(s);
-                            t.setText(s.optInt("n") + ".  " + s.optString("name") + (ok ? "" : "  · లింక్ లేదు"));
+                            t.setText(s.optInt("n") + ".  " + s.optString("name") + (ok ? "" : viaApp ? "  · Telugu Radios యాప్‌లో" : "  · లింక్ లేదు"));
                             t.setTypeface(null, Typeface.NORMAL);
-                            t.setTextColor(ok ? 0xFFE5E7EB : 0xFF9CA3AF);
+                            t.setTextColor(ok || viaApp ? 0xFFE5E7EB : 0xFF9CA3AF);
                             t.setTextSize(16);
                         }
                         return t;
@@ -491,18 +499,50 @@ final class Radio {
         });
     }
 
-    /** On the main thread (the list's click): start it now, while Jarvis is on screen; a missing link is looked up by the service. */
+    /** On the main thread (the list's click): start it now, while Jarvis is on screen. */
     private static void tapped(Activity a, Context app, JSONObject st, int minutes) {
         answered();
         picker = null;
         try {
-            play(app, st, known(st), minutes);
+            if (!ready(st) && AppRadio.installed(app)) viaApp(app, st, minutes);
+            else play(app, st, known(st), minutes); // a missing link (no app) is looked up by the radio service
         } catch (Exception e) {
             Announcer.say(app, "రేడియో మొదలుపెట్టలేకపోయాను. ఇంకోసారి ప్రయత్నించండి.");
         }
         // Jarvis may be listening for a spoken answer: stop, so the mic doesn't take the radio for his voice.
         if (a instanceof MainActivity) ((MainActivity) a).radioPicked();
         else if (a instanceof SheetActivity) ((SheetActivity) a).radioPicked();
+    }
+
+    private static volatile long appBusyAt;
+
+    /** A station without a link: the Telugu Radios app plays it; if it can't, our own look-up (radio-browser) tries. */
+    private static void viaApp(Context app, JSONObject st, int minutes) {
+        String name = st.optString("name"), key = st.optString("key", name);
+        answered();
+        dismissPicker();
+        appBusyAt = android.os.SystemClock.elapsedRealtime();
+        AppRadio.play(app, name, (status, title) -> {
+            appBusyAt = 0;
+            if (AppRadio.CANCELLED.equals(status)) return; // he asked for something else meanwhile
+            if (AppRadio.OK.equals(status)) { setLast(app, name); AppRadio.pauseAfter(app, minutes); return; }
+            try {
+                setLast(app, name);
+                SoundService.radio(app, new String[0], name, key, minutes, AppRadio.why(status, name));
+            } catch (Exception e) {
+                Announcer.say(app, AppRadio.why(status, name));
+            }
+        });
+    }
+
+    /** Keep the small Jarvis panel open while his list is up or the Telugu Radios app is being asked. */
+    static boolean holdPanel() {
+        long b = appBusyAt;
+        return pickerShowing() || (b > 0 && android.os.SystemClock.elapsedRealtime() - b < 30000);
+    }
+
+    static void setLast(Context c, String name) {
+        try { st(c).edit().putString("last", name).apply(); } catch (Exception ignored) {}
     }
 
     // ---------------------------------------------------------------- small helpers
