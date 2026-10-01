@@ -41,6 +41,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -196,6 +197,10 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name=".DriveService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
         <service
             android:name=".SoundService"
             android:exported="false"

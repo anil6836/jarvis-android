@@ -112,6 +112,13 @@ public class NotifyListener extends NotificationListenerService {
         add(sbn);
     }
 
+    @Override public void onNotificationRemoved(StatusBarNotification sbn, RankingMap rankingMap, int reason) {
+        // the maps app itself ended its navigation (arrived / stopped), not him swiping it away
+        if (sbn != null && Drive.isNavApp(sbn.getPackageName()) && (reason == REASON_APP_CANCEL || reason == REASON_APP_CANCEL_ALL))
+            Drive.navEnded(this, sbn.getKey());
+        super.onNotificationRemoved(sbn, rankingMap, reason);
+    }
+
     @Override public void onNotificationRemoved(StatusBarNotification sbn) {
         if (sbn == null) return;
         String[] call = CallControl.ended(sbn.getKey());
@@ -126,6 +133,8 @@ public class NotifyListener extends NotificationListenerService {
             announceCall(sbn, n);
             return;
         }
+        // the maps app's turn-by-turn: next turn, distance, arrival time (its other notifications go on as usual)
+        if (Drive.isNavApp(sbn.getPackageName()) && Drive.fromNotification(this, sbn)) return;
         if (n == null || sbn.isOngoing()) return;
         if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
         Bundle x = n.extras;

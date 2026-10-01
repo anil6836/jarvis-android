@@ -341,6 +341,24 @@ final class Tools {
         DEFS.add(new Def("driving_mode",
                 "Driving mode on/off: every new message is read aloud and calls are announced for voice answering. Optionally start navigation.",
                 schema(new String[][]{{"on", "boolean", "true to start, false to stop"}, {"destination", "string", "Optional place to navigate to"}}, "on")));
+        DEFS.add(new Def("drive", "Help while he drives a car / bike (Google Maps or another maps app may be navigating): "
+                + "where = where he is now, which road (number, kind, speed limit), the next turn and arrival time from the maps app; "
+                + "route = where this road / route goes, towns coming next with km, km and time left, toll gates; "
+                + "along = places ahead on his way (what: hotel/restaurant, tea/coffee, petrol, EV charger, hospital, medical shop, ATM, toilet, lodge, "
+                + "mechanic, temple/church, or a name like KFC), nearest first with km ahead and left/right; "
+                + "cameras = speed cameras ahead; navigate = start Google Maps turn-by-turn to place (avoid tolls/highways, two-wheeler); "
+                + "add_stop = add a stop on the way to the current destination (place name or 'lat,lon' from along); "
+                + "share_eta = a message with his arrival time and live location (send only after he says); "
+                + "start / stop = live alerts (speed cameras when near, over-speed for the road, a break after long driving; stop keeps the parking spot); "
+                + "settings = cameras on/off, overspeed on/off, own speed limit, break hours. "
+                + "For taps inside the maps app (exit navigation, mute voice, show alternatives) use phone_task.",
+                schema(new String[][]{{"action", "string", "where, route, along, cameras, navigate, add_stop, share_eta, start, stop or settings"},
+                        {"what", "string", "For along: what to look for"}, {"place", "string", "For navigate / add_stop"},
+                        {"km", "integer", "How far ahead to look (along default 30, cameras default 50)"},
+                        {"avoid", "string", "For navigate: tolls, highways or both"}, {"two_wheeler", "boolean", "For navigate: bike route"},
+                        {"cameras", "boolean", "settings: camera alerts on/off"}, {"overspeed", "boolean", "settings: over-speed alerts on/off"},
+                        {"max_kmh", "integer", "settings: his own speed limit when the road has none on the map (0 = off)"},
+                        {"break_hours", "integer", "settings: break reminder after this many hours (0 = off)"}}, "action")));
         DEFS.add(new Def("night_mode",
                 "'గుడ్ నైట్' = on: phone quiet (Do Not Disturb or vibrate), low brightness, nothing read aloud, optional wake-up alarm. 'గుడ్ మార్నింగ్' = off: sound back on, then brief him.",
                 schema(new String[][]{{"on", "boolean", "true for good night, false for good morning"}, {"alarm", "string", "Optional wake-up time 'HH:mm' (24h)"}}, "on")));
@@ -364,7 +382,7 @@ final class Tools {
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (exercise, rest, sleep sounds), alarm (song alarm), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (exercise, rest, sleep sounds), alarm (song alarm), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), drive (route, places on the way, speed cameras), travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
@@ -645,6 +663,7 @@ final class Tools {
             case "habit_track": return "అలవాట్లు…";
             case "split_bill": return "లెక్కిస్తున్నాను…";
             case "sounds": return "…";
+            case "drive": return "మ్యాప్ చూస్తున్నాను…";
             case "story": return "కథ…";
             case "bike_challan": return "చలాన్ సైట్ తెరుస్తున్నాను…";
             case "new_movies": return "కొత్త సినిమాలు వెతుకుతున్నాను…";
@@ -791,6 +810,7 @@ final class Tools {
                 case "habit_track": return habitTrack(a);
                 case "split_bill": return splitBill(a);
                 case "sounds": return sounds(a);
+                case "drive": return drive(a);
                 case "story": return story(a);
                 case "bike_challan": return bikeChallan(a);
                 case "new_movies": return newMovies(a);
@@ -1504,6 +1524,7 @@ final class Tools {
         String enc = Uri.encode(place.trim());
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(navigate ? "google.navigation:q=" + enc : "geo:0,0?q=" + enc));
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (navigate) Drive.setDest(act(), place.trim()); // "ఇంకా ఎంత దూరం", places on the way, cameras: along this route
         try {
             start(i);
         } catch (ActivityNotFoundException e) {
@@ -2823,11 +2844,15 @@ final class Tools {
         if (on) {
             android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
             if (nm != null && nm.isNotificationPolicyAccessGranted()) nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
+            o.put("live_alerts", Drive.startDrive(act())); // speed cameras, over-speed, break reminder (before Maps covers Jarvis)
             if (destination != null && !destination.trim().isEmpty()) {
                 maps(destination.trim(), true);
                 o.put("navigating_to", destination.trim());
             }
-            o.put("note", "Every new message is read aloud and calls are announced; he answers by voice. Say 'డ్రైవింగ్ అయిపోయింది' to stop.");
+            o.put("note", "Every new message is read aloud and calls are announced; he answers by voice. Speed-camera and over-speed alerts are on. "
+                    + "Say 'డ్రైవింగ్ అయిపోయింది' to stop.");
+        } else {
+            o.put("parking_saved", Drive.stopDrive(act()));
         }
         return o.toString();
     }
@@ -4106,6 +4131,7 @@ final class Tools {
             done = openIn(pkg, ll != null ? "geo:" + ll[0] + "," + ll[1] + "?q=" + ll[0] + "," + ll[1] + "(" + enc + ")" : "geo:0,0?q=" + enc);
         }
         if (!done) launch(pkg);
+        if (navigate && done) Drive.setDest(act(), p);
         return ok().put("app", label(pkg)).put(navigate ? "navigating_to" : "showing", p).put("place_filled_in", done)
                 .put("next", !done ? label(pkg) + " opened, but it does not take a place from other apps; he searches there."
                         : navigate && !a.contains("waze") ? "The place is open; he taps Directions / Go to start." : "").toString();
@@ -4869,6 +4895,68 @@ final class Tools {
         Coder.Made m = Cards.letter(act(), a.optString("title"), text);
         try { Cards.view(act(), m); } catch (Exception ignored) {}
         return ok().put("made", m.name).put("saved_in", m.where).put("next", "It is open. Ask if anything should change, or to share it (make_letter share).").toString();
+    }
+
+    private String drive(JSONObject a) throws Exception {
+        String action = a.optString("action", "where").toLowerCase(Locale.ROOT).trim();
+        boolean locNeeded = !action.equals("settings") && !action.equals("stop") && !action.startsWith("nav");
+        if (locNeeded && !has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
+        switch (action) {
+            case "where": return Drive.where(act()).toString();
+            case "route": return Drive.route(act()).toString();
+            case "along": return Drive.along(act(), a.optString("what"), a.has("km") ? a.optInt("km") : 30).toString();
+            case "cameras": return Drive.cameras(act(), a.has("km") ? a.optInt("km") : 50).toString();
+            case "share_eta": return Drive.shareText(act()).toString();
+            case "navigate": {
+                String place = a.optString("place", "").trim();
+                if (place.isEmpty()) return err("missing", "Where to?");
+                if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+                boolean alerts = Drive.startDrive(act()); // while Jarvis is still on screen (Android allows it then)
+                try { start(Drive.navigate(place, a.optString("avoid"), a.optBoolean("two_wheeler", false))); }
+                catch (ActivityNotFoundException e) { return maps(place, true); }
+                Drive.setDest(act(), place);
+                return ok().put("navigating_to", place).put("avoiding", a.optString("avoid")).put("live_alerts", alerts)
+                        .put("note", "Google Maps is navigating. Jarvis now knows the destination, so route / along / cameras use the real route.").toString();
+            }
+            case "add_stop": {
+                String stop = a.optString("place", "").trim();
+                if (stop.isEmpty()) return err("missing", "Which stop?");
+                if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+                JSONObject d = Drive.dest(act());
+                if (d == null) { // no destination known: go to the stop; he restarts the trip after it
+                    start(Drive.navigate(stop, "", a.optBoolean("two_wheeler", false)));
+                    return ok().put("navigating_to", stop).put("note", "Jarvis does not know his final destination, so Maps now goes to the stop only; "
+                            + "after the stop he says the destination again.").toString();
+                }
+                start(Drive.viaStop(d.optString("name"), stop, a.optBoolean("two_wheeler", false)));
+                return ok().put("stop", stop).put("then", d.optString("name"))
+                        .put("next", "Maps shows the route with the stop; if it asks, he taps Start.").toString();
+            }
+            case "start": {
+                if (!Drive.startDrive(act())) return err("not_started", "Android did not let the drive alerts start just now; with Jarvis open on screen, ask again.");
+                android.content.SharedPreferences st = Drive.settings(act());
+                return ok().put("live_alerts", true).put("cameras", st.getBoolean("drive_cameras", true)).put("overspeed", st.getBoolean("drive_overspeed", true))
+                        .put("own_limit_kmh", st.getInt("drive_max_kmh", 0)).put("break_after_hours", st.getInt("drive_break_hours", 2)).toString();
+            }
+            case "stop": {
+                boolean parked = Drive.stopDrive(act());
+                return ok().put("live_alerts", false).put("parking_saved", parked)
+                        .put("note", parked ? "The spot where he stopped is saved as his parking place ('నా కారు ఎక్కడ?' finds it)." : "").toString();
+            }
+            case "settings": {
+                android.content.SharedPreferences.Editor e = Drive.settings(act()).edit();
+                if (a.has("cameras")) e.putBoolean("drive_cameras", a.optBoolean("cameras"));
+                if (a.has("overspeed")) e.putBoolean("drive_overspeed", a.optBoolean("overspeed"));
+                if (a.has("max_kmh")) e.putInt("drive_max_kmh", Math.max(0, Math.min(200, a.optInt("max_kmh"))));
+                if (a.has("break_hours")) e.putInt("drive_break_hours", Math.max(0, Math.min(8, a.optInt("break_hours"))));
+                e.apply();
+                android.content.SharedPreferences st = Drive.settings(act());
+                return ok().put("cameras", st.getBoolean("drive_cameras", true)).put("overspeed", st.getBoolean("drive_overspeed", true))
+                        .put("own_limit_kmh", st.getInt("drive_max_kmh", 0)).put("break_after_hours", st.getInt("drive_break_hours", 2)).toString();
+            }
+            default:
+                return err("bad_action", "Use where, route, along, cameras, navigate, add_stop, share_eta, start, stop or settings.");
+        }
     }
 
     private String nearbyOpen(JSONObject a) throws Exception {
