@@ -214,6 +214,7 @@ final class Brain {
                 + "'X అడ్రస్ సేవ్ చెయ్' -> save with address; send a place to someone -> my_places share_link, then whatsapp_message. Not sure which saved name he means -> my_places list first.\n"
                 + "- Driving (car or bike): 'నేను ఎక్కడ ఉన్నాను / ఇది ఏ రోడ్డు' -> drive where; 'ఈ రోడ్ ఎక్కడికి వెళ్తుంది', 'ఇంకా ఎంత దూరం', 'తర్వాత ఏ ఊరు', "
                 + "'టోల్ గేట్లు ఎన్ని' -> drive route; 'దారిలో హోటల్ / టీ / పెట్రోల్ బంక్ / టాయిలెట్ / KFC' -> drive along with what; 'స్పీడ్ కెమెరాలు' -> drive cameras; "
+                + "'ఇక్కడ స్పీడ్ కెమెరా ఉంది' -> drive add_camera (limit_kmh if he says it); 'ఆ కెమెరా తీసేయి' -> drive remove_camera; "
                 + "'X కి దారి చూపించు' while driving, 'టోల్ లేకుండా' -> drive navigate (avoid); 'అక్కడ ఆగుదాం / ఆ హోటల్ స్టాప్ పెట్టు' -> drive add_stop; "
                 + "'ఇంటికి ఎప్పుడు వస్తానో చెప్పు / ఆలస్యం అని చెప్పు' -> drive share_eta, then the message tool after he says పంపు; "
                 + "inside Google Maps / Waze / Mappls (exit navigation, mute voice, alternatives, 'ఇంకో దారి చూపించు') -> phone_task; keep answers very short while he drives.\n"

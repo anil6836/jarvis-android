@@ -608,6 +608,19 @@ final class Drive {
             } else item.put("km", Math.round(meters(l.getLatitude(), l.getLongitude(), la, lo) / 100) / 10.0);
             list.add(item);
         }
+        for (double[] m : myCams(c)) { // the ones he marked himself
+            JSONObject item = new JSONObject().put("limit_kmh", (int) m[2]).put("marked_by_him", true);
+            if (p != null) {
+                double[] at = place(p.pts, m[0], m[1]);
+                if (at[0] < 0.05 || at[1] > (p.route ? 150 : 300)) continue;
+                item.put("km_ahead", Math.round(at[0] * 10) / 10.0);
+            } else {
+                double d = meters(l.getLatitude(), l.getLongitude(), m[0], m[1]);
+                if (d > 15000) continue;
+                item.put("km", Math.round(d / 100) / 10.0);
+            }
+            list.add(item);
+        }
         final String by = p != null ? "km_ahead" : "km";
         Collections.sort(list, (a, b) -> Double.compare(a.optDouble(by), b.optDouble(by)));
         JSONArray out = new JSONArray();
@@ -642,6 +655,92 @@ final class Drive {
         if (l != null) m.append("ఇప్పుడు ఇక్కడ ఉన్నాను: https://maps.google.com/?q=").append(round(l.getLatitude())).append(',').append(round(l.getLongitude()));
         return new JSONObject().put("ok", true).put("message", m.toString().trim())
                 .put("next", "Read the message to him and ask whom to send it to; send only after he says 'పంపు' (whatsapp_message / send_sms).");
+    }
+
+    // ================================================================ cameras he marked himself ("ఇక్కడ స్పీడ్ కెమెరా ఉంది")
+
+    private static volatile List<double[]> mine; // {lat, lon, limit, id (negative), heading (-1 = any direction)}
+
+    /** His own cameras (cached; the drive alerts read this on every fix). */
+    static List<double[]> myCams(Context c) {
+        List<double[]> m = mine;
+        if (m != null) return m;
+        List<double[]> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(settings(c).getString("my_cams", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                out.add(new double[]{o.optDouble("lat"), o.optDouble("lon"), o.optInt("limit", 0), -o.optLong("id", i + 1), o.optDouble("heading", -1)});
+            }
+        } catch (Exception ignored) {}
+        mine = out;
+        return out;
+    }
+
+    /** Marks a camera where he is now, for the direction he is going (the same spot again just updates it). */
+    static JSONObject addCamera(Context c, int limit) throws Exception {
+        Location l = here(c);
+        if (l == null) return new JSONObject().put("ok", false).put("error", "no_location").put("message", "Could not get the phone's location. Is Location on?");
+        float h = heading(l);
+        JSONArray a = new JSONArray(settings(c).getString("my_cams", "[]")), keep = new JSONArray();
+        int oldLimit = 0;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.getJSONObject(i);
+            boolean same = meters(o.optDouble("lat"), o.optDouble("lon"), l.getLatitude(), l.getLongitude()) < 100
+                    && (h < 0 || o.optDouble("heading", -1) < 0 || angle(h, o.optDouble("heading")) < 60);
+            if (same) oldLimit = o.optInt("limit", 0); else keep.put(o);
+        }
+        keep.put(new JSONObject().put("id", System.currentTimeMillis()).put("lat", round(l.getLatitude())).put("lon", round(l.getLongitude()))
+                .put("heading", h >= 0 ? Math.round(h) : -1).put("limit", limit > 0 ? limit : oldLimit).put("at", System.currentTimeMillis()));
+        settings(c).edit().putString("my_cams", keep.toString()).apply();
+        mine = null;
+        return new JSONObject().put("ok", true).put("saved", true).put("total_mine", keep.length()).put("direction_known", h >= 0)
+                .put("accuracy_m", Math.round(l.getAccuracy()))
+                .put("next", "Say in one short line that this camera is saved and Jarvis will warn him here next time"
+                        + (h >= 0 ? " (when going this same way)." : " (from either side, since he was standing still)."));
+    }
+
+    /** Takes off the camera he marked near here (within 500 m), or all of them. */
+    static JSONObject removeCamera(Context c, boolean all) throws Exception {
+        JSONArray a = new JSONArray(settings(c).getString("my_cams", "[]"));
+        if (all) {
+            settings(c).edit().putString("my_cams", "[]").apply();
+            mine = null;
+            return new JSONObject().put("ok", true).put("removed", a.length());
+        }
+        Location l = here(c);
+        if (l == null) return new JSONObject().put("ok", false).put("error", "no_location").put("message", "Could not get the phone's location. Is Location on?");
+        int best = -1;
+        double bestD = 500;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.getJSONObject(i);
+            double d = meters(o.optDouble("lat"), o.optDouble("lon"), l.getLatitude(), l.getLongitude());
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        if (best < 0) return new JSONObject().put("ok", false).put("error", "none_near").put("message", "No camera he marked within 500 m of here.");
+        JSONArray keep = new JSONArray();
+        for (int i = 0; i < a.length(); i++) if (i != best) keep.put(a.get(i));
+        settings(c).edit().putString("my_cams", keep.toString()).apply();
+        mine = null;
+        return new JSONObject().put("ok", true).put("removed", 1).put("was_m_away", Math.round(bestD)).put("total_mine", keep.length());
+    }
+
+    /** How many he marked, and the nearest few with km. */
+    static JSONObject listCameras(Context c) throws Exception {
+        List<double[]> m = myCams(c);
+        JSONObject o = new JSONObject().put("ok", true).put("total_mine", m.size());
+        Location l = here(c);
+        if (l != null && !m.isEmpty()) {
+            List<double[]> sorted = new ArrayList<>(m);
+            Collections.sort(sorted, (x, y) -> Double.compare(meters(l.getLatitude(), l.getLongitude(), x[0], x[1]), meters(l.getLatitude(), l.getLongitude(), y[0], y[1])));
+            JSONArray near = new JSONArray();
+            for (int i = 0; i < sorted.size() && i < 5; i++) {
+                double[] x = sorted.get(i);
+                near.put(new JSONObject().put("km", Math.round(meters(l.getLatitude(), l.getLongitude(), x[0], x[1]) / 100) / 10.0).put("limit_kmh", (int) x[2]));
+            }
+            o.put("nearest", near);
+        }
+        return o;
     }
 
     // ================================================================ Google Maps navigation

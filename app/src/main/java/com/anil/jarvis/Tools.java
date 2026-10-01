@@ -350,9 +350,12 @@ final class Tools {
                 + "add_stop = add a stop on the way to the current destination (place name or 'lat,lon' from along); "
                 + "share_eta = a message with his arrival time and live location (send only after he says); "
                 + "start / stop = live alerts (speed cameras when near, over-speed for the road, a break after long driving; stop keeps the parking spot); "
-                + "settings = cameras on/off, overspeed on/off, own speed limit, break hours. "
+                + "settings = cameras on/off, overspeed on/off, own speed limit, break hours; "
+                + "add_camera = he says a speed camera is here ('ఇక్కడ స్పీడ్ కెమెరా ఉంది'): saved at his spot for his direction, warned next time; "
+                + "remove_camera = take off the one he marked near here (what='all' = every one); my_cameras = how many he marked. "
                 + "For taps inside the maps app (exit navigation, mute voice, show alternatives) use phone_task.",
-                schema(new String[][]{{"action", "string", "where, route, along, cameras, navigate, add_stop, share_eta, start, stop or settings"},
+                schema(new String[][]{{"action", "string", "where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras"},
+                        {"limit_kmh", "integer", "For add_camera: the camera's speed limit if he says it"},
                         {"what", "string", "For along: what to look for"}, {"place", "string", "For navigate / add_stop"},
                         {"km", "integer", "How far ahead to look (along default 30, cameras default 50)"},
                         {"avoid", "string", "For navigate: tolls, highways or both"}, {"two_wheeler", "boolean", "For navigate: bike route"},
@@ -4899,7 +4902,8 @@ final class Tools {
 
     private String drive(JSONObject a) throws Exception {
         String action = a.optString("action", "where").toLowerCase(Locale.ROOT).trim();
-        boolean locNeeded = !action.equals("settings") && !action.equals("stop") && !action.startsWith("nav");
+        boolean locNeeded = !action.equals("settings") && !action.equals("stop") && !action.startsWith("nav")
+                && !(action.equals("remove_camera") && "all".equalsIgnoreCase(a.optString("what").trim()));
         if (locNeeded && !has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
         switch (action) {
             case "where": return Drive.where(act()).toString();
@@ -4907,6 +4911,9 @@ final class Tools {
             case "along": return Drive.along(act(), a.optString("what"), a.has("km") ? a.optInt("km") : 30).toString();
             case "cameras": return Drive.cameras(act(), a.has("km") ? a.optInt("km") : 50).toString();
             case "share_eta": return Drive.shareText(act()).toString();
+            case "add_camera": return Drive.addCamera(act(), a.optInt("limit_kmh", 0)).toString();
+            case "remove_camera": return Drive.removeCamera(act(), "all".equalsIgnoreCase(a.optString("what").trim())).toString();
+            case "my_cameras": return Drive.listCameras(act()).toString();
             case "navigate": {
                 String place = a.optString("place", "").trim();
                 if (place.isEmpty()) return err("missing", "Where to?");
@@ -4955,7 +4962,7 @@ final class Tools {
                         .put("own_limit_kmh", st.getInt("drive_max_kmh", 0)).put("break_after_hours", st.getInt("drive_break_hours", 2)).toString();
             }
             default:
-                return err("bad_action", "Use where, route, along, cameras, navigate, add_stop, share_eta, start, stop or settings.");
+                return err("bad_action", "Use where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras.");
         }
     }
 

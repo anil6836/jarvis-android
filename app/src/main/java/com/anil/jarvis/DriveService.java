@@ -234,14 +234,17 @@ public class DriveService extends Service implements LocationListener {
         }
         if (heading < 0 || kmh < 15) return;
         long now = System.currentTimeMillis();
-        for (double[] c : cams) {
+        List<double[]> all = new ArrayList<>(cams);
+        all.addAll(Drive.myCams(this)); // the ones he marked himself
+        for (double[] c : all) {
             double d = Drive.meters(l.getLatitude(), l.getLongitude(), c[0], c[1]);
             if (d > 650 || d < 40) continue;
             if (Drive.angle(heading, Drive.bearing(l.getLatitude(), l.getLongitude(), c[0], c[1])) > 35) continue; // not ahead of him
+            if (c.length > 4 && c[4] >= 0 && Drive.angle(heading, c[4]) > 60) continue; // his camera faces the other way
             Long when = warned.get((long) c[3]);
             if (when != null && now - when < 15 * 60000L) continue;
             warned.put((long) c[3], now);
-            int lim = c[2] > 0 ? (int) c[2] : limitKmh;
+            int lim = c[2] > 0 ? (int) c[2] : roadLimit(l);
             String say = "జాగ్రత్త, ముందు " + (Math.round(d / 50.0) * 50) + " మీటర్లలో స్పీడ్ కెమెరా ఉంది"
                     + (lim > 0 ? ", లిమిట్ " + lim : "") + (lim > 0 && kmh > lim ? ". స్పీడ్ తగ్గించండి." : ".");
             Announcer.say(this, say);
@@ -253,11 +256,19 @@ public class DriveService extends Service implements LocationListener {
     private String nextCamera(Location l) {
         if (heading < 0) return "";
         double best = Double.MAX_VALUE;
-        for (double[] c : cams) {
+        List<double[]> all = new ArrayList<>(cams);
+        all.addAll(Drive.myCams(this));
+        for (double[] c : all) {
+            if (c.length > 4 && c[4] >= 0 && Drive.angle(heading, c[4]) > 60) continue;
             double d = Drive.meters(l.getLatitude(), l.getLongitude(), c[0], c[1]);
             if (d < 3000 && Drive.angle(heading, Drive.bearing(l.getLatitude(), l.getLongitude(), c[0], c[1])) < 35) best = Math.min(best, d);
         }
         return best == Double.MAX_VALUE ? "" : " · 📷 " + String.format(Locale.ENGLISH, "%.1f", best / 1000) + " కి.మీ.";
+    }
+
+    /** The road's limit, only while he is still near where it was looked up (0 = not known). */
+    private int roadLimit(Location l) {
+        return limitLat != 0 && Drive.meters(limitLat, limitLon, l.getLatitude(), l.getLongitude()) < 500 ? limitKmh : 0;
     }
 
     // ---------------------------------------------------------------- the road's speed limit
