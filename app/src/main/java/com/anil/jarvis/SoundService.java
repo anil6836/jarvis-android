@@ -17,6 +17,8 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 
+import org.json.JSONObject;
+
 import java.util.Random;
 
 /**
@@ -25,8 +27,15 @@ import java.util.Random;
  */
 public class SoundService extends Service {
     static final String ACTION_NOISE = "com.anil.jarvis.SOUND_NOISE", ACTION_RADIO = "com.anil.jarvis.SOUND_RADIO", ACTION_STOP = "com.anil.jarvis.SOUND_STOP";
+    /** Radio buttons (the media player in the notification / lock screen, headset buttons, and Jarvis by voice). */
+    static final String ACTION_TOGGLE = "com.anil.jarvis.RADIO_TOGGLE", ACTION_PAUSE = "com.anil.jarvis.RADIO_PAUSE", ACTION_PLAY = "com.anil.jarvis.RADIO_PLAY",
+            ACTION_NEXT = "com.anil.jarvis.RADIO_NEXT", ACTION_PREV = "com.anil.jarvis.RADIO_PREV", ACTION_FAV = "com.anil.jarvis.RADIO_FAV",
+            ACTION_REFRESH = "com.anil.jarvis.RADIO_REFRESH";
     private static final int NOTE = 101;
     static volatile String nowPlaying = "";
+    /** A station is on (playing, paused or connecting), and which. */
+    static volatile boolean radioOn, radioPaused;
+    static volatile String station = "";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean noiseOn;
@@ -40,17 +49,30 @@ public class SoundService extends Service {
     /** Calls and Jarvis's own listening take the sound over; it comes back after (or stops if something else plays). */
     private final android.media.AudioManager.OnAudioFocusChangeListener focus = change -> {
         if (change == android.media.AudioManager.AUDIOFOCUS_LOSS) main.post(() -> { halt(); stopSelf(); });
-        else if (change == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT || change == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+        else if (change == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) { // a call / Jarvis listening: wait
             ducked = true;
             try { if (radio != null && played && radio.isPlaying()) radio.pause(); } catch (Exception ignored) {}
+        } else if (change == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) { // a message read out: quieter
+            quiet = true;
+            applyVolume();
         } else if (change == android.media.AudioManager.AUDIOFOCUS_GAIN) {
             ducked = false;
+            quiet = false;
+            applyVolume();
             try { if (radio != null && played && !radio.isPlaying()) radio.start(); } catch (Exception ignored) {} // not before it is ready
         }
     };
+    private volatile boolean quiet; // Jarvis is reading something out: play softly
+
+    private void applyVolume() {
+        float v = Math.max(0, gain) * (quiet ? 0.2f : 1f);
+        try { if (radio != null) radio.setVolume(v, v); } catch (Exception ignored) {}
+    }
     private android.media.AudioFocusRequest focusReq;
 
     private void takeFocus() {
+        ducked = false; // a pause taken while ducked must not keep the restarted stream silent
+        quiet = false;
         try {
             android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
             focusReq = new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
@@ -80,6 +102,12 @@ public class SoundService extends Service {
         try { c.startService(new Intent(c, SoundService.class).setAction(ACTION_STOP)); } catch (Exception ignored) {}
     }
 
+    /** ⏯ ⏮ ⏭ ⭐ for the station on now (does nothing when no station is on). */
+    static boolean control(Context c, String action) {
+        if (!radioOn) return false;
+        try { c.startService(new Intent(c, SoundService.class).setAction(action)); return true; } catch (Exception e) { return false; }
+    }
+
     private static void start(Context c, Intent i) {
         if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
     }
@@ -89,6 +117,20 @@ public class SoundService extends Service {
     @Override public int onStartCommand(Intent i, int flags, int id) {
         String a = i == null ? null : i.getAction();
         if (ACTION_STOP.equals(a) || a == null) { halt(); stopSelf(); return START_NOT_STICKY; }
+        if (a.startsWith("com.anil.jarvis.RADIO_")) { // a button of the station playing now
+            if (!radioMode) { if (!noiseOn) stopSelf(id); return START_NOT_STICKY; } // nothing to control (an old notification)
+            switch (a) {
+                case ACTION_TOGGLE: if (isPaused) resumeRadio(); else pauseRadio(); break;
+                case ACTION_PAUSE: pauseRadio(); break;
+                case ACTION_PLAY: resumeRadio(); break;
+                case ACTION_NEXT: step(1); break;
+                case ACTION_PREV: step(-1); break;
+                case ACTION_FAV: toggleFav(); break;
+                case ACTION_REFRESH: updateMedia(); break; // favourites changed by voice: the ⭐ follows
+                default: break;
+            }
+            return START_NOT_STICKY;
+        }
         halt();
         AppRadio.cancelPending(); // a station the Telugu Radios app was about to start must not play over this
         AppRadio.pauseAfter(this, 0);
@@ -106,12 +148,17 @@ public class SoundService extends Service {
             final String why = i.getStringExtra("why") == null ? "" : i.getStringExtra("why");
             appTried = !why.isEmpty(); // the app was asked already (and couldn't)
             nowPlaying = "📻 " + name;
-            String line = nowPlaying + (minutes > 0 ? " · " + minutes + " నిమిషాలు" : "");
+            radioMode = true;
+            radioOn = true;
+            radioPaused = false;
+            radioName = name;
+            station = name;
+            ensureSession();
             if (links != null && links.length > 0) {
-                foreground(line);
                 startRadio(links, name);
             } else { // no link known yet: look one up (a Telugu station of that name on radio-browser.info)
-                foreground(nowPlaying + " · లింక్ వెతుకుతున్నాను…");
+                statusLine = "లింక్ వెతుకుతున్నాను…";
+                updateMedia();
                 String key = radioKey;
                 final int my = lookupGen;
                 new Thread(() -> {
@@ -127,7 +174,7 @@ public class SoundService extends Service {
                             return;
                         }
                         Radio.remember(this, name, found);
-                        foreground(line);
+                        if (isPaused) { urls = new String[]{found}; updateMedia(); return; } // ▶ starts it
                         startRadio(new String[]{found}, name);
                     });
                 }, "jarvis-radio-lookup").start();
@@ -195,7 +242,7 @@ public class SoundService extends Service {
                         default: v = pink * 0.9 + brown * 0.6 + (r.nextDouble() < 0.0006 ? white * 0.5 : 0); // rain with the odd drop
                     }
                     fade = Math.min(1, fade + 1.0 / (rate * 3));             // fade in over 3 s
-                    out[i] = (short) Math.max(-32767, Math.min(32767, v * fade * gain * (ducked ? 0 : 1) * 32767 * 0.6));
+                    out[i] = (short) Math.max(-32767, Math.min(32767, v * fade * gain * (ducked ? 0 : 1) * (quiet ? 0.25 : 1) * 32767 * 0.6));
                 }
                 if (t.write(out, 0, out.length) < 0) break; // the audio system went away
             }
@@ -229,18 +276,17 @@ public class SoundService extends Service {
         linkPlayed = false;
         radioName = name;
         gain = 1f;
-        try {
-            android.net.wifi.WifiManager wm = getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
-            if (wm != null) { wifi = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "jarvis:radio"); wifi.acquire(); }
-        } catch (Exception ignored) {}
+        holdWifi();
         playLink();
     }
 
     private void playLink() {
         releasePlayer();
-        if (urls == null) return; // stopped meanwhile
+        if (urls == null || isPaused) return; // stopped or paused meanwhile
         if (urlAt >= urls.length) { allFailed(); return; }
         played = false;
+        statusLine = "కనెక్ట్ అవుతోంది…";
+        updateMedia();
         final int my = ++attemptId; // callbacks of older attempts are ignored
         MediaPlayer mp = new MediaPlayer();
         radio = mp;
@@ -254,7 +300,9 @@ public class SoundService extends Service {
                 played = true;
                 linkPlayed = true;
                 playedAt = android.os.SystemClock.elapsedRealtime();
-                try { m.setVolume(Math.max(0, gain), Math.max(0, gain)); if (!ducked) m.start(); } catch (Exception ignored) {}
+                try { applyVolume(); if (!ducked) m.start(); } catch (Exception ignored) {}
+                statusLine = "";
+                updateMedia();
             });
             mp.setOnCompletionListener(m -> { if (my == attemptId) linkFailed(); }); // a live stream doesn't end by itself: it broke off
             mp.setOnErrorListener((m, w, e) -> { main.post(() -> { if (my == attemptId) linkFailed(); }); return true; });
@@ -283,7 +331,33 @@ public class SoundService extends Service {
             wait = 300;
         }
         releasePlayer();
-        main.postDelayed(this::playLink, wait);
+        main.removeCallbacks(replay);
+        main.postDelayed(replay, wait);
+    }
+
+    private final Runnable replay = this::playLink;
+
+    private void holdWifi() {
+        try {
+            android.net.wifi.WifiManager wm = getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
+            if (wm != null && (wifi == null || !wifi.isHeld())) { wifi = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "jarvis:radio"); wifi.acquire(); }
+        } catch (Exception ignored) {}
+    }
+
+    private void letWifiGo() {
+        try { if (wifi != null && wifi.isHeld()) wifi.release(); } catch (Exception ignored) {}
+        wifi = null;
+    }
+
+    /** Paused for half an hour: stop (an alarm, so it happens even while the phone sleeps). */
+    private void autoStop(boolean on) {
+        try {
+            android.app.AlarmManager am = getSystemService(android.app.AlarmManager.class);
+            PendingIntent pi = PendingIntent.getService(this, 108, new Intent(this, SoundService.class).setAction(ACTION_STOP),
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            if (on) am.setAndAllowWhileIdle(android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, android.os.SystemClock.elapsedRealtime() + 30 * 60000L, pi);
+            else am.cancel(pi);
+        } catch (Exception ignored) {}
     }
 
     /** None of the links plays: the Telugu Radios app may still have it; else say so. */
@@ -320,7 +394,7 @@ public class SoundService extends Service {
         main.post(new Runnable() {
             @Override public void run() {
                 gain -= 0.05f;
-                try { if (radio != null) radio.setVolume(Math.max(0, gain), Math.max(0, gain)); } catch (Exception ignored) {}
+                applyVolume();
                 if (gain > 0) main.postDelayed(this, 1500); // about 30 seconds of fading
                 else { halt(); stopSelf(); }
             }
@@ -336,10 +410,170 @@ public class SoundService extends Service {
         attemptId++;
         lookupGen++;
         releasePlayer();
-        try { if (wifi != null && wifi.isHeld()) wifi.release(); } catch (Exception ignored) {}
-        wifi = null;
+        letWifiGo();
         ducked = false;
+        quiet = false;
         dropFocus();
+        if (isPaused) autoStop(false);
+        radioMode = false;
+        isPaused = false;
+        radioOn = false;
+        radioPaused = false;
+        station = "";
+        statusLine = "";
+        if (session != null) {
+            try { session.setActive(false); session.release(); } catch (Exception ignored) {}
+            session = null;
+        }
+    }
+
+    // ---------------------------------------------------------------- the small media player (notification, lock screen, headset)
+
+    private boolean radioMode, isPaused;
+    private String statusLine = "";
+    private android.media.session.MediaSession session;
+
+    private void ensureSession() {
+        if (session != null) return;
+        try {
+            session = new android.media.session.MediaSession(this, "JarvisRadio");
+            session.setCallback(new android.media.session.MediaSession.Callback() {
+                @Override public void onPlay() { if (isPaused) resumeRadio(); else pauseRadio(); } // headset button while connecting: pause
+                @Override public void onPause() { pauseRadio(); }
+                @Override public void onSkipToNext() { step(1); }
+                @Override public void onSkipToPrevious() { step(-1); }
+                @Override public void onStop() { halt(); stopSelf(); }
+                @Override public void onCustomAction(String action, android.os.Bundle extras) {
+                    if ("fav".equals(action)) toggleFav();
+                    else if ("stop".equals(action)) { halt(); stopSelf(); }
+                }
+            }, main);
+            session.setActive(true);
+        } catch (Exception e) {
+            session = null;
+        }
+    }
+
+    /** Station name, ⏮ ⏯ ⏭ ⭐ ⏹ in the notification and the phone's media player; the same state for headset buttons. */
+    private void updateMedia() {
+        if (!radioMode) return;
+        boolean fav = Radio.isFav(this, radioName);
+        String group = Radio.groupLabel(this, radioName);
+        long timerLeft = stopAt > 0 ? stopAt - System.currentTimeMillis() : 0;
+        String line = isPaused ? "⏸ ఆగింది" : !statusLine.isEmpty() ? statusLine
+                : "Jarvis రేడియో" + (timerLeft > 0 ? " · " + Math.max(1, (timerLeft + 59999) / 60000) + " నిమిషాల్లో ఆగుతుంది" : "");
+        if (session != null) {
+            try {
+                session.setMetadata(new android.media.MediaMetadata.Builder()
+                        .putString(android.media.MediaMetadata.METADATA_KEY_TITLE, radioName)
+                        .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, line)
+                        .putString(android.media.MediaMetadata.METADATA_KEY_ALBUM, group)
+                        .putLong(android.media.MediaMetadata.METADATA_KEY_DURATION, -1).build());
+                int state = isPaused ? android.media.session.PlaybackState.STATE_PAUSED
+                        : statusLine.isEmpty() ? android.media.session.PlaybackState.STATE_PLAYING : android.media.session.PlaybackState.STATE_BUFFERING;
+                session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                        .setState(state, android.media.session.PlaybackState.PLAYBACK_POSITION_UNKNOWN, isPaused ? 0f : 1f)
+                        .setActions(android.media.session.PlaybackState.ACTION_PLAY | android.media.session.PlaybackState.ACTION_PAUSE
+                                | android.media.session.PlaybackState.ACTION_PLAY_PAUSE | android.media.session.PlaybackState.ACTION_SKIP_TO_NEXT
+                                | android.media.session.PlaybackState.ACTION_SKIP_TO_PREVIOUS | android.media.session.PlaybackState.ACTION_STOP)
+                        .addCustomAction(new android.media.session.PlaybackState.CustomAction.Builder("fav", fav ? "ఫేవరేట్ నుంచి తీసేయి" : "ఫేవరేట్లో పెట్టు",
+                                fav ? android.R.drawable.btn_star_big_on : android.R.drawable.btn_star_big_off).build())
+                        .addCustomAction(new android.media.session.PlaybackState.CustomAction.Builder("stop", "ఆపు",
+                                android.R.drawable.ic_menu_close_clear_cancel).build()) // newer phones draw only these buttons
+                        .build());
+            } catch (Exception ignored) {}
+        }
+        try {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            nm.createNotificationChannel(new NotificationChannel("jarvis_sound", "నిద్ర శబ్దాలు, రేడియో", NotificationManager.IMPORTANCE_LOW));
+            Notification.Builder b = new Notification.Builder(this, "jarvis_sound")
+                    .setSmallIcon(isPaused ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play)
+                    .setContentTitle("📻 " + radioName).setContentText(line).setSubText(group)
+                    .setOngoing(true).setShowWhen(false).setVisibility(Notification.VISIBILITY_PUBLIC)
+                    .setContentIntent(PendingIntent.getActivity(this, 103, new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
+                    .addAction(button(android.R.drawable.ic_media_previous, "ముందు", ACTION_PREV, 104))
+                    .addAction(isPaused ? button(android.R.drawable.ic_media_play, "ప్లే", ACTION_PLAY, 105)
+                            : button(android.R.drawable.ic_media_pause, "పాజ్", ACTION_PAUSE, 105))
+                    .addAction(button(android.R.drawable.ic_media_next, "తర్వాతి", ACTION_NEXT, 106))
+                    .addAction(button(fav ? android.R.drawable.btn_star_big_on : android.R.drawable.btn_star_big_off, fav ? "ఫేవరేట్ ✓" : "ఫేవరేట్", ACTION_FAV, 107))
+                    .addAction(button(android.R.drawable.ic_menu_close_clear_cancel, "ఆపు", ACTION_STOP, 102));
+            Notification.MediaStyle style = new Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2);
+            if (session != null) style.setMediaSession(session.getSessionToken());
+            b.setStyle(style);
+            if (Build.VERSION.SDK_INT >= 29) startForeground(NOTE, b.build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+            else startForeground(NOTE, b.build());
+        } catch (Exception ignored) {}
+    }
+
+    private Notification.Action button(int icon, String title, String action, int code) {
+        PendingIntent pi = PendingIntent.getService(this, code, new Intent(this, SoundService.class).setAction(action),
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        return new Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(this, icon), title, pi).build();
+    }
+
+    private void pauseRadio() {
+        if (!radioMode || isPaused) return;
+        isPaused = true;
+        radioPaused = true;
+        attemptId++; // callbacks of the stream being stopped are ignored (a link still being looked up is kept)
+        if (slow != null) main.removeCallbacks(slow);
+        main.removeCallbacks(replay);
+        releasePlayer();
+        dropFocus();
+        letWifiGo();
+        autoStop(true);
+        updateMedia();
+    }
+
+    private void resumeRadio() {
+        if (!radioMode || !isPaused) return;
+        isPaused = false;
+        radioPaused = false;
+        autoStop(false);
+        if (urls == null || urls.length == 0) { // its link is still being looked up: it starts when found
+            JSONObject st = Radio.find(this, radioName);
+            if (st == null || Radio.known(st).length == 0) { takeFocus(); statusLine = "లింక్ వెతుకుతున్నాను…"; updateMedia(); return; }
+            urls = Radio.known(st);
+        }
+        takeFocus();
+        holdWifi();
+        urlAt = 0;
+        retries = 0;
+        linkPlayed = false;
+        playLink(); // a live stream starts again from now
+    }
+
+    /** ⏭ (dir 1) / ⏮ (dir -1). */
+    private void step(int dir) {
+        if (!radioMode) return;
+        JSONObject next = Radio.neighbour(this, radioName, dir);
+        if (next == null) return;
+        String[] u = Radio.known(next);
+        attemptId++;
+        lookupGen++;
+        if (slow != null) main.removeCallbacks(slow);
+        main.removeCallbacks(replay);
+        if (isPaused) autoStop(false);
+        releasePlayer();
+        isPaused = false;
+        radioPaused = false;
+        appTried = false;
+        radioName = next.optString("name");
+        radioKey = next.optString("key", radioName);
+        station = radioName;
+        nowPlaying = "📻 " + radioName;
+        Radio.setLast(this, radioName);
+        if (focusReq == null) takeFocus();
+        startRadio(u, radioName);
+    }
+
+    private void toggleFav() {
+        if (!radioMode || radioName.isEmpty()) return;
+        boolean on = !Radio.isFav(this, radioName);
+        Radio.setFav(this, radioName, on);
+        try { android.widget.Toast.makeText(this, on ? "⭐ " + radioName + " ఫేవరేట్లో పెట్టాను" : radioName + " ఫేవరేట్ నుంచి తీసేశాను", android.widget.Toast.LENGTH_SHORT).show(); } catch (Exception ignored) {}
+        updateMedia();
     }
 
     @Override public void onDestroy() {

@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
 final class Radio {
     private Radio() {}
 
-    static final String FILM = "film", CHRISTIAN = "christian";
+    static final String FILM = "film", CHRISTIAN = "christian", FAV = "fav";
 
     /** {name, links separated by spaces (empty = none found yet), look-up word for radio-browser (empty = the name)}. */
     private static final String[][] FILM_LIST = {
@@ -231,12 +231,16 @@ final class Radio {
     /** "క్రిస్టియన్", "సినిమా పాటలు": he named a group, not a station. */
     static String groupWord(String want) {
         String w = want == null ? "" : want.toLowerCase(Locale.ROOT);
+        for (String k : FAV_WORDS) if (w.contains(k)) return FAV;
         for (String k : new String[]{"christian", "jesus", "bible", "gospel", "క్రిస్టియన్", "క్రైస్తవ", "యేసు", "యేసయ్య", "బైబిల్", "ఆరాధన"}) if (w.contains(k)) return CHRISTIAN;
         for (String k : new String[]{"film", "cinema", "movie", "సినిమా", "మూవీ"}) if (w.contains(k)) return FILM;
         return "";
     }
 
+    private static final String[] FAV_WORDS = {"favorite", "favourite", "fav", "ఫేవరేట్", "ఫేవరెట్", "ఫేవరైట్", "ఇష్టమైన", "నచ్చిన"};
+
     private static final java.util.Set<String> GROUP_WORDS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "favorite", "favourite", "favorites", "favourites", "fav", "ఫేవరేట్", "ఫేవరెట్", "ఫేవరైట్", "ఇష్టమైన", "నచ్చిన", "my", "నా",
             "christian", "jesus", "gospel", "devotional", "film", "films", "cinema", "movie", "movies", "songs", "song", "telugu", "radio", "station", "stations", "fm",
             "క్రిస్టియన్", "క్రైస్తవ", "యేసు", "యేసయ్య", "భక్తి", "సినిమా", "సినిమాల", "మూవీ", "పాటలు", "పాట", "తెలుగు", "రేడియో", "స్టేషన్", "స్టేషన్లు"));
 
@@ -244,7 +248,12 @@ final class Radio {
     static String onlyGroup(String want) {
         String g = groupWord(want);
         if (g.isEmpty()) return "";
-        for (String t : want.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{M}\\p{N}]+")) if (!t.isEmpty() && !GROUP_WORDS.contains(t)) return "";
+        for (String t : want.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{M}\\p{N}]+")) {
+            if (t.isEmpty() || GROUP_WORDS.contains(t)) continue;
+            boolean ending = false; // "ఫేవరేట్లో", "స్టేషన్లలో": a group word with a Telugu ending
+            for (String gw : GROUP_WORDS) if (gw.length() >= 3 && t.startsWith(gw) && t.length() - gw.length() <= 4) ending = true;
+            if (!ending) return "";
+        }
         return g;
     }
 
@@ -394,6 +403,66 @@ final class Radio {
         return false;
     }
 
+    // ---------------------------------------------------------------- favourites
+
+    private static JSONArray favNames(Context c) { return arr(st(c).getString("favs", "[]")); }
+
+    /** His favourite stations, in the order he added them (each with its list number). */
+    static JSONArray favorites(Context c) {
+        JSONArray all = list(c), names = favNames(c), out = new JSONArray();
+        for (int i = 0; i < names.length(); i++) {
+            String k = norm(names.optString(i));
+            for (int j = 0; j < all.length(); j++) if (norm(all.optJSONObject(j).optString("name")).equals(k)) { out.put(all.optJSONObject(j)); break; }
+        }
+        return out;
+    }
+
+    static boolean isFav(Context c, String name) { return has(normed(favNames(c)), norm(name)); }
+
+    private static JSONArray normed(JSONArray a) {
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < a.length(); i++) out.put(norm(a.optString(i)));
+        return out;
+    }
+
+    /** Adds (on = true) or takes off a favourite; returns the station's list name, or "" if no such station. */
+    static String setFav(Context c, String want, boolean on) {
+        JSONObject stn = find(c, want);
+        if (stn == null) return "";
+        String name = stn.optString("name");
+        JSONArray names = favNames(c), keep = new JSONArray();
+        for (int i = 0; i < names.length(); i++) if (!norm(names.optString(i)).equals(norm(name))) keep.put(names.optString(i));
+        if (on) keep.put(name);
+        st(c).edit().putString("favs", keep.toString()).apply();
+        return name;
+    }
+
+    /** ⏭ / ⏮: the next station that has a link — among his favourites while one of them plays, else the whole list. */
+    static JSONObject neighbour(Context c, String current, int dir) {
+        JSONArray favs = favorites(c);
+        if (isFav(c, current) && favs.length() >= 2) {
+            JSONObject o = step(favs, current, dir);
+            if (o != null) return o; // no other favourite has a link: the whole list
+        }
+        return step(list(c), current, dir);
+    }
+
+    private static JSONObject step(JSONArray pool, String current, int dir) {
+        int n = pool.length(), at = -1;
+        for (int i = 0; i < n; i++) if (norm(pool.optJSONObject(i).optString("name")).equals(norm(current))) { at = i; break; }
+        if (at < 0) at = dir > 0 ? -1 : 0;
+        for (int k = 1; k <= n; k++) {
+            JSONObject o = pool.optJSONObject(((at + dir * k) % n + n) % n);
+            if (o != null && known(o).length > 0 && !norm(o.optString("name")).equals(norm(current))) return o;
+        }
+        return null;
+    }
+
+    static String groupLabel(Context c, String name) {
+        JSONObject o = find(c, name);
+        return o != null && CHRISTIAN.equals(o.optString("group")) ? "✝️ క్రిస్టియన్" : "🎬 సినిమా పాటలు";
+    }
+
     // ---------------------------------------------------------------- playing, asking
 
     /** Plays a station; with no links yet, the radio service looks one up itself (so a tap never waits on the network). */
@@ -446,21 +515,14 @@ final class Radio {
         if (a == null || a.isFinishing() || a.isDestroyed()) return;
         final Context app = a.getApplicationContext();
         final JSONArray all = list(app);
+        final JSONArray favs = favorites(app);
         final boolean viaApp = AppRadio.installed(app);
         a.runOnUiThread(() -> {
             try {
                 if (a.isFinishing() || a.isDestroyed()) return;
                 dismissPicker();
                 final List<Object> rows = new ArrayList<>();
-                String group = "";
-                for (int i = 0; i < all.length(); i++) {
-                    JSONObject o = all.getJSONObject(i);
-                    if (!o.optString("group").equals(group)) {
-                        group = o.optString("group");
-                        rows.add(CHRISTIAN.equals(group) ? "✝️ క్రిస్టియన్ (" + count(all, CHRISTIAN) + ")" : "🎬 సినిమా పాటలు (" + count(all, FILM) + ")");
-                    }
-                    rows.add(o);
-                }
+                fillRows(rows, favs, all);
                 ArrayAdapter<Object> ad = new ArrayAdapter<Object>(a, android.R.layout.simple_list_item_1, rows) {
                     @Override public boolean areAllItemsEnabled() { return false; }
                     @Override public boolean isEnabled(int p) { return !(getItem(p) instanceof String); }
@@ -475,7 +537,8 @@ final class Radio {
                         } else {
                             JSONObject s = (JSONObject) o;
                             boolean ok = ready(s);
-                            t.setText(s.optInt("n") + ".  " + s.optString("name") + (ok ? "" : viaApp ? "  · Telugu Radios యాప్‌లో" : "  · లింక్ లేదు"));
+                            t.setText(s.optInt("n") + ".  " + s.optString("name") + (isFav(app, s.optString("name")) ? "  ⭐" : "")
+                                    + (ok ? "" : viaApp ? "  · Telugu Radios యాప్‌లో" : "  · లింక్ లేదు"));
                             t.setTypeface(null, Typeface.NORMAL);
                             t.setTextColor(ok || viaApp ? 0xFFE5E7EB : 0xFF9CA3AF);
                             t.setTextSize(16);
@@ -493,10 +556,39 @@ final class Radio {
                         .setOnCancelListener(x -> answered()) // back / tap outside: he doesn't want one now
                         .create();
                 d.show();
+                // long press: add to / take off his favourites
+                d.getListView().setOnItemLongClickListener((parent, view, pos, id) -> {
+                    Object o = rows.get(pos);
+                    if (!(o instanceof JSONObject)) return true;
+                    String name = ((JSONObject) o).optString("name");
+                    boolean on = !isFav(app, name);
+                    setFav(app, name, on);
+                    android.widget.Toast.makeText(a, on ? "⭐ " + name + " ఫేవరేట్లో పెట్టాను" : name + " ఫేవరేట్ నుంచి తీసేశాను", android.widget.Toast.LENGTH_SHORT).show();
+                    fillRows(rows, favorites(app), all); // the ⭐ section at the top follows
+                    ad.notifyDataSetChanged();
+                    SoundService.control(app, SoundService.ACTION_REFRESH);
+                    return true;
+                });
                 picker = new WeakReference<>(d);
                 pickerAt = android.os.SystemClock.elapsedRealtime();
             } catch (Exception ignored) {}
         });
+    }
+
+    /** The list's rows: ⭐ favourites first, then each group with a heading. */
+    private static void fillRows(List<Object> rows, JSONArray favs, JSONArray all) {
+        rows.clear();
+        rows.add(favs.length() > 0 ? "⭐ ఫేవరేట్లు (" + favs.length() + ")" : "⭐ ఫేవరేట్లు: స్టేషన్ మీద నొక్కి పట్టుకుంటే ఇక్కడ చేరుతుంది");
+        for (int i = 0; i < favs.length(); i++) rows.add(favs.optJSONObject(i));
+        String group = "";
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject o = all.optJSONObject(i);
+            if (!o.optString("group").equals(group)) {
+                group = o.optString("group");
+                rows.add(CHRISTIAN.equals(group) ? "✝️ క్రిస్టియన్ (" + count(all, CHRISTIAN) + ")" : "🎬 సినిమా పాటలు (" + count(all, FILM) + ")");
+            }
+            rows.add(o);
+        }
     }
 
     /** On the main thread (the list's click): start it now, while Jarvis is on screen. */

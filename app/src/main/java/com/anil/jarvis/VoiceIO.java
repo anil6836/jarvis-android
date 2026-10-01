@@ -151,7 +151,7 @@ final class VoiceIO {
             voiceInfo = "తెలుగు వాయిస్ లేదు. Settings → Text-to-speech → Google → తెలుగు డౌన్‌లోడ్ చేయండి.";
         }
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override public void onStart(String id) { main.post(() -> { speaking = true; watchBargeIn(); l.onSpeakStart(); }); }
+            @Override public void onStart(String id) { main.post(() -> { speaking = true; Duck.on(ctx); watchBargeIn(); l.onSpeakStart(); }); }
             @Override public void onDone(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onError(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onStop(String id, boolean interrupted) { main.post(() -> finishSpeaking(id)); }
@@ -176,6 +176,7 @@ final class VoiceIO {
         if (!("j" + utterance).equals(id)) return; // an older utterance that was replaced
         if (!speaking) return;
         speaking = false;
+        Duck.off();
         barge.stop();
         call.exit();
         l.onSpeakDone();
@@ -213,6 +214,7 @@ final class VoiceIO {
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
+                Duck.on(ctx); // radio / music goes quiet while Jarvis talks
                 watchBargeIn();
                 l.onSpeakStart();
                 main.removeCallbacks(wordTicker);
@@ -224,6 +226,7 @@ final class VoiceIO {
                 learnPace();
                 if (!speaking) return;
                 speaking = false;
+                Duck.off();
                 call.exit();
                 l.onSpeakDone();
             }
@@ -456,6 +459,7 @@ final class VoiceIO {
         main.post(() -> {
             if (shut || u != utterance || !speaking) return; // stopped or replaced meanwhile
             speaking = false;
+            Duck.off();
             call.exit();
             l.onSpeakDone();
         });
@@ -496,7 +500,7 @@ final class VoiceIO {
             String full = googleText;
             int from = sentenceStart(full, googlePos);
             while (from < full.length() && Character.isWhitespace(full.charAt(from))) from++;
-            if (from >= full.length()) { speaking = false; call.exit(); l.onSpeakDone(); return; }
+            if (from >= full.length()) { speaking = false; Duck.off(); call.exit(); l.onSpeakDone(); return; }
             speakGoogleFrom(full, from, googleRate);
         }
     }
@@ -542,6 +546,7 @@ final class VoiceIO {
         natural.stop();
         if (speaking) {
             speaking = false;
+            Duck.off();
             if (tts != null) tts.stop();
         }
     }
@@ -647,6 +652,7 @@ final class VoiceIO {
         ttsReady = false;
         pending = null;
         speaking = false;
+        Duck.off();
         listening = false;
         natural.stop();
         if (sr != null) { sr.destroy(); sr = null; }

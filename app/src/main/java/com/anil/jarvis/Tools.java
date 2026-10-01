@@ -514,8 +514,10 @@ final class Tools {
                 + "(Telugu film-music stations and Telugu Christian stations); stops by itself after minutes. "
                 + "radio without a station = shows his list on screen so you can ask which one; radio + station = play it "
                 + "(a station without a link is played by his Telugu Radios app when it is installed). stations = his list. "
-                + "add = add a station or give a listed one its stream link (station + url, group film/christian); remove = take a station off his list; stop = stop.",
-                schema(new String[][]{{"action", "string", "rain, fan, sea, white, radio, stations, add, remove or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
+                + "add = add a station or give a listed one its stream link (station + url, group film/christian); remove = take a station off his list; "
+                + "favorite / unfavorite = add / take off his favourites (station empty = the one playing); favorites = ask which favourite to play; "
+                + "next / previous = next / previous station; pause / resume; stop = stop.",
+                schema(new String[][]{{"action", "string", "rain, fan, sea, white, radio, stations, favorites, favorite, unfavorite, next, previous, pause, resume, add, remove or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
                         {"station", "string", "For radio: the station's name as written in his list (English) or its number; empty = ask him"},
                         {"url", "string", "For add: the stream link (https)"}, {"group", "string", "For add: film or christian"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'. "
@@ -2334,6 +2336,12 @@ final class Tools {
         android.media.session.MediaController mc = activeMedia();
         android.media.session.MediaController.TransportControls tc = mc == null ? null : mc.getTransportControls();
         String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        if (SoundService.radioOn) { // Jarvis's own radio: its player buttons
+            String c = a.equals("pause") ? SoundService.ACTION_PAUSE : a.equals("toggle") ? SoundService.ACTION_TOGGLE
+                    : a.equals("play") || a.equals("resume") ? SoundService.ACTION_PLAY : a.equals("next") ? SoundService.ACTION_NEXT
+                    : a.equals("previous") ? SoundService.ACTION_PREV : null;
+            if (c != null) { SoundService.control(act(), c); return ok().put("radio", a).put("station", SoundService.station).toString(); }
+        }
         if (!SoundService.nowPlaying.isEmpty() && (a.equals("pause") || a.equals("off") || a.equals("stop") || a.equals("close") || a.equals("toggle"))) {
             String was = SoundService.nowPlaying;
             SoundService.stop(act()); // Jarvis's own rain sound / radio
@@ -4940,6 +4948,38 @@ final class Tools {
             return ok().put("stopped", true).toString();
         }
         int radioMin = Math.max(0, a.optInt("minutes", 0));
+        if (action.startsWith("next") || action.startsWith("prev") || action.startsWith("pause") || action.startsWith("resume") || action.equals("play")) {
+            String act = action.startsWith("next") ? SoundService.ACTION_NEXT : action.startsWith("prev") ? SoundService.ACTION_PREV
+                    : action.startsWith("pause") ? SoundService.ACTION_PAUSE : SoundService.ACTION_PLAY;
+            if (SoundService.control(act(), act)) return ok().put("done", action).put("station_was", SoundService.station)
+                    .put("note", "Done on his radio; say nothing long (the new station's name is on the screen for next/previous).").toString();
+            if (AppRadio.startedRecently()) { // the station plays in the Telugu Radios app: its own buttons
+                android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
+                int key = action.startsWith("next") ? android.view.KeyEvent.KEYCODE_MEDIA_NEXT : action.startsWith("prev") ? android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                        : action.startsWith("pause") ? android.view.KeyEvent.KEYCODE_MEDIA_PAUSE : android.view.KeyEvent.KEYCODE_MEDIA_PLAY;
+                if (am != null) mediaKey(am, key);
+                return ok().put("done", action).put("in", "Telugu Radios app").toString();
+            }
+            return err("not_playing", "No radio station is on now. Ask which station to play (sounds radio).");
+        }
+        if (action.startsWith("unfav") || action.startsWith("fav") && (action.contains("remove") || action.contains("off"))) {
+            String want = a.optString("station", "").trim();
+            if (want.isEmpty()) want = !SoundService.station.isEmpty() ? SoundService.station : Radio.last(act());
+            String name = want.isEmpty() ? "" : Radio.setFav(act(), want, false);
+            if (name.isEmpty()) return err("not_found", "Which station? None is playing and none was named.");
+            SoundService.control(act(), SoundService.ACTION_REFRESH); // the ⭐ in the player follows
+            return ok().put("unfavorited", name).toString();
+        }
+        if (action.equals("favorites") || action.equals("favourites") || action.startsWith("fav_list")) return radioAsk(radioMin, Radio.FAV).toString();
+        if (action.startsWith("fav")) { // favorite / fav_add
+            String want = a.optString("station", "").trim();
+            if (want.isEmpty()) want = !SoundService.station.isEmpty() ? SoundService.station : Radio.last(act());
+            String name = want.isEmpty() ? "" : Radio.setFav(act(), want, true);
+            if (name.isEmpty()) return err("not_found", "Which station? None is playing and none was named.");
+            SoundService.control(act(), SoundService.ACTION_REFRESH); // the ⭐ in the player follows
+            return ok().put("favorited", name).put("favorites_now", Radio.favorites(act()).length())
+                    .put("next", "Say in one short line that it is in his favourites now.").toString();
+        }
         if (action.startsWith("add")) {
             String bad = Radio.add(act(), a.optString("station"), a.optString("url"), a.optString("group"));
             if (!bad.isEmpty()) return err("bad_link", bad);
@@ -5001,18 +5041,28 @@ final class Tools {
     /** "రేడియో పెట్టు": his list on screen (tap to play) and the names for Jarvis, who asks "ఏ స్టేషన్?". group = he named only a group. */
     private JSONObject radioAsk(int minutes, String groupOrNote) throws Exception {
         JSONArray all = Radio.list(act());
+        JSONArray favs = Radio.favorites(act());
         Radio.showPicker(act(), minutes);
         Radio.asked();
         boolean group = Radio.FILM.equals(groupOrNote) || Radio.CHRISTIAN.equals(groupOrNote);
-        JSONObject r = ok().put("ask", true).put("shown_on_screen", act() != null)
+        JSONArray favNames = new JSONArray();
+        for (int i = 0; i < favs.length(); i++) favNames.put(favs.getJSONObject(i).optInt("n") + " " + favs.getJSONObject(i).optString("name"));
+        JSONObject r = ok().put("ask", true).put("shown_on_screen", act() != null).put("favorites", favNames)
                 .put("film_music", Radio.names(all, Radio.FILM, AppRadio.installed(act()))).put("christian", Radio.names(all, Radio.CHRISTIAN, AppRadio.installed(act())));
         String last = Radio.last(act());
         if (!last.isEmpty()) r.put("last_played", last);
         String how = "Do NOT read the list out. When he names one (by name, by number, or saying it in Telugu), call sounds radio with station = that station's "
                 + "name exactly as in the list (or its number). If he says only 'సినిమా పాటలు' or 'క్రిస్టియన్', say 5 or 6 names from that group and ask again.";
-        if (group) r.put("next", "He chose the " + (Radio.CHRISTIAN.equals(groupOrNote) ? "Christian" : "film music")
+        if (Radio.FAV.equals(groupOrNote)) {
+            if (favs.length() == 0) r.put("next", "He has no favourite stations yet. Say so in one line: he can say 'ఈ స్టేషన్ ఫేవరేట్లో పెట్టు' while one plays, "
+                    + "tap ⭐ in the radio player, or long-press a station in the list. Then ask which station to play now. " + how);
+            else r.put("next", "Ask in ONE short Telugu line which favourite to play, saying the favourite names (up to 6): "
+                    + "'ఫేవరేట్లలో ఏది పెట్టమంటారు? ...'. " + how);
+        } else if (group) r.put("next", "He chose the " + (Radio.CHRISTIAN.equals(groupOrNote) ? "Christian" : "film music")
                 + " group. Say 5 or 6 station names from it in one short line and ask which one. " + how);
         else if (!groupOrNote.isEmpty()) r.put("next", groupOrNote + " " + how);
+        else if (favs.length() > 0) r.put("next", "He has favourites. Ask in ONE short Telugu line: 'ఫేవరేట్లలో ఏ స్టేషన్ ప్లే చేయమంటారు? <favourite names, up to 6>' "
+                + "(he may also name any other station; the full list is on screen). " + how);
         else r.put("next", "Ask him in ONE short Telugu line: 'ఏ స్టేషన్ ప్లే చేయమంటారు? సినిమా పాటలా, క్రిస్టియన్ పాటలా? లిస్ట్ స్క్రీన్ మీద ఉంది.' "
                 + "(you may add 'పోయినసారి <last_played> విన్నారు'). " + how);
         return r;

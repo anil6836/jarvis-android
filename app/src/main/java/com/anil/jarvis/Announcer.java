@@ -5,6 +5,7 @@ import android.media.AudioAttributes;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -29,6 +30,8 @@ final class Announcer {
     private static final ArrayDeque<String> queue = new ArrayDeque<>();
     /** A natural-voice announcement is playing (main thread only). */
     private static boolean talking;
+    /** Announcements handed to the phone's engine and not finished yet (main thread only). */
+    private static int googlePending;
 
     private Announcer() {}
 
@@ -38,6 +41,7 @@ final class Announcer {
         Context app = c.getApplicationContext();
         main.post(() -> {
             queue.add(text);
+            Duck.on(app); // radio / music goes quiet while Jarvis reads, and comes back after
             if (!talking) next(app);
         });
     }
@@ -45,7 +49,7 @@ final class Announcer {
     /** Speaks the next queued announcement (main thread). */
     private static void next(Context app) {
         String text = queue.poll();
-        if (text == null) { talking = false; return; }
+        if (text == null) { talking = false; settle(); return; }
         Prefs p = new Prefs(app);
         String key = p.openAiKey().trim();
         if (p.naturalVoice() && !key.isEmpty()) {
@@ -68,17 +72,31 @@ final class Announcer {
         main.post(() -> {
             queue.clear();
             talking = false;
+            googlePending = 0;
             natural.stop();
             if (tts != null) tts.stop();
+            Duck.off();
         });
     }
 
+    /** Everything said: the music comes back up. */
+    private static void settle() {
+        if (!talking && queue.isEmpty() && googlePending <= 0) { googlePending = 0; Duck.off(); }
+    }
+
     private static void google(Context app, String text) {
+        googlePending++;
         if (tts == null) {
             waiting.add(text);
             tts = new TextToSpeech(app, status -> main.post(() -> {
                 ready = status == TextToSpeech.SUCCESS && tts != null;
                 if (ready) {
+                    tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                        @Override public void onStart(String id) {}
+                        @Override public void onDone(String id) { main.post(Announcer::oneDone); }
+                        @Override public void onError(String id) { main.post(Announcer::oneDone); }
+                        @Override public void onStop(String id, boolean interrupted) { main.post(Announcer::oneDone); }
+                    });
                     tts.setLanguage(Locale.forLanguageTag("te-IN"));
                     tts.setAudioAttributes(new AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -90,6 +108,8 @@ final class Announcer {
                     TextToSpeech dead = tts;
                     tts = null;
                     if (dead != null) try { dead.shutdown(); } catch (Exception ignored) {}
+                    googlePending -= waiting.size(); // these will never be spoken
+                    settle();
                 }
                 waiting.clear();
             }));
@@ -97,6 +117,11 @@ final class Announcer {
         }
         if (!ready) { waiting.add(text); return; }
         try { tts.setLanguage(Lang.of(text)); } catch (Exception ignored) {}
-        tts.speak(text, TextToSpeech.QUEUE_ADD, null, "a" + (n++));
+        if (tts.speak(text, TextToSpeech.QUEUE_ADD, null, "a" + (n++)) != TextToSpeech.SUCCESS) oneDone();
+    }
+
+    private static void oneDone() {
+        googlePending--;
+        settle();
     }
 }
