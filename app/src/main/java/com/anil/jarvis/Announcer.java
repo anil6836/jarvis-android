@@ -39,8 +39,9 @@ final class Announcer {
     static void say(Context c, String text) {
         if (text == null || text.trim().isEmpty()) return;
         Context app = c.getApplicationContext();
+        String said = Spoken.say(text); // numbers as Telugu words
         main.post(() -> {
-            queue.add(text);
+            queue.add(said);
             Duck.on(app); // radio / music goes quiet while Jarvis reads, and comes back after
             if (!talking) next(app);
         });

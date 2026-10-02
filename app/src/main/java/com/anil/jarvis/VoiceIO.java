@@ -105,6 +105,11 @@ final class VoiceIO {
     /** Natural voice: the text being spoken and its reading-speed weights, for the word highlight. */
     private String naturalText = "";
     private float[] naturalWeight = new float[0];
+    /** The reply as shown (digits) and its spoken form (numbers as Telugu words), mapped onto each other for the highlight. */
+    private String naturalShown = "";
+    private Spoken.Out naturalSaid = Spoken.of("");
+    private String googleShown = "";
+    private volatile Spoken.Out googleSaid = Spoken.of("");
     /** The natural (OpenAI) voice is the one speaking now (not the phone's voice). */
     private boolean naturalNow;
     /** Phone voice: what is being said, where it has got to, and how fast (to carry on after ▶). */
@@ -159,8 +164,13 @@ final class VoiceIO {
                 if (!("j" + utterance).equals(id)) return;
                 final int a = googleBase + start, b = googleBase + end;
                 googlePos = a;
-                final String full = googleText;
-                main.post(() -> { if (speaking && !paused && !naturalNow) l.onWord(full, a, b); });
+                final String shown = googleShown;
+                final Spoken.Out said = googleSaid;
+                main.post(() -> {
+                    if (!speaking || paused || naturalNow) return;
+                    int[] r = said.range(a, b); // back onto the text on screen (numbers there are digits)
+                    l.onWord(shown, r[0], r[1]);
+                });
             }
         });
         ttsReady = true;
@@ -204,7 +214,11 @@ final class VoiceIO {
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
         if (clean.length() > 3500) clean = clean.substring(0, 3500);
         speaking = true;
-        final String said = clean;
+        final String shown = clean;
+        Spoken.Out spoken = Spoken.of(clean).cut(3900); // numbers as Telugu words ("₹1,200" -> "వెయ్యి రెండు వందల రూపాయలు")
+        final String said = spoken.text;
+        naturalShown = shown;
+        naturalSaid = spoken;
         naturalText = said;
         naturalWeight = weights(said);
         naturalBounds = bounds(said, naturalWeight);
@@ -233,7 +247,7 @@ final class VoiceIO {
             @Override public void onError(String message) {
                 naturalError = message;
                 naturalNow = false;
-                if (speaking) speakGoogle(said, rate);
+                if (speaking) speakGoogle(shown, rate);
             }
         });
     }
@@ -256,7 +270,10 @@ final class VoiceIO {
             return;
         }
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
-        speakGoogleFrom(clean, 0, rate);
+        Spoken.Out said = Spoken.of(clean); // numbers as Telugu words; the highlight maps back onto the digits shown
+        googleShown = clean;
+        googleSaid = said;
+        speakGoogleFrom(said.text, 0, rate);
     }
 
     /** Phone voice: says full from position from (0 = all of it; later = carrying on after ▶). */
@@ -296,7 +313,10 @@ final class VoiceIO {
                     int a = at, b = at;
                     while (a > 0 && !Character.isWhitespace(t.charAt(a - 1))) a--;
                     while (b < t.length() && !Character.isWhitespace(t.charAt(b))) b++;
-                    if (b > a) l.onWord(t, a, b);
+                    if (b > a) {
+                        int[] r = naturalSaid.range(a, b);
+                        l.onWord(naturalShown, r[0], r[1]);
+                    }
                 }
                 main.postDelayed(this, 120);
             }

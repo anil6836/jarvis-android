@@ -156,6 +156,6 @@ final class Greeting {
             @Override public void onError(String id) { main.post(done); }
         });
         tts.setSpeechRate(Math.max(1.0f, p.speechRate()));
-        if (tts.speak(text(p), TextToSpeech.QUEUE_FLUSH, null, "greet") != TextToSpeech.SUCCESS) main.post(done);
+        if (tts.speak(Spoken.say(text(p)), TextToSpeech.QUEUE_FLUSH, null, "greet") != TextToSpeech.SUCCESS) main.post(done);
     }
 }

@@ -206,7 +206,7 @@ public class ReaderService extends Service {
         spoken = l;
         try { tts.setLanguage(Lang.of(s)); } catch (Exception ignored) {}
         tts.setSpeechRate(p.speechRate());
-        if (tts.speak(s, TextToSpeech.QUEUE_FLUSH, null, "r" + System.nanoTime()) != TextToSpeech.SUCCESS)
+        if (tts.speak(Spoken.say(s), TextToSpeech.QUEUE_FLUSH, null, "r" + System.nanoTime()) != TextToSpeech.SUCCESS)
             throw new IllegalStateException("ఫోన్ వాయిస్ ఇంజిన్ చదవలేకపోయింది");
         l.await(5, TimeUnit.MINUTES);
         return worker == Thread.currentThread() && !Thread.currentThread().isInterrupted() && !focusLost;
