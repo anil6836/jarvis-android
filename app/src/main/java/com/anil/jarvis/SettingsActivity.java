@@ -39,7 +39,9 @@ public class SettingsActivity extends Activity {
 
     private Prefs prefs;
     private EditText name, openAiKey, openAiModel, anthropicKey, anthropicModel;
-    private RadioGroup provider, lang, wakeWhen;
+    private RadioGroup provider, lang, wakeWhen, checkProvider;
+    private EditText checkModel;
+    private Switch checkAuto;
     private Switch callVoice, readMessages, batteryWarn, voiceLock, proactive, sfx, shakeWake, faceDown, nightSummary;
     private TextView carInfo;
     private SeekBar lockSlider, listenWindow;
@@ -194,6 +196,18 @@ public class SettingsActivity extends Activity {
                 + "Google తమ మోడల్స్ మెరుగుపరచడానికి వాడుకోవచ్చు. పైన 'Google (Gemini)' ఎంచుకుంటేనే వాడుతుంది; వాయిస్ (సహజ గొంతు), Live మోడ్ OpenAI తోనే ఉంటాయి.");
         link("Gemini లిమిట్లు / billing (AI Studio)", "https://aistudio.google.com/usage");
         web = toggle("ఇంటర్నెట్ సెర్చ్ (వార్తలు, స్కోర్లు, ధరలు)", prefs.webSearch());
+        note("🔁 క్రాస్ చెక్ (రెండో AI): డబ్బు, ఆరోగ్యం, చట్టం, పెద్ద నిర్ణయాల జవాబులను మీరు ఎంచుకున్న రెండో AI కూడా చెక్ చేస్తుంది; "
+                + "తేడా ఉంటే ఆ తేడా చెబుతుంది. 'క్రాస్ చెక్ చేయి' అంటే ఏ ప్రశ్నకైనా చేస్తుంది. ఆ కంపెనీ key పైన పెట్టి ఉండాలి. Jarvis తనంతట తాను మోడల్ మార్చడు.");
+        checkProvider = new RadioGroup(this);
+        checkProvider.addView(radio(41, "రెండో AI వద్దు"));
+        checkProvider.addView(radio(42, "OpenAI"));
+        checkProvider.addView(radio(43, "Anthropic (Claude)"));
+        checkProvider.addView(radio(44, "Google (Gemini)"));
+        String cpv = prefs.sp.getString("check_provider", "");
+        checkProvider.check(cpv.equals(Prefs.OPENAI) ? 42 : cpv.equals(Prefs.ANTHROPIC) ? 43 : cpv.equals(Prefs.GEMINI) ? 44 : 41);
+        box.addView(checkProvider);
+        checkModel = field("రెండో AI మోడల్ పేరు (పైన ఆ కంపెనీ మోడల్స్ లిస్ట్‌లో చూడొచ్చు)", prefs.sp.getString("check_model", ""), false);
+        checkAuto = toggle("ముఖ్యమైన ప్రశ్నలకు తనంతట తానే క్రాస్ చెక్", prefs.sp.getBoolean("check_auto", true));
         note("Jarvis ఎంత తెలివిగా ఆలోచిస్తాడో పై మోడల్‌ని బట్టి ఉంటుంది. అత్యంత శక్తివంతమైనవి: OpenAI లో gpt-6-astra, Anthropic లో claude-opus-5-5 "
                 + "(ఇవి నెమ్మదిగా, ఖరీదుగా ఉంటాయి). రోజువారీ మాటలకి వేగమైన మోడల్ ఉంచి, కోడింగ్‌కి మాత్రమే శక్తివంతమైనది కింద 'కోడింగ్ మోడల్' లో పెట్టొచ్చు.");
 
@@ -485,6 +499,42 @@ public class SettingsActivity extends Activity {
         smartApp = field("మీ స్మార్ట్ హోమ్ యాప్ పేరు (ఉదా: Homemate, Zeb Home, Wipro Next)", prefs.smartApp(), false);
         alexaSpeak = toggle("దగ్గర్లో Echo ఉంది: అవసరమైతే Jarvis \"Alexa, …\" అని పైకి చెప్పనివ్వు", prefs.alexaSpeak());
 
+        // ---- guard mode: on an old phone at home (buttons act at once; no Save needed)
+        section("కాపలా మోడ్ (ఇంట్లో పాత ఫోన్)");
+        note("ఇంట్లో ఉంచిన పాత ఫోన్‌లో Jarvis వేసి ఇది ఆన్ చేస్తే, కెమెరాలో కదలిక కనిపించినప్పుడు (మనిషి, జంతువు, వాహనం) ఫోటో, ఒక లైన్ మీ Telegram కి వస్తాయి. "
+                + "ఎలా: 1) Telegram లో @BotFather తెరిచి /newbot తో మీ bot చేసి, అది ఇచ్చే token కింద పెట్టండి. 2) Telegram లో మీ కొత్త bot తెరిచి 'hi' పంపండి. "
+                + "3) 'Telegram చాట్ కనుక్కో' నొక్కండి. 4) ఫోన్‌ని తలుపు / గేట్ వైపు, ఛార్జర్‌కి పెట్టి 'కాపలా మొదలుపెట్టు' నొక్కండి. "
+                + "Token ఈ ఫోన్‌లోనే ఉంటుంది. ఫోటోలు మీ Telegram కి, చూడటానికి మీరు ఎంచుకున్న AI కి మాత్రమే వెళ్తాయి.");
+        EditText tgToken = field("Telegram bot token", Guard.token(this), true);
+        TextView tgState = Ui.text(this, "", 14, Ui.MUTED);
+        tgState.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(tgState);
+        Runnable guardState = () -> tgState.setText((Guard.chat(this).isEmpty() ? "Telegram చాట్: ఇంకా లేదు" : "Telegram చాట్: సిద్ధం ✓")
+                + "   ·   కాపలా: " + (Guard.running(this) ? "ఆన్ 🛡️" : "ఆఫ్"));
+        guardState.run();
+        java.util.function.Consumer<Runnable> withToken = then -> {
+            Guard.sp(this).edit().putString("tg_token", tgToken.getText().toString().trim()).apply();
+            new Thread(() -> { then.run(); runOnUiThread(guardState); }).start();
+        };
+        button("Telegram చాట్ కనుక్కో", v -> withToken.accept(() -> {
+            String r = Guard.findChat(this);
+            runOnUiThread(() -> Toast.makeText(this, r.startsWith("!") ? r.substring(1) : "దొరికింది ✓", Toast.LENGTH_LONG).show());
+        }));
+        button("టెస్ట్ మెసేజ్ పంపు", v -> withToken.accept(() -> {
+            boolean ok = Guard.send(this, "✅ Jarvis కాపలా మోడ్ టెస్ట్: ఈ మెసేజ్ వచ్చింది అంటే అంతా సిద్ధం.");
+            runOnUiThread(() -> Toast.makeText(this, ok ? "పంపాను ✓ Telegram చూడండి" : "పంపలేకపోయాను: token / చాట్ చూడండి", Toast.LENGTH_LONG).show());
+        }));
+        button("▶ కాపలా మొదలుపెట్టు / ⏹ ఆపు", v -> {
+            Guard.sp(this).edit().putString("tg_token", tgToken.getText().toString().trim()).apply();
+            if (Guard.running(this)) Guard.stop(this);
+            else if (Guard.token(this).isEmpty() || Guard.chat(this).isEmpty())
+                Toast.makeText(this, "ముందు token పెట్టి 'Telegram చాట్ కనుక్కో' నొక్కండి", Toast.LENGTH_LONG).show();
+            else if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                requestPermissions(new String[]{android.Manifest.permission.CAMERA}, 61);
+            else { Guard.start(this); Toast.makeText(this, "🛡️ కాపలా మొదలైంది", Toast.LENGTH_SHORT).show(); }
+            guardState.run();
+        });
+
         section("అత్యవసరం (SOS)");
         note("\"Jarvis help\" / \"కాపాడు\" అంటే 5 సెకన్ల తర్వాత (మధ్యలో ఆపొచ్చు) మీ లొకేషన్ వీళ్లకి SMS వెళ్తుంది, మొదటివాళ్లకి కాల్ వెళ్తుంది.");
         sosContacts = field("కాంటాక్ట్ పేర్లు లేదా నంబర్లు, కామాతో (ఉదా: Amma, Ravi)", prefs.sosContacts(), false);
@@ -762,6 +812,10 @@ public class SettingsActivity extends Activity {
         e.putString("anthropic_key", anthropicKey.getText().toString().trim());
         e.putString("anthropic_model", anthropicModel.getText().toString().trim());
         e.putBoolean("web_search", web.isChecked());
+        int cpr = checkProvider.getCheckedRadioButtonId();
+        e.putString("check_provider", cpr == 42 ? Prefs.OPENAI : cpr == 43 ? Prefs.ANTHROPIC : cpr == 44 ? Prefs.GEMINI : "");
+        e.putString("check_model", checkModel.getText().toString().trim());
+        e.putBoolean("check_auto", checkAuto.isChecked());
         e.putBoolean("voice", voice.isChecked());
         e.putBoolean("follow_up", followUp.isChecked());
         e.putBoolean("natural_voice", natural.isChecked());
@@ -996,7 +1050,7 @@ public class SettingsActivity extends Activity {
     private static final String[][] LOOKS = {
             {"మీరు", "👤"}, {"థీమ్", "🎨"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
             {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
-            {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
+            {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"కాపలా", "🛡️"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
             {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},
             {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"చెక్", "🩺"}};
     /** Read when used, so they follow the theme. */

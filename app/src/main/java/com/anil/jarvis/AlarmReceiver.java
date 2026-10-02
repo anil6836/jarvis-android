@@ -55,6 +55,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 break;
             }
             case StopAlarm.ACTION_OFF: StopAlarm.stoppedFromNotification(c); break;
+            case Guard.ACTION_STOP: Guard.stop(c); break;
             case Duty.ACTION_NAP: { // up 60 minutes before leaving at the latest; 90 minutes at most
                 long leave = i.getLongExtra("leave", 0);
                 int min = leave <= 0 ? 90 : (int) Math.min(90, (leave - 60 * 60_000L - System.currentTimeMillis()) / 60_000L);
@@ -69,6 +70,15 @@ public class AlarmReceiver extends BroadcastReceiver {
                 android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
                 if (nm != null) nm.cancel("duty", 262);
                 android.widget.Toast.makeText(c, said, android.widget.Toast.LENGTH_LONG).show();
+                break;
+            }
+            case Automations.ACTION_FIRE: {
+                PendingResult pr = goAsync();
+                String id = i.getStringExtra("id");
+                new Thread(() -> { // the rain check (if the rule has one) uses the internet
+                    try { Automations.fired(c.getApplicationContext(), id); } catch (Exception ignored) {}
+                    new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 4000);
+                }, "jarvis-automation").start();
                 break;
             }
             case Bike.ACTION_CHARGE_DONE: {
@@ -143,6 +153,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 Faith.schedule(c);
                 try { Duty.scheduleChime(c); } catch (Exception ignored) {}
                 try { Bike.rearm(c); } catch (Exception ignored) {}
+                try { Automations.schedule(c); } catch (Exception ignored) {}
                 UpdateJob.schedule(c);
                 if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) Updater.cancelNotice(c);
                 break;

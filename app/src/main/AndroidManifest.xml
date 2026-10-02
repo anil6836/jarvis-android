@@ -42,6 +42,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -221,6 +222,10 @@
             android:name=".StopAlarmService"
             android:exported="false"
             android:foregroundServiceType="location" />
+        <service
+            android:name=".GuardService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
         <service
             android:name=".SoundService"
             android:exported="false"

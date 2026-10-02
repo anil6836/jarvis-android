@@ -97,8 +97,46 @@ final class Brain {
         } finally {
             Http.LONG_WAIT.set(false);
         }
+        try { reply = crossCheck(text, reply, status); } catch (Exception ignored) {} // never lose the answer over the check
         // the feeling tag ([happy], [sad]...) is for the voice only: take it off the text
         return feel ? Emotion.strip(reply) : reply;
+    }
+
+    /** "క్రాస్ చెక్ చేయి" (any question), or on its own for money / health / law questions when he switched that on. */
+    private static final java.util.regex.Pattern CHECK_WORDS = java.util.regex.Pattern.compile(
+            "(?i)(క్రాస్ చెక్|రెండో AI|రెండో ఏఐ|ఇంకో AI|నిర్ధారించు|double ?check|cross ?check)");
+    private static final java.util.regex.Pattern WEIGHTY = java.util.regex.Pattern.compile(
+            "(?i)(లోన్|\\bloan|\\bemi\\b|ఈఎంఐ|వడ్డీ|\\binterest\\b|insurance|ఇన్సూరెన్స్|పాలసీ|\\bpolicy|\\binvest|పెట్టుబడి|షేర్లు|\\bstocks?\\b|mutual fund|\\btax|పన్ను|\\bgst\\b|"
+            + "మందు|మాత్ర|టాబ్లెట్|\\btablet|\\bdose|డోస్|medicine|షుగర్|\\bsugar\\b|బీపీ|\\bbp\\b|మెడికల్ రిపోర్ట్|ఆపరేషన్|surgery|"
+            + "కోర్ట్|\\bcourt\\b|కేసు|\\blegal\\b|లీగల్|చట్టం|రిజిస్ట్రేషన్|భూమి|స్థలం|\\bproperty\\b|ఆస్తి)");
+
+    /** A second AI he chose reads the question and the answer: agrees (a mark), or says what it would correct. */
+    private String crossCheck(String question, String reply, Status status) throws Exception {
+        boolean asked = question != null && CHECK_WORDS.matcher(question).find();
+        boolean weighty = !asked && prefs.sp.getBoolean("check_auto", true) && question != null && WEIGHTY.matcher(question).find();
+        if (!asked && !weighty) return reply;
+        if (!asked && Emotion.strip(reply).length() < 40) return reply; // a short question back to him, nothing to check yet
+        Prefs cp = Prefs.checker(prefs.app);
+        if (cp == null || cp.apiKey().isEmpty()) {
+            return asked ? reply + "\n(రెండో AI ఇంకా ఎంచుకోలేదు లేదా దాని key లేదు: సెట్టింగ్స్ → Jarvis మెదడు → క్రాస్ చెక్.)" : reply;
+        }
+        if (status != null) status.update("రెండో AI తో చెక్ చేస్తున్నాను…");
+        String plain = Emotion.strip(reply);
+        String verdict;
+        try {
+            verdict = oneShot(cp, "You check another assistant's answer for factual mistakes. Be strict about facts, numbers, medicines, money and law; "
+                            + "ignore style and wording. If it rests on his own data you cannot see (his messages, readings, bills, tool results), judge only the general facts "
+                            + "and advice in it, and AGREE when nothing general is wrong. Reply with exactly one line: 'AGREE' if it is correct and safe, or 'DISAGREE: <the correction in one short "
+                            + "Telugu sentence>'.",
+                    "Question (from Anil, in Telugu): " + question + "\nAnswer given: " + plain, null, prefs.webSearch(), 400).trim();
+        } catch (Exception e) {
+            String why = e instanceof Http.ApiError ? Models.explain(cp, (Http.ApiError) e) : "నెట్ / సమయం సమస్య";
+            return asked ? reply + "\n(రెండో AI చెక్ ఇప్పుడు కుదరలేదు: " + why + ")" : reply;
+        }
+        if (verdict.toUpperCase(Locale.ROOT).startsWith("AGREE")) return reply + " (రెండో AI కూడా ఇదే అంది ✓)";
+        String fix = verdict.replaceFirst("(?i)^\\s*DISAGREE\\s*:?\\s*", "").trim();
+        if (fix.isEmpty()) return reply;
+        return reply + "\nకానీ రెండో AI వేరేలా అంటోంది: " + fix + " ముఖ్యమైన నిర్ణయం ముందు నిపుణుడిని ఒకసారి అడగండి.";
     }
 
     // ---------------------------------------------------------------- prompt
@@ -397,6 +435,11 @@ final class Brain {
                 + "a sugar or BP value from a report of the last 3 days -> ask if the report is his own and log it with health_log add only on his yes. "
                 + "'గ్యాస్ బుక్ చెయ్', 'సిలిండర్ బుక్ చెయ్' -> expiry action=book_gas (company once if he says it), then follow its next: a WhatsApp only after his 'పంపు', a missed call only after his yes. "
                 + "'డ్యూటీ ముందు నిద్ర గుర్తు వద్దు / పెట్టు' -> duty action=rest text=off / on. "
+                + "A rule that should happen by itself again and again or on a condition ('ప్రతి…', '…అయితే చెప్పు', '…కంటే తగ్గితే', 'బయలుదేరేటప్పుడు…') -> automation add; "
+                + "one single time -> set_reminder. 'నా ఆటోమేషన్లు' -> automation list. "
+                + "'ఈ గదిని గుర్తుపెట్టుకో' / 'ఈ గది చూడు, వస్తువులు గుర్తుపెట్టుకో' (camera memory) -> item_place action=scan place=the room (before look_through_camera). "
+                + "'కాపలా మోడ్' -> it is set up in Settings on the phone kept at home (show_features jarvis, or tell him the steps briefly). "
+                + "Questions about his own past ('ఎప్పుడు…?', 'ఎంతకి…?', 'ఆ నంబర్…', 'నేను చెప్పాను కదా') that memories and tools don't answer -> search_history (life search) first. "
                 + "Auto / cab fares ('బస్టాండ్‌కి ఆటో ఎంత?', 'Rapido, Uber, Ola లో ఏది చౌక?') -> ride_app app=compare drop=X (pickup empty = where he is); one app named to book -> ride_app with that app. "
                 + "On a bus or train: 'X వచ్చేముందు లేపు', 'X స్టాప్ వస్తే లేపు', 'X కి స్టాప్ అలారం' -> location_reminder action=stop_alarm place=X (English, e.g. 'Kazipet bus stand'; km 2, a train 3 unless he says). "
                 + "'స్టాప్ అలారం ఆపు' -> stop_alarm_off; 'ఇంకా ఎంత దూరం?' while it is on -> stop_alarm_status. "

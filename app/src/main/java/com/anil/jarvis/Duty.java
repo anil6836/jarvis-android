@@ -540,7 +540,7 @@ final class Duty {
     }
 
     /** Rain chance (max %) and mm between these times, at this place; null if the forecast could not be had. */
-    private static double[] rain(double lat, double lon, LocalDateTime from, LocalDateTime to) {
+    static double[] rain(double lat, double lon, LocalDateTime from, LocalDateTime to) {
         try {
             java.net.HttpURLConnection con = (java.net.HttpURLConnection) new java.net.URL(String.format(Locale.ENGLISH,
                     "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"

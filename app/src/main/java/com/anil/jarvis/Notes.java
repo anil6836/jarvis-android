@@ -53,6 +53,19 @@ final class Notes {
         return found;
     }
 
+    /** Replaces the entry with the same "id" (kept in its place). */
+    static synchronized boolean update(Context c, String key, JSONObject o) {
+        List<JSONObject> l = list(c, key);
+        String id = o.optString("id");
+        for (int i = 0; i < l.size(); i++) {
+            if (!l.get(i).optString("id").equals(id)) continue;
+            l.set(i, o);
+            save(c, key, l, 100000);
+            return true;
+        }
+        return false;
+    }
+
     static String id(String prefix) {
         return prefix + Long.toString(System.currentTimeMillis() % 1000000000L, 36);
     }

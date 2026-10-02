@@ -103,6 +103,7 @@ public class Proactive extends BroadcastReceiver {
         try { Prices.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { WebLook.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Everyday.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {} // storm check fetches too
+        try { Automations.tick(c); } catch (Throwable ignored) {} // his own rules run even with Jarvis's own ideas off
         if (!p.proactive()) return;
         boolean quiet = hush;
         Calendar now = Calendar.getInstance();
@@ -112,6 +113,7 @@ public class Proactive extends BroadcastReceiver {
         if (!quiet && hour >= 7 && hour < 10) rainToday(c, p);
         if (!quiet && hour >= 19 && hour < 21) callNudge(c, p);
         if (!quiet) habit(c, p, now);
+        if (!quiet) { try { Patterns.evening(c, p); } catch (Throwable ignored) {} } // a routine learnt from his calls, offered as an automation
         if (!quiet) Health.waterTick(c, p);
         priceAlerts(c, p, quiet);
         if (now.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY && hour >= 19 && hour < 22) weeklyNotes(c);

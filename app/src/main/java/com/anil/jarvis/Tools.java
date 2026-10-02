@@ -232,8 +232,12 @@ final class Tools {
                 schema(new String[][]{{"mode", "string", "normal, serious, funny, english, short, think_always or think_normal; empty when only noting a feeling"},
                         {"feeling", "string", "His feeling in one English word (tired, sad, stressed, angry, worried, happy, excited...)"},
                         {"why", "string", "Why, in a few English words ('after the 48-hour duty', 'mother unwell')"}})));
-        DEFS.add(new Def("search_history", "Search old conversations with Jarvis ('last week I told you a phone number...').",
-                schema(new String[][]{{"query", "string", "Key words to look for"}, {"days", "integer", "How far back (default 90)"}}, "query")));
+        DEFS.add(new Def("search_history", "Life search: look through everything on his phone at once: old talks with Jarvis, SMS, notes, diary, expenses, debts / EMI, "
+                + "expiry and warranty dates, reminders, memories, missions, where he kept things, BP / sugar readings, bike charges, recordings "
+                + "('గత సంవత్సరం బైక్ ఇన్సూరెన్స్ ఎంతకి కట్టాను?', 'రవికి ఎప్పుడు డబ్బులు ఇచ్చాను?', 'ఆ ఫోన్ నంబర్ చెప్పాను కదా'). "
+                + "Answer from what is found, saying where it came from and the date; if nothing fits, say so (never guess).",
+                schema(new String[][]{{"query", "string", "Key words, comma separated, in Telugu and English spellings (e.g. 'insurance, ఇన్సూరెన్స్, policy, బైక్')"},
+                        {"days", "integer", "How far back (default 365)"}}, "query")));
         DEFS.add(new Def("screen_time", "How long he used the phone today (or the last N days) and on which apps. "
                 + "eye_break: the 20-20-20 eye reminder after every N minutes of the screen on without a pause (on by default at 20; 'off' stops it).",
                 schema(new String[][]{{"days", "integer", "1 = today (default), up to 7"}, {"eye_break", "string", "Minutes (10-120), 'on' (20) or 'off'"}})));
@@ -601,8 +605,24 @@ final class Tools {
                 + "nearest first with km, 24-hour ones marked and opening hours when known.",
                 schema(new String[][]{{"what", "string", "What he needs, e.g. 'మెడికల్ షాప్', 'ATM', 'పెట్రోల్ బంక్'"}, {"radius_km", "integer", "How far to look (default 5)"}}, "what")));
         DEFS.add(new Def("item_place", "Where he kept things: put ('తాళాలు బీరువా పై అరలో పెట్టాను'), find ('తాళాలు ఎక్కడ?'), list, remove; "
-                + "bluetooth = where a Bluetooth thing (earbuds, headset, watch, speaker) was when it last left the phone ('నా ఇయర్‌బడ్స్ ఎక్కడ?').",
-                schema(new String[][]{{"action", "string", "put, find (default), list, remove or bluetooth"}, {"thing", "string", "The thing"}, {"place", "string", "For put: where"}})));
+                + "bluetooth = where a Bluetooth thing (earbuds, headset, watch, speaker) was when it last left the phone ('నా ఇయర్‌బడ్స్ ఎక్కడ?'); "
+                + "scan = camera memory: with the live camera open, he slowly shows a room and Jarvis remembers where the everyday things are "
+                + "('ఈ గదిని గుర్తుపెట్టుకో', place = the room, e.g. 'హాల్'); later find answers from it ('రిమోట్ ఎక్కడ చూశావ్?').",
+                schema(new String[][]{{"action", "string", "put, find (default), list, remove, bluetooth or scan"}, {"thing", "string", "The thing"},
+                        {"place", "string", "For put: where; for scan: the room"}})));
+        DEFS.add(new Def("automation", "His own automatic rules, set by voice ('ప్రతి సోమవారం 8 కి పత్తి, బంగారం ధర చెప్పు', 'బైక్ 20% కంటే తగ్గితే చెప్పు', "
+                + "'డ్యూటీకి బయలుదేరేటప్పుడు వర్షం ఉంటే చెప్పు', 'వర్షం వచ్చేలా ఉంటే చెప్పు', 'డ్యూటీ రోజుల్లో రాత్రి 9:45 కి అమ్మకి కాల్ గుర్తు చెయ్'). "
+                + "add: trigger = time (at HH:mm; days = daily, duty, home, weekdays like 'mon,thu', or 'once:YYYY-MM-DD') / before_duty (minutes before he leaves for duty) / "
+                + "after_duty (minutes after a duty ends) / bike_below or phone_below (percent) / rain (hours ahead, default 2); if_rain = only when rain is expected; "
+                + "act = say (Jarvis says 'what') or do ('what' is a request Jarvis carries out with its tools, e.g. 'పత్తి, బంగారం ధరలు చెప్పు'); text = his words. "
+                + "Arriving at / leaving a place -> location_reminder automatic instead. list; remove, pause, resume with id. Say the rule back to him in one line.",
+                schema(new String[][]{{"action", "string", "add, list (default), remove, pause or resume"},
+                        {"trigger", "string", "time, before_duty, after_duty, bike_below, phone_below or rain"}, {"at", "string", "time: HH:mm (24 h)"},
+                        {"days", "string", "time: daily (default), duty, home, 'mon,wed,fri' or 'once:YYYY-MM-DD'"},
+                        {"minutes", "integer", "before_duty / after_duty: minutes"}, {"percent", "integer", "bike_below / phone_below"},
+                        {"hours", "integer", "rain: hours ahead (default 2)"}, {"if_rain", "boolean", "Only when rain is expected in the next 3 hours"},
+                        {"act", "string", "say (default) or do"}, {"what", "string", "What to say (Telugu), or the request to carry out"},
+                        {"text", "string", "His words for the rule"}, {"id", "string", "For remove / pause / resume"}})));
         DEFS.add(new Def("habit_track", "Habits he wants to keep, with streaks: add, done (today or a date), undo, list, remove; reminder: the night check hour (-1 = off).",
                 schema(new String[][]{{"action", "string", "list (default), add, done, undo, remove or reminder"}, {"name", "string", "Habit, e.g. 'నడక', 'సిగరెట్ మానడం'"},
                         {"date", "string", "YYYY-MM-DD (default today)"}, {"hour", "integer", "For reminder"}})));
@@ -784,7 +804,8 @@ final class Tools {
             case "english_practice": return "English practice మొదలుపెడుతున్నాను…";
             case "read_screen": return "స్క్రీన్ చదువుతున్నాను…";
             case "jarvis_mood": return "సరే…";
-            case "search_history": return "పాత మాటల్లో వెతుకుతున్నాను…";
+            case "automation": return "ఆటోమేషన్…";
+            case "search_history": return "మీ ఫోన్‌లో అన్నిచోట్లా వెతుకుతున్నాను…";
             case "screen_time": case "app_limit": return "స్క్రీన్ టైమ్ చూస్తున్నాను…";
             case "air_quality": return "గాలి నాణ్యత చూస్తున్నాను…";
             case "cricket_watch": return "క్రికెట్…";
@@ -881,7 +902,11 @@ final class Tools {
                     if (md.isEmpty()) return ok().put("noted", !f.isEmpty()).put("next", "Do not mention noting it; just answer him with care.").toString();
                     return mood(md);
                 }
-                case "search_history": return searchHistory(a.optString("query"), a.optInt("days", 90));
+                case "search_history": {
+                    JSONArray found = LifeSearch.search(act(), store, a.optString("query"), a.optInt("days", 365));
+                    if (found.length() == 0) return err("none", "Nothing on the phone matches '" + a.optString("query") + "'. Try other words or spellings, or say it is not there.");
+                    return ok().put("found", found).put("count", found.length()).toString();
+                }
                 case "screen_time":
                     if (!a.optString("eye_break").trim().isEmpty()) {
                         String e = a.optString("eye_break").trim().toLowerCase(Locale.ROOT);
@@ -913,6 +938,7 @@ final class Tools {
                 case "make_letter": return makeLetter(a);
                 case "nearby_open": return nearbyOpen(a);
                 case "item_place": return itemPlace(a);
+                case "automation": return automation(a);
                 case "habit_track": return habitTrack(a);
                 case "split_bill": return splitBill(a);
                 case "sounds": return sounds(a);
@@ -3788,25 +3814,35 @@ final class Tools {
                 .toString();
     }
 
+    private String automation(JSONObject a) throws Exception {
+        String ac = a.optString("action", "list").trim().toLowerCase(Locale.ROOT);
+        if (ac.startsWith("add")) {
+            JSONObject r = new JSONObject().put("trigger", a.optString("trigger").trim().toLowerCase(Locale.ROOT))
+                    .put("at", a.optString("at").trim()).put("days", a.optString("days", "daily"))
+                    .put("minutes", a.optInt("minutes", a.optString("trigger").startsWith("before") ? 30 : 0))
+                    .put("percent", a.optInt("percent", -1)).put("hours", a.optInt("hours", 2)).put("if_rain", a.optBoolean("if_rain", false))
+                    .put("action", "do".equalsIgnoreCase(a.optString("act").trim()) ? "do" : "say")
+                    .put("what", a.optString("what").trim()).put("text", a.optString("text").trim());
+            String bad = Automations.add(act(), r);
+            if (bad != null) return err("bad_rule", bad);
+            return ok().put("added", Automations.line(r)).put("id", r.optString("id"))
+                    .put("note", r.optString("trigger").equals("time") ? "Rings on time even when Jarvis is closed." : "Checked about every 15 minutes.").toString();
+        }
+        if (ac.startsWith("remove") || ac.startsWith("delete")) {
+            return Automations.remove(act(), a.optString("id")) ? ok().put("removed", a.optString("id")).toString() : err("not_found", "No rule with that id; list first.");
+        }
+        if (ac.startsWith("pause") || ac.startsWith("resume")) {
+            return Automations.setOn(act(), a.optString("id"), ac.startsWith("resume")) ? ok().put(ac.startsWith("pause") ? "paused" : "resumed", a.optString("id")).toString()
+                    : err("not_found", "No rule with that id; list first.");
+        }
+        return ok().put("rules", Automations.listJson(act())).toString();
+    }
+
     private String mood(String mode) throws Exception {
         String m = mode == null ? "normal" : mode.trim().toLowerCase(Locale.ROOT);
         if (!m.matches("normal|serious|funny|english|short")) m = "normal";
         act().getSharedPreferences("jarvis", Activity.MODE_PRIVATE).edit().putString("mood", m).apply();
         return ok().put("mood", m).toString();
-    }
-
-    private String searchHistory(String query, int days) throws Exception {
-        long since = System.currentTimeMillis() - Math.max(1, days <= 0 ? 90 : days) * 86400000L;
-        JSONArray out = new JSONArray();
-        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("EEE d MMM HH:mm", Locale.ENGLISH);
-        for (JSONObject o : store.searchArchive(query, since, 25)) {
-            String t = o.optString("content");
-            out.put(new JSONObject().put("when", f.format(new java.util.Date(o.optLong("t"))))
-                    .put("who", "assistant".equals(o.optString("role")) ? "Jarvis" : prefs.name())
-                    .put("said", t.length() > 400 ? t.substring(0, 400) + "…" : t));
-        }
-        if (out.length() == 0) return err("none", "Nothing found for '" + query + "'. Try other words (the archive starts from this version).");
-        return ok().put("found", out).toString();
     }
 
     private String screenTime(int days) throws Exception {
@@ -5463,8 +5499,60 @@ final class Tools {
                         : "Say the nearest 3 with km. Mark 24-hour ones; from the hours (OSM format) say if open now; if hours are unknown, say so. To go: open_maps navigate with maps_place.").toString();
     }
 
+    private static final String ROOM_SYSTEM = "You look at pictures of one room taken by a phone camera while the owner slowly turned around, "
+            + "to remember where his everyday things are. Reply with JSON only.";
+
+    /** Camera memory: a few pictures of the room as he pans, and where each everyday thing is, kept with his item places. */
+    private String scanRoom(String room) throws Exception {
+        if (CameraPanel.latestFrame == null)
+            return err("camera_off", "The live camera is not open. Ask him to tap the 'Live కెమెరా' button, point it at the room and say 'ఈ గదిని గుర్తుపెట్టుకో' again.");
+        String where = room == null || room.trim().isEmpty() ? "ఈ గది" : room.trim();
+        Announcer.say(act(), "సరే, నెమ్మదిగా గది అంతా తిప్పి చూపించండి.");
+        List<String> frames = new ArrayList<>();
+        for (int i = 0; i < 6 && frames.size() < 4; i++) {
+            Thread.sleep(2200); // he is turning the phone: a new picture about every two seconds
+            String f = CameraPanel.latestFrame;
+            if (f == null) break;
+            if (!frames.contains(f)) frames.add(f);
+        }
+        if (frames.isEmpty()) return err("camera_off", "The camera closed before Jarvis could look. Ask him to keep it open while showing the room.");
+        android.graphics.Bitmap sheet = android.graphics.Bitmap.createBitmap(960, 1280, android.graphics.Bitmap.Config.RGB_565);
+        android.graphics.Canvas cv = new android.graphics.Canvas(sheet);
+        for (int i = 0; i < frames.size(); i++) {
+            byte[] b = android.util.Base64.decode(frames.get(i), android.util.Base64.DEFAULT);
+            android.graphics.Bitmap f = android.graphics.BitmapFactory.decodeByteArray(b, 0, b.length);
+            if (f == null) continue;
+            int x = (i % 2) * 480, y = (i / 2) * 640;
+            cv.drawBitmap(f, null, new android.graphics.Rect(x, y, x + 480, y + 640), null);
+            f.recycle();
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        sheet.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, out);
+        sheet.recycle();
+        String collage = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP);
+        String r = Brain.oneShot(prefs, ROOM_SYSTEM, "These " + frames.size() + " pictures (in one sheet) are from his room '" + where + "'. List the small everyday "
+                + "things he may later look for: keys, wallet / purse, TV remote, phone, chargers, earbuds, glasses, watch, helmet, bag, files / documents, medicines, "
+                + "bike key, tools, umbrella, torch and the like (not furniture, and never read numbers on cards or papers). For each, say where it is in simple "
+                + "Telugu relative to the furniture (టీవీ పక్కన టేబుల్ మీద, బీరువా పై అరలో, గోడ హుక్‌కి...). Name each thing the way he would say it in Telugu "
+                + "(రిమోట్, తాళాలు, హెల్మెట్, పర్స్, ఛార్జర్, కళ్లజోడు). JSON only: [{\"thing\":\"...\",\"where\":\"...\"}], at most 15; [] if none.", collage, false, 1500);
+        int s = r.indexOf('['), e = r.lastIndexOf(']');
+        if (s < 0 || e <= s) return err("not_read", "Jarvis could not make out the things in the pictures. Ask him to show the room again a little slower, in good light.");
+        JSONArray items = new JSONArray(r.substring(s, e + 1)), saved = new JSONArray();
+        String day = new java.text.SimpleDateFormat("d MMM", Locale.ENGLISH).format(new java.util.Date());
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject it = items.optJSONObject(i);
+            if (it == null || it.optString("thing").trim().isEmpty() || it.optString("where").trim().isEmpty()) continue;
+            JSONObject o = Everyday.put(act(), it.optString("thing").trim(), where + ": " + it.optString("where").trim() + " (📷 " + day + ")");
+            if (o != null) saved.put(o.optString("thing") + " → " + o.optString("place"));
+        }
+        if (saved.length() == 0) return ok().put("remembered", 0).put("note", "No everyday things were clear in the pictures. Say so.").toString();
+        return ok().put("remembered", saved.length()).put("things", saved)
+                .put("next", "Tell him in one sentence how many things you remembered in " + where + " and name 3-4 of them; 'X ఎక్కడ?' later finds them.").toString();
+    }
+
     private String itemPlace(JSONObject a) throws Exception {
         String action = a.optString("action", "find").toLowerCase(Locale.ROOT), thing = a.optString("thing", "");
+        if (action.startsWith("scan") || action.startsWith("room") || action.startsWith("camera")) return scanRoom(a.optString("place"));
         if (action.startsWith("put") || action.startsWith("save")) {
             JSONObject o = Everyday.put(act(), thing, a.optString("place"));
             if (o == null) return err("missing", "What, and where?");

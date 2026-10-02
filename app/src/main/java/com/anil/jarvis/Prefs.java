@@ -21,8 +21,21 @@ final class Prefs {
         Usage.init(c); // the API cost meter needs somewhere to keep its totals
     }
 
+    /** Set only on the "second AI" prefs (cross-check): the provider and model he chose for checking. */
+    private String overProvider, overModel;
+
+    /** The second AI he chose for cross-checking answers, or null when none is chosen. */
+    static Prefs checker(Context c) {
+        Prefs p = new Prefs(c);
+        String pr = p.sp.getString("check_provider", "").trim(), m = p.sp.getString("check_model", "").trim();
+        if (pr.isEmpty() || m.isEmpty()) return null;
+        p.overProvider = pr;
+        p.overModel = m;
+        return p;
+    }
+
     String name() { return sp.getString("name", "Anil"); }
-    String provider() { return sp.getString("provider", OPENAI); }
+    String provider() { return overProvider != null ? overProvider : sp.getString("provider", OPENAI); }
     boolean isOpenAi() { return OPENAI.equals(provider()); }
     boolean isGemini() { return GEMINI.equals(provider()); }
 
@@ -34,6 +47,7 @@ final class Prefs {
     String anthropicKey() { return sp.getString("anthropic_key", ""); }
 
     String model() {
+        if (overModel != null) return overModel;
         if (isGemini()) {
             return geminiModel().trim(); // may be empty: the brain then asks him to choose one
         }
