@@ -280,17 +280,17 @@ final class Tools {
                 + "timings = bus timings / buses now between two places ('బస్ టైమింగ్స్', 'ఇప్పుడు X కి బస్ ఉందా'); bus = bus tickets, fares, seats on a date. "
                 + "For both, with no app named, Jarvis searches his TGSRTC Gamyam app FIRST, then his TGSRTC booking app, AbhiBus and redBus, and returns each app's buses "
                 + "(takes a minute or more); with app = one app he named, only that app. "
-                + "train = trains and seats on a date (ixigo trains); flight = Skyscanner, MakeMyTrip, ixigo, EaseMyTrip, Trip.com. "
+                + "train = trains and seats on a date (RailYatri, then ixigo trains); flight = Skyscanner, MakeMyTrip, ixigo, EaseMyTrip, Trip.com. "
                 + "Jarvis fills the search in the app and reads the first results; booking -> phone_task in that app (stops at Pay). He books and pays himself.",
                 schema(new String[][]{{"kind", "string", "timings, bus, train or flight"}, {"from", "string", "Flights: 3-letter airport code (HYD). Others: place / station in English"},
                         {"to", "string", "Flights: airport code (BLR). Others: place / station in English"}, {"date", "string", "YYYY-MM-DD; empty = today"},
-                        {"app", "string", "Only when he names one app ('గమ్యం లో మాత్రమే', 'redBus లో'); empty = all his bus apps, Gamyam first"}}, "kind", "from", "to")));
+                        {"app", "string", "Only when he names one app ('గమ్యం లో మాత్రమే', 'redBus లో', 'ixigo లో'); empty = all his apps of that kind (buses: Gamyam first)"}}, "kind", "from", "to")));
         DEFS.add(new Def("phone_task",
                 "Use his phone for him, like a person with his fingers (seeing the screen, tapping, typing, scrolling, opening apps, going from one app to another): "
                         + "any task he asks to be DONE on the phone that no other tool does directly, e.g. change a setting, search or play something in an app, "
                         + "fill a form, find and forward something, copy from one app into another, order-page selections; and book movie/event tickets in "
-                        + "BookMyShow or District, a bus in TGSRTC / AbhiBus / redBus, or a train in ixigo trains (Jarvis asks his choices, selects everything and stops at Pay; "
-                        + "an IRCTC login or password in ixigo is for him to type). "
+                        + "BookMyShow or District, a bus in TGSRTC / AbhiBus / redBus, or a train in RailYatri / ixigo trains (Jarvis asks his choices, selects everything and stops at Pay; "
+                        + "an IRCTC login or password is for him to type). "
                         + "A bar on his screen shows what Jarvis is doing, with a stop button. Jarvis asks before sending, posting, deleting or calling, "
                         + "never pays (except the MobiKwik ticket flow), never types passwords/OTPs, never uses banking or payment apps. "
                         + "Start: goal (+ app if one app is obvious; empty = start from the home screen). Continue: answer (his reply to the question). Cancel: stop=true.",
@@ -352,8 +352,9 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "add, list or cancel"}, {"item", "string", "What to watch, precise, e.g. 'gold 22 carat per gram Hyderabad', 'TCS share NSE'"},
                         {"when", "string", "above or below"}, {"target", "number", "Price in rupees"}, {"id", "string", "For cancel"}}, "action")));
         DEFS.add(new Def("train_status",
-                "Indian train live running status by train number, or PNR status (10 digits).",
-                schema(new String[][]{{"query", "string", "Train number (e.g. 12727) or PNR"}}, "query")));
+                "Indian train live running status (where the train is, how late, when it reaches a station) by train number or name, or PNR status (10 digits). "
+                        + "Jarvis reads it in his Where is my Train app; only if that app is missing or the screen switch is off, from the web (the result says so).",
+                schema(new String[][]{{"query", "string", "Train number (e.g. 12727), train name, or PNR"}, {"station", "string", "Station he asked about ('కాజీపేట కి ఎప్పుడు వస్తుంది'), in English; empty = the next stations"}}, "query")));
         DEFS.add(new Def("water_reminder",
                 "Remind him to drink water every few hours during the day. on=false stops it.",
                 schema(new String[][]{{"on", "boolean", "true to start"}, {"every_hours", "integer", "1-4, default 2"},
@@ -916,7 +917,7 @@ final class Tools {
                 case "sos": return sos(a.optString("message", ""));
                 case "ask_document": return a.optString("read_aloud", "").isEmpty() ? askDocument(a.optString("name", ""), a.optString("question", "")) : readAloud(a);
                 case "price_alert": return priceAlert(a.optString("action", "list"), a.optString("item", ""), a.optString("when", "above"), a.optDouble("target", 0), a.optString("id", ""));
-                case "train_status": return trainStatus(a.optString("query"));
+                case "train_status": return trainStatus(a.optString("query"), a.optString("station", ""));
                 case "water_reminder": return water(a.optBoolean("on", true), a.optInt("every_hours", 2), a.optInt("from_hour", 8), a.optInt("to_hour", 22));
                 case "steps_today": return steps();
                 case "ride_app": return rideApp(a.optString("app"), a.optString("pickup", ""), a.optString("drop"));
@@ -1668,13 +1669,15 @@ final class Tools {
 
     /** His travel apps by package (their names on the phone vary): bus timings, bus / train tickets. */
     static final String GAMYAM = "com.tsrtc", TGSRTC_BOOK = "com.app.tsrtc", ABHIBUS = "com.app.abhibus", REDBUS = "in.redbus.android",
-            IXIGO_TRAINS = "com.ixigo.train.ixitrain";
+            IXIGO_TRAINS = "com.ixigo.train.ixitrain", RAILYATRI = "com.railyatri.in.mobile", WIMT = "com.whereismytrain.android";
     private static final String[][] TRAVEL_APPS = {
             {"gamyam", GAMYAM}, {"గమ్యం", GAMYAM}, {"bus tracking", GAMYAM},
             {"tgsrtc", TGSRTC_BOOK}, {"tsrtc", TGSRTC_BOOK}, {"టీజీఎస్ఆర్టీసీ", TGSRTC_BOOK}, {"ఆర్టీసీ", TGSRTC_BOOK}, {"rtc", TGSRTC_BOOK},
             {"abhibus", ABHIBUS}, {"abhi bus", ABHIBUS}, {"అభిబస్", ABHIBUS}, {"అభి బస్", ABHIBUS},
             {"redbus", REDBUS}, {"red bus", REDBUS}, {"రెడ్‌బస్", REDBUS}, {"రెడ్ బస్", REDBUS},
-            {"ixigo train", IXIGO_TRAINS}, {"ixigo trains", IXIGO_TRAINS}, {"ఇక్సిగో", IXIGO_TRAINS}};
+            {"ixigo train", IXIGO_TRAINS}, {"ixigo trains", IXIGO_TRAINS}, {"ఇక్సిగో", IXIGO_TRAINS},
+            {"railyatri", RAILYATRI}, {"rail yatri", RAILYATRI}, {"రైల్‌యాత్రి", RAILYATRI}, {"రైల్ యాత్రి", RAILYATRI}, {"రైల్యాత్రి", RAILYATRI},
+            {"where is my train", WIMT}, {"whereismytrain", WIMT}, {"wimt", WIMT}, {"వేర్ ఈజ్ మై ట్రైన్", WIMT}};
 
     /** The launcher entry of an installed app by package, or null. */
     private ResolveInfo appByPkg(String pkg) {
@@ -3481,16 +3484,36 @@ final class Tools {
         return ok().put("price_alerts", arr).toString();
     }
 
-    private String trainStatus(String query) throws Exception {
+    /**
+     * Live running status of a train (number or name) or a PNR, read from his Where is my Train app through the screen helper.
+     * Only when that app is missing or the screen switch is off does it come from the web, and the answer says so.
+     */
+    private String trainStatus(String query, String station) throws Exception {
         if (query == null || query.trim().isEmpty()) return err("missing", "Which train number or PNR?");
-        String q = query.trim();
+        String q = query.trim(), st = station == null ? "" : station.trim();
         boolean pnr = q.replaceAll("[^0-9]", "").length() == 10;
+        String why = !installed(WIMT) ? "Where is my Train is not installed"
+                : !JarvisAccessibility.enabled() || Build.VERSION.SDK_INT < 30 ? "the 'Jarvis స్క్రీన్' switch is off, so Jarvis cannot read Where is my Train" : "";
+        if (why.isEmpty()) {
+            if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+            String goal = pnr
+                    ? "In Where is my Train, open PNR status, type the PNR " + q.replaceAll("[^0-9]", "") + " and check it. Do not change settings or buy anything. "
+                    + "Then reply done with stay=true, and in summary: train name and number, journey date, from and to, class, and each passenger's current status "
+                    + "(CNF with coach / berth, RAC or WL number), and whether the chart is prepared."
+                    : "In Where is my Train, find the train " + q + " (type the number or name in the search box and pick the train from the suggestions), "
+                    + "then open its live / running status for today. Do not change settings or buy anything. Then reply done with stay=true, and in summary: "
+                    + "train name and number, where it is now (the last station passed and when, or 'not started yet'), how many minutes late, and "
+                    + (st.isEmpty() ? "the expected times at the next 3 stations." : "the expected arrival and departure at " + st + " and the platform if shown.");
+            JSONObject o = new JSONObject(phoneTask(WIMT, goal, null, false, false));
+            if (o.optBoolean("ok") && "done".equals(o.optString("status")))
+                o.put("source", "Where is my Train app").put("next", "Tell him in short spoken Telugu (times and minutes late in Telugu words).");
+            return o.toString();
+        }
         String r = webSearch((pnr ? "Indian Railways PNR status " : "live running status today of Indian train ") + q
-                + ". Give current location or status, delay, expected arrival at the next stations.");
+                + (st.isEmpty() ? "" : ", expected arrival at " + st) + ". Give current location or status, delay, expected arrival at the next stations.");
         JSONObject o = new JSONObject(r);
-        if (pnr) o.put("note", "PNR status is often not public on the web; if the answer is unclear, offer to open the IRCTC or Where is my Train app.");
-        String wimt = "com.whereismytrain.android";
-        if (installed(wimt)) o.put("app_available", "Where is my Train (open_app)");
+        o.put("source", "web search, because " + why).put("next", "Say first that this is from the internet because " + why + "; then the status in short Telugu.");
+        if (pnr) o.put("note", "PNR status is often not public on the web; if the answer is unclear, say so plainly.");
         return o.toString();
     }
 
@@ -4221,14 +4244,14 @@ final class Tools {
     }
 
     /**
-     * Buses from -> to in all his bus apps one after another, TGSRTC Gamyam first (his first choice), then TGSRTC booking, AbhiBus and redBus;
-     * each app's first results come back together. Null when none of them is installed.
+     * From -> to in all his apps of a kind, one after another: buses in TGSRTC Gamyam first (his first choice), then TGSRTC booking,
+     * AbhiBus and redBus; trains in RailYatri, then ixigo trains. Each app's first results come back together. Null when none is installed.
      */
-    private String busEverywhere(boolean timings, String from, String to, java.util.Calendar d) throws Exception {
+    private String searchEverywhere(boolean train, boolean timings, String from, String to, java.util.Calendar d) throws Exception {
         List<String> pkgs = new ArrayList<>();
-        for (String p : new String[]{GAMYAM, TGSRTC_BOOK, ABHIBUS, REDBUS}) if (appByPkg(p) != null) pkgs.add(p);
+        for (String p : train ? new String[]{RAILYATRI, IXIGO_TRAINS} : new String[]{GAMYAM, TGSRTC_BOOK, ABHIBUS, REDBUS}) if (appByPkg(p) != null) pkgs.add(p);
         if (pkgs.isEmpty()) return null;
-        if (!JarvisAccessibility.enabled() || Build.VERSION.SDK_INT < 30) return searchInApp(pkgs.get(0), false, from, to, d); // opens the first one
+        if (!JarvisAccessibility.enabled() || Build.VERSION.SDK_INT < 30) return searchInApp(pkgs.get(0), train, from, to, d); // opens the first one
         JSONArray found = new JSONArray(), skipped = new JSONArray();
         long start = android.os.SystemClock.elapsedRealtime();
         boolean stopped = false;
@@ -4237,12 +4260,12 @@ final class Tools {
             if (stopped || android.os.SystemClock.elapsedRealtime() - start > 6 * 60_000L) { skipped.put(name); continue; } // ⏹ pressed, or long enough
             JSONObject o;
             try {
-                o = new JSONObject(phoneTask(pkg, searchGoal(pkg, name, false, from, to, d, true), null, false, false, false));
+                o = new JSONObject(phoneTask(pkg, searchGoal(pkg, name, train, from, to, d, true), null, false, false, false));
             } catch (Exception e) {
                 o = new JSONObject().put("ok", false).put("detail", String.valueOf(e.getMessage()));
             }
             if (o.optBoolean("stopped")) { stopped = true; skipped.put(name); continue; }
-            JSONObject r = new JSONObject().put("app", name).put("kind", pkg.equals(GAMYAM) ? "TGSRTC timings (Gamyam)" : pkg.equals(TGSRTC_BOOK) ? "TGSRTC tickets" : "private + RTC tickets");
+            JSONObject r = new JSONObject().put("app", name).put("kind", train ? "train tickets" : pkg.equals(GAMYAM) ? "TGSRTC timings (Gamyam)" : pkg.equals(TGSRTC_BOOK) ? "TGSRTC tickets" : "private + RTC tickets");
             if (o.optBoolean("ok") && "done".equals(o.optString("status"))) r.put("results", o.optString("summary"));
             else {
                 r.put("no_results", o.optString("detail", o.optString("next", o.optString("status", "could not search"))));
@@ -4256,6 +4279,8 @@ final class Tools {
         JSONObject out = ok().put("searched_in_order", found).put("from", from).put("to", to)
                 .put("date", new java.text.SimpleDateFormat("EEE d MMM", Locale.ENGLISH).format(d.getTime()));
         if (skipped.length() > 0) out.put("not_searched", skipped).put("why_not_searched", stopped ? "he pressed stop" : "the search took long; ask if he wants these too");
+        if (train) return out.put("next", "Tell him in short spoken Telugu the trains that suit (name, departure and arrival, classes with seats or waiting list), "
+                + "saying which app showed them; the same train in both apps once. To book one: phone_task in that app (he logs in to IRCTC and pays himself).").toString();
         return out.put("next", "Tell him in short spoken Telugu, Gamyam (TGSRTC) buses FIRST: the soonest few with times. Then in one or two sentences the best others "
                 + "from the booking apps (time, fare, seats), saying which app. Skip apps with no results in a few words. "
                 + (timings ? "" : "To book one: phone_task in that app (it stops at Pay; he pays himself).")).toString();
@@ -4282,12 +4307,13 @@ final class Tools {
             if (r.activityInfo.packageName.equals(GAMYAM)) { timings = true; bus = false; } // Gamyam only shows timings, it does not book
             else if (timings) { timings = false; bus = true; } // timings in a booking app: its bus list for the day
         } else if (timings || bus) { // buses: Gamyam first, then his other bus apps
-            String all = busEverywhere(timings, from.trim(), to.trim(), d);
+            String all = searchEverywhere(false, timings, from.trim(), to.trim(), d);
             if (all != null) return all;
             if (timings) return err("not_installed", "None of his bus apps (TGSRTC Gamyam, TGSRTC, AbhiBus, redBus) is installed. Tell him.");
-        } else if (train) {
-            r = appByPkg(IXIGO_TRAINS);
-            if (r == null) return err("not_installed", "The ixigo trains app is not installed. Tell him; for running status / PNR use train_status.");
+        } else if (train) { // trains: RailYatri, then ixigo trains
+            String all = searchEverywhere(true, false, from.trim(), to.trim(), d);
+            if (all != null) return all;
+            return err("not_installed", "Neither RailYatri nor ixigo trains is installed. Tell him; for running status / PNR use train_status.");
         }
         if (r == null && !train) {
             for (String p : bus ? new String[]{"IntrCity", "FlixBus"} : new String[]{"Skyscanner", "MakeMyTrip", "ixigo", "EaseMyTrip", "Trip.com"}) {
@@ -4713,7 +4739,7 @@ final class Tools {
     private static boolean ticketApp(String pkg, String label) {
         String n = (pkg + " " + label).toLowerCase(Locale.ROOT).replace(" ", "");
         return pkg.equals("com.bt.bms") || n.contains("bookmyshow") || n.contains("district") || n.contains("redbus") || n.contains("abhibus")
-                || pkg.equals(TGSRTC_BOOK) || pkg.equals(IXIGO_TRAINS);
+                || pkg.equals(TGSRTC_BOOK) || pkg.equals(IXIGO_TRAINS) || pkg.equals(RAILYATRI);
     }
 
     private static final java.util.regex.Pattern EXTRA_ASKED = java.util.regex.Pattern.compile("club|donat|insurance|క్లబ్");
