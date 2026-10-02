@@ -23,6 +23,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.SystemClock;
+import android.util.Range;
 import android.util.Size;
 
 import org.json.JSONObject;
@@ -31,13 +32,18 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
- * The guard's eyes (see {@link Guard}): the back camera at a small size, looked at about every 1.5 seconds.
- * Motion = many parts of the picture changing brightness twice in a row (one flicker is ignored). Then Jarvis
- * checks the picture with the AI he chose, and only a person, an animal or a vehicle (or anything when the AI
- * can't be asked) is sent to his Telegram, at most once in 2 minutes. It runs as a foreground service with a
- * notification and a stop button; the phone should stay on its charger.
+ * The guard's eyes (see {@link Guard}): the back camera at a small size and a low frame rate, looked at about every
+ * 1.5 seconds. Motion = many parts of the picture changing brightness twice in a row (one flicker is ignored). Then
+ * Jarvis checks the picture with the AI he chose (20 seconds at most), and a person, an animal or a vehicle (or
+ * anything, when the AI can't be asked) goes to his Telegram; after a sent photo it waits 2 minutes, after a
+ * "nothing there" 15 seconds. If the camera is taken away or fails, it tries again (and the regular check tells him
+ * if it stays stopped). A foreground service with a notification and a stop button; the phone stays on its charger.
  */
 public class GuardService extends Service {
     private static final int NOTE = 271, GRID_W = 40, GRID_H = 30;
@@ -48,9 +54,10 @@ public class GuardService extends Service {
     private ImageReader reader;
     private android.os.PowerManager.WakeLock lock;
     private int[] last;
-    private long lastLook, lastAlert, started;
-    private int moving;
-    private volatile boolean checking;
+    private long lastLook, quietUntil, started, lastBeat;
+    private int moving, retries;
+    private volatile boolean checking, destroyed, opening;
+    private final ExecutorService ai = Executors.newSingleThreadExecutor();
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -66,29 +73,34 @@ public class GuardService extends Service {
         try {
             if (android.os.Build.VERSION.SDK_INT >= 30) startForeground(NOTE, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA);
             else startForeground(NOTE, n);
-        } catch (Exception e) { // Android did not allow the camera now (e.g. started in the background): say so
+        } catch (Exception e) { // Android did not allow the camera now (e.g. restarted in the background): say so, here and on Telegram
             Reminders.notify(this, "🛡️ కాపలా మోడ్ మొదలవలేదు", "Jarvis తెరిచి సెట్టింగ్స్ → కాపలా మోడ్ లో మళ్ళీ మొదలుపెట్టండి.", NOTE + 1);
+            new Thread(() -> Guard.send(getApplicationContext(), "⚠️ Jarvis కాపలా మొదలవలేదు. ఇంట్లో ఫోన్‌లో Jarvis తెరిచి మళ్ళీ మొదలుపెట్టండి.")).start();
             Guard.stop(this);
             return START_NOT_STICKY;
         }
-        if (camera == null) open();
+        if (lock == null) {
+            android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+            lock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "jarvis:guard");
+            lock.acquire(); // held for as long as the guard runs (a 48-hour duty); let go in onDestroy
+            thread = new HandlerThread("jarvis-guard");
+            thread.start();
+            bg = new Handler(thread.getLooper());
+            started = SystemClock.elapsedRealtime();
+        }
+        if (camera == null && !opening) bg.post(this::open);
         return START_STICKY;
     }
 
     @SuppressWarnings("MissingPermission")
     private void open() {
+        if (destroyed || camera != null || opening) return;
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             Reminders.notify(this, "🛡️ కాపలా మోడ్", "కెమెరా అనుమతి లేదు. Jarvis కి కెమెరా అనుమతి ఇచ్చి మళ్ళీ మొదలుపెట్టండి.", NOTE + 1);
             Guard.stop(this);
             return;
         }
-        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
-        lock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "jarvis:guard");
-        lock.acquire(24 * 3600_000L);
-        thread = new HandlerThread("jarvis-guard");
-        thread.start();
-        bg = new Handler(thread.getLooper());
-        started = SystemClock.elapsedRealtime();
+        opening = true;
         try {
             CameraManager cm = getSystemService(CameraManager.class);
             String pick = null;
@@ -98,7 +110,8 @@ public class GuardService extends Service {
                 if (pick == null) pick = id;
             }
             if (pick == null) throw new IllegalStateException("no camera");
-            StreamConfigurationMap map = cm.getCameraCharacteristics(pick).get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            CameraCharacteristics ch = cm.getCameraCharacteristics(pick);
+            StreamConfigurationMap map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             Size best = new Size(640, 480);
             if (map != null) {
                 long want = 640L * 480, bd = Long.MAX_VALUE;
@@ -107,35 +120,50 @@ public class GuardService extends Service {
                     if (d < bd) { bd = d; best = s; }
                 }
             }
+            Range<Integer> slow = null; // the lowest frame rate the camera allows: it is looked at only every 1.5 s
+            Range<Integer>[] ranges = ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+            if (ranges != null) for (Range<Integer> r : ranges) if (slow == null || r.getUpper() < slow.getUpper()) slow = r;
+            final Range<Integer> fps = slow;
+            if (reader != null) reader.close();
             reader = ImageReader.newInstance(best.getWidth(), best.getHeight(), ImageFormat.YUV_420_888, 2);
             reader.setOnImageAvailableListener(this::onImage, bg);
             cm.openCamera(pick, new CameraDevice.StateCallback() {
                 @Override public void onOpened(CameraDevice d) {
+                    opening = false;
+                    if (destroyed) { d.close(); return; }
                     camera = d;
                     try {
                         CaptureRequest.Builder b = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
                         b.addTarget(reader.getSurface());
+                        if (fps != null) b.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fps);
                         d.createCaptureSession(Collections.singletonList(reader.getSurface()), new CameraCaptureSession.StateCallback() {
                             @Override public void onConfigured(CameraCaptureSession s) {
                                 session = s;
-                                try { s.setRepeatingRequest(b.build(), null, bg); } catch (Exception ignored) {}
+                                try { s.setRepeatingRequest(b.build(), null, bg); retries = 0; } catch (Exception e) { lost(); }
                             }
-                            @Override public void onConfigureFailed(CameraCaptureSession s) { failed(); }
+                            @Override public void onConfigureFailed(CameraCaptureSession s) { lost(); }
                         }, bg);
-                    } catch (Exception e) { failed(); }
+                    } catch (Exception e) { lost(); }
                 }
-                @Override public void onDisconnected(CameraDevice d) { d.close(); camera = null; }
-                @Override public void onError(CameraDevice d, int error) { d.close(); camera = null; failed(); }
+                @Override public void onDisconnected(CameraDevice d) { d.close(); if (camera == d) camera = null; opening = false; lost(); }
+                @Override public void onError(CameraDevice d, int error) { d.close(); if (camera == d) camera = null; opening = false; lost(); }
             }, bg);
         } catch (Exception e) {
-            failed();
+            opening = false;
+            lost();
         }
     }
 
-    private void failed() {
-        Reminders.notify(this, "🛡️ కాపలా మోడ్ ఆగిపోయింది", "కెమెరా తెరవలేకపోయాను (వేరే యాప్ వాడుతోందేమో). మళ్ళీ మొదలుపెట్టండి.", NOTE + 1);
-        Guard.send(this, "🛡️ Jarvis కాపలా ఆగిపోయింది: కెమెరా తెరవలేకపోయాను.");
-        Guard.stop(this);
+    /** The camera was taken by another app or failed: try again, waiting longer each time (30 s up to 5 min). */
+    private void lost() {
+        if (destroyed) return;
+        try { if (session != null) session.close(); } catch (Exception ignored) {}
+        try { if (camera != null) camera.close(); } catch (Exception ignored) {}
+        session = null;
+        camera = null;
+        last = null;
+        long wait = Math.min(300_000L, 30_000L * (1L << Math.min(4, retries++)));
+        if (bg != null) bg.postDelayed(this::open, wait);
     }
 
     /** Every picture comes here; one in 1.5 seconds is looked at, the rest are let go at once. */
@@ -146,6 +174,10 @@ public class GuardService extends Service {
             long now = SystemClock.elapsedRealtime();
             if (now - lastLook < 1500) return;
             lastLook = now;
+            if (now - lastBeat > 30_000) { // "the camera is working" for Settings and the watchdog
+                lastBeat = now;
+                Guard.sp(this).edit().putLong("beat", System.currentTimeMillis()).apply();
+            }
             int[] grid = luma(img);
             boolean moved = false;
             if (last != null) {
@@ -155,8 +187,8 @@ public class GuardService extends Service {
             }
             last = grid;
             moving = moved ? moving + 1 : 0;
-            if (moving < 2 || now - started < 15_000 || now - lastAlert < 120_000 || checking) return; // settle, twice in a row, 2 min apart
-            lastAlert = now;
+            if (moving < 2 || now - started < 15_000 || now < quietUntil || checking) return; // settle, twice in a row, not right after an alert
+            if (Guard.dutyOnly(this) && !onDuty()) return; // he asked for alerts only while he is away on duty
             byte[] jpeg = jpeg(img);
             checking = true;
             new Thread(() -> { try { check(jpeg); } finally { checking = false; } }, "jarvis-guard-check").start();
@@ -164,6 +196,11 @@ public class GuardService extends Service {
         } finally {
             img.close();
         }
+    }
+
+    private boolean onDuty() {
+        Duty.Roster r = Duty.load(this);
+        return !Duty.ready(r) || Duty.onDutyAt(r, java.time.LocalDateTime.now()); // no calendar on this phone: always
     }
 
     /** The average brightness of each cell of a 40 x 30 grid. */
@@ -205,35 +242,40 @@ public class GuardService extends Service {
         return out.toByteArray();
     }
 
-    /** The AI says what moved; a person, an animal or a vehicle (or when it can't tell) goes to his Telegram. */
+    /** The AI says what moved (20 s at most); a person, an animal or a vehicle (or when it can't tell) goes to his Telegram. */
     private void check(byte[] jpeg) {
         String what = "కదలిక కనిపించింది";
         boolean send = true;
-        try {
-            Prefs p = new Prefs(this);
-            if (!p.apiKey().isEmpty()) {
-                String r = Brain.oneShot(p, "You check a home security camera picture. Reply with JSON only.",
-                        "Is there a person, an animal or a vehicle in this picture? JSON: {\"alert\": true/false, \"what\": \"one short Telugu line on what is seen and where\"}. "
-                                + "Light changes, curtains, shadows, rain alone = false.",
-                        android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP), false, 300);
+        Prefs p = new Prefs(this);
+        if (!p.apiKey().isEmpty()) {
+            Future<String> f = ai.submit(() -> Brain.oneShot(p, "You check a home security camera picture. Reply with JSON only.",
+                    "Is there a person, an animal or a vehicle in this picture? JSON: {\"alert\": true/false, \"what\": \"one short Telugu line on what is seen and where\"}. "
+                            + "Light changes, curtains, shadows, rain alone = false.",
+                    android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP), false, 300));
+            try {
+                String r = f.get(20, TimeUnit.SECONDS);
                 int s = r.indexOf('{'), e = r.lastIndexOf('}');
                 if (s >= 0 && e > s) {
                     JSONObject o = new JSONObject(r.substring(s, e + 1));
                     send = o.optBoolean("alert", true);
                     if (!o.optString("what").trim().isEmpty()) what = o.optString("what").trim();
                 }
-            }
-        } catch (Exception ignored) {} // the AI could not be asked: send it anyway
-        if (!send) return;
+            } catch (Exception e) { f.cancel(true); } // slow or failed: send it anyway (better a needless photo than a missed one)
+        }
+        if (!send) { quietUntil = SystemClock.elapsedRealtime() + 15_000; return; } // nothing there: look again soon
         String time = new java.text.SimpleDateFormat("h:mm a, d MMM", Locale.ENGLISH).format(new java.util.Date());
-        Guard.sendPhoto(this, jpeg, "🚨 Jarvis కాపలా: " + what + " · " + time);
+        boolean sent = Guard.sendPhoto(this, jpeg, "🚨 Jarvis కాపలా: " + what + " · " + time);
+        quietUntil = SystemClock.elapsedRealtime() + (sent ? 120_000 : 15_000); // not sent: try with the next movement
     }
 
     @Override public void onDestroy() {
+        destroyed = true;
         try { if (session != null) session.close(); } catch (Exception ignored) {}
         try { if (camera != null) camera.close(); } catch (Exception ignored) {}
         try { if (reader != null) reader.close(); } catch (Exception ignored) {}
+        if (bg != null) bg.removeCallbacksAndMessages(null);
         if (thread != null) thread.quitSafely();
+        ai.shutdownNow();
         if (lock != null && lock.isHeld()) lock.release();
         super.onDestroy();
     }

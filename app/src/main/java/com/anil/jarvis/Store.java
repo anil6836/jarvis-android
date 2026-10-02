@@ -322,6 +322,27 @@ final class Store {
      * Old conversation lines containing all the words, newest first. Not synchronized: it only reads the
      * archive file (swapped in whole when trimmed), so saving chat is never blocked by a long search.
      */
+    /** Talks since a time that contain ANY of the words (one pass over the archive), newest first. */
+    java.util.List<JSONObject> searchArchiveAny(java.util.List<String> words, long since, int max) {
+        java.util.List<JSONObject> out = new java.util.ArrayList<>();
+        try {
+            File f = new File(dir, ARCHIVE);
+            if (!f.exists() || words.isEmpty()) return out;
+            List<String> lines = readLines(f);
+            for (int i = lines.size() - 1; i >= 0 && out.size() < max; i--) {
+                String raw = lines.get(i).toLowerCase(java.util.Locale.ROOT);
+                boolean any = false;
+                for (String w : words) if (raw.contains(w)) { any = true; break; } // cheap look before parsing
+                if (!any) continue;
+                JSONObject o;
+                try { o = new JSONObject(lines.get(i)); } catch (Exception bad) { continue; }
+                if (o.optLong("t") < since) break;
+                out.add(o);
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
     java.util.List<JSONObject> searchArchive(String query, long since, int max) {
         java.util.List<JSONObject> out = new java.util.ArrayList<>();
         String[] words = query == null ? new String[0] : query.toLowerCase(java.util.Locale.ROOT).trim().split("\\s+");

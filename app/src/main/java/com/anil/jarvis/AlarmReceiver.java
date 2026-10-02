@@ -75,9 +75,12 @@ public class AlarmReceiver extends BroadcastReceiver {
             case Automations.ACTION_FIRE: {
                 PendingResult pr = goAsync();
                 String id = i.getStringExtra("id");
+                java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(false);
+                Runnable finishOnce = () -> { if (done.compareAndSet(false, true)) pr.finish(); };
+                new Handler(Looper.getMainLooper()).postDelayed(finishOnce, 8000); // let go in time; the thread carries on
                 new Thread(() -> { // the rain check (if the rule has one) uses the internet
                     try { Automations.fired(c.getApplicationContext(), id); } catch (Exception ignored) {}
-                    new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 4000);
+                    new Handler(Looper.getMainLooper()).postDelayed(finishOnce, 3000); // time for the voice to start
                 }, "jarvis-automation").start();
                 break;
             }

@@ -34,16 +34,55 @@ final class Automations {
 
     static List<JSONObject> all(Context c) { return Notes.list(c, KEY); }
 
+    private static final String[][] DAY_WORDS = {
+            {"mon", "monday", "సోమ"}, {"tue", "tuesday", "మంగళ"}, {"wed", "wednesday", "బుధ"}, {"thu", "thursday", "గురు"},
+            {"fri", "friday", "శుక్ర"}, {"sat", "saturday", "శని"}, {"sun", "sunday", "ఆది"}};
+
+    /** His days in one form: daily, duty, home, once:YYYY-MM-DD, or a list "mon,wed"; null when it can't be understood. */
+    static String days(String said) {
+        String d = said == null ? "" : said.trim().toLowerCase(Locale.ROOT);
+        if (d.isEmpty() || d.matches("daily|every ?day|రోజూ|ప్రతిరోజు")) return "daily";
+        if (d.matches("duty.*|డ్యూటీ.*")) return "duty";
+        if (d.matches("home.*|off.*|ఇంట్లో.*|సెలవు.*")) return "home";
+        if (d.startsWith("once:")) return d.substring(5).trim().matches("\\d{4}-\\d{2}-\\d{2}") ? "once:" + d.substring(5).trim() : null;
+        if (d.matches("weekdays?|working days?")) return "mon,tue,wed,thu,fri";
+        if (d.matches("weekends?")) return "sat,sun";
+        boolean[] on = new boolean[7];
+        java.util.regex.Matcher range = java.util.regex.Pattern.compile("([a-z]{3})[a-z]*\\s*(?:-|to)\\s*([a-z]{3})").matcher(d);
+        if (range.find()) {
+            int a = idx(range.group(1)), b = idx(range.group(2));
+            if (a < 0 || b < 0) return null;
+            for (int i = a; ; i = (i + 1) % 7) { on[i] = true; if (i == b) break; }
+        }
+        for (int i = 0; i < 7; i++) for (String w : DAY_WORDS[i]) if (d.contains(w)) on[i] = true;
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < 7; i++) if (on[i]) out.append(out.length() == 0 ? "" : ",").append(DAY[i]);
+        return out.length() == 0 ? null : out.toString();
+    }
+
+    private static int idx(String three) {
+        for (int i = 0; i < 7; i++) if (DAY[i].equals(three)) return i;
+        return -1;
+    }
+
     /** Checks and saves a rule; returns an error text, or null when it is fine. */
     static String add(Context c, JSONObject r) throws Exception {
         String trig = r.optString("trigger");
         if (!trig.matches("time|before_duty|after_duty|bike_below|phone_below|rain")) return "trigger must be time, before_duty, after_duty, bike_below, phone_below or rain";
-        if (trig.equals("time") && !r.optString("at").matches("\\d{1,2}:\\d{2}")) return "time needs at = HH:mm";
+        if (trig.equals("time")) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,2}):(\\d{2})").matcher(r.optString("at"));
+            if (!m.matches() || Integer.parseInt(m.group(1)) > 23 || Integer.parseInt(m.group(2)) > 59) return "time needs at = HH:mm (00:00-23:59)";
+            r.put("at", String.format(Locale.ENGLISH, "%02d:%02d", Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))));
+        }
         if (trig.endsWith("_below") && (r.optInt("percent", -1) <= 0 || r.optInt("percent") >= 100)) return "needs percent (1-99)";
         if (r.optString("what").trim().isEmpty()) return "needs what to say or do";
-        if (trig.endsWith("_duty") && !Duty.ready(Duty.load(c))) return "his duty calendar is not set up yet (duty setup first)";
-        String days = r.optString("days", "daily").trim().toLowerCase(Locale.ROOT);
-        r.put("days", days.isEmpty() ? "daily" : days);
+        String days = days(r.optString("days", "daily"));
+        if (days == null) return "days not understood: use daily, duty, home, weekdays, day names like 'mon,thu' or 'mon-fri', or once:YYYY-MM-DD";
+        if ((trig.endsWith("_duty") || days.equals("duty") || days.equals("home")) && !Duty.ready(Duty.load(c)))
+            return "his duty calendar is not set up yet (duty setup first)";
+        if (trig.equals("time") && days.startsWith("once:") && nextTime(new JSONObject().put("at", r.optString("at")).put("days", days), LocalDateTime.now()) == null)
+            return "that date and time has already passed";
+        r.put("days", days);
         r.put("id", Notes.id("au")).put("on", true).put("made", System.currentTimeMillis()).put("last", 0L);
         Notes.add(c, KEY, r, 60);
         schedule(c);
@@ -113,13 +152,13 @@ final class Automations {
         return days.contains(DAY[w.getValue() - 1]);
     }
 
-    /** Duty days / home days, as his calendar says on that date. */
-    private static boolean dayKindOk(Context c, String days, LocalDate d) {
-        boolean duty = days.contains("duty"), home = days.contains("home");
+    /** Duty days / home days: whether he is on duty at that moment (a 48-hour duty runs from start time to start time). */
+    private static boolean dayKindOk(Context c, String days, LocalDateTime t) {
+        boolean duty = days.equals("duty"), home = days.equals("home");
         if (!duty && !home) return true;
         Duty.Roster r = Duty.load(c);
         if (!Duty.ready(r)) return false;
-        boolean on = r.isOn(Duty.ME, d);
+        boolean on = Duty.onDutyAt(r, t);
         return duty ? on : !on;
     }
 
@@ -145,15 +184,13 @@ final class Automations {
         }
     }
 
-    /** A time rule's alarm (on a worker thread: the rain check uses the internet). */
+    /** A time rule's alarm (on a worker thread: the rain check uses the internet). The next one is set first. */
     static void fired(Context c, String id) {
-        for (JSONObject r : all(c)) {
-            if (!r.optString("id").equals(id) || !r.optBoolean("on", true)) continue;
-            String d = r.optString("days");
-            if (dayKindOk(c, d, LocalDate.now())) act(c, r);
-            if (d.startsWith("once:")) { try { r.put("on", false); Notes.update(c, KEY, r); } catch (Exception ignored) {} }
-        }
+        JSONObject rule = null;
+        for (JSONObject r : all(c)) if (r.optString("id").equals(id) && r.optBoolean("on", true)) rule = r;
+        if (rule != null && rule.optString("days").startsWith("once:")) { try { rule.put("on", false); Notes.update(c, KEY, rule); } catch (Exception ignored) {} }
         schedule(c);
+        if (rule != null && dayKindOk(c, rule.optString("days"), LocalDateTime.now())) act(c, rule);
     }
 
     // ---------------------------------------------------------------- the other rules: checked about every 15 minutes
@@ -173,7 +210,8 @@ final class Automations {
                         LocalDateTime leave = d[0].minusMinutes(Duty.load(c).leaveBefore);
                         LocalDateTime from = leave.minusMinutes(r.optInt("minutes", 30));
                         long fromMs = from.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                        if (ldt.isBefore(from) || !ldt.isBefore(from.plusMinutes(25)) || r.optLong("last") >= fromMs) break;
+                        LocalDateTime until = leave.isAfter(from.plusMinutes(25)) ? leave : from.plusMinutes(25);
+                        if (ldt.isBefore(from) || !ldt.isBefore(until) || r.optLong("last") >= fromMs) break; // a late check still catches it before he leaves
                         mark(c, r, now);
                         act(c, r);
                         break;
@@ -181,7 +219,7 @@ final class Automations {
                     case "after_duty": {
                         long since = Duty.minutesSinceDuty(c);
                         int m = r.optInt("minutes", 0);
-                        if (since < m || since > m + 30 || now - r.optLong("last") < 12 * 3600_000L) break;
+                        if (since < m || now - r.optLong("last") < 12 * 3600_000L) break; // up to 8 hours after the duty: a late check still counts
                         mark(c, r, now);
                         act(c, r);
                         break;
@@ -209,7 +247,7 @@ final class Automations {
                         if (now - r.optLong("checked") < 55 * 60_000L) break; // the forecast once an hour
                         r.put("checked", now);
                         Notes.update(c, KEY, r);
-                        if (!rainSoon(c, r.optInt("hours", 2))) break;
+                        if (!Boolean.TRUE.equals(rainSoon(c, r.optInt("hours", 2)))) break; // unknown: tried again next hour
                         mark(c, r, now);
                         act(c, r);
                         break;
@@ -220,30 +258,67 @@ final class Automations {
         }
     }
 
+    /** Marks the rule as done for now, on a fresh copy (a pause or change made meanwhile stays). */
     private static void mark(Context c, JSONObject r, long t) throws Exception {
+        for (JSONObject fresh : all(c)) {
+            if (!fresh.optString("id").equals(r.optString("id"))) continue;
+            fresh.put("last", t);
+            Notes.update(c, KEY, fresh);
+        }
         r.put("last", t);
-        Notes.update(c, KEY, r);
     }
 
-    /** Rain (60% or more, or 1 mm) where he is in the next hours; false when it can't be told. */
-    private static boolean rainSoon(Context c, int hours) {
+    /** Rain (60% or more, or 1 mm) in the next hours where he is (or at home); null when it can't be told. */
+    private static Boolean rainSoon(Context c, int hours) {
         Location l = Tools.lastLocation(c);
-        if (l == null) return false;
-        double[] w = Duty.rain(l.getLatitude(), l.getLongitude(), LocalDateTime.now(), LocalDateTime.now().plusHours(Math.max(1, hours)));
-        return w != null && (w[0] >= 60 || w[1] >= 1);
+        double lat, lon;
+        if (l != null && System.currentTimeMillis() - l.getTime() < 6 * 3600_000L) { lat = l.getLatitude(); lon = l.getLongitude(); }
+        else {
+            JSONObject home = Duty.placeLike(c, Duty.HOME_PLACE);
+            if (home == null || !home.has("lat")) return null;
+            lat = home.optDouble("lat");
+            lon = home.optDouble("lon");
+        }
+        double[] w = Duty.rain(lat, lon, LocalDateTime.now(), LocalDateTime.now().plusHours(Math.max(1, hours)));
+        if (w == null) return null;
+        return w[0] >= 60 || w[1] >= 1;
     }
 
-    /** Says it, or has Jarvis do it; with if_rain, only when rain is expected in the next 3 hours. */
+    /** Asleep, on a call, Do Not Disturb, resting after duty: a notification only, nothing spoken or opened. */
+    private static boolean hush(Context c, Prefs p) {
+        try {
+            android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+            boolean dnd = nm != null && nm.getCurrentInterruptionFilter() > android.app.NotificationManager.INTERRUPTION_FILTER_ALL;
+            return p.night() || dnd || CallControl.busyWithCall() || Rest.resting(c);
+        } catch (Throwable e) { return false; }
+    }
+
+    /**
+     * Says it, or has Jarvis do it; with if_rain, only when rain is expected in the next 3 hours. When he should not be
+     * disturbed, or the panel can't open, a "do" rule waits in a notification that runs it when he taps it.
+     */
     private static void act(Context c, JSONObject r) {
-        if (r.optBoolean("if_rain") && !rainSoon(c, 3)) return;
+        if (r.optBoolean("if_rain") && !Boolean.TRUE.equals(rainSoon(c, 3))) return;
         String what = r.optString("what");
         Prefs p = new Prefs(c);
+        boolean quiet = hush(c, p);
         if ("do".equals(r.optString("action"))) {
-            Proactive.run(c, "(" + p.name() + " పెట్టిన ఆటోమేషన్) " + what);
+            String cmd = "(" + p.name() + " పెట్టిన ఆటోమేషన్) " + what;
+            if (!quiet && android.provider.Settings.canDrawOverlays(c) && !MainActivity.busyTalking()) { Proactive.run(c, cmd); return; }
+            try {
+                Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        .putExtra(MainActivity.EXTRA_ASK, cmd).putExtra(MainActivity.EXTRA_LABEL, "⚙️ " + what);
+                PendingIntent pi = PendingIntent.getActivity(c, ("aud" + r.optString("id")).hashCode(), open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+                nm.createNotificationChannel(new android.app.NotificationChannel("jarvis_auto", "Jarvis ఆటోమేషన్లు", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+                nm.notify(("au" + r.optString("id")).hashCode(), new android.app.Notification.Builder(c, "jarvis_auto")
+                        .setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("⚙️ " + what).setContentText("నొక్కితే Jarvis చేస్తాడు")
+                        .setContentIntent(pi).setAutoCancel(true).build());
+            } catch (Exception ignored) {}
             return;
         }
         Reminders.notify(c, "⚙️ Jarvis ఆటోమేషన్", what, ("au" + r.optString("id")).hashCode());
-        if (!p.night()) Announcer.say(c, p.name() + ", " + what);
+        if (!quiet) Announcer.say(c, p.name() + ", " + what);
     }
 
     static JSONArray listJson(Context c) throws Exception {

@@ -81,6 +81,8 @@ public class Proactive extends BroadcastReceiver {
 
     static void tick(Context c) {
         pruneSeen(c);
+        try { Automations.tick(c); } catch (Throwable ignored) {} // his own rules first (before the slow fetches), even with Jarvis's own ideas off
+        try { Guard.watch(c); } catch (Throwable ignored) {}       // on the phone at home: tell him if the guard stopped
         Prefs p = new Prefs(c);
         Health.recordStepBaseline(c);
         JarvisWidget.refresh(c);
@@ -103,7 +105,6 @@ public class Proactive extends BroadcastReceiver {
         try { Prices.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { WebLook.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Everyday.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {} // storm check fetches too
-        try { Automations.tick(c); } catch (Throwable ignored) {} // his own rules run even with Jarvis's own ideas off
         if (!p.proactive()) return;
         boolean quiet = hush;
         Calendar now = Calendar.getInstance();
@@ -185,7 +186,8 @@ public class Proactive extends BroadcastReceiver {
     }
 
     /** Speaks up. With a question, opens the panel so Anil can answer by voice. */
-    static void say(Context c, String text, String question, String context) {
+    /** Returns true when the panel opened (so his spoken answer can be taken with the suggestion), false when only told. */
+    static boolean say(Context c, String text, String question, String context) {
         if (question != null && android.provider.Settings.canDrawOverlays(c) && !MainActivity.busyTalking()) {
             try {
                 c.startActivity(new Intent(c, SheetActivity.class)
@@ -193,11 +195,12 @@ public class Proactive extends BroadcastReceiver {
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, question)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE_CONTEXT, context == null ? "" : context)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
-                return;
+                return true;
             } catch (Exception ignored) {}
         }
         Reminders.notify(c, "Jarvis", text + (question == null ? "" : " " + question), text.hashCode());
         Announcer.say(c, text + (question == null ? "" : " " + question));
+        return false;
     }
 
     // ---------------------------------------------------------------- meetings

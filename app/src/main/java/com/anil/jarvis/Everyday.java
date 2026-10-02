@@ -49,6 +49,22 @@ final class Everyday {
         if (o == null) { o = new JSONObject().put("thing", thing.trim()); l.add(o); }
         else if (!o.optString("place").isEmpty()) o.put("before", o.optString("place")); // where it was until now
         o.put("place", place.trim()).put("t", System.currentTimeMillis());
+        o.remove("src"); // his own word now (a camera scan will not change it)
+        Notes.save(c, ITEMS, l, 300);
+        return o;
+    }
+
+    /**
+     * Seen by the camera (room scan): kept as "seen", but never over a place he told himself (his word wins over a guess).
+     * Null when his own entry for that thing is kept.
+     */
+    static synchronized JSONObject putSeen(Context c, String thing, String place) throws Exception {
+        if (key(thing).isEmpty() || place == null || place.trim().isEmpty()) return null;
+        List<JSONObject> l = Notes.list(c, ITEMS);
+        JSONObject o = findItem(l, thing);
+        if (o != null && !"scan".equals(o.optString("src"))) return null;
+        if (o == null) { o = new JSONObject().put("thing", thing.trim()); l.add(o); }
+        o.put("place", place.trim()).put("t", System.currentTimeMillis()).put("src", "scan");
         Notes.save(c, ITEMS, l, 300);
         return o;
     }

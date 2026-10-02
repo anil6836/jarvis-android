@@ -509,31 +509,41 @@ public class SettingsActivity extends Activity {
         TextView tgState = Ui.text(this, "", 14, Ui.MUTED);
         tgState.setPadding(0, Ui.dp(this, 6), 0, 0);
         box.addView(tgState);
-        Runnable guardState = () -> tgState.setText((Guard.chat(this).isEmpty() ? "Telegram చాట్: ఇంకా లేదు" : "Telegram చాట్: సిద్ధం ✓")
-                + "   ·   కాపలా: " + (Guard.running(this) ? "ఆన్ 🛡️" : "ఆఫ్"));
+        Runnable guardState = () -> {
+            String chat = Guard.chat(this).isEmpty() ? "Telegram చాట్: ఇంకా లేదు"
+                    : "Telegram చాట్: " + Guard.sp(this).getString("tg_name", "సిద్ధం") + " ✓";
+            String state = !Guard.running(this) ? "ఆఫ్" : Guard.watching(this) ? "ఆన్, చూస్తోంది 🛡️" : "ఆన్ అని ఉంది కానీ కెమెరా పనిచేయడం లేదు (మళ్ళీ మొదలుపెట్టండి)";
+            tgState.setText(chat + "\nకాపలా: " + state + (Guard.dutyOnly(this) ? "\nడ్యూటీ రోజుల్లో మాత్రమే అలర్ట్" : ""));
+        };
         guardState.run();
         java.util.function.Consumer<Runnable> withToken = then -> {
-            Guard.sp(this).edit().putString("tg_token", tgToken.getText().toString().trim()).apply();
+            Guard.setToken(this, tgToken.getText().toString());
             new Thread(() -> { then.run(); runOnUiThread(guardState); }).start();
         };
         button("Telegram చాట్ కనుక్కో", v -> withToken.accept(() -> {
             String r = Guard.findChat(this);
-            runOnUiThread(() -> Toast.makeText(this, r.startsWith("!") ? r.substring(1) : "దొరికింది ✓", Toast.LENGTH_LONG).show());
+            runOnUiThread(() -> Toast.makeText(this, r.startsWith("!") ? r.substring(1) : "దొరికింది: " + r + " ✓ (ఇది మీరేనా చూసుకోండి)", Toast.LENGTH_LONG).show());
         }));
         button("టెస్ట్ మెసేజ్ పంపు", v -> withToken.accept(() -> {
             boolean ok = Guard.send(this, "✅ Jarvis కాపలా మోడ్ టెస్ట్: ఈ మెసేజ్ వచ్చింది అంటే అంతా సిద్ధం.");
             runOnUiThread(() -> Toast.makeText(this, ok ? "పంపాను ✓ Telegram చూడండి" : "పంపలేకపోయాను: token / చాట్ చూడండి", Toast.LENGTH_LONG).show());
         }));
         button("▶ కాపలా మొదలుపెట్టు / ⏹ ఆపు", v -> {
-            Guard.sp(this).edit().putString("tg_token", tgToken.getText().toString().trim()).apply();
-            if (Guard.running(this)) Guard.stop(this);
+            Guard.setToken(this, tgToken.getText().toString());
+            if (Guard.running(this) && Guard.watching(this)) Guard.stop(this);
             else if (Guard.token(this).isEmpty() || Guard.chat(this).isEmpty())
                 Toast.makeText(this, "ముందు token పెట్టి 'Telegram చాట్ కనుక్కో' నొక్కండి", Toast.LENGTH_LONG).show();
             else if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
                 requestPermissions(new String[]{android.Manifest.permission.CAMERA}, 61);
             else { Guard.start(this); Toast.makeText(this, "🛡️ కాపలా మొదలైంది", Toast.LENGTH_SHORT).show(); }
+            tgState.postDelayed(guardState, 4000);
             guardState.run();
         });
+        button("డ్యూటీ రోజుల్లో మాత్రమే అలర్ట్: ఆన్ / ఆఫ్", v -> {
+            Guard.sp(this).edit().putBoolean("duty_only", !Guard.dutyOnly(this)).apply();
+            guardState.run();
+        });
+        note("'డ్యూటీ రోజుల్లో మాత్రమే' కి ఈ ఫోన్‌లో కూడా డ్యూటీ క్యాలెండర్ సెట్ చేయాలి; లేకపోతే ఎప్పుడూ అలర్ట్ పంపుతుంది. ఇంట్లో వాళ్లు ఉన్నప్పుడు వాళ్ల ఫోటోలు కూడా వెళ్తాయి, అవసరం లేనప్పుడు ఆపండి.");
 
         section("అత్యవసరం (SOS)");
         note("\"Jarvis help\" / \"కాపాడు\" అంటే 5 సెకన్ల తర్వాత (మధ్యలో ఆపొచ్చు) మీ లొకేషన్ వీళ్లకి SMS వెళ్తుంది, మొదటివాళ్లకి కాల్ వెళ్తుంది.");

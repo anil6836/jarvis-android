@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older: the guard's Telegram bot token stays on the phone (not in backups). -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="jarvis_guard.xml" />
+</full-backup-content>

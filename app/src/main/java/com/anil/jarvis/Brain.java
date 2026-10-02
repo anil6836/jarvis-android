@@ -97,7 +97,7 @@ final class Brain {
         } finally {
             Http.LONG_WAIT.set(false);
         }
-        try { reply = crossCheck(text, reply, status); } catch (Exception ignored) {} // never lose the answer over the check
+        try { reply = crossCheck(history, text, reply, status); } catch (Exception ignored) {} // never lose the answer over the check
         // the feeling tag ([happy], [sad]...) is for the voice only: take it off the text
         return feel ? Emotion.strip(reply) : reply;
     }
@@ -111,30 +111,55 @@ final class Brain {
             + "కోర్ట్|\\bcourt\\b|కేసు|\\blegal\\b|లీగల్|చట్టం|రిజిస్ట్రేషన్|భూమి|స్థలం|\\bproperty\\b|ఆస్తి)");
 
     /** A second AI he chose reads the question and the answer: agrees (a mark), or says what it would correct. */
-    private String crossCheck(String question, String reply, Status status) throws Exception {
+    private static final java.util.concurrent.ExecutorService CHECKER = java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    private String crossCheck(List<JSONObject> history, String question, String reply, Status status) throws Exception {
         boolean asked = question != null && CHECK_WORDS.matcher(question).find();
         boolean weighty = !asked && prefs.sp.getBoolean("check_auto", true) && question != null && WEIGHTY.matcher(question).find();
         if (!asked && !weighty) return reply;
         if (!asked && Emotion.strip(reply).length() < 40) return reply; // a short question back to him, nothing to check yet
+        if (status != null && status.cancelled()) return reply;
+        String q = question, plain = Emotion.strip(reply);
+        if (asked && CHECK_WORDS.matcher(question).replaceAll("").replaceAll("[\\s.,!?]+", " ").trim().length() < 30) {
+            // only "క్రాస్ చెక్ చేయి": the answer to check is the one before, to the question before
+            String lastQ = null, lastA = null;
+            for (int i = history == null ? -1 : history.size() - 1; i >= 0 && (lastQ == null || lastA == null); i--) {
+                JSONObject h = history.get(i);
+                String role = h.optString("role"), content = h.optString("content", "").trim();
+                if (content.isEmpty()) continue;
+                if ("assistant".equals(role) && lastA == null && lastQ == null) lastA = content;
+                else if ("user".equals(role) && lastA != null && lastQ == null) lastQ = content;
+            }
+            if (lastQ == null || lastA == null) return reply + "\n(చెక్ చేయడానికి ముందు అడిగిన ప్రశ్న, జవాబు కనిపించలేదు.)";
+            q = lastQ;
+            plain = Emotion.strip(lastA);
+        }
         Prefs cp = Prefs.checker(prefs.app);
         if (cp == null || cp.apiKey().isEmpty()) {
             return asked ? reply + "\n(రెండో AI ఇంకా ఎంచుకోలేదు లేదా దాని key లేదు: సెట్టింగ్స్ → Jarvis మెదడు → క్రాస్ చెక్.)" : reply;
         }
         if (status != null) status.update("రెండో AI తో చెక్ చేస్తున్నాను…");
-        String plain = Emotion.strip(reply);
+        final String fq = q, fa = plain;
         String verdict;
-        try {
-            verdict = oneShot(cp, "You check another assistant's answer for factual mistakes. Be strict about facts, numbers, medicines, money and law; "
+        java.util.concurrent.Future<String> job = CHECKER.submit(() -> oneShot(cp, "You check another assistant's answer for factual mistakes. Be strict about facts, numbers, medicines, money and law; "
                             + "ignore style and wording. If it rests on his own data you cannot see (his messages, readings, bills, tool results), judge only the general facts "
                             + "and advice in it, and AGREE when nothing general is wrong. Reply with exactly one line: 'AGREE' if it is correct and safe, or 'DISAGREE: <the correction in one short "
                             + "Telugu sentence>'.",
-                    "Question (from Anil, in Telugu): " + question + "\nAnswer given: " + plain, null, prefs.webSearch(), 400).trim();
-        } catch (Exception e) {
-            String why = e instanceof Http.ApiError ? Models.explain(cp, (Http.ApiError) e) : "నెట్ / సమయం సమస్య";
+                    "Question (from Anil, in Telugu): " + fq + "\nAnswer given: " + fa, null, prefs.webSearch(), 400).trim());
+        try {
+            verdict = job.get(25, java.util.concurrent.TimeUnit.SECONDS); // the finished answer never waits long for the check
+        } catch (java.util.concurrent.TimeoutException e) {
+            job.cancel(true);
+            return asked ? reply + "\n(రెండో AI సమయానికి జవాబు ఇవ్వలేదు.)" : reply;
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable t = e.getCause();
+            String why = t instanceof Http.ApiError ? Models.explain(cp, (Http.ApiError) t) : "నెట్ / సమయం సమస్య";
             return asked ? reply + "\n(రెండో AI చెక్ ఇప్పుడు కుదరలేదు: " + why + ")" : reply;
         }
-        if (verdict.toUpperCase(Locale.ROOT).startsWith("AGREE")) return reply + " (రెండో AI కూడా ఇదే అంది ✓)";
-        String fix = verdict.replaceFirst("(?i)^\\s*DISAGREE\\s*:?\\s*", "").trim();
+        String v = verdict.replaceAll("[*_`#>]", "").trim(); // markdown off
+        if (v.toUpperCase(Locale.ROOT).startsWith("AGREE")) return reply + " (రెండో AI కూడా ఇదే అంది ✓)";
+        if (!v.toUpperCase(Locale.ROOT).startsWith("DISAGREE")) return asked ? reply + "\n(రెండో AI స్పష్టంగా చెప్పలేదు.)" : reply;
+        String fix = v.replaceFirst("(?i)^\\s*DISAGREE\\s*:?\\s*", "").trim();
         if (fix.isEmpty()) return reply;
         return reply + "\nకానీ రెండో AI వేరేలా అంటోంది: " + fix + " ముఖ్యమైన నిర్ణయం ముందు నిపుణుడిని ఒకసారి అడగండి.";
     }

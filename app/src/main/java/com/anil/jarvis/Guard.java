@@ -33,6 +33,29 @@ final class Guard {
 
     static boolean running(Context c) { return sp(c).getBoolean("on", false); }
 
+    /** The camera gave a picture in the last 2 minutes: the guard is really watching (not just switched on). */
+    static boolean watching(Context c) { return running(c) && System.currentTimeMillis() - sp(c).getLong("beat", 0) < 120_000L; }
+
+    /** Only while he is on duty (by this phone's duty calendar, when it has one). */
+    static boolean dutyOnly(Context c) { return sp(c).getBoolean("duty_only", false); }
+
+    /** From the regular check on the phone at home: the guard is on but its camera stopped -> tell him once. */
+    static void watch(Context c) {
+        if (!running(c)) return;
+        long beat = sp(c).getLong("beat", 0), told = sp(c).getLong("told_stop", 0);
+        if (System.currentTimeMillis() - beat < 5 * 60_000L) { if (told != 0) sp(c).edit().putLong("told_stop", 0).apply(); return; }
+        if (told != 0) return;
+        sp(c).edit().putLong("told_stop", System.currentTimeMillis()).apply();
+        Reminders.notify(c, "🛡️ కాపలా ఆగిపోయింది", "కెమెరా పనిచేయడం లేదు. Jarvis తెరిచి సెట్టింగ్స్ → కాపలా మోడ్ లో మళ్ళీ మొదలుపెట్టండి.", 273);
+        send(c, "⚠️ Jarvis కాపలా ఆగిపోయింది: ఇంట్లో ఫోన్ కెమెరా పనిచేయడం లేదు. ఆ ఫోన్‌లో మళ్ళీ మొదలుపెట్టండి.");
+    }
+
+    /** A new bot token: the old chat no longer belongs to it. */
+    static void setToken(Context c, String token) {
+        String t = token == null ? "" : token.trim();
+        if (!t.equals(token(c))) sp(c).edit().putString("tg_token", t).remove("tg_chat").remove("tg_name").apply();
+    }
+
     static void start(Context c) {
         sp(c).edit().putBoolean("on", true).apply();
         Intent i = new Intent(c, GuardService.class);
@@ -44,7 +67,7 @@ final class Guard {
         c.stopService(new Intent(c, GuardService.class));
     }
 
-    /** His chat with the bot, from the last message he sent it ("hi"): the chat id, or an error text starting with "!". */
+    /** His private chat with the bot, from the last message sent to it ("hi"): the name on it, or an error text starting with "!". */
     static String findChat(Context c) {
         String t = token(c);
         if (t.isEmpty()) return "!Bot token పెట్టలేదు";
@@ -54,10 +77,11 @@ final class Guard {
             JSONArray a = r.optJSONArray("result");
             for (int i = a == null ? -1 : a.length() - 1; i >= 0; i--) {
                 JSONObject m = a.getJSONObject(i).optJSONObject("message");
-                if (m == null || m.optJSONObject("chat") == null) continue;
-                String id = String.valueOf(m.getJSONObject("chat").optLong("id"));
-                sp(c).edit().putString("tg_chat", id).apply();
-                return id;
+                JSONObject ch = m == null ? null : m.optJSONObject("chat");
+                if (ch == null || !"private".equals(ch.optString("type"))) continue; // never a group
+                String name = (ch.optString("first_name") + " " + ch.optString("last_name")).trim();
+                sp(c).edit().putString("tg_chat", String.valueOf(ch.optLong("id"))).putString("tg_name", name).apply();
+                return name.isEmpty() ? "మీ చాట్" : name;
             }
             return "!Telegram లో మీ bot కి ఒక మెసేజ్ (hi) పంపి మళ్ళీ నొక్కండి";
         } catch (Exception e) {
@@ -87,6 +111,10 @@ final class Guard {
 
     /** A photo with a caption to his Telegram (multipart upload); false when it did not go. */
     static boolean sendPhoto(Context c, byte[] jpeg, String caption) {
+        return sendPhotoOnce(c, jpeg, caption) || sendPhotoOnce(c, jpeg, caption); // one more try on a bad connection
+    }
+
+    private static boolean sendPhotoOnce(Context c, byte[] jpeg, String caption) {
         String t = token(c), id = chat(c);
         if (t.isEmpty() || id.isEmpty()) return false;
         String b = "----jarvis" + System.currentTimeMillis();

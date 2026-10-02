@@ -38,10 +38,11 @@ final class Patterns {
         String today = LocalDate.now().toString();
         if (today.equals(sp(c).getString("looked", ""))) return;
         sp(c).edit().putString("looked", today).apply();
+        if (!android.provider.Settings.canDrawOverlays(c) || MainActivity.busyTalking()) return; // his "yes" can only be taken in the panel
         String[] offer = callRoutine(c);
         if (offer == null) return;
-        sp(c).edit().putBoolean("told_" + offer[0], true).apply();
-        Proactive.say(c, p.name() + ", " + offer[1], offer[2], " [suggestion: " + offer[3] + " if he says yes]");
+        if (Proactive.say(c, p.name() + ", " + offer[1], offer[2], " [suggestion: " + offer[3] + " if he says yes]"))
+            sp(c).edit().putBoolean("told_" + offer[0], true).apply(); // asked once; never again, yes or no
     }
 
     private static String last10(String n) {
@@ -85,8 +86,9 @@ final class Patterns {
                     if (Math.abs(x[1] - anchor[1]) > 30) continue;
                     if (!allDays.add(x[0])) continue; // one call a day counts
                     mins.add(x[1]);
-                    if (duty) {
-                        if (r.isOn(Duty.ME, LocalDate.ofEpochDay(x[0]))) dutyDays.add(x[0]); else homeDays.add(x[0]);
+                    if (duty) { // on duty at the moment of the call (a 48-hour duty runs from start time to start time)
+                        LocalDateTime when = LocalDate.ofEpochDay(x[0]).atStartOfDay().plusMinutes(x[1]);
+                        if (Duty.onDutyAt(r, when)) dutyDays.add(x[0]); else homeDays.add(x[0]);
                     }
                 }
                 String kind;
@@ -96,9 +98,13 @@ final class Patterns {
                 else continue;
                 Collections.sort(mins);
                 long med = mins.get(mins.size() / 2), at = Math.max(0, (med / 5) * 5 - 5); // five minutes before, on a round time
-                String key = e.getKey() + "_" + kind + "_" + (med / 60);
+                String key = e.getKey() + "_" + (med / 240); // the person and a 4-hour part of the day (9:58 and 10:03 are the same habit)
                 if (sp(c).getBoolean("told_" + key, false)) continue;
                 String who = names.get(e.getKey());
+                boolean have = false; // a rule for this person already exists (his own, or an earlier yes)
+                for (org.json.JSONObject a : Automations.all(c))
+                    if ((a.optString("what") + " " + a.optString("text")).toLowerCase(Locale.ROOT).contains(who.toLowerCase(Locale.ROOT))) have = true;
+                if (have) continue;
                 String hhmm = String.format(Locale.ENGLISH, "%02d:%02d", at / 60, at % 60), when = String.format(Locale.ENGLISH, "%d:%02d", med / 60, med % 60);
                 String days = kind.equals("duty") ? "డ్యూటీ రోజుల్లో" : kind.equals("home") ? "ఇంట్లో ఉండే రోజుల్లో" : "రోజూ";
                 return new String[]{key,
