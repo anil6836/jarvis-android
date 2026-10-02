@@ -189,10 +189,148 @@ final class Bike {
                 + "a pillion, hills, headwind and speeds over 60 km/h cut it. Suggest charging below 20%.");
     }
 
+    // ---------------------------------------------------------------- charging now: when it will be full
+
+    static final String ACTION_CHARGE_DONE = "com.anil.jarvis.BIKE_CHARGE_DONE";
+    private static final int REQ_CHARGE = 251, NOTE_CHARGE = 252;
+
+    /**
+     * Hours from a% to b% by Matter's figures for the Aera 5000+ (home charger 0-80% in 5 h, 0-100% in 6 h; fast charger
+     * 0-80% in 1.5 h, 0-100% in 2 h), times how his own charges went so far.
+     */
+    static double hoursFor(Context c, int from, int to, boolean fast) {
+        double below = fast ? 80 / 1.5 : 16, above = fast ? 40 : 20; // % per hour under and over 80%
+        double h = 0;
+        if (from < 80) h += (Math.min(to, 80) - from) / below;
+        if (to > 80) h += (to - Math.max(from, 80)) / above;
+        return h * factor(c, fast);
+    }
+
+    private static float factor(Context c, boolean fast) { return sp(c).getFloat(fast ? "fast_factor" : "home_factor", 1f); }
+
+    /** The charge he started, if it is less than a day old: {from, to, fast, t, eta, logged}. */
+    static JSONObject charging(Context c) {
+        try {
+            String s = sp(c).getString("charging", "");
+            if (s.isEmpty()) return null;
+            JSONObject o = new JSONObject(s);
+            return System.currentTimeMillis() - o.optLong("t") < 24 * 3600_000L ? o : null;
+        } catch (Exception e) { return null; }
+    }
+
+    private static PendingIntent doneIntent(Context c) {
+        return PendingIntent.getBroadcast(c, REQ_CHARGE, new Intent(c, AlarmReceiver.class).setAction(ACTION_CHARGE_DONE),
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    /** He plugged in at pct%: when it reaches target% (100, or 80 to stop there), with a word at that time. */
+    static synchronized JSONObject chargeStart(Context c, int pct, int target, boolean fast) throws Exception {
+        if (pct < 0 || pct > 99) return new JSONObject().put("ok", false).put("error", "Ask him the battery % shown on the bike now (0-99).");
+        int to = target <= 0 ? 100 : Math.max(pct + 1, Math.min(100, target));
+        double h = hoursFor(c, pct, to, fast);
+        long now = System.currentTimeMillis(), eta = now + (long) (h * 3600_000);
+        sp(c).edit().putString("charging", new JSONObject().put("from", pct).put("to", to).put("fast", fast).put("t", now).put("eta", eta).toString()).apply();
+        armDone(c, eta);
+        int mins = (int) Math.round(h * 60);
+        return new JSONObject().put("ok", true).put("from", pct + "%").put("until", to + "%").put("charger", fast ? "fast charger" : "home charger")
+                .put("ready_at", new SimpleDateFormat("h:mm a", Locale.ENGLISH).format(new Date(eta)))
+                .put("takes", (mins / 60) + " h " + (mins % 60) + " min")
+                .put("based_on", factor(c, fast) == 1f ? "Matter's figures (0-80% in 5 h at home); it learns from his charges"
+                        : "his own past charges")
+                .put("next", "Tell him the time in Telugu. Jarvis reminds him then and writes the charge down"
+                        + (to < 100 ? "; " + to + "% is kinder to the battery for daily use." : "."));
+    }
+
+    private static void armDone(Context c, long eta) {
+        android.app.AlarmManager am = c.getSystemService(android.app.AlarmManager.class);
+        if (am == null) return;
+        try {
+            if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, eta, doneIntent(c));
+            else am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, eta, doneIntent(c));
+        } catch (Exception e) {
+            am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, eta, doneIntent(c));
+        }
+    }
+
+    /** After a restart the phone forgets alarms: the charge's time comes back (or, if it passed, it is said now). */
+    static void rearm(Context c) {
+        JSONObject s = charging(c);
+        if (s == null || s.optBoolean("logged")) return;
+        if (s.optLong("eta") > System.currentTimeMillis()) armDone(c, s.optLong("eta"));
+        else chargeDone(c);
+    }
+
+    static synchronized JSONObject chargeCancel(Context c) throws Exception {
+        JSONObject s = charging(c);
+        boolean had = s != null;
+        if (s != null && s.optBoolean("logged")) dropEstimate(c, s.optInt("from")); // he unplugged it: the guess written for it goes too
+        sp(c).edit().remove("charging").apply();
+        android.app.AlarmManager am = c.getSystemService(android.app.AlarmManager.class);
+        if (am != null) am.cancel(doneIntent(c));
+        return new JSONObject().put("ok", true).put("cancelled", had);
+    }
+
+    /** The last charge entry, if it is Jarvis's estimate for a charge from this %: removed. */
+    private static synchronized boolean dropEstimate(Context c, int from) {
+        JSONArray a = arr(sp(c), "charges");
+        JSONObject last = a.length() == 0 ? null : a.optJSONObject(a.length() - 1);
+        if (last == null || !last.optBoolean("estimate") || last.optInt("from") != from) return false;
+        a.remove(a.length() - 1);
+        sp(c).edit().putString("charges", a.toString()).apply();
+        return true;
+    }
+
+    /** The time it should be full: a word, and the charge written down (he can correct the %). */
+    static void chargeDone(Context c) {
+        int from, to;
+        synchronized (Bike.class) { // read and mark in one go: a "done" or "cancel" from him at the same moment wins cleanly
+            JSONObject s = charging(c);
+            if (s == null || s.optBoolean("logged")) return;
+            from = s.optInt("from");
+            to = s.optInt("to");
+            try {
+                addCharge(c, from, to, 0, false, true);
+                s.put("logged", true);
+                sp(c).edit().putString("charging", s.toString()).apply();
+            } catch (Exception ignored) {}
+        }
+        Prefs p = new Prefs(c);
+        String text = "బైక్ ఛార్జ్ దాదాపు " + to + "% అయి ఉంటుంది" + (to < 100 ? ", ఛార్జర్ తీసేయండి" : "") + ". "
+                + from + "% నుంచి " + to + "% అని రాసుకున్నాను; బైక్‌లో వేరే % చూపిస్తే చెప్పండి, సరిచేస్తాను.";
+        Reminders.notify(c, "🔋 బైక్ ఛార్జ్ " + to + "%", text, NOTE_CHARGE);
+        int hour = java.time.LocalTime.now().getHour();
+        if (!p.night() && hour >= 6 && hour < 23) Announcer.say(c, p.name() + ", " + text);
+    }
+
     /** He charged: battery % before and after, and rupees paid (0 = at home: priced by his unit rate). */
     static JSONObject addCharge(Context c, int fromPct, int toPct, double paid) throws Exception {
+        return addCharge(c, fromPct, toPct, paid, false, false);
+    }
+
+    /**
+     * justNow: he says it finished just now, so the time since he plugged in shows his charger's real speed.
+     * estimate: Jarvis writing it down at the expected time (replaced if he then says the real %).
+     */
+    static synchronized JSONObject addCharge(Context c, int fromPct, int toPct, double paid, boolean justNow, boolean estimate) throws Exception {
+        JSONObject now = estimate ? null : charging(c);
+        if (fromPct < 0 && now != null) fromPct = now.optInt("from"); // "ఛార్జింగ్ అయిపోయింది, 100%": from the % he plugged in at
         if (fromPct < 0 || toPct > 100 || toPct <= fromPct)
             return new JSONObject().put("ok", false).put("error", "Ask him the battery % before and after charging (e.g. 25 to 100).");
+        if (now != null && justNow && fromPct == now.optInt("from")) { // learn his charger's speed (clamped, half old, half new)
+            double hours = (System.currentTimeMillis() - now.optLong("t")) / 3600_000.0;
+            boolean fast = now.optBoolean("fast");
+            double model = hoursFor(c, fromPct, toPct, fast) / factor(c, fast);
+            // only a believable "just now": far off the figures (said hours later, e.g. in the morning) teaches nothing
+            if (hours >= 0.25 && model > 0.1 && hours / model >= 0.6 && hours / model <= 1.6) {
+                float f = (float) Math.max(0.5, Math.min(2.5, 0.5 * factor(c, fast) + 0.5 * hours / model));
+                sp(c).edit().putFloat(fast ? "fast_factor" : "home_factor", f).apply();
+            }
+        }
+        if (now != null) { // this charge is told: no more reminder for it
+            sp(c).edit().remove("charging").apply();
+            android.app.AlarmManager am = c.getSystemService(android.app.AlarmManager.class);
+            if (am != null) am.cancel(doneIntent(c));
+        }
         Prefs p = new Prefs(c);
         int added = toPct - fromPct;
         double kwh = added / 100.0 * batteryKwh(p) / CHARGER_EFFICIENCY;
@@ -200,9 +338,14 @@ final class Bike {
         double kmAdded = added / 100.0 * fullRangeKm(p);
         JSONObject ch = new JSONObject().put("t", System.currentTimeMillis()).put("from", fromPct).put("to", toPct)
                 .put("kwh", round2(kwh)).put("cost", Math.round(cost)).put("paid", paid > 0);
+        if (estimate) ch.put("estimate", true);
         SharedPreferences s = sp(c);
         synchronized (Bike.class) {
             JSONArray a = arr(s, "charges");
+            JSONObject last = a.length() == 0 ? null : a.optJSONObject(a.length() - 1);
+            // the real % after Jarvis wrote an estimate for this charge: it takes the estimate's place
+            if (!estimate && now != null && now.optBoolean("logged") && last != null && last.optBoolean("estimate")
+                    && last.optInt("from") == now.optInt("from")) a.remove(a.length() - 1);
             a.put(ch);
             while (a.length() > 500) a.remove(0);
             s.edit().putString("charges", a.toString()).apply();

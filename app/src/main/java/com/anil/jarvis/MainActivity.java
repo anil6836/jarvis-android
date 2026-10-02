@@ -148,6 +148,25 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             + "పొలం అయితే దగ్గర్లోని రైతు వేదిక / వ్యవసాయ అధికారిని (AEO) సంప్రదించమని చెప్పు. చిన్నగా, తెలుగులో.";
     private static final String CARD_PROMPT = "ఈ ఫోటో ఒక విజిటింగ్ కార్డ్. పేరు, ఫోన్ నంబర్(లు), ఈమెయిల్, కంపెనీ, హోదా, అడ్రస్ చదివి చిన్నగా చెప్పు, "
             + "తర్వాత save_contact తో కాంటాక్ట్స్ యాప్‌లో సేవ్ ఫారం తెరువు (నేను చూసి సేవ్ నొక్కుతాను). ఏదైనా స్పష్టంగా లేకపోతే ఆ వివరం వదిలేయి.";
+    /** A medical test report (photo or PDF) explained simply. */
+    private static final String REPORT_PROMPT = "ఇది నా మెడికల్ టెస్ట్ రిపోర్ట్ (బ్లడ్, షుగర్, థైరాయిడ్, లివర్, కిడ్నీ, కొలెస్ట్రాల్ లాంటిది). సరళమైన తెలుగులో చెప్పు: "
+            + "ముందు రిపోర్ట్‌లో ఇచ్చిన నార్మల్ రేంజ్ కంటే ఎక్కువ / తక్కువ ఉన్నవి, తర్వాత మిగతావి నార్మల్ అని ఒక్క మాటలో. ప్రతి టెస్ట్‌కి: పేరు తెలుగులో (అది దేని గురించి), "
+            + "విలువ, నార్మల్ / ఎక్కువ / తక్కువ; రిపోర్ట్‌లో రేంజ్ లేకపోతే సాధారణ రేంజ్ అని చెప్పి వాడు. తేడా ఉన్నవాటికి అర్థం ఒక్క వాక్యంలో, భయపెట్టకుండా. "
+            + "చివర్లో డాక్టర్‌ని అడగాల్సిన 2-3 ప్రశ్నలు. మందుల పేర్లు, మోతాదులు చెప్పకు; ఖచ్చితమైన నిర్ధారణ డాక్టర్‌దే అని ఒక్క మాట. "
+            + "రిపోర్ట్ 3 రోజుల లోపలిదై షుగర్ లేదా BP విలువ ఉంటే 'ఇది మీ రిపోర్టేనా? మీ రీడింగ్స్‌లో రాసుకోనా?' అని అడిగి, అవును అంటేనే health_log add తో రాసుకో. పేరు, వయసు, ఫోన్, ID / సాంపిల్ నంబర్లు చదవకు, ఎక్కడా రాయకు. "
+            + "చదవలేని భాగం ఉంటే అలాగే చెప్పు, ఊహించకు.";
+    /** The label shown for an automatic photo / file request (null = the bill's). */
+    private String autoLabel;
+    /** When the chip was tapped: its request only goes with a photo / file picked within a few minutes. */
+    private long autoAt;
+
+    /** The chip's request, or null when there is none or it is old (abandoned somewhere: a denied camera, a file too big). */
+    private String takeAuto() {
+        String p = autoPrompt;
+        autoPrompt = null;
+        if (p != null && System.currentTimeMillis() - autoAt > 5 * 60_000L) { autoLabel = null; return null; }
+        return p;
+    }
     private Bitmap pendingThumb;
     private String pendingFileText;    // a text file's contents waiting to be sent
     private String pendingFileName;    // name of the attached file (PDF or text), or null
@@ -824,6 +843,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             case "card": photoFor("🪪 విజిటింగ్ కార్డ్ ఫోటో", CARD_PROMPT); break;
             case "homework": photoFor("📚 హోంవర్క్ ఫోటో", HOMEWORK_PROMPT); break;
             case "plant": photoFor("🌿 మొక్క / పంట ఫోటో", PLANT_PROMPT); break;
+            case "report": photoFor("🧪 మెడికల్ రిపోర్ట్ (ఫోటో / PDF)", REPORT_PROMPT); break;
             case "live": startLiveFromButton(); break;
             case "english": startEnglishPractice(); break;
             case "camera": toggleCamera(); break;
@@ -1779,9 +1799,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 if (mime != null && mime.startsWith("image/")) {
                     main.post(() -> attachImage(uri));
                 } else if ("application/pdf".equals(mime) || low.endsWith(".pdf")) {
-                    if (size > 10L * 1024 * 1024) { toast("PDF 10 MB కంటే పెద్దది. చిన్న ఫైల్ ఎంచుకోండి."); return; }
+                    if (size > 10L * 1024 * 1024) { main.post(() -> { autoPrompt = null; autoLabel = null; }); toast("PDF 10 MB కంటే పెద్దది. చిన్న ఫైల్ ఎంచుకోండి."); return; }
                     byte[] bytes = readAll(uri, 10 * 1024 * 1024 + 1);
-                    if (bytes.length > 10 * 1024 * 1024) { toast("PDF 10 MB కంటే పెద్దది. చిన్న ఫైల్ ఎంచుకోండి."); return; }
+                    if (bytes.length > 10 * 1024 * 1024) { main.post(() -> { autoPrompt = null; autoLabel = null; }); toast("PDF 10 MB కంటే పెద్దది. చిన్న ఫైల్ ఎంచుకోండి."); return; }
                     String b64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
                     main.post(() -> showFileAttached(Brain.PDF + b64 + "|" + fname, null, fname));
                 } else if (text) {
@@ -1791,9 +1811,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                     final String body = content;
                     main.post(() -> showFileAttached(null, body, fname));
                 } else {
+                    main.post(() -> { autoPrompt = null; autoLabel = null; });
                     toast("ఈ రకం ఫైల్ ఇంకా చదవలేను. PDF, టెక్స్ట్/కోడ్ ఫైల్స్, ఫోటోలు మాత్రమే.");
                 }
             } catch (Exception e) {
+                main.post(() -> { autoPrompt = null; autoLabel = null; });
                 toast("ఫైల్ తెరవలేకపోయాను");
             }
         });
@@ -1847,6 +1869,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         input.setHint("ఫైల్ గురించి ఏం అడగాలి? (ఖాళీగా పంపితే సారాంశం)");
         showTab(0);
         refreshAction();
+        String p = takeAuto(), label = autoLabel; // a text file is not what the chip asked for: it waits for his own question
+        autoLabel = null;
+        if (p != null && pdf != null) send(p, label != null ? label : "📄 " + name, false); // the report chip with a PDF: straight away
     }
 
     /** 🧾 A bill photo (camera or gallery) goes straight into his expenses. */
@@ -1857,6 +1882,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 .setTitle("🧾 బిల్లు ఫోటో")
                 .setItems(new String[]{"📷 ఇప్పుడు ఫోటో తీయి", "🖼️ గ్యాలరీ నుంచి ఎంచుకో"}, (d, w) -> {
                     autoPrompt = BILL_PROMPT;
+                    autoLabel = null;
+                    autoAt = System.currentTimeMillis();
                     if (w == 0) openCamera(); else openGallery();
                 })
                 .setNegativeButton("వద్దు", null)
@@ -1867,11 +1894,16 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void photoFor(String title, String prompt) {
         if (busy) return;
         if (live != null) { liveScreen.show(); return; }
+        boolean report = REPORT_PROMPT.equals(prompt); // a lab report often comes as a PDF on WhatsApp
+        String[] items = report ? new String[]{"📷 ఇప్పుడు ఫోటో తీయి", "🖼️ గ్యాలరీ నుంచి ఎంచుకో", "📄 PDF ఫైల్ ఎంచుకో"}
+                : new String[]{"📷 ఇప్పుడు ఫోటో తీయి", "🖼️ గ్యాలరీ నుంచి ఎంచుకో"};
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle(title)
-                .setItems(new String[]{"📷 ఇప్పుడు ఫోటో తీయి", "🖼️ గ్యాలరీ నుంచి ఎంచుకో"}, (d, w) -> {
+                .setItems(items, (d, w) -> {
                     autoPrompt = prompt;
-                    if (w == 0) openCamera(); else openGallery();
+                    autoLabel = title;
+                    autoAt = System.currentTimeMillis();
+                    if (w == 0) openCamera(); else if (w == 1) openGallery(); else openFiles();
                 })
                 .setNegativeButton("వద్దు", null)
                 .show();
@@ -1908,7 +1940,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override protected void onActivityResult(int req, int result, Intent data) {
         super.onActivityResult(req, result, data);
         if (result != RESULT_OK) {
-            if (req == REQ_CAMERA || req == REQ_GALLERY) autoPrompt = null; // the bill photo was cancelled
+            if (req == REQ_CAMERA || req == REQ_GALLERY || req == REQ_FILE) { autoPrompt = null; autoLabel = null; } // the photo / file was cancelled
             return;
         }
         final Uri uri;
@@ -1940,16 +1972,16 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                     input.setHint("ఫోటో గురించి ఏం అడగాలి? (ఖాళీగా పంపితే వివరిస్తాను)");
                     showTab(0);
                     refreshAction();
-                    if (autoPrompt != null) { // the 🧾 bill chip: send it straight away
-                        String p = autoPrompt;
-                        autoPrompt = null;
+                    String p = takeAuto(), label = autoLabel;
+                    autoLabel = null;
+                    if (p != null) { // the 🧾 bill chip (and the other photo chips): send it straight away
                         boolean warranty = WARRANTY_PROMPT.equals(p);
                         if (warranty) { Expiry.billPhoto = b64; Expiry.billPhotoAt = System.currentTimeMillis(); } // kept with the warranty
-                        send(p, warranty ? "🧾 ఈ బిల్ వారంటీ గుర్తుపెట్టుకో" : "🧾 ఈ బిల్లు నా ఖర్చుల్లో చేర్చు", false);
+                        send(p, warranty ? "🧾 ఈ బిల్ వారంటీ గుర్తుపెట్టుకో" : label != null ? label : "🧾 ఈ బిల్లు నా ఖర్చుల్లో చేర్చు", false);
                     }
                 });
             } catch (Exception e) {
-                main.post(() -> Toast.makeText(this, "ఫోటో తెరవలేకపోయాను", Toast.LENGTH_SHORT).show());
+                main.post(() -> { autoPrompt = null; autoLabel = null; Toast.makeText(this, "ఫోటో తెరవలేకపోయాను", Toast.LENGTH_SHORT).show(); });
             }
         });
     }

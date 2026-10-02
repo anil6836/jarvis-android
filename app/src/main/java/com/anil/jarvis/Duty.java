@@ -440,11 +440,61 @@ final class Duty {
                         + (bag.isEmpty() ? "" : " మర్చిపోకండి: " + bag + "."));
                 tripLater(c, r, leave, start, false, id, "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", base, false);
             }
+            restBefore(c, p, s, start, leave, hours, quiet);
             if (!now.isBefore(leave) && now.isBefore(start) && once(c, "go|" + s)) {
                 notify(c, ("go" + s).hashCode(), "🏍️ బయలుదేరే టైమ్ అయింది", t + " కి రిలీవ్ చేయాలి.");
                 Announcer.say(c, p.name() + ", బయలుదేరే టైమ్ అయింది. " + t + " కి రిలీవ్ చేయాలి. జాగ్రత్తగా వెళ్లండి.");
             }
         }
+    }
+
+    // ================================================================ sleep before a long duty
+
+    static final String ACTION_NAP = "com.anil.jarvis.DUTY_NAP";
+
+    static boolean restOn(Context c) { return sp(c).getBoolean("rest_before", true); }
+
+    static void setRest(Context c, boolean on) { sp(c).edit().putBoolean("rest_before", on).apply(); }
+
+    /**
+     * Rested for a long duty: when it starts in the afternoon or at night, a nap that day (about an hour and a half,
+     * up an hour before leaving), with a button for the nap alarm; when it starts in the morning, the evening before:
+     * the time to be in bed for about 7.5 hours of sleep (by 11 at the latest).
+     */
+    private static void restBefore(Context c, Prefs p, LocalDate s, LocalDateTime start, LocalDateTime leave, long hours, boolean quiet) {
+        if (!restOn(c)) return;
+        LocalDateTime now = LocalDateTime.now();
+        String t = hm(start);
+        LocalDateTime nap = leave.minusMinutes(150);
+        if (nap.getHour() >= 12 && nap.toLocalDate().equals(leave.toLocalDate())) { // leaving in the afternoon / evening / night: a nap first
+            if (now.isBefore(nap) || !now.isBefore(nap.plusMinutes(45)) || !once(c, "nap|" + s)) return;
+            String text = (start.toLocalDate().equals(nap.toLocalDate()) ? "ఈరోజు " : "ఈ రాత్రి ") + t + " కి డ్యూటీ, " + hours
+                    + " గంటలు. ఇప్పుడు గంటన్నర కునుకు తీస్తే డ్యూటీలో అలసట తక్కువ. అలారం కావాలంటే కింద నొక్కండి, లేదా 'కునుకు అలారం పెట్టు' అనండి.";
+            long leaveMs = leave.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+            try {
+                NotificationManager nm = c.getSystemService(NotificationManager.class);
+                if (nm != null) {
+                    nm.createNotificationChannel(new NotificationChannel("jarvis_duty", "డ్యూటీ రిమైండర్లు", NotificationManager.IMPORTANCE_HIGH));
+                    PendingIntent alarm = PendingIntent.getBroadcast(c, 261, new Intent(c, AlarmReceiver.class).setAction(ACTION_NAP).putExtra("leave", leaveMs),
+                            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                    nm.notify("duty", 262, new Notification.Builder(c, "jarvis_duty").setSmallIcon(android.R.drawable.ic_menu_my_calendar)
+                            .setContentTitle("😴 డ్యూటీ ముందు కునుకు").setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text))
+                            .setTimeoutAfter(Math.max(60_000L, leaveMs - 60 * 60_000L - System.currentTimeMillis())) // too late for a nap: gone
+                            .setAutoCancel(true).addAction(new Notification.Action.Builder(null, "😴 కునుకు అలారం", alarm).build()).build());
+                }
+            } catch (Exception ignored) {}
+            if (!quiet) Announcer.say(c, p.name() + ", " + text);
+            return;
+        }
+        // leaving in the morning: in bed the night before
+        LocalDateTime wake = leave.minusMinutes(60), bed = wake.minusMinutes(450), latest = wake.toLocalDate().minusDays(1).atTime(23, 0);
+        if (bed.isAfter(latest)) bed = latest;
+        LocalDateTime remind = bed.minusMinutes(30);
+        if (remind.getHour() < 19 || now.isBefore(remind) || !now.isBefore(remind.plusMinutes(45)) || !once(c, "bed|" + s)) return;
+        String text = "రేపు " + t + " కి డ్యూటీ, " + hours + " గంటలు. " + hm(wake) + " కి లేవాలంటే " + hm(bed)
+                + " కల్లా పడుకోండి; డ్యూటీ ముందు నిద్ర బాగుంటే రెండు రోజులూ అలసట తక్కువ.";
+        notify(c, ("bed" + s).hashCode(), "😴 డ్యూటీ ముందు నిద్ర", text);
+        if (!quiet) Announcer.say(c, p.name() + ", " + text);
     }
 
     // ================================================================ travel check: rain on the way, bike charge

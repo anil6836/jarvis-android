@@ -357,16 +357,19 @@ final class Tools {
         DEFS.add(new Def("train_status",
                 "Indian train live running status (where the train is, how late, when it reaches a station) by train number or name, or PNR status (10 digits). "
                         + "Jarvis reads it in his Where is my Train app; only if that app is missing or the screen switch is off, from the web (the result says so).",
-                schema(new String[][]{{"query", "string", "Train number (e.g. 12727), train name, or PNR"}, {"station", "string", "Station he asked about ('కాజీపేట కి ఎప్పుడు వస్తుంది'), in English; empty = the next stations"}}, "query")));
+                schema(new String[][]{{"query", "string", "Train number (e.g. 12727), train name, or PNR"}, {"station", "string", "Station he asked about ('కాజీపేట కి ఎప్పుడు వస్తుంది'), in English; empty = the next stations"},
+                        {"coach", "string", "Where a coach stops on the platform ('S5 కోచ్ ఎక్కడ ఆగుతుంది?'): the coach (S5, B2, A1, GS...); empty = not asked"}}, "query")));
         DEFS.add(new Def("water_reminder",
                 "Remind him to drink water every few hours during the day. on=false stops it.",
                 schema(new String[][]{{"on", "boolean", "true to start"}, {"every_hours", "integer", "1-4, default 2"},
                         {"from_hour", "integer", "Start hour, default 8"}, {"to_hour", "integer", "End hour, default 22"}}, "on")));
         DEFS.add(new Def("steps_today", "How many steps he has walked today (phone's step counter).", schema(new String[][]{})));
         DEFS.add(new Def("ride_app",
-                "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself.",
-                schema(new String[][]{{"app", "string", "Uber, Ola or Rapido"}, {"pickup", "string", "Pickup place in English; empty = current location"},
-                        {"drop", "string", "Drop place in English"}}, "app", "drop")));
+                "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself. "
+                        + "app = compare (or empty): Jarvis reads the fares for the trip in each of his apps (Rapido, Uber, Ola) and returns them together, "
+                        + "for 'ఆటో ఎంత?', 'ఏ యాప్‌లో చౌక?' (takes a minute or two).",
+                schema(new String[][]{{"app", "string", "Uber, Ola or Rapido; compare = fares in all of them"}, {"pickup", "string", "Pickup place in English; empty = current location"},
+                        {"drop", "string", "Drop place in English"}}, "drop")));
         DEFS.add(new Def("food_app",
                 "Open Zomato, Swiggy or Blinkit at a search for the food or item Anil wants. Jarvis does not order or pay: Anil picks, orders and pays himself.",
                 schema(new String[][]{{"app", "string", "Zomato, Swiggy or Blinkit"}, {"query", "string", "What he wants, e.g. 'chicken biryani', 'milk'"}}, "app", "query")));
@@ -424,9 +427,15 @@ final class Tools {
                         {"date", "string", "Date printed on the bill, YYYY-MM-DD (empty = today)"}}, "amount")));
         DEFS.add(new Def("bike_range", "His electric bike (Matter Aera): how far he can go on the battery % he says ('బ్యాటరీ 40%, ఎంత దూరం వెళ్లగలను?').",
                 schema(new String[][]{{"battery_percent", "integer", "Battery % shown on the bike, 0-100"}}, "battery_percent")));
-        DEFS.add(new Def("bike_charge", "He charged his electric bike: record the battery % before and after (and the rupees paid at a public charger, if any). Returns the cost, units and cost per km.",
-                schema(new String[][]{{"from_percent", "integer", "Battery % before charging"}, {"to_percent", "integer", "Battery % after charging"},
-                        {"paid", "number", "Rupees paid at a public charger; 0 or empty = charged at home"}}, "from_percent", "to_percent")));
+        DEFS.add(new Def("bike_charge", "His electric bike's charging. log (default): he charged; record the battery % before and after (and the rupees paid at a public charger, if any); "
+                + "returns the cost, units and cost per km. start: he just plugged in ('ఛార్జింగ్ పెట్టాను, 30% ఉంది'): when it will reach 100% (or target 80), "
+                + "Jarvis reminds him then and writes the charge down; when he later says it finished, log with to_percent (from_percent can be empty) and just_now=true "
+                + "if it finished just now. cancel: he unplugged / no reminder.",
+                schema(new String[][]{{"action", "string", "log (default), start or cancel"},
+                        {"from_percent", "integer", "Battery % before charging (start: the % now)"}, {"to_percent", "integer", "Battery % after charging"},
+                        {"target", "integer", "start: stop at this % (80 or 100; default 100)"}, {"fast", "boolean", "start: on a fast charger"},
+                        {"just_now", "boolean", "log: it finished just now (teaches Jarvis his charger's speed)"},
+                        {"paid", "number", "Rupees paid at a public charger; 0 or empty = charged at home"}})));
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days, "
                 + "and how much the EV saved against a petrol bike ('పెట్రోల్ బండితో పోలిస్తే ఎంత ఆదా?'; days 30 for this month).",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 365)"},
@@ -459,8 +468,10 @@ final class Tools {
                 + "trip_check: before his next duty, rain on the way and whether the bike's charge is enough to go and come back ('డ్యూటీకి వెళ్లొచ్చా?', 'బైక్ ఛార్జ్ సరిపోతుందా?'); "
                 + "report: his month (month YYYY-MM, default this month): duty days and hours, extra days, days off, covers, festivals worked; "
                 + "bag: what he takes to duty (text = items comma separated, 'off' = none, empty = show), said the evening before and before leaving; "
-                + "night_chime: on his duty nights a soft chime and the time every hour (text = hours '22:00-05:00', or 'off').",
-                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear, open, trip_check, report, bag or night_chime"},
+                + "night_chime: on his duty nights a soft chime and the time every hour (text = hours '22:00-05:00', or 'off'); "
+                + "rest: sleep before a duty (on by default): a nap that afternoon when the duty starts later in the day, the time to be in bed the night before a morning start "
+                + "(text 'on' / 'off'; empty = show).",
+                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear, open, trip_check, report, bag, night_chime or rest"},
                         {"person", "string", "Whose duty: empty = his own; a name or a batch (A, B, C)"},
                         {"date", "string", "YYYY-MM-DD (on_date, set_day, cover, clear)"}, {"to_date", "string", "Last date YYYY-MM-DD for set_day / clear"},
                         {"duty", "boolean", "For set_day: true = on duty, false = off"},
@@ -923,10 +934,16 @@ final class Tools {
                 case "sos": return sos(a.optString("message", ""));
                 case "ask_document": return a.optString("read_aloud", "").isEmpty() ? askDocument(a.optString("name", ""), a.optString("question", "")) : readAloud(a);
                 case "price_alert": return priceAlert(a.optString("action", "list"), a.optString("item", ""), a.optString("when", "above"), a.optDouble("target", 0), a.optString("id", ""));
-                case "train_status": return trainStatus(a.optString("query"), a.optString("station", ""));
+                case "train_status": return trainStatus(a.optString("query"), a.optString("station", ""), a.optString("coach", ""));
                 case "water_reminder": return water(a.optBoolean("on", true), a.optInt("every_hours", 2), a.optInt("from_hour", 8), a.optInt("to_hour", 22));
                 case "steps_today": return steps();
-                case "ride_app": return rideApp(a.optString("app"), a.optString("pickup", ""), a.optString("drop"));
+                case "ride_app": {
+                    String ap = a.optString("app").trim().toLowerCase(Locale.ROOT);
+                    int named = (ap.contains("uber") ? 1 : 0) + (ap.contains("ola") ? 1 : 0) + (ap.contains("rapido") ? 1 : 0);
+                    if (ap.isEmpty() || named >= 2 || ap.contains("compare") || ap.contains("all") || ap.contains("పోల్చు") || ap.contains("అన్ని"))
+                        return fareCompare(a.optString("pickup", ""), a.optString("drop"));
+                    return rideApp(a.optString("app"), a.optString("pickup", ""), a.optString("drop"));
+                }
                 case "food_app": return foodApp(a.optString("app"), a.optString("query"));
                 case "driving_mode": return drivingMode(a.optBoolean("on", true), a.optString("destination", ""));
                 case "night_mode": return nightMode(a.optBoolean("on", true), a.optString("alarm", ""));
@@ -934,7 +951,12 @@ final class Tools {
                 case "add_expense": return addExpense(a.optDouble("amount", 0), a.optString("what", ""), a.optString("shop", ""),
                         a.optString("category", ""), a.optString("date", ""));
                 case "bike_range": return Bike.range(act(), a.optInt("battery_percent", -1)).toString();
-                case "bike_charge": return Bike.addCharge(act(), a.optInt("from_percent", -1), a.optInt("to_percent", -1), a.optDouble("paid", 0)).toString();
+                case "bike_charge": {
+                    String ac = a.optString("action", "log").trim().toLowerCase(Locale.ROOT);
+                    if (ac.startsWith("start")) return Bike.chargeStart(act(), a.optInt("from_percent", -1), a.optInt("target", 100), a.optBoolean("fast", false)).toString();
+                    if (ac.startsWith("cancel") || ac.startsWith("stop")) return Bike.chargeCancel(act()).toString();
+                    return Bike.addCharge(act(), a.optInt("from_percent", -1), a.optInt("to_percent", -1), a.optDouble("paid", 0), a.optBoolean("just_now", false), false).toString();
+                }
                 case "bike_rides": {
                     if (a.optDouble("petrol_price", 0) > 0) prefs.sp.edit().putFloat("petrol_price", (float) a.optDouble("petrol_price")).apply();
                     if (a.optDouble("petrol_kmpl", 0) > 0) prefs.sp.edit().putFloat("petrol_kmpl", (float) a.optDouble("petrol_kmpl")).apply();
@@ -3497,15 +3519,20 @@ final class Tools {
      * Live running status of a train (number or name) or a PNR, read from his Where is my Train app through the screen helper.
      * Only when that app is missing or the screen switch is off does it come from the web, and the answer says so.
      */
-    private String trainStatus(String query, String station) throws Exception {
+    private String trainStatus(String query, String station, String coach) throws Exception {
         if (query == null || query.trim().isEmpty()) return err("missing", "Which train number or PNR?");
-        String q = query.trim(), st = station == null ? "" : station.trim();
+        String q = query.trim(), st = station == null ? "" : station.trim(), co = coach == null ? "" : coach.trim().toUpperCase(Locale.ROOT);
         boolean pnr = q.replaceAll("[^0-9]", "").length() == 10;
         String why = !installed(WIMT) ? "Where is my Train is not installed"
                 : !JarvisAccessibility.enabled() || Build.VERSION.SDK_INT < 30 ? "the 'Jarvis స్క్రీన్' switch is off, so Jarvis cannot read Where is my Train" : "";
         if (why.isEmpty()) {
             if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
-            String goal = pnr
+            String goal = !co.isEmpty() && !pnr
+                    ? "In Where is my Train, find the train " + q + " (type the number or name in the search box and pick the train from the suggestions), "
+                    + "then open its coach position (coach order / composition) " + (st.isEmpty() ? "" : "at " + st + " ") + "and find coach " + co + ". "
+                    + "Do not change settings or buy anything. Then reply done with stay=true, and in summary: the coach order from the engine, where " + co
+                    + " is (its place counted from the engine, and front / middle / back of the platform), and the platform number if shown."
+                    : pnr
                     ? "In Where is my Train, open PNR status, type the PNR " + q.replaceAll("[^0-9]", "") + " and check it. Do not change settings or buy anything. "
                     + "Then reply done with stay=true, and in summary: train name and number, journey date, from and to, class, and each passenger's current status "
                     + "(CNF with coach / berth, RAC or WL number), and whether the chart is prepared."
@@ -3518,7 +3545,7 @@ final class Tools {
                 o.put("source", "Where is my Train app").put("next", "Tell him in short spoken Telugu (times and minutes late in Telugu words).");
             return o.toString();
         }
-        String r = webSearch((pnr ? "Indian Railways PNR status " : "live running status today of Indian train ") + q
+        String r = webSearch((pnr ? "Indian Railways PNR status " : !co.isEmpty() ? "coach position coach " + co + " of Indian train " : "live running status today of Indian train ") + q
                 + (st.isEmpty() ? "" : ", expected arrival at " + st) + ". Give current location or status, delay, expected arrival at the next stations.");
         JSONObject o = new JSONObject(r);
         o.put("source", "web search, because " + why).put("next", "Say first that this is from the internet because " + why + "; then the status in short Telugu.");
@@ -4261,6 +4288,21 @@ final class Tools {
         for (String p : train ? new String[]{RAILYATRI, IXIGO_TRAINS} : new String[]{GAMYAM, TGSRTC_BOOK, ABHIBUS, REDBUS}) if (appByPkg(p) != null) pkgs.add(p);
         if (pkgs.isEmpty()) return null;
         if (!JarvisAccessibility.enabled() || Build.VERSION.SDK_INT < 30) return searchInApp(pkgs.get(0), train, from, to, d); // opens the first one
+        JSONObject out = inAppsOneByOne(pkgs, pkg -> searchGoal(pkg, label(pkg), train, from, to, d, true),
+                pkg -> train ? "train tickets" : pkg.equals(GAMYAM) ? "TGSRTC timings (Gamyam)" : pkg.equals(TGSRTC_BOOK) ? "TGSRTC tickets" : "private + RTC tickets");
+        out.put("from", from).put("to", to).put("date", new java.text.SimpleDateFormat("EEE d MMM", Locale.ENGLISH).format(d.getTime()));
+        if (train) return out.put("next", "Tell him in short spoken Telugu the trains that suit (name, departure and arrival, classes with seats or waiting list), "
+                + "saying which app showed them; the same train in both apps once. To book one: phone_task in that app (he logs in to IRCTC and pays himself).").toString();
+        return out.put("next", "Tell him in short spoken Telugu, Gamyam (TGSRTC) buses FIRST: the soonest few with times. Then in one or two sentences the best others "
+                + "from the booking apps (time, fare, seats), saying which app. Skip apps with no results in a few words. "
+                + (timings ? "" : "To book one: phone_task in that app (it stops at Pay; he pays himself).")).toString();
+    }
+
+    /**
+     * The screen helper does the same look-up in each app in turn (it never books); each app's answer comes back in order.
+     * ⏹ on the screen bar, or 6 minutes in all, leaves the rest out (named in not_searched).
+     */
+    private JSONObject inAppsOneByOne(List<String> pkgs, java.util.function.Function<String, String> goal, java.util.function.Function<String, String> kind) throws Exception {
         JSONArray found = new JSONArray(), skipped = new JSONArray();
         long start = android.os.SystemClock.elapsedRealtime();
         boolean stopped = false;
@@ -4269,12 +4311,13 @@ final class Tools {
             if (stopped || android.os.SystemClock.elapsedRealtime() - start > 6 * 60_000L) { skipped.put(name); continue; } // ⏹ pressed, or long enough
             JSONObject o;
             try {
-                o = new JSONObject(phoneTask(pkg, searchGoal(pkg, name, train, from, to, d, true), null, false, false, false));
+                o = new JSONObject(phoneTask(pkg, goal.apply(pkg), null, false, false, false));
             } catch (Exception e) {
                 o = new JSONObject().put("ok", false).put("detail", String.valueOf(e.getMessage()));
             }
             if (o.optBoolean("stopped")) { stopped = true; skipped.put(name); continue; }
-            JSONObject r = new JSONObject().put("app", name).put("kind", train ? "train tickets" : pkg.equals(GAMYAM) ? "TGSRTC timings (Gamyam)" : pkg.equals(TGSRTC_BOOK) ? "TGSRTC tickets" : "private + RTC tickets");
+            JSONObject r = new JSONObject().put("app", name);
+            if (kind != null) r.put("kind", kind.apply(pkg));
             if (o.optBoolean("ok") && "done".equals(o.optString("status"))) r.put("results", o.optString("summary"));
             else {
                 r.put("no_results", o.optString("detail", o.optString("next", o.optString("status", "could not search"))));
@@ -4285,14 +4328,31 @@ final class Tools {
             found.put(r);
         }
         backToJarvis();
-        JSONObject out = ok().put("searched_in_order", found).put("from", from).put("to", to)
-                .put("date", new java.text.SimpleDateFormat("EEE d MMM", Locale.ENGLISH).format(d.getTime()));
+        JSONObject out = ok().put("searched_in_order", found);
         if (skipped.length() > 0) out.put("not_searched", skipped).put("why_not_searched", stopped ? "he pressed stop" : "the search took long; ask if he wants these too");
-        if (train) return out.put("next", "Tell him in short spoken Telugu the trains that suit (name, departure and arrival, classes with seats or waiting list), "
-                + "saying which app showed them; the same train in both apps once. To book one: phone_task in that app (he logs in to IRCTC and pays himself).").toString();
-        return out.put("next", "Tell him in short spoken Telugu, Gamyam (TGSRTC) buses FIRST: the soonest few with times. Then in one or two sentences the best others "
-                + "from the booking apps (time, fare, seats), saying which app. Skip apps with no results in a few words. "
-                + (timings ? "" : "To book one: phone_task in that app (it stops at Pay; he pays himself).")).toString();
+        return out;
+    }
+
+    static final String RAPIDO = "com.rapido.passenger", UBER = "com.ubercab", OLA = "com.olacabs.customer";
+
+    /** Fares for one trip in Rapido, Uber and Ola (the ones installed), read off each app's screen. He books himself. */
+    private String fareCompare(String pickup, String drop) throws Exception {
+        if (drop == null || drop.trim().isEmpty()) return err("missing", "Where to?");
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        List<String> pkgs = new ArrayList<>();
+        for (String p : new String[]{RAPIDO, UBER, OLA}) if (appByPkg(p) != null) pkgs.add(p);
+        if (pkgs.isEmpty()) return err("no_app", "None of Rapido, Uber or Ola is installed.");
+        if (!JarvisAccessibility.enabled() || Build.VERSION.SDK_INT < 30)
+            return err("screen_access_off", "To read fares in the apps Jarvis needs 'Jarvis స్క్రీన్' on in Accessibility settings. Meanwhile ride_app can open one app with the trip.");
+        String from = pickup == null || pickup.trim().isEmpty() ? "" : pickup.trim(), to = drop.trim();
+        JSONObject out = inAppsOneByOne(pkgs, pkg -> "In " + label(pkg) + ", see the fares for a ride "
+                + (from.isEmpty() ? "from his current location (keep the pickup the app shows)" : "from " + from + " (set the pickup)") + " to " + to
+                + ": tap the drop / 'Where to?' box, type " + to + " and pick the best matching suggestion, then wait until the ride choices with prices show. "
+                + "If a place is unclear, pick the top suggestion yourself; do not ask him. Do NOT tap Book, Confirm, Request or any payment option. "
+                + "Then reply done with summary: each ride type shown (Bike, Auto, Mini, Sedan, Prime, Cab...) with its price and pickup time if shown.", null);
+        return out.put("from", from.isEmpty() ? "current location" : from).put("to", to)
+                .put("next", "Tell him in short Telugu (prices in Telugu words) the cheapest auto, the cheapest bike and the cheapest cab, saying which app; "
+                        + "skip apps with no fares in a few words. He books himself: ride_app with that app opens it with the trip.").toString();
     }
 
     /** Flight or bus search in his travel apps, filled in where the app accepts it. He books and pays himself. */
@@ -6039,6 +6099,14 @@ final class Tools {
             String bag = Duty.checklist(act());
             return ok().put("bag", bag.isEmpty() ? "none" : bag)
                     .put("note", bag.isEmpty() ? "No duty bag list." : "Said the evening before each duty and an hour before he leaves.").toString();
+        }
+        if (action.startsWith("rest") || action.contains("nap") || action.contains("sleep")) {
+            String t = a.optString("text").trim().toLowerCase(Locale.ROOT);
+            if (t.equals("off") || t.contains("వద్దు") || t.contains("ఆపు")) Duty.setRest(act(), false);
+            else if (t.equals("on") || t.contains("పెట్టు") || t.contains("కావాలి")) Duty.setRest(act(), true);
+            return ok().put("rest_before_duty", Duty.restOn(act()) ? "on" : "off")
+                    .put("how", "Duty starting in the afternoon / at night: a nap reminder that day (with a 90-minute alarm button). "
+                            + "Duty starting in the morning: the evening before, the time to be in bed.").toString();
         }
         if (action.contains("chime")) {
             if (!a.optString("text").trim().isEmpty()) { // empty = just show it

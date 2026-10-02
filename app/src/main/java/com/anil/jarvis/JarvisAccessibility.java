@@ -433,9 +433,22 @@ public class JarvisAccessibility extends AccessibilityService {
     }
 
     /** null = this tap is fine; otherwise why it is refused ("blocked:<label>"). */
+    /** In Rapido, Uber and Ola any Book / Confirm / Request / Choose button orders a ride ("Book Mini", "Choose UberGo", "Confirm UberX"). */
+    private static final java.util.regex.Pattern RIDE_COMMIT = java.util.regex.Pattern.compile("(?i)\\b(book|confirm|request|choose)\\b|బుక్");
+
+    private static boolean rideApp(String pkg) {
+        return pkg != null && (pkg.startsWith("com.rapido") || pkg.startsWith("com.ubercab") || pkg.startsWith("com.olacabs"));
+    }
+
     private static String payCheck(Screen sc, AccessibilityNodeInfo n) {
         String pkg = sc.pkg;
         String commit = commitLabel(n);
+        if (commit == null && rideApp(pkg)) {
+            String words = label(n) + " " + (buttonSized(n) ? allText(n, 0) : "");
+            AccessibilityNodeInfo c = clickable(n);
+            if (c != null && c != n && c.isClickable() && buttonSized(c)) words += " " + allText(c, 0);
+            if (RIDE_COMMIT.matcher(words).find()) commit = words.trim();
+        }
         PayAllowance a = pay;
         boolean allowed = a != null && a.pkg.equals(pkg) && SystemClock.elapsedRealtime() < a.until && a.taps > 0;
         if (allowed) {

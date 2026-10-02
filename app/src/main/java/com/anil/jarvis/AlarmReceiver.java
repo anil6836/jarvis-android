@@ -55,6 +55,28 @@ public class AlarmReceiver extends BroadcastReceiver {
                 break;
             }
             case StopAlarm.ACTION_OFF: StopAlarm.stoppedFromNotification(c); break;
+            case Duty.ACTION_NAP: { // up 60 minutes before leaving at the latest; 90 minutes at most
+                long leave = i.getLongExtra("leave", 0);
+                int min = leave <= 0 ? 90 : (int) Math.min(90, (leave - 60 * 60_000L - System.currentTimeMillis()) / 60_000L);
+                String said;
+                if (min < 20) said = "కునుకుకి టైమ్ లేదు, డ్యూటీకి బయలుదేరే టైమ్ దగ్గర పడింది.";
+                else {
+                    try {
+                        SongAlarm.nap(c, min);
+                        said = "😴 " + min + " నిమిషాల తర్వాత అలారం";
+                    } catch (Exception e) { said = "అలారం పెట్టలేకపోయాను. Jarvis కి 'కునుకు అలారం పెట్టు' అని చెప్పండి."; }
+                }
+                android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+                if (nm != null) nm.cancel("duty", 262);
+                android.widget.Toast.makeText(c, said, android.widget.Toast.LENGTH_LONG).show();
+                break;
+            }
+            case Bike.ACTION_CHARGE_DONE: {
+                PendingResult pr = goAsync(); // time for Jarvis to say it
+                try { Bike.chargeDone(c); } catch (Exception ignored) {}
+                new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
+                break;
+            }
             case CrashAlert.ACTION_OK: CrashAlert.ok(c); break;
             case RideCare.ACTION_AWAKE: RideCare.askAwake(c); break;
             case RideCare.ACTION_REACHED: {
@@ -120,6 +142,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 Proactive.schedule(c);
                 Faith.schedule(c);
                 try { Duty.scheduleChime(c); } catch (Exception ignored) {}
+                try { Bike.rearm(c); } catch (Exception ignored) {}
                 UpdateJob.schedule(c);
                 if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) Updater.cancelNotice(c);
                 break;
