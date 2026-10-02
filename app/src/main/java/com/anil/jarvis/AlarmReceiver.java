@@ -54,6 +54,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, Medicine.ACTION_TAKEN.equals(action) ? 500 : 9000);
                 break;
             }
+            case StopAlarm.ACTION_OFF: StopAlarm.stoppedFromNotification(c); break;
             case CrashAlert.ACTION_OK: CrashAlert.ok(c); break;
             case RideCare.ACTION_AWAKE: RideCare.askAwake(c); break;
             case RideCare.ACTION_REACHED: {

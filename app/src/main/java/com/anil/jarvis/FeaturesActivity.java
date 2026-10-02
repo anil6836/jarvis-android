@@ -76,7 +76,7 @@ public class FeaturesActivity extends Activity {
                     fill("📉", "ధర తగ్గితే చెప్పు", "ఏదైనా వస్తువు ధర అలర్ట్", "ఈ వస్తువు ధర తగ్గితే చెప్పు: "),
                     fill("🛡️", "ఈ మెసేజ్ మోసమా?", "అనుమానం ఉన్న మెసేజ్ చెక్", "ఈ మెసేజ్ మోసమా చెక్ చేసి చెప్పు: "),
                     ask("📱", "మొబైల్ ప్లాన్", "ఎప్పటి వరకు ఉంది", "నా మొబైల్ రీఛార్జ్ ప్లాన్ ఎప్పటి వరకు ఉంది?")),
-            new Cat("calls", "📞", "కాల్స్, మెసేజ్‌లు", "కాల్, WhatsApp, SMS, ఈమెయిల్", Ui.C_SKY,
+            new Cat("calls", "📞", "కాల్స్, మెసేజ్‌లు", "కాల్, WhatsApp, SMS, మెయిల్", Ui.C_SKY,
                     fill("📞", "కాల్ చెయ్", "పేరు లేదా నంబర్", "కాల్ చెయ్: "),
                     fill("💬", "WhatsApp మెసేజ్", "మీరు 'పంపు' అంటేనే వెళ్తుంది", "WhatsApp లో మెసేజ్ పంపు: "),
                     fill("✉️", "SMS పంపు", "మీరు 'పంపు' అంటేనే వెళ్తుంది", "SMS పంపు: "),
@@ -121,7 +121,7 @@ public class FeaturesActivity extends Activity {
                     ask("🇮🇳", "Hindi practice", "మాట్లాడుతూ హిందీ నేర్చుకో", "హిందీ practice మొదలుపెట్టు (english_practice language Hindi)."),
                     fill("🌐", "అనువాదకుడిగా ఉండు", "తెలుగు ↔ వేరే భాష, ఇద్దరి మధ్య", "అనువాదకుడిగా ఉండు, భాష: "),
                     fill("🔤", "ఒక వాక్యం అనువదించు", "ఏ భాషలోకైనా", "దీన్ని ఇంగ్లీష్‌లో చెప్పు: ")),
-            new Cat("phone", "📱", "ఫోన్ కంట్రోల్", "స్క్రీన్, యాప్స్, స్క్రీన్ టైమ్", Ui.C_CYAN,
+            new Cat("phone", "📱", "ఫోన్, ఇంటి కంట్రోల్", "స్క్రీన్, యాప్స్, డేటా, లైట్లు", Ui.C_CYAN,
                     ask("📱", "స్క్రీన్ చూడు", "స్క్రీన్‌లో ఏముందో చెప్తాను", "నా స్క్రీన్‌లో ఏముందో చూసి చెప్పు (look_at_screen వాడు)."),
                     fill("🤖", "ఫోన్‌లో ఏదైనా పని", "Jarvis యాప్‌లు వాడి చేస్తుంది", "ఫోన్‌లో ఈ పని చేయి: "),
                     fill("📲", "యాప్ తెరువు", "ఉదా: YouTube", "యాప్ తెరువు: "),
@@ -135,11 +135,7 @@ public class FeaturesActivity extends Activity {
                     ask("🌙", "నైట్ మోడ్", "నిశ్శబ్దం, ఉదయం దానంతట అదే ఆఫ్", "నైట్ మోడ్ ఆన్ చెయ్."),
                     ask("📳", "ఫోన్ వెతుకు కోడ్", "వేరే ఫోన్ నుంచి పంపితే మోగుతుంది", "ఫోన్ వెతుకు కోడ్ ఏంటి? ఎలా వాడాలి? (find_phone code)"),
                     fill("✏️", "కోడ్ మార్చు", "కనీసం 6 అక్షరాలు/అంకెలు", "ఫోన్ వెతుకు కోడ్ ఇలా మార్చు (find_phone set_code): "),
-                    open("🔔", "ఫోన్ వెతుకు సెట్టింగ్స్", "ఆన్/ఆఫ్, మోగించి చూడు", "ఫోన్ వెతుకు")),
-            new Cat("health", "❤️", "ఆరోగ్యం, ఇల్లు", "అడుగులు, నీళ్లు, గాలి, లైట్లు", 0xFFF43F5E,
-                    ask("👣", "ఈరోజు అడుగులు", "ఎన్ని అడుగులు నడిచాను", "ఈరోజు ఎన్ని అడుగులు నడిచాను?"),
-                    ask("💧", "నీళ్లు తాగే రిమైండర్", "ప్రతి 2 గంటలకి", "ఉదయం 9 నుంచి రాత్రి 9 వరకు ప్రతి 2 గంటలకి నీళ్లు తాగమని గుర్తు చెయ్."),
-                    ask("🌬️", "గాలి నాణ్యత", "ఇక్కడ AQI", "ఇక్కడ గాలి నాణ్యత ఎలా ఉంది?"),
+                    open("🔔", "ఫోన్ వెతుకు సెట్టింగ్స్", "ఆన్/ఆఫ్, మోగించి చూడు", "ఫోన్ వెతుకు"),
                     fill("💡", "లైట్లు / ఫ్యాన్", "స్మార్ట్ హోమ్ ఆన్/ఆఫ్", "స్మార్ట్ హోమ్: "),
                     open("🏠", "స్మార్ట్ హోమ్ సెట్టింగ్స్", "Alexa routine లింక్స్", "స్మార్ట్ హోమ్")),
             new Cat("places", "📍", "నా ప్రదేశాలు", "సేవ్ చేసిన లొకేషన్లు, దారి", 0xFFE879F9,
@@ -175,7 +171,8 @@ public class FeaturesActivity extends Activity {
                     fill("✅", "కొన్నాను", "ఉదా: పాలు, బ్రెడ్", "షాపింగ్ లిస్ట్‌లో ఇవి కొన్నాను: "),
                     ask("📋", "లిస్ట్ చెప్పు", "ఇంకా కొనాల్సినవి", "నా షాపింగ్ లిస్ట్‌లో ఇంకా కొనాల్సినవి చెప్పు."),
                     fill("📤", "లిస్ట్ WhatsApp లో పంపు", "ఎవరికో చెప్పండి", "నా షాపింగ్ లిస్ట్‌ని WhatsApp లో పంపు, ఎవరికి: "),
-                    ask("🧹", "కొన్నవి తీసేయి", "టిక్ చేసినవి లిస్ట్ నుంచి", "షాపింగ్ లిస్ట్‌లో కొన్నవి తీసేయి.")),
+                    ask("🧹", "కొన్నవి తీసేయి", "టిక్ చేసినవి లిస్ట్ నుంచి", "షాపింగ్ లిస్ట్‌లో కొన్నవి తీసేయి."),
+                    fill("🛒", "ఏ యాప్‌లో చౌక?", "వస్తువు పేరు, మోడల్", "ఈ వస్తువు ఆన్‌లైన్‌లో ఎక్కడ చౌకగా ఉంది (compare_prices): ")),
             new Cat("medicine", "💊", "మందులు", "టైమ్‌కి గుర్తు, మాత్రల లెక్క", 0xFF2DD4BF,
                     fill("➕", "మందు చేర్చు", "పేరు, టైమ్స్, ఎన్ని మాత్రలు ఉన్నాయి", "ఈ మందు రిమైండర్ పెట్టు (పేరు, టైమ్స్, డోస్, భోజనం ముందు/తర్వాత, ఎన్ని మాత్రలు ఉన్నాయి): "),
                     fill("✅", "మాత్ర వేసుకున్నాను", "ఉదా: BP మాత్ర", "ఈ మాత్ర ఇప్పుడు వేసుకున్నాను: "),
@@ -203,18 +200,19 @@ public class FeaturesActivity extends Activity {
                     fill("⚖️", "బరువు రాసుకో", "కిలోల్లో", "నా బరువు రాసుకో (health_log): "),
                     ask("📈", "నా రీడింగ్స్, ట్రెండ్", "BP, షుగర్, బరువు", "నా BP, షుగర్, బరువు రీడింగ్స్, ఈ వారం సగటు, ట్రెండ్ చెప్పు (health_log trend)."),
                     open("🆘", "లాక్ స్క్రీన్ అత్యవసర కార్డ్", "బ్లడ్ గ్రూప్, ఎమర్జెన్సీ నంబర్", "అలారం")),
-            new Cat("debts", "🤝", "అప్పులు, EMI, చిట్టీలు", "ఎవరికి ఇచ్చారు, ఎవరికి ఇవ్వాలి, నెలవారీ కట్టేవి", 0xFF10B981,
+            new Cat("debts", "🤝", "అప్పులు, EMI", "ఇచ్చినవి, తీసుకున్నవి, EMI, చిట్టీలు", 0xFF10B981,
                     fill("📤", "అప్పు ఇచ్చాను", "ఎవరికి, ఎంత, ఎప్పుడు ఇస్తానన్నారు", "నేను అప్పు ఇచ్చాను (ఎవరికి, ఎంత, తిరిగి ఎప్పుడు): "),
                     fill("📥", "అప్పు తీసుకున్నాను", "ఎవరి దగ్గర, ఎంత, ఎప్పటిలోపు", "నేను అప్పు తీసుకున్నాను (ఎవరి దగ్గర, ఎంత, ఎప్పటిలోపు ఇవ్వాలి): "),
                     fill("🏦", "EMI చేర్చు", "పేరు, నెలకి ఎంత, ఏ తేదీ, ఎన్ని నెలలు", "ఈ EMI గుర్తుపెట్టుకో (పేరు, నెలకి ఎంత, ప్రతి నెల ఏ తేదీ, మొత్తం ఎన్ని నెలలు, ఎన్ని కట్టాను): "),
                     fill("👥", "చిట్టీ చేర్చు", "పేరు, నెలకి ఎంత, ఏ తేదీ, ఎన్ని నెలలు", "ఈ చిట్టీ గుర్తుపెట్టుకో (పేరు, నెలకి ఎంత, ప్రతి నెల ఏ తేదీ, మొత్తం ఎన్ని నెలలు, ఎన్ని కట్టాను): "),
                     fill("✅", "కట్టాను / తిరిగి వచ్చింది", "ఏది, ఎంత", "ఇది కట్టాను / తిరిగి వచ్చింది (debts paid): "),
                     ask("📋", "నా అప్పులు, EMI లు", "ఎవరు ఎంత, ఈ నెల కట్టాల్సినవి", "నా అప్పులు, EMI లు, చిట్టీలు అన్నీ చెప్పు: నాకు ఎవరు ఎంత ఇవ్వాలి, నేను ఎవరికి ఎంత ఇవ్వాలి, ఈ నెల కట్టాల్సినవి (debts list).")),
-            new Cat("expiry", "📄", "గడువుల రిమైండర్", "ఇన్సూరెన్స్, లైసెన్స్, సర్వీస్, గ్యాస్, రీఛార్జ్", 0xFFF97316,
+            new Cat("expiry", "📄", "గడువులు", "ఇన్సూరెన్స్, లైసెన్స్, సర్వీస్, వారంటీ", 0xFFF97316,
                     fill("🛡️", "బైక్ ఇన్సూరెన్స్ గడువు", "ఏ తేదీ వరకు", "బైక్ ఇన్సూరెన్స్ గడువు తేదీ (expiry add): "),
                     fill("🪪", "డ్రైవింగ్ లైసెన్స్ గడువు", "ఏ తేదీ వరకు", "డ్రైవింగ్ లైసెన్స్ గడువు తేదీ (expiry add): "),
                     fill("🛠️", "బైక్ సర్వీస్", "ప్రతి ఎన్ని కి.మీ", "బైక్ సర్వీస్ ప్రతి ఇన్ని కి.మీ కి గుర్తు చెయ్ (expiry add_km): "),
                     fill("🔥", "గ్యాస్ బుకింగ్", "ఎన్ని రోజులకి ఒకసారి", "గ్యాస్ సిలిండర్ బుక్ చేశాను, ఇన్ని రోజులకి మళ్లీ గుర్తు చెయ్ (expiry add, repeat_days): "),
+                    ask("🛢️", "గ్యాస్ బుక్ చెయ్", "Indane / HP / Bharat అధికారిక నంబర్‌కి, మీరు 'పంపు' అంటేనే", "గ్యాస్ సిలిండర్ బుక్ చెయ్ (expiry book_gas)."),
                     fill("📶", "మొబైల్ రీఛార్జ్", "ఏ రోజు అయిపోతుంది, ప్లాన్ రోజులు", "మొబైల్ రీఛార్జ్ గడువు (తేదీ, ప్లాన్ ఎన్ని రోజులు) (expiry add): "),
                     fill("➕", "ఇంకేదైనా గడువు", "PUC, RC, పాలసీ, ఫీజు…", "ఈ గడువు గుర్తుపెట్టుకో (ఏది, ఏ తేదీ): "),
                     fill("✅", "రెన్యూ చేశాను", "ఏది, కొత్త తేదీ", "ఇది రెన్యూ చేశాను / అయింది (expiry renew): "),
@@ -222,7 +220,7 @@ public class FeaturesActivity extends Activity {
                     act("🧾", "బిల్ ఫోటో → వారంటీ", "TV, ఫ్రిజ్, ఫోన్... బిల్ దాచి గుర్తుచేస్తుంది", "warranty_bill"),
                     fill("🛡️", "వారంటీ రాసుకో", "ఏ వస్తువు, ఎప్పుడు కొన్నారు, ఎన్ని నెలలు", "ఈ వస్తువు వారంటీ గుర్తుపెట్టుకో (expiry add_warranty): "),
                     ask("📋", "నా గడువులు", "దగ్గర ఉన్నవి ముందు", "నా గడువులు అన్నీ చెప్పు, దగ్గర ఉన్నవి ముందు (expiry list).")),
-            new Cat("prices", "🪙", "బంగారం, మార్కెట్ ధరలు", "బంగారం, వెండి, మిర్చి, పత్తి, పెట్రోల్", 0xFFEAB308,
+            new Cat("prices", "🪙", "బంగారం, ధరలు", "బంగారం, వెండి, మిర్చి, పత్తి, పెట్రోల్", 0xFFEAB308,
                     ask("🪙", "ఈరోజు బంగారం, వెండి", "22K, 24K, వెండి కిలో", "ఈరోజు బంగారం 22 క్యారెట్, 24 క్యారెట్, వెండి ధరలు చెప్పు (market_prices)."),
                     ask("🌶️", "మిర్చి ధర", "మార్కెట్ యార్డ్, క్వింటాకి", "ఈరోజు మిర్చి (తేజ) ధర మార్కెట్ యార్డ్‌లో ఎంత? (market_prices)"),
                     ask("☁️", "పత్తి ధర", "క్వింటాకి", "ఈరోజు పత్తి ధర క్వింటాకి ఎంత? (market_prices)"),
@@ -257,18 +255,20 @@ public class FeaturesActivity extends Activity {
                     fill("🏠", "చేరుకున్నాను మెసేజ్", "ఇంటికి / డ్యూటీకి చేరగానే ఎవరికి", "ఇంటికి / డ్యూటీకి చేరగానే వీళ్లకి 'క్షేమంగా చేరుకున్నాను' మెసేజ్ పంపనా అని అడుగు (drive settings reached_to): "),
                     ask("😴", "డ్యూటీ తర్వాత మెలకువ చెక్", "ఆన్‌లో ఉందా", "డ్యూటీ తర్వాత రైడ్‌లో మెలకువగా ఉన్నారా అని అడిగే చెక్, రైడ్ మొదట్లో వాతావరణం ఆన్‌లో ఉన్నాయా? (drive settings)"),
                     ask("🏁", "డ్రైవింగ్ అయిపోయింది", "పార్కింగ్ చోటు గుర్తుంచుకుంటుంది", "డ్రైవింగ్ అయిపోయింది (driving_mode off).")),
-            new Cat("travel", "🌍", "ప్రయాణం, బయటకు", "దారి, ట్రైన్, టికెట్లు, ఫుడ్", 0xFF34D399,
-                    fill("🗺️", "దారి చూపించు", "Maps లో navigation", "దారి చూపించు: "),
+            new Cat("travel", "🌍", "ప్రయాణం, బయటకు", "బస్, ట్రైన్, టికెట్లు, ట్రిప్, ఫుడ్", 0xFF34D399,
                     fill("🚆", "ట్రైన్ స్టేటస్", "Where is my Train లో: నంబర్, పేరు లేదా PNR", "ట్రైన్ స్టేటస్: "),
                     fill("🚌", "బస్ టైమింగ్స్", "TGSRTC గమ్యం యాప్‌లో", "TGSRTC గమ్యం యాప్‌లో బస్ టైమింగ్స్ చూసి చెప్పు (travel_search timings): "),
+                    fill("⏰", "స్టాప్ అలారం", "బస్ / ట్రైన్‌లో, మీ స్టాప్‌కి 2 కి.మీ. ముందు లేపుతుంది", "బస్ / ట్రైన్‌లో ఉన్నాను, ఈ స్టాప్ వచ్చేముందు అలారం పెట్టి లేపు (location_reminder stop_alarm): "),
+                    ask("⏹️", "స్టాప్ అలారం ఆపు", "పెట్టినది తీసేయి", "స్టాప్ అలారం ఆపు (location_reminder stop_alarm_off)."),
                     fill("🎟️", "బస్ / ట్రైన్ టికెట్", "బస్: TGSRTC, AbhiBus, redBus · ట్రైన్: RailYatri, ixigo", "ఈ బస్ / ట్రైన్ వెతికి చెప్పు, బుకింగ్ నేను చెప్పాక (travel_search): "),
                     fill("✈️", "ఫ్లైట్ వెతుకు", "ఎక్కడి నుంచి ఎక్కడికి, ఎప్పుడు", "ఫ్లైట్ వెతుకు: "),
                     ask("🎫", "నా టికెట్లు", "రాబోయే బుకింగ్స్", "నా రాబోయే టికెట్లు, బుకింగ్స్ చెప్పు."),
                     fill("🚕", "క్యాబ్ (Uber/Ola/Rapido)", "మీరే బుక్ చేస్తారు", "క్యాబ్ యాప్ తెరువు: "),
                     fill("🍔", "ఫుడ్ ఆర్డర్", "Swiggy / Zomato తెరుస్తాను", "ఫుడ్ ఆర్డర్ కోసం తెరువు: "),
                     ask("📦", "నా పార్శిల్స్", "ఎక్కడున్నాయి", "నా పార్శిల్స్ ఎక్కడున్నాయి?"),
-                    fill("📍", "అక్కడికి వెళ్తే గుర్తు చెయ్", "చోటు చేరగానే రిమైండర్", "ఈ చోటికి వెళ్లినప్పుడు గుర్తు చెయ్: ")),
-            new Cat("fun", "📰", "వార్తలు, వినోదం", "వార్తలు, క్రికెట్, పాటలు", 0xFFFB923C,
+                    fill("📍", "అక్కడికి వెళ్తే గుర్తు చెయ్", "చోటు చేరగానే రిమైండర్", "ఈ చోటికి వెళ్లినప్పుడు గుర్తు చెయ్: "),
+                    fill("🗺️", "ట్రిప్ ప్లాన్", "ఎక్కడికి, ఎన్ని రోజులు, ఎలా (బైక్ / కారు / బస్)", "ఈ ట్రిప్ రోజువారీ ప్లాన్ చెయ్, ఖర్చుతో: ")),
+            new Cat("news", "📰", "వార్తలు, వాతావరణం", "వార్తలు, లోకల్, క్రికెట్, వాతావరణం", 0xFF60A5FA,
                     ask("📰", "వార్తలు", "ముఖ్యమైన 3 వార్తలు", "ఈరోజు ముఖ్యమైన 3 వార్తలు చెప్పు: ఒకటి భారతదేశం, ఒకటి తెలంగాణ లేదా ఆంధ్రప్రదేశ్, ఒకటి టెక్నాలజీ. ఇంటర్నెట్‌లో వెతికి, చిన్నగా చెప్పు."),
                     ask("📍", "లోకల్ వార్తలు", "మీ ఊర్లు, జిల్లాల వార్తలు", "నా ప్రాంతాల తాజా వార్తలు తెలుగులో చదివి వినిపించు (local_news)."),
                     ask("🏛️", "తెలంగాణ వార్తలు", "తెలుగులో తాజా", "తెలంగాణ తాజా వార్తలు తెలుగులో చదివి వినిపించు (news, topic తెలంగాణ)."),
@@ -279,7 +279,8 @@ public class FeaturesActivity extends Activity {
                     ask("⛅", "వాతావరణం", "ఇప్పుడు, రేపు వర్షం", "ఇప్పుడు ఇక్కడ వాతావరణం ఎలా ఉంది? రేపు వర్షం పడే అవకాశం ఉందా?"),
                     ask("🗞️", "Way2News తాజా వార్తలు", "వచ్చిన notifications చదువు", "Way2News లో వచ్చిన తాజా వార్తలు చదివి వినిపించు (read_notifications, app Way2News)."),
                     open("🔊", "Way2News ఆటో చదవడం ఆన్/ఆఫ్", "వార్త రాగానే వినిపించడం", "కాల్స్"),
-                    ask("🏏", "క్రికెట్ లైవ్", "ఇండియా మ్యాచ్ అప్‌డేట్స్", "ఇండియా మ్యాచ్ ఉంటే లైవ్ అప్‌డేట్స్ చెప్తూ ఉండు."),
+                    ask("🏏", "క్రికెట్ లైవ్", "ఇండియా మ్యాచ్ అప్‌డేట్స్", "ఇండియా మ్యాచ్ ఉంటే లైవ్ అప్‌డేట్స్ చెప్తూ ఉండు.")),
+            new Cat("fun", "🎵", "పాటలు, రేడియో, సినిమాలు", "రేడియో, YouTube, సినిమాలు, క్విజ్, జోక్", 0xFFFB923C,
                     fill("▶️", "YouTube లో ప్లే", "పాట, వీడియో", "YouTube లో ప్లే చెయ్: "),
                     ask("🎵", "ఇది ఏ పాట?", "ఇప్పుడు ప్లే అవుతున్నది", "ఇప్పుడు ప్లే అవుతున్న పాట ఏది?"),
                     ask("😄", "ఒక జోక్", "", "ఒక చిన్న తెలుగు జోక్ చెప్పు."),
@@ -287,15 +288,13 @@ public class FeaturesActivity extends Activity {
                     ask("🎬", "ఈ వారం కొత్త సినిమాలు", "థియేటర్, OTT", "ఈ వారం కొత్త తెలుగు సినిమాలు, OTT రిలీజ్‌లు చెప్పు (new_movies)."),
                     ask("🍿", "వచ్చే వారం సినిమాలు", "", "వచ్చే వారం రాబోయే తెలుగు సినిమాలు, OTT రిలీజ్‌లు చెప్పు (new_movies next)."),
                     ask("💡", "ఒక కొత్త విషయం", "+ ఒక ఇంగ్లీష్ పదం", "ఒక కొత్త ఆసక్తికరమైన విషయం, ఒక ఇంగ్లీష్ పదం చెప్పు (daily_fact)."),
-                    fill("🛒", "ఏ యాప్‌లో చౌక?", "వస్తువు పేరు, మోడల్", "ఈ వస్తువు ఆన్‌లైన్‌లో ఎక్కడ చౌకగా ఉంది (compare_prices): "),
                     ask("🧠", "క్విజ్ ఆడదాం", "తెలుగులో ప్రశ్నలు, స్కోర్", "క్విజ్ ఆడదాం. తెలుగులో ఒక్కొక్క ప్రశ్న, 4 ఆప్షన్లతో అడుగు, స్కోర్ చెప్పు."),
                     ask("📻", "రేడియో", "ఏ స్టేషన్ అని అడిగి ప్లే చేస్తుంది", "రేడియో పెట్టు (sounds radio)."),
                     ask("📋", "నా రేడియో స్టేషన్లు", "సినిమా పాటలు, క్రిస్టియన్", "నా రేడియో స్టేషన్లు చూపించు (sounds stations)."),
                     ask("⭐", "ఫేవరేట్ స్టేషన్ పెట్టు", "ఏది అని అడుగుతుంది", "నా ఫేవరేట్ రేడియో స్టేషన్లలో ఒకటి పెట్టు (sounds favorites)."),
                     ask("❤️", "ఈ స్టేషన్ ఫేవరేట్లో పెట్టు", "ఇప్పుడు ప్లే అవుతున్నది", "ఇప్పుడు ప్లే అవుతున్న స్టేషన్‌ని ఫేవరేట్లో పెట్టు (sounds favorite)."),
                     ask("⏭", "తర్వాతి స్టేషన్", "", "తర్వాతి రేడియో స్టేషన్ పెట్టు (sounds next)."),
-                    fill("➕", "రేడియో స్టేషన్ యాడ్ చెయ్", "పేరు, https లింక్", "ఈ రేడియో స్టేషన్ నా లిస్ట్‌లో యాడ్ చెయ్ (sounds add): "),
-                    ask("📚", "Jarvis చిట్కా", "తెలియని ఫీచర్", "ఒక Jarvis చిట్కా చెప్పు (daily_fact tip).")),
+                    fill("➕", "రేడియో స్టేషన్ యాడ్ చెయ్", "పేరు, https లింక్", "ఈ రేడియో స్టేషన్ నా లిస్ట్‌లో యాడ్ చెయ్ (sounds add): ")),
             new Cat("daily", "🧰", "రోజువారీ సహాయం", "వస్తువులు, అలవాట్లు, లెక్కలు, లెటర్లు, కార్డులు", 0xFF60A5FA,
                     fill("🔑", "వస్తువు ఎక్కడ పెట్టానో రాసుకో", "ఉదా: తాళాలు - బీరువా పై అర", "ఈ వస్తువు ఇక్కడ పెట్టాను (item_place put): "),
                     fill("🔍", "ఎక్కడ పెట్టాను?", "వస్తువు పేరు", "ఇది ఎక్కడ పెట్టాను (item_place find): "),
@@ -312,7 +311,7 @@ public class FeaturesActivity extends Activity {
                     fill("🏥", "దగ్గర్లో తెరిచి ఉన్నవి", "మెడికల్ షాప్, ATM, ఆసుపత్రి…", "దగ్గర్లో ఇది ఎక్కడ ఉంది (nearby_open): "),
                     fill("🏛️", "ప్రభుత్వ సేవలు", "సర్టిఫికెట్, రేషన్, పథకాలు", "ఈ ప్రభుత్వ సేవకి ఏ డాక్యుమెంట్లు కావాలి, ఎక్కడ ఎలా అప్లై చేయాలి: "),
                     open("⚙️", "హెచ్చరికలు ఆన్/ఆఫ్", "పిడుగులు, వారం ప్లాన్, చిట్కా, ఛార్జ్", "రోజువారీ")),
-            new Cat("home", "🍳", "వంట, పుస్తకాలు, ట్రిప్", "స్టెప్ బై స్టెప్ వంట, పుస్తకం చదవడం, ట్రిప్ ప్లాన్", 0xFFF59E0B,
+            new Cat("home", "🍳", "వంట, పుస్తకాలు", "స్టెప్ బై స్టెప్ వంట, పుస్తకం చదివి వినిపించడం", 0xFFF59E0B,
                     fill("🍳", "వంట చేద్దాం", "ఏ వంటకం, ఎంత మందికి", "ఈ వంటకం స్టెప్ బై స్టెప్ చెప్పు (cook start): "),
                     ask("➡️", "తర్వాతి స్టెప్", "", "తర్వాతి స్టెప్ (cook next)."),
                     ask("🔁", "మళ్లీ చెప్పు", "", "ఈ స్టెప్ మళ్లీ చెప్పు (cook repeat)."),
@@ -320,9 +319,10 @@ public class FeaturesActivity extends Activity {
                     fill("⏲️", "వంట టైమర్", "ఉదా: 10 నిమిషాలు", "ఇంత సేపటికి టైమర్ పెట్టు (cook timer): "),
                     fill("📚", "పుస్తకం చదివి వినిపించు", "పుస్తకం పేరు (.txt, .epub, .pdf)", "ఈ పుస్తకం చదివి వినిపించు (ask_document read_aloud start): "),
                     ask("▶️", "ఆగిన దగ్గర నుంచి చదువు", "", "ఆగిన దగ్గర నుంచి చదువు (ask_document read_aloud continue)."),
-                    ask("📋", "నా పుస్తకాలు", "", "నా పుస్తకాలు ఏమున్నాయి? (ask_document read_aloud books)"),
-                    fill("🗺️", "ట్రిప్ ప్లాన్", "ఎక్కడికి, ఎన్ని రోజులు, ఎలా (బైక్ / కారు / బస్)", "ఈ ట్రిప్ రోజువారీ ప్లాన్ చెయ్, ఖర్చుతో: ")),
-            new Cat("wellness", "🧘", "వ్యాయామం, విశ్రాంతి", "నడుము, మెడ వ్యాయామం, అడుగులు, నిద్ర", 0xFF14B8A6,
+                    ask("📋", "నా పుస్తకాలు", "", "నా పుస్తకాలు ఏమున్నాయి? (ask_document read_aloud books)")),
+            new Cat("wellness", "🧘", "వ్యాయామం, నిద్ర", "నీళ్లు, అడుగులు, నిద్ర, కునుకు, శబ్దాలు", 0xFF14B8A6,
+                    ask("💧", "నీళ్లు తాగే రిమైండర్", "ప్రతి 2 గంటలకి", "ఉదయం 9 నుంచి రాత్రి 9 వరకు ప్రతి 2 గంటలకి నీళ్లు తాగమని గుర్తు చెయ్."),
+                    ask("🌬️", "గాలి నాణ్యత", "ఇక్కడ AQI", "ఇక్కడ గాలి నాణ్యత ఎలా ఉంది?"),
                     ask("🧘", "5 నిమిషాల వ్యాయామం", "నడుము, మెడ, భుజాలు", "5 నిమిషాల వ్యాయామం మొదలుపెట్టు (exercise start)."),
                     ask("⏹️", "వ్యాయామం ఆపు", "", "వ్యాయామం ఆపు (exercise stop)."),
                     fill("👣", "అడుగుల లక్ష్యం", "ఉదా: 8000", "నా రోజూ అడుగుల లక్ష్యం పెట్టు (exercise goal): "),
@@ -347,7 +347,7 @@ public class FeaturesActivity extends Activity {
                     fill("🗑️", "అలారం తీసేయి", "టైమ్ చెప్పండి", "ఈ అలారం తీసేయి (song_alarm cancel): "),
                     ask("🔔", "ఇప్పుడు మోగించి చూడు", "టెస్ట్", "పాట అలారం ఇప్పుడు ఒకసారి మోగించి చూపించు (song_alarm test)."),
                     open("🎵", "అలారం పాట ఎంచుకో", "ఫోన్‌లోని పాట", "అలారం")),
-            new Cat("faith", "✝️", "బైబిల్, ప్రార్థన", "సంవత్సర ప్లాన్, ప్రార్థన లిస్ట్, కంఠస్థం, ప్రసంగం నోట్స్", 0xFFA855F7,
+            new Cat("faith", "✝️", "బైబిల్, ప్రార్థన", "వచనం, చర్చి, సంవత్సర ప్లాన్, ప్రార్థన, కంఠస్థం", 0xFFA855F7,
                     ask("📖", "బైబిల్ సంవత్సర ప్లాన్", "రోజుకు 3-4 అధ్యాయాలు", "సంవత్సరంలో బైబిల్ మొత్తం చదివే ప్లాన్ మొదలుపెట్టు (bible plan_start)."),
                     ask("🔊", "ఈరోజు భాగం చదువు", "ఫోన్ చదివి వినిపిస్తుంది", "ఈరోజు బైబిల్ ప్లాన్ భాగం చదివి వినిపించు (bible plan_read)."),
                     ask("✅", "ఈరోజు భాగం నేనే చదివాను", "", "ఈరోజు బైబిల్ ప్లాన్ భాగం నేనే చదివాను (bible plan_done)."),
@@ -359,17 +359,17 @@ public class FeaturesActivity extends Activity {
                     ask("🎤", "వచనం అప్పజెప్తాను", "తప్పులు చెప్తుంది", "వచనం అప్పజెప్తాను (bible memorize_check)."),
                     ask("⛪", "ప్రసంగం రికార్డ్", "తర్వాత ముఖ్య విషయాలు, వచనాలు", "ప్రసంగం రికార్డ్ చెయ్ (voice_recorder start kind sermon)."),
                     ask("📝", "రికార్డింగ్ సారాంశం", "చివరి రికార్డింగ్", "నా చివరి రికార్డింగ్ సారాంశం చెప్పు (voice_recorder summary)."),
-                    ask("🕊️", "ప్రార్థన సమయం (15 ని.)", "లిస్ట్‌తో, ప్రశాంత సంగీతం", "15 నిమిషాలు ప్రార్థన సమయం (sounds prayer).")),
-            new Cat("kids", "📖", "పిల్లల కథలు", "నీతి కథలు, రోజూ కొత్తది", 0xFFFACC15,
+                    ask("🕊️", "ప్రార్థన సమయం (15 ని.)", "లిస్ట్‌తో, ప్రశాంత సంగీతం", "15 నిమిషాలు ప్రార్థన సమయం (sounds prayer)."),
+                    ask("📖", "ఈరోజు వచనం", "అర్థంతో", "ఈరోజు బైబిల్ వచనం చెప్పు, చిన్న అర్థంతో (bible daily)."),
+                    fill("🌅", "ఉదయం వచనం టైమ్", "ఉదా: 6:30 (ఆపాలంటే: వద్దు)", "రోజూ ఉదయం ఈ టైమ్‌కి బైబిల్ వచనం చెప్పు (bible morning_verse): "),
+                    fill("⛪", "చర్చి టైమ్", "ఉదా: ఆదివారం 9:00", "మా చర్చి ఆరాధన టైమ్ ఇది, 45 నిమిషాల ముందు గుర్తుచెయ్ (bible church): "),
+                    ask("🔕", "ఇది మా చర్చి", "చర్చిలో ఫోన్ సైలెంట్", "ఇది మా చర్చి. ఇక్కడికి రాగానే ఫోన్ సైలెంట్, బయటకు వెళ్లగానే సౌండ్ ఆన్ చెయ్.")),
+            new Cat("kids", "📖", "పిల్లల కథలు", "నీతి కథలు, బైబిల్ కథలు, రోజూ కొత్తది", 0xFFFACC15,
                     ask("🌙", "పడుకునే ముందు కథ", "కొత్త కథ", "పిల్లలకి పడుకునే ముందు ఒక కొత్త తెలుగు కథ చెప్పు (story)."),
                     ask("🐘", "జంతువుల కథ", "", "పిల్లలకి జంతువుల గురించి ఒక కొత్త నీతి కథ చెప్పు (story, theme animals)."),
                     ask("👑", "రాజు కథ", "", "పిల్లలకి ఒక రాజు, తెలివైన మంత్రి కథ చెప్పు (story, theme kings)."),
                     ask("📜", "పంచతంత్ర కథ", "", "పిల్లలకి ఒక పంచతంత్ర కథ చెప్పు (story, theme Panchatantra)."),
                     ask("✝️", "బైబిల్ కథ", "", "పిల్లలకి ఒక బైబిల్ కథ సరళంగా చెప్పు (story, theme Bible story)."),
-                    ask("📖", "ఈరోజు వచనం", "అర్థంతో", "ఈరోజు బైబిల్ వచనం చెప్పు, చిన్న అర్థంతో (bible daily)."),
-                    fill("🌅", "ఉదయం వచనం టైమ్", "ఉదా: 6:30 (ఆపాలంటే: వద్దు)", "రోజూ ఉదయం ఈ టైమ్‌కి బైబిల్ వచనం చెప్పు (bible morning_verse): "),
-                    fill("⛪", "చర్చి టైమ్", "ఉదా: ఆదివారం 9:00", "మా చర్చి ఆరాధన టైమ్ ఇది, 45 నిమిషాల ముందు గుర్తుచెయ్ (bible church): "),
-                    ask("🔕", "ఇది మా చర్చి", "చర్చిలో ఫోన్ సైలెంట్", "ఇది మా చర్చి. ఇక్కడికి రాగానే ఫోన్ సైలెంట్, బయటకు వెళ్లగానే సౌండ్ ఆన్ చెయ్."),
                     fill("✨", "ఈ విషయం మీద కథ", "ఉదా: నిజాయితీ, స్నేహం", "పిల్లలకి ఈ విషయం మీద ఒక కొత్త కథ చెప్పు (story): ")),
             new Cat("code", "💻", "కోడింగ్, క్రియేట్", "వెబ్‌సైట్, యాప్, Python", 0xFFA78BFA,
                     fill("🌐", "వెబ్‌సైట్ తయారు చెయ్", "preview, లింక్", "ఒక వెబ్‌సైట్ తయారు చెయ్: "),
@@ -378,16 +378,99 @@ public class FeaturesActivity extends Activity {
                     fill("💻", "కోడ్ రాయి", "ఏ భాషలోనైనా", "కోడ్ రాయి: "),
                     ask("🚀", "వెబ్‌సైట్ ఆన్‌లైన్ పెట్టు", "చివరి సైట్‌కి లింక్", "నా చివరి వెబ్‌సైట్‌ని ఆన్‌లైన్‌లో పెట్టు.")),
             new Cat("jarvis", "🤖", "Jarvis", "ఖర్చు, చెక్, సెట్టింగ్స్", Ui.C_TEAL,
+                    ask("📚", "Jarvis చిట్కా", "తెలియని ఫీచర్", "ఒక Jarvis చిట్కా చెప్పు (daily_fact tip)."),
                     ask("💰", "API ఖర్చు", "ఈ నెల ఎంత అయింది", "ఈ నెల API ఖర్చు ఎంత? బ్యాలెన్స్ ఎంత మిగిలింది?"),
                     ask("🤖", "ఏ మోడల్ మీద ఉన్నావ్?", "ఇప్పటి AI, మోడల్", "నువ్వు ఇప్పుడు ఏ AI, ఏ మోడల్ మీద నడుస్తున్నావ్?"),
                     open("🩺", "Jarvis చెక్", "మెసేజ్‌లు, గొంతు పనిచేయకపోతే", "చెక్"),
                     open("⚙️", "సెట్టింగ్స్", "అన్ని సెట్టింగ్స్", "")),
     };
 
+    /** The folders in groups on the main screen; a folder missing here shows under "ఇంకా". */
+    private static final String[][] SECTIONS = {
+            {"ప్రతిరోజు", "duty", "bike", "day", "alarm", "faith", "calls"},
+            {"పనులు, తేదీలు", "missions", "birthdays", "holidays", "expiry", "diary"},
+            {"డబ్బు", "money", "debts", "prices", "shopping"},
+            {"ఆరోగ్యం", "medicine", "doctor", "wellness"},
+            {"ప్రయాణం", "drive", "travel", "places"},
+            {"వార్తలు, వినోదం", "news", "fun", "kids", "home"},
+            {"ఫోన్, టూల్స్", "phone", "camera", "daily", "live", "code", "jarvis"}};
+
     static Cat find(String id) {
         if (id == null) return null;
-        for (Cat c : CATS) if (c.id.equalsIgnoreCase(id.trim())) return c;
+        String k = id.trim().toLowerCase(Locale.ROOT);
+        if (k.equals("health")) k = "wellness"; // the old folder ids
+        for (Cat c : CATS) if (c.id.equals(k)) return c;
         return null;
+    }
+
+    // ---------------------------------------------------------------- often used, and new
+
+    /** Options added lately, marked new on the first run of this screen; later ones are found by comparing with what was there before. */
+    private static final String[] FRESH = {"బస్ టైమింగ్స్", "బస్ / ట్రైన్ టికెట్", "ఫ్లైట్ వెతుకు", "ట్రైన్ స్టేటస్", "స్టాప్ అలారం", "స్టాప్ అలారం ఆపు", "గ్యాస్ బుక్ చెయ్"};
+    private static final long NEW_FOR = 7 * 86400000L;
+
+    private static android.content.SharedPreferences fsp(Context c) { return c.getSharedPreferences("jarvis_features", MODE_PRIVATE); }
+
+    private java.util.Map<String, Long> seen = new java.util.HashMap<>();
+
+    /** When each option was first seen; an option that came with an update is new for a week. */
+    private void loadSeen() {
+        try {
+            android.content.SharedPreferences sp = fsp(this);
+            boolean first = !sp.contains("seen");
+            org.json.JSONObject old = new org.json.JSONObject(sp.getString("seen", "{}")), now = new org.json.JSONObject();
+            long t = System.currentTimeMillis();
+            for (Cat c : CATS) for (Opt o : c.opts) {
+                if (now.has(o.title)) continue;
+                long at = old.has(o.title) ? old.optLong(o.title) : first && !java.util.Arrays.asList(FRESH).contains(o.title) ? 0 : t;
+                now.put(o.title, at);
+                seen.put(o.title, at);
+            }
+            sp.edit().putString("seen", now.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    private boolean isNew(Opt o) {
+        Long t = seen.get(o.title);
+        return t != null && t > 0 && System.currentTimeMillis() - t < NEW_FOR;
+    }
+
+    /** A tap on an option, for "తరచూ వాడేవి": each tap counts 1, halving every 30 days. */
+    private void used(Opt o) {
+        try {
+            org.json.JSONObject all = new org.json.JSONObject(fsp(this).getString("used", "{}"));
+            long now = System.currentTimeMillis();
+            all.put(o.title, new org.json.JSONObject().put("score", score(all.optJSONObject(o.title), now) + 1).put("at", now));
+            if (all.length() > 80) { // keep the 60 used most
+                java.util.List<String> keys = new java.util.ArrayList<>();
+                for (java.util.Iterator<String> it = all.keys(); it.hasNext(); ) keys.add(it.next());
+                keys.sort((a, b) -> Double.compare(score(all.optJSONObject(a), now), score(all.optJSONObject(b), now)));
+                for (int i = 0; i < keys.size() - 60; i++) all.remove(keys.get(i));
+            }
+            fsp(this).edit().putString("used", all.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    private static double score(org.json.JSONObject u, long now) {
+        if (u == null) return 0;
+        return u.optDouble("score", 0) * Math.pow(0.5, Math.max(0, now - u.optLong("at", now)) / (30 * 86400000.0));
+    }
+
+    /** The options he tapped at least twice lately, most used first: {Cat, Opt}. */
+    private java.util.List<Object[]> often(int max) {
+        java.util.List<Object[]> out = new java.util.ArrayList<>();
+        try {
+            org.json.JSONObject all = new org.json.JSONObject(fsp(this).getString("used", "{}"));
+            long now = System.currentTimeMillis();
+            java.util.Set<String> had = new java.util.HashSet<>();
+            for (Cat c : CATS) for (Opt o : c.opts) {
+                if (!had.add(o.title)) continue;
+                double sc = score(all.optJSONObject(o.title), now);
+                if (sc >= 1.5) out.add(new Object[]{c, o, sc});
+            }
+            out.sort((a, b) -> Double.compare((double) b[2], (double) a[2]));
+        } catch (Exception ignored) {}
+        return out.size() > max ? out.subList(0, max) : out;
     }
 
     /** From the show_features tool: the folders, or one folder straight away. */
@@ -471,6 +554,7 @@ public class FeaturesActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
 
+        loadSeen();
         Cat start = find(getIntent().getStringExtra(EXTRA_CATEGORY));
         if (start != null) showCat(start); else showGrid();
     }
@@ -498,25 +582,53 @@ public class FeaturesActivity extends Activity {
         TextView hint = Ui.text(this, "ఫోల్డర్ నొక్కితే దాని ఆప్షన్లు వస్తాయి", 13, Ui.MUTED);
         hint.setPadding(dp(2), dp(4), 0, dp(4));
         content.addView(hint);
+        java.util.List<Object[]> often = often(6);
+        if (!often.isEmpty()) {
+            section("⭐ తరచూ వాడేవి");
+            for (Object[] x : often) content.addView(row((Cat) x[0], (Opt) x[1], true), rowParams());
+        }
+        java.util.Set<String> shown = new java.util.HashSet<>();
+        for (String[] sec : SECTIONS) {
+            java.util.List<Cat> list = new java.util.ArrayList<>();
+            for (int i = 1; i < sec.length; i++) { Cat c = find(sec[i]); if (c != null && shown.add(c.id)) list.add(c); }
+            grid(sec[0], list);
+        }
+        java.util.List<Cat> rest = new java.util.ArrayList<>();
+        for (Cat c : CATS) if (shown.add(c.id)) rest.add(c);
+        grid("ఇంకా", rest);
+        scroll.scrollTo(0, 0);
+    }
+
+    private void section(String text) {
+        TextView h = Ui.text(this, text, 14, 0xE6FFFFFF);
+        h.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        h.setPadding(dp(2), dp(20), 0, 0);
+        content.addView(h);
+    }
+
+    /** A heading and its folders, two in a row (a row as tall as its taller tile). */
+    private void grid(String heading, java.util.List<Cat> list) {
+        if (list.isEmpty()) return;
+        section(heading);
         LinearLayout row = null;
-        for (int i = 0; i < CATS.length; i++) {
+        for (int i = 0; i < list.size(); i++) {
             if (i % 2 == 0) {
                 row = new LinearLayout(this);
                 LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
                 rlp.topMargin = dp(10);
                 content.addView(row, rlp);
             }
-            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, dp(128), 1);
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -1, 1);
             if (i % 2 == 0) tlp.rightMargin = dp(5); else tlp.leftMargin = dp(5);
-            row.addView(tile(CATS[i]), tlp);
+            row.addView(tile(list.get(i)), tlp);
         }
-        if (CATS.length % 2 == 1 && row != null) row.addView(new View(this), new LinearLayout.LayoutParams(0, dp(128), 1));
-        scroll.scrollTo(0, 0);
+        if (list.size() % 2 == 1 && row != null) row.addView(new View(this), new LinearLayout.LayoutParams(0, dp(10), 1));
     }
 
     private View tile(Cat c) {
         LinearLayout t = new LinearLayout(this);
         t.setOrientation(LinearLayout.VERTICAL);
+        t.setMinimumHeight(dp(128));
         t.setPadding(dp(14), dp(12), dp(12), dp(12));
         android.graphics.drawable.GradientDrawable bg = Ui.grad(this, new int[]{Ui.alpha(c.color, 0x46), Ui.alpha(c.color, 0x12)}, 20,
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR);
@@ -527,15 +639,17 @@ public class FeaturesActivity extends Activity {
         t.addView(e);
         TextView n = Ui.text(this, c.name, 16, 0xFFFFFFFF);
         n.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        n.setMaxLines(1);
+        n.setMaxLines(2); // the whole name, on two lines if it needs them
         n.setEllipsize(android.text.TextUtils.TruncateAt.END);
         n.setPadding(0, dp(6), 0, 0);
         t.addView(n);
         TextView bl = Ui.text(this, c.blurb, 12.5f, 0xCCFFFFFF);
-        bl.setMaxLines(1);
+        bl.setMaxLines(2);
         bl.setEllipsize(android.text.TextUtils.TruncateAt.END);
         t.addView(bl);
-        TextView cnt = Ui.text(this, c.opts.length + " ఆప్షన్లు ›", 12, c.color);
+        int fresh = 0;
+        for (Opt o : c.opts) if (isNew(o)) fresh++;
+        TextView cnt = Ui.text(this, c.opts.length + " ఆప్షన్లు" + (fresh > 0 ? " · 🆕 " + fresh + " కొత్తవి" : "") + " ›", 12, c.color);
         cnt.setPadding(0, dp(4), 0, 0);
         t.addView(cnt);
         t.setOnClickListener(v -> showCat(c));
@@ -846,13 +960,22 @@ public class FeaturesActivity extends Activity {
         col.setPadding(dp(12), 0, dp(8), 0);
         TextView t = Ui.text(this, o.title, 15.5f, 0xFFFFFFFF);
         col.addView(t);
+        if (isNew(o)) { // came with a recent update
+            TextView nw = Ui.text(this, "🆕 కొత్తది", 11, 0xFF0B1020);
+            nw.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            nw.setBackground(Ui.round(this, GOLD_C, 0, 10));
+            nw.setPadding(dp(7), dp(1), dp(7), dp(2));
+            LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(-2, -2);
+            nlp.topMargin = dp(3);
+            col.addView(nw, nlp);
+        }
         String sub = (showFolder ? c.emoji + " " + c.name + (o.desc.isEmpty() ? "" : " · ") : "") + o.desc;
         if (!sub.isEmpty()) col.addView(Ui.text(this, sub, 12.5f, Ui.MUTED));
         r.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
         String mark = o.type == FILL ? "✎" : o.type == OPEN ? "⚙" : o.type == INFO ? (o.payload.isEmpty() ? "›" : "ⓘ") : "›";
         TextView m = Ui.text(this, mark, o.type == ASK || o.type == DO ? 24 : 17, c.color);
         r.addView(m);
-        r.setOnClickListener(v -> run(o));
+        r.setOnClickListener(v -> { if (o.type != INFO) used(o); run(o); });
         return r;
     }
 

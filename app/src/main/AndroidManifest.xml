@@ -218,6 +218,10 @@
             android:exported="false"
             android:foregroundServiceType="location" />
         <service
+            android:name=".StopAlarmService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+        <service
             android:name=".SoundService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />

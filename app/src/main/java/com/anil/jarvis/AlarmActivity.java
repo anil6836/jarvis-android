@@ -42,6 +42,9 @@ public class AlarmActivity extends Activity {
     private int napMinutes;
     private LinearLayout box;
     private TextView stopView;
+    /** The stop alarm on a bus / train ("📍 X దగ్గరకి వచ్చారు"): no snooze, ⏹ ends it. */
+    static final String EXTRA_STOP = "stop_label";
+    private String stopLabel;
 
     /** "ఆపు" / "5 నిమిషాలు" on the notification: the screen (if open) goes quiet and closes. */
     static void stopRinging() {
@@ -56,6 +59,8 @@ public class AlarmActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         id = getIntent().getStringExtra(SongAlarm.EXTRA_ID);
         count = getIntent().getIntExtra(SongAlarm.EXTRA_COUNT, 0);
+        stopLabel = getIntent().getStringExtra(EXTRA_STOP);
+        if (stopLabel != null) { id = null; StopAlarm.quiet(this, stopLabel); } // the song rings here; the notification keeps only ⏹
         JSONObject o = id == null ? null : SongAlarm.find(this, id);
         station = o == null ? "" : o.optString("station", "");
         challenge = o != null && o.optBoolean("challenge");
@@ -76,7 +81,7 @@ public class AlarmActivity extends Activity {
         time.setGravity(Gravity.CENTER);
         box.addView(time);
         String label = o == null ? "" : o.optString("label");
-        TextView sub = Ui.text(this, "⏰ " + (label.isEmpty() ? "శుభోదయం!" : label), 20, Ui.C_CYAN);
+        TextView sub = Ui.text(this, stopLabel != null ? stopLabel : "⏰ " + (label.isEmpty() ? "శుభోదయం!" : label), 20, Ui.C_CYAN);
         sub.setGravity(Gravity.CENTER);
         sub.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 40));
         box.addView(sub);
@@ -84,7 +89,7 @@ public class AlarmActivity extends Activity {
         stop.setGravity(Gravity.CENTER);
         stop.setPadding(0, Ui.dp(this, 20), 0, Ui.dp(this, 20));
         stop.setBackground(Ui.grad(this, new int[]{Ui.C_BLUE, Ui.C_VIOLET}, 24, null));
-        stop.setOnClickListener(v -> { if (challenge) askSum(); else stopAndGreet(); });
+        stop.setOnClickListener(v -> { if (stopLabel != null) stopHere(); else if (challenge) askSum(); else stopAndGreet(); });
         stopView = stop;
         box.addView(stop, new LinearLayout.LayoutParams(-1, -2));
         TextView snooze = Ui.text(this, "😴  5 నిమిషాలు", 20, 0xFFFFFFFF);
@@ -94,7 +99,7 @@ public class AlarmActivity extends Activity {
         snooze.setOnClickListener(v -> doSnooze(5));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.topMargin = Ui.dp(this, 14);
-        box.addView(snooze, lp);
+        if (stopLabel == null) box.addView(snooze, lp); // a stop does not wait 5 minutes
         if (!station.isEmpty()) { // wake with the radio: keep listening after the alarm
             TextView keep = Ui.text(this, "📻  " + station + " కొనసాగించు", 18, 0xFFFFFFFF);
             keep.setGravity(Gravity.CENTER);
@@ -107,7 +112,18 @@ public class AlarmActivity extends Activity {
         }
         setContentView(box);
         play();
-        main.postDelayed(() -> doSnooze(10), 5 * 60000L); // not answered in 5 minutes: again in 10 (3 times at most)
+        if (stopLabel != null) main.postDelayed(this::stopHere, 20 * 60000L); // the stop alarm rings on (20 minutes at most)
+        else main.postDelayed(() -> doSnooze(10), 5 * 60000L); // not answered in 5 minutes: again in 10 (3 times at most)
+    }
+
+    /** The stop alarm answered: off everywhere, and a word to get ready. */
+    private void stopHere() {
+        if (handled) return;
+        handled = true;
+        silence();
+        StopAlarm.off(this);
+        Announcer.say(getApplicationContext(), new Prefs(this).name() + ", మీ స్టాప్ వస్తోంది. ఫోన్, పర్స్, సామాను చూసుకుని దిగండి.");
+        finish();
     }
 
     private void doSnooze(int minutes) {
@@ -126,6 +142,7 @@ public class AlarmActivity extends Activity {
     /** Home pressed while ringing: don't leave a song playing with no screen; ring again in 5 minutes. */
     @Override protected void onUserLeaveHint() {
         super.onUserLeaveHint();
+        if (stopLabel != null) return; // the stop alarm keeps ringing; ⏹ on the notification ends it
         doSnooze(5);
     }
 
@@ -310,7 +327,7 @@ public class AlarmActivity extends Activity {
         super.onDestroy();
     }
 
-    @Override public void onBackPressed() { if (challenge) askSum(); else stopAndGreet(); }
+    @Override public void onBackPressed() { if (stopLabel != null) stopHere(); else if (challenge) askSum(); else stopAndGreet(); }
 
     // ---------------------------------------------------------------- the small sum
 

@@ -192,12 +192,15 @@ final class Tools {
                         {"address", "string", "Address or place to save when there is no link"},
                         {"here", "boolean", "true = save where the phone is right now"}}, "action")));
         DEFS.add(new Def("location_reminder",
-                "Remind Anil when he arrives at or leaves a place ('ఇంటికి చేరగానే గుర్తుచేయి'). Place = a saved place (home, office) or an address. Also list or cancel them.",
-                schema(new String[][]{{"action", "string", "add (default), list or cancel"}, {"place", "string", "Saved place name or address, English"},
+                "Remind Anil when he arrives at or leaves a place ('ఇంటికి చేరగానే గుర్తుచేయి'). Place = a saved place (home, office) or an address. Also list or cancel them. "
+                        + "stop_alarm: on a bus or train, a loud alarm km before his stop ('వరంగల్ వచ్చేముందు లేపు', 'కాజీపేట స్టాప్ అలారం'); works on GPS without internet; "
+                        + "stop_alarm_off cancels it ('స్టాప్ అలారం ఆపు'); stop_alarm_status = how far now.",
+                schema(new String[][]{{"action", "string", "add (default), list, cancel, stop_alarm, stop_alarm_off or stop_alarm_status"}, {"place", "string", "Saved place name or address, English (stop_alarm: the stop, e.g. 'Kazipet bus stand')"},
                         {"text", "string", "What to remind him, or for automatic: what Jarvis should do there (e.g. 'phone silent', 'Wi-Fi on and hall light on')"},
                         {"when", "string", "arrive (default) or leave"},
                         {"automatic", "boolean", "true = an automatic mode Jarvis carries out every time he arrives/leaves (not a one-time reminder)"},
-                        {"id", "string", "For cancel: the reminder id from list"}})));
+                        {"id", "string", "For cancel: the reminder id from list"},
+                        {"km", "number", "stop_alarm: ring this many km before the stop (default 2; a train he sleeps on: 3)"}})));
         DEFS.add(new Def("smart_home",
                 "Control his smart lights, fans and plugs (Wipro, Syska, Homemate, Zeb Home, anything in Alexa): turn on/off, or run a saved scene. "
                         + "command 'list' shows his saved commands.",
@@ -429,7 +432,7 @@ final class Tools {
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 365)"},
                         {"petrol_price", "number", "Set: petrol price ₹/litre he goes by (default 107)"}, {"petrol_kmpl", "number", "Set: a petrol bike's km per litre (default 45)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (exercise, rest, sleep sounds), alarm (song alarm), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), drive (route, places on the way, speed cameras), home (cooking, books read aloud, trip plan), travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone (phone control, lights / smart home), duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (water, steps, exercise, sleep, sounds), alarm (song alarm), faith (Bible, verse, church, prayer), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), drive (route, places on the way, speed cameras), home (cooking, books read aloud), travel (bus, train, tickets, trip plan), news (news, weather, cricket), fun (radio, songs, movies, quiz), code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
@@ -490,8 +493,11 @@ final class Tools {
                 + "renew: done / renewed (new date, or + repeat days; km count starts again); list; remove. For a date in a saved document use ask_document first. "
                 + "add_warranty: a product's warranty (what = item, bought = purchase date, months, or date = warranty end; shop); the bill photo just sent is kept with it; "
                 + "reminded 30 days before it ends; show_bill: open that bill photo ('TV బిల్ చూపించు'). "
-                + "Keep only the name and date, never policy or licence numbers.",
-                schema(new String[][]{{"action", "string", "list (default), add, add_km, renew, remove, add_warranty or show_bill"},
+                + "Keep only the name and date, never policy or licence numbers. "
+                + "book_gas: book his LPG cylinder refill through the gas company's official WhatsApp / missed-call number ('గ్యాస్ బుక్ చెయ్'); "
+                + "company = Indane, HP or Bharat (asked once, then remembered).",
+                schema(new String[][]{{"action", "string", "list (default), add, add_km, renew, remove, add_warranty, show_bill or book_gas"},
+                        {"company", "string", "For book_gas: Indane, HP or Bharat; empty = the one he said before"},
                         {"bought", "string", "For add_warranty: purchase date YYYY-MM-DD"}, {"months", "integer", "For add_warranty: warranty months (12, 24...)"},
                         {"shop", "string", "For add_warranty: where bought (optional)"},
                         {"what", "string", "In Telugu as he says it, e.g. 'బైక్ ఇన్సూరెన్స్', 'డ్రైవింగ్ లైసెన్స్', 'గ్యాస్ బుకింగ్', 'Jio రీఛార్జ్', 'బైక్ సర్వీస్'"},
@@ -963,7 +969,10 @@ final class Tools {
                 }
                 case "day_summary": return daySummary();
                 case "scan_qr": return scanQr(a.optBoolean("open", false));
-                case "location_reminder": return locationReminder(a.optString("action", "add"), a.optString("place"),
+                case "location_reminder":
+                    if (a.optString("action").trim().toLowerCase(Locale.ROOT).startsWith("stop_alarm"))
+                        return stopAlarm(a.optString("action").trim().toLowerCase(Locale.ROOT), a.optString("place"), a.optDouble("km", 2));
+                    return locationReminder(a.optString("action", "add"), a.optString("place"),
                         a.optString("text"), a.optString("when", "arrive"), a.optString("id"), a.optBoolean("automatic", false));
                 case "now_playing": return nowPlaying();
                 case "look_at_screen": return lookAtScreen(a.optString("question"));
@@ -5802,8 +5811,37 @@ final class Tools {
                 + "For someone who owes him, offer a polite WhatsApp reminder (whatsapp_message, sent only after he says send).").toString();
     }
 
+    /** The gas companies' own booking numbers (from his registered mobile): {company, how, number, message}. */
+    private static final String[][] GAS = {
+            {"Indane", "whatsapp", "917588888824", "REFILL", "missed call 8454955555"},
+            {"HP", "missed_call", "9493602222", "", "WhatsApp 'Hi' to 9222201122"},
+            {"Bharat", "whatsapp", "911800224344", "Book", "call 7715012345 (IVRS)"}};
+
+    private String bookGas(String company) throws Exception {
+        android.content.SharedPreferences sp = act().getSharedPreferences("jarvis_gas", android.content.Context.MODE_PRIVATE);
+        String c = company == null ? "" : company.trim().toLowerCase(Locale.ROOT);
+        if (c.isEmpty()) c = sp.getString("company", "");
+        String[] g = null;
+        if (c.contains("indane") || c.contains("ఇండేన్") || c.contains("indian oil")) g = GAS[0];
+        else if (c.matches(".*\\bhp\\b.*") || c.contains("hpcl") || c.contains("hp gas") || c.contains("హెచ్‌పి") || c.contains("హెచ్‌పీ") || c.contains("హెచ్పీ")
+                || c.contains("హెచ్పి") || c.contains("హెచ్ పి") || c.contains("హెచ్ పీ") || c.contains("hindustan")) g = GAS[1];
+        else if (c.contains("bharat") || c.contains("భారత్") || c.contains("bpcl")) g = GAS[2];
+        if (g == null) return err("ask_company", "Ask him once: 'మీ గ్యాస్ ఏ కంపెనీది? Indane, HP లేదా Bharat Gas?' Then call again with company.");
+        sp.edit().putString("company", g[0]).apply();
+        JSONObject o = ok().put("company", g[0] + " Gas").put("other_way", g[4])
+                .put("note", "It must go from the mobile number registered with his gas agency (on a dual-SIM phone, that SIM). The booking SMS comes in a few minutes.");
+        if (g[1].equals("whatsapp"))
+            return o.put("how", "WhatsApp to " + g[0] + "'s official booking number").put("who", "+" + g[2]).put("message", g[3])
+                    .put("next", "whatsapp_message who=+" + g[2] + " message='" + g[3] + "', then ask '" + g[0] + " గ్యాస్ బుకింగ్ మెసేజ్ పంపమంటారా?' and send_draft only on his yes. "
+                            + "The company's WhatsApp replies with the booking (or a short menu he taps). If a gas booking date is in expiry, renew it after the booking SMS.").toString();
+        return o.put("how", "missed call to " + g[0] + "'s official booking number").put("who", g[2])
+                .put("next", "Ask '" + g[0] + " గ్యాస్ బుకింగ్ నంబర్‌కి మిస్డ్ కాల్ ఇవ్వమంటారా?'; on his yes call_contact who=" + g[2]
+                        + ". The line cuts by itself after a ring and the booking SMS follows; if it keeps ringing, call_control end. If a gas booking date is in expiry, renew it after the SMS.").toString();
+    }
+
     private String expiry(JSONObject a) throws Exception {
         String action = a.optString("action", "list").toLowerCase(Locale.ROOT), what = a.optString("what");
+        if (action.contains("gas")) return bookGas(a.optString("company"));
         if (action.contains("warrant")) {
             JSONObject o = Expiry.addWarranty(act(), what, a.optString("bought"), a.optInt("months", 0), a.optString("date"), a.optString("shop"));
             if (o == null) return err("missing", "Need the item and the warranty end (bought date + months, or the last date). Ask him what is not on the bill.");
@@ -6219,6 +6257,58 @@ final class Tools {
         if (l == null) return err("no_location", "Could not get the phone's location. Is Location on?");
         GeoReminders.savePlace(act(), name.trim(), l.getLatitude(), l.getLongitude());
         return ok().put("saved_place", name.trim()).put("accuracy_m", Math.round(l.getAccuracy())).toString();
+    }
+
+    /** A place for a stop alarm: one he saved (exact name), else the map's match nearest to him in India. {lat, lon} or null. */
+    private double[] stopPlace(String place, Location here) {
+        double[] ll = GeoReminders.place(act(), place);
+        if (ll != null) return ll;
+        String k = GeoReminders.key(place);
+        for (JSONObject p : Places.all(act()))
+            if (p.has("lat") && GeoReminders.key(p.optString("name")).equals(k)) return new double[]{p.optDouble("lat"), p.optDouble("lon")};
+        try {
+            List<android.location.Address> found = new android.location.Geocoder(act(), Locale.ENGLISH).getFromLocationName(place, 5, 6.5, 68.0, 35.7, 97.5);
+            double best = Double.MAX_VALUE;
+            if (found != null) for (android.location.Address ad : found) {
+                double d = here == null ? 0 : GeoReminders.distance(here.getLatitude(), here.getLongitude(), ad.getLatitude(), ad.getLongitude());
+                if (ll == null || d < best) { best = d; ll = new double[]{ad.getLatitude(), ad.getLongitude()}; }
+            }
+        } catch (Exception ignored) {}
+        return ll;
+    }
+
+    /** The alarm before his stop on a bus / train (see StopAlarm). */
+    private String stopAlarm(String action, String place, double km) throws Exception {
+        JSONObject now = StopAlarm.current(act());
+        if (action.endsWith("off") || action.endsWith("cancel")) {
+            StopAlarm.stoppedFromNotification(act()); // also silences it if it is ringing now
+            return ok().put("stopped", now == null ? "the stop alarm (ringing or none on)" : now.optString("place")).toString();
+        }
+        Location here = lastLocation(act());
+        if (action.endsWith("status")) {
+            if (now == null) return err("none", "No stop alarm is on.");
+            JSONObject o = ok().put("place", now.optString("place")).put("rings_at_km", now.optDouble("km"));
+            if (here != null) o.put("km_now", StopAlarm.km(GeoReminders.distance(here.getLatitude(), here.getLongitude(), now.optDouble("lat"), now.optDouble("lon"))));
+            return o.toString();
+        }
+        if (place == null || place.trim().isEmpty()) return err("missing", "Which stop?");
+        if (!has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
+        double ring = Double.isNaN(km) || km <= 0 ? 2 : Math.max(0.5, Math.min(20, km));
+        double[] ll = stopPlace(place.trim(), here);
+        if (ll == null) return err("unknown_place", "'" + place + "' could not be found on the map. Ask him for the town or the bus stand / station name.");
+        boolean fresh = here != null && System.currentTimeMillis() - here.getTime() < 10 * 60_000L; // an old fix may be from another town
+        if (fresh) {
+            double d = GeoReminders.distance(here.getLatitude(), here.getLongitude(), ll[0], ll[1]);
+            if (d <= ring * 1000) return err("already_near", "He is already " + StopAlarm.km(d) + " km from " + place + ", inside " + ring + " km. Tell him; no alarm was set.");
+            if (d > 3_500_000) return err("too_far", "The map's '" + place + "' is " + StopAlarm.km(d) + " km away: probably the wrong place. Ask him for the district or state.");
+        }
+        StopAlarm.start(act(), place.trim(), ll[0], ll[1], ring);
+        JSONObject o = ok().put("stop_alarm", place.trim()).put("rings_at_km", ring)
+                .put("note", "Works on GPS without internet; location must stay on. ⏹ on the notification cancels it.");
+        if (now != null && !now.optString("place").equalsIgnoreCase(place.trim())) o.put("replaced", now.optString("place"));
+        if (fresh) o.put("km_now", StopAlarm.km(GeoReminders.distance(here.getLatitude(), here.getLongitude(), ll[0], ll[1])));
+        else o.put("km_now", "unknown until the GPS finds him");
+        return o.toString();
     }
 
     private String locationReminder(String action, String place, String text, String when, String id, boolean automatic) throws Exception {
