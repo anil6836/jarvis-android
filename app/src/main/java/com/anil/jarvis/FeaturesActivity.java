@@ -622,7 +622,9 @@ public class FeaturesActivity extends Activity {
             if (i % 2 == 0) tlp.rightMargin = dp(5); else tlp.leftMargin = dp(5);
             row.addView(tile(list.get(i)), tlp);
         }
-        if (list.size() % 2 == 1 && row != null) row.addView(new View(this), new LinearLayout.LayoutParams(0, dp(10), 1));
+        // the empty half next to a lone tile must also be MATCH_PARENT: with any fixed-height child, LinearLayout sizes the row
+        // by that child alone and squeezes the tile into a thin line
+        if (list.size() % 2 == 1 && row != null) row.addView(new View(this), new LinearLayout.LayoutParams(0, -1, 1));
     }
 
     private View tile(Cat c) {
