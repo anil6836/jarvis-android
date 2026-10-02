@@ -65,7 +65,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private boolean greeting;
     /**
      * The talk is over but the panel stays up a while (like Gemini): "Jarvis" can be heard again meanwhile,
-     * and then this same panel just listens (no new greeting), with the last answer still on it.
+     * and then this same panel greets and listens, with the last answer still on it.
      */
     private boolean waiting;
     private static final long STAY_OPEN_MS = 60_000;
@@ -129,7 +129,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startRun(intent)) return;
         if (waiting && live == null && !busy && !greeting && !voice.listening && !voice.speaking && callText == null) { // "Jarvis" again while the panel waits
-            listenAgain(false);
+            begin(); // the greeting again ("చెప్పండి, Anil?"), in this same panel, then it listens
             return;
         }
         if (live == null && !busy && !greeting && !voice.listening && voice.isPaused()) { // "Jarvis" while paused
@@ -394,10 +394,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         greeting = false;
     }
 
-    /**
-     * Talking again in the open panel: by "Jarvis" (the wake word already let go of the mic) or by the mic button
-     * (the wake word is told to let go first, so the two don't fight over the mic).
-     */
+    /** The mic button in the waiting panel: listens straight away (the wake word is told to let go of the mic first). */
     private void listenAgain(boolean tapped) {
         main.removeCallbacks(autoClose);
         waiting = false;
