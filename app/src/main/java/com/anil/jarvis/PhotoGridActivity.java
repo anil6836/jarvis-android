@@ -39,6 +39,12 @@ public class PhotoGridActivity extends Activity {
 
     private final ExecutorService loader = Executors.newFixedThreadPool(3);
 
+    @Override protected void onResume() {
+        super.onResume();
+        Ui.loadTheme(this);
+        if (builtTheme != Ui.themeVersion) recreate(); // the theme changed in Settings meanwhile
+    }
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         Ui.loadTheme(this); // the chosen colours, before anything is built

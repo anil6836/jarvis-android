@@ -97,7 +97,7 @@ public class FeaturesActivity extends Activity {
                     ask("🌙", "ఈరోజు ఏం జరిగింది?", "కాల్స్, మెసేజ్‌లు, ఖర్చు", "ఈరోజు ఏం జరిగింది?"),
                     ask("📊", "వారపు రిపోర్ట్", "ఈ వారం ఎలా గడిచింది", "ఈ వారం రిపోర్ట్ చెప్పు."),
                     fill("🔁", "రొటీన్ పెట్టు", "ఉదా: రోజూ ఉదయం 7కి బ్రీఫింగ్", "ఒక రొటీన్ పెట్టు: ")),
-            new Cat("missions", "🎯", "మిషన్లు, నోట్స్", "పనులు, నోట్స్, జ్ఞాపకాలు", Ui.C_VIOLET,
+            new Cat("missions", "🎯", "మిషన్లు, నోట్స్", "పనులు, నోట్స్, జ్ఞాపకాలు", 0xFF8B5CF6,
                     fill("➕", "కొత్త మిషన్", "చేయాల్సిన పని", "కొత్త మిషన్: "),
                     ask("🎯", "మిషన్ స్టేటస్", "ఏది ముందు చేయాలి", "నా మిషన్ల స్టేటస్ చెప్పు. ఎన్ని పెండింగ్‌లో ఉన్నాయి, ముందు ఏది చేయాలో ఒక్కటి సూచించు."),
                     ask("🧘", "ఫోకస్ మోడ్", "25 నిమిషాల ఫోకస్", "నేను ఇప్పుడు 25 నిమిషాలు ఫోకస్ చేయాలి. నా మిషన్ల నుంచి ఒకటి ఎంచుకుని మూడు చిన్న స్టెప్స్ చెప్పు, తర్వాత 25 నిమిషాల టైమర్ పెట్టు."),
@@ -124,7 +124,7 @@ public class FeaturesActivity extends Activity {
                     ask("🇮🇳", "Hindi practice", "మాట్లాడుతూ హిందీ నేర్చుకో", "హిందీ practice మొదలుపెట్టు (english_practice language Hindi)."),
                     fill("🌐", "అనువాదకుడిగా ఉండు", "తెలుగు ↔ వేరే భాష, ఇద్దరి మధ్య", "అనువాదకుడిగా ఉండు, భాష: "),
                     fill("🔤", "ఒక వాక్యం అనువదించు", "ఏ భాషలోకైనా", "దీన్ని ఇంగ్లీష్‌లో చెప్పు: ")),
-            new Cat("phone", "📱", "ఫోన్, ఇంటి కంట్రోల్", "స్క్రీన్, యాప్స్, డేటా, లైట్లు", Ui.C_CYAN,
+            new Cat("phone", "📱", "ఫోన్, ఇంటి కంట్రోల్", "స్క్రీన్, యాప్స్, డేటా, లైట్లు", Ui.C_SKY,
                     ask("📱", "స్క్రీన్ చూడు", "స్క్రీన్‌లో ఏముందో చెప్తాను", "నా స్క్రీన్‌లో ఏముందో చూసి చెప్పు (look_at_screen వాడు)."),
                     fill("🤖", "ఫోన్‌లో ఏదైనా పని", "Jarvis యాప్‌లు వాడి చేస్తుంది", "ఫోన్‌లో ఈ పని చేయి: "),
                     fill("📲", "యాప్ తెరువు", "ఉదా: YouTube", "యాప్ తెరువు: "),
@@ -497,6 +497,12 @@ public class FeaturesActivity extends Activity {
     private Cat current;
 
     private int dp(float v) { return Ui.dp(this, v); }
+
+    @Override protected void onResume() {
+        super.onResume();
+        Ui.loadTheme(this);
+        if (builtTheme != Ui.themeVersion) recreate(); // the theme changed in Settings meanwhile
+    }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);

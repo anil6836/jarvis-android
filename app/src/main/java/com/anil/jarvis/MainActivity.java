@@ -803,14 +803,16 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         return g;
     }
 
-    private static final int[][] CHIP_COLORS = {
+    /** Read when used, so they follow the theme. */
+    private static int[][] chipColors() { return new int[][]{
             {Ui.C_CYAN, Ui.C_BLUE}, {Ui.C_VIOLET, Ui.C_PINK}, {Ui.C_AMBER, Ui.C_ORANGE}, {Ui.C_GREEN, Ui.C_TEAL},
-            {Ui.C_BLUE, Ui.C_VIOLET}, {Ui.C_PINK, Ui.C_ORANGE}, {Ui.C_TEAL, Ui.C_CYAN}, {Ui.C_ORANGE, Ui.C_PINK}};
+            {Ui.C_BLUE, Ui.C_VIOLET}, {Ui.C_PINK, Ui.C_ORANGE}, {Ui.C_TEAL, Ui.C_CYAN}, {Ui.C_ORANGE, Ui.C_PINK}}; }
     private int chipIndex;
 
     /** A colourful quick-action pill: emoji, words, its own soft gradient. */
     private TextView chip(LinearLayout chips, String emoji, String label) {
-        int[] c = CHIP_COLORS[chipIndex++ % CHIP_COLORS.length];
+        int[][] colors = chipColors();
+        int[] c = colors[chipIndex++ % colors.length];
         TextView chip = Ui.text(this, emoji + "  " + label, 14, 0xFFFFFFFF);
         chip.setSingleLine(true);
         GradientDrawable g = Ui.grad(this, new int[]{Ui.alpha(c[0], 0x55), Ui.alpha(c[1], 0x33)}, 999, null);

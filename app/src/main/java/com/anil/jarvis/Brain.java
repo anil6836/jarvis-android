@@ -29,8 +29,18 @@ final class Brain {
     private static final int MAX_ROUNDS = 12; // a planned task can take several tools one after another
     /** The chosen OpenAI model rejected the "reasoning" option once: don't send it again. */
     private static volatile boolean noReasoningOption;
-    /** The Claude model that rejected "thinking" once (its deep questions then go without it). */
-    private static volatile String noClaudeThinkingModel = "";
+    /**
+     * How each Claude model takes long thinking, learned from its answers: 1 = adaptive + effort (current models),
+     * 2 = enabled with a budget (older ones), 0 = none.
+     */
+    private static final java.util.Map<String, Integer> claudeThinking = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static void claudeThinkingTo(JSONObject body, int mode) throws Exception {
+        body.remove("thinking");
+        body.remove("output_config");
+        if (mode == 1) body.put("thinking", new JSONObject().put("type", "adaptive")).put("output_config", new JSONObject().put("effort", "high"));
+        else if (mode == 2) body.put("thinking", new JSONObject().put("type", "enabled").put("budget_tokens", 8000));
+    }
 
     private final Prefs prefs;
     private final Store store;
@@ -76,11 +86,17 @@ final class Brain {
         boolean feel = prefs.emotions();
         String system = systemPrompt() + (feel ? Emotion.rule() : "") + whoAmI();
         List<String[]> turns = normalize(history);
-        String reply = prefs.isGemini()
-                ? gemini(system, turns, text, jpegB64, status)
-                : prefs.isOpenAi()
-                ? openAi(system, turns, text, jpegB64, status)
-                : anthropic(system, turns, text, jpegB64, status);
+        String reply;
+        Http.LONG_WAIT.set(deep); // long thinking may take minutes
+        try {
+            reply = prefs.isGemini()
+                    ? gemini(system, turns, text, jpegB64, status)
+                    : prefs.isOpenAi()
+                    ? openAi(system, turns, text, jpegB64, status)
+                    : anthropic(system, turns, text, jpegB64, status);
+        } finally {
+            Http.LONG_WAIT.set(false);
+        }
         // the feeling tag ([happy], [sad]...) is for the voice only: take it off the text
         return feel ? Emotion.strip(reply) : reply;
     }
@@ -185,8 +201,7 @@ final class Brain {
     /** The live situation for the prompt; empty when nothing is known. */
     private String situation() {
         try {
-            android.content.Context c = tools.context();
-            String s = c == null ? "" : Situation.of(c);
+            String s = Situation.of(prefs.app); // also for the morning briefing, which has no tools
             return s.isEmpty() ? "(nothing known)\n" : s;
         } catch (Throwable e) {
             return "(nothing known)\n";
@@ -806,22 +821,29 @@ final class Brain {
 
         for (int round = 0; round < MAX_ROUNDS; round++) {
             checkCancelled(status);
+            // 4096: newer Claude models always think a little, and that counts in max_tokens
             JSONObject body = new JSONObject()
                     .put("model", prefs.model())
-                    .put("max_tokens", deep && !prefs.model().equals(noClaudeThinkingModel) ? 12000 : 1024)
+                    .put("max_tokens", deep ? 16000 : 4096)
                     .put("system", system)
                     .put("messages", messages)
                     .put("tools", toolList);
-            if (deep && !prefs.model().equals(noClaudeThinkingModel)) body.put("thinking", new JSONObject().put("type", "enabled").put("budget_tokens", 8000));
+            String model = prefs.model();
+            int mode = deep ? claudeThinking.getOrDefault(model, 1) : 0;
+            claudeThinkingTo(body, mode);
             JSONObject res;
-            try {
-                res = Http.post("https://api.anthropic.com/v1/messages", body, "x-api-key", key, "anthropic-version", "2023-06-01");
-            } catch (Http.ApiError e) {
-                if (!body.has("thinking") || e.status != 400 || String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT).indexOf("thinking") < 0) throw e;
-                noClaudeThinkingModel = prefs.model(); // this model has no thinking: the same model again, without it
-                body.remove("thinking");
-                body.put("max_tokens", 1024);
-                res = Http.post("https://api.anthropic.com/v1/messages", body, "x-api-key", key, "anthropic-version", "2023-06-01");
+            while (true) {
+                try {
+                    res = Http.post("https://api.anthropic.com/v1/messages", body, "x-api-key", key, "anthropic-version", "2023-06-01");
+                    break;
+                } catch (Http.ApiError e) {
+                    String msg = String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT);
+                    boolean aboutThinking = msg.contains("thinking") || msg.contains("effort") || msg.contains("output_config");
+                    if (mode == 0 || e.status != 400 || !aboutThinking) throw e;
+                    mode = mode == 1 ? 2 : 0; // the same model, the next way of thinking it accepts
+                    claudeThinking.put(model, mode);
+                    claudeThinkingTo(body, mode);
+                }
             }
             JSONArray blocks = res.optJSONArray("content");
             if (blocks == null) blocks = new JSONArray();

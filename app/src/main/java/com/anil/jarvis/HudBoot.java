@@ -17,7 +17,7 @@ final class HudBoot extends View {
     private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG), mark = new Paint(Paint.ANTI_ALIAS_FLAG),
             text = new Paint(Paint.ANTI_ALIAS_FLAG), sub = new Paint(Paint.ANTI_ALIAS_FLAG), dim = new Paint();
     private final RectF oval = new RectF();
-    private final long start = SystemClock.uptimeMillis();
+    private long start; // set at the first frame (the screen may take a moment to appear)
     private static final long TOTAL = 1300;
 
     HudBoot(Context c) {
@@ -45,6 +45,7 @@ final class HudBoot extends View {
     }
 
     @Override protected void onDraw(Canvas c) {
+        if (start == 0) start = SystemClock.uptimeMillis();
         float t = (SystemClock.uptimeMillis() - start) / (float) TOTAL;
         if (t >= 1f) { post(this::remove); return; }
         float fade = t < 0.75f ? 1f : 1f - (t - 0.75f) / 0.25f;

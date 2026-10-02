@@ -129,10 +129,12 @@ final class Ui {
         private final android.graphics.RectF oval = new android.graphics.RectF();
         private float w, h, step, cx, cy, r1, r2, r3, len;
         private final long born = android.os.SystemClock.uptimeMillis();
+        // the theme's colours when this screen was made (a page open during a theme change keeps one look)
+        private final int top = BG_TOP, bottom = BG_BOTTOM, glow1 = C_CYAN, glow2 = C_VIOLET, ringC = RING, markC = MARK;
         private boolean ticking;
         private final Runnable tick = new Runnable() {
             @Override public void run() {
-                if (!ticking) return;
+                if (!ticking || !animate) { ticking = false; return; }
                 invalidateSelf();
                 scheduleSelf(this, android.os.SystemClock.uptimeMillis() + 66);
             }
@@ -143,24 +145,24 @@ final class Ui {
             h = b.height();
             if (w <= 0 || h <= 0) return;
             float d = Math.min(w, h);
-            base.setShader(new android.graphics.LinearGradient(0, 0, 0, h, BG_TOP, BG_BOTTOM, android.graphics.Shader.TileMode.CLAMP));
-            g1.setShader(new android.graphics.RadialGradient(w * 0.08f, h * 0.02f, w * 0.85f, alpha(C_CYAN, 60), 0, android.graphics.Shader.TileMode.CLAMP));
-            g2.setShader(new android.graphics.RadialGradient(w * 0.98f, h * 0.10f, w * 0.80f, alpha(C_VIOLET, 52), 0, android.graphics.Shader.TileMode.CLAMP));
+            base.setShader(new android.graphics.LinearGradient(0, 0, 0, h, top, bottom, android.graphics.Shader.TileMode.CLAMP));
+            g1.setShader(new android.graphics.RadialGradient(w * 0.08f, h * 0.02f, w * 0.85f, alpha(glow1, 60), 0, android.graphics.Shader.TileMode.CLAMP));
+            g2.setShader(new android.graphics.RadialGradient(w * 0.98f, h * 0.10f, w * 0.80f, alpha(glow2, 52), 0, android.graphics.Shader.TileMode.CLAMP));
             step = d / 11f;
-            grid.setColor(alpha(RING, 12));
+            grid.setColor(alpha(ringC, 12));
             grid.setStrokeWidth(1);
             cx = w * 0.5f;
             cy = h * 0.36f;
             r1 = d * 0.30f; r2 = d * 0.39f; r3 = d * 0.46f;
             ring.setStyle(Paint.Style.STROKE);
-            ring.setColor(alpha(RING, 34));
+            ring.setColor(alpha(ringC, 34));
             ring.setStrokeWidth(Math.max(1.5f, d / 400f));
             mark.setStyle(Paint.Style.STROKE);
-            mark.setColor(alpha(MARK, 46));
+            mark.setColor(alpha(markC, 46));
             mark.setStrokeWidth(Math.max(2f, d / 260f));
-            scan.setShader(new android.graphics.LinearGradient(0, 0, 0, d * 0.05f, 0, alpha(RING, 30), android.graphics.Shader.TileMode.CLAMP));
+            scan.setShader(new android.graphics.LinearGradient(0, 0, 0, d * 0.05f, 0, alpha(ringC, 30), android.graphics.Shader.TileMode.CLAMP));
             corner.setStyle(Paint.Style.STROKE);
-            corner.setColor(alpha(MARK, 70));
+            corner.setColor(alpha(markC, 70));
             corner.setStrokeWidth(Math.max(2f, d / 300f));
             len = d * 0.06f;
         }

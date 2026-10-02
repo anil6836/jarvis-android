@@ -999,17 +999,19 @@ public class SettingsActivity extends Activity {
             {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
             {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},
             {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"చెక్", "🩺"}};
-    private static final int[] CARD_COLORS = {Ui.C_SKY, Ui.C_VIOLET, Ui.C_BLUE, Ui.C_CYAN, Ui.C_PINK, Ui.C_BLUE, Ui.C_TEAL,
+    /** Read when used, so they follow the theme. */
+    private static int[] cardColors() { return new int[]{Ui.C_SKY, Ui.C_VIOLET, Ui.C_BLUE, Ui.C_CYAN, Ui.C_PINK, Ui.C_BLUE, Ui.C_TEAL,
             Ui.C_GREEN, Ui.C_SKY, Ui.C_AMBER, Ui.C_GREEN, Ui.C_VIOLET, Ui.C_AMBER, 0xFFF43F5E, Ui.C_PINK, Ui.C_GREEN, Ui.C_ORANGE,
-            Ui.C_TEAL, 0xFFF43F5E, Ui.C_CYAN, Ui.C_AMBER, Ui.C_GREEN, 0xFFF43F5E, Ui.C_GREEN};
+            Ui.C_TEAL, 0xFFF43F5E, Ui.C_CYAN, Ui.C_AMBER, Ui.C_GREEN, 0xFFF43F5E, Ui.C_GREEN}; }
     private int cards;
 
     /** A new section: its own glass card in its own colour, with an emoji and the title. */
     private View section(String s) {
         String emoji = "✦";
-        int color = CARD_COLORS[cards % CARD_COLORS.length];
+        int[] colors = cardColors();
+        int color = colors[cards % colors.length];
         for (int i = 0; i < LOOKS.length; i++) {
-            if (s.contains(LOOKS[i][0])) { emoji = LOOKS[i][1]; color = CARD_COLORS[i % CARD_COLORS.length]; break; }
+            if (s.contains(LOOKS[i][0])) { emoji = LOOKS[i][1]; color = colors[i % colors.length]; break; }
         }
         cards++;
         accent = color;

@@ -43,6 +43,9 @@ final class Http {
         }
     }
 
+    /** Set on a thread whose next calls may take long (a question Jarvis thinks deeply about). */
+    static final ThreadLocal<Boolean> LONG_WAIT = ThreadLocal.withInitial(() -> false);
+
     static JSONObject get(String url) throws IOException, ApiError {
         return send("GET", url, null);
     }
@@ -56,7 +59,7 @@ final class Http {
         try {
             c.setRequestMethod(method);
             c.setConnectTimeout(20000);
-            c.setReadTimeout(150000);
+            c.setReadTimeout(LONG_WAIT.get() ? 300000 : 150000);
             c.setRequestProperty("Accept", "application/json");
             for (int i = 0; i + 1 < headers.length; i += 2) c.setRequestProperty(headers[i], headers[i + 1]);
             if (body != null) {

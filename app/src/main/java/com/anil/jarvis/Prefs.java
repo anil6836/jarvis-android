@@ -12,9 +12,12 @@ final class Prefs {
     static final String DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
 
     final SharedPreferences sp;
+    /** The app (for parts that read the phone's state, like the situation snapshot). */
+    final Context app;
 
     Prefs(Context c) {
         sp = c.getSharedPreferences("jarvis", Context.MODE_PRIVATE);
+        app = c.getApplicationContext() != null ? c.getApplicationContext() : c;
         Usage.init(c); // the API cost meter needs somewhere to keep its totals
     }
 
