@@ -35,7 +35,7 @@ import java.util.concurrent.Executors;
  * and after a long stretch "take a short break". Speed limits and cameras come from OpenStreetMap.
  * Runs as a location foreground service with a small notification (speed, limit, next camera).
  */
-public class DriveService extends Service implements LocationListener {
+public class DriveService extends Service implements LocationListener, android.hardware.SensorEventListener {
     private static final int NOTE = 131;
     static volatile boolean running;
     static volatile Location last;
@@ -90,6 +90,13 @@ public class DriveService extends Service implements LocationListener {
             }
             startedAt = System.currentTimeMillis();
             main.postDelayed(watch, 60000);
+            if (Drive.settings(this).getBoolean("drive_crash", true)) {
+                try {
+                    android.hardware.SensorManager sm = getSystemService(android.hardware.SensorManager.class);
+                    android.hardware.Sensor acc = sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER);
+                    if (acc != null) sm.registerListener(this, acc, android.hardware.SensorManager.SENSOR_DELAY_GAME, main);
+                } catch (Exception ignored) {}
+            }
         }
         return START_NOT_STICKY;
     }
@@ -150,6 +157,9 @@ public class DriveService extends Service implements LocationListener {
             if (m > 15) heading = (float) Drive.bearing(prev.getLatitude(), prev.getLongitude(), l.getLatitude(), l.getLongitude());
         }
         if (kmh > 8 && l.hasBearing()) heading = l.getBearing();
+        speedNow = kmh;
+        speedAt = now;
+        afterKnock(kmh, now);
         if (prev == null || l.getAccuracy() < 50) prev = l;
         last = l;
 
@@ -296,14 +306,64 @@ public class DriveService extends Service implements LocationListener {
         });
     }
 
+    // ---------------------------------------------------------------- a crash: a hard knock while moving, then standing still
+
+    private volatile double speedNow;
+    private volatile long speedAt, knockAt, hardAt;
+    private int stillFixes;
+
+    @Override public void onSensorChanged(android.hardware.SensorEvent e) {
+        float x = e.values[0], y = e.values[1], z = e.values[2];
+        double g = Math.sqrt(x * x + y * y + z * z) / 9.81;
+        long now = System.currentTimeMillis();
+        if (g < 4.5 || knockAt != 0 || CrashAlert.active) return;
+        // only while really moving (a phone dropped while standing doesn't count)
+        if (now - speedAt > 4000 || speedNow < 20) return;
+        // a pothole / speed breaker gives one short spike: a crash is a very hard one or a hard knock that lasts
+        if (g < 6.5) {
+            if (now - hardAt > 150) { hardAt = now; return; }
+        }
+        hardAt = 0;
+        knockAt = now;
+        stillFixes = 0;
+        main.postDelayed(noGpsAfterKnock, 25000);
+    }
+
+    @Override public void onAccuracyChanged(android.hardware.Sensor s, int accuracy) {}
+
+    /** After the knock: still for two fixes -> ask "బాగున్నారా?"; driving on -> it was nothing. */
+    private void afterKnock(double kmh, long now) {
+        if (knockAt == 0) return;
+        if (now - knockAt > 40000) { knockAt = 0; main.removeCallbacks(noGpsAfterKnock); return; } // too long ago
+        if (now - knockAt < 4000) return; // let it settle
+        if (kmh >= 15) { knockAt = 0; main.removeCallbacks(noGpsAfterKnock); return; } // he rode on: nothing happened
+        if (kmh < 5) {
+            if (++stillFixes >= 5) { // about 10 seconds lying still
+                knockAt = 0;
+                main.removeCallbacks(noGpsAfterKnock);
+                CrashAlert.start(this);
+            }
+        } else stillFixes = 0;
+    }
+
+    /** No GPS fix at all since the knock (the phone flew off?): ask anyway. */
+    private final Runnable noGpsAfterKnock = () -> {
+        boolean noFix = knockAt != 0 && speedAt < knockAt;
+        if (noFix) { knockAt = 0; CrashAlert.start(this); }
+    };
+
     @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
     @Override public void onProviderEnabled(String provider) {}
     @Override public void onProviderDisabled(String provider) {}
 
     @Override public void onDestroy() {
+        // a hard knock just now and the bike's Bluetooth dropped / the drive was stopped: ask rather than miss a crash
+        if (knockAt != 0 && System.currentTimeMillis() - knockAt < 30000) CrashAlert.start(this);
+        knockAt = 0;
         running = false;
         heading = -1;
         try { getSystemService(LocationManager.class).removeUpdates(this); } catch (Exception ignored) {}
+        try { getSystemService(android.hardware.SensorManager.class).unregisterListener(this); } catch (Exception ignored) {}
         net.shutdownNow();
         main.removeCallbacksAndMessages(null);
         super.onDestroy();

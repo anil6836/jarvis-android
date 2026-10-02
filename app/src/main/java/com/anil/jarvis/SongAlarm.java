@@ -162,6 +162,11 @@ final class SongAlarm {
     }
 
     static JSONObject add(Context c, int hour, int minute, String days, String label) throws Exception {
+        return add(c, hour, minute, days, label, "");
+    }
+
+    /** station: wake with this radio station of his (its name as in his list); "" = the song / alarm tone. */
+    static JSONObject add(Context c, int hour, int minute, String days, String label, String station) throws Exception {
         if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
         String d = days(days);
         // the same time and days again: turn that one on instead of a second copy
@@ -170,13 +175,14 @@ final class SongAlarm {
             if (x.optInt("hour") == hour && x.optInt("minute") == minute && x.optString("days").equals(d)) {
                 x.put("on", true);
                 if (label != null && !label.trim().isEmpty()) x.put("label", label.trim());
+                x.put("station", station == null ? "" : station);
                 Notes.save(c, KEY, l, 30);
                 schedule(c, x);
                 return x;
             }
         }
         JSONObject o = new JSONObject().put("id", Notes.id("al")).put("hour", hour).put("minute", minute)
-                .put("days", d).put("label", label == null ? "" : label.trim()).put("on", true);
+                .put("days", d).put("label", label == null ? "" : label.trim()).put("on", true).put("station", station == null ? "" : station);
         Notes.add(c, KEY, o, 30);
         schedule(c, o);
         return o;

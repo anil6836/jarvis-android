@@ -36,6 +36,9 @@ public class SoundService extends Service {
     /** A station is on (playing, paused or connecting), and which. */
     static volatile boolean radioOn, radioPaused;
     static volatile String station = "";
+    /** A prayer / quiet time is on: messages are not read out, notifications wait. */
+    static volatile boolean prayerOn;
+    private int filterBefore = -1; // Do Not Disturb as it was before the prayer time
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean noiseOn;
@@ -92,6 +95,11 @@ public class SoundService extends Service {
         start(c, new Intent(c, SoundService.class).setAction(ACTION_NOISE).putExtra("kind", kind).putExtra("minutes", minutes));
     }
 
+    /** Prayer / quiet time: soft calm sound, Do Not Disturb (if allowed) and no messages read, for the minutes; a gentle word at the end. */
+    static void prayer(Context c, int minutes) {
+        start(c, new Intent(c, SoundService.class).setAction(ACTION_NOISE).putExtra("kind", "calm").putExtra("minutes", minutes).putExtra("prayer", true));
+    }
+
     /** Plays a station; its links are tried in order until one plays. No links: looks one up by key first. */
     static void radio(Context c, String[] urls, String name, String key, int minutes, String whyNone) {
         start(c, new Intent(c, SoundService.class).setAction(ACTION_RADIO).putExtra("urls", urls).putExtra("name", name)
@@ -138,7 +146,8 @@ public class SoundService extends Service {
         stopAt = minutes > 0 ? System.currentTimeMillis() + minutes * 60000L : 0;
         if (ACTION_NOISE.equals(a)) {
             String kind = i.getStringExtra("kind");
-            nowPlaying = label(kind);
+            if (i.getBooleanExtra("prayer", false)) beginPrayer();
+            nowPlaying = prayerOn ? "🙏 ప్రార్థన సమయం" : label(kind);
             foreground(nowPlaying + (minutes > 0 ? " · " + minutes + " నిమిషాలు" : ""));
             startNoise(kind == null ? "rain" : kind);
         } else {
@@ -190,6 +199,7 @@ public class SoundService extends Service {
             case "fan": return "🌀 ఫ్యాన్ శబ్దం";
             case "sea": return "🌊 సముద్రం అలలు";
             case "white": return "🤍 వైట్ నాయిస్";
+            case "calm": return "🕊️ ప్రశాంత సంగీతం";
             default: return "🌧️ వర్షం శబ్దం";
         }
     }
@@ -234,6 +244,14 @@ public class SoundService extends Service {
                     double pink = (b0 + b1 + b2 + white * 0.1848) * 0.11;
                     switch (kind) {
                         case "fan": v = brown * 3.2 + pink * 0.15; break;
+                        case "calm": { // a soft held chord (A, E, A, C#) slowly breathing in and out, a little air under it
+                            phase += 1.0 / rate;
+                            double breath = 0.55 + 0.45 * Math.sin(2 * Math.PI * phase / 11.0);
+                            double w = phase * 2 * Math.PI;
+                            v = (Math.sin(w * 110.0) * 0.30 + Math.sin(w * 164.81) * 0.22 + Math.sin(w * 220.0) * 0.18
+                                    + Math.sin(w * 277.18) * 0.12 * (0.5 + 0.5 * Math.sin(2 * Math.PI * phase / 7.0))) * 0.35 * breath + pink * 0.05;
+                            break;
+                        }
                         case "sea":
                             phase += 2 * Math.PI / (rate * 9.0);            // a wave every ~9 seconds
                             double wave = 0.35 + 0.65 * Math.pow(Math.max(0, Math.sin(phase)), 2);
@@ -396,7 +414,12 @@ public class SoundService extends Service {
                 gain -= 0.05f;
                 applyVolume();
                 if (gain > 0) main.postDelayed(this, 1500); // about 30 seconds of fading
-                else { halt(); stopSelf(); }
+                else {
+                    boolean prayed = prayerOn;
+                    halt();
+                    stopSelf();
+                    if (prayed) Announcer.say(SoundService.this, "ప్రార్థన సమయం పూర్తయింది. దేవుడు మిమ్మల్ని దీవించును గాక.");
+                }
             }
         });
     }
@@ -414,6 +437,7 @@ public class SoundService extends Service {
         ducked = false;
         quiet = false;
         dropFocus();
+        endPrayer();
         if (isPaused) autoStop(false);
         radioMode = false;
         isPaused = false;
@@ -425,6 +449,47 @@ public class SoundService extends Service {
             try { session.setActive(false); session.release(); } catch (Exception ignored) {}
             session = null;
         }
+    }
+
+    // ---------------------------------------------------------------- prayer time
+
+    private void beginPrayer() {
+        prayerOn = true;
+        try {
+            android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
+            if (nm.isNotificationPolicyAccessGranted()) {
+                filterBefore = nm.getCurrentInterruptionFilter();
+                getSharedPreferences("jarvis_prayer", MODE_PRIVATE).edit().putInt("before", filterBefore).apply(); // if Jarvis is closed meanwhile
+                nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void endPrayer() {
+        if (!prayerOn) return;
+        prayerOn = false;
+        try {
+            android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
+            // put Do Not Disturb back, unless he changed it himself meanwhile
+            if (filterBefore > 0 && nm.isNotificationPolicyAccessGranted()
+                    && nm.getCurrentInterruptionFilter() == android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY) nm.setInterruptionFilter(filterBefore);
+        } catch (Exception ignored) {}
+        filterBefore = -1;
+        getSharedPreferences("jarvis_prayer", MODE_PRIVATE).edit().remove("before").apply();
+    }
+
+    /** Jarvis was closed during a prayer time: put Do Not Disturb back as it was. */
+    static void restoreAfterPrayer(Context c) {
+        if (prayerOn) return;
+        android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_prayer", Context.MODE_PRIVATE);
+        int before = sp.getInt("before", -1);
+        if (before <= 0) return;
+        try {
+            android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+            if (nm.isNotificationPolicyAccessGranted() && nm.getCurrentInterruptionFilter() == android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                nm.setInterruptionFilter(before);
+        } catch (Exception ignored) {}
+        sp.edit().remove("before").apply();
     }
 
     // ---------------------------------------------------------------- the small media player (notification, lock screen, headset)

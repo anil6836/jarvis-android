@@ -1,6 +1,7 @@
 package com.anil.jarvis;
 
 import android.app.Activity;
+import android.content.Context;
 import android.graphics.Typeface;
 import android.location.Location;
 import android.media.AudioAttributes;
@@ -30,6 +31,9 @@ public class AlarmActivity extends Activity {
     private int count;
     private float vol = 0.15f;
     private boolean handled;
+    private String station = "";
+    private String[] stationUrls = new String[0];
+    private MediaPlayer connecting; // the radio while it is still connecting
     private android.os.Vibrator vib;
     private static java.lang.ref.WeakReference<AlarmActivity> showing;
 
@@ -47,6 +51,7 @@ public class AlarmActivity extends Activity {
         id = getIntent().getStringExtra(SongAlarm.EXTRA_ID);
         count = getIntent().getIntExtra(SongAlarm.EXTRA_COUNT, 0);
         JSONObject o = id == null ? null : SongAlarm.find(this, id);
+        station = o == null ? "" : o.optString("station", "");
         Announcer.stop();
         showing = new java.lang.ref.WeakReference<>(this);
         SongAlarm.clearRinging(this); // the screen is up: the notification's own ringing stops, the song takes over
@@ -80,6 +85,16 @@ public class AlarmActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.topMargin = Ui.dp(this, 14);
         box.addView(snooze, lp);
+        if (!station.isEmpty()) { // wake with the radio: keep listening after the alarm
+            TextView keep = Ui.text(this, "📻  " + station + " కొనసాగించు", 18, 0xFFFFFFFF);
+            keep.setGravity(Gravity.CENTER);
+            keep.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 14));
+            keep.setBackground(Ui.glass(this, 24));
+            keep.setOnClickListener(v -> keepRadio());
+            LinearLayout.LayoutParams kp = new LinearLayout.LayoutParams(-1, -2);
+            kp.topMargin = Ui.dp(this, 14);
+            box.addView(keep, kp);
+        }
         setContentView(box);
         play();
         main.postDelayed(() -> doSnooze(10), 5 * 60000L); // not answered in 5 minutes: again in 10 (3 times at most)
@@ -105,6 +120,16 @@ public class AlarmActivity extends Activity {
     }
 
     private void play() {
+        if (!station.isEmpty()) {
+            JSONObject st = Radio.find(this, station);
+            if (st != null) stationUrls = Radio.known(st);
+        }
+        if (stationUrls.length > 0) playRadio(stationUrls[0]); // the song / tone takes over if it doesn't start
+        else playSong();
+        startFadeAndVibrate();
+    }
+
+    private void playSong() {
         Prefs p = new Prefs(this);
         Uri song = null;
         if (!p.alarmSong().isEmpty()) song = Uri.parse(p.alarmSong());
@@ -113,17 +138,78 @@ public class AlarmActivity extends Activity {
             if (tone == null) tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
             tryPlay(tone);
         }
+    }
+
+    /** His radio station as the alarm; no sound in 15 seconds (no internet...) -> the song / alarm tone. */
+    private void playRadio(String url) {
+        MediaPlayer mp = new MediaPlayer();
+        connecting = mp;
+        final boolean[] started = {false};
+        Runnable fallback = () -> {
+            if (started[0] || handled || isFinishing() || isDestroyed()) return;
+            started[0] = true;
+            connecting = null;
+            try { mp.release(); } catch (Exception ignored) {}
+            if (player == mp) player = null;
+            playSong();
+        };
+        try {
+            mp.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            mp.setDataSource(url);
+            mp.setOnPreparedListener(m -> {
+                if (started[0] || handled || isFinishing() || isDestroyed()) { try { m.release(); } catch (Exception ignored) {} return; }
+                started[0] = true;
+                connecting = null;
+                try { m.setVolume(vol, vol); m.start(); player = m; } catch (Exception e) { started[0] = false; fallback.run(); }
+            });
+            mp.setOnErrorListener((m, w, e) -> {
+                main.post(() -> {
+                    if (!started[0]) { fallback.run(); return; }
+                    if (handled || isFinishing() || isDestroyed() || player != m) return; // broke off while ringing: the song carries on
+                    try { m.release(); } catch (Exception ignored) {}
+                    player = null;
+                    playSong();
+                });
+                return true;
+            });
+            mp.setOnCompletionListener(m -> main.post(() -> { // the stream broke off while ringing: the song carries on
+                if (handled || isFinishing() || isDestroyed() || player != m) return;
+                try { m.release(); } catch (Exception ignored) {}
+                player = null;
+                playSong();
+            }));
+            mp.prepareAsync();
+            main.postDelayed(fallback, 15000);
+        } catch (Exception e) {
+            main.post(fallback);
+        }
+    }
+
+    /** The alarm stops and greets him; the station goes on in the radio player. */
+    private void keepRadio() {
+        if (handled) return;
+        handled = true;
+        silence();
+        Context app = getApplicationContext();
+        JSONObject st = Radio.find(app, station);
+        if (st != null && Radio.known(st).length > 0) Radio.play(app, st, Radio.known(st), 0);
+        greet(app);
+        finish();
+    }
+
+    private void startFadeAndVibrate() {
         try { // vibrate too (and it is all there is if no sound would play)
             vib = getSystemService(android.os.Vibrator.class);
             if (vib != null) vib.vibrate(android.os.VibrationEffect.createWaveform(new long[]{0, 700, 700}, 0),
                     new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build());
         } catch (Exception ignored) {}
-        // start soft, get louder over half a minute
+        // start soft, get louder over half a minute (the radio may still be connecting)
         main.post(new Runnable() {
             @Override public void run() {
-                if (player == null) return;
+                if (handled) return;
                 vol = Math.min(1f, vol + 0.06f);
-                try { player.setVolume(vol, vol); } catch (Exception ignored) {}
+                try { if (player != null) player.setVolume(vol, vol); } catch (Exception ignored) {}
                 if (vol < 1f) main.postDelayed(this, 2000);
             }
         });
@@ -150,6 +236,7 @@ public class AlarmActivity extends Activity {
 
     private void silence() {
         main.removeCallbacksAndMessages(null);
+        if (connecting != null) { try { connecting.release(); } catch (Exception ignored) {} connecting = null; }
         try { if (vib != null) vib.cancel(); } catch (Exception ignored) {}
         if (player != null) {
             try { player.stop(); } catch (Exception ignored) {}

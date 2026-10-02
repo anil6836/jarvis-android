@@ -258,6 +258,19 @@ final class Brain {
                 + "'Jarvis చిట్కా' -> daily_fact tip. "
                 + "Government services and schemes (మీసేవ, ఇన్‌కమ్ / క్యాస్ట్ సర్టిఫికెట్, రేషన్ కార్డ్, ఆధార్ అప్‌డేట్, పెన్షన్, రైతు పథకాలు, ఆరోగ్యశ్రీ, పాస్‌పోర్ట్...) -> web search, "
                 + "then in short Telugu: documents needed, where / how to apply (portal or Meeseva centre), fee and time if known; never ask for his Aadhaar or other ID numbers. "
+                + "Cooking: 'X ఎలా వండాలి / X వండుదాం' -> cook start (people if he says); while cooking 'తర్వాత' -> cook next, 'మళ్లీ చెప్పు' -> cook repeat, "
+                + "'ముందు స్టెప్' -> cook previous, 'ఏం కావాలి' -> cook ingredients, 'అయిపోయింది / ఆపు' -> cook stop. Say only the step, nothing extra. "
+                + "Books: 'ఈ పుస్తకం / PDF చదివి వినిపించు' -> ask_document read_aloud start with its name; 'ఆగిన దగ్గర నుంచి చదువు' -> read_aloud continue; "
+                + "'చదవడం ఆపు' -> read_aloud pause (keeps the place); 'పుస్తకాలు ఏమున్నాయి' -> read_aloud books. "
+                + "Faith: 'రోజూ ఉదయం 6 కి వచనం చెప్పు' -> bible morning_verse 06:00 ('వచనం వద్దు' -> off); 'మా చర్చి ఆదివారం 9 కి' -> bible church 'Sunday 09:00'; "
+                + "'ఇది మా చర్చి' (he is there) -> my_places save church here=true, then location_reminder automatic arrive 'phone silent (vibrate)' and automatic leave "
+                + "'phone sound back on' at church. 'ప్రార్థన / ధ్యానం (N నిమిషాలు)' -> sounds prayer with minutes. "
+                + "'ఉదయం 6 కి Radio Ala తో లేపు' -> song_alarm set with station. "
+                + "Trip plan ('2 రోజులు అరకు ట్రిప్ ప్లాన్ చెయ్'): research it yourself with web search: day by day places with timings and km, where to eat and stay, "
+                + "rough costs (fuel or charging, stay, food, tickets), best time to go; by his EV bike -> also ride_plan / ev_chargers for charging stops; "
+                + "say it short, then offer to save it as a PDF (make_letter) or send it on WhatsApp (after he says). "
+                + "Crash detection runs with the drive alerts ('ప్రమాదం గుర్తింపు ఆపు' -> drive settings crash=false); "
+                + "while its 'బాగున్నారా?' countdown is on, 'బాగున్నాను / ఏం కాలేదు / I am fine' -> drive im_ok at once. "
                 + "'క్విజ్ ఆడదాం' -> run a quiz yourself: one question at a time with 4 options in Telugu (topic he picks or mixed: GK, Telangana, cricket, films, science), "
                 + "wait for his answer, say right / wrong with a one-line reason, keep score, after 10 questions give the score; if several people play, keep each one's score. "
                 + "Homework or plant photo -> teach step by step / say the likely problem and remedy. "
@@ -354,6 +367,11 @@ final class Brain {
      * looking at screenshots / camera frames. Optional image (base64 JPEG) and web search.
      */
     static String oneShot(Prefs prefs, String system, String prompt, String jpegB64, boolean web) throws Exception {
+        return oneShot(prefs, system, prompt, jpegB64, web, 1200);
+    }
+
+    /** maxTokens: room for a long answer (a whole book page, a recipe). */
+    static String oneShot(Prefs prefs, String system, String prompt, String jpegB64, boolean web, int maxTokens) throws Exception {
         String key = prefs.apiKey();
         if (key.isEmpty()) throw new Http.ApiError(401, "no API key");
         if (prefs.isGemini()) {
@@ -401,7 +419,7 @@ final class Brain {
         for (int round = 0; round < 5; round++) {
             JSONObject body = new JSONObject()
                     .put("model", prefs.model())
-                    .put("max_tokens", 1200)
+                    .put("max_tokens", maxTokens)
                     .put("system", system)
                     .put("messages", messages);
             if (web) body.put("tools", new JSONArray().put(new JSONObject()

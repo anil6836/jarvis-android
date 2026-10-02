@@ -142,6 +142,7 @@ public class WakeService extends Service {
 
     private final android.content.BroadcastReceiver battery = new android.content.BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
+            Charge.onBattery(c, i); // "95% ఛార్జ్ అయింది"
             int level = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
             int scale = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
             int plugged = i.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0);

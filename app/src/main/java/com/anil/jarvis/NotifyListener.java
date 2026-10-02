@@ -85,9 +85,14 @@ public class NotifyListener extends NotificationListenerService {
         }
     };
     private boolean screenRegistered;
+    /** The battery level, for "95% ఛార్జ్ అయింది" (this listener stays alive even without the wake word). */
+    private final android.content.BroadcastReceiver battery = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context c, Intent i) { Charge.onBattery(c, i); }
+    };
 
     @Override public void onDestroy() {
         if (screenRegistered) { try { unregisterReceiver(screenEvents); } catch (Exception ignored) {} screenRegistered = false; }
+        try { unregisterReceiver(battery); } catch (Exception ignored) {}
         super.onDestroy();
     }
 
@@ -99,6 +104,7 @@ public class NotifyListener extends NotificationListenerService {
                 f.addAction(Intent.ACTION_USER_PRESENT);
                 registerReceiver(screenEvents, f);
                 screenRegistered = true;
+                registerReceiver(battery, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
             } catch (Exception ignored) {}
         }
         connected = true;
@@ -205,7 +211,7 @@ public class NotifyListener extends NotificationListenerService {
         if (now - sbn.getPostTime() > 120000) return; // old ones shown again after a reboot
         if (p.night() || MainActivity.busyTalking() || CallControl.busyWithCall()) return;
         NotificationManager nm = getSystemService(NotificationManager.class);
-        if (nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) return;
+        if (SoundService.prayerOn || nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) return;
         String t = title == null ? "" : title.trim(), b = text == null ? "" : text.trim();
         if (t.equalsIgnoreCase("way2news") || t.equalsIgnoreCase(app)) t = "";
         String said = t.isEmpty() || b.contains(t) ? b : b.isEmpty() || t.contains(b) ? t : t + ". " + b;
@@ -274,8 +280,8 @@ public class NotifyListener extends NotificationListenerService {
         if (group && !driving && !p.readGroups()) { note(app, from, "గ్రూప్ మెసేజ్: Settings లో 'గ్రూప్ మెసేజ్‌లు కూడా' ఆఫ్‌లో ఉంది"); return; }
         if (!driving) {
             NotificationManager nm = getSystemService(NotificationManager.class);
-            if (nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) { // Do Not Disturb
-                note(app, from, "చదవలేదు: ఫోన్‌లో Do Not Disturb ఆన్‌లో ఉంది");
+            if (SoundService.prayerOn || nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) { // Do Not Disturb / prayer time
+                note(app, from, SoundService.prayerOn ? "చదవలేదు: ప్రార్థన సమయం" : "చదవలేదు: ఫోన్‌లో Do Not Disturb ఆన్‌లో ఉంది");
                 return;
             }
         }

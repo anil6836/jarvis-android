@@ -237,10 +237,13 @@ final class Tools {
                 schema(new String[][]{{"kind", "string", "voice, audio, video or photo"},
                         {"action", "string", "voice/audio: play or text; video: play; photo: show or describe"}}, "kind")));
         DEFS.add(new Def("bible",
-                "Read the Telugu Bible (IRV 2019) aloud: a chapter or verses ('యోహాను 3:16 చదువు', 'కీర్తన 23'), or today's verse (daily=true).",
+                "Read the Telugu Bible (IRV 2019) aloud: a chapter or verses ('యోహాను 3:16 చదువు', 'కీర్తన 23'), or today's verse (daily=true). "
+                        + "Also the morning verse (said every morning with a short meaning; on at 07:00 unless he changes it) and his church service reminder (45 min before).",
                 schema(new String[][]{{"book", "string", "Book name in English, e.g. John, Psalms, 1 Corinthians"}, {"chapter", "integer", "Chapter"},
                         {"from_verse", "integer", "First verse (0 = from the start)"}, {"to_verse", "integer", "Last verse (0 = just from_verse, or ~12 verses)"},
-                        {"daily", "boolean", "true for today's verse"}})));
+                        {"daily", "boolean", "true for today's verse"},
+                        {"morning_verse", "string", "Set the morning verse time 'HH:mm' (24-hour) or 'off'"},
+                        {"church", "string", "His church service: 'Sunday 09:00' (day + 24-hour time) or 'off'"}})));
         DEFS.add(new Def("local_media",
                 "Play a song or video saved ON THE PHONE (not online) in the player he names: Poweramp, jetAudio, Samsung Music, VLC, MX Player...",
                 schema(new String[][]{{"kind", "string", "song or video"}, {"query", "string", "Title, artist or file name words"},
@@ -316,9 +319,11 @@ final class Tools {
                 "EMERGENCY ONLY ('Jarvis help', 'SOS', 'ప్రమాదం', 'కాపాడు'): after a 5-second cancel countdown, SMS his location to his SOS contacts and call the first one.",
                 schema(new String[][]{{"message", "string", "Optional short detail of what happened"}})));
         DEFS.add(new Def("ask_document",
-                "Answer questions from his saved documents (PDFs and photos in the folder he chose): insurance, bills, certificates, tickets. name = words from the file name, or 'list'.",
+                "Answer questions from his saved documents (PDFs and photos in the folder he chose): insurance, bills, certificates, tickets. name = words from the file name, or 'list'. "
+                        + "read_aloud = read a book aloud like an audiobook (.txt, .epub, .pdf in that folder): start (name), continue (from where he stopped), pause, stop, books (list).",
                 schema(new String[][]{{"name", "string", "Words from the document's file name, e.g. 'bike insurance'; 'list' to see files"},
-                        {"question", "string", "What he wants to know, e.g. 'when does it expire?'"}}, "name")));
+                        {"question", "string", "What he wants to know, e.g. 'when does it expire?'"},
+                        {"read_aloud", "string", "start, continue, pause, stop or books"}}, "name")));
         DEFS.add(new Def("price_alert",
                 "Watch a price (gold 22k per gram, petrol in his city, a share, a crypto) and tell him when it goes above or below his number. add / list / cancel.",
                 schema(new String[][]{{"action", "string", "add, list or cancel"}, {"item", "string", "What to watch, precise, e.g. 'gold 22 carat per gram Hyderabad', 'TCS share NSE'"},
@@ -353,6 +358,8 @@ final class Tools {
                 + "settings = cameras on/off, overspeed on/off, own speed limit, break hours; "
                 + "add_camera = he says a speed camera is here ('ఇక్కడ స్పీడ్ కెమెరా ఉంది'): saved at his spot for his direction, warned next time; "
                 + "remove_camera = take off the one he marked near here (what='all' = every one); my_cameras = how many he marked. "
+                + "Crash detection (a hard knock while moving, then still: asks 'బాగున్నారా?', no answer in 60 s -> SOS SMS) runs with the live alerts; settings crash on/off; "
+                + "im_ok = he says he is fine ('బాగున్నాను') while that alert counts down. "
                 + "For taps inside the maps app (exit navigation, mute voice, show alternatives) use phone_task.",
                 schema(new String[][]{{"action", "string", "where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras"},
                         {"limit_kmh", "integer", "For add_camera: the camera's speed limit if he says it"},
@@ -361,7 +368,14 @@ final class Tools {
                         {"avoid", "string", "For navigate: tolls, highways or both"}, {"two_wheeler", "boolean", "For navigate: bike route"},
                         {"cameras", "boolean", "settings: camera alerts on/off"}, {"overspeed", "boolean", "settings: over-speed alerts on/off"},
                         {"max_kmh", "integer", "settings: his own speed limit when the road has none on the map (0 = off)"},
-                        {"break_hours", "integer", "settings: break reminder after this many hours (0 = off)"}}, "action")));
+                        {"break_hours", "integer", "settings: break reminder after this many hours (0 = off)"},
+                        {"crash", "boolean", "settings: crash detection on/off"}}, "action")));
+        DEFS.add(new Def("cook", "Cooking by voice: start = a recipe for a dish (people = how many), read the ingredients, then one step at a time; "
+                + "next / previous / repeat / step n; a waiting step starts its own timer that calls him back; ingredients; timer (seconds + label) for his own; stop.",
+                schema(new String[][]{{"action", "string", "start, next, previous, repeat, step, ingredients, timer or stop"},
+                        {"dish", "string", "For start: the dish, e.g. 'చికెన్ బిర్యానీ', 'టమాటా పప్పు'"}, {"people", "integer", "For start: how many people"},
+                        {"notes", "string", "For start: anything he said (less spicy, pressure cooker...)"}, {"n", "integer", "For step: the step number"},
+                        {"seconds", "integer", "For timer"}, {"label", "string", "For timer"}}, "action")));
         DEFS.add(new Def("night_mode",
                 "'గుడ్ నైట్' = on: phone quiet (Do Not Disturb or vibrate), low brightness, nothing read aloud, optional wake-up alarm. 'గుడ్ మార్నింగ్' = off: sound back on, then brief him.",
                 schema(new String[][]{{"on", "boolean", "true for good night, false for good morning"}, {"alarm", "string", "Optional wake-up time 'HH:mm' (24h)"}}, "on")));
@@ -385,7 +399,7 @@ final class Tools {
         DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (exercise, rest, sleep sounds), alarm (song alarm), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), drive (route, places on the way, speed cameras), travel, fun, code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (exercise, rest, sleep sounds), alarm (song alarm), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), drive (route, places on the way, speed cameras), home (cooking, books read aloud, trip plan), travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
@@ -504,6 +518,7 @@ final class Tools {
                 + "list; cancel (id or time); test (ring now); song (open Settings to pick the song). For a plain phone alarm use set_alarm.",
                 schema(new String[][]{{"action", "string", "set, list (default), cancel, test or song"}, {"time", "string", "HH:mm (24-hour)"},
                         {"days", "string", "daily (default), once, weekdays, weekend, duty or off"}, {"label", "string", "Optional name, e.g. 'డ్యూటీ రోజు'"},
+                        {"station", "string", "Wake with this radio station of his instead of the song (name as in his radio list, or number); 'none' = back to the song"},
                         {"id", "string", "For cancel: id or time"}})));
         DEFS.add(new Def("ride_plan", "Can he reach a place on his electric bike with the charge he has? Road distance and time, charge needed (one way or there and back), "
                 + "and chargers on the way / near there if it isn't enough ('విజయవాడకి బైక్ మీద వెళ్లగలనా?').",
@@ -537,8 +552,9 @@ final class Tools {
                 + "(a station without a link is played by his Telugu Radios app when it is installed). stations = his list. "
                 + "add = add a station or give a listed one its stream link (station + url, group film/christian); remove = take a station off his list; "
                 + "favorite / unfavorite = add / take off his favourites (station empty = the one playing); favorites = ask which favourite to play; "
+                + "prayer = prayer / meditation time: soft calm music, Do Not Disturb and no messages read for minutes (default 15), a gentle word at the end; "
                 + "next / previous = next / previous station; pause / resume; stop = stop.",
-                schema(new String[][]{{"action", "string", "rain, fan, sea, white, radio, stations, favorites, favorite, unfavorite, next, previous, pause, resume, add, remove or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
+                schema(new String[][]{{"action", "string", "rain, fan, sea, white, prayer, radio, stations, favorites, favorite, unfavorite, next, previous, pause, resume, add, remove or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
                         {"station", "string", "For radio: the station's name as written in his list (English) or its number; empty = ask him"},
                         {"url", "string", "For add: the stream link (https)"}, {"group", "string", "For add: film or christian"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'. "
@@ -667,6 +683,7 @@ final class Tools {
             case "split_bill": return "లెక్కిస్తున్నాను…";
             case "sounds": return "…";
             case "drive": return "మ్యాప్ చూస్తున్నాను…";
+            case "cook": return "వంట…";
             case "story": return "కథ…";
             case "bike_challan": return "చలాన్ సైట్ తెరుస్తున్నాను…";
             case "new_movies": return "కొత్త సినిమాలు వెతుకుతున్నాను…";
@@ -791,7 +808,10 @@ final class Tools {
                 case "air_quality": return airQuality();
                 case "cricket_watch": return cricketWatch(a.optString("team", "India"), a.optBoolean("on", true));
                 case "whatsapp_media": return whatsappMedia(a.optString("kind", "voice"), a.optString("action", ""));
-                case "bible": return bible(a.optString("book", ""), a.optInt("chapter", 1), a.optInt("from_verse", 0), a.optInt("to_verse", 0),
+                case "bible": if (!a.optString("morning_verse").trim().isEmpty() || !a.optString("church").trim().isEmpty())
+                        return Faith.set(act(), a.optString("morning_verse").trim().isEmpty() ? null : a.optString("morning_verse"),
+                                a.optString("church").trim().isEmpty() ? null : a.optString("church")).toString();
+                    return bible(a.optString("book", ""), a.optInt("chapter", 1), a.optInt("from_verse", 0), a.optInt("to_verse", 0),
                         a.optBoolean("daily", false));
                 case "local_media": return localMedia(a.optString("kind", "song"), a.optString("query", ""), a.optString("app", ""));
                 case "app_search": return appSearch(a.optString("app"), a.optString("query", ""));
@@ -814,6 +834,7 @@ final class Tools {
                 case "split_bill": return splitBill(a);
                 case "sounds": return sounds(a);
                 case "drive": return drive(a);
+                case "cook": return cook(a);
                 case "story": return story(a);
                 case "bike_challan": return bikeChallan(a);
                 case "new_movies": return newMovies(a);
@@ -845,7 +866,7 @@ final class Tools {
                 case "routine": return routine(a.optString("action", "list"), a.optString("name", ""), a.optString("steps", ""));
                 case "notes": return notes(a.optString("action", "list"), a.optString("text", ""), a.optInt("days", 7));
                 case "sos": return sos(a.optString("message", ""));
-                case "ask_document": return askDocument(a.optString("name", ""), a.optString("question", ""));
+                case "ask_document": return a.optString("read_aloud", "").isEmpty() ? askDocument(a.optString("name", ""), a.optString("question", "")) : readAloud(a);
                 case "price_alert": return priceAlert(a.optString("action", "list"), a.optString("item", ""), a.optString("when", "above"), a.optDouble("target", 0), a.optString("id", ""));
                 case "train_status": return trainStatus(a.optString("query"));
                 case "water_reminder": return water(a.optBoolean("on", true), a.optInt("every_hours", 2), a.optInt("from_hour", 8), a.optInt("to_hour", 22));
@@ -4273,7 +4294,9 @@ final class Tools {
     static boolean awaitingAnswer() {
         AppTask t = appTask;
         if (t != null && t.awaiting && android.os.SystemClock.elapsedRealtime() - t.time < 5 * 60 * 1000L) return true;
-        return Radio.awaiting(); // "ఏ స్టేషన్ ప్లే చేయమంటారు?"
+        boolean radio = Radio.awaiting(); // "ఏ స్టేషన్ ప్లే చేయమంటారు?"
+        boolean cook = Cook.awaiting(); // a cooking step: "తర్వాత" without "Jarvis"
+        return radio || cook;
     }
 
     /** Apps Jarvis never operates: payments and banking stay in Anil's own hands. */
@@ -4900,9 +4923,67 @@ final class Tools {
         return ok().put("made", m.name).put("saved_in", m.where).put("next", "It is open. Ask if anything should change, or to share it (make_letter share).").toString();
     }
 
+    private String cook(JSONObject a) throws Exception {
+        String action = a.optString("action", "next").toLowerCase(Locale.ROOT).trim();
+        switch (action) {
+            case "start": {
+                String dish = a.optString("dish", "").trim();
+                if (dish.isEmpty()) return err("missing", "Which dish?");
+                return Cook.start(act(), dish, a.optInt("people", 0), a.optString("notes", "")).toString();
+            }
+            case "next": return Cook.step(act(), 1, 0).toString();
+            case "previous": case "back": return Cook.step(act(), -1, 0).toString();
+            case "repeat": case "again": return Cook.step(act(), 0, 0).toString();
+            case "step": return Cook.step(act(), 1, Math.max(1, a.optInt("n", 1))).toString();
+            case "ingredients": return Cook.ingredients(act()).toString();
+            case "timer": {
+                int sec = a.optInt("seconds", 0);
+                if (sec < 10) return err("missing", "How long?");
+                Cook.timer(act(), sec, a.optString("label", "వంట టైమర్"));
+                return ok().put("timer_minutes", Math.round(sec / 60.0 * 10) / 10.0).toString();
+            }
+            case "stop": Cook.stop(act()); return ok().put("stopped", true).toString();
+            default: return err("bad_action", "Use start, next, previous, repeat, step, ingredients, timer or stop.");
+        }
+    }
+
+    /** A book read aloud from his documents folder, remembering where he stopped. */
+    private String readAloud(JSONObject a) throws Exception {
+        String what = a.optString("read_aloud", "").toLowerCase(Locale.ROOT).trim();
+        if (what.startsWith("pause")) { ReaderService.control(act(), ReaderService.ACTION_TOGGLE); return ok().put("paused", true).toString(); }
+        if (what.startsWith("stop")) { ReaderService.control(act(), ReaderService.ACTION_STOP); return ok().put("stopped", true).put("bookmark", ReaderService.bookmark(act())).toString(); }
+        if (prefs.docsTree().isEmpty()) return err("no_folder", "Anil must choose his documents folder once: Jarvis settings > 'డాక్యుమెంట్లు' > folder button, and keep his books (.txt, .epub, .pdf) there.");
+        List<String[]> books = ReaderService.books(act());
+        if (what.startsWith("book") || what.startsWith("list")) return ok().put("books", ReaderService.names(books)).put("bookmark", ReaderService.bookmark(act())).toString();
+        if (what.startsWith("cont") || what.startsWith("resume")) {
+            JSONObject bm = ReaderService.bookmark(act());
+            if (bm == null) return err("no_bookmark", "No book was being read. Which book? (read_aloud start with name)");
+            android.content.SharedPreferences m = ReaderService.mark(act());
+            ReaderService.start(act(), m.getString("name", ""), m.getString("uri", ""), m.getString("kind", "txt"), false);
+            return ok().put("continuing", bm).toString();
+        }
+        // start
+        String q = a.optString("name", "").trim().toLowerCase(Locale.ROOT);
+        if (books.isEmpty()) return err("no_books", "No .txt, .epub or .pdf files in his documents folder.");
+        String[] best = null;
+        int bestScore = 0;
+        for (String[] b : books) {
+            String low = b[0].toLowerCase(Locale.ROOT);
+            int score = 0;
+            for (String w : q.split("[\\s_\\-.]+")) if (w.length() > 1 && low.contains(w)) score++;
+            if (score > bestScore) { bestScore = score; best = b; }
+        }
+        if (best == null) return err("not_found", "No book name matches '" + q + "'. Books: " + ReaderService.names(books));
+        boolean same = best[1].equals(ReaderService.mark(act()).getString("uri", ""));
+        ReaderService.start(act(), best[0], best[1], best[2], false);
+        JSONObject o = ok().put("reading", best[0]).put("from", same ? "where he stopped" : "the start");
+        if (best[2].equals("pdf")) o.put("note", "PDF pages are read by his AI (a small cost per page; each page only once). Say this once, briefly.");
+        return o.put("next", "Say in one line that you are starting to read; 'Jarvis, ఆపు' pauses and remembers the place.").toString();
+    }
+
     private String drive(JSONObject a) throws Exception {
         String action = a.optString("action", "where").toLowerCase(Locale.ROOT).trim();
-        boolean locNeeded = !action.equals("settings") && !action.equals("stop") && !action.startsWith("nav")
+        boolean locNeeded = !action.equals("settings") && !action.equals("stop") && !action.startsWith("nav") && !action.equals("im_ok")
                 && !(action.equals("remove_camera") && "all".equalsIgnoreCase(a.optString("what").trim()));
         if (locNeeded && !has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
         switch (action) {
@@ -4914,6 +4995,7 @@ final class Tools {
             case "add_camera": return Drive.addCamera(act(), a.optInt("limit_kmh", 0)).toString();
             case "remove_camera": return Drive.removeCamera(act(), "all".equalsIgnoreCase(a.optString("what").trim())).toString();
             case "my_cameras": return Drive.listCameras(act()).toString();
+            case "im_ok": CrashAlert.ok(act()); return ok().put("crash_alert", "cancelled").toString();
             case "navigate": {
                 String place = a.optString("place", "").trim();
                 if (place.isEmpty()) return err("missing", "Where to?");
@@ -4956,10 +5038,12 @@ final class Tools {
                 if (a.has("overspeed")) e.putBoolean("drive_overspeed", a.optBoolean("overspeed"));
                 if (a.has("max_kmh")) e.putInt("drive_max_kmh", Math.max(0, Math.min(200, a.optInt("max_kmh"))));
                 if (a.has("break_hours")) e.putInt("drive_break_hours", Math.max(0, Math.min(8, a.optInt("break_hours"))));
+                if (a.has("crash")) e.putBoolean("drive_crash", a.optBoolean("crash"));
                 e.apply();
                 android.content.SharedPreferences st = Drive.settings(act());
                 return ok().put("cameras", st.getBoolean("drive_cameras", true)).put("overspeed", st.getBoolean("drive_overspeed", true))
-                        .put("own_limit_kmh", st.getInt("drive_max_kmh", 0)).put("break_after_hours", st.getInt("drive_break_hours", 2)).toString();
+                        .put("own_limit_kmh", st.getInt("drive_max_kmh", 0)).put("break_after_hours", st.getInt("drive_break_hours", 2))
+                        .put("crash_detection", st.getBoolean("drive_crash", true)).put("sos_contacts_set", !prefs.sosContacts().trim().isEmpty()).toString();
             }
             default:
                 return err("bad_action", "Use where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras.");
@@ -5037,12 +5121,20 @@ final class Tools {
             Radio.answered();
             Radio.dismissPicker();
             SoundService.stop(act());
+            ReaderService.control(act(), ReaderService.ACTION_STOP); // a book being read aloud stops too
             AppRadio.cancelPending();
             AppRadio.pauseAfter(act(), 0);
             if (AppRadio.startedRecently() && SoundService.nowPlaying.isEmpty()) AppRadio.pauseNow(act()); // a station playing in the Telugu Radios app
             return ok().put("stopped", true).toString();
         }
         int radioMin = Math.max(0, a.optInt("minutes", 0));
+        if (action.startsWith("pray") || action.startsWith("medit")) {
+            int min = a.has("minutes") && a.optInt("minutes") > 0 ? Math.min(120, a.optInt("minutes")) : 15;
+            SoundService.prayer(act(), min);
+            android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
+            return ok().put("prayer_minutes", min).put("do_not_disturb", nm != null && nm.isNotificationPolicyAccessGranted())
+                    .put("note", "Soft music for " + min + " minutes; messages are not read meanwhile; a gentle word at the end. Say one short peaceful line only.").toString();
+        }
         if (action.startsWith("next") || action.startsWith("prev") || action.startsWith("pause") || action.startsWith("resume") || action.equals("play")) {
             String act = action.startsWith("next") ? SoundService.ACTION_NEXT : action.startsWith("prev") ? SoundService.ACTION_PREV
                     : action.startsWith("pause") ? SoundService.ACTION_PAUSE : SoundService.ACTION_PLAY;
@@ -5169,10 +5261,21 @@ final class Tools {
             JSONArray t = Medicine.times(a.optString("time", ""));
             if (t.length() == 0) return err("missing", "What time (HH:mm)?");
             String[] hm = t.optString(0).split(":");
-            JSONObject o = SongAlarm.add(act(), Integer.parseInt(hm[0]), Integer.parseInt(hm[1]), a.optString("days", "daily"), a.optString("label"));
+            String want = a.optString("station", "").trim(), station = "";
+            JSONObject st = null;
+            if (!want.isEmpty() && !want.equalsIgnoreCase("none")) {
+                st = Radio.find(act(), want);
+                if (st == null) return err("no_station", "No station '" + want + "' in his radio list. Ask which one (the list: sounds stations).");
+                station = st.optString("name");
+            }
+            JSONObject o = SongAlarm.add(act(), Integer.parseInt(hm[0]), Integer.parseInt(hm[1]), a.optString("days", "daily"), a.optString("label"), station);
             if (o == null) return err("bad_time", "That time is not valid.");
             JSONObject r = ok().put("alarms", SongAlarm.listJson(act()));
-            if (prefs.alarmSong().isEmpty()) r.put("song", "No song picked yet: it rings with the alarm tone. He can pick a song in Settings (action song).");
+            if (st != null) {
+                r.put("wakes_with_radio", station).put("radio_note", Radio.known(st).length > 0
+                        ? "The radio starts softly and gets louder; without internet it falls back to the song / alarm tone. 'రేడియో కొనసాగించు' on the alarm screen keeps the station playing."
+                        : "This station has no direct link, so the alarm can't play it: it will ring with the song / alarm tone. Suggest a station from his list that has a link.");
+            } else if (prefs.alarmSong().isEmpty()) r.put("song", "No song picked yet: it rings with the alarm tone. He can pick a song in Settings (action song).");
             else r.put("song", prefs.alarmSongName());
             if (!android.provider.Settings.canDrawOverlays(act()))
                 r.put("warning", "'Appear on top' (Display over other apps) is off for Jarvis: the alarm will ring as a notification; tap it to open the song screen. Suggest turning it on.");

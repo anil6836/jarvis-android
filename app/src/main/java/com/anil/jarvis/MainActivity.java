@@ -194,6 +194,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (prefs.wakePaused()) prefs.setWakePaused(false);
         Reminders.scheduleBriefing(this);
         Proactive.schedule(this);
+        Faith.schedule(this); // the morning verse / church reminder
+        SoundService.restoreAfterPrayer(this);
         JarvisWidget.refresh(this);
         orb.invalidate();
         updateSetup();

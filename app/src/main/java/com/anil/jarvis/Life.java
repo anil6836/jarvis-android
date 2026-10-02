@@ -460,9 +460,11 @@ final class Life {
             if (p.driving()) return;
             p.set("driving", true);
             p.set("night", false);
+            Drive.startDrive(c); // cameras, over-speed, crash detection (Android may refuse from the background)
             Announcer.say(c, p.name() + ", డ్రైవింగ్ మోడ్ ఆన్. మెసేజ్‌లు, కాల్స్ నేను చెబుతాను. జాగ్రత్తగా వెళ్లండి.");
         } else {
             p.set("driving", false);
+            DriveService.stop(c);
             JSONObject ride = Bike.rideEnd(c);
             if (ride != null) Reminders.notify(c, "🏍️ రైడ్ అయిపోయింది", Bike.rideLine(c, ride) + ". \"ఈ వారం బైక్ రైడ్స్\" అని అడిగితే మొత్తం చెప్తాను.", 62);
             Location l = Tools.lastLocation(c);

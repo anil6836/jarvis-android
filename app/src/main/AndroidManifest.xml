@@ -198,6 +198,18 @@
         </service>
 
         <service
+            android:name=".ReaderService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <activity
+            android:name=".CrashActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/JarvisTheme" />
+        <service
             android:name=".DriveService"
             android:exported="false"
             android:foregroundServiceType="location" />

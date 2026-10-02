@@ -54,6 +54,21 @@ public class AlarmReceiver extends BroadcastReceiver {
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, Medicine.ACTION_TAKEN.equals(action) ? 500 : 9000);
                 break;
             }
+            case CrashAlert.ACTION_OK: CrashAlert.ok(c); break;
+            case Faith.ACTION_VERSE:
+            case Faith.ACTION_CHURCH: {
+                PendingResult pr = goAsync(); // the verse is fetched and said
+                Faith.fire(c, action);
+                new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
+                break;
+            }
+            case Cook.ACTION_TIMER: {
+                PendingResult pr = goAsync();
+                Cook.timerUp(c, i.getStringExtra("label"));
+                new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
+                break;
+            }
+            case CrashAlert.ACTION_SEND: CrashAlert.send(c, true); break;
             case SongAlarm.ACTION_RING:
                 SongAlarm.fire(c, i.getStringExtra(SongAlarm.EXTRA_ID), i.getIntExtra(SongAlarm.EXTRA_COUNT, 0));
                 break;
@@ -84,6 +99,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 MedicalId.update(c);
                 GeoReminders.rearmAll(c);
                 Proactive.schedule(c);
+                Faith.schedule(c);
                 UpdateJob.schedule(c);
                 if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) Updater.cancelNotice(c);
                 break;
