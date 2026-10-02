@@ -276,15 +276,20 @@ final class Tools {
                         {"count", "integer", "How many headlines (default 8)"}})));
         DEFS.add(new Def("ev_chargers", "EV charging stations nearest to him (or to a place), with distance and plug types; optionally opens his charger app (Statiq, ElectricPe, Bolt.Earth, eDrive BPCL, Tecell, Spider Energy, Voltran, eHUB by MG).",
                 schema(new String[][]{{"place", "string", "Place to search near; empty = where he is now"}, {"app", "string", "Charger app to open; empty = none"}})));
-        DEFS.add(new Def("travel_search", "Open his flight or bus app at a search from -> to on a date (Skyscanner, MakeMyTrip, ixigo, EaseMyTrip, Trip.com / redBus, AbhiBus, IntrCity, FlixBus, TGSRTC). He books and pays himself.",
-                schema(new String[][]{{"kind", "string", "flight or bus"}, {"from", "string", "Flights: 3-letter airport code (HYD). Bus: city in English"},
-                        {"to", "string", "Flights: airport code (BLR). Bus: city in English"}, {"date", "string", "YYYY-MM-DD; empty = today"},
-                        {"app", "string", "App he named; empty = the first one installed"}}, "kind", "from", "to")));
+        DEFS.add(new Def("travel_search", "Search in his travel apps from -> to and read him the results: "
+                + "timings = TGSRTC bus timings / buses running now between two places (his TGSRTC Gamyam app: 'బస్ టైమింగ్స్', 'ఇప్పుడు X కి బస్ ఉందా'); "
+                + "bus = bus tickets, fares, seats on a date (his TGSRTC booking app first, or AbhiBus / redBus when he names them or wants private buses); "
+                + "train = trains and seats on a date (ixigo trains); flight = Skyscanner, MakeMyTrip, ixigo, EaseMyTrip, Trip.com. "
+                + "Jarvis fills the search in the app and reads the first results; booking -> phone_task in that app (stops at Pay). He books and pays himself.",
+                schema(new String[][]{{"kind", "string", "timings, bus, train or flight"}, {"from", "string", "Flights: 3-letter airport code (HYD). Others: place / station in English"},
+                        {"to", "string", "Flights: airport code (BLR). Others: place / station in English"}, {"date", "string", "YYYY-MM-DD; empty = today"},
+                        {"app", "string", "App he named; empty = his usual one"}}, "kind", "from", "to")));
         DEFS.add(new Def("phone_task",
                 "Use his phone for him, like a person with his fingers (seeing the screen, tapping, typing, scrolling, opening apps, going from one app to another): "
                         + "any task he asks to be DONE on the phone that no other tool does directly, e.g. change a setting, search or play something in an app, "
                         + "fill a form, find and forward something, copy from one app into another, order-page selections; and book movie/event tickets in "
-                        + "BookMyShow or District or a bus in redBus/AbhiBus (Jarvis asks his choices, selects everything and stops at Pay). "
+                        + "BookMyShow or District, a bus in TGSRTC / AbhiBus / redBus, or a train in ixigo trains (Jarvis asks his choices, selects everything and stops at Pay; "
+                        + "an IRCTC login or password in ixigo is for him to type). "
                         + "A bar on his screen shows what Jarvis is doing, with a stop button. Jarvis asks before sending, posting, deleting or calling, "
                         + "never pays (except the MobiKwik ticket flow), never types passwords/OTPs, never uses banking or payment apps. "
                         + "Start: goal (+ app if one app is obvious; empty = start from the home screen). Continue: answer (his reply to the question). Cancel: stop=true.",
@@ -732,7 +737,7 @@ final class Tools {
             case "diary": return "డైరీ…";
             case "holidays": return "పండుగలు, సెలవులు చూస్తున్నాను…";
             case "ev_chargers": return "ఛార్జింగ్ స్టేషన్లు వెతుకుతున్నాను…";
-            case "travel_search": return "టికెట్లు వెతుకుతున్నాను…";
+            case "travel_search": return "యాప్‌లో వెతుకుతున్నాను…";
             case "my_trips": return "మీ ప్రయాణాలు చూస్తున్నాను…";
             case "phone_task": return "మీ ఫోన్‌లో చేస్తున్నాను…";
             case "run_python": return "కోడ్ రాసి రన్ చేస్తున్నాను…";
@@ -1482,6 +1487,15 @@ final class Tools {
             labels[i] = String.valueOf(apps.get(i).loadLabel(pm)).toLowerCase(Locale.ROOT).trim();
             if (labels[i].equals(q)) return apps.get(i); // an app whose name is exactly what he said wins
         }
+        // His travel apps by their usual names ("గమ్యం", "TGSRTC", "AbhiBus"), whatever the app calls itself on the phone
+        // ("TGSRTC Gamyam" is the timings app, plain "TGSRTC" the booking app)
+        for (String[] m : TRAVEL_APPS) {
+            if (!q.contains(m[0])) continue;
+            if (m[1].equals(TGSRTC_BOOK) && (q.contains("gamyam") || q.contains("గమ్యం"))) continue;
+            if (m[0].equals("rtc") && !q.matches(".*\\brtc\\b.*")) continue;
+            ResolveInfo r = appByPkg(m[1]);
+            if (r != null) return r;
+        }
         // Then the known music-app names, so "YouTube Music" / "yt music" never ends up in YouTube.
         for (String[] m : MUSIC_APPS) {
             if (!q.contains(m[0])) continue;
@@ -1649,6 +1663,23 @@ final class Tools {
             if (m.find()) return m.group(1);
         } catch (Exception ignored) {}
         return null;
+    }
+
+    /** His travel apps by package (their names on the phone vary): bus timings, bus / train tickets. */
+    static final String GAMYAM = "com.tsrtc", TGSRTC_BOOK = "com.app.tsrtc", ABHIBUS = "com.app.abhibus", REDBUS = "in.redbus.android",
+            IXIGO_TRAINS = "com.ixigo.train.ixitrain";
+    private static final String[][] TRAVEL_APPS = {
+            {"gamyam", GAMYAM}, {"గమ్యం", GAMYAM}, {"bus tracking", GAMYAM},
+            {"tgsrtc", TGSRTC_BOOK}, {"tsrtc", TGSRTC_BOOK}, {"టీజీఎస్ఆర్టీసీ", TGSRTC_BOOK}, {"ఆర్టీసీ", TGSRTC_BOOK}, {"rtc", TGSRTC_BOOK},
+            {"abhibus", ABHIBUS}, {"abhi bus", ABHIBUS}, {"అభిబస్", ABHIBUS}, {"అభి బస్", ABHIBUS},
+            {"redbus", REDBUS}, {"red bus", REDBUS}, {"రెడ్‌బస్", REDBUS}, {"రెడ్ బస్", REDBUS},
+            {"ixigo train", IXIGO_TRAINS}, {"ixigo trains", IXIGO_TRAINS}, {"ఇక్సిగో", IXIGO_TRAINS}};
+
+    /** The launcher entry of an installed app by package, or null. */
+    private ResolveInfo appByPkg(String pkg) {
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(pkg);
+        List<ResolveInfo> l = act().getPackageManager().queryIntentActivities(main, 0);
+        return l.isEmpty() ? null : l.get(0);
     }
 
     /** Well-known music apps by the names people say. */
@@ -4153,9 +4184,44 @@ final class Tools {
                         + "Whether a charger is free right now, and paying, are in his charger app; he starts and pays there.").toString();
     }
 
+    /**
+     * The search filled in by Jarvis inside an app that has no search link (TGSRTC Gamyam, TGSRTC booking, AbhiBus, ixigo trains),
+     * through the screen helper; the first results are read back. Without the screen helper the app just opens.
+     */
+    private String searchInApp(String pkg, String what, String from, String to, java.util.Calendar d) throws Exception {
+        String day = new java.text.SimpleDateFormat("EEEE d MMMM yyyy", Locale.ENGLISH).format(d.getTime());
+        String name = label(pkg);
+        if (!JarvisAccessibility.enabled() || Build.VERSION.SDK_INT < 30) {
+            launch(pkg);
+            return ok().put("opened", name).put("search_filled_in", false)
+                    .put("next", "Say " + name + " is open; he types " + from + " → " + to + " himself. To let Jarvis fill searches, he switches on 'Jarvis స్క్రీన్' in Accessibility settings.").toString();
+        }
+        String goal;
+        switch (what) {
+            case "timings": goal = "In the TGSRTC Gamyam app, find the buses from " + from + " to " + to + " (the search between two places / stops: type " + from
+                    + " in the from box and " + to + " in the to box, pick the matching stop from the suggestions, then search). Open the list of buses. "
+                    + "Do not book anything. Then reply done with stay=true, and in summary list up to 6 buses from the screen: service type (Express, Deluxe, "
+                    + "Super Luxury, Rajadhani, Pallevelugu, Metro...), bus / service number, the time it reaches " + from + " or its departure time, and the arrival time if shown."; break;
+            case "train": goal = "In " + name + ", search trains from " + from + " to " + to + " on " + day + " (from and to stations, the date, then search). "
+                    + "Open the list of trains. Do not book or log in. Then reply done with stay=true, and in summary list up to 5 trains: name and number, "
+                    + "departure and arrival times, and the classes with seats available or waiting list as shown."; break;
+            default: goal = "In " + name + ", search buses from " + from + " to " + to + " on " + day + " (from, to, the date, then search). Open the list of buses. "
+                    + "Do not select seats, book or pay. Then reply done with stay=true, and in summary list up to 5 buses: operator / service type, "
+                    + "departure and arrival times, fare and seats left as shown.";
+        }
+        JSONObject o = new JSONObject(phoneTask(name, goal, null, false, false, true));
+        if (o.optBoolean("ok") && "done".equals(o.optString("status")))
+            o.put("next", "Read him the results from the summary in short spoken Telugu (times and fares in Telugu words), first the soonest. "
+                    + (what.equals("timings") ? "These are TGSRTC buses from the Gamyam app. For tickets: travel_search kind bus." : "To book one: phone_task in " + name + " (it stops at Pay; he pays himself)."));
+        return o.toString();
+    }
+
     /** Flight or bus search in his travel apps, filled in where the app accepts it. He books and pays himself. */
     private String travelSearch(String kind, String from, String to, String date, String app) throws Exception {
-        boolean bus = kind != null && kind.trim().toLowerCase(Locale.ROOT).startsWith("bus");
+        String k = kind == null ? "" : kind.trim().toLowerCase(Locale.ROOT);
+        boolean timings = k.startsWith("tim") || k.contains("live") || k.contains("track");
+        boolean train = k.startsWith("train") || k.startsWith("rail");
+        boolean bus = !timings && k.startsWith("bus");
         if (from == null || from.trim().isEmpty() || to == null || to.trim().isEmpty()) return err("missing", "From where to where?");
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
         java.util.Calendar d = java.util.Calendar.getInstance();
@@ -4164,17 +4230,31 @@ final class Tools {
             d.set(Integer.parseInt(s.substring(0, 4)), Integer.parseInt(s.substring(5, 7)) - 1, Integer.parseInt(s.substring(8, 10)));
         }
         ResolveInfo r = null;
-        if (app != null && !app.trim().isEmpty()) {
-            r = findApp(app.trim());
+        if (app != null && !app.trim().isEmpty() && !timings) {
+            if (train && app.toLowerCase(Locale.ROOT).contains("ixigo")) r = appByPkg(IXIGO_TRAINS); // the trains app, not ixigo flights
+            if (r == null) r = findApp(app.trim());
             if (r == null) return err("not_installed", "'" + app + "' is not installed.");
+            if (r.activityInfo.packageName.equals(GAMYAM)) { timings = true; bus = false; } // Gamyam only shows timings, it does not book
+        } else if (timings) { // bus timings: his TGSRTC Gamyam app only (no other app pretends to be it)
+            r = appByPkg(GAMYAM);
+            if (r == null) return err("not_installed", "His TGSRTC Gamyam app (bus timings) is not installed. Tell him; offer the TGSRTC booking app for tickets instead.");
+        } else if (train) {
+            r = appByPkg(IXIGO_TRAINS);
+            if (r == null) return err("not_installed", "The ixigo trains app is not installed. Tell him; for running status / PNR use train_status.");
         } else {
-            for (String p : bus ? new String[]{"redBus", "AbhiBus", "IntrCity", "FlixBus", "TGSRTC"}
-                    : new String[]{"Skyscanner", "MakeMyTrip", "ixigo", "EaseMyTrip", "Trip.com"}) {
+            for (String p : bus ? new String[]{TGSRTC_BOOK, ABHIBUS, REDBUS} : new String[0]) { // his own order for bus tickets
+                r = appByPkg(p);
+                if (r != null) break;
+            }
+            if (r == null) for (String p : bus ? new String[]{"IntrCity", "FlixBus"} : new String[]{"Skyscanner", "MakeMyTrip", "ixigo", "EaseMyTrip", "Trip.com"}) {
                 r = findApp(p);
+                if (r != null && r.activityInfo.packageName.equals(IXIGO_TRAINS)) r = null; // the trains app has no flights
                 if (r != null) break;
             }
             if (r == null) return err("no_app", "No " + (bus ? "bus" : "flight") + " booking app found.");
         }
+        if (timings || train || (bus && !r.activityInfo.packageName.equals(REDBUS))) // no search link in these apps: Jarvis fills the search itself
+            return searchInApp(r.activityInfo.packageName, timings ? "timings" : train ? "train" : "bus", from.trim(), to.trim(), d);
         String pkg = r.activityInfo.packageName;
         String a = ((app == null ? "" : app) + " " + label(pkg)).toLowerCase(Locale.ROOT);
         String f = from.trim(), t = to.trim(), url = null;
@@ -4312,6 +4392,7 @@ final class Tools {
         boolean paying;             // he said yes: paying from the MobiKwik wallet now
         int refusals;
         boolean general;            // any app, moving between apps (not a ticket booking in one app)
+        boolean keepOpen;           // a search Jarvis filled in: the results stay on the screen for him to see
         String confirmLabel;        // Jarvis asked "… చేయమంటారా?" before a send / post / delete / call button
     }
 
@@ -4472,6 +4553,10 @@ final class Tools {
             + "- If you cannot find something after a few scrolls, ask him or fail with the reason. Keep why short.";
 
     private String phoneTask(String app, String goal, String answer, boolean stop, boolean pay) throws Exception {
+        return phoneTask(app, goal, answer, stop, pay, false);
+    }
+
+    private String phoneTask(String app, String goal, String answer, boolean stop, boolean pay, boolean keepOpen) throws Exception {
         if (stop) {
             appTask = null;
             JarvisAccessibility.clearPayment();
@@ -4496,6 +4581,7 @@ final class Tools {
             t = new AppTask();
             t.pkg = pkg; t.app = pkg.isEmpty() ? "ఫోన్" : label(pkg); t.goal = goal.trim();
             t.general = pkg.isEmpty() || !ticketApp(pkg, t.app);
+            t.keepOpen = keepOpen;
             if (walletPayOk(t)) t.goal += ". (His wallet payment is on: after selecting the seats do NOT ask him to confirm them separately; "
                     + "reply payment with the movie, theatre, date, time, seat numbers and the total, and Jarvis asks him once.)";
             JarvisAccessibility.clearPayment(); // nothing from an earlier task may pay in this one
@@ -4581,7 +4667,8 @@ final class Tools {
 
     private static boolean ticketApp(String pkg, String label) {
         String n = (pkg + " " + label).toLowerCase(Locale.ROOT).replace(" ", "");
-        return pkg.equals("com.bt.bms") || n.contains("bookmyshow") || n.contains("district") || n.contains("redbus") || n.contains("abhibus");
+        return pkg.equals("com.bt.bms") || n.contains("bookmyshow") || n.contains("district") || n.contains("redbus") || n.contains("abhibus")
+                || pkg.equals(TGSRTC_BOOK) || pkg.equals(IXIGO_TRAINS);
     }
 
     private static final java.util.regex.Pattern EXTRA_ASKED = java.util.regex.Pattern.compile("club|donat|insurance|క్లబ్");
@@ -4704,7 +4791,7 @@ final class Tools {
                     appTask = null;
                     JarvisAccessibility.clearPayment();
                     JarvisAccessibility.clearConfirmed();
-                    if (!(t.general && a.optBoolean("stay", false))) backToJarvis(); // a video playing / a chat opened: leave it on screen
+                    if (!((t.general || t.keepOpen) && a.optBoolean("stay", false))) backToJarvis(); // a video playing / a chat opened / search results: leave it on screen
                     return ok().put("status", "done").put("summary", a.optString("summary")).toString();
                 case "fail":
                     JarvisAccessibility.clearPayment();
