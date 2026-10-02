@@ -63,6 +63,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private String partialHeard = "";
     /** "చెప్పండి, Anil?" is playing; only the callback of the latest greeting may start listening. */
     private boolean greeting;
+    /**
+     * The talk is over but the panel stays up a while (like Gemini): "Jarvis" can be heard again meanwhile,
+     * and then this same panel just listens (no new greeting), with the last answer still on it.
+     */
+    private boolean waiting;
+    private static final long STAY_OPEN_MS = 60_000;
     private int greetToken;
 
     private final Runnable autoClose = new Runnable() {
@@ -122,6 +128,10 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (startCallMode(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startRun(intent)) return;
+        if (waiting && live == null && !busy && !greeting && !voice.listening && !voice.speaking && callText == null) { // "Jarvis" again while the panel waits
+            listenAgain(false);
+            return;
+        }
         if (live == null && !busy && !greeting && !voice.listening && voice.isPaused()) { // "Jarvis" while paused
             MainActivity.talking(true);
             WakeService.pause(this);
@@ -354,6 +364,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     private void begin() {
         main.removeCallbacks(autoClose);
+        waiting = false;
         followUps = 1;
         dialog = false;
         MainActivity.talking(true);
@@ -383,8 +394,27 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         greeting = false;
     }
 
+    /**
+     * Talking again in the open panel: by "Jarvis" (the wake word already let go of the mic) or by the mic button
+     * (the wake word is told to let go first, so the two don't fight over the mic).
+     */
+    private void listenAgain(boolean tapped) {
+        main.removeCallbacks(autoClose);
+        waiting = false;
+        followUps = 1;
+        dialog = false;
+        MainActivity.talking(true);
+        WakeService.pause(this);
+        if (!tapped) Sfx.chirp(this, prefs);
+        orb.setState(OrbView.LISTENING);
+        status.setText("వింటున్నాను…");
+        setAction(IconView.STOP);
+        main.postDelayed(() -> { if (!isFinishing() && !busy && live == null && !voice.listening) listen(); }, tapped ? 350 : 250);
+    }
+
     private void listen() {
         main.removeCallbacks(autoClose);
+        waiting = false;
         // Only partial words heard in THIS listen may be sent on a timeout, never the previous turn's.
         partialHeard = "";
         heard.setText("");
@@ -406,6 +436,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         String text = i == null ? null : i.getStringExtra(EXTRA_CALL);
         if (text == null) return false;
         i.removeExtra(EXTRA_CALL);
+        waiting = false;
         cancelGreeting();
         if (live != null) live.stop("call");
         voice.stopSpeaking();
@@ -435,6 +466,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         String text = i == null ? null : i.getStringExtra(EXTRA_RUN);
         if (text == null) return false;
         i.removeExtra(EXTRA_RUN);
+        waiting = false;
         main.removeCallbacks(autoClose);
         MainActivity.talking(true);
         WakeService.pause(this);
@@ -449,6 +481,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (text == null) return false;
         String ctx = i.getStringExtra(EXTRA_ANNOUNCE_CONTEXT);
         i.removeExtra(EXTRA_ANNOUNCE);
+        waiting = false;
         main.removeCallbacks(autoClose);
         MainActivity.talking(true);
         WakeService.pause(this);
@@ -556,7 +589,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (busy) { generation++; busy = false; closeSheet(); return; }
         if (voice.speaking) { voice.stopSpeaking(); closeSheet(); return; }
         if (voice.listening) { voice.cancelListening(); closeSheet(); return; }
-        listen(); // idle: tap to talk again
+        listenAgain(true); // idle: tap to talk again
     }
 
     @Override public void onListening() { status.setText("వింటున్నాను… మాట్లాడండి"); syncPause(); }
@@ -639,17 +672,25 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.postDelayed(this::listen, 100);
     }
 
-    private void idle() {
+    private void idle() { idle(STAY_OPEN_MS); }
+
+    /** Nothing more to say or hear now: the panel stays a while, listening for "Jarvis" again, then closes. */
+    private void idle(long stayMs) {
         Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         orb.setState(OrbView.IDLE);
-        status.setText("ఇంకేమైనా కావాలంటే మైక్ నొక్కండి");
+        boolean wake = prefs.wakeReady();
+        status.setText(wake ? "ఇంకేమైనా కావాలంటే \"Jarvis\" అనండి లేదా మైక్ నొక్కండి" : "ఇంకేమైనా కావాలంటే మైక్ నొక్కండి");
         setAction(IconView.MIC);
         main.removeCallbacks(autoClose);
-        main.postDelayed(autoClose, 5000);
+        waiting = true;
+        MainActivity.talking(false); // the talk is over: the wake word may listen
+        if (wake) WakeService.resume(this);
+        main.postDelayed(autoClose, stayMs);
     }
 
     private void ask(String text) {
         main.removeCallbacks(autoClose);
+        waiting = false;
         if (!prefs.hasBrain()) {
             showReply("నా మెదడుకి API key లేదు. Jarvis యాప్ సెట్టింగ్స్‌లో పెట్టండి.", true);
             idle();
@@ -765,7 +806,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             if (busy) { generation++; busy = false; } // "ఏ స్టేషన్?" still on its way: not over the radio
             if (voice.speaking) voice.stopSpeaking();
             if (voice.listening) voice.cancelListening();
-            idle(); // closes by itself shortly (after the radio app has answered, if it is being asked)
+            idle(5000); // closes by itself shortly (after the radio app has answered, if it is being asked): the radio is what he wants now
         });
     }
 }
