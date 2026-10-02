@@ -85,10 +85,14 @@ public class ReaderService extends Service {
 
     static SharedPreferences mark(Context c) { return c.getSharedPreferences("jarvis_reader", Context.MODE_PRIVATE); }
 
-    static void start(Context c, String name, String uri, String kind, boolean fromStart) {
+    static void start(Context c, String name, String uri, String kind, boolean fromStart) { start(c, name, uri, kind, fromStart, null); }
+
+    /** onDone: what to do when it is read to the end ("bible_plan:N" marks that Bible plan part read); null = keep the bookmark's own. */
+    static void start(Context c, String name, String uri, String kind, boolean fromStart, String onDone) {
         SharedPreferences m = mark(c);
         if (fromStart || !uri.equals(m.getString("uri", ""))) m.edit().putString("uri", uri).putString("name", name).putString("kind", kind)
-                .putInt("unit", 0).putInt("chunk", 0).apply();
+                .putInt("unit", 0).putInt("chunk", 0).putString("on_done", onDone == null ? "" : onDone).apply();
+        else if (onDone != null) m.edit().putString("on_done", onDone).apply();
         Intent i = new Intent(c, ReaderService.class).setAction(ACTION_START);
         if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
     }
@@ -185,7 +189,13 @@ public class ReaderService extends Service {
                 }
                 m.edit().putInt("unit", unit + 1).putInt("chunk", 0).apply();
             }
-            m.edit().remove("uri").apply();
+            String done = m.getString("on_done", "");
+            m.edit().remove("uri").remove("on_done").apply();
+            if (done.startsWith("bible_plan:")) {
+                try { Faith.planMark(this, Integer.parseInt(done.substring(11))); } catch (Exception ignored) {}
+                finishWith("ఈరోజు బైబిల్ ప్లాన్ పూర్తయింది. దేవుడు మిమ్మల్ని దీవించును గాక.");
+                return;
+            }
             finishWith(m.getString("name", "పుస్తకం") + " పూర్తయింది.");
         } catch (Exception e) {
             if (worker == me) finishWith("చదవడంలో సమస్య వచ్చింది: " + (e.getMessage() == null ? "" : e.getMessage()));
@@ -206,7 +216,10 @@ public class ReaderService extends Service {
         spoken = l;
         try { tts.setLanguage(Lang.of(s)); } catch (Exception ignored) {}
         tts.setSpeechRate(p.speechRate());
-        if (tts.speak(Spoken.say(s), TextToSpeech.QUEUE_FLUSH, null, "r" + System.nanoTime()) != TextToSpeech.SUCCESS)
+        String said = Spoken.say(s);
+        int max = TextToSpeech.getMaxSpeechInputLength() - 10;
+        if (said.length() > max) said = said.substring(0, max); // a page of digits as words can pass the engine's limit
+        if (tts.speak(said, TextToSpeech.QUEUE_FLUSH, null, "r" + System.nanoTime()) != TextToSpeech.SUCCESS)
             throw new IllegalStateException("ఫోన్ వాయిస్ ఇంజిన్ చదవలేకపోయింది");
         l.await(5, TimeUnit.MINUTES);
         return worker == Thread.currentThread() && !Thread.currentThread().isInterrupted() && !focusLost;

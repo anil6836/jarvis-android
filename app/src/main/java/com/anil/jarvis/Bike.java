@@ -40,6 +40,26 @@ final class Bike {
     static float batteryKwh(Prefs p) { return Math.max(0.5f, p.sp.getFloat("bike_kwh", 5f)); }
     /** Rupees per unit (kWh) of electricity at home. */
     static float unitRate(Prefs p) { return Math.max(0f, p.sp.getFloat("power_rate", 8f)); }
+    /** For "how much did the EV save": a petrol bike's km per litre and the petrol price he uses. */
+    static float petrolKmpl(Prefs p) { return Math.max(10f, p.sp.getFloat("petrol_kmpl", 45f)); }
+    static float petrolPrice(Prefs p) { return Math.max(50f, p.sp.getFloat("petrol_price", 107f)); }
+
+    /**
+     * What these km would have cost on a petrol bike, what they cost on the EV (his logged charging, or the units
+     * at his home rate when no charging was logged), and the difference saved.
+     */
+    static JSONObject savings(Context c, double km, double chargingCost) throws Exception {
+        Prefs p = new Prefs(c);
+        double petrol = km / petrolKmpl(p) * petrolPrice(p);
+        double byRate = km / fullRangeKm(p) * batteryKwh(p) / CHARGER_EFFICIENCY * unitRate(p);
+        // charging he logged can miss some charges: never less than these km would take at his home rate
+        boolean estimated = chargingCost < byRate;
+        double ev = Math.max(chargingCost, byRate);
+        return new JSONObject().put("km", round1(km)).put("petrol_bike_would_cost_rupees", Math.round(petrol))
+                .put("ev_cost_rupees", Math.round(ev)).put("ev_cost_estimated", estimated)
+                .put("saved_rupees", Math.round(petrol - ev))
+                .put("assumed", "petrol bike " + Math.round(petrolKmpl(p)) + " km/litre at ₹" + Math.round(petrolPrice(p)) + "/litre");
+    }
 
     // ---------------------------------------------------------------- rides (from the bike's Bluetooth)
 
@@ -243,6 +263,7 @@ final class Bike {
                 .put("longest_ride_km", round1(longest)).put("charges", charges.size()).put("charging_cost_rupees", Math.round(cost))
                 .put("recent_rides", recent);
         if (km > 0 && cost > 0) o.put("rupees_per_km", round2(cost / km));
+        if (km > 0) o.put("vs_petrol_bike", savings(c, km, cost));
         if (riding(c)) o.put("riding_now", true);
         if (approx) o.put("note", "Some rides are approximate (the phone held back GPS points; 'Allow all the time' location makes them exact).");
         if (rides.isEmpty()) o.put("how", "Rides are logged by themselves once the bike's Bluetooth is chosen in Settings → కార్/బైక్.");

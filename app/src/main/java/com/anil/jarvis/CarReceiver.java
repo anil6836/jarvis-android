@@ -17,7 +17,8 @@ public class CarReceiver extends BroadcastReceiver {
         PendingResult pr = goAsync();
         Context app = c.getApplicationContext();
         new Thread(() -> {
-            try { Life.carBluetooth(app, d.getAddress(), connected); } catch (Throwable ignored) {} finally { pr.finish(); }
+            try { Life.carBluetooth(app, d.getAddress(), connected); } catch (Throwable ignored) {}
+            try { Devices.seen(app, d, connected); } catch (Throwable ignored) {} finally { pr.finish(); } // "నా ఇయర్‌బడ్స్ ఎక్కడ?"
         }, "jarvis-car").start();
     }
 }

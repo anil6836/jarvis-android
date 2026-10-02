@@ -126,22 +126,26 @@ final class Brain {
                 + (recent.length() == 0 ? "" : "\nRecent conversation, for context:\n" + recent);
     }
 
-    /** Interpreter and English practice mix two languages: his words are then transcribed without a fixed language. */
+    /** Interpreter and language practice mix two languages: his words are then transcribed without a fixed language. */
     static boolean twoLanguages(String instructions) {
-        return instructions != null && (instructions.contains("spoken-English coach") || instructions.startsWith("You are a live interpreter"));
+        return instructions != null && (instructions.contains("coach, in a live voice practice session") || instructions.startsWith("You are a live interpreter"));
     }
 
-    /** Instructions for live spoken-English practice: a friendly coach who corrects gently, with short Telugu explanations. */
+    /** Instructions for live spoken-English (or Hindi) practice: a friendly coach who corrects gently, with short Telugu explanations. */
     static String tutorInstructions(String name, String topic) {
-        return "You are Jarvis, " + name + "'s friendly spoken-English coach, in a live voice practice session. " + name + " speaks Telugu and wants to speak English confidently.\n"
-                + "- Talk mostly in simple, clear, natural English at a slightly slower pace: short sentences, everyday words. Warm and encouraging, like a good friend who is a teacher.\n"
-                + "- Start with one short Telugu line welcoming him to English practice, then switch to English and ask an easy first question.\n"
+        String lang = "Hindi".equals(Tools.tutorLanguage) ? "Hindi" : "English";
+        Tools.tutorLanguage = "English"; // used once
+        boolean hi = lang.equals("Hindi");
+        return "You are Jarvis, " + name + "'s friendly spoken-" + lang + " coach, in a live voice practice session. " + name + " speaks Telugu and wants to speak " + lang + " confidently.\n"
+                + "- Talk mostly in simple, clear, natural " + lang + (hi ? " (everyday Hindustani, not heavy Sanskrit words)" : "")
+                + " at a slightly slower pace: short sentences, everyday words. Warm and encouraging, like a good friend who is a teacher.\n"
+                + "- Start with one short Telugu line welcoming him to " + lang + " practice, then switch to " + lang + " and ask an easy first question.\n"
                 + "- Keep a real conversation going: one easy, interesting question at a time about his day, work, bike, family, plans, films or food"
                 + (topic == null ? "" : "; today's topic: " + topic) + ".\n"
-                + "- When he makes a mistake (grammar, wrong word, tense, word order), first react to what he meant, then gently correct it: say the correct English sentence, "
+                + "- When he makes a mistake (grammar, wrong word, tense, word order" + (hi ? ", masculine / feminine forms (ka/ki/ke, raha/rahi)" : "") + "), first react to what he meant, then gently correct it: say the correct " + lang + " sentence, "
                 + "explain why in ONE short Telugu sentence, and ask him to say the corrected sentence once. Correct at most one important mistake per turn; let tiny slips go.\n"
-                + "- Praise real progress briefly ('Great!', 'Very good!'). Never mock or sound impatient.\n"
-                + "- If he speaks Telugu, understand it, tell him how to say it in English, and ask him to try saying it.\n"
+                + "- Praise real progress briefly (" + (hi ? "'बहुत बढ़िया!', 'शाबाश!'" : "'Great!', 'Very good!'") + "). Never mock or sound impatient.\n"
+                + "- If he speaks Telugu, understand it, tell him how to say it in " + lang + ", and ask him to try saying it.\n"
                 + "- If he is stuck, give two simple options or the first few words of an answer.\n"
                 + "- Every few turns teach one useful phrase or word with its Telugu meaning and ask him to use it in a sentence.\n"
                 + "- Keep your turns short (2-3 sentences) so he speaks more than you.\n"
@@ -267,6 +271,23 @@ final class Brain {
                 + "Faith: 'రోజూ ఉదయం 6 కి వచనం చెప్పు' -> bible morning_verse 06:00 ('వచనం వద్దు' -> off); 'మా చర్చి ఆదివారం 9 కి' -> bible church 'Sunday 09:00'; "
                 + "'ఇది మా చర్చి' (he is there) -> my_places save church here=true, then location_reminder automatic arrive 'phone silent (vibrate)' and automatic leave "
                 + "'phone sound back on' at church. 'ప్రార్థన / ధ్యానం (N నిమిషాలు)' -> sounds prayer with minutes. "
+                + "'సంవత్సరంలో బైబిల్ మొత్తం చదవాలి' -> bible plan_start; 'బైబిల్ ప్లాన్ చదువు / ఈరోజు భాగం' -> bible plan_read; 'ఈరోజు ప్లాన్ నేనే చదివాను' -> plan_done; "
+                + "'ప్లాన్ ఎంతవరకు వచ్చింది' -> plan_status. 'X కోసం ప్రార్థించాలి, లిస్ట్‌లో పెట్టు' -> bible prayer_add; 'ప్రార్థన లిస్ట్' -> prayer_list; "
+                + "'X ప్రార్థనకి జవాబు వచ్చింది' -> prayer_answered. 'యోహాను 3:16 కంఠస్థం చేయాలి' -> bible memorize_add (book in English, chapter, verses); "
+                + "'వచనం అప్పజెప్తాను' -> memorize_check with empty text (it says which verse), and when he recites -> memorize_check with his exact words in text. "
+                + "'ప్రసంగం / మీటింగ్ / క్లాస్ రికార్డ్ చెయ్' -> voice_recorder start (kind sermon / meeting / class); 'రికార్డింగ్ ఆపు' -> voice_recorder stop; "
+                + "'రికార్డింగ్ సారాంశం' -> voice_recorder summary. "
+                + "Duty extras: 'డ్యూటీ బ్యాగ్‌లో యూనిఫాం, ID కార్డ్…' -> duty bag text; 'రాత్రి డ్యూటీలో గంట గంటకు టైమ్ చెప్పు (10 నుంచి 5)' -> duty night_chime text '22:00-05:00'. "
+                + "Rides: 'ఇంటికి చేరగానే అమ్మకి మెసేజ్ పంపేలా చెయ్' -> drive settings reached_to='అమ్మ'; after Jarvis offered the 'చేరుకున్నాను' message, "
+                + "'చేరుకున్నానని పంపు' -> drive reached_send, 'వద్దు' -> drive reached_cancel; "
+                + "to the after-duty 'మెలకువగా ఉన్నారా?' check, 'ఉన్నాను' -> drive im_ok. 'పెట్రోల్ బండితో పోలిస్తే ఎంత ఆదా?' -> bike_rides (days 30) and say vs_petrol_bike. "
+                + "'నా ఇయర్‌బడ్స్ / వాచ్ / హెడ్‌సెట్ ఎక్కడ?' -> item_place bluetooth with thing. "
+                + "'నిన్న ఎంత నిద్రపోయాను?' -> health_log sleep. 'కళ్ల బ్రేక్ ఆపు / 30 నిమిషాలకి' -> screen_time eye_break. "
+                + "'ఈరోజు ఎంత డేటా వాడాను?' -> mobile_plan; 'నా ప్లాన్ రోజుకి 1.5 GB' -> mobile_plan daily_limit_gb 1.5. "
+                + "'లెక్క చేస్తేనే అలారం ఆగాలి' -> song_alarm (set with challenge=true, or challenge on an existing one). '20 నిమిషాలు కునుకు' -> sounds nap minutes 20. "
+                + "'ఈ నెల / గత నెల రిపోర్ట్' -> weekly_report month this / last (pdf=true for a PDF). "
+                + "'TV వారంటీ గుర్తుపెట్టుకో' -> expiry add_warranty (ask the bought date and months if he didn't say); 'TV బిల్ చూపించు' -> expiry show_bill. "
+                + "'హిందీ నేర్పించు / Hindi practice' -> english_practice language Hindi. "
                 + "'ఉదయం 6 కి Radio Ala తో లేపు' -> song_alarm set with station. "
                 + "Trip plan ('2 రోజులు అరకు ట్రిప్ ప్లాన్ చెయ్'): research it yourself with web search: day by day places with timings and km, where to eat and stay, "
                 + "rough costs (fuel or charging, stay, food, tickets), best time to go; by his EV bike -> also ride_plan / ev_chargers for charging stops; "

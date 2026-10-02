@@ -36,6 +36,12 @@ public class AlarmActivity extends Activity {
     private MediaPlayer connecting; // the radio while it is still connecting
     private android.os.Vibrator vib;
     private static java.lang.ref.WeakReference<AlarmActivity> showing;
+    /** This alarm stops only after a small sum is answered (so he doesn't switch it off half asleep). */
+    private boolean challenge;
+    private boolean nap;
+    private int napMinutes;
+    private LinearLayout box;
+    private TextView stopView;
 
     /** "ఆపు" / "5 నిమిషాలు" on the notification: the screen (if open) goes quiet and closes. */
     static void stopRinging() {
@@ -52,11 +58,14 @@ public class AlarmActivity extends Activity {
         count = getIntent().getIntExtra(SongAlarm.EXTRA_COUNT, 0);
         JSONObject o = id == null ? null : SongAlarm.find(this, id);
         station = o == null ? "" : o.optString("station", "");
+        challenge = o != null && o.optBoolean("challenge");
+        nap = o != null && o.optBoolean("nap");
+        napMinutes = o == null ? 0 : o.optInt("nap_minutes");
         Announcer.stop();
         showing = new java.lang.ref.WeakReference<>(this);
         SongAlarm.clearRinging(this); // the screen is up: the notification's own ringing stops, the song takes over
 
-        LinearLayout box = new LinearLayout(this);
+        box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
         box.setBackgroundColor(Ui.BG_TOP);
@@ -75,7 +84,8 @@ public class AlarmActivity extends Activity {
         stop.setGravity(Gravity.CENTER);
         stop.setPadding(0, Ui.dp(this, 20), 0, Ui.dp(this, 20));
         stop.setBackground(Ui.grad(this, new int[]{Ui.C_BLUE, Ui.C_VIOLET}, 24, null));
-        stop.setOnClickListener(v -> stopAndGreet());
+        stop.setOnClickListener(v -> { if (challenge) askSum(); else stopAndGreet(); });
+        stopView = stop;
         box.addView(stop, new LinearLayout.LayoutParams(-1, -2));
         TextView snooze = Ui.text(this, "😴  5 నిమిషాలు", 20, 0xFFFFFFFF);
         snooze.setGravity(Gravity.CENTER);
@@ -250,8 +260,13 @@ public class AlarmActivity extends Activity {
         if (handled) return;
         handled = true;
         silence();
-        greet(getApplicationContext());
+        if (nap) napWake(getApplicationContext(), napMinutes);
+        else greet(getApplicationContext());
         finish();
+    }
+
+    static void napWake(android.content.Context app, int minutes) {
+        Announcer.say(app, new Prefs(app).name() + ", " + (minutes > 0 ? minutes + " నిమిషాల " : "") + "కునుకు అయిపోయింది. లేవండి, ఒక గ్లాసు నీళ్లు తాగండి. ఫ్రెష్‌గా ఉన్నారా?");
     }
 
     static void greet(android.content.Context app) {
@@ -295,5 +310,56 @@ public class AlarmActivity extends Activity {
         super.onDestroy();
     }
 
-    @Override public void onBackPressed() { stopAndGreet(); }
+    @Override public void onBackPressed() { if (challenge) askSum(); else stopAndGreet(); }
+
+    // ---------------------------------------------------------------- the small sum
+
+    private LinearLayout sumBox;
+    private final java.util.Random rnd = new java.util.Random();
+
+    /** "37 + 48 = ?" with four answers; the right one stops the alarm, a wrong one gives a new sum. */
+    private void askSum() {
+        if (handled) return;
+        int a, b, answer;
+        String q;
+        if (rnd.nextBoolean()) { a = 12 + rnd.nextInt(78); b = 12 + rnd.nextInt(78); answer = a + b; q = a + " + " + b; }
+        else { a = 3 + rnd.nextInt(7); b = 11 + rnd.nextInt(9); answer = a * b; q = a + " × " + b; }
+        java.util.List<Integer> opts = new java.util.ArrayList<>();
+        opts.add(answer);
+        while (opts.size() < 4) {
+            int w = answer + (rnd.nextInt(21) - 10);
+            if (w > 0 && !opts.contains(w)) opts.add(w);
+        }
+        java.util.Collections.shuffle(opts, rnd);
+        if (sumBox != null) box.removeView(sumBox);
+        sumBox = new LinearLayout(this);
+        sumBox.setOrientation(LinearLayout.VERTICAL);
+        TextView qv = Ui.text(this, "ఆపడానికి: " + q + " = ?", 26, 0xFFFFFFFF);
+        qv.setGravity(Gravity.CENTER);
+        qv.setPadding(0, Ui.dp(this, 18), 0, Ui.dp(this, 10));
+        sumBox.addView(qv);
+        for (int r = 0; r < 2; r++) {
+            LinearLayout row = new LinearLayout(this);
+            for (int k = 0; k < 2; k++) {
+                int val = opts.get(r * 2 + k);
+                TextView btn = Ui.text(this, String.valueOf(val), 24, 0xFFFFFFFF);
+                btn.setGravity(Gravity.CENTER);
+                btn.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 14));
+                btn.setBackground(Ui.glass(this, 18));
+                btn.setOnClickListener(v -> {
+                    if (val == answer) stopAndGreet();
+                    else {
+                        try { if (vib != null) vib.vibrate(android.os.VibrationEffect.createOneShot(300, android.os.VibrationEffect.DEFAULT_AMPLITUDE)); } catch (Exception ignored) {}
+                        askSum(); // a new one
+                    }
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
+                lp.setMargins(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6));
+                row.addView(btn, lp);
+            }
+            sumBox.addView(row);
+        }
+        box.addView(sumBox, box.indexOfChild(stopView) + 1);
+        stopView.setVisibility(android.view.View.GONE);
+    }
 }

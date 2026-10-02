@@ -95,6 +95,15 @@ public class SoundService extends Service {
         start(c, new Intent(c, SoundService.class).setAction(ACTION_NOISE).putExtra("kind", kind).putExtra("minutes", minutes));
     }
 
+    /** A power nap: a soft sleep sound, Do Not Disturb and no messages read, for the minutes (the nap alarm wakes him). */
+    static void nap(Context c, int minutes, String kind) {
+        start(c, new Intent(c, SoundService.class).setAction(ACTION_NOISE).putExtra("kind", kind == null ? "rain" : kind).putExtra("minutes", minutes)
+                .putExtra("prayer", true).putExtra("nap", true));
+    }
+
+    /** A nap is on (its quiet time ends with the nap alarm, not with a prayer word). */
+    private boolean napOn;
+
     /** Prayer / quiet time: soft calm sound, Do Not Disturb (if allowed) and no messages read, for the minutes; a gentle word at the end. */
     static void prayer(Context c, int minutes) {
         start(c, new Intent(c, SoundService.class).setAction(ACTION_NOISE).putExtra("kind", "calm").putExtra("minutes", minutes).putExtra("prayer", true));
@@ -147,7 +156,8 @@ public class SoundService extends Service {
         if (ACTION_NOISE.equals(a)) {
             String kind = i.getStringExtra("kind");
             if (i.getBooleanExtra("prayer", false)) beginPrayer();
-            nowPlaying = prayerOn ? "🙏 ప్రార్థన సమయం" : label(kind);
+            napOn = i.getBooleanExtra("nap", false);
+            nowPlaying = napOn ? "😴 కునుకు" : prayerOn ? "🙏 ప్రార్థన సమయం" : label(kind);
             foreground(nowPlaying + (minutes > 0 ? " · " + minutes + " నిమిషాలు" : ""));
             startNoise(kind == null ? "rain" : kind);
         } else {
@@ -415,7 +425,7 @@ public class SoundService extends Service {
                 applyVolume();
                 if (gain > 0) main.postDelayed(this, 1500); // about 30 seconds of fading
                 else {
-                    boolean prayed = prayerOn;
+                    boolean prayed = prayerOn && !napOn;
                     halt();
                     stopSelf();
                     if (prayed) Announcer.say(SoundService.this, "ప్రార్థన సమయం పూర్తయింది. దేవుడు మిమ్మల్ని దీవించును గాక.");
@@ -438,6 +448,7 @@ public class SoundService extends Service {
         quiet = false;
         dropFocus();
         endPrayer();
+        napOn = false;
         if (isPaused) autoStop(false);
         radioMode = false;
         isPaused = false;

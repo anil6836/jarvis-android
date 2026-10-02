@@ -108,12 +108,16 @@ final class SongAlarm {
                 ch.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
                 nm.createNotificationChannel(ch);
                 PendingIntent full = PendingIntent.getActivity(c, 94, screen(c, id, count), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-                PendingIntent stop = PendingIntent.getBroadcast(c, 95, new Intent(c, AlarmReceiver.class).setAction(ACTION_STOP).putExtra(EXTRA_ID, id),
+                JSONObject me = find(c, id);
+                // a challenge alarm stops only on its screen, after the sum is answered
+                PendingIntent stop = me != null && me.optBoolean("challenge") ? full
+                        : PendingIntent.getBroadcast(c, 95, new Intent(c, AlarmReceiver.class).setAction(ACTION_STOP).putExtra(EXTRA_ID, id),
                         PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
                 PendingIntent snooze = PendingIntent.getBroadcast(c, 96, new Intent(c, AlarmReceiver.class).setAction(ACTION_SNOOZE).putExtra(EXTRA_ID, id)
                                 .putExtra(EXTRA_COUNT, count), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
                 android.app.Notification n = new android.app.Notification.Builder(c, "jarvis_song_alarm")
-                        .setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setContentTitle("⏰ శుభోదయం!").setContentText("ఆపడానికి / 5 నిమిషాలకి నొక్కండి")
+                        .setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setContentTitle(me != null && me.optBoolean("nap") ? "😴 కునుకు అయిపోయింది" : "⏰ శుభోదయం!")
+                        .setContentText("ఆపడానికి / 5 నిమిషాలకి నొక్కండి")
                         .setCategory(android.app.Notification.CATEGORY_ALARM).setVisibility(android.app.Notification.VISIBILITY_PUBLIC)
                         .setFullScreenIntent(full, true).setContentIntent(full).setOngoing(true)
                         .addAction(new android.app.Notification.Action.Builder(null, "⏹ ఆపు", stop).build())
@@ -143,6 +147,7 @@ final class SongAlarm {
     static void schedule(Context c, JSONObject o) {
         cancelOnly(c, o.optString("id"));
         if (!o.optBoolean("on", true)) return;
+        if (o.optBoolean("nap") && System.currentTimeMillis() > o.optLong("at") + 60000) return; // a nap whose time passed (a restart): never tomorrow
         LocalDateTime t = next(c, o, LocalDateTime.now());
         if (t == null) return;
         at(c, t.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(), pi(c, o.optString("id"), false, 0));
@@ -167,29 +172,63 @@ final class SongAlarm {
 
     /** station: wake with this radio station of his (its name as in his list); "" = the song / alarm tone. */
     static JSONObject add(Context c, int hour, int minute, String days, String label, String station) throws Exception {
+        return add(c, hour, minute, days, label, station, null);
+    }
+
+    /** challenge: true = it stops only after a small sum is answered on the alarm screen; null = keep as it was. */
+    static JSONObject add(Context c, int hour, int minute, String days, String label, String station, Boolean challenge) throws Exception {
         if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
         String d = days(days);
         // the same time and days again: turn that one on instead of a second copy
         List<JSONObject> l = all(c);
         for (JSONObject x : l) {
+            if (x.optBoolean("nap")) continue; // a nap alarm is its own
             if (x.optInt("hour") == hour && x.optInt("minute") == minute && x.optString("days").equals(d)) {
                 x.put("on", true);
                 if (label != null && !label.trim().isEmpty()) x.put("label", label.trim());
                 x.put("station", station == null ? "" : station);
+                if (challenge != null) x.put("challenge", challenge.booleanValue());
                 Notes.save(c, KEY, l, 30);
                 schedule(c, x);
                 return x;
             }
         }
         JSONObject o = new JSONObject().put("id", Notes.id("al")).put("hour", hour).put("minute", minute)
-                .put("days", d).put("label", label == null ? "" : label.trim()).put("on", true).put("station", station == null ? "" : station);
+                .put("days", d).put("label", label == null ? "" : label.trim()).put("on", true).put("station", station == null ? "" : station)
+                .put("challenge", challenge != null && challenge);
         Notes.add(c, KEY, o, 30);
         schedule(c, o);
         return o;
     }
 
+    /** A power nap: a one-time alarm in this many minutes (an earlier nap alarm is replaced). */
+    static JSONObject nap(Context c, int minutes) throws Exception {
+        for (JSONObject o : all(c)) if (o.optBoolean("nap")) remove(c, o.optString("id"));
+        LocalDateTime t = LocalDateTime.now().plusMinutes(minutes).plusSeconds(30); // rounded to the minute below: about on time
+        JSONObject o = new JSONObject().put("id", Notes.id("al")).put("hour", t.getHour()).put("minute", t.getMinute()).put("days", "once")
+                .put("label", "😴 కునుకు అయిపోయింది").put("on", true).put("station", "").put("nap", true).put("nap_minutes", minutes)
+                .put("at", t.withSecond(0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli());
+        Notes.add(c, KEY, o, 30);
+        schedule(c, o);
+        return o;
+    }
+
+    /** The nap alarm waiting to ring (he got up early and stopped the nap sound): not needed now. */
+    static void cancelNaps(Context c) {
+        for (JSONObject o : all(c)) if (o.optBoolean("nap") && o.optBoolean("on", true)) remove(c, o.optString("id"));
+    }
+
+    /** Turns the small sum on / off for an alarm. */
+    static JSONObject setChallenge(Context c, String idOrTime, boolean on) throws Exception {
+        List<JSONObject> l = all(c);
+        JSONObject f = find(c, idOrTime);
+        if (f == null) return null;
+        for (JSONObject x : l) if (x.optString("id").equals(f.optString("id"))) { x.put("challenge", on); Notes.save(c, KEY, l, 30); return x; }
+        return null;
+    }
+
     static JSONObject find(Context c, String idOrTime) {
-        if (idOrTime == null) return null;
+        if (idOrTime == null || idOrTime.trim().isEmpty()) return null; // "" must not match an alarm with no label
         String q = idOrTime.trim();
         for (JSONObject o : all(c)) {
             String t = String.format(Locale.ENGLISH, "%d:%02d", o.optInt("hour"), o.optInt("minute"));
@@ -228,9 +267,11 @@ final class SongAlarm {
     static JSONArray listJson(Context c) throws Exception {
         JSONArray a = new JSONArray();
         for (JSONObject o : all(c)) {
+            if (o.optBoolean("nap") && !o.optBoolean("on", true)) continue; // a nap that rang already
             LocalDateTime n = o.optBoolean("on", true) ? next(c, o, LocalDateTime.now()) : null;
             a.put(new JSONObject().put("id", o.optString("id")).put("time", String.format(Locale.ENGLISH, "%d:%02d", o.optInt("hour"), o.optInt("minute")))
                     .put("days", daysTe(o.optString("days"))).put("label", o.optString("label")).put("on", o.optBoolean("on", true))
+                    .put("challenge", o.optBoolean("challenge"))
                     .put("next", n == null ? "-" : Duty.day(n.toLocalDate()) + " " + String.format(Locale.ENGLISH, "%d:%02d", n.getHour(), n.getMinute())));
         }
         return a;

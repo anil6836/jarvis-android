@@ -217,16 +217,18 @@ final class Tools {
                         {"income", "integer", "His monthly income / salary in rupees"}, {"savings_goal", "integer", "Rupees to save a month (0 = no goal)"}})));
         DEFS.add(new Def("interpreter", "Start a live two-way interpreter between Telugu and another language for a conversation with someone ('హిందీ అనువాదకుడిగా ఉండు').",
                 schema(new String[][]{{"language", "string", "The other person's language, e.g. Hindi, English, Tamil"}}, "language")));
-        DEFS.add(new Def("english_practice", "Start a live spoken-English practice session: Jarvis talks in simple English, gently corrects his mistakes with a short Telugu explanation, and keeps the conversation going. Use for 'English practice', 'ఇంగ్లీష్ నేర్పించు', 'English మాట్లాడదాం'.",
-                schema(new String[][]{{"topic", "string", "Optional topic to talk about (job interview, travel, office, daily life…)"}})));
+        DEFS.add(new Def("english_practice", "Start a live spoken-language practice session: Jarvis talks in simple English (or Hindi), gently corrects his mistakes with a short Telugu explanation, and keeps the conversation going. Use for 'English practice', 'ఇంగ్లీష్ నేర్పించు', 'English మాట్లాడదాం', 'హిందీ నేర్పించు' (language Hindi).",
+                schema(new String[][]{{"topic", "string", "Optional topic to talk about (job interview, travel, office, daily life…)"},
+                        {"language", "string", "English (default) or Hindi"}})));
         DEFS.add(new Def("read_screen", "Read the article/page on his screen aloud (mode read) or summarise it (mode summary).",
                 schema(new String[][]{{"mode", "string", "read or summary"}})));
         DEFS.add(new Def("jarvis_mood", "Change how Jarvis talks: normal, serious, funny, english (reply in English), short (very brief).",
                 schema(new String[][]{{"mode", "string", "normal, serious, funny, english or short"}}, "mode")));
         DEFS.add(new Def("search_history", "Search old conversations with Jarvis ('last week I told you a phone number...').",
                 schema(new String[][]{{"query", "string", "Key words to look for"}, {"days", "integer", "How far back (default 90)"}}, "query")));
-        DEFS.add(new Def("screen_time", "How long he used the phone today (or the last N days) and on which apps.",
-                schema(new String[][]{{"days", "integer", "1 = today (default), up to 7"}})));
+        DEFS.add(new Def("screen_time", "How long he used the phone today (or the last N days) and on which apps. "
+                + "eye_break: the 20-20-20 eye reminder after every N minutes of the screen on without a pause (on by default at 20; 'off' stops it).",
+                schema(new String[][]{{"days", "integer", "1 = today (default), up to 7"}, {"eye_break", "string", "Minutes (10-120), 'on' (20) or 'off'"}})));
         DEFS.add(new Def("app_limit", "Daily time limit for an app; Jarvis tells him when he passes it. minutes 0 removes it; app 'list' shows limits.",
                 schema(new String[][]{{"app", "string", "App name or 'list'"}, {"minutes", "integer", "Minutes per day"}}, "app")));
         DEFS.add(new Def("air_quality", "Air quality (AQI) where he is now, and any severe weather warning for today.", schema(new String[][]{})));
@@ -238,8 +240,15 @@ final class Tools {
                         {"action", "string", "voice/audio: play or text; video: play; photo: show or describe"}}, "kind")));
         DEFS.add(new Def("bible",
                 "Read the Telugu Bible (IRV 2019) aloud: a chapter or verses ('యోహాను 3:16 చదువు', 'కీర్తన 23'), or today's verse (daily=true). "
-                        + "Also the morning verse (said every morning with a short meaning; on at 07:00 unless he changes it) and his church service reminder (45 min before).",
-                schema(new String[][]{{"book", "string", "Book name in English, e.g. John, Psalms, 1 Corinthians"}, {"chapter", "integer", "Chapter"},
+                        + "Also the morning verse (said every morning with a short meaning; on at 07:00 unless he changes it) and his church service reminder (45 min before). "
+                        + "action: plan_start / plan_restart / plan_read (read today's part aloud) / plan_done (he read it himself) / plan_status / plan_off = the whole Bible in a year "
+                        + "(about 3 chapters a day); prayer_add (text) / prayer_list / prayer_answered (n or text, optional note in text2) / prayer_remove = his prayer list; "
+                        + "memorize_add (book, chapter, from_verse, to_verse) / memorize_check (text = his exact words; empty text = ask him a due verse) / memorize_list / "
+                        + "memorize_remove = learning verses by heart, checked again after 1, 3, 7, 14, 30 days.",
+                schema(new String[][]{{"action", "string", "read (default) or one of the plan_ / prayer_ / memorize_ actions"},
+                        {"text", "string", "prayer_add: what to pray for; prayer_answered/remove: words of the item; memorize_check: what he said"},
+                        {"text2", "string", "prayer_answered: how it was answered (optional)"}, {"n", "integer", "Item number from the list"},
+                        {"book", "string", "Book name in English, e.g. John, Psalms, 1 Corinthians"}, {"chapter", "integer", "Chapter"},
                         {"from_verse", "integer", "First verse (0 = from the start)"}, {"to_verse", "integer", "Last verse (0 = just from_verse, or ~12 verses)"},
                         {"daily", "boolean", "true for today's verse"},
                         {"morning_verse", "string", "Set the morning verse time 'HH:mm' (24-hour) or 'off'"},
@@ -305,8 +314,16 @@ final class Tools {
         DEFS.add(new Def("scan_document", "Open the document scanner: he photographs paper pages (bills, certificates, forms) and gets one clean PDF saved in Downloads/Jarvis/scans, to share or ask about.", schema(new String[][]{})));
         DEFS.add(new Def("api_usage", "How much Jarvis's own AI use (Gemini, OpenAI incl. Live and the natural voice, Claude) has cost this month, and what is left of the balance he entered. Use for 'API ఖర్చు ఎంత', 'Gemini credit ఎంత మిగిలింది'.", schema(new String[][]{})));
         DEFS.add(new Def("bank_balance", "His account balance as given in the newest SMS from each bank.", schema(new String[][]{})));
-        DEFS.add(new Def("voice_recorder", "Open the Voice Recorder app to record.", schema(new String[][]{})));
-        DEFS.add(new Def("mobile_plan", "His Jio/Airtel/Vi data used, plan validity and recharge messages (from SMS).", schema(new String[][]{})));
+        DEFS.add(new Def("voice_recorder", "Record with Jarvis: start = record a church sermon, a meeting or a class (kind sermon / meeting / class, optional title); "
+                + "stop = stop, then the words are written out (OpenAI key) and short Telugu notes made (sermon: main points and Bible verses; meeting: decisions, "
+                + "who does what) and saved in Downloads/Jarvis/recordings; summary = the notes of the last recording (n = which, 1 = last); list; "
+                + "app = open the phone's Voice Recorder app instead. Never records phone calls.",
+                schema(new String[][]{{"action", "string", "start, stop, summary, list or app (default app when he only says 'open recorder')"},
+                        {"kind", "string", "sermon, meeting or class"}, {"title", "string", "Optional name, e.g. 'ఆదివారం ఆరాధన'"},
+                        {"n", "integer", "For summary: 1 = the last one"}})));
+        DEFS.add(new Def("mobile_plan", "His mobile data: used today / yesterday / 7 days and the apps that used most (measured by the phone), WiFi today, "
+                + "his daily plan limit with alerts at 80% and 100% (daily_limit_gb), and Jio/Airtel/Vi plan validity and recharge messages (from SMS).",
+                schema(new String[][]{{"daily_limit_gb", "number", "Set his plan's daily data in GB (e.g. 1.5, 2); 0 removes the alerts"}})));
         DEFS.add(new Def("routine",
                 "Anil's own multi-step commands. save: store steps under a name ('ఆఫీస్ మోడ్' = silent, Wi-Fi off, navigate to office). run: get the steps, then do them with your tools. list / delete.",
                 schema(new String[][]{{"action", "string", "save, run, list or delete"}, {"name", "string", "Routine name as he says it"},
@@ -359,9 +376,13 @@ final class Tools {
                 + "add_camera = he says a speed camera is here ('ఇక్కడ స్పీడ్ కెమెరా ఉంది'): saved at his spot for his direction, warned next time; "
                 + "remove_camera = take off the one he marked near here (what='all' = every one); my_cameras = how many he marked. "
                 + "Crash detection (a hard knock while moving, then still: asks 'బాగున్నారా?', no answer in 60 s -> SOS SMS) runs with the live alerts; settings crash on/off; "
-                + "im_ok = he says he is fine ('బాగున్నాను') while that alert counts down. "
+                + "im_ok = he says he is fine ('బాగున్నాను') while that alert counts down, or 'ఉన్నాను' to the after-duty 'మెలకువగా ఉన్నారా?' check. "
+                + "Rides also get: rain / heat ahead at the start (settings ride_weather), after a 48-hour duty an awake check every 15 minutes (settings fatigue), "
+                + "and at home / duty an offer to SMS 'క్షేమంగా చేరుకున్నాను' to the people in settings reached_to (names; 'off'); reached_send = send that offered message (only when he says send); reached_cancel = he said no. "
                 + "For taps inside the maps app (exit navigation, mute voice, show alternatives) use phone_task.",
-                schema(new String[][]{{"action", "string", "where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras"},
+                schema(new String[][]{{"action", "string", "where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera, my_cameras, im_ok, reached_send or reached_cancel"},
+                        {"fatigue", "boolean", "For settings: the awake check after a duty on / off"}, {"ride_weather", "boolean", "For settings: rain / heat word at the ride start"},
+                        {"reached_to", "string", "For settings: who gets 'reached safely' (contact names, comma separated; 'off')"},
                         {"limit_kmh", "integer", "For add_camera: the camera's speed limit if he says it"},
                         {"what", "string", "For along: what to look for"}, {"place", "string", "For navigate / add_stop"},
                         {"km", "integer", "How far ahead to look (along default 30, cameras default 50)"},
@@ -396,8 +417,10 @@ final class Tools {
         DEFS.add(new Def("bike_charge", "He charged his electric bike: record the battery % before and after (and the rupees paid at a public charger, if any). Returns the cost, units and cost per km.",
                 schema(new String[][]{{"from_percent", "integer", "Battery % before charging"}, {"to_percent", "integer", "Battery % after charging"},
                         {"paid", "number", "Rupees paid at a public charger; 0 or empty = charged at home"}}, "from_percent", "to_percent")));
-        DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days.",
-                schema(new String[][]{{"days", "integer", "How many days back (default 7, max 90)"}})));
+        DEFS.add(new Def("bike_rides", "His bike rides (logged by themselves while the bike's Bluetooth is connected): number of rides, km, riding time, charging cost and cost per km for the last N days, "
+                + "and how much the EV saved against a petrol bike ('పెట్రోల్ బండితో పోలిస్తే ఎంత ఆదా?'; days 30 for this month).",
+                schema(new String[][]{{"days", "integer", "How many days back (default 7, max 365)"},
+                        {"petrol_price", "number", "Set: petrol price ₹/litre he goes by (default 107)"}, {"petrol_kmpl", "number", "Set: a petrol bike's km per litre (default 45)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
                 + "category (optional): bike, money, calls, day, missions, camera, live, phone, health, duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (exercise, rest, sleep sounds), alarm (song alarm), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), drive (route, places on the way, speed cameras), home (cooking, books read aloud, trip plan), travel, fun, code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
@@ -424,8 +447,10 @@ final class Tools {
                 + "(he does someone's: by empty; someone does his: covered empty, by = that person), the doer is on 4 days in a row and the other then does the doer's next turn "
                 + "(8 days off); clear: undo changes on a date; open: show the calendar screen; "
                 + "trip_check: before his next duty, rain on the way and whether the bike's charge is enough to go and come back ('డ్యూటీకి వెళ్లొచ్చా?', 'బైక్ ఛార్జ్ సరిపోతుందా?'); "
-                + "report: his month (month YYYY-MM, default this month): duty days and hours, extra days, days off, covers, festivals worked.",
-                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear, open, trip_check or report"},
+                + "report: his month (month YYYY-MM, default this month): duty days and hours, extra days, days off, covers, festivals worked; "
+                + "bag: what he takes to duty (text = items comma separated, 'off' = none, empty = show), said the evening before and before leaving; "
+                + "night_chime: on his duty nights a soft chime and the time every hour (text = hours '22:00-05:00', or 'off').",
+                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear, open, trip_check, report, bag or night_chime"},
                         {"person", "string", "Whose duty: empty = his own; a name or a batch (A, B, C)"},
                         {"date", "string", "YYYY-MM-DD (on_date, set_day, cover, clear)"}, {"to_date", "string", "Last date YYYY-MM-DD for set_day / clear"},
                         {"duty", "boolean", "For set_day: true = on duty, false = off"},
@@ -456,8 +481,12 @@ final class Tools {
         DEFS.add(new Def("expiry", "Things that run out, with reminders before: bike insurance, driving licence, PUC, RC, gas cylinder booking, mobile recharge, bike service... "
                 + "add: what + last date (repeat_days for things that come back, e.g. recharge 28, gas 30); add_km: bike service every N km (counted from his rides); "
                 + "renew: done / renewed (new date, or + repeat days; km count starts again); list; remove. For a date in a saved document use ask_document first. "
+                + "add_warranty: a product's warranty (what = item, bought = purchase date, months, or date = warranty end; shop); the bill photo just sent is kept with it; "
+                + "reminded 30 days before it ends; show_bill: open that bill photo ('TV బిల్ చూపించు'). "
                 + "Keep only the name and date, never policy or licence numbers.",
-                schema(new String[][]{{"action", "string", "list (default), add, add_km, renew or remove"},
+                schema(new String[][]{{"action", "string", "list (default), add, add_km, renew, remove, add_warranty or show_bill"},
+                        {"bought", "string", "For add_warranty: purchase date YYYY-MM-DD"}, {"months", "integer", "For add_warranty: warranty months (12, 24...)"},
+                        {"shop", "string", "For add_warranty: where bought (optional)"},
                         {"what", "string", "In Telugu as he says it, e.g. 'బైక్ ఇన్సూరెన్స్', 'డ్రైవింగ్ లైసెన్స్', 'గ్యాస్ బుకింగ్', 'Jio రీఛార్జ్', 'బైక్ సర్వీస్'"},
                         {"date", "string", "Last date YYYY-MM-DD (add; renew with a new date)"},
                         {"repeat_days", "integer", "For add: comes back every N days (0 = no)"},
@@ -490,8 +519,9 @@ final class Tools {
                         {"email", "string", "Email"}, {"company", "string", "Company"}, {"title", "string", "Job title"},
                         {"address", "string", "Address"}, {"note", "string", "Note, e.g. where he met them"}}, "name")));
         DEFS.add(new Def("health_log", "His BP, sugar and weight readings, kept on the phone, with a word on each (normal / high / low) and when to see a doctor or call 108. "
-                + "add: one reading ('BP 130/85 పల్స్ 78', 'షుగర్ పరగడుపున 110', 'బరువు 72'); list / trend: readings of N days with weekly averages; delete_last.",
-                schema(new String[][]{{"action", "string", "add, list (default), trend or delete_last"}, {"kind", "string", "bp, sugar or weight"},
+                + "add: one reading ('BP 130/85 పల్స్ 78', 'షుగర్ పరగడుపున 110', 'బరువు 72'); list / trend: readings of N days with weekly averages; delete_last; "
+                + "sleep: how long he slept (each sleep with times, average, sleep since his duty ended), worked out from the phone lying unused.",
+                schema(new String[][]{{"action", "string", "add, list (default), trend, delete_last or sleep"}, {"kind", "string", "bp, sugar or weight"},
                         {"sys", "integer", "BP upper number"}, {"dia", "integer", "BP lower number"}, {"pulse", "integer", "Pulse (optional)"},
                         {"value", "number", "Sugar mg/dL or weight kg"}, {"when", "string", "Sugar: fasting (పరగడుపున), after_food or random"},
                         {"days", "integer", "For list: days back (default 30)"}})));
@@ -515,8 +545,11 @@ final class Tools {
                         {"theme", "string", "Optional: animals, kings, honesty, friendship, Bible story, Panchatantra..."}})));
         DEFS.add(new Def("song_alarm", "Jarvis's own alarm that wakes him with a song from his phone (chosen in Settings; else the alarm tone), then says good morning "
                 + "with the weather and whether today is a duty day. set: time + days (daily, once, weekdays, weekend, duty = only duty days, off = only days off); "
-                + "list; cancel (id or time); test (ring now); song (open Settings to pick the song). For a plain phone alarm use set_alarm.",
-                schema(new String[][]{{"action", "string", "set, list (default), cancel, test or song"}, {"time", "string", "HH:mm (24-hour)"},
+                + "list; cancel (id or time); test (ring now); song (open Settings to pick the song); challenge = it stops only after a small sum is answered "
+                + "on the alarm screen (so he doesn't switch it off half asleep): with set (challenge=true) or on its own (id or time + challenge true/false). "
+                + "For a plain phone alarm use set_alarm.",
+                schema(new String[][]{{"action", "string", "set, list (default), cancel, test, song or challenge"}, {"time", "string", "HH:mm (24-hour)"},
+                        {"challenge", "boolean", "true = a small sum must be answered to stop it"},
                         {"days", "string", "daily (default), once, weekdays, weekend, duty or off"}, {"label", "string", "Optional name, e.g. 'డ్యూటీ రోజు'"},
                         {"station", "string", "Wake with this radio station of his instead of the song (name as in his radio list, or number); 'none' = back to the song"},
                         {"id", "string", "For cancel: id or time"}})));
@@ -538,8 +571,9 @@ final class Tools {
         DEFS.add(new Def("nearby_open", "Places near him right now from the free map: medical shop (pharmacy), ATM, hospital, clinic, petrol bunk, hotel / tiffin, tea, police, bank, EV charger; "
                 + "nearest first with km, 24-hour ones marked and opening hours when known.",
                 schema(new String[][]{{"what", "string", "What he needs, e.g. 'మెడికల్ షాప్', 'ATM', 'పెట్రోల్ బంక్'"}, {"radius_km", "integer", "How far to look (default 5)"}}, "what")));
-        DEFS.add(new Def("item_place", "Where he kept things: put ('తాళాలు బీరువా పై అరలో పెట్టాను'), find ('తాళాలు ఎక్కడ?'), list, remove.",
-                schema(new String[][]{{"action", "string", "put, find (default), list or remove"}, {"thing", "string", "The thing"}, {"place", "string", "For put: where"}})));
+        DEFS.add(new Def("item_place", "Where he kept things: put ('తాళాలు బీరువా పై అరలో పెట్టాను'), find ('తాళాలు ఎక్కడ?'), list, remove; "
+                + "bluetooth = where a Bluetooth thing (earbuds, headset, watch, speaker) was when it last left the phone ('నా ఇయర్‌బడ్స్ ఎక్కడ?').",
+                schema(new String[][]{{"action", "string", "put, find (default), list, remove or bluetooth"}, {"thing", "string", "The thing"}, {"place", "string", "For put: where"}})));
         DEFS.add(new Def("habit_track", "Habits he wants to keep, with streaks: add, done (today or a date), undo, list, remove; reminder: the night check hour (-1 = off).",
                 schema(new String[][]{{"action", "string", "list (default), add, done, undo, remove or reminder"}, {"name", "string", "Habit, e.g. 'నడక', 'సిగరెట్ మానడం'"},
                         {"date", "string", "YYYY-MM-DD (default today)"}, {"hour", "integer", "For reminder"}})));
@@ -553,13 +587,17 @@ final class Tools {
                 + "add = add a station or give a listed one its stream link (station + url, group film/christian); remove = take a station off his list; "
                 + "favorite / unfavorite = add / take off his favourites (station empty = the one playing); favorites = ask which favourite to play; "
                 + "prayer = prayer / meditation time: soft calm music, Do Not Disturb and no messages read for minutes (default 15), a gentle word at the end; "
+                + "nap = power nap ('20 నిమిషాలు కునుకు'): a soft sleep sound (station = rain/fan/sea/white/calm), Do Not Disturb, and an alarm that wakes him after minutes (default 20); "
                 + "next / previous = next / previous station; pause / resume; stop = stop.",
-                schema(new String[][]{{"action", "string", "rain, fan, sea, white, prayer, radio, stations, favorites, favorite, unfavorite, next, previous, pause, resume, add, remove or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
+                schema(new String[][]{{"action", "string", "rain, fan, sea, white, prayer, nap, radio, stations, favorites, favorite, unfavorite, next, previous, pause, resume, add, remove or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
                         {"station", "string", "For radio: the station's name as written in his list (English) or its number; empty = ask him"},
                         {"url", "string", "For add: the stream link (https)"}, {"group", "string", "For add: film or christian"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'. "
-                + "ahead=true: the COMING week instead (duty days, EMIs / money due, last dates, birthdays, holidays) for 'వచ్చే వారం ఏముంది'; plan on/off = the Sunday-evening notice.",
-                schema(new String[][]{{"ahead", "boolean", "true = the coming 7 days"}, {"plan", "string", "on or off (only to change the Sunday notice)"}})));
+                + "ahead=true: the COMING week instead (duty days, EMIs / money due, last dates, birthdays, holidays) for 'వచ్చే వారం ఏముంది'; plan on/off = the Sunday-evening notice. "
+                + "month = a MONTH report instead ('ఈ నెల రిపోర్ట్', 'గత నెల రిపోర్ట్ PDF'): money, bills by category, duty days, bike km and the saving vs petrol, sleep, mobile data, "
+                + "reminders / missions done, prayers answered, last dates next month; pdf=true makes it a PDF on the phone and opens it (made by itself on the 1st for last month).",
+                schema(new String[][]{{"ahead", "boolean", "true = the coming 7 days"}, {"plan", "string", "on or off (only to change the Sunday notice)"},
+                        {"month", "string", "this, last or YYYY-MM for a month report"}, {"pdf", "boolean", "true = the month report as a PDF"}})));
         DEFS.add(new Def("day_summary",
                 "Summary of today: calls (missed ones), messages and who sent them, money spent, reminders, missions done. For 'ఈరోజు ఏం జరిగింది?'.",
                 schema(new String[][]{})));
@@ -799,20 +837,24 @@ final class Tools {
                 case "group_summary": return groupSummary(a.optString("group", ""));
                 case "budget": return a.has("income") || a.has("savings_goal") ? savings(a) : budget(a.optInt("amount", 0));
                 case "interpreter": return interpreter(a.optString("language"));
-                case "english_practice": return englishPractice(a.optString("topic"));
+                case "english_practice": return englishPractice(a.optString("topic"), a.optString("language", "English"));
                 case "read_screen": return readScreen(a.optString("mode", "read"));
                 case "jarvis_mood": return mood(a.optString("mode", "normal"));
                 case "search_history": return searchHistory(a.optString("query"), a.optInt("days", 90));
-                case "screen_time": return screenTime(a.optInt("days", 1));
+                case "screen_time":
+                    if (!a.optString("eye_break").trim().isEmpty()) {
+                        String e = a.optString("eye_break").trim().toLowerCase(Locale.ROOT);
+                        int m = e.startsWith("off") || e.contains("వద్దు") || e.contains("ఆపు") ? 0 : e.replaceAll("\\D", "").isEmpty() ? 20 : Integer.parseInt(e.replaceAll("\\D", ""));
+                        Sleep.setEye(act(), m);
+                        return ok().put("eye_break_minutes", Sleep.eyeMinutes(act())).put("note", Sleep.eyeMinutes(act()) == 0 ? "Off."
+                                : "A quiet pop-up (no sound) after every " + Sleep.eyeMinutes(act()) + " minutes of the screen on; not while driving or on a call.").toString();
+                    }
+                    return screenTime(a.optInt("days", 1));
                 case "app_limit": return appLimit(a.optString("app", ""), a.optInt("minutes", 0));
                 case "air_quality": return airQuality();
                 case "cricket_watch": return cricketWatch(a.optString("team", "India"), a.optBoolean("on", true));
                 case "whatsapp_media": return whatsappMedia(a.optString("kind", "voice"), a.optString("action", ""));
-                case "bible": if (!a.optString("morning_verse").trim().isEmpty() || !a.optString("church").trim().isEmpty())
-                        return Faith.set(act(), a.optString("morning_verse").trim().isEmpty() ? null : a.optString("morning_verse"),
-                                a.optString("church").trim().isEmpty() ? null : a.optString("church")).toString();
-                    return bible(a.optString("book", ""), a.optInt("chapter", 1), a.optInt("from_verse", 0), a.optInt("to_verse", 0),
-                        a.optBoolean("daily", false));
+                case "bible": return bibleTool(a);
                 case "local_media": return localMedia(a.optString("kind", "song"), a.optString("query", ""), a.optString("app", ""));
                 case "app_search": return appSearch(a.optString("app"), a.optString("query", ""));
                 case "note_in_app": return noteInApp(a.optString("text"), a.optString("app", ""));
@@ -861,8 +903,8 @@ final class Tools {
                     return ok().put("next", "Say the scanner is opening: photograph each page, then Save; the PDF goes to Downloads/Jarvis/scans and he can share it or ask about it.").toString();
                 case "api_usage": return Usage.summary().put("ok", true)
                         .put("next", "Say each company's estimated spend this month in rupees (dollars too for OpenAI/Claude) and what is left if a balance was entered. Say they are estimates; the exact amount is on the billing page.").toString();
-                case "voice_recorder": return voiceRecorder();
-                case "mobile_plan": return mobilePlan();
+                case "voice_recorder": return voiceRecorder(a);
+                case "mobile_plan": return mobilePlan(a);
                 case "routine": return routine(a.optString("action", "list"), a.optString("name", ""), a.optString("steps", ""));
                 case "notes": return notes(a.optString("action", "list"), a.optString("text", ""), a.optInt("days", 7));
                 case "sos": return sos(a.optString("message", ""));
@@ -880,11 +922,26 @@ final class Tools {
                         a.optString("category", ""), a.optString("date", ""));
                 case "bike_range": return Bike.range(act(), a.optInt("battery_percent", -1)).toString();
                 case "bike_charge": return Bike.addCharge(act(), a.optInt("from_percent", -1), a.optInt("to_percent", -1), a.optDouble("paid", 0)).toString();
-                case "bike_rides": return Bike.summary(act(), System.currentTimeMillis() - Math.max(1, Math.min(90, a.optInt("days", 7))) * 86400000L).toString();
+                case "bike_rides": {
+                    if (a.optDouble("petrol_price", 0) > 0) prefs.sp.edit().putFloat("petrol_price", (float) a.optDouble("petrol_price")).apply();
+                    if (a.optDouble("petrol_kmpl", 0) > 0) prefs.sp.edit().putFloat("petrol_kmpl", (float) a.optDouble("petrol_kmpl")).apply();
+                    return Bike.summary(act(), System.currentTimeMillis() - Math.max(1, Math.min(365, a.optInt("days", 7))) * 86400000L).toString();
+                }
                 case "weekly_report": {
                     String pl = a.optString("plan", "").trim().toLowerCase(Locale.ROOT);
                     if (pl.equals("on") || pl.equals("off")) { prefs.set("week_plan", pl.equals("on")); return ok().put("sunday_plan", pl).toString(); }
                     if (a.optBoolean("ahead", false)) return Plans.week(act()).put("next", "Say the coming week in short Telugu, day by day, the most important first.").toString();
+                    if (!a.optString("month").trim().isEmpty() || a.optBoolean("pdf", false)) {
+                        java.time.YearMonth ym = Monthly.parse(a.optString("month"));
+                        if (a.optBoolean("pdf", false)) {
+                            Coder.Made m = Monthly.pdf(act(), ym);
+                            if (m.uri != null && unlocked()) Cards.view(act(), m);
+                            return ok().put("pdf", m.where).put("month", Monthly.name(ym))
+                                    .put("next", "Say in one line that the " + Monthly.name(ym) + " report PDF is saved in " + m.where + " and opened; offer to share it on WhatsApp (after he says).").toString();
+                        }
+                        return Monthly.data(act(), ym).put("next", "Tell the month in 5-7 short spoken Telugu sentences: money first, then duty, bike and the petrol saving, sleep, data; "
+                                + "offer the PDF (weekly_report month + pdf=true).").toString();
+                    }
                     return Weekly.report(act()).toString();
                 }
                 case "birthdays": return birthdays(a);
@@ -3568,19 +3625,24 @@ final class Tools {
     static final String TUTOR = "english-tutor";
     static volatile String tutorTopic;
 
+    /** The language being practised: "English" or "Hindi". */
+    static volatile String tutorLanguage = "English";
+
     static String takeTutorTopic() {
         String t = tutorTopic;
         tutorTopic = null;
         return t;
     }
 
-    private String englishPractice(String topic) throws Exception {
-        if (prefs.openAiKey().trim().isEmpty()) return err("no_openai", "English practice runs in Live mode, which needs an OpenAI key in settings.");
-        if (!online()) return err("offline", "English practice needs internet.");
+    private String englishPractice(String topic, String language) throws Exception {
+        String lang = language != null && (language.toLowerCase(Locale.ROOT).startsWith("hi") || language.contains("హిందీ")) ? "Hindi" : "English";
+        if (prefs.openAiKey().trim().isEmpty()) return err("no_openai", lang + " practice runs in Live mode, which needs an OpenAI key in settings.");
+        if (!online()) return err("offline", lang + " practice needs internet.");
         tutorTopic = topic == null || topic.trim().isEmpty() ? null : topic.trim();
+        tutorLanguage = lang;
         interpreterLang = TUTOR;
-        return ok().put("english_practice", true)
-                .put("next", "Say one short, cheerful Telugu line: English practice is starting in Live; say 'practice ఆపు' to stop.").toString();
+        return ok().put("practice", lang)
+                .put("next", "Say one short, cheerful Telugu line: " + lang + " practice is starting in Live; say 'practice ఆపు' to stop.").toString();
     }
 
     private String interpreter(String language) throws Exception {
@@ -3746,6 +3808,41 @@ final class Tools {
 
     // ================================================================ his apps: Bible, local songs/videos, shopping/OTT search, Samsung tools, mobile plan
 
+    private String bibleTool(JSONObject a) throws Exception {
+        if (!a.optString("morning_verse").trim().isEmpty() || !a.optString("church").trim().isEmpty())
+            return Faith.set(act(), a.optString("morning_verse").trim().isEmpty() ? null : a.optString("morning_verse"),
+                    a.optString("church").trim().isEmpty() ? null : a.optString("church")).toString();
+        String action = a.optString("action", "read").toLowerCase(Locale.ROOT).trim();
+        String text = a.optString("text", "");
+        int n = a.optInt("n", 0);
+        try {
+            switch (action) {
+                case "plan_start": return Faith.planStart(act(), false).toString();
+                case "plan_restart": return Faith.planStart(act(), true).toString();
+                case "plan_read": case "plan_today":
+                    if (!online()) return err("offline", "The Bible text needs internet.");
+                    return Faith.planRead(act()).toString();
+                case "plan_done": return Faith.planMark(act(), 0).toString();
+                case "plan_status": return Faith.planStatus(act()).toString();
+                case "plan_off": return Faith.planOff(act()).toString();
+                case "prayer_add": return Faith.prayerAdd(act(), text).toString();
+                case "prayer_list": return Faith.prayerList(act()).toString();
+                case "prayer_answered": return Faith.prayerAnswered(act(), n, text, a.optString("text2", "")).toString();
+                case "prayer_remove": return Faith.prayerRemove(act(), n, text).toString();
+                case "memorize_add":
+                    if (!online()) return err("offline", "The Bible text needs internet.");
+                    return Faith.memorizeAdd(act(), a.optString("book", ""), a.optInt("chapter", 1), a.optInt("from_verse", 1), a.optInt("to_verse", 0)).toString();
+                case "memorize_check": return Faith.memorizeCheck(act(), n, a.optString("book", ""), a.optInt("chapter", 0), a.optInt("from_verse", 0), text).toString();
+                case "memorize_list": return Faith.memorizeList(act()).toString();
+                case "memorize_remove": return Faith.memorizeRemove(act(), n, a.optString("book", ""), a.optInt("chapter", 0), a.optInt("from_verse", 0)).toString();
+                default: break;
+            }
+        } catch (IllegalArgumentException e) {
+            return err("unknown_book", "Pass the book's English name, e.g. John, Psalms, 1 Corinthians.");
+        }
+        return bible(a.optString("book", ""), a.optInt("chapter", 1), a.optInt("from_verse", 0), a.optInt("to_verse", 0), a.optBoolean("daily", false));
+    }
+
     private String bible(String book, int chapter, int from, int to, boolean daily) throws Exception {
         if (!online()) return err("offline", "The Bible text needs internet.");
         try {
@@ -3873,7 +3970,33 @@ final class Tools {
                 .put("next", "Tell him the note is open in " + where + " with the text; it saves when he taps save or goes back.").toString();
     }
 
-    private String voiceRecorder() throws Exception {
+    private String voiceRecorder(JSONObject a) throws Exception {
+        String action = a.optString("action", "app").toLowerCase(Locale.ROOT).trim();
+        if (action.equals("start") || action.equals("record")) {
+            if (RecorderService.recording) return ok().put("already_recording_minutes", (System.currentTimeMillis() - RecorderService.startedAt) / 60000).toString();
+            if (!has(Manifest.permission.RECORD_AUDIO)) return needPermission(Manifest.permission.RECORD_AUDIO, "recording");
+            String kind = a.optString("kind", "meeting").toLowerCase(Locale.ROOT);
+            if (!kind.matches("sermon|meeting|class")) kind = kind.contains("ప్రసంగ") || kind.contains("church") || kind.contains("చర్చ") ? "sermon" : "meeting";
+            if (!RecorderService.start(act(), kind, a.optString("title", ""))) return err("not_started", "Android did not let the recording start; with Jarvis open on screen, ask again.");
+            JSONObject o = ok().put("recording", RecorderService.label(kind))
+                    .put("next", "Say in one short line that recording has started; ⏹ in the notification stops it (the wake word is off while it records, "
+                            + "and Jarvis stays silent: no messages read aloud). "
+                            + (kind.equals("meeting") ? "Remind him gently to tell the others it is being recorded. " : "") + "Then stay quiet.");
+            if (prefs.openAiKey().trim().isEmpty()) o.put("warning", "No OpenAI key: the audio is saved but the words / notes can't be made until a key is added.");
+            return o.toString();
+        }
+        if (action.startsWith("stop")) {
+            if (!RecorderService.recording) return err("not_recording", "Nothing is being recorded now.");
+            long m = (System.currentTimeMillis() - RecorderService.startedAt) / 60000;
+            RecorderService.stop(act());
+            return ok().put("stopped_after_minutes", m).put("note", "The words and notes are being made now (a notification when ready; about a minute for every 10-15 minutes). "
+                    + "OpenAI speech-to-text costs about ₹0.25 a minute.").toString();
+        }
+        if (action.startsWith("list")) return ok().put("recordings", RecorderService.list(act())).toString();
+        if (action.startsWith("sum") || action.startsWith("note")) {
+            if (RecorderService.processing()) return ok().put("status", "still making the notes; a notification comes when ready").toString();
+            return RecorderService.summary(act(), a.optInt("n", 1)).put("next", "Read the notes in short spoken Telugu (main points first); say where the file is saved.").toString();
+        }
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
         Intent i = new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (installed("com.sec.android.app.voicenote")) i.setPackage("com.sec.android.app.voicenote");
@@ -3886,8 +4009,18 @@ final class Tools {
     }
 
     /** Jio / Airtel / Vi plan, data and validity messages from SMS. */
-    private String mobilePlan() throws Exception {
-        if (!has(Manifest.permission.READ_SMS)) return needPermission(Manifest.permission.READ_SMS, "reading Jio/Airtel SMS");
+    private String mobilePlan(JSONObject a) throws Exception {
+        if (a.has("daily_limit_gb")) DataUse.setDailyLimit(act(), a.optDouble("daily_limit_gb", 0));
+        JSONObject phone = null;
+        if (Life.usageAllowed(act())) phone = DataUse.report(act());
+        else if (a.has("daily_limit_gb")) {
+            start(new Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return err("usage_access_off", "Data counting needs 'Usage access' for Jarvis. The page is open: Anil switches Jarvis on there, then asks again.");
+        }
+        if (!has(Manifest.permission.READ_SMS)) {
+            if (phone != null) return ok().put("measured_on_phone", phone).put("next", "Say today's mobile data, the top apps, and the limit left if set, in short Telugu.").toString();
+            return needPermission(Manifest.permission.READ_SMS, "reading Jio/Airtel SMS");
+        }
         JSONArray out = new JSONArray();
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("EEE d MMM HH:mm", Locale.ENGLISH);
         for (String[] m : Life.sms(act(), System.currentTimeMillis() - 35 * 86400000L, 800)) {
@@ -3901,9 +4034,12 @@ final class Tools {
                     .put("sms", s.substring(0, Math.min(220, s.length()))));
             if (out.length() >= 12) break;
         }
-        if (out.length() == 0) return err("none", "No recent Jio/Airtel plan or data SMS. Offer to open MyJio or the Airtel app.");
-        return ok().put("operator_messages", out)
-                .put("next", "From the newest messages tell him: data used/left today, plan validity or expiry date, and any recharge reminder. Recharging is done by him in MyJio/Airtel.").toString();
+        if (out.length() == 0 && phone == null) return err("none", "No recent Jio/Airtel plan or data SMS. Offer to open MyJio or the Airtel app.");
+        JSONObject o = ok().put("operator_messages", out);
+        if (phone != null) o.put("measured_on_phone", phone);
+        else o.put("phone_count", "off: 'Usage access' for Jarvis is needed to count data on the phone");
+        return o.put("next", "Tell him in short Telugu: today's mobile data (and top apps) from the phone's count, the daily limit left if set, "
+                + "plan validity or expiry from the SMS, and any recharge reminder. Recharging is done by him in MyJio/Airtel.").toString();
     }
 
     // ================================================================ news, EV chargers, travel, trips, bank balance, other maps apps
@@ -4296,7 +4432,8 @@ final class Tools {
         if (t != null && t.awaiting && android.os.SystemClock.elapsedRealtime() - t.time < 5 * 60 * 1000L) return true;
         boolean radio = Radio.awaiting(); // "ఏ స్టేషన్ ప్లే చేయమంటారు?"
         boolean cook = Cook.awaiting(); // a cooking step: "తర్వాత" without "Jarvis"
-        return radio || cook;
+        boolean verse = Faith.awaiting(); // "ఇప్పుడు మీరు చెప్పండి": his recital of a verse
+        return radio || cook || verse;
     }
 
     /** Apps Jarvis never operates: payments and banking stay in Anil's own hands. */
@@ -4952,16 +5089,16 @@ final class Tools {
         String what = a.optString("read_aloud", "").toLowerCase(Locale.ROOT).trim();
         if (what.startsWith("pause")) { ReaderService.control(act(), ReaderService.ACTION_TOGGLE); return ok().put("paused", true).toString(); }
         if (what.startsWith("stop")) { ReaderService.control(act(), ReaderService.ACTION_STOP); return ok().put("stopped", true).put("bookmark", ReaderService.bookmark(act())).toString(); }
-        if (prefs.docsTree().isEmpty()) return err("no_folder", "Anil must choose his documents folder once: Jarvis settings > 'డాక్యుమెంట్లు' > folder button, and keep his books (.txt, .epub, .pdf) there.");
-        List<String[]> books = ReaderService.books(act());
-        if (what.startsWith("book") || what.startsWith("list")) return ok().put("books", ReaderService.names(books)).put("bookmark", ReaderService.bookmark(act())).toString();
-        if (what.startsWith("cont") || what.startsWith("resume")) {
+        if (what.startsWith("cont") || what.startsWith("resume")) { // also the Bible plan, which is not in his folder
             JSONObject bm = ReaderService.bookmark(act());
             if (bm == null) return err("no_bookmark", "No book was being read. Which book? (read_aloud start with name)");
             android.content.SharedPreferences m = ReaderService.mark(act());
             ReaderService.start(act(), m.getString("name", ""), m.getString("uri", ""), m.getString("kind", "txt"), false);
             return ok().put("continuing", bm).toString();
         }
+        if (prefs.docsTree().isEmpty()) return err("no_folder", "Anil must choose his documents folder once: Jarvis settings > 'డాక్యుమెంట్లు' > folder button, and keep his books (.txt, .epub, .pdf) there.");
+        List<String[]> books = ReaderService.books(act());
+        if (what.startsWith("book") || what.startsWith("list")) return ok().put("books", ReaderService.names(books)).put("bookmark", ReaderService.bookmark(act())).toString();
         // start
         String q = a.optString("name", "").trim().toLowerCase(Locale.ROOT);
         if (books.isEmpty()) return err("no_books", "No .txt, .epub or .pdf files in his documents folder.");
@@ -4983,7 +5120,7 @@ final class Tools {
 
     private String drive(JSONObject a) throws Exception {
         String action = a.optString("action", "where").toLowerCase(Locale.ROOT).trim();
-        boolean locNeeded = !action.equals("settings") && !action.equals("stop") && !action.startsWith("nav") && !action.equals("im_ok")
+        boolean locNeeded = !action.equals("settings") && !action.equals("stop") && !action.startsWith("nav") && !action.equals("im_ok") && !action.startsWith("reached_")
                 && !(action.equals("remove_camera") && "all".equalsIgnoreCase(a.optString("what").trim()));
         if (locNeeded && !has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
         switch (action) {
@@ -4995,7 +5132,14 @@ final class Tools {
             case "add_camera": return Drive.addCamera(act(), a.optInt("limit_kmh", 0)).toString();
             case "remove_camera": return Drive.removeCamera(act(), "all".equalsIgnoreCase(a.optString("what").trim())).toString();
             case "my_cameras": return Drive.listCameras(act()).toString();
-            case "im_ok": CrashAlert.ok(act()); return ok().put("crash_alert", "cancelled").toString();
+            case "im_ok": {
+                boolean asked = RideCare.asking(act());
+                CrashAlert.ok(act());
+                RideCare.awake(act());
+                return ok().put(asked ? "awake_check" : "crash_alert", asked ? "answered" : "cancelled").toString();
+            }
+            case "reached_send": return RideCare.send(act()).put("next", "Say in one line who it was sent to.").toString();
+            case "reached_cancel": RideCare.dismissReached(act()); return ok().put("reached_offer", "dropped").toString();
             case "navigate": {
                 String place = a.optString("place", "").trim();
                 if (place.isEmpty()) return err("missing", "Where to?");
@@ -5039,11 +5183,19 @@ final class Tools {
                 if (a.has("max_kmh")) e.putInt("drive_max_kmh", Math.max(0, Math.min(200, a.optInt("max_kmh"))));
                 if (a.has("break_hours")) e.putInt("drive_break_hours", Math.max(0, Math.min(8, a.optInt("break_hours"))));
                 if (a.has("crash")) e.putBoolean("drive_crash", a.optBoolean("crash"));
+                if (a.has("fatigue")) e.putBoolean("drive_fatigue", a.optBoolean("fatigue"));
+                if (a.has("ride_weather")) e.putBoolean("ride_weather", a.optBoolean("ride_weather"));
+                if (a.has("reached_to")) {
+                    String r = a.optString("reached_to").trim();
+                    e.putString("reached_to", r.equalsIgnoreCase("off") || r.contains("వద్దు") ? "" : r);
+                }
                 e.apply();
                 android.content.SharedPreferences st = Drive.settings(act());
                 return ok().put("cameras", st.getBoolean("drive_cameras", true)).put("overspeed", st.getBoolean("drive_overspeed", true))
                         .put("own_limit_kmh", st.getInt("drive_max_kmh", 0)).put("break_after_hours", st.getInt("drive_break_hours", 2))
-                        .put("crash_detection", st.getBoolean("drive_crash", true)).put("sos_contacts_set", !prefs.sosContacts().trim().isEmpty()).toString();
+                        .put("crash_detection", st.getBoolean("drive_crash", true)).put("sos_contacts_set", !prefs.sosContacts().trim().isEmpty())
+                        .put("awake_check_after_duty", st.getBoolean("drive_fatigue", true)).put("weather_at_ride_start", st.getBoolean("ride_weather", true))
+                        .put("reached_message_to", st.getString("reached_to", "").isEmpty() ? "off" : st.getString("reached_to", "")).toString();
             }
             default:
                 return err("bad_action", "Use where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras.");
@@ -5072,13 +5224,20 @@ final class Tools {
             return ok().put("saved", o.optString("thing") + " → " + o.optString("place")).put("was_before", o.optString("before")).toString();
         }
         if (action.startsWith("rem") || action.startsWith("del")) return ok().put("removed", Everyday.forget(act(), thing)).toString();
+        if (action.startsWith("blue") || action.startsWith("bt") || action.startsWith("device")) return Devices.find(act(), thing).toString();
         if (action.startsWith("list") || thing.trim().isEmpty()) {
             JSONArray l = new JSONArray();
             for (JSONObject o : Notes.list(act(), Everyday.ITEMS)) l.put(o.optString("thing") + " → " + o.optString("place"));
             return ok().put("items", l).toString();
         }
         JSONObject o = Everyday.where(act(), thing);
-        if (o == null) return ok().put("found", false).put("note", "Not saved (or two things match). Say so and ask him to tell where it is next time.").toString();
+        if (o == null) {
+            if (Devices.isGadget(thing)) { // earbuds, a watch...: where it last left the phone
+                JSONObject bt = Devices.find(act(), thing);
+                if (bt.optBoolean("exact")) return bt.toString();
+            }
+            return ok().put("found", false).put("note", "Not saved (or two things match). Say so and ask him to tell where it is next time.").toString();
+        }
         return ok().put("thing", o.optString("thing")).put("place", o.optString("place"))
                 .put("saved_on", new java.text.SimpleDateFormat("d MMM yyyy", Locale.ENGLISH).format(new java.util.Date(o.optLong("t")))).toString();
     }
@@ -5120,6 +5279,7 @@ final class Tools {
         if (action.startsWith("stop")) {
             Radio.answered();
             Radio.dismissPicker();
+            if (SoundService.nowPlaying.startsWith("😴")) SongAlarm.cancelNaps(act()); // up before the nap ended: no alarm now
             SoundService.stop(act());
             ReaderService.control(act(), ReaderService.ACTION_STOP); // a book being read aloud stops too
             AppRadio.cancelPending();
@@ -5128,12 +5288,27 @@ final class Tools {
             return ok().put("stopped", true).toString();
         }
         int radioMin = Math.max(0, a.optInt("minutes", 0));
+        if (action.startsWith("nap") || action.contains("కునుకు")) {
+            int min = a.optInt("minutes", 0) > 0 ? Math.max(5, Math.min(120, a.optInt("minutes"))) : 20;
+            String kind = a.optString("station", "rain").toLowerCase(Locale.ROOT);
+            if (!kind.matches("rain|fan|sea|white|calm")) kind = "rain";
+            JSONObject al = SongAlarm.nap(act(), min);
+            SoundService.nap(act(), min, kind);
+            android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
+            return ok().put("nap_minutes", min).put("wake_at", String.format(Locale.ENGLISH, "%d:%02d", al.optInt("hour"), al.optInt("minute")))
+                    .put("do_not_disturb", nm != null && nm.isNotificationPolicyAccessGranted())
+                    .put("next", "Say one short soft line (e.g. 'సరే, " + min + " నిమిషాల్లో లేపుతాను. హాయిగా పడుకోండి.'), nothing more.").toString();
+        }
         if (action.startsWith("pray") || action.startsWith("medit")) {
             int min = a.has("minutes") && a.optInt("minutes") > 0 ? Math.min(120, a.optInt("minutes")) : 15;
             SoundService.prayer(act(), min);
             android.app.NotificationManager nm = act().getSystemService(android.app.NotificationManager.class);
-            return ok().put("prayer_minutes", min).put("do_not_disturb", nm != null && nm.isNotificationPolicyAccessGranted())
-                    .put("note", "Soft music for " + min + " minutes; messages are not read meanwhile; a gentle word at the end. Say one short peaceful line only.").toString();
+            JSONArray items = Faith.prayingFor(act());
+            JSONObject o = ok().put("prayer_minutes", min).put("do_not_disturb", nm != null && nm.isNotificationPolicyAccessGranted())
+                    .put("note", "Soft music for " + min + " minutes; messages are not read meanwhile; a gentle word at the end. Say one short peaceful line only.");
+            if (items.length() > 0 && action.startsWith("pray")) o.put("his_prayer_list", items)
+                    .put("note", "Soft music for " + min + " minutes. Say one short peaceful line, then gently name the things on his prayer list (just the list, briefly).");
+            return o.toString();
         }
         if (action.startsWith("next") || action.startsWith("prev") || action.startsWith("pause") || action.startsWith("resume") || action.equals("play")) {
             String act = action.startsWith("next") ? SoundService.ACTION_NEXT : action.startsWith("prev") ? SoundService.ACTION_PREV
@@ -5268,7 +5443,8 @@ final class Tools {
                 if (st == null) return err("no_station", "No station '" + want + "' in his radio list. Ask which one (the list: sounds stations).");
                 station = st.optString("name");
             }
-            JSONObject o = SongAlarm.add(act(), Integer.parseInt(hm[0]), Integer.parseInt(hm[1]), a.optString("days", "daily"), a.optString("label"), station);
+            JSONObject o = SongAlarm.add(act(), Integer.parseInt(hm[0]), Integer.parseInt(hm[1]), a.optString("days", "daily"), a.optString("label"), station,
+                    a.has("challenge") ? Boolean.valueOf(a.optBoolean("challenge")) : null);
             if (o == null) return err("bad_time", "That time is not valid.");
             JSONObject r = ok().put("alarms", SongAlarm.listJson(act()));
             if (st != null) {
@@ -5283,6 +5459,13 @@ final class Tools {
             if ((d.equals("duty") || d.equals("off")) && !Duty.ready(Duty.load(act())))
                 r.put("duty_note", "His duty calendar is not set up, so this rings every day until it is.");
             return r.toString();
+        }
+        if (action.startsWith("chall")) {
+            String k = a.optString("id", "").trim();
+            if (k.isEmpty()) k = a.optString("time", "").trim();
+            JSONObject x = SongAlarm.setChallenge(act(), k, a.optBoolean("challenge", true));
+            if (k.isEmpty() || x == null) return err("not_found", "Which alarm? (id or time from the list)");
+            return ok().put("challenge", x.optBoolean("challenge")).put("alarms", SongAlarm.listJson(act())).toString();
         }
         if (action.startsWith("cancel") || action.startsWith("del") || action.startsWith("rem")) {
             String k = a.optString("id", "").trim();
@@ -5336,6 +5519,8 @@ final class Tools {
 
     private String healthLog(JSONObject a) throws Exception {
         String action = a.optString("action", "list").toLowerCase(Locale.ROOT);
+        if (action.startsWith("sleep") || "sleep".equalsIgnoreCase(a.optString("kind")))
+            return Sleep.summary(act(), a.optInt("days", 7)).put("next", "Say last sleep (from-to, hours) and the average in short Telugu; if under 6 hours a night, one kind tip.").toString();
         if (action.startsWith("add")) {
             JSONObject o = Vitals.add(act(), a.optString("kind"), a.optInt("sys", 0), a.optInt("dia", 0), a.optInt("pulse", 0), a.optDouble("value", 0), a.optString("when"));
             if (o == null) return err("unclear", "Ask him the reading again (BP as upper/lower, sugar in mg/dL with fasting or after food, weight in kg).");
@@ -5461,6 +5646,17 @@ final class Tools {
 
     private String expiry(JSONObject a) throws Exception {
         String action = a.optString("action", "list").toLowerCase(Locale.ROOT), what = a.optString("what");
+        if (action.contains("warrant")) {
+            JSONObject o = Expiry.addWarranty(act(), what, a.optString("bought"), a.optInt("months", 0), a.optString("date"), a.optString("shop"));
+            if (o == null) return err("missing", "Need the item and the warranty end (bought date + months, or the last date). Ask him what is not on the bill.");
+            return ok().put("saved", Expiry.line(act(), o)).put("bill_photo_kept", o.has("bill_file") ? o.optString("bill_file") : "no photo")
+                    .put("reminds", "30 days before, 7 days, 1 day, on the day").toString();
+        }
+        if (action.startsWith("show") || action.contains("bill")) {
+            if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+            return Expiry.showBill(act(), what) ? ok().put("showing_bill", what).toString()
+                    : err("no_bill", "No bill photo kept for '" + what + "'. Saved: " + Expiry.listJson(act()).optJSONArray("items"));
+        }
         if (action.equals("add_km") || (action.startsWith("add") && a.optInt("every_km", 0) > 0)) {
             JSONObject o = Expiry.addKm(act(), what, a.optInt("every_km", 0));
             if (o == null) return err("missing", "Need what and every how many km (e.g. 3000).");
@@ -5642,6 +5838,21 @@ final class Tools {
         Duty.Roster r = Duty.load(act());
         String action = a.optString("action", "next").toLowerCase(Locale.ROOT), myName = prefs.name();
         java.time.LocalDate today = java.time.LocalDate.now();
+        if (action.startsWith("bag") || action.equals("checklist")) {
+            if (!a.optString("text").trim().isEmpty()) Duty.setChecklist(act(), a.optString("text")); // empty = just show it
+            String bag = Duty.checklist(act());
+            return ok().put("bag", bag.isEmpty() ? "none" : bag)
+                    .put("note", bag.isEmpty() ? "No duty bag list." : "Said the evening before each duty and an hour before he leaves.").toString();
+        }
+        if (action.contains("chime")) {
+            if (!a.optString("text").trim().isEmpty()) { // empty = just show it
+                String bad = Duty.setChime(act(), a.optString("text"));
+                if (!bad.isEmpty()) return err("bad_hours", bad);
+            }
+            int[] w = Duty.chimeHours(act());
+            if (w != null && !Duty.ready(r)) return err("no_duty", "His duty calendar is not set up yet, so the chime has no duty nights to follow (duty setup first).");
+            return ok().put("night_chime", w == null ? "off" : String.format(Locale.ENGLISH, "%02d:00-%02d:00 on duty nights", w[0], w[1])).toString();
+        }
         if (action.startsWith("open")) {
             DutyActivity.open(act(), a.optString("month", ""));
             return ok().put("opened", "duty calendar").toString();

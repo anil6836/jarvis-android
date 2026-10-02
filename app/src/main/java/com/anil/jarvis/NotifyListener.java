@@ -80,8 +80,8 @@ public class NotifyListener extends NotificationListenerService {
         @Override public void onReceive(Context c, Intent i) {
             String a = i == null ? null : i.getAction();
             if (Intent.ACTION_SCREEN_ON.equals(a)) Rest.screen(true);
-            else if (Intent.ACTION_SCREEN_OFF.equals(a)) Rest.screen(false);
-            else if (Intent.ACTION_USER_PRESENT.equals(a)) { Rest.awake(); schedule(1500); } // held messages now
+            else if (Intent.ACTION_SCREEN_OFF.equals(a)) { Rest.screen(false); Sleep.screenOff(c); }
+            else if (Intent.ACTION_USER_PRESENT.equals(a)) { Rest.awake(); Sleep.unlocked(c); schedule(1500); } // held messages now
         }
     };
     private boolean screenRegistered;
@@ -211,7 +211,7 @@ public class NotifyListener extends NotificationListenerService {
         if (now - sbn.getPostTime() > 120000) return; // old ones shown again after a reboot
         if (p.night() || MainActivity.busyTalking() || CallControl.busyWithCall()) return;
         NotificationManager nm = getSystemService(NotificationManager.class);
-        if (SoundService.prayerOn || nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) return;
+        if (SoundService.prayerOn || RecorderService.recording || nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) return;
         String t = title == null ? "" : title.trim(), b = text == null ? "" : text.trim();
         if (t.equalsIgnoreCase("way2news") || t.equalsIgnoreCase(app)) t = "";
         String said = t.isEmpty() || b.contains(t) ? b : b.isEmpty() || t.contains(b) ? t : t + ". " + b;
@@ -278,6 +278,7 @@ public class NotifyListener extends NotificationListenerService {
         if (p.night() && !driving) { note(app, from, "చదవలేదు: నైట్ మోడ్ ఆన్‌లో ఉంది (\"గుడ్ మార్నింగ్\" అంటే ఆఫ్ అవుతుంది)"); return; }
         boolean group = x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false);
         if (group && !driving && !p.readGroups()) { note(app, from, "గ్రూప్ మెసేజ్: Settings లో 'గ్రూప్ మెసేజ్‌లు కూడా' ఆఫ్‌లో ఉంది"); return; }
+        if (RecorderService.recording) { note(app, from, "చదవలేదు: రికార్డింగ్ జరుగుతోంది"); return; }
         if (!driving) {
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (SoundService.prayerOn || nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL) { // Do Not Disturb / prayer time

@@ -94,6 +94,8 @@ public class Proactive extends BroadcastReceiver {
         try { Exercise.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Debts.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Expiry.tick(c, p, hush); } catch (Throwable ignored) {}
+        try { DataUse.tick(c, p, hush); } catch (Throwable ignored) {}
+        try { Monthly.maybeMake(c); } catch (Throwable ignored) {} // last month's PDF on the 1st
         try { Diary.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         // these fetch from the internet, so after the quick ones
         try { Holidays.tick(c, p, hush); } catch (Throwable ignored) {}

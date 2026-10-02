@@ -38,8 +38,10 @@ final class Announcer {
     /** Speak text with the voice chosen in settings. Safe to call from any thread. */
     static void say(Context c, String text) {
         if (text == null || text.trim().isEmpty()) return;
+        if (RecorderService.recording) return; // a sermon / meeting is being recorded: silence (notifications still come)
         Context app = c.getApplicationContext();
-        String said = Spoken.say(text); // numbers as Telugu words
+        String words = Spoken.say(text); // numbers as Telugu words
+        final String said = words.length() > 3900 ? words.substring(0, 3900) : words; // the voices' limit (numbers as words are longer)
         main.post(() -> {
             queue.add(said);
             Duck.on(app); // radio / music goes quiet while Jarvis reads, and comes back after

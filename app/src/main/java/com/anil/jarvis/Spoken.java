@@ -46,12 +46,12 @@ final class Spoken {
             if (telugu(c)) te = true;
             else if (c >= '0' && c <= '9') digit = true;
         }
-        if (!te || !digit) {
-            int[] id = new int[s.length()];
-            for (int i = 0; i < id.length; i++) id[i] = i;
-            return new Out(s, id);
+        if (te && digit) {
+            try { return new Run(s).go(); } catch (RuntimeException ignored) {} // never let a number stop the voice: then as written
         }
-        return new Run(s).go();
+        int[] id = new int[s.length()];
+        for (int i = 0; i < id.length; i++) id[i] = i;
+        return new Out(s, id);
     }
 
     // ---------------------------------------------------------------- number words
@@ -217,6 +217,11 @@ final class Spoken {
                 int next = -1;
                 if (digit(c) || c == '₹' || c == '+' || c == 'ర' || c == 'R' || c == 'r' || c == 'I' || c == 'i') next = at(i);
                 if (next > i) { i = next; continue; }
+                if (c == '-' && i + 1 < n && digit(in.charAt(i + 1)) && (i == 0 || in.charAt(i - 1) == ' ' || in.charAt(i - 1) == '(')) {
+                    emit("మైనస్ ", i, i + 1); // "-3°C"
+                    i++;
+                    continue;
+                }
                 if (latin(c)) { // a word or code with digits in it (TS09AB1234, v1.0, 5G) stays as it is
                     int j = i;
                     while (j < n && (latin(in.charAt(j)) || digit(in.charAt(j))
@@ -267,8 +272,15 @@ final class Spoken {
             if (Bible.isBook(w)) return true;
             int j = i;
             while (j > 0 && in.charAt(j - 1) == ' ') j--;
-            String w2 = prevWord(j - w.length()); // two-word names: "యోహాను సువార్త"
-            return !w2.isEmpty() && Bible.isBook(w2 + " " + w);
+            int ws = j - w.length(); // where that word starts
+            String w2 = prevWord(ws); // two-word names: "యోహాను సువార్త", "మొదటి యోహాను"
+            if (!w2.isEmpty() && Bible.isBook(w2 + " " + w)) return true;
+            if (w2.equals("మొదటి") && Bible.isBook("1 " + w) || w2.equals("రెండవ") && Bible.isBook("2 " + w) || w2.equals("మూడవ") && Bible.isBook("3 " + w)) return true;
+            int k = ws; // "2 తిమోతికి 3:16", "1కొరింథీయులకు"
+            while (k > 0 && in.charAt(k - 1) == ' ') k--;
+            if (k > 0 && in.charAt(k - 1) >= '1' && in.charAt(k - 1) <= '3' && (k == 1 || !digit(in.charAt(k - 2))))
+                return Bible.isBook(in.charAt(k - 1) + " " + w);
+            return false;
         }
 
         /** Tries every kind of number at i; returns where the text carries on, or -1. */
@@ -328,6 +340,10 @@ final class Spoken {
                 if (digitsSeen >= 10) { end = gr[1]; taken = new java.util.ArrayList<>(groups.subList(0, g + 1)); }
             }
             if (end < 0) return -1;
+            // a phone number starts like one (+91, 0..., 1800, a mobile 6-9) and has at most three groups: "100 200 300 400" is a list
+            char first = in.charAt(plus ? i + 1 : i);
+            if (!plus && !(first >= '6' && first <= '9') && first != '0' && !in.startsWith("1800", i) && !in.startsWith("91", i)) return -1;
+            if (taken.size() > (plus ? 4 : 3)) return -1;
             if (end < n && (in.charAt(end) == '.' && end + 1 < n && digit(in.charAt(end + 1)) || latin(in.charAt(end)) || in.charAt(end) == ',' && end + 1 < n && digit(in.charAt(end + 1)))) return -1;
             StringBuilder w = new StringBuilder(plus ? "ప్లస్ " : "");
             for (int g = 0; g < taken.size(); g++) {
@@ -355,7 +371,9 @@ final class Spoken {
             String bs = m.group(2);
             int b = Integer.parseInt(bs);
             boolean clock = a <= 23 && bs.length() == 2 && b <= 59 && m.group(3) == null;
-            if (!clock || (m.group(4) == null && bibleBefore(i))) { // a Bible reference / a ratio: "3:16" -> "మూడు, పదహారు"
+            // "మార్కు 5:30కి వస్తాడు": a name before, but the "కి" / "గంటలకు" after says it is a time
+            boolean timeAfter = gluedTelugu(m.end()) || look(HOURS_AFTER, m.end()) != null || look(SPLIT_SFX, m.end()) != null;
+            if (!clock || (m.group(4) == null && !timeAfter && bibleBefore(i))) { // a Bible reference / a ratio: "3:16" -> "మూడు, పదహారు"
                 int end = m.group(4) == null ? m.end() : m.group(3) != null ? m.end(3) : m.end(2); // a stray "am" is not part of it
                 String w = words(a) + ", " + words(b) + (m.group(3) != null ? " నుంచి " + words(Integer.parseInt(m.group(3))) : "");
                 emit(w, i, end);
@@ -398,7 +416,9 @@ final class Spoken {
         }
 
         int money(Matcher m, int i) {
-            long rupees = Long.parseLong(m.group(1).replace(",", ""));
+            String raw = m.group(1).replace(",", "");
+            if (raw.length() > 15) { emit(digits(raw), i, m.end()); return m.end(); } // too big to be money: as digits
+            long rupees = Long.parseLong(raw);
             String paise = m.group(2);
             int end = m.end();
             Matcher x = look(MULT, end);
@@ -451,7 +471,13 @@ final class Spoken {
                 String pw = prevWord(i).toLowerCase(Locale.ROOT);
                 for (String cw : CODE_WORDS) if (pw.equals(cw)) code = true;
             }
-            if (frac == null && !commas && (code || plain.length() >= 6 || (plain.length() > 1 && plain.charAt(0) == '0'))
+            boolean countable = false; // "125000 మంది": a number of something, not a code
+            if (!code && plain.length() <= 9) {
+                String nw = nextWord(end);
+                countable = !nw.isEmpty() && telugu(nw.charAt(0));
+                for (String s : NOT_NOUN) if (nw.equals(s)) countable = false;
+            }
+            if (frac == null && !commas && (code || (plain.length() >= 6 && !countable) || (plain.length() > 1 && plain.charAt(0) == '0'))
                     && look(RUPEE_AFTER, end) == null) { // pin codes, long codes, "05": digit by digit
                 emit(digits(plain), i, end);
                 return end;

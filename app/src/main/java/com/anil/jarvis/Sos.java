@@ -41,7 +41,7 @@ final class Sos {
     }
 
     /** {name, number} for a saved SOS entry: a number as it is, else the first contact whose name has it. */
-    private static String[] number(Context c, String who) {
+    static String[] number(Context c, String who) {
         String digits = who.replaceAll("[^0-9+]", "");
         if (digits.replace("+", "").length() >= 10) return new String[]{who, digits};
         if (c.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return null;

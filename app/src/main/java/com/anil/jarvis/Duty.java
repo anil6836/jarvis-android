@@ -13,6 +13,7 @@ import org.json.JSONObject;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -320,6 +321,7 @@ final class Duty {
             sp(c).edit().putString("data", o.put("batches", bs).put("changes", cs).toString()).apply();
         } catch (Exception ignored) {}
         try { SongAlarm.rescheduleAll(c); } catch (Exception ignored) {} // duty-day / day-off alarms follow the change
+        try { scheduleChime(c); } catch (Exception ignored) {} // the night chime follows the duty days
     }
 
     static boolean ready(Roster r) {
@@ -403,6 +405,7 @@ final class Duty {
      * hour before leaving home, and again at the time to leave (the duty starts when he relieves the others).
      */
     static void tick(Context c, Prefs p, boolean quiet) {
+        try { if (chimeHours(c) != null) scheduleChime(c); } catch (Exception ignored) {} // kept armed (an alarm lost to a restart comes back)
         Roster r = load(c);
         if (!r.remind || !ready(r)) return;
         LocalDateTime now = LocalDateTime.now();
@@ -420,17 +423,21 @@ final class Duty {
                 notify(c, ("two" + s).hashCode(), "🗓️ ఎల్లుండి డ్యూటీ", day(s) + ", " + when);
             }
             if (s.equals(today.plusDays(1)) && now.getHour() >= 20 && now.getHour() < 23 && once(c, "eve|" + s)) {
-                String base = day(s) + ", " + when + ". ఇంటి నుంచి " + go + " కల్లా బయలుదేరండి.";
+                String bag = checklist(c);
+                String base = day(s) + ", " + when + ". ఇంటి నుంచి " + go + " కల్లా బయలుదేరండి." + (bag.isEmpty() ? "" : "\n🎒 బ్యాగ్: " + bag);
                 int id = ("eve" + s).hashCode();
                 notify(c, id, "🗓️ రేపు మీ డ్యూటీ", base);
-                if (!quiet) Announcer.say(c, p.name() + ", రేపు మీ డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి.");
+                if (!quiet) Announcer.say(c, p.name() + ", రేపు మీ డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి."
+                        + (bag.isEmpty() ? "" : " బ్యాగ్ ఇప్పుడే సర్దుకోండి: " + bag + "."));
                 tripLater(c, r, leave, start, true, id, "🗓️ రేపు మీ డ్యూటీ", base, quiet);
             }
             if (!now.isBefore(leave.minusMinutes(60)) && now.isBefore(leave) && once(c, "day|" + s)) {
-                String base = when + ". అన్నీ సిద్ధం చేసుకోండి.";
+                String bag = checklist(c);
+                String base = when + ". అన్నీ సిద్ధం చేసుకోండి." + (bag.isEmpty() ? "" : "\n🎒 " + bag);
                 int id = ("day" + s).hashCode();
                 notify(c, id, "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", base);
-                Announcer.say(c, p.name() + ", ఈరోజు డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి.");
+                Announcer.say(c, p.name() + ", ఈరోజు డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి."
+                        + (bag.isEmpty() ? "" : " మర్చిపోకండి: " + bag + "."));
                 tripLater(c, r, leave, start, false, id, "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", base, false);
             }
             if (!now.isBefore(leave) && now.isBefore(start) && once(c, "go|" + s)) {
@@ -442,11 +449,11 @@ final class Duty {
 
     // ================================================================ travel check: rain on the way, bike charge
 
-    private static final String[] DUTY_PLACE = {"డ్యూటీ", "duty", "ఆఫీస్", "ఆఫీసు", "office"};
-    private static final String[] HOME_PLACE = {"ఇల్లు", "ఇంటి", "home", "house"};
+    static final String[] DUTY_PLACE = {"డ్యూటీ", "duty", "ఆఫీస్", "ఆఫీసు", "office"};
+    static final String[] HOME_PLACE = {"ఇల్లు", "ఇంటి", "home", "house"};
     private static final String[] NOT_IT = {"ఛార్జ", "charg", "post", "పోస్ట్", "bank", "బ్యాంక్"};
 
-    private static JSONObject placeLike(Context c, String[] words) {
+    static JSONObject placeLike(Context c, String[] words) {
         for (JSONObject p : Places.all(c)) {
             if (!p.has("lat")) continue;
             String n = p.optString("name").toLowerCase(Locale.ROOT);
@@ -656,5 +663,118 @@ final class Duty {
         Batch b = r.batch(s);
         if (b != null) return "batch:" + b.id;
         return null;
+    }
+
+    // ================================================================ the duty bag
+
+    /** What he takes to duty ("యూనిఫాం, ID కార్డ్, ఛార్జర్"), said the evening before and before leaving. */
+    static String checklist(Context c) { return sp(c).getString("bag", ""); }
+
+    static void setChecklist(Context c, String items) {
+        String t = items == null ? "" : items.trim();
+        String low = t.toLowerCase(Locale.ROOT);
+        if (low.equals("off") || low.equals("clear") || t.contains("వద్దు") || t.contains("తీసేయ")) t = "";
+        sp(c).edit().putString("bag", t.replaceAll("\\s*[,،;]\\s*", ", ")).apply();
+    }
+
+    // ================================================================ the night chime on duty
+
+    static final String ACTION_CHIME = "com.anil.jarvis.DUTY_CHIME";
+
+    /** {from hour, to hour} of the chime on duty nights, or null (off). */
+    static int[] chimeHours(Context c) {
+        String h = sp(c).getString("chime", "");
+        if (h.isEmpty()) return null;
+        String[] p = h.split("-");
+        try { return new int[]{Integer.parseInt(p[0]), Integer.parseInt(p[1])}; } catch (Exception e) { return null; }
+    }
+
+    /** "22:00-05:00" / "22-5" / "off". Returns an error line or "". */
+    static String setChime(Context c, String text) {
+        String t = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        if (t.isEmpty() || t.equals("off") || t.contains("వద్దు") || t.contains("ఆపు")) {
+            sp(c).edit().remove("chime").apply();
+            scheduleChime(c);
+            return "";
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,2})(?::\\d{2})?\\s*(?:-|to|నుంచి|నుండి)\\s*(\\d{1,2})").matcher(t);
+        if (!m.find()) return "Give the hours as 'HH:00-HH:00', e.g. 22:00-05:00.";
+        int a = Integer.parseInt(m.group(1)), b = Integer.parseInt(m.group(2));
+        if (a > 23 || b > 23 || a == b) return "Hours 0-23, two different hours, e.g. 22:00-05:00.";
+        sp(c).edit().putString("chime", a + "-" + b).apply();
+        scheduleChime(c);
+        return "";
+    }
+
+    private static boolean inHours(int h, int[] w) { return w[0] < w[1] ? h >= w[0] && h < w[1] : h >= w[0] || h < w[1]; }
+
+    /** Is he on duty at this moment (between relieving the others and being relieved)? */
+    static boolean onDutyAt(Roster r, LocalDateTime t) {
+        String time = r.timeOf(ME);
+        String[] hm = time.split(":");
+        LocalTime st = LocalTime.of(Integer.parseInt(hm[0]), Integer.parseInt(hm[1]));
+        for (LocalDate[] b : r.blocks(ME, t.toLocalDate().minusDays(3), t.toLocalDate().plusDays(1))) {
+            LocalDateTime from = b[0].atTime(st), to = b[1].plusDays(1).atTime(st);
+            if (!t.isBefore(from) && t.isBefore(to)) return true;
+        }
+        return false;
+    }
+
+    /** The next whole hour inside his chime hours while he is on duty: an exact alarm. */
+    static void scheduleChime(Context c) {
+        android.app.AlarmManager am = c.getSystemService(android.app.AlarmManager.class);
+        if (am == null) return;
+        PendingIntent pi = PendingIntent.getBroadcast(c, 201, new Intent(c, AlarmReceiver.class).setAction(ACTION_CHIME),
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        am.cancel(pi);
+        int[] w = chimeHours(c);
+        Roster r = load(c);
+        if (w == null || !ready(r)) return;
+        LocalDateTime t = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0).plusHours(1);
+        for (int k = 0; k < 24 * 8; k++, t = t.plusHours(1)) {
+            if (!inHours(t.getHour(), w) || !onDutyAt(r, t)) continue;
+            long when = t.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+            try {
+                if (android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, when, pi);
+                else am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, when, pi);
+            } catch (Exception e) {
+                am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, when, pi);
+            }
+            return;
+        }
+    }
+
+    /** The hour struck: a soft chime and the time (not over a call). */
+    static void chime(Context c) {
+        try { scheduleChime(c); } catch (Exception ignored) {}
+        if (CallControl.busyWithCall()) return;
+        try {
+            android.media.ToneGenerator g = new android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 70);
+            g.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 400);
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(g::release, 1500);
+        } catch (Exception ignored) {}
+        int h = LocalTime.now().getHour(), m = LocalTime.now().getMinute() < 5 ? 0 : LocalTime.now().getMinute();
+        // "02:00 am" / "22:00": the voice says "రాత్రి రెండు గంటలు", "రాత్రి పది గంటలు"
+        String t = h >= 13 || h == 0 ? String.format(Locale.ENGLISH, "%02d:%02d", h, m) : String.format(Locale.ENGLISH, "%d:%02d %s", h, m, h < 12 ? "am" : "pm");
+        Announcer.say(c, "సమయం " + t + ".");
+    }
+
+    // ================================================================ just off a 48-hour duty
+
+    /** Minutes since his last duty ended, if it ended within the last 8 hours; -1 otherwise. */
+    static long minutesSinceDuty(Context c) {
+        Roster r = load(c);
+        if (!ready(r)) return -1;
+        String[] hm = r.timeOf(ME).split(":");
+        LocalTime st = LocalTime.of(Integer.parseInt(hm[0]), Integer.parseInt(hm[1]));
+        LocalDateTime now = LocalDateTime.now();
+        long best = -1;
+        for (LocalDate[] b : r.blocks(ME, now.toLocalDate().minusDays(3), now.toLocalDate())) {
+            LocalDateTime end = b[1].plusDays(1).atTime(st);
+            if (end.isAfter(now)) continue;
+            long m = java.time.Duration.between(end, now).toMinutes();
+            if (m <= 8 * 60 && (best < 0 || m < best)) best = m;
+        }
+        return best;
     }
 }

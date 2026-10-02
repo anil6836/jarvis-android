@@ -96,6 +96,54 @@ final class Expiry {
         return o;
     }
 
+    /** The bill photo sent with "బిల్ → వారంటీ" (base64 JPEG), kept with the warranty when it is saved. */
+    static volatile String billPhoto;
+    static volatile long billPhotoAt;
+
+    /**
+     * A warranty: the item, when bought, how many months (or the last date), the shop. The bill photo he just sent is
+     * saved in Downloads/Jarvis/bills and kept with it, to show at the service centre. Reminded 30 days before it ends.
+     */
+    static JSONObject addWarranty(Context c, String item, String bought, int months, String until, String shop) throws Exception {
+        if (item == null || item.trim().isEmpty()) return null;
+        LocalDate b = Debts.parse(bought), u = Debts.parse(until);
+        if (u == null && b != null && months > 0) u = b.plusMonths(months);
+        if (u == null) return null;
+        String what = item.trim().endsWith("వారంటీ") ? item.trim() : item.trim() + " వారంటీ";
+        JSONObject o = exact(c, what);
+        if (o == null || o.has("km_every")) o = new JSONObject().put("id", Notes.id("x"));
+        o.put("what", what).put("date", u.toString()).put("repeat_days", 0).put("before_days", 30).put("kind", "warranty");
+        if (b != null) o.put("bought", b.toString());
+        if (months > 0) o.put("months", months);
+        if (shop != null && !shop.trim().isEmpty()) o.put("shop", shop.trim());
+        String photo = billPhoto;
+        if (photo != null && System.currentTimeMillis() - billPhotoAt < 15 * 60000L) {
+            try { // the warranty is kept even if the photo can't be saved
+                byte[] jpg = android.util.Base64.decode(photo, android.util.Base64.DEFAULT);
+                String file = item.trim().replaceAll("[^\\p{L}\\p{M}\\p{N}]+", "_") + "_bill_" + System.currentTimeMillis() % 100000 + ".jpg";
+                Coder.Made m = Coder.save(c, "Jarvis/bills", file, "image/jpeg", jpg);
+                if (m.uri != null) o.put("bill", m.uri.toString());
+                o.put("bill_file", m.where);
+                billPhoto = null;
+            } catch (Exception ignored) {}
+        }
+        put(c, o);
+        return o;
+    }
+
+    /** Opens the bill photo kept with a warranty. */
+    static boolean showBill(Context c, String what) {
+        JSONObject o = find(c, what);
+        if (o == null || o.optString("bill").isEmpty()) return false;
+        try {
+            c.startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse(o.optString("bill")), "image/jpeg")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK));
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** Bike service by km: every N km, counted from now (or from when he last got it serviced). */
     static JSONObject addKm(Context c, String what, int everyKm) throws Exception {
         if (what == null || what.trim().isEmpty() || everyKm < 100) return null;
@@ -152,7 +200,11 @@ final class Expiry {
 
     static JSONObject listJson(Context c) throws Exception {
         JSONArray a = new JSONArray();
-        for (JSONObject o : all(c)) a.put(new JSONObject().put("what", o.optString("what")).put("line", line(c, o)).put("id", o.optString("id")));
+        for (JSONObject o : all(c)) {
+            JSONObject x = new JSONObject().put("what", o.optString("what")).put("line", line(c, o)).put("id", o.optString("id"));
+            if ("warranty".equals(o.optString("kind"))) x.put("bought", o.optString("bought")).put("shop", o.optString("shop")).put("bill_photo", !o.optString("bill").isEmpty());
+            a.put(x);
+        }
         return new JSONObject().put("ok", true).put("items", a);
     }
 

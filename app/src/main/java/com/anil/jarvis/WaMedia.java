@@ -187,7 +187,9 @@ final class WaMedia {
     // ---------------------------------------------------------------- transcribing
 
     /** The words of a voice note (OpenAI speech-to-text). */
-    static String transcribe(Context c, String key, Uri u) throws Exception {
+    static String transcribe(Context c, String key, Uri u) throws Exception { return transcribe(c, key, u, "voice.ogg", "audio/ogg"); }
+
+    static String transcribe(Context c, String key, Uri u, String fileName, String mime) throws Exception {
         byte[] audio;
         try (InputStream in = c.getContentResolver().openInputStream(u)) {
             ByteArrayOutputStream b = new ByteArrayOutputStream();
@@ -209,7 +211,7 @@ final class WaMedia {
             con.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
             try (OutputStream out = con.getOutputStream()) {
                 String head = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\ngpt-4o-mini-transcribe\r\n"
-                        + "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"voice.ogg\"\r\nContent-Type: audio/ogg\r\n\r\n";
+                        + "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\nContent-Type: " + mime + "\r\n\r\n";
                 out.write(head.getBytes(StandardCharsets.UTF_8));
                 out.write(audio);
                 out.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));

@@ -134,7 +134,10 @@ final class Cards {
 
     // ================================================================ letter as PDF
 
-    static Coder.Made letter(Context c, String title, String text) throws Exception {
+    static Coder.Made letter(Context c, String title, String text) throws Exception { return letter(c, title, text, "Jarvis/letters"); }
+
+    /** The text as an A4 PDF in Downloads/folder. */
+    static Coder.Made letter(Context c, String title, String text, String folder) throws Exception {
         PdfDocument doc = new PdfDocument();
         int W = 595, H = 842, M = 56;
         TextPaint body = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -178,8 +181,9 @@ final class Cards {
         doc.close();
         String base = title == null || title.trim().isEmpty() ? "Letter" : title.trim().replaceAll("[^\\p{L}\\p{M}\\p{N}]+", "_");
         if (base.length() > 40) base = base.substring(0, 40);
-        lastLetter = Coder.save(c, "Jarvis/letters", base + "_" + System.currentTimeMillis() % 100000 + ".pdf", "application/pdf", out.toByteArray());
-        return lastLetter;
+        Coder.Made made = Coder.save(c, folder, base + "_" + System.currentTimeMillis() % 100000 + ".pdf", "application/pdf", out.toByteArray());
+        if (folder.equals("Jarvis/letters")) lastLetter = made; // "share the letter" means his letter, not a report made by itself
+        return made;
     }
 
     // ================================================================ show / share

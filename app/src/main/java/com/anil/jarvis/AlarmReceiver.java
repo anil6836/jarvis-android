@@ -55,7 +55,22 @@ public class AlarmReceiver extends BroadcastReceiver {
                 break;
             }
             case CrashAlert.ACTION_OK: CrashAlert.ok(c); break;
+            case RideCare.ACTION_AWAKE: RideCare.askAwake(c); break;
+            case RideCare.ACTION_REACHED: {
+                PendingResult pr = goAsync(); // the SMS goes out before the receiver lets go
+                RideCare.sendFromNotification(c, pr::finish);
+                break;
+            }
+            case RideCare.ACTION_AWAKE_OK: RideCare.awake(c); break;
+            case RideCare.ACTION_REACHED_NO: RideCare.dismissReached(c); break;
+            case Duty.ACTION_CHIME: {
+                PendingResult pr = goAsync();
+                Duty.chime(c);
+                new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 6000);
+                break;
+            }
             case Faith.ACTION_VERSE:
+            case Faith.ACTION_PLAN:
             case Faith.ACTION_CHURCH: {
                 PendingResult pr = goAsync(); // the verse is fetched and said
                 Faith.fire(c, action);
@@ -72,11 +87,14 @@ public class AlarmReceiver extends BroadcastReceiver {
             case SongAlarm.ACTION_RING:
                 SongAlarm.fire(c, i.getStringExtra(SongAlarm.EXTRA_ID), i.getIntExtra(SongAlarm.EXTRA_COUNT, 0));
                 break;
-            case SongAlarm.ACTION_STOP:
+            case SongAlarm.ACTION_STOP: {
                 SongAlarm.clearRinging(c);
                 AlarmActivity.stopRinging();
-                AlarmActivity.greet(c.getApplicationContext());
+                JSONObject al = SongAlarm.find(c, i.getStringExtra(SongAlarm.EXTRA_ID));
+                if (al != null && al.optBoolean("nap")) AlarmActivity.napWake(c.getApplicationContext(), al.optInt("nap_minutes"));
+                else AlarmActivity.greet(c.getApplicationContext());
                 break;
+            }
             case SongAlarm.ACTION_SNOOZE:
                 SongAlarm.clearRinging(c);
                 AlarmActivity.stopRinging();
@@ -100,6 +118,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 GeoReminders.rearmAll(c);
                 Proactive.schedule(c);
                 Faith.schedule(c);
+                try { Duty.scheduleChime(c); } catch (Exception ignored) {}
                 UpdateJob.schedule(c);
                 if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) Updater.cancelNotice(c);
                 break;

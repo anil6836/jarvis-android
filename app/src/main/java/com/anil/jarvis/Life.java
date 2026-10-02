@@ -457,6 +457,7 @@ final class Life {
         if (address == null || !address.equalsIgnoreCase(p.carBluetooth())) return;
         if (connected) {
             Bike.rideStart(c); // the ride log: GPS km and time while the bike is connected
+            try { RideCare.started(c); } catch (Exception ignored) {} // rain ahead, the awake check after a duty
             if (p.driving()) return;
             p.set("driving", true);
             p.set("night", false);
@@ -467,6 +468,7 @@ final class Life {
             DriveService.stop(c);
             JSONObject ride = Bike.rideEnd(c);
             if (ride != null) Reminders.notify(c, "🏍️ రైడ్ అయిపోయింది", Bike.rideLine(c, ride) + ". \"ఈ వారం బైక్ రైడ్స్\" అని అడిగితే మొత్తం చెప్తాను.", 62);
+            try { RideCare.ended(c); } catch (Exception ignored) {} // "క్షేమంగా చేరుకున్నాను" offer at home / duty
             Location l = Tools.lastLocation(c);
             if (l != null) {
                 GeoReminders.savePlace(c, "parking", l.getLatitude(), l.getLongitude());

@@ -90,6 +90,7 @@ public class DriveService extends Service implements LocationListener, android.h
             }
             startedAt = System.currentTimeMillis();
             main.postDelayed(watch, 60000);
+            if (running) { try { RideCare.started(this); } catch (Exception ignored) {} } // never in the way of the alerts
             if (Drive.settings(this).getBoolean("drive_crash", true)) {
                 try {
                     android.hardware.SensorManager sm = getSystemService(android.hardware.SensorManager.class);
@@ -360,12 +361,14 @@ public class DriveService extends Service implements LocationListener, android.h
         // a hard knock just now and the bike's Bluetooth dropped / the drive was stopped: ask rather than miss a crash
         if (knockAt != 0 && System.currentTimeMillis() - knockAt < 30000) CrashAlert.start(this);
         knockAt = 0;
+        boolean was = running;
         running = false;
         heading = -1;
         try { getSystemService(LocationManager.class).removeUpdates(this); } catch (Exception ignored) {}
         try { getSystemService(android.hardware.SensorManager.class).unregisterListener(this); } catch (Exception ignored) {}
         net.shutdownNow();
         main.removeCallbacksAndMessages(null);
+        if (was) { try { RideCare.ended(this); } catch (Exception ignored) {} }
         super.onDestroy();
     }
 }

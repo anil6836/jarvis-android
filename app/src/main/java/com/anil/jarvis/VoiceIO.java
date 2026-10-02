@@ -108,7 +108,7 @@ final class VoiceIO {
     /** The reply as shown (digits) and its spoken form (numbers as Telugu words), mapped onto each other for the highlight. */
     private String naturalShown = "";
     private Spoken.Out naturalSaid = Spoken.of("");
-    private String googleShown = "";
+    private volatile String googleShown = "";
     private volatile Spoken.Out googleSaid = Spoken.of("");
     /** The natural (OpenAI) voice is the one speaking now (not the phone's voice). */
     private boolean naturalNow;
@@ -164,8 +164,8 @@ final class VoiceIO {
                 if (!("j" + utterance).equals(id)) return;
                 final int a = googleBase + start, b = googleBase + end;
                 googlePos = a;
+                final Spoken.Out said = googleSaid; // written last in speakGoogle: read first
                 final String shown = googleShown;
-                final Spoken.Out said = googleSaid;
                 main.post(() -> {
                     if (!speaking || paused || naturalNow) return;
                     int[] r = said.range(a, b); // back onto the text on screen (numbers there are digits)
@@ -272,7 +272,7 @@ final class VoiceIO {
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
         Spoken.Out said = Spoken.of(clean); // numbers as Telugu words; the highlight maps back onto the digits shown
         googleShown = clean;
-        googleSaid = said;
+        googleSaid = said; // after googleShown (onRangeStart reads them the other way round)
         speakGoogleFrom(said.text, 0, rate);
     }
 

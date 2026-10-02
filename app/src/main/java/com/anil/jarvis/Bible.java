@@ -82,6 +82,47 @@ final class Bible {
         return null;
     }
 
+    /** Chapters in each book, in BOOKS order (1,189 in all). */
+    static final int[] CHAPTERS = {50, 40, 27, 36, 34, 24, 21, 4, 31, 24, 22, 25, 29, 36, 10, 13, 10, 42, 150, 31, 12, 8, 66, 52, 5, 48, 12, 14, 3, 9, 1, 4, 7, 3, 3,
+            3, 2, 14, 4, 28, 16, 24, 21, 28, 16, 16, 13, 6, 6, 4, 4, 5, 3, 6, 4, 3, 1, 13, 5, 5, 3, 5, 1, 1, 1, 22};
+    /** The books' names as they are said, in BOOKS order. */
+    static final String[] NAMES = {"ఆదికాండము", "నిర్గమకాండము", "లేవీయకాండము", "సంఖ్యాకాండము", "ద్వితీయోపదేశకాండము", "యెహోషువ", "న్యాయాధిపతులు", "రూతు",
+            "1 సమూయేలు", "2 సమూయేలు", "1 రాజులు", "2 రాజులు", "1 దినవృత్తాంతములు", "2 దినవృత్తాంతములు", "ఎజ్రా", "నెహెమ్యా", "ఎస్తేరు", "యోబు",
+            "కీర్తనలు", "సామెతలు", "ప్రసంగి", "పరమగీతము", "యెషయా", "యిర్మీయా", "విలాపవాక్యములు", "యెహెజ్కేలు", "దానియేలు", "హోషేయ", "యోవేలు",
+            "ఆమోసు", "ఓబద్యా", "యోనా", "మీకా", "నహూము", "హబక్కూకు", "జెఫన్యా", "హగ్గయి", "జెకర్యా", "మలాకీ", "మత్తయి", "మార్కు", "లూకా",
+            "యోహాను", "అపొస్తలుల కార్యములు", "రోమీయులకు", "1 కొరింథీయులకు", "2 కొరింథీయులకు", "గలతీయులకు", "ఎఫెసీయులకు", "ఫిలిప్పీయులకు",
+            "కొలొస్సయులకు", "1 తెస్సలొనీకయులకు", "2 తెస్సలొనీకయులకు", "1 తిమోతికి", "2 తిమోతికి", "తీతుకు", "ఫిలేమోనుకు", "హెబ్రీయులకు",
+            "యాకోబు", "1 పేతురు", "2 పేతురు", "1 యోహాను", "2 యోహాను", "3 యోహాను", "యూదా", "ప్రకటన గ్రంథము"};
+
+    static { // the names as they are said ("రోమీయులకు", "2 తిమోతికి") are names too
+        for (int i = 0; i < NAMES.length; i++) put(NAMES[i], BOOKS[i][1]);
+        put("ప్రకటన గ్రంథం", "ప్రకటనగ్రంథం");
+    }
+
+    /** Book number (0-65) of a name, or -1. */
+    static int index(String book) {
+        String f = folder(book);
+        if (f == null) return -1;
+        for (int i = 0; i < BOOKS.length; i++) if (BOOKS[i][1].equals(f)) return i;
+        return -1;
+    }
+
+    static String nameOf(int book) { return book >= 0 && book < NAMES.length ? NAMES[book] : ""; }
+
+    /** A whole chapter as plain text (no verse numbers), for reading aloud. */
+    static String chapterText(int book, int chapter) throws Exception {
+        JSONArray data = get(Uri.encode(BOOKS[book][1]) + "/chapters/" + chapter + ".json").optJSONArray("data");
+        if (data == null) throw new IllegalStateException("chapter not found");
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < data.length(); i++) {
+            String t = data.getJSONObject(i).optString("text").replace("\"", "").trim();
+            if (t.isEmpty()) continue;
+            if (b.length() > 0) b.append(' ');
+            b.append(t);
+        }
+        return b.toString();
+    }
+
     private static JSONObject get(String path) throws Exception {
         try {
             return Http.get(BASE + path);

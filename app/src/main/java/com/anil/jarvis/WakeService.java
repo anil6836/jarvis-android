@@ -45,6 +45,8 @@ public class WakeService extends Service {
     private final Handler main = new Handler(Looper.getMainLooper());
     private WakeEngine engine;
     private boolean engineOn;
+    /** The wake word is being listened for right now ("Jarvis, ఉన్నాను" can be heard). */
+    static volatile boolean hearing;
     /** For retrying after the engine fails: when it last started, and failures in a row. */
     private long engineStartedAt;
     private int engineErrors;
@@ -173,6 +175,7 @@ public class WakeService extends Service {
 
     /** Whether the wake word may listen right now, per the "when to listen" setting. */
     private boolean allowedNow() {
+        if (RecorderService.recording) return false; // the mic is recording a sermon / meeting
         String when = new Prefs(this).wakeWhen();
         if ("always".equals(when)) return true;
         if ("charging".equals(when)) {
@@ -240,7 +243,7 @@ public class WakeService extends Service {
         if (motion != null) motion.stop();
         running = false;
         main.removeCallbacksAndMessages(null);
-        engineOn = false;
+        engineOn = false; hearing = false;
         holdCpu(false);
         if (engine != null) {
             engine.close();
@@ -268,7 +271,7 @@ public class WakeService extends Service {
                     main.post(() -> {
                         lastError = message;
                         boolean wasOn = engineOn;
-                        engineOn = false;
+                        engineOn = false; hearing = false;
                         holdCpu(false); // the listening thread is gone: don't keep the processor awake for nothing
                         if (!running) return;
                         goForeground("వేక్ వర్డ్ ఆగిపోయింది: " + message);
@@ -286,7 +289,7 @@ public class WakeService extends Service {
             });
         }
         engine.start();
-        engineOn = true;
+        engineOn = true; hearing = true;
         engineStartedAt = android.os.SystemClock.elapsedRealtime();
         holdCpu(true);
         lastError = null;
@@ -295,7 +298,7 @@ public class WakeService extends Service {
 
     private void stopEngine() {
         if (engine != null) engine.stop();
-        engineOn = false;
+        engineOn = false; hearing = false;
         holdCpu(false);
     }
 
@@ -339,6 +342,7 @@ public class WakeService extends Service {
 
     private void onWake() {
         if (!engineOn) return;
+        RideCare.awake(this); // he called Jarvis: awake (the after-duty check while riding)
         stopEngine(); // free the microphone for the conversation
         wakeScreen();
         Vibrator v = getSystemService(Vibrator.class);

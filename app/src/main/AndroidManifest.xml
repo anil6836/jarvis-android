@@ -210,6 +210,10 @@
             android:turnScreenOn="true"
             android:theme="@style/JarvisTheme" />
         <service
+            android:name=".RecorderService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|dataSync" />
+        <service
             android:name=".DriveService"
             android:exported="false"
             android:foregroundServiceType="location" />
