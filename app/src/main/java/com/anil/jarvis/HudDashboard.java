@@ -56,7 +56,7 @@ final class HudDashboard extends LinearLayout {
     private final View dot;
     private final TextView chevron, summary;
     private final LinearLayout grid;
-    private final Tile tTime, tBattery, tNet, tWeather, tNext, tWake;
+    private final Tile tTime, tBattery, tNet, tWeather, tNext, tWake, tBike, tDuty;
     private final boolean netAllowed;
 
     private boolean running, collapsed, dotOn;
@@ -117,10 +117,18 @@ final class HudDashboard extends LinearLayout {
         addTile(r2, tNext, true);
         if (netAllowed) addTile(r2, tNet, true);   // no ACCESS_NETWORK_STATE -> no network tile
         addTile(r2, tWake, false);
+        LinearLayout r3 = row(c);
+        tBike = new Tile(c, "🏍️ బైక్", Ui.C_ORANGE);
+        tDuty = new Tile(c, "🗓️ డ్యూటీ", Ui.C_AMBER);
+        addTile(r3, tBike, true);
+        addTile(r3, tDuty, false);
         grid.addView(r1);
         LayoutParams r2lp = new LayoutParams(-1, -2);
         r2lp.topMargin = dp(8);
         grid.addView(r2, r2lp);
+        LayoutParams r3lp = new LayoutParams(-1, -2);
+        r3lp.topMargin = dp(8);
+        grid.addView(r3, r3lp);
         addView(grid, new LayoutParams(-1, -2));
 
         setCollapsed(sp.getBoolean("collapsed", false), false);
@@ -166,6 +174,8 @@ final class HudDashboard extends LinearLayout {
     }
 
     private void refreshCheap() {
+        updateBike();
+        updateDuty();
         updateBattery();
         updateNetwork();
         updateNext();
@@ -206,6 +216,40 @@ final class HudDashboard extends LinearLayout {
         } catch (Exception e) {
             battShort = NONE;
             tBattery.set(NONE, "", Ui.TEXT);
+        }
+    }
+
+    /** The bike: charging (and when it is ready), or the battery % worked out from the last charge and rides. */
+    private void updateBike() {
+        try {
+            JSONObject ch = Bike.charging(getContext());
+            if (ch != null && !ch.optBoolean("logged")) {
+                scratchDate.setTime(ch.optLong("eta"));
+                tBike.set("⚡ " + timeFmt.format(scratchDate), ch.optInt("to") + "% అయ్యే టైమ్", Ui.OK);
+                return;
+            }
+            int pct = Bike.estimatePct(getContext());
+            if (pct < 0) { tBike.set(NONE, "ఛార్జ్ చెప్పలేదు", Ui.MUTED); return; }
+            tBike.set("~" + pct + "%", "~" + Math.round(pct / 100.0 * Bike.fullRangeKm(new Prefs(getContext()))) + " కి.మీ.", pct <= 20 ? Ui.RED : Ui.TEXT);
+        } catch (Exception e) {
+            tBike.set(NONE, "", Ui.TEXT);
+        }
+    }
+
+    /** On duty now (until when), or the next duty. */
+    private void updateDuty() {
+        try {
+            java.time.LocalDateTime[] d = Duty.nowOrNext(getContext());
+            if (d == null) { tDuty.set(NONE, Duty.ready(Duty.load(getContext())) ? "త్వరలో లేదు" : "క్యాలెండర్ సెట్ చేయలేదు", Ui.MUTED); return; }
+            java.time.LocalDateTime now = java.time.LocalDateTime.now();
+            java.time.format.DateTimeFormatter f = java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH);
+            java.time.LocalDateTime at = !now.isBefore(d[0]) ? d[1] : d[0];
+            long days = java.time.temporal.ChronoUnit.DAYS.between(now.toLocalDate(), at.toLocalDate());
+            String day = days == 0 ? "ఈరోజు" : days == 1 ? "రేపు" : days == 2 ? "ఎల్లుండి" : Duty.day(at.toLocalDate());
+            if (!now.isBefore(d[0])) tDuty.set("డ్యూటీలో", day + " " + at.format(f) + " వరకు", Ui.GOLD);
+            else tDuty.set(at.format(f), day, Ui.TEXT);
+        } catch (Exception e) {
+            tDuty.set(NONE, "", Ui.TEXT);
         }
     }
 
@@ -314,7 +358,7 @@ final class HudDashboard extends LinearLayout {
         t.start();
     }
 
-    private static String sky(int code) {
+    static String sky(int code) {
         if (code < 0) return NONE;
         if (code == 0) return "నిర్మలం · clear";
         if (code <= 2) return "కొంత మబ్బు";

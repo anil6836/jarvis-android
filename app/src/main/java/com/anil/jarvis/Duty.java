@@ -812,6 +812,21 @@ final class Duty {
     // ================================================================ just off a 48-hour duty
 
     /** Minutes since his last duty ended, if it ended within the last 8 hours; -1 otherwise. */
+    /** His duty going on now {start, end, now = start}, or the next one {start, end}; null when not set up / none soon. */
+    static LocalDateTime[] nowOrNext(Context c) {
+        Roster r = load(c);
+        if (!ready(r)) return null;
+        String[] hm = r.timeOf(ME).split(":");
+        int h = Integer.parseInt(hm[0]), m = Integer.parseInt(hm[1]);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = now.toLocalDate();
+        for (LocalDate[] b : r.blocks(ME, today.minusDays(3), today.plusDays(12))) {
+            LocalDateTime from = b[0].atTime(h, m), to = b[1].plusDays(1).atTime(h, m);
+            if (to.isAfter(now)) return new LocalDateTime[]{from, to};
+        }
+        return null;
+    }
+
     static long minutesSinceDuty(Context c) {
         Roster r = load(c);
         if (!ready(r)) return -1;

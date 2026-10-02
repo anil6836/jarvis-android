@@ -20,7 +20,7 @@ final class Ui {
     static final int PANEL2 = 0xFF10263A;
     static final int LINE = 0xFF16303F;
     static final int LINE2 = 0xFF23495E;
-    static final int CYAN = 0xFF74E4FF;
+    static int CYAN = 0xFF74E4FF; // follows the theme
     static final int CYAN2 = 0xFF3BB7D6;
     static final int CYAN_DIM = 0xFF1E6A80;
     static final int GOLD = 0xFFF2B24C;
@@ -31,11 +31,57 @@ final class Ui {
     static final int RED = 0xFFFF6B5E;
     static final int OK = 0xFF6BE3A4;
 
-    // ---- the colourful "aurora" theme of the main screen
-    static final int BG_TOP = 0xFF0A1030, BG_BOTTOM = 0xFF04060F;
+    // ---- the colourful "aurora" theme of the main screen (BG_*, C_CYAN, C_VIOLET follow the chosen theme)
+    static int BG_TOP = 0xFF061428, BG_BOTTOM = 0xFF02050C;
     static final int GLASS = 0x14FFFFFF, GLASS2 = 0x1FFFFFFF, GLASS_EDGE = 0x2BFFFFFF;
-    static final int C_CYAN = 0xFF22D3EE, C_BLUE = 0xFF3B82F6, C_VIOLET = 0xFF8B5CF6, C_PINK = 0xFFEC4899,
+    static int C_CYAN = 0xFF22D3EE, C_VIOLET = 0xFFF2B24C;
+    static final int C_BLUE = 0xFF3B82F6, C_PINK = 0xFFEC4899,
             C_AMBER = 0xFFF59E0B, C_GREEN = 0xFF10B981, C_ORANGE = 0xFFF97316, C_TEAL = 0xFF14B8A6, C_SKY = 0xFF38BDF8;
+
+    // ---- themes: {id, name, what it looks like}
+    static final String[][] THEMES = {
+            {"mix", "నీలం + బంగారం", "నీలం వలయాలు, బంగారు గుర్తులు"},
+            {"blue", "ఐస్ బ్లూ", "చల్లని నీలం వెలుగు"},
+            {"gold", "బంగారు అంబర్", "వెచ్చని బంగారు వెలుగు"}};
+    /** The HUD's ring and mark colours. */
+    static int RING = 0xFF38BDF8, MARK = 0xFFF2B24C;
+    /** Rings and the scan line move (off in battery saver, or when he turned it off). */
+    static boolean animate = true;
+    /** Goes up each time the theme changes: an open screen built with the old colours rebuilds itself. */
+    static int themeVersion;
+    private static String loaded = "";
+
+    static String theme(Context c) { return c.getSharedPreferences("jarvis", Context.MODE_PRIVATE).getString("theme", "mix"); }
+
+    static boolean hudMotion(Context c) { return c.getSharedPreferences("jarvis", Context.MODE_PRIVATE).getBoolean("hud_motion", true); }
+
+    static void setTheme(Context c, String id, boolean motion) {
+        c.getSharedPreferences("jarvis", Context.MODE_PRIVATE).edit().putString("theme", id).putBoolean("hud_motion", motion).apply();
+        loadTheme(c);
+    }
+
+    /** The chosen theme's colours, set before a screen is built. */
+    static void loadTheme(Context c) {
+        String t = theme(c);
+        android.os.PowerManager pm = c.getSystemService(android.os.PowerManager.class);
+        animate = hudMotion(c) && (pm == null || !pm.isPowerSaveMode());
+        if (t.equals(loaded)) return;
+        switch (t) {
+            case "blue":
+                BG_TOP = 0xFF0A1030; BG_BOTTOM = 0xFF04060F; C_CYAN = 0xFF22D3EE; C_VIOLET = 0xFF8B5CF6; CYAN = 0xFF74E4FF;
+                RING = 0xFF22D3EE; MARK = 0xFF74E4FF;
+                break;
+            case "gold":
+                BG_TOP = 0xFF1A1206; BG_BOTTOM = 0xFF060402; C_CYAN = 0xFFFBBF24; C_VIOLET = 0xFFF97316; CYAN = 0xFFFFD27A;
+                RING = 0xFFF2B24C; MARK = 0xFFFDE68A;
+                break;
+            default: // mix
+                BG_TOP = 0xFF061428; BG_BOTTOM = 0xFF02050C; C_CYAN = 0xFF22D3EE; C_VIOLET = 0xFFF2B24C; CYAN = 0xFF74E4FF;
+                RING = 0xFF38BDF8; MARK = 0xFFF2B24C;
+        }
+        if (!loaded.isEmpty()) themeVersion++;
+        loaded = t;
+    }
 
     private Ui() {}
 
@@ -72,21 +118,51 @@ final class Ui {
     }
 
     /**
-     * Deep night-blue background with soft glows of colour (cyan, violet, pink) like an aurora.
-     * Shaders are made once per size, nothing is allocated while drawing.
+     * The hologram HUD background in the theme's colours: a deep gradient with two soft glows, a faint grid, slowly
+     * turning rings with tick marks, a scan line passing down now and then, and corner brackets. Shaders are made once
+     * per size and nothing is allocated while drawing; it moves (15 frames a second) only while it is on screen.
      */
     static final class Aurora extends Drawable {
-        private final Paint base = new Paint(), g1 = new Paint(Paint.ANTI_ALIAS_FLAG), g2 = new Paint(Paint.ANTI_ALIAS_FLAG), g3 = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private float w, h;
+        private final Paint base = new Paint(), g1 = new Paint(Paint.ANTI_ALIAS_FLAG), g2 = new Paint(Paint.ANTI_ALIAS_FLAG),
+                grid = new Paint(), ring = new Paint(Paint.ANTI_ALIAS_FLAG), mark = new Paint(Paint.ANTI_ALIAS_FLAG),
+                scan = new Paint(), corner = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF oval = new android.graphics.RectF();
+        private float w, h, step, cx, cy, r1, r2, r3, len;
+        private final long born = android.os.SystemClock.uptimeMillis();
+        private boolean ticking;
+        private final Runnable tick = new Runnable() {
+            @Override public void run() {
+                if (!ticking) return;
+                invalidateSelf();
+                scheduleSelf(this, android.os.SystemClock.uptimeMillis() + 66);
+            }
+        };
 
         @Override protected void onBoundsChange(android.graphics.Rect b) {
             w = b.width();
             h = b.height();
             if (w <= 0 || h <= 0) return;
+            float d = Math.min(w, h);
             base.setShader(new android.graphics.LinearGradient(0, 0, 0, h, BG_TOP, BG_BOTTOM, android.graphics.Shader.TileMode.CLAMP));
-            g1.setShader(new android.graphics.RadialGradient(w * 0.08f, h * 0.02f, w * 0.85f, alpha(C_CYAN, 70), 0, android.graphics.Shader.TileMode.CLAMP));
-            g2.setShader(new android.graphics.RadialGradient(w * 0.98f, h * 0.10f, w * 0.80f, alpha(C_VIOLET, 80), 0, android.graphics.Shader.TileMode.CLAMP));
-            g3.setShader(new android.graphics.RadialGradient(w * 0.85f, h * 0.62f, w * 0.75f, alpha(C_PINK, 26), 0, android.graphics.Shader.TileMode.CLAMP));
+            g1.setShader(new android.graphics.RadialGradient(w * 0.08f, h * 0.02f, w * 0.85f, alpha(C_CYAN, 60), 0, android.graphics.Shader.TileMode.CLAMP));
+            g2.setShader(new android.graphics.RadialGradient(w * 0.98f, h * 0.10f, w * 0.80f, alpha(C_VIOLET, 52), 0, android.graphics.Shader.TileMode.CLAMP));
+            step = d / 11f;
+            grid.setColor(alpha(RING, 12));
+            grid.setStrokeWidth(1);
+            cx = w * 0.5f;
+            cy = h * 0.36f;
+            r1 = d * 0.30f; r2 = d * 0.39f; r3 = d * 0.46f;
+            ring.setStyle(Paint.Style.STROKE);
+            ring.setColor(alpha(RING, 34));
+            ring.setStrokeWidth(Math.max(1.5f, d / 400f));
+            mark.setStyle(Paint.Style.STROKE);
+            mark.setColor(alpha(MARK, 46));
+            mark.setStrokeWidth(Math.max(2f, d / 260f));
+            scan.setShader(new android.graphics.LinearGradient(0, 0, 0, d * 0.05f, 0, alpha(RING, 30), android.graphics.Shader.TileMode.CLAMP));
+            corner.setStyle(Paint.Style.STROKE);
+            corner.setColor(alpha(MARK, 70));
+            corner.setStrokeWidth(Math.max(2f, d / 300f));
+            len = d * 0.06f;
         }
 
         @Override public void draw(Canvas c) {
@@ -94,7 +170,43 @@ final class Ui {
             c.drawRect(b, base);
             c.drawRect(b, g1);
             c.drawRect(b, g2);
-            c.drawRect(b, g3);
+            if (w <= 0 || h <= 0) return;
+            for (float x = step; x < w; x += step) c.drawLine(x, 0, x, h, grid);
+            for (float y = step; y < h; y += step) c.drawLine(0, y, w, y, grid);
+            float t = (android.os.SystemClock.uptimeMillis() - born) / 1000f;
+            float a = animate ? t * 6f : 0, a2 = animate ? -t * 4f : 0; // degrees: slow, the middle ring the other way
+            oval.set(cx - r1, cy - r1, cx + r1, cy + r1);
+            for (int i = 0; i < 4; i++) c.drawArc(oval, a + i * 90, 62, false, ring);
+            oval.set(cx - r2, cy - r2, cx + r2, cy + r2);
+            for (int i = 0; i < 3; i++) c.drawArc(oval, a2 + i * 120 + 20, 84, false, ring);
+            oval.set(cx - r3, cy - r3, cx + r3, cy + r3);
+            c.drawArc(oval, 0, 360, false, ring);
+            for (int i = 0; i < 72; i++) { // tick marks round the outer ring, every fifth longer
+                double rad = Math.toRadians(i * 5 + a * 0.5);
+                float in = r3 - (i % 6 == 0 ? len * 0.55f : len * 0.25f);
+                float cos = (float) Math.cos(rad), sin = (float) Math.sin(rad);
+                c.drawLine(cx + cos * in, cy + sin * in, cx + cos * r3, cy + sin * r3, mark);
+            }
+            if (animate) { // a scan line down the screen every 7 seconds
+                float y = (t % 7f) / 7f * (h + step) - step;
+                c.save();
+                c.translate(0, y);
+                c.drawRect(0, 0, w, Math.min(w, h) * 0.05f, scan);
+                c.restore();
+            }
+            float m = len * 0.5f;
+            c.drawLine(m, m, m + len, m, corner); c.drawLine(m, m, m, m + len, corner);
+            c.drawLine(w - m, m, w - m - len, m, corner); c.drawLine(w - m, m, w - m, m + len, corner);
+            c.drawLine(m, h - m, m + len, h - m, corner); c.drawLine(m, h - m, m, h - m - len, corner);
+            c.drawLine(w - m, h - m, w - m - len, h - m, corner); c.drawLine(w - m, h - m, w - m, h - m - len, corner);
+            if (animate && !ticking && isVisible()) { ticking = true; scheduleSelf(tick, android.os.SystemClock.uptimeMillis() + 66); }
+        }
+
+        @Override public boolean setVisible(boolean visible, boolean restart) {
+            boolean changed = super.setVisible(visible, restart);
+            if (!visible) { ticking = false; unscheduleSelf(tick); }
+            else if (animate && !ticking) invalidateSelf(); // draw() starts the frames again
+            return changed;
         }
 
         @Override public void setAlpha(int a) {}

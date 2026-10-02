@@ -30,6 +30,8 @@ import java.util.Locale;
 
 /** Keys, voice and wake-word settings. */
 public class SettingsActivity extends Activity {
+    /** The theme this screen was built with (a change in Settings rebuilds it). */
+    private int builtTheme;
     /** Open Settings at the card whose title contains this text (from the features screen). */
     static final String EXTRA_SECTION = "jarvis_section";
     /** Each card with its title, to jump to one. */
@@ -89,6 +91,8 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.loadTheme(this); // the chosen colours, before anything is built
+        builtTheme = Ui.themeVersion;
         prefs = new Prefs(this);
         ScrollView scroll = new ScrollView(this);
         scroll.setBackground(new Ui.Aurora());
@@ -133,6 +137,30 @@ public class SettingsActivity extends Activity {
         // ---- you
         section("మీరు");
         name = field("మీ పేరు (Jarvis మిమ్మల్ని ఇలా పిలుస్తాడు)", prefs.name(), false);
+
+        // ---- theme: applies at once (no Save needed); the other screens take it when they open
+        section("థీమ్ (రంగులు)");
+        note("Jarvis రంగులు ఎంచుకోండి. నొక్కగానే మారుతుంది; ఈ పేజీ మూసి తెరిస్తే ఇక్కడ కూడా కొత్త రంగులు.");
+        TextView[] themeBtns = new TextView[Ui.THEMES.length];
+        TextView[] motionBtn = new TextView[1];
+        Runnable marks = () -> {
+            String cur = Ui.theme(this);
+            for (int i = 0; i < Ui.THEMES.length; i++)
+                themeBtns[i].setText((Ui.THEMES[i][0].equals(cur) ? "✓  " : "     ") + Ui.THEMES[i][1] + "  ·  " + Ui.THEMES[i][2]);
+            motionBtn[0].setText(Ui.hudMotion(this) ? "🌀  వలయాల కదలిక: ఆన్ (ఆపడానికి నొక్కండి)" : "⏸  వలయాల కదలిక: ఆఫ్ (ఆన్ చేయడానికి నొక్కండి)");
+        };
+        for (int i = 0; i < Ui.THEMES.length; i++) {
+            final String id = Ui.THEMES[i][0];
+            themeBtns[i] = button("", v -> {
+                Ui.setTheme(this, id, Ui.hudMotion(this));
+                builtTheme = Ui.themeVersion; // this page keeps its look until reopened (unsaved fields stay)
+                marks.run();
+                Toast.makeText(this, "థీమ్ మారింది", Toast.LENGTH_SHORT).show();
+            });
+        }
+        motionBtn[0] = button("", v -> { Ui.setTheme(this, Ui.theme(this), !Ui.hudMotion(this)); marks.run(); });
+        marks.run();
+        note("బ్యాటరీ సేవర్ ఆన్‌లో ఉంటే వలయాలు తమంతట తామే ఆగుతాయి.");
 
         // ---- brain
         section("Jarvis మెదడు");
@@ -627,6 +655,8 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        Ui.loadTheme(this);
+        if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         showLock();
         // back from "Install unknown apps" after pressing update: carry on installing
         int pendingBuild = Updater.installWhenAllowed;
@@ -964,7 +994,7 @@ public class SettingsActivity extends Activity {
     }
 
     private static final String[][] LOOKS = {
-            {"మీరు", "👤"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
+            {"మీరు", "👤"}, {"థీమ్", "🎨"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
             {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
             {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
             {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},

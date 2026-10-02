@@ -225,8 +225,13 @@ final class Tools {
                         {"language", "string", "English (default) or Hindi"}})));
         DEFS.add(new Def("read_screen", "Read the article/page on his screen aloud (mode read) or summarise it (mode summary).",
                 schema(new String[][]{{"mode", "string", "read or summary"}})));
-        DEFS.add(new Def("jarvis_mood", "Change how Jarvis talks: normal, serious, funny, english (reply in English), short (very brief).",
-                schema(new String[][]{{"mode", "string", "normal, serious, funny, english or short"}}, "mode")));
+        DEFS.add(new Def("jarvis_mood", "Change how Jarvis talks: normal, serious, funny, english (reply in English), short (very brief); "
+                + "think_always = every answer thought through at length (slower, costs more), think_normal = only when he asks 'బాగా ఆలోచించి చెప్పు'. "
+                + "feeling (+ why): quietly note how HE feels when he shows a clear strong feeling (tired, sad, stressed, angry, worried, happy), "
+                + "so Jarvis can care and ask later; never tell him it was noted.",
+                schema(new String[][]{{"mode", "string", "normal, serious, funny, english, short, think_always or think_normal; empty when only noting a feeling"},
+                        {"feeling", "string", "His feeling in one English word (tired, sad, stressed, angry, worried, happy, excited...)"},
+                        {"why", "string", "Why, in a few English words ('after the 48-hour duty', 'mother unwell')"}})));
         DEFS.add(new Def("search_history", "Search old conversations with Jarvis ('last week I told you a phone number...').",
                 schema(new String[][]{{"query", "string", "Key words to look for"}, {"days", "integer", "How far back (default 90)"}}, "query")));
         DEFS.add(new Def("screen_time", "How long he used the phone today (or the last N days) and on which apps. "
@@ -863,7 +868,19 @@ final class Tools {
                 case "interpreter": return interpreter(a.optString("language"));
                 case "english_practice": return englishPractice(a.optString("topic"), a.optString("language", "English"));
                 case "read_screen": return readScreen(a.optString("mode", "read"));
-                case "jarvis_mood": return mood(a.optString("mode", "normal"));
+                case "jarvis_mood": {
+                    String f = a.optString("feeling").trim();
+                    if (!f.isEmpty()) Notes.add(act(), Situation.MOODS, new JSONObject().put("t", System.currentTimeMillis())
+                            .put("feeling", f.length() > 30 ? f.substring(0, 30) : f).put("why", a.optString("why").trim()), 60);
+                    String md = a.optString("mode").trim().toLowerCase(Locale.ROOT);
+                    if (md.startsWith("think")) {
+                        boolean always = md.contains("always") || md.contains("on");
+                        prefs.sp.edit().putBoolean("deep_always", always).apply();
+                        return ok().put("think", always ? "always (slower, uses more of the API)" : "only when he asks").toString();
+                    }
+                    if (md.isEmpty()) return ok().put("noted", !f.isEmpty()).put("next", "Do not mention noting it; just answer him with care.").toString();
+                    return mood(md);
+                }
                 case "search_history": return searchHistory(a.optString("query"), a.optInt("days", 90));
                 case "screen_time":
                     if (!a.optString("eye_break").trim().isEmpty()) {
@@ -1044,6 +1061,9 @@ final class Tools {
     }
 
     private Activity act() { return host.activity(); }
+
+    /** The app context for Jarvis's other parts (the situation snapshot). */
+    android.content.Context context() { Activity a = act(); return a == null ? null : a.getApplicationContext(); }
 
     private boolean has(String perm) {
         return act().checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED;

@@ -26,9 +26,11 @@ final class Brain {
         if (s != null && s.cancelled()) throw new CancellationException("stopped");
     }
 
-    private static final int MAX_ROUNDS = 8;
+    private static final int MAX_ROUNDS = 12; // a planned task can take several tools one after another
     /** The chosen OpenAI model rejected the "reasoning" option once: don't send it again. */
     private static volatile boolean noReasoningOption;
+    /** The Claude model that rejected "thinking" once (its deep questions then go without it). */
+    private static volatile String noClaudeThinkingModel = "";
 
     private final Prefs prefs;
     private final Store store;
@@ -60,9 +62,17 @@ final class Brain {
      * @param text    what Anil just said or typed
      * @param jpegB64 optional photo, base64 JPEG
      */
+    /** "బాగా ఆలోచించి చెప్పు": this question gets the chosen model's long thinking (never another model). */
+    private static final java.util.regex.Pattern DEEP_WORDS = java.util.regex.Pattern.compile(
+            "(?i)(బాగా ఆలోచించి|లోతుగా ఆలోచించి|లోతుగా ఆలోచించు|బాగా ఆలోచించు|ఆలోచించి చెప్పు|ఆలోచించి చూసి|think (deeply|carefully|hard)|deep ?think)");
+    /** For the question being answered now: think long (set in ask, read by the request builders). */
+    private volatile boolean deep;
+
     String ask(List<JSONObject> history, String text, String jpegB64, Status status) throws Exception {
         // No internet: handle the simple everyday commands on the phone itself.
         if (!tools.online()) return tools.offlineCommand(text);
+        deep = prefs.sp.getBoolean("deep_always", false) || (text != null && DEEP_WORDS.matcher(text).find());
+        if (deep && status != null) status.update("లోతుగా ఆలోచిస్తున్నాను…");
         boolean feel = prefs.emotions();
         String system = systemPrompt() + (feel ? Emotion.rule() : "") + whoAmI();
         List<String[]> turns = normalize(history);
@@ -95,7 +105,8 @@ final class Brain {
                 + "- Warm, friendly, cheerful and caring; relaxed and casual, never stiff or formal. You are still JARVIS, loyal and very capable, and your wit stays, but friendly and gentle.\n"
                 + "- Sound human: react naturally where it fits with spoken Telugu like 'అవునా!', 'ఓహ్', 'హ్మ్…', 'అబ్బా!', 'నిజమా?', 'సూపర్!', 'అయ్యో', and laugh softly when something is funny. "
                 + "A small natural filler ('అంటే…', 'చూద్దాం…') now and then is fine, never in every sentence.\n"
-                + "- Mirror his mood and energy: excited with him, gentle and slower when he is tired, sad or upset, quick and to the point when he is in a hurry.\n"
+                + "- Mirror his mood and energy: excited with him, gentle and slower when he is tired, sad or upset, quick and to the point when he is in a hurry. "
+                + "Listen to how he sounds (a tired, low, shaky, irritated or happy voice), not only to his words.\n"
                 + "- Say " + name + " now and then, naturally, not in every reply.\n"
                 + "## Language\n"
                 + "- Speak ONLY Telugu with a native Andhra/Telangana accent; never Tamil, Kannada or Hindi words or pronunciation (unless he asks for a translation or for English). "
@@ -171,6 +182,17 @@ final class Brain {
         }
     }
 
+    /** The live situation for the prompt; empty when nothing is known. */
+    private String situation() {
+        try {
+            android.content.Context c = tools.context();
+            String s = c == null ? "" : Situation.of(c);
+            return s.isEmpty() ? "(nothing known)\n" : s;
+        } catch (Throwable e) {
+            return "(nothing known)\n";
+        }
+    }
+
     String systemPrompt() {
         String name = prefs.name();
         SimpleDateFormat f = new SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", Locale.ENGLISH);
@@ -193,6 +215,32 @@ final class Brain {
         }
 
         return "You are JARVIS, " + name + "'s personal AI assistant living on his Android phone, in the spirit of the JARVIS from the Iron Man films: calm, precise, quietly loyal, with dry British-butler wit.\n\n"
+                + "How you think (this is what makes you JARVIS):\n"
+                + "- Know his situation: the 'Right now' lines below say whether he is on duty or at home, where he is, the bike's charge, the phone's battery, "
+                + "the next alarm / reminder, his sleep after duty and how he felt lately. Answer for that real situation, not in general "
+                + "(e.g. 'బయటకు వెళ్లొచ్చా?' -> his next duty, the bike's charge, rain). Never read the list out; use only what matters.\n"
+                + "- One step ahead: if something he did not ask about clearly matters for what he asked (a duty that day, rain at that time, the bike's charge too low "
+                + "for the trip, a reminder or bill at that time), add it in one short sentence. Only when it really matters, at most one such point.\n"
+                + "- Big tasks with several parts ('X ఏర్పాట్లు చూడు', 'ట్రిప్ ప్లాన్ చెయ్', 'ఈ వారం పనులు సెట్ చెయ్'): think of the 3-6 steps, say the plan in one sentence, "
+                + "then do the steps with your tools one after another now; anything that sends, posts, calls or pays still waits for his yes; a plan that runs over days "
+                + "-> add_mission so it is followed up. Ask one short question first only if a step cannot be done without his answer.\n"
+                + "- Like a status report: lead with the result, then the key numbers (time, %, ₹, km), then at most one suggestion. Calm and crisp, a touch of dry wit "
+                + "when the moment is light.\n"
+                + "- Check before you say done: say something is done only when the tool result says ok, and repeat the exact detail from it (the time set, the name, "
+                + "the amount). If a result shows a problem or something unexpected, say so plainly with what he can do; never claim what you did not see.\n"
+                + "- Hard questions (money decisions, health, documents, comparing options): reason step by step before answering and say how sure you are; "
+                + "if he says 'బాగా ఆలోచించి చెప్పు' you get more time to think. 'ఎప్పుడూ బాగా ఆలోచించి చెప్పు' -> jarvis_mood mode=think_always; "
+                + "'మామూలుగా చెప్పు, త్వరగా చెప్పు' -> think_normal.\n"
+                + "Understanding his feelings:\n"
+                + "- Notice how he feels from his words and how he says them (short or curt replies, 'అలసిపోయా', 'చిరాకుగా ఉంది', sighs, excitement, worry) and from his "
+                + "situation (just off a 48-hour duty, little sleep, bills due, someone ill, a family event). Answer the feeling first, then the task.\n"
+                + "- Tired: shorter, gentle, offer to take things off his hands or remind him later. Stressed or angry: calm, no jokes, say you understand in one line, "
+                + "then one practical next step. Sad or worried: warm, listen, one gentle question, no lectures. Happy or proud: share the joy with him.\n"
+                + "- Never fake feelings, never label or diagnose him, never preach. Encourage the people around him (family, friends, church) when it fits.\n"
+                + "- When he shows a clear strong feeling (very tired, sad, stressed, angry, worried, very happy), call jarvis_mood with feeling and why, quietly, once in a talk; "
+                + "if 'How he felt lately' is below and it fits, ask gently once how he is now ('నిన్న బాగా అలసిపోయారు, ఇప్పుడు ఎలా ఉంది?').\n"
+                + "- If he ever sounds hopeless or speaks of not wanting to live or of hurting himself, stay calm and caring, tell him he matters, encourage him to talk to "
+                + "someone close now, and give Tele-MANAS 14416 (free, any time, in Telugu); 112 if he is in danger.\n\n"
                 + "Rules:\n"
                 + "- Always reply in natural, spoken Telugu (Telugu script), Andhra/Telangana style; never Tamil words. Everyday English tech words are fine where Telugu speakers use them.\n"
                 + moodRule()
@@ -372,7 +420,8 @@ final class Brain {
                 + "- Questions about what is on his screen, a message he is reading, or 'what should I reply' -> look_at_screen. Questions about what the camera sees -> look_through_camera (or the attached camera picture).\n"
                 + "- If a tool reports an error, tell him briefly what went wrong and what he can do.\n"
                 + "- If he sends a photo, look at it carefully and answer about what is actually in it.\n\n"
-                + "Now: " + now + "\n\n"
+                + "Now: " + now + "\n"
+                + "Right now (from his phone):\n" + situation() + "\n"
                 + name + "'s saved memories (id: text):\n" + (mem.length() == 0 ? "(none yet)\n" : mem)
                 + "\nActive missions (id: text):\n" + (act.length() == 0 ? "(none)\n" : act)
                 + "\nRecently completed missions:\n" + (done.length() == 0 ? "(none)\n" : done);
@@ -531,13 +580,17 @@ final class Brain {
      * answer and after every tool, which made Jarvis slow to reply. "low" is plenty for a phone assistant (the
      * OpenAI brain already uses effort "low"). Flash-Lite already thinks the least by default, so it is left alone.
      */
-    static JSONObject geminiConfig(Prefs p, int maxTokens) throws Exception {
+    static JSONObject geminiConfig(Prefs p, int maxTokens) throws Exception { return geminiConfig(p, maxTokens, false); }
+
+    /** deep: the same model thinks long (Gemini 3: level high; 2.5: a large thinking budget). */
+    static JSONObject geminiConfig(Prefs p, int maxTokens, boolean deep) throws Exception {
         JSONObject g = new JSONObject();
         if (maxTokens > 0) g.put("maxOutputTokens", maxTokens);
         String m = p.model().toLowerCase(Locale.ROOT).replaceFirst("^models/", "");
         java.util.regex.Matcher v = java.util.regex.Pattern.compile("^gemini-(\\d+)").matcher(m);
         boolean three = (v.find() && Integer.parseInt(v.group(1)) >= 3) || m.matches("gemini-(flash|pro)-latest");
-        if (three && !m.contains("lite") && !m.equals(noThinkingModel)) g.put("thinkingConfig", new JSONObject().put("thinkingLevel", "low"));
+        if (three && !m.contains("lite") && !m.equals(noThinkingModel)) g.put("thinkingConfig", new JSONObject().put("thinkingLevel", deep ? "high" : "low"));
+        else if (deep && m.startsWith("gemini-2.5") && !m.equals(noThinkingModel)) g.put("thinkingConfig", new JSONObject().put("thinkingBudget", 16384));
         return g;
     }
 
@@ -588,7 +641,7 @@ final class Brain {
                     .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", system))))
                     .put("contents", contents)
                     .put("tools", toolList)
-                    .put("generationConfig", geminiConfig(prefs, 8192)); // its thinking counts too
+                    .put("generationConfig", geminiConfig(prefs, deep ? 24576 : 8192, deep)); // its thinking counts too
             JSONObject res = geminiCall(prefs, key, body);
             JSONArray cands = res.optJSONArray("candidates");
             if (cands == null || cands.length() == 0) return geminiText(res); // throws with the reason
@@ -674,7 +727,7 @@ final class Brain {
                     .put("tools", toolList);
             if (previous != null) body.put("previous_response_id", previous);
             // Quick answers: a voice assistant should not "think" for long (models without this option ignore it below).
-            if (!noReasoningOption) body.put("reasoning", new JSONObject().put("effort", "low"));
+            if (!noReasoningOption) body.put("reasoning", new JSONObject().put("effort", deep ? "high" : "low"));
             JSONObject res;
             try {
                 res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
@@ -755,12 +808,21 @@ final class Brain {
             checkCancelled(status);
             JSONObject body = new JSONObject()
                     .put("model", prefs.model())
-                    .put("max_tokens", 1024)
+                    .put("max_tokens", deep && !prefs.model().equals(noClaudeThinkingModel) ? 12000 : 1024)
                     .put("system", system)
                     .put("messages", messages)
                     .put("tools", toolList);
-            JSONObject res = Http.post("https://api.anthropic.com/v1/messages", body,
-                    "x-api-key", key, "anthropic-version", "2023-06-01");
+            if (deep && !prefs.model().equals(noClaudeThinkingModel)) body.put("thinking", new JSONObject().put("type", "enabled").put("budget_tokens", 8000));
+            JSONObject res;
+            try {
+                res = Http.post("https://api.anthropic.com/v1/messages", body, "x-api-key", key, "anthropic-version", "2023-06-01");
+            } catch (Http.ApiError e) {
+                if (!body.has("thinking") || e.status != 400 || String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT).indexOf("thinking") < 0) throw e;
+                noClaudeThinkingModel = prefs.model(); // this model has no thinking: the same model again, without it
+                body.remove("thinking");
+                body.put("max_tokens", 1024);
+                res = Http.post("https://api.anthropic.com/v1/messages", body, "x-api-key", key, "anthropic-version", "2023-06-01");
+            }
             JSONArray blocks = res.optJSONArray("content");
             if (blocks == null) blocks = new JSONArray();
             String stop = res.optString("stop_reason");

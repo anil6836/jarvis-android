@@ -25,6 +25,8 @@ import java.util.Locale;
 
 /** The alarm ringing: his song, getting louder; "ఆపు" says good morning with the weather and today's duty; "5 నిమి" snoozes. */
 public class AlarmActivity extends Activity {
+    /** The theme this screen was built with (a change in Settings rebuilds it). */
+    private int builtTheme;
     private MediaPlayer player;
     private final Handler main = new Handler(Looper.getMainLooper());
     private String id;
@@ -54,6 +56,8 @@ public class AlarmActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.loadTheme(this); // the chosen colours, before anything is built
+        builtTheme = Ui.themeVersion;
         if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
         else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

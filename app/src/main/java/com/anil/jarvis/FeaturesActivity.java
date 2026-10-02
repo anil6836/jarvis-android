@@ -22,6 +22,8 @@ import java.util.Locale;
  * Live, bill photo...) or opens the right part of Settings. There is a search box across everything.
  */
 public class FeaturesActivity extends Activity {
+    /** The theme this screen was built with (a change in Settings rebuilds it). */
+    private int builtTheme;
     static final String EXTRA_CATEGORY = "category";
 
     private static final int ASK = 0, FILL = 1, DO = 2, OPEN = 3, INFO = 4;
@@ -387,6 +389,7 @@ public class FeaturesActivity extends Activity {
                     ask("💰", "API ఖర్చు", "ఈ నెల ఎంత అయింది", "ఈ నెల API ఖర్చు ఎంత? బ్యాలెన్స్ ఎంత మిగిలింది?"),
                     ask("🤖", "ఏ మోడల్ మీద ఉన్నావ్?", "ఇప్పటి AI, మోడల్", "నువ్వు ఇప్పుడు ఏ AI, ఏ మోడల్ మీద నడుస్తున్నావ్?"),
                     open("🩺", "Jarvis చెక్", "మెసేజ్‌లు, గొంతు పనిచేయకపోతే", "చెక్"),
+                    open("🎨", "థీమ్ రంగులు", "నీలం + బంగారం, ఐస్ బ్లూ, బంగారు అంబర్", "థీమ్"),
                     open("⚙️", "సెట్టింగ్స్", "అన్ని సెట్టింగ్స్", "")),
     };
 
@@ -497,6 +500,8 @@ public class FeaturesActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.loadTheme(this); // the chosen colours, before anything is built
+        builtTheme = Ui.themeVersion;
         getWindow().setStatusBarColor(Ui.BG_TOP);
         getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
         LinearLayout root = new LinearLayout(this);

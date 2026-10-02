@@ -33,6 +33,8 @@ import java.util.Locale;
  * doing someone's duty); ⚙️ sets the batches, first duty dates, times and members.
  */
 public class DutyActivity extends Activity {
+    /** The theme this screen was built with (a change in Settings rebuilds it). */
+    private int builtTheme;
     static final String EXTRA_MONTH = "month"; // "yyyy-MM"
     static final String EXTRA_SETUP = "setup";
 
@@ -49,6 +51,8 @@ public class DutyActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.loadTheme(this); // the chosen colours, before anything is built
+        builtTheme = Ui.themeVersion;
         getWindow().setStatusBarColor(Ui.BG_TOP);
         getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
         try { String m = getIntent().getStringExtra(EXTRA_MONTH); if (m != null && !m.isEmpty()) month = YearMonth.parse(m); } catch (Exception ignored) {}
@@ -65,6 +69,8 @@ public class DutyActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        Ui.loadTheme(this);
+        if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         render();
     }
 

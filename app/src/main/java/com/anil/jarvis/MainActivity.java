@@ -58,6 +58,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listener, Store.Listener, LiveSession.Listener, LiveScreen.Actions {
+    /** The theme this screen was built with (a change in Settings rebuilds it). */
+    private int builtTheme;
     static final String EXTRA_WAKE = "wake";
     static final String EXTRA_BRIEF = "brief";
     /** Opened from a notification with a question to ask Jarvis right away. */
@@ -185,6 +187,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.loadTheme(this); // the chosen colours, before anything is built
+        builtTheme = Ui.themeVersion;
         setVolumeControlStream(AudioManager.STREAM_MUSIC); // volume keys = Jarvis's voice, also during talk-over call mode
         prefs = new Prefs(this);
         store = Store.get(this);
@@ -209,6 +213,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onResume() {
         super.onResume();
+        Ui.loadTheme(this);
+        if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         paused = false;
         visible = true;
         store.listener = this;
@@ -717,6 +723,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         liveScreen = new LiveScreen(this, this);
         liveScreen.setVisibility(View.GONE);
         top.addView(liveScreen, new FrameLayout.LayoutParams(-1, -1));
+        if (!HudBoot.shown) { // "JARVIS ఆన్‌లైన్" once when the app starts
+            HudBoot.shown = true;
+            top.addView(new HudBoot(this), new FrameLayout.LayoutParams(-1, -1));
+        }
         return top;
     }
 

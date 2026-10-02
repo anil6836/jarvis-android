@@ -26,6 +26,8 @@ import java.util.concurrent.Executors;
 
 /** The photos Jarvis found for "… ఫోటోలు చూపించు": a grid; tap one to open it big, or share them all. */
 public class PhotoGridActivity extends Activity {
+    /** The theme this screen was built with (a change in Settings rebuilds it). */
+    private int builtTheme;
     private static final String EXTRA_URIS = "uris", EXTRA_TITLE = "title";
 
     static void show(Context c, String title, List<Uri> uris) {
@@ -39,6 +41,8 @@ public class PhotoGridActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.loadTheme(this); // the chosen colours, before anything is built
+        builtTheme = Ui.themeVersion;
         getWindow().setStatusBarColor(Ui.BG_TOP);
         getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
         List<String> raw = getIntent().getStringArrayListExtra(EXTRA_URIS);

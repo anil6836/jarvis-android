@@ -33,6 +33,8 @@ import java.util.concurrent.Executors;
  * The app underneath stays where it was.
  */
 public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Listener, LiveSession.Listener {
+    /** The theme this screen was built with (a change in Settings rebuilds it). */
+    private int builtTheme;
     private Prefs prefs;
     private Store store;
     private Tools tools;
@@ -104,6 +106,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.loadTheme(this); // the chosen colours, before anything is built
+        builtTheme = Ui.themeVersion;
         setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC); // volume keys = Jarvis's voice
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true);
