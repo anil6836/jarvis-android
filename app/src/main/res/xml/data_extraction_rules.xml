@@ -5,10 +5,14 @@
         <exclude domain="sharedpref" path="jarvis_guard.xml" />
         <exclude domain="sharedpref" path="jarvis_people.xml" />
         <exclude domain="file" path="facenet.tflite" />
+        <exclude domain="file" path="read_later/" />
+        <exclude domain="sharedpref" path="jarvis_read_later.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="jarvis_guard.xml" />
         <exclude domain="sharedpref" path="jarvis_people.xml" />
         <exclude domain="file" path="facenet.tflite" />
+        <exclude domain="file" path="read_later/" />
+        <exclude domain="sharedpref" path="jarvis_read_later.xml" />
     </device-transfer>
 </data-extraction-rules>

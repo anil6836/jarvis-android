@@ -225,8 +225,11 @@ final class Tools {
                         {"language", "string", "English (default) or Hindi"}})));
         DEFS.add(new Def("read_screen", "What is on his screen (a web page in Chrome or any browser, an article, messages): read = read it aloud with the phone voice, "
                 + "the whole page from where he is; meaning = understand the content and tell its meaning in Telugu (not a translation); telugu = translate it into Telugu; "
-                + "summary = a short Telugu summary; pause / resume / stop = the reading; bubble_on / bubble_off = the floating Jarvis button.",
-                schema(new String[][]{{"mode", "string", "read, meaning, telugu, summary, pause, resume, stop, bubble_on or bubble_off"}})));
+                + "summary = a short Telugu summary; pause / resume / stop / faster / slower / next / back = the reading; save = keep this page to read later; "
+                + "saved_list = the pages kept to read later; saved = read one of them aloud (item = its number or title words; empty = the newest); "
+                + "saved_delete = remove one; bubble_on / bubble_off = the floating Jarvis button.",
+                schema(new String[][]{{"mode", "string", "read, meaning, telugu, summary, pause, resume, stop, faster, slower, next, back, save, saved_list, saved, saved_delete, bubble_on or bubble_off"},
+                        {"item", "string", "For saved / saved_delete: the number from saved_list, or words of the title"}})));
         DEFS.add(new Def("jarvis_mood", "Change how Jarvis talks: normal, serious, funny, english (reply in English), short (very brief); "
                 + "think_always = every answer thought through at length (slower, costs more), think_normal = only when he asks 'బాగా ఆలోచించి చెప్పు'. "
                 + "feeling (+ why): quietly note how HE feels when he shows a clear strong feeling (tired, sad, stressed, angry, worried, happy), "
@@ -898,7 +901,7 @@ final class Tools {
                 case "budget": return a.has("income") || a.has("savings_goal") ? savings(a) : budget(a.optInt("amount", 0));
                 case "interpreter": return interpreter(a.optString("language"));
                 case "english_practice": return englishPractice(a.optString("topic"), a.optString("language", "English"));
-                case "read_screen": return readScreen(a.optString("mode", "read"));
+                case "read_screen": return readScreen(a.optString("mode", "read"), a.optString("item", ""));
                 case "jarvis_mood": {
                     String f = a.optString("feeling").trim();
                     if (!f.isEmpty()) Notes.add(act(), Situation.MOODS, new JSONObject().put("t", System.currentTimeMillis())
@@ -3802,9 +3805,28 @@ final class Tools {
                 .put("next", "Say one short line: the interpreter is starting, speak one at a time; say 'అనువాదం ఆపు' to stop.").toString();
     }
 
-    private String readScreen(String mode) throws Exception {
+    private String readScreen(String mode, String item) throws Exception {
         String m = mode == null || mode.trim().isEmpty() ? "read" : mode.trim().toLowerCase(Locale.ROOT);
         Activity c = act();
+        if (m.startsWith("saved")) { // pages kept to read later
+            if (m.equals("saved_list")) {
+                List<String> t = ReadLater.titles(c);
+                return t.isEmpty() ? err("none", "Nothing is saved to read later. On a page: floating Jarvis button → 💾 తర్వాత చదువు.")
+                        : ok().put("saved", new JSONArray(t)).put("next", "Say the titles briefly and ask which one to read.").toString();
+            }
+            if (m.equals("saved_delete") && (item == null || item.trim().isEmpty()))
+                return err("which", "Which saved page should go? Give its number from saved_list. Saved: " + ReadLater.titles(c));
+            JSONObject e = ReadLater.find(c, item);
+            if (e == null) return err("not_found", "No saved page matches '" + item + "'. Saved: " + ReadLater.titles(c));
+            if (m.equals("saved_delete")) {
+                ReadLater.remove(c, e.optString("id"));
+                return ok().put("removed", e.optString("title")).toString();
+            }
+            String t = ReadLater.text(c, e.optString("id"));
+            if (t.trim().isEmpty()) return err("empty", "That saved page has no text left.");
+            ScreenReader.get(c).read(e.optString("title"), t);
+            return ok().put("reading", e.optString("title")).put("next", "Say only one short line like 'చదువుతున్నాను'; the phone voice reads it.").toString();
+        }
         if (m.startsWith("bubble")) {
             boolean on = !m.endsWith("off");
             FloatBubble.set(c, on);
@@ -3814,11 +3836,19 @@ final class Tools {
             }
             return ok().put("floating_button", on ? "on (a small Jarvis globe at the side of the screen; tap it for options, hold it to talk)" : "off").toString();
         }
-        if (m.equals("stop") || m.equals("pause") || m.equals("resume")) {
+        if (m.equals("stop") || m.equals("pause") || m.equals("resume") || m.equals("faster") || m.equals("slower") || m.equals("next") || m.equals("back")) {
             ScreenReader r = ScreenReader.get(c);
             if (!r.active()) return err("not_reading", "Nothing from the screen is being read now.");
-            if (m.equals("stop")) r.stop(); else if (m.equals("pause")) r.pause(); else r.resume();
-            return ok().put("reading", m).toString();
+            switch (m) {
+                case "stop": r.stop(); break;
+                case "pause": r.pause(); break;
+                case "resume": r.resume(); break;
+                case "faster": r.faster(true); break;
+                case "slower": r.faster(false); break;
+                case "next": r.skip(1); break;
+                default: r.skip(-1);
+            }
+            return ok().put("reading", m).put("next", "Say nothing or one word; the reading goes on.").toString();
         }
         if (!JarvisAccessibility.enabled()) return err("screen_access_off", "Jarvis needs its accessibility switch ('Jarvis స్క్రీన్') to read the screen.");
         JarvisAccessibility.Capture cap = JarvisAccessibility.recent(90000);
@@ -3838,6 +3868,11 @@ final class Tools {
             return err("money_app", "That is a banking / payment app: its screen is not sent to the AI. 'చదువు' (read aloud on the phone) still works.");
         String whole = cap.page(4000); // the whole page, read from his app's window when the capture was taken
         String page = whole.trim().length() > 40 ? whole : text;
+        if (m.equals("save")) {
+            if (isMoneyApp(c, cap.pkg)) return err("money_app", "A banking / payment app's screen is not saved.");
+            JSONObject e = ReadLater.save(c, null, label(cap.pkg), page);
+            return ok().put("saved", e.optString("title")).put("note", "'సేవ్ చేసినవి చదువు' reads it later.").toString();
+        }
         if (m.startsWith("read")) { // the whole page with the phone voice, from where he is (not through the AI)
             ScreenReader.get(c).read(label(cap.pkg), page);
             return ok().put("app", label(cap.pkg)).put("reading", "started with the phone voice: the whole page from where he is")

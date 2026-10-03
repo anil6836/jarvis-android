@@ -1190,6 +1190,48 @@ public class JarvisAccessibility extends AccessibilityService {
         return (prose.length() >= 300 ? prose : all).toString().trim(); // an article: its sentences; a chat or list: everything
     }
 
+    /**
+     * Puts this text in the message box of the app in front (the focused box, else the lowest one on the screen,
+     * where chats keep it). Never presses send: Anil reads it and sends it himself. Any thread.
+     */
+    /** 1 = typed, 0 = no message box, -1 = the box already has his own words (left alone), -2 = another app is in front. */
+    static int typeInChat(String text, String pkg) {
+        JarvisAccessibility s = instance;
+        if (s == null || text == null) return 0;
+        try {
+            AccessibilityNodeInfo root = s.appRoot();
+            if (root == null) return 0;
+            if (pkg != null && (root.getPackageName() == null || !pkg.contentEquals(root.getPackageName()))) return -2;
+            AccessibilityNodeInfo box = null;
+            { // the lowest message box on the screen (a chat keeps it at the bottom; a search box at the top is not it)
+                int best = -1;
+                java.util.ArrayDeque<AccessibilityNodeInfo> st = new java.util.ArrayDeque<>();
+                st.push(root);
+                android.graphics.Rect r = new android.graphics.Rect();
+                for (int n = 0; !st.isEmpty() && n < 3000; n++) {
+                    AccessibilityNodeInfo x = st.pop();
+                    if (x.isEditable() && !x.isPassword() && x.isVisibleToUser()) {
+                        x.getBoundsInScreen(r);
+                        if (r.bottom > best) { best = r.bottom; box = x; }
+                    }
+                    for (int i = x.getChildCount() - 1; i >= 0; i--) { AccessibilityNodeInfo ch = x.getChild(i); if (ch != null) st.push(ch); }
+                }
+            }
+            if (box == null) return 0;
+            CharSequence has = box.getText();
+            if (has != null && has.toString().trim().length() > 0 && !box.isShowingHintText()) return -1; // his draft stays
+            box.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            android.os.Bundle b = new android.os.Bundle();
+            b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+            return box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b) ? 1 : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** The package of the last window in front (any, also the home screen). */
+    static String frontPackage() { return frontPkg; }
+
     /** An app's name as Anil sees it. */
     static String label(android.content.Context c, String pkg) {
         if (pkg == null || pkg.isEmpty()) return "స్క్రీన్";

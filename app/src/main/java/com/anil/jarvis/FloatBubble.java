@@ -42,7 +42,13 @@ final class FloatBubble implements ScreenReader.Listener {
         JarvisAccessibility.syncBubble();
     }
 
-    private static final int READ = 0, MEANING = 1, ABOUT = 2, TELUGU = 3, REPLY = 4, SCAM = 5;
+    private static final int READ = 0, MEANING = 1, ABOUT = 2, TELUGU = 3, REPLY = 4, SCAM = 5, PHOTO = 6, REMIND = 7, PRICE = 8, VIDEO = 9,
+            WORDS = 10, SAVE = 11, ASK = 12, HIDE = 13;
+    /** {kind, label} of every option; the order changes with the app in front. */
+    private static final Object[][] OPTIONS = {
+            {READ, "📖 చదువు"}, {MEANING, "🧠 అర్థం చెప్పు"}, {ABOUT, "💡 దీని గురించి"}, {TELUGU, "🌐 తెలుగులో"}, {PHOTO, "🖼️ ఫోటో చదువు"},
+            {REPLY, "💬 జవాబు"}, {REMIND, "⏰ గుర్తుపెట్టు"}, {SCAM, "🛡️ మోసమా?"}, {PRICE, "🛒 ధర పోలిక"}, {VIDEO, "🎬 వీడియో"},
+            {WORDS, "📚 పదాలు"}, {SAVE, "💾 తర్వాత చదువు"}, {ASK, "🎙️ అడుగు"}, {HIDE, "✕ దాచు"}};
 
     private final AccessibilityService svc;
     private final WindowManager wm;
@@ -59,13 +65,14 @@ final class FloatBubble implements ScreenReader.Listener {
     private View cardActions;
     private boolean away, held, busy, longPressed, dragging, gone, menuWasOpen;
     private long menuClosedAt;
-    private String lastAnswer = "";
+    private String lastAnswer = "", lastTitle = "", replyPkg = "";
     // the talk about this screen: what was read, the picture, and what was said (for 🎙️ follow-up questions)
     private String ctxApp = "", ctxPage = "", ctxShot;
     private final java.util.ArrayDeque<String[]> turns = new java.util.ArrayDeque<>();
     private android.speech.SpeechRecognizer sr;
     private boolean listening;
-    private TextView micBtn;
+    private TextView micBtn, extraBtn;
+    private LinearLayout cardRow2;
     private float downX, downY;
     private int startX, startY;
 
@@ -285,6 +292,24 @@ final class FloatBubble implements ScreenReader.Listener {
     // ================================================================ the small options
 
     private LinearLayout items;
+    private int chipW;
+
+    /** What kind of app is in front: the options that fit it come first. */
+    private static int[] firstFor(String pkg) {
+        String p = pkg == null ? "" : pkg.toLowerCase(java.util.Locale.ROOT);
+        if (p.contains("whatsapp") || p.contains("telegram") || p.contains("messag") || p.contains("mms") || p.contains("instagram")
+                || p.contains("signal") || p.contains("sms") || p.contains("orca")) return new int[]{REPLY, MEANING, SCAM, REMIND, PHOTO};
+        if (p.contains("amazon") || p.contains("flipkart") || p.contains("meesho") || p.contains("myntra") || p.contains("ajio") || p.contains("jiomart")
+                || p.contains("bigbasket") || p.contains("grofers") || p.contains("zepto") || p.contains("nykaa") || p.contains("tatacliq")
+                || p.contains("croma") || p.contains("reliance") || p.contains("snapdeal")) return new int[]{PRICE, ABOUT, SCAM};
+        if (p.contains("youtube") || p.contains("mxtech") || p.contains("hotstar") || p.contains("netflix") || p.contains("primevideo")
+                || p.contains("jiocinema") || p.contains("video")) return new int[]{VIDEO, ABOUT, MEANING};
+        if (p.contains("gallery") || p.contains("photos") || p.contains("camera")) return new int[]{PHOTO, ABOUT, MEANING};
+        if (p.contains("chrome") || p.contains("browser") || p.contains("firefox") || p.contains("opera") || p.contains("emmx") || p.contains("brave")
+                || p.contains("news") || p.contains("eterno") || p.contains("inshorts") || p.contains("eenadu") || p.contains("sakshi") || p.contains("way2"))
+            return new int[]{READ, MEANING, ABOUT, TELUGU, WORDS, SAVE};
+        return new int[]{READ, MEANING, ABOUT};
+    }
 
     private void showMenu() {
         if (bubble == null || menu != null) return;
@@ -298,21 +323,40 @@ final class FloatBubble implements ScreenReader.Listener {
         bg.setCornerRadius(dp(16));
         menu.setBackground(bg);
         menu.setPadding(dp(6), dp(6), dp(6), dp(6));
-        if (reader.active()) {
-            item(reader.paused() ? "▶  కొనసాగించు" : "⏸  ఆపు", reader::toggle);
-            item("⏹  చదవడం ఆపేయి", reader::stop);
+        if (reader.active()) { // reading: ⏮ ⏸ ⏭ 🐢 ⏩ ⏹
+            LinearLayout row = new LinearLayout(svc);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.addView(control("⏮", () -> reader.skip(-1)));
+            row.addView(control(reader.paused() ? "▶" : "⏸", reader::toggle));
+            row.addView(control("⏭", () -> reader.skip(1)));
+            row.addView(control("🐢", () -> reader.faster(false)));
+            row.addView(control("⏩", () -> reader.faster(true)));
+            row.addView(control("⏹", reader::stop));
+            TextView sp = new TextView(svc);
+            sp.setText(String.format(java.util.Locale.ENGLISH, "%.1fx", reader.speed()));
+            sp.setTextColor(Ui.CYAN);
+            sp.setTextSize(12f);
+            sp.setPadding(dp(4), 0, dp(6), 0);
+            row.addView(sp);
+            items.addView(row);
         }
-        item("📖  చదువు", () -> act(READ));
-        item("🧠  అర్థం చెప్పు", () -> act(MEANING));
-        item("💡  దీని గురించి", () -> act(ABOUT));
-        item("🌐  తెలుగులో", () -> act(TELUGU));
-        item("💬  జవాబు", () -> act(REPLY));
-        item("🛡️  మోసమా?", () -> act(SCAM));
-        item("🎙️  అడుగు", this::ask);
-        item("✕  దాచు", () -> {
-            set(svc, false);
-            Toast.makeText(svc, "Jarvis బటన్ దాచాను. సెట్టింగ్స్ → ఫ్లోటింగ్ బటన్ లో మళ్ళీ ఆన్ చేయొచ్చు.", Toast.LENGTH_LONG).show();
-        });
+        // the options: what fits this app first (lit), then the rest; two to a row
+        String front = JarvisAccessibility.frontPackage();
+        if (JarvisAccessibility.isKeyboard(front) || "com.android.systemui".equals(front)) front = JarvisAccessibility.currentPackage();
+        int[] first = firstFor(front);
+        int room = screenW() - size - dp(26); // beside the button
+        chipW = Math.min(dp(134), room / 2 - dp(6));
+        int cols = chipW < dp(96) ? 1 : 2;
+        if (cols == 1) chipW = Math.min(dp(200), room - dp(12));
+        java.util.List<Object[]> order = new java.util.ArrayList<>();
+        for (int k : first) for (Object[] o : OPTIONS) if ((int) o[0] == k) order.add(o);
+        for (Object[] o : OPTIONS) if (!order.contains(o)) order.add(o);
+        LinearLayout row = null;
+        for (int i = 0; i < order.size(); i++) {
+            if (i % cols == 0) { row = new LinearLayout(svc); items.addView(row); }
+            final int kind = (int) order.get(i)[0];
+            row.addView(chip((String) order.get(i)[1], i < first.length, () -> option(kind)));
+        }
         final int maxH = screenH() - dp(80);
         ScrollView sc = new ScrollView(svc) {
             @Override protected void onMeasure(int w, int h) { super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(maxH, View.MeasureSpec.AT_MOST)); }
@@ -337,15 +381,49 @@ final class FloatBubble implements ScreenReader.Listener {
         main.removeCallbacks(fade);
     }
 
-    private void item(String label, Runnable r) {
+    private TextView chip(String label, boolean lit, Runnable r) {
         TextView t = new TextView(svc);
         t.setText(label);
         t.setTextColor(0xFFFFFFFF);
-        t.setTextSize(14.5f);
+        t.setTextSize(13.5f);
         t.setSingleLine(true);
-        t.setPadding(dp(12), dp(9), dp(16), dp(9));
+        t.setEllipsize(TextUtils.TruncateAt.END);
+        t.setPadding(dp(10), dp(9), dp(8), dp(9));
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(lit ? FaceRig.withAlpha(Ui.CYAN, 0x30) : 0x14FFFFFF);
+        g.setCornerRadius(dp(12));
+        t.setBackground(g);
         t.setOnClickListener(v -> { hideMenu(); r.run(); });
-        items.addView(t);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(chipW, -2);
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        t.setLayoutParams(lp);
+        return t;
+    }
+
+    private TextView control(String icon, Runnable r) {
+        TextView t = new TextView(svc);
+        t.setText(icon);
+        t.setTextSize(17f);
+        t.setTextColor(0xFFFFFFFF);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(8), dp(6), dp(8), dp(8));
+        t.setOnClickListener(v -> {
+            r.run();
+            if (icon.equals("⏹")) { hideMenu(); return; }
+            main.postDelayed(() -> { if (menu != null && !away && !held) { hideMenu(); showMenu(); } }, 150); // stays open with the new state
+        });
+        return t;
+    }
+
+    private void option(int kind) {
+        switch (kind) {
+            case ASK: ask(); break;
+            case HIDE:
+                set(svc, false);
+                Toast.makeText(svc, "Jarvis బటన్ దాచాను. సెట్టింగ్స్ → ఫ్లోటింగ్ బటన్ లో మళ్ళీ ఆన్ చేయొచ్చు.", Toast.LENGTH_LONG).show();
+                break;
+            default: act(kind);
+        }
     }
 
     private void hideMenu() {
@@ -374,66 +452,182 @@ final class FloatBubble implements ScreenReader.Listener {
 
     private void act(int kind) {
         if (busy) { Toast.makeText(svc, "ఇంకా ఆలోచిస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
+        lastAnswer = "";
+        lastTitle = "";
         captureThen(cap -> {
             if (cap == null) { showCard("Jarvis", "స్క్రీన్ చూడలేకపోయాను. మళ్ళీ నొక్కండి.", false); return; }
+            if (kind == PHOTO && cap.jpeg == null) { showCard(title(PHOTO), "ఈ ఫోన్‌లో స్క్రీన్‌షాట్ తీయలేకపోయాను (Android 11 పైన కావాలి).", false); return; }
             final String app = JarvisAccessibility.label(svc, cap.pkg);
             final boolean money = Tools.isMoneyApp(svc, cap.pkg) || Tools.isMoneyApp(svc, JarvisAccessibility.currentPackage());
             final Prefs p = new Prefs(svc);
             if (kind != READ && money) {
-                showCard("🔒 " + app, "బ్యాంకింగ్ / పేమెంట్ యాప్ స్క్రీన్‌ని నేను AI కి పంపను. అది మీ చేతుల్లోనే ఉండాలి. '📖 చదువు' మాత్రం ఫోన్‌లోనే చదువుతుంది.", false);
+                showCard("🔒 " + app, "బ్యాంకింగ్ / పేమెంట్ యాప్ స్క్రీన్‌ని నేను AI కి పంపను, సేవ్ కూడా చేయను. అది మీ చేతుల్లోనే ఉండాలి. '📖 చదువు' మాత్రం ఫోన్‌లోనే చదువుతుంది.", false);
                 return;
             }
-            if (kind != READ && !p.hasBrain()) { showCard("Jarvis", "నా మెదడుకి API key లేదు. Jarvis సెట్టింగ్స్‌లో పెట్టండి.", false); return; }
+            boolean ai = kind != READ && kind != SAVE;
+            if (ai && !p.hasBrain()) { showCard("Jarvis", "నా మెదడుకి API key లేదు. Jarvis సెట్టింగ్స్‌లో పెట్టండి.", false); return; }
             busy = true;
             refresh();
-            if (kind != READ) showCard(title(kind), "చూస్తున్నాను, అర్థం చేసుకుంటున్నాను…", true);
+            if (ai) showCard(title(kind), kind == PRICE || kind == VIDEO ? "చూస్తున్నాను, వెబ్‌లో వెతుకుతున్నాను…" : "చూస్తున్నాను, అర్థం చేసుకుంటున్నాను…", true);
             final String shot = cap.jpeg, seen = cap.text == null ? "" : cap.text;
             new Thread(() -> {
                 String pg = cap.page(6000); // the whole page (a long one takes a moment)
                 final String page = pg != null && pg.length() > seen.length() ? pg : seen;
-                if (kind == READ) {
-                    main.post(() -> {
-                        if (gone) return;
-                        busy = false;
-                        refresh();
-                        if (page.trim().length() < 2) {
-                            showCard("📖 చదువు", "ఈ స్క్రీన్‌లో చదవడానికి అక్షరాలు దొరకలేదు. ఫోటో / వీడియో అయితే '💡 దీని గురించి' నొక్కండి.", false);
-                            return;
-                        }
-                        closeCard();
-                        Announcer.stop(); // one voice at a time
-                        reader.read(app, page);
-                    });
-                    return;
-                }
-                String out = null, err = null;
-                final String body = page.length() > 12000 ? page.substring(0, 12000) : page;
-                try {
-                    out = Brain.oneShot(p, system(kind, p.name()), "App on screen: " + app + "\nText read from the screen:\n" + body, shot, false,
-                            kind == MEANING || kind == TELUGU ? 3500 : 900);
-                } catch (Http.ApiError e) {
-                    err = "AI జవాబు ఇవ్వలేదు: " + Models.explain(p, e);
-                } catch (Exception e) {
-                    err = "చేయలేకపోయాను: నెట్ / సమయం సమస్య.";
-                }
-                final String o = out, er = err;
-                main.post(() -> {
-                    if (gone) return;
-                    busy = false;
-                    refresh();
-                    ctxApp = app; // a new talk about this screen (🎙️ asks more about it)
-                    ctxPage = body;
-                    ctxShot = shot;
-                    turns.clear();
-                    if (er != null || o == null || o.trim().isEmpty()) { showCard(title(kind), er != null ? er : "జవాబు రాలేదు. మళ్ళీ ప్రయత్నించండి.", false); return; }
-                    String clean = o.replaceAll("[*#_`>]", "").replaceAll("\n{3,}", "\n\n").trim();
-                    turns.add(new String[]{"Jarvis", clean});
-                    lastAnswer = clean;
-                    showCard(title(kind), clean, false);
-                    speak(kind == REPLY ? "ఇలా జవాబు ఇవ్వొచ్చు: " + clean : clean);
-                });
+                if (kind == READ || kind == SAVE) { pageDone(kind, app, page, shot, p, money); return; }
+                work(kind, app, page, shot, p);
             }, "jarvis-bubble").start();
         });
+    }
+
+    /** 📖 / 💾 with the page's own text (a picture with no text is read by the AI instead, outside money apps). */
+    private void pageDone(int kind, String app, String page, String shot, Prefs p, boolean money) {
+        main.post(() -> {
+            if (gone) return;
+            busy = false;
+            refresh();
+            if (kind == READ && page.trim().length() < 60 && shot != null && !money && p.hasBrain()) { // a poster, a news cutting, a photo: ask first
+                showCard("📖 చదువు", "ఈ స్క్రీన్‌లో అక్షరాలు చాలా తక్కువ. ఫోటోలోని అక్షరాలు చదవనా? (స్క్రీన్ ఫోటో మీ AI కి వెళ్తుంది)",
+                        false, "🖼️ ఫోటో చదువు", () -> act(PHOTO));
+                return;
+            }
+            if (page.trim().length() < 2) {
+                showCard("📖 చదువు", "ఈ స్క్రీన్‌లో చదవడానికి అక్షరాలు దొరకలేదు.", false);
+                return;
+            }
+            if (kind == SAVE) { saveLater(null, app, page); return; }
+            closeCard();
+            Announcer.stop(); // one voice at a time
+            reader.read(app, page);
+        });
+    }
+
+    /** The AI part of an option, on a worker thread; the answer goes to the card and is spoken. */
+    private void work(int kind, String app, String page, String shot, Prefs p) {
+        String out = null, err = null;
+        final String body = page.length() > 12000 ? page.substring(0, 12000) : page;
+        try {
+            boolean web = (kind == PRICE || kind == VIDEO) && p.webSearch();
+            int max = kind == MEANING || kind == TELUGU || kind == PHOTO ? 3500 : kind == PRICE || kind == VIDEO ? 1500 : 900;
+            String extra = kind == REMIND ? "\nNow: " + new java.text.SimpleDateFormat("EEEE yyyy-MM-dd HH:mm", java.util.Locale.ENGLISH).format(new java.util.Date()) : "";
+            out = Brain.oneShot(p, system(kind, p.name()), "App on screen: " + app + extra + "\nText read from the screen:\n" + body, shot, web, max);
+        } catch (Http.ApiError e) {
+            err = "AI జవాబు ఇవ్వలేదు: " + Models.explain(p, e);
+        } catch (Exception e) {
+            err = "చేయలేకపోయాను: నెట్ / సమయం సమస్య.";
+        }
+        final String o = out, er = err;
+        main.post(() -> {
+            if (gone) return;
+            busy = false;
+            refresh();
+            ctxApp = app; // a new talk about this screen (🎙️ asks more about it)
+            ctxPage = body;
+            ctxShot = shot;
+            turns.clear();
+            if (er != null || o == null || o.trim().isEmpty()) { showCard(title(kind), er != null ? er : "జవాబు రాలేదు. మళ్ళీ ప్రయత్నించండి.", false); return; }
+            if (kind == REMIND) { offerReminders(o, app); return; }
+            String clean = (kind == REPLY || kind == PHOTO ? o : o.replaceAll("[*#_`>]", "")).replaceAll("\n{3,}", "\n\n").trim();
+            turns.add(new String[]{"Jarvis", clean});
+            lastAnswer = clean;
+            lastTitle = title(kind) + " · " + app;
+            if (kind == REPLY) {
+                replyPkg = JarvisAccessibility.currentPackage(); // ✍️ types only into this chat app
+                showCard(title(kind), clean, false, "✍️ టైప్ చేయి", () -> typeReply(clean));
+                speak("ఇలా జవాబు ఇవ్వొచ్చు: " + clean);
+            } else if (kind == PHOTO) {
+                showCard(title(kind), clean, false);
+                reader.stop();
+                Announcer.stop();
+                reader.read(app, clean); // the picture's own words, each line in its language
+            } else {
+                showCard(title(kind), clean, false);
+                speak(clean);
+            }
+        });
+    }
+
+    /** ⏰: the dates found on the screen, set only when he taps ✅. */
+    private void offerReminders(String json, String app) {
+        final java.util.List<Object[]> found = new java.util.ArrayList<>(); // {text, event label, alert ms}
+        long now = System.currentTimeMillis();
+        try {
+            String j = json.substring(json.indexOf('{'), json.lastIndexOf('}') + 1);
+            org.json.JSONArray a = new org.json.JSONObject(j).optJSONArray("items");
+            for (int i = 0; a != null && i < a.length() && found.size() < 6; i++) {
+                org.json.JSONObject it = a.getJSONObject(i);
+                String what = it.optString("what").trim(), date = it.optString("date").trim(), time = it.optString("time").trim();
+                if (what.isEmpty() || !date.matches("\\d{4}-\\d{2}-\\d{2}")) continue;
+                boolean timed = time.matches("\\d{1,2}:\\d{2}");
+                long event = Tools.parseLocal(date + " " + (timed ? time : "21:00")); // a day's event lasts the day
+                if (event <= now) continue;
+                long alert;
+                if (timed) alert = event - 3600_000L; // an hour before
+                else {
+                    long day = Tools.parseLocal(date + " 09:00");
+                    alert = it.optBoolean("due") ? day - 86_400_000L : day; // a due date: the morning before
+                }
+                if (alert <= now + 60_000L) alert = Math.max(now + 60_000L, Math.min(event - 10 * 60_000L, now + 5 * 60_000L)); // soon, still before it
+                String label = date + (timed ? " " + time : "");
+                found.add(new Object[]{what + " (" + label + ")", label, alert});
+            }
+        } catch (Exception ignored) {}
+        if (found.isEmpty()) {
+            showCard(title(REMIND), "ఈ స్క్రీన్‌లో ముందు రాబోయే తేదీ / టైమ్ ఏదీ దొరకలేదు.", false);
+            return;
+        }
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.ENGLISH);
+        StringBuilder b = new StringBuilder("ఇవి దొరికాయి. ✅ నొక్కితే రిమైండర్లు పెడతాను:\n");
+        for (Object[] x : found) b.append("\n• ").append(x[0]).append("\n   గుర్తు: ").append(f.format(new java.util.Date((long) x[2])));
+        lastAnswer = b.toString();
+        lastTitle = title(REMIND) + " · " + app;
+        showCard(title(REMIND), lastAnswer, false, "✅ రిమైండర్ పెట్టు", () -> {
+            int n = 0;
+            long t = System.currentTimeMillis();
+            for (Object[] x : found) {
+                long at = Math.max((long) x[2], t + 60_000L); // still ahead when he taps
+                try {
+                    org.json.JSONObject r = Store.get(svc).addReminder((String) x[0], at);
+                    if (r != null) { Reminders.schedule(svc, r); n++; }
+                } catch (Exception ignored) {}
+            }
+            JarvisWidget.refresh(svc);
+            showCard(title(REMIND), n + " రిమైండర్లు పెట్టాను ✓\n" + lastAnswer.substring(lastAnswer.indexOf('\n') + 1), false);
+            Announcer.say(svc, n + " రిమైండర్లు పెట్టాను.");
+        });
+        speak(found.size() + " తేదీలు దొరికాయి. రిమైండర్ పెట్టమంటే ✅ నొక్కండి.");
+    }
+
+    /** 💾 in the background (a file on the phone). */
+    private void saveLater(String title, String app, String text) {
+        new Thread(() -> {
+            boolean ok;
+            try { ReadLater.save(svc, title, app, text); ok = true; } catch (Exception e) { ok = false; }
+            final boolean done = ok;
+            main.post(() -> Toast.makeText(svc, done ? "💾 సేవ్ చేశాను. 'సేవ్ చేసినవి చదువు' అంటే చదువుతాను." : "సేవ్ చేయలేకపోయాను",
+                    done ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show());
+        }, "jarvis-save").start();
+    }
+
+    /** ✍️: the suggested reply goes into the chat box; he reads it and presses send himself. */
+    private void typeReply(String text) {
+        final String pkg = replyPkg;
+        String now = JarvisAccessibility.currentPackage();
+        if (pkg.isEmpty() || !pkg.equals(now) || Tools.isMoneyApp(svc, now)) {
+            Toast.makeText(svc, "జవాబు అడిగిన చాట్ యాప్ ఇప్పుడు ముందు లేదు. అక్కడికి వెళ్ళి ✍️ నొక్కండి (లేదా 📋 కాపీ).", Toast.LENGTH_LONG).show();
+            return;
+        }
+        new Thread(() -> {
+            int r = JarvisAccessibility.typeInChat(text, pkg);
+            main.post(() -> {
+                if (gone) return;
+                String msg = r == 1 ? "మెసేజ్ బాక్సులో పెట్టాను. చూసి మీరే పంపండి."
+                        : r == -1 ? "మెసేజ్ బాక్సులో మీరు రాసింది ఉంది, దాన్ని మార్చలేదు. 📋 కాపీ చేసి పేస్ట్ చేయండి."
+                        : r == -2 ? "జవాబు అడిగిన చాట్ యాప్ ఇప్పుడు ముందు లేదు."
+                        : "మెసేజ్ బాక్స్ దొరకలేదు. 📋 కాపీ చేసి పేస్ట్ చేయండి.";
+                Toast.makeText(svc, msg, Toast.LENGTH_LONG).show();
+                if (r == 1) closeCard();
+            });
+        }, "jarvis-type").start();
     }
 
     private static String title(int kind) {
@@ -441,8 +635,13 @@ final class FloatBubble implements ScreenReader.Listener {
             case MEANING: return "🧠 అర్థం";
             case ABOUT: return "💡 దీని గురించి";
             case TELUGU: return "🌐 తెలుగులో";
-            case REPLY: return "💬 జవాబు (కాపీ చేసి పంపండి)";
+            case REPLY: return "💬 జవాబు సూచన";
             case SCAM: return "🛡️ మోసమా?";
+            case PHOTO: return "🖼️ ఫోటోలోని అక్షరాలు";
+            case REMIND: return "⏰ గుర్తుపెట్టు";
+            case PRICE: return "🛒 ధర పోలిక";
+            case VIDEO: return "🎬 ఈ వీడియో";
+            case WORDS: return "📚 కష్టమైన పదాలు";
             default: return "Jarvis";
         }
     }
@@ -464,6 +663,29 @@ final class FloatBubble implements ScreenReader.Listener {
             case REPLY:
                 return who + "This is a chat, message or email. Suggest ONE short, polite, natural reply he could send, in the same language the other person used "
                         + "(Telugu, English or mixed). Output only the reply text, nothing else.";
+            case PHOTO:
+                return "You read pictures aloud for Jarvis, " + name + "'s assistant. Read out all the text in the picture on his screen (posters, newspaper "
+                        + "cuttings, images in a chat, screenshots), in reading order, exactly as written, in its own language (Telugu or English). Leave out the phone's "
+                        + "status bar, the app's buttons and menus. Output only that text, one line per line of the picture, no comments. "
+                        + "If the picture has no text, write one Telugu sentence saying what the picture shows.";
+            case REMIND:
+                return "You help Jarvis, " + name + "'s assistant, set reminders from his screen. Find upcoming dates and times on it worth a reminder: meetings, "
+                        + "appointments, bill / EMI / fee due dates, journeys and tickets, events, deliveries, exams. Use the 'Now' line for the year and for "
+                        + "'tomorrow' / weekdays. Reply with JSON only: {\"items\":[{\"what\":\"short Telugu text of what it is\",\"date\":\"yyyy-MM-dd\","
+                        + "\"time\":\"HH:mm, or empty when no time is given\",\"due\":true when it is a last date / deadline}]}: the event's own date and time "
+                        + "(not when to remind). Only things still ahead. Nothing found: {\"items\":[]}.";
+            case PRICE:
+                return who + "He is looking at a product in a shopping app. Identify the exact product (brand, model, size or variant) and its price here. "
+                        + "Then search the web for its current price at other Indian stores (Amazon, Flipkart, Croma, Reliance Digital, JioMart, the brand's own site...) "
+                        + "and tell him: the price here, the prices found elsewhere with store names, whether this is a good deal, and what to check (seller rating, "
+                        + "return policy, an inflated MRP 'discount'). Say clearly when you could not find a price; never invent one. 5-9 sentences.";
+            case VIDEO:
+                return who + "He is watching or looking at a video (YouTube or another app). From the title, channel and description on the screen, and the web "
+                        + "if needed, tell him what the video is about, its main points if known, who made it, and for news, health or money claims whether it "
+                        + "seems trustworthy. 5-10 sentences.";
+            case WORDS:
+                return who + "List 8-12 English words or phrases on this screen that may be hard for him, one per line: the word, then ' — ', then its simple "
+                        + "Telugu meaning, and if useful a very short example in English. Only the list.";
             default: // SCAM
                 return who + "Check whether this message or page is a scam, fraud or fake news: asking for OTP / PIN / passwords, KYC or account-block threats, "
                         + "lottery or prize, offers too good to be true, urgent payment requests, odd links or apps to install, fake bank or government names, "
@@ -626,6 +848,7 @@ final class FloatBubble implements ScreenReader.Listener {
                 turns.add(new String[]{"Jarvis", clean});
                 while (turns.size() > 10) turns.poll(); // the last few exchanges are enough
                 lastAnswer = clean;
+                lastTitle = "💬 " + q + " · " + ctxApp;
                 showCard("💬 " + q, clean, false);
                 speak(clean);
             });
@@ -634,13 +857,24 @@ final class FloatBubble implements ScreenReader.Listener {
 
     // ================================================================ the answer card
 
-    private void showCard(String title, String text, boolean working) {
+    private void showCard(String title, String text, boolean working) { showCard(title, text, working, null, null); }
+
+    /** The card; extra = one more button for this answer (✍️ type the reply, ✅ set the reminders), or none. */
+    private void showCard(String title, String text, boolean working, String extra, Runnable extraDo) {
         if (gone || locked()) return;
         if (card == null) buildCard();
         if (card == null) return;
         cardTitle.setText(title);
         cardText.setText(text);
         cardActions.setVisibility(working ? View.GONE : View.VISIBLE);
+        cardRow2.setVisibility(lastAnswer.isEmpty() && extra == null ? View.GONE : View.VISIBLE); // copy / save / share need an answer
+        for (int i = 1; i < cardRow2.getChildCount(); i++) cardRow2.getChildAt(i).setVisibility(lastAnswer.isEmpty() ? View.GONE : View.VISIBLE);
+        if (extra == null) extraBtn.setVisibility(View.GONE);
+        else {
+            extraBtn.setText(extra);
+            extraBtn.setOnClickListener(v -> extraDo.run());
+            extraBtn.setVisibility(View.VISIBLE);
+        }
     }
 
     private void buildCard() {
@@ -676,19 +910,42 @@ final class FloatBubble implements ScreenReader.Listener {
         sv.addView(cardText);
         card.addView(sv);
         LinearLayout actions = new LinearLayout(svc);
-        actions.setGravity(Gravity.END);
+        actions.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row1 = new LinearLayout(svc), row2 = new LinearLayout(svc);
+        row1.setGravity(Gravity.END);
+        row2.setGravity(Gravity.END);
         micBtn = button("🎙️ అడుగు", v -> listenFollowUp());
         micBtn.setTextColor(Ui.CYAN);
-        actions.addView(micBtn);
-        actions.addView(button("🔊 మళ్ళీ", v -> { if (!lastAnswer.isEmpty()) speak(lastAnswer); }));
-        actions.addView(button("⏹ ఆపు", v -> { reader.stop(); Announcer.stop(); }));
-        actions.addView(button("📋 కాపీ", v -> {
+        row1.addView(micBtn);
+        row1.addView(button("🔊 మళ్ళీ", v -> { if (!lastAnswer.isEmpty()) speak(lastAnswer); }));
+        row1.addView(button("⏹ ఆపు", v -> { reader.stop(); Announcer.stop(); }));
+        extraBtn = button("", v -> {});
+        extraBtn.setTextColor(0xFF7CF5B0);
+        extraBtn.setVisibility(View.GONE);
+        row2.addView(extraBtn);
+        row2.addView(button("📋 కాపీ", v -> {
             ClipboardManager cm = svc.getSystemService(ClipboardManager.class);
             if (cm != null && !lastAnswer.isEmpty()) {
                 cm.setPrimaryClip(ClipData.newPlainText("Jarvis", lastAnswer));
                 Toast.makeText(svc, "కాపీ చేశాను", Toast.LENGTH_SHORT).show();
             }
         }));
+        row2.addView(button("💾 సేవ్", v -> {
+            if (!lastAnswer.isEmpty()) saveLater(lastTitle, ctxApp, lastAnswer);
+        }));
+        row2.addView(button("📤 షేర్", v -> { // he picks the person and sends it himself
+            if (lastAnswer.isEmpty()) return;
+            try {
+                Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, lastAnswer);
+                svc.startActivity(Intent.createChooser(send, "ఎవరికి పంపాలి?").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                closeCard(); // out of the way of the share screen
+            } catch (Exception e) {
+                Toast.makeText(svc, "షేర్ తెరవలేకపోయాను", Toast.LENGTH_SHORT).show();
+            }
+        }));
+        actions.addView(row1);
+        actions.addView(row2);
+        cardRow2 = row2;
         cardActions = actions;
         card.addView(actions);
         WindowManager.LayoutParams clp = new WindowManager.LayoutParams(screenW() - dp(24), WindowManager.LayoutParams.WRAP_CONTENT,
@@ -718,5 +975,7 @@ final class FloatBubble implements ScreenReader.Listener {
         cardText = null;
         cardActions = null;
         micBtn = null;
+        extraBtn = null;
+        cardRow2 = null;
     }
 }

@@ -107,6 +107,36 @@ final class ScreenReader {
 
     void toggle() { if (paused) resume(); else pause(); }
 
+    private float speed = 1f;
+
+    float speed() { return speed; }
+
+    /** Faster (+) or slower (-): the paragraph being read starts again at the new speed. */
+    void faster(boolean up) {
+        main.post(() -> {
+            speed = Math.max(0.6f, Math.min(2.2f, speed + (up ? 0.2f : -0.2f)));
+            restartPart();
+            changed();
+        });
+    }
+
+    /** A paragraph forward (n > 0) or back (n < 0). */
+    void skip(int n) {
+        main.post(() -> {
+            if (!active) return;
+            if (at + n >= parts.size()) { stopNow(true); return; } // past the last paragraph: done
+            at = Math.max(0, at + n);
+            restartPart();
+        });
+    }
+
+    private void restartPart() {
+        if (!active || paused) return;
+        utt++;
+        try { tts.stop(); } catch (Exception ignored) {}
+        speakNext();
+    }
+
     void stop() { main.post(() -> stopNow(true)); }
 
     private void stopNow(boolean tell) {
@@ -131,7 +161,7 @@ final class ScreenReader {
         if (!takeFocus()) { stopNow(true); return; } // a call, or the system said no: not over it
         String p = parts.get(at);
         try { tts.setLanguage(Lang.of(p)); } catch (Exception ignored) {}
-        tts.setSpeechRate(new Prefs(app).speechRate());
+        tts.setSpeechRate(new Prefs(app).speechRate() * speed);
         String said = Spoken.say(p);
         int max = TextToSpeech.getMaxSpeechInputLength() - 10;
         if (said.length() > max) said = said.substring(0, max);
