@@ -223,8 +223,10 @@ final class Tools {
         DEFS.add(new Def("english_practice", "Start a live spoken-language practice session: Jarvis talks in simple English (or Hindi), gently corrects his mistakes with a short Telugu explanation, and keeps the conversation going. Use for 'English practice', 'ఇంగ్లీష్ నేర్పించు', 'English మాట్లాడదాం', 'హిందీ నేర్పించు' (language Hindi).",
                 schema(new String[][]{{"topic", "string", "Optional topic to talk about (job interview, travel, office, daily life…)"},
                         {"language", "string", "English (default) or Hindi"}})));
-        DEFS.add(new Def("read_screen", "Read the article/page on his screen aloud (mode read) or summarise it (mode summary).",
-                schema(new String[][]{{"mode", "string", "read or summary"}})));
+        DEFS.add(new Def("read_screen", "What is on his screen (a web page in Chrome or any browser, an article, messages): read = read it aloud with the phone voice, "
+                + "the whole page from where he is; meaning = understand the content and tell its meaning in Telugu (not a translation); telugu = translate it into Telugu; "
+                + "summary = a short Telugu summary; pause / resume / stop = the reading; bubble_on / bubble_off = the floating Jarvis button.",
+                schema(new String[][]{{"mode", "string", "read, meaning, telugu, summary, pause, resume, stop, bubble_on or bubble_off"}})));
         DEFS.add(new Def("jarvis_mood", "Change how Jarvis talks: normal, serious, funny, english (reply in English), short (very brief); "
                 + "think_always = every answer thought through at length (slower, costs more), think_normal = only when he asks 'బాగా ఆలోచించి చెప్పు'. "
                 + "feeling (+ why): quietly note how HE feels when he shows a clear strong feeling (tired, sad, stressed, angry, worried, happy), "
@@ -3801,7 +3803,24 @@ final class Tools {
     }
 
     private String readScreen(String mode) throws Exception {
-        if (!JarvisAccessibility.enabled()) return err("screen_access_off", "Jarvis needs its accessibility switch to read the screen.");
+        String m = mode == null || mode.trim().isEmpty() ? "read" : mode.trim().toLowerCase(Locale.ROOT);
+        Activity c = act();
+        if (m.startsWith("bubble")) {
+            boolean on = !m.endsWith("off");
+            FloatBubble.set(c, on);
+            if (on && !JarvisAccessibility.enabled()) {
+                onUi(() -> c.startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+                return err("screen_access_off", "The floating button lives in the 'Jarvis స్క్రీన్' accessibility switch. Accessibility settings were opened: once Anil switches it on, the button appears.");
+            }
+            return ok().put("floating_button", on ? "on (a small Jarvis globe at the side of the screen; tap it for options, hold it to talk)" : "off").toString();
+        }
+        if (m.equals("stop") || m.equals("pause") || m.equals("resume")) {
+            ScreenReader r = ScreenReader.get(c);
+            if (!r.active()) return err("not_reading", "Nothing from the screen is being read now.");
+            if (m.equals("stop")) r.stop(); else if (m.equals("pause")) r.pause(); else r.resume();
+            return ok().put("reading", m).toString();
+        }
+        if (!JarvisAccessibility.enabled()) return err("screen_access_off", "Jarvis needs its accessibility switch ('Jarvis స్క్రీన్') to read the screen.");
         JarvisAccessibility.Capture cap = JarvisAccessibility.recent(90000);
         // A fresh capture only when Jarvis's own screen is not in front (it would read Jarvis's chat).
         if ((cap == null || cap.text.trim().isEmpty()) && !MainActivity.visible) cap = JarvisAccessibility.captureBlocking(2500);
@@ -3815,11 +3834,27 @@ final class Tools {
             if (t.length() >= 25 || (t.length() > 3 && t.endsWith("."))) b.append(t).append('\n'); // skip buttons and menus
         }
         String text = b.length() > 0 ? b.toString() : cap.text;
+        if (!m.startsWith("read") && (isMoneyApp(c, cap.pkg) || isMoneyApp(c, JarvisAccessibility.currentPackage())))
+            return err("money_app", "That is a banking / payment app: its screen is not sent to the AI. 'చదువు' (read aloud on the phone) still works.");
+        String whole = cap.page(4000); // the whole page, read from his app's window when the capture was taken
+        String page = whole.trim().length() > 40 ? whole : text;
+        if (m.startsWith("read")) { // the whole page with the phone voice, from where he is (not through the AI)
+            ScreenReader.get(c).read(label(cap.pkg), page);
+            return ok().put("app", label(cap.pkg)).put("reading", "started with the phone voice: the whole page from where he is")
+                    .put("next", "Say only one short line like 'చదువుతున్నాను' (he can say 'ఆపు' to stop); do not read the text yourself.").toString();
+        }
+        if (m.startsWith("mean")) {
+            if (page.length() > 12000) page = page.substring(0, 12000);
+            return ok().put("app", label(cap.pkg)).put("text", page)
+                    .put("next", "Understand all of it and tell him its meaning in Telugu like a knowledgeable friend: every important point, fact, number, date and name "
+                            + "in a natural order, hard words and background explained simply, what it means for him if that matters. Not a word-for-word translation. "
+                            + "For a long article about 12-25 sentences.").toString();
+        }
         if (text.length() > 6000) text = text.substring(0, 6000);
-        boolean summary = mode != null && mode.toLowerCase(Locale.ROOT).startsWith("sum");
+        boolean telugu = m.startsWith("tel") || m.startsWith("trans");
         return ok().put("app", label(cap.pkg)).put("text", text)
-                .put("next", summary ? "Summarise it in Telugu in 3-5 sentences."
-                        : "Read it aloud: reply with the article text itself (in its own language, cleaned of menus), up to about 2000 characters, no comments.")
+                .put("next", telugu ? "Translate the main content into Telugu faithfully, sentence by sentence (names and numbers kept); only the translation."
+                        : "Summarise it in Telugu in 3-5 sentences.")
                 .toString();
     }
 
@@ -4863,6 +4898,21 @@ final class Tools {
             if (lit != null && lit.isHeld()) lit.release();
         }
     }
+
+    /** Banking, payment, trading and code apps: their screens never go to the AI from the screen tools. */
+    static boolean isMoneyApp(android.content.Context c, String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        if (noAgent(pkg)) return true;
+        String low = pkg.toLowerCase(Locale.ROOT);
+        for (String m : MONEY_MORE) if (low.contains(m)) return true;
+        String label = c == null ? "" : JarvisAccessibility.label(c, pkg).toLowerCase(Locale.ROOT);
+        return label.matches(".*(\\bbank\\b|\\bpay\\b|\\bupi\\b|wallet|authenticator|\\bnet ?banking\\b|ఖాతా|బ్యాంక్).*");
+    }
+
+    private static final String[] MONEY_MORE = {"dreamplug", "com.version1", "atomyes", "fedmobile", "authenticator", "authy", "zerodha",
+            "groww", "upstox", "angelone", "angelbroking", "com.dhan", "fivepaisa", "5paisa", "indmoney", "indwealth", "money.jupiter", "fi.money",
+            "kotak", "canara", "unionbank", "bankofbaroda", "indusind", "idfc", "rblbank", "com.pnb", "ippb", "postoffice",
+            "bitwarden", "lastpass", "1password", "keepass", "dashlane"};
 
     private static boolean noAgent(String pkg) {
         String low = pkg.toLowerCase(Locale.ROOT);
@@ -6555,6 +6605,8 @@ final class Tools {
         if (cap == null) {
             return err("no_recent_screen", "Jarvis's own screen is covering the phone. Ask Anil to open the screen he wants, then call you with the wake word 'Jarvis' and ask again.");
         }
+        if (isMoneyApp(act(), cap.pkg) || isMoneyApp(act(), JarvisAccessibility.currentPackage()))
+            return err("money_app", "That is a banking / payment app: its screen is not sent to the AI. Anil reads it himself.");
         String q = question == null || question.trim().isEmpty() ? "What is on this screen?" : question;
         String prompt = "Question: " + q + "\nApp on screen: " + cap.pkg
                 + "\nText read from the screen:\n" + (cap.text.length() > 3000 ? cap.text.substring(0, 3000) : cap.text);

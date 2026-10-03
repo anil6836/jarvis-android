@@ -90,6 +90,12 @@ public class SettingsActivity extends Activity {
     /** The card being filled (each section is its own coloured glass card); page holds the cards. */
     private LinearLayout box, page;
     private LinearLayout peopleBox;   // the faces Jarvis knows (Jarvis ముఖం)
+    private Runnable bubbleMark;      // the floating button's line (back from Accessibility settings)
+
+    private void openScreenAccess() {
+        try { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); } catch (Exception ignored) {}
+        Toast.makeText(this, "Accessibility లో 'Jarvis స్క్రీన్' ఆన్ చేయండి (గ్రే అయితే: App info → ⋮ → Allow restricted settings)", Toast.LENGTH_LONG).show();
+    }
     private int accent = Ui.C_CYAN;
 
     @Override protected void onCreate(Bundle b) {
@@ -204,6 +210,26 @@ public class SettingsActivity extends Activity {
         note("కొత్తవాళ్లను పరిచయం చేయడానికి: వాళ్లు ఒక్కరే ఫోన్ వైపు చూస్తుండగా \"Jarvis, ఇతను రాము, గుర్తుపెట్టుకో\" అనండి; మిమ్మల్ని మీరు: \"నన్ను గుర్తుపెట్టుకో\". "
                 + "మీరు పరిచయం చేసినవాళ్లనే పేరుతో గుర్తుపడతాడు, తెలియనివాళ్లను గుర్తుపెట్టుకోడు. ముఖాల గుర్తులు (ఫోటోలు కాదు) ఈ ఫోన్‌లో మాత్రమే ఉంటాయి, బ్యాకప్‌లోకి వెళ్లవు. "
                 + "మొదటిసారి సుమారు 23 MB మోడల్ ఒక్కసారి డౌన్‌లోడ్ అవుతుంది (FaceNet, Apache-2.0 / MIT). ఇంట్లోవాళ్లకి ఈ విషయం చెప్పండి.");
+
+        // ---- the floating Jarvis button over every app (applies at once)
+        section("ఫ్లోటింగ్ బటన్");
+        note("ఏ యాప్‌లో ఉన్నా (Chrome, ఇంకో బ్రౌజర్, WhatsApp, వార్తల యాప్…) స్క్రీన్ పక్కన చిన్న రౌండ్ Jarvis గ్లోబ్ ఉంటుంది. నొక్కితే చిన్న ఆప్షన్లు: "
+                + "📖 చదువు (పేజీ మొత్తం, మీరు ఉన్న చోటు నుంచి), 🧠 అర్థం చెప్పు (మ్యాటర్ అర్థం చేసుకుని తెలుగులో వివరంగా), 💡 దీని గురించి (చిన్నగా), "
+                + "🌐 తెలుగులో (అనువాదం), 💬 జవాబు సూచన, 🛡️ మోసమా? చెక్, 🎙️ అడుగు. ఎక్కువసేపు నొక్కి పట్టుకుంటే Jarvis వింటాడు. లాగి ఎక్కడైనా పెట్టొచ్చు.");
+        TextView[] bb = new TextView[1];
+        bubbleMark = () -> bb[0].setText(!FloatBubble.on(this) ? "⚪  ఫ్లోటింగ్ బటన్: ఆఫ్ (ఆన్ చేయడానికి నొక్కండి)"
+                : JarvisAccessibility.enabled() ? "🔵  ఫ్లోటింగ్ బటన్: ఆన్ (ఆపడానికి నొక్కండి)"
+                : "⚠️  ఫ్లోటింగ్ బటన్ ఆన్, కానీ 'Jarvis స్క్రీన్' స్విచ్ ఆఫ్‌లో ఉంది (ఆన్ చేయడానికి నొక్కండి)");
+        bb[0] = button("", v -> {
+            if (FloatBubble.on(this) && !JarvisAccessibility.enabled()) { openScreenAccess(); return; }
+            boolean on = !FloatBubble.on(this);
+            FloatBubble.set(this, on);
+            if (on && !JarvisAccessibility.enabled()) openScreenAccess();
+            bubbleMark.run();
+        });
+        bubbleMark.run();
+        note("ఇది 'Jarvis స్క్రీన్' (Accessibility) స్విచ్ ద్వారా పనిచేస్తుంది, వేరే అనుమతి అక్కర్లేదు. పాస్‌వర్డ్‌లు చదవదు; బ్యాంకింగ్ / పేమెంట్ యాప్‌ల స్క్రీన్ AI కి పంపదు. "
+                + "లాక్ స్క్రీన్ మీద, Jarvis స్క్రీన్ మీద, Jarvis ఫోన్ వాడుతున్నప్పుడు కనిపించదు. 'చదువు' ఫోన్ గొంతుతో (ఉచితం, ఆఫ్‌లైన్).");
 
         // ---- brain
         section("Jarvis మెదడు");
@@ -759,6 +785,7 @@ public class SettingsActivity extends Activity {
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         showLock();
+        if (bubbleMark != null) bubbleMark.run();
         // back from "Install unknown apps" after pressing update: carry on installing
         int pendingBuild = Updater.installWhenAllowed;
         if (pendingBuild > 0 && getPackageManager().canRequestPackageInstalls()) {
@@ -1099,11 +1126,11 @@ public class SettingsActivity extends Activity {
     }
 
     private static final String[][] LOOKS = {
-            {"మీరు", "👤"}, {"థీమ్", "🎨"}, {"Jarvis ముఖం", "🙂"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
+            {"మీరు", "👤"}, {"థీమ్", "🎨"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
             {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
             {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"కాపలా", "🛡️"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
             {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},
-            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"చెక్", "🩺"}};
+            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"చెక్", "🩺"}, {"Jarvis ముఖం", "🙂"}, {"ఫ్లోటింగ్", "🔵"}};
     /** Read when used, so they follow the theme. */
     private static int[] cardColors() { return new int[]{Ui.C_SKY, Ui.C_VIOLET, Ui.C_BLUE, Ui.C_CYAN, Ui.C_PINK, Ui.C_BLUE, Ui.C_TEAL,
             Ui.C_GREEN, Ui.C_SKY, Ui.C_AMBER, Ui.C_GREEN, Ui.C_VIOLET, Ui.C_AMBER, 0xFFF43F5E, Ui.C_PINK, Ui.C_GREEN, Ui.C_ORANGE,

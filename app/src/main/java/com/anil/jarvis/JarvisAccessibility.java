@@ -26,11 +26,20 @@ public class JarvisAccessibility extends AccessibilityService {
     static final class Capture {
         String jpeg;      // base64, may be null (Android 10 and older, or when the system refuses)
         String text = "";
+        volatile String page = "";        // the whole page as he reads it (made in the background right after)
+        final CountDownLatch pageDone = new CountDownLatch(1);
+
+        /** The whole page, waiting up to ms for it (it is read in the background). */
+        String page(long ms) {
+            try { pageDone.await(ms, TimeUnit.MILLISECONDS); } catch (InterruptedException ignored) {}
+            return page;
+        }
         String pkg = "";
         long time;
     }
 
     private static volatile JarvisAccessibility instance;
+    private static final android.os.Handler MAIN = new android.os.Handler(android.os.Looper.getMainLooper());
     private static volatile Capture last;
     private static volatile String currentPkg = "";
     private static volatile String frontPkg = "";  // any window last in front (also home screen, keyboard, Settings), for captures
@@ -778,23 +787,24 @@ public class JarvisAccessibility extends AccessibilityService {
     static void showControl(String text, Runnable onStop) {
         JarvisAccessibility s = instance;
         if (s == null) return;
-        s.getMainExecutor().execute(() -> s.addControl(text, onStop));
+        MAIN.post(() -> s.addControl(text, onStop));
     }
 
     static void updateControl(String text) {
         JarvisAccessibility s = instance;
         if (s == null) return;
-        s.getMainExecutor().execute(() -> { if (s.controlText != null) s.controlText.setText("Jarvis · " + text); });
+        MAIN.post(() -> { if (s.controlText != null) s.controlText.setText("Jarvis · " + text); });
     }
 
     static void hideControl() {
         JarvisAccessibility s = instance;
         if (s == null) return;
-        s.getMainExecutor().execute(s::removeControl);
+        MAIN.post(s::removeControl);
     }
 
     private void addControl(String text, Runnable onStop) {
         if (controlBar != null) { if (controlText != null) controlText.setText("Jarvis · " + text); return; }
+        if (bubble != null) bubble.hold(true);
         try {
             android.view.WindowManager wm = (android.view.WindowManager) getSystemService(WINDOW_SERVICE);
             float d = getResources().getDisplayMetrics().density;
@@ -854,6 +864,7 @@ public class JarvisAccessibility extends AccessibilityService {
     }
 
     private void removeControl() {
+        if (bubble != null) bubble.hold(false);
         android.view.WindowManager wm = (android.view.WindowManager) getSystemService(WINDOW_SERVICE);
         try { if (controlBar != null) wm.removeView(controlBar); } catch (Exception ignored) {}
         try { if (controlGlow != null) wm.removeView(controlGlow); } catch (Exception ignored) {}
@@ -970,6 +981,7 @@ public class JarvisAccessibility extends AccessibilityService {
     @Override protected void onServiceConnected() {
         instance = this;
         loadNotApps();
+        syncBubble();
     }
 
     /** Windows that are not "the app Anil is in": the status bar / panels, the home screen, the keyboard, Settings. */
@@ -988,9 +1000,20 @@ public class JarvisAccessibility extends AccessibilityService {
         } catch (Exception e) {}
         try {
             android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
-            if (imm != null) for (android.view.inputmethod.InputMethodInfo im : imm.getEnabledInputMethodList()) s.add(im.getPackageName());
+            java.util.Set<String> k = new java.util.HashSet<>();
+            if (imm != null) for (android.view.inputmethod.InputMethodInfo im : imm.getEnabledInputMethodList()) { s.add(im.getPackageName()); k.add(im.getPackageName()); }
+            keyboards = k;
         } catch (Exception e) {}
         notApps = s;
+    }
+
+    private static volatile java.util.Set<String> keyboards = java.util.Collections.emptySet();
+
+    /** A keyboard (its windows come and go inside any app). */
+    static boolean isKeyboard(String p) {
+        if (p == null) return false;
+        String l = p.toLowerCase(Locale.ROOT);
+        return keyboards.contains(p) || l.contains("inputmethod") || l.contains("keyboard") || l.contains("honeyboard");
     }
 
     private static boolean notAnApp(String p) {
@@ -1001,11 +1024,13 @@ public class JarvisAccessibility extends AccessibilityService {
 
     @Override public boolean onUnbind(android.content.Intent intent) {
         instance = null;
+        if (bubble != null) { bubble.remove(); bubble = null; }
         return super.onUnbind(intent);
     }
 
     @Override public void onDestroy() {
         instance = null;
+        if (bubble != null) { bubble.remove(); bubble = null; }
         super.onDestroy();
     }
 
@@ -1016,6 +1041,7 @@ public class JarvisAccessibility extends AccessibilityService {
                 frontPkg = p;
                 if (!notAnApp(p)) currentPkg = p; // "close this app" must not pick the keyboard, home screen, Settings...
             }
+            if (bubble != null) bubble.onWindow(p, e.getClassName() == null ? "" : e.getClassName().toString());
         }
     }
 
@@ -1033,8 +1059,16 @@ public class JarvisAccessibility extends AccessibilityService {
         if (s == null) { then.run(); return; }
         Capture c = new Capture();
         c.time = SystemClock.elapsedRealtime();
-        c.pkg = frontPkg;
+        AccessibilityNodeInfo root = null;
+        try { root = s.getRootInActiveWindow(); } catch (Exception ignored) {}
+        String rp = root != null && root.getPackageName() != null ? root.getPackageName().toString() : "";
+        if (rp.equals(s.getPackageName())) { then.run(); return; } // Jarvis's own screen is in front: keep the last capture of his app
+        c.pkg = !rp.isEmpty() ? rp : frontPkg; // the app really read (not the keyboard or the notification shade)
         try { c.text = s.screenText(); } catch (Exception ignored) {}
+        final AccessibilityNodeInfo pageRoot = root;
+        new Thread(() -> { // a long page takes a moment: read from this app's window even if Jarvis opens over it
+            try { if (pageRoot != null) c.page = s.pageText(pageRoot); } catch (Exception ignored) {} finally { c.pageDone.countDown(); }
+        }, "jarvis-page").start();
         if (Build.VERSION.SDK_INT < 30) { last = c; then.run(); return; }
         try {
             s.takeScreenshot(Display.DEFAULT_DISPLAY, s.getMainExecutor(), new TakeScreenshotCallback() {
@@ -1084,6 +1118,108 @@ public class JarvisAccessibility extends AccessibilityService {
         soft.compress(Bitmap.CompressFormat.JPEG, 80, out);
         soft.recycle();
         return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+    }
+
+    /**
+     * The page as he reads it, for reading aloud (a background thread; it can take a moment on a long page): the app
+     * in front (also when Jarvis's small panel is over it), from the first line visible on the screen down to the end
+     * (Chrome and other browsers give the whole page), password fields left out, repeats and menu words dropped.
+     */
+    static String pageNow() {
+        JarvisAccessibility s = instance;
+        if (s == null) return "";
+        try {
+            AccessibilityNodeInfo r = s.appRoot();
+            return r == null ? "" : s.pageText(r);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** The app he is in (the active window, else the top app window that is not Jarvis's own or a picture-in-picture). */
+    private AccessibilityNodeInfo appRoot() {
+        try {
+            AccessibilityNodeInfo r = getRootInActiveWindow();
+            if (r != null && r.getPackageName() != null && !getPackageName().contentEquals(r.getPackageName())) return r;
+            for (android.view.accessibility.AccessibilityWindowInfo w : getWindows()) {
+                if (w.getType() != android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION || w.isInPictureInPictureMode()) continue;
+                AccessibilityNodeInfo wr = w.getRoot();
+                if (wr != null && wr.getPackageName() != null && !getPackageName().contentEquals(wr.getPackageName())) return wr;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private String pageText(AccessibilityNodeInfo root) {
+        if (root == null) return "";
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        java.util.List<Boolean> seen = new java.util.ArrayList<>();
+        java.util.ArrayDeque<AccessibilityNodeInfo> stack = new java.util.ArrayDeque<>();
+        stack.push(root);
+        int nodes = 0, chars = 0;
+        while (!stack.isEmpty() && nodes < 8000 && chars < 80000) {
+            AccessibilityNodeInfo n = stack.pop();
+            nodes++;
+            if (n.isPassword()) continue;
+            CharSequence t = n.getText();
+            if (t != null && t.length() > 0) {
+                lines.add(t.toString());
+                seen.add(n.isVisibleToUser());
+                chars += t.length();
+            }
+            for (int i = n.getChildCount() - 1; i >= 0; i--) {
+                AccessibilityNodeInfo ch = n.getChild(i);
+                if (ch != null) stack.push(ch);
+            }
+        }
+        int start = 0;
+        while (start < seen.size() && !seen.get(start)) start++;
+        if (start >= lines.size()) start = 0;
+        StringBuilder all = new StringBuilder(), prose = new StringBuilder();
+        java.util.Set<String> had = new java.util.HashSet<>();
+        String prev = "";
+        for (int i = start; i < lines.size(); i++) {
+            String l = lines.get(i).replaceAll("\\s+", " ").trim();
+            if (l.isEmpty() || l.equals(prev) || (l.length() < 40 && !had.add(l))) continue;
+            prev = l;
+            all.append(l).append('\n');
+            boolean url = l.contains("://") || l.startsWith("www.") || (!l.contains(" ") && l.contains("."));
+            boolean sentence = !url && (l.length() >= 25 || (l.split(" ").length >= 3 && l.matches(".*[.!?।]$")));
+            if (sentence) prose.append(l).append('\n');
+        }
+        return (prose.length() >= 300 ? prose : all).toString().trim(); // an article: its sentences; a chat or list: everything
+    }
+
+    /** An app's name as Anil sees it. */
+    static String label(android.content.Context c, String pkg) {
+        if (pkg == null || pkg.isEmpty()) return "స్క్రీన్";
+        try {
+            android.content.pm.PackageManager pm = c.getPackageManager();
+            return pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
+        } catch (Exception e) {
+            return pkg;
+        }
+    }
+
+    // ------------------------------------------------------------------ the floating Jarvis button
+
+    private FloatBubble bubble;
+
+    /** Shows or removes the floating button to match the setting (any thread). */
+    static void syncBubble() {
+        JarvisAccessibility s = instance;
+        if (s == null) return;
+        MAIN.post(() -> {
+            if (instance != s) return;
+            boolean want = FloatBubble.on(s);
+            if (want && s.bubble == null) { s.bubble = new FloatBubble(s); if (!s.bubble.show()) s.bubble = null; }
+            else if (!want && s.bubble != null) { s.bubble.remove(); s.bubble = null; }
+        });
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        if (bubble != null) bubble.onScreenTurned();
     }
 
     private String screenText() {

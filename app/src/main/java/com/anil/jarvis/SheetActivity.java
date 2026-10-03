@@ -414,6 +414,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     private void listen() {
+        ScreenReader.pauseIfReading(this); // the mic must not hear the page being read
         main.removeCallbacks(autoClose);
         waiting = false;
         // Only partial words heard in THIS listen may be sent on a timeout, never the previous turn's.
@@ -655,7 +656,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         // Booking in an app: Jarvis asked him a choice (theatre, time, seats): listen for the answer.
         if (Tools.awaitingAnswer()) { main.postDelayed(this::listen, 250); return; }
         // One follow-up question without saying "Jarvis" again, like a real conversation.
-        if ((prefs.followUp() || dialog) && followUps > 0) {
+        if ((prefs.followUp() || dialog) && followUps > 0 && !ScreenReader.get(this).active()) { // (not while a page is read aloud: the mic would hear it)
             followUps--;
             main.postDelayed(this::listen, 250);
         } else {
@@ -741,6 +742,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     // ================================================================ live mode
 
     private void startLive() {
+        ScreenReader.pauseIfReading(this);
         if (live != null) return;
         Tools.takeInterpreter(); // a stale request from an earlier turn
         live = new LiveSession(this, prefs, tools, this);

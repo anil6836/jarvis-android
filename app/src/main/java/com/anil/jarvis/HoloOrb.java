@@ -75,6 +75,11 @@ final class HoloOrb extends View {
     }
 
     void setState(int s) { state = s; }
+
+    private int idleMs, activeMs; // 0 = every frame (the big screens); the floating button goes slower to save battery
+
+    /** Frame gaps in ms when resting / when listening, thinking or speaking (0 = every frame). */
+    void setPace(int idle, int active) { idleMs = idle; activeMs = active; }
     void setMic(float l) { mic = clamp(l); }
     /** Same as setMic (OrbView's name for the mic level). */
     void setLevel(float l) { mic = clamp(l); }
@@ -274,7 +279,11 @@ final class HoloOrb extends View {
             canvas.drawCircle(sx, sy, gr * 0.22f, dot);
         }
 
-        if (isAttachedToWindow() && getVisibility() == VISIBLE) postInvalidateOnAnimation();
+        if (isAttachedToWindow() && getVisibility() == VISIBLE) {
+            int gap = state == CONNECTING || state == MUTED ? idleMs : activeMs;
+            if (!Ui.animate && gap > 0) gap = Math.max(gap, 250); // battery saver: barely moving
+            if (gap > 0) postInvalidateDelayed(gap); else postInvalidateOnAnimation();
+        }
     }
 
     private void drawRing(Canvas canvas, float cx, float cy, float rr, float squash, float angle, float turn,

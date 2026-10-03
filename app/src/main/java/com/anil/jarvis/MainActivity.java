@@ -1422,6 +1422,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void startLive() { startLive(null); }
 
     private void startLive(String instructions) {
+        ScreenReader.pauseIfReading(this);
         if (live != null || busy) return;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_LIVE);
@@ -1536,6 +1537,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void startListening() {
         if (busy) return;
+        ScreenReader.pauseIfReading(this); // the mic must not hear the page being read
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
             return;
@@ -1632,7 +1634,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         String lang = Tools.takeInterpreter();
         if (lang != null && live == null && !busy) { startLive(Brain.interpreterInstructions(prefs.name(), lang)); return; }
         boolean asked = Tools.awaitingAnswer(); // read every time: the "which one?" flag is used up here
-        if (lastWasVoice && (prefs.followUp() || asked) && !paused && !busy) {
+        if (lastWasVoice && (prefs.followUp() || asked) && !paused && !busy && !ScreenReader.get(this).active()) { // not while a page is read aloud
             lastWasVoice = false;
             main.postDelayed(this::startListening, 250);
         } else {
