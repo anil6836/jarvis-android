@@ -27,6 +27,7 @@ public class JarvisAccessibility extends AccessibilityService {
         String jpeg;      // base64, may be null (Android 10 and older, or when the system refuses)
         String text = "";
         volatile String page = "";        // the whole page as he reads it (made in the background right after)
+        volatile Page pageObj;            // the same, with the place of every line on the screen (to follow it while reading)
         final CountDownLatch pageDone = new CountDownLatch(1);
 
         /** The whole page, waiting up to ms for it (it is read in the background). */
@@ -1067,7 +1068,7 @@ public class JarvisAccessibility extends AccessibilityService {
         try { c.text = s.screenText(); } catch (Exception ignored) {}
         final AccessibilityNodeInfo pageRoot = root;
         new Thread(() -> { // a long page takes a moment: read from this app's window even if Jarvis opens over it
-            try { if (pageRoot != null) c.page = s.pageText(pageRoot); } catch (Exception ignored) {} finally { c.pageDone.countDown(); }
+            try { if (pageRoot != null) { Page pg = s.pageOf(pageRoot); c.pageObj = pg; c.page = pg.text; } } catch (Exception ignored) {} finally { c.pageDone.countDown(); }
         }, "jarvis-page").start();
         if (Build.VERSION.SDK_INT < 30) { last = c; then.run(); return; }
         try {
@@ -1150,20 +1151,43 @@ public class JarvisAccessibility extends AccessibilityService {
         return null;
     }
 
-    private String pageText(AccessibilityNodeInfo root) {
-        if (root == null) return "";
+    /** A page as read: its lines (one per text on the screen, in order) with where each is, and what scrolls it. */
+    static final class Page {
+        String text = "", pkg = "";
+        final java.util.List<AccessibilityNodeInfo> nodes = new java.util.ArrayList<>(); // one per line of text
+        AccessibilityNodeInfo scroller;                                                  // the biggest scrolling part
+    }
+
+    private String pageText(AccessibilityNodeInfo root) { return pageOf(root).text; }
+
+    private Page pageOf(AccessibilityNodeInfo root) { return pageOf(root, null); }
+
+    /** The page from the first line visible on the screen down; lines already read (skip) are left out. */
+    private Page pageOf(AccessibilityNodeInfo root, java.util.Set<String> skip) {
+        Page pg = new Page();
+        if (root == null) return pg;
+        pg.pkg = root.getPackageName() == null ? "" : root.getPackageName().toString();
         java.util.List<String> lines = new java.util.ArrayList<>();
+        java.util.List<AccessibilityNodeInfo> owners = new java.util.ArrayList<>();
         java.util.List<Boolean> seen = new java.util.ArrayList<>();
         java.util.ArrayDeque<AccessibilityNodeInfo> stack = new java.util.ArrayDeque<>();
         stack.push(root);
         int nodes = 0, chars = 0;
+        long bestArea = 0;
+        android.graphics.Rect r = new android.graphics.Rect();
         while (!stack.isEmpty() && nodes < 8000 && chars < 80000) {
             AccessibilityNodeInfo n = stack.pop();
             nodes++;
             if (n.isPassword()) continue;
+            if (n.isScrollable() && n.isVisibleToUser()) {
+                n.getBoundsInScreen(r);
+                long area = (long) r.width() * r.height();
+                if (area > bestArea) { bestArea = area; pg.scroller = n; }
+            }
             CharSequence t = n.getText();
             if (t != null && t.length() > 0) {
                 lines.add(t.toString());
+                owners.add(n);
                 seen.add(n.isVisibleToUser());
                 chars += t.length();
             }
@@ -1176,18 +1200,51 @@ public class JarvisAccessibility extends AccessibilityService {
         while (start < seen.size() && !seen.get(start)) start++;
         if (start >= lines.size()) start = 0;
         StringBuilder all = new StringBuilder(), prose = new StringBuilder();
+        java.util.List<AccessibilityNodeInfo> allN = new java.util.ArrayList<>(), proseN = new java.util.ArrayList<>();
         java.util.Set<String> had = new java.util.HashSet<>();
         String prev = "";
         for (int i = start; i < lines.size(); i++) {
             String l = lines.get(i).replaceAll("\\s+", " ").trim();
-            if (l.isEmpty() || l.equals(prev) || (l.length() < 40 && !had.add(l))) continue;
+            if (l.isEmpty() || l.equals(prev) || (l.length() < 40 && !had.add(l)) || (skip != null && skip.contains(l))) continue;
             prev = l;
             all.append(l).append('\n');
+            allN.add(owners.get(i));
             boolean url = l.contains("://") || l.startsWith("www.") || (!l.contains(" ") && l.contains("."));
             boolean sentence = !url && (l.length() >= 25 || (l.split(" ").length >= 3 && l.matches(".*[.!?।]$")));
-            if (sentence) prose.append(l).append('\n');
+            if (sentence) { prose.append(l).append('\n'); proseN.add(owners.get(i)); }
         }
-        return (prose.length() >= 300 ? prose : all).toString().trim(); // an article: its sentences; a chat or list: everything
+        boolean article = prose.length() >= 300; // an article: its sentences; a chat or list: everything
+        pg.text = (article ? prose : all).toString().trim();
+        pg.nodes.addAll(article ? proseN : allN);
+        return pg;
+    }
+
+    /** Something to follow this page while it is read (highlight + scroll), or null when the text is not this page's. */
+    static ScreenReader.Follow follow(Page p, String text) {
+        JarvisAccessibility s = instance;
+        return s != null && p != null && p.text.equals(text) && !p.nodes.isEmpty() ? new PageMark(s, p) : null;
+    }
+
+    /**
+     * Scrolls the page on and returns the lines that came into view and were not read yet (a background thread),
+     * or null at the end, when it cannot scroll, or when another app came in front.
+     */
+    static Page morePage(Page prev, java.util.Set<String> read) {
+        JarvisAccessibility s = instance;
+        if (s == null || prev == null || prev.scroller == null) return null;
+        try {
+            prev.scroller.refresh();
+            if (!prev.scroller.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return null;
+            Thread.sleep(900);
+            AccessibilityNodeInfo root = s.appRoot();
+            if (root == null || root.getPackageName() == null || !prev.pkg.contentEquals(root.getPackageName())) return null;
+            Page p = s.pageOf(root, read);
+            if (p.text.isEmpty()) return null;
+            if (p.scroller == null) p.scroller = prev.scroller;
+            return p;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**

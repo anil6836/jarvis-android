@@ -3874,7 +3874,8 @@ final class Tools {
             return ok().put("saved", e.optString("title")).put("note", "'సేవ్ చేసినవి చదువు' reads it later.").toString();
         }
         if (m.startsWith("read")) { // the whole page with the phone voice, from where he is (not through the AI)
-            ScreenReader.get(c).read(label(cap.pkg), page);
+            JarvisAccessibility.Page pobj = cap.pageObj;
+            ScreenReader.get(c).read(label(cap.pkg), page, JarvisAccessibility.follow(pobj, page)); // glows and scrolls along on the page
             return ok().put("app", label(cap.pkg)).put("reading", "started with the phone voice: the whole page from where he is")
                     .put("next", "Say only one short line like 'చదువుతున్నాను' (he can say 'ఆపు' to stop); do not read the text yourself.").toString();
         }

@@ -21,6 +21,24 @@ import java.util.List;
 final class ScreenReader {
     interface Listener { void onReaderState(); }
 
+    /** Follows the reading on the screen (main thread): highlight, scroll, and more text when it runs out. */
+    interface Follow {
+        /** A part starts: its line (in the text) and where it is in the text. */
+        void onPart(int line, int start, int end);
+        /** The word being said now (where in the text). */
+        default void onWord(int start, int end) {}
+        /** Paused or finished: take the highlight away. */
+        void onQuiet();
+        /** The text ran out: more lines to read (a worker thread), or null at the end. Its lines carry on the line numbers. */
+        default String more() { return null; }
+    }
+
+    private static final class Part {
+        final String text;
+        final int start, line;
+        Part(String text, int start, int line) { this.text = text; this.start = start; this.line = line; }
+    }
+
     private static ScreenReader one;
 
     static synchronized ScreenReader get(Context c) {
@@ -32,8 +50,11 @@ final class ScreenReader {
     private final Handler main = new Handler(Looper.getMainLooper());
     private TextToSpeech tts;
     private boolean ready;
-    private List<String> parts = new ArrayList<>();
-    private int at;
+    private List<Part> parts = new ArrayList<>();
+    private int at, lines, mores;
+    private Follow follow;
+    private boolean fetching;
+    private Spoken.Out said;     // the part being spoken, as said (numbers as words), to map words back
     private volatile boolean active, paused, focusPaused;
     private String title = "";
     private int utt;
@@ -48,14 +69,31 @@ final class ScreenReader {
         if (r != null && r.active && !r.paused) r.pause();
     }
 
-    /** Lines first (a web page's lines may have no full stops; each keeps its own language), long ones by sentences. */
-    private static List<String> parts(String text) {
-        List<String> out = new ArrayList<>();
+    /**
+     * Lines first (a web page's lines may have no full stops; each keeps its own language), long ones by sentences;
+     * each part knows its line and where it starts in the text (lineBase: the first line's number).
+     */
+    private static List<Part> parts(String text, int lineBase) {
+        List<Part> out = new ArrayList<>();
         if (text == null) return out;
-        for (String line : text.split("\n")) {
-            String l = line.trim();
-            if (l.isEmpty()) continue;
-            if (l.length() <= 300) out.add(l); else out.addAll(ReaderService.split(l));
+        String[] lines = text.split("\n", -1);
+        int offset = 0;
+        for (int li = 0; li < lines.length; li++) {
+            String raw = lines[li], l = raw.trim();
+            if (!l.isEmpty()) {
+                int ls = offset + raw.indexOf(l);
+                if (l.length() <= 300) out.add(new Part(l, ls, lineBase + li));
+                else {
+                    int pos = ls;
+                    for (String sp : ReaderService.split(l)) {
+                        int at = text.indexOf(sp.substring(0, Math.min(40, sp.length())), pos);
+                        if (at < 0) at = pos;
+                        out.add(new Part(sp, at, lineBase + li));
+                        pos = at + Math.max(1, sp.length() - 5); // the next sentence is after this one (repeated words must not pull it back)
+                    }
+                }
+            }
+            offset += raw.length() + 1;
         }
         return out;
     }
@@ -65,10 +103,17 @@ final class ScreenReader {
     String title() { return title; }
 
     /** Starts reading this text from the beginning (main thread or any thread). */
-    void read(String name, String text) {
+    void read(String name, String text) { read(name, text, null); }
+
+    /** ... with something following it on the screen (highlight and scroll). */
+    void read(String name, String text, Follow f) {
         main.post(() -> {
             stopNow(false);
-            parts = parts(text);
+            follow = f;
+            mores = 0;
+            fetching = false;
+            parts = parts(text, 0);
+            lines = text == null ? 0 : text.split("\n", -1).length;
             if (parts.isEmpty()) { changed(); Announcer.say(app, "చదవడానికి ఈ స్క్రీన్‌లో అక్షరాలు దొరకలేదు."); return; }
             title = name == null ? "" : name;
             at = 0;
@@ -92,6 +137,9 @@ final class ScreenReader {
                         @Override public void onStart(String id) {}
                         @Override public void onDone(String id) { main.post(() -> spoken(id)); }
                         @Override public void onError(String id) { main.post(() -> spoken(id)); }
+                        @Override public void onRangeStart(String id, int start, int end, int frame) {
+                            main.post(() -> word(id, start, end));
+                        }
                     });
                     speakNext();
                 }));
@@ -101,7 +149,7 @@ final class ScreenReader {
         });
     }
 
-    void pause() { main.post(() -> { if (!active || paused) return; paused = true; utt++; try { tts.stop(); } catch (Exception ignored) {} dropFocus(); changed(); }); }
+    void pause() { main.post(() -> { if (!active || paused) return; paused = true; utt++; try { tts.stop(); } catch (Exception ignored) {} dropFocus(); quiet(); changed(); }); }
 
     void resume() { main.post(() -> { if (!active || !paused) return; paused = false; focusPaused = false; speakNext(); changed(); }); }
 
@@ -124,8 +172,7 @@ final class ScreenReader {
     void skip(int n) {
         main.post(() -> {
             if (!active) return;
-            if (at + n >= parts.size()) { stopNow(true); return; } // past the last paragraph: done
-            at = Math.max(0, at + n);
+            at = Math.max(0, Math.min(parts.size(), at + n)); // past the last paragraph: the page's next part, or done
             restartPart();
         });
     }
@@ -146,7 +193,24 @@ final class ScreenReader {
         utt++;
         try { if (tts != null) tts.stop(); } catch (Exception ignored) {}
         dropFocus();
+        quiet();
         if (was && tell) changed();
+    }
+
+    private void quiet() {
+        Follow f = follow;
+        if (f != null) try { f.onQuiet(); } catch (Exception ignored) {}
+    }
+
+    private void word(String id, int start, int end) {
+        Follow f = follow;
+        Spoken.Out o = said;
+        if (f == null || o == null || !active || paused || !("s" + utt).equals(id) || at >= parts.size()) return;
+        try {
+            int[] r = o.range(start, end);
+            Part p = parts.get(at);
+            f.onWord(p.start + Math.max(0, r[0]), p.start + Math.min(p.text.length(), r[1]));
+        } catch (Exception ignored) {}
     }
 
     private void spoken(String id) {
@@ -157,16 +221,44 @@ final class ScreenReader {
 
     private void speakNext() {
         if (!active || paused || focusPaused || !ready) return;
-        if (at >= parts.size()) { stopNow(true); return; }
+        if (at >= parts.size()) {
+            final Follow f = follow;
+            if (f != null && !fetching && mores < 40) { // the page goes on below: scroll and read on
+                fetching = true;
+                mores++;
+                final int myUtt = utt;
+                new Thread(() -> {
+                    String more = null;
+                    try { more = f.more(); } catch (Exception ignored) {}
+                    final String m = more;
+                    main.post(() -> {
+                        fetching = false;
+                        if (!active || follow != f || utt != myUtt) return;
+                        if (m == null || m.trim().isEmpty()) { stopNow(true); return; }
+                        parts.addAll(parts(m, lines));
+                        lines += m.split("\n", -1).length;
+                        speakNext();
+                    });
+                }, "jarvis-read-more").start();
+                return;
+            }
+            if (!fetching) stopNow(true);
+            return;
+        }
         if (!takeFocus()) { stopNow(true); return; } // a call, or the system said no: not over it
-        String p = parts.get(at);
+        Part part = parts.get(at);
+        String p = part.text;
         try { tts.setLanguage(Lang.of(p)); } catch (Exception ignored) {}
         tts.setSpeechRate(new Prefs(app).speechRate() * speed);
-        String said = Spoken.say(p);
+        Spoken.Out o = Spoken.of(p);
+        String words = o.text;
         int max = TextToSpeech.getMaxSpeechInputLength() - 10;
-        if (said.length() > max) said = said.substring(0, max);
+        if (words.length() > max) words = words.substring(0, max);
+        said = o;
         utt++;
-        if (tts.speak(said, TextToSpeech.QUEUE_FLUSH, null, "s" + utt) != TextToSpeech.SUCCESS) stopNow(true);
+        Follow f = follow;
+        if (f != null) try { f.onPart(part.line, part.start, part.start + p.length()); } catch (Exception ignored) {}
+        if (tts.speak(words, TextToSpeech.QUEUE_FLUSH, null, "s" + utt) != TextToSpeech.SUCCESS) stopNow(true);
     }
 
     private void changed() {

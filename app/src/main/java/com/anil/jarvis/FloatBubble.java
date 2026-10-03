@@ -72,6 +72,7 @@ final class FloatBubble implements ScreenReader.Listener {
     private android.speech.SpeechRecognizer sr;
     private boolean listening;
     private TextView micBtn, extraBtn, playBtn;
+    private ScrollView cardScroll;
     private WindowManager.LayoutParams cardLp;
     private float cardDownX, cardDownY;
     private int cardStartX, cardStartY;
@@ -477,14 +478,16 @@ final class FloatBubble implements ScreenReader.Listener {
             new Thread(() -> {
                 String pg = cap.page(6000); // the whole page (a long one takes a moment)
                 final String page = pg != null && pg.length() > seen.length() ? pg : seen;
-                if (kind == READ || kind == SAVE) { pageDone(kind, app, page, shot, p, money); return; }
+                final JarvisAccessibility.Page pobj = cap.pageObj;
+                final ScreenReader.Follow follow = pobj != null && pobj.text.equals(page) && !pobj.nodes.isEmpty() ? new PageMark(svc, pobj) : null;
+                if (kind == READ || kind == SAVE) { pageDone(kind, app, page, shot, p, money, follow); return; }
                 work(kind, app, page, shot, p);
             }, "jarvis-bubble").start();
         });
     }
 
     /** 📖 / 💾 with the page's own text (a picture with no text is read by the AI instead, outside money apps). */
-    private void pageDone(int kind, String app, String page, String shot, Prefs p, boolean money) {
+    private void pageDone(int kind, String app, String page, String shot, Prefs p, boolean money, ScreenReader.Follow follow) {
         main.post(() -> {
             if (gone) return;
             busy = false;
@@ -501,7 +504,7 @@ final class FloatBubble implements ScreenReader.Listener {
             if (kind == SAVE) { saveLater(null, app, page); return; }
             closeCard();
             Announcer.stop(); // one voice at a time
-            reader.read(app, page);
+            reader.read(app, page, follow); // the paragraph being read glows on the page, which scrolls along
         });
     }
 
@@ -701,7 +704,43 @@ final class FloatBubble implements ScreenReader.Listener {
     private void speak(String text) {
         reader.stop();
         Announcer.stop();
-        reader.read(CARD, text);
+        cardSpoken = text;
+        boolean shown = cardText != null && cardText.getText().toString().equals(text);
+        reader.read(CARD, text, shown ? cardFollow : null);
+    }
+
+    private String cardSpoken = "";
+
+    /** In the card: the sentence being read is lit, the word being said brighter, and the card scrolls along. */
+    private final ScreenReader.Follow cardFollow = new ScreenReader.Follow() {
+        private int ps = -1, pe = -1;
+        @Override public void onPart(int line, int start, int end) { ps = start; pe = end; paint(ps, pe, -1, -1, true); }
+        @Override public void onWord(int start, int end) { paint(ps, pe, start, end, false); }
+        @Override public void onQuiet() { ps = pe = -1; paint(-1, -1, -1, -1, false); }
+    };
+
+    private void paint(int ps, int pe, int ws, int we, boolean scroll) {
+        if (cardText == null) return;
+        String t = cardText.getText().toString();
+        if (!t.equals(cardSpoken)) return; // the card shows something else now
+        android.text.SpannableString sp = new android.text.SpannableString(t);
+        int flag = android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE;
+        if (ps >= 0 && ps < pe && pe <= t.length()) sp.setSpan(new android.text.style.BackgroundColorSpan(FaceRig.withAlpha(Ui.CYAN, 0x3A)), ps, pe, flag);
+        if (ws >= 0 && ws < we && we <= t.length()) {
+            sp.setSpan(new android.text.style.ForegroundColorSpan(0xFFFFE27A), ws, we, flag);
+            sp.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), ws, we, flag);
+        }
+        cardText.setText(sp);
+        if (scroll && ps >= 0) cardText.post(() -> scrollCardTo(ps));
+    }
+
+    private void scrollCardTo(int offset) {
+        if (cardText == null || cardScroll == null) return;
+        android.text.Layout l = cardText.getLayout();
+        if (l == null || offset > cardText.length()) return;
+        int top = l.getLineTop(l.getLineForOffset(offset)) + cardText.getPaddingTop();
+        int target = Math.max(0, top - dp(28));
+        if (Math.abs(cardScroll.getScrollY() - target) > dp(10)) cardScroll.smoothScrollTo(0, target);
     }
 
     private static final String CARD = "Jarvis జవాబు";
@@ -922,6 +961,7 @@ final class FloatBubble implements ScreenReader.Listener {
         ScrollView sv = new ScrollView(svc) {
             @Override protected void onMeasure(int w, int h) { super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(maxH, View.MeasureSpec.AT_MOST)); }
         };
+        cardScroll = sv;
         cardText = new TextView(svc);
         cardText.setTextColor(0xFFFFFFFF);
         cardText.setTextSize(15.5f);
@@ -1039,5 +1079,6 @@ final class FloatBubble implements ScreenReader.Listener {
         cardRow2 = null;
         playBtn = null;
         cardLp = null;
+        cardScroll = null;
     }
 }
