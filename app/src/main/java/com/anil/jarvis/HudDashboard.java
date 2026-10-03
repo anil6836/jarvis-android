@@ -183,6 +183,11 @@ final class HudDashboard extends LinearLayout {
         updateSummary();
     }
 
+    /** Folds the tiles into the one-line summary (kept; a tap opens them again). */
+    void collapse() { if (!collapsed) setCollapsed(true, true); }
+
+    boolean isCollapsed() { return collapsed; }
+
     private void setCollapsed(boolean c, boolean save) {
         collapsed = c;
         grid.setVisibility(c ? GONE : VISIBLE);

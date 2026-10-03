@@ -35,6 +35,7 @@ final class Situation {
         try { next(c, now, s); } catch (Throwable ignored) {}
         try { weather(c, s); } catch (Throwable ignored) {}
         try { mood(c, s); } catch (Throwable ignored) {}
+        try { sight(s); } catch (Throwable ignored) {}
         return s.toString();
     }
 
@@ -132,6 +133,12 @@ final class Situation {
         if (at == 0 || System.currentTimeMillis() - at > 3 * 3600_000L) return;
         s.append("- Weather where he is (").append((System.currentTimeMillis() - at) / 60_000).append(" min ago): ")
                 .append(Math.round(sp.getFloat("w_temp", 0))).append("°C, ").append(HudDashboard.sky(sp.getInt("w_code", -1))).append(".\n");
+    }
+
+    /** Who the front camera sees in front of the phone right now (people he introduced are named). */
+    private static void sight(StringBuilder s) {
+        String who = FaceSight.whoNow();
+        if (!who.isEmpty()) s.append("- In front of the phone now (front camera): ").append(who).append(".\n");
     }
 
     private static void mood(Context c, StringBuilder s) {

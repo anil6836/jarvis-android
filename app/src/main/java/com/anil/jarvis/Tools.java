@@ -659,8 +659,15 @@ final class Tools {
                 "Look at what is on Anil's phone screen (the app he was using when he called Jarvis) and answer a question about it, e.g. 'what is on my screen', 'what should I reply to this message', 'explain this'.",
                 schema(new String[][]{{"question", "string", "What Anil wants to know about the screen"}}, "question")));
         DEFS.add(new Def("look_through_camera",
-                "Look through the live camera (when Anil has it open in Jarvis) and answer a question about what it sees.",
-                schema(new String[][]{{"question", "string", "What Anil wants to know"}}, "question")));
+                "Cameras. No action: look through the live camera (when Anil has it open) and answer the question. "
+                        + "front = look at the person in front of the phone now (front camera, while Jarvis's face watches). "
+                        + "meet = remember the face of the ONE person looking at the phone now, under name (only when Anil introduces someone; owner=true for Anil himself). "
+                        + "people = who Jarvis knows by face; forget = forget a face (name); face_show / face_hide = Jarvis's face on the home screen; "
+                        + "eyes_on / eyes_off = the front camera that lets the face see him.",
+                schema(new String[][]{{"question", "string", "What Anil wants to know (for looking)"},
+                        {"action", "string", "empty, front, meet, people, forget, face_show, face_hide, eyes_on or eyes_off"},
+                        {"name", "string", "The person's name (meet / forget)"},
+                        {"owner", "boolean", "true when the face to remember is Anil's own"}})));
         DEFS.add(new Def("save_memory",
                 "Save one lasting fact about Anil (a preference, a person, a date, a plan) to his permanent memory.",
                 schema(new String[][]{{"text", "string", "The fact as one short Telugu sentence"}}, "text")));
@@ -834,7 +841,7 @@ final class Tools {
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
-            case "look_through_camera": return "కెమెరాలో చూస్తున్నాను…";
+            case "look_through_camera": return "కెమెరాతో చూస్తున్నాను…";
             case "add_mission": return "మిషన్ జోడిస్తున్నాను…";
             default: return "పని చేస్తున్నాను…";
         }
@@ -1043,7 +1050,7 @@ final class Tools {
                         a.optString("text"), a.optString("when", "arrive"), a.optString("id"), a.optBoolean("automatic", false));
                 case "now_playing": return nowPlaying();
                 case "look_at_screen": return lookAtScreen(a.optString("question"));
-                case "look_through_camera": return lookThroughCamera(a.optString("question"));
+                case "look_through_camera": return camera(a);
                 case "save_memory": {
                     JSONObject m = store.addMemory(a.optString("text"));
                     if (m == null) return err("empty", "Nothing to save.");
@@ -6553,6 +6560,105 @@ final class Tools {
                 + "\nText read from the screen:\n" + (cap.text.length() > 3000 ? cap.text.substring(0, 3000) : cap.text);
         String answer = Brain.oneShot(prefs, VISION_SYSTEM, prompt, cap.jpeg, false);
         return ok().put("app", cap.pkg).put("answer", answer).toString();
+    }
+
+    /** Cameras: the live back camera, and the front camera that lets Jarvis's face see him and know people he introduced. */
+    private String camera(JSONObject a) throws Exception {
+        String action = a.optString("action").trim().toLowerCase(Locale.ROOT);
+        Activity c = act();
+        switch (action) {
+            case "face_show":
+            case "face_hide":
+                FaceSight.set(c, "face_on", action.equals("face_show"));
+                return ok().put("face", action.equals("face_show") ? "shown on the home screen" : "hidden (Settings → Jarvis ముఖం brings it back)").toString();
+            case "eyes_on":
+            case "eyes_off": {
+                boolean on = action.equals("eyes_on");
+                FaceSight.set(c, "face_cam", on);
+                if (on) { FaceSight.set(c, "face_on", true); FaceSight.set(c, "face_asked", true); FaceSight.wakeUp(); }
+                if (on && !FaceSight.allowed(c)) {
+                    host.askPermissions(new String[]{Manifest.permission.CAMERA});
+                    return err("no_camera_permission", "The camera permission was asked; once he allows it the face can see him.");
+                }
+                return ok().put("front_camera", on ? "on: the face looks at him while Jarvis's home screen is open (it switches off by itself after 10 minutes with no one)" : "off").toString();
+            }
+            case "people": {
+                List<String> n = People.names(c);
+                return ok().put("known_faces", new JSONArray(n)).put("count", n.size())
+                        .put("note", n.isEmpty() ? "No one yet. He introduces a person looking at the phone: 'ఇతను రాము, గుర్తుపెట్టుకో'." : "Faces are kept only on this phone.").toString();
+            }
+            case "forget": {
+                String name = a.optString("name").trim();
+                if (name.isEmpty()) return err("no_name", "Whose face should be forgotten? Ask him.");
+                return People.remove(c, name) ? ok().put("forgot", name).toString() : err("not_known", "No face is saved as '" + name + "'. Known: " + People.names(c));
+            }
+            case "meet":
+                return meet(a.optString("name").trim(), a.optBoolean("owner"));
+            case "front":
+                return lookFront(a.optString("question"));
+            default:
+                if (CameraPanel.latestFrame == null && FaceSight.picture() != null) return lookFront(a.optString("question"));
+                return lookThroughCamera(a.optString("question"));
+        }
+    }
+
+    private String lookFront(String question) throws Exception {
+        String pic = FaceSight.picture();
+        if (pic == null && FaceSight.camOn(act())) { // asleep, or the picture is a moment away
+            FaceSight.wakeUp();
+            for (int i = 0; i < 30 && pic == null; i++) { Thread.sleep(100); pic = FaceSight.picture(); }
+        }
+        if (pic == null) return err("no_one_seen", FaceSight.current == null
+                ? "Jarvis's front camera is off (it watches while his face is on the home screen; 'కెమెరాతో చూడు' turns it on)."
+                : "No face is in front of the phone right now.");
+        String q = question == null || question.trim().isEmpty() ? "How does he look?" : question;
+        String who = FaceSight.whoNow();
+        String answer = Brain.oneShot(prefs, VISION_SYSTEM, "Question: " + q + "\n(This is a live front-camera picture of the person in front of the phone"
+                + (who.isEmpty() ? "" : ": " + who) + ".)", pic, false);
+        return ok().put("answer", answer).toString();
+    }
+
+    /** Learns the face of the one person looking at the phone, under the name Anil gave (kept only on the phone). */
+    private String meet(String name, boolean owner) throws Exception {
+        Activity c = act();
+        if (owner && name.isEmpty()) name = prefs.name();
+        if (name.isEmpty()) return err("no_name", "Ask him the person's name first.");
+        if (name.length() > 40) name = name.substring(0, 40);
+        if (!FaceSight.allowed(c)) {
+            host.askPermissions(new String[]{Manifest.permission.CAMERA});
+            return err("no_camera_permission", "The camera permission was asked; try again after he allows it.");
+        }
+        if (!FaceNet.ready(c)) {
+            host.notice("ముఖాలు గుర్తుపట్టే మోడల్ తెస్తున్నాను (ఒక్కసారే, సుమారు 23 MB)…");
+            try {
+                FaceNet.ensure(c, host::notice);
+            } catch (Exception e) {
+                return err("model_download_failed", "Could not download the face model (about 23 MB): " + e.getMessage() + ". Check the internet and try again.");
+            }
+        }
+        if (!FaceSight.faceOn(c) || !FaceSight.camOn(c)) { FaceSight.set(c, "face_on", true); FaceSight.set(c, "face_cam", true); FaceSight.set(c, "face_asked", true); }
+        FaceSight.wakeUp();
+        FaceSight s = FaceSight.current;
+        for (int i = 0; i < 30 && s == null; i++) { Thread.sleep(100); s = FaceSight.current; }
+        if (s == null) return err("camera_not_running", "The front camera is not watching: Jarvis's home screen (chat tab) must be open on the phone. Ask him to open it and try again.");
+        host.notice("👀 " + name + ", ఫోన్ వైపు నేరుగా చూడండి…");
+        String r = s.learn(name, owner);
+        switch (r) {
+            case "ok":
+                return ok().put("remembered", name).put("owner", owner)
+                        .put("note", "Saved only on this phone as face fingerprints (no photo). Greet them warmly by name now.").toString();
+            case "no_face": return err(r, "No face was seen. The person should hold the phone at arm's length, look straight at it in good light, and ask again.");
+            case "many_faces": return err(r, "More than one face was in view; only the person to remember should look at the phone.");
+            case "not_frontal": return err(r, "The face was turned away or too far; look straight at the phone from closer.");
+            case "no_model": return err(r, "The face model is missing; try again with the internet on.");
+            case "not_owner": return err(r, "This face does not look like the face already saved as Anil's. If it really is him, first forget his face ('నన్ను మర్చిపో' -> action=forget name=" + prefs.name() + "), then ask again.");
+            default:
+                if (r.startsWith("not_same:"))
+                    return err("different_face", "A different face is already saved as " + r.substring(9) + ". If these are two people with the same name, use another name (e.g. with a relation); if the old one is wrong, forget it first.");
+                if (r.startsWith("same_as:"))
+                    return err("same_face", "This face looks like " + r.substring(8) + ", who is already saved. Ask him if it is the same person (forget the old name first if so); do not save it twice.");
+                return err(r, "Could not learn the face (" + r + "). Try again with Jarvis open on the screen.");
+        }
     }
 
     private String lookThroughCamera(String question) throws Exception {

@@ -40,6 +40,14 @@ jobs:
             || { rm -f app/src/main/assets/yamnet.tflite; echo "::warning::YAMNet model not downloaded; cough detection is off in this build"; }
           ls -la app/src/main/assets
 
+      - name: Download the face memory model (FaceNet), published next to the APK
+        shell: bash
+        run: |
+          # Not fatal: the phone also knows the model's original home. Checked against its SHA-256 here and on the phone.
+          curl -fsSL --retry 3 -o facenet.tflite "https://raw.githubusercontent.com/shubham0204/FaceRecognition_With_FaceNet_Android/master/app/src/main/assets/facenet.tflite" \
+            && echo "d7c1f7f130376982c7004920ddc41925ac2e5aecf6522f476c8bbb3669db7013  facenet.tflite" | sha256sum -c - \
+            || { rm -f facenet.tflite; echo "::warning::FaceNet model not downloaded; this release has no facenet.tflite"; }
+
       - name: Unlock the signing key
         shell: bash
         env:
@@ -83,6 +91,11 @@ jobs:
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: Jarvis 1.0.${{ github.run_number }}
-          body: ఫోన్‌లో Jarvis.apk డౌన్‌లోడ్ చేసి, పాత యాప్ మీదే ఇన్‌స్టాల్ (Update) చేయండి.
-          files: Jarvis.apk
+          body: |
+            ఫోన్‌లో Jarvis.apk డౌన్‌లోడ్ చేసి, పాత యాప్ మీదే ఇన్‌స్టాల్ (Update) చేయండి.
+
+            facenet.tflite: the FaceNet model Jarvis downloads once to remember faces (TFLite conversion by shubham0204, Apache-2.0; weights from nyoki-mtl/keras-facenet, MIT).
+          files: |
+            Jarvis.apk
+            facenet.tflite
           make_latest: true

@@ -71,7 +71,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** True while the Jarvis screen is in front (then a fresh screenshot would only show Jarvis). */
     static volatile boolean visible;
     private static final String BRIEF_PROMPT = "నాకు ఇప్పటి బ్రీఫింగ్ ఇవ్వు: సమయానికి తగ్గ పలకరింపు, ఈరోజు తేదీ, నా లొకేషన్‌లో వాతావరణం (get_weather వాడు), ఈరోజు క్యాలెండర్, రిమైండర్లు, నా యాక్టివ్ మిషన్లలో ముఖ్యమైనవి, బ్యాటరీ తక్కువగా ఉంటే అది కూడా. 6 వాక్యాలు మించకుండా.";
-    private static final int REQ_CAMERA_PERM = 24, REQ_PHOTO_CAM = 25;
+    private static final int REQ_CAMERA_PERM = 24, REQ_PHOTO_CAM = 25, REQ_FACE_CAM = 26;
     private CameraPanel camera;
     private FrameLayout cameraBox;
     private LinearLayout reminderList;
@@ -112,6 +112,23 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private HoloOrb orb;               // the hologram core in the header (same states as OrbView)
+    private FaceView face;             // Jarvis's face on the home screen (Settings → Jarvis ముఖం)
+    private FrameLayout faceBox;
+    private TextView faceNote;         // 👁 while the front camera is watching
+    private FaceSight sight;           // the front camera (only while the face is on the screen)
+    private boolean sightPaused;       // it stopped by itself (no one for 10 minutes): waits for a tap or the next visit
+    private boolean keyboardUp;
+    private int tab;                   // the tab on the screen
+    private FrameLayout stageView;     // the chat panels (keep at least ~190dp for them)
+    private int faceRoom = -1;         // the face's height that leaves the chat its room (px); 0 = no room, -1 = not measured yet
+    private boolean askingFace;        // the one-time camera question is on the screen
+    private String feelingNext;        // the feeling for the next thing Jarvis says (his greeting)
+    private static final java.util.Set<String> sightErrorsShown = new java.util.HashSet<>();
+    private final android.content.SharedPreferences.OnSharedPreferenceChangeListener faceKeys =
+            (sp, key) -> { if (key != null && key.startsWith("face_")) main.post(this::updateFace); };
+    /** Added to a question that carries his front-camera picture. */
+    private static final String SEE_ME = "\n\n(Attached: a live front-camera picture of whoever is talking to you right now, usually Anil. It is how you see him: "
+            + "use it only when it matters (how he looks or feels, something he shows you, or when he asks about it); do not describe it otherwise.)";
     private TextView greeting;
     private HudDashboard hudDash;      // status tiles under the header (chat tab only)
     private TextView status, clock, dateView, setupCard, undoBar;
@@ -197,12 +214,18 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         brain = new Brain(prefs, store, tools);
         voice = new VoiceIO(this, prefs, this);
         setContentView(buildUi());
+        getSharedPreferences("jarvis", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(faceKeys);
         getWindow().setStatusBarColor(Ui.BG_TOP);
         getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
         renderChat();
         onStoreChanged();
         tick();
         handleIntent(getIntent());
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        if (sight != null && sight.isOn()) { sight.stopAndWait(700); updateFace(); } // the front camera's picture turned with the phone
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -240,6 +263,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         new Thread(() -> Updater.cleanup(getApplicationContext()), "jarvis-cleanup").start();
         showUpdateBanner();
         Updater.lookSoon(this, this::showUpdateBanner);
+        sightPaused = false;
+        updateFace();
     }
 
     /** "New version" note at the top of the chat; tapping it opens the update in Settings. */
@@ -255,6 +280,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (hudDash != null) hudDash.stop();
         paused = true;
         visible = false;
+        if (sight != null) sight.stop(); // the front camera only watches while Jarvis is on the screen
         if (camera != null && camera.isOpen()) {
             camera.close();
             cameraBox.setVisibility(View.GONE);
@@ -277,6 +303,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (live != null) live.stop("destroy");
         liveOn = false;
         if (camera != null) camera.close();
+        if (sight != null) sight.stop();
+        FaceSight.wake = null;
+        getSharedPreferences("jarvis", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(faceKeys);
         voice.shutdown();
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
@@ -447,6 +476,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         updateSetup();
         if (code == REQ_CAMERA_PERM && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) toggleCamera();
         if (code == REQ_PHOTO_CAM && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) openCamera();
+        if (code == REQ_FACE_CAM) updateFace();
         if (code == REQ_LIVE) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startLive();
             else Toast.makeText(this, "మాట్లాడాలంటే మైక్ అనుమతి కావాలి", Toast.LENGTH_LONG).show();
@@ -549,6 +579,33 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         hdlp.topMargin = dp(10);
         root.addView(hudDash, hdlp);
 
+        // ---- Jarvis's face: talks, feels, looks at him (Settings → Jarvis ముఖం). Chat tab only; hidden while typing.
+        face = new FaceView(this);
+        face.setContentDescription("Jarvis ముఖం");
+        face.setStyle(FaceSight.holo(this));
+        faceBox = new FrameLayout(this);
+        faceBox.addView(face, new FrameLayout.LayoutParams(-1, -1));
+        faceNote = Ui.mono(this, "", 12, Ui.CYAN);
+        faceNote.setPadding(dp(8), dp(4), dp(8), dp(4));
+        faceBox.addView(faceNote, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
+        faceBox.setOnClickListener(v -> {
+            if (sightPaused && FaceSight.camOn(this)) { sightPaused = false; updateFace(); return; } // asleep after no one came by: look again
+            orb.performClick();
+        });
+        faceBox.setOnLongClickListener(v -> { startActivity(new Intent(this, SettingsActivity.class)); return true; });
+        LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(-1, dp(FaceSight.big(this) ? 230 : 160));
+        flp.topMargin = dp(6);
+        root.addView(faceBox, flp);
+        sight = new FaceSight(this, sightListener);
+        final View rootView = root;
+        root.getViewTreeObserver().addOnGlobalLayoutListener(() -> { // the keyboard takes the face's room; the chat keeps its room
+            boolean up = rootView.getRootView().getHeight() - rootView.getHeight() > dp(220);
+            if (up != keyboardUp) { keyboardUp = up; main.post(this::updateFace); return; }
+            int room = faceRoom();
+            if (room >= 0 && Math.abs(room - faceRoom) > dp(2)) { faceRoom = room; main.post(this::updateFace); }
+        });
+        FaceSight.wake = () -> main.post(() -> { sightPaused = false; updateFace(); });
+
         // ---- live camera (hidden until the "Live కెమెరా" button is tapped)
         camera = new CameraPanel(this);
         cameraBox = new FrameLayout(this);
@@ -569,6 +626,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
         // ---- panels
         FrameLayout stage = new FrameLayout(this);
+        stageView = stage;
         chatScroll = new ScrollView(this);
         LinearLayout chatBox = new LinearLayout(this);
         chatBox.setOrientation(LinearLayout.VERTICAL);
@@ -903,6 +961,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         dock.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
         if (hudDash != null) hudDash.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
+        tab = idx;
+        updateFace();
         if (idx == 0) scrollToEnd();
     }
 
@@ -1118,6 +1178,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (camera.isOpen()) {
             camera.close();
             cameraBox.setVisibility(View.GONE);
+            updateFace();
             return;
         }
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -1126,6 +1187,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         showTab(0);
         cameraBox.setVisibility(View.VISIBLE);
+        if (sight != null) sight.stopAndWait(700); // many phones cannot run the front and back cameras together
+        updateFace();
         camera.open();
         Toast.makeText(this, "Live కెమెరా ఆన్. ఏం కనిపిస్తోందో Jarvis ని అడగండి.", Toast.LENGTH_SHORT).show();
     }
@@ -1218,6 +1281,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onWord(String spoken, int start, int end) {
+        if (face != null) face.word(spoken, start, end);
         if (showingChat()) karaoke.word(spoken, start, end, jarvisBodies, chatScroll);
     }
 
@@ -1238,14 +1302,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void afterPaused(int r) {
         input.setHint("Jarvis ని అడగండి");
         if (r == VoiceIO.HELD) {
-            orb.setState(OrbView.IDLE);
+            setOrb(OrbView.IDLE);
             status.setText("ఆపాను. \"Jarvis, కొనసాగించు\" అనండి లేదా ▶ నొక్కండి");
             // let "Jarvis" be heard again while paused, so he can say "కొనసాగించు" later
             talking(false);
             if (prefs.wakeReady()) WakeService.resume(this);
             screenMaySleepSoon();
         } else if (r == VoiceIO.RESUMED) {
-            orb.setState(OrbView.SPEAKING);
+            setOrb(OrbView.SPEAKING);
             status.setText("మాట్లాడుతున్నాను…");
             talking(true);
             WakeService.pause(this);
@@ -1384,7 +1448,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onLiveState(int orbState, String text) {
-        orb.setState(orbState);
+        setOrb(orbState);
         status.setText(text);
         liveScreen.state(orbState, text);
     }
@@ -1421,10 +1485,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onLiveLevel(float level) {
         orb.setLevel(level);
+        if (face != null) face.setMic(level);
         liveScreen.orb.setMic(level);
     }
 
-    @Override public void onLiveVoiceLevel(float level) { liveScreen.orb.setVoice(level); }
+    @Override public void onLiveVoiceLevel(float level) {
+        liveScreen.orb.setVoice(level);
+        if (face != null) face.setVoice(level);
+    }
 
     @Override public void onLiveError(String message) {
         String said = describeLive(message);
@@ -1482,7 +1550,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         keepScreenOn();
         showTab(0);
         voice.listen(prefs.listenLang());
-        orb.setState(OrbView.LISTENING);
+        setOrb(OrbView.LISTENING);
         status.setText("వింటున్నాను…");
         input.setHint("వింటున్నాను…");
         refreshAction();
@@ -1546,11 +1614,16 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         finishTurn();
     }
 
-    @Override public void onLevel(float level) { orb.setLevel(level); }
+    @Override public void onLevel(float level) {
+        orb.setLevel(level);
+        if (face != null) face.setMic(level);
+    }
 
     @Override public void onSpeakStart() {
         keepScreenOn();
-        orb.setState(OrbView.SPEAKING);
+        if (face != null) face.setFeeling(feelingNext != null ? feelingNext : voice.feeling());
+        feelingNext = null;
+        setOrb(OrbView.SPEAKING);
         status.setText("మాట్లాడుతున్నాను…");
         refreshAction();
     }
@@ -1582,6 +1655,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         String photoNow = pendingPhoto;
         // With the live camera open, every question carries the current camera picture.
         if (photoNow == null && camera != null && camera.isOpen()) photoNow = CameraPanel.latestFrame;
+        boolean seeMe = false; // Jarvis sees him through the front camera while they talk (Settings → Jarvis ముఖం)
+        if (photoNow == null && pendingFileText == null && shown != null && !shown.isEmpty() && sight != null && sight.isOn() && FaceSight.seeMe(this)) {
+            String me = FaceSight.picture();
+            if (me != null) { photoNow = me; seeMe = true; }
+        }
         final String photo = photoNow;
         final Bitmap thumb = pendingThumb;
         final String fileText = pendingFileText, fileName = pendingFileName;
@@ -1589,6 +1667,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (shown == null || shown.isEmpty()) shown = fileName != null ? "ఈ ఫైల్‌లో ఏముందో చిన్నగా చెప్పు." : "ఈ ఫోటోలో ఏముందో చెప్పు.";
         String q = prompt == null || prompt.isEmpty() ? shown : prompt;
         if (fileText != null) q = q + "\n\n--- ఫైల్: " + fileName + " ---\n" + fileText; // a text file goes in as text
+        final String askPlain = q;
+        if (seeMe) q = q + SEE_ME;
         final String ask = q;
         if (fileName != null) shown = "📎 " + fileName + "\n" + shown;
 
@@ -1601,8 +1681,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         clearAttachment();
         showTab(0);
         List<JSONObject> history = store.chat();
-        store.addChat("user", shown, photo != null && !Brain.isPdf(photo));
-        addMessage("user", shown, System.currentTimeMillis(), thumb);
+        store.addChat("user", shown, photo != null && !Brain.isPdf(photo) && !seeMe);
+        addMessage("user", seeMe ? shown + "  👁" : shown, System.currentTimeMillis(), thumb);
         thinkingView = addMessage("assistant", "ఆలోచిస్తున్నాను…", System.currentTimeMillis(), null);
         thinkingView.setTextColor(Ui.MUTED);
         thinkingWrap = (View) thinkingView.getParent();
@@ -1612,7 +1692,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         talking(true);
         WakeService.pause(this);
         keepScreenOn();
-        orb.setState(OrbView.THINKING);
+        setOrb(OrbView.THINKING);
         status.setText("ఆలోచిస్తున్నాను…");
         refreshAction();
 
@@ -1628,10 +1708,16 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             // The red stop button (or leaving the screen) bumps generation: stop before the next round/tool.
             @Override public boolean cancelled() { return gen != generation; }
         };
+        final boolean sentMe = seeMe;
         worker.submit(() -> {
             String reply = null, error = null;
             try {
-                reply = brain.ask(history, ask, photo, progress);
+                try {
+                    reply = brain.ask(history, ask, photo, progress);
+                } catch (Http.ApiError e) {
+                    if (!sentMe || e.status != 400) throw e;
+                    reply = brain.ask(history, askPlain, null, progress); // this model takes no pictures: the question alone
+                }
             } catch (java.util.concurrent.CancellationException e) {
                 return; // stopped by Anil: no error bubble
             } catch (Http.ApiError e) {
@@ -1660,9 +1746,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         store.addChat("assistant", reply, false);
         addMessage("assistant", reply, System.currentTimeMillis(), null);
+        if (face != null) face.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM);
         if (prefs.voiceReplies() && !paused) {
             voice.speak(reply, prefs.speechRate());
-            orb.setState(OrbView.SPEAKING);
+            setOrb(OrbView.SPEAKING);
             refreshAction();
         } else if (prefs.voiceReplies()) {
             voice.speak(reply, prefs.speechRate()); // keeps talking if another app was opened
@@ -1709,9 +1796,104 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         main.postDelayed(letScreenSleep, 20000);
     }
 
+    /** Shows / hides Jarvis's face and starts / stops the front camera, as the settings and the screen allow. */
+    private void updateFace() {
+        if (face == null || faceBox == null || cameraBox == null || isFinishing()) return;
+        boolean place = FaceSight.faceOn(this) && tab == 0 && cameraBox.getVisibility() != View.VISIBLE;
+        if (place && hudDash != null && !getPreferences(MODE_PRIVATE).getBoolean("face_dash_folded", false)) {
+            hudDash.collapse(); // once, to make room for the face (a tap on the status line opens the tiles again)
+            getPreferences(MODE_PRIVATE).edit().putBoolean("face_dash_folded", true).apply();
+        }
+        int room = faceRoom();
+        if (room >= 0) faceRoom = room;
+        int h = faceRoom < 0 ? dp(FaceSight.big(this) ? 230 : 160) : faceRoom;
+        faceBox.setVisibility(place && !keyboardUp && h > 0 ? View.VISIBLE : View.GONE);
+        face.setStyle(FaceSight.holo(this));
+        ViewGroup.LayoutParams lp = faceBox.getLayoutParams();
+        if (lp != null && h > 0 && lp.height != h) { lp.height = h; faceBox.setLayoutParams(lp); }
+        if (place && visible && !FaceSight.asked(this) && !askingFace) askFaceCamera();
+        // the eyes keep watching while he types (only the drawing makes room for the keyboard)
+        boolean eyes = place && visible && FaceSight.camOn(this) && FaceSight.allowed(this) && !sightPaused && !Guard.running(this);
+        if (eyes) sight.start(); else sight.stop();
+        faceNote.setText(sight.isOn() ? "👁" : sightPaused && place && FaceSight.camOn(this) ? "💤" : "");
+        if (!sight.isOn()) face.look(false, 0, 0, 0);
+    }
+
+    /** The face's height that leaves the chat at least ~190dp (px): 0 when there is no room, -1 before the first layout. */
+    private int faceRoom() {
+        if (faceBox == null || stageView == null || keyboardUp) return -1;
+        View root = (View) faceBox.getParent();
+        int rootH = root == null ? 0 : root.getHeight();
+        if (rootH <= 0 || stageView.getHeight() <= 0 && faceBox.getVisibility() != View.VISIBLE) return -1;
+        int margin = ((LinearLayout.LayoutParams) faceBox.getLayoutParams()).topMargin;
+        int faceNow = faceBox.getVisibility() == View.VISIBLE ? faceBox.getHeight() + margin : 0;
+        int others = rootH - stageView.getHeight() - faceNow; // header, tabs, status tiles, dock
+        int h = Math.min(dp(FaceSight.big(this) ? 230 : 160), rootH - others - dp(190) - margin);
+        return h < dp(120) ? 0 : h;
+    }
+
+    /** Once: may Jarvis look at him through the front camera, and send his picture with questions? */
+    private void askFaceCamera() {
+        askingFace = true;
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Jarvis మిమ్మల్ని చూడాలా?")
+                .setMessage("ముందు కెమెరాతో Jarvis మిమ్మల్ని చూస్తాడు: ముఖం మీ వైపు చూస్తుంది, మీరు నవ్వితే నవ్వుతుంది, మీరు పరిచయం చేసినవాళ్లను పేరుతో గుర్తుపడతాడు. "
+                        + "Jarvis స్క్రీన్ తెరిచి ఉన్నప్పుడే (ముఖం పక్కన 👁); ఏదీ రికార్డ్ / సేవ్ అవ్వదు.\n\n"
+                        + "'ఫోటోతో' అంటే: మీ ముఖం కనిపిస్తున్నప్పుడు అడిగే ప్రశ్నతో ఒక చిన్న ఫోటో మీరు ఎంచుకున్న AI కి వెళ్తుంది, మిమ్మల్ని చూసి మాట్లాడతాడు (API ఖర్చు కొంచెం పెరుగుతుంది).\n\n"
+                        + "సెట్టింగ్స్ → Jarvis ముఖంలో ఎప్పుడైనా మార్చొచ్చు.")
+                .setPositiveButton("చూడు + ఫోటోతో", (d, w) -> answerFace(true, true))
+                .setNeutralButton("చూడు మాత్రమే", (d, w) -> answerFace(true, false))
+                .setNegativeButton("కెమెరా వద్దు", (d, w) -> answerFace(false, false))
+                .setOnDismissListener(d -> askingFace = false)
+                .show();
+    }
+
+    private void answerFace(boolean cam, boolean seeMe) {
+        getSharedPreferences("jarvis", MODE_PRIVATE).edit().putBoolean("face_asked", true).putBoolean("face_cam", cam).putBoolean("face_seeme", seeMe).apply();
+        if (cam && !FaceSight.allowed(this)) requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_FACE_CAM);
+    }
+
+    private final FaceSight.Listener sightListener = new FaceSight.Listener() {
+        @Override public void onSight(boolean present, float x, float y, float smile) {
+            if (face != null) face.look(present, x, y, smile);
+        }
+
+        @Override public void onKnown(String name, boolean owner) { greetPerson(name, owner); }
+
+        @Override public void onSightStopped(String why, boolean idle) {
+            sightPaused = true;
+            if (face != null) face.look(false, 0, 0, 0);
+            if (faceNote != null) faceNote.setText(idle ? "💤" : "");
+            if (!idle && visible && why != null && sightErrorsShown.add(why)) Toast.makeText(MainActivity.this, why, Toast.LENGTH_LONG).show();
+        }
+    };
+
+    /** Someone he introduced came into view: a smile, and a hello now and then (not more than once in 3 hours). */
+    private void greetPerson(String name, boolean owner) {
+        if (face == null) return;
+        face.greet();
+        android.content.SharedPreferences gp = getSharedPreferences("jarvis_people", MODE_PRIVATE);
+        String key = "greeted_" + name.toLowerCase(Locale.ROOT);
+        long now = System.currentTimeMillis();
+        if (now - gp.getLong(key, 0) < 3 * 3600_000L) return;
+        if (busy || live != null || voice.speaking || voice.listening || !visible) return;
+        gp.edit().putLong(key, now).apply();
+        if (owner) { status.setText("హాయ్ " + name + " 👋"); return; }
+        if (!FaceSight.greetOn(this) || !prefs.voiceReplies()) { status.setText("👋 " + name + " వచ్చారు"); return; }
+        face.setFeeling("happy");
+        feelingNext = "happy";
+        voice.speak("హాయ్ " + name + "! బాగున్నారా?", prefs.speechRate());
+    }
+
+    /** What Jarvis is doing, on the hologram core and on his face. */
+    private void setOrb(int s) {
+        orb.setState(s);
+        if (face != null) face.setState(s);
+    }
+
     private void setIdle() {
         screenMaySleepSoon();
-        orb.setState(prefs.hasBrain() ? OrbView.IDLE : OrbView.OFFLINE);
+        setOrb(prefs.hasBrain() ? OrbView.IDLE : OrbView.OFFLINE);
         status.setText(prefs.hasBrain() ? "సిద్ధంగా ఉన్నాను, " + prefs.name() : "మెదడు ఆఫ్‌లైన్: API key కావాలి");
         input.setHint("Jarvis ని అడగండి");
         refreshAction();

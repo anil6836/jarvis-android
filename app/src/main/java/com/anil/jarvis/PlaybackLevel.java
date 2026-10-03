@@ -49,6 +49,19 @@ final class PlaybackLevel {
 
     static synchronized void end(AudioTrack t) { if (track == t) track = null; }
 
+    /** Loudness of the 40 ms playing right now (for the face's lips), or -1 when there is no record (the phone's own voice). */
+    static double current() {
+        AudioTrack t = track;
+        if (t == null) return -1;
+        long head;
+        try { head = Math.max(0, (t.getPlaybackHeadPosition() & 0xFFFFFFFFL) - headOffset) / blockSamples; } catch (Exception e) { return -1; }
+        long w = written;
+        long from = Math.max(Math.max(0, w - SIZE + 1), head - 1), to = Math.min(w - 1, head);
+        double max = 0;
+        for (long i = from; i <= to; i++) max = Math.max(max, ring[(int) (i % SIZE)]);
+        return max;
+    }
+
     /**
      * Loudest output level from ~140 ms ago up to ~20 ms ahead of what is playing now (covers room
      * echo and timing slack), or -1 when there is no reference (the phone's own TTS voice).

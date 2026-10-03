@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12 and newer: the guard's Telegram bot token stays on the phone (not in backups or transfers). -->
+<!-- Android 12 and newer: the guard's Telegram bot token and the faces Jarvis knows stay on the phone (not in backups or transfers). -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="jarvis_guard.xml" />
+        <exclude domain="sharedpref" path="jarvis_people.xml" />
+        <exclude domain="file" path="facenet.tflite" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="jarvis_guard.xml" />
+        <exclude domain="sharedpref" path="jarvis_people.xml" />
+        <exclude domain="file" path="facenet.tflite" />
     </device-transfer>
 </data-extraction-rules>

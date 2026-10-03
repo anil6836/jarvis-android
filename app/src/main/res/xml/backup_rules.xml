@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 11 and older: the guard's Telegram bot token stays on the phone (not in backups). -->
+<!-- Android 11 and older: the guard's Telegram bot token and the faces Jarvis knows stay on the phone (not in backups). -->
 <full-backup-content>
     <exclude domain="sharedpref" path="jarvis_guard.xml" />
+    <exclude domain="sharedpref" path="jarvis_people.xml" />
+    <exclude domain="file" path="facenet.tflite" />
 </full-backup-content>

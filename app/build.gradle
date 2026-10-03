@@ -61,6 +61,8 @@ dependencies {
     implementation 'com.google.zxing:core:3.5.3'
     // Document scanner (edges, straightening, cleaning, multi-page PDF) from Google Play services
     implementation 'com.google.android.gms:play-services-mlkit-document-scanner:16.0.0'
+    // Finding faces in the front camera picture for Jarvis's face (Google Play services, on the phone)
+    implementation 'com.google.android.gms:play-services-mlkit-face-detection:17.1.0'
     // Offline "Jarvis" single-word detection (model downloaded on the phone the first time)
     implementation 'com.alphacephei:vosk-android:0.3.47@aar'
     implementation 'net.java.dev.jna:jna:5.13.0@aar'

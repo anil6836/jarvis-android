@@ -192,6 +192,9 @@ final class VoiceIO {
         l.onSpeakDone();
     }
 
+    /** The feeling of what is being said now (for the face). */
+    String feeling() { return feeling; }
+
     void speak(String text, float rate) {
         if (shut || text == null || text.trim().isEmpty()) return;
         feeling = prefs.emotions() ? Emotion.forText(text) : Emotion.CALM;

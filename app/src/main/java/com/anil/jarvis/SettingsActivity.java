@@ -89,6 +89,7 @@ public class SettingsActivity extends Activity {
     private TextView rateLabel, sensitivityLabel, wakeInfo, bargeSensLabel;
     /** The card being filled (each section is its own coloured glass card); page holds the cards. */
     private LinearLayout box, page;
+    private LinearLayout peopleBox;   // the faces Jarvis knows (Jarvis ముఖం)
     private int accent = Ui.C_CYAN;
 
     @Override protected void onCreate(Bundle b) {
@@ -163,6 +164,46 @@ public class SettingsActivity extends Activity {
         motionBtn[0] = button("", v -> { Ui.setTheme(this, Ui.theme(this), !Ui.hudMotion(this)); marks.run(); });
         marks.run();
         note("బ్యాటరీ సేవర్ ఆన్‌లో ఉంటే వలయాలు తమంతట తామే ఆగుతాయి.");
+
+        // ---- Jarvis's face on the home screen (applies at once)
+        section("Jarvis ముఖం");
+        note("హోమ్ స్క్రీన్ మీద Jarvis కి మనిషి ముఖం: మాట్లాడేటప్పుడు పెదాలు కదులుతాయి, జవాబులోని భావం (సంతోషం, బాధ, ఆశ్చర్యం…) ముఖంలో కనిపిస్తుంది. "
+                + "ముఖం మీద నొక్కితే మాట్లాడొచ్చు; ఎక్కువసేపు నొక్కితే ఈ పేజీ వస్తుంది.");
+        TextView[] fb = new TextView[6];
+        Runnable faceMarks = () -> {
+            fb[0].setText(FaceSight.faceOn(this) ? "😊  ముఖం: ఆన్ (తీసేయడానికి నొక్కండి)" : "⭕  ముఖం: ఆఫ్ (చూపించడానికి నొక్కండి)");
+            fb[1].setText(FaceSight.holo(this) ? "✨  స్టైల్: హోలోగ్రామ్ (మనిషి రంగులకి నొక్కండి)" : "🧑  స్టైల్: మనిషి (హోలోగ్రామ్‌కి నొక్కండి)");
+            fb[2].setText(FaceSight.big(this) ? "🔍  పరిమాణం: పెద్దది (చిన్నదికి నొక్కండి)" : "🔍  పరిమాణం: చిన్నది (పెద్దదికి నొక్కండి)");
+            fb[3].setText(FaceSight.camOn(this) ? "👁  ముందు కెమెరాతో మిమ్మల్ని చూడటం: ఆన్ (ఆపడానికి నొక్కండి)" : "🚫  ముందు కెమెరాతో చూడటం: ఆఫ్ (ఆన్ చేయడానికి నొక్కండి)");
+            fb[4].setText(FaceSight.seeMe(this) ? "📷  ప్రశ్నతో మీ ఫోటో AI కి: ఆన్ (ఆపడానికి నొక్కండి)" : "📷  ప్రశ్నతో మీ ఫోటో AI కి: ఆఫ్ (ఆన్ చేయడానికి నొక్కండి)");
+            fb[5].setText(FaceSight.greetOn(this) ? "👋  తెలిసినవాళ్లను పలకరించడం: ఆన్" : "👋  తెలిసినవాళ్లను పలకరించడం: ఆఫ్");
+        };
+        fb[0] = button("", v -> { FaceSight.set(this, "face_on", !FaceSight.faceOn(this)); faceMarks.run(); });
+        fb[1] = button("", v -> { FaceSight.set(this, "face_holo", !FaceSight.holo(this)); faceMarks.run(); });
+        fb[2] = button("", v -> { FaceSight.set(this, "face_big", !FaceSight.big(this)); faceMarks.run(); });
+        fb[3] = button("", v -> {
+            boolean on = !FaceSight.camOn(this);
+            FaceSight.set(this, "face_cam", on);
+            FaceSight.set(this, "face_asked", true);
+            if (on && !FaceSight.allowed(this)) requestPermissions(new String[]{Manifest.permission.CAMERA}, 62);
+            faceMarks.run();
+        });
+        fb[4] = button("", v -> { FaceSight.set(this, "face_seeme", !FaceSight.seeMe(this)); FaceSight.set(this, "face_asked", true); faceMarks.run(); });
+        fb[5] = button("", v -> { FaceSight.set(this, "face_greet", !FaceSight.greetOn(this)); faceMarks.run(); });
+        faceMarks.run();
+        note("ముందు కెమెరా Jarvis హోమ్ స్క్రీన్ తెరిచి ఉన్నప్పుడే చూస్తుంది (ముఖం పక్కన 👁 గుర్తు); ఫోటోలు ఎక్కడా సేవ్ అవ్వవు; 10 నిమిషాలు ఎవరూ కనిపించకపోతే తనంతట తానే ఆగుతుంది (💤, ముఖం మీద నొక్కితే మళ్ళీ చూస్తుంది). "
+                + "'ప్రశ్నతో మీ ఫోటో' ఆన్‌లో ఉంటే, మీ ముఖం కనిపిస్తున్నప్పుడు అడిగే ప్రతి ప్రశ్నతో ఒక చిన్న ఫోటో మీరు ఎంచుకున్న AI కి వెళ్తుంది (మిమ్మల్ని చూసి మాట్లాడటానికి): API ఖర్చు కొంచెం పెరుగుతుంది.");
+        TextView ph = Ui.text(this, "ముఖాలు గుర్తుపెట్టుకున్నవాళ్లు", 15.5f, 0xFFFFFFFF);
+        ph.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        ph.setPadding(0, Ui.dp(this, 14), 0, 0);
+        box.addView(ph);
+        peopleBox = new LinearLayout(this);
+        peopleBox.setOrientation(LinearLayout.VERTICAL);
+        box.addView(peopleBox);
+        renderPeople();
+        note("కొత్తవాళ్లను పరిచయం చేయడానికి: వాళ్లు ఒక్కరే ఫోన్ వైపు చూస్తుండగా \"Jarvis, ఇతను రాము, గుర్తుపెట్టుకో\" అనండి; మిమ్మల్ని మీరు: \"నన్ను గుర్తుపెట్టుకో\". "
+                + "మీరు పరిచయం చేసినవాళ్లనే పేరుతో గుర్తుపడతాడు, తెలియనివాళ్లను గుర్తుపెట్టుకోడు. ముఖాల గుర్తులు (ఫోటోలు కాదు) ఈ ఫోన్‌లో మాత్రమే ఉంటాయి, బ్యాకప్‌లోకి వెళ్లవు. "
+                + "మొదటిసారి సుమారు 23 MB మోడల్ ఒక్కసారి డౌన్‌లోడ్ అవుతుంది (FaceNet, Apache-2.0 / MIT). ఇంట్లోవాళ్లకి ఈ విషయం చెప్పండి.");
 
         // ---- brain
         section("Jarvis మెదడు");
@@ -1058,7 +1099,7 @@ public class SettingsActivity extends Activity {
     }
 
     private static final String[][] LOOKS = {
-            {"మీరు", "👤"}, {"థీమ్", "🎨"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
+            {"మీరు", "👤"}, {"థీమ్", "🎨"}, {"Jarvis ముఖం", "🙂"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
             {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
             {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"కాపలా", "🛡️"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
             {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},
@@ -1228,6 +1269,40 @@ public class SettingsActivity extends Activity {
             try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
         });
         box.addView(t);
+    }
+
+    /** The people Jarvis knows by face, each with a "forget" button. */
+    private void renderPeople() {
+        if (peopleBox == null) return;
+        peopleBox.removeAllViews();
+        java.util.List<String> names = People.names(this);
+        if (names.isEmpty()) {
+            TextView t = Ui.text(this, "ఇంకా ఎవరూ లేరు.", 14, Ui.MUTED);
+            t.setPadding(0, Ui.dp(this, 6), 0, 0);
+            peopleBox.addView(t);
+        }
+        for (String n : names) {
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+            row.addView(Ui.text(this, "🙂  " + n, 15, 0xFFFFFFFF), new LinearLayout.LayoutParams(0, -2, 1));
+            TextView forget = Ui.text(this, "మర్చిపో", 14, Ui.RED);
+            forget.setPadding(Ui.dp(this, 12), Ui.dp(this, 6), Ui.dp(this, 12), Ui.dp(this, 6));
+            forget.setBackground(Ui.round(this, 0x14FF6B5E, 0x73FF6B5E, 10));
+            forget.setOnClickListener(v -> {
+                People.remove(this, n);
+                renderPeople();
+                Toast.makeText(this, n + " ముఖం మర్చిపోయాను", Toast.LENGTH_SHORT).show();
+            });
+            row.addView(forget);
+            peopleBox.addView(row);
+        }
+        String sc = FaceSight.lastScore;
+        if (!names.isEmpty() && !sc.isEmpty()) {
+            TextView t = Ui.text(this, "చివరిసారి చూసిన ముఖం పోలిక: " + sc + " (" + People.SAME + " పైన ఉంటే గుర్తుపడతాడు)", 12.5f, Ui.MUTED);
+            t.setPadding(0, Ui.dp(this, 4), 0, 0);
+            peopleBox.addView(t);
+        }
     }
 
     private TextView button(String label, View.OnClickListener l) {
