@@ -60,6 +60,12 @@ final class FloatBubble implements ScreenReader.Listener {
     private boolean away, held, busy, longPressed, dragging, gone, menuWasOpen;
     private long menuClosedAt;
     private String lastAnswer = "";
+    // the talk about this screen: what was read, the picture, and what was said (for 🎙️ follow-up questions)
+    private String ctxApp = "", ctxPage = "", ctxShot;
+    private final java.util.ArrayDeque<String[]> turns = new java.util.ArrayDeque<>();
+    private android.speech.SpeechRecognizer sr;
+    private boolean listening;
+    private TextView micBtn;
     private float downX, downY;
     private int startX, startY;
 
@@ -115,7 +121,7 @@ final class FloatBubble implements ScreenReader.Listener {
         @Override public void onReceive(Context c, Intent i) {
             if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) {
                 away = true;
-                closeCard();
+                closeCard(); // (also stops listening)
                 refresh();
                 main.removeCallbacks(recheck);
                 main.postDelayed(recheck, 2000);
@@ -136,6 +142,8 @@ final class FloatBubble implements ScreenReader.Listener {
         hideMenu();
         closeCard();
         if (reader.listener == this) reader.listener = null;
+        try { if (sr != null) sr.destroy(); } catch (Exception ignored) {}
+        sr = null;
         try { svc.unregisterReceiver(screen); } catch (Exception ignored) {}
         try { if (bubble != null) wm.removeView(bubble); } catch (Exception ignored) {}
         bubble = null;
@@ -399,8 +407,8 @@ final class FloatBubble implements ScreenReader.Listener {
                     return;
                 }
                 String out = null, err = null;
+                final String body = page.length() > 12000 ? page.substring(0, 12000) : page;
                 try {
-                    String body = page.length() > 12000 ? page.substring(0, 12000) : page;
                     out = Brain.oneShot(p, system(kind, p.name()), "App on screen: " + app + "\nText read from the screen:\n" + body, shot, false,
                             kind == MEANING || kind == TELUGU ? 3500 : 900);
                 } catch (Http.ApiError e) {
@@ -413,8 +421,13 @@ final class FloatBubble implements ScreenReader.Listener {
                     if (gone) return;
                     busy = false;
                     refresh();
+                    ctxApp = app; // a new talk about this screen (🎙️ asks more about it)
+                    ctxPage = body;
+                    ctxShot = shot;
+                    turns.clear();
                     if (er != null || o == null || o.trim().isEmpty()) { showCard(title(kind), er != null ? er : "జవాబు రాలేదు. మళ్ళీ ప్రయత్నించండి.", false); return; }
                     String clean = o.replaceAll("[*#_`>]", "").replaceAll("\n{3,}", "\n\n").trim();
+                    turns.add(new String[]{"Jarvis", clean});
                     lastAnswer = clean;
                     showCard(title(kind), clean, false);
                     speak(kind == REPLY ? "ఇలా జవాబు ఇవ్వొచ్చు: " + clean : clean);
@@ -480,6 +493,145 @@ final class FloatBubble implements ScreenReader.Listener {
         });
     }
 
+    // ================================================================ asking more about it (🎙️ in the card)
+
+    private void listenFollowUp() {
+        if (listening) { try { sr.stopListening(); } catch (Exception ignored) {} return; } // "అయిపోయింది": take what was said
+        if (busy) { Toast.makeText(svc, "ఇంకా ఆలోచిస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
+        if (ctxPage.isEmpty() && turns.isEmpty()) { Toast.makeText(svc, "ముందు '🧠 అర్థం చెప్పు' లాంటి ఆప్షన్ ఒకటి నొక్కండి", Toast.LENGTH_SHORT).show(); return; }
+        if (svc.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            showCard("🎙️ అడుగు", "మైక్ అనుమతి లేదు. Jarvis యాప్ తెరిచి మైక్ అనుమతి (Allow) ఇవ్వండి.", false);
+            return;
+        }
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(svc)) {
+            showCard("🎙️ అడుగు", "ఈ ఫోన్‌లో మాటలు వినే Google సేవ దొరకలేదు.", false);
+            return;
+        }
+        reader.stop();
+        Announcer.stop();
+        WakeService.pause(svc); // "Hey Jarvis" listening gives the mic to this question
+        if (sr == null) {
+            sr = android.speech.SpeechRecognizer.createSpeechRecognizer(svc);
+            sr.setRecognitionListener(new android.speech.RecognitionListener() {
+                @Override public void onReadyForSpeech(android.os.Bundle b) { if (cardTitle != null) cardTitle.setText("🎙️ వింటున్నాను… అడగండి"); }
+                @Override public void onBeginningOfSpeech() {}
+                @Override public void onRmsChanged(float db) {}
+                @Override public void onBufferReceived(byte[] b) {}
+                @Override public void onEndOfSpeech() {}
+                @Override public void onError(int error) {
+                    doneListening();
+                    if (error == android.speech.SpeechRecognizer.ERROR_AUDIO || error == android.speech.SpeechRecognizer.ERROR_CLIENT
+                            || error == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) { askInPanel(); return; } // the mic is not ours from here
+                    boolean net = error == android.speech.SpeechRecognizer.ERROR_NETWORK || error == android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT;
+                    if (cardTitle != null) cardTitle.setText(net ? "🎙️ నెట్ లేదు: మాట అర్థం చేసుకోలేకపోయాను" : "🎙️ వినిపించలేదు. మళ్ళీ 🎙️ నొక్కండి");
+                    if (cardText != null && !lastAnswer.isEmpty()) cardText.setText(lastAnswer);
+                }
+                @Override public void onResults(android.os.Bundle r) {
+                    doneListening();
+                    String q = heard(r);
+                    if (q.isEmpty()) { onError(android.speech.SpeechRecognizer.ERROR_NO_MATCH); return; }
+                    followUp(q);
+                }
+                @Override public void onPartialResults(android.os.Bundle r) {
+                    String q = heard(r);
+                    if (!q.isEmpty() && cardText != null) cardText.setText("“" + q + "”");
+                }
+                @Override public void onEvent(int t, android.os.Bundle b) {}
+            });
+        }
+        String lang = new Prefs(svc).listenLang();
+        Intent i = new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, lang);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, svc.getPackageName());
+        listening = true;
+        if (micBtn != null) micBtn.setText("✋ అయిపోయింది");
+        if (cardTitle != null) cardTitle.setText("🎙️ ఒక్క క్షణం…");
+        try {
+            sr.startListening(i);
+        } catch (Exception e) {
+            doneListening();
+            if (cardTitle != null) cardTitle.setText("🎙️ మైక్ తెరవలేకపోయాను");
+        }
+    }
+
+    /** When this phone keeps the mic from the floating card: Jarvis's panel opens with this screen and the answer in mind. */
+    private void askInPanel() {
+        String page = ctxPage.length() > 3000 ? ctxPage.substring(0, 3000) + "…" : ctxPage;
+        String ctx = "\n[About his screen (" + ctxApp + "): " + page + "\nJarvis told him: " + lastAnswer + "]";
+        try {
+            svc.startActivity(new Intent(svc, SheetActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(SheetActivity.EXTRA_ANNOUNCE, "ఈ పేజీ గురించి ఇంకా ఏం అడగాలనుకుంటున్నారు?")
+                    .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, "")
+                    .putExtra(SheetActivity.EXTRA_ANNOUNCE_CONTEXT, ctx));
+        } catch (Exception e) {
+            if (cardTitle != null) cardTitle.setText("🎙️ మైక్ తెరవలేకపోయాను");
+        }
+    }
+
+    private static String heard(android.os.Bundle r) {
+        java.util.ArrayList<String> l = r == null ? null : r.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+        return l == null || l.isEmpty() || l.get(0) == null ? "" : l.get(0).trim();
+    }
+
+    private void doneListening() {
+        boolean was = listening;
+        listening = false;
+        if (micBtn != null) micBtn.setText("🎙️ అడుగు");
+        if (was && new Prefs(svc).wakeReady()) WakeService.resume(svc);
+    }
+
+    private void stopListening() {
+        if (!listening) return;
+        try { if (sr != null) sr.cancel(); } catch (Exception ignored) {}
+        doneListening();
+    }
+
+    /** His next question about the same screen: answered with the page, the picture and what was said so far. */
+    private void followUp(String q) {
+        final Prefs p = new Prefs(svc);
+        if (!p.hasBrain()) { showCard("Jarvis", "నా మెదడుకి API key లేదు. Jarvis సెట్టింగ్స్‌లో పెట్టండి.", false); return; }
+        busy = true;
+        refresh();
+        showCard("💬 " + q, "ఆలోచిస్తున్నాను…", true);
+        StringBuilder talk = new StringBuilder();
+        for (String[] t : turns) talk.append(t[0].equals("Jarvis") ? "Jarvis: " : "Anil: ").append(t[1]).append("\n");
+        final String prompt = "App on screen: " + ctxApp + "\nText read from the screen:\n" + ctxPage
+                + "\n\nWhat was said about it so far:\n" + talk + "\nAnil now asks: " + q;
+        final String shot = ctxShot;
+        final String system = "You are Jarvis, " + p.name() + "'s assistant. He is looking at this screen on his phone (screenshot and its text are given) "
+                + "and asks a follow-up question about it, or about what you already told him. Answer in simple, natural Telugu (Telugu script) as plain "
+                + "text for reading aloud, like a friend: direct and clear, short unless he asks for detail. Use the screen's content and your general "
+                + "knowledge; if the screen does not say and you are not sure, say so honestly. No markdown.";
+        new Thread(() -> {
+            String out = null, err = null;
+            try {
+                out = Brain.oneShot(p, system, prompt, shot, p.webSearch(), 1500);
+            } catch (Http.ApiError e) {
+                err = "AI జవాబు ఇవ్వలేదు: " + Models.explain(p, e);
+            } catch (Exception e) {
+                err = "చేయలేకపోయాను: నెట్ / సమయం సమస్య.";
+            }
+            final String o = out, er = err;
+            main.post(() -> {
+                if (gone) return;
+                busy = false;
+                refresh();
+                if (er != null || o == null || o.trim().isEmpty()) { showCard("💬 " + q, er != null ? er : "జవాబు రాలేదు. మళ్ళీ 🎙️ నొక్కండి.", false); return; }
+                String clean = o.replaceAll("[*#_`>]", "").replaceAll("\n{3,}", "\n\n").trim();
+                turns.add(new String[]{"Anil", q});
+                turns.add(new String[]{"Jarvis", clean});
+                while (turns.size() > 10) turns.poll(); // the last few exchanges are enough
+                lastAnswer = clean;
+                showCard("💬 " + q, clean, false);
+                speak(clean);
+            });
+        }, "jarvis-bubble-ask").start();
+    }
+
     // ================================================================ the answer card
 
     private void showCard(String title, String text, boolean working) {
@@ -525,6 +677,9 @@ final class FloatBubble implements ScreenReader.Listener {
         card.addView(sv);
         LinearLayout actions = new LinearLayout(svc);
         actions.setGravity(Gravity.END);
+        micBtn = button("🎙️ అడుగు", v -> listenFollowUp());
+        micBtn.setTextColor(Ui.CYAN);
+        actions.addView(micBtn);
         actions.addView(button("🔊 మళ్ళీ", v -> { if (!lastAnswer.isEmpty()) speak(lastAnswer); }));
         actions.addView(button("⏹ ఆపు", v -> { reader.stop(); Announcer.stop(); }));
         actions.addView(button("📋 కాపీ", v -> {
@@ -549,17 +704,19 @@ final class FloatBubble implements ScreenReader.Listener {
         t.setText(label);
         t.setTextColor(0xFFD7F6FF);
         t.setTextSize(13.5f);
-        t.setPadding(dp(10), dp(8), dp(10), dp(8));
+        t.setPadding(dp(8), dp(8), dp(8), dp(8));
         t.setOnClickListener(l);
         return t;
     }
 
     private void closeCard() {
+        stopListening();
         if (card == null) return;
         try { wm.removeView(card); } catch (Exception ignored) {}
         card = null;
         cardTitle = null;
         cardText = null;
         cardActions = null;
+        micBtn = null;
     }
 }
