@@ -71,7 +71,10 @@ final class FloatBubble implements ScreenReader.Listener {
     private final java.util.ArrayDeque<String[]> turns = new java.util.ArrayDeque<>();
     private android.speech.SpeechRecognizer sr;
     private boolean listening;
-    private TextView micBtn, extraBtn;
+    private TextView micBtn, extraBtn, playBtn;
+    private WindowManager.LayoutParams cardLp;
+    private float cardDownX, cardDownY;
+    private int cardStartX, cardStartY;
     private LinearLayout cardRow2;
     private float downX, downY;
     private int startX, startY;
@@ -200,6 +203,7 @@ final class FloatBubble implements ScreenReader.Listener {
         if (card != null) card.setVisibility(hide ? View.GONE : View.VISIBLE); // never on the lock screen or under Jarvis's own taps
         if (hide) hideMenu();
         if (orb != null) orb.setState(busy ? HoloOrb.THINKING : reader.active() && !reader.paused() ? HoloOrb.SPEAKING : HoloOrb.IDLE);
+        if (playBtn != null) playBtn.setText(cardSpeaking() ? "⏸ ఆపు" : "▶ ప్లే");
     }
 
     @Override public void onReaderState() { main.post(this::refresh); }
@@ -536,9 +540,7 @@ final class FloatBubble implements ScreenReader.Listener {
                 speak("ఇలా జవాబు ఇవ్వొచ్చు: " + clean);
             } else if (kind == PHOTO) {
                 showCard(title(kind), clean, false);
-                reader.stop();
-                Announcer.stop();
-                reader.read(app, clean); // the picture's own words, each line in its language
+                speak(clean); // the picture's own words, each line in its language
             } else {
                 showCard(title(kind), clean, false);
                 speak(clean);
@@ -695,11 +697,23 @@ final class FloatBubble implements ScreenReader.Listener {
     }
 
     /** Short answers in Jarvis's voice (natural voice if chosen); long ones with the phone's voice, which can pause and stop. */
+    /** The card's answer read aloud (the phone voice, so ⏸ can pause it and ▶ go on from there). */
     private void speak(String text) {
         reader.stop();
         Announcer.stop();
-        if (text.length() <= 900) Announcer.say(svc, text);
-        else reader.read("Jarvis", text);
+        reader.read(CARD, text);
+    }
+
+    private static final String CARD = "Jarvis జవాబు";
+
+    /** The card's answer is being read right now. */
+    private boolean cardSpeaking() { return reader.active() && !reader.paused() && CARD.equals(reader.title()); }
+
+    private void playPause() {
+        if (lastAnswer.isEmpty()) return;
+        if (cardSpeaking()) reader.pause();
+        else if (reader.active() && reader.paused() && CARD.equals(reader.title())) reader.resume();
+        else speak(lastAnswer); // finished or stopped: from the start
     }
 
     /** Hold the globe (or 🎙️): Jarvis's small panel opens and listens, with this screen already seen. */
@@ -888,6 +902,12 @@ final class FloatBubble implements ScreenReader.Listener {
         card.setPadding(dp(16), dp(10), dp(10), dp(10));
         LinearLayout head = new LinearLayout(svc);
         head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView grip = new TextView(svc);
+        grip.setText("⠿ ");
+        grip.setTextColor(FaceRig.withAlpha(Ui.CYAN, 0xAA));
+        grip.setTextSize(16f);
+        head.addView(grip);
+        head.setOnTouchListener(this::dragCard);
         cardTitle = new TextView(svc);
         cardTitle.setTextColor(Ui.CYAN);
         cardTitle.setTextSize(14f);
@@ -917,8 +937,11 @@ final class FloatBubble implements ScreenReader.Listener {
         micBtn = button("🎙️ అడుగు", v -> listenFollowUp());
         micBtn.setTextColor(Ui.CYAN);
         row1.addView(micBtn);
-        row1.addView(button("🔊 మళ్ళీ", v -> { if (!lastAnswer.isEmpty()) speak(lastAnswer); }));
-        row1.addView(button("⏹ ఆపు", v -> { reader.stop(); Announcer.stop(); }));
+        playBtn = button("▶ ప్లే", v -> playPause());
+        playBtn.setTextColor(0xFFFFFFFF);
+        row1.addView(playBtn);
+        row1.addView(button("🔁 మళ్ళీ", v -> { if (!lastAnswer.isEmpty()) speak(lastAnswer); }));
+        row1.addView(button("⏹", v -> { reader.stop(); Announcer.stop(); }));
         extraBtn = button("", v -> {});
         extraBtn.setTextColor(0xFF7CF5B0);
         extraBtn.setVisibility(View.GONE);
@@ -948,12 +971,49 @@ final class FloatBubble implements ScreenReader.Listener {
         cardRow2 = row2;
         cardActions = actions;
         card.addView(actions);
-        WindowManager.LayoutParams clp = new WindowManager.LayoutParams(screenW() - dp(24), WindowManager.LayoutParams.WRAP_CONTENT,
+        final WindowManager.LayoutParams clp = new WindowManager.LayoutParams(screenW() - dp(24), WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT);
-        clp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        clp.y = dp(36);
-        try { wm.addView(card, clp); } catch (Exception e) { card = null; }
+        clp.gravity = Gravity.TOP | Gravity.LEFT;
+        android.content.SharedPreferences sp = svc.getSharedPreferences("jarvis", Context.MODE_PRIVATE);
+        clp.x = sp.getInt("card_x", dp(12));
+        clp.y = sp.getInt("card_y", dp(36));
+        clampCard(clp);
+        cardLp = clp;
+        try { wm.addView(card, clp); } catch (Exception e) { card = null; cardLp = null; }
+    }
+
+    /** Moves the card with the finger on its top bar (like the floating button). */
+    private boolean dragCard(View v, MotionEvent e) {
+        if (card == null || cardLp == null) return false;
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                cardDownX = e.getRawX();
+                cardDownY = e.getRawY();
+                cardStartX = cardLp.x;
+                cardStartY = cardLp.y;
+                return true;
+            case MotionEvent.ACTION_MOVE:
+                cardLp.x = cardStartX + Math.round(e.getRawX() - cardDownX);
+                cardLp.y = cardStartY + Math.round(e.getRawY() - cardDownY);
+                clampCard(cardLp);
+                try { wm.updateViewLayout(card, cardLp); } catch (Exception ignored) {}
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                svc.getSharedPreferences("jarvis", Context.MODE_PRIVATE).edit().putInt("card_x", cardLp.x).putInt("card_y", cardLp.y).apply();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** At least its top bar and a good part of it stay on the screen. */
+    private void clampCard(WindowManager.LayoutParams lp) {
+        int w = lp.width > 0 ? lp.width : screenW();
+        int h = card != null && card.getHeight() > 0 ? card.getHeight() : dp(160);
+        lp.x = Math.max(-w * 6 / 10, Math.min(screenW() - w * 4 / 10, lp.x));
+        lp.y = Math.max(0, Math.min(screenH() - Math.min(h, dp(120)), lp.y));
     }
 
     private TextView button(String label, View.OnClickListener l) {
@@ -977,5 +1037,7 @@ final class FloatBubble implements ScreenReader.Listener {
         micBtn = null;
         extraBtn = null;
         cardRow2 = null;
+        playBtn = null;
+        cardLp = null;
     }
 }
