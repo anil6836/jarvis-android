@@ -31,6 +31,8 @@ final class VoiceIO {
         void onBargeIn();
         /** The word being spoken now: [start, end) in the spoken text (highlighted and scrolled into view). */
         default void onWord(String spoken, int start, int end) {}
+        /** Another Jarvis screen started listening (the panel over the app): this listen was stopped quietly. */
+        default void onMicTaken() {}
     }
 
     // What he said while Jarvis's speech was paused (see pausedHeard).
@@ -578,60 +580,43 @@ final class VoiceIO {
         return SpeechRecognizer.isRecognitionAvailable(ctx);
     }
 
-    // Keep the mic open for a few seconds after "Jarvis": the phone's recognizer gives up
-    // quickly in silence (or on the tail of Jarvis's own greeting), so quietly start it again.
-    private long windowUntil;
-    private boolean heardSpeech;
+    // ---- listening
+    // After "Jarvis" the mic stays open for the listen window, counted from the moment the mic is really open (the
+    // greeting, the wake-word mic letting go and the recognizer starting up don't use it up). The phone's recognizer
+    // gives up quickly in silence, on a noise, or when its service hiccups: it is quietly started again, and one that
+    // breaks or stops answering is replaced by a fresh one. Only real words (a partial result) end the waiting.
+    /** The recognizer stopped answering (no result, no error): see failText. */
+    static final int ERROR_STUCK = 100;
+    private static final int MAX_FRESH = 3;           // fresh recognizers in one listen
+    private static final long READY_WAIT_MS = 4000;   // startListening .. the mic is open
+    private static final long QUIET_WAIT_MS = 10000;  // after the last sign of words, waiting for the result
     private Intent lastIntent;
-
-    private static boolean retryable(int error) {
-        return error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
-                || error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
-                || error == SpeechRecognizer.ERROR_AUDIO; // the wake-word mic may still be letting go
-    }
-
-    private boolean restartIfEarly(int error) {
-        long now = android.os.SystemClock.elapsedRealtime();
-        if (heardSpeech || lastIntent == null || sr == null || now > windowUntil - 400 || !retryable(error)) return false;
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            if (!listening || sr == null || lastIntent == null) return;
-            try { sr.cancel(); sr.startListening(lastIntent); } catch (Exception e) { listening = false; l.onListenFailed(error); }
-        }, error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ? 350 : 150);
-        return true;
-    }
+    private int session;              // each listen; retries and timers of an older one do nothing
+    private long windowMs, windowUntil, hardUntil;
+    private boolean ready;            // the mic is open in the current try
+    private boolean recBusy;          // the recognizer is in a try
+    private boolean wrapUp;           // he tapped "done": take what was said, no more tries
+    private String partial = "";      // words heard so far in this listen
+    private int fresh, quick;         // fresh recognizers made; failures before the mic opened, in a row
+    private boolean offlineTried;
+    private final Runnable watchdog = this::stuck;
+    /** The screen listening last (main thread): when another one starts, it lets go of the phone's voice service. */
+    private static VoiceIO holder;
 
     void listen(String lang) {
         if (shut) return;
         if (paused && speaking) barge.stop(); // keep the paused speech: he may say "కొనసాగించు"
         else stopSpeaking();
-        windowUntil = android.os.SystemClock.elapsedRealtime() + prefs.listenWindowSeconds() * 1000L;
-        heardSpeech = false;
-        if (sr == null) {
-            sr = SpeechRecognizer.createSpeechRecognizer(ctx);
-            sr.setRecognitionListener(new RecognitionListener() {
-                @Override public void onReadyForSpeech(Bundle params) { l.onListening(); }
-                @Override public void onBeginningOfSpeech() { heardSpeech = true; }
-                @Override public void onRmsChanged(float rmsdB) { l.onLevel((rmsdB + 2f) / 12f); }
-                @Override public void onBufferReceived(byte[] buffer) {}
-                @Override public void onEndOfSpeech() {}
-                @Override public void onError(int error) {
-                    if (listening && restartIfEarly(error)) return; // still inside the listening window
-                    listening = false;
-                    l.onListenFailed(error);
-                }
-                @Override public void onResults(Bundle results) {
-                    String heard = first(results);
-                    if (heard.isEmpty() && listening && restartIfEarly(SpeechRecognizer.ERROR_NO_MATCH)) return;
-                    listening = false;
-                    l.onHeard(heard);
-                }
-                @Override public void onPartialResults(Bundle partial) {
-                    String s = first(partial);
-                    if (!s.isEmpty()) { heardSpeech = true; l.onPartial(s); }
-                }
-                @Override public void onEvent(int eventType, Bundle params) {}
-            });
-        }
+        session++;
+        main.removeCallbacks(watchdog);
+        windowMs = Math.max(3, prefs.listenWindowSeconds()) * 1000L;
+        windowUntil = 0; // set when the mic is open
+        hardUntil = android.os.SystemClock.elapsedRealtime() + windowMs + 10_000; // however it goes, the tries end by then
+        partial = "";
+        fresh = 0;
+        quick = 0;
+        wrapUp = false;
+        offlineTried = false;
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang);
@@ -639,15 +624,247 @@ final class VoiceIO {
         i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.getPackageName());
-        if (!Net.online(ctx)) i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true); // Telugu offline pack, if downloaded
-        // ask for a patient recognizer (some phones ignore these; the restart above covers them)
+        if (!Net.online(ctx)) { // Telugu offline pack, if downloaded
+            i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+            offlineTried = true;
+        }
         // No minimum length: when he stops talking, answer right away. The listen window (waiting for him to START
-        // talking) is kept by restartIfEarly(). A short pause of ~1 s ends his sentence.
+        // talking) is kept by the tries below. A short pause of ~1 s ends his sentence.
         i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
         i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
         lastIntent = i;
         listening = true;
-        sr.startListening(i);
+        VoiceIO other = holder;
+        holder = this;
+        if (other != null && other != this && other.listening && !other.shut) other.micTaken(); // (after listening = true here)
+        start();
+    }
+
+    /** A new Jarvis screen came up over another that is listening (main thread): that one lets go of the mic now. */
+    static void yieldOthers(VoiceIO mine) {
+        VoiceIO other = holder;
+        if (other != null && other != mine && other.listening && !other.shut) other.micTaken();
+    }
+
+    /** The panel (or the app) started listening: this one stops without retrying and says so quietly. */
+    private void micTaken() {
+        cancelListening();
+        l.onMicTaken();
+    }
+
+    /** One try of the recognizer (a fresh one when it was dropped). */
+    private void start() {
+        if (shut || !listening || lastIntent == null) return;
+        try {
+            if (sr == null) sr = newRecognizer();
+            else sr.cancel(); // whatever it was still doing
+            ready = false;
+            recBusy = true;
+            sr.startListening(lastIntent);
+        } catch (Exception e) {
+            dropRecognizer();
+            if (fresh < MAX_FRESH) retry(true, 400); else fail(SpeechRecognizer.ERROR_CLIENT);
+            return;
+        }
+        alive(READY_WAIT_MS);
+    }
+
+    private SpeechRecognizer newRecognizer() {
+        final SpeechRecognizer r = SpeechRecognizer.createSpeechRecognizer(ctx);
+        r.setRecognitionListener(new RecognitionListener() {
+            /** Only the recognizer in use, during a try: a dropped or cancelled one, or a second "end" of the same try, is ignored. */
+            private boolean mine() { return sr == r && listening && recBusy && !shut; }
+            @Override public void onReadyForSpeech(Bundle params) { if (mine()) opened(); }
+            @Override public void onBeginningOfSpeech() { // maybe only a noise: real words come as partial results
+                if (!mine()) return;
+                if (!ready) opened();
+                alive(20_000); // a long sentence (some phones give no partial results)
+            }
+            @Override public void onRmsChanged(float rmsdB) {
+                if (!mine()) return;
+                if (!ready) opened();
+                l.onLevel((rmsdB + 2f) / 12f);
+            }
+            @Override public void onBufferReceived(byte[] buffer) {}
+            @Override public void onEndOfSpeech() { if (mine()) alive(QUIET_WAIT_MS); }
+            @Override public void onError(int error) {
+                if (!mine()) return;
+                recBusy = false;
+                failed(error);
+            }
+            @Override public void onResults(Bundle results) {
+                if (!mine()) return;
+                recBusy = false;
+                String heard = first(results);
+                if (heard.isEmpty()) failed(SpeechRecognizer.ERROR_NO_MATCH); else heard(heard);
+            }
+            @Override public void onPartialResults(Bundle b) {
+                if (!mine()) return;
+                String s = first(b);
+                if (s.isEmpty()) return;
+                if (!ready) opened();
+                partial = s;
+                alive(QUIET_WAIT_MS);
+                l.onPartial(s);
+            }
+            @Override public void onEvent(int eventType, Bundle params) {}
+        });
+        return r;
+    }
+
+    /** The mic is really open: the listen window starts now (once per listen). */
+    private void opened() {
+        ready = true;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (windowUntil == 0) windowUntil = now + windowMs;
+        hardUntil = Math.max(hardUntil, windowUntil + 10_000);
+        alive(Math.max(0, windowUntil - now) + QUIET_WAIT_MS);
+        l.onListening();
+    }
+
+    /** The watchdog fires this long from now unless the recognizer shows life again. */
+    private void alive(long ms) {
+        main.removeCallbacks(watchdog);
+        main.postDelayed(watchdog, ms);
+    }
+
+    /** A try ended without words: start again (a fresh recognizer when it looks broken), or tell why. */
+    private void failed(int error) {
+        main.removeCallbacks(watchdog);
+        long now = android.os.SystemClock.elapsedRealtime();
+        // He spoke and words were heard, but the end went wrong: those words are what he said.
+        if (!partial.isEmpty() && (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                || error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_SERVER || error == 11 || wrapUp)) {
+            heard(partial);
+            return;
+        }
+        if (wrapUp) { fail(error); return; }
+        quick = !ready ? quick + 1 : 0; // failed before the mic even opened
+        switch (error) {
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
+                fail(error);
+                return;
+            case SpeechRecognizer.ERROR_NETWORK:
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
+                // no internet: once more with the phone's offline voice typing (when its pack is on the phone)
+                if (!offlineTried && now < hardUntil) {
+                    offlineTried = true;
+                    lastIntent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+                    retry(false, 200);
+                    return;
+                }
+                fail(error);
+                return;
+            case 12: // ERROR_LANGUAGE_NOT_SUPPORTED
+            case 13: // ERROR_LANGUAGE_UNAVAILABLE
+                if (lastIntent.getBooleanExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)) {
+                    // the offline pack for this language is not on the phone: online, if there is internet
+                    if (!Net.online(ctx)) { fail(SpeechRecognizer.ERROR_NETWORK); return; }
+                    if (now < hardUntil) {
+                        lastIntent.removeExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE);
+                        retry(true, 200);
+                        return;
+                    }
+                }
+                fail(error);
+                return;
+            default: {
+                boolean inWindow = windowUntil == 0 ? now < hardUntil : now < windowUntil && now < hardUntil;
+                if (!inWindow) { fail(error); return; }
+                // The service dropped the line, or the same failure straight after starting again: a fresh recognizer.
+                boolean broken = error == SpeechRecognizer.ERROR_SERVER || error == 11 || quick >= 2;
+                boolean makeFresh = broken && fresh < MAX_FRESH; // enough fresh ones: the same one again, more slowly
+                long delay = error == 10 ? 1000 // ERROR_TOO_MANY_REQUESTS
+                        : broken && !makeFresh ? 500
+                        : error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ? 400 : broken ? 300 : 150;
+                retry(makeFresh, delay);
+            }
+        }
+    }
+
+    private void retry(boolean freshOne, long delay) {
+        final int s = session;
+        main.removeCallbacks(watchdog);
+        main.postDelayed(() -> {
+            if (shut || !listening || s != session) return;
+            if (freshOne) {
+                dropRecognizer();
+                fresh++;
+                quick = 0;
+            }
+            start();
+        }, delay);
+    }
+
+    /** No result and no error for too long: the recognizer is let go (and a fresh one tried while there is time). */
+    private void stuck() {
+        if (shut || !listening) return;
+        boolean wasOpen = ready;
+        dropRecognizer();
+        if (!partial.isEmpty()) { heard(partial); return; }
+        long now = android.os.SystemClock.elapsedRealtime();
+        boolean inWindow = windowUntil == 0 ? now < hardUntil : now < windowUntil && now < hardUntil;
+        if (!wrapUp && inWindow && fresh < MAX_FRESH) {
+            fresh++;
+            quick = 0;
+            start();
+            return;
+        }
+        fail(wasOpen ? SpeechRecognizer.ERROR_SPEECH_TIMEOUT : ERROR_STUCK); // the mic was open and nothing came / it never opened
+    }
+
+    private void heard(String text) {
+        main.removeCallbacks(watchdog);
+        listening = false;
+        session++;
+        l.onHeard(text);
+    }
+
+    private void fail(int error) {
+        main.removeCallbacks(watchdog);
+        listening = false;
+        session++;
+        l.onListenFailed(error);
+    }
+
+    private void dropRecognizer() {
+        SpeechRecognizer r = sr;
+        sr = null;
+        recBusy = false;
+        ready = false;
+        if (r == null) return;
+        try { r.cancel(); } catch (Exception ignored) {}
+        try { r.destroy(); } catch (Exception ignored) {}
+    }
+
+    /** Why listening ended without words, for the screen (null: nothing to say). */
+    static String failText(int error) {
+        switch (error) {
+            case SpeechRecognizer.ERROR_NETWORK:
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
+                return "వాయిస్‌కి ఇంటర్నెట్ కావాలి. నెట్ చెక్ చేయండి.";
+            case SpeechRecognizer.ERROR_AUDIO:
+                return "మైక్ దొరకలేదు: వేరే యాప్ మైక్ వాడుతోందేమో.";
+            case SpeechRecognizer.ERROR_SERVER:
+            case 11: // ERROR_SERVER_DISCONNECTED
+                return "Google వాయిస్ సేవ స్పందించలేదు.";
+            case SpeechRecognizer.ERROR_CLIENT:
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
+            case ERROR_STUCK:
+                return "మైక్ సేవ ఇరుక్కుపోయింది.";
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
+            case SpeechRecognizer.ERROR_NO_MATCH:
+                return "ఏమీ వినిపించలేదు.";
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
+                return "మైక్ అనుమతి లేదు.";
+            case 10: // ERROR_TOO_MANY_REQUESTS
+                return "వాయిస్ సేవ బిజీగా ఉంది, ఒక్క క్షణం ఆగండి.";
+            case 12: // ERROR_LANGUAGE_NOT_SUPPORTED
+            case 13: // ERROR_LANGUAGE_UNAVAILABLE
+                return "తెలుగు వాయిస్ టైపింగ్ లేదు. Google యాప్ → Settings → Voice → Languages లో తెలుగు జోడించండి.";
+            default:
+                return "వినడంలో సమస్య (" + error + ").";
+        }
     }
 
     private static String first(Bundle b) {
@@ -656,18 +873,34 @@ final class VoiceIO {
         return list == null || list.isEmpty() || list.get(0) == null ? "" : list.get(0).trim();
     }
 
+    /** "Done": take what he said (between two tries, the words heard so far). */
     void stopListening() {
-        if (sr != null && listening) sr.stopListening();
+        if (!listening) return;
+        wrapUp = true;
+        if (sr != null && recBusy) {
+            try { sr.stopListening(); alive(QUIET_WAIT_MS); return; } catch (Exception ignored) {}
+        }
+        if (!partial.isEmpty()) { heard(partial); return; }
+        main.removeCallbacks(watchdog);
+        listening = false;
+        session++;
+        l.onHeard("");
     }
 
     void cancelListening() {
+        session++;
+        main.removeCallbacks(watchdog);
         windowUntil = 0;
-        if (sr != null) sr.cancel();
+        if (sr != null && recBusy) try { sr.cancel(); } catch (Exception ignored) {}
+        recBusy = false;
         listening = false;
     }
 
     void shutdown() {
         shut = true;
+        if (holder == this) holder = null;
+        session++;
+        main.removeCallbacks(watchdog);
         paused = false;
         main.removeCallbacks(wordTicker);
         barge.stop();
@@ -678,7 +911,7 @@ final class VoiceIO {
         Duck.off();
         listening = false;
         natural.stop();
-        if (sr != null) { sr.destroy(); sr = null; }
+        dropRecognizer();
         if (tts != null) {
             TextToSpeech t = tts;
             tts = null;

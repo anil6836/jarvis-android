@@ -234,7 +234,11 @@ final class Prefs {
     long updateStartedAt() { return sp.getLong("update_started_at", 0); }
     void setUpdateStartedAt(long t) { sp.edit().putLong("update_started_at", t).apply(); }
     /** After "Jarvis", keep listening at least this long for Anil to start speaking. */
-    int listenWindowSeconds() { return sp.getInt("listen_window", 5); }
+    int listenWindowSeconds() {
+        int v = sp.getInt("listen_window", 8);
+        // 5 s (the old default) was too short on some phones: 8 s unless he set it himself in this version's settings
+        return sp.getBoolean("listen_window_set", false) ? v : Math.max(v, 8);
+    }
     /** Monthly budget in rupees (0 = none). */
     int budget() { return sp.getInt("budget", 0); }
     /** Bluetooth address of his car/bike; connecting turns on driving mode. */

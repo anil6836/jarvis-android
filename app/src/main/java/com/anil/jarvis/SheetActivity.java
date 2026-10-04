@@ -46,6 +46,19 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     /** The panel is open (so a talk in it is real, see MainActivity.busyTalking). */
     static volatile boolean open;
+    /** The newest panel: a closing one's late onDestroy must not let the wake word take the mic from it. */
+    private static SheetActivity current;
+
+    /**
+     * The panel is really in a talk right now (greeting, listening, thinking, speaking, a call or Live), whatever the
+     * shared "talking" flag says: another screen ending its own talk must not let the wake word take the mic from it.
+     */
+    static boolean talkingNow() {
+        SheetActivity a = current;
+        if (a == null || !open || a.voice == null) return false;
+        return a.greeting || a.busy || a.callText != null || a.live != null || a.voice.listening
+                || (a.voice.speaking && !a.voice.isPaused());
+    }
 
     private HoloOrb orb;               // the small hologram core (same states as OrbView)
     private TextView status, heard, reply;
@@ -57,6 +70,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private boolean busy, stopped;
     /** How many more times to listen after Jarvis speaks without "Jarvis" again (a conversation). */
     private int followUps = 1;
+    /** This listen is the optional one after an answer: silence there just ends the talk. */
+    private boolean followListen;
     /** A message/suggestion flow: keep listening for the answers even if follow-up is off. */
     private boolean dialog;
     /** Bumped to drop (and stop the tools of) an answer that is still on its way. */
@@ -71,6 +86,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
      */
     private boolean waiting;
     private static final long STAY_OPEN_MS = 60_000;
+    /** Paused by him: the panel waits this long for "కొనసాగించు" or ▶, then closes. */
+    private static final long PAUSED_OPEN_MS = 5 * 60_000;
     private int greetToken;
 
     private final Runnable autoClose = new Runnable() {
@@ -118,6 +135,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         // The panel only stays open while Anil and Jarvis talk, so keep the screen lit meanwhile.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         open = true;
+        current = this;
         prefs = new Prefs(this);
         store = Store.get(this);
         tools = new Tools(this, store, prefs);
@@ -125,6 +143,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         voice = new VoiceIO(this, prefs, this);
         setContentView(buildUi());
         if (!startCallMode(getIntent()) && !startAnnounce(getIntent()) && !startRun(getIntent())) begin();
+        VoiceIO.yieldOthers(voice); // the app's mic under this panel stops now (it would hear the panel talk)
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -148,14 +167,23 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override protected void onStart() {
         super.onStart();
         stopped = false; // back on top (e.g. after Jarvis typed a message in WhatsApp)
+        main.removeCallbacks(closeIfAway);
     }
 
     @Override protected void onStop() {
         super.onStop();
         stopped = true;
-        // Another app came in front (e.g. Jarvis opened YouTube): finish once Jarvis has finished speaking.
-        if (callText == null && live == null && !voice.speaking && !busy) closeSheet();
+        // Another app came in front (e.g. Jarvis opened YouTube): finish once Jarvis has finished. Not at once: on the
+        // lock screen the panel is often stopped and started again in a moment while the screen lights up, and the
+        // greeting or the mic must not be cut by that.
+        main.removeCallbacks(closeIfAway);
+        main.postDelayed(closeIfAway, 1500);
     }
+
+    /** Still away and nothing going on (no greeting, mic, answer or call): close. */
+    private final Runnable closeIfAway = () -> {
+        if (stopped && callText == null && live == null && !greeting && !voice.listening && !voice.speaking && !busy) closeSheet();
+    };
 
     @Override protected void onDestroy() {
         Radio.dismissPicker();
@@ -167,9 +195,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         voice.shutdown();
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
-        MainActivity.talking(false);
-        open = false;
-        if (prefs.wakeReady()) WakeService.resume(this);
+        if (current == this) { // a newer panel may already be talking and listening
+            current = null;
+            MainActivity.talking(false);
+            open = false;
+            if (prefs.wakeReady()) WakeService.resume(this);
+        }
         super.onDestroy();
     }
 
@@ -341,6 +372,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             MainActivity.talking(false);
             if (prefs.wakeReady()) WakeService.resume(this); // "Jarvis" can be heard while paused
             setAction(IconView.STOP);
+            main.postDelayed(autoClose, PAUSED_OPEN_MS); // not lit up for ever
         } else if (r == VoiceIO.RESUMED) {
             orb.setState(OrbView.SPEAKING);
             status.setText("మాట్లాడుతున్నాను…");
@@ -370,6 +402,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacks(autoClose);
         waiting = false;
         followUps = 1;
+        followListen = false;
         dialog = false;
         MainActivity.talking(true);
         WakeService.pause(this);
@@ -403,6 +436,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacks(autoClose);
         waiting = false;
         followUps = 1;
+        followListen = false;
         dialog = false;
         MainActivity.talking(true);
         WakeService.pause(this);
@@ -612,6 +646,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             if (r != VoiceIO.NEW) { afterPaused(r); return; }
         }
         if (text == null || text.trim().isEmpty()) { idle(); return; }
+        followUps = Math.max(followUps, 1); // he answered: the talk goes on (one more listen after this answer)
         ask(text.trim());
     }
 
@@ -632,9 +667,17 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             ask(partial);
             return;
         }
-        if (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) showReply("వాయిస్‌కి ఇంటర్నెట్ కావాలి.", true);
+        boolean nothing = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
+        String why = VoiceIO.failText(error);
+        if (!nothing) showReply(error == 12 || error == 13 ? why : why + " మళ్లీ ప్రయత్నించండి.", true); // why the mic stopped
+        Sfx.micOff(this, prefs); // he hears that the mic closed
         idle();
+        if (nothing && followListen) return; // silence after an answer: the talk is simply over
+        status.setText((nothing ? "ఏమీ వినిపించలేదు. " : "మైక్ ఆగిపోయింది. ")
+                + (prefs.wakeReady() ? "మళ్లీ \"Jarvis\" అనండి లేదా మైక్ నొక్కండి" : "మళ్లీ మైక్ నొక్కండి"));
     }
+
+    @Override public void onMicTaken() { idle(); }
 
     @Override public void onLevel(float level) { orb.setLevel(level); }
 
@@ -654,10 +697,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         }
         if (stopped) { closeSheet(); return; }
         // Booking in an app: Jarvis asked him a choice (theatre, time, seats): listen for the answer.
-        if (Tools.awaitingAnswer()) { main.postDelayed(this::listen, 250); return; }
+        if (Tools.awaitingAnswer()) { followListen = false; main.postDelayed(this::listen, 250); return; }
         // One follow-up question without saying "Jarvis" again, like a real conversation.
-        if ((prefs.followUp() || dialog) && followUps > 0 && !ScreenReader.get(this).active()) { // (not while a page is read aloud: the mic would hear it)
+        if ((prefs.followUp() || dialog) && followUps > 0 && !pageBeingRead()) { // (not while a page is read aloud: the mic would hear it)
             followUps--;
+            followListen = !dialog;
             main.postDelayed(this::listen, 250);
         } else {
             idle();
@@ -670,11 +714,18 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onBargeIn() {
         syncPause();
         if (live != null || isFinishing()) return;
+        followListen = false;
         if (callText != null) { main.postDelayed(this::listen, 100); return; }
         main.postDelayed(this::listen, 100);
     }
 
     private void idle() { idle(STAY_OPEN_MS); }
+
+    /** A page is being read aloud right now (a paused one doesn't stop the talk: it waits for "కొనసాగించు"). */
+    private boolean pageBeingRead() {
+        ScreenReader r = ScreenReader.get(this);
+        return r.active() && !r.paused();
+    }
 
     /** Nothing more to say or hear now: the panel stays a while, listening for "Jarvis" again, then closes. */
     private void idle(long stayMs) {
@@ -688,6 +739,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         MainActivity.talking(false); // the talk is over: the wake word may listen
         if (wake) WakeService.resume(this);
         main.postDelayed(autoClose, stayMs);
+        if (stopped) { main.removeCallbacks(closeIfAway); main.postDelayed(closeIfAway, 1500); } // he is in another app
     }
 
     private void ask(String text) {

@@ -955,7 +955,7 @@ public class SettingsActivity extends Activity {
         try { e.putInt("bike_range_km", Math.max(20, Math.min(500, Integer.parseInt(bikeRange.getText().toString().trim())))); } catch (Exception ignored) {}
         try { e.putFloat("bike_kwh", Math.max(0.5f, Math.min(50f, Float.parseFloat(bikeKwh.getText().toString().trim())))); } catch (Exception ignored) {}
         try { e.putFloat("power_rate", Math.max(0f, Math.min(100f, Float.parseFloat(powerRate.getText().toString().trim())))); } catch (Exception ignored) {}
-        e.putInt("listen_window", listenWindow.getProgress() + 3);
+        e.putInt("listen_window", listenWindow.getProgress() + 3).putBoolean("listen_window_set", true);
         e.putString("sos_contacts", sosContacts.getText().toString().trim());
         e.putString("smart_urls", smartUrls.getText().toString().trim());
         e.putString("smart_app", smartApp.getText().toString().trim());

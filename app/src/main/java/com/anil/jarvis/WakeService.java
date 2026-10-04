@@ -229,12 +229,14 @@ public class WakeService extends Service {
         } else if (ACTION_RESUME.equals(action)) {
             main.removeCallbacks(fallbackResume);
             main.removeCallbacks(watchdog);
-            startEngine();
+            // A late "resume" (the floating card, a closing panel) while Jarvis is listening to him in another
+            // screen would take the mic from that screen: wait for the talk to end (the watchdog looks again).
+            if (MainActivity.busyTalking()) main.postDelayed(watchdog, 60_000); else startEngine();
         } else {
             boolean paused = intent != null && intent.getBooleanExtra(EXTRA_PAUSED, false);
             if (paused) stopEngine(); else startEngine();
         }
-        return START_NOT_STICKY;
+        return START_STICKY; // if Android stops it for memory, it comes back (when Android allows it)
     }
 
     @Override public void onDestroy() {
@@ -385,6 +387,9 @@ public class WakeService extends Service {
         main.postDelayed(fallbackResume, 25000);
     }
 
+    /** startForeground once; after that the notification is only updated (a repeated call can be refused in the background). */
+    private boolean foreground;
+
     private void goForeground(String text) {
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.deleteNotificationChannel(OLD_CHANNEL);
@@ -405,7 +410,12 @@ public class WakeService extends Service {
                 .setContentIntent(open)
                 .addAction(new Notification.Action.Builder((Icon) null, "ఆపు", stop).build())
                 .build();
+        if (foreground) {
+            nm.notify(NOTE_ID, n);
+            return;
+        }
         if (Build.VERSION.SDK_INT >= 29) startForeground(NOTE_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
         else startForeground(NOTE_ID, n);
+        foreground = true;
     }
 }

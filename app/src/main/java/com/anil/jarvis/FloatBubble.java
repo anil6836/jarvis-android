@@ -784,16 +784,22 @@ final class FloatBubble implements ScreenReader.Listener {
         }
         reader.stop();
         Announcer.stop();
+        talkSet = !MainActivity.inConversation; // the wake word and Jarvis's remarks wait while he asks
+        if (talkSet) MainActivity.talking(true);
         WakeService.pause(svc); // "Hey Jarvis" listening gives the mic to this question
-        if (sr == null) {
-            sr = android.speech.SpeechRecognizer.createSpeechRecognizer(svc);
-            sr.setRecognitionListener(new android.speech.RecognitionListener() {
-                @Override public void onReadyForSpeech(android.os.Bundle b) { if (cardTitle != null) cardTitle.setText("🎙️ వింటున్నాను… అడగండి"); }
+        releaseMic();
+        {
+            final android.speech.SpeechRecognizer r = android.speech.SpeechRecognizer.createSpeechRecognizer(svc);
+            sr = r;
+            r.setRecognitionListener(new android.speech.RecognitionListener() {
+                private boolean mine() { return sr == r && listening; } // a released recognizer may still call late
+                @Override public void onReadyForSpeech(android.os.Bundle b) { if (mine() && cardTitle != null) cardTitle.setText("🎙️ వింటున్నాను… అడగండి"); }
                 @Override public void onBeginningOfSpeech() {}
                 @Override public void onRmsChanged(float db) {}
                 @Override public void onBufferReceived(byte[] b) {}
                 @Override public void onEndOfSpeech() {}
                 @Override public void onError(int error) {
+                    if (!mine()) return;
                     doneListening();
                     if (error == android.speech.SpeechRecognizer.ERROR_AUDIO || error == android.speech.SpeechRecognizer.ERROR_CLIENT
                             || error == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) { askInPanel(); return; } // the mic is not ours from here
@@ -801,14 +807,16 @@ final class FloatBubble implements ScreenReader.Listener {
                     if (cardTitle != null) cardTitle.setText(net ? "🎙️ నెట్ లేదు: మాట అర్థం చేసుకోలేకపోయాను" : "🎙️ వినిపించలేదు. మళ్ళీ 🎙️ నొక్కండి");
                     if (cardText != null && !lastAnswer.isEmpty()) cardText.setText(lastAnswer);
                 }
-                @Override public void onResults(android.os.Bundle r) {
-                    doneListening();
-                    String q = heard(r);
+                @Override public void onResults(android.os.Bundle b) {
+                    if (!mine()) return;
+                    String q = heard(b);
                     if (q.isEmpty()) { onError(android.speech.SpeechRecognizer.ERROR_NO_MATCH); return; }
+                    doneListening();
                     followUp(q);
                 }
-                @Override public void onPartialResults(android.os.Bundle r) {
-                    String q = heard(r);
+                @Override public void onPartialResults(android.os.Bundle b) {
+                    if (!mine()) return;
+                    String q = heard(b);
                     if (!q.isEmpty() && cardText != null) cardText.setText("“" + q + "”");
                 }
                 @Override public void onEvent(int t, android.os.Bundle b) {}
@@ -852,11 +860,26 @@ final class FloatBubble implements ScreenReader.Listener {
         return l == null || l.isEmpty() || l.get(0) == null ? "" : l.get(0).trim();
     }
 
+    /** Set when this card's question marked the talk (so only this card clears it). */
+    private boolean talkSet;
+
     private void doneListening() {
         boolean was = listening;
         listening = false;
         if (micBtn != null) micBtn.setText("🎙️ అడుగు");
+        main.post(this::releaseMic); // let the phone's voice service go (not from inside its own call)
+        if (talkSet) { talkSet = false; MainActivity.talking(false); }
         if (was && new Prefs(svc).wakeReady()) WakeService.resume(svc);
+    }
+
+    /** Frees the recognizer between questions, so it never holds the voice service the Jarvis panel needs. */
+    private void releaseMic() {
+        if (listening) return;
+        android.speech.SpeechRecognizer r = sr;
+        sr = null;
+        if (r == null) return;
+        try { r.cancel(); } catch (Exception ignored) {}
+        try { r.destroy(); } catch (Exception ignored) {}
     }
 
     private void stopListening() {

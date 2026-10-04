@@ -42,7 +42,12 @@ final class Greeting {
         Context app = c.getApplicationContext();
         // Once done has run (normally, or by the 6 s fallback) the mic may be open: never play after that.
         final AtomicBoolean fired = new AtomicBoolean(false);
-        Runnable once = () -> { if (fired.compareAndSet(false, true)) done.run(); };
+        Runnable once = () -> {
+            if (!fired.compareAndSet(false, true)) return;
+            TextToSpeech t = tts; // the phone-voice greeting must not still be talking into the open mic
+            if (t != null) try { t.stop(); } catch (Exception ignored) {}
+            done.run();
+        };
         main.postDelayed(once, 6000); // never leave Anil waiting
         String key = p.openAiKey().trim();
         if (p.naturalVoice() && !key.isEmpty()) {

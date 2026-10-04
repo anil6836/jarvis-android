@@ -67,7 +67,10 @@ final class WakeEngine {
     private volatile boolean running;
     /** Set by close(): a model still loading in the background must free itself instead of being kept. */
     private volatile boolean closed;
-    private Thread thread;
+    /** The one listening thread. An older one still finishing (a slow stop) sees it was replaced and leaves the mic. */
+    private volatile Thread thread;
+    private Thread last;
+    private final Object loadLock = new Object();
 
     private final ArrayDeque<float[]> melFrames = new ArrayDeque<>();
     private final ArrayDeque<float[]> features = new ArrayDeque<>();
@@ -166,10 +169,16 @@ final class WakeEngine {
     }
 
     synchronized void start() {
-        if (running) return;
+        if (running && thread != null) return;
+        Thread old = last; // a stop that timed out: let that thread finish before a new one opens the mic
+        if (old != null && old.isAlive() && old != Thread.currentThread()) {
+            try { old.join(1500); } catch (InterruptedException ignored) {}
+        }
         running = true;
-        thread = new Thread(this::run, "jarvis-wake");
-        thread.start();
+        Thread t = new Thread(this::run, "jarvis-wake");
+        thread = t;
+        last = t;
+        t.start();
     }
 
     synchronized void stop() {
@@ -180,6 +189,9 @@ final class WakeEngine {
             try { t.join(1500); } catch (InterruptedException ignored) {}
         }
     }
+
+    /** This thread is still the listening one. */
+    private boolean on(Thread me) { return running && thread == me; }
 
     void close() {
         closed = true;
@@ -243,12 +255,17 @@ final class WakeEngine {
 
     @SuppressLint("MissingPermission") // the service checks RECORD_AUDIO before starting
     private void run() {
+        final Thread me = Thread.currentThread();
         AudioRecord rec = null;
         try {
-            load();
-            reset();
-            cough.reset();
-            loadJarvisWord();
+            synchronized (loadLock) { // two threads never load or reset the detectors together
+                if (!on(me)) return;
+                load();
+                reset();
+                cough.reset();
+                loadJarvisWord();
+            }
+            if (!on(me)) return; // stopped (or replaced) while the models loaded: don't open the mic
             int min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             rec = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, CHUNK * 2 * 4));
@@ -258,15 +275,15 @@ final class WakeEngine {
             long openUntil = 0;             // keep the detectors running until this time
             double noise = 0;               // slowly tracked background loudness
             ArrayDeque<short[]> preroll = new ArrayDeque<>();
-            while (running) {
+            while (on(me)) {
                 short[] chunk = new short[CHUNK];
                 int n = 0;
-                while (n < CHUNK && running) {
+                while (n < CHUNK && on(me)) {
                     int r = rec.read(chunk, n, CHUNK - n);
                     if (r < 0) throw new IllegalStateException("మైక్ చదవడం ఆగిపోయింది (" + r + ")");
                     n += r;
                 }
-                if (!running) break;
+                if (!on(me)) break;
 
                 // Battery saver: in silence, only measure loudness; wake the detectors when someone speaks.
                 double sum = 0;
@@ -282,7 +299,7 @@ final class WakeEngine {
                     continue;
                 }
                 preroll.addLast(chunk);
-                while (!preroll.isEmpty() && running) {
+                while (!preroll.isEmpty() && on(me)) {
                     short[] c = preroll.removeFirst();
                     float score = step(c);
                     boolean word = jarvisHeard(c);
@@ -309,8 +326,10 @@ final class WakeEngine {
                 }
             }
         } catch (Throwable e) {
-            running = false;
-            listener.onError(String.valueOf(e.getMessage()));
+            if (thread == me) { // an old thread's failure is not the new one's
+                running = false;
+                listener.onError(String.valueOf(e.getMessage()));
+            }
         } finally {
             if (rec != null) {
                 try { rec.stop(); } catch (Exception ignored) {}

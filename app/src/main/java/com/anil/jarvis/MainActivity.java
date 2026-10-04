@@ -94,6 +94,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
      * so after 3 minutes with no Jarvis screen, panel or Live open it is let go.
      */
     static boolean busyTalking() {
+        if (SheetActivity.talkingNow()) return true; // the panel is talking, even if another screen cleared the flag
         if (!inConversation) return false;
         if (visible || liveOn || SheetActivity.open) return true;
         if (System.currentTimeMillis() - talkingSince < 3 * 60_000L) return true;
@@ -193,6 +194,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private boolean busy;
     private boolean paused;
     private boolean lastWasVoice;
+    /** This listen is the optional one after an answer: silence there just ends the talk. */
+    private boolean followListen;
     private volatile int generation;   // increases with every request, so a stopped answer is ignored (and its tools stop)
     private Runnable pendingUndo;
     private LiveSession live;          // an open real-time voice conversation, or null
@@ -240,6 +243,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         paused = false;
         visible = true;
+        main.removeCallbacks(cancelIfAway);
         store.listener = this;
         // Opening Jarvis switches the wake word back on after "ఆపు" in the notification.
         if (prefs.wakePaused()) prefs.setWakePaused(false);
@@ -285,11 +289,18 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             camera.close();
             cameraBox.setVisibility(View.GONE);
         }
-        if (voice.listening) {
+        // Not at once: shown over the lock screen, Android pauses Jarvis for a moment while the screen lights up,
+        // and that must not cut the mic. Still away a moment later: stop listening.
+        main.removeCallbacks(cancelIfAway);
+        main.postDelayed(cancelIfAway, 900);
+    }
+
+    private final Runnable cancelIfAway = () -> {
+        if (paused && voice.listening) {
             voice.cancelListening();
             finishTurn();
         }
-    }
+    };
 
     @Override protected void onStop() {
         super.onStop();
@@ -309,8 +320,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         voice.shutdown();
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
-        talking(false);
-        if (prefs.wakeReady()) WakeService.resume(this); // it was paused while Anil and Jarvis talked
+        if (!SheetActivity.open) { // the panel may be talking and listening right now: its talk, its mic
+            talking(false);
+            if (prefs.wakeReady()) WakeService.resume(this); // it was paused while Anil and Jarvis talked
+        }
         super.onDestroy();
     }
 
@@ -1536,6 +1549,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void startListening() {
+        followListen = false;
         if (busy) return;
         ScreenReader.pauseIfReading(this); // the mic must not hear the page being read
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -1595,25 +1609,20 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             return;
         }
         input.setText("");
-        switch (error) {
-            case SpeechRecognizer.ERROR_NETWORK:
-            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
-                Toast.makeText(this, "వాయిస్‌కి ఇంటర్నెట్ కావాలి", Toast.LENGTH_SHORT).show();
-                break;
-            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
-                Toast.makeText(this, "మైక్ బిజీగా ఉంది, మళ్లీ నొక్కండి", Toast.LENGTH_SHORT).show();
-                break;
-            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
-                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
-                break;
-            case 12: // ERROR_LANGUAGE_NOT_SUPPORTED
-            case 13: // ERROR_LANGUAGE_UNAVAILABLE
-                Toast.makeText(this, "తెలుగు వాయిస్ టైపింగ్ లేదు. Google యాప్ → Settings → Voice → Languages లో తెలుగు జోడించండి.", Toast.LENGTH_LONG).show();
-                break;
-            default:
-                break;
-        }
+        boolean nothing = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
+        if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+        else if (!nothing) Toast.makeText(this, VoiceIO.failText(error), error == 12 || error == 13 ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show();
+        Sfx.micOff(this, prefs); // he hears that the mic closed
+        boolean followed = followListen;
         finishTurn();
+        if (!(nothing && followed)) status.setText((nothing ? "ఏమీ వినిపించలేదు" : "మైక్ ఆగిపోయింది") + ". మళ్లీ మైక్ నొక్కండి లేదా \"Jarvis\" అనండి");
+    }
+
+    /** The panel started listening over this screen: this listen stopped quietly (the panel's talk goes on). */
+    @Override public void onMicTaken() {
+        input.setHint("Jarvis ని అడగండి");
+        input.setText("");
+        if (voice.isPaused()) refreshAction(); else finishTurn();
     }
 
     @Override public void onLevel(float level) {
@@ -1634,9 +1643,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         String lang = Tools.takeInterpreter();
         if (lang != null && live == null && !busy) { startLive(Brain.interpreterInstructions(prefs.name(), lang)); return; }
         boolean asked = Tools.awaitingAnswer(); // read every time: the "which one?" flag is used up here
-        if (lastWasVoice && (prefs.followUp() || asked) && !paused && !busy && !ScreenReader.get(this).active()) { // not while a page is read aloud
+        ScreenReader page = ScreenReader.get(this);
+        if (lastWasVoice && (prefs.followUp() || asked) && !paused && !busy && !(page.active() && !page.paused())) { // not while a page is read aloud (a paused one waits)
             lastWasVoice = false;
-            main.postDelayed(this::startListening, 250);
+            main.postDelayed(() -> { startListening(); followListen = !asked; }, 250);
         } else {
             finishTurn();
         }
@@ -1780,6 +1790,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (busy || live != null) return;
         Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         setIdle();
+        if (SheetActivity.talkingNow()) return; // the panel came over this screen and is talking: its talk, its mic
         talking(false);
         if (prefs.wakeReady()) WakeService.resume(this);
     }

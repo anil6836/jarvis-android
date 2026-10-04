@@ -207,8 +207,11 @@ final class NaturalVoice {
     }
 
     private void stopTrack() {
-        AudioTrack t = track;
-        track = null;
+        AudioTrack t;
+        synchronized (lock) { // not while the speaker thread is writing to it or just putting it in place
+            t = track;
+            track = null;
+        }
         if (t != null) {
             PlaybackLevel.end(t);
             try { t.pause(); t.flush(); } catch (Exception ignored) {}
@@ -231,7 +234,7 @@ final class NaturalVoice {
             c = (HttpURLConnection) new URL("https://api.openai.com/v1/audio/speech").openConnection();
             c.setRequestMethod("POST");
             c.setConnectTimeout(15000);
-            c.setReadTimeout(60000);
+            c.setReadTimeout(20000); // a stalled stream must not leave Jarvis "speaking" in silence (and the mic shut) for a minute
             c.setDoOutput(true);
             c.setRequestProperty("Authorization", "Bearer " + apiKey);
             c.setRequestProperty("Content-Type", "application/json");
@@ -266,6 +269,7 @@ final class NaturalVoice {
                     .build();
             if (gen != generation) { t.release(); return; }
             synchronized (lock) {
+                if (gen != generation) { t.release(); t = null; return; } // stopped just now: never keep (or play) it
                 track = t;
                 PlaybackLevel.begin(t, RATE, 0);
                 if (!paused) t.play();
