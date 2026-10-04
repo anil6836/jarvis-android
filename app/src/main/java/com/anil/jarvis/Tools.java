@@ -110,7 +110,9 @@ final class Tools {
                 "Current weather and 3-day forecast. Leave place empty to use the phone's location.",
                 schema(new String[][]{{"place", "string", "City or town in English, e.g. 'Hyderabad'. Empty for current location."}})));
         DEFS.add(new Def("open_app",
-                "Open an installed app by its name, e.g. 'WhatsApp', 'YouTube', 'PhonePe', 'Camera'.",
+                "Open an installed app by its name, e.g. 'WhatsApp', 'YouTube', 'PhonePe', 'Camera'. To open one of Jarvis's OWN settings "
+                        + "(he says e.g. 'వేక్ వర్డ్ సెట్టింగ్స్ తెరువు', 'బ్యాకప్ సెట్టింగ్స్'), use app = 'jarvis settings: <topic in his words>' "
+                        + "(e.g. 'jarvis settings: వేక్ వర్డ్', 'jarvis settings: బ్యాకప్', 'jarvis settings: గొంతు వేగం'); just 'jarvis settings' opens the settings.",
                 schema(new String[][]{{"app", "string", "App name"}}, "app")));
         DEFS.add(new Def("close_app",
                 "Close an app completely: stops what it is playing and force-stops it (the phone's App info page flashes for a second while Jarvis presses Force stop), so nothing keeps running in the background. Leave app empty to close the app Anil is using right now.",
@@ -1696,6 +1698,12 @@ final class Tools {
 
     private String openApp(String name) throws Exception {
         if (name == null || name.trim().isEmpty()) return err("missing", "Which app?");
+        java.util.regex.Matcher js = java.util.regex.Pattern.compile("(?i)^\\s*(jarvis\\s*settings|jarvis\\s*సెట్టింగ్స్|జార్విస్\\s*సెట్టింగ్స్)\\s*:?\\s*(.*)$").matcher(name);
+        if (js.matches()) { // one of Jarvis's own settings cards: its group opens with that card unfolded
+            String topic = js.group(2).trim();
+            start(new Intent(act(), SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, topic).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return ok().put("opened", topic.isEmpty() ? "Jarvis settings" : "Jarvis settings: " + topic).toString();
+        }
         PackageManager pm = act().getPackageManager();
         ResolveInfo best = findApp(name);
         if (best == null) return err("not_found", "No installed app called '" + name + "'.");
