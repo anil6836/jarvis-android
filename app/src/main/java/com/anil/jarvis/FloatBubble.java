@@ -54,7 +54,8 @@ final class FloatBubble implements ScreenReader.Listener {
 
     private static final int READ = 0, MEANING = 1, ABOUT = 2, TELUGU = 3, REPLY = 4, SCAM = 5, PHOTO = 6, REMIND = 7, PRICE = 8, VIDEO = 9,
             WORDS = 10, SAVE = 11, ASK = 12, HIDE = 13, WRITE = 14, SAVE_THIS = 15, ROUTE = 16, TRUTH = 17, READ_HERE = 18, PART = 19,
-            COMPARE = 20, FORM = 21, VOICE_MSG = 22, GROUP_SUM = 23, BLUR = 24, SEARCH = 25, HIDE_APP = 26, LATER = 27, MORE = 28;
+            COMPARE = 20, FORM = 21, VOICE_MSG = 22, GROUP_SUM = 23, BLUR = 24, SEARCH = 25, HIDE_APP = 26, LATER = 27, MORE = 28,
+            SCAN_SCREEN = 29, CAMERA = 30;
     /** {kind, label} of every option. */
     private static final Object[][] OPTIONS = {
             {READ, "📖 చదువు"}, {READ_HERE, "👆 ఇక్కడి నుంచి చదువు"}, {MEANING, "🧠 అర్థం చెప్పు"}, {ABOUT, "💡 దీని గురించి"},
@@ -63,13 +64,14 @@ final class FloatBubble implements ScreenReader.Listener {
             {REPLY, "💬 జవాబు సూచన"}, {WRITE, "✍️ రాసిపెట్టు"}, {VOICE_MSG, "🎧 వాయిస్ మెసేజ్"}, {GROUP_SUM, "👥 గ్రూప్ సారాంశం"},
             {SCAM, "🛡️ మోసమా?"}, {TRUTH, "✅ నిజమా?"}, {BLUR, "🕶️ దాచి షేర్"},
             {SAVE_THIS, "📥 దీన్ని సేవ్ చేయి"}, {ROUTE, "📍 దారి / కాల్"}, {REMIND, "⏰ గుర్తుపెట్టు"}, {FORM, "📋 ఫారమ్ సహాయం"},
+            {SCAN_SCREEN, "🔬 Jarvis స్కాన్ (3D)"}, {CAMERA, "📷 Jarvis కెమెరా"},
             {PRICE, "🛒 ధర పోలిక"}, {COMPARE, "⚖️ రెండు పోల్చు"}, {VIDEO, "🎬 ఈ వీడియో"},
             {ASK, "🎙️ అడుగు"}, {HIDE_APP, "🙈 ఈ యాప్‌లో దాచు"}, {HIDE, "✕ బటన్ దాచు"}};
     /** "▾ ఇంకా": every option, in four groups (and the button's own). */
     private static final Object[][] GROUPS = {
             {"📖 చదువు, అర్థం", new int[]{READ, READ_HERE, MEANING, ABOUT, TELUGU, WORDS, PART, PHOTO, SEARCH, SAVE}},
             {"💬 మెసేజ్‌లు, జాగ్రత్త", new int[]{REPLY, WRITE, VOICE_MSG, GROUP_SUM, SCAM, TRUTH, BLUR}},
-            {"🛠️ పనులు", new int[]{SAVE_THIS, ROUTE, REMIND, FORM}},
+            {"🛠️ పనులు", new int[]{SAVE_THIS, ROUTE, REMIND, FORM, SCAN_SCREEN, CAMERA}},
             {"🛒 షాపింగ్, వీడియో", new int[]{PRICE, COMPARE, VIDEO}},
             {"⚙️ బటన్", new int[]{ASK, HIDE_APP, HIDE}}};
 
@@ -648,6 +650,8 @@ final class FloatBubble implements ScreenReader.Listener {
             case PART:
             case SEARCH: boxThen(kind); break;
             case WRITE: write(); break;
+            case SCAN_SCREEN: scanScreen(); break;
+            case CAMERA: JarvisCamera.open(svc, null, null); break;
             case COMPARE: compare(); break;
             case VOICE_MSG: voiceMsg(); break;
             case BLUR: blurShare(); break;
@@ -1127,6 +1131,49 @@ final class FloatBubble implements ScreenReader.Listener {
                 }, "jarvis-read-here").start();
             });
         });
+    }
+
+    /**
+     * 🔬: the screen as it is (an endoscope's or a thermal camera's app, a photo, a video paused on a board) goes into the
+     * Jarvis camera, where everything works on it: asking, boxes, the 3D hologram, the PDF. Never a bank / payment app's screen.
+     */
+    private void scanScreen() {
+        final String pkg = JarvisAccessibility.appPackage();
+        if (pkg.isEmpty()) { // (a banking app may hide itself from screen reading): unknown is not sent
+            showCard("🔬 Jarvis స్కాన్", "ఈ స్క్రీన్ ఏ యాప్‌దో తెలియలేదు, అందుకే సురక్షితం కోసం పంపను.", false);
+            return;
+        }
+        if (Tools.isMoneyApp(svc, pkg) || Tools.isMoneyApp(svc, JarvisAccessibility.currentPackage())) {
+            showCard("🔒", "బ్యాంకింగ్ / పేమెంట్ యాప్ స్క్రీన్‌ని నేను AI కి పంపను. అది మీ చేతుల్లోనే ఉండాలి.", false);
+            return;
+        }
+        closeCard();
+        hideOwnThen(() -> JarvisAccessibility.shot(null, 2000, bmp -> {
+            refresh();
+            String now = JarvisAccessibility.appPackage(); // the same app still in front (never a bank's screen that came up meanwhile)
+            if (!now.equals(pkg) || Tools.isMoneyApp(svc, now)) {
+                if (bmp != null) bmp.recycle();
+                showCard("🔬 Jarvis స్కాన్", "స్క్రీన్ మారిపోయింది. మళ్ళీ నొక్కండి.", false);
+                return;
+            }
+            if (bmp == null) { showCard("🔬 Jarvis స్కాన్", "స్క్రీన్‌షాట్ తీయలేకపోయాను (Android 11 పైన కావాలి).", false); return; }
+            if (dark(bmp)) { bmp.recycle(); showCard("🔬 Jarvis స్కాన్", "ఈ యాప్ స్క్రీన్‌షాట్ ఇవ్వదు (నల్లగా వచ్చింది).", false); return; }
+            java.io.File f = new java.io.File(svc.getCacheDir(), "screen_scan.jpg");
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) {
+                bmp.compress(Bitmap.CompressFormat.JPEG, 92, o);
+            } catch (Exception e) {
+                showCard("🔬 Jarvis స్కాన్", "సేవ్ చేయలేకపోయాను.", false);
+                return;
+            } finally {
+                bmp.recycle();
+            }
+            try {
+                svc.startActivity(new Intent(svc, JarvisCamera.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .putExtra(JarvisCamera.EXTRA_IMAGE, f.getPath()));
+            } catch (Exception e) {
+                Toast.makeText(svc, "Jarvis కెమెరా తెరవలేకపోయాను", Toast.LENGTH_SHORT).show();
+            }
+        }));
     }
 
     /** Hides Jarvis's own windows for a moment (for a clean screenshot), then runs this. */

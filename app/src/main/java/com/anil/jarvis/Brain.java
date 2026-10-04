@@ -627,6 +627,26 @@ final class Brain {
         throw new Http.ApiError(0, "too many rounds");
     }
 
+    /**
+     * A question with a sound (and maybe a picture): only Gemini takes sound here, so callers check prefs.isGemini() first;
+     * with another AI this says so (never a silent switch to a different one).
+     */
+    static String oneShotSound(Prefs prefs, String system, String prompt, String jpegB64, String wavB64, int maxTokens) throws Exception {
+        if (!prefs.isGemini()) throw new Http.ApiError(0, "sound needs Gemini");
+        String key = prefs.apiKey();
+        if (key.isEmpty()) throw new Http.ApiError(401, "no API key");
+        JSONArray parts = new JSONArray().put(new JSONObject().put("text", prompt));
+        if (jpegB64 != null) parts.put(new JSONObject().put("inlineData", new JSONObject().put("mimeType", "image/jpeg").put("data", jpegB64)));
+        parts.put(new JSONObject().put("inlineData", new JSONObject().put("mimeType", "audio/wav").put("data", wavB64)));
+        JSONObject body = new JSONObject()
+                .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", system))))
+                .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", parts)))
+                .put("generationConfig", new JSONObject().put("maxOutputTokens", maxTokens));
+        String r = geminiText(geminiCall(prefs, key, body)).trim();
+        if (r.isEmpty()) throw new Http.ApiError(0, "empty reply");
+        return r;
+    }
+
     /** So he can ask "నువ్వు ఏ మోడల్?": the provider and the exact model this answer comes from. */
     private String whoAmI() {
         String model;

@@ -58,4 +58,14 @@
             android:textColor="#FF9FB6C1"
             android:textSize="13sp" />
     </LinearLayout>
+
+    <ImageView
+        android:id="@+id/widget_cam"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/widget_orb"
+        android:contentDescription="Jarvis కెమెరా"
+        android:padding="9dp"
+        android:src="@drawable/ic_camera" />
 </LinearLayout>

@@ -549,6 +549,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         clock = Ui.text(this, "", 12, Ui.MUTED);    // (time and date live in the status tiles now)
         dateView = Ui.text(this, "", 12, Ui.MUTED);
 
+        IconView camIcon = new IconView(this, IconView.CAMERA, 0xFFFFFFFF); // the Jarvis camera: show it anything and ask
+        camIcon.setContentDescription("Jarvis కెమెరా");
+        camIcon.setBackground(Ui.glass(this, 22));
+        camIcon.setOnClickListener(v -> JarvisCamera.open(this, null, null));
+        LinearLayout.LayoutParams camLp = new LinearLayout.LayoutParams(dp(44), dp(44));
+        camLp.rightMargin = dp(8);
+        hud.addView(camIcon, camLp);
+
         IconView all = new IconView(this, IconView.GRID, 0xFFFFFFFF);
         all.setContentDescription("అన్ని ఫీచర్లు");
         all.setBackground(Ui.glass(this, 22));
@@ -695,6 +703,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         LinearLayout chips = new LinearLayout(this);
         chips.setPadding(0, dp(8), 0, dp(10));
         // colourful quick actions; the last few start a request for him to finish typing
+        addAction(chips, "📷", "Jarvis కెమెరా", () -> JarvisCamera.open(this, null, null));
         addAction(chips, "📂", "అన్ని ఫీచర్లు", () -> startActivity(new Intent(this, FeaturesActivity.class)));
         addChip(chips, "🌅", "శుభోదయం బ్రీఫింగ్", BRIEF_PROMPT);
         addChip(chips, "📰", "వార్తలు", "ఈరోజు ముఖ్యమైన 3 వార్తలు చెప్పు: ఒకటి భారతదేశం, ఒకటి తెలంగాణ లేదా ఆంధ్రప్రదేశ్, ఒకటి టెక్నాలజీ. ఇంటర్నెట్‌లో వెతికి, చిన్నగా చెప్పు.");
@@ -936,6 +945,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             case "live": startLiveFromButton(); break;
             case "english": startEnglishPractice(); break;
             case "camera": toggleCamera(); break;
+            case "jarvis_camera": JarvisCamera.open(this, null, null); break;
+            case "obd": startActivity(new Intent(this, ObdActivity.class)); break;
             case "photo": pickPhoto(); break;
             case "file": openFiles(); break;
             case "brief": if (!busy) send(BRIEF_PROMPT, "🌅 శుభోదయం బ్రీఫింగ్", false); break;
@@ -1936,6 +1947,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(Ui.round(this, 0xF5121A33, 0x33FFFFFF, 24));
         card.setPadding(dp(8), dp(10), dp(8), dp(10));
+        attachItem(card, d, IconView.SCAN, Ui.C_CYAN, "Jarvis కెమెరా", "చూపించి ఏదైనా అడగండి, 3D స్కాన్", () -> JarvisCamera.open(this, null, null));
         attachItem(card, d, IconView.CAMERA, Ui.C_BLUE, "Camera", "కెమెరాతో ఫోటో తీయండి", this::openCamera);
         attachItem(card, d, IconView.IMAGE, Ui.C_PINK, "Photos", "గ్యాలరీ నుంచి ఫోటో", this::openGallery);
         attachItem(card, d, IconView.CLIP, Ui.C_AMBER, "Files", "PDF, టెక్స్ట్, కోడ్ ఫైల్స్", this::openFiles);

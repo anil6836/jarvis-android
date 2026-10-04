@@ -11,4 +11,17 @@
             android:targetPackage="com.anil.jarvis"
             android:targetClass="com.anil.jarvis.MainActivity" />
     </shortcut>
+    <shortcut
+        android:shortcutId="camera"
+        android:enabled="true"
+        android:icon="@drawable/ic_camera"
+        android:shortcutShortLabel="@string/shortcut_camera"
+        android:shortcutLongLabel="@string/shortcut_camera">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.anil.jarvis"
+            android:targetClass="com.anil.jarvis.MainActivity">
+            <extra android:name="jarvis_do" android:value="jarvis_camera" />
+        </intent>
+    </shortcut>
 </shortcuts>

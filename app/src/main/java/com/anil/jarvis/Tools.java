@@ -665,6 +665,15 @@ final class Tools {
         DEFS.add(new Def("look_at_screen",
                 "Look at what is on Anil's phone screen (the app he was using when he called Jarvis) and answer a question about it, e.g. 'what is on my screen', 'what should I reply to this message', 'explain this'.",
                 schema(new String[][]{{"question", "string", "What Anil wants to know about the screen"}}, "question")));
+        DEFS.add(new Def("jarvis_camera",
+                "The Jarvis camera (a full-screen camera that sees and talks): he shows anything and asks; it answers there with captions, boxes on the "
+                        + "parts, shop / reminder / contact / challan buttons, a 3D hologram of a PCB or engine and a Telugu PDF. Use it when he says 'కెమెరా ఓపెన్ చేయి', "
+                        + "'Jarvis కెమెరా', 'స్కాన్ చేయి', 'కెమెరాలో చూసి చెప్పు'. action: open (default; with mode and his question if he asked one), scan3d (the "
+                        + "detailed 3D hologram scan), history (what he scanned before, searched by words, e.g. 'medicine', 'PCB'), obd (the car OBD scanner).",
+                schema(new String[][]{{"action", "string", "open, scan3d, history or obd"},
+                        {"mode", "string", "auto, shop, med, plant, elec, repair, vehicle, doc, home, nature, study or inside"},
+                        {"question", "string", "His question about what he will show, in his words (empty when none)"},
+                        {"words", "string", "Words to find old scans (history)"}})));
         DEFS.add(new Def("look_through_camera",
                 "Cameras. No action: look through the live camera (when Anil has it open) and answer the question. "
                         + "front = look at the person in front of the phone now (front camera, while Jarvis's face watches). "
@@ -848,6 +857,7 @@ final class Tools {
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
+            case "jarvis_camera": return "Jarvis కెమెరా…";
             case "look_through_camera": return "కెమెరాతో చూస్తున్నాను…";
             case "add_mission": return "మిషన్ జోడిస్తున్నాను…";
             default: return "పని చేస్తున్నాను…";
@@ -1058,6 +1068,7 @@ final class Tools {
                 case "now_playing": return nowPlaying();
                 case "look_at_screen": return lookAtScreen(a.optString("question"));
                 case "look_through_camera": return camera(a);
+                case "jarvis_camera": return jarvisCamera(a);
                 case "save_memory": {
                     JSONObject m = store.addMemory(a.optString("text"));
                     if (m == null) return err("empty", "Nothing to save.");
@@ -5653,6 +5664,28 @@ final class Tools {
         return ok().put("remembered", saved.length()).put("things", saved)
                 .put("his_own_places_kept", kept) // things he told the place of himself: his word stays
                 .put("next", "Tell him in one sentence how many things you remembered in " + where + " and name 3-4 of them; 'X ఎక్కడ?' later finds them.").toString();
+    }
+
+    /** The Jarvis camera (open with a mode / question, the 3D scan, old scans, the OBD scanner). */
+    private String jarvisCamera(JSONObject a) throws Exception {
+        String action = a.optString("action", "open").trim().toLowerCase(Locale.ROOT);
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        if (action.startsWith("hist")) {
+            JSONArray l = ScanStore.lines(act(), a.optString("words"), 10);
+            return ok().put("scans", l).put("next", l.length() == 0 ? "Nothing matching was scanned yet. Say so."
+                    : "Tell him the matching scans briefly (what, when, what Jarvis said). He can open one from the camera's ⋯ → 📚 స్కాన్ చరిత్ర.").toString();
+        }
+        if (action.startsWith("obd")) {
+            start(new Intent(act(), ObdActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return ok().put("opened", "OBD scanner").put("next", "Tell him to plug in the ELM327 adapter, turn the key ON and tap 'కనెక్ట్'.").toString();
+        }
+        Intent i = new Intent(act(), JarvisCamera.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (!a.optString("mode").trim().isEmpty()) i.putExtra(JarvisCamera.EXTRA_MODE, a.optString("mode").trim().toLowerCase(Locale.ROOT));
+        if (!a.optString("question").trim().isEmpty()) i.putExtra(JarvisCamera.EXTRA_ASK, a.optString("question").trim());
+        if (action.startsWith("scan3") || action.contains("3d") || action.contains("holo")) i.putExtra(JarvisCamera.EXTRA_DEEP, true);
+        start(i);
+        return ok().put("opened", "Jarvis camera").put("next", "The camera is open and listens there by itself. Say one short line only "
+                + "(e.g. 'చూపించండి, చూసి చెబుతాను'); the camera answers his question itself.").toString();
     }
 
     private String itemPlace(JSONObject a) throws Exception {

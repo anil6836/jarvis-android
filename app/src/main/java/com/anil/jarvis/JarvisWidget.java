@@ -40,6 +40,8 @@ public class JarvisWidget extends AppWidgetProvider {
         talk.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(c, 90, talk, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         v.setOnClickPendingIntent(R.id.widget_root, pi);
+        Intent cam = new Intent(c, JarvisCamera.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        v.setOnClickPendingIntent(R.id.widget_cam, PendingIntent.getActivity(c, 91, cam, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
 
         StringBuilder info = new StringBuilder();
         BatteryManager bm = c.getSystemService(BatteryManager.class);
