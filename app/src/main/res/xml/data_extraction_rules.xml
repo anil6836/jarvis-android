@@ -7,6 +7,8 @@
         <exclude domain="file" path="facenet.tflite" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
+        <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
+        <exclude domain="sharedpref" path="jarvis_read_places.xml" />
         <exclude domain="file" path="vosk-en/" />
         <exclude domain="file" path="vosk-spk/" />
         <exclude domain="file" path=".jarvis_restore/" />
@@ -23,6 +25,8 @@
         <exclude domain="file" path="facenet.tflite" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
+        <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
+        <exclude domain="sharedpref" path="jarvis_read_places.xml" />
         <exclude domain="file" path=".jarvis_restore/" />
         <exclude domain="file" path=".jarvis_old/" />
         <exclude domain="external" path=".jarvis_restore/" />

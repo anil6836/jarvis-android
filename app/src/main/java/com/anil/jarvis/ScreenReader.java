@@ -58,6 +58,12 @@ final class ScreenReader {
     private volatile boolean active, paused, focusPaused;
     private String title = "";
     private int utt;
+    /** A page read from the floating button: where it stopped is kept (ReadPlaces) to go on from there next time. */
+    private String rememberPkg, firstText;
+    private boolean endedNaturally;
+    /** The sleep timer: reading stops at this time (0 = off). */
+    private long sleepAt;
+    private final Runnable sleepStop = () -> { sleepAt = 0; stopNow(true); };
     private AudioFocusRequest focusReq;
     Listener listener;
 
@@ -106,7 +112,13 @@ final class ScreenReader {
     void read(String name, String text) { read(name, text, null); }
 
     /** ... with something following it on the screen (highlight and scroll). */
-    void read(String name, String text, Follow f) {
+    void read(String name, String text, Follow f) { readAt(name, text, f, 0, null, null); }
+
+    /**
+     * ... from the part of line fromLine (a paragraph he tapped), or from the part that starts with fromSnippet (where he
+     * stopped last time); rememberPkg: keep where it stops (a page from the floating button), else null.
+     */
+    void readAt(String name, String text, Follow f, int fromLine, String fromSnippet, String rememberPkg) {
         main.post(() -> {
             stopNow(false);
             follow = f;
@@ -116,7 +128,16 @@ final class ScreenReader {
             lines = text == null ? 0 : text.split("\n", -1).length;
             if (parts.isEmpty()) { changed(); Announcer.say(app, "చదవడానికి ఈ స్క్రీన్‌లో అక్షరాలు దొరకలేదు."); return; }
             title = name == null ? "" : name;
+            this.rememberPkg = rememberPkg;
+            keptParts.clear();
+            firstText = text;
+            endedNaturally = false;
             at = 0;
+            if (fromSnippet != null) {
+                for (int i = 0; i < parts.size(); i++) if (ReadPlaces.snippet(parts.get(i).text).equals(fromSnippet)) { at = i; break; }
+            } else if (fromLine > 0) {
+                for (int i = 0; i < parts.size(); i++) if (parts.get(i).line >= fromLine) { at = i; break; }
+            }
             active = true;
             paused = false;
             focusPaused = false;
@@ -149,7 +170,32 @@ final class ScreenReader {
         });
     }
 
-    void pause() { main.post(() -> { if (!active || paused) return; paused = true; utt++; try { tts.stop(); } catch (Exception ignored) {} dropFocus(); quiet(); changed(); }); }
+    void pause() { main.post(() -> { if (!active || paused) return; paused = true; utt++; try { tts.stop(); } catch (Exception ignored) {} dropFocus(); quiet(); keepPlace(); changed(); }); }
+
+    /** Where a page read from the floating button stopped (or paused), for next time. */
+    private void keepPlace() {
+        if (rememberPkg == null || at >= parts.size()) return;
+        try {
+            keptParts.add(parts.get(at).text);
+            ReadPlaces.save(app, rememberPkg, title, parts.get(at).text);
+        } catch (Exception ignored) {}
+    }
+
+    /** The places kept during this reading (forgotten when it is read to the end). */
+    private final java.util.List<String> keptParts = new java.util.ArrayList<>();
+
+    /** The sleep timer: stop reading in this many minutes (0 = off). */
+    void sleepIn(int minutes) {
+        main.post(() -> {
+            main.removeCallbacks(sleepStop);
+            sleepAt = minutes > 0 ? System.currentTimeMillis() + minutes * 60_000L : 0;
+            if (minutes > 0) main.postDelayed(sleepStop, minutes * 60_000L);
+            changed();
+        });
+    }
+
+    /** Minutes left on the sleep timer (0 = off). */
+    int sleepLeft() { return sleepAt <= 0 ? 0 : (int) Math.max(1, Math.round((sleepAt - System.currentTimeMillis()) / 60_000.0)); }
 
     void resume() { main.post(() -> { if (!active || !paused) return; paused = false; focusPaused = false; speakNext(); changed(); }); }
 
@@ -188,6 +234,15 @@ final class ScreenReader {
 
     private void stopNow(boolean tell) {
         boolean was = active;
+        if (was && rememberPkg != null) {
+            if (endedNaturally) { // read to the end: no place to go back to (also of the parts that came by scrolling)
+                try { ReadPlaces.forget(app, rememberPkg, firstText); ReadPlaces.forgetAll(app, rememberPkg, keptParts); } catch (Exception ignored) {}
+            }
+            else keepPlace();
+        }
+        main.removeCallbacks(sleepStop); // the sleep timer is for this reading
+        sleepAt = 0;
+        rememberPkg = null;
         active = false;
         paused = false;
         utt++;
@@ -234,7 +289,7 @@ final class ScreenReader {
                     main.post(() -> {
                         fetching = false;
                         if (!active || follow != f || utt != myUtt) return;
-                        if (m == null || m.trim().isEmpty()) { stopNow(true); return; }
+                        if (m == null || m.trim().isEmpty()) { endedNaturally = true; stopNow(true); return; }
                         parts.addAll(parts(m, lines));
                         lines += m.split("\n", -1).length;
                         speakNext();
@@ -242,7 +297,7 @@ final class ScreenReader {
                 }, "jarvis-read-more").start();
                 return;
             }
-            if (!fetching) stopNow(true);
+            if (!fetching) { endedNaturally = true; stopNow(true); }
             return;
         }
         if (!takeFocus()) { stopNow(true); return; } // a call, or the system said no: not over it

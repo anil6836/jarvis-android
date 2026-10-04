@@ -60,7 +60,10 @@ public class SettingsActivity extends Activity {
     private Switch alexaSpeak, livePatient, scamGuard, readNews;
     private Switch newsAuto;
     private EditText newsPlaces;
-    private Switch diaryAsk, holidayRemind, findPhone, coughAsk, readGroups;
+    private Switch diaryAsk, holidayRemind, findPhone, coughAsk;
+    private RadioGroup groupMode;
+    private EditText myNames;
+    private Switch bubbleAll;
     private EditText priceCity, dailyPrices, findCode;
     private EditText balGemini, balOpenAi, balAnthropic;
     private EditText bikeRange, bikeKwh, powerRate;
@@ -250,8 +253,11 @@ public class SettingsActivity extends Activity {
         note("ఏ యాప్‌లో ఉన్నా (Chrome, ఇంకో బ్రౌజర్, WhatsApp, వార్తల యాప్…) స్క్రీన్ పక్కన చిన్న రౌండ్ Jarvis గ్లోబ్ ఉంటుంది. నొక్కితే చిన్న ఆప్షన్లు: "
                 + "📖 చదువు (పేజీ మొత్తం, మీరు ఉన్న చోటు నుంచి; ఫోటో అయితే అందులోని అక్షరాలు), 🧠 అర్థం చెప్పు (మ్యాటర్ అర్థం చేసుకుని తెలుగులో), 💡 దీని గురించి, "
                 + "🌐 తెలుగులో, 🖼️ ఫోటో చదువు, 💬 జవాబు (✍️ బాక్సులో టైప్ చేస్తుంది, పంపేది మీరే), ⏰ గుర్తుపెట్టు (స్క్రీన్‌లో తేదీలకి రిమైండర్), 🛡️ మోసమా?, "
-                + "🛒 ధర పోలిక, 🎬 వీడియో, 📚 కష్టమైన పదాలు, 💾 తర్వాత చదువు, 🎙️ అడుగు. ఏ యాప్‌లో ఉన్నారో దాన్ని బట్టి సరిపోయేవి పైన (వెలుగుతో) వస్తాయి. "
-                + "చదువుతున్నప్పుడు ⏮ ⏸ ⏭ 🐢 ⏩ ⏹. జవాబు బాక్సులో 🎙️ అడుగు, 🔊 మళ్ళీ, ⏹ ఆపు, 📋 కాపీ, 💾 సేవ్, 📤 షేర్. ఎక్కువసేపు నొక్కి పట్టుకుంటే Jarvis వింటాడు.");
+                + "🛒 ధర పోలిక, 🎬 వీడియో, 📚 కష్టమైన పదాలు, 💾 తర్వాత చదువు, 🎙️ అడుగు. "
+                + "ఇంకా: 👆 ఇక్కడి నుంచి చదువు, ✍️ రాసిపెట్టు (మీ మెసేజ్‌ని బాగా రాసి బాక్సులో పెడుతుంది, పంపేది మీరే), 📥 దీన్ని సేవ్ చేయి (తేదీ, బిల్లు, కాంటాక్ట్, పార్సెల్), "
+                + "📍 దారి / కాల్, ✅ నిజమా?, ✂️ ఈ భాగం మాత్రమే, ⚖️ రెండు పోల్చు, 📋 ఫారమ్ సహాయం, 🎧 వాయిస్ మెసేజ్ (OpenAI key కావాలి), 👥 గ్రూప్ సారాంశం, "
+                + "🕶️ దాచి షేర్ (నంబర్లు, ఈమెయిల్, చిరునామా దాచి), 🔎 ఇది ఏంటి? వెతుకు. ఆ యాప్‌కి సరిపోయే 5 (మీరు ఎక్కువ వాడేవి) పైన, మిగతావి '▾ ఇంకా' లో. "
+                + "చదువుతున్నప్పుడు ⏮ ⏸ ⏭ 🐢 ⏩ ⏹, ⏲️ నిద్ర టైమర్ (15 / 30 / 60 ని.); ఆపిన పేజీ మళ్ళీ చదవమంటే ఆపిన చోటు నుంచి అడుగుతుంది. జవాబు బాక్సులో 🎙️ అడుగు, 🔊 మళ్ళీ, ⏹ ఆపు, 📋 కాపీ, 💾 సేవ్, 📤 షేర్. ఎక్కువసేపు నొక్కి పట్టుకుంటే Jarvis వింటాడు.");
         TextView[] bb = new TextView[1];
         bubbleMark = () -> bb[0].setText(!FloatBubble.on(this) ? "⚪  ఫ్లోటింగ్ బటన్: ఆఫ్ (ఆన్ చేయడానికి నొక్కండి)"
                 : JarvisAccessibility.enabled() ? "🔵  ఫ్లోటింగ్ బటన్: ఆన్ (ఆపడానికి నొక్కండి)"
@@ -264,6 +270,11 @@ public class SettingsActivity extends Activity {
             bubbleMark.run();
         });
         bubbleMark.run();
+        bubbleAll = toggle("మెనూలో అన్ని ఆప్షన్లు ఒకేసారి చూపించు (ఆఫ్ = ఆ యాప్‌కి సరిపోయే 5, తర్వాత '▾ ఇంకా')", prefs.bubbleShowAll());
+        button("☑️ మెనూలో ఏ ఆప్షన్లు ఉండాలి", v -> chooseBubbleOptions());
+        button("🙈 బటన్ దాచిన యాప్‌లు", v -> chooseHiddenApps());
+        note("బటన్ మీద: ఒక్కసారి నొక్కితే మెనూ, రెండుసార్లు నొక్కితే చదువు / ఆపు, నొక్కి పట్టుకుంటే మాటలతో అడగడం. "
+                + "Full screen వీడియో / గేమ్‌లో తనంతట తానే దాక్కుంటుంది. మెనూలో '🙈 ఈ యాప్‌లో దాచు' నొక్కితే ఆ యాప్‌లో ఇక కనిపించదు.");
         note("ఇది 'Jarvis స్క్రీన్' (Accessibility) స్విచ్ ద్వారా పనిచేస్తుంది, వేరే అనుమతి అక్కర్లేదు. పాస్‌వర్డ్‌లు చదవదు; బ్యాంకింగ్ / పేమెంట్ యాప్‌ల స్క్రీన్ AI కి పంపదు. "
                 + "లాక్ స్క్రీన్ మీద, Jarvis స్క్రీన్ మీద, Jarvis ఫోన్ వాడుతున్నప్పుడు కనిపించదు. 'చదువు' ఫోన్ గొంతుతో (ఉచితం, ఆఫ్‌లైన్).");
 
@@ -517,7 +528,21 @@ public class SettingsActivity extends Activity {
         section("కాల్స్, ఉదయం బ్రీఫింగ్");
         announceCalls = toggle("కాల్ వస్తే ఎవరో పైకి చెప్పు (నోటిఫికేషన్ యాక్సెస్ కావాలి)", prefs.announceCalls());
         readMessages = toggle("కొత్త మెసేజ్ వస్తే (WhatsApp, SMS, Telegram, Instagram, Facebook, Snapchat...) ఎవరి నుంచో చెప్పి, \"చదవమంటారా?\" అని అడుగు", prefs.readMessages());
-        readGroups = toggle("👥 గ్రూప్ మెసేజ్‌లు కూడా చెప్పు (WhatsApp గ్రూప్‌లు; ఆఫ్ = మనుషులు నేరుగా పంపినవి మాత్రమే)", prefs.readGroups());
+        TextView gl = Ui.text(this, "👥 గ్రూప్ మెసేజ్‌లు (WhatsApp గ్రూప్‌లు) చెప్పడం:", 15, Ui.TEXT);
+        gl.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
+        box.addView(gl);
+        groupMode = new RadioGroup(this);
+        groupMode.addView(radio(65, "నా పేరు ఉంటేనే (గ్రూప్‌లో మిమ్మల్ని పిలిస్తేనే చెప్పు) · సిఫార్సు"));
+        groupMode.addView(radio(64, "అన్నీ చెప్పు"));
+        groupMode.addView(radio(66, "వద్దు (గ్రూప్ మెసేజ్‌లు ఎప్పుడూ చెప్పకు)"));
+        String gm0 = prefs.groupMode();
+        groupMode.check("all".equals(gm0) ? 64 : "none".equals(gm0) ? 66 : 65);
+        box.addView(groupMode);
+        myNames = field("గ్రూప్‌లో మిమ్మల్ని పిలిచే పేర్లు (కామాతో)", prefs.myNames(), false);
+        myNames.setHint("Anil, అనిల్, @Anil");
+        note("మీరు వేరే యాప్‌లో ఉన్నప్పుడు మెసేజ్ వస్తే కింది నుంచి పెద్ద ప్యానెల్ రాదు: పైన చిన్న కార్డ్ వస్తుంది (🔊 చదువు, 📝 సారాంశం, ⏰ తర్వాత). "
+                + "టైప్ చేస్తుంటే Jarvis మాట్లాడడు, కార్డ్ మాత్రమే. పైకి స్వైప్ చేసినా, కొన్ని సెకన్లు వదిలేసినా అది ఫ్లోటింగ్ బటన్ మీద చుక్కగా (📬) ఉంటుంది. "
+                + "ఫోన్ లాక్‌లో ఉన్నప్పుడు, హోమ్ స్క్రీన్‌లో, బైక్ నడుపుతున్నప్పుడు మాత్రం పెద్ద ప్యానెల్ వస్తుంది (మాటలతో జవాబు ఇవ్వడానికి).");
         readNews = toggle("📰 Way2News వార్త వచ్చిన వెంటనే చదివి వినిపించు", prefs.readNews());
         newsPlaces = field("📍 లోకల్ వార్తల ప్రాంతాలు (కామాతో: రాష్ట్రాలు, జిల్లాలు, ఊర్లు)", prefs.newsPlaces(), false);
         newsPlaces.setHint("తెలంగాణ, ఆంధ్రప్రదేశ్, మీ జిల్లా, మీ ఊరు");
@@ -1293,7 +1318,10 @@ public class SettingsActivity extends Activity {
         e.putBoolean("announce_calls", announceCalls.isChecked());
         e.putBoolean("call_voice", callVoice.isChecked());
         e.putBoolean("read_messages", readMessages.isChecked());
-        e.putBoolean("read_groups", readGroups.isChecked());
+        int gmc = groupMode.getCheckedRadioButtonId();
+        e.putString("group_mode", gmc == 64 ? "all" : gmc == 66 ? "none" : "mine");
+        e.putString("my_names", myNames.getText().toString().trim());
+        e.putBoolean("bubble_show_all", bubbleAll.isChecked());
         e.putBoolean("read_news", readNews.isChecked());
         e.putBoolean("news_auto", newsAuto.isChecked());
         e.putBoolean("diary_ask", diaryAsk.isChecked());
@@ -1524,6 +1552,52 @@ public class SettingsActivity extends Activity {
                 Toast.makeText(this, "ఆ ఫోల్డర్‌కి అనుమతి రాలేదు", Toast.LENGTH_LONG).show();
             }
         }
+    }
+
+    // ---------- the floating button's options and hidden apps
+
+    private void chooseBubbleOptions() {
+        Object[][] all = FloatBubble.choosable();
+        String[] names = new String[all.length];
+        boolean[] on = new boolean[all.length];
+        java.util.Set<String> off = prefs.bubbleOff();
+        for (int i = 0; i < all.length; i++) {
+            names[i] = (String) all[i][1];
+            on[i] = !off.contains(String.valueOf(all[i][0]));
+        }
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("మెనూలో ఉండాల్సిన ఆప్షన్లు")
+                .setMultiChoiceItems(names, on, (d, w, checked) -> on[w] = checked)
+                .setPositiveButton("సరే", (d, w) -> {
+                    StringBuilder b = new StringBuilder();
+                    for (int i = 0; i < all.length; i++) if (!on[i]) b.append(b.length() == 0 ? "" : ",").append(all[i][0]);
+                    prefs.sp.edit().putString("bubble_off", b.toString()).apply();
+                    Toast.makeText(this, "సేవ్ అయింది ✓", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("వద్దు", null)
+                .show();
+    }
+
+    private void chooseHiddenApps() {
+        java.util.List<String> apps = new java.util.ArrayList<>(prefs.bubbleHiddenApps());
+        if (apps.isEmpty()) {
+            Toast.makeText(this, "ఏ యాప్‌లోనూ దాచలేదు. ఆ యాప్‌లో బటన్ నొక్కి '🙈 ఈ యాప్‌లో దాచు' అంటే దాక్కుంటుంది.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] names = new String[apps.size()];
+        boolean[] keep = new boolean[apps.size()];
+        for (int i = 0; i < apps.size(); i++) { names[i] = JarvisAccessibility.label(this, apps.get(i)); keep[i] = true; }
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("ఈ యాప్‌లలో బటన్ దాగి ఉంది (టిక్ తీస్తే మళ్లీ కనిపిస్తుంది)")
+                .setMultiChoiceItems(names, keep, (d, w, checked) -> keep[w] = checked)
+                .setPositiveButton("సరే", (d, w) -> {
+                    java.util.Set<String> left = new java.util.HashSet<>();
+                    for (int i = 0; i < apps.size(); i++) if (keep[i]) left.add(apps.get(i));
+                    prefs.setBubbleHiddenApps(left);
+                    Toast.makeText(this, "సేవ్ అయింది ✓", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("వద్దు", null)
+                .show();
     }
 
     // ---------- backup & restore (his Google Drive, his password)

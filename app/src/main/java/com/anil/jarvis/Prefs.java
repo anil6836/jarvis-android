@@ -131,6 +131,26 @@ final class Prefs {
     boolean readMessages() { return sp.getBoolean("read_messages", true); }
     /** Group chat messages too (off: groups are chatty). */
     boolean readGroups() { return sp.getBoolean("read_groups", false); }
+    /** Group chat messages: "all", "mine" (only when one of his names is in it) or "none". Before this choice existed, "read group messages" on meant all. */
+    String groupMode() { return sp.getString("group_mode", sp.getBoolean("read_groups", false) ? "all" : "mine"); }
+    /** The names people call him by in groups (his name first; comma separated in settings). */
+    String myNames() {
+        String n = sp.getString("my_names", "").trim();
+        if (!n.isEmpty()) return n;
+        String name = name().trim();
+        return name.isEmpty() || name.equalsIgnoreCase("sir") ? "Anil" : name;
+    }
+    /** The floating button's menu with every option at once (else the 5 that fit the app, then "ఇంకా"). */
+    boolean bubbleShowAll() { return sp.getBoolean("bubble_show_all", false); }
+    /** Floating button options he switched off (their numbers, comma separated). */
+    java.util.Set<String> bubbleOff() { return new java.util.HashSet<>(java.util.Arrays.asList(sp.getString("bubble_off", "").split(","))); }
+    /** Apps where the floating button stays hidden. */
+    java.util.Set<String> bubbleHiddenApps() {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (String x : sp.getString("bubble_hide_apps", "").split(",")) if (!x.trim().isEmpty()) out.add(x.trim());
+        return out;
+    }
+    void setBubbleHiddenApps(java.util.Set<String> apps) { sp.edit().putString("bubble_hide_apps", android.text.TextUtils.join(",", apps)).apply(); }
     /** Way2News: read each news notification aloud as it comes. */
     boolean readNews() { return sp.getBoolean("read_news", true); }
     /** Places whose news he wants in Telugu (states, districts, towns), comma separated. He adds his own towns. */

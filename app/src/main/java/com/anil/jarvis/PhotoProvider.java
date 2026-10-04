@@ -20,17 +20,26 @@ public class PhotoProvider extends ContentProvider {
 
     static File file(Context c) { return new File(c.getCacheDir(), "capture.jpg"); }
 
+    /** A screenshot with his private details hidden, for him to share (the floating button's 🕶️). */
+    static Uri shareUri() { return Uri.parse("content://" + AUTHORITY + "/share.jpg"); }
+
+    static File shareFile(Context c) { return new File(c.getCacheDir(), "share.jpg"); }
+
+    private File fileFor(Uri uri) {
+        return "share.jpg".equals(uri == null ? null : uri.getLastPathSegment()) ? shareFile(getContext()) : file(getContext());
+    }
+
     @Override public boolean onCreate() { return true; }
 
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
-        File f = file(getContext());
+        File f = fileFor(uri);
         int m = ParcelFileDescriptor.parseMode(mode);
         if (mode.contains("w")) m |= ParcelFileDescriptor.MODE_CREATE;
         return ParcelFileDescriptor.open(f, m);
     }
 
     @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
-        File f = file(getContext());
+        File f = fileFor(uri);
         MatrixCursor c = new MatrixCursor(new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE});
         c.addRow(new Object[]{f.getName(), f.length()});
         return c;

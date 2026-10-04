@@ -1026,12 +1026,14 @@ public class JarvisAccessibility extends AccessibilityService {
     @Override public boolean onUnbind(android.content.Intent intent) {
         instance = null;
         if (bubble != null) { bubble.remove(); bubble = null; }
+        try { TopCard.dismissNow(); BoxPicker.cancel(); } catch (Exception ignored) {}
         return super.onUnbind(intent);
     }
 
     @Override public void onDestroy() {
         instance = null;
         if (bubble != null) { bubble.remove(); bubble = null; }
+        try { TopCard.dismissNow(); BoxPicker.cancel(); } catch (Exception ignored) {}
         super.onDestroy();
     }
 
@@ -1314,6 +1316,233 @@ public class JarvisAccessibility extends AccessibilityService {
             if (want && s.bubble == null) { s.bubble = new FloatBubble(s); if (!s.bubble.show()) s.bubble = null; }
             else if (!want && s.bubble != null) { s.bubble.remove(); s.bubble = null; }
         });
+    }
+
+    // ------------------------------------------------------------------ for the floating button and the top message card
+
+    /** The on-screen keyboard is open right now (he is typing). */
+    static boolean keyboardOpen() {
+        JarvisAccessibility s = instance;
+        if (s == null) return false;
+        try {
+            for (android.view.accessibility.AccessibilityWindowInfo w : s.getWindows())
+                if (w.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    /** The status bar was seen as a window once: only then can its absence mean a full-screen video or game. */
+    private static volatile boolean seenStatusBar;
+
+    /** A video or game is full screen (the app covers the screen and the status bar is gone). */
+    static boolean barsHidden() {
+        JarvisAccessibility s = instance;
+        if (s == null) return false;
+        try {
+            android.graphics.Point real = new android.graphics.Point();
+            ((android.view.WindowManager) s.getSystemService(WINDOW_SERVICE)).getDefaultDisplay().getRealSize(real);
+            int w = real.x, h = real.y;
+            boolean bar = false, full = false;
+            android.graphics.Rect r = new android.graphics.Rect();
+            for (android.view.accessibility.AccessibilityWindowInfo win : s.getWindows()) {
+                win.getBoundsInScreen(r);
+                if (win.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_SYSTEM && r.top <= 0 && r.height() > 0
+                        && r.height() < Math.min(w, h) / 6 && r.width() >= w * 0.6) bar = true;
+                if (win.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION && r.top <= 0
+                        && r.height() >= h * 0.95 && r.width() >= w * 0.95) full = true;
+            }
+            if (bar) seenStatusBar = true;
+            return seenStatusBar && full && !bar;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** The lowest typing box of this app on the screen (a chat keeps it at the bottom), or null. */
+    private static AccessibilityNodeInfo chatBox(JarvisAccessibility s, String pkg) {
+        AccessibilityNodeInfo root = s.appRoot();
+        if (root == null) return null;
+        if (pkg != null && (root.getPackageName() == null || !pkg.contentEquals(root.getPackageName()))) return null;
+        AccessibilityNodeInfo box = null;
+        int best = -1;
+        java.util.ArrayDeque<AccessibilityNodeInfo> st = new java.util.ArrayDeque<>();
+        st.push(root);
+        android.graphics.Rect r = new android.graphics.Rect();
+        for (int n = 0; !st.isEmpty() && n < 3000; n++) {
+            AccessibilityNodeInfo x = st.pop();
+            if (x.isEditable() && !x.isPassword() && x.isVisibleToUser()) {
+                x.getBoundsInScreen(r);
+                if (r.bottom > best) { best = r.bottom; box = x; }
+            }
+            for (int i = x.getChildCount() - 1; i >= 0; i--) { AccessibilityNodeInfo ch = x.getChild(i); if (ch != null) st.push(ch); }
+        }
+        return box;
+    }
+
+    /** What he has typed in the message box ("" when empty, null when there is no box). Passwords are never read. */
+    static String draft(String pkg) {
+        JarvisAccessibility s = instance;
+        if (s == null) return null;
+        try {
+            AccessibilityNodeInfo box = chatBox(s, pkg);
+            if (box == null) return null;
+            CharSequence t = box.getText();
+            return t == null || box.isShowingHintText() ? "" : t.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Puts a better version of his message in the box, only if the box still holds what he wrote (old) or is empty:
+     * 1 done, -1 he changed it meanwhile (left alone), -2 that app is not in front, 0 no box. He sends it himself.
+     */
+    static int replaceDraft(String pkg, String old, String text) {
+        JarvisAccessibility s = instance;
+        if (s == null || text == null) return 0;
+        try {
+            AccessibilityNodeInfo root = s.appRoot();
+            if (root == null) return 0;
+            if (pkg != null && (root.getPackageName() == null || !pkg.contentEquals(root.getPackageName()))) return -2;
+            AccessibilityNodeInfo box = chatBox(s, pkg);
+            if (box == null) return 0;
+            CharSequence has = box.getText();
+            String now = has == null || box.isShowingHintText() ? "" : has.toString().trim();
+            if (!now.isEmpty() && !now.equals(old == null ? "" : old.trim())) return -1;
+            box.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            android.os.Bundle b = new android.os.Bundle();
+            b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+            return box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b) ? 1 : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** The package of the app he is in (not Jarvis's own windows), or "". Any thread. */
+    static String appPackage() {
+        JarvisAccessibility s = instance;
+        if (s == null) return "";
+        try {
+            AccessibilityNodeInfo root = s.appRoot();
+            return root == null || root.getPackageName() == null ? "" : root.getPackageName().toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** Every text he can see in that app, with where it is on the screen: {String text, Rect bounds}. Passwords never. Any thread. */
+    static java.util.List<Object[]> visibleTexts(String pkg) {
+        java.util.List<Object[]> out = new java.util.ArrayList<>();
+        JarvisAccessibility s = instance;
+        if (s == null) return out;
+        try {
+            AccessibilityNodeInfo root = s.appRoot();
+            if (root == null) return out;
+            if (pkg != null && !pkg.isEmpty() && (root.getPackageName() == null || !pkg.contentEquals(root.getPackageName()))) return out;
+            java.util.ArrayDeque<AccessibilityNodeInfo> st = new java.util.ArrayDeque<>();
+            st.push(root);
+            for (int n = 0; !st.isEmpty() && n < 6000; n++) {
+                AccessibilityNodeInfo x = st.pop();
+                if (x.isPassword()) continue;
+                CharSequence t = x.getText();
+                if (t != null && t.toString().trim().length() > 0 && x.isVisibleToUser()) {
+                    android.graphics.Rect r = new android.graphics.Rect();
+                    x.getBoundsInScreen(r);
+                    if (!r.isEmpty()) out.add(new Object[]{t.toString(), r});
+                }
+                for (int i = x.getChildCount() - 1; i >= 0; i--) { AccessibilityNodeInfo ch = x.getChild(i); if (ch != null) st.push(ch); }
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    /**
+     * A fresh screenshot of this part of the screen (null = all of it, in screen pixels), as a plain bitmap at most maxDim
+     * pixels on its long side; null when the phone cannot (Android 10 and older, a refusal). The answer comes on the main thread.
+     */
+    static void shot(android.graphics.Rect part, int maxDim, java.util.function.Consumer<Bitmap> then) {
+        JarvisAccessibility s = instance;
+        if (s == null || Build.VERSION.SDK_INT < 30) { then.accept(null); return; }
+        try {
+            s.takeScreenshot(Display.DEFAULT_DISPLAY, s.getMainExecutor(), new TakeScreenshotCallback() {
+                @Override public void onSuccess(ScreenshotResult r) {
+                    Bitmap out = null;
+                    try {
+                        HardwareBuffer hb = r.getHardwareBuffer();
+                        Bitmap hw = Bitmap.wrapHardwareBuffer(hb, r.getColorSpace());
+                        if (hw != null) {
+                            Bitmap soft = hw.copy(Bitmap.Config.ARGB_8888, false);
+                            hw.recycle();
+                            android.graphics.Rect c = part == null ? new android.graphics.Rect(0, 0, soft.getWidth(), soft.getHeight()) : new android.graphics.Rect(part);
+                            if (c.intersect(0, 0, soft.getWidth(), soft.getHeight()) && c.width() >= 8 && c.height() >= 8) {
+                                Bitmap cut = Bitmap.createBitmap(soft, c.left, c.top, c.width(), c.height());
+                                float sc = Math.min(1f, maxDim / (float) Math.max(c.width(), c.height()));
+                                if (sc < 1f) {
+                                    Bitmap sm = Bitmap.createScaledBitmap(cut, Math.max(1, Math.round(c.width() * sc)), Math.max(1, Math.round(c.height() * sc)), true);
+                                    if (sm != cut && cut != soft) cut.recycle();
+                                    cut = sm;
+                                }
+                                if (cut != soft) soft.recycle();
+                                out = cut;
+                            } else {
+                                soft.recycle();
+                            }
+                        }
+                        hb.close();
+                    } catch (Exception ignored) {}
+                    then.accept(out);
+                }
+                @Override public void onFailure(int errorCode) { then.accept(null); }
+            });
+        } catch (Exception e) {
+            then.accept(null);
+        }
+    }
+
+    /** A new message's card at the top of the screen; false when the screen access is off (then the panel is used). */
+    static boolean messageCard(TopCard.Msg m) {
+        JarvisAccessibility s = instance;
+        if (s == null) return false;
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return TopCard.show(s, m); // so a failure falls back to the panel
+        MAIN.post(() -> { if (instance == s) TopCard.show(s, m); });
+        return true;
+    }
+
+    /** Where windows other than the app's own are on the screen (the keyboard, a pop-up notification): for 🕶️ to cover them. */
+    static java.util.List<android.graphics.Rect> otherWindows() {
+        java.util.List<android.graphics.Rect> out = new java.util.ArrayList<>();
+        JarvisAccessibility s = instance;
+        if (s == null) return out;
+        try {
+            android.graphics.Point real = new android.graphics.Point();
+            ((android.view.WindowManager) s.getSystemService(WINDOW_SERVICE)).getDefaultDisplay().getRealSize(real);
+            int bar = Math.min(real.x, real.y) / 6;
+            for (android.view.accessibility.AccessibilityWindowInfo w : s.getWindows()) {
+                android.graphics.Rect r = new android.graphics.Rect();
+                w.getBoundsInScreen(r);
+                if (r.isEmpty()) continue;
+                int t = w.getType();
+                if (t == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) { out.add(r); continue; }
+                if (t != android.view.accessibility.AccessibilityWindowInfo.TYPE_SYSTEM) continue;
+                boolean statusBar = r.top <= 0 && r.height() < bar, navBar = r.bottom >= real.y && r.height() < bar;
+                navBar |= r.width() < bar && r.height() >= real.y * 0.9 && (r.left <= 0 || r.right >= real.x); // at the side (turned phone)
+                boolean whole = r.width() >= real.x * 0.95 && r.height() >= real.y * 0.95;
+                if (!statusBar && !navBar && !whole) out.add(r); // a heads-up notification, a volume or chat bubble...
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    /** The home screen (the launcher) is in front. */
+    static boolean homeScreen(android.content.Context c, String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        try {
+            android.content.pm.ResolveInfo ri = c.getPackageManager().resolveActivity(
+                    new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME),
+                    android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+            if (ri != null && ri.activityInfo != null && pkg.equals(ri.activityInfo.packageName)) return true;
+        } catch (Exception ignored) {}
+        return pkg.toLowerCase(Locale.ROOT).contains("launcher");
     }
 
     @Override public void onConfigurationChanged(android.content.res.Configuration c) {

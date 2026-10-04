@@ -148,6 +148,7 @@ public class NotifyListener extends NotificationListenerService {
 
         String title = str(x.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE));
         if (title.isEmpty()) title = str(x.getCharSequence(Notification.EXTRA_TITLE));
+        title = cleanTitle(title);
         String text = messages(x);
         if (text.isEmpty()) text = str(x.getCharSequence(Notification.EXTRA_BIG_TEXT));
         if (text.isEmpty()) text = str(x.getCharSequence(Notification.EXTRA_TEXT));
@@ -186,6 +187,14 @@ public class NotifyListener extends NotificationListenerService {
         maybeReadNews(sbn, app, title, text);
         maybeReadAloud(sbn, n, x, app, title, text);
         ScamGuard.check(this, sbn.getPackageName(), app, title, text); // scam-looking message or a new autopay: warn
+    }
+
+    /** A chat's name without the counts apps add to it: "Family (37 messages)" -> "Family". */
+    static String cleanTitle(String t) {
+        if (t == null) return "";
+        return t.replaceAll("\\s*[(（]\\s*\\d+\\s*(?i:new\\s+)?(?i:messages?|మెసేజ్‌లు|మెసేజ్|సందేశాలు|సందేశం|కొత్త సందేశాలు)\\s*[)）]", "")
+                .replaceAll("(?i)\\s*[·•,:-]?\\s*\\d+\\s+new\\s+messages?\\s*$", "")
+                .trim();
     }
 
     // ---------------------------------------------------------------- Way2News read aloud
@@ -277,7 +286,8 @@ public class NotifyListener extends NotificationListenerService {
         if (!(p.readMessages() || driving)) { note(app, from, "చదవలేదు: Settings → కాల్స్ card లో 'కొత్త మెసేజ్ వస్తే… చెప్పు' ఆఫ్‌లో ఉంది"); return; }
         if (p.night() && !driving) { note(app, from, "చదవలేదు: నైట్ మోడ్ ఆన్‌లో ఉంది (\"గుడ్ మార్నింగ్\" అంటే ఆఫ్ అవుతుంది)"); return; }
         boolean group = x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false);
-        if (group && !driving && !p.readGroups()) { note(app, from, "గ్రూప్ మెసేజ్: Settings లో 'గ్రూప్ మెసేజ్‌లు కూడా' ఆఫ్‌లో ఉంది"); return; }
+        String groupMode = p.groupMode();
+        if (group && !driving && "none".equals(groupMode)) { note(app, from, "గ్రూప్ మెసేజ్: Settings లో గ్రూప్ మెసేజ్‌లు 'వద్దు' అని ఉంది"); return; }
         if (RecorderService.recording) { note(app, from, "చదవలేదు: రికార్డింగ్ జరుగుతోంది"); return; }
         if (!driving) {
             NotificationManager nm = getSystemService(NotificationManager.class);
@@ -288,6 +298,10 @@ public class NotifyListener extends NotificationListenerService {
         }
         List<String> fresh = newMessages(sbn, x, text, group);
         if (fresh.isEmpty()) return; // the same messages posted again, or his own reply
+        if (group && !driving && !"all".equals(groupMode)) { // "నా పేరు ఉంటేనే": only the messages that name him
+            fresh = naming(fresh, p.myNames());
+            if (fresh.isEmpty()) { note(app, from, "గ్రూప్ మెసేజ్: మీ పేరు లేదు, చెప్పలేదు (సెట్టింగ్స్ → కాల్స్, ఉదయం బ్రీఫింగ్ → గ్రూప్ మెసేజ్‌లు)"); return; }
+        }
         int id = 0;
         boolean canReply = false;
         synchronized (items) {
@@ -315,6 +329,18 @@ public class NotifyListener extends NotificationListenerService {
         }
         note(app, from, "వచ్చింది, వరుసలో ఉంది: చెప్తాను");
         schedule(2500); // wait a moment: messages usually come in a burst, say them together
+    }
+
+    /** The messages that call him by one of his names (or @name). */
+    static List<String> naming(List<String> texts, String names) {
+        List<String> out = new ArrayList<>();
+        java.util.List<String> ns = new ArrayList<>();
+        for (String n : names.split(",")) { String t = n.trim().toLowerCase(Locale.ROOT); if (t.length() >= 2) ns.add(t); }
+        for (String t : texts) {
+            String body = withoutSender(t).toLowerCase(Locale.ROOT); // the sender's own name is not a mention
+            for (String n : ns) if (body.contains(n)) { out.add(t); break; }
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- the queue: nothing is dropped while Jarvis is busy
@@ -480,6 +506,51 @@ public class NotifyListener extends NotificationListenerService {
                     + "(whatsapp_media works on the newest one). If he says no, just say సరే. "
                     + "After reading, ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send only after he says send.]";
         }
+        if (cardFits(p)) { // he is in another app: a small card at the top, not the panel from the bottom
+            final TopCard.Msg m = new TopCard.Msg();
+            m.app = app;
+            m.from = who;
+            m.pkg = q.pkg;
+            m.group = q.group;
+            m.id = q.canReply ? id : 0;
+            m.texts.addAll(q.texts);
+            m.say = say;
+            m.ask = ask;
+            m.context = context;
+            final String fSay = say, fAsk = ask, fContext = context;
+            final int fCount = count;
+            main.postDelayed(() -> { // after the app's own banner has gone
+                m.typing = JarvisAccessibility.keyboardOpen();
+                if (cardFits(new Prefs(this)) && JarvisAccessibility.messageCard(m)) {
+                    Store.get(this).addChat("assistant", fSay + " " + fAsk + fContext, false); // "Jarvis, చదువు / రిప్లై" later works too
+                    note(app, from, m.typing ? "పైన కార్డ్ చూపించాను (టైప్ చేస్తున్నారు: మాట్లాడలేదు)" : "పైన కార్డ్ చూపించి చెప్పాను");
+                    if (!m.typing) Announcer.say(this, fSay);
+                } else {
+                    openPanel(app, from, fSay, fAsk, fContext, fCount);
+                }
+            }, 2500);
+            return;
+        }
+        openPanel(app, from, say, ask, context, count);
+    }
+
+    /**
+     * The top card fits: the screen is on and unlocked, he is in an app (not the home screen, not a Jarvis screen) and
+     * not riding, and the floating button is on (messages put off for later wait as its 📬 dot). Locked, home screen or
+     * riding: the panel, so he can answer by voice without touching the phone.
+     */
+    private boolean cardFits(Prefs p) {
+        if (!JarvisAccessibility.enabled() || !FloatBubble.on(this) || p.driving() || MainActivity.visible || SheetActivity.open) return false;
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        android.app.KeyguardManager km = getSystemService(android.app.KeyguardManager.class);
+        if (pm == null || !pm.isInteractive() || km == null || km.isKeyguardLocked()) return false;
+        String front = JarvisAccessibility.frontPackage();
+        if (JarvisAccessibility.isKeyboard(front) || "com.android.systemui".equals(front)) front = JarvisAccessibility.currentPackage();
+        return front != null && !front.isEmpty() && !JarvisAccessibility.homeScreen(this, front);
+    }
+
+    /** Jarvis's panel from the bottom: says who wrote and asks "చదవమంటారా?". */
+    private void openPanel(String app, String from, String say, String ask, String context, int count) {
         if (android.provider.Settings.canDrawOverlays(this)) {
             try {
                 note(app, from, "చెప్పాను ✓ (panel తెరిచి)" + (count > 1 ? " · " + count + " మెసేజ్‌లు కలిపి" : ""));
