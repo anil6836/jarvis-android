@@ -10,6 +10,7 @@
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
         <exclude domain="sharedpref" path="jarvis_read_places.xml" />
         <exclude domain="sharedpref" path="jarvis_scans.xml" />
+        <exclude domain="sharedpref" path="jarvis_mic_quiet.xml" />
         <exclude domain="file" path="scans/" />
         <exclude domain="file" path="vosk-en/" />
         <exclude domain="file" path="vosk-spk/" />
@@ -30,6 +31,7 @@
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
         <exclude domain="sharedpref" path="jarvis_read_places.xml" />
         <exclude domain="sharedpref" path="jarvis_scans.xml" />
+        <exclude domain="sharedpref" path="jarvis_mic_quiet.xml" />
         <exclude domain="file" path="scans/" />
         <exclude domain="file" path=".jarvis_restore/" />
         <exclude domain="file" path=".jarvis_old/" />

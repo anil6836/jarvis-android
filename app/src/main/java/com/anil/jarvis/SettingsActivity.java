@@ -1243,6 +1243,9 @@ public class SettingsActivity extends Activity {
         else if (System.currentTimeMillis() - backedUp > 3 * 86_400_000L)
             s.append("✗ చివరి బ్యాకప్ పాతది").append(backedUp == 0 ? "" : " (" + Backup.when(backedUp) + ")").append(": \"ఇప్పుడే బ్యాకప్ చేయి\" నొక్కండి\n");
         else s.append("✓ బ్యాకప్: ").append(Backup.when(backedUp)).append("\n");
+        String heard = VoiceIO.lastListen;
+        if (!heard.isEmpty()) s.append("• చివరి వినడం: ").append(heard)
+                .append("\n   (▶ మైక్ మొదలు · 🎙 తెరిచింది · ■ మీరు మాట్లాడటం ఆపారు · ✗ ఫోన్ ఆపింది)\n");
         String last = NotifyListener.lastMessageNote;
         s.append("\nచివరి మెసేజ్: ").append(last == null || last.isEmpty() ? "Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు" : last);
         checkInfo.setText(s.toString().trim());

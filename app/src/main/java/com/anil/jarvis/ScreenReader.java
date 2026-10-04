@@ -313,6 +313,7 @@ final class ScreenReader {
         utt++;
         Follow f = follow;
         if (f != null) try { f.onPart(part.line, part.start, part.start + p.length()); } catch (Exception ignored) {}
+        MicQuiet.speaking(); // a sound muted for the mic's beeps comes back first
         if (tts.speak(words, TextToSpeech.QUEUE_FLUSH, null, "s" + utt) != TextToSpeech.SUCCESS) stopNow(true);
     }
 

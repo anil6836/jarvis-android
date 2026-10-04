@@ -49,6 +49,7 @@ final class Greeting {
             done.run();
         };
         main.postDelayed(once, 6000); // never leave Anil waiting
+        MicQuiet.speaking(); // a sound muted for the mic's beeps comes back first
         String key = p.openAiKey().trim();
         if (p.naturalVoice() && !key.isEmpty()) {
             new Thread(() -> {

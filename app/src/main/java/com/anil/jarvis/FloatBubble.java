@@ -1965,6 +1965,7 @@ final class FloatBubble implements ScreenReader.Listener {
         i.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         i.putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, svc.getPackageName());
         listening = true;
+        MicQuiet.hold(svc, this); // the phone's mic beeps stay quiet while this question is heard
         if (micBtn != null) micBtn.setText("✋ అయిపోయింది");
         if (cardTitle != null) cardTitle.setText("🎙️ ఒక్క క్షణం…");
         try {
@@ -2000,6 +2001,7 @@ final class FloatBubble implements ScreenReader.Listener {
     private void doneListening() {
         boolean was = listening;
         listening = false;
+        MicQuiet.release(this);
         if (micBtn != null) micBtn.setText("🎙️ అడుగు");
         main.post(this::releaseMic); // let the phone's voice service go (not from inside its own call)
         if (talkSet) { talkSet = false; MainActivity.talking(false); }

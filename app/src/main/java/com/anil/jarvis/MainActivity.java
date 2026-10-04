@@ -1930,6 +1930,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void beep() {
+        if (!prefs.sfx()) return; // "సౌండ్ ఎఫెక్ట్" off: no sound when he calls
         try {
             ToneGenerator tg = new ToneGenerator(AudioManager.STREAM_MUSIC, 70);
             tg.startTone(ToneGenerator.TONE_PROP_BEEP, 150);

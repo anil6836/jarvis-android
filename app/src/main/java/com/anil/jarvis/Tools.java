@@ -2594,6 +2594,7 @@ final class Tools {
             SoundService.stop(act()); // Jarvis's own rain sound / radio
             return ok().put("stopped", was).toString();
         }
+        MicQuiet.giveBack(); // a mute Jarvis made for the mic's beep must not undo (or hide) what he asks for here
         switch (a) {
             case "play": case "resume": return resumeMedia(am);
             case "pause": case "off": return pauseMedia(am);

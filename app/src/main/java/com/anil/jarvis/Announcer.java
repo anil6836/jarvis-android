@@ -42,6 +42,7 @@ final class Announcer {
         Context app = c.getApplicationContext();
         String words = Spoken.say(text); // numbers as Telugu words
         final String said = words.length() > 3900 ? words.substring(0, 3900) : words; // the voices' limit (numbers as words are longer)
+        MicQuiet.speaking(); // a sound muted for the mic's beeps comes back first
         main.post(() -> {
             queue.add(said);
             Duck.on(app); // radio / music goes quiet while Jarvis reads, and comes back after
