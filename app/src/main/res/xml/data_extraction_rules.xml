@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12 and newer: the guard's Telegram bot token and the faces Jarvis knows stay on the phone (not in backups or transfers). -->
+<!-- Android 12 and newer: as backup_rules.xml (the big models and recordings out, so the rest fits Google's 25 MB). -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="jarvis_guard.xml" />
@@ -7,6 +7,15 @@
         <exclude domain="file" path="facenet.tflite" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
+        <exclude domain="file" path="vosk-en/" />
+        <exclude domain="file" path="vosk-spk/" />
+        <exclude domain="file" path=".jarvis_restore/" />
+        <exclude domain="file" path=".jarvis_old/" />
+        <exclude domain="external" path=".jarvis_restore/" />
+        <exclude domain="external" path=".jarvis_old/" />
+        <exclude domain="sharedpref" path="jarvis_backup.xml" />
+        <exclude domain="external" path="recordings/" />
+        <exclude domain="external" path="Download/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="jarvis_guard.xml" />
@@ -14,5 +23,10 @@
         <exclude domain="file" path="facenet.tflite" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
+        <exclude domain="file" path=".jarvis_restore/" />
+        <exclude domain="file" path=".jarvis_old/" />
+        <exclude domain="external" path=".jarvis_restore/" />
+        <exclude domain="external" path=".jarvis_old/" />
+        <exclude domain="sharedpref" path="jarvis_backup.xml" />
     </device-transfer>
 </data-extraction-rules>

@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 11 and older: the guard's Telegram bot token and the faces Jarvis knows stay on the phone (not in backups). -->
+<!-- Android 11 and older: the guard's Telegram bot token and the faces Jarvis knows stay out of Google's backup (they are in
+     his own password-locked Drive backup); the big re-downloadable models and recordings are left out, so the rest fits
+     Google's 25 MB (over it, Google backs up nothing at all). -->
 <full-backup-content>
     <exclude domain="sharedpref" path="jarvis_guard.xml" />
     <exclude domain="sharedpref" path="jarvis_people.xml" />
     <exclude domain="file" path="facenet.tflite" />
     <exclude domain="file" path="read_later/" />
     <exclude domain="sharedpref" path="jarvis_read_later.xml" />
+        <exclude domain="file" path="vosk-en/" />
+        <exclude domain="file" path="vosk-spk/" />
+        <exclude domain="file" path=".jarvis_restore/" />
+        <exclude domain="file" path=".jarvis_old/" />
+        <exclude domain="external" path=".jarvis_restore/" />
+        <exclude domain="external" path=".jarvis_old/" />
+        <exclude domain="sharedpref" path="jarvis_backup.xml" />
+        <exclude domain="external" path="recordings/" />
+        <exclude domain="external" path="Download/" />
 </full-backup-content>

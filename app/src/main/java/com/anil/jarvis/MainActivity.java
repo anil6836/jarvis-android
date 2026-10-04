@@ -259,6 +259,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         syncWakeService();
         if (hudDash != null) hudDash.start();
         UpdateJob.schedule(this); // "new version" notification when a build is out
+        BackupJob.schedule(this); // the daily Drive backup (once he has set it up)
+        String restored = Backup.takeRestoreNote(this); // just restarted after bringing a backup back
+        if (restored != null) new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("♻️ బ్యాకప్").setMessage(restored)
+                .setPositiveButton("సెట్టింగ్స్ తెరువు", (d, w) -> startActivity(new Intent(this, SettingsActivity.class)))
+                .setNegativeButton("సరే", null).show();
         cancelOldBackupJob();
         NotifyListener.ensureBound(this); // Android has notification access for Jarvis but stopped sending messages: reconnect
         if (FindPhone.running() && FindPhone.age() > 10000) FindPhone.stop(this); // found it (not the ring he just asked for)

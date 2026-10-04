@@ -84,6 +84,7 @@ public class SettingsActivity extends Activity {
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
     private TextView voiceInfo, notifyInfo, checkInfo;
+    private TextView backupInfo, backupSetBtn;
     private final NaturalVoice tester = new NaturalVoice();
     private SeekBar rate, sensitivity, bargeSens;
     private TextView rateLabel, sensitivityLabel, wakeInfo, bargeSensLabel;
@@ -757,6 +758,18 @@ public class SettingsActivity extends Activity {
         showUpdateState();
         new Thread(() -> { Updater.backgroundCheck(getApplicationContext()); runOnUiThread(this::showUpdateState); }, "jarvis-update-look").start();
 
+        section("బ్యాకప్ & రీస్టోర్ (Google Drive)");
+        note("Jarvis డేటా అంతా మీ Google Drive లో ఒక ఫైల్‌గా, మీ పాస్‌వర్డ్‌తో లాక్ అయి ఉంటుంది: సెట్టింగ్స్, API keys, మోడల్స్, "
+                + "జ్ఞాపకాలు, సంభాషణలు, రిమైండర్లు, మిషన్లు, నోట్స్, డైరీ, ఖర్చులు, అప్పులు, బైక్ రైడ్స్, డ్యూటీ, ఆరోగ్యం, మీ గొంతు గుర్తింపు, "
+                + "పరిచయం చేసిన ముఖాలు, సేవ్ చేసిన పేజీలు, రికార్డింగ్స్, Jarvis చేసిన సైట్లు, యాప్‌లు. రోజూ తనంతట తానే అప్డేట్ అవుతుంది. "
+                + "కొత్త ఫోన్‌లో Jarvis వేసి ఇక్కడ \"తిరిగి తెచ్చు\" నొక్కితే అన్నీ వస్తాయి. పాస్‌వర్డ్ మర్చిపోతే ఆ ఫైల్ ఎవరూ తెరవలేరు: రాసి పెట్టుకోండి.");
+        backupInfo = Ui.text(this, Backup.status(this), 15, Ui.CYAN);
+        backupInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(backupInfo);
+        backupSetBtn = button(Backup.configured(this) ? "🔐 పాస్‌వర్డ్ / Drive ఫైల్ మార్చు" : "🔐 బ్యాకప్ సెట్ చేయి", v -> startBackupSetup());
+        button("⬆️ ఇప్పుడే బ్యాకప్ చేయి", v -> backupNow());
+        button("♻️ బ్యాకప్ నుంచి తిరిగి తెచ్చు", v -> pickRestore());
+
         section("అనుమతులు, డేటా");
         button("అన్ని అనుమతులు ఇవ్వండి", v -> requestPermissions(MainActivity.corePermissions(), 5));
         button("సంభాషణ చెరిపేయి (జ్ఞాపకాలు, మిషన్లు అలాగే ఉంటాయి)", v -> {
@@ -841,6 +854,11 @@ public class SettingsActivity extends Activity {
         if (prefs.naturalVoice() && prefs.openAiKey().trim().isEmpty()) s.append("• సహజ గొంతుకి OpenAI key లేదు: ఫోన్ గొంతుతో మాట్లాడతాను\n");
         else if (prefs.naturalVoice() && VoiceIO.naturalError != null)
             s.append("• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): ").append(VoiceIO.naturalError).append("\n");
+        long backedUp = Backup.lastOk(this);
+        if (!Backup.configured(this)) s.append("✗ బ్యాకప్ సెట్ చేయలేదు: ఫోన్ పోతే Jarvis డేటా పోతుంది (కింద \"బ్యాకప్\" చూడండి)\n");
+        else if (System.currentTimeMillis() - backedUp > 3 * 86_400_000L)
+            s.append("✗ చివరి బ్యాకప్ పాతది").append(backedUp == 0 ? "" : " (" + Backup.when(backedUp) + ")").append(": \"ఇప్పుడే బ్యాకప్ చేయి\" నొక్కండి\n");
+        else s.append("✓ బ్యాకప్: ").append(Backup.when(backedUp)).append("\n");
         String last = NotifyListener.lastMessageNote;
         s.append("\nచివరి మెసేజ్: ").append(last == null || last.isEmpty() ? "Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు" : last);
         checkInfo.setText(s.toString().trim());
@@ -988,6 +1006,7 @@ public class SettingsActivity extends Activity {
         try { int h = Integer.parseInt(exerciseHour.getText().toString().trim()); e.putInt("exercise_hour", h <= 0 ? -1 : Math.max(5, Math.min(12, h))); } catch (Exception ignored) {}
         try { e.putInt("fact_hour", Math.max(6, Math.min(21, Integer.parseInt(factHour.getText().toString().trim())))); } catch (Exception ignored) {}
         e.apply();
+        BackupJob.soon(this); // settings changed: into the Drive backup in a little while
         MedicalId.update(this);
         Reminders.scheduleBriefing(this);
         WakeService.stop(this); // restarts with the new settings when the main screen opens
@@ -1032,6 +1051,7 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onDestroy() {
         try { prefs.sp.unregisterOnSharedPreferenceChangeListener(lockCalibrated); } catch (Exception ignored) {}
+        if (pendingRestore != null) { Backup.discard(getApplicationContext(), pendingRestore); pendingRestore = null; } // its question went with the screen
         super.onDestroy();
     }
 
@@ -1116,6 +1136,8 @@ public class SettingsActivity extends Activity {
                 Toast.makeText(this, "ఆ పాటకి అనుమతి రాలేదు", Toast.LENGTH_LONG).show();
             }
         }
+        if (code == 44 && result == RESULT_OK && data != null && data.getData() != null) backupFilePicked(data.getData(), data.getFlags());
+        if (code == 45 && result == RESULT_OK && data != null && data.getData() != null) restoreFilePicked(data.getData(), data.getFlags(), null);
         if (code == 41 && result == RESULT_OK && data != null && data.getData() != null) {
             try {
                 getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -1127,12 +1149,267 @@ public class SettingsActivity extends Activity {
         }
     }
 
+    // ---------- backup & restore (his Google Drive, his password)
+
+    /** An opened backup waiting for his "yes" (the unpacked copy is let go if this screen goes away). */
+    private Backup.Opened pendingRestore;
+
+    private boolean alive() { return !isFinishing() && !isDestroyed(); }
+
+    private android.app.AlertDialog.Builder dialog() {
+        return new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+    }
+
+    private EditText passwordBox(String hint) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setSingleLine(true);
+        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        return e;
+    }
+
+    private LinearLayout dialogBox(View... views) {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        int p = Ui.dp(this, 20);
+        l.setPadding(p, Ui.dp(this, 8), p, 0);
+        for (View v : views) l.addView(v, new LinearLayout.LayoutParams(-1, -2));
+        return l;
+    }
+
+    private static char[] chars(EditText e) {
+        android.text.Editable t = e.getText();
+        char[] c = new char[t.length()];
+        t.getChars(0, t.length(), c, 0);
+        return c;
+    }
+
+    private void showBackup(String text) {
+        runOnUiThread(() -> { if (alive() && backupInfo != null) backupInfo.setText(text); });
+    }
+
+    private boolean backupBusy() {
+        if (!Backup.busy()) return false;
+        Toast.makeText(this, "బ్యాకప్ పని ఒకటి జరుగుతోంది: అది అయ్యాక నొక్కండి", Toast.LENGTH_LONG).show();
+        return true;
+    }
+
+    /** "బ్యాకప్ సెట్ చేయి": first the Drive file (so nothing is lost if the screen turns meanwhile), then his password. */
+    private void startBackupSetup() {
+        if (backupBusy()) return;
+        dialog().setTitle("🔐 బ్యాకప్ సెట్ చేయడం")
+                .setMessage("1. తర్వాత వచ్చే స్క్రీన్‌లో పైన ఎడమవైపు ☰ నొక్కి \"Drive\" ఎంచుకుని, Save నొక్కండి.\n"
+                        + "2. తర్వాత బ్యాకప్‌కి ఒక పాస్‌వర్డ్ పెట్టండి. కొత్త ఫోన్‌లో అదే పాస్‌వర్డ్‌తో తెరవాలి: మర్చిపోతే ఎవరూ తెరవలేరు, రాసి పెట్టుకోండి.")
+                .setPositiveButton("సరే", (x, w) -> pickBackupFile())
+                .setNegativeButton("వద్దు", null)
+                .show();
+    }
+
+    private void pickBackupFile() {
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, "Jarvis-backup.jarvis"), 44);
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫైల్ ఎంచుకునే స్క్రీన్ తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private static String fileName(android.content.Context c, Uri u) {
+        try (android.database.Cursor cur = c.getContentResolver().query(u, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cur != null && cur.moveToFirst() && cur.getString(0) != null) return cur.getString(0);
+        } catch (Exception ignored) {}
+        return "Jarvis-backup.jarvis";
+    }
+
+    private void backupFilePicked(Uri uri, int grantFlags) {
+        int keep = grantFlags & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        try { getContentResolver().takePersistableUriPermission(uri, keep); } catch (Exception ignored) {}
+        if (!Backup.inDrive(uri)) { // the phone itself: lost with the phone
+            dialog().setTitle("ఇది Google Drive కాదు")
+                    .setMessage("ఈ ఫైల్ ఫోన్‌లోనే ఉంటుంది: ఫోన్ పోతే బ్యాకప్ కూడా పోతుంది. మళ్లీ ఎంచుకునేటప్పుడు ☰ నొక్కి \"Drive\" ఎంచుకోండి.")
+                    .setPositiveButton("Drive ఎంచుకుంటాను", (x, w) -> {
+                        try { android.provider.DocumentsContract.deleteDocument(getContentResolver(), uri); } catch (Exception ignored) {}
+                        pickBackupFile();
+                    })
+                    .setNegativeButton("అయినా ఇక్కడే", (x, w) -> askNewPassword(uri))
+                    .show();
+            return;
+        }
+        askNewPassword(uri);
+    }
+
+    private void askNewPassword(Uri uri) {
+        if (!alive()) return;
+        EditText one = passwordBox("పాస్‌వర్డ్ (కనీసం 8 అక్షరాలు)"), two = passwordBox("మళ్లీ అదే పాస్‌వర్డ్");
+        android.app.AlertDialog d = dialog()
+                .setTitle("🔐 బ్యాకప్ పాస్‌వర్డ్")
+                .setMessage("కొత్త ఫోన్‌లో ఈ పాస్‌వర్డ్‌తోనే బ్యాకప్ తెరవాలి. మర్చిపోతే ఎవరూ తెరవలేరు: రాసి పెట్టుకోండి.")
+                .setView(dialogBox(one, two))
+                .setPositiveButton("సెట్ చేయి", null)
+                .setNegativeButton("వద్దు", null)
+                .create();
+        d.setOnShowListener(x -> d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            char[] a = chars(one), b = chars(two);
+            boolean same = java.util.Arrays.equals(a, b);
+            java.util.Arrays.fill(b, '\0');
+            if (a.length < 8) { java.util.Arrays.fill(a, '\0'); one.setError("కనీసం 8 అక్షరాలు"); return; }
+            if (!same) { java.util.Arrays.fill(a, '\0'); two.setError("రెండూ ఒకటి కాదు"); return; }
+            one.setText("");
+            two.setText("");
+            d.dismiss();
+            setUpBackup(uri, a);
+        }));
+        d.show();
+    }
+
+    /** Key from his password, kept locked on the phone; then the first backup at once. */
+    private void setUpBackup(Uri uri, char[] pw) {
+        showBackup("బ్యాకప్ సెట్ చేస్తున్నాను… (పాస్‌వర్డ్‌ నుంచి తాళం చెవి తయారవడానికి కొన్ని సెకన్లు పడుతుంది)");
+        String where = (Backup.inDrive(uri) ? "Google Drive → " : "ఫోన్ → ") + fileName(this, uri);
+        android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            byte[] key = null;
+            try {
+                byte[] salt = Backup.salt();
+                key = Backup.derive(pw, salt, Backup.iterations());
+                Backup.remember(app, key, salt, Backup.iterations(), uri, where, "");
+                BackupJob.schedule(app);
+                runOnUiThread(() -> { if (alive() && backupSetBtn != null) backupSetBtn.setText("🔐 పాస్‌వర్డ్ / Drive ఫైల్ మార్చు"); });
+                Backup.runWhenFree(app, this::showBackup);
+                showBackup(Backup.status(app));
+            } catch (Exception e) {
+                showBackup("✗ బ్యాకప్ కాలేదు: " + e.getMessage() + "\n" + Backup.status(app));
+            } finally {
+                java.util.Arrays.fill(pw, '\0');
+                if (key != null) java.util.Arrays.fill(key, (byte) 0);
+            }
+        }, "jarvis-backup-setup").start();
+    }
+
+    private void backupNow() {
+        if (!Backup.configured(this)) { Toast.makeText(this, "ముందు \"బ్యాకప్ సెట్ చేయి\" నొక్కండి", Toast.LENGTH_LONG).show(); return; }
+        if (backupBusy()) return;
+        android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            try {
+                if (!Backup.run(app, this::showBackup)) { showBackup("బ్యాకప్ ఇప్పటికే జరుగుతోంది, ఒక్క నిమిషం ఆగండి…"); return; }
+                showBackup(Backup.status(app));
+            } catch (Exception e) {
+                showBackup("✗ బ్యాకప్ కాలేదు: " + e.getMessage() + "\n" + Backup.status(app));
+            }
+        }, "jarvis-backup-now").start();
+    }
+
+    private void pickRestore() {
+        if (backupBusy()) return;
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 45);
+            Toast.makeText(this, "☰ నొక్కి Drive ఎంచుకుని, Jarvis-backup ఫైల్ నొక్కండి", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫైల్ ఎంచుకునే స్క్రీన్ తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** The backup file to bring back: his password, then it is opened and checked in full before anything changes. */
+    private void restoreFilePicked(Uri uri, int grantFlags, String again) {
+        if (!alive()) return;
+        EditText pw = passwordBox("బ్యాకప్ పాస్‌వర్డ్");
+        android.app.AlertDialog d = dialog()
+                .setTitle("♻️ బ్యాకప్ తెరవడం")
+                .setMessage((again == null ? "" : again + "\n\n") + "బ్యాకప్ సెట్ చేసినప్పుడు పెట్టిన పాస్‌వర్డ్ ఇవ్వండి.")
+                .setView(dialogBox(pw))
+                .setPositiveButton("తెరువు", null)
+                .setNegativeButton("వద్దు", null)
+                .create();
+        d.setOnShowListener(x -> d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            char[] p = chars(pw);
+            if (p.length == 0) { pw.setError("పాస్‌వర్డ్ ఇవ్వండి"); return; }
+            pw.setText("");
+            d.dismiss();
+            openBackup(uri, grantFlags, p);
+        }));
+        d.show();
+    }
+
+    private void openBackup(Uri uri, int grantFlags, char[] pw) {
+        if (backupBusy()) { java.util.Arrays.fill(pw, '\0'); return; }
+        showBackup("బ్యాకప్ తెరుస్తున్నాను… (పాస్‌వర్డ్ చెక్‌కి కొన్ని సెకన్లు పడుతుంది)");
+        android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            try {
+                Backup.Opened o = Backup.open(app, uri, pw, this::showBackup);
+                runOnUiThread(() -> confirmRestore(uri, grantFlags, o));
+            } catch (Backup.WrongPassword e) {
+                showBackup(Backup.status(app));
+                runOnUiThread(() -> restoreFilePicked(uri, grantFlags, "✗ ఈ పాస్‌వర్డ్‌తో తెరుచుకోలేదు (పాస్‌వర్డ్ తప్పు, లేదా ఫైల్ పాడైంది)."));
+            } catch (Exception e) {
+                showBackup("✗ బ్యాకప్ తెరవలేకపోయాను: " + e.getMessage() + "\n" + Backup.status(app));
+            } finally {
+                java.util.Arrays.fill(pw, '\0');
+            }
+        }, "jarvis-restore-open").start();
+    }
+
+    private void confirmRestore(Uri uri, int grantFlags, Backup.Opened o) {
+        if (!alive()) { Backup.discard(getApplicationContext(), o); return; }
+        pendingRestore = o;
+        long made = o.meta.optLong("made");
+        dialog().setTitle("♻️ ఈ బ్యాకప్ తిరిగి తెమ్మంటారా?")
+                .setMessage("బ్యాకప్: " + (made > 0 ? Backup.when(made) : "?") + " · " + o.meta.optString("phone") + " · " + Backup.size(o.bytes)
+                        + "\n\nఇప్పుడు ఈ ఫోన్‌లో ఉన్న Jarvis డేటా అంతా ఈ బ్యాకప్‌తో మారిపోతుంది. Jarvis వెంటనే మళ్లీ మొదలవుతుంది, "
+                        + "మొదలయ్యేటప్పుడే బ్యాకప్ లోపలికి వస్తుంది.")
+                .setCancelable(false)
+                .setPositiveButton("తిరిగి తెచ్చు", (x, w) -> applyRestore(uri, grantFlags, o))
+                .setNegativeButton("వద్దు", (x, w) -> {
+                    pendingRestore = null;
+                    Backup.discard(getApplicationContext(), o);
+                    showBackup(Backup.status(this));
+                })
+                .show();
+    }
+
+    private void applyRestore(Uri uri, int grantFlags, Backup.Opened o) {
+        pendingRestore = null;
+        showBackup("తిరిగి తెస్తున్నాను…");
+        android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            try {
+                // the same Drive file goes on as this phone's backup when Android let Jarvis write to it (taken over only
+                // once the restore is in, at the next start); the old phone stops writing to it after that
+                boolean canWrite = (grantFlags & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0;
+                int keep = grantFlags & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                try { getContentResolver().takePersistableUriPermission(uri, keep); } catch (Exception e) { canWrite = false; }
+                String where = (Backup.inDrive(uri) ? "Google Drive → " : "ఫోన్ → ") + fileName(app, uri);
+                try {
+                    Backup.markReady(app, o, uri, where, canWrite);
+                } catch (Exception e) {
+                    if (!canWrite) throw e;
+                    Backup.markReady(app, o, uri, where, false); // the phone keystore failed: restore anyway, backup set up again later
+                }
+                runOnUiThread(this::restartJarvis);
+            } catch (Exception e) {
+                Backup.discard(app, o);
+                showBackup("✗ తిరిగి తేవడం కుదరలేదు: " + e.getMessage() + ". మళ్లీ ప్రయత్నించండి (ఫోన్‌లో ఉన్నది ఏమీ మారలేదు).");
+            }
+        }, "jarvis-restore").start();
+    }
+
+    /** The backup goes in at Jarvis's next start (before anything reads the old data): start it fresh now. */
+    private void restartJarvis() {
+        try {
+            startActivity(Intent.makeRestartActivityTask(new android.content.ComponentName(this, MainActivity.class)));
+        } catch (Exception ignored) {}
+        Runtime.getRuntime().exit(0);
+    }
+
     private static final String[][] LOOKS = {
             {"మీరు", "👤"}, {"థీమ్", "🎨"}, {"Jarvis మెదడు", "🧠"}, {"కోడింగ్", "💻"}, {"వాయిస్", "🔊"}, {"సహజ గొంతు", "🗣️"},
             {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
             {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"కాపలా", "🛡️"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
             {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},
-            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"చెక్", "🩺"}, {"Jarvis ముఖం", "🙂"}, {"ఫ్లోటింగ్", "🔵"}};
+            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"చెక్", "🩺"}, {"Jarvis ముఖం", "🙂"}, {"ఫ్లోటింగ్", "🔵"}, {"బ్యాకప్", "☁️"}};
     /** Read when used, so they follow the theme. */
     private static int[] cardColors() { return new int[]{Ui.C_SKY, Ui.C_VIOLET, Ui.C_BLUE, Ui.C_CYAN, Ui.C_PINK, Ui.C_BLUE, Ui.C_TEAL,
             Ui.C_GREEN, Ui.C_SKY, Ui.C_AMBER, Ui.C_GREEN, Ui.C_VIOLET, Ui.C_AMBER, 0xFFF43F5E, Ui.C_PINK, Ui.C_GREEN, Ui.C_ORANGE,
