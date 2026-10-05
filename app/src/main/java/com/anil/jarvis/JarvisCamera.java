@@ -416,6 +416,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     @Override protected void onResume() {
         super.onResume();
         open = true;
+        TopCard.stepAside(); // a message card talking at the top stops before the camera listens
         talkSet = !MainActivity.inConversation;
         if (talkSet) MainActivity.talking(true); // the wake word and Jarvis's own remarks wait while the camera talks
         WakeService.pause(this);

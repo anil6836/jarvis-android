@@ -95,6 +95,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
      */
     static boolean busyTalking() {
         if (SheetActivity.talkingNow()) return true; // the panel is talking, even if another screen cleared the flag
+        if (TopCard.talkingNow()) return true; // a message card is talking with him (however long)
         if (!inConversation) return false;
         if (visible || liveOn || SheetActivity.open) return true;
         if (System.currentTimeMillis() - talkingSince < 3 * 60_000L) return true;
@@ -239,6 +240,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onResume() {
         super.onResume();
+        TopCard.stepAside(); // a message card talking at the top stops: this screen talks now
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         paused = false;

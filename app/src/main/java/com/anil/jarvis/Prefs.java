@@ -132,6 +132,8 @@ final class Prefs {
     /** Group chat messages too (off: groups are chatty). */
     boolean readGroups() { return sp.getBoolean("read_groups", false); }
     /** Group chat messages: "all", "mine" (only when one of his names is in it) or "none". Before this choice existed, "read group messages" on meant all. */
+    /** A message while he types (top card): "read" (told and asked like any time), "name" (who wrote only), "silent" (card only). */
+    String typingMode() { return sp.getString("typing_mode", "read"); }
     String groupMode() { return sp.getString("group_mode", sp.getBoolean("read_groups", false) ? "all" : "mine"); }
     /** The names people call him by in groups (his name first; comma separated in settings). */
     String myNames() {

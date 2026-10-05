@@ -142,6 +142,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         brain = new Brain(prefs, store, tools);
         voice = new VoiceIO(this, prefs, this);
         setContentView(buildUi());
+        TopCard.stepAside(); // a message card talking at the top stops before the panel talks
         if (!startCallMode(getIntent()) && !startAnnounce(getIntent()) && !startRun(getIntent())) begin();
         VoiceIO.yieldOthers(voice); // the app's mic under this panel stops now (it would hear the panel talk)
     }

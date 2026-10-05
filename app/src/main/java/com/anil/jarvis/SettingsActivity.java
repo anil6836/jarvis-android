@@ -61,7 +61,7 @@ public class SettingsActivity extends Activity {
     private Switch newsAuto;
     private EditText newsPlaces;
     private Switch diaryAsk, holidayRemind, findPhone, coughAsk;
-    private RadioGroup groupMode;
+    private RadioGroup groupMode, typingMode;
     private EditText myNames;
     private Switch bubbleAll;
     private EditText priceCity, dailyPrices, findCode;
@@ -540,9 +540,21 @@ public class SettingsActivity extends Activity {
         box.addView(groupMode);
         myNames = field("గ్రూప్‌లో మిమ్మల్ని పిలిచే పేర్లు (కామాతో)", prefs.myNames(), false);
         myNames.setHint("Anil, అనిల్, @Anil");
-        note("మీరు వేరే యాప్‌లో ఉన్నప్పుడు మెసేజ్ వస్తే కింది నుంచి పెద్ద ప్యానెల్ రాదు: పైన చిన్న కార్డ్ వస్తుంది (🔊 చదువు, 📝 సారాంశం, ⏰ తర్వాత). "
-                + "టైప్ చేస్తుంటే Jarvis మాట్లాడడు, కార్డ్ మాత్రమే. పైకి స్వైప్ చేసినా, కొన్ని సెకన్లు వదిలేసినా అది ఫ్లోటింగ్ బటన్ మీద చుక్కగా (📬) ఉంటుంది. "
-                + "ఫోన్ లాక్‌లో ఉన్నప్పుడు, హోమ్ స్క్రీన్‌లో, బైక్ నడుపుతున్నప్పుడు మాత్రం పెద్ద ప్యానెల్ వస్తుంది (మాటలతో జవాబు ఇవ్వడానికి).");
+        note("మీరు వేరే యాప్‌లో ఉన్నప్పుడు మెసేజ్ వస్తే కింది నుంచి పెద్ద ప్యానెల్ రాదు: పైన చిన్న కార్డ్ వస్తుంది. Jarvis అక్కడే ఎవరి నుంచో చెప్పి "
+                + "\"చదవమంటారా?\" అని అడుగుతాడు, చదివి, \"రిప్లై ఇవ్వమంటారా?\" అని అడిగి, మీ జవాబు చదివి వినిపించి \"పంపమంటారా?\" అన్నాకే పంపుతాడు. "
+                + "అంతా background‌లోనే: మీరు వాడుతున్న యాప్ ఆగదు, కీబోర్డ్ మూసుకోదు. ప్రతి స్టెప్ కార్డ్‌లోని బటన్‌తోనూ చేయొచ్చు. "
+                + "⏰ తర్వాత అన్నా, పైకి స్వైప్ చేసినా అది ఫ్లోటింగ్ బటన్ మీద చుక్కగా (📬) ఉంటుంది. "
+                + "ఫోన్ లాక్‌లో ఉన్నప్పుడు, హోమ్ స్క్రీన్‌లో, బైక్ నడుపుతున్నప్పుడు మాత్రం పెద్ద ప్యానెల్ వస్తుంది (ఫోన్ ముట్టుకోకుండా మాట్లాడటానికి).");
+        TextView tl = Ui.text(this, "⌨️ మీరు టైప్ చేస్తున్నప్పుడు మెసేజ్ వస్తే:", 15, Ui.TEXT);
+        tl.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
+        box.addView(tl);
+        typingMode = new RadioGroup(this);
+        typingMode.addView(radio(71, "మామూలుగానే చెప్పి చదువు (కార్డ్‌లో, background‌లో)"));
+        typingMode.addView(radio(72, "ఎవరి నుంచో మాత్రమే చెప్పు"));
+        typingMode.addView(radio(73, "నిశ్శబ్దం: కార్డ్ మాత్రమే (🔊 నొక్కితే చదువుతాను)"));
+        String tm0 = prefs.typingMode();
+        typingMode.check("name".equals(tm0) ? 72 : "silent".equals(tm0) ? 73 : 71);
+        box.addView(typingMode);
         readNews = toggle("📰 Way2News వార్త వచ్చిన వెంటనే చదివి వినిపించు", prefs.readNews());
         newsPlaces = field("📍 లోకల్ వార్తల ప్రాంతాలు (కామాతో: రాష్ట్రాలు, జిల్లాలు, ఊర్లు)", prefs.newsPlaces(), false);
         newsPlaces.setHint("తెలంగాణ, ఆంధ్రప్రదేశ్, మీ జిల్లా, మీ ఊరు");
@@ -1323,6 +1335,8 @@ public class SettingsActivity extends Activity {
         e.putBoolean("read_messages", readMessages.isChecked());
         int gmc = groupMode.getCheckedRadioButtonId();
         e.putString("group_mode", gmc == 64 ? "all" : gmc == 66 ? "none" : "mine");
+        int tmc = typingMode.getCheckedRadioButtonId();
+        e.putString("typing_mode", tmc == 72 ? "name" : tmc == 73 ? "silent" : "read");
         e.putString("my_names", myNames.getText().toString().trim());
         e.putBoolean("bubble_show_all", bubbleAll.isChecked());
         e.putBoolean("read_news", readNews.isChecked());

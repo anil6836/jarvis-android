@@ -22,15 +22,22 @@ import java.util.List;
 /**
  * A new message while he is in another app: a small card at the top of the screen (like WhatsApp's own banner) instead
  * of Jarvis's panel from the bottom. It never takes the keyboard or dims the screen; what he is doing goes on.
- * 🔊 చదువు reads it, 📝 సారాంశం sums up a busy chat, ⏰ తర్వాత puts it off (a dot on the floating button). Swiped up,
- * or left alone for a few seconds, it goes, and the messages wait under the dot: nothing is lost.
+ * With talk on, Jarvis tells it on the card the way the panel used to (CardTalk: "చదవమంటారా?", reads it, takes his
+ * reply and sends it only after he says so), in the background. Without (typing, by his setting): 🔊 చదువు starts that
+ * talk, 📝 సారాంశం sums up a busy chat, ⏰ తర్వాత puts it off (a dot on the floating button). Swiped up, or left alone,
+ * it goes, and unheard messages wait under the dot: nothing is lost.
  */
 final class TopCard {
     /** One chat's new messages. */
     static final class Msg {
         String app = "", from = "", pkg = "", say = "", ask = "", context = "";
+        /** A WhatsApp voice note / audio / photo / video (one message), else null. */
+        String media;
+        /** When the message came (the media file must not be older). */
+        long postedAt;
         final List<String> texts = new ArrayList<>();
-        boolean group, typing;
+        /** talk: Jarvis tells it by voice on the card (else the card only waits for a tap). */
+        boolean group, typing, talk;
         int id;
     }
 
@@ -42,10 +49,15 @@ final class TopCard {
     private final float d;
     private final Msg m;
     private LinearLayout view, buttons;
-    private TextView line2;
+    private TextView line2, status;
     private boolean touched, done, heard;
     private float downY;
     private final Runnable autoHide = () -> close(true);
+    /** The talk on this card (null: none yet). */
+    private CardTalk talk;
+    /** A hide the talk asked for (and whether the messages then wait under the dot). */
+    private boolean laterOnHide;
+    private final Runnable hide = () -> close(laterOnHide);
 
     private TopCard(AccessibilityService svc, Msg m) {
         this.svc = svc;
@@ -62,6 +74,7 @@ final class TopCard {
         TopCard t = new TopCard(svc, m);
         if (!t.build()) return false;
         showing = t;
+        if (m.talk) t.startTalk(CardTalk.START_ASK); else t.main.postDelayed(t.autoHide, 6500);
         return true;
     }
 
@@ -71,6 +84,33 @@ final class TopCard {
         if (t != null) t.close(true, false);
         TopCard c = leaving; // one still sliding away
         if (c != null) c.removeView();
+    }
+
+    /**
+     * Main thread. Another Jarvis screen (the panel, a call, the app, the camera) is starting: the card steps aside before
+     * it talks (unheard messages under the dot), leaving the talk state to that screen.
+     */
+    static void stepAside() {
+        TopCard t = showing;
+        if (t == null) return;
+        CardTalk c = t.talk;
+        t.talk = null;
+        if (c != null) c.stop(CardTalk.YIELD_BEFORE);
+        t.close(!t.heard);
+    }
+
+    /** Jarvis is talking or listening on a card right now. */
+    static boolean talkingNow() {
+        TopCard t = showing;
+        CardTalk c = t == null ? null : t.talk;
+        return c != null && c.talking();
+    }
+
+    /** A card is busy with him (talking, or waiting for his tap mid-reply): a new message's card must wait. */
+    static boolean busy() {
+        TopCard t = showing;
+        CardTalk c = t == null ? null : t.talk;
+        return c != null && c.busy();
     }
 
     /** A card closed but not yet off the screen (its slide-out). */
@@ -107,12 +147,21 @@ final class TopCard {
         line2.setMaxLines(2);
         line2.setEllipsize(TextUtils.TruncateAt.END);
         line2.setPadding(0, dp(3), 0, dp(2));
-        view.addView(line2);
+        view.addView(line2); // (scrolled by code to follow the reading; not by touch, so a swipe up anywhere closes the card)
+        status = new TextView(svc);
+        status.setTextColor(0xFF8FE9FF);
+        status.setTextSize(12.5f);
+        status.setMaxLines(3);
+        status.setEllipsize(TextUtils.TruncateAt.END);
+        status.setVisibility(View.GONE);
+        view.addView(status);
         buttons = new LinearLayout(svc);
         buttons.setGravity(Gravity.END);
-        buttons.addView(button("🔊 చదువు", v -> read()));
-        if (m.group || n >= 3) buttons.addView(button("📝 సారాంశం", v -> summary()));
-        buttons.addView(button("⏰ తర్వాత", v -> close(true)));
+        if (!m.talk) { // the talk sets its own buttons
+            buttons.addView(button("🔊 చదువు", v -> startTalk(CardTalk.START_READ)));
+            if (m.group || n >= 3) buttons.addView(button("📝 సారాంశం", v -> startTalk(CardTalk.START_SUMMARY)));
+            buttons.addView(button("⏰ తర్వాత", v -> close(true)));
+        }
         view.addView(buttons);
         view.setOnTouchListener(this::swipe);
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(svc.getResources().getDisplayMetrics().widthPixels - dp(20),
@@ -129,7 +178,6 @@ final class TopCard {
         }
         view.setTranslationY(-dp(120));
         view.animate().translationY(0).setDuration(220).start();
-        main.postDelayed(autoHide, 6500);
         try {
             svc.registerReceiver(screenOff, new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF));
             listeningScreen = true;
@@ -143,7 +191,7 @@ final class TopCard {
         t.setTextColor(0xFFD7F6FF);
         t.setTextSize(13.5f);
         t.setPadding(dp(10), dp(8), dp(10), dp(8));
-        t.setOnClickListener(v -> { touched = true; main.removeCallbacks(autoHide); l.onClick(v); });
+        t.setOnClickListener(v -> { if (done) return; touched = true; main.removeCallbacks(autoHide); main.removeCallbacks(hide); l.onClick(v); });
         return t;
     }
 
@@ -162,77 +210,88 @@ final class TopCard {
             case MotionEvent.ACTION_CANCEL:
                 if (e.getRawY() - downY < -dp(30)) { close(true); return true; }
                 view.animate().translationY(0).setDuration(120).start();
-                if (!touched) main.postDelayed(autoHide, 4000);
+                if (!touched && talk == null) main.postDelayed(autoHide, 4000);
                 return true;
             default:
                 return false;
         }
     }
 
-    private void read() {
-        StringBuilder b = new StringBuilder(m.from).append(" నుంచి").append(m.group ? " గ్రూప్‌లో: " : ": ");
-        for (String t : m.texts) b.append(t).append(". ");
-        line2.setMaxLines(6);
-        StringBuilder shown = new StringBuilder();
-        for (String t : m.texts) shown.append(shown.length() == 0 ? "" : "\n").append(t);
-        line2.setText(shown);
-        Announcer.stop();
-        Announcer.say(svc, b.toString());
-        afterRead();
+    /** 🔊 / 📝 tapped on a card without talk: Jarvis reads it (or sums it up) on the card, then asks about a reply. */
+    private void startTalk(int how) {
+        if (talk != null || done) return;
+        main.removeCallbacks(autoHide);
+        talk = new CardTalk(svc, this, m);
+        talk.start(how);
     }
 
-    /** Read (or summed up): ↩️ జవాబు opens Jarvis's panel for his reply (sent only after he says send); ✕ closes. */
-    private void afterRead() {
-        heard = true; // heard now: closing no longer puts it off for later
+    // ---------------------------------------------------------------- for CardTalk (main thread)
+
+    /** The small line under the message: what Jarvis is doing ("🎙️ వింటున్నాను…"); empty hides it. */
+    void status(String s) {
+        if (done || status == null) return;
+        status.setText(s == null ? "" : s);
+        status.setVisibility(s == null || s.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    /** The message area: the messages being read, a summary, or his reply. */
+    void body(CharSequence s, int maxLines) {
+        if (done || line2 == null) return;
+        line2.setEllipsize(maxLines <= 2 ? TextUtils.TruncateAt.END : null);
+        line2.setMaxLines(maxLines);
+        line2.setText(s);
+        line2.scrollTo(0, 0);
+    }
+
+    /** The word being read now, highlighted, and scrolled into view. */
+    void highlight(String text, int start, int end) {
+        if (done || line2 == null || text == null) return;
+        android.text.SpannableString sp = new android.text.SpannableString(text);
+        int a = Math.max(0, Math.min(start, text.length())), b = Math.max(a, Math.min(end, text.length()));
+        if (b > a) sp.setSpan(new android.text.style.BackgroundColorSpan(0x6622D3EE), a, b, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        line2.setText(sp);
+        android.text.Layout l = line2.getLayout();
+        if (l != null && line2.getHeight() > 0) {
+            int y = l.getLineTop(l.getLineForOffset(a)) - line2.getHeight() / 3;
+            int max = Math.max(0, l.getHeight() - line2.getHeight() + line2.getTotalPaddingTop() + line2.getTotalPaddingBottom());
+            line2.scrollTo(0, Math.max(0, Math.min(y, max)));
+        }
+    }
+
+    /** The buttons for this step: label, Runnable, label, Runnable… */
+    void buttons(Object... labelThenAction) {
+        if (done || buttons == null) return;
         buttons.removeAllViews();
-        if (m.id > 0) buttons.addView(button("↩️ జవాబు", v -> reply()));
-        buttons.addView(button("✕", v -> close(false)));
-        main.postDelayed(autoHide, 25_000);
+        for (int i = 0; i + 1 < labelThenAction.length; i += 2) {
+            final Runnable r = (Runnable) labelThenAction[i + 1];
+            buttons.addView(button((String) labelThenAction[i], v -> r.run()));
+        }
     }
 
-    private void summary() {
-        Prefs p = new Prefs(svc);
-        if (!p.hasBrain()) { line2.setText("సారాంశానికి AI key కావాలి (Jarvis సెట్టింగ్స్)."); return; }
-        line2.setText("సారాంశం చేస్తున్నాను…");
-        buttons.setVisibility(View.GONE);
-        StringBuilder all = new StringBuilder();
-        for (String t : m.texts) all.append(t).append('\n');
-        final String names = p.myNames();
-        new Thread(() -> {
-            String out;
-            try {
-                out = Brain.oneShot(p, "You are Jarvis, " + p.name() + "'s assistant. Sum up these new chat messages from '" + m.from + "' ("
-                        + m.app + ") in simple Telugu (Telugu script), 2-4 short lines, plain text for reading aloud. First anything addressed to him "
-                        + "(his names: " + names + "), any question to him, dates, times or money; then the rest in brief. No markdown.",
-                        all.toString(), null, false, 500);
-            } catch (Exception e) {
-                out = null;
-            }
-            final String o = out;
-            main.post(() -> {
-                if (done) return;
-                buttons.setVisibility(View.VISIBLE);
-                if (o == null || o.trim().isEmpty()) { line2.setText("సారాంశం రాలేదు. 🔊 చదువు నొక్కండి."); return; }
-                String clean = o.replaceAll("[*#_`>]", "").trim();
-                line2.setMaxLines(8);
-                line2.setText(clean);
-                Announcer.stop();
-                Announcer.say(svc, clean);
-                afterRead();
-            });
-        }, "jarvis-topcard-sum").start();
+    /** Heard now (read, summed up, played or declined): closing no longer puts it off for later. */
+    void heardNow() { heard = true; }
+
+    boolean heard() { return heard; }
+
+    /** Jarvis is talking or listening: the card stays. */
+    void stayOpen() {
+        main.removeCallbacks(autoHide);
+        main.removeCallbacks(hide);
     }
 
-    private void reply() {
-        close(false);
-        try {
-            svc.startActivity(new Intent(svc, SheetActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    .putExtra(SheetActivity.EXTRA_ANNOUNCE, m.from + " కి జవాబు")
-                    .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, "ఏం చెప్పమంటారు?")
-                    .putExtra(SheetActivity.EXTRA_IS_MESSAGE, true)
-                    .putExtra(SheetActivity.EXTRA_ANNOUNCE_CONTEXT, " [He already heard these messages and wants to reply now. Take his reply, read it back, "
-                            + "ask 'పంపమంటారా?', and send with reply_to_notification (id " + m.id + ") only after he says send.]" + m.context));
-        } catch (Exception ignored) {}
+    /** The card goes in ms (later: unheard messages wait under the dot). */
+    void hideIn(long ms, boolean later) {
+        if (done) return;
+        main.removeCallbacks(autoHide);
+        main.removeCallbacks(hide);
+        laterOnHide = later;
+        main.postDelayed(hide, ms);
+    }
+
+    /** The talk ended itself and closes the card. */
+    void closeFromTalk(boolean later) {
+        talk = null;
+        close(later);
     }
 
     private void close(boolean later) { close(later, true); }
@@ -242,6 +301,10 @@ final class TopCard {
         if (done) { if (!animate) removeView(); return; }
         done = true;
         main.removeCallbacks(autoHide);
+        main.removeCallbacks(hide);
+        CardTalk t = talk; // whatever Jarvis was saying or hearing on it stops
+        talk = null;
+        if (t != null) t.stop();
         if (showing == this) showing = null;
         if (listeningScreen) { listeningScreen = false; try { svc.unregisterReceiver(screenOff); } catch (Exception ignored) {} }
         if (later && !heard && !m.texts.isEmpty()) LaterMessages.add(svc, m.app, m.from, m.texts, m.id);

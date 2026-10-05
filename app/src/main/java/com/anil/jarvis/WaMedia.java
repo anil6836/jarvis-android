@@ -83,7 +83,7 @@ final class WaMedia {
                 walk(c, tree, DocumentsContract.getTreeDocumentId(tree), kind, false, out, 0);
             } catch (Exception ignored) {}
         }
-        if (out.isEmpty() && !kind.equals("voice")) mediaStore(c, kind, out);
+        if (out.isEmpty() && (kind.equals("photo") || kind.equals("video"))) mediaStore(c, kind, out); // (the phone's index has photos and videos only)
         out.sort((a, b) -> Long.compare(b.modified, a.modified));
         return out.size() > max ? out.subList(0, max) : out;
     }
@@ -146,8 +146,13 @@ final class WaMedia {
     // ---------------------------------------------------------------- playing
 
     /** Plays a voice note / audio out loud and waits until it ends (max 5 minutes). */
-    static boolean play(Context c, Uri u) {
+    static boolean play(Context c, Uri u) { return play(c, u, () -> false); }
+
+    /** The same, stopped as soon as cancelled says so (checked after preparing and while playing); false if cancelled before. */
+    static boolean play(Context c, Uri u, java.util.function.BooleanSupplier cancelled) {
         stop();
+        if (cancelled.getAsBoolean()) return false;
+        MicQuiet.speaking(); // a media sound muted for the mic's beeps comes back first
         AudioManager am = c.getSystemService(AudioManager.class);
         AudioAttributes attrs = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
@@ -159,10 +164,11 @@ final class WaMedia {
             mp.setAudioAttributes(attrs);
             mp.setDataSource(c, u);
             mp.prepare();
+            if (cancelled.getAsBoolean() || player != mp) return false; // stopped while it was getting ready
             mp.start();
             long end = SystemClock.elapsedRealtime() + Math.min(300000, Math.max(3000, mp.getDuration() + 1500));
             SystemClock.sleep(300);
-            while (player == mp && SystemClock.elapsedRealtime() < end) {
+            while (player == mp && !cancelled.getAsBoolean() && SystemClock.elapsedRealtime() < end) {
                 try { if (!mp.isPlaying()) break; } catch (IllegalStateException e) { break; }
                 SystemClock.sleep(200);
             }

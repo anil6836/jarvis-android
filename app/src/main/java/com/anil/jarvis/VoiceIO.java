@@ -37,7 +37,7 @@ final class VoiceIO {
 
     // What he said while Jarvis's speech was paused (see pausedHeard).
     static final int NEW = 0, HELD = 1, RESUMED = 2, STOPPED = 3;
-    private static final int CMD_NONE = 0, CMD_PAUSE = 1, CMD_RESUME = 2, CMD_STOP = 3;
+    static final int CMD_NONE = 0, CMD_PAUSE = 1, CMD_RESUME = 2, CMD_STOP = 3;
     private static final String[] STOP_WORDS = {"చాలు", "వద్దు", "cancel", "క్యాన్సిల్", "enough"};
     private static final String[] RESUME_WORDS = {"కొనసాగించు", "కొనసాగించండి", "కొనసాగు", "కంటిన్యూ", "continue", "resume",
             "తర్వాత ఏమైంది", "గో ఆన్", "go on", "కానివ్వు"};
@@ -158,7 +158,7 @@ final class VoiceIO {
             voiceInfo = "తెలుగు వాయిస్ లేదు. Settings → Text-to-speech → Google → తెలుగు డౌన్‌లోడ్ చేయండి.";
         }
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override public void onStart(String id) { main.post(() -> { speaking = true; Duck.on(ctx); watchBargeIn(); l.onSpeakStart(); }); }
+            @Override public void onStart(String id) { main.post(() -> { if (shut) return; speaking = true; Duck.on(ctx); watchBargeIn(); l.onSpeakStart(); }); }
             @Override public void onDone(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onError(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onStop(String id, boolean interrupted) { main.post(() -> finishSpeaking(id)); }

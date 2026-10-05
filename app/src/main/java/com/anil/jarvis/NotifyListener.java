@@ -445,7 +445,7 @@ public class NotifyListener extends NotificationListenerService {
             note(next.app, next.from, "చదవలేదు: నైట్ మోడ్ ఆన్‌లో ఉంది");
             return;
         }
-        if (MainActivity.busyTalking() || CallControl.busyWithCall() || now < nextAllowed || FindPhone.running()) {
+        if (MainActivity.busyTalking() || TopCard.busy() || CallControl.busyWithCall() || now < nextAllowed || FindPhone.running()) {
             note(next.app, next.from, "వరుసలో ఉంది: " + (CallControl.busyWithCall() ? "కాల్ అయ్యాక" : "ఇప్పటి మాటలు అయ్యాక") + " చెప్తాను");
             schedule(3000);
             return;
@@ -517,14 +517,36 @@ public class NotifyListener extends NotificationListenerService {
             m.say = say;
             m.ask = ask;
             m.context = context;
+            m.media = media;
+            m.postedAt = q.firstAt;
             final String fSay = say, fAsk = ask, fContext = context;
             final int fCount = count;
             main.postDelayed(() -> { // after the app's own banner has gone
+                if (TopCard.busy()) { // he started talking on the card now up: this one waits its turn (not the panel over it)
+                    synchronized (queue) { // a newer message from the same chat may be waiting already: these go before it
+                        Pending cur = queue.get(q.key);
+                        if (cur == null) queue.put(q.key, q);
+                        else {
+                            cur.texts.addAll(0, q.texts);
+                            while (cur.texts.size() > 12) cur.texts.remove(0);
+                            cur.firstAt = Math.min(cur.firstAt, q.firstAt);
+                            cur.rested |= q.rested;
+                        }
+                    }
+                    note(app, from, "వరుసలో ఉంది: పైన కార్డ్‌లో మాటలు అయ్యాక చెప్తాను");
+                    schedule(3000);
+                    return;
+                }
                 m.typing = JarvisAccessibility.keyboardOpen();
-                if (cardFits(new Prefs(this)) && JarvisAccessibility.messageCard(m)) {
+                Prefs now = new Prefs(this);
+                String typing = now.typingMode(); // while he types: read (like any time) / say who only / silent card
+                m.talk = !m.typing || "read".equals(typing);
+                if (cardFits(now) && JarvisAccessibility.messageCard(m)) {
                     Store.get(this).addChat("assistant", fSay + " " + fAsk + fContext, false); // "Jarvis, చదువు / రిప్లై" later works too
-                    note(app, from, m.typing ? "పైన కార్డ్ చూపించాను (టైప్ చేస్తున్నారు: మాట్లాడలేదు)" : "పైన కార్డ్ చూపించి చెప్పాను");
-                    if (!m.typing) Announcer.say(this, fSay);
+                    note(app, from, m.talk ? "పైన కార్డ్‌లో చెప్పి అడిగాను" + (m.typing ? " (టైప్ చేస్తున్నా: సెట్టింగ్ 'చదువు')" : "")
+                            : "name".equals(typing) ? "పైన కార్డ్ చూపించి ఎవరో మాత్రమే చెప్పాను (టైప్ చేస్తున్నారు)"
+                            : "పైన కార్డ్ మాత్రమే చూపించాను (టైప్ చేస్తున్నారు: సెట్టింగ్ 'నిశ్శబ్దం')");
+                    if (!m.talk && "name".equals(typing)) Announcer.say(this, fSay);
                 } else {
                     openPanel(app, from, fSay, fAsk, fContext, fCount);
                 }
@@ -540,7 +562,7 @@ public class NotifyListener extends NotificationListenerService {
      * riding: the panel, so he can answer by voice without touching the phone.
      */
     private boolean cardFits(Prefs p) {
-        if (!JarvisAccessibility.enabled() || !FloatBubble.on(this) || p.driving() || MainActivity.visible || SheetActivity.open) return false;
+        if (!JarvisAccessibility.enabled() || !FloatBubble.on(this) || p.driving() || MainActivity.visible || SheetActivity.open || JarvisCamera.open) return false;
         android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
         android.app.KeyguardManager km = getSystemService(android.app.KeyguardManager.class);
         if (pm == null || !pm.isInteractive() || km == null || km.isKeyguardLocked()) return false;
@@ -582,6 +604,7 @@ public class NotifyListener extends NotificationListenerService {
             if (type == Notification.CallStyle.CALL_TYPE_INCOMING) incoming = true;
             else if (type == Notification.CallStyle.CALL_TYPE_ONGOING || type == Notification.CallStyle.CALL_TYPE_SCREENING) incoming = false;
         }
+        TopCard.stepAside(); // a call: a message card talking at the top stops at once
         String pkgLow = sbn.getPackageName().toLowerCase(Locale.ROOT);
         boolean isPhone = pkgLow.contains("dialer") || pkgLow.contains("telecom") || pkgLow.contains("incallui") || pkgLow.contains("phone") || pkgLow.contains("contacts");
         if (!incoming) {
