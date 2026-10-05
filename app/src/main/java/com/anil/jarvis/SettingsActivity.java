@@ -74,7 +74,7 @@ public class SettingsActivity extends Activity {
     private View updatesHeader;
     private TextView updateInfo, updateBtn;
     private ScrollView pageScroll;
-    private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel;
+    private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel, camAlways;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
     private int coughGap;
@@ -457,6 +457,7 @@ public class SettingsActivity extends Activity {
         note("ఫోన్ లాక్‌లో ఉన్నా \"Hey Jarvis\" అని పిలిస్తే తెరుచుకుంటుంది. ఏ key అవసరం లేదు. వినడం అంతా ఫోన్‌లోనే జరుగుతుంది, ఏ ఆడియో బయటికి వెళ్లదు.");
         compactPanel = toggle("పిలిస్తే Google లాగా చిన్న ప్యానెల్ (\"చెప్పండి Anil?\")", prefs.compactPanel());
         listenOnOpen = toggle("యాప్ తెరవగానే వినడం మొదలుపెట్టు", prefs.listenOnOpen());
+        camAlways = toggle("📷 Jarvis కెమెరాలో ఎప్పుడూ వింటూ ఉండు (ఆఫ్: \"Jarvis\" అన్నప్పుడు / 🎙️ నొక్కినప్పుడు మాత్రమే; ఆన్ చేస్తే ఫోన్ మైక్ బీప్ తరచుగా వస్తుంది)", prefs.camAlwaysListen());
         note("దీనితో \"Hey Google, open Jarvis\" అంటే Google తన చిప్‌తో విని Jarvis ని తెరుస్తుంది, Jarvis వెంటనే మీ మాట వింటుంది. ఈ పద్ధతిలో Jarvis మైక్ బ్యాక్‌గ్రౌండ్‌లో అసలు ఆన్ అవ్వదు. అప్పుడు కింది వేక్ వర్డ్ ఆఫ్ చేయవచ్చు.");
         wake = toggle("వేక్ వర్డ్ ఆన్", prefs.wakeWord());
         TextView ww = Ui.text(this, "మైక్ ఎప్పుడు వినాలి?", 15, Ui.MUTED);
@@ -1258,6 +1259,7 @@ public class SettingsActivity extends Activity {
         String heard = VoiceIO.lastListen;
         if (!heard.isEmpty()) s.append("• చివరి వినడం: ").append(heard)
                 .append("\n   (▶ మైక్ మొదలు · 🎙 తెరిచింది · ■ మీరు మాట్లాడటం ఆపారు · ✗ ఫోన్ ఆపింది)\n");
+        if (!MicQuiet.info.isEmpty()) s.append("• మైక్ బీప్ ఆపడానికి క్షణం పాటు మ్యూట్ చేసేవి: ").append(MicQuiet.info).append("\n");
         String last = NotifyListener.lastMessageNote;
         s.append("\nచివరి మెసేజ్: ").append(last == null || last.isEmpty() ? "Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు" : last);
         checkInfo.setText(s.toString().trim());
@@ -1328,6 +1330,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("wake_jarvis", jarvisWord.isChecked());
         e.putBoolean("listen_on_open", listenOnOpen.isChecked());
         e.putBoolean("compact_panel", compactPanel.isChecked());
+        e.putBoolean("cam_always_listen", camAlways.isChecked());
         int ww = wakeWhen.getCheckedRadioButtonId();
         e.putString("wake_when", ww == 22 ? "charging" : ww == 21 ? "screen_on" : "always");
         e.putBoolean("announce_calls", announceCalls.isChecked());

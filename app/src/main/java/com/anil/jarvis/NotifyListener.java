@@ -445,7 +445,7 @@ public class NotifyListener extends NotificationListenerService {
             note(next.app, next.from, "చదవలేదు: నైట్ మోడ్ ఆన్‌లో ఉంది");
             return;
         }
-        if (MainActivity.busyTalking() || TopCard.busy() || CallControl.busyWithCall() || now < nextAllowed || FindPhone.running()) {
+        if (MainActivity.busyTalking() || TopCard.busy() || JarvisCamera.open || CallControl.busyWithCall() || now < nextAllowed || FindPhone.running()) {
             note(next.app, next.from, "వరుసలో ఉంది: " + (CallControl.busyWithCall() ? "కాల్ అయ్యాక" : "ఇప్పటి మాటలు అయ్యాక") + " చెప్తాను");
             schedule(3000);
             return;

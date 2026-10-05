@@ -94,6 +94,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
      * so after 3 minutes with no Jarvis screen, panel or Live open it is let go.
      */
     static boolean busyTalking() {
+        if (JarvisCamera.open) return true; // the camera is open: no panel or remark over it (its mic: WakeService.micBusy)
         if (SheetActivity.talkingNow()) return true; // the panel is talking, even if another screen cleared the flag
         if (TopCard.talkingNow()) return true; // a message card is talking with him (however long)
         if (!inConversation) return false;

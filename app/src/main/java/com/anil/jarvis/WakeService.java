@@ -37,6 +37,14 @@ public class WakeService extends Service {
     private static final int ALERT_ID = 8;
 
     static volatile boolean running;
+    /** Set while the Jarvis camera is open: "Jarvis" makes the camera listen (no panel over it). */
+    static volatile Runnable cameraWake;
+
+    /**
+     * Someone else has the mic now: while the camera is open, the camera's own flag decides (it may be waiting for
+     * "Jarvis" even if another screen's talk mark is still set); otherwise any Jarvis talk.
+     */
+    private static boolean micBusy() { return JarvisCamera.open ? JarvisCamera.micInUse : MainActivity.busyTalking(); }
     /** Progress or problem with the "Jarvis" word detector, shown in settings; null when fine. */
     static volatile String wordStatus;
     private static final String WAKE_HINT = "\"Jarvis\" లేదా \"Hey Jarvis\" అని పిలవండి";
@@ -55,7 +63,7 @@ public class WakeService extends Service {
     /** Shake to call Jarvis, face down to silence. */
     private Motion motion;
     private final Runnable fallbackResume = () -> {
-        if (!MainActivity.busyTalking()) startEngine();
+        if (!micBusy()) startEngine();
     };
     /**
      * While paused for a talk, look again every minute: if the talk ended without telling the service
@@ -64,7 +72,7 @@ public class WakeService extends Service {
     private final Runnable watchdog = new Runnable() {
         @Override public void run() {
             if (!running || engineOn || !allowedNow()) return;
-            if (MainActivity.busyTalking()) { main.postDelayed(this, 60_000); return; }
+            if (micBusy()) { main.postDelayed(this, 60_000); return; }
             startEngine();
         }
     };
@@ -97,7 +105,7 @@ public class WakeService extends Service {
     private final Runnable applyPhoneState = () -> {
         if (!running) return;
         if (allowedNow()) {
-            if (!MainActivity.busyTalking()) startEngine();
+            if (!micBusy()) startEngine();
         } else {
             stopEngine();
             sleeping();
@@ -231,7 +239,7 @@ public class WakeService extends Service {
             main.removeCallbacks(watchdog);
             // A late "resume" (the floating card, a closing panel) while Jarvis is listening to him in another
             // screen would take the mic from that screen: wait for the talk to end (the watchdog looks again).
-            if (MainActivity.busyTalking()) main.postDelayed(watchdog, 60_000); else startEngine();
+            if (micBusy()) main.postDelayed(watchdog, 60_000); else startEngine();
         } else {
             boolean paused = intent != null && intent.getBooleanExtra(EXTRA_PAUSED, false);
             if (paused) stopEngine(); else startEngine();
@@ -334,6 +342,7 @@ public class WakeService extends Service {
 
     /** Two shakes: open Jarvis just like saying "Jarvis". */
     private void onShake() {
+        if (JarvisCamera.open) { Runnable cam = cameraWake; if (cam != null && !JarvisCamera.micInUse) cam.run(); return; } // the camera hears him itself
         if (MainActivity.busyTalking()) return;
         stopEngine();
         wakeScreen();
@@ -349,6 +358,11 @@ public class WakeService extends Service {
         wakeScreen();
         Vibrator v = getSystemService(Vibrator.class);
         if (v != null) v.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE));
+        if (JarvisCamera.open) { // the camera is open: it listens to him itself (never a panel over it)
+            Runnable cam = cameraWake;
+            if (cam != null) cam.run();
+            return;
+        }
         // Look at the screen first (for "what's on my screen?"), then open Jarvis on top.
         final boolean[] opened = {false};
         Runnable open = () -> { if (!opened[0]) { opened[0] = true; openJarvis(); } };

@@ -66,6 +66,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             EXTRA_BACK_OF = "back_of", EXTRA_ZOOM_OF = "zoom_of", EXTRA_REGION = "region";
     private static final int REQ_PERMS = 71, REQ_GALLERY = 72, REQ_LOCATION = 73, REQ_MIC = 74;
     static volatile boolean open;
+    /** The camera is using the phone's mic (listening, speaking, recording) or has it off: the wake word stays out. */
+    static volatile boolean micInUse;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService work = Executors.newSingleThreadExecutor();   // the AI, saving, the PDF
@@ -77,7 +79,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private CamView cam;
     private ImageView still;
     private ScanHud hud;
-    private TextView caption, partial, guideBar, micBtn, freezeBtn, torchBtn, camBtn;
+    private TextView caption, partial, guideBar, micBtn, freezeBtn, torchBtn, camBtn, pauseBtn;
+    private LinearLayout speakBar;
     private ScrollView capScroll;
     private LinearLayout actionRow, modeRow, typeRow, guideRow;
     private HorizontalScrollView actionScroll;
@@ -264,6 +267,15 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         caption.setPadding(dp(16), dp(4), dp(16), dp(4));
         caption.setOnClickListener(v -> { if (speaking || voice.speaking) { voice.stopSpeaking(); speaking = false; refreshButtons(); listenSoon(300); } });
         capScroll.addView(caption);
+        // while Jarvis reads: ⏸ hold it (▶ carries on from there), ⏹ enough
+        speakBar = new LinearLayout(this);
+        speakBar.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        speakBar.setPadding(dp(10), 0, dp(10), dp(2));
+        pauseBtn = pill("⏸ ఆపు", v -> togglePause());
+        speakBar.addView(pauseBtn);
+        speakBar.addView(pill("⏹ చాలు", v -> stopReading()));
+        speakBar.setVisibility(View.GONE);
+        bottom.addView(speakBar);
         bottom.addView(capScroll);
         partial = Ui.text(this, "", 14, Ui.alpha(Ui.CYAN, 0xDD));
         partial.setPadding(dp(16), dp(2), dp(16), dp(2));
@@ -301,7 +313,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(dp(78), dp(78));
         olp.setMargins(dp(10), 0, dp(10), 0);
         ctl.addView(orbBox, olp);
-        micBtn = roundBtn("🎙️", "వింటున్నా", v -> toggleListen());
+        micBtn = roundBtn("🎙️", "వింటున్నా", v -> micTap());
+        micBtn.setOnLongClickListener(v -> { toggleMicOff(); return true; });
         ctl.addView(micBtn, weight());
         ctl.addView(roundBtn("🧊", "3D", v -> hologram()), weight());
         bottom.addView(ctl);
@@ -312,6 +325,42 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     }
 
     private LinearLayout.LayoutParams weight() { return new LinearLayout.LayoutParams(0, -2, 1); }
+
+    private TextView pill(String s, View.OnClickListener l) {
+        TextView t = Ui.text(this, s, 14, 0xFFFFFFFF);
+        t.setPadding(dp(14), dp(7), dp(14), dp(7));
+        t.setBackground(Ui.round(this, 0x99061424, Ui.alpha(Ui.CYAN, 0xAA), 999));
+        t.setOnClickListener(l);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.setMargins(dp(4), dp(2), dp(4), dp(2));
+        t.setLayoutParams(lp);
+        return t;
+    }
+
+    /** ⏸ / ▶ while Jarvis reads: held right where it is, carried on from there (the mic listens meanwhile for "కొనసాగించు"). */
+    private void togglePause() {
+        if (voice == null || !(speaking || voice.speaking)) { refreshButtons(); return; }
+        if (voice.isPaused()) {
+            camHold(); // the wake word must not hear the rest of the answer
+            voice.resume(); // (an open mic is let go first)
+            speaking = voice.speaking;
+        } else {
+            voice.pause();
+            listenSoon(500); // "కొనసాగించు" / "చాలు" / a new question by voice too
+        }
+        refreshButtons();
+    }
+
+    /** ⏹: enough of this answer. */
+    private void stopReading() {
+        if (voice == null) return;
+        voice.stopSpeaking();
+        speaking = false;
+        caption.setText(captionBase);
+        pendingAuto.clear(); // like saying "చాలు": what was to open after it doesn't either
+        refreshButtons();
+        listenSoon(300);
+    }
 
     private TextView iconBtn(String s, View.OnClickListener l) {
         TextView t = Ui.text(this, s, 20, 0xFFFFFFFF);
@@ -358,7 +407,13 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         }
         if (camBtn != null) camBtn.setVisibility(cam.cameraCount() > 1 ? View.VISIBLE : View.GONE);
         if (freezeBtn != null) freezeBtn.setText(frozen ? "▶️\nలైవ్" : "⏸️\nఆపు");
-        if (micBtn != null) micBtn.setText(listenOn ? (voice != null && voice.listening ? "🎙️\nవింటున్నా" : "🎙️\nఆన్") : "🔇\nమైక్ ఆఫ్");
+        if (speakBar != null) {
+            boolean reading = voice != null && (speaking || voice.speaking);
+            speakBar.setVisibility(reading ? View.VISIBLE : View.GONE);
+            if (reading) pauseBtn.setText(voice.isPaused() ? "▶ కొనసాగించు" : "⏸ ఆపు");
+        }
+        if (micBtn != null) micBtn.setText(!listenOn ? "🔇\nమైక్ ఆఫ్" : voice != null && voice.listening ? "🎙️\nవింటున్నా"
+                : wakeMode() && !engaged ? "🎙️\nనొక్కి అడుగు" : "🎙️\nఆన్");
         if (orb != null) orb.setState(busy ? HoloOrb.THINKING : speaking ? HoloOrb.SPEAKING : voice != null && voice.listening ? HoloOrb.LISTENING : HoloOrb.IDLE);
     }
 
@@ -417,6 +472,9 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         super.onResume();
         open = true;
         TopCard.stepAside(); // a message card talking at the top stops before the camera listens
+        engaged = true; // just opened: he is about to ask (then, in wake mode, it waits for "Jarvis")
+        micInUse = true; // the camera's mic from now on (the wake word must not start meanwhile)
+        WakeService.cameraWake = wakeRunnable;
         talkSet = !MainActivity.inConversation;
         if (talkSet) MainActivity.talking(true); // the wake word and Jarvis's own remarks wait while the camera talks
         WakeService.pause(this);
@@ -439,6 +497,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         speaking = false;
         SoundClip.stop = true;
         cam.close();
+        micInUse = false;
+        if (WakeService.cameraWake == wakeRunnable) WakeService.cameraWake = null;
         if (talkSet) { talkSet = false; MainActivity.talking(false); }
         if (p.wakeReady()) WakeService.resume(this);
     }
@@ -478,9 +538,94 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private void listenNow() {
         if (!open || !listenOn || busy || voice.listening) return;
         if ((speaking || voice.speaking) && !voice.isPaused()) return; // (a held speech: he may say "కొనసాగించు")
+        if (wakeMode() && !engaged) { idle(); return; } // nothing going on: wait for "Jarvis" silently
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { listenOn = false; refreshButtons(); return; }
         if (!voice.canListen()) { listenOn = false; refreshButtons(); return; }
-        voice.listen(p.listenLang());
+        camHold();
+        voice.listen(p.listenLang(), wakeMode() ? 0 : ALWAYS_WAIT_S);
+        refreshButtons();
+    }
+
+    /** The always-on mic waits this long for him each time (fewer mic opens and closes, so fewer of the phone's beeps). */
+    private static final int ALWAYS_WAIT_S = 30;
+
+    // Listening in the camera. Every time the phone's speech recognizer opens or closes the mic, the phone beeps, and
+    // on his phone that beep can't be silenced safely (it is on the ringtone's sound). So by default the camera keeps
+    // that mic closed while nothing is going on and waits for "Jarvis" with Jarvis's own silent wake word (the same
+    // one as everywhere, handed over from WakeService while the camera is open); after "Jarvis", a 🎙️ tap, or anything
+    // Jarvis says, it listens (and once more for a follow-up), then goes back to waiting. With the setting
+    // "కెమెరాలో ఎప్పుడూ వింటూ ఉండు", or without the wake word, it listens all the time as before.
+
+    /** A talk is on (just opened, "Jarvis" called, 🎙️ tapped, Jarvis spoke): the next listen happens. */
+    private boolean engaged = true;
+    private final Runnable wakeRunnable = this::onWakeWord;
+
+    /** "Jarvis" can be heard here now (wake word on, its service running, and not limited to charging). */
+    private boolean wakeMode() { return !p.camAlwaysListen() && p.wakeReady() && WakeService.running && !"charging".equals(p.wakeWhen()); }
+
+    /** The phone's mic is the camera's now: the wake word lets go of it, Jarvis's remarks wait. */
+    private void camHold() {
+        micInUse = true;
+        if (!talkSet && !MainActivity.inConversation) { talkSet = true; MainActivity.talking(true); }
+        WakeService.pause(this);
+    }
+
+    /** Nothing more to hear now: the phone's mic closes and the camera waits for "Jarvis" (silently). */
+    private void idle() {
+        if (!wakeMode()) { engaged = true; listenSoon(700); return; } // no wake word now: back to always listening
+        engaged = false;
+        main.removeCallbacks(relisten);
+        if (!open) return;
+        micInUse = false;
+        if (voice.listening) voice.cancelListening();
+        WakeService.cameraWake = wakeRunnable;
+        if (talkSet) { talkSet = false; MainActivity.talking(false); }
+        if (p.wakeReady()) WakeService.resume(this);
+        partial.setText(listenOn ? "🎙️ \"Jarvis\" అనండి, లేదా 🎙️ నొక్కండి" : "");
+        refreshButtons();
+    }
+
+    /** "Jarvis" heard while the camera waits (WakeService has already let go of the mic): listen to him now. */
+    private void onWakeWord() {
+        if (!open) return;
+        if (!listenOn) { listenOn = true; failsInRow = 0; }
+        engaged = true;
+        camHold();
+        Sfx.chirp(this, p);
+        partial.setText("🎙️ చెప్పండి…");
+        listenSoon(300);
+    }
+
+    /** 🎙️ long-pressed: the mic off altogether (nothing heard, not even "Jarvis"), or on again. */
+    private void toggleMicOff() {
+        if (wakeMode()) {
+            listenOn = !listenOn;
+            if (!listenOn) { voice.cancelListening(); partial.setText("🔇 మైక్ ఆఫ్: 🎙️ నొక్కితే వింటాను"); idleMicOff(); }
+            else { failsInRow = 0; WakeService.cameraWake = wakeRunnable; idle(); } // "Jarvis" heard again at once
+            refreshButtons();
+            return;
+        }
+        toggleListen();
+    }
+
+    /** Mic off in wake mode: the wake word too lets go here, nothing is heard. */
+    private void idleMicOff() {
+        engaged = false;
+        micInUse = true; // the wake word stays off here too (it would open nothing over the camera anyway)
+        main.removeCallbacks(relisten);
+        if (talkSet) { talkSet = false; MainActivity.talking(false); }
+        // the wake word itself stays paused while the camera is open with the mic off
+        WakeService.pause(this);
+    }
+
+    /** 🎙️ tapped: in wake mode, listen now (or stop listening); otherwise the always-on mic on / off. */
+    private void micTap() {
+        if (voice.listening) { if (wakeMode()) idle(); else toggleListen(); return; } // listening: stop
+        if (!wakeMode() && listenOn && engaged) { toggleListen(); return; } // always listening: 🎙️ turns it off
+        if (!listenOn) { listenOn = true; failsInRow = 0; WakeService.cameraWake = wakeRunnable; }
+        engaged = true;
+        camHold();
+        listenSoon(100);
         refreshButtons();
     }
 
@@ -516,15 +661,15 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (afterPaused(r)) return;
         }
         refreshButtons();
-        if (text == null || text.trim().isEmpty()) { listenSoon(400); return; }
+        if (text == null || text.trim().isEmpty()) { if (wakeMode()) idle(); else listenSoon(400); return; }
         failsInRow = 0;
         heard(text.trim());
     }
 
     /** What happened to a held answer after he spoke; true when nothing more is to be done with his words. */
     private boolean afterPaused(int r) {
-        if (r == VoiceIO.RESUMED) { speaking = voice.speaking; refreshButtons(); if (!speaking) listenSoon(350); return true; }
-        if (r == VoiceIO.HELD) { refreshButtons(); listenSoon(600); return true; }
+        if (r == VoiceIO.RESUMED) { if (voice.speaking) camHold(); speaking = voice.speaking; refreshButtons(); if (!speaking) listenSoon(350); return true; }
+        if (r == VoiceIO.HELD) { refreshButtons(); if (wakeMode()) idle(); else listenSoon(600); return true; } // ("Jarvis, కొనసాగించు" or ▶)
         speaking = false; // STOPPED or a new question: the held answer is dropped
         caption.setText(captionBase);
         refreshButtons();
@@ -534,11 +679,19 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     @Override public void onListenFailed(int error) {
         partial.setText("");
-        if (voice.isPaused()) { // nothing clear while held: carry on (or stay held, but not trying for ever)
-            if (++failsInRow >= 6) { voice.resume(); failsInRow = 0; return; }
-            if (afterPaused(voice.pausedHeard(""))) return;
+        if (voice.isPaused()) { // nothing clear while held: carry on (after a talk-over), or stay held (he held it)
+            int r = voice.pausedHeard("");
+            if (r == VoiceIO.HELD) { // his own ⏸ / "ఆపు": it stays held, never carried on by itself
+                refreshButtons();
+                if (wakeMode()) { idle(); return; }
+                if (++failsInRow >= 6) { failsInRow = 0; partial.setText("⏸ ఆపి ఉంచాను: ▶ కొనసాగించు నొక్కండి"); return; }
+                listenSoon(600);
+                return;
+            }
+            if (afterPaused(r)) return;
         }
         refreshButtons();
+        if (wakeMode()) { idle(); return; } // nothing (more) said: wait for "Jarvis" again
         if (++failsInRow >= 6) { // the phone's listening keeps failing: stop trying, the button turns it on again
             listenOn = false;
             refreshButtons();
@@ -548,14 +701,20 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         listenSoon(failsInRow > 2 ? 2500 : 700);
     }
 
-    @Override public void onSpeakStart() { speaking = true; refreshButtons(); }
+    @Override public void onSpeakStart() {
+        speaking = true;
+        engaged = true; // Jarvis said something: he may answer it (one listen after)
+        camHold(); // the wake word must not hear Jarvis's own voice
+        refreshButtons();
+    }
 
     @Override public void onSpeakDone() {
         speaking = false;
         caption.setText(captionBase);
         refreshButtons();
-        if (!pendingAuto.isEmpty()) { runPendingAuto(); return; }
+        if (!pendingAuto.isEmpty()) runPendingAuto(); // (a listen after it is skipped while it speaks or works)
         listenSoon(350);
+        // (in wake mode that is the one follow-up listen; silence then goes back to waiting for "Jarvis")
     }
 
     @Override public void onWord(String spoken, int start, int end) {
@@ -1483,6 +1642,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         speaking = false;
         refreshButtons();
         hud.scanning(true);
+        camHold(); // the mic is this recording's alone (the wake word lets go)
         tell("🎤 8 సెకన్లు వింటున్నాను… శబ్దం వచ్చే చోటికి ఫోన్ దగ్గరగా పెట్టండి.", false);
         final String talk = talkText(), m = mode;
         work.execute(() -> {

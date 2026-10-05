@@ -621,6 +621,7 @@ final class VoiceIO {
     private long wordsAt;             // this try: when the words last changed (0: no words yet)
     private long begunAt;             // this try: when the recognizer last heard speech begin (0: not yet)
     private long minEnd;              // this try: when the recognizer's held-open time is over (it may close the mic then)
+    private long tryKeep;             // this try: how long it asked the recognizer to hold the mic open
     private final Level level = new Level(); // this try: how loud, and when it was last loud
     /** This phone's recognizer shows words while he speaks (so no words means he hasn't spoken words). */
     private static volatile boolean givesWords;
@@ -661,7 +662,13 @@ final class VoiceIO {
     private final StringBuilder trace = new StringBuilder();
     private long traceStart;
 
-    void listen(String lang) {
+    void listen(String lang) { listen(lang, 0); }
+
+    /**
+     * waitSeconds: how long to wait for him to start talking, when longer than the setting (the camera's always-on
+     * listening waits longer, so the mic is opened and closed less often).
+     */
+    void listen(String lang, int waitSeconds) {
         if (shut) return;
         if (paused && speaking) barge.stop(); // keep the paused speech: he may say "కొనసాగించు"
         else stopSpeaking();
@@ -669,7 +676,7 @@ final class VoiceIO {
         main.removeCallbacks(watchdog);
         main.removeCallbacks(endCheck);
         main.removeCallbacks(windowEnd);
-        windowMs = Math.max(3, prefs.listenWindowSeconds()) * 1000L;
+        windowMs = Math.max(Math.max(3, prefs.listenWindowSeconds()), waitSeconds) * 1000L;
         windowUntil = 0; // set when the mic is open
         hardUntil = android.os.SystemClock.elapsedRealtime() + windowMs + 10_000; // however it goes, the tries end by then
         partial = "";
@@ -721,6 +728,7 @@ final class VoiceIO {
         tries++;
         long now = android.os.SystemClock.elapsedRealtime();
         long keep = windowUntil == 0 ? windowMs : windowUntil - now;
+        tryKeep = keep;
         holdOpen = keep >= HOLD_MIN_MS;
         if (holdOpen) lastIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, keep);
         else lastIntent.removeExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS);
@@ -755,8 +763,10 @@ final class VoiceIO {
             @Override public void onBeginningOfSpeech() { // maybe only a noise: real words come as partial results
                 if (!mine()) return;
                 if (!ready) opened();
-                begunAt = android.os.SystemClock.elapsedRealtime();
-                if (!ending) alive(20_000); // a long sentence (some phones give no partial results)
+                long now = android.os.SystemClock.elapsedRealtime();
+                begunAt = now;
+                // a long sentence (some phones give no partial results); never shorter than the window still to wait
+                if (!ending) alive(Math.max(20_000, windowUntil > 0 ? windowUntil - now + QUIET_WAIT_MS : 0));
             }
             @Override public void onRmsChanged(float rmsdB) {
                 if (!mine()) return;
@@ -829,6 +839,7 @@ final class VoiceIO {
         if (!holdOpen || !ready || ending || wrapUp || minEnd == 0) return;
         int k = offlineTry() ? 1 : 0;
         if (android.os.SystemClock.elapsedRealtime() < minEnd - 1000) {
+            if (tryKeep > 10_000) return; // a long wait (the camera) cut short says little about the usual listen
             earlyEnds[k]++;
             trace("≠");
         } else {

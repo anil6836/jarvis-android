@@ -122,6 +122,8 @@ final class Prefs {
     boolean listenOnOpen() { return sp.getBoolean("listen_on_open", true); }
     /** "Jarvis" opens a small Google-style panel over the current app instead of the full screen. */
     boolean compactPanel() { return sp.getBoolean("compact_panel", true); }
+    /** The Jarvis camera listens all the time (the phone's mic beeps each time it reopens), not only after "Jarvis" / 🎙️. */
+    boolean camAlwaysListen() { return sp.getBoolean("cam_always_listen", false); }
 
     // ---- incoming calls
     boolean announceCalls() { return sp.getBoolean("announce_calls", true); }
