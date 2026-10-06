@@ -5374,81 +5374,627 @@ final class Tools {
         return m.find() ? Integer.parseInt(m.group(1)) : -1;
     }
 
-    /** No internet: the everyday commands, understood on the phone without AI. Returns what to say. */
+    /**
+     * No internet: what he said, understood on the phone without his brain (Offline's patterns) and done with what is on
+     * the phone. A question that needs the internet is kept and answered when it is back. Returns what to say.
+     */
     String offlineCommand(String text) {
-        String t = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
-        boolean off = any(t, "ఆఫ్", " off", "ఆపు", "ఆపేయ్", "బంద్");
+        String said = text == null ? "" : text.trim();
+        int cut = said.indexOf("\n\n"); // (only his words: not the camera note or an attached file that a turn can carry)
+        if (cut > 0) said = said.substring(0, cut).trim();
+        String r;
         try {
-            if (any(t, "టార్చ్", "ఫ్లాష్", "torch", "flash", "లైట్")) {
-                flashlight(!off);
-                return off ? "టార్చ్ ఆఫ్ చేశాను." : "టార్చ్ ఆన్ చేశాను.";
+            r = offlineDo(said);
+        } catch (Exception e) {
+            r = "అది చేయలేకపోయాను.";
+        }
+        if (r.startsWith(SAYS_NO_NET)) return r.substring(SAYS_NO_NET.length()); // (it says itself that there is no internet)
+        return Offline.firstNote() + r;
+    }
+
+    /** Marks an answer that already says there is no internet. */
+    private static final String SAYS_NO_NET = "\u0001";
+
+    static final String OFFLINE_HELP = "నెట్ లేనప్పుడు ఇవి చేయగలను: టార్చ్, కాల్, SMS (మీరు \"పంపు\" అన్నాకే), అలారం, టైమర్, రిమైండర్లు, "
+            + "ఖర్చులు రాయడం, లెక్కలు, అప్పులు, డ్యూటీ, నోట్స్, డైరీ, షాపింగ్ లిస్ట్, బండి ఎక్కడ పెట్టారో, క్యాలెండర్, పుట్టినరోజులు, పండుగలు, "
+            + "మందులు, వచ్చిన మెసేజ్‌లు చదవడం, బ్లూటూత్, బ్రైట్‌నెస్, Do Not Disturb, ఫోన్‌లోని పాటలు, బ్యాటరీ, టైమ్. "
+            + "నెట్ కావాల్సిన ప్రశ్నలు గుర్తుంచుకుని, నెట్ రాగానే జవాబు చెబుతాను.";
+
+    /** Offline: the contact Jarvis asked "… కి కాల్ చేయమంటారా?" about (its name only sounded like what he said). */
+    private static volatile String offlineCallAsk;
+
+    /** A whole word among his words ("ఆన్", not inside "ఆన్‌లైన్"). */
+    private static boolean word(String t, String... words) {
+        for (String w : t.split("[\\s,.!?]+")) {
+            String x = w.replace("‌", "");
+            for (String y : words) if (x.equals(y)) return true;
+        }
+        return false;
+    }
+
+    private String offlineDo(String said) throws Exception {
+        String t = said.toLowerCase(Locale.ROOT);
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.LocalDate today = now.toLocalDate();
+        boolean off = word(t, "ఆఫ్", "off", "ఆపు", "ఆపేయ్", "ఆపేయి", "ఆపండి", "బంద్") || any(t, "ఆఫ్ చేయ", "ఆఫ్ చెయ్");
+        if (said.isEmpty()) return "చెప్పండి.";
+        if (Offline.secret(said)) return "అకౌంట్, కార్డ్, ఆధార్ లాంటి నంబర్లు, పిన్, OTP, పాస్‌వర్డ్‌లు నేను రాసుకోను, ఎక్కడా పెట్టను.";
+
+        // his answer to "పంపమంటారా?" right after Jarvis read this very message back (sent only on his own clear "పంపు")
+        String last = lastJarvisSaid().trim();
+        Draft draft = pendingDraft;
+        if (draft != null && last.endsWith("పంపమంటారా?") && draft.message != null && last.contains(draft.message.trim())) {
+            if (saidSend(said)) {
+                JSONObject o = new JSONObject(sendDraft());
+                return o.optBoolean("ok") ? "పంపాను." : "పంపలేకపోయాను: " + problem(o);
             }
-            if (any(t, "wifi", "వైఫై", "వై ఫై", "wi-fi")) {
-                String r = phoneSetting("wifi", off ? "off" : "on");
-                return new JSONObject(r).optBoolean("ok") ? "WiFi " + (off ? "ఆఫ్" : "ఆన్") + " చేశాను." : "WiFi మార్చలేకపోయాను.";
+            if (CardTalk.Words.kind(said, CardTalk.Words.CONFIRM) == CardTalk.Words.NO || any(t, "వద్దు", "క్యాన్సిల్", "cancel")) {
+                pendingDraft = null;
+                return "సరే, పంపలేదు.";
             }
-            if (any(t, "డేటా", "data", "నెట్")) {
-                phoneSetting("mobile_data", off ? "off" : "on");
-                return "మొబైల్ డేటా పేజీ తెరిచాను.";
+        }
+        // his answer to "… కి కాల్ చేయమంటారా?"
+        String callAsk = offlineCallAsk;
+        offlineCallAsk = null;
+        if (callAsk != null && last.endsWith("కాల్ చేయమంటారా?") && last.contains(callAsk)) {
+            int k = CardTalk.Words.kind(said, CardTalk.Words.CONFIRM);
+            if (k == CardTalk.Words.YES) {
+                JSONObject o = new JSONObject(call(callAsk));
+                return o.optBoolean("ok") ? o.optString("calling") + " కి కాల్ చేస్తున్నాను." : problem(o);
             }
-            if (any(t, "ఎక్కడున్నావ్", "ఎక్కడ ఉన్నావ్", "where are you")) {
-                FindPhone.start(act());
-                return "ఇక్కడే ఉన్నాను!";
+            if (k == CardTalk.Words.NO) return "సరే, కాల్ చేయలేదు.";
+        }
+        if (any(t, "offline", "ఆఫ్‌లైన్", "ఆఫ్ లైన్", "నెట్ లేనప్పుడు", "నెట్ లేకుండా") && any(t, "ఏం చేయగల", "ఏమి చేయగల", "ఏమేమి", "ఏం చేస్తావ్", "ఏమి చేస్తావ్")) {
+            return OFFLINE_HELP;
+        }
+
+        // ---- what he asks to write down (a diary line may mention a call or an alarm), then commands said outright:
+        // a message, a reminder, an alarm, a timer, a call
+        boolean save = any(t, "రాయి", "రాసుకో", "రాయండి", "పెట్టు", "చేర్చు", "ఆడ్", "యాడ్", "add", "సేవ్");
+        boolean remindAsk = any(t, "గుర్తు చేయ", "గుర్తుచేయ", "గుర్తు చెయ్", "గుర్తుచెయ్", "రిమైండ్", "రిమైండర్ పెట్టు", "remind");
+        String saved = save && !remindAsk && Offline.sms(said) == null && any(t, "నోట్", "డైరీ", "లిస్ట్", "లిస్టు") ? offlineWrite(said, t) : null;
+        if (saved != null) return saved;
+
+        String[] sms = Offline.sms(said);
+        if (sms != null) {
+            if ("whatsapp".equals(sms[2])) return "WhatsApp కి నెట్ కావాలి. \"" + sms[0] + "కి … అని SMS పంపు\" అంటే SMS గా పంపుతాను.";
+            String[] who = offlineWho(sms[0]);
+            if (who[1] == null) return who[0];
+            JSONObject o = new JSONObject(sms(who[0], sms[1]));
+            if (!o.optBoolean("ok")) return problem(o);
+            String to = o.optString("to", who[0]).replaceAll("\\s*\\([^)]*\\)\\s*$", ""); // (the saved name it really goes to)
+            return to + " కి SMS: \"" + sms[1] + "\". పంపమంటారా?";
+        }
+        if (remindAsk) {
+            boolean daily = any(t, "రోజూ", "ప్రతిరోజూ", "ప్రతి రోజూ", "daily") || any(t, "వేసుకోవాల") && Offline.dayOf(t, today) == null;
+            if (Offline.medicineWord(said) && daily) { // "BP మాత్ర రోజూ ఉదయం 8 కి గుర్తు చేయి"
+                String name = Offline.medicineName(said);
+                List<String> times = Offline.dayTimes(said);
+                if (!name.isEmpty() && !times.isEmpty()) {
+                    JSONObject m = Medicine.add(act(), name, String.join(", ", times), "", "", -1, 1);
+                    if (m != null) return "సరే, " + name + " రోజూ " + String.join(", ", times) + " కి గుర్తు చేస్తాను.";
+                }
             }
-            if (any(t, "బ్యాటరీ", "battery", "ఛార్జ్")) {
-                JSONObject o = new JSONObject(deviceStatus());
-                return "బ్యాటరీ " + o.optInt("battery_pct", o.optInt("battery", -1)) + " శాతం ఉంది.";
+            java.time.LocalDateTime at = Offline.when(said, now);
+            if (at == null) return "ఏ టైమ్‌కి గుర్తు చేయాలి? ఉదాహరణకు \"సాయంత్రం 6 కి బ్యాంక్ వెళ్ళాలని గుర్తు చేయి\".";
+            String what = Offline.reminderText(said);
+            if (what.isEmpty()) return "ఏం గుర్తు చేయాలి?";
+            JSONObject o = new JSONObject(setReminder(what, at.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
+                    any(t, "రోజూ", "ప్రతిరోజూ", "ప్రతి రోజూ") ? "daily" : ""));
+            return o.optBoolean("ok") ? "సరే, " + Offline.sayWhen(at, now) + " కి \"" + what + "\" గుర్తు చేస్తాను." : problem(o);
+        }
+        if (any(t, "రిమైండర్లు", "రిమైండర్స్", "రిమైండర్ లు", "రిమైండర్ లిస్ట్")) {
+            List<JSONObject> list = store.reminders();
+            list.sort((x, y) -> Long.compare(x.optLong("at"), y.optLong("at")));
+            StringBuilder b = new StringBuilder();
+            long nowMs = System.currentTimeMillis();
+            int n = 0;
+            for (JSONObject r : list) {
+                if (r.optBoolean("done") || r.optLong("at") < nowMs || n >= 5) continue;
+                java.time.LocalDateTime at = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(r.optLong("at")), java.time.ZoneId.systemDefault());
+                b.append(Offline.sayWhen(at, now)).append(": ").append(r.optString("text")).append(". ");
+                n++;
             }
-            // before the time check: "timer" contains "time"
-            if (any(t, "టైమర్", "timer")) {
-                int n = firstNumber(t);
-                if (n <= 0) return "ఎన్ని నిమిషాల టైమర్?";
-                int secs = any(t, "సెకన్", "second") ? n : any(t, "గంట", "hour") ? n * 3600 : n * 60;
-                timer(secs, "Jarvis");
-                return "టైమర్ పెట్టాను.";
+            return n == 0 ? "రిమైండర్లు ఏమీ లేవు." : b.toString().trim();
+        }
+        if (any(t, "అలారం", "alarm") && (any(t, "పెట్టు", "పెట్టండి", "సెట్", "set", "లేపు", "for", "at") || Offline.when(said, now, true) != null)
+                && !any(t, "సౌండ్", "volume", "వాల్యూమ్", "మోగలేదు", "ఆపు")) {
+            java.time.LocalDateTime at = Offline.when(said, now, true);
+            if (at == null) return "ఏ టైమ్‌కి అలారం పెట్టాలి?";
+            JSONObject o = new JSONObject(alarm(at.getHour(), at.getMinute(), "Jarvis"));
+            if (!o.optBoolean("ok")) return problem(o);
+            // the clock app's alarm rings at the next such time: tell that one (a later day can't be chosen there)
+            java.time.LocalDateTime next = today.atTime(at.getHour(), at.getMinute());
+            if (!next.isAfter(now)) next = next.plusDays(1);
+            return Offline.sayWhen(next, now) + " కి అలారం పెట్టాను." + (at.toLocalDate().isAfter(next.toLocalDate())
+                    ? " (అలారానికి రోజు ఎంచుకోలేను; ఆ రోజు కోసం \"గుర్తు చేయి\" అనండి.)" : "");
+        }
+        if (any(t, "టైమర్", "timer") && !any(t, "మిగిలింది", "ఎంత", "ఆపు", "stop")) {
+            int secs = Offline.seconds(said);
+            if (secs <= 0) return "ఎన్ని నిమిషాల టైమర్?";
+            JSONObject o = new JSONObject(timer(secs, "Jarvis"));
+            return o.optBoolean("ok") ? "టైమర్ పెట్టాను." : problem(o);
+        }
+        if (t.matches(".*(కాల్|ఫోన్)\\s*(చేయి|చెయ్యి|చెయ్|చేయండి|చేయ్|కలుపు|కొట్టు)\\s*[.!]?$") || t.startsWith("call ")) {
+            String who = said.replaceAll("(?i)(కాల్ కలుపు|కాల్|call|చెయ్యి|చెయ్|చేయి|చేయండి|ఫోన్|please|ప్లీజ్|ఒకసారి)", " ")
+                    .replaceAll("\\s(కి|కు|కీ)\\s", " ").replaceAll("\\s+", " ").trim().replaceAll("(కి|కు)$", "").trim();
+            if (who.isEmpty()) return "ఎవరికి కాల్ చేయాలి?";
+            String[] name = offlineWho(who);
+            if (name[1] == null) return name[0];
+            if (!"3".equals(name[1])) { // the name only sounds like it: ask first, never ring the wrong person
+                offlineCallAsk = name[0];
+                return name[0] + " కి కాల్ చేయమంటారా?";
             }
-            if (any(t, "టైమ్", "సమయం", "time", "ఎంత అయింది", "తేదీ", "date")) {
-                return new java.text.SimpleDateFormat("h:mm a, EEEE d MMMM", Locale.ENGLISH).format(new java.util.Date()) + ".";
+            JSONObject o = new JSONObject(call(name[0]));
+            return o.optBoolean("ok") ? o.optString("calling") + " కి కాల్ చేస్తున్నాను." : problem(o);
+        }
+
+        // ---- money given / taken, expenses
+        String[] debt = Offline.debt(said);
+        if (debt != null) return offlineDebt(debt);
+        if (any(t, "అప్పు", "బాకీ", "ఎవరు ఎంత", "ఎవరికి ఎంత", "ఎవరెవరు") && any(t, "ఎంత", "ఎవరు", "ఎవరికి", "చెప్పు", "ఏమున్నాయి", "లిస్ట్")) {
+            String kind = any(t, "నాకు ఎవరు", "నాకు ఇవ్వాల", "నాకు రావాల") ? "lent" : any(t, "నేను ఎవరికి", "నేను ఇవ్వాల") ? "borrowed" : "";
+            JSONObject s = Debts.summary(act(), kind);
+            JSONArray items = s.optJSONArray("items");
+            if (items == null || items.length() == 0) return "అప్పులు ఏమీ రాసి లేవు.";
+            StringBuilder b = new StringBuilder();
+            for (int i = 0; i < items.length() && i < 6; i++) b.append(items.getJSONObject(i).optString("line")).append(". ");
+            if (kind.isEmpty()) b.append("మొత్తం: మీకు రావాల్సింది ").append(s.optString("others_owe_him").replaceAll("\\s*\\(\\d+\\)", ""))
+                    .append(", మీరు ఇవ్వాల్సింది ").append(s.optString("he_owes_others").replaceAll("\\s*\\(\\d+\\)", "")).append(".");
+            return b.toString().trim();
+        }
+        String[] ex = Offline.expense(said);
+        if (ex != null) {
+            JSONObject o = new JSONObject(addExpense(Double.parseDouble(ex[0]), ex[1], "", ex[2], ""));
+            if (!o.optBoolean("ok")) return problem(o);
+            return "₹" + ex[0] + " " + (ex[1].isEmpty() ? "" : ex[1] + " ") + "ఖర్చు రాశాను. ఈ నెల మొత్తం ₹" + o.optLong("month_total_bills") + ".";
+        }
+        if (t.contains("ఖర్చు") && any(t, "ఎంత", "చెప్పు", "ఎన్ని", "ఏమేమి")) {
+            long dayStart = dayStart();
+            if (t.contains("నిన్న")) {
+                double y = Money.totalSince(act(), dayStart - 86400000L) - Money.totalSince(act(), dayStart);
+                return "నిన్న మీరు రాసిన ఖర్చులు ₹" + Math.round(y) + ".";
             }
-            if (any(t, "కాల్", "call", "ఫోన్ చెయ్", "ఫోన్ చేయి")) {
-                String who = t.replaceAll("(కాల్|call|చెయ్యి|చెయ్|చేయి|చేయండి|ఫోన్|please|ప్లీజ్)", " ")
-                        .replaceAll("\\s(కి|కు|కీ)\\s", " ").replaceAll("(కి|కు)$", "").trim();
-                if (who.isEmpty()) return "ఎవరికి కాల్ చేయాలి?";
-                JSONObject o = new JSONObject(call(who));
-                return o.optBoolean("ok") ? o.optString("calling") + " కి కాల్ చేస్తున్నాను." : "ఆ పేరుతో కాంటాక్ట్ దొరకలేదు.";
+            boolean day = any(t, "ఈరోజు", "ఈ రోజు", "ఇవాళ"), week = any(t, "వారం", "week");
+            long since = day ? dayStart : week ? dayStart - 6 * 86400000L : monthStart();
+            return (day ? "ఈరోజు" : week ? "ఈ వారం" : "ఈ నెల") + " మీరు రాసిన ఖర్చులు ₹" + Math.round(Money.totalSince(act(), since)) + ".";
+        }
+
+        // ---- notes, diary, shopping list
+        if (any(t, "నోట్") && any(t, "చదువు", "చెప్పు", "ఏమున్నాయి", "చూపించు", "వినిపించు") && !any(t, "రాసుకో", "రాయి")) {
+            List<JSONObject> notes = Notes.list(act(), "notes");
+            if (notes.isEmpty()) return "నోట్స్ ఏమీ లేవు.";
+            StringBuilder b = new StringBuilder("మీ చివరి నోట్స్: ");
+            for (int i = notes.size() - 1, n = 0; i >= 0 && n < 5; i--, n++) b.append(n + 1).append(". ").append(notes.get(i).optString("text")).append(". ");
+            return b.toString().trim();
+        }
+        boolean noteAsk = (t.endsWith("రాసుకో") || t.endsWith("రాసుకోండి")) && !any(t, "డైరీ", "లిస్ట్");
+        if (noteAsk) {
+            String note = said.replaceAll("(నోట్స్‌లో|నోట్స్ లో|నోట్‌లో|నోట్ లో|నోట్స్|నోట్|రాసుకోండి|రాసుకో|రాయండి|రాయి|చేసుకో|పెట్టుకో|సేవ్)", " ")
+                    .replaceAll("(^\\s*అని\\s+|\\s+అని\\s*$)", " ").replaceAll("\\s+", " ").trim();
+            if (note.isEmpty()) return "ఏం రాయాలి?";
+            JSONObject o = new JSONObject(notes("add", note, 7));
+            return o.optBoolean("ok") ? "నోట్ రాశాను." : problem(o);
+        }
+        if (any(t, "డైరీ")) {
+            if (any(t, "రాయి", "రాసుకో", "రాయండి", "పెట్టు")) {
+                String words = said.replaceAll("(డైరీలో|డైరీ లో|డైరీ|రాసుకోండి|రాసుకో|రాయండి|రాయి|పెట్టు)", " ")
+                        .replaceAll("(^\\s*అని\\s+|\\s+అని\\s*$)", " ").replaceAll("\\s+", " ").trim();
+                if (words.isEmpty()) return "డైరీలో ఏం రాయాలి?";
+                JSONObject o = new JSONObject(diary(new JSONObject().put("action", "add").put("text", words)));
+                return o.optBoolean("ok") ? "డైరీలో రాశాను." : problem(o);
             }
-            if (any(t, "అలారం", "alarm")) {
-                int h = firstNumber(t);
-                if (h < 0 || h > 23) return "ఏ టైమ్‌కి అలారం పెట్టాలి?";
-                int m = 0;
-                java.util.regex.Matcher mm = java.util.regex.Pattern.compile("\\d{1,2}[:.](\\d{2})").matcher(t);
-                if (mm.find()) m = Integer.parseInt(mm.group(1));
-                if (h < 12 && any(t, "సాయంత్రం", "రాత్రి", "మధ్యాహ్నం", "pm", "evening", "night")) h += 12;
-                alarm(h, m, "Jarvis");
-                return String.format(Locale.ENGLISH, "%d:%02d కి అలారం పెట్టాను.", h, m);
+            java.time.LocalDate d = Offline.dayOf(t, today);
+            JSONObject o = new JSONObject(diary(new JSONObject().put("action", "read").put("date", (d == null ? today : d).toString())));
+            JSONArray days = o.optJSONArray("days");
+            StringBuilder b = new StringBuilder();
+            for (int i = 0; days != null && i < days.length(); i++) {
+                JSONArray texts = days.getJSONObject(i).optJSONArray("diary");
+                for (int j = 0; texts != null && j < texts.length(); j++) b.append(texts.optString(j)).append(" ");
             }
-            if (any(t, "వాల్యూమ్", "volume", "సౌండ్")) {
-                mediaControl(any(t, "తగ్గించు", "తగ్గించ", "down", "తక్కువ") ? "volume_down" : "volume_up", 50);
-                return "సరే.";
+            return b.length() == 0 ? "ఆ రోజు డైరీలో ఏమీ లేదు." : "డైరీ: " + b.toString().trim();
+        }
+        if (any(t, "లిస్ట్", "లిస్టు") && !any(t, "నోట్", "రిమైండర్", "కాంటాక్ట్")) {
+            if (any(t, "పెట్టు", "చేర్చు", "రాయి", "ఆడ్", "యాడ్", "add", "కలుపు")) {
+                String items = said.replaceAll("(షాపింగ్|లిస్ట్‌లో|లిస్ట్ లో|లిస్టులో|లిస్టు లో|లిస్ట్|లిస్టు|పెట్టు|చేర్చు|రాయి|ఆడ్ చేయి|ఆడ్|యాడ్ చేయి|యాడ్|add|కలుపు|చేయి)", " ")
+                        .replaceAll("\\s+", " ").trim();
+                if (items.isEmpty()) return "లిస్ట్‌లో ఏం పెట్టాలి?";
+                JSONArray added = Shopping.add(act(), items);
+                return added.length() == 0 ? "అవి ఇప్పటికే లిస్ట్‌లో ఉన్నాయి." : "లిస్ట్‌లో పెట్టాను: " + join(added) + ".";
             }
-            if (any(t, "పాట", "సాంగ్", "song", "music", "మ్యూజిక్", "ప్లే", "play", "pause")) {
-                String action = any(t, "తర్వాత", "next", "నెక్స్ట్") ? "next" : any(t, "ముందు", "previous") ? "previous"
-                        : any(t, "స్టాప్", "stop") ? "stop" : off || any(t, "pause") ? "pause" : "play";
-                mediaControl(action, 50);
-                return "సరే.";
+            JSONArray toBuy = Shopping.listJson(act()).optJSONArray("to_buy");
+            return toBuy == null || toBuy.length() == 0 ? "షాపింగ్ లిస్ట్ ఖాళీగా ఉంది." : "కొనాల్సినవి: " + join(toBuy) + ".";
+        }
+        if (any(t, "ఏం కొనాలి", "ఏమి కొనాలి", "ఏమేమి కొనాలి")) {
+            JSONArray toBuy = Shopping.listJson(act()).optJSONArray("to_buy");
+            return toBuy == null || toBuy.length() == 0 ? "షాపింగ్ లిస్ట్ ఖాళీగా ఉంది." : "కొనాల్సినవి: " + join(toBuy) + ".";
+        }
+        if (t.endsWith("కొన్నాను") || t.endsWith("కొనేశాను") || t.endsWith("తెచ్చాను")) {
+            String items = said.replaceAll("(కొన్నాను|కొనేశాను|తెచ్చాను)$", "").trim();
+            JSONArray done = Shopping.mark(act(), items, true);
+            if (done.length() > 0) return "లిస్ట్‌లో టిక్ పెట్టాను: " + join(done) + ".";
+        }
+
+        // ---- sums
+        String sum = Offline.calc(said);
+        if (sum != null) return sum;
+
+        // ---- duty, where he parked, calendar, birthdays, festivals, medicines
+        if (any(t, "డ్యూటీ", "duty")) return offlineDuty(t, today);
+        if (any(t, "బండి", "బైక్", "పార్కింగ్", "స్కూటీ", "కారు")) {
+            if (any(t, "ఇక్కడ పెట్టాను", "ఇక్కడే పెట్టాను", "పార్క్ చేశాను", "గుర్తుపెట్టుకో", "గుర్తు పెట్టుకో", "సేవ్")) {
+                JSONObject o = new JSONObject(parking("save"));
+                return o.optBoolean("ok") ? "బండి ఎక్కడ పెట్టారో గుర్తుపెట్టుకున్నాను." : problem(o);
             }
-            if (any(t, "సైలెంట్", "silent")) { phoneSetting("silent", "on"); return "సైలెంట్ చేశాను."; }
-            if (any(t, "వైబ్రేట్", "vibrate")) { phoneSetting("vibrate", "on"); return "వైబ్రేట్ చేశాను."; }
-            if (any(t, "తెరువు", "ఓపెన్", "open")) {
-                String app = t.replaceAll("(తెరువు|ఓపెన్ చెయ్|ఓపెన్ చేయి|ఓపెన్|open|యాప్|app)", " ").trim();
-                if (app.isEmpty()) return "ఏ యాప్ తెరవాలి?";
-                JSONObject o = new JSONObject(openApp(app));
-                return o.optBoolean("ok") ? o.optString("opened") + " తెరిచాను." : "ఆ యాప్ దొరకలేదు.";
+            if (any(t, "ఎక్కడ పెట్టాను", "ఎక్కడ ఉంది", "ఎక్కడుంది", "ఎక్కడ పార్క్")) return offlineParked();
+        }
+        if (any(t, "క్యాలెండర్", "ఈవెంట్", "మీటింగ్", "అపాయింట్‌మెంట్", "అపాయింట్మెంట్")
+                || any(t, "ఏమున్నాయి", "ఏం ఉన్నాయి", "ఏమైనా ఉన్నాయా", "ప్రోగ్రామ్స్") && any(t, "రేపు", "రేపటి", "ఈరోజు", "ఇవాళ", "ఎల్లుండి")) {
+            java.time.LocalDate d = Offline.dayOf(t, today);
+            return offlineEvents(d == null ? today : d);
+        }
+        if (any(t, "పుట్టినరోజు", "పుట్టిన రోజు", "బర్త్‌డే", "బర్త్ డే", "birthday", "పెళ్లిరోజు", "పెళ్లి రోజు", "anniversary")) {
+            List<JSONObject> l = Birthdays.upcoming(act(), 30);
+            if (l.isEmpty()) return "వచ్చే 30 రోజుల్లో పుట్టినరోజులు, పెళ్లిరోజులు లేవు.";
+            StringBuilder b = new StringBuilder();
+            for (int i = 0; i < l.size() && i < 5; i++) b.append(Birthdays.label(l.get(i))).append(" ").append(Birthdays.when(l.get(i))).append(". ");
+            return b.toString().trim();
+        }
+        if (any(t, "ఎప్పుడు", "ఏ రోజు", "ఏ తేదీ", "when")) {
+            for (Holidays.Day d : Holidays.between(act(), today, today.plusDays(400))) {
+                String te = Holidays.telugu(d.name);
+                if (te.length() >= 3 && t.contains(te.toLowerCase(Locale.ROOT)) || d.name.length() >= 4 && t.contains(d.name.toLowerCase(Locale.ROOT))) {
+                    return te + " " + Duty.day(d.date) + " " + d.date.getYear() + " (" + Duty.whenText(d.date) + ", " + d.kindTe() + ").";
+                }
+            }
+        }
+        if (any(t, "పండుగ", "సెలవు", "హాలిడే", "holiday")) {
+            List<Holidays.Day> l = Holidays.between(act(), today, today.plusDays(45));
+            StringBuilder b = new StringBuilder();
+            int n = 0;
+            for (Holidays.Day d : l) {
+                if (!d.big() || n >= 5) continue;
+                b.append(Holidays.telugu(d.name)).append(" ").append(Duty.whenText(d.date)).append(" (").append(Duty.day(d.date)).append(", ")
+                        .append(d.kindTe()).append("). ");
+                n++;
+            }
+            return n == 0 ? "వచ్చే 45 రోజుల్లో పెద్ద పండుగలు, సెలవులు లేవు." : b.toString().trim();
+        }
+        if (Offline.medicineWord(said)) {
+            String r = offlineMedicine(said, t);
+            if (r != null) return r;
+        }
+
+        // ---- messages that came
+        if (any(t, "మెసేజ్‌లు", "మెసేజ్లు", "మెసేజ్ లు", "మెసేజెస్", "మెసేజీలు", "నోటిఫికేషన్", "messages", "notifications")
+                && any(t, "చదువు", "చెప్పు", "వచ్చాయి", "వచ్చాయా", "చూడు", "వినిపించు", "read")) {
+            JSONObject o = new JSONObject(readNotifications("", 5));
+            if (!o.optBoolean("ok")) return problem(o);
+            JSONArray l = o.optJSONArray("notifications");
+            if (l == null || l.length() == 0) return "కొత్త మెసేజ్‌లు లేవు.";
+            StringBuilder b = new StringBuilder();
+            for (int i = 0; i < l.length(); i++) {
+                JSONObject m = l.getJSONObject(i);
+                b.append(m.optString("from").isEmpty() ? m.optString("app") : m.optString("from") + " (" + m.optString("app") + ")")
+                        .append(": ").append(m.optString("text")).append(". ");
+            }
+            return b.toString().trim();
+        }
+
+        // ---- phone settings
+        if (any(t, "బ్యాటరీ సేవర్", "పవర్ సేవ", "battery saver", "power saving")) {
+            start(new Intent(android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return "బ్యాటరీ సేవర్ పేజీ తెరిచాను, అక్కడ " + (off ? "ఆఫ్" : "ఆన్") + " చేయండి.";
+        }
+        String[][] switches = {{"bluetooth", "బ్లూటూత్", "bluetooth"}, {"dnd", "డిస్టర్బ్", "dnd", "డు నాట్"},
+                {"airplane", "ఎయిర్‌ప్లేన్", "ఎయిర్ ప్లేన్", "ఫ్లైట్ మోడ్", "airplane", "flight mode"}, {"hotspot", "హాట్‌స్పాట్", "హాట్ స్పాట్", "hotspot"},
+                {"auto_rotate", "రొటేట్", "rotate"}};
+        String[] names = {"బ్లూటూత్", "Do Not Disturb", "ఫ్లైట్ మోడ్", "హాట్‌స్పాట్", "ఆటో రొటేట్"};
+        for (int k = 0; k < switches.length; k++) {
+            if (!any(t, java.util.Arrays.copyOfRange(switches[k], 1, switches[k].length))) continue;
+            return settingSaid(names[k], new JSONObject(phoneSetting(switches[k][0], off ? "off" : "on")), off);
+        }
+        boolean onOff = word(t, "ఆన్", "ఆఫ్", "on", "off") || any(t, "ఆన్ చేయ", "ఆఫ్ చేయ", "ఆన్ చెయ్", "ఆఫ్ చెయ్");
+        if (any(t, "లొకేషన్", "జీపీఎస్", "gps", "location") && onOff) return settingSaid("లొకేషన్", new JSONObject(phoneSetting("location", off ? "off" : "on")), off);
+        if (any(t, "బ్రైట్‌నెస్", "బ్రైట్ నెస్", "బ్రైట్నెస్", "brightness", "వెలుతురు")) {
+            double n = Offline.number(t);
+            int pct = n > 0 && n <= 100 ? (int) n : any(t, "తగ్గించు", "తగ్గించ", "తక్కువ", "down", "low") ? 30 : any(t, "ఫుల్", "full", "పూర్తి") ? 100 : 80;
+            JSONObject o = new JSONObject(phoneSetting("brightness", String.valueOf(pct)));
+            return o.optBoolean("ok") ? "బ్రైట్‌నెస్ " + pct + " శాతం చేశాను." : "బ్రైట్‌నెస్ మార్చలేకపోయాను: " + problem(o);
+        }
+
+        // ---- songs saved on the phone
+        if (any(t, "పాట", "సాంగ్", "song") && any(t, "పెట్టు", "ప్లే", "play", "వినిపించు", "పెట్టండి")
+                && !any(t, "ఆపు", "తర్వాత", "నెక్స్ట్", "ముందు", "pause", "stop", "ఆఫ్")) {
+            boolean mine = any(t, "నా పాట", "ఫోన్‌లో", "ఫోన్లో", "ఫోన్ లో", "ఏదైనా");
+            java.util.Set<String> drop = new java.util.HashSet<>(java.util.Arrays.asList("పాటలు", "పాట", "సాంగ్స్", "సాంగ్", "songs", "song", "పెట్టండి",
+                    "పెట్టు", "ప్లే", "play", "చేయి", "చెయ్", "చేయండి", "వినిపించు", "ఫోన్‌లో", "ఫోన్లో", "ఫోన్", "లో", "ఉన్న", "ఏదైనా", "ఒక", "నా", "ఆ", "ఈ"));
+            StringBuilder qb = new StringBuilder();
+            for (String w : said.split("\\s+")) if (!drop.contains(w.toLowerCase(Locale.ROOT).replace("‌", ""))) qb.append(qb.length() == 0 ? "" : " ").append(w);
+            String q = qb.toString().trim();
+            if (!q.isEmpty() || mine) {
+                JSONObject o = new JSONObject(localMedia("song", q, ""));
+                if (!o.optBoolean("ok") && "not_found".equals(o.optString("error")) && !q.isEmpty()) o = new JSONObject(localMedia("song", Offline.latin(q), ""));
+                if (o.optBoolean("ok")) return "\"" + o.optString("playing") + "\" ప్లే చేస్తున్నాను.";
+                if ("not_found".equals(o.optString("error"))) return "ఫోన్‌లో " + (q.isEmpty() ? "పాటలు" : "\"" + q + "\" పాట") + " దొరకలేదు.";
+                return problem(o);
+            }
+        }
+
+        // ---- the first everyday ones
+        if (any(t, "టార్చ్", "ఫ్లాష్", "torch", "flash", "లైట్")) {
+            JSONObject o = new JSONObject(flashlight(!off));
+            return o.optBoolean("ok") ? (off ? "టార్చ్ ఆఫ్ చేశాను." : "టార్చ్ ఆన్ చేశాను.") : "ఈ ఫోన్‌లో టార్చ్ ఆన్ చేయలేకపోయాను.";
+        }
+        if (any(t, "wifi", "వైఫై", "వై ఫై", "wi-fi")) return settingSaid("WiFi", new JSONObject(phoneSetting("wifi", off ? "off" : "on")), off);
+        boolean later = any(t, "వచ్చాక", "రాగానే", "వస్తే", "వచ్చిన తర్వాత");
+        if (!later && (any(t, "మొబైల్ డేటా", "mobile data") || any(t, "డేటా", "data", "నెట్") && onOff)) {
+            phoneSetting("mobile_data", off ? "off" : "on");
+            return "మొబైల్ డేటా పేజీ తెరిచాను.";
+        }
+        if (any(t, "ఎక్కడున్నావ్", "ఎక్కడ ఉన్నావ్", "where are you")) {
+            FindPhone.start(act());
+            return "ఇక్కడే ఉన్నాను!";
+        }
+        if (any(t, "బ్యాటరీ", "battery", "ఛార్జ్")) {
+            JSONObject o = new JSONObject(deviceStatus());
+            String phone = "ఫోన్ బ్యాటరీ " + o.optInt("battery_pct", o.optInt("battery", -1)) + " శాతం ఉంది.";
+            return any(t, "బండి", "బైక్") ? "బండి బ్యాటరీ నెట్ లేకుండా తెలియదు, బండి స్క్రీన్‌లో చూడండి. " + phone : phone;
+        }
+        if (any(t, "టైమ్ ఎంత", "టైం ఎంత", "సమయం ఎంత", "టైమ్ ఎంతయింది", "టైమ్ ఎంత అయింది", "ఎన్ని గంటలు", "టైమ్ చెప్పు", "సమయం చెప్పు",
+                "తేదీ ఎంత", "తేదీ ఏంటి", "ఈరోజు తేదీ", "ఈ రోజు తేదీ", "ఈరోజు ఏం వారం", "ఏం వారం", "what time", "what's the time", "today's date")
+                || t.matches("^(టైమ్|టైం|సమయం|time|తేదీ|date)\\s*[?.]?$")) {
+            return new java.text.SimpleDateFormat("h:mm a, EEEE d MMMM", Locale.ENGLISH).format(new java.util.Date()) + ".";
+        }
+        if (any(t, "వాల్యూమ్", "volume", "సౌండ్")) {
+            mediaControl(any(t, "తగ్గించు", "తగ్గించ", "down", "తక్కువ") ? "volume_down" : "volume_up", 50);
+            return "సరే.";
+        }
+        if (any(t, "పాట", "సాంగ్", "song", "music", "మ్యూజిక్", "ప్లే", "play", "pause")) {
+            String action = any(t, "తర్వాత", "next", "నెక్స్ట్") ? "next" : any(t, "ముందు", "previous") ? "previous"
+                    : any(t, "స్టాప్", "stop") ? "stop" : off || any(t, "pause") ? "pause" : "play";
+            mediaControl(action, 50);
+            return "సరే.";
+        }
+        if (any(t, "సైలెంట్", "silent")) {
+            JSONObject o = new JSONObject(phoneSetting("silent", "on"));
+            return o.optBoolean("ok") ? "సైలెంట్ చేశాను." : "సైలెంట్ చేయలేకపోయాను: " + problem(o);
+        }
+        if (any(t, "వైబ్రేట్", "vibrate")) {
+            JSONObject o = new JSONObject(phoneSetting("vibrate", "on"));
+            return o.optBoolean("ok") ? "వైబ్రేట్ చేశాను." : "వైబ్రేట్ చేయలేకపోయాను: " + problem(o);
+        }
+        if (any(t, "తెరువు", "ఓపెన్", "open")) {
+            String app = t.replaceAll("(తెరువు|ఓపెన్ చెయ్|ఓపెన్ చేయి|ఓపెన్|open|యాప్|app)", " ").trim();
+            if (app.isEmpty()) return "ఏ యాప్ తెరవాలి?";
+            JSONObject o = new JSONObject(openApp(app));
+            return o.optBoolean("ok") ? o.optString("opened") + " తెరిచాను." : "ఆ యాప్ దొరకలేదు.";
+        }
+
+        // ---- anything else needs the internet: kept, and answered when it is back
+        if (said.split("\\s+").length >= 2 && CardTalk.Words.kind(said, CardTalk.Words.CONFIRM) != CardTalk.Words.NO) {
+            Offline.keep(act(), said);
+            return SAYS_NO_NET + "ఇంటర్నెట్ లేదు. ఇది గుర్తుంచుకున్నాను, నెట్ రాగానే జవాబు చెబుతాను. "
+                    + "నెట్ లేకుండా ఏం చేయగలనో వినాలంటే \"offline లో ఏం చేయగలవు\" అనండి.";
+        }
+        return SAYS_NO_NET + "ఇంటర్నెట్ లేదు, " + prefs.name() + ". ఇప్పుడు ఫోన్‌లో ఉన్న పనులు మాత్రమే చేయగలను. "
+                + "ఏం చేయగలనో వినాలంటే \"offline లో ఏం చేయగలవు\" అనండి.";
+    }
+
+    /** He asks to write something in his notes, diary or shopping list: written, or null when it isn't that. */
+    private String offlineWrite(String said, String t) throws Exception {
+        if (any(t, "డైరీ")) {
+            String words = said.replaceAll("(డైరీలో|డైరీ లో|డైరీ|రాసుకోండి|రాసుకో|రాయండి|రాయి|పెట్టు)", " ")
+                    .replaceAll("[:：]", " ").replaceAll("(^\\s*అని\\s+|\\s+అని\\s*$)", " ").replaceAll("\\s+", " ").trim();
+            if (words.isEmpty()) return "డైరీలో ఏం రాయాలి?";
+            JSONObject o = new JSONObject(diary(new JSONObject().put("action", "add").put("text", words)));
+            return o.optBoolean("ok") ? "డైరీలో రాశాను." : problem(o);
+        }
+        if (any(t, "లిస్ట్", "లిస్టు") && !any(t, "నోట్", "రిమైండర్", "కాంటాక్ట్")) {
+            String items = said.replaceAll("(షాపింగ్|లిస్ట్‌లో|లిస్ట్ లో|లిస్టులో|లిస్టు లో|లిస్ట్|లిస్టు|పెట్టు|చేర్చు|రాయి|ఆడ్ చేయి|ఆడ్|యాడ్ చేయి|యాడ్|add|కలుపు|చేయి)", " ")
+                    .replaceAll("[:：]", " ").replaceAll("\\s+", " ").trim();
+            if (items.isEmpty()) return "లిస్ట్‌లో ఏం పెట్టాలి?";
+            JSONArray added = Shopping.add(act(), items);
+            return added.length() == 0 ? "అవి ఇప్పటికే లిస్ట్‌లో ఉన్నాయి." : "లిస్ట్‌లో పెట్టాను: " + join(added) + ".";
+        }
+        if (any(t, "నోట్") && !any(t, "చదువు", "చెప్పు", "ఏమున్నాయి", "చూపించు", "వినిపించు")) {
+            String note = said.replaceAll("(నోట్స్‌లో|నోట్స్ లో|నోట్‌లో|నోట్ లో|నోట్స్|నోట్|రాసుకోండి|రాసుకో|రాయండి|రాయి|చేసుకో|పెట్టుకో|పెట్టు|సేవ్)", " ")
+                    .replaceAll("[:：]", " ").replaceAll("(^\\s*అని\\s+|\\s+అని\\s*$)", " ").replaceAll("\\s+", " ").trim();
+            if (note.isEmpty()) return "ఏం రాయాలి?";
+            JSONObject o = new JSONObject(notes("add", note, 7));
+            return o.optBoolean("ok") ? "నోట్ రాశాను." : problem(o);
+        }
+        return null;
+    }
+
+    /** A switch's result in his words: flipped, or its page opened for him (without Jarvis's screen access). */
+    private static String settingSaid(String name, JSONObject o, boolean off) {
+        if (!o.optBoolean("ok")) return name + " మార్చలేకపోయాను: " + problem(o);
+        if (o.has("switched") && !o.optBoolean("switched")) return name + " పేజీ తెరిచాను, అక్కడ " + (off ? "ఆఫ్" : "ఆన్") + " చేయండి.";
+        return name + " " + (off ? "ఆఫ్" : "ఆన్") + " చేశాను.";
+    }
+
+    /** Jarvis's last words in the talk (before his words now). */
+    private String lastJarvisSaid() {
+        List<JSONObject> chat = store.chat();
+        for (int i = chat.size() - 1; i >= 0; i--) if ("assistant".equals(chat.get(i).optString("role"))) return chat.get(i).optString("content");
+        return "";
+    }
+
+    private static String join(JSONArray a) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; a != null && i < a.length(); i++) b.append(i == 0 ? "" : ", ").append(a.optString(i));
+        return b.toString();
+    }
+
+    /** A tool's refusal in his words (the tools' own details are for his brain). */
+    private static String problem(JSONObject o) {
+        String e = o.optString("error");
+        switch (e) {
+            case "permission_needed": return "దీనికి ఫోన్ అనుమతి కావాలి: వచ్చిన అనుమతి అడుగులో Allow నొక్కండి.";
+            case "locked": return "ఫోన్ లాక్‌లో ఉంది, అన్‌లాక్ చేసి మళ్లీ చెప్పండి.";
+            case "not_found": return "అది దొరకలేదు.";
+            case "ambiguous": return "ఆ పేరుతో చాలా మంది ఉన్నారు, పూర్తి పేరు చెప్పండి.";
+            case "partial_match": return "ఆ పేరు సరిగ్గా దొరకలేదు, పూర్తి పేరు చెప్పండి.";
+            case "cancelled": return "ఆపేశాను.";
+            case "not_confirmed": return "పంపాలంటే \"పంపు\" అని చెప్పండి.";
+            case "notification_access_off": return "మెసేజ్‌లు చదవడానికి నోటిఫికేషన్ అనుమతి కావాలి: తెరిచిన పేజీలో Jarvis ని ఆన్ చేయండి.";
+            case "no_sms_app": return "ఫోన్‌లో మెసేజెస్ యాప్ లేదు.";
+            case "no_clock_app": return "ఫోన్‌లో క్లాక్ యాప్ అలారం / టైమర్ తీసుకోలేదు.";
+            case "in_past": return "ఆ టైమ్ అయిపోయింది, తర్వాతి టైమ్ చెప్పండి.";
+            case "no_switch": case "no_page": return "ఆ స్విచ్ దొరకలేదు, క్విక్ సెట్టింగ్స్‌లో మీరే మార్చండి.";
+            default: return "అది చేయలేకపోయాను.";
+        }
+    }
+
+    /**
+     * Without internet his brain can't write a name in English letters: the saved contact that sounds like what he said
+     * ("రాము" -> "Ramu", "అమ్మ" -> "Amma" / "Mom"). {name, how sure: "3" exact / "2" first name / "1" one word} or {what to say, null}.
+     */
+    private String[] offlineWho(String who) {
+        String w = who == null ? "" : who.trim();
+        if (w.isEmpty()) return new String[]{"ఎవరికి?", null};
+        if (looksLikeNumber(w)) return new String[]{w, "3"};
+        if (!has(Manifest.permission.READ_CONTACTS)) return new String[]{"కాంటాక్ట్స్ చూడటానికి అనుమతి కావాలి.", null};
+        Map<String, Integer> fits = new LinkedHashMap<>();
+        int top = 0;
+        try (Cursor c = act().getContentResolver().query(ContactsContract.Contacts.CONTENT_URI, new String[]{ContactsContract.Contacts.DISPLAY_NAME},
+                ContactsContract.Contacts.HAS_PHONE_NUMBER + " = 1", null, null)) {
+            while (c != null && c.moveToNext()) {
+                String n = c.getString(0);
+                if (n == null) continue;
+                int f = n.trim().equalsIgnoreCase(w) ? 4 : Offline.fit(w, n); // (saved just as he said it: 4)
+                if (f <= 0) continue;
+                Integer was = fits.get(n);
+                if (was == null || was < f) fits.put(n, f);
+                top = Math.max(top, f);
             }
         } catch (Exception e) {
-            return "అది చేయలేకపోయాను.";
+            return new String[]{"కాంటాక్ట్స్ చూడలేకపోయాను.", null};
         }
-        return "ఇంటర్నెట్ లేదు, " + prefs.name() + ". ఇప్పుడు టార్చ్, కాల్, అలారం, టైమర్, పాటలు, వాల్యూమ్, యాప్ తెరవడం, WiFi ఆన్ చేయడం, బ్యాటరీ, టైమ్ మాత్రమే చేయగలను.";
+        List<String> best = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : fits.entrySet()) if (e.getValue() == top) best.add(e.getKey());
+        if (best.isEmpty()) return new String[]{w + " పేరుతో కాంటాక్ట్ దొరకలేదు.", null};
+        if (best.size() > 1) return new String[]{w + " పేరుతో " + best.size() + " మంది ఉన్నారు: " + String.join(", ", best.subList(0, Math.min(3, best.size())))
+                + ". పూర్తి పేరు చెప్పండి.", null};
+        return new String[]{best.get(0), String.valueOf(Math.min(3, top))};
+    }
+
+    private String offlineDebt(String[] d) throws Exception {
+        String action = d[0], kind = d[1], name = d[2];
+        double amt = Double.parseDouble(d[3]);
+        if (action.equals("add")) {
+            JSONObject o = Debts.add(act(), kind, name, amt, java.time.LocalDate.now().toString(), "", 0, 0, 0, "");
+            if (o == null) return "అది రాయలేకపోయాను.";
+            return kind.equals("lent") ? "సరే, " + name + " కి ₹" + d[3] + " ఇచ్చినట్టు రాశాను." : "సరే, " + name + " దగ్గర ₹" + d[3] + " తీసుకున్నట్టు రాశాను.";
+        }
+        JSONObject o = Debts.pay(act(), name, kind, amt);
+        if (o == null) return name + " పేరుతో " + (kind.equals("lent") ? "మీకు రావాల్సింది" : "మీరు ఇవ్వాల్సింది") + " ఏమీ రాసి లేదు.";
+        double left = Debts.left(o);
+        String who = o.optString("name", name);
+        if (left < 0.5) return "సరే, " + who + (kind.equals("lent") ? " మొత్తం తిరిగి ఇచ్చేశారు." : " కి మొత్తం ఇచ్చేశారు.") + " లెక్క పూర్తయింది.";
+        return "సరే, రాశాను. " + (kind.equals("lent") ? who + " ఇంకా ₹" + Math.round(left) + " ఇవ్వాలి." : "మీరు " + who + " కి ఇంకా ₹" + Math.round(left) + " ఇవ్వాలి.");
+    }
+
+    private String offlineDuty(String t, java.time.LocalDate today) throws Exception {
+        Duty.Roster r = Duty.load(act());
+        if (!Duty.ready(r)) return "డ్యూటీ క్యాలెండర్ ఇంకా సెట్ చేయలేదు.";
+        java.time.LocalDate d = Offline.dayOf(t, today);
+        List<java.time.LocalDate[]> blocks = r.blocks(Duty.ME, today.minusDays(10), today.plusDays(90));
+        if (d != null) {
+            String when = Duty.whenText(d);
+            if (r.isOn(Duty.ME, d)) {
+                for (java.time.LocalDate[] b : blocks) {
+                    if (!d.isBefore(b[0]) && !d.isAfter(b[1])) return when + " మీకు డ్యూటీ ఉంది: " + Duty.blockText(r, Duty.ME, b) + ".";
+                }
+                return when + " మీకు డ్యూటీ ఉంది.";
+            }
+            String s = when + " మీకు డ్యూటీ లేదు.";
+            for (java.time.LocalDate[] b : blocks) if (b[0].isAfter(d)) return s + " తర్వాతి డ్యూటీ: " + Duty.blockText(r, Duty.ME, b) + ".";
+            return s;
+        }
+        if (r.isOn(Duty.ME, today)) {
+            for (java.time.LocalDate[] b : blocks) {
+                if (!today.isBefore(b[0]) && !today.isAfter(b[1])) return "ఇప్పుడు డ్యూటీ ఉంది: " + Duty.blockText(r, Duty.ME, b) + ".";
+            }
+        }
+        for (java.time.LocalDate[] b : blocks) if (b[0].isAfter(today)) return "మీ తర్వాతి డ్యూటీ: " + Duty.blockText(r, Duty.ME, b) + ".";
+        return "వచ్చే మూడు నెలల్లో మీకు డ్యూటీ లేదు.";
+    }
+
+    private String offlineParked() throws Exception {
+        double[] ll = GeoReminders.place(act(), "parking");
+        if (ll == null) return "బండి ఎక్కడ పెట్టారో గుర్తు లేదు. పెట్టినప్పుడు \"బండి ఇక్కడ పెట్టాను\" అనండి.";
+        Location here = lastLocation(act());
+        String s = "";
+        if (here != null) {
+            float[] res = new float[2];
+            Location.distanceBetween(here.getLatitude(), here.getLongitude(), ll[0], ll[1], res);
+            int m = Math.round(res[0]);
+            String[] dirs = {"ఉత్తరం", "ఈశాన్యం", "తూర్పు", "ఆగ్నేయం", "దక్షిణం", "నైరుతి", "పడమర", "వాయువ్యం"};
+            String dir = dirs[(int) Math.round(((res[1] % 360) + 360) % 360 / 45.0) % 8];
+            s = m < 30 ? "మీ బండి ఇక్కడే దగ్గరలో ఉంది. " : "మీ బండి ఇక్కడి నుంచి సుమారు " + (m < 1000 ? m + " మీటర్లు" : Offline.fmt(Math.round(m / 100.0) / 10.0) + " కిలోమీటర్లు")
+                    + ", " + dir + " వైపు. ";
+        }
+        try {
+            JSONObject o = new JSONObject(parking("find"));
+            if (o.optBoolean("ok")) s += "దారి మ్యాప్‌లో చూపిస్తున్నాను.";
+        } catch (Exception ignored) {}
+        return s.isEmpty() ? "బండి పెట్టిన చోటు మ్యాప్‌లో చూపిస్తున్నాను." : s.trim();
+    }
+
+    private String offlineMedicine(String said, String t) throws Exception {
+        if (any(t, "వేసుకున్నాను", "తీసుకున్నాను", "వేశాను", "మింగాను", "వేసుకున్నా", "తీసుకున్నా")) {
+            List<JSONObject> all = Medicine.all(act());
+            if (all.isEmpty()) return "మందులు ఏమీ రాసి లేవు.";
+            String name = Offline.medicineName(said);
+            JSONObject m = name.isEmpty() ? null : Medicine.find(act(), name);
+            if (m == null && name.isEmpty() && all.size() == 1) m = all.get(0);
+            if (m == null) {
+                StringBuilder b = new StringBuilder();
+                for (JSONObject x : all) b.append(b.length() == 0 ? "" : ", ").append(x.optString("name"));
+                return "ఏ మందు? మీ మందులు: " + b + ".";
+            }
+            Medicine.taken(act(), m, null);
+            return "సరే, " + m.optString("name") + " వేసుకున్నట్టు రాశాను.";
+        }
+        if (any(t, "ఏ మందు", "ఏం మందు", "ఏమి మందు", "మందులు ఏమి", "మందులు ఏం", "ఈరోజు మందులు", "మందులు చెప్పు", "మాత్రలు ఏం", "మాత్రలు చెప్పు", "మందులు ఎన్ని")) {
+            JSONArray l = Medicine.listJson(act()).optJSONArray("medicines");
+            if (l == null || l.length() == 0) return "మందులు ఏమీ రాసి లేవు.";
+            StringBuilder b = new StringBuilder();
+            for (int i = 0; i < l.length(); i++) {
+                JSONObject m = l.getJSONObject(i);
+                b.append(m.optString("name")).append(": ").append(join(m.optJSONArray("times")));
+                JSONArray done = m.optJSONArray("taken_today");
+                if (done != null && done.length() > 0) b.append(" (ఈరోజు ").append(join(done)).append(" వేసుకున్నారు)");
+                if (m.has("days_left")) b.append(", ఇంకా ").append(m.optInt("days_left")).append(" రోజులకు సరిపోతాయి");
+                b.append(". ");
+            }
+            return b.toString().trim();
+        }
+        return null;
+    }
+
+    private String offlineEvents(java.time.LocalDate d) throws Exception {
+        if (!has(Manifest.permission.READ_CALENDAR)) return "క్యాలెండర్ చూడటానికి అనుమతి కావాలి.";
+        long from = d.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(), to = from + 86400000L;
+        android.net.Uri.Builder b = android.provider.CalendarContract.Instances.CONTENT_URI.buildUpon();
+        android.content.ContentUris.appendId(b, from);
+        android.content.ContentUris.appendId(b, to);
+        StringBuilder s = new StringBuilder();
+        int n = 0;
+        try (Cursor c = act().getContentResolver().query(b.build(), new String[]{android.provider.CalendarContract.Instances.TITLE,
+                        android.provider.CalendarContract.Instances.BEGIN, android.provider.CalendarContract.Instances.ALL_DAY}, null, null,
+                android.provider.CalendarContract.Instances.BEGIN + " ASC")) {
+            while (c != null && c.moveToNext() && n < 8) {
+                java.time.LocalDateTime at = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(c.getLong(1)), java.time.ZoneId.systemDefault());
+                if (c.getInt(2) == 1) s.append(c.getString(0)).append(" (రోజంతా). ");
+                else s.append(Offline.sayWhen(at, at).replace("ఈరోజు ", "")).append(" ").append(c.getString(0)).append(". ");
+                n++;
+            }
+        }
+        String when = Duty.whenText(d);
+        return n == 0 ? when + " క్యాలెండర్‌లో ఏమీ లేవు." : when + ": " + s.toString().trim();
     }
 
     // ================================================================ places & location reminders

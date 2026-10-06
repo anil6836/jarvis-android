@@ -136,6 +136,11 @@ final class Prefs {
      * every answer and Live only hears and speaks; false: Live thinks itself (faster, less deep).
      */
     boolean liveBrainThinks() { return !"live".equals(sp.getString("live_think", "brain")); }
+    /**
+     * No internet: Jarvis listens with the phone's own offline voice typing (whatever way of hearing is chosen) and does
+     * the everyday tasks on the phone; back to the usual way when the internet is back. On by default.
+     */
+    boolean offlineAuto() { return sp.getBoolean("offline_auto", true); }
     /** Warn about scam-looking messages and new autopay mandates (checked on the phone only). */
     boolean scamGuard() { return sp.getBoolean("scam_guard", true); }
 

@@ -78,7 +78,9 @@ public class SettingsActivity extends Activity {
     private EditText balGemini, balOpenAi, balAnthropic;
     private EditText bikeRange, bikeKwh, powerRate;
     private Switch weeklyReport;
-    private Switch bargeCallVoice, liveAec, echoRecord;
+    private Switch bargeCallVoice, liveAec, echoRecord, offlineAuto;
+    /** The offline voice card: what the phone has, and its download buttons. */
+    private TextView offlineInfo, offlineHearBtn, offlineEnBtn, offlineVoiceBtn;
     /** Opened from the "new version" notification / note: go to Updates and start the update. */
     static final String EXTRA_UPDATE_NOW = "update_now";
     private View updatesHeader;
@@ -556,6 +558,39 @@ public class SettingsActivity extends Activity {
         liveMode.setOnCheckedChangeListener((sw, on) -> syncLiveChoice());
         liveProvider.setOnCheckedChangeListener((rg, which) -> syncLiveChoice());
         note("mini మోడల్ చవక, వేగం. పేరులో mini లేని పెద్ద మోడల్ ఇంకా సహజంగా, భావంతో మాట్లాడుతుంది కానీ ఖర్చు ఎక్కువ.");
+
+        // ---- without internet
+        section("Offline వాయిస్ (నెట్ లేనప్పుడు)");
+        offlineAuto = toggle("నెట్ లేనప్పుడు Jarvis తనంతట తానే offline కి మారాలి: ఫోన్‌లోనే విని, ఫోన్‌లో ఉన్న పనులు చేస్తుంది; నెట్ రాగానే మళ్లీ మామూలుగా", prefs.offlineAuto());
+        offlineInfo = Ui.text(this, "ఫోన్‌లో ఏమున్నాయో చూస్తున్నాను…", 15, Ui.TEXT);
+        offlineInfo.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 6));
+        box.addView(offlineInfo);
+        LinearLayout orow = new LinearLayout(this);
+        orow.setOrientation(LinearLayout.VERTICAL);
+        offlineHearBtn = Ui.pill(this, "⬇ తెలుగు offline వినడం డౌన్‌లోడ్");
+        offlineEnBtn = Ui.pill(this, "⬇ English offline వినడం డౌన్‌లోడ్");
+        offlineVoiceBtn = Ui.pill(this, "⬇ తెలుగు offline గొంతు డౌన్‌లోడ్");
+        TextView orecheck = Ui.pill(this, "🔄 మళ్లీ చూడు");
+        offlineHearBtn.setOnClickListener(v -> offlineDownload(OfflineKit.TE));
+        offlineEnBtn.setOnClickListener(v -> offlineDownload(OfflineKit.EN));
+        offlineVoiceBtn.setOnClickListener(v -> {
+            if (!OfflineKit.downloadVoice(this)) Toast.makeText(this, "ఫోన్ గొంతు డౌన్‌లోడ్ పేజీ తెరవలేకపోయాను. ఫోన్ Settings → Text-to-speech లో చూడండి.", Toast.LENGTH_LONG).show();
+        });
+        orecheck.setOnClickListener(v -> checkOffline());
+        for (TextView ob : new TextView[]{offlineHearBtn, offlineEnBtn, offlineVoiceBtn, orecheck}) {
+            LinearLayout.LayoutParams obp = new LinearLayout.LayoutParams(-2, -2);
+            obp.topMargin = Ui.dp(this, 8);
+            orow.addView(ob, obp);
+        }
+        box.addView(orow);
+        note("నెట్ లేనప్పుడు ఇవి పనిచేస్తాయి (ఇలా చెప్పండి): టార్చ్ ఆన్ · అమ్మకి కాల్ చేయి · అమ్మకి వస్తున్నా అని SMS పంపు (చదివి వినిపించి, మీరు \"పంపు\" అన్నాకే) · "
+                + "రేపు ఉదయం 6 కి పాలు తేవాలని గుర్తు చేయి · ఉదయం 5:30 కి అలారం · 10 నిమిషాల టైమర్ · పెట్రోల్‌కి 200 ఖర్చు రాయి · ఈ నెల ఖర్చు ఎంత · "
+                + "250 ని 12 తో గుణిస్తే · రాముకి 500 ఇచ్చాను · నాకు ఎవరు ఎంత ఇవ్వాలి · రేపు డ్యూటీ ఉందా · నోట్ రాసుకో … · డైరీలో రాయి … · లిస్ట్‌లో పాలు పెట్టు · "
+                + "బండి ఇక్కడ పెట్టాను / బండి ఎక్కడ · రేపు క్యాలెండర్‌లో ఏమున్నాయి · పుట్టినరోజులు · పండుగలు · BP మాత్ర వేసుకున్నాను · మెసేజ్‌లు చదువు · "
+                + "బ్లూటూత్ ఆన్ · బ్రైట్‌నెస్ తగ్గించు · ఫోన్‌లో పాటలు పెట్టు · బ్యాటరీ ఎంత. "
+                + "వార్తలు, వాతావరణం లాంటి నెట్ కావాల్సిన ప్రశ్నలు గుర్తుంచుకుని, నెట్ రాగానే మెదడుతో జవాబు చెబుతుంది. "
+                + "మీ మెదడు (AI) నెట్ లేకుండా పనిచేయదు, అందుకే offline లో పై లాంటి పనులు మాత్రమే. దీనికి ఫోన్‌లో offline వినే ప్యాక్ ఉండాలి (పై బటన్); "
+                + "ఈ ఫోన్‌లో తెలుగు offline వినడం లేకపోతే English లో చెప్పొచ్చు (torch on, call amma, battery…).");
 
         // ---- wake word
         section("\"Hey Jarvis\" వేక్ వర్డ్");
@@ -1296,12 +1331,39 @@ public class SettingsActivity extends Activity {
         super.onBackPressed();
     }
 
+    /** What the phone has for Jarvis without internet (its offline speech pack and Telugu voice), with the right download buttons. */
+    private void checkOffline() {
+        if (offlineInfo == null) return;
+        showOffline();
+        OfflineKit.check(this, () -> { if (!isFinishing()) showOffline(); });
+    }
+
+    private void showOffline() {
+        String te = OfflineKit.hearing(this, OfflineKit.TE), en = OfflineKit.hearing(this, OfflineKit.EN), v = OfflineKit.voice(this);
+        offlineInfo.setText(OfflineKit.line(this) + (OfflineKit.onDevice(this) || OfflineKit.INSTALLED.equals(te) ? ""
+                : "\n(ఈ ఫోన్ offline వినడం ఉందో లేదో Jarvis కి చెప్పదు: నెట్ ఆపి \"Hey Jarvis\" అని పరీక్షించండి)"));
+        offlineHearBtn.setVisibility(OfflineKit.AVAILABLE.equals(te) ? View.VISIBLE : View.GONE);
+        offlineEnBtn.setVisibility(OfflineKit.NONE.equals(te) && OfflineKit.AVAILABLE.equals(en) ? View.VISIBLE : View.GONE);
+        offlineVoiceBtn.setVisibility(OfflineKit.INSTALLED.equals(v) ? View.GONE : View.VISIBLE);
+    }
+
+    private void offlineDownload(String lang) {
+        if (!Net.online(this)) { Toast.makeText(this, "డౌన్‌లోడ్‌కి నెట్ కావాలి.", Toast.LENGTH_LONG).show(); return; }
+        if (OfflineKit.downloadHearing(this, lang)) {
+            Toast.makeText(this, "డౌన్‌లోడ్ మొదలైంది (ఫోన్ అడిగితే ఒప్పుకోండి). కాసేపటి తర్వాత \"మళ్లీ చూడు\" నొక్కండి.", Toast.LENGTH_LONG).show();
+            showOffline();
+        } else {
+            Toast.makeText(this, "ఈ ఫోన్ డౌన్‌లోడ్ అడగనివ్వలేదు.", Toast.LENGTH_LONG).show();
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         showLock();
         if (bubbleMark != null) bubbleMark.run();
+        checkOffline(); // (back from a download screen too)
         // back from "Install unknown apps" after pressing update: carry on installing
         int pendingBuild = Updater.installWhenAllowed;
         if (pendingBuild > 0 && getPackageManager().canRequestPackageInstalls()) {
@@ -1369,6 +1431,8 @@ public class SettingsActivity extends Activity {
                 ? "Google వాయిస్ టైపింగ్ (బీప్‌లతో)" : "OpenAI " + prefs.earsModel() + " (Jarvis సొంత మైక్)").append("\n");
         if (prefs.liveMode()) s.append("• Live: ").append(LiveTalk.label(prefs)).append(prefs.liveGemini() ? " (" + prefs.geminiLiveModel() + ", గొంతు " + prefs.geminiLiveVoice() + ")" : "")
                 .append(prefs.liveKeyReady() ? "" : " ✗ key లేదు").append("\n");
+        s.append("• నెట్ లేనప్పుడు: ").append(prefs.offlineAuto() ? "ఆటోమేటిక్‌గా offline (" + OfflineKit.line(this) + ")" : "offline కి మారదు (ఆఫ్)")
+                .append(Net.online(this) ? "" : " · ఇప్పుడు నెట్ లేదు").append(Offline.anyWaiting(this) ? " · నెట్ కోసం ఆగిన ప్రశ్నలు ఉన్నాయి" : "").append("\n");
         if (prefs.liveMode() && prefs.liveGemini()) {
             s.append("• Gemini Live లో ఆలోచన: ").append(prefs.liveBrainThinks() ? "Jarvis మెదడు (" + prefs.model() + ")" : "Gemini Live తనే");
             if (GeminiLive.brainAnswers + GeminiLive.selfAnswers > 0)
@@ -1467,6 +1531,7 @@ public class SettingsActivity extends Activity {
                 : emc == 82 ? "gemini" : emc == 83 ? "google" : "openai");
         e.putString("live_provider", liveProvider.getCheckedRadioButtonId() == 91 ? Prefs.GEMINI : Prefs.OPENAI);
         e.putString("live_think", liveThink.getCheckedRadioButtonId() == 99 ? "live" : "brain");
+        e.putBoolean("offline_auto", offlineAuto.isChecked());
         e.putString("gemini_live_model", geminiLiveModel.getText().toString().trim());
         e.putString("gemini_live_voice", liveVoiceChoice);
         String earsModelNow = earsModel.getText().toString().trim();

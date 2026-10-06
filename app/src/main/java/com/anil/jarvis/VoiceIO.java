@@ -3,6 +3,7 @@ package com.anil.jarvis;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -600,6 +601,8 @@ final class VoiceIO {
     // opens and just before it closes; while it is held open and listening, his sound is on.
     /** The recognizer stopped answering (no result, no error): see failText. */
     static final int ERROR_STUCK = 100;
+    /** No internet, and the phone has no offline speech pack for this language (see OfflineKit). */
+    static final int ERROR_NO_OFFLINE = 120;
     private static final int MAX_TRIES = 6;            // recognizer tries in one listen
     private static final int MAX_QUICK = 4;            // tries in a row that failed before the mic opened: give up
     private static final long READY_WAIT_MS = 4000;    // startListening .. the mic is open
@@ -716,6 +719,11 @@ final class VoiceIO {
         level.forget();
         trace.setLength(0);
         traceStart = android.os.SystemClock.elapsedRealtime();
+        // no internet (and he left "offline" on): the phone's own offline voice typing, in Telugu, or English when only
+        // that pack is on the phone; whichever way of hearing is chosen (Jarvis's own mic needs the internet)
+        boolean offlineNow = !Net.online(ctx) && prefs.offlineAuto();
+        if (offlineNow) lang = OfflineKit.hearIn(ctx, lang);
+        offlineLang = offlineNow ? lang : null;
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang);
@@ -735,9 +743,13 @@ final class VoiceIO {
         VoiceIO other = holder;
         holder = this;
         if (other != null && other != this && other.listening && !other.shut) other.micTaken(); // (after listening = true here)
-        if (Ears.chosen(prefs)) { listenEars(dictation); return; } // Jarvis's own mic: no beeps
+        if (Ears.chosen(prefs) && !offlineNow) { listenEars(dictation); return; } // Jarvis's own mic: no beeps
+        if (offlineNow) trace("📴");
         start();
     }
+
+    /** This listen is without internet (the phone's offline voice typing), in this language; null otherwise. */
+    private String offlineLang;
 
     /** Jarvis's own ears (Ears): listening without the phone's speech service, so without its beeps. */
     private Ears ears;
@@ -812,7 +824,10 @@ final class VoiceIO {
     }
 
     private SpeechRecognizer newRecognizer() {
-        final SpeechRecognizer r = SpeechRecognizer.createSpeechRecognizer(ctx);
+        // without internet, the phone's own recognizer when its pack for this language is on the phone (Android 12+)
+        String ol = offlineLang;
+        final SpeechRecognizer r = ol != null && offlineTry() && OfflineKit.useOnDevice(ctx, ol) && Build.VERSION.SDK_INT >= 31
+                ? SpeechRecognizer.createOnDeviceSpeechRecognizer(ctx) : SpeechRecognizer.createSpeechRecognizer(ctx);
         r.setRecognitionListener(new RecognitionListener() {
             /** Only the recognizer in use, during a try: a let-go one, or a second "end" of the same try, is ignored. */
             private boolean mine() { return sr == r && listening && recBusy && !shut; }
@@ -1007,13 +1022,13 @@ final class VoiceIO {
                     retry(200);
                     return;
                 }
-                fail(error);
+                fail(!Net.online(ctx) ? ERROR_NO_OFFLINE : error); // (offline too: its pack isn't on the phone)
                 return;
             case 12: // ERROR_LANGUAGE_NOT_SUPPORTED
             case 13: // ERROR_LANGUAGE_UNAVAILABLE
                 if (lastIntent.getBooleanExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)) {
                     // the offline pack for this language is not on the phone: online, if there is internet
-                    if (!Net.online(ctx)) { fail(SpeechRecognizer.ERROR_NETWORK); return; }
+                    if (!Net.online(ctx)) { fail(ERROR_NO_OFFLINE); return; }
                     if (now < hardUntil && tries < MAX_TRIES) {
                         lastIntent.removeExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE);
                         retry(200);
@@ -1132,6 +1147,8 @@ final class VoiceIO {
             case SpeechRecognizer.ERROR_NETWORK:
             case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
                 return "వాయిస్‌కి ఇంటర్నెట్ కావాలి. నెట్ చెక్ చేయండి.";
+            case ERROR_NO_OFFLINE:
+                return "నెట్ లేదు, ఫోన్‌లో offline వినే ప్యాక్ లేదు. Settings → గొంతు, వినడం → Offline వాయిస్ లో డౌన్‌లోడ్ చేయండి (నెట్ ఉన్నప్పుడు).";
             case SpeechRecognizer.ERROR_AUDIO:
                 return "మైక్ దొరకలేదు: వేరే యాప్ మైక్ వాడుతోందేమో.";
             case SpeechRecognizer.ERROR_SERVER:
