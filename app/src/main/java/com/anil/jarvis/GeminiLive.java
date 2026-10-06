@@ -288,8 +288,8 @@ final class GeminiLive implements LiveTalk {
         saidPending = false;
         finishSaid(" …");
         setupInstr = everReady && !resuming && liveRules && brain != null
-                ? brain.liveInstructions(store.chat()) + GeminiLiveProto.rules(prefs.name()) // (a fresh line: the talk so far goes with it)
-                : baseInstr + (liveRules ? GeminiLiveProto.rules(prefs.name()) : "");
+                ? brain.liveInstructions(store.chat()) + GeminiLiveProto.rules(prefs.realName()) // (a fresh line: the talk so far goes with it)
+                : baseInstr + (liveRules ? GeminiLiveProto.rules(prefs.realName()) : "");
         WebSocket old = ws;
         if (old != null) try { old.close(1000, "moving"); } catch (Exception ignored) {}
         Request req;

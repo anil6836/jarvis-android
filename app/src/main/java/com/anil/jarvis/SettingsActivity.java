@@ -192,7 +192,7 @@ public class SettingsActivity extends Activity {
 
         // ---- you
         section("మీరు");
-        name = field("మీ పేరు (Jarvis మిమ్మల్ని ఇలా పిలుస్తాడు)", prefs.name(), false);
+        name = field("మీ పేరు (Jarvis మిమ్మల్ని ఇలా పిలుస్తాడు; 'Sir' అని పెట్టినా పేరు అడిగితే మీ అసలు పేరు చెబుతాడు)", prefs.name(), false);
 
         // ---- theme: applies at once (no Save needed); the other screens take it when they open
         section("థీమ్ (రంగులు)");

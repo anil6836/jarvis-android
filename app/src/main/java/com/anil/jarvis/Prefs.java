@@ -181,7 +181,33 @@ final class Prefs {
         String n = sp.getString("my_names", "").trim();
         if (!n.isEmpty()) return n;
         String name = name().trim();
-        return name.isEmpty() || name.equalsIgnoreCase("sir") ? "Anil" : name;
+        return name.isEmpty() || isAddress(name) ? "Anil" : name;
+    }
+
+    /** A way of addressing him rather than a name ("Sir", "సార్", "Boss" ...), chosen in Settings as what Jarvis calls him. */
+    static boolean isAddress(String n) {
+        String s = n == null ? "" : n.trim().toLowerCase(java.util.Locale.ROOT).replaceAll("[.!,\\s]+", "");
+        return s.isEmpty() || ADDRESS.contains(s);
+    }
+
+    private static final java.util.Set<String> ADDRESS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "sir", "sirji", "సర్", "సార్", "సారు", "boss", "బాస్", "బాసు", "master", "మాస్టర్", "యజమాని", "anna", "అన్నా", "అన్న",
+            "babu", "బాబు", "dear", "garu", "గారు", "bossgaru", "బాస్గారు", "sirgaru", "సార్గారు", "mr", "శ్రీ"));
+
+    /**
+     * His own name: the name in Settings without any "Sir" / "గారు" around it; when it is only that, the first of the
+     * names people call him by.
+     */
+    String realName() {
+        StringBuilder b = new StringBuilder();
+        for (String w : name().trim().split("\\s+")) {
+            if (w.isEmpty() || isAddress(w)) continue;
+            if (b.length() > 0) b.append(' ');
+            b.append(w);
+        }
+        if (b.length() > 0) return b.toString();
+        String first = myNames().split("[,،]")[0].trim();
+        return first.isEmpty() || isAddress(first) ? "Anil" : first;
     }
     /** The floating button's menu with every option at once (else the 5 that fit the app, then "ఇంకా"). */
     boolean bubbleShowAll() { return sp.getBoolean("bubble_show_all", false); }

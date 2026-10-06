@@ -169,7 +169,7 @@ final class Brain {
     /** Instructions for a live voice session: the usual persona plus live-talk rules and recent context. */
     String liveInstructions(List<JSONObject> history) {
         StringBuilder recent = new StringBuilder();
-        String name = prefs.name();
+        String name = prefs.realName(), call = prefs.name();
         for (int i = Math.max(0, history.size() - 8); i < history.size(); i++) {
             JSONObject h = history.get(i);
             String c = h.optString("content", "").trim();
@@ -179,7 +179,8 @@ final class Brain {
         }
         return "# Who is talking to you\n"
                 + "- The person talking to you is " + name + ", the owner of this phone; you are his own Jarvis and you know him. "
-                + "If he asks his name ('నా పేరు ఏంటి?', 'నేనెవరు?'), tell him: " + name + ".\n"
+                + "If he asks his name ('నా పేరు ఏంటి?', 'నేనెవరు?'), tell him his name: " + name + " (in Telugu letters when you speak Telugu)."
+                + (!call.trim().equals(name) ? " He likes to be called '" + call.trim() + "'; that is how you address him, not his name." : "") + "\n"
                 + "- What you know about him (family, work, bike, likes, people, numbers he gave you) is in '" + name + "'s saved memories' further down. "
                 + "When he asks about himself, answer from there; never say he hasn't told you something that is written there.\n\n"
                 + systemPrompt()
@@ -191,7 +192,7 @@ final class Brain {
                 + "A small natural filler ('అంటే…', 'చూద్దాం…') now and then is fine, never in every sentence.\n"
                 + "- Mirror his mood and energy: excited with him, gentle and slower when he is tired, sad or upset, quick and to the point when he is in a hurry. "
                 + "Listen to how he sounds (a tired, low, shaky, irritated or happy voice), not only to his words.\n"
-                + "- Say " + name + " now and then, naturally, not in every reply.\n"
+                + "- Say " + call + " now and then, naturally, not in every reply.\n"
                 + "## Language\n"
                 + "- Speak ONLY Telugu with a native Andhra/Telangana accent; never Tamil, Kannada or Hindi words or pronunciation (unless he asks for a translation or for English). "
                 + "Everyday English words that Telugu people use (phone, app, battery, update, message) are fine.\n"
@@ -277,7 +278,7 @@ final class Brain {
     }
 
     String systemPrompt() {
-        String name = prefs.name();
+        String name = prefs.realName(), call = prefs.name();
         SimpleDateFormat f = new SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", Locale.ENGLISH);
         String now = f.format(new Date()) + " (" + TimeZone.getDefault().getID() + ")";
 
@@ -327,7 +328,9 @@ final class Brain {
                 + "Rules:\n"
                 + "- Always reply in natural, spoken Telugu (Telugu script), Andhra/Telangana style; never Tamil words. Everyday English tech words are fine where Telugu speakers use them.\n"
                 + moodRule()
-                + "- Address him as \"" + name + "\" now and then, naturally, the way a butler would. Never \"sir\", never \"Tony\".\n"
+                + (!call.trim().equals(name)
+                        ? "- Address him as \"" + call.trim() + "\" now and then, naturally (he chose this). His name is " + name + ": if he asks his name, say " + name + ". Never \"Tony\".\n"
+                        : "- Address him as \"" + name + "\" now and then, naturally, the way a butler would. Never \"sir\", never \"Tony\".\n")
                 + "- Your reply is spoken aloud: keep it to 1-3 short sentences unless he asks for detail. No markdown, bullet lists, emoji, or URLs.\n"
                 + "- Helpful first, witty second. A light dry remark is welcome; never mock him.\n"
                 + "- You can act on the phone with your tools: phone calls, SMS, WhatsApp messages, alarms, timers, weather, web search, opening apps, maps and navigation, YouTube, the flashlight, battery status, reading and replying to the message notifications on his phone (WhatsApp, SMS, Telegram), reminders and his calendar, drafting emails in Gmail, controlling music and volume, looking at his screen and through the live camera, and his memories and missions. When he asks for one of these, use the tool; don't just describe it.\n"
