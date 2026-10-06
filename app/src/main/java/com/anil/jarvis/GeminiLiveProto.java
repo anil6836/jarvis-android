@@ -34,8 +34,8 @@ final class GeminiLiveProto {
             "play_youtube", "media_control", "now_playing", "sounds",
             // the way, apps
             "open_maps", "open_app", "close_app",
-            // notes, remembering
-            "notes", "save_memory", "forget_memory",
+            // notes, remembering, his own past (read only)
+            "notes", "save_memory", "forget_memory", "search_history",
             // the phone
             "flashlight", "phone_setting", "device_status"));
 
@@ -253,7 +253,11 @@ final class GeminiLiveProto {
         return "\n# Gemini Live\n"
                 + "- In this live talk you can do these yourself: calls, WhatsApp / SMS / Telegram messages (send only after " + name + " says send), "
                 + "reading and answering his messages, reminders, alarms, timers, weather, news, searching the internet (Google Search), songs and radio "
-                + "and volume, the way on maps, opening and closing apps, notes, remembering things, and phone settings (torch, Bluetooth, silent and so on).\n"
+                + "and volume, the way on maps, opening and closing apps, notes, remembering things, searching his own past (search_history), "
+                + "and phone settings (torch, Bluetooth, silent and so on).\n"
+                + "- You are talking with " + name + " himself: if he asks his name, say " + name + ". For anything about him, use his saved memories in "
+                + "these instructions first; for something he told you or did before that isn't there ('నేను చెప్పాను కదా', 'ఎప్పుడు…?'), call search_history. "
+                + "Never say he didn't tell you before you have looked.\n"
                 + "- For anything else Jarvis can do (bike, expenses, debts, duty, calendar, parcels, diary, health, the screen, the camera, photos, "
                 + "documents, websites, apps, missions...), first ask exactly once: 'ఇది ఇంకా Live లో రాలేదు, పాత పద్ధతిలో చేయమంటారా?'. "
                 + "Only after he says yes, call classic_jarvis with his full request; if he says no, leave it.\n"
