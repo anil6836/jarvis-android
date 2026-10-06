@@ -1882,13 +1882,13 @@ final class FloatBubble implements ScreenReader.Listener {
 
     /** The card's 🎙️: stop and take what was said, or listen (for what the card asked, else a question about this screen). */
     private void micPressed() {
-        if (listening) { try { sr.stopListening(); } catch (Exception ignored) {} return; } // "అయిపోయింది": take what was said
+        if (listening) { endListen(); return; } // "అయిపోయింది": take what was said
         if (heardTo != null) { startListening(); return; }
         listenFollowUp();
     }
 
     private void listenFollowUp() {
-        if (listening) { try { sr.stopListening(); } catch (Exception ignored) {} return; }
+        if (listening) { endListen(); return; }
         if (busy) { Toast.makeText(svc, "ఇంకా ఆలోచిస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
         if (ctxPage.isEmpty() && turns.isEmpty()) { Toast.makeText(svc, "ముందు '🧠 అర్థం చెప్పు' లాంటి ఆప్షన్ ఒకటి నొక్కండి", Toast.LENGTH_SHORT).show(); return; }
         heardTo = null;
@@ -1908,7 +1908,7 @@ final class FloatBubble implements ScreenReader.Listener {
             showCard("🎙️ అడుగు", "మైక్ అనుమతి లేదు. Jarvis యాప్ తెరిచి మైక్ అనుమతి (Allow) ఇవ్వండి.", false);
             return;
         }
-        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(svc)) {
+        if (!Ears.chosen(new Prefs(svc)) && !android.speech.SpeechRecognizer.isRecognitionAvailable(svc)) {
             showCard("🎙️ అడుగు", "ఈ ఫోన్‌లో మాటలు వినే Google సేవ దొరకలేదు.", false);
             return;
         }
@@ -1918,6 +1918,7 @@ final class FloatBubble implements ScreenReader.Listener {
         if (talkSet) MainActivity.talking(true);
         WakeService.pause(svc); // "Hey Jarvis" listening gives the mic to this question
         releaseMic();
+        if (Ears.chosen(new Prefs(svc))) { listenWithEars(); return; } // Jarvis's own mic: no beeps
         {
             final android.speech.SpeechRecognizer r = android.speech.SpeechRecognizer.createSpeechRecognizer(svc);
             sr = r;
@@ -1976,6 +1977,55 @@ final class FloatBubble implements ScreenReader.Listener {
         }
     }
 
+    /** Jarvis's own ears for the card's question (no beeps); the words come once he stops talking. */
+    private Ears ears;
+
+    private void listenWithEars() {
+        final Ears e = new Ears(svc, new Prefs(svc));
+        ears = e;
+        listening = true;
+        if (micBtn != null) micBtn.setText("✋ అయిపోయింది");
+        if (cardTitle != null) cardTitle.setText("🎙️ ఒక్క క్షణం…");
+        e.start(8000, heardTo != null, new Ears.Callback() { // (✍️ "what to write" may be long)
+            private boolean mine() { return ears == e && listening; }
+            @Override public void opened() { if (mine() && cardTitle != null) cardTitle.setText("🎙️ వింటున్నాను… అడగండి"); }
+            @Override public void level(float level) {}
+            @Override public void understanding() { if (mine() && cardTitle != null) cardTitle.setText("🎙️ అర్థం చేసుకుంటున్నాను…"); }
+            @Override public void heard(String text) {
+                if (!mine()) return;
+                ears = null;
+                String q = text == null ? "" : text.trim();
+                doneListening();
+                if (q.isEmpty()) { earsFailed(android.speech.SpeechRecognizer.ERROR_NO_MATCH); return; }
+                if (cardText != null) cardText.setText("“" + q + "”");
+                java.util.function.Consumer<String> to = heardTo;
+                heardTo = null;
+                if (to != null) to.accept(q); else followUp(q);
+            }
+            @Override public void failed(int error) {
+                if (!mine()) return;
+                ears = null;
+                doneListening();
+                earsFailed(error);
+            }
+        });
+    }
+
+    /** Jarvis's own ears ended without words: why, on the card (the mic not to be had here: the panel asks instead). */
+    private void earsFailed(int error) {
+        boolean noMic = error == android.speech.SpeechRecognizer.ERROR_AUDIO || error == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS;
+        if (noMic && heardTo == null) { askInPanel(); return; }
+        boolean silence = error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
+        if (cardTitle != null) cardTitle.setText(silence ? "🎙️ వినిపించలేదు. మళ్ళీ 🎙️ నొక్కండి" : "🎙️ " + VoiceIO.failText(error));
+        if (cardText != null && !lastAnswer.isEmpty()) cardText.setText(lastAnswer);
+    }
+
+    /** ✋ అయిపోయింది: what he said so far is taken. */
+    private void endListen() {
+        if (ears != null) { ears.finishNow(); return; }
+        try { if (sr != null) sr.stopListening(); } catch (Exception ignored) {}
+    }
+
     /** When this phone keeps the mic from the floating card: Jarvis's panel opens with this screen and the answer in mind. */
     private void askInPanel() {
         String page = ctxPage.length() > 3000 ? ctxPage.substring(0, 3000) + "…" : ctxPage;
@@ -2020,6 +2070,7 @@ final class FloatBubble implements ScreenReader.Listener {
 
     private void stopListening() {
         if (!listening) return;
+        if (ears != null) { ears.cancel(); ears = null; }
         try { if (sr != null) sr.cancel(); } catch (Exception ignored) {}
         doneListening();
     }

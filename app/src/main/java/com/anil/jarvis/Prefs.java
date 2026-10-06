@@ -122,6 +122,10 @@ final class Prefs {
     boolean listenOnOpen() { return sp.getBoolean("listen_on_open", true); }
     /** "Jarvis" opens a small Google-style panel over the current app instead of the full screen. */
     boolean compactPanel() { return sp.getBoolean("compact_panel", true); }
+    /** How Jarvis hears him: "openai" / "gemini" (Jarvis's own mic, no beeps; the AI writes the words) or "google" (the phone's speech service, with its beeps). */
+    String earsMode() { return sp.getString("ears_mode", "openai"); }
+    /** The OpenAI speech-to-text model for "openai" (he sets it; the voice-message "మాటలు" model by default). */
+    String earsModel() { String m = sp.getString("ears_model", "").trim(); return m.isEmpty() ? "gpt-4o-mini-transcribe" : m; }
     /** The Jarvis camera listens all the time (the phone's mic beeps each time it reopens), not only after "Jarvis" / 🎙️. */
     boolean camAlwaysListen() { return sp.getBoolean("cam_always_listen", false); }
 

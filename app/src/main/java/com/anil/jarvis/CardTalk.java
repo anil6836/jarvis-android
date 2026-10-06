@@ -623,7 +623,7 @@ final class CardTalk implements VoiceIO.Listener {
         }
         hold();
         if (step == DICTATE || step == CONFIRM) focus(true); // his video / music pauses while he gives the reply
-        voice.listen(p.listenLang());
+        if (step == DICTATE || step == ASK_REPLY) voice.listenLong(p.listenLang()); else voice.listen(p.listenLang()); // (a reply may be long)
         card.status("🎙️ ఒక్క క్షణం…");
     }
 
@@ -640,6 +640,8 @@ final class CardTalk implements VoiceIO.Listener {
     @Override public void onListening() { if (!stopped) card.status("🎙️ వింటున్నాను… (" + hint() + ")"); }
 
     @Override public void onPartial(String text) { if (!stopped) card.status("🎙️ “" + text + "”"); }
+
+    @Override public void onUnderstanding() { if (!stopped) card.status("🎙️ అర్థం చేసుకుంటున్నాను…"); }
 
     @Override public void onHeard(String text) {
         if (stopped) return;

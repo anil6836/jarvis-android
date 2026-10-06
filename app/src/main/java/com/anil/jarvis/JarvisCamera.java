@@ -641,6 +641,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     }
 
     @Override public void onListening() { partial.setText("🎙️ వింటున్నాను…"); refreshButtons(); }
+    @Override public void onUnderstanding() { partial.setText("🎙️ అర్థం చేసుకుంటున్నాను…"); }
     @Override public void onPartial(String text) { partial.setText("🎙️ " + text); }
     @Override public void onLevel(float level) {}
     @Override public void onVoiceReady() { listenSoon(300); }

@@ -631,6 +631,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onListening() { status.setText("వింటున్నాను… మాట్లాడండి"); syncPause(); }
 
+    @Override public void onUnderstanding() { status.setText("అర్థం చేసుకుంటున్నాను…"); }
+
     @Override public void onPartial(String text) {
         partialHeard = text == null ? "" : text.trim();
         showHeard(text);

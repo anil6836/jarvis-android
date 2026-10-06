@@ -33,6 +33,8 @@ final class VoiceIO {
         default void onWord(String spoken, int start, int end) {}
         /** Another Jarvis screen started listening (the panel over the app): this listen was stopped quietly. */
         default void onMicTaken() {}
+        /** He finished talking and Jarvis's own ears are writing out the words (a moment). */
+        default void onUnderstanding() {}
     }
 
     // What he said while Jarvis's speech was paused (see pausedHeard).
@@ -580,7 +582,7 @@ final class VoiceIO {
     }
 
     boolean canListen() {
-        return SpeechRecognizer.isRecognitionAvailable(ctx);
+        return Ears.chosen(prefs) || SpeechRecognizer.isRecognitionAvailable(ctx);
     }
 
     // ---- listening
@@ -664,12 +666,20 @@ final class VoiceIO {
 
     void listen(String lang) { listen(lang, 0); }
 
+    /** A message he dictates (a reply): Jarvis's own ears let him talk up to a minute. */
+    void listenLong(String lang) { longTalk = true; listen(lang, 0); }
+
+    private boolean longTalk;
+
     /**
      * waitSeconds: how long to wait for him to start talking, when longer than the setting (the camera's always-on
      * listening waits longer, so the mic is opened and closed less often).
      */
     void listen(String lang, int waitSeconds) {
         if (shut) return;
+        if (ears != null) { ears.cancel(); ears = null; } // an earlier listen still recording: let it go
+        boolean dictation = longTalk;
+        longTalk = false;
         if (paused && speaking) barge.stop(); // keep the paused speech: he may say "కొనసాగించు"
         else stopSpeaking();
         session++;
@@ -706,7 +716,35 @@ final class VoiceIO {
         VoiceIO other = holder;
         holder = this;
         if (other != null && other != this && other.listening && !other.shut) other.micTaken(); // (after listening = true here)
+        if (Ears.chosen(prefs)) { listenEars(dictation); return; } // Jarvis's own mic: no beeps
         start();
+    }
+
+    /** Jarvis's own ears (Ears): listening without the phone's speech service, so without its beeps. */
+    private Ears ears;
+
+    private void listenEars(boolean dictation) {
+        final int s = session;
+        final Ears e = new Ears(ctx, prefs);
+        ears = e;
+        trace("🎧");
+        e.start(windowMs, dictation, new Ears.Callback() {
+            private boolean mine() { return s == session && ears == e && listening && !shut; }
+            @Override public void opened() { if (mine()) { trace("🎙"); l.onListening(); } }
+            @Override public void level(float v) { if (mine()) l.onLevel(v); }
+            @Override public void understanding() { if (mine()) { trace("■"); l.onUnderstanding(); } }
+            @Override public void heard(String text) {
+                if (!mine()) return;
+                ears = null;
+                if (text == null || text.trim().isEmpty()) { if (wrapUp) VoiceIO.this.heard(""); else fail(SpeechRecognizer.ERROR_NO_MATCH); }
+                else VoiceIO.this.heard(text.trim());
+            }
+            @Override public void failed(int error) {
+                if (!mine()) return;
+                ears = null;
+                fail(error);
+            }
+        });
     }
 
     /** A new Jarvis screen came up over another that is listening (main thread): that one lets go of the mic now. */
@@ -1074,7 +1112,7 @@ final class VoiceIO {
                 return "మైక్ దొరకలేదు: వేరే యాప్ మైక్ వాడుతోందేమో.";
             case SpeechRecognizer.ERROR_SERVER:
             case 11: // ERROR_SERVER_DISCONNECTED
-                return "Google వాయిస్ సేవ స్పందించలేదు.";
+                return "మాటలు అర్థం చేసుకునే సేవ స్పందించలేదు.";
             case SpeechRecognizer.ERROR_CLIENT:
             case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
             case ERROR_STUCK:
@@ -1089,6 +1127,14 @@ final class VoiceIO {
             case 12: // ERROR_LANGUAGE_NOT_SUPPORTED
             case 13: // ERROR_LANGUAGE_UNAVAILABLE
                 return "తెలుగు వాయిస్ టైపింగ్ లేదు. Google యాప్ → Settings → Voice → Languages లో తెలుగు జోడించండి.";
+            case Ears.ERROR_NO_KEY:
+                return "మాటలు వినడానికి ఎంచుకున్న AI (Settings → వాయిస్ → మాటలు వినే పద్ధతి) కి key లేదు. key పెట్టండి, లేదా వేరే పద్ధతి ఎంచుకోండి.";
+            case Ears.ERROR_BAD_KEY:
+                return "మాటలు వినే AI key పనిచేయడం లేదు (Settings → వాయిస్ చూడండి).";
+            case Ears.ERROR_MODEL:
+                return "మాటలు వినే మోడల్ పేరు తప్పుగా ఉంది (Settings → వాయిస్ → మోడల్ చూడండి).";
+            case Ears.ERROR_QUOTA:
+                return "మాటలు వినే AI ఖాతాలో బ్యాలెన్స్/లిమిట్ అయిపోయింది. రీఛార్జ్ చేయండి, లేదా Settings → వాయిస్‌లో వేరే పద్ధతి ఎంచుకోండి.";
             default:
                 return "వినడంలో సమస్య (" + error + ").";
         }
@@ -1104,6 +1150,7 @@ final class VoiceIO {
     void stopListening() {
         if (!listening) return;
         wrapUp = true;
+        if (ears != null) { ears.finishNow(); return; } // what he said so far is written out
         main.removeCallbacks(endCheck);
         main.removeCallbacks(nearEnd);
         if (sr != null && recBusy) {
@@ -1123,6 +1170,7 @@ final class VoiceIO {
 
     void cancelListening() {
         boolean was = listening;
+        if (ears != null) { ears.cancel(); ears = null; }
         session++;
         main.removeCallbacks(watchdog);
         main.removeCallbacks(windowEnd);
@@ -1149,6 +1197,7 @@ final class VoiceIO {
         speaking = false;
         Duck.off();
         listening = false;
+        if (ears != null) { ears.cancel(); ears = null; }
         natural.stop();
         main.removeCallbacks(endCheck);
         main.removeCallbacks(nearEnd);

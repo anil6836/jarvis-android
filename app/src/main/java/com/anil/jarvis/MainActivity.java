@@ -1597,6 +1597,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         syncPause();
     }
 
+    @Override public void onUnderstanding() { status.setText("అర్థం చేసుకుంటున్నాను…"); }
+
     @Override public void onPartial(String text) {
         input.setText(text);
         input.setSelection(input.getText().length());

@@ -61,7 +61,8 @@ public class SettingsActivity extends Activity {
     private Switch newsAuto;
     private EditText newsPlaces;
     private Switch diaryAsk, holidayRemind, findPhone, coughAsk;
-    private RadioGroup groupMode, typingMode;
+    private RadioGroup groupMode, typingMode, earsMode;
+    private EditText earsModel;
     private EditText myNames;
     private Switch bubbleAll;
     private EditText priceCity, dailyPrices, findCode;
@@ -371,6 +372,18 @@ public class SettingsActivity extends Activity {
 
         // ---- voice
         section("వాయిస్");
+        TextView el = Ui.text(this, "🎙️ మీ మాటలు వినే పద్ధతి:", 15, Ui.TEXT);
+        el.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2));
+        box.addView(el);
+        earsMode = new RadioGroup(this);
+        earsMode.addView(radio(81, "OpenAI · Jarvis సొంత మైక్, బీప్ ఉండదు (నెట్ కావాలి, చాలా కొద్ది ఖర్చు)"));
+        earsMode.addView(radio(82, "Gemini · Jarvis సొంత మైక్, బీప్ ఉండదు (నెట్ కావాలి, మీ Gemini మోడల్)"));
+        earsMode.addView(radio(83, "Google వాయిస్ టైపింగ్ · మాటలు లైవ్‌గా కనిపిస్తాయి, నెట్ లేకుండా కూడా; కానీ మైక్ ఆన్/ఆఫ్ బీప్‌లు వస్తాయి"));
+        String em0 = prefs.earsMode();
+        earsMode.check("gemini".equals(em0) ? 82 : "google".equals(em0) ? 83 : 81);
+        box.addView(earsMode);
+        earsModel = field("OpenAI మాటల మోడల్ (OpenAI ఎంచుకుంటే)", prefs.earsModel(), false);
+        note("OpenAI / Gemini: మీరు మాట్లాడటం ఆపాక మాటలు ఒకేసారి వస్తాయి. ఆ AI అందకపోతే (నెట్/key) Jarvis వేరే దానికి మారదు, ఎందుకో చెబుతుంది.");
         voice = toggle("సమాధానాలు పైకి చదివి వినిపించు", prefs.voiceReplies());
         followUp = toggle("సమాధానం తర్వాత మళ్లీ వినడం (సంభాషణ మోడ్)", prefs.followUp());
         listenWindowLabel = Ui.text(this, "", 15, Ui.MUTED);
@@ -1260,6 +1273,9 @@ public class SettingsActivity extends Activity {
         if (!heard.isEmpty()) s.append("• చివరి వినడం: ").append(heard)
                 .append("\n   (▶ మైక్ మొదలు · 🎙 తెరిచింది · ■ మీరు మాట్లాడటం ఆపారు · ✗ ఫోన్ ఆపింది)\n");
         if (!MicQuiet.info.isEmpty()) s.append("• మైక్ బీప్ ఆపడానికి క్షణం పాటు మ్యూట్ చేసేవి: ").append(MicQuiet.info).append("\n");
+        s.append("• మాటలు వినే పద్ధతి: ").append("gemini".equals(prefs.earsMode()) ? "Gemini (Jarvis సొంత మైక్)" : "google".equals(prefs.earsMode())
+                ? "Google వాయిస్ టైపింగ్ (బీప్‌లతో)" : "OpenAI " + prefs.earsModel() + " (Jarvis సొంత మైక్)").append("\n");
+        if (!Ears.lastError.isEmpty()) s.append("• మాటలు వినే AI చివరి తప్పు: ").append(Ears.lastError).append("\n");
         String last = NotifyListener.lastMessageNote;
         s.append("\nచివరి మెసేజ్: ").append(last == null || last.isEmpty() ? "Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు" : last);
         checkInfo.setText(s.toString().trim());
@@ -1338,6 +1354,9 @@ public class SettingsActivity extends Activity {
         e.putBoolean("read_messages", readMessages.isChecked());
         int gmc = groupMode.getCheckedRadioButtonId();
         e.putString("group_mode", gmc == 64 ? "all" : gmc == 66 ? "none" : "mine");
+        int emc = earsMode.getCheckedRadioButtonId();
+        e.putString("ears_mode", emc == 82 ? "gemini" : emc == 83 ? "google" : "openai");
+        e.putString("ears_model", earsModel.getText().toString().trim());
         int tmc = typingMode.getCheckedRadioButtonId();
         e.putString("typing_mode", tmc == 72 ? "name" : tmc == 73 ? "silent" : "read");
         e.putString("my_names", myNames.getText().toString().trim());
