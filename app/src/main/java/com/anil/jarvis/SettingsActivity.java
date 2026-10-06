@@ -61,7 +61,7 @@ public class SettingsActivity extends Activity {
     private Switch newsAuto;
     private EditText newsPlaces;
     private Switch diaryAsk, holidayRemind, findPhone, coughAsk;
-    private RadioGroup groupMode, typingMode, earsMode, liveProvider, earsOther;
+    private RadioGroup groupMode, typingMode, earsMode, liveProvider, earsOther, liveBarge;
     private View earsOtherBox;
     /** The voice choice before the last tap (only leaving "⚡ Gemini Live" turns Live off). */
     private int earsWas;
@@ -504,6 +504,17 @@ public class SettingsActivity extends Activity {
                 + "మోడల్ పేరు తప్పైతే ఎందుకో చెబుతుంది."); 
         livePatient = toggle("మీరు మాట పూర్తి చేసే వరకు ఆగి, తర్వాతే జవాబివ్వు (మధ్యలో ఆలోచిస్తూ ఆగినా కట్ చేయదు)", prefs.livePatient());
         bargeIn = toggle("Jarvis మాట్లాడుతుండగా మధ్యలో మాట్లాడితే ఆగి వినాలి", prefs.bargeIn());
+        TextView lb = Ui.text(this, "Gemini Live లో Jarvis మాట్లాడుతుండగా ఆపడం (ఫోన్ స్పీకర్‌లో):", 15, Ui.TEXT);
+        lb.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2));
+        box.addView(lb);
+        liveBarge = new RadioGroup(this);
+        liveBarge.addView(radio(95, "\"Jarvis\" లేదా \"stop\" అంటే ఆగి వింటుంది (సిఫార్సు: Jarvis గొంతుకి తానే ఆగదు)"));
+        liveBarge.addView(radio(96, "మీరు ఏది మాట్లాడినా ఆగుతుంది (శబ్దం బట్టి; గట్టిగా మాట్లాడాలి)"));
+        liveBarge.addView(radio(97, "మధ్యలో ఆగదు: పూర్తయ్యాక వింటుంది"));
+        String lb0 = prefs.liveBarge();
+        liveBarge.check("voice".equals(lb0) ? 96 : "off".equals(lb0) ? 97 : 95);
+        box.addView(liveBarge);
+        note("ఏ పద్ధతిలోనైనా: Jarvis మాట్లాడుతుండగా స్క్రీన్‌పై Jarvis (గుండ్రటి గుర్తు) నొక్కితే వెంటనే ఆగి వింటుంది. ఇయర్‌ఫోన్స్ / హెల్మెట్‌తో మీరు మాట్లాడగానే ఆగుతుంది.");
         bargeSensLabel = Ui.text(this, "", 15, Ui.MUTED);
         box.addView(bargeSensLabel);
         bargeSens = new SeekBar(this);
@@ -1470,6 +1481,8 @@ public class SettingsActivity extends Activity {
         saveBalance(balOpenAi, Usage.OPENAI);
         saveBalance(balAnthropic, Usage.ANTHROPIC);
         e.putBoolean("barge_in", bargeIn.isChecked());
+        int lbc = liveBarge.getCheckedRadioButtonId();
+        e.putString("live_barge", lbc == 96 ? "voice" : lbc == 97 ? "off" : "word");
         e.putInt("barge_sens", bargeSens.getProgress());
         e.putBoolean("barge_call_voice", bargeCallVoice.isChecked());
         e.putString("realtime_model", realtimeModel.getText().toString().trim());

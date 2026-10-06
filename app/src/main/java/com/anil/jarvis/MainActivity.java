@@ -1426,6 +1426,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         status.setText(muted ? "మైక్ ఆఫ్" : "మాట్లాడండి…");
     }
 
+    @Override public void onLiveInterrupt() { if (live != null) live.interrupt(); } // he tapped Jarvis while it talks
+
     @Override public void onLiveMinimize() {
         liveScreen.hide();
         refreshAction();
@@ -1478,6 +1480,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (imm != null) imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
         } catch (Exception ignored) {}
         live.start(instructions != null ? instructions : brain.liveInstructions(store.chat()));
+        setVolumeControlStream(live.volumeStream()); // volume keys = Jarvis's live voice (the AI assistant volume)
         refreshAction();
     }
 
@@ -1540,6 +1543,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onLiveEnded(LiveTalk session, String reason) {
         if (session != live) return; // an older session ended; the current one is still running
         live = null;
+        setVolumeControlStream(AudioManager.STREAM_MUSIC);
         liveOn = false;
         liveScreen.hide();
         liveBubble = null;

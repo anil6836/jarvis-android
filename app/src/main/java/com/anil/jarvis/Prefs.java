@@ -97,6 +97,14 @@ final class Prefs {
     }
     /** Let Anil interrupt Jarvis mid-sentence. Turn off if Jarvis keeps interrupting itself. */
     boolean bargeIn() { return sp.getBoolean("barge_in", true); }
+    /**
+     * Gemini Live on the phone's speaker, talking over Jarvis: "word" = it stops when he says "Jarvis" or "stop"
+     * (heard on the phone, so Jarvis's own loud voice can't do it); "voice" = any loud talk stops it; "off" = it finishes.
+     */
+    String liveBarge() {
+        String m = sp.getString("live_barge", "word");
+        return "voice".equals(m) || "off".equals(m) ? m : "word";
+    }
     int bargeSens() { return sp.getInt("barge_sens", 2); }
     /** Talk-over: Jarvis's voice through the phone-call path (strongest echo cancelling, but sounds like a call). */
     boolean bargeCallVoice() { return sp.getBoolean("barge_call_voice", false); }

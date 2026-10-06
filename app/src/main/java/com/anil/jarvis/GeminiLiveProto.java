@@ -261,7 +261,8 @@ final class GeminiLiveProto {
                 + "read it back and ask; act only after he clearly says yes (పంపు / చేయి / అవును).\n"
                 + "- If he asks to switch how you listen or talk ('Google వాయిస్‌కి మారు', 'Live ఆపు', 'OpenAI కి మారు'), call voice_mode; "
                 + "if he asks for another voice of yours ('గొంతు మార్చు', 'ఇంకో గొంతు'), call live_voice.\n"
-                + "- After calling a tool, never say it is done (sent, called, set) until its result has come back and says so; if it failed, say why honestly.\n";
+                + "- After calling a tool, never say it is done (sent, called, set) until its result has come back and says so; if it failed, say why honestly.\n"
+                + "- Don't say the words 'Jarvis' or 'stop' yourself while talking: " + name + " says them to stop you mid-answer.\n";
     }
 
     private static JSONObject fn(String name, String description, JSONObject params, String... required) throws Exception {

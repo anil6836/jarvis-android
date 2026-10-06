@@ -15,6 +15,12 @@ interface LiveTalk {
     /** The language to interpret next, when this talk ended to hand over to the live interpreter. */
     String interpreterLang();
 
+    /** He tapped Jarvis while it talks: it stops this answer and listens. */
+    default void interrupt() {}
+
+    /** Which volume the volume keys should change during this talk (Jarvis's voice). */
+    default int volumeStream() { return android.media.AudioManager.STREAM_MUSIC; }
+
     /** The live talk he chose in Settings (Gemini Live or OpenAI's). brain: for what Live hands to the usual way (Gemini). */
     static LiveTalk create(Context c, Prefs prefs, Tools tools, Brain brain, LiveSession.Listener l) {
         return prefs.liveGemini() ? new GeminiLive(c, prefs, tools, brain, l) : new LiveSession(c, prefs, tools, l);

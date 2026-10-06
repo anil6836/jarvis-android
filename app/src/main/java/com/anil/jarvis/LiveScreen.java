@@ -18,6 +18,8 @@ final class LiveScreen extends FrameLayout {
         void onLiveEnd();
         void onLiveMute(boolean muted);
         void onLiveMinimize();
+        /** He tapped Jarvis (the orb) while it talks: stop this answer and listen. */
+        default void onLiveInterrupt() {}
     }
 
     private static final int BLUE = 0xFF2F6BEF;
@@ -67,6 +69,7 @@ final class LiveScreen extends FrameLayout {
         // middle: the core
         orb = new HoloOrb(c);
         orb.setContentDescription("Jarvis");
+        orb.setOnClickListener(v -> actions.onLiveInterrupt()); // tap Jarvis to stop its answer
         col.addView(orb, new LinearLayout.LayoutParams(-1, 0, 1));
 
         // what is being said

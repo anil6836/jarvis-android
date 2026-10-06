@@ -102,6 +102,63 @@ final class GeminiLive implements LiveTalk {
     private volatile boolean echoGate;
     /** He talked over Jarvis: his voice goes to Gemini, and the rest of that answer is dropped. */
     private volatile boolean barged;
+    /** How he stops Jarvis mid-answer on the speaker (Settings): "word", "voice" or "off". */
+    private volatile String bargeMode = "word";
+    /** The offline "Jarvis" / "stop" word detector (the same small model as the wake word), or null until it is ready. */
+    private volatile org.vosk.Recognizer word;
+    private org.vosk.Model wordModel;
+
+    /** Loads the word detector in the background (the model is on the phone once the wake word has used it). */
+    private void loadWord() {
+        new Thread(() -> {
+            org.vosk.Model m = null;
+            org.vosk.Recognizer r = null;
+            try {
+                java.io.File dir = VoskModel.ensure(ctx, s -> {});
+                if (closed) return;
+                org.vosk.LibVosk.setLogLevel(org.vosk.LogLevel.WARNINGS);
+                m = new org.vosk.Model(dir.getAbsolutePath());
+                r = new org.vosk.Recognizer(m, (float) IN_RATE, "[\"jarvis\", \"hey jarvis\", \"stop\", \"[unk]\"]");
+                r.setWords(true);
+                synchronized (GeminiLive.this) {
+                    if (!closed) { wordModel = m; word = r; m = null; r = null; }
+                }
+            } catch (Throwable ignored) { // (no model: the loudness way is used instead)
+            } finally {
+                try { if (r != null) r.close(); } catch (Throwable ignored) {}
+                try { if (m != null) m.close(); } catch (Throwable ignored) {}
+            }
+        }, "jarvis-live-word").start();
+    }
+
+    /** Frees the word detector (the mic thread, when it ends). */
+    private void closeWord() {
+        org.vosk.Recognizer r;
+        org.vosk.Model m;
+        synchronized (this) { r = word; m = wordModel; word = null; wordModel = null; }
+        try { if (r != null) r.close(); } catch (Throwable ignored) {}
+        try { if (m != null) m.close(); } catch (Throwable ignored) {}
+    }
+
+    /** "Jarvis" (or "stop") heard in this piece of the mic, over Jarvis's own voice. */
+    private static boolean saidStopWord(org.vosk.Recognizer r, byte[] pcm) {
+        try {
+            if (r.acceptWaveForm(pcm, pcm.length)) {
+                JSONObject res = new JSONObject(r.getResult());
+                org.json.JSONArray ws = res.optJSONArray("result");
+                for (int i = 0; ws != null && i < ws.length(); i++) {
+                    JSONObject w = ws.getJSONObject(i);
+                    String t = w.optString("word");
+                    double c = w.optDouble("conf", 0);
+                    if ("jarvis".equals(t) && c >= 0.8 || "stop".equals(t) && c >= 0.9) return true;
+                }
+                return false;
+            }
+            return new JSONObject(r.getPartialResult()).optString("partial").contains("jarvis"); // ("jarvis" is clear enough not to wait)
+        } catch (Exception e) {
+            return false;
+        }
+    }
     private long lastLevelPost, lastVoicePost;
     /** His words this turn (not saved yet) and Jarvis's words this turn. */
     private final StringBuilder heard = new StringBuilder(), said = new StringBuilder();
@@ -131,6 +188,8 @@ final class GeminiLive implements LiveTalk {
         lastActivity = startedAt;
         routeAudio();
         echoGate = !headset && !prefs.bargeCallVoice();
+        bargeMode = prefs.liveBarge();
+        if (echoGate && "word".equals(bargeMode)) loadWord();
         state(OrbView.THINKING, "Gemini Live కి కనెక్ట్ అవుతున్నాను…");
         client = new OkHttpClient.Builder()
                 .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -348,6 +407,28 @@ final class GeminiLive implements LiveTalk {
     }
 
     @Override public boolean isOpen() { return ready && !closed; }
+
+    /** Jarvis's voice goes the call way (a Bluetooth headset, or "call voice" on). */
+    private boolean callPathVoice() { return prefs.bargeCallVoice() || btHeadset; }
+
+    /** The AI assistant volume (Android's assistant stream, 11) while Jarvis talks there; the call volume on the call path. */
+    @Override public int volumeStream() {
+        if (callPathVoice() && routed) return AudioManager.USE_DEFAULT_STREAM_TYPE;
+        return Build.VERSION.SDK_INT >= 29 ? 11 : AudioManager.STREAM_MUSIC; // (11 = STREAM_ASSISTANT; on old phones it follows media)
+    }
+
+    /** He tapped Jarvis: the rest of this answer is dropped and his voice goes to Gemini. */
+    @Override public void interrupt() {
+        if (closed || !(jarvisSpeaking || !playQueue.isEmpty())) return;
+        dropPre = true;
+        barged = true;
+        playQueue.clear();
+        flushRequested = true;
+        lastActivity = SystemClock.elapsedRealtime();
+    }
+
+    /** He tapped: the mic's last moment (Jarvis's own voice) is dropped, not sent. */
+    private volatile boolean dropPre;
 
     @Override public void setMuted(boolean m) {
         boolean was = muted;
@@ -786,6 +867,22 @@ final class GeminiLive implements LiveTalk {
         if (am == null) return;
         oldMode = am.getMode();
         if (oldMode != AudioManager.MODE_NORMAL) return; // a call (or another call app) has the sound: leave it as it is
+        // On the phone's speaker (no headset, "call voice" off) the phone stays as it is: Jarvis's voice plays on the
+        // AI assistant volume like Gemini's or ChatGPT's, and the volume keys work on it (the call mode would take the
+        // volume keys for the call volume). A headset (or "call voice") uses the call path, as a headset's mic needs it.
+        try { // a headset with a mic (wired, USB, or Bluetooth for calls: a helmet)
+            if (Build.VERSION.SDK_INT >= 31) {
+                for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
+                    int t = d.getType();
+                    if (t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || t == AudioDeviceInfo.TYPE_BLE_HEADSET) { btHeadset = true; headset = true; }
+                    if (t == AudioDeviceInfo.TYPE_WIRED_HEADSET || t == AudioDeviceInfo.TYPE_USB_HEADSET) headset = true;
+                }
+            } else {
+                btHeadset = am.isBluetoothScoOn();
+                headset = btHeadset || am.isWiredHeadsetOn();
+            }
+        } catch (Exception ignored) {}
+        if (!headset && !prefs.bargeCallVoice()) return;
         routed = true;
         try {
             am.setMode(AudioManager.MODE_IN_COMMUNICATION); // the phone's echo cancelling works best on this path
@@ -841,6 +938,7 @@ final class GeminiLive implements LiveTalk {
             int lv = Math.max(0, Math.min(4, prefs.bargeSens()));
             double k = BARGE_SCALE[lv];
             int need = Math.max(3, 5 + BARGE_NEED_ADJ[lv] / 2); // about 200 ms of his voice above Jarvis's echo
+            boolean wasSpeaking = false;
             try {
                 int min = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
                 rec = new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, IN_RATE,
@@ -881,7 +979,7 @@ final class GeminiLive implements LiveTalk {
                         main.post(() -> l.onLiveLevel(level));
                     }
                     // muted, or (talk-over off) Jarvis is talking: nothing is sent (so it doesn't hear itself)
-                    boolean hold = muted || (!prefs.bargeIn() && speakingNow);
+                    boolean hold = muted || ("off".equals(bargeMode) && speakingNow);
                     if (hold) {
                         if (!wasHeld && ready && !muted) sendRaw(GeminiLiveProto.audioEnd()); // what he said is taken as said
                         wasHeld = true;
@@ -889,8 +987,19 @@ final class GeminiLive implements LiveTalk {
                         continue;
                     }
                     wasHeld = false;
+                    boolean newAnswer = speakingNow && !wasSpeaking;
+                    wasSpeaking = speakingNow;
+                    if (dropPre) { pre.clear(); dropPre = false; } // (he tapped: Jarvis's last echo is not sent)
                     if (echoGate && !barged) {
-                        if (speakingNow) {
+                        org.vosk.Recognizer wr = "word".equals(bargeMode) ? word : null;
+                        if (newAnswer && wr != null) { try { wr.getFinalResult(); } catch (Throwable ignored) {} } // a new answer: the word detector starts clean
+                        if (speakingNow && wr != null) {
+                            if (saidStopWord(wr, bytes)) { // he said "Jarvis" / "stop" over Jarvis's voice
+                                barged = true;
+                                playQueue.clear();
+                                flushRequested = true;
+                            }
+                        } else if (speakingNow) {
                             double out = PlaybackLevel.now();
                             double noise = quiet.n >= 5 ? quiet.pct(0.5) : 0;
                             if (out > 300) sounding++;
@@ -898,7 +1007,7 @@ final class GeminiLive implements LiveTalk {
                             else if (out >= 0 && out < 150) quiet.add(rms); // the room, in Jarvis's pauses
                             boolean judge = out >= 0 && sounding >= 15 && ratio.n >= 10; // after 0.6 s of Jarvis sounding
                             double limit = Math.max(Math.max(500, noise * 3), Math.hypot(ratio.pct(0.85) * Math.max(0, out) * 1.8, noise)) * k;
-                            if (prefs.bargeIn() && judge && rms > limit) {
+                            if (judge && rms > limit) { // (the loudness way: "voice", or "word" while its detector loads)
                                 if (++loud >= need) { // he is talking over Jarvis: stop it, and Gemini hears him from his first word
                                     loud = 0;
                                     barged = true;
@@ -939,6 +1048,7 @@ final class GeminiLive implements LiveTalk {
                     main.post(() -> fail(0, msg));
                 }
             } finally {
+                closeWord();
                 if (aec != null) aec.release();
                 if (ns != null) ns.release();
                 if (rec != null) {
@@ -990,12 +1100,12 @@ final class GeminiLive implements LiveTalk {
             AudioTrack t = null;
             try {
                 int min = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
-                // Jarvis's own clear voice on the media volume (the volume keys work on it); the call path only with
-                // "call voice" on or a Bluetooth headset (its mic only works on that path)
-                boolean callVoice = prefs.bargeCallVoice() || btHeadset;
+                // Jarvis's own clear voice on the AI assistant volume (as Gemini's and ChatGPT's; the volume keys work on it);
+                // the call path only with "call voice" on or a Bluetooth headset (its mic only works on that path)
+                boolean callVoice = callPathVoice();
                 t = new AudioTrack.Builder()
                         .setAudioAttributes(new AudioAttributes.Builder()
-                                .setUsage(callVoice ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
+                                .setUsage(callVoice ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_ASSISTANT)
                                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                                 .build())
                         .setAudioFormat(new AudioFormat.Builder()

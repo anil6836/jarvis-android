@@ -243,6 +243,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         orb = new HoloOrb(this, 60);
+        orb.setOnClickListener(v -> { if (live != null) live.interrupt(); }); // in Live: tap Jarvis to stop its answer
         top.addView(orb, new LinearLayout.LayoutParams(dp(62), dp(62)));
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
@@ -827,6 +828,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         Tools.takeInterpreter(); // a stale request from an earlier turn
         live = LiveTalk.create(this, prefs, tools, brain, this);
         live.start(brain.liveInstructions(store.chat()));
+        setVolumeControlStream(live.volumeStream()); // volume keys = Jarvis's live voice (the AI assistant volume)
     }
 
     private void startInterpreter(String lang) {
@@ -834,6 +836,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacks(autoClose);
         live = LiveTalk.create(this, prefs, tools, brain, this);
         live.start(Brain.interpreterInstructions(prefs.name(), lang));
+        setVolumeControlStream(live.volumeStream());
     }
 
     @Override public void onLiveState(int orbState, String text) {
@@ -861,6 +864,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onLiveEnded(LiveTalk session, String reason) {
         if (session != live) return; // an older session: the current one is still running
         live = null;
+        setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         if (isFinishing() || callText != null) return; // a call took over: keep the panel for it
         String lang = session.interpreterLang();
         if (lang != null) { startInterpreter(lang); return; } // the interpreter tool ran in live mode
