@@ -4720,6 +4720,12 @@ final class Tools {
      */
     static volatile long liveHandoffSince;
 
+    /**
+     * His turns (their time stamps) that Gemini Live heard over Jarvis's own voice and that are mostly Jarvis's last words:
+     * possibly its voice heard back, so never his yes to anything.
+     */
+    static final java.util.Set<Long> echoTurns = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /** Jarvis said something (the read-back of a draft) between these two moments (wall clock). */
     private boolean assistantBetween(long from, long to) {
         for (JSONObject o : store.chat()) {
@@ -4797,6 +4803,7 @@ final class Tools {
                 JSONObject o = chat.get(i);
                 if ("user".equals(o.optString("role"))) {
                     if (since > 0 && o.optLong("t") > since) continue;
+                    if (echoTurns.contains(o.optLong("t"))) continue; // (maybe Jarvis's own voice heard back)
                     if (o.optLong("t") > after) return o;
                     break;
                 }

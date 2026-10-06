@@ -132,11 +132,24 @@ public class FeaturesActivity extends Activity {
             new Cat("live", "🎙️", "Live, భాషలు", "Live మాటలు, English, అనువాదం", Ui.C_BLUE,
                     act("🎙️", "Live సంభాషణ", "ChatGPT లా మాట్లాడదాం", "live"),
                     info("⚡", "Gemini Live", "చాలా వేగంగా, మనిషితో మాట్లాడినట్టు", "Settings → వాయిస్ → '⚡ Gemini Live' ఎంచుకోండి, లేదా 'Jarvis, Live పెట్టు' అనండి (Gemini key కావాలి).\n\n"
-                            + "మీరు మాట్లాడుతుంటే Gemini వింటూనే, మీరు ఆపగానే దాని గొంతుతో జవాబిస్తుంది. మధ్యలో ఆపి మాట్లాడొచ్చు.\n\n"
+                            + "మీరు మాట్లాడుతుంటే Gemini వింటూనే, మీరు ఆపగానే దాని గొంతుతో జవాబిస్తుంది. మధ్యలో ఆపి మాట్లాడొచ్చు: "
+                            + "Jarvis తాను ప్లే చేసే గొంతుని తానే మైక్ నుంచి తీసేస్తుంది (Gemini యాప్ లాగా); బాగా తీసేయగలిగినప్పుడు మీరు మాట్లాడగానే ఆగి వింటుంది; "
+                            + "లేకపోతే 'Jarvis' / 'stop' అన్నా, Jarvis ని తాకినా ఆగుతుంది. ఏది పనిచేస్తోందో 'Jarvis చెక్' లో చూడొచ్చు.\n\n"
                             + "మొదటి వెర్షన్‌లో: కాల్స్, మెసేజ్‌లు (మీరు 'పంపు' అన్నాకే), రిమైండర్ / అలారం / టైమర్, వాతావరణం, వార్తలు, సెర్చ్, పాటలు / రేడియో, దారి, యాప్స్, నోట్స్, ఫోన్ సెట్టింగ్స్. "
                             + "మిగతావి అడిగితే 'ఇది ఇంకా Live లో రాలేదు, పాత పద్ధతిలో చేయమంటారా?' అని అడిగి, మీరు సరే అంటేనే చేస్తుంది.\n\n"
                             + "గొంతు: Settings → Live సంభాషణ → 'గొంతు మార్చు' (30 గొంతులు, నొక్కితే వినిపిస్తాయి), లేదా Live లో 'Jarvis, గొంతు మార్చు' / 'ఇంకో గొంతు' / 'Puck గొంతు పెట్టు'.\n"
                             + "ఎవరూ మాట్లాడకపోతే 'వినే సమయం' (మొదట 8 సెకన్లు) తర్వాత Live నిశ్శబ్దంగా ఆగిపోతుంది."),
+                    info("📜", "Echo తీసివేత: ఓపెన్ సోర్స్", "Speex DSP ఆధారంగా (BSD లైసెన్స్)", "Jarvis సొంత echo తీసివేత Speex DSP (mdf.c, preprocess.c, filterbank.c) నుంచి Java లోకి మార్చింది.\n\n"
+                            + "Copyright (C) 2003-2008 Jean-Marc Valin. Copyright 2003 Epic Games. Copyright 2002-2008 Xiph.org Foundation.\n\n"
+                            + "Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met: "
+                            + "1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer. "
+                            + "2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution. "
+                            + "3. Neither the name of the Xiph.org Foundation nor the names of its contributors (nor the name of the author) may be used to endorse or promote products derived from this software without specific prior written permission.\n\n"
+                            + "THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF "
+                            + "MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE FOUNDATION, THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, "
+                            + "SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS "
+                            + "INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT "
+                            + "OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."),
                     info("🔁", "గొంతుతో పద్ధతి మార్చు", "బైక్ మీద కూడా, Settings లేకుండా", "ఇలా అనండి:\n• 'Jarvis, Live పెట్టు' → Gemini Live\n• 'Jarvis, Live ఆపు' → మామూలు పద్ధతి\n"
                             + "• 'Jarvis, Google వాయిస్‌కి మారు' → Google వాయిస్ టైపింగ్ (బీప్‌లతో)\n• 'Jarvis, OpenAI కి మారు' → Jarvis సొంత మైక్ (OpenAI)\n• 'OpenAI Live పెట్టు' → OpenAI Live\n\n"
                             + "మార్చాక Jarvis ఏ పద్ధతిలో ఉందో చెబుతుంది. Settings → వాయిస్ లో కూడా అదే కనిపిస్తుంది."),

@@ -108,6 +108,10 @@ final class Prefs {
     int bargeSens() { return sp.getInt("barge_sens", 2); }
     /** Talk-over: Jarvis's voice through the phone-call path (strongest echo cancelling, but sounds like a call). */
     boolean bargeCallVoice() { return sp.getBoolean("barge_call_voice", false); }
+    /** Gemini Live on the phone's speaker: Jarvis takes its own voice out of the mic (so he can talk over it, as in the Gemini app). */
+    boolean liveAec() { return sp.getBoolean("live_aec", true); }
+    /** Gemini Live: the last 30 s of the mic, Jarvis's voice and the cleaned mic are saved after each talk (for an echo check). */
+    boolean echoRecord() { return sp.getBoolean("echo_record", false); }
     /** Whose live talk: "openai" (OpenAI Realtime) or "gemini" (Gemini Live). */
     String liveProvider() { return GEMINI.equals(sp.getString("live_provider", OPENAI)) ? GEMINI : OPENAI; }
     boolean liveGemini() { return GEMINI.equals(liveProvider()); }

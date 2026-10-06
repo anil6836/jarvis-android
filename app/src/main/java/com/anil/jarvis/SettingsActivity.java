@@ -78,7 +78,7 @@ public class SettingsActivity extends Activity {
     private EditText balGemini, balOpenAi, balAnthropic;
     private EditText bikeRange, bikeKwh, powerRate;
     private Switch weeklyReport;
-    private Switch bargeCallVoice;
+    private Switch bargeCallVoice, liveAec, echoRecord;
     /** Opened from the "new version" notification / note: go to Updates and start the update. */
     static final String EXTRA_UPDATE_NOW = "update_now";
     private View updatesHeader;
@@ -508,13 +508,15 @@ public class SettingsActivity extends Activity {
         lb.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2));
         box.addView(lb);
         liveBarge = new RadioGroup(this);
-        liveBarge.addView(radio(95, "\"Jarvis\" లేదా \"stop\" అంటే ఆగి వింటుంది (సిఫార్సు: Jarvis గొంతుకి తానే ఆగదు)"));
-        liveBarge.addView(radio(96, "మీరు ఏది మాట్లాడినా ఆగుతుంది (శబ్దం బట్టి; గట్టిగా మాట్లాడాలి)"));
+        liveBarge.addView(radio(95, "మీరు మాట్లాడగానే ఆగి వింటుంది, Gemini లా (Jarvis తన గొంతుని మైక్ నుంచి బాగా తీసేయగలిగినప్పుడు); లేకపోతే \"Jarvis\" లేదా \"stop\" అంటే ఆగుతుంది (సిఫార్సు)"));
+        liveBarge.addView(radio(96, "మీరు మాట్లాడగానే ఆగుతుంది, Gemini లా (Jarvis తన గొంతుని బాగా తీసేయగలిగినప్పుడు); లేకపోతే శబ్దం బట్టి (గట్టిగా మాట్లాడాలి)"));
         liveBarge.addView(radio(97, "మధ్యలో ఆగదు: పూర్తయ్యాక వింటుంది"));
         String lb0 = prefs.liveBarge();
         liveBarge.check("voice".equals(lb0) ? 96 : "off".equals(lb0) ? 97 : 95);
         box.addView(liveBarge);
-        note("ఏ పద్ధతిలోనైనా: Jarvis మాట్లాడుతుండగా స్క్రీన్‌పై Jarvis (గుండ్రటి గుర్తు) నొక్కితే వెంటనే ఆగి వింటుంది. ఇయర్‌ఫోన్స్ / హెల్మెట్‌తో మీరు మాట్లాడగానే ఆగుతుంది.");
+        liveAec = toggle("Jarvis సొంత echo తీసివేత: Jarvis తాను ప్లే చేసే గొంతుని తానే మైక్ నుంచి తీసేస్తుంది (Gemini యాప్ లాగా), అప్పుడు మీరు మాట్లాడగానే ఆగుతుంది", prefs.liveAec());
+        note("Jarvis మాట్లాడుతుండగా తన గొంతుని నేర్చుకుని (మొదటిసారి కొన్ని సెకన్లు, తర్వాత వెంటనే), సరిగ్గా తీసేయగలిగితేనే Gemini లా మీ మాటకి ఆగుతుంది; లేకపోతే పై పద్ధతి. ఏది పనిచేస్తోందో \"Jarvis చెక్\" లో కనిపిస్తుంది. ఏ పద్ధతిలోనైనా: Jarvis మాట్లాడుతుండగా స్క్రీన్‌పై Jarvis (గుండ్రటి గుర్తు) నొక్కితే వెంటనే ఆగి వింటుంది. ఇయర్‌ఫోన్స్ / హెల్మెట్‌తో మీరు మాట్లాడగానే ఆగుతుంది.");
+        echoRecord = toggle("Echo పరీక్ష రికార్డింగ్: ప్రతి Gemini Live తర్వాత చివరి 30 సెకన్లు (మైక్, Jarvis గొంతు, శుభ్రం చేసిన మైక్) Downloads/Jarvis లో సేవ్ (సరిచేయడానికి నాకు పంపవచ్చు; మామూలుగా ఆఫ్)", prefs.echoRecord());
         bargeSensLabel = Ui.text(this, "", 15, Ui.MUTED);
         box.addView(bargeSensLabel);
         bargeSens = new SeekBar(this);
@@ -1359,6 +1361,8 @@ public class SettingsActivity extends Activity {
         if (prefs.liveMode()) s.append("• Live: ").append(LiveTalk.label(prefs)).append(prefs.liveGemini() ? " (" + prefs.geminiLiveModel() + ", గొంతు " + prefs.geminiLiveVoice() + ")" : "")
                 .append(prefs.liveKeyReady() ? "" : " ✗ key లేదు").append("\n");
         if (!GeminiLive.lastInfo.isEmpty()) s.append("• చివరి Gemini Live: ").append(GeminiLive.lastInfo).append("\n");
+        if (!GeminiLive.bargeInfo.isEmpty()) s.append("• Gemini Live లో మధ్యలో మాట్లాడితే: ").append(GeminiLive.bargeInfo).append("\n");
+        if (!GeminiLive.echoRecording.isEmpty()) s.append("• చివరి echo పరీక్ష రికార్డింగ్: ").append(GeminiLive.echoRecording).append("\n");
         if ("openai".equals(prefs.earsMode()) && !prefs.earsStream())
             s.append("• మీరు మాట్లాడుతుండగానే పంపడం: ఆగింది (OpenAI ఒప్పుకోలేదు); మీరు ఆపాక మొత్తం పంపుతుంది\n");
         if (!VoiceIO.lastTurn.isEmpty()) s.append("• చివరి జవాబుకు పట్టిన సమయం (మీరు ఆపినప్పటి నుంచి): ").append(VoiceIO.lastTurn).append("\n");
@@ -1485,6 +1489,8 @@ public class SettingsActivity extends Activity {
         e.putString("live_barge", lbc == 96 ? "voice" : lbc == 97 ? "off" : "word");
         e.putInt("barge_sens", bargeSens.getProgress());
         e.putBoolean("barge_call_voice", bargeCallVoice.isChecked());
+        e.putBoolean("live_aec", liveAec.isChecked());
+        e.putBoolean("echo_record", echoRecord.isChecked());
         e.putString("realtime_model", realtimeModel.getText().toString().trim());
         e.putFloat("rate", 0.5f + rate.getProgress() / 100f);
         e.putString("lang", lang.getCheckedRadioButtonId() == 12 ? "en-IN" : "te-IN");
