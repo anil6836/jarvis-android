@@ -1275,6 +1275,10 @@ public class SettingsActivity extends Activity {
         if (!MicQuiet.info.isEmpty()) s.append("• మైక్ బీప్ ఆపడానికి క్షణం పాటు మ్యూట్ చేసేవి: ").append(MicQuiet.info).append("\n");
         s.append("• మాటలు వినే పద్ధతి: ").append("gemini".equals(prefs.earsMode()) ? "Gemini (Jarvis సొంత మైక్)" : "google".equals(prefs.earsMode())
                 ? "Google వాయిస్ టైపింగ్ (బీప్‌లతో)" : "OpenAI " + prefs.earsModel() + " (Jarvis సొంత మైక్)").append("\n");
+        if ("openai".equals(prefs.earsMode()) && !prefs.earsStream())
+            s.append("• మీరు మాట్లాడుతుండగానే పంపడం: ఆగింది (OpenAI ఒప్పుకోలేదు); మీరు ఆపాక మొత్తం పంపుతుంది\n");
+        if (!VoiceIO.lastTurn.isEmpty()) s.append("• చివరి జవాబుకు పట్టిన సమయం (మీరు ఆపినప్పటి నుంచి): ").append(VoiceIO.lastTurn).append("\n");
+        else if (!Ears.lastTimes.isEmpty()) s.append("• చివరి వినడం సమయం: ").append(Ears.lastTimes).append("\n");
         if (!Ears.lastError.isEmpty()) s.append("• మాటలు వినే AI చివరి తప్పు: ").append(Ears.lastError).append("\n");
         String last = NotifyListener.lastMessageNote;
         s.append("\nచివరి మెసేజ్: ").append(last == null || last.isEmpty() ? "Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు" : last);
@@ -1356,7 +1360,9 @@ public class SettingsActivity extends Activity {
         e.putString("group_mode", gmc == 64 ? "all" : gmc == 66 ? "none" : "mine");
         int emc = earsMode.getCheckedRadioButtonId();
         e.putString("ears_mode", emc == 82 ? "gemini" : emc == 83 ? "google" : "openai");
-        e.putString("ears_model", earsModel.getText().toString().trim());
+        String earsModelNow = earsModel.getText().toString().trim();
+        if (!earsModelNow.equals(prefs.sp.getString("ears_model", "").trim())) e.remove("ears_stream"); // a new model: sending while he talks is tried again
+        e.putString("ears_model", earsModelNow);
         int tmc = typingMode.getCheckedRadioButtonId();
         e.putString("typing_mode", tmc == 72 ? "name" : tmc == 73 ? "silent" : "read");
         e.putString("my_names", myNames.getText().toString().trim());

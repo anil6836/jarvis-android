@@ -126,6 +126,13 @@ final class Prefs {
     String earsMode() { return sp.getString("ears_mode", "openai"); }
     /** The OpenAI speech-to-text model for "openai" (he sets it; the voice-message "మాటలు" model by default). */
     String earsModel() { String m = sp.getString("ears_model", "").trim(); return m.isEmpty() ? "gpt-4o-mini-transcribe" : m; }
+    /**
+     * OpenAI: his voice is sent while he is still talking (the answer comes sooner). Off by itself only if OpenAI ever
+     * refuses a recording sent that way (then the whole recording is sent after he stops, as before); a new model name
+     * in Settings tries it again.
+     */
+    boolean earsStream() { return sp.getBoolean("ears_stream", true); }
+    void earsStreamOff() { sp.edit().putBoolean("ears_stream", false).apply(); }
     /** The Jarvis camera listens all the time (the phone's mic beeps each time it reopens), not only after "Jarvis" / 🎙️. */
     boolean camAlwaysListen() { return sp.getBoolean("cam_always_listen", false); }
 

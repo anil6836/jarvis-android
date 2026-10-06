@@ -160,7 +160,7 @@ final class VoiceIO {
             voiceInfo = "తెలుగు వాయిస్ లేదు. Settings → Text-to-speech → Google → తెలుగు డౌన్‌లోడ్ చేయండి.";
         }
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override public void onStart(String id) { main.post(() -> { if (shut) return; speaking = true; Duck.on(ctx); watchBargeIn(); l.onSpeakStart(); }); }
+            @Override public void onStart(String id) { main.post(() -> { if (shut) return; speaking = true; turnSounded(); Duck.on(ctx); watchBargeIn(); l.onSpeakStart(); }); }
             @Override public void onDone(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onError(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onStop(String id, boolean interrupted) { main.post(() -> finishSpeaking(id)); }
@@ -202,6 +202,7 @@ final class VoiceIO {
     void speak(String text, float rate) {
         if (shut || text == null || text.trim().isEmpty()) return;
         MicQuiet.speaking(); // the media sound muted for the mic's beeps comes back before he must hear Jarvis
+        if (turnHeardAt > 0 && turnSpeakAt == 0) turnSpeakAt = android.os.SystemClock.elapsedRealtime();
         feeling = prefs.emotions() ? Emotion.forText(text) : Emotion.CALM;
         paused = false;
         pausedByUser = false;
@@ -236,6 +237,7 @@ final class VoiceIO {
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
+                turnSounded();
                 Duck.on(ctx); // radio / music goes quiet while Jarvis talks
                 watchBargeIn();
                 l.onSpeakStart();
@@ -661,6 +663,23 @@ final class VoiceIO {
     private static VoiceIO holder;
     /** The last listen, step by step, for "Jarvis చెక్" (▶ try, 🎙 mic open, ■ he finished, ✗n the phone stopped it). */
     static volatile String lastListen = "";
+    /** The last answer's time, step by step, from when he stopped talking until Jarvis's voice was heard (for "Jarvis చెక్"). */
+    static volatile String lastTurn = "";
+    private static volatile long turnHeardAt, turnSpeakAt, turnVoiceEnd;
+    private static volatile String turnEars = "";
+
+    /** Jarvis's voice is heard now: if it is the answer to what he just said, how long it all took is kept. */
+    private static void turnSounded() {
+        long h = turnHeardAt, s = turnSpeakAt;
+        if (h == 0 || s == 0) return;
+        turnHeardAt = 0;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - h > 120_000) return;
+        long from = turnVoiceEnd > 0 && turnVoiceEnd <= h && h - turnVoiceEnd < 60_000 ? turnVoiceEnd : h;
+        String ears = turnEars;
+        lastTurn = (ears.isEmpty() ? "" : ears.replace(" సె", "") + " · ") + "జవాబు ఆలోచన " + Ears.sec(s - h) + " · గొంతు " + Ears.sec(now - s)
+                + " → మొత్తం " + Ears.sec(now - from) + " సె";
+    }
     private final StringBuilder trace = new StringBuilder();
     private long traceStart;
 
@@ -1058,6 +1077,11 @@ final class VoiceIO {
         letGo();
         MicQuiet.release(this);
         done("✓ విన్నాను");
+        boolean own = Ears.chosen(prefs);
+        turnEars = own ? Ears.lastTimes : "";
+        turnVoiceEnd = own ? Ears.lastVoiceEnd : 0;
+        turnSpeakAt = 0;
+        turnHeardAt = text == null || text.trim().isEmpty() ? 0 : android.os.SystemClock.elapsedRealtime();
         l.onHeard(text);
     }
 

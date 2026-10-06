@@ -54,6 +54,10 @@ final class Ears {
 
     /** The AI's last refusal, word for word (for "Jarvis చెక్"). */
     static volatile String lastError = "";
+    /** How long each step of the last listen took after he stopped talking (for "Jarvis చెక్"). */
+    static volatile String lastTimes = "";
+    /** When his voice last ended (elapsedRealtime), for the whole turn's time in VoiceIO. */
+    static volatile long lastVoiceEnd;
 
     interface Callback {
         /** The mic is open: waiting for him to talk. */
@@ -77,6 +81,10 @@ final class Ears {
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean cancelled, finishNow;
     private boolean longTalk;
+    /** His voice going to OpenAI while he talks (null when not). */
+    private volatile Upload upload;
+    /** When the whole recording (sent after he stopped) had gone out. */
+    private volatile long sentAt;
     /** The first result (words, failure, timeout) wins; nothing after it is reported. */
     private final AtomicBoolean reported = new AtomicBoolean();
     private Callback cb;
@@ -103,8 +111,12 @@ final class Ears {
     /** "Done" (he tapped): stop listening now and write out what he said so far. */
     void finishNow() { finishNow = true; }
 
-    /** Stop; nothing more is reported. */
-    void cancel() { cancelled = true; }
+    /** Stop; nothing more is reported (and nothing half-sent is finished). */
+    void cancel() {
+        cancelled = true;
+        Upload u = upload;
+        if (u != null) u.abort();
+    }
 
     // ---- reporting (main thread, once)
 
@@ -126,8 +138,13 @@ final class Ears {
         AudioManager am = ctx.getSystemService(AudioManager.class);
         boolean routed = false, modeChanged = false;
         int oldMode = AudioManager.MODE_NORMAL;
-        byte[] wav;
+        byte[] wav = null;
         boolean weak;
+        long doneAt, voiceEnd;
+        // OpenAI: his voice goes out while he talks, so after he stops only the last moment is left to send
+        boolean stream = !"gemini".equals(mode(p)) && p.earsStream();
+        Upload up = null;
+        int upTries = 0;
         try {
             // a Bluetooth headset (helmet) mic, when one is connected
             AudioDeviceInfo headsetIn = null;
@@ -180,6 +197,21 @@ final class Ears {
                 // since the mic opened (a headset gets longer to start)
                 if (zero && (anySound ? now - zeroSince >= 1000 : now - openedAt >= (routed ? 4000 : 1500))) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
                 int state = talk.add(f, n, now);
+                if (stream) {
+                    if (talk.started() && up == null && upTries < 3) { // he started: the connection is made now, the sound follows as it comes
+                        upTries++;
+                        String boundary = "----jarvisears" + System.nanoTime();
+                        up = new Upload(key, uploadHead(boundary, true), uploadTail(boundary), boundary);
+                        upload = up;
+                        if (cancelled) up.abort();
+                    } else if (!talk.started() && up != null) { // that was only a noise: it is never finished (nothing is written out)
+                        up.abort();
+                        up = null;
+                        upload = null;
+                    }
+                }
+                byte[] fresh = talk.takeFresh(); // (taken every time, so it never piles up)
+                if (up != null) up.feed(fresh);
                 if (now - lastLevel > 60) {
                     lastLevel = now;
                     final float lv = Math.max(0f, Math.min(1f, (talk.lastDb + 60f) / 45f));
@@ -191,12 +223,16 @@ final class Ears {
             }
             if (cancelled) return;
             if (!talk.enough()) { fail(SpeechRecognizer.ERROR_NO_MATCH); return; } // only a noise before "done"
+            if (up != null) { up.feed(talk.takeFresh()); up.finish(); } // the last moment, and the end
+            doneAt = SystemClock.elapsedRealtime();
+            voiceEnd = Math.min(talk.lastVoiceAt(), doneAt);
             wav = talk.wav();
             weak = talk.voicedMs() < 800;
         } catch (Exception e) {
             fail(SpeechRecognizer.ERROR_AUDIO);
             return;
         } finally {
+            if (wav == null && up != null) { up.abort(); upload = null; } // ended without his words: the half-sent one is dropped
             if (rec != null) { // the mic is let go before the words are written out
                 try { rec.stop(); } catch (Exception ignored) {}
                 try { rec.release(); } catch (Exception ignored) {}
@@ -208,9 +244,42 @@ final class Ears {
         }
         post(() -> cb.understanding());
         // never "understanding" for ever (a longer recording gets longer to upload)
-        main.postDelayed(() -> fail(SpeechRecognizer.ERROR_NETWORK_TIMEOUT), WRITE_OUT_LIMIT_MS + wav.length / 40_000 * 1000L);
+        long limit = WRITE_OUT_LIMIT_MS + wav.length / 40_000 * 1000L;
+        main.postDelayed(() -> fail(SpeechRecognizer.ERROR_NETWORK_TIMEOUT), limit);
         try {
-            String text = clean("gemini".equals(mode(p)) ? gemini(key, wav) : openAi(key, wav));
+            String text = null;
+            boolean streamed = false, refused = false;
+            long sent = 0;
+            if (up != null) {
+                if (!up.await(limit)) { up.abort(); return; } // (the time limit above says so)
+                upload = null;
+                if (cancelled) return;
+                if (up.text != null) { text = up.text; streamed = true; sent = up.sentAt; }
+                else if (up.error instanceof Http.ApiError) {
+                    Http.ApiError ae = (Http.ApiError) up.error;
+                    String body = String.valueOf(ae.getMessage());
+                    int kind = classify(ae.status, body);
+                    if (kind == ERROR_BAD_KEY || kind == ERROR_QUOTA || kind == ERROR_MODEL || kind == 10) { fail(kind); return; }
+                    if (ae.status == 400 || ae.status == 411 || ae.status == 413 || ae.status == 415) {
+                        refused = true; // OpenAI didn't take his voice sent this way: the whole recording now
+                        lastError = "మాట్లాడుతుండగానే పంపడం OpenAI ఒప్పుకోలేదు (" + ae.status + "): " + (body.length() > 140 ? body.substring(0, 140) : body);
+                    }
+                } // (a network break while he talked: the whole recording is sent now, to the same AI)
+            }
+            if (text == null) {
+                if (cancelled) return;
+                sentAt = 0;
+                text = "gemini".equals(mode(p)) ? gemini(key, wav) : openAi(key, wav);
+                sent = sentAt;
+                if (refused) p.earsStreamOff(); // sent whole, it worked: from now on always so (a new model in Settings tries again)
+            }
+            long wordsAt = SystemClock.elapsedRealtime();
+            if (sent < doneAt) sent = doneAt;
+            if (sent > wordsAt) sent = wordsAt;
+            lastVoiceEnd = voiceEnd;
+            lastTimes = "మీరు ఆపారని గుర్తించడం " + sec(doneAt - voiceEnd) + " · పంపడం " + sec(sent - doneAt) + " · మాటలు రాయడం " + sec(wordsAt - sent) + " సె"
+                    + (streamed ? " (మాట్లాడుతుండగానే పంపుతూ)" : "");
+            text = clean(text);
             words(noiseWords(text, weak) ? "" : text);
         } catch (Http.ApiError e) {
             fail(classify(e.status, String.valueOf(e.getMessage())));
@@ -221,6 +290,8 @@ final class Ears {
             fail(SpeechRecognizer.ERROR_SERVER);
         }
     }
+
+    static String sec(long ms) { return String.format(Locale.ROOT, "%.1f", Math.max(0, ms) / 1000.0); }
 
     @SuppressLint("MissingPermission")
     private static AudioRecord open(boolean headset, AudioDeviceInfo headsetIn) {
@@ -289,24 +360,39 @@ final class Ears {
         private static final int PRE_ROLL_FRAMES = 30;        // 600 ms kept from before he started (the first syllable)
         private static final long START_WINDOW_MS = 300;      // voice in this much…
         private static final long START_VOICED_MS = 120;      // …for this long: he has started
-        private static final long END_SILENCE_MS = 950;       // quiet this long after talking: he has finished
+        private static final long END_SILENCE_MS = 850;       // quiet this long after a question: he has finished
+        private static final long LONG_END_SILENCE_MS = 1400; // a message he dictates: he may stop to think a little longer
         private static final long MIN_TALK_MS = 400;          // less voice than this is a noise (a cough, a knock): not sent
         private static final long MAX_TALK_MS = 20_000;       // one question at most this long
         private float floor = Float.NaN, talkFloor;
         private int learnt; // real frames seen (the first ~200 ms only teach the room's level)
         float lastDb = -90f;
         private int state = WAITING;
-        private final long maxTalkMs;
+        private final long maxTalkMs, endSilenceMs;
 
         Talk() { this(MAX_TALK_MS); }
 
-        Talk(long maxTalkMs) { this.maxTalkMs = maxTalkMs; }
+        Talk(long maxTalkMs) {
+            this.maxTalkMs = maxTalkMs;
+            endSilenceMs = maxTalkMs > MAX_TALK_MS ? LONG_END_SILENCE_MS : END_SILENCE_MS;
+        }
 
         long voicedMs() { return voicedMs; }
+
+        /** When his voice was last heard. */
+        long lastVoiceAt() { return lastVoiceAt; }
+
+        /** The sound kept since the last call (sent on while he talks). */
+        byte[] takeFresh() {
+            byte[] b = fresh.toByteArray();
+            fresh.reset();
+            return b;
+        }
         private long startAt, lastVoiceAt, voicedMs;
         private final ArrayDeque<short[]> pre = new ArrayDeque<>();
         private final ArrayDeque<long[]> recent = new ArrayDeque<>(); // {time, loud 0/1} over the last START_WINDOW_MS
         private final ByteArrayOutputStream pcm = new ByteArrayOutputStream();
+        private final ByteArrayOutputStream fresh = new ByteArrayOutputStream();
 
         boolean started() { return state != WAITING; }
 
@@ -357,10 +443,11 @@ final class Ears {
             if (db < talkFloor) talkFloor = talkFloor * 0.6f + db * 0.4f; else talkFloor += (db - talkFloor) * 0.012f;
             boolean voice = db > Math.max(Math.max(floor, talkFloor) + 7f, -55f);
             if (voice) { lastVoiceAt = now; voicedMs += 20; }
-            if (now - lastVoiceAt >= END_SILENCE_MS) {
+            if (now - lastVoiceAt >= endSilenceMs) {
                 if (!enough()) { // only a noise: forget it and wait on
                     state = WAITING;
                     pcm.reset();
+                    fresh.reset();
                     recent.clear();
                     return state;
                 }
@@ -375,19 +462,25 @@ final class Ears {
             byte[] b = new byte[s.length * 2];
             for (int i = 0; i < s.length; i++) { b[2 * i] = (byte) (s[i] & 0xFF); b[2 * i + 1] = (byte) ((s[i] >> 8) & 0xFF); }
             pcm.write(b, 0, b.length);
+            fresh.write(b, 0, b.length);
         }
 
         /** What he said, as a WAV file (16 kHz mono). */
         byte[] wav() {
             byte[] data = pcm.toByteArray();
-            ByteArrayOutputStream o = new ByteArrayOutputStream(data.length + 44);
-            try {
-                o.write("RIFF".getBytes(StandardCharsets.US_ASCII)); le(o, 36 + data.length, 4);
-                o.write("WAVEfmt ".getBytes(StandardCharsets.US_ASCII)); le(o, 16, 4); le(o, 1, 2); le(o, 1, 2);
-                le(o, RATE, 4); le(o, RATE * 2, 4); le(o, 2, 2); le(o, 16, 2);
-                o.write("data".getBytes(StandardCharsets.US_ASCII)); le(o, data.length, 4);
-                o.write(data);
-            } catch (java.io.IOException ignored) {}
+            byte[] h = wavHeader(data.length);
+            byte[] all = java.util.Arrays.copyOf(h, h.length + data.length);
+            System.arraycopy(data, 0, all, h.length, data.length);
+            return all;
+        }
+
+        /** The 44-byte WAV header for this much sound (-1: not known yet, "to the end"). */
+        static byte[] wavHeader(int dataLen) {
+            ByteArrayOutputStream o = new ByteArrayOutputStream(44);
+            o.write('R'); o.write('I'); o.write('F'); o.write('F'); le(o, dataLen < 0 ? -1 : 36 + dataLen, 4);
+            o.write('W'); o.write('A'); o.write('V'); o.write('E'); o.write('f'); o.write('m'); o.write('t'); o.write(' ');
+            le(o, 16, 4); le(o, 1, 2); le(o, 1, 2); le(o, RATE, 4); le(o, RATE * 2, 4); le(o, 2, 2); le(o, 16, 2);
+            o.write('d'); o.write('a'); o.write('t'); o.write('a'); le(o, dataLen, 4);
             return o.toByteArray();
         }
 
@@ -403,17 +496,41 @@ final class Ears {
         return (i > 0 ? l.substring(0, i) : l).toLowerCase(Locale.ROOT);
     }
 
-    /** OpenAI speech-to-text (the model he set; by default the one the voice-message "మాటలు" uses). */
-    private String openAi(String key, byte[] wav) throws Exception {
-        String boundary = "----jarvisears" + System.nanoTime();
+    private static final String TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
+
+    /** The form before the sound: model, language, the Telugu hint, the file's start (and, sent while he talks, its WAV header). */
+    private byte[] uploadHead(String boundary, boolean wavHeader) {
         StringBuilder head = new StringBuilder();
         field(head, boundary, "model", p.earsModel());
         field(head, boundary, "language", lang());
         if ("te".equals(lang())) field(head, boundary, "prompt", "తెలుగులో మాట్లాడుతున్నారు. తెలుగు మాటలు తెలుగు లిపిలో, English మాటలు English లో.");
         head.append("--").append(boundary).append("\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n");
         byte[] h = head.toString().getBytes(StandardCharsets.UTF_8);
-        byte[] tail = ("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
-        HttpURLConnection con = (HttpURLConnection) new URL("https://api.openai.com/v1/audio/transcriptions").openConnection();
+        if (!wavHeader) return h;
+        byte[] w = Talk.wavHeader(-1); // (the length isn't known yet: "to the end")
+        byte[] all = java.util.Arrays.copyOf(h, h.length + w.length);
+        System.arraycopy(w, 0, all, h.length, w.length);
+        return all;
+    }
+
+    private static byte[] uploadTail(String boundary) { return ("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8); }
+
+    private static String readBody(HttpURLConnection con, int code) throws java.io.IOException {
+        InputStream in = code >= 400 ? con.getErrorStream() : con.getInputStream();
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while (in != null && (n = in.read(buf)) > 0) b.write(buf, 0, n);
+        if (in != null) in.close();
+        return b.toString("UTF-8");
+    }
+
+    /** OpenAI speech-to-text, the whole recording at once (the model he set; by default the one the voice-message "మాటలు" uses). */
+    private String openAi(String key, byte[] wav) throws Exception {
+        String boundary = "----jarvisears" + System.nanoTime();
+        byte[] h = uploadHead(boundary, false);
+        byte[] tail = uploadTail(boundary);
+        HttpURLConnection con = (HttpURLConnection) new URL(TRANSCRIBE_URL).openConnection();
         try {
             con.setRequestMethod("POST");
             con.setConnectTimeout(8000);
@@ -427,17 +544,87 @@ final class Ears {
                 out.write(wav);
                 out.write(tail);
             }
+            sentAt = SystemClock.elapsedRealtime();
             int code = con.getResponseCode();
-            InputStream in = code >= 400 ? con.getErrorStream() : con.getInputStream();
-            ByteArrayOutputStream b = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            int n;
-            while (in != null && (n = in.read(buf)) > 0) b.write(buf, 0, n);
-            String body = b.toString("UTF-8");
+            String body = readBody(con, code);
             if (code >= 400) throw new Http.ApiError(code, body);
             return new JSONObject(body).optString("text", "");
         } finally {
             con.disconnect();
+        }
+    }
+
+    /**
+     * His voice on its way to OpenAI while he is still talking: the connection is made when he starts, the sound goes as
+     * it comes, and when he stops only the last moment and the form's end are left to send. Dropped, never finished (so
+     * nothing is written out or charged), when it was only a noise or the listen is stopped.
+     */
+    private static final class Upload {
+        private static final byte[] END = new byte[0];
+        private final java.util.concurrent.LinkedBlockingQueue<byte[]> q = new java.util.concurrent.LinkedBlockingQueue<>();
+        private final java.util.concurrent.CountDownLatch over = new java.util.concurrent.CountDownLatch(1);
+        private volatile HttpURLConnection con;
+        private volatile boolean aborted;
+        /** The words (it worked), or why not. */
+        volatile String text;
+        volatile Exception error;
+        /** When the last byte went out. */
+        volatile long sentAt;
+
+        Upload(String key, byte[] head, byte[] tail, String boundary) {
+            new Thread(() -> send(key, head, tail, boundary), "jarvis-ears-up").start();
+        }
+
+        void feed(byte[] b) { if (b != null && b.length > 0 && !aborted) q.offer(b); }
+
+        /** He stopped: the end goes out and the words come back. */
+        void finish() { q.offer(END); }
+
+        void abort() {
+            aborted = true;
+            HttpURLConnection c = con;
+            if (c != null) try { c.disconnect(); } catch (Exception ignored) {}
+            q.offer(END);
+        }
+
+        boolean await(long ms) throws InterruptedException { return over.await(ms, java.util.concurrent.TimeUnit.MILLISECONDS); }
+
+        private void send(String key, byte[] head, byte[] tail, String boundary) {
+            HttpURLConnection c = null;
+            try {
+                c = (HttpURLConnection) new URL(TRANSCRIBE_URL).openConnection();
+                con = c;
+                if (aborted) return;
+                c.setRequestMethod("POST");
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(15000);
+                c.setDoOutput(true);
+                c.setChunkedStreamingMode(4096);
+                c.setRequestProperty("Authorization", "Bearer " + key);
+                c.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                OutputStream out = c.getOutputStream(); // (connects: while he is still talking)
+                out.write(head);
+                out.flush();
+                while (true) {
+                    byte[] b = q.take();
+                    if (aborted) return; // never finished: the half-sent form is not written out
+                    if (b == END) break;
+                    out.write(b);
+                    if (q.isEmpty()) out.flush();
+                }
+                out.write(tail);
+                out.close();
+                sentAt = SystemClock.elapsedRealtime();
+                int code = c.getResponseCode();
+                String body = readBody(c, code);
+                if (code >= 400) throw new Http.ApiError(code, body);
+                text = new JSONObject(body).optString("text", "");
+            } catch (Exception e) {
+                if (!aborted) error = e;
+            } finally {
+                if (c != null) try { c.disconnect(); } catch (Exception ignored) {}
+                over.countDown();
+            }
         }
     }
 
