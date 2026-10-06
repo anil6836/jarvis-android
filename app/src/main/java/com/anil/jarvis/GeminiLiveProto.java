@@ -211,7 +211,7 @@ final class GeminiLiveProto {
     static final Set<String> WAIT_FOR = new java.util.HashSet<>(java.util.Arrays.asList(
             "call_contact", "call_control", "send_sms", "whatsapp_message", "telegram_message", "send_draft", "reply_to_notification",
             "send_email", "sos", "smart_home", "save_contact", "add_calendar_event", "add_expense", "add_mission", "complete_mission",
-            "classic_jarvis", "voice_mode", "live_voice", "end_conversation"));
+            "classic_jarvis", "jarvis_brain", "voice_mode", "live_voice", "end_conversation"));
 
     /**
      * Jarvis's tools the live talk leaves to the usual way (classic_jarvis, without asking): they look at pictures (the
@@ -246,24 +246,9 @@ final class GeminiLiveProto {
         }
         if (withWebSearch) out.put(fn("web_search", "Search the internet for current information (news, cricket scores, prices, film releases, anything that changes). Returns a short summary.",
                 props(new String[][]{{"query", "string", "What to search for, in English"}}), "query"));
-        out.put(fn("end_conversation", "End the live voice conversation. Call it when Anil says goodbye, is done, or asks you to stop listening "
-                + "(for example 'bye', 'చాలు', 'ఆపు', 'సరే Jarvis, అంతే'). Say a short goodbye first.", null));
-        out.put(fn("voice_mode", "Change how Jarvis listens and talks, ONLY when Anil clearly asks to switch it (for example 'Google వాయిస్‌కి మారు', "
-                + "'Live ఆపు', 'OpenAI కి మారు', 'Live పెట్టు'). mode: live = Gemini Live (this fast live talk); live_openai = OpenAI's live talk; "
-                + "live_off = the usual listen-then-answer with Jarvis's chosen way of hearing; google = Google voice typing (words appear live, works "
-                + "without internet, but the phone's mic beeps); openai = Jarvis's own mic, OpenAI writes the words; gemini = Jarvis's own mic, Gemini writes the words. "
-                + "Say the short line it returns; the live talk ends after it when the mode leaves Gemini Live.",
-                props(new String[][]{{"mode", "string", "live, live_openai, live_off, google, openai or gemini"}}), "mode"));
-        StringBuilder men = new StringBuilder(), women = new StringBuilder();
-        for (String[] v : VOICES) {
-            StringBuilder list = v[1].equals("మగ") ? men : women;
-            if (list.length() > 0) list.append(", ");
-            list.append(v[0]);
-        }
-        out.put(fn("live_voice", "Change YOUR voice in this live talk, only when Anil asks ('గొంతు మార్చు', 'ఇంకో గొంతు', 'Puck గొంతు పెట్టు', 'ఆడ గొంతు'). "
-                + "voice = a voice name, or next (the next voice of the same kind). Men's voices: " + men + ". Women's voices: " + women + ". "
-                + "After calling it say nothing; you come back in the new voice in a moment.",
-                props(new String[][]{{"voice", "string", "A voice name from the lists, or next"}}), "voice"));
+        out.put(endFn());
+        out.put(voiceModeFn());
+        out.put(liveVoiceFn());
         out.put(fn("classic_jarvis", "Jarvis's usual way: his chosen AI with ALL of Jarvis's abilities. Call it right away (no need to ask) for "
                 + "what you have no tool for: looking at the screen or through the camera, photos, documents, booking or ordering in apps, "
                 + "typing into other apps, long tasks on the phone, making websites / apps / code / cards / letters; and when he asks you to "
@@ -278,6 +263,102 @@ final class GeminiLiveProto {
             }
         }
         return out;
+    }
+
+    private static JSONObject endFn() throws Exception {
+        return fn("end_conversation", "End the live voice conversation. Call it when Anil says goodbye, is done, or asks you to stop listening "
+                + "(for example 'bye', 'చాలు', 'ఆపు', 'సరే Jarvis, అంతే'). Say a short goodbye first.", null);
+    }
+
+    private static JSONObject voiceModeFn() throws Exception {
+        return fn("voice_mode", "Change how Jarvis listens and talks, ONLY when Anil clearly asks to switch it (for example 'Google వాయిస్‌కి మారు', "
+                + "'Live ఆపు', 'OpenAI కి మారు', 'Live పెట్టు'). mode: live = Gemini Live (this fast live talk); live_openai = OpenAI's live talk; "
+                + "live_off = the usual listen-then-answer with Jarvis's chosen way of hearing; google = Google voice typing (words appear live, works "
+                + "without internet, but the phone's mic beeps); openai = Jarvis's own mic, OpenAI writes the words; gemini = Jarvis's own mic, Gemini writes the words. "
+                + "Say the short line it returns; the live talk ends after it when the mode leaves Gemini Live.",
+                props(new String[][]{{"mode", "string", "live, live_openai, live_off, google, openai or gemini"}}), "mode");
+    }
+
+    private static JSONObject liveVoiceFn() throws Exception {
+        StringBuilder men = new StringBuilder(), women = new StringBuilder();
+        for (String[] v : VOICES) {
+            StringBuilder list = v[1].equals("మగ") ? men : women;
+            if (list.length() > 0) list.append(", ");
+            list.append(v[0]);
+        }
+        return fn("live_voice", "Change YOUR voice in this live talk, only when Anil asks ('గొంతు మార్చు', 'ఇంకో గొంతు', 'Puck గొంతు పెట్టు', 'ఆడ గొంతు'). "
+                + "voice = a voice name, or next (the next voice of the same kind). Men's voices: " + men + ". Women's voices: " + women + ". "
+                + "After calling it say nothing; you come back in the new voice in a moment.",
+                props(new String[][]{{"voice", "string", "A voice name from the lists, or next"}}), "voice");
+    }
+
+    // ================================================================ brain mode: Live hears and speaks, Jarvis's brain thinks
+
+    /**
+     * The parts of the setup brain mode doesn't send (Google Search: the brain searches; MANY: Live has no tools of its own
+     * there). They stay as they are for "Jarvis చెక్" and come back if he switches Live to think itself.
+     */
+    static final int EARS_SKIP = SEARCH | MANY;
+
+    /**
+     * Brain mode (Settings → ఆలోచన: Jarvis మెదడు): Live's tools. jarvis_brain (his chosen model with his memories and all of
+     * Jarvis's tools) thinks every answer; Live itself only ends the talk, switches the way of listening or its own voice.
+     */
+    static JSONArray earsFunctions(boolean waitForActions) throws Exception {
+        JSONArray out = new JSONArray();
+        out.put(fn("jarvis_brain", "Jarvis's brain: Jarvis's own AI with his saved memories, the whole conversation and ALL of Jarvis's abilities "
+                + "(calls, messages, reminders, the screen, the camera, internet, the bike, expenses, everything). It does ALL the thinking and all the work. "
+                + "Call it for everything he says: questions, requests, commands, things he tells you, and his answers to what Jarvis asked him "
+                + "('సరే', 'అవును', 'వద్దు', 'పంపు', a name, a number, a choice). Not for: only a greeting, only thanks, goodbye, or switching your voice "
+                + "or the listening mode. request = his words exactly as he said them (in Telugu as he said them), nothing added, nothing left out. "
+                + "It returns 'say': say that to him exactly, word for word.",
+                props(new String[][]{{"request", "string", "His words exactly as he said them"}}), "request"));
+        out.put(endFn());
+        out.put(voiceModeFn());
+        out.put(liveVoiceFn());
+        if (waitForActions) {
+            for (int i = 0; i < out.length(); i++) out.getJSONObject(i).put("behavior", "BLOCKING");
+        }
+        return out;
+    }
+
+    /** Brain mode: Live's instructions (Brain adds the talk so far). name: his real name; call: how he likes to be called. */
+    static String earsRules(String name, String call) {
+        String c = call == null || call.trim().isEmpty() ? name : call.trim();
+        return "# You are Jarvis's ears and voice\n"
+                + "- You are JARVIS, " + name + "'s own assistant, in a live voice talk on his phone. You don't think up answers yourself: "
+                + "Jarvis's brain (the tool jarvis_brain: his own AI with his memories and all of Jarvis's abilities) does all the thinking and all the work.\n"
+                + "- For everything " + name + " says (a question, a request, a command, something he tells you, or his answer to what you asked, "
+                + "even only 'సరే', 'అవును', 'వద్దు', 'పంపు', a name or a number): first say one very short line like 'ఒక్క క్షణం' or 'చూస్తాను' "
+                + "(vary it), then call jarvis_brain with his words exactly as he said them.\n"
+                + "- Never answer from your own knowledge, even when you think you know (his name, the time, the weather, facts, advice): always ask jarvis_brain.\n"
+                + "- Only these you do yourself: a bare greeting ('హాయ్', 'హలో') → greet him back in a few words and ask what he needs; "
+                + "bare thanks → 'పర్లేదు!'; when he says bye or that he is done ('బై', 'చాలు', 'ఇక చాలు') → a short goodbye, then end_conversation; "
+                + "'గొంతు మార్చు' → live_voice; 'Google వాయిస్‌కి మారు', 'Live ఆపు' and the like → voice_mode. "
+                + "If your last words asked him something, whatever he says next goes to jarvis_brain.\n"
+                + "- A '(A note from the Jarvis app …)' is not his words: do what the note says yourself, without jarvis_brain.\n"
+                + "- When jarvis_brain returns, say its 'say' text to him exactly as written: every word, in order, nothing added, nothing left out, "
+                + "nothing explained or shortened, even when it is long. Say it in the language it is written in, warmly and naturally, with expression, "
+                + "like a friend talking, at a relaxed pace. Then stop and listen.\n"
+                + "- If jarvis_brain fails, tell him why in one short, honest sentence; never make up an answer instead.\n"
+                + "- Address him as '" + c + "'" + (c.equals(name) ? "" : " (his name is " + name + ")") + ".\n"
+                + "- Speak Telugu with a native Andhra/Telangana accent; never Tamil, Kannada or Hindi pronunciation. Everyday English words Telugu people use are fine.\n"
+                + "- Only react when " + name + " actually says words to you. Noise, breathing, a cough, a TV, music, people far away, or your own voice "
+                + "echoing back: stay completely silent, call no tool, don't comment.\n"
+                + "- If he talks while you are speaking, stop and listen; what he says now goes to jarvis_brain.\n"
+                + "- Don't say the words 'Jarvis' or 'stop' yourself: " + name + " says them to stop you mid-answer.\n";
+    }
+
+    /** The brain's answer as Live is to say it: no markdown, list marks or links (the numbers are made words by Spoken). */
+    static String speakable(String answer) {
+        String s = answer == null ? "" : answer;
+        s = s.replaceAll("https?://\\S+", "")
+                .replaceAll("(?m)^\\s*([-•*]|\\d+[.)])\\s+", "")
+                .replaceAll("[*_#`>|]", "")
+                .replaceAll("[ \\t]+", " ")
+                .replaceAll("\\n{3,}", "\n\n")
+                .trim();
+        return s.length() > 3500 ? s.substring(0, 3500) : s;
     }
 
     /** The rules Gemini Live adds to Jarvis's live instructions: what it can do itself and what goes the usual way. */

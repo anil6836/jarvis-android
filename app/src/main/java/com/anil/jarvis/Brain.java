@@ -222,6 +222,24 @@ final class Brain {
                 + (recent.length() == 0 ? "" : "\nRecent conversation, for context:\n" + recent);
     }
 
+    /**
+     * Gemini Live in brain mode (Settings → ఆలోచన: Jarvis మెదడు): Live only hears and speaks, this brain thinks every
+     * answer. Live's instructions: its rules, and the last few turns (so a fresh line knows whether Jarvis just asked him something).
+     */
+    String liveEarsInstructions(List<JSONObject> history) {
+        String name = prefs.realName();
+        StringBuilder recent = new StringBuilder();
+        for (int i = Math.max(0, history.size() - 6); i < history.size(); i++) {
+            JSONObject h = history.get(i);
+            String c = h.optString("content", "").trim();
+            if (c.isEmpty()) continue;
+            if (c.length() > 300) c = c.substring(0, 300) + "…";
+            recent.append("assistant".equals(h.optString("role")) ? "Jarvis: " : name + ": ").append(c).append('\n');
+        }
+        return GeminiLiveProto.earsRules(name, prefs.name())
+                + (recent.length() == 0 ? "" : "\nThe talk so far (Jarvis's brain has all of it):\n" + recent);
+    }
+
     /** Interpreter and language practice mix two languages: his words are then transcribed without a fixed language. */
     static boolean twoLanguages(String instructions) {
         return instructions != null && (instructions.contains("coach, in a live voice practice session") || instructions.startsWith("You are a live interpreter"));

@@ -61,7 +61,7 @@ public class SettingsActivity extends Activity {
     private Switch newsAuto;
     private EditText newsPlaces;
     private Switch diaryAsk, holidayRemind, findPhone, coughAsk;
-    private RadioGroup groupMode, typingMode, earsMode, liveProvider, earsOther, liveBarge;
+    private RadioGroup groupMode, typingMode, earsMode, liveProvider, earsOther, liveBarge, liveThink;
     private View earsOtherBox;
     /** The voice choice before the last tap (only leaving "⚡ Gemini Live" turns Live off). */
     private int earsWas;
@@ -498,11 +498,19 @@ public class SettingsActivity extends Activity {
         vr.addView(pick, vp);
         vr.addView(hear, new LinearLayout.LayoutParams(-2, -2));
         box.addView(vr);
-        note("Gemini Live పాత పద్ధతి చేసే దాదాపు అన్ని పనులూ తానే చేస్తుంది: కాల్స్, మెసేజ్‌లు (మీరు 'పంపు' అన్నాకే), రిమైండర్ / అలారం, వాతావరణం, వార్తలు, సెర్చ్, పాటలు, "
-                + "దారి, యాప్స్, నోట్స్, బైక్, ఖర్చులు, అప్పులు, బిల్లులు, డ్యూటీ, క్యాలెండర్, పార్సెల్స్, డైరీ, ఆరోగ్యం, మిషన్లు... "
-                + "స్క్రీన్ / కెమెరా / ఫోటోలు / డాక్యుమెంట్లు, బుకింగ్, వెబ్‌సైట్లు, 'బాగా ఆలోచించి చెప్పు', డబ్బు / ఆరోగ్యం నిర్ణయాలు అడగకుండానే పాత పద్ధతికి ఇచ్చి, దాని జవాబు చెబుతుంది. "
+        TextView lt = Ui.text(this, "🧠 Gemini Live లో ఆలోచించేది:", 15, Ui.TEXT);
+        lt.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 2));
+        box.addView(lt);
+        liveThink = new RadioGroup(this);
+        liveThink.addView(radio(98, "Jarvis మెదడు (సెట్టింగ్స్ → Jarvis మెదడు లో మీరు ఎంచుకున్న మోడల్): Live వింటుంది, మాట్లాడుతుంది; ప్రతి జవాబూ మీ మెదడే ఆలోచిస్తుంది, పాత పద్ధతి అంత తెలివి. జవాబుకు పాత పద్ధతి అంత టైమ్ (సిఫార్సు)"));
+        liveThink.addView(radio(99, "Gemini Live తనే: చాలా వేగం, కానీ లోతైన ఆలోచన తక్కువ. స్క్రీన్ / కెమెరా / ఫోటోలు / బుకింగ్ / 'బాగా ఆలోచించి చెప్పు' లాంటివి మెదడుకు ఇస్తుంది"));
+        liveThink.check(prefs.liveBrainThinks() ? 98 : 99);
+        box.addView(liveThink);
+        note("'Jarvis మెదడు' లో: Live మీ మాట విని మీ మెదడుకి ఇస్తుంది, మెదడు చెప్పిందే మాట మార్చకుండా చెబుతుంది (మధ్యలో \"ఒక్క క్షణం\" అంటుంది). "
+                + "'హాయ్', 'థాంక్స్', 'బై', గొంతు మార్చడం మాత్రమే Live తనే చేస్తుంది. English practice, అనువాదకుడు ఎప్పుడూ Live తోనే (వేగం కోసం). "
+                + "మెసేజ్‌లు పంపడం, కాల్స్ మీరు 'పంపు' / 'అవును' అన్నాకే. Live తనే జవాబిస్తే అది \"Jarvis చెక్\" లో కనిపిస్తుంది. "
                 + "గొంతులు 30 (16 మగ, 14 ఆడ): 'గొంతు మార్చు' లో ఒకటి నొక్కితే ఆ గొంతులో ఒక మాట వినిపిస్తుంది. Live లో 'Jarvis, గొంతు మార్చు' / 'ఇంకో గొంతు' / 'Puck గొంతు పెట్టు' అన్నా మారుతుంది. "
-                + "మోడల్ పేరు తప్పైతే ఎందుకో చెబుతుంది."); 
+                + "మోడల్ పేరు తప్పైతే ఎందుకో చెబుతుంది.");
         livePatient = toggle("మీరు మాట పూర్తి చేసే వరకు ఆగి, తర్వాతే జవాబివ్వు (మధ్యలో ఆలోచిస్తూ ఆగినా కట్ చేయదు)", prefs.livePatient());
         bargeIn = toggle("Jarvis మాట్లాడుతుండగా మధ్యలో మాట్లాడితే ఆగి వినాలి", prefs.bargeIn());
         TextView lb = Ui.text(this, "Gemini Live లో Jarvis మాట్లాడుతుండగా ఆపడం (ఫోన్ స్పీకర్‌లో):", 15, Ui.TEXT);
@@ -1361,6 +1369,12 @@ public class SettingsActivity extends Activity {
                 ? "Google వాయిస్ టైపింగ్ (బీప్‌లతో)" : "OpenAI " + prefs.earsModel() + " (Jarvis సొంత మైక్)").append("\n");
         if (prefs.liveMode()) s.append("• Live: ").append(LiveTalk.label(prefs)).append(prefs.liveGemini() ? " (" + prefs.geminiLiveModel() + ", గొంతు " + prefs.geminiLiveVoice() + ")" : "")
                 .append(prefs.liveKeyReady() ? "" : " ✗ key లేదు").append("\n");
+        if (prefs.liveMode() && prefs.liveGemini()) {
+            s.append("• Gemini Live లో ఆలోచన: ").append(prefs.liveBrainThinks() ? "Jarvis మెదడు (" + prefs.model() + ")" : "Gemini Live తనే");
+            if (GeminiLive.brainAnswers + GeminiLive.selfAnswers > 0)
+                s.append(" · మెదడు జవాబులు ").append(GeminiLive.brainAnswers).append(", మెదడుని అడగకుండా Live తనే ఇచ్చినవి ").append(GeminiLive.selfAnswers);
+            s.append("\n");
+        }
         if (!GeminiLive.lastInfo.isEmpty()) s.append("• చివరి Gemini Live: ").append(GeminiLive.lastInfo).append("\n");
         if (!GeminiLive.bargeInfo.isEmpty()) s.append("• Gemini Live లో మధ్యలో మాట్లాడితే: ").append(GeminiLive.bargeInfo).append("\n");
         if (!GeminiLive.echoRecording.isEmpty()) s.append("• చివరి echo పరీక్ష రికార్డింగ్: ").append(GeminiLive.echoRecording).append("\n");
@@ -1452,6 +1466,7 @@ public class SettingsActivity extends Activity {
         e.putString("ears_mode", emc == 84 ? (eoc == 86 ? "gemini" : eoc == 87 ? "google" : "openai") // (Gemini Live: the other places' choice)
                 : emc == 82 ? "gemini" : emc == 83 ? "google" : "openai");
         e.putString("live_provider", liveProvider.getCheckedRadioButtonId() == 91 ? Prefs.GEMINI : Prefs.OPENAI);
+        e.putString("live_think", liveThink.getCheckedRadioButtonId() == 99 ? "live" : "brain");
         e.putString("gemini_live_model", geminiLiveModel.getText().toString().trim());
         e.putString("gemini_live_voice", liveVoiceChoice);
         String earsModelNow = earsModel.getText().toString().trim();

@@ -131,6 +131,11 @@ final class Prefs {
     boolean liveReady() { return liveMode() && liveKeyReady(); }
     /** Live: wait until he has finished his thought (not just a short pause) before answering, like ChatGPT's voice mode. */
     boolean livePatient() { return sp.getBoolean("live_patient", true); }
+    /**
+     * Gemini Live: who thinks. True (the default): Jarvis's brain (his chosen model, Settings → Jarvis మెదడు) thinks
+     * every answer and Live only hears and speaks; false: Live thinks itself (faster, less deep).
+     */
+    boolean liveBrainThinks() { return !"live".equals(sp.getString("live_think", "brain")); }
     /** Warn about scam-looking messages and new autopay mandates (checked on the phone only). */
     boolean scamGuard() { return sp.getBoolean("scam_guard", true); }
 

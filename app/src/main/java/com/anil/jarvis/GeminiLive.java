@@ -19,6 +19,7 @@ import android.os.SystemClock;
 import org.json.JSONObject;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -89,6 +90,16 @@ final class GeminiLive implements LiveTalk {
     private volatile String resumeHandle;
     private String baseInstr = "", setupInstr = "", model = "";
     private boolean liveRules;
+    /**
+     * Brain mode (Settings → ఆలోచన: Jarvis మెదడు, the default): Live only hears and speaks; every answer is thought by
+     * Jarvis's brain (his chosen model with all of Jarvis's tools) through jarvis_brain and said by Live word for word.
+     * Not for the interpreter or English practice (their own instructions): there Live thinks, for speed.
+     */
+    private boolean brainMode;
+    /** Brain mode: the brain's answer went back to Live and Live hasn't finished saying it yet. */
+    private volatile boolean brainReplyPending;
+    /** Brain mode, this run of the app (for "Jarvis చెక్"): answers the brain thought, and answers Live gave itself without asking it. */
+    static volatile int brainAnswers, selfAnswers;
     private volatile long lastActivity, startedAt, lastLoudAt, firstVoiceWait = -1, lastHeardAt, heardStartWall;
     /** When the mic's latest stretch of his voice began, while Jarvis was quiet. */
     private volatile long loudRunAt;
@@ -234,6 +245,7 @@ final class GeminiLive implements LiveTalk {
         baseInstr = instr == null ? "" : instr;
         // Jarvis's usual live rules, plus what Gemini Live does itself and what goes the usual way
         liveRules = baseInstr.contains("# Live voice conversation");
+        brainMode = liveRules && brain != null && prefs.liveBrainThinks();
         model = prefs.geminiLiveModel();
         startedAt = SystemClock.elapsedRealtime();
         lastActivity = startedAt;
@@ -287,7 +299,8 @@ final class GeminiLive implements LiveTalk {
         main.removeCallbacks(finishLater);
         saidPending = false;
         finishSaid(" …");
-        setupInstr = everReady && !resuming && liveRules && brain != null
+        setupInstr = brainMode ? brain.liveEarsInstructions(store.chat()) // (Live hears and speaks; the brain has the whole talk)
+                : everReady && !resuming && liveRules && brain != null
                 ? brain.liveInstructions(store.chat()) + GeminiLiveProto.rules(prefs.realName()) // (a fresh line: the talk so far goes with it)
                 : baseInstr + (liveRules ? GeminiLiveProto.rules(prefs.realName()) : "");
         WebSocket old = ws;
@@ -308,10 +321,12 @@ final class GeminiLive implements LiveTalk {
             @Override public void onOpen(WebSocket w, Response r) {
                 if (my != attempt || closed) return;
                 try {
+                    boolean waits = (features & GeminiLiveProto.WAIT) != 0;
                     w.send(GeminiLiveProto.setup(model, prefs.geminiLiveVoice(), setupInstr,
-                            GeminiLiveProto.functions(tools.geminiTools(), (features & GeminiLiveProto.SEARCH) == 0, (features & GeminiLiveProto.WAIT) != 0,
+                            brainMode ? GeminiLiveProto.earsFunctions(waits) // (the brain searches and does everything)
+                                    : GeminiLiveProto.functions(tools.geminiTools(), (features & GeminiLiveProto.SEARCH) == 0, waits,
                                     (features & GeminiLiveProto.MANY) != 0),
-                            features, resumeHandle,
+                            sentFeatures(), resumeHandle,
                             prefs.livePatient() ? 800 : 500, startSensitivity()).toString());
                 } catch (Exception e) {
                     lineEnded(my, 0, "setup: " + e.getMessage());
@@ -335,6 +350,9 @@ final class GeminiLive implements LiveTalk {
         });
     }
 
+    /** The setup parts sent on this line (brain mode leaves out Google Search and Live's own tools: the brain does those). */
+    private int sentFeatures() { return brainMode ? features & ~GeminiLiveProto.EARS_SKIP : features; }
+
     /** "Jarvis ఆగిపోతుంటే / వినకపోతే" slider (0 hears only clear talk ... 4 hears softest). */
     private String startSensitivity() {
         int s = prefs.bargeSens();
@@ -356,9 +374,9 @@ final class GeminiLive implements LiveTalk {
             if (!everReady) {
                 // the fuller settings refused before the talk started: once more with the plain ones (same model, same key)
                 // a setting refused before the talk started: once more without that part (same model, same key); his voice is kept unless it was the voice
-                int next = GeminiLiveProto.dropFor(code, reason, features);
+                int next = GeminiLiveProto.dropFor(code, reason, sentFeatures()); // (only what was sent can be left out)
                 if (next >= 0) {
-                    features = next;
+                    features = brainMode ? next | (features & GeminiLiveProto.EARS_SKIP) : next;
                     refusedWords = String.valueOf(reason);
                     connect();
                     restartSetupTimer();
@@ -533,7 +551,7 @@ final class GeminiLive implements LiveTalk {
     private volatile String refusedWords = "";
 
     private String refusedNote() {
-        String d = GeminiLiveProto.dropped(features);
+        String d = GeminiLiveProto.dropped(brainMode ? features | GeminiLiveProto.EARS_SKIP : features); // (brain mode never sends those two)
         if (d.isEmpty()) return "";
         String w = refusedWords.length() > 120 ? refusedWords.substring(0, 120) : refusedWords;
         return " (Gemini ఒప్పుకోనివి: " + d + (w.isEmpty() ? "" : " · \"" + w + "\"") + ")";
@@ -683,7 +701,8 @@ final class GeminiLive implements LiveTalk {
 
         @Override public void toolCall(String id, String name, JSONObject args) {
             lastActivity = SystemClock.elapsedRealtime();
-            state(OrbView.THINKING, "classic_jarvis".equals(name) ? "పాత పద్ధతిలో చేస్తున్నాను…" : Tools.statusFor(name));
+            state(OrbView.THINKING, "classic_jarvis".equals(name) ? "పాత పద్ధతిలో చేస్తున్నాను…"
+                    : "jarvis_brain".equals(name) ? "ఆలోచిస్తున్నాను…" : Tools.statusFor(name));
             toolsRunning.incrementAndGet();
             try {
                 toolRunner.submit(() -> {
@@ -875,6 +894,10 @@ final class GeminiLive implements LiveTalk {
             said.setLength(0);
         }
         if (s.isEmpty()) return;
+        if (brainMode) { // (for "Jarvis చెక్": was this the brain's answer, or did Live answer him itself?)
+            if (brainReplyPending) { brainReplyPending = false; brainAnswers++; }
+            else if (s.trim().split("\\s+").length > 10) selfAnswers++; // (more than a short greeting or "ఒక్క క్షణం")
+        }
         String fl = flat(s);
         lastSaidFlat = fl.length() > 600 ? fl.substring(fl.length() - 600) : fl;
         lastSaidText = s.length() > 800 ? s.substring(s.length() - 800) : s;
@@ -920,6 +943,16 @@ final class GeminiLive implements LiveTalk {
             case "classic_jarvis":
                 result = classic(args.optString("request"));
                 break;
+            case "jarvis_brain": {
+                boolean wasLive = prefs.liveMode() && prefs.liveGemini();
+                result = think(args.optString("request"));
+                if (wasLive && !(prefs.liveMode() && prefs.liveGemini())) { // the brain switched how Jarvis listens: this talk ends after the line
+                    endRequested = true;
+                    endReason = "switched";
+                    main.postDelayed(() -> stop("switched"), 12000);
+                }
+                break;
+            }
             case "live_voice":
                 result = changeVoice(args.optString("voice"));
                 break;
@@ -935,6 +968,9 @@ final class GeminiLive implements LiveTalk {
             main.postDelayed(() -> stop("interpreter"), 12000);
         }
         if (closed || my != attempt || cancelledTools.remove(id)) return; // (an older line's call: its talk is gone)
+        if ("jarvis_brain".equals(name)) { // (for "Jarvis చెక్": Live's next words are the brain's answer)
+            try { brainReplyPending = !new JSONObject(result).optString("say").isEmpty(); } catch (Exception ignored) {}
+        }
         try { send(GeminiLiveProto.toolResponse(id, name, result)); } catch (Exception ignored) {}
     }
 
@@ -1050,6 +1086,89 @@ final class GeminiLive implements LiveTalk {
                 return "{\"ok\":false}";
             }
         }
+    }
+
+    /**
+     * Brain mode: Jarvis's brain (his chosen model in Settings → Jarvis మెదడు, his memories, all of Jarvis's tools) thinks
+     * the answer to his words exactly as in the usual way; Live then says it word for word. His words of this turn are the
+     * question (not sent twice: the talk before them is the history). Words that are only Jarvis's own voice heard back
+     * go nowhere. Sends, calls and payments still wait for his own yes in the tools, as always.
+     */
+    private String think(String request) {
+        try {
+            if (brain == null) return said(false, "no brain", "Jarvis మెదడు సిద్ధంగా లేదు.");
+            List<JSONObject> chat = store.chat();
+            int end = chat.size();
+            while (end > 0 && "assistant".equals(chat.get(end - 1).optString("role"))
+                    && words(chat.get(end - 1).optString("content")) <= 4) end--; // (Live's "ఒక్క క్షణం" after his words)
+            int from = end;
+            while (from > 0 && "user".equals(chat.get(from - 1).optString("role"))) from--;
+            if (from == end) from = end = chat.size(); // (no words of his at the end: the whole talk is the history)
+            StringBuilder now = new StringBuilder();
+            long turnAt = 0;
+            for (int i = from; i < end; i++) {
+                String c = chat.get(i).optString("content").trim();
+                if (!c.isEmpty()) now.append(now.length() == 0 ? "" : " ").append(c);
+                turnAt = chat.get(i).optLong("t");
+            }
+            String his = now.toString();
+            String asked = request == null || request.trim().isEmpty() ? his : request.trim();
+            if (asked.isEmpty()) return said(false, "nothing heard", "");
+            // full talk: words that began over Jarvis's voice and are mostly its own words are its voice heard back
+            if (turnAt != 0 && Tools.echoTurns.contains(turnAt) && !his.isEmpty() && GeminiLiveProto.mostlyEcho(his, lastSaidText)) {
+                return new JSONObject().put("ok", false).put("error", "own_voice").put("say", "")
+                        .put("note", "Those words were your own voice heard back, not his. Say nothing at all.").toString();
+            }
+            if (!prefs.hasBrain()) return said(false, "no key", "Jarvis మెదడుకి API key లేదు. సెట్టింగ్స్ → Jarvis మెదడు లో పెట్టండి.");
+            Brain.Status st = new Brain.Status() {
+                @Override public void update(String s) { state(OrbView.THINKING, s); }
+                @Override public boolean cancelled() { return closed; } // the live talk ended: stop
+            };
+            String a;
+            long mine = System.currentTimeMillis();
+            handoffMine = mine;
+            Tools.liveHandoffSince = mine; // nothing he says in the live talk meanwhile counts as a yes to a send / payment / button
+            try {
+                a = brain.ask(new ArrayList<>(chat.subList(0, from)), asked, null, st);
+            } finally {
+                if (Tools.liveHandoffSince == mine) Tools.liveHandoffSince = 0;
+            }
+            String say = Spoken.say(GeminiLiveProto.speakable(a)); // (numbers as Telugu words, as the usual voice says them)
+            return said(true, null, say.isEmpty() ? "సరే." : say);
+        } catch (java.util.concurrent.CancellationException e) {
+            return "{\"ok\":false,\"error\":\"stopped\",\"say\":\"\"}";
+        } catch (Http.ApiError e) {
+            String why = Models.explain(prefs, e);
+            if (why == null) why = e.status == 401 || e.status == 403 ? "Jarvis మెదడు API key పనిచేయడం లేదు. సెట్టింగ్స్ చూడండి."
+                    : e.status == 429 ? "Jarvis మెదడుకి లిమిట్ దాటింది. కొంచెం ఆగి మళ్లీ అడగండి."
+                    : (e.status == 400 || e.status == 404) && String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT).contains("model")
+                    ? "మెదడు మోడల్ \"" + prefs.model() + "\" పనిచేయలేదు. సెట్టింగ్స్ → Jarvis మెదడు లో చూడండి."
+                    : e.status >= 500 ? "Jarvis మెదడు సర్వర్ బిజీగా ఉంది. కాసేపటి తర్వాత అడగండి."
+                    : "Jarvis మెదడు జవాబు ఇవ్వలేదు (" + e.status + ").";
+            return said(false, "brain: " + e.status, why);
+        } catch (java.net.UnknownHostException e) {
+            return said(false, "no internet", "ఇంటర్నెట్ కనెక్షన్ లేదు.");
+        } catch (java.net.SocketTimeoutException e) {
+            return said(false, "timeout", "Jarvis మెదడు జవాబు ఇవ్వడానికి చాలా ఆలస్యం అయింది. మళ్లీ అడగండి.");
+        } catch (Exception e) {
+            return said(false, String.valueOf(e.getMessage()), "Jarvis మెదడుతో ఏదో తప్పు జరిగింది.");
+        }
+    }
+
+    /** jarvis_brain's answer to Live: what to say, word for word. */
+    private static String said(boolean ok, String error, String say) {
+        try {
+            JSONObject o = new JSONObject().put("ok", ok).put("say", say == null ? "" : say);
+            if (error != null) o.put("error", error);
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"ok\":false}";
+        }
+    }
+
+    private static int words(String s) {
+        String t = s == null ? "" : s.trim();
+        return t.isEmpty() ? 0 : t.split("\\s+").length;
     }
 
     private void waitAndClose(int tries) {
