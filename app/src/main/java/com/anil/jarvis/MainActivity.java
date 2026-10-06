@@ -1441,12 +1441,6 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         } catch (Exception ignored) {}
     }
 
-    /** During Live the volume keys change Jarvis's voice (the AI assistant volume), even in the phone's echo-cancelling mode. */
-    @Override public boolean dispatchKeyEvent(android.view.KeyEvent e) {
-        if (LiveTalk.volumeKey(this, live, e)) return true;
-        return super.dispatchKeyEvent(e);
-    }
-
     @Override public void onBackPressed() {
         if (liveScreen != null && liveScreen.showing()) { onLiveEnd(); return; } // like ChatGPT: back ends the voice chat
         super.onBackPressed();

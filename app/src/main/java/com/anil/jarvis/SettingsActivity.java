@@ -508,13 +508,13 @@ public class SettingsActivity extends Activity {
         lb.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2));
         box.addView(lb);
         liveBarge = new RadioGroup(this);
-        liveBarge.addView(radio(95, "మీరు మాట్లాడగానే ఆగి వింటుంది, Gemini లా (ఫోన్ Jarvis ప్రతిధ్వనిని బాగా తీసేస్తే); లేకపోతే \"Jarvis\" లేదా \"stop\" అంటే ఆగుతుంది (సిఫార్సు)"));
-        liveBarge.addView(radio(96, "మీరు మాట్లాడగానే ఆగుతుంది, Gemini లా (ఫోన్ ప్రతిధ్వని బాగా తీసేస్తే); లేకపోతే శబ్దం బట్టి (గట్టిగా మాట్లాడాలి)"));
+        liveBarge.addView(radio(95, "\"Jarvis\" లేదా \"stop\" అంటే ఆగి వింటుంది (సిఫార్సు: Jarvis గొంతుకి తానే ఆగదు)"));
+        liveBarge.addView(radio(96, "మీరు ఏది మాట్లాడినా ఆగుతుంది (శబ్దం బట్టి; గట్టిగా మాట్లాడాలి)"));
         liveBarge.addView(radio(97, "మధ్యలో ఆగదు: పూర్తయ్యాక వింటుంది"));
         String lb0 = prefs.liveBarge();
         liveBarge.check("voice".equals(lb0) ? 96 : "off".equals(lb0) ? 97 : 95);
         box.addView(liveBarge);
-        note("Jarvis ప్రతి Live మొదటి జవాబులోనే ఫోన్ ప్రతిధ్వని ఎంత తీసేస్తుందో కొలిచి, బాగుంటే Gemini లా మీరు మాట్లాడగానే ఆగుతుంది. ఏది పనిచేస్తోందో \"Jarvis చెక్\" లో కనిపిస్తుంది. ఏ పద్ధతిలోనైనా: Jarvis మాట్లాడుతుండగా స్క్రీన్‌పై Jarvis (గుండ్రటి గుర్తు) నొక్కితే వెంటనే ఆగి వింటుంది. ఇయర్‌ఫోన్స్ / హెల్మెట్‌తో మీరు మాట్లాడగానే ఆగుతుంది.");
+        note("ఏ పద్ధతిలోనైనా: Jarvis మాట్లాడుతుండగా స్క్రీన్‌పై Jarvis (గుండ్రటి గుర్తు) నొక్కితే వెంటనే ఆగి వింటుంది. ఇయర్‌ఫోన్స్ / హెల్మెట్‌తో మీరు మాట్లాడగానే ఆగుతుంది.");
         bargeSensLabel = Ui.text(this, "", 15, Ui.MUTED);
         box.addView(bargeSensLabel);
         bargeSens = new SeekBar(this);
@@ -1359,7 +1359,6 @@ public class SettingsActivity extends Activity {
         if (prefs.liveMode()) s.append("• Live: ").append(LiveTalk.label(prefs)).append(prefs.liveGemini() ? " (" + prefs.geminiLiveModel() + ", గొంతు " + prefs.geminiLiveVoice() + ")" : "")
                 .append(prefs.liveKeyReady() ? "" : " ✗ key లేదు").append("\n");
         if (!GeminiLive.lastInfo.isEmpty()) s.append("• చివరి Gemini Live: ").append(GeminiLive.lastInfo).append("\n");
-        if (!GeminiLive.bargeInfo.isEmpty()) s.append("• Gemini Live లో మధ్యలో మాట్లాడితే: ").append(GeminiLive.bargeInfo).append("\n");
         if ("openai".equals(prefs.earsMode()) && !prefs.earsStream())
             s.append("• మీరు మాట్లాడుతుండగానే పంపడం: ఆగింది (OpenAI ఒప్పుకోలేదు); మీరు ఆపాక మొత్తం పంపుతుంది\n");
         if (!VoiceIO.lastTurn.isEmpty()) s.append("• చివరి జవాబుకు పట్టిన సమయం (మీరు ఆపినప్పటి నుంచి): ").append(VoiceIO.lastTurn).append("\n");

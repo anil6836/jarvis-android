@@ -186,12 +186,6 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (stopped && callText == null && live == null && !greeting && !voice.listening && !voice.speaking && !busy) closeSheet();
     };
 
-    /** During Live the volume keys change Jarvis's voice (the AI assistant volume), even in the phone's echo-cancelling mode. */
-    @Override public boolean dispatchKeyEvent(android.view.KeyEvent e) {
-        if (LiveTalk.volumeKey(this, live, e)) return true;
-        return super.dispatchKeyEvent(e);
-    }
-
     @Override protected void onDestroy() {
         Radio.dismissPicker();
         generation++; // a reply still on its way is dropped, and its remaining tools don't run
