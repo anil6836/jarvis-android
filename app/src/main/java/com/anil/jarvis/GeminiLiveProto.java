@@ -379,6 +379,44 @@ final class GeminiLiveProto {
         return code == 1007 || r.contains("invalid argument") || r.contains("unknown name") || r.contains("invalid json") || r.contains("voice");
     }
 
+    // ================================================================ full talk (talking over Jarvis)
+
+    /** Words that are always his when they cut Jarvis off (Jarvis is told never to say them). */
+    static final Set<String> HIS_WORDS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "jarvis", "జార్విస్", "stop", "స్టాప్", "wait", "ఆగు", "ఆగండి", "ఆపు", "ఆపండి", "చాలు"));
+
+    /**
+     * What Gemini heard after it stopped Jarvis is not really his: nothing that is a word, or mostly whole words of
+     * Jarvis's own (its voice heard back through the speaker). said: Jarvis's words as said.
+     */
+    static boolean mostlyEcho(String heard, String said) {
+        java.util.Set<String> saidWords = new java.util.HashSet<>(java.util.Arrays.asList(words(said)));
+        int all = 0, in = 0;
+        String only = "";
+        for (String w : words(heard)) {
+            if (w.length() < 2) continue;
+            if (HIS_WORDS.contains(w) && !saidWords.contains(w)) return false; // "Jarvis" / "stop" / "ఆగు" (that Jarvis didn't say): his
+            all++;
+            only = w;
+            if (saidWords.contains(w)) in++;
+        }
+        if (all == 0) return true; // (a sound, not a word)
+        if (all == 1) return only.length() >= 3 && in == 1;
+        return in * 10 >= all * 7;
+    }
+
+    /** The last n words of a text (as said), for comparing with what can still be echoing. */
+    static String lastWords(String s, int n) {
+        String[] ws = String.valueOf(s == null ? "" : s).trim().split("\\s+");
+        StringBuilder b = new StringBuilder();
+        for (int i = Math.max(0, ws.length - n); i < ws.length; i++) b.append(ws[i]).append(' ');
+        return b.toString().trim();
+    }
+
+    private static String[] words(String s) {
+        return String.valueOf(s == null ? "" : s).toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{M}\\p{N}]+");
+    }
+
     /** What went wrong, in Telugu, with Gemini's own words after it. */
     static String problem(int code, String reason, String model) {
         String raw = String.valueOf(reason == null ? "" : reason).trim();

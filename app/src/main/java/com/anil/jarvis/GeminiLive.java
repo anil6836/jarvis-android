@@ -80,6 +80,8 @@ final class GeminiLive implements LiveTalk {
     /** The newest of his turns saved by this talk: when (its stamp) and whether it came while Jarvis was talking. */
     private volatile long savedTurnAt;
     private volatile boolean savedTurnOverVoice, askedThisTurn;
+    /** ... whether it came over Jarvis's voice in full talk (the mic open while Jarvis talked), and its words. */
+    private volatile boolean heardOverFull;
     private volatile long moveBy;
     private int reconnects, allReconnects;
     private volatile String endReason = "bye";
@@ -88,18 +90,55 @@ final class GeminiLive implements LiveTalk {
     private String baseInstr = "", setupInstr = "", model = "";
     private boolean liveRules;
     private volatile long lastActivity, startedAt, lastLoudAt, firstVoiceWait = -1, lastHeardAt, heardStartWall;
+    /** When the mic's latest stretch of his voice began, while Jarvis was quiet. */
+    private volatile long loudRunAt;
     private volatile boolean turnVoiceSeen;
     private Thread micThread, playThread;
     private AudioManager am;
     private int oldMode;
-    private boolean routed, speakerOn;
+    private volatile boolean routed;
+    private boolean speakerOn;
+    /** On the speaker in the communication mode: watches for earbuds / a Bluetooth speaker / headphones connected meanwhile. */
+    private android.media.AudioDeviceCallback deviceWatch;
+    /** Another output was connected at the start (Bluetooth speaker, headphones ...): its type, or 0. */
+    private int otherOutput;
     private volatile boolean headset, btHeadset;
     /**
-     * On the phone's speaker (no headset, "call voice" off): Jarvis's voice plays as ordinary media, clear and on the
-     * media volume, and while it plays the mic is not sent to Gemini (it would hear itself); his talk-over is caught
-     * here, the way the classic talk-over does it.
+     * On the phone's speaker (no headset, "call voice" off): Jarvis's voice plays clear on the AI assistant volume, and
+     * while it plays the mic is not sent to Gemini (it would hear itself); his talk-over ("Jarvis" / "stop", his loud
+     * voice, or a tap) is caught here. (Full talk, below, lifts this when the phone's echo cancelling is good.)
      */
     private volatile boolean echoGate;
+    /**
+     * Full talk, as in the Gemini app: the phone's echo cancelling was measured (while Jarvis talked) to take Jarvis's
+     * voice out of the mic well enough, so the mic goes to Gemini all the time and Gemini stops the moment he talks.
+     * Until then (and if it isn't good enough) the safe way above stays.
+     */
+    private volatile boolean duplex;
+    /** Full talk stopped Jarvis without him saying anything (its own echo): the safe way stays for this talk. */
+    private volatile boolean duplexFailed;
+    /** Gemini cut Jarvis off in full talk: what he was heard saying since (guarded by heard), and what Jarvis had said. */
+    private final StringBuilder afterCut = new StringBuilder();
+    /** His words heard over Jarvis's voice in this answer, in full talk (guarded by heard): the start of what cut it off. */
+    private final StringBuilder overHeard = new StringBuilder();
+    private volatile boolean cutWatch;
+    private volatile String cutSaid = "";
+    /** When full talk was last turned off (his words still on their way are treated as heard over Jarvis's voice). */
+    private volatile long duplexOffAt = -100000;
+    private volatile long cutAt;
+    private volatile int cutWaits;
+    /** When the safe way's measurement was last written for "Jarvis చెక్" (mic thread). */
+    private long infoAt;
+    /** How talk-over works in the last Gemini Live talk, for "Jarvis చెక్". */
+    static volatile String bargeInfo = "";
+    /** Jarvis's echo left in the mic after the phone's echo cancelling (90th percentile) below this: full talk. */
+    private static final double ECHO_LEFT_GOOD = 250;
+    /** ... and its median above this (during full talk): back to the safe way. */
+    private static final double ECHO_LEFT_BAD = 450;
+    /** Jarvis's echo can only be its last few words (about the last 3 seconds of its voice). */
+    private static final int ECHO_WORDS = 12;
+    /** ... when Jarvis was cut off mid-answer (its words can run ahead of its voice, so more of them). */
+    private static final int ECHO_WORDS_CUT = 40;
     /** He talked over Jarvis: his voice goes to Gemini, and the rest of that answer is dropped. */
     private volatile boolean barged;
     /** How he stops Jarvis mid-answer on the speaker (Settings): "word", "voice" or "off". */
@@ -168,6 +207,8 @@ final class GeminiLive implements LiveTalk {
     private final StringBuilder heard = new StringBuilder(), said = new StringBuilder();
     /** Jarvis's last words, squeezed (to tell its own voice heard back from his). */
     private volatile String lastSaidFlat = "";
+    /** The end of Jarvis's last answer as said (with its words apart), for "was that only Jarvis's own voice". */
+    private volatile String lastSaidText = "";
     private volatile JSONObject turnUsage;
 
     GeminiLive(Context c, Prefs prefs, Tools tools, Brain brain, LiveSession.Listener l) {
@@ -190,10 +231,16 @@ final class GeminiLive implements LiveTalk {
         model = prefs.geminiLiveModel();
         startedAt = SystemClock.elapsedRealtime();
         lastActivity = startedAt;
+        bargeMode = prefs.liveBarge();
         routeAudio();
         echoGate = !headset && !prefs.bargeCallVoice();
-        bargeMode = prefs.liveBarge();
+        duplex = false;
         if (echoGate && "word".equals(bargeMode)) loadWord();
+        bargeInfo = "off".equals(bargeMode) ? "ఆఫ్ (Jarvis పూర్తయ్యాక వింటుంది)"
+                : !echoGate ? (headset ? "హెడ్‌సెట్: మీరు మాట్లాడగానే ఆగుతుంది (Gemini లా)" : "కాల్ మార్గం: మీరు మాట్లాడగానే ఆగుతుంది")
+                : otherOutput != 0 ? "వేరే స్పీకర్ / హెడ్‌ఫోన్స్ కనెక్ట్ అయి ఉన్నాయి (రకం " + otherOutput + "): " + safeWay()
+                : !routed ? "ఫోన్ వేరే కాల్‌లో ఉంది: " + safeWay()
+                : "కొలుస్తున్నాను (Jarvis మొదటి జవాబులో ఫోన్ ప్రతిధ్వని ఎంత తీసేస్తుందో)";
         state(OrbView.THINKING, "Gemini Live కి కనెక్ట్ అవుతున్నాను…");
         client = new OkHttpClient.Builder()
                 .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -391,6 +438,9 @@ final class GeminiLive implements LiveTalk {
         main.removeCallbacks(heardSettled);
         main.removeCallbacks(moveCheck);
         main.removeCallbacks(finishLater);
+        main.removeCallbacks(cutCheck);
+        String bi = bargeInfo;
+        if (bi.startsWith("కొలుస్తున్నాను")) bargeInfo = when() + " · ఇంకా కొలవలేదు (Jarvis ఎక్కువసేపు మాట్లాడలేదు): అప్పటిదాకా " + safeWay();
         try { if (ws != null) ws.close(1000, "bye"); } catch (Exception ignored) {}
         Thread m = micThread, p = playThread;
         micThread = null;
@@ -419,6 +469,13 @@ final class GeminiLive implements LiveTalk {
     @Override public int volumeStream() {
         if (callPathVoice() && routed) return AudioManager.USE_DEFAULT_STREAM_TYPE;
         return Build.VERSION.SDK_INT >= 29 ? 11 : AudioManager.STREAM_MUSIC; // (11 = STREAM_ASSISTANT; on old phones it follows media)
+    }
+
+    /** In the phone's communication mode on the speaker the phone would give the volume keys to the call volume: the screens steer them here. */
+    @Override public int keysStream() {
+        if (!routed || callPathVoice()) return -1;
+        try { if (am != null && am.getMode() != AudioManager.MODE_IN_COMMUNICATION) return -1; } catch (Exception ignored) {} // (a real call: its keys)
+        return volumeStream();
     }
 
     /** He tapped Jarvis: the rest of this answer is dropped and his voice goes to Gemini. */
@@ -518,7 +575,10 @@ final class GeminiLive implements LiveTalk {
         @Override public void voice(byte[] pcm) {
             lastActivity = SystemClock.elapsedRealtime();
             if (barged && turnVoiceSeen) return; // he talked over this answer: the rest of it isn't played
-            if (!turnVoiceSeen) barged = false;  // a new answer: Jarvis's own voice is kept from Gemini again
+            if (!turnVoiceSeen) { // a new answer: Jarvis's own voice is kept from Gemini again
+                barged = false;
+                synchronized (heard) { overHeard.setLength(0); }
+            }
             if (saidPending) { // a new answer: the last one's words are complete
                 main.removeCallbacks(finishLater);
                 saidPending = false;
@@ -538,10 +598,19 @@ final class GeminiLive implements LiveTalk {
             lastActivity = now;
             lastHeardAt = now;
             String all;
-            boolean overVoice = prefs.bargeIn() && (jarvisSpeaking || !playQueue.isEmpty() || now - voiceEndedAt < 800);
+            // full talk (now, or just before): the mic went to Gemini while Jarvis talked, so words can be its own voice;
+            // unless the mic heard his voice begin only after Jarvis went quiet (his quick answer to Jarvis's question)
+            boolean full = duplex || now - duplexOffAt < 3000 || cutWatch;
+            boolean jarvisOn = jarvisSpeaking || !playQueue.isEmpty();
+            boolean overVoice = full
+                    ? jarvisOn || cutWatch || now - voiceEndedAt < 2000 && loudRunAt <= voiceEndedAt + 300
+                    : prefs.bargeIn() && (jarvisOn || now - voiceEndedAt < 800);
             synchronized (heard) {
-                if (heard.length() == 0) { heardStartWall = System.currentTimeMillis(); heardOverVoice = false; } // when he began saying it
+                if (heard.length() == 0) { heardStartWall = System.currentTimeMillis(); heardOverVoice = false; heardOverFull = false; } // when he began saying it
                 if (overVoice) heardOverVoice = true;
+                if (overVoice && full) heardOverFull = true;
+                if (cutWatch) afterCut.append(text);
+                else if (full && overVoice) overHeard.append(text);
                 heard.append(text);
                 all = heard.toString().trim();
             }
@@ -596,6 +665,7 @@ final class GeminiLive implements LiveTalk {
             main.removeCallbacks(finishLater);
             saidPending = false;
             finishSaid(" …"); // what Jarvis had said when he spoke over it
+            if (duplex) main.post(GeminiLive.this::startCutWatch); // full talk: was it him, or Jarvis's own voice?
         }
 
         @Override public void toolCall(String id, String name, JSONObject args) {
@@ -632,6 +702,79 @@ final class GeminiLive implements LiveTalk {
         finishSaid("");
     };
 
+    /**
+     * Shortly after Gemini cut Jarvis off in full talk: if no words of his came (or only Jarvis's own words heard back),
+     * Jarvis stopped for its own voice: the safe way stays for the rest of this talk.
+     */
+    private final Runnable cutCheck = this::checkCut;
+
+    /** Main thread: Gemini cut Jarvis off in full talk; his words (those already heard over Jarvis's voice, and what comes) are watched. */
+    private void startCutWatch() {
+        if (closed || !duplex) return;
+        synchronized (heard) {
+            afterCut.setLength(0);
+            afterCut.append(overHeard).append(' ');
+            overHeard.setLength(0);
+            cutWatch = true;
+        }
+        cutSaid = GeminiLiveProto.lastWords(lastSaidText, ECHO_WORDS_CUT);
+        cutAt = SystemClock.elapsedRealtime();
+        cutWaits = 0;
+        main.removeCallbacks(cutCheck);
+        main.postDelayed(cutCheck, 3500);
+    }
+
+    private void checkCut() {
+        String his;
+        synchronized (heard) { his = afterCut.toString(); }
+        boolean echo = GeminiLiveProto.mostlyEcho(his, cutSaid);
+        // no words yet, but the mic hears a voice since Jarvis went quiet: his words may still be coming (a long sentence)
+        if (!closed && duplex && echo && his.trim().isEmpty() && lastLoudAt > cutAt + 500 && cutWaits++ < 3) {
+            main.postDelayed(cutCheck, 2000);
+            return;
+        }
+        synchronized (heard) {
+            afterCut.setLength(0);
+            cutWatch = false;
+        }
+        if (closed || !duplex || !echo) return;
+        duplexFailed = true; // (first: the mic thread doesn't turn full talk back on)
+        duplexOffAt = SystemClock.elapsedRealtime();
+        duplex = false;
+        bargeInfo = when() + " · Jarvis తన గొంతుకే తానే ఆగింది: ఈ Live లో జాగ్రత్త పద్ధతికి మారాను — " + safeWay()
+                + ". (Jarvis గొంతు కొంచెం తగ్గిస్తే Gemini లా ఆగడం మళ్లీ పనిచేయొచ్చు)";
+    }
+
+    /** How he stops Jarvis in the safe way (the mic kept from Gemini while Jarvis talks). */
+    private String safeWay() {
+        return "voice".equals(bargeMode) ? "మీరు గట్టిగా మాట్లాడితే లేదా Jarvis ని తాకితే ఆగుతుంది"
+                : "'Jarvis' / 'stop' అంటే లేదా Jarvis ని తాకితే ఆగుతుంది";
+    }
+
+    /**
+     * Mic thread, while Jarvis is loud: Jarvis's echo left in the mic after the phone's echo cancelling (90th percentile,
+     * median of the last 2 s) decides full talk, as in the Gemini app, or the safe way.
+     */
+    private void duplexCheck(double left90, double left50) {
+        if (!duplex) {
+            if (left90 < ECHO_LEFT_GOOD && routed && !duplexFailed && !"off".equals(bargeMode)) {
+                duplex = true;
+                bargeInfo = when() + " · Gemini లా: మీరు మాట్లాడగానే Jarvis ఆగి వింటుంది ✓ (ఫోన్ ప్రతిధ్వని బాగా తీసేసింది: మిగిలింది "
+                        + Math.round(left90) + ", " + Math.round(ECHO_LEFT_GOOD) + " లోపు చాలు)";
+                return;
+            }
+            long now = SystemClock.elapsedRealtime();
+            if (duplexFailed || now - infoAt < 2000) return;
+            infoAt = now;
+            bargeInfo = when() + " · జాగ్రత్త పద్ధతి: " + safeWay() + " (ఫోన్ ప్రతిధ్వని పూర్తిగా తీయలేదు: మిగిలింది "
+                    + Math.round(left90) + ", " + Math.round(ECHO_LEFT_GOOD) + " లోపు ఉంటే Gemini లా ఆగుతుంది; Jarvis గొంతు కొంచెం తగ్గిస్తే రావచ్చు)";
+        } else if (left50 > ECHO_LEFT_BAD) {
+            duplexOffAt = SystemClock.elapsedRealtime();
+            duplex = false;
+            bargeInfo = when() + " · ప్రతిధ్వని పెరిగింది (" + Math.round(left50) + "): జాగ్రత్త పద్ధతికి మారాను — " + safeWay();
+        }
+    }
+
     /** Lower case, letters and digits only: to compare what he said with what Jarvis said. */
     private static String flat(String s) {
         return s == null ? "" : s.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{M}\\p{N}]+", "");
@@ -644,12 +787,13 @@ final class GeminiLive implements LiveTalk {
     private void settleHeard() {
         String t;
         long began;
-        boolean overVoice;
+        boolean overVoice, overFull;
         synchronized (heard) {
             t = heard.toString().trim();
             heard.setLength(0);
             began = heardStartWall;
             overVoice = heardOverVoice;
+            overFull = heardOverFull;
         }
         main.removeCallbacks(heardSettled);
         if (t.isEmpty()) return;
@@ -662,6 +806,13 @@ final class GeminiLive implements LiveTalk {
         long at = began > 0 ? began : System.currentTimeMillis();
         savedTurnAt = at;
         savedTurnOverVoice = overVoice;
+        // full talk: words heard over Jarvis's voice that are mostly Jarvis's own last words may be its voice heard back:
+        // kept in the chat, but never taken as his yes to a send, a call or a payment
+        if (overFull) {
+            String tail;
+            synchronized (said) { tail = lastSaidText + " " + said; }
+            if (GeminiLiveProto.mostlyEcho(t, GeminiLiveProto.lastWords(tail, ECHO_WORDS))) Tools.echoTurns.add(at);
+        }
         store.addChat("user", t, false, at);
         main.post(() -> { if (!closed) l.onLiveUser(t); });
     }
@@ -678,6 +829,7 @@ final class GeminiLive implements LiveTalk {
         if (s.isEmpty()) return;
         String fl = flat(s);
         lastSaidFlat = fl.length() > 600 ? fl.substring(fl.length() - 600) : fl;
+        lastSaidText = s.length() > 800 ? s.substring(s.length() - 800) : s;
         String all = s + tail;
         main.post(() -> { if (!closed) l.onLiveJarvis(all); });
     }
@@ -878,9 +1030,11 @@ final class GeminiLive implements LiveTalk {
         if (am == null) return;
         oldMode = am.getMode();
         if (oldMode != AudioManager.MODE_NORMAL) return; // a call (or another call app) has the sound: leave it as it is
-        // On the phone's speaker (no headset, "call voice" off) the phone stays as it is: Jarvis's voice plays on the
-        // AI assistant volume like Gemini's or ChatGPT's, and the volume keys work on it (the call mode would take the
-        // volume keys for the call volume). A headset (or "call voice") uses the call path, as a headset's mic needs it.
+        // The phone's communication mode: its echo cancelling takes Jarvis's voice out of the mic (so he can talk over
+        // Jarvis, as in the Gemini app). On the speaker Jarvis's voice still plays as itself on the AI assistant volume
+        // (not the call path, which sounds like a phone call); the volume keys are steered to it by the screens (this mode
+        // would give them to the call volume). With talk-over off the phone stays as it is. A headset (or "call voice")
+        // always uses this path, as a headset's mic needs it.
         try { // a headset with a mic (wired, USB, or Bluetooth for calls: a helmet)
             if (Build.VERSION.SDK_INT >= 31) {
                 for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
@@ -893,7 +1047,13 @@ final class GeminiLive implements LiveTalk {
                 headset = btHeadset || am.isWiredHeadsetOn();
             }
         } catch (Exception ignored) {}
-        if (!headset && !prefs.bargeCallVoice()) return;
+        if (!headset && !prefs.bargeCallVoice()) {
+            if ("off".equals(bargeMode)) return;
+            // another output (a Bluetooth speaker or car, earbuds for media only, wired headphones, USB audio, hearing
+            // aids): Jarvis keeps playing there, so the phone stays as it is (this mode would take its voice to the speaker)
+            otherOutput = externalOutput();
+            if (otherOutput != 0) return;
+        }
         routed = true;
         try {
             am.setMode(AudioManager.MODE_IN_COMMUNICATION); // the phone's echo cancelling works best on this path
@@ -919,16 +1079,72 @@ final class GeminiLive implements LiveTalk {
                 btHeadset = am.isBluetoothScoOn();
             }
         } catch (Exception ignored) {}
+        if (!headset && !prefs.bargeCallVoice()) watchDevices();
+    }
+
+    /**
+     * An output other than the phone's own speaker and earpiece is connected (its type, for "Jarvis చెక్"), or 0.
+     * (A headset with a mic is found before this.)
+     */
+    private int externalOutput() {
+        try {
+            for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+                if (!phoneOwn(d.getType())) return d.getType();
+            }
+        } catch (Exception ignored) {}
+        return 0;
+    }
+
+    /** The phone's own outputs (speaker, earpiece, the phone line and inner paths), not something connected to it. */
+    private static boolean phoneOwn(int t) {
+        return t == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE || t == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                || t == AudioDeviceInfo.TYPE_TELEPHONY || t == AudioDeviceInfo.TYPE_REMOTE_SUBMIX
+                || t == AudioDeviceInfo.TYPE_FM || t == AudioDeviceInfo.TYPE_BUS
+                || t == 24 /* TYPE_BUILTIN_SPEAKER_SAFE */ || t == 28 /* TYPE_ECHO_REFERENCE */;
+    }
+
+    /** On the speaker path: something connected during the talk takes Jarvis's voice (the mode is let go). */
+    private void watchDevices() {
+        deviceWatch = new android.media.AudioDeviceCallback() {
+            @Override public void onAudioDevicesAdded(AudioDeviceInfo[] added) {
+                for (AudioDeviceInfo d : added) {
+                    if (d.isSink() && !phoneOwn(d.getType())) { leaveSpeakerMode(d.getType()); return; }
+                }
+            }
+        };
+        try { am.registerAudioDeviceCallback(deviceWatch, main); } catch (Exception e) { deviceWatch = null; }
+    }
+
+    /** Main thread: earbuds / a speaker / headphones were connected: the phone goes back to normal, Jarvis plays there, the safe way. */
+    private void leaveSpeakerMode(int type) {
+        if (closed || !routed || headset) return;
+        duplexFailed = true; // (first: the mic thread doesn't turn full talk back on)
+        duplexOffAt = SystemClock.elapsedRealtime();
+        duplex = false;
+        restoreAudio();
+        otherOutput = type;
+        bargeInfo = when() + " · వేరే స్పీకర్ / హెడ్‌ఫోన్స్ కనెక్ట్ అయ్యాయి (రకం " + type + "): Jarvis గొంతు అక్కడికి; " + safeWay();
     }
 
     /** Only what Jarvis changed is undone, and never over a real call. */
     private void restoreAudio() {
+        android.media.AudioDeviceCallback w = deviceWatch;
+        deviceWatch = null;
+        if (w != null && am != null) {
+            try { am.unregisterAudioDeviceCallback(w); } catch (Exception ignored) {}
+        }
         if (am == null || !routed) return;
         routed = false;
         try {
-            if (Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice(); // (Jarvis's device choice is always let go)
+            if (Build.VERSION.SDK_INT >= 31) {
+                am.clearCommunicationDevice(); // (Jarvis's device choice is always let go)
+                // only Jarvis's own request is dropped (a real call keeps the sound): otherwise the phone could go back
+                // to Jarvis's left-over mode after the call
+                am.setMode(oldMode);
+                return;
+            }
             if (am.getMode() != AudioManager.MODE_IN_COMMUNICATION) return; // a call took over: its sound is its own
-            if (Build.VERSION.SDK_INT < 31 && speakerOn) am.setSpeakerphoneOn(false);
+            if (speakerOn) am.setSpeakerphoneOn(false);
             am.setMode(oldMode);
         } catch (Exception ignored) {}
     }
@@ -944,6 +1160,7 @@ final class GeminiLive implements LiveTalk {
             float floor = 300f;
             // talk-over on the speaker (as the classic talk-over): the echo path is learnt from Jarvis's known output level
             Ring ratio = new Ring(75), quiet = new Ring(75);
+            Ring left = new Ring(50); // Jarvis's echo left after the phone's echo cancelling (the last 2 s of it loud)
             int sounding = 0, loud = 0;
             int lv = Math.max(0, Math.min(4, prefs.bargeSens()));
             double k = BARGE_SCALE[lv];
@@ -982,7 +1199,10 @@ final class GeminiLive implements LiveTalk {
                     // his voice (for "how soon did Jarvis answer"): clearly above the room's level, while Jarvis is quiet
                     if (!speakingNow) {
                         if (rms < floor) floor = floor * 0.8f + rms * 0.2f; else floor += (rms - floor) * 0.01f;
-                        if (rms > Math.max(floor * 4f, 900f)) lastLoudAt = now;
+                        if (rms > Math.max(floor * 4f, 900f)) {
+                            if (now - lastLoudAt > 700) loudRunAt = now; // his voice began (a new stretch of it)
+                            lastLoudAt = now;
+                        }
                     }
                     if (now - lastLevelPost > 100) {
                         lastLevelPost = now;
@@ -1007,12 +1227,19 @@ final class GeminiLive implements LiveTalk {
                             // Jarvis's echo, learnt from its known output level (as the classic talk-over)
                             double out = PlaybackLevel.now();
                             double noise = quiet.n >= 5 ? quiet.pct(0.5) : 0;
+                            double alone = Math.sqrt(Math.max(0, (double) rms * rms - noise * noise)); // the mic without the room
                             if (out > 300) sounding++;
-                            if (out > 1000) ratio.add(Math.sqrt(Math.max(0, (double) rms * rms - noise * noise)) / out); // the echo alone
+                            if (out > 1000) ratio.add(alone / out); // the echo alone
                             else if (out >= 0 && out < 150) quiet.add(rms); // the room, in Jarvis's pauses
                             boolean judge = out >= 0 && sounding >= 15 && ratio.n >= 10; // after 0.6 s of Jarvis sounding
                             double echo = Math.hypot(ratio.pct(0.85) * Math.max(0, out), noise);
                             overRecent = ((overRecent << 1) | (judge && rms > Math.max(500, echo * 1.4) ? 1 : 0)) & 0x7FFF;
+                            // how much of Jarvis's voice the phone's echo cancelling leaves in the mic, while Jarvis is loud:
+                            // little enough, and the mic goes to Gemini all the time (full talk, as in the Gemini app)
+                            if (out > 1500 && sounding >= 8) {
+                                if (!duplex || (overRecent & 1) == 0) left.add(alone); // (in full talk his own voice over Jarvis isn't echo)
+                                if (left.n >= 25) duplexCheck(left.pct(0.9), left.pct(0.5));
+                            }
                             boolean stop = false;
                             if (wr != null) {
                                 int w = stopWord(wr, bytes); // "Jarvis" / "stop": sure, or being said while his voice is in the mic
@@ -1033,9 +1260,10 @@ final class GeminiLive implements LiveTalk {
                             loud = 0;
                             overRecent = 0;
                         }
-                        if (!barged && (speakingNow || now - voiceEndedAt < ECHO_TAIL_MS)) continue; // Jarvis's voice (or its fading echo): not sent
+                        // Jarvis's voice (or its fading echo): not sent (in full talk the phone has taken it out: sent)
+                        if (!barged && !duplex && (speakingNow || now - voiceEndedAt < ECHO_TAIL_MS)) continue;
                     }
-                    if (barged && now - bargedAt < CUT_TAIL_MS) continue; // the cut-off voice is still fading: not sent
+                    if (barged && !duplex && now - bargedAt < CUT_TAIL_MS) continue; // the cut-off voice is still fading: not sent
                     if (!ready) { // (re)connecting: keep his last few seconds for when the line is ready
                         backlog.addLast(bytes);
                         while (backlog.size() > BACKLOG) backlog.removeFirst();
