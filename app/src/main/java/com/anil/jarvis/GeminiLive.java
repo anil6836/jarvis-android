@@ -140,8 +140,11 @@ final class GeminiLive implements LiveTalk {
         try { if (m != null) m.close(); } catch (Throwable ignored) {}
     }
 
-    /** "Jarvis" (or "stop") heard in this piece of the mic, over Jarvis's own voice. */
-    private static boolean saidStopWord(org.vosk.Recognizer r, byte[] pcm) {
+    /**
+     * "Jarvis" (or "stop") in this piece of the mic, over Jarvis's own voice: 2 = a finished word Vosk is sure of,
+     * 1 = "jarvis" still being heard (counts only when the mic also shows his voice on top of the echo), 0 = no.
+     */
+    private static int stopWord(org.vosk.Recognizer r, byte[] pcm) {
         try {
             if (r.acceptWaveForm(pcm, pcm.length)) {
                 JSONObject res = new JSONObject(r.getResult());
@@ -150,15 +153,16 @@ final class GeminiLive implements LiveTalk {
                     JSONObject w = ws.getJSONObject(i);
                     String t = w.optString("word");
                     double c = w.optDouble("conf", 0);
-                    if ("jarvis".equals(t) && c >= 0.8 || "stop".equals(t) && c >= 0.9) return true;
+                    if ("jarvis".equals(t) && c >= 0.85 || "stop".equals(t) && c >= 0.9) return 2;
                 }
-                return false;
+                return 0;
             }
-            return new JSONObject(r.getPartialResult()).optString("partial").contains("jarvis"); // ("jarvis" is clear enough not to wait)
+            return new JSONObject(r.getPartialResult()).optString("partial").contains("jarvis") ? 1 : 0;
         } catch (Exception e) {
-            return false;
+            return 0;
         }
     }
+
     private long lastLevelPost, lastVoicePost;
     /** His words this turn (not saved yet) and Jarvis's words this turn. */
     private final StringBuilder heard = new StringBuilder(), said = new StringBuilder();
@@ -420,15 +424,22 @@ final class GeminiLive implements LiveTalk {
     /** He tapped Jarvis: the rest of this answer is dropped and his voice goes to Gemini. */
     @Override public void interrupt() {
         if (closed || !(jarvisSpeaking || !playQueue.isEmpty())) return;
-        dropPre = true;
+        bargedAt = SystemClock.elapsedRealtime();
         barged = true;
         playQueue.clear();
         flushRequested = true;
         lastActivity = SystemClock.elapsedRealtime();
     }
 
-    /** He tapped: the mic's last moment (Jarvis's own voice) is dropped, not sent. */
-    private volatile boolean dropPre;
+    /** When he stopped Jarvis (tap, word or voice): its voice still sounds for a moment, and that is not sent. */
+    private volatile long bargedAt;
+    /**
+     * After Jarvis's voice stops, the speaker still sounds for a moment (the phone's output delay and the room's echo):
+     * the mic is kept from Gemini that long too, or Gemini hears Jarvis's last words and answers them as his.
+     */
+    private static final long ECHO_TAIL_MS = 700;
+    /** After he stops Jarvis: how long its cut-off voice may still sound. */
+    private static final long CUT_TAIL_MS = 350;
 
     @Override public void setMuted(boolean m) {
         boolean was = muted;
@@ -929,7 +940,6 @@ final class GeminiLive implements LiveTalk {
             AcousticEchoCanceler aec = null;
             NoiseSuppressor ns = null;
             ArrayDeque<byte[]> backlog = new ArrayDeque<>();
-            ArrayDeque<byte[]> pre = new ArrayDeque<>(); // his last 400 ms while Jarvis talked: sent when he talks over it
             boolean wasHeld = false;
             float floor = 300f;
             // talk-over on the speaker (as the classic talk-over): the echo path is learnt from Jarvis's known output level
@@ -939,6 +949,7 @@ final class GeminiLive implements LiveTalk {
             double k = BARGE_SCALE[lv];
             int need = Math.max(3, 5 + BARGE_NEED_ADJ[lv] / 2); // about 200 ms of his voice above Jarvis's echo
             boolean wasSpeaking = false;
+            int overRecent = 0; // the last 15 pieces (0.6 s): where his voice was clearly on top of Jarvis's echo
             try {
                 int min = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
                 rec = new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, IN_RATE,
@@ -978,8 +989,8 @@ final class GeminiLive implements LiveTalk {
                         float level = muted ? 0f : Math.min(1f, rms / 4000f);
                         main.post(() -> l.onLiveLevel(level));
                     }
-                    // muted, or (talk-over off) Jarvis is talking: nothing is sent (so it doesn't hear itself)
-                    boolean hold = muted || ("off".equals(bargeMode) && speakingNow);
+                    // muted, or (talk-over off) Jarvis is talking or its voice is still fading: nothing is sent (so it doesn't hear itself)
+                    boolean hold = muted || ("off".equals(bargeMode) && (speakingNow || echoGate && now - voiceEndedAt < ECHO_TAIL_MS));
                     if (hold) {
                         if (!wasHeld && ready && !muted) sendRaw(GeminiLiveProto.audioEnd()); // what he said is taken as said
                         wasHeld = true;
@@ -989,48 +1000,42 @@ final class GeminiLive implements LiveTalk {
                     wasHeld = false;
                     boolean newAnswer = speakingNow && !wasSpeaking;
                     wasSpeaking = speakingNow;
-                    if (dropPre) { pre.clear(); dropPre = false; } // (he tapped: Jarvis's last echo is not sent)
                     if (echoGate && !barged) {
                         org.vosk.Recognizer wr = "word".equals(bargeMode) ? word : null;
                         if (newAnswer && wr != null) { try { wr.getFinalResult(); } catch (Throwable ignored) {} } // a new answer: the word detector starts clean
-                        if (speakingNow && wr != null) {
-                            if (saidStopWord(wr, bytes)) { // he said "Jarvis" / "stop" over Jarvis's voice
-                                barged = true;
-                                playQueue.clear();
-                                flushRequested = true;
-                            }
-                        } else if (speakingNow) {
+                        if (speakingNow) {
+                            // Jarvis's echo, learnt from its known output level (as the classic talk-over)
                             double out = PlaybackLevel.now();
                             double noise = quiet.n >= 5 ? quiet.pct(0.5) : 0;
                             if (out > 300) sounding++;
                             if (out > 1000) ratio.add(Math.sqrt(Math.max(0, (double) rms * rms - noise * noise)) / out); // the echo alone
                             else if (out >= 0 && out < 150) quiet.add(rms); // the room, in Jarvis's pauses
                             boolean judge = out >= 0 && sounding >= 15 && ratio.n >= 10; // after 0.6 s of Jarvis sounding
-                            double limit = Math.max(Math.max(500, noise * 3), Math.hypot(ratio.pct(0.85) * Math.max(0, out) * 1.8, noise)) * k;
-                            if (judge && rms > limit) { // (the loudness way: "voice", or "word" while its detector loads)
-                                if (++loud >= need) { // he is talking over Jarvis: stop it, and Gemini hears him from his first word
-                                    loud = 0;
-                                    barged = true;
-                                    playQueue.clear();
-                                    flushRequested = true;
-                                }
-                            } else {
-                                loud = Math.max(0, loud - 1);
+                            double echo = Math.hypot(ratio.pct(0.85) * Math.max(0, out), noise);
+                            overRecent = ((overRecent << 1) | (judge && rms > Math.max(500, echo * 1.4) ? 1 : 0)) & 0x7FFF;
+                            boolean stop = false;
+                            if (wr != null) {
+                                int w = stopWord(wr, bytes); // "Jarvis" / "stop": sure, or being said while his voice is in the mic
+                                stop = w == 2 || w == 1 && Integer.bitCount(overRecent) >= 3;
+                            } else if ("voice".equals(bargeMode)) { // any loud talk (the word way waits for its detector: only a tap meanwhile)
+                                double limit = Math.max(Math.max(500, noise * 3), echo * 1.8) * k;
+                                if (judge && rms > limit) stop = ++loud >= need; else loud = Math.max(0, loud - 1);
+                            }
+                            if (stop) { // he is talking over Jarvis: stop it; Gemini hears him once its voice has faded
+                                loud = 0;
+                                bargedAt = now;
+                                barged = true;
+                                playQueue.clear();
+                                flushRequested = true;
                             }
                         } else {
                             sounding = 0;
                             loud = 0;
+                            overRecent = 0;
                         }
-                        if (!barged && (speakingNow || now - voiceEndedAt < 250)) { // Jarvis's voice (or its last echo): not sent
-                            pre.addLast(bytes);
-                            while (pre.size() > 10) pre.removeFirst();
-                            continue;
-                        }
+                        if (!barged && (speakingNow || now - voiceEndedAt < ECHO_TAIL_MS)) continue; // Jarvis's voice (or its fading echo): not sent
                     }
-                    if (!pre.isEmpty()) {
-                        if (barged) while (!pre.isEmpty()) backlog.addLast(pre.removeFirst()); // his first words over Jarvis go first
-                        else pre.clear(); // (Jarvis just finished: that was its own echo)
-                    }
+                    if (barged && now - bargedAt < CUT_TAIL_MS) continue; // the cut-off voice is still fading: not sent
                     if (!ready) { // (re)connecting: keep his last few seconds for when the line is ready
                         backlog.addLast(bytes);
                         while (backlog.size() > BACKLOG) backlog.removeFirst();
