@@ -61,7 +61,13 @@ public class SettingsActivity extends Activity {
     private Switch newsAuto;
     private EditText newsPlaces;
     private Switch diaryAsk, holidayRemind, findPhone, coughAsk;
-    private RadioGroup groupMode, typingMode, earsMode;
+    private RadioGroup groupMode, typingMode, earsMode, liveProvider, earsOther;
+    private View earsOtherBox;
+    /** The voice choice before the last tap (only leaving "⚡ Gemini Live" turns Live off). */
+    private int earsWas;
+    private EditText geminiLiveModel, geminiLiveVoice;
+    /** The voice choice and the Live switches are being put in step (their listeners wait). */
+    private boolean syncingVoice;
     private EditText earsModel;
     private EditText myNames;
     private Switch bubbleAll;
@@ -376,14 +382,32 @@ public class SettingsActivity extends Activity {
         el.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2));
         box.addView(el);
         earsMode = new RadioGroup(this);
+        earsMode.addView(radio(84, "⚡ Gemini Live · చాలా వేగం, మనిషితో మాట్లాడినట్టు, బీప్ ఉండదు (Gemini key, నెట్ కావాలి)"));
         earsMode.addView(radio(81, "OpenAI · Jarvis సొంత మైక్, బీప్ ఉండదు (నెట్ కావాలి, చాలా కొద్ది ఖర్చు)"));
         earsMode.addView(radio(82, "Gemini · Jarvis సొంత మైక్, బీప్ ఉండదు (నెట్ కావాలి, మీ Gemini మోడల్)"));
         earsMode.addView(radio(83, "Google వాయిస్ టైపింగ్ · మాటలు లైవ్‌గా కనిపిస్తాయి, నెట్ లేకుండా కూడా; కానీ మైక్ ఆన్/ఆఫ్ బీప్‌లు వస్తాయి"));
         String em0 = prefs.earsMode();
-        earsMode.check("gemini".equals(em0) ? 82 : "google".equals(em0) ? 83 : 81);
+        earsMode.check(prefs.liveMode() && prefs.liveGemini() ? 84 : "gemini".equals(em0) ? 82 : "google".equals(em0) ? 83 : 81);
+        earsWas = earsMode.getCheckedRadioButtonId();
         box.addView(earsMode);
+        // with Gemini Live: how the message card, the camera and the floating button hear him
+        LinearLayout other = new LinearLayout(this);
+        other.setOrientation(LinearLayout.VERTICAL);
+        other.setPadding(Ui.dp(this, 24), 0, 0, 0);
+        other.addView(Ui.text(this, "మెసేజ్ కార్డ్, కెమెరా, ఫ్లోటింగ్ బటన్ ఎలా వినాలి:", 14, Ui.MUTED));
+        earsOther = new RadioGroup(this);
+        earsOther.addView(radio(85, "OpenAI (సొంత మైక్)"));
+        earsOther.addView(radio(86, "Gemini (సొంత మైక్)"));
+        earsOther.addView(radio(87, "Google వాయిస్ టైపింగ్ (బీప్‌లతో)"));
+        earsOther.check("gemini".equals(em0) ? 86 : "google".equals(em0) ? 87 : 85);
+        other.addView(earsOther);
+        box.addView(other);
+        earsOtherBox = other;
+        other.setVisibility(earsWas == 84 ? View.VISIBLE : View.GONE);
         earsModel = field("OpenAI మాటల మోడల్ (OpenAI ఎంచుకుంటే)", prefs.earsModel(), false);
-        note("OpenAI / Gemini: మీరు మాట్లాడటం ఆపాక మాటలు ఒకేసారి వస్తాయి. ఆ AI అందకపోతే (నెట్/key) Jarvis వేరే దానికి మారదు, ఎందుకో చెబుతుంది.");
+        note("OpenAI / Gemini: మీరు మాట్లాడటం ఆపాక మాటలు ఒకేసారి వస్తాయి. ఆ AI అందకపోతే (నెట్/key) Jarvis వేరే దానికి మారదు, ఎందుకో చెబుతుంది. "
+                + "Gemini Live: మీ మాట వింటూనే Gemini గొంతుతో వెంటనే జవాబిస్తుంది (కింద 'Live సంభాషణ' లో దాని సెట్టింగ్స్). మెసేజ్ కార్డ్, కెమెరా, ఫ్లోటింగ్ బటన్ "
+                + "మాత్రం దాని కింద ఎంచుకున్న పద్ధతితో వింటాయి. బైక్ మీద గొంతుతో మార్చొచ్చు: \"Jarvis, Google వాయిస్‌కి మారు\", \"Live పెట్టు\", \"Live ఆపు\", \"OpenAI కి మారు\".");
         voice = toggle("సమాధానాలు పైకి చదివి వినిపించు", prefs.voiceReplies());
         followUp = toggle("సమాధానం తర్వాత మళ్లీ వినడం (సంభాషణ మోడ్)", prefs.followUp());
         listenWindowLabel = Ui.text(this, "", 15, Ui.MUTED);
@@ -442,9 +466,23 @@ public class SettingsActivity extends Activity {
 
         // ---- live conversation
         section("Live సంభాషణ (Real-time)");
-        note("ChatGPT వాయిస్ లాగా, ఫ్రెండ్‌తో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. OpenAI key కావాలి. "
+        note("ChatGPT వాయిస్ లాగా, ఫ్రెండ్‌తో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. Gemini Live కి Gemini key, OpenAI Live కి OpenAI key కావాలి. "
                 + "సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది. 2 నిమిషాలు ఎవరూ మాట్లాడకపోతే \"అవసరమైతే పిలవండి\" అని చెప్పి ఆగిపోతుంది.");
         liveMode = toggle("\"Hey Jarvis\" అన్నా Live సంభాషణే మొదలవ్వాలి (నీలం బటన్‌తో Live ఎప్పుడైనా వస్తుంది)", prefs.liveMode());
+        TextView lp = Ui.text(this, "Live ఎవరితో:", 15, Ui.TEXT);
+        lp.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2));
+        box.addView(lp);
+        liveProvider = new RadioGroup(this);
+        liveProvider.addView(radio(91, "⚡ Gemini Live (Google · మీ Gemini key)"));
+        liveProvider.addView(radio(92, "OpenAI Live (Realtime · మీ OpenAI key)"));
+        liveProvider.check(prefs.liveGemini() ? 91 : 92);
+        box.addView(liveProvider);
+        geminiLiveModel = field("Gemini Live మోడల్", prefs.sp.getString("gemini_live_model", "").trim().isEmpty() ? Prefs.DEFAULT_GEMINI_LIVE_MODEL
+                : prefs.sp.getString("gemini_live_model", "").trim(), false);
+        geminiLiveVoice = field("Gemini Live గొంతు (Google గొంతు పేరు)", prefs.geminiLiveVoice(), false);
+        note("Gemini Live మొదటి వెర్షన్ చేసే పనులు: కాల్స్, మెసేజ్‌లు (మీరు 'పంపు' అన్నాకే), రిమైండర్ / అలారం / టైమర్, వాతావరణం, వార్తలు, ఇంటర్నెట్ సెర్చ్, పాటలు / రేడియో, "
+                + "దారి, యాప్స్, నోట్స్, గుర్తుపెట్టుకోవడం, ఫోన్ సెట్టింగ్స్. మిగతావి అడిగితే 'పాత పద్ధతిలో చేయమంటారా?' అని అడిగి, మీరు సరే అంటేనే చేస్తుంది. "
+                + "గొంతు పేర్లు: Charon, Puck, Orus, Fenrir, Kore, Aoede. పేరు తప్పైతే Gemini మామూలు గొంతుతో మాట్లాడుతుంది; మోడల్ పేరు తప్పైతే ఎందుకో చెబుతుంది.");
         livePatient = toggle("మీరు మాట పూర్తి చేసే వరకు ఆగి, తర్వాతే జవాబివ్వు (మధ్యలో ఆలోచిస్తూ ఆగినా కట్ చేయదు)", prefs.livePatient());
         bargeIn = toggle("Jarvis మాట్లాడుతుండగా మధ్యలో మాట్లాడితే ఆగి వినాలి", prefs.bargeIn());
         bargeSensLabel = Ui.text(this, "", 15, Ui.MUTED);
@@ -461,8 +499,21 @@ public class SettingsActivity extends Activity {
         showBargeSens();
         note("మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో ఇంకా బాగా పనిచేస్తుంది.");
         bargeCallVoice = toggle("Jarvis గొంతుని ఫోన్ కాల్ మార్గంలో పంపు (ప్రతిధ్వని ఇంకా బాగా తీసేస్తుంది, కానీ గొంతు కాల్ లాగా, తక్కువగా ఉంటుంది. మామూలుగా ఆఫ్ ఉంచండి; Jarvis తనంతట తానే ఆగిపోతుంటే లేదా మీ మాట అసలు వినకపోతే మాత్రమే ఆన్ చేయండి)", prefs.bargeCallVoice());
-        realtimeModel = field("Live మోడల్", prefs.realtimeModel(), false);
+        realtimeModel = field("OpenAI Live మోడల్", prefs.realtimeModel(), false);
         modelPicker(Models.REALTIME, openAiKey, realtimeModel, "realtime_model");
+        // "⚡ Gemini Live" in the voice choice and the Live switches above stay in step
+        earsMode.setOnCheckedChangeListener((rg, id) -> {
+            earsOtherBox.setVisibility(id == 84 ? View.VISIBLE : View.GONE);
+            if (id == 81) earsOther.check(85); else if (id == 82) earsOther.check(86); else if (id == 83) earsOther.check(87); // (the same choice below)
+            if (syncingVoice) { earsWas = id; return; }
+            syncingVoice = true;
+            if (id == 84) { liveMode.setChecked(true); liveProvider.check(91); }
+            else if (earsWas == 84 && liveMode.isChecked()) liveMode.setChecked(false); // from Gemini Live to the usual listen-then-answer
+            earsWas = id;
+            syncingVoice = false;
+        });
+        liveMode.setOnCheckedChangeListener((sw, on) -> syncLiveChoice());
+        liveProvider.setOnCheckedChangeListener((rg, which) -> syncLiveChoice());
         note("mini మోడల్ చవక, వేగం. పేరులో mini లేని పెద్ద మోడల్ ఇంకా సహజంగా, భావంతో మాట్లాడుతుంది కానీ ఖర్చు ఎక్కువ.");
 
         // ---- wake word
@@ -1275,6 +1326,9 @@ public class SettingsActivity extends Activity {
         if (!MicQuiet.info.isEmpty()) s.append("• మైక్ బీప్ ఆపడానికి క్షణం పాటు మ్యూట్ చేసేవి: ").append(MicQuiet.info).append("\n");
         s.append("• మాటలు వినే పద్ధతి: ").append("gemini".equals(prefs.earsMode()) ? "Gemini (Jarvis సొంత మైక్)" : "google".equals(prefs.earsMode())
                 ? "Google వాయిస్ టైపింగ్ (బీప్‌లతో)" : "OpenAI " + prefs.earsModel() + " (Jarvis సొంత మైక్)").append("\n");
+        if (prefs.liveMode()) s.append("• Live: ").append(LiveTalk.label(prefs)).append(prefs.liveGemini() ? " (" + prefs.geminiLiveModel() + ", గొంతు " + prefs.geminiLiveVoice() + ")" : "")
+                .append(prefs.liveKeyReady() ? "" : " ✗ key లేదు").append("\n");
+        if (!GeminiLive.lastInfo.isEmpty()) s.append("• చివరి Gemini Live: ").append(GeminiLive.lastInfo).append("\n");
         if ("openai".equals(prefs.earsMode()) && !prefs.earsStream())
             s.append("• మీరు మాట్లాడుతుండగానే పంపడం: ఆగింది (OpenAI ఒప్పుకోలేదు); మీరు ఆపాక మొత్తం పంపుతుంది\n");
         if (!VoiceIO.lastTurn.isEmpty()) s.append("• చివరి జవాబుకు పట్టిన సమయం (మీరు ఆపినప్పటి నుంచి): ").append(VoiceIO.lastTurn).append("\n");
@@ -1359,7 +1413,12 @@ public class SettingsActivity extends Activity {
         int gmc = groupMode.getCheckedRadioButtonId();
         e.putString("group_mode", gmc == 64 ? "all" : gmc == 66 ? "none" : "mine");
         int emc = earsMode.getCheckedRadioButtonId();
-        e.putString("ears_mode", emc == 82 ? "gemini" : emc == 83 ? "google" : "openai");
+        int eoc = earsOther.getCheckedRadioButtonId();
+        e.putString("ears_mode", emc == 84 ? (eoc == 86 ? "gemini" : eoc == 87 ? "google" : "openai") // (Gemini Live: the other places' choice)
+                : emc == 82 ? "gemini" : emc == 83 ? "google" : "openai");
+        e.putString("live_provider", liveProvider.getCheckedRadioButtonId() == 91 ? Prefs.GEMINI : Prefs.OPENAI);
+        e.putString("gemini_live_model", geminiLiveModel.getText().toString().trim());
+        e.putString("gemini_live_voice", geminiLiveVoice.getText().toString().trim());
         String earsModelNow = earsModel.getText().toString().trim();
         if (!earsModelNow.equals(prefs.sp.getString("ears_model", "").trim())) e.remove("ears_stream"); // a new model: sending while he talks is tried again
         e.putString("ears_model", earsModelNow);
@@ -1445,6 +1504,18 @@ public class SettingsActivity extends Activity {
         e.apply();
     }
 
+    /** The Live switches changed: the voice choice shows "⚡ Gemini Live" exactly when Live is on with Gemini. */
+    private void syncLiveChoice() {
+        if (syncingVoice) return;
+        syncingVoice = true;
+        if (liveMode.isChecked() && liveProvider.getCheckedRadioButtonId() == 91) earsMode.check(84);
+        else if (earsMode.getCheckedRadioButtonId() == 84) {
+            int o = earsOther.getCheckedRadioButtonId();
+            earsMode.check(o == 86 ? 82 : o == 87 ? 83 : 81);
+        }
+        syncingVoice = false;
+    }
+
     /** He leaves the screen after changing something: what has to follow a change (once, not on every tap). */
     private void afterChanges(boolean leaving) {
         MedicalId.update(this);
@@ -1452,8 +1523,11 @@ public class SettingsActivity extends Activity {
         if (!leaving) return;
         if (provider.getCheckedRadioButtonId() == 3 && geminiModel.getText().toString().trim().isEmpty())
             Toast.makeText(this, "Gemini మోడల్ ఇంకా ఎంచుకోలేదు: 'అన్ని మోడల్స్ చూపించు' నొక్కి ఒకటి ఎంచుకోండి", Toast.LENGTH_LONG).show();
-        if ((liveMode.isChecked() || natural.isChecked()) && openAiKey.getText().toString().trim().isEmpty())
-            Toast.makeText(this, "సహజ గొంతు, Live సంభాషణకి OpenAI key కావాలి", Toast.LENGTH_LONG).show();
+        boolean geminiLive = liveProvider.getCheckedRadioButtonId() == 91;
+        if (((liveMode.isChecked() && !geminiLive) || natural.isChecked()) && openAiKey.getText().toString().trim().isEmpty())
+            Toast.makeText(this, "సహజ గొంతు, OpenAI Live కి OpenAI key కావాలి", Toast.LENGTH_LONG).show();
+        if (liveMode.isChecked() && geminiLive && geminiKey.getText().toString().trim().isEmpty())
+            Toast.makeText(this, "Gemini Live కి Gemini key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
         // the wake word starts again with the new settings
         WakeService.stop(this);
         if (prefs.wakeReady() && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)

@@ -40,7 +40,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private Tools tools;
     private Brain brain;
     private VoiceIO voice;
-    private LiveSession live;
+    private LiveTalk live;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -693,6 +693,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onSpeakDone() {
         syncPause();
         if (callText != null) { main.postDelayed(this::listen, 150); return; }
+        if (liveAfterSpeak) { // he switched to Live by voice: the talk goes on live
+            liveAfterSpeak = false;
+            if (prefs.liveReady() && Net.online(this) && live == null) { startLive(); return; }
+            if (!Net.online(this)) status.setText("ఇంటర్నెట్ లేదు: నెట్ వచ్చాక Live మొదలవుతుంది");
+        }
         String lang = Tools.takeInterpreter();
         if (lang != null && live == null) { // "హిందీ అనువాదకుడిగా ఉండు": a live two-way interpreter from now on
             startInterpreter(lang);
@@ -745,9 +750,29 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (stopped) { main.removeCallbacks(closeIfAway); main.postDelayed(closeIfAway, 1500); } // he is in another app
     }
 
+    /** Switched to Live by voice: Live starts when the confirmation has been said. */
+    private boolean liveAfterSpeak;
+
+    /** "Google వాయిస్‌కి మారు", "Live పెట్టు", "Live ఆపు": done here at once (on the bike, no Settings). */
+    private void switchVoice(String text, String mode) {
+        showHeard(text);
+        store.addChat("user", text, false);
+        JSONObject r = VoiceSwitch.apply(prefs, mode);
+        boolean ok = r.optBoolean("ok");
+        String say = r.optString("say");
+        store.addChat("assistant", say, false);
+        showReply(say, !ok);
+        liveAfterSpeak = ok && prefs.liveReady();
+        if (prefs.voiceReplies()) voice.speak(say, prefs.speechRate());
+        else if (liveAfterSpeak && Net.online(this)) { liveAfterSpeak = false; startLive(); }
+        else { liveAfterSpeak = false; idle(); }
+    }
+
     private void ask(String text) {
         main.removeCallbacks(autoClose);
         waiting = false;
+        String mode = VoiceSwitch.match(text);
+        if (mode != null) { switchVoice(text, mode); return; }
         if (!prefs.hasBrain()) {
             showReply("నా మెదడుకి API key లేదు. Jarvis యాప్ సెట్టింగ్స్‌లో పెట్టండి.", true);
             idle();
@@ -800,14 +825,14 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         ScreenReader.pauseIfReading(this);
         if (live != null) return;
         Tools.takeInterpreter(); // a stale request from an earlier turn
-        live = new LiveSession(this, prefs, tools, this);
+        live = LiveTalk.create(this, prefs, tools, brain, this);
         live.start(brain.liveInstructions(store.chat()));
     }
 
     private void startInterpreter(String lang) {
         if (live != null) return;
         main.removeCallbacks(autoClose);
-        live = new LiveSession(this, prefs, tools, this);
+        live = LiveTalk.create(this, prefs, tools, brain, this);
         live.start(Brain.interpreterInstructions(prefs.name(), lang));
     }
 
@@ -820,6 +845,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         showHeard(text); // LiveSession has already saved it to the Store
     }
 
+    @Override public void onLiveUserPartial(String text) { showHeard(text); } // his words as he says them
+
     @Override public void onLiveJarvisPartial(String text) { showReply(text, false); }
 
     @Override public void onLiveJarvis(String text) {
@@ -831,12 +858,16 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onLiveError(String message) { showReply("సమస్య: " + message, true); }
 
-    @Override public void onLiveEnded(LiveSession session, String reason) {
+    @Override public void onLiveEnded(LiveTalk session, String reason) {
         if (session != live) return; // an older session: the current one is still running
         live = null;
         if (isFinishing() || callText != null) return; // a call took over: keep the panel for it
         String lang = session.interpreterLang();
         if (lang != null) { startInterpreter(lang); return; } // the interpreter tool ran in live mode
+        if ("switched".equals(reason)) { // he switched how Jarvis listens by voice: carry on the new way
+            if (prefs.liveReady() && Net.online(this)) startLive(); else main.postDelayed(this::listen, 300);
+            return;
+        }
         main.postDelayed(autoClose, 1200);
     }
 

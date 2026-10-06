@@ -252,9 +252,12 @@ final class Store {
 
     synchronized List<JSONObject> chat() { return copy(chat); }
 
-    synchronized void addChat(String role, String content, boolean photo) {
+    synchronized void addChat(String role, String content, boolean photo) { addChat(role, content, photo, System.currentTimeMillis()); }
+
+    /** t: when it was said (a live talk saves his words a moment after he began them; consent checks go by when he spoke). */
+    synchronized void addChat(String role, String content, boolean photo, long t) {
         try {
-            JSONObject o = new JSONObject().put("role", role).put("content", content).put("t", System.currentTimeMillis());
+            JSONObject o = new JSONObject().put("role", role).put("content", content).put("t", t);
             if (photo) o.put("photo", true);
             chat.add(o);
             while (chat.size() > 60) chat.remove(0);

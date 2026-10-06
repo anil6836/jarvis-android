@@ -128,6 +128,20 @@ final class Usage {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * A Gemini Live turn (gemini-3.8-live: about $3 per million tokens in, $12 out; audio and text alike here, an
+     * estimate). Its usage report for the turn, read once when the turn is done.
+     */
+    static void geminiLive(JSONObject u) {
+        if (u == null || app == null) return;
+        try {
+            long in = u.optLong("promptTokenCount") + u.optLong("toolUsePromptTokenCount");
+            long out = u.optLong("responseTokenCount") + u.optLong("thoughtsTokenCount");
+            if (in <= 0 && out <= 0) return;
+            record(GEMINI, in, out, (in * 3.00 + out * 12.00) / 1e6);
+        } catch (Exception ignored) {}
+    }
+
     /** Live mode's transcription of his words. */
     static void transcription(JSONObject u) {
         if (u == null || app == null || !"tokens".equals(u.optString("type", "tokens"))) return;

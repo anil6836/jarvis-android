@@ -200,7 +200,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private boolean followListen;
     private volatile int generation;   // increases with every request, so a stopped answer is ignored (and its tools stop)
     private Runnable pendingUndo;
-    private LiveSession live;          // an open real-time voice conversation, or null
+    private LiveTalk live;             // an open real-time voice conversation (Gemini Live or OpenAI Live), or null
     private TextView liveBubble;       // Jarvis's reply while it is still being spoken
     private LiveScreen liveScreen;     // the full-screen Live view (hologram core, mute, end)
     private IconView micIcon;          // the mic inside the message box: speak instead of typing
@@ -1394,8 +1394,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** Spoken-English practice: a Live session with the friendly coach. */
     private void startEnglishPractice() {
         if (live != null) { liveScreen.show(); return; }
-        if (prefs.openAiKey().trim().isEmpty()) {
-            Toast.makeText(this, "English practice కి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
+        if (!prefs.liveKeyReady()) {
+            Toast.makeText(this, "English practice (" + LiveTalk.label(prefs) + ") కి " + (prefs.liveGemini() ? "Gemini" : "OpenAI") + " key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
             return;
         }
         if (!Net.online(this)) { Toast.makeText(this, "ఇంటర్నెట్ లేదు", Toast.LENGTH_LONG).show(); return; }
@@ -1404,8 +1404,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** The blue button: Live conversation, whether or not Live is set as the default for "Hey Jarvis". */
     private void startLiveFromButton() {
-        if (prefs.openAiKey().trim().isEmpty()) {
-            Toast.makeText(this, "Live సంభాషణకి OpenAI key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
+        if (!prefs.liveKeyReady()) {
+            Toast.makeText(this, LiveTalk.label(prefs) + " కి " + (prefs.liveGemini() ? "Gemini" : "OpenAI") + " key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
             return;
         }
         if (!Net.online(this)) {
@@ -1469,7 +1469,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         showTab(0);
         input.setHint("Live నడుస్తోంది · నీలం బటన్ = Live తెర");
         Tools.takeInterpreter(); // a stale request from an earlier turn must not start later
-        live = new LiveSession(this, prefs, tools, this);
+        live = LiveTalk.create(this, prefs, tools, brain, this);
         liveOn = true;
         // full screen, unless the live camera is open (then the chat and the camera stay in view)
         liveScreen.open(cameraBox.getVisibility() != View.VISIBLE);
@@ -1499,6 +1499,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             chatList.addView(userWrap, chatList.indexOfChild(replyWrap));
         }
     }
+
+    @Override public void onLiveUserPartial(String text) { liveScreen.caption(text, false); } // his words as he says them
 
     @Override public void onLiveJarvisPartial(String text) {
         liveScreen.caption(text, true);
@@ -1535,7 +1537,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         liveScreen.error(said);
     }
 
-    @Override public void onLiveEnded(LiveSession session, String reason) {
+    @Override public void onLiveEnded(LiveTalk session, String reason) {
         if (session != live) return; // an older session ended; the current one is still running
         live = null;
         liveOn = false;
@@ -1547,11 +1549,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             startLive(Brain.interpreterInstructions(prefs.name(), lang));
             if (live != null) return;
         }
+        if ("switched".equals(reason) && !isFinishing() && !isDestroyed()) {
+            // he switched how Jarvis listens by voice: carry on the new way (the other Live, or listen-then-answer)
+            if (prefs.liveReady() && Net.online(this)) { startLive(); if (live != null) return; }
+            else { main.postDelayed(this::startListening, 300); return; }
+        }
         finishTurn();
         if ("idle".equals(reason)) status.setText("నిశ్శబ్దంగా ఉంది, Live సంభాషణ ఆపేశాను");
     }
 
     private String describeLive(String m) {
+        if (String.valueOf(m).startsWith("Gemini Live")) return m; // already said in Telugu, with Gemini's own words
         String low = String.valueOf(m).toLowerCase(Locale.ROOT);
         String te;
         if (low.contains("401") || low.contains("api key") || low.contains("api_key"))
@@ -1662,6 +1670,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onSpeakDone() {
+        if (liveAfterSpeak) { // he switched to Live by voice: the talk goes on live
+            liveAfterSpeak = false;
+            if (prefs.liveReady() && Net.online(this) && live == null && !busy) { startLive(); return; }
+            if (!Net.online(this)) status.setText("ఇంటర్నెట్ లేదు: నెట్ వచ్చాక 'Jarvis' అంటే Live మొదలవుతుంది");
+        }
         String lang = Tools.takeInterpreter();
         if (lang != null && live == null && !busy) { startLive(Brain.interpreterInstructions(prefs.name(), lang)); return; }
         boolean asked = Tools.awaitingAnswer(); // read every time: the "which one?" flag is used up here
@@ -1670,6 +1683,35 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             lastWasVoice = false;
             main.postDelayed(() -> { startListening(); followListen = !asked; }, 250);
         } else {
+            finishTurn();
+        }
+    }
+
+    /** Switched to Live by voice: Live starts when the confirmation has been said. */
+    private boolean liveAfterSpeak;
+
+    /** He asked by voice (or typed) to change how Jarvis listens / talks. */
+    private void switchVoice(String said, String mode, boolean byVoice) {
+        JSONObject r = VoiceSwitch.apply(prefs, mode);
+        boolean ok = r.optBoolean("ok");
+        String say = r.optString("say");
+        long now = System.currentTimeMillis();
+        showTab(0);
+        store.addChat("user", said, false);
+        addMessage("user", said, now, null);
+        store.addChat("assistant", say, false);
+        TextView t = addMessage("assistant", say, now, null);
+        if (!ok) t.setTextColor(Ui.RED);
+        liveAfterSpeak = ok && byVoice && prefs.liveReady();
+        lastWasVoice = byVoice && !liveAfterSpeak;
+        if (prefs.voiceReplies()) {
+            talking(true);
+            voice.speak(say, prefs.speechRate());
+        } else if (liveAfterSpeak && Net.online(this)) {
+            liveAfterSpeak = false;
+            startLive();
+        } else {
+            liveAfterSpeak = false;
             finishTurn();
         }
     }
@@ -1685,6 +1727,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void send(String prompt, String label, boolean byVoice) {
         if (busy) return;
+        if (label == null && pendingPhoto == null && pendingFileText == null) { // "Google వాయిస్‌కి మారు", "Live పెట్టు": done here, at once
+            String mode = VoiceSwitch.match(prompt);
+            if (mode != null) { switchVoice(prompt, mode, byVoice); return; }
+        }
         String shown = label != null ? label : prompt;
         String photoNow = pendingPhoto;
         // With the live camera open, every question carries the current camera picture.
@@ -1809,6 +1855,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void finishTurn() {
+        liveAfterSpeak = false; // (a stopped confirmation must not start Live with some later answer)
         if (busy || live != null) return;
         Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         setIdle();

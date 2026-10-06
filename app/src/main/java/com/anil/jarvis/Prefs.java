@@ -100,7 +100,23 @@ final class Prefs {
     int bargeSens() { return sp.getInt("barge_sens", 2); }
     /** Talk-over: Jarvis's voice through the phone-call path (strongest echo cancelling, but sounds like a call). */
     boolean bargeCallVoice() { return sp.getBoolean("barge_call_voice", false); }
-    boolean liveReady() { return liveMode() && !openAiKey().trim().isEmpty(); }
+    /** Whose live talk: "openai" (OpenAI Realtime) or "gemini" (Gemini Live). */
+    String liveProvider() { return GEMINI.equals(sp.getString("live_provider", OPENAI)) ? GEMINI : OPENAI; }
+    boolean liveGemini() { return GEMINI.equals(liveProvider()); }
+    static final String DEFAULT_GEMINI_LIVE_MODEL = "gemini-3.8-live";
+    /** The Gemini Live model he set (Gemini's own name for it). */
+    String geminiLiveModel() {
+        String m = sp.getString("gemini_live_model", "").trim();
+        return m.isEmpty() ? DEFAULT_GEMINI_LIVE_MODEL : m;
+    }
+    /** Gemini Live's voice (one of Google's voice names). */
+    String geminiLiveVoice() {
+        String v = sp.getString("gemini_live_voice", "").trim();
+        return v.isEmpty() ? "Charon" : v;
+    }
+    /** The key the chosen live talk needs is in Settings. */
+    boolean liveKeyReady() { return !(liveGemini() ? geminiKey() : openAiKey()).trim().isEmpty(); }
+    boolean liveReady() { return liveMode() && liveKeyReady(); }
     /** Live: wait until he has finished his thought (not just a short pause) before answering, like ChatGPT's voice mode. */
     boolean livePatient() { return sp.getBoolean("live_patient", true); }
     /** Warn about scam-looking messages and new autopay mandates (checked on the phone only). */

@@ -684,6 +684,12 @@ final class Tools {
                         {"action", "string", "empty, front, meet, people, forget, face_show, face_hide, eyes_on or eyes_off"},
                         {"name", "string", "The person's name (meet / forget)"},
                         {"owner", "boolean", "true when the face to remember is Anil's own"}})));
+        DEFS.add(new Def("voice_mode",
+                "Change how Jarvis listens and talks, ONLY when Anil clearly asks to switch it ('Google వాయిస్‌కి మారు', 'Live పెట్టు', 'Live ఆపు', "
+                        + "'OpenAI కి మారు', 'Gemini Live పెట్టు'). mode: live = Gemini Live (fast live talk, the next time he calls); live_openai = OpenAI's live talk; "
+                        + "live_off = the usual listen-then-answer; google = Google voice typing (words show live, works offline, but the mic beeps); "
+                        + "openai = Jarvis's own mic, OpenAI writes the words; gemini = Jarvis's own mic, Gemini writes the words (not Live). Say the line it returns.",
+                schema(new String[][]{{"mode", "string", "live, live_openai, live_off, google, openai or gemini"}}, "mode")));
         DEFS.add(new Def("save_memory",
                 "Save one lasting fact about Anil (a preference, a person, a date, a plan) to his permanent memory.",
                 schema(new String[][]{{"text", "string", "The fact as one short Telugu sentence"}}, "text")));
@@ -1069,6 +1075,7 @@ final class Tools {
                 case "look_at_screen": return lookAtScreen(a.optString("question"));
                 case "look_through_camera": return camera(a);
                 case "jarvis_camera": return jarvisCamera(a);
+                case "voice_mode": return VoiceSwitch.apply(prefs, a.optString("mode")).toString();
                 case "save_memory": {
                     JSONObject m = store.addMemory(a.optString("text"));
                     if (m == null) return err("empty", "Nothing to save.");
@@ -1420,10 +1427,14 @@ final class Tools {
         if (d == null || android.os.SystemClock.elapsedRealtime() - d.time > 30 * 60 * 1000L) {
             return err("no_draft", "There is no message waiting to be sent. Ask Anil what to send and to whom.");
         }
-        // Not only the model's word: Anil must have said something after the draft was made (his "పంపు").
+        // Not only the model's word: Anil must have said a clear, short "send" after the draft was made (his "పంపు").
         // Live-mode transcripts can arrive a moment after the tool call, so wait a little for it.
-        if (userTurnAfter(d.wall, 3000) == null) {
-            return err("not_confirmed", "Anil has not said send after hearing this draft. Read it to him and ask 'పంపమంటారా?'.");
+        JSONObject yes = userTurnAfter(d.wall, 3000);
+        // his clear "send", after the draft AND after Jarvis read it back to him (an answer to the read-back, not part of his request)
+        if (yes == null || !saidSend(yes.optString("content")) || !assistantBetween(d.wall, yes.optLong("t"))) {
+            return err("not_confirmed", "Anil has not clearly said send after hearing this draft" + (yes == null ? "" : " (he said: '" + yes.optString("content") + "')")
+                    + ". Read it to him and ask 'పంపమంటారా?'; send only after a clear yes."
+                    + (liveHandoffSince > 0 ? " (In a live talk: ask him there and call send_draft yourself after his yes.)" : ""));
         }
         if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
         if (d.pkg == null || !JarvisAccessibility.enabled()) {
@@ -3807,7 +3818,7 @@ final class Tools {
 
     private String englishPractice(String topic, String language) throws Exception {
         String lang = language != null && (language.toLowerCase(Locale.ROOT).startsWith("hi") || language.contains("హిందీ")) ? "Hindi" : "English";
-        if (prefs.openAiKey().trim().isEmpty()) return err("no_openai", lang + " practice runs in Live mode, which needs an OpenAI key in settings.");
+        if (!prefs.liveKeyReady()) return err("no_key", lang + " practice runs in Live mode (" + LiveTalk.label(prefs) + "), which needs its key in settings.");
         if (!online()) return err("offline", lang + " practice needs internet.");
         tutorTopic = topic == null || topic.trim().isEmpty() ? null : topic.trim();
         tutorLanguage = lang;
@@ -3818,7 +3829,7 @@ final class Tools {
 
     private String interpreter(String language) throws Exception {
         if (language == null || language.trim().isEmpty()) return err("missing", "Which language does the other person speak?");
-        if (prefs.openAiKey().trim().isEmpty()) return err("no_openai", "The live interpreter needs an OpenAI key in settings.");
+        if (!prefs.liveKeyReady()) return err("no_key", "The live interpreter (" + LiveTalk.label(prefs) + ") needs its key in settings.");
         if (!online()) return err("offline", "The live interpreter needs internet.");
         interpreterLang = language.trim();
         return ok().put("interpreter", language.trim())
@@ -4703,6 +4714,60 @@ final class Tools {
         JarvisAccessibility.hideControl();
     }
 
+    /**
+     * Gemini Live handed a request to the usual way (classic_jarvis) and it is running: nothing he says in the live talk
+     * meanwhile counts as a yes to a send, a payment or a button.
+     */
+    static volatile long liveHandoffSince;
+
+    /** Jarvis said something (the read-back of a draft) between these two moments (wall clock). */
+    private boolean assistantBetween(long from, long to) {
+        for (JSONObject o : store.chat()) {
+            long t = o.optLong("t");
+            if ("assistant".equals(o.optString("role")) && t > from && t < to) return true;
+        }
+        return false;
+    }
+
+    /** Words allowed in a "send it" answer, besides yes / send words themselves (fillers, "it", his name for Jarvis). */
+    private static final java.util.Set<String> SEND_OK_EXTRA = new java.util.HashSet<>(java.util.Arrays.asList(
+            "హా", "హాం", "ఆ", "రా", "ప్లీజ్", "please", "jarvis", "జార్విస్", "ఇది", "దీన్ని", "అది", "అదే", "it", "now", "ఇప్పుడే", "ఇక", "ఓ", "go", "ahead", "do",
+            "మెసేజ్", "message", "ఇప్పుడు", "వెంటనే", "త్వరగా", "బాబు", "అన్నా", "ఫైనల్", "final", "the", "అండి", "గారు"));
+    /** Yes words (a polite "అండి" may be joined on: "అవునండి", "సరేనండి"). */
+    private static final String[] SEND_YES_STEMS = {"అవున", "ఔను", "సరే", "ఓకే", "అలాగే", "కరెక్ట్", "కానివ్వు"};
+    private static final java.util.Set<String> SEND_YES = new java.util.HashSet<>(java.util.Arrays.asList(
+            "yes", "yeah", "ok", "okay", "send", "correct", "యెస్", "చేయి", "చెయ్", "చేయండి"));
+    /** "Send" as a command only (not "పంపుతాను" / "పంపాను" / "పంపాలా", which are Jarvis's words or questions). */
+    private static final java.util.Set<String> SEND_CMD = new java.util.HashSet<>(java.util.Arrays.asList(
+            "పంపు", "పంపండి", "పంపించు", "పంపించండి", "పంపెయ్", "పంపేయ్", "పంపేయి", "పంపేయండి", "పంపించేయ్", "పంపించేయి", "పంపించెయ్"));
+
+    /**
+     * His answer to "పంపమంటారా?" is a clear, short yes: every word a send / yes word or a filler ("హా పంపించేయ్", "సరే పంపు",
+     * "అవునండి", "ok send it"), at least one real yes, no "వద్దు" / question. "… అని పంపు" (the end of his own request) is not a yes.
+     */
+    static boolean saidSend(String said) {
+        String s = said == null ? "" : said.trim();
+        if (s.isEmpty() || s.length() > 60 || s.contains("?") || CardTalk.Words.hasTail(s)) return false;
+        if (CardTalk.Words.kind(s, CardTalk.Words.CONFIRM) == CardTalk.Words.NO) return false;
+        boolean yes = false;
+        int n = 0;
+        String only = null;
+        for (String tok : CardTalk.Words.tokens(s)) {
+            if (tok.isEmpty()) continue;
+            n++;
+            only = tok;
+            if (SEND_CMD.contains(tok) || (tok.startsWith("పంపేస") || tok.startsWith("పంపించేస"))
+                    && (tok.endsWith("య్") || tok.endsWith("యి") || tok.endsWith("యండి"))) { yes = true; continue; } // (పంపేసెయ్, not పంపేసాను / పంపేసావా)
+            if (SEND_YES.contains(tok)) { yes = true; continue; }
+            boolean stem = false;
+            for (String st : SEND_YES_STEMS) if (tok.startsWith(st) && !tok.endsWith("ా")) { stem = true; break; } // ("సరేనా" is a question)
+            if (stem) { yes = true; continue; }
+            if (!SEND_OK_EXTRA.contains(tok)) return false;
+        }
+        if (!yes && n == 1 && ("హా".equals(only) || "హాం".equals(only))) return true; // a plain "హా" as his whole answer
+        return yes;
+    }
+
     /** Words that mean yes / no in his answer to "₹… పే చేయమంటారా?". */
     private static final java.util.regex.Pattern SAID_YES = java.util.regex.Pattern.compile(
             "(?i)(అవును|ఔను|పే చెయ్|పే చేయి|పే చేయండి|పే చేసెయ్|ఓకే|సరే|\\byes\\b|\\bpay\\b|\\bok\\b|\\bokay\\b)");
@@ -4725,10 +4790,13 @@ final class Tools {
     private JSONObject userTurnAfter(long after, long waitMs) throws InterruptedException {
         long end = android.os.SystemClock.elapsedRealtime() + waitMs;
         while (true) {
+            // inside a hand-off from Gemini Live his live chatter meanwhile is no answer to anything (what he said before it still is)
+            long since = liveHandoffSince;
             List<JSONObject> chat = store.chat();
             for (int i = chat.size() - 1; i >= 0; i--) {
                 JSONObject o = chat.get(i);
                 if ("user".equals(o.optString("role"))) {
+                    if (since > 0 && o.optLong("t") > since) continue;
                     if (o.optLong("t") > after) return o;
                     break;
                 }
@@ -4921,8 +4989,7 @@ final class Tools {
             }
             if (t.confirmLabel != null) {
                 // his own words after the question decide (not what the model thinks he said)
-                String said = lastUserWords(t.askedAt).trim();
-                if (said.isEmpty() && answer != null) said = answer.trim();
+                String said = lastUserWords(t.askedAt).trim(); // (only his own words: never the model's idea of them)
                 boolean yes = said.length() <= 80 && CONFIRM_YES.matcher(said).find() && !SAID_NO.matcher(said).find();
                 if (yes) {
                     JarvisAccessibility.allowConfirmed(3 * 60 * 1000L);

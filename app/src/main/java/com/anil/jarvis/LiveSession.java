@@ -36,7 +36,7 @@ import okhttp3.WebSocketListener;
  * The microphone streams continuously; Jarvis answers in its own voice and
  * stops talking as soon as Anil starts speaking (barge-in).
  */
-final class LiveSession {
+final class LiveSession implements LiveTalk {
     interface Listener {
         void onLiveState(int orbState, String status);
         void onLiveUser(String text);
@@ -47,7 +47,9 @@ final class LiveSession {
         default void onLiveVoiceLevel(float level) {}
         void onLiveError(String message);
         /** session is the one that ended; a host ignores it when it is no longer its current session. */
-        void onLiveEnded(LiveSession session, String reason);
+        void onLiveEnded(LiveTalk session, String reason);
+        /** His words so far, while he is still talking (Gemini Live). */
+        default void onLiveUserPartial(String text) {}
     }
 
     private static final int RATE = 24000;
@@ -109,11 +111,11 @@ final class LiveSession {
     }
 
     /** The language to interpret next, when this session ended to hand over to the live interpreter. */
-    String interpreterLang() { return interpreterLang; }
+    @Override public String interpreterLang() { return interpreterLang; }
 
     // ================================================================ start / stop
 
-    void start(String instructions) {
+    @Override public void start(String instructions) {
         routeAudio();
         state(OrbView.THINKING, "కనెక్ట్ అవుతున్నాను…");
         client = new OkHttpClient.Builder()
@@ -122,7 +124,7 @@ final class LiveSession {
                 .build();
         Request req = new Request.Builder()
                 .url("wss://api.openai.com/v1/realtime?model=" + prefs.realtimeModel())
-                .addHeader("Authorization", "Bearer " + prefs.openAiKey().trim())
+                .addHeader("Authorization", "Bearer " + prefs.openAiKey().replaceAll("[^\\x21-\\x7E]", "")) // (a pasted key may carry invisible characters)
                 .build();
         ws = client.newWebSocket(req, new WebSocketListener() {
             @Override public void onOpen(WebSocket webSocket, Response response) {
@@ -151,7 +153,7 @@ final class LiveSession {
     }
 
     /** Ends the conversation. Safe to call more than once, from any thread. */
-    void stop(String reason) {
+    @Override public void stop(String reason) {
         if (closed) return;
         closed = true;
         open = false;
@@ -176,17 +178,17 @@ final class LiveSession {
         main.post(() -> l.onLiveEnded(this, reason));
     }
 
-    boolean isOpen() { return open && !closed; }
+    @Override public boolean isOpen() { return open && !closed; }
 
-    void setMuted(boolean m) {
+    @Override public void setMuted(boolean m) {
         muted = m;
         if (!m) lastActivity = SystemClock.elapsedRealtime(); // a fresh start for the quiet timer
     }
 
-    boolean isMuted() { return muted; }
+    @Override public boolean isMuted() { return muted; }
 
     /** Sends a typed message (e.g. a protocol button) into the live conversation. */
-    void sendText(String text) {
+    @Override public void sendText(String text) {
         if (!isOpen()) return;
         try {
             send(new JSONObject().put("type", "conversation.item.create").put("item", new JSONObject()
@@ -489,6 +491,12 @@ final class LiveSession {
             JSONObject args;
             try { args = new JSONObject(rawArgs); } catch (Exception ex) { args = new JSONObject(); }
             result = tools.execute(name, args);
+            // He switched how Jarvis listens / talks by voice: this OpenAI talk ends after its line when it is no longer the choice.
+            if ("voice_mode".equals(name) && result.contains("\"ok\":true") && !(prefs.liveMode() && !prefs.liveGemini())) {
+                endReason = "switched";
+                endRequested = true;
+                main.postDelayed(() -> stop("switched"), 12000);
+            }
             // The interpreter can't run inside this session: after the short "starting" line,
             // end it and let the screen start a live interpreter session.
             String lang = Tools.takeInterpreter();
@@ -525,10 +533,14 @@ final class LiveSession {
 
     // ================================================================ audio
 
+    private boolean routed, speakerOn;
+
     private void routeAudio() {
         am = ctx.getSystemService(AudioManager.class);
         if (am == null) return;
         oldMode = am.getMode();
+        if (oldMode != AudioManager.MODE_NORMAL) return; // a call (or another call app) has the sound: leave it as it is
+        routed = true;
         try {
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             if (Build.VERSION.SDK_INT >= 31) {
@@ -546,18 +558,21 @@ final class LiveSession {
                 }
                 if (pick != null) am.setCommunicationDevice(pick);
             } else if (!am.isWiredHeadsetOn() && !am.isBluetoothScoOn()) {
-                am.setSpeakerphoneOn(true);
+                if (!am.isSpeakerphoneOn()) { am.setSpeakerphoneOn(true); speakerOn = true; }
             } else {
                 headset = true;
             }
         } catch (Exception ignored) {}
     }
 
+    /** Only what Jarvis changed is undone, and never over a real call. */
     private void restoreAudio() {
-        if (am == null) return;
+        if (am == null || !routed) return;
+        routed = false;
         try {
-            if (Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice();
-            else am.setSpeakerphoneOn(false);
+            if (Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice(); // (Jarvis's device choice is always let go)
+            if (am.getMode() != AudioManager.MODE_IN_COMMUNICATION) return; // a call took over: its sound is its own
+            if (Build.VERSION.SDK_INT < 31 && speakerOn) am.setSpeakerphoneOn(false);
             am.setMode(oldMode);
         } catch (Exception ignored) {}
     }
