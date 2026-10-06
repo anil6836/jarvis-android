@@ -174,6 +174,119 @@ final class Offline {
         return s.replaceAll("0+$", "").replaceAll("\\.$", "");
     }
 
+    // ================================================================ number words as digits
+
+    /** "One" words: a number only before వంద / వెయ్యి / లక్ష, or with కి ("ఒకటికి"); otherwise "a" ("ఒక పాట"). */
+    private static final java.util.Set<String> ONE_WORDS = new java.util.HashSet<>(java.util.Arrays.asList("ఒక", "ఒక్క", "ఒకటి", "ఒకటే"));
+    private static final java.util.Set<String> DAY_PARTS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "ఉదయం", "పొద్దున", "పొద్దున్నే", "మధ్యాహ్నం", "సాయంత్రం", "రాత్రి", "తెల్లవారుజామున"));
+    /** Plurals that are not a number on their own ("వేలు" is also a finger, "వందల" "hundreds of"). */
+    private static final java.util.Set<String> BARE_PLURALS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "వేలు", "వేల", "వందలు", "వందల", "లక్షలు", "లక్షల"));
+
+    /** A Telugu number word and the ending on it ("ఆరుకి" -> {{6, 0}, "కి"}); null for anything else (digits, halves, "ఒక" alone). */
+    private static Object[] numberWord(String t) {
+        if (t.isEmpty() || t.contains("న్నర") || DIGITS.matcher(t).find()) return null;
+        double[] v = ONE_WORDS.contains(t) ? null : wordToken(t);
+        if (v != null) return new Object[]{v, ""};
+        for (String e : ENDINGS) {
+            if (t.length() > e.length() && t.endsWith(e)) {
+                String base = t.substring(0, t.length() - e.length());
+                if (ONE_WORDS.contains(base) && !e.equals("కి") && !e.equals("కు")) continue; // "ఒకటికి" is 1 o'clock; "ఒకని" is not
+                v = wordToken(base);
+                if (v != null) return new Object[]{v, e};
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Number words written as digits, the way the phone's voice typing writes them ("రేపు ఉదయం ఆరు గంటలకి" -> "రేపు ఉదయం 6
+     * గంటలకి", "ఆరుకి" -> "6 కి", "ఐదు ముప్పైకి అలారం" -> "5:30 కి అలారం", "రెండు వందల యాభై" -> "250"). Jarvis's own Telugu
+     * ears write numbers as words; the offline patterns (times, medicines, sums) read digits best. "ఒక" alone, halves
+     * ("ఐదున్నర") and "వేలు" alone stay as words.
+     */
+    static String digits(String s) {
+        if (s == null) return "";
+        s = s.replaceAll("ఒంటి\\s*గంట", "1 గంట"); // "ఒంటి గంటకి": one o'clock
+        String[] w = s.trim().split("\\s+");
+        if (w.length == 0 || w[0].isEmpty()) return s.trim();
+        boolean alarm = s.contains("అలారం");
+        StringBuilder out = new StringBuilder();
+        int i = 0;
+        while (i < w.length) {
+            List<Double> groups = new ArrayList<>();
+            double total = 0, cur = 0, lastVal = -1;
+            int lastKind = -1, j = i;
+            boolean on = false;
+            String ending = "";
+            while (j < w.length) {
+                String tok = w[j];
+                Object[] nw = numberWord(tok);
+                if (nw == null && ONE_WORDS.contains(tok) && j + 1 < w.length) { // "ఒక వెయ్యి", "ఒక లక్ష"
+                    Object[] next = numberWord(w[j + 1]);
+                    if (next != null && ((double[]) next[0])[1] != 0 && ((double[]) next[0])[1] != 4) nw = new Object[]{new double[]{1, 0}, ""};
+                }
+                if (nw == null) break;
+                double[] v = (double[]) nw[0];
+                int kind = (int) v[1];
+                String stem = tok.substring(0, tok.length() - ((String) nw[1]).length());
+                if (!on && kind != 0 && BARE_PLURALS.contains(stem)) break; // "వేలు", "వేలుకి" on its own (a finger)
+                double val = v[0];
+                if (kind == 0) {
+                    boolean joins = on && lastKind != 0
+                            || on && lastKind == 0 && lastVal >= 20 && lastVal < 100 && lastVal % 10 == 0 && val < 10 && val == Math.floor(val);
+                    if (on && !joins) { groups.add(total + cur); total = 0; cur = 0; }
+                    cur += val;
+                    lastVal = val;
+                } else if (kind == 1) {
+                    cur = (cur == 0 ? 1 : cur) * 100 * (val == 1.5 ? 1.5 : 1);
+                } else if (kind == 4) {
+                    cur += 100;
+                } else {
+                    total += (cur == 0 ? 1 : cur) * (kind == 2 ? 1000 : 100000) * (val == 1.5 ? 1.5 : 1);
+                    cur = 0;
+                }
+                on = true;
+                lastKind = kind;
+                j++;
+                if (!((String) nw[1]).isEmpty()) { ending = (String) nw[1]; break; } // "ఆరుకి": the number ends there
+            }
+            if (j == i) { out.append(out.length() == 0 ? "" : " ").append(w[i]); i++; continue; }
+            groups.add(total + cur);
+            String next = j < w.length ? w[j] : "";
+            boolean timeSaid = ending.equals("కి") || ending.equals("కు") || next.equals("కి") || next.equals("కు") || next.equals("కీ")
+                    || next.startsWith("గంట") || i > 0 && DAY_PARTS.contains(w[i - 1]) || alarm;
+            String said;
+            double h = groups.get(0), m = groups.size() == 2 ? groups.get(1) : -1;
+            // "ఐదు ముప్పై" -> 5:30 (minutes in fives from 10: "ఆరు ఏడు గంటలకి" is "6 or 7 o'clock", "పది పదిహేను నిమిషాలు" minutes)
+            if (groups.size() == 2 && timeSaid && !next.startsWith("నిమిష") && h >= 1 && h <= 12 && h == Math.floor(h)
+                    && m >= 10 && m <= 55 && m % 5 == 0) {
+                said = (long) h + ":" + String.format(Locale.ENGLISH, "%02d", (long) m);
+            } else {
+                StringBuilder b = new StringBuilder();
+                for (double g : groups) b.append(b.length() == 0 ? "" : " ").append(fmt(g));
+                said = b.toString();
+            }
+            out.append(out.length() == 0 ? "" : " ").append(said).append(ending.isEmpty() ? "" : " " + ending);
+            i = j;
+        }
+        // "7 గంటల 30 నిమిషాలకి" -> "7:30 కి" (a time; "2 గంటల 30 నిమిషాలకి టైమర్" is a length)
+        String o = out.toString();
+        if (o.contains("టైమర్") || o.toLowerCase(Locale.ROOT).contains("timer")) return o;
+        Matcher hm = HOURS_MINUTES.matcher(o);
+        StringBuffer b = new StringBuffer();
+        while (hm.find()) {
+            int hh = Integer.parseInt(hm.group(1)), mm = Integer.parseInt(hm.group(2));
+            String rep = hh <= 23 && mm <= 59 ? hh + ":" + String.format(Locale.ENGLISH, "%02d", mm) + " " + hm.group(3) : hm.group();
+            hm.appendReplacement(b, Matcher.quoteReplacement(rep));
+        }
+        hm.appendTail(b);
+        return b.toString();
+    }
+
+    private static final Pattern HOURS_MINUTES = Pattern.compile("(?<![\\d:])(\\d{1,2})\\s*గంట(?:ల)?\\s+(\\d{1,2})\\s*నిమిషాల\\s*(కి|కు)");
+
     // ================================================================ calculator
 
     private static final Pattern PERCENT = Pattern.compile("(శాతం|పర్సెంట్|percent|%)", Pattern.CASE_INSENSITIVE);
@@ -346,6 +459,15 @@ final class Offline {
         return new ArrayList<>(set);
     }
 
+    /** The time and date now, in Telugu: "ఇప్పుడు రాత్రి 9:05. ఈరోజు బుధవారం, 7 అక్టోబర్ 2026." */
+    static String nowText(LocalDateTime now) {
+        int h = now.getHour();
+        String part = h < 5 ? "తెల్లవారుజామున" : h < 12 ? "ఉదయం" : h < 16 ? "మధ్యాహ్నం" : h < 19 ? "సాయంత్రం" : "రాత్రి";
+        int h12 = h % 12 == 0 ? 12 : h % 12;
+        return "ఇప్పుడు " + part + " " + h12 + ":" + String.format(Locale.ENGLISH, "%02d", now.getMinute()) + ". ఈరోజు "
+                + WEEKDAYS[now.getDayOfWeek().getValue() - 1][0] + ", " + now.getDayOfMonth() + " " + Duty.monthName(now.getMonthValue()) + " " + now.getYear() + ".";
+    }
+
     /** A time to say: "రేపు ఉదయం 6:00", "ఈరోజు రాత్రి 9:30", "గురువారం సాయంత్రం 5:00". */
     static String sayWhen(LocalDateTime at, LocalDateTime now) {
         long days = at.toLocalDate().toEpochDay() - now.toLocalDate().toEpochDay();
@@ -358,7 +480,7 @@ final class Offline {
     }
 
     private static final Pattern REMIND_CMD = Pattern.compile(
-            "(గుర్తు\\s*చేయండి|గుర్తు\\s*చెయ్యి|గుర్తు\\s*చేయి|గుర్తు\\s*చెయ్|గుర్తు\\s*చేయ్|గుర్తు\\s*చెయ్యండి|రిమైండర్\\s*పెట్టు|రిమైండర్\\s*పెట్టండి|రిమైండ్\\s*చేయి|రిమైండ్\\s*చెయ్యి|remind\\s*me)",
+            "(గుర్తు\\s*చేయండి|గుర్తు\\s*చెయ్యండి|గుర్తు\\s*చెయ్యి|గుర్తు\\s*చేయి|గుర్తు\\s*చెయ్|గుర్తు\\s*చేయ్|రిమైండర్\\s*పెట్టు|రిమైండర్\\s*పెట్టండి|రిమైండ్\\s*చేయి|రిమైండ్\\s*చెయ్యి|remind\\s*me)",
             Pattern.CASE_INSENSITIVE);
 
     /** What to remind him of: his words without the time and the command ("రేపు 6 కి పాలు తేవాలని గుర్తు చేయి" -> "పాలు తేవాలి"). */
@@ -571,7 +693,8 @@ final class Offline {
 
     private static final java.util.Set<String> NOT_MED_NAMES = new java.util.HashSet<>(java.util.Arrays.asList(
             "కి", "కు", "కీ", "లో", "ని", "నా", "ఆ", "ఈ", "ఒక", "రేపు", "ఈరోజు", "ఇవాళ", "రోజూ", "ప్రతిరోజూ", "ఉదయం", "రాత్రి", "సాయంత్రం",
-            "మధ్యాహ్నం", "పొద్దున", "నాకు", "నేను", "అని", "గుర్తు", "కొనాలి", "కొనాలని", "తేవాలి", "తేవాలని"));
+            "మధ్యాహ్నం", "పొద్దున", "నాకు", "నేను", "అని", "గుర్తు", "కొనాలి", "కొనాలని", "తేవాలి", "తేవాలని", "గంటలకి", "గంటలకు",
+            "గంటకి", "గంటకు"));
 
     /** The medicine's name: the words before మాత్ర / మందు / టాబ్లెట్ ("BP మాత్ర", "Dolo 650 మాత్ర"), or "" when there is none. */
     static String medicineName(String text) {

@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * headset's mic (a helmet) is used when one is connected. No silent fallback: when the chosen AI can't be reached it
  * says why.
  */
-final class Ears {
+final class Ears implements ListenMic {
     /** What Jarvis uses to hear him: "openai", "gemini" or "google" (the phone's own speech service, with its beeps). */
     static String mode(Prefs p) { return p.earsMode(); }
 
@@ -70,6 +70,8 @@ final class Ears {
         void heard(String text);
         /** It ended without words (SpeechRecognizer error codes, or the ERROR_ codes above). */
         void failed(int error);
+        /** The words so far, while he is still talking (only where they are known as he talks: TeluguEars). */
+        default void partial(String text) {}
     }
 
     private static final int RATE = 16000;
@@ -111,10 +113,10 @@ final class Ears {
     }
 
     /** "Done" (he tapped): stop listening now and write out what he said so far. */
-    void finishNow() { finishNow = true; }
+    @Override public void finishNow() { finishNow = true; }
 
     /** Stop; nothing more is reported (and nothing half-sent is finished). */
-    void cancel() {
+    @Override public void cancel() {
         cancelled = true;
         Upload u = upload;
         if (u != null) u.abort();
@@ -137,9 +139,7 @@ final class Ears {
     @SuppressLint("MissingPermission")
     private void run(long waitMs, String key) {
         AudioRecord rec = null;
-        AudioManager am = ctx.getSystemService(AudioManager.class);
-        boolean routed = false, modeChanged = false;
-        int oldMode = AudioManager.MODE_NORMAL;
+        Route route = new Route(ctx);
         byte[] wav = null;
         boolean weak;
         long doneAt, voiceEnd;
@@ -148,39 +148,10 @@ final class Ears {
         Upload up = null;
         int upTries = 0;
         try {
-            // a Bluetooth headset (helmet) mic, when one is connected
-            AudioDeviceInfo headsetIn = null;
-            if (Build.VERSION.SDK_INT >= 31 && am != null) {
-                try {
-                    AudioDeviceInfo pick = null;
-                    for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
-                        int t = d.getType();
-                        if (t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || t == AudioDeviceInfo.TYPE_BLE_HEADSET) { pick = d; break; }
-                    }
-                    if (pick != null && am.getMode() == AudioManager.MODE_NORMAL) {
-                        oldMode = am.getMode();
-                        am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                        modeChanged = true;
-                        routed = am.setCommunicationDevice(pick);
-                        if (routed) {
-                            // the headset's audio link takes a moment to come up: wait for it (at most 3 s)
-                            long until = SystemClock.elapsedRealtime() + 3000;
-                            while (!cancelled && SystemClock.elapsedRealtime() < until) {
-                                AudioDeviceInfo now = am.getCommunicationDevice();
-                                if (now != null && now.getId() == pick.getId()) break;
-                                SystemClock.sleep(100);
-                            }
-                            for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
-                                int t = d.getType();
-                                if (t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || t == AudioDeviceInfo.TYPE_BLE_HEADSET) { headsetIn = d; break; }
-                            }
-                        }
-                    }
-                } catch (Exception ignored) {}
-            }
+            route.connect(() -> cancelled); // a Bluetooth headset (helmet) mic, when one is connected
             musicDown = Duck.hold(ctx); // songs and radio go quiet while Jarvis listens (as Google voice typing does)
-            rec = open(routed, headsetIn);
-            if (rec == null) { SystemClock.sleep(200); rec = open(routed, headsetIn); } // (a talk-over mic may still be letting go)
+            rec = openMic(route.routed, route.in, 0);
+            if (rec == null) { SystemClock.sleep(200); rec = openMic(route.routed, route.in, 0); } // (a talk-over mic may still be letting go)
             if (rec == null) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
             post(() -> cb.opened());
             Talk talk = new Talk(longTalk ? 60_000 : 20_000);
@@ -198,7 +169,7 @@ final class Ears {
                 else if (zeroSince < 0) zeroSince = now;
                 // the phone gives Jarvis no sound (the mic held elsewhere): after sound went silent for 1 s, or none at all
                 // since the mic opened (a headset gets longer to start)
-                if (zero && (anySound ? now - zeroSince >= 1000 : now - openedAt >= (routed ? 4000 : 1500))) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
+                if (zero && (anySound ? now - zeroSince >= 1000 : now - openedAt >= (route.routed ? 4000 : 1500))) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
                 int state = talk.add(f, n, now);
                 if (stream) {
                     if (talk.started() && up == null && upTries < 3) { // he started: the connection is made now, the sound follows as it comes
@@ -242,10 +213,7 @@ final class Ears {
             }
             Duck.release(ctx, musicDown); // (Jarvis's answer keeps them down again while it speaks)
             musicDown = null;
-            if (am != null && (routed || modeChanged)) {
-                try { if (routed && Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice(); } catch (Exception ignored) {}
-                try { if (modeChanged && am.getMode() == AudioManager.MODE_IN_COMMUNICATION) am.setMode(oldMode); } catch (Exception ignored) {} // (not over a real call)
-            }
+            route.release();
         }
         post(() -> cb.understanding());
         // never "understanding" for ever (a longer recording gets longer to upload)
@@ -298,13 +266,67 @@ final class Ears {
 
     static String sec(long ms) { return String.format(Locale.ROOT, "%.1f", Math.max(0, ms) / 1000.0); }
 
+    /**
+     * A Bluetooth headset's mic (a helmet), when one is connected: the phone is put in call mode with the headset as its
+     * call device while Jarvis listens, and back after (never over a real call).
+     */
+    static final class Route {
+        private final AudioManager am;
+        boolean routed;
+        private boolean modeChanged;
+        private int oldMode = AudioManager.MODE_NORMAL;
+        /** The headset's mic, to record from (null: the phone's own). */
+        AudioDeviceInfo in;
+
+        Route(Context c) { am = c.getSystemService(AudioManager.class); }
+
+        void connect(java.util.function.BooleanSupplier cancelled) {
+            if (Build.VERSION.SDK_INT < 31 || am == null) return;
+            try {
+                AudioDeviceInfo pick = null;
+                for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
+                    int t = d.getType();
+                    if (t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || t == AudioDeviceInfo.TYPE_BLE_HEADSET) { pick = d; break; }
+                }
+                if (pick != null && am.getMode() == AudioManager.MODE_NORMAL) {
+                    oldMode = am.getMode();
+                    am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                    modeChanged = true;
+                    routed = am.setCommunicationDevice(pick);
+                    if (routed) {
+                        // the headset's audio link takes a moment to come up: wait for it (at most 3 s)
+                        long until = SystemClock.elapsedRealtime() + 3000;
+                        while (!cancelled.getAsBoolean() && SystemClock.elapsedRealtime() < until) {
+                            AudioDeviceInfo now = am.getCommunicationDevice();
+                            if (now != null && now.getId() == pick.getId()) break;
+                            SystemClock.sleep(100);
+                        }
+                        for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+                            int t = d.getType();
+                            if (t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || t == AudioDeviceInfo.TYPE_BLE_HEADSET) { in = d; break; }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        void release() {
+            if (am == null || !routed && !modeChanged) return;
+            try { if (routed && Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice(); } catch (Exception ignored) {}
+            try { if (modeChanged && am.getMode() == AudioManager.MODE_IN_COMMUNICATION) am.setMode(oldMode); } catch (Exception ignored) {} // (not over a real call)
+            routed = false;
+            modeChanged = false;
+        }
+    }
+
+    /** The mic, recording 16 kHz mono (the headset's when routed); bufferBytes 0: the usual. Null when it can't be had. */
     @SuppressLint("MissingPermission")
-    private static AudioRecord open(boolean headset, AudioDeviceInfo headsetIn) {
+    static AudioRecord openMic(boolean headset, AudioDeviceInfo headsetIn, int bufferBytes) {
         AudioRecord rec = null;
         try {
             int min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             rec = new AudioRecord(headset ? MediaRecorder.AudioSource.VOICE_COMMUNICATION : MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                    RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, FRAME * 2 * 8));
+                    RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, Math.max(bufferBytes, FRAME * 2 * 8)));
             if (rec.getState() != AudioRecord.STATE_INITIALIZED) { rec.release(); return null; }
             if (headsetIn != null) try { rec.setPreferredDevice(headsetIn); } catch (Exception ignored) {}
             rec.startRecording();

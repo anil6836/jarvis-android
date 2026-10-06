@@ -639,7 +639,11 @@ final class CardTalk implements VoiceIO.Listener {
 
     @Override public void onListening() { if (!stopped) card.status("🎙️ వింటున్నాను… (" + hint() + ")"); }
 
-    @Override public void onPartial(String text) { if (!stopped) card.status("🎙️ “" + text + "”"); }
+    @Override public void onPartial(String text) {
+        if (stopped) return;
+        if (text == null || text.isEmpty()) onListening(); // (that was only a noise)
+        else card.status("🎙️ “" + text + "”");
+    }
 
     @Override public void onUnderstanding() { if (!stopped) card.status("🎙️ అర్థం చేసుకుంటున్నాను…"); }
 

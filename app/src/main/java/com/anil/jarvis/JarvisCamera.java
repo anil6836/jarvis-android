@@ -642,7 +642,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     @Override public void onListening() { partial.setText("🎙️ వింటున్నాను…"); refreshButtons(); }
     @Override public void onUnderstanding() { partial.setText("🎙️ అర్థం చేసుకుంటున్నాను…"); }
-    @Override public void onPartial(String text) { partial.setText("🎙️ " + text); }
+    @Override public void onPartial(String text) { partial.setText(text == null || text.isEmpty() ? "🎙️ వింటున్నాను…" : "🎙️ " + text); }
     @Override public void onLevel(float level) {}
     @Override public void onVoiceReady() { listenSoon(300); }
     /** He talked over the answer: the speech is held (not lost) and the mic opens for him now. */

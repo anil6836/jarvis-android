@@ -305,6 +305,7 @@ final class VoiceIO {
         tts.setSpeechRate(rate * Emotion.pace(feeling));
         tts.setPitch(Emotion.pitch(feeling));
         try { tts.setLanguage(Lang.of(clean)); } catch (Exception ignored) {} // Hindi etc. for translations
+        if (!Net.online(ctx)) localVoice(); // no internet: a voice that needs it would stay silent
         utterance++;
         speaking = true;
         int r;
@@ -312,6 +313,31 @@ final class VoiceIO {
         catch (Exception e) { r = TextToSpeech.ERROR; }
         if (r != TextToSpeech.SUCCESS) failSpeak(); // no progress callbacks will come for it
     }
+
+    /** The phone's voice for this language that is on the phone itself (when the one chosen needs the internet). */
+    private void localVoice() {
+        try {
+            Voice v = tts.getVoice();
+            if (v == null || v.getLocale() == null || !v.isNetworkConnectionRequired()) return;
+            Locale want = v.getLocale();
+            if (localPick != null && want.equals(localFor)) { tts.setVoice(localPick); return; }
+            Voice pick = null;
+            java.util.Set<Voice> vs = tts.getVoices();
+            if (vs != null) for (Voice x : vs) {
+                if (x == null || x.getLocale() == null || x.isNetworkConnectionRequired()) continue;
+                java.util.Set<String> f = x.getFeatures();
+                if (f != null && f.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)) continue;
+                if (!x.getLocale().getLanguage().equals(want.getLanguage())) continue;
+                boolean sameCountry = x.getLocale().getCountry().equals(want.getCountry());
+                if (pick == null || sameCountry && !pick.getLocale().getCountry().equals(want.getCountry())) pick = x;
+            }
+            if (pick != null) { tts.setVoice(pick); localFor = want; localPick = pick; }
+        } catch (Exception ignored) {}
+    }
+
+    /** The on-phone voice chosen for this language (looked up once). */
+    private Locale localFor;
+    private Voice localPick;
 
     /** Natural voice has no word timings: estimate the word from how much sound has played. */
     private final Runnable wordTicker = new Runnable() {
@@ -585,7 +611,8 @@ final class VoiceIO {
     }
 
     boolean canListen() {
-        return Ears.chosen(prefs) || SpeechRecognizer.isRecognitionAvailable(ctx);
+        return Ears.chosen(prefs) || SpeechRecognizer.isRecognitionAvailable(ctx)
+                || !Net.online(ctx) && prefs.offlineAuto() && TeluguEars.use(ctx, prefs.listenLang());
     }
 
     // ---- listening
@@ -719,11 +746,12 @@ final class VoiceIO {
         level.forget();
         trace.setLength(0);
         traceStart = android.os.SystemClock.elapsedRealtime();
-        // no internet (and he left "offline" on): the phone's own offline voice typing, in Telugu, or English when only
-        // that pack is on the phone; whichever way of hearing is chosen (Jarvis's own mic needs the internet)
+        // no internet (and he left "offline" on): in Telugu, Jarvis's own Telugu ears (TeluguEars), or the phone's offline
+        // voice typing where it has Telugu; whichever way of hearing is chosen (the AI's ears need the internet)
         boolean offlineNow = !Net.online(ctx) && prefs.offlineAuto();
         if (offlineNow) lang = OfflineKit.hearIn(ctx, lang);
         offlineLang = offlineNow ? lang : null;
+        teluguNow = offlineNow && TeluguEars.use(ctx, lang);
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang);
@@ -743,16 +771,54 @@ final class VoiceIO {
         VoiceIO other = holder;
         holder = this;
         if (other != null && other != this && other.listening && !other.shut) other.micTaken(); // (after listening = true here)
+        if (teluguNow) { trace("📴"); listenTelugu(dictation); return; }
         if (Ears.chosen(prefs) && !offlineNow) { listenEars(dictation); return; } // Jarvis's own mic: no beeps
-        if (offlineNow) trace("📴");
+        if (offlineNow) {
+            trace("📴");
+            if (lang.startsWith("te") && !OfflineKit.useOnDevice(ctx, lang)
+                    && (Build.VERSION.SDK_INT >= 33 || OfflineKit.NONE.equals(OfflineKit.hearing(ctx, OfflineKit.TE)))) {
+                // nothing on this phone hears Telugu without internet yet: say how to get Jarvis's own (no English instead)
+                final int s = session;
+                main.post(() -> { if (s == session && listening && !shut) fail(TeluguEars.ERROR_NO_MODEL); });
+                return;
+            }
+        }
         start();
+    }
+
+    /** This listen is Jarvis's own Telugu ears without internet. */
+    private boolean teluguNow;
+
+    /** Without internet, Jarvis's own Telugu ears: like listenEars, and the words show while he talks. */
+    private void listenTelugu(boolean dictation) {
+        final int s = session;
+        final TeluguEars e = new TeluguEars(ctx);
+        ears = e;
+        e.start(windowMs, dictation, new Ears.Callback() {
+            private boolean mine() { return s == session && ears == e && listening && !shut; }
+            @Override public void opened() { if (mine()) { trace("🎙"); l.onListening(); } }
+            @Override public void level(float v) { if (mine()) l.onLevel(v); }
+            @Override public void partial(String text) { if (mine()) l.onPartial(text == null ? "" : text); } // ("": it was only a noise)
+            @Override public void understanding() { if (mine()) { trace("■"); l.onUnderstanding(); } }
+            @Override public void heard(String text) {
+                if (!mine()) return;
+                ears = null;
+                if (text == null || text.trim().isEmpty()) { if (wrapUp) VoiceIO.this.heard(""); else fail(SpeechRecognizer.ERROR_NO_MATCH); }
+                else VoiceIO.this.heard(text.trim());
+            }
+            @Override public void failed(int error) {
+                if (!mine()) return;
+                ears = null;
+                fail(error);
+            }
+        });
     }
 
     /** This listen is without internet (the phone's offline voice typing), in this language; null otherwise. */
     private String offlineLang;
 
-    /** Jarvis's own ears (Ears): listening without the phone's speech service, so without its beeps. */
-    private Ears ears;
+    /** Jarvis's own ears (Ears, or TeluguEars without internet): listening without the phone's speech service, so without its beeps. */
+    private ListenMic ears;
 
     private void listenEars(boolean dictation) {
         final int s = session;
@@ -1092,9 +1158,9 @@ final class VoiceIO {
         letGo();
         MicQuiet.release(this);
         done("✓ విన్నాను");
-        boolean own = Ears.chosen(prefs);
-        turnEars = own ? Ears.lastTimes : "";
-        turnVoiceEnd = own ? Ears.lastVoiceEnd : 0;
+        boolean own = Ears.chosen(prefs) && offlineLang == null;
+        turnEars = teluguNow ? TeluguEars.lastTimes : own ? Ears.lastTimes : "";
+        turnVoiceEnd = teluguNow ? TeluguEars.lastVoiceEnd : own ? Ears.lastVoiceEnd : 0;
         turnSpeakAt = 0;
         turnHeardAt = text == null || text.trim().isEmpty() ? 0 : android.os.SystemClock.elapsedRealtime();
         l.onHeard(text);
@@ -1148,7 +1214,13 @@ final class VoiceIO {
             case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
                 return "వాయిస్‌కి ఇంటర్నెట్ కావాలి. నెట్ చెక్ చేయండి.";
             case ERROR_NO_OFFLINE:
-                return "నెట్ లేదు, ఫోన్‌లో offline వినే ప్యాక్ లేదు. Settings → గొంతు, వినడం → Offline వాయిస్ లో డౌన్‌లోడ్ చేయండి (నెట్ ఉన్నప్పుడు).";
+                return "నెట్ లేదు, ఈ భాషలో offline వినడం ఫోన్‌లో లేదు. తెలుగుకి: నెట్ ఉన్నప్పుడు Settings → Offline వాయిస్ లో \"Jarvis తెలుగు వినడం\" డౌన్‌లోడ్ చేయండి.";
+            case TeluguEars.ERROR_NO_MODEL:
+                return "నెట్ లేదు, తెలుగు offline వినడం ఇంకా ఫోన్‌లో లేదు. నెట్ ఉన్నప్పుడు Settings → Offline వాయిస్ లో \"Jarvis తెలుగు వినడం\" డౌన్‌లోడ్ చేయండి (ఒక్కసారే).";
+            case TeluguEars.ERROR_BROKEN:
+                return "Jarvis తెలుగు offline వినడం తెరవలేకపోయాను. నెట్ ఉన్నప్పుడు Settings → Offline వాయిస్ లో మళ్లీ డౌన్‌లోడ్ చేయండి.";
+            case TeluguEars.ERROR_FAILED:
+                return "తెలుగు వినడంలో సమస్య వచ్చింది, మళ్లీ చెప్పండి.";
             case SpeechRecognizer.ERROR_AUDIO:
                 return "మైక్ దొరకలేదు: వేరే యాప్ మైక్ వాడుతోందేమో.";
             case SpeechRecognizer.ERROR_SERVER:

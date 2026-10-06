@@ -80,7 +80,10 @@ public class SettingsActivity extends Activity {
     private Switch weeklyReport;
     private Switch bargeCallVoice, liveAec, echoRecord, offlineAuto;
     /** The offline voice card: what the phone has, and its download buttons. */
-    private TextView offlineInfo, offlineHearBtn, offlineEnBtn, offlineVoiceBtn;
+    private TextView offlineInfo, offlineHearBtn, offlineEnBtn, offlineVoiceBtn, offlineTeBtn;
+    /** Jarvis's own Telugu ears are downloading (one at a time, also across this screen opening again). */
+    private static volatile boolean teDownloading;
+    private static final String TE_BTN = "⬇ Jarvis తెలుగు వినడం డౌన్‌లోడ్ (58 MB, ఒక్కసారే)";
     /** Opened from the "new version" notification / note: go to Updates and start the update. */
     static final String EXTRA_UPDATE_NOW = "update_now";
     private View updatesHeader;
@@ -567,17 +570,19 @@ public class SettingsActivity extends Activity {
         box.addView(offlineInfo);
         LinearLayout orow = new LinearLayout(this);
         orow.setOrientation(LinearLayout.VERTICAL);
-        offlineHearBtn = Ui.pill(this, "⬇ తెలుగు offline వినడం డౌన్‌లోడ్");
+        offlineTeBtn = Ui.pill(this, teDownloading ? "డౌన్‌లోడ్ అవుతోంది…" : TE_BTN);
+        offlineHearBtn = Ui.pill(this, "⬇ ఫోన్ తెలుగు offline వినడం డౌన్‌లోడ్");
         offlineEnBtn = Ui.pill(this, "⬇ English offline వినడం డౌన్‌లోడ్");
         offlineVoiceBtn = Ui.pill(this, "⬇ తెలుగు offline గొంతు డౌన్‌లోడ్");
         TextView orecheck = Ui.pill(this, "🔄 మళ్లీ చూడు");
+        offlineTeBtn.setOnClickListener(v -> downloadTelugu());
         offlineHearBtn.setOnClickListener(v -> offlineDownload(OfflineKit.TE));
         offlineEnBtn.setOnClickListener(v -> offlineDownload(OfflineKit.EN));
         offlineVoiceBtn.setOnClickListener(v -> {
             if (!OfflineKit.downloadVoice(this)) Toast.makeText(this, "ఫోన్ గొంతు డౌన్‌లోడ్ పేజీ తెరవలేకపోయాను. ఫోన్ Settings → Text-to-speech లో చూడండి.", Toast.LENGTH_LONG).show();
         });
         orecheck.setOnClickListener(v -> checkOffline());
-        for (TextView ob : new TextView[]{offlineHearBtn, offlineEnBtn, offlineVoiceBtn, orecheck}) {
+        for (TextView ob : new TextView[]{offlineTeBtn, offlineHearBtn, offlineEnBtn, offlineVoiceBtn, orecheck}) {
             LinearLayout.LayoutParams obp = new LinearLayout.LayoutParams(-2, -2);
             obp.topMargin = Ui.dp(this, 8);
             orow.addView(ob, obp);
@@ -589,8 +594,10 @@ public class SettingsActivity extends Activity {
                 + "బండి ఇక్కడ పెట్టాను / బండి ఎక్కడ · రేపు క్యాలెండర్‌లో ఏమున్నాయి · పుట్టినరోజులు · పండుగలు · BP మాత్ర వేసుకున్నాను · మెసేజ్‌లు చదువు · "
                 + "బ్లూటూత్ ఆన్ · బ్రైట్‌నెస్ తగ్గించు · ఫోన్‌లో పాటలు పెట్టు · బ్యాటరీ ఎంత. "
                 + "వార్తలు, వాతావరణం లాంటి నెట్ కావాల్సిన ప్రశ్నలు గుర్తుంచుకుని, నెట్ రాగానే మెదడుతో జవాబు చెబుతుంది. "
-                + "మీ మెదడు (AI) నెట్ లేకుండా పనిచేయదు, అందుకే offline లో పై లాంటి పనులు మాత్రమే. దీనికి ఫోన్‌లో offline వినే ప్యాక్ ఉండాలి (పై బటన్); "
-                + "ఈ ఫోన్‌లో తెలుగు offline వినడం లేకపోతే English లో చెప్పొచ్చు (torch on, call amma, battery…).");
+                + "మీ మెదడు (AI) నెట్ లేకుండా పనిచేయదు, అందుకే offline లో పై లాంటి పనులు మాత్రమే. "
+                + "నెట్ లేకుండా తెలుగులో వినడానికి \"Jarvis తెలుగు వినడం\" ఒక్కసారి డౌన్‌లోడ్ చేయాలి (నెట్ ఉన్నప్పుడు, సుమారు 58 MB). "
+                + "వినడం అంతా ఫోన్‌లోనే, ఏదీ బయటికి వెళ్లదు. ఇది చిన్న మోడల్: పై లాంటి పనుల మాటలు బాగా వింటుంది; పొడవైన వాక్యాలు, పేర్లు "
+                + "కొన్నిసార్లు తప్పుగా వినొచ్చు (ఏం విన్నదో స్క్రీన్‌పై కనిపిస్తుంది). జవాబులు ఫోన్ తెలుగు గొంతుతో.");
 
         // ---- wake word
         section("\"Hey Jarvis\" వేక్ వర్డ్");
@@ -1340,11 +1347,49 @@ public class SettingsActivity extends Activity {
 
     private void showOffline() {
         String te = OfflineKit.hearing(this, OfflineKit.TE), en = OfflineKit.hearing(this, OfflineKit.EN), v = OfflineKit.voice(this);
-        offlineInfo.setText(OfflineKit.line(this) + (OfflineKit.onDevice(this) || OfflineKit.INSTALLED.equals(te) ? ""
-                : "\n(ఈ ఫోన్ offline వినడం ఉందో లేదో Jarvis కి చెప్పదు: నెట్ ఆపి \"Hey Jarvis\" అని పరీక్షించండి)"));
-        offlineHearBtn.setVisibility(OfflineKit.AVAILABLE.equals(te) ? View.VISIBLE : View.GONE);
-        offlineEnBtn.setVisibility(OfflineKit.NONE.equals(te) && OfflineKit.AVAILABLE.equals(en) ? View.VISIBLE : View.GONE);
+        boolean own = TeluguEars.ready(this), phoneTe = OfflineKit.INSTALLED.equals(te), broken = own && TeluguEars.broken(this);
+        offlineInfo.setText(OfflineKit.line(this) + (broken ? "\n✗ Jarvis తెలుగు వినడం గత సారి తెరుచుకోలేదు: మళ్లీ డౌన్‌లోడ్ చేయండి" : ""));
+        if (!teDownloading) offlineTeBtn.setText(broken ? "⬇ Jarvis తెలుగు వినడం మళ్లీ డౌన్‌లోడ్ (58 MB)" : TE_BTN);
+        offlineTeBtn.setVisibility(teDownloading || broken || !own && !phoneTe ? View.VISIBLE : View.GONE);
+        offlineHearBtn.setVisibility(!own && OfflineKit.AVAILABLE.equals(te) ? View.VISIBLE : View.GONE);
+        offlineEnBtn.setVisibility(prefs.listenLang().startsWith("en") && OfflineKit.AVAILABLE.equals(en) ? View.VISIBLE : View.GONE);
         offlineVoiceBtn.setVisibility(OfflineKit.INSTALLED.equals(v) ? View.GONE : View.VISIBLE);
+    }
+
+    /** The Settings screen showing now (a download started on an earlier one reports here). */
+    private static SettingsActivity showing;
+
+    /** Jarvis's own Telugu ears (TeluguEars): its model downloaded once, while there is internet (his button). */
+    private void downloadTelugu() {
+        if (teDownloading) return;
+        if (!Net.online(this)) { Toast.makeText(this, "డౌన్‌లోడ్‌కి నెట్ కావాలి.", Toast.LENGTH_LONG).show(); return; }
+        teDownloading = true;
+        offlineTeBtn.setText("డౌన్‌లోడ్ మొదలవుతోంది…");
+        android.content.Context app = getApplicationContext();
+        android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
+        boolean again = TeluguEars.ready(app) && TeluguEars.broken(app);
+        new Thread(() -> {
+            String msg;
+            try {
+                if (again) VoskModel.unready(VoskModel.teDir(app)); // (it wouldn't open: fetched afresh)
+                VoskModel.ensureTe(app, text -> ui.post(() -> {
+                    SettingsActivity a = showing;
+                    if (a != null && a.offlineTeBtn != null) a.offlineTeBtn.setText(text);
+                }));
+                TeluguEars.keepNote(app, "te_broken", "");
+                msg = "✓ Jarvis తెలుగు వినడం సిద్ధం. ఇక నెట్ లేకపోయినా తెలుగులో వింటుంది.";
+            } catch (Throwable e) {
+                msg = "డౌన్‌లోడ్ కాలేదు (" + e.getMessage() + "). నెట్ చూసి మళ్లీ నొక్కండి.";
+            } finally {
+                ui.post(() -> teDownloading = false);
+            }
+            String said = msg;
+            ui.post(() -> {
+                Toast.makeText(app, said, Toast.LENGTH_LONG).show();
+                SettingsActivity a = showing;
+                if (a != null && a.offlineInfo != null) a.showOffline();
+            });
+        }, "jarvis-te-download").start();
     }
 
     private void offlineDownload(String lang) {
@@ -1363,6 +1408,7 @@ public class SettingsActivity extends Activity {
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         showLock();
         if (bubbleMark != null) bubbleMark.run();
+        showing = this;
         checkOffline(); // (back from a download screen too)
         // back from "Install unknown apps" after pressing update: carry on installing
         int pendingBuild = Updater.installWhenAllowed;
@@ -1433,6 +1479,10 @@ public class SettingsActivity extends Activity {
                 .append(prefs.liveKeyReady() ? "" : " ✗ key లేదు").append("\n");
         s.append("• నెట్ లేనప్పుడు: ").append(prefs.offlineAuto() ? "ఆటోమేటిక్‌గా offline (" + OfflineKit.line(this) + ")" : "offline కి మారదు (ఆఫ్)")
                 .append(Net.online(this) ? "" : " · ఇప్పుడు నెట్ లేదు").append(Offline.anyWaiting(this) ? " · నెట్ కోసం ఆగిన ప్రశ్నలు ఉన్నాయి" : "").append("\n");
+        String teHeard = TeluguEars.note(this, "te_heard");
+        if (!teHeard.isEmpty()) s.append("• చివరి offline తెలుగు వినడం: ").append(teHeard).append(" (").append(TeluguEars.note(this, "te_times")).append(")\n");
+        String teMissing = TeluguEars.note(this, "te_missing");
+        if (!teMissing.isEmpty()) s.append("• తెలుగు మోడల్‌కి తెలియని పనుల మాటలు: ").append(teMissing).append("\n");
         if (prefs.liveMode() && prefs.liveGemini()) {
             s.append("• Gemini Live లో ఆలోచన: ").append(prefs.liveBrainThinks() ? "Jarvis మెదడు (" + prefs.model() + ")" : "Gemini Live తనే");
             if (GeminiLive.brainAnswers + GeminiLive.selfAnswers > 0)
@@ -1731,6 +1781,7 @@ public class SettingsActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (showing == this) showing = null;
         try { prefs.sp.unregisterOnSharedPreferenceChangeListener(lockCalibrated); } catch (Exception ignored) {}
         if (pendingRestore != null) { Backup.discard(getApplicationContext(), pendingRestore); pendingRestore = null; } // its question went with the screen
         super.onDestroy();

@@ -11,13 +11,19 @@ import java.net.URL;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-/** Downloads (once) and unpacks the small English Vosk model used to hear the word "Jarvis". */
+/**
+ * Downloads (once) and unpacks the small Vosk models Jarvis uses on the phone: English to hear the word "Jarvis", the
+ * voice print, and Telugu to hear him without internet (TeluguEars).
+ */
 final class VoskModel {
     interface Progress { void update(String text); }
 
     private static final String URL_ZIP = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip";
     /** Speaker (voice print) model for "only my voice", about 13 MB. */
     private static final String SPK_ZIP = "https://alphacephei.com/vosk/models/vosk-model-spk-0.4.zip";
+
+    /** Telugu, for listening without internet (TeluguEars): about 58 MB, Apache 2.0. */
+    private static final String TE_ZIP = "https://alphacephei.com/vosk/models/vosk-model-small-te-0.42.zip";
 
     private VoskModel() {}
 
@@ -37,7 +43,35 @@ final class VoskModel {
         return ensure(c, SPK_ZIP, spkDir(c), "గొంతు గుర్తింపు", progress);
     }
 
-    private static synchronized File ensure(Context c, String url, File dir, String what, Progress progress) throws Exception {
+    static File teDir(Context c) { return new File(c.getFilesDir(), "vosk-te"); }
+
+    static boolean teReady(Context c) { return new File(teDir(c), ".ready").exists(); }
+
+    /** The Telugu model, downloading it the first time (his button in Settings). */
+    static File ensureTe(Context c, Progress progress) throws Exception {
+        return ensure(c, TE_ZIP, teDir(c), "తెలుగు offline వినడం", progress);
+    }
+
+    /** The model in this folder couldn't be opened: it is downloaded again next time. */
+    static void unready(File dir) { new File(dir, ".ready").delete(); }
+
+    /** One download at a time per model (the Telugu one takes minutes; the "Jarvis" word's must not wait for it). */
+    private static final java.util.Map<String, Object> LOCKS = new java.util.HashMap<>();
+
+    private static Object lock(File dir) {
+        synchronized (LOCKS) {
+            Object o = LOCKS.get(dir.getName());
+            if (o == null) LOCKS.put(dir.getName(), o = new Object());
+            return o;
+        }
+    }
+
+    private static File ensure(Context c, String url, File dir, String what, Progress progress) throws Exception {
+        if (new File(dir, ".ready").exists()) return dir;
+        synchronized (lock(dir)) { return fetch(c, url, dir, what, progress); }
+    }
+
+    private static File fetch(Context c, String url, File dir, String what, Progress progress) throws Exception {
         File ok = new File(dir, ".ready");
         if (ok.exists()) return dir;
         deleteTree(dir);

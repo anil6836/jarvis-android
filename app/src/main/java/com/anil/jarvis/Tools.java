@@ -5444,7 +5444,7 @@ final class Tools {
             }
             if (k == CardTalk.Words.NO) return "సరే, కాల్ చేయలేదు.";
         }
-        if (any(t, "offline", "ఆఫ్‌లైన్", "ఆఫ్ లైన్", "నెట్ లేనప్పుడు", "నెట్ లేకుండా") && any(t, "ఏం చేయగల", "ఏమి చేయగల", "ఏమేమి", "ఏం చేస్తావ్", "ఏమి చేస్తావ్")) {
+        if (any(t, "offline", "ఆఫ్‌లైన్", "ఆఫ్లైన్", "ఆఫ్ లైన్", "నెట్ లేనప్పుడు", "నెట్ లేకుండా") && any(t, "ఏం చేయగల", "ఏమి చేయగల", "ఏమేమి", "ఏం చేస్తావ్", "ఏమి చేస్తావ్")) {
             return OFFLINE_HELP;
         }
 
@@ -5570,7 +5570,7 @@ final class Tools {
         }
         boolean noteAsk = (t.endsWith("రాసుకో") || t.endsWith("రాసుకోండి")) && !any(t, "డైరీ", "లిస్ట్");
         if (noteAsk) {
-            String note = said.replaceAll("(నోట్స్‌లో|నోట్స్ లో|నోట్‌లో|నోట్ లో|నోట్స్|నోట్|రాసుకోండి|రాసుకో|రాయండి|రాయి|చేసుకో|పెట్టుకో|సేవ్)", " ")
+            String note = said.replaceAll("(నోట్స్‌లో|నోట్స్లో|నోట్స్ లో|నోట్‌లో|నోట్లో|నోట్ లో|నోట్స్|నోట్|రాసుకోండి|రాసుకో|రాయండి|రాయి|చేసుకో|పెట్టుకో|సేవ్)", " ")
                     .replaceAll("(^\\s*అని\\s+|\\s+అని\\s*$)", " ").replaceAll("\\s+", " ").trim();
             if (note.isEmpty()) return "ఏం రాయాలి?";
             JSONObject o = new JSONObject(notes("add", note, 7));
@@ -5596,7 +5596,7 @@ final class Tools {
         }
         if (any(t, "లిస్ట్", "లిస్టు") && !any(t, "నోట్", "రిమైండర్", "కాంటాక్ట్")) {
             if (any(t, "పెట్టు", "చేర్చు", "రాయి", "ఆడ్", "యాడ్", "add", "కలుపు")) {
-                String items = said.replaceAll("(షాపింగ్|లిస్ట్‌లో|లిస్ట్ లో|లిస్టులో|లిస్టు లో|లిస్ట్|లిస్టు|పెట్టు|చేర్చు|రాయి|ఆడ్ చేయి|ఆడ్|యాడ్ చేయి|యాడ్|add|కలుపు|చేయి)", " ")
+                String items = said.replaceAll("(షాపింగ్|లిస్ట్‌లో|లిస్ట్లో|లిస్ట్ లో|లిస్టులో|లిస్టు లో|లిస్ట్|లిస్టు|పెట్టు|చేర్చు|రాయి|ఆడ్ చేయి|ఆడ్|యాడ్ చేయి|యాడ్|add|కలుపు|చేయి)", " ")
                         .replaceAll("\\s+", " ").trim();
                 if (items.isEmpty()) return "లిస్ట్‌లో ఏం పెట్టాలి?";
                 JSONArray added = Shopping.add(act(), items);
@@ -5633,7 +5633,7 @@ final class Tools {
             java.time.LocalDate d = Offline.dayOf(t, today);
             return offlineEvents(d == null ? today : d);
         }
-        if (any(t, "పుట్టినరోజు", "పుట్టిన రోజు", "బర్త్‌డే", "బర్త్ డే", "birthday", "పెళ్లిరోజు", "పెళ్లి రోజు", "anniversary")) {
+        if (any(t, "పుట్టినరోజు", "పుట్టిన రోజు", "బర్త్‌డే", "బర్త్డే", "బర్త్ డే", "birthday", "పెళ్లిరోజు", "పెళ్లి రోజు", "anniversary")) {
             List<JSONObject> l = Birthdays.upcoming(act(), 30);
             if (l.isEmpty()) return "వచ్చే 30 రోజుల్లో పుట్టినరోజులు, పెళ్లిరోజులు లేవు.";
             StringBuilder b = new StringBuilder();
@@ -5687,7 +5687,7 @@ final class Tools {
             return "బ్యాటరీ సేవర్ పేజీ తెరిచాను, అక్కడ " + (off ? "ఆఫ్" : "ఆన్") + " చేయండి.";
         }
         String[][] switches = {{"bluetooth", "బ్లూటూత్", "bluetooth"}, {"dnd", "డిస్టర్బ్", "dnd", "డు నాట్"},
-                {"airplane", "ఎయిర్‌ప్లేన్", "ఎయిర్ ప్లేన్", "ఫ్లైట్ మోడ్", "airplane", "flight mode"}, {"hotspot", "హాట్‌స్పాట్", "హాట్ స్పాట్", "hotspot"},
+                {"airplane", "ఎయిర్‌ప్లేన్", "ఎయిర్ప్లేన్", "ఎయిర్ ప్లేన్", "ఫ్లైట్ మోడ్", "airplane", "flight mode"}, {"hotspot", "హాట్‌స్పాట్", "హాట్స్పాట్", "హాట్ స్పాట్", "hotspot"},
                 {"auto_rotate", "రొటేట్", "rotate"}};
         String[] names = {"బ్లూటూత్", "Do Not Disturb", "ఫ్లైట్ మోడ్", "హాట్‌స్పాట్", "ఆటో రొటేట్"};
         for (int k = 0; k < switches.length; k++) {
@@ -5744,7 +5744,7 @@ final class Tools {
         if (any(t, "టైమ్ ఎంత", "టైం ఎంత", "సమయం ఎంత", "టైమ్ ఎంతయింది", "టైమ్ ఎంత అయింది", "ఎన్ని గంటలు", "టైమ్ చెప్పు", "సమయం చెప్పు",
                 "తేదీ ఎంత", "తేదీ ఏంటి", "ఈరోజు తేదీ", "ఈ రోజు తేదీ", "ఈరోజు ఏం వారం", "ఏం వారం", "what time", "what's the time", "today's date")
                 || t.matches("^(టైమ్|టైం|సమయం|time|తేదీ|date)\\s*[?.]?$")) {
-            return new java.text.SimpleDateFormat("h:mm a, EEEE d MMMM", Locale.ENGLISH).format(new java.util.Date()) + ".";
+            return Offline.nowText(now);
         }
         if (any(t, "వాల్యూమ్", "volume", "సౌండ్")) {
             mediaControl(any(t, "తగ్గించు", "తగ్గించ", "down", "తక్కువ") ? "volume_down" : "volume_up", 50);
@@ -5791,14 +5791,14 @@ final class Tools {
             return o.optBoolean("ok") ? "డైరీలో రాశాను." : problem(o);
         }
         if (any(t, "లిస్ట్", "లిస్టు") && !any(t, "నోట్", "రిమైండర్", "కాంటాక్ట్")) {
-            String items = said.replaceAll("(షాపింగ్|లిస్ట్‌లో|లిస్ట్ లో|లిస్టులో|లిస్టు లో|లిస్ట్|లిస్టు|పెట్టు|చేర్చు|రాయి|ఆడ్ చేయి|ఆడ్|యాడ్ చేయి|యాడ్|add|కలుపు|చేయి)", " ")
+            String items = said.replaceAll("(షాపింగ్|లిస్ట్‌లో|లిస్ట్లో|లిస్ట్ లో|లిస్టులో|లిస్టు లో|లిస్ట్|లిస్టు|పెట్టు|చేర్చు|రాయి|ఆడ్ చేయి|ఆడ్|యాడ్ చేయి|యాడ్|add|కలుపు|చేయి)", " ")
                     .replaceAll("[:：]", " ").replaceAll("\\s+", " ").trim();
             if (items.isEmpty()) return "లిస్ట్‌లో ఏం పెట్టాలి?";
             JSONArray added = Shopping.add(act(), items);
             return added.length() == 0 ? "అవి ఇప్పటికే లిస్ట్‌లో ఉన్నాయి." : "లిస్ట్‌లో పెట్టాను: " + join(added) + ".";
         }
         if (any(t, "నోట్") && !any(t, "చదువు", "చెప్పు", "ఏమున్నాయి", "చూపించు", "వినిపించు")) {
-            String note = said.replaceAll("(నోట్స్‌లో|నోట్స్ లో|నోట్‌లో|నోట్ లో|నోట్స్|నోట్|రాసుకోండి|రాసుకో|రాయండి|రాయి|చేసుకో|పెట్టుకో|పెట్టు|సేవ్)", " ")
+            String note = said.replaceAll("(నోట్స్‌లో|నోట్స్లో|నోట్స్ లో|నోట్‌లో|నోట్లో|నోట్ లో|నోట్స్|నోట్|రాసుకోండి|రాసుకో|రాయండి|రాయి|చేసుకో|పెట్టుకో|పెట్టు|సేవ్)", " ")
                     .replaceAll("[:：]", " ").replaceAll("(^\\s*అని\\s+|\\s+అని\\s*$)", " ").replaceAll("\\s+", " ").trim();
             if (note.isEmpty()) return "ఏం రాయాలి?";
             JSONObject o = new JSONObject(notes("add", note, 7));

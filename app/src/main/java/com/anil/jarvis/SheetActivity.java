@@ -636,7 +636,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onPartial(String text) {
         partialHeard = text == null ? "" : text.trim();
-        showHeard(text);
+        if (partialHeard.isEmpty()) heard.setVisibility(View.GONE); // (that was only a noise)
+        else showHeard(text);
     }
 
     @Override public void onHeard(String text) {

@@ -16,9 +16,9 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * What Jarvis needs from the phone to hear and talk without internet: the phone's offline speech pack (Telugu, or
- * English when this phone has no Telugu one) and its offline Telugu voice. Checked when Settings opens (kept for "Jarvis
- * చెక్" and for choosing the offline language); the download buttons ask Android for them.
+ * What Jarvis needs to hear and talk Telugu without internet: hearing (the phone's own Telugu offline pack where it has
+ * one, else Jarvis's own Telugu ears, TeluguEars, downloaded once) and the phone's offline Telugu voice. Checked when
+ * Settings opens (kept for "Jarvis చెక్"); the download buttons ask Android for the phone's parts.
  */
 final class OfflineKit {
     private OfflineKit() {}
@@ -40,11 +40,10 @@ final class OfflineKit {
         try { return Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(c); } catch (Throwable e) { return false; }
     }
 
-    /** Without internet, the language to hear in: Telugu when its offline pack is on the phone, else English when that one is, else his own. */
+    /** Without internet, the language to hear in: his own (Telugu stays Telugu: Jarvis's own Telugu ears hear it). */
     static String hearIn(Context c, String wanted) {
         String w = wanted == null || wanted.isEmpty() ? TE : wanted;
-        if (INSTALLED.equals(hearing(c, w))) return w;
-        if (w.startsWith("te") && !INSTALLED.equals(hearing(c, TE)) && INSTALLED.equals(hearing(c, EN))) return englishTag(c);
+        if (w.startsWith("en") && !INSTALLED.equals(hearing(c, w)) && INSTALLED.equals(hearing(c, EN))) return englishTag(c);
         return w;
     }
 
@@ -215,13 +214,12 @@ final class OfflineKit {
 
     /** One line for Settings and "Jarvis చెక్". */
     static String line(Context c) {
-        String te = hearing(c, TE), en = hearing(c, EN), v = voice(c);
-        String hear = INSTALLED.equals(te) ? "తెలుగు ఉంది ✓"
-                : PENDING.equals(te) ? "తెలుగు డౌన్‌లోడ్ అవుతోంది…"
-                : AVAILABLE.equals(te) ? "తెలుగు లేదు (డౌన్‌లోడ్ చేయొచ్చు)"
-                : NONE.equals(te) ? "ఈ ఫోన్‌లో తెలుగు offline వినడం లేదు" + (INSTALLED.equals(en) ? " · English ఉంది ✓ (English లో చెప్పాలి)"
-                : AVAILABLE.equals(en) ? " · English డౌన్‌లోడ్ చేయొచ్చు" : "")
-                : "ఇంకా తెలియదు";
+        String te = hearing(c, TE), v = voice(c);
+        String hear = INSTALLED.equals(te) ? "తెలుగు (ఫోన్‌ది) ఉంది ✓"
+                : TeluguEars.ready(c) ? "తెలుగు (Jarvis సొంతం) ఉంది ✓"
+                : PENDING.equals(te) ? "ఫోన్ తెలుగు డౌన్‌లోడ్ అవుతోంది…"
+                : AVAILABLE.equals(te) ? "తెలుగు లేదు (ఫోన్‌ది లేదా Jarvis సొంతం డౌన్‌లోడ్ చేయొచ్చు)"
+                : "తెలుగు లేదు: క్రింద \"Jarvis తెలుగు వినడం\" డౌన్‌లోడ్ చేయండి";
         String say = INSTALLED.equals(v) ? "తెలుగు గొంతు ఉంది ✓" : AVAILABLE.equals(v) ? "తెలుగు గొంతు లేదు (డౌన్‌లోడ్ చేయొచ్చు)"
                 : NONE.equals(v) ? "ఫోన్ గొంతుకి తెలుగు లేదు" : "గొంతు ఇంకా తెలియదు";
         return "offline వినడం: " + hear + " · " + say;
