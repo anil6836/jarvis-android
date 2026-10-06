@@ -111,8 +111,8 @@ final class Prefs {
     }
     /** Gemini Live's voice (one of Google's voice names). */
     String geminiLiveVoice() {
-        String v = sp.getString("gemini_live_voice", "").trim();
-        return v.isEmpty() ? "Charon" : v;
+        String v = GeminiLiveProto.voiceName(sp.getString("gemini_live_voice", "")); // (any spelling; a name Gemini doesn't have: Charon)
+        return v == null ? "Charon" : v;
     }
     /** The key the chosen live talk needs is in Settings. */
     boolean liveKeyReady() { return !(liveGemini() ? geminiKey() : openAiKey()).trim().isEmpty(); }

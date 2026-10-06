@@ -65,7 +65,10 @@ public class SettingsActivity extends Activity {
     private View earsOtherBox;
     /** The voice choice before the last tap (only leaving "⚡ Gemini Live" turns Live off). */
     private int earsWas;
-    private EditText geminiLiveModel, geminiLiveVoice;
+    private EditText geminiLiveModel;
+    /** Gemini Live's voice as chosen in the list (saved with the rest). */
+    private String liveVoiceChoice;
+    private TextView liveVoiceLabel;
     /** The voice choice and the Live switches are being put in step (their listeners wait). */
     private boolean syncingVoice;
     private EditText earsModel;
@@ -467,7 +470,7 @@ public class SettingsActivity extends Activity {
         // ---- live conversation
         section("Live సంభాషణ (Real-time)");
         note("ChatGPT వాయిస్ లాగా, ఫ్రెండ్‌తో మాట్లాడినట్టే: మీరు మాట్లాడుతుంటే వింటుంది, వెంటనే జవాబిస్తుంది, మధ్యలో ఆపి మాట్లాడొచ్చు. Gemini Live కి Gemini key, OpenAI Live కి OpenAI key కావాలి. "
-                + "సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది. 2 నిమిషాలు ఎవరూ మాట్లాడకపోతే \"అవసరమైతే పిలవండి\" అని చెప్పి ఆగిపోతుంది.");
+                + "సాధారణ మోడ్ కంటే ఎక్కువ ఖర్చు అవుతుంది. ఎవరూ మాట్లాడకపోతే పైన 'వినే సమయం' (మొదట 8 సెకన్లు) తర్వాత మైక్ ఆపి నిశ్శబ్దంగా ఆగిపోతుంది.");
         liveMode = toggle("\"Hey Jarvis\" అన్నా Live సంభాషణే మొదలవ్వాలి (నీలం బటన్‌తో Live ఎప్పుడైనా వస్తుంది)", prefs.liveMode());
         TextView lp = Ui.text(this, "Live ఎవరితో:", 15, Ui.TEXT);
         lp.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2));
@@ -479,10 +482,26 @@ public class SettingsActivity extends Activity {
         box.addView(liveProvider);
         geminiLiveModel = field("Gemini Live మోడల్", prefs.sp.getString("gemini_live_model", "").trim().isEmpty() ? Prefs.DEFAULT_GEMINI_LIVE_MODEL
                 : prefs.sp.getString("gemini_live_model", "").trim(), false);
-        geminiLiveVoice = field("Gemini Live గొంతు (Google గొంతు పేరు)", prefs.geminiLiveVoice(), false);
+        liveVoiceChoice = prefs.geminiLiveVoice();
+        liveVoiceLabel = Ui.text(this, "", 15, Ui.TEXT);
+        liveVoiceLabel.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 6));
+        box.addView(liveVoiceLabel);
+        showLiveVoice();
+        LinearLayout vr = new LinearLayout(this);
+        vr.setOrientation(LinearLayout.HORIZONTAL);
+        TextView pick = Ui.pill(this, "🎙️ గొంతు మార్చు");
+        TextView hear = Ui.pill(this, "▶ విను");
+        pick.setOnClickListener(v -> pickLiveVoice());
+        hear.setOnClickListener(v -> previewVoice(liveVoiceChoice));
+        LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(-2, -2);
+        vp.rightMargin = Ui.dp(this, 10);
+        vr.addView(pick, vp);
+        vr.addView(hear, new LinearLayout.LayoutParams(-2, -2));
+        box.addView(vr);
         note("Gemini Live మొదటి వెర్షన్ చేసే పనులు: కాల్స్, మెసేజ్‌లు (మీరు 'పంపు' అన్నాకే), రిమైండర్ / అలారం / టైమర్, వాతావరణం, వార్తలు, ఇంటర్నెట్ సెర్చ్, పాటలు / రేడియో, "
                 + "దారి, యాప్స్, నోట్స్, గుర్తుపెట్టుకోవడం, ఫోన్ సెట్టింగ్స్. మిగతావి అడిగితే 'పాత పద్ధతిలో చేయమంటారా?' అని అడిగి, మీరు సరే అంటేనే చేస్తుంది. "
-                + "గొంతు పేర్లు: Charon, Puck, Orus, Fenrir, Kore, Aoede. పేరు తప్పైతే Gemini మామూలు గొంతుతో మాట్లాడుతుంది; మోడల్ పేరు తప్పైతే ఎందుకో చెబుతుంది.");
+                + "గొంతులు 30 (16 మగ, 14 ఆడ): 'గొంతు మార్చు' లో ఒకటి నొక్కితే ఆ గొంతులో ఒక మాట వినిపిస్తుంది. Live లో 'Jarvis, గొంతు మార్చు' / 'ఇంకో గొంతు' / 'Puck గొంతు పెట్టు' అన్నా మారుతుంది. "
+                + "మోడల్ పేరు తప్పైతే ఎందుకో చెబుతుంది."); 
         livePatient = toggle("మీరు మాట పూర్తి చేసే వరకు ఆగి, తర్వాతే జవాబివ్వు (మధ్యలో ఆలోచిస్తూ ఆగినా కట్ చేయదు)", prefs.livePatient());
         bargeIn = toggle("Jarvis మాట్లాడుతుండగా మధ్యలో మాట్లాడితే ఆగి వినాలి", prefs.bargeIn());
         bargeSensLabel = Ui.text(this, "", 15, Ui.MUTED);
@@ -1418,7 +1437,7 @@ public class SettingsActivity extends Activity {
                 : emc == 82 ? "gemini" : emc == 83 ? "google" : "openai");
         e.putString("live_provider", liveProvider.getCheckedRadioButtonId() == 91 ? Prefs.GEMINI : Prefs.OPENAI);
         e.putString("gemini_live_model", geminiLiveModel.getText().toString().trim());
-        e.putString("gemini_live_voice", geminiLiveVoice.getText().toString().trim());
+        e.putString("gemini_live_voice", liveVoiceChoice);
         String earsModelNow = earsModel.getText().toString().trim();
         if (!earsModelNow.equals(prefs.sp.getString("ears_model", "").trim())) e.remove("ears_stream"); // a new model: sending while he talks is tried again
         e.putString("ears_model", earsModelNow);
@@ -1502,6 +1521,44 @@ public class SettingsActivity extends Activity {
         try { int h = Integer.parseInt(exerciseHour.getText().toString().trim()); e.putInt("exercise_hour", h <= 0 ? -1 : Math.max(5, Math.min(12, h))); } catch (Exception ignored) {}
         try { e.putInt("fact_hour", Math.max(6, Math.min(21, Integer.parseInt(factHour.getText().toString().trim())))); } catch (Exception ignored) {}
         e.apply();
+    }
+
+    private void showLiveVoice() {
+        liveVoiceLabel.setText("Gemini Live గొంతు: " + GeminiLiveProto.voiceLabel(liveVoiceChoice));
+    }
+
+    /** The 30 voices (men first): tapping one plays a line in it; "ఇది పెట్టు" keeps it. */
+    private void pickLiveVoice() {
+        String[] labels = new String[GeminiLiveProto.VOICES.length];
+        int at = 0;
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = GeminiLiveProto.voiceLabel(GeminiLiveProto.VOICES[i][0]);
+            if (GeminiLiveProto.VOICES[i][0].equals(liveVoiceChoice)) at = i;
+        }
+        final String[] chosen = {liveVoiceChoice};
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Gemini Live గొంతు (నొక్కితే వినిపిస్తుంది)")
+                .setSingleChoiceItems(labels, at, (d, which) -> {
+                    chosen[0] = GeminiLiveProto.VOICES[which][0];
+                    previewVoice(chosen[0]);
+                })
+                .setPositiveButton("ఇది పెట్టు", (d, w) -> {
+                    VoicePreview.stop();
+                    liveVoiceChoice = chosen[0];
+                    prefs.sp.edit().putString("gemini_live_voice", liveVoiceChoice).apply(); // (a dialog tap doesn't reach the page's autosave)
+                    showLiveVoice();
+                    Toast.makeText(this, "తర్వాతి Live నుంచి ఈ గొంతు: " + liveVoiceChoice, Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("వద్దు", (d, w) -> VoicePreview.stop())
+                .setOnCancelListener(d -> VoicePreview.stop())
+                .show();
+    }
+
+    private void previewVoice(String voice) {
+        Toast.makeText(this, voice + " గొంతు తయారవుతోంది…", Toast.LENGTH_SHORT).show();
+        VoicePreview.play(prefs, voice, problem -> {
+            if (problem != null && !isFinishing()) Toast.makeText(this, problem, Toast.LENGTH_LONG).show();
+        });
     }
 
     /** The Live switches changed: the voice choice shows "⚡ Gemini Live" exactly when Live is on with Gemini. */
@@ -1620,7 +1677,8 @@ public class SettingsActivity extends Activity {
     }
 
     private void showListenWindow() {
-        if (listenWindowLabel != null) listenWindowLabel.setText("పిలిచాక మీరు మాట్లాడటం మొదలుపెట్టే దాకా వినే సమయం: " + (listenWindow.getProgress() + 3) + " సెకన్లు");
+        if (listenWindowLabel != null) listenWindowLabel.setText("పిలిచాక మీరు మాట్లాడటం మొదలుపెట్టే దాకా వినే సమయం: " + (listenWindow.getProgress() + 3)
+                + " సెకన్లు (Live లో కూడా: ఇంతసేపు ఎవరూ మాట్లాడకపోతే Live ఆగిపోతుంది)");
     }
 
     private void showLock() {

@@ -55,8 +55,6 @@ final class LiveSession implements LiveTalk {
     private static final int RATE = 24000;
     private static final int MIC_CHUNK = 2400;     // 100 ms of samples
     private static final int PLAY_CHUNK = 4800;    // 100 ms of bytes
-    /** After this long with nobody talking, Jarvis says a short friendly line and hangs up. */
-    private static final long IDLE_MS = 120000;
 
     private static final class Chunk {
         final String item;
@@ -83,9 +81,6 @@ final class LiveSession implements LiveTalk {
     private WebSocket ws;
     private volatile boolean open, closed;
     private volatile boolean responseActive, jarvisSpeaking, flushRequested, endRequested;
-    /** The "I'm here when you need me" line after a long silence is playing (he may still answer it). */
-    private volatile boolean idleBye;
-    private int idleByes;
     /** Mic muted from the Live screen: nothing is sent until he unmutes. */
     private volatile boolean muted;
     private long lastVoicePost;
@@ -218,20 +213,26 @@ final class LiveSession implements LiveTalk {
         lastActivity = SystemClock.elapsedRealtime();
         startMic();
         state(OrbView.LISTENING, "మాట్లాడండి…");
-        main.postDelayed(idleCheck, 5000);
+        main.postDelayed(idleCheck, 1000);
     }
 
+    /** He is talking now (OpenAI heard his speech start and not yet its end). */
+    private volatile boolean userSpeaking;
+    private volatile long voiceEndedAt;
+    private final java.util.concurrent.atomic.AtomicInteger toolsRunning = new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * Nobody talking for his "listening time" (Settings → వాయిస్, 8 s at first): the live talk ends quietly and the
+     * mic goes off. Never while Jarvis talks, a tool works, he is talking, or he muted it himself.
+     */
     private final Runnable idleCheck = new Runnable() {
         @Override public void run() {
             if (closed) return;
-            long quiet = SystemClock.elapsedRealtime() - lastActivity;
-            boolean calm = !responseActive && !jarvisSpeaking && playQueue.isEmpty();
-            if (idleBye && quiet > 20000) { stop("idle"); return; } // the line never came: hang up anyway
-            if (calm && !idleBye && !endRequested && quiet > IDLE_MS) {
-                if (idleByes > 0) { stop("idle"); return; } // already said it once: just hang up quietly
-                sayIdleBye();
-            }
-            main.postDelayed(this, 5000);
+            long now = SystemClock.elapsedRealtime();
+            long quiet = now - Math.max(lastActivity, voiceEndedAt);
+            boolean calm = !responseActive && !jarvisSpeaking && playQueue.isEmpty() && !userSpeaking && !muted && toolsRunning.get() == 0 && !endRequested;
+            if (calm && quiet > prefs.listenWindowSeconds() * 1000L) { stop("idle"); return; }
+            main.postDelayed(this, 1000);
         }
     };
 
@@ -296,21 +297,6 @@ final class LiveSession implements LiveTalk {
                 || all.contains("turn_detection") || all.contains("transcription") || all.contains("session.audio");
     }
 
-    /** Long silence: one short, friendly line that he can call any time, then hang up (unless he answers it). */
-    private void sayIdleBye() {
-        idleBye = true;
-        idleByes++;
-        endRequested = true;
-        endReason = "idle";
-        lastActivity = SystemClock.elapsedRealtime();
-        String name = prefs.name();
-        send(safe(() -> new JSONObject().put("type", "response.create").put("response", new JSONObject()
-                .put("tool_choice", "none")
-                .put("instructions", "You are Jarvis, " + name + "'s friendly voice assistant. " + name + " has been quiet for a couple of minutes. "
-                        + "In ONE short, warm sentence of natural spoken Telugu (Andhra/Telangana style), say you are closing the live chat for now "
-                        + "and he can call you any time, like a friend would (for example 'సరే " + name + ", నేను ఇక్కడే ఉంటా, అవసరమైతే పిలవండి'; use your own words). Nothing else."))));
-    }
-
     private void handle(JSONObject e) throws Exception {
         String type = e.optString("type");
         switch (type) {
@@ -319,11 +305,7 @@ final class LiveSession implements LiveTalk {
                 break;
             case "input_audio_buffer.speech_started":
                 lastActivity = SystemClock.elapsedRealtime();
-                if (idleBye) { // he answered the "I'm closing" line: keep talking
-                    idleBye = false;
-                    endRequested = false;
-                    endReason = "bye";
-                }
+                userSpeaking = true;
                 sendCameraFrame();
                 if (prefs.bargeIn() && (jarvisSpeaking || !playQueue.isEmpty())) {
                     playQueue.clear();
@@ -333,6 +315,7 @@ final class LiveSession implements LiveTalk {
                 break;
             case "input_audio_buffer.speech_stopped":
                 lastActivity = SystemClock.elapsedRealtime();
+                userSpeaking = false;
                 state(OrbView.THINKING, "ఆలోచిస్తున్నాను…");
                 break;
             case "input_audio_buffer.committed":
@@ -437,7 +420,10 @@ final class LiveSession implements LiveTalk {
             final String callId = item.optString("call_id");
             final String rawArgs = item.optString("arguments", "{}");
             state(OrbView.THINKING, Tools.statusFor(name));
-            toolRunner.submit(() -> runTool(name, callId, rawArgs));
+            toolsRunning.incrementAndGet();
+            toolRunner.submit(() -> {
+                try { runTool(name, callId, rawArgs); } finally { toolsRunning.decrementAndGet(); lastActivity = SystemClock.elapsedRealtime(); }
+            });
         }
         if (anyCall) {
             toolRunner.submit(() -> {
@@ -702,6 +688,7 @@ final class LiveSession implements LiveTalk {
                     if (c == null) {
                         if (jarvisSpeaking && t.getPlaybackHeadPosition() - base >= written) {
                             jarvisSpeaking = false;
+                            voiceEndedAt = SystemClock.elapsedRealtime();
                             main.post(() -> l.onLiveVoiceLevel(0f));
                             if (!responseActive && !endRequested) state(OrbView.LISTENING, "మాట్లాడండి…");
                         }

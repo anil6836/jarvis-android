@@ -47,8 +47,6 @@ final class GeminiLive implements LiveTalk {
     private static final int MIC_CHUNK = 640;        // 40 ms of his voice per message
     private static final int PLAY_CHUNK = 4800;      // 100 ms of Jarvis's voice (bytes)
     private static final int BACKLOG = 75;           // 3 s of his voice kept while the line is (re)connecting
-    /** After this long with nobody talking, Jarvis says a short friendly line and hangs up. */
-    private static final long IDLE_MS = 120000;
 
     /** The last Gemini Live talk, for "Jarvis చెక్": how fast it connected and answered, how it ended. */
     static volatile String lastInfo = "";
@@ -69,8 +67,13 @@ final class GeminiLive implements LiveTalk {
     private volatile WebSocket ws;
     /** Which line is current (a dropped or moved line is replaced): messages from an older one are ignored. */
     private volatile int attempt, readyAttempt;
-    private volatile boolean ready, closed, muted, jarvisSpeaking, flushRequested, endRequested, idleBye, generating;
-    private volatile boolean everReady, rich = true, resuming, moveSoon, saidPending, blockingOk = true;
+    private volatile boolean ready, closed, muted, jarvisSpeaking, flushRequested, endRequested, generating;
+    private volatile boolean everReady, resuming, moveSoon, saidPending;
+    /** The parts of the setup Gemini takes (GeminiLiveProto.VOICE ... ): a refused part is left out, the rest stay. */
+    private volatile int features = GeminiLiveProto.ALL;
+    /** A new voice was just chosen in the talk: on the new line Jarvis says a line in it. */
+    private volatile String introVoice;
+    private volatile long readyAt;
     /** His words this turn came while Jarvis's voice was playing (or just after): only then can they be its own voice heard back. */
     private volatile boolean heardOverVoice;
     private volatile long voiceEndedAt, askedClassicAt, handoffMine;
@@ -78,7 +81,7 @@ final class GeminiLive implements LiveTalk {
     private volatile long savedTurnAt;
     private volatile boolean savedTurnOverVoice, askedThisTurn;
     private volatile long moveBy;
-    private int idleByes, reconnects, allReconnects;
+    private int reconnects, allReconnects;
     private volatile String endReason = "bye";
     private volatile String interpreterLang;
     private volatile String resumeHandle;
@@ -173,7 +176,8 @@ final class GeminiLive implements LiveTalk {
                 if (my != attempt || closed) return;
                 try {
                     w.send(GeminiLiveProto.setup(model, prefs.geminiLiveVoice(), setupInstr,
-                            GeminiLiveProto.functions(tools.geminiTools(), !rich, blockingOk), rich, resumeHandle,
+                            GeminiLiveProto.functions(tools.geminiTools(), (features & GeminiLiveProto.SEARCH) == 0, (features & GeminiLiveProto.WAIT) != 0),
+                            features, resumeHandle,
                             prefs.livePatient() ? 800 : 500, startSensitivity()).toString());
                 } catch (Exception e) {
                     lineEnded(my, 0, "setup: " + e.getMessage());
@@ -217,15 +221,11 @@ final class GeminiLive implements LiveTalk {
             ready = false;
             if (!everReady) {
                 // the fuller settings refused before the talk started: once more with the plain ones (same model, same key)
-                if (rich && GeminiLiveProto.settingRefused(code, reason)) {
-                    rich = false;
-                    if (String.valueOf(reason).toLowerCase(Locale.ROOT).contains("behavior")) blockingOk = false;
-                    connect();
-                    restartSetupTimer();
-                    return;
-                }
-                if (!rich && blockingOk && String.valueOf(reason).toLowerCase(Locale.ROOT).contains("behavior")) { // ("wait for the tool" refused too)
-                    blockingOk = false;
+                // a setting refused before the talk started: once more without that part (same model, same key); his voice is kept unless it was the voice
+                int next = GeminiLiveProto.dropFor(code, reason, features);
+                if (next >= 0) {
+                    features = next;
+                    refusedWords = String.valueOf(reason);
                     connect();
                     restartSetupTimer();
                     return;
@@ -275,10 +275,19 @@ final class GeminiLive implements LiveTalk {
         reconnects = 0;
         main.removeCallbacks(setupTimeout);
         lastActivity = SystemClock.elapsedRealtime();
+        readyAt = lastActivity;
+        String intro = introVoice;
+        if (intro != null) { // he chose a new voice: Jarvis says a line in it
+            introVoice = null;
+            try {
+                send(GeminiLiveProto.text("(A note from the Jarvis app, not words from " + prefs.name() + ": your voice was just changed to " + intro
+                        + " as he asked. Say ONE short, warm Telugu line in your new voice, like 'ఇప్పుడు నా గొంతు ఇలా ఉంది " + prefs.name() + ", నచ్చిందా?'.)"));
+            } catch (Exception ignored) {}
+        }
         if (!everReady) {
             everReady = true;
-            lastInfo = when() + " · కనెక్ట్ " + Ears.sec(lastActivity - startedAt) + " సె" + (rich ? "" : " (సాధారణ సెట్టింగ్స్‌తో)");
-            main.postDelayed(idleCheck, 5000);
+            lastInfo = when() + " · కనెక్ట్ " + Ears.sec(lastActivity - startedAt) + " సె" + refusedNote();
+            main.postDelayed(idleCheck, 1000);
         }
         if (!jarvisSpeaking && playQueue.isEmpty()) state(OrbView.LISTENING, "మాట్లాడండి…");
     }
@@ -349,34 +358,36 @@ final class GeminiLive implements LiveTalk {
         } catch (Exception ignored) {}
     }
 
+    /** What Gemini didn't take this time, said in "Jarvis చెక్" (with its words). */
+    private volatile String refusedWords = "";
+
+    private String refusedNote() {
+        String d = GeminiLiveProto.dropped(features);
+        if (d.isEmpty()) return "";
+        String w = refusedWords.length() > 120 ? refusedWords.substring(0, 120) : refusedWords;
+        return " (Gemini ఒప్పుకోనివి: " + d + (w.isEmpty() ? "" : " · \"" + w + "\"") + ")";
+    }
+
+    /**
+     * Nobody talking for his "listening time" (Settings → వాయిస్, 8 s at first): the live talk ends quietly, the mic
+     * goes off. Counted from his last word, Jarvis's last sound or the line being ready; never while Jarvis is talking,
+     * a tool is working, the line is (re)connecting, or he muted it himself.
+     */
     private final Runnable idleCheck = new Runnable() {
         @Override public void run() {
             if (closed) return;
-            long quiet = SystemClock.elapsedRealtime() - lastActivity;
-            boolean calm = !generating && !jarvisSpeaking && playQueue.isEmpty() && toolsRunning.get() == 0;
-            if (idleBye && quiet > 20000) { stop("idle"); return; } // the line never came: hang up anyway
-            if (calm && !idleBye && !endRequested && quiet > IDLE_MS) {
-                if (idleByes > 0) { stop("idle"); return; }
-                sayIdleBye();
+            long now = SystemClock.elapsedRealtime();
+            long last = Math.max(Math.max(lastActivity, voiceEndedAt), Math.max(lastHeardAt, readyAt));
+            boolean calm = ready && !muted && !generating && !jarvisSpeaking && playQueue.isEmpty() && toolsRunning.get() == 0 && !endRequested
+                    && now - lastLoudAt > 1500; // (not while the mic hears him right now)
+            if (calm && now - last > prefs.listenWindowSeconds() * 1000L) {
+                lastInfo = when() + " · " + prefs.listenWindowSeconds() + " సె నిశ్శబ్దం: Live ఆపాను" + refusedNote();
+                stop("idle");
+                return;
             }
-            main.postDelayed(this, 5000);
+            main.postDelayed(this, 1000);
         }
     };
-
-    /** Long silence: one short, friendly line that he can call any time, then hang up (unless he answers it). */
-    private void sayIdleBye() {
-        idleBye = true;
-        idleByes++;
-        endRequested = true;
-        endReason = "idle";
-        lastActivity = SystemClock.elapsedRealtime();
-        String name = prefs.name();
-        try {
-            send(GeminiLiveProto.text("(A note from the Jarvis app, not words from " + name + ": " + name + " has been quiet for two minutes. "
-                    + "In ONE short, warm sentence of natural spoken Telugu, say you are closing the live chat for now and he can call you any time, "
-                    + "like a friend would. No tools.)"));
-        } catch (Exception ignored) {}
-    }
 
     // ================================================================ messages
 
@@ -423,11 +434,6 @@ final class GeminiLive implements LiveTalk {
             long now = SystemClock.elapsedRealtime();
             lastActivity = now;
             lastHeardAt = now;
-            if (idleBye) { // he answered the "I'm closing" line: keep talking
-                idleBye = false;
-                endRequested = false;
-                endReason = "bye";
-            }
             String all;
             boolean overVoice = prefs.bargeIn() && (jarvisSpeaking || !playQueue.isEmpty() || now - voiceEndedAt < 800);
             synchronized (heard) {
@@ -471,7 +477,7 @@ final class GeminiLive implements LiveTalk {
             long w = firstVoiceWait;
             if (w >= 0) {
                 firstVoiceWait = -1;
-                lastInfo = when() + " · చివరి జవాబు మీరు ఆపిన " + Ears.sec(w) + " సె కి మొదలైంది" + (rich ? "" : " (సాధారణ సెట్టింగ్స్‌తో)");
+                lastInfo = when() + " · చివరి జవాబు మీరు ఆపిన " + Ears.sec(w) + " సె కి మొదలైంది" + refusedNote();
             }
             if (endRequested) main.postDelayed(() -> waitAndClose(0), 300);
             else if (!jarvisSpeaking && playQueue.isEmpty()) state(OrbView.LISTENING, "మాట్లాడండి…");
@@ -611,6 +617,9 @@ final class GeminiLive implements LiveTalk {
             case "classic_jarvis":
                 result = classic(args.optString("request"));
                 break;
+            case "live_voice":
+                result = changeVoice(args.optString("voice"));
+                break;
             default:
                 result = tools.execute(name, args);
         }
@@ -624,6 +633,35 @@ final class GeminiLive implements LiveTalk {
         }
         if (closed || my != attempt || cancelledTools.remove(id)) return; // (an older line's call: its talk is gone)
         try { send(GeminiLiveProto.toolResponse(id, name, result)); } catch (Exception ignored) {}
+    }
+
+    /** "గొంతు మార్చు": the new voice is saved and the talk moves to a new line in it (a voice is fixed for a line). */
+    private String changeVoice(String asked) {
+        try {
+            String now = prefs.geminiLiveVoice();
+            String a = asked == null ? "" : asked.trim();
+            String v = a.isEmpty() || a.equalsIgnoreCase("next") || a.contains("ఇంకో") || a.contains("వేరే") ? GeminiLiveProto.nextVoice(now)
+                    : GeminiLiveProto.voiceName(a);
+            if (v == null) {
+                return new JSONObject().put("ok", false).put("error", "no such voice: " + a + ". Say the names from the list.").toString();
+            }
+            if ((features & GeminiLiveProto.VOICE) == 0) {
+                return new JSONObject().put("ok", false).put("error", "Gemini did not accept a voice choice in this talk, so the voice can't change now.").toString();
+            }
+            prefs.sp.edit().putString("gemini_live_voice", v).apply();
+            introVoice = v;
+            main.postDelayed(() -> { // after this answer goes: a new line in the new voice (the talk so far goes with it)
+                if (closed) return;
+                playQueue.clear();
+                flushRequested = true;
+                resumeHandle = null;
+                connect();
+                restartSetupTimer();
+            }, 300);
+            return new JSONObject().put("ok", true).put("voice", v).put("note", "Say nothing now: you continue in the new voice in a moment.").toString();
+        } catch (Exception e) {
+            return "{\"ok\":false}";
+        }
     }
 
     /** His newest words in the talk (already saved): {words, when}. */

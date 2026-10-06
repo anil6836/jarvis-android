@@ -39,6 +39,81 @@ final class GeminiLiveProto {
             // the phone
             "flashlight", "phone_setting", "device_status"));
 
+    // ================================================================ voices
+
+    /** Gemini Live's 30 voices: name, మగ / ఆడ, how it sounds (Google's words, in Telugu). Men first. */
+    static final String[][] VOICES = {
+            {"Charon", "మగ", "సమాచారంగా, స్పష్టంగా"}, {"Puck", "మగ", "హుషారుగా"}, {"Orus", "మగ", "గంభీరంగా"}, {"Fenrir", "మగ", "ఉత్సాహంగా"},
+            {"Achird", "మగ", "స్నేహంగా"}, {"Algieba", "మగ", "మెత్తగా, సాఫీగా"}, {"Algenib", "మగ", "బరువుగా, గరుకుగా"}, {"Alnilam", "మగ", "దృఢంగా"},
+            {"Enceladus", "మగ", "మెల్లగా, గాలిగా"}, {"Iapetus", "మగ", "స్పష్టంగా"}, {"Rasalgethi", "మగ", "సమాచారంగా"}, {"Sadachbia", "మగ", "ఉల్లాసంగా"},
+            {"Sadaltager", "మగ", "జ్ఞానిలా"}, {"Schedar", "మగ", "నిలకడగా, సమంగా"}, {"Umbriel", "మగ", "నిదానంగా, హాయిగా"}, {"Zubenelgenubi", "మగ", "సాధారణంగా, సరదాగా"},
+            {"Achernar", "ఆడ", "మృదువుగా"}, {"Aoede", "ఆడ", "హాయిగా, తేలికగా"}, {"Autonoe", "ఆడ", "ప్రకాశవంతంగా"}, {"Callirrhoe", "ఆడ", "నిదానంగా"},
+            {"Despina", "ఆడ", "మెత్తగా"}, {"Erinome", "ఆడ", "స్పష్టంగా"}, {"Gacrux", "ఆడ", "పెద్దరికంగా"}, {"Kore", "ఆడ", "దృఢంగా"},
+            {"Laomedeia", "ఆడ", "హుషారుగా"}, {"Leda", "ఆడ", "యవ్వనంగా"}, {"Pulcherrima", "ఆడ", "చురుగ్గా"}, {"Sulafat", "ఆడ", "ఆప్యాయంగా"},
+            {"Vindemiatrix", "ఆడ", "సున్నితంగా"}, {"Zephyr", "ఆడ", "ప్రకాశవంతంగా"}};
+
+    /** The voice's proper name for any spelling he used ("puck", " Puck "), or null when Gemini has no such voice. */
+    static String voiceName(String typed) {
+        String t = typed == null ? "" : typed.trim();
+        for (String[] v : VOICES) if (v[0].equalsIgnoreCase(t)) return v[0];
+        return null;
+    }
+
+    /** "Charon · మగ · సమాచారంగా, స్పష్టంగా". */
+    static String voiceLabel(String name) {
+        for (String[] v : VOICES) if (v[0].equals(name)) return v[0] + " · " + v[1] + " · " + v[2];
+        return String.valueOf(name);
+    }
+
+    /** The next voice of the same kind (మగ / ఆడ) after this one ("ఇంకో గొంతు"). */
+    static String nextVoice(String name) {
+        int at = 0;
+        for (int i = 0; i < VOICES.length; i++) if (VOICES[i][0].equals(name)) at = i;
+        String kind = VOICES[at][1];
+        for (int k = 1; k <= VOICES.length; k++) {
+            String[] v = VOICES[(at + k) % VOICES.length];
+            if (v[1].equals(kind)) return v[0];
+        }
+        return VOICES[0][0];
+    }
+
+    // ================================================================ settings Gemini may refuse
+
+    /** Parts of the setup that can be left out one by one when Gemini refuses them (the rest, and his voice, stay). */
+    static final int VOICE = 1, SEARCH = 2, VAD = 4, COMPRESS = 8, RESUME = 16, WAIT = 32, ALL = 63;
+
+    /**
+     * After a refused setup: what to try next. The part Gemini names is left out; when it names none, the least needed
+     * part goes first (Google Search, then waiting for tools, then the finer settings, his voice last). -1: nothing left.
+     */
+    static int dropFor(int code, String reason, int features) {
+        if (!settingRefused(code, reason)) return -1;
+        String r = String.valueOf(reason).toLowerCase(Locale.ROOT).replace("_", "");
+        int named = 0;
+        if (r.contains("behavior")) named |= WAIT;
+        if (r.contains("googlesearch") || r.contains("search")) named |= SEARCH;
+        if (r.contains("realtimeinput") || r.contains("activitydetection") || r.contains("silence") || r.contains("sensitivity")) named |= VAD;
+        if (r.contains("contextwindow") || r.contains("slidingwindow") || r.contains("compression")) named |= COMPRESS;
+        if (r.contains("resumption") || r.contains("handle")) named |= RESUME;
+        if (r.contains("voice") || r.contains("speechconfig") || r.contains("prebuilt")) named |= VOICE;
+        if ((named & features) != 0) return features & ~named;
+        for (int part : new int[]{SEARCH, WAIT, VAD | COMPRESS | RESUME, VOICE}) {
+            if ((features & part) != 0) return features & ~part;
+        }
+        return -1;
+    }
+
+    /** What Gemini didn't take, in words (for "Jarvis చెక్"). */
+    static String dropped(int features) {
+        StringBuilder b = new StringBuilder();
+        if ((features & VOICE) == 0) b.append("గొంతు ఎంపిక, ");
+        if ((features & SEARCH) == 0) b.append("Google Search (Jarvis సెర్చ్ వాడుతోంది), ");
+        if ((features & WAIT) == 0) b.append("పని అయ్యేదాకా ఆగడం, ");
+        if ((features & VAD) == 0) b.append("మాట ముగింపు సెట్టింగ్, ");
+        if ((features & COMPRESS) == 0 || (features & RESUME) == 0) b.append("పొడవైన సంభాషణ సెట్టింగ్స్, ");
+        return b.length() == 0 ? "" : b.substring(0, b.length() - 2);
+    }
+
     // ================================================================ what Jarvis sends
 
     /**
@@ -47,15 +122,15 @@ final class GeminiLiveProto {
      * The plain one (rich = false) is sent once when the rich one is refused, so the talk still has its instructions
      * and tools.
      */
-    static JSONObject setup(String model, String voice, String instructions, JSONArray functions, boolean rich,
+    static JSONObject setup(String model, String voice, String instructions, JSONArray functions, int features,
                             String resumeHandle, int silenceMs, String startSensitivity) throws Exception {
         JSONObject gen = new JSONObject().put("responseModalities", new JSONArray().put("AUDIO"));
-        if (rich && voice != null && !voice.trim().isEmpty()) {
+        if ((features & VOICE) != 0 && voice != null && !voice.trim().isEmpty()) {
             gen.put("speechConfig", new JSONObject().put("voiceConfig", new JSONObject()
                     .put("prebuiltVoiceConfig", new JSONObject().put("voiceName", voice.trim()))));
         }
         JSONArray tools = new JSONArray().put(new JSONObject().put("functionDeclarations", functions));
-        if (rich) tools.put(new JSONObject().put("googleSearch", new JSONObject()));
+        if ((features & SEARCH) != 0) tools.put(new JSONObject().put("googleSearch", new JSONObject()));
         JSONObject s = new JSONObject()
                 .put("model", model.startsWith("models/") ? model : "models/" + model)
                 .put("generationConfig", gen)
@@ -63,16 +138,24 @@ final class GeminiLiveProto {
                 .put("tools", tools)
                 .put("inputAudioTranscription", new JSONObject())
                 .put("outputAudioTranscription", new JSONObject());
-        if (rich) {
+        if ((features & VAD) != 0) {
             JSONObject vad = new JSONObject().put("silenceDurationMs", silenceMs);
             if (startSensitivity != null) vad.put("startOfSpeechSensitivity", startSensitivity);
             s.put("realtimeInputConfig", new JSONObject().put("automaticActivityDetection", vad));
-            s.put("contextWindowCompression", new JSONObject().put("slidingWindow", new JSONObject()));
+        }
+        if ((features & COMPRESS) != 0) s.put("contextWindowCompression", new JSONObject().put("slidingWindow", new JSONObject()));
+        if ((features & RESUME) != 0) {
             JSONObject resume = new JSONObject();
             if (resumeHandle != null && !resumeHandle.isEmpty()) resume.put("handle", resumeHandle);
             s.put("sessionResumption", resume);
         }
         return new JSONObject().put("setup", s);
+    }
+
+    /** The full setup (rich) or the plain one (only model, voice, instructions, tools, transcripts). */
+    static JSONObject setup(String model, String voice, String instructions, JSONArray functions, boolean rich,
+                            String resumeHandle, int silenceMs, String startSensitivity) throws Exception {
+        return setup(model, voice, instructions, functions, rich ? ALL : VOICE, resumeHandle, silenceMs, startSensitivity);
     }
 
     /** A piece of his voice: 16-bit, 16 kHz, little-endian. */
@@ -116,7 +199,7 @@ final class GeminiLiveProto {
      */
     static final Set<String> WAIT_FOR = new java.util.HashSet<>(java.util.Arrays.asList(
             "call_contact", "call_control", "send_sms", "whatsapp_message", "telegram_message", "send_draft", "reply_to_notification",
-            "classic_jarvis", "voice_mode", "end_conversation"));
+            "classic_jarvis", "voice_mode", "live_voice", "end_conversation"));
 
     /**
      * The first version's tools (from all of Jarvis's Gemini tools), plus the ones only Live has. waitForActions: the
@@ -140,6 +223,16 @@ final class GeminiLiveProto {
                 + "without internet, but the phone's mic beeps); openai = Jarvis's own mic, OpenAI writes the words; gemini = Jarvis's own mic, Gemini writes the words. "
                 + "Say the short line it returns; the live talk ends after it when the mode leaves Gemini Live.",
                 props(new String[][]{{"mode", "string", "live, live_openai, live_off, google, openai or gemini"}}), "mode"));
+        StringBuilder men = new StringBuilder(), women = new StringBuilder();
+        for (String[] v : VOICES) {
+            StringBuilder list = v[1].equals("మగ") ? men : women;
+            if (list.length() > 0) list.append(", ");
+            list.append(v[0]);
+        }
+        out.put(fn("live_voice", "Change YOUR voice in this live talk, only when Anil asks ('గొంతు మార్చు', 'ఇంకో గొంతు', 'Puck గొంతు పెట్టు', 'ఆడ గొంతు'). "
+                + "voice = a voice name, or next (the next voice of the same kind). Men's voices: " + men + ". Women's voices: " + women + ". "
+                + "After calling it say nothing; you come back in the new voice in a moment.",
+                props(new String[][]{{"voice", "string", "A voice name from the lists, or next"}}), "voice"));
         out.put(fn("classic_jarvis", "Do something Live can't do itself yet, the usual (slower) way, with Jarvis's chosen AI and ALL of Jarvis's "
                 + "abilities: bike (charge, range, rides, challan), expenses, debts, budget, duty, calendar, parcels, diary, health, the screen, the "
                 + "camera, photos, documents, websites and apps, missions and everything else. ONLY call it after you asked "
@@ -166,7 +259,8 @@ final class GeminiLiveProto {
                 + "Only after he says yes, call classic_jarvis with his full request; if he says no, leave it.\n"
                 + "- Never pay, never type passwords, OTPs or PINs, never open bank or payment apps. Before sending, posting, deleting or calling, "
                 + "read it back and ask; act only after he clearly says yes (పంపు / చేయి / అవును).\n"
-                + "- If he asks to switch how you listen or talk ('Google వాయిస్‌కి మారు', 'Live ఆపు', 'OpenAI కి మారు'), call voice_mode.\n"
+                + "- If he asks to switch how you listen or talk ('Google వాయిస్‌కి మారు', 'Live ఆపు', 'OpenAI కి మారు'), call voice_mode; "
+                + "if he asks for another voice of yours ('గొంతు మార్చు', 'ఇంకో గొంతు'), call live_voice.\n"
                 + "- After calling a tool, never say it is done (sent, called, set) until its result has come back and says so; if it failed, say why honestly.\n";
     }
 
