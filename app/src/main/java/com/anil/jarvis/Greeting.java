@@ -46,10 +46,12 @@ final class Greeting {
             if (!fired.compareAndSet(false, true)) return;
             TextToSpeech t = tts; // the phone-voice greeting must not still be talking into the open mic
             if (t != null) try { t.stop(); } catch (Exception ignored) {}
+            Duck.off(); // (the listening that follows keeps the songs down itself)
             done.run();
         };
         main.postDelayed(once, 6000); // never leave Anil waiting
         MicQuiet.speaking(); // a sound muted for the mic's beeps comes back first
+        Duck.on(app); // songs and radio go quiet the moment he calls Jarvis
         String key = p.openAiKey().trim();
         if (p.naturalVoice() && !key.isEmpty()) {
             new Thread(() -> {

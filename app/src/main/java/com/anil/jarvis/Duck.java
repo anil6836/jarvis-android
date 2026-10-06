@@ -51,6 +51,31 @@ final class Duck {
         });
     }
 
+    /**
+     * A live talk (Gemini Live / OpenAI Live) began: songs and radio playing on the phone go quiet for the whole talk,
+     * while Jarvis listens and while it speaks (no time limit: the talk itself ends), and come back up when it ends.
+     * The token goes back to {@link #release}. Its own focus request, apart from {@link #on}'s.
+     */
+    static AudioFocusRequest hold(Context c) {
+        try {
+            AudioManager a = c.getApplicationContext().getSystemService(AudioManager.class);
+            AudioFocusRequest r = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                    .setOnAudioFocusChangeListener(change -> {}, main).build();
+            a.requestAudioFocus(r);
+            return r;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** The live talk ended: the music comes back up. Safe with null and more than once. */
+    static void release(Context c, AudioFocusRequest r) {
+        if (r == null) return;
+        try { c.getApplicationContext().getSystemService(AudioManager.class).abandonAudioFocusRequest(r); } catch (Exception ignored) {}
+    }
+
     private static void letGo() {
         main.removeCallbacks(release);
         main.removeCallbacks(safety);

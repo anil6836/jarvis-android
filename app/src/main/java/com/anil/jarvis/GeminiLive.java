@@ -108,6 +108,8 @@ final class GeminiLive implements LiveTalk {
     private AudioManager am;
     private int oldMode;
     private volatile boolean routed;
+    /** Songs and radio on the phone stay quiet for the whole live talk (Duck.hold), back up when it ends. */
+    private volatile android.media.AudioFocusRequest musicDown;
     private boolean speakerOn;
     /** With Jarvis's own echo removal: watches for earbuds / a Bluetooth speaker / headphones connected meanwhile. */
     private android.media.AudioDeviceCallback deviceWatch;
@@ -251,6 +253,7 @@ final class GeminiLive implements LiveTalk {
         lastActivity = startedAt;
         bargeMode = prefs.liveBarge();
         routeAudio();
+        musicDown = Duck.hold(ctx); // (songs / radio go quiet while Jarvis listens and talks)
         echoGate = !headset && !prefs.bargeCallVoice();
         duplex = false;
         // Jarvis's own echo removal: on the phone's own speaker, talk-over on, and not in a phone call
@@ -1287,6 +1290,8 @@ final class GeminiLive implements LiveTalk {
 
     /** Only what Jarvis changed is undone, and never over a real call. */
     private void restoreAudio() {
+        Duck.release(ctx, musicDown); // the songs come back up
+        musicDown = null;
         android.media.AudioDeviceCallback w = deviceWatch;
         deviceWatch = null;
         if (w != null && am != null) {

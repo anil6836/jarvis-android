@@ -63,6 +63,8 @@ final class LiveSession implements LiveTalk {
     }
 
     private final Context ctx;
+    /** Songs and radio on the phone stay quiet for the whole live talk (Duck.hold), back up when it ends. */
+    private volatile android.media.AudioFocusRequest musicDown;
     private final Prefs prefs;
     private final Store store;
     private final Tools tools;
@@ -112,6 +114,7 @@ final class LiveSession implements LiveTalk {
 
     @Override public void start(String instructions) {
         routeAudio();
+        musicDown = Duck.hold(ctx); // (songs / radio go quiet while Jarvis listens and talks)
         state(OrbView.THINKING, "కనెక్ట్ అవుతున్నాను…");
         client = new OkHttpClient.Builder()
                 .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -553,6 +556,8 @@ final class LiveSession implements LiveTalk {
 
     /** Only what Jarvis changed is undone, and never over a real call. */
     private void restoreAudio() {
+        Duck.release(ctx, musicDown); // the songs come back up
+        musicDown = null;
         if (am == null || !routed) return;
         routed = false;
         try {

@@ -88,6 +88,8 @@ final class Ears {
     /** The first result (words, failure, timeout) wins; nothing after it is reported. */
     private final AtomicBoolean reported = new AtomicBoolean();
     private Callback cb;
+    /** Songs and radio stay quiet while the mic listens (Duck.hold). */
+    private volatile android.media.AudioFocusRequest musicDown;
 
     Ears(Context c, Prefs p) {
         this.ctx = c.getApplicationContext();
@@ -176,6 +178,7 @@ final class Ears {
                     }
                 } catch (Exception ignored) {}
             }
+            musicDown = Duck.hold(ctx); // songs and radio go quiet while Jarvis listens (as Google voice typing does)
             rec = open(routed, headsetIn);
             if (rec == null) { SystemClock.sleep(200); rec = open(routed, headsetIn); } // (a talk-over mic may still be letting go)
             if (rec == null) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
@@ -237,6 +240,8 @@ final class Ears {
                 try { rec.stop(); } catch (Exception ignored) {}
                 try { rec.release(); } catch (Exception ignored) {}
             }
+            Duck.release(ctx, musicDown); // (Jarvis's answer keeps them down again while it speaks)
+            musicDown = null;
             if (am != null && (routed || modeChanged)) {
                 try { if (routed && Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice(); } catch (Exception ignored) {}
                 try { if (modeChanged && am.getMode() == AudioManager.MODE_IN_COMMUNICATION) am.setMode(oldMode); } catch (Exception ignored) {} // (not over a real call)
