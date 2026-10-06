@@ -309,7 +309,8 @@ final class GeminiLive implements LiveTalk {
                 if (my != attempt || closed) return;
                 try {
                     w.send(GeminiLiveProto.setup(model, prefs.geminiLiveVoice(), setupInstr,
-                            GeminiLiveProto.functions(tools.geminiTools(), (features & GeminiLiveProto.SEARCH) == 0, (features & GeminiLiveProto.WAIT) != 0),
+                            GeminiLiveProto.functions(tools.geminiTools(), (features & GeminiLiveProto.SEARCH) == 0, (features & GeminiLiveProto.WAIT) != 0,
+                                    (features & GeminiLiveProto.MANY) != 0),
                             features, resumeHandle,
                             prefs.livePatient() ? 800 : 500, startSensitivity()).toString());
                 } catch (Exception e) {
@@ -1020,17 +1021,13 @@ final class GeminiLive implements LiveTalk {
             if (brain == null || request == null || request.trim().isEmpty()) return "{\"ok\":false,\"error\":\"nothing to do\"}";
             JSONObject turn = lastHeardTurn();
             String his = turn.optString("content", "");
-            long asked = askedClassicAt;
-            // words that came while Jarvis was talking may be its own voice: they never agree to anything
-            boolean overVoice = savedTurnOverVoice && turn.optLong("t") == savedTurnAt;
-            // in code, not only in the instructions: he asked for the usual way, or said yes after Jarvis asked
-            boolean agreed = !overVoice && (wantsUsualWay(his) || asked > 0 && turn.optLong("t") > asked && saidDoIt(his));
-            if (!agreed) {
-                return new JSONObject().put("ok", false).put("error", "not_confirmed")
-                        .put("say", "First ask him: 'ఇది ఇంకా Live లో రాలేదు, పాత పద్ధతిలో చేయమంటారా?' and call classic_jarvis only after he says yes. "
-                                + "His last words were: '" + his + "'").toString();
+            // (he asked for it as usual: no extra yes. But words heard over Jarvis's own voice in full talk may be that voice:
+            // then he is asked once more. Anything that sends, posts, calls or pays still waits for his own yes in the tools.)
+            if (Tools.echoTurns.contains(turn.optLong("t"))) {
+                return new JSONObject().put("ok", false).put("error", "not_sure_it_was_him")
+                        .put("say", "His last words came while you were talking and may be your own voice. Ask him in one short sentence "
+                                + "whether he wants this, then call classic_jarvis again after he answers. His last words: '" + his + "'").toString();
             }
-            askedClassicAt = 0; // (this yes is used up)
             if (!prefs.hasBrain()) return "{\"ok\":false,\"error\":\"Jarvis's usual AI has no key in Settings\"}";
             Brain.Status st = new Brain.Status() {
                 @Override public void update(String s) { state(OrbView.THINKING, s); }

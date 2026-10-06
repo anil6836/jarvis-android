@@ -59,6 +59,10 @@ final class GeminiLiveProto {
         return null;
     }
 
+    /** Functions the live talk defines itself (never copied from Jarvis's list). */
+    static final Set<String> LIVE_OWN = new java.util.HashSet<>(java.util.Arrays.asList(
+            "web_search", "end_conversation", "voice_mode", "live_voice", "classic_jarvis"));
+
     /** "Charon · మగ · సమాచారంగా, స్పష్టంగా". */
     static String voiceLabel(String name) {
         for (String[] v : VOICES) if (v[0].equals(name)) return v[0] + " · " + v[1] + " · " + v[2];
@@ -79,8 +83,11 @@ final class GeminiLiveProto {
 
     // ================================================================ settings Gemini may refuse
 
-    /** Parts of the setup that can be left out one by one when Gemini refuses them (the rest, and his voice, stay). */
-    static final int VOICE = 1, SEARCH = 2, VAD = 4, COMPRESS = 8, RESUME = 16, WAIT = 32, ALL = 63;
+    /**
+     * Parts of the setup that can be left out one by one when Gemini refuses them (the rest, and his voice, stay).
+     * MANY: nearly all of Jarvis's tools in the live talk itself (without it, the first set of 31).
+     */
+    static final int VOICE = 1, SEARCH = 2, VAD = 4, COMPRESS = 8, RESUME = 16, WAIT = 32, MANY = 64, ALL = 127;
 
     /**
      * After a refused setup: what to try next. The part Gemini names is left out; when it names none, the least needed
@@ -96,8 +103,11 @@ final class GeminiLiveProto {
         if (r.contains("contextwindow") || r.contains("slidingwindow") || r.contains("compression")) named |= COMPRESS;
         if (r.contains("resumption") || r.contains("handle")) named |= RESUME;
         if (r.contains("voice") || r.contains("speechconfig") || r.contains("prebuilt")) named |= VOICE;
+        // (too much: too many tools, too long a setup)
+        if (r.contains("too many") || r.contains("toomany") || r.contains("too large") || r.contains("too long") || r.contains("exceed")
+                || r.contains("maximum") || r.contains("limit")) named |= MANY;
         if ((named & features) != 0) return features & ~named;
-        for (int part : new int[]{SEARCH, WAIT, VAD | COMPRESS | RESUME, VOICE}) {
+        for (int part : new int[]{SEARCH, MANY, WAIT, VAD | COMPRESS | RESUME, VOICE}) {
             if ((features & part) != 0) return features & ~part;
         }
         return -1;
@@ -109,6 +119,7 @@ final class GeminiLiveProto {
         if ((features & VOICE) == 0) b.append("గొంతు ఎంపిక, ");
         if ((features & SEARCH) == 0) b.append("Google Search (Jarvis సెర్చ్ వాడుతోంది), ");
         if ((features & WAIT) == 0) b.append("పని అయ్యేదాకా ఆగడం, ");
+        if ((features & MANY) == 0) b.append("అన్ని పనులు నేరుగా (మిగతావి పాత పద్ధతి ద్వారా), ");
         if ((features & VAD) == 0) b.append("మాట ముగింపు సెట్టింగ్, ");
         if ((features & COMPRESS) == 0 || (features & RESUME) == 0) b.append("పొడవైన సంభాషణ సెట్టింగ్స్, ");
         return b.length() == 0 ? "" : b.substring(0, b.length() - 2);
@@ -199,19 +210,39 @@ final class GeminiLiveProto {
      */
     static final Set<String> WAIT_FOR = new java.util.HashSet<>(java.util.Arrays.asList(
             "call_contact", "call_control", "send_sms", "whatsapp_message", "telegram_message", "send_draft", "reply_to_notification",
+            "send_email", "sos", "smart_home", "save_contact", "add_calendar_event", "add_expense", "add_mission", "complete_mission",
             "classic_jarvis", "voice_mode", "live_voice", "end_conversation"));
+
+    /**
+     * Jarvis's tools the live talk leaves to the usual way (classic_jarvis, without asking): they look at pictures (the
+     * screen, the camera, photos, documents), work other apps step by step (booking, ordering, typing into apps), make
+     * websites / apps / code, or make pictures. Everything else is in the live talk itself (with MANY).
+     */
+    static final Set<String> USUAL_WAY_ONLY = new java.util.HashSet<>(java.util.Arrays.asList(
+            "read_screen", "look_at_screen", "look_through_camera", "jarvis_camera", "photos", "scan_document", "scan_qr", "ask_document",
+            "phone_task", "travel_search", "ride_app", "food_app", "note_in_app", "whatsapp_media",
+            "run_python", "make_website", "publish_website", "write_code", "make_app", "wish_card", "make_letter",
+            "voice_mode")); // (the live talk has its own voice_mode)
 
     /**
      * The first version's tools (from all of Jarvis's Gemini tools), plus the ones only Live has. waitForActions: the
      * tools that act wait for their result (BLOCKING), unless Gemini refused that setting.
      */
-    static JSONArray functions(JSONArray all, boolean withWebSearch) throws Exception { return functions(all, withWebSearch, false); }
+    static JSONArray functions(JSONArray all, boolean withWebSearch) throws Exception { return functions(all, withWebSearch, false, false); }
 
     static JSONArray functions(JSONArray all, boolean withWebSearch, boolean waitForActions) throws Exception {
+        return functions(all, withWebSearch, waitForActions, false);
+    }
+
+    /** many: nearly all of Jarvis's tools (not USUAL_WAY_ONLY); else the first set. */
+    static JSONArray functions(JSONArray all, boolean withWebSearch, boolean waitForActions, boolean many) throws Exception {
         JSONArray out = new JSONArray();
+        Set<String> seen = new java.util.HashSet<>();
         for (int i = 0; i < all.length(); i++) {
             JSONObject f = all.getJSONObject(i);
-            if (FIRST_TOOLS.contains(f.optString("name"))) out.put(new JSONObject(f.toString()));
+            String n = f.optString("name");
+            boolean take = many ? !USUAL_WAY_ONLY.contains(n) && !LIVE_OWN.contains(n) : FIRST_TOOLS.contains(n);
+            if (take && seen.add(n)) out.put(new JSONObject(f.toString()));
         }
         if (withWebSearch) out.put(fn("web_search", "Search the internet for current information (news, cricket scores, prices, film releases, anything that changes). Returns a short summary.",
                 props(new String[][]{{"query", "string", "What to search for, in English"}}), "query"));
@@ -233,10 +264,11 @@ final class GeminiLiveProto {
                 + "voice = a voice name, or next (the next voice of the same kind). Men's voices: " + men + ". Women's voices: " + women + ". "
                 + "After calling it say nothing; you come back in the new voice in a moment.",
                 props(new String[][]{{"voice", "string", "A voice name from the lists, or next"}}), "voice"));
-        out.put(fn("classic_jarvis", "Do something Live can't do itself yet, the usual (slower) way, with Jarvis's chosen AI and ALL of Jarvis's "
-                + "abilities: bike (charge, range, rides, challan), expenses, debts, budget, duty, calendar, parcels, diary, health, the screen, the "
-                + "camera, photos, documents, websites and apps, missions and everything else. ONLY call it after you asked "
-                + "'ఇది ఇంకా Live లో రాలేదు, పాత పద్ధతిలో చేయమంటారా?' and Anil said yes. request = his full request in his own words. "
+        out.put(fn("classic_jarvis", "Jarvis's usual way: his chosen AI with ALL of Jarvis's abilities. Call it right away (no need to ask) for "
+                + "what you have no tool for: looking at the screen or through the camera, photos, documents, booking or ordering in apps, "
+                + "typing into other apps, long tasks on the phone, making websites / apps / code / cards / letters; and when he asks you to "
+                + "think hard ('బాగా ఆలోచించి చెప్పు') or to double-check ('క్రాస్ చెక్'), and for money, health or legal decisions. "
+                + "First say one short line ('ఒక్క క్షణం, చూస్తాను'). request = his full request in his own words. "
                 + "It may take a few seconds; then say its answer naturally in your own words.",
                 props(new String[][]{{"request", "string", "Anil's full request, in his words (Telugu as he said it)"}}), "request"));
         if (waitForActions) {
@@ -251,16 +283,16 @@ final class GeminiLiveProto {
     /** The rules Gemini Live adds to Jarvis's live instructions: what it can do itself and what goes the usual way. */
     static String rules(String name) {
         return "\n# Gemini Live\n"
-                + "- In this live talk you can do these yourself: calls, WhatsApp / SMS / Telegram messages (send only after " + name + " says send), "
-                + "reading and answering his messages, reminders, alarms, timers, weather, news, searching the internet (Google Search), songs and radio "
-                + "and volume, the way on maps, opening and closing apps, notes, remembering things, searching his own past (search_history), "
-                + "and phone settings (torch, Bluetooth, silent and so on).\n"
+                + "- In this live talk you do Jarvis's work yourself with your tools: calls, messages (send only after " + name + " says send), "
+                + "reminders, alarms, weather, news, internet search, songs, maps, apps, notes, remembering, his past (search_history), the bike, "
+                + "expenses, debts, budget, bills, duty, calendar, parcels, diary, health, medicines, missions and the rest. If you have a tool for it, use it.\n"
                 + "- You are talking with " + name + " himself: if he asks his name, say " + name + ". For anything about him, use his saved memories in "
                 + "these instructions first; for something he told you or did before that isn't there ('నేను చెప్పాను కదా', 'ఎప్పుడు…?'), call search_history. "
                 + "Never say he didn't tell you before you have looked.\n"
-                + "- For anything else Jarvis can do (bike, expenses, debts, duty, calendar, parcels, diary, health, the screen, the camera, photos, "
-                + "documents, websites, apps, missions...), first ask exactly once: 'ఇది ఇంకా Live లో రాలేదు, పాత పద్ధతిలో చేయమంటారా?'. "
-                + "Only after he says yes, call classic_jarvis with his full request; if he says no, leave it.\n"
+                + "- For what you have no tool for (the screen, the camera, photos, documents, booking or ordering in apps, long phone tasks, "
+                + "websites / apps / code), when he asks you to think hard or to double-check, and for money, health or legal decisions: "
+                + "call classic_jarvis right away with his full request (Jarvis's usual AI with all its abilities), after one short line like "
+                + "'ఒక్క క్షణం'. Don't ask him whether to use it.\n"
                 + "- Never pay, never type passwords, OTPs or PINs, never open bank or payment apps. Before sending, posting, deleting or calling, "
                 + "read it back and ask; act only after he clearly says yes (పంపు / చేయి / అవును).\n"
                 + "- If he asks to switch how you listen or talk ('Google వాయిస్‌కి మారు', 'Live ఆపు', 'OpenAI కి మారు'), call voice_mode; "
