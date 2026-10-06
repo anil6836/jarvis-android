@@ -93,7 +93,15 @@ final class GeminiLive implements LiveTalk {
     private AudioManager am;
     private int oldMode;
     private boolean routed, speakerOn;
-    private volatile boolean headset;
+    private volatile boolean headset, btHeadset;
+    /**
+     * On the phone's speaker (no headset, "call voice" off): Jarvis's voice plays as ordinary media, clear and on the
+     * media volume, and while it plays the mic is not sent to Gemini (it would hear itself); his talk-over is caught
+     * here, the way the classic talk-over does it.
+     */
+    private volatile boolean echoGate;
+    /** He talked over Jarvis: his voice goes to Gemini, and the rest of that answer is dropped. */
+    private volatile boolean barged;
     private long lastLevelPost, lastVoicePost;
     /** His words this turn (not saved yet) and Jarvis's words this turn. */
     private final StringBuilder heard = new StringBuilder(), said = new StringBuilder();
@@ -122,6 +130,7 @@ final class GeminiLive implements LiveTalk {
         startedAt = SystemClock.elapsedRealtime();
         lastActivity = startedAt;
         routeAudio();
+        echoGate = !headset && !prefs.bargeCallVoice();
         state(OrbView.THINKING, "Gemini Live కి కనెక్ట్ అవుతున్నాను…");
         client = new OkHttpClient.Builder()
                 .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -416,6 +425,8 @@ final class GeminiLive implements LiveTalk {
 
         @Override public void voice(byte[] pcm) {
             lastActivity = SystemClock.elapsedRealtime();
+            if (barged && turnVoiceSeen) return; // he talked over this answer: the rest of it isn't played
+            if (!turnVoiceSeen) barged = false;  // a new answer: Jarvis's own voice is kept from Gemini again
             if (saidPending) { // a new answer: the last one's words are complete
                 main.removeCallbacks(finishLater);
                 saidPending = false;
@@ -786,6 +797,7 @@ final class GeminiLive implements LiveTalk {
                             || t == AudioDeviceInfo.TYPE_WIRED_HEADSET || t == AudioDeviceInfo.TYPE_USB_HEADSET) { pick = d; break; }
                 }
                 headset = pick != null;
+                btHeadset = pick != null && (pick.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || pick.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET);
                 if (pick == null) {
                     for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
                         if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) { pick = d; break; }
@@ -796,6 +808,7 @@ final class GeminiLive implements LiveTalk {
                 if (!am.isSpeakerphoneOn()) { am.setSpeakerphoneOn(true); speakerOn = true; }
             } else {
                 headset = true;
+                btHeadset = am.isBluetoothScoOn();
             }
         } catch (Exception ignored) {}
     }
@@ -819,8 +832,15 @@ final class GeminiLive implements LiveTalk {
             AcousticEchoCanceler aec = null;
             NoiseSuppressor ns = null;
             ArrayDeque<byte[]> backlog = new ArrayDeque<>();
+            ArrayDeque<byte[]> pre = new ArrayDeque<>(); // his last 400 ms while Jarvis talked: sent when he talks over it
             boolean wasHeld = false;
             float floor = 300f;
+            // talk-over on the speaker (as the classic talk-over): the echo path is learnt from Jarvis's known output level
+            Ring ratio = new Ring(75), quiet = new Ring(75);
+            int sounding = 0, loud = 0;
+            int lv = Math.max(0, Math.min(4, prefs.bargeSens()));
+            double k = BARGE_SCALE[lv];
+            int need = Math.max(3, 5 + BARGE_NEED_ADJ[lv] / 2); // about 200 ms of his voice above Jarvis's echo
             try {
                 int min = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
                 rec = new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, IN_RATE,
@@ -869,6 +889,39 @@ final class GeminiLive implements LiveTalk {
                         continue;
                     }
                     wasHeld = false;
+                    if (echoGate && !barged) {
+                        if (speakingNow) {
+                            double out = PlaybackLevel.now();
+                            double noise = quiet.n >= 5 ? quiet.pct(0.5) : 0;
+                            if (out > 300) sounding++;
+                            if (out > 1000) ratio.add(Math.sqrt(Math.max(0, (double) rms * rms - noise * noise)) / out); // the echo alone
+                            else if (out >= 0 && out < 150) quiet.add(rms); // the room, in Jarvis's pauses
+                            boolean judge = out >= 0 && sounding >= 15 && ratio.n >= 10; // after 0.6 s of Jarvis sounding
+                            double limit = Math.max(Math.max(500, noise * 3), Math.hypot(ratio.pct(0.85) * Math.max(0, out) * 1.8, noise)) * k;
+                            if (prefs.bargeIn() && judge && rms > limit) {
+                                if (++loud >= need) { // he is talking over Jarvis: stop it, and Gemini hears him from his first word
+                                    loud = 0;
+                                    barged = true;
+                                    playQueue.clear();
+                                    flushRequested = true;
+                                }
+                            } else {
+                                loud = Math.max(0, loud - 1);
+                            }
+                        } else {
+                            sounding = 0;
+                            loud = 0;
+                        }
+                        if (!barged && (speakingNow || now - voiceEndedAt < 250)) { // Jarvis's voice (or its last echo): not sent
+                            pre.addLast(bytes);
+                            while (pre.size() > 10) pre.removeFirst();
+                            continue;
+                        }
+                    }
+                    if (!pre.isEmpty()) {
+                        if (barged) while (!pre.isEmpty()) backlog.addLast(pre.removeFirst()); // his first words over Jarvis go first
+                        else pre.clear(); // (Jarvis just finished: that was its own echo)
+                    }
                     if (!ready) { // (re)connecting: keep his last few seconds for when the line is ready
                         backlog.addLast(bytes);
                         while (backlog.size() > BACKLOG) backlog.removeFirst();
@@ -897,6 +950,24 @@ final class GeminiLive implements LiveTalk {
         micThread.start();
     }
 
+    /** The talk-over slider (Settings): 0 hard to interrupt ... 4 very easy (as the classic talk-over). */
+    private static final double[] BARGE_SCALE = {1.6, 1.25, 1.0, 0.8, 0.65};
+    private static final int[] BARGE_NEED_ADJ = {4, 2, 0, -2, -4};
+
+    /** Recent values with a percentile (the echo statistics). */
+    private static final class Ring {
+        final double[] v, tmp;
+        int n, pos;
+        Ring(int size) { v = new double[size]; tmp = new double[size]; }
+        void add(double x) { v[pos] = x; pos = (pos + 1) % v.length; if (n < v.length) n++; }
+        double pct(double p) {
+            if (n == 0) return 0;
+            System.arraycopy(v, 0, tmp, 0, n);
+            java.util.Arrays.sort(tmp, 0, n);
+            return tmp[Math.min(n - 1, (int) Math.floor(p * (n - 1) + 0.5))];
+        }
+    }
+
     /** Loudness of a piece of Jarvis's voice (16-bit little-endian), sent to the screen about 20 times a second. */
     private void voiceLevel(byte[] pcm, int off, int len) {
         long now = SystemClock.elapsedRealtime();
@@ -919,9 +990,12 @@ final class GeminiLive implements LiveTalk {
             AudioTrack t = null;
             try {
                 int min = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
+                // Jarvis's own clear voice on the media volume (the volume keys work on it); the call path only with
+                // "call voice" on or a Bluetooth headset (its mic only works on that path)
+                boolean callVoice = prefs.bargeCallVoice() || btHeadset;
                 t = new AudioTrack.Builder()
                         .setAudioAttributes(new AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                                .setUsage(callVoice ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
                                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                                 .build())
                         .setAudioFormat(new AudioFormat.Builder()
@@ -933,6 +1007,7 @@ final class GeminiLive implements LiveTalk {
                         .setTransferMode(AudioTrack.MODE_STREAM)
                         .build();
                 t.play();
+                PlaybackLevel.begin(t, OUT_RATE, 0); // how loud Jarvis is at each moment (talk-over, the face's lips)
                 long base = 0;    // playback head position right after the last flush
                 long written = 0; // frames handed to the track since the last flush
                 while (!closed && !Thread.currentThread().isInterrupted()) {
@@ -943,6 +1018,7 @@ final class GeminiLive implements LiveTalk {
                         t.play();
                         base = t.getPlaybackHeadPosition();
                         written = 0;
+                        PlaybackLevel.begin(t, OUT_RATE, base);
                         if (jarvisSpeaking) {
                             jarvisSpeaking = false;
                             voiceEndedAt = SystemClock.elapsedRealtime();
@@ -968,7 +1044,10 @@ final class GeminiLive implements LiveTalk {
                         int len = Math.min(PLAY_CHUNK, c.length - off);
                         voiceLevel(c, off, len);
                         int w = t.write(c, off, len);
-                        if (w > 0) written += w / 2;
+                        if (w > 0) {
+                            written += w / 2;
+                            PlaybackLevel.feed(c, off, w);
+                        }
                     }
                 }
             } catch (InterruptedException ignored) {
@@ -980,6 +1059,7 @@ final class GeminiLive implements LiveTalk {
             } finally {
                 jarvisSpeaking = false;
                 if (t != null) {
+                    PlaybackLevel.end(t);
                     try { t.pause(); t.flush(); } catch (Exception ignored) {}
                     t.release();
                 }
