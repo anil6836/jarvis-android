@@ -550,10 +550,13 @@ final class Tools {
                 + "tooth, eye, ear, wounds, burns, weakness, urine burning, sleep, chest pain, or any disease. want: home = home remedies (the default, give these first), "
                 + "tablet = the usual over-the-counter tablet with adult dose (when he asks which tablet), doctor = which doctor and when, all. "
                 + "Danger signs come back too. cough_listen on/off: Jarvis asking 'ఏమైంది?' when it hears him coughing or sneezing; "
-                + "cough_gap_minutes: how long before it asks again ('దగ్గు గురించి గంటకి ఒకసారి అడుగు' = 60).",
+                + "cough_gap_minutes: how long before it asks again ('దగ్గు గురించి గంటకి ఒకసారి అడుగు' = 60). "
+                + "heard: when Jarvis just asked about a cough or sneeze it heard and he says it was really the other one ('అది దగ్గు, తుమ్ము కాదు') "
+                + "or neither ('నేను దగ్గలేదు'), so Jarvis learns his sound.",
                 schema(new String[][]{{"symptom", "string", "What he has, in his words (e.g. 'జలుబు', 'దగ్గు 3 రోజులుగా', 'కడుపు మంట')"},
                         {"want", "string", "home (default), tablet, doctor or all"}, {"cough_listen", "string", "on or off (only to change that setting)"},
-                        {"cough_gap_minutes", "integer", "Only to change how long after asking about a cough Jarvis waits before asking again (e.g. 30, 60, 120; 1440 = once a day)"}})));
+                        {"cough_gap_minutes", "integer", "Only to change how long after asking about a cough Jarvis waits before asking again (e.g. 30, 60, 120; 1440 = once a day)"},
+                        {"heard", "string", "Only to correct the sound Jarvis just asked about: cough, sneeze or none"}})));
         DEFS.add(new Def("save_contact", "Open the phone's Contacts app with a new contact filled in (from a visiting card or what he said); he checks it and taps Save himself.",
                 schema(new String[][]{{"name", "string", "Full name"}, {"phone", "string", "Phone number"}, {"phone2", "string", "Second number"},
                         {"email", "string", "Email"}, {"company", "string", "Company"}, {"title", "string", "Job title"},
@@ -6702,6 +6705,14 @@ final class Tools {
     }
 
     private String healthAdvice(JSONObject a) throws Exception {
+        String heard = a.optString("heard", "").trim();
+        if (!heard.isEmpty()) {
+            String r = CoughDetector.learn(act(), heard);
+            JSONObject o = ok().put("learned", r);
+            if (!a.optString("symptom").trim().isEmpty()) o.put("advice", Ailments.advice(act(), a.optString("symptom"), a.optString("want", "home")));
+            return o.put("note", r.startsWith("learnt") ? "Say sorry in a few words; next time a sound like that is taken as what he said. Then ask about what it really was, if anything."
+                    : "Nothing to learn from right now; just carry on.").toString();
+        }
         if (a.optInt("cough_gap_minutes", 0) > 0) {
             int m = Math.max(10, Math.min(24 * 60, a.optInt("cough_gap_minutes")));
             prefs.sp.edit().putInt("cough_gap_min", m).putBoolean("cough_ask", true).apply();

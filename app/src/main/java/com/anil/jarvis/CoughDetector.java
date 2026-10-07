@@ -5,45 +5,75 @@ import android.content.Context;
 import android.media.AudioManager;
 import android.os.SystemClock;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Hears Anil coughing (or sneezing) on the microphone the wake word already listens with, and asks if he is okay.
- * Google's YAMNet sound model (521 sounds; 42 = cough, 44 = sneeze) runs on the phone only when a short loud sound
- * happens, on its own thread; nothing is recorded or sent anywhere. A few coughs close together = he is coughing:
- * "సర్, ఏమైంది? దగ్గుతున్నారు." in different words each time (at most once per the gap he chose, 1 hour by default;
- * not at night, in a call, or while Jarvis is talking).
+ * Hears Anil coughing or sneezing on the microphone the wake word already listens with, and asks if he is okay.
+ * Google's YAMNet sound model (521 sounds; 42 = cough, 43 = throat clearing, 44 = sneeze) runs on the phone only after a
+ * short loud sound, on its own thread; nothing is recorded or sent anywhere.
+ *
+ * How (tuned on real cough / sneeze recordings, loud and soft, in quiet and noisy rooms):
+ * - a soft cough a metre away is enough to start it (it used to need a loud one);
+ * - three 1-second windows ending 0.24 / 0.48 / 0.72 s after the sound start, so the whole cough or the
+ *   "ఆ...ఛీ" of a sneeze is inside one of them; a soft one is also heard a second time with the room hiss
+ *   pushed down and the level raised (the model misses soft sounds over hiss);
+ * - cough or sneeze is decided on the same sound by which is stronger (throat clearing counts for cough), so a
+ *   cough is no longer turned into a sneeze (before, a sneeze needed 2 sounds and a cough 3);
+ * - a clear one -> asks at once (about a second after); a faint one -> asks when a second comes within 90 s;
+ * - cough and sneeze each keep their own "asked" time (asking about one doesn't make Jarvis deaf to the other);
+ * - when he says Jarvis got it wrong ("అది దగ్గు, తుమ్ము కాదు"), that sound is kept and the next one like it is
+ *   taken as what he said.
+ * Not at night, in a call, while Jarvis is talking or while the phone plays a video.
  */
 final class CoughDetector {
     private static final int N = 15600;              // 0.975 s at 16 kHz: one YAMNet window
     private static final int COUGH = 42, THROAT = 43, SNEEZE = 44, CLASSES = 521;
-    private static final float HIT = 0.4f;
+    /** Windows end this many 80 ms chunks after the loud chunk. */
+    private static final int[] AFTER = {3, 6, 9};
+    private static final float FOUND = 0.3f, FOUND_SNEEZE = 0.25f, CLEAR = 0.5f;
+    /** Loudness (16-bit RMS of an 80 ms chunk) a soft cough about a metre from the phone still reaches. */
+    private static final int MIN_LOUD = 220;
+    /** Sounds kept from his corrections: speech, laugh, sigh, groan, grunt, breath, wheeze, snore, gasp, pant, snort, cough, throat, sneeze, sniff, burp, hiccup. */
+    private static final int[] FEAT = {0, 13, 23, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 53, 54};
 
     /** What happened with the model, for Settings (empty = not started yet). */
     static volatile String status = "";
+    /** The last sound it judged (time, what, how sure), for Settings and "Jarvis చెక్". */
+    static volatile String lastHeard = "";
+    /** The sound Jarvis last asked about, so his "అది దగ్గు / తుమ్ము" can teach it. */
+    private static volatile float[] askedFeat;
+    private static volatile long askedAt;
+    private static volatile String askedKind = "";
 
     private final Context ctx;
     private final short[] ring = new short[N];
     private int pos;
     private boolean full;
-    private int tail = -1;                           // chunks still to collect after a loud sound, then classify
+    private int since = -1;                          // chunks since the loud chunk (-1 = waiting for one)
+    private final float[][] wins = new float[AFTER.length][];
+    private double eventNoise, eventLoud;
     private long lastRun, prefsAt;
     private boolean on;
     private volatile boolean busy;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> new Thread(r, "jarvis-cough"));
 
     private org.tensorflow.lite.Interpreter tfl;
-    private volatile boolean failed;
+    private volatile boolean missing;                // no model in this build: nothing to do
+    private volatile int failures;
+    private volatile long failedAt;
     private boolean twoDim;
     private int outIndex = -1;
-    private final ArrayDeque<Long> coughs = new ArrayDeque<>(), strong = new ArrayDeque<>(), sneezes = new ArrayDeque<>();
+    /** A faint cough / sneeze heard: when (a second one within 90 s makes it sure). */
+    private long faintCough, faintSneeze;
 
     CoughDetector(Context c) { ctx = c.getApplicationContext(); }
 
@@ -51,7 +81,7 @@ final class CoughDetector {
     void reset() {
         pos = 0;
         full = false;
-        tail = -1;
+        since = -1;
         prefsAt = 0;
     }
 
@@ -61,39 +91,96 @@ final class CoughDetector {
             ring[pos++] = s;
             if (pos == N) { pos = 0; full = true; }
         }
-        if (tail > 0) {
-            if (--tail == 0) classify();
+        if (since >= 0) { // collecting the windows after a loud sound
+            since++;
+            eventLoud = Math.max(eventLoud, rms);
+            for (int i = 0; i < AFTER.length; i++) if (since == AFTER[i]) wins[i] = window();
+            if (since >= AFTER[AFTER.length - 1]) {
+                since = -1;
+                classify(wins.clone(), eventNoise, eventLoud);
+                java.util.Arrays.fill(wins, null);
+            }
             return;
         }
         long now = SystemClock.elapsedRealtime();
         if (now - prefsAt > 10000) {
             prefsAt = now;
             Prefs p = new Prefs(ctx);
-            // off, broken, or asked a short while ago: don't even run the model (battery)
-            on = p.coughAsk() && !failed && System.currentTimeMillis() - p.sp.getLong("cough_asked", 0) > p.coughGapMinutes() * 60000L;
+            long wall = System.currentTimeMillis(), gap = p.coughGapMinutes() * 60000L;
+            // off, no model, or asked about both a short while ago: don't even run the model (battery)
+            on = p.coughAsk() && !missing && failures < 5
+                    && (wall - p.sp.getLong("cough_asked", 0) > gap || wall - p.sp.getLong("sneeze_asked", 0) > gap);
         }
         if (!on || !full || busy) return;
-        // a cough is a short, sharp burst well above the room's background
-        if (rms > Math.max(900, noise * 4) && now - lastRun > 1200) tail = 5; // ~0.4 s more so the whole cough is in the window
+        if (failures > 0 && now - failedAt < 120_000) return; // something went wrong a moment ago: rest a little
+        // a cough / sneeze starts as a short burst well above the room's background
+        if (rms > Math.max(MIN_LOUD, noise * 4) && now - lastRun > 1000) {
+            since = 0;
+            eventNoise = noise;
+            eventLoud = rms;
+            lastRun = now;
+        }
     }
 
-    private void classify() {
-        if (busy || failed) return;
-        lastRun = SystemClock.elapsedRealtime();
+    /** The last 0.975 s, oldest first, as the model wants it (-1..1). */
+    private float[] window() {
         float[] x = new float[N];
-        for (int i = 0; i < N; i++) x[i] = ring[(pos + i) % N] / 32768f; // oldest first
+        for (int i = 0; i < N; i++) x[i] = ring[(pos + i) % N] / 32768f;
+        return x;
+    }
+
+    /**
+     * The same window with the room's hiss between the sounds pushed down and its level raised (at most 8x):
+     * the model misses soft coughs over hiss, and hears them well like this.
+     */
+    private static float[] cleaned(float[] w, double noise) {
+        float[] y = w.clone();
+        float hiss = (float) (Math.max(noise, 8) / 32768.0) * 3f;
+        for (int a = 0; a + 120 <= N; a += 120) { // 7.5 ms pieces
+            double e = 0;
+            for (int i = a; i < a + 120; i++) e += (double) y[i] * y[i];
+            if (Math.sqrt(e / 120) < hiss) for (int i = a; i < a + 120; i++) y[i] *= 0.1f;
+        }
+        float peak = 1e-6f;
+        for (float v : y) peak = Math.max(peak, Math.abs(v));
+        float g = Math.min(8f, 0.3f / peak);
+        for (int i = 0; i < N; i++) y[i] *= g;
+        return y;
+    }
+
+    private void classify(float[][] ws, double noise, double loud) {
+        if (busy || missing) return;
         busy = true;
         worker.execute(() -> {
             try {
-                float[] s = run(x);
-                if (s != null) onScores(s);
+                float[] best = new float[CLASSES];
+                boolean any = false;
+                for (float[] w : ws) {
+                    if (w == null) continue;
+                    float[] raw = run(w);
+                    if (raw == null) return; // no model
+                    any = true;
+                    max(best, raw);
+                    // not clear as heard: listen again with the hiss pushed down
+                    if (Math.max(raw[COUGH], raw[SNEEZE]) < CLEAR) max(best, run(cleaned(w, noise)));
+                }
+                if (any) decide(best, loud);
+                failures = 0;
             } catch (Throwable e) {
-                failed = true;
-                status = "దగ్గు గుర్తింపు పనిచేయలేదు: " + e.getMessage();
+                failures++;
+                failedAt = SystemClock.elapsedRealtime();
+                status = "దగ్గు గుర్తింపు పనిచేయలేదు" + (failures >= 5 ? " (ఆపేశాను; Jarvis మళ్లీ తెరిస్తే మొదలవుతుంది)" : " (2 నిమిషాల్లో మళ్లీ ప్రయత్నిస్తాను)") + ": " + e.getMessage();
+                try { if (tfl != null) tfl.close(); } catch (Throwable ignored) {}
+                tfl = null; // made fresh on the next try
             } finally {
                 busy = false;
             }
         });
+    }
+
+    private static void max(float[] into, float[] s) {
+        if (s == null) return;
+        for (int k = 0; k < CLASSES; k++) into[k] = Math.max(into[k], s[k]);
     }
 
     private float[] run(float[] x) throws Exception {
@@ -104,7 +191,7 @@ final class CoughDetector {
                 // stored uncompressed in the APK: mapped straight from the file, no copy in memory
                 model = fin.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, fd.getStartOffset(), fd.getDeclaredLength());
             } catch (java.io.FileNotFoundException e) {
-                failed = true;
+                missing = true;
                 status = "దగ్గు గుర్తింపు మోడల్ ఈ వెర్షన్‌లో లేదు.";
                 return null;
             } catch (java.io.IOException e) { // compressed after all: read it in
@@ -129,12 +216,13 @@ final class CoughDetector {
                 tfl.resizeInput(0, twoDim ? new int[]{1, N} : new int[]{N});
             }
             tfl.allocateTensors();
+            outIndex = -1;
             for (int i = 0; i < tfl.getOutputTensorCount(); i++) {
                 int[] os = tfl.getOutputTensor(i).shape();
                 if (os.length > 0 && os[os.length - 1] == CLASSES) { outIndex = i; break; }
             }
             if (outIndex < 0) throw new IllegalStateException("sound classes not found");
-            status = "దగ్గు గుర్తింపు సిద్ధం ✓";
+            status = "దగ్గు / తుమ్ము గుర్తింపు సిద్ధం ✓";
         }
         Object input = twoDim ? new float[][]{x} : x;
         int bytes = tfl.getOutputTensor(outIndex).numBytes();
@@ -149,33 +237,119 @@ final class CoughDetector {
         return s;
     }
 
-    private void onScores(float[] s) {
+    private void decide(float[] s, double loud) {
+        float cough = s[COUGH], sneeze = s[SNEEZE];
+        String kind = null;
+        float sure = 0;
+        // one sound, one answer: whichever is stronger (throat clearing goes with a cough)
+        if (sneeze > cough + 0.5f * s[THROAT] && sneeze >= FOUND_SNEEZE) { kind = "sneeze"; sure = sneeze; }
+        else if (cough >= FOUND) { kind = "cough"; sure = cough; }
+        float[] f = feat(s);
+        String taught = kind == null ? null : taught(f);
+        if (taught != null && !taught.equals(kind)) { // he told Jarvis what a sound just like this one is
+            if (taught.equals("none")) kind = null;
+            else { kind = taught; sure = Math.max(sure, CLEAR); }
+        }
+        lastHeard = java.time.LocalTime.now().withNano(0) + " " + (kind == null ? "ఏమీ కాదు" : kind.equals("cough") ? "దగ్గు" : "తుమ్ము")
+                + " (దగ్గు " + Math.round(cough * 100) + "%, తుమ్ము " + Math.round(sneeze * 100) + "%, శబ్దం " + Math.round(loud) + ")"
+                + (taught != null ? " · మీరు నేర్పినట్టు" : "");
+        if (kind == null) return;
         long now = System.currentTimeMillis();
-        // clear coughs count double; a single throat-clearing doesn't count at all
-        if (s[COUGH] >= 0.55f) { coughs.addLast(now); strong.addLast(now); }
-        else if (s[COUGH] >= HIT || (s[THROAT] >= 0.6f && s[COUGH] >= 0.25f)) coughs.addLast(now);
-        if (s[SNEEZE] >= HIT) sneezes.addLast(now);
-        while (!coughs.isEmpty() && now - coughs.peekFirst() > 15 * 60000L) coughs.removeFirst();
-        while (!strong.isEmpty() && now - strong.peekFirst() > 60000L) strong.removeFirst();
-        while (!sneezes.isEmpty() && now - sneezes.peekFirst() > 5 * 60000L) sneezes.removeFirst();
-        // a coughing fit: 2 clear coughs within 45 s, or 3 within 2 minutes, or 4 in 15 minutes
-        if (count(strong, now, 45000) >= 2 || count(coughs, now, 120000) >= 3 || coughs.size() >= 4) ask("cough");
-        else if (count(sneezes, now, 60000) >= 2) ask("sneeze");
+        if (sure < CLEAR) { // faint: wait for a second one
+            boolean c = kind.equals("cough");
+            long before = c ? faintCough : faintSneeze;
+            if (c) faintCough = now; else faintSneeze = now;
+            if (now - before > 90_000) return;
+        }
+        faintCough = faintSneeze = 0;
+        ask(kind, f);
     }
 
-    private static int count(ArrayDeque<Long> q, long now, long within) {
-        int n = 0;
-        for (long t : q) if (now - t <= within) n++;
-        return n;
+    private static float[] feat(float[] s) {
+        float[] f = new float[FEAT.length];
+        for (int i = 0; i < FEAT.length; i++) f[i] = s[FEAT[i]];
+        return f;
     }
 
-    private void ask(String kind) {
-        coughs.clear();
-        strong.clear();
-        sneezes.clear();
+    private static double similar(float[] a, float[] b) {
+        double ab = 0, aa = 0, bb = 0;
+        for (int i = 0; i < a.length && i < b.length; i++) { ab += a[i] * b[i]; aa += a[i] * a[i]; bb += b[i] * b[i]; }
+        return aa == 0 || bb == 0 ? 0 : ab / Math.sqrt(aa * bb);
+    }
+
+    /** What he said a sound very like this one was ("cough" / "sneeze"), or null. */
+    private String taught(float[] f) {
+        try {
+            JSONArray a = new JSONArray(new Prefs(ctx).sp.getString("cough_taught", "[]"));
+            double bestSim = 0.93;
+            String best = null;
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                JSONArray v = o.getJSONArray("f");
+                float[] g = new float[v.length()];
+                for (int k = 0; k < g.length; k++) g[k] = (float) v.getDouble(k);
+                double sim = similar(f, g);
+                if (sim > bestSim) { bestSim = sim; best = o.getString("k"); }
+            }
+            return best;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * He says what the sound Jarvis just asked about really was ("cough", "sneeze" or "none"): kept, so the next sound
+     * like it is taken as that. Returns what to tell him.
+     */
+    static String learn(Context c, String what) {
+        String k = what == null ? "" : what.trim().toLowerCase(java.util.Locale.ROOT);
+        if (k.startsWith("cou") || k.contains("దగ్గు")) k = "cough";
+        else if (k.startsWith("sne") || k.contains("తుమ్ము")) k = "sneeze";
+        else k = "none";
+        float[] f = askedFeat;
+        if (f == null || System.currentTimeMillis() - askedAt > 30 * 60000L) return "no recent sound to learn from";
+        try {
+            Prefs p = new Prefs(c);
+            JSONArray a = new JSONArray(p.sp.getString("cough_taught", "[]"));
+            JSONArray v = new JSONArray();
+            for (float x : f) v.put(Math.round(x * 1000) / 1000.0);
+            a.put(new JSONObject().put("k", k).put("f", v).put("t", System.currentTimeMillis()));
+            // keep the last 12 of each kind
+            JSONArray keep = new JSONArray();
+            Map<String, Integer> left = new HashMap<>();
+            for (int i = a.length() - 1; i >= 0; i--) {
+                String kk = a.getJSONObject(i).optString("k");
+                int n = left.getOrDefault(kk, 0);
+                if (n < 12) { left.put(kk, n + 1); keep.put(a.getJSONObject(i)); }
+            }
+            JSONArray ordered = new JSONArray();
+            for (int i = keep.length() - 1; i >= 0; i--) ordered.put(keep.get(i));
+            android.content.SharedPreferences.Editor e = p.sp.edit().putString("cough_taught", ordered.toString());
+            // asked about the wrong one: that one may be asked about later; the real one is being talked about now
+            if (!k.equals(askedKind)) {
+                e.remove(askedKind.equals("sneeze") ? "sneeze_asked" : "cough_asked");
+                if (!k.equals("none")) e.putLong(k.equals("sneeze") ? "sneeze_asked" : "cough_asked", askedAt);
+            }
+            e.apply();
+            askedFeat = null;
+            return k.equals("none") ? "learnt: that sound was neither" : "learnt: that sound was a " + k;
+        } catch (Exception e) {
+            return "could not save";
+        }
+    }
+
+    /** How many sounds he has taught, for Settings. */
+    static int taughtCount(Context c) {
+        try { return new JSONArray(new Prefs(c).sp.getString("cough_taught", "[]")).length(); } catch (Exception e) { return 0; }
+    }
+
+    private void ask(String kind, float[] f) {
         Prefs p = new Prefs(ctx);
-        long last = p.sp.getLong("cough_asked", 0);
-        if (System.currentTimeMillis() - last < p.coughGapMinutes() * 60000L) return;
+        boolean sneeze = kind.equals("sneeze");
+        long now = System.currentTimeMillis(), gap = p.coughGapMinutes() * 60000L;
+        if (now - p.sp.getLong(sneeze ? "sneeze_asked" : "cough_asked", 0) < gap) return;
+        // the other one was asked about just now (the same cold): not two questions in a row
+        if (now - p.sp.getLong(sneeze ? "cough_asked" : "sneeze_asked", 0) < 3 * 60000L) return;
         if (p.night() || CallControl.busyWithCall() || MainActivity.busyTalking() || Rest.resting(ctx)) return;
         // probably asleep: late night with the screen off, or the afternoon after coming off a 48-hour duty
         try {
@@ -193,51 +367,59 @@ final class CoughDetector {
             AudioManager am = ctx.getSystemService(AudioManager.class);
             if (am != null && am.isMusicActive()) return; // a cough in a video on the phone
         } catch (Exception ignored) {}
-        p.sp.edit().putLong("cough_asked", System.currentTimeMillis()).apply();
-        boolean sneeze = kind.equals("sneeze");
-        String[][] lines = sneeze ? SNEEZE_ASK : (p.sp.getInt("cough_times_today", 0) > 0 && today(p) ? COUGH_AGAIN : COUGH_ASK);
+        askedFeat = f;
+        askedAt = now;
+        askedKind = kind;
+        String name = p.name().trim().isEmpty() ? "Anil" : p.name().trim();
+        String timesKey = sneeze ? "sneeze_times_today" : "cough_times_today", dayKey = sneeze ? "sneeze_day" : "cough_day";
+        boolean sameDay = java.time.LocalDate.now().toString().equals(p.sp.getString(dayKey, ""));
+        int times = sameDay ? p.sp.getInt(timesKey, 0) + 1 : 1;
+        String[][] lines = sneeze ? (times > 1 ? SNEEZE_AGAIN : SNEEZE_ASK) : (times > 1 ? COUGH_AGAIN : COUGH_ASK);
         // a different one each time: never the same words twice in a row
         String key = sneeze ? "sneeze_line" : "cough_line";
         int lastLine = p.sp.getInt(key, -1), i;
         do { i = rnd.nextInt(lines.length); } while (lines.length > 1 && i == lastLine);
-        int times = today(p) ? p.sp.getInt("cough_times_today", 0) + 1 : 1;
-        android.content.SharedPreferences.Editor e = p.sp.edit().putInt(key, i);
-        if (!sneeze) e.putInt("cough_times_today", times).putString("cough_day", java.time.LocalDate.now().toString());
-        e.apply();
-        String hint = sneeze
-                ? " [health: Jarvis heard him sneezing again and again. If he says yes or tells what is wrong, use health_advice (cold / what he says): "
-                        + "home remedies first; the tablet name only when he asks for it; which doctor if it does not settle. If he says no / వద్దు, just say okay, in a few warm words.]"
-                : " [health: Jarvis heard him coughing several times" + (times > 1 ? " (Jarvis already asked " + (times - 1) + " time(s) about it today)" : "") + ". If he says yes or tells what is wrong, "
-                        + "use health_advice (cough / what he says): home remedies first; the tablet name and how to take it when he asks; which doctor if it does not settle"
-                        + (times > 2 ? "; as it keeps coming back today, gently suggest seeing a doctor" : "") + ". If he says no / వద్దు, just say okay, in a few warm words.]";
-        Proactive.say(ctx, lines[i][0], lines[i][1], hint);
+        p.sp.edit().putLong(sneeze ? "sneeze_asked" : "cough_asked", now).putInt(key, i)
+                .putInt(timesKey, times).putString(dayKey, java.time.LocalDate.now().toString()).apply();
+        String what = sneeze ? "sneezing" : "coughing";
+        String hint = " [health: Jarvis's microphone just heard him " + what + (times > 1 ? " (Jarvis already asked " + (times - 1) + " time(s) about it today)" : "")
+                + ". If he says yes or tells what is wrong, use health_advice (" + (sneeze ? "cold" : "cough") + " / what he says): home remedies first; "
+                + "the tablet name and how to take it when he asks; which doctor if it does not settle"
+                + (times > 2 ? "; as it keeps coming back today, gently suggest seeing a doctor" : "")
+                + ". If he says it was not a " + (sneeze ? "sneeze but a cough" : "cough but a sneeze") + " (or neither), call health_advice with heard='"
+                + (sneeze ? "cough" : "sneeze") + "' (or 'none') so Jarvis learns his sound, say sorry in a few words, then ask about what it really was. "
+                + "If he says no / వద్దు / I'm fine, just say okay, in a few warm words.]";
+        Proactive.say(ctx, String.format(lines[i][0], name), lines[i][1], hint);
     }
 
     private static final java.util.Random rnd = new java.util.Random();
 
-    private static boolean today(Prefs p) { return java.time.LocalDate.now().toString().equals(p.sp.getString("cough_day", "")); }
-
-    /** {what Jarvis says, the question}: many ways, so it doesn't sound like a recording. */
+    /** {what Jarvis says (%s = his name), the question}: many ways, so it doesn't sound like a recording. */
     private static final String[][] COUGH_ASK = {
-            {"సర్, ఏమైంది? దగ్గుతున్నారు.", "ఏమైనా సమస్య ఉందా? ముందు ఇంటి చిట్కాలు చెప్పనా, లేక దగ్గు టాబ్లెట్ వేసుకుంటారా?"},
-            {"సర్, దగ్గు వినిపిస్తోంది.", "ఒంట్లో బాగోలేదా? గోరువెచ్చని నీళ్లు తాగుతారా, లేక ఏదైనా చిట్కా చెప్పనా?"},
-            {"సర్, బాగున్నారా? కాసేపటి నుంచి దగ్గుతున్నారు.", "గొంతు ఇబ్బందిగా ఉందా? ఇంటి చిట్కా చెప్పనా, టాబ్లెట్ పేరు చెప్పనా?"},
-            {"సర్, దగ్గు ఎక్కువగా ఉన్నట్టుంది.", "జలుబు కూడా ఉందా? ఏం చేస్తే తగ్గుతుందో చెప్పమంటారా?"},
-            {"సర్, అంతా ఓకేనా? దగ్గుతున్నారు.", "తేనె-అల్లం లాంటి చిట్కా చెప్పనా, లేక దగ్గు సిరప్ పేరు కావాలా?"},
-            {"సర్, కొంచెం దగ్గుతున్నారు.", "గొంతు గరగరగా ఉందా? ఉప్పు నీళ్లతో పుక్కిలిస్తే బాగుంటుంది. ఇంకా ఏమైనా చెప్పనా?"},
-            {"సర్, జాగ్రత్త, దగ్గు వస్తోంది.", "ఏమైనా ఇబ్బందిగా ఉందా? చిట్కాలా, టాబ్లెట్టా, ఏది చెప్పమంటారు?"},
+            {"%s, ఏమైంది? దగ్గుతున్నారు.", "ఏమైనా సమస్య ఉందా? ముందు ఇంటి చిట్కాలు చెప్పనా, లేక దగ్గు టాబ్లెట్ వేసుకుంటారా?"},
+            {"%s, దగ్గు వినిపిస్తోంది.", "ఒంట్లో బాగోలేదా? గోరువెచ్చని నీళ్లు తాగుతారా, లేక ఏదైనా చిట్కా చెప్పనా?"},
+            {"%s, బాగున్నారా? దగ్గుతున్నారు.", "గొంతు ఇబ్బందిగా ఉందా? ఇంటి చిట్కా చెప్పనా, టాబ్లెట్ పేరు చెప్పనా?"},
+            {"%s, దగ్గు వచ్చినట్టుంది.", "జలుబు కూడా ఉందా? ఏం చేస్తే తగ్గుతుందో చెప్పమంటారా?"},
+            {"%s, అంతా ఓకేనా? దగ్గుతున్నారు.", "తేనె-అల్లం లాంటి చిట్కా చెప్పనా, లేక దగ్గు సిరప్ పేరు కావాలా?"},
+            {"%s, కొంచెం దగ్గుతున్నారు.", "గొంతు గరగరగా ఉందా? ఉప్పు నీళ్లతో పుక్కిలిస్తే బాగుంటుంది. ఇంకా ఏమైనా చెప్పనా?"},
+            {"%s, జాగ్రత్త, దగ్గు వస్తోంది.", "ఏమైనా ఇబ్బందిగా ఉందా? చిట్కాలా, టాబ్లెట్టా, ఏది చెప్పమంటారు?"},
     };
     private static final String[][] COUGH_AGAIN = {
-            {"సర్, మళ్లీ దగ్గుతున్నారు.", "ఇంకా తగ్గలేదా? ఇంకో చిట్కా చెప్పనా, లేక టాబ్లెట్ వేసుకుంటారా?"},
-            {"సర్, దగ్గు ఇంకా ఆగలేదు.", "ఇబ్బందిగా ఉంటే టాబ్లెట్ పేరు చెప్పనా? తగ్గకపోతే ఏ డాక్టర్‌ని చూడాలో కూడా చెప్తాను."},
-            {"సర్, ఇవాళ దగ్గు ఎక్కువగానే ఉంది.", "గోరువెచ్చని నీళ్లు, ఆవిరి పట్టడం చేశారా? టాబ్లెట్ కావాలా?"},
-            {"సర్, మళ్లీ దగ్గు వినిపిస్తోంది.", "జ్వరం ఏమైనా ఉందా? ఏం చేయాలో చెప్పమంటారా?"},
+            {"%s, మళ్లీ దగ్గుతున్నారు.", "ఇంకా తగ్గలేదా? ఇంకో చిట్కా చెప్పనా, లేక టాబ్లెట్ వేసుకుంటారా?"},
+            {"%s, దగ్గు ఇంకా ఆగలేదు.", "ఇబ్బందిగా ఉంటే టాబ్లెట్ పేరు చెప్పనా? తగ్గకపోతే ఏ డాక్టర్‌ని చూడాలో కూడా చెప్తాను."},
+            {"%s, ఇవాళ దగ్గు ఎక్కువగానే ఉంది.", "గోరువెచ్చని నీళ్లు, ఆవిరి పట్టడం చేశారా? టాబ్లెట్ కావాలా?"},
+            {"%s, మళ్లీ దగ్గు వినిపిస్తోంది.", "జ్వరం ఏమైనా ఉందా? ఏం చేయాలో చెప్పమంటారా?"},
     };
     private static final String[][] SNEEZE_ASK = {
-            {"సర్, తుమ్ముతున్నారు, జలుబు చేసిందా?", "ఏమైనా సమస్య ఉందా? ముందు ఇంటి చిట్కాలు చెప్పనా, లేక జలుబు టాబ్లెట్ పేరు చెప్పనా?"},
-            {"సర్, వరుసగా తుమ్ములు వస్తున్నాయి.", "జలుబా, లేక దుమ్ము అలర్జీనా? ఆవిరి పట్టడం లాంటి చిట్కా చెప్పనా?"},
-            {"సర్, బాగున్నారా? తుమ్ములు వినిపిస్తున్నాయి.", "ముక్కు కారుతుందా? ఏం చేస్తే తగ్గుతుందో చెప్పమంటారా?"},
-            {"సర్, జలుబు పట్టినట్టుంది.", "అల్లం టీ లాంటి ఇంటి చిట్కా చెప్పనా, లేక టాబ్లెట్ పేరు కావాలా?"},
+            {"%s, తుమ్మారు, జలుబు చేసిందా?", "ఏమైనా సమస్య ఉందా? ముందు ఇంటి చిట్కాలు చెప్పనా, లేక జలుబు టాబ్లెట్ పేరు చెప్పనా?"},
+            {"%s, తుమ్ము వినిపించింది. బాగున్నారా?", "జలుబా, లేక దుమ్ము అలర్జీనా? ఆవిరి పట్టడం లాంటి చిట్కా చెప్పనా?"},
+            {"%s, తుమ్ముతున్నారు.", "ముక్కు కారుతుందా? ఏం చేస్తే తగ్గుతుందో చెప్పమంటారా?"},
+            {"%s, జలుబు పట్టినట్టుంది.", "అల్లం టీ లాంటి ఇంటి చిట్కా చెప్పనా, లేక టాబ్లెట్ పేరు కావాలా?"},
+    };
+    private static final String[][] SNEEZE_AGAIN = {
+            {"%s, మళ్లీ తుమ్ముతున్నారు.", "జలుబు ఇంకా తగ్గలేదా? ఆవిరి పట్టడం లాంటి చిట్కా చెప్పనా, లేక టాబ్లెట్ పేరు కావాలా?"},
+            {"%s, తుమ్ములు ఇంకా వస్తున్నాయి.", "దుమ్ము అలర్జీ ఏమో? ఏం చేస్తే తగ్గుతుందో చెప్పమంటారా?"},
+            {"%s, ఇవాళ తుమ్ములు ఎక్కువగానే ఉన్నాయి.", "ముక్కు దిబ్బడగా ఉందా? ఇంటి చిట్కా చెప్పనా?"},
     };
 
     void close() {

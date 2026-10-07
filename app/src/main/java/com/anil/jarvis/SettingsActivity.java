@@ -949,7 +949,7 @@ public class SettingsActivity extends Activity {
         note("ఇవి మీ ఫోన్‌లోనే ఉంటాయి. లాక్ స్క్రీన్ మీద కనిపించాలంటే ఫోన్ Settings → Notifications → Lock screen లో \"Show content\" ఆన్ ఉండాలి.");
 
         section("ఆరోగ్యం, ఇతరాలు");
-        coughAsk = toggle("🤧 దగ్గు / తుమ్ములు వినిపిస్తే \"సర్, ఏమైంది?\" అని అడుగు (\"Hey Jarvis\" వినే మైక్‌తోనే, ఫోన్‌లోనే; ఏదీ రికార్డ్ చేయదు)", prefs.coughAsk());
+        coughAsk = toggle("🤧 దగ్గినా, తుమ్మినా (చిన్నగా అయినా) వెంటనే \"" + prefs.name() + ", ఏమైంది?\" అని అడుగు (\"Hey Jarvis\" వినే మైక్‌తోనే, ఫోన్‌లోనే; ఏదీ రికార్డ్ చేయదు)", prefs.coughAsk());
         coughGap = prefs.coughGapMinutes();
         coughGapText = Ui.text(this, "", 15.5f, Ui.CYAN);
         coughGapText.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
@@ -960,7 +960,7 @@ public class SettingsActivity extends Activity {
             int checked = 2;
             for (int i = 0; i < gaps.length; i++) { names[i] = Prefs.gapText(gaps[i]); if (gaps[i] == coughGap) checked = i; }
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                    .setTitle("దగ్గు గురించి మళ్లీ ఎప్పుడు అడగాలి?")
+                    .setTitle("దగ్గు / తుమ్ము గురించి మళ్లీ ఎప్పుడు అడగాలి?")
                     .setSingleChoiceItems(names, checked, (d, w) -> {
                         coughGap = gaps[w];
                         coughGapText.setText("⏱️ ఒకసారి అడిగాక మళ్లీ అడగడానికి: " + Prefs.gapText(coughGap) + "  (మార్చడానికి నొక్కండి)");
@@ -970,6 +970,10 @@ public class SettingsActivity extends Activity {
         });
         box.addView(coughGapText);
         if (!CoughDetector.status.isEmpty()) note(CoughDetector.status);
+        if (!CoughDetector.lastHeard.isEmpty()) note("చివరగా విన్న శబ్దం: " + CoughDetector.lastHeard);
+        int taught = CoughDetector.taughtCount(this);
+        note("తప్పుగా అడిగితే (దగ్గితే తుమ్ము అంటే) \"అది దగ్గు, తుమ్ము కాదు\" అని చెప్పండి: మీ శబ్దం గుర్తుంచుకుంటాను."
+                + (taught > 0 ? " ఇప్పటివరకు నేర్పినవి: " + taught + "." : ""));
         sfx = toggle("Iron Man సౌండ్ ఎఫెక్ట్ (పిలవగానే చిన్న శబ్దం)", prefs.sfx());
         button("అడుగుల లెక్కకి అనుమతి (Physical activity)", v -> requestPermissions(new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, 8));
         note("హోమ్ స్క్రీన్ విడ్జెట్: హోమ్ స్క్రీన్ మీద ఖాళీ చోట నొక్కి పట్టుకుని → Widgets → Jarvis.");
@@ -1507,6 +1511,11 @@ public class SettingsActivity extends Activity {
         if (!VoiceIO.lastTurn.isEmpty()) s.append("• చివరి జవాబుకు పట్టిన సమయం (మీరు ఆపినప్పటి నుంచి): ").append(VoiceIO.lastTurn).append("\n");
         else if (!Ears.lastTimes.isEmpty()) s.append("• చివరి వినడం సమయం: ").append(Ears.lastTimes).append("\n");
         if (!Ears.lastError.isEmpty()) s.append("• మాటలు వినే AI చివరి తప్పు: ").append(Ears.lastError).append("\n");
+        if (prefs.coughAsk()) {
+            s.append("• దగ్గు / తుమ్ము: ").append(CoughDetector.status.isEmpty() ? (WakeService.running ? "ఇంకా ఏ శబ్దం రాలేదు" : "\"Jarvis\" మైక్ ఆగి ఉంది, వినలేను") : CoughDetector.status);
+            if (!CoughDetector.lastHeard.isEmpty()) s.append(" · చివరగా: ").append(CoughDetector.lastHeard);
+            s.append("\n");
+        }
         String last = NotifyListener.lastMessageNote;
         s.append("\nచివరి మెసేజ్: ").append(last == null || last.isEmpty() ? "Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు" : last);
         checkInfo.setText(s.toString().trim());

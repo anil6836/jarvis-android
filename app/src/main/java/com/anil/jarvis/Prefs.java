@@ -250,7 +250,7 @@ final class Prefs {
     boolean holidayRemind() { return sp.getBoolean("holiday_remind", true); }
     /** A message with this code (SMS / WhatsApp) makes the phone ring loud even on silent. */
     boolean findPhone() { return sp.getBoolean("find_phone", true); }
-    /** Hear coughing / sneezing on the wake-word microphone and ask "సర్, ఏమైంది?". */
+    /** Hear coughing / sneezing on the wake-word microphone and ask "<name>, ఏమైంది?". */
     boolean coughAsk() { return sp.getBoolean("cough_ask", true); }
     /** After a call of at least this long, ask "anything to remember?". */
     boolean callNote() { return sp.getBoolean("call_note", true); }
