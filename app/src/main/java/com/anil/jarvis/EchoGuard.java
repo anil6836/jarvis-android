@@ -222,6 +222,9 @@ final class EchoGuard {
             quietRun = 0;
         }
         if (probe != null) probe.add(new double[]{pp.speechProb, fe, me, oe});
+        // his voice in the cleaned mic (any frame): for the classic talk-over, which decides itself (no Gemini to do it)
+        boolean voiceNow = pp.speechProb > .85 && orms > Math.max(3 * Math.max(noise, 20), .25 * his);
+        talkBits = (talkBits << 1) | (voiceNow ? 1 : 0);
         if (ec.resets != seenResets) { // the canceller started over: nothing measured before counts
             seenResets = ec.resets;
             restartMeasures();
@@ -405,6 +408,12 @@ final class EchoGuard {
 
     /** The mic is clean enough to go to Gemini while Jarvis speaks. */
     boolean ready() { return ready; }
+
+    /** The last 32 frames (8 ms each, ~0.26 s) of the cleaned mic, one bit each: his voice in it. */
+    private int talkBits;
+
+    /** How many of the last 32 frames (~0.26 s) had his voice in the cleaned mic (mic thread). */
+    int voiceFrames() { return Integer.bitCount(talkBits); }
 
     /** One line for "Jarvis చెక్". */
     String info() {

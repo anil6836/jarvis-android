@@ -534,7 +534,8 @@ public class SettingsActivity extends Activity {
         String lb0 = prefs.liveBarge();
         liveBarge.check("voice".equals(lb0) ? 96 : "off".equals(lb0) ? 97 : 95);
         box.addView(liveBarge);
-        liveAec = toggle("Jarvis సొంత echo తీసివేత: Jarvis తాను ప్లే చేసే గొంతుని తానే మైక్ నుంచి తీసేస్తుంది (Gemini యాప్ లాగా), అప్పుడు మీరు మాట్లాడగానే ఆగుతుంది", prefs.liveAec());
+        liveAec = toggle("Jarvis సొంత echo తీసివేత: Jarvis తాను ప్లే చేసే గొంతుని తానే మైక్ నుంచి తీసేస్తుంది (Gemini యాప్ లాగా), అప్పుడు మీరు మాట్లాడగానే ఆగుతుంది "
+                + "(Live లో, మామూలు మాటల్లో OpenAI సహజ గొంతుతో కూడా; ఫోన్ గొంతుతో మాట్లాడుతున్నప్పుడు \"Jarvis\" / \"stop\" అంటే ఆగుతుంది)", prefs.liveAec());
         note("Jarvis మాట్లాడుతుండగా తన గొంతుని నేర్చుకుని (మొదటిసారి కొన్ని సెకన్లు, తర్వాత వెంటనే), సరిగ్గా తీసేయగలిగితేనే Gemini లా మీ మాటకి ఆగుతుంది; లేకపోతే పై పద్ధతి. ఏది పనిచేస్తోందో \"Jarvis చెక్\" లో కనిపిస్తుంది. ఏ పద్ధతిలోనైనా: Jarvis మాట్లాడుతుండగా స్క్రీన్‌పై Jarvis (గుండ్రటి గుర్తు) నొక్కితే వెంటనే ఆగి వింటుంది. ఇయర్‌ఫోన్స్ / హెల్మెట్‌తో మీరు మాట్లాడగానే ఆగుతుంది.");
         echoRecord = toggle("Echo పరీక్ష రికార్డింగ్: ప్రతి Gemini Live తర్వాత చివరి 30 సెకన్లు (మైక్, Jarvis గొంతు, శుభ్రం చేసిన మైక్) Downloads/Jarvis లో సేవ్ (సరిచేయడానికి నాకు పంపవచ్చు; మామూలుగా ఆఫ్)", prefs.echoRecord());
         bargeSensLabel = Ui.text(this, "", 15, Ui.MUTED);
@@ -550,7 +551,9 @@ public class SettingsActivity extends Activity {
         box.addView(bargeSens);
         showBargeSens();
         note("మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో ఇంకా బాగా పనిచేస్తుంది.");
-        bargeCallVoice = toggle("Jarvis గొంతుని ఫోన్ కాల్ మార్గంలో పంపు (ప్రతిధ్వని ఇంకా బాగా తీసేస్తుంది, కానీ గొంతు కాల్ లాగా, తక్కువగా ఉంటుంది. మామూలుగా ఆఫ్ ఉంచండి; Jarvis తనంతట తానే ఆగిపోతుంటే లేదా మీ మాట అసలు వినకపోతే మాత్రమే ఆన్ చేయండి)", prefs.bargeCallVoice());
+        bargeCallVoice = toggle("ఫోన్ కాల్ పద్ధతి (పాతది, Live లో, మామూలు మాటల్లో కూడా): Jarvis మాట్లాడేటప్పుడు ఫోన్ కాల్ మోడ్. మధ్యలో మాట్లాడితే ఫోన్ బాగా వింటుంది, "
+                + "కానీ గొంతు కాల్ లాగా ఉంటుంది, volume buttons కాల్ volume కి వెళ్తాయి. మామూలుగా ఆఫ్ ఉంచండి (గొంతు క్లియర్‌గా, AI assistant volume లో); "
+                + "Jarvis తనంతట తానే ఆగిపోతుంటే లేదా మీ మాట అసలు వినకపోతే మాత్రమే ఆన్ చేయండి", prefs.bargeCallVoice());
         realtimeModel = field("OpenAI Live మోడల్", prefs.realtimeModel(), false);
         modelPicker(Models.REALTIME, openAiKey, realtimeModel, "realtime_model");
         // "⚡ Gemini Live" in the voice choice and the Live switches above stay in step

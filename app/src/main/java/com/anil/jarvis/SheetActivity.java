@@ -687,12 +687,14 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onLevel(float level) { orb.setLevel(level); }
 
     @Override public void onSpeakStart() {
+        if (live == null) setVolumeControlStream(voice.volumeStream()); // volume keys = Jarvis's voice (the AI assistant volume)
         orb.setState(OrbView.SPEAKING);
         status.setText("మాట్లాడుతున్నాను…");
         syncPause();
     }
 
     @Override public void onSpeakDone() {
+        if (live == null) setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC); // (Jarvis is quiet: songs again)
         syncPause();
         if (callText != null) { main.postDelayed(this::listen, 150); return; }
         if (liveAfterSpeak) { // he switched to Live by voice: the talk goes on live

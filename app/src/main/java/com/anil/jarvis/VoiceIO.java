@@ -67,10 +67,20 @@ final class VoiceIO {
     private final BargeIn barge;
     private final CallMode call;
 
-    /** Talk-over on: send Jarvis's voice through the call path so the echo canceller removes it from the mic. */
+    /**
+     * The phone's call mode while Jarvis speaks: only with "call voice" on (his old way: the phone's echo canceller at full
+     * strength, but Jarvis then sounds like a phone call and the volume keys work on the call volume). Otherwise Jarvis's
+     * voice stays its clear assistant voice and the talk-over takes Jarvis's voice out of the mic itself (BargeIn.startOwn).
+     */
     private void enterCall() {
-        if (shut || !prefs.bargeIn()) { call.exit(); return; }
-        call.enter(prefs.bargeCallVoice());
+        if (shut || !prefs.bargeIn() || !prefs.bargeCallVoice()) { call.exit(); return; }
+        call.enter(true);
+    }
+
+    /** The volume the keys should work on while Jarvis speaks: the AI assistant volume (the call volume in call mode). */
+    int volumeStream() {
+        if (call.active()) return android.media.AudioManager.USE_DEFAULT_STREAM_TYPE;
+        return Build.VERSION.SDK_INT >= 29 ? 11 : android.media.AudioManager.STREAM_MUSIC; // (11 = STREAM_ASSISTANT)
     }
 
     /** Jarvis's voice itself through the call stream (only with the "call voice" setting). */
@@ -79,11 +89,21 @@ final class VoiceIO {
     /** Start watching for Anil talking over Jarvis (setting "మధ్యలో ఆపి మాట్లాడటం"). */
     private void watchBargeIn() {
         if (shut || paused || !prefs.bargeIn()) return;
-        barge.start(() -> {
+        BargeIn.Callback cb = () -> {
             if (!speaking || shut || paused) return;
             pause(false); // hold, don't lose it: "కొనసాగించు" (or silence) carries on from here
             l.onBargeIn();
-        });
+        };
+        // the call path (his old way) or headphones: by loudness, as before; on the speaker: Jarvis's own echo removal
+        if (call.active() || CallMode.headset(ctx.getSystemService(android.media.AudioManager.class))) barge.start(cb);
+        else barge.startOwn(cb, naturalNow ? natural.echo : null);
+    }
+
+    /** Jarvis's own echo removal for the natural voice on the phone's speaker (talk-over without call mode), or null. */
+    private EchoGuard ownEcho() {
+        if (!prefs.bargeIn() || prefs.bargeCallVoice() || !prefs.liveAec()) return null;
+        if (CallMode.headset(ctx.getSystemService(android.media.AudioManager.class))) return null;
+        return BargeIn.Echo.get(ctx);
     }
 
     private final Context ctx;
@@ -235,6 +255,7 @@ final class VoiceIO {
         matched = new long[0][];
         matchedFor = -1;
         natural.voiceCall = callVoice();
+        natural.echo = callVoice() ? null : ownEcho();
         natural.model = prefs.ttsModel();
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
@@ -295,7 +316,7 @@ final class VoiceIO {
         if (clean.length() > max) clean = clean.substring(0, max);
         try {
             tts.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(callVoice() ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
+                    .setUsage(callVoice() ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_ASSISTANT) // (the AI assistant volume)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
         } catch (Exception ignored) {}
         naturalNow = false;

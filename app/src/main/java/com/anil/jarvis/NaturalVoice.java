@@ -51,6 +51,16 @@ final class NaturalVoice {
     private volatile AudioTrack track;
     /** Play through the call path (talk-over on), so the phone's echo canceller can remove this voice. */
     volatile boolean voiceCall;
+    /**
+     * Jarvis's own echo removal for the talk-over (BargeIn): told what this voice plays and when it leaves the speaker,
+     * so the mic can be cleaned of it (no phone-call mode needed). Null: not used. Set before speak().
+     */
+    volatile EchoGuard echo;
+    /** The echo removal this reply feeds; the speaker's position after its last start and the frames handed since. */
+    private volatile EchoGuard curEcho;
+    private long echoBase, echoWritten;
+    private final AudioTimestamp echoStamp = new AudioTimestamp();
+    private long outLatNs = 60_000_000L;
     /** Paused by ⏸ / "ఆపు": the speaker is stopped and emptied; ▶ plays again from where it was heard. */
     private volatile boolean paused;
     private final Object lock = new Object();   // pause/resume vs. writing to the speaker
@@ -93,9 +103,16 @@ final class NaturalVoice {
             paused = true;
             if (t == null) return;
             try {
+                long headBefore = t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
                 t.pause();
                 t.flush();                                   // drop what was queued: we play it again from our copy
                 long head = t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+                EchoGuard eg = curEcho;
+                if (eg != null) { // (what was queued never sounds: the echo removal forgets it)
+                    eg.flushed(headBefore, head);
+                    echoBase = head;
+                    echoWritten = 0;
+                }
                 long from = restartPoint(heard);
                 base = from - head;
                 seekTo = from * 2;
@@ -207,7 +224,8 @@ final class NaturalVoice {
         resetPauses();
         final String style = STYLE + Emotion.style(emotion);
         final String m = model == null || model.trim().isEmpty() ? DEFAULT_MODEL : model.trim();
-        new Thread(() -> run(gen, apiKey, m, voice, text, style, cb), "jarvis-tts").start();
+        final EchoGuard eg = echo;
+        new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cb), "jarvis-tts").start();
     }
 
     void stop() {
@@ -229,7 +247,7 @@ final class NaturalVoice {
         }
     }
 
-    private void run(int gen, String apiKey, String model, String voice, String text, String style, Callback cb) {
+    private void run(int gen, String apiKey, String model, String voice, String text, String style, EchoGuard eg, Callback cb) {
         HttpURLConnection c = null;
         AudioTrack t = null;
         final boolean[] started = {false};
@@ -285,6 +303,10 @@ final class NaturalVoice {
                 if (gen != generation) { t.release(); t = null; return; } // stopped just now: never keep (or play) it
                 track = t;
                 PlaybackLevel.begin(t, RATE, 0);
+                curEcho = eg;
+                echoBase = 0;
+                echoWritten = 0;
+                if (eg != null) eg.flushed(Long.MAX_VALUE / 8, 0); // a new speaker: its frames count from 0 (nothing dropped)
                 if (!paused) t.play();
             }
 
@@ -336,8 +358,7 @@ final class NaturalVoice {
                 int w;
                 synchronized (lock) {
                     if (paused || seekTo >= 0 || gen != generation) continue; // paused meanwhile: don't queue stale sound
-                    w = t.write(chunk, 0, n, AudioTrack.WRITE_NON_BLOCKING);
-                    if (w > 0) PlaybackLevel.feed(chunk, 0, w);
+                    w = writeOut(t, chunk, n);
                 }
                 if (w < 0) throw new IllegalStateException("audio " + w);
                 if (w == 0) { SystemClock.sleep(10); continue; }
@@ -386,6 +407,43 @@ final class NaturalVoice {
         }
     }
 
+    /** Hands sound to the speaker (under lock): the face's level and the echo removal are told what was handed over. */
+    private int writeOut(AudioTrack t, byte[] chunk, int n) {
+        EchoGuard eg = curEcho;
+        boolean dry = eg != null && (t.getPlaybackHeadPosition() & 0xFFFFFFFFL) >= echoBase + echoWritten; // it had run dry
+        int w = t.write(chunk, 0, n, AudioTrack.WRITE_NON_BLOCKING);
+        if (w > 0) {
+            PlaybackLevel.feed(chunk, 0, w);
+            if (eg != null) {
+                eg.written(chunk, 0, w);
+                echoWritten += w / 2;
+                mapEcho(t, eg, dry);
+            }
+        }
+        return w;
+    }
+
+    /**
+     * Tells the echo removal when the speaker plays which frame: from the speaker's own time stamp while it plays on,
+     * else (it had run dry: the stamp is from before the gap) from its position and the latency learnt (as Gemini Live).
+     */
+    private void mapEcho(AudioTrack t, EchoGuard eg, boolean afterDry) {
+        long now = System.nanoTime();
+        long head = t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+        boolean ok = false;
+        if (!afterDry) {
+            try { ok = t.getTimestamp(echoStamp); } catch (Exception ignored) {}
+        }
+        if (ok && echoStamp.nanoTime > now - 80_000_000L && echoStamp.nanoTime < now + 100_000_000L
+                && echoStamp.framePosition >= echoBase && echoStamp.framePosition <= echoBase + echoWritten) {
+            eg.presented(echoStamp.nanoTime, echoStamp.framePosition);
+            long lat = echoStamp.nanoTime + (long) ((head - echoStamp.framePosition) * 1e9 / RATE) - now;
+            if (lat > 0 && lat < 400_000_000L) outLatNs = (long) (.8 * outLatNs + .2 * lat);
+        } else {
+            eg.presented(now + outLatNs, head);
+        }
+    }
+
     /** After a pause late in the reply: writes the sound again from byte position from to the end. */
     private void writeRest(AudioTrack t, int gen, long from, Pcm pcm) {
         byte[] chunk = new byte[8192];
@@ -397,8 +455,7 @@ final class NaturalVoice {
             int w;
             synchronized (lock) {
                 if (paused || seekTo >= 0) return;
-                w = t.write(chunk, 0, n, AudioTrack.WRITE_NON_BLOCKING);
-                if (w > 0) PlaybackLevel.feed(chunk, 0, w);
+                w = writeOut(t, chunk, n);
             }
             if (w < 0) return;
             if (w == 0) { SystemClock.sleep(10); continue; }
