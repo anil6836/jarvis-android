@@ -56,7 +56,7 @@ public class SettingsActivity extends Activity {
     private TextView listenWindowLabel;
     private TextView lockInfo, docsInfo, waInfo;
     private EditText sosContacts, smartUrls, smartApp, walletMax;
-    private Switch walletPay, emotions;
+    private Switch walletPay, emotions, micOnce;
     private Switch alexaSpeak, livePatient, scamGuard, readNews;
     private Switch newsAuto;
     private EditText newsPlaces;
@@ -418,6 +418,8 @@ public class SettingsActivity extends Activity {
                 + "మాత్రం దాని కింద ఎంచుకున్న పద్ధతితో వింటాయి. బైక్ మీద గొంతుతో మార్చొచ్చు: \"Jarvis, Google వాయిస్‌కి మారు\", \"Live పెట్టు\", \"Live ఆపు\", \"OpenAI కి మారు\".");
         voice = toggle("సమాధానాలు పైకి చదివి వినిపించు", prefs.voiceReplies());
         followUp = toggle("సమాధానం తర్వాత మళ్లీ వినడం (సంభాషణ మోడ్)", prefs.followUp());
+        micOnce = toggle("Google వాయిస్ టైపింగ్: మైక్ ఒక్కసారే ఆన్ (మళ్లీ మళ్లీ ఆన్/ఆఫ్ కాదు, బీప్‌లు తక్కువ, పాటలు మ్యూట్ కాకుండా తగ్గుతాయి; "
+                + "ఆఫ్: పిలిచాక వినే సమయం అంతా మైక్ తెరిచి ఉంచడానికి ప్రయత్నిస్తుంది)", prefs.micOnce());
         listenWindowLabel = Ui.text(this, "", 15, Ui.MUTED);
         box.addView(listenWindowLabel);
         listenWindow = new SeekBar(this);
@@ -1479,7 +1481,7 @@ public class SettingsActivity extends Activity {
                 .append("\n   (▶ మైక్ మొదలు · 🎙 తెరిచింది · ■ మీరు మాట్లాడటం ఆపారు · ✗ ఫోన్ ఆపింది)\n");
         if (!MicQuiet.info.isEmpty()) s.append("• మైక్ బీప్ ఆపడానికి క్షణం పాటు మ్యూట్ చేసేవి: ").append(MicQuiet.info).append("\n");
         s.append("• మాటలు వినే పద్ధతి: ").append("gemini".equals(prefs.earsMode()) ? "Gemini (Jarvis సొంత మైక్)" : "google".equals(prefs.earsMode())
-                ? "Google వాయిస్ టైపింగ్ (బీప్‌లతో)" : "OpenAI " + prefs.earsModel() + " (Jarvis సొంత మైక్)").append("\n");
+                ? "Google వాయిస్ టైపింగ్ (బీప్‌లతో" + (prefs.micOnce() ? ", మైక్ ఒక్కసారే)" : ", మైక్ ఎక్కువ సేపు)") : "OpenAI " + prefs.earsModel() + " (Jarvis సొంత మైక్)").append("\n");
         if (prefs.liveMode()) s.append("• Live: ").append(LiveTalk.label(prefs)).append(prefs.liveGemini() ? " (" + prefs.geminiLiveModel() + ", గొంతు " + prefs.geminiLiveVoice() + ")" : "")
                 .append(prefs.liveKeyReady() ? "" : " ✗ key లేదు").append("\n");
         s.append("• నెట్ లేనప్పుడు: ").append(prefs.offlineAuto() ? "ఆటోమేటిక్‌గా offline (" + OfflineKit.line(this) + ")" : "offline కి మారదు (ఆఫ్)")
@@ -1645,6 +1647,7 @@ public class SettingsActivity extends Activity {
         try { e.putFloat("bike_kwh", Math.max(0.5f, Math.min(50f, Float.parseFloat(bikeKwh.getText().toString().trim())))); } catch (Exception ignored) {}
         try { e.putFloat("power_rate", Math.max(0f, Math.min(100f, Float.parseFloat(powerRate.getText().toString().trim())))); } catch (Exception ignored) {}
         e.putInt("listen_window", listenWindow.getProgress() + 3).putBoolean("listen_window_set", true);
+        e.putBoolean("mic_once", micOnce.isChecked());
         e.putString("sos_contacts", sosContacts.getText().toString().trim());
         e.putString("smart_urls", smartUrls.getText().toString().trim());
         e.putString("smart_app", smartApp.getText().toString().trim());

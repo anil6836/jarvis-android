@@ -335,6 +335,12 @@ final class Prefs {
     long updateStartedAt() { return sp.getLong("update_started_at", 0); }
     void setUpdateStartedAt(long t) { sp.edit().putLong("update_started_at", t).apply(); }
     /** After "Jarvis", keep listening at least this long for Anil to start speaking. */
+    /**
+     * The phone's voice typing (Google): the mic is opened once per listen and never reopened (one beep in, one out; songs
+     * go quieter instead of being muted). Off: it is held open for the whole listen window and reopened when the phone
+     * closes it early (his old way; on some phones that means the mic going on and off).
+     */
+    boolean micOnce() { return sp.getBoolean("mic_once", true); }
     int listenWindowSeconds() {
         int v = sp.getInt("listen_window", 8);
         // 5 s (the old default) was too short on some phones: 8 s unless he set it himself in this version's settings

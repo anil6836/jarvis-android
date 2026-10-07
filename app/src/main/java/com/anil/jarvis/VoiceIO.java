@@ -670,7 +670,7 @@ final class VoiceIO {
     /** The held-open time is nearly over: mute for the closing beep. */
     private final Runnable nearEnd = this::nearEnd;
 
-    private void nearEnd() { if (listening && recBusy && !shut) MicQuiet.hold(ctx, this); }
+    private void nearEnd() { if (listening && recBusy && !shut) quiet(); }
 
     /** The window is over and no words came: Jarvis closes the mic itself (the phone may keep it open on a noise). */
     private final Runnable windowEnd = this::windowEnd;
@@ -772,8 +772,10 @@ final class VoiceIO {
         VoiceIO other = holder;
         holder = this;
         if (other != null && other != this && other.listening && !other.shut) other.micTaken(); // (after listening = true here)
+        once = prefs.micOnce();
         if (teluguNow) { trace("📴"); listenTelugu(dictation); return; }
         if (Ears.chosen(prefs) && !offlineNow) { listenEars(dictation); return; } // Jarvis's own mic: no beeps
+        if (once && musicDown == null) musicDown = Duck.hold(ctx); // songs go quieter while the phone listens (not muted)
         if (offlineNow) {
             trace("📴");
             if (lang.startsWith("te") && !OfflineKit.useOnDevice(ctx, lang)
@@ -789,6 +791,19 @@ final class VoiceIO {
 
     /** This listen is Jarvis's own Telugu ears without internet. */
     private boolean teluguNow;
+    /** This listen opens the phone's mic once (Prefs.micOnce). */
+    private boolean once;
+    /** Songs kept quieter while the phone's mic listens (mic once), let go when the listen ends. */
+    private android.media.AudioFocusRequest musicDown;
+
+    /** The phone's mic beep is about to sound: muted, unless the mic is opened only once (then songs are only quieter). */
+    private void quiet() { if (!once) MicQuiet.hold(ctx, this); }
+
+    private void musicUp() {
+        android.media.AudioFocusRequest r = musicDown;
+        musicDown = null;
+        if (r != null) Duck.release(ctx, r);
+    }
 
     /** Without internet, Jarvis's own Telugu ears: like listenEars, and the words show while he talks. */
     private void listenTelugu(boolean dictation) {
@@ -865,7 +880,7 @@ final class VoiceIO {
         long now = android.os.SystemClock.elapsedRealtime();
         long keep = windowUntil == 0 ? windowMs : windowUntil - now;
         tryKeep = keep;
-        holdOpen = keep >= HOLD_MIN_MS;
+        holdOpen = !once && keep >= HOLD_MIN_MS; // (mic once: the phone's own end of talk, nothing held open)
         if (holdOpen) lastIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, keep);
         else lastIntent.removeExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS);
         ending = false;
@@ -874,7 +889,7 @@ final class VoiceIO {
         minEnd = holdOpen ? now + keep : 0;
         level.newTry();
         main.removeCallbacks(nearEnd);
-        MicQuiet.hold(ctx, this); // the phone's beep as the mic opens
+        quiet(); // the phone's beep as the mic opens
         try {
             sr = newRecognizer();
             ready = false;
@@ -1047,7 +1062,7 @@ final class VoiceIO {
         earlyEnds[offlineTry() ? 1 : 0] = 0; // the mic stayed open until he finished: holding works here
         trace("■");
         main.removeCallbacks(nearEnd);
-        MicQuiet.hold(ctx, this); // the phone's beep as the mic closes
+        quiet(); // the phone's beep as the mic closes
         try {
             sr.stopListening(); // what was said so far is recognized as if he had stopped here
         } catch (Exception e) {
@@ -1105,6 +1120,7 @@ final class VoiceIO {
                 fail(error);
                 return;
             default: {
+                if (once && ready) { fail(error); return; } // mic once: it opened, he gets no second beep (he says "Jarvis" again)
                 boolean inWindow = windowUntil == 0 ? now < hardUntil : now < windowUntil && now < hardUntil;
                 // out of time (or too little left), too many tries, or it keeps failing before the mic opens: stop (and say why)
                 if (!inWindow || spent(now) || tries >= MAX_TRIES || quick >= MAX_QUICK) { fail(error); return; }
@@ -1141,7 +1157,7 @@ final class VoiceIO {
         if (!wasOpen) quick++;
         long now = android.os.SystemClock.elapsedRealtime();
         boolean inWindow = windowUntil == 0 ? now < hardUntil : now < windowUntil && now < hardUntil;
-        boolean tooLate = wasOpen && windowUntil > 0 && windowUntil - now < HOLD_MIN_MS;
+        boolean tooLate = wasOpen && windowUntil > 0 && windowUntil - now < HOLD_MIN_MS || once && wasOpen;
         if (!wrapUp && inWindow && !tooLate && tries < MAX_TRIES && quick < MAX_QUICK) {
             retry(150);
             return;
@@ -1157,6 +1173,7 @@ final class VoiceIO {
         listening = false;
         session++;
         letGo();
+        musicUp();
         MicQuiet.release(this);
         done("✓ విన్నాను");
         boolean own = Ears.chosen(prefs) && offlineLang == null;
@@ -1175,6 +1192,7 @@ final class VoiceIO {
         listening = false;
         session++;
         letGo();
+        musicUp();
         MicQuiet.release(this);
         done("✗ " + failText(error));
         l.onListenFailed(error);
@@ -1192,7 +1210,7 @@ final class VoiceIO {
         recBusy = false;
         ready = false;
         if (r == null) return;
-        if (open) MicQuiet.hold(ctx, this);
+        if (open) quiet();
         main.post(() -> { try { r.cancel(); } catch (Exception ignored) {} });
         main.postDelayed(() -> { try { r.destroy(); } catch (Exception ignored) {} }, 1000);
     }
@@ -1268,7 +1286,7 @@ final class VoiceIO {
         main.removeCallbacks(endCheck);
         main.removeCallbacks(nearEnd);
         if (sr != null && recBusy) {
-            MicQuiet.hold(ctx, this); // the phone's beep as the mic closes
+            quiet(); // the phone's beep as the mic closes
             try { sr.stopListening(); alive(ending ? RESULT_WAIT_MS : QUIET_WAIT_MS); return; } catch (Exception ignored) {}
         }
         if (!partial.isEmpty()) { heard(partial); return; }
@@ -1277,6 +1295,7 @@ final class VoiceIO {
         listening = false;
         session++;
         letGo();
+        musicUp();
         MicQuiet.release(this);
         done("ఆపారు");
         l.onHeard("");
@@ -1293,6 +1312,7 @@ final class VoiceIO {
         windowUntil = 0;
         letGo();
         listening = false;
+        musicUp();
         MicQuiet.release(this);
         if (was) done("ఆపాను");
     }
@@ -1318,6 +1338,7 @@ final class VoiceIO {
         main.removeCallbacks(windowEnd);
         letGo();
         MicQuiet.release(this);
+        musicUp();
         if (tts != null) {
             TextToSpeech t = tts;
             tts = null;
