@@ -1,0 +1,547 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.9/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:javaPreCompileRelease
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:mergeReleaseNativeLibs
+> Task :app:checkReleaseAarMetadata
+> Task :app:generateReleaseResValues
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources
+
+> Task :app:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libjnidispatch.so, libonnxruntime.so, libonnxruntime4j_jni.so, libtensorflowlite_jni.so, libvosk.so.
+
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:packageReleaseResources
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeReleaseResources
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :app:parseReleaseLocalResources
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:desugarReleaseFileDependencies
+> Task :app:mergeReleaseStartupProfile
+> Task :app:processReleaseManifestForPackage
+> Task :app:mergeReleaseArtProfile
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:compressReleaseAssets
+> Task :app:processReleaseResources
+> Task :app:collectReleaseDependencies
+> Task :app:mergeReleaseJavaResource
+
+> Task :app:compileReleaseJavaWithJavac
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:175: error: illegal start of type
+        try { return new JSONObject(sp(c).getString("days", "{}")); } catch (Exception e) { return new JSONObject(); }
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:175: error: illegal start of type
+        try { return new JSONObject(sp(c).getString("days", "{}")); } catch (Exception e) { return new JSONObject(); }
+                                                                      ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:175: error: ';' expected
+        try { return new JSONObject(sp(c).getString("days", "{}")); } catch (Exception e) { return new JSONObject(); }
+                                                                                        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:178: error: class, interface, enum, or record expected
+    static int count(Context c, LocalDate day, String kind) {
+           ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:180: error: class, interface, enum, or record expected
+        return d == null ? 0 : d.optInt("sneeze".equals(kind) ? "s" : "c");
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:181: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:186: error: class, interface, enum, or record expected
+        JSONObject all = days(c);
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:187: error: class, interface, enum, or record expected
+        JSONObject a = all.optJSONObject(day.minusDays(1).toString()), b = all.optJSONObject(day.toString());
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:188: error: class, interface, enum, or record expected
+        JSONArray ha = a == null ? null : a.optJSONArray("ch"), hb = b == null ? null : b.optJSONArray("ch");
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:189: error: class, interface, enum, or record expected
+        for (int h = 22; ha != null && h < 24; h++) n += ha.optInt(h);
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:189: error: class, interface, enum, or record expected
+        for (int h = 22; ha != null && h < 24; h++) n += ha.optInt(h);
+                         ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:189: error: class, interface, enum, or record expected
+        for (int h = 22; ha != null && h < 24; h++) n += ha.optInt(h);
+                                               ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:190: error: class, interface, enum, or record expected
+        for (int h = 0; hb != null && h < 6; h++) n += hb.optInt(h);
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:190: error: class, interface, enum, or record expected
+        for (int h = 0; hb != null && h < 6; h++) n += hb.optInt(h);
+                        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:190: error: class, interface, enum, or record expected
+        for (int h = 0; hb != null && h < 6; h++) n += hb.optInt(h);
+                                             ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:191: error: class, interface, enum, or record expected
+        return n;
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:192: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:197: error: class, interface, enum, or record expected
+        if (count(c, d, "cough") < 2) d = d.minusDays(1);
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:198: error: class, interface, enum, or record expected
+        int n = 0;
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:199: error: class, interface, enum, or record expected
+        while (n < 60 && count(c, d, "cough") >= 2) { n++; d = d.minusDays(1); }
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:199: error: class, interface, enum, or record expected
+        while (n < 60 && count(c, d, "cough") >= 2) { n++; d = d.minusDays(1); }
+                                                           ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:199: error: class, interface, enum, or record expected
+        while (n < 60 && count(c, d, "cough") >= 2) { n++; d = d.minusDays(1); }
+                                                                               ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:201: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:205: error: class, interface, enum, or record expected
+        if (d.equals(t)) return "ఈరోజు";
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:206: error: class, interface, enum, or record expected
+        if (d.equals(t.minusDays(1))) return "నిన్న";
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:207: error: class, interface, enum, or record expected
+        return DAYS_TE[d.getDayOfWeek().getValue()] + " " + d.getDayOfMonth() + "/" + d.getMonthValue();
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:208: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:213: error: class, interface, enum, or record expected
+        int total = 0;
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:214: error: class, interface, enum, or record expected
+        for (int i = 6; i >= 0; i--) {
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:214: error: class, interface, enum, or record expected
+        for (int i = 6; i >= 0; i--) {
+                        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:214: error: class, interface, enum, or record expected
+        for (int i = 6; i >= 0; i--) {
+                                ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:216: error: class, interface, enum, or record expected
+            int n = count(c, d, "cough"), s = count(c, d, "sneeze");
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:217: error: class, interface, enum, or record expected
+            total += n + s;
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:218: error: class, interface, enum, or record expected
+            if (b.length() > 0) b.append(" · ");
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:219: error: class, interface, enum, or record expected
+            b.append(DAYS_TE[d.getDayOfWeek().getValue()]).append(' ').append(n).append(s > 0 ? "+" + s + "🤧" : "");
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:220: error: class, interface, enum, or record expected
+        }
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:222: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:227: error: class, interface, enum, or record expected
+        int recent = 0, before = 0;
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:228: error: class, interface, enum, or record expected
+        for (int i = 0; i < Math.max(1, Math.min(30, days)); i++) {
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:228: error: class, interface, enum, or record expected
+        for (int i = 0; i < Math.max(1, Math.min(30, days)); i++) {
+                        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:228: error: class, interface, enum, or record expected
+        for (int i = 0; i < Math.max(1, Math.min(30, days)); i++) {
+                                                             ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:230: error: class, interface, enum, or record expected
+            int n = count(c, d, "cough"), s = count(c, d, "sneeze");
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:231: error: class, interface, enum, or record expected
+            a.put(new JSONObject().put("day", dayName(d)).put("coughs", n).put("sneezes", s).put("night_coughs", night(c, d)));
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:232: error: class, interface, enum, or record expected
+            if (i >= 1 && i <= 2) recent += n;
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:233: error: class, interface, enum, or record expected
+            if (i >= 3 && i <= 4) before += n;
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:234: error: class, interface, enum, or record expected
+        }
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:238: error: class, interface, enum, or record expected
+        if (recent + before >= 6) o.put("trend", recent > before * 1.3 ? "going up" : recent < before * 0.7 ? "going down" : "about the same");
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:239: error: class, interface, enum, or record expected
+        o.put("last_night", new JSONObject().put("coughs", night(c, LocalDate.now())).put("snoring_minutes", nightSnore(c, LocalDate.now())));
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:240: error: class, interface, enum, or record expected
+        JSONObject bodyToday = new JSONObject();
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:241: error: class, interface, enum, or record expected
+        for (String k : new String[]{"sniff", "throat", "wheeze", "hiccup", "burp"}) { int v = body(c, LocalDate.now(), k); if (v > 0) bodyToday.put(k, v); }
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:241: error: class, interface, enum, or record expected
+        for (String k : new String[]{"sniff", "throat", "wheeze", "hiccup", "burp"}) { int v = body(c, LocalDate.now(), k); if (v > 0) bodyToday.put(k, v); }
+                                                                                                                            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:241: error: class, interface, enum, or record expected
+        for (String k : new String[]{"sniff", "throat", "wheeze", "hiccup", "burp"}) { int v = body(c, LocalDate.now(), k); if (v > 0) bodyToday.put(k, v); }
+                                                                                                                                                            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:243: error: class, interface, enum, or record expected
+        try { JSONObject sp = sneezePattern(c); if (sp.has("insight_telugu")) o.put("sneeze_pattern", sp.getString("insight_telugu")); } catch (Exception ignored) {}
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:243: error: class, interface, enum, or record expected
+        try { JSONObject sp = sneezePattern(c); if (sp.has("insight_telugu")) o.put("sneeze_pattern", sp.getString("insight_telugu")); } catch (Exception ignored) {}
+                                                ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:243: error: class, interface, enum, or record expected
+        try { JSONObject sp = sneezePattern(c); if (sp.has("insight_telugu")) o.put("sneeze_pattern", sp.getString("insight_telugu")); } catch (Exception ignored) {}
+                                                                                                                                       ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:245: error: class, interface, enum, or record expected
+        for (JSONObject x : recentCare(c, 3)) care.put(x.optString("when") + " " + x.optString("text"));
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:246: error: class, interface, enum, or record expected
+        if (care.length() > 0) o.put("care_last_3_days", care);
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:247: error: class, interface, enum, or record expected
+        o.put("note", "Counts are what the phone's microphone heard while the wake word was listening (approximate). "
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:249: error: class, interface, enum, or record expected
+        return o;
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:250: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:257: error: class, interface, enum, or record expected
+            Notes.add(c, CARE, o, 120);
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:258: error: class, interface, enum, or record expected
+            if ("better".equals(type)) sp(c).edit().putLong("better_at", System.currentTimeMillis()).apply();
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:259: error: class, interface, enum, or record expected
+        } catch (Exception ignored) {}
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:264: error: class, interface, enum, or record expected
+        List<JSONObject> l = Notes.list(c, CARE), out = new java.util.ArrayList<>();
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:265: error: class, interface, enum, or record expected
+        for (JSONObject o : l) {
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:267: error: class, interface, enum, or record expected
+            LocalDateTime t = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(o.optLong("t")), ZoneId.systemDefault());
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:268: error: class, interface, enum, or record expected
+            try { o.put("when", dayName(t.toLocalDate()) + " " + String.format(Locale.ENGLISH, "%d:%02d", t.getHour(), t.getMinute())); } catch (Exception ignored) {}
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:268: error: class, interface, enum, or record expected
+            try { o.put("when", dayName(t.toLocalDate()) + " " + String.format(Locale.ENGLISH, "%d:%02d", t.getHour(), t.getMinute())); } catch (Exception ignored) {}
+                                                                                                                                        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:270: error: class, interface, enum, or record expected
+        }
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:272: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:276: error: class, interface, enum, or record expected
+        String text = w.startsWith("garg") || w.contains("పుక్కి") ? "ఉప్పు నీళ్లతో పుక్కిలించారు" : w.startsWith("steam") || w.contains("ఆవిరి") ? "ఆవిరి పట్టారు"
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:278: error: class, interface, enum, or record expected
+        care(c, "remedy", text + (heard ? " (Jarvis విన్నాడు)" : ""));
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:279: error: class, interface, enum, or record expected
+        sp(c).edit().putLong("remedy_" + (w.startsWith("garg") || w.contains("పుక్కి") ? "gargle" : w.startsWith("steam") || w.contains("ఆవిరి") ? "steam" : "water"),
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:281: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:285: error: class, interface, enum, or record expected
+        try {
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:287: error: class, interface, enum, or record expected
+            Notes.save(c, DOSES, new java.util.ArrayList<>(), 10);
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:288: error: class, interface, enum, or record expected
+        } catch (Exception ignored) {}
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:289: error: <identifier> expected
+        AlarmManager am = c.getSystemService(AlarmManager.class);
+                                                               ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:290: error: class, interface, enum, or record expected
+        if (am != null) am.cancel(checkPi(c));
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:291: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:298: error: class, interface, enum, or record expected
+        care(c, "medicine", n + " వేసుకున్నారు");
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:299: error: class, interface, enum, or record expected
+        JSONObject out = new JSONObject().put("ok", true).put("noted", n);
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:300: error: class, interface, enum, or record expected
+        if (everyHours >= 1 && everyHours <= 24 && doses != 0) {
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:302: error: class, interface, enum, or record expected
+            JSONObject d = new JSONObject().put("id", Notes.id("cd")).put("name", n).put("every", every)
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:305: error: class, interface, enum, or record expected
+            for (JSONObject old : Notes.list(c, DOSES)) if (old.optString("name").equalsIgnoreCase(n)) { cancelDose(c, old.optString("id")); Notes.remove(c, DOSES, "id", old.optString("id")); }
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:305: error: class, interface, enum, or record expected
+            for (JSONObject old : Notes.list(c, DOSES)) if (old.optString("name").equalsIgnoreCase(n)) { cancelDose(c, old.optString("id")); Notes.remove(c, DOSES, "id", old.optString("id")); }
+                                                                                                                                             ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:305: error: class, interface, enum, or record expected
+            for (JSONObject old : Notes.list(c, DOSES)) if (old.optString("name").equalsIgnoreCase(n)) { cancelDose(c, old.optString("id")); Notes.remove(c, DOSES, "id", old.optString("id")); }
+                                                                                                                                                                                                ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:307: error: class, interface, enum, or record expected
+            scheduleDose(c, d);
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:308: error: class, interface, enum, or record expected
+            out.put("next_dose", clock(d.optLong("next")));
+            ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:309: error: class, interface, enum, or record expected
+        }
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:311: error: class, interface, enum, or record expected
+        out.put("note", "Tell him in one line it is noted" + (out.has("next_dose") ? " and Jarvis will remind the next dose at " + out.optString("next_dose") : "")
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:313: error: class, interface, enum, or record expected
+        return out;
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:314: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:318: error: class, interface, enum, or record expected
+        int h = d.getHour();
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:319: error: class, interface, enum, or record expected
+        String part = h < 12 ? "ఉదయం" : h < 16 ? "మధ్యాహ్నం" : h < 19 ? "సాయంత్రం" : "రాత్రి";
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:320: error: class, interface, enum, or record expected
+        return (d.toLocalDate().equals(LocalDate.now()) ? "" : dayName(d.toLocalDate()) + " ") + part + " " + (h % 12 == 0 ? 12 : h % 12)
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:322: error: class, interface, enum, or record expected
+    }
+    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:325: error: <identifier> expected
+        Intent i = new Intent(c, AlarmReceiver.class).setAction(action).putExtra("id", id).setData(Uri.parse("jarvis://cough/" + action + "/" + id));
+                                                    ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:326: error: class, interface, enum, or record expected
+        return PendingIntent.getBroadcast(c, (action + id).hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        ^
+/home/runner/work/jarvis-android/jarvis-android/app/src/main/java/com/anil/jarvis/CoughLog.java:327: error: class, interface, enum, or record expected
+    }
+    ^
+
+> Task :app:mergeExtDexRelease
+
+> Task :app:compileReleaseJavaWithJavac FAILED
+100 errors
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_5-1791407113364.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileReleaseJavaWithJavac'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+* Exception is:
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:compileReleaseJavaWithJavac'.
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:130)
+	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:293)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:128)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:85)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+Caused by: org.gradle.api.internal.tasks.compile.CompilationFailedException: Compilation failed; see the compiler error output for details.
+	at org.gradle.api.internal.tasks.compile.JdkJavaCompiler.execute(JdkJavaCompiler.java:79)
+	at org.gradle.api.internal.tasks.compile.JdkJavaCompiler.execute(JdkJavaCompiler.java:46)
+	at org.gradle.api.internal.tasks.compile.NormalizingJavaCompiler.delegateAndHandleErrors(NormalizingJavaCompiler.java:98)
+	at org.gradle.api.internal.tasks.compile.NormalizingJavaCompiler.execute(NormalizingJavaCompiler.java:52)
+	at org.gradle.api.internal.tasks.compile.NormalizingJavaCompiler.execute(NormalizingJavaCompiler.java:38)
+	at org.gradle.api.internal.tasks.compile.AnnotationProcessorDiscoveringCompiler.execute(AnnotationProcessorDiscoveringCompiler.java:52)
+	at org.gradle.api.internal.tasks.compile.AnnotationProcessorDiscoveringCompiler.execute(AnnotationProcessorDiscoveringCompiler.java:38)
+	at org.gradle.api.internal.tasks.compile.ModuleApplicationNameWritingCompiler.execute(ModuleApplicationNameWritingCompiler.java:46)
+	at org.gradle.api.internal.tasks.compile.ModuleApplicationNameWritingCompiler.execute(ModuleApplicationNameWritingCompiler.java:36)
+	at org.gradle.jvm.toolchain.internal.DefaultToolchainJavaCompiler.execute(DefaultToolchainJavaCompiler.java:57)
+	at org.gradle.api.tasks.compile.JavaCompile.lambda$createToolchainCompiler$3(JavaCompile.java:202)
+	at org.gradle.api.internal.tasks.compile.CleaningJavaCompiler.execute(CleaningJavaCompiler.java:53)
+	at org.gradle.api.internal.tasks.compile.incremental.IncrementalCompilerFactory.lambda$createRebuildAllCompiler$0(IncrementalCompilerFactory.java:52)
+	at org.gradle.api.internal.tasks.compile.incremental.SelectiveCompiler.execute(SelectiveCompiler.java:70)
+	at org.gradle.api.internal.tasks.compile.incremental.SelectiveCompiler.execute(SelectiveCompiler.java:44)
+	at org.gradle.api.internal.tasks.compile.incremental.IncrementalResultStoringCompiler.execute(IncrementalResultStoringCompiler.java:66)
+	at org.gradle.api.internal.tasks.compile.incremental.IncrementalResultStoringCompiler.execute(IncrementalResultStoringCompiler.java:52)
+	at org.gradle.api.internal.tasks.compile.CompileJavaBuildOperationReportingCompiler$1.call(CompileJavaBuildOperationReportingCompiler.java:64)
+	at org.gradle.api.internal.tasks.compile.CompileJavaBuildOperationReportingCompiler$1.call(CompileJavaBuildOperationReportingCompiler.java:48)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.api.internal.tasks.compile.CompileJavaBuildOperationReportingCompiler.execute(CompileJavaBuildOperationReportingCompiler.java:48)
+	at org.gradle.api.tasks.compile.JavaCompile.performCompilation(JavaCompile.java:220)
+	at org.gradle.api.tasks.compile.JavaCompile.performIncrementalCompilation(JavaCompile.java:161)
+	at org.gradle.api.tasks.compile.JavaCompile.compile(JavaCompile.java:146)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
+	at org.gradle.api.internal.project.taskfactory.IncrementalTaskAction.doExecute(IncrementalTaskAction.java:45)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:51)
+	at org.gradle.api.internal.project.taskfactory.IncrementalTaskAction.execute(IncrementalTaskAction.java:26)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:29)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:244)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:229)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:212)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:195)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:162)
+	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
+	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:42)
+	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:75)
+	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:67)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:37)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:69)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:46)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:40)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:29)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$1(BuildCacheStep.java:75)
+	at org.gradle.internal.Either$Right.fold(Either.java:175)
+	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:75)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:35)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:65)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:36)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:105)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:54)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:64)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:43)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:125)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:61)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:289)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:48)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:35)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:61)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:127)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:85)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+
+
+BUILD FAILED in 22s
+30 actionable tasks: 30 executed
