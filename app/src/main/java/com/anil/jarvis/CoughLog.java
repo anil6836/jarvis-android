@@ -172,6 +172,8 @@ final class CoughLog {
         }
         return o;
     }
+
+    private static JSONObject days(Context c) {
         try { return new JSONObject(sp(c).getString("days", "{}")); } catch (Exception e) { return new JSONObject(); }
     }
 
