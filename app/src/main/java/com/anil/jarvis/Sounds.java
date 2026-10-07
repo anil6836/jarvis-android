@@ -32,7 +32,7 @@ final class Sounds {
     private Sounds() {}
 
     static final int KNOCK = 353, DOOR = 348, DOORBELL = 349, DINGDONG = 350, WHISTLE = 396, STEAM_WHISTLE = 397,
-            STEAM = 290, GARGLE = 51, GURGLE = 291;
+            STEAM = 290, GARGLE = 51, GURGLE = 291, MUSIC = 132;
     static final String ACTION_COOKER_OK = "com.anil.jarvis.COOKER_OK";
     private static final String CHANNEL = "jarvis_house_sounds";
     private static final int NOTE_COOKER = 7310, NOTE_DOOR = 7311;
@@ -40,6 +40,8 @@ final class Sounds {
 
     /** Counting whistles / learning a sound: the sound model must run and the mic must stay on. */
     static volatile boolean cookerOn;
+    private static volatile long cookerStart;
+    private static final long COOKER_MAX = 2 * 3600_000L;
     private static volatile String teachKind;
     private static volatile long teachUntil;
     private static volatile boolean loaded;
@@ -52,6 +54,17 @@ final class Sounds {
         if (loaded) return;
         loaded = true;
         cookerOn = cookerActive(c);
+        cookerStart = sp(c).getLong("cooker_start", 0);
+    }
+
+    /** Counting now? A count he forgot (whistles missed, no "ఆపాను") ends by itself after 2 hours. */
+    static boolean counting(Context c) {
+        load(c);
+        if (cookerOn && System.currentTimeMillis() - cookerStart > COOKER_MAX) {
+            cookerOn = false;
+            sp(c).edit().putInt("cooker_target", 0).apply();
+        }
+        return cookerOn;
     }
 
     /** "music" (default: only while songs play or earphones are on), "always" or "off". */
@@ -69,12 +82,11 @@ final class Sounds {
 
     /** The sound model has work besides coughs. */
     static boolean wanted(Context c) {
-        load(c);
-        return cookerOn || teaching() || !"off".equals(doorMode(c));
+        return counting(c) || teaching() || !"off".equals(doorMode(c));
     }
 
     /** The microphone must stay on whatever the "when to listen" setting says (counting whistles, learning, a test). */
-    static boolean holdMic() { return cookerOn || teaching() || CoughDetector.testing(); }
+    static boolean holdMic(Context c) { return counting(c) || teaching() || CoughDetector.testing(); }
 
     static boolean teaching() { return teachKind != null && System.currentTimeMillis() < teachUntil; }
 
@@ -88,9 +100,11 @@ final class Sounds {
         load(c);
         long now = System.currentTimeMillis();
         boolean test = CoughDetector.testing(); // the test screen only shows what it heard: nothing is said or counted
-        if (teaching()) {
+        if (teaching() && s[0] < 0.3 && !MainActivity.busyTalking() && ("bell".equals(teachKind) || loudChunks >= 5)) {
+            // not his voice or Jarvis's own (speech), and a cooker whistle is a long sound
             String k = teachKind;
             teachKind = null;
+            if (k == null) return null;
             keep(c, k, s);
             Announcer.say(c, "సరే, ఈ శబ్దం మీ " + label(k) + " అని గుర్తుపెట్టుకున్నాను.");
             return "నేర్చుకున్నాను: " + label(k);
@@ -98,20 +112,22 @@ final class Sounds {
         // pressure-cooker whistle: long and loud, sounds like a whistle / steam (or like his own cooker)
         double w = Math.max(Math.max(s[STEAM_WHISTLE], s[WHISTLE]), 0.8 * s[STEAM]);
         boolean whistle = (w >= 0.25 && loudChunks >= 7) || (similar(c, "cooker", s) >= 0.85 && loudChunks >= 5);
-        if (whistle && (cookerOn || test)) {
+        if (whistle && (counting(c) || test)) {
             if (test) return "కుక్కర్ విజిల్";
             if (now - lastWhistleAt > 25_000) { lastWhistleAt = now; whistle(c); }
             else lastWhistleAt = now; // the same whistle still going
             return "కుక్కర్ విజిల్";
         }
         // gargling (a home remedy done)
-        if (Math.max(s[GARGLE], s[GURGLE]) >= 0.3 && loudChunks >= 6) {
+        if (s[GARGLE] >= 0.3 && loudChunks >= 6 && !cookerOn && (test || CoughLog.coughDays(c))) { // only on cough days (sinks, pots also gurgle)
             if (!test && now - lastGargleAt > 10 * 60_000L) { lastGargleAt = now; CoughLog.remedyDone(c, "gargle", true); }
             return "పుక్కిలించడం";
         }
         // the calling bell / a knock on the door
-        boolean bell = Math.max(s[DOORBELL], s[DINGDONG]) >= 0.3 || similar(c, "bell", s) >= 0.88;
-        boolean knock = s[KNOCK] + 0.5 * s[DOOR] >= 0.4;
+        // the mic itself hears music (songs on the speaker, TV): a bell or a beat in a song must not stop it - only a clear one
+        boolean music = s[MUSIC] >= 0.4;
+        boolean bell = Math.max(s[DOORBELL], s[DINGDONG]) >= (music ? 0.6 : 0.3) || similar(c, "bell", s) >= (music ? 0.93 : 0.88);
+        boolean knock = s[KNOCK] + 0.5 * s[DOOR] >= (music ? 0.7 : 0.4);
         if (bell || knock) {
             if (!test && now - lastDoorAt > 30_000) { lastDoorAt = now; door(c, bell); }
             return bell ? "కాలింగ్ బెల్" : "తలుపు కొట్టడం";
@@ -128,7 +144,7 @@ final class Sounds {
         String mode = doorMode(c);
         if (mode.equals("off")) return;
         Prefs p = new Prefs(c);
-        if (p.night() || CallControl.busyWithCall() || MainActivity.busyTalking()) return;
+        if (p.night() || p.driving() || CallControl.busyWithCall() || MainActivity.busyTalking()) return; // riding: the helmet's Bluetooth isn't "earphones"
         AudioManager am = c.getSystemService(AudioManager.class);
         boolean music = am != null && am.isMusicActive();
         if (mode.equals("music") && !music && !earphones(am)) return; // he can hear it himself
@@ -169,24 +185,29 @@ final class Sounds {
     /** "3 విజిల్స్ లెక్కపెట్టు". */
     static JSONObject startCooker(Context c, int whistles) throws Exception {
         int n = Math.max(1, Math.min(15, whistles));
-        sp(c).edit().putInt("cooker_target", n).putInt("cooker_count", 0).putLong("cooker_start", System.currentTimeMillis()).apply();
-        cookerOn = true;
+        boolean mic = WakeService.running || new Prefs(c).wakeReady();
+        if (!mic) return new JSONObject().put("ok", false)
+                .put("problem", "The 'Jarvis' wake-word microphone is off, so Jarvis cannot hear the whistles. Tell him to switch on the wake word in Settings, then ask again.");
+        long now = System.currentTimeMillis();
+        sp(c).edit().putInt("cooker_target", n).putInt("cooker_count", 0).putLong("cooker_start", now).apply();
         loaded = true;
+        cookerStart = now;
+        cookerOn = true;
         cancelRepeats();
-        boolean mic = WakeService.running;
-        if (mic) WakeService.recheck(c);
-        else if (new Prefs(c).wakeReady()) { WakeService.start(c, false); mic = true; }
+        if (WakeService.running) WakeService.recheck(c);
+        else WakeService.start(c, MainActivity.busyTalking()); // not over a talk that has the mic now
+        final Context app = c.getApplicationContext();
+        main.postDelayed(() -> { if (cookerStart == now && cookerOn) stopCooker(app); }, COOKER_MAX + 60_000); // forgotten: the mic rests again
         note(c, NOTE_COOKER, "🍲 కుక్కర్: 0 / " + n + " విజిల్స్", "Jarvis వింటున్నాడు. చివరి విజిల్‌కి స్టవ్ ఆపమని చెప్తాను.", "ఆపు");
         JSONObject o = new JSONObject().put("ok", true).put("counting", n);
-        if (!mic) o.put("problem", "The 'Jarvis' wake-word microphone is off, so Jarvis cannot hear the whistles. Tell him to switch on the wake word in Settings.");
-        else o.put("note", "Tell him in a few words: Jarvis is listening and will say each whistle, and tell him to switch off the stove at whistle " + n
+        o.put("note", "Tell him in a few words: Jarvis is listening and will say each whistle, and tell him to switch off the stove at whistle " + n
                 + ". Keep the phone in the kitchen, near the cooker.");
         return o;
     }
 
     static JSONObject cookerStatus(Context c) throws Exception {
         SharedPreferences s = sp(c);
-        return new JSONObject().put("ok", true).put("counting", cookerActive(c)).put("whistles_heard", s.getInt("cooker_count", 0))
+        return new JSONObject().put("ok", true).put("counting", counting(c)).put("whistles_heard", s.getInt("cooker_count", 0))
                 .put("target", s.getInt("cooker_target", 0));
     }
 

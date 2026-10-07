@@ -116,6 +116,15 @@ public class WakeService extends Service {
         }
     };
 
+    /** While the mic is held on (whistles, a test): look every 30 s, so the mic rests again as soon as the hold ends. */
+    private final Runnable holdWatch = new Runnable() {
+        @Override public void run() {
+            if (!running) return;
+            applyPhoneState.run();
+            if (Sounds.holdMic(WakeService.this)) main.postDelayed(this, 30_000);
+        }
+    };
+
     private final android.content.BroadcastReceiver phoneState = new android.content.BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             applyPhoneState.run();
@@ -188,7 +197,7 @@ public class WakeService extends Service {
     /** Whether the wake word may listen right now, per the "when to listen" setting. */
     private boolean allowedNow() {
         if (RecorderService.recording) return false; // the mic is recording a sermon / meeting
-        if (Sounds.holdMic()) return true;          // counting cooker whistles, learning a sound, the sound test
+        if (Sounds.holdMic(this)) return true;      // counting cooker whistles, learning a sound, the sound test
         String when = new Prefs(this).wakeWhen();
         if ("always".equals(when)) return true;
         if ("charging".equals(when)) {
@@ -235,8 +244,8 @@ public class WakeService extends Service {
         }
         running = true;
         if (ACTION_RECHECK.equals(action)) {
-            main.removeCallbacks(applyPhoneState);
-            main.post(applyPhoneState);
+            main.removeCallbacks(holdWatch);
+            main.post(holdWatch);
         } else if (ACTION_PAUSE.equals(action)) {
             main.removeCallbacks(fallbackResume);
             stopEngine();

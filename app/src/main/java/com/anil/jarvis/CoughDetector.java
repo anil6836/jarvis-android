@@ -112,7 +112,7 @@ final class CoughDetector {
             // Coughs are counted all day (the daily count), so asking a short while ago no longer stops it.
             on = !missing && failures < 5 && (p.coughAsk() || Sounds.wanted(ctx));
         }
-        boolean live = Sounds.holdMic(); // a test, counting whistles, learning a sound: at once, not after 10 s
+        boolean live = Sounds.holdMic(ctx); // a test, counting whistles, learning a sound: at once, not after 10 s
         if (!(on || (live && !missing)) || !full || busy) return;
         if (failures > 0 && now - failedAt < 120_000) return; // something went wrong a moment ago: rest a little
         // a cough / sneeze / knock starts as a short burst well above the room's background
@@ -135,6 +135,7 @@ final class CoughDetector {
     /** For the next seconds: every loud sound is shown with what Jarvis made of it, and nothing is asked or counted. */
     static void startTest(int seconds) {
         synchronized (testLines) { testLines.clear(); }
+        lastScores = null; // "the last one was my bell" must be a sound from this test
         testUntil = System.currentTimeMillis() + seconds * 1000L;
     }
 

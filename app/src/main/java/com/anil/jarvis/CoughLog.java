@@ -191,7 +191,7 @@ final class CoughLog {
         if (everyHours >= 1 && everyHours <= 24 && doses != 0) {
             long every = Math.round(everyHours * 3600_000L);
             JSONObject d = new JSONObject().put("id", Notes.id("cd")).put("name", n).put("every", every)
-                    .put("left", doses < 0 ? 99 : doses).put("next", System.currentTimeMillis() + every);
+                    .put("left", doses < 0 ? 99 : doses).put("next", daytime(System.currentTimeMillis() + every));
             // the same medicine again replaces its old reminder
             for (JSONObject old : Notes.list(c, DOSES)) if (old.optString("name").equalsIgnoreCase(n)) { cancelDose(c, old.optString("id")); Notes.remove(c, DOSES, "id", old.optString("id")); }
             Notes.add(c, DOSES, d, 10);
@@ -226,6 +226,21 @@ final class CoughLog {
         Reminders.setAlarm(c, d.optLong("next"), dosePi(c, ACTION_DOSE, d.optString("id")));
     }
 
+    /** A dose time out of the night: 10 pm - 7 am -> 7 am (he isn't woken for a cough syrup). */
+    private static long daytime(long t) {
+        LocalDateTime at = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(t), ZoneId.systemDefault());
+        if (at.getHour() >= 22) at = at.toLocalDate().plusDays(1).atTime(7, 0);
+        else if (at.getHour() < 7) at = at.toLocalDate().atTime(7, 0);
+        return at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    /** The next dose after now, stepping by the gap, out of the night. */
+    private static long nextDose(JSONObject d) {
+        long now = System.currentTimeMillis(), every = Math.max(3600_000L, d.optLong("every")), next = d.optLong("next");
+        while (next <= now + 30_000) next += every;
+        return daytime(next);
+    }
+
     private static void cancelDose(Context c, String id) {
         AlarmManager am = c.getSystemService(AlarmManager.class);
         if (am == null) return;
@@ -239,7 +254,9 @@ final class CoughLog {
         LocalDateTime at = LocalDateTime.now().plusSeconds(delay / 1000);
         if (at.getHour() >= 22) at = at.toLocalDate().plusDays(1).atTime(8, 0);
         else if (at.getHour() < 7) at = at.toLocalDate().atTime(8, 0);
-        Reminders.setAlarm(c, at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(), checkPi(c));
+        long t = at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        sp(c).edit().putLong("check_at", t).apply(); // brought back after a reboot
+        Reminders.setAlarm(c, t, checkPi(c));
     }
 
     /** After a reboot or an update: the dose reminders back. */
@@ -247,15 +264,18 @@ final class CoughLog {
         long now = System.currentTimeMillis();
         for (JSONObject d : Notes.list(c, DOSES)) {
             try {
-                if (d.optLong("next") < now) { d.put("next", now + 60_000); Notes.update(c, DOSES, d); }
+                if (d.optLong("next") < now) { d.put("next", nextDose(d)); Notes.update(c, DOSES, d); } // missed while off: the next one, not "now"
                 scheduleDose(c, d);
             } catch (Exception ignored) {}
         }
+        long check = sp(c).getLong("check_at", 0);
+        if (check > now) Reminders.setAlarm(c, check, checkPi(c));
     }
 
     static void onAlarm(Context c, String action, String id) throws Exception {
         Prefs p = new Prefs(c);
         if (ACTION_CHECK.equals(action)) {
+            sp(c).edit().remove("check_at").apply();
             if (p.night() || CallControl.busyWithCall() || Rest.resting(c) || MainActivity.busyTalking() || p.driving()) { scheduleCheck(c, 3600_000L); return; }
             int today = count(c, LocalDate.now(), "cough");
             int days = streak(c);
@@ -275,7 +295,7 @@ final class CoughLog {
             NotificationManager nm = c.getSystemService(NotificationManager.class);
             if (nm != null) nm.cancel(id.hashCode());
             if (left <= 0) { Notes.remove(c, DOSES, "id", id); return; }
-            d.put("left", left).put("next", System.currentTimeMillis() + d.optLong("every"));
+            d.put("left", left).put("unanswered", 0).put("next", daytime(System.currentTimeMillis() + d.optLong("every")));
             Notes.update(c, DOSES, d);
             scheduleDose(c, d);
             return;
@@ -288,10 +308,24 @@ final class CoughLog {
             if (nm != null) nm.cancel(id.hashCode());
             return;
         }
-        // ACTION_DOSE: time for the next one
+        // ACTION_DOSE: time for this one; the one after is set now (if he never taps ✅, the reminders still go on)
         String text = d.optString("name") + " వేసుకునే సమయం అయింది.";
         notifyDose(c, d, text);
-        boolean quiet = p.night() || CallControl.busyWithCall() || Rest.resting(c);
+        int unanswered = d.optInt("unanswered") + 1;
+        if (unanswered >= 3) { // three in a row with no ✅: he has stopped it himself; this is the last one
+            Notes.remove(c, DOSES, "id", id);
+        } else {
+            d.put("unanswered", unanswered).put("next", nextDose(d));
+            Notes.update(c, DOSES, d);
+            scheduleDose(c, d);
+        }
+        int h = LocalTime.now().getHour();
+        boolean dnd = false;
+        try {
+            NotificationManager nm = c.getSystemService(NotificationManager.class);
+            dnd = nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL;
+        } catch (Exception ignored) {}
+        boolean quiet = p.night() || dnd || h >= 22 || h < 7 || CallControl.busyWithCall() || Rest.resting(c);
         if (!quiet) Announcer.say(c, p.name() + ", " + text);
     }
 
@@ -321,7 +355,8 @@ final class CoughLog {
         int today = count(c, LocalDate.now(), "cough"), yesterday = count(c, LocalDate.now().minusDays(1), "cough");
         if (System.currentTimeMillis() - better < 24 * 3600_000L) return today >= 8; // he said it settled: only a real return
         if (today >= 3 || yesterday >= 5) return true;
-        for (JSONObject o : recentCare(c, 2)) if ("medicine".equals(o.optString("type")) || "note".equals(o.optString("type"))) return true;
+        for (JSONObject o : recentCare(c, 2))
+            if (o.optLong("t") > better && ("medicine".equals(o.optString("type")) || "note".equals(o.optString("type")))) return true;
         return false;
     }
 
