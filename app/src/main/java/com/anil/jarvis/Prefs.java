@@ -87,6 +87,8 @@ final class Prefs {
     /** Speak with feelings: laugh, happy, sad, excited... (on by default). */
     boolean emotions() { return sp.getBoolean("emotions", true); }
     String naturalVoiceName() { return sp.getString("natural_voice_name", "cedar"); }
+    /** The OpenAI model that speaks in the natural voice (he can change it in Settings). */
+    String ttsModel() { String m = sp.getString("tts_model", "").trim(); return m.isEmpty() ? NaturalVoice.DEFAULT_MODEL : m; }
 
     // ---- live (real-time) conversation
     static final String DEFAULT_REALTIME_MODEL = "gpt-realtime-2.1-mini";

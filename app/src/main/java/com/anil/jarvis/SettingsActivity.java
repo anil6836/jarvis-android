@@ -71,7 +71,7 @@ public class SettingsActivity extends Activity {
     private TextView liveVoiceLabel;
     /** The voice choice and the Live switches are being put in step (their listeners wait). */
     private boolean syncingVoice;
-    private EditText earsModel;
+    private EditText earsModel, ttsModel;
     private EditText myNames;
     private Switch bubbleAll;
     private EditText priceCity, dailyPrices, findCode;
@@ -468,6 +468,10 @@ public class SettingsActivity extends Activity {
         for (int i = 0; i < NaturalVoice.VOICES.length; i++) if (NaturalVoice.VOICES[i].equals(prefs.naturalVoiceName())) current = i;
         voicePick.setSelection(current);
         box.addView(voicePick, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+        ttsModel = field("OpenAI గొంతు మోడల్ (మాట్లాడే మోడల్)", prefs.ttsModel(), false);
+        modelPicker(Models.TTS, openAiKey, ttsModel, "tts_model");
+        note("మొదట gpt-4o-mini-tts (భావాలతో మాట్లాడుతుంది, అన్ని గొంతులూ ఉంటాయి). tts-1 / tts-1-hd పాత మోడల్స్: భావాలు ఉండవు, "
+                + "cedar, marin, ballad, verse గొంతులు ఉండవు. మార్చాక \"ఈ గొంతు వినిపించు\" తో వినండి.");
         button("ఈ గొంతు వినిపించు", v -> testVoice());
         voiceInfo = Ui.text(this, "", 14, Ui.MUTED);
         box.addView(voiceInfo);
@@ -1461,6 +1465,7 @@ public class SettingsActivity extends Activity {
                 : "✗ బ్యాటరీ సేవర్ మినహాయింపు లేదు: ఫోన్ Jarvis ని ఆపేయవచ్చు\n");
         if (prefs.wakeReady()) s.append(WakeService.running ? "✓ \"Jarvis\" వేక్ వర్డ్: నడుస్తోంది\n" : "✗ \"Jarvis\" వేక్ వర్డ్: ఆగి ఉంది\n");
         if (stuckTalking()) s.append("✗ Jarvis 'మాట్లాడుతున్నాను' అనే స్థితిలో ఇరుక్కుంది\n");
+        if (prefs.naturalVoice()) s.append("• మాట్లాడే గొంతు: OpenAI ").append(prefs.ttsModel()).append(" · ").append(prefs.naturalVoiceName()).append("\n");
         if (prefs.naturalVoice() && prefs.openAiKey().trim().isEmpty()) s.append("• సహజ గొంతుకి OpenAI key లేదు: ఫోన్ గొంతుతో మాట్లాడతాను\n");
         else if (prefs.naturalVoice() && VoiceIO.naturalError != null)
             s.append("• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): ").append(VoiceIO.naturalError).append("\n");
@@ -1609,6 +1614,7 @@ public class SettingsActivity extends Activity {
         e.putInt("briefing_minute", briefMinute);
         e.putBoolean("briefing_speak", briefingSpeak.isChecked());
         e.putString("natural_voice_name", NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())]);
+        e.putString("tts_model", ttsModel.getText().toString().trim());
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("live_patient", livePatient.isChecked());
         e.putBoolean("scam_guard", scamGuard.isChecked());
@@ -1762,9 +1768,11 @@ public class SettingsActivity extends Activity {
         String v = NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())];
         String n = name.getText().toString().trim();
         voiceInfo.setText("వినిపిస్తున్నాను…");
+        String tm = ttsModel.getText().toString().trim();
+        tester.model = tm.isEmpty() ? NaturalVoice.DEFAULT_MODEL : tm;
         tester.speak(key, v, "నమస్కారం " + (n.isEmpty() ? "Anil" : n) + ". నేను Jarvis. మీ సేవలో ఎప్పుడూ సిద్ధంగా ఉంటాను.", new NaturalVoice.Callback() {
-            @Override public void onStart() { voiceInfo.setText("గొంతు: " + v); }
-            @Override public void onDone() { voiceInfo.setText("గొంతు: " + v + " ✓"); }
+            @Override public void onStart() { voiceInfo.setText("గొంతు: " + v + " · " + tester.model); }
+            @Override public void onDone() { voiceInfo.setText("గొంతు: " + v + " · " + tester.model + " ✓"); }
             @Override public void onError(String message) { voiceInfo.setText("పనిచేయలేదు: " + message); }
         });
     }

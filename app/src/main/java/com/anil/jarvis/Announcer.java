@@ -58,6 +58,7 @@ final class Announcer {
         String key = p.openAiKey().trim();
         if (p.naturalVoice() && !key.isEmpty()) {
             talking = true;
+            natural.model = p.ttsModel();
             natural.speak(key, p.naturalVoiceName(), text, new NaturalVoice.Callback() {
                 @Override public void onStart() {}
                 @Override public void onDone() { next(app); }

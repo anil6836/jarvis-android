@@ -28,6 +28,15 @@ final class NaturalVoice {
         void onError(String message);
     }
 
+    /** The speaking model when he hasn't chosen one. */
+    static final String DEFAULT_MODEL = "gpt-4o-mini-tts";
+    /** The older models (tts-1, tts-1-hd) have only these voices, and no feelings (instructions). */
+    private static final java.util.Set<String> OLD_VOICES = new java.util.HashSet<>(java.util.Arrays.asList(
+            "alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"));
+
+    /** The model to speak with (Settings → సహజ గొంతు → మోడల్); set before speak(). */
+    volatile String model = DEFAULT_MODEL;
+
     static final String[] VOICES = {"cedar", "marin", "ash", "ballad", "verse", "echo", "sage", "coral", "alloy", "shimmer"};
     static final int RATE = 24000;
     private static final String STYLE =
@@ -197,7 +206,8 @@ final class NaturalVoice {
         complete = false;
         resetPauses();
         final String style = STYLE + Emotion.style(emotion);
-        new Thread(() -> run(gen, apiKey, voice, text, style, cb), "jarvis-tts").start();
+        final String m = model == null || model.trim().isEmpty() ? DEFAULT_MODEL : model.trim();
+        new Thread(() -> run(gen, apiKey, m, voice, text, style, cb), "jarvis-tts").start();
     }
 
     void stop() {
@@ -219,17 +229,20 @@ final class NaturalVoice {
         }
     }
 
-    private void run(int gen, String apiKey, String voice, String text, String style, Callback cb) {
+    private void run(int gen, String apiKey, String model, String voice, String text, String style, Callback cb) {
         HttpURLConnection c = null;
         AudioTrack t = null;
         final boolean[] started = {false};
         try {
+            boolean old = model.toLowerCase(java.util.Locale.ROOT).startsWith("tts-1");
+            if (old && !OLD_VOICES.contains(voice)) // (said plainly, before OpenAI refuses it)
+                throw new IllegalStateException(model + " లో \"" + voice + "\" గొంతు లేదు: alloy, ash, coral, echo, sage, shimmer లో ఒకటి ఎంచుకోండి");
             JSONObject body = new JSONObject()
-                    .put("model", "gpt-4o-mini-tts")
+                    .put("model", model)
                     .put("voice", voice)
                     .put("input", text)
-                    .put("instructions", style)
                     .put("response_format", "pcm");
+            if (!old) body.put("instructions", style); // (the older models take no feelings)
             byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
             c = (HttpURLConnection) new URL("https://api.openai.com/v1/audio/speech").openConnection();
             c.setRequestMethod("POST");
