@@ -971,6 +971,50 @@ public class SettingsActivity extends Activity {
         box.addView(coughGapText);
         if (!CoughDetector.status.isEmpty()) note(CoughDetector.status);
         if (!CoughDetector.lastHeard.isEmpty()) note("చివరగా విన్న శబ్దం: " + CoughDetector.lastHeard);
+        String week = CoughLog.weekLine(this);
+        if (!week.isEmpty()) note(week);
+        button("🎙️ దగ్గు / శబ్దం టెస్ట్ (30 సెకన్లు): దగ్గి చూడండి, Jarvis ఏం విన్నాడో చూపిస్తుంది", v -> soundTest());
+        button("📄 డాక్టర్ కోసం దగ్గు రిపోర్ట్ (PDF)", v -> {
+            Toast.makeText(this, "రిపోర్ట్ తయారవుతోంది…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                try {
+                    Coder.Made m = CoughLog.report(getApplicationContext());
+                    runOnUiThread(() -> { if (m.uri != null) Cards.view(this, m); else Toast.makeText(this, "సేవ్ అయింది: " + m.where, Toast.LENGTH_LONG).show(); });
+                } catch (Exception e) {
+                    runOnUiThread(() -> Toast.makeText(this, "రిపోర్ట్ తయారు కాలేదు: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }, "jarvis-cough-report").start();
+        });
+        Switch remedies = toggle("🍯 దగ్గు ఉన్న రోజుల్లో ఇంటి చిట్కాలు గుర్తుచేయి (గోరువెచ్చని నీళ్లు, పుక్కిలించడం, ఆవిరి; డ్యూటీ రోజు నోటిఫికేషన్ మాత్రమే)", CoughLog.remediesOn(this));
+        remedies.setOnCheckedChangeListener((sw, isOn) -> CoughLog.setRemedies(this, isOn));
+        TextView door = Ui.text(this, "", 15.5f, Ui.CYAN);
+        door.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        door.setText("🚪 తలుపు కొట్టినా, బెల్ మోగినా చెప్పు: " + Sounds.doorModeText(Sounds.doorMode(this)) + "  (మార్చడానికి నొక్కండి)");
+        door.setOnClickListener(v -> {
+            final String[] modes = {"music", "always", "off"};
+            String[] names = new String[modes.length];
+            int checked = 0;
+            for (int i = 0; i < modes.length; i++) { names[i] = Sounds.doorModeText(modes[i]); if (modes[i].equals(Sounds.doorMode(this))) checked = i; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("తలుపు / కాలింగ్ బెల్ ఎప్పుడు చెప్పాలి?")
+                    .setSingleChoiceItems(names, checked, (d, w) -> {
+                        Sounds.setDoorMode(this, modes[w]);
+                        door.setText("🚪 తలుపు కొట్టినా, బెల్ మోగినా చెప్పు: " + Sounds.doorModeText(modes[w]) + "  (మార్చడానికి నొక్కండి)");
+                        d.dismiss();
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        box.addView(door);
+        button("🔔 నా కాలింగ్ బెల్ నేర్పించు" + (Sounds.taughtCount(this, "bell") > 0 ? " (నేర్చుకున్నవి: " + Sounds.taughtCount(this, "bell") + ")" : ""), v -> {
+            Sounds.teach(this, "bell");
+            Toast.makeText(this, "ఇప్పుడు 30 సెకన్లలో బెల్ మోగించండి (ఫోన్ దగ్గరగా)", Toast.LENGTH_LONG).show();
+        });
+        button("🍲 నా కుక్కర్ విజిల్ నేర్పించు" + (Sounds.taughtCount(this, "cooker") > 0 ? " (నేర్చుకున్నవి: " + Sounds.taughtCount(this, "cooker") + ")" : ""), v -> {
+            Sounds.teach(this, "cooker");
+            Toast.makeText(this, "కుక్కర్ విజిల్ వచ్చే ముందు నొక్కండి: తర్వాతి 30 సెకన్లలో వచ్చే శబ్దం నేర్చుకుంటాను", Toast.LENGTH_LONG).show();
+        });
+        note("కుక్కర్ విజిల్స్ లెక్కపెట్టాలంటే \"Jarvis, 3 విజిల్స్ లెక్కపెట్టు\" అనండి. లెక్కపెడుతున్నంత సేపు స్క్రీన్ ఆఫ్ అయినా మైక్ వింటుంది; "
+                + "ప్రతి విజిల్ చెప్తాను, చివరిదానికి \"స్టవ్ ఆపండి\" అంటాను. తలుపు అలర్ట్ పాట ఆపి చెప్తుంది. ఏదీ రికార్డ్ చేయదు, ఫోన్‌లోనే.");
         int taught = CoughDetector.taughtCount(this);
         note("తప్పుగా అడిగితే (దగ్గితే తుమ్ము అంటే) \"అది దగ్గు, తుమ్ము కాదు\" అని చెప్పండి: మీ శబ్దం గుర్తుంచుకుంటాను."
                 + (taught > 0 ? " ఇప్పటివరకు నేర్పినవి: " + taught + "." : ""));
@@ -2371,6 +2415,52 @@ public class SettingsActivity extends Activity {
                 : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         box.addView(e, new LinearLayout.LayoutParams(-1, -2));
         return e;
+    }
+
+    /** "దగ్గు / శబ్దం టెస్ట్": 30 seconds of what the microphone hears and what Jarvis makes of it (nothing asked or counted). */
+    private void soundTest() {
+        if (!WakeService.running || !WakeService.hearing) {
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Jarvis మైక్ ఇప్పుడు వినడం లేదు")
+                    .setMessage("దగ్గు, తలుపు, కుక్కర్ శబ్దాలు \"Jarvis\" వేక్ వర్డ్ మైక్‌తోనే వింటాను. పైన వేక్ వర్డ్ ఆన్ చేసి, Jarvis తో మాట్లాడటం ఆపాక మళ్లీ నొక్కండి.")
+                    .setPositiveButton("సరే", null).show();
+            return;
+        }
+        CoughDetector.startTest(30);
+        WakeService.recheck(this);
+        TextView t = Ui.text(this, "వింటున్నాను… ఫోన్‌కి మీటర్ దూరంలో దగ్గండి / తుమ్మండి / బెల్ మోగించండి.", 15, Ui.TEXT);
+        int pad = Ui.dp(this, 20);
+        t.setPadding(pad, pad, pad, pad);
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(t);
+        android.app.AlertDialog d = new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🎙️ శబ్దం టెస్ట్")
+                .setView(sv)
+                .setPositiveButton("ఆపు", null)
+                .setNeutralButton("చివరిది నా బెల్", null)
+                .setNegativeButton("చివరిది కుక్కర్", null)
+                .create();
+        android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        Runnable tick = new Runnable() {
+            @Override public void run() {
+                if (!d.isShowing()) return;
+                long left = CoughDetector.testLeftMs();
+                String lines = CoughDetector.testText();
+                t.setText((left > 0 ? "⏱ ఇంకా " + (left / 1000 + 1) + " సెకన్లు · " : "✓ టెస్ట్ అయిపోయింది · ")
+                        + "ఫోన్‌కి మీటర్ దూరంలో దగ్గండి / తుమ్మండి / బెల్ మోగించండి.\n\n"
+                        + (lines.isEmpty() ? "ఇంకా ఏ గట్టి శబ్దం వినలేదు." : lines));
+                if (left > 0) h.postDelayed(this, 400);
+            }
+        };
+        d.setOnShowListener(x -> {
+            d.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v ->
+                    Toast.makeText(this, Sounds.teachLast(this, "bell") ? "సరే, ఆ శబ్దం మీ బెల్ అని గుర్తుపెట్టుకున్నాను" : "ఇంకా ఏ శబ్దం వినలేదు", Toast.LENGTH_SHORT).show());
+            d.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v ->
+                    Toast.makeText(this, Sounds.teachLast(this, "cooker") ? "సరే, ఆ శబ్దం మీ కుక్కర్ విజిల్ అని గుర్తుపెట్టుకున్నాను" : "ఇంకా ఏ శబ్దం వినలేదు", Toast.LENGTH_SHORT).show());
+            h.post(tick);
+        });
+        d.setOnDismissListener(x -> { CoughDetector.stopTest(); WakeService.recheck(this); });
+        d.show();
     }
 
     private Switch toggle(String label, boolean on) {

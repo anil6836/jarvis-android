@@ -54,6 +54,16 @@ public class AlarmReceiver extends BroadcastReceiver {
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, Medicine.ACTION_TAKEN.equals(action) ? 500 : 9000);
                 break;
             }
+            case CoughLog.ACTION_DOSE:
+            case CoughLog.ACTION_DOSE_TAKEN:
+            case CoughLog.ACTION_DOSE_LATER:
+            case CoughLog.ACTION_CHECK: {
+                PendingResult pr = goAsync(); // time for Jarvis to say it
+                try { CoughLog.onAlarm(c, action, i.getStringExtra("id")); } catch (Exception ignored) {}
+                new Handler(Looper.getMainLooper()).postDelayed(pr::finish, CoughLog.ACTION_DOSE_TAKEN.equals(action) ? 500 : 9000);
+                break;
+            }
+            case Sounds.ACTION_COOKER_OK: Sounds.stopCooker(c); break;
             case StopAlarm.ACTION_OFF: StopAlarm.stoppedFromNotification(c); break;
             case Guard.ACTION_STOP: Guard.stop(c); break;
             case Duty.ACTION_NAP: { // up 60 minutes before leaving at the latest; 90 minutes at most
@@ -149,6 +159,7 @@ public class AlarmReceiver extends BroadcastReceiver {
             case Intent.ACTION_TIMEZONE_CHANGED:
                 Reminders.rescheduleAll(c);
                 Medicine.rescheduleAll(c);
+                try { CoughLog.rearm(c); } catch (Exception ignored) {}
                 try { SongAlarm.rescheduleAll(c); } catch (Exception ignored) {}
                 MedicalId.update(c);
                 GeoReminders.rearmAll(c);

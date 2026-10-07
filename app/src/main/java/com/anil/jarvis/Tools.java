@@ -557,6 +557,25 @@ final class Tools {
                         {"want", "string", "home (default), tablet, doctor or all"}, {"cough_listen", "string", "on or off (only to change that setting)"},
                         {"cough_gap_minutes", "integer", "Only to change how long after asking about a cough Jarvis waits before asking again (e.g. 30, 60, 120; 1440 = once a day)"},
                         {"heard", "string", "Only to correct the sound Jarvis just asked about: cough, sneeze or none"}})));
+        DEFS.add(new Def("cough_log", "His cough / sneeze record (counted by the phone's microphone) and the care around it. "
+                + "today (default): coughs and sneezes heard today and the last days, night coughs, days in a row, going up or down ('ఈరోజు ఎన్నిసార్లు దగ్గాను?'); "
+                + "report: the doctor's summary PDF (daily counts, night coughs, medicines taken, what he said, home remedies, BP / sugar, his medical card) - "
+                + "'డాక్టర్‌కి చూపించడానికి దగ్గు రిపోర్ట్'; took_medicine: he took a cough tablet / syrup now (name; every_hours and doses only if he wants the next dose "
+                + "reminded) -> Jarvis asks in 3 hours how the cough is; note: a symptom or what he said (fever, phlegm, throat pain) kept for the doctor's summary; "
+                + "remedy_done: he did a home remedy (which: gargle / steam / water); better: the cough has settled ('దగ్గు తగ్గింది') - the remedy reminders stop; "
+                + "remedies on/off: the home-remedy reminders on cough days.",
+                schema(new String[][]{{"action", "string", "today (default), report, took_medicine, note, remedy_done, better, remedies"},
+                        {"name", "string", "For took_medicine: the tablet / syrup"}, {"every_hours", "number", "For took_medicine: hours between doses, only to remind the next one"},
+                        {"doses", "integer", "For took_medicine: how many more doses (-1 = keep reminding)"}, {"text", "string", "For note: what he said"},
+                        {"which", "string", "For remedy_done: gargle, steam or water"}, {"on", "boolean", "For remedies: on or off"},
+                        {"days", "integer", "For today: how many days back (default 7)"}})));
+        DEFS.add(new Def("home_sounds", "House sounds Jarvis hears on the wake-word microphone. cooker: count pressure-cooker whistles "
+                + "('3 విజిల్స్ లెక్కపెట్టు' -> whistles 3; Jarvis says each one and tells him to switch off the stove at the last; also start it yourself when a "
+                + "cook recipe step waits for whistles); cooker_stop ('ఆపాను', 'లెక్క ఆపు'); cooker_status ('ఎన్ని విజిల్స్ అయ్యాయి?'); "
+                + "door: the door-knock / calling-bell alert, mode music = only while songs play or earphones are on (default), always, off; "
+                + "teach: the next sound in 30 seconds is his own calling bell or cooker whistle (kind bell / cooker), so Jarvis knows it.",
+                schema(new String[][]{{"action", "string", "cooker, cooker_stop, cooker_status, door or teach"}, {"whistles", "integer", "For cooker: how many whistles"},
+                        {"mode", "string", "For door: music, always or off"}, {"kind", "string", "For teach: bell or cooker"}}, "action")));
         DEFS.add(new Def("save_contact", "Open the phone's Contacts app with a new contact filled in (from a visiting card or what he said); he checks it and taps Save himself.",
                 schema(new String[][]{{"name", "string", "Full name"}, {"phone", "string", "Phone number"}, {"phone2", "string", "Second number"},
                         {"email", "string", "Email"}, {"company", "string", "Company"}, {"title", "string", "Job title"},
@@ -789,6 +808,8 @@ final class Tools {
             case "local_news": return "మీ ప్రాంతాల వార్తలు తెస్తున్నాను…";
             case "debts": return "అప్పులు, EMI లు చూస్తున్నాను…";
             case "health_advice": return "చూస్తున్నాను…";
+            case "cough_log": return "దగ్గు లెక్క…";
+            case "home_sounds": return "వింటున్నాను…";
             case "save_contact": return "కాంటాక్ట్ ఫారం తెరుస్తున్నాను…";
             case "health_log": return "రీడింగ్స్ చూస్తున్నాను…";
             case "exercise": return "వ్యాయామం…";
@@ -963,6 +984,8 @@ final class Tools {
                 case "local_news": return localNews(a);
                 case "debts": return debts(a);
                 case "health_advice": return healthAdvice(a);
+                case "cough_log": return coughLog(a);
+                case "home_sounds": return homeSounds(a);
                 case "save_contact": return saveContact(a);
                 case "health_log": return healthLog(a);
                 case "exercise": return exercise(a);
@@ -6702,6 +6725,58 @@ final class Tools {
             return err("no_contacts_app", "Could not open the Contacts app.");
         }
         return ok().put("opened", "contacts form").put("note", "Tell him to check it and tap Save (సేవ్).").toString();
+    }
+
+    private String coughLog(JSONObject a) throws Exception {
+        String action = a.optString("action", "today").trim().toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "report": {
+                Coder.Made m = CoughLog.report(act());
+                if (m.uri != null && unlocked()) Cards.view(act(), m);
+                return ok().put("pdf", m.where).put("next", "Say in one line that the cough report PDF for the doctor is saved in " + m.where
+                        + " and opened; offer to share it on WhatsApp (after he says).").toString();
+            }
+            case "took_medicine":
+                return CoughLog.tookMedicine(act(), a.optString("name"), a.optDouble("every_hours", 0), a.has("doses") ? a.optInt("doses", -1) : -1).toString();
+            case "note":
+                CoughLog.care(act(), "note", a.optString("text"));
+                return ok().put("noted", a.optString("text")).put("note", "Kept for the doctor's summary; no need to say so at length.").toString();
+            case "remedy_done":
+                CoughLog.remedyDone(act(), a.optString("which", "water"), false);
+                return ok().put("note", "Say a warm one-liner (e.g. బాగుంది).").toString();
+            case "better":
+                CoughLog.better(act());
+                return ok().put("note", "Say you are glad in a few warm words; the remedy reminders stop now.").toString();
+            case "remedies": {
+                boolean on = a.optBoolean("on", true);
+                CoughLog.setRemedies(act(), on);
+                return ok().put("remedy_reminders", on).toString();
+            }
+            default:
+                return CoughLog.summary(act(), a.optInt("days", 7)).toString();
+        }
+    }
+
+    private String homeSounds(JSONObject a) throws Exception {
+        String action = a.optString("action", "").trim().toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "cooker": return Sounds.startCooker(act(), a.optInt("whistles", 3)).toString();
+            case "cooker_stop": Sounds.stopCooker(act()); return ok().put("stopped", true).toString();
+            case "cooker_status": return Sounds.cookerStatus(act()).toString();
+            case "door": {
+                Sounds.setDoorMode(act(), a.optString("mode", "music"));
+                String m = Sounds.doorMode(act());
+                return ok().put("door_alert", m).put("note", "Tell him: " + (m.equals("off") ? "door / bell alerts are off."
+                        : m.equals("always") ? "Jarvis will tell every knock and bell." : "Jarvis tells the knock / bell only while songs play or earphones are on, and stops the song.")).toString();
+            }
+            case "teach": {
+                String k = a.optString("kind", "bell");
+                Sounds.teach(act(), k);
+                return ok().put("listening_for", k).put("note", "Tell him to " + ("cooker".equals(k) ? "let the cooker whistle" : "ring the calling bell")
+                        + " now, near the phone (within 30 seconds); Jarvis will say when it has learnt it.").toString();
+            }
+            default: return err("action", "Use cooker, cooker_stop, cooker_status, door or teach.");
+        }
     }
 
     private String healthAdvice(JSONObject a) throws Exception {

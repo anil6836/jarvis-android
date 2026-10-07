@@ -29,6 +29,8 @@ public class WakeService extends Service {
     private static final String ACTION_PAUSE = "com.anil.jarvis.WAKE_PAUSE";
     private static final String ACTION_RESUME = "com.anil.jarvis.WAKE_RESUME";
     private static final String ACTION_STOP = "com.anil.jarvis.WAKE_STOP";
+    /** Look again whether the mic may listen now (counting cooker whistles keeps it on even with the screen off). */
+    private static final String ACTION_RECHECK = "com.anil.jarvis.WAKE_RECHECK";
     private static final String EXTRA_PAUSED = "paused";
     private static final String CHANNEL = "jarvis_wake_quiet";
     private static final String OLD_CHANNEL = "jarvis_wake";
@@ -87,6 +89,8 @@ public class WakeService extends Service {
     static void pause(Context c) { send(c, ACTION_PAUSE); }
 
     static void resume(Context c) { send(c, ACTION_RESUME); }
+
+    static void recheck(Context c) { send(c, ACTION_RECHECK); }
 
     static void stop(Context c) {
         if (running) c.stopService(new Intent(c, WakeService.class));
@@ -184,6 +188,7 @@ public class WakeService extends Service {
     /** Whether the wake word may listen right now, per the "when to listen" setting. */
     private boolean allowedNow() {
         if (RecorderService.recording) return false; // the mic is recording a sermon / meeting
+        if (Sounds.holdMic()) return true;          // counting cooker whistles, learning a sound, the sound test
         String when = new Prefs(this).wakeWhen();
         if ("always".equals(when)) return true;
         if ("charging".equals(when)) {
@@ -229,7 +234,10 @@ public class WakeService extends Service {
             return START_NOT_STICKY;
         }
         running = true;
-        if (ACTION_PAUSE.equals(action)) {
+        if (ACTION_RECHECK.equals(action)) {
+            main.removeCallbacks(applyPhoneState);
+            main.post(applyPhoneState);
+        } else if (ACTION_PAUSE.equals(action)) {
             main.removeCallbacks(fallbackResume);
             stopEngine();
             main.removeCallbacks(watchdog);

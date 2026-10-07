@@ -61,6 +61,7 @@ final class CoughDetector {
     private int since = -1;                          // chunks since the loud chunk (-1 = waiting for one)
     private final float[][] wins = new float[AFTER.length][];
     private double eventNoise, eventLoud;
+    private int loudChunks;                          // how many of the event's 80 ms pieces stayed loud (a whistle stays, a cough doesn't)
     private long lastRun, prefsAt;
     private boolean on;
     private volatile boolean busy;
@@ -94,10 +95,11 @@ final class CoughDetector {
         if (since >= 0) { // collecting the windows after a loud sound
             since++;
             eventLoud = Math.max(eventLoud, rms);
+            if (rms > Math.max(MIN_LOUD * 0.7, eventNoise * 3)) loudChunks++;
             for (int i = 0; i < AFTER.length; i++) if (since == AFTER[i]) wins[i] = window();
             if (since >= AFTER[AFTER.length - 1]) {
                 since = -1;
-                classify(wins.clone(), eventNoise, eventLoud);
+                classify(wins.clone(), eventNoise, eventLoud, loudChunks);
                 java.util.Arrays.fill(wins, null);
             }
             return;
@@ -106,20 +108,74 @@ final class CoughDetector {
         if (now - prefsAt > 10000) {
             prefsAt = now;
             Prefs p = new Prefs(ctx);
-            long wall = System.currentTimeMillis(), gap = p.coughGapMinutes() * 60000L;
-            // off, no model, or asked about both a short while ago: don't even run the model (battery)
-            on = p.coughAsk() && !missing && failures < 5
-                    && (wall - p.sp.getLong("cough_asked", 0) > gap || wall - p.sp.getLong("sneeze_asked", 0) > gap);
+            // off and nothing else wants it (house sounds), or no model: don't even run the model (battery).
+            // Coughs are counted all day (the daily count), so asking a short while ago no longer stops it.
+            on = !missing && failures < 5 && (p.coughAsk() || Sounds.wanted(ctx));
         }
-        if (!on || !full || busy) return;
+        boolean live = Sounds.holdMic(); // a test, counting whistles, learning a sound: at once, not after 10 s
+        if (!(on || (live && !missing)) || !full || busy) return;
         if (failures > 0 && now - failedAt < 120_000) return; // something went wrong a moment ago: rest a little
-        // a cough / sneeze starts as a short burst well above the room's background
+        // a cough / sneeze / knock starts as a short burst well above the room's background
         if (rms > Math.max(MIN_LOUD, noise * 4) && now - lastRun > 1000) {
             since = 0;
             eventNoise = noise;
             eventLoud = rms;
+            loudChunks = 1;
             lastRun = now;
         }
+    }
+
+    // ---------------------------------------------------------------- the test screen (Settings)
+
+    private static volatile long testUntil;
+    private static final java.util.ArrayDeque<String> testLines = new java.util.ArrayDeque<>();
+    /** The last sound's scores (for "the last sound was my bell"). */
+    static volatile float[] lastScores;
+
+    /** For the next seconds: every loud sound is shown with what Jarvis made of it, and nothing is asked or counted. */
+    static void startTest(int seconds) {
+        synchronized (testLines) { testLines.clear(); }
+        testUntil = System.currentTimeMillis() + seconds * 1000L;
+    }
+
+    static void stopTest() { testUntil = 0; }
+
+    static boolean testing() { return System.currentTimeMillis() < testUntil; }
+
+    static long testLeftMs() { return Math.max(0, testUntil - System.currentTimeMillis()); }
+
+    static String testText() {
+        synchronized (testLines) {
+            StringBuilder b = new StringBuilder();
+            for (String s : testLines) b.append(s).append("\n\n");
+            return b.toString().trim();
+        }
+    }
+
+    private static void testLine(String s) {
+        synchronized (testLines) {
+            testLines.addFirst(s);
+            while (testLines.size() > 8) testLines.removeLast();
+        }
+    }
+
+    /** Sounds worth naming on the test screen, by the model's number. */
+    private static final int[] SHOWN = {COUGH, THROAT, SNEEZE, 45, 54, 53, 51, 0, 13, 23, 36, 37, 38, 39, 132, 349, 350, 353, 348, 396, 397, 290, 58, 48, 395, 393, 494};
+    private static final String[] SHOWN_TE = {"దగ్గు", "గొంతు సవరణ", "తుమ్ము", "ముక్కు ఎగబీల్చడం", "ఎక్కిళ్లు", "త్రేన్పు", "పుక్కిలించడం", "మాటలు", "నవ్వు", "నిట్టూర్పు",
+            "ఊపిరి", "గురగుర", "గురక", "ఉలిక్కిపాటు", "సంగీతం", "కాలింగ్ బెల్", "డింగ్-డాంగ్", "తలుపు కొట్టడం", "తలుపు", "విజిల్", "కుక్కర్/ఆవిరి విజిల్", "ఆవిరి",
+            "చప్పట్లు", "అడుగులు", "ఫోగ్ హార్న్", "స్మోక్ అలారం", "నిశ్శబ్దం"};
+
+    private static String top3(float[] s) {
+        StringBuilder b = new StringBuilder();
+        boolean[] used = new boolean[SHOWN.length];
+        for (int n = 0; n < 3; n++) {
+            int bi = -1;
+            for (int i = 0; i < SHOWN.length; i++) if (!used[i] && (bi < 0 || s[SHOWN[i]] > s[SHOWN[bi]])) bi = i;
+            if (bi < 0 || s[SHOWN[bi]] < 0.05f) break;
+            used[bi] = true;
+            b.append(n > 0 ? ", " : "").append(SHOWN_TE[bi]).append(' ').append(Math.round(s[SHOWN[bi]] * 100)).append('%');
+        }
+        return b.length() == 0 ? "తెలియని శబ్దం" : b.toString();
     }
 
     /** The last 0.975 s, oldest first, as the model wants it (-1..1). */
@@ -148,7 +204,7 @@ final class CoughDetector {
         return y;
     }
 
-    private void classify(float[][] ws, double noise, double loud) {
+    private void classify(float[][] ws, double noise, double loud, int loudN) {
         if (busy || missing) return;
         busy = true;
         worker.execute(() -> {
@@ -164,7 +220,14 @@ final class CoughDetector {
                     // not clear as heard: listen again with the hiss pushed down
                     if (Math.max(raw[COUGH], raw[SNEEZE]) < CLEAR) max(best, run(cleaned(w, noise)));
                 }
-                if (any) decide(best, loud);
+                if (any) {
+                    lastScores = best;
+                    String house = null;
+                    try { house = Sounds.heard(ctx, best, loud, loudN); } catch (Throwable ignored) {}
+                    String verdict = decide(best, loud);
+                    if (testing()) testLine(java.time.LocalTime.now().withNano(0) + "  ➜ " + (house != null ? house : verdict)
+                            + "\n" + top3(best) + " · శబ్దం " + Math.round(loud) + (loudN >= 7 ? " · పొడవైన శబ్దం" : ""));
+                }
                 failures = 0;
             } catch (Throwable e) {
                 failures++;
@@ -237,7 +300,8 @@ final class CoughDetector {
         return s;
     }
 
-    private void decide(float[] s, double loud) {
+    /** Cough, sneeze or neither for one sound; counts it, and asks when it should. Returns the verdict in Telugu (for the test screen). */
+    private String decide(float[] s, double loud) {
         float cough = s[COUGH], sneeze = s[SNEEZE];
         String kind = null;
         float sure = 0;
@@ -250,19 +314,29 @@ final class CoughDetector {
             if (taught.equals("none")) kind = null;
             else { kind = taught; sure = Math.max(sure, CLEAR); }
         }
+        String verdict = (kind == null ? "దగ్గు / తుమ్ము కాదు" : kind.equals("cough") ? "దగ్గు" : "తుమ్ము")
+                + (kind != null && sure < CLEAR ? " (మెల్లగా: ఇంకోటి వస్తే అడుగుతాను)" : "") + (taught != null ? " · మీరు నేర్పినట్టు" : "");
+        if (testing()) return verdict; // the test only shows what was heard: nothing counted or asked
         lastHeard = java.time.LocalTime.now().withNano(0) + " " + (kind == null ? "ఏమీ కాదు" : kind.equals("cough") ? "దగ్గు" : "తుమ్ము")
                 + " (దగ్గు " + Math.round(cough * 100) + "%, తుమ్ము " + Math.round(sneeze * 100) + "%, శబ్దం " + Math.round(loud) + ")"
                 + (taught != null ? " · మీరు నేర్పినట్టు" : "");
-        if (kind == null) return;
+        if (kind == null || !new Prefs(ctx).coughAsk()) return verdict;
+        boolean video = false;
+        try {
+            AudioManager am = ctx.getSystemService(AudioManager.class);
+            video = am != null && am.isMusicActive(); // a cough in a video / song on the phone: not his
+        } catch (Exception ignored) {}
+        if (!video) CoughLog.add(ctx, kind); // the daily count
         long now = System.currentTimeMillis();
         if (sure < CLEAR) { // faint: wait for a second one
             boolean c = kind.equals("cough");
             long before = c ? faintCough : faintSneeze;
             if (c) faintCough = now; else faintSneeze = now;
-            if (now - before > 90_000) return;
+            if (now - before > 90_000) return verdict;
         }
         faintCough = faintSneeze = 0;
         ask(kind, f);
+        return verdict;
     }
 
     private static float[] feat(float[] s) {
@@ -374,7 +448,9 @@ final class CoughDetector {
         String timesKey = sneeze ? "sneeze_times_today" : "cough_times_today", dayKey = sneeze ? "sneeze_day" : "cough_day";
         boolean sameDay = java.time.LocalDate.now().toString().equals(p.sp.getString(dayKey, ""));
         int times = sameDay ? p.sp.getInt(timesKey, 0) + 1 : 1;
-        String[][] lines = sneeze ? (times > 1 ? SNEEZE_AGAIN : SNEEZE_ASK) : (times > 1 ? COUGH_AGAIN : COUGH_ASK);
+        int streak = sneeze ? 0 : CoughLog.streak(ctx), today = CoughLog.count(ctx, java.time.LocalDate.now(), kind);
+        // coughing for days: say so and offer the doctor's summary
+        String[][] lines = sneeze ? (times > 1 ? SNEEZE_AGAIN : SNEEZE_ASK) : streak >= 3 ? COUGH_DAYS : (times > 1 ? COUGH_AGAIN : COUGH_ASK);
         // a different one each time: never the same words twice in a row
         String key = sneeze ? "sneeze_line" : "cough_line";
         int lastLine = p.sp.getInt(key, -1), i;
@@ -383,6 +459,10 @@ final class CoughDetector {
                 .putInt(timesKey, times).putString(dayKey, java.time.LocalDate.now().toString()).apply();
         String what = sneeze ? "sneezing" : "coughing";
         String hint = " [health: Jarvis's microphone just heard him " + what + (times > 1 ? " (Jarvis already asked " + (times - 1) + " time(s) about it today)" : "")
+                + " (heard " + today + " " + (sneeze ? "sneezes" : "coughs") + " today" + (streak > 1 ? "; coughing " + streak + " days in a row" : "") + ")"
+                + ". If he says he took a tablet or syrup -> cough_log took_medicine (name; every_hours only if he wants the next dose reminded). "
+                + "Other symptoms he mentions (fever, phlegm, throat pain) -> also cough_log note, for the doctor's summary. "
+                + (streak >= 3 ? "As it is " + streak + " days, gently suggest a doctor and offer the doctor's summary PDF (cough_log report). " : "")
                 + ". If he says yes or tells what is wrong, use health_advice (" + (sneeze ? "cold" : "cough") + " / what he says): home remedies first; "
                 + "the tablet name and how to take it when he asks; which doctor if it does not settle"
                 + (times > 2 ? "; as it keeps coming back today, gently suggest seeing a doctor" : "")
@@ -409,6 +489,11 @@ final class CoughDetector {
             {"%s, దగ్గు ఇంకా ఆగలేదు.", "ఇబ్బందిగా ఉంటే టాబ్లెట్ పేరు చెప్పనా? తగ్గకపోతే ఏ డాక్టర్‌ని చూడాలో కూడా చెప్తాను."},
             {"%s, ఇవాళ దగ్గు ఎక్కువగానే ఉంది.", "గోరువెచ్చని నీళ్లు, ఆవిరి పట్టడం చేశారా? టాబ్లెట్ కావాలా?"},
             {"%s, మళ్లీ దగ్గు వినిపిస్తోంది.", "జ్వరం ఏమైనా ఉందా? ఏం చేయాలో చెప్పమంటారా?"},
+    };
+    /** Coughing 3 days or more. */
+    private static final String[][] COUGH_DAYS = {
+            {"%s, కొన్ని రోజులుగా దగ్గు తగ్గట్లేదు.", "ఒకసారి డాక్టర్‌కి చూపిస్తే మంచిది. డాక్టర్ కోసం దగ్గు రిపోర్ట్ తయారు చేయనా?"},
+            {"%s, దగ్గు ఇంకా వస్తూనే ఉంది.", "రోజులు గడుస్తున్నాయి, డాక్టర్‌ని చూస్తారా? రోజువారీ దగ్గు లెక్కతో రిపోర్ట్ ఇవ్వనా?"},
     };
     private static final String[][] SNEEZE_ASK = {
             {"%s, తుమ్మారు, జలుబు చేసిందా?", "ఏమైనా సమస్య ఉందా? ముందు ఇంటి చిట్కాలు చెప్పనా, లేక జలుబు టాబ్లెట్ పేరు చెప్పనా?"},
