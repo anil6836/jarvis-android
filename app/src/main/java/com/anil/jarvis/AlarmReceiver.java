@@ -64,6 +64,10 @@ public class AlarmReceiver extends BroadcastReceiver {
                 break;
             }
             case Sounds.ACTION_COOKER_OK: Sounds.stopCooker(c); break;
+            case Sounds.ACTION_NIGHT_EDGE: // 10 pm / 7 am: the mic starts / stops listening for the night
+                WakeService.recheck(c);
+                Sounds.armNightEdge(c);
+                break;
             case StopAlarm.ACTION_OFF: StopAlarm.stoppedFromNotification(c); break;
             case Guard.ACTION_STOP: Guard.stop(c); break;
             case Duty.ACTION_NAP: { // up 60 minutes before leaving at the latest; 90 minutes at most
@@ -160,6 +164,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 Reminders.rescheduleAll(c);
                 Medicine.rescheduleAll(c);
                 try { CoughLog.rearm(c); } catch (Exception ignored) {}
+                Sounds.armNightEdge(c);
                 try { SongAlarm.rescheduleAll(c); } catch (Exception ignored) {}
                 MedicalId.update(c);
                 GeoReminders.rearmAll(c);

@@ -459,7 +459,7 @@ final class Brain {
                 + "Adult doses only; children, pregnancy or other medicines -> confirm with pharmacist / doctor. Never antibiotics, steroids or sleeping pills on your own. "
                 + "Don't refuse or lecture: give the general information plainly, and say once, briefly, that it is not a doctor's prescription. "
                 + "His cough record ('ఈరోజు ఎన్నిసార్లు దగ్గాను?', 'దగ్గు రిపోర్ట్', 'డాక్టర్‌కి చూపించడానికి') -> cough_log; he took a cough tablet / syrup -> cough_log took_medicine; "
-                + "'దగ్గు తగ్గింది' -> cough_log better. Pressure cooker ('3 విజిల్స్ లెక్కపెట్టు', 'కుక్కర్ పెట్టాను, 2 విజిల్స్') -> home_sounds cooker; "
+                + "'దగ్గు తగ్గింది' -> cough_log better; 'తుమ్ములు ఎందుకు / ఎప్పుడు వస్తున్నాయి?' -> cough_log sneeze_pattern; 'రాత్రి ఎన్నిసార్లు దగ్గాను / గురక పెట్టానా?' -> cough_log (last_night). Pressure cooker ('3 విజిల్స్ లెక్కపెట్టు', 'కుక్కర్ పెట్టాను, 2 విజిల్స్') -> home_sounds cooker; "
                 + "a cook recipe step that waits for whistles -> start home_sounds cooker yourself; 'ఆపాను' while it counts -> home_sounds cooker_stop. "
                 + "Door / bell alert settings and 'నా బెల్ నేర్చుకో' -> home_sounds. "
                 + "'Way2News వార్తలు చదువు' -> read_notifications with app 'Way2News', then read the headlines one by one (new ones are also read out by themselves; Settings has the switch). 'అన్ని ఫీచర్లు / బైక్ ఆప్షన్లు చూపించు' -> show_features.\n"

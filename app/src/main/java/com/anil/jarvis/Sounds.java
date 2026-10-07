@@ -33,7 +33,8 @@ final class Sounds {
 
     static final int KNOCK = 353, DOOR = 348, DOORBELL = 349, DINGDONG = 350, WHISTLE = 396, STEAM_WHISTLE = 397,
             STEAM = 290, GARGLE = 51, GURGLE = 291, MUSIC = 132;
-    static final String ACTION_COOKER_OK = "com.anil.jarvis.COOKER_OK";
+    static final String ACTION_COOKER_OK = "com.anil.jarvis.COOKER_OK", ACTION_NIGHT_EDGE = "com.anil.jarvis.NIGHT_EDGE";
+    static final int RAIN = 283, RAINDROP = 284, RAIN_SURFACE = 285, THUNDER = 281, THUNDERSTORM = 280;
     private static final String CHANNEL = "jarvis_house_sounds";
     private static final int NOTE_COOKER = 7310, NOTE_DOOR = 7311;
     private static final Handler main = new Handler(Looper.getMainLooper());
@@ -80,6 +81,29 @@ final class Sounds {
         return m.equals("always") ? "ఎప్పుడూ చెప్పు" : m.equals("off") ? "ఆఫ్" : "పాటలు / ఇయర్‌ఫోన్స్ ఉన్నప్పుడే";
     }
 
+    // ---------------------------------------------------------------- settings for the night and rain
+
+    /** At night (10 pm - 7 am) while charging, the mic listens for coughs and snoring (the morning report). */
+    static boolean nightListen(Context c) { return sp(c).getBoolean("night_listen", true); }
+
+    static void setNightListen(Context c, boolean on) { sp(c).edit().putBoolean("night_listen", on).apply(); }
+
+    static boolean rainOn(Context c) { return sp(c).getBoolean("rain_alert", true); }
+
+    static void setRain(Context c, boolean on) { sp(c).edit().putBoolean("rain_alert", on).apply(); }
+
+    /** An alarm at the next 10 pm / 7 am, so the night listening starts and stops on time (the phone may be asleep). */
+    static void armNightEdge(Context c) {
+        try {
+            java.time.LocalDateTime now = java.time.LocalDateTime.now();
+            java.time.LocalDateTime at = now.getHour() < 7 ? now.toLocalDate().atTime(7, 0)
+                    : now.getHour() < 22 ? now.toLocalDate().atTime(22, 0) : now.toLocalDate().plusDays(1).atTime(7, 0);
+            PendingIntent pi = PendingIntent.getBroadcast(c, 7313, new Intent(c, AlarmReceiver.class).setAction(ACTION_NIGHT_EDGE),
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            Reminders.setAlarm(c, at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() + 5000, pi);
+        } catch (Exception ignored) {}
+    }
+
     /** The sound model has work besides coughs. */
     static boolean wanted(Context c) {
         return counting(c) || teaching() || !"off".equals(doorMode(c));
@@ -123,6 +147,11 @@ final class Sounds {
             if (!test && now - lastGargleAt > 10 * 60_000L) { lastGargleAt = now; CoughLog.remedyDone(c, "gargle", true); }
             return "పుక్కిలించడం";
         }
+        // thunder (a loud rumble)
+        if (Math.max(s[THUNDER], s[THUNDERSTORM]) >= 0.5) {
+            if (!test) thunder(c);
+            return "ఉరుములు";
+        }
         // the calling bell / a knock on the door
         // the mic itself hears music (songs on the speaker, TV): a bell or a beat in a song must not stop it - only a clear one
         boolean music = s[MUSIC] >= 0.4;
@@ -134,6 +163,55 @@ final class Sounds {
         }
         if (whistle) return "విజిల్ (లెక్క ఆఫ్)";
         return null;
+    }
+
+    // ---------------------------------------------------------------- rain and thunder
+
+    private static final long[] rainSeen = new long[3]; // the last three looks: when rain was heard (0 = not)
+    private static int rainIdx;
+
+    /** A steady sound sampled now and then (by day): rain heard in 2 of the last 3 looks = it is raining. */
+    static String sampled(Context c, float[] s, boolean night, boolean test) {
+        boolean rain = Math.max(Math.max(s[RAIN], s[RAINDROP]), s[RAIN_SURFACE]) >= 0.3;
+        if (test) return rain ? "వర్షం" : null;
+        if (night) return null;
+        long now = System.currentTimeMillis();
+        int hits = 0;
+        synchronized (rainSeen) {
+            rainSeen[rainIdx] = rain ? now : 0;
+            rainIdx = (rainIdx + 1) % rainSeen.length;
+            for (long t : rainSeen) if (t > 0 && now - t < 3 * 60_000L) hits++;
+        }
+        if (rain && hits >= 2) rainStarted(c);
+        return rain ? "వర్షం" : null;
+    }
+
+    private static void rainStarted(Context c) {
+        if (!rainOn(c)) return;
+        long now = System.currentTimeMillis();
+        if (now - sp(c).getLong("rain_told", 0) < 3 * 3600_000L) return;
+        Prefs p = new Prefs(c);
+        int h = java.time.LocalTime.now().getHour();
+        if (h >= 22 || h < 7 || p.night() || p.driving() || CallControl.busyWithCall() || MainActivity.busyTalking()) return; // riding: he knows
+        sp(c).edit().putLong("rain_told", now).apply();
+        String say = "వర్షం మొదలైనట్టుంది. బయట బట్టలు ఉంటే లోపల పెట్టండి" + (Bike.riding(c) ? "." : ", బైక్ బయట ఉంటే కవర్ వేయండి.");
+        Announcer.say(c, p.name() + ", " + say);
+        note(c, NOTE_DOOR + 2, "🌧️ వర్షం", say, null);
+    }
+
+    private static void thunder(Context c) {
+        if (!rainOn(c)) return;
+        long now = System.currentTimeMillis();
+        if (now - sp(c).getLong("thunder_told", 0) < 2 * 3600_000L) return;
+        Prefs p = new Prefs(c);
+        int h = java.time.LocalTime.now().getHour();
+        if (h >= 22 || h < 7 || p.night() || CallControl.busyWithCall() || MainActivity.busyTalking()) return;
+        sp(c).edit().putLong("thunder_told", now).apply();
+        boolean charging = false;
+        try { charging = Bike.charging(c) != null; } catch (Exception ignored) {}
+        String say = "ఉరుములు వినిపిస్తున్నాయి." + (charging ? " బైక్ ఛార్జింగ్‌లో ఉంది; పిడుగులు పడుతుంటే ప్లగ్ తీసేయడం మంచిది." : " బయట ఉంటే జాగ్రత్త.");
+        Announcer.say(c, p.name() + ", " + say);
+        note(c, NOTE_DOOR + 3, "⛈️ ఉరుములు", say, null);
     }
 
     private static String label(String kind) { return "bell".equals(kind) ? "కాలింగ్ బెల్" : "కుక్కర్ విజిల్"; }

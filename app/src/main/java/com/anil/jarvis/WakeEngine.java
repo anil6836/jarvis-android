@@ -307,6 +307,7 @@ final class WakeEngine {
                     if ((score >= threshold || word) && now > quietUntil) {
                         quietUntil = now + 2000;
                         if (spkModel == null || voicePrint == null || vosk == null) {
+                            try { cough.wakeHeard(); } catch (Throwable ignored) {} // whispered? (answered softly)
                             listener.onWake(score);
                         } else {
                             pendingAt = now;
@@ -343,13 +344,17 @@ final class WakeEngine {
         if (v == null) { // no voice vector (too short): don't lock Anil out
             VoiceLock.lastDistance = -1;
             VoiceLock.lastAccepted = true;
+            try { cough.wakeHeard(); } catch (Throwable ignored) {}
             listener.onWake(pendingScore);
             return;
         }
         double d = VoiceLock.distance(v, voicePrint);
         VoiceLock.lastDistance = d;
         VoiceLock.lastAccepted = d <= lockMax;
-        if (d <= lockMax) listener.onWake(pendingScore);
+        if (d <= lockMax) {
+            try { cough.wakeHeard(); } catch (Throwable ignored) {}
+            listener.onWake(pendingScore);
+        }
     }
 
     /** Feeds 1280 new samples; returns the wake-word score (0 while warming up). */

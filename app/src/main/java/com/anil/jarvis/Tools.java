@@ -563,8 +563,10 @@ final class Tools {
                 + "'డాక్టర్‌కి చూపించడానికి దగ్గు రిపోర్ట్'; took_medicine: he took a cough tablet / syrup now (name; every_hours and doses only if he wants the next dose "
                 + "reminded) -> Jarvis asks in 3 hours how the cough is; note: a symptom or what he said (fever, phlegm, throat pain) kept for the doctor's summary; "
                 + "remedy_done: he did a home remedy (which: gargle / steam / water); better: the cough has settled ('దగ్గు తగ్గింది') - the remedy reminders stop; "
-                + "remedies on/off: the home-remedy reminders on cough days.",
-                schema(new String[][]{{"action", "string", "today (default), report, took_medicine, note, remedy_done, better, remedies"},
+                + "remedies on/off: the home-remedy reminders on cough days; sneeze_pattern: when and where his sneezes come (time of day, on the bike / on duty / home) "
+                + "with a likely reason ('తుమ్ములు ఎందుకు వస్తున్నాయి?'). today also has last night's coughs and snoring minutes, and other sounds heard today "
+                + "(sniffing, throat clearing, wheezing, hiccups, burps).",
+                schema(new String[][]{{"action", "string", "today (default), report, took_medicine, note, remedy_done, better, remedies, sneeze_pattern"},
                         {"name", "string", "For took_medicine: the tablet / syrup"}, {"every_hours", "number", "For took_medicine: hours between doses, only to remind the next one"},
                         {"doses", "integer", "For took_medicine: how many more doses (-1 = keep reminding)"}, {"text", "string", "For note: what he said"},
                         {"which", "string", "For remedy_done: gargle, steam or water"}, {"on", "boolean", "For remedies: on or off"},
@@ -6747,6 +6749,9 @@ final class Tools {
             case "better":
                 CoughLog.better(act());
                 return ok().put("note", "Say you are glad in a few warm words; the remedy reminders stop now.").toString();
+            case "sneeze_pattern":
+                return CoughLog.sneezePattern(act()).put("ok", true).put("note", "Say the pattern in one or two short Telugu lines with the likely reason and one "
+                        + "simple step (mask on the bike, dust the pillow, avoid the fan's direct air); if there's no clear pattern yet, say so.").toString();
             case "remedies": {
                 boolean on = a.optBoolean("on", true);
                 CoughLog.setRemedies(act(), on);

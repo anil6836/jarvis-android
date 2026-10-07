@@ -302,6 +302,7 @@ final class NaturalVoice {
             synchronized (lock) {
                 if (gen != generation) { t.release(); t = null; return; } // stopped just now: never keep (or play) it
                 track = t;
+                try { t.setVolume(Whisper.gain()); } catch (Exception ignored) {} // he whispered "Jarvis": answer softly
                 PlaybackLevel.begin(t, RATE, 0);
                 curEcho = eg;
                 echoBase = 0;

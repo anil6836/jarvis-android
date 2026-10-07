@@ -19,6 +19,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * His cough / sneeze record and the care around it, all on the phone:
@@ -56,6 +57,13 @@ final class CoughLog {
             int hour = LocalTime.now().getHour();
             h.put(hour, h.optInt(hour) + 1);
             d.put(sneeze ? "sh" : "ch", h);
+            if (sneeze) { // where he was: on the bike, on duty or at home (for "when / where do the sneezes come")
+                JSONObject sx = d.optJSONObject("sx");
+                if (sx == null) sx = new JSONObject();
+                String place = place(c);
+                sx.put(place, sx.optInt(place) + 1);
+                d.put("sx", sx);
+            }
             days.put(key, d);
             // keep 60 days
             LocalDate oldest = LocalDate.now().minusDays(60);
@@ -67,7 +75,103 @@ final class CoughLog {
         } catch (Exception ignored) {}
     }
 
-    private static JSONObject days(Context c) {
+    private static String place(Context c) {
+        try {
+            if (Bike.riding(c) || new Prefs(c).driving()) return "bike";
+            Duty.Roster r = Duty.load(c);
+            if (Duty.ready(r) && r.isOn(Duty.ME, LocalDate.now())) return "duty";
+        } catch (Exception ignored) {}
+        return "home";
+    }
+
+    /** One body sound (sniff, throat, wheeze, hiccup, burp) counted for the day. */
+    static synchronized void addBody(Context c, String kind) {
+        try {
+            JSONObject days = days(c);
+            String key = LocalDate.now().toString();
+            JSONObject d = days.optJSONObject(key);
+            if (d == null) d = new JSONObject();
+            JSONObject b = d.optJSONObject("b");
+            if (b == null) b = new JSONObject();
+            b.put(kind, b.optInt(kind) + 1);
+            d.put("b", b);
+            days.put(key, d);
+            sp(c).edit().putString("days", days.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** A minute with snoring heard (each minute once), by hour like the coughs. */
+    static synchronized void snoreMinute(Context c) {
+        try {
+            long minute = System.currentTimeMillis() / 60_000L;
+            if (sp(c).getLong("snore_last_min", 0) == minute) return;
+            sp(c).edit().putLong("snore_last_min", minute).apply();
+            JSONObject days = days(c);
+            String key = LocalDate.now().toString();
+            JSONObject d = days.optJSONObject(key);
+            if (d == null) d = new JSONObject();
+            JSONArray h = d.optJSONArray("zh");
+            if (h == null || h.length() != 24) { h = new JSONArray(); for (int i = 0; i < 24; i++) h.put(0); }
+            int hour = LocalTime.now().getHour();
+            h.put(hour, h.optInt(hour) + 1);
+            d.put("zh", h);
+            days.put(key, d);
+            sp(c).edit().putString("days", days.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** Snoring minutes between 10 pm and 7 am of the night ending on this day's morning. */
+    static int nightSnore(Context c, LocalDate day) {
+        int n = 0;
+        JSONObject all = days(c);
+        JSONObject a = all.optJSONObject(day.minusDays(1).toString()), b = all.optJSONObject(day.toString());
+        JSONArray ha = a == null ? null : a.optJSONArray("zh"), hb = b == null ? null : b.optJSONArray("zh");
+        for (int h = 22; ha != null && h < 24; h++) n += ha.optInt(h);
+        for (int h = 0; hb != null && h < 7; h++) n += hb.optInt(h);
+        return n;
+    }
+
+    static int body(Context c, LocalDate day, String kind) {
+        JSONObject d = days(c).optJSONObject(day.toString());
+        JSONObject b = d == null ? null : d.optJSONObject("b");
+        return b == null ? 0 : b.optInt(kind);
+    }
+
+    /** When and where the sneezes come (last 14 days): counts, and one plain line when a pattern is clear. */
+    static JSONObject sneezePattern(Context c) throws Exception {
+        int[] part = new int[4]; // early morning 5-9, day 9-17, evening 17-22, night 22-5
+        Map<String, Integer> where = new java.util.HashMap<>();
+        int total = 0;
+        JSONObject all = days(c);
+        for (int i = 0; i < 14; i++) {
+            JSONObject d = all.optJSONObject(LocalDate.now().minusDays(i).toString());
+            if (d == null) continue;
+            JSONArray h = d.optJSONArray("sh");
+            for (int k = 0; h != null && k < 24; k++) {
+                int v = h.optInt(k);
+                total += v;
+                part[k >= 5 && k < 9 ? 0 : k >= 9 && k < 17 ? 1 : k >= 17 && k < 22 ? 2 : 3] += v;
+            }
+            JSONObject sx = d.optJSONObject("sx");
+            if (sx != null) for (java.util.Iterator<String> it = sx.keys(); it.hasNext(); ) { String k = it.next(); where.put(k, where.getOrDefault(k, 0) + sx.optInt(k)); }
+        }
+        JSONObject o = new JSONObject().put("sneezes_14_days", total)
+                .put("by_time", new JSONObject().put("early_morning_5_9", part[0]).put("day_9_17", part[1]).put("evening_17_22", part[2]).put("night_22_5", part[3]))
+                .put("by_place", new JSONObject(where));
+        if (total >= 8) {
+            String[] times = {"ఉదయం లేవగానే (5-9 గంటలు)", "పగలు", "సాయంత్రం", "రాత్రి"};
+            String[] why = {"చల్ల గాలి, దుమ్ము, దిండు/దుప్పట్ల దుమ్ము అలర్జీ కావచ్చు", "ఇంట్లో/పని చోట దుమ్ము కావచ్చు", "బయట దుమ్ము, పొగ కావచ్చు", "ఫ్యాన్/AC చల్ల గాలి, దుమ్ము కావచ్చు"};
+            int best = 0;
+            for (int k = 1; k < 4; k++) if (part[k] > part[best]) best = k;
+            StringBuilder b = new StringBuilder();
+            if (part[best] * 2 >= total) b.append("తుమ్ములు ఎక్కువగా ").append(times[best]).append(" వస్తున్నాయి (").append(Math.round(part[best] * 100f / total)).append("%) - ").append(why[best]).append(". ");
+            int bike = where.getOrDefault("bike", 0), duty = where.getOrDefault("duty", 0);
+            if (bike * 3 >= total && bike >= 3) b.append("బైక్ మీద ఉన్నప్పుడు కూడా ఎక్కువ: రోడ్డు దుమ్ము, పొగ - మాస్క్ / హెల్మెట్ విజర్ దించుకుంటే తగ్గొచ్చు. ");
+            if (duty * 2 >= total && duty >= 4) b.append("డ్యూటీ రోజుల్లో ఎక్కువ: అక్కడి దుమ్ము / చల్ల గాలి కావచ్చు. ");
+            if (b.length() > 0) o.put("insight_telugu", b.toString().trim());
+        }
+        return o;
+    }
         try { return new JSONObject(sp(c).getString("days", "{}")); } catch (Exception e) { return new JSONObject(); }
     }
 
@@ -132,6 +236,11 @@ final class CoughLog {
                 .put("today", new JSONObject().put("coughs", count(c, LocalDate.now(), "cough")).put("sneezes", count(c, LocalDate.now(), "sneeze")))
                 .put("by_day", a).put("days_in_a_row", streak(c));
         if (recent + before >= 6) o.put("trend", recent > before * 1.3 ? "going up" : recent < before * 0.7 ? "going down" : "about the same");
+        o.put("last_night", new JSONObject().put("coughs", night(c, LocalDate.now())).put("snoring_minutes", nightSnore(c, LocalDate.now())));
+        JSONObject bodyToday = new JSONObject();
+        for (String k : new String[]{"sniff", "throat", "wheeze", "hiccup", "burp"}) { int v = body(c, LocalDate.now(), k); if (v > 0) bodyToday.put(k, v); }
+        if (bodyToday.length() > 0) o.put("other_sounds_today", bodyToday);
+        try { JSONObject sp = sneezePattern(c); if (sp.has("insight_telugu")) o.put("sneeze_pattern", sp.getString("insight_telugu")); } catch (Exception ignored) {}
         JSONArray care = new JSONArray();
         for (JSONObject x : recentCare(c, 3)) care.put(x.optString("when") + " " + x.optString("text"));
         if (care.length() > 0) o.put("care_last_3_days", care);
@@ -402,6 +511,44 @@ final class CoughLog {
         if (!duty) Announcer.say(c, p.name() + ", " + say); // on duty: only the notification
     }
 
+    // ---------------------------------------------------------------- the night, in the morning
+
+    /** From Proactive: once in the morning (6-11, screen on), a quiet note about the night's coughs and snoring, if there was much. */
+    static void morningTick(Context c, Prefs p) {
+        int h = LocalTime.now().getHour();
+        if (h < 6 || h >= 11) return;
+        String today = LocalDate.now().toString();
+        if (today.equals(sp(c).getString("night_told", ""))) return;
+        try {
+            android.os.PowerManager pm = c.getSystemService(android.os.PowerManager.class);
+            if (pm != null && !pm.isInteractive()) return; // when he's up and looking at the phone
+        } catch (Exception ignored) {}
+        int coughs = night(c, LocalDate.now()), snore = nightSnore(c, LocalDate.now());
+        sp(c).edit().putString("night_told", today).apply();
+        if (coughs < 3 && snore < 10) return;
+        String text = nightLine(coughs, snore);
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        nm.createNotificationChannel(new NotificationChannel(CHANNEL, "దగ్గు మందు, ఇంటి చిట్కాలు", NotificationManager.IMPORTANCE_DEFAULT));
+        nm.notify(7322, new Notification.Builder(c, CHANNEL).setSmallIcon(android.R.drawable.ic_menu_recent_history)
+                .setContentTitle("🌙 రాత్రి నిద్రలో").setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text)).setAutoCancel(true).build());
+    }
+
+    static String nightLine(int coughs, int snore) {
+        StringBuilder b = new StringBuilder();
+        if (coughs > 0) b.append("రాత్రి ").append(coughs).append(" సార్లు దగ్గారు");
+        if (snore > 0) b.append(b.length() > 0 ? ", " : "").append("గురక సుమారు ").append(snore).append(" నిమిషాలు");
+        if (coughs >= 10) b.append(". రాత్రి దగ్గు ఎక్కువగా ఉంది, పడుకునే ముందు ఆవిరి పట్టండి; తగ్గకపోతే డాక్టర్‌కి చూపించండి");
+        return b.append(".").toString();
+    }
+
+    /** For the morning briefing (English data line), empty if nothing heard. */
+    static String nightData(Context c) {
+        int coughs = night(c, LocalDate.now()), snore = nightSnore(c, LocalDate.now());
+        if (coughs + snore == 0) return "";
+        return "Last night the phone's microphone heard: " + coughs + " coughs, snoring about " + snore + " minutes.";
+    }
+
     // ---------------------------------------------------------------- the doctor's summary
 
     static Coder.Made report(Context c) throws Exception {
@@ -416,14 +563,25 @@ final class CoughLog {
         int st = streak(c);
         b.append("\nదగ్గు / Cough: ").append(st > 0 ? st + " రోజులుగా వరుసగా / " + st + " days in a row" : "ఇప్పుడు వరుసగా లేదు / not continuous now").append("\n");
         b.append("\nరోజువారీ లెక్క (ఫోన్ మైక్ విన్నవి) / Daily count heard by the phone microphone:\n");
-        b.append("రోజు / Day — దగ్గు / Coughs — రాత్రి (10pm-6am) / Night — తుమ్ములు / Sneezes\n");
+        b.append("రోజు / Day — దగ్గు / Coughs — రాత్రి (10pm-6am) / Night — తుమ్ములు / Sneezes — గురక నిమిషాలు / Snoring min\n");
         for (int i = days - 1; i >= 0; i--) {
             LocalDate d = LocalDate.now().minusDays(i);
-            int n = count(c, d, "cough"), s = count(c, d, "sneeze"), nt = night(c, d);
-            if (n + s + nt == 0 && i > 2) continue;
+            int n = count(c, d, "cough"), s = count(c, d, "sneeze"), nt = night(c, d), z = nightSnore(c, d);
+            if (n + s + nt + z == 0 && i > 2) continue;
             b.append("• ").append(d.getDayOfMonth()).append("/").append(d.getMonthValue()).append(" (").append(DAYS_TE[d.getDayOfWeek().getValue()]).append(") — ")
-                    .append(n).append(" — ").append(nt).append(" — ").append(s).append("\n");
+                    .append(n).append(" — ").append(nt).append(" — ").append(s).append(" — ").append(z).append("\n");
         }
+        int[] bt = new int[5];
+        String[] bk = {"sniff", "throat", "wheeze", "hiccup", "burp"};
+        String[] bn = {"ముక్కు ఎగబీల్చడం / Sniffing", "గొంతు సవరణ / Throat clearing", "గురగుర, ఆయాసం / Wheeze, breathlessness", "ఎక్కిళ్లు / Hiccups", "త్రేన్పులు / Burps"};
+        for (int i = 0; i < days; i++) for (int k = 0; k < 5; k++) bt[k] += body(c, LocalDate.now().minusDays(i), bk[k]);
+        StringBuilder other = new StringBuilder();
+        for (int k = 0; k < 5; k++) if (bt[k] > 0) other.append("• ").append(bn[k]).append(": ").append(bt[k]).append("\n");
+        if (other.length() > 0) b.append("\nఇతర శబ్దాలు (" + days + " రోజుల్లో) / Other sounds (" + days + " days):\n").append(other);
+        try {
+            JSONObject sp = sneezePattern(c);
+            if (sp.has("insight_telugu")) b.append("\nతుమ్ములు / Sneeze pattern: ").append(sp.getString("insight_telugu")).append("\n");
+        } catch (Exception ignored) {}
         // when in the day
         int[] hours = new int[24];
         for (int i = 0; i < days; i++) {

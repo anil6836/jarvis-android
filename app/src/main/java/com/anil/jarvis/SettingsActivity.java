@@ -987,6 +987,16 @@ public class SettingsActivity extends Activity {
         });
         Switch remedies = toggle("🍯 దగ్గు ఉన్న రోజుల్లో ఇంటి చిట్కాలు గుర్తుచేయి (గోరువెచ్చని నీళ్లు, పుక్కిలించడం, ఆవిరి; డ్యూటీ రోజు నోటిఫికేషన్ మాత్రమే)", CoughLog.remediesOn(this));
         remedies.setOnCheckedChangeListener((sw, isOn) -> CoughLog.setRemedies(this, isOn));
+        Switch nightListen = toggle("🌙 రాత్రి ఛార్జింగ్‌లో ఉన్నప్పుడు దగ్గు, గురక విను (10 pm - 7 am; ఉదయం చిన్న రిపోర్ట్)", Sounds.nightListen(this));
+        nightListen.setOnCheckedChangeListener((sw, isOn) -> { Sounds.setNightListen(this, isOn); WakeService.recheck(this); });
+        Switch bodyAsks = toggle("👃 ముక్కు ఎగబీల్చడం, గొంతు సవరణ, ఆయాసం, ఎక్కిళ్లు, త్రేన్పులు వరుసగా వస్తే అడుగు / చిట్కా చెప్పు", BodySounds.asksOn(this));
+        bodyAsks.setOnCheckedChangeListener((sw, isOn) -> BodySounds.setAsks(this, isOn));
+        Switch clapCall = toggle("👏 రెండు చప్పట్లు కొట్టినా, చిన్న ఈల వేసినా Jarvis పలకాలి", BodySounds.callOn(this));
+        clapCall.setOnCheckedChangeListener((sw, isOn) -> BodySounds.setCall(this, isOn));
+        Switch whisper = toggle("🤫 గుసగుసగా \"Jarvis\" అంటే మెల్లగా జవాబివ్వు" + (Whisper.lastPct >= 0 ? " (చివరి పిలుపు గుసగుస: " + Whisper.lastPct + "%)" : ""), Whisper.enabled(this));
+        whisper.setOnCheckedChangeListener((sw, isOn) -> Whisper.setEnabled(this, isOn));
+        Switch rain = toggle("🌧️ వర్షం మొదలైనా, ఉరుములు వినిపించినా చెప్పు (బట్టలు, బైక్ కవర్, ఛార్జింగ్)", Sounds.rainOn(this));
+        rain.setOnCheckedChangeListener((sw, isOn) -> Sounds.setRain(this, isOn));
         TextView door = Ui.text(this, "", 15.5f, Ui.CYAN);
         door.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         door.setText("🚪 తలుపు కొట్టినా, బెల్ మోగినా చెప్పు: " + Sounds.doorModeText(Sounds.doorMode(this)) + "  (మార్చడానికి నొక్కండి)");

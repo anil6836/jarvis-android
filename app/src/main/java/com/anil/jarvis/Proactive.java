@@ -92,6 +92,7 @@ public class Proactive extends BroadcastReceiver {
         try { Duty.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Rest.tick(c, p, hush); } catch (Throwable ignored) {}
         try { CoughLog.remedyTick(c, p, hush); } catch (Throwable ignored) {} // home remedies on cough days
+        try { CoughLog.morningTick(c, p); } catch (Throwable ignored) {}         // the night's coughs / snoring, once in the morning
         try { Plans.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Ride.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Exercise.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}

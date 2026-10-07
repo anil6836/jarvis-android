@@ -331,7 +331,9 @@ final class VoiceIO {
         utterance++;
         speaking = true;
         int r;
-        try { r = tts.speak(clean, TextToSpeech.QUEUE_FLUSH, new Bundle(), "j" + utterance); }
+        Bundle params = new Bundle();
+        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, Whisper.gain()); // he whispered "Jarvis": answer softly
+        try { r = tts.speak(clean, TextToSpeech.QUEUE_FLUSH, params, "j" + utterance); }
         catch (Exception e) { r = TextToSpeech.ERROR; }
         if (r != TextToSpeech.SUCCESS) failSpeak(); // no progress callbacks will come for it
     }

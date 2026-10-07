@@ -62,6 +62,9 @@ final class CoughDetector {
     private final float[][] wins = new float[AFTER.length][];
     private double eventNoise, eventLoud;
     private int loudChunks;                          // how many of the event's 80 ms pieces stayed loud (a whistle stays, a cough doesn't)
+    private final float[] eventRms = new float[10];  // each piece's loudness (two claps = two peaks)
+    private long lastSample;                         // the last steady sound sampled (snoring at night, rain by day)
+    private boolean nightNow;                        // 10 pm - 7 am (looked at every 10 s)
     private long lastRun, prefsAt;
     private boolean on;
     private volatile boolean busy;
@@ -73,6 +76,8 @@ final class CoughDetector {
     private volatile long failedAt;
     private boolean twoDim;
     private int outIndex = -1;
+    /** The last sound judged was a cough / sneeze (then it isn't looked at as anything else). */
+    private boolean coughOrSneeze;
     /** A faint cough / sneeze heard: when (a second one within 90 s makes it sure). */
     private long faintCough, faintSneeze;
 
@@ -94,12 +99,13 @@ final class CoughDetector {
         }
         if (since >= 0) { // collecting the windows after a loud sound
             since++;
+            if (since < eventRms.length) eventRms[since] = (float) rms;
             eventLoud = Math.max(eventLoud, rms);
             if (rms > Math.max(MIN_LOUD * 0.7, eventNoise * 3)) loudChunks++;
             for (int i = 0; i < AFTER.length; i++) if (since == AFTER[i]) wins[i] = window();
             if (since >= AFTER[AFTER.length - 1]) {
                 since = -1;
-                classify(wins.clone(), eventNoise, eventLoud, loudChunks);
+                classify(wins.clone(), eventNoise, eventLoud, loudChunks, eventRms.clone());
                 java.util.Arrays.fill(wins, null);
             }
             return;
@@ -110,7 +116,9 @@ final class CoughDetector {
             Prefs p = new Prefs(ctx);
             // off and nothing else wants it (house sounds), or no model: don't even run the model (battery).
             // Coughs are counted all day (the daily count), so asking a short while ago no longer stops it.
-            on = !missing && failures < 5 && (p.coughAsk() || Sounds.wanted(ctx));
+            on = !missing && failures < 5 && (p.coughAsk() || Sounds.wanted(ctx) || BodySounds.callOn(ctx) || BodySounds.asksOn(ctx));
+            int h = java.time.LocalTime.now().getHour();
+            nightNow = h >= 22 || h < 7;
         }
         boolean live = Sounds.holdMic(ctx); // a test, counting whistles, learning a sound: at once, not after 10 s
         if (!(on || (live && !missing)) || !full || busy) return;
@@ -121,8 +129,50 @@ final class CoughDetector {
             eventNoise = noise;
             eventLoud = rms;
             loudChunks = 1;
+            java.util.Arrays.fill(eventRms, 0f);
+            eventRms[0] = (float) rms;
             lastRun = now;
+            return;
         }
+        // steady sounds have no burst: at night a snore in progress (a little above the room) every 15 s at most;
+        // by day, when the room is noisy (rain), one look every 30 s
+        boolean sampleNow = nightNow ? (rms > Math.max(120, noise * 2.0) && now - lastSample > 15_000)
+                : (noise > 35 && now - lastSample > 30_000 && Sounds.rainOn(ctx));
+        if (sampleNow) {
+            lastSample = now;
+            sample(window(), nightNow);
+        }
+    }
+
+    /** One window of a steady sound (snoring, rain): a single quick look, no asking about coughs. */
+    private void sample(float[] w, boolean night) {
+        if (busy || missing) return;
+        busy = true;
+        worker.execute(() -> {
+            try {
+                float[] s = run(w);
+                if (s == null) return;
+                boolean test = testing();
+                String what = BodySounds.sampled(ctx, s, night, test);
+                String rain = Sounds.sampled(ctx, s, night, test);
+                if (test && (what != null || rain != null)) testLine(java.time.LocalTime.now().withNano(0) + "  ➜ " + (what != null ? what : rain) + "\n" + top3(s));
+            } catch (Throwable ignored) {
+            } finally {
+                busy = false;
+            }
+        });
+    }
+
+    /** "Jarvis" was just heard: was it whispered? (the last second has the word in it). Answers softly if so. */
+    void wakeHeard() {
+        if (missing || !full) return;
+        float[] w = window();
+        worker.execute(() -> {
+            try {
+                float[] s = run(w);
+                if (s != null) Whisper.heard(ctx, s[12], s[0]);
+            } catch (Throwable ignored) {}
+        });
     }
 
     // ---------------------------------------------------------------- the test screen (Settings)
@@ -205,7 +255,7 @@ final class CoughDetector {
         return y;
     }
 
-    private void classify(float[][] ws, double noise, double loud, int loudN) {
+    private void classify(float[][] ws, double noise, double loud, int loudN, float[] rmsSeq) {
         if (busy || missing) return;
         busy = true;
         worker.execute(() -> {
@@ -226,6 +276,12 @@ final class CoughDetector {
                     String house = null;
                     try { house = Sounds.heard(ctx, best, loud, loudN); } catch (Throwable ignored) {}
                     String verdict = decide(best, loud);
+                    if (!coughOrSneeze) { // not a cough / sneeze: maybe another sound of his own (sniff, hiccup...) or a call (two claps)
+                        try {
+                            String body = BodySounds.heard(ctx, best, noise, loudN, rmsSeq, testing());
+                            if (body != null && house == null) house = body;
+                        } catch (Throwable ignored) {}
+                    }
                     if (testing()) testLine(java.time.LocalTime.now().withNano(0) + "  ➜ " + (house != null ? house : verdict)
                             + "\n" + top3(best) + " · శబ్దం " + Math.round(loud) + (loudN >= 7 ? " · పొడవైన శబ్దం" : ""));
                 }
@@ -315,6 +371,7 @@ final class CoughDetector {
             if (taught.equals("none")) kind = null;
             else { kind = taught; sure = Math.max(sure, CLEAR); }
         }
+        coughOrSneeze = kind != null;
         String verdict = (kind == null ? "దగ్గు / తుమ్ము కాదు" : kind.equals("cough") ? "దగ్గు" : "తుమ్ము")
                 + (kind != null && sure < CLEAR ? " (మెల్లగా: ఇంకోటి వస్తే అడుగుతాను)" : "") + (taught != null ? " · మీరు నేర్పినట్టు" : "");
         if (testing()) return verdict; // the test only shows what was heard: nothing counted or asked
@@ -464,6 +521,7 @@ final class CoughDetector {
                 + ". If he says he took a tablet or syrup -> cough_log took_medicine (name; every_hours only if he wants the next dose reminded). "
                 + "Other symptoms he mentions (fever, phlegm, throat pain) -> also cough_log note, for the doctor's summary. "
                 + (streak >= 3 ? "As it is " + streak + " days, gently suggest a doctor and offer the doctor's summary PDF (cough_log report). " : "")
+                + (sneeze ? sneezeInsight() : "")
                 + ". If he says yes or tells what is wrong, use health_advice (" + (sneeze ? "cold" : "cough") + " / what he says): home remedies first; "
                 + "the tablet name and how to take it when he asks; which doctor if it does not settle"
                 + (times > 2 ? "; as it keeps coming back today, gently suggest seeing a doctor" : "")
@@ -474,6 +532,15 @@ final class CoughDetector {
     }
 
     private static final java.util.Random rnd = new java.util.Random();
+
+    /** When / where his sneezes come, if a pattern is clear (said once, kindly, if it helps). */
+    private String sneezeInsight() {
+        try {
+            org.json.JSONObject p = CoughLog.sneezePattern(ctx);
+            if (p.has("insight_telugu")) return "Pattern from the last 2 weeks (mention once, kindly, only if it helps): " + p.getString("insight_telugu") + " ";
+        } catch (Exception ignored) {}
+        return "";
+    }
 
     /** {what Jarvis says (%s = his name), the question}: many ways, so it doesn't sound like a recording. */
     private static final String[][] COUGH_ASK = {

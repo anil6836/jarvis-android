@@ -148,6 +148,8 @@ public class WakeService extends Service {
         registerReceiver(battery, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         motion = new Motion(this, () -> main.post(this::onShake));
         motion.start();
+        self = this;
+        Sounds.armNightEdge(this); // the night listening starts at 10 pm and ends at 7 am even with the phone asleep
         main.postDelayed(updatePoll, 60 * 1000L);
     }
 
@@ -200,19 +202,33 @@ public class WakeService extends Service {
         if (Sounds.holdMic(this)) return true;      // counting cooker whistles, learning a sound, the sound test
         String when = new Prefs(this).wakeWhen();
         if ("always".equals(when)) return true;
-        if ("charging".equals(when)) {
-            // "plugged in", from the sticky battery broadcast: BatteryManager.isCharging() is still false
-            // right when the charger is connected (and when full), so the mic would stay off.
-            try {
-                Intent b = registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-                return b != null && b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0;
-            } catch (Exception e) {
-                android.os.BatteryManager bm = getSystemService(android.os.BatteryManager.class);
-                return bm != null && bm.isCharging();
-            }
-        }
+        if ("charging".equals(when)) return pluggedIn();
+        // at night while charging: coughs and snoring for the morning report (Settings can turn it off)
+        int h = java.time.LocalTime.now().getHour();
+        if ((h >= 22 || h < 7) && Sounds.nightListen(this) && pluggedIn()) return true;
         android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
         return pm == null || pm.isInteractive();
+    }
+
+    /** "Plugged in", from the sticky battery broadcast: BatteryManager.isCharging() is still false right when the charger
+     *  is connected (and when full), so the mic would stay off. */
+    private boolean pluggedIn() {
+        try {
+            Intent b = registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            return b != null && b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0;
+        } catch (Exception e) {
+            android.os.BatteryManager bm = getSystemService(android.os.BatteryManager.class);
+            return bm != null && bm.isCharging();
+        }
+    }
+
+    /** The service now running (for two claps / a whistle calling Jarvis from the sound model's thread). */
+    private static volatile WakeService self;
+
+    /** Two claps or a short whistle: the same as hearing "Jarvis". */
+    static void soundWake() {
+        WakeService s = self;
+        if (s != null) s.main.post(s::onWake);
     }
 
     private void sleeping() {
@@ -265,6 +281,7 @@ public class WakeService extends Service {
     }
 
     @Override public void onDestroy() {
+        if (self == this) self = null;
         try { unregisterReceiver(phoneState); } catch (Exception ignored) {}
         try { unregisterReceiver(battery); } catch (Exception ignored) {}
         if (motion != null) motion.stop();

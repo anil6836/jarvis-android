@@ -87,6 +87,7 @@ public class BriefingService extends Service {
             }
         }
         data.append("Reminders today:\n").append(rem.length() == 0 ? "(none)\n" : rem);
+        try { String night = CoughLog.nightData(c); if (!night.isEmpty()) data.append(night).append(" (mention it in one gentle line)\n"); } catch (Exception ignored) {}
         StringBuilder mis = new StringBuilder();
         List<JSONObject> ms = s.missions();
         int k = 0;
