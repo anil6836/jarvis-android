@@ -13,6 +13,7 @@ import java.time.LocalTime;
 /**
  * After a 48-hour duty: the afternoon he comes home, Jarvis reminds him to sleep if he keeps using the phone, and while
  * he sleeps (screen off a while) Jarvis stays quiet: messages wait and are told when he wakes, no cough / call-note questions.
+ * With the watch (W28), a nap on any afternoon is seen too (still on his wrist, the heart lower than his normal).
  */
 final class Rest {
     private Rest() {}
@@ -62,6 +63,9 @@ final class Rest {
             if (h < 12 || h >= 22) return false;
             if (screenOn(c)) return false;
             if (screenOffAt == 0 || System.currentTimeMillis() - screenOffAt < 15 * 60000L) return false;
+            // W28: the watch says he is asleep (still on his wrist 40 minutes, heart lower than his normal): any afternoon /
+            // evening nap, not only after duty; it ends as soon as he moves (the watch tells)
+            if (HeartLog.asleep(c)) return true;
             asleep = postDuty(c);
             return asleep;
         } catch (Exception e) {

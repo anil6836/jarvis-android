@@ -2461,6 +2461,55 @@ public class SettingsActivity extends Activity {
         super.onRequestPermissionsResult(code, perms, results);
         // the microphone for the guard's house sounds was just given: start listening
         if (code == 62 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) Guard.listen(this);
+        if (code == 64 && hcStatus != null) hcStatus.setText("🔗 Health Connect: " + HealthData.status(this)); // (phase 4)
+    }
+
+    private TextView hcStatus;
+
+    /** Phase 4: health from the watch and Samsung Health (Health Connect). Each choice acts at once; no Save needed. */
+    private void healthSection() {
+        TextView head = Ui.text(this, "❤️ ఆరోగ్యం: వాచ్, Samsung Health (దశ 4)", 16f, Ui.CYAN);
+        head.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        head.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
+        box.addView(head);
+        hcStatus = Ui.text(this, "🔗 Health Connect: " + HealthData.status(this), 14, Ui.MUTED);
+        hcStatus.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
+        box.addView(hcStatus);
+        button("🔗 Health Connect కలపండి (నిద్ర, అడుగులు, గుండె వేగం, ఆక్సిజన్, బరువు, BP చదవడానికి)", v -> {
+            if (Build.VERSION.SDK_INT < 34 || !HealthData.available(this)) { Toast.makeText(this, HealthData.status(this), Toast.LENGTH_LONG).show(); return; }
+            String[] need = HealthData.toAsk(this);
+            if (need.length == 0) { Toast.makeText(this, "Health Connect ఇప్పటికే కలిసింది ✓", Toast.LENGTH_SHORT).show(); return; }
+            try { requestPermissions(need, 64); } catch (Exception e) { Toast.makeText(this, "తెరవలేకపోయాను: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
+        });
+        note("Samsung Health → Settings → Health Connect లో కూడా \"షేర్\" ఆన్ చేయాలి (అప్పుడే వాచ్ నిద్ర, ఆక్సిజన్, బరువు ఇక్కడికి వస్తాయి). Jarvis చదువుతుంది మాత్రమే, "
+                + "ఏమీ రాయదు. Samsung తన స్ట్రెస్ నంబర్, ECG, ఎనర్జీ స్కోర్ వేరే యాప్‌లకు ఇవ్వదు: అందుకే ఒత్తిడి, ఎనర్జీ Jarvis తన అంచనాతో చెబుతుంది.");
+        Switch walk = toggle("🚶 నడక కోచ్: ప్రతి నడక అయ్యాక అడుగులు, మీటర్లు / కి.మీ, నిమిషాలు వాచ్‌లో చెప్పు; ప్రతి కి.మీకి ఒక మాట", WatchHub.walkOn(this));
+        walk.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "walk", on));
+        note("వాచ్ తనంతట తానే నడక గుర్తిస్తుంది: 2 నిమిషాలు, 150 అడుగులు దాటిన నడక (ఇంట్లో అటూ ఇటూ తిరగడం లెక్క కాదు). దూరం సుమారుగా (ఒక అడుగు 0.72 మీ). "
+                + "బైక్ మీద, డ్యూటీ మోడ్‌లో, రాత్రి గొంతుతో కాకుండా వాచ్‌పై కార్డ్‌గా. \"ఈరోజు ఎంత నడిచాను?\" అని అడగొచ్చు, వాచ్‌లో 🚶 నడక బటన్ కూడా.");
+        Switch hr = toggle("💓 కూర్చున్నప్పుడు 15 నిమిషాలకోసారి వాచ్ గుండె వేగం చూడాలి (ఒత్తిడి, జ్వరం సూచన, ఎనర్జీ, కునుకు)", WatchHub.hrOn(this));
+        hr.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "hr", on));
+        Switch stress = toggle("😮‍💨 ఒత్తిడిగా ఉన్నట్టు అనిపిస్తే వాచ్‌పై మెల్లగా తట్టి 2 నిమిషాల శ్వాస వ్యాయామం చూపించు (రోజుకు 3 సార్లు మించి కాదు)", WatchHub.stressOn(this));
+        stress.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "stress", on));
+        note("మీ మామూలు గుండె వేగం ఒక రోజు వాచ్ పెట్టుకున్నాక నేర్చుకుంటుంది (14 రోజుల లెక్క). కూర్చున్నప్పుడు మామూలు కంటే 12+ ఎక్కువగా వరుసగా వస్తే \"ఒత్తిడిగా ఉందా?\". "
+                + "దగ్గు రోజు గుండె వేగం ఎక్కువగా ఉంటే \"జ్వరం ఉందేమో చూడండి\" (రోజుకు ఒకసారి). మధ్యాహ్నం / సాయంత్రం వాచ్ నిద్ర గుర్తిస్తే మెసేజ్‌లు లేచాక చెబుతాను "
+                + "(\"విశ్రాంతి\" ఆన్‌లో ఉంటే). వాచ్ గుండె లయ హెచ్చరిక ఇస్తే తేదీతో రాసుకుని డాక్టర్‌ని చూడమని గుర్తు చేస్తాను. ఇది వైద్య పరీక్ష కాదు.");
+        Switch week = toggle("📊 ప్రతి ఆదివారం సాయంత్రం ఈ వారం ఆరోగ్యం గ్రాఫ్ (అడుగులు, నిద్ర, గుండె వేగం, ఒత్తిడి, దగ్గు)", WatchHub.healthWeekOn(this));
+        week.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "health_week", on));
+        button("📊 ఈ వారం ఆరోగ్యం గ్రాఫ్ ఇప్పుడే చూపించు", v -> {
+            Toast.makeText(this, "గ్రాఫ్ తయారవుతోంది…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                try {
+                    Coder.Made m = (Coder.Made) HealthWeek.make(getApplicationContext())[0];
+                    runOnUiThread(() -> { if (m.uri != null) Cards.view(this, m); else Toast.makeText(this, "సేవ్ అయింది: " + m.where, Toast.LENGTH_LONG).show(); });
+                } catch (Exception e) {
+                    runOnUiThread(() -> Toast.makeText(this, "గ్రాఫ్ తయారు కాలేదు: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }, "jarvis-health-week").start();
+        });
+        note("వాచ్ Jarvis స్క్రీన్‌లో: 🚶 నడక (ఈరోజు), 🩺 స్కాన్ (20 సెకన్లు కదలకుండా: గుండె వేగం + మీ రోజు), 🌬️ శ్వాస (4 సెకన్లు పీల్చి 6 సెకన్లు వదలడం, "
+                + "చేతికి వైబ్రేషన్‌తో, 2 నిమిషాలు). మొదటిసారి వాచ్ \"శరీర సెన్సార్లు\" అనుమతి అడుగుతుంది: Allow. ECG: Samsung Health Monitor లో ECG తీసి Share → "
+                + "\"Jarvis ఆరోగ్య రిపోర్ట్\" ఎంచుకుంటే Downloads/Jarvis/health లో తేదీతో దాచి, డాక్టర్ PDF లో చూపిస్తాను. నెల మొదట్లో బరువు, కొవ్వు శాతం రిపోర్ట్.");
     }
 
     /** Phase 2a: the Jarvis watch app (Galaxy Watch). Each choice acts at once and goes to the watch; no Save needed. */
@@ -2557,6 +2606,7 @@ public class SettingsActivity extends Activity {
                 + "📝 నోట్ (ఒక్క మాటలో: ఖర్చు, ఎక్కడ పెట్టారో, ఎవరికి ఇచ్చారో, రిమైండర్, నోట్), 🌐 అనువాదం (ఎవరైనా హిందీ / ఇంగ్లీష్‌లో మాట్లాడితే వాచ్‌లో తెలుగులో).");
         note("Jarvis టైల్: వాచ్ ఫేస్ మీద కుడివైపు స్వైప్ చేసి చివర \"+\" (Add tiles) → Jarvis. అందులో తర్వాతి డ్యూటీ, రిమైండర్, నిద్ర, "
                 + "🎙️ / ☀️ / ⏱️ / 🍲 / 📊 బటన్లు.");
+        healthSection();
         TextView looksHead = Ui.text(this, "🎨 వాచ్‌లో రూపం (2c)", 16f, Ui.CYAN);
         looksHead.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         looksHead.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));

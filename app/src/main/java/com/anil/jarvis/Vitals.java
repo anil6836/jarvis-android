@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * His BP, sugar and weight readings: kept on the phone, with a plain Telugu word on each reading (normal / high / low)
+ * His BP, sugar, weight and oxygen (SpO2) readings: kept on the phone, with a plain Telugu word on each reading (normal / high / low)
  * and when it needs a doctor or 108, and the trend over weeks. General guidance, not a diagnosis.
  */
 final class Vitals {
@@ -24,6 +24,7 @@ final class Vitals {
         if (s.contains("bp") || s.contains("బీపీ") || s.contains("pressure") || s.contains("రక్తపోటు")) return "bp";
         if (s.contains("sugar") || s.contains("షుగర్") || s.contains("glucose") || s.contains("చక్కెర")) return "sugar";
         if (s.contains("weight") || s.contains("బరువు")) return "weight";
+        if (s.contains("spo2") || s.contains("sp02") || s.contains("oxygen") || s.contains("ఆక్సిజన్") || s.contains("saturation")) return "spo2";
         return "";
     }
 
@@ -44,6 +45,9 @@ final class Vitals {
         } else if (k.equals("weight")) {
             if (value < 20 || value > 250) return null;
             o.put("value", value);
+        } else if (k.equals("spo2")) { // W27: oxygen read on the watch (Samsung Health), told to Jarvis
+            if (value < 50 || value > 100) return null;
+            o.put("value", Math.round(value));
         } else return null;
         judge(o);
         Notes.add(c, KEY, o, 1000);
@@ -78,6 +82,12 @@ final class Vitals {
                 if (v >= 200) { status = "ఎక్కువ"; advice = "పరగడుపున ఒకసారి చూడండి; ఇలాగే వస్తే డాక్టర్‌ని చూడండి."; }
                 else { status = "పరవాలేదు"; advice = "పరగడుపున చూసిన రీడింగ్ అయితే ఇంకా బాగా తెలుస్తుంది."; }
             }
+        } else if (k.equals("spo2")) {
+            long v = Math.round(o.optDouble("value"));
+            if (v < 90) { status = "చాలా తక్కువ"; advice = "వాచ్ మణికట్టుకి సరిగ్గా ఉందో చూసి, కూర్చుని మళ్లీ ఒకసారి కొలవండి. మళ్లీ 90 లోపు వస్తే, లేదా ఊపిరి ఆడకపోవడం, పెదాలు నీలంగా మారడం, అయోమయం ఉంటే వెంటనే 108 / ఆసుపత్రి."; }
+            else if (v < 92) { status = "తక్కువ"; advice = "ఈరోజే డాక్టర్‌ని చూడండి. ఊపిరి ఆడకపోవడం, ఛాతి నొప్పి, పెదాలు నీలంగా మారితే వెంటనే 108."; }
+            else if (v < 95) { status = "కొంచెం తక్కువ"; advice = "కూర్చుని నెమ్మదిగా శ్వాస తీసుకుని 5 నిమిషాల తర్వాత మళ్లీ చూడండి. ఊపిరి ఇబ్బందిగా ఉంటే ఈరోజే డాక్టర్‌ని చూడండి."; }
+            else { status = "సాధారణం"; advice = "బాగుంది."; }
         } else {
             status = ""; advice = "";
         }
@@ -90,6 +100,7 @@ final class Vitals {
         if (k.equals("bp")) return when + " · BP " + o.optInt("sys") + "/" + o.optInt("dia") + (o.has("pulse") ? " · పల్స్ " + o.optInt("pulse") : "") + " · " + o.optString("status");
         if (k.equals("sugar")) return when + " · షుగర్ " + Math.round(o.optDouble("value")) + " (" + ("fasting".equals(o.optString("when")) ? "పరగడుపున"
                 : "after_food".equals(o.optString("when")) ? "తిన్న తర్వాత" : "ఎప్పుడైనా") + ") · " + o.optString("status");
+        if (k.equals("spo2")) return when + " · ఆక్సిజన్ (SpO2) " + Math.round(o.optDouble("value")) + "% · " + o.optString("status");
         return when + " · బరువు " + o.optDouble("value") + " కిలోలు";
     }
 
@@ -124,7 +135,7 @@ final class Vitals {
         if (sugA[1] > 0) out.put("fasting_sugar_avg_this_week", Math.round(sugA[0] / sugA[1]));
         if (sugB[1] > 0) out.put("fasting_sugar_avg_last_week", Math.round(sugB[0] / sugB[1]));
         if (wLast > 0 && wFirst > 0) out.put("weight_change_30_days_kg", Math.round((wLast - wFirst) * 10) / 10.0).put("weight_now_kg", wLast);
-        if (lines.length() == 0) out.put("note", "No readings saved yet. He can say e.g. 'BP 130/85', 'షుగర్ పరగడుపున 110', 'బరువు 72'.");
+        if (lines.length() == 0) out.put("note", "No readings saved yet. He can say e.g. 'BP 130/85', 'షుగర్ పరగడుపున 110', 'బరువు 72', 'ఆక్సిజన్ 96'.");
         return out;
     }
 

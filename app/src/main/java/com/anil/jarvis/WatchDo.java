@@ -16,7 +16,8 @@ import java.util.List;
  * Phase 3 on the watch: its screens ask the phone for what to show (P_ASK -> P_PANEL) and its buttons ask the phone to
  * do things (P_DO): the status (W22), the duty with its bag and handover notes (W24), habits and missions to tick (W34),
  * the home's lights and fans (W35, his saved Alexa routine links), the cooker count (W33) and the morning (W23).
- * A timer asked on the watch runs on the watch (P_TIMER). Everything here is quick and needs no AI.
+ * A timer asked on the watch runs on the watch (P_TIMER). Everything here is quick and needs no AI. Phase 4: the body
+ * scan (W25), today's walking (W31) and the breathing done (W30).
  */
 final class WatchDo {
     private WatchDo() {}
@@ -129,6 +130,22 @@ final class WatchDo {
                 main.post(() -> WatchHub.say(app, t));
                 return;
             }
+            case "scan": { // W25: the body scan (the heart rate just read on the watch, with his day)
+                WatchHub.state(app, "thinking", null, null, "🩺 మీ రోజు చూస్తున్నాను…");
+                String t = Wellness.scan(app, o.optInt("bpm"));
+                main.post(() -> WatchHub.say(app, t));
+                return;
+            }
+            case "walk_today": { // W31: "🚶 నడక": today's steps, metres / km, walks
+                WatchHub.state(app, "thinking", null, null, "🚶 ఈరోజు నడక చూస్తున్నాను…");
+                WatchHealth.daySteps(app, o);
+                String t = Wellness.walkToday(app);
+                main.post(() -> WatchHub.say(app, t));
+                return;
+            }
+            case "breathed": // W30: the breathing done on the watch (for his week)
+                Wellness.breathed(app, o);
+                return;
             case "habit": {
                 JSONObject h = Everyday.mark(app, o.optString("name"), LocalDate.now(), o.optBoolean("done", true));
                 if (h == null) { toast(app, "ఆ అలవాటు దొరకలేదు."); return; }

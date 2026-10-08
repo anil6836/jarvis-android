@@ -134,6 +134,11 @@ final class Talk {
 
     /** W23: "☀️ ఈరోజు": the phone says the day (spoken and shown here). */
     static void morning(Context c) {
+        try { phoneDo(c, new JSONObject().put("what", "morning"), "☀️ ఈరోజు సంగతులు తెస్తున్నాను…"); } catch (Exception ignored) {}
+    }
+
+    /** A button whose answer the phone says (the day, today's walking, the body scan): spoken and shown here. */
+    static void phoneDo(Context c, JSONObject what, String waiting) {
         Context app = c.getApplicationContext();
         appCtx = app;
         Mic.stop();
@@ -143,8 +148,8 @@ final class Talk {
         reply = "";
         confirm = null;
         askedAt = SystemClock.elapsedRealtime();
-        set(THINKING, "☀️ ఈరోజు సంగతులు తెస్తున్నాను…");
-        try { Link.send(app, Link.P_DO, new JSONObject().put("what", "morning")); } catch (Exception ignored) {}
+        set(THINKING, waiting);
+        Link.send(app, Link.P_DO, what);
         watchPhone(app);
     }
 
@@ -184,14 +189,14 @@ final class Talk {
 
     /** The wrist came up (the screen lit): listen a few seconds for "Hey Jarvis". */
     static void raised(Context c) {
-        if (!Link.raise(c) || state != IDLE || Mic.busy() || Hear.active() || !micAllowed(c)) return;
+        if (!Link.raise(c) || state != IDLE || Mic.busy() || Hear.active() || !micAllowed(c) || !EarService.micType) return;
         Mic.start(c, Mic.RAISE, "raise");
     }
 
     /** His always-listening hours (EarService checks every minute). */
     static void hours(Context c) {
         if (!Link.inHours(c)) { if (Mic.kind() == Mic.HOURS) Mic.stop(); return; }
-        if (state != IDLE || Mic.busy() || Hear.active() || !micAllowed(c)) return;
+        if (state != IDLE || Mic.busy() || Hear.active() || !micAllowed(c) || !EarService.micType) return;
         Mic.start(c, Mic.HOURS, "hours");
     }
 

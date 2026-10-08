@@ -14,7 +14,8 @@ import org.json.JSONObject;
  * The watch's own clock for two things that must happen while it sleeps: "still here" (and on the wrist or not) to
  * the phone about every 15 minutes, and W20 "phone forgotten": when the phone drops out of Bluetooth reach (Inbox
  * hears it at once), it is looked at again every 2 minutes; still out of reach after 2 minutes on his wrist and he
- * has walked on (40 steps; without the step count: 6 minutes) → "📱 ఫోన్ మర్చిపోయారా?".
+ * has walked on (40 steps; without the step count: 6 minutes) → "📱 ఫోన్ మర్చిపోయారా?". Phase 4: each beat also reads the
+ * heart rate while he sits (Body), and a walk's end is looked at here (WALK_CHECK) even while the watch sleeps.
  */
 public class Beat extends BroadcastReceiver {
     private static final String BEAT = "com.anil.jarvis.watch.BEAT", CHECK = "com.anil.jarvis.watch.CHECK";
@@ -41,15 +42,41 @@ public class Beat extends BroadcastReceiver {
         final Context app = c.getApplicationContext();
         final boolean beat = BEAT.equals(i.getAction());
         final PendingResult pr = goAsync();
+        if (Body.WALK_CHECK.equals(i.getAction()) || Body.HR_CHECK.equals(i.getAction())) {
+            final boolean hr = Body.HR_CHECK.equals(i.getAction());
+            new Thread(() -> {
+                try {
+                    EarService.flushSteps(); // (steps still in the sensor's memory come in first)
+                    try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
+                    Body.walkCheck(app);
+                    if (hr) { Body.beat(app); Body.scheduleHr(app); }
+                    Link.flush(6000); // (the walk's words reach the phone before the watch sleeps)
+                    try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+                } finally {
+                    pr.finish();
+                }
+            }, "jarvis-watch-walk").start();
+            return;
+        }
         new Thread(() -> {
             try {
+                if (beat) {
+                    EarService.flushSteps();
+                    try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
+                    Body.walkCheck(app);
+                    Body.beat(app);
+                }
                 boolean near = Link.phoneNear(app);
                 if (beat && near) {
                     JSONObject o = new JSONObject();
-                    try { if (EarService.worn != null) o.put("worn", EarService.worn); } catch (Exception ignored) {}
+                    try {
+                        if (EarService.worn != null) o.put("worn", EarService.worn);
+                        o.put("day_steps", Body.today(app));
+                    } catch (Exception ignored) {}
                     Link.send(app, Link.P_BEAT, o);
                 }
                 lostCheck(app, near);
+                Link.flush(6000);
             } finally {
                 pr.finish();
             }

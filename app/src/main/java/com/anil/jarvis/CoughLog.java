@@ -628,6 +628,7 @@ final class CoughLog {
                 for (int i = 0; i < r.length() && i < 8; i++) b.append("• ").append(r.optString(i)).append("\n");
             }
         } catch (Exception ignored) {}
+        try { b.append(Wellness.doctor(c, days)); } catch (Exception ignored) {} // W29: the watch's part (sleep, heart, oxygen, ECG)
         b.append("\nగమనిక / Note: లెక్కలు ఫోన్ మైక్ విన్నంత వరకే, సుమారుగా (ఫోన్ దగ్గర ఉన్నప్పుడు, మైక్ ఆన్‌లో ఉన్నప్పుడు). ఇది వైద్య నిర్ధారణ కాదు.\n"
                 + "Counts are approximate: only while the phone was nearby with its listening microphone on. Not a diagnosis.");
         return Cards.letter(c, "దగ్గు రిపోర్ట్ / Cough report · " + p.name(), b.toString(), "Jarvis/health");

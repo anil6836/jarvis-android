@@ -100,6 +100,8 @@ public class Proactive extends BroadcastReceiver {
         try { Expiry.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Lent.tick(c, p, hush); } catch (Throwable ignored) {}         // a thing lent a month ago, once
         try { DutyMode.tick(c); } catch (Throwable ignored) {}              // duty mode by itself when a duty starts (his choice)
+        try { HealthWeek.tick(c); } catch (Throwable ignored) {}            // W49: Sunday evening's health graph
+        try { Wellness.monthlyBodyTick(c); } catch (Throwable ignored) {}   // W45: the month's weight / body fat, once early in the month
         try { DataUse.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Monthly.maybeMake(c); } catch (Throwable ignored) {} // last month's PDF on the 1st
         try { Diary.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}

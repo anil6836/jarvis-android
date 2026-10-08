@@ -15,6 +15,11 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- W20: steps, so "phone forgotten" comes only when he walks on without it -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- phase 4: the heart rate now and then while he sits (stress, fever hint, resting rate), the body scan, the breathing;
+         the steps and the heart rate keep going in the background ("health" service) -->
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <uses-permission android:name="android.permission.BODY_SENSORS_BACKGROUND" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <!-- W33: a watch timer ends on time (it is an alarm-clock kind of app for that) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
@@ -68,6 +73,18 @@
             android:taskAffinity=""
             android:launchMode="singleTop" />
 
+        <!-- phase 4: the body scan (W25) and the breathing with vibration (W30) -->
+        <activity
+            android:name=".Scan"
+            android:exported="false"
+            android:taskAffinity=""
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".Breathe"
+            android:exported="false"
+            android:taskAffinity=""
+            android:launchMode="singleTop" />
+
         <!-- W21: the Jarvis tile -->
         <service
             android:name=".JarvisTile"
@@ -112,11 +129,11 @@
             <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="1800" />
         </service>
 
-        <!-- keeps the watch ready to listen when the wrist is raised (and in his chosen hours) -->
+        <!-- keeps the watch ready to listen when the wrist is raised (and in his chosen hours); phase 4: steps, heart rate -->
         <service
             android:name=".EarService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone|health" />
 
         <!-- messages from the phone's Jarvis -->
         <service

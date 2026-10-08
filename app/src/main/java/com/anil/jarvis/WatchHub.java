@@ -108,6 +108,14 @@ final class WatchHub {
     static boolean morningOn(Context c) { return sp(c).getBoolean("morning", true); }
     /** W33: a timer asked on the watch runs on the watch (it buzzes on his wrist), not on the phone's clock. */
     static boolean watchTimerOn(Context c) { return sp(c).getBoolean("watch_timer", true); }
+    /** W31: after each walk the watch tells its steps and metres / km (and a word at each km). */
+    static boolean walkOn(Context c) { return sp(c).getBoolean("walk", true); }
+    /** Phase 4: the watch reads the heart rate about every 15 minutes while he sits (stress, fever hint, resting rate, naps). */
+    static boolean hrOn(Context c) { return sp(c).getBoolean("hr", true); }
+    /** W46: "stressed?" on the wrist with the breathing (from his own heart rate). */
+    static boolean stressOn(Context c) { return sp(c).getBoolean("stress", true); }
+    /** W49: Sunday evening's health report with a graph. */
+    static boolean healthWeekOn(Context c) { return sp(c).getBoolean("health_week", true); }
     /** W3: what Jarvis looks like on the watch: "orb", "holo" (the face as a hologram) or "human" (the phone's face). */
     static String look(Context c) { return sp(c).getString("look", "orb"); }
 
@@ -136,7 +144,8 @@ final class WatchHub {
                     .put("ears", ears(c)).put("speak", speakOn(c) && p.voiceReplies()).put("stopVoice", stopVoice(c))
                     .put("openListen", openListen(c)).put("name", p.name()).put("lang", p.listenLang())
                     .put("online", Net.online(c)).put("alerts", alertsOn(c)).put("lost", lostOn(c)).put("look", look(c))
-                    .put("theme", Ui.theme(c)).put("morning", morningOn(c)).put("watchTimer", watchTimerOn(c));
+                    .put("theme", Ui.theme(c)).put("morning", morningOn(c)).put("watchTimer", watchTimerOn(c))
+                    .put("walk", walkOn(c)).put("hr", hrOn(c));
         } catch (Exception ignored) {}
         return o;
     }
@@ -369,7 +378,13 @@ final class WatchHub {
                     new Thread(() -> WatchAlerts.pushInfo(app), "watch-info").start();
                     return;
                 }
-                case P_BEAT: seen(app, new JSONObject(text(data)));
+                case P_BEAT: {
+                    JSONObject o = new JSONObject(text(data));
+                    seen(app, o);
+                    WatchHealth.daySteps(app, o);
+                    return;
+                }
+                case WatchHealth.P_HEALTH: WatchHealth.got(app, new JSONObject(text(data))); // phase 4: walks, heart rate, stillness
                     return;
                 case WatchAlerts.P_ALERT_ACTION: {
                     JSONObject o = new JSONObject(text(data));

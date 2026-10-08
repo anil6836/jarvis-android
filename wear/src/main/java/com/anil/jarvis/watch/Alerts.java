@@ -15,6 +15,7 @@ import org.json.JSONObject;
  * W15 / W8: Jarvis's alerts on the wrist (cooker, door, medicine, reminders, guard / danger, a message, a call),
  * each with its own vibration so he knows which one without looking (W18: on the bike only the vibration counts).
  * Their buttons press the same buttons on the phone, or answer as if he had said the word ("చదువు", "ఎత్తు").
+ * Phase 4: "care" (a gentle tap: "stressed? breathe with me") can open a watch screen.
  */
 final class Alerts {
     private Alerts() {}
@@ -66,11 +67,15 @@ final class Alerts {
         channel(c);
         int id = o.optInt("id");
         String title = o.optString("title"), text = o.optString("text");
+        // phase 4: a card that opens a watch screen (the breathing after "stressed?", the body scan)
+        String open = o.optString("open");
+        PendingIntent screen = screen(c, open);
         Notification.Builder b = new Notification.Builder(c, CH).setSmallIcon(android.R.drawable.ic_popup_reminder)
                 .setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text))
-                .setContentIntent(Notes.open(c, 20)).setAutoCancel(true).setTimeoutAfter(15 * 60_000L)
+                .setContentIntent(screen != null ? screen : Notes.open(c, 20)).setAutoCancel(true).setTimeoutAfter(15 * 60_000L)
                 .setCategory(kind.equals("call") ? Notification.CATEGORY_CALL : kind.equals("message") ? Notification.CATEGORY_MESSAGE
                         : kind.equals("sos") ? Notification.CATEGORY_ALARM : Notification.CATEGORY_REMINDER);
+        if (screen != null) b.addAction(action(c, "breathe".equals(open) ? "🌬️ మొదలుపెట్టు" : "🩺 స్కాన్", screen));
         JSONArray acts = o.optJSONArray("acts");
         for (int i = 0; acts != null && i < acts.length() && i < 3; i++) {
             String label = acts.optString(i);
@@ -85,6 +90,14 @@ final class Alerts {
             b.addAction(action(c, w, PendingIntent.getBroadcast(c, (id * 31 + 10 + i), t, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)));
         }
         try { nm.notify("alert", id, b.build()); } catch (Exception ignored) {}
+    }
+
+    /** The watch screen a card opens ("breathe", "scan"), or null. */
+    private static PendingIntent screen(Context c, String open) {
+        Class<?> k = "breathe".equals(open) ? Breathe.class : "scan".equals(open) ? Scan.class : null;
+        if (k == null) return null;
+        return PendingIntent.getActivity(c, ("open" + open).hashCode(), new Intent(c, k).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     private static Notification.Action action(Context c, String label, PendingIntent pi) {

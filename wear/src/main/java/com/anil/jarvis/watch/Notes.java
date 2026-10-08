@@ -34,9 +34,13 @@ final class Notes {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
-    static Notification ear(Context c) {
+    static Notification ear(Context c) { return ear(c, true); }
+
+    /** mic false: only the steps / heart rate run (after a restart, until Jarvis is opened). */
+    static Notification ear(Context c, boolean mic) {
         channels(c);
-        String what = Link.inHours(c) ? "మీ సమయం: ఎప్పుడూ వింటోంది" : "చేయి ఎత్తి \"Hey Jarvis\" అనండి";
+        String what = !mic ? "🚶 అడుగులు, గుండె వేగం చూస్తోంది (వినడానికి Jarvis ఒకసారి తెరవండి)"
+                : Link.inHours(c) ? "మీ సమయం: ఎప్పుడూ వింటోంది" : "చేయి ఎత్తి \"Hey Jarvis\" అనండి";
         return new Notification.Builder(c, CH_EAR).setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setContentTitle("Jarvis").setContentText(what).setOngoing(true).setContentIntent(open(c, 1))
                 .setCategory(Notification.CATEGORY_SERVICE).build();

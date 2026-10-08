@@ -173,6 +173,11 @@ public class NotifyListener extends NotificationListenerService {
         if (text.isEmpty()) text = str(x.getCharSequence(Notification.EXTRA_BIG_TEXT));
         if (text.isEmpty()) text = str(x.getCharSequence(Notification.EXTRA_TEXT));
         if (text.isEmpty() && title.isEmpty()) return;
+        // W44: Samsung's irregular heart rhythm warning (watch / Samsung Health Monitor): kept with the date, a doctor reminder
+        if (System.currentTimeMillis() - sbn.getPostTime() <= 60_000 && HeartLog.isIrregular(sbn.getPackageName(), title + " " + text)) {
+            final String what = title + ": " + text, key = sbn.getKey() + "|" + sbn.getPostTime();
+            new Thread(() -> HeartLog.irregular(this, what, key), "jarvis-irregular").start();
+        }
         if (text.length() > 1200) text = text.substring(0, 1200);
 
         Notification.Action reply = null;

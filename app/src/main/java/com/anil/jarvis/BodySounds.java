@@ -120,10 +120,14 @@ final class BodySounds {
             case "wheeze": {
                 if (Exercise.running() || Bike.riding(c) || new Prefs(c).driving()) break; // out of breath from exercise / a ride
                 int n = mark(kind, 10 * 60_000L);
-                if (n >= 3 && ask(c, kind, 2, "%s, ఊపిరి తీసుకోవడం కొంచెం కష్టంగా వినిపిస్తోంది.", "ఊపిరి ఇబ్బందిగా ఉందా? ఛాతీ బిగుసుకుపోయినట్టు ఉందా?",
+                // W27: with the watch on his wrist, he can read his oxygen there (Samsung Health → SpO2) and tell the number
+                boolean watch = WatchHub.known(c) && WatchHub.watchHere(c) && !Boolean.FALSE.equals(WatchHub.worn(c));
+                if (n >= 3 && ask(c, kind, 2, "%s, ఊపిరి తీసుకోవడం కొంచెం కష్టంగా వినిపిస్తోంది.", "ఊపిరి ఇబ్బందిగా ఉందా? ఛాతీ బిగుసుకుపోయినట్టు ఉందా?"
+                                + (watch ? " వాచ్‌లో Samsung Health లో ఆక్సిజన్ (SpO2) కొలిచి నంబర్ చెప్తారా?" : ""),
                         " [health: Jarvis heard wheezing / heavy breathing several times. Ask calmly. If he says breathing is really hard, lips/face turning blue, "
                                 + "chest pain or he can't speak full sentences -> tell him to call 108 now and offer to call. Mild: sit upright, slow breaths, "
-                                + "health_advice (breathing) and suggest a doctor soon if it keeps coming. If no, just say okay.]")) clear(kind);
+                                + "health_advice (breathing) and suggest a doctor soon if it keeps coming. If he tells an oxygen (SpO2) number, log it with "
+                                + "health_log add kind spo2 and follow its advice (under 90 after a second try: 108 now; under 92: a doctor today). If no, just say okay.]")) clear(kind);
                 break;
             }
             case "hiccup": {

@@ -28,7 +28,7 @@ final class Link {
             P_MIC_END = "/jarvis/mic/end", P_TEXT = "/jarvis/text", P_STOP = "/jarvis/stop", P_PLAYED = "/jarvis/played",
             P_CONFIRM_ANSWER = "/jarvis/confirm/answer", P_DONE = "/jarvis/done", P_BEAT = "/jarvis/beat",
             P_ALERT_ACTION = "/jarvis/alert/action", P_ALARM_ANSWER = "/jarvis/alarm/answer",
-            P_ASK = "/jarvis/ask", P_DO = "/jarvis/do";
+            P_ASK = "/jarvis/ask", P_DO = "/jarvis/do", P_HEALTH = "/jarvis/health";
     // phone -> watch
     static final String P_SETTINGS = "/jarvis/settings", P_STATE = "/jarvis/state", P_MIC_STOP = "/jarvis/mic/stop",
             P_AUDIO_START = "/jarvis/audio/start", P_AUDIO_DATA = "/jarvis/audio/data", P_AUDIO_END = "/jarvis/audio/end",
@@ -50,23 +50,39 @@ final class Link {
         phoneAt = heardAt = SystemClock.elapsedRealtime();
     }
 
-    static void send(Context c, String path, JSONObject o) { send(c, path, o.toString().getBytes(StandardCharsets.UTF_8)); }
+    static void send(Context c, String path, JSONObject o) { send(c, path, o.toString().getBytes(StandardCharsets.UTF_8), null); }
+
+    /** failed: runs on the main thread when the phone couldn't be reached. */
+    static void send(Context c, String path, JSONObject o, Runnable failed) { send(c, path, o.toString().getBytes(StandardCharsets.UTF_8), failed); }
+
+    static void send(Context c, String path, byte[] data) { send(c, path, data, null); }
 
     /** In order, one at a time, off the main thread. */
-    static void send(Context c, String path, byte[] data) {
+    static void send(Context c, String path, byte[] data, Runnable failed) {
         final Context app = c.getApplicationContext();
         out.execute(() -> {
             try {
                 String n = phoneId(app);
-                if (n == null) { ok = false; lastError = "ఫోన్ కనెక్ట్ అయి లేదు"; return; }
+                if (n == null) {
+                    ok = false;
+                    lastError = "ఫోన్ కనెక్ట్ అయి లేదు";
+                    if (failed != null) new android.os.Handler(android.os.Looper.getMainLooper()).post(failed);
+                    return;
+                }
                 Tasks.await(Wearable.getMessageClient(app).sendMessage(n, path, data), 4, TimeUnit.SECONDS);
                 ok = true;
             } catch (Exception e) {
                 phone = null;
                 ok = false;
                 lastError = "ఫోన్‌కి పంపలేకపోయాను: " + e.getMessage();
+                if (failed != null) new android.os.Handler(android.os.Looper.getMainLooper()).post(failed);
             }
         });
+    }
+
+    /** Waits (background thread) until what was sent so far has gone, or up to ms: before the watch may sleep again. */
+    static void flush(long ms) {
+        try { out.submit(() -> {}).get(ms, TimeUnit.MILLISECONDS); } catch (Exception ignored) {}
     }
 
     /** True when a phone is connected right now (background thread; waits up to 3 s). */
@@ -123,6 +139,10 @@ final class Link {
     static boolean alerts(Context c) { return cfg(c).optBoolean("alerts", true); }
     /** W20: tell him when he walks away from the phone. */
     static boolean lost(Context c) { return cfg(c).optBoolean("lost", true); }
+    /** W31: after each walk, its steps and metres / km (and a word at each km). */
+    static boolean walk(Context c) { return cfg(c).optBoolean("walk", true); }
+    /** W46 / W26 / W43: the heart rate about every 15 minutes while he sits (his normal is learnt on the phone). */
+    static boolean hr(Context c) { return cfg(c).optBoolean("hr", true); }
     /** W3: "orb", "holo" or "human". */
     static String look(Context c) { return cfg(c).optString("look", "orb"); }
     /** W5: the phone's theme: "mix", "blue" or "gold". */

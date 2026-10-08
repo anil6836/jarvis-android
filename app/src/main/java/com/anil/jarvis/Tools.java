@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.KeyguardManager;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -392,7 +393,15 @@ final class Tools {
                 "Remind him to drink water every few hours during the day. on=false stops it.",
                 schema(new String[][]{{"on", "boolean", "true to start"}, {"every_hours", "integer", "1-4, default 2"},
                         {"from_hour", "integer", "Start hour, default 8"}, {"to_hour", "integer", "End hour, default 22"}}, "on")));
-        DEFS.add(new Def("steps_today", "How many steps he has walked today (phone's step counter).", schema(new String[][]{})));
+        DEFS.add(new Def("steps_today", "How many steps he has walked today (the most of Samsung Health via Health Connect, his watch's own count and the phone's), "
+                + "about how far (metres / km) and today's walks.", schema(new String[][]{})));
+        DEFS.add(new Def("health_watch", "His health from his Galaxy Watch and Samsung Health (Health Connect), worked out on the phone; general guidance, not a diagnosis. "
+                + "scan: body scan (heart rate with his normal, today's stress, last night's sleep, steps, coughs, oxygen, last BP, energy; on the watch 🩺 reads a fresh "
+                + "heart rate); breathe: 2-minute breathing with vibration on his watch (or guided here); walk_today: today's steps, metres / km and each walk; "
+                + "energy: today's energy estimate (Samsung keeps its own energy score to itself); stress: today's stress from his heart rate (Jarvis's estimate); "
+                + "sleep: last night's sleep with stages, night oxygen and coughs; week: the week's health graph (a picture, saved and opened); "
+                + "body: this month's weight / body fat with tips; connect: ask for Health Connect access (Android's page opens).",
+                schema(new String[][]{{"action", "string", "scan, breathe, walk_today, energy, stress, sleep, week, body or connect"}}, "action")));
         DEFS.add(new Def("ride_app",
                 "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself. "
                         + "app = compare (or empty): Jarvis reads the fares for the trip in each of his apps (Rapido, Uber, Ola) and returns them together, "
@@ -598,12 +607,12 @@ final class Tools {
                 schema(new String[][]{{"name", "string", "Full name"}, {"phone", "string", "Phone number"}, {"phone2", "string", "Second number"},
                         {"email", "string", "Email"}, {"company", "string", "Company"}, {"title", "string", "Job title"},
                         {"address", "string", "Address"}, {"note", "string", "Note, e.g. where he met them"}}, "name")));
-        DEFS.add(new Def("health_log", "His BP, sugar and weight readings, kept on the phone, with a word on each (normal / high / low) and when to see a doctor or call 108. "
-                + "add: one reading ('BP 130/85 పల్స్ 78', 'షుగర్ పరగడుపున 110', 'బరువు 72'); list / trend: readings of N days with weekly averages; delete_last; "
+        DEFS.add(new Def("health_log", "His BP, sugar, weight and oxygen (SpO2) readings, kept on the phone, with a word on each (normal / high / low) and when to see a doctor or call 108. "
+                + "add: one reading ('BP 130/85 పల్స్ 78', 'షుగర్ పరగడుపున 110', 'బరువు 72', 'ఆక్సిజన్ 96' read on his watch); list / trend: readings of N days with weekly averages; delete_last; "
                 + "sleep: how long he slept (each sleep with times, average, sleep since his duty ended), worked out from the phone lying unused.",
-                schema(new String[][]{{"action", "string", "add, list (default), trend, delete_last or sleep"}, {"kind", "string", "bp, sugar or weight"},
+                schema(new String[][]{{"action", "string", "add, list (default), trend, delete_last or sleep"}, {"kind", "string", "bp, sugar, weight or spo2"},
                         {"sys", "integer", "BP upper number"}, {"dia", "integer", "BP lower number"}, {"pulse", "integer", "Pulse (optional)"},
-                        {"value", "number", "Sugar mg/dL or weight kg"}, {"when", "string", "Sugar: fasting (పరగడుపున), after_food or random"},
+                        {"value", "number", "Sugar mg/dL, weight kg or SpO2 %"}, {"when", "string", "Sugar: fasting (పరగడుపున), after_food or random"},
                         {"days", "integer", "For list: days back (default 30)"}})));
         DEFS.add(new Def("bike_challan", "Check traffic challans (fines) on his bike in Telangana: saves his bike number (once), copies it and opens the TS e-challan site; "
                 + "he types the captcha and pays himself if he wants.",
@@ -893,6 +902,7 @@ final class Tools {
             case "train_status": return "రైలు వివరాలు చూస్తున్నాను…";
             case "water_reminder": return "నీళ్ల రిమైండర్…";
             case "steps_today": return "అడుగులు లెక్కపెడుతున్నాను…";
+            case "health_watch": return "ఆరోగ్యం చూస్తున్నాను…";
             case "food_app": return "వెతుకుతున్నాను…";
             case "night_mode": return "నైట్ మోడ్…";
             case "find_phone": return "ఇక్కడే ఉన్నాను!";
@@ -1062,6 +1072,7 @@ final class Tools {
                 case "train_status": return trainStatus(a.optString("query"), a.optString("station", ""), a.optString("coach", ""));
                 case "water_reminder": return water(a.optBoolean("on", true), a.optInt("every_hours", 2), a.optInt("from_hour", 8), a.optInt("to_hour", 22));
                 case "steps_today": return steps();
+                case "health_watch": return healthWatch(a);
                 case "ride_app": {
                     String ap = a.optString("app").trim().toLowerCase(Locale.ROOT);
                     int named = (ap.contains("uber") ? 1 : 0) + (ap.contains("ola") ? 1 : 0) + (ap.contains("rapido") ? 1 : 0);
@@ -3722,10 +3733,89 @@ final class Tools {
     }
 
     private String steps() throws Exception {
-        if (!Health.canCount(act())) return needPermission(Manifest.permission.ACTIVITY_RECOGNITION, "counting steps (physical activity)");
-        int n = Health.stepsToday(act());
-        if (n < 0) return err("no_sensor", "This phone has no step counter.");
-        return ok().put("steps_today", n).put("note", n == 0 ? "Counting may have just started today; it will be right from tomorrow." : "").toString();
+        long n = Wellness.stepsToday(act());
+        if (n < 0 && !Health.canCount(act())) return needPermission(Manifest.permission.ACTIVITY_RECOGNITION, "counting steps (physical activity)");
+        if (n < 0) return err("no_sensor", "No step count: no step counter on this phone, the watch hasn't sent one and Health Connect isn't connected.");
+        return ok().put("steps_today", n).put("say", Wellness.walkToday(act()))
+                .put("note", n == 0 ? "Counting may have just started today; it will be right from tomorrow." : "")
+                .put("next", "Say it in short Telugu as in 'say' (steps, about how far, today's walks).").toString();
+    }
+
+    /** Phase 4: his health from the watch and Samsung Health (Wellness, HeartLog, HealthWeek). */
+    private String healthWatch(JSONObject a) throws Exception {
+        String action = a.optString("action", "scan").trim().toLowerCase(Locale.ROOT);
+        Context c = act();
+        switch (action) {
+            case "scan":
+                return ok().put("say", Wellness.scan(c, 0)).put("next", "Say it in short Telugu, as it is. For a fresh heart rate he can tap 🩺 స్కాన్ on the watch. "
+                        + "Not a medical test.").toString();
+            case "breathe": {
+                if (breatheOnWatch(c)) return ok().put("on_watch", true).put("next", "Say: a card is on his watch; tap it and breathe with the taps on the wrist "
+                        + "(4 seconds in, 6 out, 2 minutes).").toString();
+                return ok().put("on_watch", false).put("next", "Guide him here, calmly in short Telugu: 5 rounds of 4 seconds in through the nose, 6 seconds out "
+                        + "slowly through the mouth.").toString();
+            }
+            case "walk_today": return ok().put("say", Wellness.walkToday(c)).put("next", "Say it in short Telugu as it is.").toString();
+            case "energy": {
+                String e = Wellness.energyLine(c);
+                if (e.isEmpty()) return err("no_sleep", "No sleep for last night (Health Connect or the phone's guess), so no energy estimate. Tell him; "
+                        + "wearing the watch to sleep with Health Connect connected (Settings → ⌚ వాచ్) gives it.");
+                return ok().put("say", e).put("data", Wellness.energyData(c)).put("next", "Say it in short Telugu; it is Jarvis's estimate.").toString();
+            }
+            case "stress": return ok().put("say", Wellness.stress(c)).put("next", "Say it in short Telugu.").toString();
+            case "sleep": {
+                String n = Wellness.night(c);
+                if (n.isEmpty()) return Sleep.summary(c, 7).put("note", "No sleep from Health Connect for last night: this is the phone's guess.")
+                        .put("next", "Say last sleep (from-to, hours) in short Telugu.").toString();
+                return ok().put("say", n).put("next", "Say it in short Telugu.").toString();
+            }
+            case "week": {
+                Object[] r = HealthWeek.make(c);
+                Coder.Made m = (Coder.Made) r[0];
+                if (m.uri != null && unlocked()) Cards.view(c, m);
+                return ok().put("picture", m.where).put("line", r[1]).put("data", r[3]).put("next", "Say the week in 3-4 short Telugu sentences from the "
+                        + "numbers (steps, sleep, resting heart rate, stress, coughs), one kind tip; the graph is saved in " + m.where + ".").toString();
+            }
+            case "body": {
+                String t = Wellness.body(c);
+                if (t.isEmpty()) return err("no_data", "No weight / body fat in Samsung Health (Health Connect) or his readings in 70 days. Tell him: measure "
+                        + "body composition on the watch (Samsung Health → Body composition) or tell his weight ('బరువు 72'); connect Health Connect in Settings → ⌚ వాచ్.");
+                return ok().put("say", t).put("next", "Say it in short Telugu.").toString();
+            }
+            case "connect": {
+                if (android.os.Build.VERSION.SDK_INT < 34 || !HealthData.available(c)) return err("no_health_connect", HealthData.status(c));
+                String[] need = HealthData.toAsk(c);
+                if (need.length == 0) return ok().put("connected", true).put("next", "Say Health Connect is already connected.").toString();
+                Activity act = act();
+                final String[] why = {null};
+                final CountDownLatch asked = new CountDownLatch(1);
+                act.runOnUiThread(() -> {
+                    try { act.requestPermissions(need, 64); } catch (Exception e) { why[0] = String.valueOf(e.getMessage()); }
+                    asked.countDown();
+                });
+                asked.await(5, TimeUnit.SECONDS);
+                if (why[0] != null) return err("not_opened", "Android's Health Connect page didn't open: " + why[0] + ". Tell him to use Settings → ⌚ వాచ్ → Health Connect.");
+                return ok().put("asked", true).put("next", "Say: Android's Health Connect page should be open now; tap 'Allow all' (అన్నీ అనుమతించు). Samsung Health → "
+                        + "Settings → Health Connect must also share its data. If no page came, Settings → ⌚ వాచ్ → Health Connect.").toString();
+            }
+            default: return err("unknown_action", "Use scan, breathe, walk_today, energy, stress, sleep, week, body or connect.");
+        }
+    }
+
+    /** W30: the breathing card on his watch (it opens the breathing screen); true only when it reached the watch (background thread). */
+    static boolean breatheOnWatch(Context c) {
+        if (!WatchHub.known(c) || !WatchHub.watchHere(c) || Boolean.FALSE.equals(WatchHub.worn(c))) return false;
+        try {
+            final boolean[] sent = {false};
+            final CountDownLatch done = new CountDownLatch(1);
+            byte[] b = new JSONObject().put("id", 4607).put("kind", "care").put("title", "🌬️ శ్వాస వ్యాయామం")
+                    .put("text", "నొక్కండి: 2 నిమిషాలు, చేతికి వైబ్రేషన్‌తో").put("open", "breathe").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            WatchHub.send(c, WatchAlerts.P_ALERT, b, null, done::countDown, true, () -> { sent[0] = true; done.countDown(); });
+            done.await(8, TimeUnit.SECONDS);
+            return sent[0];
+        } catch (Exception e) {
+            return false;
+        }
     }
 
 
@@ -5464,6 +5554,35 @@ final class Tools {
         return Offline.firstNote() + r;
     }
 
+    /** Phase 4 without internet: the same answers as health_watch, said as they are. */
+    private String offlineHealth(String action) throws Exception {
+        Context c = act();
+        switch (action) {
+            case "scan": return Wellness.scan(c, 0);
+            case "walk_today": return Wellness.walkToday(c);
+            case "stress": return Wellness.stress(c);
+            case "energy": {
+                String e = Wellness.energyLine(c);
+                return e.isEmpty() ? "రాత్రి నిద్ర వివరాలు లేవు, అందుకే ఎనర్జీ చెప్పలేను. వాచ్ పెట్టుకుని పడుకుంటే చెప్తాను." : e;
+            }
+            case "breathe":
+                return breatheOnWatch(c) ? "వాచ్‌లో శ్వాస కార్డ్ పంపాను: నొక్కి, చేతికి వచ్చే వైబ్రేషన్‌తో 4 సెకన్లు పీల్చి, 6 సెకన్లు వదలండి."
+                        : "నాతో పాటు: 4 సెకన్లు ముక్కుతో నెమ్మదిగా పీల్చండి, 6 సెకన్లు నోటితో నెమ్మదిగా వదలండి. ఇలా 5 సార్లు.";
+            case "week": {
+                Object[] r = HealthWeek.make(c);
+                Coder.Made m = (Coder.Made) r[0];
+                if (m.uri != null && unlocked()) Cards.view(c, m);
+                String line = (String) r[1];
+                return "ఈ వారం ఆరోగ్యం గ్రాఫ్ " + m.where + " లో దాచాను." + (line.isEmpty() ? "" : " " + line.replace(" · ", ", ") + ".");
+            }
+            case "body": {
+                String t = Wellness.body(c);
+                return t.isEmpty() ? "బరువు, కొవ్వు శాతం రీడింగ్స్ ఏవీ లేవు. వాచ్‌లో Samsung Health → Body composition కొలవండి, లేదా \"బరువు 72\" అని చెప్పండి." : t;
+            }
+            default: return "అది చేయలేకపోయాను.";
+        }
+    }
+
     /** Marks an answer that already says there is no internet. */
     private static final String SAYS_NO_NET = "\u0001";
 
@@ -5812,6 +5931,9 @@ final class Tools {
         }
         if (Status.asks(said)) return Status.text(act());
         if (Morning.asks(said)) return Morning.text(act());
+        // ---- phase 4: his health from the watch (no AI)
+        String hw = Wellness.asks(bare);
+        if (hw != null) return offlineHealth(hw);
         if (bare.matches("(స్టాప్‌వాచ్|స్టాప్ వాచ్|స్టాప్వాచ్|stopwatch|stop watch)(\\s.*)?") && bare.split("\\s+").length <= 6) return Stopwatch.command(act(), bare);
 
         // ---- money given / taken, expenses

@@ -113,7 +113,8 @@ public class WatchActivity extends Activity implements Talk.Screen {
 
         // phase 3: the day's buttons (two a row)
         String[][] menu = {{"☀️ ఈరోజు", "morning"}, {"📊 స్టేటస్", "status"}, {"🏍️ డ్యూటీ", "duty"}, {"✅ పనులు", "tasks"},
-                {"💡 ఇల్లు", "home"}, {"⏱️ టైమర్", "timer"}, {"🍲 కుక్కర్", "cooker"}, {"📝 నోట్", "note"}, {"🌐 అనువాదం", "translate"}};
+                {"💡 ఇల్లు", "home"}, {"⏱️ టైమర్", "timer"}, {"🍲 కుక్కర్", "cooker"}, {"📝 నోట్", "note"}, {"🌐 అనువాదం", "translate"},
+                {"🚶 నడక", "walk"}, {"🩺 స్కాన్", "scan"}, {"🌬️ శ్వాస", "breathe"}}; // (phase 4: health)
         LinearLayout mrow = null;
         for (int i = 0; i < menu.length; i++) {
             if (i % 2 == 0) {
@@ -186,6 +187,12 @@ public class WatchActivity extends Activity implements Talk.Screen {
                 if (!Talk.micAllowed(this)) { askPermissions(); return; }
                 Talk.listen(this, what);
                 break;
+            case "walk": // W31: today's walking, said by the phone
+                try { Talk.phoneDo(this, new org.json.JSONObject().put("what", "walk_today").put("day_steps", Body.today(this)), "🚶 ఈరోజు నడక చూస్తున్నాను…"); }
+                catch (Exception ignored) {}
+                break;
+            case "scan": Scan.open(this); break;
+            case "breathe": Breathe.open(this); break;
             default: Panel.open(this, what);
         }
     }
@@ -204,13 +211,23 @@ public class WatchActivity extends Activity implements Talk.Screen {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             need.add(Manifest.permission.POST_NOTIFICATIONS);
         if (checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED)
-            need.add(Manifest.permission.ACTIVITY_RECOGNITION); // (steps: "phone forgotten" only when he walks on)
+            need.add(Manifest.permission.ACTIVITY_RECOGNITION); // (steps: "phone forgotten" only when he walks on; the walking coach)
+        if (!Pulse.allowed(this) && Link.hr(this) && !Link.sp(this).getBoolean("asked_body", false))
+            need.add(Manifest.permission.BODY_SENSORS); // (phase 4: the heart rate now and then; asked once, the scan asks again)
         if (!need.isEmpty()) requestPermissions(need.toArray(new String[0]), 1);
     }
 
     @Override public void onRequestPermissionsResult(int code, String[] p, int[] r) {
         super.onRequestPermissionsResult(code, p, r);
-        if (Talk.micAllowed(this)) { EarService.startIfWanted(this); Talk.hello(this); }
+        for (String x : p) if (Manifest.permission.BODY_SENSORS.equals(x)) Link.sp(this).edit().putBoolean("asked_body", true).apply();
+        // the heart rate while the screen is off too (Android asks this one by itself, once)
+        if (code == 1 && Pulse.allowed(this) && Build.VERSION.SDK_INT >= 33 && Link.hr(this) && !Link.sp(this).getBoolean("asked_body_bg", false)
+                && checkSelfPermission("android.permission.BODY_SENSORS_BACKGROUND") != PackageManager.PERMISSION_GRANTED) {
+            Link.sp(this).edit().putBoolean("asked_body_bg", true).apply();
+            requestPermissions(new String[]{"android.permission.BODY_SENSORS_BACKGROUND"}, 2);
+        }
+        EarService.startIfWanted(this);
+        if (Talk.micAllowed(this)) Talk.hello(this);
         changed();
     }
 
@@ -219,7 +236,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
         resumed = true;
         Talk.screen = this;
         Notes.talk(this); // (the screen shows the talk now: no notification)
-        if (Talk.micAllowed(this)) EarService.startIfWanted(this);
+        EarService.startIfWanted(this); // (the mic, and phase 4's steps and heart rate)
         Beat.schedule(this); // ("still here" to the phone, and "phone forgotten", while the watch sleeps)
         Talk.hello(this);
         scroll.requestFocus();

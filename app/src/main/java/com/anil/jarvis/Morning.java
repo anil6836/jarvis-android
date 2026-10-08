@@ -14,7 +14,8 @@ import java.util.List;
 /**
  * W23 / O42: the morning in about 30 seconds, made on the phone (no AI, so it is quick and works without internet):
  * good morning, the weather (when there is internet), today's duty with the time to leave and the bag, reminders,
- * medicines, birthdays, bills / last dates today or tomorrow, and last night's sleep. Said on the watch when he stops
+ * medicines, birthdays, bills / last dates today or tomorrow, last night's sleep (with the watch: its stages, night
+ * coughs, oxygen) and the energy estimate. Said on the watch when he stops
  * Jarvis's alarm there in the morning, on "గుడ్ మార్నింగ్" / "ఈరోజు ఏమున్నాయి" without internet, and from the watch's
  * "☀️ ఈరోజు" button. Network: call it off the main thread.
  */
@@ -95,11 +96,20 @@ final class Morning {
                     s.append(Debts.line(d)).append(due.equals(today) ? " ఈరోజు" : " రేపు").append(". ");
             }
         } catch (Exception ignored) {}
-        // last night's sleep
+        // last night: the watch's sleep with its stages, night coughs / snoring and oxygen (W28, W48); else the phone's guess
         try {
-            long now = System.currentTimeMillis();
-            long[] sl = Sleep.between(app, now - 14 * 3600_000L, now + 1);
-            if (sl[0] > 0 && sl[1] >= 60) s.append("రాత్రి నిద్ర ").append(Status.hours(sl[1])).append(sl[1] < 300 ? ", తక్కువ. ఈరోజు జాగ్రత్తగా ఉండండి" : "").append(". ");
+            String night = Wellness.night(app);
+            if (!night.isEmpty()) s.append(night).append(' ');
+            else {
+                long now = System.currentTimeMillis();
+                long[] sl = Sleep.between(app, now - 14 * 3600_000L, now + 1);
+                if (sl[0] > 0 && sl[1] >= 60) s.append("రాత్రి నిద్ర ").append(Status.hours(sl[1])).append(sl[1] < 300 ? ", తక్కువ. ఈరోజు జాగ్రత్తగా ఉండండి" : "").append(". ");
+            }
+        } catch (Exception ignored) {}
+        // W43: the day's energy estimate
+        try {
+            String e = Wellness.energyLine(app);
+            if (!e.isEmpty()) s.append(e).append(' ');
         } catch (Exception ignored) {}
         return s.toString().replaceAll("\\s+", " ").trim();
     }
