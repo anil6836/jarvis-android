@@ -51,4 +51,7 @@ dependencies {
     implementation 'com.google.android.gms:play-services-wearable:18.2.0'
     // Short texts for watch faces (complications): next duty, weather (W1)
     implementation 'androidx.wear.watchface:watchface-complications-data-source:1.2.1'
+    // The Jarvis tile (W21): next duty, reminder, sleep and quick buttons, one swipe from the watch face
+    implementation 'androidx.wear.tiles:tiles:1.4.1'
+    implementation 'androidx.concurrent:concurrent-futures:1.1.0'
 }

@@ -47,6 +47,8 @@ final class Tools {
          * a call or a reply to a message doesn't need the phone unlocked (still only after his yes). Nothing else.
          */
         default boolean watchTrusted() { return false; }
+        /** He is asking on his watch (WatchTalkActivity): a timer then runs on the watch itself (W33). */
+        default boolean fromWatch() { return false; }
     }
 
     private final Host host;
@@ -147,7 +149,13 @@ final class Tools {
                 "Remind Anil about something at a date and time (he gets a notification and Jarvis says it aloud). Use this for 'remind me' / గుర్తుచేయి requests, not set_alarm.",
                 schema(new String[][]{{"text", "string", "What to remind him about, short Telugu phrase"},
                         {"when", "string", "Local date and time 'yyyy-MM-dd HH:mm' (compute it from the current date/time in the system prompt)"},
-                        {"repeat", "string", "'daily' or 'weekly' for repeating reminders; empty for once (medicines use the medicine tool)"}}, "text", "when")));
+                        {"repeat", "string", "'daily', 'weekly' or 'monthly' (the same day every month: rent, EMI, recharge, bills - 'ప్రతి నెల 5 న అద్దె'); empty for once (medicines use the medicine tool)"},
+                        {"day_of_month", "integer", "For monthly: the day of the month he said (1-31; a short month uses its last day)"}}, "text", "when")));
+        DEFS.add(new Def("stopwatch", "A stopwatch ('స్టాప్‌వాచ్ మొదలుపెట్టు / ఆపు / ఎంత అయింది / లాప్ / రీసెట్'); shown ticking in a notification while it runs.",
+                schema(new String[][]{{"action", "string", "start, stop, read, lap or reset"}}, "action")));
+        DEFS.add(new Def("status", "'Jarvis, స్టేటస్' / 'అన్నీ ఎలా ఉన్నాయి': his status like a suit's, from the phone itself: phone and watch battery, internet, "
+                + "how the phone rings, duty / night mode, the home guard, the next duty, reminder and alarm, cooker count / stopwatch running, things lent out. "
+                + "Say it as short Telugu lines.", schema(new String[][]{})));
         DEFS.add(new Def("list_reminders", "List Anil's upcoming reminders with their ids.", schema(new String[][]{})));
         DEFS.add(new Def("cancel_reminder", "Cancel one reminder by id (from list_reminders).",
                 schema(new String[][]{{"id", "string", "Reminder id"}}, "id")));
@@ -491,8 +499,11 @@ final class Tools {
                 + "bag: what he takes to duty (text = items comma separated, 'off' = none, empty = show), said the evening before and before leaving; "
                 + "night_chime: on his duty nights a soft chime and the time every hour (text = hours '22:00-05:00', or 'off'); "
                 + "rest: sleep before a duty (on by default): a nap that afternoon when the duty starts later in the day, the time to be in bed the night before a morning start "
-                + "(text 'on' / 'off'; empty = show).",
-                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear, open, trip_check, report, bag, night_chime or rest"},
+                + "(text 'on' / 'off'; empty = show); "
+                + "mode: duty mode ('డ్యూటీ మోడ్ ఆన్' / 'డ్యూటీకి వచ్చాను'): phone on vibrate, Jarvis's own remarks and reminders only as notifications (not said aloud), "
+                + "ends by itself when this duty ends (text 'on', 'off', 'auto on' = on by itself at each duty start, 'auto off', empty = show); "
+                + "countdown: time left to the next duty / to the end of this one, and when to leave.",
+                schema(new String[][]{{"action", "string", "next (default), on_date, month, setup, setup_text, set_day, cover, clear, open, trip_check, report, bag, night_chime, rest, mode or countdown"},
                         {"person", "string", "Whose duty: empty = his own; a name or a batch (A, B, C)"},
                         {"date", "string", "YYYY-MM-DD (on_date, set_day, cover, clear)"}, {"to_date", "string", "Last date YYYY-MM-DD for set_day / clear"},
                         {"duty", "boolean", "For set_day: true = on duty, false = off"},
@@ -641,11 +652,13 @@ final class Tools {
                 + "nearest first with km, 24-hour ones marked and opening hours when known.",
                 schema(new String[][]{{"what", "string", "What he needs, e.g. 'మెడికల్ షాప్', 'ATM', 'పెట్రోల్ బంక్'"}, {"radius_km", "integer", "How far to look (default 5)"}}, "what")));
         DEFS.add(new Def("item_place", "Where he kept things: put ('తాళాలు బీరువా పై అరలో పెట్టాను'), find ('తాళాలు ఎక్కడ?'), list, remove; "
+                + "things he LENT (not money; money is debts): lend ('నా గొడుగు రవికి ఇచ్చాను': thing + person), returned ('రవి గొడుగు తిరిగి ఇచ్చాడు'), "
+                + "lent = what is still with others ('ఎవరికి ఏమి ఇచ్చాను?', person to filter); a thing out 30 days is mentioned once a month; "
                 + "bluetooth = where a Bluetooth thing (earbuds, headset, watch, speaker) was when it last left the phone ('నా ఇయర్‌బడ్స్ ఎక్కడ?'); "
                 + "scan = camera memory: with the live camera open, he slowly shows a room and Jarvis remembers where the everyday things are "
                 + "('ఈ గదిని గుర్తుపెట్టుకో', place = the room, e.g. 'హాల్'); later find answers from it ('రిమోట్ ఎక్కడ చూశావ్?').",
-                schema(new String[][]{{"action", "string", "put, find (default), list, remove, bluetooth or scan"}, {"thing", "string", "The thing"},
-                        {"place", "string", "For put: where; for scan: the room"}})));
+                schema(new String[][]{{"action", "string", "put, find (default), list, remove, bluetooth, scan, lend, returned or lent"}, {"thing", "string", "The thing"},
+                        {"place", "string", "For put: where; for scan: the room"}, {"person", "string", "For lend / returned / lent: who has it"}})));
         DEFS.add(new Def("automation", "His own automatic rules, set by voice ('ప్రతి సోమవారం 8 కి పత్తి, బంగారం ధర చెప్పు', 'బైక్ 20% కంటే తగ్గితే చెప్పు', "
                 + "'డ్యూటీకి బయలుదేరేటప్పుడు వర్షం ఉంటే చెప్పు', 'వర్షం వచ్చేలా ఉంటే చెప్పు', 'డ్యూటీ రోజుల్లో రాత్రి 9:45 కి అమ్మకి కాల్ గుర్తు చెయ్'). "
                 + "add: trigger = time (at HH:mm; days = daily, duty, home, weekdays like 'mon,thu', or 'once:YYYY-MM-DD') / before_duty (minutes before he leaves for duty) / "
@@ -794,6 +807,8 @@ final class Tools {
             case "reply_to_notification": return "రిప్లై సిద్ధం చేస్తున్నాను…";
             case "web_search": return "ఇంటర్నెట్‌లో వెతుకుతున్నాను…";
             case "set_reminder": return "రిమైండర్ పెడుతున్నాను…";
+            case "stopwatch": return "స్టాప్‌వాచ్…";
+            case "status": return "స్టేటస్ చూస్తున్నాను…";
             case "calendar_events": case "add_calendar_event": return "క్యాలెండర్ చూస్తున్నాను…";
             case "send_email": return "మెయిల్ సిద్ధం చేస్తున్నాను…";
             case "media_control": case "now_playing": return "మ్యూజిక్…";
@@ -924,7 +939,9 @@ final class Tools {
                 case "read_notifications": return readNotifications(a.optString("app", ""), a.optInt("limit", 8));
                 case "reply_to_notification": return replyNotification(a.optInt("id", -1), a.optString("message"));
                 case "web_search": return webSearch(a.optString("query"));
-                case "set_reminder": return setReminder(a.optString("text"), a.optString("when"), a.optString("repeat", ""));
+                case "set_reminder": return setReminder(a.optString("text"), a.optString("when"), a.optString("repeat", ""), a.optInt("day_of_month", 0));
+                case "stopwatch": return ok().put("said", stopwatch(a.optString("action", "start"))).toString();
+                case "status": return ok().put("status", Status.json(act()).optJSONArray("lines")).toString();
                 case "list_reminders": return listReminders();
                 case "cancel_reminder": return cancelReminder(a.optString("id"));
                 case "calendar_events": return calendarEvents(a.optInt("days", 1));
@@ -1526,6 +1543,15 @@ final class Tools {
 
     private String timer(int seconds, String label) throws Exception {
         if (seconds < 1 || seconds > 86400) return err("bad_length", "Timer must be 1 second to 24 hours.");
+        if (host.fromWatch() && WatchHub.timerOnWatch(act())) { // W33: asked on the watch, it buzzes on his wrist (the phone's clock if the watch can't take it)
+            final String l = label == null || label.isEmpty() ? "Jarvis" : label;
+            final CountDownLatch done = new CountDownLatch(1);
+            final boolean[] went = {false};
+            WatchHub.timer(act().getApplicationContext(), seconds, l, () -> done.countDown(), () -> { went[0] = true; done.countDown(); });
+            done.await(8, TimeUnit.SECONDS);
+            if (went[0]) return ok().put("timer_seconds", seconds).put("where", "on his watch (it vibrates on his wrist when done)").toString();
+            // the watch didn't take it: the phone's clock, said so
+        }
         Intent i = new Intent(AlarmClock.ACTION_SET_TIMER)
                 .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
                 .putExtra(AlarmClock.EXTRA_MESSAGE, label == null || label.isEmpty() ? "Jarvis" : label)
@@ -1536,7 +1562,7 @@ final class Tools {
         } catch (ActivityNotFoundException e) {
             return err("no_clock_app", "No clock app accepts timers on this phone.");
         }
-        return ok().put("timer_seconds", seconds).toString();
+        return ok().put("timer_seconds", seconds).put("where", host.fromWatch() && WatchHub.timerOnWatch(act()) ? "on the phone's clock (the watch could not be reached)" : "on the phone").toString();
     }
 
     private String weather(String place) throws Exception {
@@ -2355,16 +2381,22 @@ final class Tools {
         return new java.text.SimpleDateFormat("EEE d MMM yyyy, HH:mm", Locale.ENGLISH).format(new java.util.Date(t));
     }
 
-    private String setReminder(String text, String when, String repeat) throws Exception {
+    private String setReminder(String text, String when, String repeat) throws Exception { return setReminder(text, when, repeat, 0); }
+
+    /** dom: for a monthly one, the day he said (the 31st stays the 31st after a 30-day month); 0: the first time's day. */
+    private String setReminder(String text, String when, String repeat, int dom) throws Exception {
         long at = parseLocal(when);
         if (at < 0) return err("bad_time", "Give the time as 'yyyy-MM-dd HH:mm' in local time.");
         if (at <= System.currentTimeMillis()) return err("in_past", "That time has already passed. Ask Anil for a future time.");
         JSONObject r = store.addReminder(text, at);
         if (r == null) return err("empty", "What should I remind him about?");
         String rep = repeat == null ? "" : repeat.trim().toLowerCase(Locale.ROOT);
-        if (rep.equals("daily") || rep.equals("weekly")) r = store.updateReminder(r.optString("id"), "repeat", rep);
+        if (rep.equals("daily") || rep.equals("weekly") || rep.equals("monthly")) r = store.updateReminder(r.optString("id"), "repeat", rep);
+        if (rep.equals("monthly") && r != null) r = store.updateReminder(r.optString("id"), "dom",
+                dom >= 1 && dom <= 31 ? dom : java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault()).getDayOfMonth()); // (31st: each month's last day)
         Reminders.schedule(act(), r);
         JarvisWidget.refresh(act());
+        if (WatchHub.known(act())) { final android.content.Context app = act().getApplicationContext(); new Thread(() -> WatchAlerts.pushInfo(app), "watch-info").start(); } // (the watch tile's next reminder)
         host.notice("రిమైండర్ పెట్టాను");
         return ok().put("id", r.optString("id")).put("at", fmt(at)).put("text", r.optString("text")).toString();
     }
@@ -3165,7 +3197,7 @@ final class Tools {
             if (!dnd) o.put("tip", "For full Do Not Disturb, Anil can allow 'Do Not Disturb access' for Jarvis once.");
         } else {
             if (dnd) nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
-            try { am.setRingerMode(android.media.AudioManager.RINGER_MODE_NORMAL); } catch (Exception ignored) {}
+            try { am.setRingerMode(DutyMode.on(act()) ? android.media.AudioManager.RINGER_MODE_VIBRATE : android.media.AudioManager.RINGER_MODE_NORMAL); } catch (Exception ignored) {} // (at work: stays on vibrate)
             if (canWrite) android.provider.Settings.System.putInt(act().getContentResolver(), android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
                     android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC);
             o.put("next", "Sound is back on. Now give him a short good-morning briefing: call get_weather and list_reminders / calendar_events for today, then say it in 3-4 sentences.");
@@ -5437,8 +5469,133 @@ final class Tools {
 
     static final String OFFLINE_HELP = "నెట్ లేనప్పుడు ఇవి చేయగలను: \"ఆపద\" అంటే SOS, 108 / 112 కి కాల్, మీ లొకేషన్ SMS, టార్చ్, కాల్, SMS (మీరు \"పంపు\" అన్నాకే), అలారం, టైమర్, రిమైండర్లు, "
             + "ఖర్చులు రాయడం, లెక్కలు, అప్పులు, డ్యూటీ, నోట్స్, డైరీ, షాపింగ్ లిస్ట్, బండి ఎక్కడ పెట్టారో, క్యాలెండర్, పుట్టినరోజులు, పండుగలు, "
-            + "మందులు, వచ్చిన మెసేజ్‌లు చదవడం, బ్లూటూత్, బ్రైట్‌నెస్, Do Not Disturb, ఫోన్‌లోని పాటలు, బ్యాటరీ, టైమ్. "
+            + "మందులు, వచ్చిన మెసేజ్‌లు చదవడం, బ్లూటూత్, బ్రైట్‌నెస్, Do Not Disturb, ఫోన్‌లోని పాటలు, బ్యాటరీ, టైమ్, "
+            + "స్టాప్‌వాచ్, తేదీల లెక్కలు, EMI / వడ్డీ / GST, కొలతల మార్పు, వస్తువులు ఎక్కడ పెట్టారో, ఎవరికి ఏమి ఇచ్చారో, గడువు తేదీలు, ప్రతి నెల రిమైండర్లు, "
+            + "క్యాలెండర్‌లో పెట్టడం, కాంటాక్ట్ సేవ్, మీ నోట్స్‌లో వెతకడం, డ్యూటీ మోడ్, గుడ్ నైట్ / గుడ్ మార్నింగ్, స్టేటస్, సామెతలు, పొడుపు కథలు. "
             + "నెట్ కావాల్సిన ప్రశ్నలు గుర్తుంచుకుని, నెట్ రాగానే జవాబు చెబుతాను.";
+
+    /** Offline: the calendar event Jarvis asked "… క్యాలెండర్‌లో పెట్టమంటారా?" about: {title, LocalDateTime}. */
+    private static volatile Object[] offlineEvent;
+
+    /** O45: "డ్యూటీకి ఇంకా ఎంత టైమ్?" / "డ్యూటీ ఎప్పుడు అయిపోతుంది?". */
+    private String dutyCountdown() {
+        Duty.Roster r = Duty.load(act());
+        if (!Duty.ready(r)) return "డ్యూటీ క్యాలెండర్ ఇంకా సెట్ చేయలేదు.";
+        java.time.LocalDateTime[] d = Duty.nowOrNext(act());
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        if (d == null) return "వచ్చే 12 రోజుల్లో డ్యూటీ లేదు.";
+        if (!now.isBefore(d[0])) return "డ్యూటీ అయిపోవడానికి ఇంకా " + Status.hours(java.time.Duration.between(now, d[1]).toMinutes()) + " (" + Offline.sayWhen(d[1], now) + ").";
+        return "డ్యూటీకి ఇంకా " + Status.hours(java.time.Duration.between(now, d[0]).toMinutes()) + " (" + Offline.sayWhen(d[0], now) + "). "
+                + r.leaveTime(r.timeOf(Duty.ME)) + " కి బయలుదేరాలి.";
+    }
+
+    private String stopwatch(String action) {
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        if (a.startsWith("stop") || a.startsWith("pause")) return Stopwatch.stop(act());
+        if (a.startsWith("read") || a.startsWith("time") || a.startsWith("show")) return Stopwatch.read(act());
+        if (a.startsWith("lap")) return Stopwatch.lap(act());
+        if (a.startsWith("reset") || a.startsWith("clear")) return Stopwatch.reset(act());
+        return Stopwatch.start(act());
+    }
+
+    /** Where a search hit was found, in his words. */
+    private static String searchFrom(String from) {
+        String f = from == null ? "" : from;
+        if (f.startsWith("SMS from ")) return f.substring(9) + " SMS";
+        if (f.startsWith("talk with Jarvis")) return "మన మాటల్లో";
+        if (f.startsWith("diary")) return "డైరీ";
+        if (f.startsWith("mission")) return "మిషన్";
+        if (f.startsWith("reminder")) return "రిమైండర్";
+        switch (f) {
+            case "note": return "నోట్";
+            case "expense": return "ఖర్చు";
+            case "saved memory": return "గుర్తు";
+            case "debt / EMI / chit": return "అప్పు / EMI";
+            case "expiry / warranty date": return "గడువు";
+            case "where he kept a thing": return "పెట్టిన చోటు";
+            default: return f;
+        }
+    }
+
+    /** Phase 3 offline: lent things, where things are, last dates, a contact, the calendar, a search, sayings. Null: not one of these. */
+    private String offlinePhase3(String said, String t, java.time.LocalDateTime now, java.time.LocalDate today) throws Exception {
+        String[] lend = Offline.lend(said);
+        if (lend != null) {
+            Lent.add(act(), lend[0], lend[1]);
+            return "సరే, " + lend[1] + " కి " + lend[0] + " ఇచ్చినట్టు రాశాను. తిరిగి వచ్చాక \"" + lend[1] + " " + lend[0] + " తిరిగి ఇచ్చాడు\" అనండి.";
+        }
+        String back = Offline.lentBack(said);
+        if (back != null) {
+            JSONObject o = Lent.back(act(), back);
+            if (o != null) return "సరే, " + o.optString("who") + " " + o.optString("thing") + " తిరిగి ఇచ్చినట్టు రాశాను.";
+        }
+        if (any(t, "ఎవరికి ఏమి ఇచ్చాను", "ఎవరికి ఏం ఇచ్చాను", "ఎవరి దగ్గర ఉంది", "ఎవరి దగ్గర ఉన్నాయి", "ఇచ్చిన వస్తువులు", "తిరిగి రావాల్సినవి")) {
+            JSONObject one = any(t, "ఎవరి దగ్గర") ? Lent.find(act(), said.replaceAll("(ఎవరి దగ్గర ఉంది|ఎవరి దగ్గర ఉన్నాయి|నా|మా|\\?)", " ")) : null;
+            if (one != null) return Lent.line(one) + ".";
+            String s = Lent.text(act(), null);
+            return s.isEmpty() ? "ఎవరికీ ఏమీ ఇచ్చినట్టు రాసి లేదు." : s;
+        }
+        String[] kept = Offline.kept(said);
+        if (kept != null) {
+            JSONObject o = Everyday.put(act(), kept[0], kept[1]);
+            return o == null ? "అది రాయలేకపోయాను." : kept[0] + ": " + kept[1] + " అని గుర్తుపెట్టుకున్నాను.";
+        }
+        String thing = Offline.whereThing(said);
+        if (thing != null) {
+            JSONObject o = Everyday.where(act(), thing);
+            if (o != null) {
+                java.time.LocalDate d = java.time.Instant.ofEpochMilli(o.optLong("t")).atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+                return o.optString("thing") + ": " + o.optString("place") + " (" + Duty.whenText(d) + " చెప్పారు).";
+            }
+            JSONObject l = Lent.find(act(), thing);
+            if (l != null) return Lent.line(l) + ".";
+            // only "where did I keep it" is about his own things; "… ఎక్కడ ఉంది?" may be a place (kept for the internet)
+            if (any(t, "పెట్టాను", "పెట్టా", "ఉంచాను", "దాచాను"))
+                return thing + " ఎక్కడ పెట్టారో రాసి లేదు. పెట్టినప్పుడు \"" + thing + " బీరువాలో పెట్టాను\" లాగా చెప్పండి.";
+        }
+        String[] runs = Offline.runsOut(said, today);
+        if (runs != null) {
+            Expiry.addDate(act(), runs[0], runs[1], 0, 0);
+            return runs[0] + " గడువు " + Sums.say(java.time.LocalDate.parse(runs[1])) + " అని రాశాను. ముందే గుర్తు చేస్తాను.";
+        }
+        if (any(t, "గడువు", "అయిపోతుంది", "అయిపోతున్నాయి", "ఎక్స్‌పైర్", "ఎక్స్పైర్", "ఎక్స్‌పైరీ", "ఎక్స్పైరీ", "expiry", "expire", "రెన్యూవల్")
+                && any(t, "ఎప్పుడు", "ఏవి", "ఏమి", "ఏంటి", "చెప్పు", "?", "ఎన్ని", "లిస్ట్") && !any(t, "డ్యూటీ", "duty", "మందు", "మాత్ర")) {
+            String what = said.replaceAll("(?i)(గడువులు|గడువు|ఎప్పుడు|అయిపోతుంది|అయిపోతున్నాయి|ఎక్స్‌పైర్|ఎక్స్పైర్|ఎక్స్‌పైరీ|ఎక్స్పైరీ|expiry|expire|రెన్యూవల్|ఏవి|ఏమి|ఏంటి|చెప్పు|ఎన్ని|లిస్ట్|నా|మా|\\?)", " ").replaceAll("\\s+", " ").trim();
+            JSONObject one = what.length() >= 2 ? Expiry.find(act(), what) : null;
+            if (one != null) return Expiry.line(act(), one) + ".";
+            List<JSONObject> all = Expiry.all(act());
+            if (all.isEmpty()) return "గడువు తేదీలు ఏమీ రాసి లేవు. \"బైక్ ఇన్సూరెన్స్ మార్చి 15 కి అయిపోతుంది\" లాగా చెప్పండి.";
+            StringBuilder b = new StringBuilder();
+            for (JSONObject o : Expiry.soon(act(), 60)) b.append(Expiry.line(act(), o)).append(". ");
+            return b.length() == 0 ? "వచ్చే 2 నెలల్లో ఏ గడువూ లేదు (" + all.size() + " రాసి ఉన్నాయి)." : b.toString().trim();
+        }
+        String[] contact = Offline.contact(said);
+        if (contact != null) {
+            JSONObject o = new JSONObject(saveContact(new JSONObject().put("name", contact[0]).put("phone", contact[1])));
+            return o.optBoolean("ok") ? contact[0] + " – " + contact[1] + ": కాంటాక్ట్ సేవ్ ఫారం తెరిచాను, చూసి \"సేవ్\" నొక్కండి." : problem(o);
+        }
+        Object[] ev = Offline.calendarEvent(said, now);
+        if (ev != null) {
+            if (ev[1] == null) return "ఏ రోజు, ఏ టైమ్‌కి? ఉదాహరణకు \"రేపు 5 కి డాక్టర్ అపాయింట్‌మెంట్ క్యాలెండర్‌లో పెట్టు\".";
+            if (((String) ev[0]).isEmpty()) return "క్యాలెండర్‌లో ఏం పెట్టాలి?";
+            offlineEvent = ev;
+            return Offline.sayWhen((java.time.LocalDateTime) ev[1], now) + " కి \"" + ev[0] + "\" క్యాలెండర్‌లో పెట్టమంటారా?";
+        }
+        String q = any(t, "ఇంటర్నెట్", "గూగుల్", "google", "internet", "ఆన్‌లైన్", "యూట్యూబ్", "youtube", "వెబ్") ? null : Offline.searchWords(said);
+        if (q != null) {
+            JSONArray hits = LifeSearch.search(act(), store, q, 3650);
+            if (hits.length() == 0) return "\"" + q + "\" గురించి ఫోన్‌లో ఏమీ దొరకలేదు.";
+            StringBuilder b = new StringBuilder();
+            for (int i = 0; i < hits.length() && i < 3; i++) {
+                JSONObject h = hits.getJSONObject(i);
+                b.append(searchFrom(h.optString("from"))).append(h.optString("when").isEmpty() ? "" : " (" + h.optString("when") + ")").append(": ").append(h.optString("text")).append(". ");
+            }
+            return b.toString().trim();
+        }
+        if (Sayings.asksRiddle(t)) return Sayings.riddle(act());
+        if (Sayings.asksProverb(t)) return Sayings.proverb(act());
+        return null;
+    }
 
     /** Offline: the contact Jarvis asked "… కి కాల్ చేయమంటారా?" about (its name only sounded like what he said). */
     private static volatile String offlineCallAsk;
@@ -5483,6 +5640,18 @@ final class Tools {
                 return o.optBoolean("ok") ? o.optString("calling") + " కి కాల్ చేస్తున్నాను." : problem(o);
             }
             if (k == CardTalk.Words.NO) return "సరే, కాల్ చేయలేదు.";
+        }
+        // his answer to "… క్యాలెండర్‌లో పెట్టమంటారా?" (O34: added only after his yes)
+        Object[] ev0 = offlineEvent;
+        offlineEvent = null;
+        if (ev0 != null && last.endsWith("పెట్టమంటారా?") && last.contains((String) ev0[0])) {
+            int k = CardTalk.Words.kind(said, CardTalk.Words.CONFIRM);
+            if (k == CardTalk.Words.YES) {
+                JSONObject o = new JSONObject(addCalendarEvent((String) ev0[0],
+                        ((java.time.LocalDateTime) ev0[1]).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")), 60, ""));
+                return o.optBoolean("ok") ? "క్యాలెండర్‌లో పెట్టాను." : problem(o);
+            }
+            if (k == CardTalk.Words.NO) return "సరే, పెట్టలేదు.";
         }
         if (any(t, "offline", "ఆఫ్‌లైన్", "ఆఫ్లైన్", "ఆఫ్ లైన్", "నెట్ లేనప్పుడు", "నెట్ లేకుండా") && any(t, "ఏం చేయగల", "ఏమి చేయగల", "ఏమేమి", "ఏం చేస్తావ్", "ఏమి చేస్తావ్")) {
             return OFFLINE_HELP;
@@ -5557,6 +5726,16 @@ final class Tools {
                     if (m != null) return "సరే, " + name + " రోజూ " + String.join(", ", times) + " కి గుర్తు చేస్తాను.";
                 }
             }
+            int dom = Offline.monthlyDay(said); // O38: "ప్రతి నెల 5 న అద్దె కట్టాలని గుర్తు చేయి"
+            if (dom == 0) return "నెలలో ఏ తేదీకి? ఉదాహరణకు \"ప్రతి నెల 5 న అద్దె కట్టాలని గుర్తు చేయి\".";
+            if (dom > 0) {
+                String what = Offline.monthlyText(said);
+                if (what.isEmpty()) return "ఏం గుర్తు చేయాలి?";
+                java.time.LocalDateTime hour = Offline.when(Offline.digits(said).replaceAll("(?<![\\d:.])\\d{1,2}\\s*(వ\\s*)?(తారీఖు|తారీకు|తేదీ|న|నే)(?=\\s|$)", " "), now);
+                java.time.LocalDateTime first = Reminders.nextMonthly(now, dom, hour);
+                JSONObject o = new JSONObject(setReminder(what, first.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")), "monthly", dom));
+                return o.optBoolean("ok") ? "సరే, ప్రతి నెల " + dom + " న \"" + what + "\" గుర్తు చేస్తాను (మొదట " + Offline.sayWhen(first, now) + ")." : problem(o);
+            }
             java.time.LocalDateTime at = Offline.when(said, now);
             if (at == null) return "ఏ టైమ్‌కి గుర్తు చేయాలి? ఉదాహరణకు \"సాయంత్రం 6 కి బ్యాంక్ వెళ్ళాలని గుర్తు చేయి\".";
             String what = Offline.reminderText(said);
@@ -5611,6 +5790,30 @@ final class Tools {
             return o.optBoolean("ok") ? o.optString("calling") + " కి కాల్ చేస్తున్నాను." : problem(o);
         }
 
+        // before anything is written down: no account / card / policy / ID numbers
+        if (Offline.idNumber(said)) return "అకౌంట్, కార్డ్, పాలసీ, ఐడీ లాంటి నంబర్లు నేను రాసుకోను, ఎక్కడా పెట్టను.";
+
+        // ---- modes, status, the morning, the stopwatch (O40, O41, W22, O42, O24): said as the whole sentence
+        String bare = t.replaceAll("^(జార్విస్|jarvis)\\s*,?\\s*", "").replaceAll("[.!?]+$", "").trim();
+        if (bare.matches("(డ్యూటీ\\s*మోడ్|duty\\s*mode)(\\s.*)?") && bare.split("\\s+").length <= 6 || bare.matches("డ్యూటీకి\\s*వచ్చాను")) return DutyMode.command(act(), bare);
+        boolean nightWords = bare.matches("(స్లీప్\\s*మోడ్|నైట్\\s*మోడ్|sleep\\s*mode|night\\s*mode)(\\s.*)?") && bare.split("\\s+").length <= 6;
+        if (nightWords && (off || any(bare, "వద్దు", "తీసేయ్"))) {
+            JSONObject o = new JSONObject(nightMode(false, ""));
+            return o.optBoolean("ok") ? "నైట్ మోడ్ ఆఫ్ చేశాను" + (DutyMode.on(act()) ? " (డ్యూటీ మోడ్ వల్ల ఫోన్ వైబ్రేట్‌లోనే ఉంది)." : ", ఫోన్ సౌండ్ మళ్లీ ఆన్.") : problem(o);
+        }
+        if (nightWords || bare.matches("(గుడ్\\s*నైట్|good\\s*night|నిద్రపోతున్నాను|నిద్ర\\s*పోతున్నాను|పడుకుంటున్నాను)(\\s.*)?") && bare.split("\\s+").length <= 8) {
+            java.time.LocalDateTime wake = any(t, "లేపు", "లేపండి", "అలారం") ? Offline.when(said, now, true) : null;
+            JSONObject o = new JSONObject(nightMode(true, wake == null ? "" : String.format(Locale.ENGLISH, "%02d:%02d", wake.getHour(), wake.getMinute())));
+            return o.optBoolean("ok") ? "గుడ్ నైట్, " + prefs.name() + ". ఫోన్ నిశ్శబ్దంగా ఉంటుంది" + (wake == null ? "" : ", " + Offline.sayWhen(wake, now) + " కి లేపుతాను") + "." : problem(o);
+        }
+        if (bare.matches("(గుడ్\\s*మార్నింగ్|good\\s*morning|లేచాను|నిద్ర\\s*లేచాను|శుభోదయం)")) {
+            if (prefs.night()) nightMode(false, "");
+            return Morning.text(act());
+        }
+        if (Status.asks(said)) return Status.text(act());
+        if (Morning.asks(said)) return Morning.text(act());
+        if (bare.matches("(స్టాప్‌వాచ్|స్టాప్ వాచ్|స్టాప్వాచ్|stopwatch|stop watch)(\\s.*)?") && bare.split("\\s+").length <= 6) return Stopwatch.command(act(), bare);
+
         // ---- money given / taken, expenses
         String[] debt = Offline.debt(said);
         if (debt != null) return offlineDebt(debt);
@@ -5641,6 +5844,10 @@ final class Tools {
             long since = day ? dayStart : week ? dayStart - 6 * 86400000L : monthStart();
             return (day ? "ఈరోజు" : week ? "ఈ వారం" : "ఈ నెల") + " మీరు రాసిన ఖర్చులు ₹" + Math.round(Money.totalSince(act(), since)) + ".";
         }
+
+        // ---- things lent, where things are, last dates, a contact, the calendar, a search of his things (O32-O39), sayings (O47)
+        String r3 = offlinePhase3(said, t, now, today);
+        if (r3 != null) return r3;
 
         // ---- notes, diary, shopping list
         if (any(t, "నోట్") && any(t, "చదువు", "చెప్పు", "ఏమున్నాయి", "చూపించు", "వినిపించు") && !any(t, "రాసుకో", "రాయి")) {
@@ -5697,7 +5904,16 @@ final class Tools {
             if (done.length() > 0) return "లిస్ట్‌లో టిక్ పెట్టాను: " + join(done) + ".";
         }
 
-        // ---- sums
+        // ---- sums: EMI, interest, GST, units, dates (O33, O24), then plain sums
+        String sums = Sums.any(said, today);
+        if (sums != null) return sums;
+        if (Sums.asksDaysLeft(said)) { // "దీపావళికి ఇంకా ఎన్ని రోజులు?"
+            for (Holidays.Day d : Holidays.between(act(), today, today.plusDays(400))) {
+                String te = Holidays.telugu(d.name);
+                if (te.length() >= 3 && t.contains(te.toLowerCase(Locale.ROOT)) || d.name.length() >= 4 && t.contains(d.name.toLowerCase(Locale.ROOT)))
+                    return te + ": " + Sums.say(d.date) + ", " + Sums.daysLeft(d.date, today) + ".";
+            }
+        }
         String sum = Offline.calc(said);
         if (sum != null) return sum;
 
@@ -5853,6 +6069,12 @@ final class Tools {
             return o.optBoolean("ok") ? o.optString("opened") + " తెరిచాను." : "ఆ యాప్ దొరకలేదు.";
         }
 
+        // his guess to the riddle Jarvis just asked (O47): only what nothing else understood
+        if (last.contains("పొడుపు కథ:") || last.startsWith("కాదు. మళ్లీ ఆలోచించండి") || last.startsWith("క్లూ:")) {
+            String r = Sayings.answer(act(), said);
+            if (r != null) return r;
+        }
+
         // ---- anything else needs the internet: kept, and answered when it is back
         if (said.split("\\s+").length >= 2 && CardTalk.Words.kind(said, CardTalk.Words.CONFIRM) != CardTalk.Words.NO) {
             Offline.keep(act(), said);
@@ -5981,6 +6203,25 @@ final class Tools {
     private String offlineDuty(String t, java.time.LocalDate today) throws Exception {
         Duty.Roster r = Duty.load(act());
         if (!Duty.ready(r)) return "డ్యూటీ క్యాలెండర్ ఇంకా సెట్ చేయలేదు.";
+        // O45: how long to go, this month's count, the bag, handover notes
+        if (any(t, "బ్యాగ్", "bag")) {
+            String bag = Duty.checklist(act());
+            return bag.isEmpty() ? "డ్యూటీ బ్యాగ్ లిస్ట్ ఇంకా చెప్పలేదు. \"డ్యూటీ బ్యాగ్‌లో యూనిఫాం, ID కార్డ్ ఉండాలి\" అని నెట్ ఉన్నప్పుడు చెప్పండి." : "డ్యూటీ బ్యాగ్: " + bag + ".";
+        }
+        if (any(t, "హ్యాండోవర్", "handover", "హ్యాండ్ ఓవర్")) {
+            String note = t.replaceAll("(డ్యూటీ|హ్యాండోవర్|హ్యాండ్ ఓవర్|handover|నోట్స్‌లో|నోట్‌లో|నోట్స్|నోట్|లో|రాయి|రాసుకో|పెట్టు|చేర్చు|ఆడ్|అని)", " ").replaceAll("\\s+", " ").trim();
+            if (any(t, "రాయి", "రాసుకో", "పెట్టు", "చేర్చు", "ఆడ్") && !note.isEmpty()) { Plans.addNote(act(), note); return "హ్యాండోవర్ నోట్స్‌లో రాశాను."; }
+            List<String> notes = Plans.notes(act());
+            return notes.isEmpty() ? "హ్యాండోవర్ నోట్స్ ఏమీ లేవు." : "హ్యాండోవర్ నోట్స్: " + String.join(". ", notes) + ".";
+        }
+        if (any(t, "ఈ నెల", "ఈ నెలలో", "వచ్చే నెల", "నెలలో", "month") && any(t, "ఎన్ని", "ఎంత", "లెక్క", "how many")) {
+            java.time.YearMonth ym = any(t, "వచ్చే నెల", "next month") ? java.time.YearMonth.now().plusMonths(1) : any(t, "పోయిన నెల", "last month") ? java.time.YearMonth.now().minusMonths(1) : java.time.YearMonth.now();
+            JSONObject rep = Duty.report(act(), r, ym);
+            return rep.optString("month") + ": " + rep.optInt("duty_days") + " రోజులు డ్యూటీ (" + rep.optInt("hours") + " గంటలు)"
+                    + (rep.optInt("extra_days") > 0 ? ", " + rep.optInt("extra_days") + " ఎక్స్ట్రా రోజులు" : "")
+                    + (rep.optInt("days_off_from_his_turn") > 0 ? ", " + rep.optInt("days_off_from_his_turn") + " రోజులు సెలవు" : "") + ".";
+        }
+        if (any(t, "ఇంకా ఎంత", "ఎంత టైమ్", "ఎంత టైం", "ఎంత సమయం", "ఎన్ని గంటలు", "ఎంత సేపు", "ఎన్ని రోజులు", "ఎప్పుడు అయిపోతుంది", "ఎప్పుడు ముగుస్తుంది")) return dutyCountdown();
         java.time.LocalDate d = Offline.dayOf(t, today);
         List<java.time.LocalDate[]> blocks = r.blocks(Duty.ME, today.minusDays(10), today.plusDays(90));
         if (d != null) {
@@ -6394,6 +6635,18 @@ final class Tools {
     private String itemPlace(JSONObject a) throws Exception {
         String action = a.optString("action", "find").toLowerCase(Locale.ROOT), thing = a.optString("thing", "");
         if (action.startsWith("scan") || action.startsWith("room") || action.startsWith("camera")) return scanRoom(a.optString("place"));
+        if (action.equals("lend") || action.equals("lent_to")) {
+            if (thing.trim().isEmpty() || a.optString("person").trim().isEmpty()) return err("missing", "What did he lend, and to whom?");
+            Lent.add(act(), thing, a.optString("person"));
+            return ok().put("lent", thing + " → " + a.optString("person")).put("note", "Mentioned once if it is still out after 30 days.").toString();
+        }
+        if (action.startsWith("return") || action.equals("back")) {
+            JSONObject o = Lent.back(act(), (thing + " " + a.optString("person")).trim());
+            return o == null ? err("not_found", "No open lent thing matches.") : ok().put("returned", o.optString("thing") + " ← " + o.optString("who")).toString();
+        }
+        if (action.equals("lent") || action.startsWith("out") || action.startsWith("who_has")) {
+            return ok().put("lent_out", Lent.json(act())).put("text", Lent.text(act(), a.optString("person"))).toString();
+        }
         if (action.startsWith("put") || action.startsWith("save")) {
             JSONObject o = Everyday.put(act(), thing, a.optString("place"));
             if (o == null) return err("missing", "What, and where?");
@@ -7106,6 +7359,16 @@ final class Tools {
         Duty.Roster r = Duty.load(act());
         String action = a.optString("action", "next").toLowerCase(Locale.ROOT), myName = prefs.name();
         java.time.LocalDate today = java.time.LocalDate.now();
+        if (action.equals("mode") || action.equals("duty_mode")) {
+            String t = a.optString("text").trim().toLowerCase(Locale.ROOT);
+            if (t.contains("auto")) {
+                DutyMode.setAuto(act(), !t.contains("off"));
+                return ok().put("auto", DutyMode.auto(act())).put("on_now", DutyMode.on(act())).toString();
+            }
+            if (t.isEmpty()) return ok().put("on", DutyMode.on(act())).put("auto", DutyMode.auto(act())).toString();
+            return ok().put("said", DutyMode.command(act(), t.equals("on") ? "ఆన్ చెయ్" : t)).put("on", DutyMode.on(act())).toString();
+        }
+        if (action.startsWith("count") || action.equals("time_left")) return ok().put("said", dutyCountdown()).toString();
         if (action.startsWith("bag") || action.equals("checklist")) {
             if (!a.optString("text").trim().isEmpty()) Duty.setChecklist(act(), a.optString("text")); // empty = just show it
             String bag = Duty.checklist(act());

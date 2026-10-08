@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- W20: steps, so "phone forgotten" comes only when he walks on without it -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- W33: a watch timer ends on time (it is an alarm-clock kind of app for that) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!-- the watch's own speech service (Google voice typing), when it has one -->
     <queries>
@@ -57,6 +60,31 @@
             android:taskAffinity="com.anil.jarvis.watch.alarm"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
+
+        <!-- phase 3: the day's screens (status, duty, tasks, home, timer, cooker); opened by the Jarvis tile too -->
+        <activity
+            android:name=".Panel"
+            android:exported="true"
+            android:taskAffinity=""
+            android:launchMode="singleTop" />
+
+        <!-- W21: the Jarvis tile -->
+        <service
+            android:name=".JarvisTile"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Jarvis"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/tile_preview" />
+        </service>
+
+        <!-- W33: a watch timer ended -->
+        <receiver
+            android:name=".Timers"
+            android:exported="false" />
 
         <!-- W1: short texts for watch faces (the Jarvis face, or any face): next duty, weather -->
         <service

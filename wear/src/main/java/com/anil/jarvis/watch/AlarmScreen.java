@@ -31,6 +31,7 @@ import java.util.Locale;
 /**
  * W19: Jarvis's alarm on the wrist only: a strong, repeating vibration (no sound, so only he wakes), with "ఆపు" and
  * "5 నిమిషాలు". The phone rings by itself if it isn't answered here in 3 minutes, so he never oversleeps.
+ * W33: a watch timer that ends rings the same way ("local": only "ఆపు", nothing goes to the phone).
  */
 public class AlarmScreen extends Activity {
     private static final String CH = "jarvis_watch_alarm";
@@ -41,6 +42,19 @@ public class AlarmScreen extends Activity {
     /** The phone says it is time (main thread). */
     static void ring(Context c, JSONObject o) {
         Context app = c.getApplicationContext();
+        JSONObject now = ringing;
+        if (o.optBoolean("local") && now != null && !now.optBoolean("local")) {
+            // his alarm is ringing: a timer that ends meanwhile is a buzz and a note (the alarm's answer still goes to the phone)
+            Talk.buzzAs(app, VibrationAttributes.USAGE_ALARM, 400, 200, 400);
+            NotificationManager nm = app.getSystemService(NotificationManager.class);
+            if (nm != null) {
+                try {
+                    nm.notify(NOTE + 1, new Notification.Builder(app, CH).setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                            .setContentTitle(o.optString("title", "⏱️ టైమర్ అయిపోయింది")).setAutoCancel(true).build());
+                } catch (Exception ignored) {}
+            }
+            return;
+        }
         appCtx = app;
         ringing = o;
         vibrate(app, true);
@@ -56,7 +70,7 @@ public class AlarmScreen extends Activity {
             PendingIntent full = PendingIntent.getActivity(app, 31, new Intent(app, AlarmScreen.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             Notification n = new Notification.Builder(app, CH).setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                    .setContentTitle(o.optString("title", "⏰ అలారం")).setContentText("ఆపడానికి / 5 నిమిషాలకి నొక్కండి")
+                    .setContentTitle(o.optString("title", "⏰ అలారం")).setContentText(o.optBoolean("snooze", true) ? "ఆపడానికి / 5 నిమిషాలకి నొక్కండి" : "ఆపడానికి నొక్కండి")
                     .setCategory(Notification.CATEGORY_ALARM).setFullScreenIntent(full, true).setContentIntent(full).setOngoing(true).build();
             try { nm.notify(NOTE, n); } catch (Exception ignored) {}
         }
@@ -111,7 +125,7 @@ public class AlarmScreen extends Activity {
         vibrate(null, false);
         NotificationManager nm = c.getSystemService(NotificationManager.class);
         if (nm != null) nm.cancel(NOTE);
-        if (o == null) return;
+        if (o == null || o.optBoolean("local")) return; // (a watch timer: nothing to tell the phone)
         try {
             Link.send(c, Link.P_ALARM_ANSWER, new JSONObject().put("id", o.optString("id")).put("count", o.optInt("count")).put("act", act));
         } catch (Exception ignored) {}

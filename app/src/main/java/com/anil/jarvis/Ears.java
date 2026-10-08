@@ -54,6 +54,11 @@ final class Ears implements ListenMic {
     /** Hears this sound (the watch's) instead of the phone's mic, written out by mode ("openai" or "gemini"). Before start. */
     Ears from(Source s, String mode) { source = s; modeOver = mode; return this; }
 
+    /** W37: someone else speaking (Hindi, English, Telugu...): written out in the language it is said in, not as Telugu. */
+    private boolean anyLang;
+
+    Ears anyLanguage() { anyLang = true; return this; }
+
     private String myMode() { return modeOver != null ? modeOver : mode(p); }
 
     /** Jarvis listens with its own mic (not the phone's speech service). */
@@ -554,8 +559,8 @@ final class Ears implements ListenMic {
     private byte[] uploadHead(String boundary, boolean wavHeader) {
         StringBuilder head = new StringBuilder();
         field(head, boundary, "model", p.earsModel());
-        field(head, boundary, "language", lang());
-        if ("te".equals(lang())) field(head, boundary, "prompt", "తెలుగులో మాట్లాడుతున్నారు. తెలుగు మాటలు తెలుగు లిపిలో, English మాటలు English లో.");
+        if (!anyLang) field(head, boundary, "language", lang()); // (any language: the AI finds it)
+        if ("te".equals(lang()) && !anyLang) field(head, boundary, "prompt", "తెలుగులో మాట్లాడుతున్నారు. తెలుగు మాటలు తెలుగు లిపిలో, English మాటలు English లో.");
         head.append("--").append(boundary).append("\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n");
         byte[] h = head.toString().getBytes(StandardCharsets.UTF_8);
         if (!wavHeader) return h;
@@ -689,7 +694,8 @@ final class Ears implements ListenMic {
         String sys = "You write out speech exactly as it is said. Telugu in Telugu script, English words in English. "
                 + "Output only the words said, nothing else (no quotes, no notes). If nothing clear is said, output nothing.";
         JSONArray parts = new JSONArray()
-                .put(new JSONObject().put("text", "Write out what is said (" + lang() + ")."))
+                .put(new JSONObject().put("text", anyLang ? "Write out what is said, in the language and script it is said in (Hindi in Devanagari, English in English, Telugu in Telugu)."
+                        : "Write out what is said (" + lang() + ")."))
                 .put(new JSONObject().put("inlineData", new JSONObject().put("mimeType", "audio/wav")
                         .put("data", android.util.Base64.encodeToString(wav, android.util.Base64.NO_WRAP))));
         JSONObject body = new JSONObject()

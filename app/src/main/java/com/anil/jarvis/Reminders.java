@@ -30,6 +30,39 @@ final class Reminders {
         setAlarm(c, at, pending(c, ACTION_FIRE, r.optString("id")));
     }
 
+    /** daily, weekly, monthly (the same day of the month; the 31st is a short month's last day). */
+    static boolean repeats(String repeat) { return "daily".equals(repeat) || "weekly".equals(repeat) || "monthly".equals(repeat); }
+
+    /** A repeating reminder's next time after now (from its last time, at the same hour). */
+    static long nextTime(long at, String repeat, int dom, long now) {
+        if ("monthly".equals(repeat)) {
+            java.time.ZoneId z = java.time.ZoneId.systemDefault();
+            java.time.LocalDateTime t = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(at), z);
+            int day = dom > 0 ? dom : t.getDayOfMonth();
+            java.time.LocalDateTime n = t;
+            for (int i = 0; i < 400 && n.atZone(z).toInstant().toEpochMilli() <= now; i++) {
+                java.time.YearMonth ym = java.time.YearMonth.from(n).plusMonths(1);
+                n = ym.atDay(Math.min(day, ym.lengthOfMonth())).atTime(t.toLocalTime());
+            }
+            return n.atZone(z).toInstant().toEpochMilli();
+        }
+        long step = "daily".equals(repeat) ? 86400000L : 7 * 86400000L;
+        long next = at;
+        while (next <= now) next += step;
+        return next;
+    }
+
+    /** The first time of a monthly reminder: the next day dom (this month or next) at the hour he said (else 9:00). */
+    static java.time.LocalDateTime nextMonthly(java.time.LocalDateTime now, int dom, java.time.LocalDateTime hour) {
+        java.time.LocalTime at = hour == null ? java.time.LocalTime.of(9, 0) : hour.toLocalTime();
+        java.time.YearMonth ym = java.time.YearMonth.from(now);
+        for (int i = 0; i < 3; i++, ym = ym.plusMonths(1)) {
+            java.time.LocalDateTime t = ym.atDay(Math.min(dom, ym.lengthOfMonth())).atTime(at);
+            if (t.isAfter(now)) return t;
+        }
+        return ym.atDay(Math.min(dom, ym.lengthOfMonth())).atTime(at);
+    }
+
     static void cancel(Context c, String id) {
         AlarmManager am = c.getSystemService(AlarmManager.class);
         if (am != null) am.cancel(pending(c, ACTION_FIRE, id));
@@ -43,13 +76,11 @@ final class Reminders {
             if (r.optBoolean("done")) continue;
             long at = r.optLong("at");
             String repeat = r.optString("repeat", "");
-            if (at <= now && at > 0 && (repeat.equals("daily") || repeat.equals("weekly"))) {
+            if (at <= now && at > 0 && repeats(repeat)) {
                 // a repeating reminder (medicine etc.) that passed while the phone was off:
                 // move it to its next time, like AlarmReceiver does when it fires
                 boolean missed = now - at < 12L * 60 * 60 * 1000;
-                long step = repeat.equals("daily") ? 86400000L : 7 * 86400000L;
-                long next = at;
-                while (next <= now) next += step;
+                long next = nextTime(at, repeat, r.optInt("dom", 0), now);
                 JSONObject moved = s.updateReminder(r.optString("id"), "at", next);
                 if (moved != null) schedule(c, moved);
                 if (missed) notify(c, "తప్పిపోయిన రిమైండర్", r.optString("text"), r.optString("id").hashCode());

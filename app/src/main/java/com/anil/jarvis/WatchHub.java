@@ -104,6 +104,10 @@ final class WatchHub {
     static boolean alarmOn(Context c) { return sp(c).getBoolean("alarm", true); }
     /** W20: the watch says when he walks away without the phone. */
     static boolean lostOn(Context c) { return sp(c).getBoolean("lost", true); }
+    /** W23: when he stops Jarvis's alarm on the watch in the morning, the day in 30 seconds there (else just good morning). */
+    static boolean morningOn(Context c) { return sp(c).getBoolean("morning", true); }
+    /** W33: a timer asked on the watch runs on the watch (it buzzes on his wrist), not on the phone's clock. */
+    static boolean watchTimerOn(Context c) { return sp(c).getBoolean("watch_timer", true); }
     /** W3: what Jarvis looks like on the watch: "orb", "holo" (the face as a hologram) or "human" (the phone's face). */
     static String look(Context c) { return sp(c).getString("look", "orb"); }
 
@@ -132,7 +136,7 @@ final class WatchHub {
                     .put("ears", ears(c)).put("speak", speakOn(c) && p.voiceReplies()).put("stopVoice", stopVoice(c))
                     .put("openListen", openListen(c)).put("name", p.name()).put("lang", p.listenLang())
                     .put("online", Net.online(c)).put("alerts", alertsOn(c)).put("lost", lostOn(c)).put("look", look(c))
-                    .put("theme", Ui.theme(c));
+                    .put("theme", Ui.theme(c)).put("morning", morningOn(c)).put("watchTimer", watchTimerOn(c));
         } catch (Exception ignored) {}
         return o;
     }
@@ -379,6 +383,10 @@ final class WatchHub {
                 }
                 case P_MIC_START: micStart(app, new JSONObject(text(data)));
                     return;
+                case WatchDo.P_ASK: WatchDo.ask(app, new JSONObject(text(data))); // phase 3: a watch screen wants its data
+                    return;
+                case WatchDo.P_DO: WatchDo.act(app, new JSONObject(text(data)));  // phase 3: a watch button
+                    return;
                 case P_MIC_END: {
                     Session s = cur;
                     if (s != null && s.id == new JSONObject(text(data)).optInt("id")) { s.watchEnded = true; s.end(); }
@@ -389,12 +397,13 @@ final class WatchHub {
                 case P_TEXT: {
                     JSONObject o = new JSONObject(text(data));
                     String t = o.optString("text").trim();
-                    boolean follow = "follow".equals(o.optString("why"));
+                    String why = o.optString("why");
+                    boolean follow = "follow".equals(why);
                     M.h.post(() -> {
                         Session s = cur; // (a card's word tapped while the watch's mic was listening: that listen is over)
                         if (s != null && !s.wake) { s.stopped = true; s.end(); ListenMic l = s.ears; s.ears = null; if (l != null) l.cancel(); }
                         if (callKey == null) interrupt(app); // (the announcement still being said, and its listen after it, are over)
-                        heard(app, t, follow);
+                        heard(app, t, follow, why);
                     });
                     return;
                 }
@@ -560,6 +569,24 @@ final class WatchHub {
         Prefs p = new Prefs(app);
         String mode = ears(app);
         boolean online = Net.online(app);
+        if ("translate".equals(s.why)) { // W37: someone else speaking, in any language: written out as said, then put in Telugu
+            // his own choice for the watch (OpenAI / Gemini); with the watch's voice typing chosen (it can't write other
+            // languages) the AI whose key he has, and the watch says which
+            String m = "openai".equals(mode) || "gemini".equals(mode) ? mode
+                    : !p.openAiKey().trim().isEmpty() ? "openai" : !p.geminiKey().trim().isEmpty() ? "gemini" : "";
+            if (online && !m.isEmpty() && !m.equals(mode))
+                state(app, "notice", null, null, "🌐 అనువాదానికి " + ("openai".equals(m) ? "OpenAI" : "Gemini") + " వింటోంది (వాచ్ వాయిస్ టైపింగ్ వేరే భాషలు రాయదు)");
+            if (!online || m.isEmpty()) {
+                stopMic(app, s);
+                talk(false);
+                state(app, "error", null, null, !online ? "అనువాదానికి ఫోన్‌కి నెట్ కావాలి." : "అనువాదానికి OpenAI లేదా Gemini key కావాలి (ఫోన్ Settings).");
+                return;
+            }
+            Ears e = new Ears(app, p).from(s, m).anyLanguage();
+            s.ears = e;
+            e.start(8000, true, new Heard(app, s, false));
+            return;
+        }
         if (online && ("openai".equals(mode) || "gemini".equals(mode))) {
             Ears e = new Ears(app, p).from(s, mode);
             s.ears = e;
@@ -614,7 +641,7 @@ final class WatchHub {
                 sstate(app, s, "idle", null, followListen ? null : "ఏమీ వినిపించలేదు");
                 return;
             }
-            WatchHub.heard(app, t, followListen);
+            WatchHub.heard(app, t, followListen, s.why);
         }
         @Override public void failed(int error) {
             s.ears = null;
@@ -646,8 +673,8 @@ final class WatchHub {
         return s.isEmpty();
     }
 
-    /** His words (from the phone's ears or the watch's own voice typing). Main thread. */
-    private static void heard(Context app, String text, boolean follow) {
+    /** His words (from the phone's ears or the watch's own voice typing). why: what the watch listened for. Main thread. */
+    private static void heard(Context app, String text, boolean follow, String why) {
         if (callKey != null && CallControl.isRinging()) { callWords(app, text); return; } // W17: "ఎత్తు" / "కట్"
         if (text.isEmpty()) {
             talk(false);
@@ -655,6 +682,7 @@ final class WatchHub {
             state(app, "idle", null, null, follow ? null : "ఏమీ వినిపించలేదు");
             return;
         }
+        if ("note".equals(why) || "handover".equals(why) || "translate".equals(why)) { quick(app, text, why); return; }
         talk(true);
         state(app, "thinking", text, null, null);
         WatchTalkActivity a = WatchTalkActivity.current;
@@ -670,6 +698,56 @@ final class WatchHub {
         } catch (Exception e) {
             talk(false);
             state(app, "error", text, null, "ఫోన్‌లో జవాబు మొదలుపెట్టలేకపోయాను: " + e.getMessage());
+        }
+    }
+
+    /**
+     * The watch's own buttons: W32 "📝 నోట్" (kept where it belongs, no AI), W24 a handover note, W37 "🌐 అనువాదం" (what
+     * someone said, in Telugu on his wrist; not said aloud). Main thread.
+     */
+    private static void quick(Context app, String text, String why) {
+        talk(true);
+        state(app, "thinking", text, null, "translate".equals(why) ? "తెలుగులోకి మారుస్తున్నాను…" : "రాస్తున్నాను…");
+        new Thread(() -> {
+            String r;
+            boolean err = false;
+            try {
+                if ("note".equals(why)) r = QuickNote.save(app, text);
+                else if ("handover".equals(why)) {
+                    if (Offline.secret(text) || Offline.idNumber(text)) r = "అలాంటి నంబర్లు నేను రాసుకోను.";
+                    else { Plans.addNote(app, text); r = "హ్యాండోవర్ నోట్స్‌లో రాశాను: \"" + text + "\"."; }
+                } else r = "🌐 " + translate(app, text);
+            } catch (Exception e) {
+                r = "translate".equals(why) ? "అనువాదం రాలేదు: " + e.getMessage() : "రాయలేకపోయాను: " + e.getMessage();
+                err = true;
+            }
+            final String say = r;
+            final boolean bad = err;
+            boolean speak = !"translate".equals(why) && speakOn(app) && new Prefs(app).voiceReplies();
+            M.h.post(() -> reply(app, say, bad, speak, () -> idle(app, null)));
+        }, "watch-quick").start();
+    }
+
+    /** W37: what someone said (Hindi, English, any language) in plain Telugu, with his own AI (background thread). */
+    static String translate(Context app, String text) throws Exception {
+        Prefs p = new Prefs(app);
+        if (!p.hasBrain()) throw new Exception("AI key లేదు");
+        String t = Brain.oneShot(p, "You translate what another person said into simple, natural spoken Telugu for " + p.name()
+                + ", who reads it on his watch. Output only the Telugu translation (names and numbers kept). If it is already Telugu, "
+                + "write it back cleanly. No notes, no quotes.", text, null, false, 400);
+        return Emotion.strip(t == null ? "" : t).trim();
+    }
+
+    /** W33: a timer goes to the watch (it is near and on his wrist). */
+    static boolean timerOnWatch(Context c) { return watchTimerOn(c) && known(c) && watchHere(c) && !Boolean.FALSE.equals(worn(c)); }
+
+    /** Sends the timer to the watch: sent / failed (not reachable) run on the main thread. */
+    static void timer(Context c, int seconds, String label, Runnable failed, Runnable sent) {
+        try {
+            byte[] b = new JSONObject().put("secs", seconds).put("label", label).toString().getBytes(StandardCharsets.UTF_8);
+            send(c, WatchDo.P_TIMER, b, null, failed, true, sent);
+        } catch (Exception e) {
+            if (failed != null) M.h.post(failed);
         }
     }
 

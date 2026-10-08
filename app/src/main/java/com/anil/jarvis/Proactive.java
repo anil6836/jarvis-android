@@ -98,6 +98,8 @@ public class Proactive extends BroadcastReceiver {
         try { Exercise.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Debts.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Expiry.tick(c, p, hush); } catch (Throwable ignored) {}
+        try { Lent.tick(c, p, hush); } catch (Throwable ignored) {}         // a thing lent a month ago, once
+        try { DutyMode.tick(c); } catch (Throwable ignored) {}              // duty mode by itself when a duty starts (his choice)
         try { DataUse.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Monthly.maybeMake(c); } catch (Throwable ignored) {} // last month's PDF on the 1st
         try { Diary.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
@@ -190,7 +192,7 @@ public class Proactive extends BroadcastReceiver {
     /** Speaks up. With a question, opens the panel so Anil can answer by voice. */
     /** Returns true when the panel opened (so his spoken answer can be taken with the suggestion), false when only told. */
     static boolean say(Context c, String text, String question, String context) {
-        if (question != null && android.provider.Settings.canDrawOverlays(c) && !MainActivity.busyTalking()) {
+        if (question != null && android.provider.Settings.canDrawOverlays(c) && !MainActivity.busyTalking() && !DutyMode.on(c)) {
             try {
                 c.startActivity(new Intent(c, SheetActivity.class)
                         .putExtra(SheetActivity.EXTRA_ANNOUNCE, text)
@@ -201,7 +203,7 @@ public class Proactive extends BroadcastReceiver {
             } catch (Exception ignored) {}
         }
         Reminders.notify(c, "Jarvis", text + (question == null ? "" : " " + question), text.hashCode());
-        Announcer.say(c, text + (question == null ? "" : " " + question));
+        if (!DutyMode.on(c)) Announcer.say(c, text + (question == null ? "" : " " + question)); // (at work: the notification only)
         return false;
     }
 

@@ -21,11 +21,9 @@ public class AlarmReceiver extends BroadcastReceiver {
                 for (JSONObject x : s.reminders()) if (x.optString("id").equals(id)) r = x;
                 if (r == null || r.optBoolean("done")) return;
                 String repeat = r.optString("repeat", "");
-                if (repeat.equals("daily") || repeat.equals("weekly")) {
+                if (Reminders.repeats(repeat)) {
                     // medicine and other repeating reminders: move to the next time instead of finishing
-                    long next = r.optLong("at");
-                    long step = repeat.equals("daily") ? 86400000L : 7 * 86400000L;
-                    while (next <= System.currentTimeMillis()) next += step;
+                    long next = Reminders.nextTime(r.optLong("at"), repeat, r.optInt("dom", 0), System.currentTimeMillis());
                     JSONObject moved = s.updateReminder(id, "at", next);
                     if (moved != null) Reminders.schedule(c, moved);
                 } else {
@@ -33,6 +31,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 }
                 String text = r.optString("text");
                 Reminders.notify(c, "⏰ Jarvis రిమైండర్", text, id == null ? 1 : id.hashCode());
+                if (DutyMode.on(c)) break; // at work: the notification (and the watch's buzz) only, not said aloud
                 PendingResult pr = goAsync();
                 Announcer.say(c, new Prefs(c).name() + ", గుర్తుచేస్తున్నాను: " + text);
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
@@ -142,6 +141,9 @@ public class AlarmReceiver extends BroadcastReceiver {
                 WatchAlerts.loudNow(c, i.getStringExtra(SongAlarm.EXTRA_ID));
                 SongAlarm.fire(c, i.getStringExtra(SongAlarm.EXTRA_ID), i.getIntExtra(SongAlarm.EXTRA_COUNT, 0), true);
                 break;
+            case DutyMode.ACTION_END: // the duty in his calendar is over
+                DutyMode.off(c, true);
+                break;
             case WatchAlerts.ACTION_INFO: { // the watch's news every half hour (duty, weather, where the phone is); best effort
                 final android.content.Context app = c.getApplicationContext();
                 new Thread(() -> WatchAlerts.pushInfo(app), "watch-info").start();
@@ -173,6 +175,8 @@ public class AlarmReceiver extends BroadcastReceiver {
             case Intent.ACTION_TIMEZONE_CHANGED:
                 Reminders.rescheduleAll(c);
                 Medicine.rescheduleAll(c);
+                Stopwatch.restore(c);
+                DutyMode.restore(c);
                 try { CoughLog.rearm(c); } catch (Exception ignored) {}
                 Sounds.armNightEdge(c);
                 try { SongAlarm.rescheduleAll(c); } catch (Exception ignored) {}

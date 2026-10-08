@@ -34,6 +34,8 @@ import org.json.JSONObject;
  * talk / done / stop. The palm over the watch while it speaks stops it (W13). Opening it starts listening (W10).
  */
 public class WatchActivity extends Activity implements Talk.Screen {
+    /** Opened to listen for this (from the tile / a screen: "tap", "handover"...), or to do this ("morning"). */
+    static final String EXTRA_LISTEN = "listen", EXTRA_DO = "do";
     private static final int CYAN = 0xFF74E4FF, TEXT = 0xFFDCEEF5, MUTED = 0xFF8FA9B5, FAINT = 0xFF5B7380;
     private final Handler main = new Handler(Looper.getMainLooper());
     private HudView hud;
@@ -109,6 +111,28 @@ public class WatchActivity extends Activity implements Talk.Screen {
         col.addView(action, ap);
         action.setOnClickListener(v -> act());
 
+        // phase 3: the day's buttons (two a row)
+        String[][] menu = {{"☀️ ఈరోజు", "morning"}, {"📊 స్టేటస్", "status"}, {"🏍️ డ్యూటీ", "duty"}, {"✅ పనులు", "tasks"},
+                {"💡 ఇల్లు", "home"}, {"⏱️ టైమర్", "timer"}, {"🍲 కుక్కర్", "cooker"}, {"📝 నోట్", "note"}, {"🌐 అనువాదం", "translate"}};
+        LinearLayout mrow = null;
+        for (int i = 0; i < menu.length; i++) {
+            if (i % 2 == 0) {
+                mrow = new LinearLayout(this);
+                mrow.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
+                rp.topMargin = dp(6);
+                col.addView(mrow, rp);
+            }
+            final String what = menu[i][1];
+            TextView m = pill(menu[i][0], 0xFF0B2230);
+            m.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+            m.setPadding(dp(4), dp(8), dp(4), dp(8));
+            m.setOnClickListener(v -> menu(what));
+            LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, -2, 1);
+            if (i % 2 == 1) mp.leftMargin = dp(6);
+            mrow.addView(m, mp);
+        }
+
         check = text(10.5f, FAINT, true);
         check.setPadding(0, dp(18), 0, 0);
         col.addView(check);
@@ -140,7 +164,30 @@ public class WatchActivity extends Activity implements Talk.Screen {
             hud.boot(() -> { if (Link.openListen(this) && Talk.state == Talk.IDLE && Talk.micAllowed(this)) Talk.listen(this, "open"); });
         }
         askPermissions();
+        if (b == null) extras(getIntent());
         changed();
+    }
+
+    /** The tile / a screen asked: listen for something, or the day. */
+    private void extras(Intent i) {
+        String listen = i.getStringExtra(EXTRA_LISTEN), what = i.getStringExtra(EXTRA_DO);
+        i.removeExtra(EXTRA_LISTEN);
+        i.removeExtra(EXTRA_DO);
+        if ("morning".equals(what)) { Talk.morning(this); return; }
+        if (listen != null && Talk.micAllowed(this)) Talk.listen(this, listen);
+    }
+
+    /** A day button. */
+    private void menu(String what) {
+        switch (what) {
+            case "morning": Talk.morning(this); break;
+            case "note":
+            case "translate":
+                if (!Talk.micAllowed(this)) { askPermissions(); return; }
+                Talk.listen(this, what);
+                break;
+            default: Panel.open(this, what);
+        }
     }
 
     @Override protected void onNewIntent(Intent i) {
@@ -148,6 +195,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
         setIntent(i);
         // the icon / Home double press / a watch-face shortcut while it is already open: talk now
         if (Intent.ACTION_MAIN.equals(i.getAction()) && Link.openListen(this) && Talk.state == Talk.IDLE && Talk.micAllowed(this)) Talk.listen(this, "open");
+        else extras(i);
     }
 
     private void askPermissions() {

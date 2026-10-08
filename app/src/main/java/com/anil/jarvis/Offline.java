@@ -779,16 +779,252 @@ final class Offline {
         return "";
     }
 
-    private static final Pattern SECRET = Pattern.compile("(?<![\\p{L}\\p{M}])(అకౌంట్\\s*నంబర్|అకౌంట్\\s*నెంబర్|account\\s*number|కార్డ్\\s*నంబర్|card\\s*number|సీవీవీ|cvv|"
-            + "పిన్\\s*నంబర్|పిన్|pin|ఓటీపీ|otp|పాస్‌వర్డ్|పాస్ వర్డ్|password|ఆధార్\\s*నంబర్|ఆధార్|aadhaar|aadhar|పాన్\\s*కార్డ్|pan\\s*card|"
-            + "పాలసీ\\s*నంబర్|policy\\s*number|లైసెన్స్\\s*నంబర్|licen[cs]e\\s*number)(?![\\p{L}\\p{M}])", Pattern.CASE_INSENSITIVE);
+    private static final String NO_WORD = "(?:నంబర్|నెంబర్|నంబరు|నెంబరు|నంబర్‌|నెంబర్‌|number|no\\.?)";
+    private static final String ID_WORD = "(?:అకౌంట్|అకౌంటు|ఖాతా|బ్యాంక్\\s*అకౌంట్|కార్డ్|కార్డు|card|account|పాలసీ|policy|లైసెన్స్|licen[cs]e|పాన్|pan|ఆధార్|aadhaa?r|"
+            + "పాస్‌పోర్ట్|పాస్పోర్ట్|passport|ఓటర్|voter|ఐడీ|ఐడి|\\bid\\b|రేషన్|ration|ఆర్సీ|rc|యూపీఐ|upi|ఇన్సూరెన్స్|insurance)";
+    private static final Pattern SECRET = Pattern.compile("(?<![\\p{L}\\p{M}])(" + ID_WORD + "\\s*" + NO_WORD + "|సీవీవీ|cvv|పిన్\\s*" + NO_WORD + "|పిన్|pin|ఓటీపీ|otp|"
+            + "పాస్‌వర్డ్|పాస్ వర్డ్|పాస్వర్డ్|password|ఆధార్|aadhaa?r|పాన్\\s*కార్డ్|pan\\s*card)(?![\\p{L}\\p{M}])", Pattern.CASE_INSENSITIVE);
+    /** An ID word next to a long number ("అకౌంట్ 1234 5678 90"): a secret even without "నంబర్". */
+    private static final Pattern ID_DIGITS = Pattern.compile("(?<![\\p{L}\\p{M}])" + ID_WORD + "(?![\\p{L}\\p{M}])\\D{0,20}?(?<!\\d)(\\d{3,}(?:[\\s-]\\d+)*)", Pattern.CASE_INSENSITIVE);
     private static final Pattern KEEP_IT = Pattern.compile("(\\d{4,}|రాసుకో|రాయి|గుర్తుంచుకో|గుర్తు\\s*పెట్టుకో|నోట్|సేవ్|save|పెట్టుకో|remember)", Pattern.CASE_INSENSITIVE);
 
     /**
      * An account / card / ID number, a PIN, an OTP or a password with the number itself or "write it down": Jarvis never
      * writes these down or keeps them. ("ఆధార్ సెంటర్ కి వెళ్ళాలి" and పిన్ని are not.)
      */
-    static boolean secret(String text) { return text != null && SECRET.matcher(text).find() && KEEP_IT.matcher(text).find(); }
+    static boolean secret(String text) {
+        if (text == null || !SECRET.matcher(text).find()) return false;
+        if (KEEP_WORDS.matcher(text).find()) return true; // asked to write it down
+        // a number said with it: a mobile / toll-free / short service number to call is not one ("ఇన్సూరెన్స్ నంబర్ 1800 425 3800 కి కాల్ చెయ్")
+        Matcher d = Pattern.compile("\\d[\\d\\s-]*\\d").matcher(text);
+        while (d.find()) {
+            String x = d.group().replaceAll("\\D", "");
+            if (x.length() < 4) continue;
+            if (x.matches("(91)?[6-9]\\d{9}") || x.matches("18[06]0\\d{4,8}")) continue;
+            return true;
+        }
+        return false;
+    }
+
+    private static final Pattern KEEP_WORDS = Pattern.compile("(రాసుకో|రాయి|గుర్తుంచుకో|గుర్తు\\s*పెట్టుకో|నోట్|సేవ్|save|పెట్టుకో|remember)", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern AMOUNT_WORDS = Pattern.compile("(రూపాయ|రూ\\.|₹|\\brs\\b|ఖర్చు|కట్టాను|కట్టేశాను|ప్రీమియం|premium|బిల్|ఫీజు|అయింది|లక్ష|వేలు|వేల)", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Before anything is written down: an account / card / policy / ID number said with an ID word, even without the word
+     * "నంబర్" ("పాలసీ 4567 8901 23 గుర్తుంచుకో"). A mobile number (10 digits from 6-9), a toll-free 1800 / 1860 number, a
+     * date, or an amount of money is not one.
+     */
+    static boolean idNumber(String text) {
+        if (text == null || AMOUNT_WORDS.matcher(text).find()) return false;
+        Matcher m = ID_DIGITS.matcher(text);
+        while (m.find()) {
+            String d = m.group(1).replaceAll("\\D", "");
+            if (d.length() < 6) continue;
+            if (d.matches("(91)?[6-9]\\d{9}") || d.matches("18[06]0\\d{4,8}")) continue;
+            return true;
+        }
+        return false;
+    }
+
+    // ================================================================ phase 3: where things are, things lent, dates that run out, monthly, contacts, calendar
+
+    private static final Pattern PUT = Pattern.compile("(పెట్టాను|పెట్టా|పెట్టేశాను|ఉంచాను|దాచాను|దాచిపెట్టాను|పెట్టి\\s*వచ్చాను)\\s*[.!]?$");
+    private static final Pattern PLACE_END = Pattern.compile("(లో|లోపల|మీద|పైన|పై|కింద|క్రింద|దగ్గర|పక్కన|వెనుక|వెనకాల|ముందు|అరలో|సొరుగులో|బ్యాగులో)$");
+    /** Things "పెట్టాను" is said of that are not keeping a thing somewhere. */
+    private static final Pattern NOT_KEPT = Pattern.compile("(అలారం|రిమైండర్|టైమర్|గుర్తు|ఛార్జింగ్|చార్జింగ్|ఛార్జ్|చార్జ్|ఖర్చు|రూపాయ|₹|బండి|బైక్|స్కూటీ|కారు|పార్క్|పేరు|కాల్|మెసేజ్|పోస్ట్|స్టేటస్|బిల్లు|బిల్|డబ్బు|అప్పు|ఎస్ఎంఎస్|sms|లిస్ట్|నోట్|డైరీ)", Pattern.CASE_INSENSITIVE);
+    /** Words a place leans on, written apart ("టేబుల్ మీద"). */
+    private static final java.util.Set<String> LEANS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "పై", "పైన", "మీద", "కింద", "క్రింద", "దగ్గర", "పక్కన", "లోపల", "వెనుక", "వెనకాల", "ముందు", "లో", "మధ్యలో", "అడుగున"));
+    private static final java.util.Set<String> SMALL_WORDS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "నేను", "నా", "మా", "మన", "ఆ", "ఈ", "ఒక", "జార్విస్", "jarvis", "ఇప్పుడు", "ఇప్పుడే", "ఇందాక", "ఇవాళ", "ఈరోజు", "నిన్న", "అని", "గుర్తుంచుకో", "గుర్తు", "పెట్టుకో"));
+
+    /** "తాళాలు బీరువా పై అరలో పెట్టాను" -> {"తాళాలు", "బీరువా పై అరలో"}; null when it isn't that. */
+    static String[] kept(String text) {
+        if (text == null) return null;
+        String t = text.trim().replaceAll("[,]", " ").replaceAll("\\s+", " ");
+        t = t.replaceAll("\\s*(అని\\s*)?(గుర్తుంచుకో|గుర్తు\\s*పెట్టుకో|గుర్తుపెట్టుకో|రాసుకో)\\s*[.!]?$", "").trim();
+        Matcher m = PUT.matcher(t);
+        if (!m.find() || NOT_KEPT.matcher(t).find() || money(t) > 0) return null;
+        List<String> w = new ArrayList<>();
+        for (String x : t.substring(0, m.start()).trim().split("\\s+")) if (!x.isEmpty() && !SMALL_WORDS.contains(x)) w.add(x);
+        if (w.size() < 2) return null;
+        // the thing ends at "ని" / "ను" ("తాళాలని", "పాస్‌పోర్ట్ ని"); else the place is the last word with the words it leans on
+        // ("బీరువా పై అరలో", "టీవీ దగ్గర") and the thing is what comes before
+        int cut = -1; // the place starts after this word
+        for (int i = 0; i < w.size() - 1; i++) {
+            String x = w.get(i);
+            if (x.equals("ని") || x.equals("ను") || x.matches(".+(ని|ను)$") && x.length() > 3) { cut = i; break; }
+        }
+        if (cut < 0) {
+            int p = w.size() - 1;
+            while (p > 0 && (LEANS.contains(w.get(p)) || LEANS.contains(w.get(p - 1)))) p--;
+            cut = p - 1;
+        }
+        if (cut < 0) return null;
+        String thing = String.join(" ", w.subList(0, cut + 1)).replaceAll("\\s*(ని|ను)$", "").trim();
+        String place = String.join(" ", w.subList(cut + 1, w.size())).trim();
+        if (thing.isEmpty() || place.isEmpty()) return null;
+        return new String[]{thing, place};
+    }
+
+    private static final Pattern WHERE = Pattern.compile("^(.+?)\\s*(ఎక్కడ\\s*పెట్టాను|ఎక్కడ\\s*పెట్టా|ఎక్కడ\\s*ఉంచాను|ఎక్కడ\\s*దాచాను|ఎక్కడ\\s*ఉంది|ఎక్కడుంది|ఎక్కడ\\s*ఉన్నాయి|ఎక్కడున్నాయి|ఎక్కడ)\\s*[?.!]?$");
+
+    /** "తాళాలు ఎక్కడ పెట్టాను?" -> "తాళాలు"; null when it isn't that (the bike, the phone and people are asked elsewhere). */
+    static String whereThing(String text) {
+        if (text == null) return null;
+        Matcher m = WHERE.matcher(text.trim());
+        if (!m.find()) return null;
+        List<String> w = new ArrayList<>();
+        for (String x : m.group(1).trim().split("\\s+")) if (!x.isEmpty() && !SMALL_WORDS.contains(x)) w.add(x);
+        String thing = String.join(" ", w).replaceAll("(ని|ను)$", "").trim();
+        if (thing.isEmpty() || w.size() > 3) return null;
+        if (thing.matches(".*(బండి|బైక్|స్కూటీ|కారు|పార్కింగ్|ఫోన్|మొబైల్|నువ్వు|నువ్వ|మీరు|నేను|అమ్మ|నాన్న|ఇంటి|ఇల్లు|ఆఫీస్|డ్యూటీ).*")) return null;
+        return thing;
+    }
+
+    private static final Pattern GAVE = Pattern.compile("(ఇచ్చాను|ఇచ్చా|ఇచ్చేశాను|అరువు\\s*ఇచ్చాను|ఎరువు\\s*ఇచ్చాను)\\s*[.!]?$");
+
+    /** "నా గొడుగు రవికి ఇచ్చాను" -> {"గొడుగు", "రవి"} (a thing lent, no money); null otherwise. */
+    static String[] lend(String text) {
+        if (text == null) return null;
+        String t = text.trim().replaceAll("[,]", " ").replaceAll("\\s+", " ");
+        Matcher m = GAVE.matcher(t);
+        if (!m.find() || t.contains("తిరిగి") || money(t) > 0 || t.contains("అప్పు") || t.matches(".*(మాట|ప్రామిస్|సలహా|కాల్|ఫోన్\\s*చేసి|మిస్డ్|రిప్లై|జవాబు|ఆర్డర్|టిప్|దానం|బహుమతి|గిఫ్ట్).*")) return null;
+        List<String> w = new ArrayList<>();
+        for (String x : t.substring(0, m.start()).trim().split("\\s+")) if (!x.isEmpty() && !SMALL_WORDS.contains(x)) w.add(x);
+        if (w.size() < 2 || w.size() > 5) return null;
+        int who = -1;
+        List<String> th = new ArrayList<>(w);
+        for (int i = 0; i < w.size(); i++) {
+            String x = w.get(i);
+            if ((x.equals("కి") || x.equals("కు")) && i > 0) { who = i - 1; th.remove(i); break; } // "సురేష్ కి"
+            if (x.matches(".+(కి|కు)$") && token(x) == null && x.length() > 2) { who = i; break; }
+        }
+        if (who < 0) return null;
+        String person = w.get(who).replaceAll("(కి|కు)$", "").trim();
+        th.remove(w.get(who));
+        if (category(person) != null || th.isEmpty() || String.join(" ", th).matches(".*(డబ్బు|డబ్బులు|పైసలు|రూపాయ|నగదు|క్యాష్|cash).*")) return null;
+        String thing = String.join(" ", th).replaceAll("(ని|ను)$", "").trim();
+        if (person.isEmpty() || thing.isEmpty() || category(thing) != null) return null; // ("ఆటోకి" is an expense)
+        return new String[]{thing, person};
+    }
+
+    private static final Pattern BACK = Pattern.compile("(తిరిగి\\s*ఇచ్చాడు|తిరిగి\\s*ఇచ్చింది|తిరిగి\\s*ఇచ్చారు|తిరిగి\\s*ఇచ్చేశాడు|తిరిగి\\s*ఇచ్చేసింది|తిరిగి\\s*ఇచ్చేశారు|తిరిగి\\s*తెచ్చాను|తిరిగి\\s*తీసుకున్నాను)\\s*[.!]?$");
+
+    /** "రవి గొడుగు తిరిగి ఇచ్చాడు" -> the words of who / what ("రవి గొడుగు"); null when it isn't that (or it is money). */
+    static String lentBack(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+        Matcher m = BACK.matcher(t);
+        if (!m.find() || money(t) > 0) return null;
+        List<String> w = new ArrayList<>();
+        for (String x : t.substring(0, m.start()).trim().split("\\s+")) if (!x.isEmpty() && !SMALL_WORDS.contains(x)) w.add(x.replaceAll("(ని|ను)$", ""));
+        return w.isEmpty() ? null : String.join(" ", w);
+    }
+
+    private static final Pattern RUNS_OUT = Pattern.compile("(గడువు|అయిపోతుంది|అయిపోతాయి|ముగుస్తుంది|ఎక్స్‌పైర్|ఎక్స్పైర్|ఎక్స్‌పైరీ|ఎక్స్పైరీ|expire|expiry|రెన్యూవల్|రెన్యువల్|renewal|వాలిడిటీ|validity|లాస్ట్\\s*డేట్)", Pattern.CASE_INSENSITIVE);
+
+    /** "బైక్ ఇన్సూరెన్స్ మార్చి 15 కి అయిపోతుంది" -> {"బైక్ ఇన్సూరెన్స్", "2027-03-15"} (the next such day); null otherwise. */
+    static String[] runsOut(String text, LocalDate today) {
+        if (text == null || !RUNS_OUT.matcher(text).find() || ASKING.matcher(text).find()) return null;
+        List<Sums.Said> ds = Sums.dates(text);
+        if (ds.isEmpty() || ds.get(0).m == 0) return null;
+        LocalDate d = Sums.resolve(ds.get(0), today, 1);
+        if (d == null) return null;
+        // what it is: his words without the date, the "runs out" words and little words (word by word: "బీమా" keeps its మా)
+        String rest = text.replaceAll("\\d{1,4}[/.-]\\d{1,2}([/.-]\\d{2,4})?", " ");
+        List<String> keep = new ArrayList<>();
+        for (String w : rest.trim().split("[\\s,.!?]+")) {
+            String x = w.toLowerCase(Locale.ROOT).replace("\u200c", "");
+            if (x.isEmpty() || x.matches("\\d+\\S*") || Sums.isMonth(x) || RUNS_OUT.matcher(x).find() && x.length() <= 16
+                    || RUN_WORDS.contains(x) || RUN_WORDS.contains(x.replaceAll("(కి|కు|న|లో|తో|ది)$", ""))) continue;
+            keep.add(w);
+        }
+        String what = String.join(" ", keep).trim();
+        if (what.isEmpty() || what.split("\\s+").length > 4) return null;
+        return new String[]{what, d.toString()};
+    }
+
+    /** Little words around a last date ("నా బైక్ ఇన్సూరెన్స్ గడువు మార్చి 15 వరకు"). */
+    private static final java.util.Set<String> RUN_WORDS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "నా", "మా", "మన", "తేదీ", "డేట్", "date", "రాసుకో", "గుర్తుంచుకో", "గుర్తు", "పెట్టుకో", "రాయి", "అని", "వరకు", "దాకా", "కల్లా", "కి", "కు", "న",
+            "లో", "తో", "ది", "యొక్క", "అవుతుంది", "అవుతాయి", "ఉంది", "the", "on", "is", "my", "జార్విస్", "jarvis"));
+
+    private static final Pattern MONTHLY = Pattern.compile("(ప్రతి\\s*నెల|ప్రతినెల|నెల\\s*నెలా|నెలనెలా|నెలకోసారి|నెలకు\\s*ఒకసారి|every\\s*month|monthly)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DOM_SAID = Pattern.compile("(?<![\\d:.])(\\d{1,2})\\s*(?:వ\\s*)?(తారీఖు|తారీకు|తేదీ|న|నే|th|st|nd|rd)(?=\\s|$|[.,!?కిన])", Pattern.CASE_INSENSITIVE);
+
+    /** "ప్రతి నెల 5 న అద్దె కట్టాలని గుర్తు చేయి" -> 5 (the day of the month); -1 when it isn't a monthly one. */
+    static int monthlyDay(String text) {
+        if (text == null || !MONTHLY.matcher(text).find()) return -1;
+        Matcher m = DOM_SAID.matcher(digits(text));
+        while (m.find()) {
+            int d = Integer.parseInt(m.group(1));
+            if (d >= 1 && d <= 31) return d;
+        }
+        return 0; // monthly, the day not said
+    }
+
+    /** The reminder's words without "ప్రతి నెల" and the day ("ప్రతి నెల 5 న అద్దె కట్టాలని గుర్తు చేయి" -> "అద్దె కట్టాలి"). */
+    static String monthlyText(String text) {
+        String t = MONTHLY.matcher(text == null ? "" : text).replaceAll(" ");
+        t = DOM_SAID.matcher(digits(t)).replaceAll(" ");
+        return reminderText(t);
+    }
+
+    private static final Pattern PHONE_NO = Pattern.compile("(?<!\\d)(\\+?\\d[\\d\\s-]{8,15}\\d)(?!\\d)");
+    private static final Pattern SAVE_WORDS = Pattern.compile("(సేవ్|save|కాంటాక్ట్|contact|కాంటాక్ట్స్‌లో|కాంటాక్ట్స్లో)", Pattern.CASE_INSENSITIVE);
+
+    /** "రాము నంబర్ 98480 22338 సేవ్ చెయ్" -> {"రాము", "9848022338"}; null otherwise. */
+    static String[] contact(String text) {
+        if (text == null || !SAVE_WORDS.matcher(text).find()) return null;
+        Matcher m = PHONE_NO.matcher(text);
+        if (!m.find()) return null;
+        String no = m.group(1).replaceAll("[\\s-]", "");
+        int digitsN = no.replace("+", "").length();
+        if (digitsN < 10 || digitsN > 13) return null;
+        String rest = (text.substring(0, m.start()) + " " + text.substring(m.end()))
+                .replaceAll("(?i)(నంబర్‌ని|నంబర్ని|నంబర్ను|నంబర్|నెంబర్|number|ఫోన్|phone|మొబైల్|సేవ్|save|చెయ్యి|చేయి|చెయ్|చేయండి|కాంటాక్ట్స్‌లో|కాంటాక్ట్స్లో|కాంటాక్ట్‌గా|కాంటాక్ట్గా|కాంటాక్ట్|contact|పేరుతో|పేరు|అని|గా|లో|ని|ను|యొక్క|ది)(?=\\s|$)", " ")
+                .replaceAll("[.,!?:]", " ").replaceAll("\\s+", " ").trim();
+        List<String> w = new ArrayList<>();
+        for (String x : rest.split("\\s+")) if (!x.isEmpty() && !SMALL_WORDS.contains(x)) w.add(x.replaceAll("(ది|కి|కు)$", ""));
+        String name = String.join(" ", w).trim();
+        if (name.isEmpty() || w.size() > 3) return null;
+        return new String[]{name, no};
+    }
+
+    private static final Pattern CAL_WORDS = Pattern.compile("(క్యాలెండర్‌లో|క్యాలెండర్లో|క్యాలెండర్ లో|క్యాలెండర్‌కి|క్యాలెండర్|calendar)", Pattern.CASE_INSENSITIVE);
+
+    /** "రేపు 5 కి డాక్టర్ అపాయింట్‌మెంట్ క్యాలెండర్‌లో పెట్టు" -> {"డాక్టర్ అపాయింట్‌మెంట్", when}; null otherwise. */
+    static Object[] calendarEvent(String text, LocalDateTime now) {
+        if (text == null || !CAL_WORDS.matcher(text).find()) return null;
+        String t = digits(text);
+        if (!t.matches("(?s).*(పెట్టు|పెట్టండి|రాయి|రాసుకో|చేర్చు|ఆడ్|యాడ్|add|సేవ్|save).*")) return null;
+        LocalDateTime at = when(t, now);
+        List<Sums.Said> ds = Sums.dates(t);
+        if (!ds.isEmpty() && ds.get(0).m > 0) { // a date by name ("డిసెంబర్ 5 న"): that day, at the hour said (else 9:00)
+            LocalDate d = Sums.resolve(ds.get(0), now.toLocalDate(), 1);
+            if (d != null) at = d.atTime(at == null ? 9 : at.getHour(), at == null ? 0 : at.getMinute());
+        }
+        String title = CAL_WORDS.matcher(t).replaceAll(" ").replaceAll("(?i)(పెట్టు|పెట్టండి|రాయి|రాసుకో|చేర్చు|ఆడ్\\s*చేయి|ఆడ్|యాడ్|add|సేవ్|save|ఈవెంట్‌గా|ఈవెంట్గా|ఈవెంట్|event|చేయి|చెయ్యి|చెయ్)", " ");
+        title = title.replaceAll("\\d{1,2}[/-]\\d{1,2}([/-]\\d{2,4})?", " ");
+        StringBuilder tb = new StringBuilder(); // the month's name out, word by word ("మేనేజర్" stays)
+        for (String w : title.trim().split("\\s+")) if (!w.isEmpty() && !Sums.isMonth(w)) tb.append(tb.length() == 0 ? "" : " ").append(w);
+        title = tb.toString();
+        title = reminderText(title).replaceAll("(^|\\s)\\d{1,2}\\s*(న|వ|తేదీ|తారీఖు)?(?=\\s|$)", " ").replaceAll("\\s+", " ").trim();
+        return new Object[]{title, at};
+    }
+
+    private static final Pattern SEARCH = Pattern.compile("(వెతుకు|వెతకు|వెతికి\\s*చెప్పు|సెర్చ్\\s*చెయ్|సెర్చ్\\s*చేయి|ఎక్కడ\\s*రాశాను|ఎప్పుడు\\s*రాశాను|ఏం\\s*రాశాను|ఏమి\\s*రాశాను|ఏమని\\s*రాశాను|search)", Pattern.CASE_INSENSITIVE);
+
+    /** "నోట్స్‌లో బ్యాంక్ గురించి వెతుకు", "గ్యాస్ గురించి ఏం రాశాను" -> "బ్యాంక్" / "గ్యాస్"; null when it isn't a search of his own things. */
+    static String searchWords(String text) {
+        if (text == null || !SEARCH.matcher(text).find()) return null;
+        String t = SEARCH.matcher(text).replaceAll(" ")
+                .replaceAll("(నోట్స్‌లో|నోట్స్లో|నోట్స్ లో|నోట్స్|డైరీలో|డైరీ లో|డైరీ|ఖర్చుల్లో|ఖర్చులలో|ఖర్చులు|ఫోన్‌లో|ఫోన్లో|ఫోన్ లో|గురించి|లో|లోనే|అన్నిట్లో|మొత్తం|నేను|నా|ఒకసారి|అని|ఏదైనా|ఏమైనా)", " ")
+                .replaceAll("[.,!?]", " ").replaceAll("\\s+", " ").trim();
+        return t.isEmpty() ? null : t;
+    }
 
     // ================================================================ names (contacts saved in English)
 

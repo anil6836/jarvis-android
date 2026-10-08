@@ -171,6 +171,7 @@ final class WatchAlerts {
         new Thread(() -> {
             String say = al != null && al.optBoolean("nap")
                     ? new Prefs(app).name() + ", " + (al.optInt("nap_minutes") > 0 ? al.optInt("nap_minutes") + " నిమిషాల " : "") + "కునుకు అయిపోయింది. ఒక గ్లాసు నీళ్లు తాగండి."
+                    : WatchHub.morningOn(app) && Morning.morning() ? Morning.text(app) // W23: the day in 30 seconds
                     : AlarmActivity.greeting(app);
             android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
             h.post(() -> WatchHub.say(app, say));
@@ -200,7 +201,19 @@ final class WatchAlerts {
         try {
             o.put("theme", Ui.theme(app)).put("look", WatchHub.look(app)).put("name", new Prefs(app).name());
             JSONObject d = duty(app);
-            if (d != null) o.put("duty", d);
+            if (d != null) {
+                try { Duty.Roster r = Duty.load(app); d.put("leave", r.leaveTime(r.timeOf(Duty.ME))); } catch (Exception ignored) {}
+                o.put("duty", d);
+            }
+            // W21: the tile's lines
+            JSONObject rem = Status.next(app);
+            if (rem != null) o.put("rem", new JSONObject().put("at", rem.optLong("at")).put("text", rem.optString("text")));
+            try {
+                long now = System.currentTimeMillis();
+                long[] sl = Sleep.between(app, now - 20 * 3600_000L, now + 1);
+                if (sl[0] > 0) o.put("sleep", sl[1]);
+            } catch (Exception ignored) {}
+            o.put("dutyMode", DutyMode.on(app));
             Location l = Tools.lastLocation(app);
             if (l != null) {
                 o.put("lat", l.getLatitude()).put("lon", l.getLongitude()).put("placeAt", l.getTime()).put("place", place(app, l));

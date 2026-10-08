@@ -27,13 +27,14 @@ final class Link {
     static final String P_HELLO = "/jarvis/hello", P_MIC_START = "/jarvis/mic/start", P_MIC_DATA = "/jarvis/mic/data",
             P_MIC_END = "/jarvis/mic/end", P_TEXT = "/jarvis/text", P_STOP = "/jarvis/stop", P_PLAYED = "/jarvis/played",
             P_CONFIRM_ANSWER = "/jarvis/confirm/answer", P_DONE = "/jarvis/done", P_BEAT = "/jarvis/beat",
-            P_ALERT_ACTION = "/jarvis/alert/action", P_ALARM_ANSWER = "/jarvis/alarm/answer";
+            P_ALERT_ACTION = "/jarvis/alert/action", P_ALARM_ANSWER = "/jarvis/alarm/answer",
+            P_ASK = "/jarvis/ask", P_DO = "/jarvis/do";
     // phone -> watch
     static final String P_SETTINGS = "/jarvis/settings", P_STATE = "/jarvis/state", P_MIC_STOP = "/jarvis/mic/stop",
             P_AUDIO_START = "/jarvis/audio/start", P_AUDIO_DATA = "/jarvis/audio/data", P_AUDIO_END = "/jarvis/audio/end",
             P_LISTEN = "/jarvis/listen", P_CONFIRM = "/jarvis/confirm", P_CONFIRM_DONE = "/jarvis/confirm/done",
             P_PING = "/jarvis/ping", P_ALERT = "/jarvis/alert", P_ALERT_GONE = "/jarvis/alert/gone", P_ALARM = "/jarvis/alarm",
-            P_INFO = "/jarvis/info", P_ALARM_STOP = "/jarvis/alarm/stop";
+            P_INFO = "/jarvis/info", P_ALARM_STOP = "/jarvis/alarm/stop", P_PANEL = "/jarvis/panel", P_TIMER = "/jarvis/timer";
 
     private static volatile String phone;
     private static volatile long phoneAt;

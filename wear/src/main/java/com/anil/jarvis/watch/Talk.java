@@ -63,7 +63,7 @@ final class Talk {
         appCtx = app;
         Player.stop();
         if (!micAllowed(app)) { show(app, ERROR, "వాచ్‌లో Jarvis తెరిచి మైక్‌కి Allow నొక్కండి"); done(app); return; }
-        if ("watch".equals(Link.ears(app)) && !Hear.available(app)) { // never another way without telling him
+        if ("watch".equals(Link.ears(app)) && !Hear.available(app) && !"translate".equals(why)) { // never another way without telling him
             show(app, ERROR, "ఈ వాచ్‌లో Google వాయిస్ టైపింగ్ లేదు: ఫోన్ Settings → ⌚ వాచ్ లో OpenAI / Gemini ఎంచుకోండి");
             done(app);
             return;
@@ -72,7 +72,8 @@ final class Talk {
         if (!"follow".equals(why) && !"answer".equals(why)) reply = "";
         confirm = null;
         askedAt = SystemClock.elapsedRealtime();
-        if ("watch".equals(Link.ears(app)) && online(app) && Hear.available(app)) {
+        // (a translation hears someone else, in any language: always through the phone's AI ears)
+        if ("watch".equals(Link.ears(app)) && online(app) && Hear.available(app) && !"translate".equals(why)) {
             Mic.stop();
             set(LISTENING, "వింటున్నాను… (వాచ్ వాయిస్ టైపింగ్)");
             buzz(app, 30);
@@ -99,7 +100,8 @@ final class Talk {
         }
         Hear.stop();
         Mic.start(app, Mic.TALK, why);
-        set(LISTENING, "వింటున్నాను…");
+        set(LISTENING, "translate".equals(why) ? "🌐 వింటున్నాను… (వాళ్లను మాట్లాడనివ్వండి)" : "note".equals(why) ? "📝 చెప్పండి, రాసుకుంటాను…"
+                : "handover".equals(why) ? "📝 హ్యాండోవర్ నోట్ చెప్పండి…" : "వింటున్నాను…");
         buzz(app, 30);
         watchPhone(app);
     }
@@ -128,6 +130,22 @@ final class Talk {
     /** The question's mic reached its limit (25 s): the phone now writes out what it has. */
     static void micEnded(Context app) {
         main.post(() -> { if (state == LISTENING) set(UNDERSTANDING, "అర్థం చేసుకుంటున్నాను…"); });
+    }
+
+    /** W23: "☀️ ఈరోజు": the phone says the day (spoken and shown here). */
+    static void morning(Context c) {
+        Context app = c.getApplicationContext();
+        appCtx = app;
+        Mic.stop();
+        Hear.stop();
+        Player.stop();
+        heard = "";
+        reply = "";
+        confirm = null;
+        askedAt = SystemClock.elapsedRealtime();
+        set(THINKING, "☀️ ఈరోజు సంగతులు తెస్తున్నాను…");
+        try { Link.send(app, Link.P_DO, new JSONObject().put("what", "morning")); } catch (Exception ignored) {}
+        watchPhone(app);
     }
 
     /** He tapped a card's word ("చదువు", "ఎత్తు"): the same as saying it. */
@@ -223,7 +241,12 @@ final class Talk {
                 Link.saveInfo(app, o);
                 Theme.refresh(app);
                 Complications.update(app);
+                JarvisTile.refresh(app);
                 changed();
+                break;
+            case Link.P_PANEL: Panel.got(app, o); break; // phase 3: a screen's data, or a short word back
+            case Link.P_TIMER: // W33: "5 నిమిషాల టైమర్" said to the watch: it runs here
+                Timers.start(app, o.optInt("secs"), o.optString("label"));
                 break;
             case Link.P_PING: hello(app); break;
             case Link.P_STATE: state(app, o); break;

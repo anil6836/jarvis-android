@@ -2542,6 +2542,21 @@ public class SettingsActivity extends Activity {
         note("వాచ్ మీ చేతికి ఉండి, ఫోన్‌తో కనెక్ట్ అయి ఉంటేనే. డ్యూటీ తర్వాత పగలు పడుకున్నా అలాగే. \"ఆపు\" నొక్కాక శుభోదయం, వాతావరణం, డ్యూటీ వాచ్‌లోనే చెబుతుంది.");
         Switch lost = toggle("📱 ఫోన్ లేకుండా దూరం వెళ్తే వాచ్ వెంటనే చెప్పాలి (ఫోన్ చివరిగా ఎక్కడ ఉందో కూడా)", WatchHub.lostOn(this));
         lost.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "lost", on));
+        TextView dayHead = Ui.text(this, "📅 వాచ్‌లో రోజువారీ పనులు (దశ 3)", 16f, Ui.CYAN);
+        dayHead.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        dayHead.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
+        box.addView(dayHead);
+        Switch morning = toggle("☀️ ఉదయం వాచ్‌లో అలారం ఆపాక 30 సెకన్లలో ఈరోజు సంగతులు (డ్యూటీ, బ్యాగ్, రిమైండర్లు, మందులు, నిద్ర)", WatchHub.morningOn(this));
+        morning.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "morning", on));
+        Switch wTimer = toggle("⏱️ వాచ్‌లో అడిగిన టైమర్ వాచ్‌లోనే (అయిపోగానే చేతికి వైబ్రేషన్)", WatchHub.watchTimerOn(this));
+        wTimer.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "watch_timer", on));
+        Switch dutyAuto = toggle("🛡️ డ్యూటీ మొదలవగానే డ్యూటీ మోడ్ దానంతట అదే (ఫోన్ వైబ్రేట్, Jarvis మాటలు నోటిఫికేషన్లుగా మాత్రమే; డ్యూటీ అయ్యాక ఆఫ్)", DutyMode.auto(this));
+        dutyAuto.setOnCheckedChangeListener((sw, on) -> DutyMode.setAuto(this, on));
+        note("వాచ్ Jarvis స్క్రీన్‌లో కింద బటన్లు: ☀️ ఈరోజు, 📊 స్టేటస్, 🏍️ డ్యూటీ (కౌంట్‌డౌన్, బయలుదేరే టైమ్, బ్యాగ్ టిక్, హ్యాండోవర్ నోట్), "
+                + "✅ పనులు (అలవాట్లు, మిషన్లు, షాపింగ్ లిస్ట్ ఒక్క నొక్కుతో), 💡 ఇల్లు (మీ స్మార్ట్ హోమ్ లింక్‌లు), ⏱️ టైమర్, 🍲 కుక్కర్, "
+                + "📝 నోట్ (ఒక్క మాటలో: ఖర్చు, ఎక్కడ పెట్టారో, ఎవరికి ఇచ్చారో, రిమైండర్, నోట్), 🌐 అనువాదం (ఎవరైనా హిందీ / ఇంగ్లీష్‌లో మాట్లాడితే వాచ్‌లో తెలుగులో).");
+        note("Jarvis టైల్: వాచ్ ఫేస్ మీద కుడివైపు స్వైప్ చేసి చివర \"+\" (Add tiles) → Jarvis. అందులో తర్వాతి డ్యూటీ, రిమైండర్, నిద్ర, "
+                + "🎙️ / ☀️ / ⏱️ / 🍲 / 📊 బటన్లు.");
         TextView looksHead = Ui.text(this, "🎨 వాచ్‌లో రూపం (2c)", 16f, Ui.CYAN);
         looksHead.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         looksHead.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));

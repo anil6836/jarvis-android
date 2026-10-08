@@ -439,7 +439,7 @@ final class Life {
         } catch (Exception ignored) {}
         try {
             android.media.AudioManager am = c.getSystemService(android.media.AudioManager.class);
-            if (am != null && am.getRingerMode() == android.media.AudioManager.RINGER_MODE_VIBRATE)
+            if (am != null && am.getRingerMode() == android.media.AudioManager.RINGER_MODE_VIBRATE && !DutyMode.on(c)) // (at work: stays on vibrate)
                 am.setRingerMode(android.media.AudioManager.RINGER_MODE_NORMAL);
         } catch (Exception ignored) {}
         try {
