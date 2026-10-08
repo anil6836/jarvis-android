@@ -988,7 +988,7 @@ public class SettingsActivity extends Activity {
         Switch remedies = toggle("🍯 దగ్గు ఉన్న రోజుల్లో ఇంటి చిట్కాలు గుర్తుచేయి (గోరువెచ్చని నీళ్లు, పుక్కిలించడం, ఆవిరి; డ్యూటీ రోజు నోటిఫికేషన్ మాత్రమే)", CoughLog.remediesOn(this));
         remedies.setOnCheckedChangeListener((sw, isOn) -> CoughLog.setRemedies(this, isOn));
         Switch nightListen = toggle("🌙 రాత్రి ఛార్జింగ్‌లో ఉన్నప్పుడు దగ్గు, గురక విను (10 pm - 7 am; ఉదయం చిన్న రిపోర్ట్)", Sounds.nightListen(this));
-        nightListen.setOnCheckedChangeListener((sw, isOn) -> { Sounds.setNightListen(this, isOn); WakeService.recheck(this); });
+        nightListen.setOnCheckedChangeListener((sw, isOn) -> { Sounds.setNightListen(this, isOn); Sounds.armNightEdge(this); WakeService.recheck(this); });
         Switch bodyAsks = toggle("👃 ముక్కు ఎగబీల్చడం, గొంతు సవరణ, ఆయాసం, ఎక్కిళ్లు, త్రేన్పులు వరుసగా వస్తే అడుగు / చిట్కా చెప్పు", BodySounds.asksOn(this));
         bodyAsks.setOnCheckedChangeListener((sw, isOn) -> BodySounds.setAsks(this, isOn));
         Switch clapCall = toggle("👏 రెండు చప్పట్లు కొట్టినా, చిన్న ఈల వేసినా Jarvis పలకాలి", BodySounds.callOn(this));
@@ -1643,6 +1643,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("cam_always_listen", camAlways.isChecked());
         int ww = wakeWhen.getCheckedRadioButtonId();
         e.putString("wake_when", ww == 22 ? "charging" : ww == 21 ? "screen_on" : "always");
+        ui.postDelayed(() -> Sounds.armNightEdge(getApplicationContext()), 1500); // the night timer follows the listen mode
         e.putBoolean("announce_calls", announceCalls.isChecked());
         e.putBoolean("call_voice", callVoice.isChecked());
         e.putBoolean("read_messages", readMessages.isChecked());

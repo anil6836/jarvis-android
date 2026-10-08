@@ -182,14 +182,14 @@ final class CoughLog {
         return d == null ? 0 : d.optInt("sneeze".equals(kind) ? "s" : "c");
     }
 
-    /** Coughs between 10 pm and 6 am of the night before this day's morning (night of day-1 into day). */
+    /** Coughs between 10 pm and 7 am of the night before this day's morning (night of day-1 into day), like the night listening. */
     static int night(Context c, LocalDate day) {
         int n = 0;
         JSONObject all = days(c);
         JSONObject a = all.optJSONObject(day.minusDays(1).toString()), b = all.optJSONObject(day.toString());
         JSONArray ha = a == null ? null : a.optJSONArray("ch"), hb = b == null ? null : b.optJSONArray("ch");
         for (int h = 22; ha != null && h < 24; h++) n += ha.optInt(h);
-        for (int h = 0; hb != null && h < 6; h++) n += hb.optInt(h);
+        for (int h = 0; hb != null && h < 7; h++) n += hb.optInt(h);
         return n;
     }
 
@@ -518,7 +518,7 @@ final class CoughLog {
     /** From Proactive: once in the morning (6-11, screen on), a quiet note about the night's coughs and snoring, if there was much. */
     static void morningTick(Context c, Prefs p) {
         int h = LocalTime.now().getHour();
-        if (h < 6 || h >= 11) return;
+        if (h < 7 || h >= 11) return; // after the night listening ends (7 am)
         String today = LocalDate.now().toString();
         if (today.equals(sp(c).getString("night_told", ""))) return;
         try {
@@ -565,7 +565,7 @@ final class CoughLog {
         int st = streak(c);
         b.append("\nదగ్గు / Cough: ").append(st > 0 ? st + " రోజులుగా వరుసగా / " + st + " days in a row" : "ఇప్పుడు వరుసగా లేదు / not continuous now").append("\n");
         b.append("\nరోజువారీ లెక్క (ఫోన్ మైక్ విన్నవి) / Daily count heard by the phone microphone:\n");
-        b.append("రోజు / Day — దగ్గు / Coughs — రాత్రి (10pm-6am) / Night — తుమ్ములు / Sneezes — గురక నిమిషాలు / Snoring min\n");
+        b.append("రోజు / Day — దగ్గు / Coughs — రాత్రి (10pm-7am) / Night — తుమ్ములు / Sneezes — గురక నిమిషాలు / Snoring min\n");
         for (int i = days - 1; i >= 0; i--) {
             LocalDate d = LocalDate.now().minusDays(i);
             int n = count(c, d, "cough"), s = count(c, d, "sneeze"), nt = night(c, d), z = nightSnore(c, d);

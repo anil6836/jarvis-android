@@ -63,14 +63,14 @@ final class BodySounds {
      */
     static String heard(Context c, float[] s, double noise, int loudN, float[] rms, boolean test) {
         // a call: two claps, or a short whistle
-        if (callOn(c)) {
+        if (callOn(c) && callAllowed(c, test)) {
             boolean clapLike = s[CLAPPING] + s[HANDS] + s[SNAP] + s[SLAP] >= 0.2f;
             boolean busyScene = s[APPLAUSE] >= 0.4f || s[SPEECH] >= 0.4f || s[MUSIC] >= 0.4f;
             if (clapLike && !busyScene && doubleClap(rms, noise)) {
                 if (!test) WakeService.soundWake();
                 return "రెండు చప్పట్లు → Jarvis పిలుపు";
             }
-            if (s[WHISTLING] >= 0.45f && loudN >= 3 && loudN <= 8 && s[STEAM_WHISTLE] < s[WHISTLING] && !Sounds.counting(c)) {
+            if (s[WHISTLING] >= 0.45f && loudN >= 3 && loudN <= 8 && s[STEAM_WHISTLE] < s[WHISTLING] && !busyScene && !Sounds.counting(c)) {
                 if (!test) WakeService.soundWake();
                 return "ఈల → Jarvis పిలుపు";
             }
@@ -78,7 +78,7 @@ final class BodySounds {
         String kind = null, label = null;
         if (s[SNIFF] >= 0.35f) { kind = "sniff"; label = "ముక్కు ఎగబీల్చడం"; }
         else if (s[THROAT] >= 0.45f && s[COUGH] < 0.3f) { kind = "throat"; label = "గొంతు సవరించడం"; }
-        else if (s[WHEEZE] >= 0.5f || s[PANT] >= 0.5f) { kind = "wheeze"; label = "గురగుర / ఆయాసం"; }
+        else if ((s[WHEEZE] >= 0.5f || s[PANT] >= 0.5f) && s[SNORE] < Math.max(s[WHEEZE], s[PANT])) { kind = "wheeze"; label = "గురగుర / ఆయాసం"; }
         else if (s[HICCUP] >= 0.45f && s[HICCUP] > s[COUGH]) { kind = "hiccup"; label = "ఎక్కిళ్లు"; }
         else if (s[BURP] >= 0.45f && s[BURP] > s[COUGH]) { kind = "burp"; label = "త్రేన్పు"; }
         if (kind == null || test) return label;
@@ -124,6 +124,23 @@ final class BodySounds {
             default: break;
         }
         return label;
+    }
+
+    /**
+     * Claps / a whistle may call Jarvis: not with "only my voice" on (anyone can clap), not while a song / video plays,
+     * and at night only with the screen on (no bright screen at 3 am from a sound in the house).
+     */
+    private static boolean callAllowed(Context c, boolean test) {
+        if (test) return true;
+        if (new Prefs(c).voiceLock() || musicPlaying(c)) return false;
+        int h = LocalTime.now().getHour();
+        if (h >= 22 || h < 7) {
+            try {
+                android.os.PowerManager pm = c.getSystemService(android.os.PowerManager.class);
+                return pm != null && pm.isInteractive();
+            } catch (Exception e) { return false; }
+        }
+        return true;
     }
 
     /** Two sharp claps: two short peaks 160-640 ms apart with a quiet gap between, and quiet after. */

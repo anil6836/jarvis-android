@@ -95,12 +95,20 @@ final class Sounds {
     /** An alarm at the next 10 pm / 7 am, so the night listening starts and stops on time (the phone may be asleep). */
     static void armNightEdge(Context c) {
         try {
+            android.app.AlarmManager am = c.getSystemService(android.app.AlarmManager.class);
+            if (am == null) return;
+            PendingIntent pi = PendingIntent.getBroadcast(c, 7313, new Intent(c, AlarmReceiver.class).setAction(ACTION_NIGHT_EDGE),
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            // only "listen while the screen is on" needs it ("always" and "charging" already listen at night)
+            if (!nightListen(c) || !"screen_on".equals(new Prefs(c).wakeWhen())) { am.cancel(pi); return; }
             java.time.LocalDateTime now = java.time.LocalDateTime.now();
             java.time.LocalDateTime at = now.getHour() < 7 ? now.toLocalDate().atTime(7, 0)
                     : now.getHour() < 22 ? now.toLocalDate().atTime(22, 0) : now.toLocalDate().plusDays(1).atTime(7, 0);
-            PendingIntent pi = PendingIntent.getBroadcast(c, 7313, new Intent(c, AlarmReceiver.class).setAction(ACTION_NIGHT_EDGE),
-                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-            Reminders.setAlarm(c, at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() + 5000, pi);
+            long t = at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() + 5000;
+            // a plain wake-up alarm, not an "alarm clock": no alarm icon, and never shown as his next alarm
+            boolean exact = android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms();
+            if (exact) am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, t, pi);
+            else am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, t, pi);
         } catch (Exception ignored) {}
     }
 

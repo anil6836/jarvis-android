@@ -58,6 +58,7 @@ final class WakeEngine {
     private volatile float[] lastSpk;
     private volatile long lastSpkAt;
     private long pendingAt;       // a wake word was heard; waiting for its voice vector
+    private float[] pendingWindow; // the last second when it was heard (for the whisper check)
     private float pendingScore;
 
     private OrtEnvironment env;
@@ -312,6 +313,7 @@ final class WakeEngine {
                         } else {
                             pendingAt = now;
                             pendingScore = score;
+                            pendingWindow = cough.snapshot(); // the word itself, for "was it whispered?" after the voice check
                         }
                     }
                     if (pendingAt > 0) {
@@ -344,7 +346,7 @@ final class WakeEngine {
         if (v == null) { // no voice vector (too short): don't lock Anil out
             VoiceLock.lastDistance = -1;
             VoiceLock.lastAccepted = true;
-            try { cough.wakeHeard(); } catch (Throwable ignored) {}
+            try { cough.wakeHeard(pendingWindow); } catch (Throwable ignored) {}
             listener.onWake(pendingScore);
             return;
         }
@@ -352,7 +354,7 @@ final class WakeEngine {
         VoiceLock.lastDistance = d;
         VoiceLock.lastAccepted = d <= lockMax;
         if (d <= lockMax) {
-            try { cough.wakeHeard(); } catch (Throwable ignored) {}
+            try { cough.wakeHeard(pendingWindow); } catch (Throwable ignored) {}
             listener.onWake(pendingScore);
         }
     }

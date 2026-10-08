@@ -64,6 +64,7 @@ final class CoughDetector {
     private int loudChunks;                          // how many of the event's 80 ms pieces stayed loud (a whistle stays, a cough doesn't)
     private final float[] eventRms = new float[10];  // each piece's loudness (two claps = two peaks)
     private long lastSample;                         // the last steady sound sampled (snoring at night, rain by day)
+    private int sampleIn = -1;                       // pieces to wait before sampling (a burst starting meanwhile cancels it)
     private boolean nightNow;                        // 10 pm - 7 am (looked at every 10 s)
     private long lastRun, prefsAt;
     private boolean on;
@@ -105,7 +106,7 @@ final class CoughDetector {
             for (int i = 0; i < AFTER.length; i++) if (since == AFTER[i]) wins[i] = window();
             if (since >= AFTER[AFTER.length - 1]) {
                 since = -1;
-                classify(wins.clone(), eventNoise, eventLoud, loudChunks, eventRms.clone());
+                classify(wins.clone(), eventNoise, eventLoud, loudChunks, eventRms.clone(), nightNow);
                 java.util.Arrays.fill(wins, null);
             }
             return;
@@ -125,6 +126,7 @@ final class CoughDetector {
         if (failures > 0 && now - failedAt < 120_000) return; // something went wrong a moment ago: rest a little
         // a cough / sneeze / knock starts as a short burst well above the room's background
         if (rms > Math.max(MIN_LOUD, noise * 4) && now - lastRun > 1000) {
+            sampleIn = -1; // a burst: the steady-sound look waits
             since = 0;
             eventNoise = noise;
             eventLoud = rms;
@@ -138,9 +140,11 @@ final class CoughDetector {
         // by day, when the room is noisy (rain), one look every 30 s
         boolean sampleNow = nightNow ? (rms > Math.max(120, noise * 2.0) && now - lastSample > 15_000)
                 : (noise > 35 && now - lastSample > 30_000 && Sounds.rainOn(ctx));
-        if (sampleNow) {
-            lastSample = now;
-            sample(window(), nightNow);
+        if (sampleIn > 0) {
+            if (--sampleIn == 0) { sampleIn = -1; lastSample = now; sample(window(), nightNow); }
+        } else if (sampleNow) {
+            lastSample = now;   // (so it isn't armed again meanwhile)
+            sampleIn = 2;       // two more pieces: if it was the start of a cough, the burst takes it instead
         }
     }
 
@@ -163,10 +167,14 @@ final class CoughDetector {
         });
     }
 
+    /** The last second now (the moment "Jarvis" was heard), to look at a little later. */
+    float[] snapshot() { return full ? window() : null; }
+
     /** "Jarvis" was just heard: was it whispered? (the last second has the word in it). Answers softly if so. */
-    void wakeHeard() {
-        if (missing || !full) return;
-        float[] w = window();
+    void wakeHeard() { wakeHeard(snapshot()); }
+
+    void wakeHeard(float[] w) {
+        if (missing || w == null) return;
         worker.execute(() -> {
             try {
                 float[] s = run(w);
@@ -255,7 +263,7 @@ final class CoughDetector {
         return y;
     }
 
-    private void classify(float[][] ws, double noise, double loud, int loudN, float[] rmsSeq) {
+    private void classify(float[][] ws, double noise, double loud, int loudN, float[] rmsSeq, boolean night) {
         if (busy || missing) return;
         busy = true;
         worker.execute(() -> {
@@ -276,10 +284,11 @@ final class CoughDetector {
                     String house = null;
                     try { house = Sounds.heard(ctx, best, loud, loudN); } catch (Throwable ignored) {}
                     String verdict = decide(best, loud);
-                    if (!coughOrSneeze) { // not a cough / sneeze: maybe another sound of his own (sniff, hiccup...) or a call (two claps)
+                    if (!coughOrSneeze && house == null) { // nothing yet: a loud snore at night, another sound of his own (sniff, hiccup...) or a call (two claps)
                         try {
-                            String body = BodySounds.heard(ctx, best, noise, loudN, rmsSeq, testing());
-                            if (body != null && house == null) house = body;
+                            String body = BodySounds.sampled(ctx, best, night, testing()); // a loud snore comes as a burst too
+                            if (body == null) body = BodySounds.heard(ctx, best, noise, loudN, rmsSeq, testing());
+                            house = body;
                         } catch (Throwable ignored) {}
                     }
                     if (testing()) testLine(java.time.LocalTime.now().withNano(0) + "  ➜ " + (house != null ? house : verdict)
@@ -378,13 +387,14 @@ final class CoughDetector {
         lastHeard = java.time.LocalTime.now().withNano(0) + " " + (kind == null ? "ఏమీ కాదు" : kind.equals("cough") ? "దగ్గు" : "తుమ్ము")
                 + " (దగ్గు " + Math.round(cough * 100) + "%, తుమ్ము " + Math.round(sneeze * 100) + "%, శబ్దం " + Math.round(loud) + ")"
                 + (taught != null ? " · మీరు నేర్పినట్టు" : "");
-        if (kind == null || !new Prefs(ctx).coughAsk()) return verdict;
+        if (kind == null) return verdict;
         boolean video = false;
         try {
             AudioManager am = ctx.getSystemService(AudioManager.class);
             video = am != null && am.isMusicActive(); // a cough in a video / song on the phone: not his
         } catch (Exception ignored) {}
-        if (!video) CoughLog.add(ctx, kind); // the daily count
+        if (!video) CoughLog.add(ctx, kind); // the daily count (also with the questions turned off)
+        if (!new Prefs(ctx).coughAsk()) return verdict;
         long now = System.currentTimeMillis();
         if (sure < CLEAR) { // faint: wait for a second one
             boolean c = kind.equals("cough");
