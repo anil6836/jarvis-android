@@ -189,11 +189,17 @@ final class TeluguEars implements ListenMic {
 
     TeluguEars(Context c) { ctx = c.getApplicationContext(); }
 
+    /** The watch's sound instead of the phone's mic (WatchHub); null: the phone's mic. */
+    private Ears.Source source;
+
+    /** Hears this sound (the watch's) instead of the phone's mic. Before start. */
+    TeluguEars from(Ears.Source s) { source = s; return this; }
+
     /** Main thread. Waits up to waitMs for him to start talking, then hears him out (a message he dictates: up to a minute). */
     void start(long waitMs, boolean longTalk, Ears.Callback callback) {
         this.longTalk = longTalk;
         cb = callback;
-        if (ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { fail(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS); return; }
+        if (source == null && ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { fail(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS); return; }
         if (!ready(ctx)) { fail(ERROR_NO_MODEL); return; }
         new Thread(this::decode, "jarvis-te-words").start();
         new Thread(() -> record(waitMs), "jarvis-te-ears").start();
@@ -223,21 +229,30 @@ final class TeluguEars implements ListenMic {
         android.media.AudioFocusRequest musicDown = null;
         boolean ended = false;
         try {
-            route.connect(() -> cancelled);
-            musicDown = Duck.hold(ctx); // songs and radio go quiet while Jarvis listens
-            rec = Ears.openMic(route.routed, route.in, RATE * 2); // (a second of sound kept: the listeners may lag a moment)
-            if (rec == null) { SystemClock.sleep(200); rec = Ears.openMic(route.routed, route.in, RATE * 2); }
-            if (rec == null) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
+            final Ears.Source src = source;
+            if (src == null) { // (the watch's sound needs no phone mic, headset or quiet songs)
+                route.connect(() -> cancelled);
+                musicDown = Duck.hold(ctx); // songs and radio go quiet while Jarvis listens
+                rec = Ears.openMic(route.routed, route.in, RATE * 2); // (a second of sound kept: the listeners may lag a moment)
+                if (rec == null) { SystemClock.sleep(200); rec = Ears.openMic(route.routed, route.in, RATE * 2); }
+                if (rec == null) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
+            }
             post(() -> cb.opened());
             Ears.Talk talk = new Ears.Talk(longTalk ? 60_000 : 20_000);
             short[] f = new short[FRAME];
-            long openedAt = SystemClock.elapsedRealtime(), lastLevel = 0, zeroSince = -1;
+            long openedAt = SystemClock.elapsedRealtime(), lastLevel = 0, zeroSince = -1, frames = 0;
             boolean anySound = false, was = false;
             while (!cancelled && !micStop) {
-                int n = rec.read(f, 0, FRAME);
+                int n = src != null ? src.read(f, FRAME) : rec.read(f, 0, FRAME);
+                if (n < 0 && src != null) { // the watch stopped sending: what he said so far, or nothing
+                    if (talk.started()) break;
+                    fail(SpeechRecognizer.ERROR_SPEECH_TIMEOUT);
+                    return;
+                }
                 if (n <= 0) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
-                long now = SystemClock.elapsedRealtime();
-                boolean zero = true;
+                // the watch's sound comes in bursts over Bluetooth: its own clock is the sound itself (20 ms a frame)
+                long now = src != null ? openedAt + 20 * frames++ : SystemClock.elapsedRealtime();
+                boolean zero = src == null;
                 for (int i = 0; i < n && zero; i++) if (f[i] != 0) zero = false;
                 if (!zero) { zeroSince = -1; anySound = true; }
                 else if (zeroSince < 0) zeroSince = now;

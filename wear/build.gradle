@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+// The Jarvis watch app (Galaxy Watch, Wear OS). Same package name and signing key as the phone app: the watch's
+// Bluetooth link (Wear Data Layer) only lets the two talk when both match.
+android {
+    namespace 'com.anil.jarvis.watch'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.anil.jarvis'
+        minSdk 30
+        targetSdk 34
+        versionCode runNumber
+        versionName "1.0.${runNumber}"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../app/jarvis.keystore')
+            // decrypted by the build from app/jarvis.keystore.enc with the JARVIS_KEY_PASS secret
+            storePassword System.getenv('JARVIS_KEY_PASS') ?: ''
+            keyAlias 'jarvis'
+            keyPassword System.getenv('JARVIS_KEY_PASS') ?: ''
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    // Talking with the phone's Jarvis over the watch's Bluetooth link (Wear Data Layer messages)
+    implementation 'com.google.android.gms:play-services-wearable:18.2.0'
+}

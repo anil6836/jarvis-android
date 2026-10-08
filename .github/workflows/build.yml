@@ -48,6 +48,24 @@ jobs:
             && echo "d7c1f7f130376982c7004920ddc41925ac2e5aecf6522f476c8bbb3669db7013  facenet.tflite" | sha256sum -c - \
             || { rm -f facenet.tflite; echo "::warning::FaceNet model not downloaded; this release has no facenet.tflite"; }
 
+      - name: Download the Telugu font for the watch app (if the watch has no Telugu letters of its own)
+        shell: bash
+        run: |
+          # Not fatal: the watch's own font is used when it has Telugu; this one is only a backup. SIL Open Font License.
+          mkdir -p wear/src/main/assets
+          F=wear/src/main/assets/NotoSansTelugu-Regular.ttf
+          curl -fsSL --retry 3 -o "$F" "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansTelugu/hinted/ttf/NotoSansTelugu-Regular.ttf" \
+            || curl -fsSL --retry 3 -o "$F" "https://github.com/google/fonts/raw/main/ofl/notosanstelugu/NotoSansTelugu%5Bwdth,wght%5D.ttf" \
+            || rm -f "$F"
+          if [ -f "$F" ] && ! head -c 4 "$F" | od -An -tx1 | grep -Eq "00 01 00 00|74 72 75 65|4f 54 54 4f"; then rm -f "$F"; fi
+          if [ -f "$F" ]; then
+            curl -fsSL --retry 3 -o wear/src/main/assets/OFL-NotoSansTelugu.txt "https://github.com/notofonts/telugu/raw/main/OFL.txt" \
+              || echo "Noto Sans Telugu: Copyright 2022 The Noto Project Authors. Licensed under the SIL Open Font License 1.1 (https://openfontlicense.org)." > wear/src/main/assets/OFL-NotoSansTelugu.txt
+          else
+            echo "::warning::Telugu font not downloaded; the watch app uses the watch's own font"
+          fi
+          ls -la wear/src/main/assets
+
       - name: Unlock the signing key
         shell: bash
         env:
@@ -78,13 +96,17 @@ jobs:
           git commit -m "Build log for run ${{ github.run_number }}"
           git push -f origin build-logs
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk Jarvis.apk
+      - name: Rename APKs
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk Jarvis.apk
+          cp wear/build/outputs/apk/release/wear-release.apk Jarvis-watch.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: Jarvis-apk
-          path: Jarvis.apk
+          path: |
+            Jarvis.apk
+            Jarvis-watch.apk
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -94,8 +116,11 @@ jobs:
           body: |
             ఫోన్‌లో Jarvis.apk డౌన్‌లోడ్ చేసి, పాత యాప్ మీదే ఇన్‌స్టాల్ (Update) చేయండి.
 
+            Jarvis-watch.apk: Galaxy Watch కోసం Jarvis (వాచ్‌లో Bugjaeger తో ఇన్‌స్టాల్ చేయండి; స్టెప్స్ ఫోన్ Settings → ⌚ వాచ్ లో). ఫోన్ యాప్, వాచ్ యాప్ ఒకే వెర్షన్ ఉంటే మంచిది.
+
             facenet.tflite: the FaceNet model Jarvis downloads once to remember faces (TFLite conversion by shubham0204, Apache-2.0; weights from nyoki-mtl/keras-facenet, MIT).
           files: |
             Jarvis.apk
+            Jarvis-watch.apk
             facenet.tflite
           make_latest: true

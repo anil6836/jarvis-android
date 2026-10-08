@@ -385,7 +385,27 @@ public class WakeService extends Service {
         openJarvis();
     }
 
+    /** Waiting a moment to see whether he said "Jarvis" to the watch (wrist raised), not to the phone. */
+    private boolean waitingWatch;
+
     private void onWake() {
+        if (!engineOn) return;
+        if (CrashAlert.active && "fall".equals(CrashAlert.kind)) CrashAlert.ok(this); // "బాగున్నారా?": calling Jarvis means he is fine
+        // The watch app (phase 2a): when he is talking to the watch, or has just raised his wrist, only the watch answers.
+        if (WatchHub.talking() || WatchHub.wokeRecently(3000)) return;
+        if (WatchHub.wakeStreaming()) {
+            if (waitingWatch) return;
+            waitingWatch = true;
+            main.postDelayed(() -> {
+                waitingWatch = false;
+                if (engineOn && !WatchHub.talking() && !WatchHub.wokeRecently(3000)) wakeNow();
+            }, 900);
+            return;
+        }
+        wakeNow();
+    }
+
+    private void wakeNow() {
         if (!engineOn) return;
         RideCare.awake(this); // he called Jarvis: awake (the after-duty check while riding)
         if (CrashAlert.active && "fall".equals(CrashAlert.kind)) CrashAlert.ok(this); // "బాగున్నారా?" at home: calling Jarvis means he is fine

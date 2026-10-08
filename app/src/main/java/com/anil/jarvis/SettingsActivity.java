@@ -680,6 +680,8 @@ public class SettingsActivity extends Activity {
         wakeInfo = Ui.text(this, "", 14, Ui.MUTED);
         box.addView(wakeInfo);
 
+        watchSection();
+
         // ---- permissions & data
         // ---- calls, reminders, morning briefing
         section("కాల్స్, ఉదయం బ్రీఫింగ్");
@@ -1107,7 +1109,8 @@ public class SettingsActivity extends Activity {
         if (t.contains("Jarvis చెక్")) return "check";
         if (t.contains("మీరు") || t.contains("థీమ్") || t.contains("Jarvis ముఖం") || t.contains("ఫ్లోటింగ్")) return "me";
         if (t.contains("మెదడు") || t.contains("API ఖర్చు") || t.contains("కోడింగ్")) return "brain";
-        if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")) return "voice";
+        if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")
+                || t.contains("వాచ్")) return "voice";
         if (t.contains("కాల్స్") || t.contains("మెసేజ్") || t.contains("WhatsApp") || t.contains("స్క్రీన్ చూడటం") || t.contains("మోసం")) return "msg";
         if (t.contains("బైక్") || t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా")) return "bike";
         if (t.contains("అత్యవసరం (SOS)") || t.contains("టికెట్") || t.contains("డాక్యుమెంట్")) return "safe";
@@ -1593,6 +1596,7 @@ public class SettingsActivity extends Activity {
         if (SafetySounds.fallOn(this) && !"none".equals(SafetySounds.sosMode(this)) && prefs.sosContacts().trim().isEmpty())
             s.append("✗ అరుపు / పడిపోతే SOS: SOS కాంటాక్ట్స్ లేరు (సెట్టింగ్స్ → అత్యవసరం (SOS) లో పెట్టండి)\n");
         if (NameCall.on(this) && !NameCall.status.isEmpty()) s.append("• ఇయర్‌ఫోన్‌లో పేరు పిలుపు: ").append(NameCall.status).append("\n");
+        if (WatchHub.info != null) s.append("• ⌚ వాచ్: ").append(WatchHub.status(this).replace("\n", " · ")).append("\n");
         if (Guard.running(this) && HomeGuard.soundsOn(this))
             s.append(HomeGuard.listening(this) && WakeService.running ? "• కాపలా శబ్దాలు: వింటోంది\n" : "✗ కాపలా శబ్దాలు: మైక్ వినడం లేదు (మైక్ అనుమతి / కాపలా మళ్లీ మొదలుపెట్టండి)\n");
         String last = NotifyListener.lastMessageNote;
@@ -2291,7 +2295,7 @@ public class SettingsActivity extends Activity {
             {"Live", "🎙️"}, {"వేక్ వర్డ్", "👂"}, {"కాల్స్", "📞"}, {"స్క్రీన్", "📱"}, {"పవర్ బటన్", "🔘"},
             {"మెసేజ్", "💬"}, {"తనంతట", "✨"}, {"స్మార్ట్ హోమ్", "🏠"}, {"కాపలా", "🛡️"}, {"అత్యవసరం", "🆘"}, {"టికెట్", "🎟️"},
             {"WhatsApp", "🖼️"}, {"డాక్యుమెంట్", "📄"}, {"కార్", "🏍️"}, {"ఆరోగ్యం", "❤️"}, {"అప్డేట్", "⬆️"}, {"అనుమతులు", "🔐"},
-            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"చెక్", "🩺"}, {"Jarvis ముఖం", "🙂"}, {"ఫ్లోటింగ్", "🔵"}, {"బ్యాకప్", "☁️"}};
+            {"API ఖర్చు", "💰"}, {"మోసం", "🛡️"}, {"చెక్", "🩺"}, {"Jarvis ముఖం", "🙂"}, {"ఫ్లోటింగ్", "🔵"}, {"బ్యాకప్", "☁️"}, {"వాచ్", "⌚"}};
     /** Read when used, so they follow the theme. */
     private static int[] cardColors() { return new int[]{Ui.C_SKY, Ui.C_VIOLET, Ui.C_BLUE, Ui.C_CYAN, Ui.C_PINK, Ui.C_BLUE, Ui.C_TEAL,
             Ui.C_GREEN, Ui.C_SKY, Ui.C_AMBER, Ui.C_GREEN, Ui.C_VIOLET, Ui.C_AMBER, 0xFFF43F5E, Ui.C_PINK, Ui.C_GREEN, Ui.C_ORANGE,
@@ -2457,6 +2461,96 @@ public class SettingsActivity extends Activity {
         super.onRequestPermissionsResult(code, perms, results);
         // the microphone for the guard's house sounds was just given: start listening
         if (code == 62 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) Guard.listen(this);
+    }
+
+    /** Phase 2a: the Jarvis watch app (Galaxy Watch). Each choice acts at once and goes to the watch; no Save needed. */
+    private void watchSection() {
+        section("⌚ వాచ్ (Galaxy Watch)");
+        TextView st = Ui.text(this, WatchHub.status(this), 14, Ui.MUTED);
+        st.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
+        box.addView(st);
+        WatchHub.send(this, WatchHub.P_PING, new byte[0]); // the watch answers with its news
+        st.postDelayed(() -> st.setText(WatchHub.status(this)), 3000);
+        Switch raise = toggle("✋ చేయి ఎత్తి \"Hey Jarvis\" / \"Jarvis\" అంటే వాచ్ వింటుంది", WatchHub.raiseOn(this));
+        raise.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "raise", on));
+        note("వాచ్ స్క్రీన్ వెలిగిన ప్రతిసారి (చేయి ఎత్తినప్పుడు) కొన్ని సెకన్లు మాత్రమే వింటుంది. ఆ శబ్దం Bluetooth ద్వారా మీ ఫోన్‌కే వెళ్తుంది; "
+                + "\"Jarvis\" అన్నారా అని ఫోన్‌లోనే చూస్తుంది (బయటికి ఏదీ వెళ్లదు). \"Hey Jarvis\" ఎప్పుడూ పనిచేస్తుంది; \"Jarvis\" ఒక్క పదం ఫోన్‌లో ఆ పదం మోడల్ ఉంటేనే. "
+                + "వాచ్‌కి చేయి ఎత్తి పిలిస్తే వాచ్ మాత్రమే జవాబిస్తుంది, ఫోన్ ఆగుతుంది.");
+        Switch hours = toggle("", WatchHub.hoursOn(this));
+        hours.setText("🕐 ఈ సమయంలో వాచ్ ఎప్పుడూ వింటూ ఉండు: " + hourText(WatchHub.fromHour(this)) + " నుంచి " + hourText(WatchHub.toHour(this)) + " వరకు (బ్యాటరీ ఎక్కువ)");
+        hours.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "hours", on));
+        TextView hoursPick = Ui.text(this, "  ⏱️ సమయం మార్చడానికి నొక్కండి", 14.5f, accent);
+        hoursPick.setPadding(0, 0, 0, Ui.dp(this, 8));
+        hoursPick.setOnClickListener(v -> pickHours(hours));
+        box.addView(hoursPick);
+        TextView ears = Ui.text(this, "", 15.5f, Ui.CYAN);
+        ears.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        ears.setText("🎧 వాచ్‌లో మీ మాటలు రాసేది: " + WatchHub.earsText(WatchHub.ears(this)) + "  (మార్చడానికి నొక్కండి)");
+        ears.setOnClickListener(v -> {
+            final String[] modes = {"openai", "gemini", "watch"};
+            String[] names = new String[modes.length];
+            int checked = 0;
+            for (int i = 0; i < modes.length; i++) { names[i] = WatchHub.earsText(modes[i]); if (modes[i].equals(WatchHub.ears(this))) checked = i; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("వాచ్‌లో మీరు చెప్పింది ఎవరు రాయాలి?")
+                    .setSingleChoiceItems(names, checked, (d, w) -> {
+                        WatchHub.set(this, "ears", modes[w]);
+                        ears.setText("🎧 వాచ్‌లో మీ మాటలు రాసేది: " + WatchHub.earsText(modes[w]) + "  (మార్చడానికి నొక్కండి)");
+                        d.dismiss();
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        box.addView(ears);
+        note("OpenAI / Gemini: మీ శబ్దం ఫోన్‌కి వచ్చి, ఫోన్ నుంచి మీరు ఎంచుకున్న AI కి వెళ్తుంది (మీ key, ఫోన్ వాయిస్ సెక్షన్‌లోని మోడల్). "
+                + "వాచ్ Google: వాచ్‌లోనే Google వాయిస్ టైపింగ్ (ఉచితం; వాచ్‌లో అది ఉంటేనే, తెలుగు దానికి వస్తేనే). "
+                + "నెట్ లేనప్పుడు ఏది ఎంచుకున్నా ఫోన్‌లోని Offline తెలుగు చెవులతో వింటాను (ఫోన్‌లో ఆ మోడల్ ఉంటే), జవాబులు offline పనులకే. "
+                + "ఎప్పుడూ మీకు చెప్పకుండా వేరే AI కి మారను.");
+        Switch lock = toggle("🔒 వాచ్‌లో కూడా నా గొంతుకి మాత్రమే పలుకు", WatchHub.lockOn(this));
+        lock.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "lock", on));
+        note("పైన వేక్ వర్డ్ సెక్షన్‌లో నేర్పిన మీ గొంతునే వాడుతుంది (వాచ్ మైక్ వేరు కాబట్టి కొంచెం సడలింపుతో). మీరు పిలిచినా వాచ్ పలకకపోతే ఇది ఆఫ్ చేయండి. "
+                + "వాచ్‌పై నొక్కి మాట్లాడితే ఎప్పుడూ వింటుంది (మీ చేతిలోనే ఉంది కాబట్టి).");
+        Switch speak = toggle("🔊 జవాబు వాచ్‌లో గొంతుతో చెప్పు (ఆఫ్: వాచ్‌పై రాత, వైబ్రేషన్ మాత్రమే)", WatchHub.speakOn(this));
+        speak.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "speak", on));
+        note("గొంతు ఫోన్‌లోని గొంతే (సహజ గొంతు ఆన్ అయితే OpenAI, లేకపోతే ఫోన్ తెలుగు గొంతు). వాచ్‌కి ఇయర్‌బడ్స్ ఉంటే వాటిలో, లేకపోతే వాచ్ స్పీకర్‌లో. "
+                + "మీ ఇయర్‌ఫోన్స్ ఫోన్‌కి కనెక్ట్ అయి ఉంటే జవాబు ఫోన్ ఇయర్‌ఫోన్స్‌లోనే చెబుతాను (రాత వాచ్‌పై).");
+        Switch stopV = toggle("✋ జవాబు చెబుతుండగా \"Jarvis\" అంటే ఆపి మీ మాట విను", WatchHub.stopVoice(this));
+        stopV.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "stop_voice", on));
+        note("అరచేతితో వాచ్ మూసినా (స్క్రీన్ ఆఫ్ అయితే), స్క్రీన్ నొక్కినా జవాబు ఆగుతుంది.");
+        Switch openL = toggle("⌚ వాచ్‌లో Jarvis తెరవగానే వినడం మొదలుపెట్టు", WatchHub.openListen(this));
+        openL.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "open_listen", on));
+        note("బటన్‌తో పిలవడానికి: వాచ్ Settings → Advanced features → Customize keys → Home key \"Double press\" → Jarvis. "
+                + "వాచ్ ఫేస్ మీద నొక్కి పట్టుకుని → Customize → షార్ట్‌కట్ ఉన్న చోట Jarvis ఎంచుకోండి.");
+        note("వాచ్‌లో Jarvis పెట్టడం (ఒక్కసారి, Bugjaeger యాప్‌తో): 1) కింది లింక్‌తో ఫోన్‌లో Jarvis-watch.apk డౌన్‌లోడ్ చేయండి. "
+                + "2) వాచ్: Settings → About watch → Software information → Software version మీద \"Developer mode turned on\" వచ్చే వరకు చాలా సార్లు నొక్కండి. "
+                + "3) వాచ్: Settings → Developer options → ADB debugging ఆన్, Wireless debugging ఆన్ → Pair new device (కోడ్ కనిపిస్తుంది). "
+                + "4) ఫోన్‌లో Bugjaeger: ఆ కోడ్‌తో pair చేసి connect చేయండి → Install APK → Jarvis-watch.apk. "
+                + "5) వాచ్‌లో Jarvis తెరిచి మైక్‌కి Allow నొక్కండి. 6) అయ్యాక వాచ్‌లో ADB debugging, Wireless debugging ఆఫ్ చేయండి. "
+                + "కొత్త వెర్షన్ వచ్చినప్పుడు ఇదే విధంగా పాతదాని మీదే ఇన్‌స్టాల్ చేయండి (ఫోన్ యాప్, వాచ్ యాప్ రెండూ ఒకే వెర్షన్ ఉండటం మంచిది).");
+        link("⬇ Jarvis-watch.apk (తాజా వెర్షన్)", "https://github.com/anil6836/jarvis-android/releases/latest/download/Jarvis-watch.apk");
+    }
+
+    private static String hourText(int h) {
+        String part = h < 4 ? "రాత్రి" : h < 12 ? "ఉదయం" : h < 16 ? "మధ్యాహ్నం" : h < 20 ? "సాయంత్రం" : "రాత్రి";
+        int twelve = h % 12 == 0 ? 12 : h % 12;
+        return part + " " + twelve;
+    }
+
+    /** From which hour to which the watch always listens. */
+    private void pickHours(Switch hours) {
+        String[] names = new String[24];
+        for (int h = 0; h < 24; h++) names[h] = hourText(h) + " (" + h + ":00)";
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("ఎప్పటి నుంచి?")
+                .setItems(names, (d, from) -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("ఎప్పటి వరకు?")
+                        .setItems(names, (d2, to) -> {
+                            if (to == from) { Toast.makeText(this, "మొదలు, ముగింపు ఒకటే: వేరే సమయం ఎంచుకోండి", Toast.LENGTH_SHORT).show(); return; }
+                            WatchHub.sp(this).edit().putInt("from", from).putInt("to", to).apply();
+                            WatchHub.set(this, "hours", true);
+                            hours.setChecked(true);
+                            hours.setText("🕐 ఈ సమయంలో వాచ్ ఎప్పుడూ వింటూ ఉండు: " + hourText(from) + " నుంచి " + hourText(to) + " వరకు (బ్యాటరీ ఎక్కువ)");
+                        }).show())
+                .setNegativeButton("వద్దు", null).show();
     }
 
     /** Sounds 1c (S15-S19): a scream / a fall, his name on earphones, groans and laughs, crying (each acts at once; no Save needed). */

@@ -8,3 +8,6 @@ app/src/main/assets/*.onnx
 
 # signing key: only the encrypted copy is in git
 app/jarvis.keystore
+wear/build/
+# the watch's Telugu font is downloaded by the build (see the workflow)
+wear/src/main/assets/*.ttf

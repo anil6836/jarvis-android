@@ -145,6 +145,26 @@
             android:theme="@style/JarvisSheet"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
 
+        <!-- A question asked on the watch, answered here with Jarvis's tools: invisible, touches pass through (WatchHub) -->
+        <activity
+            android:name=".WatchTalkActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.anil.jarvis.watchtalk"
+            android:theme="@style/JarvisInvisible"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode|locale|layoutDirection|density|fontScale|keyboard|navigation" />
+
+        <!-- Messages from the Jarvis watch app (Galaxy Watch, same package and key) -->
+        <service
+            android:name=".WatchLink"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/jarvis" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".AssistEntry"
             android:exported="true"

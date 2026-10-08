@@ -97,6 +97,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (JarvisCamera.open) return true; // the camera is open: no panel or remark over it (its mic: WakeService.micBusy)
         if (SheetActivity.talkingNow()) return true; // the panel is talking, even if another screen cleared the flag
         if (TopCard.talkingNow()) return true; // a message card is talking with him (however long)
+        if (WatchHub.talking()) return true; // he is talking with Jarvis on the watch
         if (!inConversation) return false;
         if (visible || liveOn || SheetActivity.open) return true;
         if (System.currentTimeMillis() - talkingSince < 3 * 60_000L) return true;

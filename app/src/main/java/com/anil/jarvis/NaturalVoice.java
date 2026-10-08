@@ -39,7 +39,7 @@ final class NaturalVoice {
 
     static final String[] VOICES = {"cedar", "marin", "ash", "ballad", "verse", "echo", "sage", "coral", "alloy", "shimmer"};
     static final int RATE = 24000;
-    private static final String STYLE =
+    static final String STYLE =
             "Voice: calm, refined and quietly warm, like JARVIS the British butler AI from the Iron Man films. "
             + "Language: the text is Telugu. Speak ONLY Telugu, with a native Andhra/Telangana Telugu accent and pronunciation. "
             + "Never switch to Tamil, Kannada, Malayalam or Hindi pronunciation, not even for single words; similar-looking words must still sound Telugu. "

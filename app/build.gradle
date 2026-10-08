@@ -68,4 +68,6 @@ dependencies {
     implementation 'net.java.dev.jna:jna:5.13.0@aar'
     // Hearing a cough / sneeze on the phone (Google's YAMNet sound model, downloaded by the build)
     implementation 'org.tensorflow:tensorflow-lite:2.16.1'
+    // Talking with the Jarvis watch app (Galaxy Watch) over its Bluetooth link (Wear Data Layer messages)
+    implementation 'com.google.android.gms:play-services-wearable:18.2.0'
 }

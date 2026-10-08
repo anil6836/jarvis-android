@@ -40,6 +40,22 @@ final class Ears implements ListenMic {
     /** What Jarvis uses to hear him: "openai", "gemini" or "google" (the phone's own speech service, with its beeps). */
     static String mode(Prefs p) { return p.earsMode(); }
 
+    /**
+     * Sound that comes from somewhere else than the phone's mic (the watch, WatchHub): 20 ms frames of 16 kHz sound as
+     * they arrive. read returns how many samples it gave (it waits for them), or -1 when that sound has ended.
+     */
+    interface Source { int read(short[] f, int n); }
+
+    /** The watch's sound instead of the phone's mic (null: the phone's mic). */
+    private Source source;
+    /** The AI the watch's words go to ("openai" / "gemini", his watch setting); null: his phone setting. */
+    private String modeOver;
+
+    /** Hears this sound (the watch's) instead of the phone's mic, written out by mode ("openai" or "gemini"). Before start. */
+    Ears from(Source s, String mode) { source = s; modeOver = mode; return this; }
+
+    private String myMode() { return modeOver != null ? modeOver : mode(p); }
+
     /** Jarvis listens with its own mic (not the phone's speech service). */
     static boolean chosen(Prefs p) { String m = mode(p); return "openai".equals(m) || "gemini".equals(m); }
 
@@ -105,8 +121,8 @@ final class Ears implements ListenMic {
     void start(long waitMs, boolean longTalk, Callback callback) {
         this.longTalk = longTalk;
         cb = callback;
-        if (ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { fail(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS); return; }
-        String key = "gemini".equals(mode(p)) ? p.geminiKey().trim() : p.openAiKey().trim();
+        if (source == null && ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { fail(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS); return; }
+        String key = "gemini".equals(myMode()) ? p.geminiKey().trim() : p.openAiKey().trim();
         if (key.isEmpty()) { fail(ERROR_NO_KEY); return; }
         if (!Net.online(ctx)) { fail(SpeechRecognizer.ERROR_NETWORK); return; }
         new Thread(() -> run(waitMs, key), "jarvis-ears").start();
@@ -144,26 +160,35 @@ final class Ears implements ListenMic {
         boolean weak;
         long doneAt, voiceEnd;
         // OpenAI: his voice goes out while he talks, so after he stops only the last moment is left to send
-        boolean stream = !"gemini".equals(mode(p)) && p.earsStream();
+        boolean stream = !"gemini".equals(myMode()) && p.earsStream();
         Upload up = null;
         int upTries = 0;
         try {
-            route.connect(() -> cancelled); // a Bluetooth headset (helmet) mic, when one is connected
-            musicDown = Duck.hold(ctx); // songs and radio go quiet while Jarvis listens (as Google voice typing does)
-            rec = openMic(route.routed, route.in, 0);
-            if (rec == null) { SystemClock.sleep(200); rec = openMic(route.routed, route.in, 0); } // (a talk-over mic may still be letting go)
-            if (rec == null) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
+            final Source src = source;
+            if (src == null) { // (the watch's sound needs no phone mic, headset or quiet songs)
+                route.connect(() -> cancelled); // a Bluetooth headset (helmet) mic, when one is connected
+                musicDown = Duck.hold(ctx); // songs and radio go quiet while Jarvis listens (as Google voice typing does)
+                rec = openMic(route.routed, route.in, 0);
+                if (rec == null) { SystemClock.sleep(200); rec = openMic(route.routed, route.in, 0); } // (a talk-over mic may still be letting go)
+                if (rec == null) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
+            }
             post(() -> cb.opened());
             Talk talk = new Talk(longTalk ? 60_000 : 20_000);
             short[] f = new short[FRAME];
             long openedAt = SystemClock.elapsedRealtime();
-            long lastLevel = 0, zeroSince = -1;
+            long lastLevel = 0, zeroSince = -1, frames = 0;
             boolean anySound = false;
             while (!cancelled) {
-                int n = rec.read(f, 0, FRAME);
+                int n = src != null ? src.read(f, FRAME) : rec.read(f, 0, FRAME);
+                if (n < 0 && src != null) { // the watch stopped sending: what he said so far, or nothing
+                    if (talk.started()) break;
+                    fail(SpeechRecognizer.ERROR_SPEECH_TIMEOUT);
+                    return;
+                }
                 if (n <= 0) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
-                long now = SystemClock.elapsedRealtime();
-                boolean zero = true;
+                // the watch's sound comes in bursts over Bluetooth: its own clock is the sound itself (20 ms a frame)
+                long now = src != null ? openedAt + 20 * frames++ : SystemClock.elapsedRealtime();
+                boolean zero = src == null;
                 for (int i = 0; i < n && zero; i++) if (f[i] != 0) zero = false;
                 if (!zero) { zeroSince = -1; anySound = true; }
                 else if (zeroSince < 0) zeroSince = now;
@@ -242,7 +267,7 @@ final class Ears implements ListenMic {
             if (text == null) {
                 if (cancelled) return;
                 sentAt = 0;
-                text = "gemini".equals(mode(p)) ? gemini(key, wav) : openAi(key, wav);
+                text = "gemini".equals(myMode()) ? gemini(key, wav) : openAi(key, wav);
                 sent = sentAt;
                 if (refused) p.earsStreamOff(); // sent whole, it worked: from now on always so (a new model in Settings tries again)
             }
