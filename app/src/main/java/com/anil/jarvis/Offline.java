@@ -520,6 +520,71 @@ final class Offline {
         return new String[]{who, msg, kind.contains("వాట్స") || kind.contains("whats") ? "whatsapp" : "sms"};
     }
 
+    // ================================================================ emergencies (O25 SOS, O28 108 / 112 / 101, O17 his location by SMS)
+
+    private static final Pattern ASKING = Pattern.compile("(ఏం|ఏమి|ఏంటి|ఎలా|ఎందుకు|ఎప్పుడు|ఎవరు|ఎంత|ఎక్కడ|ఉందా|\\?|\\bwhat\\b|\\bhow\\b|\\bwhy\\b|\\bwhere\\b)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CALL_WORDS = Pattern.compile("(కాల్|ఫోన్|call|కలుపు|పిలువు|పిలిపించు|రప్పించు)", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * "ఆపద", "కాపాడు", "సహాయం కావాలి", "help", "SOS" -> "sos"; "అంబులెన్స్" / "108" -> "108"; "పోలీస్" / "112" / "100" -> that
+     * number ("పోలీస్" -> "112"); "ఫైర్ ఇంజన్" / "101" -> "101". Only when, without the little words around it ("జార్విస్",
+     * "నాకు", "కాల్ చెయ్యి"...), the emergency word is ALL he said: "ఎమర్జెన్సీ లైట్ ఆన్ చెయ్యి", "మ్యాథ్స్‌లో సహాయం కావాలి",
+     * "పోలీస్ రవి కి కాల్ చెయ్యి", "112 రూపాయలు ఖర్చు" and questions about them are not. Null otherwise.
+     */
+    static String emergency(String text) {
+        if (text == null) return null;
+        String t = digits(text).toLowerCase(Locale.ROOT).replaceAll("[.,!]", " ").replaceAll("\\s+", " ").trim();
+        if (t.isEmpty() || ASKING.matcher(t).find() || t.contains("నంబర్") || t.contains("number")) return null;
+        StringBuilder b = new StringBuilder();
+        for (String w : t.split(" ")) {
+            String x = w.replace("\u200c", "");
+            if (EMERGENCY_FILLER.contains(x) || CALL_WORDS.matcher(x).matches()) continue;
+            String y = x.replaceAll("(కి|కు|కీ)$", ""); // "అంబులెన్స్‌కి"
+            if (!y.isEmpty()) b.append(b.length() == 0 ? "" : " ").append(y);
+        }
+        String rest = b.toString();
+        if (rest.matches("108|112|100|101")) return rest;
+        if (rest.matches("అంబులెన్స్|ambulance|అంబులెన్స్ వ్యాన్")) return "108";
+        if (rest.matches("పోలీస్|పోలీసు|పోలీసులు|police")) return "112";
+        if (rest.matches("ఫైర్ ఇంజన్|ఫైర్ ఇంజిన్|ఫైర్ బ్రిగేడ్|అగ్నిమాపక|అగ్నిమాపక దళం|fire engine|fire brigade")) return "101";
+        if (rest.matches("ఆపద|ఆపదలో|కాపాడు|కాపాడండి|కాపాడండీ|సహాయం కావాలి|సాయం కావాలి|హెల్ప్|హెల్ప్ మీ|help|help me|sos|ఎస్ఓఎస్|ఎస్ ఓ ఎస్|"
+                + "ఎమర్జెన్సీ|emergency|ఆపదలో సహాయం కావాలి")) return "sos";
+        return null;
+    }
+
+    /** Little words around an emergency word ("జార్విస్, నాకు త్వరగా సహాయం కావాలి"). */
+    private static final java.util.Set<String> EMERGENCY_FILLER = new java.util.HashSet<>(java.util.Arrays.asList(
+            "జార్విస్", "jarvis", "ప్లీజ్", "please", "నాకు", "నన్ను", "నేను", "ఉన్నాను", "ఉన్నా", "త్వరగా", "వెంటనే", "ఇప్పుడే", "అర్జెంట్", "అర్జంట్",
+            "urgent", "చెయ్యి", "చేయి", "చెయ్", "చేయండి", "చేయ్", "కి", "కు", "కీ", "to", "a", "the", "ఒకసారి", "అయ్యో"));
+
+    private static final Pattern LOCATION = Pattern.compile("(లొకేషన్|లోకేషన్|location|ఎక్కడున్నానో|ఎక్కడ\\s*ఉన్నానో|ఎక్కడున్నాను|ఎక్కడ\\s*ఉన్నాను)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SEND = Pattern.compile("(పంపు|పంపించు|పంపండి|పంపించండి|షేర్|share|send)", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * "అమ్మకి నా లొకేషన్ పంపు", "నా లొకేషన్ రవి కి పంపు" -> {"అమ్మ"} / {"రవి"}; "నా లొకేషన్ పంపు" -> {""} (to whom: ask);
+     * null when it isn't that ("లొకేషన్ ఆన్ చెయ్యి", "నేను ఎక్కడ ఉన్నాను?").
+     */
+    static String[] locationTo(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+        if (!LOCATION.matcher(t).find() || !SEND.matcher(t).find()) return null;
+        if (t.matches(".*(ఆన్|ఆఫ్|\\bon\\b|\\boff\\b).*")) return null;
+        String rest = SEND.matcher(LOCATION.matcher(t).replaceAll(" ")).replaceAll(" ").replaceAll("[.,!?]", " ");
+        List<String> keep = new ArrayList<>();
+        for (String w : rest.trim().split("\\s+")) {
+            if (w.isEmpty() || LOCATION_FILLER.contains(w.toLowerCase(Locale.ROOT))) continue;
+            keep.add(w);
+        }
+        if (keep.size() > 3) return null;
+        String who = String.join(" ", keep).replaceAll("(కి|కు|కీ)$", "").trim();
+        return new String[]{who};
+    }
+
+    /** Words around "send my location" that are not the person. */
+    private static final java.util.Set<String> LOCATION_FILLER = new java.util.HashSet<>(java.util.Arrays.asList(
+            "జార్విస్", "jarvis", "ప్లీజ్", "please", "నా", "నేను", "మై", "my", "the", "to", "ఇప్పుడు", "ఒకసారి", "వెంటనే", "చెయ్యి", "చేయి",
+            "చెయ్", "చేయండి", "కి", "కు", "కీ", "sms", "ఎస్ఎంఎస్", "మెసేజ్", "లో", "ద్వారా", "గా"));
+
     // ================================================================ money he gave / took
 
     private static final Pattern HE_PAID = Pattern.compile("(తిరిగి\\s*ఇచ్చాను|తిరిగి\\s*ఇచ్చేశాను|ఇచ్చేశాను|తీర్చేశాను|తీర్చాను|కట్టేశాను)");

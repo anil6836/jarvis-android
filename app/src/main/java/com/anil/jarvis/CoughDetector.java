@@ -62,6 +62,7 @@ final class CoughDetector {
     private final float[][] wins = new float[AFTER.length][];
     private double eventNoise, eventLoud;
     private int loudChunks;                          // how many of the event's 80 ms pieces stayed loud (a whistle stays, a cough doesn't)
+    private long eventAt;                            // when the loud sound began (wall clock)
     private final float[] eventRms = new float[10];  // each piece's loudness (two claps = two peaks)
     private long lastSample;                         // the last steady sound sampled (snoring at night, rain by day)
     private int sampleIn = -1;                       // pieces to wait before sampling (a burst starting meanwhile cancels it)
@@ -90,6 +91,7 @@ final class CoughDetector {
         full = false;
         since = -1;
         prefsAt = 0;
+        SafetySounds.resetWatch(); // a fall watch from before the pause is not judged on the missing sound
     }
 
     /** Every 80 ms chunk from the wake-word microphone, with its loudness and the background loudness. */
@@ -98,6 +100,7 @@ final class CoughDetector {
             ring[pos++] = s;
             if (pos == N) { pos = 0; full = true; }
         }
+        try { SafetySounds.tick(ctx, rms, noise); } catch (Throwable ignored) {} // a heavy thud a moment ago: is it quiet after it?
         if (since >= 0) { // collecting the windows after a loud sound
             since++;
             if (since < eventRms.length) eventRms[since] = (float) rms;
@@ -106,7 +109,7 @@ final class CoughDetector {
             for (int i = 0; i < AFTER.length; i++) if (since == AFTER[i]) wins[i] = window();
             if (since >= AFTER[AFTER.length - 1]) {
                 since = -1;
-                classify(wins.clone(), eventNoise, eventLoud, loudChunks, eventRms.clone(), nightNow);
+                classify(wins.clone(), eventNoise, eventLoud, loudChunks, eventRms.clone(), nightNow, eventAt);
                 java.util.Arrays.fill(wins, null);
             }
             return;
@@ -117,7 +120,8 @@ final class CoughDetector {
             Prefs p = new Prefs(ctx);
             // off and nothing else wants it (house sounds), or no model: don't even run the model (battery).
             // Coughs are counted all day (the daily count), so asking a short while ago no longer stops it.
-            on = !missing && failures < 5 && (p.coughAsk() || Sounds.wanted(ctx) || BodySounds.callOn(ctx) || BodySounds.asksOn(ctx));
+            on = !missing && failures < 5 && (p.coughAsk() || Sounds.wanted(ctx) || BodySounds.callOn(ctx) || BodySounds.asksOn(ctx)
+                    || BodySounds.tiredOn(ctx) || SafetySounds.wanted(ctx) || HomeGuard.listening(ctx));
             int h = java.time.LocalTime.now().getHour();
             nightNow = h >= 22 || h < 7;
         }
@@ -128,6 +132,7 @@ final class CoughDetector {
         if (rms > Math.max(MIN_LOUD, noise * 4) && now - lastRun > 1000) {
             sampleIn = -1; // a burst: the steady-sound look waits
             since = 0;
+            eventAt = System.currentTimeMillis();
             eventNoise = noise;
             eventLoud = rms;
             loudChunks = 1;
@@ -157,6 +162,7 @@ final class CoughDetector {
                 float[] s = run(w);
                 if (s == null) return;
                 boolean test = testing();
+                if (HomeGuard.listening(ctx) && !test) return; // the phone at home keeping guard: no snoring / rain talk there
                 String what = BodySounds.sampled(ctx, s, night, test);
                 String rain = Sounds.sampled(ctx, s, night, test);
                 if (test && (what != null || rain != null)) testLine(java.time.LocalTime.now().withNano(0) + "  ➜ " + (what != null ? what : rain) + "\n" + top3(s));
@@ -219,10 +225,12 @@ final class CoughDetector {
     }
 
     /** Sounds worth naming on the test screen, by the model's number. */
-    private static final int[] SHOWN = {COUGH, THROAT, SNEEZE, 45, 54, 53, 51, 0, 13, 23, 36, 37, 38, 39, 132, 349, 350, 353, 348, 396, 397, 290, 58, 48, 395, 393, 494};
+    private static final int[] SHOWN = {COUGH, THROAT, SNEEZE, 45, 54, 53, 51, 0, 13, 23, 36, 37, 38, 39, 132, 349, 350, 353, 348, 396, 397, 290, 58, 48, 395, 393, 494,
+            11, 6, 19, 20, 22, 33, 454, 460, 437, 70, 394, 518};
     private static final String[] SHOWN_TE = {"దగ్గు", "గొంతు సవరణ", "తుమ్ము", "ముక్కు ఎగబీల్చడం", "ఎక్కిళ్లు", "త్రేన్పు", "పుక్కిలించడం", "మాటలు", "నవ్వు", "నిట్టూర్పు",
             "ఊపిరి", "గురగుర", "గురక", "ఉలిక్కిపాటు", "సంగీతం", "కాలింగ్ బెల్", "డింగ్-డాంగ్", "తలుపు కొట్టడం", "తలుపు", "విజిల్", "కుక్కర్/ఆవిరి విజిల్", "ఆవిరి",
-            "చప్పట్లు", "అడుగులు", "ఫోగ్ హార్న్", "స్మోక్ అలారం", "నిశ్శబ్దం"};
+            "చప్పట్లు", "అడుగులు", "ఫోగ్ హార్న్", "స్మోక్ అలారం", "నిశ్శబ్దం",
+            "అరుపు", "కేక", "ఏడుపు", "పిల్లల ఏడుపు", "మూలుగు/ఏడ్పు", "మూలుగు", "ధబ్ శబ్దం", "ఢాం శబ్దం", "గాజు పగలడం", "కుక్క మొరుగు", "ఫైర్ అలారం", "టీవీ"};
 
     private static String top3(float[] s) {
         StringBuilder b = new StringBuilder();
@@ -263,7 +271,7 @@ final class CoughDetector {
         return y;
     }
 
-    private void classify(float[][] ws, double noise, double loud, int loudN, float[] rmsSeq, boolean night) {
+    private void classify(float[][] ws, double noise, double loud, int loudN, float[] rmsSeq, boolean night, long soundAt) {
         if (busy || missing) return;
         busy = true;
         worker.execute(() -> {
@@ -281,8 +289,19 @@ final class CoughDetector {
                 }
                 if (any) {
                     lastScores = best;
+                    boolean test = testing();
+                    if (HomeGuard.listening(ctx)) { // the phone at home keeping guard: house sounds go to his Telegram, nothing personal is asked here
+                        String g = null;
+                        try { g = HomeGuard.heard(ctx, best, loud, loudN, test); } catch (Throwable ignored) {}
+                        if (test) testLine(java.time.LocalTime.now().withNano(0) + "  ➜ " + (g != null ? g : "కాపలా: ఏమీ కాదు")
+                                + "\n" + top3(best) + " · శబ్దం " + Math.round(loud));
+                        failures = 0;
+                        return;
+                    }
+                    // a scream / a fall / crying first (S15, S18, S19); then the house sounds (door, cooker, rain)
                     String house = null;
-                    try { house = Sounds.heard(ctx, best, loud, loudN); } catch (Throwable ignored) {}
+                    try { house = SafetySounds.heard(ctx, best, loud, noise, test, soundAt); } catch (Throwable ignored) {}
+                    if (house == null) try { house = Sounds.heard(ctx, best, loud, loudN); } catch (Throwable ignored) {}
                     String verdict = decide(best, loud);
                     if (!coughOrSneeze && house == null) { // nothing yet: a loud snore at night, another sound of his own (sniff, hiccup...) or a call (two claps)
                         try {
@@ -492,7 +511,7 @@ final class CoughDetector {
         if (now - p.sp.getLong(sneeze ? "sneeze_asked" : "cough_asked", 0) < gap) return;
         // the other one was asked about just now (the same cold): not two questions in a row
         if (now - p.sp.getLong(sneeze ? "cough_asked" : "sneeze_asked", 0) < 3 * 60000L) return;
-        if (p.night() || CallControl.busyWithCall() || MainActivity.busyTalking() || Rest.resting(ctx)) return;
+        if (p.night() || CallControl.busyWithCall() || MainActivity.busyTalking() || Rest.resting(ctx) || CrashAlert.active) return;
         // probably asleep: late night with the screen off, or the afternoon after coming off a 48-hour duty
         try {
             android.os.PowerManager pm = ctx.getSystemService(android.os.PowerManager.class);

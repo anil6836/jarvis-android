@@ -1,37 +1,52 @@
 package com.anil.jarvis;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 
 import java.util.List;
 
 /**
- * A hard knock while moving, then standing still: "బాగున్నారా?" with a loud beep and a full-screen
- * "నేను బాగున్నాను" button. No answer in 60 seconds: the SOS SMS with his location goes to his SOS contacts.
+ * "బాగున్నారా?" with a loud beep and a full-screen "నేను బాగున్నాను" button, then the SOS SMS with his location to his SOS
+ * contacts (and a call to the first) when he doesn't answer:
+ * - "crash": a hard knock while moving, then standing still (60 seconds);
+ * - "fall": a scream or a heavy fall heard at home ({@link SafetySounds}); the wait (15 s / 30 s / 1 min) and what to send
+ *   (SMS + call, SMS only, or nothing) are his choices; his voice or calling "Jarvis" also stops it.
  */
 final class CrashAlert {
     private CrashAlert() {}
 
     static final String ACTION_OK = "com.anil.jarvis.CRASH_OK", ACTION_SEND = "com.anil.jarvis.CRASH_SEND";
-    static final int SECONDS = 60;
+    static final int CRASH_SECONDS = 60;
     private static final int NOTE = 151;
     private static final Handler main = new Handler(Looper.getMainLooper());
     static volatile boolean active;
+    /** When the countdown started (after the question was spoken). */
     static volatile long startedAt;
+    /** Seconds before the SOS goes; 0 or less = it goes only when he taps "ఇప్పుడే పంపు". */
+    static volatile int seconds = CRASH_SECONDS;
+    /** "crash" or "fall". */
+    static volatile String kind = "crash";
+    private static volatile boolean callFirst = true;
+    private static volatile String heard = "";
     private static ToneGenerator beeper;
     private static Context app;
 
     private static final Runnable beep = new Runnable() {
         @Override public void run() {
             if (!active) return;
+            // "only the question": half a minute of beeps is enough (the screen stays)
+            if (seconds <= 0 && System.currentTimeMillis() - startedAt > 30_000) return;
             try {
                 if (beeper == null) beeper = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
                 beeper.startTone(ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK, 600);
@@ -40,7 +55,22 @@ final class CrashAlert {
         }
     };
     private static final Runnable timeUp = () -> { if (app != null) send(app, false); };
+    /** "Only the question" (no SOS by itself): the screen goes away after a while. */
+    private static final Runnable giveUp = () -> { if (app != null && active && seconds <= 0) stopAll(app, true); };
+    /** The countdown begins once the question has been said (at most 25 s of talking). */
+    private static long askedAt;
+    private static final Runnable countdown = new Runnable() {
+        @Override public void run() {
+            if (!active || app == null) return;
+            if (Announcer.speaking() && System.currentTimeMillis() - askedAt < 25_000) { main.postDelayed(this, 300); return; }
+            startedAt = System.currentTimeMillis();
+            main.post(beep);
+            if (seconds > 0) main.postDelayed(timeUp, seconds * 1000L);
+            else main.postDelayed(giveUp, 3 * 60_000L);
+        }
+    };
 
+    /** The ride's crash check. */
     static void start(Context c) {
         main.post(() -> {
             if (active) return;
@@ -48,48 +78,133 @@ final class CrashAlert {
                 Announcer.say(c, "పెద్ద దెబ్బ తగిలినట్టు అనిపించింది. బాగున్నారా? మీ SOS కాంటాక్ట్స్ సెట్టింగ్స్‌లో లేరు, అవసరమైతే 112 కి కాల్ చేయండి.");
                 return;
             }
-            active = true;
-            startedAt = System.currentTimeMillis();
-            app = c.getApplicationContext();
+            begin(c, "crash", CRASH_SECONDS, true, "");
             Announcer.say(app, new Prefs(app).name() + ", ప్రమాదం జరిగినట్టు అనిపిస్తోంది. బాగున్నారా? స్క్రీన్ మీద 'నేను బాగున్నాను' నొక్కండి. "
                     + "ఒక్క నిమిషంలో నొక్కకపోతే మీ వాళ్లకి మీ లొకేషన్‌తో SOS పంపుతాను.");
             notifyAsk(app);
             main.postDelayed(beep, 6000); // after the words
-            main.postDelayed(timeUp, SECONDS * 1000L);
-            try { app.startActivity(new Intent(app, CrashActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
+            main.postDelayed(timeUp, CRASH_SECONDS * 1000L);
+            openScreen();
         });
     }
 
-    /** "నేను బాగున్నాను". */
+    /**
+     * A scream or a heavy fall was heard at home: asks; after `secs` without an answer sends the SOS (and calls the first
+     * contact if `withCall`). secs <= 0: only asks (he can still tap "ఇప్పుడే పంపు").
+     */
+    static void startFall(Context c, String what, int secs, boolean withCall) {
+        main.post(() -> {
+            if (active) return;
+            Prefs p = new Prefs(c);
+            boolean contacts = !p.sosContacts().trim().isEmpty();
+            int s = contacts ? secs : 0; // no SOS contacts: it can only ask
+            begin(c, "fall", s, withCall, what);
+            String name = p.name();
+            String say = name + ", బాగున్నారా? " + what + ". బాగుంటే \"నేను బాగున్నాను, ఏమీ కాలేదు\" అని చెప్పండి, లేదా స్క్రీన్ మీద నొక్కండి.";
+            if (s > 0) say += " " + (s >= 60 ? "ఒక్క నిమిషంలో" : s + " సెకన్లలో") + " జవాబు రాకపోతే మీ వాళ్లకి SOS పంపుతాను.";
+            else if (!contacts) say += " అవసరమైతే 112 కి కాల్ చేయండి.";
+            Announcer.say(app, say);
+            notifyAsk(app);
+            askedAt = System.currentTimeMillis();
+            main.postDelayed(countdown, 1500); // (the voice starts a moment later; then the countdown waits for it to finish)
+            openScreen();
+        });
+    }
+
+    /**
+     * A fall check: his voice was heard once. The beeps rest a moment, Jarvis asks him to say it once more, and he gets at
+     * least 10 more seconds before the SOS.
+     */
+    static void heardOnce(Context c) {
+        main.post(() -> {
+            if (!active || !"fall".equals(kind)) return;
+            main.removeCallbacks(beep);
+            main.postDelayed(beep, 6000);
+            Announcer.say(c, "సరే, ఇంకోసారి చెప్పండి.");
+            if (seconds > 0) {
+                long left = seconds * 1000L - (System.currentTimeMillis() - startedAt);
+                long extra = Math.max(0, 10_000 - left);
+                startedAt += extra; // (the screen's seconds follow)
+                main.removeCallbacks(timeUp);
+                main.postDelayed(timeUp, Math.max(0, left) + extra);
+            }
+        });
+    }
+
+    private static void begin(Context c, String k, int secs, boolean call, String what) {
+        active = true;
+        kind = k;
+        seconds = secs;
+        callFirst = call;
+        heard = what == null ? "" : what;
+        app = c.getApplicationContext();
+        // a fall: the countdown starts once the question is said (until then the screen shows the full time)
+        startedAt = System.currentTimeMillis() + ("fall".equals(k) ? 60_000 : 0);
+    }
+
+    private static void openScreen() {
+        try { app.startActivity(new Intent(app, CrashActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
+    }
+
+    /** Seconds left before the SOS (for the screen). */
+    static long secondsLeft() {
+        long passed = Math.max(0, (System.currentTimeMillis() - startedAt) / 1000);
+        return Math.max(0, seconds - passed);
+    }
+
+    /** "నేను బాగున్నాను" (or his voice / "Jarvis" during a fall check). */
     static void ok(Context c) {
         main.post(() -> {
             if (!active) { stopAll(c, true); return; } // e.g. after Jarvis restarted: just clear the screen / notification
+            boolean fall = "fall".equals(kind);
             stopAll(c, true);
-            Announcer.say(c, "సరే, మంచిది. జాగ్రత్తగా వెళ్లండి.");
+            Announcer.say(c, fall ? "సరే, మంచిది. జాగ్రత్తగా ఉండండి." : "సరే, మంచిది. జాగ్రత్తగా వెళ్లండి.");
         });
     }
 
-    /** Time up (or "ఇప్పుడే పంపు"): the SOS SMS; the first contact is called if the screen is up. */
+    /** Time up (or "ఇప్పుడే పంపు"): the SOS SMS; then the first contact is called (if that is wanted). */
     static void send(Context c, boolean byHim) {
         main.post(() -> {
             if (!active) return;
+            boolean fall = "fall".equals(kind), call = callFirst || byHim;
+            String what = byHim ? (fall ? "సహాయం కావాలి" : "ప్రమాదం జరిగింది")
+                    : fall ? "ఇంట్లో " + heard + " (Jarvis గుర్తించింది), " + seconds + " సెకన్లు జవాబు ఇవ్వలేదు. ఒకసారి ఫోన్ చేసి చూడండి"
+                    : "బైక్ / కారు ప్రమాదం జరిగి ఉండొచ్చు (Jarvis గుర్తించింది), ఒక నిమిషం జవాబు ఇవ్వలేదు";
             stopAll(c, false); // the screen stays up: it can call the first contact
             new Thread(() -> {
-                List<String[]> sent = Sos.send(c, byHim ? "ప్రమాదం జరిగింది" : "బైక్ / కారు ప్రమాదం జరిగి ఉండొచ్చు (Jarvis గుర్తించింది), ఒక నిమిషం జవాబు ఇవ్వలేదు");
+                List<String[]> sent = Sos.send(c, what);
                 StringBuilder names = new StringBuilder();
                 for (String[] s : sent) names.append(names.length() > 0 ? ", " : "").append(s[0]);
                 String line = sent.isEmpty() ? "SOS పంపలేకపోయాను (SMS అనుమతి / కాంటాక్ట్స్ చూడండి). 112 కి కాల్ చేయండి." : "SOS పంపాను: " + names;
+                boolean called = !sent.isEmpty() && call && callFirst(c, sent.get(0)[1]);
+                if (!sent.isEmpty() && call && !called) line += ". " + sent.get(0)[0] + " కి కాల్ చేయలేకపోయాను, మీరే చేయండి";
                 Reminders.notify(c, "🆘 SOS", line, NOTE + 1);
                 Announcer.say(c, line);
-                if (!sent.isEmpty()) CrashActivity.callIfShowing(sent.get(0)[1]);
             }, "jarvis-sos").start();
         });
+    }
+
+    /**
+     * The call to the first SOS contact: straight away when Android lets Jarvis start it ("display over other apps"), else from
+     * the alert screen if it is up. False when no call could be started (he is told).
+     */
+    private static boolean callFirst(Context c, String number) {
+        if (c.checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) return false;
+        if (android.provider.Settings.canDrawOverlays(c)) {
+            try {
+                c.startActivity(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(number))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                return true;
+            } catch (Exception ignored) {}
+        }
+        return CrashActivity.callIfShowing(number);
     }
 
     private static void stopAll(Context c, boolean closeScreen) {
         active = false;
         main.removeCallbacks(beep);
         main.removeCallbacks(timeUp);
+        main.removeCallbacks(giveUp);
+        main.removeCallbacks(countdown);
         try { if (beeper != null) { beeper.stopTone(); beeper.release(); } } catch (Exception ignored) {}
         beeper = null;
         try { c.getSystemService(NotificationManager.class).cancel(NOTE); } catch (Exception ignored) {}
@@ -108,7 +223,8 @@ final class CrashAlert {
             PendingIntent ok = PendingIntent.getBroadcast(c, 153, new Intent(c, AlarmReceiver.class).setAction(ACTION_OK), PendingIntent.FLAG_IMMUTABLE);
             PendingIntent send = PendingIntent.getBroadcast(c, 154, new Intent(c, AlarmReceiver.class).setAction(ACTION_SEND), PendingIntent.FLAG_IMMUTABLE);
             nm.notify(NOTE, new Notification.Builder(c, "jarvis_crash").setSmallIcon(android.R.drawable.ic_dialog_alert)
-                    .setContentTitle("🆘 బాగున్నారా?").setContentText(SECONDS + " సెకన్లలో జవాబు లేకపోతే SOS వెళ్తుంది")
+                    .setContentTitle("🆘 బాగున్నారా?")
+                    .setContentText(seconds > 0 ? seconds + " సెకన్లలో జవాబు లేకపోతే SOS వెళ్తుంది" : "సహాయం కావాలంటే 'ఇప్పుడే పంపు' నొక్కండి")
                     .setCategory(Notification.CATEGORY_ALARM).setVisibility(Notification.VISIBILITY_PUBLIC).setOngoing(true)
                     .setFullScreenIntent(screen, true).setContentIntent(screen)
                     .addAction(new Notification.Action.Builder(null, "✅ నేను బాగున్నాను", ok).build())

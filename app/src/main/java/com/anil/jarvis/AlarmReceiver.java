@@ -64,6 +64,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 break;
             }
             case Sounds.ACTION_COOKER_OK: Sounds.stopCooker(c); break;
+            case SafetySounds.ACTION_CARE_NO: SafetySounds.cardNo(c); break;
             case Sounds.ACTION_NIGHT_EDGE: // 10 pm / 7 am: the mic starts / stops listening for the night
                 WakeService.recheck(c);
                 Sounds.armNightEdge(c);

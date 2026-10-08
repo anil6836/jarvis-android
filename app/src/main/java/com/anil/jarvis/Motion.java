@@ -20,6 +20,8 @@ final class Motion implements SensorEventListener {
     private final SensorManager sm;
     private boolean on;
     private long lastSpike, lastShake, downSince, upSince;
+    /** When the phone last moved (picked up, put down, carried): wall-clock ms; 0 = not known. A thud heard then is the phone's own. */
+    static volatile long movedAt;
     private int spikes;
     private boolean silencedByUs;
     private int ringerBefore = -1;
@@ -32,7 +34,8 @@ final class Motion implements SensorEventListener {
 
     void start() {
         Prefs p = new Prefs(ctx);
-        if (on || sm == null || (!p.shakeWake() && !p.faceDownSilent())) return;
+        // (also for the fall check: a thud while the phone itself moves is the phone's own)
+        if (on || sm == null || (!p.shakeWake() && !p.faceDownSilent() && !SafetySounds.fallOn(ctx))) return;
         Sensor a = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         if (a == null) return;
         sm.registerListener(this, a, SensorManager.SENSOR_DELAY_UI);
@@ -47,6 +50,8 @@ final class Motion implements SensorEventListener {
     @Override public void onSensorChanged(SensorEvent e) {
         float x = e.values[0], y = e.values[1], z = e.values[2];
         long now = SystemClock.elapsedRealtime();
+        double force = Math.sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH;
+        if (Math.abs(force - 1) > 0.3) movedAt = System.currentTimeMillis();
         Prefs p = new Prefs(ctx);
 
         // shake: two strong jolts within a second

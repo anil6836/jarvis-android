@@ -405,7 +405,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void syncWakeService() {
         boolean mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
-        if (prefs.wakeReady() && mic) WakeService.start(this, inConversation);
+        // (the mic also stays for counting cooker whistles, and on the phone at home keeping guard: its house sounds)
+        if ((prefs.wakeReady() || Sounds.holdMic(this)) && mic) WakeService.start(this, inConversation);
         else WakeService.stop(this);
     }
 

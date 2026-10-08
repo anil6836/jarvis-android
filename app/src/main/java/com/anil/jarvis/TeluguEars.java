@@ -159,8 +159,8 @@ final class TeluguEars implements ListenMic {
     private static com.sun.jna.Function findWord;
     private static boolean noFind;
 
-    /** 1: the model knows the word, 0: it doesn't, -1: can't tell (then it is kept; Vosk skips what it doesn't know). */
-    private static int knows(org.vosk.Model m, String w) {
+    /** 1: the model knows the word, 0: it doesn't, -1: can't tell (then it is kept; Vosk skips what it doesn't know). Any Vosk model. */
+    static int knows(org.vosk.Model m, String w) {
         if (noFind) return -1;
         try {
             if (findWord == null) findWord = com.sun.jna.Function.getFunction("vosk", "vosk_model_find_word");

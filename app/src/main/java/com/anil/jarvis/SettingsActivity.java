@@ -832,7 +832,12 @@ public class SettingsActivity extends Activity {
                 Toast.makeText(this, "ముందు token పెట్టి 'Telegram చాట్ కనుక్కో' నొక్కండి", Toast.LENGTH_LONG).show();
             else if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
                 requestPermissions(new String[]{android.Manifest.permission.CAMERA}, 61);
-            else { Guard.start(this); Toast.makeText(this, "🛡️ కాపలా మొదలైంది", Toast.LENGTH_SHORT).show(); }
+            else {
+                Guard.start(this);
+                if (HomeGuard.soundsOn(this) && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 62); // the house sounds start once it is given
+                Toast.makeText(this, "🛡️ కాపలా మొదలైంది", Toast.LENGTH_SHORT).show();
+            }
             tgState.postDelayed(guardState, 4000);
             guardState.run();
         });
@@ -841,6 +846,20 @@ public class SettingsActivity extends Activity {
             guardState.run();
         });
         note("'డ్యూటీ రోజుల్లో మాత్రమే' కి ఈ ఫోన్‌లో కూడా డ్యూటీ క్యాలెండర్ సెట్ చేయాలి; లేకపోతే ఎప్పుడూ అలర్ట్ పంపుతుంది. ఇంట్లో వాళ్లు ఉన్నప్పుడు వాళ్ల ఫోటోలు కూడా వెళ్తాయి, అవసరం లేనప్పుడు ఆపండి.");
+        Switch guardSounds = toggle("🔊 ఇంట్లో శబ్దాలు కూడా విను (స్మోక్ అలారం, గాజు పగలడం, అరుపు, తలుపు / బెల్, అడుగులు / మాటలు, రాత్రి కుక్క మొరుగుడు) → Telegram", HomeGuard.soundsOn(this));
+        guardSounds.setOnCheckedChangeListener((sw, isOn) -> {
+            HomeGuard.setSounds(this, isOn);
+            if (isOn) {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 62);
+                Guard.listen(this);
+            } else if (Guard.running(this)) {
+                if (!prefs.wakeReady() && !Sounds.holdMic(this)) WakeService.stop(this); else WakeService.recheck(this);
+            }
+        });
+        note("కాపలా ఆన్‌లో ఉన్నంత సేపు ఈ ఫోన్ మైక్ వింటుంది (ఛార్జర్‌కి పెట్టి ఉంచండి). శబ్దం వినగానే ఆ క్షణం ఫోటోతో ఒక లైన్ మీ Telegram కి వస్తుంది; "
+                + "స్మోక్ అలారం అయితే అది మోగుతున్నంత సేపు ప్రతి నిమిషం (మీరు Telegram లో ఏదైనా జవాబిస్తే ఆపుతుంది). శబ్దం రికార్డ్ చేయదు, పంపదు. "
+                + "ఈ ఫోన్‌లో దగ్గు ప్రశ్నలు లాంటివి అడగదు.");
 
         section("అత్యవసరం (SOS)");
         note("\"Jarvis help\" / \"కాపాడు\" అంటే 5 సెకన్ల తర్వాత (మధ్యలో ఆపొచ్చు) మీ లొకేషన్ వీళ్లకి SMS వెళ్తుంది, మొదటివాళ్లకి కాల్ వెళ్తుంది.");
@@ -1028,6 +1047,7 @@ public class SettingsActivity extends Activity {
         int taught = CoughDetector.taughtCount(this);
         note("తప్పుగా అడిగితే (దగ్గితే తుమ్ము అంటే) \"అది దగ్గు, తుమ్ము కాదు\" అని చెప్పండి: మీ శబ్దం గుర్తుంచుకుంటాను."
                 + (taught > 0 ? " ఇప్పటివరకు నేర్పినవి: " + taught + "." : ""));
+        safetySounds();
         sfx = toggle("Iron Man సౌండ్ ఎఫెక్ట్ (పిలవగానే చిన్న శబ్దం)", prefs.sfx());
         button("అడుగుల లెక్కకి అనుమతి (Physical activity)", v -> requestPermissions(new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, 8));
         note("హోమ్ స్క్రీన్ విడ్జెట్: హోమ్ స్క్రీన్ మీద ఖాళీ చోట నొక్కి పట్టుకుని → Widgets → Jarvis.");
@@ -1570,6 +1590,11 @@ public class SettingsActivity extends Activity {
             if (!CoughDetector.lastHeard.isEmpty()) s.append(" · చివరగా: ").append(CoughDetector.lastHeard);
             s.append("\n");
         }
+        if (SafetySounds.fallOn(this) && !"none".equals(SafetySounds.sosMode(this)) && prefs.sosContacts().trim().isEmpty())
+            s.append("✗ అరుపు / పడిపోతే SOS: SOS కాంటాక్ట్స్ లేరు (సెట్టింగ్స్ → అత్యవసరం (SOS) లో పెట్టండి)\n");
+        if (NameCall.on(this) && !NameCall.status.isEmpty()) s.append("• ఇయర్‌ఫోన్‌లో పేరు పిలుపు: ").append(NameCall.status).append("\n");
+        if (Guard.running(this) && HomeGuard.soundsOn(this))
+            s.append(HomeGuard.listening(this) && WakeService.running ? "• కాపలా శబ్దాలు: వింటోంది\n" : "✗ కాపలా శబ్దాలు: మైక్ వినడం లేదు (మైక్ అనుమతి / కాపలా మళ్లీ మొదలుపెట్టండి)\n");
         String last = NotifyListener.lastMessageNote;
         s.append("\nచివరి మెసేజ్: ").append(last == null || last.isEmpty() ? "Jarvis మొదలయ్యాక ఇంకా ఏ మెసేజ్ రాలేదు" : last);
         checkInfo.setText(s.toString().trim());
@@ -1813,7 +1838,7 @@ public class SettingsActivity extends Activity {
             Toast.makeText(this, "Gemini Live కి Gemini key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
         // the wake word starts again with the new settings
         WakeService.stop(this);
-        if (prefs.wakeReady() && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+        if ((prefs.wakeReady() || Sounds.holdMic(this)) && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
             WakeService.start(this, MainActivity.inConversation);
     }
 
@@ -2426,6 +2451,79 @@ public class SettingsActivity extends Activity {
                 : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         box.addView(e, new LinearLayout.LayoutParams(-1, -2));
         return e;
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(code, perms, results);
+        // the microphone for the guard's house sounds was just given: start listening
+        if (code == 62 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) Guard.listen(this);
+    }
+
+    /** Sounds 1c (S15-S19): a scream / a fall, his name on earphones, groans and laughs, crying (each acts at once; no Save needed). */
+    private void safetySounds() {
+        TextView head = Ui.text(this, "🆘 భద్రత, మనసు (శబ్దాలతో)", 16.5f, Ui.CYAN);
+        head.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        head.setPadding(0, Ui.dp(this, 18), 0, Ui.dp(this, 4));
+        box.addView(head);
+        Switch fall = toggle("😱 అరుపు, భారీగా పడిన శబ్దం వింటే \"బాగున్నారా?\" అని అడుగు; జవాబు రాకపోతే SOS", SafetySounds.fallOn(this));
+        fall.setOnCheckedChangeListener((sw, isOn) -> SafetySounds.setFall(this, isOn));
+        TextView wait = Ui.text(this, "", 15.5f, Ui.CYAN);
+        wait.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        wait.setText("⏱️ జవాబు కోసం ఆగే సమయం: " + SafetySounds.waitText(SafetySounds.waitSeconds(this)) + "  (మార్చడానికి నొక్కండి)");
+        wait.setOnClickListener(v -> {
+            final int[] secs = {15, 30, 60};
+            String[] names = new String[secs.length];
+            int checked = 1;
+            for (int i = 0; i < secs.length; i++) { names[i] = SafetySounds.waitText(secs[i]); if (secs[i] == SafetySounds.waitSeconds(this)) checked = i; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("\"బాగున్నారా?\" తర్వాత జవాబు కోసం ఎంతసేపు ఆగాలి?")
+                    .setSingleChoiceItems(names, checked, (d, w) -> {
+                        SafetySounds.setWait(this, secs[w]);
+                        wait.setText("⏱️ జవాబు కోసం ఆగే సమయం: " + SafetySounds.waitText(secs[w]) + "  (మార్చడానికి నొక్కండి)");
+                        d.dismiss();
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        box.addView(wait);
+        TextView sos = Ui.text(this, "", 15.5f, Ui.CYAN);
+        sos.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        sos.setText("🆘 జవాబు రాకపోతే: " + SafetySounds.modeText(SafetySounds.sosMode(this)) + "  (మార్చడానికి నొక్కండి)");
+        sos.setOnClickListener(v -> {
+            final String[] modes = {"sms_call", "sms", "none"};
+            String[] names = new String[modes.length];
+            int checked = 0;
+            for (int i = 0; i < modes.length; i++) { names[i] = SafetySounds.modeText(modes[i]); if (modes[i].equals(SafetySounds.sosMode(this))) checked = i; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("జవాబు రాకపోతే ఏం చేయాలి?")
+                    .setSingleChoiceItems(names, checked, (d, w) -> {
+                        SafetySounds.setSosMode(this, modes[w]);
+                        sos.setText("🆘 జవాబు రాకపోతే: " + SafetySounds.modeText(modes[w]) + "  (మార్చడానికి నొక్కండి)");
+                        d.dismiss();
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        box.addView(sos);
+        note((prefs.sosContacts().trim().isEmpty() ? "⚠️ SOS కాంటాక్ట్స్ ఇంకా పెట్టలేదు: పైన 'అత్యవసరం (SOS)' లో పెట్టండి (లేకపోతే \"బాగున్నారా?\" అని అడగడం మాత్రమే). "
+                : "SOS పైన 'అత్యవసరం (SOS)' లోని కాంటాక్ట్స్‌కి వెళ్తుంది (మొదటివాళ్లకి కాల్). ")
+                + "బాగుంటే \"నేను బాగున్నాను, ఏమీ కాలేదు\" అని చెప్పినా, 'నేను బాగున్నాను' నొక్కినా, \"Jarvis\" అని పిలిచినా ఆగిపోతుంది. ఒక వస్తువు పడితే "
+                + "సాధారణంగా అడగదు (తర్వాత మాటలు, అడుగులు వినిపిస్తాయి; ఫోన్ కదిలితే అది ఫోన్ శబ్దమే); పడిన తర్వాత నిశ్శబ్దంగా ఉంటే, లేదా మూలుగు / అరుపు వస్తే అడుగుతుంది. "
+                + "రాత్రి 10 నుంచి ఉదయం 7 వరకు ఒక్క ధబ్ శబ్దానికి అడగదు: తర్వాత మూలుగు / అరుపు వస్తేనే. ఫోన్‌లో వీడియో, పాటల శబ్దాలు పట్టించుకోదు.");
+        Switch name = toggle("🎧 ఇయర్‌ఫోన్స్ పెట్టుకున్నప్పుడు ఎవరైనా మీ పేరు పిలిస్తే పాట తగ్గించి చెప్పు", NameCall.on(this));
+        name.setOnCheckedChangeListener((sw, isOn) -> NameCall.setOn(this, isOn));
+        EditText callNames = field("🎧 మిమ్మల్ని పిలిచే పేర్లు, కామాతో (ఖాళీ = " + prefs.name() + ")", SafetySounds.sp(this).getString("call_names", ""), false);
+        callNames.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) { NameCall.setNames(SettingsActivity.this, s.toString()); }
+        });
+        note(NameCall.status.isEmpty() ? "పేరు వినడం Jarvis మైక్ మొదలైనప్పుడు సిద్ధమవుతుంది (\"Jarvis\" పదం మోడల్‌తోనే)." : NameCall.status);
+        Switch tired = toggle("😮‍💨 మూలుగు, పెద్ద నిట్టూర్పులు వరుసగా వస్తే రోజుకి ఒక్కసారి మెల్లగా \"అలసిపోయారా?\" అని అడుగు; మీరు నవ్విన జోక్స్ / కథలు గుర్తుపెట్టుకో"
+                + (Laughs.count(this) > 0 ? " (నవ్వించినవి: " + Laughs.count(this) + ")" : ""), BodySounds.tiredOn(this));
+        tired.setOnCheckedChangeListener((sw, isOn) -> BodySounds.setTired(this, isOn));
+        Switch care = toggle("💙 మీరు ఏడుస్తున్నట్టు వినిపిస్తే మాట్లాడకుండా \"నేను ఉన్నాను, మాట్లాడతారా?\" అని చిన్న నిశ్శబ్ద కార్డ్ మాత్రమే చూపించు (ఎక్కడా రాయదు)", SafetySounds.careOn(this));
+        care.setOnCheckedChangeListener((sw, isOn) -> SafetySounds.setCare(this, isOn));
+        Switch child = toggle("👶 ఇయర్‌ఫోన్స్ పెట్టుకున్నప్పుడు పిల్లలు ఏడిస్తే చెప్పు (ఇంట్లో పిల్లలు ఉంటేనే ఆన్ చేయండి)", SafetySounds.childOn(this));
+        child.setOnCheckedChangeListener((sw, isOn) -> SafetySounds.setChild(this, isOn));
     }
 
     /** "దగ్గు / శబ్దం టెస్ట్": 30 seconds of what the microphone hears and what Jarvis makes of it (nothing asked or counted). */

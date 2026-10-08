@@ -28,14 +28,15 @@ public class CrashActivity extends Activity {
         if (a != null) a.runOnUiThread(a::finish);
     }
 
-    /** After the SOS went out: call the first contact (only possible while this screen is up). */
-    static void callIfShowing(String number) {
+    /** After the SOS went out: call the first contact from this screen. False when the screen isn't up (or no call permission). */
+    static boolean callIfShowing(String number) {
         CrashActivity a = showing == null ? null : showing.get();
-        if (a == null || a.checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) return;
+        if (a == null || a.checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) return false;
         a.runOnUiThread(() -> {
             try { a.startActivity(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(number))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
             catch (Exception ignored) {}
         });
+        return true;
     }
 
     @Override protected void onCreate(Bundle b) {
@@ -81,8 +82,9 @@ public class CrashActivity extends Activity {
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!CrashAlert.active) { left.setText("SOS పంపుతున్నాను / ఆపాను"); return; }
-            long s = Math.max(0, CrashAlert.SECONDS - (System.currentTimeMillis() - CrashAlert.startedAt) / 1000);
-            left.setText(s + " సెకన్లలో మీ వాళ్లకి SOS వెళ్తుంది");
+            if (CrashAlert.seconds <= 0) left.setText("సహాయం కావాలంటే కింద 'ఇప్పుడే SOS పంపు' నొక్కండి");
+            else left.setText(CrashAlert.secondsLeft() + " సెకన్లలో మీ వాళ్లకి SOS వెళ్తుంది"
+                    + ("fall".equals(CrashAlert.kind) ? "\n(బాగుంటే \"నేను బాగున్నాను, ఏమీ కాలేదు\" అని చెప్పినా చాలు)" : ""));
             main.postDelayed(this, 500);
         }
     };

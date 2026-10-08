@@ -117,8 +117,8 @@ final class Sounds {
         return counting(c) || teaching() || !"off".equals(doorMode(c));
     }
 
-    /** The microphone must stay on whatever the "when to listen" setting says (counting whistles, learning, a test). */
-    static boolean holdMic(Context c) { return counting(c) || teaching() || CoughDetector.testing(); }
+    /** The microphone must stay on whatever the "when to listen" setting says (counting whistles, learning, a test, the phone at home keeping guard). */
+    static boolean holdMic(Context c) { return counting(c) || teaching() || CoughDetector.testing() || HomeGuard.listening(c); }
 
     static boolean teaching() { return teachKind != null && System.currentTimeMillis() < teachUntil; }
 
@@ -247,7 +247,8 @@ final class Sounds {
         note(c, NOTE_DOOR, bell ? "🔔 కాలింగ్ బెల్" : "🚪 తలుపు దగ్గర ఎవరో", what, null);
     }
 
-    private static boolean earphones(AudioManager am) {
+    /** Earphones / headphones / Bluetooth audio are connected (the song is in his ears, not in the room). */
+    static boolean earphones(AudioManager am) {
         if (am == null) return false;
         try {
             for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {

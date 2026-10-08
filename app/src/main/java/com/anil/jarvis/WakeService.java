@@ -388,6 +388,7 @@ public class WakeService extends Service {
     private void onWake() {
         if (!engineOn) return;
         RideCare.awake(this); // he called Jarvis: awake (the after-duty check while riding)
+        if (CrashAlert.active && "fall".equals(CrashAlert.kind)) CrashAlert.ok(this); // "బాగున్నారా?" at home: calling Jarvis means he is fine
         stopEngine(); // free the microphone for the conversation
         wakeScreen();
         Vibrator v = getSystemService(Vibrator.class);

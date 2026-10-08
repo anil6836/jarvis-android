@@ -58,6 +58,27 @@ public class GuardService extends Service {
     private int moving, retries;
     private volatile boolean checking, destroyed, opening;
     private final ExecutorService ai = Executors.newSingleThreadExecutor();
+    /** The guard now running (for a picture of the moment a house sound was heard). */
+    private static volatile GuardService self;
+    /** Alerts waiting for the next picture as a JPEG (two sounds at once each get it). */
+    private final java.util.List<java.util.function.Consumer<byte[]>> snapWant =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+    /**
+     * The camera's next picture as a JPEG, for a house sound's alert ({@link HomeGuard}); null when the camera isn't running
+     * or nothing came within waitMs. Blocks: never on the main thread.
+     */
+    static byte[] snap(long waitMs) {
+        GuardService g = self;
+        if (g == null || g.camera == null) return null;
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        final byte[][] out = new byte[1][];
+        java.util.function.Consumer<byte[]> me = jpeg -> { out[0] = jpeg; done.countDown(); };
+        g.snapWant.add(me);
+        try { done.await(waitMs, TimeUnit.MILLISECONDS); } catch (InterruptedException ignored) {}
+        g.snapWant.remove(me);
+        return out[0];
+    }
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -89,6 +110,7 @@ public class GuardService extends Service {
             started = SystemClock.elapsedRealtime();
         }
         if (camera == null && !opening) bg.post(this::open);
+        self = this;
         return START_STICKY;
     }
 
@@ -171,6 +193,13 @@ public class GuardService extends Service {
         Image img = r.acquireLatestImage();
         if (img == null) return;
         try {
+            if (!snapWant.isEmpty()) { // a house sound was heard: this moment's picture
+                java.util.List<java.util.function.Consumer<byte[]>> want;
+                synchronized (snapWant) { want = new java.util.ArrayList<>(snapWant); snapWant.clear(); }
+                byte[] pic = null;
+                try { pic = jpeg(img); } catch (Exception ignored) {}
+                for (java.util.function.Consumer<byte[]> w : want) w.accept(pic);
+            }
             long now = SystemClock.elapsedRealtime();
             if (now - lastLook < 1500) return;
             lastLook = now;
@@ -270,6 +299,7 @@ public class GuardService extends Service {
 
     @Override public void onDestroy() {
         destroyed = true;
+        if (self == this) self = null;
         try { if (session != null) session.close(); } catch (Exception ignored) {}
         try { if (camera != null) camera.close(); } catch (Exception ignored) {}
         try { if (reader != null) reader.close(); } catch (Exception ignored) {}

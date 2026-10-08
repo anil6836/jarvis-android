@@ -17,7 +17,9 @@ import java.util.Map;
  * - wheezing / panting again and again (not while exercising or riding) -> "ఊపిరి ఇబ్బందిగా ఉందా?" (danger signs -> 108);
  * - hiccups that keep coming -> a simple tip; many burps after a meal -> asks about gas / acidity;
  * - two claps, or a short whistle, call Jarvis like "Jarvis" does;
- * - at night (mic on while charging): snoring, counted in minutes for the morning report.
+ * - at night (mic on while charging): snoring, counted in minutes for the morning report;
+ * - S17: groans / big sighs again and again -> once a day, gently "అలసిపోయారా?"; a laugh right after Jarvis said something
+ *   keeps what made him laugh ({@link Laughs}), so his brain brings more of that kind.
  * Each is counted for the day (the doctor's summary); asks are rare (hours apart, never at night, in a call, while
  * riding or while a video plays). Rules checked on real recordings: hiccups / burps / throat clearing also show up
  * inside coughs, so those are only taken when the sound was not a cough; heavy breathing can look like wheezing, so
@@ -28,7 +30,8 @@ final class BodySounds {
 
     static final int SNIFF = 45, THROAT = 43, COUGH = 42, WHEEZE = 37, PANT = 40, HICCUP = 54, BURP = 53, SNORE = 38,
             CLAPPING = 58, HANDS = 56, SNAP = 57, SLAP = 461, APPLAUSE = 62, WHISTLING = 35, SPEECH = 0, MUSIC = 132,
-            STEAM_WHISTLE = 397;
+            STEAM_WHISTLE = 397, LAUGH = 13, BABY_LAUGH = 14, GIGGLE = 15, BELLY_LAUGH = 17, CHUCKLE = 18, SIGH = 23, GROAN = 33,
+            WAIL = 22;
 
     private static final Map<String, ArrayDeque<Long>> seen = new HashMap<>();
 
@@ -39,6 +42,19 @@ final class BodySounds {
     static void setAsks(Context c, boolean on) { sp(c).edit().putBoolean("asks", on).apply(); }
 
     static boolean callOn(Context c) { return sp(c).getBoolean("clap_call", true); }
+
+    /** S17: groans / big sighs again and again -> once a day "అలసిపోయారా?"; his laughs teach which jokes / stories he likes. */
+    static boolean tiredOn(Context c) { return sp(c).getBoolean("tired", true); }
+
+    static void setTired(Context c, boolean on) { sp(c).edit().putBoolean("tired", on).apply(); }
+
+    /** A laugh (his, not a baby's). */
+    static boolean isLaugh(float[] s) {
+        return s[LAUGH] + 0.8f * Math.max(s[GIGGLE], Math.max(s[BELLY_LAUGH], s[CHUCKLE])) >= 0.5f && s[BABY_LAUGH] < s[LAUGH] && s[MUSIC] < 0.4f;
+    }
+
+    /** A groan / moan, or a big sigh. */
+    static boolean isTired(float[] s) { return Math.max(s[GROAN], 0.8f * s[WAIL]) >= 0.4f || s[SIGH] >= 0.5f; }
 
     static void setCall(Context c, boolean on) { sp(c).edit().putBoolean("clap_call", on).apply(); }
 
@@ -81,7 +97,8 @@ final class BodySounds {
         else if ((s[WHEEZE] >= 0.5f || s[PANT] >= 0.5f) && s[SNORE] < Math.max(s[WHEEZE], s[PANT])) { kind = "wheeze"; label = "గురగుర / ఆయాసం"; }
         else if (s[HICCUP] >= 0.45f && s[HICCUP] > s[COUGH]) { kind = "hiccup"; label = "ఎక్కిళ్లు"; }
         else if (s[BURP] >= 0.45f && s[BURP] > s[COUGH]) { kind = "burp"; label = "త్రేన్పు"; }
-        if (kind == null || test) return label;
+        if (kind == null) return tired(c, s, test);
+        if (test) return label;
         if (musicPlaying(c)) return label; // a video / song on the phone: not his
         CoughLog.addBody(c, kind);
         switch (kind) {
@@ -123,6 +140,29 @@ final class BodySounds {
             }
             default: break;
         }
+        return label;
+    }
+
+    /** S17: a laugh (kept with what Jarvis had just said) or a groan / big sigh (a run of them: one gentle question a day). */
+    private static String tired(Context c, float[] s, boolean test) {
+        if (isLaugh(s)) {
+            if (!test && tiredOn(c) && !musicPlaying(c)) Laughs.heard(c); // (laughing at a video on the phone: not at Jarvis)
+            return "నవ్వు";
+        }
+        if (!isTired(s)) return null;
+        String label = s[SIGH] >= 0.5f && s[SIGH] > s[GROAN] ? "నిట్టూర్పు" : "మూలుగు";
+        if (test || !tiredOn(c) || musicPlaying(c)) return label;
+        int n = mark("tired", 30 * 60_000L);
+        Prefs p = new Prefs(c);
+        if (n < 3 || quiet(c, p)) return label;
+        long now = System.currentTimeMillis();
+        if (now - sp(c).getLong("asked_tired", 0) < 24 * 3600_000L) return label;
+        sp(c).edit().putLong("asked_tired", now).apply();
+        clear("tired");
+        Proactive.say(c, p.name() + ", అలసిపోయారా?", "ఒళ్లు నొప్పులుగా ఉందా? కాసేపు విశ్రాంతి తీసుకుంటారా?",
+                " [care: Jarvis heard him groaning / sighing several times (tired? aches?). Ask gently, once. If he says aches / pain: "
+                        + "health_advice (body pain) home remedies first, rest; the tablet only when he asks. If he is just tired after duty: suggest "
+                        + "rest kindly. If no / it's nothing, just say okay warmly.]");
         return label;
     }
 
@@ -180,7 +220,8 @@ final class BodySounds {
     /** Not now: night, Do Not Disturb, a call, riding, resting, Jarvis talking. */
     private static boolean quiet(Context c, Prefs p) {
         int h = LocalTime.now().getHour();
-        if (h >= 22 || h < 7 || p.night() || p.driving() || CallControl.busyWithCall() || MainActivity.busyTalking() || Rest.resting(c)) return true;
+        if (h >= 22 || h < 7 || p.night() || p.driving() || CallControl.busyWithCall() || MainActivity.busyTalking() || Rest.resting(c)
+                || CrashAlert.active) return true;
         try {
             NotificationManager nm = c.getSystemService(NotificationManager.class);
             return nm != null && nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL;

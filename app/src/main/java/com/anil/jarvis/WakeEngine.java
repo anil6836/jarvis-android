@@ -94,9 +94,23 @@ final class WakeEngine {
     /** Listens for coughing on the same microphone (runs its model only on short loud sounds). */
     private final CoughDetector cough;
 
+    // S16: his name called while he has earphones on - a tiny word list on the same model as "Jarvis" (NameCall)
+    /** In use on the listening thread only. */
+    private volatile org.vosk.Recognizer names;
+    /** Built in the background, taken over by the listening thread. */
+    private final java.util.concurrent.atomic.AtomicReference<org.vosk.Recognizer> namesNext = new java.util.concurrent.atomic.AtomicReference<>();
+    /** The names now have no word list (none known): the listening thread lets the old one go. */
+    private volatile boolean namesDrop;
+    private volatile java.util.List<String[]> namePhrases = java.util.Collections.emptyList();
+    private volatile String namesFor;
+    private volatile boolean namesBuilding;
+    private long namesLookAt;
+    private volatile boolean namesActive;
+
     /** Loads the "Jarvis" word detector in the background (downloads its model the first time). */
     private void loadJarvisWord() {
-        if ((!jarvisWord && voicePrint == null) || vosk != null || voskLoading || closed) return;
+        // (with neither "Jarvis" nor "only my voice", the model loads only when his name is to be listened for: earphones on)
+        if ((!jarvisWord && voicePrint == null && !namesActive) || vosk != null || voskLoading || closed) return;
         voskLoading = true;
         new Thread(() -> {
             org.vosk.Model m = null;
@@ -145,7 +159,7 @@ final class WakeEngine {
     /** Feeds audio to the "Jarvis" word detector; true when the word was heard clearly. */
     private boolean jarvisHeard(short[] chunk) {
         org.vosk.Recognizer r = vosk;
-        if (r == null) return false;
+        if (r == null || (!jarvisWord && spkModel == null)) return false; // (loaded only for his name: nothing to do here)
         byte[] b = new byte[chunk.length * 2];
         for (int i = 0; i < chunk.length; i++) {
             b[2 * i] = (byte) (chunk[i] & 0xFF);
@@ -167,6 +181,78 @@ final class WakeEngine {
             }
         } catch (Exception ignored) {}
         return false;
+    }
+
+    /** S16: feeds the names' word list while he has earphones on; his name heard -> NameCall. Listening thread. */
+    private void nameCall(short[] chunk) {
+        long now = SystemClock.elapsedRealtime();
+        if (now - namesLookAt > 5000) { // earphones on? (and the names' word list ready for the names in Settings)
+            namesLookAt = now;
+            boolean active = false;
+            try { active = NameCall.activeNow(ctx); } catch (Throwable ignored) {}
+            namesActive = active;
+            if (active && vosk == null) { // the word model, if nothing else needed it yet - only if already on the phone (no surprise download)
+                if (VoskModel.ready(ctx)) loadJarvisWord();
+                else NameCall.status = "పేరు వినడానికి \"Jarvis\" పదం మోడల్ కావాలి: పైన \"Jarvis\" పదం ఆన్ చేస్తే ఒక్కసారి (~40 MB) డౌన్‌లోడ్ అవుతుంది.";
+            }
+            if (active) buildNames();
+        }
+        if (namesDrop) {
+            namesDrop = false;
+            org.vosk.Recognizer old = names;
+            names = null;
+            try { if (old != null) old.close(); } catch (Throwable ignored) {}
+        }
+        org.vosk.Recognizer next = namesNext.getAndSet(null);
+        if (next != null) {
+            org.vosk.Recognizer old = names;
+            names = next;
+            try { if (old != null) old.close(); } catch (Throwable ignored) {}
+        }
+        org.vosk.Recognizer r = names;
+        if (!namesActive || r == null) return;
+        byte[] b = new byte[chunk.length * 2];
+        for (int i = 0; i < chunk.length; i++) {
+            b[2 * i] = (byte) (chunk[i] & 0xFF);
+            b[2 * i + 1] = (byte) ((chunk[i] >> 8) & 0xFF);
+        }
+        try {
+            if (!r.acceptWaveForm(b, b.length)) return;
+            String said = NameCall.match(r.getResult(), namePhrases);
+            if (said != null) NameCall.heard(ctx, said);
+        } catch (Throwable ignored) {}
+    }
+
+    /** The names' word list, made again when the names in Settings change (in the background, once the model is loaded). */
+    private void buildNames() {
+        final String want = NameCall.names(ctx);
+        if (want.equals(namesFor) || namesBuilding || vosk == null || closed) return;
+        namesBuilding = true;
+        new Thread(() -> {
+            try {
+                synchronized (WakeEngine.this) { // close() can't free the model meanwhile
+                    if (closed || voskModel == null) return;
+                    final org.vosk.Model m = voskModel;
+                    NameCall.Built built = NameCall.build(want, w -> TeluguEars.knows(m, w) != 0);
+                    org.vosk.Recognizer r = null;
+                    if (built.grammar != null) {
+                        r = new org.vosk.Recognizer(m, (float) RATE, built.grammar);
+                        r.setWords(true);
+                    }
+                    namePhrases = built.phrases;
+                    NameCall.status = built.status;
+                    org.vosk.Recognizer old = namesNext.getAndSet(r); // one not taken over yet: never used, let go
+                    try { if (old != null) old.close(); } catch (Throwable ignored) {}
+                    if (r == null) namesDrop = true;
+                    namesFor = want;
+                }
+            } catch (Throwable e) {
+                NameCall.status = "పేరు గుర్తింపు సిద్ధం కాలేదు: " + e.getMessage();
+                namesFor = want;
+            } finally {
+                namesBuilding = false;
+            }
+        }, "jarvis-names").start();
     }
 
     synchronized void start() {
@@ -205,14 +291,20 @@ final class WakeEngine {
         org.vosk.Recognizer r;
         org.vosk.Model m;
         org.vosk.SpeakerModel sm;
-        synchronized (this) { // pairs with the loader thread publishing its models
+        org.vosk.Recognizer nn, n;
+        synchronized (this) { // pairs with the loader thread publishing its models (and the names' word list)
             r = vosk;
             m = voskModel;
             sm = spkModel;
             spkModel = null;
             vosk = null;
             voskModel = null;
+            nn = namesNext.getAndSet(null);
+            n = names;
+            names = null;
         }
+        try { if (nn != null) nn.close(); } catch (Throwable ignored) {}
+        try { if (n != null) n.close(); } catch (Throwable ignored) {}
         try { if (r != null) r.close(); } catch (Throwable ignored) {}
         try { if (m != null) m.close(); } catch (Throwable ignored) {}
         try { if (sm != null) sm.close(); } catch (Throwable ignored) {}
@@ -304,6 +396,7 @@ final class WakeEngine {
                     short[] c = preroll.removeFirst();
                     float score = step(c);
                     boolean word = jarvisHeard(c);
+                    nameCall(c);
                     now = SystemClock.elapsedRealtime();
                     if ((score >= threshold || word) && now > quietUntil) {
                         quietUntil = now + 2000;

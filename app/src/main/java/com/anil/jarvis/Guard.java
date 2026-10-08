@@ -60,11 +60,22 @@ final class Guard {
         sp(c).edit().putBoolean("on", true).apply();
         Intent i = new Intent(c, GuardService.class);
         if (android.os.Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
+        listen(c);
     }
 
     static void stop(Context c) {
         sp(c).edit().putBoolean("on", false).apply();
         c.stopService(new Intent(c, GuardService.class));
+        // the house sounds stop too: the mic rests again, or goes away if the wake word isn't on on this phone
+        if (!new Prefs(c).wakeReady() && !Sounds.holdMic(c)) WakeService.stop(c); else WakeService.recheck(c);
+    }
+
+    /** House sounds (HomeGuard): the microphone (Jarvis's wake-word listener) runs while the guard does. From a screen. */
+    static void listen(Context c) {
+        HomeGuard.refresh();
+        if (!HomeGuard.listening(c)) return;
+        if (WakeService.running) WakeService.recheck(c);
+        else WakeService.start(c, false);
     }
 
     /** His private chat with the bot, from the last message sent to it ("hi"): the name on it, or an error text starting with "!". */
@@ -87,6 +98,22 @@ final class Guard {
         } catch (Exception e) {
             return "!ఇంటర్నెట్ / Telegram చేరలేదు";
         }
+    }
+
+    /** He wrote anything to the bot since this time (Unix seconds): "I saw it" for a repeating alert. False when unknown. */
+    static boolean repliedSince(Context c, long sinceSec) {
+        String t = token(c), id = chat(c);
+        if (t.isEmpty() || id.isEmpty()) return false;
+        try {
+            JSONObject r = new JSONObject(get("https://api.telegram.org/bot" + t + "/getUpdates"));
+            JSONArray a = r.optJSONArray("result");
+            for (int i = a == null ? -1 : a.length() - 1; i >= 0; i--) {
+                JSONObject m = a.getJSONObject(i).optJSONObject("message");
+                JSONObject ch = m == null ? null : m.optJSONObject("chat");
+                if (ch != null && id.equals(String.valueOf(ch.optLong("id"))) && m.optLong("date") >= sinceSec) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     /** A text to his Telegram; false when it did not go. */

@@ -35,6 +35,22 @@ final class Announcer {
 
     private Announcer() {}
 
+    /** Something is being said now, or was until a moment ago (any thread): a voice the mic hears now may be Jarvis's own. */
+    private static volatile boolean busy;
+    private static volatile long quietSince, busySince;
+
+    /** Nothing was being said at this moment (wall-clock ms), nor in the 1.5 s before it: a voice then is not Jarvis's own. */
+    static boolean silentAt(long t) {
+        if (busy && System.currentTimeMillis() - busySince < 60_000) return false; // something is being said now: can't tell
+        return quietSince == 0 || t - quietSince >= 1500;
+    }
+
+    /** (A "done" that never came - a broken voice engine - stops counting after a minute.) */
+    static boolean speaking() {
+        long now = System.currentTimeMillis();
+        return (busy && now - busySince < 60_000) || now - quietSince < 800;
+    }
+
     /** Speak text with the voice chosen in settings. Safe to call from any thread. */
     static void say(Context c, String text) {
         if (text == null || text.trim().isEmpty()) return;
@@ -43,6 +59,8 @@ final class Announcer {
         String words = Spoken.say(text); // numbers as Telugu words
         final String said = words.length() > 3900 ? words.substring(0, 3900) : words; // the voices' limit (numbers as words are longer)
         MicQuiet.speaking(); // a sound muted for the mic's beeps comes back first
+        busySince = System.currentTimeMillis();
+        busy = true;
         main.post(() -> {
             queue.add(said);
             Duck.on(app); // radio / music goes quiet while Jarvis reads, and comes back after
@@ -81,12 +99,19 @@ final class Announcer {
             natural.stop();
             if (tts != null) tts.stop();
             Duck.off();
+            busy = false;
+            quietSince = System.currentTimeMillis();
         });
     }
 
     /** Everything said: the music comes back up. */
     private static void settle() {
-        if (!talking && queue.isEmpty() && googlePending <= 0) { googlePending = 0; Duck.off(); }
+        if (!talking && queue.isEmpty() && googlePending <= 0) {
+            googlePending = 0;
+            Duck.off();
+            busy = false;
+            quietSince = System.currentTimeMillis();
+        }
     }
 
     private static void google(Context app, String text) {

@@ -286,6 +286,11 @@ final class Brain {
         }
     }
 
+    /** What made him laugh lately (S17), for the prompt; empty when nothing or it is off. */
+    private String laughs() {
+        try { return BodySounds.tiredOn(prefs.app) ? Laughs.line(prefs.app) : ""; } catch (Throwable e) { return ""; }
+    }
+
     /** The live situation for the prompt; empty when nothing is known. */
     private String situation() {
         try {
@@ -347,6 +352,7 @@ final class Brain {
                 + "Rules:\n"
                 + "- Always reply in natural, spoken Telugu (Telugu script), Andhra/Telangana style; never Tamil words. Everyday English tech words are fine where Telugu speakers use them.\n"
                 + moodRule()
+                + laughs()
                 + (!call.trim().equals(name)
                         ? "- Address him as \"" + call.trim() + "\" now and then, naturally (he chose this). His name is " + name + ": if he asks his name, say " + name + ". Never \"Tony\".\n"
                         : "- Address him as \"" + name + "\" now and then, naturally, the way a butler would. Never \"sir\", never \"Tony\".\n")

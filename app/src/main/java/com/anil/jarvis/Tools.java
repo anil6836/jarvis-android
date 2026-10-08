@@ -5423,7 +5423,7 @@ final class Tools {
     /** Marks an answer that already says there is no internet. */
     private static final String SAYS_NO_NET = "\u0001";
 
-    static final String OFFLINE_HELP = "నెట్ లేనప్పుడు ఇవి చేయగలను: టార్చ్, కాల్, SMS (మీరు \"పంపు\" అన్నాకే), అలారం, టైమర్, రిమైండర్లు, "
+    static final String OFFLINE_HELP = "నెట్ లేనప్పుడు ఇవి చేయగలను: \"ఆపద\" అంటే SOS, 108 / 112 కి కాల్, మీ లొకేషన్ SMS, టార్చ్, కాల్, SMS (మీరు \"పంపు\" అన్నాకే), అలారం, టైమర్, రిమైండర్లు, "
             + "ఖర్చులు రాయడం, లెక్కలు, అప్పులు, డ్యూటీ, నోట్స్, డైరీ, షాపింగ్ లిస్ట్, బండి ఎక్కడ పెట్టారో, క్యాలెండర్, పుట్టినరోజులు, పండుగలు, "
             + "మందులు, వచ్చిన మెసేజ్‌లు చదవడం, బ్లూటూత్, బ్రైట్‌నెస్, Do Not Disturb, ఫోన్‌లోని పాటలు, బ్యాటరీ, టైమ్. "
             + "నెట్ కావాల్సిన ప్రశ్నలు గుర్తుంచుకుని, నెట్ రాగానే జవాబు చెబుతాను.";
@@ -5474,6 +5474,48 @@ final class Tools {
         }
         if (any(t, "offline", "ఆఫ్‌లైన్", "ఆఫ్లైన్", "ఆఫ్ లైన్", "నెట్ లేనప్పుడు", "నెట్ లేకుండా") && any(t, "ఏం చేయగల", "ఏమి చేయగల", "ఏమేమి", "ఏం చేస్తావ్", "ఏమి చేస్తావ్")) {
             return OFFLINE_HELP;
+        }
+
+        // ---- emergencies, first: "ఆపద" -> SOS (5 seconds to stop it); "అంబులెన్స్" -> "108 కి కాల్ చేయమంటారా?" ("... కి కాల్ చెయ్యి": at once);
+        // "నా లొకేషన్ అమ్మకి పంపు" -> the SMS read back, sent on his "పంపు"
+        String help = Offline.emergency(said);
+        if ("sos".equals(help)) {
+            JSONObject o = new JSONObject(sos("ఆపదలో ఉన్నాను"));
+            if (!o.optBoolean("ok")) {
+                String e = o.optString("error");
+                if ("cancelled".equals(e)) return "సరే, SOS ఆపాను.";
+                if ("no_contacts".equals(e)) return "SOS కాంటాక్ట్స్ ఇంకా పెట్టలేదు (సెట్టింగ్స్ → అత్యవసరం (SOS)). ప్రమాదంలో ఉంటే వెంటనే 112 కి కాల్ చేయండి.";
+                return problem(o) + " అవసరమైతే 112 కి కాల్ చేయండి.";
+            }
+            JSONArray to = o.optJSONArray("sms_sent_to");
+            return (to == null || to.length() == 0 ? "SOS పంపలేకపోయాను. 112 కి కాల్ చేయండి." : "SOS పంపాను: " + join(to) + ".")
+                    + (o.has("calling") ? " " + o.optString("calling") + " కి కాల్ చేస్తున్నాను." : "");
+        }
+        if (help != null) {
+            if (Offline.digits(said).matches("(?s).*(కాల్|ఫోన్|call|కలుపు).*")) {
+                JSONObject o = new JSONObject(call(help));
+                return o.optBoolean("ok") ? help + " కి కాల్ చేస్తున్నాను." : problem(o);
+            }
+            offlineCallAsk = help;
+            return help + " కి కాల్ చేయమంటారా?";
+        }
+        String[] locTo = Offline.locationTo(said);
+        if (locTo != null) {
+            if (locTo[0].isEmpty()) return "లొకేషన్ ఎవరికి పంపాలి? ఉదాహరణకు \"అమ్మకి నా లొకేషన్ పంపు\".";
+            String[] who = offlineWho(locTo[0]);
+            if (who[1] == null) return who[0];
+            if (!has(Manifest.permission.ACCESS_FINE_LOCATION) && !has(Manifest.permission.ACCESS_COARSE_LOCATION)) return "లొకేషన్ చూడటానికి అనుమతి కావాలి.";
+            Location l = lastLocation(act());
+            if (l == null || System.currentTimeMillis() - l.getTime() > 10 * 60000L) {
+                Location fresh = freshLocation(); // GPS works without internet too
+                if (fresh != null) l = fresh;
+            }
+            if (l == null) return "లొకేషన్ దొరకలేదు. GPS ఆన్ చేసి కాసేపు బయట ఉండి మళ్లీ అడగండి.";
+            String msg = "నేను ఇక్కడ ఉన్నాను: https://maps.google.com/?q=" + l.getLatitude() + "," + l.getLongitude();
+            JSONObject o = new JSONObject(sms(who[0], msg));
+            if (!o.optBoolean("ok")) return problem(o);
+            String to = o.optString("to", who[0]).replaceAll("\\s*\\([^)]*\\)\\s*$", "");
+            return to + " కి SMS: \"" + msg + "\". పంపమంటారా?";
         }
 
         // ---- what he asks to write down (a diary line may mention a call or an alarm), then commands said outright:
