@@ -179,6 +179,8 @@ public class WatchTalkActivity extends Activity implements Tools.Host {
 
     @Override public Activity activity() { return this; }
 
+    @Override public boolean watchTrusted() { return WatchHub.lockedOk(this) && Boolean.TRUE.equals(WatchHub.worn(this)); }
+
     @Override public boolean confirm(String title, String message, String yes, int autoSeconds) {
         if (working != generation) return false; // he stopped it, or asked something new
         return WatchHub.confirm(this, title, message, yes, autoSeconds);

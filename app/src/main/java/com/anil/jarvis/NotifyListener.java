@@ -70,8 +70,24 @@ public class NotifyListener extends NotificationListenerService {
         try { requestRebind(new ComponentName(c, NotifyListener.class)); } catch (Exception ignored) {}
     }
 
+    /** The running listener (Jarvis's watch alerts look a notification up by its key), or null. */
+    static volatile NotifyListener self;
+
+    /** Jarvis's own notification with this key, if it is still up. */
+    static StatusBarNotification active(String key) {
+        NotifyListener l = self;
+        if (l == null || key == null) return null;
+        try {
+            StatusBarNotification[] a = l.getActiveNotifications(new String[]{key});
+            return a != null && a.length > 0 ? a[0] : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Override public void onListenerDisconnected() {
         connected = false;
+        self = null;
         try { requestRebind(new ComponentName(this, NotifyListener.class)); } catch (Exception ignored) {}
     }
 
@@ -91,6 +107,7 @@ public class NotifyListener extends NotificationListenerService {
     };
 
     @Override public void onDestroy() {
+        if (self == this) self = null;
         if (screenRegistered) { try { unregisterReceiver(screenEvents); } catch (Exception ignored) {} screenRegistered = false; }
         try { unregisterReceiver(battery); } catch (Exception ignored) {}
         super.onDestroy();
@@ -108,6 +125,7 @@ public class NotifyListener extends NotificationListenerService {
             } catch (Exception ignored) {}
         }
         connected = true;
+        self = this;
         try {
             StatusBarNotification[] active = getActiveNotifications();
             if (active != null) for (StatusBarNotification sbn : active) add(sbn);
@@ -127,13 +145,15 @@ public class NotifyListener extends NotificationListenerService {
 
     @Override public void onNotificationRemoved(StatusBarNotification sbn) {
         if (sbn == null) return;
+        if (getPackageName().equals(sbn.getPackageName())) { WatchAlerts.removed(this, sbn); return; } // (its card on the watch goes too)
         String[] call = CallControl.ended(sbn.getKey());
         CallControl.onRemoved(sbn.getKey());
         if (call != null) CallNote.after(this, call[0], Long.parseLong(call[1]));
     }
 
     private void add(StatusBarNotification sbn) {
-        if (sbn == null || getPackageName().equals(sbn.getPackageName())) return;
+        if (sbn == null) return;
+        if (getPackageName().equals(sbn.getPackageName())) { WatchAlerts.posted(this, sbn); return; } // Jarvis's own: on the watch too (2b)
         Notification n = sbn.getNotification();
         if (n != null && Notification.CATEGORY_CALL.equals(n.category)) {
             announceCall(sbn, n);
@@ -506,6 +526,15 @@ public class NotifyListener extends NotificationListenerService {
                     + "(whatsapp_media works on the newest one). If he says no, just say సరే. "
                     + "After reading, ask 'రిప్లై ఇవ్వమంటారా?'. If he dictates a reply, read it back and ask 'పంపమంటారా?', send only after he says send.]";
         }
+        if (WatchHub.routeToWatch(this, false)) { // the phone is in his pocket and the watch on his wrist: told and answered there (W16)
+            note(app, from, "వాచ్‌లో చెప్పాను ⌚" + (count > 1 ? " · " + count + " మెసేజ్‌లు కలిపి" : ""));
+            final String fSay = say, fAsk = ask, fContext = context;
+            WatchHub.announce(this, say, ask, context, () -> { // the watch couldn't be reached after all: as before, on the phone
+                note(app, from, "వాచ్ అందలేదు: ఫోన్‌లో చెప్పాను");
+                openPanel(app, from, fSay, fAsk, fContext, count);
+            });
+            return;
+        }
         if (cardFits(p)) { // he is in another app: a small card at the top, not the panel from the bottom
             final TopCard.Msg m = new TopCard.Msg();
             m.app = app;
@@ -633,6 +662,16 @@ public class NotifyListener extends NotificationListenerService {
         CallControl.onIncoming(sbn.getKey(), n, phone, who);
         if (!p.announceCalls()) return;
         String say = p.name() + ", " + (who.isEmpty() ? "ఎవరో" : who) + " నుంచి " + (phone ? "" : app + " ") + "కాల్ వస్తోంది";
+        if (WatchHub.routeToWatch(this, true)) { // the phone in his pocket: on the watch (W17); the phone's way if the watch is out of reach
+            final String fSay = say;
+            WatchHub.call(this, sbn.getKey(), say, () -> callOnPhone(p, fSay));
+            return;
+        }
+        callOnPhone(p, say);
+    }
+
+    /** "Anil, Ravi నుంచి కాల్ వస్తోంది" on the phone (its panel listens for "ఎత్తు" / "కట్"). */
+    private void callOnPhone(Prefs p, String say) {
         if (p.callByVoice() && android.provider.Settings.canDrawOverlays(this)) {
             // Show the Jarvis panel: it says who is calling, asks "ఎత్తమంటారా?" and listens for the answer.
             try {

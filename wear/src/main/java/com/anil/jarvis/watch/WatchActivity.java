@@ -38,6 +38,8 @@ public class WatchActivity extends Activity implements Talk.Screen {
     private final Handler main = new Handler(Looper.getMainLooper());
     private HudView hud;
     private OrbView orb;
+    /** W3: Jarvis's face instead of the orb (his choice on the phone). */
+    private FaceLook face;
     private ScrollView scroll;
     private TextView status, heard, reply, action, check, cTitle, cMsg, cYes, cNo;
     private LinearLayout confirmBox;
@@ -49,6 +51,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         te = telugu();
+        Theme.refresh(this);
         int w = getResources().getDisplayMetrics().widthPixels, h = getResources().getDisplayMetrics().heightPixels;
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
@@ -64,9 +67,15 @@ public class WatchActivity extends Activity implements Talk.Screen {
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         int side = Math.round(w * 0.13f);
         col.setPadding(side, 0, side, Math.round(h * 0.32f));
+        FrameLayout slot = new FrameLayout(this);
         orb = new OrbView(this);
         orb.setOnClickListener(v -> act());
-        col.addView(orb, new LinearLayout.LayoutParams(-1, Math.round(h * 0.6f)));
+        slot.addView(orb, new FrameLayout.LayoutParams(-1, -1));
+        face = new FaceLook(this);
+        face.setOnClickListener(v -> act());
+        slot.addView(face, new FrameLayout.LayoutParams(-1, -1));
+        col.addView(slot, new LinearLayout.LayoutParams(-1, Math.round(h * 0.6f)));
+        showLook();
         status = text(13, CYAN, true);
         col.addView(status);
         heard = text(13, MUTED, true);
@@ -104,6 +113,21 @@ public class WatchActivity extends Activity implements Talk.Screen {
         check.setPadding(0, dp(18), 0, 0);
         col.addView(check);
 
+        // W8: the vibration language, each one to feel with a tap
+        TextView vl = text(12.5f, CYAN, true);
+        vl.setText("📳 వైబ్రేషన్ భాష (నొక్కి చూడండి)");
+        vl.setPadding(0, dp(16), 0, dp(4));
+        col.addView(vl);
+        for (Object[] k : Alerts.LANGUAGE) {
+            TextView r = pill((String) k[1], 0xFF0B2230);
+            r.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+            r.setPadding(dp(8), dp(6), dp(8), dp(6));
+            r.setOnClickListener(v -> Alerts.buzz(this, (String) k[0]));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.topMargin = dp(4);
+            col.addView(r, lp);
+        }
+
         scroll.addView(col);
         root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
         scroll.getViewTreeObserver().addOnScrollChangedListener(() -> hud.setFade(1f - scroll.getScrollY() / (h * 0.18f)));
@@ -131,6 +155,8 @@ public class WatchActivity extends Activity implements Talk.Screen {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) need.add(Manifest.permission.RECORD_AUDIO);
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             need.add(Manifest.permission.POST_NOTIFICATIONS);
+        if (checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED)
+            need.add(Manifest.permission.ACTIVITY_RECOGNITION); // (steps: "phone forgotten" only when he walks on)
         if (!need.isEmpty()) requestPermissions(need.toArray(new String[0]), 1);
     }
 
@@ -146,6 +172,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
         Talk.screen = this;
         Notes.talk(this); // (the screen shows the talk now: no notification)
         if (Talk.micAllowed(this)) EarService.startIfWanted(this);
+        Beat.schedule(this); // ("still here" to the phone, and "phone forgotten", while the watch sleeps)
         Talk.hello(this);
         scroll.requestFocus();
         restartCountdown();
@@ -198,6 +225,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
     @Override public void changed() {
         if (isDestroyed()) return;
         int s = Talk.state;
+        showLook();
         status.setText(Talk.status);
         status.setVisibility(Talk.status.isEmpty() ? View.GONE : View.VISIBLE);
         heard.setText(Talk.heard.isEmpty() ? "" : "“" + Talk.heard + "”");
@@ -240,6 +268,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             orb.setAppear(hud.bootProgress() < 0.6f ? 0f : (hud.bootProgress() - 0.6f) / 0.4f);
+            face.setAlpha(hud.bootProgress() < 0.6f ? 0f : Math.min(1f, (hud.bootProgress() - 0.6f) / 0.4f));
             JSONObject q = Talk.confirm;
             long now = SystemClock.elapsedRealtime();
             PowerManager pm = getSystemService(PowerManager.class);
@@ -321,6 +350,13 @@ public class WatchActivity extends Activity implements Talk.Screen {
     }
 
     private int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+
+    /** The orb, or Jarvis's face (W3). */
+    private void showLook() {
+        boolean f = !"orb".equals(Link.look(this));
+        orb.setVisibility(f ? View.GONE : View.VISIBLE);
+        face.setVisibility(f ? View.VISIBLE : View.GONE);
+    }
 
     /** Telugu letters: the watch's own font when it has them, else the one that comes with this app (if any). */
     private Typeface telugu() {

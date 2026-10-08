@@ -58,6 +58,7 @@ final class Ui {
     static void setTheme(Context c, String id, boolean motion) {
         c.getSharedPreferences("jarvis", Context.MODE_PRIVATE).edit().putString("theme", id).putBoolean("hud_motion", motion).apply();
         loadTheme(c);
+        if (WatchHub.known(c)) WatchHub.pushSettings(c); // W5: the watch's colours follow
     }
 
     /** The chosen theme's colours, set before a screen is built. */

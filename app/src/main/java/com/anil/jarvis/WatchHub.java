@@ -46,7 +46,7 @@ final class WatchHub {
     // watch -> phone
     static final String P_HELLO = "/jarvis/hello", P_MIC_START = "/jarvis/mic/start", P_MIC_DATA = "/jarvis/mic/data",
             P_MIC_END = "/jarvis/mic/end", P_TEXT = "/jarvis/text", P_STOP = "/jarvis/stop", P_PLAYED = "/jarvis/played",
-            P_CONFIRM_ANSWER = "/jarvis/confirm/answer", P_DONE = "/jarvis/done";
+            P_CONFIRM_ANSWER = "/jarvis/confirm/answer", P_DONE = "/jarvis/done", P_BEAT = "/jarvis/beat";
     // phone -> watch
     static final String P_SETTINGS = "/jarvis/settings", P_STATE = "/jarvis/state", P_MIC_STOP = "/jarvis/mic/stop",
             P_AUDIO_START = "/jarvis/audio/start", P_AUDIO_DATA = "/jarvis/audio/data", P_AUDIO_END = "/jarvis/audio/end",
@@ -96,6 +96,24 @@ final class WatchHub {
     static boolean stopVoice(Context c) { return sp(c).getBoolean("stop_voice", true); }
     /** W10: opening the watch app (its icon, the Home key double press, a watch-face shortcut) starts listening. */
     static boolean openListen(Context c) { return sp(c).getBoolean("open_listen", true); }
+    /** W16 / W17: with the phone locked (in his pocket), messages and calls are told on the watch and answered there. */
+    static boolean msgsOn(Context c) { return sp(c).getBoolean("msgs", true); }
+    /** W15 / W8: Jarvis's own alerts (cooker, door, medicine, reminders...) on the watch, each with its own vibration. */
+    static boolean alertsOn(Context c) { return sp(c).getBoolean("alerts", true); }
+    /** W19: Jarvis's alarm only as a vibration on the wrist (the phone rings after 3 minutes if he hasn't stopped it). */
+    static boolean alarmOn(Context c) { return sp(c).getBoolean("alarm", true); }
+    /** W20: the watch says when he walks away without the phone. */
+    static boolean lostOn(Context c) { return sp(c).getBoolean("lost", true); }
+    /** W3: what Jarvis looks like on the watch: "orb", "holo" (the face as a hologram) or "human" (the phone's face). */
+    static String look(Context c) { return sp(c).getString("look", "orb"); }
+
+    static String lookText(String l) {
+        switch (l) {
+            case "holo": return "హోలోగ్రామ్ ముఖం";
+            case "human": return "మనిషి ముఖం (ఫోన్‌లోని Jarvis ముఖం)";
+            default: return "వెలిగే ఆర్బ్ (వలయాలు)";
+        }
+    }
 
     static void set(Context c, String key, Object v) {
         SharedPreferences.Editor e = sp(c).edit();
@@ -113,7 +131,8 @@ final class WatchHub {
             o.put("raise", raiseOn(c)).put("hours", hoursOn(c)).put("from", fromHour(c)).put("to", toHour(c))
                     .put("ears", ears(c)).put("speak", speakOn(c) && p.voiceReplies()).put("stopVoice", stopVoice(c))
                     .put("openListen", openListen(c)).put("name", p.name()).put("lang", p.listenLang())
-                    .put("online", Net.online(c));
+                    .put("online", Net.online(c)).put("alerts", alertsOn(c)).put("lost", lostOn(c)).put("look", look(c))
+                    .put("theme", Ui.theme(c));
         } catch (Exception ignored) {}
         return o;
     }
@@ -160,22 +179,50 @@ final class WatchHub {
 
     static void send(Context c, String path, JSONObject o) { send(c, path, o.toString().getBytes(StandardCharsets.UTF_8)); }
 
-    static void send(Context c, String path, byte[] data) { send(c, path, data, null); }
+    static void send(Context c, String path, byte[] data) { send(c, path, data, null, null, false); }
 
     /** stillWanted: checked just before it goes (Jarvis's voice after his stop isn't sent ahead of what comes next). */
-    static void send(Context c, String path, byte[] data, java.util.function.BooleanSupplier stillWanted) {
+    static void send(Context c, String path, byte[] data, java.util.function.BooleanSupplier stillWanted) { send(c, path, data, stillWanted, null, false); }
+
+    /**
+     * failed: run on the main thread if it couldn't go (no watch connected, or the link refused it), so the phone can
+     * do it its own way. near: only to a watch near the phone (Bluetooth), looked up afresh (not through the internet).
+     */
+    static void send(Context c, String path, byte[] data, java.util.function.BooleanSupplier stillWanted, Runnable failed, boolean near) {
+        send(c, path, data, stillWanted, failed, near, null);
+    }
+
+    /** sent: run on the main thread once it has gone. */
+    static void send(Context c, String path, byte[] data, java.util.function.BooleanSupplier stillWanted, Runnable failed, boolean near, Runnable sent) {
         final Context app = c.getApplicationContext();
         out.execute(() -> {
             if (stillWanted != null && !stillWanted.getAsBoolean()) return;
+            boolean ok = false;
             try {
-                String n = nodeId(app);
-                if (n == null) { lastError = "వాచ్ కనెక్ట్ అయి లేదు (Bluetooth / Galaxy Wearable చూడండి)"; return; }
-                Tasks.await(Wearable.getMessageClient(app).sendMessage(n, path, data), 4, TimeUnit.SECONDS);
+                String n = near ? nearId(app) : nodeId(app);
+                if (n == null) lastError = near ? "వాచ్ దగ్గర లేదు / కనెక్ట్ కాలేదు" : "వాచ్ కనెక్ట్ అయి లేదు (Bluetooth / Galaxy Wearable చూడండి)";
+                else {
+                    Tasks.await(Wearable.getMessageClient(app).sendMessage(n, path, data), 4, TimeUnit.SECONDS);
+                    ok = true;
+                }
             } catch (Exception e) {
                 node = null; // look the watch up again next time
                 lastError = "వాచ్‌కి పంపలేకపోయాను: " + e.getMessage();
             }
+            if (!ok && failed != null) M.h.post(failed);
+            if (ok && sent != null) M.h.post(sent);
         });
+    }
+
+    static void send(Context c, String path, JSONObject o, Runnable failed, boolean near) {
+        send(c, path, o.toString().getBytes(StandardCharsets.UTF_8), null, failed, near);
+    }
+
+    /** A watch connected over Bluetooth right now (fresh look, not the cached one). Background only. */
+    private static String nearId(Context app) throws Exception {
+        List<Node> nodes = Tasks.await(Wearable.getNodeClient(app).getConnectedNodes(), 3, TimeUnit.SECONDS);
+        for (Node x : nodes) if (x.isNearby()) { node = x.getId(); nodeAt = SystemClock.elapsedRealtime(); return x.getId(); }
+        return null;
     }
 
     /** The watch's id on the link: the one it last wrote from, else a connected one (nearby first). Background only. */
@@ -295,6 +342,7 @@ final class WatchHub {
 
     static void onMessage(Context c, String from, String path, byte[] data) {
         final Context app = c.getApplicationContext();
+        appCtx = app;
         node = from;
         nodeAt = SystemClock.elapsedRealtime();
         seenAt = nodeAt;
@@ -308,10 +356,27 @@ final class WatchHub {
                     }
                     return;
                 }
-                case P_HELLO:
-                    info = new JSONObject(text(data));
+                case P_HELLO: {
+                    JSONObject o = new JSONObject(text(data));
+                    info = o;
+                    seen(app, o);
                     pushSettings(app);
+                    WatchAlerts.schedule(app);
+                    new Thread(() -> WatchAlerts.pushInfo(app), "watch-info").start();
                     return;
+                }
+                case P_BEAT: seen(app, new JSONObject(text(data)));
+                    return;
+                case WatchAlerts.P_ALERT_ACTION: {
+                    JSONObject o = new JSONObject(text(data));
+                    M.h.post(() -> WatchAlerts.action(app, o));
+                    return;
+                }
+                case WatchAlerts.P_ALARM_ANSWER: {
+                    JSONObject o = new JSONObject(text(data));
+                    M.h.post(() -> WatchAlerts.alarmAnswered(app, o));
+                    return;
+                }
                 case P_MIC_START: micStart(app, new JSONObject(text(data)));
                     return;
                 case P_MIC_END: {
@@ -325,7 +390,12 @@ final class WatchHub {
                     JSONObject o = new JSONObject(text(data));
                     String t = o.optString("text").trim();
                     boolean follow = "follow".equals(o.optString("why"));
-                    M.h.post(() -> heard(app, t, follow));
+                    M.h.post(() -> {
+                        Session s = cur; // (a card's word tapped while the watch's mic was listening: that listen is over)
+                        if (s != null && !s.wake) { s.stopped = true; s.end(); ListenMic l = s.ears; s.ears = null; if (l != null) l.cancel(); }
+                        if (callKey == null) interrupt(app); // (the announcement still being said, and its listen after it, are over)
+                        heard(app, t, follow);
+                    });
                     return;
                 }
                 case P_STOP: M.h.post(() -> stopAll(app, true));
@@ -578,6 +648,7 @@ final class WatchHub {
 
     /** His words (from the phone's ears or the watch's own voice typing). Main thread. */
     private static void heard(Context app, String text, boolean follow) {
+        if (callKey != null && CallControl.isRinging()) { callWords(app, text); return; } // W17: "ఎత్తు" / "కట్"
         if (text.isEmpty()) {
             talk(false);
             endScreen();
@@ -611,6 +682,7 @@ final class WatchHub {
     static void reply(Context c, String text, boolean error, boolean speak, Runnable spoken) {
         talk(true);
         Context app = c.getApplicationContext();
+        appCtx = app;
         android.media.AudioManager am = app.getSystemService(android.media.AudioManager.class);
         boolean local = speak && am != null && Sounds.earphones(am); // his earphones are on the phone: said there
         JSONObject o = new JSONObject();
@@ -660,6 +732,174 @@ final class WatchHub {
     private static void endScreen() {
         WatchTalkActivity a = WatchTalkActivity.current;
         if (a != null) a.quietEnd();
+    }
+
+    // ================================================================ his watch: known, near, on his wrist
+
+    /** Its last news (wall clock), kept so a restarted phone app still knows the watch. */
+    private static void seen(Context app, JSONObject o) {
+        SharedPreferences.Editor e = sp(app).edit().putLong("seen_wall", System.currentTimeMillis());
+        if (o.has("worn")) { worn = o.optBoolean("worn"); e.putString("worn", String.valueOf(worn)); }
+        e.apply();
+    }
+
+    /** On his wrist: true / false; null when the watch can't tell. */
+    static volatile Boolean worn;
+
+    /** Worn, as last told (kept over a phone restart). */
+    static Boolean worn(Context c) {
+        Boolean w = worn;
+        if (w != null) return w;
+        String s = sp(c).getString("worn", "");
+        return s.isEmpty() ? null : Boolean.valueOf(s);
+    }
+
+    /** The Jarvis watch app has talked to this phone (installed and set up). */
+    static boolean known(Context c) { return sp(c).getLong("seen_wall", 0) > 0; }
+
+    /** The watch is connected now (it says so every 10 minutes, and with everything it sends). */
+    static boolean watchHere(Context c) {
+        long wall = sp(c).getLong("seen_wall", 0);
+        return wall > 0 && System.currentTimeMillis() - wall < 40 * 60_000L; // (its news comes every ~15-30 min; sends check afresh)
+    }
+
+    /** The phone is in his pocket / on the table: screen off or locked. */
+    static boolean phoneIdle(Context c) {
+        android.os.PowerManager pm = c.getSystemService(android.os.PowerManager.class);
+        android.app.KeyguardManager km = c.getSystemService(android.app.KeyguardManager.class);
+        return pm != null && !pm.isInteractive() || km != null && km.isKeyguardLocked();
+    }
+
+    /** On the bike (or driving): the watch only buzzes; voice stays with the phone and his helmet (W18). */
+    static boolean riding(Context c) { return Bike.riding(c) || new Prefs(c).driving(); }
+
+    /** Messages / calls go to the watch now: it is near and on his wrist, the phone is locked, he isn't riding. */
+    static boolean routeToWatch(Context c, boolean call) {
+        return msgsOn(c) && watchHere(c) && !Boolean.FALSE.equals(worn(c)) && phoneIdle(c) && !riding(c) && (call || !talking());
+    }
+
+    /** A question from the watch may act while the phone is locked in his pocket (a call, a reply: still only after his yes). */
+    static boolean lockedOk(Context c) { return sp(c).getBoolean("locked_ok", true); }
+
+    // ================================================================ W16 / W17: messages and calls on the watch
+
+    /** One line said on the watch (good morning after its alarm, a short answer). Main thread. */
+    static void say(Context c, String text) {
+        reply(c, text, false, speakOn(c) && new Prefs(c).voiceReplies(), () -> idle(c, null));
+    }
+
+    /**
+     * W16: a new message told on the watch instead of the phone's panel: who wrote, "చదవమంటారా?", and the watch listens.
+     * The message itself is with the brain (as for the panel): it reads it only if he says yes, and sends a reply only
+     * after his "పంపు". The card's buttons answer the same way as his voice. Main thread.
+     */
+    static void announce(Context c, String say, String ask, String context, Runnable phoneWay) {
+        Context app = c.getApplicationContext();
+        final int gen = ++msgGen;
+        Runnable back = () -> { // not reachable after all: the talk here ends, the phone tells it its way
+            if (gen != msgGen) return;
+            msgGen++;
+            interrupt(app);
+            talk(false);
+            phoneWay.run(); // (the panel gives the brain the message itself)
+        };
+        Runnable got = () -> Store.get(app).addChat("assistant", say + " " + ask + context, false); // the brain has it for "చదువు"
+        try {
+            JSONObject o = new JSONObject().put("id", ("msg" + say).hashCode()).put("kind", "message").put("title", say)
+                    .put("text", ask).put("says", new org.json.JSONArray().put("చదువు").put("వద్దు"));
+            send(app, WatchAlerts.P_ALERT, o.toString().getBytes(StandardCharsets.UTF_8), null, back, true, got);
+        } catch (Exception ignored) {}
+        reply(app, say + " " + ask, false, speakOn(app) && new Prefs(app).voiceReplies(), () -> listen(app, "answer"));
+    }
+
+    /** Bumped by each message / call sent to the watch (its "not reachable" fallback runs only for the latest of each). */
+    private static int msgGen, callGen;
+
+    /** The ringing call being told on the watch (its key), or null. */
+    private static volatile String callKey;
+    private static int callTries;
+
+    /** W17: who is calling, said on the watch; "ఎత్తు" / "కట్" by voice or the card's buttons. Main thread. */
+    static void call(Context c, String key, String say, Runnable phoneWay) {
+        Context app = c.getApplicationContext();
+        if (talking()) { // a call comes first: the talk on the watch stops (its mic too)
+            Session s = cur;
+            if (s != null && !s.wake) stopMic(app, s);
+            stopAll(app, false);
+        }
+        callKey = key;
+        callTries = 0;
+        final int gen = ++callGen;
+        Runnable back = () -> {
+            if (gen != callGen || callKey == null) return;
+            callGen++;
+            callKey = null;
+            interrupt(app);
+            talk(false);
+            phoneWay.run();
+        };
+        try {
+            send(app, WatchAlerts.P_ALERT, new JSONObject().put("id", ("call" + key).hashCode()).put("kind", "call").put("title", say)
+                    .put("text", "ఎత్తమంటారా, కట్ చేయమంటారా?").put("says", new org.json.JSONArray().put("ఎత్తు").put("కట్")), back, true);
+        } catch (Exception ignored) {}
+        reply(app, say + ". ఎత్తమంటారా, కట్ చేయమంటారా?", false, speakOn(app), () -> listen(app, "call"));
+        M.h.removeCallbacks(callWatch);
+        M.h.postDelayed(callWatch, 1000);
+    }
+
+    /** The call stopped ringing (answered on the phone / watch, or ended): the watch stops asking. */
+    private static final Runnable callWatch = new Runnable() {
+        @Override public void run() {
+            if (callKey == null) return;
+            if (CallControl.isRinging()) { M.h.postDelayed(this, 1000); return; }
+            String key = callKey;
+            callKey = null;
+            if (appCtx != null) try { send(appCtx, WatchAlerts.P_ALERT_GONE, new JSONObject().put("id", ("call" + key).hashCode())); } catch (Exception ignored) {}
+            Session s = cur;
+            if (s != null) { s.stopped = true; s.end(); ListenMic l = s.ears; s.ears = null; if (l != null) l.cancel(); }
+            interrupt(appCtx);
+            talk(false);
+            if (appCtx != null) state(appCtx, "idle", null, null, null);
+        }
+    };
+    private static Context appCtx;
+
+    private static final String[] CALL_NO = {"కట్", "cut", "reject", "వద్దు", "decline", "తర్వాత", "busy", "బిజీ", "no", "నో", "తీయకు", "ఎత్తకు", "ఎత్తొద్దు",
+            "ఎత్తకండి", "తీయొద్దు", "మాట్లాడలేను", "మాట్లాడను", "మాట్లాడలేం"};
+    private static final String[] CALL_YES = {"ఎత్తు", "ఎత్తండి", "ఎత్తి", "లిఫ్ట్", "lift", "answer", "attend", "pick", "yes", "అవును", "ఓకే", "ok", "okay", "సరే", "మాట్లాడ", "ఆన్సర్"};
+
+    /** "ఎత్తు" / "కట్" (as in the phone's panel; "no" never matches "now"). Main thread. */
+    private static void callWords(Context app, String text) {
+        String low = text.toLowerCase(java.util.Locale.ROOT);
+        boolean no = hasWord(low, CALL_NO), yes = !no && hasWord(low, CALL_YES);
+        if (!no && !yes) {
+            // (after 3 tries it stops asking; the card's buttons still answer the call while it rings)
+            if (++callTries >= 3) { talk(false); state(app, "idle", null, null, "ఎత్తాలంటే వాచ్ కార్డ్‌లో \"ఎత్తు\" / ఫోన్‌లో ఆకుపచ్చ నొక్కండి"); return; }
+            reply(app, "ఎత్తమంటారా, కట్ చేయమంటారా?", false, speakOn(app), () -> listen(app, "call"));
+            return;
+        }
+        callKey = null;
+        String r = yes ? CallControl.answer(app) : CallControl.decline(app);
+        String msg;
+        switch (r) {
+            case "answered": msg = "కాల్ ఎత్తాను."; break;
+            case "declined": msg = "కాల్ కట్ చేశాను."; break;
+            case "need_permission": msg = "కాల్స్ ఎత్తడానికి ఫోన్‌లో అనుమతి కావాలి: ఫోన్‌లో Jarvis తెరిచి Allow నొక్కండి."; break;
+            default: msg = yes ? "కాల్ ఎత్తలేకపోయాను, మీరే నొక్కండి." : "కాల్ కట్ చేయలేకపోయాను, మీరే నొక్కండి.";
+        }
+        talk(false);
+        reply(app, msg, !"answered".equals(r) && !"declined".equals(r), false, () -> idle(app, null)); // (text only: the call has the sound now)
+    }
+
+    private static boolean hasWord(String low, String[] words) {
+        for (String tok : low.split("[^\\p{L}\\p{M}\\p{N}]+")) {
+            if (tok.isEmpty()) continue;
+            for (String w : words) {
+                if (tok.equals(w)) return true;
+                if (w.charAt(0) > 0x7F && tok.startsWith(w)) return true;
+            }
+        }
+        return false;
     }
 
     /** The talk is over. */

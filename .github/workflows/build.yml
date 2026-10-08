@@ -100,6 +100,7 @@ jobs:
         run: |
           cp app/build/outputs/apk/release/app-release.apk Jarvis.apk
           cp wear/build/outputs/apk/release/wear-release.apk Jarvis-watch.apk
+          cp face/build/outputs/apk/release/face-release.apk Jarvis-face.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -107,6 +108,7 @@ jobs:
           path: |
             Jarvis.apk
             Jarvis-watch.apk
+            Jarvis-face.apk
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -117,10 +119,12 @@ jobs:
             ఫోన్‌లో Jarvis.apk డౌన్‌లోడ్ చేసి, పాత యాప్ మీదే ఇన్‌స్టాల్ (Update) చేయండి.
 
             Jarvis-watch.apk: Galaxy Watch కోసం Jarvis (వాచ్‌లో Bugjaeger తో ఇన్‌స్టాల్ చేయండి; స్టెప్స్ ఫోన్ Settings → ⌚ వాచ్ లో). ఫోన్ యాప్, వాచ్ యాప్ ఒకే వెర్షన్ ఉంటే మంచిది.
+            Jarvis-face.apk: Jarvis వాచ్ ఫేస్ (అదే విధంగా వాచ్‌లో ఇన్‌స్టాల్ చేసి, వాచ్ ఫేస్‌ల్లో Jarvis HUD ఎంచుకోండి).
 
             facenet.tflite: the FaceNet model Jarvis downloads once to remember faces (TFLite conversion by shubham0204, Apache-2.0; weights from nyoki-mtl/keras-facenet, MIT).
           files: |
             Jarvis.apk
             Jarvis-watch.apk
+            Jarvis-face.apk
             facenet.tflite
           make_latest: true

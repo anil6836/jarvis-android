@@ -40,7 +40,8 @@ final class OrbView extends View {
         float t = (SystemClock.elapsedRealtime() - born) / 1000f;
         float cx = getWidth() / 2f, cy = getHeight() / 2f;
         float r0 = Math.min(getWidth(), getHeight()) * 0.30f * (0.4f + 0.6f * appear);
-        int main = s == Talk.ERROR ? RED : s == Talk.THINKING ? VIOLET : CYAN;
+        int main = s == Talk.ERROR ? RED : s == Talk.THINKING ? VIOLET : Theme.accent; // (W5: the phone's theme)
+        int deep = Theme.main;
         int alphaAll = Math.round(255 * appear);
 
         // the glow behind (strongest while speaking)
@@ -56,7 +57,7 @@ final class OrbView extends View {
         float coreR = r0 * (0.42f + breath + shown * 0.16f);
         if (s == Talk.UNDERSTANDING || s == Talk.THINKING) coreR *= 0.9f;
         fill.setShader(new RadialGradient(cx, cy, Math.max(1f, coreR),
-                new int[]{WHITE, withAlpha(main, 0xEE), withAlpha(BLUE, 0x55), Color.TRANSPARENT},
+                new int[]{WHITE, withAlpha(main, 0xEE), withAlpha(deep, 0x55), Color.TRANSPARENT},
                 new float[]{0f, 0.35f, 0.8f, 1f}, Shader.TileMode.CLAMP));
         fill.setAlpha(alphaAll);
         c.drawCircle(cx, cy, coreR, fill);
@@ -81,7 +82,7 @@ final class OrbView extends View {
             float rr = r0 * 1.12f;
             box.set(cx - rr, cy - rr, cx + rr, cy + rr);
             ring.setStrokeWidth(dp * 3f);
-            ring.setColor(withAlpha(s == Talk.THINKING ? VIOLET : CYAN, alphaAll));
+            ring.setColor(withAlpha(s == Talk.THINKING ? VIOLET : Theme.mark, alphaAll));
             float a = (t * 300f) % 360f;
             c.drawArc(box, a, 70f, false, ring);
             c.drawArc(box, a + 180f, 70f, false, ring);

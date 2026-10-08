@@ -1,0 +1,185 @@
+<WatchFace width="450" height="450" clipShape="CIRCLE">
+  <Metadata key="CLOCK_TYPE" value="DIGITAL"/>
+  <Metadata key="PREVIEW_TIME" value="10:08:32"/>
+  <UserConfigurations>
+    <ColorConfiguration id="themeColor" displayName="@string/theme" defaultValue="mix">
+      <ColorOption id="mix" displayName="@string/theme_mix" colors="#FF38BDF8 #FFF2B24C #FF74E4FF"/>
+      <ColorOption id="blue" displayName="@string/theme_blue" colors="#FF22D3EE #FF74E4FF #FF74E4FF"/>
+      <ColorOption id="gold" displayName="@string/theme_gold" colors="#FFF2B24C #FFFDE68A #FFFFD27A"/>
+    </ColorConfiguration>
+  </UserConfigurations>
+  <Scene backgroundColor="#FF000000">
+    <PartDraw x="0" y="0" width="450" height="450" name="ring">
+      <Ellipse x="7" y="7" width="436" height="436"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="2"/></Ellipse>
+      <Line startX="225.0" startY="29.0" endX="225.0" endY="14.0"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="246.2" startY="23.1" endX="247.1" endY="15.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="267.2" startY="26.4" endX="268.9" endY="18.6"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="287.7" startY="31.9" endX="290.2" endY="24.3"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="307.6" startY="39.6" endX="310.8" endY="32.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="323.0" startY="55.3" endX="330.5" endY="42.3"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="344.3" startY="60.8" endX="349.0" endY="54.3"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="360.8" startY="74.1" endX="366.2" endY="68.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="375.9" startY="89.2" endX="381.8" endY="83.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="389.2" startY="105.7" endX="395.7" endY="101.0"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="394.7" startY="127.0" endX="407.7" endY="119.5"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="410.4" startY="142.4" endX="417.8" endY="139.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="418.1" startY="162.3" endX="425.7" endY="159.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="423.6" startY="182.8" endX="431.4" endY="181.1"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="426.9" startY="203.8" endX="434.8" endY="202.9"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="421.0" startY="225.0" endX="436.0" endY="225.0"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="426.9" startY="246.2" endX="434.8" endY="247.1"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="423.6" startY="267.2" endX="431.4" endY="268.9"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="418.1" startY="287.7" endX="425.7" endY="290.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="410.4" startY="307.6" endX="417.8" endY="310.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="394.7" startY="323.0" endX="407.7" endY="330.5"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="389.2" startY="344.3" endX="395.7" endY="349.0"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="375.9" startY="360.8" endX="381.8" endY="366.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="360.8" startY="375.9" endX="366.2" endY="381.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="344.3" startY="389.2" endX="349.0" endY="395.7"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="323.0" startY="394.7" endX="330.5" endY="407.7"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="307.6" startY="410.4" endX="310.8" endY="417.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="287.7" startY="418.1" endX="290.2" endY="425.7"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="267.2" startY="423.6" endX="268.9" endY="431.4"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="246.2" startY="426.9" endX="247.1" endY="434.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="225.0" startY="421.0" endX="225.0" endY="436.0"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="203.8" startY="426.9" endX="202.9" endY="434.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="182.8" startY="423.6" endX="181.1" endY="431.4"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="162.3" startY="418.1" endX="159.8" endY="425.7"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="142.4" startY="410.4" endX="139.2" endY="417.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="127.0" startY="394.7" endX="119.5" endY="407.7"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="105.7" startY="389.2" endX="101.0" endY="395.7"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="89.2" startY="375.9" endX="83.8" endY="381.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="74.1" startY="360.8" endX="68.2" endY="366.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="60.8" startY="344.3" endX="54.3" endY="349.0"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="55.3" startY="323.0" endX="42.3" endY="330.5"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="39.6" startY="307.6" endX="32.2" endY="310.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="31.9" startY="287.7" endX="24.3" endY="290.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="26.4" startY="267.2" endX="18.6" endY="268.9"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="23.1" startY="246.2" endX="15.2" endY="247.1"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="29.0" startY="225.0" endX="14.0" endY="225.0"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="23.1" startY="203.8" endX="15.2" endY="202.9"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="26.4" startY="182.8" endX="18.6" endY="181.1"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="31.9" startY="162.3" endX="24.3" endY="159.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="39.6" startY="142.4" endX="32.2" endY="139.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="55.3" startY="127.0" endX="42.3" endY="119.5"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="60.8" startY="105.7" endX="54.3" endY="101.0"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="74.1" startY="89.2" endX="68.2" endY="83.8"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="89.2" startY="74.1" endX="83.8" endY="68.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="105.7" startY="60.8" endX="101.0" endY="54.3"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="127.0" startY="55.3" endX="119.5" endY="42.3"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="3" cap="ROUND"/></Line>
+      <Line startX="142.4" startY="39.6" endX="139.2" endY="32.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="162.3" startY="31.9" endX="159.8" endY="24.3"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="182.8" startY="26.4" endX="181.1" endY="18.6"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Line startX="203.8" startY="23.1" endX="202.9" endY="15.2"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="1.5" cap="ROUND"/></Line>
+      <Variant mode="AMBIENT" target="alpha" value="110"/>
+    </PartDraw>
+    <PartDraw x="0" y="0" width="450" height="450" name="core">
+      <Ellipse x="105" y="105" width="240" height="240">
+        <Fill color="#FF000000">
+          <RadialGradient centerX="225" centerY="225" radius="120" colors="#5574E4FF #2238BDF8 #00000000" positions="0 0.55 1"/>
+        </Fill>
+      </Ellipse>
+      <Ellipse x="125" y="125" width="200" height="200"><Stroke color="[CONFIGURATION.themeColor.0]" thickness="2"/></Ellipse>
+      <Ellipse x="140" y="140" width="170" height="170"><Stroke color="[CONFIGURATION.themeColor.1]" thickness="1.5" dashIntervals="18 10"/></Ellipse>
+      <Arc centerX="225" centerY="225" width="232" height="232" startAngle="320" endAngle="400"><Stroke color="[CONFIGURATION.themeColor.2]" thickness="4" cap="ROUND"/></Arc>
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+    </PartDraw>
+    <PartDraw x="0" y="0" width="450" height="450" name="batteryTrack" alpha="60">
+      <Arc centerX="225" centerY="225" width="364" height="364" startAngle="215" endAngle="325">
+        <Stroke color="[CONFIGURATION.themeColor.0]" thickness="14" cap="ROUND"/>
+      </Arc>
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+    </PartDraw>
+    <PartDraw x="0" y="0" width="450" height="450" name="battery">
+      <Arc centerX="225" centerY="225" width="364" height="364" startAngle="215" endAngle="216">
+        <Stroke color="[CONFIGURATION.themeColor.0]" thickness="14" cap="ROUND"/>
+        <Transform target="endAngle" value="215 + 110 * clamp([BATTERY_PERCENT], 0, 100) / 100"/>
+      </Arc>
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+    </PartDraw>
+    <PartDraw x="0" y="0" width="450" height="450" name="stepsTrack" alpha="60">
+      <Arc centerX="225" centerY="225" width="364" height="364" startAngle="35" endAngle="145">
+        <Stroke color="[CONFIGURATION.themeColor.1]" thickness="14" cap="ROUND"/>
+      </Arc>
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+    </PartDraw>
+    <PartDraw x="0" y="0" width="450" height="450" name="steps">
+      <Arc centerX="225" centerY="225" width="364" height="364" startAngle="35" endAngle="36">
+        <Stroke color="[CONFIGURATION.themeColor.1]" thickness="14" cap="ROUND"/>
+        <Transform target="endAngle" value="35 + 110 * clamp([STEP_PERCENT], 0, 100) / 100"/>
+      </Arc>
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+    </PartDraw>
+    <PartText x="125" y="128" width="200" height="34" name="date">
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+      <Text align="CENTER" ellipsis="TRUE">
+        <Font family="SYNC_TO_DEVICE" size="22" color="[CONFIGURATION.themeColor.1]" weight="NORMAL">
+          <Template>%s %s<Parameter expression="[DAY_OF_WEEK_S]"/><Parameter expression="[DAY]"/></Template>
+        </Font>
+      </Text>
+    </PartText>
+    <DigitalClock x="100" y="168" width="250" height="96">
+      <TimeText x="0" y="0" width="250" height="96" format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER">
+        <Font family="SYNC_TO_DEVICE" size="76" color="#FFFFFFFF" weight="BOLD"/>
+      </TimeText>
+    </DigitalClock>
+    <PartText x="160" y="262" width="130" height="30" name="heart">
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+      <Text align="CENTER" ellipsis="TRUE">
+        <Font family="SYNC_TO_DEVICE" size="20" color="[CONFIGURATION.themeColor.2]" weight="NORMAL">
+          <Template>♥ %s<Parameter expression="[HEART_RATE]"/></Template>
+        </Font>
+      </Text>
+    </PartText>
+    <PartText x="56" y="205" width="64" height="32" name="battery">
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+      <Text align="CENTER" ellipsis="TRUE">
+        <Font family="SYNC_TO_DEVICE" size="19" color="[CONFIGURATION.themeColor.0]" weight="NORMAL">
+          <Template>⚡%s<Parameter expression="[BATTERY_PERCENT]"/></Template>
+        </Font>
+      </Text>
+    </PartText>
+    <PartText x="328" y="205" width="70" height="32" name="steps">
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+      <Text align="CENTER" ellipsis="TRUE">
+        <Font family="SYNC_TO_DEVICE" size="19" color="[CONFIGURATION.themeColor.1]" weight="NORMAL">
+          <Template>%s<Parameter expression="[STEP_COUNT]"/></Template>
+        </Font>
+      </Text>
+    </PartText>
+    <ComplicationSlot x="104" y="318" width="110" height="70" slotId="1" supportedTypes="SHORT_TEXT" displayName="@string/slot_duty" isCustomizable="TRUE">
+      <DefaultProviderPolicy defaultSystemProvider="EMPTY" defaultSystemProviderType="SHORT_TEXT" primaryProvider="com.anil.jarvis/com.anil.jarvis.watch.DutySource" primaryProviderType="SHORT_TEXT"/>
+      <BoundingBox x="0" y="0" width="110" height="70"/>
+      <Complication type="SHORT_TEXT">
+        <PartText x="0" y="2" width="110" height="26" name="dutyTitle">
+          <Variant mode="AMBIENT" target="alpha" value="0"/>
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="17" color="[CONFIGURATION.themeColor.1]" weight="NORMAL"><Template>%s<Parameter expression="[COMPLICATION.TITLE]"/></Template></Font>
+          </Text>
+        </PartText>
+        <PartText x="0" y="28" width="110" height="38" name="dutyText">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="28" color="[CONFIGURATION.themeColor.2]" weight="BOLD"><Template>%s<Parameter expression="[COMPLICATION.TEXT]"/></Template></Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+    <ComplicationSlot x="236" y="318" width="110" height="70" slotId="2" supportedTypes="SHORT_TEXT" displayName="@string/slot_weather" isCustomizable="TRUE">
+      <DefaultProviderPolicy defaultSystemProvider="EMPTY" defaultSystemProviderType="SHORT_TEXT" primaryProvider="com.anil.jarvis/com.anil.jarvis.watch.WeatherSource" primaryProviderType="SHORT_TEXT"/>
+      <BoundingBox x="0" y="0" width="110" height="70"/>
+      <Complication type="SHORT_TEXT">
+        <PartText x="0" y="2" width="110" height="26" name="weatherTitle">
+          <Variant mode="AMBIENT" target="alpha" value="0"/>
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="17" color="[CONFIGURATION.themeColor.1]" weight="NORMAL"><Template>%s<Parameter expression="[COMPLICATION.TITLE]"/></Template></Font>
+          </Text>
+        </PartText>
+        <PartText x="0" y="28" width="110" height="38" name="weatherText">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="28" color="[CONFIGURATION.themeColor.2]" weight="BOLD"><Template>%s<Parameter expression="[COMPLICATION.TEXT]"/></Template></Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+  </Scene>
+</WatchFace>

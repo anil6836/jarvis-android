@@ -42,6 +42,11 @@ final class Tools {
         boolean confirm(String title, String message, String yes, int autoSeconds);
         void askPermissions(String[] permissions);
         void notice(String text);
+        /**
+         * He is talking on his own watch (WatchTalkActivity), it is on his wrist, and he allowed it in Settings → ⌚ వాచ్:
+         * a call or a reply to a message doesn't need the phone unlocked (still only after his yes). Nothing else.
+         */
+        default boolean watchTrusted() { return false; }
     }
 
     private final Host host;
@@ -1179,6 +1184,9 @@ final class Tools {
     /** If the phone is locked, ask Anil to unlock first. Returns true when it is safe to continue. */
     private boolean unlocked() throws InterruptedException { return unlocked(45); }
 
+    /** A call or a reply to a message, asked on his own watch (on his wrist) with the phone locked: no unlock (still his yes). */
+    private boolean unlockedOrWatch() throws InterruptedException { return host.watchTrusted() || unlocked(); }
+
     private boolean unlocked(int seconds) throws InterruptedException {
         KeyguardManager km = (KeyguardManager) act().getSystemService(Activity.KEYGUARD_SERVICE);
         if (km == null || !km.isKeyguardLocked()) return true;
@@ -1308,7 +1316,7 @@ final class Tools {
                             + "). Ask Anil if he means them; only if he says yes, call call_contact again with who = '" + t.contact.name + "'.")
                     .put("closest", new JSONObject().put("name", t.contact.name).put("number", t.contact.number)).toString();
         }
-        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        if (!unlockedOrWatch()) return err("locked", "The phone is locked and Anil did not unlock it.");
         Contact c = t.contact;
         String label = c.name.equals(c.number) ? c.number : c.name + "\n" + c.number;
         if (!host.confirm("కాల్ చేస్తున్నాను", label, "ఇప్పుడే కాల్", 4)) return err("cancelled", "Anil cancelled the call.");
@@ -2283,8 +2291,12 @@ final class Tools {
         NotifyListener.Item item = NotifyListener.get(id);
         if (item == null) return err("not_found", "That notification is gone. Call read_notifications again.");
         if (item.reply == null) return err("no_reply_button", item.app + " does not allow replies from the notification. Offer to open the app instead.");
-        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+        boolean byWatch = host.watchTrusted();
+        if (!byWatch && !unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
         String to = item.from.isEmpty() ? item.app : item.from + " (" + item.app + ")";
+        // (no unlock on the watch path, so the reply waits for his own tap on "పంపు" there: never only the AI's word)
+        if (byWatch && !host.confirm("రిప్లై పంపాలా?", to + "\n" + message, "📤 పంపు", 0))
+            return err("cancelled", "Anil did not press send on his watch. Nothing was sent.");
         NotifyListener.reply(act(), item, message);
         return ok().put("replied_to", to).toString();
     }

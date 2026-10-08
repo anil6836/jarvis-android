@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Jarvis HUD</string>
+    <string name="theme">రంగు</string>
+    <string name="theme_mix">నీలం + బంగారం</string>
+    <string name="theme_blue">ఐస్ బ్లూ</string>
+    <string name="theme_gold">బంగారు అంబర్</string>
+    <string name="slot_duty">డ్యూటీ</string>
+    <string name="slot_weather">వాతావరణం</string>
+</resources>

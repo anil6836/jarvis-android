@@ -291,7 +291,12 @@ public class AlarmActivity extends Activity {
     }
 
     static void greet(android.content.Context app) {
-        new Thread(() -> {
+        new Thread(() -> Announcer.say(app, greeting(app)), "alarm-greet").start();
+    }
+
+    /** Good morning, the weather, today's duty and a big festival (network: call off the main thread). */
+    static String greeting(android.content.Context app) {
+        {
             Prefs p = new Prefs(app);
             StringBuilder s = new StringBuilder(LocalTime.now().getHour() < 12 ? "శుభోదయం " : "నమస్తే ").append(p.name()).append(". ");
             try {
@@ -321,8 +326,8 @@ public class AlarmActivity extends Activity {
             try {
                 for (Holidays.Day h : Holidays.on(app, LocalDate.now())) if (h.big()) { s.append("ఈరోజు ").append(h.name).append(". "); break; }
             } catch (Exception ignored) {}
-            Announcer.say(app, s.toString().trim());
-        }, "alarm-greet").start();
+            return s.toString().trim();
+        }
     }
 
     @Override protected void onDestroy() {

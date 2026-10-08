@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+}
+
+def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+// W1 / W6: the Jarvis watch face (Watch Face Format: only resources, no code), for the Galaxy Watch.
+// The face's XML is written by face/tools/make_face.py (checked against Google's WFF schema).
+android {
+    namespace 'com.anil.jarvis.face'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.anil.jarvis.face'
+        minSdk 33
+        targetSdk 34
+        versionCode runNumber
+        versionName "1.0.${runNumber}"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../app/jarvis.keystore')
+            storePassword System.getenv('JARVIS_KEY_PASS') ?: ''
+            keyAlias 'jarvis'
+            keyPassword System.getenv('JARVIS_KEY_PASS') ?: ''
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

@@ -26,12 +26,14 @@ final class Link {
     // watch -> phone
     static final String P_HELLO = "/jarvis/hello", P_MIC_START = "/jarvis/mic/start", P_MIC_DATA = "/jarvis/mic/data",
             P_MIC_END = "/jarvis/mic/end", P_TEXT = "/jarvis/text", P_STOP = "/jarvis/stop", P_PLAYED = "/jarvis/played",
-            P_CONFIRM_ANSWER = "/jarvis/confirm/answer", P_DONE = "/jarvis/done";
+            P_CONFIRM_ANSWER = "/jarvis/confirm/answer", P_DONE = "/jarvis/done", P_BEAT = "/jarvis/beat",
+            P_ALERT_ACTION = "/jarvis/alert/action", P_ALARM_ANSWER = "/jarvis/alarm/answer";
     // phone -> watch
     static final String P_SETTINGS = "/jarvis/settings", P_STATE = "/jarvis/state", P_MIC_STOP = "/jarvis/mic/stop",
             P_AUDIO_START = "/jarvis/audio/start", P_AUDIO_DATA = "/jarvis/audio/data", P_AUDIO_END = "/jarvis/audio/end",
             P_LISTEN = "/jarvis/listen", P_CONFIRM = "/jarvis/confirm", P_CONFIRM_DONE = "/jarvis/confirm/done",
-            P_PING = "/jarvis/ping";
+            P_PING = "/jarvis/ping", P_ALERT = "/jarvis/alert", P_ALERT_GONE = "/jarvis/alert/gone", P_ALARM = "/jarvis/alarm",
+            P_INFO = "/jarvis/info", P_ALARM_STOP = "/jarvis/alarm/stop";
 
     private static volatile String phone;
     private static volatile long phoneAt;
@@ -71,6 +73,17 @@ final class Link {
         try { return phoneId(c.getApplicationContext()) != null; } catch (Exception e) { return false; }
     }
 
+    /** The phone is near (over Bluetooth, not through the internet) right now (background thread). */
+    static boolean phoneNear(Context c) {
+        try {
+            List<Node> nodes = Tasks.await(Wearable.getNodeClient(c.getApplicationContext()).getConnectedNodes(), 3, TimeUnit.SECONDS);
+            for (Node x : nodes) if (x.isNearby()) return true;
+            return false;
+        } catch (Exception e) {
+            return true; // (couldn't tell: never a false "phone forgotten")
+        }
+    }
+
     private static String phoneId(Context app) throws Exception {
         String n = phone;
         if (n != null && SystemClock.elapsedRealtime() - phoneAt < 10 * 60_000L) return n;
@@ -105,6 +118,25 @@ final class Link {
     static boolean openListen(Context c) { return cfg(c).optBoolean("openListen", true); }
     static String lang(Context c) { return cfg(c).optString("lang", "te-IN"); }
     static String name(Context c) { return cfg(c).optString("name", "Anil"); }
+    /** W15: Jarvis's alerts shown here (with their own vibration). */
+    static boolean alerts(Context c) { return cfg(c).optBoolean("alerts", true); }
+    /** W20: tell him when he walks away from the phone. */
+    static boolean lost(Context c) { return cfg(c).optBoolean("lost", true); }
+    /** W3: "orb", "holo" or "human". */
+    static String look(Context c) { return cfg(c).optString("look", "orb"); }
+    /** W5: the phone's theme: "mix", "blue" or "gold". */
+    static String theme(Context c) { return cfg(c).optString("theme", info(c).optString("theme", "mix")); }
+
+    // ---------------------------------------------------------------- the phone's news (duty, weather, where it is)
+
+    static JSONObject info(Context c) {
+        try { return new JSONObject(sp(c).getString("info", "{}")); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    static void saveInfo(Context c, JSONObject o) {
+        try { o.put("got", System.currentTimeMillis()); } catch (Exception ignored) {}
+        sp(c).edit().putString("info", o.toString()).apply();
+    }
 
     /** Now inside his always-listening hours (from..to, across midnight too). */
     static boolean inHours(Context c) {

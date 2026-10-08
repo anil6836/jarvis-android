@@ -65,10 +65,11 @@ final class HudView extends View {
         boolean booting = b < 1f;
         float sweep = booting ? Math.min(1f, b / 0.55f) : 1f; // the rings draw in
         int s = Talk.state;
-        int main = s == Talk.THINKING ? VIOLET : CYAN;
+        int main = s == Talk.THINKING ? VIOLET : Theme.mark; // (W5: the phone's theme)
+        int ring = Theme.main;
 
         // outer ring and ticks
-        line.setColor(withAlpha(CYAN, 0x55));
+        line.setColor(withAlpha(ring, 0x55));
         line.setStrokeWidth(dp * 1.2f);
         box.set(cx - R * 0.965f, cy - R * 0.965f, cx + R * 0.965f, cy + R * 0.965f);
         c.drawArc(box, -90f, 360f * sweep, false, line);
@@ -78,7 +79,7 @@ final class HudView extends View {
             double a = Math.toRadians(i * 6 + turn - 90);
             float inner = R * (i % 5 == 0 ? 0.88f : 0.915f), outer = R * 0.94f;
             line.setStrokeWidth(dp * (i % 5 == 0 ? 1.6f : 0.9f));
-            line.setColor(withAlpha(CYAN, i % 5 == 0 ? 0x70 : 0x38));
+            line.setColor(withAlpha(ring, i % 5 == 0 ? 0x70 : 0x38));
             c.drawLine(cx + (float) Math.cos(a) * inner, cy + (float) Math.sin(a) * inner,
                     cx + (float) Math.cos(a) * outer, cy + (float) Math.sin(a) * outer, line);
         }
@@ -93,7 +94,7 @@ final class HudView extends View {
         // time on top, battery below
         if (!booting && fade > 0f) {
             Calendar now = Calendar.getInstance();
-            txt.setColor(withAlpha(CYAN, Math.round(0xDD * fade)));
+            txt.setColor(withAlpha(Theme.accent, Math.round(0xDD * fade)));
             txt.setTextSize(dp * 15f);
             c.drawText(String.format(Locale.ROOT, "%02d:%02d", now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE)), cx, cy - R * 0.66f, txt);
             int bat = battery();

@@ -94,8 +94,18 @@ final class SongAlarm {
     }
 
     /** It is time: set the next one, ring with a full-screen alarm notification (it keeps ringing even if the screen can't open). */
-    static void fire(Context c, String id, int count) {
-        if (count == 0) rang(c, id);
+    static void fire(Context c, String id, int count) { fire(c, id, count, false); }
+
+    /** loud: ring on the phone even if the watch could (he didn't answer the watch's vibration in 3 minutes). */
+    static void fire(Context c, String id, int count, boolean loud) {
+        if (count == 0 && !loud) rang(c, id);
+        JSONObject me0 = find(c, id);
+        // W19: only his wrist vibrates (the phone rings after 3 minutes if not answered); a sum alarm stays on the phone
+        if (!loud && WatchAlerts.alarmOnWatch(c) && (me0 == null || !me0.optBoolean("challenge"))) {
+            JSONObject me = me0;
+            WatchAlerts.alarm(c, id, count, me != null && me.optBoolean("nap") ? "😴 కునుకు అయిపోయింది" : "⏰ శుభోదయం!");
+            return;
+        }
         try {
             android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
             if (nm != null) {

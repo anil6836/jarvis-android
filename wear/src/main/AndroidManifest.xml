@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- W20: steps, so "phone forgotten" comes only when he walks on without it -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- the watch's own speech service (Google voice typing), when it has one -->
     <queries>
@@ -30,6 +32,8 @@
         <uses-library android:name="com.google.android.wearable" android:required="false" />
         <!-- needs the phone's Jarvis (it thinks; the watch is its remote) -->
         <meta-data android:name="com.google.android.wearable.standalone" android:value="false" />
+        <!-- Jarvis's phone notifications come through this app (with Jarvis's own vibrations), not copied as well -->
+        <meta-data android:name="com.google.android.wearable.notificationBridgeMode" android:value="NO_BRIDGING" />
 
         <activity
             android:name=".WatchActivity"
@@ -43,6 +47,42 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- W19: Jarvis's alarm, a vibration on the wrist -->
+        <activity
+            android:name=".AlarmScreen"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.anil.jarvis.watch.alarm"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <!-- W1: short texts for watch faces (the Jarvis face, or any face): next duty, weather -->
+        <service
+            android:name=".DutySource"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Jarvis డ్యూటీ"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data android:name="android.support.wearable.complications.SUPPORTED_TYPES" android:value="SHORT_TEXT" />
+            <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="600" />
+        </service>
+        <service
+            android:name=".WeatherSource"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Jarvis వాతావరణం"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data android:name="android.support.wearable.complications.SUPPORTED_TYPES" android:value="SHORT_TEXT" />
+            <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="1800" />
+        </service>
 
         <!-- keeps the watch ready to listen when the wrist is raised (and in his chosen hours) -->
         <service
@@ -58,7 +98,16 @@
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/jarvis" />
             </intent-filter>
+            <!-- the phone's Jarvis coming into / going out of reach ("phone forgotten", W20) -->
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CAPABILITY_CHANGED" />
+                <data android:scheme="wear" android:host="*" android:path="/jarvis_phone" />
+            </intent-filter>
         </service>
+
+        <receiver
+            android:name=".Beat"
+            android:exported="false" />
 
         <receiver
             android:name=".Answer"

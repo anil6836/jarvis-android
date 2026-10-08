@@ -130,6 +130,20 @@ final class Talk {
         main.post(() -> { if (state == LISTENING) set(UNDERSTANDING, "అర్థం చేసుకుంటున్నాను…"); });
     }
 
+    /** He tapped a card's word ("చదువు", "ఎత్తు"): the same as saying it. */
+    static void saidByTap(Context c, String text, String why) {
+        Context app = c.getApplicationContext();
+        appCtx = app;
+        Mic.stop();
+        Hear.stop();
+        Player.stop();
+        heard = text == null ? "" : text;
+        askedAt = SystemClock.elapsedRealtime();
+        set(THINKING, "ఫోన్‌కి పంపాను…");
+        try { Link.send(app, Link.P_TEXT, new JSONObject().put("text", heard).put("why", why == null ? "answer" : why)); } catch (Exception ignored) {}
+        watchPhone(app);
+    }
+
     /** He tapped while it listens: what he said so far is enough. */
     static void finishListening(Context c) {
         if (Hear.active()) { Hear.finish(); return; }
@@ -197,13 +211,25 @@ final class Talk {
             case Link.P_SETTINGS:
                 Link.saveCfg(app, o);
                 phoneOnline = o.optBoolean("online", true);
+                Theme.refresh(app);
                 EarService.refresh(app);
+                changed();
+                break;
+            case Link.P_ALERT: Alerts.show(app, o); break;
+            case Link.P_ALERT_GONE: Alerts.gone(app, o.optInt("id")); break;
+            case Link.P_ALARM: AlarmScreen.ring(app, o); break;
+            case Link.P_ALARM_STOP: AlarmScreen.stopFromPhone(o.optString("id")); break;
+            case Link.P_INFO:
+                Link.saveInfo(app, o);
+                Theme.refresh(app);
+                Complications.update(app);
                 changed();
                 break;
             case Link.P_PING: hello(app); break;
             case Link.P_STATE: state(app, o); break;
             case Link.P_LISTEN:
-                if (Mic.kind() == Mic.TALK || Hear.active()) break; // already listening
+                // already listening (but a ringing call's question starts afresh: the old talk's mic is over)
+                if ((Mic.kind() == Mic.TALK || Hear.active()) && !"call".equals(o.optString("why"))) break;
                 listen(app, o.optString("why", "follow"));
                 Notes.talk(app);
                 break;
@@ -349,6 +375,7 @@ final class Talk {
             o.put("app", ver).put("model", Build.MODEL).put("sdk", Build.VERSION.SDK_INT).put("rec", Hear.available(app))
                     .put("mic", micAllowed(app)).put("listening", !listenBroken && (EarService.running || !Link.raise(app) && !Link.hours(app)))
                     .put("bat", bm == null ? -1 : bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY));
+            if (EarService.worn != null) o.put("worn", EarService.worn);
         } catch (Exception ignored) {}
         Link.send(app, Link.P_HELLO, o);
     }
@@ -396,16 +423,27 @@ final class Talk {
         if (sc != null) sc.changed();
     }
 
-    static void buzz(Context c, long... pattern) {
+    static void buzz(Context c, long... pattern) { buzzAs(c, android.os.VibrationAttributes.USAGE_NOTIFICATION, pattern); }
+
+    /**
+     * usage: what the vibration is for (VibrationAttributes.USAGE_*): an alert from the background needs its kind
+     * (notification, alarm, call), or Android 13+ drops it.
+     */
+    static void buzzAs(Context c, int usage, long... pattern) {
         try {
             Vibrator v = c.getSystemService(Vibrator.class);
             if (v == null || !v.hasVibrator()) return;
-            if (pattern.length == 1) v.vibrate(VibrationEffect.createOneShot(pattern[0], VibrationEffect.DEFAULT_AMPLITUDE));
+            VibrationEffect e;
+            if (pattern.length == 1) e = VibrationEffect.createOneShot(pattern[0], VibrationEffect.DEFAULT_AMPLITUDE);
             else {
                 long[] w = new long[pattern.length + 1];
                 System.arraycopy(pattern, 0, w, 1, pattern.length);
-                v.vibrate(VibrationEffect.createWaveform(w, -1));
+                e = VibrationEffect.createWaveform(w, -1);
             }
+            if (Build.VERSION.SDK_INT >= 33) v.vibrate(e, android.os.VibrationAttributes.createForUsage(usage));
+            else v.vibrate(e, new android.media.AudioAttributes.Builder().setUsage(
+                    usage == android.os.VibrationAttributes.USAGE_ALARM ? android.media.AudioAttributes.USAGE_ALARM
+                            : android.media.AudioAttributes.USAGE_NOTIFICATION).build());
         } catch (Exception ignored) {}
     }
 

@@ -138,6 +138,15 @@ public class AlarmReceiver extends BroadcastReceiver {
             case SongAlarm.ACTION_RING:
                 SongAlarm.fire(c, i.getStringExtra(SongAlarm.EXTRA_ID), i.getIntExtra(SongAlarm.EXTRA_COUNT, 0));
                 break;
+            case WatchAlerts.ACTION_ALARM_LOUD: // the watch's alarm wasn't answered in 3 minutes: the phone rings
+                WatchAlerts.loudNow(c, i.getStringExtra(SongAlarm.EXTRA_ID));
+                SongAlarm.fire(c, i.getStringExtra(SongAlarm.EXTRA_ID), i.getIntExtra(SongAlarm.EXTRA_COUNT, 0), true);
+                break;
+            case WatchAlerts.ACTION_INFO: { // the watch's news every half hour (duty, weather, where the phone is); best effort
+                final android.content.Context app = c.getApplicationContext();
+                new Thread(() -> WatchAlerts.pushInfo(app), "watch-info").start();
+                break;
+            }
             case SongAlarm.ACTION_STOP: {
                 SongAlarm.clearRinging(c);
                 AlarmActivity.stopRinging();

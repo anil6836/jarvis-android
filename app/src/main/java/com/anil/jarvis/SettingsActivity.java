@@ -2518,6 +2518,56 @@ public class SettingsActivity extends Activity {
         note("అరచేతితో వాచ్ మూసినా (స్క్రీన్ ఆఫ్ అయితే), స్క్రీన్ నొక్కినా జవాబు ఆగుతుంది.");
         Switch openL = toggle("⌚ వాచ్‌లో Jarvis తెరవగానే వినడం మొదలుపెట్టు", WatchHub.openListen(this));
         openL.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "open_listen", on));
+        TextView alertsHead = Ui.text(this, "🔔 వాచ్‌లో అలర్ట్స్ (2b)", 16f, Ui.CYAN);
+        alertsHead.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        alertsHead.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
+        box.addView(alertsHead);
+        Switch msgs = toggle("📲 ఫోన్ లాక్‌లో ఉన్నప్పుడు మెసేజ్‌లు, కాల్స్ వాచ్‌లో చెప్పి, అక్కడే జవాబు తీసుకో", WatchHub.msgsOn(this));
+        msgs.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "msgs", on));
+        note("మెసేజ్: \"Ravi నుంచి WhatsApp లో మెసేజ్ వచ్చింది. చదవమంటారా?\" అని వాచ్‌లో చెప్పి వింటుంది; \"చదువు\" అంటే చదువుతుంది, రిప్లై చెబితే చదివి వినిపించి "
+                + "\"పంపమంటారా?\" అని అడుగుతుంది, మీరు \"పంపు\" అన్నాకే పంపుతుంది. కాల్: ఎవరి నుంచో చెప్పి \"ఎత్తు\" / \"కట్\" వింటుంది (కార్డ్ బటన్లు కూడా). "
+                + "ఫోన్ మీ చేతిలో ఉన్నప్పుడు (అన్‌లాక్) ఎప్పటిలాగే ఫోన్‌లోనే. బైక్ నడుపుతున్నప్పుడు ఫోన్ / హెల్మెట్‌లోనే; వాచ్ వైబ్రేట్ మాత్రమే అవుతుంది.");
+        Switch lockedOk = toggle("🔓 వాచ్ నుంచి అడిగితే ఫోన్ లాక్‌లో ఉన్నా కాల్ చేయడం, మెసేజ్‌కి రిప్లై (మీరు \"అవును\" / \"పంపు\" అన్నాకే)", WatchHub.lockedOk(this));
+        lockedOk.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "locked_ok", on));
+        note("ఈ రెండు మాత్రమే, వాచ్ మీ చేతికి ఉన్నప్పుడే (వాచ్ చెబుతుంది). మిగతావన్నీ (యాప్‌లు, ఫోటోలు, మెయిల్…) ఫోన్ అన్‌లాక్ చేశాకే. "
+                + "ఆఫ్ చేస్తే కాల్, రిప్లై కూడా అన్‌లాక్ చేశాకే. \"నా గొంతుకి మాత్రమే\" కూడా ఆన్ చేస్తే ఇంకా సురక్షితం.");
+        Switch alerts = toggle("🔔 Jarvis అలర్ట్స్ (కుక్కర్, తలుపు, మందులు, రిమైండర్లు, కాపలా…) వాచ్‌లో, ఒక్కోదానికి వేరే వైబ్రేషన్", WatchHub.alertsOn(this));
+        alerts.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "alerts", on));
+        note("వైబ్రేషన్ భాష: కాల్ = 3 పొడవు · మెసేజ్ = 2 చిన్న · కుక్కర్ = 3 వేగంగా · తలుపు = టక్-టక్ … టక్-టక్ · మందులు = 2 మెల్లగా · "
+                + "రిమైండర్ = ఒక మధ్యస్థం, ఒక చిన్న · ప్రమాదం / కాపలా = 6 వేగంగా · ఫోన్ మర్చిపోతే = 3 బలంగా. వాచ్‌లో Jarvis స్క్రీన్ కిందకి తిప్పితే "
+                + "\"వైబ్రేషన్ భాష\" లో ఒక్కోటి నొక్కి చూడొచ్చు. వాచ్‌లో Jarvis నోటిఫికేషన్లు రెండుసార్లు వస్తుంటే: ఫోన్‌లో Galaxy Wearable → వాచ్ సెట్టింగ్స్ → "
+                + "నోటిఫికేషన్లు లో Jarvis ఆఫ్ చేయండి (Jarvis వాచ్ యాప్ వాటిని చూపిస్తుంది).");
+        Switch alarm = toggle("⏰ Jarvis అలారం వాచ్‌లో వైబ్రేషన్‌తో మాత్రమే (మీకు మాత్రమే; 3 నిమిషాల్లో ఆపకపోతే ఫోన్ మోగుతుంది)", WatchHub.alarmOn(this));
+        alarm.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "alarm", on));
+        note("వాచ్ మీ చేతికి ఉండి, ఫోన్‌తో కనెక్ట్ అయి ఉంటేనే. డ్యూటీ తర్వాత పగలు పడుకున్నా అలాగే. \"ఆపు\" నొక్కాక శుభోదయం, వాతావరణం, డ్యూటీ వాచ్‌లోనే చెబుతుంది.");
+        Switch lost = toggle("📱 ఫోన్ లేకుండా దూరం వెళ్తే వాచ్ వెంటనే చెప్పాలి (ఫోన్ చివరిగా ఎక్కడ ఉందో కూడా)", WatchHub.lostOn(this));
+        lost.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "lost", on));
+        TextView looksHead = Ui.text(this, "🎨 వాచ్‌లో రూపం (2c)", 16f, Ui.CYAN);
+        looksHead.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        looksHead.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
+        box.addView(looksHead);
+        TextView look = Ui.text(this, "", 15.5f, Ui.CYAN);
+        look.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        look.setText("🙂 వాచ్‌లో Jarvis: " + WatchHub.lookText(WatchHub.look(this)) + "  (మార్చడానికి నొక్కండి)");
+        look.setOnClickListener(v -> {
+            final String[] looks = {"orb", "holo", "human"};
+            String[] names = new String[looks.length];
+            int checked = 0;
+            for (int i = 0; i < looks.length; i++) { names[i] = WatchHub.lookText(looks[i]); if (looks[i].equals(WatchHub.look(this))) checked = i; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("వాచ్‌లో Jarvis ఎలా కనిపించాలి?")
+                    .setSingleChoiceItems(names, checked, (d, w) -> {
+                        WatchHub.set(this, "look", looks[w]);
+                        look.setText("🙂 వాచ్‌లో Jarvis: " + WatchHub.lookText(looks[w]) + "  (మార్చడానికి నొక్కండి)");
+                        d.dismiss();
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        box.addView(look);
+        note("వాచ్ రంగులు ఫోన్ థీమ్‌నే అనుసరిస్తాయి (పైన 'థీమ్ (రంగులు)'). Jarvis వాచ్ ఫేస్ (Jarvis-face.apk): సమయం, బ్యాటరీ, అడుగులు, గుండె వేగం వలయాలు, "
+                + "తదుపరి డ్యూటీ, వాతావరణం; ఎప్పుడూ ఆన్ (AOD) లో మసకగా. దాన్ని కూడా Jarvis-watch.apk లాగే Bugjaeger తో ఇన్‌స్టాల్ చేసి, వాచ్ ఫేస్ మీద నొక్కి పట్టుకుని "
+                + "Jarvis ఎంచుకోండి; రంగు ఫేస్ Customize లో. డ్యూటీ, వాతావరణం ఫోన్ నుంచి అరగంటకి ఒకసారి వస్తాయి.");
+        link("⬇ Jarvis-face.apk (వాచ్ ఫేస్, తాజా వెర్షన్)", "https://github.com/anil6836/jarvis-android/releases/latest/download/Jarvis-face.apk");
         note("బటన్‌తో పిలవడానికి: వాచ్ Settings → Advanced features → Customize keys → Home key \"Double press\" → Jarvis. "
                 + "వాచ్ ఫేస్ మీద నొక్కి పట్టుకుని → Customize → షార్ట్‌కట్ ఉన్న చోట Jarvis ఎంచుకోండి.");
         note("వాచ్‌లో Jarvis పెట్టడం (ఒక్కసారి, Bugjaeger యాప్‌తో): 1) కింది లింక్‌తో ఫోన్‌లో Jarvis-watch.apk డౌన్‌లోడ్ చేయండి. "

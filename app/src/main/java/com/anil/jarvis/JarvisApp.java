@@ -9,6 +9,7 @@ public class JarvisApp extends Application {
         Backup.applyPending(this);
         MicQuiet.restore(this); // closed while listening: the media sound muted for the mic's beeps comes back
         watchInternet();
+        try { WatchAlerts.schedule(this); } catch (Exception ignored) {} // the watch's half-hourly news (after a phone restart too)
     }
 
     /**

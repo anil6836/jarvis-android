@@ -49,4 +49,6 @@ android {
 dependencies {
     // Talking with the phone's Jarvis over the watch's Bluetooth link (Wear Data Layer messages)
     implementation 'com.google.android.gms:play-services-wearable:18.2.0'
+    // Short texts for watch faces (complications): next duty, weather (W1)
+    implementation 'androidx.wear.watchface:watchface-complications-data-source:1.2.1'
 }

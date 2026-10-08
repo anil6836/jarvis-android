@@ -10,6 +10,7 @@ import android.content.Intent;
  */
 public class Boot extends BroadcastReceiver {
     @Override public void onReceive(Context c, Intent i) {
+        Beat.schedule(c); // ("still here" to the phone: alarms are cleared by a restart)
         if (!Link.raise(c) && !Link.hours(c)) return;
         Talk.listenBroken = true;
         Notes.broken(c, null);
