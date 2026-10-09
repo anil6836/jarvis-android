@@ -23,6 +23,8 @@ final class WalkCoach {
     private static final long STEP_MS = 550;
 
     interface Out {
+        /** It became a walk (2 minutes, 150 steps): W77, the bike's spot if he just got off it. */
+        default void started(int steps, long ms) {}
         void km(int km, int steps, long ms);
         void ended(int steps, long ms, long endT);
     }
@@ -32,6 +34,7 @@ final class WalkCoach {
     private float walkFrom = -1, walkTo = -1;
     private long walkStart = -1, walkLast = -1;
     private int kmTold;
+    private boolean startTold;
 
     boolean active() { return walkStart >= 0; }
 
@@ -67,11 +70,13 @@ final class WalkCoach {
                 walkStart = t;
             }
             kmTold = 0;
+            startTold = false;
         }
         walkTo = count;
         walkLast = t;
         lastCount = count;
         lastT = t;
+        if (!startTold && counts()) { startTold = true; out.started(steps(), walkLast - walkStart); }
         int km = (int) (steps() * stride / 1000);
         if (km > kmTold) {
             kmTold = km;
@@ -96,6 +101,7 @@ final class WalkCoach {
         walkStart = walkLast = -1;
         walkFrom = walkTo = -1;
         kmTold = 0;
+        startTold = false;
     }
 
     /** Forget the walk going on and the last reading (the coach was turned off): it starts afresh from the next reading. */
@@ -103,6 +109,7 @@ final class WalkCoach {
         walkStart = walkLast = -1;
         walkFrom = walkTo = -1;
         kmTold = 0;
+        startTold = false;
         lastCount = -1;
         lastT = -1;
     }
@@ -112,7 +119,7 @@ final class WalkCoach {
     JSONObject json() {
         JSONObject o = new JSONObject();
         try {
-            o.put("lc", lastCount).put("lt", lastT).put("wf", walkFrom).put("wt", walkTo).put("ws", walkStart).put("wl", walkLast).put("km", kmTold);
+            o.put("lc", lastCount).put("lt", lastT).put("wf", walkFrom).put("wt", walkTo).put("ws", walkStart).put("wl", walkLast).put("km", kmTold).put("st", startTold);
         } catch (Exception ignored) {}
         return o;
     }
@@ -126,6 +133,7 @@ final class WalkCoach {
         walkStart = o.optLong("ws", -1);
         walkLast = o.optLong("wl", -1);
         kmTold = o.optInt("km");
+        startTold = o.optBoolean("st", walkStart >= 0);
     }
 
     // ---------------------------------------------------------------- words

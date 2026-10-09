@@ -114,6 +114,9 @@ final class Body {
 
     private static WalkCoach.Out out(Context app) {
         return new WalkCoach.Out() {
+            @Override public void started(int steps, long ms) {
+                try { Link.send(app, Link.P_HEALTH, new JSONObject().put("type", "walk_start").put("t", System.currentTimeMillis())); } catch (Exception ignored) {}
+            }
             @Override public void km(int km, int steps, long ms) { walk(app, false, km, steps, ms); }
             @Override public void ended(int steps, long ms, long endT) { walk(app, true, 0, steps, ms); }
         };

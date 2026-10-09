@@ -85,6 +85,13 @@
             android:taskAffinity=""
             android:launchMode="singleTop" />
 
+        <!-- phase 5: the arrow to the bike / home (W52) and the walking route (W51) -->
+        <activity
+            android:name=".Compass"
+            android:exported="false"
+            android:taskAffinity=""
+            android:launchMode="singleTop" />
+
         <!-- W21: the Jarvis tile -->
         <service
             android:name=".JarvisTile"

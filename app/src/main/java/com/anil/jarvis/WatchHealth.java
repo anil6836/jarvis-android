@@ -31,6 +31,7 @@ final class WatchHealth {
                 switch (o.optString("type")) {
                     case "hr": HeartLog.got(app, o.optInt("bpm"), o.optBoolean("still"), o.optBoolean("long"), o.optLong("t", System.currentTimeMillis())); break;
                     case "walk": walk(app, o); break;
+                    case "walk_start": Travel.walkStarted(app); break; // W77: walking after a ride: the bike's spot
                     case "still": HeartLog.still(app, o.optBoolean("on")); break;
                     default:
                 }

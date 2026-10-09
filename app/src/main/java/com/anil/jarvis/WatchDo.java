@@ -40,6 +40,8 @@ final class WatchDo {
     static JSONObject panel(Context c, String kind) throws Exception {
         switch (kind) {
             case "status": return Status.json(c);
+            case "nav": return Travel.navPanel(c);   // W52 / W51: his places for the compass
+            case "here": return Travel.herePanel(c); // the compass: where he is now (the phone's GPS)
             case "duty": return duty(c);
             case "tasks": return tasks(c);
             case "home": return home(c);
@@ -141,6 +143,16 @@ final class WatchDo {
                 WatchHealth.daySteps(app, o);
                 String t = Wellness.walkToday(app);
                 main.post(() -> WatchHub.say(app, t));
+                return;
+            }
+            case "nav_phone": { // W51 / W62: the walking route on the phone (the watch has no Maps, or he asked)
+                double lat = o.optDouble("lat"), lon = o.optDouble("lon");
+                android.content.Intent i = Life.walkTo(lat, lon).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (!WatchHub.phoneIdle(app) || android.provider.Settings.canDrawOverlays(app)) {
+                    try { app.startActivity(i); toast(app, "📱 ఫోన్‌లో దారి తెరిచాను"); return; } catch (Exception ignored) {}
+                }
+                ShowOnPhone.note(app, "🗺️ " + o.optString("name", "దారి"), "నొక్కితే Google Maps లో నడక దారి తెరుస్తుంది", i);
+                toast(app, "📱 ఫోన్ లాక్‌లో ఉంది: నోటిఫికేషన్ నొక్కితే దారి తెరుస్తుంది");
                 return;
             }
             case "breathed": // W30: the breathing done on the watch (for his week)

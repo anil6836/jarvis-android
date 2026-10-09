@@ -41,6 +41,8 @@ public class DriveService extends Service implements LocationListener, android.h
     static volatile Location last;
     static volatile float heading = -1;
     static volatile double tripMeters;
+    /** Where the vehicle came to a stop after moving (W77: the bike's spot when the watch sees him start walking); null while moving. */
+    static volatile Location stopPoint;
     static volatile int limitKmh;
     static volatile String roadName = "";
 
@@ -170,6 +172,10 @@ public class DriveService extends Service implements LocationListener, android.h
         if (kmh > 10) {
             if (movingSince == 0 || now - lastMoving > 15 * 60000L) { movingSince = now; breakAt = 0; }
             lastMoving = now;
+            stopPoint = null;
+            try { Travel.rideTick(this, movingSince, now); } catch (Exception ignored) {} // W76: a break on a long ride (his watch buzzes)
+        } else if (kmh < 3 && lastMoving > 0 && stopPoint == null && now - lastMoving < 5 * 60000L && l.getAccuracy() < 50) {
+            stopPoint = l; // (W77)
         }
         int breakHours = s.getInt("drive_break_hours", 2);
         if (breakHours > 0 && movingSince > 0 && now - movingSince > breakHours * 3600000L && now - breakAt > 30 * 60000L && kmh > 10) {

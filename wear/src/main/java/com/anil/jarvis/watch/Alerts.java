@@ -33,6 +33,10 @@ final class Alerts {
             {"phone", "📱 ఫోన్ మర్చిపోయారు", new long[]{400, 150, 400, 150, 400}},
             {"weather", "🌧️ వాతావరణం", new long[]{60, 60, 120, 60, 200}},
             {"info", "ℹ️ మిగతావి", new long[]{50}},
+            {"rest", "🛑 బైక్: ఆగండి / మెలకువ", new long[]{300, 200, 300, 200, 300}},
+            {"left", "⬅️ ఎడమకి తిరగండి (నడక)", new long[]{70, 110, 70}},
+            {"right", "➡️ కుడికి తిరగండి (నడక)", new long[]{450}},
+            {"uturn", "↩️ వెనక్కి తిరగండి", new long[]{70, 90, 70, 90, 70}},
     };
 
     static long[] pattern(String kind) {
@@ -40,8 +44,14 @@ final class Alerts {
         return kind.equals("care") ? new long[]{30} : new long[]{50};
     }
 
+    /** W78: two short = left, one long = right (while he walks with Maps on the phone). */
+    static void turn(Context c, String dir) {
+        if (!"left".equals(dir) && !"right".equals(dir) && !"uturn".equals(dir)) return;
+        Talk.buzzAs(c, android.os.VibrationAttributes.USAGE_NOTIFICATION, pattern(dir));
+    }
+
     static void buzz(Context c, String kind) {
-        int usage = kind.equals("sos") || kind.equals("phone") ? android.os.VibrationAttributes.USAGE_ALARM
+        int usage = kind.equals("sos") || kind.equals("phone") || kind.equals("rest") ? android.os.VibrationAttributes.USAGE_ALARM
                 : kind.equals("call") ? android.os.VibrationAttributes.USAGE_COMMUNICATION_REQUEST : android.os.VibrationAttributes.USAGE_NOTIFICATION;
         Talk.buzzAs(c, usage, pattern(kind));
     }

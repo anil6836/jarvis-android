@@ -114,7 +114,8 @@ public class WatchActivity extends Activity implements Talk.Screen {
         // phase 3: the day's buttons (two a row)
         String[][] menu = {{"☀️ ఈరోజు", "morning"}, {"📊 స్టేటస్", "status"}, {"🏍️ డ్యూటీ", "duty"}, {"✅ పనులు", "tasks"},
                 {"💡 ఇల్లు", "home"}, {"⏱️ టైమర్", "timer"}, {"🍲 కుక్కర్", "cooker"}, {"📝 నోట్", "note"}, {"🌐 అనువాదం", "translate"},
-                {"🚶 నడక", "walk"}, {"🩺 స్కాన్", "scan"}, {"🌬️ శ్వాస", "breathe"}}; // (phase 4: health)
+                {"🚶 నడక", "walk"}, {"🩺 స్కాన్", "scan"}, {"🌬️ శ్వాస", "breathe"}, // (phase 4: health)
+                {"🧭 దారి", "compass"}}; // (phase 5)
         LinearLayout mrow = null;
         for (int i = 0; i < menu.length; i++) {
             if (i % 2 == 0) {
@@ -193,6 +194,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
                 break;
             case "scan": Scan.open(this); break;
             case "breathe": Breathe.open(this); break;
+            case "compass": Compass.open(this, ""); break;
             default: Panel.open(this, what);
         }
     }

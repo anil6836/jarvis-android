@@ -406,6 +406,13 @@ final class Tools {
                 + "connect: ask for Health Connect access (Android's page opens).",
                 schema(new String[][]{{"action", "string", "scan, breathe, walk_today, energy, stress, sleep, week, body, fitness, food, sugar, height or connect"},
                         {"value", "number", "For height: centimetres"}}, "action")));
+        DEFS.add(new Def("travel", "Phase 5 on the road (works without internet too): where = where he is (nearest of his saved places, the way and distance, GPS); "
+                + "to = how far and which way the parked bike, home or a saved place is (also opens the compass on his watch); speed = his speed now; "
+                + "trip = km of this ride / drive so far; service_done (days_ago) / service_when / service_set (months, km) = the bike's service reminder; "
+                + "watch_compass = open the arrow to a place on his watch. Ride totals: bike_rides; charging: bike_charge.",
+                schema(new String[][]{{"action", "string", "where, to, speed, trip, service_done, service_when, service_set or watch_compass"},
+                        {"place", "string", "For to / watch_compass: బండి (the parked bike), ఇల్లు or a saved place's name"},
+                        {"days_ago", "integer", "For service_done: how many days ago (0 = today)"}, {"months", "integer", "For service_set"}, {"km", "integer", "For service_set"}}, "action")));
         DEFS.add(new Def("ride_app",
                 "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself. "
                         + "app = compare (or empty): Jarvis reads the fares for the trip in each of his apps (Rapido, Uber, Ola) and returns them together, "
@@ -907,6 +914,7 @@ final class Tools {
             case "water_reminder": return "నీళ్ల రిమైండర్…";
             case "steps_today": return "అడుగులు లెక్కపెడుతున్నాను…";
             case "health_watch": return "ఆరోగ్యం చూస్తున్నాను…";
+            case "travel": return "దారి చూస్తున్నాను…";
             case "food_app": return "వెతుకుతున్నాను…";
             case "night_mode": return "నైట్ మోడ్…";
             case "find_phone": return "ఇక్కడే ఉన్నాను!";
@@ -1077,6 +1085,7 @@ final class Tools {
                 case "water_reminder": return water(a.optBoolean("on", true), a.optInt("every_hours", 2), a.optInt("from_hour", 8), a.optInt("to_hour", 22));
                 case "steps_today": return steps();
                 case "health_watch": return healthWatch(a);
+                case "travel": return Travel.tool(act(), a);
                 case "ride_app": {
                     String ap = a.optString("app").trim().toLowerCase(Locale.ROOT);
                     int named = (ap.contains("uber") ? 1 : 0) + (ap.contains("ola") ? 1 : 0) + (ap.contains("rapido") ? 1 : 0);
@@ -5956,6 +5965,12 @@ final class Tools {
         // ---- phase 4: his health from the watch (no AI)
         String hw = Wellness.asks(bare);
         if (hw != null) return offlineHealth(hw);
+        // ---- phase 5 on the road: where am I, which way / how far, speed, rides, the bike's charging and service
+        String[] tr = Travel.asks(bare);
+        if (tr != null && !("to".equals(tr[0]) && "బండి".equals(tr[1]) && !WatchHub.known(act()))) { // (no watch: the old way opens Maps)
+            String r = Travel.answer(act(), tr);
+            if (r != null) return r;
+        }
         if (bare.matches("(స్టాప్‌వాచ్|స్టాప్ వాచ్|స్టాప్వాచ్|stopwatch|stop watch)(\\s.*)?") && bare.split("\\s+").length <= 6) return Stopwatch.command(act(), bare);
 
         // ---- money given / taken, expenses

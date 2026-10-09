@@ -151,12 +151,13 @@ final class RideCare {
         scheduleAwake(app, 15);
         if (CallControl.busyWithCall()) return; // on a call he is clearly awake
         String name = new Prefs(app).name();
-        if (!WakeService.hearing) { // "Jarvis" is not being listened for: he couldn't answer, so no test; just a word
+        boolean wrist = WatchHub.known(app) && WatchHub.watchHere(app) && !Boolean.FALSE.equals(WatchHub.worn(app)); // (he can tap "ఉన్నాను" on the watch)
+        if (!WakeService.hearing && !wrist) { // "Jarvis" is not being listened for: he couldn't answer, so no test; just a word
             Announcer.say(app, name + ", డ్యూటీ అలసట ఉంటుంది. నిద్ర వస్తుంటే బండి పక్కకి ఆపి కాసేపు ఆగండి.");
             return;
         }
         sp(app).edit().putLong("asked_at", now).apply();
-        Announcer.say(app, name + ", మెలకువగా ఉన్నారా? 'Jarvis, ఉన్నాను' అనండి.");
+        Announcer.say(app, name + ", మెలకువగా ఉన్నారా? " + (WakeService.hearing ? "'Jarvis, ఉన్నాను' అనండి" : "వాచ్‌లో 'ఉన్నాను' నొక్కండి") + ".");
         awakeNote(app);
         android.os.PowerManager.WakeLock wl = null;
         try {

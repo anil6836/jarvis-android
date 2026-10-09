@@ -53,6 +53,8 @@ final class WatchAlerts {
             case "jarvis_find": return "phone";
             case "jarvis_sound": return "info";
             case "jarvis_care": return "care";
+            case "jarvis_weather": return "weather"; // (phase 5: rain soon, great heat)
+            case "jarvis_awake": return "rest"; // (the awake check on a ride after a duty: tapped on the wrist)
             default: return null; // (news, prices, progress, updates, the listening note: not on the wrist)
         }
     }

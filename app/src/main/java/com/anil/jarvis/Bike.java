@@ -170,8 +170,11 @@ final class Bike {
     static String rideLine(Context c, JSONObject r) {
         Prefs p = new Prefs(c);
         int used = (int) Math.round(r.optDouble("km") * 100.0 / fullRangeKm(p));
+        long cost = Math.round(r.optDouble("km") / fullRangeKm(p) * batteryKwh(p) / CHARGER_EFFICIENCY * unitRate(p));
+        int left = estimatePct(c); // (phase 5, W39: what it cost and how far the battery still goes)
         return (r.optBoolean("approx") ? "సుమారు " : "") + r.optDouble("km") + " కి.మీ, " + r.optInt("minutes") + " నిమిషాలు"
-                + (used > 0 ? " · బ్యాటరీ సుమారు " + used + "% వాడారు" : "");
+                + (used > 0 ? " · బ్యాటరీ సుమారు " + used + "% వాడారు" : "") + (cost > 0 ? " · ఖర్చు సుమారు ₹" + cost : "")
+                + (left >= 0 ? " · ఇంకా సుమారు " + Math.round(fullRangeKm(p) * left / 100.0) + " కి.మీ వెళ్లొచ్చు (~" + left + "%)" : "");
     }
 
     // ---------------------------------------------------------------- range and charging

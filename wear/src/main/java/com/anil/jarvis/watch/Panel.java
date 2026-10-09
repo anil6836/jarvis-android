@@ -64,6 +64,8 @@ public class Panel extends Activity {
     /** The phone's answer (main thread): kept, shown if that screen is open; a short word shown there (or on the Jarvis screen). */
     static void got(Context app, JSONObject o) {
         String k = o.optString("kind");
+        if ("here".equals(k)) { Compass.got(app, o); return; } // (the compass's GPS: every few seconds, not kept)
+        if ("nav".equals(k)) Compass.got(app, o);
         String t = "toast".equals(k) ? o.optString("text") : o.optString("toast");
         if (!"toast".equals(k) && !k.isEmpty()) {
             sp(app).edit().putString(k, o.toString()).apply();

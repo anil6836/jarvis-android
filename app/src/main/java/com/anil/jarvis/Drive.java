@@ -74,6 +74,7 @@ final class Drive {
         navSub = sub;
         navBig = s(x.getCharSequence(Notification.EXTRA_BIG_TEXT));
         navAt = System.currentTimeMillis();
+        try { Travel.navTurn(c, t, tx); } catch (Exception ignored) {} // W78: a turn close by while he walks -> his watch buzzes it
         // navigation started: offer the camera / speed alerts (a tap on the notification starts them; Android
         // lets them start by themselves only with "allow location all the time")
         if (fresh && !DriveService.running && settings(c).getBoolean("drive_auto", true)) {
