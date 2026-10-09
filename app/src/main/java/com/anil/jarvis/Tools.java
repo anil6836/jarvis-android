@@ -400,8 +400,12 @@ final class Tools {
                 + "heart rate); breathe: 2-minute breathing with vibration on his watch (or guided here); walk_today: today's steps, metres / km and each walk; "
                 + "energy: today's energy estimate (Samsung keeps its own energy score to itself); stress: today's stress from his heart rate (Jarvis's estimate); "
                 + "sleep: last night's sleep with stages, night oxygen and coughs; week: the week's health graph (a picture, saved and opened); "
-                + "body: this month's weight / body fat with tips; connect: ask for Health Connect access (Android's page opens).",
-                schema(new String[][]{{"action", "string", "scan, breathe, walk_today, energy, stress, sleep, week, body or connect"}}, "action")));
+                + "body: this month's weight / body fat, BMI, BMR, VO2 max with tips; fitness: this week's workouts the watch recorded (Samsung's distance, "
+                + "minutes, calories) and VO2 max; food: today's food logged in Samsung Health against about what his body needs; sugar: sugar readings "
+                + "in Samsung Health (30 days) judged; height: save his height (value in cm; convert feet / inches) for the step length and BMI; "
+                + "connect: ask for Health Connect access (Android's page opens).",
+                schema(new String[][]{{"action", "string", "scan, breathe, walk_today, energy, stress, sleep, week, body, fitness, food, sugar, height or connect"},
+                        {"value", "number", "For height: centimetres"}}, "action")));
         DEFS.add(new Def("ride_app",
                 "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself. "
                         + "app = compare (or empty): Jarvis reads the fares for the trip in each of his apps (Rapido, Uber, Ola) and returns them together, "
@@ -3782,6 +3786,22 @@ final class Tools {
                         + "body composition on the watch (Samsung Health → Body composition) or tell his weight ('బరువు 72'); connect Health Connect in Settings → ⌚ వాచ్.");
                 return ok().put("say", t).put("next", "Say it in short Telugu.").toString();
             }
+            case "fitness": return ok().put("say", Wellness.fitness(c)).put("next", "Say it in short Telugu.").toString();
+            case "food": return ok().put("say", Wellness.food(c)).put("next", "Say it in short Telugu; general guidance, not a diet plan.").toString();
+            case "sugar": return ok().put("say", Wellness.sugar(c)).put("next", "Say it in short Telugu. If very high / very low, ask about the danger "
+                    + "signs first; only if he has any, tell him to call 108 now.").toString();
+            case "height": {
+                double cm = a.optDouble("value", 0);
+                if (cm < 120 || cm > 220) {
+                    double h = Wellness.heightCm(c);
+                    return h > 0 ? ok().put("height_cm", h).put("from", Wellness.heightFrom(c)).put("step_m", Wellness.strideFor(h))
+                            .put("next", "Say his height and that walks use a step of about this many metres.").toString()
+                            : err("no_height", "Height not known: ask him (e.g. '170 సెం.మీ' or '5 అడుగుల 7 అంగుళాలు') and call again with value in cm.");
+                }
+                Wellness.setHeight(c, cm, "said");
+                return ok().put("height_cm", cm).put("step_m", Wellness.strideFor(cm)).put("next", "Say: saved; each walk's distance now uses his step "
+                        + "of about " + Wellness.strideFor(cm) + " m (also on the watch), and BMI is in the body report.").toString();
+            }
             case "connect": {
                 if (android.os.Build.VERSION.SDK_INT < 34 || !HealthData.available(c)) return err("no_health_connect", HealthData.status(c));
                 String[] need = HealthData.toAsk(c);
@@ -3798,7 +3818,7 @@ final class Tools {
                 return ok().put("asked", true).put("next", "Say: Android's Health Connect page should be open now; tap 'Allow all' (అన్నీ అనుమతించు). Samsung Health → "
                         + "Settings → Health Connect must also share its data. If no page came, Settings → ⌚ వాచ్ → Health Connect.").toString();
             }
-            default: return err("unknown_action", "Use scan, breathe, walk_today, energy, stress, sleep, week, body or connect.");
+            default: return err("unknown_action", "Use scan, breathe, walk_today, energy, stress, sleep, week, body, fitness, food, sugar, height or connect.");
         }
     }
 
@@ -5575,6 +5595,8 @@ final class Tools {
                 String line = (String) r[1];
                 return "ఈ వారం ఆరోగ్యం గ్రాఫ్ " + m.where + " లో దాచాను." + (line.isEmpty() ? "" : " " + line.replace(" · ", ", ") + ".");
             }
+            case "fitness": return Wellness.fitness(c);
+            case "food": return Wellness.food(c);
             case "body": {
                 String t = Wellness.body(c);
                 return t.isEmpty() ? "బరువు, కొవ్వు శాతం రీడింగ్స్ ఏవీ లేవు. వాచ్‌లో Samsung Health → Body composition కొలవండి, లేదా \"బరువు 72\" అని చెప్పండి." : t;

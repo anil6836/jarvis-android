@@ -66,11 +66,18 @@ final class HealthWeek {
             stress.put(HeartLog.stressPct(hr, base, from, to));
             cough.put(CoughLog.count(c, d, "cough"));
         }
+        long exSecs = 0, exM = 0;
+        JSONArray ex = hc ? HealthData.exercises(c, Wellness.dayStart(today.minusDays(6)), System.currentTimeMillis() + 1) : new JSONArray();
+        for (int i = 0; i < ex.length(); i++) {
+            JSONObject x = ex.optJSONObject(i);
+            exSecs += (x.optLong("end") - x.optLong("start")) / 1000;
+            exM += Math.max(0, x.optLong("m"));
+        }
         int breaths = 0;
         long weekFrom = Wellness.dayStart(today.minusDays(6));
         for (JSONObject b : Notes.list(c, Wellness.BREATHS)) if (b.optLong("t") >= weekFrom) breaths++;
         return new JSONObject().put("days", days).put("steps", steps).put("sleep", sleep).put("rest", rest).put("stress", stress).put("cough", cough)
-                .put("breaths", breaths);
+                .put("breaths", breaths).put("ex_n", ex.length()).put("ex_min", exSecs / 60).put("ex_m", exM);
     }
 
     /** The week in one line: "👣 రోజుకు సగటు 4,200 అడుగులు · 🛌 6.6 గం · ❤️ 68 · 😮‍💨 ఒత్తిడి తక్కువ · 🤧 దగ్గు 12". */
@@ -85,6 +92,11 @@ final class HealthWeek {
         JSONArray cg = d.optJSONArray("cough");
         for (int i = 0; cg != null && i < cg.length(); i++) coughs += Math.max(0, cg.optInt(i));
         if (coughs > 0) b.append(b.length() > 0 ? " · " : "").append("🤧 దగ్గు ").append(coughs);
+        if (d.optInt("ex_n") > 0) {
+            b.append(b.length() > 0 ? " · " : "").append("🏃 వ్యాయామం ").append(d.optLong("ex_min")).append(" ని");
+            long m = d.optLong("ex_m");
+            if (m > 0) b.append(", ").append(String.format(Locale.ENGLISH, "%.1f", m / 1000.0)).append(" కి.మీ").append(d.optInt("ex_n") > 10 ? " (చివరి 10)" : "");
+        }
         int breaths = d.optInt("breaths");
         if (breaths > 0) b.append(b.length() > 0 ? " · " : "").append("🌬️ శ్వాస వ్యాయామం ").append(breaths).append(" సార్లు");
         return b.toString();

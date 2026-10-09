@@ -53,6 +53,7 @@ final class Body {
     private static void load(Context c) {
         if (loaded) return;
         loaded = true;
+        WalkCoach.stride = Link.stride(c);
         try { coach.load(new JSONObject(sp(c).getString("coach", "{}"))); } catch (Exception ignored) {}
     }
 

@@ -145,7 +145,7 @@ final class WatchHub {
                     .put("openListen", openListen(c)).put("name", p.name()).put("lang", p.listenLang())
                     .put("online", Net.online(c)).put("alerts", alertsOn(c)).put("lost", lostOn(c)).put("look", look(c))
                     .put("theme", Ui.theme(c)).put("morning", morningOn(c)).put("watchTimer", watchTimerOn(c))
-                    .put("walk", walkOn(c)).put("hr", hrOn(c));
+                    .put("walk", walkOn(c)).put("hr", hrOn(c)).put("stride", Wellness.strideFor(Wellness.heightCm(c)));
         } catch (Exception ignored) {}
         return o;
     }

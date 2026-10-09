@@ -233,6 +233,7 @@ final class Talk {
         switch (path) {
             case Link.P_SETTINGS:
                 Link.saveCfg(app, o);
+                WalkCoach.stride = Link.stride(app); // (his step length, from his height)
                 phoneOnline = o.optBoolean("online", true);
                 Theme.refresh(app);
                 EarService.refresh(app);

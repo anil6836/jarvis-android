@@ -14,7 +14,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Phase 4: what Samsung Health (watch and phone) shares through Health Connect, read on the phone (Android 14+): sleep
- * with its stages, oxygen (SpO2), steps, heart rate and resting heart rate, weight, body fat and blood pressure. Only
+ * with its stages, oxygen (SpO2), steps, heart rate and resting heart rate, weight, body fat and blood pressure; and (his
+ * "అన్నీ కలుపు") height, workouts with their distance and calories, VO2 max, sugar, food logged and BMR. Only
  * read, never written; kept nowhere but where Jarvis uses it. Samsung keeps its own stress number, ECG and energy score
  * to itself, so those are not here. Every call blocks (up to ~8 s): background threads only. Null / -1: not allowed,
  * not shared (Samsung Health → Settings → Health Connect), or none.
@@ -25,9 +26,15 @@ final class HealthData {
     static final String[] PERMS = {
             "android.permission.health.READ_STEPS", "android.permission.health.READ_HEART_RATE", "android.permission.health.READ_RESTING_HEART_RATE",
             "android.permission.health.READ_SLEEP", "android.permission.health.READ_OXYGEN_SATURATION", "android.permission.health.READ_WEIGHT",
-            "android.permission.health.READ_BODY_FAT", "android.permission.health.READ_BLOOD_PRESSURE"};
+            "android.permission.health.READ_BODY_FAT", "android.permission.health.READ_BLOOD_PRESSURE",
+            // (his choice, "అన్నీ కలుపు": the rest of what Samsung Health shares)
+            "android.permission.health.READ_HEIGHT", "android.permission.health.READ_DISTANCE", "android.permission.health.READ_EXERCISE",
+            "android.permission.health.READ_TOTAL_CALORIES_BURNED", "android.permission.health.READ_VO2_MAX", "android.permission.health.READ_BLOOD_GLUCOSE",
+            "android.permission.health.READ_NUTRITION", "android.permission.health.READ_BASAL_METABOLIC_RATE"};
     /** Android 15+: reading when Jarvis isn't on the screen (the morning report, the weekly report). */
     static final String BACKGROUND = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND";
+    /** Android 15+: data older than the 30 days before access was given (his height, set long ago). */
+    static final String HISTORY = "android.permission.health.READ_HEALTH_DATA_HISTORY";
 
     /** The last trouble, for Settings / "Jarvis చెక్". */
     static volatile String lastError = "";
@@ -50,6 +57,16 @@ final class HealthData {
         for (String p : PERMS) if (!granted(c, p)) l.add(p);
         if (Build.VERSION.SDK_INT >= 35 && !granted(c, BACKGROUND)) l.add(BACKGROUND);
         return l.toArray(new String[0]);
+    }
+
+    /** Android 15+: older data not allowed yet (asked on its own after the others, so a phone without it loses nothing else). */
+    static boolean historyToAsk(Context c) { return Build.VERSION.SDK_INT >= 35 && available(c) && !granted(c, HISTORY); }
+
+    /** Why a kind can't be read now (in Telugu), or null when it can: not connected yet, or the last read failed. */
+    static String notReady(Context c, int perm) {
+        if (Build.VERSION.SDK_INT < 34 || !available(c)) return status(c);
+        if (!granted(c, PERMS[perm])) return "ఇది ఇంకా Jarvis కి కలపలేదు: Settings → ⌚ వాచ్ → ❤️ ఆరోగ్యం → \"🔗 Health Connect కలపండి\" నొక్కి Allow ఇవ్వండి.";
+        return null;
     }
 
     /** A line for Settings: what is connected. */
@@ -138,6 +155,62 @@ final class HealthData {
         }
         return best;
     }
+
+    // ---------------------------------------------------------------- the rest of Samsung Health ("అన్నీ కలుపు")
+
+    /** His height in cm (the latest), -1 if none. */
+    static double heightCm(Context c) {
+        if (!can(c, 8)) return -1;
+        try { return Api34.height(c); } catch (Throwable e) { fail(e); return -1; }
+    }
+
+    /** Distance in [from, to) in metres (Samsung sends it for workouts: a walk he starts, or one it found itself); -1 if not known. */
+    static double distanceM(Context c, long from, long to) {
+        if (!can(c, 9)) return -1;
+        try { return Api34.distance(c, from, to); } catch (Throwable e) { fail(e); return -1; }
+    }
+
+    /** Calories burned in [from, to) in kcal (Samsung sends its workouts' calories); -1 if not known. */
+    static double kcalBurned(Context c, long from, long to) {
+        if (!can(c, 11)) return -1;
+        try { return Api34.kcal(c, from, to); } catch (Throwable e) { fail(e); return -1; }
+    }
+
+    /** Workouts in [from, to), oldest first: [{start, end, type, title, m, kcal}] (m / kcal -1 when not shared). */
+    static JSONArray exercises(Context c, long from, long to) {
+        if (!can(c, 10)) return new JSONArray();
+        try { return Api34.exercises(c, from, to); } catch (Throwable e) { fail(e); return new JSONArray(); }
+    }
+
+    /** The latest VO2 max in the last N days {v, t}, or null. */
+    static JSONObject vo2max(Context c, int days) {
+        if (!can(c, 12)) return null;
+        try { return Api34.vo2(c, days); } catch (Throwable e) { fail(e); return null; }
+    }
+
+    /** Sugar readings of the last N days, oldest first: [{t, mgdl, when: fasting / after_food / random}]. */
+    static JSONArray glucose(Context c, int days) {
+        if (!can(c, 13)) return new JSONArray();
+        try { return Api34.glucose(c, days); } catch (Throwable e) { fail(e); return new JSONArray(); }
+    }
+
+    /** What he logged eating in [from, to): {kcal, protein, carbs, fat (grams)}; null if nothing. */
+    static JSONObject food(Context c, long from, long to) {
+        if (!can(c, 14)) return null;
+        try { return Api34.food(c, from, to); } catch (Throwable e) { fail(e); return null; }
+    }
+
+    /** His resting calories a day (BMR, from body composition), -1 if none. */
+    static double bmrKcal(Context c) {
+        if (!can(c, 15)) return -1;
+        try { return Api34.bmr(c); } catch (Throwable e) { fail(e); return -1; }
+    }
+
+    /** Energy from Health Connect (always small calories) to kcal. */
+    static double kcal(double calories) { return calories / 1000.0; }
+
+    /** BMR as power (watts) to kcal a day. */
+    static double bmrPerDay(double watts) { return watts * 86_400 / 4184.0; }
 
     private static boolean can(Context c, int perm) { return available(c) && granted(c, PERMS[perm]); }
 
@@ -275,6 +348,100 @@ final class HealthData {
             if (v.size() < 5) return -1;
             java.util.Collections.sort(v);
             return (int) (long) v.get(v.size() / 10); // the low end of the day (10th percentile)
+        }
+
+        private static <T> T aggregate(Context c, android.health.connect.datatypes.AggregationType<T> type, long from, long to) throws Exception {
+            android.health.connect.HealthConnectManager m = manager(c);
+            if (m == null) return null;
+            android.health.connect.AggregateRecordsRequest<T> req = new android.health.connect.AggregateRecordsRequest.Builder<T>(range(from, to))
+                    .addAggregationType(type).build();
+            final Object[] out = {null};
+            final Exception[] err = {null};
+            final CountDownLatch done = new CountDownLatch(1);
+            m.aggregate(req, Runnable::run, new android.os.OutcomeReceiver<android.health.connect.AggregateRecordsResponse<T>, android.health.connect.HealthConnectException>() {
+                @Override public void onResult(android.health.connect.AggregateRecordsResponse<T> r) { out[0] = r.get(type); done.countDown(); }
+                @Override public void onError(android.health.connect.HealthConnectException e) { err[0] = e; done.countDown(); }
+            });
+            if (!done.await(8, TimeUnit.SECONDS)) throw new IllegalStateException("Health Connect జవాబు ఇవ్వలేదు");
+            if (err[0] != null) throw err[0];
+            @SuppressWarnings("unchecked") T v = (T) out[0];
+            return v;
+        }
+
+        static double height(Context c) throws Exception {
+            long now = System.currentTimeMillis();
+            android.health.connect.datatypes.HeightRecord best = null;
+            for (android.health.connect.datatypes.HeightRecord r : read(c, android.health.connect.datatypes.HeightRecord.class, now - 5 * 365 * 86400_000L, now))
+                if (best == null || r.getTime().isAfter(best.getTime())) best = r;
+            return best == null ? -1 : best.getHeight().getInMeters() * 100;
+        }
+
+        static double distance(Context c, long from, long to) throws Exception {
+            android.health.connect.datatypes.units.Length l = aggregate(c, android.health.connect.datatypes.DistanceRecord.DISTANCE_TOTAL, from, to);
+            return l == null ? -1 : l.getInMeters();
+        }
+
+        static double kcal(Context c, long from, long to) throws Exception {
+            android.health.connect.datatypes.units.Energy e = aggregate(c, android.health.connect.datatypes.TotalCaloriesBurnedRecord.ENERGY_TOTAL, from, to);
+            return e == null ? -1 : HealthData.kcal(e.getInCalories());
+        }
+
+        static JSONArray exercises(Context c, long from, long to) throws Exception {
+            List<android.health.connect.datatypes.ExerciseSessionRecord> l = read(c, android.health.connect.datatypes.ExerciseSessionRecord.class, from, to);
+            l.sort((x, y) -> x.getStartTime().compareTo(y.getStartTime()));
+            JSONArray a = new JSONArray();
+            for (int i = 0; i < l.size(); i++) {
+                android.health.connect.datatypes.ExerciseSessionRecord r = l.get(i);
+                long s = r.getStartTime().toEpochMilli(), e = r.getEndTime().toEpochMilli();
+                boolean recent = i >= l.size() - 10; // (each workout's distance / calories: only the last 10, it takes a look each)
+                double m = -1, k = -1;
+                if (recent && granted(c, PERMS[9])) try { m = distance(c, s, e); } catch (Exception ignored) {} // (one failed look: just that number unknown)
+                if (recent && granted(c, PERMS[11])) try { k = kcal(c, s, e); } catch (Exception ignored) {}
+                a.put(new JSONObject().put("start", s).put("end", e).put("type", r.getExerciseType())
+                        .put("title", r.getTitle() == null ? "" : r.getTitle().toString()).put("m", Math.round(m)).put("kcal", Math.round(k)));
+            }
+            return a;
+        }
+
+        static JSONObject vo2(Context c, int days) throws Exception {
+            long now = System.currentTimeMillis();
+            android.health.connect.datatypes.Vo2MaxRecord best = null;
+            for (android.health.connect.datatypes.Vo2MaxRecord r : read(c, android.health.connect.datatypes.Vo2MaxRecord.class, now - days * 86400_000L, now))
+                if (best == null || r.getTime().isAfter(best.getTime())) best = r;
+            return best == null ? null : new JSONObject().put("v", Math.round(best.getVo2MillilitersPerMinuteKilogram() * 10) / 10.0)
+                    .put("t", best.getTime().toEpochMilli());
+        }
+
+        static JSONArray glucose(Context c, int days) throws Exception {
+            long now = System.currentTimeMillis();
+            List<android.health.connect.datatypes.BloodGlucoseRecord> l = read(c, android.health.connect.datatypes.BloodGlucoseRecord.class, now - days * 86400_000L, now);
+            l.sort((x, y) -> x.getTime().compareTo(y.getTime()));
+            JSONArray a = new JSONArray();
+            for (android.health.connect.datatypes.BloodGlucoseRecord r : l) {
+                int rel = r.getRelationToMeal();
+                a.put(new JSONObject().put("t", r.getTime().toEpochMilli()).put("mgdl", Math.round(r.getLevel().getInMillimolesPerLiter() * 18.016))
+                        .put("when", rel == 2 ? "fasting" : rel == 4 ? "after_food" : "random"));
+            }
+            return a;
+        }
+
+        static JSONObject food(Context c, long from, long to) throws Exception {
+            android.health.connect.datatypes.units.Energy e = aggregate(c, android.health.connect.datatypes.NutritionRecord.ENERGY_TOTAL, from, to);
+            if (e == null || e.getInCalories() <= 0) return null;
+            android.health.connect.datatypes.units.Mass p = aggregate(c, android.health.connect.datatypes.NutritionRecord.PROTEIN_TOTAL, from, to),
+                    cb = aggregate(c, android.health.connect.datatypes.NutritionRecord.TOTAL_CARBOHYDRATE_TOTAL, from, to),
+                    f = aggregate(c, android.health.connect.datatypes.NutritionRecord.TOTAL_FAT_TOTAL, from, to);
+            return new JSONObject().put("kcal", Math.round(HealthData.kcal(e.getInCalories())))
+                    .put("protein", p == null ? -1 : Math.round(p.getInGrams())).put("carbs", cb == null ? -1 : Math.round(cb.getInGrams()))
+                    .put("fat", f == null ? -1 : Math.round(f.getInGrams()));
+        }
+
+        static double bmr(Context c) throws Exception {
+            long now = System.currentTimeMillis();
+            android.health.connect.datatypes.BasalMetabolicRateRecord best = null;
+            for (android.health.connect.datatypes.BasalMetabolicRateRecord r : read(c, android.health.connect.datatypes.BasalMetabolicRateRecord.class, now - 365 * 86400_000L, now))
+                if (best == null || r.getTime().isAfter(best.getTime())) best = r;
+            return best == null ? -1 : bmrPerDay(best.getBasalMetabolicRate().getInWatts());
         }
 
         static JSONArray weights(Context c, int days) throws Exception {

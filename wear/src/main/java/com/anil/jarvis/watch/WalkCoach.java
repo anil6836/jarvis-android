@@ -13,6 +13,8 @@ import java.util.Locale;
 final class WalkCoach {
     /** Metres a step (an adult's average; the distance is "about"). */
     static final double STRIDE = 0.72;
+    /** His own step length (from his height, sent by the phone), else the average. */
+    static volatile double stride = STRIDE;
     static final long PAUSE = 75_000L, RESTART = 15_000L, MIN_TIME = 120_000L;
     static final int MIN_STEPS = 150;
     /** A long gap with this pace or more (50 steps a minute) was walking all along (the readings were just late). */
@@ -70,7 +72,7 @@ final class WalkCoach {
         walkLast = t;
         lastCount = count;
         lastT = t;
-        int km = (int) (steps() * STRIDE / 1000);
+        int km = (int) (steps() * stride / 1000);
         if (km > kmTold) {
             kmTold = km;
             if (counts()) out.km(km, steps(), walkLast - walkStart);
@@ -134,7 +136,7 @@ final class WalkCoach {
     }
 
     static String distance(int steps) {
-        double m = steps * STRIDE;
+        double m = steps * stride;
         if (m < 995) return Math.max(10, Math.round(m / 10.0) * 10) + " మీటర్లు";
         String km = String.format(Locale.ENGLISH, "%.1f", m / 1000.0);
         if (km.endsWith(".0")) km = km.substring(0, km.length() - 2);

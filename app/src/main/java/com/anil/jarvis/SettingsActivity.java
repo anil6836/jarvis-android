@@ -2462,9 +2462,25 @@ public class SettingsActivity extends Activity {
         // the microphone for the guard's house sounds was just given: start listening
         if (code == 62 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) Guard.listen(this);
         if (code == 64 && hcStatus != null) hcStatus.setText("🔗 Health Connect: " + HealthData.status(this)); // (phase 4)
+        // older data (his height set long ago): asked on its own, once, after the others
+        if (code == 64 && HealthData.connected(this) && HealthData.historyToAsk(this)
+                && !getSharedPreferences("jarvis_height", MODE_PRIVATE).getBoolean("asked_history", false)) {
+            try { requestPermissions(new String[]{HealthData.HISTORY}, 65); } catch (Exception ignored) {}
+        }
+        if (code == 65) { // (answered: not asked again by itself; the 🔗 button asks the data ones only)
+            getSharedPreferences("jarvis_height", MODE_PRIVATE).edit().putBoolean("asked_history", true).apply();
+            new Thread(() -> { try { Wellness.refreshHeight(getApplicationContext(), true); } catch (Exception ignored) {} }, "jarvis-height").start();
+        }
     }
 
     private TextView hcStatus;
+
+    private String heightText() {
+        double cm = Wellness.heightCm(this);
+        if (cm <= 0) return "📏 మీ ఎత్తు: తెలియదు (నొక్కి రాయండి; అప్పుడు ప్రతి నడక దూరం సరిగ్గా, BMI కూడా)";
+        return "📏 మీ ఎత్తు: " + Math.round(cm) + " సెం.మీ (" + ("samsung".equals(Wellness.heightFrom(this)) ? "Samsung Health నుంచి" : "మీరు రాసింది")
+                + ") · ఒక అడుగు సుమారు " + Wellness.strideFor(cm) + " మీ  (మార్చడానికి నొక్కండి)";
+    }
 
     /** Phase 4: health from the watch and Samsung Health (Health Connect). Each choice acts at once; no Save needed. */
     private void healthSection() {
@@ -2475,17 +2491,45 @@ public class SettingsActivity extends Activity {
         hcStatus = Ui.text(this, "🔗 Health Connect: " + HealthData.status(this), 14, Ui.MUTED);
         hcStatus.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
         box.addView(hcStatus);
-        button("🔗 Health Connect కలపండి (నిద్ర, అడుగులు, గుండె వేగం, ఆక్సిజన్, బరువు, BP చదవడానికి)", v -> {
+        button("🔗 Health Connect కలపండి (నిద్ర, అడుగులు, గుండె వేగం, ఆక్సిజన్, బరువు, BP, ఎత్తు, వ్యాయామం, షుగర్, ఆహారం… చదవడానికి)", v -> {
             if (Build.VERSION.SDK_INT < 34 || !HealthData.available(this)) { Toast.makeText(this, HealthData.status(this), Toast.LENGTH_LONG).show(); return; }
             String[] need = HealthData.toAsk(this);
             if (need.length == 0) { Toast.makeText(this, "Health Connect ఇప్పటికే కలిసింది ✓", Toast.LENGTH_SHORT).show(); return; }
             try { requestPermissions(need, 64); } catch (Exception e) { Toast.makeText(this, "తెరవలేకపోయాను: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
         });
         note("Samsung Health → Settings → Health Connect లో కూడా \"షేర్\" ఆన్ చేయాలి (అప్పుడే వాచ్ నిద్ర, ఆక్సిజన్, బరువు ఇక్కడికి వస్తాయి). Jarvis చదువుతుంది మాత్రమే, "
-                + "ఏమీ రాయదు. Samsung తన స్ట్రెస్ నంబర్, ECG, ఎనర్జీ స్కోర్ వేరే యాప్‌లకు ఇవ్వదు: అందుకే ఒత్తిడి, ఎనర్జీ Jarvis తన అంచనాతో చెబుతుంది.");
+                + "ఏమీ రాయదు. Samsung తన స్ట్రెస్ నంబర్, ECG, ఎనర్జీ స్కోర్ వేరే యాప్‌లకు ఇవ్వదు: అందుకే ఒత్తిడి, ఎనర్జీ Jarvis తన అంచనాతో చెబుతుంది. "
+                + "కొన్నింటికి మీరు చేస్తేనే డేటా వస్తుంది: వ్యాయామం / దూరం / కేలరీలు (వాచ్‌లో Walk మొదలుపెడితే, లేదా Samsung గుర్తించిన పెద్ద నడకలు), "
+                + "VO2 max (బయట పరుగు), షుగర్ / ఆహారం (Samsung Health లో రాస్తే), BMR (Body composition కొలిస్తే): ఇవన్నీ Samsung పంపితేనే.");
+        // his height: the step length for every walk, and BMI
+        TextView height = Ui.text(this, heightText(), 15.5f, Ui.CYAN);
+        height.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        height.setOnClickListener(v -> {
+            android.widget.EditText in = new android.widget.EditText(this);
+            in.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            in.setHint("ఉదా: 170");
+            double now = Wellness.heightCm(this);
+            if (now > 0) in.setText(String.valueOf(Math.round(now)));
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("మీ ఎత్తు (సెంటీమీటర్లలో)").setView(in)
+                    .setPositiveButton("సేవ్", (d, w) -> {
+                        double cm;
+                        try { cm = Double.parseDouble(in.getText().toString().trim()); } catch (Exception e) { cm = 0; }
+                        if (cm < 120 || cm > 220) { Toast.makeText(this, "120 నుంచి 220 మధ్య సెం.మీ రాయండి", Toast.LENGTH_LONG).show(); return; }
+                        Wellness.setHeight(this, cm, "said");
+                        height.setText(heightText());
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        box.addView(height);
+        final android.content.Context appCtx = getApplicationContext();
+        new Thread(() -> { // (Samsung Health's height, if it has one; what he typed himself is kept)
+            try { Wellness.refreshHeight(appCtx, false); } catch (Exception ignored) {}
+            runOnUiThread(() -> height.setText(heightText()));
+        }, "jarvis-height").start();
         Switch walk = toggle("🚶 నడక కోచ్: ప్రతి నడక అయ్యాక అడుగులు, మీటర్లు / కి.మీ, నిమిషాలు వాచ్‌లో చెప్పు; ప్రతి కి.మీకి ఒక మాట", WatchHub.walkOn(this));
         walk.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "walk", on));
-        note("వాచ్ తనంతట తానే నడక గుర్తిస్తుంది: 2 నిమిషాలు, 150 అడుగులు దాటిన నడక (ఇంట్లో అటూ ఇటూ తిరగడం లెక్క కాదు). దూరం సుమారుగా (ఒక అడుగు 0.72 మీ). "
+        note("వాచ్ తనంతట తానే నడక గుర్తిస్తుంది: 2 నిమిషాలు, 150 అడుగులు దాటిన నడక (ఇంట్లో అటూ ఇటూ తిరగడం లెక్క కాదు). దూరం సుమారుగా (మీ ఎత్తు నుంచి అడుగు పొడవు; ఎత్తు తెలియకపోతే 0.72 మీ). "
                 + "బైక్ మీద, డ్యూటీ మోడ్‌లో, రాత్రి గొంతుతో కాకుండా వాచ్‌పై కార్డ్‌గా. \"ఈరోజు ఎంత నడిచాను?\" అని అడగొచ్చు, వాచ్‌లో 🚶 నడక బటన్ కూడా.");
         Switch hr = toggle("💓 కూర్చున్నప్పుడు 15 నిమిషాలకోసారి వాచ్ గుండె వేగం చూడాలి (ఒత్తిడి, జ్వరం సూచన, ఎనర్జీ, కునుకు)", WatchHub.hrOn(this));
         hr.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "hr", on));

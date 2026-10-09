@@ -141,6 +141,11 @@ final class Link {
     static boolean lost(Context c) { return cfg(c).optBoolean("lost", true); }
     /** W31: after each walk, its steps and metres / km (and a word at each km). */
     static boolean walk(Context c) { return cfg(c).optBoolean("walk", true); }
+    /** Metres a step, from his height on the phone (0.72 when not known). */
+    static double stride(Context c) {
+        double v = cfg(c).optDouble("stride", WalkCoach.STRIDE);
+        return v >= 0.5 && v <= 0.95 ? v : WalkCoach.STRIDE;
+    }
     /** W46 / W26 / W43: the heart rate about every 15 minutes while he sits (his normal is learnt on the phone). */
     static boolean hr(Context c) { return cfg(c).optBoolean("hr", true); }
     /** W3: "orb", "holo" or "human". */

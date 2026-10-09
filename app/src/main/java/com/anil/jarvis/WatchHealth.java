@@ -59,6 +59,7 @@ final class WatchHealth {
     // ---------------------------------------------------------------- W31: walks
 
     private static void walk(Context app, JSONObject o) throws Exception {
+        Wellness.useStride(app);
         long steps = o.optLong("steps"), secs = o.optLong("secs");
         boolean end = o.optBoolean("end");
         if (!WatchHub.walkOn(app)) return;
@@ -69,11 +70,11 @@ final class WatchHealth {
             if (o.optBoolean("late")) { // (a walk the watch couldn't send then: it showed it itself; only kept here)
                 for (JSONObject w : Notes.list(app, Wellness.WALKS)) if (w.optLong("t") == t) return;
                 Notes.add(app, Wellness.WALKS, new JSONObject().put("t", t).put("steps", steps).put("secs", secs)
-                        .put("m", Math.round(steps * Wellness.STRIDE)), 400);
+                        .put("m", Math.round(steps * Wellness.stride)), 400);
                 return;
             }
             Notes.add(app, Wellness.WALKS, new JSONObject().put("t", t).put("steps", steps).put("secs", secs)
-                    .put("m", Math.round(steps * Wellness.STRIDE)), 400);
+                    .put("m", Math.round(steps * Wellness.stride)), 400);
             int day = o.optInt("day_steps", -1);
             text = "నడక: " + Wellness.walkLine(steps, secs) + "." + (day > steps ? " ఈరోజు మొత్తం " + Sums.num(day) + " అడుగులు." : "");
         } else {
