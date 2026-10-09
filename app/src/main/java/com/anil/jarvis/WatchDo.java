@@ -42,6 +42,8 @@ final class WatchDo {
             case "status": return Status.json(c);
             case "nav": return Travel.navPanel(c);   // W52 / W51: his places for the compass
             case "here": return Travel.herePanel(c); // the compass: where he is now (the phone's GPS)
+            case "music": return Music.panel(c);     // W50: what plays on the phone
+            case "radio": return Music.radioPanel(c); // W36: his stations
             case "duty": return duty(c);
             case "tasks": return tasks(c);
             case "home": return home(c);
@@ -155,6 +157,25 @@ final class WatchDo {
                 toast(app, "📱 ఫోన్ లాక్‌లో ఉంది: నోటిఫికేషన్ నొక్కితే దారి తెరుస్తుంది");
                 return;
             }
+            case "media": { // W50: the phone's music from the watch
+                String r = Music.control(app, o.optString("action"));
+                Thread.sleep(400); // (the app updates what it shows)
+                WatchHub.send(app, P_PANEL, Music.panel(app).put("toast", r));
+                return;
+            }
+            case "song": { // "ఈ పాట ఏది?"
+                String t = Music.nowLine(app);
+                main.post(() -> WatchHub.say(app, t));
+                return;
+            }
+            case "sleep_timer": toast(app, Music.sleepAfter(app, o.optInt("minutes", 30))); return; // O46
+            case "radio_watch": { // W36: the watch plays it itself
+                String r = Music.radioOnWatch(app, o.optString("name"));
+                if (!r.isEmpty()) toast(app, r);
+                return;
+            }
+            case "radio_phone": toast(app, Music.radioOnPhone(app, o.optString("name"))); return;
+            case "show_phone": toast(app, ShowOnPhone.lastAnswer(app)); return; // W62
             case "breathed": // W30: the breathing done on the watch (for his week)
                 Wellness.breathed(app, o);
                 return;

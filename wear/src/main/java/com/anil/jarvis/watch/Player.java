@@ -95,6 +95,7 @@ final class Player {
                     .setAudioFormat(new AudioFormat.Builder().setSampleRate(RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                             .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
                     .setBufferSizeInBytes(Math.max(min, RATE)).setTransferMode(AudioTrack.MODE_STREAM).build();
+            RadioPlayer.duck(true); // (the watch's own radio goes quiet while Jarvis speaks)
             if (am != null) {
                 focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(aa).build();
                 try { am.requestAudioFocus(focus); } catch (Exception ignored) {}
@@ -137,6 +138,7 @@ final class Player {
                 try { t.release(); } catch (Exception ignored) {}
             }
             if (am != null && focus != null) try { am.abandonAudioFocusRequest(focus); } catch (Exception ignored) {}
+            RadioPlayer.duck(false);
             level = 0;
             if (cur == p) cur = null;
             if (finished) {

@@ -174,9 +174,10 @@ final class Tools {
         DEFS.add(new Def("media_control",
                 "Control the song or video playing in any app (YouTube, YouTube Music, Spotify, JioSaavn, Gaana, Amazon Music...) and the media volume. "
                         + "pause = song off / పాట ఆపు / ఆఫ్ చేయి (keeps its place); play = continue the paused song from where it stopped; "
-                        + "stop = music stop: stops the music AND fully closes that music app.",
-                schema(new String[][]{{"action", "string", "One of: pause, play, stop, next, previous, toggle, volume_up, volume_down, set_volume, mute, unmute"},
-                        {"percent", "integer", "Volume 0-100, only for set_volume"}}, "action")));
+                        + "stop = music stop: stops the music AND fully closes that music app. "
+                        + "sleep = a sleep timer: every song (apps, Jarvis's radio, the radio on his watch) stops after minutes ('30 నిమిషాల తర్వాత పాట ఆపు'; minutes 0 cancels).",
+                schema(new String[][]{{"action", "string", "One of: pause, play, stop, next, previous, toggle, volume_up, volume_down, set_volume, mute, unmute, sleep"},
+                        {"percent", "integer", "Volume 0-100, only for set_volume"}, {"minutes", "integer", "For sleep: stop after this many minutes"}}, "action")));
         DEFS.add(new Def("phone_setting",
                 "Change a phone setting: wifi, bluetooth, mobile_data, airplane, location, hotspot (on/off, flipped on the settings page through accessibility), "
                         + "brightness (value = percent), auto_brightness, auto_rotate, silent, vibrate, sound (ringer back on), dnd (Do Not Disturb).",
@@ -710,6 +711,7 @@ final class Tools {
                 + "next / previous = next / previous station; pause / resume; stop = stop.",
                 schema(new String[][]{{"action", "string", "rain, fan, sea, white, prayer, nap, radio, stations, favorites, favorite, unfavorite, next, previous, pause, resume, add, remove or stop"}, {"minutes", "integer", "Stop after this many minutes (sleep sounds default 30; radio default none)"},
                         {"station", "string", "For radio: the station's name as written in his list (English) or its number; empty = ask him"},
+                        {"on_watch", "boolean", "For radio: play it on his watch itself (its own earbuds / speaker) instead of the phone ('వాచ్‌లో రేడియో పెట్టు')"},
                         {"url", "string", "For add: the stream link (https)"}, {"group", "string", "For add: film or christian"}})));
         DEFS.add(new Def("weekly_report", "His week (last 7 days): money spent vs last week, bills by category, steps, phone time, missions done, bike km and charging cost, API cost this month. For 'ఈ వారం రిపోర్ట్', 'ఈ వారం ఎలా గడిచింది'. "
                 + "ahead=true: the COMING week instead (duty days, EMIs / money due, last dates, birthdays, holidays) for 'వచ్చే వారం ఏముంది'; plan on/off = the Sunday-evening notice. "
@@ -969,7 +971,9 @@ final class Tools {
                 case "calendar_events": return calendarEvents(a.optInt("days", 1));
                 case "add_calendar_event": return addCalendarEvent(a.optString("title"), a.optString("start"), a.optInt("minutes", 60), a.optString("location", ""));
                 case "send_email": return sendEmail(a.optString("to"), a.optString("subject"), a.optString("body"));
-                case "media_control": return mediaControl(a.optString("action"), a.optInt("percent", 50));
+                case "media_control":
+                    if ("sleep".equalsIgnoreCase(a.optString("action").trim())) return ok().put("said", Music.sleepAfter(act(), a.optInt("minutes", 30))).toString(); // O46
+                    return mediaControl(a.optString("action"), a.optInt("percent", 50));
                 case "phone_setting": return phoneSetting(a.optString("setting"), a.optString("value", "on"));
                 case "photos":
                     if ("search".equalsIgnoreCase(a.optString("action"))) return photoSearch(a.optString("what"), a.optString("when", ""), a.optBoolean("screenshots", false));
@@ -5966,6 +5970,9 @@ final class Tools {
         String hw = Wellness.asks(bare);
         if (hw != null) return offlineHealth(hw);
         // ---- phase 5 on the road: where am I, which way / how far, speed, rides, the bike's charging and service
+        int sleepMin = Music.sleepWords(bare); // O46: "30 నిమిషాల తర్వాత పాట ఆపు"
+        if (sleepMin >= 0) return Music.sleepAfter(act(), sleepMin);
+        if (bare.matches("(?s).*(ఈ\\s*పాట|ఏ\\s*పాట|ఏం\\s*పాట|ఈ\\s*సాంగ్).*(ఏది|ఏంటి|పేరు|ఏమిటి).*|.*what song.*")) return Music.nowLine(act());
         String[] tr = Travel.asks(bare);
         if (tr != null && !("to".equals(tr[0]) && "బండి".equals(tr[1]) && !WatchHub.known(act()))) { // (no watch: the old way opens Maps)
             String r = Travel.answer(act(), tr);
@@ -6943,6 +6950,11 @@ final class Tools {
             return ok().put("removed", gone).put("note", "A listed station comes back with sounds add + its name.").toString();
         }
         if (action.startsWith("station") || action.startsWith("list")) return radioAsk(radioMin, "").toString();
+        if (action.startsWith("radio") && a.optBoolean("on_watch", false)) { // W36: the watch plays it itself
+            String r = Music.radioOnWatch(act(), a.optString("station", "").trim());
+            if (!r.isEmpty()) return err("watch_radio", r);
+            return ok().put("playing_on_watch", Radio.last(act())).put("note", "Say in one short line that it plays on his watch (its earbuds / speaker); the watch's 📻 screen stops it.").toString();
+        }
         if (action.startsWith("radio")) {
             String want = a.optString("station", "").trim();
             if (want.isEmpty()) return radioAsk(radioMin, "").toString();

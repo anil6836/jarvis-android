@@ -105,6 +105,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 break;
             }
             case CrashAlert.ACTION_OK: CrashAlert.ok(c); break;
+            case Music.ACTION_SLEEP: Music.sleepNow(c); break; // O46: the songs' sleep timer
             case RideCare.ACTION_AWAKE: RideCare.askAwake(c); break;
             case RideCare.ACTION_REACHED: {
                 PendingResult pr = goAsync(); // the SMS goes out before the receiver lets go

@@ -80,6 +80,12 @@ public class Panel extends Activity {
         }
     }
 
+    /** Draws the open screen again (the watch's radio started / stopped). */
+    static void redraw() {
+        Panel p = shown;
+        if (p != null) p.main.post(p::render);
+    }
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         Theme.refresh(this);
@@ -171,6 +177,8 @@ public class Panel extends Activity {
             case "home": title = "💡 ఇల్లు"; break;
             case "timer": title = "⏱️ టైమర్"; break;
             case "cooker": title = "🍲 కుక్కర్"; break;
+            case "music": title = "🎵 పాటలు"; break;
+            case "radio": title = "📻 రేడియో"; break;
             default: title = "📊 స్టేటస్";
         }
         TextView t = WUi.text(this, title, 15, Theme.accent, true);
@@ -185,6 +193,8 @@ public class Panel extends Activity {
                 case "home": home(); break;
                 case "timer": timer(); break;
                 case "cooker": cooker(); break;
+                case "music": music(); break;
+                case "radio": radio(); break;
                 default: status();
             }
         } catch (Exception e) {
@@ -446,6 +456,99 @@ public class Panel extends Activity {
             showToast("ఫోన్‌కి చెప్పాను…");
         });
         line("ఫోన్ వంటింట్లో కుక్కర్ దగ్గర ఉండాలి. ప్రతి విజిల్ వాచ్‌లో వైబ్రేట్ అవుతుంది.", WUi.FAINT);
+    }
+
+    // ---------------------------------------------------------------- phase 5: music (W50), radio (W36)
+
+    /** A row of small buttons side by side. */
+    private void row(String[] labels, View.OnClickListener[] taps) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = WUi.dp(this, 5);
+        col.addView(r, lp);
+        for (int i = 0; i < labels.length; i++) {
+            TextView p = WUi.pill(this, labels[i], 0xFF0B2230);
+            p.setOnClickListener(taps[i]);
+            LinearLayout.LayoutParams q = new LinearLayout.LayoutParams(0, -2, 1);
+            if (i > 0) q.leftMargin = WUi.dp(this, 5);
+            r.addView(p, q);
+        }
+    }
+
+    private void media(String action) {
+        try { act(new JSONObject().put("what", "media").put("action", action)); } catch (Exception ignored) {}
+        Talk.buzz(this, 15);
+    }
+
+    /** A key to whatever plays on the watch itself (its YouTube Music, its player). */
+    private void watchKey(int code) {
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        if (am == null) return;
+        long t = android.os.SystemClock.uptimeMillis();
+        am.dispatchMediaKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_DOWN, code, 0));
+        am.dispatchMediaKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_UP, code, 0));
+        Talk.buzz(this, 15);
+    }
+
+    private void music() {
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        if (RadioPlayer.playing()) {
+            head("⌚ వాచ్ రేడియో");
+            line("📻 " + RadioPlayer.name + " · " + RadioPlayer.status, WUi.TEXT);
+            button("⏹ రేడియో ఆపు", 0xFF7F1D1D, v -> { RadioPlayer.stop(this); render(); });
+        } else if (am != null && am.isMusicActive()) {
+            head("⌚ వాచ్‌లో ప్లే అవుతోంది");
+            row(new String[]{"⏮", "⏯", "⏭"}, new View.OnClickListener[]{
+                    v -> watchKey(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS), v -> watchKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE),
+                    v -> watchKey(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)});
+        }
+        head("📱 ఫోన్‌లో");
+        if (data == null) waiting();
+        else if (data.optBoolean("none")) line(data.optBoolean("access", true) ? "ఫోన్‌లో ఏ పాటా ప్లే అవడం లేదు" : "ఫోన్ Jarvis కి నోటిఫికేషన్ యాక్సెస్ కావాలి", WUi.MUTED);
+        else {
+            line((data.optBoolean("playing") ? "▶ " : "⏸ ") + data.optString("app"), WUi.MUTED);
+            if (!data.optString("title").isEmpty()) line(data.optString("title"), WUi.TEXT);
+            if (!data.optString("artist").isEmpty()) line(data.optString("artist"), WUi.FAINT);
+        }
+        row(new String[]{"⏮", "⏯", "⏭"}, new View.OnClickListener[]{v -> media("previous"), v -> media("toggle"), v -> media("next")});
+        row(new String[]{"🔉", "🔊"}, new View.OnClickListener[]{v -> media("volume_down"), v -> media("volume_up")});
+        if (data != null && data.has("vol")) line("ఫోన్ సౌండ్ " + data.optInt("vol") + "%", WUi.FAINT);
+        button("🎵 ఈ పాట ఏది?", 0xFF0E3A4A, v -> {
+            try { Talk.phoneDo(this, new JSONObject().put("what", "song"), "🎵 చూస్తున్నాను…"); } catch (Exception ignored) {}
+            finish();
+        });
+        row(new String[]{"🌙 30 ని", "🌙 60 ని"}, new View.OnClickListener[]{
+                v -> { try { act(new JSONObject().put("what", "sleep_timer").put("minutes", 30)); } catch (Exception ignored) {} },
+                v -> { try { act(new JSONObject().put("what", "sleep_timer").put("minutes", 60)); } catch (Exception ignored) {} }});
+        line("🌙 = అన్ని పాటలూ (ఫోన్, వాచ్ రేడియో) ఆ తర్వాత ఆగుతాయి", WUi.FAINT);
+        button("🔄 మళ్లీ చూడు", 0xFF0E3A4A, v -> ask());
+    }
+
+    private void radio() {
+        if (RadioPlayer.playing()) {
+            line("▶ " + RadioPlayer.name, Theme.accent);
+            line(RadioPlayer.status, WUi.MUTED);
+            String now = RadioPlayer.name;
+            row(new String[]{"⏹ ఆపు", "📱 ఫోన్‌లో"}, new View.OnClickListener[]{
+                    v -> { RadioPlayer.stop(this); render(); },
+                    v -> { try { act(new JSONObject().put("what", "radio_phone").put("name", now)); } catch (Exception ignored) {} RadioPlayer.stop(this); render(); }});
+        }
+        if (data == null) { waiting(); return; }
+        if (!data.optBoolean("online", true)) line("ఫోన్‌కి నెట్ లేదు: కొత్త లింక్‌లు దొరకవు", 0xFFFCA5A5);
+        JSONArray st = data.optJSONArray("stations");
+        if (st == null || st.length() == 0) { line("ఫోన్ Jarvis లో రేడియో స్టేషన్లు లేవు", WUi.MUTED); return; }
+        head("వాచ్‌లోనే వినండి (నొక్కండి)");
+        for (int i = 0; i < st.length(); i++) {
+            JSONObject x = st.optJSONObject(i);
+            if (x == null) continue;
+            String n = x.optString("name");
+            button((x.optBoolean("fav") ? "⭐ " : "📻 ") + n, n.equals(RadioPlayer.name) ? 0xFF166534 : 0xFF0B2230, v -> {
+                try { act(new JSONObject().put("what", "radio_watch").put("name", n)); } catch (Exception ignored) {}
+                showToast("📻 " + n + ": లింక్ తెస్తున్నాను…");
+            });
+        }
+        line("వాచ్‌కి బ్లూటూత్ ఇయర్‌బడ్స్ కలిపితే వాటిలో, లేకపోతే వాచ్ స్పీకర్‌లో. నెట్ ఫోన్ ద్వారా లేదా Wi-Fi. బ్యాటరీ కొంచెం ఎక్కువ ఖర్చవుతుంది.", WUi.FAINT);
     }
 
     // ---------------------------------------------------------------- the bezel scrolls

@@ -35,7 +35,8 @@ final class Link {
             P_LISTEN = "/jarvis/listen", P_CONFIRM = "/jarvis/confirm", P_CONFIRM_DONE = "/jarvis/confirm/done",
             P_PING = "/jarvis/ping", P_ALERT = "/jarvis/alert", P_ALERT_GONE = "/jarvis/alert/gone", P_ALARM = "/jarvis/alarm",
             P_INFO = "/jarvis/info", P_ALARM_STOP = "/jarvis/alarm/stop", P_PANEL = "/jarvis/panel", P_TIMER = "/jarvis/timer",
-            P_OPEN = "/jarvis/open", P_BUZZ = "/jarvis/buzz"; // phase 5: open a screen here; a turn while walking
+            P_OPEN = "/jarvis/open", P_BUZZ = "/jarvis/buzz", // phase 5: open a screen here; a turn while walking
+            P_RADIO = "/jarvis/radio";
 
     private static volatile String phone;
     private static volatile long phoneAt;

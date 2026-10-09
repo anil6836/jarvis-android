@@ -23,6 +23,8 @@
     <!-- W33: a watch timer ends on time (it is an alarm-clock kind of app for that) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- W36: Jarvis's radio played by the watch itself -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <!-- the watch's own speech service (Google voice typing), when it has one -->
     <queries>
@@ -35,7 +37,8 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/JarvisWatch">
+        android:theme="@style/JarvisWatch"
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <uses-library android:name="com.google.android.wearable" android:required="false" />
         <!-- needs the phone's Jarvis (it thinks; the watch is its remote) -->
@@ -141,6 +144,12 @@
             android:name=".EarService"
             android:exported="false"
             android:foregroundServiceType="microphone|health" />
+
+        <!-- W36: the radio on the watch -->
+        <service
+            android:name=".RadioPlayer"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- messages from the phone's Jarvis -->
         <service

@@ -788,7 +788,10 @@ final class WatchHub {
         whenPlayed = null;
         if (!speak) { M.h.post(spoken); return; }
         int id = ++playId;
-        whenPlayed = spoken;
+        // W50: a song playing on the phone goes quiet while Jarvis speaks on the watch (back up after)
+        boolean duck = !local && am != null && am.isMusicActive();
+        if (duck) Duck.on(app);
+        whenPlayed = duck ? () -> { Duck.off(); if (spoken != null) spoken.run(); } : spoken;
         WatchVoice.say(app, text, id, local, ms -> M.h.post(() -> {
             if (playId != id || whenPlayed == null) return;
             // the watch says when it has played it; if that never comes (link lost), go on anyway
@@ -1026,6 +1029,7 @@ final class WatchHub {
         WatchVoice.stop();
         playId++;
         whenPlayed = null;
+        Duck.off(); // (a song kept quiet for the answer comes back up)
         M.h.removeCallbacks(playedLate);
         WatchTalkActivity a = WatchTalkActivity.current;
         if (a != null) a.stopTalk();
