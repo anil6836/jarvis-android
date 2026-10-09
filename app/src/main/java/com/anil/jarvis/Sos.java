@@ -17,6 +17,32 @@ final class Sos {
     private Sos() {}
 
     /** Sends to his SOS contacts (names in his contacts, or numbers). Returns {name, number} of each one sent to. */
+    /** Android's SMS sender (the old way below Android 12). */
+    static SmsManager sms(Context c) { return Build.VERSION.SDK_INT >= 31 ? c.getSystemService(SmsManager.class) : SmsManager.getDefault(); }
+
+    /**
+     * A message he said yes to (his tap), by SMS to each of his people (names, comma separated). Background thread. The
+     * line to tell him: who got it, or why nobody did.
+     */
+    static String toPeople(Context c, String who, String text) {
+        if (c.checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED)
+            return "పంపలేకపోయాను: Jarvis కి SMS అనుమతి లేదు (సెట్టింగ్స్ → అనుమతులు).";
+        StringBuilder sent = new StringBuilder(), missing = new StringBuilder();
+        SmsManager sm = sms(c);
+        for (String w : who.split("\\s*,\\s*")) {
+            if (w.trim().isEmpty()) continue;
+            String[] n = number(c, w.trim());
+            if (n == null) { missing.append(missing.length() > 0 ? ", " : "").append(w.trim()); continue; }
+            try {
+                sm.sendMultipartTextMessage(n[1], null, sm.divideMessage(text), null, null);
+                sent.append(sent.length() > 0 ? ", " : "").append(n[0]);
+            } catch (Exception e) { missing.append(missing.length() > 0 ? ", " : "").append(w.trim()); }
+        }
+        String line = sent.length() == 0 ? "పంపలేకపోయాను" : sent + " కి పంపాను";
+        if (missing.length() > 0) line += " (" + missing + " నంబర్ దొరకలేదు / పంపలేదు)";
+        return line + ".";
+    }
+
     static List<String[]> send(Context c, String what) {
         List<String[]> sent = new ArrayList<>();
         Prefs p = new Prefs(c);
@@ -26,7 +52,7 @@ final class Sos {
         if (l == null || System.currentTimeMillis() - l.getTime() > 10 * 60000L) l = Tools.lastLocation(c);
         String where = l == null ? "(లొకేషన్ దొరకలేదు)" : "https://maps.google.com/?q=" + l.getLatitude() + "," + l.getLongitude();
         String text = "🆘 " + p.name() + " కి సహాయం కావాలి. " + (what == null || what.isEmpty() ? "" : what + ". ") + "లొకేషన్: " + where;
-        SmsManager sm = Build.VERSION.SDK_INT >= 31 ? c.getSystemService(SmsManager.class) : SmsManager.getDefault();
+        SmsManager sm = sms(c);
         for (String who : list.split(",")) {
             String w = who.trim();
             if (w.isEmpty()) continue;

@@ -71,6 +71,18 @@ final class Travel {
     }
 
     /** The place he names: the parked bike, home, or one of his saved places. Null when none fits. */
+    /** The compass's name for a place on the watch: "parking", "home", or the saved place's own name. */
+    static String watchKey(Context c, String spoken) {
+        String t = spoken == null ? "" : spoken.trim();
+        if (t.equals("parking") || t.equals("home")) return t;
+        JSONObject p = target(c, t);
+        if (p == null) return t;
+        JSONObject b = parking(c), h = home(c);
+        if (b != null && p.optString("name").equals(b.optString("name")) && (t.isEmpty() || bikeWord(t.toLowerCase(Locale.ROOT)))) return "parking";
+        if (h != null && p.optString("name").equals(h.optString("name"))) return "home";
+        return p.optString("name");
+    }
+
     static JSONObject target(Context c, String spoken) {
         String t = spoken == null ? "" : spoken.trim().toLowerCase(Locale.ROOT);
         if (t.isEmpty() || bikeWord(t)) return parking(c);
@@ -229,9 +241,20 @@ final class Travel {
     /** He had it serviced (today, or days ago). */
     static String serviceDone(Context c, int daysAgo) {
         long t = System.currentTimeMillis() - Math.max(0, daysAgo) * DAY;
-        sp(c).edit().putLong("svc_t", t).remove("svc_told").remove("svc_told_at").apply();
+        // the km since: the rides logged after that day (the running count goes on from there)
+        double km = 0;
+        for (JSONObject r : Bike.list(c, "rides", t)) km += r.optDouble("km");
+        sp(c).edit().putLong("svc_t", t).putFloat("svc_km_done", (float) km).remove("svc_told").remove("svc_told_at").apply();
         return "సరే, బైక్ సర్వీస్ " + (daysAgo <= 0 ? "ఈరోజు" : daysAgo + " రోజుల క్రితం") + " అయినట్టు రాశాను. తర్వాతి సర్వీస్ "
                 + serviceMonths(c) + " నెలలకు లేదా " + serviceKm(c) + " కి.మీ కి (ఏది ముందైతే అది) గుర్తు చేస్తాను.";
+    }
+
+    /** A ride ended: its km added to the count since the last service (when that is known). */
+    static void addServiceKm(Context c, double km) {
+        SharedPreferences s = sp(c);
+        if (s.getLong("svc_t", 0) == 0 || km <= 0) return;
+        if (!s.contains("svc_km_done")) { double k = 0; for (JSONObject r : Bike.list(c, "rides", s.getLong("svc_t", 0))) k += r.optDouble("km"); s.edit().putFloat("svc_km_done", (float) k).apply(); return; }
+        s.edit().putFloat("svc_km_done", s.getFloat("svc_km_done", 0) + (float) km).apply();
     }
 
     static String serviceSet(Context c, int months, int km) {
@@ -247,8 +270,9 @@ final class Travel {
         long t = sp(c).getLong("svc_t", 0);
         if (t == 0) return null;
         long due = java.time.Instant.ofEpochMilli(t).atZone(java.time.ZoneId.systemDefault()).plusMonths(serviceMonths(c)).toInstant().toEpochMilli();
-        double km = 0;
-        for (JSONObject r : Bike.list(c, "rides", t)) km += r.optDouble("km");
+        double km;
+        if (sp(c).contains("svc_km_done")) km = sp(c).getFloat("svc_km_done", 0);
+        else { km = 0; for (JSONObject r : Bike.list(c, "rides", t)) km += r.optDouble("km"); } // (set before the running count)
         long daysLeft = Math.floorDiv(due - System.currentTimeMillis(), DAY);
         return new long[]{daysLeft, Math.round(km), serviceKm(c) - Math.round(km)};
     }
@@ -431,7 +455,9 @@ final class Travel {
         if (!rideBreakOn(c) || movingSince <= 0) return;
         SharedPreferences s = sp(c);
         long mins = (now - movingSince) / MIN;
-        boolean tired = Sleep.sleptSince(c, now - DAY) < 300; // under 5 hours of real sleep in the last day
+        // under 5 hours of real sleep in the last day (only when his sleep is known: some sleep logged in the last 2 days)
+        boolean known = Sleep.between(c, now - 2 * DAY, now + MIN)[0] > 0;
+        boolean tired = known && Sleep.sleptSince(c, now - DAY) < 300;
         long limit = tired ? 45 : 75;
         if (mins < limit || now - s.getLong("break_told", 0) < 30 * MIN) return;
         s.edit().putLong("break_told", now).apply();
@@ -471,7 +497,12 @@ final class Travel {
             if (listener != null) return;
             LocationManager lm = app.getSystemService(LocationManager.class);
             if (lm == null || app.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
-            listener = l -> followed = l;
+            listener = new LocationListener() { // (all four: older Androids need them, a lambda would crash there)
+                @Override public void onLocationChanged(Location l) { followed = l; }
+                @Override public void onStatusChanged(String p, int s, android.os.Bundle b) {}
+                @Override public void onProviderEnabled(String p) {}
+                @Override public void onProviderDisabled(String p) {}
+            };
             try { lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 0, listener, Looper.getMainLooper()); } catch (Exception e) { listener = null; return; }
             M.h.postDelayed(new Runnable() {
                 @Override public void run() {
@@ -503,6 +534,7 @@ final class Travel {
     /** Opens a screen on his watch ({screen, target}): the compass, music, radio... False when the watch isn't near. */
     static boolean openOnWatch(Context c, String screen, String target) {
         if (!WatchHub.known(c) || !WatchHub.watchHere(c)) return false;
+        if ("compass".equals(screen)) target = watchKey(c, target);
         try { WatchHub.send(c, P_OPEN, new JSONObject().put("screen", screen).put("target", target == null ? "" : target)); return true; }
         catch (Exception e) { return false; }
     }
@@ -518,7 +550,8 @@ final class Travel {
         String t = bare == null ? "" : bare.trim().toLowerCase(Locale.ROOT).replaceAll("[?.!,]+", " ").replaceAll("\\s+", " ").trim();
         if (t.isEmpty()) return null;
         boolean send = t.matches("(?s).*(పంపు|పంపించు|పంపండి|send|షేర్|share).*");
-        if (!send && t.matches("(?s).*(నేను|మనం)?\\s*(ఇప్పుడు\\s*)?ఎక్కడ\\s*(ఉన్నాను|ఉన్నా|ఉన్నాం|ఉన్నాము).*|.*where am i.*|.*నా\\s*(లొకేషన్|location)\\s*(ఏంటి|ఏది|ఎక్కడ|చెప్పు).*"))
+        // (ఉన్నా alone, not ఉన్నాయి / ఉన్నారు / ఉన్నావు: "కళ్లజోడు ఎక్కడ ఉన్నాయి" is about a thing)
+        if (!send && t.matches("(?s).*(నేను|మనం)?\\s*(ఇప్పుడు\\s*)?ఎక్కడ\\s*(ఉన్నాను|ఉన్నాము|ఉన్నాం|ఉన్నా(?=\\s|$)).*|.*where am i.*|.*నా\\s*(లొకేషన్|location)\\s*(ఏంటి|ఏది|ఎక్కడ|చెప్పు).*"))
             return new String[]{"where"};
         boolean bike = t.matches("(?s).*(బైక్|బైకు|బండి|స్కూటర్|bike|scooter).*");
         // the bike's charging (O43)
@@ -564,12 +597,17 @@ final class Travel {
                 && t.matches("(?s).*(ఈరోజు|ఈ రోజు|ఇవాళ|నిన్న|వారం|నెల|today|week|month).*") && !t.matches("(?s).*(ఖర్చు|రూపాయ|cost).*"))
             return new String[]{"rides", t};
         // speed and this trip (O27)
-        if (t.matches("(?s).*(ఎంత|ఏ)\\s*స్పీడ్.*|.*స్పీడ్\\s*(ఎంత|ఎంతలో|ఎంత ఉంది).*|.*how fast.*|.*my speed.*|.*ఎంత వేగం.*")) return new String[]{"speed"};
+        if (t.matches("(?s).*(ఎంత|ఏ)\\s*స్పీడ్.*|.*స్పీడ్\\s*(ఎంత|ఎంతలో|ఎంత ఉంది).*|.*how fast.*|.*my speed.*|.*ఎంత వేగం.*")
+                && !t.matches("(?s).*(నెట్|ఇంటర్నెట్|internet|\\bnet\\b|డేటా|data|వైఫై|wifi|wi-fi|డౌన్‌లోడ్|download|ఫ్యాన్|fan).*")) return new String[]{"speed"};
         if (t.matches("(?s).*ఎంత\\s*దూరం\\s*(వచ్చాను|వచ్చాం|ప్రయాణించాను|నడిపాను|వెళ్లాను|వెళ్ళాను).*|.*how far (have i|did i).*")) return new String[]{"trip"};
         // how far / which way (O26)
-        boolean far = t.matches("(?s).*(ఎంత\\s*దూరం|ఏ\\s*వైపు|ఏ\\s*దిక్కు|ఎటు\\s*వైపు|ఎక్కడ\\s*(ఉంది|పెట్టాను|పెట్టా)|how far|which way|where is).*");
+        // (a thing at the bike / home is not the bike / home: "బండి తాళాలు ఎక్కడ పెట్టాను", "ఇంటి తాళం ఎక్కడ ఉంది")
+        if (t.matches("(?s).*(తాళం|తాళాలు|తాళంచెవి|కీస్|కీ\\s|\\bkeys?\\b|ఛార్జర్|charger|హెల్మెట్|helmet|పేపర్స్|papers|ఆర్సీ|\\brc\\b|లైసెన్స్|license|కవర్|cover|బ్యాగ్|bag).*")) return null;
+        boolean way = t.matches("(?s).*(ఎంత\\s*దూరం|ఏ\\s*వైపు|ఏ\\s*దిక్కు|ఎటు\\s*వైపు|how far|which way).*");
+        boolean far = way || t.matches("(?s).*(ఎక్కడ\\s*(ఉంది|పెట్టాను|పెట్టా)|where is).*");
         if (far && bike && !t.matches("(?s).*(రేంజ్|range|వెళ్లగలను|వెళ్ళగలను).*")) return new String[]{"to", "బండి"};
-        if (far && t.matches("(?s).*(ఇంటికి|ఇల్లు|ఇంటి|home).*") && !t.matches("(?s).*(ఎన్ని నిమిషాలు|ఎంత\\s*(టైమ్|సేపు)|ట్రాఫిక్).*")) return new String[]{"to", "ఇల్లు"};
+        if (way && t.matches("(?s).*(ఇంటికి|ఇల్లు|ఇంటి|home).*") && !t.matches("(?s).*(ఎన్ని నిమిషాలు|ఎంత\\s*(టైమ్|సేపు)|ట్రాఫిక్).*")
+                && !t.matches("(?s).*(అమ్మ|నాన్న|అక్క|అన్న|తమ్ము|చెల్లి|మామ|అత్త|బావ|ఫ్రెండ్|friend|sister|brother|mother|father|వాళ్ల|గారి).*")) return new String[]{"to", "ఇల్లు"};
         return null;
     }
 

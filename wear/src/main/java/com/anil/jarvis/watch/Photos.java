@@ -52,7 +52,7 @@ public class Photos extends Activity {
             JSONArray a = list(c), keep = new JSONArray();
             keep.put(new JSONObject().put("f", f.getName()).put("title", o.optString("title")).put("t", t));
             for (int i = 0; i < a.length() && keep.length() < KEEP; i++) keep.put(a.getJSONObject(i));
-            for (int i = KEEP; i < a.length(); i++) new File(dir(c), a.getJSONObject(i).optString("f")).delete();
+            for (int i = KEEP - 1; i < a.length(); i++) new File(dir(c), a.getJSONObject(i).optString("f")).delete(); // (the new one took a place)
             Link.sp(c).edit().putString("photos", keep.toString()).apply();
             NotificationManager nm = c.getSystemService(NotificationManager.class);
             nm.createNotificationChannel(new NotificationChannel("jarvis_photos", "Jarvis ఫోటోలు", NotificationManager.IMPORTANCE_DEFAULT));
@@ -70,6 +70,7 @@ public class Photos extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Screens.seen(this);
         Theme.refresh(this);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);

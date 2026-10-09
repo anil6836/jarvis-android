@@ -323,9 +323,10 @@ final class Day5 {
         if (t.matches("(?s).*(గ్లాసు|గ్లాస్|glass).*(నీళ్లు|నీరు|water).*(తాగాను|తాగా|తాగేశాను|drank).*|.*(నీళ్లు|నీరు).*(గ్లాసు|గ్లాస్).*(తాగాను|తాగా).*"))
             return new String[]{"water_add", String.valueOf(n > 0 && n < 10 ? n : t.matches("(?s).*(రెండు|2).*") ? 2 : 1)};
         if (t.matches("(?s).*(నీళ్లు|నీరు|water).*(ఎన్ని|ఎంత|how many|how much).*(తాగాను|తాగా|drank).*")) return new String[]{"water"};
-        if (t.matches("(?s).*(నా\\s*)?(వాచ్|watch).*(ఎక్కడ|మోగించు|ring|find|వెతుకు).*")) return new String[]{"find_watch"};
+        if (t.matches("(?s).*(నా\\s*)?(?<![a-z])(వాచ్|watch)\\s*(ఎక్కడ|ని\\s*మోగించు|మోగించు|ని\\s*వెతుకు|వెతుకు|ring|find).*|.*find my watch.*")
+                && !t.matches("(?s).*(ఛార్జర్|charger|స్ట్రాప్|strap|బెల్ట్|బాక్స్|box|కేబుల్|cable|స్టాప్|stop).*")) return new String[]{"find_watch"};
         if (t.matches("(?s).*నిద్ర.*(ఎంత\\s*తక్కువ|లెక్క|బాకీ|debt|అప్పు).*|.*sleep debt.*")) return new String[]{"debt"};
-        if (t.matches("(?s).*(కునుకు|పవర్ నాప్|power nap|nap).*") && t.matches("(?s).*(నిమిషాల|నిమిషాలు|ని|min|గంట|తీస్తాను|పడుకుంటాను|టైమర్).*") && !t.matches("(?s).*(రెయిన్|rain|ఫ్యాన్|సౌండ్).*"))
+        if (t.matches("(?s).*(కునుకు|పవర్ నాప్|power nap|(?<![a-z])nap(?![a-z])).*") && t.matches("(?s).*(నిమిషాల|నిమిషాలు|\\d+\\s*ని(\\s|$)|min|గంట|తీస్తాను|పడుకుంటాను|టైమర్).*") && !t.matches("(?s).*(రెయిన్|rain|ఫ్యాన్|సౌండ్).*"))
             return new String[]{"nap", String.valueOf(t.matches("(?s).*(గంటన్నర|1.5|90).*") ? 90 : t.matches("(?s).*గంట.*") && n <= 0 ? 60 : n > 0 ? n : 20)};
         if (t.matches("(?s).*(ఫోకస్|focus).*")) {
             if (t.matches("(?s).*(ఆపు|ఆపేయ్|అయిపోయింది|stop|off).*")) return new String[]{"focus_stop"};

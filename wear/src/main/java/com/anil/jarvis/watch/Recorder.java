@@ -22,6 +22,7 @@ public class Recorder extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Screens.seen(this);
         Theme.refresh(this);
         int w = getResources().getDisplayMetrics().widthPixels, h = getResources().getDisplayMetrics().heightPixels;
         ScrollView sc = new ScrollView(this);

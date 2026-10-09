@@ -2508,10 +2508,22 @@ public class SettingsActivity extends Activity {
         home.setOnCheckedChangeListener((sw, on) -> { Travel.set(this, "home_welcome", on); new Thread(() -> HomeArrival.arm(getApplicationContext())).start(); });
         note("ఇల్లు సేవ్ అయి ఉండాలి (ఇంట్లో ఉన్నప్పుడు “ఈ చోటు ఇల్లు గా సేవ్ చెయ్”), లొకేషన్ “అన్నివేళలా” అనుమతి కావాలి.");
         Switch cal = toggle("📅 డ్యూటీ రోజులు ఫోన్ క్యాలెండర్‌లో పెట్టు (వాచ్ క్యాలెండర్‌లో కూడా వస్తాయి; Jarvis తను పెట్టినవే మారుస్తుంది)", WatchExtras.calOn(this));
-        cal.setOnCheckedChangeListener((sw, on) -> new Thread(() -> {
-            String r = WatchExtras.calSet(getApplicationContext(), on);
-            runOnUiThread(() -> Toast.makeText(this, r, Toast.LENGTH_LONG).show());
-        }).start());
+        cal.setOnCheckedChangeListener((sw, on) -> {
+            if (Boolean.TRUE.equals(sw.getTag())) return; // (put back by Jarvis, not his tap)
+            if (on && checkSelfPermission(Manifest.permission.WRITE_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR}, 66);
+                sw.setTag(true); sw.setChecked(false); sw.setTag(null);
+                Toast.makeText(this, "క్యాలెండర్ అనుమతి ఇచ్చి మళ్లీ ఆన్ చేయండి.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            new Thread(() -> {
+                String r = WatchExtras.calSet(getApplicationContext(), on);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, r, Toast.LENGTH_LONG).show();
+                    if (on != WatchExtras.calOn(this)) { sw.setTag(true); sw.setChecked(WatchExtras.calOn(this)); sw.setTag(null); }
+                });
+            }).start();
+        });
         Switch silentAuto = toggle("🔕 డ్యూటీ, మీటింగ్, Do Not Disturb లో వాచ్ జవాబులు రాతగా మాత్రమే", Day5.silentAuto(this));
         silentAuto.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "silent_auto", on));
         Switch silent = toggle("🔕 వాచ్ ఎప్పుడూ సైలెంట్ (రాత + వైబ్రేషన్ మాత్రమే)", Day5.silentOn(this));

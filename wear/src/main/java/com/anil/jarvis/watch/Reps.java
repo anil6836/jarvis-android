@@ -55,6 +55,7 @@ public class Reps extends Activity implements SensorEventListener {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Screens.seen(this);
         Theme.refresh(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         sm = getSystemService(SensorManager.class);
@@ -97,8 +98,25 @@ public class Reps extends Activity implements SensorEventListener {
         TextView done = WUi.pill(this, "✓ అయిపోయింది", 0xFF166534);
         done.setOnClickListener(v -> finishSet());
         col.addView(done, new LinearLayout.LayoutParams(-1, -2));
-        Sensor acc = sm == null ? null : sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        listen(true);
+    }
+
+    /** Counting only while this screen is in front (left with the crown: no counting, no buzzing on a walk). */
+    private void listen(boolean on) {
+        if (sm == null) return;
+        sm.unregisterListener(this);
+        Sensor acc = on && kind >= 0 ? sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) : null;
         if (acc != null) sm.registerListener(this, acc, 20_000);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (kind >= 0 && big != null) listen(true);
+    }
+
+    @Override protected void onPause() {
+        listen(false);
+        super.onPause();
     }
 
     private void finishSet() {

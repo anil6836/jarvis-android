@@ -119,14 +119,28 @@ public class RecService extends Service {
                     Link.send(app, WatchLinkPaths.REC_DATA, part, fail);
                 }
             }
-            Link.send(app, WatchLinkPaths.REC_END, new JSONObject().put("id", id).put("secs", secs), fail);
+            Link.send(app, WatchLinkPaths.REC_END, new JSONObject().put("id", id).put("secs", secs).put("bytes", f.length()), fail);
+            long parts = f.length() / 90_000 + 3;
             new Thread(() -> {
-                Link.flush(120_000);
-                if (!failed[0]) { f.delete(); status = "ఫోన్‌కి పంపాను: తెలుగులో రాసి సారాంశం ఇక్కడ చూపిస్తుంది"; Talk.changed(); }
+                boolean gone = Link.flush(Math.max(120_000L, parts * 15_000L));
+                if (failed[0]) return;
+                // the file stays here until the phone says it has every byte (then it is deleted: see confirmed)
+                status = gone ? "ఫోన్‌కి పంపాను: తెలుగులో రాసి సారాంశం ఇక్కడ చూపిస్తుంది" : "ఇంకా పంపుతున్నాను… (రికార్డింగ్ వాచ్‌లోనే ఉంది)";
+                Talk.changed();
             }, "rec-sent").start();
         } catch (Exception e) {
             fail.run();
         }
+    }
+
+    /** The phone has the whole recording (its size matched): the watch's copy goes. */
+    static void confirmed(Context app, String id) {
+        long t = app.getSharedPreferences("jarvis_watch_rec", MODE_PRIVATE).getLong("t", -1);
+        if (recording || !("w" + t).equals(id)) return;
+        File f = pendingFile(app);
+        if (f.exists()) f.delete();
+        status = "ఫోన్‌కి చేరింది ✓ తెలుగులో రాసి సారాంశం ఇక్కడ చూపిస్తుంది";
+        Talk.changed();
     }
 
     @Override public void onDestroy() {

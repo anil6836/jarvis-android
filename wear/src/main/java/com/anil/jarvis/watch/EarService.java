@@ -75,12 +75,16 @@ public class EarService extends Service {
     private final Fall fall = new Fall();
     private final Fall.Out fallOut = new Fall.Out() {
         @Override public void impact(float g, long t) {
-            try { Link.send(EarService.this, Link.P_HEALTH, new JSONObject().put("type", "impact").put("g", g).put("t", System.currentTimeMillis())); } catch (Exception ignored) {}
+            // the sensor's clock is the boot clock: when it was felt, on the wall clock (the readings come in bunches)
+            long at = System.currentTimeMillis() - Math.max(0, SystemClock.elapsedRealtime() - t);
+            try { Link.urgent(EarService.this, Link.P_HEALTH, new JSONObject().put("type", "impact").put("g", g).put("t", at), null); } catch (Exception ignored) {}
         }
         @Override public void fell(long t) {
             main.post(() -> {
-                try { Link.send(EarService.this, Link.P_HEALTH, new JSONObject().put("type", "fall").put("t", System.currentTimeMillis())); } catch (Exception ignored) {}
                 try { Help.open(EarService.this, "fall"); } catch (Exception ignored) {}
+                try {
+                    Link.urgent(EarService.this, Link.P_HEALTH, new JSONObject().put("type", "fall").put("t", System.currentTimeMillis()), Help::phoneUnreachable);
+                } catch (Exception ignored) {}
             });
         }
     };
@@ -136,10 +140,15 @@ public class EarService extends Service {
             if (st == null) st = sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
             if (st != null) try { sm.registerListener(body, st, SensorManager.SENSOR_DELAY_NORMAL, 60_000_000); } catch (Exception ignored) {}
         }
-        // W42 / W80: 25 readings a second, handed over in bunches every 2 seconds (the watch sleeps in between)
+        // W42 / W80: 25 readings a second, handed over in bunches every 5 seconds. The kind that wakes the watch for its
+        // bunch (else, asleep, the readings would wait or be lost: and after a real fall nothing else wakes it)
         if (Link.fall(this)) {
-            Sensor acc = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            if (acc != null) try { sm.registerListener(body, acc, 40_000, 2_000_000); } catch (Exception ignored) {}
+            Sensor acc = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER, true);
+            if (acc == null) acc = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            if (acc != null) {
+                fall.range(acc.getMaximumRange() / 9.81f);
+                try { sm.registerListener(body, acc, 40_000, 5_000_000); } catch (Exception ignored) {}
+            }
         }
     }
 

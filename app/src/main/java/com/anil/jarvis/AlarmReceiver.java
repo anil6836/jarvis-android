@@ -198,7 +198,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 try { SongAlarm.rescheduleAll(c); } catch (Exception ignored) {}
                 MedicalId.update(c);
                 GeoReminders.rearmAll(c);
-                try { HomeArrival.arm(c); } catch (Exception ignored) {} // W64
+                try { HomeArrival.armAfterBoot(c); } catch (Exception ignored) {} // W64
                 Proactive.schedule(c);
                 Faith.schedule(c);
                 try { Duty.scheduleChime(c); } catch (Exception ignored) {}

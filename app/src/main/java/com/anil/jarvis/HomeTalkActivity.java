@@ -65,7 +65,8 @@ public class HomeTalkActivity extends Activity {
         }
         try {
             file = new File(getCacheDir(), "home_out.m4a");
-            rec = new MediaRecorder(this);
+            if (rec != null) try { rec.release(); } catch (Exception ignored) {}
+            rec = android.os.Build.VERSION.SDK_INT >= 31 ? new MediaRecorder(this) : new MediaRecorder(); // (the home phone may be an old one)
             rec.setAudioSource(MediaRecorder.AudioSource.MIC);
             rec.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
             rec.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
@@ -81,6 +82,8 @@ public class HomeTalkActivity extends Activity {
             go.setText("📤 పంపు");
             go.setOnClickListener(v -> send());
         } catch (Exception e) {
+            if (rec != null) try { rec.release(); } catch (Exception ignored) {}
+            rec = null;
             info.setText("మైక్ మొదలవలేదు: " + e.getMessage());
         }
     }
@@ -99,8 +102,8 @@ public class HomeTalkActivity extends Activity {
             final boolean sent = ok;
             main.post(() -> {
                 go.setEnabled(true);
-                info.setText(sent ? "✓ పంపాను" : "పంపలేకపోయాను (ఈ ఫోన్‌కి నెట్ ఉందా?)");
-                if (sent) main.postDelayed(this::finish, 2500); else idle();
+                if (sent) { info.setText("✓ పంపాను"); main.postDelayed(this::finish, 2500); }
+                else { idle(); info.setText("పంపలేకపోయాను (ఈ ఫోన్‌కి నెట్ ఉందా?). మళ్లీ నొక్కి చెప్పండి."); }
             });
         }, "home-talk").start();
     }

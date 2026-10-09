@@ -33,8 +33,8 @@ final class PhoneOffline {
         String[] p = pending;
         pending = null;
         if (p != null && last.endsWith("పంపమంటారా?") && last.contains(p[2])) {
+            if (no(t)) return "సరే, పెట్టలేదు."; // (first: "పంపు వద్దు" is a no)
             if (yes(t)) { addLater(c, p); return "సరే, నెట్ రాగానే WhatsApp లో " + p[0] + " కి ఈ మెసేజ్ రాసి తెరుస్తాను; అక్కడ పంపు నొక్కండి."; }
-            if (no(t)) return "సరే, పెట్టలేదు.";
         }
         String bare = t.replaceAll("[?.!,]+", " ").replaceAll("\\s+", " ").trim();
         // O23: "నెట్ వచ్చాక అమ్మకి 'చేరుకున్నాను' అని WhatsApp పంపు"
@@ -42,6 +42,8 @@ final class PhoneOffline {
             String s = said.replaceAll("(నెట్ వచ్చాక|నెట్ వస్తే|నెట్ వచ్చిన తర్వాత|ఇంటర్నెట్ వచ్చాక|ఆన్‌లైన్ అయ్యాక|ఆన్లైన్ అయ్యాక)", " ").trim();
             String[] sms = Offline.sms(s);
             if (sms != null && !sms[0].isEmpty() && !sms[1].isEmpty()) {
+                if (s.matches("(?is).*(sms|ఎస్ఎంఎస్|ఎస్ ఎం ఎస్).*")) // (an SMS needs no internet: it can go now, after his yes)
+                    return "SMS కి నెట్ అక్కర్లేదు: \"" + sms[0] + "కి " + sms[1] + " అని SMS పంపు\" అనండి, ఇప్పుడే పంపుతాను (మీరు సరే అన్నాకే).";
                 String[] who = Sos.number(c, sms[0]);
                 if (who == null) return sms[0] + " పేరుతో కాంటాక్ట్ దొరకలేదు.";
                 pending = new String[]{who[0], who[1], sms[1]};
@@ -54,15 +56,19 @@ final class PhoneOffline {
         // O21: a contact's number
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(.+?)\\s*(గారి|గారు)?\\s*(ఫోన్\\s*)?(నంబర్|నెంబర్|నెంబరు|నంబరు|number)\\s*(ఏంటి|ఏమిటి|చెప్పు|చెప్పండి|ఎంత|కావాలి|ఇవ్వు)?$").matcher(bare);
         if (m.find() && !bare.matches("(?s).*(సేవ్|save|పాలసీ|అకౌంట్|ఆధార్|కార్డ్|pan|పాన్|బండి|వెహికల్|బైక్).*")) {
-            String name = m.group(1).replaceAll("(నా|మా)\\s+", "").trim();
-            if (!name.isEmpty() && name.split("\\s+").length <= 4) {
+            String name = m.group(1).replaceAll("^(నా|మా|ఆ|my)\\s+", "").trim();
+            // ("నా నంబర్ ఏంటి" is his own: not a contact whose name has నా in it)
+            if (!name.isEmpty() && !name.matches("(నా|మా|ఆ|my|మీ|నీ|ఈ)") && name.split("\\s+").length <= 4) {
                 String[] who = Sos.number(c, name);
                 if (who == null) return name + " పేరుతో కాంటాక్ట్ దొరకలేదు.";
                 return who[0] + " నంబర్: " + spoken(who[1]) + ".";
             }
         }
         // O22: a voice recording
-        if (bare.matches("(?s).*(వాయిస్\\s*నోట్|రికార్డింగ్|రికార్డ్|record).*") && bare.matches("(?s).*(చెయ్|చేయి|మొదలు|స్టార్ట్|start|పెట్టు).*") && !bare.matches("(?s).*(ఆపు|stop|సారాంశం|ఏమున్నాయి).*")) {
+        if ((bare.matches("(?s).*వాయిస్\\s*నోట్.*") && !bare.matches("(?s).*(వినిపించు|ప్లే|play|ఏమున్నాయి|చదువు).*")
+                || bare.matches("(?s).*(రికార్డ్|record)\\s*(చెయ్|చేయి|చేయండి|మొదలుపెట్టు|స్టార్ట్ చెయ్|start)$")
+                || bare.matches("(?s).*(రికార్డింగ్|recording)\\s*(మొదలుపెట్టు|మొదలు పెట్టు|స్టార్ట్ చెయ్|start)$"))
+                && !bare.matches("(?s).*(ఆపు|stop|సారాంశం|ఏమున్నాయి|స్క్రీన్|screen|ప్లే|play|గుర్తు|రిమైండ|కాల్|call|వీడియో|video).*")) {
             if (RecorderService.recording) return "ఇప్పటికే రికార్డ్ అవుతోంది. ఆపాలంటే \"రికార్డింగ్ ఆపు\" అనండి.";
             return RecorderService.start(c, "meeting", "వాయిస్ నోట్") ? "రికార్డ్ చేస్తున్నాను. ఆపాలంటే \"రికార్డింగ్ ఆపు\" అనండి. నెట్ వచ్చాక తెలుగులో రాసి సారాంశం ఇస్తాను."
                     : "రికార్డింగ్ మొదలవలేదు (మైక్ అనుమతి చూడండి).";
@@ -73,7 +79,7 @@ final class PhoneOffline {
             return "రికార్డింగ్ ఆపాను, ఫోన్‌లో దాచాను. నెట్ వచ్చాక \"రికార్డింగ్ సారాంశం\" అంటే తెలుగులో రాసి చెబుతాను.";
         }
         // O31: saved pages
-        if (bare.matches("(?s).*(సేవ్ చేసిన|సేవ్ చేసినవి|తర్వాత చదువు|saved page|read later).*")) {
+        if (bare.matches("(?s).*((సేవ్ చేసిన|సేవ్ చేసినవి)\\s*(పేజీ|పేజీలు|ఆర్టికల్|ఆర్టికల్స్|వార్త|వార్తలు)|తర్వాత చదువు|saved page|read later).*")) {
             List<String> titles = ReadLater.titles(c);
             if (titles.isEmpty()) return "తర్వాత చదవడానికి సేవ్ చేసినవి ఏమీ లేవు.";
             if (bare.matches("(?s).*(ఏమున్నాయి|ఏవి|లిస్ట్|list|ఎన్ని).*")) {
@@ -95,11 +101,12 @@ final class PhoneOffline {
     }
 
     private static boolean yes(String t) {
-        return CardTalk.Words.kind(t, CardTalk.Words.CONFIRM) == CardTalk.Words.YES || t.matches("(?s).*(పంపు|పంపండి|send|సరే|అవును|ok).*");
+        return CardTalk.Words.kind(t, CardTalk.Words.CONFIRM) == CardTalk.Words.YES
+                || t.trim().matches("(?s)^(పంపు|పంపండి|పంపించు|send|సరే|అవును|ok|okay|yes)(\\s.*)?$") && !t.matches("(?s).*(don'?t|వద్దు|not|no\\b).*");
     }
 
     private static boolean no(String t) {
-        return CardTalk.Words.kind(t, CardTalk.Words.CONFIRM) == CardTalk.Words.NO || t.matches("(?s).*(వద్దు|క్యాన్సిల్|cancel).*");
+        return CardTalk.Words.kind(t, CardTalk.Words.CONFIRM) == CardTalk.Words.NO || t.matches("(?s).*(వద్దు|క్యాన్సిల్|cancel|don'?t|ఆపు|no\\b).*");
     }
 
     /** "9848012345" -> "98480 12345" (said in two parts). */
@@ -149,8 +156,12 @@ final class PhoneOffline {
         List<JSONObject> l = Notes.list(c, "later_send");
         if (l.isEmpty()) return;
         int id = NOTE_LATER;
+        List<JSONObject> left = new java.util.ArrayList<>(); // (kept when its card couldn't be shown: notifications off)
+        NotificationManager nmx = c.getSystemService(NotificationManager.class);
+        boolean canShow = nmx != null && nmx.areNotificationsEnabled();
         for (JSONObject o : l) {
             if (System.currentTimeMillis() - o.optLong("t") > 3 * 24 * 3600_000L) continue;
+            if (!canShow) { left.add(o); continue; }
             String num = o.optString("number").replaceAll("[^0-9]", "");
             if (num.length() == 10) num = "91" + num;
             Intent wa = new Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/" + num + "?text=" + Uri.encode(o.optString("text")))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -163,8 +174,8 @@ final class PhoneOffline {
                         .setContentText("\"" + o.optString("text") + "\" — నొక్కితే WhatsApp లో రాసి ఉంటుంది, అక్కడ పంపు నొక్కండి")
                         .setStyle(new Notification.BigTextStyle().bigText("\"" + o.optString("text") + "\"\nనొక్కితే WhatsApp లో రాసి ఉంటుంది, అక్కడ పంపు నొక్కండి."))
                         .setContentIntent(pi).setAutoCancel(true).build());
-            } catch (Exception ignored) {}
+            } catch (Exception e) { left.add(o); }
         }
-        Notes.save(c, "later_send", new java.util.ArrayList<>(), 10);
+        Notes.save(c, "later_send", left, 10);
     }
 }

@@ -41,6 +41,8 @@ final class CrashAlert {
     static volatile String kind = "crash";
     private static volatile boolean callFirst = true;
     private static volatile String heard = "";
+    /** Set by {@link #sosNow}: the words of that SOS. */
+    private static volatile String sosReason = "";
     private static ToneGenerator beeper;
     private static Context app;
 
@@ -83,12 +85,14 @@ final class CrashAlert {
     /**
      * W80: the ride's crash check. With the watch on his wrist and near, a knock the watch didn't feel too (the phone fell,
      * a pothole) first asks quietly on the wrist for 20 seconds; no answer -> the full check as before. A knock both felt
-     * (or no watch) -> the full check at once. A real crash is never dropped.
+     * (or no watch) -> the full check at once. A real crash is never dropped. knockAt = when the phone felt the knock (wall
+     * clock); the watch's knock counts when it was felt within 15 seconds of it.
      */
-    static void start(Context c) {
+    static void start(Context c, long knockAt) {
         Context a = c.getApplicationContext();
         boolean wrist = WatchHub.known(a) && WatchHub.watchHere(a) && Boolean.TRUE.equals(WatchHub.worn(a)) && doubleCheck(a);
-        if (wrist && System.currentTimeMillis() - watchImpactAt > 15_000L && !active) { soft(a); return; }
+        boolean watchFelt = watchImpactAt > 0 && Math.abs(watchImpactAt - (knockAt > 0 ? knockAt : System.currentTimeMillis())) < 15_000L;
+        if (wrist && !watchFelt && !active) { soft(a); return; }
         startNow(a);
     }
 
@@ -131,15 +135,30 @@ final class CrashAlert {
         main.post(() -> {
             main.removeCallbacks(softUp);
             if (softAt != 0) { softAt = 0; clearSoft(a); }
-            if (!active) begin(a, "fall", 0, true, what);
+            if (!active) { begin(a, "fall", 0, true, what); sosReason = what == null ? "" : what; }
             send(a, true);
         });
     }
 
-    /** W42: the watch felt a hard fall and no movement after: asked on the wrist and here, then the SOS (his fall settings). */
+    /**
+     * W42: the watch felt a hard fall and no movement after: asked on the wrist and here, then the SOS (his fall settings).
+     * On a ride it is the ride's crash check instead (a minute, then SMS + call): unless the bike is still moving (then it
+     * was the road, and the wrist's question is closed).
+     */
     static void fallFromWatch(Context c) {
         Context a = c.getApplicationContext();
         if (!WatchHub.fallOn(a) || active) return;
+        if (DriveService.running) {
+            boolean moving = System.currentTimeMillis() - DriveService.lastKmhAt < 6000 && DriveService.lastKmh >= 12;
+            if (moving) {
+                try { WatchHub.send(a, P_FALL_END, new org.json.JSONObject().put("end", true)); } catch (Exception ignored) {}
+                return;
+            }
+            fromWatch = true;
+            main.post(() -> { main.removeCallbacks(softUp); if (softAt != 0) { softAt = 0; clearSoft(a); } });
+            startNow(a);
+            return;
+        }
         String mode = SafetySounds.sosMode(a);
         fromWatch = true;
         startFall(a, "వాచ్‌కి గట్టి దెబ్బ తగిలి, తర్వాత కదలిక లేదు", "none".equals(mode) ? -1 : SafetySounds.waitSeconds(a), "sms_call".equals(mode));
@@ -242,8 +261,9 @@ final class CrashAlert {
         main.post(() -> {
             if (!active) return;
             boolean fall = "fall".equals(kind), call = callFirst || byHim;
-            String what = byHim ? (fall ? "సహాయం కావాలి" : "ప్రమాదం జరిగింది")
-                    : fall ? "ఇంట్లో " + heard + " (Jarvis గుర్తించింది), " + seconds + " సెకన్లు జవాబు ఇవ్వలేదు. ఒకసారి ఫోన్ చేసి చూడండి"
+            String what = byHim ? (!sosReason.isEmpty() ? sosReason // (sosNow: the reason it was sent)
+                            : (fall ? "సహాయం కావాలి" : "ప్రమాదం జరిగింది") + (heard.isEmpty() ? "" : " (" + heard + ")"))
+                    : fall ? (fromWatch ? "" : "ఇంట్లో ") + heard + " (Jarvis గుర్తించింది), " + seconds + " సెకన్లు జవాబు ఇవ్వలేదు. ఒకసారి ఫోన్ చేసి చూడండి"
                     : "బైక్ / కారు ప్రమాదం జరిగి ఉండొచ్చు (Jarvis గుర్తించింది), ఒక నిమిషం జవాబు ఇవ్వలేదు";
             stopAll(c, false); // the screen stays up: it can call the first contact
             new Thread(() -> {
@@ -276,6 +296,7 @@ final class CrashAlert {
 
     private static void stopAll(Context c, boolean closeScreen) {
         active = false;
+        sosReason = "";
         if (fromWatch) { // the question on the wrist goes too
             fromWatch = false;
             try { WatchHub.send(c, P_FALL_END, new org.json.JSONObject().put("end", true)); } catch (Exception ignored) {}

@@ -153,7 +153,11 @@ final class Protocols {
             case "duty_on": if (DutyMode.on(c)) return "డ్యూటీ మోడ్ ఇప్పటికే ఆన్."; DutyMode.start(c, false); return "డ్యూటీ మోడ్ ఆన్: ఫోన్ వైబ్రేట్‌లో.";
             case "duty_off": if (DutyMode.on(c)) DutyMode.off(c, false); return "డ్యూటీ మోడ్ ఆఫ్.";
             case "silent": if (am != null) am.setRingerMode(AudioManager.RINGER_MODE_VIBRATE); return "ఫోన్ వైబ్రేట్‌లో.";
-            case "sound": if (am != null && !new Prefs(c).night()) am.setRingerMode(AudioManager.RINGER_MODE_NORMAL); return "ఫోన్ సౌండ్ ఆన్.";
+            case "sound": {
+                if (new Prefs(c).night()) return "నైట్ మోడ్‌లో ఉంది: సౌండ్ మార్చలేదు.";
+                if (am != null) am.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+                return "ఫోన్ సౌండ్ ఆన్.";
+            }
             case "night": {
                 Prefs p = new Prefs(c);
                 p.set("night", true);
@@ -186,7 +190,8 @@ final class Protocols {
                 for (String[] s : WatchDo.smart(c)) {
                     String n = s[0].toLowerCase(Locale.ROOT);
                     boolean isOff = n.contains("ఆఫ్") || n.contains("off");
-                    if (on == isOff) continue;
+                    boolean light = n.contains("లైట్") || n.contains("light") || n.contains("ఫ్యాన్") || n.contains("fan"); // (never the TV, AC, geyser)
+                    if (on == isOff || !light) continue;
                     try { Http.getText(s[1]); return s[0] + "."; } catch (Exception e) { return s[0] + ": Alexa స్పందించలేదు."; }
                 }
                 return "";
@@ -220,17 +225,8 @@ final class Protocols {
     static void send(Context c, String text) {
         try { c.getSystemService(NotificationManager.class).cancel(NOTE_SEND); } catch (Exception ignored) {}
         String who = Drive.settings(c).getString("reached_to", "").trim();
-        if (who.isEmpty() || text == null || c.checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
-        new Thread(() -> {
-            StringBuilder sent = new StringBuilder();
-            for (String w : who.split("\\s*,\\s*")) {
-                String[] n = Sos.number(c, w);
-                if (n == null) continue;
-                try { c.getSystemService(android.telephony.SmsManager.class).sendTextMessage(n[1], null, text, null, null); sent.append(sent.length() > 0 ? ", " : "").append(n[0]); }
-                catch (Exception ignored) {}
-            }
-            Reminders.notify(c, "📩 పంపాను", sent.length() == 0 ? "పంపలేకపోయాను." : sent + " కి: \"" + text + "\"", NOTE_SEND + 1);
-        }, "protocol-send").start();
+        if (who.isEmpty() || text == null) { Reminders.notify(c, "📩 పంపలేదు", "ఎవరికి పంపాలో సెట్ అయి లేదు.", NOTE_SEND + 1); return; }
+        new Thread(() -> Reminders.notify(c, "📩 \"" + text + "\"", Sos.toPeople(c, who, text), NOTE_SEND + 1), "protocol-send").start();
     }
 
     /** Words (pure): {"run", name-ish} / {"save", name, steps} / {"delete", name} / {"list"}; null otherwise. */

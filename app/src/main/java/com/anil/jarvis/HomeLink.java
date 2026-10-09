@@ -44,6 +44,14 @@ final class HomeLink {
     /** The camera alerts are paused from his main phone (the camera still answers "📷"). */
     static volatile boolean paused;
 
+    /** At home: the pinned message is a word from his main phone not yet acted on (it must not be covered by a picture). */
+    static boolean commandWaiting(Context c) {
+        JSONObject m = Guard.pinned(c);
+        if (m == null || m.optLong("message_id") <= sp(c).getLong("seen", 0)) return false;
+        String text = m.optString("text"), cap = m.optString("caption");
+        return text.startsWith(SAY) || text.startsWith(PHOTO) || text.startsWith(PAUSE) || text.startsWith(RESUME) || cap.startsWith(VOICE_HOME);
+    }
+
     static void homePoll(Context c) {
         JSONObject m = Guard.pinned(c);
         if (m == null) return;
@@ -91,12 +99,14 @@ final class HomeLink {
             try { Thread.sleep(4000); } catch (InterruptedException e) { break; }
             JSONObject m = Guard.pinned(c);
             if (m != null && m.optLong("message_id") > asked && m.has("photo")) {
+                sp(c).edit().putLong("fetched", m.optLong("message_id")).apply(); // (not shown twice by the Telegram notification)
                 String r = showPhoto(c, m);
                 return r != null ? r : "ఫోటో వచ్చింది కానీ తెరవలేకపోయాను; Telegram లో చూడండి.";
             }
         }
         JSONObject last = Guard.pinned(c);
-        return "ఇంటి ఫోన్ నిమిషంలో జవాబు ఇవ్వలేదు (దానికి నెట్ / కాపలా మోడ్ ఆన్‌లో ఉందా?)." + (last != null && last.has("photo") ? " చివరి ఫోటో చూపిస్తున్నాను. " + showPhoto(c, last) : "");
+        String shown = last != null && last.has("photo") ? showPhoto(c, last) : null;
+        return "ఇంటి ఫోన్ నిమిషంలో జవాబు ఇవ్వలేదు (దానికి నెట్ / కాపలా మోడ్ ఆన్‌లో ఉందా?)." + (shown != null ? " చివరి ఫోటో: " + shown : "");
     }
 
     /** "ఇంటికి చెప్పు: …" (only after his yes): said aloud at home. */

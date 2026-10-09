@@ -29,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 final class WatchExtras {
     private WatchExtras() {}
 
-    static final String P_REC_START = "/jarvis/rec/start", P_REC_DATA = "/jarvis/rec/data", P_REC_END = "/jarvis/rec/end";
+    static final String P_REC_START = "/jarvis/rec/start", P_REC_DATA = "/jarvis/rec/data", P_REC_END = "/jarvis/rec/end", P_REC_OK = "/jarvis/rec/ok";
     private static final String TAG = "#jarvis-duty";
 
     // ================================================================ W54: the parking photo
@@ -159,7 +159,14 @@ final class WatchExtras {
         Object[] r = recs.remove(o.optString("id"));
         if (r == null) return;
         File f = (File) r[0];
-        long started = (long) r[1], ended = started + o.optLong("secs") * 1000;
+        long started = (long) r[1], ended = started + o.optLong("secs") * 1000, bytes = o.optLong("bytes", -1);
+        if (bytes > 0 && f.length() != bytes) { // a part was lost on the way: not a broken file; the watch still has it
+            String s = "వాచ్ రికార్డింగ్ పూర్తిగా రాలేదు (" + (f.length() / 1024) + " / " + (bytes / 1024) + " KB). వాచ్‌లో \"📤 మళ్లీ పంపు\" నొక్కండి.";
+            f.delete();
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> WatchHub.reply(c, s, false, false, () -> WatchHub.idle(c, null)));
+            return;
+        }
+        try { WatchHub.send(c, P_REC_OK, new JSONObject().put("id", o.optString("id"))); } catch (Exception ignored) {}
         new Thread(() -> {
             String say;
             try {

@@ -185,6 +185,9 @@ final class WatchDo {
                 return;
             }
             case "radio_phone": toast(app, Music.radioOnPhone(app, o.optString("name"))); return;
+            case "radio_tap": // W36: Android held the watch's radio back (started from the background): one tap on the wrist
+                Reminders.notify(app, "📻 వాచ్ రేడియో", "వాచ్‌లో వచ్చిన 📻 నోటిఫికేషన్ నొక్కితే మొదలవుతుంది.", 1077);
+                return;
             case "show_phone": toast(app, ShowOnPhone.lastAnswer(app)); return; // W62
             case "water": { // W70
                 String r = Day5.waterAdd(app, o.optInt("n", 1));
@@ -230,7 +233,9 @@ final class WatchDo {
                 return;
             }
             case "fall_ok": CrashAlert.ok(app); return;          // W42: "బాగున్నాను" on the wrist
-            case "fall_send": CrashAlert.send(app, true); return; // W42: "సహాయం" on the wrist
+            case "fall_send": // W42: "సహాయం" on the wrist (the phone's check may be over, or never began: the SOS all the same)
+                if (CrashAlert.active) CrashAlert.send(app, true); else CrashAlert.sosNow(app, "వాచ్‌లో 'సహాయం కావాలి' నొక్కారు (పడిపోయినట్టు వాచ్ గుర్తించింది)");
+                return;
             case "breathed": // W30: the breathing done on the watch (for his week)
                 Wellness.breathed(app, o);
                 return;

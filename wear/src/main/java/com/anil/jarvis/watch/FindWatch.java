@@ -21,11 +21,13 @@ public class FindWatch extends Activity {
     private int n;
 
     static void ring(Context c) {
-        c.startActivity(new Intent(c, FindWatch.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+        Talk.buzzAs(c, android.os.VibrationAttributes.USAGE_ALARM, 600, 300, 600, 300, 600); // (felt even before the screen opens)
+        Screens.launch(c, new Intent(c, FindWatch.class), "⌚ ఇక్కడ ఉన్నాను!", true);
     }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Screens.seen(this);
         setShowWhenLocked(true);
         setTurnScreenOn(true);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

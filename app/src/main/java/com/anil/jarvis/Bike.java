@@ -107,6 +107,7 @@ final class Bike {
             rides.put(r);
             while (rides.length() > 500) rides.remove(0);
             s.edit().putString("rides", rides.toString()).apply();
+            Travel.addServiceKm(c, round1(km)); // (O44: kept apart: the ride list keeps only its last 500)
             return r;
         } catch (Exception ex) {
             return null;

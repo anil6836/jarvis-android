@@ -258,6 +258,7 @@ final class Talk {
             case Link.P_FALL_END: Help.endFromPhone(); break;       // W42: answered on the phone
             case Link.P_PHOTO: Photos.got(app, o); break;            // W54: a picture from the phone
             case Link.P_FIND: FindWatch.ring(app); break;            // W66: "నా వాచ్ ఎక్కడ?"
+            case Link.P_REC_OK: RecService.confirmed(app, o.optString("id")); break; // W56: the phone has the whole recording
             case Link.P_SMART: SmartWake.start(app, o); break;       // W68: his alarm is near: feel for light sleep
             case Link.P_OPEN: Screens.open(app, o); break; // phase 5: the phone opens a screen here (the compass, music...)
             case Link.P_BUZZ: Alerts.turn(app, o.optString("turn")); break; // W78: a turn close by, while he walks with Maps

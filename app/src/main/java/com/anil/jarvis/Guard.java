@@ -53,7 +53,7 @@ final class Guard {
     /** A new bot token: the old chat no longer belongs to it. */
     static void setToken(Context c, String token) {
         String t = token == null ? "" : token.trim();
-        if (!t.equals(token(c))) sp(c).edit().putString("tg_token", t).remove("tg_chat").remove("tg_name").apply();
+        if (!t.equals(token(c))) sp(c).edit().putString("tg_token", t).remove("tg_chat").remove("tg_name").remove("tg_bot_name").apply();
     }
 
     static void start(Context c) {
@@ -92,6 +92,7 @@ final class Guard {
                 if (ch == null || !"private".equals(ch.optString("type"))) continue; // never a group
                 String name = (ch.optString("first_name") + " " + ch.optString("last_name")).trim();
                 sp(c).edit().putString("tg_chat", String.valueOf(ch.optLong("id"))).putString("tg_name", name).apply();
+                botName(c); // (W41: his main phone knows the bot's Telegram notifications by its name)
                 return name.isEmpty() ? "మీ చాట్" : name;
             }
             return "!Telegram లో మీ bot కి ఒక మెసేజ్ (hi) పంపి మళ్ళీ నొక్కండి";
@@ -140,7 +141,9 @@ final class Guard {
     static boolean sendPhoto(Context c, byte[] jpeg, String caption) {
         long id = sendFile(c, "sendPhoto", "photo", "guard.jpg", "image/jpeg", jpeg, caption, false);
         if (id < 0) id = sendFile(c, "sendPhoto", "photo", "guard.jpg", "image/jpeg", jpeg, caption, false); // one more try on a bad connection
-        if (id > 0) pin(c, id); // (W41: his main phone's Jarvis finds the latest picture there)
+        // (W41: his main phone's Jarvis finds the latest picture there; but a word from his main phone waiting to be read
+        // here stays pinned until it is read)
+        if (id > 0 && !HomeLink.commandWaiting(c)) pin(c, id);
         return id > 0;
     }
 

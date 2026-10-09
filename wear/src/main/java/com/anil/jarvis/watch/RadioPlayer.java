@@ -31,6 +31,7 @@ import java.util.List;
  */
 public class RadioPlayer extends Service {
     static final String ACTION_STOP = "com.anil.jarvis.watch.RADIO_STOP";
+    private static final String CH_TAP = "jarvis_radio_tap";
     private static final int NOTE = 71;
     private static final String CH = "jarvis_radio";
 
@@ -65,7 +66,27 @@ public class RadioPlayer extends Service {
         status = "కనెక్ట్ అవుతోంది…";
         RadioPlayer s = self;
         if (s != null) { s.begin(); return; }
-        try { c.startForegroundService(new Intent(c, RadioPlayer.class)); } catch (Exception e) { status = "మొదలుపెట్టలేకపోయాను: " + e.getMessage(); }
+        try { c.startForegroundService(new Intent(c, RadioPlayer.class)); }
+        catch (Exception e) { tapToStart(c); } // (Android doesn't let it start from the background: one tap on the wrist does)
+    }
+
+    /** A card on the watch: his tap starts the radio (allowed then); the phone is told why it didn't play yet. */
+    private static void tapToStart(Context c) {
+        Context app = c.getApplicationContext();
+        status = "వాచ్‌లో నోటిఫికేషన్ నొక్కితే మొదలవుతుంది";
+        try {
+            NotificationManager nm = app.getSystemService(NotificationManager.class);
+            NotificationChannel ch = new NotificationChannel(CH_TAP, "Jarvis రేడియో (నొక్కి మొదలుపెట్టు)", NotificationManager.IMPORTANCE_HIGH);
+            ch.setSound(null, null);
+            nm.createNotificationChannel(ch);
+            PendingIntent go = PendingIntent.getForegroundService(app, 74, new Intent(app, RadioPlayer.class), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            nm.notify(NOTE + 1, new Notification.Builder(app, CH_TAP).setSmallIcon(android.R.drawable.ic_media_play)
+                    .setContentTitle("📻 " + (pendingName.isEmpty() ? "రేడియో" : pendingName)).setContentText("▶ నొక్కితే వాచ్‌లో మొదలవుతుంది")
+                    .setContentIntent(go).setAutoCancel(true).setTimeoutAfter(5 * 60_000L)
+                    .addAction(new Notification.Action.Builder(null, "▶ ప్లే", go).build()).build());
+        } catch (Exception ignored) {}
+        try { Link.send(app, Link.P_DO, new org.json.JSONObject().put("what", "radio_tap")); } catch (Exception ignored) {}
+        Talk.changed();
     }
 
     static void stop(Context c) {
@@ -93,6 +114,7 @@ public class RadioPlayer extends Service {
 
     @Override public int onStartCommand(Intent i, int flags, int id) {
         if (i != null && ACTION_STOP.equals(i.getAction())) { stop(this); return START_NOT_STICKY; }
+        try { getSystemService(NotificationManager.class).cancel(NOTE + 1); } catch (Exception ignored) {} // (the "tap to start" card)
         try {
             if (Build.VERSION.SDK_INT >= 29) startForeground(NOTE, note(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
             else startForeground(NOTE, note());
@@ -101,6 +123,7 @@ public class RadioPlayer extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        if (pending == null || pending.isEmpty()) { stopSelf(); return START_NOT_STICKY; } // (an old card tapped: nothing to play)
         begin();
         return START_NOT_STICKY;
     }

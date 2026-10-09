@@ -162,6 +162,8 @@ public class DriveService extends Service implements LocationListener, android.h
         if (kmh > 8 && l.hasBearing()) heading = l.getBearing();
         speedNow = kmh;
         speedAt = now;
+        lastKmh = kmh;
+        lastKmhAt = now;
         afterKnock(kmh, now);
         if (prev == null || l.getAccuracy() < 50) prev = l;
         last = l;
@@ -316,6 +318,9 @@ public class DriveService extends Service implements LocationListener, android.h
     // ---------------------------------------------------------------- a crash: a hard knock while moving, then standing still
 
     private volatile double speedNow;
+    /** The last GPS speed (km/h) and when (wall clock), for a fall the watch felt during the ride. */
+    static volatile double lastKmh;
+    static volatile long lastKmhAt;
     private volatile long speedAt, knockAt, hardAt;
     private int stillFixes;
 
@@ -346,9 +351,10 @@ public class DriveService extends Service implements LocationListener, android.h
         if (kmh >= 15) { knockAt = 0; main.removeCallbacks(noGpsAfterKnock); return; } // he rode on: nothing happened
         if (kmh < 5) {
             if (++stillFixes >= 5) { // about 10 seconds lying still
+                long at = knockAt;
                 knockAt = 0;
                 main.removeCallbacks(noGpsAfterKnock);
-                CrashAlert.start(this);
+                CrashAlert.start(this, at);
             }
         } else stillFixes = 0;
     }
@@ -356,7 +362,7 @@ public class DriveService extends Service implements LocationListener, android.h
     /** No GPS fix at all since the knock (the phone flew off?): ask anyway. */
     private final Runnable noGpsAfterKnock = () -> {
         boolean noFix = knockAt != 0 && speedAt < knockAt;
-        if (noFix) { knockAt = 0; CrashAlert.start(this); }
+        if (noFix) { long at = knockAt; knockAt = 0; CrashAlert.start(this, at); }
     };
 
     @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
@@ -365,7 +371,7 @@ public class DriveService extends Service implements LocationListener, android.h
 
     @Override public void onDestroy() {
         // a hard knock just now and the bike's Bluetooth dropped / the drive was stopped: ask rather than miss a crash
-        if (knockAt != 0 && System.currentTimeMillis() - knockAt < 30000) CrashAlert.start(this);
+        if (knockAt != 0 && System.currentTimeMillis() - knockAt < 30000) CrashAlert.start(this, knockAt);
         knockAt = 0;
         boolean was = running;
         running = false;

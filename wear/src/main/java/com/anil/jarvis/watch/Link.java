@@ -37,7 +37,7 @@ final class Link {
             P_INFO = "/jarvis/info", P_ALARM_STOP = "/jarvis/alarm/stop", P_PANEL = "/jarvis/panel", P_TIMER = "/jarvis/timer",
             P_OPEN = "/jarvis/open", P_BUZZ = "/jarvis/buzz", // phase 5: open a screen here; a turn while walking
             P_RADIO = "/jarvis/radio", P_FALL_END = "/jarvis/fall/end", P_PHOTO = "/jarvis/photo",
-            P_FIND = "/jarvis/find", P_SMART = "/jarvis/smart";
+            P_FIND = "/jarvis/find", P_SMART = "/jarvis/smart", P_REC_OK = "/jarvis/rec/ok";
 
     private static volatile String phone;
     private static volatile long phoneAt;
@@ -47,6 +47,8 @@ final class Link {
     static volatile boolean ok = true;
     static volatile String lastError = "";
     private static final ExecutorService out = Executors.newSingleThreadExecutor();
+    /** SOS, fall and crash messages: never behind a long upload (a recording, a photo). */
+    private static final ExecutorService fast = Executors.newSingleThreadExecutor();
 
     static void heard(String node) {
         phone = node;
@@ -60,10 +62,17 @@ final class Link {
 
     static void send(Context c, String path, byte[] data) { send(c, path, data, null); }
 
+    /** At once, ahead of everything waiting (SOS, a fall, a knock); failed runs on the main thread. */
+    static void urgent(Context c, String path, JSONObject o, Runnable failed) {
+        send(fast, c, path, o.toString().getBytes(StandardCharsets.UTF_8), failed);
+    }
+
     /** In order, one at a time, off the main thread. */
-    static void send(Context c, String path, byte[] data, Runnable failed) {
+    static void send(Context c, String path, byte[] data, Runnable failed) { send(out, c, path, data, failed); }
+
+    private static void send(ExecutorService q, Context c, String path, byte[] data, Runnable failed) {
         final Context app = c.getApplicationContext();
-        out.execute(() -> {
+        q.execute(() -> {
             try {
                 String n = phoneId(app);
                 if (n == null) {
@@ -83,9 +92,9 @@ final class Link {
         });
     }
 
-    /** Waits (background thread) until what was sent so far has gone, or up to ms: before the watch may sleep again. */
-    static void flush(long ms) {
-        try { out.submit(() -> {}).get(ms, TimeUnit.MILLISECONDS); } catch (Exception ignored) {}
+    /** Waits (background thread) until what was sent so far has gone, or up to ms: before the watch may sleep again. False = not all gone yet. */
+    static boolean flush(long ms) {
+        try { out.submit(() -> {}).get(ms, TimeUnit.MILLISECONDS); return true; } catch (Exception e) { return false; }
     }
 
     /** True when a phone is connected right now (background thread; waits up to 3 s). */

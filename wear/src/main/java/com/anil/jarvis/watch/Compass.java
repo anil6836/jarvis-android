@@ -65,6 +65,7 @@ public class Compass extends Activity implements SensorEventListener {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Screens.seen(this);
         Theme.refresh(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         sm = getSystemService(SensorManager.class);

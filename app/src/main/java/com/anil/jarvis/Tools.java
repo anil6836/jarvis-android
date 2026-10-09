@@ -5920,7 +5920,9 @@ final class Tools {
         // a voice recording (O22), saved pages read aloud (O31)
         String po = PhoneOffline.handle(act(), said, t, last);
         if (po != null) return po;
-        if (said.matches("(?s).*[A-Za-z]{3,}.*") && any(t, "తెలుగులో", "అంటే ఏంటి", "అంటే ఏమిటి", "అర్థం", "translate", "meaning")) { // O29
+        boolean trAsk = any(t, "అంటే ఏంటి", "అంటే ఏమిటి", "translate", "meaning", "అనువాదం", "అనువదించు")
+                || any(t, "తెలుగులో", "అర్థం") && OfflineRead.ready(act()); // (loose words only when the pack is here: else not swallowed)
+        if (said.matches("(?s).*[A-Za-z]{3,}.*") && trAsk && !any(t, "అర్థం కాలేదు", "అర్థం కావడం లేదు", "అర్థమవ్వలేదు", "అర్థం అవ్వలేదు")) { // O29
             String tr = OfflineRead.sayInTelugu(act(), said.replaceAll("(తెలుగులో|అంటే ఏంటి|అంటే ఏమిటి|అర్థం|ఏంటి|చెప్పు)", " ").replaceAll("(?i)\\b(translate|meaning|in telugu|of)\\b", " "));
             if (tr != null) return tr;
         }
@@ -5996,7 +5998,7 @@ final class Tools {
             return Offline.sayWhen(next, now) + " కి అలారం పెట్టాను." + (at.toLocalDate().isAfter(next.toLocalDate())
                     ? " (అలారానికి రోజు ఎంచుకోలేను; ఆ రోజు కోసం \"గుర్తు చేయి\" అనండి.)" : "");
         }
-        if (any(t, "టైమర్", "timer") && !any(t, "మిగిలింది", "ఎంత", "ఆపు", "stop")) {
+        if (any(t, "టైమర్", "timer") && !any(t, "మిగిలింది", "ఎంత", "ఆపు", "stop") && Music.sleepWords(t) < 0 && !any(t, "పాట", "మ్యూజిక్", "music", "song", "రేడియో", "radio", "స్లీప్")) {
             int secs = Offline.seconds(said);
             if (secs <= 0) return "ఎన్ని నిమిషాల టైమర్?";
             JSONObject o = new JSONObject(timer(secs, "Jarvis"));

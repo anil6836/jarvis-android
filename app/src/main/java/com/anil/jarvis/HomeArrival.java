@@ -35,6 +35,12 @@ final class HomeArrival {
         return PendingIntent.getBroadcast(c, REQ, new Intent(c, AlarmReceiver.class).setAction(ACTION_GEO), flags);
     }
 
+    /** After a restart Android has forgotten the circle: set it again whatever was kept. */
+    static void armAfterBoot(Context c) {
+        sp(c).edit().remove("armed").apply();
+        arm(c);
+    }
+
     /** The circle around his home is set (again) when his home is known and he allowed location all the time. */
     static void arm(Context c) {
         LocationManager lm = c.getSystemService(LocationManager.class);
@@ -59,7 +65,8 @@ final class HomeArrival {
         boolean in = i.getBooleanExtra(LocationManager.KEY_PROXIMITY_ENTERING, false);
         SharedPreferences s = sp(c);
         long now = System.currentTimeMillis();
-        if (in == s.getBoolean("in", false) && now - s.getLong("at", 0) < 6 * 3600_000L) return; // (the same again)
+        // (the same again: e.g. the circle set again while he is at home says "entering" once more)
+        if (in == s.getBoolean("in", false) && s.contains("at")) return;
         if (now - s.getLong("at", 0) < 10 * 60_000L) { s.edit().putBoolean("in", in).putLong("at", now).apply(); return; } // GPS jitter at the gate
         long since = s.getLong("at", 0);
         s.edit().putBoolean("in", in).putLong("at", now).apply();

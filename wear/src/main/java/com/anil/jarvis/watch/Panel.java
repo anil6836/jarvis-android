@@ -74,7 +74,7 @@ public class Panel extends Activity {
         Panel p = shown;
         if (p != null && !"toast".equals(k) && (k.equals(p.kind) || "protocol".equals(k) && "protocols".equals(p.kind))) { p.data = o; if ("protocol".equals(k)) p.kind = "protocol"; p.render(); }
         else if ("protocol".equals(k) && p == null) { // (started by voice: the steps show here)
-            try { app.startActivity(new Intent(app, Panel.class).putExtra(EXTRA_KIND, "protocol").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
+            Screens.launch(app, new Intent(app, Panel.class).putExtra(EXTRA_KIND, "protocol"), "⚡ ప్రోటోకాల్", false);
         }
         if (!t.isEmpty()) {
             if (p != null) p.showToast(t);
@@ -91,6 +91,7 @@ public class Panel extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Screens.seen(this);
         Theme.refresh(this);
         kind = getIntent().getStringExtra(EXTRA_KIND);
         if (kind == null) kind = "status";

@@ -52,8 +52,12 @@ final class Journey {
         arm(c, 5);
         String to = p == null ? (place == null || place.isEmpty() ? "మీరు వెళ్లే చోటు" : place) : p.optString("name");
         String eta = Offline.sayWhen(LocalDateTime.now().plusMinutes(m), LocalDateTime.now());
+        boolean sosReady = !new Prefs(c).sosContacts().trim().isEmpty()
+                && c.checkSelfPermission(android.Manifest.permission.SEND_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
         return "సరే, మీతో ఉంటాను: " + to + " కి సుమారు " + eta + " కి చేరాలి." + (p == null ? " (ఆ చోటు సేవ్ అయి లేదు, అందుకే చేరుకున్నది తెలియదు: చేరాక \"చేరుకున్నాను\" అనండి.)" : "")
-                + " ఆలస్యమైతే, రాత్రి అయితే మధ్యమధ్యలో \"అంతా బాగుందా?\" అని అడుగుతాను; జవాబు లేకపోతే మీ వాళ్లకి SOS వెళ్తుంది. \"జర్నీ అయిపోయింది\" అంటే ఆపుతాను.";
+                + " ఆలస్యమైతే, రాత్రి అయితే మధ్యమధ్యలో \"అంతా బాగుందా?\" అని అడుగుతాను; "
+                + (sosReady ? "జవాబు లేకపోతే మీ వాళ్లకి SOS వెళ్తుంది." : "కానీ SOS కాంటాక్ట్స్ / SMS అనుమతి లేదు, అందుకే జవాబు లేకపోయినా ఎవరికీ వెళ్లదు: సెట్టింగ్స్ → అత్యవసరం (SOS) లో పెట్టండి.")
+                + " \"జర్నీ అయిపోయింది\" అంటే ఆపుతాను.";
     }
 
     static String stop(Context c, boolean arrived) {
@@ -94,7 +98,7 @@ final class Journey {
         int asked = s.getInt("asked", 0);
         long askedAt = s.getLong("asked_at", 0);
         if (asked > 0) { // waiting for his answer
-            if (now - askedAt < 5 * MIN) return;
+            if (now - askedAt < 5 * MIN - 60_000L) return; // (the alarm comes a few seconds early: not a whole extra round)
             if (asked == 1) { ask(c, 2); return; }
             s.edit().putInt("asked", 0).putLong("asked_at", 0).putBoolean("on", false).apply();
             try { c.getSystemService(NotificationManager.class).cancel(NOTE); } catch (Exception ignored) {}
@@ -122,7 +126,11 @@ final class Journey {
                     .addAction(new Notification.Action.Builder(null, "✅ బాగున్నాను", ok).build()).build());
         } catch (Exception ignored) {}
         if (!CallControl.busyWithCall()) Announcer.say(c, new Prefs(c).name() + (n == 1 ? ", అంతా బాగుందా? బాగుంటే నోటిఫికేషన్ లేదా వాచ్‌లో నొక్కండి." : ", జవాబు రాలేదు. బాగున్నారా? 5 నిమిషాల్లో నొక్కకపోతే SOS పంపుతాను."));
-        if (n == 2) try { new android.media.ToneGenerator(android.media.AudioManager.STREAM_ALARM, 100).startTone(android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 2000); } catch (Exception ignored) {}
+        if (n == 2) try {
+            android.media.ToneGenerator tg = new android.media.ToneGenerator(android.media.AudioManager.STREAM_ALARM, 100);
+            tg.startTone(android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 2000);
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(tg::release, 2500);
+        } catch (Exception ignored) {}
     }
 
     /** He answered "బాగున్నాను". */
@@ -154,20 +162,9 @@ final class Journey {
     static void sendReached(Context c) {
         try { c.getSystemService(NotificationManager.class).cancel(NOTE_REACHED); } catch (Exception ignored) {}
         String who = Drive.settings(c).getString("reached_to", "").trim();
-        if (who.isEmpty() || c.checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
-        new Thread(() -> {
-            StringBuilder sent = new StringBuilder();
-            for (String w : who.split("\\s*,\\s*")) {
-                String[] n = Sos.number(c, w);
-                if (n == null) continue;
-                try {
-                    android.telephony.SmsManager sm = c.getSystemService(android.telephony.SmsManager.class);
-                    sm.sendTextMessage(n[1], null, "క్షేమంగా చేరుకున్నాను. – " + new Prefs(c).name(), null, null);
-                    sent.append(sent.length() > 0 ? ", " : "").append(n[0]);
-                } catch (Exception ignored) {}
-            }
-            Reminders.notify(c, "📩 చేరుకున్నాను", sent.length() == 0 ? "పంపలేకపోయాను." : sent + " కి పంపాను.", NOTE_REACHED + 1);
-        }, "journey-reached").start();
+        if (who.isEmpty()) { Reminders.notify(c, "📩 చేరుకున్నాను", "ఎవరికి పంపాలో సెట్ అయి లేదు (\"చేరగానే అమ్మకి మెసేజ్ పంపేలా చెయ్\" అనండి).", NOTE_REACHED + 1); return; }
+        new Thread(() -> Reminders.notify(c, "📩 చేరుకున్నాను", Sos.toPeople(c, who, "క్షేమంగా చేరుకున్నాను. – " + new Prefs(c).name()), NOTE_REACHED + 1),
+                "journey-reached").start();
     }
 
     /** Words (pure: tested on a desk): {"start", place, minutes} / {"stop"} / {"arrived"}; null when it isn't the journey guard. */
