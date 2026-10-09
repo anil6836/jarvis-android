@@ -437,7 +437,7 @@ final class Tools {
         DEFS.add(new Def("home_link", "His old phone at home (the guard) through his own Telegram bot; both phones need internet. look = a fresh picture from "
                 + "home now ('ఇంట్లో ఎలా ఉంది?', shown here and on his watch, takes up to a minute); say = said aloud at home ('ఇంటికి చెప్పు …'): "
                 + "first ask him 'ఇంట్లో \"…\" అని వినిపించమంటారా?' and call only after his yes (he taps once more); guard_off / guard_on = pause / resume "
-                + "the camera alerts at home. Needs this phone linked (Settings → కాపలా మోడ్ → 🏠 ఇంటి ఫోన్‌తో కలుపు).",
+                + "the camera alerts at home. Needs this phone linked: Settings → కాపలా మోడ్ with the same bot token as the home phone and 'Telegram చాట్ కనుక్కో' (guard itself left off here).",
                 schema(new String[][]{{"action", "string", "look, say, guard_off or guard_on"}, {"text", "string", "For say: the exact words, in Telugu"}}, "action")));
         DEFS.add(new Def("ride_app",
                 "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself. "
@@ -516,7 +516,7 @@ final class Tools {
                 schema(new String[][]{{"days", "integer", "How many days back (default 7, max 365)"},
                         {"petrol_price", "number", "Set: petrol price ₹/litre he goes by (default 107)"}, {"petrol_kmpl", "number", "Set: a petrol bike's km per litre (default 45)"}})));
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
-                + "category (optional): bike, money, calls, day, missions, camera, live, phone (phone control, lights / smart home), duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (water, steps, exercise, sleep, sounds), alarm (song alarm), faith (Bible, verse, church, prayer), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), drive (route, places on the way, speed cameras), home (cooking, books read aloud), travel (bus, train, tickets, trip plan), news (news, weather, cricket), fun (radio, songs, movies, quiz), code, jarvis; empty = all folders.",
+                + "category (optional): bike, money, calls, day, missions, camera, live, phone (phone control, lights / smart home), duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (water, steps, exercise, sleep, sounds), alarm (song alarm), faith (Bible, verse, church, prayer), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), drive (route, places on the way, speed cameras), home (cooking, books read aloud), travel (bus, train, tickets, trip plan), news (news, weather, cricket), fun (radio, songs, movies, quiz), watch (watch, road, home phone, protocols, journey guard, water, focus), code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",

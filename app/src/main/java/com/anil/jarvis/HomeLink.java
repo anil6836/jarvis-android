@@ -117,7 +117,7 @@ final class HomeLink {
     }
 
     private static String notLinked() {
-        return "ఇంటి ఫోన్‌తో కలపలేదు: సెట్టింగ్స్ → కాపలా మోడ్ లో \"🏠 ఈ ఫోన్‌ని ఇంటి ఫోన్‌తో కలుపు\" లో అదే bot token పెట్టండి.";
+        return "ఇంటి ఫోన్‌తో కలపలేదు: ఈ ఫోన్ సెట్టింగ్స్ → కాపలా మోడ్ లో ఇంటి ఫోన్‌లో ఉన్న అదే bot token పెట్టి \"Telegram చాట్ కనుక్కో\" నొక్కండి (కాపలా ఇక్కడ ఆన్ చేయకండి).";
     }
 
     /** A Telegram notification of his bot arrived on his main phone: the latest pinned picture / voice from home (background). */
