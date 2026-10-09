@@ -72,6 +72,8 @@ public class Beat extends BroadcastReceiver {
                     try {
                         if (EarService.worn != null) o.put("worn", EarService.worn);
                         o.put("day_steps", Body.today(app));
+                        android.os.BatteryManager bm = app.getSystemService(android.os.BatteryManager.class);
+                        if (bm != null) o.put("bat", bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)).put("chg", bm.isCharging());
                     } catch (Exception ignored) {}
                     Link.send(app, Link.P_BEAT, o);
                 }

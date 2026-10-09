@@ -414,6 +414,11 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "where, to, speed, trip, service_done, service_when, service_set or watch_compass"},
                         {"place", "string", "For to / watch_compass: బండి (the parked bike), ఇల్లు or a saved place's name"},
                         {"days_ago", "integer", "For service_done: how many days ago (0 = today)"}, {"months", "integer", "For service_set"}, {"km", "integer", "For service_set"}}, "action")));
+        DEFS.add(new Def("home_link", "His old phone at home (the guard) through his own Telegram bot; both phones need internet. look = a fresh picture from "
+                + "home now ('ఇంట్లో ఎలా ఉంది?', shown here and on his watch, takes up to a minute); say = said aloud at home ('ఇంటికి చెప్పు …'): "
+                + "first ask him 'ఇంట్లో \"…\" అని వినిపించమంటారా?' and call only after his yes (he taps once more); guard_off / guard_on = pause / resume "
+                + "the camera alerts at home. Needs this phone linked (Settings → కాపలా మోడ్ → 🏠 ఇంటి ఫోన్‌తో కలుపు).",
+                schema(new String[][]{{"action", "string", "look, say, guard_off or guard_on"}, {"text", "string", "For say: the exact words, in Telugu"}}, "action")));
         DEFS.add(new Def("ride_app",
                 "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself. "
                         + "app = compare (or empty): Jarvis reads the fares for the trip in each of his apps (Rapido, Uber, Ola) and returns them together, "
@@ -917,6 +922,7 @@ final class Tools {
             case "steps_today": return "అడుగులు లెక్కపెడుతున్నాను…";
             case "health_watch": return "ఆరోగ్యం చూస్తున్నాను…";
             case "travel": return "దారి చూస్తున్నాను…";
+            case "home_link": return "ఇంటి ఫోన్‌ని అడుగుతున్నాను…";
             case "food_app": return "వెతుకుతున్నాను…";
             case "night_mode": return "నైట్ మోడ్…";
             case "find_phone": return "ఇక్కడే ఉన్నాను!";
@@ -1090,6 +1096,18 @@ final class Tools {
                 case "steps_today": return steps();
                 case "health_watch": return healthWatch(a);
                 case "travel": return Travel.tool(act(), a);
+                case "home_link": {
+                    String ac = a.optString("action", "look").trim().toLowerCase(Locale.ROOT);
+                    String said;
+                    if (ac.equals("say")) {
+                        String text = a.optString("text").trim();
+                        if (text.isEmpty()) return err("no_text", "What should be said at home?");
+                        if (!host.confirm("🏠 ఇంట్లో వినిపించనా?", text, "📢 వినిపించు", 0)) return err("cancelled", "He did not tap to send it home.");
+                        said = HomeLink.say(act(), text);
+                    } else if (ac.startsWith("guard")) said = HomeLink.guard(act(), ac.endsWith("on"));
+                    else said = HomeLink.look(act());
+                    return ok().put("said", said).put("next", "Say this to him in short Telugu.").toString();
+                }
                 case "ride_app": {
                     String ap = a.optString("app").trim().toLowerCase(Locale.ROOT);
                     int named = (ap.contains("uber") ? 1 : 0) + (ap.contains("ola") ? 1 : 0) + (ap.contains("rapido") ? 1 : 0);

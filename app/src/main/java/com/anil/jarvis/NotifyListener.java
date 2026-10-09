@@ -173,6 +173,11 @@ public class NotifyListener extends NotificationListenerService {
         if (text.isEmpty()) text = str(x.getCharSequence(Notification.EXTRA_BIG_TEXT));
         if (text.isEmpty()) text = str(x.getCharSequence(Notification.EXTRA_TEXT));
         if (text.isEmpty() && title.isEmpty()) return;
+        // W41 / W65: his own guard bot wrote on Telegram: the picture / voice from home (pinned there) to his phone and watch
+        if (sbn.getPackageName().startsWith("org.telegram") && System.currentTimeMillis() - sbn.getPostTime() <= 60_000 && HomeLink.linked(this)) {
+            String bot = Guard.sp(this).getString("tg_bot_name", "");
+            if (!bot.isEmpty() && (title.equalsIgnoreCase(bot) || title.startsWith(bot))) HomeLink.onBotNote(this);
+        }
         // W44: Samsung's irregular heart rhythm warning (watch / Samsung Health Monitor): kept with the date, a doctor reminder
         if (System.currentTimeMillis() - sbn.getPostTime() <= 60_000 && HeartLog.isIrregular(sbn.getPackageName(), title + " " + text)) {
             final String what = title + ": " + text, key = sbn.getKey() + "|" + sbn.getPostTime();

@@ -176,6 +176,9 @@ final class WatchDo {
             }
             case "radio_phone": toast(app, Music.radioOnPhone(app, o.optString("name"))); return;
             case "show_phone": toast(app, ShowOnPhone.lastAnswer(app)); return; // W62
+            case "sos": CrashAlert.sosNow(app, "వాచ్‌లో 🆘 నొక్కారు, సహాయం కావాలి"); return; // W40 (after the watch's own 5 seconds)
+            case "fall_ok": CrashAlert.ok(app); return;          // W42: "బాగున్నాను" on the wrist
+            case "fall_send": CrashAlert.send(app, true); return; // W42: "సహాయం" on the wrist
             case "breathed": // W30: the breathing done on the watch (for his week)
                 Wellness.breathed(app, o);
                 return;

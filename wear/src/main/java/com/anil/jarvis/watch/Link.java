@@ -36,7 +36,7 @@ final class Link {
             P_PING = "/jarvis/ping", P_ALERT = "/jarvis/alert", P_ALERT_GONE = "/jarvis/alert/gone", P_ALARM = "/jarvis/alarm",
             P_INFO = "/jarvis/info", P_ALARM_STOP = "/jarvis/alarm/stop", P_PANEL = "/jarvis/panel", P_TIMER = "/jarvis/timer",
             P_OPEN = "/jarvis/open", P_BUZZ = "/jarvis/buzz", // phase 5: open a screen here; a turn while walking
-            P_RADIO = "/jarvis/radio";
+            P_RADIO = "/jarvis/radio", P_FALL_END = "/jarvis/fall/end", P_PHOTO = "/jarvis/photo";
 
     private static volatile String phone;
     private static volatile long phoneAt;
@@ -148,6 +148,8 @@ final class Link {
         double v = cfg(c).optDouble("stride", WalkCoach.STRIDE);
         return v >= 0.5 && v <= 0.95 ? v : WalkCoach.STRIDE;
     }
+    /** W42: feel a hard fall here and ask "బాగున్నారా?". */
+    static boolean fall(Context c) { return cfg(c).optBoolean("fall", true); }
     /** W46 / W26 / W43: the heart rate about every 15 minutes while he sits (his normal is learnt on the phone). */
     static boolean hr(Context c) { return cfg(c).optBoolean("hr", true); }
     /** W3: "orb", "holo" or "human". */

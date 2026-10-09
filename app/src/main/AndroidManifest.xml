@@ -262,6 +262,12 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@style/JarvisTheme" />
+        <!-- W65: a voice clip from the guard phone at home to his main phone -->
+        <activity
+            android:name=".HomeTalkActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/JarvisTheme" />
         <service
             android:name=".RecorderService"
             android:exported="false"

@@ -136,33 +136,120 @@ final class Guard {
         }
     }
 
-    /** A photo with a caption to his Telegram (multipart upload); false when it did not go. */
+    /** A photo with a caption to his Telegram (multipart upload); false when it did not go. Phase 5: pinned for his main phone. */
     static boolean sendPhoto(Context c, byte[] jpeg, String caption) {
-        return sendPhotoOnce(c, jpeg, caption) || sendPhotoOnce(c, jpeg, caption); // one more try on a bad connection
+        long id = sendFile(c, "sendPhoto", "photo", "guard.jpg", "image/jpeg", jpeg, caption, false);
+        if (id < 0) id = sendFile(c, "sendPhoto", "photo", "guard.jpg", "image/jpeg", jpeg, caption, false); // one more try on a bad connection
+        if (id > 0) pin(c, id); // (W41: his main phone's Jarvis finds the latest picture there)
+        return id > 0;
     }
 
-    private static boolean sendPhotoOnce(Context c, byte[] jpeg, String caption) {
+    /** A file (photo / audio) to his chat; its message id, or -1 when it did not go. */
+    static long sendFile(Context c, String method, String field, String name, String type, byte[] data, String caption, boolean silent) {
         String t = token(c), id = chat(c);
-        if (t.isEmpty() || id.isEmpty()) return false;
+        if (t.isEmpty() || id.isEmpty()) return -1;
         String b = "----jarvis" + System.currentTimeMillis();
         try {
-            HttpURLConnection con = (HttpURLConnection) new URL("https://api.telegram.org/bot" + t + "/sendPhoto").openConnection();
+            HttpURLConnection con = (HttpURLConnection) new URL("https://api.telegram.org/bot" + t + "/" + method).openConnection();
             con.setConnectTimeout(15000);
-            con.setReadTimeout(30000);
+            con.setReadTimeout(45000);
             con.setDoOutput(true);
             con.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + b);
             try (OutputStream o = con.getOutputStream()) {
                 o.write(("--" + b + "\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n" + id + "\r\n").getBytes(StandardCharsets.UTF_8));
                 o.write(("--" + b + "\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n" + caption + "\r\n").getBytes(StandardCharsets.UTF_8));
-                o.write(("--" + b + "\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"guard.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-                o.write(jpeg);
+                if (silent) o.write(("--" + b + "\r\nContent-Disposition: form-data; name=\"disable_notification\"\r\n\r\ntrue\r\n").getBytes(StandardCharsets.UTF_8));
+                o.write(("--" + b + "\r\nContent-Disposition: form-data; name=\"" + field + "\"; filename=\"" + name + "\"\r\nContent-Type: " + type + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                o.write(data);
                 o.write(("\r\n--" + b + "--\r\n").getBytes(StandardCharsets.UTF_8));
             }
-            boolean ok = con.getResponseCode() == 200;
-            con.disconnect();
-            return ok;
+            String body = read(con);
+            JSONObject r = new JSONObject(body);
+            return r.optBoolean("ok") ? r.getJSONObject("result").optLong("message_id", -1) : -1;
         } catch (Exception e) {
-            return false;
+            return -1;
+        }
+    }
+
+    // ---------------------------------------------------------------- phase 5: the home phone and his main phone (W41 / W64 / W65)
+
+    /** A text to his chat, quietly (no sound on his phone); its message id or -1. */
+    static long sendQuiet(Context c, String text) {
+        try {
+            JSONObject r = post(c, "sendMessage", new JSONObject().put("chat_id", chat(c)).put("text", text).put("disable_notification", true));
+            return r != null && r.optBoolean("ok") ? r.getJSONObject("result").optLong("message_id", -1) : -1;
+        } catch (Exception e) { return -1; }
+    }
+
+    /** Pins a message of the bot's in his chat, quietly: the two phones' mailbox (each reads the latest pinned one). */
+    static boolean pin(Context c, long messageId) {
+        try {
+            JSONObject r = post(c, "pinChatMessage", new JSONObject().put("chat_id", chat(c)).put("message_id", messageId).put("disable_notification", true));
+            return r != null && r.optBoolean("ok");
+        } catch (Exception e) { return false; }
+    }
+
+    /** The latest pinned message in his chat with the bot, or null. */
+    static JSONObject pinned(Context c) {
+        try {
+            JSONObject r = post(c, "getChat", new JSONObject().put("chat_id", chat(c)));
+            return r == null || !r.optBoolean("ok") ? null : r.getJSONObject("result").optJSONObject("pinned_message");
+        } catch (Exception e) { return null; }
+    }
+
+    /** A file the bot holds (a photo, a voice), downloaded; null when it can't. */
+    static byte[] file(Context c, String fileId) {
+        String t = token(c);
+        try {
+            JSONObject r = post(c, "getFile", new JSONObject().put("file_id", fileId));
+            if (r == null || !r.optBoolean("ok")) return null;
+            String path = r.getJSONObject("result").optString("file_path");
+            HttpURLConnection con = (HttpURLConnection) new URL("https://api.telegram.org/file/bot" + t + "/" + path).openConnection();
+            con.setConnectTimeout(15000);
+            con.setReadTimeout(30000);
+            try (InputStream in = con.getInputStream()) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buf = new byte[16384];
+                int n;
+                while ((n = in.read(buf)) > 0 && out.size() < 20_000_000) out.write(buf, 0, n);
+                return out.toByteArray();
+            } finally { con.disconnect(); }
+        } catch (Exception e) { return null; }
+    }
+
+    /** The bot's own name (to know its Telegram notifications on his main phone). */
+    static String botName(Context c) {
+        String n = sp(c).getString("tg_bot_name", "");
+        if (!n.isEmpty() || token(c).isEmpty()) return n;
+        try {
+            JSONObject r = new JSONObject(get("https://api.telegram.org/bot" + token(c) + "/getMe"));
+            n = r.optBoolean("ok") ? r.getJSONObject("result").optString("first_name") : "";
+            if (!n.isEmpty()) sp(c).edit().putString("tg_bot_name", n).apply();
+        } catch (Exception ignored) {}
+        return n;
+    }
+
+    private static JSONObject post(Context c, String method, JSONObject body) throws Exception {
+        String t = token(c);
+        if (t.isEmpty() || chat(c).isEmpty()) return null;
+        HttpURLConnection con = (HttpURLConnection) new URL("https://api.telegram.org/bot" + t + "/" + method).openConnection();
+        con.setConnectTimeout(15000);
+        con.setReadTimeout(20000);
+        con.setDoOutput(true);
+        con.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        try (OutputStream o = con.getOutputStream()) { o.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
+        return new JSONObject(read(con));
+    }
+
+    private static String read(HttpURLConnection con) throws Exception {
+        try (InputStream in = con.getResponseCode() >= 400 ? con.getErrorStream() : con.getInputStream()) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while (in != null && (n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toString("UTF-8");
+        } finally {
+            con.disconnect();
         }
     }
 

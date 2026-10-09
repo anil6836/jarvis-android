@@ -54,6 +54,7 @@ final class WatchAlerts {
             case "jarvis_sound": return "info";
             case "jarvis_care": return "care";
             case "jarvis_weather": return "weather"; // (phase 5: rain soon, great heat)
+            case "jarvis_home": return "message"; // (W64 / W65: home arrival, a voice from home)
             case "jarvis_awake": return "rest"; // (the awake check on a ride after a duty: tapped on the wrist)
             default: return null; // (news, prices, progress, updates, the listening note: not on the wrist)
         }
@@ -81,6 +82,7 @@ final class WatchAlerts {
             if (text.isEmpty() && x != null) text = str(x.getCharSequence(Notification.EXTRA_TEXT));
             if (title.isEmpty() && text.isEmpty()) return;
             String kind = kindOf(n.getChannelId(), title);
+            if ("jarvis_crash".equals(n.getChannelId()) && CrashAlert.fromWatch) return; // (W42: the watch asks itself)
             if (kind == null || sbn.isOngoing() && !urgent(kind)) return;
             int id = sbn.getKey().hashCode();
             // an update of one already on the watch that the phone shows quietly (the cooker's count): no buzz again

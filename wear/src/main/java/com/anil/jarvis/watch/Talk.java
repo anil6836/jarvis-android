@@ -255,6 +255,8 @@ final class Talk {
                 Timers.start(app, o.optInt("secs"), o.optString("label"));
                 break;
             case Link.P_RADIO: RadioPlayer.fromPhone(app, o); break; // W36: play / stop the radio here
+            case Link.P_FALL_END: Help.endFromPhone(); break;       // W42: answered on the phone
+            case Link.P_PHOTO: Photos.got(app, o); break;            // W54: a picture from the phone
             case Link.P_OPEN: Screens.open(app, o); break; // phase 5: the phone opens a screen here (the compass, music...)
             case Link.P_BUZZ: Alerts.turn(app, o.optString("turn")); break; // W78: a turn close by, while he walks with Maps
             case Link.P_PING: hello(app); break;

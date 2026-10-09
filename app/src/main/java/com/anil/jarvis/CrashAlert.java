@@ -27,6 +27,8 @@ final class CrashAlert {
     private CrashAlert() {}
 
     static final String ACTION_OK = "com.anil.jarvis.CRASH_OK", ACTION_SEND = "com.anil.jarvis.CRASH_SEND";
+    /** phone -> watch: the fall question was answered here (the wrist's question closes). */
+    static final String P_FALL_END = "/jarvis/fall/end";
     static final int CRASH_SECONDS = 60;
     private static final int NOTE = 151;
     private static final Handler main = new Handler(Looper.getMainLooper());
@@ -70,8 +72,81 @@ final class CrashAlert {
         }
     };
 
-    /** The ride's crash check. */
+    /** When the watch last felt a hard knock (W80), wall clock; 0 never. */
+    static volatile long watchImpactAt;
+    /** The fall was felt by the watch (it shows the question itself, so the phone's alert isn't sent there as well). */
+    static volatile boolean fromWatch;
+    private static volatile long softAt;
+    static final String ACTION_SOFT_OK = "com.anil.jarvis.CRASH_SOFT_OK";
+    private static final int NOTE_SOFT = 156;
+
+    /**
+     * W80: the ride's crash check. With the watch on his wrist and near, a knock the watch didn't feel too (the phone fell,
+     * a pothole) first asks quietly on the wrist for 20 seconds; no answer -> the full check as before. A knock both felt
+     * (or no watch) -> the full check at once. A real crash is never dropped.
+     */
     static void start(Context c) {
+        Context a = c.getApplicationContext();
+        boolean wrist = WatchHub.known(a) && WatchHub.watchHere(a) && Boolean.TRUE.equals(WatchHub.worn(a)) && doubleCheck(a);
+        if (wrist && System.currentTimeMillis() - watchImpactAt > 15_000L && !active) { soft(a); return; }
+        startNow(a);
+    }
+
+    static boolean doubleCheck(Context c) { return Travel.sp(c).getBoolean("crash_double", true); }
+
+    private static final Runnable softUp = () -> { if (app != null && softAt != 0) { softAt = 0; clearSoft(app); startNow(app); } };
+
+    private static void soft(Context c) {
+        app = c;
+        main.post(() -> {
+            if (active || softAt != 0) return;
+            softAt = System.currentTimeMillis();
+            try {
+                NotificationManager nm = c.getSystemService(NotificationManager.class);
+                nm.createNotificationChannel(new NotificationChannel("jarvis_awake", "మెలకువ చెక్", NotificationManager.IMPORTANCE_HIGH));
+                PendingIntent ok = PendingIntent.getBroadcast(c, 157, new Intent(c, AlarmReceiver.class).setAction(ACTION_SOFT_OK), PendingIntent.FLAG_IMMUTABLE);
+                PendingIntent send = PendingIntent.getBroadcast(c, 158, new Intent(c, AlarmReceiver.class).setAction(ACTION_SEND), PendingIntent.FLAG_IMMUTABLE);
+                nm.notify(NOTE_SOFT, new Notification.Builder(c, "jarvis_awake").setSmallIcon(android.R.drawable.ic_dialog_alert)
+                        .setContentTitle("🆘 దెబ్బ తగిలిందా?").setContentText("ఫోన్‌కి గట్టి దెబ్బ తగిలింది. బాగుంటే నొక్కండి (20 సెకన్లు)")
+                        .setCategory(Notification.CATEGORY_ALARM).setTimeoutAfter(60_000L).setAutoCancel(true).setContentIntent(ok)
+                        .addAction(new Notification.Action.Builder(null, "✅ బాగున్నాను", ok).build())
+                        .addAction(new Notification.Action.Builder(null, "🆘 సహాయం", send).build()).build());
+            } catch (Exception ignored) {}
+            main.postDelayed(softUp, 20_000L);
+        });
+    }
+
+    /** He tapped "బాగున్నాను" on the quiet check. */
+    static void softOk(Context c) {
+        main.post(() -> { main.removeCallbacks(softUp); softAt = 0; clearSoft(c); });
+    }
+
+    private static void clearSoft(Context c) {
+        try { c.getSystemService(NotificationManager.class).cancel(NOTE_SOFT); } catch (Exception ignored) {}
+    }
+
+    /** W40: the 🆘 held on the watch (after its own 5 seconds): the SOS and the call, now. */
+    static void sosNow(Context c, String what) {
+        Context a = c.getApplicationContext();
+        main.post(() -> {
+            main.removeCallbacks(softUp);
+            if (softAt != 0) { softAt = 0; clearSoft(a); }
+            if (!active) begin(a, "fall", 0, true, what);
+            send(a, true);
+        });
+    }
+
+    /** W42: the watch felt a hard fall and no movement after: asked on the wrist and here, then the SOS (his fall settings). */
+    static void fallFromWatch(Context c) {
+        Context a = c.getApplicationContext();
+        if (!WatchHub.fallOn(a) || active) return;
+        String mode = SafetySounds.sosMode(a);
+        fromWatch = true;
+        startFall(a, "వాచ్‌కి గట్టి దెబ్బ తగిలి, తర్వాత కదలిక లేదు", "none".equals(mode) ? -1 : SafetySounds.waitSeconds(a), "sms_call".equals(mode));
+    }
+
+    /** The crash check proper. */
+    private static void startNow(Context c) {
         main.post(() -> {
             if (active) return;
             if (new Prefs(c).sosContacts().trim().isEmpty()) {
@@ -201,6 +276,10 @@ final class CrashAlert {
 
     private static void stopAll(Context c, boolean closeScreen) {
         active = false;
+        if (fromWatch) { // the question on the wrist goes too
+            fromWatch = false;
+            try { WatchHub.send(c, P_FALL_END, new org.json.JSONObject().put("end", true)); } catch (Exception ignored) {}
+        }
         main.removeCallbacks(beep);
         main.removeCallbacks(timeUp);
         main.removeCallbacks(giveUp);

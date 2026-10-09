@@ -60,6 +60,8 @@ public class EarService extends Service {
             if (e.sensor.getType() == Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT) {
                 boolean on = e.values[0] >= 0.5f;
                 if (worn == null || worn != on) { worn = on; beat(); if (!on) Body.offWrist(EarService.this); }
+            } else if (e.sensor.getType() == Sensor.TYPE_ACCELEROMETER) { // W42 / W80: a fall, a hard knock
+                if (!Boolean.FALSE.equals(worn)) fall.sample(e.values[0], e.values[1], e.values[2], e.timestamp / 1_000_000L, fallOut);
             } else if (e.sensor.getType() == Sensor.TYPE_STEP_COUNTER) {
                 steps = e.values[0];
                 long t = e.timestamp / 1_000_000L, now = SystemClock.elapsedRealtime(); // (the sensor's clock is the boot clock)
@@ -70,6 +72,19 @@ public class EarService extends Service {
         @Override public void onAccuracyChanged(Sensor s, int a) {}
     };
 
+    private final Fall fall = new Fall();
+    private final Fall.Out fallOut = new Fall.Out() {
+        @Override public void impact(float g, long t) {
+            try { Link.send(EarService.this, Link.P_HEALTH, new JSONObject().put("type", "impact").put("g", g).put("t", System.currentTimeMillis())); } catch (Exception ignored) {}
+        }
+        @Override public void fell(long t) {
+            main.post(() -> {
+                try { Link.send(EarService.this, Link.P_HEALTH, new JSONObject().put("type", "fall").put("t", System.currentTimeMillis())); } catch (Exception ignored) {}
+                try { Help.open(EarService.this, "fall"); } catch (Exception ignored) {}
+            });
+        }
+    };
+
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             Talk.hours(EarService.this);
@@ -77,7 +92,7 @@ public class EarService extends Service {
         }
     };
 
-    static boolean wanted(Context c) { return Link.raise(c) || Link.hours(c) || Link.lost(c) || Link.walk(c) || Link.hr(c); }
+    static boolean wanted(Context c) { return Link.raise(c) || Link.hours(c) || Link.lost(c) || Link.walk(c) || Link.hr(c) || Link.fall(c); }
 
     /** Started (or stopped) to match his settings. From the Jarvis screen only (Android's rule for the mic). */
     static void startIfWanted(Context c) {
@@ -120,6 +135,11 @@ public class EarService extends Service {
             Sensor st = Link.walk(this) ? sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER, true) : null;
             if (st == null) st = sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
             if (st != null) try { sm.registerListener(body, st, SensorManager.SENSOR_DELAY_NORMAL, 60_000_000); } catch (Exception ignored) {}
+        }
+        // W42 / W80: 25 readings a second, handed over in bunches every 2 seconds (the watch sleeps in between)
+        if (Link.fall(this)) {
+            Sensor acc = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            if (acc != null) try { sm.registerListener(body, acc, 40_000, 2_000_000); } catch (Exception ignored) {}
         }
     }
 

@@ -105,7 +105,11 @@ public class AlarmReceiver extends BroadcastReceiver {
                 break;
             }
             case CrashAlert.ACTION_OK: CrashAlert.ok(c); break;
+            case CrashAlert.ACTION_SOFT_OK: CrashAlert.softOk(c); break; // W80: fine after a knock only the phone felt
             case Music.ACTION_SLEEP: Music.sleepNow(c); break; // O46: the songs' sleep timer
+            case HomeLink.ACTION_PLAY: HomeLink.playFromHome(c); break; // W65: the voice from home
+            case HomeArrival.ACTION_GEO: HomeArrival.crossed(c, i); break; // W64: home / away
+            case HomeArrival.ACTION_DO: HomeArrival.act(c, i.getStringExtra("do")); break;
             case RideCare.ACTION_AWAKE: RideCare.askAwake(c); break;
             case RideCare.ACTION_REACHED: {
                 PendingResult pr = goAsync(); // the SMS goes out before the receiver lets go
@@ -134,7 +138,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
                 break;
             }
-            case CrashAlert.ACTION_SEND: CrashAlert.send(c, true); break;
+            case CrashAlert.ACTION_SEND: if (CrashAlert.active) CrashAlert.send(c, true); else CrashAlert.sosNow(c, "సహాయం కావాలి"); break;
             case SongAlarm.ACTION_RING:
                 SongAlarm.fire(c, i.getStringExtra(SongAlarm.EXTRA_ID), i.getIntExtra(SongAlarm.EXTRA_COUNT, 0));
                 break;
@@ -183,6 +187,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 try { SongAlarm.rescheduleAll(c); } catch (Exception ignored) {}
                 MedicalId.update(c);
                 GeoReminders.rearmAll(c);
+                try { HomeArrival.arm(c); } catch (Exception ignored) {} // W64
                 Proactive.schedule(c);
                 Faith.schedule(c);
                 try { Duty.scheduleChime(c); } catch (Exception ignored) {}

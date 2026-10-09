@@ -58,6 +58,7 @@ public class GuardService extends Service {
     private int moving, retries;
     private volatile boolean checking, destroyed, opening;
     private final ExecutorService ai = Executors.newSingleThreadExecutor();
+    private java.util.concurrent.ScheduledExecutorService poll;
     /** The guard now running (for a picture of the moment a house sound was heard). */
     private static volatile GuardService self;
     /** Alerts waiting for the next picture as a JPEG (two sounds at once each get it). */
@@ -88,8 +89,11 @@ public class GuardService extends Service {
         nm.createNotificationChannel(new NotificationChannel("jarvis_guard", "కాపలా మోడ్", NotificationManager.IMPORTANCE_LOW));
         PendingIntent stop = PendingIntent.getBroadcast(this, 272, new Intent(this, AlarmReceiver.class).setAction(Guard.ACTION_STOP),
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent talk = PendingIntent.getActivity(this, 273, new Intent(this, HomeTalkActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification n = new Notification.Builder(this, "jarvis_guard").setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setContentTitle("🛡️ కాపలా మోడ్ ఆన్").setContentText("కదలిక కనిపిస్తే మీ Telegram కి ఫోటో వస్తుంది").setOngoing(true)
+                .addAction(new Notification.Action.Builder(null, "🎤 " + new Prefs(this).name() + " కి చెప్పు", talk).build()) // W65: a voice clip to his phone
                 .addAction(new Notification.Action.Builder(null, "⏹ ఆపు", stop).build()).build();
         try {
             if (android.os.Build.VERSION.SDK_INT >= 30) startForeground(NOTE, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA);
@@ -111,6 +115,11 @@ public class GuardService extends Service {
         }
         if (camera == null && !opening) bg.post(this::open);
         self = this;
+        if (poll == null) { // W41 / W64 / W65: his main phone's words through the bot (a pinned message), every 20 seconds
+            poll = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+            poll.scheduleWithFixedDelay(() -> { try { if (!destroyed) HomeLink.homePoll(getApplicationContext()); } catch (Throwable ignored) {} },
+                    20, 20, TimeUnit.SECONDS);
+        }
         return START_STICKY;
     }
 
@@ -218,6 +227,7 @@ public class GuardService extends Service {
             moving = moved ? moving + 1 : 0;
             if (moving < 2 || now - started < 15_000 || now < quietUntil || checking) return; // settle, twice in a row, not right after an alert
             if (Guard.dutyOnly(this) && !onDuty()) return; // he asked for alerts only while he is away on duty
+            if (HomeLink.paused) return; // (W64: he is home: alerts paused from his phone)
             byte[] jpeg = jpeg(img);
             checking = true;
             new Thread(() -> { try { check(jpeg); } finally { checking = false; } }, "jarvis-guard-check").start();
@@ -306,6 +316,7 @@ public class GuardService extends Service {
         if (bg != null) bg.removeCallbacksAndMessages(null);
         if (thread != null) thread.quitSafely();
         ai.shutdownNow();
+        if (poll != null) poll.shutdownNow();
         if (lock != null && lock.isHeld()) lock.release();
         super.onDestroy();
     }

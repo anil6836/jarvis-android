@@ -32,6 +32,8 @@ final class WatchHealth {
                     case "hr": HeartLog.got(app, o.optInt("bpm"), o.optBoolean("still"), o.optBoolean("long"), o.optLong("t", System.currentTimeMillis())); break;
                     case "walk": walk(app, o); break;
                     case "walk_start": Travel.walkStarted(app); break; // W77: walking after a ride: the bike's spot
+                    case "impact": CrashAlert.watchImpactAt = o.optLong("t", System.currentTimeMillis()); break; // W80: a hard knock the watch felt
+                    case "fall": CrashAlert.fallFromWatch(app); break; // W42: a hard fall and no movement after
                     case "still": HeartLog.still(app, o.optBoolean("on")); break;
                     default:
                 }

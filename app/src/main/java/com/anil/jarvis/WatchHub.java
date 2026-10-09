@@ -119,6 +119,9 @@ final class WatchHub {
     /** W3: what Jarvis looks like on the watch: "orb", "holo" (the face as a hologram) or "human" (the phone's face). */
     static String look(Context c) { return sp(c).getString("look", "orb"); }
 
+    /** W42: the watch feels a hard fall (its own sensor) and asks "బాగున్నారా?". */
+    static boolean fallOn(Context c) { return sp(c).getBoolean("fall", true); }
+
     static String lookText(String l) {
         switch (l) {
             case "holo": return "హోలోగ్రామ్ ముఖం";
@@ -145,7 +148,8 @@ final class WatchHub {
                     .put("openListen", openListen(c)).put("name", p.name()).put("lang", p.listenLang())
                     .put("online", Net.online(c)).put("alerts", alertsOn(c)).put("lost", lostOn(c)).put("look", look(c))
                     .put("theme", Ui.theme(c)).put("morning", morningOn(c)).put("watchTimer", watchTimerOn(c))
-                    .put("walk", walkOn(c)).put("hr", hrOn(c)).put("stride", Wellness.strideFor(Wellness.heightCm(c)));
+                    .put("walk", walkOn(c)).put("hr", hrOn(c)).put("stride", Wellness.strideFor(Wellness.heightCm(c)))
+                    .put("fall", fallOn(c)).put("fall_secs", "none".equals(SafetySounds.sosMode(c)) ? 0 : SafetySounds.waitSeconds(c));
         } catch (Exception ignored) {}
         return o;
     }
@@ -382,6 +386,11 @@ final class WatchHub {
                     JSONObject o = new JSONObject(text(data));
                     seen(app, o);
                     WatchHealth.daySteps(app, o);
+                    if (o.has("bat")) { // (W74: the watch's battery; also for the status)
+                        JSONObject i = info;
+                        if (i != null) try { i.put("bat", o.optInt("bat")); } catch (Exception ignored) {}
+                        Power.watchBattery(app, o.optInt("bat", -1), o.optBoolean("chg"));
+                    }
                     return;
                 }
                 case WatchHealth.P_HEALTH: WatchHealth.got(app, new JSONObject(text(data))); // phase 4: walks, heart rate, stillness

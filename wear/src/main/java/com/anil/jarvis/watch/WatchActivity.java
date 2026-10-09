@@ -115,7 +115,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
         String[][] menu = {{"☀️ ఈరోజు", "morning"}, {"📊 స్టేటస్", "status"}, {"🏍️ డ్యూటీ", "duty"}, {"✅ పనులు", "tasks"},
                 {"💡 ఇల్లు", "home"}, {"⏱️ టైమర్", "timer"}, {"🍲 కుక్కర్", "cooker"}, {"📝 నోట్", "note"}, {"🌐 అనువాదం", "translate"},
                 {"🚶 నడక", "walk"}, {"🩺 స్కాన్", "scan"}, {"🌬️ శ్వాస", "breathe"}, // (phase 4: health)
-                {"🧭 దారి", "compass"}, {"🎵 పాటలు", "music"}, {"📻 రేడియో", "radio"}}; // (phase 5)
+                {"🧭 దారి", "compass"}, {"🎵 పాటలు", "music"}, {"📻 రేడియో", "radio"}, {"🖼️ ఫోటోలు", "photos"}}; // (phase 5)
         LinearLayout mrow = null;
         for (int i = 0; i < menu.length; i++) {
             if (i % 2 == 0) {
@@ -134,6 +134,15 @@ public class WatchActivity extends Activity implements Talk.Screen {
             if (i % 2 == 1) mp.leftMargin = dp(6);
             mrow.addView(m, mp);
         }
+
+        // W40: 🆘 held for a second -> 5 seconds to stop -> the phone sends the SOS
+        TextView sos = pill("🆘 SOS (నొక్కి పట్టుకోండి)", 0xFF7F1D1D);
+        sos.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+        sos.setOnClickListener(v -> { status.setText("🆘 కోసం ఒక సెకను నొక్కి పట్టుకోండి"); Talk.buzz(this, 20); });
+        sos.setOnLongClickListener(v -> { Help.open(this, "sos"); return true; });
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
+        sp.topMargin = dp(10);
+        col.addView(sos, sp);
 
         check = text(10.5f, FAINT, true);
         check.setPadding(0, dp(18), 0, 0);
@@ -195,6 +204,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
             case "scan": Scan.open(this); break;
             case "breathe": Breathe.open(this); break;
             case "compass": Compass.open(this, ""); break;
+            case "photos": Photos.open(this); break;
             default: Panel.open(this, what);
         }
     }

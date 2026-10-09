@@ -21,6 +21,7 @@ final class Charge {
 
     static synchronized void onBattery(Context c, Intent i) {
         if (i == null) return;
+        try { Power.onBattery(c, i); } catch (Exception ignored) {} // O35 / W74: low before / during a duty, will it last
         int level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1), scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
         if (level < 0 || scale <= 0) return;
         int pct = level * 100 / scale;

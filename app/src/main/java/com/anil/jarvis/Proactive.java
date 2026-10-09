@@ -114,6 +114,7 @@ public class Proactive extends BroadcastReceiver {
         try { Everyday.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {} // storm check fetches too
         try { Travel.weatherTick(c); } catch (Throwable ignored) {}          // phase 5 (W53 / W69): rain in ~30 minutes, great heat (his own switches)
         try { Travel.serviceTick(c); } catch (Throwable ignored) {}          // O44: the bike's service is near / due
+        try { HomeArrival.arm(c); } catch (Throwable ignored) {}            // W64: the circle around his home (kept set)
         if (!p.proactive()) return;
         boolean quiet = hush;
         Calendar now = Calendar.getInstance();
