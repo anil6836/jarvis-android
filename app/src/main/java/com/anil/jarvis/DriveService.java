@@ -164,6 +164,9 @@ public class DriveService extends Service implements LocationListener, android.h
         speedAt = now;
         lastKmh = kmh;
         lastKmhAt = now;
+        if (CrashAlert.active && CrashAlert.fromWatch) { // (a check the watch began: riding on means he is fine)
+            if (kmh >= 20) { if (++movingOn >= 3) { movingOn = 0; CrashAlert.ridingOn(this); } } else movingOn = 0;
+        } else movingOn = 0;
         afterKnock(kmh, now);
         if (prev == null || l.getAccuracy() < 50) prev = l;
         last = l;
@@ -321,6 +324,7 @@ public class DriveService extends Service implements LocationListener, android.h
     /** The last GPS speed (km/h) and when (wall clock), for a fall the watch felt during the ride. */
     static volatile double lastKmh;
     static volatile long lastKmhAt;
+    private int movingOn;
     private volatile long speedAt, knockAt, hardAt;
     private int stillFixes;
 

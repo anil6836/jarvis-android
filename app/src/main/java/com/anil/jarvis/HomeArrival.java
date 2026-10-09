@@ -55,7 +55,7 @@ final class HomeArrival {
         try {
             lm.removeProximityAlert(pi(c));
             lm.addProximityAlert(h.optDouble("lat"), h.optDouble("lon"), RADIUS, -1, pi(c));
-            sp(c).edit().putString("armed", key).putLong("armed_at", System.currentTimeMillis()).apply();
+            sp(c).edit().putString("armed", key).putLong("armed_at", System.currentTimeMillis()).putBoolean("just_armed", true).apply();
         } catch (SecurityException ignored) {}
     }
 
@@ -65,8 +65,11 @@ final class HomeArrival {
         boolean in = i.getBooleanExtra(LocationManager.KEY_PROXIMITY_ENTERING, false);
         SharedPreferences s = sp(c);
         long now = System.currentTimeMillis();
-        // (the same again: e.g. the circle set again while he is at home says "entering" once more)
-        if (in == s.getBoolean("in", false) && s.contains("at")) return;
+        // (the same again: the circle set again while he is at home says "entering" once more; else a repeat within 6 h.
+        // A missed "left" long ago doesn't swallow the next welcome)
+        boolean first = s.getBoolean("just_armed", false);
+        if (first) s.edit().putBoolean("just_armed", false).apply();
+        if (in == s.getBoolean("in", false) && s.contains("at") && (first || now - s.getLong("at", 0) < 6 * 3600_000L)) return;
         if (now - s.getLong("at", 0) < 10 * 60_000L) { s.edit().putBoolean("in", in).putLong("at", now).apply(); return; } // GPS jitter at the gate
         long since = s.getLong("at", 0);
         s.edit().putBoolean("in", in).putLong("at", now).apply();

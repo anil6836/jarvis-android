@@ -147,7 +147,8 @@ final class CrashAlert {
      */
     static void fallFromWatch(Context c) {
         Context a = c.getApplicationContext();
-        if (!WatchHub.fallOn(a) || active) return;
+        if (!WatchHub.fallOn(a)) return;
+        if (active) { fromWatch = true; return; } // (the phone is asking already: the wrist's question closes with its answer)
         if (DriveService.running) {
             boolean moving = System.currentTimeMillis() - DriveService.lastKmhAt < 6000 && DriveService.lastKmh >= 12;
             if (moving) {
@@ -164,12 +165,25 @@ final class CrashAlert {
         startFall(a, "వాచ్‌కి గట్టి దెబ్బ తగిలి, తర్వాత కదలిక లేదు", "none".equals(mode) ? -1 : SafetySounds.waitSeconds(a), "sms_call".equals(mode));
     }
 
+    /** A ride check the watch started, and he rides on (20 km/h+ for a few fixes): he is fine; it stops. */
+    static void ridingOn(Context c) {
+        main.post(() -> {
+            if (!active || !fromWatch || !"crash".equals(kind)) return;
+            stopAll(c, true);
+            Announcer.say(c, "మీరు మళ్లీ బండి నడుపుతున్నారు: ప్రమాదం చెక్ ఆపాను.");
+        });
+    }
+
     /** The crash check proper. */
     private static void startNow(Context c) {
         main.post(() -> {
             if (active) return;
             if (new Prefs(c).sosContacts().trim().isEmpty()) {
                 Announcer.say(c, "పెద్ద దెబ్బ తగిలినట్టు అనిపించింది. బాగున్నారా? మీ SOS కాంటాక్ట్స్ సెట్టింగ్స్‌లో లేరు, అవసరమైతే 112 కి కాల్ చేయండి.");
+                if (fromWatch) { // (no SOS can go: the wrist's question doesn't promise one)
+                    fromWatch = false;
+                    try { WatchHub.send(c, P_FALL_END, new org.json.JSONObject().put("end", true)); } catch (Exception ignored) {}
+                }
                 return;
             }
             begin(c, "crash", CRASH_SECONDS, true, "");

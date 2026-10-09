@@ -35,6 +35,7 @@ public class Help extends Activity {
     private static volatile boolean asking, phoneLost;
     private static int fallLeft, rang;
     private static Context appCtx;
+    private static android.os.PowerManager.WakeLock wake;
 
     private TextView title, msg, count;
     private String mode;
@@ -45,14 +46,19 @@ public class Help extends Activity {
         Context app = c.getApplicationContext();
         if ("fall".equals(mode)) {
             appCtx = app;
-            if (!asking) {
-                asking = true;
-                phoneLost = false;
-                rang = 0;
-                fallLeft = Link.cfg(app).optInt("fall_secs", 30);
-                main.removeCallbacks(fallTick);
-                main.post(fallTick);
-            }
+            asking = true; // (each fall asks afresh: buzzing and the wait from the start)
+            phoneLost = false;
+            rang = 0;
+            fallLeft = Link.cfg(app).optInt("fall_secs", 30);
+            main.removeCallbacks(fallTick);
+            main.post(fallTick);
+            try { // the watch kept awake while it asks (else, asleep, the buzzing and the count would stop)
+                if (wake == null) {
+                    wake = app.getSystemService(android.os.PowerManager.class).newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "jarvis:fall");
+                    wake.setReferenceCounted(false);
+                }
+                wake.acquire(3 * 60_000L);
+            } catch (Exception ignored) {}
             NotificationManager nm = app.getSystemService(NotificationManager.class);
             if (nm != null) {
                 try {
@@ -87,11 +93,11 @@ public class Help extends Activity {
     private static final Runnable fallTick = new Runnable() {
         @Override public void run() {
             if (!asking || appCtx == null) return;
-            if (++rang > 150) return;
+            if (++rang > 150) { try { if (wake != null && wake.isHeld()) wake.release(); } catch (Exception ignored) {} return; }
             Talk.buzzAs(appCtx, android.os.VibrationAttributes.USAGE_ALARM, 500, 200, 500);
             if (fallLeft > 0) fallLeft--;
             Help h = shown;
-            if (h != null) h.showFall();
+            if (h != null && "fall".equals(h.mode)) h.showFall();
             main.postDelayed(this, 1000);
         }
     };
@@ -100,6 +106,7 @@ public class Help extends Activity {
     private static void endFall() {
         asking = false;
         main.removeCallbacks(fallTick);
+        try { if (wake != null && wake.isHeld()) wake.release(); } catch (Exception ignored) {}
         Context app = appCtx;
         if (app != null) {
             try { app.getSystemService(NotificationManager.class).cancel(NOTE); } catch (Exception ignored) {}
