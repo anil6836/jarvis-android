@@ -145,6 +145,17 @@
             android:exported="false"
             android:foregroundServiceType="microphone|health" />
 
+        <!-- W56: a recording on the watch, written out on the phone -->
+        <activity
+            android:name=".Recorder"
+            android:exported="false"
+            android:taskAffinity=""
+            android:launchMode="singleTop" />
+        <service
+            android:name=".RecService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <!-- W54: pictures from the phone -->
         <activity
             android:name=".Photos"

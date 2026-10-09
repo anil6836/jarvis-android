@@ -262,6 +262,19 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@style/JarvisTheme" />
+        <!-- W54: share a picture to "⌚ వాచ్‌కి పంపు" -->
+        <activity
+            android:name=".ShareToWatchActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="⌚ వాచ్‌కి పంపు"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
         <!-- W65: a voice clip from the guard phone at home to his main phone -->
         <activity
             android:name=".HomeTalkActivity"

@@ -189,14 +189,14 @@ final class Talk {
 
     /** The wrist came up (the screen lit): listen a few seconds for "Hey Jarvis". */
     static void raised(Context c) {
-        if (!Link.raise(c) || state != IDLE || Mic.busy() || Hear.active() || !micAllowed(c) || !EarService.micType) return;
+        if (!Link.raise(c) || state != IDLE || Mic.busy() || Hear.active() || !micAllowed(c) || !EarService.micType || RecService.recording) return;
         Mic.start(c, Mic.RAISE, "raise");
     }
 
     /** His always-listening hours (EarService checks every minute). */
     static void hours(Context c) {
         if (!Link.inHours(c)) { if (Mic.kind() == Mic.HOURS) Mic.stop(); return; }
-        if (state != IDLE || Mic.busy() || Hear.active() || !micAllowed(c) || !EarService.micType) return;
+        if (state != IDLE || Mic.busy() || Hear.active() || !micAllowed(c) || !EarService.micType || RecService.recording) return;
         Mic.start(c, Mic.HOURS, "hours");
     }
 

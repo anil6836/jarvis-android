@@ -1410,6 +1410,9 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             try {
                 ScanStore.save(this, new JSONObject().put("title", title).put("kind", "parking").put("mode", mode)
                         .put("say", title + " · " + new java.text.SimpleDateFormat("d MMM h:mm a", Locale.ENGLISH).format(new java.util.Date())), bm, "photo.jpg");
+                java.io.ByteArrayOutputStream jo = new java.io.ByteArrayOutputStream(); // W54: the spot's picture on his watch too
+                bm.compress(Bitmap.CompressFormat.JPEG, 85, jo);
+                WatchPhoto.send(this, jo.toByteArray(), title);
             } catch (Exception ignored) {}
         });
     }

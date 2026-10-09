@@ -365,6 +365,9 @@ final class WatchHub {
         seenAt = nodeAt;
         try {
             switch (path) {
+                case WatchExtras.P_REC_DATA: WatchExtras.recData(data); return; // W56: a recording made on the watch (raw parts)
+                case WatchExtras.P_REC_START: WatchExtras.recStart(app, new JSONObject(text(data))); return;
+                case WatchExtras.P_REC_END: WatchExtras.recEnd(app, new JSONObject(text(data))); return;
                 case P_MIC_DATA: {
                     Session s = cur;
                     if (s != null && s.id == Ulaw.id(data)) {
