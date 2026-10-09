@@ -1,6 +1,7 @@
 package com.anil.jarvis;
 
 import android.content.Context;
+import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -177,6 +178,20 @@ final class WatchDo {
             case "radio_phone": toast(app, Music.radioOnPhone(app, o.optString("name"))); return;
             case "show_phone": toast(app, ShowOnPhone.lastAnswer(app)); return; // W62
             case "sos": CrashAlert.sosNow(app, "వాచ్‌లో 🆘 నొక్కారు, సహాయం కావాలి"); return; // W40 (after the watch's own 5 seconds)
+            case "camera": { // W38 / W57: the phone's camera looks (the phone on a stand), the answer comes here
+                if (app.checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    toast(app, "ఫోన్‌లో Jarvis కి కెమెరా అనుమతి లేదు."); return;
+                }
+                android.app.KeyguardManager km = app.getSystemService(android.app.KeyguardManager.class);
+                if (km != null && km.isKeyguardLocked()) { toast(app, "📷 ఫోన్ లాక్‌లో ఉంది: అన్‌లాక్ చేసి స్టాండ్‌లో పెట్టి మళ్లీ నొక్కండి."); return; }
+                JarvisCamera.fromWatch = true;
+                String q = o.optString("ask", "ఇది ఏమిటి? క్లుప్తంగా చెప్పు.");
+                Intent ci = new Intent(app, JarvisCamera.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(JarvisCamera.EXTRA_MODE, o.optString("mode", "auto"))
+                        .putExtra(JarvisCamera.EXTRA_ASK, q);
+                try { app.startActivity(ci); toast(app, "📷 ఫోన్ కెమెరా చూస్తోంది… జవాబు ఇక్కడ వస్తుంది"); }
+                catch (Exception e) { JarvisCamera.fromWatch = false; toast(app, "ఫోన్‌లో కెమెరా తెరవలేకపోయాను: " + e.getMessage()); }
+                return;
+            }
             case "fall_ok": CrashAlert.ok(app); return;          // W42: "బాగున్నాను" on the wrist
             case "fall_send": CrashAlert.send(app, true); return; // W42: "సహాయం" on the wrist
             case "breathed": // W30: the breathing done on the watch (for his week)

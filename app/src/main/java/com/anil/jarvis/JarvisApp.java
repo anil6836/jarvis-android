@@ -25,7 +25,7 @@ public class JarvisApp extends Application {
                 private boolean up; // (signal updates come often: only the moment it becomes usable counts)
                 @Override public void onCapabilitiesChanged(android.net.Network n, android.net.NetworkCapabilities caps) {
                     boolean ok = caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
-                    if (ok && !up) { Offline.netBack(JarvisApp.this); TeluguEars.drop(); }
+                    if (ok && !up) { Offline.netBack(JarvisApp.this); TeluguEars.drop(); try { PhoneOffline.netBack(JarvisApp.this); } catch (Exception ignored) {} }
                     up = ok;
                 }
                 @Override public void onLost(android.net.Network n) {

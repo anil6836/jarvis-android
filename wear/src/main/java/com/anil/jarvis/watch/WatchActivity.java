@@ -115,7 +115,8 @@ public class WatchActivity extends Activity implements Talk.Screen {
         String[][] menu = {{"☀️ ఈరోజు", "morning"}, {"📊 స్టేటస్", "status"}, {"🏍️ డ్యూటీ", "duty"}, {"✅ పనులు", "tasks"},
                 {"💡 ఇల్లు", "home"}, {"⏱️ టైమర్", "timer"}, {"🍲 కుక్కర్", "cooker"}, {"📝 నోట్", "note"}, {"🌐 అనువాదం", "translate"},
                 {"🚶 నడక", "walk"}, {"🩺 స్కాన్", "scan"}, {"🌬️ శ్వాస", "breathe"}, // (phase 4: health)
-                {"🧭 దారి", "compass"}, {"🎵 పాటలు", "music"}, {"📻 రేడియో", "radio"}, {"🖼️ ఫోటోలు", "photos"}}; // (phase 5)
+                {"🧭 దారి", "compass"}, {"🎵 పాటలు", "music"}, {"📻 రేడియో", "radio"}, {"🖼️ ఫోటోలు", "photos"},
+                {"📷 కెమెరా", "camera"}}; // (phase 5)
         LinearLayout mrow = null;
         for (int i = 0; i < menu.length; i++) {
             if (i % 2 == 0) {
@@ -205,6 +206,9 @@ public class WatchActivity extends Activity implements Talk.Screen {
             case "breathe": Breathe.open(this); break;
             case "compass": Compass.open(this, ""); break;
             case "photos": Photos.open(this); break;
+            case "camera": // W38 / W57: the phone (on a stand) looks; the answer comes here
+                try { Talk.phoneDo(this, new org.json.JSONObject().put("what", "camera"), "📷 ఫోన్ కెమెరా చూస్తోంది…"); } catch (Exception ignored) {}
+                break;
             default: Panel.open(this, what);
         }
     }

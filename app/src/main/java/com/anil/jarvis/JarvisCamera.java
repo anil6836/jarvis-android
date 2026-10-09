@@ -113,6 +113,16 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private boolean closeShot;
     private boolean pendingDeep;
 
+    /** W38 / W57: opened from the watch: the answer goes to the watch too (as text; the phone says it). */
+    static volatile boolean fromWatch;
+
+    private void toWatch(String said) {
+        if (!fromWatch || said == null || said.isEmpty()) return;
+        fromWatch = false;
+        final Context app = getApplicationContext();
+        new Handler(Looper.getMainLooper()).post(() -> WatchHub.reply(app, said, false, false, () -> WatchHub.idle(app, null)));
+    }
+
     static void open(Context c, String mode, String question) {
         Intent i = new Intent(c, JarvisCamera.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (mode != null) i.putExtra(EXTRA_MODE, mode);
@@ -836,6 +846,22 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         final boolean close = closeShot; // (a close-up of a part of a board)
         closeShot = false;
         if (busy) { if (deep) deepThenPdf = false; Toast.makeText(this, "ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
+        if (!Net.online(this) && override == null && !deep) { // O30: no internet: English print read on the phone itself (Telugu with the pack)
+            Bitmap pic0 = frozen ? photo : cam.frame(1400);
+            if (pic0 == null) { say("కెమెరా బొమ్మ ఇంకా రాలేదు. ఒక్క క్షణం ఆగి మళ్ళీ అడగండి."); return; }
+            busy = true;
+            tell("📖 నెట్ లేదు: ఫోన్‌లోనే రాత చదువుతున్నాను…", false);
+            work.execute(() -> {
+                String said = OfflineRead.readAloud(this, pic0);
+                runOnUiThread(() -> {
+                    busy = false;
+                    tell("📖 " + said, false);
+                    say(said);
+                    toWatch(said);
+                });
+            });
+            return;
+        }
         if (!p.hasBrain()) { deepThenPdf = false; say("నా మెదడుకి API key లేదు. Jarvis సెట్టింగ్స్‌లో పెట్టండి."); return; }
         final String q = question == null || question.trim().isEmpty() ? defaultQuestion() : question.trim();
         Bitmap pic = override != null ? override : frozen ? photo : cam.frame(deep ? 1800 : 1400);
@@ -919,6 +945,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             return;
         }
         last = r;
+        toWatch(r.say);
         turns.add(new String[]{"Anil", q});
         turns.add(new String[]{"Jarvis", r.say});
         while (turns.size() > 12) turns.poll();

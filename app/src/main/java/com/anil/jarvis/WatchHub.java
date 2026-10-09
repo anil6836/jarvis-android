@@ -740,6 +740,10 @@ final class WatchHub {
                 else if ("handover".equals(why)) {
                     if (Offline.secret(text) || Offline.idNumber(text)) r = "అలాంటి నంబర్లు నేను రాసుకోను.";
                     else { Plans.addNote(app, text); r = "హ్యాండోవర్ నోట్స్‌లో రాశాను: \"" + text + "\"."; }
+                } else if (!Net.online(app) && OfflineRead.ready(app)) { // (O29: no internet: the phone's own English -> Telugu pack)
+                    String te = OfflineRead.toTelugu(app, text);
+                    if (te == null) throw new Exception("ఆఫ్‌లైన్ అనువాదం రాలేదు");
+                    r = "🌐 " + te + " (ఆఫ్‌లైన్)";
                 } else r = "🌐 " + translate(app, text);
             } catch (Exception e) {
                 r = "translate".equals(why) ? "అనువాదం రాలేదు: " + e.getMessage() : "రాయలేకపోయాను: " + e.getMessage();

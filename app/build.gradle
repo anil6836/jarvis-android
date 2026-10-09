@@ -70,4 +70,8 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite:2.16.1'
     // Talking with the Jarvis watch app (Galaxy Watch) over its Bluetooth link (Wear Data Layer messages)
     implementation 'com.google.android.gms:play-services-wearable:18.2.0'
+    // Phase 5 without internet: English print read on the phone (O30, the model is inside the app) and
+    // English -> Telugu translation (O29, Google's pack downloaded once when he taps it in Settings)
+    implementation 'com.google.mlkit:text-recognition:16.0.0'
+    implementation 'com.google.mlkit:translate:17.0.2'
 }

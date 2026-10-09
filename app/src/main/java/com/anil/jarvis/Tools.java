@@ -5871,6 +5871,15 @@ final class Tools {
             return to + " కి SMS: \"" + msg + "\". పంపమంటారా?";
         }
 
+        // ---- phase 5 on the phone: a WhatsApp kept for when the net is back (O23), who called (O20), a number (O21),
+        // a voice recording (O22), saved pages read aloud (O31)
+        String po = PhoneOffline.handle(act(), said, t, last);
+        if (po != null) return po;
+        if (said.matches("(?s).*[A-Za-z]{3,}.*") && any(t, "తెలుగులో", "అంటే ఏంటి", "అంటే ఏమిటి", "అర్థం", "translate", "meaning")) { // O29
+            String tr = OfflineRead.sayInTelugu(act(), said.replaceAll("(తెలుగులో|అంటే ఏంటి|అంటే ఏమిటి|అర్థం|ఏంటి|చెప్పు)", " ").replaceAll("(?i)\\b(translate|meaning|in telugu|of)\\b", " "));
+            if (tr != null) return tr;
+        }
+
         // ---- what he asks to write down (a diary line may mention a call or an alarm), then commands said outright:
         // a message, a reminder, an alarm, a timer, a call
         boolean save = any(t, "రాయి", "రాసుకో", "రాయండి", "పెట్టు", "చేర్చు", "ఆడ్", "యాడ్", "add", "సేవ్");
