@@ -65,6 +65,7 @@ public class Beat extends BroadcastReceiver {
                     try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
                     Body.walkCheck(app);
                     Body.beat(app);
+                    try { Baro.check(app); } catch (Exception ignored) {} // W75: a storm coming (the air pressure falling)
                 }
                 boolean near = Link.phoneNear(app);
                 if (beat && near) {

@@ -414,6 +414,26 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "where, to, speed, trip, service_done, service_when, service_set or watch_compass"},
                         {"place", "string", "For to / watch_compass: బండి (the parked bike), ఇల్లు or a saved place's name"},
                         {"days_ago", "integer", "For service_done: how many days ago (0 = today)"}, {"months", "integer", "For service_set"}, {"km", "integer", "For service_set"}}, "action")));
+        DEFS.add(new Def("protocol", "W58 protocols: one word runs several things, ticked on his watch. Ready-made: డ్యూటీ (duty mode, bag, weather, bike, "
+                + "'డ్యూటీకి బయల్దేరాను' to his people after his tap), నిద్ర (night mode, lights off, tomorrow's duty), రైడ్ (weather, bike), ఇల్లు (duty mode off, "
+                + "sound, lights on, guard paused). run = 'డ్యూటీ ప్రోటోకాల్'; save = his own ('ప్రోటోకాల్ జిమ్: సైలెంట్, వాతావరణం', steps from: silent, sound, duty mode on/off, "
+                + "night mode, bag, weather, bike, lights on/off, guard on/off, tomorrow, status, the two messages); delete; list.",
+                schema(new String[][]{{"action", "string", "run, save, delete or list"}, {"name", "string", "The protocol's name (Telugu)"},
+                        {"steps", "string", "For save: the steps in his words, comma separated"}}, "action")));
+        DEFS.add(new Def("journey_guard", "W81 'నాతో ఉండు': he asks Jarvis to watch over a trip. start (place = where to, default home; minutes = about how long, "
+                + "0 = from the distance): on arrival 'ఇంటికి చెప్పమంటారా?' (sent on his tap); late by 15 min or every 20 min at night 'అంతా బాగుందా?' on his "
+                + "wrist and phone; no answer twice (10 min) -> his SOS. stop = end it; ok = he answered he is fine.",
+                schema(new String[][]{{"action", "string", "start, stop or ok"}, {"place", "string", "ఇల్లు, a saved place's name, or empty"},
+                        {"minutes", "integer", "About how long the trip takes; 0 = worked out"}}, "action")));
+        DEFS.add(new Def("watch_tools", "Phase 5 on his Galaxy Watch: find_watch (it rings, buzzes, flashes); silent_on / silent_off (answers on the watch as "
+                + "text only; it is silent anyway on duty, in a meeting, on Do Not Disturb); nap (minutes; the watch wakes him with a vibration); sleep_debt "
+                + "(sleep owed over 48 hours); water_add (glasses) / water_status (today's count against a goal that grows with the heat); focus (minutes, what) "
+                + "/ focus_stop (Do Not Disturb meanwhile, a report after); medical_card_on / off (his blood group, allergies, contact on the watch); "
+                + "parking_photo (the parked bike's photo to the watch); duty_calendar_on / off (his duty days into the phone's calendar, so the watch shows "
+                + "them; ask him first); spending (this month's spending from bank / UPI SMS, counted on the phone); open (screen: compass, music, radio, "
+                + "photos, water, money, protocols, duty, tasks, status, timer).",
+                schema(new String[][]{{"action", "string", "One of the actions above"}, {"minutes", "integer", "For nap / focus"}, {"glasses", "integer", "For water_add"},
+                        {"what", "string", "For focus: what he works on"}, {"screen", "string", "For open"}, {"target", "string", "For open compass: బండి / ఇల్లు / a place"}}, "action")));
         DEFS.add(new Def("home_link", "His old phone at home (the guard) through his own Telegram bot; both phones need internet. look = a fresh picture from "
                 + "home now ('ఇంట్లో ఎలా ఉంది?', shown here and on his watch, takes up to a minute); say = said aloud at home ('ఇంటికి చెప్పు …'): "
                 + "first ask him 'ఇంట్లో \"…\" అని వినిపించమంటారా?' and call only after his yes (he taps once more); guard_off / guard_on = pause / resume "
@@ -923,6 +943,9 @@ final class Tools {
             case "health_watch": return "ఆరోగ్యం చూస్తున్నాను…";
             case "travel": return "దారి చూస్తున్నాను…";
             case "home_link": return "ఇంటి ఫోన్‌ని అడుగుతున్నాను…";
+            case "protocol": return "⚡ ప్రోటోకాల్…";
+            case "journey_guard": return "🛡️ …";
+            case "watch_tools": return "⌚ …";
             case "food_app": return "వెతుకుతున్నాను…";
             case "night_mode": return "నైట్ మోడ్…";
             case "find_phone": return "ఇక్కడే ఉన్నాను!";
@@ -1096,6 +1119,28 @@ final class Tools {
                 case "steps_today": return steps();
                 case "health_watch": return healthWatch(a);
                 case "travel": return Travel.tool(act(), a);
+                case "watch_tools": return Day5.tool(act(), a);
+                case "journey_guard": {
+                    String ac = a.optString("action", "start").trim().toLowerCase(Locale.ROOT);
+                    String said = ac.equals("stop") ? Journey.stop(act(), false) : ac.equals("ok") ? "ok" : Journey.start(act(), a.optString("place", ""), a.optInt("minutes", 0));
+                    if (ac.equals("ok")) Journey.ok(act());
+                    return ok().put("said", said).put("next", "Say this to him in short Telugu.").toString();
+                }
+                case "protocol": {
+                    String ac = a.optString("action", "run").trim().toLowerCase(Locale.ROOT);
+                    String said;
+                    if (ac.equals("save")) said = Protocols.save(act(), a.optString("name"), a.optString("steps"));
+                    else if (ac.equals("delete")) said = Protocols.delete(act(), a.optString("name"));
+                    else if (ac.equals("list")) {
+                        StringBuilder b = new StringBuilder();
+                        for (java.util.Iterator<String> it = Protocols.all(act()).keys(); it.hasNext(); ) b.append(it.next()).append(", ");
+                        said = "ప్రోటోకాల్స్: " + b.substring(0, Math.max(0, b.length() - 2)) + ".";
+                    } else {
+                        String pname = Protocols.find(act(), a.optString("name"));
+                        said = pname == null ? "ఆ పేరుతో ప్రోటోకాల్ లేదు." : Protocols.run(act(), pname);
+                    }
+                    return ok().put("said", said).put("next", "Say this to him in short Telugu (the watch shows the steps).").toString();
+                }
                 case "home_link": {
                     String ac = a.optString("action", "look").trim().toLowerCase(Locale.ROOT);
                     String said;
@@ -6000,6 +6045,23 @@ final class Tools {
         int sleepMin = Music.sleepWords(bare); // O46: "30 నిమిషాల తర్వాత పాట ఆపు"
         if (sleepMin >= 0) return Music.sleepAfter(act(), sleepMin);
         if (bare.matches("(?s).*(ఈ\\s*పాట|ఏ\\s*పాట|ఏం\\s*పాట|ఈ\\s*సాంగ్).*(ఏది|ఏంటి|పేరు|ఏమిటి).*|.*what song.*")) return Music.nowLine(act());
+        // ---- phase 5 watch ideas: protocols, the journey guard, water, find the watch, sleep owed, a nap, focus, silent
+        String[] pr = Protocols.asks(bare);
+        if (pr != null) {
+            if (pr[0].equals("save")) return Protocols.save(act(), pr[1], pr[2]);
+            if (pr[0].equals("delete")) return Protocols.delete(act(), pr[1]);
+            if (pr[0].equals("list")) {
+                StringBuilder b = new StringBuilder();
+                for (java.util.Iterator<String> it = Protocols.all(act()).keys(); it.hasNext(); ) b.append(it.next()).append(", ");
+                return "ప్రోటోకాల్స్: " + b.substring(0, Math.max(0, b.length() - 2)) + ". \"డ్యూటీ ప్రోటోకాల్\" అనండి.";
+            }
+            String name = Protocols.find(act(), pr[1]);
+            if (name != null) return Protocols.run(act(), name);
+        }
+        String[] jr = Journey.asks(bare);
+        if (jr != null) { String r = Journey.answer(act(), jr); if (r != null) return r; }
+        String[] d5 = Day5.asks(bare);
+        if (d5 != null) { String r = Day5.answer(act(), d5); if (r != null) return r; }
         String[] tr = Travel.asks(bare);
         if (tr != null && !("to".equals(tr[0]) && "బండి".equals(tr[1]) && !WatchHub.known(act()))) { // (no watch: the old way opens Maps)
             String r = Travel.answer(act(), tr);

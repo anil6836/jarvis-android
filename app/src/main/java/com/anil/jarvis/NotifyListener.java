@@ -173,6 +173,7 @@ public class NotifyListener extends NotificationListenerService {
         if (text.isEmpty()) text = str(x.getCharSequence(Notification.EXTRA_BIG_TEXT));
         if (text.isEmpty()) text = str(x.getCharSequence(Notification.EXTRA_TEXT));
         if (text.isEmpty() && title.isEmpty()) return;
+        Day5.focusNote(this); // W73: notifications that came during a focus (counted for its report)
         // W41 / W65: his own guard bot wrote on Telegram: the picture / voice from home (pinned there) to his phone and watch
         if (sbn.getPackageName().startsWith("org.telegram") && System.currentTimeMillis() - sbn.getPostTime() <= 60_000 && HomeLink.linked(this)) {
             String bot = Guard.sp(this).getString("tg_bot_name", "");

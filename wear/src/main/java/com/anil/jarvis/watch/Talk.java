@@ -257,6 +257,8 @@ final class Talk {
             case Link.P_RADIO: RadioPlayer.fromPhone(app, o); break; // W36: play / stop the radio here
             case Link.P_FALL_END: Help.endFromPhone(); break;       // W42: answered on the phone
             case Link.P_PHOTO: Photos.got(app, o); break;            // W54: a picture from the phone
+            case Link.P_FIND: FindWatch.ring(app); break;            // W66: "నా వాచ్ ఎక్కడ?"
+            case Link.P_SMART: SmartWake.start(app, o); break;       // W68: his alarm is near: feel for light sleep
             case Link.P_OPEN: Screens.open(app, o); break; // phase 5: the phone opens a screen here (the compass, music...)
             case Link.P_BUZZ: Alerts.turn(app, o.optString("turn")); break; // W78: a turn close by, while he walks with Maps
             case Link.P_PING: hello(app); break;
@@ -330,13 +332,13 @@ final class Talk {
                 reply = o.optString("reply");
                 String voice = o.optString("voice", "watch");
                 voiceOnPhone = "phone".equals(voice);
-                buzz(app, 25);
+                if (o.optBoolean("silent")) buzz(app, 40, 80, 40); else buzz(app, 25); // (W63: text only now: a clearer buzz)
                 if ("watch".equals(voice)) {
                     set(THINKING, ""); // the voice follows in a moment
                     final String r = reply;
                     main.postDelayed(() -> { if (state == THINKING && r.equals(reply)) set(IDLE, ""); }, 15000);
                 } else {
-                    set(IDLE, voiceOnPhone ? "🎧 జవాబు ఫోన్ ఇయర్‌ఫోన్స్‌లో" : "");
+                    set(IDLE, voiceOnPhone ? "🎧 జవాబు ఫోన్ ఇయర్‌ఫోన్స్‌లో" : o.optBoolean("silent") ? "🔕 సైలెంట్: రాతలో మాత్రమే" : "");
                 }
                 Notes.talk(app);
                 break;

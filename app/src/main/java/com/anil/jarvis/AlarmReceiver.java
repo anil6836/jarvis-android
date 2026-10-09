@@ -110,6 +110,17 @@ public class AlarmReceiver extends BroadcastReceiver {
             case HomeLink.ACTION_PLAY: HomeLink.playFromHome(c); break; // W65: the voice from home
             case HomeArrival.ACTION_GEO: HomeArrival.crossed(c, i); break; // W64: home / away
             case HomeArrival.ACTION_DO: HomeArrival.act(c, i.getStringExtra("do")); break;
+            case Day5.ACTION_NAP: try { c.getSystemService(android.app.NotificationManager.class).cancel(291); } catch (Exception ignored) {} Day5.nap(c, i.getIntExtra("min", 45)); break; // W67
+            case Day5.ACTION_FOCUS_END: Day5.focusEnd(c); break; // W73
+            case Day5.ACTION_SMART: Day5.smartWindow(c, i.getStringExtra("id"), i.getLongExtra("at", 0)); break; // W68
+            case Journey.ACTION_TICK: { // W81: arrived? late? (the location may take a few seconds)
+                PendingResult pr = goAsync();
+                new Thread(() -> { try { Journey.tick(c); } catch (Exception ignored) {} finally { pr.finish(); } }, "journey").start();
+                break;
+            }
+            case Journey.ACTION_OK: Journey.ok(c); break;
+            case Journey.ACTION_SEND: Journey.sendReached(c); break;
+            case Protocols.ACTION_SEND: Protocols.send(c, i.getStringExtra("text")); break; // W58: his tap on the protocol's message
             case RideCare.ACTION_AWAKE: RideCare.askAwake(c); break;
             case RideCare.ACTION_REACHED: {
                 PendingResult pr = goAsync(); // the SMS goes out before the receiver lets go

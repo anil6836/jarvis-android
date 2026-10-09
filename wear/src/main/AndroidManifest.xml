@@ -139,6 +139,32 @@
             <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="1800" />
         </service>
 
+        <!-- W61: today's stress and the phone's battery for any watch face -->
+        <service
+            android:name=".StressSource"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Jarvis ఒత్తిడి"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data android:name="android.support.wearable.complications.SUPPORTED_TYPES" android:value="SHORT_TEXT" />
+            <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="1800" />
+        </service>
+        <service
+            android:name=".PhoneSource"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Jarvis ఫోన్ బ్యాటరీ"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data android:name="android.support.wearable.complications.SUPPORTED_TYPES" android:value="SHORT_TEXT" />
+            <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="900" />
+        </service>
+
         <!-- keeps the watch ready to listen when the wrist is raised (and in his chosen hours); phase 4: steps, heart rate -->
         <service
             android:name=".EarService"
@@ -155,6 +181,20 @@
             android:name=".RecService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- W66 find the watch, W71 counting an exercise -->
+        <activity
+            android:name=".FindWatch"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="com.anil.jarvis.watch.find"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+        <activity
+            android:name=".Reps"
+            android:exported="false"
+            android:taskAffinity=""
+            android:launchMode="singleTop" />
 
         <!-- W54: pictures from the phone -->
         <activity

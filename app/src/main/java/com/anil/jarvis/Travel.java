@@ -298,6 +298,11 @@ final class Travel {
                     + "&current=temperature_2m,apparent_temperature,precipitation&minutely_15=precipitation&forecast_minutely_15=6&timezone=auto",
                     l.getLatitude(), l.getLongitude()));
             JSONObject cur = w.optJSONObject("current");
+            if (cur != null) { // (W70: the day's highest so far sets the water goal)
+                String k = "max_t_" + java.time.LocalDate.now();
+                float t = (float) cur.optDouble("apparent_temperature", cur.optDouble("temperature_2m", 0));
+                if (t > s.getFloat(k, 0)) s.edit().putFloat(k, t).apply();
+            }
             if (rain && now - s.getLong("rain_told", 0) > 3 * HOUR) {
                 int in = rainIn(w, LocalDateTime.now(), cur == null ? 0 : cur.optDouble("precipitation", 0));
                 if (in > 0) {

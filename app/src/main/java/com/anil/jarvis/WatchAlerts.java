@@ -198,6 +198,12 @@ final class WatchAlerts {
     private static volatile JSONObject weather;
     private static volatile String placeKey = "", placeName = "";
 
+    /** The news now, off the main thread (a setting changed). */
+    static void pushInfoSoon(Context c) {
+        Context app = c.getApplicationContext();
+        new Thread(() -> { try { pushInfo(app); } catch (Exception ignored) {} }, "watch-info").start();
+    }
+
     /** Sends the news (background thread). */
     static void pushInfo(Context c) {
         Context app = c.getApplicationContext();
@@ -219,6 +225,7 @@ final class WatchAlerts {
                 if (sl[0] > 0) o.put("sleep", sl[1]);
             } catch (Exception ignored) {}
             o.put("dutyMode", DutyMode.on(app));
+            Day5.infoExtras(app, o); // W61 / W79 / W82: phone battery, stress, spending, medical card, water for faces and screens
             Location l = Tools.lastLocation(app);
             if (l != null) {
                 o.put("lat", l.getLatitude()).put("lon", l.getLongitude()).put("placeAt", l.getTime()).put("place", place(app, l));

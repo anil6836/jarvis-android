@@ -116,6 +116,9 @@ public class Proactive extends BroadcastReceiver {
         try { Travel.serviceTick(c); } catch (Throwable ignored) {}          // O44: the bike's service is near / due
         try { HomeArrival.arm(c); } catch (Throwable ignored) {}            // W64: the circle around his home (kept set)
         try { WatchExtras.calTick(c); } catch (Throwable ignored) {}        // W55: his duty days in the phone's calendar (his choice)
+        try { Day5.sleepTick(c); } catch (Throwable ignored) {}             // W67: sleep owed after a duty, a nap on the wrist
+        try { Day5.diaryTick(c); } catch (Throwable ignored) {}             // W72: the night diary card on the wrist
+        try { Journey.tick(c); } catch (Throwable ignored) {}               // W81: the journey guard's checks (also its own alarms)
         if (!p.proactive()) return;
         boolean quiet = hush;
         Calendar now = Calendar.getInstance();

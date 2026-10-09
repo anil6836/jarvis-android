@@ -72,7 +72,10 @@ public class Panel extends Activity {
             if ("tasks".equals(k) || "duty".equals(k)) JarvisTile.refresh(app);
         }
         Panel p = shown;
-        if (p != null && !"toast".equals(k) && k.equals(p.kind)) { p.data = o; p.render(); }
+        if (p != null && !"toast".equals(k) && (k.equals(p.kind) || "protocol".equals(k) && "protocols".equals(p.kind))) { p.data = o; if ("protocol".equals(k)) p.kind = "protocol"; p.render(); }
+        else if ("protocol".equals(k) && p == null) { // (started by voice: the steps show here)
+            try { app.startActivity(new Intent(app, Panel.class).putExtra(EXTRA_KIND, "protocol").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
+        }
         if (!t.isEmpty()) {
             if (p != null) p.showToast(t);
             else { Talk.status = t; Talk.changed(); }
@@ -133,7 +136,8 @@ public class Panel extends Activity {
 
     /** The phone's data for this screen (the timer is the watch's own). */
     private void ask() {
-        if ("timer".equals(kind)) return;
+        if ("timer".equals(kind) || "diary".equals(kind) || "medical".equals(kind) || "focus".equals(kind) || "sleep".equals(kind)) return; // (nothing to fetch)
+        if ("protocol".equals(kind)) return;
         try { Link.send(this, Link.P_ASK, new JSONObject().put("kind", kind)); } catch (Exception ignored) {}
     }
 
@@ -179,6 +183,14 @@ public class Panel extends Activity {
             case "cooker": title = "🍲 కుక్కర్"; break;
             case "music": title = "🎵 పాటలు"; break;
             case "radio": title = "📻 రేడియో"; break;
+            case "water": title = "💧 నీళ్లు"; break;
+            case "money": title = "💰 ఈ నెల ఖర్చు"; break;
+            case "protocols": case "protocol": title = "⚡ ప్రోటోకాల్స్"; break;
+            case "journey": title = "🛡️ నాతో ఉండు"; break;
+            case "diary": title = "📔 ఈరోజు ఎలా గడిచింది?"; break;
+            case "medical": title = "🩸 మెడికల్ కార్డ్"; break;
+            case "focus": title = "🎯 ఫోకస్"; break;
+            case "sleep": title = "😴 నిద్ర"; break;
             default: title = "📊 స్టేటస్";
         }
         TextView t = WUi.text(this, title, 15, Theme.accent, true);
@@ -195,6 +207,14 @@ public class Panel extends Activity {
                 case "cooker": cooker(); break;
                 case "music": music(); break;
                 case "radio": radio(); break;
+                case "water": water(); break;
+                case "money": money(); break;
+                case "protocols": case "protocol": protocols(); break;
+                case "journey": journey(); break;
+                case "diary": diary(); break;
+                case "medical": medical(); break;
+                case "focus": focus(); break;
+                case "sleep": sleep(); break;
                 default: status();
             }
         } catch (Exception e) {
@@ -549,6 +569,147 @@ public class Panel extends Activity {
             });
         }
         line("వాచ్‌కి బ్లూటూత్ ఇయర్‌బడ్స్ కలిపితే వాటిలో, లేకపోతే వాచ్ స్పీకర్‌లో. నెట్ ఫోన్ ద్వారా లేదా Wi-Fi. బ్యాటరీ కొంచెం ఎక్కువ ఖర్చవుతుంది.", WUi.FAINT);
+    }
+
+    // ---------------------------------------------------------------- phase 5: W70 water, W82 money, W58 protocols, W81 journey, W72 diary, W79 medical, W73 focus, W67 sleep
+
+    private void water() {
+        int n = data == null ? Link.info(this).optInt("water") : data.optInt("n"), goal = data == null ? Link.info(this).optInt("water_goal", 8) : data.optInt("goal", 8);
+        TextView big = WUi.text(this, n + " / " + goal, 30, Theme.accent, true);
+        col.addView(big);
+        line(n >= goal ? "ఈరోజు లక్ష్యం అయిపోయింది 👍" : "ఇంకా " + (goal - n) + " గ్లాసులు" + (goal > 8 ? " (ఎండ ఎక్కువ)" : ""), WUi.MUTED);
+        button("💧 +1 గ్లాసు", 0xFF0E3A4A, v -> {
+            try { act(new JSONObject().put("what", "water").put("n", 1)); } catch (Exception ignored) {}
+            Talk.buzz(this, 20);
+            showToast("💧 +1");
+        });
+        button("− 1 (తప్పు నొక్కాను)", 0xFF1F2937, v -> { try { act(new JSONObject().put("what", "water").put("n", -1)); } catch (Exception ignored) {} });
+    }
+
+    private void money() {
+        if (data == null) { waiting(); return; }
+        if (data.optBoolean("off")) { line("ఖర్చుల రింగ్ ఫోన్ సెట్టింగ్స్‌లో ఆఫ్‌లో ఉంది.", WUi.MUTED); return; }
+        long spent = data.optLong("spent", -1), budget = data.optLong("budget");
+        if (spent < 0) { line("ఫోన్ Jarvis కి SMS చదివే అనుమతి లేదు.", WUi.MUTED); return; }
+        Ring r = new Ring(this, budget > 0 ? Math.min(1.5f, spent / (float) budget) : -1, data.optInt("day") / (float) Math.max(1, data.optInt("days", 30)));
+        col.addView(r, new LinearLayout.LayoutParams(-1, WUi.dp(this, 110)));
+        line("₹" + String.format(java.util.Locale.ENGLISH, "%,d", spent) + (budget > 0 ? " / ₹" + String.format(java.util.Locale.ENGLISH, "%,d", budget) : ""), WUi.TEXT);
+        if (budget <= 0) line("బడ్జెట్ పెట్టలేదు: \"నెల బడ్జెట్ 20000\" అని Jarvis కి చెప్పండి.", WUi.FAINT);
+        else if (spent > budget) line("బడ్జెట్ దాటింది", 0xFFFCA5A5);
+        line("బ్యాంక్ / UPI SMS నుంచి ఫోన్‌లోనే లెక్క (ఏ AI కీ పంపను). లోపలి గీత = నెలలో గడిచిన రోజులు.", WUi.FAINT);
+    }
+
+    /** W82's ring: spent against the budget, and a thin ring for how much of the month has gone. */
+    private static final class Ring extends View {
+        private final float part, month;
+        private final android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        Ring(Context c, float part, float month) { super(c); this.part = part; this.month = month; }
+        @Override protected void onDraw(android.graphics.Canvas cv) {
+            float s = Math.min(getWidth(), getHeight()) * 0.42f, cx = getWidth() / 2f, cy = getHeight() / 2f, w = s * 0.18f;
+            android.graphics.RectF o = new android.graphics.RectF(cx - s, cy - s, cx + s, cy + s), in = new android.graphics.RectF(cx - s * 0.68f, cy - s * 0.68f, cx + s * 0.68f, cy + s * 0.68f);
+            p.setStyle(android.graphics.Paint.Style.STROKE);
+            p.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+            p.setStrokeWidth(w);
+            p.setColor(0xFF1F2937);
+            cv.drawArc(o, 0, 360, false, p);
+            if (part >= 0) { p.setColor(part > 1 ? 0xFFF87171 : part > month + 0.1f ? 0xFFFBBF24 : Theme.accent); cv.drawArc(o, -90, 360 * Math.min(1, part), false, p); }
+            p.setStrokeWidth(w * 0.35f);
+            p.setColor(0xFF64748B);
+            cv.drawArc(in, -90, 360 * Math.min(1, month), false, p);
+        }
+    }
+
+    private void protocols() {
+        if ("protocol".equals(kind) && data != null && data.has("steps")) { // running: each step ticks
+            head("⚡ " + data.optString("name"));
+            JSONArray st = data.optJSONArray("steps");
+            for (int i = 0; st != null && i < st.length(); i++) {
+                JSONObject x = st.optJSONObject(i);
+                if (x == null) continue;
+                line((x.optBoolean("done") ? "✓ " : "◌ ") + x.optString("label"), x.optBoolean("done") ? WUi.TEXT : WUi.FAINT);
+                if (!x.optString("line").isEmpty()) line(x.optString("line"), WUi.MUTED);
+            }
+            if (data.optBoolean("done")) { Talk.buzz(this, 40, 60, 40); button("సరే", 0xFF166534, v -> finish()); }
+            return;
+        }
+        if (data == null || !data.has("names")) { waiting(); return; }
+        JSONArray names = data.optJSONArray("names");
+        for (int i = 0; names != null && i < names.length(); i++) {
+            String n = names.optString(i);
+            button("⚡ " + n, 0xFF0B2230, v -> {
+                try { act(new JSONObject().put("what", "protocol").put("name", n)); } catch (Exception ignored) {}
+                kind = "protocol";
+                data = null;
+                col.removeAllViews();
+                line("⚡ " + n + " మొదలవుతోంది…", Theme.accent);
+            });
+        }
+        line("మీ సొంతది: \"ప్రోటోకాల్ జిమ్: సైలెంట్, వాతావరణం\" అని Jarvis కి చెప్పండి.", WUi.FAINT);
+    }
+
+    private void journey() {
+        if (data == null) { waiting(); return; }
+        if (data.optBoolean("on")) {
+            line("🛡️ మీతో ఉన్నాను: ఆలస్యమైతే, రాత్రి అయితే \"అంతా బాగుందా?\" అని అడుగుతాను.", WUi.TEXT);
+            button("✓ చేరుకున్నాను / ఆపు", 0xFF166534, v -> { try { act(new JSONObject().put("what", "journey").put("on", false)); } catch (Exception ignored) {} });
+            return;
+        }
+        line("ఎక్కడికి? (ఆలస్యమైతే / రాత్రి అడుగుతాను; జవాబు లేకపోతే SOS)", WUi.MUTED);
+        button("🏠 ఇంటికి", 0xFF0E3A4A, v -> { try { act(new JSONObject().put("what", "journey").put("on", true).put("place", "ఇల్లు")); } catch (Exception ignored) {} showToast("మొదలుపెడుతున్నాను…"); });
+        button("🏍️ డ్యూటీకి", 0xFF0E3A4A, v -> { try { act(new JSONObject().put("what", "journey").put("on", true).put("place", "డ్యూటీ")); } catch (Exception ignored) {} showToast("మొదలుపెడుతున్నాను…"); });
+        button("🎙️ చెప్పండి", 0xFF0B2230, v -> listen("journey"));
+    }
+
+    private void diary() {
+        line("మూడ్:", WUi.MUTED);
+        String[] moods = {"😀", "🙂", "😐", "😟", "😣"};
+        View.OnClickListener[] taps = new View.OnClickListener[moods.length];
+        for (int i = 0; i < moods.length; i++) {
+            String m = moods[i];
+            taps[i] = v -> { try { act(new JSONObject().put("what", "mood").put("m", m)); } catch (Exception ignored) {} showToast(m + " ✓"); Talk.buzz(this, 15); };
+        }
+        row(moods, taps);
+        button("🎙️ 1 నిమిషం చెప్పండి", 0xFF0E3A4A, v -> listen("diary"));
+        line("ఫోన్ డైరీలో రాస్తాను, ఈరోజు ఒత్తిడితో పాటు.", WUi.FAINT);
+    }
+
+    private void medical() {
+        JSONObject m = Link.info(this).optJSONObject("medical");
+        if (m == null || !m.optBoolean("on")) { line("ఫోన్ Settings → ⌚ వాచ్ లో \"🩸 మెడికల్ కార్డ్ వాచ్‌లో\" ఆన్ చేస్తే ఇక్కడ వస్తుంది.", WUi.MUTED); return; }
+        TextView n = WUi.text(this, m.optString("name"), 18, 0xFFFFFFFF, true);
+        col.addView(n);
+        if (!m.optString("blood").isEmpty()) col.addView(WUi.text(this, "🩸 " + m.optString("blood"), 26, 0xFFF87171, true));
+        if (!m.optString("allergy").isEmpty()) line("⚠️ అలర్జీ: " + m.optString("allergy"), WUi.TEXT);
+        if (!m.optString("notes").isEmpty()) line(m.optString("notes"), WUi.TEXT);
+        if (!m.optString("contact").isEmpty()) line("📞 " + m.optString("contact"), Theme.accent);
+    }
+
+    private void focus() {
+        line("ఎంత సేపు? అనవసర నోటిఫికేషన్లు ఆగుతాయి; అయ్యాక రిపోర్ట్.", WUi.MUTED);
+        int[] mins = {25, 45, 60, 90};
+        String[] labels = new String[mins.length];
+        View.OnClickListener[] taps = new View.OnClickListener[mins.length];
+        for (int i = 0; i < mins.length; i++) {
+            int m = mins[i];
+            labels[i] = m + "";
+            taps[i] = v -> { try { act(new JSONObject().put("what", "focus").put("min", m)); } catch (Exception ignored) {} showToast("🎯 " + m + " ని…"); };
+        }
+        row(labels, taps);
+        button("⏹ ఫోకస్ ఆపు", 0xFF1F2937, v -> { try { act(new JSONObject().put("what", "focus_stop")); } catch (Exception ignored) {} });
+        line("టైమర్ ఈ వాచ్‌లో నడుస్తుంది (⏱️ టైమర్ లో చూడండి).", WUi.FAINT);
+    }
+
+    private void sleep() {
+        button("😴 నిద్ర ఎంత తక్కువైంది?", 0xFF0E3A4A, v -> { try { Talk.phoneDo(this, new JSONObject().put("what", "debt"), "😴 చూస్తున్నాను…"); } catch (Exception ignored) {} finish(); });
+        line("కునుకు (వాచ్ నిశ్శబ్దంగా వైబ్రేషన్‌తో లేపుతుంది):", WUi.MUTED);
+        int[] mins = {20, 45, 90};
+        String[] labels = {"20 ని", "45 ని", "90 ని"};
+        View.OnClickListener[] taps = new View.OnClickListener[3];
+        for (int i = 0; i < 3; i++) {
+            int m = mins[i];
+            taps[i] = v -> { Timers.start(this, m * 60, "😴 కునుకు అయిపోయింది"); showToast("😴 " + m + " నిమిషాలు. పడుకోండి."); };
+        }
+        row(labels, taps);
     }
 
     // ---------------------------------------------------------------- the bezel scrolls

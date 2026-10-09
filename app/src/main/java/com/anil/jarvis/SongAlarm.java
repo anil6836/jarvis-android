@@ -99,6 +99,7 @@ final class SongAlarm {
     /** loud: ring on the phone even if the watch could (he didn't answer the watch's vibration in 3 minutes). */
     static void fire(Context c, String id, int count, boolean loud) {
         if (count == 0 && !loud) rang(c, id);
+        if (count == 0 && !loud && Day5.smartRang(c, id)) return; // W68: the watch already woke him a little earlier for this one
         JSONObject me0 = find(c, id);
         // W19: only his wrist vibrates (the phone rings after 3 minutes if not answered); a sum alarm stays on the phone
         if (!loud && WatchAlerts.alarmOnWatch(c) && (me0 == null || !me0.optBoolean("challenge"))) {
@@ -160,7 +161,9 @@ final class SongAlarm {
         if (o.optBoolean("nap") && System.currentTimeMillis() > o.optLong("at") + 60000) return; // a nap whose time passed (a restart): never tomorrow
         LocalDateTime t = next(c, o, LocalDateTime.now());
         if (t == null) return;
-        at(c, t.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(), pi(c, o.optString("id"), false, 0));
+        long when = t.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        at(c, when, pi(c, o.optString("id"), false, 0));
+        try { Day5.smartArm(c, o.optString("id"), when, o.optBoolean("nap")); } catch (Exception ignored) {} // W68: light sleep on the watch first
     }
 
     /** Snooze; count = how many times already (at most 3 in a row, then it stops). */
@@ -174,6 +177,7 @@ final class SongAlarm {
         if (am == null) return;
         am.cancel(pi(c, id, false, 0));
         am.cancel(pi(c, id, true, 0));
+        Day5.smartCancel(c, id);
     }
 
     static JSONObject add(Context c, int hour, int minute, String days, String label) throws Exception {

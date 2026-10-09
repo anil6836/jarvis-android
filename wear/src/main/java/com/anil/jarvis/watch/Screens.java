@@ -17,6 +17,8 @@ final class Screens {
             switch (s) {
                 case "compass": Compass.open(c, t); break;
                 case "photos": Photos.open(c); break;
+                case "reps": Reps.open(c); break;
+                case "record": Recorder.open(c); break;
                 default: if (!s.isEmpty()) Panel.open(c, s);
             }
         } catch (Exception ignored) {}

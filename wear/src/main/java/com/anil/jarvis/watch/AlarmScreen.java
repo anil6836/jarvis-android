@@ -164,6 +164,22 @@ public class AlarmScreen extends Activity {
         setContentView(box);
     }
 
+    private Gestures gestures;
+
+    @Override protected void onResume() {
+        super.onResume();
+        // W59: a sharp flick of the wrist -> 5 more minutes (when snoozing is still allowed)
+        gestures = Gestures.start(this, new Gestures.Out() {
+            @Override public void twist() {}
+            @Override public void flick() { JSONObject o = ringing; if (o != null && o.optBoolean("snooze", true)) { answer(AlarmScreen.this, "snooze"); finish(); } }
+        });
+    }
+
+    @Override protected void onPause() {
+        if (gestures != null) { gestures.stop(); gestures = null; }
+        super.onPause();
+    }
+
     @Override protected void onDestroy() {
         if (shown == this) shown = null;
         super.onDestroy();

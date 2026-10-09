@@ -21,6 +21,8 @@ final class Complications {
         try {
             ComplicationDataSourceUpdateRequester.create(c, new ComponentName(c, DutySource.class)).requestUpdateAll();
             ComplicationDataSourceUpdateRequester.create(c, new ComponentName(c, WeatherSource.class)).requestUpdateAll();
+            ComplicationDataSourceUpdateRequester.create(c, new ComponentName(c, StressSource.class)).requestUpdateAll(); // (W61)
+            ComplicationDataSourceUpdateRequester.create(c, new ComponentName(c, PhoneSource.class)).requestUpdateAll();
         } catch (Exception ignored) {}
     }
 

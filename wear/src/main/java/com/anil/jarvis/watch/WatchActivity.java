@@ -49,6 +49,11 @@ public class WatchActivity extends Activity implements Talk.Screen {
     private float rotary;
     private int confirmShown = -1, confirmLeft;
     private Typeface te;
+    /** W62: the answer on the phone. W60: the actions around the edge. W59: wrist gestures. */
+    private TextView phoneBtn;
+    private FrameLayout rootView;
+    private Radial radial;
+    private Gestures gestures;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -56,6 +61,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
         Theme.refresh(this);
         int w = getResources().getDisplayMetrics().widthPixels, h = getResources().getDisplayMetrics().heightPixels;
         FrameLayout root = new FrameLayout(this);
+        rootView = root;
         root.setBackgroundColor(0xFF000000);
         hud = new HudView(this);
         root.addView(hud, new FrameLayout.LayoutParams(-1, -1));
@@ -72,6 +78,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
         FrameLayout slot = new FrameLayout(this);
         orb = new OrbView(this);
         orb.setOnClickListener(v -> act());
+        orb.setOnLongClickListener(v -> { showRadial(); return true; }); // W60
         slot.addView(orb, new FrameLayout.LayoutParams(-1, -1));
         face = new FaceLook(this);
         face.setOnClickListener(v -> act());
@@ -85,6 +92,15 @@ public class WatchActivity extends Activity implements Talk.Screen {
         reply = text(15, TEXT, false);
         reply.setLineSpacing(0, 1.12f);
         col.addView(reply);
+        phoneBtn = pill("📱 ఫోన్‌లో చూపించు", 0xFF0B2230); // W62
+        phoneBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f);
+        phoneBtn.setPadding(dp(8), dp(5), dp(8), dp(5));
+        phoneBtn.setOnClickListener(v -> { Link.send(this, Link.P_DO, jo("what", "show_phone")); Talk.buzz(this, 20); });
+        LinearLayout.LayoutParams pbp = new LinearLayout.LayoutParams(-2, -2);
+        pbp.gravity = Gravity.CENTER_HORIZONTAL;
+        pbp.topMargin = dp(4);
+        col.addView(phoneBtn, pbp);
+        phoneBtn.setVisibility(View.GONE);
 
         confirmBox = new LinearLayout(this);
         confirmBox.setOrientation(LinearLayout.VERTICAL);
@@ -116,7 +132,10 @@ public class WatchActivity extends Activity implements Talk.Screen {
                 {"💡 ఇల్లు", "home"}, {"⏱️ టైమర్", "timer"}, {"🍲 కుక్కర్", "cooker"}, {"📝 నోట్", "note"}, {"🌐 అనువాదం", "translate"},
                 {"🚶 నడక", "walk"}, {"🩺 స్కాన్", "scan"}, {"🌬️ శ్వాస", "breathe"}, // (phase 4: health)
                 {"🧭 దారి", "compass"}, {"🎵 పాటలు", "music"}, {"📻 రేడియో", "radio"}, {"🖼️ ఫోటోలు", "photos"},
-                {"📷 కెమెరా", "camera"}, {"🎙️ రికార్డ్", "record"}}; // (phase 5)
+                {"📷 కెమెరా", "camera"}, {"🎙️ రికార్డ్", "record"},
+                {"💧 నీళ్లు", "water"}, {"⚡ ప్రోటోకాల్", "protocols"}, {"🛡️ నాతో ఉండు", "journey"}, {"🎯 ఫోకస్", "focus"},
+                {"🏋️ రెప్స్", "reps"}, {"📔 డైరీ", "diary"}, {"💰 ఖర్చు", "money"}, {"😴 నిద్ర", "sleep"},
+                {"📱 ఫోన్ ఎక్కడ?", "find_phone"}, {"🩸 మెడికల్", "medical"}}; // (phase 5)
         LinearLayout mrow = null;
         for (int i = 0; i < menu.length; i++) {
             if (i % 2 == 0) {
@@ -207,6 +226,9 @@ public class WatchActivity extends Activity implements Talk.Screen {
             case "compass": Compass.open(this, ""); break;
             case "photos": Photos.open(this); break;
             case "record": Recorder.open(this); break;
+            case "reps": Reps.open(this); break;
+            case "find_phone": Link.send(this, Link.P_DO, jo("what", "find_phone")); status.setText("📱 ఫోన్ మోగిస్తున్నాను…"); break; // W66
+            case "talk": act(); break;
             case "camera": // W38 / W57: the phone (on a stand) looks; the answer comes here
                 try { Talk.phoneDo(this, new org.json.JSONObject().put("what", "camera"), "📷 ఫోన్ కెమెరా చూస్తోంది…"); } catch (Exception ignored) {}
                 break;
@@ -260,6 +282,11 @@ public class WatchActivity extends Activity implements Talk.Screen {
         restartCountdown();
         changed();
         main.post(tick);
+        // W59: a quick double twist of the wrist -> Jarvis listens (the gyroscope only while this screen is on)
+        gestures = Gestures.start(this, new Gestures.Out() {
+            @Override public void twist() { if (Talk.state == Talk.IDLE && Talk.micAllowed(WatchActivity.this)) { Talk.buzz(WatchActivity.this, 30); Talk.listen(WatchActivity.this, "twist"); } }
+            @Override public void flick() {}
+        });
     }
 
     @Override protected void onPause() {
@@ -268,6 +295,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
         if (Talk.state == Talk.SPEAKING && keepOn && pm != null && !pm.isInteractive()) Talk.stop(this);
         resumed = false;
         Talk.screenUp = false;
+        if (gestures != null) { gestures.stop(); gestures = null; }
         main.removeCallbacks(tick);
         restartCountdown(); // never "yes" unseen: back on the screen, it counts from the top again
         super.onPause();
@@ -316,6 +344,7 @@ public class WatchActivity extends Activity implements Talk.Screen {
         reply.setText(Talk.reply);
         reply.setGravity(Talk.reply.length() <= 70 ? Gravity.CENTER_HORIZONTAL : Gravity.START);
         reply.setVisibility(Talk.reply.isEmpty() ? View.GONE : View.VISIBLE);
+        phoneBtn.setVisibility(!Talk.reply.isEmpty() && s == Talk.IDLE ? View.VISIBLE : View.GONE);
         if (!hadReply && !Talk.reply.isEmpty()) scroll.post(() -> scroll.smoothScrollTo(0, Math.round(orb.getHeight() * 0.45f)));
         if (Talk.reply.isEmpty() && s == Talk.LISTENING) scroll.smoothScrollTo(0, 0);
         action.setText(s == Talk.LISTENING ? "✓ అయిపోయింది" : s == Talk.IDLE || s == Talk.ERROR ? "🎙️ మాట్లాడు" : "■ ఆపు");
@@ -395,7 +424,40 @@ public class WatchActivity extends Activity implements Talk.Screen {
 
     // ---------------------------------------------------------------- W7: the bezel scrolls
 
+    /** W60: the actions around the edge (the bezel picks one). */
+    private void showRadial() {
+        if (radial != null) return;
+        radial = new Radial(this, what -> {
+            hideRadial();
+            if (what != null) menu(what);
+        });
+        rootView.addView(radial, new FrameLayout.LayoutParams(-1, -1));
+        Talk.buzz(this, 30);
+    }
+
+    private void hideRadial() {
+        if (radial == null) return;
+        rootView.removeView(radial);
+        radial = null;
+    }
+
+    @Override public void onBackPressed() {
+        if (radial != null) { hideRadial(); return; }
+        super.onBackPressed();
+    }
+
+    private static JSONObject jo(String k, String v) {
+        try { return new JSONObject().put(k, v); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    private float notch;
+
     @Override public boolean dispatchGenericMotionEvent(MotionEvent ev) {
+        if (radial != null && ev.getAction() == MotionEvent.ACTION_SCROLL && ev.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER)) {
+            notch += -ev.getAxisValue(MotionEvent.AXIS_SCROLL);
+            if (Math.abs(notch) >= 1f) { radial.turn(notch > 0 ? 1 : -1); notch = 0; }
+            return true;
+        }
         if (ev.getAction() == MotionEvent.ACTION_SCROLL && ev.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER)) {
             float delta = -ev.getAxisValue(MotionEvent.AXIS_SCROLL) * ViewConfiguration.get(this).getScaledVerticalScrollFactor();
             scroll.scrollBy(0, Math.round(delta));

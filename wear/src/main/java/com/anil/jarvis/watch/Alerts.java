@@ -85,7 +85,7 @@ final class Alerts {
                 .setContentIntent(screen != null ? screen : Notes.open(c, 20)).setAutoCancel(true).setTimeoutAfter(15 * 60_000L)
                 .setCategory(kind.equals("call") ? Notification.CATEGORY_CALL : kind.equals("message") ? Notification.CATEGORY_MESSAGE
                         : kind.equals("sos") ? Notification.CATEGORY_ALARM : Notification.CATEGORY_REMINDER);
-        if (screen != null) b.addAction(action(c, "breathe".equals(open) ? "🌬️ మొదలుపెట్టు" : "🩺 స్కాన్", screen));
+        if (screen != null) b.addAction(action(c, "breathe".equals(open) ? "🌬️ మొదలుపెట్టు" : "diary".equals(open) ? "📔 చెప్పు" : "🩺 స్కాన్", screen));
         JSONArray acts = o.optJSONArray("acts");
         for (int i = 0; acts != null && i < acts.length() && i < 3; i++) {
             String label = acts.optString(i);
@@ -104,6 +104,9 @@ final class Alerts {
 
     /** The watch screen a card opens ("breathe", "scan"), or null. */
     private static PendingIntent screen(Context c, String open) {
+        if ("diary".equals(open)) // W72: the night diary
+            return PendingIntent.getActivity(c, ("open" + open).hashCode(), new Intent(c, Panel.class).putExtra(Panel.EXTRA_KIND, "diary").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Class<?> k = "breathe".equals(open) ? Breathe.class : "scan".equals(open) ? Scan.class : null;
         if (k == null) return null;
         return PendingIntent.getActivity(c, ("open" + open).hashCode(), new Intent(c, k).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

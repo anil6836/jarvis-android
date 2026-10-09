@@ -45,6 +45,15 @@ final class WatchDo {
             case "here": return Travel.herePanel(c); // the compass: where he is now (the phone's GPS)
             case "music": return Music.panel(c);     // W50: what plays on the phone
             case "radio": return Music.radioPanel(c); // W36: his stations
+            case "water": return Day5.waterPanel(c);   // W70
+            case "money": return Day5.moneyPanel(c);   // W82 (counted here, never sent to any AI)
+            case "protocols": {                         // W58
+                JSONObject a = Protocols.all(c);
+                JSONArray names = new JSONArray();
+                for (java.util.Iterator<String> it = a.keys(); it.hasNext(); ) names.put(it.next());
+                return new JSONObject().put("kind", "protocols").put("names", names);
+            }
+            case "journey": return new JSONObject().put("kind", "journey").put("on", Journey.on(c)); // W81
             case "duty": return duty(c);
             case "tasks": return tasks(c);
             case "home": return home(c);
@@ -177,6 +186,34 @@ final class WatchDo {
             }
             case "radio_phone": toast(app, Music.radioOnPhone(app, o.optString("name"))); return;
             case "show_phone": toast(app, ShowOnPhone.lastAnswer(app)); return; // W62
+            case "water": { // W70
+                String r = Day5.waterAdd(app, o.optInt("n", 1));
+                WatchHub.send(app, P_PANEL, Day5.waterPanel(app).put("toast", r));
+                return;
+            }
+            case "mood": Day5.mood(app, o.optString("m")); return; // W72
+            case "focus": toast(app, Day5.focusStart(app, o.optInt("min", 25), o.optString("what"))); return; // W73
+            case "focus_stop": toast(app, Day5.focusEnd(app)); return;
+            case "find_phone": FindPhone.start(app); toast(app, "📱 ఫోన్ మోగుతోంది"); return; // W66
+            case "nap": toast(app, Day5.nap(app, o.optInt("min", 20))); return; // W67
+            case "debt": { String t = Day5.sleepDebtText(app); main.post(() -> WatchHub.say(app, t)); return; }
+            case "smart_wake": Day5.smartWake(app, o.optString("id")); return; // W68: he stirred in light sleep
+            case "reps": { // W71: an exercise counted on the watch
+                Notes.add(app, "reps", new JSONObject().put("t", System.currentTimeMillis()).put("name", o.optString("name")).put("count", o.optInt("count")), 200);
+                toast(app, "✓ " + o.optString("name") + " " + o.optInt("count") + " సార్లు రాశాను");
+                return;
+            }
+            case "protocol": { // W58
+                WatchHub.state(app, "thinking", null, null, "⚡ " + o.optString("name") + "…");
+                String t = Protocols.run(app, o.optString("name"));
+                main.post(() -> WatchHub.say(app, t));
+                return;
+            }
+            case "journey": { // W81
+                String t = o.optBoolean("on") ? Journey.start(app, o.optString("place"), o.optInt("min")) : Journey.stop(app, false);
+                WatchHub.send(app, P_PANEL, new JSONObject().put("kind", "journey").put("on", Journey.on(app)).put("toast", t.length() > 90 ? t.substring(0, 90) + "…" : t));
+                return;
+            }
             case "sos": CrashAlert.sosNow(app, "వాచ్‌లో 🆘 నొక్కారు, సహాయం కావాలి"); return; // W40 (after the watch's own 5 seconds)
             case "camera": { // W38 / W57: the phone's camera looks (the phone on a stand), the answer comes here
                 if (app.checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {

@@ -149,7 +149,8 @@ final class WatchHub {
                     .put("online", Net.online(c)).put("alerts", alertsOn(c)).put("lost", lostOn(c)).put("look", look(c))
                     .put("theme", Ui.theme(c)).put("morning", morningOn(c)).put("watchTimer", watchTimerOn(c))
                     .put("walk", walkOn(c)).put("hr", hrOn(c)).put("stride", Wellness.strideFor(Wellness.heightCm(c)))
-                    .put("fall", fallOn(c)).put("fall_secs", "none".equals(SafetySounds.sosMode(c)) ? 0 : SafetySounds.waitSeconds(c));
+                    .put("fall", fallOn(c)).put("fall_secs", "none".equals(SafetySounds.sosMode(c)) ? 0 : SafetySounds.waitSeconds(c))
+                    .put("gestures", sp(c).getBoolean("gestures", true)).put("storm", sp(c).getBoolean("storm", true)); // (W59, W75)
         } catch (Exception ignored) {}
         return o;
     }
@@ -709,7 +710,8 @@ final class WatchHub {
             state(app, "idle", null, null, follow ? null : "ఏమీ వినిపించలేదు");
             return;
         }
-        if ("note".equals(why) || "handover".equals(why) || "translate".equals(why)) { quick(app, text, why); return; }
+        if ("note".equals(why) || "handover".equals(why) || "translate".equals(why) || "diary".equals(why)) { quick(app, text, why); return; }
+        if ("journey".equals(why) && !text.contains("నాతో ఉండు")) text = "నాతో ఉండు: " + text; // (W81: said on the journey screen)
         talk(true);
         state(app, "thinking", text, null, null);
         WatchTalkActivity a = WatchTalkActivity.current;
@@ -740,6 +742,7 @@ final class WatchHub {
             boolean err = false;
             try {
                 if ("note".equals(why)) r = QuickNote.save(app, text);
+                else if ("diary".equals(why)) r = Day5.diary(app, text); // W72: the night diary, with his mood
                 else if ("handover".equals(why)) {
                     if (Offline.secret(text) || Offline.idNumber(text)) r = "అలాంటి నంబర్లు నేను రాసుకోను.";
                     else { Plans.addNote(app, text); r = "హ్యాండోవర్ నోట్స్‌లో రాశాను: \"" + text + "\"."; }
@@ -791,13 +794,15 @@ final class WatchHub {
     static void reply(Context c, String text, boolean error, boolean speak, Runnable spoken) {
         talk(true);
         Context app = c.getApplicationContext();
+        boolean silent = speak && Day5.silentNow(app); // W63: on duty / in a meeting / Do Not Disturb / his switch: text only, with a buzz
+        if (silent) speak = false;
         appCtx = app;
         android.media.AudioManager am = app.getSystemService(android.media.AudioManager.class);
         boolean local = speak && am != null && Sounds.earphones(am); // his earphones are on the phone: said there
         JSONObject o = new JSONObject();
         try {
             o.put("s", error ? "error" : "reply").put("online", Net.online(app)).put("reply", text)
-                    .put("voice", !speak ? "none" : local ? "phone" : "watch");
+                    .put("voice", !speak ? "none" : local ? "phone" : "watch").put("silent", silent);
         } catch (Exception ignored) {}
         send(app, P_STATE, o);
         M.h.removeCallbacks(playedLate);
