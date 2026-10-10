@@ -310,8 +310,31 @@ final class HomeScreen extends FrameLayout {
                 if (at > now && at < best) { best = at; what = r.optString("text"); }
             }
         } catch (Exception ignored) {}
+        try { // her tablets
+            Object[] d = Medicine.nextDose(c);
+            if (d != null && (Long) d[1] > now && (Long) d[1] < best) { best = (Long) d[1]; what = "💊 " + d[0]; }
+        } catch (Exception ignored) {}
+        for (String[] m : HomeCare.MEALS) { // her meals still to come today
+            long at = todayAt(HomeCare.time(c, m[0], m[2]));
+            if (at > now && at < best && !HomeCare.ate(c, m[0])) { best = at; what = "🍽️ " + m[1]; }
+        }
         if (what == null) return "ఇప్పుడు ఏమీ లేవు";
         return what + " · " + when(best, now);
+    }
+
+    /** Today at HH:mm in millis (-1 when it can't be read). */
+    private static long todayAt(String hhmm) {
+        try {
+            String[] p = hhmm.trim().split(":");
+            Calendar k = Calendar.getInstance();
+            k.set(Calendar.HOUR_OF_DAY, Integer.parseInt(p[0].trim()));
+            k.set(Calendar.MINUTE, Integer.parseInt(p[1].trim()));
+            k.set(Calendar.SECOND, 0);
+            k.set(Calendar.MILLISECOND, 0);
+            return k.getTimeInMillis();
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     static String when(long at, long now) {
@@ -374,7 +397,7 @@ final class HomeScreen extends FrameLayout {
         final Context app = getContext().getApplicationContext();
         new Thread(() -> {
             try {
-                Location l = Tools.lastLocation(app);
+                Location l = Devices.freshFix(app); // (a SIM-less tablet may have no last place yet: a fix is asked for)
                 if (l == null) return;
                 JSONObject cur = Http.get(String.format(Locale.US,
                         "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code",

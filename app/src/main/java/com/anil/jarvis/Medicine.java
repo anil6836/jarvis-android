@@ -336,6 +336,26 @@ final class Medicine {
 
     static JSONObject byIdPublic(Context c, String id) { return byId(c, id); }
 
+    /** The next dose not taken yet: {name, at millis}, or null when no medicines are set (the home screen's "next" line). */
+    static Object[] nextDose(Context c) {
+        SimpleDateFormat day = new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH);
+        String today = day.format(new Date());
+        long best = Long.MAX_VALUE;
+        String name = null;
+        for (JSONObject m : all(c)) {
+            JSONArray t = m.optJSONArray("times");
+            for (int i = 0; t != null && i < t.length(); i++) {
+                String tm = t.optString(i);
+                long at;
+                try { at = nextAt(tm); } catch (Exception e) { continue; }
+                // already taken (early) today: its next time is tomorrow
+                if (day.format(new Date(at)).equals(today) && takenAt(c, m.optString("id"), today + " " + tm)) at += 86_400_000L;
+                if (at < best) { best = at; name = m.optString("name"); }
+            }
+        }
+        return name == null ? null : new Object[]{name, best};
+    }
+
     private static final java.util.Map<String, Long> HOME_ASKED = new java.util.HashMap<>();
 
     /** Today's not-yet-taken medicines due at this time (same-time tablets are asked and marked together). */

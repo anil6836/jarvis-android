@@ -92,6 +92,30 @@ final class Devices {
             } finally {
                 stop.cancel(); // no fix in time: don't keep the radio busy
             }
+        } else { // Android 8–10: one update asked for
+            android.location.LocationListener ll = null;
+            LocationManager lm = null;
+            try {
+                lm = c.getSystemService(LocationManager.class);
+                String provider = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ? LocationManager.NETWORK_PROVIDER
+                        : lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ? LocationManager.GPS_PROVIDER : null;
+                if (provider != null) {
+                    final Location[] got = {null};
+                    CountDownLatch done = new CountDownLatch(1);
+                    ll = new android.location.LocationListener() {
+                        @Override public void onLocationChanged(Location l) { got[0] = l; done.countDown(); }
+                        @Override public void onStatusChanged(String p, int s, android.os.Bundle b) {}
+                        @Override public void onProviderEnabled(String p) {}
+                        @Override public void onProviderDisabled(String p) {}
+                    };
+                    lm.requestSingleUpdate(provider, ll, android.os.Looper.getMainLooper());
+                    done.await(8, TimeUnit.SECONDS);
+                    if (got[0] != null) return got[0];
+                }
+            } catch (Exception ignored) {
+            } finally {
+                try { if (lm != null && ll != null) lm.removeUpdates(ll); } catch (Exception ignored) {}
+            }
         }
         return last;
     }
