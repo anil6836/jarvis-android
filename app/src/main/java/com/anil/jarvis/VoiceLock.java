@@ -15,6 +15,8 @@ final class VoiceLock {
     /** Last wake attempt: how far the voice was from Anil's print (0 = same), for the settings screen. */
     static volatile double lastDistance = -1;
     static volatile boolean lastAccepted = true;
+    /** When the last voice was measured (ms). */
+    static volatile long lastAt;
 
     static float[] print(Context c) {
         String s = c.getSharedPreferences("jarvis", Context.MODE_PRIVATE).getString("voice_print", "");

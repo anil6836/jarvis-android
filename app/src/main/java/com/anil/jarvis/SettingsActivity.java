@@ -126,7 +126,8 @@ public class SettingsActivity extends Activity {
             {"brain", "🧠", "మెదడు, ఖర్చు", "AI, మోడల్స్, API keys, కోడింగ్"},
             {"voice", "🔊", "గొంతు, వినడం", "వాయిస్, సహజ గొంతు, Live, వేక్ వర్డ్, పవర్ బటన్"},
             {"msg", "💬", "మెసేజ్‌లు, కాల్స్", "కాల్స్, బ్రీఫింగ్, నోటిఫికేషన్లు, WhatsApp, స్క్రీన్, మోసం గార్డ్"},
-            {"bike", "🏍️", "బైక్, ఇల్లు", "బైక్, కదలికలు, స్మార్ట్ హోమ్, ఇంటి Jarvis, కాపలా మోడ్"},
+            {"bike", "🏍️", "బైక్, ఇల్లు", "బైక్, కదలికలు, స్మార్ట్ హోమ్, కాపలా మోడ్"},
+            {"tab", "🏠", "ఇంటి టాబ్లెట్", "టాబ్లెట్ గొంతు, అమ్మగారి టైమ్‌లు, టాబ్లెట్లు, ఇంటి Jarvis"},
             {"daily", "❤️", "రోజువారీ, ఆరోగ్యం", "అలారం, డైరీ, హెచ్చరికలు, ఆరోగ్యం, తనంతట తానే"},
             {"safe", "🛡️", "భద్రత", "SOS, టికెట్ పేమెంట్, డాక్యుమెంట్లు"},
             {"data", "☁️", "బ్యాకప్, అప్డేట్లు", "Drive బ్యాకప్, అప్డేట్లు, అనుమతులు"}};
@@ -816,6 +817,7 @@ public class SettingsActivity extends Activity {
         alexaSpeak = toggle("దగ్గర్లో Echo ఉంది: అవసరమైతే Jarvis \"Alexa, …\" అని పైకి చెప్పనివ్వు", prefs.alexaSpeak());
 
         homeSection();
+        if (!prefs.homeMode()) tabletSection();
 
         // ---- guard mode: on an old phone at home (buttons act at once; no Save needed)
         section("కాపలా మోడ్ (ఇంట్లో పాత ఫోన్)");
@@ -1137,7 +1139,8 @@ public class SettingsActivity extends Activity {
         if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")
                 || t.contains("వాచ్")) return "voice";
         if (t.contains("కాల్స్") || t.contains("మెసేజ్") || t.contains("WhatsApp") || t.contains("స్క్రీన్ చూడటం") || t.contains("మోసం")) return "msg";
-        if (t.contains("బైక్") || t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా") || t.contains("ఇంటి Jarvis")) return "bike";
+        if (t.contains("టాబ్లెట్") || t.contains("ఇంటి Jarvis")) return "tab";
+        if (t.contains("బైక్") || t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా")) return "bike";
         if (t.contains("అత్యవసరం (SOS)") || t.contains("టికెట్") || t.contains("డాక్యుమెంట్")) return "safe";
         if (t.contains("బ్యాకప్") || t.contains("అప్డేట్") || t.contains("అనుమతులు")) return "data";
         return "daily"; // డైరీ, హెచ్చరికలు, అలారం, ఆరోగ్యం, తనంతట తానే
@@ -1212,6 +1215,11 @@ public class SettingsActivity extends Activity {
             LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -1, 1);
             if (i % 2 == 0) tlp.rightMargin = Ui.dp(this, 5); else tlp.leftMargin = Ui.dp(this, 5);
             row.addView(tile, tlp);
+        }
+        if (GROUPS.length % 2 == 1 && row != null) { // (an odd last tile keeps its half width)
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, -1, 1);
+            sp.leftMargin = Ui.dp(this, 5);
+            row.addView(new View(this), sp);
         }
         page.addView(grid, at++, new LinearLayout.LayoutParams(-1, -2));
 
@@ -2667,6 +2675,134 @@ public class SettingsActivity extends Activity {
     }
 
     /** Phase 2a: the Jarvis watch app (Galaxy Watch). Each choice acts at once and goes to the watch; no Save needed. */
+    /**
+     * On his phone: the home tablet's settings, sent to it through his Telegram bot (the home link): the tablet's voice
+     * and voice model (as the phone's own), అమ్మగారు's meal / water / chat / bedtime times, her tablets, sugar limits,
+     * the doctor's advice, the day's AI limit; and the tablet's status now.
+     */
+    private void tabletSection() {
+        section("📱→🏠 ఇంటి టాబ్లెట్ (అమ్మగారి Jarvis)");
+        final android.content.SharedPreferences ts = getSharedPreferences("jarvis_tabset", MODE_PRIVATE);
+        note("ఇంట్లో ఉన్న టాబ్లెట్ Jarvis సెట్టింగ్స్ ఇక్కడ నుంచే మార్చొచ్చు; \"📤 టాబ్లెట్‌కి పంపు\" నొక్కితే మీ Telegram bot ద్వారా టాబ్లెట్‌కి వెళ్తాయి (రెండింటికీ నెట్ కావాలి). "
+                + "ముందు ఒక్కసారి: టాబ్లెట్‌లో, ఈ ఫోన్‌లో ఒకే bot token పెట్టి \"Telegram చాట్ కనుక్కో\" నొక్కాలి (కాపలా మోడ్ కార్డ్‌లో; కాపలా ఆన్ చేయనక్కర్లేదు).");
+        TextView status = Ui.text(this, "టాబ్లెట్ స్థితి: (కింద నొక్కండి)", 14.5f, Ui.MUTED);
+        status.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        box.addView(status);
+        button("🔄 టాబ్లెట్ స్థితి చూడు", v -> {
+            status.setText("టాబ్లెట్‌ని అడుగుతున్నాను… (నిమిషం వరకు)");
+            new Thread(() -> {
+                String r = HomeLink.tabletStatus(getApplicationContext());
+                runOnUiThread(() -> status.setText(r));
+            }, "tab-status").start();
+        });
+
+        // ---- the tablet's voice: the phone's by default (he can pick another, like the phone's own)
+        final String[] voice = {ts.getString("voice", prefs.naturalVoiceName())};
+        TextView vt = Ui.text(this, "", 15.5f, accent);
+        vt.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4));
+        Runnable showV = () -> vt.setText("🔊 టాబ్లెట్ గొంతు: " + voice[0] + (voice[0].equals(prefs.naturalVoiceName()) ? " (ఫోన్ గొంతే)" : "") + "  (మార్చడానికి నొక్కండి)");
+        showV.run();
+        vt.setOnClickListener(v -> {
+            int at = java.util.Arrays.asList(NaturalVoice.VOICES).indexOf(voice[0]);
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("టాబ్లెట్ గొంతు (cedar = లోతైన మగ గొంతు)")
+                    .setSingleChoiceItems(NaturalVoice.VOICES, Math.max(0, at), (d, w) -> { voice[0] = NaturalVoice.VOICES[w]; showV.run(); d.dismiss(); })
+                    .show();
+        });
+        box.addView(vt);
+        EditText model = field("టాబ్లెట్ గొంతు మోడల్ (ఫోన్‌లోది: " + prefs.ttsModel() + ")", ts.getString("tts_model", prefs.ttsModel()), false);
+        TextView vInfo = Ui.text(this, "", 13.5f, Ui.MUTED);
+        button("▶ ఈ గొంతు ఫోన్‌లో వినిపించు", v -> {
+            String key = prefs.openAiKey().trim();
+            if (key.isEmpty()) { Toast.makeText(this, "ముందు OpenAI key పెట్టండి", Toast.LENGTH_SHORT).show(); return; }
+            String m = model.getText().toString().trim();
+            tester.model = m.isEmpty() ? NaturalVoice.DEFAULT_MODEL : m;
+            vInfo.setText("వినిపిస్తున్నాను…");
+            tester.speak(key, voice[0], "నమస్కారం అమ్మగారు. నేను Jarvis. టిఫిన్ చేశారా?", new NaturalVoice.Callback() {
+                @Override public void onStart() { vInfo.setText("గొంతు: " + voice[0] + " · " + tester.model); }
+                @Override public void onDone() { vInfo.setText("గొంతు: " + voice[0] + " · " + tester.model + " ✓"); }
+                @Override public void onError(String message) { vInfo.setText("పనిచేయలేదు: " + message); }
+            });
+        });
+        box.addView(vInfo);
+
+        // ---- అమ్మగారు's day
+        EditText who = field("అమ్మని Jarvis ఏమని పిలవాలి", ts.getString("who", "అమ్మగారు"), false);
+        EditText tif = field("🍽️ టిఫిన్ టైమ్ (ఉదా: 08:30)", ts.getString("tiffin", "08:30"), false);
+        EditText lun = field("🍽️ మధ్యాహ్నం భోజనం", ts.getString("lunch", "13:00"), false);
+        EditText sna = field("🍪 సాయంత్రం స్నాక్స్", ts.getString("snack", "16:30"), false);
+        EditText din = field("🍽️ రాత్రి భోజనం", ts.getString("dinner", "20:00"), false);
+        EditText wat = field("💧 నీళ్లు అడిగే టైమ్‌లు (కామాతో)", ts.getString("water", "10:30,12:30,15:30,18:00"), false);
+        EditText cha = field("🗣️ Jarvis తనంతట తానే మాట్లాడే టైమ్‌లు", ts.getString("chat", "10:00,17:30"), false);
+        EditText rst = field("😴 మధ్యాహ్నం విశ్రాంతి (ఆ టైమ్‌లో నిశ్శబ్దం)", ts.getString("rest", "13:30-15:30"), false);
+        EditText bed = field("🌙 పడుకునే ముందు చెక్", ts.getString("bed", "21:30"), false);
+        EditText rep = field("📋 మీకు రోజు రిపోర్ట్ (Telegram)", ts.getString("report", "21:45"), false);
+        EditText sil = field("⏳ ఇన్ని గంటలు అలికిడి లేకపోతే \"బాగున్నారా?\"", String.valueOf(ts.getInt("silent_hours", 3)), false);
+        EditText sLo = field("🩸 షుగర్ ఇంతకంటే తక్కువైతే మీకు చెప్పు", String.valueOf(ts.getInt("sugar_low", 70)), false);
+        EditText sHi = field("🩸 షుగర్ ఇంతకంటే ఎక్కువైతే మీకు చెప్పు", String.valueOf(ts.getInt("sugar_high", 250)), false);
+        EditText doc = field("👨‍⚕️ ఒంట్లో బాగోలేనప్పుడు డాక్టర్ చెప్పింది (Jarvis అమ్మకి చదువుతాడు)", ts.getString("doctor_note", ""), false);
+        EditText lim = field("🧠 టాబ్లెట్ రోజు AI పరిమితి (ప్రశ్నలు; మీ key ఖర్చు)", String.valueOf(ts.getInt("ai_limit", 200)), false);
+        note("💊 అమ్మగారి టాబ్లెట్లు: ఒక్కో లైన్‌లో \"పేరు = టైమ్‌లు | తిన్న తర్వాత\" (ఉదా: Metformin = 08:00, 20:00 | తిన్న తర్వాత). "
+                + "డాక్టర్ / మీరు చెప్పినవే పెట్టండి; Jarvis సొంతంగా మందులు చెప్పడు. టాబ్లెట్ టైమ్‌కి అడుగుతాడు, 10 నిమిషాలకోసారి మళ్లీ అడుగుతాడు, 3 సార్లు జవాబు లేకపోతే మీకు Telegram.");
+        EditText meds = new EditText(this);
+        meds.setText(ts.getString("meds_text", ""));
+        meds.setTextColor(Ui.TEXT);
+        meds.setTextSize(15);
+        meds.setSingleLine(false);
+        meds.setMinLines(3);
+        meds.setGravity(Gravity.TOP | Gravity.START);
+        meds.setBackground(fieldBg());
+        int pd = Ui.dp(this, 12);
+        meds.setPadding(pd, pd, pd, pd);
+        meds.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        box.addView(meds, new LinearLayout.LayoutParams(-1, -2));
+        TextView sent = Ui.text(this, "", 14, Ui.MUTED);
+        button("📤 టాబ్లెట్‌కి పంపు", v -> {
+            try {
+                org.json.JSONObject j = new org.json.JSONObject()
+                        .put("voice", voice[0]).put("tts_model", model.getText().toString().trim())
+                        .put("who", who.getText().toString().trim()).put("tiffin", tif.getText().toString().trim())
+                        .put("lunch", lun.getText().toString().trim()).put("snack", sna.getText().toString().trim())
+                        .put("dinner", din.getText().toString().trim()).put("water", wat.getText().toString().trim())
+                        .put("chat", cha.getText().toString().trim()).put("rest", rst.getText().toString().trim())
+                        .put("bed", bed.getText().toString().trim()).put("report", rep.getText().toString().trim())
+                        .put("doctor_note", doc.getText().toString().trim());
+                int[] nums = new int[4];
+                EditText[] nf = {sil, sLo, sHi, lim};
+                String[] nk = {"silent_hours", "sugar_low", "sugar_high", "ai_limit"};
+                android.content.SharedPreferences.Editor e = ts.edit();
+                for (int i = 0; i < 4; i++) {
+                    try { nums[i] = Integer.parseInt(nf[i].getText().toString().trim()); } catch (Exception ex) { nums[i] = ts.getInt(nk[i], i == 0 ? 3 : i == 1 ? 70 : i == 2 ? 250 : 200); }
+                    j.put(nk[i], nums[i]);
+                    e.putInt(nk[i], nums[i]);
+                }
+                org.json.JSONArray ma = new org.json.JSONArray();
+                for (String line : meds.getText().toString().split("\n")) {
+                    int eq = line.indexOf('=');
+                    if (eq <= 0) continue;
+                    String nm = line.substring(0, eq).trim(), rest = line.substring(eq + 1);
+                    String food = "";
+                    int bar = rest.indexOf('|');
+                    if (bar >= 0) { food = rest.substring(bar + 1).trim(); rest = rest.substring(0, bar); }
+                    if (nm.isEmpty() || Medicine.times(rest).length() == 0) continue;
+                    ma.put(new org.json.JSONObject().put("name", nm).put("times", rest.trim()).put("food", food));
+                }
+                j.put("meds", ma);
+                java.util.Iterator<String> it = j.keys();
+                while (it.hasNext()) { String k = it.next(); Object o = j.get(k); if (o instanceof String) e.putString(k, (String) o); }
+                e.putString("meds_text", meds.getText().toString()).apply();
+                sent.setText("పంపుతున్నాను…");
+                new Thread(() -> {
+                    String r = HomeLink.sendSettings(getApplicationContext(), j);
+                    runOnUiThread(() -> sent.setText(r));
+                }, "tab-send").start();
+            } catch (Exception ex) {
+                sent.setText("పంపలేకపోయాను: " + ex.getMessage());
+            }
+        });
+        box.addView(sent);
+    }
+
     /** The home Jarvis: this device (a tablet at home) shows the big home screen with the new Jarvis. Acts at once. */
     private void homeSection() {
         section("🏠 ఇంటి Jarvis (టాబ్లెట్)");
@@ -2674,6 +2810,9 @@ public class SettingsActivity extends Activity {
                 + "గడియారం, తెలుగు తేదీ, వాతావరణం, తర్వాతి రిమైండర్, మీ AC / ఫ్యాన్ బటన్లు (స్మార్ట్ హోమ్ లింక్‌లు). ఇంట్లో ఎవరు మాట్లాడినా జవాబిస్తాడు. "
                 + "పగలు స్క్రీన్ ఆన్‌లోనే ఉంటుంది; రాత్రి 10 నుంచి ఉదయం 6 వరకు డిమ్, తర్వాత ఆరిపోవచ్చు ('Jarvis' అంటే / తాకితే వెలుగుతుంది). "
                 + "టాబ్లెట్ ఆన్ అయినప్పుడు Jarvis తనంతట తానే తెరుచుకుంటుంది. 💬 నొక్కితే చాట్, 3 నిమిషాల తర్వాత మళ్లీ ఇంటి స్క్రీన్.");
+        note("🔋 బ్యాటరీ కేర్: టాబ్లెట్ ఛార్జర్‌ని మీ Alexa స్మార్ట్ ప్లగ్‌లో పెట్టి, స్మార్ట్ హోమ్ బాక్స్‌లో \"charger on = లింక్\", \"charger off = లింక్\" అని రెండు లైన్లు పెట్టండి "
+                + "(URL Routine Trigger లింక్‌లు, Alexa రొటీన్ → ఆ ప్లగ్ ఆన్ / ఆఫ్). 80% అయితే Jarvis ప్లగ్ ఆఫ్ చేస్తాడు, 40% కి వస్తే ఆన్. "
+                + "నెట్ లేక 25% కి పడితే అమ్మగారికి \"ప్లగ్ బటన్ నొక్కండి\" అని చెబుతాడు. బ్యాకప్‌గా Alexa లో రోజూ ఒక టైమ్‌కి ప్లగ్ ఆన్ చేసే రొటీన్ కూడా పెట్టండి.");
         Switch on = toggle("ఈ డివైస్ ఇంటి Jarvis (టాబ్లెట్)", prefs.homeMode());
         on.setOnCheckedChangeListener((sw, v) -> {
             prefs.setHomeMode(v);

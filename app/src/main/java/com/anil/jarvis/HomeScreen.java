@@ -400,6 +400,7 @@ final class HomeScreen extends FrameLayout {
             int eq = line.indexOf('=');
             if (eq <= 0) continue;
             String name = line.substring(0, eq).trim(), url = line.substring(eq + 1).trim();
+            if (name.toLowerCase(Locale.ROOT).startsWith("charger")) continue; // (the battery-care links work by themselves)
             if (!name.isEmpty() && url.startsWith("http")) cmds.add(new String[]{name, url});
             if (cmds.size() == 4) break;
         }

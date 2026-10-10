@@ -144,7 +144,7 @@ final class HomeCare {
         }
         i = 0;
         for (String w : chatTimes(c).split(",")) {
-            if (due(c, "chat" + (i++), w) && !calm && !quiet(c) && !resting(c)
+            if (due(c, "chat" + (i++), w) && !calm && !quiet(c) && !resting(c) && !sonHome(c)
                     && System.currentTimeMillis() - sp(c).getLong("life", 0) < 45 * 60_000L) companion(c);
         }
         if (due(c, "bed", bedTime(c)) && !out(c)) bedtime(c);
@@ -153,6 +153,7 @@ final class HomeCare {
         if (Net.online(c) && !today().equals(sp(c).getString("stories_day", ""))) prepareStories(c);
         if (Net.online(c)) Bible.prefetchSome(4);
         silenceCheck(c);
+        batteryCare(c);
         if (Net.online(c)) flushOutbox(c);
     }
 
@@ -443,8 +444,9 @@ final class HomeCare {
         new Thread(() -> {
             String line = null;
             Prefs p = new Prefs(c);
-            if (Net.online(c) && p.hasBrain()) {
+            if (Net.online(c) && p.hasBrain() && !overLimit(c)) {
                 try {
+                    countAi(c);
                     int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
                     line = Brain.oneShot(p, persona(c),
                             "It is " + HomeScreen.partOfDay(h) + ". Today so far: " + reportText(c).replace('\n', ' ')
@@ -482,8 +484,9 @@ final class HomeCare {
 
     private static void prepareStories(Context c) {
         Prefs p = new Prefs(c);
-        if (!p.hasBrain()) return;
+        if (!p.hasBrain() || overLimit(c)) return;
         sp(c).edit().putString("stories_day", today()).apply();
+        countAi(c);
         new Thread(() -> {
             try {
                 JSONArray keep = new JSONArray(sp(c).getString("stories", "[]"));
@@ -539,6 +542,119 @@ final class HomeCare {
             }
         } catch (Exception ignored) {}
         return who(c) + ", పాటలు పెట్టలేకపోయాను; \"క్రిస్టియన్ రేడియో పెట్టు\" అని అడగండి.";
+    }
+
+    // ================================================================ Anil at home, settings from his phone, status
+    static boolean sonHome(Context c) { return sp(c).getBoolean("son_home", false); }
+
+    /** His phone says he is arriving (Jarvis tells అమ్మగారు) or has gone out. */
+    static void son(Context c, boolean coming) {
+        sp(c).edit().putBoolean("son_home", coming).apply();
+        if (coming && !night()) say(c, who(c) + ", అబ్బాయి ఇంటికి వచ్చేస్తున్నాడు!", "excited");
+    }
+
+    /** Settings from his phone's "📱→🏠 టాబ్లెట్" section (JSON); returns the line sent back to him. */
+    static String apply(Context c, String json) {
+        try {
+            JSONObject j = new JSONObject(json);
+            SharedPreferences.Editor e = sp(c).edit();
+            String[] times = {"tiffin", "lunch", "snack", "dinner", "water", "chat", "bed", "report", "rest"};
+            for (String k : times) if (j.has(k)) e.putString("t_" + k, j.optString(k).trim());
+            if (j.has("who")) e.putString("who", j.optString("who").trim());
+            if (j.has("doctor_note")) e.putString("doctor_note", j.optString("doctor_note").trim());
+            for (String k : new String[]{"silent_hours", "sugar_low", "sugar_high", "ai_limit"}) if (j.has(k)) e.putInt(k, j.optInt(k));
+            e.apply();
+            SharedPreferences.Editor pe = new Prefs(c).sp.edit();
+            if (j.has("voice")) pe.putString("natural_voice_name", j.optString("voice").trim());
+            if (j.has("tts_model")) pe.putString("tts_model", j.optString("tts_model").trim());
+            pe.apply();
+            JSONArray meds = j.optJSONArray("meds");
+            if (meds != null) {
+                java.util.Set<String> keep = new java.util.HashSet<>();
+                for (int i = 0; i < meds.length(); i++) {
+                    JSONObject m = meds.getJSONObject(i);
+                    String name = m.optString("name").trim();
+                    if (name.isEmpty() || Medicine.times(m.optString("times")).length() == 0) continue;
+                    keep.add(name.toLowerCase(Locale.ROOT));
+                    JSONObject old = Medicine.find(c, name);
+                    boolean same = old != null && old.optString("name").equalsIgnoreCase(name)
+                            && old.optJSONArray("times").toString().equals(Medicine.times(m.optString("times")).toString())
+                            && old.optString("food").equals(m.optString("food").trim());
+                    if (!same) Medicine.add(c, name, m.optString("times"), "", m.optString("food"), old == null ? -1 : old.optInt("stock", -1), 1);
+                }
+                for (JSONObject old : Medicine.all(c)) if (!keep.contains(old.optString("name").toLowerCase(Locale.ROOT))) Medicine.remove(c, old.optString("name"));
+            }
+            return "✓ టాబ్లెట్ సెట్టింగ్స్ మారాయి";
+        } catch (Exception ex) {
+            return "⚠️ టాబ్లెట్ సెట్టింగ్స్ చదవలేకపోయాను: " + ex.getMessage();
+        }
+    }
+
+    /** For his phone: how the tablet and అమ్మగారు's day are. */
+    static String statusText(Context c) {
+        StringBuilder b = new StringBuilder();
+        b.append(HomeScreen.battery(c)).append(Net.online(c) ? " · 🟢 నెట్ ఉంది" : " · 📴 నెట్ లేదు");
+        long life = sp(c).getLong("life", 0);
+        if (life > 0) b.append(" · చివరి అలికిడి ").append(new SimpleDateFormat("h:mm a", Locale.ENGLISH).format(new Date(life)));
+        if (out(c)) b.append(" · ").append(who(c)).append(" బయటికి వెళ్లారు");
+        if (quiet(c)) b.append(" · నిశ్శబ్దం");
+        b.append(" · AI ఈరోజు ").append(aiUsed(c)).append("/").append(aiLimit(c)).append('\n');
+        b.append(reportText(c));
+        return b.toString();
+    }
+
+    // ---- the day's AI limit (his API key pays): beyond it, only Jarvis's own (offline) answers
+    static int aiLimit(Context c) { return sp(c).getInt("ai_limit", 200); }
+    static int aiUsed(Context c) { return sp(c).getString("ai_day", "").equals(today()) ? sp(c).getInt("ai_n", 0) : 0; }
+    static boolean overLimit(Context c) { return on(c) && aiLimit(c) > 0 && aiUsed(c) >= aiLimit(c); }
+    static synchronized void countAi(Context c) {
+        if (!on(c)) return;
+        sp(c).edit().putString("ai_day", today()).putInt("ai_n", aiUsed(c) + 1).apply();
+    }
+    static String limitText(Context c) {
+        return who(c) + ", ఈరోజుకి నా పెద్ద మెదడు (AI) వాడకం అయిపోయింది. రేపు మళ్లీ వస్తుంది. టాబ్లెట్లు, భోజనం, పాటలు, బైబిల్ వాక్యం మాత్రం ఇప్పుడూ చెబుతాను.";
+    }
+
+    /** The last "Jarvis" was Anil's own voice (his voice print on this tablet), in the last 3 minutes. */
+    static boolean ownerVoice(Context c) {
+        return VoiceLock.print(c) != null && VoiceLock.lastDistance >= 0 && VoiceLock.lastAccepted
+                && System.currentTimeMillis() - VoiceLock.lastAt < 3 * 60_000L;
+    }
+
+    // ---- battery care: the tablet's charger on his Alexa plug ("charger on" / "charger off" links in the smart-home box)
+    private static String link(Context c, String name) {
+        for (String line : new Prefs(c).smartUrls().split("\n")) {
+            int eq = line.indexOf('=');
+            if (eq > 0 && line.substring(0, eq).trim().equalsIgnoreCase(name)) {
+                String u = line.substring(eq + 1).trim();
+                if (u.startsWith("http")) return u;
+            }
+        }
+        return null;
+    }
+
+    private static void batteryCare(Context c) {
+        String onL = link(c, "charger on"), offL = link(c, "charger off");
+        if (onL == null && offL == null) return;
+        android.content.Intent b = c.registerReceiver(null, new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED));
+        if (b == null) return;
+        int level = b.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1), scale = b.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
+        if (level < 0 || scale <= 0) return;
+        int pct = Math.round(level * 100f / scale);
+        boolean plugged = b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0;
+        long now = System.currentTimeMillis(), at = sp(c).getLong("plug_at", 0);
+        String last = sp(c).getString("plug_last", "");
+        String want = plugged && pct >= 80 && offL != null ? "off" : !plugged && pct <= 40 && onL != null ? "on" : null;
+        if (want != null && !(want.equals(last) && now - at < 10 * 60_000L) && Net.online(c)) {
+            try { Http.getText("on".equals(want) ? onL : offL); } catch (Exception ignored) {}
+            sp(c).edit().putString("plug_last", want).putLong("plug_at", now).apply();
+        }
+        // the plug didn't come on (no internet / the plug is off at the wall): ask for a hand, once a day
+        if (!plugged && pct <= 25 && !today().equals(sp(c).getString("low_told", ""))) {
+            sp(c).edit().putString("low_told", today()).apply();
+            say(c, who(c) + ", టాబ్లెట్ ఛార్జింగ్ అయిపోతోంది. ఛార్జర్ ప్లగ్ మీద బటన్ ఒకసారి నొక్కండి.", "worried");
+            alert(c, "🔋 టాబ్లెట్ బ్యాటరీ " + pct + "%: ఛార్జర్ ప్లగ్ ఆన్ కాలేదు.");
+        }
     }
 
     // ================================================================ the AI's tool (home mode only)

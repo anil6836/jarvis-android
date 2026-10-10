@@ -77,6 +77,7 @@ final class HomeArrival {
     }
 
     private static void home(Context c, long since) {
+        HomeLink.son(c, true); // the home tablet: "అబ్బాయి వచ్చేస్తున్నాడు!"
         StringBuilder b = new StringBuilder();
         int missed = missedCalls(c, since > 0 ? since : System.currentTimeMillis() - 12 * 3600_000L);
         if (missed > 0) b.append("📞 ").append(missed).append(" మిస్డ్ కాల్స్. ");
@@ -89,6 +90,7 @@ final class HomeArrival {
     }
 
     private static void away(Context c) {
+        HomeLink.son(c, false);
         String off = smart(c, false);
         post(c, "🔒 తాళం వేశారా?", "ఇంటి నుంచి బయల్దేరారు. గ్యాస్, లైట్లు, తలుపు ఒకసారి చూసుకున్నారా?",
                 off == null ? null : new String[]{"⚫ " + off, "smart:" + off},

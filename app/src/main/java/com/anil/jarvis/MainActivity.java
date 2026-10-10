@@ -1873,7 +1873,18 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (busy) return;
         if (label == null && pendingPhoto == null && pendingFileText == null) { // "Google వాయిస్‌కి మారు", "Live పెట్టు": done here, at once
             String mode = VoiceSwitch.match(prompt);
-            if (mode != null) { switchVoice(prompt, mode, byVoice); return; }
+            if (mode != null) {
+                if (home != null && !HomeCare.ownerVoice(this)) { // the home tablet: Jarvis's settings are Anil's
+                    homeReply(prompt, "ఈ మార్పు అబ్బాయి గొంతుతో గానీ, అబ్బాయి ఫోన్ నుంచి గానీ మాత్రమే చేయగలను.");
+                    return;
+                }
+                switchVoice(prompt, mode, byVoice);
+                return;
+            }
+        }
+        if (home != null && prompt != null && !prompt.trim().isEmpty()) { // the home tablet: the day's AI limit (his key pays)
+            if (HomeCare.overLimit(this)) { homeReply(prompt, HomeCare.limitText(this)); return; }
+            HomeCare.countAi(this);
         }
         String shown = label != null ? label : prompt;
         String photoNow = pendingPhoto;

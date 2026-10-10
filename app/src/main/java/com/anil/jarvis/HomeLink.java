@@ -30,7 +30,8 @@ final class HomeLink {
     private HomeLink() {}
 
     static final String SAY = "📢 ఇంటికి: ", PHOTO = "📷 ఇంటి ఫోటో కావాలి", PAUSE = "🛡️ కాపలా ఆపు", RESUME = "🛡️ కాపలా మొదలుపెట్టు",
-            VOICE_HOME = "🎤 ఇంటికి", VOICE_FROM = "🎤 ఇంటి నుంచి";
+            VOICE_HOME = "🎤 ఇంటికి", VOICE_FROM = "🎤 ఇంటి నుంచి", SET = "⚙️ టాబ్లెట్ సెట్టింగ్స్: ", ASK = "🏠 టాబ్లెట్ స్థితి?",
+            STATUS = "🏠 టాబ్లెట్ స్థితి: ", COMING = "🏍️ అబ్బాయి ఇంటికి వస్తున్నాడు", GONE = "🚪 అబ్బాయి బయటికి వెళ్లాడు";
     static final String ACTION_PLAY = "com.anil.jarvis.HOME_PLAY";
     private static final int NOTE = 268;
 
@@ -49,7 +50,8 @@ final class HomeLink {
         JSONObject m = Guard.pinned(c);
         if (m == null || m.optLong("message_id") <= sp(c).getLong("seen", 0)) return false;
         String text = m.optString("text"), cap = m.optString("caption");
-        return text.startsWith(SAY) || text.startsWith(PHOTO) || text.startsWith(PAUSE) || text.startsWith(RESUME) || cap.startsWith(VOICE_HOME);
+        return text.startsWith(SAY) || text.startsWith(PHOTO) || text.startsWith(PAUSE) || text.startsWith(RESUME) || cap.startsWith(VOICE_HOME)
+                || text.startsWith(SET) || text.startsWith(ASK) || text.startsWith(COMING) || text.startsWith(GONE);
     }
 
     static void homePoll(Context c) {
@@ -81,6 +83,16 @@ final class HomeLink {
         } else if (text.startsWith(RESUME)) {
             paused = false;
             Guard.sendQuiet(c, "🛡️ ఇంటి కాపలా మళ్లీ మొదలైంది (" + time + ")");
+        } else if (text.startsWith(SET)) { // the home tablet: settings from his phone (voice, అమ్మగారు's times, tablets)
+            String r = HomeCare.apply(c, text.substring(SET.length()));
+            Guard.sendQuiet(c, r + " (" + time + ")");
+        } else if (text.startsWith(ASK)) {
+            long sid = Guard.sendQuiet(c, STATUS + HomeCare.statusText(c));
+            if (sid > 0) Guard.pin(c, sid);
+        } else if (text.startsWith(COMING)) {
+            HomeCare.son(c, true);
+        } else if (text.startsWith(GONE)) {
+            HomeCare.son(c, false);
         } else if (cap.startsWith(VOICE_HOME)) {
             JSONObject a = m.has("audio") ? m.optJSONObject("audio") : m.optJSONObject("voice");
             byte[] b = a == null ? null : Guard.file(c, a.optString("file_id"));
@@ -126,6 +138,43 @@ final class HomeLink {
         long id = Guard.sendQuiet(c, on ? RESUME : PAUSE);
         if (id < 0 || !Guard.pin(c, id)) return "ఇంటి ఫోన్‌కి చెప్పలేకపోయాను (Telegram చేరలేదు).";
         return on ? "ఇంటి కాపలా మళ్లీ మొదలుపెట్టమని చెప్పాను." : "ఇంటి కాపలా అలర్ట్స్ ఆపమని చెప్పాను (మీరు ఇంట్లో ఉన్నంత వరకు).";
+    }
+
+    /** His phone -> the home tablet: he is arriving home / has gone out (quiet, background). */
+    static void son(Context c, boolean coming) {
+        if (!linked(c)) return;
+        final Context a = c.getApplicationContext();
+        new Thread(() -> {
+            try {
+                if (!Net.online(a)) return;
+                long id = Guard.sendQuiet(a, coming ? COMING : GONE);
+                if (id > 0) Guard.pin(a, id);
+            } catch (Exception ignored) {}
+        }, "home-son").start();
+    }
+
+    /** His phone -> the home tablet: new settings (background thread). */
+    static String sendSettings(Context c, JSONObject j) {
+        if (!linked(c)) return notLinked();
+        if (!Net.online(c)) return "టాబ్లెట్‌కి పంపడానికి నెట్ కావాలి.";
+        long id = Guard.sendQuiet(c, SET + j.toString());
+        if (id < 0 || !Guard.pin(c, id)) return "పంపలేకపోయాను (Telegram చేరలేదు).";
+        return "పంపాను ✓ సుమారు 20 సెకన్లలో టాబ్లెట్ మారుతుంది (దానికి నెట్ ఉంటే). Telegram లో \"✓ టాబ్లెట్ సెట్టింగ్స్ మారాయి\" అని వస్తుంది.";
+    }
+
+    /** His phone: how the home tablet is now (waits up to a minute; background thread). */
+    static String tabletStatus(Context c) {
+        if (!linked(c)) return notLinked();
+        if (!Net.online(c)) return "నెట్ లేదు.";
+        long asked = Guard.sendQuiet(c, ASK);
+        if (asked < 0 || !Guard.pin(c, asked)) return "టాబ్లెట్‌ని అడగలేకపోయాను (Telegram చేరలేదు).";
+        long until = System.currentTimeMillis() + 60_000L;
+        while (System.currentTimeMillis() < until) {
+            try { Thread.sleep(4000); } catch (InterruptedException e) { break; }
+            JSONObject m = Guard.pinned(c);
+            if (m != null && m.optLong("message_id") > asked && m.optString("text").startsWith(STATUS)) return m.optString("text").substring(STATUS.length());
+        }
+        return "టాబ్లెట్ నిమిషంలో జవాబివ్వలేదు (దానికి నెట్ ఉందా? Jarvis తెరిచి ఉందా?).";
     }
 
     private static String notLinked() {

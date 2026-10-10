@@ -55,6 +55,7 @@ final class WakeEngine {
     // "only my voice": Anil's voice print, and the last voice vector Vosk produced
     private final float[] voicePrint;
     private final float lockMax;
+    private final boolean measureOnly;
     private volatile float[] lastSpk;
     private volatile long lastSpkAt;
     private long pendingAt;       // a wake word was heard; waiting for its voice vector
@@ -86,7 +87,8 @@ final class WakeEngine {
         this.voskConf = 0.75 + threshold * 0.3;
         this.listener = listener;
         Prefs p = new Prefs(c);
-        this.voicePrint = p.voiceLock() ? VoiceLock.print(c) : null;
+        this.voicePrint = p.voiceLock() || p.homeMode() ? VoiceLock.print(c) : null;
+        this.measureOnly = !p.voiceLock() && p.homeMode(); // (the home tablet: everyone may call; Anil's voice is only recognised)
         this.lockMax = p.voiceLockMax();
         this.cough = new CoughDetector(c);
     }
@@ -446,7 +448,8 @@ final class WakeEngine {
         double d = VoiceLock.distance(v, voicePrint);
         VoiceLock.lastDistance = d;
         VoiceLock.lastAccepted = d <= lockMax;
-        if (d <= lockMax) {
+        VoiceLock.lastAt = System.currentTimeMillis();
+        if (d <= lockMax || measureOnly) {
             try { cough.wakeHeard(pendingWindow); } catch (Throwable ignored) {}
             listener.onWake(pendingScore);
         }
