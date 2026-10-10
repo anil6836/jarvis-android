@@ -2674,7 +2674,6 @@ public class SettingsActivity extends Activity {
                 + "\"Jarvis ఆరోగ్య రిపోర్ట్\" ఎంచుకుంటే Downloads/Jarvis/health లో తేదీతో దాచి, డాక్టర్ PDF లో చూపిస్తాను. నెల మొదట్లో బరువు, కొవ్వు శాతం రిపోర్ట్.");
     }
 
-    /** Phase 2a: the Jarvis watch app (Galaxy Watch). Each choice acts at once and goes to the watch; no Save needed. */
     /**
      * On his phone: the home tablet's settings, sent to it through his Telegram bot (the home link): the tablet's voice
      * and voice model (as the phone's own), అమ్మగారు's meal / water / chat / bedtime times, her tablets, sugar limits,
@@ -2814,9 +2813,31 @@ public class SettingsActivity extends Activity {
                 + "(URL Routine Trigger లింక్‌లు, Alexa రొటీన్ → ఆ ప్లగ్ ఆన్ / ఆఫ్). 80% అయితే Jarvis ప్లగ్ ఆఫ్ చేస్తాడు, 40% కి వస్తే ఆన్. "
                 + "నెట్ లేక 25% కి పడితే అమ్మగారికి \"ప్లగ్ బటన్ నొక్కండి\" అని చెబుతాడు. బ్యాకప్‌గా Alexa లో రోజూ ఒక టైమ్‌కి ప్లగ్ ఆన్ చేసే రొటీన్ కూడా పెట్టండి.");
         Switch on = toggle("ఈ డివైస్ ఇంటి Jarvis (టాబ్లెట్)", prefs.homeMode());
+        final boolean[] asking = {false};
         on.setOnCheckedChangeListener((sw, v) -> {
-            prefs.setHomeMode(v);
-            Toast.makeText(this, v ? "ఇంటి Jarvis ఆన్: వెనక్కి వెళ్తే ఇంటి స్క్రీన్ వస్తుంది" : "ఇంటి Jarvis ఆఫ్", Toast.LENGTH_SHORT).show();
+            if (asking[0]) return;
+            if (!v) {
+                prefs.setHomeMode(false);
+                Toast.makeText(this, "ఇంటి Jarvis ఆఫ్", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // (on: asked first, so a tap by mistake on the phone doesn't turn the phone into the home tablet)
+            asking[0] = true;
+            sw.setChecked(false);
+            asking[0] = false;
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("ఈ డివైస్ ఇంటి Jarvis అవ్వాలా?")
+                    .setMessage("ఇది ఇంట్లో అమ్మగారి టాబ్లెట్‌కి మాత్రమే. ఆన్ చేస్తే ఈ డివైస్ పెద్ద ఇంటి స్క్రీన్, భోజనం / టాబ్లెట్ల ప్రశ్నలు, "
+                            + "బ్యాటరీ కేర్ మొదలుపెడుతుంది; ఫోన్ కాపలా లింక్ ఆగిపోతుంది. మీ ఫోన్‌లో అయితే వద్దు నొక్కండి.")
+                    .setPositiveButton("అవును, ఇది టాబ్లెట్", (d, w) -> {
+                        prefs.setHomeMode(true);
+                        asking[0] = true;
+                        sw.setChecked(true);
+                        asking[0] = false;
+                        Toast.makeText(this, "ఇంటి Jarvis ఆన్: వెనక్కి వెళ్తే ఇంటి స్క్రీన్ వస్తుంది", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("వద్దు", null)
+                    .show();
         });
         final String[] looks = {"a", "b", "c"}, lookNames = {"A · స్మార్ట్ జాకెట్", "B · కుర్తా", "C · క్యాజువల్ (మీ ఎంపిక)"};
         final String[] skins = {"1", "2", "3"}, skinNames = {"లేత", "మధ్యస్థం", "ముదురు"};
@@ -2848,6 +2869,7 @@ public class SettingsActivity extends Activity {
         box.addView(skin);
     }
 
+    /** Phase 2a: the Jarvis watch app (Galaxy Watch). Each choice acts at once and goes to the watch; no Save needed. */
     private void watchSection() {
         section("⌚ వాచ్ (Galaxy Watch)");
         TextView st = Ui.text(this, WatchHub.status(this), 14, Ui.MUTED);

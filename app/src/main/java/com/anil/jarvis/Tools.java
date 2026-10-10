@@ -3619,6 +3619,13 @@ final class Tools {
 
     /** Emergency: sends his location by SMS to his SOS contacts and calls the first one. */
     private String sos(String message) throws Exception {
+        if (prefs.homeMode()) { // the home tablet has no SIM: Anil is told on Telegram at once (his own bot), no SMS
+            String m = message == null ? "" : message.trim();
+            boolean sent = HomeCare.alert(act(), "🆘 ఇంట్లో " + HomeCare.who(act()) + " కి సహాయం కావాలి" + (m.isEmpty() ? "" : ": " + m) + ". వెంటనే ఫోన్ చేయండి.");
+            return ok().put("sent_to", "Anil (Telegram)").put("sent_now", sent)
+                    .put("note", (sent ? "Anil is told." : "Not sent now (no internet, or the home link is not set up); kept to send when the internet is back.")
+                            + " Tell her to call a neighbour and, for chest pain, breathlessness or a fall, have someone call 108 at once.").toString();
+        }
         String list = prefs.sosContacts().trim();
         if (list.isEmpty()) return err("no_contacts", "No SOS contacts are set. Anil adds them in Jarvis settings > 'అత్యవసరం (SOS)'. If he is in danger, tell him to call 112 now.");
         if (!has(Manifest.permission.SEND_SMS)) return needPermission(Manifest.permission.SEND_SMS, "sending the SOS SMS");

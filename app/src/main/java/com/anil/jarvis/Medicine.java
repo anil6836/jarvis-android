@@ -174,7 +174,10 @@ final class Medicine {
                 if (HomeCare.on(c)) { // asked again (2nd, 3rd time); not taken after the 3rd -> Anil is told once
                     android.content.SharedPreferences t = c.getSharedPreferences("jarvis_med_tries", Context.MODE_PRIVATE);
                     int tries = t.getInt(slot + id, 1) + 1;
-                    t.edit().putInt(slot + id, tries).apply();
+                    android.content.SharedPreferences.Editor te = t.edit().putInt(slot + id, tries);
+                    String day = slot.substring(0, 10);
+                    for (String k : t.getAll().keySet()) if (!k.startsWith(day)) te.remove(k); // (other days' counts go: not one more key every dose)
+                    te.apply();
                     if (tries > 3) {
                         HomeCare.alert(c, "💊 " + HomeCare.who(c) + " " + m.optString("name") + " (" + time + ") ఇంకా వేసుకున్నట్టు చెప్పలేదు; 3 సార్లు అడిగాను. ఒకసారి ఫోన్ చేసి గుర్తుచేయండి.");
                         break;
@@ -218,9 +221,19 @@ final class Medicine {
         } catch (Exception ignored) {}
         Prefs p = new Prefs(c);
         if (HomeCare.on(c)) { // the home tablet: అమ్మగారు is asked, and her "వేసుకున్నాను" (or the 💊 button) marks it
-            String w = HomeCare.who(c);
-            HomeCare.ask(c, again ? w + ", " + name + " టాబ్లెట్ వేసుకున్నారా? ఇంకా అయితే ఇప్పుడే వేసుకోండి."
-                    : w + ", " + name + " టాబ్లెట్ వేసుకునే టైమ్ అయింది" + (how.isEmpty() ? "." : ", " + how + ".") + " వేసుకున్నాక చెప్పండి.",
+            // tablets at the same time are asked once, together (their alarms come a second apart)
+            synchronized (HOME_ASKED) {
+                long now = System.currentTimeMillis();
+                Long at = HOME_ASKED.get(time);
+                if (at != null && now - at < 2 * 60_000L) return;
+                HOME_ASKED.put(time, now);
+            }
+            List<JSONObject> same = untakenAt(c, time);
+            if (same.isEmpty()) same.add(m);
+            String w = HomeCare.who(c), names = names(same), food = same.size() == 1 ? how : sameFood(same);
+            String what = names + (same.size() == 1 ? " టాబ్లెట్" : " టాబ్లెట్లు");
+            HomeCare.ask(c, again ? w + ", " + what + " వేసుకున్నారా? ఇంకా అయితే ఇప్పుడే వేసుకోండి."
+                    : w + ", " + what + " వేసుకునే టైమ్ అయింది" + (food.isEmpty() ? "." : ", " + food + ".") + " వేసుకున్నాక చెప్పండి.",
                     "med:" + m.optString("id") + ":" + time, again ? "worried" : "caring");
             return;
         }
@@ -322,6 +335,42 @@ final class Medicine {
     }
 
     static JSONObject byIdPublic(Context c, String id) { return byId(c, id); }
+
+    private static final java.util.Map<String, Long> HOME_ASKED = new java.util.HashMap<>();
+
+    /** Today's not-yet-taken medicines due at this time (same-time tablets are asked and marked together). */
+    static List<JSONObject> untakenAt(Context c, String time) {
+        List<JSONObject> out = new ArrayList<>();
+        if (time == null || time.isEmpty()) return out;
+        String slot = slot(time);
+        for (JSONObject m : all(c)) {
+            JSONArray t = m.optJSONArray("times");
+            for (int i = 0; t != null && i < t.length(); i++)
+                if (t.optString(i).equals(time)) {
+                    if (!takenAt(c, m.optString("id"), slot)) out.add(m);
+                    break;
+                }
+        }
+        return out;
+    }
+
+    /** "Metformin, Glimepiride". */
+    static String names(List<JSONObject> ms) {
+        StringBuilder b = new StringBuilder();
+        for (JSONObject m : ms) b.append(b.length() == 0 ? "" : ", ").append(m.optString("name"));
+        return b.toString();
+    }
+
+    /** The food note when all of them have the same one ("తిన్న తర్వాత"), else "". */
+    private static String sameFood(List<JSONObject> ms) {
+        String f = null;
+        for (JSONObject m : ms) {
+            String x = m.optString("food");
+            if (f == null) f = x;
+            else if (!f.equals(x)) return "";
+        }
+        return f == null ? "" : f;
+    }
 
     /** Today's dose nearest now (within 3 hours) not yet taken: {medicine, {"time": "HH:mm"}}, or null. */
     static JSONObject[] nearestDue(Context c) {

@@ -131,7 +131,7 @@ final class BodyRig {
             case "laugh": return "laugh";
             case "excited": return "excited";
             case "sad": case "cry": return "sad";
-            case "sorry": return "caring";
+            case "sorry": case "caring": return "caring"; // ("caring": HomeCare's questions to అమ్మగారు)
             case "worried": return "worried";
             case "surprised": return "surprised";
             case "serious": return "neutral";
@@ -275,8 +275,8 @@ final class BodyRig {
         float e = k * 0.9f;
         w[0] += (g.x - w[0]) * e; w[1] += (g.y - w[1]) * e;
         float d = Math.abs(g.x - w[0]) + Math.abs(g.y - w[1]);
-        if (d < 60 || "rest".equals(h.s)) h.s = g.s; // (the old hand stays while the arm is on its way)
-        h.down = g.down;
+        // (the old hand, and its elbow, stay while the arm is on its way: the elbow doesn't jump to the other side mid-air)
+        if (d < 60 || "rest".equals(h.s)) { h.s = g.s; h.down = g.down; }
         h.a = d < 60 ? g.a : h.a + (g.a - h.a) * 0.3f;
     }
 
@@ -287,7 +287,9 @@ final class BodyRig {
         StringBuilder cur = new StringBuilder();
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
-            boolean mark = (c >= 0x0C3E && c <= 0x0C4D) || c == 0x0C02 || c == 0x0C03 || c == 0x0C55 || c == 0x0C56;
+            // (vowel signs, virama, candrabindu / anusvara / visarga, nukta, length marks, and the joiners in "టైమ్‌లు")
+            boolean mark = (c >= 0x0C3E && c <= 0x0C4D) || (c >= 0x0C00 && c <= 0x0C04) || c == 0x0C3C || c == 0x0C55 || c == 0x0C56
+                    || c == 0x0C62 || c == 0x0C63 || c == 0x200C || c == 0x200D;
             boolean afterVirama = cur.length() > 0 && cur.charAt(cur.length() - 1) == 0x0C4D && c >= 0x0C15 && c <= 0x0C39; // (a conjunct: one syllable)
             if ((mark || afterVirama) && cur.length() > 0) cur.append(c);
             else { if (cur.length() > 0) syl.add(cur.toString()); cur.setLength(0); cur.append(c); }
@@ -305,7 +307,7 @@ final class BodyRig {
         if (has(s, "ుూఉఊuUwW")) return new float[]{0.36f, 0, 0.9f};
         if (has(s, "ెేైఎఏఐeE")) return new float[]{0.44f, 0.55f, 0};
         if (has(s, "ొోౌఒఓఔoO")) return new float[]{0.5f, 0, 0.72f};
-        if (has(s, "్")) return new float[]{0.14f, 0.2f, 0};
+        if (s.replace("\u200C", "").replace("\u200D", "").endsWith("్")) return new float[]{0.14f, 0.2f, 0}; // (a closing consonant; "మ్మ" is an "a")
         if (has(s, "మబభపఫmbp")) return new float[]{0.3f, 0.1f, 0};
         return new float[]{0.56f, 0.15f, 0};
     }

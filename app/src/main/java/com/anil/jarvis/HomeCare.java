@@ -68,8 +68,8 @@ final class HomeCare {
         ex.scheduleWithFixedDelay(() -> { try { tick(app); } catch (Throwable ignored) {} }, 20, 60, TimeUnit.SECONDS);
         // the home link: words, pictures and voices from Anil's phone (when the guard isn't running, it polls here)
         ex.scheduleWithFixedDelay(() -> {
-            try {
-                if (!Guard.running(app) && !Guard.token(app).isEmpty() && !Guard.chat(app).isEmpty() && Net.online(app)) HomeLink.homePoll(app);
+            try { // (home mode switched off since: this device no longer takes the tablet's messages)
+                if (on(app) && !Guard.running(app) && !Guard.token(app).isEmpty() && !Guard.chat(app).isEmpty() && Net.online(app)) HomeLink.homePoll(app);
             } catch (Throwable ignored) {}
         }, 15, 20, TimeUnit.SECONDS);
     }
@@ -78,8 +78,9 @@ final class HomeCare {
 
     private static int minutes(String hhmm) {
         try {
-            String[] p = hhmm.trim().split(":");
-            return Integer.parseInt(p[0]) * 60 + Integer.parseInt(p[1]);
+            String[] p = hhmm.trim().split("[:.]"); // ("8.30" as typed on a Telugu keyboard is 8:30 too)
+            int h = Integer.parseInt(p[0].trim()), m = p.length > 1 ? Integer.parseInt(p[1].trim()) : 0;
+            return h < 0 || h > 23 || m < 0 || m > 59 ? -1 : h * 60 + m;
         } catch (Exception e) {
             return -1;
         }
@@ -111,7 +112,14 @@ final class HomeCare {
         return h >= HomeScreen.NIGHT_FROM || h < HomeScreen.NIGHT_TO;
     }
 
-    static boolean out(Context c) { return sp(c).getBoolean("out", false); }
+    /** She said she is going out (for at most 12 hours: a "వచ్చాను" she forgot must not stop the checks for days). */
+    static boolean out(Context c) {
+        return sp(c).getBoolean("out", false) && System.currentTimeMillis() - sp(c).getLong("out_at", 0) < 12 * 3600_000L;
+    }
+
+    private static void setOut(Context c, boolean out) {
+        sp(c).edit().putBoolean("out", out).putLong("out_at", System.currentTimeMillis()).apply();
+    }
     static boolean quiet(Context c) { return System.currentTimeMillis() < sp(c).getLong("quiet_until", 0); }
 
     /** Someone is about: a touch, a word to Jarvis, footsteps, a door. */
@@ -120,6 +128,7 @@ final class HomeCare {
     /** The sound watch's scores (YAMNet): talk without a TV playing, footsteps, a door. */
     static void sounds(Context c, float[] s) {
         if (s == null || !on(c)) return;
+        if (Announcer.speaking()) return; // (Jarvis's own voice is not someone about)
         boolean tv = s.length > SafetySounds.TV && s[SafetySounds.TV] >= 0.25f;
         if ((s[SafetySounds.SPEECH] >= 0.5f && !tv) || s[SafetySounds.WALK] >= 0.4f
                 || s.length > SafetySounds.DOOR && s[SafetySounds.DOOR] >= 0.4f) {
@@ -131,25 +140,32 @@ final class HomeCare {
     static void tick(Context c) {
         if (!on(c)) return;
         boolean calm = night() || out(c);
+        if (!night() && !today().equals(sp(c).getString("woke_day", ""))) { // the morning: the screen that slept at night comes on
+            sp(c).edit().putString("woke_day", today()).apply();
+            MainActivity.homeWake();
+        }
         for (String[] m : MEALS) {
             String t = time(c, m[0], m[2]);
             if (due(c, "meal_" + m[0], t) && !ate(c, m[0])) askMeal(c, m[0], m[1], false);
-            int again = minutes(t) + 45;
-            if (again > 0 && due(c, "meal2_" + m[0], String.format(Locale.US, "%02d:%02d", again / 60, again % 60))
-                    && !ate(c, m[0]) && !out(c)) askMeal(c, m[0], m[1], true);
+            // (the "may it be said now" checks come before due(): a turn kept back for a while still comes in its 90 minutes)
+            int at = minutes(t), again = at < 0 ? -1 : at + 45; // (a time that can't be read: no re-ask at 00:44)
+            if (again > 0 && !ate(c, m[0]) && !calm
+                    && due(c, "meal2_" + m[0], String.format(Locale.US, "%02d:%02d", again / 60, again % 60))) askMeal(c, m[0], m[1], true);
         }
         int i = 0;
-        for (String w : waterTimes(c).split(",")) {
-            if (due(c, "water" + (i++), w) && !calm && !resting(c)) ask(c, who(c) + ", కొంచెం నీళ్లు తాగారా?", "water", "caring");
+        for (String w : waterTimes(c).split(",")) { // (not while she asked for quiet: only tablets are said then)
+            String key = "water" + (i++);
+            if (!calm && !quiet(c) && !resting(c) && due(c, key, w)) ask(c, who(c) + ", కొంచెం నీళ్లు తాగారా?", "water", "caring");
         }
         i = 0;
         for (String w : chatTimes(c).split(",")) {
-            if (due(c, "chat" + (i++), w) && !calm && !quiet(c) && !resting(c) && !sonHome(c)
-                    && System.currentTimeMillis() - sp(c).getLong("life", 0) < 45 * 60_000L) companion(c);
+            String key = "chat" + (i++);
+            if (!calm && !quiet(c) && !resting(c) && !sonHome(c)
+                    && System.currentTimeMillis() - sp(c).getLong("life", 0) < 45 * 60_000L && due(c, key, w)) companion(c);
         }
-        if (due(c, "bed", bedTime(c)) && !out(c)) bedtime(c);
-        String feast = feast(Calendar.getInstance());
-        if (feast != null && due(c, "feast", "08:00") && !out(c)) say(c, feast, "happy");
+        if (!out(c) && due(c, "bed", bedTime(c))) bedtime(c);
+        String feast = feast(Calendar.getInstance(), who(c));
+        if (feast != null && !out(c) && due(c, "feast", "08:00")) say(c, feast, "happy");
         if (due(c, "report", reportTime(c))) report(c);
         // stories for an offline day, and the Bible kept on the tablet
         if (Net.online(c) && !today().equals(sp(c).getString("stories_day", ""))) prepareStories(c);
@@ -221,8 +237,12 @@ final class HomeCare {
 
     // ================================================================ her words (before the AI; works offline too)
     private static final String[] EMERGENCY = {"కళ్లు తిరుగుతున్నాయి", "కళ్ళు తిరుగుతున్నాయి", "కళ్ళు తిరుగుతుంది", "కళ్లు తిరుగుతుంది", "ఛాతీ నొప్పి",
-            "ఛాతి నొప్పి", "గుండె నొప్పి", "ఊపిరి ఆడటం లేదు", "ఊపిరి ఆడట్లేదు", "పడిపోయాను", "కింద పడ్డాను", "కాపాడు", "సహాయం కావాలి", "ఆపద",
+            "ఛాతి నొప్పి", "గుండె నొప్పి", "ఊపిరి ఆడటం లేదు", "ఊపిరి ఆడట్లేదు", "పడిపోయాను", "కింద పడ్డాను", "కాపాడండి", "సహాయం కావాలి", "ఆపద",
             "ఒంట్లో బాలేదు", "ఒంట్లో బాగోలేదు", "అస్సలు బాగోలేదు"};
+    /** "కాపాడు!" (help me) as a word of its own, not a blessing ("దేవుడు కాపాడుతాడు", "కాపాడును"). */
+    private static final java.util.regex.Pattern SAVE_ME = java.util.regex.Pattern.compile("కాపాడు(?![\\u0C00-\\u0C7F])");
+    /** "I'm going out" (not "అబ్బాయి బయటికి వెళ్తున్నాడు": then she is still at home). */
+    private static final java.util.regex.Pattern GOING = java.util.regex.Pattern.compile("(వెళ్తున్నా(ను|ం)?|వెళ్లొస్తా(ను|ం)?)(?![\\u0C00-\\u0C7F])");
 
     /** Her words: an answer to Jarvis's question, an emergency, "ఇప్పుడు వద్దు"… -> what Jarvis says, or null (the AI answers). */
     static String heard(Context c, String text) {
@@ -230,17 +250,20 @@ final class HomeCare {
         life(c);
         String t = text.trim().toLowerCase(Locale.ROOT), w = who(c);
         for (String e : EMERGENCY) if (t.contains(e)) return emergency(c, text);
+        if (SAVE_ME.matcher(t).find()) return emergency(c, text);
         if (t.contains("ఇప్పుడు వద్దు") || t.contains("తర్వాత మాట్లాడు") || t.contains("తరువాత మాట్లాడు") || t.contains("నిశ్శబ్దంగా ఉండు")) {
             sp(c).edit().putLong("quiet_until", System.currentTimeMillis() + 2 * 3600_000L).apply();
             return "సరే " + w + ", కాసేపు నిశ్శబ్దంగా ఉంటాను. టాబ్లెట్ టైమ్ అయితే మాత్రం గుర్తుచేస్తాను.";
         }
-        if ((t.contains("బయటికి") || t.contains("బయటకు") || t.contains("చర్చికి") || t.contains("గుడికి")) && (t.contains("వెళ్తున్నా") || t.contains("వెళ్తున్నాను") || t.contains("వెళ్లొస్తా"))) {
-            sp(c).edit().putBoolean("out", true).apply();
+        if ((t.contains("బయటికి") || t.contains("బయటకు") || t.contains("చర్చికి") || t.contains("గుడికి")) && GOING.matcher(t).find()) {
+            setOut(c, true);
             return "సరే " + w + ", జాగ్రత్తగా వెళ్లి రండి. వచ్చాక \"Jarvis, వచ్చాను\" అనండి.";
         }
-        if (out(c) && (t.contains("వచ్చాను") || t.contains("వచ్చేశాను") || t.contains("ఇంటికి వచ్చా"))) {
-            sp(c).edit().putBoolean("out", false).apply();
-            return "రండి " + w + "! బాగా జరిగిందా? కొంచెం నీళ్లు తాగి కూర్చోండి.";
+        if (out(c)) {
+            boolean back = t.contains("వచ్చాను") || t.contains("వచ్చేశాను") || t.contains("ఇంటికి వచ్చా");
+            // talking to the tablet at home a while after she left: she is back (also when she forgot to say so)
+            if (back || System.currentTimeMillis() - sp(c).getLong("out_at", 0) > 10 * 60_000L) setOut(c, false);
+            if (back) return "రండి " + w + "! బాగా జరిగిందా? కొంచెం నీళ్లు తాగి కూర్చోండి.";
         }
         if ((t.contains("అబ్బాయి") || t.contains("అనిల్") || t.contains("anil")) && (t.contains("మాట్లాడాలి") || t.contains("ఫోన్ చేయమను") || t.contains("ఫోన్ చెయ్యమను"))) {
             boolean ok = alert(c, w + " మీతో మాట్లాడాలనుకుంటున్నారు. వీలైనప్పుడు ఫోన్ చేయండి.");
@@ -248,17 +271,24 @@ final class HomeCare {
         }
         java.util.regex.Matcher sm = java.util.regex.Pattern.compile("(?:షుగర్|sugar)\\D{0,12}(\\d{2,3})").matcher(t);
         if (sm.find()) return sugar(c, Integer.parseInt(sm.group(1)));
+        boolean tablet = t.contains("టాబ్లెట్") || t.contains("మాత్ర") || t.contains("మందు");
+        boolean ate = t.contains("తిన్నా") || t.contains("భోజనం అయింది") || t.contains("టిఫిన్ అయింది");
         String p = pending();
         if (!p.isEmpty()) {
-            Boolean yes = yesNo(t);
+            // words about something else are not this question's answer (her tablet while the water / meal question waits,
+            // "టిఫిన్ తిన్నాను" while the tablet question waits): they are ticked below as what they say
+            boolean other = p.startsWith("med:") ? ate && !tablet : p.equals("water") ? tablet || ate : tablet;
+            // a dose, a meal, water: only words that say it is done tick it ("సరే" alone is "OK, I will")
+            boolean tick = p.startsWith("med:") || p.startsWith("meal:") || p.equals("water");
+            Boolean yes = other ? null : yesNo(tick ? t.replace("సరే", " ").replace("ok", " ") : t);
             if (yes != null) return answer(c, p, yes);
         }
         // a direct "I took my tablet / I ate" without being asked
-        if (t.contains("టాబ్లెట్") || t.contains("మాత్ర") || t.contains("మందు")) {
+        if (tablet) {
             Boolean yes = yesNo(t);
             if (Boolean.TRUE.equals(yes)) return tabletTaken(c);
         }
-        if ((t.contains("తిన్నాను") || t.contains("తిన్నా") || t.contains("భోజనం అయింది") || t.contains("టిఫిన్ అయింది")) && !t.contains("లేదు")) {
+        if (ate && !t.contains("లేదు")) {
             String[] m = mealIn(t);
             if (m == null) m = nearestMeal(c);
             markMeal(c, m[0]);
@@ -271,13 +301,14 @@ final class HomeCare {
         return null;
     }
 
-    /** Yes / no in her words (no is checked first: "వేసుకోలేదు" has "వేసుకో" in it). Null: neither. */
+    /** Yes / no in her words (no is checked first: "వేసుకోలేదు" has "వేసుకో" in it; "వేసుకుంటాను" = not yet). Null: neither. */
     static Boolean yesNo(String t) {
         String s = " " + t.replaceAll("[.,!?।]", " ") + " ";
-        String[] no = {"లేదు", "లేదండి", "ఇంకా", "మర్చిపో", "వద్దు", " no ", "కాలేదు", "అవ్వలేదు", "తినలేదు", "తాగలేదు", "వేసుకోలేదు"};
+        String[] no = {"లేదు", "లేదండి", "ఇంకా", "మర్చిపో", "వద్దు", " no ", "కాలేదు", "అవ్వలేదు", "తినలేదు", "తాగలేదు", "వేసుకోలేదు",
+                "వేసుకుంటా", "వేసుకోవాలి", "తింటా", "తినాలి", "తాగుతా", "తాగాలి"};
         for (String n : no) if (s.contains(n)) return false;
         String[] yes = {"అవును", "ఔను", " హా ", " ఆ ", "వేసుకున్నా", "వేసుకున్నాను", "తిన్నా", "తిన్నాను", "తాగా", "తాగాను", "తాగేశా", "చేశా", "చేశాను",
-                "అయింది", "అయిపోయింది", " yes ", " ok ", "సరే", "బాగున్నా", "బాగానే", "బాగున్నాను"};
+                "అయింది", "అయ్యింది", "అయిపోయింది", " yes ", " ok ", "సరే", "బాగున్నా", "బాగానే", "బాగున్నాను"};
         for (String y : yes) if (s.contains(y)) return true;
         return null;
     }
@@ -306,31 +337,48 @@ final class HomeCare {
         }
         if (p.startsWith("med:")) {
             String[] k = p.split(":", 3);
-            if (yes) {
+            if (yes) { // (the tablets asked together at this time are all marked)
+                String time = k.length > 2 ? k[2] : null;
+                java.util.List<JSONObject> same = Medicine.untakenAt(c, time);
                 JSONObject m = Medicine.byIdPublic(c, k[1]);
-                if (m != null) Medicine.taken(c, m, k.length > 2 ? k[2] : null);
-                return "చాలా బాగుంది " + w + "! " + (m == null ? "టాబ్లెట్" : m.optString("name")) + " వేసుకున్నారని రాసుకున్నాను.";
+                if (same.isEmpty() && m != null && (time == null || time.isEmpty())) same.add(m);
+                for (JSONObject x : same) Medicine.taken(c, x, time);
+                return same.isEmpty() ? "సరే " + w + ". ఈ టాబ్లెట్ వేసుకున్నట్టు ఇదివరకే రాసుకున్నాను."
+                        : "చాలా బాగుంది " + w + "! " + Medicine.names(same) + " వేసుకున్నారని రాసుకున్నాను.";
             }
             pendingMed(k[1], k.length > 2 ? k[2] : "");
             return "సరే " + w + ", ఇప్పుడే వేసుకోండి. 10 నిమిషాల్లో మళ్లీ అడుగుతాను.";
         }
         if (p.equals("ok")) {
             sp(c).edit().putInt("ok_asks", 0).apply();
-            return yes ? "సంతోషం " + w + "! ఏమైనా కావాలంటే \"Jarvis\" అని పిలవండి." : "ఏమైంది " + w + "? చెప్పండి, అబ్బాయికి చెప్పమంటారా?";
+            if (yes) return "సంతోషం " + w + "! ఏమైనా కావాలంటే \"Jarvis\" అని పిలవండి.";
+            pending = "tell"; // (her yes to "అబ్బాయికి చెప్పమంటారా?" is heard here too, offline as well)
+            pendingAt = System.currentTimeMillis();
+            return "ఏమైంది " + w + "? చెప్పండి, అబ్బాయికి చెప్పమంటారా?";
+        }
+        if (p.equals("tell")) {
+            if (!yes) return "సరే " + w + ". ఏమైనా కావాలంటే \"Jarvis\" అని పిలవండి.";
+            boolean ok = alert(c, w + " \"బాగున్నారా?\" అంటే బాగోలేదన్నారు (" + nowText() + "). ఒకసారి ఫోన్ చేసి మాట్లాడండి.");
+            return ok ? "అబ్బాయికి చెప్పాను " + w + ". వీలవ్వగానే ఫోన్ చేస్తాడు." : "ఇప్పుడు నెట్ లేదు " + w + ", నెట్ రాగానే చెబుతాను.";
         }
         if (p.equals("bed")) return yes ? "మంచిది " + w + ". హాయిగా పడుకోండి, శుభరాత్రి." : "సరే " + w + ", ఒకసారి చూసి వచ్చి పడుకోండి.";
         if (p.equals("story")) return yes ? story(c) : "సరే " + w + ", ఇంకోసారి చెబుతాను.";
         return null;
     }
 
-    /** The 💊 button / "టాబ్లెట్ వేసుకున్నాను": the dose due nearest now. */
+    /** The 💊 button / "టాబ్లెట్ వేసుకున్నాను": the doses due nearest now (all the tablets of that same time). */
     static String tabletTaken(Context c) {
         String w = who(c);
         JSONObject[] due = Medicine.nearestDue(c);
+        if (due == null && !Medicine.all(c).isEmpty()) // (set, but no dose near now is left unmarked)
+            return "సరే " + w + ". ఇప్పుడు వేసుకోవాల్సిన టాబ్లెట్ ఏదీ మిగల్లేదు; ఉన్నవి ఇదివరకే రాసుకున్నాను.";
         if (due == null) return "సరే " + w + ". (ఈ టాబ్లెట్ టైమ్‌లు Jarvis లో ఇంకా పెట్టలేదు; అబ్బాయి ఫోన్ నుంచి పెడతాడు.)";
-        Medicine.taken(c, due[0], due[1].optString("time"));
+        String time = due[1].optString("time");
+        java.util.List<JSONObject> same = Medicine.untakenAt(c, time);
+        if (same.isEmpty()) same.add(due[0]);
+        for (JSONObject x : same) Medicine.taken(c, x, time);
         if (pending().startsWith("med:")) pending = "";
-        return "చాలా బాగుంది " + w + "! " + due[0].optString("name") + " వేసుకున్నారని రాసుకున్నాను.";
+        return "చాలా బాగుంది " + w + "! " + Medicine.names(same) + " వేసుకున్నారని రాసుకున్నాను.";
     }
 
     /** The 🍽️ button. */
@@ -400,6 +448,8 @@ final class HomeCare {
         if (h < 8 || h >= 20) return;
         long now = System.currentTimeMillis(), lastLife = sp(c).getLong("life", now), lastAsk = sp(c).getLong("ok_at", 0);
         int asks = sp(c).getInt("ok_asks", 0);
+        // someone was about after the last "బాగున్నారా?" (e.g. last evening, after 8 pm when this doesn't run): a new round
+        if (asks > 0 && lastAsk < lastLife) { asks = 0; sp(c).edit().putInt("ok_asks", 0).apply(); }
         if (now - lastLife < silentHours(c) * 3600_000L) { if (asks > 0) sp(c).edit().putInt("ok_asks", 0).apply(); return; }
         if (lastAsk > lastLife && now - lastAsk < 6 * 60_000L) return; // (waiting for her answer)
         if (asks >= 2) {
@@ -481,19 +531,21 @@ final class HomeCare {
     }
 
     /** Christmas, Good Friday, Easter, New Year: a greeting for her that morning (null on other days). */
-    static String feast(Calendar k) {
+    static String feast(Calendar k) { return feast(k, "అమ్మగారు"); }
+
+    static String feast(Calendar k, String w) {
         int y = k.get(Calendar.YEAR), m = k.get(Calendar.MONTH) + 1, d = k.get(Calendar.DAY_OF_MONTH);
-        if (m == 12 && d == 25) return "అమ్మగారు, క్రిస్మస్ శుభాకాంక్షలు! మన కోసం యేసుక్రీస్తు ఈ లోకానికి వచ్చిన రోజు. దేవుని ప్రేమ మీ మీద ఎప్పుడూ ఉండాలి.";
-        if (m == 1 && d == 1) return "అమ్మగారు, నూతన సంవత్సర శుభాకాంక్షలు! ఈ సంవత్సరమంతా దేవుడు మిమ్మల్ని ఆరోగ్యంగా, సంతోషంగా ఉంచాలి.";
+        if (m == 12 && d == 25) return w + ", క్రిస్మస్ శుభాకాంక్షలు! మన కోసం యేసుక్రీస్తు ఈ లోకానికి వచ్చిన రోజు. దేవుని ప్రేమ మీ మీద ఎప్పుడూ ఉండాలి.";
+        if (m == 1 && d == 1) return w + ", నూతన సంవత్సర శుభాకాంక్షలు! ఈ సంవత్సరమంతా దేవుడు మిమ్మల్ని ఆరోగ్యంగా, సంతోషంగా ఉంచాలి.";
         int[] e = easter(y);
         Calendar es = Calendar.getInstance();
         es.clear();
         es.set(y, e[0] - 1, e[1]);
         Calendar gf = (Calendar) es.clone();
         gf.add(Calendar.DAY_OF_MONTH, -2);
-        if (m == e[0] && d == e[1]) return "అమ్మగారు, ఈస్టర్ శుభాకాంక్షలు! యేసుక్రీస్తు మృతులలోనుండి లేచిన రోజు. ఆయన సజీవుడు, మనకు నిరీక్షణ.";
+        if (m == e[0] && d == e[1]) return w + ", ఈస్టర్ శుభాకాంక్షలు! యేసుక్రీస్తు మృతులలోనుండి లేచిన రోజు. ఆయన సజీవుడు, మనకు నిరీక్షణ.";
         if (m == gf.get(Calendar.MONTH) + 1 && d == gf.get(Calendar.DAY_OF_MONTH))
-            return "అమ్మగారు, ఈరోజు మంచి శుక్రవారం. మన కోసం యేసుక్రీస్తు సిలువపై ప్రాణం పెట్టిన రోజు. ఆయన ప్రేమను గుర్తుచేసుకుందాం.";
+            return w + ", ఈరోజు మంచి శుక్రవారం. మన కోసం యేసుక్రీస్తు సిలువపై ప్రాణం పెట్టిన రోజు. ఆయన ప్రేమను గుర్తుచేసుకుందాం.";
         return null;
     }
 
@@ -513,12 +565,13 @@ final class HomeCare {
         Prefs p = new Prefs(c);
         if (!p.hasBrain() || overLimit(c)) return;
         sp(c).edit().putString("stories_day", today()).apply();
-        countAi(c);
         new Thread(() -> {
             try {
                 JSONArray keep = new JSONArray(sp(c).getString("stories", "[]"));
                 int k = sp(c).getInt("story_next", 0);
                 for (int i = 0; i < 2; i++) {
+                    if (overLimit(c)) break;
+                    countAi(c); // (each story is one AI call)
                     String who = PEOPLE[(k + i) % PEOPLE.length];
                     String s = Brain.oneShot(p, persona(c), "Tell the Bible story of " + who + " for " + who(c)
                             + " in simple spoken Telugu: 8 to 10 short sentences, faithful to the Bible (no added events), no verse quotations in quotes, "
@@ -572,11 +625,15 @@ final class HomeCare {
     }
 
     // ================================================================ Anil at home, settings from his phone, status
-    static boolean sonHome(Context c) { return sp(c).getBoolean("son_home", false); }
+    /** Anil is at home (for a day at most: a "gone out" that never came - his phone was offline - must not stop her chats for good). */
+    static boolean sonHome(Context c) {
+        return sp(c).getBoolean("son_home", false) && System.currentTimeMillis() - sp(c).getLong("son_at", 0) < 24 * 3600_000L;
+    }
 
     /** His phone says he is arriving (Jarvis tells అమ్మగారు) or has gone out. */
     static void son(Context c, boolean coming) {
-        sp(c).edit().putBoolean("son_home", coming).apply();
+        if (!on(c)) return; // (an old guard phone at home that got the message: not the home tablet)
+        sp(c).edit().putBoolean("son_home", coming).putLong("son_at", System.currentTimeMillis()).apply();
         if (coming && !night()) say(c, who(c) + ", అబ్బాయి ఇంటికి వచ్చేస్తున్నాడు!", "excited");
     }
 
@@ -587,7 +644,7 @@ final class HomeCare {
             SharedPreferences.Editor e = sp(c).edit();
             String[] times = {"tiffin", "lunch", "snack", "dinner", "water", "chat", "bed", "report", "rest"};
             for (String k : times) if (j.has(k)) e.putString("t_" + k, j.optString(k).trim());
-            if (j.has("who")) e.putString("who", j.optString("who").trim());
+            if (!j.optString("who").trim().isEmpty()) e.putString("who", j.optString("who").trim()); // (an empty box: the name stays)
             if (j.has("doctor_note")) e.putString("doctor_note", j.optString("doctor_note").trim());
             for (String k : new String[]{"silent_hours", "sugar_low", "sugar_high", "ai_limit"}) if (j.has(k)) e.putInt(k, j.optInt(k));
             e.apply();
@@ -596,7 +653,8 @@ final class HomeCare {
             if (j.has("tts_model")) pe.putString("tts_model", j.optString("tts_model").trim());
             pe.apply();
             JSONArray meds = j.optJSONArray("meds");
-            if (meds != null) {
+            // (an empty list - the box left empty, or no line he typed could be read - never takes all her tablets away)
+            if (meds != null && meds.length() > 0) {
                 java.util.Set<String> keep = new java.util.HashSet<>();
                 for (int i = 0; i < meds.length(); i++) {
                     JSONObject m = meds.getJSONObject(i);
@@ -604,14 +662,17 @@ final class HomeCare {
                     if (name.isEmpty() || Medicine.times(m.optString("times")).length() == 0) continue;
                     keep.add(name.toLowerCase(Locale.ROOT));
                     JSONObject old = Medicine.find(c, name);
-                    boolean same = old != null && old.optString("name").equalsIgnoreCase(name)
-                            && old.optJSONArray("times").toString().equals(Medicine.times(m.optString("times")).toString())
+                    if (old != null && !old.optString("name").equalsIgnoreCase(name)) old = null; // (only the same medicine keeps its stock)
+                    JSONArray oldTimes = old == null ? null : old.optJSONArray("times");
+                    boolean same = old != null && oldTimes != null
+                            && oldTimes.toString().equals(Medicine.times(m.optString("times")).toString())
                             && old.optString("food").equals(m.optString("food").trim());
                     if (!same) Medicine.add(c, name, m.optString("times"), "", m.optString("food"), old == null ? -1 : old.optInt("stock", -1), 1);
                 }
-                for (JSONObject old : Medicine.all(c)) if (!keep.contains(old.optString("name").toLowerCase(Locale.ROOT))) Medicine.remove(c, old.optString("name"));
+                if (!keep.isEmpty())
+                    for (JSONObject old : Medicine.all(c)) if (!keep.contains(old.optString("name").toLowerCase(Locale.ROOT))) Medicine.remove(c, old.optString("name"));
             }
-            return "✓ టాబ్లెట్ సెట్టింగ్స్ మారాయి";
+            return "✓ టాబ్లెట్ సెట్టింగ్స్ మారాయి" + (meds != null && meds.length() == 0 ? " (టాబ్లెట్ల లిస్ట్ ఖాళీగా వచ్చింది: ఉన్న టాబ్లెట్లు అలాగే ఉంచాను)" : "");
         } catch (Exception ex) {
             return "⚠️ టాబ్లెట్ సెట్టింగ్స్ చదవలేకపోయాను: " + ex.getMessage();
         }
@@ -671,15 +732,23 @@ final class HomeCare {
         boolean plugged = b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0;
         long now = System.currentTimeMillis(), at = sp(c).getLong("plug_at", 0);
         String last = sp(c).getString("plug_last", "");
+        // tries start again only when the plugged state changes (a plug that doesn't answer isn't asked every 10 minutes all day)
+        if (sp(c).getBoolean("plug_was", !plugged) != plugged) sp(c).edit().putBoolean("plug_was", plugged).putInt("plug_tries", 0).apply();
+        int tries = sp(c).getInt("plug_tries", 0);
         String want = plugged && pct >= 80 && offL != null ? "off" : !plugged && pct <= 40 && onL != null ? "on" : null;
-        if (want != null && !(want.equals(last) && now - at < 10 * 60_000L) && Net.online(c)) {
+        if (want != null && !want.equals(last)) tries = 0;
+        if (want != null && tries < 3 && !(want.equals(last) && now - at < 10 * 60_000L) && Net.online(c)) {
             try { Http.getText("on".equals(want) ? onL : offL); } catch (Exception ignored) {}
-            sp(c).edit().putString("plug_last", want).putLong("plug_at", now).apply();
+            sp(c).edit().putString("plug_last", want).putLong("plug_at", now).putInt("plug_tries", tries + 1).apply();
+        } else if ("off".equals(want) && tries >= 3 && now - at > 10 * 60_000L && !today().equals(sp(c).getString("off_told", ""))) {
+            sp(c).edit().putString("off_told", today()).apply(); // (the 25% ask below covers a charger that won't come on)
+            alert(c, "🔌 టాబ్లెట్ " + pct + "% అయినా ఛార్జర్ ప్లగ్ ఆఫ్ కాలేదు (3 సార్లు అడిగాను). Alexa లో \"charger off\" రొటీన్ చూడండి.");
         }
         // the plug didn't come on (no internet / the plug is off at the wall): ask for a hand, once a day
+        // (at night she is not woken for it: Anil is told)
         if (!plugged && pct <= 25 && !today().equals(sp(c).getString("low_told", ""))) {
             sp(c).edit().putString("low_told", today()).apply();
-            say(c, who(c) + ", టాబ్లెట్ ఛార్జింగ్ అయిపోతోంది. ఛార్జర్ ప్లగ్ మీద బటన్ ఒకసారి నొక్కండి.", "worried");
+            if (!night()) say(c, who(c) + ", టాబ్లెట్ ఛార్జింగ్ అయిపోతోంది. ఛార్జర్ ప్లగ్ మీద బటన్ ఒకసారి నొక్కండి.", "worried");
             alert(c, "🔋 టాబ్లెట్ బ్యాటరీ " + pct + "%: ఛార్జర్ ప్లగ్ ఆన్ కాలేదు.");
         }
     }
@@ -706,8 +775,8 @@ final class HomeCare {
                 return new JSONObject().put("ok", ok).put("note", ok ? "Sent to Anil's phone (Telegram)." : "Not sent now (no internet / home link not set); kept to send later.").toString();
             }
             case "quiet": sp(c).edit().putLong("quiet_until", System.currentTimeMillis() + Math.max(15, a.optInt("minutes", 120)) * 60_000L).apply(); r = "quiet"; break;
-            case "out": sp(c).edit().putBoolean("out", true).apply(); r = "out of the house"; break;
-            case "back": sp(c).edit().putBoolean("out", false).apply(); r = "back home"; break;
+            case "out": setOut(c, true); r = "out of the house"; break;
+            case "back": setOut(c, false); r = "back home"; break;
             case "today": r = reportText(c); break;
             case "story": { String s = story(c); r = s == null ? "no kept story: tell one yourself, faithful to the Bible" : s; break; }
             default: return new JSONObject().put("ok", false).put("error", "unknown action").toString();

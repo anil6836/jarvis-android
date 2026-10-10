@@ -229,6 +229,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             setContentView(f);
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
             homeNow = this;
+            // shown over the lock screen (a lock with no PIN), so a woken screen comes straight to Jarvis
+            if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true);
+            else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
             HomeCare.start(this); // అమ్మగారు's day: meals, tablets, water, checks, the home link
         } else {
             setContentView(ui);
@@ -331,6 +334,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onStop() {
         super.onStop();
+        if (home != null) return; // (the home Jarvis stays shown over the lock screen)
         if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(false);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
     }
@@ -1512,17 +1516,40 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             return;
         }
         showHome();
+        wakeScreen(); // (a dark screen after the night, or one that slept: she sees him and the buttons)
         long now = System.currentTimeMillis();
         store.addChat("assistant", text, false);
         addMessage("assistant", text, now, null);
         home.setFeeling(feeling);
+        feelingNext = feeling; // (the face HomeCare chose stays when the voice starts)
         home.say(text);
         lastWasVoice = listen;
         homeAskListen = listen;
         keepScreenOn();
+        talking(true); // the "Jarvis" word and the sound watch wait while he talks (not woken by his own voice)
+        WakeService.pause(this);
         voice.speak(text, prefs.speechRate());
         setOrb(OrbView.SPEAKING);
         refreshAction();
+    }
+
+    /** HomeCare: light the home screen (the morning after the night). */
+    static void homeWake() {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing()) return;
+        a.main.post(a::wakeScreen);
+    }
+
+    /** Turns a sleeping screen on for a little while (then the day's keep-on, or the usual sleep at night). */
+    private void wakeScreen() {
+        try {
+            android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+            if (pm == null || pm.isInteractive()) return;
+            @SuppressWarnings("deprecation")
+            android.os.PowerManager.WakeLock wl = pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                    | android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP | android.os.PowerManager.ON_AFTER_RELEASE, "jarvis:home");
+            wl.acquire(15_000L);
+        } catch (Exception ignored) {}
     }
 
     /** HomeCare answered her words itself (offline too). */
@@ -1537,7 +1564,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         home.setFeeling(f);
         home.say(reply);
         if (prefs.voiceReplies()) {
-            lastWasVoice = false;
+            // a question back ("…అబ్బాయికి చెప్పమంటారా?"): her answer is listened for, as after HomeCare's own questions
+            lastWasVoice = homeAskListen = reply != null && reply.trim().endsWith("?");
+            talking(true); // (a big button: "…\"Jarvis, ఆపు\" అనండి" must not wake Jarvis by his own voice)
+            WakeService.pause(this);
             voice.speak(reply, prefs.speechRate());
             setOrb(OrbView.SPEAKING);
             refreshAction();
@@ -1754,12 +1784,18 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (r != VoiceIO.NEW) { afterPaused(r); return; }
         }
         if (text == null || text.trim().isEmpty()) { finishTurn(); return; }
-        if (home != null) { // the home tablet: అమ్మగారు's answers and words of care first (they work without internet)
-            HomeCare.talked(this);
-            String r = HomeCare.heard(this, text.trim());
-            if (r != null) { homeReply(text.trim(), r); return; }
-        }
+        if (homeHeard(text)) return;
         send(text.trim(), null, true);
+    }
+
+    /** The home tablet: అమ్మగారు's answers and words of care first (they work without internet). False: for the AI. */
+    private boolean homeHeard(String text) {
+        if (home == null || text == null || text.trim().isEmpty()) return false;
+        HomeCare.talked(this);
+        String r = HomeCare.heard(this, text.trim());
+        if (r == null) return false;
+        homeReply(text.trim(), r);
+        return true;
     }
 
     @Override public void onListenFailed(int error) {
@@ -1769,11 +1805,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             input.setText("");
             int r = voice.pausedHeard(partial);
             if (r != VoiceIO.NEW) { afterPaused(r); return; }
+            if (homeHeard(partial)) return;
             send(partial, null, true);
             return;
         }
         if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && !partial.isEmpty()) {
             input.setText("");
+            if (homeHeard(partial)) return; // (her words heard only in part: an emergency / an answer still counts)
             send(partial, null, true);
             return;
         }

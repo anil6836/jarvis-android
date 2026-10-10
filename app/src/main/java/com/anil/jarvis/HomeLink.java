@@ -84,9 +84,11 @@ final class HomeLink {
             paused = false;
             Guard.sendQuiet(c, "🛡️ ఇంటి కాపలా మళ్లీ మొదలైంది (" + time + ")");
         } else if (text.startsWith(SET)) { // the home tablet: settings from his phone (voice, అమ్మగారు's times, tablets)
+            if (!HomeCare.on(c)) return; // (an old guard phone at home: its own medicines and voice stay as they are)
             String r = HomeCare.apply(c, text.substring(SET.length()));
             Guard.sendQuiet(c, r + " (" + time + ")");
         } else if (text.startsWith(ASK)) {
+            if (!HomeCare.on(c)) return; // (only the home tablet answers; his phone waits for its status)
             long sid = Guard.sendQuiet(c, STATUS + HomeCare.statusText(c));
             if (sid > 0) Guard.pin(c, sid);
         } else if (text.startsWith(COMING)) {
