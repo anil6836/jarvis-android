@@ -272,6 +272,7 @@ final class Medicine {
                 if (daysLeft <= 5) {
                     String t = "💊 " + m.optString("name") + " ఇంకా " + stock + " మాత్రలే ఉన్నాయి (సుమారు " + daysLeft + " రోజులకి)";
                     Reminders.notify(c, t, "అయిపోకముందే కొనండి. \"షాపింగ్ లిస్ట్‌లో చేర్చు\" అని Jarvis ని అడగొచ్చు.", ("low" + m.optString("id")).hashCode());
+                    if (HomeCare.on(c)) HomeCare.alertOnce(c, "low_" + m.optString("id"), t.replace("💊 ", "💊 " + HomeCare.who(c) + " ") + ". కొనాలి."); // (the home tablet: Anil buys them)
                     r.put("low_stock", true);
                 }
             }
@@ -336,6 +337,7 @@ final class Medicine {
 
     static JSONObject byIdPublic(Context c, String id) { return byId(c, id); }
 
+
     /** The next dose not taken yet: {name, at millis}, or null when no medicines are set (the home screen's "next" line). */
     static Object[] nextDose(Context c) {
         SimpleDateFormat day = new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH);
@@ -357,6 +359,21 @@ final class Medicine {
     }
 
     private static final java.util.Map<String, Long> HOME_ASKED = new java.util.HashMap<>();
+
+    /** One day's doses (yyyy-MM-dd): {taken, due} for the medicines set now (the weekly report). */
+    static int[] dayDoses(Context c, String day) {
+        int taken = 0, due = 0;
+        List<JSONObject> log = Notes.list(c, LOG);
+        for (JSONObject m : all(c)) {
+            JSONArray t = m.optJSONArray("times");
+            for (int i = 0; t != null && i < t.length(); i++) {
+                due++;
+                String slot = day + " " + t.optString(i);
+                for (JSONObject e : log) if (e.optString("id").equals(m.optString("id")) && e.optString("slot").equals(slot)) { taken++; break; }
+            }
+        }
+        return new int[]{taken, due};
+    }
 
     /** Today's not-yet-taken medicines due at this time (same-time tablets are asked and marked together). */
     static List<JSONObject> untakenAt(Context c, String time) {
@@ -416,7 +433,10 @@ final class Medicine {
     static List<String> todayLinesNamed(Context c) {
         List<String> out = new ArrayList<>(), lines = todayLines(c);
         List<JSONObject> ms = all(c);
-        for (int i = 0; i < lines.size() && i < ms.size(); i++) out.add(ms.get(i).optString("name") + ": " + lines.get(i));
+        for (int i = 0; i < lines.size() && i < ms.size(); i++) {
+            int stock = ms.get(i).optInt("stock", -1);
+            out.add(ms.get(i).optString("name") + ": " + lines.get(i) + (stock >= 0 ? " (" + stock + " మాత్రలు మిగిలాయి)" : ""));
+        }
         return out;
     }
 

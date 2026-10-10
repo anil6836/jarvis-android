@@ -66,6 +66,15 @@ final class HomeScreen extends FrameLayout {
     private final LinearLayout smart;
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean running, night, weatherBusy, nightSet;
+    /** The last time someone was about or Jarvis was busy (the screen's brightness follows it). */
+    private long activeAt = System.currentTimeMillis();
+    private float lightNow = -2f;
+    /** A warm glass over the screen at night (easier on the eyes). */
+    private final View warm;
+    /** The photo frame (family photos when no one has been about for a while, in the day). */
+    private final HomeFrame frame;
+    private long frameCountAt;
+    private int frameCount;
     private long bubbleAt, weatherTry;
     private String lastWord, smartShown;
     private int lastStart = -1;
@@ -154,8 +163,9 @@ final class HomeScreen extends FrameLayout {
         side.addView(next);
 
         // అమ్మగారు's big buttons
-        String[][] care = {{"tablet", "💊 వేసుకున్నాను"}, {"ate", "🍽️ తిన్నాను"}, {"bible", "🙏 బైబిల్"},
-                {"songs", "🎵 పాటలు"}, {"son", "🎤 అబ్బాయికి చెప్పు"}, {"help", "🆘 సహాయం"}};
+        String[][] care = {{"tablet", "💊 వేసుకున్నాను"}, {"ate", "🍽️ తిన్నాను"}, {"bible", "🙏 వాక్యం"},
+                {"read", "📖 బైబిల్ చదువు"}, {"songs", "🎵 పాటలు"}, {"game", "🎲 ఆట"},
+                {"photos", "🖼️ ఫోటోలు"}, {"son", "🎤 అబ్బాయికి చెప్పు"}, {"help", "🆘 సహాయం"}};
         LinearLayout grid = new LinearLayout(a);
         grid.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-1, -2);
@@ -170,9 +180,9 @@ final class HomeScreen extends FrameLayout {
                 grid.addView(gr, rl);
             }
             final String what = care[i][0];
-            TextView b = button(a, care[i][1], "help".equals(what) ? 0xFF8B1E1E : 0xFF1F3B5C, 0xFFFFFFFF, 17);
-            b.setOnClickListener(v -> host.care(what));
-            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(62), 1);
+            TextView b = button(a, care[i][1], "help".equals(what) ? 0xFF8B1E1E : 0xFF1F3B5C, 0xFFFFFFFF, 16);
+            b.setOnClickListener(v -> { if ("photos".equals(what)) showFrame(true); else host.care(what); });
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(56), 1);
             if (i % 3 != 0) bl.leftMargin = dp(8);
             gr.addView(b, bl);
         }
@@ -202,11 +212,22 @@ final class HomeScreen extends FrameLayout {
         sq2.leftMargin = dp(10);
         buttons.addView(set, sq2);
         side.addView(buttons, new LinearLayout.LayoutParams(-1, -2));
+
+        // the photo frame over everything (hidden), then the warm night glass (never takes a touch)
+        frame = new HomeFrame(a);
+        frame.onTap = () -> { hideFrame(); active(); };
+        frame.setVisibility(GONE);
+        addView(frame, new LayoutParams(-1, -1));
+        warm = new View(a);
+        warm.setBackgroundColor(0x30FF8A1E);
+        warm.setVisibility(GONE);
+        addView(warm, new LayoutParams(-1, -1));
     }
 
     // ================================================================ what Jarvis does (from MainActivity)
     void setState(int s) {
         body.rig.setMode(s);
+        if (s != BodyRig.IDLE) active();
         if (s == BodyRig.LISTENING) show("వింటున్నాను…");
         else if (s == BodyRig.THINKING) show("ఆలోచిస్తున్నాను…");
         else if (s != BodyRig.SPEAKING) settleBubble();
@@ -226,7 +247,7 @@ final class HomeScreen extends FrameLayout {
     }
 
     /** What he says (kept on the screen ~30 s). */
-    void say(String text) { if (text != null && !text.trim().isEmpty()) show(text.trim()); }
+    void say(String text) { if (text != null && !text.trim().isEmpty()) { active(); show(text.trim()); } }
 
     void setMic(float l) { body.rig.setMic(l); }
     void setVoice(float l) { body.rig.setVoice(l); }
@@ -300,11 +321,84 @@ final class HomeScreen extends FrameLayout {
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) {
         long now = System.currentTimeMillis();
         if (now - touchedAt > 60_000L) { touchedAt = now; HomeCare.life(getContext()); } // someone is about
+        if (night) HomeEyes.nightStir(getContext(), now); // (up at night: a soft light and "walk carefully")
+        if (e.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+            if (HomeAlarm.ringing()) HomeAlarm.stop(); // (the help alarm: any touch stops it)
+            active();
+        }
         return super.dispatchTouchEvent(e);
     }
 
-    /** The screen stays on (day) or may go dark (night). */
-    boolean keepOn() { return !night; }
+    /** The home screen never goes dark (his wish): it dims when no one is about, and Jarvis stays in sight. */
+    boolean keepOn() { return true; }
+
+    private long lampUntil;
+
+    /** At night: the screen at its night brightness for a while (someone got up), then dim again. */
+    void nightLamp(long ms) {
+        lampUntil = System.currentTimeMillis() + ms;
+        applyLight();
+    }
+
+    /** Someone is about / Jarvis is busy: the screen comes up to its brightness for the hour. */
+    void active() {
+        activeAt = System.currentTimeMillis();
+        if (frame.getVisibility() == VISIBLE && body.rig.mode() != BodyRig.IDLE) hideFrame();
+        applyLight();
+    }
+
+    /**
+     * The screen's brightness: day, someone about or Jarvis busy → the tablet's own brightness; day, no one for 5 minutes
+     * → dimmed; night, someone about / Jarvis busy / the night lamp → soft (enough to see, easy on the eyes); night,
+     * no one for 90 s → very low, Jarvis still in sight. A warm glass is over the screen at night.
+     */
+    private void applyLight() {
+        long now = System.currentTimeMillis();
+        boolean busy = body.rig.mode() != BodyRig.IDLE, recent = now - activeAt < (night ? 90_000L : 5 * 60_000L);
+        float level = night ? (busy || recent || now < lampUntil ? 0.16f : 0.03f)
+                : (busy || recent || frame.getVisibility() == VISIBLE ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE : 0.30f);
+        warm.setVisibility(night ? VISIBLE : GONE);
+        try {
+            act.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            if (level == lightNow) return;
+            lightNow = level;
+            WindowManager.LayoutParams lp = act.getWindow().getAttributes();
+            lp.screenBrightness = level;
+            act.getWindow().setAttributes(lp);
+        } catch (Exception ignored) {}
+    }
+
+    // ---- the photo frame
+    private void showFrame(boolean asked) {
+        if (night && !asked) return;
+        if (asked ? HomeFrame.count(getContext()) == 0 : frameCount == 0) {
+            if (asked) say(HomeFrame.status(getContext()));
+            return;
+        }
+        frame.setVisibility(VISIBLE);
+        frame.start();
+        applyLight();
+    }
+
+    private void hideFrame() {
+        if (frame.getVisibility() != VISIBLE) return;
+        frame.stop();
+        frame.setVisibility(GONE);
+        applyLight();
+    }
+
+    /** No one about for 5 minutes in the day, Jarvis quiet: the family photos (when there are any). */
+    private void frameCheck() {
+        long now = System.currentTimeMillis();
+        if (night || body.rig.mode() != BodyRig.IDLE || now - activeAt < 5 * 60_000L || frame.getVisibility() == VISIBLE
+                || !HomeCare.sp(getContext()).getBoolean("frame_on", true)) return;
+        if (now - frameCountAt > 5 * 60_000L) { // (the gallery is counted off the main thread; used from the next check)
+            frameCountAt = now;
+            final Context app = getContext().getApplicationContext();
+            new Thread(() -> { int n = HomeFrame.count(app); post(() -> frameCount = n); }, "frame-count").start();
+        }
+        if (frameCount > 0) showFrame(false);
+    }
 
     // ================================================================ running
     void start() {
@@ -317,6 +411,7 @@ final class HomeScreen extends FrameLayout {
     void stop() {
         running = false;
         main.removeCallbacks(tick);
+        hideFrame();
     }
 
     private final Runnable tick = new Runnable() {
@@ -335,6 +430,8 @@ final class HomeScreen extends FrameLayout {
         part.setText(partOfDay(h));
         date.setText(DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)]);
         setNight(h >= NIGHT_FROM || h < NIGHT_TO);
+        if (night) hideFrame(); else frameCheck();
+        applyLight();
         if (bubbleBox.getVisibility() == VISIBLE && System.currentTimeMillis() - bubbleAt > 30_000
                 && body.rig.mode() != BodyRig.SPEAKING && body.rig.mode() != BodyRig.LISTENING) bubbleBox.setVisibility(GONE);
         next.setText(nextThing(getContext()));
@@ -359,13 +456,8 @@ final class HomeScreen extends FrameLayout {
         night = n;
         body.setSlow(n);
         body.rig.setBase(n ? "sleepy" : "smile");
-        try {
-            WindowManager.LayoutParams lp = act.getWindow().getAttributes();
-            lp.screenBrightness = n ? 0.12f : WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
-            act.getWindow().setAttributes(lp);
-            if (n) act.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            else act.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        } catch (Exception ignored) {}
+        lightNow = -2f; // (the brightness is set again for the new part of the day)
+        applyLight();
     }
 
     // ---- what comes next: the nearest reminder

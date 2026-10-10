@@ -31,7 +31,7 @@ final class HomeCare {
     static boolean on(Context c) { return new Prefs(c).homeMode(); }
 
     /** How Jarvis calls her (Anil chose "అమ్మగారు"). */
-    static String who(Context c) { return sp(c).getString("who", "అమ్మగారు"); }
+    static String who(Context c) { return c == null ? "అమ్మగారు" : sp(c).getString("who", "అమ్మగారు"); }
 
     // ================================================================ her day's times (Anil can change them)
     /** {key, Telugu name, default time} */
@@ -75,6 +75,9 @@ final class HomeCare {
     }
 
     private static String today() { return new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(new Date()); }
+
+    /** The app's context once the care engine started (else null). */
+    static Context app() { return app; }
 
     private static int minutes(String hhmm) {
         try {
@@ -129,6 +132,7 @@ final class HomeCare {
     static void sounds(Context c, float[] s) {
         if (s == null || !on(c)) return;
         if (Announcer.speaking()) return; // (Jarvis's own voice is not someone about)
+        HomeEyes.sounds(c, s, System.currentTimeMillis()); // crying → comfort; steps at night → a soft light
         boolean tv = s.length > SafetySounds.TV && s[SafetySounds.TV] >= 0.25f;
         if ((s[SafetySounds.SPEECH] >= 0.5f && !tv) || s[SafetySounds.WALK] >= 0.4f
                 || s.length > SafetySounds.DOOR && s[SafetySounds.DOOR] >= 0.4f) {
@@ -140,6 +144,7 @@ final class HomeCare {
     static void tick(Context c) {
         if (!on(c)) return;
         boolean calm = night() || out(c);
+        MainActivity.homeEyesCheck(); // (the camera: in the day while the screen is on, off at night)
         if (!night() && !today().equals(sp(c).getString("woke_day", ""))) { // the morning: the screen that slept at night comes on
             sp(c).edit().putString("woke_day", today()).apply();
             MainActivity.homeWake();
@@ -167,6 +172,10 @@ final class HomeCare {
         String feast = feast(Calendar.getInstance(), who(c));
         if (feast != null && !out(c) && due(c, "feast", "08:00")) say(c, feast, "happy");
         if (due(c, "report", reportTime(c))) report(c);
+        int rt = minutes(reportTime(c));
+        if (rt >= 0 && Calendar.getInstance().get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY && Net.online(c) // (online first: due() marks it done)
+                && due(c, "week_report", String.format(Locale.US, "%02d:%02d", (rt + 10) / 60 % 24, (rt + 10) % 60)))
+            HomeReport.send(c); // (Sunday: the week's PDF for her doctor, to Anil)
         // stories for an offline day, and the Bible kept on the tablet
         if (Net.online(c) && !today().equals(sp(c).getString("stories_day", ""))) prepareStories(c);
         if (Net.online(c)) Bible.prefetchSome(4);
@@ -176,15 +185,25 @@ final class HomeCare {
     }
 
     // ================================================================ asking and talking
-    private static volatile String pending = "";
+    private static volatile String pending = "", askedText = "";
     private static volatile long pendingAt;
 
     /** Says it and listens for her answer (on the home screen); the answer is kept for 15 minutes. */
     static void ask(Context c, String text, String what, String feeling) {
         pending = what == null ? "" : what;
         pendingAt = System.currentTimeMillis();
+        askedText = text == null ? "" : text;
         if (!MainActivity.homeAsk(text, feeling, true)) Announcer.say(c, text);
     }
+
+    /** The screen is saying it now: when it is the question waiting for her answer, her time starts now (it may have waited
+     *  behind a talk). */
+    static void saying(String text) {
+        if (text != null && !pending.isEmpty() && text.equals(askedText)) pendingAt = System.currentTimeMillis();
+    }
+
+    /** How long ago the waiting question was asked (or said). */
+    static long pendingAge() { return System.currentTimeMillis() - pendingAt; }
 
     /** Says it (no answer needed). */
     static void say(Context c, String text, String feeling) {
@@ -192,6 +211,22 @@ final class HomeCare {
     }
 
     static String pending() { return System.currentTimeMillis() - pendingAt < 15 * 60_000L ? pending : ""; }
+    static void clearPending() { pending = ""; }
+    static void setPending(String p) { pending = p == null ? "" : p; pendingAt = System.currentTimeMillis(); }
+
+    /** A part of the Bible read aloud (no answer awaited). */
+    static void sayReading(Context c, String text) {
+        if (text == null || text.trim().isEmpty()) return;
+        if (!MainActivity.homeAsk(text, "calm", false)) Announcer.say(c, text);
+    }
+
+    /** Runs it on the care thread after ms (a fresh thread when the care engine isn't running). */
+    static void later(Runnable r, long ms) {
+        ScheduledExecutorService e = ex;
+        Runnable safe = () -> { try { r.run(); } catch (Throwable ignored) {} };
+        if (e != null) e.schedule(safe, ms, TimeUnit.MILLISECONDS);
+        else new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> new Thread(safe, "home-later").start(), ms);
+    }
     static void pendingMed(String id, String time) { pending = "med:" + id + ":" + time; pendingAt = System.currentTimeMillis(); }
 
     private static void askMeal(Context c, String key, String name, boolean again) {
@@ -205,7 +240,17 @@ final class HomeCare {
         try { return new JSONObject(sp(c).getString("log_" + today(), "{}")); } catch (Exception e) { return new JSONObject(); }
     }
 
-    private static void saveLog(Context c, JSONObject l) { sp(c).edit().putString("log_" + today(), l.toString()).apply(); }
+    /** A past day's ticks (yyyy-MM-dd): meal_tiffin / meal_lunch / meal_snack / meal_dinner (time), water, sugar ["h:mm v"], talks. */
+    static JSONObject dayLog(Context c, String day) {
+        try { return new JSONObject(sp(c).getString("log_" + day, "{}")); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    private static void saveLog(Context c, JSONObject l) {
+        SharedPreferences.Editor e = sp(c).edit().putString("log_" + today(), l.toString());
+        String keep = new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(new Date(System.currentTimeMillis() - 60L * 86_400_000L));
+        for (String k : sp(c).getAll().keySet()) if (k.startsWith("log_") && k.substring(4).compareTo(keep) < 0) e.remove(k); // (two months kept)
+        e.apply();
+    }
 
     static boolean ate(Context c, String meal) { return log(c).has("meal_" + meal); }
 
@@ -251,6 +296,28 @@ final class HomeCare {
         String t = text.trim().toLowerCase(Locale.ROOT), w = who(c);
         for (String e : EMERGENCY) if (t.contains(e)) return emergency(c, text);
         if (SAVE_ME.matcher(t).find()) return emergency(c, text);
+        boolean stopWord = t.matches("(?s).*(ఆపు|ఆపండి|చాలు|ఆపేయ్|స్టాప్|stop).*");
+        if (HomeAlarm.ringing() && stopWord) { HomeAlarm.stop(); return "సరే " + w + ", అలారం ఆపాను."; }
+        if (t.matches("(?s).*(అలారం మోగించు|గట్టిగా అలారం|అలారం పెట్టు సహాయం).*")) {
+            HomeAlarm.start(c);
+            return w + ", గట్టిగా అలారం మోగిస్తున్నాను. ఆపాలంటే స్క్రీన్ మీద ఎక్కడైనా నొక్కండి.";
+        }
+        if ((HomeSongs.playing() || SoundService.radioOn) && stopWord && !t.contains("బైబిల్")) {
+            HomeSongs.stop();
+            if (SoundService.radioOn) SoundService.stop(c);
+            return "సరే " + w + ", పాటలు ఆపాను.";
+        }
+        if (HomeBible.reading && stopWord) {
+            HomeBible.stop();
+            return "సరే " + w + ", ఇక్కడ ఆపాను. మళ్లీ \"బైబిల్ చదువు\" అంటే ఇక్కడి నుంచే చదువుతాను.";
+        }
+        if (t.matches("(?s).*(టాబ్లెట్ పాటలు|టాబ్లెట్‌లో పాటలు|టాబ్లెట్లో పాటలు|నా పాటలు|ఆఫ్‌లైన్ పాటలు|సేవ్ చేసిన పాటలు).*"))
+            return HomeSongs.play(c, t.replaceAll("(టాబ్లెట్‌లో|టాబ్లెట్లో|టాబ్లెట్|నా|ఆఫ్‌లైన్|సేవ్ చేసిన|పెట్టు|పెట్టండి|వినిపించు)", " ").trim(), w);
+        if (HomeBible.asks(t)) {
+            final String said = text;
+            new Thread(() -> sayReading(c, HomeBible.start(c, said)), "home-bible").start();
+            return "సరే " + w + ", బైబిల్ చదువుతాను. మధ్యలో ఆపాలంటే నా మీద నొక్కండి.";
+        }
         if (t.contains("ఇప్పుడు వద్దు") || t.contains("తర్వాత మాట్లాడు") || t.contains("తరువాత మాట్లాడు") || t.contains("నిశ్శబ్దంగా ఉండు")) {
             sp(c).edit().putLong("quiet_until", System.currentTimeMillis() + 2 * 3600_000L).apply();
             return "సరే " + w + ", కాసేపు నిశ్శబ్దంగా ఉంటాను. టాబ్లెట్ టైమ్ అయితే మాత్రం గుర్తుచేస్తాను.";
@@ -274,6 +341,21 @@ final class HomeCare {
         boolean tablet = t.contains("టాబ్లెట్") || t.contains("మాత్ర") || t.contains("మందు");
         boolean ate = t.contains("తిన్నా") || t.contains("భోజనం అయింది") || t.contains("టిఫిన్ అయింది");
         String p = pending();
+        if (p.startsWith("game:")) { // (a game's question waits for her: a few minutes, not every word for 15 minutes)
+            pending = "";
+            if (System.currentTimeMillis() - pendingAt < 3 * 60_000L) return HomeGames.answer(c, p, t);
+            p = "";
+        }
+        if (Sayings.open(c) >= 0) { String r = Sayings.answer(c, t); if (r != null) return r; } // (a riddle's guess)
+        if (HomeGames.asks(t)) return HomeGames.start(c, t);
+        if (p.equals("visitor")) { // "మీకు తెలిసినవాళ్లేనా?"
+            Boolean known = knownWords(t);
+            if (known != null) { pending = ""; return HomeEyes.strangerAnswer(c, known); }
+        }
+        if (p.equals("cry") || p.equals("tell")) { // "అబ్బాయికి చెప్పమంటారా?": "చెప్పు" is a yes, "చెప్పకు" a no
+            if (t.matches("(?s).*(చెప్పకు|చెప్పొద్దు|చెప్పవద్దు|వద్దు).*")) return answer(c, p, false);
+            if (t.matches("(?s).*(చెప్పు|చెప్పండి|ఫోన్ చేయమను|ఫోన్ చెయ్యమను).*")) return answer(c, p, true);
+        }
         if (!p.isEmpty()) {
             // words about something else are not this question's answer (her tablet while the water / meal question waits,
             // "టిఫిన్ తిన్నాను" while the tablet question waits): they are ticked below as what they say
@@ -298,6 +380,13 @@ final class HomeCare {
             if (t.contains("కథ")) { String s = story(c); if (s != null) return s; }
             if (t.contains("వాక్యం") || t.contains("వచనం")) { String v = verse(c, false); if (v != null) return v; }
         }
+        return null;
+    }
+
+    /** "తెలిసినవాళ్లే" → true, "తెలియదు" → false, else null (her answer about a person Jarvis doesn't know). */
+    static Boolean knownWords(String t) {
+        if (t.matches("(?s).*(తెలియదు|తెలీదు|తెలియని|తెలియనివాళ్లు|ఎవరో తెలియదు|లేదు).*")) return false;
+        if (t.matches("(?s).*(తెలుసు|తెలిసిన|తెలిసినవాళ్ల|బంధువు|చుట్టాలు|మా వాళ్ల|మావాళ్ల|అబ్బాయి|పక్కింటి|అవును|ఔను|సరే).*")) return true;
         return null;
     }
 
@@ -349,6 +438,13 @@ final class HomeCare {
             pendingMed(k[1], k.length > 2 ? k[2] : "");
             return "సరే " + w + ", ఇప్పుడే వేసుకోండి. 10 నిమిషాల్లో మళ్లీ అడుగుతాను.";
         }
+        if (p.equals("visitor")) return HomeEyes.strangerAnswer(c, yes);
+        if (p.equals("bible_next")) {
+            if (!yes) return "సరే " + w + ", ఇక్కడ ఆపుతాను. మళ్లీ \"బైబిల్ చదువు\" అంటే తర్వాతి అధ్యాయం నుంచి చదువుతాను.";
+            new Thread(() -> sayReading(c, HomeBible.goOn(c)), "home-bible").start();
+            return "సరే " + w + ".";
+        }
+        if (p.equals("cry")) return HomeEyes.cryAnswer(c, yes);
         if (p.equals("ok")) {
             sp(c).edit().putInt("ok_asks", 0).apply();
             if (yes) return "సంతోషం " + w + "! ఏమైనా కావాలంటే \"Jarvis\" అని పిలవండి.";
@@ -406,7 +502,9 @@ final class HomeCare {
         String w = who(c);
         boolean ok = alert(c, "🆘 ఇంట్లో " + w + " అన్నారు: \"" + said.trim() + "\" (" + nowText() + "). వెంటనే ఫోన్ చేయండి.");
         String doc = doctorNote(c);
-        return (ok ? "అబ్బాయికి వెంటనే చెప్పాను " + w + ". " : "నెట్ లేదు, అబ్బాయికి చెప్పలేకపోయాను. ")
+        if (!ok) HomeAlarm.start(c); // (no internet to reach Anil: a loud alarm, so a neighbour hears)
+        return (ok ? "అబ్బాయికి వెంటనే చెప్పాను " + w + ". "
+                : "నెట్ లేదు, అబ్బాయికి ఇప్పుడు చెప్పలేకపోయాను; నెట్ రాగానే చెబుతాను. పక్కింటివాళ్లకి వినిపించేలా గట్టిగా అలారం మోగిస్తున్నాను. ")
                 + "కూర్చోండి లేదా పడుకోండి, కదలకండి." + (doc.isEmpty() ? "" : " డాక్టర్ చెప్పింది: " + doc + ".")
                 + " ఛాతీ నొప్పి, ఊపిరి ఆడకపోవడం అయితే దగ్గర ఉన్నవాళ్లతో వెంటనే 108 కి ఫోన్ చేయించండి.";
     }
@@ -529,7 +627,8 @@ final class HomeCare {
                 + "(christian stations). Use home_care for meals, tablets, water, sugar readings, quiet time and messages to Anil. "
                 + "Never share Anil's private things (his messages, money, health, duty details beyond 'he is on duty and comes at …'). "
                 + "You speak from this screen yourself: for news use the news tool and read the headlines in your reply; never open "
-                + "news or other apps, or read another app's screen, unless she asks you to open an app.";
+                + "news or other apps, or read another app's screen, unless she asks you to open an app."
+                + (HomeEyes.moodLine(android.os.SystemClock.elapsedRealtime()).isEmpty() ? "" : " " + HomeEyes.moodLine(android.os.SystemClock.elapsedRealtime()));
     }
 
     /** Christmas, Good Friday, Easter, New Year: a greeting for her that morning (null on other days). */
@@ -615,7 +714,12 @@ final class HomeCare {
 
     /** The 🎵 button: a Telugu Christian radio station (online), else nothing to play (said honestly). */
     static String songs(Context c) {
-        if (!Net.online(c)) return who(c) + ", ఇప్పుడు నెట్ లేదు; నెట్ రాగానే క్రిస్టియన్ పాటలు పెడతాను.";
+        if (HomeSongs.playing() || SoundService.radioOn) { // (the 🎵 button again: stops them)
+            HomeSongs.stop();
+            if (SoundService.radioOn) SoundService.stop(c);
+            return "సరే " + who(c) + ", పాటలు ఆపాను.";
+        }
+        if (!Net.online(c)) return HomeSongs.play(c, "", who(c)); // (no internet: the songs saved on the tablet)
         try {
             JSONObject st = Radio.find(Radio.list(c), "Telugu Christian Radio");
             if (st != null) {
@@ -623,7 +727,7 @@ final class HomeCare {
                 if (urls.length > 0) { Radio.play(c, st, urls, 60); return who(c) + ", తెలుగు క్రిస్టియన్ పాటలు పెడుతున్నాను. ఆపాలంటే \"Jarvis, ఆపు\" అనండి."; }
             }
         } catch (Exception ignored) {}
-        return who(c) + ", పాటలు పెట్టలేకపోయాను; \"క్రిస్టియన్ రేడియో పెట్టు\" అని అడగండి.";
+        return HomeSongs.play(c, "", who(c)); // (the radio didn't start: the tablet's own songs)
     }
 
     // ================================================================ Anil at home, settings from his phone, status
@@ -649,6 +753,9 @@ final class HomeCare {
             if (!j.optString("who").trim().isEmpty()) e.putString("who", j.optString("who").trim()); // (an empty box: the name stays)
             if (j.has("doctor_note")) e.putString("doctor_note", j.optString("doctor_note").trim());
             for (String k : new String[]{"silent_hours", "sugar_low", "sugar_high", "ai_limit"}) if (j.has(k)) e.putInt(k, j.optInt(k));
+            if (j.has("stranger_photo")) e.putBoolean("stranger_photo", j.optBoolean("stranger_photo", true));
+            if (j.has("room")) e.putString("room", "bedroom".equals(j.optString("room")) ? "bedroom" : "hall");
+            if (j.has("camera")) e.putBoolean("cam_on", j.optBoolean("camera", true));
             e.apply();
             SharedPreferences.Editor pe = new Prefs(c).sp.edit();
             if (j.has("voice")) pe.putString("natural_voice_name", j.optString("voice").trim());
@@ -669,7 +776,9 @@ final class HomeCare {
                     boolean same = old != null && oldTimes != null
                             && oldTimes.toString().equals(Medicine.times(m.optString("times")).toString())
                             && old.optString("food").equals(m.optString("food").trim());
-                    if (!same) Medicine.add(c, name, m.optString("times"), "", m.optString("food"), old == null ? -1 : old.optInt("stock", -1), 1);
+                    int stock = m.has("stock") ? m.optInt("stock", -1) : old == null ? -1 : old.optInt("stock", -1); // (a new count from his phone)
+                    if (!same) Medicine.add(c, name, m.optString("times"), "", m.optString("food"), stock, 1);
+                    else if (m.has("stock")) Medicine.setStock(c, name, stock); // (the same tablets: only the new count)
                 }
                 if (!keep.isEmpty())
                     for (JSONObject old : Medicine.all(c)) if (!keep.contains(old.optString("name").toLowerCase(Locale.ROOT))) Medicine.remove(c, old.optString("name"));
@@ -712,7 +821,7 @@ final class HomeCare {
     }
 
     // ---- battery care: the tablet's charger on his Alexa plug ("charger on" / "charger off" links in the smart-home box)
-    private static String link(Context c, String name) {
+    static String link(Context c, String name) {
         for (String line : new Prefs(c).smartUrls().split("\n")) {
             int eq = line.indexOf('=');
             if (eq > 0 && line.substring(0, eq).trim().equalsIgnoreCase(name)) {
@@ -721,6 +830,52 @@ final class HomeCare {
             }
         }
         return null;
+    }
+
+    // ---- the TV quieter while Jarvis talks ("tv quiet" / "tv back" links in the smart-home box: Alexa routines)
+    private static volatile boolean tvQuiet;
+    private static volatile long tvQuietAt;
+
+    /** Jarvis starts talking or listening (any thread). */
+    static void tvQuiet(Context c) {
+        if (!on(c) || tvQuiet || !HomeEyes.inHall(c)) return; // (in her bedroom there is no TV to quieten)
+        String l = link(c, "tv quiet");
+        if (l == null) return;
+        tvQuiet = true;
+        tvQuietAt = System.currentTimeMillis();
+        new Thread(() -> { try { Http.getText(l); } catch (Exception ignored) {} }, "home-tv").start();
+    }
+
+    /** The talk is over (some seconds of quiet): the TV comes back. */
+    static void tvBack(Context c) {
+        if (!tvQuiet) return;
+        tvQuiet = false;
+        String l = link(c, "tv back");
+        if (l == null) return;
+        new Thread(() -> { try { Http.getText(l); } catch (Exception ignored) {} }, "home-tv").start();
+    }
+
+    /** Once a day for this key (a low tablet stock): Anil is told. */
+    static void alertOnce(Context c, String key, String text) {
+        if (today().equals(sp(c).getString("once_" + key, ""))) return;
+        sp(c).edit().putString("once_" + key, today()).apply();
+        alert(c, text);
+    }
+
+    /** A reminder for home from Anil's phone ({"at": millis, "text": "…"}): said here at that time; the line sent back. */
+    static String remindFromPhone(Context c, String json) {
+        try {
+            JSONObject j = new JSONObject(json);
+            long at = j.optLong("at");
+            String text = j.optString("text").trim();
+            if (text.isEmpty() || at <= System.currentTimeMillis()) return "⚠️ రిమైండర్ టైమ్ దాటిపోయింది / మాట లేదు";
+            JSONObject r = Store.get(c).addReminder(text, at);
+            if (r == null) return "⚠️ రిమైండర్ పెట్టలేకపోయాను";
+            Reminders.schedule(c, r);
+            return "⏰ ఇంట్లో రిమైండర్ పెట్టాను: " + new SimpleDateFormat("d MMM, h:mm a", Locale.ENGLISH).format(new Date(at)) + " · " + text;
+        } catch (Exception e) {
+            return "⚠️ రిమైండర్ చదవలేకపోయాను";
+        }
     }
 
     private static void batteryCare(Context c) {

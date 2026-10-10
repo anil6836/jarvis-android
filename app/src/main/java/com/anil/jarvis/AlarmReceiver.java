@@ -33,7 +33,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 Reminders.notify(c, "⏰ Jarvis రిమైండర్", text, id == null ? 1 : id.hashCode());
                 if (DutyMode.on(c)) break; // at work: the notification (and the watch's buzz) only, not said aloud
                 PendingResult pr = goAsync();
-                Announcer.say(c, new Prefs(c).name() + ", గుర్తుచేస్తున్నాను: " + text);
+                Announcer.say(c, (HomeCare.on(c) ? HomeCare.who(c) : new Prefs(c).name()) + ", గుర్తుచేస్తున్నాను: " + text); // (the home tablet: her name)
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
                 break;
             }

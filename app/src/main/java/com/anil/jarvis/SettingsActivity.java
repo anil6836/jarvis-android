@@ -248,14 +248,20 @@ public class SettingsActivity extends Activity {
         TextView[] fb = new TextView[6];
         Runnable faceMarks = () -> {
             fb[0].setText(FaceSight.faceOn(this) ? "😊  ముఖం: ఆన్ (తీసేయడానికి నొక్కండి)" : "⭕  ముఖం: ఆఫ్ (చూపించడానికి నొక్కండి)");
-            fb[1].setText(FaceSight.holo(this) ? "✨  స్టైల్: హోలోగ్రామ్ (మనిషి రంగులకి నొక్కండి)" : "🧑  స్టైల్: మనిషి (హోలోగ్రామ్‌కి నొక్కండి)");
+            fb[1].setText(FaceSight.bodyFace(this) ? "🧑  స్టైల్: కొత్త Jarvis, ఇంటి టాబ్లెట్‌లోని బొమ్మ (మార్చడానికి నొక్కండి)"
+                    : FaceSight.holo(this) ? "✨  స్టైల్: హోలోగ్రామ్ ముఖం (మార్చడానికి నొక్కండి)" : "🙂  స్టైల్: పాత మనిషి ముఖం (మార్చడానికి నొక్కండి)");
             fb[2].setText(FaceSight.big(this) ? "🔍  పరిమాణం: పెద్దది (చిన్నదికి నొక్కండి)" : "🔍  పరిమాణం: చిన్నది (పెద్దదికి నొక్కండి)");
             fb[3].setText(FaceSight.camOn(this) ? "👁  ముందు కెమెరాతో మిమ్మల్ని చూడటం: ఆన్ (ఆపడానికి నొక్కండి)" : "🚫  ముందు కెమెరాతో చూడటం: ఆఫ్ (ఆన్ చేయడానికి నొక్కండి)");
             fb[4].setText(FaceSight.seeMe(this) ? "📷  ప్రశ్నతో మీ ఫోటో AI కి: ఆన్ (ఆపడానికి నొక్కండి)" : "📷  ప్రశ్నతో మీ ఫోటో AI కి: ఆఫ్ (ఆన్ చేయడానికి నొక్కండి)");
             fb[5].setText(FaceSight.greetOn(this) ? "👋  తెలిసినవాళ్లను పలకరించడం: ఆన్" : "👋  తెలిసినవాళ్లను పలకరించడం: ఆఫ్");
         };
         fb[0] = button("", v -> { FaceSight.set(this, "face_on", !FaceSight.faceOn(this)); faceMarks.run(); });
-        fb[1] = button("", v -> { FaceSight.set(this, "face_holo", !FaceSight.holo(this)); faceMarks.run(); });
+        fb[1] = button("", v -> { // new Jarvis → old face → hologram → new Jarvis
+            if (FaceSight.bodyFace(this)) { FaceSight.set(this, "face_body", false); FaceSight.set(this, "face_holo", false); }
+            else if (!FaceSight.holo(this)) FaceSight.set(this, "face_holo", true);
+            else { FaceSight.set(this, "face_body", true); FaceSight.set(this, "face_holo", false); }
+            faceMarks.run();
+        });
         fb[2] = button("", v -> { FaceSight.set(this, "face_big", !FaceSight.big(this)); faceMarks.run(); });
         fb[3] = button("", v -> {
             boolean on = !FaceSight.camOn(this);
@@ -818,6 +824,7 @@ public class SettingsActivity extends Activity {
 
         homeSection();
         if (!prefs.homeMode()) tabletSection();
+        linkSection();
 
         // ---- guard mode: on an old phone at home (buttons act at once; no Save needed)
         section("కాపలా మోడ్ (ఇంట్లో పాత ఫోన్)");
@@ -1997,6 +2004,12 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
+        if (code == REQ_FRAME && result == RESULT_OK && data != null) { // photos for the tablet's frame
+            java.util.List<Uri> uris = new java.util.ArrayList<>();
+            if (data.getClipData() != null) for (int i = 0; i < data.getClipData().getItemCount(); i++) uris.add(data.getClipData().getItemAt(i).getUri());
+            else if (data.getData() != null) uris.add(data.getData());
+            if (!uris.isEmpty()) sendFramePhotos(uris);
+        }
         if (code == 42 && result == RESULT_OK && data != null && data.getData() != null) {
             try {
                 getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -2725,6 +2738,20 @@ public class SettingsActivity extends Activity {
         });
         box.addView(vInfo);
 
+        // ---- where the tablet stands, its camera, strangers' pictures
+        final String[] room = {ts.getString("room", "hall")};
+        TextView roomT = Ui.text(this, "", 15.5f, accent);
+        roomT.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 4));
+        Runnable showRoom = () -> roomT.setText("📍 టాబ్లెట్ ఉన్న చోటు: " + roomLabel(room[0]) + "  (మార్చడానికి నొక్కండి)");
+        showRoom.run();
+        roomT.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("టాబ్లెట్ ఎక్కడ ఉంది?")
+                .setSingleChoiceItems(ROOM_NAMES, "bedroom".equals(room[0]) ? 1 : 0, (d, w) -> { room[0] = w == 0 ? "hall" : "bedroom"; showRoom.run(); d.dismiss(); })
+                .show());
+        box.addView(roomT);
+        Switch tcam = toggle("📷 టాబ్లెట్ కెమెరా: ముఖం చూసి ప్రవర్తించడం (పగలు మాత్రమే, ఏదీ సేవ్ అవ్వదు)", ts.getBoolean("camera", true));
+        Switch strangers = toggle("🚪 తెలియని మనిషి కనిపిస్తే (అమ్మగారు \"తెలియదు\" అంటే / జవాబు లేకపోతే) ఫోటో నాకు పంపు", ts.getBoolean("stranger_photo", true));
+
         // ---- అమ్మగారు's day
         EditText who = field("అమ్మని Jarvis ఏమని పిలవాలి", ts.getString("who", "అమ్మగారు"), false);
         EditText tif = field("🍽️ టిఫిన్ టైమ్ (ఉదా: 08:30)", ts.getString("tiffin", "08:30"), false);
@@ -2741,7 +2768,8 @@ public class SettingsActivity extends Activity {
         EditText sHi = field("🩸 షుగర్ ఇంతకంటే ఎక్కువైతే మీకు చెప్పు", String.valueOf(ts.getInt("sugar_high", 250)), false);
         EditText doc = field("👨‍⚕️ ఒంట్లో బాగోలేనప్పుడు డాక్టర్ చెప్పింది (Jarvis అమ్మకి చదువుతాడు)", ts.getString("doctor_note", ""), false);
         EditText lim = field("🧠 టాబ్లెట్ రోజు AI పరిమితి (ప్రశ్నలు; మీ key ఖర్చు)", String.valueOf(ts.getInt("ai_limit", 200)), false);
-        note("💊 అమ్మగారి టాబ్లెట్లు: ఒక్కో లైన్‌లో \"పేరు = టైమ్‌లు | తిన్న తర్వాత\" (ఉదా: Metformin = 08:00, 20:00 | తిన్న తర్వాత). "
+        note("💊 అమ్మగారి టాబ్లెట్లు: ఒక్కో లైన్‌లో \"పేరు = టైమ్‌లు | తిన్న తర్వాత | మాత్రల సంఖ్య\" (ఉదా: షుగర్ టాబ్లెట్ = 08:00, 20:00 | తిన్న తర్వాత | 30 మాత్రలు). "
+                + "పేరు అమ్మగారికి అర్థమయ్యేది పెట్టండి (Jarvis అదే పలుకుతాడు). మాత్రల సంఖ్య రాస్తే, 5 రోజులకే మిగిలినప్పుడు మీకు Telegram; కొత్త స్ట్రిప్ కొన్నప్పుడు సంఖ్య మార్చి 📤 నొక్కండి. "
                 + "డాక్టర్ / మీరు చెప్పినవే పెట్టండి; Jarvis సొంతంగా మందులు చెప్పడు. టాబ్లెట్ టైమ్‌కి అడుగుతాడు, 10 నిమిషాలకోసారి మళ్లీ అడుగుతాడు, 3 సార్లు జవాబు లేకపోతే మీకు Telegram.");
         EditText meds = new EditText(this);
         meds.setText(ts.getString("meds_text", ""));
@@ -2765,26 +2793,39 @@ public class SettingsActivity extends Activity {
                         .put("dinner", din.getText().toString().trim()).put("water", wat.getText().toString().trim())
                         .put("chat", cha.getText().toString().trim()).put("rest", rst.getText().toString().trim())
                         .put("bed", bed.getText().toString().trim()).put("report", rep.getText().toString().trim())
-                        .put("doctor_note", doc.getText().toString().trim());
+                        .put("doctor_note", doc.getText().toString().trim())
+                        .put("room", room[0]).put("camera", tcam.isChecked()).put("stranger_photo", strangers.isChecked());
                 int[] nums = new int[4];
                 EditText[] nf = {sil, sLo, sHi, lim};
                 String[] nk = {"silent_hours", "sugar_low", "sugar_high", "ai_limit"};
                 android.content.SharedPreferences.Editor e = ts.edit();
+                e.putString("room", room[0]).putBoolean("camera", tcam.isChecked()).putBoolean("stranger_photo", strangers.isChecked());
                 for (int i = 0; i < 4; i++) {
                     try { nums[i] = Integer.parseInt(nf[i].getText().toString().trim()); } catch (Exception ex) { nums[i] = ts.getInt(nk[i], i == 0 ? 3 : i == 1 ? 70 : i == 2 ? 250 : 200); }
                     j.put(nk[i], nums[i]);
                     e.putInt(nk[i], nums[i]);
                 }
                 org.json.JSONArray ma = new org.json.JSONArray();
+                java.util.Map<String, Integer> stockNow = new java.util.HashMap<>(); // (kept as "sent" only once it went)
                 for (String line : meds.getText().toString().split("\n")) {
                     int eq = line.indexOf('=');
                     if (eq <= 0) continue;
-                    String nm = line.substring(0, eq).trim(), rest = line.substring(eq + 1);
-                    String food = "";
-                    int bar = rest.indexOf('|');
-                    if (bar >= 0) { food = rest.substring(bar + 1).trim(); rest = rest.substring(0, bar); }
+                    String nm = line.substring(0, eq).trim();
+                    String[] seg = line.substring(eq + 1).split("\\|");
+                    String rest = seg[0], food = "";
+                    int stock = -1;
+                    for (int k = 1; k < seg.length; k++) { // "| తిన్న తర్వాత", "| 30 మాత్రలు"
+                        String g = seg[k].trim();
+                        java.util.regex.Matcher num = java.util.regex.Pattern.compile("(\\d{1,4})").matcher(g);
+                        if (num.find() && (g.matches("(?s).*(మాత్ర|టాబ్లెట్|స్టాక్|tablet|stock).*") || g.matches("\\d{1,4}"))) stock = Integer.parseInt(num.group(1));
+                        else if (!g.isEmpty()) food = g;
+                    }
                     if (nm.isEmpty() || Medicine.times(rest).length() == 0) continue;
-                    ma.put(new org.json.JSONObject().put("name", nm).put("times", rest.trim()).put("food", food));
+                    org.json.JSONObject mj = new org.json.JSONObject().put("name", nm).put("times", rest.trim()).put("food", food);
+                    // a count goes only when he wrote a new one (the tablet counts down as she takes them)
+                    String sk = "stock_sent_" + nm.toLowerCase(java.util.Locale.ROOT);
+                    if (stock >= 0 && ts.getInt(sk, -1) != stock) { mj.put("stock", stock); stockNow.put(sk, stock); }
+                    ma.put(mj);
                 }
                 j.put("meds", ma);
                 java.util.Iterator<String> it = j.keys();
@@ -2793,6 +2834,11 @@ public class SettingsActivity extends Activity {
                 sent.setText("పంపుతున్నాను…");
                 new Thread(() -> {
                     String r = HomeLink.sendSettings(getApplicationContext(), j);
+                    if (r.startsWith("పంపాను") && !stockNow.isEmpty()) { // (not sent: the new counts go again next time)
+                        android.content.SharedPreferences.Editor se = ts.edit();
+                        for (java.util.Map.Entry<String, Integer> s : stockNow.entrySet()) se.putInt(s.getKey(), s.getValue());
+                        se.apply();
+                    }
                     runOnUiThread(() -> sent.setText(r));
                 }, "tab-send").start();
             } catch (Exception ex) {
@@ -2800,6 +2846,118 @@ public class SettingsActivity extends Activity {
             }
         });
         box.addView(sent);
+
+        // ---- the week's report for her doctor
+        TextView repInfo = Ui.text(this, "ప్రతి ఆదివారం రాత్రి రిపోర్ట్ తర్వాత ఈ PDF మీ Telegram కి తనంతట తానే వస్తుంది.", 13.5f, Ui.MUTED);
+        button("📊 అమ్మగారి వారపు రిపోర్ట్ (PDF) ఇప్పుడే", v -> {
+            repInfo.setText("అడుగుతున్నాను…");
+            new Thread(() -> { String r = HomeLink.askReport(getApplicationContext()); runOnUiThread(() -> repInfo.setText(r)); }, "tab-report").start();
+        });
+        box.addView(repInfo);
+
+        // ---- photos for the tablet's photo frame
+        button("🖼️ టాబ్లెట్ ఫోటో ఫ్రేమ్‌కి ఫోటోలు పంపు", v -> {
+            try {
+                startActivityForResult(new Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE)
+                        .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true), REQ_FRAME);
+            } catch (Exception ex) {
+                Toast.makeText(this, "ఫోటోలు ఎంచుకునే యాప్ తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
+            }
+        });
+        frameInfo = Ui.text(this, "ఎవరూ లేనప్పుడు టాబ్లెట్‌లో ఈ ఫోటోలు ఒక్కొక్కటిగా కనిపిస్తాయి (ఒక్కో ఫోటోకి ~20 సెకన్లు పడుతుంది).", 13.5f, Ui.MUTED);
+        box.addView(frameInfo);
+
+        // ---- a reminder said at home
+        EditText rText = field("⏰ ఇంట్లో ఏమి గుర్తుచేయాలి (ఉదా: డాక్టర్ దగ్గరికి వెళ్లాలి)", "", false);
+        EditText rWhen = field("ఎప్పుడు (ఉదా: రేపు 10:00 · ఈరోజు 18:30 · 2026-10-12 09:00)", "", false);
+        TextView rInfo = Ui.text(this, "\"Jarvis, రేపు 10 కి అమ్మకి డాక్టర్ దగ్గరికి వెళ్లాలని ఇంట్లో గుర్తుచేయి\" అని గొంతుతో కూడా చెప్పొచ్చు.", 13.5f, Ui.MUTED);
+        button("⏰ ఇంటికి రిమైండర్ పంపు", v -> {
+            String text = rText.getText().toString().trim();
+            long at = whenOf(rWhen.getText().toString(), System.currentTimeMillis());
+            if (text.isEmpty()) { rInfo.setText("ఏమి గుర్తుచేయాలో రాయండి."); return; }
+            if (at < 0) { rInfo.setText("టైమ్ అర్థం కాలేదు: \"రేపు 10:00\" లేదా \"2026-10-12 09:00\" లాగా రాయండి."); return; }
+            rInfo.setText("పంపుతున్నాను…");
+            new Thread(() -> {
+                String r = HomeLink.remindHome(getApplicationContext(), text, at);
+                runOnUiThread(() -> { rInfo.setText(r); if (r.startsWith("పంపాను")) { rText.setText(""); rWhen.setText(""); } });
+            }, "tab-remind").start();
+        });
+        box.addView(rInfo);
+    }
+
+    private static final int REQ_FRAME = 46; // (44 is the backup file's; 41-45 are taken)
+    private TextView frameInfo;
+
+    /** "రేపు 10:00", "ఈరోజు 18:30", "10:00" (today, else tomorrow), "2026-10-12 09:00" → millis; -1 when it can't be read. */
+    static long whenOf(String s, long now) {
+        String t = s == null ? "" : s.trim().replace('.', ':');
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})\\s+(\\d{1,2}):(\\d{2})").matcher(t);
+        java.util.Calendar k = java.util.Calendar.getInstance();
+        k.setTimeInMillis(now);
+        k.set(java.util.Calendar.SECOND, 0);
+        k.set(java.util.Calendar.MILLISECOND, 0);
+        if (m.find()) {
+            k.set(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)) - 1, Integer.parseInt(m.group(3)), Integer.parseInt(m.group(4)), Integer.parseInt(m.group(5)));
+            return k.getTimeInMillis() > now ? k.getTimeInMillis() : -1;
+        }
+        m = java.util.regex.Pattern.compile("(\\d{1,2}):(\\d{2})").matcher(t);
+        if (!m.find()) return -1;
+        int h = Integer.parseInt(m.group(1)), min = Integer.parseInt(m.group(2));
+        if (h > 23 || min > 59) return -1;
+        k.set(java.util.Calendar.HOUR_OF_DAY, h);
+        k.set(java.util.Calendar.MINUTE, min);
+        if (t.contains("ఎల్లుండి")) k.add(java.util.Calendar.DAY_OF_MONTH, 2);
+        else if (t.contains("రేపు")) k.add(java.util.Calendar.DAY_OF_MONTH, 1);
+        else if (!t.contains("ఈరోజు") && !t.contains("ఈ రోజు") && k.getTimeInMillis() <= now) k.add(java.util.Calendar.DAY_OF_MONTH, 1);
+        return k.getTimeInMillis() > now ? k.getTimeInMillis() : -1;
+    }
+
+    /** The photos he picked for the tablet's frame: made small (1600 px) and sent one by one (background). */
+    private void sendFramePhotos(java.util.List<Uri> uris) {
+        if (frameInfo != null) frameInfo.setText("ఫోటోలు సిద్ధం చేస్తున్నాను…");
+        new Thread(() -> {
+            java.util.List<byte[]> jpgs = new java.util.ArrayList<>();
+            for (Uri u : uris) {
+                byte[] b = smallJpeg(u);
+                if (b != null) jpgs.add(b);
+                if (jpgs.size() >= 20) break; // (twenty at a time)
+            }
+            if (jpgs.isEmpty()) { runOnUiThread(() -> frameInfo.setText("ఫోటోలు తెరవలేకపోయాను.")); return; }
+            String r = HomeLink.sendFrame(getApplicationContext(), jpgs, line -> runOnUiThread(() -> frameInfo.setText(line)));
+            runOnUiThread(() -> frameInfo.setText(r));
+        }, "tab-frame").start();
+    }
+
+    private byte[] smallJpeg(Uri u) {
+        try {
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            try (java.io.InputStream in = getContentResolver().openInputStream(u)) { android.graphics.BitmapFactory.decodeStream(in, null, o); }
+            int side = Math.max(o.outWidth, o.outHeight), sample = 1;
+            while (side / (sample * 2) >= 1600) sample *= 2;
+            android.graphics.BitmapFactory.Options d = new android.graphics.BitmapFactory.Options();
+            d.inSampleSize = sample;
+            android.graphics.Bitmap b;
+            try (java.io.InputStream in = getContentResolver().openInputStream(u)) { b = android.graphics.BitmapFactory.decodeStream(in, null, d); }
+            if (b == null) return null;
+            int rot = 0;
+            try (java.io.InputStream in = getContentResolver().openInputStream(u)) {
+                int or = new android.media.ExifInterface(in).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1);
+                rot = or == 6 ? 90 : or == 3 ? 180 : or == 8 ? 270 : 0;
+            } catch (Exception ignored) {}
+            float sc = Math.min(1f, 1600f / Math.max(b.getWidth(), b.getHeight()));
+            android.graphics.Matrix mx = new android.graphics.Matrix();
+            mx.postScale(sc, sc);
+            mx.postRotate(rot);
+            android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), mx, true);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bo);
+            if (out != b) out.recycle();
+            b.recycle();
+            return bo.toByteArray();
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** The home Jarvis: this device (a tablet at home) shows the big home screen with the new Jarvis. Acts at once. */
@@ -2867,6 +3025,64 @@ public class SettingsActivity extends Activity {
                 }).show());
         box.addView(look);
         box.addView(skin);
+        if (!prefs.homeMode()) return;
+        // (the home tablet itself: where it stands, its camera, the photo frame)
+        android.content.SharedPreferences hc = HomeCare.sp(this);
+        TextView room = Ui.text(this, "", 15.5f, accent);
+        room.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 10));
+        Runnable showRoom = () -> room.setText("📍 టాబ్లెట్ ఉన్న చోటు: " + roomLabel(HomeEyes.room(this)) + "  (మార్చడానికి నొక్కండి)");
+        showRoom.run();
+        room.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("టాబ్లెట్ ఎక్కడ ఉంది?")
+                .setSingleChoiceItems(ROOM_NAMES, HomeEyes.inHall(this) ? 0 : 1, (d, w) -> {
+                    hc.edit().putString("room", w == 0 ? "hall" : "bedroom").apply();
+                    showRoom.run();
+                    d.dismiss();
+                }).show());
+        box.addView(room);
+        Switch cam = toggle("📷 కెమెరాతో చూడటం: నవ్వితే నవ్వు, కన్ను కొడితే కన్ను, చేయి ఊపితే హాయ్, కొత్తవాళ్లు (పగలు మాత్రమే)", HomeEyes.camOn(this));
+        cam.setOnCheckedChangeListener((sw, v) -> HomeEyes.setCam(this, v));
+        Switch frameOn = toggle("🖼️ ఎవరూ లేనప్పుడు ఫోటో ఫ్రేమ్ (" + HomeFrame.count(this) + " ఫోటోలు)", hc.getBoolean("frame_on", true));
+        frameOn.setOnCheckedChangeListener((sw, v) -> hc.edit().putBoolean("frame_on", v).apply());
+        note("హాల్‌లో ఉంటే: Jarvis మాట్లాడేటప్పుడు TV సౌండ్ తగ్గుతుంది (స్మార్ట్ హోమ్ బాక్స్‌లో \"tv quiet = లింక్\", \"tv back = లింక్\" లైన్లు పెడితే). "
+                + "బెడ్‌రూమ్‌లో ఉంటే TV కంట్రోల్ ఆఫ్. స్క్రీన్ ఎప్పుడూ ఆరిపోదు: ఎవరూ లేనప్పుడు వెలుతురు తగ్గుతుంది, రాత్రి కంటికి ఇబ్బంది లేకుండా చాలా తక్కువగా, వెచ్చని రంగుతో ఉంటుంది.");
+    }
+
+    private static final String[] ROOM_NAMES = {"హాల్ (TV దగ్గర)", "అమ్మగారి బెడ్‌రూమ్"};
+
+    private static String roomLabel(String room) {
+        return "bedroom".equals(room) ? "అమ్మగారి బెడ్‌రూమ్ (TV కంట్రోల్ ఆఫ్)" : "హాల్, TV దగ్గర (Jarvis మాట్లాడేటప్పుడు TV సౌండ్ తగ్గుతుంది)";
+    }
+
+    /** Both devices: joining his phone and the home tablet through his bot (token, chat, QR). Acts at once. */
+    private void linkSection() {
+        section("📮 ఫోన్ ↔ టాబ్లెట్ లింక్");
+        note(prefs.homeMode()
+                ? "అబ్బాయి ఫోన్‌తో కలపడానికి సులువైన దారి: \"📷 ఫోన్ QR స్కాన్ చేయి\" నొక్కి, అతని ఫోన్‌లో వచ్చే QR ని కెమెరాకి చూపించండి. లేదా అదే bot token కింద పెట్టి \"Telegram చాట్ కనుక్కో\" నొక్కండి."
+                : "ఇంటి టాబ్లెట్‌తో కలపడానికి: ముందు ఇక్కడ మీ bot token పెట్టి \"Telegram చాట్ కనుక్కో\" నొక్కండి. తర్వాత \"🔲 QR చూపించు\" నొక్కి, టాబ్లెట్‌లో \"📷 ఫోన్ QR స్కాన్ చేయి\" తో స్కాన్ చేయించండి: టాబ్లెట్‌లో ఏమీ టైప్ చేయక్కర్లేదు. "
+                        + "(పాత ఫోన్ కాపలా అవసరం లేదు; ఇది అదే bot.)");
+        EditText tok = field("Telegram bot token", Guard.token(this), true);
+        TextView st = Ui.text(this, "", 14, Ui.MUTED);
+        st.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(st);
+        Runnable show = () -> st.setText(Guard.chat(this).isEmpty() ? "Telegram చాట్: ఇంకా లేదు" : "Telegram చాట్: " + Guard.sp(this).getString("tg_name", "సిద్ధం") + " ✓");
+        show.run();
+        button("Telegram చాట్ కనుక్కో", v -> {
+            Guard.setToken(this, tok.getText().toString());
+            new Thread(() -> {
+                String r = Guard.findChat(this);
+                runOnUiThread(() -> { show.run(); Toast.makeText(this, r.startsWith("!") ? r.substring(1) : "దొరికింది: " + r + " ✓", Toast.LENGTH_LONG).show(); });
+            }, "link-find").start();
+        });
+        button("టెస్ట్ మెసేజ్ పంపు", v -> {
+            Guard.setToken(this, tok.getText().toString());
+            new Thread(() -> {
+                boolean ok = Guard.send(this, prefs.homeMode() ? "✅ ఇంటి టాబ్లెట్ నుంచి టెస్ట్: లింక్ పనిచేస్తోంది." : "✅ ఫోన్ నుంచి టెస్ట్: లింక్ పనిచేస్తోంది.");
+                runOnUiThread(() -> Toast.makeText(this, ok ? "పంపాను ✓ Telegram చూడండి" : "పంపలేకపోయాను: token / చాట్ చూడండి", Toast.LENGTH_LONG).show());
+            }, "link-test").start();
+        });
+        if (prefs.homeMode()) button("📷 ఫోన్ QR స్కాన్ చేయి", v -> JarvisCamera.open(this, "auto", null));
+        else button("🔲 QR చూపించు (టాబ్లెట్ స్కాన్ చేయడానికి)", v -> QrPair.show(this));
     }
 
     /** Phase 2a: the Jarvis watch app (Galaxy Watch). Each choice acts at once and goes to the watch; no Save needed. */

@@ -445,8 +445,12 @@ final class Tools {
         DEFS.add(new Def("home_link", "His old phone at home (the guard) through his own Telegram bot; both phones need internet. look = a fresh picture from "
                 + "home now ('ఇంట్లో ఎలా ఉంది?', shown here and on his watch, takes up to a minute); say = said aloud at home ('ఇంటికి చెప్పు …'): "
                 + "first ask him 'ఇంట్లో \"…\" అని వినిపించమంటారా?' and call only after his yes (he taps once more); guard_off / guard_on = pause / resume "
-                + "the camera alerts at home. Needs this phone linked: Settings → కాపలా మోడ్ with the same bot token as the home phone and 'Telegram చాట్ కనుక్కో' (guard itself left off here).",
-                schema(new String[][]{{"action", "string", "look, say, guard_off or guard_on"}, {"text", "string", "For say: the exact words, in Telugu"}}, "action")));
+                + "the camera alerts at home. remind = a reminder said aloud at home (the home tablet) at that time, e.g. 'అమ్మకి రేపు 10 కి "
+                + "డాక్టర్ దగ్గరికి వెళ్లాలని ఇంట్లో గుర్తుచేయి': text = what Jarvis should say to her (Telugu), time = local 'yyyy-MM-dd HH:mm'; "
+                + "first ask him 'ఇంట్లో … కి \"…\" అని గుర్తుచేయమంటారా?' and call only after his yes. Needs this phone linked: Settings → "
+                + "కాపలా మోడ్ with the same bot token as the home phone / tablet and 'Telegram చాట్ కనుక్కో' (guard itself left off here).",
+                schema(new String[][]{{"action", "string", "look, say, remind, guard_off or guard_on"}, {"text", "string", "For say / remind: the exact words, in Telugu"},
+                        {"time", "string", "For remind: local date and time 'yyyy-MM-dd HH:mm'"}}, "action")));
         DEFS.add(new Def("ride_app",
                 "Open Uber, Ola or Rapido for a trip, with pickup and drop filled in where the app allows. Jarvis does not book or pay: Anil checks fares and taps Book himself. "
                         + "app = compare (or empty): Jarvis reads the fares for the trip in each of his apps (Rapido, Uber, Ola) and returns them together, "
@@ -1162,6 +1166,18 @@ final class Tools {
                         if (text.isEmpty()) return err("no_text", "What should be said at home?");
                         if (!host.confirm("🏠 ఇంట్లో వినిపించనా?", text, "📢 వినిపించు", 0)) return err("cancelled", "He did not tap to send it home.");
                         said = HomeLink.say(act(), text);
+                    } else if (ac.equals("remind")) {
+                        String text = a.optString("text").trim();
+                        if (text.isEmpty()) return err("no_text", "What should be said at home?");
+                        long at;
+                        try {
+                            at = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ENGLISH).parse(a.optString("time").trim()).getTime();
+                        } catch (Exception e) {
+                            return err("bad_time", "Give time as local 'yyyy-MM-dd HH:mm'.");
+                        }
+                        String when = new java.text.SimpleDateFormat("d MMM, h:mm a", Locale.ENGLISH).format(new java.util.Date(at));
+                        if (!host.confirm("⏰ ఇంట్లో గుర్తుచేయనా?", when + " · " + text, "⏰ పంపు", 0)) return err("cancelled", "He did not tap to send it home.");
+                        said = HomeLink.remindHome(act(), text, at);
                     } else if (ac.startsWith("guard")) said = HomeLink.guard(act(), ac.endsWith("on"));
                     else said = HomeLink.look(act());
                     return ok().put("said", said).put("next", "Say this to him in short Telugu.").toString();

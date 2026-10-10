@@ -121,6 +121,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private FrameLayout faceBox;
     private TextView faceNote;         // 👁 while the front camera is watching
     private FaceSight sight;           // the front camera (only while the face is on the screen)
+    private BodyView phoneBody;        // the new Jarvis in the face's place (Settings → Jarvis ముఖం → స్టైల్)
     private boolean sightPaused;       // it stopped by itself (no one for 10 minutes): waits for a tap or the next visit
     private boolean keyboardUp;
     private int tab;                   // the tab on the screen
@@ -422,6 +423,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
             }
         }
+        if (home != null && wake) { // the home tablet: "చెప్పండి అమ్మగారు?" and then he listens (his wish)
+            HomeCare.life(this);
+            homeSpeak("చెప్పండి " + (HomeCare.ownerVoice(this) ? "Anil" : HomeCare.who(this)) + "?", "listening", true, 0);
+            return;
+        }
         talking(true);
         beep();
         main.postDelayed(this::startConversation, 300);
@@ -645,6 +651,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         face.setStyle(FaceSight.holo(this));
         faceBox = new FrameLayout(this);
         faceBox.addView(face, new FrameLayout.LayoutParams(-1, -1));
+        phoneBody = new BodyView(this); // the new Jarvis (look C), when chosen as the face
+        phoneBody.rig.setLook(prefs.bodyLook());
+        phoneBody.rig.setSkin(prefs.bodySkin());
+        phoneBody.setVisibility(View.GONE);
+        phoneBody.setClickable(false);
+        faceBox.addView(phoneBody, new FrameLayout.LayoutParams(-1, -1));
         faceNote = Ui.mono(this, "", 12, Ui.CYAN);
         faceNote.setPadding(dp(8), dp(4), dp(8), dp(4));
         faceBox.addView(faceNote, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
@@ -1379,12 +1391,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             WakeService.pause(this);
             keepScreenOn();
         } else if (r == VoiceIO.STOPPED) {
+            if (home != null) HomeBible.stop(); // ("చాలు" while a Bible part was paused: the reading ends here too)
             finishTurn();
         }
         refreshAction();
     }
 
     private void onActionPressed() {
+        if (home != null && HomeBible.reading && voice.speaking) HomeBible.stop(); // (a tap on him while reading: stops there)
         if (live != null) { // Live is running (screen minimised): back to the Live screen
             liveScreen.show();
             return;
@@ -1509,13 +1523,18 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         return true;
     }
 
+    /** What HomeCare wants said while a talk is going on: said, in turn, as soon as it ends. */
+    private final java.util.ArrayDeque<Object[]> homeQueue = new java.util.ArrayDeque<>();
+
     private void homeSpeak(String text, String feeling, boolean listen, int tries) {
         if (isFinishing() || home == null) { Announcer.sayDirect(this, text); return; }
-        if (busy || live != null || voice.speaking || voice.listening) { // a talk is going on: after it (or said plainly after a minute)
-            if (tries >= 3) { Announcer.sayDirect(this, text); return; }
-            main.postDelayed(() -> homeSpeak(text, feeling, listen, tries + 1), 20_000L);
+        if (busy || live != null || voice.speaking || voice.listening) { // a talk is going on: right after it
+            final Object[] item = {text, feeling, listen};
+            homeQueue.add(item);
+            homeWait(item, 0); // (never lost, never said over another voice)
             return;
         }
+        if (listen) HomeCare.saying(text);
         showHome();
         wakeScreen(); // (a dark screen after the night, or one that slept: she sees him and the buttons)
         long now = System.currentTimeMillis();
@@ -1553,6 +1572,30 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         } catch (Exception ignored) {}
     }
 
+    /** A waiting home message, checked every minute: said in turn once nothing is going on (in case no talk-end drained
+     *  it); after 15 minutes, plainly by the phone voice, but still never over Jarvis's own voice or a Live talk. */
+    private void homeWait(Object[] item, int minutes) {
+        main.postDelayed(() -> {
+            if (!homeQueue.contains(item)) return;
+            if (home != null && !isFinishing() && !(busy || live != null || voice.speaking || voice.listening)) { homeDrain(); return; }
+            if (minutes >= 15 && !voice.speaking && live == null) {
+                if (homeQueue.remove(item)) Announcer.sayDirect(this, (String) item[0]);
+                return;
+            }
+            homeWait(item, minutes + 1);
+        }, 60_000L);
+    }
+
+    /** The next waiting home message, when nothing else is going on. */
+    private void homeDrain() {
+        if (home == null || homeQueue.isEmpty() || isFinishing() || busy || live != null || voice.speaking || voice.listening) return;
+        Object[] q = homeQueue.poll();
+        homeSpeak((String) q[0], (String) q[1], (Boolean) q[2], 0);
+    }
+
+    /** The TV comes back a little after the talk (the hall: "tv back" link). */
+    private final Runnable tvBackLater = () -> HomeCare.tvBack(this);
+
     /** HomeCare answered her words itself (offline too). */
     private void homeReply(String heard, String reply) {
         long now = System.currentTimeMillis();
@@ -1583,7 +1626,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             case "ate": homeReply("🍽️ తిన్నాను", HomeCare.ateNow(this)); break;
             case "songs": homeReply("🎵 పాటలు", HomeCare.songs(this)); break;
             case "son": startActivity(new Intent(this, HomeTalkActivity.class)); break;
-            case "help": homeReply("🆘 సహాయం", HomeCare.heard(this, "సహాయం కావాలి")); break;
+            case "help":
+                if (HomeAlarm.ringing()) { HomeAlarm.stop(); homeReply("🆘", "సరే, అలారం ఆపాను."); break; }
+                homeReply("🆘 సహాయం", HomeCare.heard(this, "సహాయం కావాలి"));
+                break;
+            case "read": // 📖: the Bible read aloud, from where she stopped
+                new Thread(() -> HomeCare.sayReading(this, HomeBible.start(this, null)), "home-bible").start();
+                break;
+            case "game": homeReply("🎲 ఆట", HomeGames.start(this, "")); break;
             case "bible":
                 new Thread(() -> {
                     String v = HomeCare.verse(this, true);
@@ -1862,6 +1912,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (lang != null && live == null && !busy) { startLive(Brain.interpreterInstructions(prefs.name(), lang)); return; }
         boolean asked = Tools.awaitingAnswer() || homeAskListen; // read every time: the "which one?" flag is used up here
         homeAskListen = false;
+        if (home != null && !asked) { // the home tablet: a waiting message first, then the Bible goes on
+            if (!homeQueue.isEmpty()) { finishTurn(); return; }
+            if (HomeBible.reading) { finishTurn(); HomeBible.next(this); return; }
+        }
         ScreenReader page = ScreenReader.get(this);
         if (lastWasVoice && (prefs.followUp() || asked) && !paused && !busy && !(page.active() && !page.paused())) { // not while a page is read aloud (a paused one waits)
             lastWasVoice = false;
@@ -2059,6 +2113,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (SheetActivity.talkingNow()) return; // the panel came over this screen and is talking: its talk, its mic
         talking(false);
         if (prefs.wakeReady()) WakeService.resume(this);
+        if (home != null && !homeQueue.isEmpty()) main.postDelayed(this::homeDrain, 400);
     }
 
     /** While Anil and Jarvis are talking the screen must not go dark. */
@@ -2091,14 +2146,61 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         int h = faceRoom < 0 ? dp(FaceSight.big(this) ? 230 : 160) : faceRoom;
         faceBox.setVisibility(place && !keyboardUp && h > 0 ? View.VISIBLE : View.GONE);
         face.setStyle(FaceSight.holo(this));
+        boolean newJarvis = FaceSight.bodyFace(this) && phoneBody != null;
+        face.twin = newJarvis ? phoneBody : null;
+        face.setVisibility(newJarvis ? View.INVISIBLE : View.VISIBLE);
+        if (phoneBody != null) {
+            phoneBody.setVisibility(newJarvis ? View.VISIBLE : View.GONE);
+            phoneBody.rig.setLook(prefs.bodyLook());
+            phoneBody.rig.setSkin(prefs.bodySkin());
+        }
         ViewGroup.LayoutParams lp = faceBox.getLayoutParams();
         if (lp != null && h > 0 && lp.height != h) { lp.height = h; faceBox.setLayoutParams(lp); }
+        if (home != null) { updateHomeEyes(); return; } // (the home tablet: its own rules for the camera)
+        FaceSight.homeEyes = false; // (a device taken out of home mode: the phone's camera rules again)
         if (place && visible && !FaceSight.asked(this) && !askingFace) askFaceCamera();
         // the eyes keep watching while he types (only the drawing makes room for the keyboard)
         boolean eyes = place && visible && FaceSight.camOn(this) && FaceSight.allowed(this) && !sightPaused && !Guard.running(this);
         if (eyes) sight.start(); else sight.stop();
         faceNote.setText(sight.isOn() ? "👁" : sightPaused && place && FaceSight.camOn(this) ? "💤" : "");
         if (!sight.isOn()) face.look(false, 0, 0, 0);
+    }
+
+    private long homeEyesStopAt;
+
+    /** The home tablet's camera: in the day while the screen is on (Anil's choice: no question); off at night. */
+    private void updateHomeEyes() {
+        if (sight == null || home == null || isFinishing()) return;
+        FaceSight.homeEyes = true;
+        if (sightPaused && System.currentTimeMillis() - homeEyesStopAt > 10 * 60_000L) sightPaused = false; // (try again now and then)
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        boolean screen = pm == null || pm.isInteractive();
+        boolean eyes = visible && screen && HomeEyes.camOn(this) && FaceSight.allowed(this) && !HomeCare.night() && !Guard.running(this) && !sightPaused;
+        if (eyes) sight.start(); else sight.stop();
+        if (!sight.isOn()) home.look(false, 0, 0);
+    }
+
+    /** HomeCare: look at the camera's rules again (each minute: day / night). */
+    static void homeEyesCheck() {
+        MainActivity a = homeNow;
+        if (a != null && a.home != null) a.main.post(() -> { if (!a.isFinishing()) a.updateHomeEyes(); });
+    }
+
+    /** HomeEyes: the character's face for a feeling now ("caring"). */
+    static void homeMood(String feeling) {
+        MainActivity a = homeNow;
+        if (a != null && a.home != null) a.main.post(() -> a.home.setFeeling(feeling));
+    }
+
+    /** HomeEyes: someone is up at night: the screen on, softly bright for two minutes. */
+    static void homeNightLamp() {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null) return;
+        a.main.post(() -> {
+            if (a.isFinishing()) return;
+            a.wakeScreen();
+            a.home.nightLamp(120_000L);
+        });
     }
 
     /** The face's height that leaves the chat at least ~190dp (px): 0 when there is no room, -1 before the first layout. */
@@ -2143,7 +2245,31 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
         @Override public void onKnown(String name, boolean owner) { greetPerson(name, owner); }
 
+        // ---- the home tablet: smile back, wink back, wave back, people it doesn't know
+        @Override public void onFaceDetail(float smile, float leftOpen, float rightOpen, float yaw, boolean frontal) {
+            if (home == null) return;
+            String m = HomeEyes.face(smile, leftOpen, rightOpen, yaw, frontal, android.os.SystemClock.elapsedRealtime());
+            if (m != null && !voice.speaking) home.body.rig.show(m, "wink".equals(m) ? 1300 : 2600);
+        }
+
+        @Override public void onWave() {
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (home == null || !HomeEyes.wave(now)) return;
+            home.body.rig.gesture("wave", 2400);
+            home.body.rig.show("happy", 2400);
+            if (busy || live != null || voice.speaking || voice.listening || !HomeEyes.sayHi(now)) return;
+            String names = FaceSight.whoNow(), name = "";
+            if (!names.isEmpty() && !names.startsWith("someone") && Character.isLetter(names.charAt(0))) name = names.split("[,;]")[0].trim();
+            if (name.matches(".*\\d.*")) name = ""; // ("1 person he has not introduced")
+            homeSpeak("హాయ్" + (name.isEmpty() ? "" : " " + name) + "! 👋", "happy", false, 0);
+        }
+
+        @Override public void onStranger(byte[] jpeg) {
+            if (home != null) HomeEyes.stranger(getApplicationContext(), jpeg, System.currentTimeMillis());
+        }
+
         @Override public void onSightStopped(String why, boolean idle) {
+            if (home != null) homeEyesStopAt = System.currentTimeMillis();
             sightPaused = true;
             if (face != null) face.look(false, 0, 0, 0);
             if (home != null) home.look(false, 0, 0);
@@ -2174,7 +2300,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void setOrb(int s) {
         orb.setState(s);
         if (face != null) face.setState(s);
-        if (home != null) home.setState(s);
+        if (home != null) {
+            home.setState(s);
+            main.removeCallbacks(tvBackLater);
+            if (s == OrbView.LISTENING || s == OrbView.SPEAKING || s == OrbView.THINKING) HomeCare.tvQuiet(this); // (the hall: TV quieter)
+            else main.postDelayed(tvBackLater, 12_000L);
+        }
     }
 
     private void setIdle() {

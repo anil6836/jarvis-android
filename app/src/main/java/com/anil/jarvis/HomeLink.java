@@ -31,7 +31,9 @@ final class HomeLink {
 
     static final String SAY = "📢 ఇంటికి: ", PHOTO = "📷 ఇంటి ఫోటో కావాలి", PAUSE = "🛡️ కాపలా ఆపు", RESUME = "🛡️ కాపలా మొదలుపెట్టు",
             VOICE_HOME = "🎤 ఇంటికి", VOICE_FROM = "🎤 ఇంటి నుంచి", SET = "⚙️ టాబ్లెట్ సెట్టింగ్స్: ", ASK = "🏠 టాబ్లెట్ స్థితి?",
-            STATUS = "🏠 టాబ్లెట్ స్థితి: ", COMING = "🏍️ అబ్బాయి ఇంటికి వస్తున్నాడు", GONE = "🚪 అబ్బాయి బయటికి వెళ్లాడు";
+            STATUS = "🏠 టాబ్లెట్ స్థితి: ", COMING = "🏍️ అబ్బాయి ఇంటికి వస్తున్నాడు", GONE = "🚪 అబ్బాయి బయటికి వెళ్లాడు",
+            FRAME = "🖼️ ఫోటో ఫ్రేమ్‌కి", FRAME_OK = "🖼️ ఫ్రేమ్‌లో పెట్టాను", REMIND = "⏰ ఇంటికి రిమైండర్: ",
+            REPORT = "📊 వారపు రిపోర్ట్ కావాలి";
     static final String ACTION_PLAY = "com.anil.jarvis.HOME_PLAY";
     private static final int NOTE = 268;
 
@@ -51,7 +53,8 @@ final class HomeLink {
         if (m == null || m.optLong("message_id") <= sp(c).getLong("seen", 0)) return false;
         String text = m.optString("text"), cap = m.optString("caption");
         return text.startsWith(SAY) || text.startsWith(PHOTO) || text.startsWith(PAUSE) || text.startsWith(RESUME) || cap.startsWith(VOICE_HOME)
-                || text.startsWith(SET) || text.startsWith(ASK) || text.startsWith(COMING) || text.startsWith(GONE);
+                || text.startsWith(SET) || text.startsWith(ASK) || text.startsWith(COMING) || text.startsWith(GONE)
+                || cap.startsWith(FRAME) || text.startsWith(REMIND) || text.startsWith(REPORT);
     }
 
     static void homePoll(Context c) {
@@ -91,6 +94,21 @@ final class HomeLink {
             if (!HomeCare.on(c)) return; // (only the home tablet answers; his phone waits for its status)
             long sid = Guard.sendQuiet(c, STATUS + HomeCare.statusText(c));
             if (sid > 0) Guard.pin(c, sid);
+        } else if (cap.startsWith(FRAME)) { // the home tablet: a photo for the photo frame from his phone
+            if (!HomeCare.on(c)) return;
+            JSONArray sizes = m.optJSONArray("photo");
+            JSONObject big = sizes == null || sizes.length() == 0 ? null : sizes.optJSONObject(sizes.length() - 1);
+            byte[] b = big == null ? null : Guard.file(c, big.optString("file_id"));
+            boolean ok = b != null && HomeFrame.save(c, b);
+            long sid = Guard.sendQuiet(c, ok ? FRAME_OK + " (" + HomeFrame.count(c) + ")" : "⚠️ ఫోటో ఫ్రేమ్‌కి ఫోటో దించలేకపోయాను");
+            if (sid > 0) Guard.pin(c, sid); // (his phone waits for this before the next photo)
+        } else if (text.startsWith(REPORT)) { // the home tablet: the week's PDF now
+            if (!HomeCare.on(c)) return;
+            String r = HomeReport.send(c);
+            if (!r.contains("✓")) Guard.sendQuiet(c, "📊 " + r);
+        } else if (text.startsWith(REMIND)) { // the home tablet: a reminder from his phone, said here at its time
+            if (!HomeCare.on(c)) return;
+            Guard.sendQuiet(c, HomeCare.remindFromPhone(c, text.substring(REMIND.length())) + " (" + time + ")");
         } else if (text.startsWith(COMING)) {
             HomeCare.son(c, true);
         } else if (text.startsWith(GONE)) {
@@ -164,6 +182,55 @@ final class HomeLink {
         return "పంపాను ✓ సుమారు 20 సెకన్లలో టాబ్లెట్ మారుతుంది (దానికి నెట్ ఉంటే). Telegram లో \"✓ టాబ్లెట్ సెట్టింగ్స్ మారాయి\" అని వస్తుంది.";
     }
 
+    /**
+     * His phone: photos for the tablet's photo frame, one after another (each waits for the tablet to take it, up to a
+     * minute; background thread). progress gets "2 / 5" lines. Returns the line for him.
+     */
+    static String sendFrame(Context c, java.util.List<byte[]> photos, java.util.function.Consumer<String> progress) {
+        if (!linked(c)) return notLinked();
+        if (!Net.online(c)) return "ఫోటోలు పంపడానికి నెట్ కావాలి.";
+        int done = 0;
+        for (int i = 0; i < photos.size(); i++) {
+            if (progress != null) progress.accept("పంపుతున్నాను " + (i + 1) + " / " + photos.size() + "…");
+            long id = Guard.sendFile(c, "sendPhoto", "photo", "frame.jpg", "image/jpeg", photos.get(i), FRAME, true);
+            if (id < 0 || !Guard.pin(c, id)) return done + " ఫోటోలు పంపాను; తర్వాతిది Telegram చేరలేదు.";
+            long until = System.currentTimeMillis() + 70_000L;
+            boolean took = false;
+            while (System.currentTimeMillis() < until) {
+                try { Thread.sleep(3000); } catch (InterruptedException e) { return done + " ఫోటోలు పంపాను."; }
+                JSONObject m = Guard.pinned(c);
+                if (m != null && m.optLong("message_id") > id && m.optString("text").startsWith(FRAME_OK)) { took = true; break; }
+            }
+            if (!took) return done + " ఫోటోలు టాబ్లెట్‌కి చేరాయి; తర్వాతిది టాబ్లెట్ తీసుకోలేదు (దానికి నెట్ ఉందా? Jarvis తెరిచి ఉందా?).";
+            done++;
+        }
+        return "✓ " + done + " ఫోటోలు టాబ్లెట్ ఫోటో ఫ్రేమ్‌కి చేరాయి.";
+    }
+
+    /** His phone: the week's report PDF from the tablet now (it comes to his Telegram). */
+    static String askReport(Context c) {
+        if (!linked(c)) return notLinked();
+        if (!Net.online(c)) return "నెట్ లేదు.";
+        long id = Guard.sendQuiet(c, REPORT);
+        if (id < 0 || !Guard.pin(c, id)) return "టాబ్లెట్‌ని అడగలేకపోయాను (Telegram చేరలేదు).";
+        return "అడిగాను ✓ నిమిషంలో మీ Telegram కి PDF వస్తుంది (టాబ్లెట్‌కి నెట్ ఉంటే).";
+    }
+
+    /** His phone: a reminder said at home at that time (at: millis). */
+    static String remindHome(Context c, String text, long at) {
+        if (!linked(c)) return notLinked();
+        if (!Net.online(c)) return "ఇంటికి రిమైండర్ పంపడానికి నెట్ కావాలి.";
+        if (at <= System.currentTimeMillis()) return "ఆ టైమ్ దాటిపోయింది.";
+        try {
+            long id = Guard.sendQuiet(c, REMIND + new JSONObject().put("at", at).put("text", text.trim()).toString());
+            if (id < 0 || !Guard.pin(c, id)) return "పంపలేకపోయాను (Telegram చేరలేదు).";
+        } catch (Exception e) {
+            return "పంపలేకపోయాను.";
+        }
+        return "పంపాను ✓ " + new java.text.SimpleDateFormat("d MMM, h:mm a", Locale.ENGLISH).format(new java.util.Date(at))
+                + " కి ఇంట్లో Jarvis గుర్తుచేస్తాడు (Telegram లో టాబ్లెట్ \"⏰ ఇంట్లో రిమైండర్ పెట్టాను\" అని చెబుతుంది).";
+    }
+
     /** His phone: how the home tablet is now (waits up to a minute; background thread). */
     static String tabletStatus(Context c) {
         if (!linked(c)) return notLinked();
@@ -196,7 +263,7 @@ final class HomeLink {
             long id = m.optLong("message_id");
             if (id <= sp(c).getLong("fetched", 0)) return;
             sp(c).edit().putLong("fetched", id).apply();
-            if (m.has("photo")) showPhoto(c, m);
+            if (m.has("photo") && !m.optString("caption").startsWith(FRAME)) showPhoto(c, m); // (not his own photos for the frame)
             else if (m.optString("caption").startsWith(VOICE_FROM)) voiceFromHome(c, m);
         }, "home-link").start();
     }

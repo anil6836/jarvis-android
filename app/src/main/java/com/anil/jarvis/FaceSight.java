@@ -59,12 +59,27 @@ final class FaceSight {
         void onKnown(String name, boolean owner);
         /** The camera stopped by itself: no one for a long time (idle), or it could not run (why is shown to him). */
         void onSightStopped(String why, boolean idle);
+        /** (home tablet) The face in front: smile and eyes open 0..1 (-1 unknown), head turn; frontal = looking at the screen. */
+        default void onFaceDetail(float smile, float leftOpen, float rightOpen, float yaw, boolean frontal) {}
+        /** (home tablet) Someone waved a hand beside their face. */
+        default void onWave() {}
+        /** (home tablet) A clear face of someone not introduced is in view (a small JPEG of the picture). */
+        default void onStranger(byte[] jpeg) {}
     }
+
+    /**
+     * The home tablet's eyes (set by its screen): no 10-minute sleep (a slow look, about once a second, while no one is
+     * there), hand waves from the picture's movement, and a picture when someone not introduced is in view.
+     */
+    static volatile boolean homeEyes;
+    private static final int GW = 48, GH = 36;
 
     // ---- settings (all switch at once)
     private static SharedPreferences sp(Context c) { return c.getSharedPreferences("jarvis", Context.MODE_PRIVATE); }
     static boolean faceOn(Context c) { return sp(c).getBoolean("face_on", true); }
     static boolean holo(Context c) { return sp(c).getBoolean("face_holo", false); }
+    /** The new Jarvis (the home tablet's character, look C) as his phone's face too ("Jarvis must always look the same"). */
+    static boolean bodyFace(Context c) { return sp(c).getBoolean("face_body", true); }
     static boolean big(Context c) { return sp(c).getBoolean("face_big", true); }
     static boolean camOn(Context c) { return sp(c).getBoolean("face_cam", false); }
     static boolean seeMe(Context c) { return sp(c).getBoolean("face_seeme", false); }
@@ -306,7 +321,9 @@ final class FaceSight {
             try { img = r.acquireLatestImage(); } catch (Exception e) { return; }
             if (img == null) return;
             long now = SystemClock.elapsedRealtime();
-            if (!alive || busy || detector == null || now - lastFrame < 180) { img.close(); return; }
+            if (homeEyes && alive) try { motion(img, now); } catch (Throwable ignored) {} // (every picture: waves are quick)
+            long gap = homeEyes && now - lastFace > 30_000 ? 1000 : 180; // (the home tablet: a slow look while no one is there)
+            if (!alive || busy || detector == null || now - lastFrame < gap) { img.close(); return; }
             busy = true;
             lastFrame = now;
             Enroll en = enroll;
@@ -349,6 +366,34 @@ final class FaceSight {
             }
         }
 
+        // ---- the home tablet: a small grey picture of each frame (upright), for hand waves beside the face
+        int[] faceBox; // the last face in grid cells {x0, y0, x1, y1}, or null
+        long faceBoxAt;
+        final HomeEyes.Wave wave = new HomeEyes.Wave(GW, GH);
+
+        void motion(Image img, long now) {
+            Image.Plane yp = img.getPlanes()[0];
+            ByteBuffer yb = yp.getBuffer();
+            int row = yp.getRowStride(), pix = yp.getPixelStride(), W = img.getWidth(), H = img.getHeight();
+            int uw = rotation % 180 == 0 ? W : H, uh = rotation % 180 == 0 ? H : W;
+            int[] g = new int[GW * GH];
+            for (int gy = 0; gy < GH; gy++) {
+                int uy = (gy * 2 + 1) * uh / (2 * GH);
+                for (int gx = 0; gx < GW; gx++) {
+                    int ux = (gx * 2 + 1) * uw / (2 * GW), sx, sy;
+                    switch (rotation) {
+                        case 90: sx = uy; sy = H - 1 - ux; break;
+                        case 180: sx = W - 1 - ux; sy = H - 1 - uy; break;
+                        case 270: sx = W - 1 - uy; sy = ux; break;
+                        default: sx = ux; sy = uy; break;
+                    }
+                    g[gy * GW + gx] = yb.get(sy * row + sx * pix) & 0xFF;
+                }
+            }
+            int[] box = now - faceBoxAt < 1500 ? faceBox : null;
+            if (wave.add(g, box, now)) main.post(() -> { if (run == Run.this) l.onWave(); });
+        }
+
         void handle(List<Face> faces, Bitmap frame, int iw, int ih) {
             fails = 0;
             long now = SystemClock.elapsedRealtime();
@@ -368,6 +413,14 @@ final class FaceSight {
                 Float sp = best.getSmilingProbability();
                 final float smile = sp == null ? 0f : sp;
                 main.post(() -> { if (run == Run.this) l.onSight(true, x, y, smile); });
+                if (homeEyes) {
+                    faceBox = new int[]{b.left * GW / iw, b.top * GH / ih, b.right * GW / iw, b.bottom * GH / ih};
+                    faceBoxAt = now;
+                    Float lo = best.getLeftEyeOpenProbability(), ro = best.getRightEyeOpenProbability();
+                    final float le = lo == null ? -1f : lo, re = ro == null ? -1f : ro, yaw = best.getHeadEulerAngleY();
+                    final boolean frontal = Math.abs(yaw) <= 20 && Math.abs(best.getHeadEulerAngleZ()) <= 20 && b.width() >= iw * 0.10f;
+                    main.post(() -> { if (run == Run.this) l.onFaceDetail(smile, le, re, yaw, frontal); });
+                }
             } else {
                 main.post(() -> { if (run == Run.this) l.onSight(false, 0, 0, 0); });
             }
@@ -377,7 +430,7 @@ final class FaceSight {
                 else if (!faces.isEmpty() && People.count(act) > 0) recognize(this, faces, frame, iw);
                 if (best != null && seeMe(act) && alive) keepPicture(frame);
             }
-            if (now - lastFace > 10 * 60_000L && enroll == null)
+            if (now - lastFace > 10 * 60_000L && enroll == null && !homeEyes)
                 stopBecause(this, "10 నిమిషాలు ఎవరూ కనిపించలేదు, కెమెరా ఆపాను. నా ముఖం మీద నొక్కితే మళ్ళీ చూస్తాను.", true);
         }
 
@@ -427,7 +480,15 @@ final class FaceSight {
             c.recycle();
             People.Match m = People.match(people, e);
             lastScore = String.format(java.util.Locale.ENGLISH, "%.2f", Math.max(0, m.score)) + (m.name != null ? " (" + m.name + ")" : "");
-            if (m.name == null) { unknown++; continue; }
+            if (m.name == null) {
+                unknown++;
+                if (homeEyes && now - strangerAt > 2000) { // (the home tablet decides whether to ask her / tell Anil)
+                    strangerAt = now;
+                    final byte[] jpg = smallJpeg(frame);
+                    main.post(() -> { if (run == r) l.onStranger(jpg); });
+                }
+                continue;
+            }
             Long first = firstHit.get(m.name);
             if (first == null || now - first > 5000) { firstHit.put(m.name, now); continue; } // twice within 5 s to be sure
             firstHit.remove(m.name);
@@ -536,6 +597,18 @@ final class FaceSight {
     }
 
     private static void recycle(Bitmap b) { if (b != null && !b.isRecycled()) b.recycle(); }
+
+    private static volatile long strangerAt;
+
+    /** The picture as a small JPEG (640 px at most), for Anil's Telegram. */
+    private static byte[] smallJpeg(Bitmap frame) {
+        float s = 640f / Math.max(frame.getWidth(), frame.getHeight());
+        Bitmap small = s < 1 ? Bitmap.createScaledBitmap(frame, Math.round(frame.getWidth() * s), Math.round(frame.getHeight() * s), true) : frame;
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        small.compress(Bitmap.CompressFormat.JPEG, 75, out);
+        if (small != frame) small.recycle();
+        return out.toByteArray();
+    }
 
     /** The camera picture (YUV) as an upright colour picture (as the camera sees it, not mirrored). */
     private static Bitmap upright(Image img, int rot) {

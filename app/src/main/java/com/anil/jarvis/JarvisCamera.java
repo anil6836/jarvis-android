@@ -886,11 +886,16 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             ScanBrain.Result r = null;
             try {
                 code = QrReader.read(pic);
-                String jpeg = jpeg(pic, deep ? 1800 : 1280, 82);
-                String sys = deep ? ScanBrain.deepSystem(p) : ScanBrain.system(p);
-                String prompt = ScanBrain.context(this, m, code, talk, g) + "\nHis question: " + q;
-                String reply = Brain.oneShot(p, sys, prompt, jpeg, p.webSearch(), deep ? 12000 : 3500);
-                r = ScanBrain.parse(reply);
+                if (QrPair.is(code)) { // the phone ↔ tablet key never goes to an AI: not its text, not the picture of it
+                    code = null;
+                    err = "🔒 ఇది ఫోన్ ↔ టాబ్లెట్ లింక్ QR (bot తాళం). దీన్ని AI కి పంపను.";
+                } else {
+                    String jpeg = jpeg(pic, deep ? 1800 : 1280, 82);
+                    String sys = deep ? ScanBrain.deepSystem(p) : ScanBrain.system(p);
+                    String prompt = ScanBrain.context(this, m, code, talk, g) + "\nHis question: " + q;
+                    String reply = Brain.oneShot(p, sys, prompt, jpeg, p.webSearch(), deep ? 12000 : 3500);
+                    r = ScanBrain.parse(reply);
+                }
             } catch (Http.ApiError e) {
                 err = "AI జవాబు ఇవ్వలేదు: " + Models.explain(p, e);
             } catch (Exception e) {
@@ -1720,11 +1725,28 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             light.execute(() -> {
                 String code = QrReader.read(b);
                 b.recycle();
+                if (QrPair.is(code)) { main.post(() -> paired(code)); return; } // (his phone's QR: the tablet joins his bot)
                 if (code == null || code.equals(shownCode)) return;
                 main.post(() -> codeSeen(code));
             });
         }
     };
+
+    /** His phone's pairing QR was seen: this device joins his bot (never shown, never sent anywhere). */
+    private boolean pairedDone;
+
+    private void paired(String code) {
+        if (pairedDone || isFinishing()) return;
+        pairedDone = true;
+        // only the home tablet (or a device not joined to any bot yet) joins by QR: his phone's own bot is never replaced
+        if (!p.homeMode() && !Guard.token(this).isEmpty()) {
+            android.widget.Toast.makeText(this, "ఈ QR ఇంటి టాబ్లెట్ కోసం.", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        String r = QrPair.apply(this, code);
+        android.widget.Toast.makeText(this, r, android.widget.Toast.LENGTH_LONG).show();
+        main.postDelayed(this::finish, 1800);
+    }
 
     private void codeSeen(String code) {
         shownCode = code;

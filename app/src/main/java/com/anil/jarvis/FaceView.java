@@ -47,15 +47,25 @@ final class FaceView extends View implements FaceRig.Pen {
         invalidate();
     }
 
+    /** The new Jarvis (BodyView) shown instead of this face: everything said to the face goes to him too. */
+    BodyView twin;
+
     void setState(int s) {
         if (s == FaceRig.SPEAKING && rig.mode() != FaceRig.SPEAKING) lastWord = null;
         rig.setMode(s);
+        if (twin != null) twin.rig.setMode(s);
     }
-    void setMic(float l) { rig.setMic(l); }
-    void setVoice(float l) { rig.setVoice(l); }
-    void setFeeling(String f) { rig.setFeeling(f); }
-    void look(boolean present, float x, float y, float smile) { rig.look(present, x, y, smile); }
-    void greet() { rig.greet(); }
+    void setMic(float l) { rig.setMic(l); if (twin != null) twin.rig.setMic(l); }
+    void setVoice(float l) { rig.setVoice(l); if (twin != null) twin.rig.setVoice(l); }
+    void setFeeling(String f) { rig.setFeeling(f); if (twin != null) twin.rig.setFeeling(f); }
+    void look(boolean present, float x, float y, float smile) {
+        rig.look(present, x, y, smile);
+        if (twin != null) {
+            twin.rig.look(present, x, y);
+            if (present && smile >= 0.8f) twin.rig.show("happy", 1500); // (he smiles: Jarvis smiles back)
+        }
+    }
+    void greet() { rig.greet(); if (twin != null) twin.rig.greet(); }
 
     private String lastWord;
     private int lastStart = -1;
@@ -67,6 +77,7 @@ final class FaceView extends View implements FaceRig.Pen {
         lastWord = text;
         lastStart = start;
         rig.word(text.substring(start, end));
+        if (twin != null) twin.rig.word(text.substring(start, end));
     }
 
     @Override protected void onDraw(Canvas canvas) {
