@@ -410,6 +410,36 @@ final class HomeFrame extends FrameLayout {
         return n;
     }
 
+    /**
+     * Up to n different family photos (picked at random from the frame's photos), each cut to a square of px × px —
+     * the cards of the pairs game. Background thread (it decodes pictures). Never throws; may return fewer (or none).
+     */
+    static List<Bitmap> thumbs(Context c, int n, int px) {
+        ArrayList<Bitmap> out = new ArrayList<>();
+        if (c == null || n <= 0) return out;
+        try {
+            List<Item> all = list(c, 400);
+            Collections.shuffle(all);
+            for (Item it : all) {
+                if (out.size() >= n) break;
+                Bitmap b = decode(c, it, px, px);
+                if (b == null) continue;
+                try {
+                    int s = Math.min(b.getWidth(), b.getHeight());
+                    Bitmap sq = Bitmap.createBitmap(b, (b.getWidth() - s) / 2, (b.getHeight() - s) / 2, s, s);
+                    Bitmap sc = Bitmap.createScaledBitmap(sq, px, px, true);
+                    if (sq != b && sq != sc) sq.recycle();
+                    if (b != sc) b.recycle();
+                    out.add(sc);
+                } catch (Throwable t) {
+                    recycle(b);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return out;
+    }
+
     /** Short Telugu line about the frame. */
     static String status(Context c) {
         int n = count(c);

@@ -184,6 +184,22 @@ final class Guard {
         } catch (Exception e) { return -1; }
     }
 
+    /** A text to his chat with the usual sound on his phone (a game invite); its message id or -1. */
+    static long sendLoud(Context c, String text) {
+        try {
+            JSONObject r = post(c, "sendMessage", new JSONObject().put("chat_id", chat(c)).put("text", text));
+            return r != null && r.optBoolean("ok") ? r.getJSONObject("result").optLong("message_id", -1) : -1;
+        } catch (Exception e) { return -1; }
+    }
+
+    /** Deletes one of the bot's own messages in his chat (an old game move); false when it couldn't. */
+    static boolean delete(Context c, long messageId) {
+        try {
+            JSONObject r = post(c, "deleteMessage", new JSONObject().put("chat_id", chat(c)).put("message_id", messageId));
+            return r != null && r.optBoolean("ok");
+        } catch (Exception e) { return false; }
+    }
+
     /** Pins a message of the bot's in his chat, quietly: the two phones' mailbox (each reads the latest pinned one). */
     static boolean pin(Context c, long messageId) {
         try {

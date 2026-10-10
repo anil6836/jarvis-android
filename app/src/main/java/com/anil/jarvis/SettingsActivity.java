@@ -2855,6 +2855,10 @@ public class SettingsActivity extends Activity {
         });
         box.addView(repInfo);
 
+        // ---- a game with her from here (she is asked on the tablet; moves go through the bot)
+        button("🎲 అమ్మగారితో ఆట ఆడు (మీ ఫోన్ నుంచి)", v -> pickFarGame());
+        box.addView(Ui.text(this, "చదరంగం, లూడో, వైకుంఠపాళి… మీరు ఎంచుకుంటే టాబ్లెట్‌లో Jarvis ఆమెను అడుగుతాడు. ఆమె సరే అంటే ఇద్దరూ ఆడొచ్చు (ఒక్కో కదలిక చేరడానికి కొన్ని సెకన్లు).", 13.5f, Ui.MUTED));
+
         // ---- photos for the tablet's photo frame
         button("🖼️ టాబ్లెట్ ఫోటో ఫ్రేమ్‌కి ఫోటోలు పంపు", v -> {
             try {
@@ -2889,6 +2893,27 @@ public class SettingsActivity extends Activity {
     private TextView frameInfo;
 
     /** "రేపు 10:00", "ఈరోజు 18:30", "10:00" (today, else tomorrow), "2026-10-12 09:00" → millis; -1 when it can't be read. */
+    /** "🎲 అమ్మగారితో ఆట": which game, then its choice (side / size), then the game screen (she is asked). */
+    private void pickFarGame() {
+        java.util.List<String> ids = new java.util.ArrayList<>(), names = new java.util.ArrayList<>();
+        for (String[] g : Games.LIST) {
+            if (!Games.isBoard(g[0])) continue;
+            Game probe = Games.make(this, g[0]);
+            if (probe == null || !probe.farOk()) continue;
+            ids.add(g[0]);
+            names.add(g[1] + "  " + g[2]);
+        }
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("ఏ ఆట?")
+                .setItems(names.toArray(new String[0]), (d, i) -> {
+                    String id = ids.get(i);
+                    Game probe = Games.make(this, id);
+                    String[] opts = probe == null ? null : probe.options();
+                    if (opts == null || opts.length == 0) { GameActivity.invite(this, id, 0); return; }
+                    new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle(Games.name(id))
+                            .setItems(opts, (d2, k) -> GameActivity.invite(this, id, k)).show(); // ("నేను" = you, Anil)
+                }).setNegativeButton("వద్దు", null).show();
+    }
+
     static long whenOf(String s, long now) {
         String t = s == null ? "" : s.trim().replace('.', ':');
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})\\s+(\\d{1,2}):(\\d{2})").matcher(t);

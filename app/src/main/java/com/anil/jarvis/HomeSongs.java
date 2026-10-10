@@ -74,6 +74,13 @@ final class HomeSongs {
     private static volatile String title = "";
 
     private static final Runnable SLEEP = HomeSongs::stopNow;
+    /** The night songs in her bedroom play softly (1 = as usual). */
+    static volatile float soft = 1f;
+
+    /** The songs stop after ms (the night songs: 30 minutes). */
+    static void sleepIn(long ms) {
+        runMain(() -> { H.removeCallbacks(SLEEP); if (active) H.postDelayed(SLEEP, ms); });
+    }
 
     // ================================================================ public API
 
@@ -298,7 +305,7 @@ final class HomeSongs {
             if (my != session || mp == null || !active) return;
             prepared = true;
             errors = 0;
-            float v = ducked ? DUCK : 1f;
+            float v = (ducked ? DUCK : 1f) * soft;
             mp.setVolume(v, v);
             if (!pausedByFocus) mp.start();
         } catch (Throwable t) {
@@ -338,6 +345,7 @@ final class HomeSongs {
     private static void stopNow() {
         try {
             active = false;
+            soft = 1f;
             title = "";
             session++;
             H.removeCallbacks(SLEEP);
@@ -359,7 +367,7 @@ final class HomeSongs {
             switch (change) {
                 case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
                     ducked = true;
-                    if (mp != null) mp.setVolume(DUCK, DUCK);
+                    if (mp != null) mp.setVolume(DUCK * soft, DUCK * soft);
                     break;
                 case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
                     pausedByFocus = true;
@@ -368,7 +376,7 @@ final class HomeSongs {
                 case AudioManager.AUDIOFOCUS_GAIN:
                     ducked = false;
                     if (mp != null) {
-                        mp.setVolume(1f, 1f);
+                        mp.setVolume(soft, soft);
                         if (pausedByFocus && prepared && active && !mp.isPlaying()) mp.start();
                     }
                     pausedByFocus = false;

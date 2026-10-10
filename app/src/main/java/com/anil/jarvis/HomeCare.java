@@ -142,6 +142,7 @@ final class HomeCare {
     }
 
     static void tick(Context c) {
+        Whisper.nightSoft = bedroomNight(); // (her bedroom at night: Jarvis speaks at about half volume)
         if (!on(c)) return;
         boolean calm = night() || out(c);
         MainActivity.homeEyesCheck(); // (the camera: in the day while the screen is on, off at night)
@@ -311,6 +312,7 @@ final class HomeCare {
             HomeBible.stop();
             return "సరే " + w + ", ఇక్కడ ఆపాను. మళ్లీ \"బైబిల్ చదువు\" అంటే ఇక్కడి నుంచే చదువుతాను.";
         }
+        if (t.matches("(?s).*(నిద్ర పాటలు|నిద్రపోయే పాటలు|నిద్ర పోయే పాటలు|పడుకునే పాటలు|జోల పాట|నిద్ర పాట).*")) return sleepSongs(c);
         if (t.matches("(?s).*(టాబ్లెట్ పాటలు|టాబ్లెట్‌లో పాటలు|టాబ్లెట్లో పాటలు|నా పాటలు|ఆఫ్‌లైన్ పాటలు|సేవ్ చేసిన పాటలు).*"))
             return HomeSongs.play(c, t.replaceAll("(టాబ్లెట్‌లో|టాబ్లెట్లో|టాబ్లెట్|నా|ఆఫ్‌లైన్|సేవ్ చేసిన|పెట్టు|పెట్టండి|వినిపించు)", " ").trim(), w);
         if (HomeBible.asks(t)) {
@@ -347,6 +349,12 @@ final class HomeCare {
             p = "";
         }
         if (Sayings.open(c) >= 0) { String r = Sayings.answer(c, t); if (r != null) return r; } // (a riddle's guess)
+        String gm = MainActivity.homeGameHeard(t); // (the games on the screen: her words in a game, or "లూడో ఆడదాం")
+        if (gm != null) return gm;
+        if (p.equals("gameinvite")) { // "అబ్బాయి మీతో … ఆడాలనుకుంటున్నాడు! ఆడదామా?"
+            Boolean yes = yesNo(t.replace("ఆడదాం", " అవును "));
+            if (yes != null) { pending = ""; String r = MainActivity.homeGameInviteAnswer(yes); if (r != null) return r; }
+        }
         if (HomeGames.asks(t)) return HomeGames.start(c, t);
         if (p.equals("visitor")) { // "మీకు తెలిసినవాళ్లేనా?"
             Boolean known = knownWords(t);
@@ -437,6 +445,12 @@ final class HomeCare {
             }
             pendingMed(k[1], k.length > 2 ? k[2] : "");
             return "సరే " + w + ", ఇప్పుడే వేసుకోండి. 10 నిమిషాల్లో మళ్లీ అడుగుతాను.";
+        }
+        if (p.equals("fall")) { // (her bedroom at night, after a thud: "బాగున్నారా?")
+            if (yes) return "హమ్మయ్య! సరే " + w + ", జాగ్రత్త. లైట్ వేసుకుని నెమ్మదిగా నడవండి.";
+            boolean sent = alert(c, "🛏️ రాత్రి పడిన శబ్దం తర్వాత " + w + " \"బాగోలేదు\" అన్నారు. వెంటనే ఫోన్ చేయండి.");
+            return sent ? "అబ్బాయికి వెంటనే చెప్పాను " + w + ". కదలకుండా అక్కడే ఉండండి, సహాయం వస్తుంది."
+                    : "నెట్ లేదు " + w + ". స్క్రీన్ మీద 🆘 నొక్కండి, గట్టిగా అలారం మోగిస్తాను.";
         }
         if (p.equals("visitor")) return HomeEyes.strangerAnswer(c, yes);
         if (p.equals("bible_next")) {
@@ -719,6 +733,8 @@ final class HomeCare {
             if (SoundService.radioOn) SoundService.stop(c);
             return "సరే " + who(c) + ", పాటలు ఆపాను.";
         }
+        if (bedroomNight()) return sleepSongs(c); // (her bedroom at night: the soft songs that stop by themselves)
+        SoundService.soft = 1f;
         if (!Net.online(c)) return HomeSongs.play(c, "", who(c)); // (no internet: the songs saved on the tablet)
         try {
             JSONObject st = Radio.find(Radio.list(c), "Telugu Christian Radio");
@@ -728,6 +744,69 @@ final class HomeCare {
             }
         } catch (Exception ignored) {}
         return HomeSongs.play(c, "", who(c)); // (the radio didn't start: the tablet's own songs)
+    }
+
+    /** The tablet is in her bedroom (Anil's room setting) and it is night (9 pm – 6 am). */
+    static boolean bedroomNight() {
+        Context a = app();
+        if (a == null || !on(a) || HomeEyes.inHall(a)) return false;
+        int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        return h >= 21 || h < 6;
+    }
+
+    /** "నిద్ర పాటలు": soft Christian songs (the radio, or the tablet's own songs) that stop by themselves in 30 minutes. */
+    static String sleepSongs(Context c) {
+        String w = who(c);
+        if (HomeSongs.playing()) HomeSongs.stop();
+        if (SoundService.radioOn) SoundService.stop(c);
+        if (Net.online(c)) {
+            try {
+                JSONObject st = Radio.find(Radio.list(c), "Telugu Christian Radio");
+                String[] urls = st == null ? new String[0] : Radio.known(st);
+                if (urls.length > 0) {
+                    SoundService.soft = 0.45f;
+                    Radio.play(c, st, urls, 30);
+                    return w + ", మెల్లగా పాటలు పెడుతున్నాను. అరగంటలో అవే ఆగిపోతాయి. హాయిగా పడుకోండి, శుభరాత్రి.";
+                }
+            } catch (Exception ignored) {}
+        }
+        HomeSongs.soft = 0.45f;
+        String r = HomeSongs.play(c, "", w);
+        if (HomeSongs.playing()) {
+            HomeSongs.sleepIn(30 * 60_000L);
+            return w + ", టాబ్లెట్‌లోని పాటలు మెల్లగా పెడుతున్నాను. అరగంటలో అవే ఆగిపోతాయి. శుభరాత్రి.";
+        }
+        HomeSongs.soft = 1f;
+        return r;
+    }
+
+    /**
+     * Her bedroom at night: a thud and then a still room (SafetySounds) — she may have fallen. Asked softly with the night
+     * light on; no answer in a minute → asked again at full voice; still none → Anil is told at once (Telegram).
+     */
+    static void nightFall(Context c) {
+        if (!on(c) || HomeEyes.inHall(c)) return;
+        long now = System.currentTimeMillis();
+        if (now - sp(c).getLong("nfall_at", 0) < 10 * 60_000L) return;
+        sp(c).edit().putLong("nfall_at", now).apply();
+        final Context a = c.getApplicationContext();
+        final String w = who(a);
+        MainActivity.homeNightLamp();
+        ask(a, w + ", బాగున్నారా? ఏదో పడిన శబ్దం వినిపించింది.", "fall", "worried");
+        later(() -> {
+            if (!"fall".equals(pending())) return;
+            Whisper.fullUntil = System.currentTimeMillis() + 40_000L;
+            MainActivity.homeNightLamp();
+            ask(a, w + ", బాగున్నారా? \"బాగున్నాను\" అనండి, లేదా స్క్రీన్ మీద నొక్కండి.", "fall", "worried");
+            later(() -> {
+                if (!"fall".equals(pending())) return;
+                clearPending();
+                String time = new java.text.SimpleDateFormat("h:mm a", Locale.ENGLISH).format(new java.util.Date());
+                boolean sent = alert(a, "🛏️ " + time + " కి " + w + " గదిలో ఏదో పడిన శబ్దం, తర్వాత అంతా నిశ్శబ్దం. \"బాగున్నారా?\" అని రెండుసార్లు అడిగాను, జవాబు రాలేదు. వెంటనే ఫోన్ చేయండి / ఎవరినైనా పంపండి.");
+                Whisper.fullUntil = System.currentTimeMillis() + 30_000L;
+                say(a, sent ? w + ", అబ్బాయికి చెప్పాను. కదలకుండా అక్కడే ఉండండి, సహాయం వస్తుంది." : w + ", నెట్ లేదు. అవసరమైతే స్క్రీన్ మీద 🆘 నొక్కండి.", "caring");
+            }, 70_000L);
+        }, 60_000L);
     }
 
     // ================================================================ Anil at home, settings from his phone, status

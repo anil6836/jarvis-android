@@ -224,7 +224,13 @@ final class SafetySounds {
         if (now - at < WATCH_MS) return;
         fallAt = 0;
         int h = java.time.LocalTime.now().getHour();
-        if (decideAfter(normalAfter, loudAfter, h >= 22 || h < 7 || onlyDistress)) alarm(c, "fall");
+        boolean night = h >= 22 || h < 7;
+        // the home tablet in her bedroom: at night a thud and a still room is asked about softly (HomeCare.nightFall)
+        if (night && !onlyDistress && HomeCare.on(c) && !HomeEyes.inHall(c)) {
+            if (decideAfter(normalAfter, loudAfter, false)) HomeCare.nightFall(c);
+            return;
+        }
+        if (decideAfter(normalAfter, loudAfter, night || onlyDistress)) alarm(c, "fall");
     }
 
     /**

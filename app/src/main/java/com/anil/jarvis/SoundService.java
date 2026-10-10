@@ -67,8 +67,11 @@ public class SoundService extends Service {
     };
     private volatile boolean quiet; // Jarvis is reading something out: play softly
 
+    /** The night songs in her bedroom (home tablet): the radio plays softly (1 = as usual; back to 1 when it stops). */
+    static volatile float soft = 1f;
+
     private void applyVolume() {
-        float v = Math.max(0, gain) * (quiet ? 0.2f : 1f);
+        float v = Math.max(0, gain) * soft * (quiet ? 0.2f : 1f);
         try { if (radio != null) radio.setVolume(v, v); } catch (Exception ignored) {}
     }
     private android.media.AudioFocusRequest focusReq;
@@ -133,7 +136,7 @@ public class SoundService extends Service {
 
     @Override public int onStartCommand(Intent i, int flags, int id) {
         String a = i == null ? null : i.getAction();
-        if (ACTION_STOP.equals(a) || a == null) { halt(); stopSelf(); return START_NOT_STICKY; }
+        if (ACTION_STOP.equals(a) || a == null) { soft = 1f; halt(); stopSelf(); return START_NOT_STICKY; }
         if (a.startsWith("com.anil.jarvis.RADIO_")) { // a button of the station playing now
             if (!radioMode) { if (!noiseOn) stopSelf(id); return START_NOT_STICKY; } // nothing to control (an old notification)
             switch (a) {

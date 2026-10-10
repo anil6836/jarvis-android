@@ -60,6 +60,7 @@ final class HomeGames {
         if (t.matches("(?s).*(క్విజ్|quiz|బైబిల్ ప్రశ్న).*")) kind = 1;
         else if (t.matches("(?s).*(పొడుపు).*")) kind = 2;
         else if (t.matches("(?s).*(జ్ఞాపక|గుర్తుపెట్టుకునే).*")) kind = 0;
+        else if (t.matches("(?s).*(పదాల|మాటల ఆట|అక్షరాల ఆట|పదాలాట).*")) return wordsStart(c);
         else kind = HomeCare.sp(c).getInt("game_next", 0) % 3;
         HomeCare.sp(c).edit().putInt("game_next", kind + 1).apply();
         if (kind == 2) return w + ", ఒక పొడుపు కథ. " + Sayings.riddle(c) + " జవాబు ఏమిటి?";
@@ -82,8 +83,137 @@ final class HomeGames {
         return w + ", గుర్తుపెట్టుకునే ఆట! ఈ నాలుగు గుర్తుపెట్టుకోండి: " + say + ". ఇప్పుడు చెప్పండి, నేను ఏమేమి చెప్పాను?";
     }
 
+    // ================================================================ పదాల ఆట (a word from the last letter)
+
+    /** Jarvis's words by their first letter (common things she knows). */
+    private static final String[] WORDS = {
+            "కమలం", "కలం", "కాకి", "కుర్చీ", "కోడి", "కొబ్బరి", "కిటికీ", "కంచం", "కత్తి", "కప్ప", "ఖర్జూరం",
+            "గంట", "గులాబీ", "గుర్రం", "గాజు", "గొడుగు", "గడియారం", "గుడి", "గోధుమలు", "చెట్టు", "చిలుక", "చేప", "చీర",
+            "చంద్రుడు", "చెంచా", "చెప్పులు", "చపాతీ", "జడ", "జామకాయ", "జింక", "జెండా", "జున్ను", "జాబిల్లి", "టమాటా",
+            "టోపీ", "టపాసు", "డబ్బు", "డప్పు", "డబ్బా", "తాబేలు", "తామర", "తల", "తేనె", "తోట", "తాళం", "తబలా", "దీపం",
+            "దువ్వెన", "దానిమ్మ", "దారం", "దోసకాయ", "దోశ", "ధనుస్సు", "ధాన్యం", "నక్షత్రం", "నెమలి", "నది", "నారింజ",
+            "నిచ్చెన", "నాగలి", "పువ్వు", "పాలు", "పుస్తకం", "పిల్లి", "పండు", "పడవ", "పావురం", "పక్షి", "ఫలం",
+            "బంతి", "బియ్యం", "బెల్లం", "బస్సు", "బల్ల", "బాతు", "బండి", "భూమి", "భోజనం", "భవనం", "మామిడి", "మల్లెపువ్వు",
+            "మేక", "మంచం", "మిరపకాయ", "ముత్యం", "మట్టి", "యంత్రం", "రాయి", "రైలు", "రొట్టె", "రంగు", "రథం", "లడ్డు",
+            "లంగా", "లోటా", "లవంగం", "వంకాయ", "వల", "వెన్న", "వేప", "వర్షం", "వీణ", "శంఖం", "శనగలు", "సైకిల్",
+            "సూర్యుడు", "సముద్రం", "సబ్బు", "సంచి", "సీతాకోకచిలుక", "హంస", "హారం", "హల్వా"};
+    /** Letters few words start with: then any word will do. */
+    private static final String RARE = "ఙఞణళఱఠఢఝఛథషఴ";
+    private static final java.util.Set<String> used = new java.util.HashSet<>();
+    private static int wordsSaid, wordsMissed;
+
+    static boolean teluguConsonant(char ch) { return ch >= 0x0C15 && ch <= 0x0C39; }
+
+    private static boolean sign(char ch) {
+        return (ch >= 0x0C3E && ch <= 0x0C4C) || ch == 0x0C01 || ch == 0x0C02 || ch == 0x0C03 || ch == 0x0C4D || ch == 0x0C55
+                || ch == 0x0C56 || ch == 0x200C || ch == 0x200D;
+    }
+
+    /** The letter the next word must start with: the first consonant of the word's last syllable ("కమలం" → ల,
+     *  "అమ్మ" → మ, "పక్షి" → క); 0 when the word ends in a vowel letter. */
+    static char lastLetter(String word) {
+        String w = word == null ? "" : word.trim();
+        int i = w.length() - 1;
+        while (i >= 0 && sign(w.charAt(i))) i--;
+        if (i < 0 || !teluguConsonant(w.charAt(i))) return 0;
+        while (i >= 2 && w.charAt(i - 1) == 0x0C4D && teluguConsonant(w.charAt(i - 2))) i -= 2; // (a joined letter: its first one)
+        return w.charAt(i);
+    }
+
+    /** The first word in her answer (Telugu letters only), or "". */
+    static String firstWord(String said) {
+        if (said == null) return "";
+        for (String p : said.trim().split("[\\s,.!?।]+")) {
+            String q = p.replaceAll("[^\\u0C00-\\u0C7F\\u200C\\u200D]", "");
+            if (!q.isEmpty()) return q;
+        }
+        return "";
+    }
+
+    /** Jarvis's word starting with this letter (not used yet in this game), or null. */
+    static String wordFor(char letter, java.util.Random r) {
+        List<String> ok = new ArrayList<>();
+        for (String x : WORDS) if (x.charAt(0) == letter && !used.contains(x)) ok.add(x);
+        return ok.isEmpty() ? null : ok.get(r.nextInt(ok.size()));
+    }
+
+    private static String ask(char letter) {
+        if (letter == 0 || RARE.indexOf(letter) >= 0) {
+            HomeCare.setPending("game:word:*");
+            return (letter == 0 ? "" : "'" + letter + "' తో పదాలు తక్కువ, ") + "ఈసారి ఏ పదమైనా చెప్పండి.";
+        }
+        HomeCare.setPending("game:word:" + letter);
+        return "'" + letter + "' తో మొదలయ్యే పదం చెప్పండి.";
+    }
+
+    static String wordsStart(Context c) {
+        used.clear();
+        wordsSaid = wordsMissed = 0;
+        String w = HomeCare.who(c), first = WORDS[new java.util.Random().nextInt(WORDS.length)];
+        used.add(first);
+        return w + ", పదాల ఆట! నేను ఒక పదం చెబుతాను, దాని చివరి అక్షరంతో మొదలయ్యే పదం మీరు చెప్పాలి. నేను మొదలుపెడతాను: "
+                + first + ". " + ask(lastLetter(first));
+    }
+
+    /** Her word in the words game. */
+    private static String wordsAnswer(Context c, String pending, String said) {
+        String w = HomeCare.who(c);
+        String t = said == null ? "" : said.trim();
+        if (t.matches("(?s).*(చాలు|ఆపు|ఆపేద్దాం|ఇక వద్దు|ముగిద్దాం).*")) {
+            String r = wordsSaid > 0 ? "సరే " + w + "! ఈరోజు మీరు " + Game.num(Math.min(12, wordsSaid)) + (wordsSaid > 12 ? " కంటే ఎక్కువ" : "") + " పదాలు చెప్పారు. చాలా బాగుంది!"
+                    : "సరే " + w + ", తర్వాత మళ్లీ ఆడదాం.";
+            used.clear();
+            return r;
+        }
+        String need = pending.substring("game:word:".length());
+        char letter = need.equals("*") || need.isEmpty() ? 0 : need.charAt(0);
+        java.util.Random rnd = new java.util.Random();
+        boolean giveUp = t.matches("(?s).*(తెలియదు|తెలీదు|రావడం లేదు|గుర్తు రావడం లేదు|నువ్వే చెప్పు|నువ్వు చెప్పు).*");
+        String hers = firstWord(t);
+        if (!giveUp && hers.isEmpty()) { HomeCare.setPending(pending); return "వినిపించలేదు " + w + ". " + (letter == 0 ? "ఏదైనా ఒక పదం చెప్పండి." : "'" + letter + "' తో ఒక పదం చెప్పండి."); }
+        if (!giveUp && letter != 0 && hers.charAt(0) != letter) {
+            wordsMissed++;
+            if (wordsMissed < 2) {
+                HomeCare.setPending(pending);
+                String eg = wordFor(letter, rnd);
+                return "అయ్యో, '" + letter + "' తో మొదలవ్వాలి " + w + "." + (eg != null ? " ఉదాహరణకి " + eg + "." : "") + " మళ్లీ ప్రయత్నించండి.";
+            }
+            giveUp = true;
+        }
+        if (giveUp) { // Jarvis says one for her and goes on from it
+            wordsMissed = 0;
+            String eg = letter == 0 ? WORDS[rnd.nextInt(WORDS.length)] : wordFor(letter, rnd);
+            if (eg == null) { used.clear(); return "నాకూ '" + letter + "' తో పదం గుర్తు రావడం లేదు! కొత్తగా మొదలుపెడదాం. " + wordsStart(c); }
+            used.add(eg);
+            char nx = lastLetter(eg);
+            String mine = nx == 0 || RARE.indexOf(nx) >= 0 ? null : wordFor(nx, rnd);
+            if (mine == null) return "పర్వాలేదు " + w + ", " + eg + " అనొచ్చు. " + ask(nx);
+            used.add(mine);
+            return "పర్వాలేదు " + w + ", " + eg + " అనొచ్చు. ఇప్పుడు నేను: " + mine + ". " + ask(lastLetter(mine));
+        }
+        wordsMissed = 0;
+        if (used.contains(hers)) { HomeCare.setPending(pending); return hers + " ఇప్పటికే వచ్చింది " + w + ", వేరే పదం చెప్పండి."; }
+        used.add(hers);
+        wordsSaid++;
+        char nx = lastLetter(hers);
+        String praise = wordsSaid % 5 == 0 ? "అద్భుతం! మీరు ఇప్పటికే " + Game.num(Math.min(12, wordsSaid)) + " పదాలు చెప్పారు! " : new String[]{"సరిగ్గా! ", "భలే! ", "బాగుంది! ", "చాలా బాగుంది! "}[rnd.nextInt(4)];
+        if (nx == 0 || RARE.indexOf(nx) >= 0) {
+            String any = WORDS[rnd.nextInt(WORDS.length)];
+            used.add(any);
+            return praise + hers + ". దీని చివరి అక్షరంతో పదాలు తక్కువ, నేను " + any + " అంటాను. " + ask(lastLetter(any));
+        }
+        String mine = wordFor(nx, rnd);
+        if (mine == null) {
+            HomeCare.setPending("game:word:*");
+            return praise + hers + ". అయ్యో, నాకు '" + nx + "' తో పదం గుర్తు రావడం లేదు! ఈ రౌండ్ మీరే గెలిచారు " + w + "! ఇప్పుడు ఏ పదమైనా చెప్పండి, మళ్లీ మొదలుపెడదాం.";
+        }
+        used.add(mine);
+        return praise + hers + ". ఇప్పుడు నా వంతు: '" + nx + "' తో… " + mine + ". " + ask(lastLetter(mine));
+    }
+
     /** Her answer to the waiting game question: what Jarvis says (never null). */
     static String answer(Context c, String pending, String said) {
+        if (pending.startsWith("game:word:")) return wordsAnswer(c, pending, said);
         String w = HomeCare.who(c), t = said == null ? "" : said.toLowerCase(Locale.ROOT).replace("‌", "");
         if (pending.startsWith("game:quiz:")) {
             int i;

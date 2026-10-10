@@ -1505,6 +1505,101 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         @Override public void care(String what) { homeButton(what); }
     };
 
+    // ---- the games on the home screen (GamePanel): Jarvis plays and talks like a person
+    private final GamePanel.Outer gamesOuter = new GamePanel.Outer() {
+        @Override public void gameSay(String text, String feeling) { MainActivity.this.gameSay(text, feeling); }
+        @Override public void talkGame(String id) { MainActivity.this.talkGame(id); }
+        @Override public void gamesClosed() {}
+        @Override public BodyRig rig() { return home.body.rig; }
+    };
+
+    /** A talking game (no board): memory, Bible quiz, riddle, words — played in the talk as before. */
+    private void talkGame(String id) {
+        String words = "memory".equals(id) ? "జ్ఞాపక" : "quiz".equals(id) ? "క్విజ్" : "riddle".equals(id) ? "పొడుపు" : "పదాల ఆట";
+        homeReply(Games.emoji(id) + " " + Games.name(id), HomeGames.start(this, words));
+    }
+
+    /** The game's newest line waiting while something else is said / heard (older ones are dropped). */
+    private String[] gameLine;
+    private long gameLineAt;
+
+    /** A game says it: now, or right after what is being said (only the newest line waits). */
+    private void gameSay(String text, String feeling) {
+        if (home == null || isFinishing() || text == null) return;
+        if (busy || live != null || voice.speaking || voice.listening || !homeQueue.isEmpty()) {
+            gameLine = new String[]{text, feeling};
+            gameLineAt = System.currentTimeMillis();
+            return;
+        }
+        gameLine = null;
+        home.setFeeling(feeling);
+        feelingNext = feeling;
+        home.say(text);
+        lastWasVoice = false;
+        homeAskListen = false;
+        if (!prefs.voiceReplies()) return;
+        keepScreenOn();
+        talking(true); // (the "Jarvis" word waits while he talks)
+        WakeService.pause(this);
+        voice.speak(text, prefs.speechRate());
+        setOrb(OrbView.SPEAKING);
+        refreshAction();
+    }
+
+    private void gameDrain() {
+        String[] g = gameLine;
+        if (g == null || home == null) return;
+        if (System.currentTimeMillis() - gameLineAt > 25_000L) { gameLine = null; return; } // (too late to say now)
+        if (busy || live != null || voice.speaking || voice.listening || !homeQueue.isEmpty()) return; // (said after that)
+        gameSay(g[0], g[1]);
+    }
+
+    /** HomeCare: her words while the games are open, or words asking for a game. "" = the games took them (and talk
+     *  by themselves); null = not for the games. Main thread. */
+    static String homeGameHeard(String t) {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing() || t == null) return null;
+        GamePanel p = a.home.gamesPanel();
+        if (a.home.gamesOpen() && p != null && p.heard(t)) return "";
+        String id = Games.named(t);
+        boolean play = Games.playWords(t);
+        if (id != null && play && !Games.talking(id)) {
+            if (t.contains("అబ్బాయితో") && GameLink.ready(a)) {
+                a.home.openGames(a.gamesOuter, null, true);
+                GamePanel q = a.home.gamesPanel();
+                if (q != null) q.start(id, new String[]{"her", "son"}, 0);
+                if (q != null) q.say("సరే, అబ్బాయికి చెప్పాను " + HomeCare.who(a) + "! ఆయన వచ్చేలోపు మీరు మొదలుపెట్టండి.", "excited", null);
+                return "";
+            }
+            a.home.openGames(a.gamesOuter, id, false);
+            return "";
+        }
+        if (id == null && HomeGames.asks(t)) { a.home.openGames(a.gamesOuter, null, false); return ""; }
+        return null;
+    }
+
+    /** HomeLink: Anil asks from his phone to play (the invite): she is asked, on the screen too. */
+    static void homeGameInvite(org.json.JSONObject j) {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing()) return;
+        a.main.post(() -> {
+            if (a.home == null) return;
+            a.home.openGames(a.gamesOuter, null, true);
+            GamePanel p = a.home.gamesPanel();
+            if (p != null) p.invited(j);
+            String id = j.optString("g");
+            HomeCare.ask(a, HomeCare.who(a) + ", అబ్బాయి మీతో " + Games.name(id) + " ఆడాలనుకుంటున్నాడు! ఆడదామా?", "gameinvite", "excited");
+        });
+    }
+
+    /** Her yes / no to Anil's invite (by voice). */
+    static String homeGameInviteAnswer(boolean yes) {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null) return null;
+        GamePanel p = a.home.gamesPanel();
+        return p != null && p.inviteAnswer(yes) ? "" : null;
+    }
+
     private final Runnable backHome = () -> {
         if (home == null || home.getVisibility() == View.VISIBLE) return;
         if (busy || voice.listening || voice.speaking || keyboardUp) { main.postDelayed(this.backHome, 60_000L); return; }
@@ -1633,7 +1728,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             case "read": // 📖: the Bible read aloud, from where she stopped
                 new Thread(() -> HomeCare.sayReading(this, HomeBible.start(this, null)), "home-bible").start();
                 break;
-            case "game": homeReply("🎲 ఆట", HomeGames.start(this, "")); break;
+            case "game": home.openGames(gamesOuter, null, false); break; // (the games: the list, Jarvis asks which one)
             case "bible":
                 new Thread(() -> {
                     String v = HomeCare.verse(this, true);
@@ -1846,6 +1941,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         HomeCare.talked(this);
         String r = HomeCare.heard(this, text.trim());
         if (r == null) return false;
+        if (r.isEmpty()) { if (!voice.speaking) finishTurn(); return true; } // (the games took her words and talk themselves)
         homeReply(text.trim(), r);
         return true;
     }
@@ -1914,6 +2010,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         homeAskListen = false;
         if (home != null && !asked) { // the home tablet: a waiting message first, then the Bible goes on
             if (!homeQueue.isEmpty()) { finishTurn(); return; }
+            if (gameLine != null) { finishTurn(); return; } // (the game's newest line: finishTurn says it)
             if (HomeBible.reading) { finishTurn(); HomeBible.next(this); return; }
         }
         ScreenReader page = ScreenReader.get(this);
@@ -2114,6 +2211,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         talking(false);
         if (prefs.wakeReady()) WakeService.resume(this);
         if (home != null && !homeQueue.isEmpty()) main.postDelayed(this::homeDrain, 400);
+        else if (home != null && gameLine != null) main.postDelayed(this::gameDrain, 250);
     }
 
     /** While Anil and Jarvis are talking the screen must not go dark. */

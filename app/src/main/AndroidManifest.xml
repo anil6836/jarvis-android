@@ -421,6 +421,13 @@
             android:screenOrientation="portrait"
             android:configChanges="keyboardHidden|smallestScreenSize|screenLayout" />
 
+        <!-- A game with అమ్మగారు at the home tablet, from his phone (moves through his Telegram bot). -->
+        <activity
+            android:name=".GameActivity"
+            android:exported="false"
+            android:label="Jarvis ఆట"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+
         <activity
             android:name=".ObdActivity"
             android:exported="false"

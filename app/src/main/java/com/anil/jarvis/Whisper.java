@@ -26,6 +26,15 @@ final class Whisper {
 
     static boolean soft() { return System.currentTimeMillis() < softUntil; }
 
-    /** The voice's volume now: about a third after a whisper, else full. */
-    static float gain() { return soft() ? 0.35f : 1f; }
+    /** The home tablet in her bedroom at night (HomeCare sets it every minute): Jarvis speaks at about half volume. */
+    static volatile boolean nightSoft;
+    /** Until then the voice is full (a second "బాగున్నారా?" after no answer). */
+    static volatile long fullUntil;
+
+    /** The voice's volume now: about a third after a whisper, about half in her bedroom at night, else full. */
+    static float gain() {
+        if (System.currentTimeMillis() < fullUntil) return 1f;
+        float g = soft() ? 0.35f : 1f;
+        return nightSoft ? Math.min(g, 0.55f) : g;
+    }
 }

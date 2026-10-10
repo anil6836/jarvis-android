@@ -151,6 +151,7 @@ final class HomeReport {
             summary(pg, rows, low, high);
             chart(pg, rows, low, high);
             medicines(pg, c);
+            games(pg, c);
             pg.close();
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             doc.writeTo(out);
@@ -485,6 +486,22 @@ final class HomeReport {
                 pg.cv.drawText(l, first ? M : M + 12, pg.y, p);
                 first = false;
             }
+        }
+    }
+
+    /** The week's games on the tablet (how many, which, won) — nothing else. */
+    private static void games(Pager pg, Context c) {
+        String g = Games.weekLine(c, 7);
+        if (g.isEmpty()) return;
+        Paint title = paint(13, TEXT, true), p = paint(BODY, TEXT, false);
+        pg.need(30 + LH + 4);
+        pg.y += 30;
+        pg.cv.drawText("ఆటలు (మెదడుకి వ్యాయామం)", M, pg.y, title);
+        pg.y += 4;
+        for (String l : wrap(g.replace("🎲 ", ""), p, W - 2 * M)) {
+            pg.need(LH);
+            pg.y += LH;
+            pg.cv.drawText(l, M, pg.y, p);
         }
     }
 

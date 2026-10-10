@@ -78,6 +78,12 @@ final class HomeScreen extends FrameLayout {
     private long bubbleAt, weatherTry;
     private String lastWord, smartShown;
     private int lastStart = -1;
+    /** Jarvis's place on the home screen (he moves into the games panel while a game is open, and back). */
+    private final FrameLayout stage;
+    private final LayoutParams blp, bb;
+    /** The games (made the first time they are opened). */
+    private GamePanel games;
+    private GamePanel.Outer gamesOuter;
 
     HomeScreen(Activity a, Prefs prefs, Host host) {
         super(a);
@@ -91,7 +97,7 @@ final class HomeScreen extends FrameLayout {
         addView(row, new LayoutParams(-1, -1));
 
         // ---- left: Jarvis
-        FrameLayout stage = new FrameLayout(a);
+        stage = new FrameLayout(a);
         row.addView(stage, new LinearLayout.LayoutParams(0, -1, 58));
         stage.addView(new Spot(a), new LayoutParams(-1, -1));
         body = new BodyView(a);
@@ -99,7 +105,7 @@ final class HomeScreen extends FrameLayout {
         body.rig.setSkin(prefs.bodySkin());
         body.setContentDescription("Jarvis: మాట్లాడటానికి నొక్కండి");
         body.setOnClickListener(v -> host.talk());
-        LayoutParams blp = new LayoutParams(-1, -1);
+        blp = new LayoutParams(-1, -1);
         blp.topMargin = dp(84);
         stage.addView(body, blp);
         bubble = new TextView(a);
@@ -115,7 +121,7 @@ final class HomeScreen extends FrameLayout {
         bubbleBox.setBackground(round(0xFF1B3050, 0xFF2E4C74, 18));
         bubbleBox.addView(bubble, new LayoutParams(-2, -2));
         bubbleBox.setVisibility(GONE);
-        LayoutParams bb = new LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        bb = new LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         bb.setMargins(dp(24), dp(18), dp(24), 0);
         stage.addView(bubbleBox, bb);
 
@@ -222,6 +228,52 @@ final class HomeScreen extends FrameLayout {
         warm.setBackgroundColor(0x30FF8A1E);
         warm.setVisibility(GONE);
         addView(warm, new LayoutParams(-1, -1));
+    }
+
+    // ================================================================ games
+
+    /** The games panel over the home screen, Jarvis moved into it; id: a game to go to (null: the list). */
+    void openGames(GamePanel.Outer outer, String id, boolean quiet) {
+        gamesOuter = outer;
+        if (games == null) {
+            games = new GamePanel(act, new GamePanel.Outer() {
+                @Override public void gameSay(String text, String feeling) { if (gamesOuter != null) gamesOuter.gameSay(text, feeling); }
+                @Override public void talkGame(String gid) { if (gamesOuter != null) gamesOuter.talkGame(gid); }
+                @Override public void gamesClosed() { closeGames(); }
+                @Override public BodyRig rig() { return body.rig; }
+            });
+            addView(games, 1, new LayoutParams(-1, -1)); // (over the home screen; under the photo frame and the night glass)
+        }
+        hideFrame();
+        if (games.getVisibility() != VISIBLE || body.getParent() != games.jarvisSlot) {
+            move(body, games.jarvisSlot, new LayoutParams(-1, -1));
+            LayoutParams top = new LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+            top.setMargins(dp(4), dp(6), dp(4), 0);
+            move(bubbleBox, games.jarvisSlot, top);
+        }
+        games.setVisibility(VISIBLE);
+        GamePanel.shown = games;
+        games.touched();
+        if (id == null) games.showPicker(quiet);
+        else games.choose(id);
+        active();
+    }
+
+    /** Jarvis back to his place on the home screen. */
+    private void closeGames() {
+        if (games == null) return;
+        games.setVisibility(GONE);
+        if (body.getParent() != stage) move(body, stage, blp);
+        if (bubbleBox.getParent() != stage) move(bubbleBox, stage, bb);
+    }
+
+    boolean gamesOpen() { return games != null && games.getVisibility() == VISIBLE; }
+    GamePanel gamesPanel() { return games; }
+
+    private static void move(View v, android.view.ViewGroup to, LayoutParams lp) {
+        android.view.ViewParent p = v.getParent();
+        if (p instanceof android.view.ViewGroup) ((android.view.ViewGroup) p).removeView(v);
+        to.addView(v, lp);
     }
 
     // ================================================================ what Jarvis does (from MainActivity)
@@ -390,7 +442,7 @@ final class HomeScreen extends FrameLayout {
     /** No one about for 5 minutes in the day, Jarvis quiet: the family photos (when there are any). */
     private void frameCheck() {
         long now = System.currentTimeMillis();
-        if (night || body.rig.mode() != BodyRig.IDLE || now - activeAt < 5 * 60_000L || frame.getVisibility() == VISIBLE
+        if (night || gamesOpen() || body.rig.mode() != BodyRig.IDLE || now - activeAt < 5 * 60_000L || frame.getVisibility() == VISIBLE
                 || !HomeCare.sp(getContext()).getBoolean("frame_on", true)) return;
         if (now - frameCountAt > 5 * 60_000L) { // (the gallery is counted off the main thread; used from the next check)
             frameCountAt = now;
@@ -440,7 +492,11 @@ final class HomeScreen extends FrameLayout {
         batt.setText(battery(getContext()));
         showWeather();
         fetchWeather();
-        if (!prefs.smartUrls().equals(smartShown)) refreshSmart();
+        if (!smartKey().equals(smartShown)) refreshSmart();
+        if (gamesOpen()) {
+            games.farTick();
+            if (games.idleTooLong() && body.rig.mode() == BodyRig.IDLE) games.close(false); // (the game stays saved)
+        }
     }
 
     static String partOfDay(int h) {
@@ -576,18 +632,33 @@ final class HomeScreen extends FrameLayout {
     }
 
     // ---- smart-home buttons: his saved Alexa links ("ac on = https://…")
+    /** The smart-home links + the room (the buttons follow both). */
+    private String smartKey() { return prefs.smartUrls() + "|" + HomeEyes.room(getContext()); }
+
+    /**
+     * Up to 4 smart-home buttons from his Alexa links. By the room Anil set: the hall shows the TV's first; her bedroom
+     * shows the AC / fan / light ones and no TV (the TV is in the hall).
+     */
     private void refreshSmart() {
-        smartShown = prefs.smartUrls();
+        smartShown = smartKey();
         smart.removeAllViews();
-        List<String[]> cmds = new ArrayList<>();
-        for (String line : smartShown.split("\n")) {
+        boolean hall = HomeEyes.inHall(getContext());
+        List<String[]> first = new ArrayList<>(), rest = new ArrayList<>();
+        for (String line : prefs.smartUrls().split("\n")) {
             int eq = line.indexOf('=');
             if (eq <= 0) continue;
-            String name = line.substring(0, eq).trim(), url = line.substring(eq + 1).trim();
-            if (name.toLowerCase(Locale.ROOT).startsWith("charger")) continue; // (the battery-care links work by themselves)
-            if (!name.isEmpty() && url.startsWith("http")) cmds.add(new String[]{name, url});
-            if (cmds.size() == 4) break;
+            String name = line.substring(0, eq).trim(), url = line.substring(eq + 1).trim(), low = name.toLowerCase(Locale.ROOT);
+            if (low.startsWith("charger")) continue; // (the battery-care links work by themselves)
+            if (low.startsWith("tv quiet") || low.startsWith("tv back")) continue; // (Jarvis's own TV-volume links)
+            if (name.isEmpty() || !url.startsWith("http")) continue;
+            boolean tv = low.matches(".*\\btv\\b.*|.*టీవీ.*");
+            if (!hall && tv) continue;
+            boolean cool = low.matches(".*\\b(ac|fan|light|lamp)\\b.*|.*(ఫ్యాన్|లైట్).*");
+            if (hall ? tv : cool) first.add(new String[]{name, url}); else rest.add(new String[]{name, url});
         }
+        List<String[]> cmds = new ArrayList<>(first);
+        cmds.addAll(rest);
+        while (cmds.size() > 4) cmds.remove(cmds.size() - 1);
         LinearLayout r = null;
         for (int i = 0; i < cmds.size(); i++) {
             if (i % 2 == 0) {

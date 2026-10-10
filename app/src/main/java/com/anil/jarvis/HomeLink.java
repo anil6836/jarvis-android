@@ -54,7 +54,7 @@ final class HomeLink {
         String text = m.optString("text"), cap = m.optString("caption");
         return text.startsWith(SAY) || text.startsWith(PHOTO) || text.startsWith(PAUSE) || text.startsWith(RESUME) || cap.startsWith(VOICE_HOME)
                 || text.startsWith(SET) || text.startsWith(ASK) || text.startsWith(COMING) || text.startsWith(GONE)
-                || cap.startsWith(FRAME) || text.startsWith(REMIND) || text.startsWith(REPORT);
+                || cap.startsWith(FRAME) || text.startsWith(REMIND) || text.startsWith(REPORT) || GameLink.inviteIn(m, false) != null;
     }
 
     static void homePoll(Context c) {
@@ -109,6 +109,10 @@ final class HomeLink {
         } else if (text.startsWith(REMIND)) { // the home tablet: a reminder from his phone, said here at its time
             if (!HomeCare.on(c)) return;
             Guard.sendQuiet(c, HomeCare.remindFromPhone(c, text.substring(REMIND.length())) + " (" + time + ")");
+        } else if (text.startsWith(GameLink.TAG)) { // the home tablet: Anil asks from his phone to play a game
+            if (!HomeCare.on(c)) return;
+            org.json.JSONObject inv = GameLink.inviteIn(m, false);
+            if (inv != null) MainActivity.homeGameInvite(inv);
         } else if (text.startsWith(COMING)) {
             HomeCare.son(c, true);
         } else if (text.startsWith(GONE)) {
@@ -263,6 +267,8 @@ final class HomeLink {
             long id = m.optLong("message_id");
             if (id <= sp(c).getLong("fetched", 0)) return;
             sp(c).edit().putLong("fetched", id).apply();
+            JSONObject inv = GameLink.inviteIn(m, true); // (అమ్మగారు asks him to play a game from the tablet)
+            if (inv != null) { GameActivity.inviteNote(c, inv); return; }
             if (m.has("photo") && !m.optString("caption").startsWith(FRAME)) showPhoto(c, m); // (not his own photos for the frame)
             else if (m.optString("caption").startsWith(VOICE_FROM)) voiceFromHome(c, m);
         }, "home-link").start();
