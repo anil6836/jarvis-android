@@ -96,6 +96,9 @@ final class CallControl {
         return c.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED;
     }
 
+    /** The phone service can end a call only on Android 9+ (endCall is not there on 8, the app would close). */
+    private static boolean canEndCall(Context c) { return Build.VERSION.SDK_INT >= 28 && canTelecom(c); }
+
     /** The phone's own ringtone is playing (an incoming phone call), readable without phone-state permission. */
     private static boolean phoneRingtone(Context c) {
         try {
@@ -134,7 +137,7 @@ final class CallControl {
         // nothing seen ringing and no ringtone: endCall() would hang up the call in progress instead
         if (n == null && !phoneRingtone(c)) return "no_call";
         if (n == null || ringingIsPhone) {
-            if (canTelecom(c)) {
+            if (canEndCall(c)) {
                 try {
                     TelecomManager tm = c.getSystemService(TelecomManager.class);
                     if (tm != null && tm.endCall()) { ringing = null; return "declined"; }
@@ -142,7 +145,7 @@ final class CallControl {
             }
         }
         if (n != null && press(c, n, "android.declineIntent", DECLINE)) { ringing = null; return "declined"; }
-        if (ringingIsPhone && !canTelecom(c)) return "need_permission";
+        if (ringingIsPhone && Build.VERSION.SDK_INT >= 28 && !canTelecom(c)) return "need_permission"; // (Android 8: no permission helps)
         return n == null ? "no_call" : "failed";
     }
 
@@ -151,7 +154,7 @@ final class CallControl {
     static String hangUp(Context c) {
         Notification n = ongoing;
         if (n == null || ongoingIsPhone) {
-            if (canTelecom(c)) {
+            if (canEndCall(c)) {
                 try {
                     TelecomManager tm = c.getSystemService(TelecomManager.class);
                     if (tm != null && tm.endCall()) { ongoing = null; return "ended"; }
@@ -160,7 +163,7 @@ final class CallControl {
         }
         if (n != null && press(c, n, "android.hangUpIntent", HANG_UP)) { ongoing = null; return "ended"; }
         if (n != null && press(c, n, "android.declineIntent", DECLINE)) { ongoing = null; return "ended"; }
-        if (!canTelecom(c)) return "need_permission";
+        if (Build.VERSION.SDK_INT >= 28 && !canTelecom(c)) return "need_permission";
         return n == null ? "no_call" : "failed";
     }
 

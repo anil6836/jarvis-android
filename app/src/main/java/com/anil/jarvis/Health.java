@@ -28,7 +28,9 @@ final class Health {
     }
 
     static boolean canCount(Context c) {
-        return c.checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED;
+        // (Android 8 / 9 have no such permission: the step counter is free to read there)
+        return android.os.Build.VERSION.SDK_INT < 29
+                || c.checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED;
     }
 
     /** The step counter's total since the phone started, or -1 (waits up to 3 s). */

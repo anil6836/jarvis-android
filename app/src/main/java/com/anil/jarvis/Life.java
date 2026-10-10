@@ -258,11 +258,19 @@ final class Life {
     static boolean usageAllowed(Context c) {
         try {
             AppOpsManager ops = c.getSystemService(AppOpsManager.class);
-            int mode = ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), c.getPackageName());
+            // (Android 8 / 9 have only the older name: the new one there would close the app)
+            int mode = android.os.Build.VERSION.SDK_INT >= 29
+                    ? ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), c.getPackageName())
+                    : checkOpOld(ops, c);
             return mode == AppOpsManager.MODE_ALLOWED;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    @SuppressWarnings("deprecation")
+    private static int checkOpOld(AppOpsManager ops, Context c) {
+        return ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), c.getPackageName());
     }
 
     /** Minutes in front per app since a time (from open/close events, so it is exact). */

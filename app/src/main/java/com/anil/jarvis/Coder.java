@@ -397,6 +397,9 @@ final class Coder {
             m.uri = uri;
             m.where = "Downloads/" + folder + "/" + name;
         } else {
+            // Android 8 / 9: the phone's Downloads folder when storage is allowed (other apps can open and send it),
+            // else Jarvis's own folder as before
+            if (oldDownloads(c, folder, name, mime, bytes, m)) return m;
             File dir = new File(c.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), folder);
             //noinspection ResultOfMethodCallIgnored
             dir.mkdirs();
@@ -406,6 +409,50 @@ final class Coder {
             m.where = f.getPath();
         }
         return m;
+    }
+
+    /** Android 8 / 9 (storage allowed): writes Downloads/<folder>/<name> and finds its content:// link; false when it can't. */
+    @SuppressWarnings("deprecation")
+    private static boolean oldDownloads(Context c, String folder, String name, String mime, byte[] bytes, Made m) {
+        if (Build.VERSION.SDK_INT >= 29) return false;
+        try {
+            if (c.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                    || !Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) return false;
+            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), folder);
+            //noinspection ResultOfMethodCallIgnored
+            dir.mkdirs();
+            File f = new File(dir, name);
+            try (OutputStream o = new FileOutputStream(f)) { o.write(bytes); }
+            m.uri = null;
+            m.where = "Downloads/" + folder + "/" + name;
+            // the link other apps open: only with "read" allowed too (Android lets Jarvis pass it on only then)
+            if (c.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) return true;
+            ContentValues v = new ContentValues();
+            v.put(MediaStore.MediaColumns.DATA, f.getAbsolutePath());
+            v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            v.put(MediaStore.MediaColumns.TITLE, name);
+            v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+            v.put(MediaStore.MediaColumns.SIZE, f.length());
+            ContentResolver cr = c.getContentResolver();
+            Uri files = MediaStore.Files.getContentUri("external");
+            Uri uri = null;
+            try { // the same name made again: its row is updated (one row per file)
+                try (android.database.Cursor cur = cr.query(files, new String[]{MediaStore.MediaColumns._ID},
+                        MediaStore.MediaColumns.DATA + " = ?", new String[]{f.getAbsolutePath()}, null)) {
+                    if (cur != null && cur.moveToFirst()) {
+                        uri = android.content.ContentUris.withAppendedId(files, cur.getLong(0));
+                        cr.update(uri, v, null, null);
+                    }
+                }
+                if (uri == null) uri = cr.insert(files, v);
+            } catch (Exception e) {
+                uri = null; // (saved all the same; only opening / sending from Jarvis needs the link)
+            }
+            m.uri = uri;
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     static JSONObject request(String method, String url, JSONObject body, String... headers) throws Exception {

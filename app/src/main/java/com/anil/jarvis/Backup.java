@@ -233,7 +233,7 @@ final class Backup {
 
     /** His own settings files (not the ones libraries keep). */
     private static boolean ownPrefs(String name) {
-        if (name.equals(PREFS)) return false;
+        if (name.equals(PREFS) || name.equals(AppCrash.PREFS)) return false; // (an app-error note belongs to this phone)
         return name.startsWith("jarvis") || name.startsWith("hud_") || name.endsWith("Activity");
     }
 

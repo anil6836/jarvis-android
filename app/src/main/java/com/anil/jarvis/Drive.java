@@ -78,7 +78,9 @@ final class Drive {
         // navigation started: offer the camera / speed alerts (a tap on the notification starts them; Android
         // lets them start by themselves only with "allow location all the time")
         if (fresh && !DriveService.running && settings(c).getBoolean("drive_auto", true)) {
-            boolean always = c.checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            // (Android 8 / 9: the plain location permission is already "all the time")
+            boolean always = c.checkSelfPermission(android.os.Build.VERSION.SDK_INT >= 29 ? android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                    : android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
             boolean started = false;
             if (always) { try { started = DriveService.start(c); } catch (Exception ignored) {} }
             if (!started) offer(c);

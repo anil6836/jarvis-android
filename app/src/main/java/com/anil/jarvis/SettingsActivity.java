@@ -101,7 +101,7 @@ public class SettingsActivity extends Activity {
     private TextView coughGapText;
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
-    private TextView voiceInfo, notifyInfo, checkInfo;
+    private TextView voiceInfo, notifyInfo, checkInfo, crashInfo, crashCopy, crashClear;
     private TextView backupInfo, backupSetBtn;
     private final NaturalVoice tester = new NaturalVoice();
     private SeekBar rate, sensitivity, bargeSens;
@@ -192,6 +192,23 @@ public class SettingsActivity extends Activity {
         checkInfo.setLineSpacing(0, 1.25f);
         checkInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
         box.addView(checkInfo);
+        // the last time the app itself closed with an error (AppCrash): its trace in small letters, to copy and send
+        crashInfo = Ui.text(this, "", 11.5f, Ui.MUTED);
+        crashInfo.setTypeface(android.graphics.Typeface.MONOSPACE);
+        crashInfo.setTextIsSelectable(true);
+        crashInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(crashInfo);
+        crashCopy = button("📋 ఆగిపోయిన వివరాలు కాపీ చేయి (పంపడానికి)", v -> {
+            try {
+                getSystemService(android.content.ClipboardManager.class)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("Jarvis error", AppCrash.details(this)));
+                Toast.makeText(this, "కాపీ అయింది: WhatsApp / మెయిల్‌లో పేస్ట్ చేసి పంపండి", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "కాపీ కాలేదు: స్క్రీన్‌షాట్ తీసి పంపండి", Toast.LENGTH_SHORT).show();
+            }
+        });
+        crashClear = button("🗑 ఆగిపోయిన గుర్తు తీసేయి", v -> { AppCrash.clear(this); showCheck(); });
+        for (View x : new View[]{crashInfo, crashCopy, crashClear}) x.setVisibility(View.GONE); // (shown by showCheck when there is one)
         button("సరిచేయి", v -> fixCheck());
         button("గొంతు టెస్ట్ (Jarvis మాట్లాడుతుందా?)", v -> Announcer.say(this, prefs.name() + ", నా గొంతు వినిపిస్తోందా? అంతా బాగుంది."));
 
@@ -914,6 +931,7 @@ public class SettingsActivity extends Activity {
         button("రైడ్ కి.మీ సరిగ్గా రావాలంటే: లొకేషన్ \"Allow all the time\"", v -> {
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
                 requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 9);
+            else if (Build.VERSION.SDK_INT < 29) Toast.makeText(this, "✓ లొకేషన్ అనుమతి ఉంది (ఈ Android లో అదే \"అన్ని వేళలా\")", Toast.LENGTH_SHORT).show();
             else requestPermissions(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 10);
         });
         shakeWake = toggle("ఫోన్ రెండుసార్లు ఊపితే Jarvis రావాలి", prefs.shakeWake());
@@ -1053,7 +1071,10 @@ public class SettingsActivity extends Activity {
                 + (taught > 0 ? " ఇప్పటివరకు నేర్పినవి: " + taught + "." : ""));
         safetySounds();
         sfx = toggle("Iron Man సౌండ్ ఎఫెక్ట్ (పిలవగానే చిన్న శబ్దం)", prefs.sfx());
-        button("అడుగుల లెక్కకి అనుమతి (Physical activity)", v -> requestPermissions(new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, 8));
+        button("అడుగుల లెక్కకి అనుమతి (Physical activity)", v -> {
+            if (Build.VERSION.SDK_INT < 29) { Toast.makeText(this, "✓ ఈ Android లో అడుగుల లెక్కకి అనుమతి అక్కర్లేదు", Toast.LENGTH_SHORT).show(); return; }
+            requestPermissions(new String[]{Manifest.permission.ACTIVITY_RECOGNITION}, 8);
+        });
         note("హోమ్ స్క్రీన్ విడ్జెట్: హోమ్ స్క్రీన్ మీద ఖాళీ చోట నొక్కి పట్టుకుని → Widgets → Jarvis.");
         note("బ్లూటూత్ ఇయర్‌ఫోన్: బటన్ నొక్కి పట్టుకుంటే Jarvis ప్యానెల్ వస్తుంది (మొదటిసారి ఏ యాప్ అని అడిగితే Jarvis ఎంచుకోండి).");
 
@@ -1537,6 +1558,15 @@ public class SettingsActivity extends Activity {
     private void showCheck() {
         if (checkInfo == null) return;
         StringBuilder s = new StringBuilder();
+        String crash = AppCrash.line(this); // (Jarvis itself closed with an error last time: shown first)
+        if (crash != null) s.append(crash).append("\n");
+        if (crashInfo != null) {
+            String trace = crash == null ? "" : AppCrash.details(this);
+            crashInfo.setText(trace);
+            crashInfo.setVisibility(crash == null ? View.GONE : View.VISIBLE);
+            crashCopy.setVisibility(crash == null ? View.GONE : View.VISIBLE);
+            crashClear.setVisibility(crash == null ? View.GONE : View.VISIBLE);
+        }
         boolean access = NotifyListener.enabled(this);
         s.append(!access ? "✗ నోటిఫికేషన్ యాక్సెస్ లేదు: మెసేజ్‌లు Jarvis కి అందవు\n"
                 : NotifyListener.connected ? "✓ నోటిఫికేషన్లు Jarvis కి అందుతున్నాయి\n"
@@ -1607,6 +1637,7 @@ public class SettingsActivity extends Activity {
         if (checkLine != null) {
             int bad = 0;
             for (String line : s.toString().split("\n")) if (line.startsWith("✗")) bad++;
+            if (crash != null) bad++; // (until he clears it)
             long ok = Backup.lastOk(this);
             checkLine.setText(bad == 0
                     ? "🩺 ✓ Jarvis చెక్: అంతా సరిగ్గా ఉంది" + (ok > 0 ? " · బ్యాకప్ " + Backup.when(ok) : "")

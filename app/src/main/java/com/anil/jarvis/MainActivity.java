@@ -315,6 +315,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override protected void onStop() {
         super.onStop();
         if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(false);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
     }
 
     @Override protected void onDestroy() {
@@ -424,8 +425,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         p.add(Manifest.permission.ANSWER_PHONE_CALLS);
         p.add(Manifest.permission.ACCESS_FINE_LOCATION);
         p.add(Manifest.permission.READ_CALL_LOG);
-        p.add(Manifest.permission.ACTIVITY_RECOGNITION);
+        if (Build.VERSION.SDK_INT >= 29) p.add(Manifest.permission.ACTIVITY_RECOGNITION); // (Android 8 / 9 count steps without asking)
         p.add(Manifest.permission.READ_SMS);
+        if (Build.VERSION.SDK_INT < 29) { // Android 8 / 9: files Jarvis makes go in Downloads (one "Storage" question)
+            p.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+            p.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        }
         if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.READ_MEDIA_VIDEO);
         if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.READ_MEDIA_AUDIO); // songs saved on the phone
         if (Build.VERSION.SDK_INT >= 31) p.add(Manifest.permission.BLUETOOTH_CONNECT);
