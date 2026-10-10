@@ -51,10 +51,21 @@ final class Announcer {
         return (busy && now - busySince < 60_000) || now - quietSince < 800;
     }
 
-    /** Speak text with the voice chosen in settings. Safe to call from any thread. */
+    /**
+     * Speak text with the voice chosen in settings. Safe to call from any thread. On the home tablet Jarvis on the big
+     * screen says it (his lips, face and the words in his bubble), not a voice from the background.
+     */
     static void say(Context c, String text) {
         if (text == null || text.trim().isEmpty()) return;
         if (RecorderService.recording) return; // a sermon / meeting is being recorded: silence (notifications still come)
+        if (HomeCare.on(c) && MainActivity.homeAsk(text.trim(), Emotion.forText(text), false)) return;
+        sayDirect(c, text);
+    }
+
+    /** Spoken by the background voice itself (the home screen's own fallback; anything when there is no home screen). */
+    static void sayDirect(Context c, String text) {
+        if (text == null || text.trim().isEmpty()) return;
+        if (RecorderService.recording) return;
         Context app = c.getApplicationContext();
         String words = Spoken.say(text); // numbers as Telugu words
         final String said = words.length() > 3900 ? words.substring(0, 3900) : words; // the voices' limit (numbers as words are longer)

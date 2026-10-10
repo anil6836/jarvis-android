@@ -527,7 +527,9 @@ final class HomeCare {
                 + "David, Daniel, Esther, Peter, Paul…) faithfully and simply, as a gentle message about God's love and the greatness of Jesus Christ; "
                 + "quote Bible verses ONLY through the bible tool (Telugu IRV) and never invent verse text; for Telugu Christian songs use the radio "
                 + "(christian stations). Use home_care for meals, tablets, water, sugar readings, quiet time and messages to Anil. "
-                + "Never share Anil's private things (his messages, money, health, duty details beyond 'he is on duty and comes at …').";
+                + "Never share Anil's private things (his messages, money, health, duty details beyond 'he is on duty and comes at …'). "
+                + "You speak from this screen yourself: for news use the news tool and read the headlines in your reply; never open "
+                + "news or other apps, or read another app's screen, unless she asks you to open an app.";
     }
 
     /** Christmas, Good Friday, Easter, New Year: a greeting for her that morning (null on other days). */

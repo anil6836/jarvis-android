@@ -4619,7 +4619,10 @@ final class Tools {
         }
         if (items.length() == 0) return webSearch("ఈరోజు ముఖ్యమైన తెలుగు వార్తలు " + t);
         return ok().put("topic", t.isEmpty() ? "top stories" : t).put("headlines", items)
-                .put("next", "Read the headlines one by one in short Telugu with the source, e.g. 'ఈనాడు: …'. Then ask if he wants more on any one "
+                .put("next", prefs.homeMode()
+                        ? "Read the headlines yourself in your reply, one by one in short simple Telugu with the source, e.g. 'ఈనాడు: …'. "
+                                + "Do NOT open news apps or read the screen on this home tablet. Then ask if she wants more on any one (web search)."
+                        : "Read the headlines one by one in short Telugu with the source, e.g. 'ఈనాడు: …'. Then ask if he wants more on any one "
                         + "(web search for details). For Way2News or Dailyhunt: open_app, then read_screen.").toString();
     }
 

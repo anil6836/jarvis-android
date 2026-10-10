@@ -430,7 +430,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void syncWakeService() {
         boolean mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
         // (the mic also stays for counting cooker whistles, and on the phone at home keeping guard: its house sounds)
-        if ((prefs.wakeReady() || Sounds.holdMic(this)) && mic) WakeService.start(this, inConversation);
+        if ((prefs.wakeReady() || Sounds.holdMic(this)) && mic)
+            WakeService.start(this, inConversation || (home != null && (voice.listening || voice.speaking))); // (home tablet: not mid-talk)
         else WakeService.stop(this);
     }
 
@@ -1509,9 +1510,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void homeSpeak(String text, String feeling, boolean listen, int tries) {
-        if (isFinishing() || home == null) { Announcer.say(this, text); return; }
+        if (isFinishing() || home == null) { Announcer.sayDirect(this, text); return; }
         if (busy || live != null || voice.speaking || voice.listening) { // a talk is going on: after it (or said plainly after a minute)
-            if (tries >= 3) { Announcer.say(this, text); return; }
+            if (tries >= 3) { Announcer.sayDirect(this, text); return; }
             main.postDelayed(() -> homeSpeak(text, feeling, listen, tries + 1), 20_000L);
             return;
         }
@@ -1755,6 +1756,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         talking(true);
         WakeService.pause(this);
+        if (home != null) WakeService.pauseNow(); // (the home tablet: its mic is free before Jarvis's ears open)
         keepScreenOn();
         showTab(0);
         voice.listen(prefs.listenLang());

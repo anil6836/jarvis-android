@@ -88,7 +88,9 @@ final class VoiceIO {
 
     /** Start watching for Anil talking over Jarvis (setting "మధ్యలో ఆపి మాట్లాడటం"). */
     private void watchBargeIn() {
-        if (shut || paused || !prefs.bargeIn()) return;
+        // (the home tablet: no talk-over mic while he speaks - on Android 8 it fought Jarvis's ears and his own voice
+        // set it off; she stops him with a tap on him or 🎤)
+        if (shut || paused || !prefs.bargeIn() || prefs.homeMode()) return;
         BargeIn.Callback cb = () -> {
             if (!speaking || shut || paused) return;
             pause(false); // hold, don't lose it: "కొనసాగించు" (or silence) carries on from here

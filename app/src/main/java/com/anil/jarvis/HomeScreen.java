@@ -56,6 +56,13 @@ final class HomeScreen extends FrameLayout {
     private final Host host;
     final BodyView body;
     private final TextView bubble, clock, part, date, weather, next, net, batt;
+    /** The bubble's box: a few lines tall; a long reply scrolls in it, following the word being spoken. */
+    private final CapScroll bubbleBox;
+    private String bubbleText = "";
+    private final android.text.style.ForegroundColorSpan saidSpan = new android.text.style.ForegroundColorSpan(0xFFFFFFFF),
+            nowSpan = new android.text.style.ForegroundColorSpan(0xFF10213A);
+    private final android.text.style.BackgroundColorSpan nowBg = new android.text.style.BackgroundColorSpan(0xFFFFD166);
+    private static final int BUBBLE_TEXT = 0xFFF4F8FC, BUBBLE_AHEAD = 0xFFAFC3DA;
     private final LinearLayout smart;
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean running, night, weatherBusy, nightSet;
@@ -87,19 +94,21 @@ final class HomeScreen extends FrameLayout {
         blp.topMargin = dp(84);
         stage.addView(body, blp);
         bubble = new TextView(a);
-        bubble.setTextColor(0xFFF4F8FC);
+        bubble.setTextColor(BUBBLE_TEXT);
         bubble.setTextSize(23);
         bubble.setLineSpacing(0, 1.15f);
-        bubble.setGravity(Gravity.CENTER);
-        bubble.setMaxLines(4);
-        bubble.setEllipsize(TextUtils.TruncateAt.END);
+        bubble.setGravity(Gravity.CENTER_HORIZONTAL);
         bubble.setMaxWidth(dp(620));
         bubble.setPadding(dp(22), dp(12), dp(22), dp(12));
-        bubble.setBackground(round(0xFF1B3050, 0xFF2E4C74, 18));
-        bubble.setVisibility(GONE);
+        bubbleBox = new CapScroll(a);
+        bubbleBox.cap = Math.round(bubble.getLineHeight() * 4.3f) + dp(24); // about 4 lines show; the rest scrolls along
+        bubbleBox.setVerticalScrollBarEnabled(false);
+        bubbleBox.setBackground(round(0xFF1B3050, 0xFF2E4C74, 18));
+        bubbleBox.addView(bubble, new LayoutParams(-2, -2));
+        bubbleBox.setVisibility(GONE);
         LayoutParams bb = new LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         bb.setMargins(dp(24), dp(18), dp(24), 0);
-        stage.addView(bubble, bb);
+        stage.addView(bubbleBox, bb);
 
         // ---- right: the day
         LinearLayout side = new LinearLayout(a);
@@ -200,6 +209,20 @@ final class HomeScreen extends FrameLayout {
         body.rig.setMode(s);
         if (s == BodyRig.LISTENING) show("వింటున్నాను…");
         else if (s == BodyRig.THINKING) show("ఆలోచిస్తున్నాను…");
+        else if (s != BodyRig.SPEAKING) settleBubble();
+    }
+
+    /** He finished saying it: the whole text bright again, no mark (the bubble stays a while to read). */
+    private void settleBubble() {
+        CharSequence cs = bubble.getText();
+        if (cs instanceof android.text.Spannable) {
+            android.text.Spannable sp = (android.text.Spannable) cs;
+            sp.removeSpan(saidSpan);
+            sp.removeSpan(nowSpan);
+            sp.removeSpan(nowBg);
+        }
+        bubble.setTextColor(BUBBLE_TEXT);
+        lastStart = -1;
     }
 
     /** What he says (kept on the screen ~30 s). */
@@ -218,12 +241,58 @@ final class HomeScreen extends FrameLayout {
         lastWord = text;
         lastStart = start;
         body.rig.word(text.substring(start, end));
+        follow(text, start, end);
     }
 
     private void show(String s) {
-        bubble.setText(s);
-        bubble.setVisibility(VISIBLE);
+        bubbleText = s;
+        bubble.setTextColor(BUBBLE_TEXT);
+        bubble.setText(s, TextView.BufferType.SPANNABLE);
+        bubbleBox.scrollTo(0, 0);
+        bubbleBox.setVisibility(VISIBLE);
         bubbleAt = System.currentTimeMillis();
+    }
+
+    /**
+     * The bubble follows his voice: the words said so far bright, the word now on a yellow mark, the rest a little
+     * dimmer; a long text scrolls so the line being said stays in sight (one line above it shows too).
+     */
+    private void follow(String text, int start, int end) {
+        try {
+            if (!text.equals(bubbleText)) show(text); // (the words he is saying now: the bubble shows those)
+            CharSequence cs = bubble.getText();
+            if (!(cs instanceof android.text.Spannable)) { bubble.setText(bubbleText, TextView.BufferType.SPANNABLE); cs = bubble.getText(); }
+            android.text.Spannable sp = (android.text.Spannable) cs;
+            if (end > sp.length()) return;
+            bubble.setTextColor(BUBBLE_AHEAD);
+            sp.removeSpan(saidSpan);
+            sp.removeSpan(nowSpan);
+            sp.removeSpan(nowBg);
+            if (start > 0) sp.setSpan(saidSpan, 0, start, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sp.setSpan(nowBg, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sp.setSpan(nowSpan, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            bubbleAt = System.currentTimeMillis();
+            android.text.Layout lay = bubble.getLayout();
+            if (lay == null) return;
+            int line = lay.getLineForOffset(start);
+            int target = Math.max(0, bubble.getPaddingTop() + lay.getLineTop(line) - bubble.getLineHeight());
+            if (Math.abs(bubbleBox.getScrollY() - target) > 4) bubbleBox.smoothScrollTo(0, target);
+        } catch (Exception ignored) {
+            // (a text that changed under the word: the next word puts it right)
+        }
+    }
+
+    /** A ScrollView no taller than cap (the bubble's few lines). */
+    private static final class CapScroll extends android.widget.ScrollView {
+        int cap;
+        CapScroll(Context c) { super(c); }
+        @Override protected void onMeasure(int w, int h) {
+            if (cap > 0) {
+                int max = MeasureSpec.getMode(h) == MeasureSpec.UNSPECIFIED ? cap : Math.min(cap, MeasureSpec.getSize(h));
+                h = MeasureSpec.makeMeasureSpec(max, MeasureSpec.AT_MOST);
+            }
+            super.onMeasure(w, h);
+        }
     }
 
     private long touchedAt;
@@ -266,8 +335,8 @@ final class HomeScreen extends FrameLayout {
         part.setText(partOfDay(h));
         date.setText(DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)]);
         setNight(h >= NIGHT_FROM || h < NIGHT_TO);
-        if (bubble.getVisibility() == VISIBLE && System.currentTimeMillis() - bubbleAt > 30_000
-                && body.rig.mode() != BodyRig.SPEAKING && body.rig.mode() != BodyRig.LISTENING) bubble.setVisibility(GONE);
+        if (bubbleBox.getVisibility() == VISIBLE && System.currentTimeMillis() - bubbleAt > 30_000
+                && body.rig.mode() != BodyRig.SPEAKING && body.rig.mode() != BodyRig.LISTENING) bubbleBox.setVisibility(GONE);
         next.setText(nextThing(getContext()));
         boolean online = online(getContext());
         net.setText(online ? "🟢 ఆన్‌లైన్" : "📴 ఆఫ్‌లైన్");

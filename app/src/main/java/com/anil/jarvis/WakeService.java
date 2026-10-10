@@ -88,6 +88,19 @@ public class WakeService extends Service {
 
     static void pause(Context c) { send(c, ACTION_PAUSE); }
 
+    /**
+     * The home tablet, just before Jarvis listens: the wake-word mic is let go now, on the main thread, and waited for.
+     * (Android 8 lets only one mic recording run at a time: Jarvis's ears could not open while it still held it.)
+     */
+    static void pauseNow() {
+        WakeService s = self;
+        if (s == null || Looper.myLooper() != Looper.getMainLooper()) return;
+        s.main.removeCallbacks(s.fallbackResume);
+        s.stopEngine();
+        s.main.removeCallbacks(s.watchdog);
+        s.main.postDelayed(s.watchdog, 60_000);
+    }
+
     static void resume(Context c) { send(c, ACTION_RESUME); }
 
     static void recheck(Context c) { send(c, ACTION_RECHECK); }
@@ -427,7 +440,8 @@ public class WakeService extends Service {
 
     private void openJarvis() {
 
-        Intent open = new Prefs(this).compactPanel()
+        Prefs wp = new Prefs(this);
+        Intent open = wp.compactPanel() && !wp.homeMode() // (the home tablet: Jarvis on its big screen answers, never a panel)
                 ? new Intent(this, SheetActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 : new Intent(this, MainActivity.class).putExtra(MainActivity.EXTRA_WAKE, true)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);

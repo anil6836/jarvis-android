@@ -175,6 +175,11 @@ final class Ears implements ListenMic {
                 musicDown = Duck.hold(ctx); // songs and radio go quiet while Jarvis listens (as Google voice typing does)
                 rec = openMic(route.routed, route.in, 0);
                 if (rec == null) { SystemClock.sleep(200); rec = openMic(route.routed, route.in, 0); } // (a talk-over mic may still be letting go)
+                // the home tablet (Android 8: one mic recording at a time): the wake-word mic may need a moment more to let go
+                for (int i = 0; rec == null && p.homeMode() && !cancelled && i < 12; i++) {
+                    SystemClock.sleep(150);
+                    rec = openMic(route.routed, route.in, 0);
+                }
                 if (rec == null) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
             }
             post(() -> cb.opened());
