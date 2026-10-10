@@ -2771,7 +2771,13 @@ public class SettingsActivity extends Activity {
         note("💊 అమ్మగారి టాబ్లెట్లు: ఒక్కో లైన్‌లో \"పేరు = టైమ్‌లు | తిన్న తర్వాత | మాత్రల సంఖ్య\" (ఉదా: షుగర్ టాబ్లెట్ = 08:00, 20:00 | తిన్న తర్వాత | 30 మాత్రలు). "
                 + "పేరు అమ్మగారికి అర్థమయ్యేది పెట్టండి (Jarvis అదే పలుకుతాడు). మాత్రల సంఖ్య రాస్తే, 5 రోజులకే మిగిలినప్పుడు మీకు Telegram; కొత్త స్ట్రిప్ కొన్నప్పుడు సంఖ్య మార్చి 📤 నొక్కండి. "
                 + "డాక్టర్ / మీరు చెప్పినవే పెట్టండి; Jarvis సొంతంగా మందులు చెప్పడు. టాబ్లెట్ టైమ్‌కి అడుగుతాడు, 10 నిమిషాలకోసారి మళ్లీ అడుగుతాడు, 3 సార్లు జవాబు లేకపోతే మీకు Telegram.");
+        // (the box's own label and example, always in sight: the long note above folds away under "ⓘ")
+        TextView medsLabel = Ui.text(this, "💊 అమ్మగారి టాబ్లెట్లు (ఒక్కో లైన్‌లో ఒకటి: పేరు = టైమ్‌లు | తిన్న తర్వాత | మాత్రల సంఖ్య)", 14.5f, accent);
+        medsLabel.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 4));
+        box.addView(medsLabel);
         EditText meds = new EditText(this);
+        meds.setHint("ఉదా: షుగర్ టాబ్లెట్ = 08:00, 20:00 | తిన్న తర్వాత | 30 మాత్రలు");
+        meds.setHintTextColor(Ui.MUTED);
         meds.setText(ts.getString("meds_text", ""));
         meds.setTextColor(Ui.TEXT);
         meds.setTextSize(15);
