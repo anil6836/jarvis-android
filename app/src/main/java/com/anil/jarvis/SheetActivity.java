@@ -2,6 +2,7 @@ package com.anil.jarvis;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -121,8 +122,18 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     // ================================================================ lifecycle
 
+    /** The home tablet: this panel never shows; what it was opened for goes to Jarvis on the big home screen. */
+    private boolean toHome;
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        if (new Prefs(this).homeMode()) {
+            toHome = true;
+            sendHome(this, getIntent());
+            finish();
+            overridePendingTransition(0, 0);
+            return;
+        }
         Ui.loadTheme(this); // the chosen colours, before anything is built
         builtTheme = Ui.themeVersion;
         setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC); // volume keys = Jarvis's voice
@@ -149,6 +160,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (toHome || prefs == null || prefs.homeMode()) { sendHome(this, intent); finish(); return; }
         if (startCallMode(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startRun(intent)) return;
@@ -186,7 +198,29 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (stopped && callText == null && live == null && !greeting && !voice.listening && !voice.speaking && !busy) closeSheet();
     };
 
+    /**
+     * The home tablet (his mother's): whatever would open this panel (the wake word, the assist button, a tile, a
+     * proactive question, a message) goes to the home screen instead, and the Jarvis figure there says / asks it.
+     */
+    static void sendHome(Context c, Intent in) {
+        final Context app = c.getApplicationContext();
+        String ann = in == null ? null : in.getStringExtra(EXTRA_ANNOUNCE), ask = in == null ? null : in.getStringExtra(EXTRA_ANNOUNCE_ASK),
+                run = in == null ? null : in.getStringExtra(EXTRA_RUN);
+        Intent home = new Intent(app, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        final String say = ((ann == null ? "" : ann) + " " + (ask == null ? "" : ask)).trim();
+        if (run != null && !run.trim().isEmpty()) home.putExtra(MainActivity.EXTRA_ASK, run.trim());
+        else if (say.isEmpty() && (in == null || in.getStringExtra(EXTRA_CALL) == null)) home.putExtra(MainActivity.EXTRA_WAKE, true);
+        try { app.startActivity(home); } catch (Exception ignored) {}
+        if (!say.isEmpty()) {
+            final boolean listen = ask != null && !ask.trim().isEmpty();
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (!MainActivity.homeAsk(say, Emotion.forText(say), listen)) Announcer.sayDirect(app, say);
+            }, 700);
+        }
+    }
+
     @Override protected void onDestroy() {
+        if (toHome) { super.onDestroy(); return; } // (never shown: nothing was set up)
         Radio.dismissPicker();
         generation++; // a reply still on its way is dropped, and its remaining tools don't run
         greetToken++;

@@ -266,6 +266,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (prefs.homeMode() != (home != null)) { recreate(); return; } // the home Jarvis was switched on / off in settings
         paused = false;
         visible = true;
+        if (home != null) fullScreen();
         main.removeCallbacks(cancelIfAway);
         store.listener = this;
         // Opening Jarvis switches the wake word back on after "ఆపు" in the notification.
@@ -1494,11 +1495,28 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         super.onBackPressed();
     }
 
+    /** The home tablet: the whole screen is Jarvis's (no status bar, no buttons bar; a swipe from the edge shows them for a moment). */
+    @SuppressWarnings("deprecation")
+    private void fullScreen() {
+        try {
+            boolean on = home != null && home.getVisibility() == View.VISIBLE; // (the chat with its keyboard: the usual bars)
+            getWindow().getDecorView().setSystemUiVisibility(!on ? 0 : View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        } catch (Exception ignored) {}
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && home != null) fullScreen(); // (back to full screen after a dialog / the keyboard / a swipe)
+    }
+
     // ---- the home Jarvis (a tablet at home): its screen over the chat
     private final HomeScreen.Host homeHost = new HomeScreen.Host() {
         @Override public void talk() { if (orb != null) orb.performClick(); }
         @Override public void openChat() {
             home.setVisibility(View.GONE);
+            fullScreen(); // (the chat: the bars come back, the keyboard works as usual)
             main.removeCallbacks(backHome);
             main.postDelayed(backHome, 3 * 60_000L); // back to the big screen when the chat is left alone
         }
@@ -1755,6 +1773,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (imm != null && input != null) imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
         } catch (Exception ignored) {}
         home.setVisibility(View.VISIBLE);
+        fullScreen();
     }
 
     /** Live real-time talk when it is switched on, otherwise the classic listen-then-answer. */

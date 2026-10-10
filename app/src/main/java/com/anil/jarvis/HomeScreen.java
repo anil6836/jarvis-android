@@ -125,12 +125,16 @@ final class HomeScreen extends FrameLayout {
         bb.setMargins(dp(24), dp(18), dp(24), 0);
         stage.addView(bubbleBox, bb);
 
-        // ---- right: the day
+        // ---- right: the day (in a scroll that fills the height: on a small or big-font screen nothing is cut off)
+        android.widget.ScrollView sideScroll = new android.widget.ScrollView(a);
+        sideScroll.setFillViewport(true);
+        sideScroll.setVerticalScrollBarEnabled(false);
+        sideScroll.setBackgroundColor(0xFF13233A);
+        row.addView(sideScroll, new LinearLayout.LayoutParams(0, -1, 42));
         LinearLayout side = new LinearLayout(a);
         side.setOrientation(LinearLayout.VERTICAL);
-        side.setBackgroundColor(0xFF13233A);
-        side.setPadding(dp(30), dp(22), dp(30), dp(22));
-        row.addView(side, new LinearLayout.LayoutParams(0, -1, 42));
+        side.setPadding(dp(26), dp(16), dp(26), dp(16));
+        sideScroll.addView(side, new LayoutParams(-1, -2));
 
         LinearLayout chips = new LinearLayout(a);
         chips.setGravity(Gravity.END);
@@ -144,7 +148,7 @@ final class HomeScreen extends FrameLayout {
 
         LinearLayout time = new LinearLayout(a);
         time.setGravity(Gravity.BOTTOM);
-        clock = text(a, "", 84, 0xFFFFFFFF, true);
+        clock = text(a, "", 72, 0xFFFFFFFF, true);
         clock.setIncludeFontPadding(false);
         part = text(a, "", 24, 0xFFF2B544, true);
         part.setPadding(dp(12), 0, 0, dp(12));
@@ -160,7 +164,7 @@ final class HomeScreen extends FrameLayout {
         View line = new View(a);
         line.setBackgroundColor(0xFF2A4468);
         LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, dp(1));
-        ll.setMargins(0, dp(16), 0, dp(14));
+        ll.setMargins(0, dp(12), 0, dp(10));
         side.addView(line, ll);
         side.addView(text(a, "తర్వాత", 15, 0xFF8FB4D9, true));
         next = text(a, "", 21, 0xFFF4F8FC, false);
@@ -175,7 +179,7 @@ final class HomeScreen extends FrameLayout {
         LinearLayout grid = new LinearLayout(a);
         grid.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-1, -2);
-        gl.topMargin = dp(16);
+        gl.topMargin = dp(12);
         side.addView(grid, gl);
         LinearLayout gr = null;
         for (int i = 0; i < care.length; i++) {
@@ -188,7 +192,7 @@ final class HomeScreen extends FrameLayout {
             final String what = care[i][0];
             TextView b = button(a, care[i][1], "help".equals(what) ? 0xFF8B1E1E : 0xFF1F3B5C, 0xFFFFFFFF, 16);
             b.setOnClickListener(v -> { if ("photos".equals(what)) showFrame(true); else host.care(what); });
-            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(56), 1);
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(54), 1);
             if (i % 3 != 0) bl.leftMargin = dp(8);
             gr.addView(b, bl);
         }
@@ -199,7 +203,9 @@ final class HomeScreen extends FrameLayout {
         sl.topMargin = dp(12);
         side.addView(smart, sl);
 
-        side.addView(new View(a), new LinearLayout.LayoutParams(-1, 0, 1)); // (the buttons stay at the bottom)
+        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(-1, 0, 1);
+        gap.topMargin = dp(10);
+        side.addView(new View(a), gap); // (the buttons stay at the bottom)
 
         LinearLayout buttons = new LinearLayout(a);
         TextView talk = button(a, "🎤  మాట్లాడు", 0xFFF2B544, 0xFF1A1206, 22);
