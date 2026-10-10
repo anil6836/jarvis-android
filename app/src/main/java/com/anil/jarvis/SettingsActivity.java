@@ -126,7 +126,7 @@ public class SettingsActivity extends Activity {
             {"brain", "🧠", "మెదడు, ఖర్చు", "AI, మోడల్స్, API keys, కోడింగ్"},
             {"voice", "🔊", "గొంతు, వినడం", "వాయిస్, సహజ గొంతు, Live, వేక్ వర్డ్, పవర్ బటన్"},
             {"msg", "💬", "మెసేజ్‌లు, కాల్స్", "కాల్స్, బ్రీఫింగ్, నోటిఫికేషన్లు, WhatsApp, స్క్రీన్, మోసం గార్డ్"},
-            {"bike", "🏍️", "బైక్, ఇల్లు", "బైక్, కదలికలు, స్మార్ట్ హోమ్, కాపలా మోడ్"},
+            {"bike", "🏍️", "బైక్, ఇల్లు", "బైక్, కదలికలు, స్మార్ట్ హోమ్, ఇంటి Jarvis, కాపలా మోడ్"},
             {"daily", "❤️", "రోజువారీ, ఆరోగ్యం", "అలారం, డైరీ, హెచ్చరికలు, ఆరోగ్యం, తనంతట తానే"},
             {"safe", "🛡️", "భద్రత", "SOS, టికెట్ పేమెంట్, డాక్యుమెంట్లు"},
             {"data", "☁️", "బ్యాకప్, అప్డేట్లు", "Drive బ్యాకప్, అప్డేట్లు, అనుమతులు"}};
@@ -815,6 +815,8 @@ public class SettingsActivity extends Activity {
         smartApp = field("మీ స్మార్ట్ హోమ్ యాప్ పేరు (ఉదా: Homemate, Zeb Home, Wipro Next)", prefs.smartApp(), false);
         alexaSpeak = toggle("దగ్గర్లో Echo ఉంది: అవసరమైతే Jarvis \"Alexa, …\" అని పైకి చెప్పనివ్వు", prefs.alexaSpeak());
 
+        homeSection();
+
         // ---- guard mode: on an old phone at home (buttons act at once; no Save needed)
         section("కాపలా మోడ్ (ఇంట్లో పాత ఫోన్)");
         note("ఇంట్లో ఉంచిన పాత ఫోన్‌లో Jarvis వేసి ఇది ఆన్ చేస్తే, కెమెరాలో కదలిక కనిపించినప్పుడు (మనిషి, జంతువు, వాహనం) ఫోటో, ఒక లైన్ మీ Telegram కి వస్తాయి. "
@@ -1135,7 +1137,7 @@ public class SettingsActivity extends Activity {
         if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")
                 || t.contains("వాచ్")) return "voice";
         if (t.contains("కాల్స్") || t.contains("మెసేజ్") || t.contains("WhatsApp") || t.contains("స్క్రీన్ చూడటం") || t.contains("మోసం")) return "msg";
-        if (t.contains("బైక్") || t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా")) return "bike";
+        if (t.contains("బైక్") || t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా") || t.contains("ఇంటి Jarvis")) return "bike";
         if (t.contains("అత్యవసరం (SOS)") || t.contains("టికెట్") || t.contains("డాక్యుమెంట్")) return "safe";
         if (t.contains("బ్యాకప్") || t.contains("అప్డేట్") || t.contains("అనుమతులు")) return "data";
         return "daily"; // డైరీ, హెచ్చరికలు, అలారం, ఆరోగ్యం, తనంతట తానే
@@ -2665,6 +2667,48 @@ public class SettingsActivity extends Activity {
     }
 
     /** Phase 2a: the Jarvis watch app (Galaxy Watch). Each choice acts at once and goes to the watch; no Save needed. */
+    /** The home Jarvis: this device (a tablet at home) shows the big home screen with the new Jarvis. Acts at once. */
+    private void homeSection() {
+        section("🏠 ఇంటి Jarvis (టాబ్లెట్)");
+        note("ఇంట్లో ఉంచే టాబ్లెట్‌లో మాత్రమే ఆన్ చేయండి (మీ ఫోన్‌లో కాదు). ఆన్ చేస్తే: కొత్త Jarvis బొమ్మతో పెద్ద ఇంటి స్క్రీన్ (అడ్డంగా), "
+                + "గడియారం, తెలుగు తేదీ, వాతావరణం, తర్వాతి రిమైండర్, మీ AC / ఫ్యాన్ బటన్లు (స్మార్ట్ హోమ్ లింక్‌లు). ఇంట్లో ఎవరు మాట్లాడినా జవాబిస్తాడు. "
+                + "పగలు స్క్రీన్ ఆన్‌లోనే ఉంటుంది; రాత్రి 10 నుంచి ఉదయం 6 వరకు డిమ్, తర్వాత ఆరిపోవచ్చు ('Jarvis' అంటే / తాకితే వెలుగుతుంది). "
+                + "టాబ్లెట్ ఆన్ అయినప్పుడు Jarvis తనంతట తానే తెరుచుకుంటుంది. 💬 నొక్కితే చాట్, 3 నిమిషాల తర్వాత మళ్లీ ఇంటి స్క్రీన్.");
+        Switch on = toggle("ఈ డివైస్ ఇంటి Jarvis (టాబ్లెట్)", prefs.homeMode());
+        on.setOnCheckedChangeListener((sw, v) -> {
+            prefs.setHomeMode(v);
+            Toast.makeText(this, v ? "ఇంటి Jarvis ఆన్: వెనక్కి వెళ్తే ఇంటి స్క్రీన్ వస్తుంది" : "ఇంటి Jarvis ఆఫ్", Toast.LENGTH_SHORT).show();
+        });
+        final String[] looks = {"a", "b", "c"}, lookNames = {"A · స్మార్ట్ జాకెట్", "B · కుర్తా", "C · క్యాజువల్ (మీ ఎంపిక)"};
+        final String[] skins = {"1", "2", "3"}, skinNames = {"లేత", "మధ్యస్థం", "ముదురు"};
+        TextView look = Ui.text(this, "", 15.5f, accent);
+        look.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 6));
+        TextView skin = Ui.text(this, "", 15.5f, accent);
+        skin.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 10));
+        Runnable show = () -> {
+            int li = java.util.Arrays.asList(looks).indexOf(prefs.bodyLook()), si = java.util.Arrays.asList(skins).indexOf(prefs.bodySkin());
+            look.setText("🧑 Jarvis రూపం: " + lookNames[li < 0 ? 2 : li] + "  (మార్చడానికి నొక్కండి)");
+            skin.setText("🎨 చర్మం రంగు: " + skinNames[si < 0 ? 1 : si] + "  (మార్చడానికి నొక్కండి)");
+        };
+        show.run();
+        look.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Jarvis రూపం")
+                .setSingleChoiceItems(lookNames, Math.max(0, java.util.Arrays.asList(looks).indexOf(prefs.bodyLook())), (d, w) -> {
+                    prefs.sp.edit().putString("body_look", looks[w]).apply();
+                    show.run();
+                    d.dismiss();
+                }).show());
+        skin.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("చర్మం రంగు")
+                .setSingleChoiceItems(skinNames, Math.max(0, java.util.Arrays.asList(skins).indexOf(prefs.bodySkin())), (d, w) -> {
+                    prefs.sp.edit().putString("body_skin", skins[w]).apply();
+                    show.run();
+                    d.dismiss();
+                }).show());
+        box.addView(look);
+        box.addView(skin);
+    }
+
     private void watchSection() {
         section("⌚ వాచ్ (Galaxy Watch)");
         TextView st = Ui.text(this, WatchHub.status(this), 14, Ui.MUTED);

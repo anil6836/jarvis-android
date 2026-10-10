@@ -206,6 +206,10 @@ public class AlarmReceiver extends BroadcastReceiver {
                 try { Automations.schedule(c); } catch (Exception ignored) {}
                 UpdateJob.schedule(c);
                 if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) Updater.cancelNotice(c);
+                if (Intent.ACTION_BOOT_COMPLETED.equals(action) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
+                    // the home Jarvis (a tablet at home) opens its screen by itself after a restart / an update he installed
+                    try { if (new Prefs(c).homeMode()) c.startActivity(new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
+                }
                 break;
             case AppRadio.ACTION_PAUSE: // "30 నిమిషాలు" for a station playing in the Telugu Radios app
                 if (SoundService.nowPlaying.isEmpty()) AppRadio.pauseNow(c);

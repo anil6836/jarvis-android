@@ -386,4 +386,13 @@ final class Prefs {
     /** "ఆపు" in the notification pauses the mic only until Jarvis is opened again. */
     boolean wakePaused() { return sp.getBoolean("wake_paused", false); }
     void setWakePaused(boolean paused) { sp.edit().putBoolean("wake_paused", paused).apply(); }
+
+    // ---- the home Jarvis (a tablet at home: big screen with the new Jarvis, for the family)
+    /** This device is the home Jarvis (home screen, landscape, anyone at home may talk). */
+    boolean homeMode() { return sp.getBoolean("home_mode", false); }
+    void setHomeMode(boolean on) { sp.edit().putBoolean("home_mode", on).apply(); }
+    /** The new Jarvis's look: a = navy jacket, b = kurta, c = zip jacket (Anil's pick). */
+    String bodyLook() { return sp.getString("body_look", "c"); }
+    /** Skin tone 1 (lighter) .. 3 (deeper). */
+    String bodySkin() { return sp.getString("body_skin", "2"); }
 }

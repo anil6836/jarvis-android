@@ -117,6 +117,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private HoloOrb orb;               // the hologram core in the header (same states as OrbView)
     private FaceView face;             // Jarvis's face on the home screen (Settings → Jarvis ముఖం)
+    private HomeScreen home;           // the home Jarvis's screen (a tablet at home), over the chat; null on the phone
     private FrameLayout faceBox;
     private TextView faceNote;         // 👁 while the front camera is watching
     private FaceSight sight;           // the front camera (only while the face is on the screen)
@@ -219,7 +220,18 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         tools = new Tools(this, store, prefs);
         brain = new Brain(prefs, store, tools);
         voice = new VoiceIO(this, prefs, this);
-        setContentView(buildUi());
+        View ui = buildUi();
+        if (prefs.homeMode()) { // the home Jarvis: its big screen over the chat (the chat stays under it, one tap away)
+            FrameLayout f = new FrameLayout(this);
+            f.addView(ui, new FrameLayout.LayoutParams(-1, -1));
+            home = new HomeScreen(this, prefs, homeHost);
+            f.addView(home, new FrameLayout.LayoutParams(-1, -1));
+            setContentView(f);
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        } else {
+            setContentView(ui);
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        }
         getSharedPreferences("jarvis", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(faceKeys);
         getWindow().setStatusBarColor(Ui.BG_TOP);
         getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
@@ -245,6 +257,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         TopCard.stepAside(); // a message card talking at the top stops: this screen talks now
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
+        if (prefs.homeMode() != (home != null)) { recreate(); return; } // the home Jarvis was switched on / off in settings
         paused = false;
         visible = true;
         main.removeCallbacks(cancelIfAway);
@@ -262,6 +275,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (live == null && !busy) renderChat();
         syncWakeService();
         if (hudDash != null) hudDash.start();
+        if (home != null) home.start();
         UpdateJob.schedule(this); // "new version" notification when a build is out
         BackupJob.schedule(this); // the daily Drive backup (once he has set it up)
         String restored = Backup.takeRestoreNote(this); // just restarted after bringing a backup back
@@ -292,6 +306,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override protected void onPause() {
         super.onPause();
         if (hudDash != null) hudDash.stop();
+        if (home != null) home.stop();
         paused = true;
         visible = false;
         if (sight != null) sight.stop(); // the front camera only watches while Jarvis is on the screen
@@ -1322,6 +1337,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onWord(String spoken, int start, int end) {
         if (face != null) face.word(spoken, start, end);
+        if (home != null) home.word(spoken, start, end);
         if (showingChat()) karaoke.word(spoken, start, end, jarvisBodies, chatScroll);
     }
 
@@ -1450,7 +1466,36 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onBackPressed() {
         if (liveScreen != null && liveScreen.showing()) { onLiveEnd(); return; } // like ChatGPT: back ends the voice chat
+        if (home != null && home.getVisibility() != View.VISIBLE) { showHome(); return; } // the home Jarvis: back to its screen
+        if (home != null) return; // (the home Jarvis's screen stays: it is the tablet's home)
         super.onBackPressed();
+    }
+
+    // ---- the home Jarvis (a tablet at home): its screen over the chat
+    private final HomeScreen.Host homeHost = new HomeScreen.Host() {
+        @Override public void talk() { if (orb != null) orb.performClick(); }
+        @Override public void openChat() {
+            home.setVisibility(View.GONE);
+            main.removeCallbacks(backHome);
+            main.postDelayed(backHome, 3 * 60_000L); // back to the big screen when the chat is left alone
+        }
+        @Override public void openSettings() { startActivity(new Intent(MainActivity.this, SettingsActivity.class)); }
+    };
+
+    private final Runnable backHome = () -> {
+        if (home == null || home.getVisibility() == View.VISIBLE) return;
+        if (busy || voice.listening || voice.speaking || keyboardUp) { main.postDelayed(this.backHome, 60_000L); return; }
+        showHome();
+    };
+
+    private void showHome() {
+        if (home == null) return;
+        main.removeCallbacks(backHome);
+        try {
+            android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
+            if (imm != null && input != null) imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+        } catch (Exception ignored) {}
+        home.setVisibility(View.VISIBLE);
     }
 
     /** Live real-time talk when it is switched on, otherwise the classic listen-then-answer. */
@@ -1523,6 +1568,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onLiveJarvis(String text) {
         liveScreen.caption(text, true);
+        if (home != null) home.say(text);
         if (liveBubble != null) liveBubble.setText(text);
         else addMessage("assistant", text, System.currentTimeMillis(), null);
         liveBubble = null;
@@ -1532,12 +1578,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onLiveLevel(float level) {
         orb.setLevel(level);
         if (face != null) face.setMic(level);
+        if (home != null) home.setMic(level);
         liveScreen.orb.setMic(level);
     }
 
     @Override public void onLiveVoiceLevel(float level) {
         liveScreen.orb.setVoice(level);
         if (face != null) face.setVoice(level);
+        if (home != null) home.setVoice(level);
     }
 
     @Override public void onLiveError(String message) {
@@ -1669,12 +1717,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onLevel(float level) {
         orb.setLevel(level);
         if (face != null) face.setMic(level);
+        if (home != null) home.setMic(level);
     }
 
     @Override public void onSpeakStart() {
         if (live == null) setVolumeControlStream(voice.volumeStream()); // volume keys = Jarvis's voice (the AI assistant volume)
         keepScreenOn();
         if (face != null) face.setFeeling(feelingNext != null ? feelingNext : voice.feeling());
+        if (home != null) home.setFeeling(feelingNext != null ? feelingNext : voice.feeling());
         feelingNext = null;
         setOrb(OrbView.SPEAKING);
         status.setText("మాట్లాడుతున్నాను…");
@@ -1834,12 +1884,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (error != null) {
             TextView t = addMessage("assistant", error, System.currentTimeMillis(), null);
             t.setTextColor(Ui.RED);
+            if (home != null) home.say(error);
             finishTurn();
             return;
         }
         store.addChat("assistant", reply, false);
         addMessage("assistant", reply, System.currentTimeMillis(), null);
         if (face != null) face.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM);
+        if (home != null) { home.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM); home.say(reply); }
         if (prefs.voiceReplies() && !paused) {
             voice.speak(reply, prefs.speechRate());
             setOrb(OrbView.SPEAKING);
@@ -1878,7 +1930,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     /** While Anil and Jarvis are talking the screen must not go dark. */
-    private final Runnable letScreenSleep = () -> getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    private final Runnable letScreenSleep = () -> {
+        if (home != null && home.keepOn()) return; // the home Jarvis's screen stays on in the day
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    };
 
     private void keepScreenOn() {
         main.removeCallbacks(letScreenSleep);
@@ -1951,6 +2006,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private final FaceSight.Listener sightListener = new FaceSight.Listener() {
         @Override public void onSight(boolean present, float x, float y, float smile) {
             if (face != null) face.look(present, x, y, smile);
+            if (home != null) home.look(present, x, y);
         }
 
         @Override public void onKnown(String name, boolean owner) { greetPerson(name, owner); }
@@ -1958,6 +2014,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         @Override public void onSightStopped(String why, boolean idle) {
             sightPaused = true;
             if (face != null) face.look(false, 0, 0, 0);
+            if (home != null) home.look(false, 0, 0);
             if (faceNote != null) faceNote.setText(idle ? "💤" : "");
             if (!idle && visible && why != null && sightErrorsShown.add(why)) Toast.makeText(MainActivity.this, why, Toast.LENGTH_LONG).show();
         }
@@ -1965,6 +2022,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** Someone he introduced came into view: a smile, and a hello now and then (not more than once in 3 hours). */
     private void greetPerson(String name, boolean owner) {
+        if (home != null) home.greet();
         if (face == null) return;
         face.greet();
         android.content.SharedPreferences gp = getSharedPreferences("jarvis_people", MODE_PRIVATE);
@@ -1984,6 +2042,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void setOrb(int s) {
         orb.setState(s);
         if (face != null) face.setState(s);
+        if (home != null) home.setState(s);
     }
 
     private void setIdle() {
