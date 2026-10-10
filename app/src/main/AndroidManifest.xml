@@ -426,7 +426,7 @@
             android:name=".GameActivity"
             android:exported="false"
             android:label="Jarvis ఆట"
-            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
 
         <activity
             android:name=".ObdActivity"

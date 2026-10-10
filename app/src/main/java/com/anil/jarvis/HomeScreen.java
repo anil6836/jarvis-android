@@ -241,6 +241,7 @@ final class HomeScreen extends FrameLayout {
                 @Override public void talkGame(String gid) { if (gamesOuter != null) gamesOuter.talkGame(gid); }
                 @Override public void gamesClosed() { closeGames(); }
                 @Override public BodyRig rig() { return body.rig; }
+                @Override public void help() { host.care("help"); }
             });
             addView(games, 1, new LayoutParams(-1, -1)); // (over the home screen; under the photo frame and the night glass)
         }

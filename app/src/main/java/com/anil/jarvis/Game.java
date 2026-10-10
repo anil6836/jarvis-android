@@ -211,6 +211,7 @@ abstract class Game extends View {
         int s = turn();
         int k = kind(s);
         if (k == JARVIS) {
+            jarvisAskedAt = SystemClock.uptimeMillis();
             host.status("Jarvis ఆలోచిస్తున్నాడు…");
             final int g = gen;
             // a little pause first, like a person looking at the board (also lets her see her own move)
@@ -220,6 +221,13 @@ abstract class Game extends View {
         } else {
             host.status(yourTurn(s));
         }
+    }
+
+    private long jarvisAskedAt;
+
+    /** Jarvis's turn came long ago and nothing is going on (his search failed): the panel asks him again. */
+    boolean jarvisStuck() {
+        return !done && kind(turn()) == JARVIS && !busy() && SystemClock.uptimeMillis() - jarvisAskedAt > 25_000L;
     }
 
     /** The game is over: says the words, marks the winner (-1 draw). */

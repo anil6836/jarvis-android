@@ -349,12 +349,14 @@ final class HomeCare {
             p = "";
         }
         if (Sayings.open(c) >= 0) { String r = Sayings.answer(c, t); if (r != null) return r; } // (a riddle's guess)
-        String gm = MainActivity.homeGameHeard(t); // (the games on the screen: her words in a game, or "లూడో ఆడదాం")
-        if (gm != null) return gm;
-        if (p.equals("gameinvite")) { // "అబ్బాయి మీతో … ఆడాలనుకుంటున్నాడు! ఆడదామా?"
-            Boolean yes = yesNo(t.replace("ఆడదాం", " అవును "));
+        // "అబ్బాయి మీతో … ఆడాలనుకుంటున్నాడు! ఆడదామా?" (before the games: the open panel would take "వద్దు" or the game's name;
+        // "తర్వాత ఆడదాం" is a no, not "ఆడదాం")
+        if (p.equals("gameinvite")) {
+            Boolean yes = t.matches("(?s).*(తర్వాత|తరువాత|ఇప్పుడు కాదు|కాదు|ఆడలేను|ఆడను).*") ? Boolean.FALSE : yesNo(t.replace("ఆడదాం", " అవును "));
             if (yes != null) { pending = ""; String r = MainActivity.homeGameInviteAnswer(yes); if (r != null) return r; }
         }
+        String gm = MainActivity.homeGameHeard(t); // (the games on the screen: her words in a game, or "లూడో ఆడదాం")
+        if (gm != null) return gm;
         if (HomeGames.asks(t)) return HomeGames.start(c, t);
         if (p.equals("visitor")) { // "మీకు తెలిసినవాళ్లేనా?"
             Boolean known = knownWords(t);
@@ -734,7 +736,7 @@ final class HomeCare {
             return "సరే " + who(c) + ", పాటలు ఆపాను.";
         }
         if (bedroomNight()) return sleepSongs(c); // (her bedroom at night: the soft songs that stop by themselves)
-        SoundService.soft = 1f;
+        SoundService.softNext = 1f;
         if (!Net.online(c)) return HomeSongs.play(c, "", who(c)); // (no internet: the songs saved on the tablet)
         try {
             JSONObject st = Radio.find(Radio.list(c), "Telugu Christian Radio");
@@ -764,7 +766,7 @@ final class HomeCare {
                 JSONObject st = Radio.find(Radio.list(c), "Telugu Christian Radio");
                 String[] urls = st == null ? new String[0] : Radio.known(st);
                 if (urls.length > 0) {
-                    SoundService.soft = 0.45f;
+                    SoundService.softNext = 0.45f; // (taken by the radio when it starts: a stop still on its way can't undo it)
                     Radio.play(c, st, urls, 30);
                     return w + ", మెల్లగా పాటలు పెడుతున్నాను. అరగంటలో అవే ఆగిపోతాయి. హాయిగా పడుకోండి, శుభరాత్రి.";
                 }

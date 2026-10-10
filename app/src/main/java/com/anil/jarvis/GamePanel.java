@@ -32,6 +32,8 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         /** The panel closed: Jarvis goes back to the home screen. */
         void gamesClosed();
         BodyRig rig();
+        /** 🆘 on the games screen: the same as the home screen's help button. */
+        void help();
     }
 
     /** The panel while it is on the screen (main thread). */
@@ -84,6 +86,15 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         levelChip.setBackground(round(0xFFF2B544, 0, 18));
         levelChip.setOnClickListener(v -> cycleLevel());
         head.addView(levelChip);
+        // 🆘 stays in reach while a game covers the home screen
+        TextView sos = text(a, "🆘", 22, 0xFFFFFFFF, true);
+        sos.setGravity(Gravity.CENTER);
+        sos.setBackground(round(0xFF8B1E1E, 0, 14));
+        sos.setContentDescription("సహాయం");
+        sos.setOnClickListener(v -> outer.help());
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(dp(58), dp(46));
+        sl.leftMargin = dp(8);
+        head.addView(sos, sl);
         side.addView(head);
 
         jarvisSlot = new FrameLayout(a);
@@ -270,10 +281,12 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         for (String r : who) if ("son".equals(r)) far = true;
         Games.forget(act);
         Games.keepOption(act, option);
+        Games.sp(act).edit().putString("saved_who", String.join(",", who)).apply();
         if (far) {
             link = new GameLink(act, this);
             g.newGame(who, option);
-            link.invite(id, option, g.saveAll());
+            farFirst = g.saveAll();
+            link.invite(id, option, farFirst);
         } else {
             g.newGame(who, option);
         }
@@ -294,8 +307,9 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         if (ro != null) for (String r : ro) if ("son".equals(r)) far = true;
         if (far) link = new GameLink(act, this);
         if (!g.loadAll(all)) { Games.forget(act); showPicker(true); say("ఆ ఆట తెరవలేకపోయాను " + her() + ", కొత్తది ఆడదాం.", null, null); return; }
-        lastWho = ro;
-        lastOption = Games.savedOption(act);
+        String sw = Games.sp(act).getString("saved_who", "");
+        lastWho = sw.isEmpty() || far ? ro : sw.split(","); // (the order the players were chosen in: 🔄 applies the side choice again)
+        lastOption = far || sw.isEmpty() ? 0 : Games.savedOption(act);
         if (link != null) link.resume(id, g.saveAll());
         if (!far) say(pick("సరే, ఆపిన చోటు నుంచే ఆడదాం!", "ఇదిగో, మన ఆట అలాగే ఉంది. కొనసాగిద్దాం!"), "happy", null);
         playingSince = lastMoveAt = System.currentTimeMillis();
@@ -342,6 +356,7 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         show(id, g);
         if (!g.loadAll(all)) { close(false); return; }
         lastWho = Game.rolesOf(all);
+        lastOption = 0; // (the seats are already in order)
         Games.keep(act, id, g.saveAll());
         playingSince = lastMoveAt = System.currentTimeMillis();
     }
@@ -364,12 +379,12 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         boolean jarvis = g != null && g.hasJarvis();
         levelChip.setVisibility(jarvis ? VISIBLE : GONE);
         levelChip.setText("స్థాయి: " + Games.LEVELS[Games.level(act, gameId)]);
+        boolean undoOk = g != null && !g.far(); // (before the score: a new game with no score yet gets its ↩️ back)
+        undoB.setEnabled(undoOk);
+        undoB.setAlpha(undoOk ? 1f : 0.4f);
         if (herWins + otherWins + draws == 0) { score.setText(""); return; }
         String other = jarvis ? "Jarvis" : g != null && g.far() ? "అబ్బాయి" : "ఇతరులు";
         score.setText("మీరు " + herWins + "  ·  " + other + " " + otherWins + (draws > 0 ? "  ·  సమానం " + draws : ""));
-        boolean undoOk = g != null && !g.far();
-        undoB.setEnabled(undoOk);
-        undoB.setAlpha(undoOk ? 1f : 0.4f);
     }
 
     // ================================================================ buttons
@@ -378,7 +393,11 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         touched();
         if (game == null) return;
         if (game.far()) { say("అబ్బాయితో ఆటలో వెనక్కి తీసుకోలేం " + her() + ".", null, null); return; }
-        if (game.undo()) say(pick("సరే, వెనక్కి తీసుకున్నాను. మళ్లీ ఆలోచించి పెట్టండి.", "సరే, ముందు ఉన్నట్టే పెట్టాను."), "happy", null);
+        if (game.undo()) {
+            View ag = area.findViewWithTag("again"); // (the last move of a finished game taken back: the board is played on, not under this)
+            if (ag != null) area.removeView(ag);
+            say(pick("సరే, వెనక్కి తీసుకున్నాను. మళ్లీ ఆలోచించి పెట్టండి.", "సరే, ముందు ఉన్నట్టే పెట్టాను."), "happy", null);
+        }
         else say("వెనక్కి తీసుకోవడానికి ఇంకా ఏమీ లేదు " + her() + ".", null, null);
     }
 
@@ -423,8 +442,10 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         if (t.matches("(?s).*(కొత్త ఆట|మళ్లీ ఆడదాం|ఇంకో ఆట|ఇంకొకటి ఆడదాం|మళ్ళీ ఆడదాం).*") && gameId != null) { again(); return true; }
         if (game != null && game.heard(t)) return true;
         String id = Games.named(t);
-        if (id != null) { choose(id); return true; }
-        if (game == null && t.matches("(?s).*(లేదు|వద్దు|తర్వాత).*")) { close(false); say("సరే " + her() + ", తర్వాత ఆడదాం.", null, null); return true; }
+        // (a game going on: a game's name in her words ("పులి మేకను తినేసింది", "చమ్మా!") is not a new game; "లూడో ఆడదాం" is)
+        if (id != null && (game == null || game.done || Games.talking(id) || t.matches("(?s).*(ఆడదాం|ఆడుదాం|ఆడాలి|ఆడుకుందాం|ఆడదామా|ఆడతాను|పెట్టు).*"))) { choose(id); return true; }
+        // (a "no" while a care question or Anil's invite waits is that question's answer, not "close the games")
+        if (game == null && invite == null && HomeCare.pending().isEmpty() && t.matches("(?s).*(లేదు|వద్దు|తర్వాత).*")) { close(false); say("సరే " + her() + ", తర్వాత ఆడదాం.", null, null); return true; }
         return false;
     }
 
@@ -470,6 +491,7 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         status.setText(win < 0 ? "సమానం! 🤝" : "her".equals(g.role(win)) ? "మీరు గెలిచారు! 🎉" : g.name(win) + " " + g.verb(win, "గెలిచారు", "గెలిచాడు", "గెలిచాడు") + "!");
         // the big "again" over the board
         TextView againB = button(act, "🔄 మళ్లీ ఆడదాం", 0xFF2E7D4F);
+        againB.setTag("again");
         againB.setTextSize(24);
         againB.setOnClickListener(v -> again());
         LayoutParams al = new LayoutParams(dp(330), dp(78), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -494,9 +516,15 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
         showScore();
     }
 
+    /** The board the invite carried (his phone starts from it). */
+    private String farFirst;
+
     @Override public void farYes() {
         say(pick("అబ్బాయి వచ్చాడు " + her() + "! ఆట మొదలు.", "అబ్బాయి సరే అన్నాడు! ఇక ఆడదాం " + her() + "."), "excited", "clap");
-        if (game != null && link != null) link.send(game.saveAll()); // (his phone gets the board as it is now)
+        // his phone gets the board as it is now, only when she moved meanwhile (then he can't have moved on the invite's
+        // board; when nothing changed he may be moving already, and the old board would undo his move on his phone)
+        Game g = game;
+        if (g != null && link != null) { String now = g.saveAll(); if (!now.equals(farFirst)) link.send(now); }
     }
 
     @Override public void farGone(boolean no) {
@@ -532,6 +560,8 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
     void farTick() {
         Game g = game;
         GameLink l = link;
+        // (a Jarvis move that never came — its search failed: he is asked again)
+        if (g != null && g.jarvisStuck()) g.turnNow();
         if (g == null || l == null || g.done) return;
         if (!l.answered() && l.quietFor() > 5 * 60_000L) {
             l.bye();
@@ -560,7 +590,13 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
     void touched() { touchedAt = System.currentTimeMillis(); }
 
     /** No touch / word for 15 minutes: the panel closes by itself (the game is kept to go on with). */
-    boolean idleTooLong() { return System.currentTimeMillis() - touchedAt > 15 * 60_000L && (game == null || game.kind(game.turn()) != Game.FAR); }
+    boolean idleTooLong() {
+        if (System.currentTimeMillis() - touchedAt <= 15 * 60_000L) return false;
+        Game g = game;
+        GameLink l = link;
+        // (Anil's turn is waited for, but not for ever: a game over, or an hour with no word from his phone, closes too)
+        return g == null || g.done || g.kind(g.turn()) != Game.FAR || l == null || l.quietFor() > 60 * 60_000L;
+    }
 
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) {
         if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) touched();
@@ -570,12 +606,16 @@ final class GamePanel extends FrameLayout implements Game.Host, GameLink.Listene
     private void endGame() {
         if (game != null) game.stop();
         game = null;
+        farFirst = null;
         if (link != null) { link.stop(); link = null; }
         main.removeCallbacksAndMessages(null);
     }
 
     /** Closes the panel (the unfinished game stays saved). */
     void close(boolean byButton) {
+        org.json.JSONObject inv = invite;
+        invite = null; // (an invite left unanswered: his phone hears "no", and a later "సరే" can't join it behind a closed panel)
+        if (inv != null) GameLink.decline(act, inv.optString("gid"), inv.optString("g"));
         Game g = game;
         if (g != null && !g.done && g.far() && link != null) link.bye();
         endGame();

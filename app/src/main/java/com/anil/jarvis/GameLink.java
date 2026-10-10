@@ -86,7 +86,7 @@ final class GameLink {
         String old = Games.sp(c).getString("far_gid", "");
         gid = old.isEmpty() ? Long.toString(System.currentTimeMillis(), 36) : old;
         seq = Games.sp(c).getInt("far_seq", 0);
-        answered = true;
+        answered = false; // (his phone may have left this game long ago: no word from it in 5 minutes → Jarvis plays, GamePanel.farTick)
         sendAsync("st", all, false);
         startPolling();
     }
@@ -150,11 +150,11 @@ final class GameLink {
         JSONObject from = m.optJSONObject("from");
         String text = m.optString("text");
         if (from == null || !from.optBoolean("is_bot") || !text.startsWith(TAG)) {
-            // something else (a status, a photo) covered our mailbox: after 20 s (time for its own reader), our latest
+            // something else (a status, a photo) covered our mailbox: after a minute (time for its own reader), our latest
             // message is pinned again (no new message)
             long now = System.currentTimeMillis();
             if (coveredAt == 0) coveredAt = now;
-            if (myMsg > 0 && now - coveredAt > 20_000L) { Guard.pin(c, myMsg); coveredAt = 0; }
+            if (myMsg > 0 && now - coveredAt > 60_000L) { Guard.pin(c, myMsg); coveredAt = 0; } // (HomeLink reads every ~20 s or more)
             return;
         }
         coveredAt = 0;
@@ -168,6 +168,7 @@ final class GameLink {
         final String all = j.optString("all", null);
         main.post(() -> {
             if (!running) return;
+            answered = true; // (any word from the far side: its "yes" may have been replaced by its first move before we looked)
             switch (ev) {
                 case "yes": answered = true; l.farYes(); break;
                 case "no": running = false; l.farGone(true); break;

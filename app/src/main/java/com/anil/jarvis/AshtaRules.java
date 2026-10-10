@@ -385,7 +385,8 @@ final class AshtaRules {
             g.lastCaught = Integer.parseInt(l[6]); g.lastCaughtSeats = Integer.parseInt(l[7]); g.lastOpened = l[8].equals("1");
             g.skipped = Integer.parseInt(l[9]); g.skippedValue = Integer.parseInt(l[10]);
             if (g.lastAct < 0 || g.lastAct > 2 || g.lastSeat < -1 || g.lastSeat >= n || g.lastPawn < -1 || g.lastPawn >= per
-                    || g.lastFrom < -1 || g.lastFrom > HOME || g.lastTo < -1 || g.lastTo > HOME) return null;
+                    || g.lastFrom < -1 || g.lastFrom > HOME || g.lastTo < -1 || g.lastTo > HOME
+                    || g.lastValue < 0 || g.lastValue > 8) return null; // (lastValue: the drawn digit of the last throw)
             if (g.lastAct != 0 && g.lastSeat < 0) return null;
             if (g.lastAct == 2 && (g.lastPawn < 0 || g.lastFrom < 0 || g.lastTo < 0)) return null;
             return g;

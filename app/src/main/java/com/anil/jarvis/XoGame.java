@@ -57,7 +57,7 @@ final class XoGame extends Game {
             g.play(i);
             animate(320, null);
             if (!end(seat)) {
-                String said = "నేను సున్నాని " + XoRules.where(i) + " పెట్టాను.";
+                String said = "నేను " + (seat == 0 ? "ఇంటూని " : "సున్నాని ") + XoRules.where(i) + " పెట్టాను.";
                 if (blocks && !wins) said = pick("మీ వరుస పూర్తి కాకుండా ఆపాను! ", "అబ్బో, మీరు గెలవబోతున్నారు, ఆపేశాను! ") + said;
                 said += " " + pick("ఇప్పుడు మీ వంతు.", "మీరు పెట్టండి.", "ఇప్పుడు మీరు.");
                 say(said, blocks ? "laugh" : null, null);

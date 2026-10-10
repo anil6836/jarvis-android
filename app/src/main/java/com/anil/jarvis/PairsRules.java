@@ -200,11 +200,15 @@ final class PairsRules {
             "పద్దెనిమిది", "పందొమ్మిది"};
     private static final String[] TENS = {"", "", "ఇరవై", "ముప్పై", "నలభై", "యాభై", "అరవై", "డెబ్బై", "ఎనభై", "తొంభై"};
 
-    /** A number in Telugu words (0..100; "ఇరవై మూడు"): Jarvis says numbers, never digits. */
+    /** A number in Telugu words (0..999; "ఇరవై మూడు", "నూట ఐదు"): Jarvis says numbers, never digits. */
     static String words(int n) {
-        if (n < 0 || n > 100) return String.valueOf(n);
+        if (n < 0 || n > 999) return String.valueOf(n);
+        if (n >= 100) { // (a forgetful game of ten pairs can take more than a hundred tries)
+            int h = n / 100, r = n % 100;
+            String hs = h == 1 ? (r == 0 ? "వంద" : "నూట") : SMALL[h] + (r == 0 ? " వందలు" : " వందల");
+            return r == 0 ? hs : hs + " " + words(r);
+        }
         if (n < 20) return SMALL[n];
-        if (n == 100) return "వంద";
         return TENS[n / 10] + (n % 10 == 0 ? "" : " " + SMALL[n % 10]);
     }
 

@@ -88,6 +88,10 @@ public final class GameActivity extends Activity implements Game.Host, GameLink.
             status.setText("ముందు ఈ ఫోన్‌ని Telegram bot తో కలపండి (సెట్టింగ్స్ → 📮 ఫోన్ ↔ టాబ్లెట్ లింక్), నెట్ ఆన్ చేయండి.");
             return;
         }
+        if (b != null) { // (brought back after Android closed it: its link is gone; joining / inviting again would go out of step)
+            status.setText("ఆట ఆగిపోయింది. మళ్లీ ఆడాలంటే సెట్టింగ్స్ నుంచి కొత్త ఆట మొదలుపెట్టండి.");
+            return;
+        }
         Intent in = getIntent();
         String inv = in.getStringExtra(EXTRA_INVITE);
         try {
@@ -168,7 +172,8 @@ public final class GameActivity extends Activity implements Game.Host, GameLink.
         if (waiting != null) waiting.setVisibility(View.GONE);
         say("అమ్మగారు సరే అన్నారు! ఆట మొదలు.", null, null);
         buzz();
-        if (game != null) { link.send(game.saveAll()); game.turnNow(); }
+        // (the tablet joined with this very board; sending it again could arrive after her first move and undo it there)
+        if (game != null) game.turnNow();
         if (!resumed) note(this, "🎲 అమ్మగారు ఆటకి సరే అన్నారు!", null);
     }
 
@@ -218,7 +223,7 @@ public final class GameActivity extends Activity implements Game.Host, GameLink.
             PendingIntent pi = PendingIntent.getActivity(c, NOTE, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             nm.notify(NOTE, new Notification.Builder(c, "jarvis_game").setSmallIcon(android.R.drawable.ic_media_play)
                     .setContentTitle(text).setContentText("నొక్కి ఆట తెరవండి").setContentIntent(pi).setAutoCancel(true)
-                    .setTimeoutAfter(30 * 60_000L).build());
+                    .setTimeoutAfter(invite != null ? 4 * 60_000L : 30 * 60_000L).build()); // (the tablet stops waiting for him at 5 minutes)
         } catch (Exception ignored) {}
     }
 

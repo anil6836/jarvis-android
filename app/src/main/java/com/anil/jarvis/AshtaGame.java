@@ -104,6 +104,8 @@ final class AshtaGame extends Game {
     private String colour(int seat) { return COLOR_NAMES[g.side(seat)]; }
     private int colourOf(int seat) { return COLORS[g.side(seat)]; }
     private String her() { return host != null ? host.her() : "అమ్మగారు"; }
+    /** " అమ్మగారు" only for her at the tablet (never to Anil on his phone), else "". */
+    private String herName(int seat) { return "her".equals(role(seat)) && !onPhone ? " " + her() : ""; }
 
     /** "మీ కాయని" / "నా కాయని" / "పచ్చ కాయని" for the seat whose pawn was sent home. */
     private String whosePawn(int seat) {
@@ -179,8 +181,7 @@ final class AshtaGame extends Game {
             @Override public void run() {
                 if (token != autoToken || done || g.turn != seat || g.count != cnt || g.phase != AshtaRules.MOVE || kind(seat) != HERE || !g.canMove(k)) return;
                 if (busy()) { later(300, this); return; }
-                keep();
-                doMove(k);
+                doMove(k); // (no keep(): undo goes back to her last real choice, not to this forced move that would replay itself)
             }
         });
     }
@@ -307,7 +308,7 @@ final class AshtaGame extends Game {
             }
         } else if (g.lastTo == AshtaRules.HOME) {
             if (jar) { s = pick("నా కాయ పండింది!", "హమ్మయ్య, నా కాయ పండింది!"); feel = "happy"; }
-            else if (here && sole(seat)) { s = "మీ కాయ పండింది " + her() + "!"; feel = "excited"; gest = "clap"; }
+            else if (here && sole(seat)) { s = "మీ కాయ పండింది" + herName(seat) + "!"; feel = "excited"; gest = "clap"; }
             else if (here) { s = colour(seat) + " కాయ పండింది!"; feel = "happy"; }
             if (g.winner < 0 && g.home(seat) == g.per - 1) {
                 if (jar) s += " ఇంకొక్క కాయ పండితే నేను గెలుస్తాను!";
@@ -349,7 +350,7 @@ final class AshtaGame extends Game {
         if (done) return false;
         int seat = g.turn;
         if (g.phase == AshtaRules.THROW) {
-            say(pick("ముందు గవ్వలు వేయండి " + her() + ", గవ్వల మీద నొక్కండి.", "గవ్వల మీద నొక్కి వేయండి, తర్వాత చెబుతాను."), "happy", "point");
+            say(pick("ముందు గవ్వలు వేయండి" + herName(seat) + ", గవ్వల మీద నొక్కండి.", "గవ్వల మీద నొక్కి వేయండి, తర్వాత చెబుతాను."), "happy", "point");
             return true;
         }
         int k = g.copy().choose(2, rnd);

@@ -106,10 +106,14 @@ final class XoRules {
     boolean load(String s) {
         try {
             String[] p = s.split("\\|");
-            if (p[0].length() != 9) return false;
-            for (int i = 0; i < 9; i++) { int v = p[0].charAt(i) - '0'; if (v < 0 || v > 2) return false; cell[i] = v; }
-            turn = Integer.parseInt(p[1]) & 1;
-            last = Integer.parseInt(p[2]);
+            if (p.length < 3 || p[0].length() != 9) return false;
+            int[] c = new int[9];
+            for (int i = 0; i < 9; i++) { int v = p[0].charAt(i) - '0'; if (v < 0 || v > 2) return false; c[i] = v; }
+            int t = Integer.parseInt(p[1]) & 1, l = Integer.parseInt(p[2]);
+            if (l < -1 || l > 8) return false;
+            System.arraycopy(c, 0, cell, 0, 9); // (only now: a bad save leaves the board as it was)
+            turn = t;
+            last = l;
             return true;
         } catch (Exception e) {
             return false;

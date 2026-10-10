@@ -342,6 +342,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onDestroy() {
         if (homeNow == this) homeNow = null;
+        if (home != null && home.gamesPanel() != null) home.gamesPanel().close(false); // (its far-game polling and timers end with this screen)
         Radio.dismissPicker();
         generation++; // late replies (onReply) are dropped and the Brain stops running tools
         if (store.listener == this) store.listener = null;
@@ -1511,6 +1512,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         @Override public void talkGame(String id) { MainActivity.this.talkGame(id); }
         @Override public void gamesClosed() {}
         @Override public BodyRig rig() { return home.body.rig; }
+        @Override public void help() { homeButton("help"); }
     };
 
     /** A talking game (no board): memory, Bible quiz, riddle, words — played in the talk as before. */
@@ -1560,11 +1562,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         MainActivity a = homeNow;
         if (a == null || a.home == null || a.isFinishing() || t == null) return null;
         GamePanel p = a.home.gamesPanel();
-        if (a.home.gamesOpen() && p != null && p.heard(t)) return "";
         String id = Games.named(t);
+        if (a.home.gamesOpen() && p != null) {
+            if (p.heard(t)) return "";
+            Game g = p.game();
+            // (a game's name in her words while she plays, "పులి మేక ఆట…": not a new game over the one she is playing)
+            if (g != null && !g.done && id != null && !Games.talking(id)) return null;
+        }
         boolean play = Games.playWords(t);
         if (id != null && play && !Games.talking(id)) {
-            if (t.contains("అబ్బాయితో") && GameLink.ready(a)) {
+            Game probe = t.contains("అబ్బాయితో") ? Games.make(a, id) : null;
+            if (probe != null && probe.farOk() && GameLink.ready(a)) { // (not the pairs: its cards are this tablet's photos)
                 a.home.openGames(a.gamesOuter, null, true);
                 GamePanel q = a.home.gamesPanel();
                 if (q != null) q.start(id, new String[]{"her", "son"}, 0);

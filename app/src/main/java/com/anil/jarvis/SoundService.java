@@ -69,6 +69,9 @@ public class SoundService extends Service {
 
     /** The night songs in her bedroom (home tablet): the radio plays softly (1 = as usual; back to 1 when it stops). */
     static volatile float soft = 1f;
+    /** What the next sound started takes as soft (HomeCare.sleepSongs sets 0.45 just before it starts the radio); every
+     *  start takes it and puts it back to 1, so a soft night never carries over to the next radio / alarm. */
+    static volatile float softNext = 1f;
 
     private void applyVolume() {
         float v = Math.max(0, gain) * soft * (quiet ? 0.2f : 1f);
@@ -152,6 +155,8 @@ public class SoundService extends Service {
             return START_NOT_STICKY;
         }
         halt();
+        soft = softNext;
+        softNext = 1f;
         AppRadio.cancelPending(); // a station the Telugu Radios app was about to start must not play over this
         AppRadio.pauseAfter(this, 0);
         int minutes = Math.max(0, i.getIntExtra("minutes", 0));
