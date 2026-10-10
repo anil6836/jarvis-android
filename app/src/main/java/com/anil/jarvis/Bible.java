@@ -123,12 +123,69 @@ final class Bible {
         return b.toString();
     }
 
+    // the home tablet keeps every chapter it has read (and slowly fetches the rest) so the Bible works without internet
+    private static volatile java.io.File cache;
+    private static final java.util.concurrent.atomic.AtomicBoolean fetching = new java.util.concurrent.atomic.AtomicBoolean();
+
+    /** Where chapters are kept (the home tablet only; null = none kept). */
+    static void setCache(java.io.File dir) { if (dir != null) { dir.mkdirs(); cache = dir; } }
+
+    private static java.io.File cached(String path) {
+        java.io.File d = cache;
+        return d == null ? null : new java.io.File(d, Integer.toHexString(path.hashCode()) + ".json");
+    }
+
     private static JSONObject get(String path) throws Exception {
-        try {
-            return Http.get(BASE + path);
-        } catch (Exception e) {
-            return Http.get(BASE2 + path);
+        java.io.File f = cached(path);
+        if (f != null && f.length() > 20) {
+            try { return new JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8)); }
+            catch (Exception ignored) {} // (a broken copy: fetched again)
         }
+        JSONObject j;
+        try {
+            j = Http.get(BASE + path);
+        } catch (Exception e) {
+            j = Http.get(BASE2 + path);
+        }
+        if (f != null) {
+            try {
+                java.io.File tmp = new java.io.File(f.getPath() + ".tmp");
+                java.nio.file.Files.write(tmp.toPath(), j.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                if (!tmp.renameTo(f)) tmp.delete();
+            } catch (Exception ignored) {}
+        }
+        return j;
+    }
+
+    /** A few more chapters into the tablet's copy (the days' verses first, then the whole Bible in order); background. */
+    static void prefetchSome(int n) {
+        if (cache == null || !fetching.compareAndSet(false, true)) return;
+        new Thread(() -> {
+            try {
+                int got = 0;
+                for (String[] r : DAILY) { // the coming days' verses
+                    String f = folder(r[0]);
+                    if (f == null) continue;
+                    String path = Uri.encode(f) + "/chapters/" + r[1] + ".json";
+                    java.io.File c = cached(path);
+                    if (c != null && c.length() > 20) continue;
+                    try { get(path); } catch (Exception e) { return; }
+                    if (++got >= n) return;
+                }
+                for (int b = 0; b < BOOKS.length && got < n; b++) {
+                    for (int ch = 1; ch <= CHAPTERS[b] && got < n; ch++) {
+                        String path = Uri.encode(BOOKS[b][1]) + "/chapters/" + ch + ".json";
+                        java.io.File c = cached(path);
+                        if (c != null && c.length() > 20) continue;
+                        try { get(path); } catch (Exception e) { return; }
+                        got++;
+                        try { Thread.sleep(1500); } catch (InterruptedException ie) { return; }
+                    }
+                }
+            } finally {
+                fetching.set(false);
+            }
+        }, "bible-keep").start();
     }
 
     /** Verses from..to of a chapter (to = 0: up to 12 verses from 'from'). */

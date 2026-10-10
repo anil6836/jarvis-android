@@ -228,6 +228,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             f.addView(home, new FrameLayout.LayoutParams(-1, -1));
             setContentView(f);
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            homeNow = this;
+            HomeCare.start(this); // అమ్మగారు's day: meals, tablets, water, checks, the home link
         } else {
             setContentView(ui);
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
@@ -334,6 +336,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override protected void onDestroy() {
+        if (homeNow == this) homeNow = null;
         Radio.dismissPicker();
         generation++; // late replies (onReply) are dropped and the Brain stops running tools
         if (store.listener == this) store.listener = null;
@@ -1480,6 +1483,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             main.postDelayed(backHome, 3 * 60_000L); // back to the big screen when the chat is left alone
         }
         @Override public void openSettings() { startActivity(new Intent(MainActivity.this, SettingsActivity.class)); }
+        @Override public void care(String what) { homeButton(what); }
     };
 
     private final Runnable backHome = () -> {
@@ -1487,6 +1491,77 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (busy || voice.listening || voice.speaking || keyboardUp) { main.postDelayed(this.backHome, 60_000L); return; }
         showHome();
     };
+
+    // ---- అమ్మగారు's care (HomeCare) speaking on the home screen
+    private static volatile MainActivity homeNow; // the home Jarvis's screen while it exists
+    private boolean homeAskListen;
+
+    /** HomeCare: say it on the home screen and (listen) wait for her answer. False: no home screen now (said another way). */
+    static boolean homeAsk(String text, String feeling, boolean listen) {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing()) return false;
+        a.main.post(() -> a.homeSpeak(text, feeling, listen, 0));
+        return true;
+    }
+
+    private void homeSpeak(String text, String feeling, boolean listen, int tries) {
+        if (isFinishing() || home == null) { Announcer.say(this, text); return; }
+        if (busy || live != null || voice.speaking || voice.listening) { // a talk is going on: after it (or said plainly after a minute)
+            if (tries >= 3) { Announcer.say(this, text); return; }
+            main.postDelayed(() -> homeSpeak(text, feeling, listen, tries + 1), 20_000L);
+            return;
+        }
+        showHome();
+        long now = System.currentTimeMillis();
+        store.addChat("assistant", text, false);
+        addMessage("assistant", text, now, null);
+        home.setFeeling(feeling);
+        home.say(text);
+        lastWasVoice = listen;
+        homeAskListen = listen;
+        keepScreenOn();
+        voice.speak(text, prefs.speechRate());
+        setOrb(OrbView.SPEAKING);
+        refreshAction();
+    }
+
+    /** HomeCare answered her words itself (offline too). */
+    private void homeReply(String heard, String reply) {
+        long now = System.currentTimeMillis();
+        store.addChat("user", heard, false);
+        addMessage("user", heard, now, null);
+        store.addChat("assistant", reply, false);
+        addMessage("assistant", reply, now, null);
+        String f = Emotion.forText(reply);
+        if (face != null) face.setFeeling(f);
+        home.setFeeling(f);
+        home.say(reply);
+        if (prefs.voiceReplies()) {
+            lastWasVoice = false;
+            voice.speak(reply, prefs.speechRate());
+            setOrb(OrbView.SPEAKING);
+            refreshAction();
+        } else finishTurn();
+    }
+
+    /** The big buttons for అమ్మగారు on the home screen. */
+    private void homeButton(String what) {
+        HomeCare.life(this);
+        switch (what) {
+            case "tablet": homeReply("💊 వేసుకున్నాను", HomeCare.tabletTaken(this)); break;
+            case "ate": homeReply("🍽️ తిన్నాను", HomeCare.ateNow(this)); break;
+            case "songs": homeReply("🎵 పాటలు", HomeCare.songs(this)); break;
+            case "son": startActivity(new Intent(this, HomeTalkActivity.class)); break;
+            case "help": homeReply("🆘 సహాయం", HomeCare.heard(this, "సహాయం కావాలి")); break;
+            case "bible":
+                new Thread(() -> {
+                    String v = HomeCare.verse(this, true);
+                    main.post(() -> homeSpeak(v != null ? v : HomeCare.who(this) + ", ఇప్పుడు బైబిల్ తెరవలేకపోయాను (నెట్ లేదు).", "calm", v != null, 0));
+                }, "home-verse").start();
+                break;
+            default: break;
+        }
+    }
 
     private void showHome() {
         if (home == null) return;
@@ -1679,6 +1754,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (r != VoiceIO.NEW) { afterPaused(r); return; }
         }
         if (text == null || text.trim().isEmpty()) { finishTurn(); return; }
+        if (home != null) { // the home tablet: అమ్మగారు's answers and words of care first (they work without internet)
+            HomeCare.talked(this);
+            String r = HomeCare.heard(this, text.trim());
+            if (r != null) { homeReply(text.trim(), r); return; }
+        }
         send(text.trim(), null, true);
     }
 
@@ -1740,7 +1820,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         String lang = Tools.takeInterpreter();
         if (lang != null && live == null && !busy) { startLive(Brain.interpreterInstructions(prefs.name(), lang)); return; }
-        boolean asked = Tools.awaitingAnswer(); // read every time: the "which one?" flag is used up here
+        boolean asked = Tools.awaitingAnswer() || homeAskListen; // read every time: the "which one?" flag is used up here
+        homeAskListen = false;
         ScreenReader page = ScreenReader.get(this);
         if (lastWasVoice && (prefs.followUp() || asked) && !paused && !busy && !(page.active() && !page.paused())) { // not while a page is read aloud (a paused one waits)
             lastWasVoice = false;

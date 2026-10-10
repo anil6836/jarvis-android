@@ -162,14 +162,28 @@ final class Medicine {
                 Reminders.setAlarm(c, nextAt(time), pi(c, ACTION_DUE, id, time, 0)); // tomorrow at the same time
                 if (takenAt(c, id, slot)) return;
                 remind(c, m, time, false);
-                Reminders.setAlarm(c, System.currentTimeMillis() + 30 * 60_000L, pi(c, ACTION_CHECK, id, time, 2));
+                // (the home tablet asks అమ్మగారు again every 10 minutes; the phone once after 30)
+                Reminders.setAlarm(c, System.currentTimeMillis() + (HomeCare.on(c) ? 10 : 30) * 60_000L, pi(c, ACTION_CHECK, id, time, 2));
                 break;
             case ACTION_SNOOZE:
                 cancelNote(c, m, time);
                 Reminders.setAlarm(c, System.currentTimeMillis() + 10 * 60_000L, pi(c, ACTION_CHECK, id, time, 2));
                 break;
             case ACTION_CHECK:
-                if (!takenAt(c, id, slot)) remind(c, m, time, true);
+                if (takenAt(c, id, slot)) break;
+                if (HomeCare.on(c)) { // asked again (2nd, 3rd time); not taken after the 3rd -> Anil is told once
+                    android.content.SharedPreferences t = c.getSharedPreferences("jarvis_med_tries", Context.MODE_PRIVATE);
+                    int tries = t.getInt(slot + id, 1) + 1;
+                    t.edit().putInt(slot + id, tries).apply();
+                    if (tries > 3) {
+                        HomeCare.alert(c, "💊 " + HomeCare.who(c) + " " + m.optString("name") + " (" + time + ") ఇంకా వేసుకున్నట్టు చెప్పలేదు; 3 సార్లు అడిగాను. ఒకసారి ఫోన్ చేసి గుర్తుచేయండి.");
+                        break;
+                    }
+                    remind(c, m, time, true);
+                    Reminders.setAlarm(c, System.currentTimeMillis() + 10 * 60_000L, pi(c, ACTION_CHECK, id, time, 2));
+                    break;
+                }
+                remind(c, m, time, true);
                 break;
             case ACTION_TAKEN:
                 taken(c, m, time);
@@ -203,6 +217,13 @@ final class Medicine {
             }
         } catch (Exception ignored) {}
         Prefs p = new Prefs(c);
+        if (HomeCare.on(c)) { // the home tablet: అమ్మగారు is asked, and her "వేసుకున్నాను" (or the 💊 button) marks it
+            String w = HomeCare.who(c);
+            HomeCare.ask(c, again ? w + ", " + name + " టాబ్లెట్ వేసుకున్నారా? ఇంకా అయితే ఇప్పుడే వేసుకోండి."
+                    : w + ", " + name + " టాబ్లెట్ వేసుకునే టైమ్ అయింది" + (how.isEmpty() ? "." : ", " + how + ".") + " వేసుకున్నాక చెప్పండి.",
+                    "med:" + m.optString("id") + ":" + time, again ? "worried" : "caring");
+            return;
+        }
         if (!dnd(c)) Announcer.say(c, p.name() + ", " + (again ? name + " ఇంకా వేసుకోలేదు. ఇప్పుడు వేసుకోండి." : name + " వేసుకునే టైమ్ అయింది" + (how.isEmpty() ? "." : ", " + how + ".")));
     }
 
@@ -298,6 +319,36 @@ final class Medicine {
         }
         return new JSONObject().put("ok", true).put("days", days).put("medicines", a)
                 .put("note", "Taken = marked with ✅ or told to Jarvis; doses not marked may still have been taken.");
+    }
+
+    static JSONObject byIdPublic(Context c, String id) { return byId(c, id); }
+
+    /** Today's dose nearest now (within 3 hours) not yet taken: {medicine, {"time": "HH:mm"}}, or null. */
+    static JSONObject[] nearestDue(Context c) {
+        Calendar now = Calendar.getInstance();
+        int mins = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE), best = 181;
+        JSONObject[] out = null;
+        String today = new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(new Date());
+        for (JSONObject m : all(c)) {
+            JSONArray t = m.optJSONArray("times");
+            for (int i = 0; t != null && i < t.length(); i++) {
+                String[] p = t.optString(i).split(":");
+                int d = Math.abs(Integer.parseInt(p[0]) * 60 + Integer.parseInt(p[1]) - mins);
+                if (d < best && !takenAt(c, m.optString("id"), today + " " + t.optString(i))) {
+                    best = d;
+                    try { out = new JSONObject[]{m, new JSONObject().put("time", t.optString(i))}; } catch (Exception ignored) {}
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Today's doses with the medicine's name ("Metformin: 08:00 ✅  20:00 ⬜"). */
+    static List<String> todayLinesNamed(Context c) {
+        List<String> out = new ArrayList<>(), lines = todayLines(c);
+        List<JSONObject> ms = all(c);
+        for (int i = 0; i < lines.size() && i < ms.size(); i++) out.add(ms.get(i).optString("name") + ": " + lines.get(i));
+        return out;
     }
 
     static List<String> todayLines(Context c) {

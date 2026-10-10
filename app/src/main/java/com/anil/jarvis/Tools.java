@@ -225,6 +225,14 @@ final class Tools {
                         {"device", "string", "The device name as it appears in his app, English"},
                         {"on", "boolean", "true = on, false = off"},
                         {"alexa_phrase", "string", "The same request as he would say it to Alexa in English, e.g. 'turn off the hall light'"}}, "command")));
+        DEFS.add(new Def("home_care",
+                "HOME TABLET ONLY (the home Jarvis with అమ్మగారు): note her day and reach Anil. ate = she had a meal (meal: tiffin, lunch, snack, dinner); "
+                        + "tablet_taken = she took the tablet that is due; water = she drank water; sugar = her sugar reading (value); tell_son = a message to Anil's "
+                        + "phone (text; also for anything worrying); quiet = she wants quiet for some minutes; out / back = she goes out / came back; "
+                        + "today = her day so far; story = a Bible story kept on the tablet.",
+                schema(new String[][]{{"action", "string", "ate, tablet_taken, water, sugar, tell_son, quiet, out, back, today or story"},
+                        {"meal", "string", "For ate: tiffin, lunch, snack or dinner"}, {"value", "integer", "For sugar: the reading (mg/dL)"},
+                        {"text", "string", "For tell_son: the message in Telugu"}, {"minutes", "integer", "For quiet: how long (default 120)"}}, "action")));
         DEFS.add(new Def("parking", "Where he parked: save = remember this spot ('బండి ఇక్కడ పెట్టాను'); find = walk him back to it ('నా బండి ఎక్కడ?').",
                 schema(new String[][]{{"action", "string", "save or find"}}, "action")));
         DEFS.add(new Def("bills_due", "Upcoming bill due dates (credit card, electricity, phone...) found in his SMS.", schema(new String[][]{})));
@@ -808,6 +816,7 @@ final class Tools {
     JSONArray openAiTools() throws Exception {
         JSONArray a = new JSONArray();
         for (Def d : DEFS) {
+            if ("home_care".equals(d.name) && !prefs.homeMode()) continue; // (the home tablet only)
             a.put(new JSONObject().put("type", "function").put("name", d.name)
                     .put("description", d.description).put("parameters", d.params));
         }
@@ -818,6 +827,7 @@ final class Tools {
     JSONArray geminiTools() throws Exception {
         JSONArray a = new JSONArray();
         for (Def d : DEFS) {
+            if ("home_care".equals(d.name) && !prefs.homeMode()) continue; // (the home tablet only)
             JSONObject f = new JSONObject().put("name", d.name).put("description", d.description);
             JSONObject props = d.params.optJSONObject("properties");
             if (props != null && props.length() > 0) f.put("parameters", d.params);
@@ -829,6 +839,7 @@ final class Tools {
     JSONArray anthropicTools() throws Exception {
         JSONArray a = new JSONArray();
         for (Def d : DEFS) {
+            if ("home_care".equals(d.name) && !prefs.homeMode()) continue; // (the home tablet only)
             a.put(new JSONObject().put("name", d.name).put("description", d.description).put("input_schema", d.params));
         }
         return a;
@@ -932,6 +943,7 @@ final class Tools {
             case "screen_time": case "app_limit": return "స్క్రీన్ టైమ్ చూస్తున్నాను…";
             case "air_quality": return "గాలి నాణ్యత చూస్తున్నాను…";
             case "cricket_watch": return "క్రికెట్…";
+            case "home_care": return "గుర్తుపెడుతున్నాను…";
             case "smart_home": return "లైట్లు…";
             case "notes": return "నోట్స్…";
             case "sos": return "🆘 SOS…";
@@ -1013,6 +1025,7 @@ final class Tools {
                 case "save_place": return savePlace(a.optString("name"));
                 case "my_places": return myPlaces(a.optString("action", "show"), a.optString("name", ""), a.optString("link", ""),
                         a.optString("address", ""), a.optBoolean("here", false));
+                case "home_care": return HomeCare.tool(act(), a);
                 case "smart_home": return smartHome(a.optString("command", ""), a.optString("device", ""),
                         a.optBoolean("on", true), a.optString("alexa_phrase", ""));
                 case "parking": return parking(a.optString("action", "find"));

@@ -37,7 +37,7 @@ final class HomeLink {
     private static SharedPreferences sp(Context c) { return c.getSharedPreferences("jarvis_homelink", Context.MODE_PRIVATE); }
 
     /** This is his main phone, joined to the home phone's bot. */
-    static boolean linked(Context c) { return !Guard.token(c).isEmpty() && !Guard.chat(c).isEmpty() && !Guard.running(c); }
+    static boolean linked(Context c) { return !Guard.token(c).isEmpty() && !Guard.chat(c).isEmpty() && !Guard.running(c) && !new Prefs(c).homeMode(); }
 
     // ================================================================ at home (the guard phone), every ~20 seconds
 
@@ -67,7 +67,9 @@ final class HomeLink {
         if (text.startsWith(SAY)) {
             String say = text.substring(SAY.length()).trim();
             if (!say.isEmpty()) {
-                Announcer.say(c, new Prefs(c).name() + " చెప్తున్నారు: " + say);
+                String line = new Prefs(c).name() + " చెప్తున్నారు: " + say;
+                if (HomeCare.on(c)) HomeCare.say(c, line, "happy"); // (on the home screen, with the face)
+                else Announcer.say(c, line);
                 Guard.sendQuiet(c, "✓ ఇంట్లో వినిపించాను (" + time + ")");
             }
         } else if (text.startsWith(PHOTO)) {

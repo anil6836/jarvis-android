@@ -281,6 +281,14 @@ final class CrashAlert {
                     : "బైక్ / కారు ప్రమాదం జరిగి ఉండొచ్చు (Jarvis గుర్తించింది), ఒక నిమిషం జవాబు ఇవ్వలేదు";
             stopAll(c, false); // the screen stays up: it can call the first contact
             new Thread(() -> {
+                if (HomeCare.on(c)) { // the home tablet has no SIM: Anil is told on Telegram (his own bot)
+                    boolean ok = HomeCare.alert(c, "🆘 " + what);
+                    String said = ok ? "అబ్బాయికి వెంటనే చెప్పాను. దగ్గర ఉన్నవాళ్లని పిలవండి; అవసరమైతే 108 కి ఫోన్ చేయించండి."
+                            : "నెట్ లేదు, అబ్బాయికి చెప్పలేకపోయాను. దగ్గర ఉన్నవాళ్లని పిలవండి; అవసరమైతే 108 కి ఫోన్ చేయించండి.";
+                    Reminders.notify(c, "🆘 SOS", said, NOTE + 1);
+                    Announcer.say(c, said);
+                    return;
+                }
                 List<String[]> sent = Sos.send(c, what);
                 StringBuilder names = new StringBuilder();
                 for (String[] s : sent) names.append(names.length() > 0 ? ", " : "").append(s[0]);

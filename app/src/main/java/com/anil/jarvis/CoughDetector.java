@@ -300,6 +300,7 @@ final class CoughDetector {
                     }
                     // a scream / a fall / crying first (S15, S18, S19); then the house sounds (door, cooker, rain)
                     String house = null;
+                    try { HomeCare.sounds(ctx, best); } catch (Throwable ignored) {} // the home tablet: someone is about
                     try { house = SafetySounds.heard(ctx, best, loud, noise, test, soundAt); } catch (Throwable ignored) {}
                     if (house == null) try { house = Sounds.heard(ctx, best, loud, loudN); } catch (Throwable ignored) {}
                     String verdict = decide(best, loud);

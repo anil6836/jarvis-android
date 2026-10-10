@@ -39,6 +39,10 @@ final class NaturalVoice {
 
     static final String[] VOICES = {"cedar", "marin", "ash", "ballad", "verse", "echo", "sage", "coral", "alloy", "shimmer"};
     static final int RATE = 24000;
+    /** The home tablet talks with అమ్మగారు: a little slower, very clear, warm and respectful (HomeCare sets it). */
+    static volatile boolean homeStyle;
+    static final String HOME_STYLE = " You are speaking to an elderly Telugu mother at home: speak a little slower and very clearly, warm and respectful, with gentle pauses between sentences.";
+
     static final String STYLE =
             "Voice: calm, refined and quietly warm, like JARVIS the British butler AI from the Iron Man films. "
             + "Language: the text is Telugu. Speak ONLY Telugu, with a native Andhra/Telangana Telugu accent and pronunciation. "
@@ -222,7 +226,7 @@ final class NaturalVoice {
         arrived = 0;
         complete = false;
         resetPauses();
-        final String style = STYLE + Emotion.style(emotion);
+        final String style = STYLE + (homeStyle ? HOME_STYLE : "") + Emotion.style(emotion);
         final String m = model == null || model.trim().isEmpty() ? DEFAULT_MODEL : model.trim();
         final EchoGuard eg = echo;
         new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cb), "jarvis-tts").start();

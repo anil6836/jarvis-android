@@ -13,6 +13,7 @@
     <exclude domain="sharedpref" path="jarvis_scans.xml" />
     <exclude domain="sharedpref" path="jarvis_mic_quiet.xml" />
     <exclude domain="file" path="scans/" />
+        <exclude domain="file" path="bible/" />
         <exclude domain="file" path="vosk-en/" />
         <exclude domain="file" path="vosk-spk/" />
         <exclude domain="file" path=".jarvis_restore/" />

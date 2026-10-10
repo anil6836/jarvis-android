@@ -41,6 +41,8 @@ final class HomeScreen extends FrameLayout {
         void talk();
         void openChat();
         void openSettings();
+        /** అమ్మగారు's big buttons: tablet, ate, bible, songs, son, help. */
+        void care(String what);
     }
 
     static final int NIGHT_FROM = 22, NIGHT_TO = 6;
@@ -142,10 +144,34 @@ final class HomeScreen extends FrameLayout {
         next.setEllipsize(TextUtils.TruncateAt.END);
         side.addView(next);
 
+        // అమ్మగారు's big buttons
+        String[][] care = {{"tablet", "💊 వేసుకున్నాను"}, {"ate", "🍽️ తిన్నాను"}, {"bible", "🙏 బైబిల్"},
+                {"songs", "🎵 పాటలు"}, {"son", "🎤 అబ్బాయికి చెప్పు"}, {"help", "🆘 సహాయం"}};
+        LinearLayout grid = new LinearLayout(a);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-1, -2);
+        gl.topMargin = dp(16);
+        side.addView(grid, gl);
+        LinearLayout gr = null;
+        for (int i = 0; i < care.length; i++) {
+            if (i % 3 == 0) {
+                gr = new LinearLayout(a);
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+                rl.topMargin = i == 0 ? 0 : dp(8);
+                grid.addView(gr, rl);
+            }
+            final String what = care[i][0];
+            TextView b = button(a, care[i][1], "help".equals(what) ? 0xFF8B1E1E : 0xFF1F3B5C, 0xFFFFFFFF, 17);
+            b.setOnClickListener(v -> host.care(what));
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(62), 1);
+            if (i % 3 != 0) bl.leftMargin = dp(8);
+            gr.addView(b, bl);
+        }
+
         smart = new LinearLayout(a);
         smart.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, -2);
-        sl.topMargin = dp(14);
+        sl.topMargin = dp(12);
         side.addView(smart, sl);
 
         side.addView(new View(a), new LinearLayout.LayoutParams(-1, 0, 1)); // (the buttons stay at the bottom)
@@ -198,6 +224,14 @@ final class HomeScreen extends FrameLayout {
         bubble.setText(s);
         bubble.setVisibility(VISIBLE);
         bubbleAt = System.currentTimeMillis();
+    }
+
+    private long touchedAt;
+
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) {
+        long now = System.currentTimeMillis();
+        if (now - touchedAt > 60_000L) { touchedAt = now; HomeCare.life(getContext()); } // someone is about
+        return super.dispatchTouchEvent(e);
     }
 
     /** The screen stays on (day) or may go dark (night). */
@@ -367,7 +401,7 @@ final class HomeScreen extends FrameLayout {
             if (eq <= 0) continue;
             String name = line.substring(0, eq).trim(), url = line.substring(eq + 1).trim();
             if (!name.isEmpty() && url.startsWith("http")) cmds.add(new String[]{name, url});
-            if (cmds.size() == 6) break;
+            if (cmds.size() == 4) break;
         }
         LinearLayout r = null;
         for (int i = 0; i < cmds.size(); i++) {
@@ -381,11 +415,11 @@ final class HomeScreen extends FrameLayout {
             final String label = label(cmd[0]);
             TextView b = button(getContext(), label, 0xFF1B3050, 0xFFDCE7F3, 18);
             b.setOnClickListener(v -> run(label, cmd[1]));
-            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(52), 1);
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(48), 1);
             if (i % 2 == 1) bl.leftMargin = dp(8);
             r.addView(b, bl);
         }
-        if (cmds.size() % 2 == 1 && r != null) r.addView(new View(getContext()), new LinearLayout.LayoutParams(0, dp(52), 1));
+        if (cmds.size() % 2 == 1 && r != null) r.addView(new View(getContext()), new LinearLayout.LayoutParams(0, dp(48), 1));
     }
 
     /** "ac on" -> "AC ఆన్", "fan off" -> "Fan ఆఫ్". */

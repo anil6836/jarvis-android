@@ -180,7 +180,7 @@ final class Faith {
                 String more = morningExtras(c);
                 if (!more.isEmpty()) text += "\n" + more;
                 Reminders.notify(c, "📖 ఈరోజు వచనం · " + ref, text, 161);
-                if (!quiet(c)) Announcer.say(c, "శుభోదయం " + p.name() + ". " + text);
+                if (!quiet(c)) Announcer.say(c, "శుభోదయం " + (HomeCare.on(c) ? HomeCare.who(c) : p.name()) + ". " + text); // (the home tablet greets అమ్మగారు)
             } catch (Exception ignored) {}
         }, "jarvis-verse").start();
     }
