@@ -148,6 +148,8 @@ final class HomeCare {
                     && System.currentTimeMillis() - sp(c).getLong("life", 0) < 45 * 60_000L) companion(c);
         }
         if (due(c, "bed", bedTime(c)) && !out(c)) bedtime(c);
+        String feast = feast(Calendar.getInstance());
+        if (feast != null && due(c, "feast", "08:00") && !out(c)) say(c, feast, "happy");
         if (due(c, "report", reportTime(c))) report(c);
         // stories for an offline day, and the Bible kept on the tablet
         if (Net.online(c) && !today().equals(sp(c).getString("stories_day", ""))) prepareStories(c);
@@ -476,6 +478,31 @@ final class HomeCare {
                 + "quote Bible verses ONLY through the bible tool (Telugu IRV) and never invent verse text; for Telugu Christian songs use the radio "
                 + "(christian stations). Use home_care for meals, tablets, water, sugar readings, quiet time and messages to Anil. "
                 + "Never share Anil's private things (his messages, money, health, duty details beyond 'he is on duty and comes at …').";
+    }
+
+    /** Christmas, Good Friday, Easter, New Year: a greeting for her that morning (null on other days). */
+    static String feast(Calendar k) {
+        int y = k.get(Calendar.YEAR), m = k.get(Calendar.MONTH) + 1, d = k.get(Calendar.DAY_OF_MONTH);
+        if (m == 12 && d == 25) return "అమ్మగారు, క్రిస్మస్ శుభాకాంక్షలు! మన కోసం యేసుక్రీస్తు ఈ లోకానికి వచ్చిన రోజు. దేవుని ప్రేమ మీ మీద ఎప్పుడూ ఉండాలి.";
+        if (m == 1 && d == 1) return "అమ్మగారు, నూతన సంవత్సర శుభాకాంక్షలు! ఈ సంవత్సరమంతా దేవుడు మిమ్మల్ని ఆరోగ్యంగా, సంతోషంగా ఉంచాలి.";
+        int[] e = easter(y);
+        Calendar es = Calendar.getInstance();
+        es.clear();
+        es.set(y, e[0] - 1, e[1]);
+        Calendar gf = (Calendar) es.clone();
+        gf.add(Calendar.DAY_OF_MONTH, -2);
+        if (m == e[0] && d == e[1]) return "అమ్మగారు, ఈస్టర్ శుభాకాంక్షలు! యేసుక్రీస్తు మృతులలోనుండి లేచిన రోజు. ఆయన సజీవుడు, మనకు నిరీక్షణ.";
+        if (m == gf.get(Calendar.MONTH) + 1 && d == gf.get(Calendar.DAY_OF_MONTH))
+            return "అమ్మగారు, ఈరోజు మంచి శుక్రవారం. మన కోసం యేసుక్రీస్తు సిలువపై ప్రాణం పెట్టిన రోజు. ఆయన ప్రేమను గుర్తుచేసుకుందాం.";
+        return null;
+    }
+
+    /** Easter Sunday {month 1-12, day} (the Gregorian computus). */
+    static int[] easter(int y) {
+        int a = y % 19, b = y / 100, c = y % 100, d = b / 4, e = b % 4, f = (b + 8) / 25, g = (b - f + 1) / 3;
+        int h = (19 * a + b - d - g + 15) % 30, i = c / 4, k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = (a + 11 * h + 22 * l) / 451;
+        int month = (h + l - 7 * m + 114) / 31, day = ((h + l - 7 * m + 114) % 31) + 1;
+        return new int[]{month, day};
     }
 
     // ================================================================ Bible: stories kept for an offline day, the day's verse
