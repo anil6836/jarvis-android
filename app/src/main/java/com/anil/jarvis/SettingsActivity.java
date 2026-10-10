@@ -2877,6 +2877,21 @@ public class SettingsActivity extends Activity {
         frameInfo = Ui.text(this, "ఎవరూ లేనప్పుడు టాబ్లెట్‌లో ఈ ఫోటోలు ఒక్కొక్కటిగా కనిపిస్తాయి (ఒక్కో ఫోటోకి ~20 సెకన్లు పడుతుంది).", 13.5f, Ui.MUTED);
         box.addView(frameInfo);
 
+        // ---- a message to her, read aloud by the tablet's Jarvis (she can answer by voice; her answer comes to his Telegram)
+        EditText mText = field("💬 అమ్మకి మెసేజ్ (టాబ్లెట్ Jarvis చదివి వినిపిస్తాడు)", "", false);
+        TextView mInfo = Ui.text(this, "టాబ్లెట్ \"అబ్బాయి మెసేజ్ పంపాడు: …\" అని చదివి, \"జవాబు ఏమైనా చెప్పాలా?\" అని అడుగుతుంది. అమ్మగారి జవాబు మీ Telegram కి వస్తుంది. "
+                + "\"Jarvis, ఇంటికి చెప్పు: …\" అని గొంతుతో కూడా పంపొచ్చు.", 13.5f, Ui.MUTED);
+        button("📢 టాబ్లెట్‌లో వినిపించు", v -> {
+            String text = mText.getText().toString().trim();
+            if (text.isEmpty()) { mInfo.setText("ఏమి చెప్పాలో రాయండి."); return; }
+            mInfo.setText("పంపుతున్నాను…");
+            new Thread(() -> {
+                String r = HomeLink.say(getApplicationContext(), text);
+                runOnUiThread(() -> { mInfo.setText(r); if (r.startsWith("పంపాను")) mText.setText(""); });
+            }, "tab-say").start();
+        });
+        box.addView(mInfo);
+
         // ---- a reminder said at home
         EditText rText = field("⏰ ఇంట్లో ఏమి గుర్తుచేయాలి (ఉదా: డాక్టర్ దగ్గరికి వెళ్లాలి)", "", false);
         EditText rWhen = field("ఎప్పుడు (ఉదా: రేపు 10:00 · ఈరోజు 18:30 · 2026-10-12 09:00)", "", false);

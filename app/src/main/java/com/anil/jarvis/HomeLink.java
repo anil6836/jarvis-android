@@ -72,9 +72,10 @@ final class HomeLink {
         if (text.startsWith(SAY)) {
             String say = text.substring(SAY.length()).trim();
             if (!say.isEmpty()) {
-                String line = new Prefs(c).name() + " చెప్తున్నారు: " + say;
-                if (HomeCare.on(c)) HomeCare.say(c, line, "happy"); // (on the home screen, with the face)
-                else Announcer.say(c, line);
+                if (HomeCare.on(c)) { // the home tablet: his message to her, and her answer (if she gives one) goes back to him
+                    String w = HomeCare.who(c);
+                    HomeCare.ask(c, w + ", అబ్బాయి మెసేజ్ పంపాడు: " + say + ". … జవాబు ఏమైనా చెప్పాలా? చెప్తే అబ్బాయికి పంపుతాను.", "sonmsg", "happy");
+                } else Announcer.say(c, new Prefs(c).name() + " చెప్తున్నారు: " + say);
                 Guard.sendQuiet(c, "✓ ఇంట్లో వినిపించాను (" + time + ")");
             }
         } else if (text.startsWith(PHOTO)) {

@@ -343,6 +343,19 @@ final class HomeCare {
         boolean tablet = t.contains("టాబ్లెట్") || t.contains("మాత్ర") || t.contains("మందు");
         boolean ate = t.contains("తిన్నా") || t.contains("భోజనం అయింది") || t.contains("టిఫిన్ అయింది");
         String p = pending();
+        if (p.equals("sonmsg") || p.equals("sonmsg2")) { // his message was read out: her answer goes to him (only what she says now)
+            String said = text.trim();
+            pending = "";
+            if (said.matches("(?s)^(వద్దు|లేదు|ఏమీ లేదు|ఏం లేదు|అవసరం లేదు|తర్వాత|no)[ .!।]*$")) return "సరే " + w + ".";
+            if (p.equals("sonmsg") && said.matches("(?s)^(అవును|ఔను|సరే|హా|ఆ|ok|చెప్తాను|చెబుతాను|చెప్తా)[ .!।]*$")) {
+                setPending("sonmsg2");
+                return "చెప్పండి " + w + ", అబ్బాయికి ఏమని పంపాలి?";
+            }
+            if (!said.isEmpty()) {
+                boolean sent = alert(c, "💬 " + w + " జవాబు: " + said);
+                return sent ? "సరే " + w + ", అబ్బాయికి పంపాను." : "నెట్ లేదు " + w + ", నెట్ రాగానే అబ్బాయికి పంపుతాను.";
+            }
+        }
         if (p.startsWith("game:")) { // (a game's question waits for her: a few minutes, not every word for 15 minutes)
             pending = "";
             if (System.currentTimeMillis() - pendingAt < 3 * 60_000L) return HomeGames.answer(c, p, t);

@@ -465,7 +465,7 @@ final class Brain {
                 + "'ఈ రైడ్ ఎన్ని కి.మీ?' -> travel trip; 'ఈరోజు బండి సర్వీస్ చేయించాను' -> travel service_done days_ago 0; 'సర్వీస్ ఎప్పుడు?' -> travel service_when; "
                 + "'వాచ్‌లో ఇంటికి దారి చూపించు' -> travel watch_compass place ఇల్లు. '30 నిమిషాల తర్వాత పాట ఆపు' -> media_control sleep minutes 30; "
                 + "'వాచ్‌లో Radio Ala పెట్టు' -> sounds radio with station and on_watch=true. "
-                + "'ఇంట్లో ఎలా ఉంది?' -> home_link look; 'ఇంటికి చెప్పు నేను లేట్ అవుతాను' -> home_link say (ask first, then call after his yes); "
+                + "'ఇంట్లో ఎలా ఉంది?' -> home_link look; 'ఇంటికి చెప్పు నేను లేట్ అవుతాను' / 'టాబ్లెట్‌లో అమ్మకి చెప్పు: …' / 'అమ్మకి టాబ్లెట్‌కి మెసేజ్ పంపు: …' -> home_link say (ask first, then call after his yes; the home tablet reads it to her and her spoken answer comes back on Telegram; a WhatsApp / SMS to his mother is NOT this); "
                 + "'ఇంట్లో కాపలా ఆపు / పెట్టు' -> home_link guard_off / guard_on. "
                 + "'డ్యూటీ / నిద్ర / రైడ్ / ఇల్లు ప్రోటోకాల్' -> protocol run; 'ప్రోటోకాల్ జిమ్: సైలెంట్, వాతావరణం' -> protocol save; 'నా ప్రోటోకాల్స్' -> protocol list. "
                 + "'నాతో ఉండు / ఇంటికి వెళ్తున్నా, చూసుకో' -> journey_guard start (place, minutes if he said); 'చేరుకున్నాను / ఇక వద్దు' -> journey_guard stop; "
