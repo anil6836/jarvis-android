@@ -40,6 +40,18 @@ jobs:
             || { rm -f app/src/main/assets/yamnet.tflite; echo "::warning::YAMNet model not downloaded; cough detection is off in this build"; }
           ls -la app/src/main/assets
 
+      - name: Download the camera's object finder (EfficientDet-Lite0)
+        shell: bash
+        run: |
+          # Not fatal: without it the Jarvis camera has no live rings and asks the AI as before.
+          F=app/src/main/assets/objdet.tflite
+          ok() { [ -s "$F" ] && [ "$(stat -c %s "$F")" -gt 1000000 ] && [ "$(dd if="$F" bs=1 skip=4 count=4 2>/dev/null)" = "TFL3" ]; }
+          curl -fsSL --retry 3 -o "$F" "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/latest/efficientdet_lite0.tflite" && ok \
+            || { curl -fsSL --retry 3 -o "$F" "https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/android/lite-model_efficientdet_lite0_detection_metadata_1.tflite" && ok; } \
+            || { curl -fsSL --retry 3 -o "$F" "https://tfhub.dev/tensorflow/lite-model/efficientdet/lite0/detection/metadata/1?lite-format=tflite" && ok; } \
+            || { rm -f "$F"; echo "::warning::Object finder model not downloaded; the camera's live rings are off in this build"; }
+          ls -la app/src/main/assets
+
       - name: Download the face memory model (FaceNet), published next to the APK
         shell: bash
         run: |

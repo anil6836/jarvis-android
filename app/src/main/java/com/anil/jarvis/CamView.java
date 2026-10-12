@@ -53,6 +53,13 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
     private int sensorDeg = 90;
     private boolean wanted, torch, flash;
     private float zoom = 1f, maxZoom = 1f, minZoom = 1f;
+    /**
+     * Jarvis's own zoom on top of the camera's (when he goes past what the phone gives other apps): the screen shows the
+     * part of the camera's picture around (cx, cy) (0..1 of it), digital times bigger. Total zoom = zoom × digital, up to MAX_TOTAL.
+     */
+    private float digital = 1f, cx = 0.5f, cy = 0.5f;
+    static final float MAX_TOTAL = 100f;
+    private boolean night;
     private Rect active;
     private boolean ratioZoom;
     Listener listener;
@@ -64,6 +71,7 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
         tex = new TextureView(c);
         tex.setSurfaceTextureListener(this);
         addView(tex, new LayoutParams(-1, -1, Gravity.CENTER));
+        tex.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> applyDigital()); // (its size follows the camera's shape)
         try {
             for (String id : cm.getCameraIdList()) {
                 Integer f = cm.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING);
@@ -135,6 +143,9 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
         which = (which + 1) % ids.size();
         torch = false;
         zoom = 1f;
+        digital = 1f;
+        cx = cy = 0.5f;
+        main.post(this::applyDigital);
         if (wanted && tex.isAvailable()) start();
     }
 
@@ -160,7 +171,7 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
             minZoom = 1f;
             if (Build.VERSION.SDK_INT >= 30) {
                 Range<Float> r = ch.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
-                if (r != null) { ratioZoom = true; maxZoom = Math.min(10f, r.getUpper()); minZoom = Math.max(1f, r.getLower()); }
+                if (r != null) { ratioZoom = true; maxZoom = Math.max(1f, r.getUpper()); minZoom = Math.max(1f, r.getLower()); } // (all the phone gives)
             }
             if (!ratioZoom) {
                 Float m = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
@@ -221,7 +232,9 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
             req.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
             req.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
             req.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+            fps0 = req.get(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE); // (the camera's own choice, kept for when 🌙 goes off)
             applyZoom();
+            if (night) applyNight();
             //noinspection deprecation
             dv.createCaptureSession(Collections.singletonList(s), new CameraCaptureSession.StateCallback() {
                 @Override public void onConfigured(CameraCaptureSession cs) {
@@ -255,11 +268,94 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
         });
     }
 
-    /** Zoom (1 = none), within what this camera can. */
+    /** The camera's own (optical + the phone's) zoom it gives other apps. */
+    float opticalMax() { return maxZoom; }
+    float digital() { return digital; }
+
+    /** Total zoom (1 = none, up to MAX_TOTAL): the camera's own first, then Jarvis's (around the same spot). */
     void setZoom(float z) {
-        zoom = Math.max(minZoom, Math.min(maxZoom, z));
+        float total = Math.max(minZoom, Math.min(MAX_TOTAL, z));
+        float o = Math.min(total, maxZoom);
+        setParts(o, total / o, cx, cy);
+    }
+
+    /**
+     * Zoom so the thing at (tx, ty) (0..1 of the screen now), half-sized hw × hh, comes to the middle and is k times
+     * bigger. The camera's own zoom only goes as far as keeps it in the picture (it zooms around the middle); Jarvis's
+     * zoom does the rest around it. Returns {camera zoom, digital, cx, cy} to animate to.
+     */
+    float[] planZoomTo(float tx, float ty, float hw, float hh, float k) { return plan(zoom, digital, cx, cy, minZoom, maxZoom, tx, ty, hw, hh, k); }
+
+    /** (the sums of planZoomTo, on their own so they can be checked) */
+    static float[] plan(float o, float dg, float cx, float cy, float minZoom, float maxZoom, float tx, float ty, float hw, float hh, float k) {
+        float ux = cx + (tx - 0.5f) / dg, uy = cy + (ty - 0.5f) / dg; // where it is in the camera's own picture
+        float hx = hw / dg, hy = hh / dg;
+        float total = Math.max(minZoom, Math.min(MAX_TOTAL, o * dg * k));
+        float lim = 0.5f * o / Math.max(1e-3f, Math.max(Math.abs(ux - 0.5f) + hx * 1.15f, Math.abs(uy - 0.5f) + hy * 1.15f));
+        float o2 = Math.max(minZoom, Math.min(Math.min(maxZoom, total), Math.max(o * 0.999f, Math.min(lim, maxZoom))));
+        if (o2 < o) o2 = o; // (never pulls the camera's own zoom back: Jarvis's zoom moves instead)
+        float ux2 = 0.5f + (ux - 0.5f) * (o2 / o), uy2 = 0.5f + (uy - 0.5f) * (o2 / o);
+        float dg2 = Math.max(1f, total / o2);
+        return new float[]{o2, dg2, ux2, uy2};
+    }
+
+    /** The camera's zoom, Jarvis's zoom and where (cx, cy: 0..1 of the camera's own picture). */
+    void setParts(float o, float dg, float x, float y) {
+        o = Math.max(minZoom, Math.min(maxZoom, o));
+        dg = Math.max(1f, Math.min(MAX_TOTAL / o, dg));
+        float half = 0.5f / dg;
+        cx = Math.max(half, Math.min(1 - half, x));
+        cy = Math.max(half, Math.min(1 - half, y));
+        digital = dg;
+        boolean camChanged = Math.abs(o - zoom) > 1e-3f;
+        zoom = o;
+        applyDigital();
+        if (camChanged && bg != null) bg.post(() -> { if (req != null) { applyZoom(); repeat(); } });
+    }
+
+    /** Where (cx, cy) now is. */
+    float[] digitalCenter() { return new float[]{cx, cy}; }
+
+    /** Jarvis's zoom: the picture made bigger on the screen around (cx, cy). */
+    private void applyDigital() {
+        int W = getWidth(), H = getHeight(), tw = tex.getWidth(), th = tex.getHeight();
+        if (W == 0 || H == 0 || tw == 0 || th == 0) return;
+        float lx = (W - tw) / 2f, ly = (H - th) / 2f; // (the texture's own place, when it is bigger than the screen)
+        float x0 = (cx - 0.5f / digital) * W, y0 = (cy - 0.5f / digital) * H;
+        tex.setPivotX(0);
+        tex.setPivotY(0);
+        tex.setScaleX(digital);
+        tex.setScaleY(digital);
+        tex.setTranslationX(lx * (digital - 1) - x0 * digital);
+        tex.setTranslationY(ly * (digital - 1) - y0 * digital);
+    }
+
+    /** 🌙 night look: the camera keeps its picture brighter (longer exposure), for dark streets and rooms. */
+    void setNight(boolean on) {
+        night = on;
         if (bg == null) return;
-        bg.post(() -> { if (req != null) { applyZoom(); repeat(); } });
+        bg.post(() -> { if (req != null) { applyNight(); repeat(); } });
+    }
+
+    boolean night() { return night; }
+
+    private Range<Integer> fps0;
+
+    private void applyNight() {
+        if (req == null) return;
+        try {
+            CameraCharacteristics ch = cm.getCameraCharacteristics(ids.get(which));
+            Range<Integer> ev = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+            int comp = night && ev != null ? ev.getUpper() : 0;
+            req.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, comp);
+            if (!night) { if (fps0 != null) req.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fps0); return; } // (back to the camera's own)
+            Range<Integer>[] fps = ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+            if (fps != null && fps.length > 0) { // the slowest range: longer exposures, a brighter picture
+                Range<Integer> pick = null;
+                for (Range<Integer> r : fps) if (pick == null || r.getLower() < pick.getLower() || r.getLower().equals(pick.getLower()) && r.getUpper() > pick.getUpper()) pick = r;
+                if (pick != null) req.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, pick);
+            }
+        } catch (Exception ignored) {}
     }
 
     private void applyZoom() {
@@ -312,28 +408,46 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
 
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
-        main.post(this::fit);
+        main.post(() -> { fit(); applyDigital(); });
     }
 
     /**
      * What he sees now, as a picture at most maxDim on its long side (main thread; null when the camera is not showing).
      * It is exactly the screen's camera area.
      */
-    Bitmap frame(int maxDim) {
+    Bitmap frame(int maxDim) { return frame(maxDim, true); }
+
+    /** A small picture of what the screen shows, quickly, for the camera's own finder (a few times a second; not sharpened for Jarvis's zoom). */
+    Bitmap frameFast(int maxDim) { return frame(maxDim, false); }
+
+    private Bitmap fastAll; // (the finder's whole-texture picture, reused)
+
+    private Bitmap frame(int maxDim, boolean sharp) {
         if (!tex.isAvailable() || size == null) return null;
         int W = getWidth(), H = getHeight(), tw = tex.getWidth(), th = tex.getHeight();
         if (W == 0 || H == 0 || tw == 0 || th == 0) return null;
         boolean turned = sensorDeg == 90 || sensorDeg == 270;
         float bufH = turned ? size.getWidth() : size.getHeight(); // the camera's own height in pixels (portrait)
-        float s = Math.min(bufH / th, maxDim / (float) Math.max(W, H));
+        float s = Math.min(bufH / th, maxDim * (sharp ? digital : 1f) / (float) Math.max(W, H)); // (with Jarvis's zoom: the part shown, as sharp as it can be)
         s = Math.max(0.05f, s);
         int bw = Math.max(1, Math.round(tw * s)), bh = Math.max(1, Math.round(th * s));
         Bitmap all;
-        try { all = tex.getBitmap(bw, bh); } catch (Exception e) { return null; }
+        try {
+            if (sharp) all = tex.getBitmap(bw, bh);
+            else {
+                if (fastAll == null || fastAll.isRecycled() || fastAll.getWidth() != bw || fastAll.getHeight() != bh) fastAll = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+                all = tex.getBitmap(fastAll);
+            }
+        } catch (Exception e) { return null; }
         if (all == null) return null;
-        int left = (tw - W) / 2, top = (th - H) / 2; // the part on the screen, in the texture's own pixels
+        float left = (tw - W) / 2f + (cx - 0.5f / digital) * W, top = (th - H) / 2f + (cy - 0.5f / digital) * H; // the part on the screen, in the texture's own pixels
         int x = Math.max(0, Math.round(left * s)), y = Math.max(0, Math.round(top * s));
-        int w = Math.min(bw - x, Math.round(W * s)), h = Math.min(bh - y, Math.round(H * s));
+        int w = Math.min(bw - x, Math.round(W / digital * s)), h = Math.min(bh - y, Math.round(H / digital * s));
+        if (!sharp) { // (the reused picture stays here: a copy of the part goes out)
+            if (w <= 0 || h <= 0) return all.copy(Bitmap.Config.ARGB_8888, false);
+            Bitmap cut = Bitmap.createBitmap(all, x, y, w, h);
+            return cut == all ? all.copy(Bitmap.Config.ARGB_8888, false) : cut;
+        }
         if (w <= 0 || h <= 0) return all;
         Bitmap cut = Bitmap.createBitmap(all, x, y, w, h);
         if (cut != all) all.recycle();

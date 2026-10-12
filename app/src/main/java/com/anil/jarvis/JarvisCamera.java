@@ -19,6 +19,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.style.BackgroundColorSpan;
@@ -90,6 +91,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     private String mode = "auto";
     private Bitmap photo;               // the picture being talked about (frozen, or the last one asked about)
+    private Bitmap shownPic;            // the picture the boxes on the screen belong to (a zoomed freeze: its part)
     private boolean frozen, fromImage;  // frozen: the screen shows the photo; fromImage: a gallery / app picture (fitted)
     private ScanBrain.Result last;
     private String lastId;              // the saved scan of this picture
@@ -112,6 +114,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private float[] closeRegion;
     private boolean closeShot;
     private boolean pendingDeep;
+    private boolean dontKeep, skipSave; // (the next answer is not kept in the scan history: "ఏమి మారింది?" uses a picture taken by itself)
 
     /** W38 / W57: opened from the watch: the answer goes to the watch too (as text; the phone says it). */
     static volatile boolean fromWatch;
@@ -190,7 +193,11 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             i.removeExtra(EXTRA_ASK);
             i.removeExtra(EXTRA_DEEP);
             final String qq = q;
-            main.postDelayed(() -> { if (deep) deepScan(); else ask(qq); }, 1600); // the camera has a moment to start and focus
+            main.postDelayed(() -> { // the camera has a moment to start and focus
+                if (deep) deepScan();
+                else if (qq != null && LockBrain.isLockAsk(qq)) lockAsk(qq); // ("ఆ కుక్కని జూమ్ చేయి" from anywhere: found, locked, zoomed)
+                else ask(qq);
+            }, 1600);
         }
     }
 
@@ -211,6 +218,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         hud = new ScanHud(this);
         root.addView(hud, new FrameLayout.LayoutParams(-1, -1));
         hud.setOnTouchListener(this::touch);
+        buildLive(root);
         root.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> fitContent());
 
         // ---- top: close, name, torch, switch camera, more
@@ -225,9 +233,14 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         name.setLetterSpacing(0.3f);
         name.setPadding(dp(6), 0, 0, 0);
         bar.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
-        torchBtn = iconBtn("🔦", v -> { cam.setTorch(!cam.torchOn()); refreshButtons(); });
+        liveBtn = iconBtn("🎯", v -> setLive(!liveOn())); // rings on / off (held: scan everything)
+        liveBtn.setOnLongClickListener(v -> { fullScan(); return true; });
+        liveBtn.setAlpha(liveOn() ? 1f : 0.5f);
+        liveBtn.setContentDescription("లైవ్ రింగ్స్ (నొక్కి పట్టుకుంటే అన్నీ స్కాన్)");
+        bar.addView(liveBtn);
+        torchBtn =iconBtn("🔦", v -> { cam.setTorch(!cam.torchOn()); refreshButtons(); });
         bar.addView(torchBtn);
-        camBtn = iconBtn("🔄", v -> { cam.switchCamera(); hud.clear(); tell("📷 " + cam.which(), false); refreshButtons(); });
+        camBtn = iconBtn("🔄", v -> { switchCam(); tell("📷 " + cam.which(), false); refreshButtons(); });
         bar.addView(camBtn);
         bar.addView(iconBtn("⋯", v -> menu()));
         top.addView(bar);
@@ -244,6 +257,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         ms.addView(modeRow);
         top.addView(ms);
         root.addView(top, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+        topPanel = top;
 
         // ---- bottom: buttons for the answer, the guided step, the captions, the controls
         LinearLayout bottom = new LinearLayout(this);
@@ -307,6 +321,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         typeRow.addView(iconBtn("➤", v -> sendTyped()));
         typeRow.setVisibility(View.GONE);
         bottom.addView(typeRow);
+        bottom.addView(zoomButtons());
         LinearLayout ctl = new LinearLayout(this);
         ctl.setGravity(Gravity.CENTER);
         ctl.setPadding(dp(8), dp(6), dp(8), dp(0));
@@ -329,6 +344,10 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         ctl.addView(roundBtn("🧊", "3D", v -> hologram()), weight());
         bottom.addView(ctl);
         root.addView(bottom, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        bottomPanel = bottom;
+        View.OnLayoutChangeListener safe = (v, l, t, r, bt, ol, ot, or, ob) -> lens.setSafe(top.getHeight(), bottom.getHeight());
+        top.addOnLayoutChangeListener(safe); // (the rings and the card keep clear of the bars, also when the captions grow)
+        bottom.addOnLayoutChangeListener(safe);
         setContentView(root);
         setMode(mode);
         tell("📷 చూపించి ఏదైనా అడగండి: \"ఇది ఏంటి?\", \"దీని ధర ఎంత?\", \"ఈ మందు దేనికి?\". ◉ నొక్కితే చూసి చెబుతాను; నొక్కి పట్టుకుంటే 3D స్కాన్.", false);
@@ -435,17 +454,31 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if (scaler == null) {
             scaler = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
                 @Override public boolean onScale(ScaleGestureDetector g) {
-                    if (frozen) return true;
-                    cam.setZoom(cam.zoom() * g.getScaleFactor());
+                    if (frozen) { // a frozen camera picture: zoom into it (up to 8×)
+                        if (!fromImage) setStillZoom(stillZ * g.getScaleFactor(), g.getFocusX(), g.getFocusY());
+                        return true;
+                    }
+                    if (zoomAnim != null && zoomAnim.isRunning()) zoomAnim.cancel();
+                    float[] from = zoomState();
+                    float[] lock0 = lens.locked() ? lens.lockBox() : null;
+                    cam.setZoom(totalZoom() * g.getScaleFactor());
+                    if (lock0 != null) lens.setLockBoxNow(mapBox(lock0, from, zoomState())); // (the locked ring stays on it)
+                    if (totalZoom() > cam.opticalMax() + 0.01f) zoomNote();
                     return true;
                 }
             });
             taps = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
                 @Override public boolean onDown(MotionEvent e) { return true; }
                 @Override public boolean onSingleTapConfirmed(MotionEvent e) {
+                    if (lens.hitCard(e.getX(), e.getY())) { unlockLens(false); return true; } // (the card tapped: it closes)
                     ScanBrain.Item it = hud.hit(e.getX(), e.getY());
                     if (it != null) { itemTapped(it); return true; }
-                    if (!frozen) { cam.focus(); hud.select(-1); }
+                    if (!frozen) {
+                        LiveTracker.Track t = lens.hitTrack(e.getX(), e.getY());
+                        if (t != null) { lockOnTrack(t); return true; } // a ring tapped: lock on, its details
+                        cam.focus();
+                        hud.select(-1);
+                    }
                     return true;
                 }
                 @Override public boolean onDoubleTap(MotionEvent e) { toggleFreeze(); return true; }
@@ -492,6 +525,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) cam.open();
         main.postDelayed(qrTick, 2000);
         main.postDelayed(arTick, 400);
+        liveResume();
         listenSoon(900);
         refreshButtons();
     }
@@ -502,6 +536,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         main.removeCallbacks(qrTick);
         main.removeCallbacks(arTick);
         main.removeCallbacks(relisten);
+        livePause();
         voice.cancelListening();
         voice.stopSpeaking();
         speaking = false;
@@ -516,6 +551,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     @Override protected void onDestroy() {
         super.onDestroy();
         cam.release();
+        liveDestroy();
         voice.shutdown();
         work.shutdownNow();
         light.shutdownNow();
@@ -719,10 +755,18 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         refreshButtons();
     }
 
+    /** What is being said is one of the camera's own remarks ("2 మనుషులు కనిపిస్తున్నారు"), not an answer. */
+    private boolean remark;
+
     @Override public void onSpeakDone() {
         speaking = false;
         caption.setText(captionBase);
         refreshButtons();
+        if (remark) {
+            remark = false;
+            if (!listenOn) { if (wakeMode()) idleMicOff(); return; } // (mic off stays off)
+            if (wakeMode() && pendingAuto.isEmpty()) { idle(); return; }
+        }
         if (!pendingAuto.isEmpty()) runPendingAuto(); // (a listen after it is skipped while it speaks or works)
         listenSoon(350);
         // (in wake mode that is the one follow-up listen; silence then goes back to waiting for "Jarvis")
@@ -746,6 +790,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     /** Words in the captions, read aloud. */
     private void say(String text) {
+        remark = false;
         main.removeCallbacks(relisten); // (a listen starting now would cut the answer)
         captionBase = text == null ? "" : text;
         caption.setText(captionBase);
@@ -783,12 +828,31 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (is(t, "ఫ్రీజ్", "ఫ్రీజ్ చేయి", "freeze", "ఫోటో ఆపు", "ఆపి చూడు", "హోల్డ్", "hold")) { if (!frozen) toggleFreeze(); listenSoon(300); return; }
             if (is(t, "లైవ్", "live", "లైవ్ చేయి", "లైవ్ కి వెళ్ళు", "మళ్ళీ కెమెరా")) { if (frozen) toggleFreeze(); listenSoon(300); return; }
             if (is(t, "కెమెరా మార్చు", "ముందు కెమెరా", "వెనక కెమెరా", "సెల్ఫీ", "సెల్ఫీ కెమెరా", "switch camera", "ఫ్రంట్ కెమెరా", "బ్యాక్ కెమెరా")) {
-                cam.switchCamera(); refreshButtons(); tell("📷 " + cam.which(), false); listenSoon(600); return;
+                switchCam(); refreshButtons(); tell("📷 " + cam.which(), false); listenSoon(600); return;
             }
             if (is(t, "టార్చ్ ఆఫ్", "టార్చ్ ఆపు", "ఫ్లాష్ ఆఫ్", "లైట్ ఆఫ్", "లైట్ ఆపు", "torch off", "flash off")) { cam.setTorch(false); refreshButtons(); listenSoon(300); return; }
             if (is(t, "టార్చ్", "టార్చ్ ఆన్", "టార్చ్ వేయి", "ఫ్లాష్", "ఫ్లాష్ ఆన్", "లైట్ వేయి", "లైట్ ఆన్", "torch", "torch on", "flash on")) { cam.setTorch(true); refreshButtons(); listenSoon(300); return; }
-            if (is(t, "జూమ్ తగ్గించు", "జూమ్ ఆఫ్", "zoom out")) { cam.setZoom(1f); listenSoon(300); return; }
-            if (is(t, "జూమ్", "జూమ్ చేయి", "zoom", "zoom in", "దగ్గరగా")) { cam.setZoom(cam.zoom() * 2f); listenSoon(300); return; }
+            if (is(t, "జూమ్ తగ్గించు", "జూమ్ ఆఫ్", "zoom out", "జూమ్ అవుట్")) { unlockLens(true); listenSoon(300); return; }
+            if (is(t, "జూమ్ కొంచెం తగ్గించు", "కొంచెం తగ్గించు", "కొంచెం దూరంగా")) { zoomTo(Math.max(1f, totalZoom() / 2f)); listenSoon(300); return; }
+            if (is(t, "జూమ్ పెంచు", "జూమ్ కొంచెం పెంచు")) { zoomTo(Math.min(CamView.MAX_TOTAL, totalZoom() * 2f)); listenSoon(300); return; }
+            String tz = t.replace("రెండు", "2").replace("మూడు", "3").replace("నాలుగు", "4").replace("ఐదు", "5").replace("పది", "10")
+                    .replace("ఇరవై", "20").replace("ముప్పై", "30").replace("యాభై", "50").replace("వంద", "100").replace("times", "x").replace("టైమ్స్", "x");
+            java.util.regex.Matcher zm = java.util.regex.Pattern.compile("^(?:జూమ్ |zoom )?(\\d{1,3}) ?(?:x|×|ఎక్స్|రెట్లు)(?: జూమ్| zoom)?(?: చేయి| చెయ్)?$").matcher(tz);
+            if (zm.matches()) { zoomTo(Math.max(1f, Math.min(CamView.MAX_TOTAL, Integer.parseInt(zm.group(1))))); listenSoon(300); return; } // "30x", "జూమ్ 10 రెట్లు"
+            if (is(t, "జూమ్", "జూమ్ చేయి", "zoom", "zoom in", "దగ్గరగా", "ఇంకా జూమ్", "ఇంకా జూమ్ చేయి", "మరింత జూమ్", "ఇంకా దగ్గరగా",
+                    "దీన్ని జూమ్ చేయి", "దాన్ని జూమ్ చేయి", "ఇది జూమ్ చేయి", "ఇక్కడ జూమ్ చేయి")) { // locked: in on it; else twice as near
+                if (lens.locked()) zoomToLock(false); else zoomTo(Math.min(CamView.MAX_TOTAL, totalZoom() * 2f));
+                listenSoon(300);
+                return;
+            }
+            if (is(t, "అన్నీ స్కాన్ చేయి", "అన్నీ స్కాన్ చెయ్", "scan all", "scan everything")
+                    || mode.equals("auto") && is(t, "స్కాన్", "స్కాన్ చేయి", "స్కాన్ చెయ్", "scan")) { fullScan(); return; } // (in a mode, "స్కాన్ చేయి" is the AI's look, as before)
+            if (lens.locked() && t.matches(".*(వాచ్.{0,2}కి|watch.{0,3}(కి|ki|to)) పంపు.*|send (it )?to (the |my )?watch")) { sendLockToWatch(true); listenSoon(300); return; }
+            if (is(t, "స్కాన్ ఆపు", "రింగ్స్ ఆపు", "రింగ్స్ ఆఫ్", "లైవ్ రింగ్స్ ఆఫ్")) { setLive(false); listenSoon(300); return; }
+            if (is(t, "రింగ్స్", "రింగ్స్ ఆన్", "లైవ్ రింగ్స్", "లైవ్ రింగ్స్ ఆన్")) { setLive(true); listenSoon(300); return; }
+            if (is(t, "రాత్రి చూపు", "నైట్ మోడ్", "నైట్ విజన్", "night mode", "night vision")) { toggleNight(); listenSoon(300); return; }
+            if (is(t, "ఏమి మారింది", "ఏం మారింది", "ఏమైనా మారిందా", "what changed")) { whatChanged(); return; }
+            if (LockBrain.isUnlock(t)) { unlockLens(true); listenSoon(300); return; }
             if (is(t, "హోలోగ్రామ్", "హోలోగ్రామ్ చూపించు", "త్రీడీ", "త్రీడీ చూపించు", "3d", "3d చూపించు", "3డి", "3డి చూపించు", "హోలో")) { hologram(); return; }
             if (is(t, "pdf", "pdf చేయి", "పీడీఎఫ్", "పీడీఎఫ్ చేయి", "పిడిఎఫ్")) { pdf(); return; }
             if (pairKind != null && is(t, "పోల్చు", "పోల్చి చెప్పు", "రెండోది", "ఇప్పుడు చూడు", "కొత్తది")) { pairSecond(); return; }
@@ -796,6 +860,13 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (layersId != null && is(t, "అయిపోయింది", "పూర్తి", "done")) { layersDone(); return; }
             if (!guideNext.isEmpty() && is(t, "చూడు", "చూపిస్తున్నా", "చూపిస్తున్నాను", "అయింది", "రెడీ", "ఇదిగో", "ఇదిగో చూడు")) { guideStep(); return; }
         }
+        boolean flow = pairKind != null || layersId != null || closeId != null || !guideNext.isEmpty();
+        if (!flow && !frozen && det != null && liveOn()) { // "ఎంత మంది ఉన్నారు?": the phone's own count, at once
+            List<String> kinds = LiveTracker.countAsked(text);
+            if (!kinds.isEmpty()) { countNow(kinds); return; }
+        }
+        if (!flow && !frozen && LockBrain.isLockAsk(text)) { lockAsk(text); return; } // "ఆ ఎర్ర చొక్కా అబ్బాయిని జూమ్ చేయి"
+        if (!flow && !frozen && lens.locked() && aboutLocked(text)) { askLocked(text); return; } // a question about the locked one
         ask(text);
     }
 
@@ -845,9 +916,11 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         layerShot = false;
         final boolean close = closeShot; // (a close-up of a part of a board)
         closeShot = false;
+        final boolean keep = !dontKeep;
+        dontKeep = false;
         if (busy) { if (deep) deepThenPdf = false; Toast.makeText(this, "ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
         if (!Net.online(this) && override == null && !deep) { // O30: no internet: English print read on the phone itself (Telugu with the pack)
-            Bitmap pic0 = frozen ? photo : cam.frame(1400);
+            Bitmap pic0 = frozen ? stillPic() : cam.frame(1400);
             if (pic0 == null) { say("కెమెరా బొమ్మ ఇంకా రాలేదు. ఒక్క క్షణం ఆగి మళ్ళీ అడగండి."); return; }
             busy = true;
             tell("📖 నెట్ లేదు: ఫోన్‌లోనే రాత చదువుతున్నాను…", false);
@@ -864,7 +937,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         }
         if (!p.hasBrain()) { deepThenPdf = false; say("నా మెదడుకి API key లేదు. Jarvis సెట్టింగ్స్‌లో పెట్టండి."); return; }
         final String q = question == null || question.trim().isEmpty() ? defaultQuestion() : question.trim();
-        Bitmap pic = override != null ? override : frozen ? photo : cam.frame(deep ? 1800 : 1400);
+        Bitmap pic = override != null ? override : frozen ? stillPic() : cam.frame(deep ? 1800 : 1400);
         if (pic == null) { deepThenPdf = false; say("కెమెరా బొమ్మ ఇంకా రాలేదు. ఒక్క క్షణం ఆగి మళ్ళీ అడగండి."); return; }
         if (override == null && !frozen && pic != photo) {
             if (!layer && !close && !deep && sameScene(pic)) photo = pic; // the same thing, a fresh look: the talk about it goes on
@@ -909,7 +982,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 refreshButtons();
                 if (isFinishing()) return;
                 if (er != null || res == null) { deepThenPdf = false; if (open) say(er != null ? er : "జవాబు రాలేదు."); else tell(er, false); return; }
-                answer(q, res, pic, onScreen, deep, layer, close, cd);
+                skipSave = !keep;
+                try { answer(q, res, pic, onScreen, deep, layer, close, cd); } finally { skipSave = false; }
             });
         });
     }
@@ -928,6 +1002,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     /** A new picture is being talked about: the talk about the old one ends. */
     private void newPhoto(Bitmap pic) {
         photo = pic;
+        shownPic = null;
         lastId = null;
         turns.clear();
         fitContent();
@@ -957,6 +1032,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if (onScreen) {
             hud.setItems(r.items);
             arReference(pic);
+            shownPic = pic;
         }
         // the guided check
         if (!r.next.isEmpty()) {
@@ -1090,6 +1166,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
      * where he marked it; a scan with many parts is kept as a board, for the hologram.
      */
     private void save(String q, ScanBrain.Result r, Bitmap pic, boolean onScreen, boolean deep, boolean layer, boolean close, boolean auto3d) {
+        if (skipSave) return;
         if ((close && closeId == null) || (layer && layersId == null)) return; // that flow was stopped (✕) while Jarvis looked
         final boolean first = lastId == null || !onScreen;
         final String id = layer ? layersId : close ? closeId : first ? ScanStore.newId() : lastId;
@@ -1213,8 +1290,10 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             return;
         }
         if (bm != null) {
+            resetStillZoom();
             frozen = true;
             photo = bm;
+            shownPic = null;
             still.setScaleType(ImageView.ScaleType.FIT_CENTER);
             still.setImageBitmap(bm);
             still.setVisibility(View.VISIBLE);
@@ -1245,6 +1324,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if (frozen) {
             frozen = false;
             fromImage = false;
+            resetStillZoom();
             still.setVisibility(View.GONE);
             still.setImageDrawable(null);
             hud.clear();
@@ -1265,6 +1345,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     }
 
     private void showImage(Bitmap bm) {
+        resetStillZoom();
         newPhoto(bm);
         frozen = true;
         fromImage = true;
@@ -1373,7 +1454,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         return android.util.Base64.encodeToString(o.toByteArray(), android.util.Base64.NO_WRAP);
     }
 
-    @Override public String photoJpeg() { return photo == null ? null : jpeg(photo, 1400, 85); }
+    @Override public String photoJpeg() { Bitmap b = shownPic != null ? shownPic : photo; return b == null ? null : jpeg(b, 1400, 85); }
 
     // ================================================================ the menu
 
@@ -1382,7 +1463,12 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 "🧊 3D హోలోగ్రామ్ (వివరమైన స్కాన్)", "📄 తెలుగు PDF (parts, డయాగ్రమ్, తయారీ)", "⚖️ రెండు పోల్చు", "🧰 టెక్నీషియన్ చెక్ (పాత / కొత్త part)",
                 "🧅 తెరుస్తూ పొర పొరగా స్కాన్", "🎤 శబ్దం వినిపించు (ఏ part సమస్యో)", "✅ చెకప్ (కార్ / బైక్)", "🔌 OBD స్కానర్ (కార్)",
                 "🅿️ బండి ఇక్కడ పెట్టాను", "🔑 ఈ వస్తువు ఇక్కడ పెడుతున్నా", "🔍 భూతద్దం (చిన్న అక్షరాలు)", "📚 స్కాన్ చరిత్ర", "🧊 నా బోర్డులు / తెరిచినవి",
-                "⌨️ టైప్ చేసి అడుగు", "📡 AR పేర్లు: " + (arOn ? "ఆన్" : "ఆఫ్"), "📤 షేర్ (బొమ్మ + జవాబు)"};
+                "⌨️ టైప్ చేసి అడుగు", "📡 AR పేర్లు: " + (arOn ? "ఆన్" : "ఆఫ్"), "📤 షేర్ (బొమ్మ + జవాబు)",
+                "🎯 లైవ్ రింగ్స్: " + (liveOn() ? "ఆన్" : "ఆఫ్"), "🕸️ అన్నీ స్కాన్ చేయి", "🗣️ చూస్తూ మాట్లాడటం: " + (talkOn() ? "ఆన్" : "ఆఫ్"),
+                "🔊 HUD శబ్దాలు: " + (p.sp.getBoolean("cam_hud_sfx", true) ? "ఆన్" : "ఆఫ్"), "🌙 రాత్రి చూపు: " + (cam.night() ? "ఆన్" : "ఆఫ్"),
+                "🔁 ఏమి మారింది?", "📸 HUD తో ఫోటో సేవ్", "📏 జూమ్ టెస్ట్",
+                "🔋 పొదుపు మోడ్: " + (p.sp.getBoolean("cam_saver", false) ? "ఆన్" : battery >= 0 && battery <= 20 ? "ఆటో ఆన్ (బ్యాటరీ తక్కువ)" : "ఆఫ్"),
+                "⌚ లాక్ చేసినది వాచ్‌కి పంపు"};
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setItems(items, (dlg, w) -> {
                     switch (w) {
@@ -1402,6 +1488,33 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                         case 13: typeRow.setVisibility(typeRow.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE); if (typeRow.getVisibility() == View.VISIBLE) typeBox.requestFocus(); break;
                         case 14: arOn = !arOn; if (!arOn) hud.setShift(0, 0, 1f); break;
                         case 15: share(); break;
+                        case 16: setLive(!liveOn()); break;
+                        case 17: fullScan(); break;
+                        case 18: {
+                            boolean on = !talkOn();
+                            p.sp.edit().putBoolean("cam_talk", on).apply();
+                            tell(on ? "🗣️ చూస్తూ మాట్లాడటం ఆన్: కొత్తగా ఏదైనా కనిపిస్తే చెబుతాను (10 సెకన్లకు ఒకసారి కంటే ఎక్కువ కాదు)." : "🗣️ చూస్తూ మాట్లాడటం ఆఫ్: అడిగితేనే చెబుతాను.", false);
+                            break;
+                        }
+                        case 19: {
+                            boolean on = !p.sp.getBoolean("cam_hud_sfx", true);
+                            p.sp.edit().putBoolean("cam_hud_sfx", on).apply();
+                            tell(on ? (p.sfx() ? "🔊 HUD శబ్దాలు ఆన్." : "🔊 HUD శబ్దాలు ఆన్; కానీ సెట్టింగ్స్‌లో \"Jarvis శబ్దాలు\" ఆఫ్ ఉంది, అది కూడా ఆన్ చేయాలి.") : "🔇 HUD శబ్దాలు ఆఫ్.", false);
+                            if (on) Sfx.hud(this, p, "lock");
+                            break;
+                        }
+                        case 20: toggleNight(); break;
+                        case 21: whatChanged(); break;
+                        case 22: hudPhoto(); break;
+                        case 23: zoomTest(); break;
+                        case 24: {
+                            boolean on = !p.sp.getBoolean("cam_saver", false);
+                            p.sp.edit().putBoolean("cam_saver", on).apply();
+                            tell(on ? "🔋 పొదుపు మోడ్ ఆన్: రింగ్స్ కొంచెం నెమ్మదిగా కదులుతాయి, AI కి చిన్న బొమ్మ వెళ్తుంది (తక్కువ ఖర్చు, తక్కువ బ్యాటరీ)."
+                                    : "🔋 పొదుపు మోడ్ ఆఫ్ (బ్యాటరీ 20% కింద ఉంటే తనంతట తానే ఆన్ అవుతుంది).", false);
+                            break;
+                        }
+                        case 25: sendLockToWatch(true); break;
                         default: break;
                     }
                 }).show();
@@ -1434,7 +1547,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private void share() {
         if (photo == null) { Toast.makeText(this, "ముందు ఏదైనా స్కాన్ చేయండి", Toast.LENGTH_SHORT).show(); return; }
         try {
-            Bitmap b = last == null ? photo : ScanHud.withBoxes(photo, last.items, d);
+            Bitmap base = shownPic != null ? shownPic : photo;
+            Bitmap b = last == null ? base : ScanHud.withBoxes(base, last.items, d);
             try (java.io.FileOutputStream o = new java.io.FileOutputStream(PhotoProvider.shareFile(this))) { b.compress(Bitmap.CompressFormat.JPEG, 90, o); }
             Uri u = PhotoProvider.shareUri();
             Intent s = new Intent(Intent.ACTION_SEND).setType("image/jpeg").putExtra(Intent.EXTRA_STREAM, u)
@@ -1712,6 +1826,783 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     @Override public void needLocation() { requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQ_LOCATION); }
 
     private static String cut(String s, int n) { return s == null ? "" : s.length() > n ? s.substring(0, n) + "…" : s; }
+
+    // ================================================================ the live HUD: rings on everything, lock-on, lens zoom, wave, gauges
+    // (our own design and sounds; the phone finds things by itself, the AI only when he asks or taps)
+
+    private HoloLens lens;
+    private View topPanel, bottomPanel;
+    private LinearLayout zoomRow;
+    private TextView freezeChip, liveBtn;
+    private volatile Detector det;
+    private boolean detTried, detBusy, opticalSaid, booted;
+    private final LiveTracker tracker = new LiveTracker();
+    private final ExecutorService detWork = Executors.newSingleThreadExecutor();
+    private final java.util.Set<Integer> seenTracks = new java.util.HashSet<>();
+    private long lastMarkAt, lastTalkAt, talkCandAt, lockLostAt, lastSnapAt, batteryAt;
+    private String talkCand = "", lastTalk = "";
+    private int battery = -1;
+    private volatile int trackGen; // (bumped when the picture jumps: a look started before it is dropped)
+    private volatile long detMs = 60; // how long the phone's finder takes (a slow phone is asked less often)
+    // the lock-on
+    private LockBrain.Found lockFound;
+    private String lockName = "", lockAsked = "";
+    private boolean lockClosed, lockWantsZoom;
+    private long lockAt; // (when he last locked on / asked about it)
+    private Bitmap lockThumb;
+    private android.animation.ValueAnimator zoomAnim;
+    // "ఏమి మారింది?": a small picture of the scene now and then, with what the phone counted
+    private final ArrayDeque<Object[]> snaps = new ArrayDeque<>();
+    // a frozen picture can be zoomed into (past 30×, a steady look)
+    private float stillZ = 1f, stillCx = 0.5f, stillCy = 0.5f;
+    // direction and tilt
+    private android.hardware.SensorManager sensors;
+    private float heading = Float.NaN, roll = Float.NaN;
+    private final float[] rot = new float[9], rot2 = new float[9], ori = new float[3];
+
+    private boolean liveOn() { return p.sp.getBoolean("cam_live", true); }
+    private boolean talkOn() { return p.sp.getBoolean("cam_talk", true); }
+    private float totalZoom() { return cam.zoom() * cam.digital(); }
+    /** 🔋 saver: his switch, or by itself when the battery is 20% or less: the finder looks less often, the AI gets smaller pictures. */
+    private boolean saver() { return p.sp.getBoolean("cam_saver", false) || (battery >= 0 && battery <= 20); }
+    private int aiDim() { return saver() ? 960 : 1280; }
+
+    /** The lens and the zoom buttons, put on the screen (from build()). */
+    private void buildLive(FrameLayout root) {
+        lens = new HoloLens(this);
+        lens.listener = this::lockStep;
+        root.addView(lens, 3, new FrameLayout.LayoutParams(-1, -1)); // (over the picture and the boxes, under the bars)
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (topPanel != null && bottomPanel != null) lens.setSafe(topPanel.getHeight(), bottomPanel.getHeight());
+        });
+    }
+
+    /** 1× 3× 5× 10× 30× 100× and "❄️ ఆపి చూడు" (above the round buttons). */
+    private View zoomButtons() {
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        zoomRow = new LinearLayout(this);
+        zoomRow.setGravity(Gravity.CENTER_VERTICAL);
+        zoomRow.setPadding(dp(8), dp(2), dp(8), dp(2));
+        for (float z : new float[]{1, 3, 5, 10, 30, 100}) {
+            TextView c = chip((z == Math.round(z) ? String.valueOf((int) z) : String.valueOf(z)) + "×", false);
+            c.setTextSize(12.5f);
+            c.setPadding(dp(11), dp(5), dp(11), dp(5));
+            c.setTag(z);
+            c.setOnClickListener(v -> zoomTo((Float) v.getTag()));
+            zoomRow.addView(c);
+        }
+        freezeChip = chip("❄️ ఆపి చూడు", true);
+        freezeChip.setTextSize(12.5f);
+        freezeChip.setOnClickListener(v -> { if (!frozen) toggleFreeze(); });
+        freezeChip.setVisibility(View.GONE);
+        zoomRow.addView(freezeChip);
+        hs.addView(zoomRow);
+        return hs;
+    }
+
+    private void markZoomChips() {
+        if (zoomRow == null) return;
+        float z = totalZoom();
+        for (int i = 0; i < zoomRow.getChildCount(); i++) {
+            View v = zoomRow.getChildAt(i);
+            if (!(v.getTag() instanceof Float)) continue;
+            float f = (Float) v.getTag();
+            boolean lit = Math.abs(Math.log(z / f)) < 0.12;
+            v.setBackground(Ui.round(this, lit ? Ui.alpha(Ui.CYAN, 0x55) : 0x40000000, lit ? Ui.CYAN : 0x55FFFFFF, 999));
+        }
+        if (freezeChip != null) freezeChip.setVisibility(z >= 29f && !frozen ? View.VISIBLE : View.GONE);
+    }
+
+    /** The camera started (onResume): the finder loads once, the ticks start, the edges light up the first time. */
+    private void liveResume() {
+        if (!detTried) {
+            detTried = true;
+            final Context app = getApplicationContext();
+            detWork.execute(() -> {
+                Detector dd = Detector.open(app);
+                main.post(() -> {
+                    if (isDestroyed()) { if (dd != null) dd.close(); return; } // (the camera closed while it loaded)
+                    det = dd;
+                    if (dd == null) Log.i("JarvisCamera", "no object finder in this build");
+                });
+            });
+        }
+        main.postDelayed(detTick, 700);
+        main.postDelayed(gaugeTick, 300);
+        try {
+            sensors = getSystemService(android.hardware.SensorManager.class);
+            android.hardware.Sensor s = sensors == null ? null : sensors.getDefaultSensor(android.hardware.Sensor.TYPE_ROTATION_VECTOR);
+            if (s != null) sensors.registerListener(motion, s, android.hardware.SensorManager.SENSOR_DELAY_UI);
+        } catch (Exception ignored) {}
+        if (!booted) {
+            booted = true;
+            lens.boot();
+            Sfx.hud(this, p, "card");
+        }
+    }
+
+    private void livePause() {
+        if (lens.locked()) unlockLens(false);
+        main.removeCallbacks(detTick);
+        main.removeCallbacks(gaugeTick);
+        if (zoomAnim != null) zoomAnim.cancel();
+        try { if (sensors != null) sensors.unregisterListener(motion); } catch (Exception ignored) {}
+    }
+
+    private void liveDestroy() {
+        final Detector dd = det;
+        det = null;
+        detWork.execute(() -> { if (dd != null) dd.close(); });
+        detWork.shutdown();
+        for (Object[] s : snaps) ((Bitmap) s[1]).recycle();
+        snaps.clear();
+    }
+
+    private final android.hardware.SensorEventListener motion = new android.hardware.SensorEventListener() {
+        @Override public void onSensorChanged(android.hardware.SensorEvent e) {
+            try {
+                android.hardware.SensorManager.getRotationMatrixFromVector(rot, e.values);
+                // the camera looks out of the back: its direction and the turn around it
+                android.hardware.SensorManager.remapCoordinateSystem(rot, android.hardware.SensorManager.AXIS_X, android.hardware.SensorManager.AXIS_Z, rot2);
+                android.hardware.SensorManager.getOrientation(rot2, ori);
+                heading = (float) Math.toDegrees(ori[0]);
+                roll = (float) Math.toDegrees(ori[2]);
+            } catch (Exception ignored) {}
+        }
+        @Override public void onAccuracyChanged(android.hardware.Sensor s, int a) {}
+    };
+
+    private final Runnable gaugeTick = new Runnable() {
+        @Override public void run() {
+            if (!open) return;
+            main.postDelayed(this, 250);
+            long now = System.currentTimeMillis();
+            if (now - batteryAt > 20000) {
+                batteryAt = now;
+                try {
+                    Intent b = registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+                    int lv = b == null ? -1 : b.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1), sc = b == null ? 100 : b.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
+                    battery = lv < 0 || sc <= 0 ? -1 : Math.round(lv * 100f / sc);
+                } catch (Exception ignored) {}
+            }
+            String t = new java.text.SimpleDateFormat("h:mm", Locale.ENGLISH).format(new java.util.Date(now));
+            lens.setGauges(frozen && !fromImage ? stillZ * totalZoom() : totalZoom(), cam.opticalMax(), heading, roll, t, battery);
+            if (lens.locked() && now - lockAt > 180_000 && !busy && !speaking && !voice.speaking) unlockLens(false); // (3 minutes untouched: the lock goes)
+            markZoomChips();
+        }
+    };
+
+    /** The phone's own finder, a few times a second: the rings follow, the locked one too, and Jarvis says what changed. */
+    private final Runnable detTick = new Runnable() {
+        @Override public void run() {
+            if (!open) return;
+            main.postDelayed(this, saver() ? 600 : Math.max(160, Math.min(700, detMs * 2)));
+            if (det != null && det.broken) { // (honest: the phone's finder doesn't run on this phone)
+                final Detector dd = det;
+                det = null;
+                detWork.execute(dd::close);
+                tell("🎯 ఫోన్‌లోని చూసే మోడల్ ఈ ఫోన్‌లో పని చేయలేదు; రింగ్స్ ఆపాను. ◉ నొక్కితే AI తో చూస్తాను.", false);
+            }
+            boolean live = liveOn() && !frozen && det != null;
+            lens.setLive(!frozen);
+            if (!live) { if (lens.hasTracks()) lens.setTracks(null, false); return; }
+            long wall = System.currentTimeMillis();
+            if (wall - lastSnapAt > 45_000 && !busy) snapshot(wall);
+            if (detBusy) return;
+            if (cam.digital() > 3f) { // Jarvis's zoom is far in: the finder would see a tiny blown-up picture (rings off till it comes back)
+                if (lens.hasTracks()) { lens.setTracks(null, false); tracker.clear(); }
+                return;
+            }
+            final Bitmap b = cam.frameFast(saver() ? 360 : 448);
+            if (b == null) return;
+            detBusy = true;
+            final Detector dd = det;
+            final int gen = trackGen;
+            detWork.execute(() -> {
+                boolean ok = false;
+                long now = 0;
+                try {
+                    long t0 = android.os.SystemClock.uptimeMillis();
+                    List<Detector.Det> found = dd == null ? new ArrayList<>() : dd.detect(b);
+                    detMs = (detMs * 3 + (android.os.SystemClock.uptimeMillis() - t0)) / 4;
+                    now = android.os.SystemClock.uptimeMillis();
+                    if (gen == trackGen) { tracker.update(found, now); ok = true; }
+                } catch (Throwable t) {
+                    Log.w("JarvisCamera", "finder: " + t);
+                } finally {
+                    b.recycle();
+                    final boolean fine = ok;
+                    final long at = now;
+                    main.post(() -> { detBusy = false; if (fine && open && !isFinishing()) onTracks(at); });
+                }
+            });
+        }
+    };
+
+    private void onTracks(long now) {
+        List<LiveTracker.Track> ts = tracker.shown(now);
+        lens.setTracks(ts, hud.hasItems() || busy);
+        boolean fresh = false; // a new thing came into view: a small ping (not more than once a second)
+        for (LiveTracker.Track t : ts) if (seenTracks.add(t.id)) fresh = true;
+        if (seenTracks.size() > 500) seenTracks.clear();
+        if (fresh && now - lastMarkAt > 1200 && !speaking) { lastMarkAt = now; Sfx.hud(this, p, "mark"); }
+        followLock(ts, now);
+        narrate(now);
+    }
+
+    /** The locked one keeps its ring (and, zoomed in by Jarvis, stays in the middle). */
+    private void followLock(List<LiveTracker.Track> ts, long now) {
+        if (!lens.locked() || (zoomAnim != null && zoomAnim.isRunning())) return;
+        int id = lens.lockTrack();
+        LiveTracker.Track hit = null;
+        if (id >= 0) for (LiveTracker.Track t : ts) if (t.id == id) hit = t;
+        if (hit == null) {
+            float[] b = lens.lockBox();
+            hit = tracker.overlapping(b);
+            if (hit == null) {
+                String g = lockFound == null ? null : "person".equals(lockFound.kind) ? "person" : "vehicle".equals(lockFound.kind) ? "vehicle" : null;
+                hit = tracker.nearest((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, g, 0.18f);
+            }
+            if (hit != null) lens.setLockTrack(hit.id);
+        }
+        if (hit == null) {
+            if (lockLostAt == 0) lockLostAt = now;
+            else if (now - lockLostAt > 6000 && cam.digital() <= 1.05f && !busy && !speaking && !voice.speaking) { // gone for a while: the lock goes
+                unlockLens(false);
+                tell("🎯 అది ఇప్పుడు కనిపించడం లేదు, లాక్ వదిలాను. మళ్ళీ కావాలంటే అడగండి.", false);
+            }
+            return;
+        }
+        lockLostAt = 0;
+        lens.setLockBox(hit.box);
+        float dg = cam.digital();
+        if (dg > 1.05f) { // Jarvis's zoom: drift gently so it stays in the middle
+            float[] c = cam.digitalCenter();
+            float nx = c[0] + (hit.cx() - 0.5f) / dg * 0.18f, ny = c[1] + (hit.cy() - 0.5f) / dg * 0.18f;
+            cam.setParts(cam.zoom(), dg, nx, ny);
+        }
+    }
+
+    /** What he can see, said when it changes (the phone's own count: no AI), not too often, never over him or an answer. */
+    private void narrate(long now) {
+        if (!talkOn() || lens.locked() || busy || frozen || speaking || voice.speaking || voice.isPaused() || !guideNext.isEmpty() || pairKind != null
+                || closeId != null || layersId != null) return;
+        String s = LiveTracker.sentence(tracker.counts(now));
+        if (s.isEmpty() || s.equals(lastTalk)) { talkCand = ""; return; }
+        if (!s.equals(talkCand)) { talkCand = s; talkCandAt = now; return; }
+        if (now - talkCandAt < 1800 || now - lastTalkAt < 10_000) return;
+        lastTalk = s;
+        lastTalkAt = now;
+        lens.setRemark("👁️ " + s);
+        if (voice.listening || (wakeMode() ? engaged : listenOn)) return; // (he may be talking or about to: only shown)
+        say("👁️ " + s + ".");
+        remark = true; // (after it, back to waiting for "Jarvis": no mic opening for a remark)
+    }
+
+    /** 🎯: the rings on / off. */
+    private void setLive(boolean on) {
+        p.sp.edit().putBoolean("cam_live", on).apply();
+        if (!on) { lens.setTracks(null, false); tracker.clear(); }
+        if (liveBtn != null) liveBtn.setAlpha(on ? 1f : 0.5f);
+        if (on && detTried && det == null) tell("🎯 ఈ వెర్షన్‌లో ఫోన్‌లోనే చూసే మోడల్ రాలేదు: ◉ నొక్కితే AI తో చూస్తాను.", false);
+        else tell(on ? "🎯 లైవ్ రింగ్స్ ఆన్: కనిపించే ప్రతి మనిషి, బండి, వస్తువు మీద రింగ్. రింగ్ నొక్కితే దాని వివరాలు." : "🎯 లైవ్ రింగ్స్ ఆఫ్.", false);
+    }
+
+    /** "స్కాన్ చేయి": the wave crosses the picture, the found things' small pictures come up, and Jarvis says what is there. */
+    private void fullScan() {
+        if (frozen) toggleFreeze();
+        if (det == null) { // (no finder in this build: the AI looks, as before)
+            ask("ఇక్కడ కనిపించే అన్నిటినీ (మనుషులు, వాహనాలు, జంతువులు, ముఖ్యమైన వస్తువులు) బాక్సులతో చెప్పు; ఎవరు ఏం చేస్తున్నారో కూడా.");
+            return;
+        }
+        if (!liveOn()) setLive(true);
+        lens.sweep();
+        Sfx.hud(this, p, "scan");
+        tell("🕸️ స్కాన్ చేస్తున్నాను…", false);
+        main.postDelayed(() -> {
+            if (!open || isFinishing()) return;
+            long now = android.os.SystemClock.uptimeMillis();
+            List<LiveTracker.Track> ts = tracker.shown(now);
+            Bitmap pic = cam.frame(1000);
+            List<Bitmap> thumbs = new ArrayList<>();
+            List<String> names = new ArrayList<>();
+            if (pic != null) {
+                for (LiveTracker.Track t : ts) {
+                    if (thumbs.size() >= 6) break;
+                    Bitmap c = crop(pic, t.box, 140);
+                    if (c != null) { thumbs.add(c); names.add(t.te); }
+                }
+                pic.recycle();
+            }
+            lens.setThumbs(thumbs, names);
+            String s = LiveTracker.sentence(tracker.counts(now));
+            lastTalk = s;
+            lastTalkAt = now;
+            say(s.isEmpty() ? "🕸️ ఇప్పుడు ప్రత్యేకంగా ఏమీ కనిపించడం లేదు. ఫోన్ కొంచెం తిప్పి మళ్లీ \"స్కాన్ చేయి\" అనండి."
+                    : "🕸️ " + s + ". ఏ రింగ్ నొక్కినా దాని వివరాలు చెబుతాను; \"ఆ … ని జూమ్ చేయి\" అంటే దగ్గరగా చూపిస్తాను.");
+        }, 2300);
+    }
+
+    /** "ఎంత మంది ఉన్నారు?": counted on the phone, at once. */
+    private void countNow(List<String> kinds) {
+        Sfx.hud(this, p, "count");
+        say("🔢 " + LiveTracker.countAnswer(kinds, tracker.counts(android.os.SystemClock.uptimeMillis())));
+    }
+
+    // ---- locking on
+
+    /** "ఆ ఎర్ర చొక్కా అబ్బాయిని జూమ్ చేయి, ఏం చేస్తున్నాడు?": the AI finds it, the ring locks on, the lens zooms in, then a close look. */
+    private void lockAsk(String asked) {
+        if (busy) { Toast.makeText(this, "ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
+        if (!Net.online(this)) { say("ఒకరిని వెతికి చెప్పడానికి నెట్ కావాలి. నెట్ లేకపోయినా రింగ్స్, \"ఎంత మంది ఉన్నారు?\" పనిచేస్తాయి."); return; }
+        if (!p.hasBrain()) { say("నా మెదడుకి API key లేదు. Jarvis సెట్టింగ్స్‌లో పెట్టండి."); return; }
+        if (frozen) toggleFreeze();
+        Bitmap pic = cam.frame(1400);
+        if (pic == null) { say("కెమెరా బొమ్మ ఇంకా రాలేదు. ఒక్క క్షణం ఆగి మళ్ళీ అడగండి."); return; }
+        lens.unlock();
+        busy = true;
+        voice.cancelListening();
+        voice.stopSpeaking();
+        speaking = false;
+        hud.clear();
+        hud.scanning(true);
+        setActions(null);
+        Sfx.hud(this, p, "scan");
+        tell("🎯 " + asked + "\n\nవెతుకుతున్నాను…", false);
+        refreshButtons();
+        work.execute(() -> {
+            LockBrain.Found f = null;
+            String err = null;
+            try {
+                f = LockBrain.parse(Brain.oneShot(p, LockBrain.system(), LockBrain.findPrompt(asked), jpeg(pic, aiDim(), 82), false, 900));
+            } catch (Http.ApiError e) {
+                err = "AI జవాబు ఇవ్వలేదు: " + Models.explain(p, e);
+            } catch (Exception e) {
+                err = "చూడలేకపోయాను: నెట్ / సమయం సమస్య. మళ్ళీ అడగండి.";
+            }
+            final LockBrain.Found ff = f;
+            final String er = err;
+            main.post(() -> {
+                busy = false;
+                hud.scanning(false);
+                refreshButtons();
+                if (isFinishing() || !open) return;
+                if (er != null || ff == null) { say(er != null ? er : "జవాబు రాలేదు."); return; }
+                if (!ff.found || ff.box == null) { say(ff.say.isEmpty() ? "మీరు చెప్పింది నాకు కనిపించలేదు. ఫోన్ అటు తిప్పి మళ్ళీ అడగండి." : ff.say); return; }
+                LiveTracker.Track tr = tracker.overlapping(ff.box);
+                boolean small = (ff.box[2] - ff.box[0]) * (ff.box[3] - ff.box[1]) < 0.10f;
+                startLock(ff.box, tr == null ? -1 : tr.id, ff, pic, asked, small);
+            });
+        });
+    }
+
+    /** A ring tapped: it locks on, and the AI tells about it (no zoom; "జూమ్" then zooms in). */
+    private void lockOnTrack(LiveTracker.Track t) {
+        if (busy) { Toast.makeText(this, "ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
+        Bitmap pic = cam.frame(1400);
+        if (pic == null) return;
+        startLock(t.box, t.id, null, pic, t.te, false);
+        if (!Net.online(this) || !p.hasBrain()) { // (no net / no key: the phone's own name only)
+            LockBrain.Found f = new LockBrain.Found();
+            f.found = true;
+            f.name = t.te;
+            f.say = "ఇది " + t.te + " లాగా ఉంది." + (!Net.online(this) ? " వివరాలకి నెట్ కావాలి." : "");
+            lockFound = f;
+            if (lockClosed) showLockCard();
+            return;
+        }
+        lookAtLocked("ఇది ఏంటి? వివరాలు చెప్పు.", pic, t.box, t.te);
+    }
+
+    private void startLock(float[] box, int trackId, LockBrain.Found f, Bitmap pic, String asked, boolean wantsZoom) {
+        lockAt = System.currentTimeMillis();
+        lockLostAt = 0;
+        lockFound = f;
+        lockName = f == null ? "" : f.name;
+        lockAsked = asked == null ? "" : asked;
+        lockClosed = false;
+        lockWantsZoom = wantsZoom;
+        lockThumb = crop(pic, box, 160);
+        hud.clear();
+        lens.startLock(box, trackId);
+        if (f == null || wantsZoom) lens.setWaiting(wantsZoom ? "దగ్గరగా చూస్తున్నాను" : "చూస్తున్నాను");
+    }
+
+    /** The lock-on's steps: the ring opened (1), closed (2: locked), the card opened (3). */
+    private void lockStep(int step) {
+        if (step == 2) {
+            lockClosed = true;
+            Sfx.hud(this, p, "lock");
+            if (lockWantsZoom) { lockWantsZoom = false; zoomToLock(true); }
+            else if (lockFound != null) showLockCard();
+        } else if (step == 1) {
+            Sfx.hud(this, p, "tick");
+        } else if (step == 3) {
+            Sfx.hud(this, p, "card");
+        }
+    }
+
+    /** The card types what Jarvis found, and he says it; the little picture goes to the watch too. */
+    private void showLockCard() {
+        LockBrain.Found f = lockFound;
+        if (f == null || !lens.locked()) return;
+        String words = LockBrain.spoken(f);
+        if (!f.name.isEmpty()) lockName = f.name;
+        lens.setCard(lockName, words, lockThumb);
+        String said = (lockName.isEmpty() ? "" : lockName + ". ") + words;
+        say("🎯 " + said);
+        boolean watch = fromWatch; // (opened from the watch: the answer and its small picture go there)
+        toWatch(said);
+        if (watch) sendLockToWatch(false);
+    }
+
+    /** "వాచ్‌కి పంపు" (or the menu): the locked one's small picture and its line on his watch. Never by itself. */
+    private void sendLockToWatch(boolean asked) {
+        final Bitmap th = lockThumb;
+        LockBrain.Found f = lockFound;
+        if (!lens.locked() || th == null) { if (asked) Toast.makeText(this, "ముందు ఏదైనా లాక్ చేయండి (రింగ్ నొక్కండి)", Toast.LENGTH_SHORT).show(); return; }
+        if (!WatchHub.known(this)) { if (asked) Toast.makeText(this, "వాచ్ ఇంకా జత కాలేదు", Toast.LENGTH_SHORT).show(); return; }
+        final Context app = getApplicationContext();
+        final String cap = "🎯 " + (lockName.isEmpty() ? "" : lockName + ": ") + (f == null ? "" : f.say);
+        work.execute(() -> {
+            try {
+                ByteArrayOutputStream o = new ByteArrayOutputStream();
+                th.compress(Bitmap.CompressFormat.JPEG, 88, o);
+                WatchPhoto.send(app, o.toByteArray(), cap);
+            } catch (Exception ignored) {}
+        });
+        if (asked) Toast.makeText(this, "⌚ వాచ్‌కి పంపాను", Toast.LENGTH_SHORT).show();
+    }
+
+    private void switchCam() {
+        if (zoomAnim != null) zoomAnim.cancel();
+        cam.switchCamera();
+        hud.clear();
+        unlockLens(false);
+        trackGen++;
+        tracker.clear();
+        lens.setTracks(null, false);
+    }
+
+    /** The AI looks at the locked one again (a tap's details, a close-up after the zoom, or his question about it). */
+    private void lookAtLocked(String question, Bitmap pic, float[] box, String guess) {
+        if (busy) { // (the card isn't left waiting; nothing is said again)
+            if (lockFound != null && lockClosed) lens.setCard(lockName, LockBrain.spoken(lockFound), lockThumb);
+            else lens.setCard(lockName, "ఇంకో పని జరుగుతోంది; ఒక్క క్షణం ఆగి మళ్ళీ అడగండి.", lockThumb);
+            return;
+        }
+        busy = true;
+        lens.setWaiting("చూస్తున్నాను");
+        refreshButtons();
+        final String prompt = box == null ? LockBrain.closePrompt(lockName, question) : LockBrain.boxPrompt(box, guess) + " His question: " + question;
+        work.execute(() -> {
+            LockBrain.Found f = null;
+            String err = null;
+            try {
+                f = LockBrain.parse(Brain.oneShot(p, LockBrain.system(), prompt, jpeg(pic, aiDim(), 82), false, 900));
+            } catch (Http.ApiError e) {
+                err = "AI జవాబు ఇవ్వలేదు: " + Models.explain(p, e);
+            } catch (Exception e) {
+                err = "చూడలేకపోయాను: నెట్ / సమయం సమస్య.";
+            }
+            final LockBrain.Found ff = f;
+            final String er = err;
+            main.post(() -> {
+                busy = false;
+                refreshButtons();
+                if (isFinishing() || !open || !lens.locked()) return;
+                if (er != null || ff == null || ff.say.isEmpty() && ff.details.isEmpty()) {
+                    lens.setCard(lockName, er != null ? er : "స్పష్టంగా చెప్పలేకపోయాను.", lockThumb);
+                    if (er != null) say(er);
+                    return;
+                }
+                if (box == null && ff.box != null) { Bitmap t = crop(pic, ff.box, 160); if (t != null) lockThumb = t; } // (the close-up's picture)
+                if (ff.name.isEmpty()) ff.name = lockName;
+                lockFound = ff;
+                if (lockClosed) showLockCard();
+            });
+        });
+    }
+
+    /** His question while something is locked: about it. */
+    private void askLocked(String question) {
+        if (busy) { Toast.makeText(this, "ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
+        Bitmap pic = cam.frame(1400);
+        if (pic == null) return;
+        lockAsked = question;
+        lockAt = System.currentTimeMillis();
+        lookAtLocked(question, pic, lens.lockBox(), lockName);
+    }
+
+    /** His question is about the locked one: it was locked a moment ago, or he says "he / she / it / what is he doing". */
+    private boolean aboutLocked(String text) {
+        if (System.currentTimeMillis() - lockAt < 45_000) return true;
+        String t = text.toLowerCase(Locale.ROOT);
+        return lockLostAt == 0 // (its ring is still on it)
+                && t.matches(".*(అతను|అతని|ఆమె|ఆవిడ|వాళ్ళు|వాళ్లు|వాడు|వాడి|ఇతను|ఈమె|లాక్ చేసిన|ఏం చేస్తున్నా|ఏమి చేస్తున్నా|\\bhe\\b|\\bshe\\b|\\bthey\\b|that one|this one).*");
+    }
+
+    /** "జూమ్" while locked (or after the lock-on): the lens grows and the camera zooms in until it fills about 60%. */
+    private void zoomToLock(boolean thenLook) {
+        float[] b = lens.lockBox();
+        float tx = (b[0] + b[2]) / 2, ty = (b[1] + b[3]) / 2, hw = Math.max(0.01f, (b[2] - b[0]) / 2), hh = Math.max(0.01f, (b[3] - b[1]) / 2);
+        float k = 0.62f / Math.max(2 * hw, 2 * hh);
+        if (k < 1.25f || totalZoom() >= CamView.MAX_TOTAL - 0.5f) { // already big (or as far as it goes)
+            if (thenLook) { Bitmap pic = cam.frame(1400); if (pic != null) lookAtLocked(lockAsked, pic, null, lockName); }
+            return;
+        }
+        float[] from = zoomState();
+        float[] plan = cam.planZoomTo(tx, ty, hw, hh, k);
+        lens.lens(b);
+        Sfx.hud(this, p, "whoosh");
+        animateZoom(plan, () -> {
+            cam.focus();
+            lens.setLockTrack(-1); // (found again on the next look)
+            if (totalZoom() > cam.opticalMax() + 0.01f) zoomNote();
+            if (thenLook) main.postDelayed(() -> {
+                if (!open || !lens.locked()) return;
+                Bitmap pic = cam.frame(1400);
+                if (pic != null) lookAtLocked(lockAsked, pic, null, lockName);
+            }, 650); // (the camera finds its focus first)
+        }, from);
+    }
+
+    /** {camera zoom, Jarvis zoom, cx, cy} now. */
+    private float[] zoomState() { float[] c = cam.digitalCenter(); return new float[]{cam.zoom(), cam.digital(), c[0], c[1]}; }
+
+    /** Where a box on the screen goes when the zoom changes from one state to another. */
+    static float[] mapBox(float[] box, float[] from, float[] to) {
+        float[] out = new float[4];
+        for (int i = 0; i < 4; i++) {
+            boolean x = i % 2 == 0;
+            float c0 = x ? from[2] : from[3], c1 = x ? to[2] : to[3];
+            float u = c0 + (box[i] - 0.5f) / from[1];                 // in the camera's own picture, then
+            float u2 = 0.5f + (u - 0.5f) * (to[0] / from[0]);         // after the camera's zoom, then
+            out[i] = Math.max(0f, Math.min(1f, 0.5f + (u2 - c1) * to[1])); // on the screen after Jarvis's zoom
+        }
+        return out;
+    }
+
+    private void animateZoom(float[] plan, Runnable done, float[] from0) {
+        if (zoomAnim != null) zoomAnim.cancel();
+        final float[] from = from0 != null ? from0 : zoomState();
+        final float[] lock0 = lens.locked() ? lens.lockBox() : null;
+        trackGen++;
+        tracker.clear(); // (the rings were for the old zoom)
+        lens.setTracks(null, false);
+        zoomAnim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        zoomAnim.setDuration(650);
+        zoomAnim.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
+        zoomAnim.addUpdateListener(a -> {
+            float k = (float) a.getAnimatedValue();
+            float o = (float) Math.exp(Math.log(from[0]) + (Math.log(plan[0]) - Math.log(from[0])) * k);
+            float dg = (float) Math.exp(Math.log(from[1]) + (Math.log(plan[1]) - Math.log(from[1])) * k);
+            float x = from[2] + (plan[2] - from[2]) * k, y = from[3] + (plan[3] - from[3]) * k;
+            cam.setParts(o, dg, x, y);
+            if (lock0 != null && lens.locked()) lens.setLockBoxNow(mapBox(lock0, from, zoomState()));
+        });
+        zoomAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+            boolean cancelled;
+            @Override public void onAnimationCancel(android.animation.Animator a) { cancelled = true; }
+            @Override public void onAnimationEnd(android.animation.Animator a) { if (!cancelled && done != null) done.run(); }
+        });
+        zoomAnim.start();
+    }
+
+    /** 1× … 100× buttons (and "జూమ్ తగ్గించు"): smoothly, around the same spot. */
+    private void zoomTo(float z) {
+        if (frozen && !fromImage) toggleFreeze();
+        float o = Math.min(z, cam.opticalMax());
+        float[] c = cam.digitalCenter();
+        float[] plan = {o, Math.max(1f, z / o), z / o <= 1.001f ? 0.5f : c[0], z / o <= 1.001f ? 0.5f : c[1]};
+        if (z > totalZoom() + 0.01f) Sfx.hud(this, p, "whoosh");
+        animateZoom(plan, () -> { if (z > cam.opticalMax() + 0.01f) zoomNote(); }, null);
+    }
+
+    /** Past what the phone gives: said once. */
+    private void zoomNote() {
+        if (opticalSaid) return;
+        opticalSaid = true;
+        tell("📏 ఈ ఫోన్ ఇతర యాప్‌లకు ఇచ్చే నిజమైన జూమ్ " + fmtZoom(cam.opticalMax()) + " వరకే. ఇక్కడి నుంచి Jarvis జూమ్ (కొంచెం మసకగా). "
+                + "ఫోన్ స్థిరంగా పట్టుకోండి; 30× పైన \"❄️ ఆపి చూడు\" నొక్కితే ఆగిన బొమ్మలో ఇంకా దగ్గరగా చూడొచ్చు.", false);
+    }
+
+    private static String fmtZoom(float z) { return (z < 10 ? String.format(Locale.US, "%.1f", z) : String.valueOf(Math.round(z))) + "×"; }
+
+    /** "లాక్ వదులు" / ✕ on the card / "జూమ్ ఆపు": the lock goes (and the zoom back to 1× when asked). */
+    private void unlockLens(boolean zoomOut) {
+        lens.unlock();
+        lockFound = null;
+        lockWantsZoom = false;
+        lockClosed = false;
+        if (zoomOut && totalZoom() > 1.01f) zoomTo(1f);
+    }
+
+    /** A box of the picture as a small picture (with a little room around it). */
+    private static Bitmap crop(Bitmap pic, float[] box, int max) {
+        if (pic == null || box == null) return null;
+        try {
+            int W = pic.getWidth(), H = pic.getHeight();
+            float mx = (box[2] - box[0]) * 0.12f, my = (box[3] - box[1]) * 0.12f;
+            int x0 = Math.max(0, Math.round((box[0] - mx) * W)), y0 = Math.max(0, Math.round((box[1] - my) * H));
+            int x1 = Math.min(W, Math.round((box[2] + mx) * W)), y1 = Math.min(H, Math.round((box[3] + my) * H));
+            if (x1 - x0 < 4 || y1 - y0 < 4) return null;
+            Bitmap c = Bitmap.createBitmap(pic, x0, y0, x1 - x0, y1 - y0);
+            Bitmap s = scaleTo(c, max);
+            if (s != c) c.recycle();
+            return s;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ---- "ఏమి మారింది?"
+
+    private void snapshot(long wall) {
+        lastSnapAt = wall;
+        Bitmap s = cam.frame(900);
+        if (s == null) return;
+        snaps.addLast(new Object[]{wall, s, tracker.counts(android.os.SystemClock.uptimeMillis())});
+        while (snaps.size() > 5) ((Bitmap) snaps.pollFirst()[1]).recycle();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void whatChanged() {
+        if (frozen) toggleFreeze();
+        long now = System.currentTimeMillis();
+        Object[] pick = null;
+        long best = Long.MAX_VALUE;
+        for (Object[] s : snaps) { // the one nearest 2 minutes ago (at least 20 seconds old)
+            long age = now - (Long) s[0];
+            if (age < 20_000) continue;
+            long dd = Math.abs(age - 120_000);
+            if (dd < best) { best = dd; pick = s; }
+        }
+        if (pick == null) { say("🔁 ఇంకా పోల్చడానికి పాత దృశ్యం లేదు. కెమెరా ఒకే చోట ఒక నిమిషం ఉంచి మళ్ళీ అడగండి."); return; }
+        Bitmap nowPic = cam.frame(900);
+        if (nowPic == null) return;
+        long mins = Math.max(1, Math.round((now - (Long) pick[0]) / 60_000.0));
+        String diff = diffSentence((java.util.Map<String, Integer>) pick[2], tracker.counts(android.os.SystemClock.uptimeMillis()));
+        if (!Net.online(this) || !p.hasBrain()) { say("🔁 " + (diff.isEmpty() ? "ఫోన్ లెక్క ప్రకారం పెద్దగా మారలేదు." : diff)); return; }
+        Bitmap two = sideBySide((Bitmap) pick[1], nowPic);
+        nowPic.recycle();
+        dontKeep = true;
+        ask("ఈ బొమ్మలో రెండు భాగాలు, ఒకే చోటు: ఎడమది " + mins + " నిమిషాల క్రితం, కుడిది ఇప్పుడు. ఏమి మారిందో (కొత్తగా వచ్చినవి, వెళ్లిపోయినవి, కదిలినవి) తెలుగులో చిన్నగా చెప్పు."
+                + (diff.isEmpty() ? "" : " ఫోన్ లెక్క: " + diff), false, two);
+    }
+
+    /** "2 మనుషులు వచ్చారు, 1 బైక్ వెళ్లిపోయింది" from two counts. */
+    static String diffSentence(java.util.Map<String, Integer> before, java.util.Map<String, Integer> after) {
+        java.util.Set<String> kinds = new java.util.LinkedHashSet<>(after.keySet());
+        kinds.addAll(before.keySet());
+        StringBuilder b = new StringBuilder();
+        for (String k : kinds) {
+            int d = after.getOrDefault(k, 0) - before.getOrDefault(k, 0);
+            if (d == 0) continue;
+            String[] te = Detector.Labels.te(k);
+            boolean person = "person".equals(k);
+            if (b.length() > 0) b.append(", ");
+            int n = Math.abs(d);
+            String name = person ? (n == 1 ? "ఒకరు" : n + " మంది") : (n == 1 ? "ఒక " + te[0] : n + " " + te[1]);
+            b.append(name).append(d > 0 ? (person ? " వచ్చారు" : n == 1 ? " వచ్చింది" : " వచ్చాయి")
+                    : (person ? " వెళ్లిపోయారు" : n == 1 ? " వెళ్లిపోయింది" : " వెళ్లిపోయాయి"));
+        }
+        return b.length() == 0 ? "" : b + ".";
+    }
+
+    // ---- 🌙, 📸 with the HUD, 📏
+
+    private void toggleNight() {
+        cam.setNight(!cam.night());
+        tell(cam.night() ? "🌙 రాత్రి చూపు ఆన్: కెమెరా ఎక్కువ వెలుతురు తీసుకుంటుంది (కదిలితే కొంచెం మసకగా). ఆపాలంటే మళ్ళీ \"రాత్రి చూపు\"."
+                : "🌙 రాత్రి చూపు ఆఫ్.", false);
+    }
+
+    /** The picture with the rings, boxes and card on it, saved to the phone (his tap only). */
+    private void hudPhoto() {
+        Bitmap base = frozen ? stillPic() : cam.frame(1800);
+        if (base == null) return;
+        try {
+            Bitmap out = base.copy(Bitmap.Config.ARGB_8888, true);
+            Canvas c = new Canvas(out);
+            if (hud.getWidth() > 0) {
+                c.save();
+                c.scale(out.getWidth() / (float) hud.getWidth(), out.getHeight() / (float) hud.getHeight());
+                hud.draw(c);
+                c.restore();
+            }
+            lens.drawInto(c, out.getWidth(), out.getHeight());
+            ByteArrayOutputStream o = new ByteArrayOutputStream();
+            out.compress(Bitmap.CompressFormat.JPEG, 92, o);
+            out.recycle();
+            final byte[] jpg = o.toByteArray();
+            final Context app = getApplicationContext();
+            work.execute(() -> {
+                String r;
+                try {
+                    Coder.Made m = Coder.save(app, "Jarvis/camera", "hud_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ENGLISH).format(new java.util.Date()) + ".jpg", "image/jpeg", jpg);
+                    r = "📸 HUD తో ఫోటో సేవ్ అయింది: " + m.where;
+                } catch (Exception e) {
+                    r = "📸 సేవ్ కాలేదు: " + e.getMessage();
+                }
+                final String rr = r;
+                main.post(() -> Toast.makeText(app, rr, Toast.LENGTH_LONG).show());
+            });
+            Sfx.hud(this, p, "card");
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫోటో తయారు కాలేదు", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void zoomTest() {
+        say("📏 ఈ ఫోన్ Jarvis కి ఇచ్చే నిజమైన జూమ్: " + fmtZoom(cam.opticalMax()) + ". దాని పైన Jarvis జూమ్ " + fmtZoom(CamView.MAX_TOTAL)
+                + " వరకు (నిజమైన జూమ్ దాటాక కొంచెం మసకగా). Samsung కెమెరా యాప్ 100× లో వాళ్ల సొంత AI ఉంటుంది; అది ఇతర యాప్‌లకు ఇవ్వరు.");
+    }
+
+    // ---- a frozen picture, zoomed into
+
+    private void setStillZoom(float z, float fx, float fy) {
+        int W = still.getWidth(), H = still.getHeight();
+        if (W == 0 || H == 0) return;
+        float nz = Math.max(1f, Math.min(8f, z));
+        float px = stillCx + (fx / W - 0.5f) / stillZ, py = stillCy + (fy / H - 0.5f) / stillZ; // the photo point under his fingers stays put
+        stillZ = nz;
+        float half = 0.5f / nz;
+        stillCx = Math.max(half, Math.min(1 - half, px - (fx / W - 0.5f) / nz));
+        stillCy = Math.max(half, Math.min(1 - half, py - (fy / H - 0.5f) / nz));
+        applyStillZoom();
+        hud.clear(); // (its boxes were for the picture as it was)
+    }
+
+    private void applyStillZoom() {
+        int W = still.getWidth(), H = still.getHeight();
+        still.setPivotX(0);
+        still.setPivotY(0);
+        still.setScaleX(stillZ);
+        still.setScaleY(stillZ);
+        still.setTranslationX(-(stillCx - 0.5f / stillZ) * W * stillZ);
+        still.setTranslationY(-(stillCy - 0.5f / stillZ) * H * stillZ);
+    }
+
+    private void resetStillZoom() {
+        stillZ = 1f;
+        stillCx = stillCy = 0.5f;
+        applyStillZoom();
+    }
+
+    /** The frozen picture as he sees it now (the zoomed part of it). */
+    private Bitmap stillPic() {
+        if (photo == null || fromImage || stillZ <= 1.01f) return photo;
+        try {
+            int W = photo.getWidth(), H = photo.getHeight();
+            int w = Math.round(W / stillZ), h = Math.round(H / stillZ);
+            int x = Math.max(0, Math.min(W - w, Math.round((stillCx - 0.5f / stillZ) * W))), y = Math.max(0, Math.min(H - h, Math.round((stillCy - 0.5f / stillZ) * H)));
+            return Bitmap.createBitmap(photo, x, y, w, h);
+        } catch (Exception e) {
+            return photo;
+        }
+    }
 
     // ================================================================ QR / barcode seen by itself
 
