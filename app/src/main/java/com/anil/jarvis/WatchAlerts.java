@@ -103,6 +103,26 @@ final class WatchAlerts {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * Settings → ⌚ "📳 వాచ్ టెస్ట్": a card on the watch with the message vibration (2 short; shown even when Jarvis
+     * alerts are off there, so it tests the link itself), gone by itself after 20 seconds.
+     * failed / sent run on the main thread (no watch near the phone / it went).
+     */
+    static void test(Context c, Runnable failed, Runnable sent) {
+        final Context app = c.getApplicationContext();
+        final int id = 0x7E57; // (its own id: never one of the phone's notifications)
+        try {
+            JSONObject o = new JSONObject().put("id", id).put("key", "jarvis-watch-test").put("kind", "message").put("title", "📳 Jarvis టెస్ట్")
+                    .put("text", "ఫోన్ నుంచి టెస్ట్: వాచ్ పనిచేస్తోంది ✓").put("acts", new JSONArray()).put("quiet", false).put("silent", false);
+            WatchHub.send(app, P_ALERT, o.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), null, failed, true, sent);
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                try { WatchHub.send(app, P_ALERT_GONE, new JSONObject().put("id", id)); } catch (Exception ignored) {}
+            }, 20_000);
+        } catch (Exception e) {
+            if (failed != null) failed.run();
+        }
+    }
+
     /** One of Jarvis's notifications went away on the phone (answered there, or replaced). */
     static void removed(Context c, StatusBarNotification sbn) {
         int id = sbn.getKey().hashCode();

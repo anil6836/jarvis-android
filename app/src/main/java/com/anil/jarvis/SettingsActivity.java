@@ -125,10 +125,11 @@ public class SettingsActivity extends Activity {
         boolean open, notesShown;
     }
     /** {id, emoji, name, what is inside}; a card goes to the first group whose words its title has (see groupOf). */
-    private static final String[][] GROUPS = {
+    static final String[][] GROUPS = {
             {"me", "👤", "నేను, లుక్", "పేరు, థీమ్, ముఖం, ఫ్లోటింగ్ బటన్"},
             {"brain", "🧠", "మెదడు, ఖర్చు", "AI, మోడల్స్, API keys, కోడింగ్"},
             {"voice", "🔊", "గొంతు, వినడం", "వాయిస్, సహజ గొంతు, Live, వేక్ వర్డ్, పవర్ బటన్"},
+            {"watch", "⌚", "వాచ్", "వినడం, అలర్ట్స్, రోజువారీ, ఆరోగ్యం, రోడ్డు, రూపం"},
             {"msg", "💬", "మెసేజ్‌లు, కాల్స్", "కాల్స్, బ్రీఫింగ్, నోటిఫికేషన్లు, WhatsApp, స్క్రీన్, మోసం గార్డ్"},
             {"bike", "🏍️", "బైక్, ఇల్లు", "బైక్, కదలికలు, స్మార్ట్ హోమ్, కాపలా మోడ్"},
             {"tab", "🏠", "ఇంటి టాబ్లెట్", "టాబ్లెట్ గొంతు, అమ్మగారి టైమ్‌లు, టాబ్లెట్లు, ఇంటి Jarvis"},
@@ -636,6 +637,8 @@ public class SettingsActivity extends Activity {
                 + "వినడం అంతా ఫోన్‌లోనే, ఏదీ బయటికి వెళ్లదు. ఇది చిన్న మోడల్: పై లాంటి పనుల మాటలు బాగా వింటుంది; పొడవైన వాక్యాలు, పేర్లు "
                 + "కొన్నిసార్లు తప్పుగా వినొచ్చు (ఏం విన్నదో స్క్రీన్‌పై కనిపిస్తుంది). జవాబులు ఫోన్ తెలుగు గొంతుతో.");
 
+        offlineReadPack(); // (the camera's offline English → Telugu; it was in the watch card)
+
         // ---- wake word
         section("\"Hey Jarvis\" వేక్ వర్డ్");
         note("ఫోన్ లాక్‌లో ఉన్నా \"Hey Jarvis\" అని పిలిస్తే తెరుచుకుంటుంది. ఏ key అవసరం లేదు. వినడం అంతా ఫోన్‌లోనే జరుగుతుంది, ఏ ఆడియో బయటికి వెళ్లదు.");
@@ -896,6 +899,7 @@ public class SettingsActivity extends Activity {
                 + "ఈ ఫోన్‌లో దగ్గు ప్రశ్నలు లాంటివి అడగదు.");
         note("🏠 మీ మెయిన్ ఫోన్‌లో కూడా ఇదే token పెట్టి 'Telegram చాట్ కనుక్కో' నొక్కితే (అక్కడ కాపలా ఆన్ చేయకుండా), \"ఇంట్లో ఎలా ఉంది?\" అంటే ఇంటి ఫోన్ ఫోటో తీసి పంపుతుంది, "
                 + "\"ఇంటికి చెప్పు …\" అంటే ఇంట్లో గొంతుతో వినిపిస్తుంది, \"ఇంట్లో కాపలా ఆపు / పెట్టు\" పనిచేస్తాయి. ఇంటి ఫోన్ కాపలా నోటిఫికేషన్‌లో 🎤 బటన్‌తో ఇంట్లో వాళ్లు మీకు వాయిస్ పంపొచ్చు.");
+        homePhoneNote();
 
         section("అత్యవసరం (SOS)");
         note("\"Jarvis help\" / \"కాపాడు\" అంటే 5 సెకన్ల తర్వాత (మధ్యలో ఆపొచ్చు) మీ లొకేషన్ వీళ్లకి SMS వెళ్తుంది, మొదటివాళ్లకి కాల్ వెళ్తుంది.");
@@ -956,6 +960,7 @@ public class SettingsActivity extends Activity {
         button("స్క్రీన్ టైమ్ కోసం \"Usage access\" ఇవ్వండి", v -> {
             try { startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); } catch (Exception ignored) {}
         });
+        homeArrivalSwitch(); // (it was in the watch card)
 
         section("డైరీ, పండుగలు, ధరలు, ఫోన్ వెతుకు");
         diaryAsk = toggle("📔 రాత్రి " + prefs.diaryHour() + " గంటలకి \"ఈరోజు ఎలా గడిచింది?\" అని అడిగి డైరీ రాయి", prefs.diaryAsk());
@@ -972,6 +977,7 @@ public class SettingsActivity extends Activity {
         weekPlan = toggle("🗓️ ప్రతి ఆదివారం సాయంత్రం వచ్చే వారం ప్లాన్ చెప్పు", prefs.weekPlan());
         dailyTip = toggle("📚 రోజూ ఒక Jarvis చిట్కా (తెలియని ఫీచర్) చెప్పు", prefs.dailyTip());
         habitHour = numberField("🎯 అలవాట్లు చేశారా అని రాత్రి ఇన్ని గంటలకి అడుగు (0 = వద్దు)", String.valueOf(Math.max(0, prefs.habitHour())));
+        heatAndBattery(); // (they were in the watch card)
 
         section("అలారం, వ్యాయామం, అత్యవసర సమాచారం");
         alarmSongInfo = Ui.text(this, "🎵 అలారం పాట: " + (prefs.alarmSong().isEmpty() ? "అలారం టోన్ (పాట ఎంచుకోలేదు)" : prefs.alarmSongName()), 14.5f, Ui.MUTED);
@@ -1142,14 +1148,14 @@ public class SettingsActivity extends Activity {
 
     // ================================================================ groups, search, folding, saving by itself
 
-    private static String groupOf(String title) {
+    static String groupOf(String title) {
         String t = title;
         if (t.contains("Jarvis చెక్")) return "check";
         if (t.endsWith("(టాబ్లెట్)")) return "tab"; // (the tablet's cards, whatever their words: "మెసేజ్", "ఆరోగ్యం"…)
+        if (t.contains("వాచ్")) return "watch"; // (the watch's six cards: "ఆరోగ్యం: వాచ్…", "రోడ్డు, భద్రత (వాచ్)"…)
         if (t.contains("మీరు") || t.contains("థీమ్") || t.contains("Jarvis ముఖం") || t.contains("ఫ్లోటింగ్")) return "me";
         if (t.contains("మెదడు") || t.contains("API ఖర్చు") || t.contains("కోడింగ్")) return "brain";
-        if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")
-                || t.contains("వాచ్")) return "voice";
+        if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")) return "voice";
         if (t.contains("కాల్స్") || t.contains("మెసేజ్") || t.contains("WhatsApp") || t.contains("స్క్రీన్ చూడటం") || t.contains("మోసం")) return "msg";
         if (t.contains("టాబ్లెట్") || t.contains("ఇంటి Jarvis")) return "tab";
         if (t.contains("బైక్") || t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా")) return "bike";
@@ -1271,19 +1277,26 @@ public class SettingsActivity extends Activity {
     private LinearLayout whatsNew;
 
     // ---- "🆕 ఈ వెర్షన్‌లో కొత్తవి": once after this update, on top of Settings, until he closes it (✕)
-    /** Changes the update with this card brought (its id changes with each such list). */
-    private static final String WHATS_NEW_ID = "settings-features-1";
-    /** {line, where "చూపించు" goes: "group:<id>" / "features:<folder>" / "search:<words>"}. */
+    /** The newest list below (each update with news has the next number; he sees only what came after the one he closed). */
+    private static final int WHATS_NEW_LEVEL = 2;
+    /** {line, where "చూపించు" goes: "group:<id>" / "features:<folder>" / "search:<words>", the update's number}. */
     private static final String[][] WHATS_NEW = {
-            {"🏠 అమ్మగారి టాబ్లెట్ సెట్టింగ్స్ ఇప్పుడు 5 చిన్న కార్డులు: టైమ్‌లు, మాత్రలు, మెసేజ్, ఆటలు, గొంతు", "group:tab"},
-            {"● టాబ్లెట్‌కి పంపని మార్పులు ఉంటే చూపిస్తాను; పంపకుండా బయటికి వెళ్తే అడుగుతాను", "group:tab"},
-            {"⚠️ టాబ్లెట్ సమస్యలు (లొకేషన్ ఆఫ్, బ్యాటరీ…) ఇక్కడే 🏠 టైల్ మీద; ప్రతి టైల్ మీద ఇప్పటి స్థితి", "home:"},
-            {"👵 అన్ని ఫీచర్స్‌లో కొత్త ఫోల్డర్: అమ్మగారి టాబ్లెట్ (మెసేజ్, ఆట, రిమైండర్, ఫోటోలు, స్థితి)", "features:amma"},
-            {"📌 ఫీచర్స్‌లో ఏ ఆప్షన్ మీదైనా వేలు నొక్కి పట్టుకుంటే పైన పెట్టుకోవచ్చు", "features:"},
-            {"🔍 వెతకడంలో మామూలు మాటలు: \"అమ్మ\", \"ఆట\", \"మాత్ర\"; ఒకే సెర్చ్ రెండు చోట్లా", "search:అమ్మ"}};
+            {"⌚ వాచ్‌కి సొంత టైల్: 6 చిన్న కార్డులు (కనెక్షన్, వినడం, అలర్ట్స్, రోజువారీ, ఆరోగ్యం, రోడ్డు-భద్రత) + 📳 వాచ్ టెస్ట్", "group:watch", "2"},
+            {"🏠 అమ్మగారి టాబ్లెట్ సెట్టింగ్స్ ఇప్పుడు 5 చిన్న కార్డులు: టైమ్‌లు, మాత్రలు, మెసేజ్, ఆటలు, గొంతు", "group:tab", "1"},
+            {"● టాబ్లెట్‌కి పంపని మార్పులు ఉంటే చూపిస్తాను; పంపకుండా బయటికి వెళ్తే అడుగుతాను", "group:tab", "1"},
+            {"⚠️ టాబ్లెట్ సమస్యలు (లొకేషన్ ఆఫ్, బ్యాటరీ…) ఇక్కడే 🏠 టైల్ మీద; ప్రతి టైల్ మీద ఇప్పటి స్థితి", "home:", "1"},
+            {"👵 అన్ని ఫీచర్స్‌లో కొత్త ఫోల్డర్: అమ్మగారి టాబ్లెట్ (మెసేజ్, ఆట, రిమైండర్, ఫోటోలు, స్థితి)", "features:amma", "1"},
+            {"📌 ఫీచర్స్‌లో ఏ ఆప్షన్ మీదైనా వేలు నొక్కి పట్టుకుంటే పైన పెట్టుకోవచ్చు", "features:", "1"},
+            {"🔍 వెతకడంలో మామూలు మాటలు: \"అమ్మ\", \"ఆట\", \"మాత్ర\"; ఒకే సెర్చ్ రెండు చోట్లా", "search:అమ్మ", "1"}};
+
+    /** The last list he closed (✕): 1 for the first one (closed before numbers were kept), 0 none. */
+    private int whatsNewSeen() {
+        android.content.SharedPreferences s = getSharedPreferences("jarvis_settings_ui", MODE_PRIVATE);
+        return s.getInt("whats_new_level", "settings-features-1".equals(s.getString("whats_new_seen", "")) ? 1 : 0);
+    }
 
     private boolean whatsNewDue() {
-        return !prefs.homeMode() && !WHATS_NEW_ID.equals(getSharedPreferences("jarvis_settings_ui", MODE_PRIVATE).getString("whats_new_seen", ""));
+        return !prefs.homeMode() && whatsNewSeen() < WHATS_NEW_LEVEL;
     }
 
     private LinearLayout buildWhatsNew() {
@@ -1304,12 +1317,14 @@ public class SettingsActivity extends Activity {
         x.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 4), 0);
         x.setContentDescription("కొత్తవి మూసేయి");
         x.setOnClickListener(v -> {
-            getSharedPreferences("jarvis_settings_ui", MODE_PRIVATE).edit().putString("whats_new_seen", WHATS_NEW_ID).apply();
+            getSharedPreferences("jarvis_settings_ui", MODE_PRIVATE).edit().putInt("whats_new_level", WHATS_NEW_LEVEL).apply();
             w.setVisibility(View.GONE);
         });
         head.addView(x);
         w.addView(head);
+        int seen = whatsNewSeen();
         for (String[] item : WHATS_NEW) {
+            if (Integer.parseInt(item[2]) <= seen) continue; // (already seen in an earlier update)
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(0, Ui.dp(this, 8), 0, 0);
@@ -1382,6 +1397,16 @@ public class SettingsActivity extends Activity {
             case "voice": {
                 if (prefs.wakeReady() && !WakeService.running) return new Object[]{"✗ \"Jarvis\" వేక్ వర్డ్ ఆగి ఉంది", 2};
                 return new Object[]{"వేక్ వర్డ్: " + (wake.isChecked() ? "ఆన్" : "ఆఫ్") + " · సహజ గొంతు: " + (natural.isChecked() ? "ఆన్" : "ఆఫ్"), -1};
+            }
+            case "watch": {
+                org.json.JSONObject i = WatchHub.info;
+                long wall = WatchHub.sp(this).getLong("seen_wall", 0), now = System.currentTimeMillis();
+                if (i == null) return wall == 0 ? new Object[]{"✗ వాచ్ ఇంకా ఫోన్‌తో కలవలేదు: వాచ్‌లో Jarvis ఒకసారి తెరవండి", 2}
+                        : new Object[]{"వాచ్: చివరిసారి " + TabletWatch.ago(wall, now) + " (ఇప్పుడు అడుగుతున్నాను…)", -1};
+                if (!i.optBoolean("mic", true)) return new Object[]{"✗ వాచ్ మైక్ అనుమతి లేదు: వాచ్‌లో Jarvis తెరిచి Allow", 2};
+                int bat = i.optInt("bat", -1);
+                String line = "✓ " + i.optString("model", "Galaxy Watch") + (bat >= 0 ? " · 🔋 " + bat + "%" : "") + (wall > 0 ? " · " + TabletWatch.ago(wall, now) : "");
+                return new Object[]{line, bat >= 0 && bat <= 15 ? 1 : 0};
             }
             case "msg":
                 if (!NotifyListener.enabled(this)) return new Object[]{"✗ నోటిఫికేషన్ యాక్సెస్ లేదు: మెసేజ్‌లు అందవు", 2};
@@ -1542,6 +1567,7 @@ public class SettingsActivity extends Activity {
         String t = c.title;
         String tabLine = tabSummary(t);
         if (tabLine != null) return tabLine;
+        if (t.equals(W_LINK)) return WatchHub.status(this).split("\n")[0]; // (is the watch there)
         if (t.contains("మీరు")) return "పేరు: " + name.getText().toString().trim();
         if (t.contains("థీమ్")) {
             String id = Ui.theme(this);
@@ -2779,87 +2805,8 @@ public class SettingsActivity extends Activity {
                 + ") · ఒక అడుగు సుమారు " + Wellness.strideFor(cm) + " మీ  (మార్చడానికి నొక్కండి)";
     }
 
-    /** Phase 5: the road, music, safety, home, offline reading, and the new watch ideas (each with his switch). */
-    private void phase5Section() {
-        TextView head = Ui.text(this, "🏍️ దశ 5: రోడ్డు, పాటలు, భద్రత, ఇల్లు, వాచ్", 16f, Ui.CYAN);
-        head.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        head.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
-        box.addView(head);
-        Switch rain = toggle("🌧️ అరగంటలో వర్షం వచ్చేలా ఉంటే చెప్పు (వాచ్‌కి కూడా; అంచనా)", Travel.rainOn(this));
-        rain.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "rain_soon", on));
-        Switch heat = toggle("🥵 బయట ఎండ చాలా ఎక్కువైతే (40°+) నీళ్లు / నీడ గుర్తు చేయి", Travel.heatOn(this));
-        heat.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "heat", on));
-        Switch turns = toggle("↪️ Maps తో నడిచేటప్పుడు మలుపులు వాచ్‌లో వైబ్రేషన్‌తో (ఎడమ = 2 చిన్నవి, కుడి = 1 పొడవు)", Travel.turnsOn(this));
-        turns.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "turn_buzz", on));
-        Switch brk = toggle("🛑 పెద్ద రైడ్‌లో (75 ని; నిద్ర తక్కువైతే 45 ని) “5 నిమిషాలు ఆగండి” వాచ్ వైబ్రేషన్", Travel.rideBreakOn(this));
-        brk.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "ride_break", on));
-        Switch dbl = toggle("💥 బైక్ దెబ్బ డబుల్ చెక్: వాచ్‌కి దెబ్బ తగలకపోతే ముందు చేతి మీద నెమ్మదిగా అడుగు (తర్వాత పూర్తి చెక్)", CrashAlert.doubleCheck(this));
-        dbl.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "crash_double", on));
-        Switch fall = toggle("🆘 వాచ్‌కి గట్టిగా పడిపోయినట్టు అనిపిస్తే “బాగున్నారా?” (జవాబు లేకపోతే SOS; బ్యాటరీ కొంచెం ఎక్కువ)", WatchHub.fallOn(this));
-        fall.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "fall", on));
-        Switch bat = toggle("🔋 డ్యూటీ ముందు / డ్యూటీలో / బయట ఫోన్ బ్యాటరీ తక్కువైతే, డ్యూటీ వరకు సరిపోదంటే చెప్పు", Power.on(this));
-        bat.setOnCheckedChangeListener((sw, on) -> getSharedPreferences("jarvis_power", MODE_PRIVATE).edit().putBoolean("on", on).apply());
-        Switch home = toggle("🏠 ఇంటికి రాగానే / బయల్దేరగానే కార్డ్ (లైట్లు, కాపలా, “తాళం వేశారా?”; మీ నొక్కుతోనే)", HomeArrival.on(this));
-        home.setOnCheckedChangeListener((sw, on) -> { Travel.set(this, "home_welcome", on); new Thread(() -> HomeArrival.arm(getApplicationContext())).start(); });
-        note("ఇల్లు సేవ్ అయి ఉండాలి (ఇంట్లో ఉన్నప్పుడు “ఈ చోటు ఇల్లు గా సేవ్ చెయ్”), లొకేషన్ “అన్నివేళలా” అనుమతి కావాలి.");
-        Switch cal = toggle("📅 డ్యూటీ రోజులు ఫోన్ క్యాలెండర్‌లో పెట్టు (వాచ్ క్యాలెండర్‌లో కూడా వస్తాయి; Jarvis తను పెట్టినవే మారుస్తుంది)", WatchExtras.calOn(this));
-        cal.setOnCheckedChangeListener((sw, on) -> {
-            if (Boolean.TRUE.equals(sw.getTag())) return; // (put back by Jarvis, not his tap)
-            if (on && checkSelfPermission(Manifest.permission.WRITE_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR}, 66);
-                sw.setTag(true); sw.setChecked(false); sw.setTag(null);
-                Toast.makeText(this, "క్యాలెండర్ అనుమతి ఇచ్చి మళ్లీ ఆన్ చేయండి.", Toast.LENGTH_LONG).show();
-                return;
-            }
-            new Thread(() -> {
-                String r = WatchExtras.calSet(getApplicationContext(), on);
-                runOnUiThread(() -> {
-                    Toast.makeText(this, r, Toast.LENGTH_LONG).show();
-                    if (on != WatchExtras.calOn(this)) { sw.setTag(true); sw.setChecked(WatchExtras.calOn(this)); sw.setTag(null); }
-                });
-            }).start();
-        });
-        Switch silentAuto = toggle("🔕 డ్యూటీ, మీటింగ్, Do Not Disturb లో వాచ్ జవాబులు రాతగా మాత్రమే", Day5.silentAuto(this));
-        silentAuto.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "silent_auto", on));
-        Switch silent = toggle("🔕 వాచ్ ఎప్పుడూ సైలెంట్ (రాత + వైబ్రేషన్ మాత్రమే)", Day5.silentOn(this));
-        silent.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "silent", on));
-        Switch smart = toggle("⏰ స్మార్ట్ అలారం: అలారానికి 25 ని ముందు తేలిక నిద్రలో కదిలితే వాచ్ కొంచెం ముందే లేపుతుంది (అంచనా)", Day5.smartOn(this));
-        smart.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "smart_alarm", on));
-        Switch diary = toggle("📔 రాత్రి 9:30 కి వాచ్‌లో “ఈరోజు ఎలా గడిచింది?” (మూడ్ + 1 నిమిషం మాట)", WatchHub.sp(this).getBoolean("night_diary", true));
-        diary.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "night_diary", on));
-        Switch gest = toggle("👋 మణికట్టు సైగలు (స్క్రీన్ ఆన్‌లో ఉన్నప్పుడే): రెండుసార్లు తిప్పితే Jarvis వింటుంది; అలారంపై విదిలిస్తే 5 నిమిషాలు", WatchHub.sp(this).getBoolean("gestures", true));
-        gest.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "gestures", on));
-        Switch storm = toggle("⛈️ వాచ్ బారోమీటర్‌తో గాలివాన హెచ్చరిక (నెట్ లేకపోయినా; అంచనా)", WatchHub.sp(this).getBoolean("storm", true));
-        storm.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "storm", on));
-        Switch spend = toggle("💰 వాచ్‌లో ఈ నెల ఖర్చుల రింగ్ (బ్యాంక్ / UPI SMS నుంచి ఫోన్‌లోనే లెక్క; SMS ఏ AI కీ వెళ్లదు, అకౌంట్ నంబర్లు దాచను)", Day5.spendOn(this));
-        spend.setOnCheckedChangeListener((sw, on) -> { WatchHub.set(this, "spend_ring", on); WatchAlerts.pushInfoSoon(this); });
-        Switch med = toggle("🩸 మెడికల్ కార్డ్ వాచ్‌లో (బ్లడ్ గ్రూప్, అలర్జీ, కాంటాక్ట్; సహాయం చేసేవాళ్లకి)", Day5.medOn(this));
-        med.setOnCheckedChangeListener((sw, on) -> { WatchHub.set(this, "med_watch", on); WatchAlerts.pushInfoSoon(this); });
-        TextView tr = Ui.text(this, OfflineRead.ready(this) ? "🌐 ఆఫ్‌లైన్ అనువాదం (ఇంగ్లీష్ → తెలుగు): ✓ ఫోన్‌లో ఉంది" : "🌐 ఆఫ్‌లైన్ అనువాదం (ఇంగ్లీష్ → తెలుగు): ఇంకా లేదు", 15f, Ui.CYAN);
-        tr.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
-        box.addView(tr);
-        button("⬇️ ఆఫ్‌లైన్ అనువాదం ప్యాక్ డౌన్‌లోడ్ (సుమారు 30 MB, ఒక్కసారి)", v -> {
-            tr.setText("🌐 డౌన్‌లోడ్ అవుతోంది…");
-            new Thread(() -> {
-                String r = OfflineRead.download(getApplicationContext());
-                runOnUiThread(() -> tr.setText(r.isEmpty() ? "🌐 ఆఫ్‌లైన్ అనువాదం: ✓ ఫోన్‌లో ఉంది" : "🌐 డౌన్‌లోడ్ కాలేదు: " + r));
-            }).start();
-        });
-        note("నెట్ లేనప్పుడు Jarvis కెమెరాలో ఇంగ్లీష్ రాత (మందుల స్ట్రిప్, బిల్లు, బోర్డు) ఫోన్‌లోనే చదివి, ఈ ప్యాక్ ఉంటే తెలుగులో చెబుతుంది.");
-        note("🏠 ఇంటి ఫోన్‌తో కలపడానికి (“ఇంట్లో ఎలా ఉంది?” ఫోటో, “ఇంటికి చెప్పు”, కాపలా ఆపు / పెట్టు): ఈ ఫోన్‌లో కాపలా మోడ్ సెక్షన్‌లో ఇంటి ఫోన్‌లో పెట్టిన అదే Telegram bot token పెట్టి "
-                + "“Telegram చాట్ కనుక్కో” నొక్కండి (Telegram లో bot కి hi పంపి). కాపలా మోడ్ ఇక్కడ ఆన్ చేయకండి: అది ఇంటి ఫోన్ పని. Token ఈ రెండు ఫోన్లలోనే ఉంటుంది. "
-                + "Bot చాట్‌లో Jarvis మెసేజ్‌లు పిన్ అవుతాయి (రెండు ఫోన్లు అలా మాట్లాడుకుంటాయి).");
-        note("వాచ్ Jarvis స్క్రీన్‌లో కొత్త బటన్లు: 🧭 దారి, 🎵 పాటలు, 📻 రేడియో, 🖼️ ఫోటోలు, 📷 కెమెరా, 🎙️ రికార్డ్, 💧 నీళ్లు, ⚡ ప్రోటోకాల్, 🛡️ నాతో ఉండు, "
-                + "🎯 ఫోకస్, 🏋️ రెప్స్, 📔 డైరీ, 💰 ఖర్చు, 😴 నిద్ర, 📱 ఫోన్ ఎక్కడ?, 🩸 మెడికల్, 🆘 SOS (నొక్కి పట్టుకోండి). ఆర్బ్‌ని నొక్కి పట్టుకుంటే చుట్టూ బటన్లు (బెజెల్ తిప్పి ఎంచుకోండి). "
-                + "కొత్త కాంప్లికేషన్లు: Jarvis ఒత్తిడి, Jarvis ఫోన్ బ్యాటరీ.");
-    }
-
     /** Phase 4: health from the watch and Samsung Health (Health Connect). Each choice acts at once; no Save needed. */
     private void healthSection() {
-        TextView head = Ui.text(this, "❤️ ఆరోగ్యం: వాచ్, Samsung Health (దశ 4)", 16f, Ui.CYAN);
-        head.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        head.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
-        box.addView(head);
         hcStatus = Ui.text(this, "🔗 Health Connect: " + HealthData.status(this), 14, Ui.MUTED);
         hcStatus.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
         box.addView(hcStatus);
@@ -3604,14 +3551,82 @@ public class SettingsActivity extends Activity {
         else button("🔲 QR చూపించు (టాబ్లెట్ స్కాన్ చేయడానికి)", v -> QrPair.show(this));
     }
 
-    /** Phase 2a: the Jarvis watch app (Galaxy Watch). Each choice acts at once and goes to the watch; no Save needed. */
+    // ================================================================ ⌚ the watch: its own group, six small cards
+
+    /** The watch's cards (every title has "వాచ్": groupOf puts them in the ⌚ group). */
+    static final String W_LINK = "వాచ్ కనెక్షన్, రూపం, వాచ్‌లో పెట్టడం", W_TALK = "వాచ్‌లో వినడం, మాట్లాడటం",
+            W_ALERTS = "వాచ్ అలర్ట్స్, వైబ్రేషన్", W_DAY = "వాచ్‌లో రోజువారీ పనులు", W_HEALTH = "ఆరోగ్యం: వాచ్, Samsung Health",
+            W_ROAD = "రోడ్డు, భద్రత (వాచ్)";
+
+    /** Phase 2a onwards: the Jarvis watch app (Galaxy Watch). Each choice acts at once and goes to the watch; no Save needed. */
     private void watchSection() {
-        section("⌚ వాచ్ (Galaxy Watch)");
+        // ---- 1. the watch itself: is it there, a test, its look, putting Jarvis on it
+        section(W_LINK, "⌚");
         TextView st = Ui.text(this, WatchHub.status(this), 14, Ui.MUTED);
         st.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
         box.addView(st);
         WatchHub.send(this, WatchHub.P_PING, new byte[0]); // the watch answers with its news
-        st.postDelayed(() -> st.setText(WatchHub.status(this)), 3000);
+        st.postDelayed(() -> {
+            if (isDestroyed()) return;
+            st.setText(WatchHub.status(this));
+            if ("home".equals(mode)) refreshTiles();
+        }, 3000);
+        TextView testInfo = Ui.text(this, "", 14, Ui.MUTED);
+        button("📳 వాచ్ టెస్ట్ (వాచ్ వైబ్రేట్ అయి కార్డ్ చూపిస్తుంది)", v -> {
+            testInfo.setText("వాచ్‌కి పంపుతున్నాను…");
+            WatchAlerts.test(this,
+                    () -> { if (!isDestroyed()) testInfo.setText("✗ వాచ్ దగ్గర్లో కనెక్ట్ అయి లేదు: వాచ్ Bluetooth, Galaxy Wearable యాప్ చూడండి."); },
+                    () -> {
+                        if (isDestroyed()) return;
+                        testInfo.setText("✓ వాచ్‌కి వెళ్లింది: వాచ్ వైబ్రేట్ అయి \"📳 Jarvis టెస్ట్\" కార్డ్ కనిపించాలి (20 సెకన్లలో పోతుంది). కనిపించకపోతే వాచ్‌లో Jarvis ఒకసారి తెరవండి.");
+                        WatchHub.send(this, WatchHub.P_PING, new byte[0]);
+                        st.postDelayed(() -> { if (!isDestroyed()) { st.setText(WatchHub.status(this)); if ("home".equals(mode)) refreshTiles(); } }, 3000);
+                    });
+        });
+        testInfo.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
+        box.addView(testInfo);
+        TextView look = Ui.text(this, "", 15.5f, Ui.CYAN);
+        look.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        look.setText("🙂 వాచ్‌లో Jarvis: " + WatchHub.lookText(WatchHub.look(this)) + "  (మార్చడానికి నొక్కండి)");
+        look.setOnClickListener(v -> {
+            final String[] looks = {"orb", "holo", "human"};
+            String[] names = new String[looks.length];
+            int checked = 0;
+            for (int i = 0; i < looks.length; i++) { names[i] = WatchHub.lookText(looks[i]); if (looks[i].equals(WatchHub.look(this))) checked = i; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("వాచ్‌లో Jarvis ఎలా కనిపించాలి?")
+                    .setSingleChoiceItems(names, checked, (d, w) -> {
+                        WatchHub.set(this, "look", looks[w]);
+                        look.setText("🙂 వాచ్‌లో Jarvis: " + WatchHub.lookText(looks[w]) + "  (మార్చడానికి నొక్కండి)");
+                        d.dismiss();
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        box.addView(look);
+        note("వాచ్ రంగులు ఫోన్ థీమ్‌నే అనుసరిస్తాయి (👤 నేను, లుక్ → 'థీమ్ (రంగులు)'). Jarvis వాచ్ ఫేస్ (Jarvis-face.apk): సమయం, బ్యాటరీ, అడుగులు, గుండె వేగం వలయాలు, "
+                + "తదుపరి డ్యూటీ, వాతావరణం; ఎప్పుడూ ఆన్ (AOD) లో మసకగా. దాన్ని కూడా Jarvis-watch.apk లాగే Bugjaeger తో ఇన్‌స్టాల్ చేసి, వాచ్ ఫేస్ మీద నొక్కి పట్టుకుని "
+                + "Jarvis ఎంచుకోండి; రంగు ఫేస్ Customize లో. డ్యూటీ, వాతావరణం ఫోన్ నుంచి అరగంటకి ఒకసారి వస్తాయి.");
+        link("⬇ Jarvis-face.apk (వాచ్ ఫేస్, తాజా వెర్షన్)", "https://github.com/anil6836/jarvis-android/releases/latest/download/Jarvis-face.apk");
+        note("వాచ్ Jarvis స్క్రీన్‌లో కింద బటన్లు: ☀️ ఈరోజు, 📊 స్టేటస్, 🏍️ డ్యూటీ (కౌంట్‌డౌన్, బయలుదేరే టైమ్, బ్యాగ్ టిక్, హ్యాండోవర్ నోట్), "
+                + "✅ పనులు (అలవాట్లు, మిషన్లు, షాపింగ్ లిస్ట్ ఒక్క నొక్కుతో), 💡 ఇల్లు (మీ స్మార్ట్ హోమ్ లింక్‌లు), ⏱️ టైమర్, 🍲 కుక్కర్, "
+                + "📝 నోట్ (ఒక్క మాటలో: ఖర్చు, ఎక్కడ పెట్టారో, ఎవరికి ఇచ్చారో, రిమైండర్, నోట్), 🌐 అనువాదం (ఎవరైనా హిందీ / ఇంగ్లీష్‌లో మాట్లాడితే వాచ్‌లో తెలుగులో).");
+        note("వాచ్ Jarvis స్క్రీన్‌లో కొత్త బటన్లు: 🧭 దారి, 🎵 పాటలు, 📻 రేడియో, 🖼️ ఫోటోలు, 📷 కెమెరా, 🎙️ రికార్డ్, 💧 నీళ్లు, ⚡ ప్రోటోకాల్, 🛡️ నాతో ఉండు, "
+                + "🎯 ఫోకస్, 🏋️ రెప్స్, 📔 డైరీ, 💰 ఖర్చు, 😴 నిద్ర, 📱 ఫోన్ ఎక్కడ?, 🩸 మెడికల్, 🆘 SOS (నొక్కి పట్టుకోండి). ఆర్బ్‌ని నొక్కి పట్టుకుంటే చుట్టూ బటన్లు (బెజెల్ తిప్పి ఎంచుకోండి). "
+                + "కొత్త కాంప్లికేషన్లు: Jarvis ఒత్తిడి, Jarvis ఫోన్ బ్యాటరీ.");
+        note("Jarvis టైల్: వాచ్ ఫేస్ మీద కుడివైపు స్వైప్ చేసి చివర \"+\" (Add tiles) → Jarvis. అందులో తర్వాతి డ్యూటీ, రిమైండర్, నిద్ర, "
+                + "🎙️ / ☀️ / ⏱️ / 🍲 / 📊 బటన్లు.");
+        note("బటన్‌తో పిలవడానికి: వాచ్ Settings → Advanced features → Customize keys → Home key \"Double press\" → Jarvis. "
+                + "వాచ్ ఫేస్ మీద నొక్కి పట్టుకుని → Customize → షార్ట్‌కట్ ఉన్న చోట Jarvis ఎంచుకోండి.");
+        note("వాచ్‌లో Jarvis పెట్టడం (ఒక్కసారి, Bugjaeger యాప్‌తో): 1) కింది లింక్‌తో ఫోన్‌లో Jarvis-watch.apk డౌన్‌లోడ్ చేయండి. "
+                + "2) వాచ్: Settings → About watch → Software information → Software version మీద \"Developer mode turned on\" వచ్చే వరకు చాలా సార్లు నొక్కండి. "
+                + "3) వాచ్: Settings → Developer options → ADB debugging ఆన్, Wireless debugging ఆన్ → Pair new device (కోడ్ కనిపిస్తుంది). "
+                + "4) ఫోన్‌లో Bugjaeger: ఆ కోడ్‌తో pair చేసి connect చేయండి → Install APK → Jarvis-watch.apk. "
+                + "5) వాచ్‌లో Jarvis తెరిచి మైక్‌కి Allow నొక్కండి. 6) అయ్యాక వాచ్‌లో ADB debugging, Wireless debugging ఆఫ్ చేయండి. "
+                + "కొత్త వెర్షన్ వచ్చినప్పుడు ఇదే విధంగా పాతదాని మీదే ఇన్‌స్టాల్ చేయండి (ఫోన్ యాప్, వాచ్ యాప్ రెండూ ఒకే వెర్షన్ ఉండటం మంచిది).");
+        link("⬇ Jarvis-watch.apk (తాజా వెర్షన్)", "https://github.com/anil6836/jarvis-android/releases/latest/download/Jarvis-watch.apk");
+
+        // ---- 2. listening and talking on the watch
+        section(W_TALK, "🎙️");
         Switch raise = toggle("✋ చేయి ఎత్తి \"Hey Jarvis\" / \"Jarvis\" అంటే వాచ్ వింటుంది", WatchHub.raiseOn(this));
         raise.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "raise", on));
         note("వాచ్ స్క్రీన్ వెలిగిన ప్రతిసారి (చేయి ఎత్తినప్పుడు) కొన్ని సెకన్లు మాత్రమే వింటుంది. ఆ శబ్దం Bluetooth ద్వారా మీ ఫోన్‌కే వెళ్తుంది; "
@@ -3648,7 +3663,7 @@ public class SettingsActivity extends Activity {
                 + "ఎప్పుడూ మీకు చెప్పకుండా వేరే AI కి మారను.");
         Switch lock = toggle("🔒 వాచ్‌లో కూడా నా గొంతుకి మాత్రమే పలుకు", WatchHub.lockOn(this));
         lock.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "lock", on));
-        note("పైన వేక్ వర్డ్ సెక్షన్‌లో నేర్పిన మీ గొంతునే వాడుతుంది (వాచ్ మైక్ వేరు కాబట్టి కొంచెం సడలింపుతో). మీరు పిలిచినా వాచ్ పలకకపోతే ఇది ఆఫ్ చేయండి. "
+        note("🔊 గొంతు, వినడం → వేక్ వర్డ్ సెక్షన్‌లో నేర్పిన మీ గొంతునే వాడుతుంది (వాచ్ మైక్ వేరు కాబట్టి కొంచెం సడలింపుతో). మీరు పిలిచినా వాచ్ పలకకపోతే ఇది ఆఫ్ చేయండి. "
                 + "వాచ్‌పై నొక్కి మాట్లాడితే ఎప్పుడూ వింటుంది (మీ చేతిలోనే ఉంది కాబట్టి).");
         Switch speak = toggle("🔊 జవాబు వాచ్‌లో గొంతుతో చెప్పు (ఆఫ్: వాచ్‌పై రాత, వైబ్రేషన్ మాత్రమే)", WatchHub.speakOn(this));
         speak.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "speak", on));
@@ -3659,10 +3674,9 @@ public class SettingsActivity extends Activity {
         note("అరచేతితో వాచ్ మూసినా (స్క్రీన్ ఆఫ్ అయితే), స్క్రీన్ నొక్కినా జవాబు ఆగుతుంది.");
         Switch openL = toggle("⌚ వాచ్‌లో Jarvis తెరవగానే వినడం మొదలుపెట్టు", WatchHub.openListen(this));
         openL.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "open_listen", on));
-        TextView alertsHead = Ui.text(this, "🔔 వాచ్‌లో అలర్ట్స్ (2b)", 16f, Ui.CYAN);
-        alertsHead.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        alertsHead.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
-        box.addView(alertsHead);
+
+        // ---- 3. alerts and vibration on the wrist
+        section(W_ALERTS, "🔔");
         Switch msgs = toggle("📲 ఫోన్ లాక్‌లో ఉన్నప్పుడు మెసేజ్‌లు, కాల్స్ వాచ్‌లో చెప్పి, అక్కడే జవాబు తీసుకో", WatchHub.msgsOn(this));
         msgs.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "msgs", on));
         note("మెసేజ్: \"Ravi నుంచి WhatsApp లో మెసేజ్ వచ్చింది. చదవమంటారా?\" అని వాచ్‌లో చెప్పి వింటుంది; \"చదువు\" అంటే చదువుతుంది, రిప్లై చెబితే చదివి వినిపించి "
@@ -3683,58 +3697,109 @@ public class SettingsActivity extends Activity {
         note("వాచ్ మీ చేతికి ఉండి, ఫోన్‌తో కనెక్ట్ అయి ఉంటేనే. డ్యూటీ తర్వాత పగలు పడుకున్నా అలాగే. \"ఆపు\" నొక్కాక శుభోదయం, వాతావరణం, డ్యూటీ వాచ్‌లోనే చెబుతుంది.");
         Switch lost = toggle("📱 ఫోన్ లేకుండా దూరం వెళ్తే వాచ్ వెంటనే చెప్పాలి (ఫోన్ చివరిగా ఎక్కడ ఉందో కూడా)", WatchHub.lostOn(this));
         lost.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "lost", on));
-        TextView dayHead = Ui.text(this, "📅 వాచ్‌లో రోజువారీ పనులు (దశ 3)", 16f, Ui.CYAN);
-        dayHead.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        dayHead.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
-        box.addView(dayHead);
+        Switch silentAuto = toggle("🔕 డ్యూటీ, మీటింగ్, Do Not Disturb లో వాచ్ జవాబులు రాతగా మాత్రమే", Day5.silentAuto(this));
+        silentAuto.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "silent_auto", on));
+        Switch silent = toggle("🔕 వాచ్ ఎప్పుడూ సైలెంట్ (రాత + వైబ్రేషన్ మాత్రమే)", Day5.silentOn(this));
+        silent.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "silent", on));
+
+        // ---- 4. the day on the watch
+        section(W_DAY, "📅");
         Switch morning = toggle("☀️ ఉదయం వాచ్‌లో అలారం ఆపాక 30 సెకన్లలో ఈరోజు సంగతులు (డ్యూటీ, బ్యాగ్, రిమైండర్లు, మందులు, నిద్ర)", WatchHub.morningOn(this));
         morning.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "morning", on));
+        Switch smart = toggle("⏰ స్మార్ట్ అలారం: అలారానికి 25 ని ముందు తేలిక నిద్రలో కదిలితే వాచ్ కొంచెం ముందే లేపుతుంది (అంచనా)", Day5.smartOn(this));
+        smart.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "smart_alarm", on));
         Switch wTimer = toggle("⏱️ వాచ్‌లో అడిగిన టైమర్ వాచ్‌లోనే (అయిపోగానే చేతికి వైబ్రేషన్)", WatchHub.watchTimerOn(this));
         wTimer.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "watch_timer", on));
         Switch dutyAuto = toggle("🛡️ డ్యూటీ మొదలవగానే డ్యూటీ మోడ్ దానంతట అదే (ఫోన్ వైబ్రేట్, Jarvis మాటలు నోటిఫికేషన్లుగా మాత్రమే; డ్యూటీ అయ్యాక ఆఫ్)", DutyMode.auto(this));
         dutyAuto.setOnCheckedChangeListener((sw, on) -> DutyMode.setAuto(this, on));
-        note("వాచ్ Jarvis స్క్రీన్‌లో కింద బటన్లు: ☀️ ఈరోజు, 📊 స్టేటస్, 🏍️ డ్యూటీ (కౌంట్‌డౌన్, బయలుదేరే టైమ్, బ్యాగ్ టిక్, హ్యాండోవర్ నోట్), "
-                + "✅ పనులు (అలవాట్లు, మిషన్లు, షాపింగ్ లిస్ట్ ఒక్క నొక్కుతో), 💡 ఇల్లు (మీ స్మార్ట్ హోమ్ లింక్‌లు), ⏱️ టైమర్, 🍲 కుక్కర్, "
-                + "📝 నోట్ (ఒక్క మాటలో: ఖర్చు, ఎక్కడ పెట్టారో, ఎవరికి ఇచ్చారో, రిమైండర్, నోట్), 🌐 అనువాదం (ఎవరైనా హిందీ / ఇంగ్లీష్‌లో మాట్లాడితే వాచ్‌లో తెలుగులో).");
-        note("Jarvis టైల్: వాచ్ ఫేస్ మీద కుడివైపు స్వైప్ చేసి చివర \"+\" (Add tiles) → Jarvis. అందులో తర్వాతి డ్యూటీ, రిమైండర్, నిద్ర, "
-                + "🎙️ / ☀️ / ⏱️ / 🍲 / 📊 బటన్లు.");
+        watchCalendar();
+        Switch diary = toggle("📔 రాత్రి 9:30 కి వాచ్‌లో “ఈరోజు ఎలా గడిచింది?” (మూడ్ + 1 నిమిషం మాట)", WatchHub.sp(this).getBoolean("night_diary", true));
+        diary.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "night_diary", on));
+        Switch gest = toggle("👋 మణికట్టు సైగలు (స్క్రీన్ ఆన్‌లో ఉన్నప్పుడే): రెండుసార్లు తిప్పితే Jarvis వింటుంది; అలారంపై విదిలిస్తే 5 నిమిషాలు", WatchHub.sp(this).getBoolean("gestures", true));
+        gest.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "gestures", on));
+        Switch spend = toggle("💰 వాచ్‌లో ఈ నెల ఖర్చుల రింగ్ (బ్యాంక్ / UPI SMS నుంచి ఫోన్‌లోనే లెక్క; SMS ఏ AI కీ వెళ్లదు, అకౌంట్ నంబర్లు దాచను)", Day5.spendOn(this));
+        spend.setOnCheckedChangeListener((sw, on) -> { WatchHub.set(this, "spend_ring", on); WatchAlerts.pushInfoSoon(this); });
+        Switch med = toggle("🩸 మెడికల్ కార్డ్ వాచ్‌లో (బ్లడ్ గ్రూప్, అలర్జీ, కాంటాక్ట్; సహాయం చేసేవాళ్లకి)", Day5.medOn(this));
+        med.setOnCheckedChangeListener((sw, on) -> { WatchHub.set(this, "med_watch", on); WatchAlerts.pushInfoSoon(this); });
+
+        // ---- 5. health from the watch and Samsung Health
+        section(W_HEALTH, "❤️");
         healthSection();
-        phase5Section();
-        TextView looksHead = Ui.text(this, "🎨 వాచ్‌లో రూపం (2c)", 16f, Ui.CYAN);
-        looksHead.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        looksHead.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
-        box.addView(looksHead);
-        TextView look = Ui.text(this, "", 15.5f, Ui.CYAN);
-        look.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
-        look.setText("🙂 వాచ్‌లో Jarvis: " + WatchHub.lookText(WatchHub.look(this)) + "  (మార్చడానికి నొక్కండి)");
-        look.setOnClickListener(v -> {
-            final String[] looks = {"orb", "holo", "human"};
-            String[] names = new String[looks.length];
-            int checked = 0;
-            for (int i = 0; i < looks.length; i++) { names[i] = WatchHub.lookText(looks[i]); if (looks[i].equals(WatchHub.look(this))) checked = i; }
-            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                    .setTitle("వాచ్‌లో Jarvis ఎలా కనిపించాలి?")
-                    .setSingleChoiceItems(names, checked, (d, w) -> {
-                        WatchHub.set(this, "look", looks[w]);
-                        look.setText("🙂 వాచ్‌లో Jarvis: " + WatchHub.lookText(looks[w]) + "  (మార్చడానికి నొక్కండి)");
-                        d.dismiss();
-                    })
-                    .setNegativeButton("వద్దు", null).show();
+
+        // ---- 6. on the road, and safety
+        section(W_ROAD, "🏍️");
+        Switch rain = toggle("🌧️ అరగంటలో వర్షం వచ్చేలా ఉంటే చెప్పు (వాచ్‌కి కూడా; అంచనా)", Travel.rainOn(this));
+        rain.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "rain_soon", on));
+        Switch storm = toggle("⛈️ వాచ్ బారోమీటర్‌తో గాలివాన హెచ్చరిక (నెట్ లేకపోయినా; అంచనా)", WatchHub.sp(this).getBoolean("storm", true));
+        storm.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "storm", on));
+        Switch turns = toggle("↪️ Maps తో నడిచేటప్పుడు మలుపులు వాచ్‌లో వైబ్రేషన్‌తో (ఎడమ = 2 చిన్నవి, కుడి = 1 పొడవు)", Travel.turnsOn(this));
+        turns.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "turn_buzz", on));
+        Switch brk = toggle("🛑 పెద్ద రైడ్‌లో (75 ని; నిద్ర తక్కువైతే 45 ని) “5 నిమిషాలు ఆగండి” వాచ్ వైబ్రేషన్", Travel.rideBreakOn(this));
+        brk.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "ride_break", on));
+        Switch dbl = toggle("💥 బైక్ దెబ్బ డబుల్ చెక్: వాచ్‌కి దెబ్బ తగలకపోతే ముందు చేతి మీద నెమ్మదిగా అడుగు (తర్వాత పూర్తి చెక్)", CrashAlert.doubleCheck(this));
+        dbl.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "crash_double", on));
+        Switch fall = toggle("🆘 వాచ్‌కి గట్టిగా పడిపోయినట్టు అనిపిస్తే “బాగున్నారా?” (జవాబు లేకపోతే SOS; బ్యాటరీ కొంచెం ఎక్కువ)", WatchHub.fallOn(this));
+        fall.setOnCheckedChangeListener((sw, on) -> WatchHub.set(this, "fall", on));
+    }
+
+    /** "📅 డ్యూటీ రోజులు ఫోన్ క్యాలెండర్‌లో" (the watch's calendar shows them too). */
+    private void watchCalendar() {
+        Switch cal = toggle("📅 డ్యూటీ రోజులు ఫోన్ క్యాలెండర్‌లో పెట్టు (వాచ్ క్యాలెండర్‌లో కూడా వస్తాయి; Jarvis తను పెట్టినవే మారుస్తుంది)", WatchExtras.calOn(this));
+        cal.setOnCheckedChangeListener((sw, on) -> {
+            if (Boolean.TRUE.equals(sw.getTag())) return; // (put back by Jarvis, not his tap)
+            if (on && checkSelfPermission(Manifest.permission.WRITE_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR}, 66);
+                sw.setTag(true); sw.setChecked(false); sw.setTag(null);
+                Toast.makeText(this, "క్యాలెండర్ అనుమతి ఇచ్చి మళ్లీ ఆన్ చేయండి.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            new Thread(() -> {
+                String r = WatchExtras.calSet(getApplicationContext(), on);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, r, Toast.LENGTH_LONG).show();
+                    if (on != WatchExtras.calOn(this)) { sw.setTag(true); sw.setChecked(WatchExtras.calOn(this)); sw.setTag(null); }
+                });
+            }).start();
         });
-        box.addView(look);
-        note("వాచ్ రంగులు ఫోన్ థీమ్‌నే అనుసరిస్తాయి (పైన 'థీమ్ (రంగులు)'). Jarvis వాచ్ ఫేస్ (Jarvis-face.apk): సమయం, బ్యాటరీ, అడుగులు, గుండె వేగం వలయాలు, "
-                + "తదుపరి డ్యూటీ, వాతావరణం; ఎప్పుడూ ఆన్ (AOD) లో మసకగా. దాన్ని కూడా Jarvis-watch.apk లాగే Bugjaeger తో ఇన్‌స్టాల్ చేసి, వాచ్ ఫేస్ మీద నొక్కి పట్టుకుని "
-                + "Jarvis ఎంచుకోండి; రంగు ఫేస్ Customize లో. డ్యూటీ, వాతావరణం ఫోన్ నుంచి అరగంటకి ఒకసారి వస్తాయి.");
-        link("⬇ Jarvis-face.apk (వాచ్ ఫేస్, తాజా వెర్షన్)", "https://github.com/anil6836/jarvis-android/releases/latest/download/Jarvis-face.apk");
-        note("బటన్‌తో పిలవడానికి: వాచ్ Settings → Advanced features → Customize keys → Home key \"Double press\" → Jarvis. "
-                + "వాచ్ ఫేస్ మీద నొక్కి పట్టుకుని → Customize → షార్ట్‌కట్ ఉన్న చోట Jarvis ఎంచుకోండి.");
-        note("వాచ్‌లో Jarvis పెట్టడం (ఒక్కసారి, Bugjaeger యాప్‌తో): 1) కింది లింక్‌తో ఫోన్‌లో Jarvis-watch.apk డౌన్‌లోడ్ చేయండి. "
-                + "2) వాచ్: Settings → About watch → Software information → Software version మీద \"Developer mode turned on\" వచ్చే వరకు చాలా సార్లు నొక్కండి. "
-                + "3) వాచ్: Settings → Developer options → ADB debugging ఆన్, Wireless debugging ఆన్ → Pair new device (కోడ్ కనిపిస్తుంది). "
-                + "4) ఫోన్‌లో Bugjaeger: ఆ కోడ్‌తో pair చేసి connect చేయండి → Install APK → Jarvis-watch.apk. "
-                + "5) వాచ్‌లో Jarvis తెరిచి మైక్‌కి Allow నొక్కండి. 6) అయ్యాక వాచ్‌లో ADB debugging, Wireless debugging ఆఫ్ చేయండి. "
-                + "కొత్త వెర్షన్ వచ్చినప్పుడు ఇదే విధంగా పాతదాని మీదే ఇన్‌స్టాల్ చేయండి (ఫోన్ యాప్, వాచ్ యాప్ రెండూ ఒకే వెర్షన్ ఉండటం మంచిది).");
-        link("⬇ Jarvis-watch.apk (తాజా వెర్షన్)", "https://github.com/anil6836/jarvis-android/releases/latest/download/Jarvis-watch.apk");
+    }
+
+    // ---- the phase-5 switches that are not the watch's, in their own cards now
+
+    /** In "రోజువారీ హెచ్చరికలు": great heat outside, the phone's battery before / on duty. */
+    private void heatAndBattery() {
+        Switch heat = toggle("🥵 బయట ఎండ చాలా ఎక్కువైతే (40°+) నీళ్లు / నీడ గుర్తు చేయి", Travel.heatOn(this));
+        heat.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "heat", on));
+        Switch bat = toggle("🔋 డ్యూటీ ముందు / డ్యూటీలో / బయట ఫోన్ బ్యాటరీ తక్కువైతే, డ్యూటీ వరకు సరిపోదంటే చెప్పు", Power.on(this));
+        bat.setOnCheckedChangeListener((sw, on) -> getSharedPreferences("jarvis_power", MODE_PRIVATE).edit().putBoolean("on", on).apply());
+    }
+
+    /** In "కార్/బైక్, కదలికలు": the card when he reaches home / leaves it. */
+    private void homeArrivalSwitch() {
+        Switch home = toggle("🏠 ఇంటికి రాగానే / బయల్దేరగానే కార్డ్ (లైట్లు, కాపలా, “తాళం వేశారా?”; మీ నొక్కుతోనే)", HomeArrival.on(this));
+        home.setOnCheckedChangeListener((sw, on) -> { Travel.set(this, "home_welcome", on); new Thread(() -> HomeArrival.arm(getApplicationContext())).start(); });
+        note("ఇల్లు సేవ్ అయి ఉండాలి (ఇంట్లో ఉన్నప్పుడు “ఈ చోటు ఇల్లు గా సేవ్ చెయ్”), లొకేషన్ “అన్నివేళలా” అనుమతి కావాలి.");
+    }
+
+    /** In "Offline వాయిస్": the offline English → Telugu pack for the camera. */
+    private void offlineReadPack() {
+        TextView tr = Ui.text(this, OfflineRead.ready(this) ? "🌐 ఆఫ్‌లైన్ అనువాదం (ఇంగ్లీష్ → తెలుగు): ✓ ఫోన్‌లో ఉంది" : "🌐 ఆఫ్‌లైన్ అనువాదం (ఇంగ్లీష్ → తెలుగు): ఇంకా లేదు", 15f, Ui.CYAN);
+        tr.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
+        box.addView(tr);
+        button("⬇️ ఆఫ్‌లైన్ అనువాదం ప్యాక్ డౌన్‌లోడ్ (సుమారు 30 MB, ఒక్కసారి)", v -> {
+            tr.setText("🌐 డౌన్‌లోడ్ అవుతోంది…");
+            new Thread(() -> {
+                String r = OfflineRead.download(getApplicationContext());
+                runOnUiThread(() -> tr.setText(r.isEmpty() ? "🌐 ఆఫ్‌లైన్ అనువాదం: ✓ ఫోన్‌లో ఉంది" : "🌐 డౌన్‌లోడ్ కాలేదు: " + r));
+            }).start();
+        });
+        note("నెట్ లేనప్పుడు Jarvis కెమెరాలో ఇంగ్లీష్ రాత (మందుల స్ట్రిప్, బిల్లు, బోర్డు) ఫోన్‌లోనే చదివి, ఈ ప్యాక్ ఉంటే తెలుగులో చెబుతుంది.");
+    }
+
+    /** In "కాపలా మోడ్": joining his main phone with the old phone at home. */
+    private void homePhoneNote() {
+        note("🏠 ఇంటి ఫోన్‌తో కలపడానికి (“ఇంట్లో ఎలా ఉంది?” ఫోటో, “ఇంటికి చెప్పు”, కాపలా ఆపు / పెట్టు): ఈ ఫోన్‌లో కాపలా మోడ్ సెక్షన్‌లో ఇంటి ఫోన్‌లో పెట్టిన అదే Telegram bot token పెట్టి "
+                + "“Telegram చాట్ కనుక్కో” నొక్కండి (Telegram లో bot కి hi పంపి). కాపలా మోడ్ ఇక్కడ ఆన్ చేయకండి: అది ఇంటి ఫోన్ పని. Token ఈ రెండు ఫోన్లలోనే ఉంటుంది. "
+                + "Bot చాట్‌లో Jarvis మెసేజ్‌లు పిన్ అవుతాయి (రెండు ఫోన్లు అలా మాట్లాడుకుంటాయి).");
     }
 
     private static String hourText(int h) {
@@ -4002,6 +4067,7 @@ public class SettingsActivity extends Activity {
         if (want == null || want.trim().isEmpty() || pageScroll == null) return;
         i.removeExtra(EXTRA_SECTION);
         if (want.startsWith("group:")) { openGroup(want.substring(6).trim()); return; } // (a whole group: "group:tab")
+        for (String[] g : GROUPS) if (want.trim().equalsIgnoreCase(g[2]) || want.trim().equalsIgnoreCase(g[0])) { openGroup(g[0]); return; } // ("వాచ్")
         Card c = findCard(want.trim());
         if (c == null) { search.setText(want.trim()); return; } // no card by that name: show what the search finds
         showCard(c);
