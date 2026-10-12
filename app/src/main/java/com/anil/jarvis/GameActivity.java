@@ -41,6 +41,35 @@ public final class GameActivity extends Activity implements Game.Host, GameLink.
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }
 
+    /**
+     * "🎲 అమ్మగారితో ఆట" (Settings → the tablet's games card, or All Features → 👵 అమ్మగారి టాబ్లెట్): which game, then
+     * its choice (side / size), then the game screen (she is asked on the tablet).
+     */
+    static void pickFar(Activity a) {
+        if (Guard.token(a).isEmpty() || Guard.chat(a).isEmpty()) { // (the same bot as the tablet is needed for the moves)
+            android.widget.Toast.makeText(a, "ముందు ఫోన్ ↔ టాబ్లెట్ లింక్ కలపాలి (సెట్టింగ్స్ → 🏠 ఇంటి టాబ్లెట్ → 📮 ఫోన్ ↔ టాబ్లెట్ లింక్).",
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        java.util.List<String> ids = new java.util.ArrayList<>(), names = new java.util.ArrayList<>();
+        for (String[] g : Games.LIST) {
+            if (!Games.isBoard(g[0])) continue;
+            Game probe = Games.make(a, g[0]);
+            if (probe == null || !probe.farOk()) continue;
+            ids.add(g[0]);
+            names.add(g[1] + "  " + g[2]);
+        }
+        new android.app.AlertDialog.Builder(a, android.R.style.Theme_Material_Dialog_Alert).setTitle("ఏ ఆట?")
+                .setItems(names.toArray(new String[0]), (d, i) -> {
+                    String id = ids.get(i);
+                    Game probe = Games.make(a, id);
+                    String[] opts = probe == null ? null : probe.options();
+                    if (opts == null || opts.length == 0) { invite(a, id, 0); return; }
+                    new android.app.AlertDialog.Builder(a, android.R.style.Theme_Material_Dialog_Alert).setTitle(Games.name(id))
+                            .setItems(opts, (d2, k) -> invite(a, id, k)).show(); // ("నేను" = you, Anil)
+                }).setNegativeButton("వద్దు", null).show();
+    }
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         Game.onPhone = true;

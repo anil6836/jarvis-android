@@ -25,6 +25,10 @@ public class FeaturesActivity extends Activity {
     /** The theme this screen was built with (a change in Settings rebuilds it). */
     private int builtTheme;
     static final String EXTRA_CATEGORY = "category";
+    /** Open with these words in the search box (from Settings' search). */
+    static final String EXTRA_SEARCH = "search";
+    /** Settings ↔ Features open each other: the one already open comes back (never a second Settings with old values). */
+    static final int ONE_SCREEN = Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP;
 
     private static final int ASK = 0, FILL = 1, DO = 2, OPEN = 3, INFO = 4;
 
@@ -455,17 +459,24 @@ public class FeaturesActivity extends Activity {
                     ask("📜", "పంచతంత్ర కథ", "", "పిల్లలకి ఒక పంచతంత్ర కథ చెప్పు (story, theme Panchatantra)."),
                     ask("✝️", "బైబిల్ కథ", "", "పిల్లలకి ఒక బైబిల్ కథ సరళంగా చెప్పు (story, theme Bible story)."),
                     fill("✨", "ఈ విషయం మీద కథ", "ఉదా: నిజాయితీ, స్నేహం", "పిల్లలకి ఈ విషయం మీద ఒక కొత్త కథ చెప్పు (story): ")),
-            new Cat("watch", "⌚", "వాచ్, రోడ్డు, ఇల్లు", "దారి, ఇంటి ఫోన్, ప్రోటోకాల్, నాతో ఉండు, నీళ్లు, ఫోకస్", 0xFF22D3EE,
+            new Cat("amma", "👵", "అమ్మగారి టాబ్లెట్", "మెసేజ్, ఆట, రిమైండర్, ఫోటోలు, ఈరోజు మాత్రలు", 0xFFF472B6,
+                    fill("💬", "అమ్మకి మెసేజ్", "టాబ్లెట్ Jarvis చదివి వినిపిస్తాడు; అమ్మగారి జవాబు మీ Telegram కి · మీరు సరే అన్నాకే", "టాబ్లెట్‌లో అమ్మకి చెప్పు (home_link say): "),
+                    act("🎲", "అమ్మతో ఆట ఆడు", "చదరంగం, లూడో, వైకుంఠపాళి… మీ ఫోన్ నుంచి; టాబ్లెట్‌లో ఆమెను అడుగుతాడు", "far_game"),
+                    fill("⏰", "ఇంటికి రిమైండర్", "ఉదా: రేపు 10 కి డాక్టర్ దగ్గరికి వెళ్లాలి · మీరు సరే అన్నాకే", "ఇంట్లో అమ్మకి గుర్తుచేయి (home_link remind): "),
+                    act("🖼️", "ఫోటో ఫ్రేమ్‌కి ఫోటోలు", "గ్యాలరీ నుంచి ఎంచుకోండి; టాబ్లెట్‌లో ఒక్కొక్కటిగా కనిపిస్తాయి", "frame"),
+                    act("📋", "టాబ్లెట్ స్థితి, ఈరోజు మాత్రలు", "బ్యాటరీ, నెట్, సమస్యలు, భోజనం, మాత్రల టిక్కులు (నిమిషం వరకు)", "tab_status"),
+                    act("📊", "వారపు రిపోర్ట్ (PDF)", "డాక్టర్‌కి చూపించడానికి; మీ Telegram కి వస్తుంది", "tab_report"),
+                    open("⚙️", "టాబ్లెట్ సెట్టింగ్స్", "టైమ్‌లు, మాత్రలు, గొంతు, గది, కెమెరా", "group:tab")),
+            new Cat("watch", "⌚", "వాచ్, రోడ్డు, ఇల్లు", "దారి, ప్రోటోకాల్, నాతో ఉండు, నీళ్లు, ఫోకస్, పాత ఇంటి ఫోన్ కాపలా", 0xFF22D3EE,
                     ask("📍", "నేను ఎక్కడ ఉన్నాను?", "నెట్ లేకపోయినా · దగ్గరి సేవ్ చేసిన చోటు, దూరం", "నేను ఎక్కడ ఉన్నాను? (travel where)"),
                     ask("🧭", "బండి వైపు దారి (వాచ్)", "వాచ్‌లో బాణం, మీటర్లు", "నా బండి వైపు దారి వాచ్‌లో చూపించు (travel watch_compass place బండి)."),
                     ask("🏠", "ఇంటికి దారి (వాచ్)", "వాచ్‌లో బాణం", "ఇంటి వైపు దారి వాచ్‌లో చూపించు (travel watch_compass place ఇల్లు)."),
                     ask("🏍️", "ఈ రైడ్ ఎంత?", "కి.మీ, స్పీడ్", "ఈ రైడ్ ఇప్పటి వరకు ఎన్ని కి.మీ? స్పీడ్ ఎంత? (travel trip, speed)"),
                     ask("🔧", "బండి సర్వీస్ చేయించాను", "తర్వాతది ఎప్పుడో గుర్తు చేస్తాను", "ఈరోజు బండి సర్వీస్ చేయించాను (travel service_done days_ago 0)."),
                     ask("🗓️", "సర్వీస్ ఎప్పుడు?", "", "బండి తర్వాత సర్వీస్ ఎప్పుడు? (travel service_when)"),
-                    ask("📷", "ఇంట్లో ఎలా ఉంది?", "ఇంటి ఫోన్ ఫోటో (ఇక్కడ, వాచ్‌లో)", "ఇంట్లో ఎలా ఉంది? (home_link look)"),
-                    fill("📢", "ఇంటికి చెప్పు", "ఇంట్లో ఫోన్ గొంతుతో వినిపిస్తుంది; అడిగాకే", "ఇంటికి చెప్పు (home_link say): "),
-                    ask("🛡️", "ఇంట్లో కాపలా ఆపు", "నేను ఇంట్లో ఉన్నప్పుడు", "ఇంట్లో కాపలా ఆపు (home_link guard_off)."),
-                    ask("🛡️", "ఇంట్లో కాపలా పెట్టు", "", "ఇంట్లో కాపలా మళ్లీ పెట్టు (home_link guard_on)."),
+                    ask("📷", "ఇంట్లో ఎలా ఉంది?", "పాత ఇంటి ఫోన్ (కాపలా మోడ్) కెమెరా ఫోటో, ఇక్కడ, వాచ్‌లో · టాబ్లెట్ కెమెరా కాదు", "ఇంట్లో ఎలా ఉంది? (home_link look)"),
+                    ask("🛡️", "ఇంట్లో కాపలా ఆపు", "పాత ఇంటి ఫోన్ కాపలా అలర్ట్స్ · నేను ఇంట్లో ఉన్నప్పుడు", "ఇంట్లో కాపలా ఆపు (home_link guard_off)."),
+                    ask("🛡️", "ఇంట్లో కాపలా పెట్టు", "పాత ఇంటి ఫోన్ కాపలా అలర్ట్స్ మళ్లీ", "ఇంట్లో కాపలా మళ్లీ పెట్టు (home_link guard_on)."),
                     ask("⚡", "డ్యూటీ ప్రోటోకాల్", "డ్యూటీ మోడ్, బ్యాగ్, వాతావరణం, బండి", "డ్యూటీ ప్రోటోకాల్ (protocol run డ్యూటీ)."),
                     ask("🌙", "నిద్ర ప్రోటోకాల్", "నైట్ మోడ్, లైట్లు ఆఫ్, రేపు", "నిద్ర ప్రోటోకాల్ (protocol run నిద్ర)."),
                     fill("➕", "నా ప్రోటోకాల్ చేయి", "ఉదా: జిమ్: సైలెంట్, వాతావరణం", "కొత్త ప్రోటోకాల్ సేవ్ చెయ్ (protocol save): "),
@@ -526,6 +537,7 @@ public class FeaturesActivity extends Activity {
     /** The folders in groups on the main screen; a folder missing here shows under "ఇంకా". */
     private static final String[][] SECTIONS = {
             {"ప్రతిరోజు", "duty", "bike", "day", "alarm", "faith", "calls"},
+            {"ఇల్లు, అమ్మగారు", "amma"},
             {"పనులు, తేదీలు", "missions", "birthdays", "holidays", "expiry", "diary"},
             {"డబ్బు", "money", "debts", "prices", "shopping"},
             {"ఆరోగ్యం", "medicine", "doctor", "wellness"},
@@ -606,8 +618,9 @@ public class FeaturesActivity extends Activity {
             org.json.JSONObject all = new org.json.JSONObject(fsp(this).getString("used", "{}"));
             long now = System.currentTimeMillis();
             java.util.Set<String> had = new java.util.HashSet<>();
+            java.util.Set<String> pins = pinKeys();
             for (Cat c : CATS) for (Opt o : c.opts) {
-                if (!had.add(o.title)) continue;
+                if (!had.add(o.title) || pins.contains(pinKey(c, o)) || hidden(c)) continue;
                 double sc = score(all.optJSONObject(o.title), now);
                 if (sc >= 1.5) out.add(new Object[]{c, o, sc});
             }
@@ -673,7 +686,7 @@ public class FeaturesActivity extends Activity {
         root.addView(head);
 
         search = new EditText(this);
-        search.setHint("🔍  ఫీచర్ వెతకండి (బైక్, బిల్లు, రిమైండర్…)");
+        search.setHint("🔍  ఫీచర్ వెతకండి (అమ్మ, ఆట, బైక్, బిల్లు…)");
         search.setHintTextColor(Ui.MUTED);
         search.setTextColor(0xFFFFFFFF);
         search.setTextSize(15);
@@ -706,15 +719,26 @@ public class FeaturesActivity extends Activity {
         setContentView(root);
 
         loadSeen();
+        homeMode = new Prefs(this).homeMode();
         Cat start = find(getIntent().getStringExtra(EXTRA_CATEGORY));
-        if (start != null) showCat(start); else showGrid();
+        if (start != null && !hidden(start)) showCat(start); else showGrid();
+        String q = getIntent().getStringExtra(EXTRA_SEARCH);
+        if (q != null && !q.trim().isEmpty()) search.setText(q.trim());
     }
 
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         Cat c = find(intent.getStringExtra(EXTRA_CATEGORY));
-        if (c != null) showCat(c);
+        String q = intent.getStringExtra(EXTRA_SEARCH);
+        if (c != null && !hidden(c)) showCat(c);
+        else if (q == null || q.trim().isEmpty()) showGrid(); // (all the folders)
+        if (q != null && !q.trim().isEmpty()) search.setText(q.trim());
     }
+
+    /** This device is the home tablet: its own folder for "అమ్మగారి టాబ్లెట్" is not shown here. */
+    private boolean homeMode;
+
+    private boolean hidden(Cat c) { return homeMode && "amma".equals(c.id); }
 
     @Override public void onBackPressed() {
         if (!search.getText().toString().isEmpty()) { search.setText(""); return; }
@@ -730,9 +754,14 @@ public class FeaturesActivity extends Activity {
         title.setText("📂 అన్ని ఫీచర్లు");
         Ui.gradientText(title, Ui.C_CYAN, Ui.C_VIOLET);
         content.removeAllViews();
-        TextView hint = Ui.text(this, "ఫోల్డర్ నొక్కితే దాని ఆప్షన్లు వస్తాయి", 13, Ui.MUTED);
+        TextView hint = Ui.text(this, "ఫోల్డర్ నొక్కితే దాని ఆప్షన్లు వస్తాయి · ఏ ఆప్షన్ మీదైనా వేలు నొక్కి పట్టుకుంటే 📌 పైన పెడుతుంది", 13, Ui.MUTED);
         hint.setPadding(dp(2), dp(4), 0, dp(4));
         content.addView(hint);
+        java.util.List<Object[]> pins = pinned();
+        if (!pins.isEmpty()) {
+            section("📌 మీరు పెట్టినవి");
+            for (Object[] x : pins) content.addView(row((Cat) x[0], (Opt) x[1], true), rowParams());
+        }
         java.util.List<Object[]> often = often(6);
         if (!often.isEmpty()) {
             section("⭐ తరచూ వాడేవి");
@@ -741,11 +770,11 @@ public class FeaturesActivity extends Activity {
         java.util.Set<String> shown = new java.util.HashSet<>();
         for (String[] sec : SECTIONS) {
             java.util.List<Cat> list = new java.util.ArrayList<>();
-            for (int i = 1; i < sec.length; i++) { Cat c = find(sec[i]); if (c != null && shown.add(c.id)) list.add(c); }
+            for (int i = 1; i < sec.length; i++) { Cat c = find(sec[i]); if (c != null && !hidden(c) && shown.add(c.id)) list.add(c); }
             grid(sec[0], list);
         }
         java.util.List<Cat> rest = new java.util.ArrayList<>();
-        for (Cat c : CATS) if (shown.add(c.id)) rest.add(c);
+        for (Cat c : CATS) if (!hidden(c) && shown.add(c.id)) rest.add(c);
         grid("ఇంకా", rest);
         scroll.scrollTo(0, 0);
     }
@@ -1067,9 +1096,9 @@ public class FeaturesActivity extends Activity {
         String l = q.toLowerCase(Locale.ROOT);
         int n = 0;
         for (Cat c : CATS) {
-            boolean catHit = c.name.toLowerCase(Locale.ROOT).contains(l) || c.blurb.toLowerCase(Locale.ROOT).contains(l);
+            if (hidden(c)) continue;
             for (Opt o : c.opts) {
-                if (catHit || o.title.toLowerCase(Locale.ROOT).contains(l) || o.desc.toLowerCase(Locale.ROOT).contains(l)) {
+                if (hits(c, o, q)) { // (everyday words too: "అమ్మ" → the tablet folder, "ఆట" → games, "మాత్ర" → medicines)
                     content.addView(row(c, o, true), rowParams());
                     n++;
                 }
@@ -1089,6 +1118,65 @@ public class FeaturesActivity extends Activity {
             none.setPadding(dp(2), dp(12), dp(2), 0);
             content.addView(none);
         }
+        // one search for both: the same words in Settings
+        Cat jar = find("jarvis");
+        View s = row(jar != null ? jar : CATS[0], new Opt("⚙️", "సెట్టింగ్స్‌లో కూడా వెతుకు: \"" + q.trim() + "\"", "అక్కడ ఈ మాటలు ఉన్న కార్డులు", INFO, ""), false);
+        s.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SEARCH, q.trim()).addFlags(ONE_SCREEN)));
+        LinearLayout.LayoutParams slp = rowParams();
+        slp.topMargin = dp(16);
+        content.addView(s, slp);
+    }
+
+    private static boolean hits(Cat c, Opt o, String q) {
+        return SearchWords.matches((c.name + " " + c.blurb + " " + o.title + " " + o.desc).toLowerCase(Locale.ROOT), q);
+    }
+
+    /** For Settings' search: how many options here have these words (the home tablet's own folder counted too). */
+    static int countMatches(String q) {
+        if (q == null || q.trim().length() < 2) return 0;
+        int n = 0;
+        java.util.Set<String> had = new java.util.HashSet<>();
+        for (Cat c : CATS) for (Opt o : c.opts) if (hits(c, o, q) && had.add(c.id + "|" + o.title)) n++;
+        return n;
+    }
+
+    // ---------------------------------------------------------------- 📌 his own pins (hold an option)
+
+    private static String pinKey(Cat c, Opt o) { return c.id + "|" + o.title; }
+
+    private java.util.Set<String> pinKeys() {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        try {
+            org.json.JSONArray a = new org.json.JSONArray(fsp(this).getString("pinned", "[]"));
+            for (int i = 0; i < a.length(); i++) out.add(a.optString(i));
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    /** The options he pinned, in the order he pinned them: {Cat, Opt}. */
+    private java.util.List<Object[]> pinned() {
+        java.util.List<Object[]> out = new java.util.ArrayList<>();
+        for (String k : pinKeys()) {
+            int bar = k.indexOf('|');
+            Cat c = bar > 0 ? find(k.substring(0, bar)) : null;
+            if (c == null || hidden(c)) continue;
+            for (Opt o : c.opts) if (o.title.equals(k.substring(bar + 1))) { out.add(new Object[]{c, o}); break; }
+        }
+        return out;
+    }
+
+    private void togglePin(Cat c, Opt o) {
+        java.util.Set<String> keys = pinKeys();
+        String k = pinKey(c, o);
+        boolean now = !keys.remove(k);
+        if (now) keys.add(k);
+        fsp(this).edit().putString("pinned", new org.json.JSONArray(keys).toString()).apply();
+        android.widget.Toast.makeText(this, now ? "📌 పైన పెట్టాను: " + o.title + " (తీసేయడానికి మళ్లీ నొక్కి పట్టుకోండి)" : "📌 తీసేశాను: " + o.title,
+                android.widget.Toast.LENGTH_SHORT).show();
+        String q = search.getText().toString().trim();
+        if (!q.isEmpty()) showSearch(q);
+        else if (current != null) showCat(current);
+        else showGrid();
     }
 
     private LinearLayout.LayoutParams rowParams() {
@@ -1111,7 +1199,8 @@ public class FeaturesActivity extends Activity {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(12), 0, dp(8), 0);
-        TextView t = Ui.text(this, o.title, 15.5f, 0xFFFFFFFF);
+        boolean pin = o.type != INFO && pinKeys().contains(pinKey(c, o));
+        TextView t = Ui.text(this, (pin ? "📌 " : "") + o.title, 15.5f, 0xFFFFFFFF);
         col.addView(t);
         if (isNew(o)) { // came with a recent update
             TextView nw = Ui.text(this, "🆕 కొత్తది", 11, 0xFF0B1020);
@@ -1129,6 +1218,7 @@ public class FeaturesActivity extends Activity {
         TextView m = Ui.text(this, mark, o.type == ASK || o.type == DO ? 24 : 17, c.color);
         r.addView(m);
         r.setOnClickListener(v -> { if (o.type != INFO) used(o); run(o); });
+        if (o.type != INFO) r.setOnLongClickListener(v -> { togglePin(c, o); return true; }); // (📌 on top of the folders)
         return r;
     }
 
@@ -1140,12 +1230,13 @@ public class FeaturesActivity extends Activity {
                     .setTitle(o.emoji + " " + o.title).setMessage(o.payload).setPositiveButton("సరే", null).show();
             return;
         }
+        if (o.type == DO && tabletAction(o.payload)) return;
         if (o.type == DO && o.payload.startsWith("duty_")) { // the duty calendar opens straight from here
             startActivity(new Intent(this, DutyActivity.class).putExtra(DutyActivity.EXTRA_SETUP, o.payload.equals("duty_setup")));
             return;
         }
         if (o.type == OPEN) {
-            startActivity(new Intent(this, SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, o.payload));
+            startActivity(new Intent(this, SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, o.payload).addFlags(ONE_SCREEN));
             return;
         }
         Intent i = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -1154,5 +1245,40 @@ public class FeaturesActivity extends Activity {
         else i.putExtra(MainActivity.EXTRA_DO, o.payload);
         startActivity(i);
         finish();
+    }
+
+    /** The 👵 folder's own actions, done from here (the game picker, her photo frame, the tablet's status, the week's PDF). */
+    private boolean tabletAction(String code) {
+        switch (code) {
+            case "far_game":
+                GameActivity.pickFar(this);
+                return true;
+            case "frame":
+                startActivity(new Intent(this, SettingsActivity.class).putExtra(SettingsActivity.EXTRA_ACTION, "frame").addFlags(ONE_SCREEN));
+                return true;
+            case "tab_status": {
+                long at = TabletWatch.at(this);
+                String last = at == 0 ? "" : "చివరిగా (" + TabletWatch.ago(at, System.currentTimeMillis()) + "):\n" + TabletWatch.text(this) + "\n\n";
+                android.app.AlertDialog d = new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("📋 అమ్మగారి టాబ్లెట్").setMessage(last + "టాబ్లెట్‌ని ఇప్పుడు అడుగుతున్నాను… (నిమిషం వరకు)")
+                        .setPositiveButton("సరే", null).show();
+                final android.content.Context app = getApplicationContext();
+                new Thread(() -> {
+                    String r = HomeLink.tabletStatus(app);
+                    runOnUiThread(() -> { if (d.isShowing()) d.setMessage(r); });
+                }, "tab-status").start();
+                return true;
+            }
+            case "tab_report": {
+                android.widget.Toast.makeText(this, "టాబ్లెట్‌ని అడుగుతున్నాను…", android.widget.Toast.LENGTH_SHORT).show();
+                final android.content.Context app = getApplicationContext();
+                new Thread(() -> {
+                    String r = HomeLink.askReport(app);
+                    runOnUiThread(() -> android.widget.Toast.makeText(app, r, android.widget.Toast.LENGTH_LONG).show());
+                }, "tab-report").start();
+                return true;
+            }
+        }
+        return false;
     }
 }

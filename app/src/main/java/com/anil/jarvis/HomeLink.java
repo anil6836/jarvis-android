@@ -93,7 +93,10 @@ final class HomeLink {
             Guard.sendQuiet(c, r + " (" + time + ")");
         } else if (text.startsWith(ASK)) {
             if (!HomeCare.on(c)) return; // (only the home tablet answers; his phone waits for its status)
-            long sid = Guard.sendQuiet(c, STATUS + HomeCare.statusText(c));
+            String st = STATUS + HomeCare.statusText(c);
+            JSONObject now = Guard.pinned(c); // (something newer from his phone came meanwhile: never covered by this answer)
+            if (now != null && now.optLong("message_id") != id) { Guard.sendQuiet(c, st); return; }
+            long sid = Guard.sendQuiet(c, st);
             if (sid > 0) Guard.pin(c, sid);
         } else if (cap.startsWith(FRAME)) { // the home tablet: a photo for the photo frame from his phone
             if (!HomeCare.on(c)) return;
@@ -246,8 +249,14 @@ final class HomeLink {
         while (System.currentTimeMillis() < until) {
             try { Thread.sleep(4000); } catch (InterruptedException e) { break; }
             JSONObject m = Guard.pinned(c);
-            if (m != null && m.optLong("message_id") > asked && m.optString("text").startsWith(STATUS)) return m.optString("text").substring(STATUS.length());
+            if (m != null && m.optLong("message_id") > asked && m.optString("text").startsWith(STATUS)) {
+                String s = m.optString("text").substring(STATUS.length());
+                TabletWatch.save(c, s); // (for the Settings tile)
+                return s;
+            }
         }
+        JSONObject still = Guard.pinned(c); // (no answer while the ask was still there: the tablet really didn't pick it up)
+        if (still == null || still.optLong("message_id") == asked) TabletWatch.noAnswer(c);
         return "టాబ్లెట్ నిమిషంలో జవాబివ్వలేదు (దానికి నెట్ ఉందా? Jarvis తెరిచి ఉందా?).";
     }
 
@@ -268,6 +277,7 @@ final class HomeLink {
             long id = m.optLong("message_id");
             if (id <= sp(c).getLong("fetched", 0)) return;
             sp(c).edit().putLong("fetched", id).apply();
+            if (m.optString("text").startsWith(STATUS)) { TabletWatch.save(c, m.optString("text").substring(STATUS.length())); return; } // (a late answer)
             JSONObject inv = GameLink.inviteIn(m, true); // (అమ్మగారు asks him to play a game from the tablet)
             if (inv != null) { GameActivity.inviteNote(c, inv); return; }
             if (m.has("photo") && !m.optString("caption").startsWith(FRAME)) showPhoto(c, m); // (not his own photos for the frame)

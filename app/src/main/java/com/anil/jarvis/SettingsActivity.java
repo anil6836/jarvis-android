@@ -34,6 +34,10 @@ public class SettingsActivity extends Activity {
     private int builtTheme;
     /** Open Settings at the card whose title contains this text (from the features screen). */
     static final String EXTRA_SECTION = "jarvis_section";
+    /** Open Settings with these words in the search box (from All Features' search). */
+    static final String EXTRA_SEARCH = "jarvis_search";
+    /** Open Settings and start something there at once ("frame": the tablet's photo frame picker). */
+    static final String EXTRA_ACTION = "jarvis_action";
     /** Each card with its title, to jump to one. */
     private final java.util.List<Object[]> cardTitles = new java.util.ArrayList<>();
 
@@ -181,7 +185,7 @@ public class SettingsActivity extends Activity {
         head.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
         IconView close = new IconView(this, IconView.CLOSE, 0xFFFFFFFF);
         close.setBackground(Ui.glass(this, 22));
-        close.setOnClickListener(v -> finish());
+        close.setOnClickListener(v -> leave());
         close.setContentDescription("మూసేయి");
         head.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
         box.addView(head);
@@ -822,8 +826,8 @@ public class SettingsActivity extends Activity {
         smartApp = field("మీ స్మార్ట్ హోమ్ యాప్ పేరు (ఉదా: Homemate, Zeb Home, Wipro Next)", prefs.smartApp(), false);
         alexaSpeak = toggle("దగ్గర్లో Echo ఉంది: అవసరమైతే Jarvis \"Alexa, …\" అని పైకి చెప్పనివ్వు", prefs.alexaSpeak());
 
+        if (!prefs.homeMode()) tabletSection(); // (his phone: her five cards first in the 🏠 group)
         homeSection();
-        if (!prefs.homeMode()) tabletSection();
         linkSection();
 
         // ---- guard mode: on an old phone at home (buttons act at once; no Save needed)
@@ -1141,6 +1145,7 @@ public class SettingsActivity extends Activity {
     private static String groupOf(String title) {
         String t = title;
         if (t.contains("Jarvis చెక్")) return "check";
+        if (t.endsWith("(టాబ్లెట్)")) return "tab"; // (the tablet's cards, whatever their words: "మెసేజ్", "ఆరోగ్యం"…)
         if (t.contains("మీరు") || t.contains("థీమ్") || t.contains("Jarvis ముఖం") || t.contains("ఫ్లోటింగ్")) return "me";
         if (t.contains("మెదడు") || t.contains("API ఖర్చు") || t.contains("కోడింగ్")) return "brain";
         if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")
@@ -1163,7 +1168,7 @@ public class SettingsActivity extends Activity {
     private void buildHome() {
         int at = 1; // under the title
         search = new EditText(this);
-        search.setHint("🔍  వెతుకు: గొంతు, బ్యాకప్, key, బైక్…");
+        search.setHint("🔍  వెతుకు: అమ్మ, మాత్ర, గొంతు, బ్యాకప్, బైక్…");
         search.setSingleLine(true);
         search.setTextColor(Ui.TEXT);
         search.setHintTextColor(Ui.FAINT);
@@ -1180,6 +1185,13 @@ public class SettingsActivity extends Activity {
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
         slp.topMargin = Ui.dp(this, 14);
         page.addView(search, at++, slp);
+
+        whatsNew = buildWhatsNew();
+        if (whatsNew != null) {
+            LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(-1, -2);
+            wlp.topMargin = Ui.dp(this, 12);
+            page.addView(whatsNew, at++, wlp);
+        }
 
         checkLine = Ui.text(this, "", 14, 0xFFFFFFFF);
         checkLine.setPadding(p, Ui.dp(this, 10), p, Ui.dp(this, 10));
@@ -1215,9 +1227,16 @@ public class SettingsActivity extends Activity {
             name.setPadding(0, Ui.dp(this, 4), 0, 0);
             tile.addView(name);
             TextView what = Ui.text(this, GROUPS[i][3], 12, Ui.MUTED);
-            what.setMaxLines(2);
+            what.setMaxLines(1);
             what.setEllipsize(android.text.TextUtils.TruncateAt.END);
             tile.addView(what);
+            TextView state = Ui.text(this, "", 12.5f, Ui.MUTED); // (how it stands now: refreshTiles)
+            state.setMaxLines(2);
+            state.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            state.setPadding(0, Ui.dp(this, 5), 0, 0);
+            state.setVisibility(View.GONE);
+            tile.addView(state);
+            tileState.put(id, state);
             tile.setOnClickListener(v -> openGroup(id));
             LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -1, 1);
             if (i % 2 == 0) tlp.rightMargin = Ui.dp(this, 5); else tlp.leftMargin = Ui.dp(this, 5);
@@ -1240,12 +1259,171 @@ public class SettingsActivity extends Activity {
         groupTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         groupBar.addView(groupTitle, new LinearLayout.LayoutParams(0, -2, 1));
         groupBar.setOnClickListener(v -> goHome());
-        page.addView(groupBar, at, new LinearLayout.LayoutParams(-1, -2));
+        page.addView(groupBar, at++, new LinearLayout.LayoutParams(-1, -2));
+
+        featHit = Ui.text(this, "", 14.5f, Ui.C_CYAN); // (in a search: the same words in All Features)
+        featHit.setPadding(Ui.dp(this, 4), Ui.dp(this, 10), 0, Ui.dp(this, 2));
+        featHit.setVisibility(View.GONE);
+        page.addView(featHit, at, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private TextView featHit;
+    private LinearLayout whatsNew;
+
+    // ---- "🆕 ఈ వెర్షన్‌లో కొత్తవి": once after this update, on top of Settings, until he closes it (✕)
+    /** Changes the update with this card brought (its id changes with each such list). */
+    private static final String WHATS_NEW_ID = "settings-features-1";
+    /** {line, where "చూపించు" goes: "group:<id>" / "features:<folder>" / "search:<words>"}. */
+    private static final String[][] WHATS_NEW = {
+            {"🏠 అమ్మగారి టాబ్లెట్ సెట్టింగ్స్ ఇప్పుడు 5 చిన్న కార్డులు: టైమ్‌లు, మాత్రలు, మెసేజ్, ఆటలు, గొంతు", "group:tab"},
+            {"● టాబ్లెట్‌కి పంపని మార్పులు ఉంటే చూపిస్తాను; పంపకుండా బయటికి వెళ్తే అడుగుతాను", "group:tab"},
+            {"⚠️ టాబ్లెట్ సమస్యలు (లొకేషన్ ఆఫ్, బ్యాటరీ…) ఇక్కడే 🏠 టైల్ మీద; ప్రతి టైల్ మీద ఇప్పటి స్థితి", "home:"},
+            {"👵 అన్ని ఫీచర్స్‌లో కొత్త ఫోల్డర్: అమ్మగారి టాబ్లెట్ (మెసేజ్, ఆట, రిమైండర్, ఫోటోలు, స్థితి)", "features:amma"},
+            {"📌 ఫీచర్స్‌లో ఏ ఆప్షన్ మీదైనా వేలు నొక్కి పట్టుకుంటే పైన పెట్టుకోవచ్చు", "features:"},
+            {"🔍 వెతకడంలో మామూలు మాటలు: \"అమ్మ\", \"ఆట\", \"మాత్ర\"; ఒకే సెర్చ్ రెండు చోట్లా", "search:అమ్మ"}};
+
+    private boolean whatsNewDue() {
+        return !prefs.homeMode() && !WHATS_NEW_ID.equals(getSharedPreferences("jarvis_settings_ui", MODE_PRIVATE).getString("whats_new_seen", ""));
+    }
+
+    private LinearLayout buildWhatsNew() {
+        LinearLayout w = new LinearLayout(this);
+        w.setOrientation(LinearLayout.VERTICAL);
+        int p = Ui.dp(this, 14);
+        w.setPadding(p, Ui.dp(this, 12), p, Ui.dp(this, 12));
+        android.graphics.drawable.GradientDrawable bg = Ui.grad(this, new int[]{Ui.alpha(0xFFFBBF24, 0x30), Ui.alpha(0xFFFBBF24, 0x0C)}, 18,
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR);
+        bg.setStroke(Ui.dp(this, 1), Ui.alpha(0xFFFBBF24, 0x88));
+        w.setBackground(bg);
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView t = Ui.text(this, "🆕 ఈ వెర్షన్‌లో కొత్తవి (1.0." + Updater.currentBuild(this) + ")", 16, 0xFFFDE68A);
+        t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        head.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView x = Ui.text(this, "✕", 20, 0xFFFFFFFF);
+        x.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 4), 0);
+        x.setContentDescription("కొత్తవి మూసేయి");
+        x.setOnClickListener(v -> {
+            getSharedPreferences("jarvis_settings_ui", MODE_PRIVATE).edit().putString("whats_new_seen", WHATS_NEW_ID).apply();
+            w.setVisibility(View.GONE);
+        });
+        head.addView(x);
+        w.addView(head);
+        for (String[] item : WHATS_NEW) {
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, Ui.dp(this, 8), 0, 0);
+            row.addView(Ui.text(this, item[0], 14, Ui.TEXT), new LinearLayout.LayoutParams(0, -2, 1));
+            TextView go = Ui.text(this, "చూపించు ›", 13.5f, 0xFFFDE68A);
+            go.setPadding(Ui.dp(this, 10), Ui.dp(this, 4), 0, Ui.dp(this, 4));
+            final String where = item[1];
+            go.setOnClickListener(v -> showWhatsNew(where));
+            row.addView(go);
+            w.addView(row);
+        }
+        TextView note = Ui.text(this, "✕ నొక్కితే ఈ కార్డ్ పోతుంది (ఇవన్నీ అలాగే ఉంటాయి).", 12.5f, Ui.MUTED);
+        note.setPadding(0, Ui.dp(this, 8), 0, 0);
+        w.addView(note);
+        w.setVisibility(whatsNewDue() ? View.VISIBLE : View.GONE);
+        return w;
+    }
+
+    private void showWhatsNew(String where) {
+        if (where.startsWith("group:")) openGroup(where.substring(6));
+        else if (where.startsWith("features:")) {
+            Intent i = new Intent(this, FeaturesActivity.class).addFlags(FeaturesActivity.ONE_SCREEN);
+            if (where.length() > 9) i.putExtra(FeaturesActivity.EXTRA_CATEGORY, where.substring(9));
+            startActivity(i);
+        } else if (where.startsWith("search:")) search.setText(where.substring(7));
+        else if (pageScroll != null) pageScroll.post(() -> pageScroll.smoothScrollTo(0, grid.getTop()));
     }
 
     private void goHome() {
         if (search != null && search.getText().length() > 0) search.setText(""); // (runSearch shows the first screen)
         else showHome();
+    }
+
+    // ---- each group's tile says how it stands now (a problem in red, something to look at in amber, all well in green)
+    private final java.util.Map<String, TextView> tileState = new java.util.HashMap<>();
+
+    private void refreshTiles() {
+        for (java.util.Map.Entry<String, TextView> e : tileState.entrySet()) {
+            Object[] s;
+            try { s = tileLine(e.getKey()); } catch (Exception ex) { s = new Object[]{"", -1}; }
+            String text = (String) s[0];
+            int kind = (Integer) s[1];
+            TextView t = e.getValue();
+            t.setText(text);
+            t.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+            t.setTextColor(kind == 2 ? 0xFFFFB4B4 : kind == 1 ? 0xFFFDE68A : kind == 0 ? 0xFFB9F6CA : Ui.MUTED);
+        }
+    }
+
+    private Card cardTitled(String words) {
+        for (Card c : cardList) if (c.title.contains(words)) return c;
+        return null;
+    }
+
+    /** {line, kind} for a group's tile: kind 2 = a problem, 1 = look at this, 0 = all well, -1 = just how it is. */
+    private Object[] tileLine(String id) {
+        switch (id) {
+            case "me": {
+                Card c = cardTitled("థీమ్");
+                return new Object[]{"పేరు: " + name.getText().toString().trim() + (c == null ? "" : " · " + summaryOf(c)), -1};
+            }
+            case "brain": {
+                int ch = provider.getCheckedRadioButtonId();
+                EditText key = ch == 3 ? geminiKey : ch == 2 ? anthropicKey : openAiKey;
+                Card c = cardTitled("Jarvis మెదడు");
+                String line = c == null ? "" : summaryOf(c);
+                if (key != null && key.getText().toString().trim().isEmpty()) return new Object[]{"✗ " + line + " · key లేదు", 2};
+                return new Object[]{line, -1};
+            }
+            case "voice": {
+                if (prefs.wakeReady() && !WakeService.running) return new Object[]{"✗ \"Jarvis\" వేక్ వర్డ్ ఆగి ఉంది", 2};
+                return new Object[]{"వేక్ వర్డ్: " + (wake.isChecked() ? "ఆన్" : "ఆఫ్") + " · సహజ గొంతు: " + (natural.isChecked() ? "ఆన్" : "ఆఫ్"), -1};
+            }
+            case "msg":
+                if (!NotifyListener.enabled(this)) return new Object[]{"✗ నోటిఫికేషన్ యాక్సెస్ లేదు: మెసేజ్‌లు అందవు", 2};
+                if (!prefs.readMessages()) return new Object[]{"మెసేజ్‌లు చెప్పడం: ఆఫ్", 1};
+                return new Object[]{"✓ కొత్త మెసేజ్‌లు చెబుతాను", 0};
+            case "bike": {
+                int n = 0;
+                for (String l : smartUrls.getText().toString().split("\n")) if (l.indexOf('=') > 0 && l.contains("http")) n++;
+                return new Object[]{"స్మార్ట్ హోమ్: " + n + " బటన్లు" + (Guard.running(this) ? " · 🛡️ కాపలా ఆన్" : ""), -1};
+            }
+            case "tab": {
+                if (prefs.homeMode()) { // (this is the tablet: its own problems)
+                    java.util.List<String> bad = HomeCare.problems(this);
+                    return bad.isEmpty() ? new Object[]{"✓ ఈ టాబ్లెట్‌లో సమస్యలు లేవు", 0}
+                            : new Object[]{"⚠️ " + android.text.TextUtils.join(" · ", bad), 2};
+                }
+                Object[] w = TabletWatch.tile(this);
+                java.util.List<String> ch = tabChangedCards();
+                if (ch.isEmpty()) return w;
+                int kind = Math.max(1, (Integer) w[1]);
+                return new Object[]{"● ఇంకా పంపలేదు (" + tabShorts(ch) + ")" + ((Integer) w[1] == 2 ? "\n" + w[0] : ""), kind};
+            }
+            case "daily": {
+                int[] onOff = new int[2];
+                for (Card c : cardList) if ("daily".equals(c.group)) countSwitches(c.body, onOff);
+                return new Object[]{onOff[0] + " ఆన్ · " + onOff[1] + " ఆఫ్", -1};
+            }
+            case "safe": {
+                int n = 0;
+                for (String s : sosContacts.getText().toString().split("[,\n;]")) if (!s.trim().isEmpty()) n++; // (names or numbers)
+                return n == 0 ? new Object[]{"✗ SOS కాంటాక్ట్స్ లేరు", 2} : new Object[]{"✓ SOS: " + n + " మంది", 0};
+            }
+            case "data": {
+                String ver = " · 1.0." + Updater.currentBuild(this) + (Updater.newAvailable(this) ? " · ⬆ కొత్త వెర్షన్ ఉంది" : "");
+                long ok = Backup.lastOk(this);
+                if (!Backup.configured(this)) return new Object[]{"✗ బ్యాకప్ సెట్ కాలేదు" + ver, 2};
+                if (System.currentTimeMillis() - ok > 3 * 86_400_000L)
+                    return new Object[]{"చివరి బ్యాకప్ పాతది" + (ok == 0 ? "" : ": " + Backup.when(ok)) + ver, 1};
+                return new Object[]{"✓ బ్యాకప్: " + Backup.when(ok) + ver, Updater.newAvailable(this) ? 1 : 0};
+            }
+        }
+        return new Object[]{"", -1};
     }
 
     private void showHome() {
@@ -1255,7 +1433,10 @@ public class SettingsActivity extends Activity {
         checkLine.setVisibility(View.VISIBLE);
         grid.setVisibility(View.VISIBLE);
         groupBar.setVisibility(View.GONE);
+        if (featHit != null) featHit.setVisibility(View.GONE);
+        if (whatsNew != null) whatsNew.setVisibility(whatsNewDue() ? View.VISIBLE : View.GONE);
         for (Card c : cardList) c.view.setVisibility(View.GONE);
+        refreshTiles();
         hideKeyboard();
         if (pageScroll != null) pageScroll.post(() -> pageScroll.scrollTo(0, 0));
     }
@@ -1267,6 +1448,8 @@ public class SettingsActivity extends Activity {
         search.setVisibility(View.GONE);
         checkLine.setVisibility(View.GONE);
         grid.setVisibility(View.GONE);
+        if (featHit != null) featHit.setVisibility(View.GONE);
+        if (whatsNew != null) whatsNew.setVisibility(View.GONE);
         groupBar.setVisibility(View.VISIBLE);
         groupTitle.setText(groupName(id));
         int shown = 0;
@@ -1289,17 +1472,24 @@ public class SettingsActivity extends Activity {
         checkLine.setVisibility(View.GONE);
         grid.setVisibility(View.GONE);
         groupBar.setVisibility(View.VISIBLE);
+        if (whatsNew != null) whatsNew.setVisibility(View.GONE);
         java.util.List<Card> hits = new java.util.ArrayList<>();
-        String[] parts = w.split("\\s+");
         for (Card c : cardList) {
-            String all = words(c);
-            boolean hit = !"check".equals(c.group);
-            for (String part : parts) if (hit && !all.contains(part)) hit = false; // every word he typed, anywhere in the card
+            // every word he typed, anywhere in the card (or an everyday word for it: "అమ్మ" → the tablet's cards, "మాత్ర" → tablets…)
+            boolean hit = !"check".equals(c.group) && SearchWords.matches(words(c), w);
             c.view.setVisibility(hit ? View.VISIBLE : View.GONE);
             if (hit) { hits.add(c); summarize(c); }
         }
-        groupTitle.setText(hits.isEmpty() ? "🔍 \"" + q.trim() + "\": ఏమీ దొరకలేదు" : "🔍 \"" + q.trim() + "\": " + hits.size() + " కార్డులు");
+        groupTitle.setText(hits.isEmpty() ? "🔍 \"" + q.trim() + "\": సెట్టింగ్స్‌లో ఏమీ దొరకలేదు" : "🔍 \"" + q.trim() + "\": " + hits.size() + " కార్డులు");
         if (hits.size() <= 2) for (Card c : hits) if (!c.open) toggle(c);
+        // the same words in All Features (one search for both)
+        int f = prefs.homeMode() ? 0 : FeaturesActivity.countMatches(q.trim());
+        if (featHit != null) {
+            featHit.setText(f == 0 ? "📂 అన్ని ఫీచర్స్‌లో \"" + q.trim() + "\" కి ఏమీ లేదు" : "📂 అన్ని ఫీచర్స్‌లో " + f + " దొరికాయి: చూడటానికి నొక్కండి ›");
+            featHit.setTextColor(f == 0 ? Ui.MUTED : Ui.C_CYAN);
+            featHit.setOnClickListener(f == 0 ? null : v -> startActivity(new Intent(this, FeaturesActivity.class).putExtra(FeaturesActivity.EXTRA_SEARCH, q.trim()).addFlags(FeaturesActivity.ONE_SCREEN)));
+            featHit.setVisibility(prefs.homeMode() ? View.GONE : View.VISIBLE);
+        }
     }
 
     /** All the words of a card, for the search. */
@@ -1313,6 +1503,8 @@ public class SettingsActivity extends Activity {
         if (v instanceof EditText) {
             CharSequence h = ((EditText) v).getHint();
             if (h != null) b.append(h).append(' ');
+        } else if (v instanceof TextView && v.getTag() instanceof String[]) { // (a long note shown short: all its words)
+            b.append(((String[]) v.getTag())[1]).append(' ');
         } else if (v instanceof TextView) {
             b.append(((TextView) v).getText()).append(' ');
         }
@@ -1348,6 +1540,8 @@ public class SettingsActivity extends Activity {
 
     private String summaryOf(Card c) {
         String t = c.title;
+        String tabLine = tabSummary(t);
+        if (tabLine != null) return tabLine;
         if (t.contains("మీరు")) return "పేరు: " + name.getText().toString().trim();
         if (t.contains("థీమ్")) {
             String id = Ui.theme(this);
@@ -1443,6 +1637,7 @@ public class SettingsActivity extends Activity {
     private void autosave() {
         ui.removeCallbacks(autosaveSoon);
         if (name == null || page == null || isDestroyed()) return;
+        tabChanged(); // (the tablet's boxes: kept as unsent until 📤, never lost)
         String f = fingerprint();
         if (f.equals(lastFp)) return;
         lastFp = f;
@@ -1465,7 +1660,7 @@ public class SettingsActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (!"home".equals(mode)) { goHome(); return; }
-        super.onBackPressed();
+        leave();
     }
 
     /** What the phone has for Jarvis without internet (its offline speech pack and Telugu voice), with the right download buttons. */
@@ -1564,6 +1759,9 @@ public class SettingsActivity extends Activity {
         voiceInfo.setText(VoiceIO.naturalError == null ? "" : "చివరిసారి సహజ గొంతు పనిచేయలేదు: " + VoiceIO.naturalError);
         showCheck();
         if (cardList.size() > 0) summarizeShown();
+        if (!tileState.isEmpty() && "home".equals(mode)) refreshTiles();
+        if (!prefs.homeMode()) TabletWatch.refreshIfOld(this, () -> { if (!isDestroyed()) { refreshTiles(); showTabStatus(); } }); // (the 🏠 tile)
+        tabReloadIfSentElsewhere();
     }
 
     /** A talk flag left on with no Jarvis screen, panel or Live open. */
@@ -2359,11 +2557,15 @@ public class SettingsActivity extends Activity {
     private int cards;
 
     /** A new section: its own glass card in its own colour, with an emoji and the title. */
-    private View section(String s) {
+    private View section(String s) { return section(s, null); }
+
+    /** A new section with its own emoji (else the one its title's words pick from LOOKS). */
+    private View section(String s, String ownEmoji) {
         String emoji = "✦";
         int[] colors = cardColors();
         int color = colors[cards % colors.length];
-        for (int i = 0; i < LOOKS.length; i++) {
+        if (ownEmoji != null) emoji = ownEmoji;
+        else for (int i = 0; i < LOOKS.length; i++) {
             if (s.contains(LOOKS[i][0])) { emoji = LOOKS[i][1]; color = colors[i % colors.length]; break; }
         }
         cards++;
@@ -2466,20 +2668,57 @@ public class SettingsActivity extends Activity {
         t.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         box.addView(t);
         if (cur == null || s.length() <= 90 || box != cur.body) return;
-        // a long explanation: hidden until he asks ("ⓘ ఇది ఎలా పనిచేస్తుంది")
-        t.setVisibility(View.GONE);
+        // a long explanation: its first sentence stays in sight, the rest until he asks ("ⓘ పూర్తి వివరణ")
+        String head = firstPart(s);
+        if (head.length() >= s.length() - 2) return; // (one long sentence: all of it)
+        final String[] both = {head + " …", s};
+        t.setText(both[0]);
+        t.setTag(both); // (the search still finds every word: collectWords)
         final Card c = cur;
         c.notes.add(t);
         if (c.info == null) {
-            c.info = Ui.text(this, "ⓘ  ఇది ఎలా పనిచేస్తుంది", 14, accent);
+            c.info = Ui.text(this, "ⓘ  పూర్తి వివరణ చూపించు", 14, accent);
             c.info.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
             c.info.setOnClickListener(v -> {
                 c.notesShown = !c.notesShown;
-                for (TextView n : c.notes) n.setVisibility(c.notesShown ? View.VISIBLE : View.GONE);
-                c.info.setText(c.notesShown ? "ⓘ  వివరణ దాచు" : "ⓘ  ఇది ఎలా పనిచేస్తుంది");
+                for (TextView n : c.notes) if (n.getTag() instanceof String[]) n.setText(((String[]) n.getTag())[c.notesShown ? 1 : 0]);
+                c.info.setText(c.notesShown ? "ⓘ  వివరణ తగ్గించు" : "ⓘ  పూర్తి వివరణ చూపించు");
             });
             c.body.addView(c.info, 0);
         }
+    }
+
+    /** A long explanation's first sentence (what is always shown of it). */
+    static String firstPart(String s) {
+        int best = -1;
+        for (String end : new String[]{". ", "; ", "! ", "? ", ".\n"}) {
+            int i = s.indexOf(end, 20);
+            if (i > 0 && (best < 0 || i < best)) best = i;
+        }
+        if (best > 0 && best <= 170) return s.substring(0, best + 1).trim();
+        int cut = s.lastIndexOf(' ', 120);
+        return s.substring(0, cut > 40 ? cut : Math.min(s.length(), 120)).trim();
+    }
+
+    /** Examples for boxes whose label has none (shown while the box is empty). */
+    private static final String[][] EXAMPLES = {
+            {"గ్రూప్‌లో మిమ్మల్ని పిలిచే పేర్లు", "ఉదా: Anil, అనిల్, అన్నా"}, {"📍 లోకల్ వార్తల ప్రాంతాలు", "ఉదా: తెలంగాణ, హైదరాబాద్"},
+            {"ఒక్క బుకింగ్‌కి గరిష్ఠంగా", "ఉదా: 1000"}, {"💰 బంగారం, వెండి, పెట్రోల్ ధరలకి మీ సిటీ", "ఉదా: Hyderabad"},
+            {"🏍️ బండి నంబర్", "ఉదా: TS09AB1234"}, {"📞 ఎమర్జెన్సీ కాంటాక్ట్", "ఉదా: రవి, 98xxxxxxxx"},
+            {"🎧 మిమ్మల్ని పిలిచే పేర్లు", "ఉదా: Anil, అనిల్"}, {"Telegram bot token", "BotFather ఇచ్చిన token ఇక్కడ పేస్ట్ చేయండి"},
+            {"OpenAI API key", "sk-… (ఇక్కడ పేస్ట్ చేయండి)"}, {"Anthropic API key", "sk-ant-… (ఇక్కడ పేస్ట్ చేయండి)"},
+            {"Gemini API key", "AIza… (ఇక్కడ పేస్ట్ చేయండి)"}};
+
+    /** The example a box shows while it is empty: from its label's "(ఉదా: …)", else from EXAMPLES. */
+    static String exampleFor(String label) {
+        if (label == null) return null;
+        int u = label.indexOf("(ఉదా: ");
+        if (u >= 0) {
+            int end = label.indexOf(')', u);
+            return end > u ? label.substring(u + 1, end).trim() : null;
+        }
+        for (String[] e : EXAMPLES) if (label.startsWith(e[0])) return e[1];
+        return null;
     }
 
     /** A box for a number (decimals allowed). */
@@ -2501,6 +2740,8 @@ public class SettingsActivity extends Activity {
         e.setText(value);
         e.setTextColor(Ui.TEXT);
         e.setHintTextColor(Ui.FAINT);
+        String ex = exampleFor(label); // (an empty box shows how to fill it)
+        if (ex != null) e.setHint(ex);
         e.setTextSize(16);
         e.setSingleLine(true);
         e.setBackground(fieldBg());
@@ -2687,98 +2928,191 @@ public class SettingsActivity extends Activity {
                 + "\"Jarvis ఆరోగ్య రిపోర్ట్\" ఎంచుకుంటే Downloads/Jarvis/health లో తేదీతో దాచి, డాక్టర్ PDF లో చూపిస్తాను. నెల మొదట్లో బరువు, కొవ్వు శాతం రిపోర్ట్.");
     }
 
+    // ================================================================ the home tablet, from his phone: five small cards
+
+    /** The five cards (the "(టాబ్లెట్)" end puts each in the 🏠 group). */
+    static final String TAB_TIMES = "అమ్మగారి టైమ్‌లు (టాబ్లెట్)", TAB_MEDS = "అమ్మగారి మాత్రలు, ఆరోగ్యం (టాబ్లెట్)",
+            TAB_MSG = "అమ్మకి మెసేజ్, రిమైండర్ (టాబ్లెట్)", TAB_FUN = "అమ్మగారితో ఆటలు, ఫోటోలు, రిపోర్ట్ (టాబ్లెట్)",
+            TAB_DEVICE = "గొంతు, గది, కెమెరా, స్థితి (టాబ్లెట్)";
+    /** What "📤 టాబ్లెట్‌కి పంపు" sends: {key, default, its card}. */
+    private static final String[][] TAB_KEYS = {
+            {"who", "అమ్మగారు", TAB_TIMES}, {"tiffin", "08:30", TAB_TIMES}, {"lunch", "13:00", TAB_TIMES}, {"snack", "16:30", TAB_TIMES},
+            {"dinner", "20:00", TAB_TIMES}, {"water", "10:30,12:30,15:30,18:00", TAB_TIMES}, {"chat", "10:00,17:30", TAB_TIMES},
+            {"rest", "13:30-15:30", TAB_TIMES}, {"bed", "21:30", TAB_TIMES}, {"report", "21:45", TAB_TIMES}, {"silent_hours", "3", TAB_TIMES},
+            {"meds_text", "", TAB_MEDS}, {"sugar_low", "70", TAB_MEDS}, {"sugar_high", "250", TAB_MEDS}, {"doctor_note", "", TAB_MEDS},
+            {"voice", "", TAB_DEVICE}, {"tts_model", "", TAB_DEVICE}, {"room", "hall", TAB_DEVICE}, {"camera", "true", TAB_DEVICE},
+            {"stranger_photo", "true", TAB_DEVICE}, {"ai_limit", "200", TAB_DEVICE}};
+    private static final java.util.Set<String> TAB_INTS = new java.util.HashSet<>(java.util.Arrays.asList("silent_hours", "sugar_low", "sugar_high", "ai_limit"));
+    private static final java.util.Set<String> TAB_BOOLS = new java.util.HashSet<>(java.util.Arrays.asList("camera", "stranger_photo"));
+
+    /** The form's boxes and switches by key (voice and room are picked from a list). Empty on the tablet itself. */
+    private final java.util.Map<String, View> tab = new java.util.HashMap<>();
+    private final String[] tabVoice = {""}, tabRoom = {"hall"};
+    /** In each card with boxes: the amber "not sent yet" line and the 📤 answer line. */
+    private final java.util.List<TextView> tabUnsent = new java.util.ArrayList<>(), tabSent = new java.util.ArrayList<>();
+    private TextView tabStatus;
+    private boolean askedLeave, tabAsking;
+    /** The last send to the tablet this screen knows of (another Settings screen may send too: then the boxes are read again). */
+    private long tabSeenSent;
+    private Runnable tabShowVoice, tabShowRoom;
+
+    private android.content.SharedPreferences ts() { return getSharedPreferences("jarvis_tabset", MODE_PRIVATE); }
+
+    private String tabDef(String key, String def) {
+        if ("voice".equals(key)) return prefs.naturalVoiceName();
+        if ("tts_model".equals(key)) return prefs.ttsModel();
+        return def;
+    }
+
+    /** What the tablet has now (the values last sent to it). */
+    private String tabStored(String key, String def) {
+        android.content.SharedPreferences s = ts();
+        String d = tabDef(key, def);
+        try {
+            if (TAB_INTS.contains(key)) return String.valueOf(s.getInt(key, Integer.parseInt(d)));
+            if (TAB_BOOLS.contains(key)) return String.valueOf(s.getBoolean(key, Boolean.parseBoolean(d)));
+            return s.getString(key, d).trim();
+        } catch (Exception e) {
+            return d;
+        }
+    }
+
+    /** What the form says now. */
+    private String tabValue(String key) {
+        if ("voice".equals(key)) return tabVoice[0];
+        if ("room".equals(key)) return tabRoom[0];
+        View v = tab.get(key);
+        if (v instanceof Switch) return String.valueOf(((Switch) v).isChecked());
+        if (v instanceof EditText) return ((EditText) v).getText().toString().trim();
+        return "";
+    }
+
+    /** What he changed and did not send yet (kept when he left), or null. */
+    private org.json.JSONObject tabDraft() {
+        try {
+            String d = ts().getString("draft", "");
+            return d.isEmpty() ? null : new org.json.JSONObject(d);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** A box starts with his unsent change, else with what the tablet has. */
+    private String tabStart(String key, String def, org.json.JSONObject draft) {
+        return draft != null && draft.has(key) ? draft.optString(key) : tabStored(key, def);
+    }
+
+    /** The cards with something not sent to the tablet yet (empty: all sent). */
+    private java.util.List<String> tabChangedCards() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (tab.isEmpty()) return out;
+        for (String[] k : TAB_KEYS) if (!tabValue(k[0]).equals(tabStored(k[0], k[1])) && !out.contains(k[2])) out.add(k[2]);
+        return out;
+    }
+
+    private static String tabShort(String card) {
+        return TAB_TIMES.equals(card) ? "టైమ్‌లు" : TAB_MEDS.equals(card) ? "మాత్రలు, ఆరోగ్యం" : TAB_DEVICE.equals(card) ? "గొంతు, గది, కెమెరా" : card;
+    }
+
+    private static String tabShorts(java.util.List<String> cards) {
+        StringBuilder b = new StringBuilder();
+        for (String c : cards) b.append(b.length() == 0 ? "" : ", ").append(tabShort(c));
+        return b.toString();
+    }
+
+    /** After any change: the unsent draft is kept (or dropped when all is sent), and "● ఇంకా పంపలేదు" shows where it matters. */
+    private void tabChanged() {
+        if (tab.isEmpty()) return;
+        java.util.List<String> ch = tabChangedCards();
+        try {
+            if (ch.isEmpty()) {
+                if (ts().contains("draft")) ts().edit().remove("draft").apply();
+            } else {
+                org.json.JSONObject d = new org.json.JSONObject();
+                for (String[] k : TAB_KEYS) d.put(k[0], tabValue(k[0]));
+                if (!d.toString().equals(ts().getString("draft", ""))) ts().edit().putString("draft", d.toString()).apply();
+            }
+        } catch (Exception ignored) {}
+        for (TextView t : tabUnsent) {
+            t.setText("● ఈ మార్పులు ఇంకా టాబ్లెట్‌కి వెళ్లలేదు (" + tabShorts(ch) + "): కింద \"📤 టాబ్లెట్‌కి పంపు\" నొక్కండి.");
+            t.setVisibility(ch.isEmpty() ? View.GONE : View.VISIBLE);
+        }
+    }
+
+    /** "● పంపలేదు" for a card's one line, or "". */
+    private String tabUnsentMark(String card) {
+        return tabChangedCards().contains(card) ? "● ఇంకా పంపలేదు · " : "";
+    }
+
+    /** A box for the tablet (its example stays in the label; numbers get the number keys). */
+    private EditText tabField(String key, String label, String def, org.json.JSONObject draft) {
+        EditText e = field(label, tabStart(key, def, draft), false);
+        if (TAB_INTS.contains(key)) e.setInputType(InputType.TYPE_CLASS_NUMBER);
+        tab.put(key, e);
+        return e;
+    }
+
+    /** In a card with boxes for the tablet: the amber "not sent yet" line, the 📤 button and its answer. */
+    private void tabSendButton() {
+        TextView un = Ui.text(this, "", 14, 0xFFFDE68A);
+        un.setPadding(0, Ui.dp(this, 12), 0, 0);
+        un.setVisibility(View.GONE);
+        box.addView(un);
+        tabUnsent.add(un);
+        button("📤 టాబ్లెట్‌కి పంపు", v -> sendTablet(false));
+        TextView sent = Ui.text(this, "", 14, Ui.MUTED);
+        box.addView(sent);
+        tabSent.add(sent);
+    }
+
+    private void setTabSent(String s) { for (TextView t : tabSent) t.setText(s); }
+
     /**
-     * On his phone: the home tablet's settings, sent to it through his Telegram bot (the home link): the tablet's voice
-     * and voice model (as the phone's own), అమ్మగారు's meal / water / chat / bedtime times, her tablets, sugar limits,
-     * the doctor's advice, the day's AI limit; and the tablet's status now.
+     * On his phone: the home tablet's settings, sent to it through his Telegram bot (the home link), in five small cards:
+     * her day's times; her tablets, sugar limits and the doctor's advice; a message / reminder said at home; games, the
+     * photo frame and the week's report; the tablet's voice, room, camera, AI limit and its status now. One 📤 sends all
+     * of them; what he changed and did not send is kept (and shown as "● ఇంకా పంపలేదు", and asked about when he leaves).
      */
     private void tabletSection() {
-        section("📱→🏠 ఇంటి టాబ్లెట్ (అమ్మగారి Jarvis)");
-        final android.content.SharedPreferences ts = getSharedPreferences("jarvis_tabset", MODE_PRIVATE);
-        note("ఇంట్లో ఉన్న టాబ్లెట్ Jarvis సెట్టింగ్స్ ఇక్కడ నుంచే మార్చొచ్చు; \"📤 టాబ్లెట్‌కి పంపు\" నొక్కితే మీ Telegram bot ద్వారా టాబ్లెట్‌కి వెళ్తాయి (రెండింటికీ నెట్ కావాలి). "
-                + "ముందు ఒక్కసారి: టాబ్లెట్‌లో, ఈ ఫోన్‌లో ఒకే bot token పెట్టి \"Telegram చాట్ కనుక్కో\" నొక్కాలి (కాపలా మోడ్ కార్డ్‌లో; కాపలా ఆన్ చేయనక్కర్లేదు).");
-        TextView status = Ui.text(this, "టాబ్లెట్ స్థితి: (కింద నొక్కండి)", 14.5f, Ui.MUTED);
-        status.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
-        box.addView(status);
-        button("🔄 టాబ్లెట్ స్థితి చూడు", v -> {
-            status.setText("టాబ్లెట్‌ని అడుగుతున్నాను… (నిమిషం వరకు)");
-            new Thread(() -> {
-                String r = HomeLink.tabletStatus(getApplicationContext());
-                runOnUiThread(() -> status.setText(r));
-            }, "tab-status").start();
-        });
+        android.content.SharedPreferences.Editor once = ts().edit(); // (never sent yet: the tablet speaks with the phone's voice of today)
+        if (!ts().contains("voice")) once.putString("voice", prefs.naturalVoiceName());
+        if (!ts().contains("tts_model")) once.putString("tts_model", prefs.ttsModel());
+        once.apply();
+        tabSeenSent = ts().getLong("sent_at", 0);
+        final org.json.JSONObject draft = tabDraft();
+        tabVoice[0] = tabStart("voice", "", draft);
+        tabRoom[0] = "bedroom".equals(tabStart("room", "hall", draft)) ? "bedroom" : "hall";
 
-        // ---- the tablet's voice: the phone's by default (he can pick another, like the phone's own)
-        final String[] voice = {ts.getString("voice", prefs.naturalVoiceName())};
-        TextView vt = Ui.text(this, "", 15.5f, accent);
-        vt.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4));
-        Runnable showV = () -> vt.setText("🔊 టాబ్లెట్ గొంతు: " + voice[0] + (voice[0].equals(prefs.naturalVoiceName()) ? " (ఫోన్ గొంతే)" : "") + "  (మార్చడానికి నొక్కండి)");
-        showV.run();
-        vt.setOnClickListener(v -> {
-            int at = java.util.Arrays.asList(NaturalVoice.VOICES).indexOf(voice[0]);
-            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                    .setTitle("టాబ్లెట్ గొంతు (cedar = లోతైన మగ గొంతు)")
-                    .setSingleChoiceItems(NaturalVoice.VOICES, Math.max(0, at), (d, w) -> { voice[0] = NaturalVoice.VOICES[w]; showV.run(); d.dismiss(); })
-                    .show();
-        });
-        box.addView(vt);
-        EditText model = field("టాబ్లెట్ గొంతు మోడల్ (ఫోన్‌లోది: " + prefs.ttsModel() + ")", ts.getString("tts_model", prefs.ttsModel()), false);
-        TextView vInfo = Ui.text(this, "", 13.5f, Ui.MUTED);
-        button("▶ ఈ గొంతు ఫోన్‌లో వినిపించు", v -> {
-            String key = prefs.openAiKey().trim();
-            if (key.isEmpty()) { Toast.makeText(this, "ముందు OpenAI key పెట్టండి", Toast.LENGTH_SHORT).show(); return; }
-            String m = model.getText().toString().trim();
-            tester.model = m.isEmpty() ? NaturalVoice.DEFAULT_MODEL : m;
-            vInfo.setText("వినిపిస్తున్నాను…");
-            tester.speak(key, voice[0], "నమస్కారం అమ్మగారు. నేను Jarvis. టిఫిన్ చేశారా?", new NaturalVoice.Callback() {
-                @Override public void onStart() { vInfo.setText("గొంతు: " + voice[0] + " · " + tester.model); }
-                @Override public void onDone() { vInfo.setText("గొంతు: " + voice[0] + " · " + tester.model + " ✓"); }
-                @Override public void onError(String message) { vInfo.setText("పనిచేయలేదు: " + message); }
-            });
-        });
-        box.addView(vInfo);
+        // ---- 1. her day's times
+        section(TAB_TIMES, "🍽️");
+        note("అమ్మగారి రోజు: ఈ టైమ్‌లకి Jarvis టిఫిన్, భోజనం, నీళ్లు అడుగుతాడు, మాట్లాడతాడు. మార్చాక \"📤 టాబ్లెట్‌కి పంపు\" నొక్కండి. "
+                + "అది మీ Telegram bot ద్వారా టాబ్లెట్‌కి వెళ్తుంది (రెండింటికీ నెట్ కావాలి).");
+        tabField("who", "అమ్మని Jarvis ఏమని పిలవాలి (ఉదా: అమ్మగారు)", "అమ్మగారు", draft);
+        tabField("tiffin", "🍽️ టిఫిన్ టైమ్ (ఉదా: 08:30)", "08:30", draft);
+        tabField("lunch", "🍽️ మధ్యాహ్నం భోజనం (ఉదా: 13:00)", "13:00", draft);
+        tabField("snack", "🍪 సాయంత్రం స్నాక్స్ (ఉదా: 16:30)", "16:30", draft);
+        tabField("dinner", "🍽️ రాత్రి భోజనం (ఉదా: 20:00)", "20:00", draft);
+        tabField("water", "💧 నీళ్లు అడిగే టైమ్‌లు, కామాతో (ఉదా: 10:30,12:30,15:30,18:00)", "10:30,12:30,15:30,18:00", draft);
+        tabField("chat", "🗣️ Jarvis తనంతట తానే మాట్లాడే టైమ్‌లు (ఉదా: 10:00,17:30)", "10:00,17:30", draft);
+        tabField("rest", "😴 మధ్యాహ్నం విశ్రాంతి, ఆ టైమ్‌లో నిశ్శబ్దం (ఉదా: 13:30-15:30)", "13:30-15:30", draft);
+        tabField("bed", "🌙 పడుకునే ముందు చెక్ (ఉదా: 21:30)", "21:30", draft);
+        tabField("report", "📋 మీకు రోజు రిపోర్ట్, Telegram లో (ఉదా: 21:45)", "21:45", draft);
+        tabField("silent_hours", "⏳ ఇన్ని గంటలు అలికిడి లేకపోతే \"బాగున్నారా?\" (ఉదా: 3)", "3", draft);
+        tabSendButton();
 
-        // ---- where the tablet stands, its camera, strangers' pictures
-        final String[] room = {ts.getString("room", "hall")};
-        TextView roomT = Ui.text(this, "", 15.5f, accent);
-        roomT.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 4));
-        Runnable showRoom = () -> roomT.setText("📍 టాబ్లెట్ ఉన్న చోటు: " + roomLabel(room[0]) + "  (మార్చడానికి నొక్కండి)");
-        showRoom.run();
-        roomT.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("టాబ్లెట్ ఎక్కడ ఉంది?")
-                .setSingleChoiceItems(ROOM_NAMES, "bedroom".equals(room[0]) ? 1 : 0, (d, w) -> { room[0] = w == 0 ? "hall" : "bedroom"; showRoom.run(); d.dismiss(); })
-                .show());
-        box.addView(roomT);
-        Switch tcam = toggle("📷 టాబ్లెట్ కెమెరా: ముఖం చూసి ప్రవర్తించడం (పగలు మాత్రమే, ఏదీ సేవ్ అవ్వదు)", ts.getBoolean("camera", true));
-        Switch strangers = toggle("🚪 తెలియని మనిషి కనిపిస్తే (అమ్మగారు \"తెలియదు\" అంటే / జవాబు లేకపోతే) ఫోటో నాకు పంపు", ts.getBoolean("stranger_photo", true));
-
-        // ---- అమ్మగారు's day
-        EditText who = field("అమ్మని Jarvis ఏమని పిలవాలి", ts.getString("who", "అమ్మగారు"), false);
-        EditText tif = field("🍽️ టిఫిన్ టైమ్ (ఉదా: 08:30)", ts.getString("tiffin", "08:30"), false);
-        EditText lun = field("🍽️ మధ్యాహ్నం భోజనం", ts.getString("lunch", "13:00"), false);
-        EditText sna = field("🍪 సాయంత్రం స్నాక్స్", ts.getString("snack", "16:30"), false);
-        EditText din = field("🍽️ రాత్రి భోజనం", ts.getString("dinner", "20:00"), false);
-        EditText wat = field("💧 నీళ్లు అడిగే టైమ్‌లు (కామాతో)", ts.getString("water", "10:30,12:30,15:30,18:00"), false);
-        EditText cha = field("🗣️ Jarvis తనంతట తానే మాట్లాడే టైమ్‌లు", ts.getString("chat", "10:00,17:30"), false);
-        EditText rst = field("😴 మధ్యాహ్నం విశ్రాంతి (ఆ టైమ్‌లో నిశ్శబ్దం)", ts.getString("rest", "13:30-15:30"), false);
-        EditText bed = field("🌙 పడుకునే ముందు చెక్", ts.getString("bed", "21:30"), false);
-        EditText rep = field("📋 మీకు రోజు రిపోర్ట్ (Telegram)", ts.getString("report", "21:45"), false);
-        EditText sil = field("⏳ ఇన్ని గంటలు అలికిడి లేకపోతే \"బాగున్నారా?\"", String.valueOf(ts.getInt("silent_hours", 3)), false);
-        EditText sLo = field("🩸 షుగర్ ఇంతకంటే తక్కువైతే మీకు చెప్పు", String.valueOf(ts.getInt("sugar_low", 70)), false);
-        EditText sHi = field("🩸 షుగర్ ఇంతకంటే ఎక్కువైతే మీకు చెప్పు", String.valueOf(ts.getInt("sugar_high", 250)), false);
-        EditText doc = field("👨‍⚕️ ఒంట్లో బాగోలేనప్పుడు డాక్టర్ చెప్పింది (Jarvis అమ్మకి చదువుతాడు)", ts.getString("doctor_note", ""), false);
-        EditText lim = field("🧠 టాబ్లెట్ రోజు AI పరిమితి (ప్రశ్నలు; మీ key ఖర్చు)", String.valueOf(ts.getInt("ai_limit", 200)), false);
+        // ---- 2. her tablets, sugar, the doctor's advice
+        section(TAB_MEDS, "💊");
         note("💊 అమ్మగారి టాబ్లెట్లు: ఒక్కో లైన్‌లో \"పేరు = టైమ్‌లు | తిన్న తర్వాత | మాత్రల సంఖ్య\" (ఉదా: షుగర్ టాబ్లెట్ = 08:00, 20:00 | తిన్న తర్వాత | 30 మాత్రలు). "
                 + "పేరు అమ్మగారికి అర్థమయ్యేది పెట్టండి (Jarvis అదే పలుకుతాడు). మాత్రల సంఖ్య రాస్తే, 5 రోజులకే మిగిలినప్పుడు మీకు Telegram; కొత్త స్ట్రిప్ కొన్నప్పుడు సంఖ్య మార్చి 📤 నొక్కండి. "
                 + "డాక్టర్ / మీరు చెప్పినవే పెట్టండి; Jarvis సొంతంగా మందులు చెప్పడు. టాబ్లెట్ టైమ్‌కి అడుగుతాడు, 10 నిమిషాలకోసారి మళ్లీ అడుగుతాడు, 3 సార్లు జవాబు లేకపోతే మీకు Telegram.");
-        // (the box's own label and example, always in sight: the long note above folds away under "ⓘ")
+        // (the box's own label and example, always in sight)
         TextView medsLabel = Ui.text(this, "💊 అమ్మగారి టాబ్లెట్లు (ఒక్కో లైన్‌లో ఒకటి: పేరు = టైమ్‌లు | తిన్న తర్వాత | మాత్రల సంఖ్య)", 14.5f, accent);
         medsLabel.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 4));
         box.addView(medsLabel);
         EditText meds = new EditText(this);
         meds.setHint("ఉదా: షుగర్ టాబ్లెట్ = 08:00, 20:00 | తిన్న తర్వాత | 30 మాత్రలు");
         meds.setHintTextColor(Ui.MUTED);
-        meds.setText(ts.getString("meds_text", ""));
+        meds.setText(tabStart("meds_text", "", draft));
         meds.setTextColor(Ui.TEXT);
         meds.setTextSize(15);
         meds.setSingleLine(false);
@@ -2789,96 +3123,17 @@ public class SettingsActivity extends Activity {
         meds.setPadding(pd, pd, pd, pd);
         meds.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         box.addView(meds, new LinearLayout.LayoutParams(-1, -2));
-        TextView sent = Ui.text(this, "", 14, Ui.MUTED);
-        button("📤 టాబ్లెట్‌కి పంపు", v -> {
-            try {
-                org.json.JSONObject j = new org.json.JSONObject()
-                        .put("voice", voice[0]).put("tts_model", model.getText().toString().trim())
-                        .put("who", who.getText().toString().trim()).put("tiffin", tif.getText().toString().trim())
-                        .put("lunch", lun.getText().toString().trim()).put("snack", sna.getText().toString().trim())
-                        .put("dinner", din.getText().toString().trim()).put("water", wat.getText().toString().trim())
-                        .put("chat", cha.getText().toString().trim()).put("rest", rst.getText().toString().trim())
-                        .put("bed", bed.getText().toString().trim()).put("report", rep.getText().toString().trim())
-                        .put("doctor_note", doc.getText().toString().trim())
-                        .put("room", room[0]).put("camera", tcam.isChecked()).put("stranger_photo", strangers.isChecked());
-                int[] nums = new int[4];
-                EditText[] nf = {sil, sLo, sHi, lim};
-                String[] nk = {"silent_hours", "sugar_low", "sugar_high", "ai_limit"};
-                android.content.SharedPreferences.Editor e = ts.edit();
-                e.putString("room", room[0]).putBoolean("camera", tcam.isChecked()).putBoolean("stranger_photo", strangers.isChecked());
-                for (int i = 0; i < 4; i++) {
-                    try { nums[i] = Integer.parseInt(nf[i].getText().toString().trim()); } catch (Exception ex) { nums[i] = ts.getInt(nk[i], i == 0 ? 3 : i == 1 ? 70 : i == 2 ? 250 : 200); }
-                    j.put(nk[i], nums[i]);
-                    e.putInt(nk[i], nums[i]);
-                }
-                org.json.JSONArray ma = new org.json.JSONArray();
-                java.util.Map<String, Integer> stockNow = new java.util.HashMap<>(); // (kept as "sent" only once it went)
-                for (String line : meds.getText().toString().split("\n")) {
-                    int eq = line.indexOf('=');
-                    if (eq <= 0) continue;
-                    String nm = line.substring(0, eq).trim();
-                    String[] seg = line.substring(eq + 1).split("\\|");
-                    String rest = seg[0], food = "";
-                    int stock = -1;
-                    for (int k = 1; k < seg.length; k++) { // "| తిన్న తర్వాత", "| 30 మాత్రలు"
-                        String g = seg[k].trim();
-                        java.util.regex.Matcher num = java.util.regex.Pattern.compile("(\\d{1,4})").matcher(g);
-                        if (num.find() && (g.matches("(?s).*(మాత్ర|టాబ్లెట్|స్టాక్|tablet|stock).*") || g.matches("\\d{1,4}"))) stock = Integer.parseInt(num.group(1));
-                        else if (!g.isEmpty()) food = g;
-                    }
-                    if (nm.isEmpty() || Medicine.times(rest).length() == 0) continue;
-                    org.json.JSONObject mj = new org.json.JSONObject().put("name", nm).put("times", rest.trim()).put("food", food);
-                    // a count goes only when he wrote a new one (the tablet counts down as she takes them)
-                    String sk = "stock_sent_" + nm.toLowerCase(java.util.Locale.ROOT);
-                    if (stock >= 0 && ts.getInt(sk, -1) != stock) { mj.put("stock", stock); stockNow.put(sk, stock); }
-                    ma.put(mj);
-                }
-                j.put("meds", ma);
-                java.util.Iterator<String> it = j.keys();
-                while (it.hasNext()) { String k = it.next(); Object o = j.get(k); if (o instanceof String) e.putString(k, (String) o); }
-                e.putString("meds_text", meds.getText().toString()).apply();
-                sent.setText("పంపుతున్నాను…");
-                new Thread(() -> {
-                    String r = HomeLink.sendSettings(getApplicationContext(), j);
-                    if (r.startsWith("పంపాను") && !stockNow.isEmpty()) { // (not sent: the new counts go again next time)
-                        android.content.SharedPreferences.Editor se = ts.edit();
-                        for (java.util.Map.Entry<String, Integer> s : stockNow.entrySet()) se.putInt(s.getKey(), s.getValue());
-                        se.apply();
-                    }
-                    runOnUiThread(() -> sent.setText(r));
-                }, "tab-send").start();
-            } catch (Exception ex) {
-                sent.setText("పంపలేకపోయాను: " + ex.getMessage());
-            }
-        });
-        box.addView(sent);
+        tab.put("meds_text", meds);
+        tabField("sugar_low", "🩸 షుగర్ ఇంతకంటే తక్కువైతే మీకు చెప్పు (ఉదా: 70)", "70", draft);
+        tabField("sugar_high", "🩸 షుగర్ ఇంతకంటే ఎక్కువైతే మీకు చెప్పు (ఉదా: 250)", "250", draft);
+        EditText doc = tabField("doctor_note", "👨‍⚕️ ఒంట్లో బాగోలేనప్పుడు డాక్టర్ చెప్పింది (Jarvis అమ్మకి చదువుతాడు)", "", draft);
+        doc.setHint("డాక్టర్ చెప్పిన మాటలే రాయండి");
+        tabSendButton();
 
-        // ---- the week's report for her doctor
-        TextView repInfo = Ui.text(this, "ప్రతి ఆదివారం రాత్రి రిపోర్ట్ తర్వాత ఈ PDF మీ Telegram కి తనంతట తానే వస్తుంది.", 13.5f, Ui.MUTED);
-        button("📊 అమ్మగారి వారపు రిపోర్ట్ (PDF) ఇప్పుడే", v -> {
-            repInfo.setText("అడుగుతున్నాను…");
-            new Thread(() -> { String r = HomeLink.askReport(getApplicationContext()); runOnUiThread(() -> repInfo.setText(r)); }, "tab-report").start();
-        });
-        box.addView(repInfo);
-
-        // ---- a game with her from here (she is asked on the tablet; moves go through the bot)
-        button("🎲 అమ్మగారితో ఆట ఆడు (మీ ఫోన్ నుంచి)", v -> pickFarGame());
-        box.addView(Ui.text(this, "చదరంగం, లూడో, వైకుంఠపాళి… మీరు ఎంచుకుంటే టాబ్లెట్‌లో Jarvis ఆమెను అడుగుతాడు. ఆమె సరే అంటే ఇద్దరూ ఆడొచ్చు (ఒక్కో కదలిక చేరడానికి కొన్ని సెకన్లు).", 13.5f, Ui.MUTED));
-
-        // ---- photos for the tablet's photo frame
-        button("🖼️ టాబ్లెట్ ఫోటో ఫ్రేమ్‌కి ఫోటోలు పంపు", v -> {
-            try {
-                startActivityForResult(new Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE)
-                        .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true), REQ_FRAME);
-            } catch (Exception ex) {
-                Toast.makeText(this, "ఫోటోలు ఎంచుకునే యాప్ తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
-            }
-        });
-        frameInfo = Ui.text(this, "ఎవరూ లేనప్పుడు టాబ్లెట్‌లో ఈ ఫోటోలు ఒక్కొక్కటిగా కనిపిస్తాయి (ఒక్కో ఫోటోకి ~20 సెకన్లు పడుతుంది).", 13.5f, Ui.MUTED);
-        box.addView(frameInfo);
-
-        // ---- a message to her, read aloud by the tablet's Jarvis (she can answer by voice; her answer comes to his Telegram)
+        // ---- 3. a message to her, read aloud by the tablet's Jarvis (she can answer by voice; her answer comes to his Telegram)
+        section(TAB_MSG, "💬");
         EditText mText = field("💬 అమ్మకి మెసేజ్ (టాబ్లెట్ Jarvis చదివి వినిపిస్తాడు)", "", false);
+        mText.setHint("ఉదా: పడుకున్నావా? భోజనం చేశావా?");
         TextView mInfo = Ui.text(this, "టాబ్లెట్ \"అబ్బాయి మెసేజ్ పంపాడు: …\" అని చదివి, \"జవాబు ఏమైనా చెప్పాలా?\" అని అడుగుతుంది. అమ్మగారి జవాబు మీ Telegram కి వస్తుంది. "
                 + "\"Jarvis, ఇంటికి చెప్పు: …\" అని గొంతుతో కూడా పంపొచ్చు.", 13.5f, Ui.MUTED);
         button("📢 టాబ్లెట్‌లో వినిపించు", v -> {
@@ -2891,7 +3146,6 @@ public class SettingsActivity extends Activity {
             }, "tab-say").start();
         });
         box.addView(mInfo);
-
         // ---- a reminder said at home
         EditText rText = field("⏰ ఇంట్లో ఏమి గుర్తుచేయాలి (ఉదా: డాక్టర్ దగ్గరికి వెళ్లాలి)", "", false);
         EditText rWhen = field("ఎప్పుడు (ఉదా: రేపు 10:00 · ఈరోజు 18:30 · 2026-10-12 09:00)", "", false);
@@ -2908,33 +3162,252 @@ public class SettingsActivity extends Activity {
             }, "tab-remind").start();
         });
         box.addView(rInfo);
+
+        // ---- 4. a game with her from here, the photo frame, the week's report for her doctor
+        section(TAB_FUN, "🎲");
+        button("🎲 అమ్మగారితో ఆట ఆడు (మీ ఫోన్ నుంచి)", v -> GameActivity.pickFar(this));
+        box.addView(Ui.text(this, "చదరంగం, లూడో, వైకుంఠపాళి… మీరు ఎంచుకుంటే టాబ్లెట్‌లో Jarvis ఆమెను అడుగుతాడు. ఆమె సరే అంటే ఇద్దరూ ఆడొచ్చు (ఒక్కో కదలిక చేరడానికి కొన్ని సెకన్లు).", 13.5f, Ui.MUTED));
+        button("🖼️ టాబ్లెట్ ఫోటో ఫ్రేమ్‌కి ఫోటోలు పంపు", v -> pickFramePhotos());
+        frameInfo = Ui.text(this, "ఎవరూ లేనప్పుడు టాబ్లెట్‌లో ఈ ఫోటోలు ఒక్కొక్కటిగా కనిపిస్తాయి (ఒక్కో ఫోటోకి ~20 సెకన్లు పడుతుంది).", 13.5f, Ui.MUTED);
+        box.addView(frameInfo);
+        TextView repInfo = Ui.text(this, "ప్రతి ఆదివారం రాత్రి రిపోర్ట్ తర్వాత ఈ PDF మీ Telegram కి తనంతట తానే వస్తుంది.", 13.5f, Ui.MUTED);
+        button("📊 అమ్మగారి వారపు రిపోర్ట్ (PDF) ఇప్పుడే", v -> {
+            repInfo.setText("అడుగుతున్నాను…");
+            new Thread(() -> { String r = HomeLink.askReport(getApplicationContext()); runOnUiThread(() -> repInfo.setText(r)); }, "tab-report").start();
+        });
+        box.addView(repInfo);
+
+        // ---- 5. the tablet itself: its status now, voice, room, camera, the day's AI limit
+        section(TAB_DEVICE, "🔊");
+        note("ఇంట్లో ఉన్న టాబ్లెట్ Jarvis సెట్టింగ్స్ ఇక్కడ నుంచే మార్చొచ్చు; \"📤 టాబ్లెట్‌కి పంపు\" నొక్కితే మీ Telegram bot ద్వారా టాబ్లెట్‌కి వెళ్తాయి (రెండింటికీ నెట్ కావాలి). "
+                + "ముందు ఒక్కసారి: టాబ్లెట్‌లో, ఈ ఫోన్‌లో ఒకే bot token పెట్టి \"Telegram చాట్ కనుక్కో\" నొక్కాలి (కాపలా మోడ్ కార్డ్‌లో; కాపలా ఆన్ చేయనక్కర్లేదు).");
+        tabStatus = Ui.text(this, "", 14.5f, Ui.MUTED);
+        tabStatus.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        box.addView(tabStatus);
+        showTabStatus();
+        button("🔄 టాబ్లెట్ స్థితి చూడు", v -> {
+            tabAsking = true;
+            tabStatus.setText("టాబ్లెట్‌ని అడుగుతున్నాను… (నిమిషం వరకు)");
+            new Thread(() -> {
+                String r = HomeLink.tabletStatus(getApplicationContext());
+                runOnUiThread(() -> { tabAsking = false; refreshTiles(); tabStatus.setText(r); }); // (its own answer: errors and the link steps too)
+            }, "tab-status").start();
+        });
+        // the tablet's voice: the phone's by default (he can pick another, like the phone's own)
+        TextView vt = Ui.text(this, "", 15.5f, accent);
+        vt.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4));
+        Runnable showV = tabShowVoice = () -> vt.setText("🔊 టాబ్లెట్ గొంతు: " + tabVoice[0] + (tabVoice[0].equals(prefs.naturalVoiceName()) ? " (ఫోన్ గొంతే)" : "") + "  (మార్చడానికి నొక్కండి)");
+        showV.run();
+        vt.setOnClickListener(v -> {
+            int at = java.util.Arrays.asList(NaturalVoice.VOICES).indexOf(tabVoice[0]);
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("టాబ్లెట్ గొంతు (cedar = లోతైన మగ గొంతు)")
+                    .setSingleChoiceItems(NaturalVoice.VOICES, Math.max(0, at), (d, w) -> {
+                        tabVoice[0] = NaturalVoice.VOICES[w];
+                        showV.run();
+                        d.dismiss();
+                        tabChanged();
+                        summarizeShown();
+                    })
+                    .show();
+        });
+        box.addView(vt);
+        EditText model = tabField("tts_model", "టాబ్లెట్ గొంతు మోడల్ (ఫోన్‌లోది: " + prefs.ttsModel() + ")", "", draft);
+        TextView vInfo = Ui.text(this, "", 13.5f, Ui.MUTED);
+        button("▶ ఈ గొంతు ఫోన్‌లో వినిపించు", v -> {
+            String key = prefs.openAiKey().trim();
+            if (key.isEmpty()) { Toast.makeText(this, "ముందు OpenAI key పెట్టండి", Toast.LENGTH_SHORT).show(); return; }
+            String m = model.getText().toString().trim();
+            tester.model = m.isEmpty() ? NaturalVoice.DEFAULT_MODEL : m;
+            vInfo.setText("వినిపిస్తున్నాను…");
+            tester.speak(key, tabVoice[0], "నమస్కారం అమ్మగారు. నేను Jarvis. టిఫిన్ చేశారా?", new NaturalVoice.Callback() {
+                @Override public void onStart() { vInfo.setText("గొంతు: " + tabVoice[0] + " · " + tester.model); }
+                @Override public void onDone() { vInfo.setText("గొంతు: " + tabVoice[0] + " · " + tester.model + " ✓"); }
+                @Override public void onError(String message) { vInfo.setText("పనిచేయలేదు: " + message); }
+            });
+        });
+        box.addView(vInfo);
+        // where the tablet stands, its camera, strangers' pictures
+        TextView roomT = Ui.text(this, "", 15.5f, accent);
+        roomT.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 4));
+        Runnable showRoom = tabShowRoom = () -> roomT.setText("📍 టాబ్లెట్ ఉన్న చోటు: " + roomLabel(tabRoom[0]) + "  (మార్చడానికి నొక్కండి)");
+        showRoom.run();
+        roomT.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("టాబ్లెట్ ఎక్కడ ఉంది?")
+                .setSingleChoiceItems(ROOM_NAMES, "bedroom".equals(tabRoom[0]) ? 1 : 0, (d, w) -> {
+                    tabRoom[0] = w == 0 ? "hall" : "bedroom";
+                    showRoom.run();
+                    d.dismiss();
+                    tabChanged();
+                    summarizeShown();
+                })
+                .show());
+        box.addView(roomT);
+        tab.put("camera", toggle("📷 టాబ్లెట్ కెమెరా: ముఖం చూసి ప్రవర్తించడం (పగలు మాత్రమే, ఏదీ సేవ్ అవ్వదు)", Boolean.parseBoolean(tabStart("camera", "true", draft))));
+        tab.put("stranger_photo", toggle("🚪 తెలియని మనిషి కనిపిస్తే (అమ్మగారు \"తెలియదు\" అంటే / జవాబు లేకపోతే) ఫోటో నాకు పంపు",
+                Boolean.parseBoolean(tabStart("stranger_photo", "true", draft))));
+        tabField("ai_limit", "🧠 టాబ్లెట్ రోజు AI పరిమితి, ప్రశ్నలు; మీ key ఖర్చు (ఉదా: 200)", "200", draft);
+        tabSendButton();
+        tabChanged(); // (a draft from last time: its "● ఇంకా పంపలేదు" shows at once)
+    }
+
+    /** The tablet's last status (TabletWatch) in the 🔊 card. */
+    private void showTabStatus() {
+        if (tabStatus == null || tabAsking) return; // (his own 🔄 is waiting: its answer shows when it comes)
+        long at = TabletWatch.at(this);
+        tabStatus.setText(at == 0 ? "టాబ్లెట్ స్థితి: (కింద నొక్కండి)"
+                : "టాబ్లెట్ స్థితి (" + TabletWatch.ago(at, System.currentTimeMillis()) + "):\n" + TabletWatch.text(this));
+    }
+
+    /** Another Settings screen sent to the tablet meanwhile: these boxes show what the tablet has now (no stale values sent back). */
+    private void tabReloadIfSentElsewhere() {
+        if (tab.isEmpty()) return;
+        long s = ts().getLong("sent_at", 0);
+        if (s <= tabSeenSent) return;
+        tabSeenSent = s;
+        org.json.JSONObject draft = tabDraft();
+        for (String[] k : TAB_KEYS) {
+            String v = tabStart(k[0], k[1], draft);
+            if ("voice".equals(k[0])) tabVoice[0] = v;
+            else if ("room".equals(k[0])) tabRoom[0] = "bedroom".equals(v) ? "bedroom" : "hall";
+            else if (tab.get(k[0]) instanceof Switch) ((Switch) tab.get(k[0])).setChecked(Boolean.parseBoolean(v));
+            else if (tab.get(k[0]) instanceof EditText) ((EditText) tab.get(k[0])).setText(v);
+        }
+        if (tabShowVoice != null) tabShowVoice.run();
+        if (tabShowRoom != null) tabShowRoom.run();
+        lastFp = fingerprint(); // (not a change of his: nothing to save)
+        tabChanged();
+        summarizeShown();
+    }
+
+    /** "📤 టాబ్లెట్‌కి పంపు" (any of the cards): everything goes; kept as "what the tablet has" only once it went. */
+    private void sendTablet(boolean leaving) {
+        if (tab.isEmpty()) return;
+        final android.content.SharedPreferences ts = ts();
+        final org.json.JSONObject j = new org.json.JSONObject();
+        final java.util.Map<String, String> sentNow = new java.util.LinkedHashMap<>();
+        final java.util.Map<String, Integer> stockNow = new java.util.HashMap<>();
+        try {
+            for (String[] k : TAB_KEYS) {
+                String key = k[0], v = tabValue(key);
+                if (TAB_INTS.contains(key)) {
+                    int n;
+                    try { n = Integer.parseInt(v); } catch (Exception ex) { n = Integer.parseInt(tabStored(key, k[1])); }
+                    if (!String.valueOf(n).equals(v) && tab.get(key) instanceof EditText) ((EditText) tab.get(key)).setText(String.valueOf(n));
+                    j.put(key, n);
+                    v = String.valueOf(n);
+                } else if (TAB_BOOLS.contains(key)) {
+                    j.put(key, Boolean.parseBoolean(v));
+                } else if (!"meds_text".equals(key)) {
+                    j.put(key, v);
+                }
+                sentNow.put(key, v);
+            }
+            org.json.JSONArray ma = new org.json.JSONArray();
+            for (String line : tabValue("meds_text").split("\n")) {
+                int eq = line.indexOf('=');
+                if (eq <= 0) continue;
+                String nm = line.substring(0, eq).trim();
+                String[] seg = line.substring(eq + 1).split("\\|");
+                String rest = seg[0], food = "";
+                int stock = -1;
+                for (int i = 1; i < seg.length; i++) { // "| తిన్న తర్వాత", "| 30 మాత్రలు"
+                    String g = seg[i].trim();
+                    java.util.regex.Matcher num = java.util.regex.Pattern.compile("(\\d{1,4})").matcher(g);
+                    if (num.find() && (g.matches("(?s).*(మాత్ర|టాబ్లెట్|స్టాక్|tablet|stock).*") || g.matches("\\d{1,4}"))) stock = Integer.parseInt(num.group(1));
+                    else if (!g.isEmpty()) food = g;
+                }
+                if (nm.isEmpty() || Medicine.times(rest).length() == 0) continue;
+                org.json.JSONObject mj = new org.json.JSONObject().put("name", nm).put("times", rest.trim()).put("food", food);
+                // a count goes only when he wrote a new one (the tablet counts down as she takes them)
+                String sk = "stock_sent_" + nm.toLowerCase(java.util.Locale.ROOT);
+                if (stock >= 0 && ts.getInt(sk, -1) != stock) { mj.put("stock", stock); stockNow.put(sk, stock); }
+                ma.put(mj);
+            }
+            j.put("meds", ma);
+        } catch (Exception ex) {
+            setTabSent("పంపలేకపోయాను: " + ex.getMessage());
+            return;
+        }
+        setTabSent("పంపుతున్నాను…");
+        final android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            String r = HomeLink.sendSettings(app, j);
+            if (r.startsWith("పంపాను")) { // now the tablet has these
+                android.content.SharedPreferences.Editor e = ts.edit();
+                for (java.util.Map.Entry<String, String> s : sentNow.entrySet()) {
+                    String key = s.getKey(), v = s.getValue();
+                    if (TAB_INTS.contains(key)) e.putInt(key, Integer.parseInt(v));
+                    else if (TAB_BOOLS.contains(key)) e.putBoolean(key, Boolean.parseBoolean(v));
+                    else e.putString(key, v);
+                }
+                for (java.util.Map.Entry<String, Integer> s : stockNow.entrySet()) e.putInt(s.getKey(), s.getValue());
+                boolean same = true; // (the draft goes when it is just what went)
+                try {
+                    org.json.JSONObject d = new org.json.JSONObject(ts.getString("draft", "{}"));
+                    for (java.util.Map.Entry<String, String> s : sentNow.entrySet()) if (d.has(s.getKey()) && !d.optString(s.getKey()).equals(s.getValue())) same = false;
+                } catch (Exception ignored) {}
+                if (same || leaving) e.remove("draft"); // (leaving: what went is what he left with, cleaned)
+                long sentAt = System.currentTimeMillis();
+                e.putLong("sent_at", sentAt);
+                e.apply();
+                runOnUiThread(() -> tabSeenSent = sentAt);
+            }
+            runOnUiThread(() -> {
+                if (leaving || isFinishing() || isDestroyed()) Toast.makeText(app, "🏠 టాబ్లెట్: " + r, Toast.LENGTH_LONG).show();
+                if (isDestroyed()) return;
+                setTabSent(r);
+                tabChanged();
+                summarizeShown();
+                refreshTiles();
+            });
+        }, "tab-send").start();
+    }
+
+    /** Leaving Settings (✕ or back on the first screen): changes for the tablet not sent yet are asked about once. */
+    private void leave() {
+        autosave();
+        java.util.List<String> ch = tabChangedCards();
+        if (ch.isEmpty() || askedLeave) { finish(); return; }
+        askedLeave = true;
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("📤 టాబ్లెట్‌కి ఇంకా పంపలేదు")
+                .setMessage("అమ్మగారి టాబ్లెట్ సెట్టింగ్స్‌లో మీరు మార్చినవి (" + tabShorts(ch) + ") ఇంకా టాబ్లెట్‌కి వెళ్లలేదు. ఇప్పుడే పంపమంటారా?\n\n"
+                        + "\"తర్వాత\" అంటే మీరు రాసినవి ఇక్కడే ఉంటాయి; తర్వాత పంపొచ్చు.")
+                .setPositiveButton("📤 పంపు", (d, w) -> { sendTablet(true); finish(); })
+                .setNegativeButton("తర్వాత", (d, w) -> finish())
+                .setOnCancelListener(d -> askedLeave = false)
+                .show();
+    }
+
+    /** The one-line state of the tablet cards (with "● ఇంకా పంపలేదు" first when that card has changes not sent). */
+    private String tabSummary(String t) {
+        if (t.equals(TAB_TIMES)) return tabUnsentMark(t) + "టిఫిన్ " + tabValue("tiffin") + " · భోజనం " + tabValue("lunch") + " · రాత్రి " + tabValue("dinner");
+        if (t.equals(TAB_MEDS)) {
+            int n = 0;
+            for (String line : tabValue("meds_text").split("\n")) if (line.indexOf('=') > 0) n++;
+            return tabUnsentMark(t) + (n == 0 ? "మాత్రల లిస్ట్ ఖాళీ" : n + " మాత్రలు") + " · షుగర్ " + tabValue("sugar_low") + "–" + tabValue("sugar_high");
+        }
+        if (t.equals(TAB_MSG)) return "టాబ్లెట్ Jarvis అమ్మకి చదివి వినిపిస్తాడు";
+        if (t.equals(TAB_FUN)) return "చదరంగం, లూడో… · ఫోటో ఫ్రేమ్ · వారపు PDF";
+        if (t.equals(TAB_DEVICE)) return tabUnsentMark(t) + "గొంతు: " + tabVoice[0] + " · " + roomLabel(tabRoom[0]);
+        return null;
+    }
+
+    /** The tablet's photo frame: his gallery opens (photos are sent when he picks them). */
+    private void pickFramePhotos() {
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE)
+                    .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true), REQ_FRAME);
+        } catch (Exception ex) {
+            Toast.makeText(this, "ఫోటోలు ఎంచుకునే యాప్ తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
+        }
     }
 
     private static final int REQ_FRAME = 46; // (44 is the backup file's; 41-45 are taken)
     private TextView frameInfo;
 
     /** "రేపు 10:00", "ఈరోజు 18:30", "10:00" (today, else tomorrow), "2026-10-12 09:00" → millis; -1 when it can't be read. */
-    /** "🎲 అమ్మగారితో ఆట": which game, then its choice (side / size), then the game screen (she is asked). */
-    private void pickFarGame() {
-        java.util.List<String> ids = new java.util.ArrayList<>(), names = new java.util.ArrayList<>();
-        for (String[] g : Games.LIST) {
-            if (!Games.isBoard(g[0])) continue;
-            Game probe = Games.make(this, g[0]);
-            if (probe == null || !probe.farOk()) continue;
-            ids.add(g[0]);
-            names.add(g[1] + "  " + g[2]);
-        }
-        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("ఏ ఆట?")
-                .setItems(names.toArray(new String[0]), (d, i) -> {
-                    String id = ids.get(i);
-                    Game probe = Games.make(this, id);
-                    String[] opts = probe == null ? null : probe.options();
-                    if (opts == null || opts.length == 0) { GameActivity.invite(this, id, 0); return; }
-                    new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle(Games.name(id))
-                            .setItems(opts, (d2, k) -> GameActivity.invite(this, id, k)).show(); // ("నేను" = you, Anil)
-                }).setNegativeButton("వద్దు", null).show();
-    }
-
     static long whenOf(String s, long now) {
         String t = s == null ? "" : s.trim().replace('.', ':');
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})\\s+(\\d{1,2}):(\\d{2})").matcher(t);
@@ -3528,6 +4001,7 @@ public class SettingsActivity extends Activity {
         String want = i == null ? null : i.getStringExtra(EXTRA_SECTION);
         if (want == null || want.trim().isEmpty() || pageScroll == null) return;
         i.removeExtra(EXTRA_SECTION);
+        if (want.startsWith("group:")) { openGroup(want.substring(6).trim()); return; } // (a whole group: "group:tab")
         Card c = findCard(want.trim());
         if (c == null) { search.setText(want.trim()); return; } // no card by that name: show what the search finds
         showCard(c);
@@ -3564,6 +4038,14 @@ public class SettingsActivity extends Activity {
 
     private void updateFromIntent(Intent i) {
         jumpToSection(i);
+        String q = i == null ? null : i.getStringExtra(EXTRA_SEARCH); // (from All Features: the same words here)
+        if (q != null && !q.trim().isEmpty()) { i.removeExtra(EXTRA_SEARCH); search.setText(q.trim()); }
+        if (i != null && "frame".equals(i.getStringExtra(EXTRA_ACTION)) && !tab.isEmpty()) { // (All Features → 🖼️ photos for her frame)
+            i.removeExtra(EXTRA_ACTION);
+            Card c = cardTitled(TAB_FUN);
+            if (c != null) showCard(c);
+            pickFramePhotos();
+        }
         if (i == null || !i.getBooleanExtra(EXTRA_UPDATE_NOW, false)) return;
         i.removeExtra(EXTRA_UPDATE_NOW);
         if (pageScroll != null && updatesHeader != null) {

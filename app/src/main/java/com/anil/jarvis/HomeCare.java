@@ -837,7 +837,7 @@ final class HomeCare {
         if (coming && !night()) say(c, who(c) + ", అబ్బాయి ఇంటికి వచ్చేస్తున్నాడు!", "excited");
     }
 
-    /** Settings from his phone's "📱→🏠 టాబ్లెట్" section (JSON); returns the line sent back to him. */
+    /** Settings from his phone's tablet cards in Settings (JSON); returns the line sent back to him. */
     static String apply(Context c, String json) {
         try {
             JSONObject j = new JSONObject(json);
@@ -892,8 +892,42 @@ final class HomeCare {
         if (out(c)) b.append(" · ").append(who(c)).append(" బయటికి వెళ్లారు");
         if (quiet(c)) b.append(" · నిశ్శబ్దం");
         b.append(" · AI ఈరోజు ").append(aiUsed(c)).append("/").append(aiLimit(c)).append('\n');
+        java.util.List<String> bad = problems(c);
+        b.append(bad.isEmpty() ? PROBLEMS_NONE : PROBLEMS + android.text.TextUtils.join(" · ", bad)).append('\n');
         b.append(reportText(c));
         return b.toString();
+    }
+
+    /** The status line his phone reads for the "🏠 ఇంటి టాబ్లెట్" tile (TabletWatch); the items are joined with " · ". */
+    static final String PROBLEMS = "⚠️ సమస్యలు: ", PROBLEMS_NONE = "✓ సమస్యలు లేవు";
+
+    /** What stops the tablet doing its work that only someone at home can fix (each one short, in Telugu). */
+    static java.util.List<String> problems(Context c) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        try {
+            String coarse = android.Manifest.permission.ACCESS_COARSE_LOCATION, fine = android.Manifest.permission.ACCESS_FINE_LOCATION;
+            boolean loc = c.checkSelfPermission(coarse) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    || c.checkSelfPermission(fine) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            android.location.LocationManager lm = c.getSystemService(android.location.LocationManager.class);
+            boolean locOn = lm != null && (lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+                    || lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER));
+            long w = c.getSharedPreferences("home_screen", Context.MODE_PRIVATE).getLong("w_at", 0);
+            if (!loc) out.add("📍 Jarvis కి లొకేషన్ అనుమతి లేదు: వాతావరణం రాదు");
+            else if (!locOn) out.add("📍 టాబ్లెట్ లొకేషన్ ఆఫ్: వాతావరణం రాదు");
+            // (the home screen fetches it only while it shows: a night with the screen off is not a problem)
+            else if (MainActivity.visible && Net.online(c) && (w == 0 || System.currentTimeMillis() - w > 6 * 3600_000L)) out.add("☁️ వాతావరణం రావడం లేదు");
+            if (c.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                out.add("🎤 మైక్ అనుమతి లేదు: Jarvis వినలేడు");
+            else if (new Prefs(c).wakeReady() && !WakeService.running) out.add("👂 \"Jarvis\" పిలుపు వినడం ఆగి ఉంది");
+            if (HomeEyes.camOn(c) && c.checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                out.add("📷 కెమెరా అనుమతి లేదు");
+            String batt = HomeScreen.battery(c);
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("🔋 (\\d+)%").matcher(batt);
+            if (m.find() && Integer.parseInt(m.group(1)) <= 20) out.add("🔋 బ్యాటరీ " + m.group(1) + "%, ఛార్జింగ్ లేదు");
+            if (Medicine.all(c).isEmpty()) out.add("💊 మాత్రల లిస్ట్ ఖాళీ");
+            if (overLimit(c)) out.add("🧠 ఈరోజు AI పరిమితి అయిపోయింది");
+        } catch (Exception ignored) {}
+        return out;
     }
 
     // ---- the day's AI limit (his API key pays): beyond it, only Jarvis's own (offline) answers
