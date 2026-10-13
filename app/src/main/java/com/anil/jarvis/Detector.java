@@ -24,6 +24,7 @@ final class Detector {
         final String en, te, plural;
         final float score;
         final float[] box;
+        String colour = ""; // (filled in by the camera from the picture)
         Det(String en, float score, float[] box) {
             this.en = en;
             this.score = score;
@@ -32,9 +33,20 @@ final class Detector {
             this.te = t[0];
             this.plural = t[1];
         }
+        /** With its own words (a sign's text, a face's name). */
+        Det(String en, String te, String plural, float score, float[] box, String colour) {
+            this.en = en;
+            this.te = te == null ? "" : te;
+            this.plural = plural == null ? this.te : plural;
+            this.score = score;
+            this.box = box;
+            this.colour = colour == null ? "" : colour;
+        }
     }
 
-    private static final String ASSET = "objdet.tflite";
+    private static final String ASSET = "objdet.tflite", ASSET_BIG = "objdet2.tflite";
+    /** Which model this is: "lite0" / "lite2" (said in the zoom test). */
+    String kind = "lite0";
     private org.tensorflow.lite.Interpreter tfl;
     private int inW = 320, inH = 320;
     private boolean quant, signed;
@@ -56,15 +68,38 @@ final class Detector {
         try (InputStream in = c.getAssets().open(ASSET)) { return in.read() >= 0; } catch (Exception e) { return false; }
     }
 
+    /** A strong phone (not the home tablet, 5 GB+ of memory) gets the bigger, sharper model when the build has it. */
+    static boolean wantBig(Context c) {
+        try {
+            if (new Prefs(c).homeMode()) return false;
+            android.app.ActivityManager am = c.getSystemService(android.app.ActivityManager.class);
+            android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+            if (am == null) return false;
+            am.getMemoryInfo(mi);
+            if (mi.totalMem < 5L * 1024 * 1024 * 1024) return false;
+            try (InputStream in = c.getAssets().open(ASSET_BIG)) { return in.read() >= 0; } catch (Exception e) { return false; }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** Loaded once (null: no model in this build, or it would not open). Background thread. */
     static Detector open(Context c) {
+        boolean big = wantBig(c);
+        Detector d = open(c, big ? ASSET_BIG : ASSET);
+        if (d == null && big) d = open(c, ASSET); // (the big one would not open: the small one)
+        if (d != null) d.kind = big && d.inW >= 400 ? "lite2" : "lite0";
+        return d;
+    }
+
+    private static Detector open(Context c, String asset) {
         try {
-            File f = new File(c.getCacheDir(), ASSET);
+            File f = new File(c.getCacheDir(), asset);
             long want = -1;
-            try (android.content.res.AssetFileDescriptor fd = c.getAssets().openFd(ASSET)) { want = fd.getLength(); } catch (Exception ignored) {} // (stored uncompressed)
+            try (android.content.res.AssetFileDescriptor fd = c.getAssets().openFd(asset)) { want = fd.getLength(); } catch (Exception ignored) {} // (stored uncompressed)
             if (!f.exists() || f.length() < 1000 || want > 0 && f.length() != want) { // a new model in an update, or a copy cut short: copied again
-                File tmp = new File(c.getCacheDir(), ASSET + ".part");
-                try (InputStream in = c.getAssets().open(ASSET); FileOutputStream o = new FileOutputStream(tmp)) {
+                File tmp = new File(c.getCacheDir(), asset + ".part");
+                try (InputStream in = c.getAssets().open(asset); FileOutputStream o = new FileOutputStream(tmp)) {
                     byte[] buf = new byte[65536];
                     int n;
                     while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
@@ -107,6 +142,80 @@ final class Detector {
     private boolean orderKnown;
 
     synchronized void close() { try { if (tfl != null) tfl.close(); } catch (Exception ignored) {} tfl = null; }
+
+    /**
+     * A quarter of the picture looked at on its own (q: 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right, with a
+     * little overlap): small far things show up; the boxes come back in the whole picture's 0..1.
+     */
+    List<Det> detectQuarter(Bitmap pic, int q) {
+        List<Det> out = new ArrayList<>();
+        if (pic == null) return out;
+        int W = pic.getWidth(), H = pic.getHeight();
+        float ox = (q % 2) * 0.45f, oy = (q / 2) * 0.45f; // 55% wide tiles overlapping 10%
+        int x = Math.round(ox * W), y = Math.round(oy * H), w = Math.round(0.55f * W), h = Math.round(0.55f * H);
+        if (x + w > W) w = W - x;
+        if (y + h > H) h = H - y;
+        if (w < 32 || h < 32) return out;
+        Bitmap part;
+        try { part = Bitmap.createBitmap(pic, x, y, w, h); } catch (Exception e) { return out; }
+        List<Det> found = detect(part);
+        if (part != pic) part.recycle();
+        for (Det d : found) {
+            float[] b = d.box;
+            float[] m = {ox + b[0] * 0.55f, oy + b[1] * 0.55f, ox + b[2] * 0.55f, oy + b[3] * 0.55f};
+            if ((m[2] - m[0]) * (m[3] - m[1]) > 0.12f) continue; // (big things the whole-picture look already has)
+            if (b[0] < 0.02f && ox > 0 || b[2] > 0.98f && ox == 0 || b[1] < 0.02f && oy > 0 || b[3] > 0.98f && oy == 0) continue; // cut by the tile's edge
+            Det dd = new Det(d.en, d.te, d.plural, d.score, m, "");
+            out.add(dd);
+        }
+        return out;
+    }
+
+    /** Two lists of findings joined: a near-duplicate (same kind, overlapping a lot) is kept once, the surer one. */
+    static List<Det> merge(List<Det> a, List<Det> b) {
+        List<Det> out = new ArrayList<>(a);
+        for (Det d : b) {
+            boolean dup = false;
+            for (int i = 0; i < out.size(); i++) {
+                Det o = out.get(i);
+                if (o.en.equals(d.en) && LiveTracker.iou(o.box, d.box) > 0.45f) { dup = true; if (d.score > o.score) out.set(i, d); break; }
+            }
+            if (!dup) out.add(d);
+        }
+        return out;
+    }
+
+    /**
+     * The main colour of each thing (a person's shirt: the upper middle of the box; a vehicle / animal: its middle),
+     * read from the same small picture (cheap; done on the finder's thread).
+     */
+    static void colours(Bitmap pic, List<Det> dets) {
+        if (pic == null || dets == null) return;
+        int W = pic.getWidth(), H = pic.getHeight();
+        int[] px = new int[32 * 32];
+        for (Det d : dets) {
+            String g = Labels.group(d.en);
+            if (!g.equals("person") && !g.equals("vehicle") && !g.equals("animal")) continue;
+            float[] b = d.box;
+            float x0, y0, x1, y1;
+            if (g.equals("person")) { // the chest (the shirt), not the face or the legs
+                float bw = b[2] - b[0], bh = b[3] - b[1];
+                x0 = b[0] + bw * 0.3f; x1 = b[2] - bw * 0.3f; y0 = b[1] + bh * 0.22f; y1 = b[1] + bh * 0.5f;
+            } else {
+                float bw = b[2] - b[0], bh = b[3] - b[1];
+                x0 = b[0] + bw * 0.25f; x1 = b[2] - bw * 0.25f; y0 = b[1] + bh * 0.3f; y1 = b[3] - bh * 0.3f;
+            }
+            int sx = Math.max(0, Math.round(x0 * W)), sy = Math.max(0, Math.round(y0 * H));
+            int ex = Math.min(W, Math.round(x1 * W)), ey = Math.min(H, Math.round(y1 * H));
+            if (ex - sx < 3 || ey - sy < 3) continue;
+            int n = 0;
+            for (int j = 0; j < 32; j++) {
+                int yy = sy + (ey - sy - 1) * j / 31;
+                for (int i = 0; i < 32; i++) px[n++] = pic.getPixel(sx + (ex - sx - 1) * i / 31, yy);
+            }
+            d.colour = ColourWords.name(px, n);
+        }
+    }
 
     /** The things in this picture, surest first (background thread). */
     synchronized List<Det> detect(Bitmap pic) {
@@ -220,16 +329,42 @@ final class Detector {
                 {"scissors", "కత్తెర", "కత్తెరలు"}, {"teddy bear", "టెడ్డీ బొమ్మ", "టెడ్డీ బొమ్మలు"}, {"hair drier", "హెయిర్ డ్రయర్", "హెయిర్ డ్రయర్లు"},
                 {"toothbrush", "టూత్‌బ్రష్", "టూత్‌బ్రష్‌లు"}};
 
+        /** About how tall a thing of this kind is (metres), to guess how far it is; 0 = unknown. */
+        static float height(String en) {
+            switch (en == null ? "" : en) {
+                case "person": return 1.65f;
+                case "car": return 1.5f;
+                case "motorcycle": return 1.15f;
+                case "bicycle": return 1.0f;
+                case "bus": return 3.2f;
+                case "truck": return 3.0f;
+                case "dog": return 0.5f;
+                case "cat": return 0.28f;
+                case "cow": return 1.4f;
+                case "horse": return 1.6f;
+                case "chair": return 0.9f;
+                case "bottle": return 0.25f;
+                case "cell phone": return 0.15f;
+                case "laptop": return 0.25f;
+                case "tv": return 0.6f;
+                default: return 0f;
+            }
+        }
+
         /** {singular, plural} in Telugu (the English word itself when it is not in the list). */
         static String[] te(String en) {
             String e = en == null ? "" : en.toLowerCase(Locale.ROOT).trim();
+            if (e.equals("face")) return new String[]{"ముఖం", "ముఖాలు"};
+            if (e.startsWith("text:")) return new String[]{"బోర్డు", "బోర్డులు"};
             for (String[] t : TE) if (t[0].equals(e)) return new String[]{t[1], t[2]};
             return new String[]{e, e};
         }
 
-        /** The kind's group, for colours and counting: person, vehicle, animal or thing. */
+        /** The kind's group, for colours and counting: person, vehicle, animal, thing; text (a sign) and face are the camera's own. */
         static String group(String en) {
+            if (en != null && en.startsWith("text:")) return "text";
             switch (en == null ? "" : en) {
+                case "face": return "face";
                 case "person": return "person";
                 case "bicycle": case "car": case "motorcycle": case "bus": case "train": case "truck": case "boat": case "airplane": return "vehicle";
                 case "bird": case "cat": case "dog": case "horse": case "sheep": case "cow": case "elephant": case "bear": case "zebra": case "giraffe": return "animal";

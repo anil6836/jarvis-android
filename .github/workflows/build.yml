@@ -50,6 +50,13 @@ jobs:
             || { curl -fsSL --retry 3 -o "$F" "https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/android/lite-model_efficientdet_lite0_detection_metadata_1.tflite" && ok; } \
             || { curl -fsSL --retry 3 -o "$F" "https://tfhub.dev/tensorflow/lite-model/efficientdet/lite0/detection/metadata/1?lite-format=tflite" && ok; } \
             || { rm -f "$F"; echo "::warning::Object finder model not downloaded; the camera's live rings are off in this build"; }
+          # The sharper model for strong phones (the S25 Ultra); the tablet keeps the small one. Not fatal either.
+          G=app/src/main/assets/objdet2.tflite
+          ok2() { [ -s "$G" ] && [ "$(stat -c %s "$G")" -gt 3000000 ] && [ "$(dd if="$G" bs=1 skip=4 count=4 2>/dev/null)" = "TFL3" ]; }
+          curl -fsSL --retry 3 -o "$G" "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/int8/latest/efficientdet_lite2.tflite" && ok2 \
+            || { curl -fsSL --retry 3 -o "$G" "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float16/latest/efficientdet_lite2.tflite" && ok2; } \
+            || { curl -fsSL --retry 3 -o "$G" "https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/android/lite-model_efficientdet_lite2_detection_metadata_1.tflite" && ok2; } \
+            || { rm -f "$G"; echo "::warning::Big object finder (Lite2) not downloaded; the phone uses the small one"; }
           ls -la app/src/main/assets
 
       - name: Download the face memory model (FaceNet), published next to the APK

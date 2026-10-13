@@ -15,11 +15,15 @@ import java.util.Map;
 final class LiveTracker {
     static final class Track {
         final int id;
-        final String en, te, plural, group;
+        final String en, plural, group;
+        String te;            // (a face's name can arrive later)
         final float[] box = new float[4];
         int hits;
         long seen, born;
         float score;
+        String colour = "";   // the main colour seen on it (ColourWords names), "" unknown
+        float vx, vy;         // how it moves on the screen (fractions of the screen per second)
+        float distM;          // about how far (metres), 0 unknown (the camera fills it in for the tags)
         Track(int id, Detector.Det d, long now) {
             this.id = id;
             en = d.en;
@@ -31,9 +35,15 @@ final class LiveTracker {
             seen = now;
             born = now;
             score = d.score;
+            colour = d.colour == null ? "" : d.colour;
         }
         float cx() { return (box[0] + box[2]) / 2; }
         float cy() { return (box[1] + box[3]) / 2; }
+        float h() { return box[3] - box[1]; }
+        float speed() { return (float) Math.hypot(vx, vy); }
+        /** ఎడమ / మధ్య / కుడి by where it is. */
+        String side() { float x = cx(); return x < 0.36f ? "ఎడమ" : x > 0.64f ? "కుడి" : "మధ్య"; }
+        boolean far() { return h() < 0.14f; }
     }
 
     /** A thing must be seen this many times before its ring shows. */
@@ -71,28 +81,63 @@ final class LiveTracker {
             took[t] = true;
             used[d] = true;
             Track tr = tracks.get(t);
-            float[] b = dets.get(d).box;
+            Detector.Det dd = dets.get(d);
+            float[] b = dd.box;
+            float ocx = tr.cx(), ocy = tr.cy();
             for (int i = 0; i < 4; i++) tr.box[i] = tr.box[i] * 0.45f + b[i] * 0.55f; // (smooth, but follows)
+            long dt = Math.max(16, now - tr.seen);
+            float nvx = (tr.cx() - ocx) * 1000f / dt, nvy = (tr.cy() - ocy) * 1000f / dt;
+            tr.vx = tr.vx * 0.6f + nvx * 0.4f;
+            tr.vy = tr.vy * 0.6f + nvy * 0.4f;
             tr.hits++;
             tr.seen = now;
-            tr.score = dets.get(d).score;
+            tr.score = dd.score;
+            if (dd.colour != null && !dd.colour.isEmpty()) tr.colour = dd.colour;
+            if (dd.te != null && !dd.te.isEmpty() && (tr.te == null || tr.te.isEmpty() || "face".equals(tr.en))) tr.te = dd.te;
         }
         for (int d = 0; d < dets.size(); d++) if (!used[d]) tracks.add(new Track(next++, dets.get(d), now));
-        tracks.removeIf(t -> now - t.seen > GONE_MS || t.hits < STEADY && now - t.seen > 400);
+        for (Track t : tracks) if (now - t.seen > goneMs(t) || t.hits < STEADY && now - t.seen > 400) gone.add(t);
+        tracks.removeIf(t -> now - t.seen > goneMs(t) || t.hits < STEADY && now - t.seen > 400);
+        if (gone.size() > 40) gone.subList(0, gone.size() - 40).clear();
+    }
+
+    /** Small far things (found only by the slower close look) and signs may skip a look or two. */
+    private static long goneMs(Track t) {
+        if ("text".equals(t.group) || "face".equals(t.group)) return 2600;
+        return t.h() < 0.12f ? 1600 : GONE_MS;
+    }
+
+    private final List<Track> gone = new ArrayList<>();
+
+    /** The steady things that left since the last call (for the event log). */
+    synchronized List<Track> drainGone() {
+        List<Track> out = new ArrayList<>();
+        for (Track t : gone) if (t.hits >= STEADY) out.add(t);
+        gone.clear();
+        return out;
     }
 
     /** The rings to draw: steady ones, seen lately. */
     synchronized List<Track> shown(long now) {
         List<Track> out = new ArrayList<>();
-        for (Track t : tracks) if (t.hits >= STEADY && now - t.seen <= GONE_MS) out.add(copy(t));
+        for (Track t : tracks) if (t.hits >= STEADY && now - t.seen <= goneMs(t)) out.add(copy(t));
         return out;
     }
 
     private static Track copy(Track t) {
-        Track c = new Track(t.id, new Detector.Det(t.en, t.score, t.box.clone()), t.seen);
+        Track c = new Track(t.id, new Detector.Det(t.en, t.te, t.plural, t.score, t.box.clone(), t.colour), t.seen);
         c.hits = t.hits;
         c.born = t.born;
+        c.vx = t.vx;
+        c.vy = t.vy;
+        c.distM = t.distM;
         return c;
+    }
+
+    /** A steady track by its id (a copy), or null. */
+    synchronized Track byId(int id) {
+        for (Track t : tracks) if (t.id == id && t.hits >= STEADY) return copy(t);
+        return null;
     }
 
     synchronized void clear() { tracks.clear(); }
@@ -100,7 +145,7 @@ final class LiveTracker {
     /** How many of each kind are steady now (kind's English name → count), most first. */
     synchronized Map<String, Integer> counts(long now) {
         Map<String, Integer> m = new HashMap<>();
-        for (Track t : tracks) if (t.hits >= STEADY && now - t.seen <= GONE_MS) m.merge(t.en, 1, Integer::sum);
+        for (Track t : tracks) if (t.hits >= STEADY && now - t.seen <= goneMs(t) && !"text".equals(t.group) && !"face".equals(t.group)) m.merge(t.en, 1, Integer::sum);
         List<Map.Entry<String, Integer>> l = new ArrayList<>(m.entrySet());
         l.sort((a, b) -> b.getValue() != a.getValue().intValue() ? b.getValue() - a.getValue() : a.getKey().compareTo(b.getKey()));
         Map<String, Integer> out = new LinkedHashMap<>();
@@ -148,6 +193,54 @@ final class LiveTracker {
         }
         boolean onlyOnePerson = counts.size() == 1 && counts.containsKey("person") && total == 1;
         return b + (onlyOnePerson ? " కనిపిస్తున్నారు" : total == 1 ? " కనిపిస్తోంది" : " కనిపిస్తున్నాయి");
+    }
+
+    /**
+     * What is where, in his words: "ఎడమ వైపు ఇద్దరు కదులుతున్నారు, మధ్యలో ఒక తెల్ల కారు ఆగి ఉంది, కుడి వైపు దూరంగా ఒక బైక్ వెళ్తోంది".
+     * Up to 3 sides × 2 kinds; "" when nothing. Pure words from the phone's own finder (no AI).
+     */
+    static String sides(List<Track> ts) {
+        if (ts == null || ts.isEmpty()) return "";
+        String[] order = {"ఎడమ", "మధ్య", "కుడి"};
+        List<String> parts = new ArrayList<>();
+        for (String side : order) {
+            // kind → tracks on this side
+            Map<String, List<Track>> kinds = new LinkedHashMap<>();
+            for (Track t : ts) {
+                if ("text".equals(t.group) || "face".equals(t.group) || !side.equals(t.side())) continue;
+                kinds.computeIfAbsent(t.en, k -> new ArrayList<>()).add(t);
+            }
+            if (kinds.isEmpty()) continue;
+            List<Map.Entry<String, List<Track>>> l = new ArrayList<>(kinds.entrySet());
+            l.sort((a, b) -> b.getValue().size() - a.getValue().size());
+            StringBuilder b = new StringBuilder(side.equals("మధ్య") ? "మధ్యలో " : side + " వైపు ");
+            int k = 0;
+            for (Map.Entry<String, List<Track>> e : l) {
+                if (k++ >= 2) break;
+                List<Track> g = e.getValue();
+                int n = g.size();
+                boolean person = "person".equals(e.getKey());
+                boolean moving = false, far = true;
+                String colour = "";
+                for (Track t : g) { if (t.speed() > 0.06f) moving = true; if (!t.far()) far = false; if (n == 1) colour = t.colour; }
+                String[] te = Detector.Labels.te(e.getKey());
+                if (k > 1) b.append(", ");
+                if (far) b.append("దూరంగా ");
+                String cw = colour.isEmpty() || person && n > 1 ? "" : ColourWords.te(colour) + " ";
+                if (person) b.append(n == 1 ? "ఒకరు" : n == 2 ? "ఇద్దరు" : n == 3 ? "ముగ్గురు" : n + " మంది");
+                else b.append(n == 1 ? "ఒక " + cw + te[0] : n + " " + te[1]);
+                String group = Detector.Labels.group(e.getKey());
+                if (person) b.append(moving ? " కదులుతున్నారు" : " ఉన్నారు");
+                else if ("vehicle".equals(group)) b.append(moving ? (n == 1 ? " వెళ్తోంది" : " వెళ్తున్నాయి") : (n == 1 ? " ఆగి ఉంది" : " ఆగి ఉన్నాయి"));
+                else if ("animal".equals(group)) b.append(moving ? (n == 1 ? " కదులుతోంది" : " కదులుతున్నాయి") : (n == 1 ? " ఉంది" : " ఉన్నాయి"));
+                else b.append(n == 1 ? " ఉంది" : " ఉన్నాయి");
+            }
+            parts.add(b.toString());
+        }
+        if (parts.isEmpty()) return "";
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < parts.size(); i++) out.append(i == 0 ? "" : ", ").append(parts.get(i));
+        return out.toString();
     }
 
     /**

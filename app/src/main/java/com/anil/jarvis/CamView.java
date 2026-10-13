@@ -145,6 +145,7 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
         zoom = 1f;
         digital = 1f;
         cx = cy = 0.5f;
+        stabX = stabY = 0;
         main.post(this::applyDigital);
         if (wanted && tex.isAvailable()) start();
     }
@@ -166,6 +167,12 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
             Boolean fl = ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
             flash = fl != null && fl;
             active = ch.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+            try { // how wide the lens sees (to guess how far things are)
+                float[] fls = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+                android.util.SizeF ps = ch.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+                focalMm = fls != null && fls.length > 0 ? fls[0] : 0;
+                sensorLongMm = ps == null ? 0 : Math.max(ps.getWidth(), ps.getHeight());
+            } catch (Exception ignored) { focalMm = 0; }
             ratioZoom = false;
             maxZoom = 1f;
             minZoom = 1f;
@@ -316,6 +323,43 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
     /** Where (cx, cy) now is. */
     float[] digitalCenter() { return new float[]{cx, cy}; }
 
+    private float focalMm, sensorLongMm;
+
+    /**
+     * How many degrees of the world the screen's height shows right now (with the camera's and Jarvis's zoom); 0 when
+     * the phone doesn't say. The portrait screen's height runs along the sensor's long side.
+     */
+    float fovShownDeg() {
+        if (focalMm <= 0 || sensorLongMm <= 0) return 0;
+        int H = getHeight(), th = tex.getHeight();
+        if (H == 0 || th == 0) return 0;
+        double halfTan = sensorLongMm / (2 * focalMm);        // the whole sensor, at 1×
+        halfTan *= Math.min(1f, H / (float) th);              // only the part on the screen
+        halfTan /= Math.max(1f, zoom * digital);              // and the zoom
+        return (float) Math.toDegrees(2 * Math.atan(halfTan));
+    }
+
+    /** About how far a thing is (metres) that is `realHeightM` tall and fills `boxH` (0..1) of the screen's height; 0 unknown. */
+    float distanceM(float realHeightM, float boxH) {
+        float fov = fovShownDeg();
+        if (fov <= 0 || boxH <= 0.005f || realHeightM <= 0) return 0;
+        double screenM = realHeightM / boxH;                  // what the whole screen height spans at that distance
+        return (float) (screenM / (2 * Math.tan(Math.toRadians(fov / 2))));
+    }
+
+    // ---- a steadier zoomed picture: the phone's small shakes are countered on the screen (only room inside the zoom)
+    private float stabX, stabY; // in fractions of the screen
+
+    /** Nudge the shown picture by this much (fractions of the screen); it is clamped to the room the zoom leaves. */
+    void setSteady(float sx, float sy) {
+        float room = Math.max(0f, (digital - 1) / (2 * digital)) * 0.9f;
+        stabX = Math.max(-room, Math.min(room, sx));
+        stabY = Math.max(-room, Math.min(room, sy));
+        applyDigital();
+    }
+
+    float[] steady() { return new float[]{stabX, stabY}; }
+
     /** Jarvis's zoom: the picture made bigger on the screen around (cx, cy). */
     private void applyDigital() {
         int W = getWidth(), H = getHeight(), tw = tex.getWidth(), th = tex.getHeight();
@@ -326,8 +370,8 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
         tex.setPivotY(0);
         tex.setScaleX(digital);
         tex.setScaleY(digital);
-        tex.setTranslationX(lx * (digital - 1) - x0 * digital);
-        tex.setTranslationY(ly * (digital - 1) - y0 * digital);
+        tex.setTranslationX(lx * (digital - 1) - x0 * digital + stabX * W);
+        tex.setTranslationY(ly * (digital - 1) - y0 * digital + stabY * H);
     }
 
     /** 🌙 night look: the camera keeps its picture brighter (longer exposure), for dark streets and rooms. */

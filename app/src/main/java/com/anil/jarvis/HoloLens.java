@@ -2,6 +2,7 @@ package com.anil.jarvis;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -42,6 +43,9 @@ final class HoloLens extends View {
     private int safeTop, safeBottom;
     private final List<LiveTracker.Track> tracks = new ArrayList<>();
     private boolean dim;
+    /** The steadied picture's nudge (fractions of the screen): the rings follow it. */
+    private float shiftX, shiftY;
+    void setShift(float sx, float sy) { shiftX = sx; shiftY = sy; }
 
     HoloLens(Context c) {
         super(c);
@@ -112,11 +116,73 @@ final class HoloLens extends View {
         }
     }
 
+    private static final int C_TEXT = 0xFFC7B3FF, C_FACE = 0xFF9EE7FF;
+
+    /** A sign / board: a rounded box with its words above it. */
+    private void drawText(Canvas c, LiveTracker.Track t, long now) {
+        int W = getWidth(), H = getHeight();
+        int a = dim ? 70 : 200;
+        r.set(t.box[0] * W, t.box[1] * H, t.box[2] * W, t.box[3] * H);
+        line.setColor(alpha(C_TEXT, a));
+        line.setStrokeWidth(dp(1.3f));
+        c.drawRoundRect(r, dp(4), dp(4), line);
+        if (dim) return;
+        String s = "🪧 " + t.te;
+        float tw = small.measureText(s) + dp(10);
+        float y = Math.max(safeTop + dp(16), r.top - dp(6));
+        RectF tag = new RectF(r.left, y - dp(14), Math.min(W - dp(4), r.left + tw), y + dp(4));
+        fill.setColor(0xB3140A2A);
+        c.drawRoundRect(tag, dp(6), dp(6), fill);
+        small.setColor(C_TEXT);
+        c.drawText(s, tag.left + dp(5), y, small);
+        small.setColor(0xFFFFFFFF);
+    }
+
+    /** A face: four corner brackets; a name only for someone Anil introduced. */
+    private void drawFace(Canvas c, LiveTracker.Track t, long now) {
+        int W = getWidth(), H = getHeight();
+        int a = dim ? 70 : 220;
+        float x0 = t.box[0] * W, y0 = t.box[1] * H, x1 = t.box[2] * W, y1 = t.box[3] * H;
+        float L = Math.min(dp(10), (x1 - x0) * 0.3f);
+        boolean known = t.te != null && !t.te.isEmpty();
+        line.setColor(alpha(known ? Ui.C_GREEN : C_FACE, a));
+        line.setStrokeWidth(dp(1.6f));
+        c.drawLine(x0, y0, x0 + L, y0, line); c.drawLine(x0, y0, x0, y0 + L, line);
+        c.drawLine(x1, y0, x1 - L, y0, line); c.drawLine(x1, y0, x1, y0 + L, line);
+        c.drawLine(x0, y1, x0 + L, y1, line); c.drawLine(x0, y1, x0, y1 - L, line);
+        c.drawLine(x1, y1, x1 - L, y1, line); c.drawLine(x1, y1, x1, y1 - L, line);
+        if (dim || !known) return;
+        String s = "👤 " + t.te;
+        float tw = small.measureText(s) + dp(10);
+        RectF tag = new RectF(x0, y1 + dp(4), x0 + tw, y1 + dp(22));
+        fill.setColor(0xB3062A1A);
+        c.drawRoundRect(tag, dp(6), dp(6), fill);
+        c.drawText(s, tag.left + dp(5), tag.bottom - dp(5), small);
+    }
+
+    /** "86% · ~12 మీ ↗": the small facts under a ring. */
+    static String tag(LiveTracker.Track t) {
+        StringBuilder b = new StringBuilder();
+        b.append(Math.round(t.score * 100)).append('%');
+        if (t.distM > 0) b.append(" · ~").append(t.distM < 10 ? String.format(java.util.Locale.US, "%.1f", t.distM) : String.valueOf(Math.round(t.distM))).append(" మీ");
+        if (t.speed() > 0.05f) {
+            double ang = Math.toDegrees(Math.atan2(-t.vy, t.vx));
+            String[] arrows = {"→", "↗", "↑", "↖", "←", "↙", "↓", "↘"};
+            int i = (int) Math.floor(((ang + 360) % 360 + 22.5) / 45) % 8;
+            b.append(' ').append(arrows[i]);
+        }
+        if (!t.colour.isEmpty() && !"person".equals(t.group)) { String cw = ColourWords.te(t.colour); if (!cw.isEmpty()) b.append(" · ").append(cw); }
+        return b.toString();
+    }
+
     private void drawTracks(Canvas c, long now) {
         int W = getWidth(), H = getHeight();
         float spin = (now % 9000) / 9000f * 360f;
         for (LiveTracker.Track t : tracks) {
             if (lockActive() && lockTrack == t.id) continue; // (the locked one has its own ring)
+            if (isExtraLock(t.id)) continue;
+            if ("text".equals(t.group)) { drawText(c, t, now); continue; }
+            if ("face".equals(t.group)) { drawFace(c, t, now); continue; }
             int col = groupColor(t.group);
             int a = dim ? 90 : 230;
             float cx = t.cx() * W, cy = t.cy() * H, R = ringR(t);
@@ -128,6 +194,11 @@ final class HoloLens extends View {
             }
             float grow = Math.min(1f, (age - 220) / 300f);
             float rr = R * (0.35f + 0.65f * ease(grow));
+            if (!dim) { // a soft glow behind the ring
+                glow.setColor(alpha(col, 40));
+                glow.setStrokeWidth(dp(7));
+                c.drawCircle(cx, cy, rr + dp(2), glow);
+            }
             ring.setColor(alpha(col, a / 2));
             ring.setStrokeWidth(dp(1.2f));
             c.drawCircle(cx, cy, rr, ring);
@@ -144,16 +215,19 @@ final class HoloLens extends View {
             }
             fill.setColor(alpha(col, a));
             c.drawCircle(cx, cy, dp(2.2f), fill);
-            if (!dim && grow >= 1f) { // the name under it
-                String s = t.te;
-                float tw = label.measureText(s) + dp(12), ty = Math.min(H - safeBottom - dp(4), cy + rr + dp(22));
-                r.set(cx - tw / 2, ty - dp(15), cx + tw / 2, ty + dp(5));
+            if (!dim && grow >= 1f) { // the name under it, and the small facts
+                String s = t.te, facts = tag(t);
+                float tw = Math.max(label.measureText(s), small.measureText(facts)) + dp(12), ty = Math.min(H - safeBottom - dp(22), cy + rr + dp(22));
+                r.set(cx - tw / 2, ty - dp(15), cx + tw / 2, ty + dp(19));
                 fill.setColor(0x9906121E);
                 c.drawRoundRect(r, dp(9), dp(9), fill);
                 line.setColor(alpha(col, 200));
                 line.setStrokeWidth(dp(1));
                 c.drawRoundRect(r, dp(9), dp(9), line);
                 c.drawText(s, cx - tw / 2 + dp(6), ty, label);
+                small.setColor(alpha(0xFFFFFFFF, 210));
+                c.drawText(facts, cx - tw / 2 + dp(6), ty + dp(14), small);
+                small.setColor(0xFFFFFFFF);
             }
             if (sweepOn(now) && Math.abs(cx - sweepFront(now)) < dp(36)) { // the wave passing: it lights up
                 glow.setColor(alpha(col, 200));
@@ -254,12 +328,72 @@ final class HoloLens extends View {
     /** "చూస్తున్నాను…" on the card while the AI looks. */
     void setWaiting(String s) { waiting = s == null ? "" : s; invalidate(); }
 
-    void unlock() { lockOn = false; lockTrack = -1; thumb = null; invalidate(); }
+    void unlock() { lockOn = false; lockTrack = -1; thumb = null; clearExtras(); invalidate(); }
+
+    /** One more line typed onto the card (what the locked one is doing now). */
+    void appendCard(String line) {
+        if (!lockOn || line == null || line.isEmpty()) return;
+        String old = cardTextS;
+        String t = old.isEmpty() ? line : old + "\n" + line;
+        if (t.length() > 420) { int cut = t.length() - 420; t = t.substring(cut); old = old.length() > cut ? old.substring(cut) : ""; }
+        setCard(cardTitleS, t, thumb);
+        int k = 0;
+        while (k < clusters.length && clusters[k] <= old.length()) k++;
+        typeStart = SystemClock.uptimeMillis() - 28L * k; // (the old words stay; the new ones type)
+    }
     boolean locked() { return lockOn; }
     private boolean lockActive() { return lockOn; }
 
     /** A tap on the card (it closes then). */
     boolean hitCard(float x, float y) { return lockOn && SystemClock.uptimeMillis() - lockStart > 1200 && card.contains(x, y); }
+
+    // ---- more locks at once (a 2nd and 3rd ring in their own colours; the card is the first one's)
+    private static final int[] EXTRA_COL = {Ui.C_GREEN, 0xFFC78BFF};
+    private final List<float[]> extraBox = new ArrayList<>();
+    private final List<Integer> extraTrack = new ArrayList<>();
+    private final List<Long> extraAt = new ArrayList<>();
+
+    /** Another lock (up to 2 more); false when full. */
+    boolean addLock(float[] box, int trackId) {
+        if (extraBox.size() >= 2) return false;
+        extraBox.add(box.clone());
+        extraTrack.add(trackId);
+        extraAt.add(SystemClock.uptimeMillis());
+        invalidate();
+        return true;
+    }
+
+    int extraCount() { return extraBox.size(); }
+    int extraTrack(int i) { return i < extraTrack.size() ? extraTrack.get(i) : -1; }
+    float[] extraBox(int i) { return extraBox.get(i).clone(); }
+    void setExtraTrack(int i, int id) { if (i < extraTrack.size()) extraTrack.set(i, id); }
+    void setExtraBox(int i, float[] box) { if (i < extraBox.size()) { float[] b = extraBox.get(i); for (int k = 0; k < 4; k++) b[k] = b[k] * 0.5f + box[k] * 0.5f; invalidate(); } }
+    void clearExtras() { extraBox.clear(); extraTrack.clear(); extraAt.clear(); invalidate(); }
+    private boolean isExtraLock(int id) { return id >= 0 && extraTrack.contains(id); }
+
+    private void drawExtras(Canvas c, long now) {
+        int W = getWidth(), H = getHeight();
+        for (int i = 0; i < extraBox.size(); i++) {
+            float[] b = extraBox.get(i);
+            int col = EXTRA_COL[i % EXTRA_COL.length];
+            float cx = (b[0] + b[2]) / 2 * W, cy = (b[1] + b[3]) / 2 * H;
+            float R = Math.max(dp(22), Math.min(Math.min(W, H) * 0.3f, 0.5f * Math.min((b[2] - b[0]) * W, (b[3] - b[1]) * H) + dp(6)));
+            float k = ease((now - extraAt.get(i)) / 400f);
+            float rr = R * (0.4f + 0.6f * k);
+            ring.setColor(alpha(col, 230));
+            ring.setStrokeWidth(dp(2.4f));
+            c.drawCircle(cx, cy, rr, ring);
+            float spin = (now % 5000) / 5000f * 360f;
+            r.set(cx - rr - dp(8), cy - rr - dp(8), cx + rr + dp(8), cy + rr + dp(8));
+            for (int q = 0; q < 3; q++) c.drawArc(r, spin + q * 120, 50, false, ring);
+            String n = String.valueOf(i + 2);
+            fill.setColor(alpha(col, 230));
+            c.drawCircle(cx + rr * 0.72f, cy - rr * 0.72f, dp(9), fill);
+            label.setColor(0xFF06121E);
+            c.drawText(n, cx + rr * 0.72f - label.measureText(n) / 2, cy - rr * 0.72f + dp(4.5f), label);
+            label.setColor(0xFFFFFFFF);
+        }
+    }
 
     private void drawLock(Canvas c, long now) {
         if (!lockOn) return;
@@ -524,19 +658,147 @@ final class HoloLens extends View {
 
     // ================================================================ the edges: zoom, direction, tilt, time, battery
 
-    private float zoom = 1f, optMax = 1f, heading = Float.NaN, roll = Float.NaN;
+    private float zoom = 1f, optMax = 1f, heading = Float.NaN, roll = Float.NaN, pitch = Float.NaN;
     private String time = "";
     private int battery = -1;
     private long bootStart;
 
-    void setGauges(float zoom, float optMax, float heading, float roll, String time, int battery) {
+    void setGauges(float zoom, float optMax, float heading, float roll, float pitch, String time, int battery) {
         this.zoom = zoom;
         this.optMax = optMax;
         this.heading = heading;
         this.roll = roll;
+        this.pitch = pitch;
         this.time = time == null ? "" : time;
         this.battery = battery;
         invalidate();
+    }
+
+    // ---- the living mesh: the picture's own corners, drifting into place
+    private float[] mesh = new float[0];
+    private long meshAt;
+
+    void setPoints(float[] pts) {
+        float[] nw = pts == null ? new float[0] : pts;
+        if (mesh.length == 0 || nw.length == 0) { mesh = nw.clone(); meshAt = SystemClock.uptimeMillis(); invalidate(); return; }
+        // each new point eases from the nearest old one (so the mesh flows instead of flickering)
+        float[] out = new float[nw.length];
+        for (int i = 0; i < nw.length / 2; i++) {
+            float x = nw[i * 2], y = nw[i * 2 + 1], bx = x, by = y, bd = 0.0016f;
+            for (int j = 0; j < mesh.length / 2; j++) {
+                float dx = mesh[j * 2] - x, dy = mesh[j * 2 + 1] - y, d = dx * dx + dy * dy;
+                if (d < bd) { bd = d; bx = mesh[j * 2]; by = mesh[j * 2 + 1]; }
+            }
+            out[i * 2] = bx * 0.5f + x * 0.5f;
+            out[i * 2 + 1] = by * 0.5f + y * 0.5f;
+        }
+        mesh = out;
+        meshAt = SystemClock.uptimeMillis();
+        invalidate();
+    }
+
+    private void drawMesh(Canvas c, long now) {
+        if (mesh.length < 6 || dim) return;
+        int W = getWidth(), H = getHeight();
+        long age = now - meshAt;
+        if (age > 2500) return;
+        int a = age > 1800 ? (int) (90 * (1 - (age - 1800) / 700f)) : 90;
+        int acc = accent();
+        line.setColor(alpha(acc, a / 2));
+        line.setStrokeWidth(dp(0.8f));
+        int n = mesh.length / 2;
+        float maxD = 0.09f * 0.09f;
+        for (int i = 0; i < n; i++) {
+            float x = mesh[i * 2] * W, y = mesh[i * 2 + 1] * H;
+            if (y < safeTop || y > H - safeBottom) continue;
+            int links = 0;
+            for (int j = i + 1; j < n && links < 3; j++) {
+                float dx = mesh[j * 2] - mesh[i * 2], dy = mesh[j * 2 + 1] - mesh[i * 2 + 1];
+                if (dx * dx + dy * dy < maxD) { c.drawLine(x, y, mesh[j * 2] * W, mesh[j * 2 + 1] * H, line); links++; }
+            }
+        }
+        fill.setColor(alpha(acc, a + 60));
+        for (int i = 0; i < n; i++) {
+            float x = mesh[i * 2] * W, y = mesh[i * 2 + 1] * H;
+            if (y < safeTop || y > H - safeBottom) continue;
+            c.drawCircle(x, y, dp(1.4f), fill);
+        }
+    }
+
+    // ---- the live board at the right: what is here (bars) and what just happened
+    private final List<String[]> boardRows = new ArrayList<>(); // {name, count}
+    private final List<String> events = new ArrayList<>();
+    private long eventAt;
+
+    void setBoard(java.util.Map<String, Integer> counts, List<String> lastEvents) {
+        boardRows.clear();
+        if (counts != null) {
+            int k = 0;
+            for (java.util.Map.Entry<String, Integer> e : counts.entrySet()) {
+                if (k++ >= 5) break;
+                String[] te = Detector.Labels.te(e.getKey());
+                boardRows.add(new String[]{e.getValue() == 1 ? te[0] : te[1], String.valueOf(e.getValue())});
+            }
+        }
+        if (lastEvents != null && !lastEvents.equals(events)) { events.clear(); events.addAll(lastEvents); eventAt = SystemClock.uptimeMillis(); }
+        invalidate();
+    }
+
+    private void drawBoard(Canvas c, long now) {
+        if (dim || !live || lockOn && !cardLeft) return;
+        if (boardRows.isEmpty() && events.isEmpty()) return;
+        int W = getWidth();
+        float x1 = W - dp(14), w = dp(132), x0 = x1 - w, y = safeTop + dp(150);
+        int acc = accent();
+        for (String[] row : boardRows) {
+            int n = Integer.parseInt(row[1]);
+            small.setAlpha(230);
+            c.drawText(row[0], x0, y, small);
+            String cnt = row[1];
+            c.drawText(cnt, x1 - small.measureText(cnt), y, small);
+            float bw = w * Math.min(1f, n / 6f);
+            fill.setColor(alpha(acc, 60));
+            r.set(x0, y + dp(3), x1, y + dp(6));
+            c.drawRoundRect(r, dp(2), dp(2), fill);
+            fill.setColor(alpha(acc, 200));
+            r.set(x0, y + dp(3), x0 + bw, y + dp(6));
+            c.drawRoundRect(r, dp(2), dp(2), fill);
+            y += dp(19);
+        }
+        if (!events.isEmpty()) {
+            y += dp(6);
+            line.setColor(alpha(acc, 90));
+            line.setStrokeWidth(dp(1));
+            c.drawLine(x0, y - dp(10), x1, y - dp(10), line);
+            long age = now - eventAt;
+            for (int i = 0; i < events.size() && i < 4; i++) {
+                int a = i == 0 && age < 400 ? (int) (255 * age / 400f) : 255 - i * 45;
+                small.setAlpha(a);
+                String e = events.get(i);
+                if (small.measureText(e) > w) { while (e.length() > 2 && small.measureText(e + "…") > w) e = e.substring(0, e.length() - 1); e += "…"; }
+                c.drawText(e, x0, y, small);
+                y += dp(15);
+            }
+        }
+        small.setAlpha(255);
+    }
+
+    // ---- scanlines and a soft dark edge (depth)
+    private Shader scanShader;
+    private void drawScreenFx(Canvas c) {
+        int W = getWidth(), H = getHeight();
+        if (W == 0 || H == 0) return;
+        if (scanShader == null) {
+            Bitmap b = Bitmap.createBitmap(1, 4, Bitmap.Config.ARGB_8888);
+            b.setPixel(0, 0, 0x14000000);
+            scanShader = new BitmapShader(b, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT);
+        }
+        fill.setShader(scanShader);
+        c.drawRect(0, 0, W, H, fill);
+        fill.setShader(null);
+        fill.setShader(new RadialGradient(W / 2f, H / 2f, Math.max(W, H) * 0.75f, new int[]{0x00000000, 0x00000000, 0x4D000000}, new float[]{0f, 0.72f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, W, H, fill);
+        fill.setShader(null);
     }
 
     /** The camera opened: the edges light up one after another. */
@@ -628,8 +890,68 @@ final class HoloLens extends View {
             c.drawText(s, x - small.measureText(s), y, small);
             small.setAlpha(255);
         }
-        // the four corners light up once at the start
+        // the heading tape along the top (N · NE · E …), sliding with the direction
+        k = bootK(now, 1);
+        if (k > 0 && !Float.isNaN(heading) && live) {
+            float ty = safeTop + dp(10), half = W * 0.36f, pxPerDeg = half / 45f;
+            float hd = (heading % 360 + 360) % 360;
+            c.save();
+            c.clipRect(W / 2f - half, ty - dp(14), W / 2f + half, ty + dp(14));
+            line.setColor(alpha(acc, (int) (110 * k)));
+            line.setStrokeWidth(dp(1));
+            for (int dgr = -50; dgr <= 50; dgr += 10) {
+                float deg = Math.round(hd / 10f) * 10 + dgr;
+                float x = W / 2f + (deg - hd) * pxPerDeg;
+                int d360 = ((int) deg % 360 + 360) % 360;
+                boolean major = d360 % 45 == 0;
+                c.drawLine(x, ty + dp(major ? 2 : 6), x, ty + dp(11), line);
+                if (major) {
+                    String[] n = {"ఉ", "ఈ", "తూ", "ఆ", "ద", "నై", "ప", "వా"};
+                    String lab = n[d360 / 45];
+                    small.setAlpha((int) (230 * k));
+                    c.drawText(lab, x - small.measureText(lab) / 2, ty, small);
+                    small.setAlpha(255);
+                }
+            }
+            c.restore();
+            fill.setColor(alpha(Ui.C_AMBER, (int) (240 * k)));
+            Path p = new Path();
+            p.moveTo(W / 2f, ty + dp(13)); p.lineTo(W / 2f - dp(4), ty + dp(18)); p.lineTo(W / 2f + dp(4), ty + dp(18)); p.close();
+            c.drawPath(p, fill);
+        }
+        // the centre: a slowly turning reticle (hidden while something is locked), and the horizon line
+        k = bootK(now, 3);
+        if (k > 0 && live && !lockOn && bottom - top > dp(160)) {
+            float cx = W / 2f, cy = H / 2f, R = dp(26) * (0.6f + 0.4f * k);
+            float spin = (now % 20000) / 20000f * 360f;
+            ring.setColor(alpha(acc, (int) (150 * k)));
+            ring.setStrokeWidth(dp(1.2f));
+            r.set(cx - R, cy - R, cx + R, cy + R);
+            for (int q = 0; q < 4; q++) c.drawArc(r, spin + q * 90 + 8, 74, false, ring);
+            ring.setStrokeWidth(dp(1));
+            for (int q = 0; q < 4; q++) {
+                double ang = Math.toRadians(q * 90);
+                c.drawLine(cx + (float) Math.cos(ang) * (R + dp(3)), cy + (float) Math.sin(ang) * (R + dp(3)), cx + (float) Math.cos(ang) * (R + dp(9)), cy + (float) Math.sin(ang) * (R + dp(9)), ring);
+            }
+            fill.setColor(alpha(acc, (int) (200 * k)));
+            c.drawCircle(cx, cy, dp(1.6f), fill);
+            if (!Float.isNaN(roll)) { // the horizon: a thin line that stays level while the phone tilts, up / down with the pitch
+                float dy = Float.isNaN(pitch) ? 0 : Math.max(-H * 0.22f, Math.min(H * 0.22f, pitch / 45f * H * 0.22f));
+                c.save();
+                c.rotate(-roll, cx, cy + dy);
+                line.setColor(alpha(acc, (int) (70 * k)));
+                line.setStrokeWidth(dp(1));
+                c.drawLine(cx - W * 0.3f, cy + dy, cx - R - dp(14), cy + dy, line);
+                c.drawLine(cx + R + dp(14), cy + dy, cx + W * 0.3f, cy + dy, line);
+                c.restore();
+            }
+        }
+        // the four corners light up once at the start, and a ring sweeps out from the middle
         if (bootStart > 0 && now - bootStart < 1300) {
+            float bk = ease((now - bootStart) / 900f);
+            ring.setColor(alpha(acc, (int) (160 * (1 - bk))));
+            ring.setStrokeWidth(dp(2));
+            c.drawCircle(W / 2f, H / 2f, Math.max(W, H) * 0.7f * bk, ring);
             float q = 1 - Math.abs((now - bootStart) / 650f - 1);
             line.setColor(alpha(acc, (int) (220 * q)));
             line.setStrokeWidth(dp(2.2f));
@@ -680,18 +1002,26 @@ final class HoloLens extends View {
 
     @Override protected void onDraw(Canvas c) {
         long now = SystemClock.uptimeMillis();
+        if (live) drawScreenFx(c);
         drawGauges(c, now);
+        c.save();
+        c.translate(shiftX * getWidth(), shiftY * getHeight()); // (the steadied picture's nudge)
         if (live) {
+            drawMesh(c, now);
             drawSweep(c, now);
             drawTracks(c, now);
         }
         drawLens(c, now);
+        drawExtras(c, now);
         drawLock(c, now);
+        c.restore();
+        drawBoard(c, now);
         drawThumbs(c, now);
         drawRemark(c, now);
         boolean moving = live && (!tracks.isEmpty() || sweepOn(now)) || lockOn || now - lensStart < 800 || !thumbs.isEmpty()
                 || bootStart > 0 && now - bootStart < 1400
-                || !remarkS.isEmpty();
+                || !remarkS.isEmpty() || live && mesh.length > 0 && now - meshAt < 2500 || !extraBox.isEmpty()
+                || live && !Float.isNaN(heading); // (the reticle turns)
         boolean typing = lockOn && waiting.isEmpty() && (now - typeStart) / 28 < clusters.length;
         boolean fast = lockOn && (now - lockStart < 1500 || typing) || sweepOn(now) || now - lensStart < 800;
         if (moving) postInvalidateDelayed(fast ? 16 : 33); // (a settled lock only turns its brackets: 30 a second is enough)

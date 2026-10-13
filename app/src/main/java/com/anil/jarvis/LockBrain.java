@@ -23,7 +23,8 @@ final class LockBrain {
     }
 
     static String system() {
-        return "You are JARVIS, the eyes of Anil's camera (Telangana, India). Answer only in simple, natural Telugu. "
+        return "You are JARVIS, the eyes of Anil's camera (Telangana, India). Answer only in simple, natural spoken Telugu, like a sharp friend beside him: "
+                + "say sides as మీ ఎడమ వైపు / కుడి వైపు / ముందు, rough distances (సుమారు 20 మీటర్లు) when obvious, and address him as Anil now and then. "
                 + "Reply with ONLY this JSON, nothing else: "
                 + "{\"found\":true,\"box\":[x0,y0,x1,y1],\"name\":\"short Telugu name, e.g. ఎర్ర చొక్కా అబ్బాయి / జెయింట్ వీల్ / తెల్ల కారు\","
                 + "\"kind\":\"person|vehicle|animal|place|thing\",\"say\":\"1-2 short Telugu sentences: what it is, or what they are doing right now\","
@@ -32,6 +33,25 @@ final class LockBrain {
                 + "PEOPLE: say only what can be seen (what they are doing, holding, wearing, where they are, how they seem: happy, busy); "
                 + "never say who they are, never guess a name, and nothing about religion, caste, health or anything private. "
                 + "A child: describe kindly, nothing more. If it is not in the picture: found=false, no box, and in say where he might point the camera.";
+    }
+
+    /** Live commentary: one natural line, only when something new is happening. */
+    static String commentarySystem() {
+        return "You are JARVIS, commentating live for Anil (Telangana) on what his phone camera sees, like a friend standing beside him. "
+                + "Reply with ONE short natural spoken Telugu sentence (at most 18 words): what is happening right now, or what just changed. "
+                + "Use sides (మీ ఎడమ వైపు, కుడి వైపు, ముందు) and rough distances. Describe people only by what they do / wear; never names, never guesses about who they are, "
+                + "nothing about religion, caste or health. If nothing worth saying changed compared with the previous lines, reply exactly: NONE";
+    }
+
+    static String commentaryPrompt(String ownWords, float[] lockBox, String lockName, List<String> previous) {
+        StringBuilder b = new StringBuilder();
+        if (!previous.isEmpty()) { b.append("Previous lines (do not repeat): "); for (String p : previous) b.append("\"").append(p).append("\" "); b.append("\n"); }
+        if (ownWords != null && !ownWords.isEmpty()) b.append("The phone's own count now: ").append(ownWords).append("\n");
+        if (lockBox != null) b.append(String.format(Locale.US, "Anil is watching the one inside the box x %d-%d, y %d-%d (0-1000)%s: say what they / it are doing now.\n",
+                Math.round(lockBox[0] * 1000), Math.round(lockBox[2] * 1000), Math.round(lockBox[1] * 1000), Math.round(lockBox[3] * 1000),
+                lockName == null || lockName.isEmpty() ? "" : " (" + lockName + ")"));
+        b.append("Now: one line, or NONE.");
+        return b.toString();
     }
 
     /** "ఆ ఎర్ర చొక్కా అబ్బాయిని జూమ్ చేయి, ఏం చేస్తున్నాడు?" on the wide picture. */
