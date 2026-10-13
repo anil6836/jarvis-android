@@ -440,6 +440,12 @@
             android:label="ఇక్కడ ఏం జరిగింది"
             android:taskAffinity="com.anil.jarvis.camera"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+        <activity
+            android:name=".TourActivity"
+            android:exported="false"
+            android:label="Jarvis ట్యుటోరియల్"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
 
         <!-- A game with అమ్మగారు at the home tablet, from his phone (moves through his Telegram bot). -->
         <activity

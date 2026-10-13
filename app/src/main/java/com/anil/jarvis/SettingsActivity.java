@@ -978,6 +978,7 @@ public class SettingsActivity extends Activity {
         dailyTip = toggle("📚 రోజూ ఒక Jarvis చిట్కా (తెలియని ఫీచర్) చెప్పు", prefs.dailyTip());
         habitHour = numberField("🎯 అలవాట్లు చేశారా అని రాత్రి ఇన్ని గంటలకి అడుగు (0 = వద్దు)", String.valueOf(Math.max(0, prefs.habitHour())));
         heatAndBattery(); // (they were in the watch card)
+        companionAndForecast(); // V14 / V15: a caring word after a duty / long ride; the evening "ఇలాగే కొనసాగితే"
 
         section("అలారం, వ్యాయామం, అత్యవసర సమాచారం");
         alarmSongInfo = Ui.text(this, "🎵 అలారం పాట: " + (prefs.alarmSong().isEmpty() ? "అలారం టోన్ (పాట ఎంచుకోలేదు)" : prefs.alarmSongName()), 14.5f, Ui.MUTED);
@@ -3773,6 +3774,20 @@ public class SettingsActivity extends Activity {
         heat.setOnCheckedChangeListener((sw, on) -> Travel.set(this, "heat", on));
         Switch bat = toggle("🔋 డ్యూటీ ముందు / డ్యూటీలో / బయట ఫోన్ బ్యాటరీ తక్కువైతే, డ్యూటీ వరకు సరిపోదంటే చెప్పు", Power.on(this));
         bat.setOnCheckedChangeListener((sw, on) -> getSharedPreferences("jarvis_power", MODE_PRIVATE).edit().putBoolean("on", on).apply());
+    }
+
+    /** In "రోజువారీ హెచ్చరికలు": the companion word, the evening forecast, today's power report. */
+    private void companionAndForecast() {
+        Switch comp = toggle("🤝 డ్యూటీ అయ్యాక / గంట దాటిన రైడ్ తర్వాత Jarvis ఒక చిన్న మాట (\"జాగ్రత్తగా వెళ్ళండి\", \"నీళ్లు తాగండి\"; ప్రశ్న ఉండదు)", Companion.on(this));
+        comp.setOnCheckedChangeListener((sw, on) -> prefs.sp.edit().putBoolean("companion", on).apply());
+        Switch fc = toggle("🔮 సాయంత్రం 6–9 మధ్య \"ఇలాగే కొనసాగితే\" హెచ్చరిక, ఎరుపు ఉంటేనే (బ్యాటరీ, మందుల స్టాక్, నెల ఖర్చు, నిద్ర, సర్వీస్ కి.మీ)", Forecast.eveningOn(this));
+        fc.setOnCheckedChangeListener((sw, on) -> prefs.sp.edit().putBoolean("forecast_evening", on).apply());
+        button("🔋 ఈరోజు పవర్ వాడకం చూపించు (కెమెరా, రైడ్ GPS, మైక్… అంచనా)", v -> {
+            new Thread(() -> {
+                String r = Power.report(getApplicationContext());
+                runOnUiThread(() -> { if (!isFinishing()) dialog().setTitle("🔋 పవర్ వాడకం").setMessage(r).setPositiveButton("సరే", null).show(); });
+            }).start();
+        });
     }
 
     /** In "కార్/బైక్, కదలికలు": the card when he reaches home / leaves it. */

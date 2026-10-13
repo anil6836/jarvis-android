@@ -537,6 +537,20 @@ final class Tools {
         DEFS.add(new Def("hazard", "Places he marked as dangerous on the road ('ఇక్కడ గుంత ఉంది' = add here, 'ప్రమాద చోట్లు ఏవి' = list near him). Jarvis warns 90 m before them. "
                 + "action: add / list / remove; what: the danger in his words (గుంత, స్పీడ్ బ్రేకర్, నీళ్లు…).",
                 schema(new String[][]{{"action", "string", "add (default), list, remove"}, {"what", "string", "What the danger is"}, {"id", "string", "For remove: the hazard id"}})));
+        DEFS.add(new Def("forecast", "Time-to-completion and trends, from the phone's own numbers (no internet). action: eta = when what is running now finishes "
+                + "('ఫోన్ ఎప్పుడు ఫుల్ అవుతుంది', 'కుక్కర్ ఇంకా ఎంత సేపు', 'డ్యూటీ ఎప్పుడు అవుతుంది'); if_continues = 'ఇలాగే కొనసాగితే' projections (battery drain, medicines running out, "
+                + "the month's spending vs budget, sleep owed, bike service km); power = today's battery use by Jarvis's features ('ఈరోజు పవర్ వాడకం ఎంత', 'బ్యాటరీ ఎవరు తింటున్నారు'). "
+                + "All estimates: say so in a word. Read the 'said' text to him as it is.",
+                schema(new String[][]{{"action", "string", "eta (default), if_continues, power"}})));
+        DEFS.add(new Def("review", "A plain-words performance review. kind: workout = the last 7 days of walks and watch-counted exercises against the week before, with a verdict and one tip "
+                + "('ఈ వారం వ్యాయామ సమీక్ష', 'ఈ వారం ఎలా చేశాను'); service = the bike's service checklist (tyre air, brakes, chain/belt, lights, horn, battery, bolts) with what he ticked and what's left "
+                + "('సర్వీస్ చెక్‌లిస్ట్'). tick: the items he says he checked, in his words ('టైర్ గాలి, బ్రేకులు చూశాను' → tick='టైర్ గాలి, బ్రేకులు'; 'అన్నీ చూశాను' → 'అన్నీ'); reset: true clears the ticks after a service. "
+                + "Read the 'said' text to him as it is.",
+                schema(new String[][]{{"kind", "string", "workout (default) or service"}, {"tick", "string", "For service: the items he checked, his words"}, {"reset", "boolean", "For service: clear the ticks"}})));
+        DEFS.add(new Def("tutorial", "🎓 Tutorial mode: Jarvis (the character) walks him through a feature step by step by voice, on a screen with 'open' and 'next' buttons. "
+                + "Use when he asks how to use something ('కెమెరా ఎలా వాడాలి', 'కేస్ బోర్డ్ ఎలా', 'ట్యుటోరియల్ చూపించు'). name: the feature in his words; tours: camera, zoom/lock, cases, map, hazards, watch, amma tablet, first aid, 3D, forecast. "
+                + "Empty name opens the list.",
+                schema(new String[][]{{"name", "string", "The feature he asked about, in his words"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
                 schema(new String[][]{{"action", "string", "list (default), add or remove"}, {"name", "string", "Whose, as he calls them (e.g. 'అమ్మ', 'Ravi')"},
@@ -985,6 +999,9 @@ final class Tools {
             case "case_board": return "కేస్ బోర్డ్ తెరుస్తున్నాను…";
             case "hazard": return "ప్రమాద చోటు…";
             case "map_board": return "మ్యాప్ బోర్డ్ తెరుస్తున్నాను…";
+            case "forecast": return "లెక్క చూస్తున్నాను…";
+            case "review": return "సమీక్ష చేస్తున్నాను…";
+            case "tutorial": return "ట్యుటోరియల్ తెరుస్తున్నాను…";
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
@@ -1253,6 +1270,26 @@ final class Tools {
                     return ok().put("opened", hit == null ? "the list of cases" : hit.optString("title")).toString();
                 }
                 case "map_board": MapActivity.open(act()); return ok().put("opened", "map board").toString();
+                case "forecast": {
+                    String fa = a.optString("action", "eta");
+                    if (fa.equals("power")) return ok().put("said", Power.report(act())).toString();
+                    if (fa.equals("if_continues")) return ok().put("said", Forecast.ifContinuesText(act())).toString();
+                    java.util.List<String> eta = Forecast.etaLines(act());
+                    return ok().put("said", eta.isEmpty() ? "ఇప్పుడు నడుస్తున్నది ఏదీ లేదు (ఫోన్ ఛార్జ్, బైక్ ఛార్జ్, కుక్కర్, డ్యూటీ, మందు లెక్క)." : "⏳ " + String.join("\n⏳ ", eta)).toString();
+                }
+                case "review": {
+                    if (a.optString("kind", "workout").startsWith("service")) {
+                        if (a.optBoolean("reset")) Review.clearTicks(act());
+                        java.util.List<String> ticked = Review.tick(act(), a.optString("tick"));
+                        return ok().put("ticked", new JSONArray(ticked)).put("said", Review.service(act())).toString();
+                    }
+                    return ok().put("said", Review.workout(act())).toString();
+                }
+                case "tutorial": {
+                    TourActivity.Tour t = TourActivity.find(a.optString("name"));
+                    TourActivity.open(act(), t == null ? null : t.id);
+                    return ok().put("opened", t == null ? "the list of tutorials" : t.title).put("note", "The screen is open and Jarvis is speaking the steps there; say one short line only.").toString();
+                }
                 case "hazard": {
                     String hact = a.optString("action", "add");
                     if (hact.equals("remove")) return ok().put("removed", Hazards.remove(act(), a.optString("id"))).toString();

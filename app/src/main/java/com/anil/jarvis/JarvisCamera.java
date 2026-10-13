@@ -520,6 +520,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     @Override protected void onResume() {
         super.onResume();
+        try { Power.sample(this); } catch (Throwable ignored) {} // (the time before this is not the camera's)
         open = true;
         TopCard.stepAside(); // a message card talking at the top stops before the camera listens
         engaged = true; // just opened: he is about to ask (then, in wake mode, it waits for "Jarvis")
@@ -539,6 +540,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     @Override protected void onPause() {
         super.onPause();
+        try { Power.sample(this); } catch (Throwable ignored) {} // V12: the camera's minutes, credited while it is still open
         open = false;
         main.removeCallbacks(qrTick);
         main.removeCallbacks(arTick);

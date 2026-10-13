@@ -10,6 +10,8 @@ import org.json.JSONObject;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * O35 / W74: the phone's battery against his day. Low (20%) before or during a duty, or out on the road -> a word in
@@ -36,12 +38,16 @@ final class Power {
         int pct = level * 100 / scale;
         boolean plugged = i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0;
         SharedPreferences s = sp(c);
+        try { sample(c); } catch (Throwable ignored) {} // V12: what has been running since the last look
         if (plugged) {
             if (s.contains("samples") || s.getBoolean("told20", false)) s.edit().remove("samples").putBoolean("told20", false).putBoolean("told10", false).apply();
+            if (pct != lastPct) chargeSample(s, pct); // V11: how fast it rises on this charge
             lastPct = pct;
             return;
         }
+        if (s.contains("csamples")) s.edit().remove("csamples").apply();
         if (pct == lastPct) return;
+        if (lastPct > pct) useDrop(s, lastPct - pct);
         lastPct = pct;
         long now = System.currentTimeMillis();
         try {
@@ -68,6 +74,120 @@ final class Power {
         int drop = first.optInt("p") - last.optInt("p");
         if (ms < 45 * MIN || drop < 3) return -1;
         return drop / (ms / (double) HOUR);
+    }
+
+    private static void chargeSample(SharedPreferences s, int pct) {
+        long now = System.currentTimeMillis();
+        try {
+            JSONArray a = new JSONArray(s.getString("csamples", "[]")), keep = new JSONArray();
+            for (int k = 0; k < a.length(); k++) { JSONObject o = a.getJSONObject(k); if (now - o.optLong("t") < 3 * HOUR) keep.put(o); }
+            keep.put(new JSONObject().put("t", now).put("p", pct));
+            while (keep.length() > 60) keep.remove(0);
+            s.edit().putString("csamples", keep.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** % an hour it rose on this charge (pure); -1 when too little to tell (needs 10 minutes and 2%). */
+    static double chargePerHour(JSONArray a, long now) {
+        JSONObject first = null, last = null;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            if (o == null || now - o.optLong("t") > 3 * HOUR) continue;
+            if (first == null) first = o;
+            last = o;
+        }
+        if (first == null || last == null) return -1;
+        long ms = last.optLong("t") - first.optLong("t");
+        int rise = last.optInt("p") - first.optInt("p");
+        if (ms < 10 * MIN || rise < 2) return -1;
+        return rise / (ms / (double) HOUR);
+    }
+
+    // ================================================================ V12: what used the battery today (an estimate)
+
+    /** Feature → about how much battery an hour of it costs on a phone like his (estimates, said as such). */
+    static final String[][] USES = {
+            {"cam", "📷 Jarvis కెమెరా / HUD", "25"}, {"guard", "🏠 ఇంటి కాపలా కెమెరా", "18"}, {"ride", "🛵 రైడ్ GPS", "7"},
+            {"talk", "🗣️ Jarvis తో మాట్లాడటం", "8"}, {"wake", "🎙️ 'Jarvis' వినే మైక్", "1.5"}, {"watch", "⌚ వాచ్ లింక్", "1"}};
+
+    private static JSONObject use(SharedPreferences s) {
+        try { return new JSONObject(s.getString("use", "{}")); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    /** Credits the time since the last look to whatever is running now. Called on each battery broadcast, the 15-minute tick, and when the camera opens / closes. */
+    static synchronized void sample(Context c) {
+        SharedPreferences s = sp(c);
+        long now = System.currentTimeMillis();
+        String day = java.time.LocalDate.now().toString();
+        JSONObject u = use(s);
+        try {
+            if (!day.equals(u.optString("day"))) { s.edit().putString("use_prev", u.toString()).apply(); u = new JSONObject().put("day", day).put("t", now); }
+            long dt = Math.max(0, Math.min(now - u.optLong("t", now), 20 * MIN));
+            u.put("t", now);
+            if (dt > 0) {
+                if (JarvisCamera.open) add(u, "cam", dt);
+                try { if (Guard.running(c) && Guard.watching(c)) add(u, "guard", dt); } catch (Throwable ignored) {}
+                if (DriveService.running || Bike.riding(c)) add(u, "ride", dt);
+                if (MainActivity.busyTalking()) add(u, "talk", dt);
+                if (WakeService.running) add(u, "wake", dt);
+                if (WatchHub.seenAt > 0 && android.os.SystemClock.elapsedRealtime() - WatchHub.seenAt < 10 * MIN) add(u, "watch", dt);
+            }
+            s.edit().putString("use", u.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    private static void add(JSONObject u, String k, long dt) throws Exception { u.put(k, u.optLong(k) + dt); }
+
+    private static void useDrop(SharedPreferences s, int drop) {
+        JSONObject u = use(s);
+        try { u.put("drop", u.optInt("drop") + drop); s.edit().putString("use", u.toString()).apply(); } catch (Exception ignored) {}
+    }
+
+    /** (pure) the report's lines from today's use {cam:ms, ...}: minutes and the estimated % each took, biggest first. */
+    static List<String> reportLines(JSONObject u) {
+        List<String> out = new ArrayList<>();
+        List<double[]> rows = new ArrayList<>();
+        for (int i = 0; i < USES.length; i++) {
+            long ms = u.optLong(USES[i][0]);
+            if (ms < MIN) continue;
+            double pct = ms / (double) HOUR * Double.parseDouble(USES[i][2]);
+            rows.add(new double[]{i, ms, pct});
+        }
+        rows.sort((a, b) -> Double.compare(b[2], a[2]));
+        for (double[] r : rows) {
+            long min = Math.round(r[1] / MIN);
+            out.add(USES[(int) r[0]][1] + ": " + Status.hours(min) + " (~" + (r[2] < 1 ? "1% లోపు" : Math.round(r[2]) + "%") + ")");
+        }
+        return out;
+    }
+
+    /** V12: today's power picture: the phone's drop, what Jarvis ran and about how much each took, the watch and the tablet. */
+    static String report(Context c) {
+        SharedPreferences s = sp(c);
+        JSONObject u = use(s);
+        StringBuilder b = new StringBuilder("🔋 ఈరోజు పవర్ వాడకం (అంచనా):\n");
+        int drop = u.optInt("drop");
+        if (drop > 0) b.append("📱 ఫోన్ బ్యాటరీ ఈరోజు ఛార్జర్ లేకుండా ").append(drop).append("% తగ్గింది\n");
+        List<String> rows = reportLines(u);
+        if (rows.isEmpty()) b.append("Jarvis ఈరోజు పెద్దగా ఏమీ నడపలేదు (కెమెరా, రైడ్ GPS, మాటలు, మైక్ లెక్క)\n");
+        else for (String r : rows) b.append("• ").append(r).append("\n");
+        double est = 0;
+        for (int i = 0; i < USES.length; i++) est += u.optLong(USES[i][0]) / (double) HOUR * Double.parseDouble(USES[i][2]);
+        if (drop > 0 && est > 0) {
+            int share = (int) Math.round(Math.min(100, est * 100 / drop));
+            b.append("→ తగ్గిన దాంట్లో Jarvis వాటా సుమారు ").append(share).append("%; మిగతాది స్క్రీన్, ఇతర యాప్‌లు\n");
+        }
+        try {
+            JSONObject w = WatchHub.info;
+            if (w != null && w.optInt("bat", -1) >= 0 && WatchHub.seenAt > 0 && android.os.SystemClock.elapsedRealtime() - WatchHub.seenAt < 2 * HOUR)
+                b.append("⌚ వాచ్ బ్యాటరీ ").append(w.optInt("bat")).append("%\n");
+        } catch (Throwable ignored) {}
+        try {
+            String bits = TabletWatch.firstBits(TabletWatch.text(c));
+            if (!bits.isEmpty() && TabletWatch.at(c) > 0) b.append("📟 అమ్మ టాబ్లెట్: ").append(bits).append(" (").append(TabletWatch.ago(TabletWatch.at(c), System.currentTimeMillis())).append(")\n");
+        } catch (Throwable ignored) {}
+        b.append("(ఒక్కో ఫీచర్ శాతం అంచనా; Android Settings → Battery లో అసలు లెక్క.)");
+        return b.toString();
     }
 
     /** Minutes to charge so pct lasts until `until` at this rate (pure); 0 = it lasts. About 1% a minute on his charger. */

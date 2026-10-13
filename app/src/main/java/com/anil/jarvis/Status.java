@@ -75,6 +75,10 @@ final class Status {
         if (Stopwatch.running(app)) l.add("⏱️ స్టాప్‌వాచ్: " + Stopwatch.say(Stopwatch.elapsed(app)));
         int out = Lent.out(app).size();
         if (out > 0) l.add("📦 ఇచ్చిన వస్తువులు ఇంకా " + out + " తిరిగి రావాలి");
+        try { // V11: when what is running now finishes
+            List<String> eta = Forecast.etaLines(app);
+            for (int i = 0; i < eta.size() && i < 4; i++) if (!l.contains(eta.get(i))) l.add(eta.get(i));
+        } catch (Throwable ignored) {}
         return l;
     }
 
