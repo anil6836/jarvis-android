@@ -44,6 +44,13 @@ public class AlarmReceiver extends BroadcastReceiver {
                 new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 9000);
                 break;
             }
+            case Hazards.ACTION: { // a spot he marked as dangerous is near
+                boolean entering = i.getBooleanExtra(android.location.LocationManager.KEY_PROXIMITY_ENTERING, false);
+                PendingResult pr = goAsync();
+                try { Hazards.fired(c, i.getStringExtra("id"), entering); } catch (Exception ignored) {}
+                new Handler(Looper.getMainLooper()).postDelayed(pr::finish, 6000);
+                break;
+            }
             case Medicine.ACTION_DUE:
             case Medicine.ACTION_SNOOZE:
             case Medicine.ACTION_CHECK:
@@ -198,6 +205,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 try { SongAlarm.rescheduleAll(c); } catch (Exception ignored) {}
                 MedicalId.update(c);
                 GeoReminders.rearmAll(c);
+                try { Hazards.rearmAll(c); } catch (Exception ignored) {}
                 try { HomeArrival.armAfterBoot(c); } catch (Exception ignored) {} // W64
                 Proactive.schedule(c);
                 Faith.schedule(c);

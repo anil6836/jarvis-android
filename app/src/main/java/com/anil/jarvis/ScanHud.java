@@ -86,6 +86,8 @@ final class ScanHud extends View {
     }
 
     private static int colorOf(ScanBrain.Item x) {
+        if (x.risk == 2) return Ui.C_AMBER;
+        if (x.risk == 1) return 0xFFFACC15;
         if (x.fault) return 0xFFFF4D5E;
         String s = x.section == null ? "" : x.section;
         if (s.isEmpty()) return Ui.CYAN;

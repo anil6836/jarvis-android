@@ -865,6 +865,11 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (is(t, "రాత్రి చూపు", "నైట్ మోడ్", "నైట్ విజన్", "night mode", "night vision")) { toggleNight(); listenSoon(300); return; }
             if (is(t, "ఏమి మారింది", "ఏం మారింది", "ఏమైనా మారిందా", "what changed")) { whatChanged(); return; }
             if (is(t, "ఇక్కడ ఏం జరిగింది", "ఇక్కడ ఏమి జరిగింది", "ఏం జరిగింది", "ఏమి జరిగింది", "what happened here", "what happened")) { shotsStart("recon"); return; }
+            if (is(t, "గది విశ్లేషణ", "గది చూడు", "గది కొలతలు", "ఈ గది ఎలా ఉంది", "room analysis", "room check")) { shotsStart("room"); return; }
+            if (is(t, "ఇది సురక్షితమేనా", "ఇది సేఫా", "సురక్షితమేనా", "ప్రమాదమా", "is it safe", "is this safe", "ప్రమాద స్థాయి")) { safetyAsk(); return; }
+            if (is(t, "నిర్మాణం చూడు", "పగుళ్లు చూడు", "నిర్మాణ పరీక్ష", "structure check", "పగుళ్లు ఉన్నాయా")) { setMode("struct"); ask(defaultQuestion()); return; }
+            if (is(t, "ఎవరో పడిపోయారు", "గాయం అయింది", "ప్రథమ చికిత్స", "గాయపడ్డారు", "first aid", "someone fell", "దెబ్బ తగిలింది")) { firstAid(); return; }
+            if (is(t, "ప్రమాద చోట్లు", "ప్రమాద చోట్లు ఏవి", "గుర్తుపెట్టిన ప్రమాదాలు", "hazards", "my hazards")) { hazardList(); return; }
             if (is(t, "సాక్ష్యం కార్డ్", "సాక్ష్యం", "మూడు వైపులు", "వస్తువు మూడు వైపులు", "evidence card", "evidence")) { shotsStart("evidence"); return; }
             if (shots != null && is(t, "తీసుకో", "తీయి", "ఫోటో తీయి", "ఫోటో", "క్లిక్", "take", "capture")) { shotTake(); return; }
             if (shots != null && is(t, "అయింది", "అయిపోయింది", "చాలు", "done", "పూర్తి")) { if (shots.size() >= 2 || "evidence".equals(shotsKind)) shotsDone(); else tell("కనీసం 2 ఫోటోలు కావాలి.", false); return; }
@@ -887,6 +892,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (!guideNext.isEmpty() && is(t, "చూడు", "చూపిస్తున్నా", "చూపిస్తున్నాను", "అయింది", "రెడీ", "ఇదిగో", "ఇదిగో చూడు")) { guideStep(); return; }
         }
         boolean flow = pairKind != null || layersId != null || closeId != null || !guideNext.isEmpty() || shots != null;
+        if (!flow && Hazards.isMark(text)) { markHazard(text); return; } // "ఇక్కడ గుంత ఉంది"
         if (!flow && !frozen && det != null && liveOn()) { // "ఎంత మంది ఉన్నారు?": the phone's own count, at once
             List<String> kinds = LiveTracker.countAsked(text);
             if (!kinds.isEmpty()) { countNow(kinds); return; }
@@ -917,6 +923,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             case "nature": return "ఇది ఏంటి? ప్రమాదమా? దీని గురించి చెప్పు.";
             case "study": return "ఇది స్టెప్ బై స్టెప్ వివరించు.";
             case "inside": return "దీని లోపల ఏ parts ఉంటాయి? పొరలుగా, బయటి నుంచి లోపలికి చెప్పు.";
+            case "struct": return "ఈ నిర్మాణం / భాగం చెక్ చేయి: పగుళ్లు, తుప్పు, వంగినవి, లీక్‌లు, వదులైనవి ఎక్కడ? ఒక్కోదానికి ప్రమాద స్థాయి (1 గమనించు, 2 త్వరగా బాగు చేయించు, 3 తీవ్రం), ఏం చేయాలో చెప్పు.";
+            case "firstaid": return "ఇక్కడ ఎవరో గాయపడినట్టు ఉన్నారు. కనిపించే దాన్ని బట్టి ఇప్పుడు నేను ఏం చేయాలో ఒక్కో అడుగు చెప్పు; తీవ్రమైతే ముందు 108.";
             default: return "ఇది ఏంటి? దీని గురించి వివరంగా చెప్పు.";
         }
     }
@@ -1085,6 +1093,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         words.append(r.say);
         if (!r.report.isEmpty()) words.append("\n\n📋 ").append(r.report);
         if (r.estimate) words.append("\n\n(ఇది ఫోటో నుంచి అంచనా)");
+        if ("struct".equals(mode) && !r.items.isEmpty()) words.append("\n\n🔴 3 తీవ్రం · 🟠 2 త్వరగా బాగు · 🟡 1 గమనించు (ఫోటో నుంచి అంచనా; ఇంజనీర్ పరిశీలన కాదు)");
         if (!saved.isEmpty()) words.append("\n\n").append(saved);
         if (!open) { tell(words.toString(), false); save(q, r, pic, onScreen, deep, layer, close, false); return; } // he left: kept, not spoken
         say(words.toString());
@@ -1099,6 +1108,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             }
             if (!deep && onScreen && (r.hologram || r.items.size() >= 6) && !hasType(acts, "hologram")) acts.add(act("hologram"));
             if (("pcb".equals(r.kind) || "electronics".equals(r.kind)) && !hasType(acts, "pdf")) acts.add(act("pdf"));
+            if ("firstaid".equals(mode) && !hasType(acts, "dial")) acts.add(0, new JSONObject().put("type", "dial").put("number", "108").put("label", "📞 108 అంబులెన్స్"));
         } catch (Exception ignored) {}
         setActions(acts);
         if (onScreen && !skipSave) caseChip(); // 📁: this answer's scan onto a case board
@@ -1180,7 +1190,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     /** ✕ on the guided bar: the comparing, close-up, layers or guided check stops (what was saved stays). */
     private void cancelFlows() {
         if (busy) { Toast.makeText(this, "ఒక్క క్షణం, ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
-        if (shots != null) { for (Bitmap b : shots) b.recycle(); shots = null; }
+        if (shots != null) { for (Bitmap b : shots) b.recycle(); shots = null; main.removeCallbacks(roomTick); roomStart = 0; }
         pairKind = null;
         pairFirst = null;
         closeId = null;
@@ -1514,7 +1524,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 "🎛️ HUD సెట్టింగ్స్ (రింగ్స్, శబ్దాలు, బోర్డులు, ముఖాలు, మెష్…)", "🕸️ అన్నీ స్కాన్ చేయి",
                 "🔭 లోతైన స్కాన్ (AI, 15 సెకన్లకు): " + (sceneLive ? "ఆన్" : "ఆఫ్"), "🎙️ కామెంటరీ: " + (commentaryOn ? "ఆన్" : "ఆఫ్"),
                 "🌙 రాత్రి చూపు: " + (cam.night() ? "ఆన్" : "ఆఫ్"), "🔁 ఏమి మారింది?", "📸 HUD తో ఫోటో సేవ్", "📏 జూమ్ టెస్ట్", "⌚ లాక్ చేసినది వాచ్‌కి పంపు",
-                "🕵️ ఇక్కడ ఏం జరిగింది? (2–6 ఫోటోలు)", "📦 వస్తువు 3 వైపులు (సాక్ష్యం కార్డ్)", "📁 కేస్ బోర్డులు"};
+                "🕵️ ఇక్కడ ఏం జరిగింది? (2–6 ఫోటోలు)", "📦 వస్తువు 3 వైపులు (సాక్ష్యం కార్డ్)", "📁 కేస్ బోర్డులు",
+                "🧱 నిర్మాణ పరీక్ష (పగుళ్లు, తుప్పు, లీక్)", "🏠 గది విశ్లేషణ (నెమ్మదిగా తిరగండి)", "🩹 గాయపడినవారికి సహాయం", "⚠️ ఇది సురక్షితమేనా?", "📍 ఇక్కడ ప్రమాదం గుర్తుపెట్టు"};
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setItems(items, (dlg, w) -> {
                     switch (w) {
@@ -1546,6 +1557,17 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                         case 25: shotsStart("recon"); break;
                         case 26: shotsStart("evidence"); break;
                         case 27: CaseActivity.open(this, caseId); break;
+                        case 28: setMode("struct"); ask(defaultQuestion()); break;
+                        case 29: shotsStart("room"); break;
+                        case 30: firstAid(); break;
+                        case 31: safetyAsk(); break;
+                        case 32: {
+                            EditText e = new EditText(this);
+                            e.setHint("ఏమిటి? (గుంత, స్పీడ్ బ్రేకర్, నీళ్లు, వైరు…)");
+                            new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("📍 ఇక్కడ ప్రమాదం").setView(e)
+                                    .setPositiveButton("గుర్తుపెట్టు", (dd, ww) -> markHazard("ఇక్కడ " + e.getText().toString().trim() + " ఉంది")).setNegativeButton("వద్దు", null).show();
+                            break;
+                        }
                         default: break;
                     }
                 }).show();
@@ -2937,21 +2959,44 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         shots = new ArrayList<>();
         shotsKind = kind;
         if ("evidence".equals(kind)) say("📦 వస్తువును ముందు వైపు నుంచి చూపించి 📸 నొక్కండి. పక్కన నాణెం లేదా ఫోన్ పెడితే కొలతలు బాగా వస్తాయి.");
+        else if ("room".equals(kind)) { say("🏠 గది మధ్యలో నిలబడి ఫోన్‌ని నెమ్మదిగా ఒక చుట్టు తిప్పండి; నేనే ఫోటోలు తీసుకుంటాను. అయ్యాక ✅ నొక్కండి."); roomHeading = heading; roomTurned = 0; main.postDelayed(roomTick, 600); }
         else say("🕵️ జరిగిన చోటు / వస్తువు 2 నుంచి 6 ఫోటోలు తీయండి: ఒక్కోటి చూపించి 📸, అయ్యాక ✅.");
         shotsGuide();
     }
 
+    private float roomHeading = Float.NaN, roomTurned;
+    private long roomStart;
+
+    /** The room sweep: a photo every ~40° of turning (up to 9), done after a full turn or 40 s. */
+    private final Runnable roomTick = new Runnable() {
+        @Override public void run() {
+            if (shots == null || !"room".equals(shotsKind) || !open) return;
+            if (roomStart == 0) roomStart = System.currentTimeMillis();
+            main.postDelayed(this, 300);
+            if (shots.isEmpty()) { Bitmap b = cam.frame(1000); if (b != null) { shots.add(b); roomHeading = heading; shotsGuide(); } return; }
+            if (!Float.isNaN(heading) && !Float.isNaN(roomHeading)) {
+                float dlt = Math.abs(((heading - roomHeading) % 360 + 540) % 360 - 180);
+                if (dlt >= 40) {
+                    Bitmap b = cam.frame(1000);
+                    if (b != null) { shots.add(b); Sfx.hud(JarvisCamera.this, p, "mark"); }
+                    roomTurned += dlt;
+                    roomHeading = heading;
+                    shotsGuide();
+                }
+            }
+            if (shots.size() >= 9 || roomTurned >= 330 || System.currentTimeMillis() - roomStart > 40_000) { roomStart = 0; shotsDone(); }
+        }
+    };
+
     private void shotsGuide() {
         if (shots == null) return;
-        boolean ev = "evidence".equals(shotsKind);
-        String text = ev ? "📦 " + EVIDENCE_SIDES[Math.min(2, shots.size())] + " చూపించండి (" + (shots.size() + 1) + "/3)" : "🕵️ ఫోటో " + (shots.size() + 1) + " (2–6)";
+        boolean ev = "evidence".equals(shotsKind), room = "room".equals(shotsKind);
+        String text = ev ? "📦 " + EVIDENCE_SIDES[Math.min(2, shots.size())] + " చూపించండి (" + (shots.size() + 1) + "/3)" : room ? "🏠 నెమ్మదిగా తిరగండి… " + shots.size() + "/9 ఫోటోలు" : "🕵️ ఫోటో " + (shots.size() + 1) + " (2–6)";
         guideRow.removeAllViews();
         guideBar.setText(text);
         guideRow.addView(guideBar, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView shot = chip("📸 తీసుకో", true);
-        shot.setOnClickListener(v -> shotTake());
-        guideRow.addView(shot);
-        if (!ev && shots.size() >= 2) { TextView done = chip("✅ అయింది", false); done.setOnClickListener(v -> shotsDone()); guideRow.addView(done); }
+        if (!room) { TextView shot = chip("📸 తీసుకో", true); shot.setOnClickListener(v -> shotTake()); guideRow.addView(shot); }
+        if (!ev && shots.size() >= 2) { TextView done = chip("✅ అయింది", room); done.setOnClickListener(v -> shotsDone()); guideRow.addView(done); }
         TextView x = chip("✕", false);
         x.setOnClickListener(v -> cancelFlows());
         guideRow.addView(x);
@@ -2980,7 +3025,9 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         busy = true;
         hud.scanning(true);
         refreshButtons();
-        tell("evidence".equals(kind) ? "📦 కార్డ్ తయారు చేస్తున్నాను…" : "🕵️ ఏం జరిగిందో చూస్తున్నాను… (కొన్ని సెకన్లు)", false);
+        tell("evidence".equals(kind) ? "📦 కార్డ్ తయారు చేస్తున్నాను…" : "room".equals(kind) ? "🏠 గదిని చూస్తున్నాను…" : "🕵️ ఏం జరిగిందో చూస్తున్నాను… (కొన్ని సెకన్లు)", false);
+        main.removeCallbacks(roomTick);
+        roomStart = 0;
         final String cid = caseId;
         work.execute(() -> {
             String err = null, said = null;
@@ -2998,6 +3045,18 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                     three.recycle();
                     said = "📦 " + e.optString("name") + ". " + text;
                     after = () -> { if (cid != null) { CaseStore.addCard(this, cid, "evidence", sid, "📦 " + e.optString("name"), ScanStore.cut(text, 160)); Toast.makeText(this, "📁 కేస్‌కి కలిపాను", Toast.LENGTH_SHORT).show(); } else CaseActivity.addTo(this, "evidence", sid, "📦 " + e.optString("name"), ScanStore.cut(text, 160)); };
+                } else if ("room".equals(kind)) {
+                    Bitmap grid = Recon.grid(pics);
+                    String reply = Brain.oneShot(p, Recon.roomSystem(), Recon.roomPrompt(pics.size()), jpeg(grid, 1600, 78), false, 1600);
+                    JSONObject r = Recon.parseRoom(reply);
+                    if (r == null) throw new IllegalStateException("no room");
+                    String text = Recon.roomText(r);
+                    JSONObject data = new JSONObject().put("title", "🏠 " + r.optString("title")).put("kind", "room").put("mode", mode).put("say", text).put("room", r).put("noboxes", true);
+                    ScanStore.save(this, data, grid, "photo.jpg");
+                    final String sid = data.optString("id");
+                    grid.recycle();
+                    said = "🏠 " + r.optString("title") + ". " + text + (r.optInt("confidence", -1) >= 0 ? " (ఫోటోల నుంచి అంచనా, సుమారు " + r.optInt("confidence") + "% నమ్మకం.)" : "");
+                    after = () -> { if (cid != null) { CaseStore.addCard(this, cid, "scan", sid, "🏠 " + r.optString("title"), ScanStore.cut(text, 160)); } };
                 } else {
                     Bitmap grid = Recon.grid(pics);
                     String reply = Brain.oneShot(p, Recon.system(), Recon.prompt(pics.size(), null), jpeg(grid, 1600, 80), false, 2200);
@@ -3037,6 +3096,55 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 say(sd);
                 if (af != null) af.run();
             });
+        });
+    }
+
+    // ---- ⚠️ "ఇది సురక్షితమేనా?", 🩹 first aid, 📍 hazards
+
+    private void safetyAsk() {
+        ask("ఇది సురక్షితమేనా? ఇక్కడ కనిపించే ప్రమాదాలు (కరెంట్, పడే వస్తువులు, జారే చోటు, లోతు, వాహనాలు, జంతువులు, నిర్మాణం) చూసి say మొదటి మాటగా 🟢 సురక్షితం / 🟠 జాగ్రత్త / 🔴 ప్రమాదం అని చెప్పి, ఎందుకో, ఏం జాగ్రత్త తీసుకోవాలో 2-3 లైన్లలో చెప్పు. ప్రమాదం ఉన్న చోట్లు బాక్సులుగా (fault, risk).");
+    }
+
+    private void firstAid() {
+        setMode("firstaid");
+        say("🩹 చూస్తున్నాను. తీవ్రంగా ఉంటే ముందు 108 కి కాల్ చేయండి.");
+        main.postDelayed(() -> ask(defaultQuestion()), 1500);
+    }
+
+    /** "ఇక్కడ గుంత ఉంది": the spot (and a picture of it) is kept; Jarvis warns when he comes this way again. */
+    private void markHazard(String text) {
+        final String what = Hazards.label(text);
+        final Bitmap pic = frozen ? stillPic() : cam.frame(1200);
+        tell("📍 " + what + " గుర్తుపెడుతున్నాను…", false);
+        work.execute(() -> {
+            String sid = null;
+            try {
+                if (pic != null) {
+                    JSONObject data = new JSONObject().put("title", "⚠️ " + what).put("kind", "hazard").put("mode", mode).put("say", "ఇక్కడ " + what + " (ప్రమాద చోటు)").put("noboxes", true);
+                    ScanStore.save(this, data, pic, "photo.jpg");
+                    sid = data.optString("id");
+                }
+            } catch (Exception ignored) {}
+            android.location.Location here = null;
+            try { here = Travel.here(this); } catch (Exception ignored) {}
+            final android.location.Location h = here;
+            final String s = sid;
+            main.post(() -> {
+                if (h == null) { say("📍 ఈ చోటు ఎక్కడో ఫోన్‌కి తెలియలేదు (లొకేషన్ ఆన్ చేసి మళ్ళీ చెప్పండి). ఫోటో మాత్రం స్కాన్ చరిత్రలో ఉంచాను."); return; }
+                JSONObject o = Hazards.add(this, h.getLatitude(), h.getLongitude(), what, s);
+                if (o == null) { say("గుర్తుపెట్టలేకపోయాను."); return; }
+                Sfx.hud(this, p, "lock");
+                say("📍 గుర్తుపెట్టాను: " + what + ". ఈ దారిలో మళ్ళీ వచ్చినప్పుడు 90 మీటర్ల ముందే చెబుతాను" + (Hazards.canWatch(this) ? "." : "; దానికి లొకేషన్ అనుమతి కావాలి."));
+            });
+        });
+    }
+
+    private void hazardList() {
+        work.execute(() -> {
+            android.location.Location here = null;
+            try { here = Travel.here(this); } catch (Exception ignored) {}
+            final String t = Hazards.listText(this, here);
+            main.post(() -> say("📍 " + t));
         });
     }
 

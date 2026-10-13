@@ -22,7 +22,8 @@ final class ScanBrain {
     static final String[][] MODES = {
             {"auto", "🤖 ఆటో"}, {"shop", "🛒 షాపింగ్"}, {"med", "💊 మెడిసిన్"}, {"plant", "🌱 మొక్క / పంట"},
             {"elec", "⚡ ఎలక్ట్రానిక్స్"}, {"repair", "🔧 రిపేర్"}, {"vehicle", "🚗 వాహనం"}, {"doc", "📄 పేపర్లు"},
-            {"home", "🏠 ఇల్లు"}, {"nature", "🐍 జీవులు, ప్రదేశాలు"}, {"study", "📚 చదువు"}, {"inside", "🧅 లోపలి భాగాలు"}};
+            {"home", "🏠 ఇల్లు"}, {"nature", "🐍 జీవులు, ప్రదేశాలు"}, {"study", "📚 చదువు"}, {"inside", "🧅 లోపలి భాగాలు"},
+            {"struct", "🧱 నిర్మాణం"}, {"firstaid", "🩹 ప్రథమ చికిత్స"}};
 
     static String modeLabel(String id) {
         for (String[] m : MODES) if (m[0].equals(id)) return m[1];
@@ -165,6 +166,7 @@ final class ScanBrain {
         float[] box; // 0..1 of the picture: x0, y0, x1, y1 (null: not on the picture)
         boolean fault;
         float h = 1f;
+        int risk; // 0 none … 3 serious (the structure check's colours)
     }
 
     /** One answer. */
@@ -227,6 +229,10 @@ final class ScanBrain {
         x.section = o.optString("section").trim();
         x.fault = o.optBoolean("fault");
         x.faultWhy = clean(o.optString("fault_why"));
+        Object rk = o.opt("risk");
+        if (rk instanceof Number) x.risk = Math.max(0, Math.min(3, ((Number) rk).intValue()));
+        else if (rk instanceof String) { String r = ((String) rk).toLowerCase(Locale.ROOT); x.risk = r.matches(".*(high|serious|severe|3|ఎక్కువ|తీవ్ర).*") ? 3 : r.matches(".*(medium|moderate|2|మధ్య).*") ? 2 : r.matches(".*(low|minor|1|తక్కువ).*") ? 1 : 0; }
+        if (x.risk > 0) x.fault = true;
         x.price = o.optString("price").trim();
         x.buy = o.optString("buy").trim();
         x.sub = o.optString("sub").trim();
@@ -342,6 +348,15 @@ final class ScanBrain {
                 if (w.length() > 0) b.append("His saved warranties (say if this thing is still under warranty and that opening it may void it): ").append(w).append('\n');
             } catch (Exception ignored) {}
         }
+        if ("struct".equals(mode)) b.append("STRUCTURE CHECK: look for cracks, rust, bends, bulges, water marks, leaks, loose or missing fittings, burnt marks, rot, sagging, in walls, ceilings, "
+                + "pillars, beams, roofs, pipes, frames, tanks and vehicle frames. Each finding is an item with a tight box, fault=true, fault_why (what it is and why it matters), "
+                + "risk = 1 (watch), 2 (fix soon) or 3 (serious: keep away / get it seen now), info = what to do. Also list the parts that look fine as items without fault (risk 0). "
+                + "report = the overall picture in 2-3 Telugu lines; danger=true only when risk 3 exists. Say clearly this is an estimate from a photo, not an engineer's inspection.\n");
+        if ("firstaid".equals(mode)) b.append("FIRST AID: someone may be hurt. From what is VISIBLE only (awake or not, breathing movement, bleeding, position, burns, swelling), say calmly what to do "
+                + "RIGHT NOW in simple Telugu, one step at a time: the first line in say, the next step in next (he says 'చూడు' / 'అయింది' after each). If it could be serious "
+                + "(not responding, heavy bleeding, chest pain, a fall from height, a road accident, fits, burns bigger than a palm, breathing trouble): the very first step is to call 108, "
+                + "and add an action {type:dial, number:108, label:'📞 108 అంబులెన్స్'}. Never move someone with a possible neck or back injury except out of danger. Never diagnose, "
+                + "never name medicines or doses. Nothing about who the person is. warn = the one thing NOT to do.\n");
         if (guide != null && !guide.isEmpty()) b.append("A guided check is going on: ").append(guide).append('\n');
         if (talk != null && !talk.isEmpty()) b.append("The talk so far about this:\n").append(talk).append('\n');
         return b.toString();

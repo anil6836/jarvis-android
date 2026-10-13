@@ -117,6 +117,54 @@ final class Recon {
         return b.toString().trim();
     }
 
+    // ================================================================ a room, from a slow turn
+
+    static String roomSystem() {
+        return "You are JARVIS, looking at a room for Anil (Telangana) from a few photos taken while he turned slowly. Answer only in simple Telugu. "
+                + "Reply with ONLY this JSON: {\"title\":\"ఏ గది\",\"size_m\":[length,width,height] (rough estimates from doors ≈2 m, tiles, beds, people),\"size_note\":\"how you guessed\","
+                + "\"light\":\"natural light: where from, enough or not, 1 line\",\"air\":\"ventilation: windows / cross-breeze, 1 line\",\"layout\":\"what is where, 1-2 lines\","
+                + "\"fan_ac\":\"best place for a fan / AC / cooler and why\",\"issues\":[\"up to 5 short lines: damp, cracks, clutter, cables, poor light, safety\"],"
+                + "\"tips\":[\"up to 5 short lines: cheap improvements\"],\"confidence\":0-100}. Estimates only; never identify people; nothing about religion or private matters.";
+    }
+
+    static String roomPrompt(int photos) {
+        return "This is a grid of " + photos + " numbered photos of one room, taken in order while turning. Describe the room in the JSON.";
+    }
+
+    static JSONObject parseRoom(String reply) {
+        try {
+            String s = reply == null ? "" : reply.trim();
+            int a = s.indexOf('{'), z = s.lastIndexOf('}');
+            if (a < 0 || z <= a) return null;
+            JSONObject o = new JSONObject(s.substring(a, z + 1));
+            if (o.optString("title").isEmpty()) o.put("title", "గది");
+            return o;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static String roomText(JSONObject r) {
+        StringBuilder b = new StringBuilder();
+        JSONArray sz = r.optJSONArray("size_m");
+        if (sz != null && sz.length() >= 2) {
+            double l = sz.optDouble(0), w = sz.optDouble(1);
+            b.append("సుమారు ").append(fmt(l)).append(" × ").append(fmt(w)).append(" మీటర్లు");
+            if (sz.length() >= 3) b.append(", ఎత్తు ").append(fmt(sz.optDouble(2)));
+            b.append(" (సుమారు ").append(Math.round(l * w * 10.764)).append(" చ.అ).");
+            if (!r.optString("size_note").isEmpty()) b.append(" ").append(r.optString("size_note")).append('.');
+        }
+        if (!r.optString("light").isEmpty()) b.append(" వెలుతురు: ").append(r.optString("light")).append('.');
+        if (!r.optString("air").isEmpty()) b.append(" గాలి: ").append(r.optString("air")).append('.');
+        if (!r.optString("layout").isEmpty()) b.append(" అమరిక: ").append(r.optString("layout")).append('.');
+        if (!r.optString("fan_ac").isEmpty()) b.append(" ఫ్యాన్ / AC: ").append(r.optString("fan_ac")).append('.');
+        JSONArray is = r.optJSONArray("issues");
+        if (is != null && is.length() > 0) { b.append(" గమనించాల్సినవి: "); for (int i = 0; i < is.length(); i++) b.append(i == 0 ? "" : "; ").append(is.optString(i)); b.append('.'); }
+        JSONArray tips = r.optJSONArray("tips");
+        if (tips != null && tips.length() > 0) { b.append(" సలహాలు: "); for (int i = 0; i < tips.length(); i++) b.append(i == 0 ? "" : "; ").append(tips.optString(i)); b.append('.'); }
+        return b.toString().replaceAll("\\.\\.", ".").trim();
+    }
+
     // ================================================================ evidence: a thing from three sides
 
     static String evidenceSystem() {

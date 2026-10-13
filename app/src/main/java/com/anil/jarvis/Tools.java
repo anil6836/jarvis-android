@@ -533,6 +533,9 @@ final class Tools {
         DEFS.add(new Def("case_board", "Open his case boards ('కేస్ బోర్డ్ తెరువు', 'బైక్ కేస్ చూపించు'): everything about one problem on one board. "
                 + "name (optional): open the case whose title contains it; create: true makes a new case with that name.",
                 schema(new String[][]{{"name", "string", "Part of the case's title, or the new case's name"}, {"create", "boolean", "Make a new case"}})));
+        DEFS.add(new Def("hazard", "Places he marked as dangerous on the road ('ఇక్కడ గుంత ఉంది' = add here, 'ప్రమాద చోట్లు ఏవి' = list near him). Jarvis warns 90 m before them. "
+                + "action: add / list / remove; what: the danger in his words (గుంత, స్పీడ్ బ్రేకర్, నీళ్లు…).",
+                schema(new String[][]{{"action", "string", "add (default), list, remove"}, {"what", "string", "What the danger is"}, {"id", "string", "For remove: the hazard id"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
                 schema(new String[][]{{"action", "string", "list (default), add or remove"}, {"name", "string", "Whose, as he calls them (e.g. 'అమ్మ', 'Ravi')"},
@@ -979,6 +982,7 @@ final class Tools {
             case "duty": return "డ్యూటీ క్యాలెండర్ చూస్తున్నాను…";
             case "show_features": return "ఫీచర్లు తెరుస్తున్నాను…";
             case "case_board": return "కేస్ బోర్డ్ తెరుస్తున్నాను…";
+            case "hazard": return "ప్రమాద చోటు…";
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
@@ -1245,6 +1249,19 @@ final class Tools {
                     if (hit == null && a.optBoolean("create") && !cname.isEmpty()) hit = CaseStore.create(act(), cname);
                     CaseActivity.open(act(), hit == null ? null : hit.optString("id"));
                     return ok().put("opened", hit == null ? "the list of cases" : hit.optString("title")).toString();
+                }
+                case "hazard": {
+                    String hact = a.optString("action", "add");
+                    if (hact.equals("remove")) return ok().put("removed", Hazards.remove(act(), a.optString("id"))).toString();
+                    android.location.Location here = Travel.here(act());
+                    if (hact.equals("list")) {
+                        JSONArray arr = new JSONArray();
+                        for (JSONObject o : here == null ? Hazards.all(act()) : Hazards.near(act(), here.getLatitude(), here.getLongitude(), 50)) arr.put(o);
+                        return ok().put("hazards", arr).put("said", Hazards.listText(act(), here)).toString();
+                    }
+                    if (here == null) return "{\"error\":\"no location fix; ask him to turn location on\"}";
+                    JSONObject o = Hazards.add(act(), here.getLatitude(), here.getLongitude(), Hazards.label(a.optString("what")), null);
+                    return o == null ? "{\"error\":\"could not save\"}" : ok().put("saved", o).put("note", "Jarvis will warn him 90 m before this spot" + (Hazards.canWatch(act()) ? "" : " once location permission is given")).toString();
                 }
                 case "day_summary": return daySummary();
                 case "scan_qr": return scanQr(a.optBoolean("open", false));
