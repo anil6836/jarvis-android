@@ -39,7 +39,12 @@ final class Recon {
 
     /** The photos as one numbered grid (2 across), each at most 640 px wide. */
     static Bitmap grid(List<Bitmap> pics) {
-        int n = pics.size(), cols = n == 1 ? 1 : 2, rows = (n + cols - 1) / cols;
+        int n = pics.size();
+        return grid(pics, n == 1 ? 1 : n > 6 ? 3 : 2);
+    }
+
+    static Bitmap grid(List<Bitmap> pics, int cols) {
+        int n = pics.size(), rows = (n + cols - 1) / cols;
         int cw = 640, ch = 480, gap = 10;
         Bitmap out = Bitmap.createBitmap(cols * cw + (cols + 1) * gap, rows * ch + (rows + 1) * gap, Bitmap.Config.RGB_565);
         Canvas c = new Canvas(out);
@@ -235,6 +240,91 @@ final class Recon {
             layers.put(new JSONObject().put("_title", o.optString("title")).put("_say", o.optString("say"))); // (the whole's words, last)
         } catch (Exception ignored) {}
         return layers;
+    }
+
+    // ================================================================ a thing from all round: views + a shape model (360°)
+
+    static String objectSystem() {
+        return "You are JARVIS, modelling ONE object for Anil (Telangana) from numbered photos he took walking around it (and maybe from above / below). "
+                + "Answer only in simple Telugu words. Reply with ONLY this JSON: {\"title\":\"short Telugu name of the object\",\"say\":\"2-3 Telugu lines about it\","
+                + "\"dims_cm\":{\"width\":0,\"depth\":0,\"height\":0,\"note\":\"how you estimated (reference object / rough)\"},"
+                + "\"views\":[{\"n\":1,\"label\":\"short Telugu name of this side (ముందు వైపు, ఎడమ వైపు, పై నుంచి…)\",\"items\":[{\"name\":\"Telugu part name\",\"box\":[x0,y0,x1,y1],"
+                + "\"info\":\"one short Telugu line\",\"section\":\"group\",\"fault\":false,\"fault_why\":\"\"}]}],"
+                + "\"shape\":{\"parts\":[{\"id\":\"p1\",\"name\":\"Telugu part name\",\"type\":\"cylinder|box|ring|sphere|cone\",\"c\":[x,y,z],\"r\":0,\"r2\":0,\"h\":0,"
+                + "\"s\":[sx,sy,sz],\"axis\":\"z\",\"color\":\"#rrggbb\",\"info\":\"one short Telugu line\",\"section\":\"group\",\"seen\":true}]},"
+                + "\"top_seen\":true,\"bottom_seen\":false,\"confidence\":0-100}. "
+                + "Rules: box = integers 0-1000 of THAT numbered photo's own width and height. Up to 10 items per photo (the real visible parts: bolts, flanges, holes, handles, labels, wheels). "
+                + "shape = the object as 3 to 12 simple solids in centimetres, origin at the object's centre, z up: cylinder/cone (r, r2 top radius for cone, h along axis), ring (r outer, r2 inner, h), "
+                + "box (s = full sizes), sphere (r); c = centre of each solid; axis x|y|z. Make the solids touch like the real thing (a cable drum = two big thin cylinders + a core cylinder + a centre hole as a ring). "
+                + "seen=false for a solid you did not actually see (an unphotographed bottom). Colours like the real material. People only as 'మనిషి', never who. No ID numbers, phone numbers or plates.";
+    }
+
+    /** photos: the numbered grid; where: per photo "around 45°" / "from above" / "from below". */
+    static String objectPrompt(int photos, String[] where, String note) {
+        StringBuilder b = new StringBuilder("This picture is a grid of " + photos + " numbered photos (1, 2, 3… left to right, top to bottom) of one object: ");
+        for (int i = 0; i < photos; i++) b.append(i == 0 ? "" : ", ").append(i + 1).append(" = ").append(where != null && i < where.length && where[i] != null ? where[i] : "around");
+        b.append(". Give one view per photo with its items, the sizes, and the shape model.");
+        if (note != null && !note.trim().isEmpty()) b.append(" Anil says: \"").append(note.trim()).append("\".");
+        return b.toString();
+    }
+
+    static final java.util.Set<String> SHAPE_TYPES = new java.util.HashSet<>(java.util.Arrays.asList("cylinder", "box", "ring", "sphere", "cone"));
+
+    /** The AI's object read: {title, say, dims_cm, views:[{label, items}], shape:{parts}, top_seen, bottom_seen, confidence}; null when unusable. Bad solids are dropped. */
+    static JSONObject parseObject(String reply, int photos) {
+        try {
+            String s = reply == null ? "" : reply.trim();
+            int a = s.indexOf('{'), z = s.lastIndexOf('}');
+            if (a < 0 || z <= a) return null;
+            JSONObject o = new JSONObject(s.substring(a, z + 1));
+            scrub(o);
+            JSONArray views = o.optJSONArray("views"), outViews = new JSONArray();
+            for (int i = 0; i < photos; i++) {
+                JSONObject v = null;
+                for (int k = 0; views != null && k < views.length(); k++) { JSONObject vk = views.optJSONObject(k); if (vk != null && vk.optInt("n", k + 1) == i + 1) { v = vk; break; } }
+                if (v == null && views != null && i < views.length()) v = views.optJSONObject(i);
+                JSONArray items = v == null ? null : v.optJSONArray("items"), clean = new JSONArray();
+                for (int k = 0; items != null && k < items.length() && k < 12; k++) {
+                    JSONObject it = items.optJSONObject(k);
+                    JSONArray bx = it == null ? null : it.optJSONArray("box");
+                    if (it == null || it.optString("name").isEmpty() || bx == null || bx.length() != 4) continue;
+                    it.put("n", clean.length() + 1);
+                    clean.put(it);
+                }
+                outViews.put(new JSONObject().put("n", i + 1).put("label", v == null ? "" : v.optString("label")).put("photo", "view" + i + ".jpg").put("items", clean));
+            }
+            o.put("views", outViews);
+            JSONObject shape = o.optJSONObject("shape");
+            JSONArray parts = shape == null ? null : shape.optJSONArray("parts"), good = new JSONArray();
+            for (int i = 0; parts != null && i < parts.length() && good.length() < 14; i++) {
+                JSONObject pt = parts.optJSONObject(i);
+                if (pt == null) continue;
+                String type = pt.optString("type").toLowerCase(java.util.Locale.ROOT).trim();
+                if (!SHAPE_TYPES.contains(type)) continue;
+                JSONArray c = pt.optJSONArray("c");
+                if (c == null || c.length() != 3) continue;
+                double r = pt.optDouble("r", 0), h = pt.optDouble("h", 0);
+                JSONArray sz = pt.optJSONArray("s");
+                if (type.equals("box") && (sz == null || sz.length() != 3)) continue;
+                if (!type.equals("box") && (r <= 0 || Double.isNaN(r))) continue;
+                if ((type.equals("cylinder") || type.equals("ring") || type.equals("cone")) && h <= 0) continue;
+                if (type.equals("ring") && !(pt.optDouble("r2", 0) > 0 && pt.optDouble("r2") < r)) pt.put("r2", r * 0.3);
+                if (type.equals("cone") && !(pt.optDouble("r2", -1) >= 0)) pt.put("r2", 0);
+                pt.put("type", type);
+                if (pt.optString("id").isEmpty()) pt.put("id", "p" + (good.length() + 1));
+                if (pt.optString("name").isEmpty()) pt.put("name", "భాగం " + (good.length() + 1));
+                String ax = pt.optString("axis", "z").toLowerCase(java.util.Locale.ROOT);
+                pt.put("axis", ax.equals("x") || ax.equals("y") ? ax : "z");
+                if (!pt.has("seen")) pt.put("seen", true);
+                good.put(pt);
+            }
+            if (good.length() == 0 && outViews.length() == 0) return null;
+            o.put("shape", new JSONObject().put("parts", good));
+            if (o.optString("title").isEmpty()) o.put("title", "వస్తువు");
+            return o;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ================================================================ evidence: a thing from three sides

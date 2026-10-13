@@ -204,6 +204,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             final String qq = q;
             main.postDelayed(() -> { // the camera has a moment to start and focus
                 if (deep) deepScan();
+                else if (qq != null && is360(qq)) shotsStart("object");   // ("డ్రమ్‌ని 360 లో చూపించు" from anywhere)
                 else if (qq != null && LockBrain.isLockAsk(qq)) lockAsk(qq); // ("ఆ కుక్కని జూమ్ చేయి" from anywhere: found, locked, zoomed)
                 else ask(qq);
             }, 1600);
@@ -826,6 +827,13 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     // ================================================================ what he said
 
+    /** "డ్రమ్‌ని 360 లో చూపించు", "చుట్టూ తిరిగి 3D మోడల్ చేయి", "object 360": the walk-round model. */
+    static boolean is360(String text) {
+        String t = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        return t.matches(".*(360|మూడు వందల అరవై|అన్ని వైపుల|చుట్టూ తిరిగి|చుట్టూ నడిచి|all sides|all round|around it).*")
+                && t.matches(".*(3d|త్రీడీ|మోడల్|స్కాన్|చూపించు|చూపు|model|scan|show).*") && !t.matches(".*(ఎలా|how).*");
+    }
+
     /** The words are exactly one of these phrases (so a real question that only contains a word like "live" is not a command). */
     private static boolean is(String t, String... phrases) {
         for (String x : phrases) if (t.equals(x)) return true;
@@ -871,13 +879,20 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (is(t, "ఇక్కడ ఏం జరిగింది", "ఇక్కడ ఏమి జరిగింది", "ఏం జరిగింది", "ఏమి జరిగింది", "what happened here", "what happened")) { shotsStart("recon"); return; }
             if (is(t, "గది విశ్లేషణ", "గది చూడు", "గది కొలతలు", "ఈ గది ఎలా ఉంది", "room analysis", "room check")) { shotsStart("room"); return; }
             if (is(t, "3d మోడల్", "త్రీడీ మోడల్", "గది 3d", "మొత్తం 3d", "చుట్టూ స్కాన్", "3d model", "space scan", "మోడల్ చేయి")) { shotsStart("space"); return; }
+            if (is360(t)) { shotsStart("object"); return; }
             if (is(t, "ఇది సురక్షితమేనా", "ఇది సేఫా", "సురక్షితమేనా", "ప్రమాదమా", "is it safe", "is this safe", "ప్రమాద స్థాయి")) { safetyAsk(); return; }
             if (is(t, "నిర్మాణం చూడు", "పగుళ్లు చూడు", "నిర్మాణ పరీక్ష", "structure check", "పగుళ్లు ఉన్నాయా")) { setMode("struct"); ask(defaultQuestion()); return; }
             if (is(t, "ఎవరో పడిపోయారు", "గాయం అయింది", "ప్రథమ చికిత్స", "గాయపడ్డారు", "first aid", "someone fell", "దెబ్బ తగిలింది")) { firstAid(); return; }
             if (is(t, "ప్రమాద చోట్లు", "ప్రమాద చోట్లు ఏవి", "గుర్తుపెట్టిన ప్రమాదాలు", "hazards", "my hazards")) { hazardList(); return; }
             if (is(t, "సాక్ష్యం కార్డ్", "సాక్ష్యం", "మూడు వైపులు", "వస్తువు మూడు వైపులు", "evidence card", "evidence")) { shotsStart("evidence"); return; }
             if (shots != null && is(t, "తీసుకో", "తీయి", "ఫోటో తీయి", "ఫోటో", "క్లిక్", "take", "capture")) { shotTake(); return; }
-            if (shots != null && is(t, "అయింది", "అయిపోయింది", "చాలు", "done", "పూర్తి")) { if (shots.size() >= 2 || "evidence".equals(shotsKind)) shotsDone(); else tell("కనీసం 2 ఫోటోలు కావాలి.", false); return; }
+            if (shots != null && is(t, "అయింది", "అయిపోయింది", "చాలు", "done", "పూర్తి")) {
+                if ("object".equals(shotsKind) && objPhase == 0) { if (shots.size() >= 3) objectExtras(); else tell("చుట్టూ కనీసం 3 ఫోటోలు కావాలి.", false); return; }
+                if (shots.size() >= 2 || "evidence".equals(shotsKind)) shotsDone(); else tell("కనీసం 2 ఫోటోలు కావాలి.", false);
+                return;
+            }
+            if (shots != null && "object".equals(shotsKind) && objPhase == 1 && is(t, "పై నుంచి", "పైనుంచి", "పై నుండి", "from above", "top")) { objTiltNext = 1; shotTake(); return; }
+            if (shots != null && "object".equals(shotsKind) && objPhase == 1 && is(t, "కింద నుంచి", "కిందనుంచి", "కింద నుండి", "from below", "bottom")) { objTiltNext = -1; shotTake(); return; }
             if (is(t, "కామెంటరీ", "కామెంటరీ చెప్పు", "కామెంటరీ మొదలుపెట్టు", "కామెంటరీ ఆన్", "commentary", "commentary on", "మాట్లాడుతూ ఉండు", "చెబుతూ ఉండు")) { setCommentary(true, false); return; }
             if (is(t, "కామెంటరీ ఆపు", "కామెంటరీ ఆఫ్", "commentary off", "మాట్లాడటం ఆపు", "చెప్పడం ఆపు")) { setCommentary(false, false); listenSoon(300); return; }
             if (is(t, "లోతైన స్కాన్", "లోతైన స్కాన్ చేయి", "డీప్ స్కాన్", "deep scan")) { setSceneLive(true); return; }
@@ -1200,6 +1215,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private void cancelFlows() {
         if (busy) { Toast.makeText(this, "ఒక్క క్షణం, ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
         if (shots != null) { for (Bitmap b : shots) b.recycle(); shots = null; main.removeCallbacks(roomTick); roomStart = 0; }
+        objPhase = 0;
+        objTiltNext = 0;
         pairKind = null;
         pairFirst = null;
         closeId = null;
@@ -1346,6 +1363,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private void openSaved(String id) {
         JSONObject data = ScanStore.load(this, id);
         if (data == null) { tell("ఆ స్కాన్ దొరకలేదు.", false); return; }
+        if ("object".equals(data.optString("kind"))) { ObjectActivity.open(this, id); return; }
         if (data.optBoolean("board") && data.has("layers")) { HoloActivity.open(this, id); }
         Bitmap bm = ScanStore.photo(this, id, "photo.jpg", 1800);
         if (bm == null) { // (an OBD reading, a note): only its words
@@ -1538,7 +1556,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 "🌙 రాత్రి చూపు: " + (cam.night() ? "ఆన్" : "ఆఫ్"), "🔁 ఏమి మారింది?", "📸 HUD తో ఫోటో సేవ్", "📏 జూమ్ టెస్ట్", "⌚ లాక్ చేసినది వాచ్‌కి పంపు",
                 "🕵️ ఇక్కడ ఏం జరిగింది? (2–6 ఫోటోలు)", "📦 వస్తువు 3 వైపులు (సాక్ష్యం కార్డ్)", "📁 కేస్ బోర్డులు",
                 "🧱 నిర్మాణ పరీక్ష (పగుళ్లు, తుప్పు, లీక్)", "🏠 గది విశ్లేషణ (నెమ్మదిగా తిరగండి)", "🩹 గాయపడినవారికి సహాయం", "⚠️ ఇది సురక్షితమేనా?", "📍 ఇక్కడ ప్రమాదం గుర్తుపెట్టు",
-                "🧊 గది / యంత్రం 3D మోడల్ (చుట్టూ తిరగండి)"};
+                "🧊 గది / యంత్రం 3D మోడల్ (చుట్టూ తిరగండి)", "🧊 వస్తువు 360° (చుట్టూ నడిచి; పై / కింద కూడా)"};
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setItems(items, (dlg, w) -> {
                     switch (w) {
@@ -1575,6 +1593,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                         case 30: firstAid(); break;
                         case 31: safetyAsk(); break;
                         case 33: shotsStart("space"); break;
+                        case 34: shotsStart("object"); break;
                         case 32: {
                             EditText e = new EditText(this);
                             e.setHint("ఏమిటి? (గుంత, స్పీడ్ బ్రేకర్, నీళ్లు, వైరు…)");
@@ -1663,13 +1682,14 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM, h:mm a", Locale.ENGLISH);
         for (int i = 0; i < all.size(); i++) {
             JSONObject o = all.get(i);
-            names[i] = (o.optBoolean("board") ? "🧊 " : "📷 ") + o.optString("title") + "\n   " + f.format(new java.util.Date(o.optLong("t")));
+            names[i] = (o.optBoolean("board") || "object".equals(o.optString("kind")) ? "🧊 " : "📷 ") + o.optString("title") + "\n   " + f.format(new java.util.Date(o.optLong("t")));
         }
         AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(boards ? "🧊 నా బోర్డులు (పట్టుకుంటే తీసేయి)" : "📚 స్కాన్ చరిత్ర (పట్టుకుంటే తీసేయి)")
                 .setItems(names, (x, w) -> {
                     JSONObject o = all.get(w);
-                    if (o.optBoolean("board")) HoloActivity.open(this, o.optString("id"));
+                    if ("object".equals(o.optString("kind"))) ObjectActivity.open(this, o.optString("id"));
+                    else if (o.optBoolean("board")) HoloActivity.open(this, o.optString("id"));
                     else openSaved(o.optString("id"));
                 })
                 .setNegativeButton("మూసేయ్", null).create();
@@ -2975,6 +2995,11 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if ("evidence".equals(kind)) say("📦 వస్తువును ముందు వైపు నుంచి చూపించి 📸 నొక్కండి. పక్కన నాణెం లేదా ఫోన్ పెడితే కొలతలు బాగా వస్తాయి.");
         else if ("room".equals(kind)) { say("🏠 గది మధ్యలో నిలబడి ఫోన్‌ని నెమ్మదిగా ఒక చుట్టు తిప్పండి; నేనే ఫోటోలు తీసుకుంటాను. అయ్యాక ✅ నొక్కండి."); roomHeading = heading; roomTurned = 0; main.postDelayed(roomTick, 600); }
         else if ("space".equals(kind)) { shotHeads = new ArrayList<>(); say("🧊 గది అయితే మధ్యలో నిలబడి నెమ్మదిగా తిరగండి; బైక్ / యంత్రం అయితే దాని చుట్టూ నడవండి. నేనే ఫోటోలు తీసుకుంటాను (📸 తో కూడా తీయొచ్చు). అయ్యాక ✅."); roomHeading = heading; roomTurned = 0; main.postDelayed(roomTick, 600); }
+        else if ("object".equals(kind)) {
+            shotHeads = new ArrayList<>(); shotAz = new ArrayList<>(); shotTilt = new ArrayList<>(); objPhase = 0; objTiltNext = 0;
+            say("🧊 వస్తువును మధ్యలో ఉంచి దాని చుట్టూ నెమ్మదిగా నడవండి; ప్రతి 45 డిగ్రీలకి నేనే ఫోటో తీసుకుంటాను (📸 తో కూడా). ఒక చుట్టు అయ్యాక పై నుంచి, వీలైతే కింద నుంచి కూడా అడుగుతాను.");
+            roomHeading = heading; roomTurned = 0; main.postDelayed(roomTick, 600);
+        }
         else say("🕵️ జరిగిన చోటు / వస్తువు 2 నుంచి 6 ఫోటోలు తీయండి: ఒక్కోటి చూపించి 📸, అయ్యాక ✅.");
         shotsGuide();
     }
@@ -2982,39 +3007,53 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private float roomHeading = Float.NaN, roomTurned;
     private long roomStart;
     private List<String> shotHeads; // the direction each space photo was taken in
+    private List<Float> shotAz;      // 360°: the compass heading of each photo
+    private List<Integer> shotTilt;  // 360°: 0 = around, 1 = from above, -1 = from below
+    private int objPhase, objTiltNext; // 360°: 0 = walking round, 1 = the top / bottom extras; the tilt the next 📸 is for
 
     /** The room sweep: a photo every ~40° of turning (up to 9), done after a full turn or 40 s. */
     private final Runnable roomTick = new Runnable() {
         @Override public void run() {
-            if (shots == null || !("room".equals(shotsKind) || "space".equals(shotsKind)) || !open) return;
-            boolean space = "space".equals(shotsKind);
+            if (shots == null || !("room".equals(shotsKind) || "space".equals(shotsKind) || "object".equals(shotsKind)) || !open) return;
+            if ("object".equals(shotsKind) && objPhase == 1) return; // (the extras are his taps)
+            boolean space = "space".equals(shotsKind) || "object".equals(shotsKind), obj = "object".equals(shotsKind);
             if (roomStart == 0) roomStart = System.currentTimeMillis();
             main.postDelayed(this, 300);
-            if (shots.isEmpty()) { Bitmap b = cam.frame(space ? 1200 : 1000); if (b != null) { shots.add(b); if (shotHeads != null) shotHeads.add(HoloLens.direction(heading)); roomHeading = heading; shotsGuide(); } return; }
+            if (shots.isEmpty()) { Bitmap b = cam.frame(space ? 1200 : 1000); if (b != null) { shots.add(b); noteShot(0); roomHeading = heading; shotsGuide(); } return; }
             if (!Float.isNaN(heading) && !Float.isNaN(roomHeading)) {
                 float dlt = Math.abs(((heading - roomHeading) % 360 + 540) % 360 - 180);
                 if (dlt >= (space ? 45 : 40)) {
                     Bitmap b = cam.frame(space ? 1200 : 1000);
-                    if (b != null) { shots.add(b); if (shotHeads != null) shotHeads.add(HoloLens.direction(heading)); Sfx.hud(JarvisCamera.this, p, "mark"); }
+                    if (b != null) { shots.add(b); noteShot(0); Sfx.hud(JarvisCamera.this, p, "mark"); }
                     roomTurned += dlt;
                     roomHeading = heading;
                     shotsGuide();
                 }
             }
-            if (shots.size() >= (space ? 8 : 9) || roomTurned >= 330 || System.currentTimeMillis() - roomStart > (space ? 90_000 : 40_000)) { roomStart = 0; shotsDone(); }
+            if (shots.size() >= (obj ? 12 : space ? 8 : 9) || roomTurned >= 330 || System.currentTimeMillis() - roomStart > (space ? 90_000 : 40_000)) { roomStart = 0; if (obj) objectExtras(); else shotsDone(); }
         }
     };
 
     private void shotsGuide() {
         if (shots == null) return;
-        boolean ev = "evidence".equals(shotsKind), room = "room".equals(shotsKind), space = "space".equals(shotsKind);
+        boolean ev = "evidence".equals(shotsKind), room = "room".equals(shotsKind), space = "space".equals(shotsKind), obj = "object".equals(shotsKind);
+        boolean extras = obj && objPhase == 1;
+        boolean hasTop = shotTilt != null && shotTilt.contains(1), hasBottom = shotTilt != null && shotTilt.contains(-1);
         String text = ev ? "📦 " + EVIDENCE_SIDES[Math.min(2, shots.size())] + " చూపించండి (" + (shots.size() + 1) + "/3)" : room ? "🏠 నెమ్మదిగా తిరగండి… " + shots.size() + "/9 ఫోటోలు"
+                : extras ? "🧊 పై నుంచి / కింద నుంచి కూడా (వీలైతే)" : obj ? "🧊 చుట్టూ నడవండి… " + shots.size() + "/12"
                 : space ? "🧊 తిరగండి / చుట్టూ నడవండి… " + shots.size() + "/8" : "🕵️ ఫోటో " + (shots.size() + 1) + " (2–6)";
         guideRow.removeAllViews();
         guideBar.setText(text);
         guideRow.addView(guideBar, new LinearLayout.LayoutParams(0, -2, 1));
-        if (!room) { TextView shot = chip("📸 తీసుకో", !space); shot.setOnClickListener(v -> shotTake()); guideRow.addView(shot); }
-        if (!ev && shots.size() >= 2) { TextView done = chip("✅ అయింది", room); done.setOnClickListener(v -> shotsDone()); guideRow.addView(done); }
+        if (extras) {
+            if (!hasTop) { TextView top = chip("⬆️ పై నుంచి", true); top.setOnClickListener(v -> { objTiltNext = 1; shotTake(); }); guideRow.addView(top); }
+            if (!hasBottom) { TextView bot = chip("⬇️ కింద నుంచి", true); bot.setOnClickListener(v -> { objTiltNext = -1; shotTake(); }); guideRow.addView(bot); }
+            TextView done = chip("✅ అయింది", !hasTop && !hasBottom ? false : true); done.setOnClickListener(v -> shotsDone()); guideRow.addView(done);
+        } else {
+            if (!room) { TextView shot = chip("📸 తీసుకో", !space); shot.setOnClickListener(v -> shotTake()); guideRow.addView(shot); }
+            if (obj && shots.size() >= 3) { TextView next = chip("➡️ చుట్టు అయింది", false); next.setOnClickListener(v -> objectExtras()); guideRow.addView(next); }
+            else if (!ev && !obj && shots.size() >= 2) { TextView done = chip("✅ అయింది", room); done.setOnClickListener(v -> shotsDone()); guideRow.addView(done); }
+        }
         TextView x = chip("✕", false);
         x.setOnClickListener(v -> cancelFlows());
         guideRow.addView(x);
@@ -3026,13 +3065,38 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         Bitmap b = cam.frame(1400);
         if (b == null) { Toast.makeText(this, "కెమెరా బొమ్మ రాలేదు", Toast.LENGTH_SHORT).show(); return; }
         shots.add(b);
-        if (shotHeads != null) shotHeads.add(HoloLens.direction(heading));
+        noteShot(objTiltNext);
+        objTiltNext = 0;
         Sfx.hud(this, p, "mark");
         boolean ev = "evidence".equals(shotsKind);
+        if ("object".equals(shotsKind)) {
+            roomHeading = heading;
+            if (objPhase == 1) { boolean hasTop = shotTilt.contains(1), hasBottom = shotTilt.contains(-1); if (hasTop && hasBottom) { shotsDone(); return; } tell("📸 తీశాను. " + (hasTop ? "" : "⬆️ పై నుంచి, ") + (hasBottom ? "" : "⬇️ కింద నుంచి, ") + "లేదా ✅.", false); shotsGuide(); return; }
+            if (shots.size() >= 12) { objectExtras(); return; }
+            shotsGuide();
+            return;
+        }
         if ("space".equals(shotsKind)) { roomHeading = heading; if (shots.size() >= 8) { shotsDone(); return; } shotsGuide(); return; }
         if (ev && shots.size() >= 3 || !ev && shots.size() >= 6) { shotsDone(); return; }
         if (ev) say(EVIDENCE_SIDES[shots.size()] + " చూపించి 📸.");
         else tell("📸 " + shots.size() + " తీశాను. ఇంకోటి, లేదా ✅.", false);
+        shotsGuide();
+    }
+
+    /** Remembers the direction (and, for 360°, the heading and tilt) of the photo just added. */
+    private void noteShot(int tilt) {
+        if (shotHeads != null) shotHeads.add(HoloLens.direction(heading));
+        if (shotAz != null) shotAz.add(Float.isNaN(heading) ? (shotAz.isEmpty() ? 0f : shotAz.get(shotAz.size() - 1) + 45f) : heading);
+        if (shotTilt != null) shotTilt.add(tilt);
+    }
+
+    /** 360°: the walk round is done; the top and the underside, if he can. */
+    private void objectExtras() {
+        if (shots == null || !"object".equals(shotsKind)) return;
+        objPhase = 1;
+        main.removeCallbacks(roomTick);
+        roomStart = 0;
+        say("చుట్టు అయింది, " + shots.size() + " ఫోటోలు. ఇప్పుడు పై నుంచి ఒకటి, వీలైతే కింద నుంచి ఒకటి (వస్తువును ఎత్తి / వంచి) తీయండి; కుదరకపోతే ✅ నొక్కండి, కింద భాగం అంచనాగా చూపిస్తాను.");
         shotsGuide();
     }
 
@@ -3045,11 +3109,16 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         busy = true;
         hud.scanning(true);
         refreshButtons();
-        tell("evidence".equals(kind) ? "📦 కార్డ్ తయారు చేస్తున్నాను…" : "room".equals(kind) ? "🏠 గదిని చూస్తున్నాను…" : "space".equals(kind) ? "🧊 3D మోడల్ తయారు చేస్తున్నాను… (కొన్ని సెకన్లు)" : "🕵️ ఏం జరిగిందో చూస్తున్నాను… (కొన్ని సెకన్లు)", false);
+        tell("evidence".equals(kind) ? "📦 కార్డ్ తయారు చేస్తున్నాను…" : "room".equals(kind) ? "🏠 గదిని చూస్తున్నాను…" : "space".equals(kind) || "object".equals(kind) ? "🧊 3D మోడల్ తయారు చేస్తున్నాను… (కొన్ని సెకన్లు)" : "🕵️ ఏం జరిగిందో చూస్తున్నాను… (కొన్ని సెకన్లు)", false);
         main.removeCallbacks(roomTick);
         roomStart = 0;
         final String[] heads = shotHeads == null ? null : shotHeads.toArray(new String[0]);
         shotHeads = null;
+        final List<Float> azs = shotAz;
+        final List<Integer> tilts = shotTilt;
+        shotAz = null;
+        shotTilt = null;
+        objPhase = 0;
         final String cid = caseId;
         work.execute(() -> {
             String err = null, said = null;
@@ -3067,6 +3136,33 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                     three.recycle();
                     said = "📦 " + e.optString("name") + ". " + text;
                     after = () -> { if (cid != null) { CaseStore.addCard(this, cid, "evidence", sid, "📦 " + e.optString("name"), ScanStore.cut(text, 160)); Toast.makeText(this, "📁 కేస్‌కి కలిపాను", Toast.LENGTH_SHORT).show(); } else CaseActivity.addTo(this, "evidence", sid, "📦 " + e.optString("name"), ScanStore.cut(text, 160)); };
+                } else if ("object".equals(kind)) {
+                    Bitmap grid = Recon.grid(pics);
+                    String[] where = new String[pics.size()];
+                    for (int i = 0; i < pics.size(); i++) {
+                        int tl = tilts != null && i < tilts.size() ? tilts.get(i) : 0;
+                        where[i] = tl > 0 ? "from above" : tl < 0 ? "from below" : "around, heading " + (azs != null && i < azs.size() ? Math.round(azs.get(i)) : i * 45) + "°";
+                    }
+                    String reply = Brain.oneShot(p, Recon.objectSystem(), Recon.objectPrompt(pics.size(), where, null), jpeg(grid, 1800, 78), false, 7000);
+                    grid.recycle();
+                    JSONObject o = Recon.parseObject(reply, pics.size());
+                    if (o == null) throw new IllegalStateException("no model");
+                    JSONArray views = o.optJSONArray("views");
+                    for (int i = 0; views != null && i < views.length(); i++) {
+                        JSONObject v = views.getJSONObject(i);
+                        v.put("az", azs != null && i < azs.size() ? azs.get(i) : i * 45f).put("tilt", tilts != null && i < tilts.size() ? tilts.get(i) : 0);
+                    }
+                    boolean topSeen = tilts != null && tilts.contains(1), bottomSeen = tilts != null && tilts.contains(-1);
+                    String title = o.optString("title");
+                    JSONObject data = new JSONObject().put("title", "🧊 " + title + " 360°").put("kind", "object").put("mode", mode).put("say", o.optString("say"))
+                            .put("dims_cm", o.optJSONObject("dims_cm")).put("views", views).put("shape", o.optJSONObject("shape"))
+                            .put("top_seen", topSeen).put("bottom_seen", bottomSeen).put("confidence", o.optInt("confidence", -1)).put("estimate", true).put("noboxes", true);
+                    for (int i = 0; i < pics.size(); i++) ScanStore.save(this, data, pics.get(i), "view" + i + ".jpg");
+                    ScanStore.save(this, data, pics.get(0), "photo.jpg");
+                    final String sid = data.optString("id");
+                    int solids = o.optJSONObject("shape") == null ? 0 : o.optJSONObject("shape").optJSONArray("parts").length();
+                    said = "🧊 " + title + ". " + o.optString("say") + " " + pics.size() + " వైపులు, ఆకారంలో " + solids + " భాగాలు. వేలితో తిప్పండి; ⬇️ తో కింద చూడొచ్చు" + (bottomSeen ? "." : " (కింద ఫోటో లేదు, అది అంచనా).");
+                    after = () -> { if (cid != null) CaseStore.addCard(this, cid, "scan", sid, "🧊 " + title + " 360°", ScanStore.cut(o.optString("say"), 160)); ObjectActivity.open(this, sid); };
                 } else if ("space".equals(kind)) {
                     Bitmap grid = Recon.grid(pics);
                     String reply = Brain.oneShot(p, Recon.spaceSystem(), Recon.spacePrompt(pics.size(), null), jpeg(grid, 1800, 78), false, 6000);

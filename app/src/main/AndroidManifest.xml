@@ -441,6 +441,12 @@
             android:taskAffinity="com.anil.jarvis.camera"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
         <activity
+            android:name=".ObjectActivity"
+            android:exported="false"
+            android:label="360° మోడల్"
+            android:taskAffinity="com.anil.jarvis.camera"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+        <activity
             android:name=".TourActivity"
             android:exported="false"
             android:label="Jarvis ట్యుటోరియల్"
