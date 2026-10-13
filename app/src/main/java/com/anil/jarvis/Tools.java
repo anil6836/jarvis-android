@@ -530,6 +530,9 @@ final class Tools {
         DEFS.add(new Def("show_features", "Open the screen with all of Jarvis's features in folders ('అన్ని ఫీచర్లు చూపించు', 'బైక్ ఆప్షన్లు చూపించు'). "
                 + "category (optional): bike, money, calls, day, missions, camera, live, phone (phone control, lights / smart home), duty, places, shopping, medicine, birthdays, doctor (health advice, BP / sugar log), debts, expiry, prices, diary, holidays, wellness (water, steps, exercise, sleep, sounds), alarm (song alarm), faith (Bible, verse, church, prayer), kids (stories), daily (item places, habits, bill split, letters, cards, savings, nearby, government services), drive (route, places on the way, speed cameras), home (cooking, books read aloud), travel (bus, train, tickets, trip plan), news (news, weather, cricket), fun (radio, songs, movies, quiz), watch (watch, road, the old home guard phone, protocols, journey guard, water, focus), amma (the home tablet: message to అమ్మ, a game with her, a reminder at home, photos for her frame, the tablet's status and her day's ticks, the weekly report), code, jarvis; empty = all folders.",
                 schema(new String[][]{{"category", "string", "Folder id, or empty for all"}})));
+        DEFS.add(new Def("case_board", "Open his case boards ('కేస్ బోర్డ్ తెరువు', 'బైక్ కేస్ చూపించు'): everything about one problem on one board. "
+                + "name (optional): open the case whose title contains it; create: true makes a new case with that name.",
+                schema(new String[][]{{"name", "string", "Part of the case's title, or the new case's name"}, {"create", "boolean", "Make a new case"}})));
         DEFS.add(new Def("birthdays", "Birthdays and wedding anniversaries (from his contacts and ones he told). list: coming ones in N days; add: name + date; remove. "
                 + "On the day Jarvis reminds him in the morning and offers WhatsApp wishes (whatsapp_message, sent only after he says send).",
                 schema(new String[][]{{"action", "string", "list (default), add or remove"}, {"name", "string", "Whose, as he calls them (e.g. 'అమ్మ', 'Ravi')"},
@@ -975,6 +978,7 @@ final class Tools {
             case "medicine": return "మందులు…";
             case "duty": return "డ్యూటీ క్యాలెండర్ చూస్తున్నాను…";
             case "show_features": return "ఫీచర్లు తెరుస్తున్నాను…";
+            case "case_board": return "కేస్ బోర్డ్ తెరుస్తున్నాను…";
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
@@ -1233,6 +1237,14 @@ final class Tools {
                     FeaturesActivity.show(act(), cat);
                     return ok().put("opened", FeaturesActivity.find(cat) != null ? cat : "all folders")
                             .put("note", "The screen is open; say one short line, he picks from it.").toString();
+                }
+                case "case_board": {
+                    String cname = a.optString("name", "").trim();
+                    org.json.JSONObject hit = null;
+                    if (!cname.isEmpty()) for (org.json.JSONObject k : CaseStore.all(act())) if (k.optString("title").toLowerCase(Locale.ROOT).contains(cname.toLowerCase(Locale.ROOT))) { hit = k; break; }
+                    if (hit == null && a.optBoolean("create") && !cname.isEmpty()) hit = CaseStore.create(act(), cname);
+                    CaseActivity.open(act(), hit == null ? null : hit.optString("id"));
+                    return ok().put("opened", hit == null ? "the list of cases" : hit.optString("title")).toString();
                 }
                 case "day_summary": return daySummary();
                 case "scan_qr": return scanQr(a.optBoolean("open", false));

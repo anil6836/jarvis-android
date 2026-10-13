@@ -421,6 +421,21 @@
             android:screenOrientation="portrait"
             android:configChanges="keyboardHidden|smallestScreenSize|screenLayout" />
 
+        <!-- Case boards and the "what happened" story screen (with the camera's task). -->
+        <activity
+            android:name=".CaseActivity"
+            android:exported="false"
+            android:label="Jarvis కేస్ బోర్డ్"
+            android:taskAffinity="com.anil.jarvis.camera"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+        <activity
+            android:name=".TimelineActivity"
+            android:exported="false"
+            android:label="ఇక్కడ ఏం జరిగింది"
+            android:taskAffinity="com.anil.jarvis.camera"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+
         <!-- A game with అమ్మగారు at the home tablet, from his phone (moves through his Telegram bot). -->
         <activity
             android:name=".GameActivity"

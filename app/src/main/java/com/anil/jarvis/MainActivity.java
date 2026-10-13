@@ -982,6 +982,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void doAction(String code) {
         switch (code) {
             case "scan": Scanner.start(this); break;
+            case "cases": CaseActivity.open(this, null); break;
             case "bill": billPhoto(); break;
             case "expiry_doc": photoFor("📄 డాక్యుమెంట్ ఫోటో → గడువు", EXPIRY_PROMPT); break;
             case "warranty_bill": photoFor("🧾 బిల్ ఫోటో → వారంటీ", WARRANTY_PROMPT); break;

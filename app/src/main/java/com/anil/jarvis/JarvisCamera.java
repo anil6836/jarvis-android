@@ -64,7 +64,7 @@ import java.util.concurrent.Executors;
  */
 public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActions.Host {
     static final String EXTRA_MODE = "mode", EXTRA_ASK = "ask", EXTRA_IMAGE = "image", EXTRA_SCAN = "scan_id", EXTRA_DEEP = "deep",
-            EXTRA_BACK_OF = "back_of", EXTRA_ZOOM_OF = "zoom_of", EXTRA_REGION = "region";
+            EXTRA_BACK_OF = "back_of", EXTRA_ZOOM_OF = "zoom_of", EXTRA_REGION = "region", EXTRA_CASE = "case_id";
     private static final int REQ_PERMS = 71, REQ_GALLERY = 72, REQ_LOCATION = 73, REQ_MIC = 74;
     static volatile boolean open;
     /** The camera is using the phone's mic (listening, speaking, recording) or has it off: the wake word stays out. */
@@ -90,6 +90,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private final List<TextView> modeChips = new ArrayList<>();
 
     private String mode = "auto";
+    private String caseId;              // opened for a case: every answer's scan goes onto its board
     private Bitmap photo;               // the picture being talked about (frozen, or the last one asked about)
     private Bitmap shownPic;            // the picture the boxes on the screen belong to (a zoomed freeze: its part)
     private boolean frozen, fromImage;  // frozen: the screen shows the photo; fromImage: a gallery / app picture (fitted)
@@ -164,6 +165,12 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if (i == null) return;
         String m = i.getStringExtra(EXTRA_MODE);
         if (m != null) setMode(m);
+        String kc = i.getStringExtra(EXTRA_CASE);
+        if (kc != null) {
+            caseId = kc;
+            JSONObject k = CaseStore.get(this, kc);
+            main.postDelayed(() -> tell("📁 " + (k == null ? "కేస్" : k.optString("title")) + " కోసం చూస్తున్నాను: ఇప్పుడు స్కాన్ చేసేవన్నీ ఆ బోర్డుకి వెళ్తాయి.", false), 400);
+        }
         String back = i.getStringExtra(EXTRA_BACK_OF);
         if (back != null) { i.removeExtra(EXTRA_BACK_OF); main.postDelayed(() -> backSide(back), 300); return; }
         String zoomOf = i.getStringExtra(EXTRA_ZOOM_OF);
@@ -857,6 +864,10 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (is(t, "రింగ్స్", "రింగ్స్ ఆన్", "లైవ్ రింగ్స్", "లైవ్ రింగ్స్ ఆన్")) { setLive(true); listenSoon(300); return; }
             if (is(t, "రాత్రి చూపు", "నైట్ మోడ్", "నైట్ విజన్", "night mode", "night vision")) { toggleNight(); listenSoon(300); return; }
             if (is(t, "ఏమి మారింది", "ఏం మారింది", "ఏమైనా మారిందా", "what changed")) { whatChanged(); return; }
+            if (is(t, "ఇక్కడ ఏం జరిగింది", "ఇక్కడ ఏమి జరిగింది", "ఏం జరిగింది", "ఏమి జరిగింది", "what happened here", "what happened")) { shotsStart("recon"); return; }
+            if (is(t, "సాక్ష్యం కార్డ్", "సాక్ష్యం", "మూడు వైపులు", "వస్తువు మూడు వైపులు", "evidence card", "evidence")) { shotsStart("evidence"); return; }
+            if (shots != null && is(t, "తీసుకో", "తీయి", "ఫోటో తీయి", "ఫోటో", "క్లిక్", "take", "capture")) { shotTake(); return; }
+            if (shots != null && is(t, "అయింది", "అయిపోయింది", "చాలు", "done", "పూర్తి")) { if (shots.size() >= 2 || "evidence".equals(shotsKind)) shotsDone(); else tell("కనీసం 2 ఫోటోలు కావాలి.", false); return; }
             if (is(t, "కామెంటరీ", "కామెంటరీ చెప్పు", "కామెంటరీ మొదలుపెట్టు", "కామెంటరీ ఆన్", "commentary", "commentary on", "మాట్లాడుతూ ఉండు", "చెబుతూ ఉండు")) { setCommentary(true, false); return; }
             if (is(t, "కామెంటరీ ఆపు", "కామెంటరీ ఆఫ్", "commentary off", "మాట్లాడటం ఆపు", "చెప్పడం ఆపు")) { setCommentary(false, false); listenSoon(300); return; }
             if (is(t, "లోతైన స్కాన్", "లోతైన స్కాన్ చేయి", "డీప్ స్కాన్", "deep scan")) { setSceneLive(true); return; }
@@ -875,7 +886,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (layersId != null && is(t, "అయిపోయింది", "పూర్తి", "done")) { layersDone(); return; }
             if (!guideNext.isEmpty() && is(t, "చూడు", "చూపిస్తున్నా", "చూపిస్తున్నాను", "అయింది", "రెడీ", "ఇదిగో", "ఇదిగో చూడు")) { guideStep(); return; }
         }
-        boolean flow = pairKind != null || layersId != null || closeId != null || !guideNext.isEmpty();
+        boolean flow = pairKind != null || layersId != null || closeId != null || !guideNext.isEmpty() || shots != null;
         if (!flow && !frozen && det != null && liveOn()) { // "ఎంత మంది ఉన్నారు?": the phone's own count, at once
             List<String> kinds = LiveTracker.countAsked(text);
             if (!kinds.isEmpty()) { countNow(kinds); return; }
@@ -911,6 +922,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     }
 
     private void scanTap() {
+        if (shots != null) { shotTake(); return; }
         if (closeId != null) { closeShotNow(); return; }
         if (pairKind != null) { pairSecond(); return; }
         if (layersId != null) { layerShot(); return; }
@@ -1089,6 +1101,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (("pcb".equals(r.kind) || "electronics".equals(r.kind)) && !hasType(acts, "pdf")) acts.add(act("pdf"));
         } catch (Exception ignored) {}
         setActions(acts);
+        if (onScreen && !skipSave) caseChip(); // 📁: this answer's scan onto a case board
         // what he asked for by name that opens something (a shop, the map, the parking spot...): after the answer is spoken
         for (JSONObject a : r.actions) {
             if (a.optBoolean("auto") && !a.optString("type").matches("reminder|note|expense|warranty|medicine|item_place")) pendingAuto.add(a);
@@ -1098,6 +1111,24 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if (captionBase.trim().isEmpty()) runPendingAuto(); // (else when the answer has been spoken)
         save(q, r, pic, onScreen, deep, layer, close, auto3d);
         if (layer) layerGuideIfOn();
+    }
+
+    /** The 📁 chip under an answer: the scan goes onto a case board (the opened case's by itself, else he picks). */
+    private void caseChip() {
+        final String title = last == null || last.title.isEmpty() ? ScanStore.cut(captionBase, 30) : last.title;
+        final String brief = last == null ? "" : ScanStore.cut(last.say, 160);
+        if (caseId != null && lastId != null) {
+            final String sid = lastId, cid = caseId;
+            work.execute(() -> { CaseStore.addCard(this, cid, "scan", sid, title, brief); main.post(() -> Toast.makeText(this, "📁 కేస్‌కి కలిపాను", Toast.LENGTH_SHORT).show()); });
+        }
+        TextView c = chip("📁 కేస్‌కి", false);
+        c.setOnClickListener(v -> {
+            if (lastId == null) { Toast.makeText(this, "ముందు స్కాన్ సేవ్ అవ్వాలి", Toast.LENGTH_SHORT).show(); return; }
+            final String sid = lastId;
+            work.execute(() -> main.post(() -> CaseActivity.addTo(this, "scan", sid, title, brief))); // (after it is written)
+        });
+        actionRow.addView(c);
+        actionScroll.setVisibility(View.VISIBLE);
     }
 
     private final List<JSONObject> pendingAuto = new ArrayList<>();
@@ -1149,6 +1180,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     /** ✕ on the guided bar: the comparing, close-up, layers or guided check stops (what was saved stays). */
     private void cancelFlows() {
         if (busy) { Toast.makeText(this, "ఒక్క క్షణం, ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
+        if (shots != null) { for (Bitmap b : shots) b.recycle(); shots = null; }
         pairKind = null;
         pairFirst = null;
         closeId = null;
@@ -1481,7 +1513,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 "⌨️ టైప్ చేసి అడుగు", "📡 AR పేర్లు: " + (arOn ? "ఆన్" : "ఆఫ్"), "📤 షేర్ (బొమ్మ + జవాబు)",
                 "🎛️ HUD సెట్టింగ్స్ (రింగ్స్, శబ్దాలు, బోర్డులు, ముఖాలు, మెష్…)", "🕸️ అన్నీ స్కాన్ చేయి",
                 "🔭 లోతైన స్కాన్ (AI, 15 సెకన్లకు): " + (sceneLive ? "ఆన్" : "ఆఫ్"), "🎙️ కామెంటరీ: " + (commentaryOn ? "ఆన్" : "ఆఫ్"),
-                "🌙 రాత్రి చూపు: " + (cam.night() ? "ఆన్" : "ఆఫ్"), "🔁 ఏమి మారింది?", "📸 HUD తో ఫోటో సేవ్", "📏 జూమ్ టెస్ట్", "⌚ లాక్ చేసినది వాచ్‌కి పంపు"};
+                "🌙 రాత్రి చూపు: " + (cam.night() ? "ఆన్" : "ఆఫ్"), "🔁 ఏమి మారింది?", "📸 HUD తో ఫోటో సేవ్", "📏 జూమ్ టెస్ట్", "⌚ లాక్ చేసినది వాచ్‌కి పంపు",
+                "🕵️ ఇక్కడ ఏం జరిగింది? (2–6 ఫోటోలు)", "📦 వస్తువు 3 వైపులు (సాక్ష్యం కార్డ్)", "📁 కేస్ బోర్డులు"};
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setItems(items, (dlg, w) -> {
                     switch (w) {
@@ -1510,6 +1543,9 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                         case 22: hudPhoto(); break;
                         case 23: zoomTest(); break;
                         case 24: sendLockToWatch(true); break;
+                        case 25: shotsStart("recon"); break;
+                        case 26: shotsStart("evidence"); break;
+                        case 27: CaseActivity.open(this, caseId); break;
                         default: break;
                     }
                 }).show();
@@ -1606,9 +1642,13 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (lv != null) lv.setOnItemLongClickListener((parent, view, pos, id) -> {
                 JSONObject o = all.get(pos);
                 new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                        .setMessage("\"" + o.optString("title") + "\" తీసేయనా?")
-                        .setPositiveButton("తీసేయి", (a, b) -> { ScanStore.delete(this, o.optString("id")); dlg.dismiss(); history(boards); })
-                        .setNegativeButton("వద్దు", null).show();
+                        .setTitle(o.optString("title"))
+                        .setItems(new String[]{"📁 కేస్‌కి కలుపు", "🗑️ తీసేయి"}, (a, b) -> {
+                            if (b == 0) { dlg.dismiss(); CaseActivity.addTo(this, "scan", o.optString("id"), o.optString("title"), o.optString("brief")); }
+                            else new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setMessage("\"" + o.optString("title") + "\" తీసేయనా?")
+                                    .setPositiveButton("తీసేయి", (x2, y2) -> { ScanStore.delete(this, o.optString("id")); dlg.dismiss(); history(boards); })
+                                    .setNegativeButton("వద్దు", null).show();
+                        }).show();
                 return true;
             });
         });
@@ -2882,6 +2922,122 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                     : (person ? " వెళ్లిపోయారు" : n == 1 ? " వెళ్లిపోయింది" : " వెళ్లిపోయాయి"));
         }
         return b.length() == 0 ? "" : b + ".";
+    }
+
+    // ---- 🕵️ "ఇక్కడ ఏం జరిగింది?" (2–6 photos) and 📦 the evidence card (front, side, top)
+
+    private List<Bitmap> shots;
+    private String shotsKind; // "recon" / "evidence"
+    private static final String[] EVIDENCE_SIDES = {"ముందు వైపు", "పక్క వైపు", "పై నుంచి"};
+
+    private void shotsStart(String kind) {
+        if (busy) { Toast.makeText(this, "ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
+        if (!Net.online(this) || !p.hasBrain()) { say("దీనికి నెట్ + AI key కావాలి."); return; }
+        if (frozen) toggleFreeze();
+        shots = new ArrayList<>();
+        shotsKind = kind;
+        if ("evidence".equals(kind)) say("📦 వస్తువును ముందు వైపు నుంచి చూపించి 📸 నొక్కండి. పక్కన నాణెం లేదా ఫోన్ పెడితే కొలతలు బాగా వస్తాయి.");
+        else say("🕵️ జరిగిన చోటు / వస్తువు 2 నుంచి 6 ఫోటోలు తీయండి: ఒక్కోటి చూపించి 📸, అయ్యాక ✅.");
+        shotsGuide();
+    }
+
+    private void shotsGuide() {
+        if (shots == null) return;
+        boolean ev = "evidence".equals(shotsKind);
+        String text = ev ? "📦 " + EVIDENCE_SIDES[Math.min(2, shots.size())] + " చూపించండి (" + (shots.size() + 1) + "/3)" : "🕵️ ఫోటో " + (shots.size() + 1) + " (2–6)";
+        guideRow.removeAllViews();
+        guideBar.setText(text);
+        guideRow.addView(guideBar, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView shot = chip("📸 తీసుకో", true);
+        shot.setOnClickListener(v -> shotTake());
+        guideRow.addView(shot);
+        if (!ev && shots.size() >= 2) { TextView done = chip("✅ అయింది", false); done.setOnClickListener(v -> shotsDone()); guideRow.addView(done); }
+        TextView x = chip("✕", false);
+        x.setOnClickListener(v -> cancelFlows());
+        guideRow.addView(x);
+        guideRow.setVisibility(View.VISIBLE);
+    }
+
+    private void shotTake() {
+        if (shots == null) return;
+        Bitmap b = cam.frame(1400);
+        if (b == null) { Toast.makeText(this, "కెమెరా బొమ్మ రాలేదు", Toast.LENGTH_SHORT).show(); return; }
+        shots.add(b);
+        Sfx.hud(this, p, "mark");
+        boolean ev = "evidence".equals(shotsKind);
+        if (ev && shots.size() >= 3 || !ev && shots.size() >= 6) { shotsDone(); return; }
+        if (ev) say(EVIDENCE_SIDES[shots.size()] + " చూపించి 📸.");
+        else tell("📸 " + shots.size() + " తీశాను. ఇంకోటి, లేదా ✅.", false);
+        shotsGuide();
+    }
+
+    private void shotsDone() {
+        if (shots == null || shots.isEmpty() || busy) return;
+        final List<Bitmap> pics = shots;
+        final String kind = shotsKind;
+        shots = null;
+        guideRow.setVisibility(View.GONE);
+        busy = true;
+        hud.scanning(true);
+        refreshButtons();
+        tell("evidence".equals(kind) ? "📦 కార్డ్ తయారు చేస్తున్నాను…" : "🕵️ ఏం జరిగిందో చూస్తున్నాను… (కొన్ని సెకన్లు)", false);
+        final String cid = caseId;
+        work.execute(() -> {
+            String err = null, said = null;
+            Runnable after = null;
+            try {
+                if ("evidence".equals(kind)) {
+                    Bitmap three = Recon.threeViews(pics);
+                    String reply = Brain.oneShot(p, Recon.evidenceSystem(), Recon.evidencePrompt(null), jpeg(three, 1700, 80), false, 1200);
+                    JSONObject e = Recon.parseEvidence(reply);
+                    if (e == null) throw new IllegalStateException("no card");
+                    String text = Recon.evidenceText(e);
+                    JSONObject data = new JSONObject().put("title", "📦 " + e.optString("name")).put("kind", "evidence").put("mode", mode).put("say", text).put("evidence", e).put("noboxes", true);
+                    ScanStore.save(this, data, three, "photo.jpg");
+                    final String sid = data.optString("id");
+                    three.recycle();
+                    said = "📦 " + e.optString("name") + ". " + text;
+                    after = () -> { if (cid != null) { CaseStore.addCard(this, cid, "evidence", sid, "📦 " + e.optString("name"), ScanStore.cut(text, 160)); Toast.makeText(this, "📁 కేస్‌కి కలిపాను", Toast.LENGTH_SHORT).show(); } else CaseActivity.addTo(this, "evidence", sid, "📦 " + e.optString("name"), ScanStore.cut(text, 160)); };
+                } else {
+                    Bitmap grid = Recon.grid(pics);
+                    String reply = Brain.oneShot(p, Recon.system(), Recon.prompt(pics.size(), null), jpeg(grid, 1600, 80), false, 2200);
+                    JSONObject r = Recon.parse(reply);
+                    if (r == null) throw new IllegalStateException("no story");
+                    r.put("photos", pics.size()).put("t", System.currentTimeMillis());
+                    java.io.File dir = new java.io.File(new java.io.File(getFilesDir(), "cases"), cid == null ? "_camera" : cid);
+                    dir.mkdirs();
+                    String base = "r" + System.currentTimeMillis();
+                    java.io.File jf = new java.io.File(dir, base + ".json");
+                    try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(dir, base + ".jpg"))) { grid.compress(Bitmap.CompressFormat.JPEG, 80, o); }
+                    grid.recycle();
+                    try (java.io.FileOutputStream o = new java.io.FileOutputStream(jf)) { o.write(r.toString().getBytes("UTF-8")); }
+                    said = Recon.spoken(r);
+                    final String path = jf.getPath(), title = "🕵️ " + r.optString("title"), brief = ScanStore.cut(r.optString("story"), 160);
+                    after = () -> {
+                        if (cid != null) CaseStore.addCard(this, cid, "timeline", path, title, brief);
+                        startActivity(new Intent(this, TimelineActivity.class).putExtra(TimelineActivity.EXTRA_FILE, path));
+                        if (cid == null) main.postDelayed(() -> CaseActivity.addTo(this, "timeline", path, title, brief), 800);
+                    };
+                }
+            } catch (Http.ApiError e) {
+                err = "AI జవాబు ఇవ్వలేదు: " + Models.explain(p, e);
+            } catch (Exception e) {
+                err = "చూడలేకపోయాను (నెట్ / సమయం). మళ్ళీ ప్రయత్నించండి.";
+            } finally {
+                for (Bitmap b : pics) b.recycle();
+            }
+            final String er = err, sd = said;
+            final Runnable af = after;
+            main.post(() -> {
+                busy = false;
+                hud.scanning(false);
+                refreshButtons();
+                if (isFinishing()) return;
+                if (er != null) { say(er); return; }
+                say(sd);
+                if (af != null) af.run();
+            });
+        });
     }
 
     // ---- 🌙, 📸 with the HUD, 📏
