@@ -430,6 +430,11 @@
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
         <activity
+            android:name=".MapActivity"
+            android:exported="false"
+            android:label="Jarvis మ్యాప్ బోర్డ్"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+        <activity
             android:name=".TimelineActivity"
             android:exported="false"
             android:label="ఇక్కడ ఏం జరిగింది"

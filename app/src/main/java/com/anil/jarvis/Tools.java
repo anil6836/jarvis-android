@@ -533,6 +533,7 @@ final class Tools {
         DEFS.add(new Def("case_board", "Open his case boards ('కేస్ బోర్డ్ తెరువు', 'బైక్ కేస్ చూపించు'): everything about one problem on one board. "
                 + "name (optional): open the case whose title contains it; create: true makes a new case with that name.",
                 schema(new String[][]{{"name", "string", "Part of the case's title, or the new case's name"}, {"create", "boolean", "Make a new case"}})));
+        DEFS.add(new Def("map_board", "Open the map board ('మ్యాప్ బోర్డ్ తెరువు', 'నా స్కాన్‌లు మ్యాప్‌లో చూపించు'): his scans, parked bike, hazard spots, home and ride heat on one map.", schema(new String[][]{})));
         DEFS.add(new Def("hazard", "Places he marked as dangerous on the road ('ఇక్కడ గుంత ఉంది' = add here, 'ప్రమాద చోట్లు ఏవి' = list near him). Jarvis warns 90 m before them. "
                 + "action: add / list / remove; what: the danger in his words (గుంత, స్పీడ్ బ్రేకర్, నీళ్లు…).",
                 schema(new String[][]{{"action", "string", "add (default), list, remove"}, {"what", "string", "What the danger is"}, {"id", "string", "For remove: the hazard id"}})));
@@ -983,6 +984,7 @@ final class Tools {
             case "show_features": return "ఫీచర్లు తెరుస్తున్నాను…";
             case "case_board": return "కేస్ బోర్డ్ తెరుస్తున్నాను…";
             case "hazard": return "ప్రమాద చోటు…";
+            case "map_board": return "మ్యాప్ బోర్డ్ తెరుస్తున్నాను…";
             case "day_summary": return "ఈరోజు లెక్క చూస్తున్నాను…";
             case "scan_qr": return "QR చదువుతున్నాను…";
             case "look_at_screen": return "స్క్రీన్ చూస్తున్నాను…";
@@ -1250,6 +1252,7 @@ final class Tools {
                     CaseActivity.open(act(), hit == null ? null : hit.optString("id"));
                     return ok().put("opened", hit == null ? "the list of cases" : hit.optString("title")).toString();
                 }
+                case "map_board": MapActivity.open(act()); return ok().put("opened", "map board").toString();
                 case "hazard": {
                     String hact = a.optString("action", "add");
                     if (hact.equals("remove")) return ok().put("removed", Hazards.remove(act(), a.optString("id"))).toString();

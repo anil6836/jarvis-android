@@ -83,6 +83,7 @@ final class ScanStore {
         JSONObject row = new JSONObject().put("id", id).put("t", data.optLong("t")).put("title", data.optString("title"))
                 .put("kind", data.optString("kind")).put("mode", data.optString("mode")).put("board", data.optBoolean("board"))
                 .put("brief", cut(data.optString("say"), 160));
+        if (data.has("lat") && data.has("lon")) row.put("lat", data.optDouble("lat")).put("lon", data.optDouble("lon")); // (for the map board)
         JSONArray a;
         try { a = new JSONArray(sp(c).getString("list", "[]")); } catch (Exception e) { a = new JSONArray(); }
         JSONArray b = new JSONArray();

@@ -100,7 +100,98 @@ public class HoloActivity extends Activity implements HoloView.Listener {
         if (holo != null) holo.onPause();
         if (air != null) air.stop();
         if (recording) stopVideo(false);
+        tourStop();
         Announcer.stop();
+    }
+
+    // ================================================================ ▶️ the guided tour: layers peeled one by one, or section by section, or part by part, with Jarvis talking
+
+    private int tourAt = -1;
+    private final android.os.Handler tourHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable tourNext = () -> { if (tourAt >= 0) tour(tourAt + 1); };
+
+    private void tourStop() {
+        if (tourAt < 0) return;
+        tourAt = -1;
+        tourHandler.removeCallbacks(tourNext);
+        holo.sectionFilter = null;
+        holo.selected = -1;
+        Announcer.stop();
+        for (TextView t : toggles) if (t.getText().toString().startsWith("▶️")) lit(t, false);
+    }
+
+    /** Step k of the tour: what to peel / light up, and the words. */
+    private void tour(int k) {
+        HoloView.Scene s = holo.scene();
+        if (s == null) return;
+        List<String> steps = new ArrayList<>();   // the words of each step
+        List<Runnable> shows = new ArrayList<>(); // what the hologram does at each step
+        if (s.layers.size() > 1) { // a device opened layer by layer, or a space's views: one layer at a time, from the outside in
+            for (int i = 0; i < s.layers.size(); i++) {
+                final int li = i;
+                StringBuilder b = new StringBuilder((data.optString("kind").equals("space") ? "" : "పొర ") + (i + 1) + ": " + s.layers.get(i).name + ". ");
+                int n = 0;
+                for (HoloView.Part pt : s.parts) {
+                    if (pt.layer != i) continue;
+                    if (n++ >= 7) { b.append("ఇంకా ఉన్నాయి. "); break; }
+                    b.append(pt.it.name);
+                    if (!pt.it.info.isEmpty() && n <= 3) b.append(": ").append(pt.it.info);
+                    if (pt.it.fault) b.append(" (సమస్య: ").append(pt.it.faultWhy.isEmpty() ? "చూడాలి" : pt.it.faultWhy).append(")");
+                    b.append(". ");
+                }
+                if (n == 0) b.append("ఇందులో విడిగా గుర్తించినవి లేవు.");
+                steps.add(b.toString());
+                shows.add(() -> { holo.peel = li; holo.sectionFilter = null; holo.selected = -1; showLayer(); });
+            }
+            steps.add("అంతే. పొరలు మళ్ళీ పెడుతున్నాను.");
+            shows.add(() -> { holo.peel = 0; showLayer(); });
+        } else {
+            java.util.LinkedHashMap<String, List<HoloView.Part>> secs = new java.util.LinkedHashMap<>();
+            for (HoloView.Part pt : s.parts) if (!pt.it.section.isEmpty()) secs.computeIfAbsent(pt.it.section, x -> new ArrayList<>()).add(pt);
+            if (secs.size() >= 2) { // section by section
+                for (java.util.Map.Entry<String, List<HoloView.Part>> e : secs.entrySet()) {
+                    final String name = e.getKey();
+                    StringBuilder b = new StringBuilder("సెక్షన్ " + name + ": ");
+                    int n = 0;
+                    for (HoloView.Part pt : e.getValue()) {
+                        if (n++ >= 6) { b.append("ఇంకా ఉన్నాయి. "); break; }
+                        b.append(pt.it.name);
+                        if (!pt.it.info.isEmpty() && n <= 3) b.append(": ").append(pt.it.info);
+                        b.append(". ");
+                    }
+                    steps.add(b.toString());
+                    shows.add(() -> { holo.showSections = true; holo.sectionFilter = name; holo.selected = -1; });
+                }
+                steps.add("అన్ని సెక్షన్లు చెప్పాను.");
+                shows.add(() -> holo.sectionFilter = null);
+            } else { // part by part (in the building order when there is one)
+                List<Integer> order = s.order.isEmpty() ? null : s.order;
+                int count = Math.min(14, s.parts.size());
+                for (int i = 0; i < count; i++) {
+                    final int idx = order != null && i < order.size() ? order.get(i) : i;
+                    if (idx < 0 || idx >= s.parts.size()) continue;
+                    HoloView.Part pt = s.parts.get(idx);
+                    steps.add(pt.it.n + ". " + pt.it.name + (pt.it.value.isEmpty() ? "" : " (" + pt.it.value + ")") + (pt.it.info.isEmpty() ? "" : ": " + pt.it.info) + (pt.it.fault ? ". సమస్య: " + pt.it.faultWhy : ""));
+                    shows.add(() -> { holo.selected = idx; holo.exploded = true; });
+                }
+                if (s.parts.size() > count) steps.add("మిగతా " + (s.parts.size() - count) + " parts నొక్కి చూడండి.");
+                else steps.add("అంతే.");
+                shows.add(() -> { holo.selected = -1; holo.exploded = false; });
+            }
+        }
+        if (k >= steps.size()) { tourStop(); return; }
+        if (k == 0) {
+            String say = data.optString("say");
+            if (!say.isEmpty()) steps.set(0, say + " " + steps.get(0));
+        }
+        tourAt = k;
+        for (TextView t : toggles) if (t.getText().toString().startsWith("▶️")) lit(t, true);
+        shows.get(k).run();
+        String words = steps.get(k);
+        showText("▶️ " + (k + 1) + "/" + steps.size() + "\n" + words, java.util.Arrays.asList(small("⏭ తర్వాత", v -> tour(tourAt + 1)), small("⏹ ఆపు", v -> tourStop())));
+        Announcer.sayDirect(this, words);
+        tourHandler.removeCallbacks(tourNext);
+        tourHandler.postDelayed(tourNext, 2500 + Math.min(20000, words.length() * 70L));
     }
 
     @Override protected void onDestroy() {
@@ -211,6 +302,7 @@ public class HoloActivity extends Activity implements HoloView.Listener {
         ts.setHorizontalScrollBarEnabled(false);
         LinearLayout tg = new LinearLayout(this);
         tg.setPadding(dp(8), 0, dp(8), 0);
+        addToggle(tg, "▶️ వివరించు", () -> tourAt >= 0, on -> { if (on) tour(0); else tourStop(); });
         addToggle(tg, "💥 విడదీయి", () -> holo.exploded, on -> holo.exploded = on);
         addToggle(tg, "🏷️ పేర్లు", () -> labelsOn, on -> labelsOn = on);
         addToggle(tg, "🔗 కనెక్షన్లు", () -> holo.showLinks, on -> holo.showLinks = on);

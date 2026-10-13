@@ -165,6 +165,54 @@ final class Recon {
         return b.toString().replaceAll("\\.\\.", ".").trim();
     }
 
+    // ================================================================ a space (room / machine) as a 3D model: parts per view
+
+    static String spaceSystem() {
+        return "You are JARVIS, mapping a space or a big machine for Anil (Telangana) from numbered photos taken while he turned around (a room) or walked around it (a bike, a machine). "
+                + "Answer only in simple Telugu. Reply with ONLY this JSON: {\"title\":\"ఏమిటి (గది / బైక్ / యంత్రం పేరు)\",\"say\":\"2-3 Telugu lines about the whole\","
+                + "\"views\":[{\"n\":1,\"label\":\"short Telugu name of this side / direction (ఉత్తరం గోడ, ముందు వైపు…)\",\"items\":[{\"name\":\"Telugu name\",\"box\":[x0,y0,x1,y1],"
+                + "\"info\":\"one short Telugu line: what it is / does\",\"section\":\"group name (ఫర్నిచర్, కరెంట్, ఇంజిన్, బ్రేక్…)\",\"fault\":false,\"fault_why\":\"\"}]}]}. "
+                + "box = integers 0-1000 of THAT numbered photo's own width and height (not of the whole grid). Up to 12 items per photo: the real, visible things (furniture, doors, windows, "
+                + "switches, parts of the machine, pipes, wires). People only as 'మనిషి', never who. fault=true with fault_why only for something clearly wrong (crack, rust, leak, loose).";
+    }
+
+    static String spacePrompt(int photos, String note) {
+        return "This picture is a grid of " + photos + " numbered photos (1, 2, 3… left to right, top to bottom), each 640×480 inside the grid, taken in order"
+                + (note == null || note.trim().isEmpty() ? "" : "; Anil says: \"" + note.trim() + "\"") + ". Give one view per photo, with that photo's items and boxes.";
+    }
+
+    /** The AI's views read into layers for a hologram board: [{name, items:[…]}] (ScanBrain's item shape), at most `photos`. */
+    static JSONArray parseSpace(String reply, int photos, String[] headings) {
+        JSONArray layers = new JSONArray();
+        try {
+            String s = reply == null ? "" : reply.trim();
+            int a = s.indexOf('{'), z = s.lastIndexOf('}');
+            if (a < 0 || z <= a) return layers;
+            JSONObject o = new JSONObject(s.substring(a, z + 1));
+            JSONArray views = o.optJSONArray("views");
+            for (int i = 0; i < photos; i++) {
+                JSONObject v = null;
+                for (int k = 0; views != null && k < views.length(); k++) { JSONObject vk = views.optJSONObject(k); if (vk != null && vk.optInt("n", k + 1) == i + 1) { v = vk; break; } }
+                if (v == null && views != null && i < views.length()) v = views.optJSONObject(i);
+                JSONArray items = v == null ? new JSONArray() : v.optJSONArray("items");
+                if (items == null) items = new JSONArray();
+                JSONArray clean = new JSONArray();
+                for (int k = 0; k < items.length() && k < 14; k++) {
+                    JSONObject it = items.optJSONObject(k);
+                    if (it == null || it.optString("name").isEmpty()) continue;
+                    it.put("n", clean.length() + 1);
+                    clean.put(it);
+                }
+                String label = v == null ? "" : v.optString("label");
+                String head = headings != null && i < headings.length && headings[i] != null ? headings[i] : "";
+                String name = "దృశ్యం " + (i + 1) + (label.isEmpty() ? "" : " · " + label) + (head.isEmpty() ? "" : " (" + head + ")");
+                layers.put(new JSONObject().put("name", name).put("photo", "view" + i + ".jpg").put("items", clean));
+            }
+            layers.put(new JSONObject().put("_title", o.optString("title")).put("_say", o.optString("say"))); // (the whole's words, last)
+        } catch (Exception ignored) {}
+        return layers;
+    }
+
     // ================================================================ evidence: a thing from three sides
 
     static String evidenceSystem() {
