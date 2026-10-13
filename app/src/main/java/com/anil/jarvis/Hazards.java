@@ -101,11 +101,14 @@ final class Hazards {
         return w.isEmpty() ? "ప్రమాదం" : w.length() > 30 ? w.substring(0, 30) : w;
     }
 
-    /** "ఇక్కడ గుంత ఉంది", "ఇక్కడ ప్రమాదం గుర్తుపెట్టు", "mark a pothole here". */
+    /** "ఇక్కడ గుంత ఉంది", "ఇక్కడ ప్రమాదం గుర్తుపెట్టు", "mark a pothole here". A question ("ఇక్కడ గుంత ఉందా", speech has no "?") is not a mark. */
     static boolean isMark(String text) {
-        String t = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        return t.matches(".*(ఇక్కడ|అక్కడ|here).*") && t.matches(".*(గుంత|గోతు|గొయ్యి|స్పీడ్ బ్రేకర్|బ్రేకర్|నీళ్లు|మునిగ|వరద|వైరు|ప్రమాదం|జాగ్రత్త|జారు|రోడ్డు పని|pothole|bump|breaker|flood|hazard|danger|wire).*")
-                && !t.matches(".*(ఎక్కడ|where|ఉందా\\?|ఉన్నాయా).*");
+        String t = text == null ? "" : text.toLowerCase(Locale.ROOT).trim();
+        if (!t.matches(".*(ఇక్కడ|అక్కడ|here).*")) return false;
+        if (!t.matches(".*(గుంత|గోతు|గొయ్యి|స్పీడ్ బ్రేకర్|బ్రేకర్|నీళ్లు|మునిగ|వరద|వైరు|ప్రమాదం|జాగ్రత్త|జారు|రోడ్డు పని|pothole|bump|breaker|flood|hazard|danger|wire).*")) return false;
+        if (t.matches(".*(ఎక్కడ|where|ఉందా|ఉన్నాయా|ఉండాలా|కదా|ఏంటి|ఏమిటి|is there|\\?).*")) return false;
+        // a statement ("… ఉంది / ఉన్నాయి / మునిగింది") or an order ("గుర్తుపెట్టు", "mark")
+        return t.matches(".*(గుర్తుపెట్టు|గుర్తు పెట్టు|గుర్తుపెట్టండి|mark|note).*") || t.matches(".*(ఉంది|ఉన్నాయి|ఉన్నది|మునిగింది|వేలాడుతోంది|పడింది|జరుగుతోంది|జాగ్రత్త)\\s*[.!]?$");
     }
 
     // ---- the phone watches the spots

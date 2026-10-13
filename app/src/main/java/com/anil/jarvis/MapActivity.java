@@ -168,6 +168,7 @@ public class MapActivity extends Activity {
             final List<Pin> ps = pins;
             final List<double[]> ht = heat;
             main.post(() -> {
+                if (isFinishing() || isDestroyed()) return;
                 map.setData(ps, ht);
                 hint.setText(ps.isEmpty() && ht.isEmpty() ? "ఇంకా గుర్తులు లేవు: స్కాన్‌లు, పార్కింగ్, ప్రమాద చోట్లు, రైడ్‌లు ఇక్కడ కనిపిస్తాయి (ఇప్పటి నుంచి తీసే స్కాన్‌లకు చోటు కూడా గుర్తుంటుంది)."
                         : ps.size() + " గుర్తులు · " + ht.size() / 2 + " రైడ్‌లు. పిన్ నొక్కితే వివరాలు.");
@@ -181,7 +182,8 @@ public class MapActivity extends Activity {
         items.add("🧭 దారి (Google Maps)");
         if (p.kind.equals("scan")) items.add("📷 స్కాన్ తెరువు");
         if (p.kind.equals("hazard")) items.add("🗑️ ఈ ప్రమాద గుర్తు తీసేయి");
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(p.title).setMessage(p.sub.isEmpty() ? null : p.sub)
+        // (a message and a list don't show together in AlertDialog: the date goes into the title)
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(p.sub.isEmpty() ? p.title : p.title + "\n" + p.sub)
                 .setItems(items.toArray(new String[0]), (d, w) -> {
                     if (w == 0) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + p.lat + "," + p.lon + "(" + Uri.encode(p.title) + ")"))); } catch (Exception e) { Toast.makeText(this, "మ్యాప్ యాప్ లేదు", Toast.LENGTH_SHORT).show(); } }
                     else if (p.kind.equals("scan")) startActivity(new Intent(this, JarvisCamera.class).putExtra(JarvisCamera.EXTRA_SCAN, p.ref));
@@ -258,6 +260,7 @@ public class MapActivity extends Activity {
         }
 
         void goHere() {
+            if (isFinishing() || isDestroyed() || work.isShutdown()) return;
             work.execute(() -> {
                 android.location.Location l = null;
                 try { l = Travel.here(MapActivity.this); } catch (Exception ignored) {}

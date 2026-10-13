@@ -500,6 +500,7 @@ public class CaseActivity extends Activity {
     }
 
     private void refresh() {
+        if (isFinishing() || isDestroyed() || work.isShutdown()) return; // (a worker finishing after ✕)
         kase = CaseStore.get(this, caseId);
         if (kase == null) return;
         board.setCase(kase.optJSONArray("cards"), kase.optJSONArray("links"));

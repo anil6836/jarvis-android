@@ -84,6 +84,27 @@ final class Recon {
         return out;
     }
 
+    /** ID, policy, account and card numbers never get written: every word field of the story is masked (FloatBubble.noIds). */
+    static void scrub(JSONObject o) {
+        if (o == null) return;
+        try {
+            for (String k : new String[]{"title", "story", "caution", "say", "name", "what", "size_note", "material", "condition", "value", "keep", "light", "air", "layout", "fan_ac"})
+                if (o.has(k) && o.opt(k) instanceof String) o.put(k, FloatBubble.noIds(o.optString(k)));
+            for (String k : new String[]{"steps", "marks", "issues", "tips", "views", "items"}) {
+                JSONArray a = o.optJSONArray(k);
+                for (int i = 0; a != null && i < a.length(); i++) {
+                    Object v = a.opt(i);
+                    if (v instanceof String) a.put(i, FloatBubble.noIds((String) v));
+                    else if (v instanceof JSONObject) {
+                        JSONObject s = (JSONObject) v;
+                        for (String f : new String[]{"when", "what", "evidence", "label", "name", "info", "section"}) if (s.has(f) && s.opt(f) instanceof String) s.put(f, FloatBubble.noIds(s.optString(f)));
+                        scrub(s);
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     /** The AI's reply read; null when there is nothing usable. */
     static JSONObject parse(String reply) {
         try {
@@ -94,6 +115,7 @@ final class Recon {
             JSONArray steps = o.optJSONArray("steps");
             if (steps == null || steps.length() == 0) { if (o.optString("story").isEmpty()) return null; o.put("steps", new JSONArray()); }
             if (o.optString("title").isEmpty()) o.put("title", "ఇక్కడ ఏం జరిగింది");
+            scrub(o);
             return o;
         } catch (Exception e) {
             return null;
@@ -137,6 +159,7 @@ final class Recon {
             int a = s.indexOf('{'), z = s.lastIndexOf('}');
             if (a < 0 || z <= a) return null;
             JSONObject o = new JSONObject(s.substring(a, z + 1));
+            scrub(o);
             if (o.optString("title").isEmpty()) o.put("title", "గది");
             return o;
         } catch (Exception e) {
@@ -189,6 +212,7 @@ final class Recon {
             int a = s.indexOf('{'), z = s.lastIndexOf('}');
             if (a < 0 || z <= a) return layers;
             JSONObject o = new JSONObject(s.substring(a, z + 1));
+            scrub(o);
             JSONArray views = o.optJSONArray("views");
             for (int i = 0; i < photos; i++) {
                 JSONObject v = null;
@@ -235,6 +259,7 @@ final class Recon {
             int a = s.indexOf('{'), z = s.lastIndexOf('}');
             if (a < 0 || z <= a) return null;
             JSONObject o = new JSONObject(s.substring(a, z + 1));
+            scrub(o);
             if (o.optString("name").isEmpty()) o.put("name", "వస్తువు");
             return o;
         } catch (Exception e) {

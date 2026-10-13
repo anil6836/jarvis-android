@@ -112,6 +112,7 @@ public class TourActivity extends Activity {
     private TextView stepText, counter, playBtn, openBtn;
     private final List<View> dots = new ArrayList<>();
     private final Runnable watch = this::watchVoice;
+    private Runnable pendingSay;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -282,7 +283,9 @@ public class TourActivity extends Activity {
         body.rig.setFeeling("calm");
         speaking = true;
         spokeAt = SystemClock.uptimeMillis();
-        main.postDelayed(() -> Announcer.sayDirect(this, text), 250); // (after the stop has gone through)
+        if (pendingSay != null) main.removeCallbacks(pendingSay);
+        pendingSay = () -> { pendingSay = null; if (!isFinishing() && speaking) Announcer.sayDirect(this, text); };
+        main.postDelayed(pendingSay, 250); // (after the stop has gone through)
         main.removeCallbacks(watch);
         main.postDelayed(watch, 900);
     }
@@ -299,6 +302,7 @@ public class TourActivity extends Activity {
 
     private void stopTalk() {
         speaking = false;
+        if (pendingSay != null) { main.removeCallbacks(pendingSay); pendingSay = null; }
         main.removeCallbacks(watch);
         Announcer.stop();
         if (body != null) body.rig.setMode(BodyRig.IDLE);

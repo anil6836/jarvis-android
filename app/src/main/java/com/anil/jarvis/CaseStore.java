@@ -62,9 +62,26 @@ final class CaseStore {
 
     static synchronized void save(Context c, JSONObject kase) {
         List<JSONObject> cases = all(c);
-        try { kase.put("updated", System.currentTimeMillis()); } catch (Exception ignored) {}
+        long loadedAt = kase.optLong("updated", 0);
         boolean found = false;
-        for (int i = 0; i < cases.size(); i++) if (cases.get(i).optString("id").equals(kase.optString("id"))) { cases.set(i, kase); found = true; }
+        for (int i = 0; i < cases.size(); i++) {
+            if (!cases.get(i).optString("id").equals(kase.optString("id"))) continue;
+            // cards a worker added (photos importing, a story) after this copy was loaded are kept, not written over
+            try {
+                JSONArray mine = kase.optJSONArray("cards"), theirs = cases.get(i).optJSONArray("cards");
+                if (mine != null && theirs != null) {
+                    java.util.Set<String> ids = new java.util.HashSet<>();
+                    for (int k = 0; k < mine.length(); k++) ids.add(mine.optJSONObject(k) == null ? "" : mine.optJSONObject(k).optString("id"));
+                    for (int k = 0; k < theirs.length(); k++) {
+                        JSONObject o = theirs.optJSONObject(k);
+                        if (o != null && !ids.contains(o.optString("id")) && o.optLong("t") > loadedAt) mine.put(o);
+                    }
+                }
+            } catch (Exception ignored) {}
+            cases.set(i, kase);
+            found = true;
+        }
+        try { kase.put("updated", System.currentTimeMillis()); } catch (Exception ignored) {}
         if (!found) cases.add(0, kase);
         write(c, cases);
     }
@@ -107,7 +124,7 @@ final class CaseStore {
             // laid out in a loose spiral around the middle; he can drag them anywhere
             double ang = n * 2.399, rad = 0.12 + 0.045 * Math.sqrt(n);
             JSONObject card = new JSONObject().put("id", "k" + Long.toString(System.currentTimeMillis(), 36) + n).put("kind", kind)
-                    .put("ref", ref == null ? "" : ref).put("title", title == null ? "" : title).put("brief", brief == null ? "" : brief)
+                    .put("ref", ref == null ? "" : ref).put("title", FloatBubble.noIds(title == null ? "" : title)).put("brief", FloatBubble.noIds(brief == null ? "" : brief))
                     .put("t", System.currentTimeMillis()).put("x", Math.max(0.08, Math.min(0.92, 0.5 + rad * Math.cos(ang))))
                     .put("y", Math.max(0.1, Math.min(0.9, 0.5 + rad * Math.sin(ang) * 0.8)));
             cards.put(card);
@@ -123,7 +140,7 @@ final class CaseStore {
         if (k == null) return;
         try {
             k.put("links", links == null ? new JSONArray() : links);
-            if (summary != null) k.put("summary", summary);
+            if (summary != null) k.put("summary", FloatBubble.noIds(summary));
         } catch (Exception ignored) {}
         save(c, k);
     }

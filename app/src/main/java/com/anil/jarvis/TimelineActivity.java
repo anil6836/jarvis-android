@@ -31,6 +31,7 @@ public class TimelineActivity extends Activity {
     private final java.util.List<View> stepViews = new java.util.ArrayList<>();
     private int at = -1;
     private boolean playing;
+    private TextView play;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -53,7 +54,7 @@ public class TimelineActivity extends Activity {
         TextView t = Ui.mono(this, "🕵️ " + recon.optString("title"), 14, Ui.CYAN);
         t.setSingleLine(true);
         bar.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView play = Ui.text(this, "▶️", 20, 0xFFFFFFFF);
+        play = Ui.text(this, "▶️", 20, 0xFFFFFFFF);
         play.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 6));
         play.setOnClickListener(v -> { if (playing) { playing = false; Announcer.stop(); play.setText("▶️"); } else { playing = true; play.setText("⏸"); at = -1; next(play); } });
         bar.addView(play);
@@ -139,5 +140,11 @@ public class TimelineActivity extends Activity {
         }
     }
 
-    @Override protected void onPause() { super.onPause(); playing = false; }
+    @Override protected void onPause() {
+        super.onPause();
+        playing = false;
+        main.removeCallbacksAndMessages(null); // (the caution line 5 s later)
+        Announcer.stop();
+        if (play != null) play.setText("▶️");
+    }
 }

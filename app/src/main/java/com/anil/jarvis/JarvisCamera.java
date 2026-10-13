@@ -166,6 +166,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         String m = i.getStringExtra(EXTRA_MODE);
         if (m != null) setMode(m);
         String kc = i.getStringExtra(EXTRA_CASE);
+        boolean followUp = i.hasExtra(EXTRA_BACK_OF) || i.hasExtra(EXTRA_ZOOM_OF) || i.hasExtra(EXTRA_IMAGE) || i.hasExtra(EXTRA_SCAN);
+        if (kc == null && !followUp) caseId = null; // opened plainly (singleTask: the old intent's case must not stick)
         if (kc != null) {
             caseId = kc;
             JSONObject k = CaseStore.get(this, kc);
@@ -988,7 +990,11 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         speaking = false;
         hud.scanning(true);
         if (onScreen) hud.clear();
-        setActions(null);
+        if ("firstaid".equals(mode)) { // the 📞 108 chip stays while Jarvis looks (he presses it; it only opens the dialer)
+            List<JSONObject> dial = new ArrayList<>();
+            try { dial.add(new JSONObject().put("type", "dial").put("number", "108").put("label", "📞 108 అంబులెన్స్")); } catch (Exception ignored) {}
+            setActions(dial);
+        } else setActions(null);
         tell("🔍 " + q + "\n\n" + (deep ? "వివరంగా స్కాన్ చేస్తున్నాను… (కొంచెం టైమ్ పడుతుంది)" : "చూస్తున్నాను…"), false);
         refreshButtons();
         final String talk = talkText(), g = guide, m = mode;
@@ -1114,7 +1120,6 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if ("firstaid".equals(mode) && !hasType(acts, "dial")) acts.add(0, new JSONObject().put("type", "dial").put("number", "108").put("label", "📞 108 అంబులెన్స్"));
         } catch (Exception ignored) {}
         setActions(acts);
-        if (onScreen && !skipSave) caseChip(); // 📁: this answer's scan onto a case board
         // what he asked for by name that opens something (a shop, the map, the parking spot...): after the answer is spoken
         for (JSONObject a : r.actions) {
             if (a.optBoolean("auto") && !a.optString("type").matches("reminder|note|expense|warranty|medicine|item_place")) pendingAuto.add(a);
@@ -1123,6 +1128,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if (auto3d) pendingAuto.add(act("hologram")); // many parts: the hologram opens by itself after the answer
         if (captionBase.trim().isEmpty()) runPendingAuto(); // (else when the answer has been spoken)
         save(q, r, pic, onScreen, deep, layer, close, auto3d);
+        if (onScreen && !skipSave) caseChip(); // 📁: this answer's scan onto a case board (after save() has given it its id)
         if (layer) layerGuideIfOn();
     }
 
@@ -3142,7 +3148,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private void firstAid() {
         setMode("firstaid");
         say("🩹 చూస్తున్నాను. తీవ్రంగా ఉంటే ముందు 108 కి కాల్ చేయండి.");
-        main.postDelayed(() -> ask(defaultQuestion()), 1500);
+        main.postDelayed(() -> ask(defaultQuestion()), 4500); // (after the 108 line has been said; the 📞 108 chip stays on while Jarvis looks)
     }
 
     /** "ఇక్కడ గుంత ఉంది": the spot (and a picture of it) is kept; Jarvis warns when he comes this way again. */

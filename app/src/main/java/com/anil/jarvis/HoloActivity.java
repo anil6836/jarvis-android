@@ -120,6 +120,12 @@ public class HoloActivity extends Activity implements HoloView.Listener {
         for (TextView t : toggles) if (t.getText().toString().startsWith("▶️")) lit(t, false);
     }
 
+    /** The chip whose label starts so (the ▶️ tour chip sits first now, so no fixed index). */
+    private TextView toggleFor(String prefix) {
+        for (TextView t : toggles) if (t.getText().toString().startsWith(prefix)) return t;
+        return toggles.isEmpty() ? null : toggles.get(0);
+    }
+
     /** Step k of the tour: what to peel / light up, and the words. */
     private void tour(int k) {
         HoloView.Scene s = holo.scene();
@@ -344,6 +350,7 @@ public class HoloActivity extends Activity implements HoloView.Listener {
     }
 
     private void lit(TextView t, boolean on) {
+        if (t == null) return;
         t.setBackground(Ui.round(this, on ? Ui.alpha(Ui.CYAN, 0x55) : 0x33FFFFFF, on ? Ui.CYAN : 0x44FFFFFF, 999));
     }
 
@@ -401,7 +408,7 @@ public class HoloActivity extends Activity implements HoloView.Listener {
                     if (tag >= 0) picked(tag); else holo.pick(e.getX(), e.getY());
                     return true;
                 }
-                @Override public boolean onDoubleTap(MotionEvent e) { holo.exploded = !holo.exploded; lit(toggles.get(0), holo.exploded); return true; }
+                @Override public boolean onDoubleTap(MotionEvent e) { holo.exploded = !holo.exploded; lit(toggleFor("💥"), holo.exploded); return true; }
                 @Override public void onLongPress(MotionEvent e) {
                     int tag = labels.tagAt(e.getX(), e.getY());
                     if (tag < 0) tag = holo.selected;
@@ -856,8 +863,8 @@ public class HoloActivity extends Activity implements HoloView.Listener {
             switch (dir) {
                 case AirGesture.LEFT: if (asm >= 0) assembly(asm - 1); else holo.yaw += 40f; break;
                 case AirGesture.RIGHT: if (asm >= 0) assembly(asm + 1); else holo.yaw -= 40f; break;
-                case AirGesture.UP: holo.exploded = true; lit(toggles.get(0), true); break;
-                default: holo.exploded = false; lit(toggles.get(0), false); break;
+                case AirGesture.UP: holo.exploded = true; lit(toggleFor("💥"), true); break;
+                default: holo.exploded = false; lit(toggleFor("💥"), false); break;
             }
         });
         if (!air.start()) { Toast.makeText(this, "ముందు కెమెరా తెరవలేకపోయాను", Toast.LENGTH_SHORT).show(); return; }
