@@ -205,6 +205,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             main.postDelayed(() -> { // the camera has a moment to start and focus
                 if (deep) deepScan();
                 else if (qq != null && is360(qq)) shotsStart("object");   // ("డ్రమ్‌ని 360 లో చూపించు" from anywhere)
+                else if (qq != null && Counter.parse(qq) != null) countAi(Counter.parse(qq)); // ("గేట్‌కి ఎన్ని రాడ్లు" from anywhere)
                 else if (qq != null && LockBrain.isLockAsk(qq)) lockAsk(qq); // ("ఆ కుక్కని జూమ్ చేయి" from anywhere: found, locked, zoomed)
                 else ask(qq);
             }, 1600);
@@ -917,6 +918,10 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             List<String> kinds = LiveTracker.countAsked(text);
             if (!kinds.isEmpty()) { countNow(kinds); return; }
         }
+        if (!flow) { // "ఈ గేట్‌కి ఎన్ని రాడ్లు ఉన్నాయి?", "గేట్ లెక్కపెట్టు": the AI marks each one, the phone numbers them
+            Counter.Ask ca = Counter.parse(text);
+            if (ca != null) { countAi(ca); return; }
+        }
         if (!flow && !frozen && LockBrain.isLockAsk(text)) { lockAsk(text); return; } // "ఆ ఎర్ర చొక్కా అబ్బాయిని జూమ్ చేయి"
         if (!flow && !frozen && lens.locked() && aboutLocked(text)) { askLocked(text); return; } // a question about the locked one
         ask(text);
@@ -1364,6 +1369,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         JSONObject data = ScanStore.load(this, id);
         if (data == null) { tell("ఆ స్కాన్ దొరకలేదు.", false); return; }
         if ("object".equals(data.optString("kind"))) { ObjectActivity.open(this, id); return; }
+        if ("count".equals(data.optString("kind"))) { CountActivity.open(this, id); return; }
         if (data.optBoolean("board") && data.has("layers")) { HoloActivity.open(this, id); }
         Bitmap bm = ScanStore.photo(this, id, "photo.jpg", 1800);
         if (bm == null) { // (an OBD reading, a note): only its words
@@ -1556,7 +1562,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 "🌙 రాత్రి చూపు: " + (cam.night() ? "ఆన్" : "ఆఫ్"), "🔁 ఏమి మారింది?", "📸 HUD తో ఫోటో సేవ్", "📏 జూమ్ టెస్ట్", "⌚ లాక్ చేసినది వాచ్‌కి పంపు",
                 "🕵️ ఇక్కడ ఏం జరిగింది? (2–6 ఫోటోలు)", "📦 వస్తువు 3 వైపులు (సాక్ష్యం కార్డ్)", "📁 కేస్ బోర్డులు",
                 "🧱 నిర్మాణ పరీక్ష (పగుళ్లు, తుప్పు, లీక్)", "🏠 గది విశ్లేషణ (నెమ్మదిగా తిరగండి)", "🩹 గాయపడినవారికి సహాయం", "⚠️ ఇది సురక్షితమేనా?", "📍 ఇక్కడ ప్రమాదం గుర్తుపెట్టు",
-                "🧊 గది / యంత్రం 3D మోడల్ (చుట్టూ తిరగండి)", "🧊 వస్తువు 360° (చుట్టూ నడిచి; పై / కింద కూడా)"};
+                "🧊 గది / యంత్రం 3D మోడల్ (చుట్టూ తిరగండి)", "🧊 వస్తువు 360° (చుట్టూ నడిచి; పై / కింద కూడా)", "🔢 లెక్కపెట్టు (రాడ్లు, పైపులు, ఇటుకలు… ఏదైనా)"};
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setItems(items, (dlg, w) -> {
                     switch (w) {
@@ -1594,6 +1600,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                         case 31: safetyAsk(); break;
                         case 33: shotsStart("space"); break;
                         case 34: shotsStart("object"); break;
+                        case 35: countDialog(); break;
                         case 32: {
                             EditText e = new EditText(this);
                             e.setHint("ఏమిటి? (గుంత, స్పీడ్ బ్రేకర్, నీళ్లు, వైరు…)");
@@ -1689,6 +1696,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 .setItems(names, (x, w) -> {
                     JSONObject o = all.get(w);
                     if ("object".equals(o.optString("kind"))) ObjectActivity.open(this, o.optString("id"));
+                    else if ("count".equals(o.optString("kind"))) CountActivity.open(this, o.optString("id"));
                     else if (o.optBoolean("board")) HoloActivity.open(this, o.optString("id"));
                     else openSaved(o.optString("id"));
                 })
@@ -2503,6 +2511,122 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private void countNow(List<String> kinds) {
         Sfx.hud(this, p, "count");
         say("🔢 " + LiveTracker.countAnswer(kinds, tracker.counts(android.os.SystemClock.uptimeMillis())));
+    }
+
+    // ---- 🔢 counting anything with the AI: a point on each one, numbered markers he can correct, the phone's own bar count beside
+
+    /** ⋯ → 🔢: what to count, typed. */
+    private void countDialog() {
+        android.widget.EditText e = new android.widget.EditText(this);
+        e.setHint("ఏం లెక్కపెట్టాలి? (రాడ్లు, పైపులు, ఇటుకలు… లేదా \"గేట్\" = దాంట్లో అన్నీ)");
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("🔢 లెక్కపెట్టు").setView(e)
+                .setPositiveButton("లెక్కపెట్టు", (d, w) -> {
+                    String s = e.getText().toString().trim();
+                    Counter.Ask a = s.isEmpty() ? new Counter.Ask("", true) : Counter.parse(s + " లెక్కపెట్టు");
+                    countAi(a == null ? new Counter.Ask(s, false) : a);
+                })
+                .setNegativeButton("వద్దు", null).show();
+    }
+
+    private void countAi(Counter.Ask a) {
+        if (busy) { Toast.makeText(this, "ఇంకా చూస్తున్నాను…", Toast.LENGTH_SHORT).show(); return; }
+        if (!Net.online(this) || !p.hasBrain()) { say("దీనికి నెట్ + AI key కావాలి."); return; }
+        final boolean still = frozen;
+        final Bitmap pic = frozen ? stillPic() : cam.frame(1600);
+        if (pic == null) { say("కెమెరా బొమ్మ ఇంకా రాలేదు. ఒక్క క్షణం ఆగి మళ్ళీ అడగండి."); return; }
+        final String what = a.all ? (a.what.isEmpty() ? "అన్నీ" : a.what) : a.what;
+        busy = true;
+        voice.cancelListening();
+        hud.scanning(true);
+        refreshButtons();
+        tell("🔢 " + (a.all ? (a.what.isEmpty() ? "కనిపించేవన్నీ" : a.what + " లోని అన్ని రకాలు") : a.what) + " లెక్కపెడుతున్నాను… (ఫోన్‌ని స్థిరంగా ఉంచండి)", false);
+        final String cid = caseId;
+        work.execute(() -> {
+            String err = null, said = null;
+            Runnable after = null;
+            try {
+                String reply = Brain.oneShot(p, Counter.system(), Counter.prompt(a, null), jpeg(pic, 1600, 82), false, 4000);
+                JSONObject o = Counter.reply(reply);
+                if (o == null) throw new IllegalStateException("no count");
+                List<Counter.Mark> marks = Counter.marks(o.optJSONArray("items"));
+                int tiles = 1;
+                if (marks.size() >= 30 || o.optBoolean("dense")) { // many: the two halves counted on their own, then joined (the overlap seen twice is dropped)
+                    List<Counter.Mark> joined = new ArrayList<>();
+                    float[][] halves = {{0, 0, 0.54f, 1}, {0.46f, 0, 1, 1}};
+                    String[] names = {"LEFT half", "RIGHT half"};
+                    boolean ok = true;
+                    for (int i = 0; i < 2; i++) {
+                        Bitmap half = cropFrac(pic, halves[i]);
+                        if (half == null) { ok = false; break; }
+                        String r2 = Brain.oneShot(p, Counter.system(), Counter.prompt(a, names[i]), jpeg(half, 1400, 82), false, 4000);
+                        half.recycle();
+                        JSONObject o2 = Counter.reply(r2);
+                        if (o2 == null) { ok = false; break; }
+                        joined = Counter.merge(joined, Counter.place(Counter.marks(o2.optJSONArray("items")), halves[i]), 0.025f);
+                    }
+                    if (ok && joined.size() >= marks.size() * 0.7) { marks = joined; tiles = 2; }
+                }
+                String unit = o.optString("unit");
+                int[] bars = Counter.barLike(a.what) || Counter.barLike(unit) ? barsOf(pic) : null;
+                String s = Counter.sentence(marks, unit, a.all);
+                JSONObject data = new JSONObject().put("title", "🔢 " + what + ": " + s).put("kind", "count").put("mode", mode).put("say", s).put("what", what).put("all", a.all)
+                        .put("unit", unit).put("items", Counter.json(marks)).put("total", marks.size()).put("note", o.optString("note"))
+                        .put("confidence", o.optInt("confidence", -1)).put("tiles", tiles).put("noboxes", true);
+                if (bars != null) data.put("phone_bars", new JSONObject().put("v", bars[0]).put("h", bars[1]));
+                ScanStore.save(this, data, pic, "photo.jpg");
+                final String sid = data.optString("id");
+                int phone = bars == null ? 0 : Math.max(bars[0], bars[1]);
+                said = "🔢 " + s + "." + (phone > 0 ? (phone == marks.size() ? " ఫోన్ లెక్క కూడా అదే." : " ఫోన్ గీతల లెక్క " + phone + ": తేడా ఉంది, గుర్తులు ఒకసారి చూడండి.") : "")
+                        + (o.optString("note").isEmpty() ? "" : " " + o.optString("note")) + " మిస్ అయినది నొక్కితే కలుస్తుంది.";
+                final String title = data.optString("title");
+                after = () -> { if (cid != null) CaseStore.addCard(this, cid, "scan", sid, title, s); CountActivity.open(this, sid); };
+            } catch (Http.ApiError e) {
+                err = "AI జవాబు ఇవ్వలేదు: " + Models.explain(p, e);
+            } catch (Exception e) {
+                err = "లెక్కపెట్టలేకపోయాను (నెట్ / సమయం). మళ్ళీ ప్రయత్నించండి.";
+            } finally {
+                if (!still && pic != photo) pic.recycle();
+            }
+            final String er = err, sd = said;
+            final Runnable af = after;
+            main.post(() -> {
+                busy = false;
+                hud.scanning(false);
+                refreshButtons();
+                if (isFinishing()) return;
+                if (er != null) { say(er); return; }
+                Sfx.hud(this, p, "count");
+                say(sd);
+                if (af != null) af.run();
+            });
+        });
+    }
+
+    /** A part of the picture by fractions {x0, y0, x1, y1}. */
+    private static Bitmap cropFrac(Bitmap pic, float[] f) {
+        try {
+            int W = pic.getWidth(), H = pic.getHeight();
+            int x0 = Math.round(f[0] * W), y0 = Math.round(f[1] * H), x1 = Math.round(f[2] * W), y1 = Math.round(f[3] * H);
+            if (x1 - x0 < 8 || y1 - y0 < 8) return null;
+            return Bitmap.createBitmap(pic, x0, y0, x1 - x0, y1 - y0);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** The phone's own bar count on a small grey copy of the picture. */
+    private static int[] barsOf(Bitmap pic) {
+        try {
+            Bitmap s = scaleTo(pic, 480);
+            int w = s.getWidth(), h = s.getHeight();
+            int[] px = new int[w * h];
+            s.getPixels(px, 0, w, 0, 0, w, h);
+            if (s != pic) s.recycle();
+            for (int i = 0; i < px.length; i++) { int c = px[i]; px[i] = (((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000; }
+            return Counter.bars(px, w, h);
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     // ---- 🎙️ commentary: Jarvis talks about what is happening, like a friend beside him (AI, only when something changed)
