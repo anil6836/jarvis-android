@@ -118,9 +118,8 @@ public class CountActivity extends Activity {
         StringBuilder b = new StringBuilder("🔢 " + Counter.sentence(marks, unit, all));
         JSONObject bars = data.optJSONObject("phone_bars");
         if (bars != null) {
-            int v = bars.optInt("v"), hz = bars.optInt("h");
-            int phone = Math.max(v, hz);
-            if (phone > 0) b.append("\n📱 ఫోన్ లెక్క (గీతల నుంచి): ").append(phone).append(phone == marks.size() ? " — AI తో సరిపోయింది ✓" : " — AI తో తేడా: ఒకసారి గుర్తులు చూడండి");
+            int phone = bars.optInt("use", Math.max(bars.optInt("v"), bars.optInt("h")));
+            if (phone > 0) b.append("\n📱 ఫోన్ గీతల లెక్క (రెండో అభిప్రాయం): ").append(phone).append(phone == marks.size() ? " — AI తో సరిపోయింది ✓" : " — AI తో తేడా; గుర్తులు ఒకసారి చూడండి (స్తంభాలు కూడా గీతలుగా లెక్కకి రావొచ్చు)");
         }
         if (!data.optString("note").isEmpty()) b.append("\n").append(data.optString("note"));
         int conf = data.optInt("confidence", -1);
@@ -231,11 +230,14 @@ public class CountActivity extends Activity {
                     if (photo == null || dst.width() <= 0) return true;
                     float fx = (e.getX() - dst.left) / dst.width(), fy = (e.getY() - dst.top) / dst.height();
                     if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return true;
-                    float hit = Ui.dp(getContext(), 16);
+                    float rad = Ui.dp(getContext(), marks.size() > 60 ? 7 : marks.size() > 25 ? 9 : 11);
+                    float hit = Math.max(rad + Ui.dp(getContext(), 3), Ui.dp(getContext(), 12));
                     Counter.Mark near = null;
-                    for (Counter.Mark m : marks) {
+                    double best = hit;
+                    for (Counter.Mark m : marks) { // the nearest one, not the first in the list
                         if (filter != null && !filter.equals(m.kind.isEmpty() ? "వస్తువు" : m.kind)) continue;
-                        if (Math.hypot(dst.left + m.x * dst.width() - e.getX(), dst.top + m.y * dst.height() - e.getY()) < hit) { near = m; break; }
+                        double d = Math.hypot(dst.left + m.x * dst.width() - e.getX(), dst.top + m.y * dst.height() - e.getY());
+                        if (d < best) { best = d; near = m; }
                     }
                     if (near != null) { marks.remove(near); Toast.makeText(getContext(), "−1 " + (near.kind.isEmpty() ? "" : near.kind), Toast.LENGTH_SHORT).show(); }
                     else { marks.add(new Counter.Mark(fx, fy, addKind == null ? "" : addKind)); Toast.makeText(getContext(), "+1 " + addKind, Toast.LENGTH_SHORT).show(); }

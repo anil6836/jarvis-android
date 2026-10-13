@@ -46,22 +46,38 @@ final class Counter {
             }
         }
         if (!near.isEmpty()) {
-            if (near.matches("రూపాయలు|రూపాయిలు|డబ్బు|ఖర్చు|రేటు|రేట్|rupees|rs|price|cost|years|సంవత్సరాలు|గంటలు|నిమిషాలు|రోజులు|కిలోమీటర్లు|కి\\.మీ|hours|minutes|days|km|మీటర్లు|meters")) return null; // a price / a time, not a count
+            // a measure, a dose, a time, a price: "ఎన్ని సార్లు వేసుకోవాలి", "ఎన్ని వాట్స్", "how many litres" - never a count of things in the picture
+            if (near.matches("(రూపాయ|డబ్బు|ఖర్చు|రేటు|రేట్|rupee|rs|price|cost|year|సంవత్సర|గంట|నిమిష|రోజు|వార|నెల|కిలోమీటర|కి\\.మీ|hour|minute|day|week|month|km|మీటర|meter|metre|అడుగు|feet|foot|inch|అంగుళ|కిలో|kg|గ్రాము|gram|లీటర|litre|liter|వాట్|watt|వోల్ట|volt|యాంప|amp|శాతం|percent|gb|mb|సార్లు|times|మాత్ర|tablet|dose|డోసు|స్పూన|spoon|ml|మి\\.లీ|కప్పులు|cups|calorie|కేలరీ).*")) return null;
             if (near.matches("మంది|people|persons")) return null; // the phone's own people count handles it
+            // without a count verb the question must be about what is in front of the camera now (not "ఎన్ని మాత్రలు వేసుకోవాలి")
+            if (!counting) {
+                if (t.matches(".*(వేసుకోవాలి|తీసుకోవాలి|వేసుకోను|పడుతుంది|కావాలి|అవసరం|ఉంటుంది|ఉంటాయి|should|take|need|will|would).*")) return null;
+                boolean now = t.matches(".*(ఉన్నాయి|ఉన్నాయ్|ఉన్నవి|ఉంది|కనిపిస్తున్నాయి|కనిపిస్తున్నాయ్|కనిపిస్తోంది|ఇక్కడ|ఇందులో|ఇక్కడున్నాయి|here|are there|do you see|can you see|visible|in this|in the picture|photo).*");
+                if (!now && w.length > 3) return null;
+            }
             return new Ask(near, false);
         }
         if (!counting) return null;
-        // "X లెక్కపెట్టు": X = the words before the count word
-        String before = t.replaceAll(COUNT_WORDS + ".*$", "").replaceAll("(ఇక్కడ|అక్కడ|ఈ|ఆ|దయచేసి|జార్విస్|jarvis|ఒకసారి|please|the|these|those|this|that)", " ").replaceAll("\\s+", " ").trim();
-        if (before.isEmpty()) { // "count the bottles": the thing comes after the word in English
-            String after = t.replaceAll("^.*?" + COUNT_WORDS, " ").replaceAll("\\b(the|these|those|all|everything|here|please)\\b|అన్నీ|అన్ని|అంతా|మొత్తం|ఇక్కడ|దయచేసి", " ").replaceAll("\\s+", " ").trim();
-            if (!after.isEmpty()) before = after;
+        // "X లెక్కపెట్టు": X = the words before the count word (whole words like "ఈ" / "the" dropped, never a word's first letter)
+        String before = dropWords(t.replaceAll(COUNT_WORDS + ".*$", ""), "ఇక్కడ|అక్కడ|ఈ|ఆ|దయచేసి|జార్విస్|jarvis|ఒకసారి|please|the|these|those|this|that|all|of");
+        boolean english = false;
+        if (before.isEmpty()) { // "count the bottles (on this gate)": the thing comes after the word in English
+            String after = dropWords(t.replaceAll("^.*?" + COUNT_WORDS, " "), "the|these|those|all|everything|here|please|అన్నీ|అన్ని|అంతా|మొత్తం|ఇక్కడ|దయచేసి");
+            if (!after.isEmpty()) { before = after; english = true; }
         }
         if (before.isEmpty() || before.matches("(అన్నీ|అన్ని|అంతా|మొత్తం|everything|all)( .*)?")) return new Ask("", true);
         if (before.matches(".*(లో|లోని|కి|కు) (అన్నీ|అన్ని|అంతా|మొత్తం)$")) return new Ask(before.replaceAll(" (అన్నీ|అన్ని|అంతా|మొత్తం)$", "").replaceAll("(లో|లోని|కి|కు)$", ""), true); // "గేట్‌లో అన్నీ"
-        String last = before.substring(before.lastIndexOf(' ') + 1);
-        boolean plural = last.matches(PLURAL) || last.matches(".*(రాడ్|పైప|ఇటుక|టైల్|బోల్ట|నట్|స్క్రూ|సీసా|బాటిల్|కుర్చీ|కిటికీ|తలుపు|మెట్|పలక|రేకు|గొర్ర|మేక|కోడి|చెట్|కాయ|పండు|పండ్).*");
-        return new Ask(before, !plural);
+        // the head noun: in English the first word after the count word ("count the rods on this gate"); in Telugu the last one before it
+        String head = english ? before.substring(0, before.contains(" ") ? before.indexOf(' ') : before.length()) : before.substring(before.lastIndexOf(' ') + 1);
+        boolean plural = head.matches(PLURAL) || head.matches(".*(రాడ్|పైప|ఇటుక|టైల్|బోల్ట|నట్|స్క్రూ|సీసా|బాటిల్|కుర్చీ|కిటికీ|తలుపు|మెట్|పలక|రేకు|గొర్ర|మేక|కోడి|చెట్|కాయ|పండు|పండ్).*");
+        return new Ask(english ? head : before, !plural);
+    }
+
+    /** Whole words matching `words` taken out ("ఆవులు" keeps its first letter). */
+    static String dropWords(String text, String words) {
+        StringBuilder b = new StringBuilder();
+        for (String x : text.trim().split("\\s+")) if (!x.isEmpty() && !x.matches(words)) b.append(b.length() == 0 ? "" : " ").append(x);
+        return b.toString();
     }
 
     // ---- the AI
@@ -76,7 +92,7 @@ final class Counter {
     }
 
     static String prompt(Ask a, String part) {
-        String where = part == null ? "this photo" : "this " + part + " of the photo (count only what is inside it)";
+        String where = part == null ? "this photo" : "this " + part + " of the photo. Count a thing ONLY if its centre lies inside this half; a thing that continues past the inner cut edge belongs to the half that holds its centre (a bar running the full width counts in the LEFT half only, never in the RIGHT)";
         if (a.all) return "Count EVERY kind of part of " + (a.what.isEmpty() ? "the main thing" : "the " + a.what) + " in " + where + ": e.g. for a gate the vertical rods, horizontal pipes, hinges, bolts, the latch - each kind separately in items (kind = its Telugu name) and summed in kinds.";
         return "Count the " + a.what + " in " + where + ". items = one point per " + a.what + "; kind = '" + a.what + "'.";
     }
@@ -100,11 +116,12 @@ final class Counter {
                 JSONObject it = items.optJSONObject(i);
                 if (it == null || !it.has("x") || !it.has("y")) continue;
                 float x = (float) it.optDouble("x") / 1000f, y = (float) it.optDouble("y") / 1000f;
-                if (x < -0.02f || x > 1.02f || y < -0.02f || y > 1.02f) continue;
+                if (Float.isNaN(x) || Float.isNaN(y) || x < -0.02f || x > 1.02f || y < -0.02f || y > 1.02f) continue;
                 clean.put(new JSONObject().put("x", Math.max(0, Math.min(1, x))).put("y", Math.max(0, Math.min(1, y))).put("kind", FloatBubble.noIds(it.optString("kind"))));
             }
             o.put("items", clean);
             if (o.optString("unit").isEmpty()) o.put("unit", clean.length() > 0 ? clean.optJSONObject(0).optString("kind") : "");
+            o.put("unit", FloatBubble.noIds(o.optString("unit")));
             o.put("note", FloatBubble.noIds(o.optString("note")));
             return o;
         } catch (Exception e) {
@@ -145,6 +162,20 @@ final class Counter {
         return out;
     }
 
+    /**
+     * The two halves joined the safe way: each half keeps the things whose centre is on its side of the cut (x < 0.5 from the left,
+     * x ≥ 0.5 from the right); inside the overlap band the other half's marks are taken only when nothing of that kind sits within `tol`.
+     */
+    static List<Mark> joinHalves(List<Mark> left, List<Mark> right, float cut, float band, float tol) {
+        List<Mark> out = new ArrayList<>();
+        for (Mark m : left) if (m.x < cut) out.add(m);
+        for (Mark m : right) if (m.x >= cut) out.add(m);
+        List<Mark> extra = new ArrayList<>();
+        for (Mark m : left) if (m.x >= cut && m.x <= cut + band) extra.add(m);
+        for (Mark m : right) if (m.x < cut && m.x >= cut - band) extra.add(m);
+        return merge(out, extra, tol);
+    }
+
     /** The marks counted by kind, in first-seen order. */
     static Map<String, Integer> byKind(List<Mark> marks) {
         Map<String, Integer> out = new LinkedHashMap<>();
@@ -166,6 +197,12 @@ final class Counter {
     static boolean barLike(String what) {
         String t = what == null ? "" : what.toLowerCase(Locale.ROOT);
         return t.matches(".*(రాడ్|రాడ్లు|పైప|కడ్డీ|కమ్మ|స్తంభ|గ్రిల్|కంచె|ఊచ|rod|pipe|bar|post|grill|rail|fence|picket|slat).*");
+    }
+
+    /** "అడ్డ పైపులు" / "horizontal bars": the rows' count is the one to compare; else the columns'. */
+    static boolean horizontalAsk(String what) {
+        String t = what == null ? "" : what.toLowerCase(Locale.ROOT);
+        return t.matches(".*(అడ్డ|అడ్డం|horizontal|cross|across).*");
     }
 
     // ---- the phone's own bar count: the brightness profile across the picture, its regular dips (or bumps)

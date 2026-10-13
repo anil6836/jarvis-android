@@ -2547,45 +2547,51 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             try {
                 String reply = Brain.oneShot(p, Counter.system(), Counter.prompt(a, null), jpeg(pic, 1600, 82), false, 4000);
                 JSONObject o = Counter.reply(reply);
-                if (o == null) throw new IllegalStateException("no count");
+                if (o == null) throw new IllegalStateException("unreadable");
                 List<Counter.Mark> marks = Counter.marks(o.optJSONArray("items"));
                 int tiles = 1;
-                if (marks.size() >= 30 || o.optBoolean("dense")) { // many: the two halves counted on their own, then joined (the overlap seen twice is dropped)
-                    List<Counter.Mark> joined = new ArrayList<>();
+                if (marks.size() >= 30 || o.optBoolean("dense")) { // many: the two halves counted on their own, each keeping what is centred on its side
                     float[][] halves = {{0, 0, 0.54f, 1}, {0.46f, 0, 1, 1}};
                     String[] names = {"LEFT half", "RIGHT half"};
-                    boolean ok = true;
+                    List<List<Counter.Mark>> got = new ArrayList<>();
                     for (int i = 0; i < 2; i++) {
-                        Bitmap half = cropFrac(pic, halves[i]);
-                        if (half == null) { ok = false; break; }
-                        String r2 = Brain.oneShot(p, Counter.system(), Counter.prompt(a, names[i]), jpeg(half, 1400, 82), false, 4000);
-                        half.recycle();
-                        JSONObject o2 = Counter.reply(r2);
-                        if (o2 == null) { ok = false; break; }
-                        joined = Counter.merge(joined, Counter.place(Counter.marks(o2.optJSONArray("items")), halves[i]), 0.025f);
+                        try {
+                            Bitmap half = cropFrac(pic, halves[i]);
+                            if (half == null) break;
+                            String r2 = Brain.oneShot(p, Counter.system(), Counter.prompt(a, names[i]), jpeg(half, 1400, 82), false, 4000);
+                            half.recycle();
+                            JSONObject o2 = Counter.reply(r2);
+                            if (o2 == null) break;
+                            got.add(Counter.place(Counter.marks(o2.optJSONArray("items")), halves[i]));
+                        } catch (Exception e) { break; } // (a half that failed: the whole-photo count stands)
                     }
-                    if (ok && joined.size() >= marks.size() * 0.7) { marks = joined; tiles = 2; }
+                    if (got.size() == 2) {
+                        List<Counter.Mark> joined = Counter.joinHalves(got.get(0), got.get(1), 0.5f, 0.04f, 0.04f);
+                        if (joined.size() >= marks.size() * 0.7) { marks = joined; tiles = 2; }
+                    }
                 }
                 String unit = o.optString("unit");
-                int[] bars = Counter.barLike(a.what) || Counter.barLike(unit) ? barsOf(pic) : null;
+                // the phone's own second count: only for one kind of bar-like thing, the asked direction, against that kind's marks
+                int[] bars = !a.all && (Counter.barLike(a.what) || Counter.barLike(unit)) ? barsOf(pic) : null;
+                int phoneCount = bars == null ? 0 : Counter.horizontalAsk(a.what) ? bars[1] : bars[0];
                 String s = Counter.sentence(marks, unit, a.all);
                 JSONObject data = new JSONObject().put("title", "🔢 " + what + ": " + s).put("kind", "count").put("mode", mode).put("say", s).put("what", what).put("all", a.all)
                         .put("unit", unit).put("items", Counter.json(marks)).put("total", marks.size()).put("note", o.optString("note"))
                         .put("confidence", o.optInt("confidence", -1)).put("tiles", tiles).put("noboxes", true);
-                if (bars != null) data.put("phone_bars", new JSONObject().put("v", bars[0]).put("h", bars[1]));
+                if (bars != null) data.put("phone_bars", new JSONObject().put("v", bars[0]).put("h", bars[1]).put("use", phoneCount));
                 ScanStore.save(this, data, pic, "photo.jpg");
                 final String sid = data.optString("id");
-                int phone = bars == null ? 0 : Math.max(bars[0], bars[1]);
-                said = "🔢 " + s + "." + (phone > 0 ? (phone == marks.size() ? " ఫోన్ లెక్క కూడా అదే." : " ఫోన్ గీతల లెక్క " + phone + ": తేడా ఉంది, గుర్తులు ఒకసారి చూడండి.") : "")
+                int phone = phoneCount;
+                said = "🔢 " + s + "." + (phone > 0 ? (phone == marks.size() ? " ఫోన్ గీతల లెక్క కూడా " + phone + "." : " ఫోన్ గీతల లెక్క (రెండో అభిప్రాయం) " + phone + "; తేడా ఉంటే గుర్తులు ఒకసారి చూడండి.") : "")
                         + (o.optString("note").isEmpty() ? "" : " " + o.optString("note")) + " మిస్ అయినది నొక్కితే కలుస్తుంది.";
                 final String title = data.optString("title");
                 after = () -> { if (cid != null) CaseStore.addCard(this, cid, "scan", sid, title, s); CountActivity.open(this, sid); };
             } catch (Http.ApiError e) {
                 err = "AI జవాబు ఇవ్వలేదు: " + Models.explain(p, e);
             } catch (Exception e) {
-                err = "లెక్కపెట్టలేకపోయాను (నెట్ / సమయం). మళ్ళీ ప్రయత్నించండి.";
+                err = "unreadable".equals(e.getMessage()) ? "AI జవాబు చదవలేకపోయాను; మళ్ళీ ఒకసారి అడగండి." : "లెక్కపెట్టలేకపోయాను (నెట్ / సమయం). మళ్ళీ ప్రయత్నించండి.";
             } finally {
-                if (!still && pic != photo) pic.recycle();
+                if (pic != photo) pic.recycle(); // (a zoomed still is a fresh crop too)
             }
             final String er = err, sd = said;
             final Runnable af = after;
