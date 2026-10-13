@@ -95,7 +95,7 @@ final class Recon {
         try {
             for (String k : new String[]{"title", "story", "caution", "say", "name", "what", "size_note", "material", "condition", "value", "keep", "light", "air", "layout", "fan_ac"})
                 if (o.has(k) && o.opt(k) instanceof String) o.put(k, FloatBubble.noIds(o.optString(k)));
-            for (String k : new String[]{"steps", "marks", "issues", "tips", "views", "items"}) {
+            for (String k : new String[]{"steps", "marks", "issues", "tips", "views", "items", "parts"}) {
                 JSONArray a = o.optJSONArray(k);
                 for (int i = 0; a != null && i < a.length(); i++) {
                     Object v = a.opt(i);
@@ -254,7 +254,9 @@ final class Recon {
                 + "\"s\":[sx,sy,sz],\"axis\":\"z\",\"color\":\"#rrggbb\",\"info\":\"one short Telugu line\",\"section\":\"group\",\"seen\":true}]},"
                 + "\"top_seen\":true,\"bottom_seen\":false,\"confidence\":0-100}. "
                 + "Rules: box = integers 0-1000 of THAT numbered photo's own width and height. Up to 10 items per photo (the real visible parts: bolts, flanges, holes, handles, labels, wheels). "
-                + "shape = the object as 3 to 12 simple solids in centimetres, origin at the object's centre, z up: cylinder/cone (r, r2 top radius for cone, h along axis), ring (r outer, r2 inner, h), "
+                + "shape = the object as 3 to 12 simple solids in centimetres, origin at the object's centre, z up. Frame: photo 1 is the FRONT - its camera stands on the -y side looking towards +y, "
+                + "+x is to that camera's right; a photo whose heading is H degrees more than photo 1's was taken from a viewpoint moved H degrees clockwise (seen from above) round the object. "
+                + "Solids: cylinder/cone (r, r2 top radius for cone, h along axis), ring (r outer, r2 inner, h), "
                 + "box (s = full sizes), sphere (r); c = centre of each solid; axis x|y|z. Make the solids touch like the real thing (a cable drum = two big thin cylinders + a core cylinder + a centre hole as a ring). "
                 + "seen=false for a solid you did not actually see (an unphotographed bottom). Colours like the real material. People only as 'మనిషి', never who. No ID numbers, phone numbers or plates.";
     }

@@ -204,7 +204,7 @@ public class ObjectActivity extends Activity {
     private void menu() {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(data.optString("title"))
                 .setItems(new String[]{"🔍 ఈ వైపు గురించి అడుగు", "🗑️ ఈ మోడల్ తీసేయి"}, (d, w) -> {
-                    if (w == 0) listen();
+                    if (w == 0) { askOnly = true; listen(); }
                     else new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setMessage("ఈ 360° మోడల్ తీసేయనా?")
                             .setPositiveButton("తీసేయి", (a, c) -> { ScanStore.delete(this, id); finish(); }).setNegativeButton("వద్దు", null).show();
                 }).setNegativeButton("మూసేయ్", null).show();
@@ -281,6 +281,12 @@ public class ObjectActivity extends Activity {
                     orbit.vy = Math.max(-540, Math.min(540, dx)); orbit.vp = Math.max(-360, Math.min(360, dy));
                     return true;
                 }
+                case MotionEvent.ACTION_POINTER_UP: { // the other finger carries on from where it is, without a jump or a fling
+                    int i = e.getActionIndex() == 0 ? 1 : 0;
+                    if (i < e.getPointerCount()) { lx = e.getX(i); ly = e.getY(i); }
+                    lt = SystemClock.uptimeMillis(); dx = dy = 0;
+                    return true;
+                }
                 case MotionEvent.ACTION_CANCEL: dragging = false; return true;
                 default: return true;
             }
@@ -321,6 +327,7 @@ public class ObjectActivity extends Activity {
     // ---- 🎙️ words: turn / under / explode / a question about this side
 
     private static final int REQ_VOICE = 61;
+    private boolean askOnly;
 
     private void listen() {
         try {
@@ -334,19 +341,22 @@ public class ObjectActivity extends Activity {
         super.onActivityResult(code, result, d);
         if (code != REQ_VOICE || result != RESULT_OK || d == null) return;
         ArrayList<String> r = d.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+        boolean ask = askOnly;
+        askOnly = false;
         if (r == null || r.isEmpty()) return;
-        heard(r.get(0));
+        if (ask) askAboutView(r.get(0)); else heard(r.get(0));
     }
 
     /** (pure-ish) the words → an action name, for the desk test: turn / stop / under / top / explode / join / dims / photo / shape / front / back / left / right / ask. */
     static String command(String words) {
         String t = words == null ? "" : words.toLowerCase(Locale.ROOT).trim();
+        if (t.matches(".*(కొలత|సైజు|ఎంత పెద్ద|size|dimension).*")) return "dims";
+        if (t.matches(".*(ఏంటి|ఏమిటి|ఏముంది|ఎందుకు|ఎలా|ఉందా|ఉన్నాయా|పాడైందా|ఎంత|\\?|what|why|how|is it|does).*")) return "ask"; // a question is never a command
         if (t.matches(".*(ఆపు|ఆగు|stop).*")) return "stop";
         if (t.matches(".*(కింద|అడుగు|under|bottom|below).*")) return "under";
         if (t.matches(".*(పై నుంచి|పైన|పైకి|top|above).*")) return "top";
         if (t.matches(".*(విడదీ|విడిగా|explode|apart).*")) return "explode";
         if (t.matches(".*(కలుపు|కలిపి|join|together).*")) return "join";
-        if (t.matches(".*(కొలత|సైజు|ఎంత పెద్ద|size|dimension).*")) return "dims";
         if (t.matches(".*(ఫోటో|photo|picture).*")) return "photo";
         if (t.matches(".*(ఆకారం|మోడల్|shape|model).*")) return "shape";
         if (t.matches(".*(ముందు|front).*")) return "front";
@@ -397,7 +407,7 @@ public class ObjectActivity extends Activity {
 
     @Override protected void onPause() { super.onPause(); tourStop(); setAuto(false); main.removeCallbacks(tick); }
     @Override protected void onResume() { super.onResume(); lastTick = 0; main.removeCallbacks(tick); main.post(tick); }
-    @Override protected void onDestroy() { super.onDestroy(); work.shutdownNow(); spin.release(); }
+    @Override protected void onDestroy() { super.onDestroy(); work.shutdownNow(); if (spin != null) spin.release(); }
 
     private TextView chip(String s, boolean on) {
         TextView t = Ui.text(this, s, 13.5f, 0xFFFFFFFF);
@@ -440,8 +450,10 @@ public class ObjectActivity extends Activity {
                 int tilt = v.optInt("tilt", 0);
                 (tilt > 0 ? tops : tilt < 0 ? bottoms : around).add(v);
             }
-            Collections.sort(around, (a, b) -> Double.compare(a.optDouble("az", 0), b.optDouble("az", 0)));
+            az0 = around.isEmpty() ? 0 : (float) around.get(0).optDouble("az", 0); // (shot order: the first photo is the front, yaw 0)
         }
+
+        private float az0;
 
         int count() { return around.size() + tops.size() + bottoms.size(); }
         boolean hasBottom() { return !bottoms.isEmpty(); }
@@ -534,8 +546,8 @@ public class ObjectActivity extends Activity {
 
         /** The photo's heading relative to the first photo's (so yaw 0 shows the first). */
         private float rel(int i) {
-            float a0 = (float) around.get(0).optDouble("az", 0), ai = (float) around.get(i).optDouble("az", 0);
-            return ((ai - a0) % 360 + 360) % 360;
+            float ai = (float) around.get(i).optDouble("az", 0);
+            return ((ai - az0) % 360 + 360) % 360;
         }
 
         private void drawView(Canvas c, JSONObject v, int alpha, int w, int h, boolean tags) {
