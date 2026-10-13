@@ -780,11 +780,12 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         speaking = false;
         caption.setText(captionBase);
         refreshButtons();
-        if (remark) {
+        if (remark && AUTO_TALK) {
             remark = false;
             if (!listenOn) { if (wakeMode()) idleMicOff(); return; } // (mic off stays off)
             if (wakeMode() && pendingAuto.isEmpty()) { idle(); return; }
         }
+        remark = false;
         if (!pendingAuto.isEmpty()) runPendingAuto(); // (a listen after it is skipped while it speaks or works)
         listenSoon(350);
         // (in wake mode that is the one follow-up listen; silence then goes back to waiting for "Jarvis")
@@ -1558,7 +1559,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 "🅿️ బండి ఇక్కడ పెట్టాను", "🔑 ఈ వస్తువు ఇక్కడ పెడుతున్నా", "🔍 భూతద్దం (చిన్న అక్షరాలు)", "📚 స్కాన్ చరిత్ర", "🧊 నా బోర్డులు / తెరిచినవి",
                 "⌨️ టైప్ చేసి అడుగు", "📡 AR పేర్లు: " + (arOn ? "ఆన్" : "ఆఫ్"), "📤 షేర్ (బొమ్మ + జవాబు)",
                 "🎛️ HUD సెట్టింగ్స్ (రింగ్స్, శబ్దాలు, బోర్డులు, ముఖాలు, మెష్…)", "🕸️ అన్నీ స్కాన్ చేయి",
-                "🔭 లోతైన స్కాన్ (AI, 15 సెకన్లకు): " + (sceneLive ? "ఆన్" : "ఆఫ్"), "🎙️ కామెంటరీ: " + (commentaryOn ? "ఆన్" : "ఆఫ్"),
+                "🔭 లోతైన స్కాన్ (AI, 15 సెకన్లకు): " + (sceneLive ? "ఆన్" : "ఆఫ్"), "🎙️ కామెంటరీ: " + (AUTO_TALK ? (commentaryOn ? "ఆన్" : "ఆఫ్") : "ఆఫ్ చేసి ఉంది"),
                 "🌙 రాత్రి చూపు: " + (cam.night() ? "ఆన్" : "ఆఫ్"), "🔁 ఏమి మారింది?", "📸 HUD తో ఫోటో సేవ్", "📏 జూమ్ టెస్ట్", "⌚ లాక్ చేసినది వాచ్‌కి పంపు",
                 "🕵️ ఇక్కడ ఏం జరిగింది? (2–6 ఫోటోలు)", "📦 వస్తువు 3 వైపులు (సాక్ష్యం కార్డ్)", "📁 కేస్ బోర్డులు",
                 "🧱 నిర్మాణ పరీక్ష (పగుళ్లు, తుప్పు, లీక్)", "🏠 గది విశ్లేషణ (నెమ్మదిగా తిరగండి)", "🩹 గాయపడినవారికి సహాయం", "⚠️ ఇది సురక్షితమేనా?", "📍 ఇక్కడ ప్రమాదం గుర్తుపెట్టు",
@@ -1617,7 +1618,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private void hudSettings() {
         final String[][] rows = {
                 {"cam_live", "🎯 లైవ్ రింగ్స్ (మనుషులు, బండ్లు, వస్తువులు)", "1"},
-                {"cam_talk", "🗣️ చూస్తూ మాట్లాడటం (కొత్తగా ఏదైనా వస్తే)", "1"},
+                {"cam_talk", AUTO_TALK ? "🗣️ చూస్తూ మాట్లాడటం (కొత్తగా ఏదైనా వస్తే)" : "🗣️ చూస్తూ మాట్లాడటం (13 అక్టోబర్ నుంచి ఆఫ్ చేసి ఉంది)", "1"},
                 {"cam_hud_sfx", "🔊 HUD శబ్దాలు", "1"},
                 {"cam_signs", "🪧 బోర్డుల రాత (ఫోన్‌లోనే; నంబర్ ప్లేట్లు కాదు)", "1"},
                 {"cam_faces", "👤 ముఖాలు (పేర్లు మీరు పరిచయం చేసిన వాళ్ళకే)", "1"},
@@ -2013,7 +2014,14 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private boolean followOn; // follow-cam: the camera keeps the locked one in the middle, the same size
 
     private boolean liveOn() { return p.sp.getBoolean("cam_live", true); }
-    private boolean talkOn() { return p.sp.getBoolean("cam_talk", true); }
+    /**
+     * The camera's own talking (sides narration, 🎙️ commentary, the locked one's updates) and the mic handling around it were
+     * the only mic-related changes of 12–13 Oct. Switched OFF on 13 Oct at Anil's request ("mic కోసం చేసిన మార్పులు తీసేయి"):
+     * with this false the camera listens and answers exactly as in v1.0.130 (one listen after each answer). Flip to bring them back.
+     */
+    static final boolean AUTO_TALK = false;
+
+    private boolean talkOn() { return AUTO_TALK && p.sp.getBoolean("cam_talk", true); }
     private boolean signsOn() { return p.sp.getBoolean("cam_signs", true); }
     private boolean facesOn() { return p.sp.getBoolean("cam_faces", true); }
     private boolean meshOn() { return p.sp.getBoolean("cam_mesh", true); }
@@ -2477,7 +2485,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 if (er != null || res == null) { if (loud) tell("🔭 " + er, false); return; }
                 if (!res.items.isEmpty()) { hud.setItems(res.items); arReference(pic); }
                 String line = res.say.isEmpty() ? (res.items.size() + " పెద్ద వస్తువులు గుర్తించాను") : res.say;
-                if (!speaking && !voice.speaking && !busy && (loud || !voice.listening)) say("🔭 " + line);
+                if (!speaking && !voice.speaking && !busy && (loud || (AUTO_TALK && !voice.listening))) say("🔭 " + line);
                 else tell(captionBase + "\n🔭 " + line, false);
             });
         });
@@ -2638,6 +2646,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     // ---- 🎙️ commentary: Jarvis talks about what is happening, like a friend beside him (AI, only when something changed)
 
     private void setCommentary(boolean on, boolean quiet) {
+        if (!AUTO_TALK) { commentaryOn = false; if (on && !quiet) tell("🎙️ కామెంటరీ ఇప్పుడు ఆఫ్ చేసి ఉంది (మీరు చెప్పినట్టు, 13 అక్టోబర్). కావాలంటే నాకు చెప్పండి, తిరిగి పెడతాను.", false); return; }
         commentaryOn = on;
         commentAsk = false;
         if (on) {
@@ -2659,7 +2668,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     private final Runnable commentTick = new Runnable() {
         @Override public void run() {
-            if (!open) return;
+            if (!open || !AUTO_TALK) return;
             main.postDelayed(this, 2000);
             long now = System.currentTimeMillis();
             final boolean lockOnly = !commentaryOn && lockActionDue(now); // (no commentary: only the locked one's doings, when it moved)
