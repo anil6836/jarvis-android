@@ -258,6 +258,7 @@ final class VoiceIO {
         matchedFor = -1;
         natural.voiceCall = callVoice();
         natural.echo = callVoice() ? null : ownEcho();
+        natural.model = prefs.ttsModel();
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;

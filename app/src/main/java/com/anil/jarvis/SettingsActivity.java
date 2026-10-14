@@ -75,7 +75,7 @@ public class SettingsActivity extends Activity {
     private TextView liveVoiceLabel;
     /** The voice choice and the Live switches are being put in step (their listeners wait). */
     private boolean syncingVoice;
-    private EditText earsModel;
+    private EditText earsModel, ttsModel;
     private EditText myNames;
     private Switch bubbleAll;
     private EditText priceCity, dailyPrices, findCode;
@@ -497,6 +497,10 @@ public class SettingsActivity extends Activity {
         for (int i = 0; i < NaturalVoice.VOICES.length; i++) if (NaturalVoice.VOICES[i].equals(prefs.naturalVoiceName())) current = i;
         voicePick.setSelection(current);
         box.addView(voicePick, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+        ttsModel = field("OpenAI గొంతు మోడల్ (మాట్లాడే మోడల్)", prefs.ttsModel(), false);
+        modelPicker(Models.TTS, openAiKey, ttsModel, "tts_model");
+        note("మొదట gpt-4o-mini-tts (భావాలతో మాట్లాడుతుంది, అన్ని గొంతులూ ఉంటాయి). tts-1 / tts-1-hd పాత మోడల్స్: భావాలు ఉండవు, "
+                + "cedar, marin, ballad, verse గొంతులు ఉండవు. మార్చాక \"ఈ గొంతు వినిపించు\" తో వినండి.");
         button("ఈ గొంతు వినిపించు", v -> testVoice());
         voiceInfo = Ui.text(this, "", 14, Ui.MUTED);
         box.addView(voiceInfo);
@@ -1784,6 +1788,7 @@ public class SettingsActivity extends Activity {
                 : "✗ బ్యాటరీ సేవర్ మినహాయింపు లేదు: ఫోన్ Jarvis ని ఆపేయవచ్చు\n");
         if (prefs.wakeReady()) s.append(WakeService.running ? "✓ \"Jarvis\" వేక్ వర్డ్: నడుస్తోంది\n" : "✗ \"Jarvis\" వేక్ వర్డ్: ఆగి ఉంది\n");
         if (stuckTalking()) s.append("✗ Jarvis 'మాట్లాడుతున్నాను' అనే స్థితిలో ఇరుక్కుంది\n");
+        if (prefs.naturalVoice()) s.append("• మాట్లాడే గొంతు: OpenAI ").append(prefs.ttsModel()).append(" · ").append(prefs.naturalVoiceName()).append("\n");
         if (prefs.naturalVoice() && prefs.openAiKey().trim().isEmpty()) s.append("• సహజ గొంతుకి OpenAI key లేదు: ఫోన్ గొంతుతో మాట్లాడతాను\n");
         else if (prefs.naturalVoice() && VoiceIO.naturalError != null)
             s.append("• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): ").append(VoiceIO.naturalError).append("\n");
@@ -1941,6 +1946,7 @@ public class SettingsActivity extends Activity {
         e.putInt("briefing_minute", briefMinute);
         e.putBoolean("briefing_speak", briefingSpeak.isChecked());
         e.putString("natural_voice_name", NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())]);
+        e.putString("tts_model", ttsModel.getText().toString().trim());
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("live_patient", livePatient.isChecked());
         e.putBoolean("scam_guard", scamGuard.isChecked());
@@ -2095,9 +2101,11 @@ public class SettingsActivity extends Activity {
         String v = NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())];
         String n = name.getText().toString().trim();
         voiceInfo.setText("వినిపిస్తున్నాను…");
+        String tm = ttsModel.getText().toString().trim();
+        tester.model = tm.isEmpty() ? NaturalVoice.DEFAULT_MODEL : tm;
         tester.speak(key, v, "నమస్కారం " + (n.isEmpty() ? "Anil" : n) + ". నేను Jarvis. మీ సేవలో ఎప్పుడూ సిద్ధంగా ఉంటాను.", new NaturalVoice.Callback() {
-            @Override public void onStart() { voiceInfo.setText("గొంతు: " + v); }
-            @Override public void onDone() { voiceInfo.setText("గొంతు: " + v + " ✓"); }
+            @Override public void onStart() { voiceInfo.setText("గొంతు: " + v + " · " + tester.model); }
+            @Override public void onDone() { voiceInfo.setText("గొంతు: " + v + " · " + tester.model + " ✓"); }
             @Override public void onError(String message) { voiceInfo.setText("పనిచేయలేదు: " + message); }
         });
     }
@@ -2839,7 +2847,7 @@ public class SettingsActivity extends Activity {
             {"dinner", "20:00", TAB_TIMES}, {"water", "10:30,12:30,15:30,18:00", TAB_TIMES}, {"chat", "10:00,17:30", TAB_TIMES},
             {"rest", "13:30-15:30", TAB_TIMES}, {"bed", "21:30", TAB_TIMES}, {"report", "21:45", TAB_TIMES}, {"silent_hours", "3", TAB_TIMES},
             {"meds_text", "", TAB_MEDS}, {"sugar_low", "70", TAB_MEDS}, {"sugar_high", "250", TAB_MEDS}, {"doctor_note", "", TAB_MEDS},
-            {"voice", "", TAB_DEVICE}, {"room", "hall", TAB_DEVICE}, {"camera", "true", TAB_DEVICE},
+            {"voice", "", TAB_DEVICE}, {"tts_model", "", TAB_DEVICE}, {"room", "hall", TAB_DEVICE}, {"camera", "true", TAB_DEVICE},
             {"stranger_photo", "true", TAB_DEVICE}, {"ai_limit", "200", TAB_DEVICE}};
     private static final java.util.Set<String> TAB_INTS = new java.util.HashSet<>(java.util.Arrays.asList("silent_hours", "sugar_low", "sugar_high", "ai_limit"));
     private static final java.util.Set<String> TAB_BOOLS = new java.util.HashSet<>(java.util.Arrays.asList("camera", "stranger_photo"));
@@ -2859,6 +2867,7 @@ public class SettingsActivity extends Activity {
 
     private String tabDef(String key, String def) {
         if ("voice".equals(key)) return prefs.naturalVoiceName();
+        if ("tts_model".equals(key)) return prefs.ttsModel();
         return def;
     }
 
@@ -2974,6 +2983,7 @@ public class SettingsActivity extends Activity {
     private void tabletSection() {
         android.content.SharedPreferences.Editor once = ts().edit(); // (never sent yet: the tablet speaks with the phone's voice of today)
         if (!ts().contains("voice")) once.putString("voice", prefs.naturalVoiceName());
+        if (!ts().contains("tts_model")) once.putString("tts_model", prefs.ttsModel());
         once.apply();
         tabSeenSent = ts().getLong("sent_at", 0);
         final org.json.JSONObject draft = tabDraft();
@@ -3109,14 +3119,17 @@ public class SettingsActivity extends Activity {
                     .show();
         });
         box.addView(vt);
+        EditText model = tabField("tts_model", "టాబ్లెట్ గొంతు మోడల్ (ఫోన్‌లోది: " + prefs.ttsModel() + ")", "", draft);
         TextView vInfo = Ui.text(this, "", 13.5f, Ui.MUTED);
         button("▶ ఈ గొంతు ఫోన్‌లో వినిపించు", v -> {
             String key = prefs.openAiKey().trim();
             if (key.isEmpty()) { Toast.makeText(this, "ముందు OpenAI key పెట్టండి", Toast.LENGTH_SHORT).show(); return; }
+            String m = model.getText().toString().trim();
+            tester.model = m.isEmpty() ? NaturalVoice.DEFAULT_MODEL : m;
             vInfo.setText("వినిపిస్తున్నాను…");
             tester.speak(key, tabVoice[0], "నమస్కారం అమ్మగారు. నేను Jarvis. టిఫిన్ చేశారా?", new NaturalVoice.Callback() {
-                @Override public void onStart() { vInfo.setText("గొంతు: " + tabVoice[0]); }
-                @Override public void onDone() { vInfo.setText("గొంతు: " + tabVoice[0] + " ✓"); }
+                @Override public void onStart() { vInfo.setText("గొంతు: " + tabVoice[0] + " · " + tester.model); }
+                @Override public void onDone() { vInfo.setText("గొంతు: " + tabVoice[0] + " · " + tester.model + " ✓"); }
                 @Override public void onError(String message) { vInfo.setText("పనిచేయలేదు: " + message); }
             });
         });

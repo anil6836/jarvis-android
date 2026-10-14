@@ -36,6 +36,8 @@ final class Models {
 
     /** OpenAI's live voice (Realtime) models, for Live mode. */
     static final String REALTIME = "openai_realtime";
+    /** OpenAI's text-to-speech models, for Jarvis's natural voice. */
+    static final String TTS = "openai_tts";
 
     /** Thrown by the brain when Gemini is chosen but no Gemini model is. */
     static final String NO_GEMINI_MODEL = "No Gemini model chosen";
@@ -58,12 +60,13 @@ final class Models {
         List<Item> out = new ArrayList<>();
         if (Prefs.GEMINI.equals(provider)) gemini(key, out);
         else if (Prefs.ANTHROPIC.equals(provider)) anthropic(key, out);
-        else openAi(key, out, REALTIME.equals(provider));
+        else openAi(key, out, provider);
         out.sort((a, b) -> a.rank != b.rank ? Double.compare(b.rank, a.rank) : a.id.compareTo(b.id));
         return out;
     }
 
-    private static void openAi(String key, List<Item> out, boolean live) throws Exception {
+    private static void openAi(String key, List<Item> out, String provider) throws Exception {
+        boolean live = REALTIME.equals(provider);
         JSONObject res = Http.get("https://api.openai.com/v1/models", "Authorization", "Bearer " + key);
         JSONArray data = res.optJSONArray("data");
         for (int i = 0; data != null && i < data.length(); i++) {
@@ -72,6 +75,10 @@ final class Models {
             String low = id.toLowerCase(Locale.ROOT);
             if (live) { // the voice-to-voice models Live mode talks to
                 if (low.contains("realtime") && !low.contains("transcri")) out.add(new Item(REALTIME, id, "", o.optLong("created")));
+                continue;
+            }
+            if (TTS.equals(provider)) { // the models that turn Jarvis's words into its voice
+                if (low.contains("tts")) out.add(new Item(TTS, id, "", o.optLong("created")));
                 continue;
             }
             boolean chat = low.startsWith("gpt-") || low.startsWith("chatgpt-") || low.startsWith("codex-") || low.matches("^o\\d.*");

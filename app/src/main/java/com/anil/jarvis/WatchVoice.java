@@ -101,8 +101,10 @@ final class WatchVoice {
 
     /** OpenAI's natural voice (his model and voice), 24 kHz sound as it streams. */
     private static void natural(String key, Prefs p, String text, String feeling, Sink sink, int g) throws Exception {
-        JSONObject body = new JSONObject().put("model", "gpt-4o-mini-tts").put("voice", p.naturalVoiceName()).put("input", text).put("response_format", "pcm")
-                .put("instructions", NaturalVoice.STYLE + Emotion.style(feeling)); // (the one speaking model, as before 7 Oct)
+        String model = p.ttsModel();
+        boolean old = model.toLowerCase(Locale.ROOT).startsWith("tts-1");
+        JSONObject body = new JSONObject().put("model", model).put("voice", p.naturalVoiceName()).put("input", text).put("response_format", "pcm");
+        if (!old) body.put("instructions", NaturalVoice.STYLE + Emotion.style(feeling));
         byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
         HttpURLConnection c = (HttpURLConnection) new URL("https://api.openai.com/v1/audio/speech").openConnection();
         try {
