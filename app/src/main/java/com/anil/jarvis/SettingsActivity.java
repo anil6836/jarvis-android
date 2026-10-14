@@ -76,6 +76,11 @@ public class SettingsActivity extends Activity {
     /** The voice choice and the Live switches are being put in step (their listeners wait). */
     private boolean syncingVoice;
     private EditText earsModel, ttsModel;
+    /** His Sarvam key, and the Gemini / Sarvam voice and ears boxes ("Jarvis గొంతు ఎవరిది", Saaras). */
+    private EditText sarvamKey, geminiTtsModel, sarvamTtsModel, sarvamEarsModel;
+    private RadioGroup voiceProv;
+    private String geminiVoiceChoice, sarvamVoiceChoice;
+    private TextView geminiVoiceLabel, sarvamVoiceLabel, geminiInfo, sarvamInfo;
     private EditText myNames;
     private Switch bubbleAll;
     private EditText priceCity, dailyPrices, findCode;
@@ -343,13 +348,15 @@ public class SettingsActivity extends Activity {
         geminiModel.setHint("కింద 'అన్ని మోడల్స్ చూపించు' నొక్కి ఎంచుకోండి");
         modelPicker(Prefs.GEMINI, geminiKey, geminiModel, "gemini_model");
         link("Gemini key ఇక్కడ తీసుకోండి", "https://aistudio.google.com/apikey");
+        sarvamKey = field("Sarvam API key (Jarvis గొంతు / వినడం కోసం మాత్రమే, మెదడు కాదు)", prefs.sarvamKey(), true);
+        link("Sarvam key ఇక్కడ తీసుకోండి (API Keys)", "https://dashboard.sarvam.ai");
         note("మోడల్ Jarvis తనంతట తాను ఎంచుకోడు: మీరు ఎంచుకున్నదే వాడతాడు. 'అన్ని మోడల్స్ చూపించు' మీ key తో ఆ కంపెనీ దగ్గర నుంచి "
                 + "ఇప్పుడున్న మోడల్స్ అన్నీ తెస్తుంది; ఒకటి నొక్కితే వెంటనే సేవ్ అవుతుంది. ఎప్పుడైనా మార్చుకోవచ్చు. పేరు మీరే టైప్ చేసినా సరే.");
         note("Gemini: ఉచిత ప్లాన్‌లో Flash, Flash-Lite మోడల్స్ మాత్రమే; Pro మోడల్స్‌కి billing కావాలి. ప్రతి మోడల్‌కి వేరే నిమిషం/రోజు లిమిట్ ఉంటుంది: "
                 + "ఒక మోడల్ లిమిట్ అయిపోతే ఇంకో Flash మోడల్ ఎంచుకోండి. రోజు లిమిట్ మధ్యాహ్నం సుమారు 12:30–1:30 కి మళ్లీ వస్తుంది. "
                 + "Jarvis ఒక్క ప్రశ్నకి (యాప్ తెరవడం, సెర్చ్ లాంటి పనులుంటే) చాలా requests పంపుతాడు, అందుకే ఉచిత లిమిట్ త్వరగా అయిపోవచ్చు. "
                 + "Google AI Plus/Pro సబ్స్క్రిప్షన్ Gemini యాప్ కోసం; API లిమిట్‌కి దానితో సంబంధం లేదు. ఉచిత ప్లాన్‌లో మీరు పంపేవి (మాటలు, స్క్రీన్‌షాట్లు) "
-                + "Google తమ మోడల్స్ మెరుగుపరచడానికి వాడుకోవచ్చు. పైన 'Google (Gemini)' ఎంచుకుంటేనే వాడుతుంది; వాయిస్ (సహజ గొంతు), Live మోడ్ OpenAI తోనే ఉంటాయి.");
+                + "Google తమ మోడల్స్ మెరుగుపరచడానికి వాడుకోవచ్చు. పైన 'Google (Gemini)' ఎంచుకుంటేనే మెదడుగా వాడుతుంది (గొంతు, వినడం, Live కి వాటి సొంత ఎంపికలు 🔊 లో).");
         link("Gemini లిమిట్లు / billing (AI Studio)", "https://aistudio.google.com/usage");
         web = toggle("ఇంటర్నెట్ సెర్చ్ (వార్తలు, స్కోర్లు, ధరలు)", prefs.webSearch());
         note("🔁 క్రాస్ చెక్ (రెండో AI): డబ్బు, ఆరోగ్యం, చట్టం, పెద్ద నిర్ణయాల జవాబులను మీరు ఎంచుకున్న రెండో AI కూడా చెక్ చేస్తుంది; "
@@ -420,9 +427,10 @@ public class SettingsActivity extends Activity {
         earsMode.addView(radio(84, "⚡ Gemini Live · చాలా వేగం, మనిషితో మాట్లాడినట్టు, బీప్ ఉండదు (Gemini key, నెట్ కావాలి)"));
         earsMode.addView(radio(81, "OpenAI · Jarvis సొంత మైక్, బీప్ ఉండదు (నెట్ కావాలి, చాలా కొద్ది ఖర్చు)"));
         earsMode.addView(radio(82, "Gemini · Jarvis సొంత మైక్, బీప్ ఉండదు (నెట్ కావాలి, మీ Gemini మోడల్)"));
+        earsMode.addView(radio(88, "Sarvam Saaras · Jarvis సొంత మైక్, బీప్ ఉండదు (నెట్ కావాలి, Sarvam key, భారతీయ భాషలకే ప్రత్యేకం)"));
         earsMode.addView(radio(83, "Google వాయిస్ టైపింగ్ · మాటలు లైవ్‌గా కనిపిస్తాయి, నెట్ లేకుండా కూడా; కానీ మైక్ ఆన్/ఆఫ్ బీప్‌లు వస్తాయి"));
         String em0 = prefs.earsMode();
-        earsMode.check(prefs.liveMode() && prefs.liveGemini() ? 84 : "gemini".equals(em0) ? 82 : "google".equals(em0) ? 83 : 81);
+        earsMode.check(prefs.liveMode() && prefs.liveGemini() ? 84 : "gemini".equals(em0) ? 82 : "google".equals(em0) ? 83 : "sarvam".equals(em0) ? 88 : 81);
         earsWas = earsMode.getCheckedRadioButtonId();
         box.addView(earsMode);
         // with Gemini Live: how the message card, the camera and the floating button hear him
@@ -433,14 +441,17 @@ public class SettingsActivity extends Activity {
         earsOther = new RadioGroup(this);
         earsOther.addView(radio(85, "OpenAI (సొంత మైక్)"));
         earsOther.addView(radio(86, "Gemini (సొంత మైక్)"));
+        earsOther.addView(radio(89, "Sarvam Saaras (సొంత మైక్)"));
         earsOther.addView(radio(87, "Google వాయిస్ టైపింగ్ (బీప్‌లతో)"));
-        earsOther.check("gemini".equals(em0) ? 86 : "google".equals(em0) ? 87 : 85);
+        earsOther.check("gemini".equals(em0) ? 86 : "google".equals(em0) ? 87 : "sarvam".equals(em0) ? 89 : 85);
         other.addView(earsOther);
         box.addView(other);
         earsOtherBox = other;
         other.setVisibility(earsWas == 84 ? View.VISIBLE : View.GONE);
         earsModel = field("OpenAI మాటల మోడల్ (OpenAI ఎంచుకుంటే)", prefs.earsModel(), false);
-        note("OpenAI / Gemini: మీరు మాట్లాడటం ఆపాక మాటలు ఒకేసారి వస్తాయి. ఆ AI అందకపోతే (నెట్/key) Jarvis వేరే దానికి మారదు, ఎందుకో చెబుతుంది. "
+        sarvamEarsModel = field("Sarvam మాటల మోడల్ (Sarvam Saaras ఎంచుకుంటే)", prefs.sarvamEarsModel(), false);
+        modelPicker(Models.SARVAM_STT, sarvamKey, sarvamEarsModel, "sarvam_ears_model");
+        note("OpenAI / Gemini / Sarvam: మీరు మాట్లాడటం ఆపాక మాటలు ఒకేసారి వస్తాయి (Sarvam: Jarvis మెదడు సెక్షన్‌లోని Sarvam key; 30 సెకన్ల కంటే పొడవైన మెసేజ్ ముక్కలుగా వెళ్తుంది). ఆ AI అందకపోతే (నెట్/key) Jarvis వేరే దానికి మారదు, ఎందుకో చెబుతుంది. "
                 + "Gemini Live: మీ మాట వింటూనే Gemini గొంతుతో వెంటనే జవాబిస్తుంది (కింద 'Live సంభాషణ' లో దాని సెట్టింగ్స్). మెసేజ్ కార్డ్, కెమెరా, ఫ్లోటింగ్ బటన్ "
                 + "మాత్రం దాని కింద ఎంచుకున్న పద్ధతితో వింటాయి. బైక్ మీద గొంతుతో మార్చొచ్చు: \"Jarvis, Google వాయిస్‌కి మారు\", \"Live పెట్టు\", \"Live ఆపు\", \"OpenAI కి మారు\".");
         voice = toggle("సమాధానాలు పైకి చదివి వినిపించు", prefs.voiceReplies());
@@ -482,10 +493,25 @@ public class SettingsActivity extends Activity {
         note("Jarvis తెలుగులో మాట్లాడకపోతే: ఫోన్ Settings → Text-to-speech → Google → తెలుగు వాయిస్ డౌన్‌లోడ్ చేయండి.");
 
         // ---- natural voice
-        section("సహజ గొంతు (OpenAI)");
-        note("సినిమాలోలా మనిషి గొంతుతో మాట్లాడుతుంది. OpenAI key కావాలి, కొంచెం ఖర్చు అవుతుంది. తెలుగు ఉచ్చారణ నచ్చకపోతే ఇది ఆఫ్ చేస్తే Google గొంతుకి మారుతుంది.");
+        section("సహజ గొంతు (OpenAI · Gemini · Sarvam)");
+        note("సినిమాలోలా మనిషి గొంతుతో మాట్లాడుతుంది. కింద OpenAI, Google Gemini, Sarvam లో ఒకటి ఎంచుకోండి; దాని key కావాలి, కొంచెం ఖర్చు అవుతుంది. "
+                + "ఇది ఆఫ్ చేస్తే ఫోన్ Google గొంతుతో మాట్లాడుతుంది.");
         natural = toggle("సహజ గొంతు వాడు", prefs.naturalVoice());
         emotions = toggle("భావాలతో మాట్లాడు (నవ్వు, సంతోషం, ఉత్సాహం, బాధ… సందర్భానికి తగ్గట్టు)", prefs.emotions());
+        // whose voice: OpenAI (as always) or the Google Gemini / Sarvam one; only the chosen one speaks, never switched by itself
+        TextView wl = Ui.text(this, "🗣️ Jarvis గొంతు ఎవరిది:", 15, Ui.TEXT);
+        wl.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
+        box.addView(wl);
+        voiceProv = new RadioGroup(this);
+        voiceProv.addView(radio(101, "OpenAI · కింద ఉన్న గొంతు, మోడల్ (ఇప్పుడున్నదే)"));
+        voiceProv.addView(radio(102, "Google Gemini · మీ Gemini key, 30 గొంతులు (Fenrir…)"));
+        voiceProv.addView(radio(103, "Sarvam Bulbul · Sarvam key, భారతీయ తెలుగు గొంతులు"));
+        String vp0 = prefs.voiceProvider();
+        voiceProv.check(CloudVoice.GEMINI.equals(vp0) ? 102 : CloudVoice.SARVAM.equals(vp0) ? 103 : 101);
+        box.addView(voiceProv);
+        note("ఎంచుకున్న గొంతే మాట్లాడుతుంది; ఒకదాని నుంచి ఇంకోదానికి తనంతట తానే మారదు. అది పనిచేయకపోతే ఫోన్ గొంతుతో చెబుతుంది, "
+                + "ఎందుకో \"Jarvis చెక్\" లో ఉంటుంది. ⏸/▶, మధ్యలో ఆపడం, నోరు కదలడం మూడింటికీ ఒకేలా. వాచ్, ఇంటి టాబ్లెట్ OpenAI తోనే.");
+        subHead("▸ OpenAI");
         TextView vl = Ui.text(this, "గొంతు ఎంచుకోండి (cedar = లోతైన మగ గొంతు, సిఫార్సు)", 14, Ui.MUTED);
         vl.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         box.addView(vl);
@@ -504,6 +530,43 @@ public class SettingsActivity extends Activity {
         button("ఈ గొంతు వినిపించు", v -> testVoice());
         voiceInfo = Ui.text(this, "", 14, Ui.MUTED);
         box.addView(voiceInfo);
+
+        // Google Gemini's voice (his Gemini key)
+        subHead("▸ Google Gemini");
+        geminiVoiceChoice = prefs.geminiTtsVoice();
+        geminiVoiceLabel = Ui.text(this, "", 15, accent);
+        geminiVoiceLabel.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 4));
+        geminiVoiceLabel.setOnClickListener(v -> pickGeminiVoice());
+        box.addView(geminiVoiceLabel);
+        showGeminiVoice();
+        geminiTtsModel = field("Gemini గొంతు మోడల్ (మాట్లాడే మోడల్)", prefs.geminiTtsModel(), false);
+        modelPicker(Models.GEMINI_TTS, geminiKey, geminiTtsModel, "gemini_tts_model");
+        note("మొదట " + CloudVoice.GEMINI_DEFAULT_MODEL + " (వేగం, తక్కువ ఖర్చు). మాటలు ఉన్నది ఉన్నట్టే చదువుతుంది; భావాలు (నవ్వు, ఉత్సాహం) OpenAI లో మాత్రమే. "
+                + "key: పైన Jarvis మెదడు లోని Gemini key.");
+        button("ఈ గొంతు వినిపించు", v -> testCloud(CloudVoice.GEMINI));
+        geminiInfo = Ui.text(this, "", 14, Ui.MUTED);
+        box.addView(geminiInfo);
+
+        // Sarvam Bulbul's voice (his Sarvam key)
+        subHead("▸ Sarvam Bulbul");
+        sarvamVoiceChoice = prefs.sarvamVoice();
+        sarvamVoiceLabel = Ui.text(this, "", 15, accent);
+        sarvamVoiceLabel.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 4));
+        sarvamVoiceLabel.setOnClickListener(v -> pickSarvamVoice());
+        box.addView(sarvamVoiceLabel);
+        sarvamTtsModel = field("Sarvam గొంతు మోడల్ (మాట్లాడే మోడల్)", prefs.sarvamTtsModel(), false);
+        modelPicker(Models.SARVAM_TTS, sarvamKey, sarvamTtsModel, "sarvam_tts_model");
+        sarvamTtsModel.addTextChangedListener(new android.text.TextWatcher() { // (a new model: its own voices)
+            @Override public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void afterTextChanged(android.text.Editable e) { showSarvamVoice(); }
+        });
+        showSarvamVoice();
+        note("మొదట " + CloudVoice.SARVAM_DEFAULT_MODEL + ". ప్రతి మోడల్‌కి దాని గొంతులే (v4-flash కి తెలుగు గొంతులు 4, మగ: tarun). భావాలు ఉండవు. "
+                + "key: పైన Jarvis మెదడు లో Sarvam API key. ఖర్చు: 10,000 అక్షరాలకి సుమారు ₹30 (కొత్త అకౌంట్‌కి ₹100 ఉచితం).");
+        button("ఈ గొంతు వినిపించు", v -> testCloud(CloudVoice.SARVAM));
+        sarvamInfo = Ui.text(this, "", 14, Ui.MUTED);
+        box.addView(sarvamInfo);
 
         // ---- live conversation
         section("Live సంభాషణ (Real-time)");
@@ -587,6 +650,7 @@ public class SettingsActivity extends Activity {
         earsMode.setOnCheckedChangeListener((rg, id) -> {
             earsOtherBox.setVisibility(id == 84 ? View.VISIBLE : View.GONE);
             if (id == 81) earsOther.check(85); else if (id == 82) earsOther.check(86); else if (id == 83) earsOther.check(87); // (the same choice below)
+            else if (id == 88) earsOther.check(89);
             if (syncingVoice) { earsWas = id; return; }
             syncingVoice = true;
             if (id == 84) { liveMode.setChecked(true); liveProvider.check(91); }
@@ -1581,7 +1645,13 @@ public class SettingsActivity extends Activity {
                     : ch == 2 ? "Claude · " + anthropicModel.getText().toString().trim()
                     : "OpenAI · " + openAiModel.getText().toString().trim();
         }
-        if (t.contains("సహజ గొంతు")) return natural.isChecked() ? "ఆన్ · గొంతు: " + NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())] : "ఆఫ్";
+        if (t.contains("సహజ గొంతు")) {
+            if (!natural.isChecked()) return "ఆఫ్";
+            int vp = voiceProv.getCheckedRadioButtonId();
+            return vp == 102 ? "ఆన్ · Google Gemini · " + geminiVoiceChoice
+                    : vp == 103 ? "ఆన్ · Sarvam · " + CloudVoice.sarvamVoiceFor(sarvamTtsModel.getText().toString().trim(), sarvamVoiceChoice)
+                    : "ఆన్ · గొంతు: " + NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())];
+        }
         if (t.contains("Live")) return liveMode.isChecked() ? "\"Hey Jarvis\" తో Live: ఆన్" : "\"Hey Jarvis\" తో Live: ఆఫ్";
         if (t.contains("వేక్ వర్డ్")) {
             int ww = wakeWhen.getCheckedRadioButtonId();
@@ -1788,10 +1858,14 @@ public class SettingsActivity extends Activity {
                 : "✗ బ్యాటరీ సేవర్ మినహాయింపు లేదు: ఫోన్ Jarvis ని ఆపేయవచ్చు\n");
         if (prefs.wakeReady()) s.append(WakeService.running ? "✓ \"Jarvis\" వేక్ వర్డ్: నడుస్తోంది\n" : "✗ \"Jarvis\" వేక్ వర్డ్: ఆగి ఉంది\n");
         if (stuckTalking()) s.append("✗ Jarvis 'మాట్లాడుతున్నాను' అనే స్థితిలో ఇరుక్కుంది\n");
-        if (prefs.naturalVoice()) s.append("• మాట్లాడే గొంతు: OpenAI ").append(prefs.ttsModel()).append(" · ").append(prefs.naturalVoiceName()).append("\n");
-        if (prefs.naturalVoice() && prefs.openAiKey().trim().isEmpty()) s.append("• సహజ గొంతుకి OpenAI key లేదు: ఫోన్ గొంతుతో మాట్లాడతాను\n");
+        CloudVoice cvNow = CloudVoice.of(prefs);
+        if (prefs.naturalVoice()) s.append("• మాట్లాడే గొంతు: ").append(cvNow != null ? cvNow.label() : "OpenAI " + prefs.ttsModel() + " · " + prefs.naturalVoiceName()).append("\n");
+        if (prefs.naturalVoice() && (cvNow == null ? prefs.openAiKey().trim().isEmpty() : !cvNow.ready()))
+            s.append("• సహజ గొంతుకి ").append(cvNow == null ? "OpenAI key లేదు" : cvNow.noKey()).append(": ఫోన్ గొంతుతో మాట్లాడతాను\n");
         else if (prefs.naturalVoice() && VoiceIO.naturalError != null)
             s.append("• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): ").append(VoiceIO.naturalError).append("\n");
+        if (prefs.naturalVoice() && VoiceIO.naturalCut != null)
+            s.append("• సహజ గొంతు చివరి జవాబు మధ్యలో ఆగింది (మిగతాది టెక్స్ట్‌లో ఉంది): ").append(VoiceIO.naturalCut).append("\n");
         long backedUp = Backup.lastOk(this);
         if (!Backup.configured(this)) s.append("✗ బ్యాకప్ సెట్ చేయలేదు: ఫోన్ పోతే Jarvis డేటా పోతుంది (కింద \"బ్యాకప్\" చూడండి)\n");
         else if (System.currentTimeMillis() - backedUp > 3 * 86_400_000L)
@@ -1801,7 +1875,8 @@ public class SettingsActivity extends Activity {
         if (!heard.isEmpty()) s.append("• చివరి వినడం: ").append(heard)
                 .append("\n   (▶ మైక్ మొదలు · 🎙 తెరిచింది · ■ మీరు మాట్లాడటం ఆపారు · ✗ ఫోన్ ఆపింది)\n");
         if (!MicQuiet.info.isEmpty()) s.append("• మైక్ బీప్ ఆపడానికి క్షణం పాటు మ్యూట్ చేసేవి: ").append(MicQuiet.info).append("\n");
-        s.append("• మాటలు వినే పద్ధతి: ").append("gemini".equals(prefs.earsMode()) ? "Gemini (Jarvis సొంత మైక్)" : "google".equals(prefs.earsMode())
+        s.append("• మాటలు వినే పద్ధతి: ").append("gemini".equals(prefs.earsMode()) ? "Gemini (Jarvis సొంత మైక్)"
+                : "sarvam".equals(prefs.earsMode()) ? "Sarvam " + prefs.sarvamEarsModel() + " (Jarvis సొంత మైక్)" : "google".equals(prefs.earsMode())
                 ? "Google వాయిస్ టైపింగ్ (బీప్‌లతో" + (prefs.micOnce() ? ", మైక్ ఒక్కసారే)" : ", మైక్ ఎక్కువ సేపు)") : "OpenAI " + prefs.earsModel() + " (Jarvis సొంత మైక్)").append("\n");
         if (prefs.liveMode()) s.append("• Live: ").append(LiveTalk.label(prefs)).append(prefs.liveGemini() ? " (" + prefs.geminiLiveModel() + ", గొంతు " + prefs.geminiLiveVoice() + ")" : "")
                 .append(prefs.liveKeyReady() ? "" : " ✗ key లేదు").append("\n");
@@ -1886,6 +1961,7 @@ public class SettingsActivity extends Activity {
         e.putString("gemini_model", gm);
         e.remove("gemini_auto_model"); // older versions picked a Gemini model by themselves
         e.putString("openai_key", openAiKey.getText().toString().trim());
+        e.putString("sarvam_key", sarvamKey.getText().toString().trim());
         e.putString("openai_model", openAiModel.getText().toString().trim());
         e.putString("code_model", codeModel.getText().toString().trim());
         e.putString("github_token", githubToken.getText().toString().trim());
@@ -1914,8 +1990,9 @@ public class SettingsActivity extends Activity {
         e.putString("group_mode", gmc == 64 ? "all" : gmc == 66 ? "none" : "mine");
         int emc = earsMode.getCheckedRadioButtonId();
         int eoc = earsOther.getCheckedRadioButtonId();
-        e.putString("ears_mode", emc == 84 ? (eoc == 86 ? "gemini" : eoc == 87 ? "google" : "openai") // (Gemini Live: the other places' choice)
-                : emc == 82 ? "gemini" : emc == 83 ? "google" : "openai");
+        e.putString("ears_mode", emc == 84 ? (eoc == 86 ? "gemini" : eoc == 87 ? "google" : eoc == 89 ? "sarvam" : "openai") // (Gemini Live: the other places' choice)
+                : emc == 82 ? "gemini" : emc == 83 ? "google" : emc == 88 ? "sarvam" : "openai");
+        e.putString("sarvam_ears_model", sarvamEarsModel.getText().toString().trim());
         e.putString("live_provider", liveProvider.getCheckedRadioButtonId() == 91 ? Prefs.GEMINI : Prefs.OPENAI);
         e.putString("live_think", liveThink.getCheckedRadioButtonId() == 99 ? "live" : "brain");
         e.putBoolean("offline_auto", offlineAuto.isChecked());
@@ -1947,6 +2024,10 @@ public class SettingsActivity extends Activity {
         e.putBoolean("briefing_speak", briefingSpeak.isChecked());
         e.putString("natural_voice_name", NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())]);
         e.putString("tts_model", ttsModel.getText().toString().trim());
+        int vpc = voiceProv.getCheckedRadioButtonId();
+        e.putString("voice_provider", vpc == 102 ? CloudVoice.GEMINI : vpc == 103 ? CloudVoice.SARVAM : CloudVoice.OPENAI);
+        e.putString("gemini_tts_model", geminiTtsModel.getText().toString().trim());
+        e.putString("sarvam_tts_model", sarvamTtsModel.getText().toString().trim());
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("live_patient", livePatient.isChecked());
         e.putBoolean("scam_guard", scamGuard.isChecked());
@@ -2043,6 +2124,105 @@ public class SettingsActivity extends Activity {
                 .show();
     }
 
+    /** A small heading inside a card ("▸ Google Gemini"). */
+    private void subHead(String s) {
+        TextView h = Ui.text(this, s, 16, Ui.TEXT);
+        h.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 2));
+        box.addView(h);
+    }
+
+    private void showGeminiVoice() {
+        geminiVoiceLabel.setText("🎙️ గొంతు: " + GeminiLiveProto.voiceLabel(geminiVoiceChoice) + "  (మార్చడానికి నొక్కండి)");
+    }
+
+    /** Google Gemini's 30 voices (the same as Gemini Live's); a tap lets him hear it with the model in the box. */
+    private void pickGeminiVoice() {
+        String[] labels = new String[GeminiLiveProto.VOICES.length];
+        int at = 0;
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = GeminiLiveProto.voiceLabel(GeminiLiveProto.VOICES[i][0]);
+            if (GeminiLiveProto.VOICES[i][0].equals(geminiVoiceChoice)) at = i;
+        }
+        final String[] chosen = {geminiVoiceChoice};
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Google Gemini గొంతు (నొక్కితే వినిపిస్తుంది)")
+                .setSingleChoiceItems(labels, at, (d, which) -> {
+                    chosen[0] = GeminiLiveProto.VOICES[which][0];
+                    testCloud(CloudVoice.GEMINI, chosen[0]);
+                })
+                .setPositiveButton("ఇది పెట్టు", (d, w) -> {
+                    tester.stop();
+                    geminiVoiceChoice = chosen[0];
+                    prefs.sp.edit().putString("gemini_tts_voice", geminiVoiceChoice).apply(); // (a dialog tap doesn't reach the page's autosave)
+                    showGeminiVoice();
+                })
+                .setNegativeButton("వద్దు", (d, w) -> tester.stop())
+                .setOnCancelListener(d -> tester.stop())
+                .show();
+    }
+
+    private void showSarvamVoice() {
+        String model = sarvamTtsModel.getText().toString().trim();
+        String v = CloudVoice.sarvamVoiceFor(model, sarvamVoiceChoice);
+        String kind = "";
+        for (String[] x : CloudVoice.sarvamVoices(model)) if (x[0].equals(v)) kind = " · " + x[1];
+        sarvamVoiceLabel.setText("🎙️ గొంతు: " + v + kind + "  (మార్చడానికి నొక్కండి)");
+    }
+
+    /** The voices of the Sarvam model in the box; a tap lets him hear it. */
+    private void pickSarvamVoice() {
+        String model = sarvamTtsModel.getText().toString().trim();
+        String[][] list = CloudVoice.sarvamVoices(model);
+        String[] labels = new String[list.length];
+        String now = CloudVoice.sarvamVoiceFor(model, sarvamVoiceChoice);
+        int at = 0;
+        for (int i = 0; i < list.length; i++) {
+            labels[i] = list[i][0] + " · " + list[i][1];
+            if (list[i][0].equals(now)) at = i;
+        }
+        final String[] chosen = {now};
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Sarvam గొంతు (" + (model.isEmpty() ? CloudVoice.SARVAM_DEFAULT_MODEL : model) + "; నొక్కితే వినిపిస్తుంది)")
+                .setSingleChoiceItems(labels, at, (d, which) -> {
+                    chosen[0] = list[which][0];
+                    testCloud(CloudVoice.SARVAM, chosen[0]);
+                })
+                .setPositiveButton("ఇది పెట్టు", (d, w) -> {
+                    tester.stop();
+                    sarvamVoiceChoice = chosen[0];
+                    prefs.sp.edit().putString("sarvam_voice", sarvamVoiceChoice).apply();
+                    showSarvamVoice();
+                })
+                .setNegativeButton("వద్దు", (d, w) -> tester.stop())
+                .setOnCancelListener(d -> tester.stop())
+                .show();
+    }
+
+    private void testCloud(String which) {
+        testCloud(which, CloudVoice.GEMINI.equals(which) ? geminiVoiceChoice : sarvamVoiceChoice);
+    }
+
+    /** "ఈ గొంతు వినిపించు" for Google Gemini / Sarvam: with the key, model and voice on this page now (saved or not). */
+    private void testCloud(String which, String voice) {
+        boolean gem = CloudVoice.GEMINI.equals(which);
+        TextView info = gem ? geminiInfo : sarvamInfo;
+        String m = (gem ? geminiTtsModel : sarvamTtsModel).getText().toString().trim();
+        if (m.isEmpty()) m = gem ? CloudVoice.GEMINI_DEFAULT_MODEL : CloudVoice.SARVAM_DEFAULT_MODEL;
+        CloudVoice cv = gem ? new CloudVoice(CloudVoice.GEMINI, geminiKey.getText().toString(), m, voice)
+                : new CloudVoice(CloudVoice.SARVAM, sarvamKey.getText().toString(), m, CloudVoice.sarvamVoiceFor(m, voice));
+        if (!cv.ready()) { info.setText(cv.noKey()); return; }
+        String n = name.getText().toString().trim();
+        info.setText("వినిపిస్తున్నాను… (" + cv.label() + ")");
+        tester.cloud = cv;
+        tester.speak("", cv.voice, "నమస్కారం " + (n.isEmpty() ? "Anil" : n) + ". నేను Jarvis. మీ సేవలో ఎప్పుడూ సిద్ధంగా ఉంటాను.", new NaturalVoice.Callback() {
+            private String cut;
+            @Override public void onStart() { info.setText("గొంతు: " + cv.label()); }
+            @Override public void onDone() { info.setText("గొంతు: " + cv.label() + (cut == null ? " ✓" : " · మధ్యలో ఆగింది: " + cut)); }
+            @Override public void onError(String message) { info.setText("పనిచేయలేదు: " + message); }
+            @Override public void onCut(String message) { cut = message; }
+        });
+    }
+
     private void previewVoice(String voice) {
         Toast.makeText(this, voice + " గొంతు తయారవుతోంది…", Toast.LENGTH_SHORT).show();
         VoicePreview.play(prefs, voice, problem -> {
@@ -2057,7 +2237,7 @@ public class SettingsActivity extends Activity {
         if (liveMode.isChecked() && liveProvider.getCheckedRadioButtonId() == 91) earsMode.check(84);
         else if (earsMode.getCheckedRadioButtonId() == 84) {
             int o = earsOther.getCheckedRadioButtonId();
-            earsMode.check(o == 86 ? 82 : o == 87 ? 83 : 81);
+            earsMode.check(o == 86 ? 82 : o == 87 ? 83 : o == 89 ? 88 : 81);
         }
         syncingVoice = false;
     }
@@ -2070,8 +2250,15 @@ public class SettingsActivity extends Activity {
         if (provider.getCheckedRadioButtonId() == 3 && geminiModel.getText().toString().trim().isEmpty())
             Toast.makeText(this, "Gemini మోడల్ ఇంకా ఎంచుకోలేదు: 'అన్ని మోడల్స్ చూపించు' నొక్కి ఒకటి ఎంచుకోండి", Toast.LENGTH_LONG).show();
         boolean geminiLive = liveProvider.getCheckedRadioButtonId() == 91;
-        if (((liveMode.isChecked() && !geminiLive) || natural.isChecked()) && openAiKey.getText().toString().trim().isEmpty())
+        int vpw = voiceProv.getCheckedRadioButtonId();
+        if (((liveMode.isChecked() && !geminiLive) || natural.isChecked() && vpw == 101) && openAiKey.getText().toString().trim().isEmpty())
             Toast.makeText(this, "సహజ గొంతు, OpenAI Live కి OpenAI key కావాలి", Toast.LENGTH_LONG).show();
+        if (natural.isChecked() && vpw == 102 && geminiKey.getText().toString().trim().isEmpty())
+            Toast.makeText(this, "Google Gemini గొంతుకి Gemini key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
+        if (natural.isChecked() && vpw == 103 && sarvamKey.getText().toString().trim().isEmpty())
+            Toast.makeText(this, "Sarvam గొంతుకి Sarvam key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
+        if ("sarvam".equals(prefs.earsMode()) && sarvamKey.getText().toString().trim().isEmpty())
+            Toast.makeText(this, "Sarvam Saaras తో వినడానికి Sarvam key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
         if (liveMode.isChecked() && geminiLive && geminiKey.getText().toString().trim().isEmpty())
             Toast.makeText(this, "Gemini Live కి Gemini key కావాలి (సెట్టింగ్స్ → Jarvis మెదడు)", Toast.LENGTH_LONG).show();
         // the wake word starts again with the new settings
@@ -2103,6 +2290,7 @@ public class SettingsActivity extends Activity {
         voiceInfo.setText("వినిపిస్తున్నాను…");
         String tm = ttsModel.getText().toString().trim();
         tester.model = tm.isEmpty() ? NaturalVoice.DEFAULT_MODEL : tm;
+        tester.cloud = null; // (OpenAI's own test)
         tester.speak(key, v, "నమస్కారం " + (n.isEmpty() ? "Anil" : n) + ". నేను Jarvis. మీ సేవలో ఎప్పుడూ సిద్ధంగా ఉంటాను.", new NaturalVoice.Callback() {
             @Override public void onStart() { voiceInfo.setText("గొంతు: " + v + " · " + tester.model); }
             @Override public void onDone() { voiceInfo.setText("గొంతు: " + v + " · " + tester.model + " ✓"); }
@@ -3126,6 +3314,7 @@ public class SettingsActivity extends Activity {
             if (key.isEmpty()) { Toast.makeText(this, "ముందు OpenAI key పెట్టండి", Toast.LENGTH_SHORT).show(); return; }
             String m = model.getText().toString().trim();
             tester.model = m.isEmpty() ? NaturalVoice.DEFAULT_MODEL : m;
+            tester.cloud = null; // (the tablet speaks with OpenAI)
             vInfo.setText("వినిపిస్తున్నాను…");
             tester.speak(key, tabVoice[0], "నమస్కారం అమ్మగారు. నేను Jarvis. టిఫిన్ చేశారా?", new NaturalVoice.Callback() {
                 @Override public void onStart() { vInfo.setText("గొంతు: " + tabVoice[0] + " · " + tester.model); }

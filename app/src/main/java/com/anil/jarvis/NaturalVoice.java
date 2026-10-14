@@ -26,6 +26,8 @@ final class NaturalVoice {
         void onStart();
         void onDone();
         void onError(String message);
+        /** Google Gemini / Sarvam: the reply stopped part-way (a later piece didn't come); onDone follows. */
+        default void onCut(String message) {}
     }
 
     /** The speaking model when he hasn't chosen one. */
@@ -36,6 +38,11 @@ final class NaturalVoice {
 
     /** The model to speak with (Settings → సహజ గొంతు → మోడల్); set before speak(). */
     volatile String model = DEFAULT_MODEL;
+    /**
+     * Google Gemini or Sarvam Bulbul instead of OpenAI (his choice "Jarvis గొంతు ఎవరిది"); null: OpenAI as always.
+     * Set before speak(); the key, model and voice passed to speak() are then not used.
+     */
+    volatile CloudVoice cloud;
 
     static final String[] VOICES = {"cedar", "marin", "ash", "ballad", "verse", "echo", "sage", "coral", "alloy", "shimmer"};
     static final int RATE = 24000;
@@ -229,11 +236,16 @@ final class NaturalVoice {
         final String style = STYLE + (homeStyle ? HOME_STYLE : "") + Emotion.style(emotion);
         final String m = model == null || model.trim().isEmpty() ? DEFAULT_MODEL : model.trim();
         final EchoGuard eg = echo;
-        new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cb), "jarvis-tts").start();
+        final CloudVoice cv = cloud;
+        CloudVoice was = fetching;
+        if (was != null) was.cancel(); // (the last reply's request, still on its way)
+        new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cv, cb), "jarvis-tts").start();
     }
 
     void stop() {
         generation++;
+        CloudVoice was = fetching;
+        if (was != null) was.cancel();
         paused = false;
         stopTrack();
     }
@@ -251,11 +263,12 @@ final class NaturalVoice {
         }
     }
 
-    private void run(int gen, String apiKey, String model, String voice, String text, String style, EchoGuard eg, Callback cb) {
+    private void run(int gen, String apiKey, String model, String voice, String text, String style, EchoGuard eg, CloudVoice cv, Callback cb) {
         HttpURLConnection c = null;
         AudioTrack t = null;
         final boolean[] started = {false};
         try {
+          if (cv == null) { // OpenAI (as always): the request is made, and answered, before the speaker opens
             boolean old = model.toLowerCase(java.util.Locale.ROOT).startsWith("tts-1");
             if (old && !OLD_VOICES.contains(voice)) // (said plainly, before OpenAI refuses it)
                 throw new IllegalStateException(model + " లో \"" + voice + "\" గొంతు లేదు: alloy, ash, coral, echo, sage, shimmer లో ఒకటి ఎంచుకోండి");
@@ -287,6 +300,7 @@ final class NaturalVoice {
                 }
                 throw new IllegalStateException("TTS " + status + " " + err);
             }
+          }
 
             int min = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
             t = new AudioTrack.Builder()
@@ -320,6 +334,7 @@ final class NaturalVoice {
             final Pcm pcm = new Pcm();
             final HttpURLConnection conn = c;
             Thread reader = new Thread(() -> {
+                if (cv != null) { readCloud(gen, cv, text, pcm); return; }
                 String err = null;
                 byte[] buf = new byte[8192];
                 int carry = -1; // an odd byte left over from the previous read
@@ -391,7 +406,12 @@ final class NaturalVoice {
                 if (SystemClock.elapsedRealtime() > deadline) break;
                 SystemClock.sleep(40);
             }
-            if (gen == generation) main.post(() -> { if (gen == generation) cb.onDone(); });
+            final String cut = cv != null && started[0] ? pcm.error() : null; // (a later piece didn't come: said in Jarvis చెక్)
+            if (gen == generation) main.post(() -> {
+                if (gen != generation) return;
+                if (cut != null) cb.onCut(cut);
+                cb.onDone();
+            });
         } catch (Exception e) {
             if (gen == generation) {
                 final boolean playedSome = started[0];
@@ -409,6 +429,48 @@ final class NaturalVoice {
                 try { t.stop(); } catch (Exception ignored) {}
                 t.release();
             }
+        }
+    }
+
+    /**
+     * Google Gemini / Sarvam: the words in pieces, each asked for as soon as the one before it has arrived (so the next is
+     * coming while this one plays); the sound joins the same reply sound as OpenAI's stream does.
+     */
+    private volatile CloudVoice fetching;
+
+    private void readCloud(int gen, CloudVoice cv, String text, Pcm pcm) {
+        String err = null;
+        long frames = 0;
+        fetching = cv;
+        try {
+            for (String piece : CloudVoice.pieces(text, CloudVoice.FIRST_PIECE, CloudVoice.PIECE)) {
+                if (gen != generation) break;
+                byte[] b;
+                try {
+                    b = cv.say(piece);
+                } catch (Exception first) { // busy / the line: once more, after a moment (the same company, never another)
+                    if (gen != generation || !CloudVoice.retryable(first)) throw first;
+                    SystemClock.sleep(1200);
+                    if (gen != generation) break;
+                    b = cv.say(piece);
+                }
+                if (gen != generation) break;
+                if (b.length < 2) continue;
+                int len = b.length & ~1;
+                pcm.add(b, len);
+                scanPauses(b, len);
+                frames += len / 2;
+                arrived = frames;
+            }
+            if (frames == 0 && gen == generation) err = CloudVoice.company(cv.provider) + ": గొంతు ఖాళీగా వచ్చింది";
+        } catch (Http.ApiError e) {
+            err = CloudVoice.company(cv.provider) + " " + e.status + " " + e.getMessage();
+        } catch (Throwable e) { // (also out of memory: the speaker side must never wait for ever)
+            err = CloudVoice.company(cv.provider) + ": " + e.getMessage();
+        } finally {
+            if (fetching == cv) fetching = null;
+            if (err == null && gen == generation) complete = true;
+            pcm.finish(err);
         }
     }
 

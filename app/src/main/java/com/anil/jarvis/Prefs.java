@@ -89,6 +89,16 @@ final class Prefs {
     String naturalVoiceName() { return sp.getString("natural_voice_name", "cedar"); }
     /** The OpenAI model that speaks in the natural voice (he can change it in Settings). */
     String ttsModel() { String m = sp.getString("tts_model", "").trim(); return m.isEmpty() ? NaturalVoice.DEFAULT_MODEL : m; }
+    /** Whose voice Jarvis speaks with: "openai" (as always), "gemini" or "sarvam" (Settings → సహజ గొంతు). Never switched by itself. */
+    String voiceProvider() { return sp.getString("voice_provider", CloudVoice.OPENAI); }
+    String geminiTtsModel() { String m = sp.getString("gemini_tts_model", "").trim(); return m.isEmpty() ? CloudVoice.GEMINI_DEFAULT_MODEL : m; }
+    String geminiTtsVoice() { String v = sp.getString("gemini_tts_voice", "").trim(); return v.isEmpty() ? CloudVoice.GEMINI_DEFAULT_VOICE : v; }
+    /** His Sarvam AI key (typed on the phone; never shown, sent or logged anywhere else). */
+    String sarvamKey() { return sp.getString("sarvam_key", "").replaceAll("[^\\x21-\\x7E]", ""); } // (a pasted key can bring spaces or invisible marks)
+    String sarvamTtsModel() { String m = sp.getString("sarvam_tts_model", "").trim(); return m.isEmpty() ? CloudVoice.SARVAM_DEFAULT_MODEL : m; }
+    String sarvamVoice() { String v = sp.getString("sarvam_voice", "").trim(); return v.isEmpty() ? "shubh" : v; }
+    /** Sarvam's ears (Saaras): the model that writes out what he says. */
+    String sarvamEarsModel() { String m = sp.getString("sarvam_ears_model", "").trim(); return m.isEmpty() ? "saaras:v4" : m; }
 
     // ---- live (real-time) conversation
     static final String DEFAULT_REALTIME_MODEL = "gpt-realtime-2.1-mini";

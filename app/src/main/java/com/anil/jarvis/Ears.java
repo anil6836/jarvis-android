@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * says why.
  */
 final class Ears implements ListenMic {
-    /** What Jarvis uses to hear him: "openai", "gemini" or "google" (the phone's own speech service, with its beeps). */
+    /** What Jarvis uses to hear him: "openai", "gemini", "sarvam" (Saaras) or "google" (the phone's own speech service, with its beeps). */
     static String mode(Prefs p) { return p.earsMode(); }
 
     /**
@@ -62,7 +62,7 @@ final class Ears implements ListenMic {
     private String myMode() { return modeOver != null ? modeOver : mode(p); }
 
     /** Jarvis listens with its own mic (not the phone's speech service). */
-    static boolean chosen(Prefs p) { String m = mode(p); return "openai".equals(m) || "gemini".equals(m); }
+    static boolean chosen(Prefs p) { String m = mode(p); return "openai".equals(m) || "gemini".equals(m) || "sarvam".equals(m); }
 
     /** No key for the chosen AI (his settings). */
     static final int ERROR_NO_KEY = 101;
@@ -127,7 +127,7 @@ final class Ears implements ListenMic {
         this.longTalk = longTalk;
         cb = callback;
         if (source == null && ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { fail(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS); return; }
-        String key = "gemini".equals(myMode()) ? p.geminiKey().trim() : p.openAiKey().trim();
+        String key = ("gemini".equals(myMode()) ? p.geminiKey() : "sarvam".equals(myMode()) ? p.sarvamKey() : p.openAiKey()).trim();
         if (key.isEmpty()) { fail(ERROR_NO_KEY); return; }
         if (!Net.online(ctx)) { fail(SpeechRecognizer.ERROR_NETWORK); return; }
         new Thread(() -> run(waitMs, key), "jarvis-ears").start();
@@ -165,7 +165,7 @@ final class Ears implements ListenMic {
         boolean weak;
         long doneAt, voiceEnd;
         // OpenAI: his voice goes out while he talks, so after he stops only the last moment is left to send
-        boolean stream = !"gemini".equals(myMode()) && p.earsStream();
+        boolean stream = "openai".equals(myMode()) && p.earsStream();
         Upload up = null;
         int upTries = 0;
         try {
@@ -277,7 +277,7 @@ final class Ears implements ListenMic {
             if (text == null) {
                 if (cancelled) return;
                 sentAt = 0;
-                text = "gemini".equals(myMode()) ? gemini(key, wav) : openAi(key, wav);
+                text = "gemini".equals(myMode()) ? gemini(key, wav) : "sarvam".equals(myMode()) ? sarvam(key, wav) : openAi(key, wav);
                 sent = sentAt;
                 if (refused) p.earsStreamOff(); // sent whole, it worked: from now on always so (a new model in Settings tries again)
             }
@@ -379,7 +379,8 @@ final class Ears implements ListenMic {
         String b = body.toLowerCase(Locale.ROOT);
         if (status == 401 || status == 403 || b.contains("api_key_invalid") || b.contains("api key not valid") || b.contains("invalid_api_key")
                 || b.contains("incorrect api key")) return ERROR_BAD_KEY;
-        if (b.contains("insufficient_quota") || b.contains("exceeded your current quota") || b.contains("billing")) return ERROR_QUOTA;
+        if (b.contains("insufficient_quota") || b.contains("exceeded your current quota") || b.contains("billing")
+                || b.contains("insufficient credit") || b.contains("credits exhausted")) return ERROR_QUOTA; // (Sarvam: credits)
         if (status == 404 || b.contains("model_not_found") || b.contains("does not exist") || b.contains("is not found") || b.contains("unknown model")
                 || b.contains("invalid model")) return ERROR_MODEL;
         if (status == 429 || b.contains("resource_exhausted")) return 10; // busy: a moment
@@ -692,6 +693,99 @@ final class Ears implements ListenMic {
 
     private static void field(StringBuilder b, String boundary, String name, String value) {
         b.append("--").append(boundary).append("\r\nContent-Disposition: form-data; name=\"").append(name).append("\"\r\n\r\n").append(value).append("\r\n");
+    }
+
+    /** Sarvam's speech-to-text (one request takes under 30 s of sound). */
+    private static final String SARVAM_STT_URL = "https://api.sarvam.ai/speech-to-text";
+    static final int SARVAM_MAX_MS = 28_000;
+
+    /**
+     * Sarvam Saaras (his Sarvam key and the model he chose) writes out the words; a longer recording (a dictated message)
+     * goes in pieces of under 30 s and the words are joined.
+     */
+    private String sarvam(String key, byte[] wav) throws Exception {
+        StringBuilder all = new StringBuilder();
+        for (byte[] piece : wavPieces(wav, SARVAM_MAX_MS)) {
+            if (cancelled) return "";
+            String t = sarvamOnce(key, piece).trim();
+            if (!t.isEmpty()) all.append(all.length() == 0 ? "" : " ").append(t);
+        }
+        return all.toString();
+    }
+
+    private String sarvamOnce(String key, byte[] wav) throws Exception {
+        String boundary = "----jarvisears" + System.nanoTime();
+        StringBuilder head = new StringBuilder();
+        String model = p.sarvamEarsModel();
+        field(head, boundary, "model", model);
+        if (model.toLowerCase(Locale.ROOT).contains("v3")) field(head, boundary, "mode", "transcribe"); // ("mode" is v3's only)
+        field(head, boundary, "language_code", anyLang ? "unknown" : sarvamLang(p.listenLang()));
+        head.append("--").append(boundary).append("\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n");
+        byte[] h = head.toString().getBytes(StandardCharsets.UTF_8);
+        byte[] tail = uploadTail(boundary);
+        HttpURLConnection con = (HttpURLConnection) new URL(SARVAM_STT_URL).openConnection();
+        try {
+            con.setRequestMethod("POST");
+            con.setConnectTimeout(8000);
+            con.setReadTimeout(15000);
+            con.setDoOutput(true);
+            con.setFixedLengthStreamingMode(h.length + wav.length + tail.length);
+            con.setRequestProperty("api-subscription-key", key);
+            con.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+            try (OutputStream out = con.getOutputStream()) {
+                out.write(h);
+                out.write(wav);
+                out.write(tail);
+            }
+            sentAt = SystemClock.elapsedRealtime();
+            int code = con.getResponseCode();
+            String body = readBody(con, code);
+            if (code >= 400) throw new Http.ApiError(code, sarvamError(body));
+            return new JSONObject(body).optString("transcript", "");
+        } finally {
+            con.disconnect();
+        }
+    }
+
+    /** Sarvam's error as "its code: its message" (the code says "credits used up" plainly: insufficient_quota_error). */
+    static String sarvamError(String body) {
+        String code = "";
+        try {
+            Object e = new JSONObject(body).opt("error");
+            if (e instanceof JSONObject) code = ((JSONObject) e).optString("code", "");
+        } catch (Exception ignored) {}
+        String msg = CloudVoice.shortError(body);
+        return code.isEmpty() ? msg : code + ": " + msg;
+    }
+
+    /** "te-IN" as Sarvam writes it (the languages it hears; Telugu otherwise). */
+    static String sarvamLang(String listenLang) {
+        String l = listenLang == null ? "" : listenLang.trim();
+        String base = (l.contains("-") ? l.substring(0, l.indexOf('-')) : l).toLowerCase(Locale.ROOT);
+        switch (base) {
+            case "hi": case "ta": case "kn": case "ml": case "mr": case "gu": case "bn": case "pa": case "en": return base + "-IN";
+            case "or": case "od": return "od-IN";
+            default: return "te-IN";
+        }
+    }
+
+    /** A 16 kHz mono WAV in pieces of at most maxMs (each a WAV of its own); a short one stays as it is. */
+    static java.util.List<byte[]> wavPieces(byte[] wav, int maxMs) {
+        java.util.List<byte[]> out = new java.util.ArrayList<>();
+        int head = 44;
+        if (wav == null || wav.length <= head) { if (wav != null) out.add(wav); return out; }
+        int data = wav.length - head;
+        int max = (int) ((long) RATE * 2 * maxMs / 1000) & ~1;
+        if (data <= max) { out.add(wav); return out; }
+        for (int at = 0; at < data; at += max) {
+            int n = Math.min(max, data - at);
+            if (n < RATE / 5) break; // (a last scrap under 0.1 s says nothing)
+            byte[] h = Talk.wavHeader(n);
+            byte[] piece = java.util.Arrays.copyOf(h, h.length + n);
+            System.arraycopy(wav, head + at, piece, h.length, n);
+            out.add(piece);
+        }
+        return out;
     }
 
     /** Gemini (his Gemini model and key) writes out the words. */

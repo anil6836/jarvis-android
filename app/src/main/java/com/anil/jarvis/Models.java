@@ -38,6 +38,13 @@ final class Models {
     static final String REALTIME = "openai_realtime";
     /** OpenAI's text-to-speech models, for Jarvis's natural voice. */
     static final String TTS = "openai_tts";
+    /** Google Gemini's speaking models (his Gemini key), for "Jarvis గొంతు ఎవరిది → Google Gemini". */
+    static final String GEMINI_TTS = "gemini_tts";
+    /** Sarvam's speaking (Bulbul) and hearing (Saaras) models: their documents' lists (Sarvam has no list to ask for). */
+    static final String SARVAM_TTS = "sarvam_tts", SARVAM_STT = "sarvam_stt";
+    static final String[][] SARVAM_EARS = {
+            {"saaras:v4", "Saaras v4 · కొత్తది (సిఫార్సు)"},
+            {"saaras:v3", "Saaras v3 · పాతది"}};
 
     /** Thrown by the brain when Gemini is chosen but no Gemini model is. */
     static final String NO_GEMINI_MODEL = "No Gemini model chosen";
@@ -49,8 +56,8 @@ final class Models {
     }
 
     static String company(String provider) {
-        return Prefs.GEMINI.equals(provider) ? "Google Gemini" : Prefs.ANTHROPIC.equals(provider) ? "Anthropic Claude"
-                : REALTIME.equals(provider) ? "OpenAI Live" : "OpenAI";
+        return Prefs.GEMINI.equals(provider) || GEMINI_TTS.equals(provider) ? "Google Gemini" : Prefs.ANTHROPIC.equals(provider) ? "Anthropic Claude"
+                : REALTIME.equals(provider) ? "OpenAI Live" : SARVAM_TTS.equals(provider) || SARVAM_STT.equals(provider) ? "Sarvam" : "OpenAI";
     }
 
     // ---------------------------------------------------------------- the live lists
@@ -59,6 +66,9 @@ final class Models {
     static List<Item> list(String provider, String key) throws Exception {
         List<Item> out = new ArrayList<>();
         if (Prefs.GEMINI.equals(provider)) gemini(key, out);
+        else if (GEMINI_TTS.equals(provider)) geminiTts(key, out);
+        else if (SARVAM_TTS.equals(provider)) fixed(SARVAM_TTS, CloudVoice.SARVAM_MODELS, out);
+        else if (SARVAM_STT.equals(provider)) fixed(SARVAM_STT, SARVAM_EARS, out);
         else if (Prefs.ANTHROPIC.equals(provider)) anthropic(key, out);
         else openAi(key, out, provider);
         out.sort((a, b) -> a.rank != b.rank ? Double.compare(b.rank, a.rank) : a.id.compareTo(b.id));
@@ -133,6 +143,39 @@ final class Models {
         }
     }
 
+    /** Google's speaking models for his Gemini key (their names have "tts"), newest first. */
+    private static void geminiTts(String key, List<Item> out) throws Exception {
+        String token = null;
+        for (int page = 0; page < 10; page++) {
+            String url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"
+                    + (token == null ? "" : "&pageToken=" + URLEncoder.encode(token, "UTF-8"));
+            JSONObject res = Http.get(url, "x-goog-api-key", key);
+            JSONArray list = res.optJSONArray("models");
+            for (int i = 0; list != null && i < list.length(); i++) {
+                JSONObject o = list.getJSONObject(i);
+                String id = o.optString("name").replaceFirst("^models/", "");
+                String low = id.toLowerCase(Locale.ROOT);
+                if (!low.startsWith("gemini") || !low.contains("tts")) continue;
+                double rank = 0;
+                Matcher m = GEM_VERSION.matcher(low);
+                if (m.find()) try { rank = Double.parseDouble(m.group(1)) * 100; } catch (Exception ignored) {}
+                if (low.contains("preview")) rank -= 1;
+                if (low.contains("lite")) rank += 0.5; // (the fast one first: it is Jarvis's voice, not a recording)
+                out.add(new Item(GEMINI_TTS, id, o.optString("displayName"), rank));
+            }
+            token = res.optString("nextPageToken", "");
+            if (token.isEmpty()) break;
+        }
+    }
+
+    /** Sarvam's lists come from its documents: no key needed to show them. */
+    static boolean fixedList(String provider) { return SARVAM_TTS.equals(provider) || SARVAM_STT.equals(provider); }
+
+    /** A list from the company's documents ({id, words}), in that order. */
+    private static void fixed(String provider, String[][] models, List<Item> out) {
+        for (int i = 0; i < models.length; i++) out.add(new Item(provider, models[i][0], models[i][1], -i));
+    }
+
     private static boolean has(String s, String... words) {
         for (String w : words) if (s.contains(w)) return true;
         return false;
@@ -148,7 +191,7 @@ final class Models {
      */
     static void pick(Activity a, String title, String[] providers, String[] keys, String current, Picked done) {
         List<String> tried = new ArrayList<>();
-        for (int i = 0; i < providers.length; i++) if (!keys[i].trim().isEmpty()) tried.add(providers[i]);
+        for (int i = 0; i < providers.length; i++) if (!keys[i].trim().isEmpty() || fixedList(providers[i])) tried.add(providers[i]);
         if (tried.isEmpty()) {
             android.widget.Toast.makeText(a, providers.length == 1
                     ? "ముందు పైన " + company(providers[0]) + " API key పెట్టండి"
@@ -161,7 +204,7 @@ final class Models {
             StringBuilder problems = new StringBuilder();
             for (int i = 0; i < providers.length; i++) {
                 String k = keys[i].trim();
-                if (k.isEmpty()) continue;
+                if (k.isEmpty() && !fixedList(providers[i])) continue;
                 try {
                     all.addAll(list(providers[i], k));
                 } catch (Exception e) {

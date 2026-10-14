@@ -114,6 +114,8 @@ final class VoiceIO {
     private final NaturalVoice natural = new NaturalVoice();
     /** Last reason the natural voice failed (shown in settings); null when it worked. */
     static volatile String naturalError;
+    /** The Gemini / Sarvam voice stopped part-way through the last reply (a later piece didn't come), or null. */
+    static volatile String naturalCut;
     private final Handler main = new Handler(Looper.getMainLooper());
     private TextToSpeech tts;
     private boolean ttsReady;
@@ -232,15 +234,18 @@ final class VoiceIO {
         main.removeCallbacks(wordTicker);
         enterCall();
         String key = prefs.openAiKey().trim();
-        if (prefs.naturalVoice() && !key.isEmpty() && Net.online(ctx)) {
-            speakNatural(key, text, rate);
+        CloudVoice cv = CloudVoice.of(prefs); // Google Gemini / Sarvam when he chose one (null: OpenAI, as always)
+        boolean ready = cv == null ? !key.isEmpty() : cv.ready();
+        if (prefs.naturalVoice() && ready && Net.online(ctx)) {
+            speakNatural(key, cv, text, rate);
             return;
         }
+        if (prefs.naturalVoice() && cv != null && !ready) naturalError = cv.noKey(); // (Jarvis చెక్ says why it's the phone's voice)
         speakGoogle(text, rate);
     }
 
-    /** OpenAI voice; falls back to the phone's Google voice if it fails before any sound. */
-    private void speakNatural(String key, String text, float rate) {
+    /** OpenAI voice (or the Gemini / Sarvam one he chose); falls back to the phone's Google voice if it fails before any sound. */
+    private void speakNatural(String key, CloudVoice cv, String text, float rate) {
         stopGoogle();
         naturalNow = true;
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
@@ -259,9 +264,11 @@ final class VoiceIO {
         natural.voiceCall = callVoice();
         natural.echo = callVoice() ? null : ownEcho();
         natural.model = prefs.ttsModel();
+        natural.cloud = cv;
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
+                naturalCut = null;
                 turnSounded();
                 Duck.on(ctx); // radio / music goes quiet while Jarvis talks
                 watchBargeIn();
@@ -284,6 +291,7 @@ final class VoiceIO {
                 naturalNow = false;
                 if (speaking) speakGoogle(shown, rate);
             }
+            @Override public void onCut(String message) { naturalCut = message; }
         });
     }
 

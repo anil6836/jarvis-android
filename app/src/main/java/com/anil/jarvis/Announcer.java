@@ -85,9 +85,11 @@ final class Announcer {
         if (text == null) { talking = false; settle(); return; }
         Prefs p = new Prefs(app);
         String key = p.openAiKey().trim();
-        if (p.naturalVoice() && !key.isEmpty()) {
+        CloudVoice cv = CloudVoice.of(p); // the voice he chose (Gemini / Sarvam), or OpenAI
+        if (p.naturalVoice() && (cv == null ? !key.isEmpty() : cv.ready())) {
             talking = true;
             natural.model = p.ttsModel();
+            natural.cloud = cv;
             natural.speak(key, p.naturalVoiceName(), text, new NaturalVoice.Callback() {
                 @Override public void onStart() {}
                 @Override public void onDone() { next(app); }

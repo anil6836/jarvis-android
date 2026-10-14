@@ -89,7 +89,8 @@ final class VoiceSwitch {
 
     /** What his ears are now, in words. */
     static String earsName(String ears) {
-        return "google".equals(ears) ? "Google వాయిస్ టైపింగ్" : "gemini".equals(ears) ? "Jarvis సొంత మైక్ (Gemini)" : "Jarvis సొంత మైక్ (OpenAI)";
+        return "google".equals(ears) ? "Google వాయిస్ టైపింగ్" : "gemini".equals(ears) ? "Jarvis సొంత మైక్ (Gemini)"
+                : "sarvam".equals(ears) ? "Jarvis సొంత మైక్ (Sarvam Saaras)" : "Jarvis సొంత మైక్ (OpenAI)";
     }
 
     /** Switches (when it can) and says so: {"ok", "say", "mode", "live": Live on now, "provider"}. */

@@ -53,11 +53,17 @@ final class Greeting {
         MicQuiet.speaking(); // a sound muted for the mic's beeps comes back first
         Duck.on(app); // songs and radio go quiet the moment he calls Jarvis
         String key = p.openAiKey().trim();
-        if (p.naturalVoice() && !key.isEmpty()) {
+        CloudVoice cv = CloudVoice.of(p); // the voice he chose (Google Gemini / Sarvam), or OpenAI
+        if (p.naturalVoice() && (cv == null ? !key.isEmpty() : cv.ready())) {
             new Thread(() -> {
                 try {
-                    File f = new File(app.getFilesDir(), "greet_" + p.naturalVoiceName() + "_" + Integer.toHexString(text(p).hashCode()) + ".pcm");
-                    if (!f.exists()) download(key, p.naturalVoiceName(), text(p), f);
+                    String who = cv == null ? p.naturalVoiceName() // (OpenAI: the same file as always)
+                            : cv.provider + "_" + cv.voice + "_" + Integer.toHexString(cv.model.hashCode());
+                    File f = new File(app.getFilesDir(), "greet_" + who + "_" + Integer.toHexString(text(p).hashCode()) + ".pcm");
+                    if (!f.exists()) {
+                        if (cv == null) download(key, p.naturalVoiceName(), text(p), f);
+                        else keep(cv.say(text(p)), f);
+                    }
                     if (!fired.get()) playPcm(f, fired); // a slow first download: the fallback already started listening
                     main.post(once);
                 } catch (Exception e) {
@@ -100,6 +106,14 @@ final class Greeting {
         } finally {
             c.disconnect();
         }
+    }
+
+    /** The chosen Gemini / Sarvam voice's greeting (already 24 kHz sound), kept like OpenAI's. */
+    private static void keep(byte[] pcm, File out) throws Exception {
+        if (pcm.length < 2000) throw new IllegalStateException("too short");
+        File tmp = new File(out.getPath() + ".tmp");
+        try (OutputStream o = new FileOutputStream(tmp)) { o.write(pcm); }
+        if (!tmp.renameTo(out)) throw new IllegalStateException("save failed");
     }
 
     private static void playPcm(File f, AtomicBoolean fired) throws Exception {
