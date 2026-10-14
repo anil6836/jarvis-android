@@ -17,7 +17,7 @@ import java.util.Set;
 
 /**
  * What Jarvis needs to hear and talk Telugu without internet: hearing (the phone's own Telugu offline pack where it has
- * one, else Jarvis's own Telugu ears, TeluguEars, downloaded once) and the phone's offline Telugu voice. Checked when
+ * one) and the phone's offline Telugu voice. (Jarvis's own offline Telugu model was removed on 14 Oct.) Checked when
  * Settings opens (kept for "Jarvis చెక్"); the download buttons ask Android for the phone's parts.
  */
 final class OfflineKit {
@@ -216,10 +216,9 @@ final class OfflineKit {
     static String line(Context c) {
         String te = hearing(c, TE), v = voice(c);
         String hear = INSTALLED.equals(te) ? "తెలుగు (ఫోన్‌ది) ఉంది ✓"
-                : TeluguEars.ready(c) ? "తెలుగు (Jarvis సొంతం) ఉంది ✓"
                 : PENDING.equals(te) ? "ఫోన్ తెలుగు డౌన్‌లోడ్ అవుతోంది…"
-                : AVAILABLE.equals(te) ? "తెలుగు లేదు (ఫోన్‌ది లేదా Jarvis సొంతం డౌన్‌లోడ్ చేయొచ్చు)"
-                : "తెలుగు లేదు: క్రింద \"Jarvis తెలుగు వినడం\" డౌన్‌లోడ్ చేయండి";
+                : AVAILABLE.equals(te) ? "ఫోన్ తెలుగు లేదు (డౌన్‌లోడ్ చేయొచ్చు)"
+                : "ఈ ఫోన్‌లో నెట్ లేకుండా తెలుగు వినడం లేదు";
         String say = INSTALLED.equals(v) ? "తెలుగు గొంతు ఉంది ✓" : AVAILABLE.equals(v) ? "తెలుగు గొంతు లేదు (డౌన్‌లోడ్ చేయొచ్చు)"
                 : NONE.equals(v) ? "ఫోన్ గొంతుకి తెలుగు లేదు" : "గొంతు ఇంకా తెలియదు";
         return "offline వినడం: " + hear + " · " + say;

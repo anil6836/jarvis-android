@@ -75,7 +75,7 @@ public class SettingsActivity extends Activity {
     private TextView liveVoiceLabel;
     /** The voice choice and the Live switches are being put in step (their listeners wait). */
     private boolean syncingVoice;
-    private EditText earsModel, ttsModel;
+    private EditText earsModel;
     private EditText myNames;
     private Switch bubbleAll;
     private EditText priceCity, dailyPrices, findCode;
@@ -84,10 +84,8 @@ public class SettingsActivity extends Activity {
     private Switch weeklyReport;
     private Switch bargeCallVoice, liveAec, echoRecord, offlineAuto;
     /** The offline voice card: what the phone has, and its download buttons. */
-    private TextView offlineInfo, offlineHearBtn, offlineEnBtn, offlineVoiceBtn, offlineTeBtn;
+    private TextView offlineInfo, offlineHearBtn, offlineEnBtn, offlineVoiceBtn;
     /** Jarvis's own Telugu ears are downloading (one at a time, also across this screen opening again). */
-    private static volatile boolean teDownloading;
-    private static final String TE_BTN = "⬇ Jarvis తెలుగు వినడం డౌన్‌లోడ్ (58 MB, ఒక్కసారే)";
     /** Opened from the "new version" notification / note: go to Updates and start the update. */
     static final String EXTRA_UPDATE_NOW = "update_now";
     private View updatesHeader;
@@ -499,10 +497,6 @@ public class SettingsActivity extends Activity {
         for (int i = 0; i < NaturalVoice.VOICES.length; i++) if (NaturalVoice.VOICES[i].equals(prefs.naturalVoiceName())) current = i;
         voicePick.setSelection(current);
         box.addView(voicePick, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
-        ttsModel = field("OpenAI గొంతు మోడల్ (మాట్లాడే మోడల్)", prefs.ttsModel(), false);
-        modelPicker(Models.TTS, openAiKey, ttsModel, "tts_model");
-        note("మొదట gpt-4o-mini-tts (భావాలతో మాట్లాడుతుంది, అన్ని గొంతులూ ఉంటాయి). tts-1 / tts-1-hd పాత మోడల్స్: భావాలు ఉండవు, "
-                + "cedar, marin, ballad, verse గొంతులు ఉండవు. మార్చాక \"ఈ గొంతు వినిపించు\" తో వినండి.");
         button("ఈ గొంతు వినిపించు", v -> testVoice());
         voiceInfo = Ui.text(this, "", 14, Ui.MUTED);
         box.addView(voiceInfo);
@@ -563,8 +557,7 @@ public class SettingsActivity extends Activity {
         String lb0 = prefs.liveBarge();
         liveBarge.check("voice".equals(lb0) ? 96 : "off".equals(lb0) ? 97 : 95);
         box.addView(liveBarge);
-        liveAec = toggle("Jarvis సొంత echo తీసివేత: Jarvis తాను ప్లే చేసే గొంతుని తానే మైక్ నుంచి తీసేస్తుంది (Gemini యాప్ లాగా), అప్పుడు మీరు మాట్లాడగానే ఆగుతుంది "
-                + "(Live లో, మామూలు మాటల్లో OpenAI సహజ గొంతుతో కూడా; ఫోన్ గొంతుతో మాట్లాడుతున్నప్పుడు \"Jarvis\" / \"stop\" అంటే ఆగుతుంది)", prefs.liveAec());
+        liveAec = toggle("Jarvis సొంత echo తీసివేత: Jarvis తాను ప్లే చేసే గొంతుని తానే మైక్ నుంచి తీసేస్తుంది (Gemini యాప్ లాగా), అప్పుడు మీరు మాట్లాడగానే ఆగుతుంది", prefs.liveAec());
         note("Jarvis మాట్లాడుతుండగా తన గొంతుని నేర్చుకుని (మొదటిసారి కొన్ని సెకన్లు, తర్వాత వెంటనే), సరిగ్గా తీసేయగలిగితేనే Gemini లా మీ మాటకి ఆగుతుంది; లేకపోతే పై పద్ధతి. ఏది పనిచేస్తోందో \"Jarvis చెక్\" లో కనిపిస్తుంది. ఏ పద్ధతిలోనైనా: Jarvis మాట్లాడుతుండగా స్క్రీన్‌పై Jarvis (గుండ్రటి గుర్తు) నొక్కితే వెంటనే ఆగి వింటుంది. ఇయర్‌ఫోన్స్ / హెల్మెట్‌తో మీరు మాట్లాడగానే ఆగుతుంది.");
         echoRecord = toggle("Echo పరీక్ష రికార్డింగ్: ప్రతి Gemini Live తర్వాత చివరి 30 సెకన్లు (మైక్, Jarvis గొంతు, శుభ్రం చేసిన మైక్) Downloads/Jarvis లో సేవ్ (సరిచేయడానికి నాకు పంపవచ్చు; మామూలుగా ఆఫ్)", prefs.echoRecord());
         bargeSensLabel = Ui.text(this, "", 15, Ui.MUTED);
@@ -580,9 +573,7 @@ public class SettingsActivity extends Activity {
         box.addView(bargeSens);
         showBargeSens();
         note("మీ మాట విని ఆగకపోతే స్లైడర్ కుడివైపు జరపండి; Jarvis తన గొంతుకే తానే ఆగిపోతుంటే ఎడమవైపు జరపండి. ఇయర్‌ఫోన్స్/బ్లూటూత్‌తో ఇంకా బాగా పనిచేస్తుంది.");
-        bargeCallVoice = toggle("ఫోన్ కాల్ పద్ధతి (పాతది, Live లో, మామూలు మాటల్లో కూడా): Jarvis మాట్లాడేటప్పుడు ఫోన్ కాల్ మోడ్. మధ్యలో మాట్లాడితే ఫోన్ బాగా వింటుంది, "
-                + "కానీ గొంతు కాల్ లాగా ఉంటుంది, volume buttons కాల్ volume కి వెళ్తాయి. మామూలుగా ఆఫ్ ఉంచండి (గొంతు క్లియర్‌గా, AI assistant volume లో); "
-                + "Jarvis తనంతట తానే ఆగిపోతుంటే లేదా మీ మాట అసలు వినకపోతే మాత్రమే ఆన్ చేయండి", prefs.bargeCallVoice());
+        bargeCallVoice = toggle("Jarvis గొంతుని ఫోన్ కాల్ మార్గంలో పంపు (ప్రతిధ్వని ఇంకా బాగా తీసేస్తుంది, కానీ గొంతు కాల్ లాగా, తక్కువగా ఉంటుంది. మామూలుగా ఆఫ్ ఉంచండి; Jarvis తనంతట తానే ఆగిపోతుంటే లేదా మీ మాట అసలు వినకపోతే మాత్రమే ఆన్ చేయండి)", prefs.bargeCallVoice());
         realtimeModel = field("OpenAI Live మోడల్", prefs.realtimeModel(), false);
         modelPicker(Models.REALTIME, openAiKey, realtimeModel, "realtime_model");
         // "⚡ Gemini Live" in the voice choice and the Live switches above stay in step
@@ -608,19 +599,17 @@ public class SettingsActivity extends Activity {
         box.addView(offlineInfo);
         LinearLayout orow = new LinearLayout(this);
         orow.setOrientation(LinearLayout.VERTICAL);
-        offlineTeBtn = Ui.pill(this, teDownloading ? "డౌన్‌లోడ్ అవుతోంది…" : TE_BTN);
         offlineHearBtn = Ui.pill(this, "⬇ ఫోన్ తెలుగు offline వినడం డౌన్‌లోడ్");
         offlineEnBtn = Ui.pill(this, "⬇ English offline వినడం డౌన్‌లోడ్");
         offlineVoiceBtn = Ui.pill(this, "⬇ తెలుగు offline గొంతు డౌన్‌లోడ్");
         TextView orecheck = Ui.pill(this, "🔄 మళ్లీ చూడు");
-        offlineTeBtn.setOnClickListener(v -> downloadTelugu());
         offlineHearBtn.setOnClickListener(v -> offlineDownload(OfflineKit.TE));
         offlineEnBtn.setOnClickListener(v -> offlineDownload(OfflineKit.EN));
         offlineVoiceBtn.setOnClickListener(v -> {
             if (!OfflineKit.downloadVoice(this)) Toast.makeText(this, "ఫోన్ గొంతు డౌన్‌లోడ్ పేజీ తెరవలేకపోయాను. ఫోన్ Settings → Text-to-speech లో చూడండి.", Toast.LENGTH_LONG).show();
         });
         orecheck.setOnClickListener(v -> checkOffline());
-        for (TextView ob : new TextView[]{offlineTeBtn, offlineHearBtn, offlineEnBtn, offlineVoiceBtn, orecheck}) {
+        for (TextView ob : new TextView[]{offlineHearBtn, offlineEnBtn, offlineVoiceBtn, orecheck}) {
             LinearLayout.LayoutParams obp = new LinearLayout.LayoutParams(-2, -2);
             obp.topMargin = Ui.dp(this, 8);
             orow.addView(ob, obp);
@@ -1701,11 +1690,8 @@ public class SettingsActivity extends Activity {
 
     private void showOffline() {
         String te = OfflineKit.hearing(this, OfflineKit.TE), en = OfflineKit.hearing(this, OfflineKit.EN), v = OfflineKit.voice(this);
-        boolean own = TeluguEars.ready(this), phoneTe = OfflineKit.INSTALLED.equals(te), broken = own && TeluguEars.broken(this);
-        offlineInfo.setText(OfflineKit.line(this) + (broken ? "\n✗ Jarvis తెలుగు వినడం గత సారి తెరుచుకోలేదు: మళ్లీ డౌన్‌లోడ్ చేయండి" : ""));
-        if (!teDownloading) offlineTeBtn.setText(broken ? "⬇ Jarvis తెలుగు వినడం మళ్లీ డౌన్‌లోడ్ (58 MB)" : TE_BTN);
-        offlineTeBtn.setVisibility(teDownloading || broken || !own && !phoneTe ? View.VISIBLE : View.GONE);
-        offlineHearBtn.setVisibility(!own && OfflineKit.AVAILABLE.equals(te) ? View.VISIBLE : View.GONE);
+        offlineInfo.setText(OfflineKit.line(this));
+        offlineHearBtn.setVisibility(OfflineKit.AVAILABLE.equals(te) ? View.VISIBLE : View.GONE);
         offlineEnBtn.setVisibility(prefs.listenLang().startsWith("en") && OfflineKit.AVAILABLE.equals(en) ? View.VISIBLE : View.GONE);
         offlineVoiceBtn.setVisibility(OfflineKit.INSTALLED.equals(v) ? View.GONE : View.VISIBLE);
     }
@@ -1713,38 +1699,6 @@ public class SettingsActivity extends Activity {
     /** The Settings screen showing now (a download started on an earlier one reports here). */
     private static SettingsActivity showing;
 
-    /** Jarvis's own Telugu ears (TeluguEars): its model downloaded once, while there is internet (his button). */
-    private void downloadTelugu() {
-        if (teDownloading) return;
-        if (!Net.online(this)) { Toast.makeText(this, "డౌన్‌లోడ్‌కి నెట్ కావాలి.", Toast.LENGTH_LONG).show(); return; }
-        teDownloading = true;
-        offlineTeBtn.setText("డౌన్‌లోడ్ మొదలవుతోంది…");
-        android.content.Context app = getApplicationContext();
-        android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
-        boolean again = TeluguEars.ready(app) && TeluguEars.broken(app);
-        new Thread(() -> {
-            String msg;
-            try {
-                if (again) VoskModel.unready(VoskModel.teDir(app)); // (it wouldn't open: fetched afresh)
-                VoskModel.ensureTe(app, text -> ui.post(() -> {
-                    SettingsActivity a = showing;
-                    if (a != null && a.offlineTeBtn != null) a.offlineTeBtn.setText(text);
-                }));
-                TeluguEars.keepNote(app, "te_broken", "");
-                msg = "✓ Jarvis తెలుగు వినడం సిద్ధం. ఇక నెట్ లేకపోయినా తెలుగులో వింటుంది.";
-            } catch (Throwable e) {
-                msg = "డౌన్‌లోడ్ కాలేదు (" + e.getMessage() + "). నెట్ చూసి మళ్లీ నొక్కండి.";
-            } finally {
-                ui.post(() -> teDownloading = false);
-            }
-            String said = msg;
-            ui.post(() -> {
-                Toast.makeText(app, said, Toast.LENGTH_LONG).show();
-                SettingsActivity a = showing;
-                if (a != null && a.offlineInfo != null) a.showOffline();
-            });
-        }, "jarvis-te-download").start();
-    }
 
     private void offlineDownload(String lang) {
         if (!Net.online(this)) { Toast.makeText(this, "డౌన్‌లోడ్‌కి నెట్ కావాలి.", Toast.LENGTH_LONG).show(); return; }
@@ -1827,7 +1781,6 @@ public class SettingsActivity extends Activity {
                 : "✗ బ్యాటరీ సేవర్ మినహాయింపు లేదు: ఫోన్ Jarvis ని ఆపేయవచ్చు\n");
         if (prefs.wakeReady()) s.append(WakeService.running ? "✓ \"Jarvis\" వేక్ వర్డ్: నడుస్తోంది\n" : "✗ \"Jarvis\" వేక్ వర్డ్: ఆగి ఉంది\n");
         if (stuckTalking()) s.append("✗ Jarvis 'మాట్లాడుతున్నాను' అనే స్థితిలో ఇరుక్కుంది\n");
-        if (prefs.naturalVoice()) s.append("• మాట్లాడే గొంతు: OpenAI ").append(prefs.ttsModel()).append(" · ").append(prefs.naturalVoiceName()).append("\n");
         if (prefs.naturalVoice() && prefs.openAiKey().trim().isEmpty()) s.append("• సహజ గొంతుకి OpenAI key లేదు: ఫోన్ గొంతుతో మాట్లాడతాను\n");
         else if (prefs.naturalVoice() && VoiceIO.naturalError != null)
             s.append("• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): ").append(VoiceIO.naturalError).append("\n");
@@ -1846,10 +1799,6 @@ public class SettingsActivity extends Activity {
                 .append(prefs.liveKeyReady() ? "" : " ✗ key లేదు").append("\n");
         s.append("• నెట్ లేనప్పుడు: ").append(prefs.offlineAuto() ? "ఆటోమేటిక్‌గా offline (" + OfflineKit.line(this) + ")" : "offline కి మారదు (ఆఫ్)")
                 .append(Net.online(this) ? "" : " · ఇప్పుడు నెట్ లేదు").append(Offline.anyWaiting(this) ? " · నెట్ కోసం ఆగిన ప్రశ్నలు ఉన్నాయి" : "").append("\n");
-        String teHeard = TeluguEars.note(this, "te_heard");
-        if (!teHeard.isEmpty()) s.append("• చివరి offline తెలుగు వినడం: ").append(teHeard).append(" (").append(TeluguEars.note(this, "te_times")).append(")\n");
-        String teMissing = TeluguEars.note(this, "te_missing");
-        if (!teMissing.isEmpty()) s.append("• తెలుగు మోడల్‌కి తెలియని పనుల మాటలు: ").append(teMissing).append("\n");
         if (prefs.liveMode() && prefs.liveGemini()) {
             s.append("• Gemini Live లో ఆలోచన: ").append(prefs.liveBrainThinks() ? "Jarvis మెదడు (" + prefs.model() + ")" : "Gemini Live తనే");
             if (GeminiLive.brainAnswers + GeminiLive.selfAnswers > 0)
@@ -1989,7 +1938,6 @@ public class SettingsActivity extends Activity {
         e.putInt("briefing_minute", briefMinute);
         e.putBoolean("briefing_speak", briefingSpeak.isChecked());
         e.putString("natural_voice_name", NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())]);
-        e.putString("tts_model", ttsModel.getText().toString().trim());
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("live_patient", livePatient.isChecked());
         e.putBoolean("scam_guard", scamGuard.isChecked());
@@ -2144,11 +2092,9 @@ public class SettingsActivity extends Activity {
         String v = NaturalVoice.VOICES[Math.max(0, voicePick.getSelectedItemPosition())];
         String n = name.getText().toString().trim();
         voiceInfo.setText("వినిపిస్తున్నాను…");
-        String tm = ttsModel.getText().toString().trim();
-        tester.model = tm.isEmpty() ? NaturalVoice.DEFAULT_MODEL : tm;
         tester.speak(key, v, "నమస్కారం " + (n.isEmpty() ? "Anil" : n) + ". నేను Jarvis. మీ సేవలో ఎప్పుడూ సిద్ధంగా ఉంటాను.", new NaturalVoice.Callback() {
-            @Override public void onStart() { voiceInfo.setText("గొంతు: " + v + " · " + tester.model); }
-            @Override public void onDone() { voiceInfo.setText("గొంతు: " + v + " · " + tester.model + " ✓"); }
+            @Override public void onStart() { voiceInfo.setText("గొంతు: " + v); }
+            @Override public void onDone() { voiceInfo.setText("గొంతు: " + v + " ✓"); }
             @Override public void onError(String message) { voiceInfo.setText("పనిచేయలేదు: " + message); }
         });
     }
@@ -2890,7 +2836,7 @@ public class SettingsActivity extends Activity {
             {"dinner", "20:00", TAB_TIMES}, {"water", "10:30,12:30,15:30,18:00", TAB_TIMES}, {"chat", "10:00,17:30", TAB_TIMES},
             {"rest", "13:30-15:30", TAB_TIMES}, {"bed", "21:30", TAB_TIMES}, {"report", "21:45", TAB_TIMES}, {"silent_hours", "3", TAB_TIMES},
             {"meds_text", "", TAB_MEDS}, {"sugar_low", "70", TAB_MEDS}, {"sugar_high", "250", TAB_MEDS}, {"doctor_note", "", TAB_MEDS},
-            {"voice", "", TAB_DEVICE}, {"tts_model", "", TAB_DEVICE}, {"room", "hall", TAB_DEVICE}, {"camera", "true", TAB_DEVICE},
+            {"voice", "", TAB_DEVICE}, {"room", "hall", TAB_DEVICE}, {"camera", "true", TAB_DEVICE},
             {"stranger_photo", "true", TAB_DEVICE}, {"ai_limit", "200", TAB_DEVICE}};
     private static final java.util.Set<String> TAB_INTS = new java.util.HashSet<>(java.util.Arrays.asList("silent_hours", "sugar_low", "sugar_high", "ai_limit"));
     private static final java.util.Set<String> TAB_BOOLS = new java.util.HashSet<>(java.util.Arrays.asList("camera", "stranger_photo"));
@@ -2910,7 +2856,6 @@ public class SettingsActivity extends Activity {
 
     private String tabDef(String key, String def) {
         if ("voice".equals(key)) return prefs.naturalVoiceName();
-        if ("tts_model".equals(key)) return prefs.ttsModel();
         return def;
     }
 
@@ -3026,7 +2971,6 @@ public class SettingsActivity extends Activity {
     private void tabletSection() {
         android.content.SharedPreferences.Editor once = ts().edit(); // (never sent yet: the tablet speaks with the phone's voice of today)
         if (!ts().contains("voice")) once.putString("voice", prefs.naturalVoiceName());
-        if (!ts().contains("tts_model")) once.putString("tts_model", prefs.ttsModel());
         once.apply();
         tabSeenSent = ts().getLong("sent_at", 0);
         final org.json.JSONObject draft = tabDraft();
@@ -3162,17 +3106,14 @@ public class SettingsActivity extends Activity {
                     .show();
         });
         box.addView(vt);
-        EditText model = tabField("tts_model", "టాబ్లెట్ గొంతు మోడల్ (ఫోన్‌లోది: " + prefs.ttsModel() + ")", "", draft);
         TextView vInfo = Ui.text(this, "", 13.5f, Ui.MUTED);
         button("▶ ఈ గొంతు ఫోన్‌లో వినిపించు", v -> {
             String key = prefs.openAiKey().trim();
             if (key.isEmpty()) { Toast.makeText(this, "ముందు OpenAI key పెట్టండి", Toast.LENGTH_SHORT).show(); return; }
-            String m = model.getText().toString().trim();
-            tester.model = m.isEmpty() ? NaturalVoice.DEFAULT_MODEL : m;
             vInfo.setText("వినిపిస్తున్నాను…");
             tester.speak(key, tabVoice[0], "నమస్కారం అమ్మగారు. నేను Jarvis. టిఫిన్ చేశారా?", new NaturalVoice.Callback() {
-                @Override public void onStart() { vInfo.setText("గొంతు: " + tabVoice[0] + " · " + tester.model); }
-                @Override public void onDone() { vInfo.setText("గొంతు: " + tabVoice[0] + " · " + tester.model + " ✓"); }
+                @Override public void onStart() { vInfo.setText("గొంతు: " + tabVoice[0]); }
+                @Override public void onDone() { vInfo.setText("గొంతు: " + tabVoice[0] + " ✓"); }
                 @Override public void onError(String message) { vInfo.setText("పనిచేయలేదు: " + message); }
             });
         });

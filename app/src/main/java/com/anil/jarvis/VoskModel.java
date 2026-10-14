@@ -13,7 +13,7 @@ import java.util.zip.ZipInputStream;
 
 /**
  * Downloads (once) and unpacks the small Vosk models Jarvis uses on the phone: English to hear the word "Jarvis", the
- * voice print, and Telugu to hear him without internet (TeluguEars).
+ * voice print. (The offline Telugu model was removed on 14 Oct at Anil's request; its old files are deleted once.)
  */
 final class VoskModel {
     interface Progress { void update(String text); }
@@ -22,8 +22,6 @@ final class VoskModel {
     /** Speaker (voice print) model for "only my voice", about 13 MB. */
     private static final String SPK_ZIP = "https://alphacephei.com/vosk/models/vosk-model-spk-0.4.zip";
 
-    /** Telugu, for listening without internet (TeluguEars): about 58 MB, Apache 2.0. */
-    private static final String TE_ZIP = "https://alphacephei.com/vosk/models/vosk-model-small-te-0.42.zip";
 
     private VoskModel() {}
 
@@ -45,12 +43,8 @@ final class VoskModel {
 
     static File teDir(Context c) { return new File(c.getFilesDir(), "vosk-te"); }
 
-    static boolean teReady(Context c) { return new File(teDir(c), ".ready").exists(); }
 
     /** The Telugu model, downloading it the first time (his button in Settings). */
-    static File ensureTe(Context c, Progress progress) throws Exception {
-        return ensure(c, TE_ZIP, teDir(c), "తెలుగు offline వినడం", progress);
-    }
 
     /** The model in this folder couldn't be opened: it is downloaded again next time. */
     static void unready(File dir) { new File(dir, ".ready").delete(); }
@@ -133,5 +127,28 @@ final class VoskModel {
         File[] kids = f.listFiles();
         if (kids != null) for (File k : kids) deleteTree(k);
         f.delete();
+    }
+
+    /** The offline Telugu model he had downloaded (about 58 MB) is deleted: the feature was removed on 14 Oct. */
+    static void dropTelugu(Context c) {
+        File d = teDir(c);
+        if (!d.exists()) return;
+        new Thread(() -> deleteTree(d), "jarvis-drop-te").start();
+    }
+
+    private static volatile com.sun.jna.Function findWord;
+    private static volatile boolean noFind;
+
+    /** 1 when the Vosk model knows this word, 0 when not, -1 when it can't tell (the "Jarvis" / his name grammar). */
+    static int knows(org.vosk.Model m, String w) {
+        if (noFind) return -1;
+        try {
+            if (findWord == null) findWord = com.sun.jna.Function.getFunction("vosk", "vosk_model_find_word");
+            byte[] b = (w + "\0").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            return findWord.invokeInt(new Object[]{m.getPointer(), b}) >= 0 ? 1 : 0;
+        } catch (Throwable e) {
+            noFind = true;
+            return -1;
+        }
     }
 }

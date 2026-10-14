@@ -91,7 +91,7 @@ final class Ears implements ListenMic {
         void heard(String text);
         /** It ended without words (SpeechRecognizer error codes, or the ERROR_ codes above). */
         void failed(int error);
-        /** The words so far, while he is still talking (only where they are known as he talks: TeluguEars). */
+        /** The words so far, while he is still talking. */
         default void partial(String text) {}
     }
 

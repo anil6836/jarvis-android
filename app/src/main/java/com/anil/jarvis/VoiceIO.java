@@ -67,20 +67,10 @@ final class VoiceIO {
     private final BargeIn barge;
     private final CallMode call;
 
-    /**
-     * The phone's call mode while Jarvis speaks: only with "call voice" on (his old way: the phone's echo canceller at full
-     * strength, but Jarvis then sounds like a phone call and the volume keys work on the call volume). Otherwise Jarvis's
-     * voice stays its clear assistant voice and the talk-over takes Jarvis's voice out of the mic itself (BargeIn.startOwn).
-     */
+    /** Talk-over on: send Jarvis's voice through the call path so the echo canceller removes it from the mic. */
     private void enterCall() {
-        if (shut || !prefs.bargeIn() || !prefs.bargeCallVoice()) { call.exit(); return; }
-        call.enter(true);
-    }
-
-    /** The volume the keys should work on while Jarvis speaks: the AI assistant volume (the call volume in call mode). */
-    int volumeStream() {
-        if (call.active()) return android.media.AudioManager.USE_DEFAULT_STREAM_TYPE;
-        return Build.VERSION.SDK_INT >= 29 ? 11 : android.media.AudioManager.STREAM_MUSIC; // (11 = STREAM_ASSISTANT)
+        if (shut || !prefs.bargeIn()) { call.exit(); return; }
+        call.enter(prefs.bargeCallVoice());
     }
 
     /** Jarvis's voice itself through the call stream (only with the "call voice" setting). */
@@ -91,21 +81,11 @@ final class VoiceIO {
         // (the home tablet: no talk-over mic while he speaks - on Android 8 it fought Jarvis's ears and his own voice
         // set it off; she stops him with a tap on him or 🎤)
         if (shut || paused || !prefs.bargeIn() || prefs.homeMode()) return;
-        BargeIn.Callback cb = () -> {
+        barge.start(() -> {
             if (!speaking || shut || paused) return;
             pause(false); // hold, don't lose it: "కొనసాగించు" (or silence) carries on from here
             l.onBargeIn();
-        };
-        // the call path (his old way) or headphones: by loudness, as before; on the speaker: Jarvis's own echo removal
-        if (call.active() || CallMode.headset(ctx.getSystemService(android.media.AudioManager.class))) barge.start(cb);
-        else barge.startOwn(cb, naturalNow ? natural.echo : null);
-    }
-
-    /** Jarvis's own echo removal for the natural voice on the phone's speaker (talk-over without call mode), or null. */
-    private EchoGuard ownEcho() {
-        if (!prefs.bargeIn() || prefs.bargeCallVoice() || !prefs.liveAec()) return null;
-        if (CallMode.headset(ctx.getSystemService(android.media.AudioManager.class))) return null;
-        return BargeIn.Echo.get(ctx);
+        });
     }
 
     private final Context ctx;
@@ -257,8 +237,6 @@ final class VoiceIO {
         matched = new long[0][];
         matchedFor = -1;
         natural.voiceCall = callVoice();
-        natural.echo = callVoice() ? null : ownEcho();
-        natural.model = prefs.ttsModel();
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
@@ -318,7 +296,7 @@ final class VoiceIO {
         if (clean.length() > max) clean = clean.substring(0, max);
         try {
             tts.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(callVoice() ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_ASSISTANT) // (the AI assistant volume)
+                    .setUsage(callVoice() ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
         } catch (Exception ignored) {}
         naturalNow = false;
@@ -637,8 +615,7 @@ final class VoiceIO {
     }
 
     boolean canListen() {
-        return Ears.chosen(prefs) || SpeechRecognizer.isRecognitionAvailable(ctx)
-                || !Net.online(ctx) && prefs.offlineAuto() && TeluguEars.use(ctx, prefs.listenLang());
+        return Ears.chosen(prefs) || SpeechRecognizer.isRecognitionAvailable(ctx);
     }
 
     // ---- listening
@@ -772,12 +749,11 @@ final class VoiceIO {
         level.forget();
         trace.setLength(0);
         traceStart = android.os.SystemClock.elapsedRealtime();
-        // no internet (and he left "offline" on): in Telugu, Jarvis's own Telugu ears (TeluguEars), or the phone's offline
-        // voice typing where it has Telugu; whichever way of hearing is chosen (the AI's ears need the internet)
+        // no internet (and he left "offline" on): the phone's offline voice typing where it has Telugu; whichever way of
+        // hearing is chosen (the AI's ears need the internet). (Jarvis's own offline Telugu model was removed on 14 Oct.)
         boolean offlineNow = !Net.online(ctx) && prefs.offlineAuto();
         if (offlineNow) lang = OfflineKit.hearIn(ctx, lang);
         offlineLang = offlineNow ? lang : null;
-        teluguNow = offlineNow && TeluguEars.use(ctx, lang);
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang);
@@ -798,24 +774,23 @@ final class VoiceIO {
         holder = this;
         if (other != null && other != this && other.listening && !other.shut) other.micTaken(); // (after listening = true here)
         once = prefs.micOnce();
-        if (teluguNow) { trace("📴"); listenTelugu(dictation); return; }
         if (Ears.chosen(prefs) && !offlineNow) { listenEars(dictation); return; } // Jarvis's own mic: no beeps
         if (once && musicDown == null) musicDown = Duck.hold(ctx); // songs go quieter while the phone listens (not muted)
         if (offlineNow) {
             trace("📴");
             if (lang.startsWith("te") && !OfflineKit.useOnDevice(ctx, lang)
                     && (Build.VERSION.SDK_INT >= 33 || OfflineKit.NONE.equals(OfflineKit.hearing(ctx, OfflineKit.TE)))) {
-                // nothing on this phone hears Telugu without internet yet: say how to get Jarvis's own (no English instead)
+                // nothing on this phone hears Telugu without internet: said plainly (no English instead)
                 final int s = session;
-                main.post(() -> { if (s == session && listening && !shut) fail(TeluguEars.ERROR_NO_MODEL); });
+                main.post(() -> { if (s == session && listening && !shut) fail(ERROR_NO_TELUGU); });
                 return;
             }
         }
         start();
     }
 
-    /** This listen is Jarvis's own Telugu ears without internet. */
-    private boolean teluguNow;
+    /** No internet and nothing on the phone hears Telugu offline. */
+    static final int ERROR_NO_TELUGU = 121;
     /** This listen opens the phone's mic once (Prefs.micOnce). */
     private boolean once;
     /** Songs kept quieter while the phone's mic listens (mic once), let go when the listen ends. */
@@ -830,35 +805,10 @@ final class VoiceIO {
         if (r != null) Duck.release(ctx, r);
     }
 
-    /** Without internet, Jarvis's own Telugu ears: like listenEars, and the words show while he talks. */
-    private void listenTelugu(boolean dictation) {
-        final int s = session;
-        final TeluguEars e = new TeluguEars(ctx);
-        ears = e;
-        e.start(windowMs, dictation, new Ears.Callback() {
-            private boolean mine() { return s == session && ears == e && listening && !shut; }
-            @Override public void opened() { if (mine()) { trace("🎙"); l.onListening(); } }
-            @Override public void level(float v) { if (mine()) l.onLevel(v); }
-            @Override public void partial(String text) { if (mine()) l.onPartial(text == null ? "" : text); } // ("": it was only a noise)
-            @Override public void understanding() { if (mine()) { trace("■"); l.onUnderstanding(); } }
-            @Override public void heard(String text) {
-                if (!mine()) return;
-                ears = null;
-                if (text == null || text.trim().isEmpty()) { if (wrapUp) VoiceIO.this.heard(""); else fail(SpeechRecognizer.ERROR_NO_MATCH); }
-                else VoiceIO.this.heard(text.trim());
-            }
-            @Override public void failed(int error) {
-                if (!mine()) return;
-                ears = null;
-                fail(error);
-            }
-        });
-    }
-
     /** This listen is without internet (the phone's offline voice typing), in this language; null otherwise. */
     private String offlineLang;
 
-    /** Jarvis's own ears (Ears, or TeluguEars without internet): listening without the phone's speech service, so without its beeps. */
+    /** Jarvis's own ears (Ears): listening without the phone's speech service, so without its beeps. */
     private ListenMic ears;
 
     private void listenEars(boolean dictation) {
@@ -1202,8 +1152,8 @@ final class VoiceIO {
         MicQuiet.release(this);
         done("✓ విన్నాను");
         boolean own = Ears.chosen(prefs) && offlineLang == null;
-        turnEars = teluguNow ? TeluguEars.lastTimes : own ? Ears.lastTimes : "";
-        turnVoiceEnd = teluguNow ? TeluguEars.lastVoiceEnd : own ? Ears.lastVoiceEnd : 0;
+        turnEars = own ? Ears.lastTimes : "";
+        turnVoiceEnd = own ? Ears.lastVoiceEnd : 0;
         turnSpeakAt = 0;
         turnHeardAt = text == null || text.trim().isEmpty() ? 0 : android.os.SystemClock.elapsedRealtime();
         l.onHeard(text);
@@ -1258,13 +1208,9 @@ final class VoiceIO {
             case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
                 return "వాయిస్‌కి ఇంటర్నెట్ కావాలి. నెట్ చెక్ చేయండి.";
             case ERROR_NO_OFFLINE:
-                return "నెట్ లేదు, ఈ భాషలో offline వినడం ఫోన్‌లో లేదు. తెలుగుకి: నెట్ ఉన్నప్పుడు Settings → Offline వాయిస్ లో \"Jarvis తెలుగు వినడం\" డౌన్‌లోడ్ చేయండి.";
-            case TeluguEars.ERROR_NO_MODEL:
-                return "నెట్ లేదు, తెలుగు offline వినడం ఇంకా ఫోన్‌లో లేదు. నెట్ ఉన్నప్పుడు Settings → Offline వాయిస్ లో \"Jarvis తెలుగు వినడం\" డౌన్‌లోడ్ చేయండి (ఒక్కసారే).";
-            case TeluguEars.ERROR_BROKEN:
-                return "Jarvis తెలుగు offline వినడం తెరవలేకపోయాను. నెట్ ఉన్నప్పుడు Settings → Offline వాయిస్ లో మళ్లీ డౌన్‌లోడ్ చేయండి.";
-            case TeluguEars.ERROR_FAILED:
-                return "తెలుగు వినడంలో సమస్య వచ్చింది, మళ్లీ చెప్పండి.";
+                return "నెట్ లేదు, ఈ భాషలో offline వినడం ఫోన్‌లో లేదు. నెట్ వచ్చాక మళ్ళీ చెప్పండి.";
+            case ERROR_NO_TELUGU:
+                return "నెట్ లేదు, ఈ ఫోన్‌లో నెట్ లేకుండా తెలుగు వినడం లేదు. నెట్ వచ్చాక మళ్ళీ చెప్పండి.";
             case SpeechRecognizer.ERROR_AUDIO:
                 return "మైక్ దొరకలేదు: వేరే యాప్ మైక్ వాడుతోందేమో.";
             case SpeechRecognizer.ERROR_SERVER:

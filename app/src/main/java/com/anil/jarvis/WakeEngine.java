@@ -235,7 +235,7 @@ final class WakeEngine {
                 synchronized (WakeEngine.this) { // close() can't free the model meanwhile
                     if (closed || voskModel == null) return;
                     final org.vosk.Model m = voskModel;
-                    NameCall.Built built = NameCall.build(want, w -> TeluguEars.knows(m, w) != 0);
+                    NameCall.Built built = NameCall.build(want, w -> VoskModel.knows(m, w) != 0);
                     org.vosk.Recognizer r = null;
                     if (built.grammar != null) {
                         r = new org.vosk.Recognizer(m, (float) RATE, built.grammar);

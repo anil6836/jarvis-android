@@ -13,6 +13,7 @@ public class JarvisApp extends Application {
         Backup.applyPending(this);
         MicQuiet.restore(this); // closed while listening: the media sound muted for the mic's beeps comes back
         watchInternet();
+        try { VoskModel.dropTelugu(this); } catch (Throwable ignored) {} // the removed offline Telugu model's files (58 MB) go
         try { WatchAlerts.schedule(this); } catch (Exception ignored) {} // the watch's half-hourly news (after a phone restart too)
         try { HomeCare.start(this); } catch (Exception ignored) {} // the home tablet: అమ్మగారు's day (only in home mode)
     }
@@ -30,16 +31,10 @@ public class JarvisApp extends Application {
                 private boolean up; // (signal updates come often: only the moment it becomes usable counts)
                 @Override public void onCapabilitiesChanged(android.net.Network n, android.net.NetworkCapabilities caps) {
                     boolean ok = caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
-                    if (ok && !up) { Offline.netBack(JarvisApp.this); TeluguEars.drop(); try { PhoneOffline.netBack(JarvisApp.this); } catch (Exception ignored) {} }
+                    if (ok && !up) { Offline.netBack(JarvisApp.this); try { PhoneOffline.netBack(JarvisApp.this); } catch (Exception ignored) {} }
                     up = ok;
                 }
-                @Override public void onLost(android.net.Network n) {
-                    up = false;
-                    main.postDelayed(() -> { // (WiFi to mobile data: another network takes over in a moment)
-                        Prefs p = new Prefs(JarvisApp.this);
-                        if (!Net.online(JarvisApp.this) && p.offlineAuto() && TeluguEars.use(JarvisApp.this, p.listenLang())) TeluguEars.warm(JarvisApp.this);
-                    }, 5000);
-                }
+                @Override public void onLost(android.net.Network n) { up = false; }
             });
         } catch (Exception ignored) {}
     }

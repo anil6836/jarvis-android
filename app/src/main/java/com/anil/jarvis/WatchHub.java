@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit;
  *  - Wrist raised: the watch sends the next few seconds of sound; "Hey Jarvis" / "Jarvis" (and, if he wants, only his
  *    voice) is checked here (StreamWake), and the rest of that sound is his question.
  *  - His words are written out by the AI he chose for the watch (OpenAI / Gemini, Ears), by the watch's own Google
- *    voice typing (the words come as text), or without internet by Jarvis's offline Telugu ears (TeluguEars).
+ *    voice typing (the words come as text).
  *  - The question goes to the brain with the usual tools (WatchTalkActivity); the answer's text and voice go back to
  *    the watch (WatchVoice), or to the phone's earphones when those are on the phone.
  *
@@ -619,17 +619,12 @@ final class WatchHub {
             Ears e = new Ears(app, p).from(s, mode);
             s.ears = e;
             e.start(6000, false, new Heard(app, s, false));
-        } else if (TeluguEars.ready(app) && !TeluguEars.broken(app)) {
-            // no internet (the phone's, or the watch's own for its voice typing): Jarvis's offline Telugu ears, said so
-            TeluguEars e = new TeluguEars(app).from(s);
-            s.ears = e;
-            e.start(6000, false, new Heard(app, s, true));
         } else {
             stopMic(app, s);
             talk(false);
             state(app, "error", null, null, online
-                    ? "వాచ్‌కి ఇంటర్నెట్ లేదు, ఫోన్‌లో Offline తెలుగు మోడల్ కూడా లేదు (ఫోన్ Settings → Offline వాయిస్)."
-                    : "ఫోన్‌కి ఇంటర్నెట్ లేదు, Offline తెలుగు మోడల్ కూడా లేదు (నెట్ ఉన్నప్పుడు ఫోన్ Settings → Offline వాయిస్ లో డౌన్‌లోడ్ చేయండి).");
+                    ? "వాచ్‌కి ఇంటర్నెట్ లేదు: నెట్ వచ్చాక మళ్ళీ చెప్పండి."
+                    : "ఫోన్‌కి ఇంటర్నెట్ లేదు: నెట్ వచ్చాక మళ్ళీ చెప్పండి.");
         }
     }
 

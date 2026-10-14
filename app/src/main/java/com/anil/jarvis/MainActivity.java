@@ -214,7 +214,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         super.onCreate(b);
         Ui.loadTheme(this); // the chosen colours, before anything is built
         builtTheme = Ui.themeVersion;
-        setVolumeControlStream(AudioManager.STREAM_MUSIC); // volume keys = songs; while Jarvis speaks, its voice (onSpeakStart)
+        setVolumeControlStream(AudioManager.STREAM_MUSIC); // volume keys = Jarvis's voice, also during talk-over call mode
         prefs = new Prefs(this);
         store = Store.get(this);
         store.listener = this;
@@ -2017,7 +2017,6 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onSpeakStart() {
-        if (live == null) setVolumeControlStream(voice.volumeStream()); // volume keys = Jarvis's voice (the AI assistant volume)
         keepScreenOn();
         if (face != null) face.setFeeling(feelingNext != null ? feelingNext : voice.feeling());
         if (home != null) home.setFeeling(feelingNext != null ? feelingNext : voice.feeling());
@@ -2028,7 +2027,6 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onSpeakDone() {
-        if (live == null) setVolumeControlStream(AudioManager.STREAM_MUSIC); // (Jarvis is quiet: the keys are for songs again)
         if (liveAfterSpeak) { // he switched to Live by voice: the talk goes on live
             liveAfterSpeak = false;
             if (prefs.liveReady() && Net.online(this) && live == null && !busy) { startLive(); return; }

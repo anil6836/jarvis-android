@@ -853,7 +853,6 @@ final class HomeCare {
             e.apply();
             SharedPreferences.Editor pe = new Prefs(c).sp.edit();
             if (j.has("voice")) pe.putString("natural_voice_name", j.optString("voice").trim());
-            if (j.has("tts_model")) pe.putString("tts_model", j.optString("tts_model").trim());
             pe.apply();
             JSONArray meds = j.optJSONArray("meds");
             // (an empty list - the box left empty, or no line he typed could be read - never takes all her tablets away)
