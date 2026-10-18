@@ -123,6 +123,28 @@ final class WatchAlerts {
         }
     }
 
+    /**
+     * A card straight to the watch (not a mirrored notification: it goes even while the phone's screen is on, e.g. Maps in
+     * the car), with buttons that press these actions on the phone. Gone with {@link #directGone}.
+     */
+    static void direct(Context c, int id, String kind, String title, String text, Notification.Action[] acts) {
+        try {
+            JSONArray titles = new JSONArray();
+            if (acts != null) {
+                for (Notification.Action a : acts) titles.put(a == null ? "" : str(a.title));
+                actions.put(id, acts);
+            }
+            JSONObject o = new JSONObject().put("id", id).put("key", "jarvis-direct-" + id).put("kind", kind).put("title", title).put("text", text)
+                    .put("acts", titles).put("quiet", false).put("silent", false);
+            WatchHub.send(c.getApplicationContext(), P_ALERT, o, null, true);
+        } catch (Exception ignored) {}
+    }
+
+    static void directGone(Context c, int id) {
+        actions.remove(id);
+        try { WatchHub.send(c.getApplicationContext(), P_ALERT_GONE, new JSONObject().put("id", id)); } catch (Exception ignored) {}
+    }
+
     /** One of Jarvis's notifications went away on the phone (answered there, or replaced). */
     static void removed(Context c, StatusBarNotification sbn) {
         int id = sbn.getKey().hashCode();

@@ -387,6 +387,7 @@ final class WakeEngine {
                 noise = noise == 0 ? rms : (rms < noise ? noise * 0.9 + rms * 0.1 : noise * 0.995 + rms * 0.005);
                 long now = SystemClock.elapsedRealtime();
                 try { cough.feed(chunk, rms, noise); } catch (Throwable ignored) {}
+                if (CarCare.listening) CarCare.hear(rms, noise); // the car alert's "మెలకువగా ఉన్నారా?": his spoken answer
                 if (rms > Math.max(180, noise * 2.2)) openUntil = now + 2500;
                 if (now > openUntil) {
                     preroll.addLast(chunk);            // keep ~0.25 s so the start of "Jarvis" is not lost

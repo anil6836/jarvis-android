@@ -41,6 +41,10 @@ public class DriveService extends Service implements LocationListener, android.h
     static volatile Location last;
     static volatile float heading = -1;
     static volatile double tripMeters;
+    /** Driving without a real stop since (0: not yet), and the last time he was moving (the car sleep alert's "2 hours"). */
+    static volatile long movingSinceAt, lastMovingAt;
+    /** Why the drive alerts are ending: "parked", "nogps", "refused", else "stop" (he or the car's Bluetooth ended it). */
+    private static volatile String endWhy = "stop";
     /** Where the vehicle came to a stop after moving (W77: the bike's spot when the watch sees him start walking); null while moving. */
     static volatile Location stopPoint;
     static volatile int limitKmh;
@@ -73,6 +77,7 @@ public class DriveService extends Service implements LocationListener, android.h
 
     @Override public int onStartCommand(Intent i, int flags, int id) {
         if (!note("డ్రైవ్ అలర్ట్స్ ఆన్ · GPS కోసం చూస్తున్నాను…")) { // Android refused (started from the background)
+            endWhy = "refused";
             running = false;
             stopSelf();
             return START_NOT_STICKY;
@@ -116,6 +121,7 @@ public class DriveService extends Service implements LocationListener, android.h
             Location l = last;
             boolean noGps = l == null || now - l.getTime() > 15 * 60000L;
             if (!drivingMode && (still > 10 * 60000L || noGps && now - startedAt > 15 * 60000L)) {
+                endWhy = still > 10 * 60000L && !noGps ? "parked" : "nogps";
                 if (l != null && tripMeters > 1000 && now - l.getTime() < 10 * 60000L) {
                     GeoReminders.savePlace(DriveService.this, "parking", l.getLatitude(), l.getLongitude());
                     Life.markParked(DriveService.this);
@@ -177,13 +183,16 @@ public class DriveService extends Service implements LocationListener, android.h
         if (kmh > 10) {
             if (movingSince == 0 || now - lastMoving > 15 * 60000L) { movingSince = now; breakAt = 0; }
             lastMoving = now;
+            movingSinceAt = movingSince;
+            lastMovingAt = now;
             stopPoint = null;
-            try { Travel.rideTick(this, movingSince, now); } catch (Exception ignored) {} // W76: a break on a long ride (his watch buzzes)
+            if (!CarCare.on(this)) { try { Travel.rideTick(this, movingSince, now); } catch (Exception ignored) {} } // W76: a break on a long ride (the bike; the car has its own)
         } else if (kmh < 3 && lastMoving > 0 && stopPoint == null && now - lastMoving < 5 * 60000L && l.getAccuracy() < 50) {
             stopPoint = l; // (W77)
         }
         int breakHours = s.getInt("drive_break_hours", 2);
-        if (breakHours > 0 && movingSince > 0 && now - movingSince > breakHours * 3600000L && now - breakAt > 30 * 60000L && kmh > 10) {
+        boolean carSays = CarCare.on(this) && CarCare.enabled(this) && CarCare.opt(this, "car_long"); // (the car alert says the 2 hours itself)
+        if (!carSays && breakHours > 0 && movingSince > 0 && now - movingSince > breakHours * 3600000L && now - breakAt > 30 * 60000L && kmh > 10) {
             breakAt = now;
             Announcer.say(this, p.name() + ", " + ((now - movingSince) / 3600000L) + " గంటలకు పైగా ఆపకుండా డ్రైవ్ చేస్తున్నారు. "
                     + "కొంచెం బ్రేక్ తీసుకోండి, టీ తాగి కాసేపు నడవండి. దారిలో టీ షాప్ కావాలంటే అడగండి.");
@@ -385,6 +394,11 @@ public class DriveService extends Service implements LocationListener, android.h
         net.shutdownNow();
         main.removeCallbacksAndMessages(null);
         if (was) { try { RideCare.ended(this); } catch (Exception ignored) {} }
+        movingSinceAt = 0;
+        lastMovingAt = 0;
+        String why = endWhy;
+        endWhy = "stop";
+        try { CarCare.driveEnded(this, why); } catch (Exception ignored) {} // a car mode he started by voice ends with a real end of the drive
         super.onDestroy();
     }
 }

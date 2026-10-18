@@ -47,7 +47,7 @@ public class SettingsActivity extends Activity {
     private EditText checkModel;
     private Switch checkAuto;
     private Switch callVoice, readMessages, batteryWarn, voiceLock, proactive, sfx, shakeWake, faceDown, nightSummary;
-    private TextView carInfo;
+    private TextView carInfo, car2Info;
     private SeekBar lockSlider, listenWindow;
     /** Where the voice-lock slider started: Save only writes it if Anil moved it (enrolling saves its own calibrated value). */
     private int lockStart = -1;
@@ -134,7 +134,7 @@ public class SettingsActivity extends Activity {
             {"voice", "🔊", "గొంతు, వినడం", "వాయిస్, సహజ గొంతు, Live, వేక్ వర్డ్, పవర్ బటన్"},
             {"watch", "⌚", "వాచ్", "వినడం, అలర్ట్స్, రోజువారీ, ఆరోగ్యం, రోడ్డు, రూపం"},
             {"msg", "💬", "మెసేజ్‌లు, కాల్స్", "కాల్స్, బ్రీఫింగ్, నోటిఫికేషన్లు, WhatsApp, స్క్రీన్, మోసం గార్డ్"},
-            {"bike", "🏍️", "బైక్, ఇల్లు", "బైక్, కదలికలు, స్మార్ట్ హోమ్, కాపలా మోడ్"},
+            {"bike", "🏍️", "బైక్, ఇల్లు", "బైక్, కారు, కదలికలు, స్మార్ట్ హోమ్, కాపలా మోడ్"},
             {"tab", "🏠", "ఇంటి టాబ్లెట్", "టాబ్లెట్ గొంతు, అమ్మగారి టైమ్‌లు, టాబ్లెట్లు, ఇంటి Jarvis"},
             {"daily", "❤️", "రోజువారీ, ఆరోగ్యం", "అలారం, డైరీ, హెచ్చరికలు, ఆరోగ్యం, తనంతట తానే"},
             {"safe", "🛡️", "భద్రత", "SOS, టికెట్ పేమెంట్, డాక్యుమెంట్లు"},
@@ -717,6 +717,10 @@ public class SettingsActivity extends Activity {
         String when = prefs.wakeWhen();
         wakeWhen.check("charging".equals(when) ? 22 : "screen_on".equals(when) ? 21 : 23);
         box.addView(wakeWhen);
+        Switch annWake = toggle("Jarvis ఏదైనా చెబుతుండగా (రిమైండర్, ప్రకటన) \"Jarvis\" అంటే ఆగి వినాలి", prefs.announceWake());
+        annWake.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("announce_wake", v).apply());
+        note("ఆఫ్ (మొదట్లో): Jarvis తన మాటల్లో \"Jarvis\" అన్నా తనంతట తానే మేల్కోడు. ఆన్: ప్రకటన మధ్యలో మీరు పిలిస్తే ఆగి వింటాడు "
+                + "(కానీ అప్పుడప్పుడు తన మాటకే మేల్కోవచ్చు).");
         note("నోటిఫికేషన్‌లో \"ఆపు\" నొక్కితే మైక్ కాసేపు ఆగుతుంది; Jarvis యాప్ మళ్లీ తెరవగానే తనంతట తానే ఆన్ అవుతుంది.");
         note("\"Hey Google\" కోసం ఫోన్‌లో ఒక ప్రత్యేక చిన్న చిప్ ఉంటుంది, అది Google కి మాత్రమే అందుబాటులో ఉంటుంది. అందుకే \"Jarvis\" అని పిలవడం వినాలంటే మైక్ ఆన్‌లో ఉండాలి. మైక్ పూర్తిగా ఆఫ్ ఉండాలంటే వేక్ వర్డ్ ఆఫ్ చేసి, కింది మార్గాల్లో పిలవండి: పవర్ బటన్ నొక్కి పట్టుకోవడం, పైనుంచి కిందికి స్వైప్ చేసి \"Jarvis\" టైల్ నొక్కడం, లేదా Jarvis ఐకాన్ నొక్కి పట్టుకుని \"Jarvis తో మాట్లాడు\" షార్ట్‌కట్.");
         jarvisWord = toggle("\"Jarvis\" ఒక్క పదంతో కూడా మేల్కొను (ప్రధానం; \"Hey Jarvis\" ఎప్పుడూ పనిచేస్తుంది)", prefs.jarvisWord());
@@ -1001,9 +1005,14 @@ public class SettingsActivity extends Activity {
         section("కార్/బైక్, కదలికలు");
         note("మీ కార్/బైక్ బ్లూటూత్ (లేదా హెల్మెట్ బ్లూటూత్) ఎంచుకుంటే: కనెక్ట్ అవ్వగానే డ్రైవింగ్ మోడ్ ఆన్, ప్రతి రైడ్ కి.మీ, టైమ్ తనంతట తానే రాసుకుంటుంది; "
                 + "దిగగానే ఆఫ్, బండి పెట్టిన చోటు గుర్తుపెట్టుకుంటుంది.");
-        button("కార్/బైక్ బ్లూటూత్ ఎంచుకోండి", v -> chooseCar());
-        carInfo = Ui.text(this, prefs.carBluetooth().isEmpty() ? "ఇంకా ఎంచుకోలేదు" : "ఎంచుకున్నారు ✓", 14, Ui.MUTED);
+        button("🏍️ బైక్ బ్లూటూత్ ఎంచుకోండి", v -> chooseCar(false));
+        carInfo = Ui.text(this, btLine("🏍️ బైక్", prefs.carBluetooth()), 14, Ui.MUTED);
         box.addView(carInfo);
+        button("🚗 కారు బ్లూటూత్ ఎంచుకోండి", v -> chooseCar(true));
+        car2Info = Ui.text(this, btLine("🚗 కారు", prefs.carOnlyBluetooth()), 14, Ui.MUTED);
+        box.addView(car2Info);
+        note("బైక్: రైడ్ కి.మీ, ఛార్జింగ్, బ్రేక్ గుర్తు. కారు: కారు మోడ్, నిద్ర అలర్ట్ (కింద 🚗 కార్డ్). ఇంతకుముందు ఒక్కటే చోటు ఉండేది: "
+                + "అక్కడ కారుని ఎంచుకుని ఉంటే, ఇప్పుడు కారుని 🚗 లో ఎంచుకుని, బైక్‌ని 🏍️ లో మళ్ళీ ఎంచుకోండి.");
         bikeRange = numberField("బైక్ పూర్తి ఛార్జ్‌కి నిజంగా వచ్చే దూరం (కి.మీ)", String.valueOf(Bike.fullRangeKm(prefs)));
         bikeKwh = numberField("బైక్ బ్యాటరీ (kWh) · Aera 5000+ = 5", trimZero(Bike.batteryKwh(prefs)));
         powerRate = numberField("ఇంట్లో కరెంట్ ఒక యూనిట్ ధర (₹)", trimZero(Bike.unitRate(prefs)));
@@ -1021,6 +1030,7 @@ public class SettingsActivity extends Activity {
             try { startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); } catch (Exception ignored) {}
         });
         homeArrivalSwitch(); // (it was in the watch card)
+        carSleepSection();
 
         section("డైరీ, పండుగలు, ధరలు, ఫోన్ వెతుకు");
         diaryAsk = toggle("📔 రాత్రి " + prefs.diaryHour() + " గంటలకి \"ఈరోజు ఎలా గడిచింది?\" అని అడిగి డైరీ రాయి", prefs.diaryAsk());
@@ -1219,7 +1229,7 @@ public class SettingsActivity extends Activity {
         if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")) return "voice";
         if (t.contains("కాల్స్") || t.contains("మెసేజ్") || t.contains("WhatsApp") || t.contains("స్క్రీన్ చూడటం") || t.contains("మోసం")) return "msg";
         if (t.contains("టాబ్లెట్") || t.contains("ఇంటి Jarvis")) return "tab";
-        if (t.contains("బైక్") || t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా")) return "bike";
+        if (t.contains("బైక్") || t.contains("కారు") || t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా")) return "bike";
         if (t.contains("అత్యవసరం (SOS)") || t.contains("టికెట్") || t.contains("డాక్యుమెంట్")) return "safe";
         if (t.contains("బ్యాకప్") || t.contains("అప్డేట్") || t.contains("అనుమతులు")) return "data";
         return "daily"; // డైరీ, హెచ్చరికలు, అలారం, ఆరోగ్యం, తనంతట తానే
@@ -1901,6 +1911,8 @@ public class SettingsActivity extends Activity {
             if (!CoughDetector.lastHeard.isEmpty()) s.append(" · చివరగా: ").append(CoughDetector.lastHeard);
             s.append("\n");
         }
+        String carNow = CarCare.statusWords(this);
+        if (!carNow.isEmpty()) s.append("• ").append(carNow).append("\n");
         if (SafetySounds.fallOn(this) && !"none".equals(SafetySounds.sosMode(this)) && prefs.sosContacts().trim().isEmpty())
             s.append("✗ అరుపు / పడిపోతే SOS: SOS కాంటాక్ట్స్ లేరు (సెట్టింగ్స్ → అత్యవసరం (SOS) లో పెట్టండి)\n");
         if (NameCall.on(this) && !NameCall.status.isEmpty()) s.append("• ఇయర్‌ఫోన్‌లో పేరు పిలుపు: ").append(NameCall.status).append("\n");
@@ -2332,8 +2344,91 @@ public class SettingsActivity extends Activity {
         sensitivityLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
     }
 
+    /** 🚗 The car sleep alert (Anil, 18 Oct): the car only (its Bluetooth or "కారు మోడ్"), never the bike. */
+    private void carSleepSection() {
+        section("🚗 కారు నిద్ర అలర్ట్", "🚗");
+        note("కారులో మాత్రమే (బైక్‌లో కాదు): కారు బ్లూటూత్ కనెక్ట్ అయినప్పుడు, లేదా 'Jarvis, కారు మోడ్' అన్నప్పుడు. కింద ఎంచుకున్న సమయాల్లో "
+                + "'మెలకువగా ఉన్నారా?' అని ఫోన్ గొంతులో అడుగుతుంది: జవాబుగా 'Jarvis' అని పిలవండి, లేదా నోటిఫికేషన్ / వాచ్‌లో ✅ నొక్కండి. "
+                + "జవాబు రాకపోతే గట్టిగా అలారం, వాచ్ వైబ్రేషన్, 'కారు ఆపండి'. నిద్ర వస్తే 'Jarvis, నిద్ర వస్తోంది' అనండి. "
+                + "('Jarvis' వినాలంటే పైన వేక్ వర్డ్ 'ఎప్పుడూ' లో ఉండాలి; వాచ్ ✅, అలారానికి ⌚ వాచ్ → '🔔 Jarvis అలర్ట్స్' ఆన్‌లో ఉండాలి.)");
+        final android.content.SharedPreferences ds = CarCare.settings(this);
+        Switch on = toggle("కారు నిద్ర అలర్ట్ ఆన్", CarCare.enabled(this));
+        on.setOnCheckedChangeListener((sw, v) -> ds.edit().putBoolean("drive_fatigue", v).apply());
+        TextView w = Ui.text(this, "ఎప్పుడు అడగాలి?", 15, Ui.MUTED);
+        w.setPadding(0, Ui.dp(this, 8), 0, 0);
+        box.addView(w);
+        String[][] when = {{"car_night", "🌙 రాత్రి 10 నుంచి ఉదయం 5 వరకు"}, {"car_duty", "🕘 డ్యూటీ తర్వాత నిద్రపోకుండా నడిపితే"},
+                {"car_sleep", "😴 గత 24 గంటల్లో నిద్ర 5 గంటల కంటే తక్కువైతే"}, {"car_long", "⏱️ 2 గంటలకు మించి ఆపకుండా నడిపితే"}};
+        for (String[] k : when) {
+            Switch s = toggle(k[1], ds.getBoolean(k[0], true));
+            s.setOnCheckedChangeListener((sw, v) -> ds.edit().putBoolean(k[0], v).apply());
+        }
+        TextView ev = Ui.text(this, "ఎన్ని నిమిషాలకి ఒకసారి అడగాలి?", 15, Ui.MUTED);
+        ev.setPadding(0, Ui.dp(this, 8), 0, 0);
+        box.addView(ev);
+        RadioGroup every = new RadioGroup(this);
+        every.setOrientation(LinearLayout.HORIZONTAL);
+        every.addView(radio(131, "10"));
+        every.addView(radio(132, "15"));
+        every.addView(radio(133, "20"));
+        int e = CarCare.every(this);
+        every.check(e <= 10 ? 131 : e >= 20 ? 133 : 132);
+        every.setOnCheckedChangeListener((g, id) -> ds.edit().putInt("car_every", id == 131 ? 10 : id == 133 ? 20 : 15).apply());
+        box.addView(every);
+        TextView ey = Ui.text(this, "👁️ కళ్ళ చెక్ (కెమెరా మీ కళ్ళు చూస్తుంది; ఫోన్‌లోనే, ఏదీ సేవ్ / పంపదు)", 15, Ui.MUTED);
+        ey.setPadding(0, Ui.dp(this, 10), 0, 0);
+        box.addView(ey);
+        RadioGroup eyes = new RadioGroup(this);
+        eyes.addView(radio(134, "పైన ఎంచుకున్న సమయాల్లో మాత్రమే (సిఫార్సు)"));
+        eyes.addView(radio(135, "కారులో ఎప్పుడూ"));
+        eyes.addView(radio(136, "వద్దు"));
+        String em = CarCare.eyesMode(this);
+        eyes.check("always".equals(em) ? 135 : "off".equals(em) ? 136 : 134);
+        eyes.setOnCheckedChangeListener((g, id) -> ds.edit().putString("car_eyes", id == 135 ? "always" : id == 136 ? "off" : "night").apply());
+        box.addView(eyes);
+        TextView src = Ui.text(this, "కెమెరా ఏది?", 15, Ui.MUTED);
+        src.setPadding(0, Ui.dp(this, 8), 0, 0);
+        box.addView(src);
+        RadioGroup cams = new RadioGroup(this);
+        cams.addView(radio(137, "📱 ఫోన్ ముందు కెమెరా (పగలు బాగా; చీకట్లో కళ్ళు కనబడవు)"));
+        cams.addView(radio(138, "🔌 బయటి USB కెమెరా (ఫోన్ దాన్ని కెమెరాగా ఇస్తేనే)"));
+        cams.addView(radio(139, "📶 Wi-Fi కెమెరా (MJPEG / JPEG లింక్)"));
+        String cs = CarCare.eyesSource(this);
+        cams.check("usb".equals(cs) ? 138 : "url".equals(cs) ? 139 : 137);
+        cams.setOnCheckedChangeListener((g, id) -> ds.edit().putString("car_eyes_src", id == 138 ? "usb" : id == 139 ? "url" : "front").apply());
+        box.addView(cams);
+        EditText url = field("📶 Wi-Fi కెమెరా లింక్ (ఉదా: http://192.168.1.254:8080/video)", CarCare.eyesUrl(this), false);
+        url.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) { ds.edit().putString("car_eyes_url", s.toString().trim()).apply(); }
+        });
+        note("రాత్రి చీకట్లో ఫోన్ కెమెరాకి కళ్ళు కనబడవు; అప్పుడు మాటల చెక్ పనిచేస్తుంది. రాత్రికి IR (night vision) కెమెరా పెడితే ఇదే కళ్ళ చెక్ పనిచేస్తుంది: "
+                + "కొనే ముందు కింది టెస్ట్‌తో ఆ కెమెరా కనబడుతుందో చూద్దాం (USB కెమెరాని అన్ని ఫోన్లు ఇవ్వవు; Wi-Fi కెమెరాకి MJPEG / JPEG లింక్ ఉండాలి, RTSP కాదు).");
+        button("▶ కళ్ళ చెక్ టెస్ట్", v -> startActivity(new Intent(this, CarEyesActivity.class)));
+        button("🔔 అలారం శబ్దం టెస్ట్ (2 సెకన్లు)", v -> CarCare.testTone(this));
+        String st = CarCare.statusWords(this);
+        TextView now = Ui.text(this, st.isEmpty() ? "ఇప్పుడు కారు మోడ్ ఆఫ్." : st, 14, Ui.MUTED);
+        now.setPadding(0, Ui.dp(this, 8), 0, 0);
+        box.addView(now);
+    }
+
+    /** "🏍️ బైక్: <name> ✓" (the paired device's name when Android lets Jarvis see it). */
+    private String btLine(String what, String address) {
+        if (address == null || address.isEmpty()) return what + ": ఇంకా ఎంచుకోలేదు";
+        String name = null;
+        try {
+            if (Build.VERSION.SDK_INT < 31 || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                android.bluetooth.BluetoothManager bm = getSystemService(android.bluetooth.BluetoothManager.class);
+                android.bluetooth.BluetoothAdapter ad = bm == null ? null : bm.getAdapter();
+                if (ad != null) for (android.bluetooth.BluetoothDevice d : ad.getBondedDevices()) if (address.equalsIgnoreCase(d.getAddress())) name = d.getName();
+            }
+        } catch (Exception ignored) {}
+        return what + ": " + (name == null ? "ఎంచుకున్నారు" : name) + " ✓";
+    }
+
     @android.annotation.SuppressLint("MissingPermission")
-    private void chooseCar() {
+    private void chooseCar(boolean car) {
         if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, 9);
             Toast.makeText(this, "Allow చేసి మళ్లీ నొక్కండి", Toast.LENGTH_SHORT).show();
@@ -2347,10 +2442,10 @@ public class SettingsActivity extends Activity {
         String[] names = new String[list.size()];
         for (int i = 0; i < names.length; i++) names[i] = list.get(i).getName() == null ? list.get(i).getAddress() : list.get(i).getName();
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("మీ కార్/బైక్ ఏది?")
+                .setTitle(car ? "మీ కారు బ్లూటూత్ ఏది?" : "మీ బైక్ బ్లూటూత్ ఏది?")
                 .setItems(names, (d, which) -> {
-                    getSharedPreferences("jarvis", MODE_PRIVATE).edit().putString("car_bt", list.get(which).getAddress()).apply();
-                    carInfo.setText("ఎంచుకున్నారు: " + names[which] + " ✓");
+                    getSharedPreferences("jarvis", MODE_PRIVATE).edit().putString(car ? "car2_bt" : "car_bt", list.get(which).getAddress()).apply();
+                    if (car) car2Info.setText("🚗 కారు: " + names[which] + " ✓"); else carInfo.setText("🏍️ బైక్: " + names[which] + " ✓");
                 })
                 .setNegativeButton("వద్దు", null)
                 .show();

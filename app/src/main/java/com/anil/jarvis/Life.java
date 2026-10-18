@@ -459,30 +459,57 @@ final class Life {
 
     // ================================================================ car Bluetooth
 
-    /** The car/bike connected or disconnected: driving mode, and remember where it was parked. */
+    /**
+     * The bike's or the car's Bluetooth connected or disconnected (each has its own choice in Settings): driving mode, and
+     * where it was parked. The bike keeps its ride log; the car gets car mode with the sleep alert (CarCare).
+     */
     static void carBluetooth(Context c, String address, boolean connected) {
         Prefs p = new Prefs(c);
-        if (address == null || !address.equalsIgnoreCase(p.carBluetooth())) return;
+        if (address == null) return;
+        boolean car = address.equalsIgnoreCase(p.carOnlyBluetooth());
+        boolean bike = !car && address.equalsIgnoreCase(p.carBluetooth());
+        if (!car && !bike) return;
         if (connected) {
-            Bike.rideStart(c); // the ride log: GPS km and time while the bike is connected
-            try { RideCare.started(c); } catch (Exception ignored) {} // rain ahead, the awake check after a duty
+            if (bike) Bike.rideStart(c); // the ride log: GPS km and time while the bike is connected
+            if (car) {
+                boolean blip = false;
+                try { blip = CarCare.btBlip(c); } catch (Exception ignored) {}
+                try { CarCare.start(c, "bt", true); } catch (Exception ignored) {} // car mode: the sleep alert (says it all)
+                if (blip) return; // back within a minute (the head unit's blip): the same trip goes on, nothing said again
+            }
+            try { RideCare.started(c); } catch (Exception ignored) {} // rain / heat ahead
             if (p.driving()) return;
             p.set("driving", true);
             p.set("night", false);
             Drive.startDrive(c); // cameras, over-speed, crash detection (Android may refuse from the background)
-            Announcer.say(c, p.name() + ", డ్రైవింగ్ మోడ్ ఆన్. మెసేజ్‌లు, కాల్స్ నేను చెబుతాను. జాగ్రత్తగా వెళ్లండి.");
+            if (bike) Announcer.say(c, p.name() + ", డ్రైవింగ్ మోడ్ ఆన్. మెసేజ్‌లు, కాల్స్ నేను చెబుతాను. జాగ్రత్తగా వెళ్లండి.");
         } else {
-            p.set("driving", false);
-            DriveService.stop(c);
+            final Context app = c.getApplicationContext();
+            final Location here = Tools.lastLocation(c); // (where it stands now, not where he has walked to in a minute)
+            Runnable end = () -> tripEnd(app, car, here);
+            if (car) {
+                try { if (CarCare.btGone(c, end)) return; } catch (Exception ignored) {} // (ends in a minute unless it comes back)
+            }
+            end.run();
+        }
+    }
+
+    /** The bike's or the car's trip is over (its Bluetooth gone; the car's for a minute): drive alerts off, where it is parked. */
+    static void tripEnd(Context c, boolean car, Location l) {
+        Prefs p = new Prefs(c);
+        p.set("driving", false);
+        DriveService.stop(c);
+        if (!car) {
             JSONObject ride = Bike.rideEnd(c);
             if (ride != null) Reminders.notify(c, "🏍️ రైడ్ అయిపోయింది", Bike.rideLine(c, ride) + ". \"ఈ వారం బైక్ రైడ్స్\" అని అడిగితే మొత్తం చెప్తాను.", 62);
-            try { RideCare.ended(c); } catch (Exception ignored) {} // "క్షేమంగా చేరుకున్నాను" offer at home / duty
-            Location l = Tools.lastLocation(c);
-            if (l != null) {
-                GeoReminders.savePlace(c, "parking", l.getLatitude(), l.getLongitude());
-                st(c).edit().putLong("parked_at", System.currentTimeMillis()).apply();
-                Reminders.notify(c, "🅿️ బండి ఇక్కడ పెట్టారు", "\"Jarvis, నా బండి ఎక్కడ?\" అంటే దారి చూపిస్తాను.", 61);
-            }
+        }
+        try { RideCare.ended(c); } catch (Exception ignored) {} // "క్షేమంగా చేరుకున్నాను" offer at home / duty
+        if (l == null) l = Tools.lastLocation(c);
+        if (l != null) {
+            GeoReminders.savePlace(c, "parking", l.getLatitude(), l.getLongitude());
+            st(c).edit().putLong("parked_at", System.currentTimeMillis()).apply();
+            Reminders.notify(c, car ? "🅿️ కారు ఇక్కడ పెట్టారు" : "🅿️ బండి ఇక్కడ పెట్టారు",
+                    "\"Jarvis, " + (car ? "నా కారు" : "నా బండి") + " ఎక్కడ?\" అంటే దారి చూపిస్తాను.", 61);
         }
     }
 

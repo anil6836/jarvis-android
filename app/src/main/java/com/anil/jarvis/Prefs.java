@@ -359,7 +359,12 @@ final class Prefs {
     /** Monthly budget in rupees (0 = none). */
     int budget() { return sp.getInt("budget", 0); }
     /** Bluetooth address of his car/bike; connecting turns on driving mode. */
+    /** The bike's Bluetooth ("car_bt": once "కార్/బైక్"): ride log, charging, the bike's own words. */
     String carBluetooth() { return sp.getString("car_bt", ""); }
+    /** The car's own Bluetooth (18 Oct): car mode and the car sleep alert. */
+    String carOnlyBluetooth() { return sp.getString("car2_bt", ""); }
+    /** "Jarvis" heard while Jarvis itself is announcing something stops it and listens (off: his own words never wake him). */
+    boolean announceWake() { return sp.getBoolean("announce_wake", false); }
     /** How Jarvis talks: normal, serious, funny, english, short. */
     String mood() { return sp.getString("mood", "normal"); }
     boolean shakeWake() { return sp.getBoolean("shake_wake", true); }

@@ -403,7 +403,17 @@ public class WakeService extends Service {
 
     private void onWake() {
         if (!engineOn) return;
+        // Jarvis's own announcement (a reminder, the car's question…) is sounding and said, or sounded like, "Jarvis": not him
+        // calling (unless he chose to stop announcements by calling Jarvis: Settings → "Hey Jarvis" వేక్ వర్డ్)
+        // (the car alert's own words in the phone's voice, or Jarvis talking while its question is out: never - they say "Jarvis")
+        if (Announcer.phoneAudible() || Announcer.audible() && (CarCare.asking(this) || !new Prefs(this).announceWake())) return;
         if (CrashAlert.active && "fall".equals(CrashAlert.kind)) CrashAlert.ok(this); // "బాగున్నారా?": calling Jarvis means he is fine
+        // the car alert asked "మెలకువగా ఉన్నారా?": calling Jarvis is his answer (no panel while he drives)
+        if (CarCare.answered(this, "wake")) {
+            Vibrator v = getSystemService(Vibrator.class);
+            if (v != null) v.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE));
+            return;
+        }
         // The watch app (phase 2a): when he is talking to the watch, or has just raised his wrist, only the watch answers.
         if (WatchHub.talking() || WatchHub.wokeRecently(3000)) return;
         if (WatchHub.wakeStreaming()) {
@@ -420,7 +430,6 @@ public class WakeService extends Service {
 
     private void wakeNow() {
         if (!engineOn) return;
-        RideCare.awake(this); // he called Jarvis: awake (the after-duty check while riding)
         if (CrashAlert.active && "fall".equals(CrashAlert.kind)) CrashAlert.ok(this); // "బాగున్నారా?" at home: calling Jarvis means he is fine
         stopEngine(); // free the microphone for the conversation
         wakeScreen();

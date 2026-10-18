@@ -443,7 +443,7 @@ final class Brain {
                 + "Duty extras: 'డ్యూటీ బ్యాగ్‌లో యూనిఫాం, ID కార్డ్…' -> duty bag text; 'రాత్రి డ్యూటీలో గంట గంటకు టైమ్ చెప్పు (10 నుంచి 5)' -> duty night_chime text '22:00-05:00'. "
                 + "Rides: 'ఇంటికి చేరగానే అమ్మకి మెసేజ్ పంపేలా చెయ్' -> drive settings reached_to='అమ్మ'; after Jarvis offered the 'చేరుకున్నాను' message, "
                 + "'చేరుకున్నానని పంపు' -> drive reached_send, 'వద్దు' -> drive reached_cancel; "
-                + "to the after-duty 'మెలకువగా ఉన్నారా?' check, 'ఉన్నాను' -> drive im_ok. 'పెట్రోల్ బండితో పోలిస్తే ఎంత ఆదా?' -> bike_rides (days 30) and say vs_petrol_bike. "
+                + "the CAR (never the bike): 'కారు మోడ్ ఆన్ / కారులో వెళ్తున్నాను' -> car_care start, 'కారు మోడ్ ఆపు / కారు దిగాను' -> car_care stop, while driving 'నిద్ర వస్తోంది / కళ్ళు మూతలు పడుతున్నాయి' -> car_care sleepy, to its 'మెలకువగా ఉన్నారా?' 'ఉన్నాను' -> car_care awake, 'కళ్ళ చెక్ పెట్టు / ఆపు' -> car_care eyes_on / eyes_off. 'పెట్రోల్ బండితో పోలిస్తే ఎంత ఆదా?' -> bike_rides (days 30) and say vs_petrol_bike. "
                 + "'నా ఇయర్‌బడ్స్ / వాచ్ / హెడ్‌సెట్ ఎక్కడ?' -> item_place bluetooth with thing. "
                 + "Things he LENT (no money: 'నా గొడుగు రవికి ఇచ్చాను') -> item_place lend (thing, person); 'రవి గొడుగు తిరిగి ఇచ్చాడు' -> item_place returned; "
                 + "'ఎవరికి ఏమి ఇచ్చాను?' -> item_place lent. Money lent stays with debts. "

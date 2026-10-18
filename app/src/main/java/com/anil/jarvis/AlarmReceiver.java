@@ -128,13 +128,15 @@ public class AlarmReceiver extends BroadcastReceiver {
             case Journey.ACTION_OK: Journey.ok(c); break;
             case Journey.ACTION_SEND: Journey.sendReached(c); break;
             case Protocols.ACTION_SEND: Protocols.send(c, i.getStringExtra("text")); break; // W58: his tap on the protocol's message
-            case RideCare.ACTION_AWAKE: RideCare.askAwake(c); break;
+            case RideCare.ACTION_AWAKE: break; // (the bike's old awake check: removed 18 Oct)
+            case CarCare.ACTION_CHECK: CarCare.tick(c); break; // the car sleep alert's timer
+            case CarCare.ACTION_OK: CarCare.answered(c, "tap"); break; // "✅ ఉన్నాను" (phone / watch)
             case RideCare.ACTION_REACHED: {
                 PendingResult pr = goAsync(); // the SMS goes out before the receiver lets go
                 RideCare.sendFromNotification(c, pr::finish);
                 break;
             }
-            case RideCare.ACTION_AWAKE_OK: RideCare.awake(c); break;
+            case RideCare.ACTION_AWAKE_OK: try { c.getSystemService(android.app.NotificationManager.class).cancel(235); } catch (Exception ignored) {} break;
             case RideCare.ACTION_REACHED_NO: RideCare.dismissReached(c); break;
             case Duty.ACTION_CHIME: {
                 PendingResult pr = goAsync();

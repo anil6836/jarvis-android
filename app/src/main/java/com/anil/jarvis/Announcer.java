@@ -51,6 +51,67 @@ final class Announcer {
         return (busy && now - busySince < 60_000) || now - quietSince < 800;
     }
 
+    /** A voice of Jarvis's is actually sounding now (not fetching in silence), or stopped a moment ago (any thread). */
+    private static volatile boolean sounding, phoneSounding;
+    private static volatile long soundingSince, phoneSince;
+
+    static boolean audible() {
+        long now = System.currentTimeMillis();
+        return (sounding && now - soundingSince < 60_000) || (phoneSounding && now - phoneSince < 60_000) || now - quietSince < 800;
+    }
+
+    /** The natural voice. */
+    private static void sounding(boolean on) {
+        sounding = on;
+        if (on) soundingSince = System.currentTimeMillis();
+    }
+
+    /** The phone's own voice (its engine's queue). */
+    private static void phoneSounding(boolean on) {
+        if (!on && phoneSounding) phoneEnd = System.currentTimeMillis();
+        phoneSounding = on;
+        if (on) phoneSince = System.currentTimeMillis();
+    }
+
+    /** A phone-voice word is being said: the queue waits for it (main thread), so nothing talks over it. */
+    private static boolean phoneHold;
+    private static int holdToken;
+    private static Context appRef;
+
+    /** The car alert's answer window is open: announcements other than its own wait (main thread). A lost "off": 3 minutes. */
+    private static volatile long heldSince;
+    private static Context heldApp;
+
+    private static boolean held() { return heldSince > 0 && System.currentTimeMillis() - heldSince < 3 * 60_000; }
+
+    /** The car alert's question is out (on) / its window ended (off: what waited is said now). Any thread. */
+    static void hold(Context c, boolean on) {
+        final Context app = c.getApplicationContext();
+        main.post(() -> {
+            if (on) { heldSince = System.currentTimeMillis(); return; }
+            if (heldSince == 0) return;
+            heldSince = 0;
+            Context a = heldApp != null ? heldApp : app;
+            heldApp = null;
+            if (!talking && !queue.isEmpty()) {
+                busySince = System.currentTimeMillis();
+                busy = true;
+                Duck.on(a);
+                next(a);
+            }
+        });
+    }
+
+    /** The phone's voice (the car's words, which say "Jarvis") is sounding, or stopped a moment ago. */
+    static boolean phoneAudible() {
+        long now = System.currentTimeMillis();
+        return (phoneSounding && now - phoneSince < 60_000) || now - phoneEnd < 1500;
+    }
+    private static volatile long phoneEnd;
+
+    /** The natural-voice text being said now (main thread), so a phone-voice word can go first and this one after. */
+    private static String current;
+
     /**
      * Speak text with the voice chosen in settings. Safe to call from any thread. On the home tablet Jarvis on the big
      * screen says it (his lips, face and the words in his bubble), not a voice from the background.
@@ -63,9 +124,20 @@ final class Announcer {
     }
 
     /** Spoken by the background voice itself (the home screen's own fallback; anything when there is no home screen). */
-    static void sayDirect(Context c, String text) {
+    static void sayDirect(Context c, String text) { sayDirect(c, text, false); }
+
+    /**
+     * Said at once in the phone's own voice (no waiting for the natural voice's internet): the car sleep alert's questions
+     * and alarms, where a late word is no use.
+     */
+    static void sayPhone(Context c, String text) { sayDirect(c, text, true); }
+
+    /** (A queued text that must go by the phone's voice starts with this.) */
+    private static final char PHONE = '\u0001';
+
+    private static void sayDirect(Context c, String text, boolean phone) {
         if (text == null || text.trim().isEmpty()) return;
-        if (RecorderService.recording) return;
+        if (RecorderService.recording && !phone) return; // (the car's question / alarm words: always)
         Context app = c.getApplicationContext();
         String words = Spoken.say(text); // numbers as Telugu words
         final String said = words.length() > 3900 ? words.substring(0, 3900) : words; // the voices' limit (numbers as words are longer)
@@ -73,27 +145,79 @@ final class Announcer {
         busySince = System.currentTimeMillis();
         busy = true;
         main.post(() -> {
-            queue.add(said);
+            busySince = System.currentTimeMillis(); // (again here: a settle() just before this must not leave it "quiet")
+            busy = true;
             Duck.on(app); // radio / music goes quiet while Jarvis reads, and comes back after
+            if (!phone) {
+                queue.add(said);
+                if (!talking) next(app);
+                return;
+            }
+            // the phone's voice goes first, at once: a natural-voice announcement still on its way is said after it
+            if (talking && current != null) {
+                String cur = current;
+                current = null;
+                natural.stop();
+                talking = false;
+                sounding(false);
+                queue.addFirst(cur);
+            }
+            // after any phone-voice words already waiting at the front (they keep their order)
+            ArrayList<String> heads = new ArrayList<>();
+            while (!queue.isEmpty() && !queue.peekFirst().isEmpty() && queue.peekFirst().charAt(0) == PHONE) heads.add(queue.pollFirst());
+            heads.add(PHONE + said);
+            for (int i = heads.size() - 1; i >= 0; i--) queue.addFirst(heads.get(i));
             if (!talking) next(app);
         });
     }
 
     /** Speaks the next queued announcement (main thread). */
     private static void next(Context app) {
-        String text = queue.poll();
-        if (text == null) { talking = false; settle(); return; }
+        String polled = queue.peek();
+        if (polled == null) { talking = false; settle(); return; }
+        final boolean phone = !polled.isEmpty() && polled.charAt(0) == PHONE;
+        if (!phone && held()) { // the car's question waits for his "Jarvis": other words wait for it (nothing talks over him)
+            talking = false;
+            heldApp = app;
+            if (googlePending <= 0) {
+                busy = false;
+                sounding(false);
+                phoneSounding(false);
+                quietSince = System.currentTimeMillis();
+            }
+            return;
+        }
+        queue.poll();
+        final String text = phone ? polled.substring(1) : polled;
+        appRef = app;
+        if (phone) { // the queue waits until the phone's voice has said it (oneDone goes on)
+            talking = true;
+            phoneHold = true;
+            final int token = ++holdToken;
+            google(app, text);
+            // (an engine that never says "done" must not hold the queue for ever)
+            main.postDelayed(() -> {
+                if (!phoneHold || holdToken != token) return;
+                googlePending = 0; // (the lost "done" must not leave Jarvis "sounding" for ever)
+                phoneSounding(false);
+                release(app);
+            }, 20_000 + text.length() * 150L);
+            return;
+        }
         Prefs p = new Prefs(app);
         String key = p.openAiKey().trim();
         CloudVoice cv = CloudVoice.of(p); // the voice he chose (Gemini / Sarvam), or OpenAI
-        if (p.naturalVoice() && (cv == null ? !key.isEmpty() : cv.ready())) {
+        if (!phone && p.naturalVoice() && (cv == null ? !key.isEmpty() : cv.ready())) {
             talking = true;
+            current = text;
             natural.model = p.ttsModel();
             natural.cloud = cv;
             natural.speak(key, p.naturalVoiceName(), text, new NaturalVoice.Callback() {
-                @Override public void onStart() {}
-                @Override public void onDone() { next(app); }
+                @Override public void onStart() { sounding(true); }
+                @Override public void onDone() { current = null; sounding(false); next(app); }
                 @Override public void onError(String message) {
+                    current = null;
+                    sounding(false);
                     google(app, text);
                     next(app);
                 }
@@ -108,11 +232,15 @@ final class Announcer {
         main.post(() -> {
             queue.clear();
             talking = false;
+            phoneHold = false;
+            phoneSounding(false);
             googlePending = 0;
             natural.stop();
+            current = null;
             if (tts != null) tts.stop();
             Duck.off();
             busy = false;
+            sounding(false);
             quietSince = System.currentTimeMillis();
         });
     }
@@ -123,6 +251,8 @@ final class Announcer {
             googlePending = 0;
             Duck.off();
             busy = false;
+            sounding(false);
+            phoneSounding(false);
             quietSince = System.currentTimeMillis();
         }
     }
@@ -135,7 +265,7 @@ final class Announcer {
                 ready = status == TextToSpeech.SUCCESS && tts != null;
                 if (ready) {
                     tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                        @Override public void onStart(String id) {}
+                        @Override public void onStart(String id) { main.post(() -> phoneSounding(true)); }
                         @Override public void onDone(String id) { main.post(Announcer::oneDone); }
                         @Override public void onError(String id) { main.post(Announcer::oneDone); }
                         @Override public void onStop(String id, boolean interrupted) { main.post(Announcer::oneDone); }
@@ -152,6 +282,7 @@ final class Announcer {
                     tts = null;
                     if (dead != null) try { dead.shutdown(); } catch (Exception ignored) {}
                     googlePending -= waiting.size(); // these will never be spoken
+                    if (phoneHold) { waiting.clear(); release(app); return; }
                     settle();
                 }
                 waiting.clear();
@@ -165,6 +296,17 @@ final class Announcer {
 
     private static void oneDone() {
         googlePending--;
+        if (googlePending <= 0) phoneSounding(false);
+        if (phoneHold && googlePending <= 0 && appRef != null) { release(appRef); return; } // said: the queue goes on
         settle();
+    }
+
+    /** The phone-voice word is over (said, failed, or never reported): the queue goes on (main thread). */
+    private static void release(Context app) {
+        phoneHold = false;
+        talking = false;
+        if (googlePending < 0) googlePending = 0;
+        phoneSounding(googlePending > 0);
+        next(app);
     }
 }

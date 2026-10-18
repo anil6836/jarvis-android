@@ -152,6 +152,14 @@ final class Tools {
                         {"when", "string", "Local date and time 'yyyy-MM-dd HH:mm' (compute it from the current date/time in the system prompt)"},
                         {"repeat", "string", "'daily', 'weekly' or 'monthly' (the same day every month: rent, EMI, recharge, bills - 'ప్రతి నెల 5 న అద్దె'); empty for once (medicines use the medicine tool)"},
                         {"day_of_month", "integer", "For monthly: the day of the month he said (1-31; a short month uses its last day)"}}, "text", "when")));
+        DEFS.add(new Def("car_care", "Anil's CAR sleep alert (the car only - never the bike). start = 'కారు మోడ్ ఆన్ / కారులో వెళ్తున్నాను' "
+                + "(car mode + drive alerts; at night 10 pm-5 am, after a duty with no sleep, after a short night or 2 hours of driving Jarvis asks "
+                + "'మెలకువగా ఉన్నారా?' every 15 minutes and rings a loud alarm when there is no answer); stop = 'కారు మోడ్ ఆపు / కారు దిగాను'; "
+                + "sleepy = while driving the car 'నిద్ర వస్తోంది / కళ్ళు మూతలు పడుతున్నాయి / అలసటగా ఉంది': advice now + a question every 5 minutes; "
+                + "awake = his answer 'ఉన్నాను / మెలకువగానే ఉన్నాను' to 'మెలకువగా ఉన్నారా?' (calling 'Jarvis' already answers it by itself); eyes_on / eyes_off = the camera eye check "
+                + "('కళ్ళ చెక్ పెట్టు / ఆపు': the phone's camera, or an outside one, watches his eyes; on the phone only, nothing saved or sent); "
+                + "status = what car mode is doing. Say the result's 'say' as it is, nothing more.",
+                schema(new String[][]{{"action", "string", "start, stop, sleepy, awake, eyes_on, eyes_off or status"}}, "action")));
         DEFS.add(new Def("stopwatch", "A stopwatch ('స్టాప్‌వాచ్ మొదలుపెట్టు / ఆపు / ఎంత అయింది / లాప్ / రీసెట్'); shown ticking in a notification while it runs.",
                 schema(new String[][]{{"action", "string", "start, stop, read, lap or reset"}}, "action")));
         DEFS.add(new Def("status", "'Jarvis, స్టేటస్' / 'అన్నీ ఎలా ఉన్నాయి': his status like a suit's, from the phone itself: phone and watch battery, internet, "
@@ -476,12 +484,12 @@ final class Tools {
                 + "add_camera = he says a speed camera is here ('ఇక్కడ స్పీడ్ కెమెరా ఉంది'): saved at his spot for his direction, warned next time; "
                 + "remove_camera = take off the one he marked near here (what='all' = every one); my_cameras = how many he marked. "
                 + "Crash detection (a hard knock while moving, then still: asks 'బాగున్నారా?', no answer in 60 s -> SOS SMS) runs with the live alerts; settings crash on/off; "
-                + "im_ok = he says he is fine ('బాగున్నాను') while that alert counts down, or 'ఉన్నాను' to the after-duty 'మెలకువగా ఉన్నారా?' check. "
-                + "Rides also get: rain / heat ahead at the start (settings ride_weather), after a 48-hour duty an awake check every 15 minutes (settings fatigue), "
+                + "im_ok = he says he is fine ('బాగున్నాను') while that alert counts down, or 'ఉన్నాను' to the car's 'మెలకువగా ఉన్నారా?' check. "
+                + "Rides also get: rain / heat ahead at the start (settings ride_weather), in the CAR only the sleep alert (car_care tool; settings fatigue = its on/off), "
                 + "and at home / duty an offer to SMS 'క్షేమంగా చేరుకున్నాను' to the people in settings reached_to (names; 'off'); reached_send = send that offered message (only when he says send); reached_cancel = he said no. "
                 + "For taps inside the maps app (exit navigation, mute voice, show alternatives) use phone_task.",
                 schema(new String[][]{{"action", "string", "where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera, my_cameras, im_ok, reached_send or reached_cancel"},
-                        {"fatigue", "boolean", "For settings: the awake check after a duty on / off"}, {"ride_weather", "boolean", "For settings: rain / heat word at the ride start"},
+                        {"fatigue", "boolean", "For settings: the car sleep alert on / off"}, {"ride_weather", "boolean", "For settings: rain / heat word at the ride start"},
                         {"reached_to", "string", "For settings: who gets 'reached safely' (contact names, comma separated; 'off')"},
                         {"limit_kmh", "integer", "For add_camera: the camera's speed limit if he says it"},
                         {"what", "string", "For along: what to look for"}, {"place", "string", "For navigate / add_stop"},
@@ -891,6 +899,7 @@ final class Tools {
             case "web_search": return "ఇంటర్నెట్‌లో వెతుకుతున్నాను…";
             case "set_reminder": return "రిమైండర్ పెడుతున్నాను…";
             case "stopwatch": return "స్టాప్‌వాచ్…";
+            case "car_care": return "కారు మోడ్…";
             case "status": return "స్టేటస్ చూస్తున్నాను…";
             case "calendar_events": case "add_calendar_event": return "క్యాలెండర్ చూస్తున్నాను…";
             case "send_email": return "మెయిల్ సిద్ధం చేస్తున్నాను…";
@@ -1037,6 +1046,7 @@ final class Tools {
                 case "web_search": return webSearch(a.optString("query"));
                 case "set_reminder": return setReminder(a.optString("text"), a.optString("when"), a.optString("repeat", ""), a.optInt("day_of_month", 0));
                 case "stopwatch": return ok().put("said", stopwatch(a.optString("action", "start"))).toString();
+                case "car_care": return ok().put("say", carCare(a.optString("action", "status"), false)).toString();
                 case "status": return ok().put("status", Status.json(act()).optJSONArray("lines")).toString();
                 case "list_reminders": return listReminders();
                 case "cancel_reminder": return cancelReminder(a.optString("id"));
@@ -5934,6 +5944,50 @@ final class Tools {
         return false;
     }
 
+    /** The car sleep alert by word (the car_care tool, and without internet): what Jarvis says. */
+    String carCare(String action, boolean offline) {
+        Context c = act();
+        switch (action) {
+            case "start": return CarCare.start(c, "voice", false);
+            case "stop":
+                if (!CarCare.on(c)) return "కారు మోడ్ ఆన్‌లో లేదు.";
+                CarCare.stop(c, "voice");
+                return "కారు మోడ్ ఆపాను. జాగ్రత్త, " + prefs.name() + ".";
+            case "sleepy": {
+                String s = CarCare.sleepy(c, false);
+                return s != null ? s : "నిద్ర వస్తుంటే కాసేపు విశ్రాంతి తీసుకోండి. కారు నడుపుతుంటే 'కారు మోడ్' అనండి: మెలకువగా ఉన్నారా అని అడుగుతూ ఉంటాను.";
+            }
+            case "awake": return CarCare.answered(c, "said") ? "సరే." : "సరే, జాగ్రత్తగా వెళ్లండి.";
+            case "eyes_on":
+                if (!CarCare.on(c)) return "కళ్ళ చెక్ కారు మోడ్‌లోనే పనిచేస్తుంది: 'కారు మోడ్' అనండి. టెస్ట్ చేయాలంటే సెట్టింగ్స్ → 🚗 కారు నిద్ర అలర్ట్ → కళ్ళ చెక్ టెస్ట్.";
+                if (CarEyes.running) return "కళ్ళ చెక్ ఇప్పటికే నడుస్తోంది: " + CarEyes.status;
+                CarCare.maybeEyes(c, true);
+                return "కళ్ళ చెక్ మొదలుపెడుతున్నాను: ఫోన్‌ని హోల్డర్‌లో మీ ముఖం వైపు పెట్టండి. (స్క్రీన్ రాకపోతే నోటిఫికేషన్ నొక్కండి.)";
+            case "eyes_off":
+                if (!CarEyes.running) return "కళ్ళ చెక్ నడవడం లేదు.";
+                CarEyes.stop(c);
+                return "కళ్ళ చెక్ ఆపాను.";
+            default: {
+                String s = CarCare.statusWords(c);
+                return s.isEmpty() ? "కారు మోడ్ ఆఫ్‌లో ఉంది." : s;
+            }
+        }
+    }
+
+    /** Car words said without internet ("కారు మోడ్", "కారు మోడ్ ఆపు", "నిద్ర వస్తోంది", "కళ్ళ చెక్", "ఉన్నాను"), else null. */
+    private String offlineCar(String t, boolean off) {
+        Context c = act();
+        if (CarCare.asking(c) && word(t, "ఉన్నాను", "ఉన్నా", "మెలకువగానే", "మెలకువగా", "awake", "అవును", "yes", "ఓకే", "okay", "ok")) return carCare("awake", true);
+        boolean question = t.contains("?") || word(t, "ఏంటి", "ఎలా", "ఏమిటి", "what", "how");
+        if (any(t, "కారు మోడ్", "కార్ మోడ్", "car mode", "కారులో వెళ్తున్నా", "కారు నడుపుతున్నా", "కార్ నడుపుతున్నా"))
+            return carCare(question ? "status" : off || any(t, "దిగాను") ? "stop" : "start", true);
+        if (any(t, "కళ్ళ చెక్", "కళ్ల చెక్") || word(t, "check") && word(t, "eye", "eyes"))
+            return carCare(question ? "status" : off ? "eyes_off" : "eyes_on", true);
+        if (any(t, "నిద్ర వస్తో", "నిద్ర వస్తు", "sleepy", "కళ్ళు మూతలు", "కళ్లు మూతలు") && (CarCare.on(c) || DriveService.running || prefs.driving()))
+            return carCare("sleepy", true);
+        return null;
+    }
+
     private String offlineDo(String said) throws Exception {
         String t = said.toLowerCase(Locale.ROOT);
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
@@ -5978,6 +6032,8 @@ final class Tools {
             }
             if (k == CardTalk.Words.NO) return "సరే, పెట్టలేదు.";
         }
+        String car = offlineCar(t, off); // the car sleep alert works without internet too (after the yes / no answers above)
+        if (car != null) return car;
         if (any(t, "offline", "ఆఫ్‌లైన్", "ఆఫ్లైన్", "ఆఫ్ లైన్", "నెట్ లేనప్పుడు", "నెట్ లేకుండా") && any(t, "ఏం చేయగల", "ఏమి చేయగల", "ఏమేమి", "ఏం చేస్తావ్", "ఏమి చేస్తావ్")) {
             return OFFLINE_HELP;
         }
@@ -6839,9 +6895,8 @@ final class Tools {
             case "remove_camera": return Drive.removeCamera(act(), "all".equalsIgnoreCase(a.optString("what").trim())).toString();
             case "my_cameras": return Drive.listCameras(act()).toString();
             case "im_ok": {
-                boolean asked = RideCare.asking(act());
+                boolean asked = CarCare.answered(act(), "said"); // (the car's "మెలకువగా ఉన్నారా?")
                 CrashAlert.ok(act());
-                RideCare.awake(act());
                 return ok().put(asked ? "awake_check" : "crash_alert", asked ? "answered" : "cancelled").toString();
             }
             case "reached_send": return RideCare.send(act()).put("next", "Say in one line who it was sent to.").toString();
@@ -6900,7 +6955,7 @@ final class Tools {
                 return ok().put("cameras", st.getBoolean("drive_cameras", true)).put("overspeed", st.getBoolean("drive_overspeed", true))
                         .put("own_limit_kmh", st.getInt("drive_max_kmh", 0)).put("break_after_hours", st.getInt("drive_break_hours", 2))
                         .put("crash_detection", st.getBoolean("drive_crash", true)).put("sos_contacts_set", !prefs.sosContacts().trim().isEmpty())
-                        .put("awake_check_after_duty", st.getBoolean("drive_fatigue", true)).put("weather_at_ride_start", st.getBoolean("ride_weather", true))
+                        .put("car_sleep_alert", st.getBoolean("drive_fatigue", true)).put("weather_at_ride_start", st.getBoolean("ride_weather", true))
                         .put("reached_message_to", st.getString("reached_to", "").isEmpty() ? "off" : st.getString("reached_to", "")).toString();
             }
             default:

@@ -299,6 +299,18 @@
             android:name=".GuardService"
             android:exported="false"
             android:foregroundServiceType="camera" />
+        <!-- 🚗 the car eye check: the camera watches his eyes while he drives (on the phone only, nothing saved or sent) -->
+        <service
+            android:name=".CarEyes"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
+        <activity
+            android:name=".CarEyesActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:taskAffinity="com.anil.jarvis.careyes"
+            android:theme="@style/JarvisTheme" />
         <service
             android:name=".SoundService"
             android:exported="false"
