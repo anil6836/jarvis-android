@@ -635,46 +635,19 @@ final class Brain {
     /** maxTokens: room for a long answer (a whole book page, a recipe). */
     static String oneShot(Prefs prefs, String system, String prompt, String jpegB64, boolean web, int maxTokens) throws Exception {
         String kind = taskKind();
-        boolean fast = fastJobs(prefs) && !heavyJob(system, prompt);
         long t0 = android.os.SystemClock.elapsedRealtime();
-        String r = oneShotRun(prefs, system, prompt, jpegB64, web, maxTokens, fast);
-        if (kind != null) noteTask(prefs.app, kind, android.os.SystemClock.elapsedRealtime() - t0, fast);
+        String r = oneShotRun(prefs, system, prompt, jpegB64, web, maxTokens);
+        if (kind != null) noteTask(prefs.app, kind, android.os.SystemClock.elapsedRealtime() - t0);
         return r;
-    }
-
-    // ---------------------------------------------------------------- short thinking for the small jobs (Round 1, point 11)
-
-    /** Settings → Jarvis మెదడు → "కెమెరా, స్క్రీన్, డాక్యుమెంట్ పనుల్లో వేగంగా ఆలోచించు" (on unless he turned it off). */
-    static boolean fastJobs(Prefs p) { return p.sp.getBoolean("fast_jobs", true); }
-
-    /** The camera modes that keep their full thinking: a circuit board, a structure check, a repair, under the bonnet, first aid. */
-    private static final String[] HEAVY_MODES = {"elec", "struct", "repair", "inside", "firstaid"};
-
-    /**
-     * The jobs that keep today's full thinking (the answer needs it more than speed): the deep scan, counting, the 360°
-     * model, the room / space model, the evidence card, "what happened here", the heavy camera modes, and anything he
-     * asked to think about well ("బాగా ఆలోచించి చెప్పు").
-     */
-    static boolean heavyJob(String system, String prompt) {
-        try {
-            if (system != null && (system.contains("detailed scan of the picture for a 3D hologram") // (ScanBrain.deepSystem: the deep scan / hologram)
-                    || system.equals(Counter.system()) || system.equals(Recon.objectSystem())
-                    || system.equals(Recon.spaceSystem()) || system.equals(Recon.evidenceSystem()) || system.equals(Recon.system()))) return true;
-        } catch (Throwable ignored) {}
-        if (prompt != null) {
-            for (String m : HEAVY_MODES) if (prompt.contains("He chose the mode: " + m + " ")) return true;
-            if (DEEP_WORDS.matcher(prompt).find()) return true;
-        }
-        return false;
     }
 
     // ---------------------------------------------------------------- how long the small AI jobs take (Jarvis చెక్)
 
     /** The kinds shown, in order: id, Telugu name, the screens that ask. */
     private static final String[][] TASK_KINDS = {
-            {"camera", "కెమెరా", "JarvisCamera HoloActivity ObjectActivity CaseActivity Tools.lookThroughCamera Tools.lookFront"},
-            {"screen", "స్క్రీన్", "FloatBubble ReaderService WebLook Tools.lookAtScreen"},
-            {"doc", "డాక్యుమెంట్", "ScanPdf Tools.askDocument"},
+            {"camera", "కెమెరా", "JarvisCamera HoloActivity ObjectActivity CaseActivity"},
+            {"screen", "స్క్రీన్", "FloatBubble ReaderService WebLook"},
+            {"doc", "డాక్యుమెంట్", "ScanPdf"},
             {"brief", "ఉదయం బ్రీఫింగ్", "BriefingService"},
             {"tablet", "టాబ్లెట్ మాటలు", "HomeCare"},
             {"watch", "వాచ్", "WatchHub"},
@@ -690,63 +663,44 @@ final class Brain {
                 String simple = c.substring("com.anil.jarvis.".length());
                 int d = simple.indexOf('$');
                 if (d > 0) simple = simple.substring(0, d);
-                String method = simple + "." + e.getMethodName(); // (Jarvis's own tools: by the tool, e.g. Tools.lookAtScreen)
-                for (String[] k : TASK_KINDS) {
-                    String list = " " + k[2] + " ";
-                    if (!k[2].isEmpty() && (list.contains(" " + simple + " ") || list.contains(" " + method + " "))) return k[0];
-                }
+                for (String[] k : TASK_KINDS) if (!k[2].isEmpty() && (" " + k[2] + " ").contains(" " + simple + " ")) return k[0];
                 return "other";
             }
         } catch (Throwable ignored) {}
         return null;
     }
 
-    /** fast: asked with short thinking (kept as "f<ms>", to compare with the full-thinking ones). */
-    private static void noteTask(android.content.Context c, String kind, long ms, boolean fast) {
+    private static void noteTask(android.content.Context c, String kind, long ms) {
         try {
             android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_timing", android.content.Context.MODE_PRIVATE);
             String hist = sp.getString("task_" + kind, "");
             String[] old = hist.isEmpty() ? new String[0] : hist.split(",");
             StringBuilder h = new StringBuilder();
-            for (int i = Math.max(0, old.length - 9); i < old.length; i++) h.append(old[i]).append(',');
-            h.append(fast ? "f" : "").append(ms);
+            for (int i = Math.max(0, old.length - 4); i < old.length; i++) h.append(old[i]).append(',');
+            h.append(ms);
             sp.edit().putString("task_" + kind, h.toString()).apply();
         } catch (Exception ignored) {}
     }
 
-    /**
-     * Jarvis చెక్: each kind's last time, and the averages of its last ten split by the way they were asked — short
-     * thinking (వేగంగా) and full thinking (పూర్తి ఆలోచన: before point 11, a heavy job, or the switch off) — to compare.
-     */
+    /** Jarvis చెక్: each kind's last time and the average of its last five (to compare before / after a change). */
     static String taskLines(android.content.Context c) {
         android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_timing", android.content.Context.MODE_PRIVATE);
         StringBuilder b = new StringBuilder();
         for (String[] k : TASK_KINDS) {
             String hist = sp.getString("task_" + k[0], "");
             if (hist.isEmpty()) continue;
-            long fastSum = 0, fullSum = 0, last = -1;
-            int fastN = 0, fullN = 0;
-            for (String x : hist.split(",")) {
-                boolean f = x.startsWith("f");
-                try {
-                    long v = Long.parseLong(f ? x.substring(1) : x);
-                    last = v;
-                    if (f) { fastSum += v; fastN++; } else { fullSum += v; fullN++; }
-                } catch (NumberFormatException ignored) {}
-            }
-            if (last < 0) continue;
-            StringBuilder avg = new StringBuilder();
-            if (fastN > 0) avg.append("వేగంగా సగటు ").append(Ears.sec(fastSum / fastN));
-            if (fullN > 0) avg.append(avg.length() == 0 ? "" : " · ").append("పూర్తి ఆలోచన సగటు ").append(Ears.sec(fullSum / fullN));
-            b.append(b.length() == 0 ? "" : " | ").append(k[1]).append(' ').append(Ears.sec(last))
-                    .append(fastN + fullN >= 2 ? " (" + avg + ")" : "");
+            String[] v = hist.split(",");
+            long sum = 0, last = 0;
+            int n = 0;
+            for (String x : v) { try { last = Long.parseLong(x); sum += last; n++; } catch (NumberFormatException ignored) {} }
+            if (n == 0) continue;
+            b.append(b.length() == 0 ? "" : " · ").append(k[1]).append(' ').append(Ears.sec(last))
+                    .append(n >= 2 ? " (సగటు " + Ears.sec(sum / n) + ")" : "");
         }
-        if (b.length() == 0) return "";
-        return "• ⏱️ చిన్న AI పనులు, చివరిసారి: " + b + " సె\n"
-                + "   (\"వేగంగా ఆలోచించు\": " + (fastJobs(new Prefs(c)) ? "ఆన్" : "ఆఫ్") + ")\n";
+        return b.length() == 0 ? "" : "• ⏱️ చిన్న AI పనులు, చివరిసారి (గత 5 సగటు): " + b + " సె\n";
     }
 
-    private static String oneShotRun(Prefs prefs, String system, String prompt, String jpegB64, boolean web, int maxTokens, boolean fast) throws Exception {
+    private static String oneShotRun(Prefs prefs, String system, String prompt, String jpegB64, boolean web, int maxTokens) throws Exception {
         String key = prefs.apiKey();
         if (key.isEmpty()) throw new Http.ApiError(401, "no API key");
         if (prefs.isGemini()) {
@@ -756,10 +710,6 @@ final class Brain {
                     .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", system))))
                     .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", parts)));
             if (web) body.put("tools", new JSONArray().put(new JSONObject().put("google_search", new JSONObject())));
-            if (fast) { // short thinking, as the main talk already has (models without the setting get none: geminiConfig decides)
-                JSONObject g = geminiConfig(prefs, 0, false);
-                if (g.length() > 0) body.put("generationConfig", g);
-            }
             String r = geminiText(geminiCall(prefs, key, body)).trim();
             if (r.isEmpty()) throw new Http.ApiError(0, "empty reply");
             return r;
@@ -772,16 +722,7 @@ final class Brain {
                     .put("instructions", system)
                     .put("input", new JSONArray().put(new JSONObject().put("role", "user").put("content", content)));
             if (web) body.put("tools", new JSONArray().put(new JSONObject().put("type", "web_search")));
-            if (fast && !noReasoningOption) body.put("reasoning", new JSONObject().put("effort", "low"));
-            JSONObject res;
-            try {
-                res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
-            } catch (Http.ApiError e) {
-                if (!body.has("reasoning") || e.status != 400 || String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT).indexOf("reasoning") < 0) throw e;
-                noReasoningOption = true; // this model has no reasoning setting: asked again without it
-                body.remove("reasoning");
-                res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
-            }
+            JSONObject res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
             StringBuilder said = new StringBuilder();
             JSONArray out = res.optJSONArray("output");
             for (int i = 0; out != null && i < out.length(); i++) {
