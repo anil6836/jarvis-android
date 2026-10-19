@@ -187,7 +187,9 @@ final class VoiceIO {
             voiceInfo = "తెలుగు వాయిస్ లేదు. Settings → Text-to-speech → Google → తెలుగు డౌన్‌లోడ్ చేయండి.";
         }
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override public void onStart(String id) { main.post(() -> { if (shut) return; speaking = true; turnSounded(); Duck.on(ctx); watchBargeIn(); l.onSpeakStart(); }); }
+            @Override public void onStart(String id) { main.post(() -> {
+                if (shut || !("j" + utterance).equals(id)) return; // (a late start of a replaced / stopped answer: not over a listen)
+                speaking = true; turnSounded(); Duck.on(ctx); watchBargeIn(); l.onSpeakStart(); }); }
             @Override public void onDone(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onError(String id) { main.post(() -> finishSpeaking(id)); }
             @Override public void onStop(String id, boolean interrupted) { main.post(() -> finishSpeaking(id)); }
@@ -858,6 +860,7 @@ final class VoiceIO {
     private ListenMic ears;
 
     private void listenEars(boolean dictation) {
+        if (waitForTalkOverMic(() -> listenEars(dictation))) return;
         final int s = session;
         final Ears e = new Ears(ctx, prefs);
         ears = e;
@@ -893,10 +896,29 @@ final class VoiceIO {
         l.onMicTaken();
     }
 
+    private int talkOverWaitSession = -1;
+    private long talkOverWaitAt;
+
+    /**
+     * The talk-over mic of the answer just said is still letting go (it was stopped a moment ago): the listen waits for it
+     * (checked every 40 ms, at most 0.7 s), else the phone's mic would give this listen only silence and it would end as
+     * "ఏమీ వినిపించలేదు". True: again() runs later instead.
+     */
+    private boolean waitForTalkOverMic(Runnable again) {
+        if (!BargeIn.holding()) return false;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (talkOverWaitSession != session) { talkOverWaitSession = session; talkOverWaitAt = now; }
+        if (now - talkOverWaitAt > 700) return false; // (never wait longer: open anyway)
+        final int s = session;
+        main.postDelayed(() -> { if (!shut && listening && s == session) again.run(); }, 40);
+        return true;
+    }
+
     /** One try of the recognizer: a fresh one each time, asked to keep the mic open for what is left of the window. */
     private void start() {
         if (shut || !listening || lastIntent == null) return;
         if (sr != null) { retry(150); return; } // the last try's recognizer is let go first
+        if (waitForTalkOverMic(this::start)) return;
         tries++;
         long now = android.os.SystemClock.elapsedRealtime();
         long keep = windowUntil == 0 ? windowMs : windowUntil - now;

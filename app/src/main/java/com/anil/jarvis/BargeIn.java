@@ -54,6 +54,18 @@ final class BargeIn {
     private volatile Thread thread;
     private volatile boolean running;
 
+    /** Talk-over mics open now, in all of Jarvis's screens (counted until the recorder is really let go). */
+    private static final java.util.concurrent.atomic.AtomicInteger open = new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * A talk-over mic is still open (just stopped, letting go): a listen opened now would hear only silence ("ఏమీ
+     * వినిపించలేదు"), so it waits a moment for this to be false.
+     */
+    static boolean holding() { return open.get() > 0; }
+
+    /** This thread is still the talk-over's (a stop, or a newer start, ends an older thread at once). */
+    private boolean mine() { return running && thread == Thread.currentThread(); }
+
     BargeIn(Context c) { ctx = c.getApplicationContext(); }
 
     void start(Callback cb) {
@@ -104,10 +116,14 @@ final class BargeIn {
         AudioRecord rec = null;
         AcousticEchoCanceler aec = null;
         NoiseSuppressor ns = null;
+        boolean counted = false;
         try {
             int min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            if (!mine()) return;
             rec = new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, RATE, AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT, Math.max(min, FRAME * 8));
+            open.incrementAndGet();
+            counted = true;
             if (rec.getState() != AudioRecord.STATE_INITIALIZED) return;
             if (AcousticEchoCanceler.isAvailable()) {
                 aec = AcousticEchoCanceler.create(rec.getAudioSessionId());
@@ -131,7 +147,7 @@ final class BargeIn {
             Window mic = new Window();     // mic, all frames (for the no-reference case)
             int frames = 0, sounding = 0, loud = 0;
             double peakRms = 0, peakLimit = 0;
-            while (running) {
+            while (mine()) {
                 int n = rec.read(buf, 0, FRAME);
                 if (n <= 0) break;
                 double sum = 0;
@@ -180,6 +196,7 @@ final class BargeIn {
             try { if (rec != null) rec.release(); } catch (Exception ignored) {}
             try { if (aec != null) aec.release(); } catch (Exception ignored) {}
             try { if (ns != null) ns.release(); } catch (Exception ignored) {}
+            if (counted) open.decrementAndGet(); // (the mic is really free now: a waiting listen may open)
         }
     }
 
@@ -193,32 +210,39 @@ final class BargeIn {
         AudioRecord rec = null;
         AcousticEchoCanceler aec = null;
         org.vosk.Recognizer word = null;
+        boolean counted = false;
         try {
+            // the "Jarvis" / "stop" word model first (it takes a moment to load): the mic opens only after it, and not at all
+            // if the talk-over was stopped meanwhile — never a mic left open while the next listen starts
+            word = Words.recognizer(ctx);
+            if (!mine()) return;
             int min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             // with Jarvis's own echo removal the plain mic (the phone's own processing would change it as it goes)
             rec = new AudioRecord(eg != null ? MediaRecorder.AudioSource.VOICE_RECOGNITION : MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                     RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, OWN_CHUNK * 2 * 8));
+            open.incrementAndGet();
+            counted = true;
             if (rec.getState() != AudioRecord.STATE_INITIALIZED) return;
             if (eg == null && AcousticEchoCanceler.isAvailable()) {
                 aec = AcousticEchoCanceler.create(rec.getAudioSessionId());
                 if (aec != null) aec.setEnabled(true);
             }
+            if (!mine()) return;
             rec.startRecording();
-            word = Words.recognizer(ctx);
             int level = Math.max(0, Math.min(4, new Prefs(ctx).bargeSens()));
             int need = OWN_NEED[level];
             short[] buf = new short[OWN_CHUNK];
             android.media.AudioTimestamp ts = new android.media.AudioTimestamp();
             long framesRead = 0, startedAt = android.os.SystemClock.elapsedRealtime(), infoAt = 0;
             int over = 0;
-            while (running) {
+            while (mine()) {
                 int n = 0;
-                while (n < OWN_CHUNK && running) {
+                while (n < OWN_CHUNK && mine()) {
                     int got = rec.read(buf, n, OWN_CHUNK - n);
                     if (got <= 0) return;
                     n += got;
                 }
-                if (!running) return;
+                if (!mine()) return;
                 long heard = heardAt(rec, ts, framesRead, n);
                 framesRead += n;
                 byte[] bytes = new byte[n * 2];
@@ -264,6 +288,7 @@ final class BargeIn {
             try { if (rec != null) rec.stop(); } catch (Exception ignored) {}
             try { if (rec != null) rec.release(); } catch (Exception ignored) {}
             try { if (aec != null) aec.release(); } catch (Exception ignored) {}
+            if (counted) open.decrementAndGet(); // (the mic is really free now: a waiting listen may open)
             Words.done(word);
             if (eg != null) Echo.keep(ctx, eg);
         }
