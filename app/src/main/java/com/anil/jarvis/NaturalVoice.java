@@ -239,6 +239,7 @@ final class NaturalVoice {
         final CloudVoice cv = cloud;
         CloudVoice was = fetching;
         if (was != null) was.cancel(); // (the last reply's request, still on its way)
+        cutAsking();
         new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cv, cb), "jarvis-tts").start();
     }
 
@@ -246,8 +247,19 @@ final class NaturalVoice {
         generation++;
         CloudVoice was = fetching;
         if (was != null) was.cancel();
+        cutAsking();
         paused = false;
         stopTrack();
+    }
+
+    /** The OpenAI voice request now on its way (null: none). */
+    private volatile HttpURLConnection asking;
+
+    /** ⏹ / a new reply: the OpenAI request still on its way is cut at once (off the main thread: closing may touch the net). */
+    private void cutAsking() {
+        final HttpURLConnection a = asking;
+        asking = null;
+        if (a != null) new Thread(() -> { try { a.disconnect(); } catch (Throwable ignored) {} }, "jarvis-tts-cut").start();
     }
 
     private void stopTrack() {
@@ -280,6 +292,8 @@ final class NaturalVoice {
             if (!old) body.put("instructions", style); // (the older models take no feelings)
             byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
             c = (HttpURLConnection) new URL("https://api.openai.com/v1/audio/speech").openConnection();
+            asking = c;
+            if (gen != generation) { if (asking == c) asking = null; return; } // (stopped while the request was being made)
             c.setRequestMethod("POST");
             c.setConnectTimeout(15000);
             c.setReadTimeout(20000); // a stalled stream must not leave Jarvis "speaking" in silence (and the mic shut) for a minute
@@ -287,6 +301,8 @@ final class NaturalVoice {
             c.setRequestProperty("Authorization", "Bearer " + apiKey);
             c.setRequestProperty("Content-Type", "application/json");
             c.setFixedLengthStreamingMode(bytes.length);
+            c.connect();
+            if (gen != generation) return; // (stopped before the line was open: disconnect couldn't cut it; finally closes it)
             try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
             int status = c.getResponseCode();
             if (status >= 400) {
@@ -422,6 +438,7 @@ final class NaturalVoice {
                 });
             }
         } finally {
+            if (c != null && asking == c) asking = null;
             if (c != null) c.disconnect();
             if (t != null) PlaybackLevel.end(t);
             if (t != null && track == t && gen == generation) {

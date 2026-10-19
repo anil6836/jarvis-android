@@ -154,13 +154,19 @@ final class Brain {
         if (status != null) status.update("రెండో AI తో చెక్ చేస్తున్నాను…");
         final String fq = q, fa = plain;
         String verdict;
-        java.util.concurrent.Future<String> job = CHECKER.submit(() -> oneShot(cp, "You check another assistant's answer for factual mistakes. Be strict about facts, numbers, medicines, money and law; "
+        final Http.Cancel cut = Http.CANCEL.get(); // (⏹ cuts the check too)
+        java.util.concurrent.Future<String> job = CHECKER.submit(() -> { Http.CANCEL.set(cut); try { return oneShot(cp, "You check another assistant's answer for factual mistakes. Be strict about facts, numbers, medicines, money and law; "
                             + "ignore style and wording. If it rests on his own data you cannot see (his messages, readings, bills, tool results), judge only the general facts "
                             + "and advice in it, and AGREE when nothing general is wrong. Reply with exactly one line: 'AGREE' if it is correct and safe, or 'DISAGREE: <the correction in one short "
                             + "Telugu sentence>'.",
-                    "Question (from Anil, in Telugu): " + fq + "\nAnswer given: " + fa, null, prefs.webSearch(), 400).trim());
+                    "Question (from Anil, in Telugu): " + fq + "\nAnswer given: " + fa, null, prefs.webSearch(), 400).trim(); } finally { Http.CANCEL.remove(); } });
         try {
-            verdict = job.get(25, java.util.concurrent.TimeUnit.SECONDS); // the finished answer never waits long for the check
+            long until = System.currentTimeMillis() + 25_000; // the finished answer never waits long for the check
+            while (true) {
+                if (status != null && status.cancelled()) { job.cancel(true); throw new CancellationException("stopped"); } // ⏹: not 25 s later
+                try { verdict = job.get(200, java.util.concurrent.TimeUnit.MILLISECONDS); break; }
+                catch (java.util.concurrent.TimeoutException slice) { if (System.currentTimeMillis() >= until) throw slice; }
+            }
         } catch (java.util.concurrent.TimeoutException e) {
             job.cancel(true);
             return asked ? reply + "\n(రెండో AI సమయానికి జవాబు ఇవ్వలేదు.)" : reply;

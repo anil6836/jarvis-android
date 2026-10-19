@@ -199,8 +199,9 @@ final class CloudVoice {
     /** Stops the request on its way (any thread); nothing more is asked for. */
     void cancel() {
         cancelled = true;
-        HttpURLConnection c = live;
-        if (c != null) try { c.disconnect(); } catch (Exception ignored) {}
+        final HttpURLConnection c = live;
+        // (off the calling thread: on the main thread closing the line may be refused as network work, and silently not happen)
+        if (c != null) new Thread(() -> { try { c.disconnect(); } catch (Throwable ignored) {} }, "jarvis-voice-cut").start();
     }
 
     /** Worth one more try: busy (429), the company's server (5xx), or the line (timeout, reset). Never a wrong key / request. */
@@ -212,10 +213,10 @@ final class CloudVoice {
     /** JSON over HTTPS with the voice's own times: the same as OpenAI's voice (15 s to connect, 20 s for the sound). */
     private JSONObject post(String url, JSONObject body, String headerName, String headerValue) throws Exception {
         if (cancelled) throw new java.io.InterruptedIOException("stopped");
+        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         live = c;
         try {
-            byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
             c.setRequestMethod("POST");
             c.setConnectTimeout(15000);
             c.setReadTimeout(20000);
@@ -224,6 +225,8 @@ final class CloudVoice {
             c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             c.setRequestProperty("Accept", "application/json");
             c.setFixedLengthStreamingMode(bytes.length);
+            c.connect();
+            if (cancelled) throw new java.io.InterruptedIOException("stopped"); // (stopped before the line was open)
             try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
             int status = c.getResponseCode();
             InputStream in = status >= 400 ? c.getErrorStream() : c.getInputStream();

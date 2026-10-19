@@ -77,6 +77,14 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private boolean dialog;
     /** Bumped to drop (and stop the tools of) an answer that is still on its way. */
     private volatile int generation;
+    /** The AI request of the question now on its way: ⏹ / a new question / closing cuts it at once (Http.Cancel). */
+    private volatile Http.Cancel inflight;
+
+    private void cutInflight() {
+        Http.Cancel k = inflight;
+        inflight = null;
+        if (k != null) k.cancel();
+    }
     /** What the recognizer has heard so far in the current listen() only (partial results). */
     private String partialHeard = "";
     /** "చెప్పండి, Anil?" is playing; only the callback of the latest greeting may start listening. */
@@ -222,7 +230,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override protected void onDestroy() {
         if (toHome) { super.onDestroy(); return; } // (never shown: nothing was set up)
         Radio.dismissPicker();
-        generation++; // a reply still on its way is dropped, and its remaining tools don't run
+        generation++; cutInflight(); // a reply still on its way is dropped, and its remaining tools don't run
         greetToken++;
         WaMedia.stop();
         muteRing(false);
@@ -513,7 +521,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (live != null) live.stop("call");
         voice.stopSpeaking();
         if (voice.listening) voice.cancelListening();
-        generation++;
+        generation++; cutInflight();
         busy = false;
         main.removeCallbacks(autoClose);
         MainActivity.talking(true);
@@ -658,7 +666,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (callText != null) { endCallMode(); closeSheet(); return; }
         if (greeting) { cancelGreeting(); closeSheet(); return; } // stop pressed during "చెప్పండి"
         if (live != null) { live.stop("user"); return; }
-        if (busy) { generation++; busy = false; closeSheet(); return; }
+        if (busy) { generation++; cutInflight(); busy = false; closeSheet(); return; }
         if (voice.speaking) { voice.stopSpeaking(); closeSheet(); return; }
         if (voice.listening) { voice.cancelListening(); closeSheet(); return; }
         listenAgain(true); // idle: tap to talk again
@@ -823,12 +831,15 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         orb.setState(OrbView.THINKING);
         status.setText("ఆలోచిస్తున్నాను…");
         setAction(IconView.STOP);
+        cutInflight(); // (a new question over one still on its way: that request is cut)
         final int gen = ++generation;
+        final Http.Cancel cut = new Http.Cancel();
+        inflight = cut;
         Brain.Status progress = new Brain.Status() {
             @Override public void update(String s) { main.post(() -> { if (gen == generation) status.setText(s); }); }
             @Override public boolean cancelled() { return gen != generation; } // stop pressed / panel closed
         };
-        worker.submit(() -> {
+        worker.submit(() -> { Http.CANCEL.set(cut); try {
             String answer = null, error = null;
             try {
                 answer = brain.ask(history, text, null, progress);
@@ -855,7 +866,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
                 showReply(a, false);
                 if (prefs.voiceReplies()) voice.speak(a, prefs.speechRate()); else idle();
             });
-        });
+        } finally { Http.CANCEL.remove(); } });
     }
 
     // ================================================================ live mode
@@ -934,7 +945,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacks(autoClose);
         runOnUiThread(() -> {
             if (live != null || callText != null) return;
-            if (busy) { generation++; busy = false; } // "ఏ స్టేషన్?" still on its way: not over the radio
+            if (busy) { generation++; cutInflight(); busy = false; } // "ఏ స్టేషన్?" still on its way: not over the radio
             if (voice.speaking) voice.stopSpeaking();
             if (voice.listening) voice.cancelListening();
             idle(5000); // closes by itself shortly (after the radio app has answered, if it is being asked): the radio is what he wants now

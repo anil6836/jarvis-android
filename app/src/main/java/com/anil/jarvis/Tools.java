@@ -1384,6 +1384,8 @@ final class Tools {
     }
 
     private void onUi(Runnable r) throws InterruptedException {
+        // ⏹ pressed / a new question: a stopped question opens nothing more (a song, an app, a screen)
+        if (Http.stopped()) throw new java.util.concurrent.CancellationException("stopped");
         CountDownLatch done = new CountDownLatch(1);
         final RuntimeException[] fail = new RuntimeException[1];
         act().runOnUiThread(() -> {
@@ -5399,6 +5401,9 @@ final class Tools {
         JarvisAccessibility.showControl("మీ ఫోన్ వాడుతోంది…", Tools::stopAgent);
         try {
             return runAppTask(t);
+        } catch (java.util.concurrent.CancellationException e) {
+            stopAgent(); // ⏹ cut it half-way: nothing stays armed (no payment / button OK, no task to carry on later)
+            throw e;
         } finally {
             JarvisAccessibility.hideControl();
             if (lit != null && lit.isHeld()) lit.release();

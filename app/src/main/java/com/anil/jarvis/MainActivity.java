@@ -202,6 +202,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** This listen is the optional one after an answer: silence there just ends the talk. */
     private boolean followListen;
     private volatile int generation;   // increases with every request, so a stopped answer is ignored (and its tools stop)
+    /** The AI request of the question now on its way: ⏹ / a new question / closing cuts it at once (Http.Cancel). */
+    private volatile Http.Cancel inflight;
+
+    private void cutInflight() {
+        Http.Cancel k = inflight;
+        inflight = null;
+        if (k != null) k.cancel();
+    }
     private Runnable pendingUndo;
     private LiveTalk live;             // an open real-time voice conversation (Gemini Live or OpenAI Live), or null
     private TextView liveBubble;       // Jarvis's reply while it is still being spoken
@@ -345,7 +353,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (homeNow == this) homeNow = null;
         if (home != null && home.gamesPanel() != null) home.gamesPanel().close(false); // (its far-game polling and timers end with this screen)
         Radio.dismissPicker();
-        generation++; // late replies (onReply) are dropped and the Brain stops running tools
+        generation++; cutInflight(); // late replies (onReply) are dropped and the Brain stops running tools
         if (store.listener == this) store.listener = null;
         if (live != null) live.stop("destroy");
         liveOn = false;
@@ -1409,7 +1417,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             return;
         }
         if (busy) {
-            generation++; // ignore the answer that is still on its way
+            generation++; cutInflight(); // ignore the answer that is still on its way
             busy = false;
             removeThinking();
             finishTurn();
@@ -2152,7 +2160,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         status.setText("ఆలోచిస్తున్నాను…");
         refreshAction();
 
+        cutInflight(); // (a new question over one still on its way: that request is cut)
         final int gen = ++generation;
+        final Http.Cancel cut = new Http.Cancel();
+        inflight = cut;
         Brain.Status progress = new Brain.Status() {
             @Override public void update(String s) {
                 main.post(() -> {
@@ -2165,7 +2176,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             @Override public boolean cancelled() { return gen != generation; }
         };
         final boolean sentMe = seeMe;
-        worker.submit(() -> {
+        worker.submit(() -> { Http.CANCEL.set(cut); try {
             String reply = null, error = null;
             try {
                 try {
@@ -2187,7 +2198,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             }
             final String r = reply, err = error;
             main.post(() -> onReply(gen, r, err));
-        });
+        } finally { Http.CANCEL.remove(); } }); // (the worker thread is shared: the handle never outlives this question)
     }
 
     private void onReply(int gen, String reply, String error) {
@@ -2787,7 +2798,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     void radioPicked() {
         runOnUiThread(() -> {
             if (live != null) return;
-            if (busy) { generation++; busy = false; removeThinking(); } // "ఏ స్టేషన్?" still on its way: not over the radio
+            if (busy) { generation++; cutInflight(); busy = false; removeThinking(); } // "ఏ స్టేషన్?" still on its way: not over the radio
             if (voice.speaking) voice.stopSpeaking();
             if (voice.listening) voice.cancelListening();
             lastWasVoice = false;

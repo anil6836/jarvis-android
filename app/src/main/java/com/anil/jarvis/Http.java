@@ -46,6 +46,33 @@ final class Http {
     /** Set on a thread whose next calls may take long (a question Jarvis thinks deeply about). */
     static final ThreadLocal<Boolean> LONG_WAIT = ThreadLocal.withInitial(() -> false);
 
+    /**
+     * Stop for the requests of one question: ⏹ / a new question / the screen closing calls {@link #cancel}, and the
+     * request now on its way is cut at once (not left to run up to its 150 s), so the next question never waits behind
+     * it. Requests made later on that thread for the same question end at once too.
+     */
+    static final class Cancel {
+        private volatile HttpURLConnection conn;
+        private volatile boolean cancelled;
+
+        void cancel() {
+            cancelled = true;
+            HttpURLConnection c = conn;
+            if (c != null) new Thread(() -> { try { c.disconnect(); } catch (Throwable ignored) {} }, "jarvis-cancel").start();
+        }
+
+        boolean cancelled() { return cancelled; }
+    }
+
+    /** The Stop handle of the question this thread is answering (null: an ordinary request, never cut). */
+    static final ThreadLocal<Cancel> CANCEL = new ThreadLocal<>();
+
+    /** The question this thread is answering was stopped (⏹ / a new question): nothing more is started for it. */
+    static boolean stopped() {
+        Cancel k = CANCEL.get();
+        return k != null && k.cancelled;
+    }
+
     static JSONObject get(String url) throws IOException, ApiError {
         return send("GET", url, null);
     }
@@ -55,23 +82,33 @@ final class Http {
     }
 
     private static JSONObject send(String method, String url, JSONObject body, String... headers) throws IOException, ApiError {
+        Cancel k = CANCEL.get();
+        if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+        // (the body first: with the chat and a photo it takes a moment, and a stop in that moment must not be missed)
+        byte[] bytes = body == null ? null : body.toString().getBytes(StandardCharsets.UTF_8);
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        if (k != null) k.conn = c;
         try {
             c.setRequestMethod(method);
             c.setConnectTimeout(20000);
             c.setReadTimeout(LONG_WAIT.get() ? 300000 : 150000);
             c.setRequestProperty("Accept", "application/json");
             for (int i = 0; i + 1 < headers.length; i += 2) c.setRequestProperty(headers[i], headers[i + 1]);
-            if (body != null) {
-                byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+            if (bytes != null) {
                 c.setDoOutput(true);
                 c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 c.setFixedLengthStreamingMode(bytes.length);
+            }
+            c.connect();
+            // a stop before the line was open can't be cut by disconnect(): the flag (set first) is seen here instead
+            if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+            if (bytes != null) {
                 try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
             }
             int status = c.getResponseCode();
             InputStream in = status >= 400 ? c.getErrorStream() : c.getInputStream();
             String text = in == null ? "" : readAll(in);
+            if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped"); // (a cut reply is no reply)
             if (status >= 400) throw new ApiError(status, errorMessage(text));
             JSONObject json;
             try {
@@ -81,7 +118,11 @@ final class Http {
             }
             try { Usage.fromResponse(url, json); } catch (Throwable ignored) {} // the cost meter never breaks a request
             return json;
+        } catch (IOException e) {
+            if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped"); // cut by ⏹: not an error
+            throw e;
         } finally {
+            if (k != null) k.conn = null;
             c.disconnect();
         }
     }

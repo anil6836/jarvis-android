@@ -34,6 +34,14 @@ public class WatchTalkActivity extends Activity implements Tools.Host {
     private final Handler main = new Handler(Looper.getMainLooper());
     /** Bumped to drop an answer still on its way (his stop, a new question). */
     private volatile int generation;
+    /** The AI request of the question now on its way: ⏹ / a new question / closing cuts it at once (Http.Cancel). */
+    private volatile Http.Cancel inflight;
+
+    private void cutInflight() {
+        Http.Cancel k = inflight;
+        inflight = null;
+        if (k != null) k.cancel();
+    }
     /** The question the brain is working on now (a tool's "are you sure?" for a dropped one is never asked). */
     private volatile int working;
     private boolean busy;
@@ -75,7 +83,7 @@ public class WatchTalkActivity extends Activity implements Tools.Host {
     /** His words from the watch (main thread). */
     void hear(String text) {
         main.removeCallbacks(close);
-        if (busy) { generation++; busy = false; WatchHub.releaseConfirms(); } // a new question over one still on its way
+        if (busy) { generation++; cutInflight(); busy = false; WatchHub.releaseConfirms(); } // a new question over one still on its way
         followUps = Math.max(followUps, 1); // he answered: the talk goes on
         String mode = VoiceSwitch.match(text);
         if (mode != null) {
@@ -93,13 +101,16 @@ public class WatchTalkActivity extends Activity implements Tools.Host {
         List<JSONObject> history = store.chat();
         store.addChat("user", text, false);
         busy = true;
+        cutInflight(); // (a new question over one still on its way: that request is cut)
         final int gen = ++generation;
+        final Http.Cancel cut = new Http.Cancel();
+        inflight = cut;
         working = gen;
         Brain.Status progress = new Brain.Status() {
             @Override public void update(String s) { if (gen == generation) WatchHub.state(WatchTalkActivity.this, "thinking", null, null, s); }
             @Override public boolean cancelled() { return gen != generation; }
         };
-        worker.submit(() -> {
+        worker.submit(() -> { Http.CANCEL.set(cut); try {
             String reply = null, error = null;
             try {
                 reply = brain.ask(history, text, null, progress);
@@ -125,7 +136,7 @@ public class WatchTalkActivity extends Activity implements Tools.Host {
                 store.addChat("assistant", a, false);
                 answer(a, false);
             });
-        });
+        } finally { Http.CANCEL.remove(); } });
     }
 
     /** The answer to the watch, said if he wants it said; then listen again, or the talk is over. */
@@ -161,14 +172,14 @@ public class WatchTalkActivity extends Activity implements Tools.Host {
 
     /** His stop on the watch (or a new "Jarvis" over the answer): whatever is on its way is dropped. Main thread. */
     void stopTalk() {
-        generation++;
+        generation++; cutInflight();
         busy = false;
         main.removeCallbacks(close);
         main.postDelayed(close, STAY_MS);
     }
 
     @Override protected void onDestroy() {
-        generation++;
+        generation++; cutInflight();
         if (current == this) current = null;
         main.removeCallbacksAndMessages(null);
         WatchHub.releaseConfirms();
