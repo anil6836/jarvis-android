@@ -634,6 +634,73 @@ final class Brain {
 
     /** maxTokens: room for a long answer (a whole book page, a recipe). */
     static String oneShot(Prefs prefs, String system, String prompt, String jpegB64, boolean web, int maxTokens) throws Exception {
+        String kind = taskKind();
+        long t0 = android.os.SystemClock.elapsedRealtime();
+        String r = oneShotRun(prefs, system, prompt, jpegB64, web, maxTokens);
+        if (kind != null) noteTask(prefs.app, kind, android.os.SystemClock.elapsedRealtime() - t0);
+        return r;
+    }
+
+    // ---------------------------------------------------------------- how long the small AI jobs take (Jarvis చెక్)
+
+    /** The kinds shown, in order: id, Telugu name, the screens that ask. */
+    private static final String[][] TASK_KINDS = {
+            {"camera", "కెమెరా", "JarvisCamera HoloActivity ObjectActivity CaseActivity"},
+            {"screen", "స్క్రీన్", "FloatBubble ReaderService WebLook"},
+            {"doc", "డాక్యుమెంట్", "ScanPdf"},
+            {"brief", "ఉదయం బ్రీఫింగ్", "BriefingService"},
+            {"tablet", "టాబ్లెట్ మాటలు", "HomeCare"},
+            {"watch", "వాచ్", "WatchHub"},
+            {"other", "ఇతర పనులు", ""}};
+
+    /** Which screen asked (by its class name; the second AI's check is not counted). */
+    private static String taskKind() {
+        try {
+            for (StackTraceElement e : new Throwable().getStackTrace()) {
+                String c = e.getClassName();
+                if (c.startsWith("com.anil.jarvis.Brain")) continue;
+                if (!c.startsWith("com.anil.jarvis.")) return null; // (the cross-check's own thread: not a job of his)
+                String simple = c.substring("com.anil.jarvis.".length());
+                int d = simple.indexOf('$');
+                if (d > 0) simple = simple.substring(0, d);
+                for (String[] k : TASK_KINDS) if (!k[2].isEmpty() && (" " + k[2] + " ").contains(" " + simple + " ")) return k[0];
+                return "other";
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private static void noteTask(android.content.Context c, String kind, long ms) {
+        try {
+            android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_timing", android.content.Context.MODE_PRIVATE);
+            String hist = sp.getString("task_" + kind, "");
+            String[] old = hist.isEmpty() ? new String[0] : hist.split(",");
+            StringBuilder h = new StringBuilder();
+            for (int i = Math.max(0, old.length - 4); i < old.length; i++) h.append(old[i]).append(',');
+            h.append(ms);
+            sp.edit().putString("task_" + kind, h.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** Jarvis చెక్: each kind's last time and the average of its last five (to compare before / after a change). */
+    static String taskLines(android.content.Context c) {
+        android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_timing", android.content.Context.MODE_PRIVATE);
+        StringBuilder b = new StringBuilder();
+        for (String[] k : TASK_KINDS) {
+            String hist = sp.getString("task_" + k[0], "");
+            if (hist.isEmpty()) continue;
+            String[] v = hist.split(",");
+            long sum = 0, last = 0;
+            int n = 0;
+            for (String x : v) { try { last = Long.parseLong(x); sum += last; n++; } catch (NumberFormatException ignored) {} }
+            if (n == 0) continue;
+            b.append(b.length() == 0 ? "" : " · ").append(k[1]).append(' ').append(Ears.sec(last))
+                    .append(n >= 2 ? " (సగటు " + Ears.sec(sum / n) + ")" : "");
+        }
+        return b.length() == 0 ? "" : "• ⏱️ చిన్న AI పనులు, చివరిసారి (గత 5 సగటు): " + b + " సె\n";
+    }
+
+    private static String oneShotRun(Prefs prefs, String system, String prompt, String jpegB64, boolean web, int maxTokens) throws Exception {
         String key = prefs.apiKey();
         if (key.isEmpty()) throw new Http.ApiError(401, "no API key");
         if (prefs.isGemini()) {

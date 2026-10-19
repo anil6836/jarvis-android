@@ -28,6 +28,8 @@ final class NaturalVoice {
         void onError(String message);
         /** Google Gemini / Sarvam: the reply stopped part-way (a later piece didn't come); onDone follows. */
         default void onCut(String message) {}
+        /** The first sound really came out of the speaker, at this moment (SystemClock.elapsedRealtime) — Jarvis చెక్. */
+        default void onAudible(long at) {}
     }
 
     /** The speaking model when he hasn't chosen one. */
@@ -243,6 +245,40 @@ final class NaturalVoice {
         new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cv, cb), "jarvis-tts").start();
     }
 
+    /**
+     * When the first sound of this reply was really heard (the speaker's own time stamp of frame 0; else the moment the
+     * speaker took the first frames): for Jarvis చెక్'s "స్పీకర్" part. Watches up to 4 s on its own thread.
+     */
+    private void watchAudible(int gen, AudioTrack t, Callback cb) {
+        android.media.AudioTimestamp ts = new android.media.AudioTimestamp();
+        long until = SystemClock.elapsedRealtime() + 4000;
+        while (gen == generation && SystemClock.elapsedRealtime() < until) {
+            long at = -1;
+            try {
+                if (!paused) {
+                    if (t.getTimestamp(ts) && ts.framePosition > 0) {
+                        long firstNs = ts.nanoTime - ts.framePosition * 1_000_000_000L / RATE; // frame 0 came out then
+                        at = SystemClock.elapsedRealtime() - Math.max(0, System.nanoTime() - firstNs) / 1_000_000L;
+                    } else if ((t.getPlaybackHeadPosition() & 0xFFFFFFFFL) > 0 && !stampWorks) {
+                        at = SystemClock.elapsedRealtime(); // (no time stamps on this phone: when the speaker took them)
+                    }
+                    if (ts.framePosition > 0) stampWorks = true;
+                }
+            } catch (Exception e) {
+                return; // (the speaker was let go: stopped)
+            }
+            if (at > 0) {
+                final long when = at;
+                main.post(() -> { if (gen == generation) cb.onAudible(when); });
+                return;
+            }
+            SystemClock.sleep(10);
+        }
+    }
+
+    /** This phone's speaker gives real time stamps (learnt on the first reply). */
+    private static volatile boolean stampWorks;
+
     void stop() {
         generation++;
         CloudVoice was = fetching;
@@ -401,6 +437,8 @@ final class NaturalVoice {
                 if (!started[0]) {
                     started[0] = true;
                     main.post(() -> { if (gen == generation) cb.onStart(); });
+                    final AudioTrack heardOn = t;
+                    new Thread(() -> watchAudible(gen, heardOn, cb), "jarvis-tts-heard").start();
                 }
                 pos += w;
             }

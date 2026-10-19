@@ -1907,8 +1907,10 @@ public class SettingsActivity extends Activity {
         if (!GeminiLive.echoRecording.isEmpty()) s.append("• చివరి echo పరీక్ష రికార్డింగ్: ").append(GeminiLive.echoRecording).append("\n");
         if ("openai".equals(prefs.earsMode()) && !prefs.earsStream())
             s.append("• మీరు మాట్లాడుతుండగానే పంపడం: ఆగింది (OpenAI ఒప్పుకోలేదు); మీరు ఆపాక మొత్తం పంపుతుంది\n");
-        if (!VoiceIO.lastTurn.isEmpty()) s.append("• చివరి జవాబుకు పట్టిన సమయం (మీరు ఆపినప్పటి నుంచి): ").append(VoiceIO.lastTurn).append("\n");
+        String turnTimes = VoiceIO.timingLines(this); // (the answers' time in four parts, kept over restarts)
+        if (!turnTimes.isEmpty()) s.append(turnTimes);
         else if (!Ears.lastTimes.isEmpty()) s.append("• చివరి వినడం సమయం: ").append(Ears.lastTimes).append("\n");
+        s.append(Brain.taskLines(this));     // (the camera / screen / document jobs' time)
         if (!Ears.lastError.isEmpty()) s.append("• మాటలు వినే AI చివరి తప్పు: ").append(Ears.lastError).append("\n");
         if (prefs.coughAsk()) {
             s.append("• దగ్గు / తుమ్ము: ").append(CoughDetector.status.isEmpty() ? (WakeService.running ? "ఇంకా ఏ శబ్దం రాలేదు" : "\"Jarvis\" మైక్ ఆగి ఉంది, వినలేను") : CoughDetector.status);

@@ -159,6 +159,7 @@ final class VoiceIO {
     String voiceInfo = "వాయిస్ సిద్ధం అవుతోంది…";
 
     VoiceIO(Context c, Prefs prefs, Listener l) {
+        appCtx = c.getApplicationContext();
         this.barge = new BargeIn(c);
         this.call = new CallMode(c);
         this.ctx = c.getApplicationContext();
@@ -195,6 +196,7 @@ final class VoiceIO {
             @Override public void onStop(String id, boolean interrupted) { main.post(() -> finishSpeaking(id)); }
             @Override public void onRangeStart(String id, int start, int end, int frame) {
                 if (!("j" + utterance).equals(id)) return;
+                if (tPending) { final long at = android.os.SystemClock.elapsedRealtime(); main.post(() -> turnAudible(at)); } // (its first word: heard)
                 final int a = googleBase + start, b = googleBase + end;
                 googlePos = a;
                 final Spoken.Out said = googleSaid; // written last in speakGoogle: read first
@@ -296,6 +298,7 @@ final class VoiceIO {
                 if (speaking) speakGoogle(shown, rate);
             }
             @Override public void onCut(String message) { naturalCut = message; }
+            @Override public void onAudible(long at) { turnAudible(at); }
         });
     }
 
@@ -704,6 +707,7 @@ final class VoiceIO {
     private int tries, quick;         // tries in this listen; tries in a row that failed before the mic opened
     private boolean offlineTried;
     private long wordsAt;             // this try: when the words last changed (0: no words yet)
+    private long endSpeechAt;         // this listen: when the phone's recognizer last said he stopped (0: not yet)
     private long begunAt;             // this try: when the recognizer last heard speech begin (0: not yet)
     private long minEnd;              // this try: when the recognizer's held-open time is over (it may close the mic then)
     private long tryKeep;             // this try: how long it asked the recognizer to hold the mic open
@@ -744,22 +748,97 @@ final class VoiceIO {
     private static VoiceIO holder;
     /** The last listen, step by step, for "Jarvis చెక్" (▶ try, 🎙 mic open, ■ he finished, ✗n the phone stopped it). */
     static volatile String lastListen = "";
-    /** The last answer's time, step by step, from when he stopped talking until Jarvis's voice was heard (for "Jarvis చెక్"). */
+    /**
+     * The last answer's time in four parts, from his last word until Jarvis's voice was really heard (Jarvis చెక్):
+     * చెవులు (his last word → his words written), మెదడు (→ the answer), గొంతు (→ the first sound made), స్పీకర్ (→ heard).
+     */
     static volatile String lastTurn = "";
     private static volatile long turnHeardAt, turnSpeakAt, turnVoiceEnd;
     private static volatile String turnEars = "";
+    /** His last word (own ears: exact; Google voice typing: when its words last changed, an estimate). */
+    private static volatile boolean turnWordGuess;
+    private static long tHeard, tSpeak, tSound, tWord; // (main thread) the answer whose sound has started
+    private static volatile boolean tPending; // (read from the phone voice's own thread too)
+    private static Context appCtx;
+    private static android.os.Handler turnMain; // (made on first use, on the main thread)
+    private static final Runnable turnTimeout = () -> finishTurnTiming(-1);
 
-    /** Jarvis's voice is heard now: if it is the answer to what he just said, how long it all took is kept. */
+    private static android.os.Handler turnMain() {
+        if (turnMain == null) turnMain = new android.os.Handler(android.os.Looper.getMainLooper());
+        return turnMain;
+    }
+
+    /** Jarvis's voice for the answer to what he just said has started to come (main thread). */
     private static void turnSounded() {
         long h = turnHeardAt, s = turnSpeakAt;
         if (h == 0 || s == 0) return;
         turnHeardAt = 0;
         long now = android.os.SystemClock.elapsedRealtime();
         if (now - h > 120_000) return;
-        long from = turnVoiceEnd > 0 && turnVoiceEnd <= h && h - turnVoiceEnd < 60_000 ? turnVoiceEnd : h;
-        String ears = turnEars;
-        lastTurn = (ears.isEmpty() ? "" : ears.replace(" సె", "") + " · ") + "జవాబు ఆలోచన " + Ears.sec(s - h) + " · గొంతు " + Ears.sec(now - s)
-                + " → మొత్తం " + Ears.sec(now - from) + " సె";
+        tHeard = h;
+        tSpeak = s;
+        tSound = now;
+        tWord = turnVoiceEnd > 0 && turnVoiceEnd <= h && h - turnVoiceEnd < 60_000 ? turnVoiceEnd : 0;
+        tPending = true;
+        turnMain().removeCallbacks(turnTimeout);
+        turnMain().postDelayed(turnTimeout, 4500); // (a speaker that never says when it was heard: kept without that part)
+    }
+
+    /** The first sound of that answer was really heard at this moment (main thread). */
+    private static void turnAudible(long at) {
+        if (!tPending) return;
+        finishTurnTiming(Math.max(0, at - tSound));
+    }
+
+    private static void finishTurnTiming(long speaker) {
+        if (!tPending) return;
+        tPending = false;
+        turnMain().removeCallbacks(turnTimeout);
+        long ears = tWord > 0 ? tHeard - tWord : -1, brain = tSpeak - tHeard, voice = tSound - tSpeak;
+        long total = Math.max(0, ears) + brain + voice + Math.max(0, speaker);
+        boolean whole = ears >= 0 && speaker >= 0;
+        lastTurn = "చెవులు " + (ears >= 0 ? Ears.sec(ears) : "—") + " · మెదడు " + Ears.sec(brain) + " · గొంతు " + Ears.sec(voice)
+                + " · స్పీకర్ " + (speaker >= 0 ? Ears.sec(speaker) : "—") + " → మొత్తం " + Ears.sec(total) + " సె"
+                + (ears >= 0 && turnWordGuess ? " (చెవులు: మీ చివరి పదం వచ్చినప్పటి నుంచి, అంచనా)" : "")
+                + (ears < 0 ? " (చెవుల సమయం తెలియలేదు: మొత్తం అది లేకుండా)" : "")
+                + (speaker < 0 ? " (స్పీకర్ సమయం ఈ ఫోన్ చెప్పలేదు)" : "");
+        Context c = appCtx;
+        if (c == null) return;
+        try {
+            android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_timing", Context.MODE_PRIVATE);
+            String hist = sp.getString("turn_totals", "");
+            String add = (whole ? "" : "~") + total;
+            String[] old = hist.isEmpty() ? new String[0] : hist.split(",");
+            StringBuilder h = new StringBuilder();
+            for (int i = Math.max(0, old.length - 4); i < old.length; i++) h.append(old[i]).append(',');
+            h.append(add);
+            sp.edit().putString("turn_last", lastTurn).putString("turn_ears", turnWordGuess ? "" : turnEars)
+                    .putString("turn_totals", h.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** Jarvis చెక్'s lines for the answers' time (kept over restarts): the last one, the average of the last five. */
+    static String timingLines(Context c) {
+        android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_timing", Context.MODE_PRIVATE);
+        String last = sp.getString("turn_last", "");
+        if (last.isEmpty()) return "";
+        StringBuilder b = new StringBuilder("• ⏱️ చివరి జవాబు (మీరు మాట ఆపినప్పటి నుంచి మీకు వినిపించేదాకా): ").append(last).append("\n");
+        String ears = sp.getString("turn_ears", "");
+        if (!ears.isEmpty()) b.append("   (చెవుల లోపల: ").append(ears).append(")\n");
+        long sum = 0, sumAll = 0;
+        int n = 0, nAll = 0;
+        for (String x : sp.getString("turn_totals", "").split(",")) {
+            if (x.isEmpty()) continue;
+            boolean part = x.startsWith("~");
+            try {
+                long v = Long.parseLong(part ? x.substring(1) : x);
+                sumAll += v; nAll++;
+                if (!part) { sum += v; n++; }
+            } catch (NumberFormatException ignored) {}
+        }
+        if (n >= 2) b.append("• గత ").append(n).append(" జవాబుల సగటు: ").append(Ears.sec(sum / n)).append(" సె\n");
+        else if (nAll >= 2) b.append("• గత ").append(nAll).append(" జవాబుల సగటు: ").append(Ears.sec(sumAll / nAll)).append(" సె (కొన్ని భాగాలు తెలియనివి)\n");
+        return b.toString();
     }
     private final StringBuilder trace = new StringBuilder();
     private long traceStart;
@@ -790,6 +869,7 @@ final class VoiceIO {
         windowUntil = 0; // set when the mic is open
         hardUntil = android.os.SystemClock.elapsedRealtime() + windowMs + 10_000; // however it goes, the tries end by then
         partial = "";
+        endSpeechAt = 0;
         tries = 0;
         quick = 0;
         wrapUp = false;
@@ -972,7 +1052,11 @@ final class VoiceIO {
                 l.onLevel((rmsdB + 2f) / 12f);
             }
             @Override public void onBufferReceived(byte[] buffer) {}
-            @Override public void onEndOfSpeech() { if (mine()) alive(ending ? RESULT_WAIT_MS : QUIET_WAIT_MS); }
+            @Override public void onEndOfSpeech() {
+                if (!mine()) return;
+                endSpeechAt = android.os.SystemClock.elapsedRealtime();
+                alive(ending ? RESULT_WAIT_MS : QUIET_WAIT_MS);
+            }
             @Override public void onError(int error) {
                 if (!mine()) return;
                 if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) endedEarly();
@@ -1221,7 +1305,10 @@ final class VoiceIO {
         done("✓ విన్నాను");
         boolean own = Ears.chosen(prefs) && offlineLang == null;
         turnEars = own ? Ears.lastTimes : "";
-        turnVoiceEnd = own ? Ears.lastVoiceEnd : 0;
+        // his last word: Jarvis's own ears know it; Google voice typing doesn't say it - when its words last changed (or it
+        // said he stopped) is the nearest we know
+        turnWordGuess = !own;
+        turnVoiceEnd = own ? Ears.lastVoiceEnd : wordsAt > 0 ? wordsAt : endSpeechAt;
         turnSpeakAt = 0;
         turnHeardAt = text == null || text.trim().isEmpty() ? 0 : android.os.SystemClock.elapsedRealtime();
         l.onHeard(text);
