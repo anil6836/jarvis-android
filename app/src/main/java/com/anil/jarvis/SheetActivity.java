@@ -84,6 +84,19 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         Http.Cancel k = inflight;
         inflight = null;
         if (k != null) k.cancel();
+        Filler.stop(); // (a "ఒక్క క్షణం" for the dropped answer stops too)
+    }
+
+    /** ⚡ E: the answer's words, waiting for its voice to start (shown then, or after 2.5 s at most); null: none. */
+    private String heldReply;
+    private final Runnable showHeld = this::showHeldReply;
+
+    private void showHeldReply() {
+        main.removeCallbacks(showHeld);
+        String r = heldReply;
+        if (r == null) return;
+        heldReply = null;
+        showReply(r, false);
     }
     /** What the recognizer has heard so far in the current listen() only (partial results). */
     private String partialHeard = "";
@@ -729,6 +742,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onLevel(float level) { orb.setLevel(level); }
 
     @Override public void onSpeakStart() {
+        showHeldReply(); // ⚡ E: the words with the voice
         if (live == null) setVolumeControlStream(voice.volumeStream()); // volume keys = Jarvis's voice (the AI assistant volume)
         orb.setState(OrbView.SPEAKING);
         status.setText("మాట్లాడుతున్నాను…");
@@ -736,6 +750,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     @Override public void onSpeakDone() {
+        showHeldReply(); // (the voice failed before it started: the words come now)
         if (live == null) setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC); // (Jarvis is quiet: songs again)
         syncPause();
         if (callText != null) { main.postDelayed(this::listen, 150); return; }
@@ -783,6 +798,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     /** Nothing more to say or hear now: the panel stays a while, listening for "Jarvis" again, then closes. */
     private void idle(long stayMs) {
+        Filler.stop(); // (the talk is over, e.g. an error after a phone job: the wake mic may open now)
         Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         orb.setState(OrbView.IDLE);
         boolean wake = prefs.wakeReady();
@@ -825,6 +841,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             return;
         }
         showHeard(text);
+        if (prefs.speedE() && prefs.voiceReplies()) reply.setVisibility(View.GONE); // ⚡ E: the last answer goes; the new one comes with its voice
         List<JSONObject> history = store.chat();
         store.addChat("user", text, false);
         busy = true;
@@ -835,9 +852,27 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         final int gen = ++generation;
         final Http.Cancel cut = new Http.Cancel();
         inflight = cut;
+        showHeldReply();
+        if (prefs.voiceReplies()) {
+            NaturalVoice.warm(this, prefs); // ⚡ G: the voice's line opens while the brain thinks
+            Filler.prepare(this, prefs);    // ⚡ F: "ఒక్క క్షణం" made once, ready for a phone job
+        }
+        final boolean[] fillerSaid = {false};
         Brain.Status progress = new Brain.Status() {
             @Override public void update(String s) { main.post(() -> { if (gen == generation) status.setText(s); }); }
             @Override public boolean cancelled() { return gen != generation; } // stop pressed / panel closed
+            // ⚡ F: a phone job inside the answer: "ఒక్క క్షణం, చూస్తున్నాను" (once, and only if it isn't over at once)
+            @Override public void toolRound(String tool) {
+                if (!Filler.before(tool)) return;
+                main.post(() -> {
+                    if (gen != generation || fillerSaid[0] || !prefs.speedF() || !prefs.voiceReplies() || live != null || isFinishing()) return;
+                    fillerSaid[0] = true;
+                    main.postDelayed(() -> {
+                        if (gen == generation && busy && live == null && !isFinishing() && !voice.speaking && !voice.listening)
+                            Filler.play(SheetActivity.this, prefs);
+                    }, 500);
+                });
+            }
         };
         worker.submit(() -> { Http.CANCEL.set(cut); try {
             String answer = null, error = null;
@@ -863,7 +898,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
                 if (err == null && (a == null || a.trim().isEmpty())) { showReply(Brain.EMPTY, true); idle(); return; } // (never stuck)
                 if (err != null) { showReply(err, true); idle(); return; }
                 store.addChat("assistant", a, false);
-                showReply(a, false);
+                if (prefs.voiceReplies() && prefs.speedE()) { // ⚡ E: the words come with the voice (2.5 s at most)
+                    heldReply = a;
+                    main.postDelayed(showHeld, 2500);
+                } else {
+                    showReply(a, false);
+                }
                 if (prefs.voiceReplies()) voice.speak(a, prefs.speechRate()); else idle();
             });
         } finally { Http.CANCEL.remove(); } });

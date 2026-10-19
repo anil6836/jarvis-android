@@ -97,6 +97,8 @@ public class SettingsActivity extends Activity {
     private TextView updateInfo, updateBtn;
     private ScrollView pageScroll;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel, camAlways;
+    /** ⚡ వేగం: each speed change on its own (Prefs.speedG / K / F / E). */
+    private Switch speedG, speedK, speedF, speedE;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
     private int coughGap;
@@ -131,7 +133,7 @@ public class SettingsActivity extends Activity {
     static final String[][] GROUPS = {
             {"me", "👤", "నేను, లుక్", "పేరు, థీమ్, ముఖం, ఫ్లోటింగ్ బటన్"},
             {"brain", "🧠", "మెదడు, ఖర్చు", "AI, మోడల్స్, API keys, కోడింగ్"},
-            {"voice", "🔊", "గొంతు, వినడం", "వాయిస్, సహజ గొంతు, Live, వేక్ వర్డ్, పవర్ బటన్"},
+            {"voice", "🔊", "గొంతు, వినడం", "వాయిస్, సహజ గొంతు, Live, ⚡ వేగం, వేక్ వర్డ్, పవర్ బటన్"},
             {"watch", "⌚", "వాచ్", "వినడం, అలర్ట్స్, రోజువారీ, ఆరోగ్యం, రోడ్డు, రూపం"},
             {"msg", "💬", "మెసేజ్‌లు, కాల్స్", "కాల్స్, బ్రీఫింగ్, నోటిఫికేషన్లు, WhatsApp, స్క్రీన్, మోసం గార్డ్"},
             {"bike", "🏍️", "బైక్, ఇల్లు", "బైక్, కారు, కదలికలు, స్మార్ట్ హోమ్, కాపలా మోడ్"},
@@ -661,6 +663,8 @@ public class SettingsActivity extends Activity {
         liveMode.setOnCheckedChangeListener((sw, on) -> syncLiveChoice());
         liveProvider.setOnCheckedChangeListener((rg, which) -> syncLiveChoice());
         note("mini మోడల్ చవక, వేగం. పేరులో mini లేని పెద్ద మోడల్ ఇంకా సహజంగా, భావంతో మాట్లాడుతుంది కానీ ఖర్చు ఎక్కువ.");
+
+        speedCard(); // ⚡ వేగం
 
         // ---- without internet
         section("Offline వాయిస్ (నెట్ లేనప్పుడు)");
@@ -1226,7 +1230,8 @@ public class SettingsActivity extends Activity {
         if (t.contains("వాచ్")) return "watch"; // (the watch's six cards: "ఆరోగ్యం: వాచ్…", "రోడ్డు, భద్రత (వాచ్)"…)
         if (t.contains("మీరు") || t.contains("థీమ్") || t.contains("Jarvis ముఖం") || t.contains("ఫ్లోటింగ్")) return "me";
         if (t.contains("మెదడు") || t.contains("API ఖర్చు") || t.contains("కోడింగ్")) return "brain";
-        if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")) return "voice";
+        if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")
+                || t.startsWith("వేగం")) return "voice";
         if (t.contains("కాల్స్") || t.contains("మెసేజ్") || t.contains("WhatsApp") || t.contains("స్క్రీన్ చూడటం") || t.contains("మోసం")) return "msg";
         if (t.contains("టాబ్లెట్") || t.contains("ఇంటి Jarvis")) return "tab";
         if (t.contains("బైక్") || t.contains("కారు") || t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా")) return "bike";
@@ -1910,6 +1915,7 @@ public class SettingsActivity extends Activity {
         String turnTimes = VoiceIO.timingLines(this); // (the answers' time in four parts, kept over restarts)
         if (!turnTimes.isEmpty()) s.append(turnTimes);
         else if (!Ears.lastTimes.isEmpty()) s.append("• చివరి వినడం సమయం: ").append(Ears.lastTimes).append("\n");
+        if (!prefs.homeMode()) s.append(speedLine()).append("\n"); // ⚡ which speed switches are on
         s.append(Brain.taskLines(this));     // (the camera / screen / document jobs' time)
         if (!Ears.lastError.isEmpty()) s.append("• మాటలు వినే AI చివరి తప్పు: ").append(Ears.lastError).append("\n");
         if (prefs.coughAsk()) {
@@ -2053,6 +2059,10 @@ public class SettingsActivity extends Activity {
         saveBalance(balOpenAi, Usage.OPENAI);
         saveBalance(balAnthropic, Usage.ANTHROPIC);
         e.putBoolean("barge_in", bargeIn.isChecked());
+        e.putBoolean("speed_g", speedG.isChecked());
+        e.putBoolean("speed_k", speedK.isChecked());
+        e.putBoolean("speed_f", speedF.isChecked());
+        e.putBoolean("speed_e", speedE.isChecked());
         int lbc = liveBarge.getCheckedRadioButtonId();
         e.putString("live_barge", lbc == 96 ? "voice" : lbc == 97 ? "off" : "word");
         e.putInt("barge_sens", bargeSens.getProgress());
@@ -4281,6 +4291,41 @@ public class SettingsActivity extends Activity {
             t.setPadding(0, Ui.dp(this, 4), 0, 0);
             peopleBox.addView(t);
         }
+    }
+
+    /**
+     * ⚡ వేగం (Round 2, build 1): each speed change with its own switch, on from the start; off = exactly the way before
+     * (from the next question, no restart). Never on the home tablet.
+     */
+    private void speedCard() {
+        section("వేగం: జవాబు తొందరగా", "⚡");
+        note("ఒక్కో మార్పుకి సొంత స్విచ్. ఏదైనా నచ్చకపోతే అది ఆఫ్ చేయండి: తర్వాతి ప్రశ్న నుంచే పాత పద్ధతి. "
+                + "ఏ జవాబుకి ఎంత టైమ్ పట్టిందో, ఎందుకో 'Jarvis చెక్' లో ⏱️ చివరి జవాబుల లిస్ట్‌లో చూడండి.");
+        speedG = toggle("G · గొంతు ముందే సిద్ధం: మెదడు ఆలోచిస్తుండగానే గొంతు లైన్ తెరుస్తుంది, మొదటి మాట ముందున్న నిశ్శబ్దం దాటేస్తుంది",
+                prefs.sp.getBoolean("speed_g", true));
+        speedK = toggle("K · Google చెవులు తొందరగా: మీరు మాట ఆపారని ఫోన్ చెప్పగానే, అప్పటివరకు విన్న మాటలు మెదడుకి (Google వాయిస్ టైపింగ్‌లో మాత్రమే)",
+                prefs.sp.getBoolean("speed_k", true));
+        speedF = toggle("F · జవాబులో ఫోన్ పని (వాతావరణం, మెసేజ్‌లు, డ్యూటీ…) జరిగేటప్పుడు \"ఒక్క క్షణం, చూస్తున్నాను\" (మీరు ఎంచుకున్న గొంతులోనే)",
+                prefs.sp.getBoolean("speed_f", true));
+        speedE = toggle("E · జవాబు అక్షరాలు, గొంతు ఒకేసారి (అక్షరాలు గొంతు మొదలయ్యాక వస్తాయి; 2.5 సెకన్లకి మించి ఆగవు)",
+                prefs.sp.getBoolean("speed_e", true));
+        button("అన్నీ పాత పద్ధతికి (అన్నీ ఆఫ్)", v -> {
+            for (Switch w : new Switch[]{speedG, speedK, speedF, speedE}) w.setChecked(false);
+            autosave();
+            Toast.makeText(this, "⚡ అన్నీ ఆఫ్: ఇంతకుముందు పద్ధతిలోనే", Toast.LENGTH_SHORT).show();
+        });
+        if (prefs.homeMode()) note("ఇంటి టాబ్లెట్‌లో ఇవి పనిచేయవు: అమ్మగారి Jarvis ఎప్పటిలాగే ఉంటుంది.");
+    }
+
+    /** Jarvis చెక్'s line: which speed switches are on. */
+    private String speedLine() {
+        StringBuilder b = new StringBuilder("• ⚡ వేగం: ");
+        String[][] all = {{"G", "speed_g"}, {"K", "speed_k"}, {"F", "speed_f"}, {"E", "speed_e"}};
+        for (int i = 0; i < all.length; i++) {
+            if (i > 0) b.append(" · ");
+            b.append(all[i][0]).append(prefs.sp.getBoolean(all[i][1], true) ? " ✓" : " ఆఫ్");
+        }
+        return b.toString();
     }
 
     private TextView button(String label, View.OnClickListener l) {

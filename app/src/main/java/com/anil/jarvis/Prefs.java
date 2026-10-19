@@ -402,6 +402,24 @@ final class Prefs {
     boolean wakePaused() { return sp.getBoolean("wake_paused", false); }
     void setWakePaused(boolean paused) { sp.edit().putBoolean("wake_paused", paused).apply(); }
 
+    // ---- ⚡ వేగం (Round 2, build 1): each change has its own switch, on from the start; off = exactly the way before.
+    // Never on the home tablet (her Jarvis stays as it is).
+    /** G: the voice's line opened while the brain thinks, the speaker starts early, the silence before the first word skipped. */
+    boolean speedG() { return !homeMode() && sp.getBoolean("speed_g", true); }
+    /** K: Google voice typing: when it says he stopped, the words heard so far go at once (not waiting long for its final). */
+    boolean speedK() { return !homeMode() && sp.getBoolean("speed_k", true); }
+    /** F: "ఒక్క క్షణం, చూస్తున్నాను" while a phone job runs inside an answer. */
+    boolean speedF() { return !homeMode() && sp.getBoolean("speed_f", true); }
+    /** E: the answer's words come on the screen when its voice starts (at most 2.5 s later). */
+    boolean speedE() { return !homeMode() && sp.getBoolean("speed_e", true); }
+    /** The switches that are off now (for the ⏱️ list: "G K"), empty when all are on. */
+    String speedOff() {
+        if (homeMode()) return "";
+        StringBuilder b = new StringBuilder();
+        for (String k : new String[]{"g", "k", "f", "e"}) if (!sp.getBoolean("speed_" + k, true)) b.append(k.toUpperCase(java.util.Locale.ROOT)).append(' ');
+        return b.toString().trim();
+    }
+
     // ---- the home Jarvis (a tablet at home: big screen with the new Jarvis, for the family)
     /** This device is the home Jarvis (home screen, landscape, anyone at home may talk). */
     boolean homeMode() { return sp.getBoolean("home_mode", false); }

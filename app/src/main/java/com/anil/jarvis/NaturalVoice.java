@@ -65,6 +65,39 @@ final class NaturalVoice {
     /** Play through the call path (talk-over on), so the phone's echo canceller can remove this voice. */
     volatile boolean voiceCall;
     /**
+     * ⚡ G (set before speak()): the speaker starts after 0.1-0.25 s of sound instead of filling half a second first (Android 12+),
+     * and the silence before the first word is skipped. Off: exactly as before.
+     */
+    volatile boolean quick;
+
+    private static volatile long warmedAt;
+
+    /**
+     * ⚡ G: while the brain thinks, the voice's internet line is opened (a tiny request without the key, which the server
+     * just refuses), so the answer's voice needn't wait for a new connection. At most every 20 s; nothing is sent about him.
+     */
+    static void warm(android.content.Context c, Prefs p) {
+        if (!p.speedG() || !p.voiceReplies() || !p.naturalVoice() || !Net.online(c)) return;
+        CloudVoice cv = CloudVoice.of(p);
+        if (cv == null ? p.openAiKey().trim().isEmpty() : !cv.ready()) return;
+        long now = SystemClock.elapsedRealtime();
+        if (now - warmedAt < 20_000) return;
+        warmedAt = now;
+        final String url = cv == null ? "https://api.openai.com/v1/models"
+                : CloudVoice.SARVAM.equals(cv.provider) ? "https://api.sarvam.ai/" : "https://generativelanguage.googleapis.com/";
+        new Thread(() -> {
+            try {
+                HttpURLConnection c2 = (HttpURLConnection) new URL(url).openConnection();
+                c2.setConnectTimeout(8000);
+                c2.setReadTimeout(8000);
+                int code = c2.getResponseCode();
+                InputStream in = code >= 400 ? c2.getErrorStream() : c2.getInputStream();
+                if (in != null) try (InputStream r = in) { byte[] b = new byte[4096]; while (r.read(b) > 0) { /* read to the end: the line goes back to the pool */ } }
+                // (no disconnect(): that could close the line the voice is about to use)
+            } catch (Throwable ignored) {}
+        }, "jarvis-tts-warm").start();
+    }
+    /**
      * Jarvis's own echo removal for the talk-over (BargeIn): told what this voice plays and when it leaves the speaker,
      * so the mic can be cleaned of it (no phone-call mode needed). Null: not used. Set before speak().
      */
@@ -239,10 +272,11 @@ final class NaturalVoice {
         final String m = model == null || model.trim().isEmpty() ? DEFAULT_MODEL : model.trim();
         final EchoGuard eg = echo;
         final CloudVoice cv = cloud;
+        final boolean q = quick;
         CloudVoice was = fetching;
         if (was != null) was.cancel(); // (the last reply's request, still on its way)
         cutAsking();
-        new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cv, cb), "jarvis-tts").start();
+        new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cv, cb, q), "jarvis-tts").start();
     }
 
     /**
@@ -311,7 +345,7 @@ final class NaturalVoice {
         }
     }
 
-    private void run(int gen, String apiKey, String model, String voice, String text, String style, EchoGuard eg, CloudVoice cv, Callback cb) {
+    private void run(int gen, String apiKey, String model, String voice, String text, String style, EchoGuard eg, CloudVoice cv, Callback cb, boolean q) {
         HttpURLConnection c = null;
         AudioTrack t = null;
         final boolean[] started = {false};
@@ -368,6 +402,11 @@ final class NaturalVoice {
                     .setBufferSizeInBytes(Math.max(min, RATE))
                     .setTransferMode(AudioTrack.MODE_STREAM)
                     .build();
+            if (q && android.os.Build.VERSION.SDK_INT >= 31) {
+                // ⚡ G: sound after 0.1 s (Gemini / Sarvam: the piece is all there) or 0.25 s (OpenAI streams it: a little kept
+                // in hand for a slow line), not after the whole half second
+                try { t.setStartThresholdInFrames(cv != null ? RATE / 10 : RATE / 4); } catch (Exception ignored) {}
+            }
             if (gen != generation) { t.release(); return; }
             synchronized (lock) {
                 if (gen != generation) { t.release(); t = null; return; } // stopped just now: never keep (or play) it
@@ -416,6 +455,19 @@ final class NaturalVoice {
 
             byte[] chunk = new byte[8192];
             long pos = 0; // bytes of pcm handed to the speaker
+            // ⚡ F: a "ఒక్క క్షణం, చూస్తున్నాను" still sounding: this answer starts right after it (never over it, never cutting it)
+            long fillerUntil = SystemClock.elapsedRealtime() + 3000;
+            while (gen == generation && Filler.playing() && SystemClock.elapsedRealtime() < fillerUntil) SystemClock.sleep(20);
+            if (q) { // ⚡ G: the silence before the first word is skipped (a little kept, so the word isn't clipped)
+                long until = SystemClock.elapsedRealtime() + 1500;
+                while (gen == generation && firstSound < 0 && !pcm.finished() && arrived < RATE && SystemClock.elapsedRealtime() < until)
+                    SystemClock.sleep(5);
+                long fs = firstSound;
+                if (fs > BLOCK * 2 && fs < RATE) {
+                    long skip = fs - BLOCK * 2;
+                    synchronized (lock) { if (seekTo < 0 && !paused) { base = skip; pos = skip * 2; } }
+                }
+            }
             while (gen == generation) {
                 if (paused) { SystemClock.sleep(20); continue; }
                 long seek = seekTo;

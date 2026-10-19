@@ -20,6 +20,8 @@ final class Brain {
         void update(String text);
         /** True once Anil pressed stop: no further model rounds or tools are run for this question. */
         default boolean cancelled() { return false; }
+        /** A phone job (or a web search) is about to run inside this answer (⚡ F: "ఒక్క క్షణం, చూస్తున్నాను"). */
+        default void toolRound(String tool) {}
     }
 
     private static void checkCancelled(Status s) {
@@ -79,6 +81,17 @@ final class Brain {
     private volatile boolean deep;
     /** Tools run for the question being answered now (an empty reply after a tool: "check it happened"). */
     private volatile int toolsRun;
+    /** This answer searched the internet / was checked by the second AI (for the ⏱️ list's marks). */
+    private volatile boolean searched, checkedNow;
+    /**
+     * Why the last answer took the time it did, for Jarvis చెక్'s ⏱️ list: "🛠️×2 🔎 🔁 🧠 📝 🔌" (phone jobs, web search,
+     * second-AI check, long thinking, a long reply, the first question after a break); askMarksAt = when it was set
+     * (elapsedRealtime), so the list only takes marks made between his words and the voice.
+     */
+    static volatile String askMarks = "";
+    static volatile long askMarksAt;
+    /** When the brain last answered (elapsedRealtime): a question after ~5 minutes opens its internet line again. */
+    private static volatile long lastAskEnd;
     /** When the AI last answered with only a feeling tag, no words (wall clock; 0: never) — shown in Jarvis చెక్. */
     static volatile long emptyAt;
     static final String EMPTY = "జవాబు ఖాళీగా వచ్చింది. మళ్ళీ అడగండి.";
@@ -90,6 +103,10 @@ final class Brain {
         Offline.netBack(prefs.app); // (the next stretch without internet is told again; questions kept without it are answered)
         deep = prefs.sp.getBoolean("deep_always", false) || (text != null && DEEP_WORDS.matcher(text).find());
         toolsRun = 0;
+        searched = false;
+        checkedNow = false;
+        long askStart = android.os.SystemClock.elapsedRealtime();
+        boolean afterBreak = lastAskEnd == 0 || askStart - lastAskEnd > 270_000L;
         if (deep && status != null) status.update("లోతుగా ఆలోచిస్తున్నాను…");
         boolean feel = prefs.emotions();
         String system = systemPrompt() + (feel ? Emotion.rule() : "") + whoAmI();
@@ -112,7 +129,22 @@ final class Brain {
             emptyAt = System.currentTimeMillis();
             out = toolsRun > 0 ? EMPTY_AFTER_TOOL : EMPTY;
         }
+        lastAskEnd = android.os.SystemClock.elapsedRealtime();
+        askMarks = marks(toolsRun, searched, checkedNow, deep, out.length(), afterBreak);
+        askMarksAt = lastAskEnd;
         return out;
+    }
+
+    /** The ⏱️ list's marks for one answer (see askMarks); a reply of 300+ letters counts as long. */
+    static String marks(int tools, boolean searched, boolean checked, boolean deep, int replyLength, boolean afterBreak) {
+        StringBuilder b = new StringBuilder();
+        if (tools > 0) b.append("🛠️").append(tools > 1 ? "×" + tools : "").append(' ');
+        if (searched) b.append("🔎 ");
+        if (checked) b.append("🔁 ");
+        if (deep) b.append("🧠 ");
+        if (replyLength >= 300) b.append("📝 ");
+        if (afterBreak) b.append("🔌 ");
+        return b.toString().trim();
     }
 
     /** "క్రాస్ చెక్ చేయి" (any question), or on its own for money / health / law questions when he switched that on. */
@@ -151,6 +183,7 @@ final class Brain {
         if (cp == null || cp.apiKey().isEmpty()) {
             return asked ? reply + "\n(రెండో AI ఇంకా ఎంచుకోలేదు లేదా దాని key లేదు: సెట్టింగ్స్ → Jarvis మెదడు → క్రాస్ చెక్.)" : reply;
         }
+        checkedNow = true;
         if (status != null) status.update("రెండో AI తో చెక్ చేస్తున్నాను…");
         final String fq = q, fa = plain;
         String verdict;
@@ -921,8 +954,10 @@ final class Brain {
                 if (args == null) args = new JSONObject();
                 checkCancelled(status);
                 String result;
+                status.toolRound(name);
                 if ("search_web".equals(name)) {
                     status.update("ఇంటర్నెట్‌లో వెతుకుతున్నాను…");
+                    searched = true;
                     result = geminiSearch(key, args.optString("query"));
                 } else {
                     status.update(Tools.statusFor(name));
@@ -1012,6 +1047,8 @@ final class Brain {
                             JSONObject p = parts.getJSONObject(k);
                             if ("output_text".equals(p.optString("type"))) said.append(p.optString("text"));
                         }
+                    } else if ("web_search_call".equals(type)) {
+                        searched = true;
                     } else if ("function_call".equals(type)) {
                         String name = item.optString("name");
                         status.update(Tools.statusFor(name));
@@ -1019,6 +1056,7 @@ final class Brain {
                         JSONObject args;
                         try { args = new JSONObject(item.optString("arguments", "{}")); } catch (Exception e) { args = new JSONObject(); }
                         checkCancelled(status);
+                        status.toolRound(name);
                         String result = tools.execute(name, args);
                         toolsRun++;
                         results.put(new JSONObject()
@@ -1093,6 +1131,7 @@ final class Brain {
             JSONArray blocks = res.optJSONArray("content");
             if (blocks == null) blocks = new JSONArray();
             String stop = res.optString("stop_reason");
+            for (int i = 0; i < blocks.length(); i++) if ("server_tool_use".equals(blocks.getJSONObject(i).optString("type"))) searched = true;
             messages.put(new JSONObject().put("role", "assistant").put("content", blocks));
 
             if ("tool_use".equals(stop)) {
@@ -1105,6 +1144,7 @@ final class Brain {
                         JobProgress.ui = status;
                     JSONObject args = b.optJSONObject("input");
                     checkCancelled(status);
+                    status.toolRound(name);
                     String result = tools.execute(name, args == null ? new JSONObject() : args);
                     toolsRun++;
                     results.put(new JSONObject()

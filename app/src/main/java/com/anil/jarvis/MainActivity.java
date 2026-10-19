@@ -209,6 +209,20 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         Http.Cancel k = inflight;
         inflight = null;
         if (k != null) k.cancel();
+        Filler.stop(); // (a "ఒక్క క్షణం" for the dropped answer stops too)
+    }
+
+    /** ⚡ E: the answer's words, waiting for its voice to start (shown then, or after 2.5 s at most); null: none. */
+    private String heldReply;
+    private final Runnable showHeld = this::showHeldReply;
+
+    private void showHeldReply() {
+        main.removeCallbacks(showHeld);
+        String r = heldReply;
+        if (r == null) return;
+        heldReply = null;
+        removeThinking();
+        addMessage("assistant", r, System.currentTimeMillis(), null);
     }
     private Runnable pendingUndo;
     private LiveTalk live;             // an open real-time voice conversation (Gemini Live or OpenAI Live), or null
@@ -1171,6 +1185,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     private void renderChat() {
+        heldReply = null; // (⚡ E: the store already has the held answer: drawn below, not again later)
+        main.removeCallbacks(showHeld);
         karaoke.clear();
         chatList.removeAllViews();
         jarvisBodies.clear();
@@ -2025,6 +2041,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onSpeakStart() {
+        showHeldReply(); // ⚡ E: the words with the voice
         if (live == null) setVolumeControlStream(voice.volumeStream()); // volume keys = Jarvis's voice (the AI assistant volume)
         keepScreenOn();
         if (face != null) face.setFeeling(feelingNext != null ? feelingNext : voice.feeling());
@@ -2036,6 +2053,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override public void onSpeakDone() {
+        showHeldReply(); // (the voice failed before it started: the words come now)
         if (live == null) setVolumeControlStream(AudioManager.STREAM_MUSIC); // (Jarvis is quiet: the keys are for songs again)
         if (liveAfterSpeak) { // he switched to Live by voice: the talk goes on live
             liveAfterSpeak = false;
@@ -2144,6 +2162,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         clearAttachment();
         showTab(0);
+        showHeldReply(); // (the last answer's words, if still waiting for its voice, come first)
         List<JSONObject> history = store.chat();
         store.addChat("user", shown, photo != null && !Brain.isPdf(photo) && !seeMe);
         addMessage("user", seeMe ? shown + "  👁" : shown, System.currentTimeMillis(), thumb);
@@ -2164,6 +2183,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         final int gen = ++generation;
         final Http.Cancel cut = new Http.Cancel();
         inflight = cut;
+        if (prefs.voiceReplies()) {
+            NaturalVoice.warm(this, prefs); // ⚡ G: the voice's line opens while the brain thinks
+            if (byVoice) Filler.prepare(this, prefs); // ⚡ F: "ఒక్క క్షణం" made once, ready for a phone job
+        }
+        final boolean[] fillerSaid = {false};
         Brain.Status progress = new Brain.Status() {
             @Override public void update(String s) {
                 main.post(() -> {
@@ -2174,6 +2198,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             }
             // The red stop button (or leaving the screen) bumps generation: stop before the next round/tool.
             @Override public boolean cancelled() { return gen != generation; }
+            // ⚡ F: a phone job inside a spoken answer: "ఒక్క క్షణం, చూస్తున్నాను" (once, and only if it isn't over at once)
+            @Override public void toolRound(String tool) {
+                if (!byVoice || !Filler.before(tool)) return;
+                main.post(() -> {
+                    if (gen != generation || fillerSaid[0] || !prefs.speedF() || !prefs.voiceReplies() || live != null) return;
+                    fillerSaid[0] = true;
+                    main.postDelayed(() -> {
+                        if (gen == generation && busy && live == null && !voice.speaking && !voice.listening) Filler.play(MainActivity.this, prefs);
+                    }, 500);
+                });
+            }
         };
         final boolean sentMe = seeMe;
         worker.submit(() -> { Http.CANCEL.set(cut); try {
@@ -2205,7 +2240,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (gen != generation) return; // Anil stopped this one
         busy = false;
         if (error == null && (reply == null || reply.trim().isEmpty())) error = Brain.EMPTY; // (never a silent, stuck turn)
-        removeThinking();
+        showHeldReply();
+        // ⚡ E: the words wait for the voice (they come on the screen together; 2.5 s at most)
+        boolean hold = error == null && prefs.speedE() && prefs.voiceReplies() && !paused && home == null;
+        if (!hold) removeThinking();
         if (error != null) {
             TextView t = addMessage("assistant", error, System.currentTimeMillis(), null);
             t.setTextColor(Ui.RED);
@@ -2214,7 +2252,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             return;
         }
         store.addChat("assistant", reply, false);
-        addMessage("assistant", reply, System.currentTimeMillis(), null);
+        if (hold) {
+            heldReply = reply;
+            main.postDelayed(showHeld, 2500);
+        } else {
+            addMessage("assistant", reply, System.currentTimeMillis(), null);
+        }
         if (face != null) face.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM);
         if (home != null) { home.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM); home.say(reply); }
         if (prefs.voiceReplies() && !paused) {
@@ -2247,6 +2290,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void finishTurn() {
         liveAfterSpeak = false; // (a stopped confirmation must not start Live with some later answer)
         if (busy || live != null) return;
+        Filler.stop(); // (the turn is over, e.g. an error after a phone job: the wake mic may open now)
         Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         setIdle();
         if (SheetActivity.talkingNow()) return; // the panel came over this screen and is talking: its talk, its mic

@@ -271,6 +271,7 @@ final class VoiceIO {
         natural.echo = callVoice() ? null : ownEcho();
         natural.model = prefs.ttsModel();
         natural.cloud = cv;
+        natural.quick = prefs.speedG();
         natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
@@ -311,6 +312,7 @@ final class VoiceIO {
     }
 
     private void speakGoogle(String text, float rate) {
+        Filler.stop(); // (the phone's voice can't wait for a "one moment" still sounding: that one stops)
         if (shut || tts == null) { speaking = false; pending = null; return; }
         if (ttsFailed) { failSpeak(); return; }
         if (!ttsReady) {
@@ -651,6 +653,7 @@ final class VoiceIO {
     }
 
     void stopSpeaking() {
+        Filler.stop();
         paused = false;
         pausedByUser = false;
         main.removeCallbacks(wordTicker);
@@ -704,6 +707,7 @@ final class VoiceIO {
     private boolean ending;           // Jarvis noticed he finished and asked for the result
     private boolean holdOpen;         // this try asked the recognizer to keep the mic open (minimum length)
     private String partial = "";      // words heard so far in this listen
+    private boolean partialUnsure;    // the phone still marks some of the latest words as not settled (⚡ K waits for its final)
     private int tries, quick;         // tries in this listen; tries in a row that failed before the mic opened
     private boolean offlineTried;
     private long wordsAt;             // this try: when the words last changed (0: no words yet)
@@ -812,9 +816,55 @@ final class VoiceIO {
             StringBuilder h = new StringBuilder();
             for (int i = Math.max(0, old.length - 4); i < old.length; i++) h.append(old[i]).append(',');
             h.append(add);
+            // the ⏱️ list: the last five answers, each with why it took that time (the brain's marks for this answer only)
+            long ma = Brain.askMarksAt;
+            String marks = ma >= tHeard - 50 && ma <= tSpeak + 50 ? Brain.askMarks : "";
+            String list = addTurn(sp.getString("turn_list", ""), System.currentTimeMillis(), total, brain, whole, marks, new Prefs(c).speedOff());
             sp.edit().putString("turn_last", lastTurn).putString("turn_ears", turnWordGuess ? "" : turnEars)
-                    .putString("turn_totals", h.toString()).apply();
+                    .putString("turn_totals", h.toString()).putString("turn_list", list).apply();
         } catch (Exception ignored) {}
+    }
+
+    /** The ⏱️ list (JSON, newest last, five kept) with one more answer. */
+    static String addTurn(String json, long at, long total, long brain, boolean whole, String marks, String off) {
+        org.json.JSONArray a;
+        try { a = json == null || json.isEmpty() ? new org.json.JSONArray() : new org.json.JSONArray(json); }
+        catch (Exception e) { a = new org.json.JSONArray(); }
+        org.json.JSONArray out = new org.json.JSONArray();
+        for (int i = Math.max(0, a.length() - 4); i < a.length(); i++) out.put(a.opt(i));
+        try {
+            out.put(new org.json.JSONObject().put("t", at).put("total", total).put("brain", brain).put("whole", whole)
+                    .put("m", marks == null ? "" : marks).put("off", off == null ? "" : off));
+        } catch (Exception ignored) {}
+        return out.toString();
+    }
+
+    /** Jarvis చెక్'s ⏱️ list lines (newest first), with the meaning of the marks that appear; empty under two answers. */
+    static String turnListLines(String json) {
+        org.json.JSONArray a;
+        try { a = json == null || json.isEmpty() ? new org.json.JSONArray() : new org.json.JSONArray(json); }
+        catch (Exception e) { return ""; }
+        if (a.length() < 2) return "";
+        StringBuilder b = new StringBuilder("• ⏱️ చివరి ").append(a.length()).append(" జవాబులు (కొత్తది పైన):\n");
+        StringBuilder seen = new StringBuilder();
+        java.text.SimpleDateFormat hm = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.ENGLISH);
+        for (int i = a.length() - 1; i >= 0; i--) {
+            org.json.JSONObject o = a.optJSONObject(i);
+            if (o == null) continue;
+            String m = o.optString("m", ""), off = o.optString("off", "");
+            seen.append(m);
+            b.append("   ").append(hm.format(new java.util.Date(o.optLong("t")))).append("  ")
+                    .append(Ears.sec(o.optLong("total"))).append(" సె").append(o.optBoolean("whole", true) ? "" : " (కొంత)")
+                    .append(" (మెదడు ").append(Ears.sec(o.optLong("brain"))).append(")")
+                    .append(m.isEmpty() ? "" : " " + m)
+                    .append(off.isEmpty() ? "" : " · ⚡ఆఫ్: " + off).append("\n");
+        }
+        String[][] legend = {{"🛠️", "ఫోన్ పని"}, {"🔎", "ఇంటర్నెట్ సెర్చ్"}, {"🔁", "రెండో AI చెక్"}, {"🧠", "లోతుగా ఆలోచన"},
+                {"📝", "పెద్ద జవాబు"}, {"🔌", "బ్రేక్ తర్వాత మొదటి ప్రశ్న"}};
+        StringBuilder l = new StringBuilder();
+        for (String[] x : legend) if (seen.indexOf(x[0]) >= 0) l.append(l.length() == 0 ? "" : " · ").append(x[0]).append(' ').append(x[1]);
+        if (l.length() > 0) b.append("   (").append(l).append(")\n");
+        return b.toString();
     }
 
     /** Jarvis చెక్'s lines for the answers' time (kept over restarts): the last one, the average of the last five. */
@@ -838,6 +888,7 @@ final class VoiceIO {
         }
         if (n >= 2) b.append("• గత ").append(n).append(" జవాబుల సగటు: ").append(Ears.sec(sum / n)).append(" సె\n");
         else if (nAll >= 2) b.append("• గత ").append(nAll).append(" జవాబుల సగటు: ").append(Ears.sec(sumAll / nAll)).append(" సె (కొన్ని భాగాలు తెలియనివి)\n");
+        b.append(turnListLines(sp.getString("turn_list", "")));
         return b.toString();
     }
     private final StringBuilder trace = new StringBuilder();
@@ -859,6 +910,7 @@ final class VoiceIO {
         if (ears != null) { ears.cancel(); ears = null; } // an earlier listen still recording: let it go
         boolean dictation = longTalk;
         longTalk = false;
+        Filler.stop(); // (never into an open mic)
         if (paused && speaking) barge.stop(); // keep the paused speech: he may say "కొనసాగించు"
         else stopSpeaking();
         session++;
@@ -1008,6 +1060,7 @@ final class VoiceIO {
         else lastIntent.removeExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS);
         ending = false;
         wordsAt = 0;
+        partialUnsure = false;
         begunAt = 0;
         minEnd = holdOpen ? now + keep : 0;
         level.newTry();
@@ -1056,6 +1109,7 @@ final class VoiceIO {
                 if (!mine()) return;
                 endSpeechAt = android.os.SystemClock.elapsedRealtime();
                 alive(ending ? RESULT_WAIT_MS : QUIET_WAIT_MS);
+                if (once || ending) handOverSoon(); // ⚡ K: he has finished (the phone said so)
             }
             @Override public void onError(int error) {
                 if (!mine()) return;
@@ -1078,6 +1132,8 @@ final class VoiceIO {
                 givesWords = true;
                 if (wordsAt == 0 || !s.equals(partial)) wordsAt = android.os.SystemClock.elapsedRealtime();
                 partial = s;
+                java.util.ArrayList<String> unsure = b.getStringArrayList("android.speech.extra.UNSTABLE_TEXT");
+                partialUnsure = unsure != null && !unsure.isEmpty() && unsure.get(0) != null && !unsure.get(0).trim().isEmpty();
                 if (!ending) alive(QUIET_WAIT_MS);
                 l.onPartial(s);
             }
@@ -1196,6 +1252,40 @@ final class VoiceIO {
             if (!partial.isEmpty()) { heard(partial); return; }
         }
         alive(wordsAt > 0 ? RESULT_WAIT_MS : RESULT_WAIT_MS * 2);
+        handOverSoon(); // ⚡ K
+    }
+
+    /**
+     * ⚡ K (Google voice typing): he has finished, so the words shown so far go to the brain in a moment, instead of
+     * waiting for the phone's final result (which can take a second or more on a slow line). Only words that have stood
+     * still for a while (his last word is in them); the final result, if it comes first, is used as always.
+     */
+    private static final long HANDOVER_WAIT_MS = 700, HANDOVER_STILL_MS = 450, HANDOVER_MAX_MS = 1500;
+    private int handOverSession = -1, handOverTry = -1;
+    private long handOverFrom;
+    private final Runnable handOver = this::handOver;
+
+    private void handOverSoon() {
+        if (!prefs.speedK() || partial.isEmpty() || wrapUp) return;
+        handOverSession = session;
+        handOverTry = tries;
+        handOverFrom = android.os.SystemClock.elapsedRealtime();
+        main.removeCallbacks(handOver);
+        main.postDelayed(handOver, HANDOVER_WAIT_MS);
+    }
+
+    private void handOver() {
+        if (shut || !listening || handOverSession != session || handOverTry != tries || !recBusy || partial.isEmpty() || wrapUp) return;
+        if (partialUnsure) return; // the last words aren't settled yet: the phone's own final result decides (as always)
+        long now = android.os.SystemClock.elapsedRealtime();
+        long still = wordsAt > 0 ? now - wordsAt : HANDOVER_STILL_MS;
+        if (still < HANDOVER_STILL_MS && now - handOverFrom < HANDOVER_MAX_MS) { // a word came just now: give it a moment more
+            main.postDelayed(handOver, Math.max(50, HANDOVER_STILL_MS - still));
+            return;
+        }
+        if (still < HANDOVER_STILL_MS) return; // words still coming: the phone's own final result decides
+        trace("⚡");
+        heard(partial);
     }
 
     /** The watchdog fires this long from now unless the recognizer shows life again. */
@@ -1206,6 +1296,7 @@ final class VoiceIO {
 
     /** A try ended without words: start again (within the window), or tell why. */
     private void failed(int error) {
+        main.removeCallbacks(handOver);
         main.removeCallbacks(watchdog);
         main.removeCallbacks(endCheck);
         trace("✗" + error);
@@ -1262,6 +1353,7 @@ final class VoiceIO {
     /** The next try, after a short gap (the recognizer of this try is let go at once). */
     private void retry(long delay) {
         final int s = session;
+        main.removeCallbacks(handOver);
         main.removeCallbacks(watchdog);
         main.removeCallbacks(endCheck);
         main.removeCallbacks(nearEnd);
@@ -1293,6 +1385,7 @@ final class VoiceIO {
     }
 
     private void heard(String text) {
+        main.removeCallbacks(handOver);
         main.removeCallbacks(watchdog);
         main.removeCallbacks(windowEnd);
         main.removeCallbacks(endCheck);
@@ -1315,6 +1408,7 @@ final class VoiceIO {
     }
 
     private void fail(int error) {
+        main.removeCallbacks(handOver);
         main.removeCallbacks(watchdog);
         main.removeCallbacks(windowEnd);
         main.removeCallbacks(endCheck);
