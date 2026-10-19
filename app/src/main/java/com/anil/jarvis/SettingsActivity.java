@@ -1874,6 +1874,10 @@ public class SettingsActivity extends Activity {
             s.append("• సహజ గొంతుకి ").append(cvNow == null ? "OpenAI key లేదు" : cvNow.noKey()).append(": ఫోన్ గొంతుతో మాట్లాడతాను\n");
         else if (prefs.naturalVoice() && VoiceIO.naturalError != null)
             s.append("• సహజ గొంతు చివరిసారి పనిచేయలేదు (ఫోన్ గొంతుతో మాట్లాడాను): ").append(VoiceIO.naturalError).append("\n");
+        if (Brain.emptyAt > 0 && System.currentTimeMillis() - Brain.emptyAt < 7 * 86_400_000L)
+            s.append("• AI చివరిసారి ఖాళీ జవాబు ఇచ్చింది (").append(Backup.when(Brain.emptyAt)).append("): \"మళ్ళీ అడగండి\" అని చెప్పాను\n");
+        if (VoiceIO.voiceStuckAt > 0 && System.currentTimeMillis() - VoiceIO.voiceStuckAt < 7 * 86_400_000L)
+            s.append("• ఫోన్ గొంతు \"అయిపోయింది\" అని చెప్పలేదు (").append(Backup.when(VoiceIO.voiceStuckAt)).append("): జవాబు నేనే ముగించాను\n");
         if (prefs.naturalVoice() && VoiceIO.naturalCut != null)
             s.append("• సహజ గొంతు చివరి జవాబు మధ్యలో ఆగింది (మిగతాది టెక్స్ట్‌లో ఉంది): ").append(VoiceIO.naturalCut).append("\n");
         long backedUp = Backup.lastOk(this);

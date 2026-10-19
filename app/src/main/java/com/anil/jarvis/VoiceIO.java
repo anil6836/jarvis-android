@@ -114,6 +114,8 @@ final class VoiceIO {
     private final NaturalVoice natural = new NaturalVoice();
     /** Last reason the natural voice failed (shown in settings); null when it worked. */
     static volatile String naturalError;
+    /** When the phone's voice last never said "done" and the turn was ended by the time limit (0: never) — Jarvis చెక్. */
+    static volatile long voiceStuckAt;
     /** The Gemini / Sarvam voice stopped part-way through the last reply (a later piece didn't come), or null. */
     static volatile String naturalCut;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -345,7 +347,21 @@ final class VoiceIO {
         params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, Whisper.gain()); // he whispered "Jarvis": answer softly
         try { r = tts.speak(clean, TextToSpeech.QUEUE_FLUSH, params, "j" + utterance); }
         catch (Exception e) { r = TextToSpeech.ERROR; }
-        if (r != TextToSpeech.SUCCESS) failSpeak(); // no progress callbacks will come for it
+        if (r != TextToSpeech.SUCCESS) { failSpeak(); return; } // no progress callbacks will come for it
+        // the phone's voice engine sometimes never says "done": the turn must not stay "speaking" for ever
+        final int u = utterance;
+        long limit = 15_000 + (long) (clean.length() * 160 / Math.max(0.5f, rate));
+        main.postDelayed(() -> {
+            if (shut || utterance != u || !speaking || naturalNow || paused) return; // (finished, replaced, paused: not stuck)
+            voiceStuckAt = System.currentTimeMillis();
+            utterance++; // (a late "done" from the engine is for nothing now)
+            try { tts.stop(); } catch (Exception ignored) {}
+            speaking = false;
+            Duck.off();
+            barge.stop();
+            call.exit();
+            l.onSpeakDone();
+        }, limit);
     }
 
     /** The phone's voice for this language that is on the phone itself (when the one chosen needs the internet). */

@@ -77,12 +77,19 @@ final class Brain {
             "(?i)(బాగా ఆలోచించి|లోతుగా ఆలోచించి|లోతుగా ఆలోచించు|బాగా ఆలోచించు|ఆలోచించి చెప్పు|ఆలోచించి చూసి|think (deeply|carefully|hard)|deep ?think)");
     /** For the question being answered now: think long (set in ask, read by the request builders). */
     private volatile boolean deep;
+    /** Tools run for the question being answered now (an empty reply after a tool: "check it happened"). */
+    private volatile int toolsRun;
+    /** When the AI last answered with only a feeling tag, no words (wall clock; 0: never) — shown in Jarvis చెక్. */
+    static volatile long emptyAt;
+    static final String EMPTY = "జవాబు ఖాళీగా వచ్చింది. మళ్ళీ అడగండి.";
+    static final String EMPTY_AFTER_TOOL = "మీరు చెప్పిన పని చేయడానికి ప్రయత్నించాను, కానీ జవాబు ఖాళీగా వచ్చింది. జరిగిందో లేదో ఒకసారి చూసుకోండి.";
 
     String ask(List<JSONObject> history, String text, String jpegB64, Status status) throws Exception {
         // No internet: handle the simple everyday commands on the phone itself.
         if (!tools.online()) return tools.offlineCommand(text);
         Offline.netBack(prefs.app); // (the next stretch without internet is told again; questions kept without it are answered)
         deep = prefs.sp.getBoolean("deep_always", false) || (text != null && DEEP_WORDS.matcher(text).find());
+        toolsRun = 0;
         if (deep && status != null) status.update("లోతుగా ఆలోచిస్తున్నాను…");
         boolean feel = prefs.emotions();
         String system = systemPrompt() + (feel ? Emotion.rule() : "") + whoAmI();
@@ -100,7 +107,12 @@ final class Brain {
         }
         try { reply = crossCheck(history, text, reply, status); } catch (Exception ignored) {} // never lose the answer over the check
         // the feeling tag ([happy], [sad]...) is for the voice only: take it off the text
-        return feel ? Emotion.strip(reply) : reply;
+        String out = feel ? Emotion.strip(reply) : reply;
+        if (out == null || out.trim().isEmpty()) { // only a tag came, no words: said honestly, never a silent answer stuck on "ఆలోచిస్తున్నాను…"
+            emptyAt = System.currentTimeMillis();
+            out = toolsRun > 0 ? EMPTY_AFTER_TOOL : EMPTY;
+        }
+        return out;
     }
 
     /** "క్రాస్ చెక్ చేయి" (any question), or on its own for money / health / law questions when he switched that on. */
@@ -843,6 +855,7 @@ final class Brain {
                     status.update(Tools.statusFor(name));
                     JobProgress.ui = status;
                     result = tools.execute(name, args);
+                    toolsRun++;
                 }
                 Object value;
                 try { value = new JSONObject(result); } catch (Exception e) { value = result; }
@@ -934,6 +947,7 @@ final class Brain {
                         try { args = new JSONObject(item.optString("arguments", "{}")); } catch (Exception e) { args = new JSONObject(); }
                         checkCancelled(status);
                         String result = tools.execute(name, args);
+                        toolsRun++;
                         results.put(new JSONObject()
                                 .put("type", "function_call_output")
                                 .put("call_id", item.optString("call_id"))
@@ -1019,6 +1033,7 @@ final class Brain {
                     JSONObject args = b.optJSONObject("input");
                     checkCancelled(status);
                     String result = tools.execute(name, args == null ? new JSONObject() : args);
+                    toolsRun++;
                     results.put(new JSONObject()
                             .put("type", "tool_result")
                             .put("tool_use_id", b.optString("id"))

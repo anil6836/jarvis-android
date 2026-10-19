@@ -2193,6 +2193,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void onReply(int gen, String reply, String error) {
         if (gen != generation) return; // Anil stopped this one
         busy = false;
+        if (error == null && (reply == null || reply.trim().isEmpty())) error = Brain.EMPTY; // (never a silent, stuck turn)
         removeThinking();
         if (error != null) {
             TextView t = addMessage("assistant", error, System.currentTimeMillis(), null);

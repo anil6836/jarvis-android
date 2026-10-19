@@ -849,6 +849,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             main.post(() -> {
                 if (gen != generation || isFinishing()) return;
                 busy = false;
+                if (err == null && (a == null || a.trim().isEmpty())) { showReply(Brain.EMPTY, true); idle(); return; } // (never stuck)
                 if (err != null) { showReply(err, true); idle(); return; }
                 store.addChat("assistant", a, false);
                 showReply(a, false);

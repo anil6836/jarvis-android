@@ -120,6 +120,7 @@ public class WatchTalkActivity extends Activity implements Tools.Host {
             main.post(() -> {
                 if (gen != generation || isDestroyed()) return;
                 busy = false;
+                if (err == null && (a == null || a.trim().isEmpty())) { answer(Brain.EMPTY, true); return; } // (never stuck)
                 if (err != null) { answer(err, true); return; }
                 store.addChat("assistant", a, false);
                 answer(a, false);
