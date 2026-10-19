@@ -36,7 +36,8 @@ final class Filler {
             "jarvis_mood", "save_memory", "forget_memory", "add_mission", "complete_mission", "play_youtube", "media_control",
             "local_media", "voice_mode", "call_contact", "call_control", "find_phone", "open_app", "close_app", "flashlight",
             "set_alarm", "set_timer", "stopwatch", "phone_setting", "night_mode", "driving_mode", "sos", "sounds", "song_alarm",
-            "interpreter", "english_practice", "jarvis_camera", "look_through_camera", "read_screen", "voice_recorder", "send_draft"));
+            "interpreter", "english_practice", "jarvis_camera", "look_through_camera", "read_screen", "voice_recorder", "send_draft",
+            "more_tools"));
 
     private static final Object lock = new Object();
     private static AudioTrack track;

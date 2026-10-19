@@ -62,6 +62,20 @@ final class Usage {
 
     // ---------------------------------------------------------------- what the APIs report
 
+    /**
+     * ⚡ The brain's request sizes for the answer being made on this thread (Brain.ask sets it, then reads it):
+     * {rounds, the first round's tokens, all rounds' tokens, of those the ones the AI had kept (cache)}.
+     */
+    static final ThreadLocal<long[]> TALLY = new ThreadLocal<>();
+
+    private static void tally(long total, long cached) {
+        long[] t = TALLY.get();
+        if (t == null) return;
+        if (t[0]++ == 0) t[1] = total;
+        t[2] += total;
+        t[3] += cached;
+    }
+
     /** Called by Http for every successful JSON answer. */
     static void fromResponse(String url, JSONObject res) {
         if (url == null || res == null || app == null) return;
@@ -76,6 +90,7 @@ final class Usage {
                 }
                 long cached = u.optLong("cachedContentTokenCount");
                 long in = u.optLong("promptTokenCount") - cached + u.optLong("toolUsePromptTokenCount");
+                tally(u.optLong("promptTokenCount") + u.optLong("toolUsePromptTokenCount"), cached);
                 long out = u.optLong("candidatesTokenCount") + u.optLong("thoughtsTokenCount");
                 add(GEMINI, model, in, cached, out, 0);
             } else if (url.contains("api.openai.com/v1/responses")) {
@@ -83,6 +98,7 @@ final class Usage {
                 if (u == null) return;
                 JSONObject d = u.optJSONObject("input_tokens_details");
                 long cached = d == null ? 0 : d.optLong("cached_tokens");
+                tally(u.optLong("input_tokens"), cached);
                 int searches = 0;
                 JSONArray out = res.optJSONArray("output");
                 for (int i = 0; out != null && i < out.length(); i++) {
@@ -99,6 +115,7 @@ final class Usage {
                 if (u == null) return;
                 String model = res.optString("model");
                 long cached = u.optLong("cache_read_input_tokens");
+                tally(u.optLong("input_tokens") + cached + u.optLong("cache_creation_input_tokens"), cached);
                 // cache writes cost 1.25x input: count them as a quarter more input tokens
                 long in = u.optLong("input_tokens") + Math.round(u.optLong("cache_creation_input_tokens") * 1.25);
                 JSONObject st = u.optJSONObject("server_tool_use");

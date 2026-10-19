@@ -98,7 +98,7 @@ public class SettingsActivity extends Activity {
     private ScrollView pageScroll;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel, camAlways;
     /** ⚡ వేగం: each speed change on its own (Prefs.speedG / K / F / E). */
-    private Switch speedG, speedK, speedF, speedE;
+    private Switch speedG, speedK, speedF, speedE, speedA, speed5;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
     private int coughGap;
@@ -2063,6 +2063,8 @@ public class SettingsActivity extends Activity {
         e.putBoolean("speed_k", speedK.isChecked());
         e.putBoolean("speed_f", speedF.isChecked());
         e.putBoolean("speed_e", speedE.isChecked());
+        e.putBoolean("speed_a", speedA.isChecked());
+        e.putBoolean("speed_5", speed5.isChecked());
         int lbc = liveBarge.getCheckedRadioButtonId();
         e.putString("live_barge", lbc == 96 ? "voice" : lbc == 97 ? "off" : "word");
         e.putInt("barge_sens", bargeSens.getProgress());
@@ -4309,8 +4311,12 @@ public class SettingsActivity extends Activity {
                 prefs.sp.getBoolean("speed_f", true));
         speedE = toggle("E · జవాబు అక్షరాలు, గొంతు ఒకేసారి (అక్షరాలు గొంతు మొదలయ్యాక వస్తాయి; 2.5 సెకన్లకి మించి ఆగవు)",
                 prefs.sp.getBoolean("speed_e", true));
+        speedA = toggle("A · మెదడుకి చిన్న పొట్లం: ప్రశ్నకి కావాల్సిన ఫోన్ పనులు, వాటి రూల్స్ మాత్రమే AI కి (మిగతావి అవసరమైతే AI తనే తెప్పించుకుంటుంది). "
+                + "భద్రత రూల్స్ ఎప్పుడూ వెళ్తాయి", prefs.sp.getBoolean("speed_a", true));
+        speed5 = toggle("5 · రూల్ బుక్ గుర్తుండేలా: టైమ్, ఫోన్ వివరాలు లాంటి మారేవి ప్రశ్నతో పాటు వెళ్తాయి; రూల్ బుక్ మొదలు ప్రతిసారీ ఒకేలా ఉండి AI దాన్ని గుర్తుంచుకుంటుంది (ఖర్చు తక్కువ)",
+                prefs.sp.getBoolean("speed_5", true));
         button("అన్నీ పాత పద్ధతికి (అన్నీ ఆఫ్)", v -> {
-            for (Switch w : new Switch[]{speedG, speedK, speedF, speedE}) w.setChecked(false);
+            for (Switch w : new Switch[]{speedG, speedK, speedF, speedE, speedA, speed5}) w.setChecked(false);
             autosave();
             Toast.makeText(this, "⚡ అన్నీ ఆఫ్: ఇంతకుముందు పద్ధతిలోనే", Toast.LENGTH_SHORT).show();
         });
@@ -4320,7 +4326,7 @@ public class SettingsActivity extends Activity {
     /** Jarvis చెక్'s line: which speed switches are on. */
     private String speedLine() {
         StringBuilder b = new StringBuilder("• ⚡ వేగం: ");
-        String[][] all = {{"G", "speed_g"}, {"K", "speed_k"}, {"F", "speed_f"}, {"E", "speed_e"}};
+        String[][] all = {{"G", "speed_g"}, {"K", "speed_k"}, {"F", "speed_f"}, {"E", "speed_e"}, {"A", "speed_a"}, {"5", "speed_5"}};
         for (int i = 0; i < all.length; i++) {
             if (i > 0) b.append(" · ");
             b.append(all[i][0]).append(prefs.sp.getBoolean(all[i][1], true) ? " ✓" : " ఆఫ్");

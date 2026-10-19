@@ -846,21 +846,52 @@ final class Tools {
         return a;
     }
 
-    JSONArray openAiTools() throws Exception {
+    JSONArray openAiTools() throws Exception { return openAiTools(null); }
+
+    /** Gemini function declarations (a tool without parameters sends no schema). */
+    JSONArray geminiTools() throws Exception { return geminiTools(null); }
+
+    JSONArray anthropicTools() throws Exception { return anthropicTools(null); }
+
+    /** Every phone job's name, in the order they are declared. */
+    static List<String> toolNames() {
+        List<String> out = new ArrayList<>();
+        for (Def d : DEFS) out.add(d.name);
+        return out;
+    }
+
+    /**
+     * The jobs sent to the AI. only == null: all of them, in their usual order (as always). ⚡ A: only these, the everyday
+     * ones first (in the same order every time), then more_tools, then this question's groups.
+     */
+    private List<Def> sendable(java.util.Set<String> only) {
+        List<Def> out = new ArrayList<>();
+        if (only == null) {
+            for (Def d : DEFS) if (!"home_care".equals(d.name) || prefs.homeMode()) out.add(d); // (home_care: the home tablet only)
+            return out;
+        }
+        for (Def d : DEFS) if (only.contains(d.name) && SpeedGroups.groupOf(d.name) == null && (!"home_care".equals(d.name) || prefs.homeMode())) out.add(d);
+        out.add(MORE_TOOLS);
+        for (Def d : DEFS) if (only.contains(d.name) && SpeedGroups.groupOf(d.name) != null && (!"home_care".equals(d.name) || prefs.homeMode())) out.add(d);
+        return out;
+    }
+
+    /** ⚡ A: the AI asks for a group of jobs it wasn't sent (Brain answers it; it never reaches execute()). */
+    static final Def MORE_TOOLS = new Def("more_tools", SpeedGroups.moreToolsAbout(),
+            schema(new String[][]{{"groups", "string", "Group names, comma separated (for example 'bike' or 'money, health')"}}, "groups"));
+
+    JSONArray openAiTools(java.util.Set<String> only) throws Exception {
         JSONArray a = new JSONArray();
-        for (Def d : DEFS) {
-            if ("home_care".equals(d.name) && !prefs.homeMode()) continue; // (the home tablet only)
+        for (Def d : sendable(only)) {
             a.put(new JSONObject().put("type", "function").put("name", d.name)
                     .put("description", d.description).put("parameters", d.params));
         }
         return a;
     }
 
-    /** Gemini function declarations (a tool without parameters sends no schema). */
-    JSONArray geminiTools() throws Exception {
+    JSONArray geminiTools(java.util.Set<String> only) throws Exception {
         JSONArray a = new JSONArray();
-        for (Def d : DEFS) {
-            if ("home_care".equals(d.name) && !prefs.homeMode()) continue; // (the home tablet only)
+        for (Def d : sendable(only)) {
             JSONObject f = new JSONObject().put("name", d.name).put("description", d.description);
             JSONObject props = d.params.optJSONObject("properties");
             if (props != null && props.length() > 0) f.put("parameters", d.params);
@@ -869,10 +900,9 @@ final class Tools {
         return a;
     }
 
-    JSONArray anthropicTools() throws Exception {
+    JSONArray anthropicTools(java.util.Set<String> only) throws Exception {
         JSONArray a = new JSONArray();
-        for (Def d : DEFS) {
-            if ("home_care".equals(d.name) && !prefs.homeMode()) continue; // (the home tablet only)
+        for (Def d : sendable(only)) {
             a.put(new JSONObject().put("name", d.name).put("description", d.description).put("input_schema", d.params));
         }
         return a;

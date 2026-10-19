@@ -860,7 +860,8 @@ final class VoiceIO {
                     .append(off.isEmpty() ? "" : " · ⚡ఆఫ్: " + off).append("\n");
         }
         String[][] legend = {{"🛠️", "ఫోన్ పని"}, {"🔎", "ఇంటర్నెట్ సెర్చ్"}, {"🔁", "రెండో AI చెక్"}, {"🧠", "లోతుగా ఆలోచన"},
-                {"📝", "పెద్ద జవాబు"}, {"🔌", "బ్రేక్ తర్వాత మొదటి ప్రశ్న"}};
+                {"📝", "పెద్ద జవాబు"}, {"🔌", "బ్రేక్ తర్వాత మొదటి ప్రశ్న"}, {"📚", "లేని పనులు AI తెప్పించుకుంది"},
+                {"📄", "AI కి వెళ్ళిన పుస్తకం (వేల tokens)"}, {"💾", "అందులో AI గుర్తుంచుకున్న భాగం"}};
         StringBuilder l = new StringBuilder();
         for (String[] x : legend) if (seen.indexOf(x[0]) >= 0) l.append(l.length() == 0 ? "" : " · ").append(x[0]).append(' ').append(x[1]);
         if (l.length() > 0) b.append("   (").append(l).append(")\n");

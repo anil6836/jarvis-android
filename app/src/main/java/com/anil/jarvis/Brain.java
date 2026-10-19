@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.concurrent.CancellationException;
 
@@ -109,18 +110,60 @@ final class Brain {
         boolean afterBreak = lastAskEnd == 0 || askStart - lastAskEnd > 270_000L;
         if (deep && status != null) status.update("లోతుగా ఆలోచిస్తున్నాను…");
         boolean feel = prefs.emotions();
-        String system = systemPrompt() + (feel ? Emotion.rule() : "") + whoAmI();
+        String[] parts = promptParts();
+        // ⚡ A: only the groups of phone jobs this question needs (null: all, as always)
+        Set<String> groups = null, own = null;
+        if (prefs.speedA()) {
+            List<String> recent = new ArrayList<>();
+            for (int i = history == null ? -1 : history.size() - 1; i >= 0 && recent.size() < 2; i--) recent.add(history.get(i).optString("content", ""));
+            // his face from the front camera comes with a note: not a picture to read, and not his words
+            int selfieAt = text == null ? -1 : text.indexOf(SELFIE_NOTE);
+            String words = selfieAt < 0 ? text : text.substring(0, selfieAt).trim();
+            boolean onTheRoad = CarCare.on(prefs.app) || prefs.driving() || CrashAlert.active || DriveService.running || Journey.on(prefs.app);
+            groups = SpeedGroups.pick(words, recent, jpegB64 != null && selfieAt < 0, words != null && words.contains("--- ఫైల్:"), onTheRoad, deep);
+            if (groups != null) own = new java.util.LinkedHashSet<>(groups);
+            Set<String> before = recentGroups; // a talk that goes on (cooking steps, the radio…) keeps its groups for 5 minutes
+            if (groups != null && before != null && askStart - recentAt < 5 * 60_000L) groups.addAll(before);
+        }
+        String fixed = parts[2] + (feel ? Emotion.rule() : "") + whoAmI();
+        // ⚡ 5: what changes every minute goes with the question, so the rule book's start is the same every time (the AI keeps it)
+        boolean keep = prefs.speed5();
+        String head = parts[0], extra = "";
+        if (groups != null) {
+            String[] sp = SpeedGroups.split(parts[0], Tools.toolNames(), SpeedGroups.allowed(Tools.toolNames(), groups));
+            head = sp[0];
+            extra = SpeedGroups.RULE + sp[1];
+        }
+        AskState st = new AskState();
+        st.groups = groups;
+        st.head = parts[0];
+        st.cache = keep;
+        // (the whole rule book, for when the AI reached for a job it wasn't sent: then it gets every job and every rule)
+        st.full = keep ? parts[0] + fixed + SpeedGroups.RULE : parts[0] + parts[1] + fixed + SpeedGroups.RULE;
+        String system = keep ? head + fixed + extra : head + parts[1] + fixed + extra;
+        String asked = keep ? NOW_HEAD + parts[1] + WORDS_HEAD + text : text;
         List<String[]> turns = normalize(history);
         String reply;
+        long[] tally = st.tally;
+        Set<String> sentFirst = groups == null ? null : new java.util.LinkedHashSet<>(groups);
+        ASK.set(st);
         Http.LONG_WAIT.set(deep); // long thinking may take minutes
         try {
             reply = prefs.isGemini()
-                    ? gemini(system, turns, text, jpegB64, status)
+                    ? gemini(system, turns, asked, jpegB64, status)
                     : prefs.isOpenAi()
-                    ? openAi(system, turns, text, jpegB64, status)
-                    : anthropic(system, turns, text, jpegB64, status);
+                    ? openAi(system, turns, asked, jpegB64, status)
+                    : anthropic(system, turns, asked, jpegB64, status);
         } finally {
             Http.LONG_WAIT.set(false);
+            ASK.remove();
+        }
+        boolean moreUsed = st.more;
+        if (own != null && !st.fellBack && st.groups != null) { // what this answer itself needed (not the ones carried over), for the next 5 minutes
+            Set<String> mine = new java.util.LinkedHashSet<>(own);
+            for (String g : st.groups) if (!sentFirst.contains(g)) mine.add(g); // (fetched with more_tools / used anyway)
+            recentGroups = mine;
+            recentAt = android.os.SystemClock.elapsedRealtime();
         }
         try { reply = crossCheck(history, text, reply, status); } catch (Exception ignored) {} // never lose the answer over the check
         // the feeling tag ([happy], [sad]...) is for the voice only: take it off the text
@@ -130,9 +173,91 @@ final class Brain {
             out = toolsRun > 0 ? EMPTY_AFTER_TOOL : EMPTY;
         }
         lastAskEnd = android.os.SystemClock.elapsedRealtime();
-        askMarks = marks(toolsRun, searched, checkedNow, deep, out.length(), afterBreak);
+        askMarks = (marks(toolsRun, searched, checkedNow, deep, out.length(), afterBreak) + (moreUsed ? " 📚" : "") + " " + book(tally)).trim();
         askMarksAt = lastAskEnd;
         return out;
+    }
+
+    /** ⚡ 5: the lines that change every minute, sent with his words (marked, so they are never taken as his). */
+    static final String NOW_HEAD = "[Now and his phone's state for this question (from the phone, not his words):]\n";
+    static final String WORDS_HEAD = "[His words:]\n";
+
+    /** (The front-camera note MainActivity adds to his question: his face, not a picture to read.) */
+    private static final String SELFIE_NOTE = "(Attached: a live front-camera picture of whoever is talking to you right now";
+
+    /**
+     * One question's ⚡ state, on the thread that asks (the same Brain may answer on another thread at the same time, e.g.
+     * a Live hand-off): its groups of phone jobs (null: all; more_tools adds), the whole rule book's first part, the whole
+     * rule book (used if the AI reaches for a job it wasn't sent), 5 on, more_tools used, and the request sizes.
+     */
+    private static final class AskState {
+        Set<String> groups;
+        String head = "", full = "";
+        boolean cache, more, fellBack;
+        final long[] tally = new long[4];
+    }
+
+    private static final ThreadLocal<AskState> ASK = new ThreadLocal<>();
+
+    /** The groups of the last answer, and when (a talk that goes on keeps them a while). */
+    private static volatile Set<String> recentGroups;
+    private static volatile long recentAt;
+
+    /** The phone jobs to send in this round (null: all of them, as always). */
+    private Set<String> allowedNow() {
+        AskState st = ASK.get();
+        Set<String> g = st == null ? null : st.groups;
+        return g == null ? null : SpeedGroups.allowed(Tools.toolNames(), g);
+    }
+
+    /** ⚡ A asked for: the groups it named come in (from the next round), with their how-to. */
+    private String moreTools(JSONObject args) {
+        AskState st = ASK.get();
+        if (st != null) st.more = true;
+        if (st == null || st.groups == null) return "{\"ok\":true,\"note\":\"every phone job is already in your list\"}";
+        return SpeedGroups.load(args, st.groups, st.head, Tools.toolNames());
+    }
+
+    /** A job it called that wasn't sent this time (it knew it anyway): it runs, and its group comes along from now on. */
+    private void noteGroup(String tool) {
+        AskState st = ASK.get();
+        String gr = SpeedGroups.groupOf(tool);
+        if (st != null && st.groups != null && gr != null) st.groups.add(gr);
+    }
+
+    /** The AI's own request (not a search or a tool's own AI call): its size and kept part go into this answer's 📄 💾. */
+    private static JSONObject counted(java.util.concurrent.Callable<JSONObject> call) throws Exception {
+        AskState st = ASK.get();
+        if (st != null) Usage.TALLY.set(st.tally);
+        try {
+            return call.call();
+        } finally {
+            Usage.TALLY.remove();
+        }
+    }
+
+    /**
+     * ⚡ 5 for Claude (it keeps only what it is told to, in the order tools → rule book → talk): with ⚡ A the everyday jobs
+     * are kept (up to more_tools; this question's groups come after it), else the jobs and the whole rule book. Off: as always.
+     */
+    private static Object keepSystem(String system, JSONArray toolList) throws Exception {
+        AskState st = ASK.get();
+        if (st == null || !st.cache) return system;
+        JSONObject mark = new JSONObject().put("type", "ephemeral");
+        if (st.groups != null) {
+            for (int i = 0; i < toolList.length(); i++) {
+                JSONObject t = toolList.optJSONObject(i);
+                if (t != null && "more_tools".equals(t.optString("name"))) { t.put("cache_control", mark); break; }
+            }
+            return system;
+        }
+        return new JSONArray().put(new JSONObject().put("type", "text").put("text", system).put("cache_control", mark));
+    }
+
+    /** "📄31k 💾60%": the first request's size (the rule book + the talk) and how much of all the requests the AI had kept. */
+    static String book(long[] t) {
+        if (t == null || t[0] == 0) return "";
+        return "📄" + Math.max(1, Math.round(t[1] / 1000.0)) + "k" + (t[2] > 0 ? " 💾" + (t[3] * 100 / t[2]) + "%" : "");
     }
 
     /** The ⏱️ list's marks for one answer (see askMarks); a reply of 300+ letters counts as long. */
@@ -353,6 +478,15 @@ final class Brain {
     }
 
     String systemPrompt() {
+        String[] p = promptParts();
+        return p[0] + p[1] + p[2];
+    }
+
+    /**
+     * The rule book in three parts: {who Jarvis is, how he thinks and feels, the rules; "Now" and the phone's state
+     * right now (changes every minute); his memories and missions}. Together = systemPrompt(), as always.
+     */
+    String[] promptParts() {
         String name = prefs.realName(), call = prefs.name();
         SimpleDateFormat f = new SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", Locale.ENGLISH);
         String now = f.format(new Date()) + " (" + TimeZone.getDefault().getID() + ")";
@@ -373,7 +507,7 @@ final class Brain {
             if (xs.get(i).optBoolean("done")) { done.append("- ").append(xs.get(i).optString("text")).append('\n'); doneCount++; }
         }
 
-        return (prefs.homeMode() ? "HOME MODE (this overrides anything below that does not fit): " + HomeCare.persona(prefs.app) + "\n\n" : "")
+        String head = (prefs.homeMode() ? "HOME MODE (this overrides anything below that does not fit): " + HomeCare.persona(prefs.app) + "\n\n" : "")
                 + "You are JARVIS, " + name + "'s personal AI assistant living on his Android phone, in the spirit of the JARVIS from the Iron Man films: calm, precise, quietly loyal, with dry British-butler wit.\n\n"
                 + "How you think (this is what makes you JARVIS):\n"
                 + "- Know his situation: the 'Right now' lines below say whether he is on duty or at home, where he is, the bike's charge, the phone's battery, "
@@ -623,12 +757,13 @@ final class Brain {
                 + "Faces are only learnt when he introduces a person; never guess a stranger's name. 'ఎవరెవరు తెలుసు?' -> action=people; 'X ని మర్చిపో' -> action=forget. "
                 + "'నీ ముఖం దాచు/చూపించు' -> action=face_hide/face_show; 'కెమెరాతో చూడకు/చూడు' -> action=eyes_off/eyes_on.\n"
                 + "- If a tool reports an error, tell him briefly what went wrong and what he can do.\n"
-                + "- If he sends a photo, look at it carefully and answer about what is actually in it.\n\n"
-                + "Now: " + now + "\n"
-                + "Right now (from his phone):\n" + situation() + "\n"
-                + name + "'s saved memories (id: text):\n" + (mem.length() == 0 ? "(none yet)\n" : mem)
+                + "- If he sends a photo, look at it carefully and answer about what is actually in it.\n\n";
+        String dyn = "Now: " + now + "\n"
+                + "Right now (from his phone):\n" + situation() + "\n";
+        String tail = name + "'s saved memories (id: text):\n" + (mem.length() == 0 ? "(none yet)\n" : mem)
                 + "\nActive missions (id: text):\n" + (act.length() == 0 ? "(none)\n" : act)
                 + "\nRecently completed missions:\n" + (done.length() == 0 ? "(none)\n" : done);
+        return new String[]{head, dyn, tail};
     }
 
     /** Last 16 turns as {role, text}, starting with a user turn and alternating roles. */
@@ -915,29 +1050,41 @@ final class Brain {
                 : new JSONObject().put("mimeType", "image/jpeg").put("data", img)));
         contents.put(new JSONObject().put("role", "user").put("parts", parts));
 
-        JSONArray decls = tools.geminiTools();
-        // Google Search cannot be mixed with Jarvis's own tools in one request: it is a tool of its own here.
-        if (prefs.webSearch()) {
-            decls.put(new JSONObject().put("name", "search_web")
-                    .put("description", "Search the internet (Google) for anything current: news, scores, prices, weather, facts, people. Returns a short answer with sources.")
-                    .put("parameters", new JSONObject().put("type", "object")
-                            .put("properties", new JSONObject().put("query", new JSONObject().put("type", "string").put("description", "What to search, in English")))
-                            .put("required", new JSONArray().put("query"))));
-        }
-        JSONArray toolList = new JSONArray().put(new JSONObject().put("functionDeclarations", decls));
-
         for (int round = 0; round < MAX_ROUNDS; round++) {
             checkCancelled(status);
+            JSONArray decls = tools.geminiTools(allowedNow()); // (⚡ A: this question's jobs; more_tools may add some)
+            // Google Search cannot be mixed with Jarvis's own tools in one request: it is a tool of its own here.
+            if (prefs.webSearch()) {
+                decls.put(new JSONObject().put("name", "search_web")
+                        .put("description", "Search the internet (Google) for anything current: news, scores, prices, weather, facts, people. Returns a short answer with sources.")
+                        .put("parameters", new JSONObject().put("type", "object")
+                                .put("properties", new JSONObject().put("query", new JSONObject().put("type", "string").put("description", "What to search, in English")))
+                                .put("required", new JSONArray().put("query"))));
+            }
+            JSONArray toolList = new JSONArray().put(new JSONObject().put("functionDeclarations", decls));
             JSONObject body = new JSONObject()
                     .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", system))))
                     .put("contents", contents)
                     .put("tools", toolList)
                     .put("generationConfig", geminiConfig(prefs, deep ? 24576 : 8192, deep)); // its thinking counts too
-            JSONObject res = geminiCall(prefs, key, body);
+            final JSONObject sent = body;
+            JSONObject res = counted(() -> geminiCall(prefs, key, sent));
             JSONArray cands = res.optJSONArray("candidates");
             if (cands == null || cands.length() == 0) return geminiText(res); // throws with the reason
             JSONObject content = cands.getJSONObject(0).optJSONObject("content");
-            if (content == null) throw new Http.ApiError(0, "Gemini gave no answer (" + cands.getJSONObject(0).optString("finishReason") + ")");
+            String why = cands.getJSONObject(0).optString("finishReason");
+            AskState st = ASK.get();
+            JSONArray got = content == null ? null : content.optJSONArray("parts");
+            if ((got == null || got.length() == 0) && st != null && st.groups != null && !st.fellBack
+                    && (why.contains("FUNCTION_CALL") || why.contains("TOOL_CALL"))) {
+                // ⚡ A: it reached for a job it wasn't sent: this round again (once) with every job and the whole rule book
+                st.groups = new java.util.LinkedHashSet<>(SpeedGroups.TOOLS.keySet());
+                st.fellBack = true;
+                st.more = true;
+                system = st.full;
+                continue;
+            }
+            if (content == null) throw new Http.ApiError(0, "Gemini gave no answer (" + why + ")");
             if (!content.has("role")) content.put("role", "model");
             contents.put(content); // sent back as it came (it may carry Gemini's thought signatures)
 
@@ -959,7 +1106,10 @@ final class Brain {
                     status.update("ఇంటర్నెట్‌లో వెతుకుతున్నాను…");
                     searched = true;
                     result = geminiSearch(key, args.optString("query"));
+                } else if ("more_tools".equals(name)) {
+                    result = moreTools(args);
                 } else {
+                    noteGroup(name);
                     status.update(Tools.statusFor(name));
                     JobProgress.ui = status;
                     result = tools.execute(name, args);
@@ -1007,13 +1157,12 @@ final class Brain {
                 : new JSONObject().put("type", "input_image").put("image_url", "data:image/jpeg;base64," + img));
         input.put(new JSONObject().put("role", "user").put("content", content));
 
-        JSONArray toolList = tools.openAiTools();
-        if (prefs.webSearch()) toolList.put(new JSONObject().put("type", "web_search"));
-
         String previous = null;
         JSONArray next = input;
         for (int round = 0; round < MAX_ROUNDS; round++) {
             checkCancelled(status);
+            JSONArray toolList = tools.openAiTools(allowedNow()); // (⚡ A: this question's jobs; more_tools may add some)
+            if (prefs.webSearch()) toolList.put(new JSONObject().put("type", "web_search"));
             JSONObject body = new JSONObject()
                     .put("model", prefs.model())
                     .put("instructions", system)
@@ -1024,12 +1173,12 @@ final class Brain {
             if (!noReasoningOption) body.put("reasoning", new JSONObject().put("effort", deep ? "high" : "low"));
             JSONObject res;
             try {
-                res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
+                res = counted(() -> Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key));
             } catch (Http.ApiError e) {
                 if (noReasoningOption || e.status != 400 || String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT).indexOf("reasoning") < 0) throw e;
                 noReasoningOption = true; // this model has no reasoning setting: ask again without it
                 body.remove("reasoning");
-                res = Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key);
+                res = counted(() -> Http.post("https://api.openai.com/v1/responses", body, "Authorization", "Bearer " + key));
             }
             previous = res.optString("id", null);
 
@@ -1057,8 +1206,9 @@ final class Brain {
                         try { args = new JSONObject(item.optString("arguments", "{}")); } catch (Exception e) { args = new JSONObject(); }
                         checkCancelled(status);
                         status.toolRound(name);
-                        String result = tools.execute(name, args);
-                        toolsRun++;
+                        String result;
+                        if ("more_tools".equals(name)) result = moreTools(args);
+                        else { noteGroup(name); result = tools.execute(name, args); toolsRun++; }
                         results.put(new JSONObject()
                                 .put("type", "function_call_output")
                                 .put("call_id", item.optString("call_id"))
@@ -1094,21 +1244,20 @@ final class Brain {
         content.put(new JSONObject().put("type", "text").put("text", text));
         messages.put(new JSONObject().put("role", "user").put("content", content));
 
-        JSONArray toolList = tools.anthropicTools();
-        if (prefs.webSearch()) {
-            toolList.put(new JSONObject()
-                    .put("type", "web_search_20250305")
-                    .put("name", "web_search")
-                    .put("max_uses", 3));
-        }
-
         for (int round = 0; round < MAX_ROUNDS; round++) {
             checkCancelled(status);
+            JSONArray toolList = tools.anthropicTools(allowedNow()); // (⚡ A: this question's jobs; more_tools may add some)
+            if (prefs.webSearch()) {
+                toolList.put(new JSONObject()
+                        .put("type", "web_search_20250305")
+                        .put("name", "web_search")
+                        .put("max_uses", 3));
+            }
             // 4096: newer Claude models always think a little, and that counts in max_tokens
             JSONObject body = new JSONObject()
                     .put("model", prefs.model())
                     .put("max_tokens", deep ? 16000 : 4096)
-                    .put("system", system)
+                    .put("system", keepSystem(system, toolList))
                     .put("messages", messages)
                     .put("tools", toolList);
             String model = prefs.model();
@@ -1117,7 +1266,8 @@ final class Brain {
             JSONObject res;
             while (true) {
                 try {
-                    res = Http.post("https://api.anthropic.com/v1/messages", body, "x-api-key", key, "anthropic-version", "2023-06-01");
+                    final JSONObject sentA = body;
+                    res = counted(() -> Http.post("https://api.anthropic.com/v1/messages", sentA, "x-api-key", key, "anthropic-version", "2023-06-01"));
                     break;
                 } catch (Http.ApiError e) {
                     String msg = String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT);
@@ -1145,8 +1295,9 @@ final class Brain {
                     JSONObject args = b.optJSONObject("input");
                     checkCancelled(status);
                     status.toolRound(name);
-                    String result = tools.execute(name, args == null ? new JSONObject() : args);
-                    toolsRun++;
+                    String result;
+                    if ("more_tools".equals(name)) result = moreTools(args);
+                    else { noteGroup(name); result = tools.execute(name, args == null ? new JSONObject() : args); toolsRun++; }
                     results.put(new JSONObject()
                             .put("type", "tool_result")
                             .put("tool_use_id", b.optString("id"))

@@ -412,11 +412,15 @@ final class Prefs {
     boolean speedF() { return !homeMode() && sp.getBoolean("speed_f", true); }
     /** E: the answer's words come on the screen when its voice starts (at most 2.5 s later). */
     boolean speedE() { return !homeMode() && sp.getBoolean("speed_e", true); }
+    /** A (build 2): the brain gets only the phone jobs (and their rules) this question needs; the rest it can fetch. */
+    boolean speedA() { return !homeMode() && sp.getBoolean("speed_a", true); }
+    /** 5 (build 2): what changes every minute goes with the question, so the AI can keep the rule book's start. */
+    boolean speed5() { return !homeMode() && sp.getBoolean("speed_5", true); }
     /** The switches that are off now (for the ⏱️ list: "G K"), empty when all are on. */
     String speedOff() {
         if (homeMode()) return "";
         StringBuilder b = new StringBuilder();
-        for (String k : new String[]{"g", "k", "f", "e"}) if (!sp.getBoolean("speed_" + k, true)) b.append(k.toUpperCase(java.util.Locale.ROOT)).append(' ');
+        for (String k : new String[]{"g", "k", "f", "e", "a", "5"}) if (!sp.getBoolean("speed_" + k, true)) b.append(k.toUpperCase(java.util.Locale.ROOT)).append(' ');
         return b.toString().trim();
     }
 
