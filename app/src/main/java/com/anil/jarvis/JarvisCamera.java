@@ -780,7 +780,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         speaking = false;
         caption.setText(captionBase);
         refreshButtons();
-        if (remark && AUTO_TALK) {
+        if (remark) {
             remark = false;
             if (!listenOn) { if (wakeMode()) idleMicOff(); return; } // (mic off stays off)
             if (wakeMode() && pendingAuto.isEmpty()) { idle(); return; }
@@ -1559,11 +1559,12 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 "🅿️ బండి ఇక్కడ పెట్టాను", "🔑 ఈ వస్తువు ఇక్కడ పెడుతున్నా", "🔍 భూతద్దం (చిన్న అక్షరాలు)", "📚 స్కాన్ చరిత్ర", "🧊 నా బోర్డులు / తెరిచినవి",
                 "⌨️ టైప్ చేసి అడుగు", "📡 AR పేర్లు: " + (arOn ? "ఆన్" : "ఆఫ్"), "📤 షేర్ (బొమ్మ + జవాబు)",
                 "🎛️ HUD సెట్టింగ్స్ (రింగ్స్, శబ్దాలు, బోర్డులు, ముఖాలు, మెష్…)", "🕸️ అన్నీ స్కాన్ చేయి",
-                "🔭 లోతైన స్కాన్ (AI, 15 సెకన్లకు): " + (sceneLive ? "ఆన్" : "ఆఫ్"), "🎙️ కామెంటరీ: " + (AUTO_TALK ? (commentaryOn ? "ఆన్" : "ఆఫ్") : "ఆఫ్ చేసి ఉంది"),
+                "🔭 లోతైన స్కాన్ (AI, 15 సెకన్లకు): " + (sceneLive ? "ఆన్" : "ఆఫ్"), "🎙️ కామెంటరీ: " + (commentaryOn ? "ఆన్" : "ఆఫ్"),
                 "🌙 రాత్రి చూపు: " + (cam.night() ? "ఆన్" : "ఆఫ్"), "🔁 ఏమి మారింది?", "📸 HUD తో ఫోటో సేవ్", "📏 జూమ్ టెస్ట్", "⌚ లాక్ చేసినది వాచ్‌కి పంపు",
                 "🕵️ ఇక్కడ ఏం జరిగింది? (2–6 ఫోటోలు)", "📦 వస్తువు 3 వైపులు (సాక్ష్యం కార్డ్)", "📁 కేస్ బోర్డులు",
                 "🧱 నిర్మాణ పరీక్ష (పగుళ్లు, తుప్పు, లీక్)", "🏠 గది విశ్లేషణ (నెమ్మదిగా తిరగండి)", "🩹 గాయపడినవారికి సహాయం", "⚠️ ఇది సురక్షితమేనా?", "📍 ఇక్కడ ప్రమాదం గుర్తుపెట్టు",
-                "🧊 గది / యంత్రం 3D మోడల్ (చుట్టూ తిరగండి)", "🧊 వస్తువు 360° (చుట్టూ నడిచి; పై / కింద కూడా)", "🔢 లెక్కపెట్టు (రాడ్లు, పైపులు, ఇటుకలు… ఏదైనా)"};
+                "🧊 గది / యంత్రం 3D మోడల్ (చుట్టూ తిరగండి)", "🧊 వస్తువు 360° (చుట్టూ నడిచి; పై / కింద కూడా)", "🔢 లెక్కపెట్టు (రాడ్లు, పైపులు, ఇటుకలు… ఏదైనా)",
+                "✨ HUD అందం (1–11, ప్రతిదానికీ స్విచ్)", "🗣️ కెమెరా తనంతట మాట్లాడటం (స్విచ్‌లు)"};
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setItems(items, (dlg, w) -> {
                     switch (w) {
@@ -1602,6 +1603,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                         case 33: shotsStart("space"); break;
                         case 34: shotsStart("object"); break;
                         case 35: countDialog(); break;
+                        case 36: fxSettings(); break;
+                        case 37: talkSettings(); break;
                         case 32: {
                             EditText e = new EditText(this);
                             e.setHint("ఏమిటి? (గుంత, స్పీడ్ బ్రేకర్, నీళ్లు, వైరు…)");
@@ -1618,7 +1621,6 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private void hudSettings() {
         final String[][] rows = {
                 {"cam_live", "🎯 లైవ్ రింగ్స్ (మనుషులు, బండ్లు, వస్తువులు)", "1"},
-                {"cam_talk", AUTO_TALK ? "🗣️ చూస్తూ మాట్లాడటం (కొత్తగా ఏదైనా వస్తే)" : "🗣️ చూస్తూ మాట్లాడటం (13 అక్టోబర్ నుంచి ఆఫ్ చేసి ఉంది)", "1"},
                 {"cam_hud_sfx", "🔊 HUD శబ్దాలు", "1"},
                 {"cam_signs", "🪧 బోర్డుల రాత (ఫోన్‌లోనే; నంబర్ ప్లేట్లు కాదు)", "1"},
                 {"cam_faces", "👤 ముఖాలు (పేర్లు మీరు పరిచయం చేసిన వాళ్ళకే)", "1"},
@@ -1629,7 +1631,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 {"cam_saver", "🔋 పొదుపు మోడ్ (నెమ్మది రింగ్స్, చిన్న AI బొమ్మ; 20% కింద ఆటో)", "0"}};
         String[] names = new String[rows.length];
         boolean[] on = new boolean[rows.length];
-        for (int i = 0; i < rows.length; i++) { names[i] = rows[i][1]; on[i] = p.sp.getBoolean(rows[i][0], "1".equals(rows[i][2])); }
+        for (int i = 0; i < rows.length; i++) { names[i] = rows[i][1]; on[i] = "cam_mesh".equals(rows[i][0]) ? meshOn() : p.sp.getBoolean(rows[i][0], "1".equals(rows[i][2])); }
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("🎛️ HUD సెట్టింగ్స్")
                 .setMultiChoiceItems(names, on, (d, i, checked) -> {
@@ -1639,7 +1641,237 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                     if ("cam_steady".equals(rows[i][0]) && !checked) { stabX = stabY = 0; cam.setSteady(0, 0); lens.setShift(0, 0); }
                     if (("cam_signs".equals(rows[i][0]) || "cam_faces".equals(rows[i][0])) && !checked) { signDets = new ArrayList<>(); faceDets = new ArrayList<>(); }
                 })
+                .setNeutralButton("✨ అందం", (d, w) -> fxSettings())
+                .setNegativeButton("🗣️ మాటలు", (d, w) -> talkSettings())
                 .setPositiveButton("సరే", null).show();
+    }
+
+    /** 🗣️ The camera's own talking: each part its own switch, all off until he turns one on. */
+    private void talkSettings() {
+        final String[][] rows = {
+                {"cam_say_sides", "👁️ కొత్తగా ఏదైనా వస్తే పక్కలతో చెప్పు (\"ఎడమ వైపు కుక్క వచ్చింది\"; ఫోన్‌లోనే, AI కాదు; మైక్ మిమ్మల్ని వింటున్నప్పుడు రాతలో మాత్రమే)"},
+                {"cam_say_lock", "🎯 లాక్ చేసినది కదిలినప్పుడు ఏం చేస్తుందో చెప్పు (20 సెకన్లకి ఒకసారి మించకుండా; ఒక్కోసారి ఒక చిన్న AI కాల్)"},
+                {"cam_say_scan", "🔭 లోతైన స్కాన్ ప్రతిసారి చూసింది గట్టిగా చెప్పు (ఆఫ్ అయితే రాతలో మాత్రమే)"}};
+        String[] names = new String[rows.length];
+        boolean[] on = new boolean[rows.length];
+        for (int i = 0; i < rows.length; i++) { names[i] = rows[i][1]; on[i] = p.sp.getBoolean(rows[i][0], false); }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("🗣️ కెమెరా తనంతట మాట్లాడటం (వద్దంటే టిక్ తీసేయండి)")
+                .setMultiChoiceItems(names, on, (d, i, checked) -> p.sp.edit().putBoolean(rows[i][0], checked).apply())
+                .setNeutralButton(commentaryOn ? "🎙️ కామెంటరీ ఆపు" : "🎙️ కామెంటరీ మొదలుపెట్టు", (d, w) -> setCommentary(!commentaryOn, false))
+                .setPositiveButton("సరే", null).show();
+    }
+
+    // ---- ✨ the HUD's look: each part its own switch (all off = the old HUD)
+
+    private static final String[][] FX_ROWS = {
+            {"cam_fx_smooth", "1️⃣ రింగ్‌లు మెల్లగా కదలడం, మెల్లగా మాయం"},
+            {"cam_fx_tags", "2️⃣ పేర్లు ఒకదాని మీద ఒకటి పడవు (ఒకేసారి 6 వరకు)"},
+            {"cam_fx_style", "3️⃣ ఒకే డిజైన్: సన్నని గీతలు, మూల బ్రాకెట్లు, ఒకే రకం అంకెలు"},
+            {"cam_fx_strip", "4️⃣ పైన ఒకే పట్టీ (దిశ · ఏమున్నాయి · సమయం); జాలీ గీతలు, మెష్ ఆఫ్"},
+            {"cam_fx_glass", "5️⃣ గాజు పట్టీలు, వెనక బొమ్మ మసకగా"},
+            {"cam_fx_near", "6️⃣ దగ్గర ఉన్నవి పెద్దగా, దూరం ఉన్నవి చిన్నగా"},
+            {"cam_fx_parallax", "7️⃣ ఫోన్ తిప్పితే HUD అంచులు కొంచెం వెనకబడి కదలడం"},
+            {"cam_fx_grid", "8️⃣ నేల మీద దూరం వరకు గ్రిడ్ గీతలు"},
+            {"cam_fx_card3d", "9️⃣ లాక్ కార్డ్ 3D లో, గీతతో, దూరంతో"},
+            {"cam_fx_glow", "🔟 రెండు పొరల మెరుపు + 60 fps (బ్యాటరీ కొంచెం ఎక్కువ)"},
+            {"cam_fx_depth", "1️⃣1️⃣ ఫోన్‌లోనే లోతు మ్యాప్ (" + DepthMap.sizeMb() + " MB ఒక్కసారి; బ్యాటరీ ఎక్కువ; దూరం ఉన్నవి లేత నీలం)"}};
+
+    /** 1–9 start on; 10 (60 fps) on except on the tablet; 11 (the depth map) off until he turns it on. */
+    private boolean fxDefault(String key) {
+        switch (key) {
+            case "cam_fx_glow": return !p.homeMode();
+            case "cam_fx_depth": return false;
+            default: return true;
+        }
+    }
+
+    private boolean fxOn(String key) { return p.sp.getBoolean(key, fxDefault(key)); }
+
+    /** The ✨ switches given to the HUD (again whenever one changes or 🔋 saver comes on / goes off). */
+    private void applyFx() {
+        if (lens == null) return;
+        HoloLens.Fx f = new HoloLens.Fx();
+        f.smooth = fxOn("cam_fx_smooth");
+        f.tags = fxOn("cam_fx_tags");
+        f.style = fxOn("cam_fx_style");
+        f.strip = fxOn("cam_fx_strip");
+        f.glass = fxOn("cam_fx_glass");
+        f.near = fxOn("cam_fx_near");
+        f.parallax = fxOn("cam_fx_parallax");
+        f.grid = fxOn("cam_fx_grid");
+        f.card3d = fxOn("cam_fx_card3d");
+        f.glow = fxOn("cam_fx_glow");
+        f.saver = saver();
+        fxDepthModel = fxOn("cam_fx_depth") && !p.homeMode() && DepthMap.ready(this); // (kept loaded in 🔋 saver: only its runs stop)
+        f.depth = fxDepthModel && !f.saver;
+        fxSaver = f.saver;
+        fxGlass = f.glass;
+        fxDepth = f.depth;
+        lens.setFx(f);
+        if (fxDepthModel) loadDepth(); else unloadDepth();
+    }
+
+    private void fxSettings() {
+        String[] names = new String[FX_ROWS.length];
+        final boolean[] on = new boolean[FX_ROWS.length];
+        for (int i = 0; i < FX_ROWS.length; i++) {
+            names[i] = FX_ROWS[i][1];
+            on[i] = fxOn(FX_ROWS[i][0]) && (!"cam_fx_depth".equals(FX_ROWS[i][0]) || !p.homeMode() && DepthMap.ready(this)); // (11: ticked only when its model is here)
+        }
+        if (p.homeMode()) names[FX_ROWS.length - 1] += " — టాబ్లెట్‌లో కాదు";
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("✨ HUD అందం (టిక్ = ఆన్)")
+                .setMultiChoiceItems(names, on, (d, i, checked) -> {
+                    String key = FX_ROWS[i][0];
+                    if ("cam_fx_depth".equals(key) && checked && (p.homeMode() || !DepthMap.ready(this))) {
+                        on[i] = false; // (on only once the model is on the phone)
+                        ((AlertDialog) d).getListView().setItemChecked(i, false);
+                        if (p.homeMode()) { Toast.makeText(this, "✨ 11 టాబ్లెట్‌లో కాదు (అది నెమ్మది).", Toast.LENGTH_LONG).show(); return; }
+                        d.dismiss();
+                        askDepthDownload();
+                        return;
+                    }
+                    p.sp.edit().putBoolean(key, checked).apply();
+                    applyFx();
+                    if ("cam_fx_strip".equals(key) && !p.sp.contains("cam_mesh")) lens.setPoints(null); // (the mesh follows the strip's default)
+                })
+                .setNeutralButton("అన్నీ ఆఫ్ (పాత లుక్)", (d, w) -> {
+                    android.content.SharedPreferences.Editor e = p.sp.edit();
+                    for (String[] row : FX_ROWS) e.putBoolean(row[0], false);
+                    e.apply();
+                    depthWanted = false; // (a download still running won't turn 11 back on)
+                    applyFx();
+                    tell("✨ పాత HUD లుక్‌కి వచ్చాను. ⋯ → ✨ లో ఒక్కొక్కటి మళ్ళీ ఆన్ చేయొచ్చు.", false);
+                })
+                .setPositiveButton("సరే", null).show();
+    }
+
+    /** ✨ 11 asked for and the model is not here yet: its size, mobile data, battery; downloaded only on his yes. */
+    private void askDepthDownload() {
+        boolean metered = false;
+        try {
+            android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
+            metered = cm != null && cm.isActiveNetworkMetered();
+        } catch (Exception ignored) {}
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("✨ 11 లోతు మ్యాప్")
+                .setMessage("దీనికి " + DepthMap.sizeMb() + " MB మోడల్ ఒక్కసారి డౌన్‌లోడ్ అవ్వాలి (Intel MiDaS; ఫోన్‌లోనే నడుస్తుంది, బొమ్మ ఎక్కడికీ వెళ్ళదు)."
+                        + (metered ? "\n\n⚠️ ఇప్పుడు మీరు మొబైల్ డేటాలో ఉన్నారు; Wi-Fi లో చేస్తే మంచిది." : "")
+                        + "\n\nకెమెరా తెరిచి ఉన్నప్పుడు బ్యాటరీ ఎక్కువ ఖర్చవుతుంది (ఎంత అనేది మీ ఫోన్‌లో చూడాలి; ఇంకా కొలవలేదు). ఇది దూరం మీటర్లలో చెప్పదు, ఏది దగ్గర / ఏది దూరం మాత్రమే.")
+                .setPositiveButton("ఇప్పుడు తెచ్చు", (d, w) -> downloadDepth())
+                .setNegativeButton("వద్దు", null).show();
+    }
+
+    private void downloadDepth() {
+        if (!Net.online(this)) { tell("✨ నెట్ లేదు. నెట్ వచ్చాక మళ్ళీ ⋯ → ✨ → 11 నొక్కండి.", false); return; }
+        final Context app = getApplicationContext();
+        final Toast[] note = {Toast.makeText(app, "✨ లోతు మోడల్ తెస్తున్నాను (" + DepthMap.sizeMb() + " MB)…", Toast.LENGTH_LONG)};
+        note[0].show();
+        depthWanted = true;
+        new Thread(() -> {
+            String err = null;
+            try {
+                DepthMap.ensure(app, text -> main.post(() -> { // (one note, replaced: no pile of old ones after it ends)
+                    note[0].cancel();
+                    note[0] = Toast.makeText(app, text, Toast.LENGTH_SHORT);
+                    note[0].show();
+                }));
+            } catch (Exception e) {
+                err = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            }
+            final String er = err;
+            main.post(() -> {
+                note[0].cancel();
+                boolean want = depthWanted;
+                depthWanted = false;
+                if (er == null && want) p.sp.edit().putBoolean("cam_fx_depth", true).apply(); // (not if he turned the ✨ look off meanwhile)
+                if (er != null) { Toast.makeText(app, "✨ లోతు మోడల్ రాలేదు (" + er + "). నెట్ బాగున్నప్పుడు మళ్ళీ ⋯ → ✨ → 11 నొక్కండి.", Toast.LENGTH_LONG).show(); return; }
+                if (!want) return;
+                if (!isDestroyed()) applyFx();
+                Toast.makeText(app, saver() ? "✨ 11 మోడల్ వచ్చింది. 🔋 పొదుపు మోడ్ ఆగాక లోతు మ్యాప్ మొదలవుతుంది."
+                        : "✨ 11 ఆన్: దూరం ఉన్నవి లేత నీలం పొగలా, దగ్గర ఉన్నవి స్పష్టంగా.", Toast.LENGTH_LONG).show();
+            });
+        }, "jarvis-depth-download").start();
+    }
+
+    /** ✨ 11: the model opened on its own thread (only while ✨ 11 is on; never on the tablet). */
+    private void loadDepth() {
+        if (depth != null || depthLoading || p.homeMode() || !DepthMap.ready(this)) return;
+        depthLoading = true;
+        final Context app = getApplicationContext();
+        try {
+            depthWork.execute(() -> {
+                DepthMap dm = null;
+                try { dm = new DepthMap(app); } catch (Throwable t) { Log.w("JarvisCamera", "depth model: " + t); }
+                final DepthMap got = dm;
+                main.post(() -> {
+                    depthLoading = false;
+                    if (isDestroyed() || !fxDepthModel) { if (got != null) closeDepth(got); return; }
+                    depth = got;
+                    if (got == null) {
+                        p.sp.edit().putBoolean("cam_fx_depth", false).apply();
+                        applyFx();
+                        tell("✨ లోతు మ్యాప్ మోడల్ ఈ ఫోన్‌లో తెరుచుకోలేదు; 11 ఆపాను.", false);
+                    }
+                });
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            depthLoading = false;
+        }
+    }
+
+    private void unloadDepth() {
+        DepthMap dm = depth;
+        depth = null;
+        if (dm != null) closeDepth(dm);
+    }
+
+    private void closeDepth(DepthMap dm) {
+        try { depthWork.execute(dm::close); } catch (java.util.concurrent.RejectedExecutionException e) { dm.close(); }
+    }
+
+    /** ✨ 5: a tiny soft copy of the finder's picture for the glass behind the HUD's pills (on the finder's thread). */
+    private void glassPicture(Bitmap b) {
+        try {
+            int w = 64, h = Math.max(1, Math.round(64f * b.getHeight() / Math.max(1, b.getWidth())));
+            Bitmap t = Bitmap.createScaledBitmap(b, w, h, true);
+            Bitmap out = t != b && t.isMutable() ? t : t.copy(Bitmap.Config.ARGB_8888, true);
+            if (out != t && t != b) t.recycle();
+            int[] px = new int[w * h];
+            out.getPixels(px, 0, w, 0, 0, w, h);
+            HudMath.boxBlur(px, w, h, 2);
+            out.setPixels(px, 0, w, 0, 0, w, h);
+            main.post(() -> { if (open && !isFinishing() && !frozen && fxGlass) lens.setBackdrop(out); });
+        } catch (Throwable ignored) {}
+    }
+
+    /** ✨ 11: the finder's picture, made 256×256, handed to the depth map's own thread; true when handed over. */
+    private boolean depthPicture(Bitmap b) {
+        final DepthMap dm = depth;
+        if (dm == null) return false;
+        final Bitmap own;
+        try {
+            Bitmap in = Bitmap.createScaledBitmap(b, 256, 256, true);
+            own = in == b ? b.copy(Bitmap.Config.ARGB_8888, false) : in;
+        } catch (Throwable t) {
+            return false;
+        }
+        if (own == null) return false;
+        try {
+            depthWork.execute(() -> {
+                float[] g = null;
+                long t0 = android.os.SystemClock.uptimeMillis();
+                try { g = dm.run(own); depthMs = (depthMs * 3 + (android.os.SystemClock.uptimeMillis() - t0)) / 4; } catch (Throwable t) { Log.w("JarvisCamera", "depth: " + t); }
+                finally { own.recycle(); depthBusy = false; }
+                final float[] grid = g;
+                if (grid != null) main.post(() -> { if (open && !isFinishing() && fxDepth && !frozen && depth == dm) lens.setDepth(grid, DepthMap.GRID, DepthMap.GRID); });
+            });
+            return true;
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            own.recycle();
+            return false;
+        }
     }
 
     /** The parking spot's picture is kept with the scans (the spot itself is saved by its action). */
@@ -1966,6 +2198,13 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private boolean detTried, detBusy, opticalSaid, booted;
     private final LiveTracker tracker = new LiveTracker();
     private final ExecutorService detWork = Executors.newSingleThreadExecutor();
+    // ✨ 11: the phone's own depth map (its own thread; the model is loaded only while ✨ 11 is on)
+    private final ExecutorService depthWork = Executors.newSingleThreadExecutor();
+    private volatile DepthMap depth;
+    private volatile boolean depthBusy, depthLoading;
+    private volatile long depthRunAt, depthMs = 150; // (how long one depth map takes: a slow one is asked less often)
+    private boolean fxSaver, fxGlass, fxDepth, fxDepthModel;
+    private volatile boolean depthWanted; // (a download he asked for, still wanted when it ends)
     private final java.util.Set<Integer> seenTracks = new java.util.HashSet<>();
     private long lastMarkAt, lastTalkAt, talkCandAt, lockLostAt, lastSnapAt, batteryAt;
     private String talkCand = "", lastTalk = "";
@@ -2015,16 +2254,17 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     private boolean liveOn() { return p.sp.getBoolean("cam_live", true); }
     /**
-     * The camera's own talking (sides narration, 🎙️ commentary, the locked one's updates) and the mic handling around it were
-     * the only mic-related changes of 12–13 Oct. Switched OFF on 13 Oct at Anil's request ("mic కోసం చేసిన మార్పులు తీసేయి"):
-     * with this false the camera listens and answers exactly as in v1.0.130 (one listen after each answer). Flip to bring them back.
+     * The camera's own talking. Switched off on 13 Oct at Anil's word; back on 21 Oct with each part its own switch, all
+     * OFF until he turns one on (⋯ → 🗣️): the sides narration (the phone's own count, no AI), the locked one's doings (a
+     * light AI look every 20 s) and the deep scan's line said aloud. 🎙️ commentary starts only when he asks (⋯ or
+     * "కామెంటరీ చెప్పు"). With all of them off the camera listens and answers exactly as before (one listen after each answer).
      */
-    static final boolean AUTO_TALK = false;
-
-    private boolean talkOn() { return AUTO_TALK && p.sp.getBoolean("cam_talk", true); }
+    private boolean sidesTalkOn() { return p.sp.getBoolean("cam_say_sides", false); }
+    private boolean lockTalkOn() { return p.sp.getBoolean("cam_say_lock", false); }
+    private boolean scanTalkOn() { return p.sp.getBoolean("cam_say_scan", false); }
     private boolean signsOn() { return p.sp.getBoolean("cam_signs", true); }
     private boolean facesOn() { return p.sp.getBoolean("cam_faces", true); }
-    private boolean meshOn() { return p.sp.getBoolean("cam_mesh", true); }
+    private boolean meshOn() { return p.sp.getBoolean("cam_mesh", !fxOn("cam_fx_strip")); } // (✨ 4 on: the mesh dots start off)
     private boolean steadyOn() { return p.sp.getBoolean("cam_steady", true); }
     private boolean sceneMapOn() { return p.sp.getBoolean("cam_scene", true); }
     private boolean followPref() { return p.sp.getBoolean("cam_follow", true); }
@@ -2032,13 +2272,15 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private boolean tilesOn() { return !p.homeMode() && !saver() && detMs < 120 && det != null; }
     private float totalZoom() { return cam.zoom() * cam.digital(); }
     /** 🔋 saver: his switch, or by itself when the battery is 20% or less: the finder looks less often, the AI gets smaller pictures. */
-    private boolean saver() { return p.sp.getBoolean("cam_saver", false) || (battery >= 0 && battery <= 20); }
+    private boolean saver() { return p.sp.getBoolean("cam_saver", false) || lowBattery; }
+    private boolean lowBattery; // (on at 20% or less, off again only from 23%: no flipping at the edge)
     private int aiDim() { return saver() ? 960 : 1280; }
 
     /** The lens and the zoom buttons, put on the screen (from build()). */
     private void buildLive(FrameLayout root) {
         lens = new HoloLens(this);
         lens.listener = this::lockStep;
+        applyFx();
         root.addView(lens, 3, new FrameLayout.LayoutParams(-1, -1)); // (over the picture and the boxes, under the bars)
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (topPanel != null && bottomPanel != null) lens.setSafe(topPanel.getHeight(), bottomPanel.getHeight());
@@ -2108,6 +2350,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         } catch (Exception ignored) {}
         main.postDelayed(commentTick, 2000);
         main.postDelayed(sceneTick, 5000);
+        applyFx();
+        if (fxDepth) loadDepth();
         if (!booted) {
             booted = true;
             lens.boot();
@@ -2135,6 +2379,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         det = null;
         detWork.execute(() -> { if (dd != null) dd.close(); });
         detWork.shutdown();
+        depthWork.execute(() -> { DepthMap dm = depth; depth = null; if (dm != null) dm.close(); });
+        depthWork.shutdown();
         for (Object[] s : snaps) ((Bitmap) s[1]).recycle();
         snaps.clear();
     }
@@ -2162,6 +2408,10 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             float dt = (t - gyroAt) / 1e9f;
             gyroAt = t;
             if (dt <= 0 || dt > 0.1f) return;
+            if (!frozen) { // ✨ 7: the HUD's edges lag a little when the phone turns
+                float fv = cam.fovShownDeg();
+                lens.gyro(e.values[0], e.values[1], dt, (float) (1 / (2 * Math.tan(Math.toRadians(fv > 1 ? fv / 2 : 30)))));
+            }
             float dg = cam.digital();
             if (!steadyOn() || frozen || dg < 1.25f) { if (stabX != 0 || stabY != 0) { stabX = stabY = 0; cam.setSteady(0, 0); lens.setShift(0, 0); } return; }
             float fov = cam.fovShownDeg();
@@ -2191,10 +2441,13 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                     Intent b = registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
                     int lv = b == null ? -1 : b.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1), sc = b == null ? 100 : b.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
                     battery = lv < 0 || sc <= 0 ? -1 : Math.round(lv * 100f / sc);
+                    if (battery >= 0) { if (battery <= 20) lowBattery = true; else if (battery >= 23) lowBattery = false; }
                 } catch (Exception ignored) {}
             }
             String t = new java.text.SimpleDateFormat("h:mm", Locale.ENGLISH).format(new java.util.Date(now));
             lens.setGauges(frozen && !fromImage ? stillZ * totalZoom() : totalZoom(), cam.opticalMax(), heading, roll, pitch, t, battery);
+            lens.setFov(cam.fovShownDeg());
+            if (saver() != fxSaver) applyFx(); // (🔋 saver came on / went off: no 60 fps, no depth map, no glass picture)
             if (lens.locked() && now - lockAt > 180_000 && !busy && !speaking && !voice.speaking) unlockLens(false); // (3 minutes untouched: the lock goes)
             markZoomChips();
         }
@@ -2232,6 +2485,10 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             final boolean doQuad = tiles && tickNo % 2 == 1, doMesh = meshOn() && tickNo % 2 == 0 && !lockedFar;
             final boolean doSigns = signsOn() && !signBusy && android.os.SystemClock.uptimeMillis() - signAt > 1500 && !lockedFar;
             final boolean doFaces = facesOn() && !faceBusy && android.os.SystemClock.uptimeMillis() - faceAt > 700;
+            final boolean doGlass = fxGlass && !fxSaver && tickNo % 2 == 0;
+            final long upNow = android.os.SystemClock.uptimeMillis();
+            final boolean doDepth = fxDepth && !fxSaver && depth != null && !depthBusy && upNow - depthRunAt > Math.max(700, depthMs * 4) && !lockedFar;
+            if (doDepth) { depthBusy = true; depthRunAt = upNow; }
             final Context app = getApplicationContext();
             final Bitmap forSpots = doSigns || doFaces ? b.copy(Bitmap.Config.ARGB_8888, false) : null;
             if (forSpots != null) {
@@ -2250,7 +2507,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 });
             }
             detWork.execute(() -> {
-                boolean ok = false;
+                boolean ok = false, handed = false;
                 long now = 0;
                 float[] pts = null;
                 try {
@@ -2276,11 +2533,14 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                         if (!fc.isEmpty() && android.os.SystemClock.uptimeMillis() - faceAt < 1500) all = Detector.merge(all, fc);
                     }
                     if (doMesh) pts = SceneSpots.corners(b, 110);
+                    if (doGlass) glassPicture(b);
+                    if (doDepth) handed = depthPicture(b);
                     now = android.os.SystemClock.uptimeMillis();
                     if (gen == trackGen) { tracker.update(all, now); ok = true; }
                 } catch (Throwable t) {
                     Log.w("JarvisCamera", "finder: " + t);
                 } finally {
+                    if (doDepth && !handed) depthBusy = false;
                     b.recycle();
                     final boolean fine = ok;
                     final long at = now;
@@ -2352,6 +2612,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         }
         lockLostAt = 0;
         lens.setLockBox(hit.box);
+        lens.setLockDist(hit.distM);
         float dg = cam.digital(), total = totalZoom();
         if (followOn && followPref() && now - followAt > 120) { // follow-cam: a little nearer / farther each look, so it stays about the same size
             followAt = now;
@@ -2378,7 +2639,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     /** What he can see, said when it changes (the phone's own count: no AI), not too often, never over him or an answer. */
     private void narrate(long now) {
-        if (!talkOn() || lens.locked() || busy || frozen || speaking || voice.speaking || voice.isPaused() || !guideNext.isEmpty() || pairKind != null
+        if (!sidesTalkOn() || lens.locked() || busy || frozen || speaking || voice.speaking || voice.isPaused() || !guideNext.isEmpty() || pairKind != null
                 || closeId != null || layersId != null || commentaryOn) return;
         String s = LiveTracker.sentence(tracker.counts(now));
         if (s.isEmpty() || s.equals(lastTalk)) { talkCand = ""; return; }
@@ -2485,7 +2746,10 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 if (er != null || res == null) { if (loud) tell("🔭 " + er, false); return; }
                 if (!res.items.isEmpty()) { hud.setItems(res.items); arReference(pic); }
                 String line = res.say.isEmpty() ? (res.items.size() + " పెద్ద వస్తువులు గుర్తించాను") : res.say;
-                if (!speaking && !voice.speaking && !busy && (loud || (AUTO_TALK && !voice.listening))) say("🔭 " + line);
+                if (!speaking && !voice.speaking && !busy && (loud || (scanTalkOn() && !voice.listening && !(wakeMode() && engaged)))) { // (never into his call or the listen after an answer)
+                    say("🔭 " + line);
+                    if (!loud) remark = true; // (said unasked: back to waiting for "Jarvis" after it, like the other remarks)
+                }
                 else tell(captionBase + "\n🔭 " + line, false);
             });
         });
@@ -2646,7 +2910,6 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     // ---- 🎙️ commentary: Jarvis talks about what is happening, like a friend beside him (AI, only when something changed)
 
     private void setCommentary(boolean on, boolean quiet) {
-        if (!AUTO_TALK) { commentaryOn = false; if (on && !quiet) tell("🎙️ కామెంటరీ ఇప్పుడు ఆఫ్ చేసి ఉంది (మీరు చెప్పినట్టు, 13 అక్టోబర్). కావాలంటే నాకు చెప్పండి, తిరిగి పెడతాను.", false); return; }
         commentaryOn = on;
         commentAsk = false;
         if (on) {
@@ -2668,7 +2931,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     private final Runnable commentTick = new Runnable() {
         @Override public void run() {
-            if (!open || !AUTO_TALK) return;
+            if (!open) return;
             main.postDelayed(this, 2000);
             long now = System.currentTimeMillis();
             final boolean lockOnly = !commentaryOn && lockActionDue(now); // (no commentary: only the locked one's doings, when it moved)
@@ -2712,7 +2975,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                     commentBusy = false;
                     commentAt = System.currentTimeMillis();
                     if (!open || isFinishing() || !(commentaryOn || lockOnly && lens.locked()) || ln == null || ln.isEmpty() || ln.toUpperCase(Locale.ROOT).startsWith("NONE")) return;
-                    if (busy || speaking || voice.speaking || voice.listening && wakeMode()) return; // (something else is going on now)
+                    if (busy || speaking || voice.speaking || voice.listening && wakeMode() || wakeMode() && engaged) return; // (something else is going on now: an answer, his call, the listen after it)
                     commentLines.addLast(ln);
                     while (commentLines.size() > 4) commentLines.removeFirst();
                     if (lens.locked()) lens.appendCard(ln);
@@ -2726,7 +2989,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     /** The locked one's doings, said when they change (no commentary needed): a light look every 20 s while his talk switch is on. */
     private boolean lockActionDue(long now) {
-        return lens.locked() && !commentaryOn && talkOn() && now - commentAt > 20_000 && Net.online(this) && p.hasBrain();
+        return lens.locked() && !commentaryOn && lockTalkOn() && now - commentAt > 20_000 && Net.online(this) && p.hasBrain();
     }
 
     // ---- locking on
