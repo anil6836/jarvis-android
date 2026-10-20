@@ -139,6 +139,10 @@ final class VoiceIO {
     /** The reply as shown (digits) and its spoken form (numbers as Telugu words), mapped onto each other for the highlight. */
     private String naturalShown = "";
     private Spoken.Out naturalSaid = Spoken.of("");
+    /** ♻️ Where naturalText starts inside naturalSaid (0; after a part-way stop, the rest is asked for on its own). */
+    private int naturalOffset;
+    /** ♻️ This answer has been asked for once more already (once per answer); that second try is on now. */
+    private boolean guardUsed, guardRetrying;
     private volatile String googleShown = "";
     private volatile Spoken.Out googleSaid = Spoken.of("");
     /** The natural (OpenAI) voice is the one speaking now (not the phone's voice). */
@@ -232,6 +236,7 @@ final class VoiceIO {
 
     void speak(String text, float rate) {
         if (shut || text == null || text.trim().isEmpty()) return;
+        answerNo++; // (♻️ the ⏱️ line's mark belongs to this answer only)
         MicQuiet.speaking(); // the media sound muted for the mic's beeps comes back before he must hear Jarvis
         if (turnHeardAt > 0 && turnSpeakAt == 0) turnSpeakAt = android.os.SystemClock.elapsedRealtime();
         feeling = prefs.emotions() ? Emotion.forText(text) : Emotion.CALM;
@@ -263,6 +268,9 @@ final class VoiceIO {
         naturalShown = shown;
         naturalSaid = spoken;
         naturalText = said;
+        naturalOffset = 0;
+        guardUsed = false;
+        guardRetrying = false;
         naturalWeight = weights(said);
         naturalBounds = bounds(said, naturalWeight);
         matched = new long[0][];
@@ -272,7 +280,14 @@ final class VoiceIO {
         natural.model = prefs.ttsModel();
         natural.cloud = cv;
         natural.quick = prefs.speedG();
-        natural.speak(key, prefs.naturalVoiceName(), said, feeling, new NaturalVoice.Callback() {
+        natural.guard = cv == null && prefs.voiceGuard(); // ♻️ (the OpenAI voice only)
+        natural.fresh = false;
+        natural.speak(key, prefs.naturalVoiceName(), said, feeling, naturalCallback(key, rate));
+    }
+
+    /** What the natural voice tells: the same for the first try and for ♻️ the one asked again. */
+    private NaturalVoice.Callback naturalCallback(String key, float rate) {
+        return new NaturalVoice.Callback() {
             @Override public void onStart() {
                 naturalError = null;
                 naturalCut = null;
@@ -287,6 +302,7 @@ final class VoiceIO {
                 barge.stop();
                 main.removeCallbacks(wordTicker);
                 learnPace();
+                if (guardRetrying) { guardRetrying = false; guardNote(1, null); } // ♻️ asked again, and heard
                 if (!speaking) return;
                 speaking = false;
                 Duck.off();
@@ -296,11 +312,119 @@ final class VoiceIO {
             @Override public void onError(String message) {
                 naturalError = message;
                 naturalNow = false;
-                if (speaking) speakGoogle(shown, rate);
+                if (guardRetrying) { guardRetrying = false; guardNote(2, null); }
+                if (speaking) phoneVoiceFrom(naturalOffset, rate); // (from where this try began: all of it, as before, on a first try)
             }
             @Override public void onCut(String message) { naturalCut = message; }
             @Override public void onAudible(long at) { turnAudible(at); }
-        });
+            @Override public void onStalled(String why, long heard) { voiceStalled(why, heard, key, rate); }
+        };
+    }
+
+    /**
+     * ♻️ గొంతు కాపలా: the OpenAI voice wasn't heard, or stopped part-way (why). Once per answer the same voice is asked again
+     * on a line of its own: all of it, or from the start of the sentence he was hearing. After that (or with no internet)
+     * the phone's voice says it from there, the reason in Jarvis చెక్. A reply he never heard never counts as said.
+     */
+    private void voiceStalled(String why, long heard, String key, float rate) {
+        if (shut || !speaking || !naturalNow) return;
+        main.removeCallbacks(wordTicker);
+        String t = naturalText;
+        int from = heard >= 0 ? carryFrom(t, naturalWordAt(heard)) : 0;
+        while (from < t.length() && Character.isWhitespace(t.charAt(from))) from++;
+        markGuard();
+        if (from >= t.length()) { // (all of it had been heard: only the line's end was missing)
+            natural.stop();
+            barge.stop();
+            speaking = false;
+            Duck.off();
+            call.exit();
+            l.onSpeakDone();
+            return;
+        }
+        boolean wasRetry = guardRetrying;
+        guardRetrying = false;
+        if (!guardUsed && Net.online(ctx)) {
+            guardUsed = true;
+            guardRetrying = true;
+            guardNote(0, why);
+            if (from > 0) {
+                naturalOffset += from;
+                naturalText = t.substring(from);
+                naturalWeight = weights(naturalText);
+                naturalBounds = bounds(naturalText, naturalWeight);
+            }
+            matched = new long[0][];
+            matchedFor = -1;
+            natural.fresh = true;
+            natural.speak(key, prefs.naturalVoiceName(), naturalText, feeling, naturalCallback(key, rate));
+            if (paused) natural.pause(); // (⏸ meanwhile: it waits for ▶)
+            return;
+        }
+        guardNote(2, wasRetry ? why + " (మళ్ళీ అడిగినా)" : why);
+        naturalError = "♻️ " + why + (wasRetry ? " (మళ్ళీ అడిగినా రాలేదు)" : "");
+        natural.stop();
+        naturalNow = false;
+        int at = naturalOffset + from;
+        if (paused && tts != null && ttsReady && !ttsFailed) { // ▶ carries on with the phone's voice from here
+            googleShown = naturalShown;
+            googleSaid = naturalSaid;
+            googleText = naturalSaid.text;
+            googleBase = 0;
+            googlePos = at;
+            googleRate = rate;
+            return;
+        }
+        phoneVoiceFrom(at, rate);
+    }
+
+    /** The phone's voice says the answer from this spoken-text position (0: all of it, exactly as before). */
+    private void phoneVoiceFrom(int from, float rate) {
+        if (from <= 0 || shut || tts == null || ttsFailed || !ttsReady || from >= naturalSaid.text.length()) {
+            speakGoogle(naturalShown, rate);
+            return;
+        }
+        Filler.stop();
+        googleShown = naturalShown;
+        googleSaid = naturalSaid; // (after googleShown: onRangeStart reads them the other way round)
+        speakGoogleFrom(naturalSaid.text, from, rate);
+    }
+
+    /**
+     * ♻️ Where to carry on after the voice stopped part-way (at: the letter it was guessed to be saying): the start of that
+     * sentence; when only just into it, the sentence before too (the guess may run a little ahead: nothing is skipped).
+     */
+    static int carryFrom(String t, int at) {
+        if (t == null || at <= 0) return 0;
+        at = Math.min(at, t.length());
+        int from = sentenceStart(t, at);
+        if (from > 0 && at - from < 12) from = sentenceStart(t, from - 1);
+        return from;
+    }
+
+    /** ♻️ Jarvis చెక్'s count: 0 asked again · 1 that was heard · 2 the phone's voice said it. Kept over restarts. */
+    private void guardNote(int what, String why) {
+        try {
+            android.content.SharedPreferences sp = ctx.getSharedPreferences("jarvis_timing", Context.MODE_PRIVATE);
+            String k = what == 0 ? "guard_again" : what == 1 ? "guard_ok" : "guard_phone";
+            android.content.SharedPreferences.Editor e = sp.edit().putInt(k, sp.getInt(k, 0) + 1);
+            if (why != null) e.putLong("guard_last_at", System.currentTimeMillis()).putString("guard_last_why", why);
+            e.apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** ♻️ Jarvis చెక్'s line (empty until it has had to step in once). */
+    static String guardLine(Context c) {
+        android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_timing", Context.MODE_PRIVATE);
+        int n = sp.getInt("guard_again", 0), ok = sp.getInt("guard_ok", 0), phone = sp.getInt("guard_phone", 0);
+        if (n == 0 && phone == 0) return "";
+        StringBuilder b = new StringBuilder("• ♻️ గొంతు కాపలా: ").append(n).append(" సార్లు మళ్ళీ అడిగాను (")
+                .append(ok).append(" సార్లు అదే గొంతులో వినిపించింది");
+        if (phone > 0) b.append(", ").append(phone).append(" సార్లు ఫోన్ గొంతు చెప్పింది");
+        b.append(")");
+        long at = sp.getLong("guard_last_at", 0);
+        if (at > 0) b.append(" · చివరిది ").append(Backup.when(at)).append(": ").append(sp.getString("guard_last_why", ""));
+        return b.append("\n").toString();
     }
 
     private void stopGoogle() {
@@ -408,7 +532,7 @@ final class VoiceIO {
                     while (a > 0 && !Character.isWhitespace(t.charAt(a - 1))) a--;
                     while (b < t.length() && !Character.isWhitespace(t.charAt(b))) b++;
                     if (b > a) {
-                        int[] r = naturalSaid.range(a, b);
+                        int[] r = naturalSaid.range(naturalOffset + a, naturalOffset + b); // (♻️ after a part-way stop: the rest)
                         l.onWord(naturalShown, r[0], r[1]);
                     }
                 }
@@ -440,10 +564,12 @@ final class VoiceIO {
      * of the text (trying a range of speaking speeds and keeping the one that lines up best), so within
      * each sentence the highlight moves from where it really started to where it really ends.
      */
-    private int naturalWordAt() {
+    private int naturalWordAt() { return naturalWordAt(natural.playedFrames()); }
+
+    /** The same, for the sound frame played (♻️ also after the voice has stopped: where he had heard up to). */
+    private int naturalWordAt(long played) {
         float[] w = naturalWeight;
         if (w.length == 0) return -1;
-        long played = natural.playedFrames();
         float total = w[w.length - 1];
         boolean done = natural.downloaded() && natural.totalFrames() > 0;
         long first = Math.max(0, natural.firstSound());
@@ -762,6 +888,7 @@ final class VoiceIO {
     /** His last word (own ears: exact; Google voice typing: when its words last changed, an estimate). */
     private static volatile boolean turnWordGuess;
     private static long tHeard, tSpeak, tSound, tWord; // (main thread) the answer whose sound has started
+    private static int tAnswer = -1;                   // (♻️ its number)
     private static volatile boolean tPending; // (read from the phone voice's own thread too)
     private static Context appCtx;
     private static android.os.Handler turnMain; // (made on first use, on the main thread)
@@ -773,6 +900,25 @@ final class VoiceIO {
     }
 
     /** Jarvis's voice for the answer to what he just said has started to come (main thread). */
+    /** ♻️ Each answer spoken gets a number; the guard's mark goes on the ⏱️ line of the answer it stepped in for. */
+    private static int answerNo, guardMarkFor = -1, turnLineFor = -1;
+
+    /** ♻️ The guard stepped in for the answer being spoken (main thread): its ⏱️ line gets ♻️ (now, or when it is written). */
+    private static void markGuard() {
+        guardMarkFor = answerNo;
+        Context c = appCtx;
+        if (tPending || turnLineFor != answerNo || c == null) return;
+        try {
+            android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_timing", Context.MODE_PRIVATE);
+            org.json.JSONArray a = new org.json.JSONArray(sp.getString("turn_list", ""));
+            org.json.JSONObject o = a.getJSONObject(a.length() - 1);
+            String m = o.optString("m", "");
+            if (m.contains("♻️")) return;
+            o.put("m", m.isEmpty() ? "♻️" : m + " ♻️");
+            sp.edit().putString("turn_list", a.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
     private static void turnSounded() {
         long h = turnHeardAt, s = turnSpeakAt;
         if (h == 0 || s == 0) return;
@@ -783,6 +929,7 @@ final class VoiceIO {
         tSpeak = s;
         tSound = now;
         tWord = turnVoiceEnd > 0 && turnVoiceEnd <= h && h - turnVoiceEnd < 60_000 ? turnVoiceEnd : 0;
+        tAnswer = answerNo;
         tPending = true;
         turnMain().removeCallbacks(turnTimeout);
         turnMain().postDelayed(turnTimeout, 4500); // (a speaker that never says when it was heard: kept without that part)
@@ -819,6 +966,8 @@ final class VoiceIO {
             // the ⏱️ list: the last five answers, each with why it took that time (the brain's marks for this answer only)
             long ma = Brain.askMarksAt;
             String marks = ma >= tHeard - 50 && ma <= tSpeak + 50 ? Brain.askMarks : "";
+            if (guardMarkFor == tAnswer) marks = marks.isEmpty() ? "♻️" : marks + " ♻️";
+            turnLineFor = tAnswer;
             String list = addTurn(sp.getString("turn_list", ""), System.currentTimeMillis(), total, brain, whole, marks, new Prefs(c).speedOff());
             sp.edit().putString("turn_last", lastTurn).putString("turn_ears", turnWordGuess ? "" : turnEars)
                     .putString("turn_totals", h.toString()).putString("turn_list", list).apply();
@@ -861,7 +1010,8 @@ final class VoiceIO {
         }
         String[][] legend = {{"🛠️", "ఫోన్ పని"}, {"🔎", "ఇంటర్నెట్ సెర్చ్"}, {"🔁", "రెండో AI చెక్"}, {"🧠", "లోతుగా ఆలోచన"},
                 {"📝", "పెద్ద జవాబు"}, {"🔌", "బ్రేక్ తర్వాత మొదటి ప్రశ్న"}, {"📚", "లేని పనులు AI తెప్పించుకుంది"},
-                {"📄", "AI కి వెళ్ళిన పుస్తకం (వేల tokens)"}, {"💾", "అందులో AI గుర్తుంచుకున్న భాగం"}};
+                {"📄", "AI కి వెళ్ళిన పుస్తకం (వేల tokens)"}, {"💾", "అందులో AI గుర్తుంచుకున్న భాగం"},
+                {"♻️", "గొంతు రాక మళ్ళీ అడిగాను"}};
         StringBuilder l = new StringBuilder();
         for (String[] x : legend) if (seen.indexOf(x[0]) >= 0) l.append(l.length() == 0 ? "" : " · ").append(x[0]).append(' ').append(x[1]);
         if (l.length() > 0) b.append("   (").append(l).append(")\n");

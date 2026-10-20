@@ -30,6 +30,11 @@ final class NaturalVoice {
         default void onCut(String message) {}
         /** The first sound really came out of the speaker, at this moment (SystemClock.elapsedRealtime) — Jarvis చెక్. */
         default void onAudible(long at) {}
+        /**
+         * ♻️ (guard on): this reply was given up — why (Telugu, for Jarvis చెక్), heard: the sound frame he had heard up to
+         * (-1: none of it was heard). Neither onDone nor onError follows for it.
+         */
+        default void onStalled(String why, long heard) { if (heard >= 0) onDone(); else onError(why); }
     }
 
     /** The speaking model when he hasn't chosen one. */
@@ -69,6 +74,85 @@ final class NaturalVoice {
      * and the silence before the first word is skipped. Off: exactly as before.
      */
     volatile boolean quick;
+
+    /**
+     * ♻️ గొంతు కాపలా (set before speak(); the OpenAI voice only): the reply must really be heard. No words coming in 6 s,
+     * the sound stopping for 4 s (before he heard any of it, or part-way once all that came has played), the speaker not
+     * starting, or the line breaking: the reply is given up and onStalled says why and how far he heard (VoiceIO asks once
+     * more). And a reply he never heard is never "done". Off: exactly as before.
+     */
+    volatile boolean guard;
+    /** ♻️ The next speak() asks on a line of its own (not one kept open from before); speak() clears it. */
+    volatile boolean fresh;
+
+    static final long NO_VOICE_MS = 6000, NO_VOICE_FRESH_MS = 8000, STALL_MS = 4000;
+    static final String WHY_NOTHING = "6 సెకన్లలో గొంతు రాలేదు";
+    static final String WHY_SILENT = "6 సెకన్లలో మాటలు రాలేదు (నిశ్శబ్దం మాత్రమే)";
+    static final String WHY_STALL = "గొంతు వస్తూ 4 సెకన్లు ఆగిపోయింది";
+    static final String WHY_SPEAKER = "స్పీకర్ మొదలవలేదు";
+    static final String WHY_PART = "జవాబు మధ్యలో గొంతు 4 సెకన్లు ఆగిపోయింది";
+    static final String WHY_EMPTY = "గొంతు ఖాళీగా వచ్చింది (మాటలు లేవు)";
+
+    /** ♻️ One reply's watch. */
+    private static final class Watch {
+        final long askAt = SystemClock.elapsedRealtime();
+        final long noVoiceMs;
+        Watch(boolean fresh) { noVoiceMs = fresh ? NO_VOICE_FRESH_MS : NO_VOICE_MS; }
+        volatile long lastByteAt, voiceAt, readyAt;  // last sound bytes came / words first seen / the speaker was let start (0: not yet)
+        volatile boolean heard, over;
+        volatile String why;                          // set: this reply is being given up
+        private final java.util.concurrent.atomic.AtomicBoolean told = new java.util.concurrent.atomic.AtomicBoolean();
+        /** Only the first of the watch / the speaking thread tells VoiceIO how this reply ended. */
+        boolean tell() { return told.compareAndSet(false, true); }
+        boolean told() { return told.get(); }
+    }
+
+    /** ♻️ Thrown inside the speaking thread when the watch has given the reply up. */
+    private static final class Stalled extends Exception {}
+    /** The speaker refused the sound (not the line): no asking again for that. */
+    private static final class SpeakerFail extends Exception { SpeakerFail(String m) { super(m); } }
+    /** The download broke (the line / OpenAI): worth asking again. Same message as before. */
+    private static final class LineFail extends Exception { LineFail(String m) { super(m); } }
+
+    /**
+     * ♻️ The guard's rule (no Android in it, for the desk test): why this reply should be given up now, or null. calm: when
+     * a ⏸ last ended (time paused never counts); caughtUp: the speaker has played all the sound that came; noVoiceMs: 6 s
+     * (8 s for the one asked again: a line of its own takes a moment to open).
+     */
+    static String stallWhy(long now, long askAt, long calm, long lastByteAt, boolean finished, long voiceAt, long readyAt,
+                           boolean heard, boolean caughtUp, long noVoiceMs) {
+        if (!heard) {
+            if (voiceAt == 0 && now - Math.max(askAt, calm) >= noVoiceMs) return lastByteAt == 0 ? WHY_NOTHING : WHY_SILENT;
+            if (lastByteAt > 0 && !finished && now - Math.max(lastByteAt, calm) >= STALL_MS) return WHY_STALL;
+            if (voiceAt > 0 && readyAt > 0 && now - Math.max(Math.max(voiceAt, readyAt), calm) >= STALL_MS) return WHY_SPEAKER;
+            return null;
+        }
+        if (!finished && caughtUp && lastByteAt > 0 && now - Math.max(lastByteAt, calm) >= STALL_MS) return WHY_PART;
+        return null;
+    }
+
+    /** ♻️ The reason for a broken line / an OpenAI fault (Telugu, short). */
+    static String lineWhy(String msg) {
+        String m = msg == null ? "" : msg.trim();
+        java.util.regex.Matcher x = java.util.regex.Pattern.compile("^TTS (5\\d\\d)").matcher(m);
+        if (x.find()) return "OpenAI గొంతు " + x.group(1) + " (వాళ్ళ వైపు సమస్య)";
+        if (m.length() > 60) m = m.substring(0, 60);
+        return "గొంతు లైన్ తెగింది" + (m.isEmpty() || "null".equals(m) ? "" : " (" + m + ")");
+    }
+
+    /** A line for the voice; fresh: one of its own, not one the phone kept open (when no proxy is set: the same way out). */
+    private static HttpURLConnection open(String url, boolean fresh) throws java.io.IOException {
+        URL u = new URL(url);
+        if (fresh) {
+            try {
+                boolean direct = true;
+                for (java.net.Proxy p : java.net.ProxySelector.getDefault().select(u.toURI()))
+                    if (p.type() != java.net.Proxy.Type.DIRECT) direct = false;
+                if (direct) return (HttpURLConnection) u.openConnection(java.net.Proxy.NO_PROXY);
+            } catch (Exception ignored) {}
+        }
+        return (HttpURLConnection) u.openConnection();
+    }
 
     private static volatile long warmedAt;
 
@@ -273,10 +357,13 @@ final class NaturalVoice {
         final EchoGuard eg = echo;
         final CloudVoice cv = cloud;
         final boolean q = quick;
+        final boolean g = guard && cv == null; // ♻️ (Gemini / Sarvam keep their own way of trying again)
+        final boolean f = fresh;
+        fresh = false;
         CloudVoice was = fetching;
         if (was != null) was.cancel(); // (the last reply's request, still on its way)
         cutAsking();
-        new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cv, cb, q), "jarvis-tts").start();
+        new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cv, cb, q, g, f), "jarvis-tts").start();
     }
 
     /**
@@ -345,10 +432,15 @@ final class NaturalVoice {
         }
     }
 
-    private void run(int gen, String apiKey, String model, String voice, String text, String style, EchoGuard eg, CloudVoice cv, Callback cb, boolean q) {
+    private void run(int gen, String apiKey, String model, String voice, String text, String style, EchoGuard eg, CloudVoice cv, Callback cb,
+                     boolean q, boolean g, boolean f) {
         HttpURLConnection c = null;
         AudioTrack t = null;
         final boolean[] started = {false};
+        final Watch w = g ? new Watch(f) : null; // ♻️ (null: guard off, exactly as before)
+        final Pcm pcm = new Pcm();
+        final long[] wrote = {0};               // bytes of the reply handed to the speaker
+        int stage = 0;                          // ♻️ 0: not asked yet · 1: asked (a failure now is the line's / OpenAI's) · 2: OpenAI said no (4xx)
         try {
           if (cv == null) { // OpenAI (as always): the request is made, and answered, before the speaker opens
             boolean old = model.toLowerCase(java.util.Locale.ROOT).startsWith("tts-1");
@@ -361,21 +453,28 @@ final class NaturalVoice {
                     .put("response_format", "pcm");
             if (!old) body.put("instructions", style); // (the older models take no feelings)
             byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-            c = (HttpURLConnection) new URL("https://api.openai.com/v1/audio/speech").openConnection();
+            c = open("https://api.openai.com/v1/audio/speech", f);
             asking = c;
             if (gen != generation) { if (asking == c) asking = null; return; } // (stopped while the request was being made)
+            if (w != null) { // ♻️ the watch, from the moment it is asked
+                final HttpURLConnection mine = c;
+                new Thread(() -> watch(gen, w, pcm, mine, cb), "jarvis-tts-guard").start();
+            }
             c.setRequestMethod("POST");
             c.setConnectTimeout(15000);
             c.setReadTimeout(20000); // a stalled stream must not leave Jarvis "speaking" in silence (and the mic shut) for a minute
             c.setDoOutput(true);
             c.setRequestProperty("Authorization", "Bearer " + apiKey);
             c.setRequestProperty("Content-Type", "application/json");
+            if (f) c.setRequestProperty("Connection", "close"); // ♻️ (this line isn't kept for later either)
             c.setFixedLengthStreamingMode(bytes.length);
+            stage = 1;
             c.connect();
             if (gen != generation) return; // (stopped before the line was open: disconnect couldn't cut it; finally closes it)
             try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
             int status = c.getResponseCode();
             if (status >= 400) {
+                if (status < 500) stage = 2;
                 String err = "";
                 try (InputStream es = c.getErrorStream()) {
                     if (es != null) {
@@ -386,6 +485,7 @@ final class NaturalVoice {
                 }
                 throw new IllegalStateException("TTS " + status + " " + err);
             }
+            stage = 3; // ♻️ answered: from here a failure is the phone's own (the speaker), unless the download breaks (LineFail)
           }
 
             int min = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
@@ -422,7 +522,6 @@ final class NaturalVoice {
 
             // Download on its own thread (never stalls, also while paused); this thread feeds the speaker.
             // All sound of this reply is kept, so ▶ can carry on from exactly where it stopped.
-            final Pcm pcm = new Pcm();
             final HttpURLConnection conn = c;
             Thread reader = new Thread(() -> {
                 if (cv != null) { readCloud(gen, cv, text, pcm); return; }
@@ -443,6 +542,7 @@ final class NaturalVoice {
                         scanPauses(buf, len);
                         frames += len / 2;
                         arrived = frames;
+                        if (w != null) w.lastByteAt = SystemClock.elapsedRealtime();
                     }
                 } catch (Exception e) {
                     err = String.valueOf(e.getMessage());
@@ -457,10 +557,12 @@ final class NaturalVoice {
             long pos = 0; // bytes of pcm handed to the speaker
             // ⚡ F: a "ఒక్క క్షణం, చూస్తున్నాను" still sounding: this answer starts right after it (never over it, never cutting it)
             long fillerUntil = SystemClock.elapsedRealtime() + 3000;
-            while (gen == generation && Filler.playing() && SystemClock.elapsedRealtime() < fillerUntil) SystemClock.sleep(20);
+            while (gen == generation && (w == null || w.why == null) && Filler.playing() && SystemClock.elapsedRealtime() < fillerUntil)
+                SystemClock.sleep(20);
             if (q) { // ⚡ G: the silence before the first word is skipped (a little kept, so the word isn't clipped)
                 long until = SystemClock.elapsedRealtime() + 1500;
-                while (gen == generation && firstSound < 0 && !pcm.finished() && arrived < RATE && SystemClock.elapsedRealtime() < until)
+                while (gen == generation && (w == null || w.why == null) && firstSound < 0 && !pcm.finished() && arrived < RATE
+                        && SystemClock.elapsedRealtime() < until)
                     SystemClock.sleep(5);
                 long fs = firstSound;
                 if (fs > BLOCK * 2 && fs < RATE) {
@@ -468,37 +570,44 @@ final class NaturalVoice {
                     synchronized (lock) { if (seekTo < 0 && !paused) { base = skip; pos = skip * 2; } }
                 }
             }
+            if (w != null) w.readyAt = SystemClock.elapsedRealtime();
             while (gen == generation) {
+                if (w != null && w.why != null) throw new Stalled();
                 if (paused) { SystemClock.sleep(20); continue; }
                 long seek = seekTo;
                 if (seek >= 0) { pos = seek; seekTo = -1; }
                 int n = pcm.read(pos, chunk);
                 if (n < 0) break;                                   // all written
                 if (n == 0) {
-                    if (pcm.finished() && pcm.error() != null) throw new IllegalStateException(pcm.error());
+                    if (pcm.finished() && pcm.error() != null) throw new LineFail(pcm.error());
                     SystemClock.sleep(10);
                     continue;
                 }
-                int w;
+                int wr;
                 synchronized (lock) {
                     if (paused || seekTo >= 0 || gen != generation) continue; // paused meanwhile: don't queue stale sound
-                    w = writeOut(t, chunk, n);
+                    wr = writeOut(t, chunk, n);
                 }
-                if (w < 0) throw new IllegalStateException("audio " + w);
-                if (w == 0) { SystemClock.sleep(10); continue; }
+                if (wr < 0) throw new SpeakerFail("audio " + wr);
+                if (wr == 0) { SystemClock.sleep(10); continue; }
                 if (!started[0]) {
                     started[0] = true;
                     main.post(() -> { if (gen == generation) cb.onStart(); });
                     final AudioTrack heardOn = t;
                     new Thread(() -> watchAudible(gen, heardOn, cb), "jarvis-tts-heard").start();
                 }
-                pos += w;
+                pos += wr;
+                wrote[0] = pos;
             }
-            if (pcm.error() != null && !started[0]) throw new IllegalStateException(pcm.error());
+            if (pcm.error() != null && !started[0]) throw new LineFail(pcm.error());
+            // ♻️ the download broke part-way (all that came has been handed over): carry on, not "done" (pcm.read gives
+            // -1 once the download ends, error or not)
+            if (w != null && pcm.error() != null) throw new LineFail(pcm.error());
             // Wait until everything has actually been heard (pauses don't count; ▶ may seek back).
             long total = pcm.size() / 2;
             long deadline = SystemClock.elapsedRealtime() + total * 1000 / RATE + 1500;
             while (gen == generation && playedFrames(t, false) < total) {
+                if (w != null && w.why != null) throw new Stalled();
                 if (paused || seekTo >= 0) {
                     SystemClock.sleep(40);
                     deadline = SystemClock.elapsedRealtime() + (total - base) * 1000 / RATE + 1500;
@@ -512,6 +621,10 @@ final class NaturalVoice {
                 if (SystemClock.elapsedRealtime() > deadline) break;
                 SystemClock.sleep(40);
             }
+            if (w != null && gen == generation) { // ♻️ never "done" with a reply he didn't hear
+                if (!heardNow(t, w)) { tellStalled(gen, w, firstSound < 0 ? WHY_EMPTY : WHY_SPEAKER, -1, cb); return; }
+                if (!w.tell()) return; // (the watch has said it already)
+            }
             final String cut = cv != null && started[0] ? pcm.error() : null; // (a later piece didn't come: said in Jarvis చెక్)
             if (gen == generation) main.post(() -> {
                 if (gen != generation) return;
@@ -520,14 +633,32 @@ final class NaturalVoice {
             });
         } catch (Exception e) {
             if (gen == generation) {
-                final boolean playedSome = started[0];
                 final String msg = String.valueOf(e.getMessage());
-                main.post(() -> {
-                    if (gen != generation) return;
-                    if (playedSome) cb.onDone(); else cb.onError(msg);
-                });
+                if (w != null) { // ♻️
+                    if (!w.told()) {
+                        final boolean heard = heardNow(t, w);
+                        String why = w.why;
+                        if (why == null && (stage == 1 || e instanceof LineFail) && !(e instanceof SpeakerFail) && !(e instanceof Stalled))
+                            why = lineWhy(msg);
+                        if (why != null) {
+                            tellStalled(gen, w, why, heard ? drain(gen, t, wrote[0]) : -1, cb);
+                        } else if (w.tell()) {
+                            main.post(() -> {
+                                if (gen != generation) return;
+                                if (heard) cb.onDone(); else cb.onError(msg); // (unheard: the phone's voice says it)
+                            });
+                        }
+                    }
+                } else {
+                    final boolean playedSome = started[0];
+                    main.post(() -> {
+                        if (gen != generation) return;
+                        if (playedSome) cb.onDone(); else cb.onError(msg);
+                    });
+                }
             }
         } finally {
+            if (w != null) w.over = true;
             if (c != null && asking == c) asking = null;
             if (c != null) c.disconnect();
             if (t != null) PlaybackLevel.end(t);
@@ -536,6 +667,59 @@ final class NaturalVoice {
                 try { t.stop(); } catch (Exception ignored) {}
                 t.release();
             }
+        }
+    }
+
+    /** ♻️ Some of the voice (past its first words) has really come out of the speaker. */
+    private boolean heardNow(AudioTrack t, Watch w) {
+        if (w.heard) return true;
+        long fs = firstSound;
+        return t != null && fs >= 0 && playedFrames(t, false) > fs + RATE / 10;
+    }
+
+    /** ♻️ Part-way: what had come plays out first (so the next part starts where he really stopped hearing); where that is. */
+    private long drain(int gen, AudioTrack t, long wroteBytes) {
+        long end = wroteBytes / 2, until = SystemClock.elapsedRealtime() + 3000;
+        while (gen == generation && !paused && playedFrames(t, false) < end - BLOCK && SystemClock.elapsedRealtime() < until)
+            SystemClock.sleep(20);
+        return playedFrames(t, false);
+    }
+
+    /** ♻️ Tells VoiceIO this reply was given up (once; the watch or the speaking thread, whichever comes first). */
+    private void tellStalled(int gen, Watch w, String why, long heard, Callback cb) {
+        w.why = why;
+        if (!w.tell()) return;
+        main.post(() -> { if (gen == generation) cb.onStalled(why, heard); });
+    }
+
+    /**
+     * ♻️ Watches one OpenAI reply every 0.1 s until it ends: the words must come, keep coming, and be heard (stallWhy).
+     * When not, the line is cut and VoiceIO told at once (a line stuck opening can't hold it up for 15 s).
+     */
+    private void watch(int gen, Watch w, Pcm pcm, HttpURLConnection conn, Callback cb) {
+        long calm = 0;
+        boolean held = false;
+        while (!w.over && gen == generation && !w.told()) {
+            SystemClock.sleep(100);
+            if (w.over || gen != generation || w.told()) return;
+            long now = SystemClock.elapsedRealtime();
+            if (paused) { held = true; continue; }        // (⏸: the time paused doesn't count)
+            if (held) { held = false; calm = now; }
+            AudioTrack t = track;
+            long fs = firstSound;
+            if (fs >= 0 && w.voiceAt == 0) w.voiceAt = now;
+            long played = t == null ? 0 : playedFrames(t, false);
+            if (!w.heard && t != null && fs >= 0 && played > fs + RATE / 10) w.heard = true;
+            String why = stallWhy(now, w.askAt, calm, w.lastByteAt, pcm.finished(), w.voiceAt, w.readyAt, w.heard,
+                    played >= arrived - RATE / 20, w.noVoiceMs);
+            if (why == null) continue;
+            w.why = why;
+            if (!w.tell()) return;
+            final long heardAt = w.heard ? played : -1;
+            if (asking == conn) asking = null;
+            new Thread(() -> { try { conn.disconnect(); } catch (Throwable ignored) {} }, "jarvis-tts-cut").start();
+            main.post(() -> { if (gen == generation) cb.onStalled(why, heardAt); });
+            return;
         }
     }
 

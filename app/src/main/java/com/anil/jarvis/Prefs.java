@@ -416,11 +416,17 @@ final class Prefs {
     boolean speedA() { return !homeMode() && sp.getBoolean("speed_a", true); }
     /** 5 (build 2): what changes every minute goes with the question, so the AI can keep the rule book's start. */
     boolean speed5() { return !homeMode() && sp.getBoolean("speed_5", true); }
+    /**
+     * ♻️ గొంతు కాపలా: the OpenAI voice must really be heard: no words in 6 s, or the sound stopping for 4 s, and the same
+     * voice is asked once more on a line of its own (part-way: from the start of that sentence); then the phone's voice.
+     */
+    boolean voiceGuard() { return !homeMode() && sp.getBoolean("voice_guard", true); }
     /** The switches that are off now (for the ⏱️ list: "G K"), empty when all are on. */
     String speedOff() {
         if (homeMode()) return "";
         StringBuilder b = new StringBuilder();
         for (String k : new String[]{"g", "k", "f", "e", "a", "5"}) if (!sp.getBoolean("speed_" + k, true)) b.append(k.toUpperCase(java.util.Locale.ROOT)).append(' ');
+        if (!sp.getBoolean("voice_guard", true)) b.append("♻️");
         return b.toString().trim();
     }
 

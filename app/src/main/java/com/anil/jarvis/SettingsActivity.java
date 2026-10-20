@@ -98,7 +98,7 @@ public class SettingsActivity extends Activity {
     private ScrollView pageScroll;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel, camAlways;
     /** ⚡ వేగం: each speed change on its own (Prefs.speedG / K / F / E). */
-    private Switch speedG, speedK, speedF, speedE, speedA, speed5;
+    private Switch speedG, speedK, speedF, speedE, speedA, speed5, voiceGuard;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
     private int coughGap;
@@ -1916,6 +1916,7 @@ public class SettingsActivity extends Activity {
         if (!turnTimes.isEmpty()) s.append(turnTimes);
         else if (!Ears.lastTimes.isEmpty()) s.append("• చివరి వినడం సమయం: ").append(Ears.lastTimes).append("\n");
         if (!prefs.homeMode()) s.append(speedLine()).append("\n"); // ⚡ which speed switches are on
+        if (!prefs.homeMode()) s.append(VoiceIO.guardLine(this)); // ♻️ how often the voice had to be asked again
         s.append(Brain.taskLines(this));     // (the camera / screen / document jobs' time)
         if (!Ears.lastError.isEmpty()) s.append("• మాటలు వినే AI చివరి తప్పు: ").append(Ears.lastError).append("\n");
         if (prefs.coughAsk()) {
@@ -2065,6 +2066,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("speed_e", speedE.isChecked());
         e.putBoolean("speed_a", speedA.isChecked());
         e.putBoolean("speed_5", speed5.isChecked());
+        e.putBoolean("voice_guard", voiceGuard.isChecked());
         int lbc = liveBarge.getCheckedRadioButtonId();
         e.putString("live_barge", lbc == 96 ? "voice" : lbc == 97 ? "off" : "word");
         e.putInt("barge_sens", bargeSens.getProgress());
@@ -4315,8 +4317,11 @@ public class SettingsActivity extends Activity {
                 + "భద్రత రూల్స్ ఎప్పుడూ వెళ్తాయి", prefs.sp.getBoolean("speed_a", true));
         speed5 = toggle("5 · రూల్ బుక్ గుర్తుండేలా: టైమ్, ఫోన్ వివరాలు లాంటి మారేవి ప్రశ్నతో పాటు వెళ్తాయి; రూల్ బుక్ మొదలు ప్రతిసారీ ఒకేలా ఉండి AI దాన్ని గుర్తుంచుకుంటుంది (ఖర్చు తక్కువ)",
                 prefs.sp.getBoolean("speed_5", true));
+        voiceGuard = toggle("♻️ గొంతు కాపలా: OpenAI గొంతు 6 సెకన్లలో వినిపించకపోతే, లేదా 4 సెకన్లు ఆగిపోతే, అదే గొంతుని కొత్త లైన్‌లో "
+                + "ఇంకొక్కసారి అడుగుతుంది (మధ్యలో అయితే ఆ వాక్యం మొదటి నుంచి). అప్పుడూ రాకపోతే ఫోన్ గొంతు చెబుతుంది. "
+                + "జవాబు నిజంగా వినిపించాకే మైక్ తెరుస్తుంది", prefs.sp.getBoolean("voice_guard", true));
         button("అన్నీ పాత పద్ధతికి (అన్నీ ఆఫ్)", v -> {
-            for (Switch w : new Switch[]{speedG, speedK, speedF, speedE, speedA, speed5}) w.setChecked(false);
+            for (Switch w : new Switch[]{speedG, speedK, speedF, speedE, speedA, speed5, voiceGuard}) w.setChecked(false);
             autosave();
             Toast.makeText(this, "⚡ అన్నీ ఆఫ్: ఇంతకుముందు పద్ధతిలోనే", Toast.LENGTH_SHORT).show();
         });
@@ -4326,7 +4331,8 @@ public class SettingsActivity extends Activity {
     /** Jarvis చెక్'s line: which speed switches are on. */
     private String speedLine() {
         StringBuilder b = new StringBuilder("• ⚡ వేగం: ");
-        String[][] all = {{"G", "speed_g"}, {"K", "speed_k"}, {"F", "speed_f"}, {"E", "speed_e"}, {"A", "speed_a"}, {"5", "speed_5"}};
+        String[][] all = {{"G", "speed_g"}, {"K", "speed_k"}, {"F", "speed_f"}, {"E", "speed_e"}, {"A", "speed_a"}, {"5", "speed_5"},
+                {"♻️", "voice_guard"}};
         for (int i = 0; i < all.length; i++) {
             if (i > 0) b.append(" · ");
             b.append(all[i][0]).append(prefs.sp.getBoolean(all[i][1], true) ? " ✓" : " ఆఫ్");
