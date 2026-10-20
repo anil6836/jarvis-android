@@ -396,32 +396,36 @@ public class DutyActivity extends Activity {
             items.add("🏠 ఈ రోజు నాకు సెలవు");
             acts.add(() -> { roster.set(Duty.ME, d, false, "సెలవు"); saveAndRender(); });
         }
+        // A whole batch for a whole batch first (his batch partners change with him), then "me alone" for one person
+        Duty.Batch myB = roster.myBatch();
+        boolean partners = myB != null && !myB.members.isEmpty();
+        String us = partners ? "మా బ్యాచ్ (నేను, " + TextUtils.join(", ", myB.members) + ") చేస్తుంది" : "నేను చేస్తా";
+        for (Duty.Batch b : roster.batchesOn(d)) {
+            if (myB == null || b.id.equalsIgnoreCase(roster.mine)) continue;
+            items.add("🔁 " + batchLabel(b) + " డ్యూటీ " + us + " (4 రోజులు + 8 సెలవు)");
+            acts.add(() -> batchSwap("batch:" + roster.mine, "batch:" + b.id, d));
+        }
         for (String p : on) {
             if (Duty.ME.equals(p)) continue;
-            items.add("🔁 " + p + " బదులు నేను చేస్తా (4 రోజులు + 8 సెలవు)");
+            if (myB != null && myB.members.contains(p)) continue; // (his own batch partner works the same days as him)
+            items.add("🔁 " + p + " బదులు నేను " + (partners ? "ఒక్కడినే " : "") + "చేస్తా (4 రోజులు + 8 సెలవు)");
             acts.add(() -> cover(p, d, myName));
-        }
-        List<Duty.Batch> bs = roster.batchesOn(d);
-        for (Duty.Batch b : bs) {
-            if (b.id.equalsIgnoreCase(roster.mine) || !b.members.isEmpty()) continue;
-            items.add("🔁 " + b.name + " బదులు నేను చేస్తా (4 రోజులు + 8 సెలవు)");
-            acts.add(() -> cover("batch:" + b.id, d, myName));
         }
         if (mine) {
             for (Duty.Batch b : roster.batches) {
-                if (b.id.equalsIgnoreCase(roster.mine)) continue;
-                List<String> ppl = new ArrayList<>(b.members);
-                if (ppl.isEmpty()) ppl.add("batch:" + b.id);
-                for (String p : ppl) {
-                    String shown = p.startsWith("batch:") ? b.name : p;
-                    items.add("🙋 నా డ్యూటీ " + shown + " చేస్తారు (వాళ్లకి 4 రోజులు, నాకు 8 సెలవు)");
+                if (myB == null || b.id.equalsIgnoreCase(roster.mine)) continue;
+                items.add("🙋 " + (partners ? "మా బ్యాచ్" : "నా") + " డ్యూటీ " + batchLabel(b) + " చేస్తుంది (వాళ్లకి 4 రోజులు, "
+                        + (partners ? "మాకు" : "నాకు") + " 8 సెలవు)");
+                acts.add(() -> batchSwap("batch:" + b.id, "batch:" + roster.mine, d));
+                for (String p : b.members) {
+                    items.add("🙋 నా డ్యూటీ " + p + " ఒక్కరే చేస్తారు (" + (partners ? "నాకు మాత్రమే" : "నాకు") + " 8 సెలవు)");
                     acts.add(() -> {
-                        LocalDate[] r = roster.swap(p, Duty.ME, d, shown, myName);
-                        if (r == null) { Toast.makeText(this, "కుదరలేదు: " + shown + " డ్యూటీ కనిపించలేదు", Toast.LENGTH_LONG).show(); return; }
+                        LocalDate[] r = roster.swap(p, Duty.ME, d, p, myName);
+                        if (r == null) { Toast.makeText(this, "కుదరలేదు: " + p + " డ్యూటీ కనిపించలేదు", Toast.LENGTH_LONG).show(); return; }
                         saveAndRender();
                         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("🙋 మార్చాను ✓")
-                                .setMessage(Duty.day(r[0]) + " – " + Duty.day(r[1]) + " మీ డ్యూటీ " + shown + " చేస్తారు."
-                                        + (r[2] == null ? "" : " " + Duty.day(r[2]) + " – " + Duty.day(r[3]) + " " + shown + " డ్యూటీ మీరు చేస్తారు."))
+                                .setMessage(Duty.day(r[0]) + " – " + Duty.day(r[1]) + " మీ డ్యూటీ " + p + " చేస్తారు."
+                                        + (r[2] == null ? "" : " " + Duty.day(r[2]) + " – " + Duty.day(r[3]) + " " + p + " డ్యూటీ మీరు చేస్తారు."))
                                 .setPositiveButton("సరే", null).show();
                     });
                 }
@@ -462,6 +466,29 @@ public class DutyActivity extends Activity {
                         .setNegativeButton("వద్దు", null).show())
                 .setNegativeButton("సరే", null)
                 .show();
+    }
+
+    /** "B బ్యాచ్ (X, Y)": a batch with its people. */
+    private static String batchLabel(Duty.Batch b) {
+        return b.name + (b.members.isEmpty() ? "" : " (" + TextUtils.join(", ", b.members) + ")");
+    }
+
+    /**
+     * A whole batch does another whole batch's turn (4 days on, then 8 off): the change is the batch's, so every person in
+     * it (he and his batch partners, or both people of the other batch) moves together.
+     */
+    private void batchSwap(String doer, String absent, LocalDate d) {
+        Duty.Batch db = roster.batch(doer.substring(6)), ab = roster.batch(absent.substring(6));
+        if (db == null || ab == null) return;
+        boolean doerMine = db.id.equalsIgnoreCase(roster.mine), absentMine = ab.id.equalsIgnoreCase(roster.mine);
+        String dn = doerMine ? "మా బ్యాచ్" : db.name, an = absentMine ? "మా బ్యాచ్" : ab.name;
+        LocalDate[] r = roster.swap(doer, absent, d, dn, an);
+        if (r == null) { Toast.makeText(this, "కుదరలేదు: ఆ తేదీ దగ్గర " + an + " డ్యూటీ కనిపించలేదు", Toast.LENGTH_LONG).show(); return; }
+        saveAndRender();
+        String msg = Duty.day(r[0]) + " – " + Duty.day(r[1]) + ": " + an + " డ్యూటీ " + dn + " చేస్తుంది."
+                + (r[2] == null ? "" : "\n" + Duty.day(r[2]) + " – " + Duty.day(r[3]) + ": " + dn + " డ్యూటీ " + an + " చేస్తుంది"
+                + (doerMine ? " (మాకు 8 రోజులు సెలవు)." : "."));
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("🔁 మార్చాను ✓").setMessage(msg).setPositiveButton("సరే", null).show();
     }
 
     private void cover(String who, LocalDate d, String myName) {
@@ -619,13 +646,13 @@ public class DutyActivity extends Activity {
                 .show();
     }
 
-    /** Batches from pasted lines ("నా బ్యాచ్: నేను, సోమయ్య | 2026-10-06 | 11:30", one per batch). */
+    /** Batches from pasted lines ("నా బ్యాచ్: నేను, మిత్రుడు 1 | 2026-10-06 | 11:30", one per batch). */
     private void fromText() {
         EditText box = new EditText(this);
         box.setMinLines(5);
         box.setGravity(Gravity.TOP);
         box.setTextSize(14);
-        box.setHint("నా బ్యాచ్: నేను, సోమయ్య | 2026-10-06 | 11:30\nబ్యాచ్: శ్రీను, రామకృష్ణ | 2026-10-08 | 11:30\nబ్యాచ్: సాయి, వీరేంద్ర | 2026-10-10 | 11:30\nసైకిల్: 2 డ్యూటీ, 4 సెలవు");
+        box.setHint("నా బ్యాచ్: నేను, మిత్రుడు 1 | 2026-10-06 | 11:30\nబ్యాచ్: మిత్రుడు 2, మిత్రుడు 3 | 2026-10-08 | 11:30\nబ్యాచ్: మిత్రుడు 4, మిత్రుడు 5 | 2026-10-10 | 11:30\nసైకిల్: 2 డ్యూటీ, 4 సెలవు");
         StringBuilder now = new StringBuilder();
         for (Duty.Batch b : roster.batches) {
             if (b.start == null) continue;

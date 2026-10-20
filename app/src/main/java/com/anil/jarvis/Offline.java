@@ -1041,7 +1041,7 @@ final class Offline {
         for (int i = 0; i < s.length; i += 2) SIGN.put(s[i].charAt(0), s[i + 1]);
     }
 
-    /** Telugu letters in English letters, as a name is usually saved: "రాము" -> "raamu", "శ్రీను" -> "shreenu". */
+    /** Telugu letters in English letters, as a name is usually saved: "రాము" -> "raamu", "శ్రీధర్" -> "shreedhar". */
     static String latin(String s) {
         if (s == null) return "";
         StringBuilder b = new StringBuilder();
@@ -1072,7 +1072,7 @@ final class Offline {
         return b.toString();
     }
 
-    /** A name squeezed so that spellings of the same sound meet: "Sreenu", "Srinu", "శ్రీను" -> "srinu". */
+    /** A name squeezed so that spellings of the same sound meet: "Sreedhar", "Sridhar", "శ్రీధర్" -> "sridar". */
     static String skeleton(String s) {
         String t = latin(s).toLowerCase(Locale.ROOT).replaceAll("[^a-z]", "");
         t = t.replace("chh", "c").replace("ch", "c").replace("sh", "s").replace("th", "t").replace("dh", "d").replace("bh", "b")
@@ -1080,7 +1080,7 @@ final class Offline {
                 .replace("z", "j").replace("q", "k").replace("x", "ks");
         t = t.replace("ee", "i").replace("oo", "u").replace("aa", "a").replace("ai", "ay").replace("au", "av");
         t = t.replaceAll("(.)\\1+", "$1"); // doubled letters
-        t = t.replaceAll("([aeiou])h$", "$1"); // "Somaiah" = "Somaya"
+        t = t.replaceAll("([aeiou])h$", "$1"); // "Venkaiah" = "Venkaya"
         return t;
     }
 

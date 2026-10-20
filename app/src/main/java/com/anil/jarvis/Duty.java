@@ -356,6 +356,7 @@ final class Duty {
         for (LocalDate d = ym.atDay(1); !d.isAfter(ym.atEndOfMonth()); d = d.plusDays(1)) {
             boolean on = r.isOn(ME, d), base = r.baseOn(mine, d);
             Change ch = r.change(d, ME);
+            if (ch == null && mine != null) ch = r.change(d, "batch:" + mine.id); // (his whole batch's change: "B బ్యాచ్ బదులు")
             String note = ch == null ? "" : ch.note;
             if (on) {
                 days++;
@@ -643,8 +644,8 @@ final class Duty {
 
     /**
      * Batches from lines like
-     *   "నా బ్యాచ్: నేను, సోమయ్య | 2026-10-06 | 11:30"
-     *   "బ్యాచ్: శ్రీను, రామకృష్ణ | 2026-10-08 | 11:30"
+     *   "నా బ్యాచ్: నేను, మిత్రుడు 1 | 2026-10-06 | 11:30"
+     *   "బ్యాచ్: మిత్రుడు 2, మిత్రుడు 3 | 2026-10-08 | 11:30"
      *   "సైకిల్: 2 డ్యూటీ, 4 సెలవు"
      * (one line per batch, in the order they relieve each other; the date is the first day of one of its duties).
      * Replaces the batches; day-by-day changes are kept. Returns how many batches, or -1 if nothing was understood.
@@ -703,11 +704,21 @@ final class Duty {
         try { return s == null || s.trim().isEmpty() ? null : LocalDate.parse(s.trim(), DateTimeFormatter.ISO_LOCAL_DATE); } catch (Exception e) { return null; }
     }
 
-    /** "me" / a member's name / a batch ("B", "B బ్యాచ్") -> who, or null. */
+    /** "me" / a member's name / a batch ("B", "B బ్యాచ్") / his whole batch ("మేము", "మా బ్యాచ్") -> who, or null. */
     static String who(Roster r, String said) {
         if (said == null || said.trim().isEmpty()) return ME;
         String s = said.trim(), l = s.toLowerCase(Locale.ROOT);
         if (l.equals("me") || l.equals("నేను") || l.equals("నా") || l.equals("naa") || l.equals("anil")) return ME;
+        if (OURS.contains(l.replaceAll("\\s+", " ")) && r.myBatch() != null) return "batch:" + r.myBatch().id; // (he and his batch partners)
+        return whoElse(r, s);
+    }
+
+    /** His whole batch, as he says it. */
+    static final java.util.Set<String> OURS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "మేము", "మేమే", "మేం", "మా బ్యాచ్", "మా బ్యాచ్ మొత్తం", "మా", "మనం", "మన బ్యాచ్", "మా ఇద్దరం", "మేమిద్దరం",
+            "we", "us", "our batch", "my batch", "our", "both of us", "maa batch", "memu"));
+
+    private static String whoElse(Roster r, String s) {
         String p = r.person(s);
         if (p != null) return p;
         Batch b = r.batch(s);

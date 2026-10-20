@@ -580,7 +580,9 @@ final class Tools {
                 + "setup_text: all batches at once from lines he pasted; "
                 + "set_day: he or someone is on duty / off on a date or dates (extra duty, leave); cover: one person does another's turn "
                 + "(he does someone's: by empty; someone does his: covered empty, by = that person), the doer is on 4 days in a row and the other then does the doer's next turn "
-                + "(8 days off); clear: undo changes on a date; open: show the calendar screen; "
+                + "(8 days off). When his whole batch does another batch's turn ('మేము B బ్యాచ్ డ్యూటీ చేశాం', 'మా బ్యాచ్ B బ్యాచ్ బదులు'), by = 'మా బ్యాచ్' and "
+                + "covered = that batch's letter, so his batch partners change with him (never by empty then); when another whole batch does his batch's turn, "
+                + "covered = 'మా బ్యాచ్' and by = that batch's letter; by empty means he alone; clear: undo changes on a date; open: show the calendar screen; "
                 + "trip_check: before his next duty, rain on the way and whether the bike's charge is enough to go and come back ('డ్యూటీకి వెళ్లొచ్చా?', 'బైక్ ఛార్జ్ సరిపోతుందా?'); "
                 + "report: his month (month YYYY-MM, default this month): duty days and hours, extra days, days off, covers, festivals worked; "
                 + "bag: what he takes to duty (text = items comma separated, 'off' = none, empty = show), said the evening before and before leaving; "
@@ -594,8 +596,8 @@ final class Tools {
                         {"person", "string", "Whose duty: empty = his own; a name or a batch (A, B, C)"},
                         {"date", "string", "YYYY-MM-DD (on_date, set_day, cover, clear)"}, {"to_date", "string", "Last date YYYY-MM-DD for set_day / clear"},
                         {"duty", "boolean", "For set_day: true = on duty, false = off"},
-                        {"covered", "string", "For cover: whose duty is done by someone else (name or batch; empty = his own)"},
-                        {"by", "string", "For cover: who does it (name or batch; empty = he himself)"},
+                        {"covered", "string", "For cover: whose duty is done by someone else (name, batch letter, or 'మా బ్యాచ్' = his whole batch; empty = his own, he alone)"},
+                        {"by", "string", "For cover: who does it (name, batch letter, or 'మా బ్యాచ్' = his whole batch; empty = he himself alone)"},
                         {"text", "string", "For setup_text: lines 'నా బ్యాచ్: నేను, X | YYYY-MM-DD | HH:mm' / 'బ్యాచ్: Y, Z | date | time' in relieving order"},
                         {"batch", "string", "For setup: A, B or C"}, {"start_date", "string", "For setup: first day of one of that batch's duties, YYYY-MM-DD"},
                         {"time", "string", "For setup: duty start time HH:mm = when he relieves the batch before (his is 11:30)"},
@@ -7858,7 +7860,7 @@ final class Tools {
         }
         if (action.startsWith("setup_text") || (action.startsWith("setup") && !a.optString("text", "").isEmpty())) {
             int n = Duty.fromText(r, a.optString("text", ""), myName);
-            if (n <= 0) return err("format", "Could not read it. One line per batch: 'నా బ్యాచ్: నేను, సోమయ్య | 2026-10-06 | 11:30'.");
+            if (n <= 0) return err("format", "Could not read it. One line per batch: 'నా బ్యాచ్: నేను, మిత్రుడు 1 | 2026-10-06 | 11:30'.");
             Duty.save(act(), r);
             JSONObject o = ok().put("batches", dutyBatches(r));
             if (Duty.ready(r)) o.put("his_next_duties", dutyBlocks(r, Duty.ME, today, today.plusDays(60), 3));
@@ -7957,7 +7959,7 @@ final class Tools {
             if (cov.equalsIgnoreCase(myName)) cov = "";
             String doer = Duty.who(r, by), absent = Duty.who(r, cov);
             if (doer == null || absent == null) return err("unknown_person", "Who? Batches: " + dutyBatches(r));
-            if (doer.equals(absent)) return err("same", "Ask who does whose duty (e.g. he does Sai's, or Sai does his).");
+            if (doer.equals(absent)) return err("same", "Ask who does whose duty (e.g. he does X's, or X does his).");
             String doerName = Duty.ME.equals(doer) ? myName : doer.startsWith("batch:") ? doer.substring(6) + " batch" : doer;
             String absentName = Duty.ME.equals(absent) ? myName : absent.startsWith("batch:") ? absent.substring(6) + " batch" : absent;
             java.time.LocalDate[] res = r.swap(doer, absent, d == null ? today : d, doerName, absentName);
