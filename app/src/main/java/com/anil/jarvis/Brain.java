@@ -23,6 +23,14 @@ final class Brain {
         default boolean cancelled() { return false; }
         /** A phone job (or a web search) is about to run inside this answer (⚡ F: "ఒక్క క్షణం, చూస్తున్నాను"). */
         default void toolRound(String tool) {}
+        /** ⚡ B: the caller can speak this answer's first sentence while the rest is still being written. */
+        default boolean wantsEarly() { return false; }
+        /**
+         * ⚡ B: the answer's first sentence(s) (feeling tag off), to speak now; ask() still returns the whole answer, which
+         * starts with this unless the AI turned to a phone job after it. True: taken (at most once per question); false:
+         * not now (no more are offered for this question). The brain's thread.
+         */
+        default boolean early(String text) { return false; }
     }
 
     private static void checkCancelled(Status s) {
@@ -135,6 +143,10 @@ final class Brain {
             extra = SpeedGroups.RULE + sp[1];
         }
         AskState st = new AskState();
+        // ⚡ B: the answer read as it is written (Gemini), its first sentence spoken at once; never for an answer the
+        // second AI will check (a correction must never come after the answer was already heard)
+        st.early = status != null && prefs.speedB() && prefs.isGemini() && !noStream && status.wantsEarly() && !willCheck(text);
+        st.status = status;
         st.groups = groups;
         st.head = parts[0];
         st.cache = keep;
@@ -159,6 +171,7 @@ final class Brain {
             ASK.remove();
         }
         boolean moreUsed = st.more;
+        boolean spokeEarly = st.earlyText != null;
         if (own != null && !st.fellBack && st.groups != null) { // what this answer itself needed (not the ones carried over), for the next 5 minutes
             Set<String> mine = new java.util.LinkedHashSet<>(own);
             for (String g : st.groups) if (!sentFirst.contains(g)) mine.add(g); // (fetched with more_tools / used anyway)
@@ -173,7 +186,8 @@ final class Brain {
             out = toolsRun > 0 ? EMPTY_AFTER_TOOL : EMPTY;
         }
         lastAskEnd = android.os.SystemClock.elapsedRealtime();
-        askMarks = (marks(toolsRun, searched, checkedNow, deep, out.length(), afterBreak) + (moreUsed ? " 📚" : "") + " " + book(tally)).trim();
+        askMarks = (marks(toolsRun, searched, checkedNow, deep, out.length(), afterBreak) + (moreUsed ? " 📚" : "") + (spokeEarly ? " 🗣️" : "")
+                + " " + book(tally)).trim();
         askMarksAt = lastAskEnd;
         return out;
     }
@@ -195,6 +209,10 @@ final class Brain {
         String head = "", full = "";
         boolean cache, more, fellBack;
         final long[] tally = new long[4];
+        /** ⚡ B: this answer may be spoken while written; what was spoken early (null: nothing yet). */
+        boolean early;
+        String earlyText;
+        Status status;
     }
 
     private static final ThreadLocal<AskState> ASK = new ThreadLocal<>();
@@ -279,6 +297,19 @@ final class Brain {
             "(?i)(లోన్|\\bloan|\\bemi\\b|ఈఎంఐ|వడ్డీ|\\binterest\\b|insurance|ఇన్సూరెన్స్|పాలసీ|\\bpolicy|\\binvest|పెట్టుబడి|షేర్లు|\\bstocks?\\b|mutual fund|\\btax|పన్ను|\\bgst\\b|"
             + "మందు|మాత్ర|టాబ్లెట్|\\btablet|\\bdose|డోస్|medicine|షుగర్|\\bsugar\\b|బీపీ|\\bbp\\b|మెడికల్ రిపోర్ట్|ఆపరేషన్|surgery|"
             + "కోర్ట్|\\bcourt\\b|కేసు|\\blegal\\b|లీగల్|చట్టం|రిజిస్ట్రేషన్|భూమి|స్థలం|\\bproperty\\b|ఆస్తి)");
+
+    /** The second AI will read this answer (crossCheck): asked for, or a money / health / law question with a checker set. */
+    private boolean willCheck(String question) {
+        if (question == null) return false;
+        if (CHECK_WORDS.matcher(question).find()) return true;
+        if (!prefs.sp.getBoolean("check_auto", true) || !WEIGHTY.matcher(question).find()) return false;
+        try {
+            Prefs cp = Prefs.checker(prefs.app);
+            return cp != null && !cp.apiKey().isEmpty();
+        } catch (Exception e) {
+            return true; // (unsure: the answer waits for the check, as always)
+        }
+    }
 
     /** A second AI he chose reads the question and the answer: agrees (a mark), or says what it would correct. */
     private static final java.util.concurrent.ExecutorService CHECKER = java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -998,6 +1029,186 @@ final class Brain {
         }
     }
 
+    /** ⚡ B: streaming didn't work here once (an odd reply): Jarvis asks the usual way from then on (until restarted). */
+    private static volatile boolean noStream;
+
+    /** ⚡ B: one round read as it is written; the usual way if streaming fails before anything came. */
+    private static JSONObject geminiStreamOrCall(Prefs p, String key, JSONObject body, AskState st) throws Exception {
+        try {
+            return geminiStream(p, key, body, st);
+        } catch (Http.ApiError e) {
+            if (e.status == 401 || e.status == 403 || e.status == 429 || e.status >= 500) throw e; // (the same with or without streaming)
+            if (st.earlyText != null) throw e;   // (part of it was already spoken: said as an error, never asked twice)
+            JSONObject r = geminiCall(p, key, body); // the usual way: if it fails the same, that is the real error
+            // it worked the usual way: streaming itself is the trouble here (from now on); a stream cut short once is not
+            if (e.status == 400 || e.status == 404 || NO_EVENTS.equals(e.getMessage())) noStream = true;
+            return r;
+        }
+    }
+
+    /**
+     * ⚡ B: Gemini's answer in pieces (streamGenerateContent, server-sent events), put back together into the same answer
+     * as generateContent gives (all parts in order, thought signatures kept), so everything after it works as always.
+     * While it comes: once the answer's text holds a whole first sentence and a second has begun (so it is the answer,
+     * not a word before a phone job), that first sentence goes to Status.early().
+     */
+    static JSONObject geminiStream(Prefs p, String key, JSONObject body, AskState st) throws Exception {
+        String model = geminiModel(p);
+        String url = GEMINI_API + "models/" + model + ":streamGenerateContent?alt=sse";
+        Merge m = new Merge();
+        Http.Sse sink = piece -> {
+            m.add(piece);
+            if (st == null || !st.early || st.earlyText != null || st.status == null || m.call) return;
+            String first = firstSpeakable(m.text.toString());
+            if (first == null) return;
+            String said = Emotion.strip(first);
+            if (said == null || said.trim().length() < EARLY_MIN) return;
+            if (st.status.cancelled()) return;
+            if (st.status.early(said.trim())) st.earlyText = said.trim();
+            else st.early = false; // (not taken now: the answer is spoken whole, as always)
+        };
+        try {
+            Http.postSse(url, body, sink, "x-goog-api-key", key);
+        } catch (Http.ApiError e) {
+            JSONObject g = body.optJSONObject("generationConfig");
+            if (e.status != 400 || g == null || !g.has("thinkingConfig") || m.any
+                    || String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT).indexOf("thinking") < 0) throw e;
+            noThinkingModel = model; // this model has no thinking setting: the same model again without it
+            g.remove("thinkingConfig");
+            m.reset();
+            Http.postSse(url, body, sink, "x-goog-api-key", key);
+        }
+        if (!m.any) throw new Http.ApiError(0, NO_EVENTS);                      // (nothing came the streaming way)
+        if (m.cand && m.finish.isEmpty()) throw new Http.ApiError(0, "Gemini: the answer stopped part-way"); // (cut short)
+        JSONObject res = m.result();
+        try { Usage.fromResponse(GEMINI_API + "models/" + model + ":generateContent", res); } catch (Throwable ignored) {} // (the cost meter)
+        return res;
+    }
+
+    private static final String NO_EVENTS = "Gemini: nothing came while streaming";
+
+    /** ⚡ B: no early sentence shorter than this (its voice must be long enough for the speaker to start at once). */
+    static final int EARLY_MIN = 20;
+
+    /**
+     * ⚡ B: the first sentence(s) of the text so far, once the next one has begun, or null. A sentence ends at . ! ? (before a
+     * space) । or a new line; one with no end by 260 letters goes up to its last comma. At least EARLY_MIN letters (short ones join the
+     * next). The feeling tag stays in (Emotion.strip takes it off).
+     */
+    static String firstSpeakable(String soFar) {
+        if (soFar == null) return null;
+        String t = soFar;
+        int len = t.length(), from = 0;
+        while (from < len && Character.isWhitespace(t.charAt(from))) from++;
+        int end = -1;
+        for (int i = from; i < len; i++) {
+            char ch = t.charAt(i);
+            boolean stop = ch == '।' || ch == '\n'
+                    || (ch == '.' || ch == '!' || ch == '?') && i + 1 < len && Character.isWhitespace(t.charAt(i + 1)); // (not in "3.5", "google.com", "?v=")
+            if (!stop) continue;
+            int j = i + 1;
+            while (j < len && (t.charAt(j) == '.' || t.charAt(j) == '!' || t.charAt(j) == '?' || t.charAt(j) == '।')) j++; // ("…", "?!")
+            int k = j;
+            while (k < len && Character.isWhitespace(t.charAt(k))) k++;
+            if (k >= len) return null; // the next sentence hasn't begun yet
+            String head = t.substring(from, j);
+            if (visible(head) < EARLY_MIN) continue; // too short alone: with the next one
+            if (head.trim().startsWith("[") && visible(head.replaceAll("\\[[A-Za-z]+\\]", "")) < EARLY_MIN) continue; // (only a tag + a word)
+            end = j;
+            break;
+        }
+        if (end < 0) {
+            if (len - from < 260) return null;
+            int comma = t.lastIndexOf(',', from + 260);
+            if (comma <= from + 40) return null;
+            end = comma + 1;
+        }
+        String out = t.substring(from, end).trim();
+        if (out.contains("```") || out.startsWith("|") || out.startsWith("#")) return null; // (code, tables, headings: the usual way)
+        return out;
+    }
+
+    private static int visible(String s) {
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) if (!Character.isWhitespace(s.charAt(i))) n++;
+        return n;
+    }
+
+    /**
+     * ⚡ B: the rest of the answer after what was spoken early, or the whole answer if it doesn't start with it (the AI
+     * said a word, then did a phone job: the answer after the job is all new).
+     */
+    static String restAfter(String answer, String early) {
+        if (answer == null) return "";
+        if (early == null || early.isEmpty()) return answer;
+        String a = answer.trim();
+        return a.startsWith(early) ? a.substring(early.length()).trim() : answer;
+    }
+
+    /** ⚡ B: a streamed Gemini answer put back together. */
+    static final class Merge {
+        final JSONArray parts = new JSONArray();
+        final StringBuilder text = new StringBuilder(); // its words so far (not its thinking)
+        String finish = "", modelVersion = "";
+        JSONObject usage, feedback;
+        boolean call, any, cand;
+
+        void reset() {
+            for (int i = parts.length() - 1; i >= 0; i--) parts.remove(i);
+            text.setLength(0);
+            finish = "";
+            modelVersion = "";
+            usage = null;
+            feedback = null;
+            call = any = cand = false;
+        }
+
+        void add(JSONObject piece) throws Exception {
+            JSONObject err = piece.optJSONObject("error");
+            if (err != null) throw new Http.ApiError(err.optInt("code", 0), err.optString("message", "Gemini error"));
+            any = true;
+            if (piece.has("usageMetadata")) usage = piece.optJSONObject("usageMetadata");
+            if (piece.has("promptFeedback")) feedback = piece.optJSONObject("promptFeedback");
+            if (!piece.optString("modelVersion").isEmpty()) modelVersion = piece.optString("modelVersion");
+            JSONArray c = piece.optJSONArray("candidates");
+            if (c == null || c.length() == 0) return;
+            cand = true;
+            JSONObject c0 = c.getJSONObject(0);
+            if (!c0.optString("finishReason").isEmpty()) finish = c0.optString("finishReason");
+            JSONObject content = c0.optJSONObject("content");
+            JSONArray ps = content == null ? null : content.optJSONArray("parts");
+            for (int i = 0; ps != null && i < ps.length(); i++) {
+                JSONObject p = ps.optJSONObject(i);
+                if (p == null) continue;
+                if (p.has("functionCall")) call = true;
+                boolean plainText = p.has("text") && p.length() == (p.has("thought") ? 2 : 1);
+                if (plainText && p.optString("text").isEmpty()) continue; // (an empty piece: nothing to keep)
+                if (p.has("text") && !p.optBoolean("thought")) text.append(p.optString("text"));
+                JSONObject last = parts.length() == 0 ? null : parts.optJSONObject(parts.length() - 1);
+                boolean lastPlain = last != null && last.has("text") && last.length() == (last.has("thought") ? 2 : 1);
+                if (plainText && lastPlain && last.optBoolean("thought") == p.optBoolean("thought")) {
+                    last.put("text", last.optString("text") + p.optString("text")); // (one text, as generateContent gives it)
+                } else {
+                    parts.put(new JSONObject(p.toString()));
+                }
+            }
+        }
+
+        /** The answer as generateContent would have given it. */
+        JSONObject result() throws Exception {
+            JSONObject r = new JSONObject();
+            if (cand) {
+                JSONObject cc = new JSONObject().put("content", new JSONObject().put("role", "model").put("parts", parts));
+                if (!finish.isEmpty()) cc.put("finishReason", finish);
+                r.put("candidates", new JSONArray().put(cc));
+            }
+            if (usage != null) r.put("usageMetadata", usage);
+            if (feedback != null) r.put("promptFeedback", feedback);
+            if (!modelVersion.isEmpty()) r.put("modelVersion", modelVersion);
+            return r;
+        }
+    }
+
     /** The Gemini model that refused the thinking setting once (it is not sent to that model again). */
     private static volatile String noThinkingModel = "";
 
@@ -1068,7 +1279,10 @@ final class Brain {
                     .put("tools", toolList)
                     .put("generationConfig", geminiConfig(prefs, deep ? 24576 : 8192, deep)); // its thinking counts too
             final JSONObject sent = body;
-            JSONObject res = counted(() -> geminiCall(prefs, key, sent));
+            AskState now = ASK.get();
+            JSONObject res = now != null && now.early && now.earlyText == null && !noStream
+                    ? counted(() -> geminiStreamOrCall(prefs, key, sent, now)) // ⚡ B
+                    : counted(() -> geminiCall(prefs, key, sent));
             JSONArray cands = res.optJSONArray("candidates");
             if (cands == null || cands.length() == 0) return geminiText(res); // throws with the reason
             JSONObject content = cands.getJSONObject(0).optJSONObject("content");

@@ -754,6 +754,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (live == null) setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC); // (Jarvis is quiet: songs again)
         syncPause();
         if (callText != null) { main.postDelayed(this::listen, 150); return; }
+        if (busy) return; // (⚡ B: the brain still writes this answer: its arrival ends the turn, not this)
         if (liveAfterSpeak) { // he switched to Live by voice: the talk goes on live
             liveAfterSpeak = false;
             if (prefs.liveReady() && Net.online(this) && live == null) { startLive(); return; }
@@ -858,8 +859,22 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             Filler.prepare(this, prefs);    // ⚡ F: "ఒక్క క్షణం" made once, ready for a phone job
         }
         final boolean[] fillerSaid = {false};
+        final String[] early = {null}; // ⚡ B: the first sentence spoken while the brain still wrote the rest
         Brain.Status progress = new Brain.Status() {
             @Override public void update(String s) { main.post(() -> { if (gen == generation) status.setText(s); }); }
+            // ⚡ B: the answer's first sentence is spoken at once; its rest follows when written
+            @Override public boolean wantsEarly() { return prefs.voiceReplies() && live == null && !isFinishing() && voice.canSpeakEarly(); }
+            @Override public boolean early(String first) {
+                if (gen != generation || live != null || isFinishing()) return false;
+                main.post(() -> {
+                    if (gen != generation || !busy || live != null || isFinishing() || early[0] != null) return;
+                    Filler.stop();
+                    if (!voice.speakFirst(first, prefs.speechRate())) return;
+                    early[0] = first;
+                    showReply(first + " …", false);
+                });
+                return true;
+            }
             @Override public boolean cancelled() { return gen != generation; } // stop pressed / panel closed
             // ⚡ F: a phone job inside the answer: "ఒక్క క్షణం, చూస్తున్నాను" (once, and only if it isn't over at once)
             @Override public void toolRound(String tool) {
@@ -895,9 +910,23 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             main.post(() -> {
                 if (gen != generation || isFinishing()) return;
                 busy = false;
-                if (err == null && (a == null || a.trim().isEmpty())) { showReply(Brain.EMPTY, true); idle(); return; } // (never stuck)
-                if (err != null) { showReply(err, true); idle(); return; }
+                boolean spoke = early[0] != null;
+                if (err == null && (a == null || a.trim().isEmpty())) { // (never stuck)
+                    showReply(Brain.EMPTY, true);
+                    if (!(spoke && voice.finishOpen(null))) idle();
+                    return;
+                }
+                if (err != null) { // ⚡ B: after a first sentence, "the rest didn't come" is said; the turn ends with it
+                    showReply(err, true);
+                    if (!(spoke && voice.finishOpen(null))) idle();
+                    return;
+                }
                 store.addChat("assistant", a, false);
+                if (spoke) { // ⚡ B: the rest after the first sentence, in the same voice
+                    showReply(a, false);
+                    if (!voice.finishOpen(a)) idle(); // (that speech was stopped meanwhile)
+                    return;
+                }
                 if (prefs.voiceReplies() && prefs.speedE()) { // ⚡ E: the words come with the voice (2.5 s at most)
                     heldReply = a;
                     main.postDelayed(showHeld, 2500);

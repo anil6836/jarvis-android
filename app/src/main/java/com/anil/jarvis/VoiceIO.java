@@ -224,6 +224,7 @@ final class VoiceIO {
     private void finishSpeaking(String id) {
         if (!("j" + utterance).equals(id)) return; // an older utterance that was replaced
         if (!speaking) return;
+        if (open && !naturalNow) return; // ⚡ B: the first part is said; the answer's rest is still being written (finishOpen)
         speaking = false;
         Duck.off();
         barge.stop();
@@ -234,8 +235,125 @@ final class VoiceIO {
     /** The feeling of what is being said now (for the face). */
     String feeling() { return feeling; }
 
-    void speak(String text, float rate) {
+    void speak(String text, float rate) { speak(text, rate, false); }
+
+    // ---- ⚡ B (build 3): an answer spoken while the brain is still writing it
+    /** The answer being spoken still waits for its rest (speakFirst → finishOpen). */
+    private boolean open;
+    /** The first sentence as given, and how the rest is to be asked for. */
+    private String openFirst = "", openKey = "";
+    private float openRate = 1f;
+    /** However long the brain takes, an answer never waits for its rest longer than this. */
+    static final long OPEN_MAX_MS = 600_000;
+    /** Said when the rest of the answer didn't come (an error, or the wait ran out). */
+    static final String OPEN_LOST = "మిగతా జవాబు రాలేదు.";
+    private final Runnable openTimeout = () -> { if (open) finishOpen(null); };
+
+    /** ⚡ B: an answer is being spoken while the brain still writes its rest. */
+    boolean speakingEarly() { return open && speaking; }
+    /** ⚡ B: where the answer's rest begins in naturalText (-1: not part of it / not known). */
+    private int restAt = -1;
+    /** Each new voice for the answer (a first try, ♻️ asking again, the phone's voice taking over) counts one up. */
+    private int voiceRun;
+
+    /** ⚡ B can speak this answer's start early: the switch, the OpenAI voice with its key, the internet (not the home tablet). */
+    boolean canSpeakEarly() {
+        return !shut && prefs.speedB() && prefs.naturalVoice() && CloudVoice.of(prefs) == null
+                && !prefs.openAiKey().trim().isEmpty() && Net.online(ctx);
+    }
+
+    /** ⚡ B: the answer's first sentence, now; the rest follows with finishOpen. False: not started (speak as always then). */
+    boolean speakFirst(String text, float rate) {
+        if (!canSpeakEarly() || text == null || text.trim().isEmpty()) return false;
+        speak(text, rate, true);
+        return open;
+    }
+
+    /**
+     * ⚡ B: the whole answer has come (null: it didn't, which is said): what wasn't spoken yet follows the first sentence,
+     * in the same voice. False when that early speech isn't going on any more (stopped): the caller doesn't speak then.
+     */
+    boolean finishOpen(String whole) {
+        main.removeCallbacks(openTimeout);
+        if (!open) return false;
+        open = false;
+        if (shut || !speaking) return false;
+        if (whole != null) lateMarks(Brain.askMarks); // (the ⏱️ line was written while the brain still wrote)
+        String rest = whole == null ? OPEN_LOST : Brain.restAfter(whole, openFirst);
+        // the gap between the first sentence and the rest as the answer has it (a new line, a space…): the highlight follows it
+        String sep = " ";
+        if (whole != null) {
+            String w = whole.trim();
+            if (w.startsWith(openFirst)) {
+                int k = openFirst.length(), e = k;
+                while (e < w.length() && Character.isWhitespace(w.charAt(e))) e++;
+                if (e > k) sep = w.substring(k, e);
+            }
+        }
+        String clean = rest.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
+        int room = Math.max(0, 3500 - naturalShown.length()); // (the voice's limit, as for a whole answer)
+        if (clean.length() > room) clean = clean.substring(0, room);
+        if (clean.isEmpty()) { // nothing more to say: the first part was all of it
+            if (naturalNow) { if (!natural.add("", true)) afterFirstPart(null); }
+            else if ((tts == null || !tts.isSpeaking()) && pending == null && !paused) endSpeaking(); // (the phone's voice already said the first part)
+            return true;
+        }
+        Spoken.Out more = Spoken.of(clean).cut(3900);
+        int base = naturalShown.length() + sep.length();
+        naturalShown = naturalShown + sep + clean;
+        naturalSaid = naturalSaid.join(sep, more, base);
+        naturalText = naturalText + sep + more.text;
+        restAt = naturalText.length() - more.text.length();
+        naturalWeight = weights(naturalText);
+        naturalBounds = bounds(naturalText, naturalWeight);
+        matched = new long[0][];
+        matchedFor = -1;
+        if (!naturalNow) { phoneVoiceAppend(more.text, openRate); return true; } // (the phone's voice took over the first part)
+        if (natural.add(more.text, true)) return true;
+        afterFirstPart(more.text);
+        return true;
+    }
+
+    /**
+     * ⚡ B: the first part's voice has ended (it stopped, or is telling how it ended): what it tells goes first (♻️ asking
+     * again / the phone's voice then covers the rest too); if it told nothing, the rest (null: nothing) on its own.
+     */
+    private void afterFirstPart(String restSaid) {
+        final int run = voiceRun;
+        main.post(() -> {
+            if (shut || !speaking || voiceRun != run) return;
+            if (restSaid == null) { endSpeaking(); return; }
+            if (!naturalNow) { phoneVoiceAppend(restSaid, openRate); return; }
+            voiceRun++;
+            naturalOffset = naturalSaid.text.length() - restSaid.length();
+            naturalText = restSaid;
+            restAt = -1;
+            naturalWeight = weights(naturalText);
+            naturalBounds = bounds(naturalText, naturalWeight);
+            matched = new long[0][];
+            matchedFor = -1;
+            natural.fresh = false;
+            natural.speak(openKey, prefs.naturalVoiceName(), naturalText, feeling, naturalCallback(openKey, openRate));
+            if (paused) natural.pause();
+        });
+    }
+
+    /** Speaking is over now (nothing more to say), as when a voice says "done". */
+    private void endSpeaking() {
+        main.removeCallbacks(wordTicker);
+        barge.stop();
+        if (!speaking) return;
+        speaking = false;
+        Duck.off();
+        call.exit();
+        l.onSpeakDone();
+    }
+
+    private void speak(String text, float rate, boolean early) {
         if (shut || text == null || text.trim().isEmpty()) return;
+        main.removeCallbacks(openTimeout);
+        open = false;
+        voiceRun++; // (⚡ B: an earlier answer's rest, still on its way to the voice, is not for this one)
         answerNo++; // (♻️ the ⏱️ line's mark belongs to this answer only)
         MicQuiet.speaking(); // the media sound muted for the mic's beeps comes back before he must hear Jarvis
         if (turnHeardAt > 0 && turnSpeakAt == 0) turnSpeakAt = android.os.SystemClock.elapsedRealtime();
@@ -248,7 +366,7 @@ final class VoiceIO {
         CloudVoice cv = CloudVoice.of(prefs); // Google Gemini / Sarvam when he chose one (null: OpenAI, as always)
         boolean ready = cv == null ? !key.isEmpty() : cv.ready();
         if (prefs.naturalVoice() && ready && Net.online(ctx)) {
-            speakNatural(key, cv, text, rate);
+            speakNatural(key, cv, text, rate, early && cv == null);
             return;
         }
         if (prefs.naturalVoice() && cv != null && !ready) naturalError = cv.noKey(); // (Jarvis చెక్ says why it's the phone's voice)
@@ -256,7 +374,7 @@ final class VoiceIO {
     }
 
     /** OpenAI voice (or the Gemini / Sarvam one he chose); falls back to the phone's Google voice if it fails before any sound. */
-    private void speakNatural(String key, CloudVoice cv, String text, float rate) {
+    private void speakNatural(String key, CloudVoice cv, String text, float rate, boolean early) {
         stopGoogle();
         naturalNow = true;
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
@@ -269,6 +387,8 @@ final class VoiceIO {
         naturalSaid = spoken;
         naturalText = said;
         naturalOffset = 0;
+        restAt = -1;
+        voiceRun++;
         guardUsed = false;
         guardRetrying = false;
         naturalWeight = weights(said);
@@ -282,7 +402,17 @@ final class VoiceIO {
         natural.quick = prefs.speedG();
         natural.guard = cv == null && prefs.voiceGuard(); // ♻️ (the OpenAI voice only)
         natural.fresh = false;
-        natural.speak(key, prefs.naturalVoiceName(), said, feeling, naturalCallback(key, rate));
+        if (early) { // ⚡ B: the rest comes with finishOpen
+            open = true;
+            openFirst = text.trim();
+            openKey = key;
+            openRate = rate;
+            earlyFor = answerNo;
+            main.postDelayed(openTimeout, OPEN_MAX_MS);
+            natural.speakOpen(key, prefs.naturalVoiceName(), said, feeling, naturalCallback(key, rate));
+        } else {
+            natural.speak(key, prefs.naturalVoiceName(), said, feeling, naturalCallback(key, rate));
+        }
     }
 
     /** What the natural voice tells: the same for the first try and for ♻️ the one asked again. */
@@ -330,11 +460,15 @@ final class VoiceIO {
         if (shut || !speaking || !naturalNow) return;
         main.removeCallbacks(wordTicker);
         String t = naturalText;
-        int from = heard >= 0 ? carryFrom(t, naturalWordAt(heard)) : 0;
+        long pf = natural.pieceFrame();
+        int from = heard < 0 ? 0
+                : restAt > 0 && pf >= 0 && heard <= pf + NaturalVoice.RATE / 10 ? restAt // ⚡ B: none of the rest heard yet: from the rest
+                : carryFrom(t, naturalWordAt(heard));
         while (from < t.length() && Character.isWhitespace(t.charAt(from))) from++;
         markGuard();
         if (from >= t.length()) { // (all of it had been heard: only the line's end was missing)
             natural.stop();
+            if (open) return; // ⚡ B: the rest, when it comes, is asked for on its own (finishOpen)
             barge.stop();
             speaking = false;
             Duck.off();
@@ -348,8 +482,10 @@ final class VoiceIO {
             guardUsed = true;
             guardRetrying = true;
             guardNote(0, why);
+            voiceRun++;
             if (from > 0) {
                 naturalOffset += from;
+                restAt = restAt >= from ? restAt - from : -1;
                 naturalText = t.substring(from);
                 naturalWeight = weights(naturalText);
                 naturalBounds = bounds(naturalText, naturalWeight);
@@ -357,7 +493,8 @@ final class VoiceIO {
             matched = new long[0][];
             matchedFor = -1;
             natural.fresh = true;
-            natural.speak(key, prefs.naturalVoiceName(), naturalText, feeling, naturalCallback(key, rate));
+            if (open) natural.speakOpen(key, prefs.naturalVoiceName(), naturalText, feeling, naturalCallback(key, rate)); // (⚡ B: the rest still to come)
+            else natural.speak(key, prefs.naturalVoiceName(), naturalText, feeling, naturalCallback(key, rate));
             if (paused) natural.pause(); // (⏸ meanwhile: it waits for ▶)
             return;
         }
@@ -380,6 +517,7 @@ final class VoiceIO {
 
     /** The phone's voice says the answer from this spoken-text position (0: all of it, exactly as before). */
     private void phoneVoiceFrom(int from, float rate) {
+        voiceRun++;
         if (from <= 0 || shut || tts == null || ttsFailed || !ttsReady || from >= naturalSaid.text.length()) {
             speakGoogle(naturalShown, rate);
             return;
@@ -453,7 +591,21 @@ final class VoiceIO {
     }
 
     /** Phone voice: says full from position from (0 = all of it; later = carrying on after ▶). */
-    private void speakGoogleFrom(String full, int from, float rate) {
+    private void speakGoogleFrom(String full, int from, float rate) { speakGoogleFrom(full, from, rate, false); }
+
+    /** ⚡ B: the phone's voice (it took over the answer's first part) says the rest after what it is saying now. */
+    private void phoneVoiceAppend(String saidRest, float rate) {
+        if (shut || tts == null || ttsFailed) return;
+        if (!ttsReady) { if (pending != null) pending = naturalShown; return; } // (still starting: it says all of it then)
+        googleShown = naturalShown;
+        googleSaid = naturalSaid; // (after googleShown: onRangeStart reads them the other way round)
+        googleText = naturalSaid.text;
+        if (paused) return; // ▶ carries on from where it was, now with the whole answer
+        speakGoogleFrom(naturalSaid.text, naturalSaid.text.length() - saidRest.length(), rate, true);
+    }
+
+    /** add: after what the phone's voice is saying now (⚡ B), not instead of it. */
+    private void speakGoogleFrom(String full, int from, float rate, boolean add) {
         String clean = full.substring(from);
         int max = TextToSpeech.getMaxSpeechInputLength() - 10;
         if (clean.length() > max) clean = clean.substring(0, max);
@@ -465,7 +617,7 @@ final class VoiceIO {
         naturalNow = false;
         googleText = full;
         googleBase = from;
-        googlePos = from;
+        if (!add) googlePos = from; // (⚡ B adding: ▶ still carries on from where the voice is now)
         googleRate = rate;
         tts.setSpeechRate(rate * Emotion.pace(feeling));
         tts.setPitch(Emotion.pitch(feeling));
@@ -476,14 +628,15 @@ final class VoiceIO {
         int r;
         Bundle params = new Bundle();
         params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, Whisper.gain()); // he whispered "Jarvis": answer softly
-        try { r = tts.speak(clean, TextToSpeech.QUEUE_FLUSH, params, "j" + utterance); }
+        try { r = tts.speak(clean, add ? TextToSpeech.QUEUE_ADD : TextToSpeech.QUEUE_FLUSH, params, "j" + utterance); }
         catch (Exception e) { r = TextToSpeech.ERROR; }
         if (r != TextToSpeech.SUCCESS) { failSpeak(); return; } // no progress callbacks will come for it
         // the phone's voice engine sometimes never says "done": the turn must not stay "speaking" for ever
         final int u = utterance;
-        long limit = 15_000 + (long) (clean.length() * 160 / Math.max(0.5f, rate));
+        int toSay = add ? Math.max(clean.length(), full.length() - Math.min(googlePos, full.length())) : clean.length();
+        long limit = 15_000 + (long) (toSay * 160 / Math.max(0.5f, rate));
         main.postDelayed(() -> {
-            if (shut || utterance != u || !speaking || naturalNow || paused) return; // (finished, replaced, paused: not stuck)
+            if (shut || utterance != u || !speaking || naturalNow || paused || open) return; // (finished, replaced, paused, ⚡ B waiting: not stuck)
             voiceStuckAt = System.currentTimeMillis();
             utterance++; // (a late "done" from the engine is for nothing now)
             try { tts.stop(); } catch (Exception ignored) {}
@@ -780,6 +933,8 @@ final class VoiceIO {
 
     void stopSpeaking() {
         Filler.stop();
+        open = false; // (⚡ B: an answer still being written isn't spoken any more)
+        main.removeCallbacks(openTimeout);
         paused = false;
         pausedByUser = false;
         main.removeCallbacks(wordTicker);
@@ -902,6 +1057,27 @@ final class VoiceIO {
     /** Jarvis's voice for the answer to what he just said has started to come (main thread). */
     /** ♻️ Each answer spoken gets a number; the guard's mark goes on the ⏱️ line of the answer it stepped in for. */
     private static int answerNo, guardMarkFor = -1, turnLineFor = -1;
+    /** ⚡ B: the answer spoken early (its marks come after its ⏱️ line may have been written), and those marks. */
+    private static int earlyFor = -1, lateFor = -1;
+    private static String lateMarks = "";
+
+    /** ⚡ B: the brain finished the answer spoken early (main thread): its marks go on its ⏱️ line (now, or when written). */
+    private static void lateMarks(String m) {
+        if (earlyFor != answerNo) return;
+        String marks = m == null ? "" : m;
+        lateMarks = marks; // (kept: a line written later takes them)
+        lateFor = answerNo;
+        Context c = appCtx;
+        if (tPending || turnLineFor != answerNo || c == null) return;
+        try {
+            android.content.SharedPreferences sp = c.getSharedPreferences("jarvis_timing", Context.MODE_PRIVATE);
+            org.json.JSONArray a = new org.json.JSONArray(sp.getString("turn_list", ""));
+            org.json.JSONObject o = a.getJSONObject(a.length() - 1);
+            boolean guard = o.optString("m", "").contains("♻️") && !marks.contains("♻️");
+            o.put("m", (marks + (guard ? " ♻️" : "")).trim());
+            sp.edit().putString("turn_list", a.toString()).apply();
+        } catch (Exception ignored) {}
+    }
 
     /** ♻️ The guard stepped in for the answer being spoken (main thread): its ⏱️ line gets ♻️ (now, or when it is written). */
     private static void markGuard() {
@@ -965,8 +1141,9 @@ final class VoiceIO {
             h.append(add);
             // the ⏱️ list: the last five answers, each with why it took that time (the brain's marks for this answer only)
             long ma = Brain.askMarksAt;
-            String marks = ma >= tHeard - 50 && ma <= tSpeak + 50 ? Brain.askMarks : "";
-            if (guardMarkFor == tAnswer) marks = marks.isEmpty() ? "♻️" : marks + " ♻️";
+            String marks = tAnswer == earlyFor ? (lateFor == tAnswer ? lateMarks : "🗣️") // ⚡ B: the brain may still be writing
+                    : ma >= tHeard - 50 && ma <= tSpeak + 50 ? Brain.askMarks : "";
+            if (guardMarkFor == tAnswer && !marks.contains("♻️")) marks = marks.isEmpty() ? "♻️" : marks + " ♻️";
             turnLineFor = tAnswer;
             String list = addTurn(sp.getString("turn_list", ""), System.currentTimeMillis(), total, brain, whole, marks, new Prefs(c).speedOff());
             sp.edit().putString("turn_last", lastTurn).putString("turn_ears", turnWordGuess ? "" : turnEars)
@@ -1011,7 +1188,7 @@ final class VoiceIO {
         String[][] legend = {{"🛠️", "ఫోన్ పని"}, {"🔎", "ఇంటర్నెట్ సెర్చ్"}, {"🔁", "రెండో AI చెక్"}, {"🧠", "లోతుగా ఆలోచన"},
                 {"📝", "పెద్ద జవాబు"}, {"🔌", "బ్రేక్ తర్వాత మొదటి ప్రశ్న"}, {"📚", "లేని పనులు AI తెప్పించుకుంది"},
                 {"📄", "AI కి వెళ్ళిన పుస్తకం (వేల tokens)"}, {"💾", "అందులో AI గుర్తుంచుకున్న భాగం"},
-                {"♻️", "గొంతు రాక మళ్ళీ అడిగాను"}};
+                {"♻️", "గొంతు రాక మళ్ళీ అడిగాను"}, {"🗣️", "రాస్తుండగానే మాట్లాడాను"}};
         StringBuilder l = new StringBuilder();
         for (String[] x : legend) if (seen.indexOf(x[0]) >= 0) l.append(l.length() == 0 ? "" : " · ").append(x[0]).append(' ').append(x[1]);
         if (l.length() > 0) b.append("   (").append(l).append(")\n");
@@ -1690,6 +1867,8 @@ final class VoiceIO {
 
     void shutdown() {
         shut = true;
+        open = false;
+        main.removeCallbacks(openTimeout);
         if (holder == this) holder = null;
         session++;
         main.removeCallbacks(watchdog);

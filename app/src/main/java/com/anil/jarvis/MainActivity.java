@@ -1121,7 +1121,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** He talked over Jarvis: speech already stopped, listen to him now. */
     @Override public void onBargeIn() {
         syncPause();
-        if (busy || live != null || isFinishing()) { voice.stopSpeaking(); finishTurn(); return; }
+        // (⚡ B: talking over an answer still being written: held and listened to, as over any answer)
+        if ((busy && !voice.speakingEarly()) || live != null || isFinishing()) { voice.stopSpeaking(); finishTurn(); return; }
         if (paused) { voice.resume(); return; } // screen not in front: don't start listening, just carry on
         main.postDelayed(this::startListening, 100);
     }
@@ -1421,6 +1422,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             keepScreenOn();
         } else if (r == VoiceIO.STOPPED) {
             if (home != null) HomeBible.stop(); // ("చాలు" while a Bible part was paused: the reading ends here too)
+            if (busy) { generation++; cutInflight(); busy = false; removeThinking(); } // (⚡ B: "చాలు" while it was still being written)
             finishTurn();
         }
         refreshAction();
@@ -1436,6 +1438,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             generation++; cutInflight(); // ignore the answer that is still on its way
             busy = false;
             removeThinking();
+            if (voice.speaking) voice.stopSpeaking(); // (⚡ B: its first sentence, already being said, stops too)
             finishTurn();
             return;
         }
@@ -1942,7 +1945,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void startListening() {
         followListen = false;
-        if (busy) return;
+        if (busy && !(voice.isPaused() && voice.speakingEarly())) return; // (⚡ B: he talked over an answer still being written: heard)
         ScreenReader.pauseIfReading(this); // the mic must not hear the page being read
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
@@ -1983,6 +1986,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (voice.isPaused()) { // "ఆపు" / "కొనసాగించు" / "చాలు", or a new question
             int r = voice.pausedHeard(text);
             if (r != VoiceIO.NEW) { afterPaused(r); return; }
+            if (busy) { generation++; cutInflight(); busy = false; removeThinking(); } // ⚡ B: a new question over one still being written
         }
         if (text == null || text.trim().isEmpty()) { finishTurn(); return; }
         if (homeHeard(text)) return;
@@ -2007,6 +2011,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             input.setText("");
             int r = voice.pausedHeard(partial);
             if (r != VoiceIO.NEW) { afterPaused(r); return; }
+            if (busy) { generation++; cutInflight(); busy = false; removeThinking(); } // ⚡ B: a new question over one still being written
             if (homeHeard(partial)) return;
             send(partial, null, true);
             return;
@@ -2188,13 +2193,29 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (byVoice) Filler.prepare(this, prefs); // ⚡ F: "ఒక్క క్షణం" made once, ready for a phone job
         }
         final boolean[] fillerSaid = {false};
+        final String[] early = {null}; // ⚡ B: the first sentence spoken while the brain still wrote the rest
         Brain.Status progress = new Brain.Status() {
             @Override public void update(String s) {
                 main.post(() -> {
                     if (gen != generation) return;
                     status.setText(s);
-                    if (thinkingView != null) thinkingView.setText(s);
+                    if (thinkingView != null && early[0] == null) thinkingView.setText(s);
                 });
+            }
+            // ⚡ B: the answer's first sentence is spoken at once; its rest follows when written (onReply)
+            @Override public boolean wantsEarly() { return prefs.voiceReplies() && !paused && home == null && live == null && voice.canSpeakEarly(); }
+            @Override public boolean early(String first) {
+                if (gen != generation || paused || home != null || live != null) return false;
+                main.post(() -> {
+                    if (gen != generation || !busy || paused || home != null || live != null || early[0] != null) return;
+                    Filler.stop();
+                    if (!voice.speakFirst(first, prefs.speechRate())) return;
+                    early[0] = first;
+                    if (thinkingView != null) { thinkingView.setText(first + " …"); thinkingView.setTextColor(Ui.TEXT); }
+                    setOrb(OrbView.SPEAKING);
+                    refreshAction();
+                });
+                return true;
             }
             // The red stop button (or leaving the screen) bumps generation: stop before the next round/tool.
             @Override public boolean cancelled() { return gen != generation; }
@@ -2232,22 +2253,23 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 error = "ఏదో తప్పు జరిగింది: " + e.getMessage();
             }
             final String r = reply, err = error;
-            main.post(() -> onReply(gen, r, err));
+            main.post(() -> onReply(gen, r, err, early[0]));
         } finally { Http.CANCEL.remove(); } }); // (the worker thread is shared: the handle never outlives this question)
     }
 
-    private void onReply(int gen, String reply, String error) {
+    private void onReply(int gen, String reply, String error, String early) {
         if (gen != generation) return; // Anil stopped this one
         busy = false;
         if (error == null && (reply == null || reply.trim().isEmpty())) error = Brain.EMPTY; // (never a silent, stuck turn)
         showHeldReply();
-        // ⚡ E: the words wait for the voice (they come on the screen together; 2.5 s at most)
-        boolean hold = error == null && prefs.speedE() && prefs.voiceReplies() && !paused && home == null;
+        // ⚡ E: the words wait for the voice (they come on the screen together; 2.5 s at most); ⚡ B: the voice already began
+        boolean hold = early == null && error == null && prefs.speedE() && prefs.voiceReplies() && !paused && home == null;
         if (!hold) removeThinking();
         if (error != null) {
             TextView t = addMessage("assistant", error, System.currentTimeMillis(), null);
             t.setTextColor(Ui.RED);
             if (home != null) home.say(error);
+            if (early != null && voice.finishOpen(null)) return; // ⚡ B: "the rest didn't come" after the first sentence; the turn ends with it
             finishTurn();
             return;
         }
@@ -2260,6 +2282,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         if (face != null) face.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM);
         if (home != null) { home.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM); home.say(reply); }
+        if (early != null) { // ⚡ B: the rest after the first sentence, in the same voice
+            if (voice.finishOpen(reply)) { if (!voice.isPaused()) setOrb(OrbView.SPEAKING); refreshAction(); }
+            else finishTurn(); // (that speech was stopped meanwhile: the words are on the screen)
+            return;
+        }
         if (prefs.voiceReplies() && !paused) {
             voice.speak(reply, prefs.speechRate());
             setOrb(OrbView.SPEAKING);

@@ -100,6 +100,7 @@ final class NaturalVoice {
         Watch(boolean fresh) { noVoiceMs = fresh ? NO_VOICE_FRESH_MS : NO_VOICE_MS; }
         volatile long lastByteAt, voiceAt, readyAt;  // last sound bytes came / words first seen / the speaker was let start (0: not yet)
         volatile boolean heard, over;
+        volatile boolean waiting;                     // ⚡ B: the rest of the answer is still being written (no clock runs)
         volatile String why;                          // set: this reply is being given up
         private final java.util.concurrent.atomic.AtomicBoolean told = new java.util.concurrent.atomic.AtomicBoolean();
         /** Only the first of the watch / the speaking thread tells VoiceIO how this reply ended. */
@@ -346,7 +347,64 @@ final class NaturalVoice {
 
     /** Speaks with a feeling (Emotion names: happy, laugh, sad...). */
     void speak(String apiKey, String voice, String text, String emotion, Callback cb) {
+        start(apiKey, voice, text, emotion, cb, false);
+    }
+
+    /**
+     * ⚡ B: speaks text now and keeps the reply open: the rest comes with add() (the last piece with last = true), into the
+     * same speaker, after what is playing. The OpenAI voice only.
+     */
+    void speakOpen(String apiKey, String voice, String text, String emotion, Callback cb) {
+        start(apiKey, voice, text, emotion, cb, true);
+    }
+
+    /** ⚡ B: more of the open reply now speaking (last: nothing after it). False: no open reply is speaking now. */
+    boolean add(String text, boolean last) {
+        Pieces p = pieces.get();
+        return p != null && p.add(text, last);
+    }
+
+    /** ⚡ B: the sound frame where the newest piece of the open reply begins (-1: none asked yet after the first). */
+    long pieceFrame() { return pieceFrame; }
+    private volatile long pieceFrame = -1;
+
+    /** ⚡ B: the rest of a reply that is still being written: its pieces in order; closed when no more come. */
+    private static final class Pieces {
+        private final java.util.ArrayDeque<String> q = new java.util.ArrayDeque<>();
+        private boolean closed;
+
+        synchronized boolean add(String s, boolean last) {
+            if (closed) return false;
+            if (s != null && !s.trim().isEmpty()) q.add(s);
+            if (last) closed = true;
+            notifyAll();
+            return true;
+        }
+
+        synchronized void close() { closed = true; notifyAll(); }
+
+        /** The next piece, waiting up to ms; null when there is none yet (or no more: see done()). */
+        synchronized String next(long ms) throws InterruptedException {
+            long until = SystemClock.elapsedRealtime() + ms;
+            while (q.isEmpty() && !closed) {
+                long left = until - SystemClock.elapsedRealtime();
+                if (left <= 0) return null;
+                wait(left);
+            }
+            return q.poll();
+        }
+
+        synchronized boolean done() { return closed && q.isEmpty(); }
+    }
+
+    /** ⚡ B: the open reply's pieces (null: the reply was given whole). */
+    private final java.util.concurrent.atomic.AtomicReference<Pieces> pieces = new java.util.concurrent.atomic.AtomicReference<>();
+
+    private void start(String apiKey, String voice, String text, String emotion, Callback cb, boolean open) {
         final int gen = ++generation;
+        Pieces was0 = pieces.getAndSet(null);
+        if (was0 != null) was0.close();
+        pieceFrame = -1;
         stopTrack();
         synchronized (lock) { paused = false; base = 0; seekTo = -1; }
         arrived = 0;
@@ -360,10 +418,12 @@ final class NaturalVoice {
         final boolean g = guard && cv == null; // ♻️ (Gemini / Sarvam keep their own way of trying again)
         final boolean f = fresh;
         fresh = false;
+        final Pieces more = open && cv == null ? new Pieces() : null;
+        pieces.set(more);
         CloudVoice was = fetching;
         if (was != null) was.cancel(); // (the last reply's request, still on its way)
         cutAsking();
-        new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cv, cb, q, g, f), "jarvis-tts").start();
+        new Thread(() -> run(gen, apiKey, m, voice, text, style, eg, cv, cb, q, g, f, more), "jarvis-tts").start();
     }
 
     /**
@@ -402,6 +462,8 @@ final class NaturalVoice {
 
     void stop() {
         generation++;
+        Pieces p = pieces.getAndSet(null);
+        if (p != null) p.close();
         CloudVoice was = fetching;
         if (was != null) was.cancel();
         cutAsking();
@@ -433,13 +495,14 @@ final class NaturalVoice {
     }
 
     private void run(int gen, String apiKey, String model, String voice, String text, String style, EchoGuard eg, CloudVoice cv, Callback cb,
-                     boolean q, boolean g, boolean f) {
+                     boolean q, boolean g, boolean f, Pieces more) {
         HttpURLConnection c = null;
         AudioTrack t = null;
         final boolean[] started = {false};
         final Watch w = g ? new Watch(f) : null; // ♻️ (null: guard off, exactly as before)
         final Pcm pcm = new Pcm();
         final long[] wrote = {0};               // bytes of the reply handed to the speaker
+        final HttpURLConnection[] cur = {null}; // the voice request on its way now (⚡ B: one per piece)
         int stage = 0;                          // ♻️ 0: not asked yet · 1: asked (a failure now is the line's / OpenAI's) · 2: OpenAI said no (4xx)
         try {
           if (cv == null) { // OpenAI (as always): the request is made, and answered, before the speaker opens
@@ -456,10 +519,8 @@ final class NaturalVoice {
             c = open("https://api.openai.com/v1/audio/speech", f);
             asking = c;
             if (gen != generation) { if (asking == c) asking = null; return; } // (stopped while the request was being made)
-            if (w != null) { // ♻️ the watch, from the moment it is asked
-                final HttpURLConnection mine = c;
-                new Thread(() -> watch(gen, w, pcm, mine, cb), "jarvis-tts-guard").start();
-            }
+            cur[0] = c;
+            if (w != null) new Thread(() -> watch(gen, w, pcm, cur, cb), "jarvis-tts-guard").start(); // ♻️ the watch, from the moment it is asked
             c.setRequestMethod("POST");
             c.setConnectTimeout(15000);
             c.setReadTimeout(20000); // a stalled stream must not leave Jarvis "speaking" in silence (and the mic shut) for a minute
@@ -526,28 +587,29 @@ final class NaturalVoice {
             Thread reader = new Thread(() -> {
                 if (cv != null) { readCloud(gen, cv, text, pcm); return; }
                 String err = null;
-                byte[] buf = new byte[8192];
-                int carry = -1; // an odd byte left over from the previous read
-                long frames = 0;
-                try (InputStream in = conn.getInputStream()) {
-                    int n;
-                    while ((n = in.read(buf, carry >= 0 ? 1 : 0, buf.length - (carry >= 0 ? 1 : 0))) > 0) {
-                        if (gen != generation) break;
-                        int len = n;
-                        if (carry >= 0) { buf[0] = (byte) carry; len++; carry = -1; }
-                        if ((len & 1) == 1) { carry = buf[len - 1] & 0xFF; len--; }
-                        if (len == 0) continue;
-                        pcm.add(buf, len);
-                        if (gen != generation) break;
-                        scanPauses(buf, len);
-                        frames += len / 2;
-                        arrived = frames;
-                        if (w != null) w.lastByteAt = SystemClock.elapsedRealtime();
+                long[] frames = {0};
+                try {
+                    try (InputStream in = conn.getInputStream()) { stream(in, gen, pcm, w, frames); }
+                    // ⚡ B: the rest of the answer, piece by piece as the brain writes it, after this one
+                    while (more != null && gen == generation) {
+                        if (w != null) w.waiting = true;
+                        String next = more.next(300);
+                        if (next == null) { if (more.done()) break; continue; }
+                        pieceFrame = frames[0];
+                        // ♻️ a new piece gets the same 6 s as the first one for its first sound (the 4 s stall rule after it)
+                        if (w != null) { w.lastByteAt = SystemClock.elapsedRealtime() + (NO_VOICE_MS - STALL_MS); w.waiting = false; }
+                        HttpURLConnection pc = askPiece(gen, apiKey, model, voice, next, style);
+                        if (pc == null) break;
+                        cur[0] = pc;
+                        try (InputStream in = pc.getInputStream()) { stream(in, gen, pcm, w, frames); }
+                        finally { if (asking == pc) asking = null; pc.disconnect(); }
                     }
                 } catch (Exception e) {
                     err = String.valueOf(e.getMessage());
+                } finally {
+                    if (w != null) w.waiting = false;
                 }
-                try { Usage.tts(frames); } catch (Throwable ignored) {} // the cost meter never stops the voice
+                try { Usage.tts(frames[0]); } catch (Throwable ignored) {} // the cost meter never stops the voice
                 if (err == null && gen == generation) complete = true;
                 pcm.finish(err);
             }, "jarvis-tts-download");
@@ -599,6 +661,7 @@ final class NaturalVoice {
                 pos += wr;
                 wrote[0] = pos;
             }
+            if (more != null && pcm.error() == null && gen == generation) padEnd(t, gen); // ⚡ B: the speaker plays it all
             if (pcm.error() != null && !started[0]) throw new LineFail(pcm.error());
             // ♻️ the download broke part-way (all that came has been handed over): carry on, not "done" (pcm.read gives
             // -1 once the download ends, error or not)
@@ -659,6 +722,7 @@ final class NaturalVoice {
             }
         } finally {
             if (w != null) w.over = true;
+            if (more != null) { more.close(); pieces.compareAndSet(more, null); }
             if (c != null && asking == c) asking = null;
             if (c != null) c.disconnect();
             if (t != null) PlaybackLevel.end(t);
@@ -667,6 +731,87 @@ final class NaturalVoice {
                 try { t.stop(); } catch (Exception ignored) {}
                 t.release();
             }
+        }
+    }
+
+    /** One voice reply's sound, as it downloads, into the reply's sound (frames[0] counts it all). */
+    private void stream(InputStream in, int gen, Pcm pcm, Watch w, long[] frames) throws java.io.IOException {
+        byte[] buf = new byte[8192];
+        int carry = -1; // an odd byte left over from the previous read
+        int n;
+        while ((n = in.read(buf, carry >= 0 ? 1 : 0, buf.length - (carry >= 0 ? 1 : 0))) > 0) {
+            if (gen != generation) break;
+            int len = n;
+            if (carry >= 0) { buf[0] = (byte) carry; len++; carry = -1; }
+            if ((len & 1) == 1) { carry = buf[len - 1] & 0xFF; len--; }
+            if (len == 0) continue;
+            pcm.add(buf, len);
+            if (gen != generation) break;
+            scanPauses(buf, len);
+            frames[0] += len / 2;
+            arrived = frames[0];
+            if (w != null) w.lastByteAt = SystemClock.elapsedRealtime();
+        }
+    }
+
+    /** ⚡ B: the OpenAI voice asked for one more piece of the answer (the same voice and feeling); null: stopped. */
+    private HttpURLConnection askPiece(int gen, String apiKey, String model, String voice, String text, String style) throws Exception {
+        boolean old = model.toLowerCase(java.util.Locale.ROOT).startsWith("tts-1");
+        JSONObject body = new JSONObject().put("model", model).put("voice", voice).put("input", text).put("response_format", "pcm");
+        if (!old) body.put("instructions", style);
+        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+        HttpURLConnection c = open("https://api.openai.com/v1/audio/speech", false);
+        asking = c;
+        if (gen != generation) { if (asking == c) asking = null; return null; }
+        boolean ok = false;
+        try {
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(20000);
+            c.setDoOutput(true);
+            c.setRequestProperty("Authorization", "Bearer " + apiKey);
+            c.setRequestProperty("Content-Type", "application/json");
+            c.setFixedLengthStreamingMode(bytes.length);
+            c.connect();
+            if (gen != generation) return null;
+            try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
+            int status = c.getResponseCode();
+            if (status >= 400) {
+                String err = "";
+                try (InputStream es = c.getErrorStream()) {
+                    if (es != null) {
+                        byte[] b = new byte[2048];
+                        int n = es.read(b);
+                        if (n > 0) err = new String(b, 0, n, StandardCharsets.UTF_8);
+                    }
+                }
+                throw new IllegalStateException("TTS " + status + " " + err);
+            }
+            ok = true;
+            return c;
+        } finally {
+            if (!ok) { if (asking == c) asking = null; c.disconnect(); }
+        }
+    }
+
+    /**
+     * ⚡ B: after the last sound, a little silence: a speaker that ran dry while the brain wrote starts again only once
+     * it holds enough sound, and a short last piece would otherwise wait there unheard.
+     */
+    private void padEnd(AudioTrack t, int gen) {
+        byte[] zero = new byte[4096];
+        int frames;
+        try { frames = Math.max(RATE / 2, t.getBufferSizeInFrames()); } catch (Exception e) { frames = RATE / 2; }
+        long left = frames * 2L, until = SystemClock.elapsedRealtime() + 1500;
+        while (left > 0 && gen == generation && SystemClock.elapsedRealtime() < until) {
+            int wr;
+            synchronized (lock) {
+                if (paused || seekTo >= 0 || gen != generation) return;
+                wr = writeOut(t, zero, (int) Math.min(zero.length, left));
+            }
+            if (wr < 0) return;
+            if (wr == 0) { SystemClock.sleep(10); continue; }
+            left -= wr;
         }
     }
 
@@ -696,14 +841,14 @@ final class NaturalVoice {
      * ♻️ Watches one OpenAI reply every 0.1 s until it ends: the words must come, keep coming, and be heard (stallWhy).
      * When not, the line is cut and VoiceIO told at once (a line stuck opening can't hold it up for 15 s).
      */
-    private void watch(int gen, Watch w, Pcm pcm, HttpURLConnection conn, Callback cb) {
+    private void watch(int gen, Watch w, Pcm pcm, HttpURLConnection[] cur, Callback cb) {
         long calm = 0;
         boolean held = false;
         while (!w.over && gen == generation && !w.told()) {
             SystemClock.sleep(100);
             if (w.over || gen != generation || w.told()) return;
             long now = SystemClock.elapsedRealtime();
-            if (paused) { held = true; continue; }        // (⏸: the time paused doesn't count)
+            if (paused || w.waiting) { held = true; continue; } // (⏸, or ⚡ B waiting for the brain: that time doesn't count)
             if (held) { held = false; calm = now; }
             AudioTrack t = track;
             long fs = firstSound;
@@ -716,8 +861,11 @@ final class NaturalVoice {
             w.why = why;
             if (!w.tell()) return;
             final long heardAt = w.heard ? played : -1;
-            if (asking == conn) asking = null;
-            new Thread(() -> { try { conn.disconnect(); } catch (Throwable ignored) {} }, "jarvis-tts-cut").start();
+            final HttpURLConnection conn = cur[0];
+            if (conn != null) {
+                if (asking == conn) asking = null;
+                new Thread(() -> { try { conn.disconnect(); } catch (Throwable ignored) {} }, "jarvis-tts-cut").start();
+            }
             main.post(() -> { if (gen == generation) cb.onStalled(why, heardAt); });
             return;
         }

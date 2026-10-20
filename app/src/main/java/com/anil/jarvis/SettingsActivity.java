@@ -98,7 +98,7 @@ public class SettingsActivity extends Activity {
     private ScrollView pageScroll;
     private Switch web, voice, followUp, wake, natural, liveMode, bargeIn, jarvisWord, announceCalls, briefing, briefingSpeak, listenOnOpen, compactPanel, camAlways;
     /** ⚡ వేగం: each speed change on its own (Prefs.speedG / K / F / E). */
-    private Switch speedG, speedK, speedF, speedE, speedA, speed5, voiceGuard;
+    private Switch speedG, speedK, speedF, speedE, speedA, speed5, speedB, voiceGuard;
     private TextView briefingTime, screenInfo;
     private int briefHour, briefMinute;
     private int coughGap;
@@ -2066,6 +2066,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("speed_e", speedE.isChecked());
         e.putBoolean("speed_a", speedA.isChecked());
         e.putBoolean("speed_5", speed5.isChecked());
+        e.putBoolean("speed_b", speedB.isChecked());
         e.putBoolean("voice_guard", voiceGuard.isChecked());
         int lbc = liveBarge.getCheckedRadioButtonId();
         e.putString("live_barge", lbc == 96 ? "voice" : lbc == 97 ? "off" : "word");
@@ -4317,11 +4318,13 @@ public class SettingsActivity extends Activity {
                 + "భద్రత రూల్స్ ఎప్పుడూ వెళ్తాయి", prefs.sp.getBoolean("speed_a", true));
         speed5 = toggle("5 · రూల్ బుక్ గుర్తుండేలా: టైమ్, ఫోన్ వివరాలు లాంటి మారేవి ప్రశ్నతో పాటు వెళ్తాయి; రూల్ బుక్ మొదలు ప్రతిసారీ ఒకేలా ఉండి AI దాన్ని గుర్తుంచుకుంటుంది (ఖర్చు తక్కువ)",
                 prefs.sp.getBoolean("speed_5", true));
+        speedB = toggle("B · రాస్తుండగానే మాట్లాడు: మెదడు జవాబు రాస్తుండగానే మొదటి వాక్యం చెబుతుంది, మిగతాది వెనకే "
+                + "(Gemini మెదడు, OpenAI గొంతుతో; రెండో AI చెక్ చేసే డబ్బు / ఆరోగ్యం / చట్టం ప్రశ్నలకి కాదు)", prefs.sp.getBoolean("speed_b", true));
         voiceGuard = toggle("♻️ గొంతు కాపలా: OpenAI గొంతు 6 సెకన్లలో వినిపించకపోతే, లేదా 4 సెకన్లు ఆగిపోతే, అదే గొంతుని కొత్త లైన్‌లో "
                 + "ఇంకొక్కసారి అడుగుతుంది (మధ్యలో అయితే ఆ వాక్యం మొదటి నుంచి). అప్పుడూ రాకపోతే ఫోన్ గొంతు చెబుతుంది. "
                 + "జవాబు నిజంగా వినిపించాకే మైక్ తెరుస్తుంది", prefs.sp.getBoolean("voice_guard", true));
         button("అన్నీ పాత పద్ధతికి (అన్నీ ఆఫ్)", v -> {
-            for (Switch w : new Switch[]{speedG, speedK, speedF, speedE, speedA, speed5, voiceGuard}) w.setChecked(false);
+            for (Switch w : new Switch[]{speedG, speedK, speedF, speedE, speedA, speed5, speedB, voiceGuard}) w.setChecked(false);
             autosave();
             Toast.makeText(this, "⚡ అన్నీ ఆఫ్: ఇంతకుముందు పద్ధతిలోనే", Toast.LENGTH_SHORT).show();
         });
@@ -4332,7 +4335,7 @@ public class SettingsActivity extends Activity {
     private String speedLine() {
         StringBuilder b = new StringBuilder("• ⚡ వేగం: ");
         String[][] all = {{"G", "speed_g"}, {"K", "speed_k"}, {"F", "speed_f"}, {"E", "speed_e"}, {"A", "speed_a"}, {"5", "speed_5"},
-                {"♻️", "voice_guard"}};
+                {"B", "speed_b"}, {"♻️", "voice_guard"}};
         for (int i = 0; i < all.length; i++) {
             if (i > 0) b.append(" · ");
             b.append(all[i][0]).append(prefs.sp.getBoolean(all[i][1], true) ? " ✓" : " ఆఫ్");

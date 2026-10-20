@@ -421,11 +421,16 @@ final class Prefs {
      * voice is asked once more on a line of its own (part-way: from the start of that sentence); then the phone's voice.
      */
     boolean voiceGuard() { return !homeMode() && sp.getBoolean("voice_guard", true); }
+    /**
+     * B (build 3): the brain's answer read as it is written (Gemini), and its first sentence spoken at once with the OpenAI
+     * voice while the rest is written; never for an answer the second AI checks.
+     */
+    boolean speedB() { return !homeMode() && sp.getBoolean("speed_b", true); }
     /** The switches that are off now (for the ⏱️ list: "G K"), empty when all are on. */
     String speedOff() {
         if (homeMode()) return "";
         StringBuilder b = new StringBuilder();
-        for (String k : new String[]{"g", "k", "f", "e", "a", "5"}) if (!sp.getBoolean("speed_" + k, true)) b.append(k.toUpperCase(java.util.Locale.ROOT)).append(' ');
+        for (String k : new String[]{"g", "k", "f", "e", "a", "5", "b"}) if (!sp.getBoolean("speed_" + k, true)) b.append(k.toUpperCase(java.util.Locale.ROOT)).append(' ');
         if (!sp.getBoolean("voice_guard", true)) b.append("♻️");
         return b.toString().trim();
     }

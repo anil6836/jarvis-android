@@ -127,6 +127,71 @@ final class Http {
         }
     }
 
+    /** One piece of a streamed answer (server-sent events: each "data:" line is a JSON object). */
+    interface Sse { void data(JSONObject piece) throws Exception; }
+
+    /**
+     * ⚡ B: POST, and the answer read as it is written (server-sent events), each piece handed on at once. The same stop,
+     * time limits and error messages as post(); the cost meter is the caller's (it puts the pieces together).
+     */
+    static void postSse(String url, JSONObject body, Sse sink, String... headers) throws Exception {
+        Cancel k = CANCEL.get();
+        if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        if (k != null) k.conn = c;
+        try {
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(20000);
+            c.setReadTimeout(LONG_WAIT.get() ? 300000 : 150000);
+            c.setRequestProperty("Accept", "text/event-stream");
+            for (int i = 0; i + 1 < headers.length; i += 2) c.setRequestProperty(headers[i], headers[i + 1]);
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            c.setFixedLengthStreamingMode(bytes.length);
+            c.connect();
+            if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+            try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
+            int status = c.getResponseCode();
+            if (status >= 400) {
+                InputStream es = c.getErrorStream();
+                String text = es == null ? "" : readAll(es);
+                if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+                throw new ApiError(status, errorMessage(text));
+            }
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
+                StringBuilder event = new StringBuilder();
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+                    if (line.startsWith("data:")) {
+                        event.append(line.substring(5).trim());
+                        continue;
+                    }
+                    if (!line.isEmpty() || event.length() == 0) continue; // (comments, other fields)
+                    sseEvent(event.toString(), sink);
+                    event.setLength(0);
+                }
+                if (event.length() > 0) sseEvent(event.toString(), sink); // (the last one without its empty line)
+            }
+            if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+        } catch (IOException e) {
+            if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped"); // cut by ⏹: not an error
+            throw e;
+        } finally {
+            if (k != null) k.conn = null;
+            c.disconnect();
+        }
+    }
+
+    private static void sseEvent(String data, Sse sink) throws Exception {
+        if (data.isEmpty() || "[DONE]".equals(data)) return;
+        JSONObject o;
+        try { o = new JSONObject(data); }
+        catch (Exception e) { throw new ApiError(0, "Unexpected reply: " + data.substring(0, Math.min(200, data.length()))); }
+        sink.data(o);
+    }
+
     private static String readAll(InputStream in) throws IOException {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         byte[] b = new byte[16384];

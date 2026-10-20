@@ -27,6 +27,20 @@ final class Spoken {
             return text.length() <= max ? this : new Out(text.substring(0, max), Arrays.copyOf(src, max));
         }
 
+        /**
+         * ⚡ B: this, sep, then b, as one spoken text; b's letters map into the shown text from bShownBase on (b was made
+         * from the shown text's part that starts there).
+         */
+        Out join(String sep, Out b, int bShownBase) {
+            String all = text + sep + b.text;
+            int[] s = new int[all.length()];
+            System.arraycopy(src, 0, s, 0, src.length);
+            int last = src.length == 0 ? 0 : src[src.length - 1] + 1;
+            for (int i = 0; i < sep.length(); i++) s[text.length() + i] = Math.max(0, Math.min(last + i, bShownBase - 1));
+            for (int i = 0; i < b.src.length; i++) s[text.length() + sep.length() + i] = bShownBase + b.src[i];
+            return new Out(all, s);
+        }
+
         /** Original [start, end) for spoken [a, b). */
         int[] range(int a, int b) {
             if (src.length == 0) return new int[]{0, 0};
