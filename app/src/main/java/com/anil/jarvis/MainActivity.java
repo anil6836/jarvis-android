@@ -773,6 +773,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         chips.setPadding(0, dp(8), 0, dp(10));
         // colourful quick actions; the last few start a request for him to finish typing
         addAction(chips, "📷", "Jarvis కెమెరా", () -> JarvisCamera.open(this, null, null));
+        addAction(chips, "🗺️", "Jarvis Maps", () -> JarvisMaps.open(this, ""));
         addAction(chips, "📂", "అన్ని ఫీచర్లు", () -> startActivity(new Intent(this, FeaturesActivity.class)));
         addChip(chips, "🌅", "శుభోదయం బ్రీఫింగ్", BRIEF_PROMPT);
         addChip(chips, "📰", "వార్తలు", "ఈరోజు ముఖ్యమైన 3 వార్తలు చెప్పు: ఒకటి భారతదేశం, ఒకటి తెలంగాణ లేదా ఆంధ్రప్రదేశ్, ఒకటి టెక్నాలజీ. ఇంటర్నెట్‌లో వెతికి, చిన్నగా చెప్పు.");
@@ -1018,6 +1019,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             case "english": startEnglishPractice(); break;
             case "camera": toggleCamera(); break;
             case "jarvis_camera": JarvisCamera.open(this, null, null); break;
+            case "jarvis_maps": JarvisMaps.open(this, ""); break;
             case "obd": startActivity(new Intent(this, ObdActivity.class)); break;
             case "photo": pickPhoto(); break;
             case "file": openFiles(); break;

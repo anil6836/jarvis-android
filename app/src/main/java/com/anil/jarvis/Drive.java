@@ -458,6 +458,20 @@ final class Drive {
         if (nav != null) o.put("navigation", nav);
         JSONObject d = dest(c);
         if (d != null) o.put("going_to", d.optString("name"));
+        if (GMaps.has(c)) { // 🗺️ Google first; the free map below only when there is no key or Google failed
+            try {
+                JSONObject g = googleRoute(c, l);
+                if (g.has("roads_ahead") || g.has("notes")) {
+                    return o.put("google", g).put("source", "Google Maps").put("next", "Say in short Telugu from 'google' (Google Maps' own data): where this road / route goes "
+                            + "(the roads and next towns with km), km and time left with today's traffic if a destination is known, the toll if any, and from 'notes' "
+                            + "(Gemini with Google Maps, in English: say it in Telugu) the next towns and one useful stop. Say once that it is from Google Maps. "
+                            + "If 'navigation' is there, add the next turn. If 'notes_error' is there, skip the notes quietly.");
+                }
+                o.put("google_error", g.optString("notes_error", heading(l) < 0 && dest(c) == null ? "Google: standing still and no destination, so no way ahead."
+                        : "Google gave no way ahead from here."));
+            } catch (Exception e) { o.put("google_error", GMaps.telugu(e)); }
+        }
+        o.put("source", "free map (OpenStreetMap)");
         try { o.put("road_now", road(l.getLatitude(), l.getLongitude())); } catch (Exception ignored) {}
         Path p = ahead(c, l, 80);
         if (p == null) {
@@ -509,13 +523,95 @@ final class Drive {
             } catch (Exception ignored) {}
         }
         return o.put("next", "Say in short Telugu: where this road / route goes (via roads, next 3-4 towns with km), km and time left if known, "
-                + "toll gates count if any, and the next turn from 'navigation' if it is there.");
+                + "toll gates count if any, and the next turn from 'navigation' if it is there. If 'google_error' is there, say in one line that Google "
+                + "did not answer (its reason) and this is from the free map.");
+    }
+
+    /**
+     * 🗺️ Google's view of the way ahead (his Maps key): the route to his destination, else the road straight on in his
+     * direction for 60 km (Google drives it from where he is, the way he faces), with the roads it follows, the time
+     * with traffic and the toll; and what Google Maps knows about it (Gemini grounded on Google Maps, English).
+     */
+    static JSONObject googleRoute(Context c, Location l) throws Exception {
+        JSONObject g = new JSONObject();
+        float h = heading(l);
+        JSONObject d = dest(c);
+        boolean toDest = d != null && d.has("lat"); // (a destination whose place is really known)
+        double[] to = toDest ? new double[]{d.optDouble("lat"), d.optDouble("lon")}
+                : h >= 0 ? MapMath.ahead(l.getLatitude(), l.getLongitude(), h, 60_000) : null;
+        if (to != null) {
+            // to his destination: time with traffic and the toll (Google's dearer kind); straight on: just the road's line (the cheap kind)
+            List<GMaps.Route> rs = toDest ? GMaps.routes(c, l.getLatitude(), l.getLongitude(), h, to[0], to[1], Bike.riding(c), false)
+                    : GMaps.line(c, l.getLatitude(), l.getLongitude(), h, to[0], to[1]);
+            if (!rs.isEmpty()) {
+                GMaps.Route r = rs.get(0);
+                g.put("to", toDest ? d.optString("name") : "straight on in his direction (no destination set)");
+                if (!r.via.isEmpty()) g.put("via", r.via);
+                if (toDest) g.put("km_left", Math.round(r.meters / 1000)).put("minutes_left_with_traffic", Math.round(r.seconds / 60.0))
+                        .put("minutes_without_traffic", Math.round(r.staticSeconds / 60.0));
+                if (!r.toll.isEmpty()) g.put("toll", r.toll);
+                JSONArray roads = new JSONArray();
+                for (int i = 0; i < r.steps.size() && roads.length() < 6; i++) roads.put(r.steps.get(i));
+                g.put("roads_ahead", roads);
+                saveAhead(c, r.polyline, l);
+            }
+        }
+        if (new Prefs(c).sp.getBoolean("maps_notes", true) && !new Prefs(c).geminiKey().trim().isEmpty()) {
+            try {
+                String road = g.optString("via", "");
+                GMaps.Notes n = GMaps.roadNotes(c, l.getLatitude(), l.getLongitude(), h, road, toDest ? "He is driving to " + d.optString("name") + "." : "");
+                if (!n.text.isEmpty()) g.put("notes", n.text);
+                JSONArray src = new JSONArray(), links = new JSONArray();
+                for (String[] sx : n.sources) { src.put(sx[0]); links.put(sx[1]); }
+                if (src.length() > 0) g.put("notes_from_google_maps", src).put("notes_links", links); // (shown with their links on Jarvis Maps: Google's rule)
+            } catch (Exception e) { g.put("notes_error", GMaps.telugu(e)); }
+        }
+        return g;
+    }
+
+    /** The way ahead Google gave last (for Jarvis Maps and the stops along it), with where he was then; kept a few minutes. */
+    static void saveAhead(Context c, String polyline, Location l) {
+        if (polyline == null || polyline.isEmpty()) return;
+        JSONObject d = dest(c);
+        settings(c).edit().putString("g_ahead", polyline).putLong("g_ahead_at", System.currentTimeMillis())
+                .putString("g_ahead_from", l.getLatitude() + "," + l.getLongitude())
+                .putString("g_ahead_to", d != null && d.has("lat") ? d.optString("name") : "").apply();
+    }
+
+    /**
+     * The way ahead to search along (km long): Google's line from the last 3 minutes while he is still within 300 m of
+     * where it was made (no new paid call per chip / press), else a new one (the cheap kind): to his destination, or
+     * straight on in his direction. null: no direction and no destination; empty: Google gave none.
+     */
+    static List<double[]> aheadPts(Context c, Location l, double km) throws Exception {
+        SharedPreferences st = settings(c);
+        String from = st.getString("g_ahead_from", "");
+        if (System.currentTimeMillis() - st.getLong("g_ahead_at", 0) < 180_000 && !from.isEmpty()) {
+            try {
+                String[] xy = from.split(",");
+                JSONObject d0 = dest(c);
+                String toNow = d0 != null && d0.has("lat") ? d0.optString("name") : "";
+                if (meters(l.getLatitude(), l.getLongitude(), Double.parseDouble(xy[0]), Double.parseDouble(xy[1])) < 300 && toNow.equals(st.getString("g_ahead_to", ""))) {
+                    List<double[]> kept = MapMath.decode(st.getString("g_ahead", ""));
+                    if (kept.size() >= 2 && (!toNow.isEmpty() || MapMath.km(kept) >= km * 0.95)) return MapMath.cut(kept, km); // (the same trip: to his destination it is the whole way; straight on, long enough for this ask)
+                }
+            } catch (Exception ignored) {}
+        }
+        float h = heading(l);
+        JSONObject d = dest(c);
+        double[] to = d != null && d.has("lat") ? new double[]{d.optDouble("lat"), d.optDouble("lon")}
+                : h >= 0 ? MapMath.ahead(l.getLatitude(), l.getLongitude(), h, Math.max(5, Math.min(150, km)) * 1000) : null;
+        if (to == null) return null;
+        List<GMaps.Route> rs = GMaps.line(c, l.getLatitude(), l.getLongitude(), h, to[0], to[1]);
+        if (rs.isEmpty()) return new ArrayList<>();
+        saveAhead(c, rs.get(0).polyline, l);
+        return MapMath.cut(rs.get(0).pts, km);
     }
 
     /** What he asked for -> an OpenStreetMap filter and a Telugu word. */
     static String[] kind(String what) {
         String w = what == null ? "" : what.toLowerCase(Locale.ROOT).trim();
-        if (has(w, "room", "lodge", "lodging", "stay", "రూమ్", "లాడ్జ్", "బస")) return new String[]{"[tourism~\"^(hotel|motel|guest_house)$\"]", "లాడ్జ్ / హోటల్ రూమ్"};
+        if (has(w, "room", "lodge", "lodging", "stay", "రూమ్", "లాడ్జ్")) return new String[]{"[tourism~\"^(hotel|motel|guest_house)$\"]", "లాడ్జ్ / హోటల్ రూమ్"};
         if (has(w, "atm", "ఏటీఎం")) return new String[]{"[amenity=atm]", "ATM"};
         if (has(w, "coffee", "cafe", "tea", "chai", "కాఫీ", "టీ", "చాయ్", "ఛాయ్")) return new String[]{"[amenity=cafe]", "టీ / కాఫీ"};
         if (has(w, "petrol", "diesel", "fuel", "bunk", "cng", "పెట్రోల్", "డీజిల్", "బంక్")) return new String[]{"[amenity=fuel]", "పెట్రోల్ బంక్"};
@@ -538,19 +634,59 @@ final class Drive {
     }
 
     private static boolean has(String w, String... keys) {
+        String[] words = w.split("[\\s,.!?;:()/]+");
         for (String k : keys) {
-            if (k.length() <= 3 && k.matches("[a-z]+")) { if (w.matches(".*\\b" + k + "\\b.*")) return true; } // "ev", "atm", "tea": whole words
-            else if (w.contains(k)) return true;
+            if (k.matches("[a-z]+")) { // English: whole words ("ev", "atm", "tea"); longer ones may start a word ("charging", "restaurants")
+                if (k.length() <= 3 ? w.matches(".*\\b" + k + "\\b.*") : w.matches(".*\\b" + k + ".*")) return true;
+                continue;
+            }
+            if (k.contains(" ")) { if (w.contains(k)) return true; continue; }
+            for (String t : words) // Telugu: the word itself, or it with a short ending ("ఆసుపత్రికి"); never inside another word ("సిటీ" is not "టీ")
+                if (t.equals(k) || (k.length() >= 3 && t.startsWith(k) && t.length() - k.length() <= 4)) return true;
         }
         return false;
     }
 
+    /** Small words that may stand with a kind ("టీ షాప్", "petrol bunk near me"): the ask is still that kind. */
+    private static final java.util.Set<String> KIND_FILL = new java.util.HashSet<>(java.util.Arrays.asList(
+            "shop", "shops", "stall", "near", "nearby", "me", "any", "a", "the", "for", "best", "good", "open",
+            "షాప్", "షాపు", "కొట్టు", "దగ్గర", "దగ్గర్లో", "ఏదైనా", "మంచి", "ఎక్కడ", "ఉంది", "తెరిచి"));
+
+    /** Every word of the ask is a kind of place or a small word ("టీ", "petrol bunk"); a name with a kind in it is not ("Apollo hospital", "Coffee Day"). */
+    static boolean kindOnly(String what) {
+        String w = what == null ? "" : what.toLowerCase(Locale.ROOT).trim();
+        if (w.isEmpty()) return false;
+        boolean any = false;
+        for (String t : w.split("[\\s,.!?;:()/]+")) {
+            if (t.isEmpty() || KIND_FILL.contains(t)) continue;
+            String[] k = kind(t);
+            if (k == null || k[0].startsWith("[~")) return false; // (a word that is no kind: a name)
+            any = true;
+        }
+        return any;
+    }
+
     /** "దారిలో మంచి హోటల్", "ముందు పెట్రోల్ బంక్ ఎక్కడ?": places ahead on his way, nearest first. */
-    static JSONObject along(Context c, String what, double km) throws Exception {
+    static JSONObject along(Context c, String what, double km) throws Exception { return along(c, what, km, false); }
+
+    /** freeOnly: the free map even with a key (Jarvis Maps when Google's map is not showing: Google's places never go on another map). */
+    static JSONObject along(Context c, String what, double km, boolean freeOnly) throws Exception {
         String[] k = kind(what);
         if (k == null) return new JSONObject().put("ok", false).put("error", "missing").put("message", "What should I look for on the way?");
         Location l = here(c);
         if (l == null) return new JSONObject().put("ok", false).put("error", "no_location").put("message", "Could not get the phone's location. Is Location on?");
+        String googleErr = null;
+        if (GMaps.has(c) && !freeOnly) {
+            try { return googleAlong(c, l, googleWords(what), k[1], km, false); }
+            catch (Exception e) { googleErr = GMaps.telugu(e); }
+        }
+        JSONObject free = alongFree(c, l, k, km);
+        if (googleErr != null) free.put("google_error", googleErr).put("source", "free map (OpenStreetMap), because Google failed");
+        return free;
+    }
+
+    /** The free map's places along the way (OpenStreetMap). */
+    private static JSONObject alongFree(Context c, Location l, String[] k, double km) throws Exception {
         Path p = ahead(c, l, Math.max(3, Math.min(150, km)));
         String q = p == null
                 ? String.format(Locale.ENGLISH, "[out:json][timeout:25];nwr(around:5000,%.6f,%.6f)%s;out center 80;", l.getLatitude(), l.getLongitude(), k[0])
@@ -587,7 +723,202 @@ final class Drive {
                 .put("searched", p == null ? "around him (5 km; he is not moving and no destination is known)"
                         : p.route ? "along his route for " + Math.round(Math.min(km, p.totalKm)) + " km" : "straight ahead in his direction for " + Math.round(km) + " km");
         if (out.length() == 0) o.put("note", "Nothing of this kind on the free map along this stretch (rural places are often missing). Say so honestly; offer to search wider (km) or Google Maps.");
+        o.put("source", "free map (OpenStreetMap)");
         return o.put("next", "Say the first 3 in short Telugu: name, km ahead, left / right side, and hours if known. Offer to add one as a stop (drive add_stop with its lat,lon).");
+    }
+
+    /** What he asked for, as words Google's search knows. */
+    static String googleWords(String what) {
+        String w = what == null ? "" : what.toLowerCase(Locale.ROOT).trim();
+        if (has(w, "room", "lodge", "lodging", "stay", "రూమ్", "లాడ్జ్")) return "lodge or hotel rooms";
+        if (has(w, "atm", "ఏటీఎం")) return "ATM";
+        if (has(w, "coffee", "cafe", "tea", "chai", "కాఫీ", "టీ", "చాయ్", "ఛాయ్")) return "tea stall or coffee shop";
+        if (has(w, "petrol", "diesel", "fuel", "bunk", "cng", "పెట్రోల్", "డీజిల్", "బంక్")) return "petrol pump";
+        if (has(w, "ev", "charg", "ఛార్జ")) return "EV charging station";
+        if (has(w, "medical", "pharma", "మెడికల్", "మందుల")) return "medical shop pharmacy";
+        if (has(w, "hospital", "clinic", "ఆసుపత్రి", "హాస్పిటల్", "క్లినిక్")) return "hospital";
+        if (has(w, "toilet", "washroom", "restroom", "టాయిలెట్", "బాత్రూమ్", "బాత్ రూమ్")) return "public toilet";
+        if (has(w, "police", "పోలీస్")) return "police station";
+        if (has(w, "church", "చర్చి")) return "church";
+        if (has(w, "temple", "గుడి", "ఆలయం", "దేవాలయం")) return "temple";
+        if (has(w, "mosque", "మసీదు")) return "mosque";
+        if (has(w, "parking", "పార్కింగ్")) return "parking";
+        if (has(w, "mechanic", "puncture", "garage", "tyre", "మెకానిక్", "పంక్చర్", "గ్యారేజ్")) return "puncture shop or mechanic";
+        if (has(w, "bank", "బ్యాంక్")) return "bank";
+        if (has(w, "restaurant", "food", "dhaba", "hotel", "biryani", "tiffin", "lunch", "dinner", "breakfast", "హోటల్", "భోజనం", "బిర్యానీ", "టిఫిన్", "ధాబా", "తినడానికి", "రెస్టారెంట్"))
+            return "restaurant or dhaba";
+        return what == null ? "" : what.trim();
+    }
+
+    /**
+     * 🗺️ Google's places along his way (his Maps key): along the route to his destination, else along the road straight
+     * on in his direction (Google drives it from where he is), each with its km and minutes ahead by road; around him
+     * (5 km) when he is standing still with no destination. openOnly: only the ones open now.
+     */
+    static JSONObject googleAlong(Context c, Location l, String words, String label, double km, boolean openOnly) throws Exception {
+        JSONObject d = dest(c);
+        List<double[]> pts = aheadPts(c, l, Math.max(3, Math.min(150, km)));
+        boolean noWay = pts != null && pts.size() < 2;
+        String line = null;
+        if (pts != null && pts.size() >= 2) line = MapMath.encode(pts);
+        else pts = null;
+        List<GMaps.Place> ps = GMaps.search(c, words, l.getLatitude(), l.getLongitude(), 5000, line, openOnly, 12);
+        List<JSONObject> list = new ArrayList<>();
+        for (GMaps.Place p : ps) {
+            JSONObject item = new JSONObject().put("name", p.name).put("lat", round(p.lat)).put("lon", round(p.lon));
+            if (!p.address.isEmpty()) item.put("address", p.address);
+            if (line != null) {
+                if (p.aheadM < 0) continue;
+                item.put("km_ahead", Math.round(p.aheadM / 100) / 10.0);
+                if (p.aheadS > 0) item.put("minutes_ahead", Math.round(p.aheadS / 60.0));
+                double[] at = place(pts, p.lat, p.lon);
+                if (at[1] < 1500) item.put("side", at[1] < 40 ? "" : at[2] < 0 ? "ఎడమ వైపు" : "కుడి వైపు");
+            } else item.put("km", Math.round(p.aheadM / 100) / 10.0);
+            if (p.open != null) item.put("open_now", p.open);
+            if (p.rating > 0) item.put("rating", p.rating).put("ratings", p.ratings);
+            list.add(item);
+        }
+        final String by = line != null ? "km_ahead" : "km";
+        Collections.sort(list, (a, b) -> Double.compare(a.optDouble(by), b.optDouble(by)));
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < list.size() && out.length() < 8; i++) out.put(list.get(i));
+        JSONObject o = new JSONObject().put("ok", true).put("looking_for", label).put("places", out).put("source", "Google Maps")
+                .put("searched", line == null ? (noWay ? "around him (5 km; Google gave no way ahead)" : "around him (5 km; he is not moving and no destination is known)")
+                        : d != null && d.has("lat") ? "along his route for " + Math.round(km) + " km" : "along the road ahead in his direction for " + Math.round(km) + " km");
+        if (out.length() == 0) o.put("note", "Google found none of this kind on this stretch" + (openOnly ? " open now" : "") + ". Say so; offer a wider search (more km).");
+        return o.put("next", "Say the first 2-3 in short Telugu: name, km ahead (and minutes), left / right side, open now if known. "
+                + "Offer to set the way to one (drive navigate with its 'lat,lon'); set it only after he says yes.");
+    }
+
+    // ---------------------------------------------------------------- 😴 a tea / coffee stop when he is sleepy
+
+    /** The last stop found: what, when, where he was (one object: never half-updated). */
+    private static final class Stop {
+        final JSONObject r;
+        final long at;
+        final double lat, lon;
+        Stop(JSONObject r, long at, double lat, double lon) { this.r = r; this.at = at; this.lat = lat; this.lon = lon; }
+    }
+
+    private static volatile Stop lastStop;
+
+    /** The stop Jarvis offered him (said or in the notification): his "yes" is to this one only. */
+    private static final class Offer {
+        final String name;
+        final double lat, lon;
+        final long at;
+        Offer(String name, double lat, double lon, long at) { this.name = name; this.lat = lat; this.lon = lon; this.at = at; }
+    }
+
+    private static volatile Offer offered;
+    /** When the brain last told him a stop (so the alarm's offer doesn't say it again over it). */
+    static volatile long stopToldAt;
+
+    /**
+     * The nearest tea / coffee / food stop ahead that is open now (Google with his Maps key; the free map otherwise),
+     * kept for 10 minutes so "దారి పెట్టు" after the offer finds the same one without asking Google again.
+     */
+    static synchronized JSONObject restStop(Context c) throws Exception {
+        Location l = here(c);
+        if (l == null) return new JSONObject().put("ok", false).put("error", "no_location").put("message", "Could not get the phone's location. Is Location on?");
+        Stop kept = lastStop;
+        if (kept != null && System.currentTimeMillis() - kept.at < 10 * 60_000 && (meters(l.getLatitude(), l.getLongitude(), kept.lat, kept.lon) < 500 || stillAhead(kept.r, l, kept)))
+            return withOffer(new JSONObject(kept.r.toString()).put("found_minutes_ago", (System.currentTimeMillis() - kept.at) / 60_000), l); // (the same one while it is still ahead of him)
+        JSONObject r = null;
+        String googleErr = null;
+        if (GMaps.has(c)) {
+            try {
+                r = googleAlong(c, l, "tea stall or coffee shop or dhaba", "టీ / కాఫీ / దాబా", 30, true);
+                if (r.optJSONArray("places").length() == 0) r = googleAlong(c, l, "petrol pump with restaurant or restaurant", "హోటల్ / పెట్రోల్ బంక్", 40, true);
+            } catch (Exception e) { googleErr = GMaps.telugu(e); r = null; }
+        }
+        if (r == null) {
+            r = alongFree(c, l, kind("tea"), 30);
+            if (r.optJSONArray("places") == null || r.optJSONArray("places").length() == 0) r = alongFree(c, l, kind("restaurant"), 40);
+            if (googleErr != null) r.put("google_error", googleErr);
+        }
+        boolean google = r.optString("source").startsWith("Google");
+        r.put("next", "He is sleepy at the wheel. Say in short Telugu: the nearest " + (google ? "open one" : "one (the free map does not know if it is open now: say so)")
+                + " (name, km ahead, side), then ask 'అక్కడికి దారి పెట్టనా?'. Set the way only after he says yes: drive add_stop when he is going somewhere, "
+                + "else drive navigate, with place = its 'lat,lon'. If none, tell him to stop at the first safe place.");
+        lastStop = new Stop(r, System.currentTimeMillis(), l.getLatitude(), l.getLongitude());
+        return withOffer(new JSONObject(r.toString()), l);
+    }
+
+    /** The brain is telling him this stop (drive rest_stop): it is now the one his "yes" is to, and the alarm's offer stays quiet a while. */
+    static void told(JSONObject r) {
+        stopToldAt = System.currentTimeMillis();
+        JSONArray ps = r == null ? null : r.optJSONArray("places");
+        JSONObject p = ps == null || ps.length() == 0 ? null : ps.optJSONObject(0);
+        if (p != null && p.has("lat")) offered = new Offer(p.optString("name"), p.optDouble("lat"), p.optDouble("lon"), System.currentTimeMillis());
+    }
+
+    /** The first stop found is still ahead: he is nearer to it now than when it was found (not driven past it). */
+    private static boolean stillAhead(JSONObject r, Location l, Stop kept) {
+        JSONArray ps = r.optJSONArray("places");
+        JSONObject p = ps == null || ps.length() == 0 ? null : ps.optJSONObject(0);
+        if (p == null || !p.has("lat")) return false;
+        double now = meters(l.getLatitude(), l.getLongitude(), p.optDouble("lat"), p.optDouble("lon"));
+        double then = meters(kept.lat, kept.lon, p.optDouble("lat"), p.optDouble("lon"));
+        return now > 150 && now < then + 300;
+    }
+
+    /** Whether this is the stop offered to him: his "yes" sets the way only to that one; another one is told and asked again. */
+    private static JSONObject withOffer(JSONObject r, Location l) throws Exception {
+        Offer o = offered;
+        if (o == null || System.currentTimeMillis() - o.at > 10 * 60_000) return r;
+        JSONArray ps = r.optJSONArray("places");
+        JSONObject p = ps == null || ps.length() == 0 ? null : ps.optJSONObject(0);
+        boolean same = p != null && p.optString("name").equals(o.name) && meters(p.optDouble("lat"), p.optDouble("lon"), o.lat, o.lon) < 200;
+        if (same) return r.put("offered_to_him", true);
+        r.put("offered_before", o.name);
+        r.put("next", "This is NOT the stop offered to him before (" + o.name + "; he has probably passed it). Tell him this one in short Telugu "
+                + "and ask again 'అక్కడికి దారి పెట్టనా?'; set the way only after a new yes. If none, tell him to stop at the first safe place.");
+        return r;
+    }
+
+    /**
+     * After the car's sleep alarm (or "నిద్ర వస్తోంది"): look for the nearest open stop ahead and offer it — said aloud,
+     * and a notification whose tap starts the way there in Google Maps. Never sets the way by itself. Off the main thread.
+     */
+    static boolean offerRestStop(Context c) {
+        final Context app = c.getApplicationContext();
+        if (!Net.online(app)) return false;
+        SharedPreferences st = settings(app);
+        if (System.currentTimeMillis() - st.getLong("stop_offered_at", 0) < 10 * 60_000) return false; // (once in 10 minutes)
+        st.edit().putLong("stop_offered_at", System.currentTimeMillis()).apply();
+        new Thread(() -> {
+            try {
+                JSONObject r = restStop(app);
+                JSONArray ps = r.optJSONArray("places");
+                if (ps == null || ps.length() == 0) return;
+                JSONObject p = ps.getJSONObject(0);
+                for (int i = 0; i < 40 && (MainActivity.busyTalking() || CarCare.asking(app)); i++) Thread.sleep(500); // (never over his talk / the car's question)
+                boolean quiet = MainActivity.busyTalking() || CarCare.asking(app) || System.currentTimeMillis() - stopToldAt < 120_000; // (still busy, or the brain just said it: the notification only)
+                String name = p.optString("name");
+                String where = p.has("km_ahead") ? p.optDouble("km_ahead") + " కి.మీ. ముందు" : p.optDouble("km") + " కి.మీ. దూరంలో";
+                String side = p.optString("side", "");
+                String text = "దగ్గర్లో " + where + (side.isEmpty() ? "" : ", " + side) + " " + name + (p.optBoolean("open_now", false) ? " తెరిచి ఉంది" : " ఉంది")
+                        + ". అక్కడ ఆగి టీ తాగండి. దారి కావాలంటే నోటిఫికేషన్ నొక్కండి, లేదా 'Jarvis, దారి పెట్టు' అనండి.";
+                offered = new Offer(name, p.optDouble("lat"), p.optDouble("lon"), System.currentTimeMillis()); // (his "yes" is to this one)
+                if (!quiet) Announcer.say(app, text);
+                android.app.NotificationManager nm = app.getSystemService(android.app.NotificationManager.class);
+                nm.createNotificationChannel(new android.app.NotificationChannel("jarvis_rest_stop", "ఆగే చోటు (నిద్ర వచ్చినప్పుడు)", android.app.NotificationManager.IMPORTANCE_HIGH));
+                String ll = p.optDouble("lat") + "," + p.optDouble("lon");
+                JSONObject d = dest(app);
+                Intent nav = d != null ? viaStop(destWhere(d), ll, Bike.riding(app)) : navigate(ll, "", Bike.riding(app)); // (his trip keeps its destination)
+                android.app.PendingIntent pi = android.app.PendingIntent.getActivity(app, 7071, nav, android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
+                nm.notify(7071, new Notification.Builder(app, "jarvis_rest_stop").setSmallIcon(android.R.drawable.ic_dialog_map)
+                        .setContentTitle("☕ " + name + " · " + where).setContentText("నొక్కితే Google Maps లో దారి")
+                        .setContentIntent(pi).setAutoCancel(true).setTimeoutAfter(30 * 60_000L).build());
+            } catch (Exception ignored) {}
+        }, "jarvis-rest-stop").start();
+        return true;
+    }
+
+    /** His destination for Google Maps: its place ("lat,lon") when known, else its name. */
+    static String destWhere(JSONObject d) {
+        return d != null && d.has("lat") ? d.optDouble("lat") + "," + d.optDouble("lon") : d == null ? "" : d.optString("name");
     }
 
     /** "రూట్‌లో స్పీడ్ కెమెరాలు ఎక్కడ?": cameras ahead on the map, nearest first. */

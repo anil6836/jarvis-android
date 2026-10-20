@@ -442,6 +442,13 @@
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
         <activity
+            android:name=".JarvisMaps"
+            android:exported="false"
+            android:label="Jarvis Maps"
+            android:taskAffinity="com.anil.jarvis.maps"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+        <activity
             android:name=".MapActivity"
             android:exported="false"
             android:label="Jarvis మ్యాప్ బోర్డ్"

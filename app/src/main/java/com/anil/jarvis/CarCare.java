@@ -487,6 +487,7 @@ final class CarCare {
                     .setTimeoutAfter(5 * MIN).setAutoCancel(true).build());
         } catch (Exception ignored) {}
         main.postDelayed(() -> Announcer.sayPhone(app, name + "! " + text), 2700);
+        main.postDelayed(() -> Drive.offerRestStop(app), 9000); // ☕ then: the nearest open tea / coffee stop ahead (offered, never set by itself)
     }
 
     /** Settings → "🔔 అలారం శబ్దం టెస్ట్": the alarm's own tone, 2 seconds at full alarm volume (put back after). */
@@ -510,6 +511,7 @@ final class CarCare {
                 Announcer.sayPhone(app, new Prefs(app).name() + ", కళ్ళు బరువెక్కుతున్నాయి. దగ్గర్లో సురక్షితమైన చోట ఆగి కాసేపు కునుకు తీయండి. "
                         + "ఇక 5 నిమిషాలకి ఒకసారి అడుగుతాను.");
                 schedule(app, 5);
+                main.postDelayed(() -> Drive.offerRestStop(app), 9000);
             }
         });
     }

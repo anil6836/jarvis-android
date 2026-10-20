@@ -475,7 +475,9 @@ final class Tools {
                 + "where = where he is now, which road (number, kind, speed limit), the next turn and arrival time from the maps app; "
                 + "route = where this road / route goes, towns coming next with km, km and time left, toll gates; "
                 + "along = places ahead on his way (what: hotel/restaurant, tea/coffee, petrol, EV charger, hospital, medical shop, ATM, toilet, lodge, "
-                + "mechanic, temple/church, or a name like KFC), nearest first with km ahead and left/right; "
+                + "mechanic, temple/church, or a name like KFC), nearest first with km ahead and left/right (Google Maps when his Maps key is set, else the free map); "
+                + "rest_stop = he is sleepy / tired at the wheel ('నిద్ర వస్తోంది, దగ్గర్లో టీ ఎక్కడ?'): the nearest OPEN tea / coffee / dhaba stop ahead; offer it, set the way only on his yes; "
+                + "map = open the Jarvis Maps screen (what = a place or kind to search there, may be empty); "
                 + "cameras = speed cameras ahead; navigate = start Google Maps turn-by-turn to place (avoid tolls/highways, two-wheeler); "
                 + "add_stop = add a stop on the way to the current destination (place name or 'lat,lon' from along); "
                 + "share_eta = a message with his arrival time and live location (send only after he says); "
@@ -5992,6 +5994,8 @@ final class Tools {
                 return "కారు మోడ్ ఆపాను. జాగ్రత్త, " + prefs.name() + ".";
             case "sleepy": {
                 String s = CarCare.sleepy(c, false);
+                if (s != null && !offline && Net.online(c) && Drive.offerRestStop(c)) // ☕ the stop is looked for after this (never delaying the "pull over" words), and offered aloud
+                    s += " దగ్గర్లో " + (GMaps.has(c) ? "తెరిచి ఉన్న " : "") + "టీ షాప్ వెతుకుతున్నాను, దొరికితే చెబుతాను."; // (only when the search really started; "open" only when Google can tell)
                 return s != null ? s : "నిద్ర వస్తుంటే కాసేపు విశ్రాంతి తీసుకోండి. కారు నడుపుతుంటే 'కారు మోడ్' అనండి: మెలకువగా ఉన్నారా అని అడుగుతూ ఉంటాను.";
             }
             case "awake": return CarCare.answered(c, "said") ? "సరే." : "సరే, జాగ్రత్తగా వెళ్లండి.";
@@ -6931,6 +6935,16 @@ final class Tools {
             case "add_camera": return Drive.addCamera(act(), a.optInt("limit_kmh", 0)).toString();
             case "remove_camera": return Drive.removeCamera(act(), "all".equalsIgnoreCase(a.optString("what").trim())).toString();
             case "my_cameras": return Drive.listCameras(act()).toString();
+            case "rest_stop": {
+                JSONObject r = Drive.restStop(act());
+                Drive.told(r); // (the one he hears now is the one his "yes" sets; the alarm's spoken offer then stays a notification)
+                return r.toString();
+            }
+            case "map": {
+                if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+                start(JarvisMaps.intent(act(), a.optString("what", "")));
+                return ok().put("opened", "Jarvis Maps").put("searching", a.optString("what", "")).toString();
+            }
             case "im_ok": {
                 boolean asked = CarCare.answered(act(), "said"); // (the car's "మెలకువగా ఉన్నారా?")
                 CrashAlert.ok(act());
@@ -6996,7 +7010,7 @@ final class Tools {
                         .put("reached_message_to", st.getString("reached_to", "").isEmpty() ? "off" : st.getString("reached_to", "")).toString();
             }
             default:
-                return err("bad_action", "Use where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras.");
+                return err("bad_action", "Use where, route, along, rest_stop, map, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras.");
         }
     }
 

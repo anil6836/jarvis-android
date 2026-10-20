@@ -1035,6 +1035,7 @@ public class SettingsActivity extends Activity {
         });
         homeArrivalSwitch(); // (it was in the watch card)
         carSleepSection();
+        jarvisMapsSection();
 
         section("డైరీ, పండుగలు, ధరలు, ఫోన్ వెతుకు");
         diaryAsk = toggle("📔 రాత్రి " + prefs.diaryHour() + " గంటలకి \"ఈరోజు ఎలా గడిచింది?\" అని అడిగి డైరీ రాయి", prefs.diaryAsk());
@@ -1987,6 +1988,7 @@ public class SettingsActivity extends Activity {
         e.remove("gemini_auto_model"); // older versions picked a Gemini model by themselves
         e.putString("openai_key", openAiKey.getText().toString().trim());
         e.putString("sarvam_key", sarvamKey.getText().toString().trim());
+        if (mapsKey != null) e.putString("maps_key", mapsKey.getText().toString().trim());
         e.putString("openai_model", openAiModel.getText().toString().trim());
         e.putString("code_model", codeModel.getText().toString().trim());
         e.putString("github_token", githubToken.getText().toString().trim());
@@ -2363,6 +2365,32 @@ public class SettingsActivity extends Activity {
                 : p < 34 ? "మధ్యస్థం" : "ఎక్కువ (సులువుగా మేల్కొంటుంది, అప్పుడప్పుడు పొరపాటున కూడా)";
         sensitivityLabel.setText("సున్నితత్వం: " + level);
         sensitivityLabel.setPadding(0, Ui.dp(this, 10), 0, 0);
+    }
+
+    private EditText mapsKey;
+
+    /** 🗺️ Jarvis Maps: his Google Maps key (kept on the phone only), its test, this month's count, the Gemini + Google Maps notes. */
+    private void jarvisMapsSection() {
+        section("🗺️ Jarvis Maps", "🗺️");
+        note("Jarvis హోమ్‌లో '🗺️ Jarvis Maps' నొక్కండి, లేదా 'Jarvis, Jarvis Maps తెరువు' అనండి. Google Maps key పెడితే: Google మ్యాప్ (తెలుగు పేర్లు, ట్రాఫిక్, శాటిలైట్), "
+                + "దారిలో టీ / పెట్రోల్ / హోటల్ ఎన్ని కి.మీ. ముందు, తెరిచి ఉందా, దారులు (ట్రాఫిక్‌తో టైమ్, టోల్). key లేకపోతే ఉచిత OpenStreetMap మ్యాప్. "
+                + "key ఈ ఫోన్‌లోనే ఉంటుంది: చాట్‌లో, స్క్రీన్‌షాట్‌లో ఎప్పుడూ పంపకండి. Google ఉచిత పరిమితి దాటితేనే ఖర్చు (కింద ఈ నెల లెక్క).");
+        mapsKey = field("Google Maps API key (AIza…; Jarvis Maps కోసం మాత్రమే, Gemini key కాదు)", prefs.sp.getString("maps_key", ""), true);
+        button("🔑 Maps key పరీక్ష (మ్యాప్, దారులు, ప్లేస్‌లు)", v -> {
+            prefs.sp.edit().putString("maps_key", mapsKey.getText().toString().trim()).apply();
+            Toast.makeText(this, "పరీక్షిస్తున్నాను… (10–20 సెకన్లు)", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                String r = GMaps.test(getApplicationContext());
+                runOnUiThread(() -> { if (!isFinishing() && !isDestroyed()) new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("🔑 Maps key పరీక్ష").setMessage(r).setPositiveButton("సరే", null).show(); });
+            }, "jarvis-maps-test").start();
+        });
+        TextView use = Ui.text(this, GMaps.usageLine(this), 13, Ui.MUTED);
+        use.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(use);
+        Switch notes = toggle("🛣️ 'ఈ రోడ్డు ఎటు?' లో Gemini + Google Maps వివరాలు (మీ Gemini key; Google ధరల పేజీ ప్రకారం billing తో కొత్త మోడల్స్‌కి నెలకి 5,000 ఉచితం)", prefs.sp.getBoolean("maps_notes", true));
+        notes.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("maps_notes", v).apply());
+        note("Google Cloud లో key ని 'Android apps' కి లాక్ చేయడానికి Jarvis గుర్తు: package com.anil.jarvis · SHA-1 " + GMaps.certShown(this));
+        button("🗺️ Jarvis Maps తెరువు", v -> JarvisMaps.open(this, ""));
     }
 
     /** 🚗 The car sleep alert (Anil, 18 Oct): the car only (its Bluetooth or "కారు మోడ్"), never the bike. */
