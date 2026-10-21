@@ -3307,9 +3307,11 @@ final class Tools {
         }
         if (a.matches("(spk|speak|loud).*")) {
             if (!CallControl.busyWithCall()) return err("no_call", "No call in progress.");
-            String sp = JarvisAccessibility.pressSpeaker(5000);
+            final android.media.AudioManager am = act().getSystemService(android.media.AudioManager.class);
+            String sp = JarvisAccessibility.pressSpeaker(5000, () -> { try { return am != null && am.isSpeakerphoneOn(); } catch (Exception e) { return false; } });
             if ("no_accessibility".equals(sp)) return err("no_accessibility", "Jarvis accessibility is off: he can tap Speaker on the call screen (or turn on Jarvis in Accessibility).");
-            if ("no_button".equals(sp)) return err("no_button", "The call screen's Speaker button wasn't found; he must tap it.");
+            if (sp.startsWith("no_button")) return err("no_button", "The call screen's Speaker button wasn't found; he must tap it.");
+            if (sp.startsWith("pressed_not_on")) return err("not_on", "Jarvis pressed the call screen's Speaker but the sound didn't move to the speaker; he must tap it.");
             return ok().put("done", "speaker_" + sp).toString();
         }
         boolean answering = false;

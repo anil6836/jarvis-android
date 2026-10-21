@@ -689,8 +689,9 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         endCallMode();
         if ("answered".equals(r)) {
             CallCare.answered(this, byVoice);
-            showReply(byVoice && CallCare.speakerWanted(this) ? "కాల్ ఎత్తాను, స్పీకర్ ఆన్ చేస్తున్నాను." : "కాల్ ఎత్తాను.", false);
-            main.postDelayed(this::closeSheet, 500);
+            boolean spk = byVoice && CallCare.speakerWanted(this);
+            showReply(spk ? "కాల్ ఎత్తాను, స్పీకర్ ఆన్ చేస్తున్నాను." : "కాల్ ఎత్తాను.", false);
+            main.postDelayed(this::closeSheet, spk ? 150 : 500); // (the speaker press waits for this panel to go: it covers the call screen's buttons)
             return;
         }
         callFailed(r, true);

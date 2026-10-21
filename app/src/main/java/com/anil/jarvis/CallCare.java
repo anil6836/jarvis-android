@@ -91,8 +91,10 @@ final class CallCare {
         appCtx = c;
         Prefs p = new Prefs(c);
         // the same SIM ring already said from the phone's own state a moment ago: only its notification noted (for its end / buttons)
-        if (isPhone && n != null && STATE_KEY.equals(key) && CallControl.phoneRingingNow() && System.currentTimeMillis() - ringAt < 60_000L) {
+        if (n != null && STATE_KEY.equals(key) && CallControl.phoneRingingNow() && System.currentTimeMillis() - ringAt < 60_000L) {
             key = sbnKey;
+            phone = isPhone; // (WhatsApp's calls move the phone state too: now it is known which it was)
+            if (appLabel != null && !isPhone) app = appLabel;
             log(c, "(ఫోన్ యాప్ నోటిఫికేషన్ కూడా వచ్చింది)");
             return;
         }
@@ -204,7 +206,7 @@ final class CallCare {
     private static final Runnable stateFallback = () -> {
         Context c = appCtx;
         if (c == null || !CallControl.phoneRingingNow()) return;
-        if (phone && System.currentTimeMillis() - ringAt < 5000) return; // (the notification said it meanwhile)
+        if (System.currentTimeMillis() - ringAt < 5000) return; // (a notification - the phone's or WhatsApp's, whose calls move the phone state too - said it meanwhile)
         String num = stateNumber;
         String name = num.isEmpty() ? "" : CallHistory.nameFor(c, num);
         incoming(c, STATE_KEY, null, true, name.isEmpty() ? num : name, "");
@@ -523,26 +525,46 @@ final class CallCare {
         if (ear != null) { log(app, "🎧 " + ear + " లో (స్పీకర్ కాదు)"); return; }
         final boolean appCall = !phone;
         final long ring = ringAt; // (the result goes on this call's own line)
+        // the phone's own audio says whether the call is on the loudspeaker (also for WhatsApp's calls)
+        final java.util.function.BooleanSupplier onNow = () -> { try { return am != null && am.isSpeakerphoneOn(); } catch (Exception e) { return false; } };
         new Thread(() -> {
+            // Jarvis's own panel must be gone first (it sits at the bottom, where the call screen's buttons are)
+            for (int i = 0; i < 15 && SheetActivity.open; i++) { try { Thread.sleep(100); } catch (InterruptedException ignored) {} }
+            try { Thread.sleep(250); } catch (InterruptedException ignored) {}
             String r = "";
             if (appCall) {
-                if (CallControl.pressSpeakerButton(app)) r = "on"; // its call notification's own Speaker button, if it has one
+                if (CallControl.pressSpeakerButton(app)) r = settledAudio(onNow) ? "on|నోటిఫికేషన్|Speaker" : "pressed_not_on|నోటిఫికేషన్ Speaker"; // its call notification's own button
                 else {
-                    r = JarvisAccessibility.pressSpeaker(1500); // (its call screen, if it is up)
-                    if (r.startsWith("no_button") && CallControl.pressSpeakerButton(app)) r = "on"; // (its notification turned "ongoing" meanwhile)
+                    r = JarvisAccessibility.pressSpeaker(1500, onNow); // (its call screen, if it is up)
+                    if (r.startsWith("no_button") && CallControl.pressSpeakerButton(app)) r = settledAudio(onNow) ? "on|నోటిఫికేషన్|Speaker" : "pressed_not_on|నోటిఫికేషన్ Speaker";
                     // answered from its notification, its call screen may not be up: brought up, then its Speaker pressed
                     if (r.startsWith("no_button")) {
                         String how = CallControl.openCallScreen(app);
-                        if (!how.isEmpty()) r = JarvisAccessibility.pressSpeaker(7000);
+                        if (!how.isEmpty()) r = JarvisAccessibility.pressSpeaker(7000, onNow);
                         if (r.startsWith("no_button")) r = r + " · తెరిచే దారి: " + (how.isEmpty() ? "లేదు" : how);
                     }
                 }
-            } else r = JarvisAccessibility.pressSpeaker(7000);
+            } else {
+                r = JarvisAccessibility.pressSpeaker(7000, null); // (the phone app's own button: one press, as it has always worked)
+                if (r.startsWith("on") && !settledAudio(onNow)) r = r + "|సౌండ్ మారిందో తెలియలేదు";
+            }
             final String res = r;
-            main.post(() -> log(app, ("on".equals(res) ? "🔊 స్పీకర్ ఆన్ చేశాను" : "already".equals(res) ? "🔊 స్పీకర్ అప్పటికే ఆన్‌లో ఉంది"
+            final String how = res.startsWith("on|") ? res.substring(3).replace('|', ' ') : "";
+            main.post(() -> log(app, (res.startsWith("on") ? "🔊 స్పీకర్ ఆన్ చేశాను" + (how.isEmpty() ? "" : " (" + how + ")")
+                    : res.startsWith("pressed_not_on") ? "⚠️ స్పీకర్ బటన్ నొక్కాను, కానీ సౌండ్ స్పీకర్‌కి మారలేదు: మీరే నొక్కండి (" + res.substring(res.indexOf('|') + 1) + ")"
+                    : "already".equals(res) ? "🔊 స్పీకర్ అప్పటికే ఆన్‌లో ఉంది"
                     : "no_accessibility".equals(res) ? "⚠️ స్పీకర్ ఆన్ చేయలేదు: Jarvis యాక్సెసిబిలిటీ ఆఫ్ (⚙️ → 📞 లో ♿)"
                     : "⚠️ కాల్ స్క్రీన్‌లో స్పీకర్ బటన్ దొరకలేదు: మీరే నొక్కండి" + (res.startsWith("no_button") && res.length() > 9 ? " (" + res.substring(9).trim() + ")" : "")), ring));
         }, "jarvis-call-speaker").start();
+    }
+
+    /** The loudspeaker on within 1.2 s (the phone's audio). */
+    private static boolean settledAudio(java.util.function.BooleanSupplier on) {
+        for (int i = 0; i < 8; i++) {
+            if (on.getAsBoolean()) return true;
+            try { Thread.sleep(150); } catch (InterruptedException e) { break; }
+        }
+        return on.getAsBoolean();
     }
 
     /** Earphones / earbuds / a car or helmet on Bluetooth (not his watch): its name, else null. */

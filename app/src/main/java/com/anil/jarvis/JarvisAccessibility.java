@@ -165,9 +165,17 @@ public class JarvisAccessibility extends AccessibilityService {
      * the call is on the loudspeaker. No other call button is ever pressed this way. Background thread. Returns "on",
      * "already" (it was on), "no_accessibility", or "no_button" + the call screen's button names seen (for the ⚙️ → 📞 note).
      */
-    static String pressSpeaker(long timeoutMs) {
+    static String pressSpeaker(long timeoutMs) { return pressSpeaker(timeoutMs, null); }
+
+    /**
+     * on: says whether the call's sound is on the loudspeaker now (the phone's own audio), so each way of pressing is
+     * checked before the next is tried, and a toggle is never pressed again once it has turned on. Returns "on|how|label",
+     * "already", "pressed_not_on|label", "no_accessibility" or "no_button…".
+     */
+    static String pressSpeaker(long timeoutMs, java.util.function.BooleanSupplier on) {
         JarvisAccessibility s = instance;
         if (s == null) return "no_accessibility";
+        if (on != null && on.getAsBoolean()) return "already";
         long end = SystemClock.uptimeMillis() + timeoutMs;
         String seen = "";
         java.util.Set<String> windows = new java.util.LinkedHashSet<>();
@@ -192,18 +200,42 @@ public class JarvisAccessibility extends AccessibilityService {
                     AccessibilityNodeInfo c = clickable(b);
                     String l = (label(b) + " " + (c == null ? "" : label(c))).toLowerCase(Locale.ROOT);
                     // already on: the label's node or its button says so (checked / selected / "speaker on"): never pressed off again
-                    if (b.isCheckable() && b.isChecked() || b.isSelected() || c != null && (c.isCheckable() && c.isChecked() || c.isSelected())
+                    if (b.isCheckable() && b.isChecked() || b.isSelected() || stateOn(b) || c != null && (c.isCheckable() && c.isChecked() || c.isSelected() || stateOn(c))
                             || l.matches(".*speaker[ ,]+on\\b.*") && !l.contains("turn") || l.contains("స్పీకర్ ఆన్")) return "already";
-                    // pressed: the button itself if it takes a click (WhatsApp's is a toggle, not "clickable"), else its button, else a tap on it
-                    if (b.isEnabled() && takesClick(b) && b.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "on";
-                    if (c != null && c != b && c.isClickable() && c.isEnabled() && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "on";
-                    if (tapOn(root, c != null && c.isClickable() ? c : b)) return "on";
-                    seen = " '" + label(b) + "' దొరికింది, నొక్కడం కుదరలేదు";
+                    // pressed: the button itself if it takes a click (WhatsApp's is a toggle, not "clickable"), else its button, else a tap on
+                    // it; after each, the phone's audio (or the button) must say "on" before the next way is tried
+                    String name = label(b);
+                    if (b.isEnabled() && takesClick(b) && b.performAction(AccessibilityNodeInfo.ACTION_CLICK) && settled(on, b)) return "on|బటన్|" + name;
+                    if (c != null && c != b && c.isClickable() && c.isEnabled() && c.performAction(AccessibilityNodeInfo.ACTION_CLICK) && settled(on, c)) return "on|పై బటన్|" + name;
+                    if (tapOn(root, c != null && c.isClickable() ? c : b) && settled(on, b)) return "on|తట్టడం|" + name;
+                    return "pressed_not_on|" + name; // (pressed every way, still not on: never pressed again, a toggle would go off)
                 }
             } catch (Exception ignored) {}
         }
         // (no call screen at all: which screens were up, so the note shows it)
         return "no_button" + (seen.isEmpty() ? (windows.isEmpty() ? "" : "కనిపించిన స్క్రీన్లు: " + android.text.TextUtils.join(", ", windows)) : "చూసిన బటన్లు: " + seen);
+    }
+
+    /** After a press: the loudspeaker on (the phone's audio says so, or the button turned "on"), within 1.2 s. No check given: yes. */
+    private static boolean settled(java.util.function.BooleanSupplier on, AccessibilityNodeInfo n) {
+        if (on == null) return true;
+        long end = SystemClock.uptimeMillis() + 1200;
+        while (SystemClock.uptimeMillis() < end) {
+            SystemClock.sleep(150);
+            if (on.getAsBoolean()) return true;
+            try { n.refresh(); if (n.isCheckable() && n.isChecked() || n.isSelected() || stateOn(n)) return true; } catch (Exception ignored) {}
+        }
+        return false;
+    }
+
+    /** Its state words ("On" / "ఆన్", Android 11+; read by name so older phones skip it) say it is on. */
+    private static boolean stateOn(AccessibilityNodeInfo n) {
+        if (n == null || Build.VERSION.SDK_INT < 30) return false;
+        try {
+            Object d = AccessibilityNodeInfo.class.getMethod("getStateDescription").invoke(n);
+            String t = d == null ? "" : d.toString().toLowerCase(Locale.ROOT).trim();
+            return (t.equals("on") || t.startsWith("on,") || t.contains("ఆన్") || t.equals("checked") || t.equals("selected")) && !t.contains("off") && !t.contains("ఆఫ్");
+        } catch (Exception e) { return false; }
     }
 
     private static boolean takesClick(AccessibilityNodeInfo n) {
