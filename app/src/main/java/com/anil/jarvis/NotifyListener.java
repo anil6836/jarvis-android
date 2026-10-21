@@ -97,7 +97,8 @@ public class NotifyListener extends NotificationListenerService {
             String a = i == null ? null : i.getAction();
             if (Intent.ACTION_SCREEN_ON.equals(a)) Rest.screen(true);
             else if (Intent.ACTION_SCREEN_OFF.equals(a)) { Rest.screen(false); Sleep.screenOff(c); }
-            else if (Intent.ACTION_USER_PRESENT.equals(a)) { Rest.awake(); Sleep.unlocked(c); schedule(1500); } // held messages now
+            else if (android.media.AudioManager.RINGER_MODE_CHANGED_ACTION.equals(a)) CallCare.ringerChanged(c); // 📞 his sound back on: his ring volume too
+            else if (Intent.ACTION_USER_PRESENT.equals(a)) { Rest.awake(); Sleep.unlocked(c); schedule(1500); CallCare.unlocked(c); } // held messages now; 📵 missed calls he hasn't seen
         }
     };
     private boolean screenRegistered;
@@ -119,6 +120,7 @@ public class NotifyListener extends NotificationListenerService {
                 android.content.IntentFilter f = new android.content.IntentFilter(Intent.ACTION_SCREEN_ON);
                 f.addAction(Intent.ACTION_SCREEN_OFF);
                 f.addAction(Intent.ACTION_USER_PRESENT);
+                f.addAction(android.media.AudioManager.RINGER_MODE_CHANGED_ACTION);
                 registerReceiver(screenEvents, f);
                 screenRegistered = true;
                 registerReceiver(battery, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
@@ -126,6 +128,7 @@ public class NotifyListener extends NotificationListenerService {
         }
         connected = true;
         self = this;
+        CallCare.restoreIfLeft(this); // 📞 a ring left softer / silent by a call that ended while Jarvis was away
         try {
             StatusBarNotification[] active = getActiveNotifications();
             if (active != null) for (StatusBarNotification sbn : active) add(sbn);
@@ -148,6 +151,8 @@ public class NotifyListener extends NotificationListenerService {
         if (getPackageName().equals(sbn.getPackageName())) { WatchAlerts.removed(this, sbn); return; } // (its card on the watch goes too)
         String[] call = CallControl.ended(sbn.getKey());
         CallControl.onRemoved(sbn.getKey());
+        synchronized (announced) { announced.remove(sbn.getKey()); } // (the next call on this key is a new one)
+        CallCare.removed(this, sbn.getKey(), call != null); // 📞 the ring's volume back as it was
         if (call != null) CallNote.after(this, call[0], Long.parseLong(call[1]));
     }
 
@@ -632,11 +637,11 @@ public class NotifyListener extends NotificationListenerService {
         Announcer.say(this, say + " కావాలంటే Jarvis అని పిలిచి చెప్పండి.");
     }
 
-    private static final Map<String, Long> announced = new java.util.HashMap<>();
+    /** The incoming call already said, per notification key: {when, who} (the dialer posts updates of one ring; cleared when it goes). */
+    private static final Map<String, String[]> announced = new java.util.HashMap<>();
 
-    /** "Anil, Ravi నుంచి కాల్ వస్తోంది" when a phone or WhatsApp call starts ringing. */
+    /** 📞 A phone or WhatsApp call: ringing → CallCare says who it is (phone + watch) and listens; answered → in progress. */
     private void announceCall(StatusBarNotification sbn, Notification n) {
-        Prefs p = new Prefs(this);
         if (n.extras == null) return;
         boolean incoming = n.fullScreenIntent != null;
         if (Build.VERSION.SDK_INT >= 31) {
@@ -646,16 +651,11 @@ public class NotifyListener extends NotificationListenerService {
         }
         TopCard.stepAside(); // a call: a message card talking at the top stops at once
         String pkgLow = sbn.getPackageName().toLowerCase(Locale.ROOT);
-        boolean isPhone = pkgLow.contains("dialer") || pkgLow.contains("telecom") || pkgLow.contains("incallui") || pkgLow.contains("phone") || pkgLow.contains("contacts");
+        boolean phone = pkgLow.contains("dialer") || pkgLow.contains("telecom") || pkgLow.contains("incallui") || pkgLow.contains("phone") || pkgLow.contains("contacts");
         if (!incoming) {
-            CallControl.onOngoing(sbn.getKey(), n, isPhone);
+            CallControl.onOngoing(sbn.getKey(), n, phone);
+            if (!CallControl.isRinging()) CallCare.ringEnded(this); // (this ring answered: its volume back; another call's update changes nothing)
             return;
-        }
-        long now = System.currentTimeMillis();
-        synchronized (announced) {
-            Long prev = announced.get(sbn.getKey());
-            if (prev != null && now - prev < 60000) return;
-            announced.put(sbn.getKey(), now);
         }
         String who = "";
         if (Build.VERSION.SDK_INT >= 31) {
@@ -663,36 +663,20 @@ public class NotifyListener extends NotificationListenerService {
             if (person instanceof Person) who = str(((Person) person).getName());
         }
         if (who.isEmpty()) who = str(n.extras.getCharSequence(Notification.EXTRA_TITLE));
-        String pkg = sbn.getPackageName().toLowerCase(Locale.ROOT);
-        boolean phone = pkg.contains("dialer") || pkg.contains("telecom") || pkg.contains("incallui") || pkg.contains("phone") || pkg.contains("contacts");
+        long now = System.currentTimeMillis();
+        synchronized (announced) {
+            String[] prev = announced.get(sbn.getKey());
+            // (the same ring's updates - its name filled in by caller ID - once; the key is cleared when the ring's notification goes)
+            if (prev != null && now - Long.parseLong(prev[0]) < 60000) { CallControl.onIncoming(sbn.getKey(), n, phone, who.isEmpty() || CallWords.isNumber(who) ? prev[1] : who); return; }
+            announced.put(sbn.getKey(), new String[]{String.valueOf(now), who});
+        }
         String app = sbn.getPackageName();
         try {
             PackageManager pm = getPackageManager();
             app = String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(sbn.getPackageName(), 0)));
         } catch (Exception ignored) {}
         CallControl.onIncoming(sbn.getKey(), n, phone, who);
-        if (!p.announceCalls()) return;
-        String say = p.name() + ", " + (who.isEmpty() ? "ఎవరో" : who) + " నుంచి " + (phone ? "" : app + " ") + "కాల్ వస్తోంది";
-        if (WatchHub.routeToWatch(this, true)) { // the phone in his pocket: on the watch (W17); the phone's way if the watch is out of reach
-            final String fSay = say;
-            WatchHub.call(this, sbn.getKey(), say, () -> callOnPhone(p, fSay));
-            return;
-        }
-        callOnPhone(p, say);
-    }
-
-    /** "Anil, Ravi నుంచి కాల్ వస్తోంది" on the phone (its panel listens for "ఎత్తు" / "కట్"). */
-    private void callOnPhone(Prefs p, String say) {
-        if (p.callByVoice() && android.provider.Settings.canDrawOverlays(this)) {
-            // Show the Jarvis panel: it says who is calling, asks "ఎత్తమంటారా?" and listens for the answer.
-            try {
-                startActivity(new android.content.Intent(this, SheetActivity.class)
-                        .putExtra(SheetActivity.EXTRA_CALL, say)
-                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));
-                return;
-            } catch (Exception ignored) {}
-        }
-        Announcer.say(this, say);
+        CallCare.incoming(this, sbn.getKey(), n, phone, who, app);
     }
 
     /** Text of the last few messages in a chat-style notification, "sender: text" per line. */

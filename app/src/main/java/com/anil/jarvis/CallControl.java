@@ -87,6 +87,9 @@ final class CallControl {
 
     static String ringingWho() { return ringingWho; }
 
+    /** A call (phone or app) is in progress. */
+    static boolean onCall() { return ongoing != null; }
+
     /** A call is ringing or in progress: don't talk over it. */
     static boolean busyWithCall() { return isRinging() || ongoing != null; }
 

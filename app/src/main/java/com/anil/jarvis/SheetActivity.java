@@ -129,16 +129,30 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     static final String EXTRA_IS_MESSAGE = "jarvis_is_message";
     /** Opened to carry out a command straight away (arrived at office, nightly summary...). */
     static final String EXTRA_RUN = "jarvis_run";
-    private String callText;      // non-null while asking about a ringing call
+    /** The second time he is asked about the ringing call: "రవి కాల్ చేస్తున్నారు". */
+    static final String EXTRA_CALL_SHORT = "jarvis_call_short";
+    /** Which ring this panel is about (CallCare.ringAt): a newer call ringing meanwhile is never answered / cut by these words. */
+    static final String EXTRA_CALL_AT = "jarvis_call_at";
+    private String callText, callShort; // non-null while asking about a ringing call
+    private long callAt;
     private int callTries;
-    private boolean ringMuted;
-    private LinearLayout callRow;
+    private LinearLayout callRow, quickRow;
     private final Runnable watchCall = new Runnable() {
         @Override public void run() {
             if (callText == null) return;
-            if (!CallControl.isRinging()) { endCallMode(); closeSheet(); return; } // answered elsewhere or stopped
+            if (!CallControl.isRinging()) { endCallMode(); if (callReply == null) closeSheet(); return; } // answered / cut on the watch, or stopped
             main.postDelayed(this, 1000);
         }
+    };
+    /** 📞 The talk after a cut call (the message to the caller, the reminder), else null. */
+    private CallWords.Reply callReply;
+    private CallWords.Step replyStep;
+    /** His own ringtone rang at his volume for a few seconds: now once more who it is (softer ring meanwhile). */
+    private final Runnable askAgain = () -> {
+        if (callText == null || !CallControl.isRinging() || CallCare.silenced || isFinishing() || !sameCall()) return;
+        CallCare.ringLow(this, true);
+        orb.setState(OrbView.SPEAKING);
+        voice.speak((callShort == null || callShort.isEmpty() ? callText : callShort) + ". ఎత్తమంటారా?", prefs.speechRate()); // (never "కట్": the watch's mic hears it too)
     };
 
     // ================================================================ lifecycle
@@ -216,7 +230,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     /** Still away and nothing going on (no greeting, mic, answer or call): close. */
     private final Runnable closeIfAway = () -> {
-        if (stopped && callText == null && live == null && !greeting && !voice.listening && !voice.speaking && !busy) closeSheet();
+        if (stopped && callText == null && callReply == null && live == null && !greeting && !voice.listening && !voice.speaking && !busy) closeSheet();
     };
 
     /**
@@ -246,7 +260,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         generation++; cutInflight(); // a reply still on its way is dropped, and its remaining tools don't run
         greetToken++;
         WaMedia.stop();
-        muteRing(false);
+        CallCare.ringLow(this, false); // (his ringtone back to his own volume)
+        if (callReply != null) CallCare.releaseReply("panel");
         if (live != null) live.stop("closed");
         voice.shutdown();
         worker.shutdownNow();
@@ -325,27 +340,50 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         top.addView(btn, new LinearLayout.LayoutParams(dp(48), dp(48)));
         card.addView(top);
 
-        // Incoming call: two big buttons besides the voice answer.
+        // Incoming call: three big buttons besides the voice answer, and his ready messages (a tap = cut + that SMS).
         callRow = new LinearLayout(this);
         callRow.setPadding(0, dp(14), 0, 0);
         callRow.setVisibility(View.GONE);
-        TextView pick = Ui.text(this, "📞  ఎత్తు", 17, 0xFFFFFFFF);
+        TextView pick = Ui.text(this, "📞 ఎత్తు", 16, 0xFFFFFFFF);
         pick.setGravity(Gravity.CENTER);
         pick.setPadding(0, dp(12), 0, dp(12));
         pick.setBackground(Ui.grad(this, new int[]{Ui.C_GREEN, Ui.C_TEAL}, 24, null));
-        pick.setOnClickListener(v -> doCall(true));
-        TextView cut = Ui.text(this, "✖  కట్", 17, 0xFFFFFFFF);
+        pick.setOnClickListener(v -> doCall(true, false));
+        TextView cut = Ui.text(this, "✖ కట్", 16, 0xFFFFFFFF);
         cut.setGravity(Gravity.CENTER);
         cut.setPadding(0, dp(12), 0, dp(12));
         cut.setBackground(Ui.grad(this, new int[]{0xFFF43F5E, Ui.C_ORANGE}, 24, null));
-        cut.setOnClickListener(v -> doCall(false));
-        LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, -2, 1);
-        half.setMargins(0, 0, dp(6), 0);
-        callRow.addView(pick, half);
-        LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0, -2, 1);
-        half2.setMargins(dp(6), 0, 0, 0);
-        callRow.addView(cut, half2);
+        cut.setOnClickListener(v -> doCall(false, false));
+        TextView hush = Ui.text(this, "🔕 సైలెంట్", 16, 0xFFFFFFFF);
+        hush.setGravity(Gravity.CENTER);
+        hush.setPadding(0, dp(12), 0, dp(12));
+        hush.setBackground(Ui.grad(this, new int[]{Ui.C_VIOLET, Ui.C_BLUE}, 24, null));
+        hush.setOnClickListener(v -> silenceCall());
+        LinearLayout.LayoutParams third = new LinearLayout.LayoutParams(0, -2, 1);
+        third.setMargins(0, 0, dp(5), 0);
+        callRow.addView(pick, third);
+        LinearLayout.LayoutParams third2 = new LinearLayout.LayoutParams(0, -2, 1);
+        third2.setMargins(dp(5), 0, dp(5), 0);
+        callRow.addView(cut, third2);
+        LinearLayout.LayoutParams third3 = new LinearLayout.LayoutParams(0, -2, 1);
+        third3.setMargins(dp(5), 0, 0, 0);
+        callRow.addView(hush, third3);
         card.addView(callRow);
+        quickRow = new LinearLayout(this);
+        quickRow.setPadding(0, dp(8), 0, 0);
+        quickRow.setVisibility(View.GONE);
+        for (String[] q : CallCare.READY) {
+            TextView t = Ui.text(this, "💬 " + q[1].replaceFirst("^\\S+\\s", ""), 13.5f, 0xFFFFFFFF);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(0, dp(9), 0, dp(9));
+            t.setBackground(Ui.round(this, Ui.alpha(0xFFFFFFFF, 0x1E), 0, 18));
+            final String id = q[0];
+            t.setOnClickListener(v -> quickTap(id));
+            LinearLayout.LayoutParams ql = new LinearLayout.LayoutParams(0, -2, 1);
+            ql.setMargins(dp(3), 0, dp(3), 0);
+            quickRow.addView(t, ql);
+        }
+        card.addView(quickRow);
 
         final int maxText = getResources().getDisplayMetrics().heightPixels * 2 / 5;
         ScrollView scroll = new ScrollView(this) {
@@ -540,9 +578,14 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         MainActivity.talking(true);
         WakeService.pause(this);
         callText = text;
+        callShort = i.getStringExtra(EXTRA_CALL_SHORT);
+        callAt = i.getLongExtra(EXTRA_CALL_AT, CallCare.ringAt);
         callTries = 0;
-        muteRing(true); // so Jarvis can be heard, and can hear Anil
+        if (callReply != null) { callReply = null; CallCare.releaseReply("panel"); } // (a new call: the old message talk is over)
+        main.removeCallbacks(askAgain);
+        CallCare.ringLow(this, true); // his ringtone softer (not off) while Jarvis says who it is and listens
         callRow.setVisibility(View.VISIBLE);
+        quickRow.setVisibility(View.VISIBLE);
         heard.setVisibility(View.GONE);
         reply.setVisibility(View.GONE);
         status.setText(text);
@@ -593,89 +636,178 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         return true;
     }
 
-    private static final String[] CALL_NO = {"కట్", "cut", "reject", "వద్దు", "decline", "తర్వాత", "busy", "బిజీ", "no", "నో", "తీయకు", "ఎత్తకు", "ఎత్తొద్దు"};
-    private static final String[] CALL_YES = {"ఎత్తు", "ఎత్తండి", "ఎత్తి", "లిఫ్ట్", "lift", "answer", "attend", "pick", "yes", "అవును", "ఓకే", "ok", "okay", "సరే", "మాట్లాడ", "ఆన్సర్"};
+    /** The call ringing now is still the one this panel announced (not a newer one that rang meanwhile). */
+    private boolean sameCall() { return callAt == 0 || CallCare.ringAt == callAt; }
 
-    private void onCallWords(String t) {
-        String low = t.toLowerCase(Locale.ROOT);
-        if (hasWord(low, CALL_NO)) { doCall(false); return; }
-        if (hasWord(low, CALL_YES)) { doCall(true); return; }
-        askCallAgain();
+    /** A newer call rang while this panel asked about the earlier one: it acts on neither by voice. */
+    private boolean otherCall() {
+        if (sameCall()) return false;
+        stopCallTalk();
+        CallCare.ringLow(this, false);
+        orb.setState(OrbView.IDLE);
+        status.setText("ఇంకో కాల్ వచ్చింది: ఫోన్ స్క్రీన్‌లో చూసి మీరే నొక్కండి.");
+        if (callRow != null) callRow.setVisibility(View.GONE);
+        if (quickRow != null) quickRow.setVisibility(View.GONE);
+        return true;
     }
 
-    /**
-     * Whole-word match, so "no" doesn't match "now", "not" or "know". English words must match a whole
-     * word; Telugu words may carry an ending (ఎత్తండి, వద్దులే, మాట్లాడతా), so they match the word's start.
-     */
-    private static boolean hasWord(String low, String[] words) {
-        for (String tok : low.split("[^\\p{L}\\p{M}\\p{N}]+")) {
-            if (tok.isEmpty()) continue;
-            for (String w : words) {
-                if (tok.equals(w)) return true;
-                if (w.charAt(0) > 0x7F && tok.startsWith(w)) return true;
-            }
+    /** 📞 His words to the ringing call (CallWords: the same rules as the watch's; the caller's name and his own never count). */
+    private void onCallWords(String t) {
+        if (otherCall()) return;
+        CallWords.Word w = CallWords.classify(t, new String[]{CallCare.who, prefs.name()});
+        switch (w.kind) {
+            case CallWords.ANSWER: doCall(true, true); return;
+            case CallWords.SILENT: silenceCall(); return;
+            case CallWords.DECLINE:
+            case CallWords.MESSAGE: cutCall(w, false); return;
+            default: askCallAgain();
         }
-        return false;
     }
 
     private void askCallAgain() {
         if (callText == null) return;
+        if (CallCare.silenced) { quietCallMode(true); return; }
+        CallCare.ringLow(this, false); // his own ringtone at his volume meanwhile
         if (++callTries >= 3 || !CallControl.isRinging()) {
             status.setText("ఎత్తాలంటే ఆకుపచ్చ, కట్ చేయాలంటే ఎరుపు నొక్కండి");
             orb.setState(OrbView.IDLE);
             return;
         }
-        voice.speak("ఎత్తమంటారా, కట్ చేయమంటారా?", prefs.speechRate());
+        orb.setState(OrbView.IDLE);
+        status.setText(callText);
+        main.removeCallbacks(askAgain);
+        main.postDelayed(askAgain, 5000);
     }
 
-    private void doCall(boolean answer) {
+    /** Answer (byVoice: the phone isn't in his hand: the loudspeaker) or cut, by the buttons or his word. */
+    private void doCall(boolean answer, boolean byVoice) {
+        if (callText == null || otherCall()) return;
+        if (!answer) { CallWords.Word w = new CallWords.Word(); w.kind = CallWords.DECLINE; cutCall(w, !byVoice); return; }
+        stopCallTalk();
+        String r = CallControl.answer(this);
+        if ("no_call".equals(r) && CallCare.doneJustNow(true)) r = "answered"; // (the watch answered it a moment ago)
+        endCallMode();
+        if ("answered".equals(r)) {
+            CallCare.answered(this, byVoice);
+            showReply(byVoice && CallCare.speakerWanted(this) ? "కాల్ ఎత్తాను, స్పీకర్ ఆన్ చేస్తున్నాను." : "కాల్ ఎత్తాను.", false);
+            main.postDelayed(this::closeSheet, 500);
+            return;
+        }
+        callFailed(r, true);
+    }
+
+    /** Cut (his word, the button, or a ready-message tap); then the message / the reminder, if he wants one. */
+    private void cutCall(CallWords.Word w, boolean tapped) {
+        if (callText == null || otherCall()) return;
+        stopCallTalk();
+        CallWords.Reply r = CallCare.newReply();
+        String res = CallControl.decline(this);
+        if ("no_call".equals(res) && CallCare.doneJustNow(false)) res = "declined"; // (cut on the watch a moment ago)
+        endCallMode();
+        if (!"declined".equals(res)) { callFailed(res, false); return; }
+        CallCare.declined(this);
+        CallWords.Step step = tapped && w.kind == CallWords.DECLINE ? null : CallCare.claimReply("panel") ? CallCare.afterCut(this, r, w, tapped) : null;
+        if (step == null) {
+            CallCare.releaseReply("panel");
+            showReply("కాల్ కట్ చేశాను.", false);
+            main.postDelayed(this::closeSheet, 1200);
+            return;
+        }
+        callReply = r;
+        doStep(step);
+    }
+
+    /** A ready message tapped while it rings: cut + that SMS (the tap is his yes). */
+    private void quickTap(String q) {
         if (callText == null) return;
+        CallWords.Word w = new CallWords.Word();
+        w.kind = CallWords.MESSAGE;
+        w.quick = q;
+        cutCall(w, true);
+    }
+
+    private void stopCallTalk() {
         if (voice.listening) voice.cancelListening();
         voice.stopSpeaking();
-        String r = answer ? CallControl.answer(this) : CallControl.decline(this);
-        endCallMode();
-        switch (r) {
-            case "answered":
-                showReply("కాల్ ఎత్తాను.", false);
-                main.postDelayed(this::closeSheet, 500);
-                break;
-            case "declined":
-                showReply("కాల్ కట్ చేశాను.", false);
-                main.postDelayed(this::closeSheet, 1200);
-                break;
-            case "need_permission":
-                showReply("కాల్స్ ఎత్తడానికి/కట్ చేయడానికి అనుమతి కావాలి. Allow నొక్కండి, తర్వాత కాల్స్‌కి పనిచేస్తుంది.", true);
-                requestPermissions(new String[]{Manifest.permission.ANSWER_PHONE_CALLS}, 31);
-                idle();
-                break;
-            default:
-                showReply(answer ? "కాల్ ఎత్తలేకపోయాను, మీరే నొక్కండి." : "కాల్ కట్ చేయలేకపోయాను, మీరే నొక్కండి.", true);
-                main.postDelayed(this::closeSheet, 2500);
-                break;
+        main.removeCallbacks(askAgain);
+    }
+
+    private void callFailed(String r, boolean answer) {
+        if ("need_permission".equals(r)) {
+            showReply("కాల్స్ ఎత్తడానికి/కట్ చేయడానికి అనుమతి కావాలి. Allow నొక్కండి, తర్వాత కాల్స్‌కి పనిచేస్తుంది.", true);
+            requestPermissions(new String[]{Manifest.permission.ANSWER_PHONE_CALLS}, 31);
+            CallCare.log(this, "⚠️ కాల్స్ ఎత్తే/కట్ చేసే అనుమతి లేదు");
+            idle();
+            return;
         }
+        CallCare.log(this, answer ? "⚠️ ఎత్తలేకపోయాను" : "⚠️ కట్ చేయలేకపోయాను");
+        showReply(answer ? "కాల్ ఎత్తలేకపోయాను, మీరే నొక్కండి." : "కాల్ కట్ చేయలేకపోయాను, మీరే నొక్కండి.", true);
+        main.postDelayed(this::closeSheet, 2500);
+    }
+
+    /** "సైలెంట్": this call's ring goes quiet (no voice: he asked for quiet); the buttons stay while it rings. */
+    private void silenceCall() {
+        if (callText == null || otherCall()) return;
+        stopCallTalk();
+        boolean ok = CallCare.silence(this);
+        WatchHub.callQuiet(this, ok);
+        CallCare.log(this, ok ? "🔕 సైలెంట్ చేశాను" : "⚠️ సైలెంట్ కాలేదు");
+        quietCallMode(ok);
+    }
+
+    private void quietCallMode(boolean ok) {
+        orb.setState(OrbView.IDLE);
+        status.setText(ok ? "🔕 సైలెంట్ చేశాను. ఎత్తాలంటే ఆకుపచ్చ, కట్ చేయాలంటే ఎరుపు." : "సైలెంట్ చేయలేకపోయాను: ఫోన్ వాల్యూమ్ బటన్ నొక్కండి (⚙️ → 📞 లో 🔕 అనుమతి ఇవ్వండి).");
+    }
+
+    /** The talk after the cut, one step at a time (CallWords: the same as on the watch). */
+    private void doStep(CallWords.Step s) {
+        replyStep = s;
+        if (callReply == null) return;
+        if (s.send) { sendReply(); return; }
+        if (s.remind) CallCare.remind(this, callReply);
+        if (s.over) {
+            callReply = null;
+            CallCare.releaseReply("panel");
+            if (s.say.isEmpty()) { closeSheet(); return; }
+            followUps = 0;
+            showReply(s.say, false);
+            orb.setState(OrbView.SPEAKING);
+            voice.speak(s.say, prefs.speechRate()); // (then idle: the panel closes by itself)
+            return;
+        }
+        showReply(s.say, false);
+        orb.setState(OrbView.SPEAKING);
+        voice.speak(s.say, prefs.speechRate()); // its end: listen (onSpeakDone)
+    }
+
+    private void sendReply() {
+        final CallWords.Reply r = callReply;
+        status.setText("💬 పంపుతున్నాను…");
+        orb.setState(OrbView.THINKING);
+        CallCare.send(this, r, err -> {
+            if (callReply != r || isFinishing()) return;
+            doStep(CallWords.sent(r, err));
+        });
+    }
+
+    private void replyHeard(String text) {
+        if (callReply == null) return;
+        doStep(CallWords.heard(callReply, text));
     }
 
     private void endCallMode() {
         callText = null;
         main.removeCallbacks(watchCall);
+        main.removeCallbacks(askAgain);
         if (callRow != null) callRow.setVisibility(View.GONE);
-        muteRing(false);
-    }
-
-    private void muteRing(boolean mute) {
-        if (mute == ringMuted) return;
-        try {
-            android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
-            if (am != null) am.adjustStreamVolume(android.media.AudioManager.STREAM_RING,
-                    mute ? android.media.AudioManager.ADJUST_MUTE : android.media.AudioManager.ADJUST_UNMUTE, 0);
-            ringMuted = mute;
-        } catch (Exception ignored) {
-            // without Do Not Disturb access Android may refuse; Jarvis still talks over the ringtone
-        }
+        if (quickRow != null) quickRow.setVisibility(View.GONE);
+        CallCare.ringLow(this, false);
     }
 
     private void onAction() {
         WaMedia.stop(); // a voice message playing: the stop button stops it
+        if (callReply != null) { callReply = null; CallCare.releaseReply("panel"); stopCallTalk(); closeSheet(); return; }
         if (callText != null) { endCallMode(); closeSheet(); return; }
         if (greeting) { cancelGreeting(); closeSheet(); return; } // stop pressed during "చెప్పండి"
         if (live != null) { live.stop("user"); return; }
@@ -697,6 +829,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onHeard(String text) {
         partialHeard = "";
+        if (callReply != null) { replyHeard(text == null ? "" : text); return; }
         if (callText != null) {
             if (text == null || text.trim().isEmpty()) askCallAgain(); else onCallWords(text);
             return;
@@ -713,6 +846,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onListenFailed(int error) {
         String partial = partialHeard; // heard in this listen only (reset by listen())
         partialHeard = "";
+        if (callReply != null) { replyHeard(partial); return; }
         if (callText != null) {
             if (!partial.isEmpty()) onCallWords(partial); else askCallAgain();
             return;
@@ -754,6 +888,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (live == null) setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC); // (Jarvis is quiet: songs again)
         syncPause();
         if (callText != null) { main.postDelayed(this::listen, 150); return; }
+        if (callReply != null) { if (replyStep != null && replyStep.listen) main.postDelayed(this::listen, 200); return; }
         if (busy) return; // (⚡ B: the brain still writes this answer: its arrival ends the turn, not this)
         if (liveAfterSpeak) { // he switched to Live by voice: the talk goes on live
             liveAfterSpeak = false;

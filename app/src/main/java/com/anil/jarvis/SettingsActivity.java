@@ -782,9 +782,9 @@ public class SettingsActivity extends Activity {
         watchSection();
 
         // ---- permissions & data
-        // ---- calls, reminders, morning briefing
-        section("కాల్స్, ఉదయం బ్రీఫింగ్");
-        announceCalls = toggle("కాల్ వస్తే ఎవరో పైకి చెప్పు (నోటిఫికేషన్ యాక్సెస్ కావాలి)", prefs.announceCalls());
+        // ---- 📞 calls (their own card), then messages, reminders, morning briefing
+        callsSection();
+        section("మెసేజ్‌లు, ఉదయం బ్రీఫింగ్");
         readMessages = toggle("కొత్త మెసేజ్ వస్తే (WhatsApp, SMS, Telegram, Instagram, Facebook, Snapchat...) ఎవరి నుంచో చెప్పి, \"చదవమంటారా?\" అని అడుగు", prefs.readMessages());
         TextView gl = Ui.text(this, "👥 గ్రూప్ మెసేజ్‌లు (WhatsApp గ్రూప్‌లు) చెప్పడం:", 15, Ui.TEXT);
         gl.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
@@ -818,7 +818,6 @@ public class SettingsActivity extends Activity {
         newsPlaces.setHint("తెలంగాణ, ఆంధ్రప్రదేశ్, మీ జిల్లా, మీ ఊరు");
         newsAuto = toggle("📰 ఈ ప్రాంతాల కొత్త వార్తలు ఉదయం 8, మధ్యాహ్నం 1, సాయంత్రం 7 కి తనంతట తానే చదువు", prefs.newsAuto());
         batteryWarn = toggle("బ్యాటరీ 15%, 5% కి పడితే గొంతుతో చెప్పు", prefs.batteryWarn());
-        callVoice = toggle("తర్వాత \"ఎత్తు\" అంటే కాల్ ఎత్తు, \"కట్\" అంటే కట్ చెయ్", prefs.callByVoice());
         briefing = toggle("రోజూ ఉదయం బ్రీఫింగ్ తనంతట తానే", prefs.briefingOn());
         briefHour = prefs.briefingHour();
         briefMinute = prefs.briefingMinute();
@@ -1826,6 +1825,7 @@ public class SettingsActivity extends Activity {
         if (WakeService.lastError != null) s.append("\nచివరి సమస్య: ").append(WakeService.lastError);
         wakeInfo.setText(s.toString());
         notifyInfo.setText(NotifyListener.enabled(this) ? "✓ నోటిఫికేషన్ యాక్సెస్: ఇచ్చారు" : "✗ నోటిఫికేషన్ యాక్సెస్: ఇవ్వలేదు");
+        showCallChecks(); // 📞 (back from a permission screen: ticks afresh)
         screenInfo.setText(JarvisAccessibility.enabled() ? "✓ స్క్రీన్ యాక్సెస్: ఆన్" : "✗ స్క్రీన్ యాక్సెస్: ఆఫ్");
         screenInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
         if (WakeService.wordStatus != null) s.append("\n\"Jarvis\" పదం: ").append(WakeService.wordStatus);
@@ -2368,6 +2368,101 @@ public class SettingsActivity extends Activity {
     }
 
     private EditText mapsKey;
+
+    /** 📞 the permission ticks and the last calls (drawn again on resume). */
+    private LinearLayout callChecks;
+
+    /** 📞 Calls (Anil, 21 Oct): names said with his ringtone, voice answer / cut / silent / message, speaker, important people, ready messages, the checks. */
+    private void callsSection() {
+        section("📞 కాల్స్", "📞");
+        note("కాల్ వస్తే మీ రింగ్‌టోన్ మోగుతూనే ఉంటుంది: Jarvis ఎవరో చెప్పి మీ మాట వినే కొన్ని సెకన్లు మాత్రమే రింగ్ కొంచెం తగ్గుతుంది (ఆగదు). "
+                + "'ఎత్తు' = ఎత్తి లౌడ్‌స్పీకర్ · 'కట్ చేయి' = కట్ · 'సైలెంట్' = ఈ కాల్ రింగ్ మాత్రమే ఆపు · 'కట్ చేసి … అని మెసేజ్ పెట్టు' = కట్ చేసి, చదివి వినిపించి, 'పంపు' అన్నాకే SMS · "
+                + "'తర్వాత చేస్తా' = కట్ చేసి 'గుర్తు చేయనా?' అని అడుగుతుంది. ఫోన్ సైలెంట్ / వైబ్రేట్ / Do Not Disturb / రాత్రి మోడ్‌లో ఉంటే పేరు చెప్పదు: "
+                + "⭐ ముఖ్యమైన వాళ్ళు, 🔁 5 నిమిషాల్లో మళ్ళీ చేసినవాళ్ళు తప్ప.");
+        announceCalls = toggle("📢 కాల్ వస్తే ఎవరో పైకి చెప్పు", prefs.announceCalls());
+        callVoice = toggle("🗣️ మాటతో: ఎత్తు / కట్ / సైలెంట్ / మెసేజ్ (\"Jarvis\" అనక్కర్లేదు)", prefs.callByVoice());
+        String[][] sw = {
+                {"call_speaker", "1", "🔊 మాటతో (లేదా వాచ్ నుంచి) ఎత్తితే లౌడ్‌స్పీకర్ (ఇయర్‌ఫోన్స్ / కార్ బ్లూటూత్ ఉంటే వాటిలోనే)"},
+                {"call_watch_voice", "1", "⌚ వాచ్‌లో కూడా పేరు చెప్పు (వాచ్ బటన్లు: ఎత్తు / కట్ / సైలెంట్)"},
+                {"call_repeat", "1", "🔁 ఒకరే 5 నిమిషాల్లో మళ్ళీ చేస్తే 'అర్జెంట్ కావచ్చు' అని చెప్పు (ఫోన్ సైలెంట్‌లో ఉన్నా)"},
+                {"call_scam", "1", "⚠️ తెలియని / విదేశీ / 140 (ప్రకటనలు) / 1600 (బ్యాంక్ సర్వీస్) / మీరు స్పామ్ అన్న నంబర్ అని చెప్పు"},
+                {"call_drive_offer", "1", "🚗 డ్రైవ్ / బైక్‌లో 'కట్' అంటే 'డ్రైవింగ్' మెసేజ్ పంపనా? అని అడుగు"},
+                {"call_missed_unlock", "1", "📵 చూడని మిస్డ్ కాల్స్: ఫోన్ అన్‌లాక్ చేసినప్పుడు ఒకసారి చెప్పు (ఉదయం 7 – రాత్రి 10; ఫోన్ సైలెంట్ / వైబ్రేట్‌లో ఉంటే చెప్పదు: అప్పుడు 'మిస్డ్ కాల్స్ ఏమున్నాయి?' అని అడగండి)"}};
+        for (String[] t : sw) {
+            Switch x = toggle(t[2], prefs.sp.getBoolean(t[0], "1".equals(t[1])));
+            x.setOnCheckedChangeListener((b, v) -> prefs.sp.edit().putBoolean(t[0], v).apply());
+        }
+        EditText vip = field("⭐ ముఖ్యమైన వాళ్ళు (కాంటాక్ట్‌లో సేవ్ చేసిన పేర్లు, కామాతో): ఫోన్ సైలెంట్‌లో ఉన్నా, రాత్రి అయినా వీళ్ళ కాల్ చెబుతాను", CallCare.vipList(this), false);
+        vip.setHint("అమ్మ, నాన్న");
+        onText(vip, t -> CallCare.vipSet(this, t));
+        TextView rl = Ui.text(this, "⚡ రెడీ మెసేజ్‌లు: కాల్ వస్తున్నప్పుడు 'మీటింగ్ మెసేజ్ పెట్టు' అనండి, లేదా ప్యానెల్‌లో 💬 నొక్కండి (నొక్కడమే మీ 'పంపు').", 15, Ui.TEXT);
+        rl.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 2));
+        box.addView(rl);
+        for (String[] q : CallCare.READY) {
+            EditText f = field(q[1], prefs.sp.getString("call_q_" + q[0], q[2]), false);
+            onText(f, t -> prefs.sp.edit().putString("call_q_" + q[0], t.trim().isEmpty() ? q[2] : t.trim()).apply());
+            Switch ok = toggle("↳ " + q[1].replaceFirst("^\\S+\\s", "") + " మెసేజ్ మాటతో అడిగినప్పుడు మళ్ళీ అడగకుండా పంపు", prefs.sp.getBoolean("call_q_" + q[0] + "_ok", false));
+            ok.setOnCheckedChangeListener((b, v) -> prefs.sp.edit().putBoolean("call_q_" + q[0] + "_ok", v).apply());
+        }
+        note("మీ సొంత మాటలు అయితే ఎప్పుడూ చదివి వినిపించి 'పంపు' అన్నాకే పంపుతాను. SMS ఆ కాల్ చేసిన వాళ్ళకి మాత్రమే: ఆ కాల్ నంబర్ ఖచ్చితంగా దొరక్కపోతే పంపను "
+                + "(WhatsApp కాల్ అయితే ఆ పేరుతో సేవ్ చేసిన ఒకే ఒక కాంటాక్ట్ నంబర్‌కి). దాచిన / విదేశీ / 140 / 1600 / స్పామ్ నంబర్లకి పంపను. "
+                + "రెండు SIM లు ఉంటే: ఫోన్ Settings → Connections → SIM manager → Messages కి ఒక SIM ఎంచుకోండి ('Ask every time' ఉంటే Jarvis SIM తానుగా ఎంచుకోదు, SMS పంపదు).");
+        int spamN = CallCare.spamSet(this).size();
+        if (spamN > 0) button("🚫 మీరు స్పామ్ అన్న నంబర్లు: " + spamN + " · అన్నీ తీసేయ్", v -> {
+            CallCare.priv(this).edit().remove("call_spam").apply();
+            Toast.makeText(this, "స్పామ్ గుర్తులు తీసేశాను.", Toast.LENGTH_SHORT).show();
+            ((TextView) v).setText("🚫 స్పామ్ గుర్తులు లేవు");
+        });
+        callChecks = new LinearLayout(this);
+        callChecks.setOrientation(LinearLayout.VERTICAL);
+        box.addView(callChecks);
+        showCallChecks();
+    }
+
+    /** ✓ / ✗ for each thing the calls need (a ✗ opens its screen), and what Jarvis did with the last calls. */
+    private void showCallChecks() {
+        if (callChecks == null) return;
+        callChecks.removeAllViews();
+        TextView h = Ui.text(this, "🔍 చెక్ (✗ ఉన్నదాన్ని నొక్కండి):", 15, Ui.TEXT);
+        h.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 2));
+        callChecks.addView(h);
+        android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
+        callCheck("🔔 నోటిఫికేషన్ యాక్సెస్ (కాల్ వచ్చిందని Jarvis కి తెలియడానికి)", NotifyListener.enabled(this), () -> startActivity(NotifyListener.settingsIntent()));
+        callCheck("🪟 ఇతర యాప్‌ల పైన చూపడం (ప్యానెల్ వచ్చి మీ మాట వినడానికి)", Settings.canDrawOverlays(this),
+                () -> startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))));
+        String[][] perms = {{Manifest.permission.ANSWER_PHONE_CALLS, "📞 కాల్స్ ఎత్తడం / కట్ చేయడం"}, {Manifest.permission.READ_CALL_LOG, "📜 కాల్ లాగ్ (మిస్డ్ కాల్స్, ఎవరు చేశారు)"},
+                {Manifest.permission.READ_CONTACTS, "👥 కాంటాక్ట్స్ (నంబర్‌కి పేరు)"}, {Manifest.permission.SEND_SMS, "💬 SMS పంపడం (బిజీ మెసేజ్)"}};
+        for (String[] pm : perms)
+            callCheck(pm[1], checkSelfPermission(pm[0]) == PackageManager.PERMISSION_GRANTED, () -> requestPermissions(new String[]{pm[0]}, 77));
+        callCheck("📶 మెసేజ్‌లకి SIM ఎంచుకున్నారు (బిజీ SMS ఏ SIM నుంచి వెళ్ళాలో)", CallCare.smsSimSet(), () -> startActivity(new Intent(Settings.ACTION_WIRELESS_SETTINGS)));
+        callCheck("🔕 Do Not Disturb అనుమతి ('సైలెంట్' కోసం; కొన్ని ఫోన్లకి మాత్రమే కావాలి)", nm != null && nm.isNotificationPolicyAccessGranted(),
+                () -> startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)));
+        callCheck("♿ Jarvis యాక్సెసిబిలిటీ (కాల్ స్క్రీన్‌లో 'స్పీకర్' నొక్కడానికి)", JarvisAccessibility.enabled(),
+                () -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        TextView lh = Ui.text(this, "🧾 చివరి కాల్స్‌కి Jarvis ఏం చేసింది:", 15, Ui.TEXT);
+        lh.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 2));
+        callChecks.addView(lh);
+        java.util.List<String> ev = CallCare.events(this);
+        TextView evs = Ui.text(this, ev.isEmpty() ? "ఇంకా ఏ కాల్ రాలేదు (కాల్ వచ్చినా ఇక్కడ ఏమీ లేకపోతే: పైన 🔔 నోటిఫికేషన్ యాక్సెస్ చూడండి)."
+                : android.text.TextUtils.join("\n\n", ev), 13.5f, Ui.MUTED);
+        callChecks.addView(evs);
+    }
+
+    private void callCheck(String label, boolean ok, Runnable fix) {
+        TextView t = Ui.text(this, (ok ? "✓ " : "✗ ") + label + (ok ? "" : " · నొక్కండి"), 14, ok ? Ui.C_GREEN : Ui.C_ORANGE);
+        t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        if (!ok) t.setOnClickListener(v -> { try { fix.run(); } catch (Exception ignored) {} });
+        callChecks.addView(t);
+    }
+
+    /** Saves a text box as he types (no Save button needed). */
+    private static void onText(EditText e, java.util.function.Consumer<String> save) {
+        e.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) { save.accept(s.toString()); }
+        });
+    }
 
     /** 🗺️ Jarvis Maps: his Google Maps key (kept on the phone only), its test, this month's count, the Gemini + Google Maps notes. */
     private void jarvisMapsSection() {

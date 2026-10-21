@@ -202,8 +202,16 @@ final class Tools {
                         {"caption", "string", "For send: optional message with the photo"},
                         {"screenshots", "boolean", "Include screenshots (default false)"}}, "action")));
         DEFS.add(new Def("call_control",
-                "Answer or decline the ringing call, or end the call in progress (phone, WhatsApp and other app calls).",
-                schema(new String[][]{{"action", "string", "answer, decline or end"}}, "action")));
+                "Answer (on the loudspeaker, unless earphones / car Bluetooth are on) or decline the ringing call, silence its ring (this call only), "
+                        + "put the call in progress on the loudspeaker, or end it (phone, WhatsApp and other app calls).",
+                schema(new String[][]{{"action", "string", "answer, decline, silence, speaker or end"}}, "action")));
+        DEFS.add(new Def("calls",
+                "His calls (the phone's call log, read only): missed = the missed calls he hasn't seen (who, how many times, when; WhatsApp ones too); "
+                        + "today = who called today / whom he called; with = the last calls with a person (who); "
+                        + "spam / not_spam = mark the last unknown caller (or the number given) as spam, Jarvis then names it when it rings; "
+                        + "vip_add / vip_remove / vip_list = his important people, whose calls are said even when the phone is silent or at night.",
+                schema(new String[][]{{"action", "string", "missed, today, with, spam, not_spam, vip_add, vip_remove or vip_list"},
+                        {"who", "string", "The person (with / vip_add / vip_remove)"}, {"number", "string", "A phone number (spam / not_spam), if he says one"}}, "action")));
         DEFS.add(new Def("bank_spending",
                 "Money spent and received, estimated from bank and UPI SMS on the phone for the last N days, with recent transactions.",
                 schema(new String[][]{{"days", "integer", "How many days back (default 30, max 92)"}})));
@@ -957,6 +965,7 @@ final class Tools {
             case "phone_setting": return "సెట్టింగ్ మారుస్తున్నాను…";
             case "photos": return "ఫోటోలు చూస్తున్నాను…";
             case "call_control": return "కాల్…";
+            case "calls": return "కాల్స్ చూస్తున్నాను…";
             case "bank_spending": return "బ్యాంక్ మెసేజ్‌లు లెక్కపెడుతున్నాను…";
             case "save_place": return "ఈ చోటు గుర్తుపెట్టుకుంటున్నాను…";
             case "my_places": return "ప్రదేశాలు చూస్తున్నాను…";
@@ -1112,6 +1121,7 @@ final class Tools {
                     return photos(a.optString("action", "show"), a.optString("when", ""), a.optString("who", ""),
                         a.optInt("count", 1), a.optString("caption", ""), a.optBoolean("screenshots", false));
                 case "call_control": return callControl(a.optString("action"));
+                case "calls": return calls(a.optString("action"), a.optString("who"), a.optString("number"));
                 case "bank_spending": return bankSpending(a.optInt("days", 30));
                 case "save_place": return savePlace(a.optString("name"));
                 case "my_places": return myPlaces(a.optString("action", "show"), a.optString("name", ""), a.optString("link", ""),
@@ -3284,14 +3294,95 @@ final class Tools {
         String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
         String r;
         // An unknown word must never end up rejecting a ringing call.
-        if (a.matches("(ans|accept|pick|lift|receive|attend).*")) r = CallControl.answer(act());
+        if (a.matches("(sil|mute|quiet).*")) {
+            if (!CallControl.isRinging()) return err("no_call", "Nothing is ringing now.");
+            final boolean[] ok = {false};
+            final java.util.concurrent.CountDownLatch l = new java.util.concurrent.CountDownLatch(1);
+            Runnable hush = () -> { ok[0] = CallCare.silence(act()); WatchHub.callQuiet(act(), ok[0]); l.countDown(); };
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) hush.run();
+            else { new android.os.Handler(android.os.Looper.getMainLooper()).post(hush); l.await(3, java.util.concurrent.TimeUnit.SECONDS); }
+            CallCare.log(act(), ok[0] ? "🔕 సైలెంట్ చేశాను" : "⚠️ సైలెంట్ కాలేదు");
+            return ok[0] ? ok().put("done", "silenced").put("note", "Only this call's ring; his sound comes back when it ends. Say nothing more than one short word.").toString()
+                    : err("failed", "The phone did not allow it: he can press a volume button (or give Jarvis the Do Not Disturb permission in ⚙️ → 📞 కాల్స్).");
+        }
+        if (a.matches("(spk|speak|loud).*")) {
+            if (!CallControl.busyWithCall()) return err("no_call", "No call in progress.");
+            String sp = JarvisAccessibility.pressSpeaker(5000);
+            if ("no_accessibility".equals(sp)) return err("no_accessibility", "Jarvis accessibility is off: he can tap Speaker on the call screen (or turn on Jarvis in Accessibility).");
+            if ("no_button".equals(sp)) return err("no_button", "The call screen's Speaker button wasn't found; he must tap it.");
+            return ok().put("done", "speaker_" + sp).toString();
+        }
+        boolean answering = false;
+        if (a.matches("(ans|accept|pick|lift|receive|attend).*")) { r = CallControl.answer(act()); answering = true; }
         else if (a.matches("(dec|reject).*")) r = CallControl.decline(act());
         else if (a.matches("(end|hang|cut|disconnect).*")) r = CallControl.hangUp(act());
-        else return err("bad_action", "Unknown call action '" + action + "'. Use answer, decline or end.");
+        else return err("bad_action", "Unknown call action '" + action + "'. Use answer, decline, silence, speaker or end.");
         if ("need_permission".equals(r)) return needPermission(Manifest.permission.ANSWER_PHONE_CALLS, "answering and ending calls");
         if ("no_call".equals(r)) return err("no_call", "There is no call to " + a + " right now.");
         if ("failed".equals(r)) return err("failed", "The call app did not accept that; Anil must tap the button himself.");
+        final boolean ans = answering;
+        final String done = r;
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            if (ans) CallCare.answered(act(), true);
+            else if ("declined".equals(done)) CallCare.declined(act());
+        });
         return ok().put("done", r).toString();
+    }
+
+    /** 📵 His calls (read only): missed / today / with someone; his spam marks and important people. */
+    private String calls(String action, String who, String number) throws Exception {
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        if (a.startsWith("vip")) {
+            String list = CallCare.vipList(act());
+            java.util.List<String> names = new java.util.ArrayList<>();
+            for (String x : list.split("[,\\n;]+")) if (!x.trim().isEmpty()) names.add(x.trim());
+            String w = who == null ? "" : who.trim();
+            if (a.equals("vip_add")) {
+                if (w.isEmpty()) return err("who_missing", "Whom should Jarvis add?");
+                boolean have = false;
+                for (String x : names) if (CallWords.norm(x).equals(CallWords.norm(w))) have = true;
+                if (!have) names.add(w);
+                CallCare.vipSet(act(), android.text.TextUtils.join(", ", names));
+                return ok().put("vip", new JSONArray(names)).put("note", "The name must be as saved in his contacts (the name the call shows). Their calls are said even when the phone is silent or at night.").toString();
+            }
+            if (a.equals("vip_remove")) {
+                java.util.List<String> keep = new java.util.ArrayList<>();
+                for (String x : names) if (!CallWords.norm(x).equals(CallWords.norm(w))) keep.add(x);
+                CallCare.vipSet(act(), android.text.TextUtils.join(", ", keep));
+                return ok().put("vip", new JSONArray(keep)).toString();
+            }
+            return ok().put("vip", new JSONArray(names)).toString();
+        }
+        if (!has(Manifest.permission.READ_CALL_LOG)) {
+            host.askPermissions(new String[]{Manifest.permission.READ_CALL_LOG});
+            return err("no_permission", "Call history needs the call-log permission (a prompt was shown).");
+        }
+        switch (a) {
+            case "missed": return CallHistory.missedJson(act()).toString();
+            case "today": return CallHistory.todayJson(act()).toString();
+            case "with": return CallHistory.withJson(act(), who).toString();
+            case "spam":
+            case "not_spam": {
+                String num = number == null ? "" : number.trim();
+                String name = "";
+                if (num.isEmpty()) {
+                    String[] last = CallHistory.lastIncoming(act(), 6 * 3600_000L); // (only a call TO him, never one he made)
+                    if (last == null || last[0].isEmpty()) return err("no_number", "No recent incoming call with a number. Ask him for the number.");
+                    num = last[0];
+                    name = last[1];
+                }
+                if (name.isEmpty()) {
+                    if (a.equals("spam") && !has(Manifest.permission.READ_CONTACTS)) return err("no_contacts_permission", "Jarvis can't check whether that number is a saved contact (contacts permission off); ask him to allow Contacts in ⚙️ → 📞 కాల్స్.");
+                    name = CallHistory.nameFor(act(), num);
+                }
+                if (a.equals("spam") && !name.isEmpty()) return err("saved_contact", "The last call was from a saved contact (" + name + "): ask him which number he means; never mark a saved contact on a guess.");
+                String k = CallCare.markSpam(act(), num, a.equals("spam"));
+                if (k.isEmpty()) return err("bad_number", "That is not a phone number.");
+                return ok().put("number_last4", CallWords.lastFour(num)).put("marked", a.equals("spam"))
+                        .put("note", a.equals("spam") ? "From now on, when it rings Jarvis says 'మీరు స్పామ్ అన్న నంబర్'. Nothing is blocked." : "Unmarked.").toString();
+            }
+            default: return err("bad_action", "Use missed, today, with, spam, not_spam, vip_add, vip_remove or vip_list.");
+        }
     }
 
     // ================================================================ money from bank SMS

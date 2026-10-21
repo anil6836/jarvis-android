@@ -658,6 +658,7 @@ final class WatchHub {
             if (cur != s) return;
             String t = text == null ? "" : text.trim();
             if (s.woken && onlyWakeWord(t)) t = ""; // (just the end of "Hey Jarvis": he hasn't asked anything yet)
+            if (t.isEmpty() && "callreply".equals(s.why) && watchReply != null) { WatchHub.heard(app, "", followListen, s.why); return; } // (📞 nothing heard: asked again / over)
             if (t.isEmpty()) {
                 talk(false);
                 endScreen();
@@ -671,6 +672,7 @@ final class WatchHub {
             stopMic(app, s);
             if (cur != s) return;
             boolean nothing = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
+            if ("callreply".equals(s.why) && watchReply != null) { WatchHub.heard(app, "", followListen, s.why); return; } // (📞 the message talk goes on / ends)
             talk(false);
             endScreen();
             if (nothing && followListen) { sstate(app, s, "idle", null, null); return; } // silence after an answer: the talk is over
@@ -698,6 +700,16 @@ final class WatchHub {
 
     /** His words (from the phone's ears or the watch's own voice typing). why: what the watch listened for. Main thread. */
     private static void heard(Context app, String text, boolean follow, String why) {
+        if ("callreply".equals(why)) { // 📞 the message after a cut call
+            if (watchReply != null && System.currentTimeMillis() - watchReplyAt < 3 * 60_000L) callStep(app, CallWords.heard(watchReply, text));
+            else { dropReply(); idle(app, null); }
+            return;
+        }
+        if ("call".equals(why)) { // 📞 his words / a card button for a ringing call: never a question for the brain
+            if (callKey != null && CallControl.isRinging()) callWords(app, text);
+            else idle(app, null); // (the phone's panel answered / cut it a moment ago)
+            return;
+        }
         if (callKey != null && CallControl.isRinging()) { callWords(app, text); return; } // W17: "ఎత్తు" / "కట్"
         if (text.isEmpty()) {
             talk(false);
@@ -829,13 +841,22 @@ final class WatchHub {
     /** After an answer that wants his reply (or a follow-up): the watch listens again. */
     static void listen(Context c, String why) {
         talk(true);
+        lastWhy = why == null ? "" : why;
         try { send(c, P_LISTEN, new JSONObject().put("why", why)); } catch (Exception ignored) {}
     }
+
+    /** What the watch was last asked to listen for. */
+    private static volatile String lastWhy = "";
 
     /** The watch ended the talk itself (nothing heard in its own voice typing, its error): quietly over. Main thread. */
     private static void done(Context app) {
         Session s = cur;
         if (s != null && s.ears != null) return; // (a question still being heard here: not over)
+        if (watchReply != null && "callreply".equals(lastWhy)) { // (nothing heard for the message: asked again / over)
+            if (System.currentTimeMillis() - watchReplyAt < 3 * 60_000L) callStep(app, CallWords.heard(watchReply, ""));
+            else { dropReply(); talk(false); endScreen(); }
+            return;
+        }
         talk(false);
         endScreen();
     }
@@ -932,8 +953,19 @@ final class WatchHub {
     private static int callTries;
 
     /** W17: who is calling, said on the watch; "ఎత్తు" / "కట్" by voice or the card's buttons. Main thread. */
-    static void call(Context c, String key, String say, Runnable phoneWay) {
+    static void call(Context c, String key, String say, Runnable phoneWay) { call(c, key, say, phoneWay, true, 0); }
+
+    /** The ring this watch talk is about (CallCare.ringAt): a newer call is never answered / cut by its words. */
+    private static volatile long callAt;
+
+    /**
+     * W17 / 📞: the call on the watch: its card (ఎత్తు / కట్ / సైలెంట్) and its name said. listen: the watch's mic listens for
+     * his word (only when the phone's panel doesn't: one mic never hears the other's voice).
+     */
+    static void call(Context c, String key, String say, Runnable phoneWay, boolean listen, long ringAt) {
         Context app = c.getApplicationContext();
+        dropReply(); // (a new call: an old message talk is over)
+        callAt = ringAt;
         if (talking()) { // a call comes first: the talk on the watch stops (its mic too)
             Session s = cur;
             if (s != null && !s.wake) stopMic(app, s);
@@ -952,9 +984,12 @@ final class WatchHub {
         };
         try {
             send(app, WatchAlerts.P_ALERT, new JSONObject().put("id", ("call" + key).hashCode()).put("kind", "call").put("title", say)
-                    .put("text", "ఎత్తమంటారా, కట్ చేయమంటారా?").put("says", new org.json.JSONArray().put("ఎత్తు").put("కట్")), back, true);
+                    .put("text", "ఎత్తమంటారా? (కట్ / సైలెంట్ / మెసేజ్ కూడా చెప్పొచ్చు)").put("says", new org.json.JSONArray().put("ఎత్తు").put("కట్").put("సైలెంట్")), back, true);
         } catch (Exception ignored) {}
-        reply(app, say + ". ఎత్తమంటారా, కట్ చేయమంటారా?", false, speakOn(app), () -> listen(app, "call"));
+        reply(app, say + (listen ? ". ఎత్తమంటారా?" : ""), false, speakOn(app), () -> { // (never "కట్" aloud: the phone's mic hears it too)
+            if (listen) listen(app, "call");
+            else { talk(false); state(app, "idle", null, null, "📞 వాచ్ కార్డ్‌లో ఎత్తు / కట్ / సైలెంట్"); } // (the card's buttons still answer)
+        });
         M.h.removeCallbacks(callWatch);
         M.h.postDelayed(callWatch, 1000);
     }
@@ -976,31 +1011,94 @@ final class WatchHub {
     };
     private static Context appCtx;
 
-    private static final String[] CALL_NO = {"కట్", "cut", "reject", "వద్దు", "decline", "తర్వాత", "busy", "బిజీ", "no", "నో", "తీయకు", "ఎత్తకు", "ఎత్తొద్దు",
-            "ఎత్తకండి", "తీయొద్దు", "మాట్లాడలేను", "మాట్లాడను", "మాట్లాడలేం"};
-    private static final String[] CALL_YES = {"ఎత్తు", "ఎత్తండి", "ఎత్తి", "లిఫ్ట్", "lift", "answer", "attend", "pick", "yes", "అవును", "ఓకే", "ok", "okay", "సరే", "మాట్లాడ", "ఆన్సర్"};
-
-    /** "ఎత్తు" / "కట్" (as in the phone's panel; "no" never matches "now"). Main thread. */
+    /** 📞 "ఎత్తు" / "కట్" / "సైలెంట్" / "కట్ చేసి … అని మెసేజ్ పెట్టు" (the same rules as the phone's panel: CallWords). Main thread. */
     private static void callWords(Context app, String text) {
-        String low = text.toLowerCase(java.util.Locale.ROOT);
-        boolean no = hasWord(low, CALL_NO), yes = !no && hasWord(low, CALL_YES);
-        if (!no && !yes) {
+        if (callAt != 0 && callAt != CallCare.ringAt) { // a newer call rang meanwhile: none answered / cut by these words
+            callKey = null;
+            talk(false);
+            state(app, "idle", null, null, "ఇంకో కాల్ వచ్చింది: ఫోన్‌లో చూడండి");
+            return;
+        }
+        CallWords.Word w = CallWords.classify(text, new String[]{CallCare.who, new Prefs(app).name()});
+        if (w.kind == CallWords.NONE) {
             // (after 3 tries it stops asking; the card's buttons still answer the call while it rings)
-            if (++callTries >= 3) { talk(false); state(app, "idle", null, null, "ఎత్తాలంటే వాచ్ కార్డ్‌లో \"ఎత్తు\" / ఫోన్‌లో ఆకుపచ్చ నొక్కండి"); return; }
-            reply(app, "ఎత్తమంటారా, కట్ చేయమంటారా?", false, speakOn(app), () -> listen(app, "call"));
+            if (++callTries >= 3 || CallCare.silenced) { talk(false); state(app, "idle", null, null, "ఎత్తాలంటే వాచ్ కార్డ్‌లో \"ఎత్తు\" / ఫోన్‌లో ఆకుపచ్చ నొక్కండి"); return; }
+            reply(app, "ఎత్తమంటారా?", false, speakOn(app), () -> listen(app, "call"));
+            return;
+        }
+        if (w.kind == CallWords.SILENT) {
+            boolean ok = CallCare.silence(app);
+            CallCare.log(app, ok ? "🔕 సైలెంట్ (వాచ్ నుంచి)" : "⚠️ సైలెంట్ కాలేదు");
+            callQuiet(app, ok);
             return;
         }
         callKey = null;
-        String r = yes ? CallControl.answer(app) : CallControl.decline(app);
+        boolean yes = w.kind == CallWords.ANSWER;
+        CallWords.Reply r = yes ? null : CallCare.newReply();
+        String res = yes ? CallControl.answer(app) : CallControl.decline(app);
+        if ("no_call".equals(res) && CallCare.doneJustNow(yes)) res = yes ? "answered" : "declined"; // (the phone's panel did it a moment ago)
         String msg;
-        switch (r) {
-            case "answered": msg = "కాల్ ఎత్తాను."; break;
-            case "declined": msg = "కాల్ కట్ చేశాను."; break;
+        switch (res) {
+            case "answered":
+                CallCare.answered(app, true); // (from the wrist: the phone isn't in his hand: the loudspeaker)
+                msg = "కాల్ ఎత్తాను.";
+                break;
+            case "declined": {
+                CallCare.declined(app);
+                CallWords.Step s = CallCare.claimReply("watch") ? CallCare.afterCut(app, r, w, false) : null;
+                if (s != null) { watchReply = r; watchReplyAt = System.currentTimeMillis(); callStep(app, s); return; }
+                CallCare.releaseReply("watch");
+                msg = "కాల్ కట్ చేశాను.";
+                break;
+            }
             case "need_permission": msg = "కాల్స్ ఎత్తడానికి ఫోన్‌లో అనుమతి కావాలి: ఫోన్‌లో Jarvis తెరిచి Allow నొక్కండి."; break;
             default: msg = yes ? "కాల్ ఎత్తలేకపోయాను, మీరే నొక్కండి." : "కాల్ కట్ చేయలేకపోయాను, మీరే నొక్కండి.";
         }
         talk(false);
-        reply(app, msg, !"answered".equals(r) && !"declined".equals(r), false, () -> idle(app, null)); // (text only: the call has the sound now)
+        reply(app, msg, !"answered".equals(res) && !"declined".equals(res), false, () -> idle(app, null)); // (text only: the call has the sound now)
+    }
+
+    /** 📞 The message after a call cut on the watch (and the reminder): one step at a time, on the watch. */
+    private static CallWords.Reply watchReply;
+    private static long watchReplyAt;
+
+    /** The message talk is over (a new call, his stop, "సైలెంట్", too old). */
+    private static void dropReply() {
+        if (watchReply == null) return;
+        watchReply = null;
+        CallCare.releaseReply("watch");
+    }
+
+    private static void callStep(Context app, CallWords.Step s) {
+        final CallWords.Reply r = watchReply;
+        if (r == null) return;
+        if (s.send) {
+            state(app, "notice", null, null, "💬 పంపుతున్నాను…");
+            CallCare.send(app, r, err -> { if (watchReply == r) callStep(app, CallWords.sent(r, err)); });
+            return;
+        }
+        if (s.remind) CallCare.remind(app, r);
+        if (s.over) {
+            watchReply = null;
+            CallCare.releaseReply("watch");
+            if (s.say.isEmpty()) { idle(app, null); return; }
+            reply(app, s.say, false, speakOn(app), () -> idle(app, null));
+            return;
+        }
+        reply(app, s.say, false, speakOn(app), () -> listen(app, "callreply"));
+    }
+
+    /** "సైలెంట్" (here or on the phone's panel): the watch stops asking; the card's buttons still answer while it rings. */
+    static void callQuiet(Context c, boolean ok) {
+        dropReply();
+        if (callKey == null) return;
+        callTries = 3;
+        Context app = c.getApplicationContext();
+        Session s = cur;
+        if (s != null && !s.wake) { s.stopped = true; s.end(); ListenMic l = s.ears; s.ears = null; if (l != null) l.cancel(); }
+        interrupt(app);
+        talk(false);
+        state(app, "idle", null, null, ok ? "🔕 సైలెంట్ చేశాను" : "సైలెంట్ కాలేదు: ఫోన్ వాల్యూమ్ బటన్ నొక్కండి");
     }
 
     private static boolean hasWord(String low, String[] words) {
@@ -1025,6 +1123,7 @@ final class WatchHub {
 
     /** Stops what is going on (his tap on the watch, covering it, or a new "Jarvis" over an answer). Main thread. */
     static void stopAll(Context app, boolean byWatch) {
+        dropReply(); // (📞 a message talk his stop ends)
         Session s = cur;
         if (s != null) {
             s.stopped = true;
