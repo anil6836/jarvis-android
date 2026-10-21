@@ -54,18 +54,41 @@ final class HomeLink {
         String text = m.optString("text"), cap = m.optString("caption");
         return text.startsWith(SAY) || text.startsWith(PHOTO) || text.startsWith(PAUSE) || text.startsWith(RESUME) || cap.startsWith(VOICE_HOME)
                 || text.startsWith(SET) || text.startsWith(ASK) || text.startsWith(COMING) || text.startsWith(GONE)
-                || cap.startsWith(FRAME) || text.startsWith(REMIND) || text.startsWith(REPORT) || text.startsWith(ETA) || GameLink.inviteIn(m, false) != null;
+                || cap.startsWith(FRAME) || text.startsWith(REMIND) || text.startsWith(REPORT) || text.startsWith(ETA) || GameLink.inviteIn(m, false) != null
+                || text.startsWith(House.TO_HOME);
+    }
+
+    /**
+     * His phone: the pinned word is one of his own to home sent under 10 minutes ago (the tablet may not have read it
+     * yet; an older one it takes no more anyway).
+     */
+    static boolean phoneWordWaiting(JSONObject pm) {
+        if (pm == null || System.currentTimeMillis() / 1000 - pm.optLong("date") >= 10 * 60) return false;
+        String t = pm.optString("text"), cp = pm.optString("caption");
+        return t.startsWith(SAY) || t.startsWith(PHOTO) || t.startsWith(PAUSE) || t.startsWith(RESUME) || t.startsWith(SET) || t.startsWith(ASK)
+                || t.startsWith(REMIND) || t.startsWith(REPORT) || t.startsWith(ETA) || t.startsWith(COMING) || t.startsWith(GONE)
+                || cp.startsWith(FRAME) || cp.startsWith(VOICE_HOME) || t.startsWith(GameLink.TAG);
     }
 
     static void homePoll(Context c) {
         JSONObject m = Guard.pinned(c);
         if (m == null) return;
         long id = m.optLong("message_id"), seen = sp(c).getLong("seen", 0);
-        if (seen == 0) { sp(c).edit().putLong("seen", id).apply(); return; } // (first look: nothing old is replayed)
+        if (seen == 0) { // (first look: nothing old is replayed, but the milk account is the whole account: taken)
+            sp(c).edit().putLong("seen", id).apply();
+            JSONObject f = m.optJSONObject("from");
+            if (f != null && f.optBoolean("is_bot") && m.optString("text").startsWith(House.TO_HOME) && HomeCare.on(c)
+                    && System.currentTimeMillis() / 1000 - m.optLong("date") < 3 * 86_400) House.fromPhone(c, m.optString("text"), id);
+            return;
+        }
         if (id <= seen) return;
         sp(c).edit().putLong("seen", id).apply();
         JSONObject from = m.optJSONObject("from");
         if (from == null || !from.optBoolean("is_bot")) return;
+        if (m.optString("text").startsWith(House.TO_HOME)) { // 🥛 the milk account: the whole account, so even a few days late it is news
+            if (HomeCare.on(c) && System.currentTimeMillis() / 1000 - m.optLong("date") < 3 * 86_400) House.fromPhone(c, m.optString("text"), id);
+            return;
+        }
         if (System.currentTimeMillis() / 1000 - m.optLong("date") > 10 * 60) return; // (an old one: the phone was off)
         String text = m.optString("text"), cap = m.optString("caption");
         String time = new java.text.SimpleDateFormat("h:mm a", Locale.ENGLISH).format(new java.util.Date());
@@ -302,6 +325,7 @@ final class HomeLink {
             if (id <= sp(c).getLong("fetched", 0)) return;
             sp(c).edit().putLong("fetched", id).apply();
             if (m.optString("text").startsWith(STATUS)) { TabletWatch.save(c, m.optString("text").substring(STATUS.length())); return; } // (a late answer)
+            if (m.optString("text").startsWith(House.FROM_HOME)) { House.fromHome(c, m.optString("text"), id); return; } // 🥛 what was said at home
             JSONObject inv = GameLink.inviteIn(m, true); // (అమ్మగారు asks him to play a game from the tablet)
             if (inv != null) { GameActivity.inviteNote(c, inv); return; }
             if (m.has("photo") && !m.optString("caption").startsWith(FRAME)) showPhoto(c, m); // (not his own photos for the frame)

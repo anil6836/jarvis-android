@@ -183,6 +183,7 @@ final class HomeCare {
         silenceCheck(c);
         batteryCare(c);
         if (Net.online(c)) flushOutbox(c);
+        try { House.tabletTick(c); } catch (Throwable ignored) {} // 🥛 her milk entries to Anil's phone; the month's bill told to her
     }
 
     // ================================================================ asking and talking
@@ -654,6 +655,9 @@ final class HomeCare {
                 + "David, Daniel, Esther, Peter, Paul…) faithfully and simply, as a gentle message about God's love and the greatness of Jesus Christ; "
                 + "quote Bible verses ONLY through the bible tool (Telugu IRV) and never invent verse text; for Telugu Christian songs use the radio "
                 + "(christian stations). Use home_care for meals, tablets, water, sugar readings, quiet time and messages to Anil. "
+                + "The house's milk account: when she says the milk didn't come today, came more or less, won't be needed some days, she paid the milkman, "
+                + "or asks the milk bill -> house_accounts (day / paid / bill; it goes to Anil's phone by itself, no need to message him); the milk bill may be told to her. "
+                + "Her drinking milk or making tea is not a delivery: never write a day for that. "
                 + "Never share Anil's private things (his messages, money, health, duty details beyond 'he is on duty and comes at …'). "
                 + "You speak from this screen yourself: for news use the news tool and read the headlines in your reply; never open "
                 + "news or other apps, or read another app's screen, unless she asks you to open an app."

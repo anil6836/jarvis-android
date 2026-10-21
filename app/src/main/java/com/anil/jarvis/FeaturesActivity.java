@@ -314,6 +314,15 @@ public class FeaturesActivity extends Activity {
                     fill("👥", "చిట్టీ చేర్చు", "పేరు, నెలకి ఎంత, ఏ తేదీ, ఎన్ని నెలలు", "ఈ చిట్టీ గుర్తుపెట్టుకో (పేరు, నెలకి ఎంత, ప్రతి నెల ఏ తేదీ, మొత్తం ఎన్ని నెలలు, ఎన్ని కట్టాను): "),
                     fill("✅", "కట్టాను / తిరిగి వచ్చింది", "ఏది, ఎంత", "ఇది కట్టాను / తిరిగి వచ్చింది (debts paid): "),
                     ask("📋", "నా అప్పులు, EMI లు", "ఎవరు ఎంత, ఈ నెల కట్టాల్సినవి", "నా అప్పులు, EMI లు, చిట్టీలు అన్నీ చెప్పు: నాకు ఎవరు ఎంత ఇవ్వాలి, నేను ఎవరికి ఎంత ఇవ్వాలి, ఈ నెల కట్టాల్సినవి (debts list).")),
+            new Cat("house", "🥛", "ఇంటి లెక్కలు", "పాలు: రాని రోజులు, బిల్లు, ఇచ్చిన డబ్బు", 0xFF0EA5E9,
+                    ask("🚫", "ఈ రోజు పాలు రాలేదు", "నిన్న అయితే 'నిన్న పాలు రాలేదు' అనండి", "ఈ రోజు పాలు రాలేదు (house_accounts day qty=0)."),
+                    fill("🥛", "ఈ రోజు ఎక్కువ / తక్కువ పాలు", "ఉదా: 2 లీటర్లు, అర లీటర్ ఎక్కువ", "ఈ రోజు పాలు ఇంత తీసుకున్నాం (house_accounts day): "),
+                    fill("✈️", "కొన్ని రోజులు పాలు వద్దు", "ఏ తేదీ నుంచి ఏ తేదీ వరకు", "ఈ రోజుల్లో పాలు వద్దు / రావు (house_accounts day qty=0, from - to): "),
+                    ask("📊", "పాల బిల్లు ఎంత?", "ఈ నెల ఇప్పటివరకు, గత నెల", "పాల బిల్లు చెప్పు: ఈ నెల ఇప్పటివరకు, గత నెల (house_accounts bill)."),
+                    fill("✅", "పాల డబ్బులు ఇచ్చాను", "ఎంత (మొత్తం అయితే ఖాళీగా వదిలేయండి)", "పాల బిల్లు ఇచ్చాను (house_accounts paid): "),
+                    fill("💰", "పాల ధర మారింది", "కొత్త ధర, ఎప్పటి నుంచి", "పాల ధర మారింది (house_accounts price): "),
+                    act("📄", "ఈ నెల పాల లెక్క PDF", "క్యాలెండర్‌తో; WhatsApp లో పంపొచ్చు", "house_pdf"),
+                    open("⚙️", "పాల లెక్క సెట్టింగ్స్", "ధర, రోజూ ఎన్ని, అమ్మగారికి చెప్పడం", "ఇంటి లెక్కలు")),
             new Cat("expiry", "📄", "గడువులు", "ఇన్సూరెన్స్, లైసెన్స్, సర్వీస్, వారంటీ", 0xFFF97316,
                     fill("🛡️", "బైక్ ఇన్సూరెన్స్ గడువు", "ఏ తేదీ వరకు", "బైక్ ఇన్సూరెన్స్ గడువు తేదీ (expiry add): "),
                     fill("🪪", "డ్రైవింగ్ లైసెన్స్ గడువు", "ఏ తేదీ వరకు", "డ్రైవింగ్ లైసెన్స్ గడువు తేదీ (expiry add): "),
@@ -580,7 +589,7 @@ public class FeaturesActivity extends Activity {
             {"ప్రతిరోజు", "duty", "bike", "day", "alarm", "faith", "calls"},
             {"ఇల్లు, అమ్మగారు", "amma"},
             {"పనులు, తేదీలు", "missions", "birthdays", "holidays", "expiry", "diary"},
-            {"డబ్బు", "money", "debts", "prices", "shopping"},
+            {"డబ్బు", "money", "debts", "house", "prices", "shopping"},
             {"ఆరోగ్యం", "medicine", "doctor", "wellness"},
             {"వాచ్", "watch"},
             {"ప్రయాణం", "drive", "travel", "places"},
@@ -779,7 +788,7 @@ public class FeaturesActivity extends Activity {
     /** This device is the home tablet: its own folder for "అమ్మగారి టాబ్లెట్" is not shown here. */
     private boolean homeMode;
 
-    private boolean hidden(Cat c) { return homeMode && "amma".equals(c.id); }
+    private boolean hidden(Cat c) { return homeMode && ("amma".equals(c.id) || "house".equals(c.id)); } // (the milk account is kept on his phone)
 
     @Override public void onBackPressed() {
         if (!search.getText().toString().isEmpty()) { search.setText(""); return; }
@@ -897,6 +906,7 @@ public class FeaturesActivity extends Activity {
         if ("medicine".equals(c.id)) addMedicines(c);
         if ("birthdays".equals(c.id)) addBirthdays(c);
         if ("debts".equals(c.id)) addDebts(c);
+        if ("house".equals(c.id)) addHouse(c);
         if ("expiry".equals(c.id)) addExpiry(c);
         if ("holidays".equals(c.id)) addHolidays(c);
         scroll.scrollTo(0, 0);
@@ -1022,6 +1032,77 @@ public class FeaturesActivity extends Activity {
             });
             content.addView(r, rowParams());
         }
+    }
+
+    /** 🥛 This month so far, last month if not all given, and each day that was not the usual (tap: it was the usual after all). */
+    private void addHouse(Cat c) {
+        try {
+            org.json.JSONObject st = House.load(this);
+            org.json.JSONObject it = HouseBook.item(st, HouseBook.MILK);
+            if (it == null) {
+                header(c, "ఇంకా సెట్ చేయలేదు");
+                empty("Jarvis కి చెప్పండి: \"పాలు రోజూ 1 లీటర్, లీటర్ 60, ఈ నెల 1 నుంచి లెక్క వెయ్యి\" (లేదా కింద ⚙️ సెట్టింగ్స్).");
+                return;
+            }
+            java.time.LocalDate today = java.time.LocalDate.now();
+            java.time.YearMonth now = java.time.YearMonth.from(today);
+            header(c, "ఈ నెల");
+            content.addView(row(c, new Opt("🧾", HouseBook.line(HouseBook.bill(st, HouseBook.MILK, now, today)), HouseBook.setupLine(it, today), INFO, ""), false), rowParams());
+            org.json.JSONObject last = HouseBook.bill(st, HouseBook.MILK, now.minusMonths(1), today);
+            if (last.optBoolean("started") && last.optLong("balance") > 0)
+                content.addView(row(c, new Opt("⚠️", "గత నెల ఇంకా " + HouseBook.rs(last.optLong("balance")) + " ఇవ్వాలి", HouseBook.line(last), INFO, ""), false), rowParams());
+            org.json.JSONObject days = st.optJSONObject("days") == null ? null : st.optJSONObject("days").optJSONObject(HouseBook.MILK);
+            java.util.List<String> list = new java.util.ArrayList<>();
+            String from = now.minusMonths(1).atDay(1).toString();
+            if (days != null) for (java.util.Iterator<String> k = days.keys(); k.hasNext(); ) {
+                String d = k.next();
+                if (d.compareTo(from) >= 0 && days.optJSONObject(d) != null && days.optJSONObject(d).optDouble("q", -1) >= 0) list.add(d);
+            }
+            java.util.Collections.sort(list, java.util.Collections.reverseOrder());
+            header(c, "వేరేగా ఉన్న రోజులు (" + list.size() + ")");
+            if (list.isEmpty()) { empty("అన్ని రోజులూ మామూలుగా వచ్చాయి."); return; }
+            for (String d : list) {
+                org.json.JSONObject e = days.optJSONObject(d);
+                double q = e.optDouble("q");
+                java.time.LocalDate day = java.time.LocalDate.parse(d);
+                String title = HouseBook.MONTHS[day.getMonthValue() - 1] + " " + day.getDayOfMonth() + ": "
+                        + (q == 0 ? (day.isAfter(today) ? "వద్దు" : "రాలేదు") : HouseBook.qtyText(it.optString("unit"), q) + (day.isAfter(today) ? " కావాలి" : " వచ్చాయి"));
+                View r = row(c, new Opt(q == 0 ? "🚫" : "🥛", title, (HouseBook.AMMA.equals(e.optString("by")) ? "🏠 ఇంటి నుంచి చెప్పారు · " : "") + (day.isAfter(today) ? "నొక్కితే: మామూలుగానే కావాలి" : "నొక్కితే: మామూలుగానే వచ్చాయి"), INFO, ""), false);
+                boolean ahead = day.isAfter(today);
+                r.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("🥛 " + title)
+                        .setMessage(ahead ? "ఆ రోజు మామూలుగానే కావాలా? (ఈ మార్పు తీసేస్తాను)" : "ఆ రోజు మామూలుగానే వచ్చాయా? (ఈ మార్పు తీసేస్తాను)")
+                        .setPositiveButton("అవును, మామూలుగానే", (dd, w) -> {
+                            try { House.tool(this, new org.json.JSONObject().put("action", "usual").put("date", d)); } catch (Exception ignored) {}
+                            showCat(c);
+                        })
+                        .setNegativeButton("వద్దు", null).show());
+                content.addView(r, rowParams());
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /** 🥛 The month's page, made and opened from here (no AI). */
+    private boolean houseAction(String code) {
+        if (!"house_pdf".equals(code)) return false;
+        android.widget.Toast.makeText(this, "PDF తయారవుతోంది…", android.widget.Toast.LENGTH_SHORT).show();
+        final android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            try {
+                Coder.Made m = House.pdf(app, HouseBook.MILK, java.time.YearMonth.now());
+                runOnUiThread(() -> {
+                    if (m == null) android.widget.Toast.makeText(app, "పాల లెక్క ఇంకా సెట్ చేయలేదు.", android.widget.Toast.LENGTH_LONG).show();
+                    else if (m.uri == null) android.widget.Toast.makeText(app, "సేవ్ అయింది: " + m.where, android.widget.Toast.LENGTH_LONG).show();
+                    else new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("📄 ఈ నెల పాల లెక్క")
+                                .setMessage("సేవ్ అయింది: " + m.where)
+                                .setPositiveButton("తెరువు", (d, w) -> Cards.view(this, m))
+                                .setNeutralButton("WhatsApp లో", (d, w) -> Cards.share(this, m, HouseBook.MONTHS[java.time.LocalDate.now().getMonthValue() - 1] + " పాల లెక్క"))
+                                .setNegativeButton("సరే", null).show();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> android.widget.Toast.makeText(app, "PDF కాలేదు: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show());
+            }
+        }, "house-pdf").start();
+        return true;
     }
 
     /** Open debts, EMIs and chits: tap = ask Jarvis about it (paid, remind them...). */
@@ -1272,6 +1353,7 @@ public class FeaturesActivity extends Activity {
             return;
         }
         if (o.type == DO && tabletAction(o.payload)) return;
+        if (o.type == DO && houseAction(o.payload)) return;
         if (o.type == DO && o.payload.startsWith("duty_")) { // the duty calendar opens straight from here
             startActivity(new Intent(this, DutyActivity.class).putExtra(DutyActivity.EXTRA_SETUP, o.payload.equals("duty_setup")));
             return;

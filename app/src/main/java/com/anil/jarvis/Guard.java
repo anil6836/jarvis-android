@@ -200,6 +200,14 @@ final class Guard {
         } catch (Exception e) { return false; }
     }
 
+    /** Takes the pin off one message (one too old to delete: Telegram deletes only under 48 hours). */
+    static boolean unpin(Context c, long messageId) {
+        try {
+            JSONObject r = post(c, "unpinChatMessage", new JSONObject().put("chat_id", chat(c)).put("message_id", messageId));
+            return r != null && r.optBoolean("ok");
+        } catch (Exception e) { return false; }
+    }
+
     /** Pins a message of the bot's in his chat, quietly: the two phones' mailbox (each reads the latest pinned one). */
     static boolean pin(Context c, long messageId) {
         try {

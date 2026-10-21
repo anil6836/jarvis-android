@@ -68,6 +68,8 @@ final class Monthly {
         }
         money.put("bills_he_added", bills).put("bills_by_category", byCat);
         o.put("money", money);
+        String house = House.monthLines(c, ym);
+        if (!house.isEmpty()) o.put("house", house);
 
         try {
             Duty.Roster r = Duty.load(c);
@@ -127,6 +129,7 @@ final class Monthly {
             JSONObject cat = m.optJSONObject("bills_by_category");
             if (cat != null) for (Iterator<String> it = cat.keys(); it.hasNext(); ) { String k = it.next(); b.append("    ").append(k).append(": ").append(rs(cat.optLong(k))).append('\n'); }
         }
+        if (d.has("house")) b.append("\nఇంటి లెక్కలు\n").append(d.optString("house"));
         JSONObject duty = d.optJSONObject("duty");
         if (duty != null) {
             b.append("\nడ్యూటీ\n  ").append(duty.optInt("duty_days")).append(" రోజులు (").append(duty.optInt("hours")).append(" గంటలు)");

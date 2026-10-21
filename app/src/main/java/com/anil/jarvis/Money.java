@@ -59,6 +59,22 @@ final class Money {
         return o;
     }
 
+    /** The bill added at that time with that text taken out again (e.g. a milk payment taken back). False: not found. */
+    static synchronized boolean removeAt(Context c, long t, String what) {
+        try {
+            JSONArray a = new JSONArray(sp(c).getString("expenses", "[]"));
+            for (int i = a.length() - 1; i >= 0; i--) {
+                JSONObject e = a.optJSONObject(i);
+                if (e != null && e.optLong("t") == t && (what == null || what.isEmpty() || what.equals(e.optString("what")))) {
+                    a.remove(i);
+                    sp(c).edit().putString("expenses", a.toString()).apply();
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     static double totalSince(Context c, long since) {
         double t = 0;
         for (JSONObject e : expenses(c)) if (e.optLong("t") >= since) t += e.optDouble("amount");

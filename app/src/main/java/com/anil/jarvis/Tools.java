@@ -633,6 +633,37 @@ final class Tools {
                         {"mine", "boolean", "For setup: true = this is his batch"}, {"on_days", "integer", "For setup: duty days in a row (2)"},
                         {"off_days", "integer", "For setup: days off (4)"}, {"month", "string", "For month / open: YYYY-MM"},
                         {"count", "integer", "For next: how many duties (default 3)"}}, "action")));
+        DEFS.add(new Def("house_accounts", "The house's milk account (పాల లెక్క): the usual milk comes every day, so he (or అమ్మగారు on the home tablet) says only "
+                + "the days that were different, and the money given to the milkman. Jarvis tells last month's bill on the 1st (and to అమ్మగారు on the tablet), "
+                + "and notes it on the 5th / 10th if it is not given. Work out real dates from today's date. Actions: "
+                + "bill (default: this month so far, and last month while not all given; month = one month); "
+                + "day = what came on a day that was different: date (and to, for a range) with qty = what came, in the account's unit (litres or packets, "
+                + "as the setup line says; 0 = none came / not wanted), or extra = more (+) / less (−) than the usual; days ahead too "
+                + "(e.g. today 2026-10-21, 'రేపటి నుంచి 3 రోజులు పాలు వద్దు' = day date 2026-10-22 to 2026-10-24 qty 0); "
+                + "usual = undo a day: it was the usual after all (NOT for a new usual amount: that is daily); "
+                + "paid (amount; left out = all that is left; month: default last month while not all given, else this month); "
+                + "unpaid = money written as given wasn't given (default: the newest payment's month; amount = only that payment); "
+                + "setup (the first time: price per unit, daily = the usual amount per day, unit లీటర్ / ప్యాకెట్, from = the day the count starts, "
+                + "default the 1st of this month, vendor = the milkman's name; for an account already set, from is the day a new rate / amount starts "
+                + "(default today), and only with from_start = true (he said the start or the first rate was wrong from the beginning) do from = the "
+                + "count's new start and price / daily = the first values; later changes stay); "
+                + "price = a new rate from a day (default today); daily = a new usual amount per day from a day (default today); "
+                + "report (the month's calendar PDF, opened); share (that PDF into WhatsApp: he picks the chat and taps send himself); "
+                + "remove (the whole account: only when he clearly asks, and with confirmed = true after his yes). "
+                + "Someone drinking milk or making tea is not a delivery: never write a day for that.",
+                schema(new String[][]{{"action", "string", "bill (default), day, usual, paid, unpaid, setup, price, daily, report, share or remove"},
+                        {"item", "string", "Which account (default: milk / పాలు)"},
+                        {"date", "string", "For day / usual: YYYY-MM-DD (default today)"}, {"to", "string", "For day / usual: the last day of a range, YYYY-MM-DD"},
+                        {"qty", "number", "For day: what came that day, in the account's unit (0 = none came)"},
+                        {"extra", "number", "For day: more (+) or less (−) than the usual, e.g. 0.5 or -1"},
+                        {"amount", "number", "For paid: rupees given (left out = everything that is left); for unpaid: only the payment of this amount"},
+                        {"month", "string", "For bill / paid / unpaid / report / share: YYYY-MM, this or last"},
+                        {"price", "number", "For setup / price: rupees per litre / packet"}, {"daily", "number", "For setup / daily: the usual amount per day"},
+                        {"unit", "string", "For setup: లీటర్ (default) or ప్యాకెట్"},
+                        {"from", "string", "For setup / price / daily: YYYY-MM-DD (a new account: the count's start; else the day the new value starts)"},
+                        {"from_start", "boolean", "For setup: he said the start / the first rate was wrong from the beginning (earlier bills change)"},
+                        {"vendor", "string", "For setup: the milkman's name (optional)"},
+                        {"confirmed", "boolean", "For remove: he said yes to removing the whole account"}})));
         DEFS.add(new Def("debts", "Money between him and others, and monthly payments: lent (he gave someone money, they owe him), borrowed (he owes someone), "
                 + "emi (a loan EMI on a day of the month), chit (చిట్టీ instalment on a day of the month). "
                 + "add: a new one; paid: he paid / got money back (lent/borrowed: amount, 0 = all; emi/chit: this month's instalment is paid); list: open ones and totals; remove. "
@@ -980,6 +1011,7 @@ final class Tools {
             case "news": return "వార్తలు తెస్తున్నాను…";
             case "local_news": return "మీ ప్రాంతాల వార్తలు తెస్తున్నాను…";
             case "debts": return "అప్పులు, EMI లు చూస్తున్నాను…";
+            case "house_accounts": return "పాల లెక్క…";
             case "health_advice": return "చూస్తున్నాను…";
             case "cough_log": return "దగ్గు లెక్క…";
             case "home_sounds": return "వింటున్నాను…";
@@ -1176,6 +1208,7 @@ final class Tools {
                 case "news": return news(a.optString("topic", ""), a.optInt("count", 6));
                 case "local_news": return localNews(a);
                 case "debts": return debts(a);
+                case "house_accounts": return houseAccounts(a);
                 case "health_advice": return healthAdvice(a);
                 case "cough_log": return coughLog(a);
                 case "home_sounds": return homeSounds(a);
@@ -7718,6 +7751,39 @@ final class Tools {
             return o.toString();
         }
         return Ailments.advice(act(), a.optString("symptom"), a.optString("want", "home")).toString();
+    }
+
+    /** 🥛 The milk account (House / HouseBook); the PDF is opened / shared here (his phone only). */
+    private String houseAccounts(JSONObject a) throws Exception {
+        String action = a.optString("action", "bill").trim().toLowerCase(Locale.ROOT);
+        if (action.equals("report") || action.equals("share") || action.equals("pdf")) {
+            if (prefs.homeMode()) return err("phone_only", "The month's page is on Anil's phone; tell her the bill in words (house_accounts bill).");
+            House.freshen(act()); // (her newest entries first)
+            java.time.LocalDate today = java.time.LocalDate.now();
+            java.time.YearMonth ym = a.optString("month").trim().isEmpty() ? null : HouseBook.month(a.optString("month"), today);
+            if (ym == null && !a.optString("month").trim().isEmpty()) return err("bad_month", "month: YYYY-MM, this or last.");
+            if (ym == null) { // (early in the month, while last month's bill is still to give: that month's page)
+                ym = java.time.YearMonth.from(today);
+                try {
+                    org.json.JSONObject last = HouseBook.bill(House.load(act()), HouseBook.key(a.optString("item")), ym.minusMonths(1), today);
+                    if (today.getDayOfMonth() <= 10 && last != null && last.optLong("balance") > 0) ym = ym.minusMonths(1);
+                } catch (Exception ignored) {}
+            }
+            Coder.Made m = House.pdf(act(), HouseBook.key(a.optString("item")), ym);
+            if (m == null) return err("not_set", "The milk account isn't set yet: ask him the rate and how much comes each day (setup).");
+            boolean share = action.equals("share");
+            boolean opened = m.uri != null && unlocked();
+            if (opened) {
+                if (share) Cards.share(act(), m, HouseBook.MONTHS[ym.getMonthValue() - 1] + " పాల లెక్క");
+                else Cards.view(act(), m);
+            }
+            return ok().put("pdf", m.where).put("month", HouseBook.MONTHS[ym.getMonthValue() - 1] + " " + ym.getYear()).put("opened", opened)
+                    .put("next", !opened ? "Say the PDF is saved in " + m.where + " (the phone is locked, so it wasn't opened)."
+                            : share ? "Say WhatsApp is open with the PDF: he picks the chat and taps send himself."
+                            : "Say in one line the PDF is saved in " + m.where + " and opened; offer to share it on WhatsApp (house_accounts share).").toString();
+        }
+        if (action.equals("paid") || action.equals("unpaid") || action.equals("bill")) House.freshen(act()); // (what was said at home first: no money written twice)
+        return House.tool(act(), a).toString();
     }
 
     private String debts(JSONObject a) throws Exception {

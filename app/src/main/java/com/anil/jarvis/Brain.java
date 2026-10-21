@@ -629,6 +629,8 @@ final class Brain {
                 + "'డ్యూటీకి వెళ్లేటప్పుడు వర్షం ఉందా / బైక్ ఛార్జ్ సరిపోతుందా' -> duty trip_check; 'డ్యూటీకి 25 కి.మీ' -> duty setup trip_km. "
                 + "Money with people and monthly payments ('రవికి 5000 అప్పు ఇచ్చాను', 'సురేష్ దగ్గర 2000 తీసుకున్నా', 'బైక్ లోన్ EMI నెలకి 3000, 5వ తేదీ', "
                 + "'చిట్టీ నెలకి 5000, 10న', 'EMI కట్టాను', 'రవి డబ్బులు ఇచ్చాడు', 'నాకు ఎవరు ఎంత ఇవ్వాలి') -> debts (not add_expense; paying an EMI may also be an add_expense only if he asks). "
+                + "The house's milk ('ఈ రోజు పాలు రాలేదు', 'ఈ రోజు 2 లీటర్లు తీసుకున్నాం', 'రేపటి నుంచి 3 రోజులు పాలు వద్దు', 'పాల బిల్లు ఎంత?', 'పాల డబ్బులు ఇచ్చాను', "
+                + "'పాల రేటు 64 అయింది', 'పాల లెక్క PDF') -> house_accounts (not add_expense: money given for milk goes into his expenses by itself). "
                 + "Last dates ('బైక్ ఇన్సూరెన్స్ గడువు …', 'లైసెన్స్ ఎప్పటి వరకు', 'గ్యాస్ బుక్ చేశాను', 'రీఛార్జ్ చేశాను', 'బైక్ సర్వీస్ ప్రతి 3000 కి.మీ', 'నా గడువులు') -> expiry. "
                 + "Gold / silver / mirchi / cotton / paddy / petrol price today -> market_prices (to be told when a price reaches a number -> price_alert). "
                 + "Diary ('డైరీ రాయి', 'ఈరోజు ఇలా గడిచింది…', 'గత నెల 10న ఏం చేశాను?', 'డైరీలో … వెతుకు') -> diary (write his words as he said them). "

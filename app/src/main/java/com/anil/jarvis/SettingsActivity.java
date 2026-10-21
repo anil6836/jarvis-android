@@ -1045,6 +1045,8 @@ public class SettingsActivity extends Activity {
         findCode = field("📱 ఫోన్ వెతుకు కోడ్ (ఇంట్లోవాళ్లకి చెప్పండి; కనీసం 6 అక్షరాలు/అంకెలు)", prefs.findCode(), false);
         button("🔔 ఇప్పుడు 5 సెకన్లు మోగించి చూడు", v -> FindPhone.start(this, 5000));
 
+        if (!prefs.homeMode()) houseSection(); // 🥛 the milk account (his phone keeps it; the tablet only takes her words)
+
         section("రోజువారీ హెచ్చరికలు");
         stormAlert = toggle("⛈️ గంటలోపు పిడుగులు / భారీ వర్షం వచ్చేలా ఉంటే చెప్పు", prefs.stormAlert());
         chargeRemind = toggle("🔋 రాత్రి 9 కి బైక్ ఛార్జ్ తక్కువైతే (రేపు డ్యూటీ ఉంటే, లేదా 25% లోపు) \"ఛార్జ్ పెట్టండి\" అని చెప్పు", prefs.chargeRemind());
@@ -1828,6 +1830,7 @@ public class SettingsActivity extends Activity {
         wakeInfo.setText(s.toString());
         notifyInfo.setText(NotifyListener.enabled(this) ? "✓ నోటిఫికేషన్ యాక్సెస్: ఇచ్చారు" : "✗ నోటిఫికేషన్ యాక్సెస్: ఇవ్వలేదు");
         showCallChecks(); // 📞 (back from a permission screen: ticks afresh)
+        showHouse(); // 🥛 (a day said meanwhile)
         screenInfo.setText(JarvisAccessibility.enabled() ? "✓ స్క్రీన్ యాక్సెస్: ఆన్" : "✗ స్క్రీన్ యాక్సెస్: ఆఫ్");
         screenInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
         if (WakeService.wordStatus != null) s.append("\n\"Jarvis\" పదం: ").append(WakeService.wordStatus);
@@ -2463,6 +2466,180 @@ public class SettingsActivity extends Activity {
         t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
         if (!ok) t.setOnClickListener(v -> { try { fix.run(); } catch (Exception ignored) {} });
         callChecks.addView(t);
+    }
+
+    // ================================================================ 🥛 the milk account
+
+    private TextView houseInfo;
+
+    /** 🥛 What is set, a dialog to set / change it, the three switches, the month's pages. */
+    private void houseSection() {
+        section("🥛 ఇంటి లెక్కలు (పాలు)", "🥛");
+        note("రోజూ వచ్చే పాలు Jarvis తానే లెక్క వేస్తాడు: వేరేగా ఉన్న రోజు మాత్రమే చెప్పండి: 'ఈ రోజు పాలు రాలేదు', 'ఈ రోజు 2 లీటర్లు', "
+                + "'రేపటి నుంచి 3 రోజులు పాలు వద్దు', 'పాల డబ్బులు ఇచ్చాను', 'పాల బిల్లు ఎంత?'. అమ్మగారు ఇంటి టాబ్లెట్‌కి చెప్పినా ఇక్కడికే వస్తుంది "
+                + "(ఆ లెక్క మాత్రమే, ఆమె మాటలు కాదు). నెల 1న గత నెల బిల్లు చెబుతాను.");
+        houseInfo = Ui.text(this, "", 15, Ui.TEXT);
+        houseInfo.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
+        box.addView(houseInfo);
+        showHouse();
+        button("✏️ పాల లెక్క సెట్ చేయి / మార్చు (ధర, రోజూ ఎన్ని, ఎప్పటి నుంచి)", v -> houseDialog());
+        String[][] sw = {{House.BILL_FIRST, "📊 ప్రతి నెల 1న గత నెల పాల బిల్లు చెప్పు (5, 10 తేదీల్లో ఇంకా ఇవ్వకపోతే గుర్తుచేయి)"},
+                {House.TELL_AMMA, "🏠 అమ్మగారికి కూడా ఇంటి టాబ్లెట్‌లో బిల్లు చెప్పు"},
+                {House.TO_EXPENSE, "💰 ఇచ్చిన పాల డబ్బులు నెల ఖర్చుల్లో కలుపు (ఇంటి ఖర్చుగా)"}};
+        for (String[] t : sw) {
+            Switch x = toggle(t[1], House.on(this, t[0]));
+            x.setOnCheckedChangeListener((b, v) -> House.set(this, t[0], v));
+        }
+        button("📄 ఈ నెల పాల లెక్క PDF (క్యాలెండర్)", v -> housePdf(java.time.YearMonth.now(), false));
+        button("📄 గత నెల పాల లెక్క PDF", v -> housePdf(java.time.YearMonth.now().minusMonths(1), false));
+        button("📤 ఈ నెల PDF WhatsApp లో (చాట్ మీరే ఎంచుకుని పంపాలి)", v -> housePdf(java.time.YearMonth.now(), true));
+    }
+
+    private void showHouse() {
+        if (houseInfo == null) return;
+        try {
+            org.json.JSONObject st = House.load(this);
+            org.json.JSONObject it = HouseBook.item(st, HouseBook.MILK);
+            if (it == null) {
+                houseInfo.setText("ఇంకా సెట్ చేయలేదు: కింద ✏️ నొక్కండి, లేదా Jarvis కి చెప్పండి: \"పాలు రోజూ 1 లీటర్, లీటర్ 60, ఈ నెల 1 నుంచి లెక్క వెయ్యి\".");
+                return;
+            }
+            java.time.LocalDate today = java.time.LocalDate.now();
+            java.time.YearMonth now = java.time.YearMonth.from(today);
+            StringBuilder s = new StringBuilder("✓ ").append(HouseBook.setupLine(it, today)).append("\n\n")
+                    .append(HouseBook.line(HouseBook.bill(st, HouseBook.MILK, now, today)));
+            org.json.JSONObject last = HouseBook.bill(st, HouseBook.MILK, now.minusMonths(1), today);
+            if (last.optBoolean("started")) s.append("\n").append(HouseBook.line(last));
+            if (!HomeLink.linked(this)) s.append("\n\n(ఇంటి టాబ్లెట్‌తో కలపలేదు: అమ్మగారు చెప్పినవి రావు, ఆమెకి బిల్లు చెప్పలేను. కాపలా మోడ్ కార్డ్‌లో bot token పెట్టండి.)");
+            houseInfo.setText(s);
+        } catch (Exception e) {
+            houseInfo.setText("పాల లెక్క చూపించలేకపోయాను: " + e.getMessage());
+        }
+    }
+
+    /** Set up the milk (first time), or change the rate / the usual amount / the start / unit / the milkman's name. */
+    private void houseDialog() {
+        org.json.JSONObject st = House.load(this);
+        org.json.JSONObject it = HouseBook.item(st, HouseBook.MILK);
+        java.time.LocalDate today = java.time.LocalDate.now();
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        int pad = Ui.dp(this, 18);
+        l.setPadding(pad, Ui.dp(this, 8), pad, 0);
+        String unit0 = it == null ? "లీటర్" : it.optString("unit", "లీటర్");
+        RadioGroup unit = new RadioGroup(this);
+        unit.setOrientation(RadioGroup.HORIZONTAL);
+        java.util.List<String> units = new java.util.ArrayList<>(java.util.Arrays.asList("లీటర్", "ప్యాకెట్"));
+        if (!unit0.isEmpty() && !units.contains(unit0)) units.add(unit0); // (one he said by voice, e.g. a can)
+        java.util.Map<Integer, String> unitOf = new java.util.HashMap<>();
+        for (String un : units) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(un);
+            rb.setId(View.generateViewId());
+            unit.addView(rb);
+            unitOf.put(rb.getId(), un);
+            if (un.equals(unit0)) unit.check(rb.getId());
+        }
+        l.addView(Ui.text(this, "కొలత:", 14, Ui.MUTED));
+        l.addView(unit);
+        l.addView(Ui.text(this, "💰 ఒక లీటర్ / ప్యాకెట్ ధర (₹):", 14, Ui.MUTED));
+        EditText price = new EditText(this);
+        price.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        price.setHint("ఉదా: 60");
+        final double p0 = it == null ? Double.NaN : HouseBook.priceOn(it, today), q0 = it == null ? Double.NaN : HouseBook.usualOn(it, today);
+        if (it != null) price.setText(HouseBook.plain(p0));
+        l.addView(price);
+        l.addView(Ui.text(this, "🥛 రోజూ ఎన్ని (0.5 = అర):", 14, Ui.MUTED));
+        EditText daily = new EditText(this);
+        daily.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        daily.setText(it == null ? "1" : HouseBook.plain(q0));
+        l.addView(daily);
+        l.addView(Ui.text(this, "👤 పాలతని పేరు (అవసరం లేదు):", 14, Ui.MUTED));
+        EditText vendor = new EditText(this);
+        vendor.setText(it == null ? "" : it.optString("vendor"));
+        l.addView(vendor);
+        final java.time.LocalDate[] since = {it == null ? today.withDayOfMonth(1) : java.time.LocalDate.parse(it.optString("since"))};
+        TextView sinceText = Ui.text(this, "", 15, Ui.CYAN);
+        sinceText.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 6));
+        Runnable showSince = () -> sinceText.setText("📅 లెక్క మొదలు: " + HouseBook.MONTHS[since[0].getMonthValue() - 1] + " " + since[0].getDayOfMonth() + ", " + since[0].getYear() + "  (మార్చడానికి నొక్కండి)");
+        showSince.run();
+        sinceText.setOnClickListener(v -> new android.app.DatePickerDialog(this, (dp, y, m, d) -> { since[0] = java.time.LocalDate.of(y, m + 1, d); showSince.run(); },
+                since[0].getYear(), since[0].getMonthValue() - 1, since[0].getDayOfMonth()).show());
+        l.addView(sinceText);
+        RadioGroup when = new RadioGroup(this);
+        RadioButton fromToday = new RadioButton(this), fromStart = new RadioButton(this);
+        fromToday.setText("ధర / రోజూ ఎన్ని మారితే: ఈ రోజు నుంచి (ముందు రోజులు పాత ధరకే)");
+        fromStart.setText("లెక్క మొదలు నుంచే (ముందు చెప్పింది తప్పు; తర్వాత మార్చిన తేదీలు అలాగే)");
+        fromToday.setId(View.generateViewId());
+        fromStart.setId(View.generateViewId());
+        when.addView(fromToday);
+        when.addView(fromStart);
+        when.check(fromToday.getId());
+        if (it != null) l.addView(when);
+        ScrollView sc = new ScrollView(this);
+        sc.addView(l);
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(it == null ? "🥛 పాల లెక్క సెట్ చేయి" : "🥛 పాల లెక్క మార్చు")
+                .setView(sc)
+                .setPositiveButton("సేవ్", null) // (set below: a wrong number keeps the box open with what he typed)
+                .setNegativeButton("వద్దు", null).create();
+        dlg.setOnShowListener(x -> dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            double p = num(price), q = num(daily);
+            String u = unitOf.containsKey(unit.getCheckedRadioButtonId()) ? unitOf.get(unit.getCheckedRadioButtonId()) : unit0;
+            if (!(p > 0) || p > 100_000) { Toast.makeText(this, "ధర సరిగ్గా రాయండి (ఉదా: 60).", Toast.LENGTH_LONG).show(); return; }
+            if (!(q >= 0) || q > 50) { Toast.makeText(this, "రోజూ ఎన్ని: 0 నుంచి 50 లోపు రాయండి.", Toast.LENGTH_LONG).show(); return; }
+            try {
+                org.json.JSONObject r;
+                String vend = vendor.getText().toString().trim();
+                boolean priceChanged = it == null || Math.abs(p - p0) > 1e-9, dailyChanged = it == null || Math.abs(q - q0) > 1e-9;
+                if (it == null) { // the first time
+                    r = House.tool(this, new org.json.JSONObject().put("action", "setup").put("price", p).put("daily", q).put("unit", u)
+                            .put("from", since[0].toString()).put("vendor", vend));
+                } else if (when.getCheckedRadioButtonId() == fromStart.getId()) { // wrong from the beginning: only what he changed, as the first value
+                    org.json.JSONObject a0 = new org.json.JSONObject().put("action", "setup").put("from_start", true).put("unit", u)
+                            .put("from", since[0].toString()).put("vendor", vend);
+                    if (priceChanged) a0.put("price", p);
+                    if (dailyChanged) a0.put("daily", q);
+                    r = House.tool(this, a0);
+                } else { // the start (if moved), the unit, the name; a new rate / amount from today on
+                    org.json.JSONObject a0 = new org.json.JSONObject().put("action", "setup").put("unit", u).put("vendor", vend);
+                    if (!since[0].toString().equals(it.optString("since"))) a0.put("from_start", true).put("from", since[0].toString());
+                    r = House.tool(this, a0);
+                    if (r.optBoolean("ok") && priceChanged)
+                        r = House.tool(this, new org.json.JSONObject().put("action", "price").put("price", p).put("from", today.toString()));
+                    if (r.optBoolean("ok") && dailyChanged)
+                        r = House.tool(this, new org.json.JSONObject().put("action", "daily").put("daily", q).put("from", today.toString()));
+                }
+                Toast.makeText(this, r.optBoolean("ok") ? "✓ సేవ్ అయింది" : "సేవ్ కాలేదు, మళ్ళీ చూడండి.", Toast.LENGTH_SHORT).show();
+                if (r.optBoolean("ok")) dlg.dismiss();
+            } catch (Exception e) {
+                Toast.makeText(this, "సేవ్ కాలేదు: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            showHouse();
+        }));
+        dlg.show();
+    }
+
+    private static double num(EditText e) {
+        try { return Double.parseDouble(e.getText().toString().trim().replace(',', '.')); } catch (Exception x) { return Double.NaN; }
+    }
+
+    /** The month's calendar page: opened, or into WhatsApp (he picks the chat and sends). */
+    private void housePdf(java.time.YearMonth ym, boolean share) {
+        Toast.makeText(this, "PDF తయారవుతోంది…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                Coder.Made m = House.pdf(getApplicationContext(), HouseBook.MILK, ym);
+                runOnUiThread(() -> {
+                    if (m == null) Toast.makeText(this, "పాల లెక్క ఇంకా సెట్ చేయలేదు.", Toast.LENGTH_LONG).show();
+                    else if (m.uri == null) Toast.makeText(this, "సేవ్ అయింది: " + m.where, Toast.LENGTH_LONG).show();
+                    else if (share) Cards.share(this, m, HouseBook.MONTHS[ym.getMonthValue() - 1] + " పాల లెక్క");
+                    else Cards.view(this, m);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "PDF కాలేదు: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        }, "house-pdf").start();
     }
 
     /** Saves a text box as he types (no Save button needed). */

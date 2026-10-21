@@ -97,6 +97,7 @@ public class Proactive extends BroadcastReceiver {
         try { Ride.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Exercise.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {}
         try { Debts.tick(c, p, hush); } catch (Throwable ignored) {}
+        try { House.tick(c, p, hush); } catch (Throwable ignored) {}         // 🥛 the milk bill on the 1st, the 5th / 10th; the tablet's entries
         try { Expiry.tick(c, p, hush); } catch (Throwable ignored) {}
         try { Lent.tick(c, p, hush); } catch (Throwable ignored) {}         // a thing lent a month ago, once
         try { DutyMode.tick(c); } catch (Throwable ignored) {}              // duty mode by itself when a duty starts (his choice)
