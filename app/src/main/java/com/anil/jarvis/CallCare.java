@@ -523,13 +523,24 @@ final class CallCare {
         if (ear != null) { log(app, "🎧 " + ear + " లో (స్పీకర్ కాదు)"); return; }
         final boolean appCall = !phone;
         new Thread(() -> {
-            String r = JarvisAccessibility.pressSpeaker(appCall ? 3500 : 7000);
-            // an app call (WhatsApp …) answered from its notification may not show its call screen: opened from its own notification, then pressed
-            if (appCall && r.startsWith("no_button") && CallControl.openCallScreen(app)) r = JarvisAccessibility.pressSpeaker(6000);
+            String r;
+            if (appCall) {
+                try { Thread.sleep(1200); } catch (InterruptedException ignored) {} // (its call notification turns "ongoing" a moment after the answer)
+                if (CallControl.pressSpeakerButton(app)) r = "on"; // its notification's own Speaker button
+                else {
+                    r = JarvisAccessibility.pressSpeaker(2500);
+                    // answered from its notification, its call screen may not be up: brought up, then its Speaker pressed
+                    if (r.startsWith("no_button")) {
+                        String how = CallControl.openCallScreen(app);
+                        if (!how.isEmpty()) r = JarvisAccessibility.pressSpeaker(7000);
+                        if (r.startsWith("no_button")) r = r + " · తెరిచే దారి: " + (how.isEmpty() ? "లేదు" : how);
+                    }
+                }
+            } else r = JarvisAccessibility.pressSpeaker(7000);
             final String res = r;
             main.post(() -> log(app, "on".equals(res) ? "🔊 స్పీకర్ ఆన్ చేశాను" : "already".equals(res) ? "🔊 స్పీకర్ అప్పటికే ఆన్‌లో ఉంది"
                     : "no_accessibility".equals(res) ? "⚠️ స్పీకర్ ఆన్ చేయలేదు: Jarvis యాక్సెసిబిలిటీ ఆఫ్ (⚙️ → 📞 లో ♿)"
-                    : "⚠️ కాల్ స్క్రీన్‌లో స్పీకర్ బటన్ దొరకలేదు: మీరే నొక్కండి" + (res.length() > 10 ? " (చూసిన బటన్లు: " + res.substring(10) + ")" : "")));
+                    : "⚠️ కాల్ స్క్రీన్‌లో స్పీకర్ బటన్ దొరకలేదు: మీరే నొక్కండి" + (res.startsWith("no_button") && res.length() > 9 ? " (" + res.substring(9).trim() + ")" : "")));
         }, "jarvis-call-speaker").start();
     }
 

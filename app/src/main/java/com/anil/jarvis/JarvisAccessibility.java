@@ -170,6 +170,7 @@ public class JarvisAccessibility extends AccessibilityService {
         if (s == null) return "no_accessibility";
         long end = SystemClock.uptimeMillis() + timeoutMs;
         String seen = "";
+        java.util.Set<String> windows = new java.util.LinkedHashSet<>();
         while (SystemClock.uptimeMillis() < end) {
             SystemClock.sleep(450); // (the call screen takes a moment to come up after the answer)
             try {
@@ -178,6 +179,7 @@ public class JarvisAccessibility extends AccessibilityService {
                     if (root == null) continue;
                     String pkg = String.valueOf(root.getPackageName()).toLowerCase(Locale.ROOT);
                     if (pkg.equals(s.getPackageName())) continue;
+                    if (windows.size() < 6) windows.add(pkg.replace("com.", "").replace("android.", ""));
                     if (!(pkg.contains("incallui") || pkg.contains("dialer") || pkg.contains("telecom") || pkg.contains("phone") || pkg.contains("whatsapp")
                             || pkg.contains("telegram") || pkg.contains("signal") || pkg.contains("contacts"))) continue;
                     AccessibilityNodeInfo b = findSpeaker(root, 0);
@@ -196,7 +198,8 @@ public class JarvisAccessibility extends AccessibilityService {
                 }
             } catch (Exception ignored) {}
         }
-        return "no_button" + (seen.isEmpty() ? "" : seen);
+        // (no call screen at all: which screens were up, so the note shows it)
+        return "no_button" + (seen.isEmpty() ? (windows.isEmpty() ? "" : "కనిపించిన స్క్రీన్లు: " + android.text.TextUtils.join(", ", windows)) : "చూసిన బటన్లు: " + seen);
     }
 
     /** The short names of a call screen's buttons (never long text such as the caller's name), for the note. */

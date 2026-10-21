@@ -34,6 +34,7 @@ final class CallControl {
 
     static void onIncoming(String key, Notification n, boolean phone, String who) {
         ringing = n;
+        if (!phone && n != null) { appCallFull = n.fullScreenIntent; appCallOpen = n.contentIntent; } // (an app call's own screens, for its Speaker button later)
         ringingKey = key;
         ringingIsPhone = phone;
         ringingWho = who == null ? "" : who;
@@ -99,10 +100,35 @@ final class CallControl {
     static boolean phoneRingingNow() { return phoneRinging && SystemClock.elapsedRealtime() - phoneRingingAt < 120000; }
 
     /** The app call in progress (WhatsApp …): its own call screen opened from its notification (for its Speaker button). */
-    static boolean openCallScreen(Context c) {
+    private static volatile PendingIntent appCallFull, appCallOpen;
+
+    /**
+     * The app call in progress (WhatsApp …): its own call screen brought up (for its Speaker button): the ringing call's
+     * full-screen page first (it shows over the lock screen), else the call's notification. Returns how ("" = couldn't).
+     */
+    static String openCallScreen(Context c) {
         Notification n = ongoing;
-        if (n == null || n.contentIntent == null) return false;
-        try { send(c, n.contentIntent); return true; } catch (Exception e) { return false; }
+        PendingIntent[] ways = {appCallFull, n == null ? null : n.contentIntent, n == null ? null : n.fullScreenIntent, appCallOpen};
+        String[] names = {"full-screen", "call-notification", "call-full-screen", "ring-notification"};
+        for (int i = 0; i < ways.length; i++) {
+            if (ways[i] == null) continue;
+            try { send(c, ways[i]); return names[i]; } catch (Exception ignored) {}
+        }
+        return "";
+    }
+
+    /** The app call's ongoing notification has a Speaker button: pressed (true). */
+    static boolean pressSpeakerButton(Context c) {
+        Notification n = ongoing;
+        if (n == null || n.actions == null) return false;
+        for (Notification.Action a : n.actions) {
+            if (a == null || a.title == null || a.actionIntent == null) continue;
+            String t = a.title.toString().toLowerCase(Locale.ROOT).replace("\u200C", "");
+            if (t.matches("(?s).*(speaker|స్పీకర్).*") && !t.matches("(?s).*(off|ఆఫ్).*")) {
+                try { send(c, a.actionIntent); return true; } catch (Exception e) { return false; }
+            }
+        }
+        return false;
     }
 
     static String ringingWho() { return ringingWho; }
