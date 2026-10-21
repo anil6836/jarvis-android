@@ -1014,6 +1014,9 @@ final class VoiceIO {
     /** The window is over and no words came: Jarvis closes the mic itself (the phone may keep it open on a noise). */
     private final Runnable windowEnd = this::windowEnd;
 
+    /** How long past the window a listen may go on while he seems to be talking (a call's short listen: not long). */
+    private long extraMs() { return shortNow ? 3000 : 10_000; }
+
     private void windowEnd() {
         // words, or the result already asked for (by Jarvis or his "done"): those finish it
         if (shut || !listening || !partial.isEmpty() || ending || wrapUp) return;
@@ -1230,10 +1233,21 @@ final class VoiceIO {
     private boolean longTalk;
 
     /**
+     * 📞 A ringing call's answer: one short word ("ఎత్తు" / "కట్"), so a short window (seconds), and no long wait on a
+     * sound that may only be the ringtone: the name can be said three times in one ring.
+     */
+    void listenShort(String lang, int seconds) { shortFor = seconds; listen(lang, 0); }
+
+    private int shortFor;
+    private boolean shortNow;
+
+    /**
      * waitSeconds: how long to wait for him to start talking, when longer than the setting (the camera's always-on
      * listening waits longer, so the mic is opened and closed less often).
      */
     void listen(String lang, int waitSeconds) {
+        int cap = shortFor; // (this listen only)
+        shortFor = 0;
         if (shut) return;
         if (ears != null) { ears.cancel(); ears = null; } // an earlier listen still recording: let it go
         boolean dictation = longTalk;
@@ -1245,9 +1259,10 @@ final class VoiceIO {
         main.removeCallbacks(watchdog);
         main.removeCallbacks(endCheck);
         main.removeCallbacks(windowEnd);
-        windowMs = Math.max(Math.max(3, prefs.listenWindowSeconds()), waitSeconds) * 1000L;
+        shortNow = cap > 0;
+        windowMs = shortNow ? cap * 1000L : Math.max(Math.max(3, prefs.listenWindowSeconds()), waitSeconds) * 1000L;
         windowUntil = 0; // set when the mic is open
-        hardUntil = android.os.SystemClock.elapsedRealtime() + windowMs + 10_000; // however it goes, the tries end by then
+        hardUntil = android.os.SystemClock.elapsedRealtime() + windowMs + extraMs(); // however it goes, the tries end by then
         partial = "";
         endSpeechAt = 0;
         tries = 0;
@@ -1479,9 +1494,9 @@ final class VoiceIO {
         if (windowUntil == 0) {
             windowUntil = now + windowMs;
             main.removeCallbacks(windowEnd);
-            main.postDelayed(windowEnd, windowMs + 1000);
+            main.postDelayed(windowEnd, windowMs + (shortNow ? 500 : 1000));
         }
-        hardUntil = Math.max(hardUntil, windowUntil + 10_000);
+        hardUntil = Math.max(hardUntil, windowUntil + extraMs());
         alive(Math.max(0, windowUntil - now) + QUIET_WAIT_MS);
         trace("🎙");
         if (holdOpen) {

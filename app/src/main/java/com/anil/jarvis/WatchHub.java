@@ -1023,7 +1023,7 @@ final class WatchHub {
         if (w.kind == CallWords.NONE) {
             // (after 3 tries it stops asking; the card's buttons still answer the call while it rings)
             if (++callTries >= 3 || CallCare.silenced) { talk(false); state(app, "idle", null, null, "ఎత్తాలంటే వాచ్ కార్డ్‌లో \"ఎత్తు\" / ఫోన్‌లో ఆకుపచ్చ నొక్కండి"); return; }
-            reply(app, "ఎత్తమంటారా?", false, speakOn(app), () -> listen(app, "call"));
+            reply(app, CallCare.shortLine() + ". ఎత్తమంటారా?", false, speakOn(app), () -> listen(app, "call")); // (the name each time: 3 in all)
             return;
         }
         if (w.kind == CallWords.SILENT) {

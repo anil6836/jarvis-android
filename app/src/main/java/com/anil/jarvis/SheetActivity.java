@@ -135,7 +135,10 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     static final String EXTRA_CALL_AT = "jarvis_call_at";
     private String callText, callShort; // non-null while asking about a ringing call
     private long callAt;
+    /** Times his answer was listened for in this ring: the name is said 3 times in all (then the buttons only). */
     private int callTries;
+    /** 📞 How long each listen for his word to the ringing call (seconds), and his ringtone at his own volume between two. */
+    private static final int CALL_LISTEN_S = 4, CALL_RING_GAP_MS = 1500, CALL_SAYS = 3;
     private LinearLayout callRow, quickRow;
     private final Runnable watchCall = new Runnable() {
         @Override public void run() {
@@ -555,7 +558,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             main.postDelayed(autoClose, 4000);
             return;
         }
-        voice.listen(prefs.listenLang());
+        if (callText != null) voice.listenShort(prefs.listenLang(), CALL_LISTEN_S); // 📞 one short word: the name fits 3 times in a ring
+        else voice.listen(prefs.listenLang());
         orb.setState(OrbView.LISTENING);
         status.setText("వింటున్నాను…");
         setAction(IconView.STOP);
@@ -668,7 +672,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (callText == null) return;
         if (CallCare.silenced) { quietCallMode(true); return; }
         CallCare.ringLow(this, false); // his own ringtone at his volume meanwhile
-        if (++callTries >= 3 || !CallControl.isRinging()) {
+        if (++callTries >= CALL_SAYS || !CallControl.isRinging()) {
             status.setText("ఎత్తాలంటే ఆకుపచ్చ, కట్ చేయాలంటే ఎరుపు నొక్కండి");
             orb.setState(OrbView.IDLE);
             return;
@@ -676,7 +680,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         orb.setState(OrbView.IDLE);
         status.setText(callText);
         main.removeCallbacks(askAgain);
-        main.postDelayed(askAgain, 5000);
+        main.postDelayed(askAgain, CALL_RING_GAP_MS);
     }
 
     /** Answer (byVoice: the phone isn't in his hand: the loudspeaker) or cut, by the buttons or his word. */

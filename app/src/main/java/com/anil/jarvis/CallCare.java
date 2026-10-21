@@ -91,7 +91,8 @@ final class CallCare {
         appCtx = c;
         Prefs p = new Prefs(c);
         // the same SIM ring already said from the phone's own state a moment ago: only its notification noted (for its end / buttons)
-        if (n != null && STATE_KEY.equals(key) && CallControl.phoneRingingNow() && System.currentTimeMillis() - ringAt < 60_000L) {
+        // (this very ring: an earlier call said that way, a minute ago, is not this one)
+        if (n != null && STATE_KEY.equals(key) && CallControl.phoneRingingNow() && ringAt >= stateRingAt && System.currentTimeMillis() - ringAt < 60_000L) {
             key = sbnKey;
             phone = isPhone; // (WhatsApp's calls move the phone state too: now it is known which it was)
             if (appLabel != null && !isPhone) app = appLabel;
@@ -177,6 +178,9 @@ final class CallCare {
     /** The key of a ring said from the phone's state (no notification seen yet). */
     static final String STATE_KEY = "phone-state";
     private static volatile String stateNumber = "";
+    /** This SIM ring's start (its first RINGING news), and whether it was said from the phone's state already. */
+    private static long stateRingAt;
+    private static boolean stateSaid;
 
     /**
      * The system's phone-state news (NotifyListener): RINGING → if the phone app's notification hasn't said it within a
@@ -189,10 +193,24 @@ final class CallCare {
         if (android.telephony.TelephonyManager.EXTRA_STATE_RINGING.equals(state)) {
             boolean first = !CallControl.phoneRingingNow();
             CallControl.phoneRinging(true);
-            if (num != null && !num.trim().isEmpty()) stateNumber = num.trim();
+            boolean hasNum = num != null && !num.trim().isEmpty();
+            if (hasNum) stateNumber = num.trim();
             else if (first) stateNumber = "";
-            seenLine(app, "📶 ఫోన్ స్థితి: SIM కాల్ మోగుతోంది" + (num != null && !num.isEmpty() ? " (నంబర్ వచ్చింది)" : ""));
-            if (first) { main.removeCallbacks(stateFallback); main.postDelayed(stateFallback, 1800); }
+            if (first) {
+                stateRingAt = System.currentTimeMillis();
+                stateSaid = false;
+                NaturalVoice.warm(app, new Prefs(app)); // ⚡ the voice's internet line opens now, so the name needn't wait for it
+            }
+            seenLine(app, "📶 ఫోన్ స్థితి: SIM కాల్ మోగుతోంది" + (hasNum ? " (నంబర్ వచ్చింది)" : ""));
+            if (hasNum && !stateSaid) {
+                // ⚡ the number came: a SIM call (Android never gives the number of an app's call, e.g. WhatsApp's): the name at
+                // once (Samsung's own call notification comes a second later and is marked "ongoing", so it can't be waited for)
+                main.removeCallbacks(stateFallback);
+                main.post(stateFallback);
+            } else if (first) { // no number yet (it usually comes a moment later; a hidden number never): wait a little
+                main.removeCallbacks(stateFallback);
+                main.postDelayed(stateFallback, 1800);
+            }
             return;
         }
         boolean was = CallControl.phoneRingingNow();
@@ -202,15 +220,18 @@ final class CallCare {
         if (was && phone && !CallControl.isRinging()) ringEnded(app);
     }
 
-    /** The phone app's notification didn't say the SIM call in 1.8 s: said from the phone's state. */
+    /** The SIM call said from the phone's state: at once when its number came, else after 1.8 s if no notification said it. */
     private static final Runnable stateFallback = () -> {
         Context c = appCtx;
-        if (c == null || !CallControl.phoneRingingNow()) return;
-        if (System.currentTimeMillis() - ringAt < 5000) return; // (a notification - the phone's or WhatsApp's, whose calls move the phone state too - said it meanwhile)
+        if (c == null || !CallControl.phoneRingingNow() || stateSaid) return;
+        // (a notification - the phone's or WhatsApp's, whose calls move the phone state too - said this ring meanwhile)
+        if (!STATE_KEY.equals(key) && ringAt >= stateRingAt - 2000 && System.currentTimeMillis() - ringAt < 60_000L) return;
+        stateSaid = true;
         String num = stateNumber;
         String name = num.isEmpty() ? "" : CallHistory.nameFor(c, num);
         incoming(c, STATE_KEY, null, true, name.isEmpty() ? num : name, "");
-        log(c, "(ఫోన్ స్థితి నుంచి గుర్తించాను: ఫోన్ యాప్ నోటిఫికేషన్ రాలేదు)");
+        log(c, num.isEmpty() ? "(ఫోన్ స్థితి నుంచి గుర్తించాను: నంబర్ రాలేదు, ఫోన్ యాప్ నోటిఫికేషన్ కూడా రాలేదు)"
+                : "(ఫోన్ స్థితి నుంచి వెంటనే చెప్పాను: నంబర్ వచ్చింది)");
     };
 
     /** The phone is ringing now (its audio mode). */
