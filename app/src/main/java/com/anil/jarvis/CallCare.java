@@ -90,6 +90,13 @@ final class CallCare {
         Context c = svc.getApplicationContext();
         appCtx = c;
         Prefs p = new Prefs(c);
+        // the same SIM ring already said from the phone's own state a moment ago: only its notification noted (for its end / buttons)
+        if (isPhone && n != null && STATE_KEY.equals(key) && CallControl.phoneRingingNow() && System.currentTimeMillis() - ringAt < 60_000L) {
+            key = sbnKey;
+            log(c, "(ఫోన్ యాప్ నోటిఫికేషన్ కూడా వచ్చింది)");
+            return;
+        }
+        main.removeCallbacks(stateFallback); // (the notification came: no need of the phone-state way)
         if (!CallControl.isRinging() || !sbnKey.equals(key)) restoreRing(c); // (a ring an earlier call left low)
         long now = System.currentTimeMillis();
         key = sbnKey;
@@ -161,6 +168,107 @@ final class CallCare {
             route += panel ? " · ⌚ వాచ్‌లో కూడా (వాచ్ బటన్లు)" : " · ⌚ వాచ్‌లో కూడా (వాచ్ వింటుంది)";
         }
         log(c, route);
+    }
+
+    // ---------------------------------------------------------------- a SIM call from the phone's own state (not only its notification)
+
+    /** The key of a ring said from the phone's state (no notification seen yet). */
+    static final String STATE_KEY = "phone-state";
+    private static volatile String stateNumber = "";
+
+    /**
+     * The system's phone-state news (NotifyListener): RINGING → if the phone app's notification hasn't said it within a
+     * moment, Jarvis says it from here (the number with the call-log permission, its saved name from contacts); OFFHOOK /
+     * IDLE → the ring ended (answered / cut / missed): the ring back as it was.
+     */
+    static void phoneState(Context c, String state, String num) {
+        final Context app = c.getApplicationContext();
+        appCtx = app;
+        if (android.telephony.TelephonyManager.EXTRA_STATE_RINGING.equals(state)) {
+            boolean first = !CallControl.phoneRingingNow();
+            CallControl.phoneRinging(true);
+            if (num != null && !num.trim().isEmpty()) stateNumber = num.trim();
+            else if (first) stateNumber = "";
+            seenLine(app, "📶 ఫోన్ స్థితి: SIM కాల్ మోగుతోంది" + (num != null && !num.isEmpty() ? " (నంబర్ వచ్చింది)" : ""));
+            if (first) { main.removeCallbacks(stateFallback); main.postDelayed(stateFallback, 1800); }
+            return;
+        }
+        boolean was = CallControl.phoneRingingNow();
+        CallControl.phoneRinging(false);
+        main.removeCallbacks(stateFallback);
+        if (was) seenLine(app, "📶 ఫోన్ స్థితి: " + (android.telephony.TelephonyManager.EXTRA_STATE_OFFHOOK.equals(state) ? "కాల్ ఎత్తారు" : "రింగ్ ఆగింది"));
+        if (was && phone && !CallControl.isRinging()) ringEnded(app);
+    }
+
+    /** The phone app's notification didn't say the SIM call in 1.8 s: said from the phone's state. */
+    private static final Runnable stateFallback = () -> {
+        Context c = appCtx;
+        if (c == null || !CallControl.phoneRingingNow()) return;
+        if (phone && System.currentTimeMillis() - ringAt < 5000) return; // (the notification said it meanwhile)
+        String num = stateNumber;
+        String name = num.isEmpty() ? "" : CallHistory.nameFor(c, num);
+        incoming(c, STATE_KEY, null, true, name.isEmpty() ? num : name, "");
+        log(c, "(ఫోన్ స్థితి నుంచి గుర్తించాను: ఫోన్ యాప్ నోటిఫికేషన్ రాలేదు)");
+    };
+
+    /** The phone is ringing now (its audio mode). */
+    static boolean ringtoneMode(Context c) {
+        try { AudioManager am = audio(c); return am != null && am.getMode() == AudioManager.MODE_RINGTONE; } catch (Exception e) { return false; }
+    }
+
+    /** The notification has an Answer button (or the call style's answer action): it rings. */
+    static boolean hasAnswerButton(Notification n) {
+        if (n == null) return false;
+        try {
+            if (n.extras != null && n.extras.getParcelable("android.answerIntent") != null) return true;
+            if (n.actions != null) for (Notification.Action a : n.actions) {
+                String t = a == null || a.title == null ? "" : a.title.toString().toLowerCase(Locale.ROOT);
+                if (t.matches("(?s).*(answer|accept|ఆన్సర్|స్వీకరించు|ఎత్తు).*") && !t.contains("decline") && !t.contains("reject")) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    /**
+     * 👀 What Jarvis saw of a call notification (⚙️ → 📞, technical: the app, its mark, full screen, its buttons; never the
+     * caller's name), so a call that wasn't said shows why.
+     */
+    static void seen(Context c, android.service.notification.StatusBarNotification sbn, Notification n) {
+        try {
+            StringBuilder b = new StringBuilder(sbn.getPackageName().replace("com.", "").replace("android.", ""))
+                    .append(" · ").append(n.category == null ? "మార్క్ లేదు" : n.category)
+                    .append(" · full screen ").append(n.fullScreenIntent != null ? "✓" : "✗");
+            if (Build.VERSION.SDK_INT >= 31 && n.extras != null) b.append(" · type ").append(n.extras.getInt("android.callType", 0)); // (Notification.EXTRA_CALL_TYPE)
+            b.append(" · రింగ్ ").append(ringtoneMode(c) ? "✓" : "✗").append(" · ongoing ").append(sbn.isOngoing() ? "✓" : "✗");
+            if (n.actions != null) {
+                StringBuilder a = new StringBuilder();
+                for (Notification.Action x : n.actions) if (x != null && x.title != null && a.length() < 40) a.append(a.length() > 0 ? "/" : "").append(x.title);
+                if (a.length() > 0) b.append(" · [").append(a).append("]");
+            }
+            seenLine(c, b.toString());
+        } catch (Exception ignored) {}
+    }
+
+    private static synchronized void seenLine(Context c, String line) {
+        try {
+            SharedPreferences sp = priv(c);
+            JSONArray a = new JSONArray(sp.getString("call_seen", "[]"));
+            String t = new java.text.SimpleDateFormat("h:mm:ss a", Locale.ENGLISH).format(new java.util.Date());
+            if (a.length() > 0 && a.optString(a.length() - 1).endsWith(line)) return; // (the same news again)
+            a.put(t + " · " + line);
+            JSONArray out = new JSONArray();
+            for (int i = Math.max(0, a.length() - 8); i < a.length(); i++) out.put(a.get(i));
+            sp.edit().putString("call_seen", out.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    static List<String> seenLines(Context c) {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(priv(c).getString("call_seen", "[]"));
+            for (int i = a.length() - 1; i >= 0; i--) out.add(a.optString(i));
+        } catch (Exception ignored) {}
+        return out;
     }
 
     /** A call is already going on (phone or WhatsApp): a new one is call waiting, not for Jarvis's voice. */
@@ -413,11 +521,15 @@ final class CallCare {
         final AudioManager am = audio(app);
         String ear = earDevice(am);
         if (ear != null) { log(app, "🎧 " + ear + " లో (స్పీకర్ కాదు)"); return; }
+        final boolean appCall = !phone;
         new Thread(() -> {
-            final String res = JarvisAccessibility.pressSpeaker(7000);
+            String r = JarvisAccessibility.pressSpeaker(appCall ? 3500 : 7000);
+            // an app call (WhatsApp …) answered from its notification may not show its call screen: opened from its own notification, then pressed
+            if (appCall && r.startsWith("no_button") && CallControl.openCallScreen(app)) r = JarvisAccessibility.pressSpeaker(6000);
+            final String res = r;
             main.post(() -> log(app, "on".equals(res) ? "🔊 స్పీకర్ ఆన్ చేశాను" : "already".equals(res) ? "🔊 స్పీకర్ అప్పటికే ఆన్‌లో ఉంది"
                     : "no_accessibility".equals(res) ? "⚠️ స్పీకర్ ఆన్ చేయలేదు: Jarvis యాక్సెసిబిలిటీ ఆఫ్ (⚙️ → 📞 లో ♿)"
-                    : "⚠️ కాల్ స్క్రీన్‌లో స్పీకర్ బటన్ దొరకలేదు: మీరే నొక్కండి"));
+                    : "⚠️ కాల్ స్క్రీన్‌లో స్పీకర్ బటన్ దొరకలేదు: మీరే నొక్కండి" + (res.length() > 10 ? " (చూసిన బటన్లు: " + res.substring(10) + ")" : "")));
         }, "jarvis-call-speaker").start();
     }
 

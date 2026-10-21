@@ -156,19 +156,20 @@ public class JarvisAccessibility extends AccessibilityService {
 
     // ------------------------------------------------------------------ 📞 the call screen's Speaker button
 
-    /** The loudspeaker button on a call screen (Samsung's phone, Google's, WhatsApp's …), by its words or its id. */
+    /** The loudspeaker button on a call screen (Samsung's phone, Google's, WhatsApp's …; English or Telugu), by its words or its id. */
     private static final java.util.regex.Pattern SPEAKER = java.util.regex.Pattern.compile(
-            "(?i)^(speaker|loudspeaker|speakerphone|speaker phone|speaker on|speaker off|turn on speaker|turn speaker on|స్పీకర్|లౌడ్ స్పీకర్|లౌడ్‌స్పీకర్|स्पीकर)([,.\\s(].{0,24})?$");
+            "(?i)^(turn (on|off) )?(the )?(loud ?)?speaker( ?phone)?( (on|off))?([,.\\s(].{0,24})?$|^(లౌడ్ ?)?స్పీకర్( ?ఫోన్)?([,.\\s(].{0,24})?$|^स्पीकर.{0,24}$");
 
     /**
      * 📞 Only right after Anil's own "ఎత్తు" (CallCare.answered): the Speaker button on the call screen is pressed, so
      * the call is on the loudspeaker. No other call button is ever pressed this way. Background thread. Returns "on",
-     * "already" (it was on), "no_button" or "no_accessibility".
+     * "already" (it was on), "no_accessibility", or "no_button" + the call screen's button names seen (for the ⚙️ → 📞 note).
      */
     static String pressSpeaker(long timeoutMs) {
         JarvisAccessibility s = instance;
         if (s == null) return "no_accessibility";
         long end = SystemClock.uptimeMillis() + timeoutMs;
+        String seen = "";
         while (SystemClock.uptimeMillis() < end) {
             SystemClock.sleep(450); // (the call screen takes a moment to come up after the answer)
             try {
@@ -180,7 +181,12 @@ public class JarvisAccessibility extends AccessibilityService {
                     if (!(pkg.contains("incallui") || pkg.contains("dialer") || pkg.contains("telecom") || pkg.contains("phone") || pkg.contains("whatsapp")
                             || pkg.contains("telegram") || pkg.contains("signal") || pkg.contains("contacts"))) continue;
                     AccessibilityNodeInfo b = findSpeaker(root, 0);
-                    if (b == null) continue;
+                    if (b == null) {
+                        StringBuilder names = new StringBuilder(pkg.replace("com.", "")).append(":");
+                        buttonNames(root, names, 0);
+                        seen = names.toString();
+                        continue;
+                    }
                     AccessibilityNodeInfo c = clickable(b);
                     String l = (label(b) + " " + (c == null ? "" : label(c))).toLowerCase(Locale.ROOT);
                     // already on: the label's node or its button says so (checked / selected / "speaker on"): never pressed off again
@@ -190,16 +196,29 @@ public class JarvisAccessibility extends AccessibilityService {
                 }
             } catch (Exception ignored) {}
         }
-        return "no_button";
+        return "no_button" + (seen.isEmpty() ? "" : seen);
+    }
+
+    /** The short names of a call screen's buttons (never long text such as the caller's name), for the note. */
+    private static void buttonNames(AccessibilityNodeInfo n, StringBuilder out, int depth) {
+        if (n == null || depth > 40 || out.length() > 140) return;
+        if (n.isClickable() && n.isVisibleToUser()) {
+            String l = label(n).replace("\u200C", "");
+            String id = n.getViewIdResourceName() == null ? "" : n.getViewIdResourceName().replaceAll("^.*/", "");
+            String one = !l.isEmpty() && l.length() <= 18 ? l : !id.isEmpty() ? "#" + id : "";
+            if (!one.isEmpty()) out.append(" ").append(one).append(",");
+        }
+        for (int i = 0; i < n.getChildCount(); i++) buttonNames(n.getChild(i), out, depth + 1);
     }
 
     private static AccessibilityNodeInfo findSpeaker(AccessibilityNodeInfo n, int depth) {
         if (n == null || depth > 40) return null;
         if (n.isVisibleToUser()) {
-            String l = label(n);
+            String l = label(n).replace("\u200C", ""); // (Telugu "స్పీకర్‌ఫోన్" written with a joiner)
             String id = n.getViewIdResourceName() == null ? "" : n.getViewIdResourceName().toLowerCase(Locale.ROOT);
             String low = l.toLowerCase(Locale.ROOT);
-            boolean byId = id.endsWith("/speaker") || id.endsWith("/speaker_button") || id.endsWith("/speakerbutton") || id.contains("speaker_toggle") || id.contains("audio_speaker");
+            boolean byId = id.endsWith("/speaker") || id.endsWith("/speaker_button") || id.endsWith("/speakerbutton") || id.contains("speaker_toggle") || id.contains("audio_speaker")
+                    || id.endsWith("/speaker_btn") || id.contains("speakerphone");
             if ((l.length() <= 40 && SPEAKER.matcher(l).matches() || byId) && !low.contains("bluetooth") && !low.contains("headset")) return n;
         }
         for (int i = 0; i < n.getChildCount(); i++) {

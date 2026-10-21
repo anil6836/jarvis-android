@@ -82,7 +82,27 @@ final class CallControl {
     }
 
     static boolean isRinging() {
-        return ringing != null && SystemClock.elapsedRealtime() - ringingAt < 120000;
+        return ringing != null && SystemClock.elapsedRealtime() - ringingAt < 120000 || phoneRingingNow();
+    }
+
+    // ---------------------------------------------------------------- the phone's own "ringing" (a SIM call, even without its notification)
+
+    private static volatile boolean phoneRinging;
+    private static volatile long phoneRingingAt;
+
+    /** The phone's state says a SIM call rings (true) / it stopped (false) (CallCare, from the system's phone-state news). */
+    static void phoneRinging(boolean on) {
+        phoneRinging = on;
+        if (on) phoneRingingAt = SystemClock.elapsedRealtime();
+    }
+
+    static boolean phoneRingingNow() { return phoneRinging && SystemClock.elapsedRealtime() - phoneRingingAt < 120000; }
+
+    /** The app call in progress (WhatsApp …): its own call screen opened from its notification (for its Speaker button). */
+    static boolean openCallScreen(Context c) {
+        Notification n = ongoing;
+        if (n == null || n.contentIntent == null) return false;
+        try { send(c, n.contentIntent); return true; } catch (Exception e) { return false; }
     }
 
     static String ringingWho() { return ringingWho; }
@@ -117,7 +137,7 @@ final class CallControl {
         if (n == null) {
             // Maybe a phone call Jarvis did not see: try the phone service only if something is really ringing,
             // since acceptRingingCall() gives no result and would otherwise report "answered" for nothing.
-            if (!phoneRingtone(c)) return "no_call";
+            if (!phoneRingtone(c) && !phoneRingingNow()) return "no_call";
             if (!canTelecom(c)) return "need_permission";
         }
         if (n == null || ringingIsPhone) {
@@ -138,7 +158,7 @@ final class CallControl {
     static String decline(Context c) {
         Notification n = ringing;
         // nothing seen ringing and no ringtone: endCall() would hang up the call in progress instead
-        if (n == null && !phoneRingtone(c)) return "no_call";
+        if (n == null && !phoneRingtone(c) && !phoneRingingNow()) return "no_call";
         if (n == null || ringingIsPhone) {
             if (canEndCall(c)) {
                 try {

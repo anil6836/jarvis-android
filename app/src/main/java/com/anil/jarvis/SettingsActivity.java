@@ -2430,7 +2430,8 @@ public class SettingsActivity extends Activity {
         callCheck("🔔 నోటిఫికేషన్ యాక్సెస్ (కాల్ వచ్చిందని Jarvis కి తెలియడానికి)", NotifyListener.enabled(this), () -> startActivity(NotifyListener.settingsIntent()));
         callCheck("🪟 ఇతర యాప్‌ల పైన చూపడం (ప్యానెల్ వచ్చి మీ మాట వినడానికి)", Settings.canDrawOverlays(this),
                 () -> startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))));
-        String[][] perms = {{Manifest.permission.ANSWER_PHONE_CALLS, "📞 కాల్స్ ఎత్తడం / కట్ చేయడం"}, {Manifest.permission.READ_CALL_LOG, "📜 కాల్ లాగ్ (మిస్డ్ కాల్స్, ఎవరు చేశారు)"},
+        String[][] perms = {{Manifest.permission.READ_PHONE_STATE, "📶 ఫోన్ స్థితి (SIM కాల్ మోగుతోందని Jarvis కి తెలియడానికి)"},
+                {Manifest.permission.ANSWER_PHONE_CALLS, "📞 కాల్స్ ఎత్తడం / కట్ చేయడం"}, {Manifest.permission.READ_CALL_LOG, "📜 కాల్ లాగ్ (మిస్డ్ కాల్స్, ఎవరు చేశారు)"},
                 {Manifest.permission.READ_CONTACTS, "👥 కాంటాక్ట్స్ (నంబర్‌కి పేరు)"}, {Manifest.permission.SEND_SMS, "💬 SMS పంపడం (బిజీ మెసేజ్)"}};
         for (String[] pm : perms)
             callCheck(pm[1], checkSelfPermission(pm[0]) == PackageManager.PERMISSION_GRANTED, () -> requestPermissions(new String[]{pm[0]}, 77));
@@ -2446,6 +2447,13 @@ public class SettingsActivity extends Activity {
         TextView evs = Ui.text(this, ev.isEmpty() ? "ఇంకా ఏ కాల్ రాలేదు (కాల్ వచ్చినా ఇక్కడ ఏమీ లేకపోతే: పైన 🔔 నోటిఫికేషన్ యాక్సెస్ చూడండి)."
                 : android.text.TextUtils.join("\n\n", ev), 13.5f, Ui.MUTED);
         callChecks.addView(evs);
+        java.util.List<String> seen = CallCare.seenLines(this);
+        if (!seen.isEmpty()) {
+            TextView sh = Ui.text(this, "👀 Jarvis చూసిన కాల్ సంకేతాలు (సాంకేతికం: సమస్య ఉంటే దీని స్క్రీన్‌షాట్ పంపండి):", 14, Ui.TEXT);
+            sh.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 2));
+            callChecks.addView(sh);
+            callChecks.addView(Ui.text(this, android.text.TextUtils.join("\n", seen), 12.5f, Ui.MUTED));
+        }
     }
 
     private void callCheck(String label, boolean ok, Runnable fix) {

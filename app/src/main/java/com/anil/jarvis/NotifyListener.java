@@ -107,7 +107,18 @@ public class NotifyListener extends NotificationListenerService {
         @Override public void onReceive(android.content.Context c, Intent i) { Charge.onBattery(c, i); }
     };
 
+    /** 📞 RINGING / OFFHOOK / IDLE of SIM calls (needs the phone-state permission; the number with the call-log one). */
+    private final android.content.BroadcastReceiver phoneState = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            if (i == null) return;
+            @SuppressWarnings("deprecation") String num = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER);
+            CallCare.phoneState(c, i.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE), num);
+        }
+    };
+    private boolean phoneRegistered;
+
     @Override public void onDestroy() {
+        if (phoneRegistered) { try { unregisterReceiver(phoneState); } catch (Exception ignored) {} phoneRegistered = false; }
         if (self == this) self = null;
         if (screenRegistered) { try { unregisterReceiver(screenEvents); } catch (Exception ignored) {} screenRegistered = false; }
         try { unregisterReceiver(battery); } catch (Exception ignored) {}
@@ -128,6 +139,12 @@ public class NotifyListener extends NotificationListenerService {
         }
         connected = true;
         self = this;
+        if (!phoneRegistered) { // 📞 the phone's own "a SIM call is ringing" (works even if the phone app's notification isn't marked as a call)
+            try {
+                registerReceiver(phoneState, new android.content.IntentFilter(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED));
+                phoneRegistered = true;
+            } catch (Exception ignored) {}
+        }
         CallCare.restoreIfLeft(this); // 📞 a ring left softer / silent by a call that ended while Jarvis was away
         try {
             StatusBarNotification[] active = getActiveNotifications();
@@ -160,7 +177,11 @@ public class NotifyListener extends NotificationListenerService {
         if (sbn == null) return;
         if (getPackageName().equals(sbn.getPackageName())) { WatchAlerts.posted(this, sbn); return; } // Jarvis's own: on the watch too (2b)
         Notification n = sbn.getNotification();
-        if (n != null && Notification.CATEGORY_CALL.equals(n.category)) {
+        String pkgL = sbn.getPackageName().toLowerCase(Locale.ROOT);
+        boolean dialer = pkgL.contains("incallui") || pkgL.contains("dialer") || pkgL.contains("telecom") || pkgL.equals("com.android.phone");
+        // 📞 a call: by its category, or the phone app's notification while the phone rings (some phones don't mark it "call")
+        if (n != null && (Notification.CATEGORY_CALL.equals(n.category) || dialer && CallCare.ringtoneMode(this))) {
+            CallCare.seen(this, sbn, n);
             announceCall(sbn, n);
             return;
         }
@@ -643,15 +664,17 @@ public class NotifyListener extends NotificationListenerService {
     /** 📞 A phone or WhatsApp call: ringing → CallCare says who it is (phone + watch) and listens; answered → in progress. */
     private void announceCall(StatusBarNotification sbn, Notification n) {
         if (n.extras == null) return;
-        boolean incoming = n.fullScreenIntent != null;
+        boolean incoming = n.fullScreenIntent != null, typeSaysNot = false;
         if (Build.VERSION.SDK_INT >= 31) {
             int type = n.extras.getInt(Notification.EXTRA_CALL_TYPE, 0);
             if (type == Notification.CallStyle.CALL_TYPE_INCOMING) incoming = true;
-            else if (type == Notification.CallStyle.CALL_TYPE_ONGOING || type == Notification.CallStyle.CALL_TYPE_SCREENING) incoming = false;
+            else if (type == Notification.CallStyle.CALL_TYPE_ONGOING || type == Notification.CallStyle.CALL_TYPE_SCREENING) { incoming = false; typeSaysNot = true; }
         }
         TopCard.stepAside(); // a call: a message card talking at the top stops at once
         String pkgLow = sbn.getPackageName().toLowerCase(Locale.ROOT);
         boolean phone = pkgLow.contains("dialer") || pkgLow.contains("telecom") || pkgLow.contains("incallui") || pkgLow.contains("phone") || pkgLow.contains("contacts");
+        if (!incoming && !typeSaysNot && phone && CallCare.ringtoneMode(this) && !CallControl.onCall()) incoming = true; // (the phone app's ring without a full-screen mark)
+        if (!incoming && !typeSaysNot && CallCare.hasAnswerButton(n)) incoming = true; // (an "Answer" button: it is ringing)
         if (!incoming) {
             CallControl.onOngoing(sbn.getKey(), n, phone);
             if (!CallControl.isRinging()) CallCare.ringEnded(this); // (this ring answered: its volume back; another call's update changes nothing)
