@@ -1128,8 +1128,10 @@ public class SettingsActivity extends Activity {
         nightListen.setOnCheckedChangeListener((sw, isOn) -> { Sounds.setNightListen(this, isOn); Sounds.armNightEdge(this); WakeService.recheck(this); });
         Switch bodyAsks = toggle("👃 ముక్కు ఎగబీల్చడం, గొంతు సవరణ, ఆయాసం, ఎక్కిళ్లు, త్రేన్పులు వరుసగా వస్తే అడుగు / చిట్కా చెప్పు", BodySounds.asksOn(this));
         bodyAsks.setOnCheckedChangeListener((sw, isOn) -> BodySounds.setAsks(this, isOn));
-        Switch clapCall = toggle("👏 రెండు చప్పట్లు కొట్టినా, చిన్న ఈల వేసినా Jarvis పలకాలి", BodySounds.callOn(this));
-        clapCall.setOnCheckedChangeListener((sw, isOn) -> BodySounds.setCall(this, isOn));
+        Switch clapCall = toggle("👏 రెండు చప్పట్లు కొడితే Jarvis పలకాలి", BodySounds.clapOn(this));
+        clapCall.setOnCheckedChangeListener((sw, isOn) -> BodySounds.setClap(this, isOn));
+        Switch whistleCall = toggle("😗 చిన్న ఈల వేస్తే Jarvis పలకాలి", BodySounds.whistleOn(this));
+        whistleCall.setOnCheckedChangeListener((sw, isOn) -> BodySounds.setWhistle(this, isOn));
         Switch whisper = toggle("🤫 గుసగుసగా \"Jarvis\" అంటే మెల్లగా జవాబివ్వు" + (Whisper.lastPct >= 0 ? " (చివరి పిలుపు గుసగుస: " + Whisper.lastPct + "%)" : ""), Whisper.enabled(this));
         whisper.setOnCheckedChangeListener((sw, isOn) -> Whisper.setEnabled(this, isOn));
         Switch rain = toggle("🌧️ వర్షం మొదలైనా, ఉరుములు వినిపించినా చెప్పు (బట్టలు, బైక్ కవర్, ఛార్జింగ్)", Sounds.rainOn(this));

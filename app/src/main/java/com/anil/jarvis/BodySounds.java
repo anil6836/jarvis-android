@@ -16,7 +16,7 @@ import java.util.Map;
  * - sniffing again and again -> "జలుబు మొదలవుతోందా?" before the sneezes start; throat clearing again and again -> "గొంతు ఇబ్బందిగా ఉందా?";
  * - wheezing / panting again and again (not while exercising or riding) -> "ఊపిరి ఇబ్బందిగా ఉందా?" (danger signs -> 108);
  * - hiccups that keep coming -> a simple tip; many burps after a meal -> asks about gas / acidity;
- * - two claps, or a short whistle, call Jarvis like "Jarvis" does;
+ * - two claps, or a short whistle, call Jarvis like "Jarvis" does (each with its own switch);
  * - at night (mic on while charging): snoring, counted in minutes for the morning report;
  * - S17: groans / big sighs again and again -> once a day, gently "అలసిపోయారా?"; a laugh right after Jarvis said something
  *   keeps what made him laugh ({@link Laughs}), so his brain brings more of that kind.
@@ -41,7 +41,23 @@ final class BodySounds {
 
     static void setAsks(Context c, boolean on) { sp(c).edit().putBoolean("asks", on).apply(); }
 
-    static boolean callOn(Context c) { return sp(c).getBoolean("clap_call", true); }
+    /** Claps or a whistle may call Jarvis (either switch on). */
+    static boolean callOn(Context c) { return clapOn(c) || whistleOn(c); }
+
+    /** 👏 Two claps call Jarvis (its own switch: a clatter in the house can sound like two claps). */
+    static boolean clapOn(Context c) { return sp(c).getBoolean("clap_call", true); }
+
+    /** 😗 A short whistle calls Jarvis; until he sets it, as the one old switch for both was. */
+    static boolean whistleOn(Context c) { SharedPreferences s = sp(c); return s.getBoolean("whistle_call", s.getBoolean("clap_call", true)); }
+
+    static void setClap(Context c, boolean on) {
+        SharedPreferences s = sp(c);
+        SharedPreferences.Editor e = s.edit();
+        if (!s.contains("whistle_call")) e.putBoolean("whistle_call", s.getBoolean("clap_call", true)); // (the whistle keeps what it had)
+        e.putBoolean("clap_call", on).apply();
+    }
+
+    static void setWhistle(Context c, boolean on) { sp(c).edit().putBoolean("whistle_call", on).apply(); }
 
     /** S17: groans / big sighs again and again -> once a day "అలసిపోయారా?"; his laughs teach which jokes / stories he likes. */
     static boolean tiredOn(Context c) { return sp(c).getBoolean("tired", true); }
@@ -55,8 +71,6 @@ final class BodySounds {
 
     /** A groan / moan, or a big sigh. */
     static boolean isTired(float[] s) { return Math.max(s[GROAN], 0.8f * s[WAIL]) >= 0.4f || s[SIGH] >= 0.5f; }
-
-    static void setCall(Context c, boolean on) { sp(c).edit().putBoolean("clap_call", on).apply(); }
 
     /** How many of this kind in the last `within` ms (after adding one now). */
     private static synchronized int mark(String kind, long within) {
@@ -82,11 +96,11 @@ final class BodySounds {
         if (callOn(c) && callAllowed(c, test)) {
             boolean clapLike = s[CLAPPING] + s[HANDS] + s[SNAP] + s[SLAP] >= 0.2f;
             boolean busyScene = s[APPLAUSE] >= 0.4f || s[SPEECH] >= 0.4f || s[MUSIC] >= 0.4f;
-            if (clapLike && !busyScene && doubleClap(rms, noise)) {
+            if (clapLike && !busyScene && clapOn(c) && doubleClap(rms, noise)) {
                 if (!test) WakeService.soundWake();
                 return "రెండు చప్పట్లు → Jarvis పిలుపు";
             }
-            if (s[WHISTLING] >= 0.45f && loudN >= 3 && loudN <= 8 && s[STEAM_WHISTLE] < s[WHISTLING] && !busyScene && !Sounds.counting(c)) {
+            if (whistleOn(c) && s[WHISTLING] >= 0.45f && loudN >= 3 && loudN <= 8 && s[STEAM_WHISTLE] < s[WHISTLING] && !busyScene && !Sounds.counting(c)) {
                 if (!test) WakeService.soundWake();
                 return "ఈల → Jarvis పిలుపు";
             }
