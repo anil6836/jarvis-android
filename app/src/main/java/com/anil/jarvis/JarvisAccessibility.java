@@ -194,12 +194,47 @@ public class JarvisAccessibility extends AccessibilityService {
                     // already on: the label's node or its button says so (checked / selected / "speaker on"): never pressed off again
                     if (b.isCheckable() && b.isChecked() || b.isSelected() || c != null && (c.isCheckable() && c.isChecked() || c.isSelected())
                             || l.matches(".*speaker[ ,]+on\\b.*") && !l.contains("turn") || l.contains("స్పీకర్ ఆన్")) return "already";
-                    if (c != null && c.isEnabled() && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "on";
+                    // pressed: the button itself if it takes a click (WhatsApp's is a toggle, not "clickable"), else its button, else a tap on it
+                    if (b.isEnabled() && takesClick(b) && b.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "on";
+                    if (c != null && c != b && c.isClickable() && c.isEnabled() && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "on";
+                    if (tapOn(root, c != null && c.isClickable() ? c : b)) return "on";
+                    seen = " '" + label(b) + "' దొరికింది, నొక్కడం కుదరలేదు";
                 }
             } catch (Exception ignored) {}
         }
         // (no call screen at all: which screens were up, so the note shows it)
         return "no_button" + (seen.isEmpty() ? (windows.isEmpty() ? "" : "కనిపించిన స్క్రీన్లు: " + android.text.TextUtils.join(", ", windows)) : "చూసిన బటన్లు: " + seen);
+    }
+
+    private static boolean takesClick(AccessibilityNodeInfo n) {
+        if (n.isClickable()) return true;
+        try { return n.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK); } catch (Exception e) { return false; }
+    }
+
+    /**
+     * A tap on the Speaker button's place on the screen (its place read again just before), never when that place touches
+     * the End-call button (a screen still moving must not cut his call).
+     */
+    private static boolean tapOn(AccessibilityNodeInfo root, AccessibilityNodeInfo n) {
+        try {
+            n.refresh();
+            if (!n.isVisibleToUser()) return false;
+            android.graphics.Rect r = new android.graphics.Rect();
+            n.getBoundsInScreen(r);
+            if (r.width() < 8 || r.height() < 8) return false;
+            for (String w : new String[]{"end call", "hang up", "end", "కాల్ ముగించు", "ముగించు", "కట్"}) {
+                List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(w);
+                if (hits == null) continue;
+                for (AccessibilityNodeInfo h : hits) {
+                    android.graphics.Rect e = new android.graphics.Rect();
+                    h.getBoundsInScreen(e);
+                    String hl = label(h).toLowerCase(Locale.ROOT);
+                    if (hl.contains("speaker") || hl.contains("స్పీకర్")) continue;
+                    if (android.graphics.Rect.intersects(r, e)) return false;
+                }
+            }
+            return gesture(r.centerX(), r.centerY(), r.centerX(), r.centerY(), 60);
+        } catch (Exception e) { return false; }
     }
 
     /** The short names of a call screen's buttons (never long text such as the caller's name), for the note. */

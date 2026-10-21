@@ -522,13 +522,14 @@ final class CallCare {
         String ear = earDevice(am);
         if (ear != null) { log(app, "🎧 " + ear + " లో (స్పీకర్ కాదు)"); return; }
         final boolean appCall = !phone;
+        final long ring = ringAt; // (the result goes on this call's own line)
         new Thread(() -> {
-            String r;
+            String r = "";
             if (appCall) {
-                try { Thread.sleep(1200); } catch (InterruptedException ignored) {} // (its call notification turns "ongoing" a moment after the answer)
-                if (CallControl.pressSpeakerButton(app)) r = "on"; // its notification's own Speaker button
+                if (CallControl.pressSpeakerButton(app)) r = "on"; // its call notification's own Speaker button, if it has one
                 else {
-                    r = JarvisAccessibility.pressSpeaker(2500);
+                    r = JarvisAccessibility.pressSpeaker(1500); // (its call screen, if it is up)
+                    if (r.startsWith("no_button") && CallControl.pressSpeakerButton(app)) r = "on"; // (its notification turned "ongoing" meanwhile)
                     // answered from its notification, its call screen may not be up: brought up, then its Speaker pressed
                     if (r.startsWith("no_button")) {
                         String how = CallControl.openCallScreen(app);
@@ -538,9 +539,9 @@ final class CallCare {
                 }
             } else r = JarvisAccessibility.pressSpeaker(7000);
             final String res = r;
-            main.post(() -> log(app, "on".equals(res) ? "🔊 స్పీకర్ ఆన్ చేశాను" : "already".equals(res) ? "🔊 స్పీకర్ అప్పటికే ఆన్‌లో ఉంది"
+            main.post(() -> log(app, ("on".equals(res) ? "🔊 స్పీకర్ ఆన్ చేశాను" : "already".equals(res) ? "🔊 స్పీకర్ అప్పటికే ఆన్‌లో ఉంది"
                     : "no_accessibility".equals(res) ? "⚠️ స్పీకర్ ఆన్ చేయలేదు: Jarvis యాక్సెసిబిలిటీ ఆఫ్ (⚙️ → 📞 లో ♿)"
-                    : "⚠️ కాల్ స్క్రీన్‌లో స్పీకర్ బటన్ దొరకలేదు: మీరే నొక్కండి" + (res.startsWith("no_button") && res.length() > 9 ? " (" + res.substring(9).trim() + ")" : "")));
+                    : "⚠️ కాల్ స్క్రీన్‌లో స్పీకర్ బటన్ దొరకలేదు: మీరే నొక్కండి" + (res.startsWith("no_button") && res.length() > 9 ? " (" + res.substring(9).trim() + ")" : "")), ring));
         }, "jarvis-call-speaker").start();
     }
 
