@@ -140,6 +140,15 @@ final class WatchAlerts {
         } catch (Exception ignored) {}
     }
 
+    /** A card straight to the watch that never buzzes (the trip card, updated every few minutes); gone with {@link #directGone}. */
+    static void directQuiet(Context c, int id, String title, String text) {
+        try {
+            JSONObject o = new JSONObject().put("id", id).put("key", "jarvis-direct-" + id).put("kind", "info").put("title", title).put("text", text)
+                    .put("acts", new JSONArray()).put("quiet", true).put("silent", true);
+            WatchHub.send(c.getApplicationContext(), P_ALERT, o, null, true);
+        } catch (Exception ignored) {}
+    }
+
     static void directGone(Context c, int id) {
         actions.remove(id);
         try { WatchHub.send(c.getApplicationContext(), P_ALERT_GONE, new JSONObject().put("id", id)); } catch (Exception ignored) {}

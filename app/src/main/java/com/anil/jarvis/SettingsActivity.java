@@ -2389,6 +2389,18 @@ public class SettingsActivity extends Activity {
         box.addView(use);
         Switch notes = toggle("🛣️ 'ఈ రోడ్డు ఎటు?' లో Gemini + Google Maps వివరాలు (మీ Gemini key; Google ధరల పేజీ ప్రకారం billing తో కొత్త మోడల్స్‌కి నెలకి 5,000 ఉచితం)", prefs.sp.getBoolean("maps_notes", true));
         notes.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("maps_notes", v).apply());
+        // build 2: while driving to a place Jarvis knows (each its own switch)
+        String[][] sw = {
+                {"maps_traffic_watch", "1", "🚦 ప్రయాణంలో ట్రాఫిక్ ఆలస్యం / తక్కువ టైమ్ దారి తెలుగులో చెప్పు (20 నిమిషాలకి ఒకసారి చూస్తాను, ప్రయాణానికి 8 సార్ల వరకు)"},
+                {"maps_parking", "1", "🅿️ గమ్యానికి 2 కి.మీ ముందు దగ్గర్లో పార్కింగ్ చెప్పు"},
+                {"maps_drive_screen", "1", "🚗 కారు / బైక్ కదలగానే Jarvis Maps లో పెద్ద అక్షరాల డ్రైవ్ స్క్రీన్"},
+                {"maps_watch_trip", "1", "⌚ ప్రయాణంలో వాచ్‌లో చిన్న కార్డ్ (ఎంత టైమ్, ఎప్పుడు చేరతారు; బజ్ ఉండదు)"},
+                {"maps_trip_log", "1", "🧾 ప్రయాణాల డైరీ (ఫోన్‌లోనే; బ్యాకప్‌లో కూడా వెళ్ళదు)"},
+                {"maps_home_eta", "0", "👵 ఇంటికి వస్తున్నప్పుడు అమ్మగారి టాబ్లెట్‌కి 'ఎప్పుడు వస్తాడు' చెప్పు (టైమ్ మాత్రమే, మీరు ఎక్కడ ఉన్నారో కాదు)"}};
+        for (String[] t : sw) {
+            Switch x = toggle(t[2], prefs.sp.getBoolean(t[0], "1".equals(t[1])));
+            x.setOnCheckedChangeListener((b, v) -> prefs.sp.edit().putBoolean(t[0], v).apply());
+        }
         note("Google Cloud లో key ని 'Android apps' కి లాక్ చేయడానికి Jarvis గుర్తు: package com.anil.jarvis · SHA-1 " + GMaps.certShown(this));
         button("🗺️ Jarvis Maps తెరువు", v -> JarvisMaps.open(this, ""));
     }

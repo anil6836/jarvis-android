@@ -478,6 +478,19 @@ final class Tools {
                 + "mechanic, temple/church, or a name like KFC), nearest first with km ahead and left/right (Google Maps when his Maps key is set, else the free map); "
                 + "rest_stop = he is sleepy / tired at the wheel ('నిద్ర వస్తోంది, దగ్గర్లో టీ ఎక్కడ?'): the nearest OPEN tea / coffee / dhaba stop ahead; offer it, set the way only on his yes; "
                 + "map = open the Jarvis Maps screen (what = a place or kind to search there, may be empty); "
+                + "places = any kind of place (what: mall, movie theatre, beach, waterfall, hotel rooms / lodge, resort, hospital, 24-hour emergency, clinic, bus stand, "
+                + "railway station, airport, supermarket, clothes, park, game zone, museum / fort, viewpoint, dam, bakery, biryani, tiffin, veg hotel, service center, car wash, "
+                + "post office, police…) with where = near (around him), along (on his way), dest (near his destination) or a town name ('విశాఖలో బీచ్‌లు' -> where = Visakhapatnam); "
+                + "good = only 4★+; rating, open now / when he gets there, phone, website (Google gives no room prices: say so); "
+                + "movie = which theatres show a movie (what = the movie's name) today / tomorrow near him (along = his way first): his own AI searches the web for the times "
+                + "(can be out of date: say so), the map gives the theatres' km; "
+                + "plan = a trip for later (place; when = leaving time or arrive_by = must be there by, both 'yyyy-MM-dd HH:mm'; two_wheeler on the bike): time with the traffic "
+                + "expected then, km, toll, when to leave, a meal stop open when he gets there, rain on the way, the bike battery; then offer a reminder (set_reminder) only on his yes; "
+                + "best_time = leaving now / +30 / +60 / +120 minutes compared (place; Google traffic); rain = rain on the way (to place or his destination; free weather); "
+                + "bike_range = does the bike's battery reach (place, battery_pct if he says it) and chargers before it runs low; sights = worth seeing on the way / around; "
+                + "help = breakdown / puncture / accident: where he is in words, nearest open mechanic / towing and 24-hour hospital (108 = dialer only; calls / messages only on his yes); "
+                + "home_eta = only when he asks to tell amma: her tablet says when he reaches home (minutes; nothing about where he is); "
+                + "trips = his trip diary: this month's trips, km, hours, tolls, the last trips; "
                 + "cameras = speed cameras ahead; navigate = start Google Maps turn-by-turn to place (avoid tolls/highways, two-wheeler); "
                 + "add_stop = add a stop on the way to the current destination (place name or 'lat,lon' from along); "
                 + "share_eta = a message with his arrival time and live location (send only after he says); "
@@ -490,7 +503,10 @@ final class Tools {
                 + "Rides also get: rain / heat ahead at the start (settings ride_weather), in the CAR only the sleep alert (car_care tool; settings fatigue = its on/off), "
                 + "and at home / duty an offer to SMS 'క్షేమంగా చేరుకున్నాను' to the people in settings reached_to (names; 'off'); reached_send = send that offered message (only when he says send); reached_cancel = he said no. "
                 + "For taps inside the maps app (exit navigation, mute voice, show alternatives) use phone_task.",
-                schema(new String[][]{{"action", "string", "where, route, along, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera, my_cameras, im_ok, reached_send or reached_cancel"},
+                schema(new String[][]{{"action", "string", "where, route, along, rest_stop, map, places, movie, plan, best_time, rain, bike_range, sights, help, home_eta, trips, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera, my_cameras, im_ok, reached_send or reached_cancel"},
+                        {"where", "string", "For places: near, along, dest, or a town / city name"}, {"good", "boolean", "For places: only well-rated (4★+)"},
+                        {"when", "string", "For plan / best_time: leaving time 'yyyy-MM-dd HH:mm'"}, {"arrive_by", "string", "For plan: must reach by 'yyyy-MM-dd HH:mm'"},
+                        {"battery_pct", "integer", "For bike_range: the battery % he says"}, {"along", "boolean", "For movie: theatres on his way first"},
                         {"fatigue", "boolean", "For settings: the car sleep alert on / off"}, {"ride_weather", "boolean", "For settings: rain / heat word at the ride start"},
                         {"reached_to", "string", "For settings: who gets 'reached safely' (contact names, comma separated; 'off')"},
                         {"limit_kmh", "integer", "For add_camera: the camera's speed limit if he says it"},
@@ -6923,7 +6939,7 @@ final class Tools {
 
     private String drive(JSONObject a) throws Exception {
         String action = a.optString("action", "where").toLowerCase(Locale.ROOT).trim();
-        boolean locNeeded = !action.equals("settings") && !action.equals("stop") && !action.startsWith("nav") && !action.equals("im_ok") && !action.startsWith("reached_")
+        boolean locNeeded = !action.equals("settings") && !action.equals("stop") && !action.startsWith("nav") && !action.equals("im_ok") && !action.startsWith("reached_") && !action.equals("trips")
                 && !(action.equals("remove_camera") && "all".equalsIgnoreCase(a.optString("what").trim()));
         if (locNeeded && !has(Manifest.permission.ACCESS_FINE_LOCATION)) return needPermission(Manifest.permission.ACCESS_FINE_LOCATION, "precise location");
         switch (action) {
@@ -6940,6 +6956,25 @@ final class Tools {
                 Drive.told(r); // (the one he hears now is the one his "yes" sets; the alarm's spoken offer then stays a notification)
                 return r.toString();
             }
+            // 🗺️ Jarvis Maps build 2
+            case "places": return MapsPlus.places(act(), a.optString("what"), a.optString("where", ""), a.optBoolean("good", false), a.optInt("km", 0), false).toString();
+            case "movie": return MapsPlus.movie(act(), a.optString("what"), a.has("along") ? a.optBoolean("along") : Drive.settings(act()).getString("dest", "").length() > 0, false).toString();
+            case "plan": {
+                long when = a.optString("when").trim().isEmpty() ? 0 : parseLocal(a.optString("when")), by = a.optString("arrive_by").trim().isEmpty() ? 0 : parseLocal(a.optString("arrive_by"));
+                if (when < 0 || by < 0) return err("bad_time", "Give the time as 'yyyy-MM-dd HH:mm' (local).");
+                return MapsPlus.plan(act(), a.optString("place"), when, by, a.optBoolean("two_wheeler", Bike.riding(act())), false).toString();
+            }
+            case "best_time": {
+                long from = a.optString("when").trim().isEmpty() ? System.currentTimeMillis() : parseLocal(a.optString("when"));
+                if (from < 0) return err("bad_time", "Give the time as 'yyyy-MM-dd HH:mm' (local).");
+                return MapsPlus.bestTime(act(), a.optString("place"), from, a.optBoolean("two_wheeler", Bike.riding(act())), false).toString();
+            }
+            case "rain": return MapsPlus.rain(act(), a.optString("place", "")).toString();
+            case "bike_range": return MapsPlus.bikeRange(act(), a.optString("place", ""), a.optInt("battery_pct", 0), false).toString();
+            case "sights": return MapsPlus.sights(act(), a.optInt("km", 0), false).toString();
+            case "help": return MapsPlus.help(act(), false).toString();
+            case "home_eta": return MapsPlus.homeEta(act(), false).toString(); // (only because he asked: the tablet is told his arrival time, never where he is)
+            case "trips": return TripLog.summary(act()).toString();
             case "map": {
                 if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
                 start(JarvisMaps.intent(act(), a.optString("what", "")));
@@ -7010,7 +7045,7 @@ final class Tools {
                         .put("reached_message_to", st.getString("reached_to", "").isEmpty() ? "off" : st.getString("reached_to", "")).toString();
             }
             default:
-                return err("bad_action", "Use where, route, along, rest_stop, map, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras.");
+                return err("bad_action", "Use where, route, along, rest_stop, map, places, movie, plan, best_time, rain, bike_range, sights, help, home_eta, trips, cameras, navigate, add_stop, share_eta, start, stop, settings, add_camera, remove_camera or my_cameras.");
         }
     }
 

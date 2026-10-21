@@ -241,7 +241,7 @@ final class Backup {
     private static boolean skipFile(String name, boolean top) {
         if (name.endsWith(".tmp") || name.endsWith(".part")) return true;
         if (!top) return false;
-        return name.equals("vosk-en") || name.equals("vosk-spk") || name.equals("facenet.tflite") || name.equals("midas.tflite") || name.equals(STAGE) || name.equals(OLD)
+        return name.equals("vosk-en") || name.equals("vosk-spk") || name.equals("facenet.tflite") || name.equals("midas.tflite") || name.equals(TripLog.FILE) /* (where he has been: his alone, never in a backup) */ || name.equals(STAGE) || name.equals(OLD)
                 || name.equals("bible") // (the home tablet's copy of the Bible, fetched again by itself)
                 || (name.startsWith("greet_") && name.endsWith(".pcm"));
     }

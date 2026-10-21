@@ -837,6 +837,34 @@ final class HomeCare {
         if (coming && !night()) say(c, who(c) + ", అబ్బాయి ఇంటికి వచ్చేస్తున్నాడు!", "excited");
     }
 
+    /**
+     * His phone said when he reaches home (minutes, "5:30 PM"): said once aloud (not at night); a change of 15 minutes
+     * or more is said again ("కొంచెం ఆలస్యం"). Never anything about where he is.
+     */
+    static void sonEta(Context c, int minutes, String clock) {
+        if (!on(c)) return;
+        SharedPreferences p = sp(c);
+        long now = System.currentTimeMillis(), arrive = now + minutes * 60_000L, before = p.getLong("son_eta_at", 0);
+        boolean fresh = now - p.getLong("son_eta_said", 0) > 6 * 3600_000L; // (a new trip)
+        p.edit().putLong("son_eta_at", arrive).putLong("son_eta_said", now).apply();
+        if (night()) return;
+        String tc = teClock(clock);
+        String when = tc.isEmpty() ? "" : " (" + tc + " కి)";
+        if (fresh || before == 0) say(c, who(c) + ", అబ్బాయి సుమారు " + minutes + " నిమిషాల్లో" + when + " ఇంటికి వస్తాడు.", "happy");
+        else if (arrive - before >= 15 * 60_000L) say(c, who(c) + ", అబ్బాయి రావడం కొంచెం ఆలస్యం: ఇంకా సుమారు " + minutes + " నిమిషాలు" + when + ".", "calm");
+        else if (before - arrive >= 15 * 60_000L) say(c, who(c) + ", అబ్బాయి కొంచెం ముందే వస్తాడు: సుమారు " + minutes + " నిమిషాల్లో" + when + ".", "happy");
+    }
+
+    /** "5:30 PM" → "సాయంత్రం 5:30" (ఉదయం / మధ్యాహ్నం / సాయంత్రం / రాత్రి); "" when it can't be read. */
+    static String teClock(String clock) {
+        if (clock == null) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,2}):(\\d{2})\\s*([AaPp][Mm])").matcher(clock);
+        if (!m.find()) return "";
+        int h = Integer.parseInt(m.group(1)) % 12 + (m.group(3).equalsIgnoreCase("pm") ? 12 : 0);
+        String part = h >= 5 && h < 12 ? "ఉదయం" : h >= 12 && h < 16 ? "మధ్యాహ్నం" : h >= 16 && h < 19 ? "సాయంత్రం" : "రాత్రి";
+        return part + " " + m.group(1) + ":" + m.group(2);
+    }
+
     /** Settings from his phone's tablet cards in Settings (JSON); returns the line sent back to him. */
     static String apply(Context c, String json) {
         try {

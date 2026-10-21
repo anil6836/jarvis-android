@@ -96,10 +96,10 @@ final class GMaps {
     /** The kinds of calls and Google's free amount a month for each (the price list of 2026). */
     static final String[][] KINDS = {
             {"tiles", "మ్యాప్ ముక్కలు", "100000"},
-            {"routes", "దారి గీత (వెతకడానికి)", "5000"},
-            {"routes_pro", "దారులు (ట్రాఫిక్, టోల్)", "1000"},
+            {"routes", "దారులు", "5000"},
+            {"routes_pro", "దారులు + టోల్ / బైక్", "1000"},
             {"places", "ప్లేస్ వెతకడం", "5000"},
-            {"places_open", "ప్లేస్ + తెరిచి ఉందా", "1000"},
+            {"places_open", "ప్లేస్ + టైమింగ్ / ఫోన్", "1000"},
             {"gemini_maps", "Gemini + Google Maps", "5000"}};
 
     private static String month() { return new java.text.SimpleDateFormat("yyyyMM", Locale.US).format(new java.util.Date()); }
@@ -306,6 +306,31 @@ final class GMaps {
     }
 
     /**
+     * The way leaving at departAt (ms; 0 = now) with the traffic Google expects then: for a trip plan and "when is it
+     * best to leave". tolls: the toll too (Google's dearest kind, 1,000 free); without: the "Pro" kind (5,000 free).
+     */
+    static List<Route> routesAt(Context c, double lat, double lon, double toLat, double toLon, boolean bike, long departAt, boolean tolls, boolean alternatives) throws Exception {
+        JSONObject body = new JSONObject().put("origin", new JSONObject().put("location", latLng(lat, lon, -1)))
+                .put("destination", new JSONObject().put("location", latLng(toLat, toLon, -1)))
+                .put("travelMode", bike ? "TWO_WHEELER" : "DRIVE").put("routingPreference", "TRAFFIC_AWARE")
+                .put("computeAlternativeRoutes", alternatives).put("languageCode", "en").put("units", "METRIC");
+        if (departAt > System.currentTimeMillis() + 60_000) body.put("departureTime", rfc3339(departAt)); // (Google wants a time not in the past)
+        if (tolls) body.put("extraComputations", new JSONArray().put("TOLLS"));
+        String mask = "routes.duration,routes.staticDuration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.description"
+                + (tolls ? ",routes.travelAdvisory.tollInfo" : "");
+        JSONObject r = send(c, "POST", "https://routes.googleapis.com/directions/v2:computeRoutes", body, mask);
+        count(c, tolls || bike ? "routes_pro" : "routes"); // (two-wheeler and toll: the dearer kind)
+        return parseRoutes(r);
+    }
+
+    /** "2026-10-21T05:30:00Z" for ms. */
+    static String rfc3339(long ms) {
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
+        f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        return f.format(new java.util.Date(ms));
+    }
+
+    /**
      * Just the line of the way (no traffic, no toll: the cheaper kind; with the way he faces it is Google's "Pro" kind,
      * 5,000 free a month), for searching places along it; the way he faces when known, so it never starts with a U-turn
      * on a divided highway. Its km and time are without traffic.
@@ -367,12 +392,17 @@ final class GMaps {
 
     /** A place found. aheadM / aheadS: how far (m) and how long (s) from him by road (-1 not known). */
     static final class Place {
-        String id = "", name = "", address = "", mapsUri = "";
+        String id = "", name = "", address = "", mapsUri = "", phone = "", website = "", type = "";
         double lat, lon, rating;
         int ratings;
         Boolean open; // null = not known
         double aheadM = -1;
         long aheadS = -1;
+        /** Google's weekly opening hours ({open:{day,hour,minute}, close:{…}}; day 0 = Sunday), null = not known. */
+        JSONArray periods;
+        /** Open when he gets there (null = not known); "" / extra words for the list. */
+        Boolean openThen;
+        String note = "";
     }
 
     /**
@@ -386,22 +416,34 @@ final class GMaps {
 
     /** dropFar: only the ones really near (a "near me" kind search); a place he names ("Tirupati") is kept however far. */
     static List<Place> search(Context c, String words, double lat, double lon, double radiusM, String along, boolean wantOpen, int max, boolean dropFar) throws Exception {
+        return search(c, words, lat, lon, radiusM, along, wantOpen, max, dropFar, false);
+    }
+
+    /**
+     * rich: also the rating, the weekly hours (open when he gets there), the phone and the website — Google's dearest
+     * kind of search (1,000 free a month; his daily limit of 30 searches keeps every month inside it).
+     * Without lat / lon (NaN) the words alone say where ("beach in Visakhapatnam").
+     */
+    static List<Place> search(Context c, String words, double lat, double lon, double radiusM, String along, boolean wantOpen, int max, boolean dropFar, boolean rich) throws Exception {
         JSONObject body = new JSONObject().put("textQuery", words).put("languageCode", "en").put("regionCode", "IN")
                 .put("pageSize", Math.max(1, Math.min(20, max)));
+        boolean somewhere = !Double.isNaN(lat) && !Double.isNaN(lon);
         if (along != null && !along.isEmpty()) {
             body.put("searchAlongRouteParameters", new JSONObject().put("polyline", new JSONObject().put("encodedPolyline", along)));
             body.put("routingParameters", new JSONObject().put("origin", new JSONObject().put("latitude", lat).put("longitude", lon)).put("travelMode", "DRIVE"));
-        } else {
+        } else if (somewhere) {
             body.put("locationBias", new JSONObject().put("circle", new JSONObject()
                     .put("center", new JSONObject().put("latitude", lat).put("longitude", lon)).put("radius", Math.max(500, Math.min(50000, radiusM)))));
         }
         if (wantOpen) body.put("openNow", true);
         String mask = "places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri"
-                + (wantOpen ? ",places.currentOpeningHours.openNow,places.rating,places.userRatingCount" : "")
+                + (wantOpen || rich ? ",places.currentOpeningHours.openNow,places.rating,places.userRatingCount" : "")
+                + (rich ? ",places.regularOpeningHours.periods,places.nationalPhoneNumber,places.websiteUri,places.primaryTypeDisplayName" : "")
                 + (along != null && !along.isEmpty() ? ",routingSummaries" : "");
         JSONObject r = send(c, "POST", "https://places.googleapis.com/v1/places:searchText", body, mask);
-        count(c, wantOpen ? "places_open" : "places");
+        count(c, wantOpen || rich ? "places_open" : "places");
         List<Place> out = parsePlaces(r);
+        if (!somewhere) return out;
         if (along == null || along.isEmpty()) { // (straight-line km when not along a way; for a "near me" search Google's hint isn't a fence: far ones dropped)
             List<Place> near = new ArrayList<>();
             for (Place p : out) {
@@ -435,6 +477,12 @@ final class GMaps {
             p.ratings = o.optInt("userRatingCount", 0);
             JSONObject oh = o.optJSONObject("currentOpeningHours");
             if (oh != null && oh.has("openNow")) p.open = oh.optBoolean("openNow");
+            JSONObject rh = o.optJSONObject("regularOpeningHours");
+            if (rh != null && rh.optJSONArray("periods") != null) p.periods = rh.optJSONArray("periods");
+            p.phone = o.optString("nationalPhoneNumber", "");
+            p.website = o.optString("websiteUri", "");
+            JSONObject ty = o.optJSONObject("primaryTypeDisplayName");
+            p.type = ty == null ? "" : ty.optString("text", "");
             JSONObject s = sums == null ? null : sums.optJSONObject(i);
             JSONArray legs = s == null ? null : s.optJSONArray("legs");
             if (legs != null && legs.length() > 0) {
@@ -445,6 +493,35 @@ final class GMaps {
             out.add(p);
         }
         return out;
+    }
+
+    /**
+     * Open at this time? From Google's weekly hours: dow 0 = Sunday … 6, minute of the day. null = not known (no hours).
+     * A period without a close is open all the time; one ending the next day (or over the week's end) wraps.
+     */
+    static Boolean openAt(JSONArray periods, int dow, int minute) {
+        if (periods == null || periods.length() == 0) return null;
+        int week = 7 * 1440, t = ((dow % 7 + 7) % 7) * 1440 + Math.max(0, Math.min(1439, minute));
+        for (int i = 0; i < periods.length(); i++) {
+            JSONObject pr = periods.optJSONObject(i);
+            JSONObject o = pr == null ? null : pr.optJSONObject("open");
+            if (o == null) continue;
+            JSONObject cl = pr.optJSONObject("close");
+            if (cl == null) return true; // (open all the time)
+            int a = o.optInt("day") * 1440 + o.optInt("hour") * 60 + o.optInt("minute");
+            int b = cl.optInt("day") * 1440 + cl.optInt("hour") * 60 + cl.optInt("minute");
+            if (b <= a) b += week;
+            if (t >= a && t < b || t + week >= a && t + week < b) return true;
+        }
+        return false;
+    }
+
+    /** openAt for a wall-clock time (the phone's own time zone). */
+    static Boolean openAt(JSONArray periods, long when) {
+        if (periods == null) return null;
+        java.util.Calendar k = java.util.Calendar.getInstance();
+        k.setTimeInMillis(when);
+        return openAt(periods, k.get(java.util.Calendar.DAY_OF_WEEK) - 1, k.get(java.util.Calendar.HOUR_OF_DAY) * 60 + k.get(java.util.Calendar.MINUTE));
     }
 
     // ---------------------------------------------------------------- the road's details (Gemini + Grounding with Google Maps)
@@ -475,6 +552,25 @@ final class GMaps {
                 .put("tools", new JSONArray().put(new JSONObject().put("googleMaps", new JSONObject())))
                 .put("toolConfig", new JSONObject().put("retrievalConfig", new JSONObject().put("latLng", new JSONObject().put("latitude", lat).put("longitude", lon))));
         JSONObject r = gemini(model, body, gk); // (his own model; one without Google Maps grounding says so: see telugu())
+        count(c, "gemini_maps");
+        return parseNotes(r);
+    }
+
+    /** 📌 "ఇక్కడ ఏముంది?": what Google Maps knows at / around a point (Gemini grounded on Google Maps; his own Gemini model). */
+    static Notes whatHere(Context c, double lat, double lon) throws Exception {
+        Prefs p = new Prefs(c);
+        String gk = p.geminiKey().trim();
+        if (gk.isEmpty()) throw new Error(0, "NO_GEMINI_KEY", "No Gemini key");
+        String model = p.geminiModel().trim();
+        if (model.isEmpty()) throw new Error(0, "NO_GEMINI_MODEL", "No Gemini model chosen");
+        String q = String.format(Locale.US, "Using Google Maps: what is at latitude %.5f, longitude %.5f in India? Say the village / town / area and district, "
+                + "what this exact spot is if it is a known place, and the 3 most useful or well-known places within 2 km (name and what it is). "
+                + "Short plain facts, at most 6 lines, no greetings.", lat, lon);
+        JSONObject body = new JSONObject()
+                .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", new JSONArray().put(new JSONObject().put("text", q)))))
+                .put("tools", new JSONArray().put(new JSONObject().put("googleMaps", new JSONObject())))
+                .put("toolConfig", new JSONObject().put("retrievalConfig", new JSONObject().put("latLng", new JSONObject().put("latitude", lat).put("longitude", lon))));
+        JSONObject r = gemini(model, body, gk);
         count(c, "gemini_maps");
         return parseNotes(r);
     }

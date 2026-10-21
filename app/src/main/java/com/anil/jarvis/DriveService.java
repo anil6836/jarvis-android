@@ -176,6 +176,7 @@ public class DriveService extends Service implements LocationListener, android.h
         afterKnock(kmh, now);
         if (prev == null || l.getAccuracy() < 50) prev = l;
         last = l;
+        try { TripWatch.fix(this, l, kmh); } catch (Exception ignored) {} // 🧾 the diary; 🚦 traffic, 🅿️ parking, 👵 tablet, ⌚ card (once a minute, off this thread)
 
         Prefs p = new Prefs(this);
         android.content.SharedPreferences s = Drive.settings(this);
@@ -394,6 +395,7 @@ public class DriveService extends Service implements LocationListener, android.h
         net.shutdownNow();
         main.removeCallbacksAndMessages(null);
         if (was) { try { RideCare.ended(this); } catch (Exception ignored) {} }
+        if (was) { try { TripWatch.end(this, tripMeters); } catch (Exception ignored) {} } // (the trip into the diary; the watch card off)
         movingSinceAt = 0;
         lastMovingAt = 0;
         String why = endWhy;

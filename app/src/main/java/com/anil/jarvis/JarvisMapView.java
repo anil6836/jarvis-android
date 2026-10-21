@@ -42,6 +42,7 @@ final class JarvisMapView extends View {
         void settled(); // (the map stopped moving: time to ask for the credit line)
         void googleFailed(String why); // (Google refused the map's pictures: the screen goes to the free map and says why)
         void sessionExpired(); // (Google's picture session ran out: the screen asks for a new one)
+        void longPressed(double lat, double lon); // (📌 a finger held on a spot: what is here, save it, the way there)
     }
 
     /** A pin of his own (saved place, parking, a danger spot). */
@@ -96,6 +97,10 @@ final class JarvisMapView extends View {
     private int placeSel = -1;
     private final List<Pin> pins = new ArrayList<>();
     boolean showPins = true;
+    /** The closest zoom the free map's pictures are fetched for (15 with no signal: the kept ones are drawn bigger). */
+    int maxFreeZoom = 19;
+    private final java.util.concurrent.atomic.AtomicBoolean keeping = new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile ExecutorService keepPool;
 
     JarvisMapView(Context c) {
         super(c);
@@ -141,6 +146,11 @@ final class JarvisMapView extends View {
                 if (best >= 0 && listener != null) listener.placeTapped(best);
                 return true;
             }
+            @Override public void onLongPress(MotionEvent e) {
+                if (scaler.isInProgress()) return;
+                double[] ll = latLonAt(e.getX(), e.getY());
+                if (listener != null) listener.longPressed(ll[0], ll[1]);
+            }
             @Override public boolean onDoubleTap(MotionEvent e) {
                 double[] under = latLonAt(e.getX(), e.getY());
                 zoom = Math.min(20f, zoom + 1);
@@ -164,7 +174,12 @@ final class JarvisMapView extends View {
 
     private final Runnable settle = () -> { if (listener != null) listener.settled(); };
 
-    void shutdown() { work.shutdownNow(); main.removeCallbacksAndMessages(null); }
+    void shutdown() {
+        work.shutdownNow();
+        ExecutorService k = keepPool;
+        if (k != null) k.shutdownNow(); // (the screen is gone: the keeping stops too)
+        main.removeCallbacksAndMessages(null);
+    }
 
     /** The screen went to the background: the pictures are let go (they come back from the phone's own copies). */
     void trim() { tiles.clear(); loading.clear(); }
@@ -302,7 +317,7 @@ final class JarvisMapView extends View {
     @Override protected void onDraw(Canvas c) {
         int W = getWidth(), H = getHeight();
         c.drawColor(0xFF0B1A26);
-        int z = Math.max(0, Math.min(google ? 22 : 19, Math.round(zoom)));
+        int z = Math.max(0, Math.min(google ? 22 : maxFreeZoom, Math.round(zoom)));
         double scale = Math.pow(2, zoom - z) * unit(); // (between levels the tiles are stretched a little)
         double n = Math.pow(2, z);
         double[] cp = MapMath.pixel(cLat, cLon, z);
@@ -579,6 +594,91 @@ final class JarvisMapView extends View {
         } catch (java.util.concurrent.RejectedExecutionException e) {
             loading.remove(key);
         }
+    }
+
+    // ---------------------------------------------------------------- 📴 the free map's pictures of a way, kept for no signal
+
+    /**
+     * Keeps the free map's (OpenStreetMap) pictures along a way for a month, for roads without signal: zoom 9–14 with a
+     * square each side, 15 on the line itself; at most 1,000 pictures, two at a time (the map's fair-use rules: no
+     * bulk taking, nothing closer than zoom 15). One keeping at a time. progress(kept, total, finished) on the main
+     * thread (kept = saved now or already kept; a picture that failed is not counted); returns the total, or -1 when a
+     * keeping is already running. The closest pictures first (they are what the drive screen shows); a long way drops
+     * the farthest-out zooms, not the road itself. Google's map pictures are never kept like this (Google's rules).
+     */
+    int keepFree(List<double[]> way, KeepProgress progress) {
+        if (!keeping.compareAndSet(false, true)) return -1;
+        java.util.LinkedHashSet<String> want = new java.util.LinkedHashSet<>();
+        for (int z = 15; z >= 9; z--) {
+            double step = Math.max(150, 40075016.0 * Math.cos(Math.toRadians(way.isEmpty() ? 17 : way.get(0)[0])) / Math.pow(2, z) / 3); // (a third of a tile)
+            List<double[]> pts = denser(way, step);
+            int side = z <= 14 ? 1 : 0;
+            for (double[] p : pts) {
+                double[] px = MapMath.pixel(p[0], p[1], z);
+                int tx = (int) Math.floor(px[0] / 256), ty = (int) Math.floor(px[1] / 256);
+                for (int dx = -side; dx <= side; dx++) for (int dy = -side; dy <= side; dy++) want.add(z + "_" + (tx + dx) + "_" + (ty + dy));
+            }
+            if (want.size() > 1000) break; // (a very long way: the closer pictures left out)
+        }
+        final List<String> list = new ArrayList<>(want);
+        if (list.size() > 1000) list.subList(1000, list.size()).clear();
+        final Context app = getContext().getApplicationContext();
+        final int total = list.size();
+        final java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger(), kept = new java.util.concurrent.atomic.AtomicInteger();
+        ExecutorService two = Executors.newFixedThreadPool(2);
+        keepPool = two;
+        for (String k : list) {
+            two.execute(() -> {
+                try {
+                    String[] zxy = k.split("_");
+                    int z = Integer.parseInt(zxy[0]), x = Integer.parseInt(zxy[1]), y = Integer.parseInt(zxy[2]);
+                    long n = 1L << z;
+                    x = (int) (((x % n) + n) % n);
+                    if (y >= 0 && y < n) {
+                        File f = new File(app.getCacheDir(), "jmaps/osm/" + z + "_" + x + "_" + y + ".t");
+                        boolean fresh = false;
+                        if (f.exists()) { try (DataInputStream in = new DataInputStream(new FileInputStream(f))) { fresh = System.currentTimeMillis() < in.readLong(); } catch (Exception ignored) {} }
+                        if (fresh) kept.incrementAndGet();
+                        else if (Net.online(app)) {
+                            byte[] bytes = Coder.download("https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png", "User-Agent", "Jarvis-Android personal assistant (one user)", "Accept", "image/png");
+                            if (bytes != null && BitmapFactory.decodeByteArray(bytes, 0, bytes.length) != null) {
+                                File dir = f.getParentFile();
+                                if (dir != null) dir.mkdirs();
+                                File tmp = new File(f.getPath() + ".part");
+                                try (DataOutputStream o = new DataOutputStream(new FileOutputStream(tmp))) { o.writeLong(System.currentTimeMillis() + 30L * 86_400_000L); o.write(bytes); }
+                                if (tmp.renameTo(f)) kept.incrementAndGet();
+                                else //noinspection ResultOfMethodCallIgnored
+                                    tmp.delete();
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+                int d2 = done.incrementAndGet();
+                if (d2 == total) keeping.set(false);
+                final int kk = kept.get();
+                if (progress != null && (d2 % 50 == 0 || d2 == total)) main.post(() -> progress.on(kk, total, d2 == total));
+            });
+        }
+        two.shutdown();
+        if (total == 0) keeping.set(false);
+        return total;
+    }
+
+    interface KeepProgress { void on(int kept, int total, boolean finished); }
+
+    /** The way with a point at least every `step` metres (so no picture along it is missed). */
+    private static List<double[]> denser(List<double[]> pts, double step) {
+        List<double[]> out = new ArrayList<>();
+        for (int i = 0; i < pts.size(); i++) {
+            double[] b = pts.get(i);
+            if (i > 0) {
+                double[] a = pts.get(i - 1);
+                double m = MapMath.meters(a[0], a[1], b[0], b[1]);
+                for (double t = step; t < m; t += step) out.add(new double[]{a[0] + (b[0] - a[0]) * t / m, a[1] + (b[1] - a[1]) * t / m});
+            }
+            out.add(b);
+        }
+        return out;
     }
 
     /** Old kept pictures (past their time) are cleared now and then, so the folder never grows. Off the main thread. */

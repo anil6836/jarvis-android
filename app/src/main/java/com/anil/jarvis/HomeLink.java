@@ -33,7 +33,7 @@ final class HomeLink {
             VOICE_HOME = "🎤 ఇంటికి", VOICE_FROM = "🎤 ఇంటి నుంచి", SET = "⚙️ టాబ్లెట్ సెట్టింగ్స్: ", ASK = "🏠 టాబ్లెట్ స్థితి?",
             STATUS = "🏠 టాబ్లెట్ స్థితి: ", COMING = "🏍️ అబ్బాయి ఇంటికి వస్తున్నాడు", GONE = "🚪 అబ్బాయి బయటికి వెళ్లాడు",
             FRAME = "🖼️ ఫోటో ఫ్రేమ్‌కి", FRAME_OK = "🖼️ ఫ్రేమ్‌లో పెట్టాను", REMIND = "⏰ ఇంటికి రిమైండర్: ",
-            REPORT = "📊 వారపు రిపోర్ట్ కావాలి";
+            REPORT = "📊 వారపు రిపోర్ట్ కావాలి", ETA = "🕒 అబ్బాయి రాక: ";
     static final String ACTION_PLAY = "com.anil.jarvis.HOME_PLAY";
     private static final int NOTE = 268;
 
@@ -54,7 +54,7 @@ final class HomeLink {
         String text = m.optString("text"), cap = m.optString("caption");
         return text.startsWith(SAY) || text.startsWith(PHOTO) || text.startsWith(PAUSE) || text.startsWith(RESUME) || cap.startsWith(VOICE_HOME)
                 || text.startsWith(SET) || text.startsWith(ASK) || text.startsWith(COMING) || text.startsWith(GONE)
-                || cap.startsWith(FRAME) || text.startsWith(REMIND) || text.startsWith(REPORT) || GameLink.inviteIn(m, false) != null;
+                || cap.startsWith(FRAME) || text.startsWith(REMIND) || text.startsWith(REPORT) || text.startsWith(ETA) || GameLink.inviteIn(m, false) != null;
     }
 
     static void homePoll(Context c) {
@@ -117,6 +117,12 @@ final class HomeLink {
             if (!HomeCare.on(c)) return;
             org.json.JSONObject inv = GameLink.inviteIn(m, false);
             if (inv != null) MainActivity.homeGameInvite(inv);
+        } else if (text.startsWith(ETA)) { // the home tablet: when he will reach home ("40 · 5:30 PM")
+            if (!HomeCare.on(c)) return;
+            String[] v = text.substring(ETA.length()).trim().split("·");
+            int min = 0;
+            try { min = Integer.parseInt(v[0].replaceAll("[^0-9]", "")); } catch (Exception ignored) {}
+            if (min > 0) HomeCare.sonEta(c, min, v.length > 1 ? v[1].trim() : "");
         } else if (text.startsWith(COMING)) {
             HomeCare.son(c, true);
         } else if (text.startsWith(GONE)) {
@@ -179,6 +185,24 @@ final class HomeLink {
                 if (id > 0) Guard.pin(a, id);
             } catch (Exception ignored) {}
         }, "home-son").start();
+    }
+
+    /**
+     * His phone -> the home tablet: when he reaches home (minutes, the clock), said there by its voice. Background
+     * thread. null when sent, else what went wrong (Telugu).
+     */
+    static String eta(Context c, int minutes, String clock) {
+        if (!linked(c)) return notLinked();
+        if (!Net.online(c)) return "ఇంటికి చెప్పడానికి నెట్ కావాలి.";
+        JSONObject pm = Guard.pinned(c); // (one pinned word at a time: never cover his own word to home that is still on its way)
+        if (pm != null && System.currentTimeMillis() / 1000 - pm.optLong("date") < 120) {
+            String t = pm.optString("text"), cp = pm.optString("caption");
+            if (t.startsWith(SAY) || t.startsWith(PHOTO) || t.startsWith(PAUSE) || t.startsWith(RESUME) || t.startsWith(SET) || t.startsWith(ASK) || t.startsWith(REMIND)
+                    || t.startsWith(REPORT) || cp.startsWith(FRAME) || cp.startsWith(VOICE_HOME)) return "ఇంటికి ఇంకో మాట ఇప్పుడే వెళ్తోంది: కాసేపాగి మళ్ళీ.";
+        }
+        long id = Guard.sendQuiet(c, ETA + minutes + " · " + (clock == null ? "" : clock));
+        if (id < 0 || !Guard.pin(c, id)) return "పంపలేకపోయాను (Telegram చేరలేదు).";
+        return null;
     }
 
     /** His phone -> the home tablet: new settings (background thread). */

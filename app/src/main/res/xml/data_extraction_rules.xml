@@ -5,6 +5,8 @@
         <exclude domain="sharedpref" path="jarvis_guard.xml" />
         <exclude domain="sharedpref" path="jarvis_people.xml" />
         <exclude domain="file" path="facenet.tflite" />
+        <exclude domain="file" path="jarvis_trips.json" />
+        <exclude domain="file" path="jarvis_trips.json.part" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
@@ -27,6 +29,8 @@
         <exclude domain="sharedpref" path="jarvis_guard.xml" />
         <exclude domain="sharedpref" path="jarvis_people.xml" />
         <exclude domain="file" path="facenet.tflite" />
+        <exclude domain="file" path="jarvis_trips.json" />
+        <exclude domain="file" path="jarvis_trips.json.part" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />

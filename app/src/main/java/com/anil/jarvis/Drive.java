@@ -159,7 +159,8 @@ final class Drive {
         } catch (Exception e) { return null; }
     }
 
-    private static double[] latLon(Context c, String place) {
+    /** A place's {lat, lon}: "lat,lon" itself, one of his saved places, else the phone's address finder (network). */
+    static double[] latLon(Context c, String place) {
         String p = place.trim();
         if (p.matches("-?\\d+(\\.\\d+)?\\s*,\\s*-?\\d+(\\.\\d+)?")) {
             String[] xy = p.split(",");
@@ -278,8 +279,45 @@ final class Drive {
         return new Path(pts, false, 0, 0, "");
     }
 
+    /** The free router's whole way from A to B (no traffic, no toll), or null. */
+    static Path freeRoute(double la1, double lo1, double la2, double lo2) {
+        try {
+            JSONObject r = osrm(la1, lo1, la2, lo2);
+            if (r == null) return null;
+            JSONArray co = r.optJSONObject("geometry").optJSONArray("coordinates");
+            List<double[]> pts = new ArrayList<>();
+            for (int i = 0; co != null && i < co.length(); i++) { JSONArray p = co.optJSONArray(i); pts.add(new double[]{p.optDouble(1), p.optDouble(0)}); }
+            JSONArray legs = r.optJSONArray("legs");
+            String via = legs != null && legs.length() > 0 ? legs.optJSONObject(0).optString("summary", "") : "";
+            return pts.size() >= 2 ? new Path(pts, true, r.optDouble("distance") / 1000.0, r.optDouble("duration") / 60.0, via) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** The towns and big villages along a way (free map), nearest first: {name, name_en, km, kind}. */
+    static JSONArray townsAlong(Path p, int max) throws Exception {
+        String ln = line(p.pts);
+        JSONArray el = overpass("[out:json][timeout:25];(node(around:4000," + ln + ")[place~\"^(city|town)$\"];node(around:" + (p.route ? 1500 : 3000) + ","
+                + ln + ")[place=village];);out 150;");
+        List<JSONObject> towns = new ArrayList<>();
+        for (int i = 0; el != null && i < el.length(); i++) {
+            JSONObject e = el.getJSONObject(i), t = e.optJSONObject("tags");
+            if (t == null) continue;
+            double[] at = place(p.pts, e.optDouble("lat"), e.optDouble("lon"));
+            boolean big = !"village".equals(t.optString("place"));
+            if (at[0] < 1 || at[1] > (big ? 4000 : 1500)) continue;
+            towns.add(new JSONObject().put("name", t.optString("name:te", t.optString("name"))).put("name_en", t.optString("name:en", t.optString("name")))
+                    .put("km", Math.round(at[0])).put("kind", t.optString("place")));
+        }
+        Collections.sort(towns, (a, b) -> Long.compare(a.optLong("km"), b.optLong("km")));
+        JSONArray next = new JSONArray();
+        for (int i = 0; i < towns.size() && next.length() < max; i++) next.put(towns.get(i));
+        return next;
+    }
+
     /** OSRM route (cached for 3 minutes for the same trip and nearly the same start). */
-    private static JSONObject osrm(double la1, double lo1, double la2, double lo2) throws Exception {
+    static JSONObject osrm(double la1, double lo1, double la2, double lo2) throws Exception {
         String key = String.format(Locale.ENGLISH, "%.3f,%.3f>%.4f,%.4f", la1, lo1, la2, lo2);
         if (key.equals(routeKey) && routeCache != null && System.currentTimeMillis() - routeAt < 180000) return routeCache;
         JSONObject res = new JSONObject(get(String.format(Locale.ENGLISH,
@@ -297,7 +335,7 @@ final class Drive {
     }
 
     /** Overpass "around a line" argument: the path thinned to about every few hundred metres (at most 150 points). */
-    private static String line(List<double[]> pts) {
+    static String line(List<double[]> pts) {
         double total = 0;
         for (int i = 1; i < pts.size(); i++) total += meters(pts.get(i - 1)[0], pts.get(i - 1)[1], pts.get(i)[0], pts.get(i)[1]);
         double every = Math.max(250, total / 300);
@@ -315,7 +353,7 @@ final class Drive {
     }
 
     /** How far along the path a point is (km), how far off it (m) and on which side: {kmAhead, offM, side(-1 left, 1 right)}. */
-    private static double[] place(List<double[]> pts, double lat, double lon) {
+    static double[] place(List<double[]> pts, double lat, double lon) {
         double best = Double.MAX_VALUE, at = 0, run = 0, side = 0;
         for (int i = 0; i < pts.size() - 1; i++) {
             double[] a = pts.get(i), b = pts.get(i + 1);
@@ -481,25 +519,7 @@ final class Drive {
         }
         if (p.route) o.put("km_left", Math.round(p.totalKm)).put("minutes_left", Math.round(p.minutes)).put("via", p.via);
         else o.put("note", "No destination known: these are the towns straight ahead in the direction he is going.");
-        try {
-            String ln = line(p.pts);
-            JSONArray el = overpass("[out:json][timeout:25];(node(around:4000," + ln + ")[place~\"^(city|town)$\"];node(around:" + (p.route ? 1500 : 3000) + ","
-                    + ln + ")[place=village];);out 150;");
-            List<JSONObject> towns = new ArrayList<>();
-            for (int i = 0; el != null && i < el.length(); i++) {
-                JSONObject e = el.getJSONObject(i), t = e.optJSONObject("tags");
-                if (t == null) continue;
-                double[] at = place(p.pts, e.optDouble("lat"), e.optDouble("lon"));
-                boolean big = !"village".equals(t.optString("place"));
-                if (at[0] < 1 || at[1] > (big ? 4000 : 1500)) continue;
-                towns.add(new JSONObject().put("name", t.optString("name:te", t.optString("name"))).put("name_en", t.optString("name:en", t.optString("name")))
-                        .put("km", Math.round(at[0])).put("kind", t.optString("place")));
-            }
-            Collections.sort(towns, (a, b) -> Long.compare(a.optLong("km"), b.optLong("km")));
-            JSONArray next = new JSONArray();
-            for (int i = 0; i < towns.size() && next.length() < 8; i++) next.put(towns.get(i));
-            o.put("towns_ahead", next);
-        } catch (Exception ignored) {}
+        try { o.put("towns_ahead", townsAlong(p, 8)); } catch (Exception ignored) {}
         if (p.route) {
             try {
                 Path whole = ahead(c, l, Math.min(400, Math.max(10, p.totalKm + 1)));
@@ -550,6 +570,8 @@ final class Drive {
                 if (toDest) g.put("km_left", Math.round(r.meters / 1000)).put("minutes_left_with_traffic", Math.round(r.seconds / 60.0))
                         .put("minutes_without_traffic", Math.round(r.staticSeconds / 60.0));
                 if (!r.toll.isEmpty()) g.put("toll", r.toll);
+                if (toDest && !r.toll.isEmpty()) settings(c).edit().putString("trip_toll", r.toll).putString("trip_toll_dest", d.optString("name"))
+                        .putLong("trip_toll_at", System.currentTimeMillis()).apply(); // (🧾 the diary's toll, for this trip only)
                 JSONArray roads = new JSONArray();
                 for (int i = 0; i < r.steps.size() && roads.length() < 6; i++) roads.put(r.steps.get(i));
                 g.put("roads_ahead", roads);
@@ -629,6 +651,8 @@ final class Drive {
         if (has(w, "restaurant", "food", "dhaba", "hotel", "biryani", "tiffin", "lunch", "dinner", "breakfast", "హోటల్", "భోజనం", "బిర్యానీ", "టిఫిన్", "ధాబా", "తినడానికి", "రెస్టారెంట్"))
             return new String[]{"[amenity~\"^(restaurant|fast_food|food_court)$\"]", "హోటల్ / రెస్టారెంట్"};
         if (w.isEmpty()) return null;
+        PlaceKinds.K pk = PlaceKinds.matchWhole(w); // (malls, theatres, beaches, bus stands… from Jarvis Maps' list; "Inorbit mall" stays a name)
+        if (pk != null) return new String[]{pk.osm, pk.te};
         String safe = w.replaceAll("[^\\p{L}\\p{M}\\p{N} ]", "").trim(); // a name, e.g. "KFC", "Café Coffee Day"
         return safe.isEmpty() ? null : new String[]{"[~\"^(name|brand)$\"~\"" + safe + "\",i]", safe};
     }
@@ -686,7 +710,7 @@ final class Drive {
     }
 
     /** The free map's places along the way (OpenStreetMap). */
-    private static JSONObject alongFree(Context c, Location l, String[] k, double km) throws Exception {
+    static JSONObject alongFree(Context c, Location l, String[] k, double km) throws Exception {
         Path p = ahead(c, l, Math.max(3, Math.min(150, km)));
         String q = p == null
                 ? String.format(Locale.ENGLISH, "[out:json][timeout:25];nwr(around:5000,%.6f,%.6f)%s;out center 80;", l.getLatitude(), l.getLongitude(), k[0])
@@ -747,6 +771,8 @@ final class Drive {
         if (has(w, "bank", "బ్యాంక్")) return "bank";
         if (has(w, "restaurant", "food", "dhaba", "hotel", "biryani", "tiffin", "lunch", "dinner", "breakfast", "హోటల్", "భోజనం", "బిర్యానీ", "టిఫిన్", "ధాబా", "తినడానికి", "రెస్టారెంట్"))
             return "restaurant or dhaba";
+        PlaceKinds.K pk = PlaceKinds.matchWhole(w);
+        if (pk != null) return pk.google;
         return what == null ? "" : what.trim();
     }
 
@@ -762,20 +788,19 @@ final class Drive {
         String line = null;
         if (pts != null && pts.size() >= 2) line = MapMath.encode(pts);
         else pts = null;
-        List<GMaps.Place> ps = GMaps.search(c, words, l.getLatitude(), l.getLongitude(), 5000, line, openOnly, 12);
+        List<GMaps.Place> ps = GMaps.search(c, words, l.getLatitude(), l.getLongitude(), 5000, line, openOnly, 12, false, true);
         List<JSONObject> list = new ArrayList<>();
         for (GMaps.Place p : ps) {
-            JSONObject item = new JSONObject().put("name", p.name).put("lat", round(p.lat)).put("lon", round(p.lon));
-            if (!p.address.isEmpty()) item.put("address", p.address);
+            JSONObject item = item(p);
             if (line != null) {
                 if (p.aheadM < 0) continue;
                 item.put("km_ahead", Math.round(p.aheadM / 100) / 10.0);
                 if (p.aheadS > 0) item.put("minutes_ahead", Math.round(p.aheadS / 60.0));
                 double[] at = place(pts, p.lat, p.lon);
                 if (at[1] < 1500) item.put("side", at[1] < 40 ? "" : at[2] < 0 ? "ఎడమ వైపు" : "కుడి వైపు");
+                Boolean then = GMaps.openAt(p.periods, System.currentTimeMillis() + Math.max(0, p.aheadS) * 1000); // (when he gets there, not now)
+                if (then != null) item.put("open_when_he_gets_there", then);
             } else item.put("km", Math.round(p.aheadM / 100) / 10.0);
-            if (p.open != null) item.put("open_now", p.open);
-            if (p.rating > 0) item.put("rating", p.rating).put("ratings", p.ratings);
             list.add(item);
         }
         final String by = line != null ? "km_ahead" : "km";
@@ -788,6 +813,20 @@ final class Drive {
         if (out.length() == 0) o.put("note", "Google found none of this kind on this stretch" + (openOnly ? " open now" : "") + ". Say so; offer a wider search (more km).");
         return o.put("next", "Say the first 2-3 in short Telugu: name, km ahead (and minutes), left / right side, open now if known. "
                 + "Offer to set the way to one (drive navigate with its 'lat,lon'); set it only after he says yes.");
+    }
+
+    /** A Google place as the answer's item: name, place, address, open now, rating, phone, website, its Maps link. */
+    static JSONObject item(GMaps.Place p) throws Exception {
+        JSONObject item = new JSONObject().put("name", p.name).put("lat", round(p.lat)).put("lon", round(p.lon));
+        if (!p.address.isEmpty()) item.put("address", p.address);
+        if (!p.type.isEmpty()) item.put("type", p.type);
+        if (p.open != null) item.put("open_now", p.open);
+        if (p.rating > 0) item.put("rating", p.rating).put("ratings", p.ratings);
+        if (!p.phone.isEmpty()) item.put("phone", p.phone);
+        if (!p.website.isEmpty()) item.put("website", p.website);
+        if (!p.mapsUri.isEmpty()) item.put("maps_link", p.mapsUri);
+        if (p.periods != null && p.periods.length() == 1 && p.periods.optJSONObject(0) != null && !p.periods.optJSONObject(0).has("close")) item.put("open_24h", true);
+        return item;
     }
 
     // ---------------------------------------------------------------- 😴 a tea / coffee stop when he is sleepy
