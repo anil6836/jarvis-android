@@ -305,21 +305,72 @@ public class JarvisAccessibility extends AccessibilityService {
         for (int i = 0; i < n.getChildCount(); i++) buttonNames(n.getChild(i), out, depth + 1);
     }
 
-    private static AccessibilityNodeInfo findSpeaker(AccessibilityNodeInfo n, int depth) {
-        if (n == null || depth > 40) return null;
+    /**
+     * The Speaker BUTTON. WhatsApp writes "Speaker" as its own word UNDER a round button, so the word itself isn't the
+     * button: a match that takes a click; else its small clickable parent; else the small clickable button just above the
+     * word; else the word itself (a tap on it is the last try).
+     */
+    private static AccessibilityNodeInfo findSpeaker(AccessibilityNodeInfo root, int depth) {
+        List<AccessibilityNodeInfo> hits = new java.util.ArrayList<>();
+        collectSpeaker(root, hits, 0);
+        if (hits.isEmpty()) return null;
+        for (AccessibilityNodeInfo n : hits) if (n.isEnabled() && takesClick(n)) return n;
+        long screen = screenArea();
+        for (AccessibilityNodeInfo n : hits) {
+            AccessibilityNodeInfo p = n.getParent();
+            for (int i = 0; i < 4 && p != null; i++, p = p.getParent()) if (p.isClickable() && p.isVisibleToUser() && area(p) * 100 < screen * 15) return p;
+        }
+        List<AccessibilityNodeInfo> buttons = new java.util.ArrayList<>();
+        collectClickable(root, buttons, 0);
+        for (AccessibilityNodeInfo n : hits) {
+            android.graphics.Rect w = new android.graphics.Rect();
+            n.getBoundsInScreen(w);
+            AccessibilityNodeInfo best = null;
+            int bestGap = Integer.MAX_VALUE;
+            for (AccessibilityNodeInfo b : buttons) {
+                android.graphics.Rect r = new android.graphics.Rect();
+                b.getBoundsInScreen(r);
+                if (area(b) * 100 >= screen * 15) continue; // (a whole panel is no button)
+                if (w.centerX() < r.left || w.centerX() > r.right) continue; // (straight above the word)
+                int gap = w.top - r.bottom;
+                if (r.bottom > w.top + w.height() / 2 || gap > 3 * Math.max(w.height(), 40)) continue;
+                if (gap < bestGap) { bestGap = gap; best = b; }
+            }
+            if (best != null) return best;
+        }
+        return hits.get(0);
+    }
+
+    private static void collectSpeaker(AccessibilityNodeInfo n, List<AccessibilityNodeInfo> out, int depth) {
+        if (n == null || depth > 40 || out.size() > 6) return;
         if (n.isVisibleToUser()) {
             String l = label(n).replace("\u200C", ""); // (Telugu "స్పీకర్‌ఫోన్" written with a joiner)
             String id = n.getViewIdResourceName() == null ? "" : n.getViewIdResourceName().toLowerCase(Locale.ROOT);
             String low = l.toLowerCase(Locale.ROOT);
             boolean byId = id.endsWith("/speaker") || id.endsWith("/speaker_button") || id.endsWith("/speakerbutton") || id.contains("speaker_toggle") || id.contains("audio_speaker")
                     || id.endsWith("/speaker_btn") || id.contains("speakerphone");
-            if ((l.length() <= 40 && SPEAKER.matcher(l).matches() || byId) && !low.contains("bluetooth") && !low.contains("headset")) return n;
+            if ((l.length() <= 40 && SPEAKER.matcher(l).matches() || byId) && !low.contains("bluetooth") && !low.contains("headset")) out.add(n);
         }
-        for (int i = 0; i < n.getChildCount(); i++) {
-            AccessibilityNodeInfo f = findSpeaker(n.getChild(i), depth + 1);
-            if (f != null) return f;
-        }
-        return null;
+        for (int i = 0; i < n.getChildCount(); i++) collectSpeaker(n.getChild(i), out, depth + 1);
+    }
+
+    private static void collectClickable(AccessibilityNodeInfo n, List<AccessibilityNodeInfo> out, int depth) {
+        if (n == null || depth > 40 || out.size() > 60) return;
+        if (n.isClickable() && n.isVisibleToUser() && n.isEnabled()) out.add(n);
+        for (int i = 0; i < n.getChildCount(); i++) collectClickable(n.getChild(i), out, depth + 1);
+    }
+
+    private static long area(AccessibilityNodeInfo n) {
+        android.graphics.Rect r = new android.graphics.Rect();
+        n.getBoundsInScreen(r);
+        return (long) Math.max(0, r.width()) * Math.max(0, r.height());
+    }
+
+    private static long screenArea() {
+        JarvisAccessibility s = instance;
+        if (s == null) return 1L;
+        android.util.DisplayMetrics dm = s.getResources().getDisplayMetrics();
+        return Math.max(1L, (long) dm.widthPixels * dm.heightPixels);
     }
 
     // ------------------------------------------------------------------ tap "Send"
