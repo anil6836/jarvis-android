@@ -26,12 +26,14 @@ import java.util.concurrent.Executors;
  * - three 1-second windows ending 0.24 / 0.48 / 0.72 s after the sound start, so the whole cough or the
  *   "ఆ...ఛీ" of a sneeze is inside one of them; a soft one is also heard a second time with the room hiss
  *   pushed down and the level raised (the model misses soft sounds over hiss);
- * - cough or sneeze is decided on the same sound by which is stronger (throat clearing counts for cough), so a
- *   cough is no longer turned into a sneeze (before, a sneeze needed 2 sounds and a cough 3);
+ * - cough or sneeze is decided on one look at the same sound (the clearest as heard; the hiss-cleaned one only when
+ *   that is unclear): a sneeze only when it is clearly stronger than the cough (1.4 times by default; more for the
+ *   cleaned look or two bursts; never in a coughing fit of three), else it is the cough it usually is (his coughs were
+ *   being called sneezes when the model rated them a little more "sneeze");
  * - a clear one -> asks at once (about a second after); a faint one -> asks when a second comes within 90 s;
  * - cough and sneeze each keep their own "asked" time (asking about one doesn't make Jarvis deaf to the other);
  * - when he says Jarvis got it wrong ("అది దగ్గు, తుమ్ము కాదు"), that sound is kept and the next one like it is
- *   taken as what he said.
+ *   taken as what he said; a cough taken for a sneeze also makes a sneeze need to sound clearer from then on.
  * Not at night, in a call, while Jarvis is talking or while the phone plays a video.
  */
 final class CoughDetector {
@@ -277,6 +279,7 @@ final class CoughDetector {
         worker.execute(() -> {
             try {
                 float[] best = new float[CLASSES];
+                float[] rawPick = null, cleanPick = null; // the clearest single look as heard / with the hiss pushed down (cough vs sneeze is judged on one look, never on two mixed)
                 boolean any = false;
                 for (float[] w : ws) {
                     if (w == null) continue;
@@ -284,8 +287,13 @@ final class CoughDetector {
                     if (raw == null) return; // no model
                     any = true;
                     max(best, raw);
+                    if (rawPick == null || strength(raw) > strength(rawPick)) rawPick = raw;
                     // not clear as heard: listen again with the hiss pushed down
-                    if (Math.max(raw[COUGH], raw[SNEEZE]) < CLEAR) max(best, run(cleaned(w, noise)));
+                    if (Math.max(raw[COUGH], raw[SNEEZE]) < CLEAR) {
+                        float[] cl = run(cleaned(w, noise));
+                        max(best, cl);
+                        if (cl != null && (cleanPick == null || strength(cl) > strength(cleanPick))) cleanPick = cl;
+                    }
                 }
                 if (any) {
                     lastScores = best;
@@ -303,7 +311,7 @@ final class CoughDetector {
                     try { HomeCare.sounds(ctx, best); } catch (Throwable ignored) {} // the home tablet: someone is about
                     try { house = SafetySounds.heard(ctx, best, loud, noise, test, soundAt); } catch (Throwable ignored) {}
                     if (house == null) try { house = Sounds.heard(ctx, best, loud, loudN); } catch (Throwable ignored) {}
-                    String verdict = decide(best, loud);
+                    String verdict = decide(best, rawPick, cleanPick, loud, rmsSeq);
                     if (!coughOrSneeze && house == null) { // nothing yet: a loud snore at night, another sound of his own (sniff, hiccup...) or a call (two claps)
                         try {
                             String body = BodySounds.sampled(ctx, best, night, testing()); // a loud snore comes as a burst too
@@ -386,14 +394,54 @@ final class CoughDetector {
         return s;
     }
 
+    /** How clearly a look heard a cough or a sneeze (throat clearing goes with a cough). */
+    private static float strength(float[] r) { return r == null ? 0 : Math.max(r[COUGH] + 0.5f * r[THROAT], r[SNEEZE]); }
+
+    /** How much stronger a sneeze must sound than a cough before Jarvis calls it a sneeze (his corrections move it). */
+    static double sneezeBar(Context c) { return new Prefs(c).sp.getFloat("sneeze_bar", 1.4f); }
+
+    /**
+     * Separate loud bursts in the sound's 80 ms loudness pieces (a cough often comes as "ఖు-ఖు-ఖు"; a sneeze is one
+     * "ఛీ"): peaks above 45% of the loudest with a dip under half of that between them.
+     */
+    static int bursts(float[] r) {
+        if (r == null) return 0;
+        float max = 0;
+        for (float v : r) max = Math.max(max, v);
+        if (max <= 0) return 0;
+        double thr = max * 0.45;
+        int n = 0;
+        boolean in = false;
+        for (float v : r) {
+            if (v >= thr) { if (!in) { n++; in = true; } }
+            else if (v < thr * 0.5) in = false;
+        }
+        return n;
+    }
+
+    /**
+     * Pure: cough, sneeze or neither, from one look's scores. A sneeze only when it is clearly stronger than the cough
+     * (bar times; more when the look was the hiss-cleaned one, or the sound came in two bursts; never in three or more);
+     * a sound that is only a little more sneeze than cough is taken as the cough it usually is.
+     */
+    static String pick(float cough, float sneeze, float throat, int bursts, boolean cleaned, double bar) {
+        float c = cough + 0.5f * throat;
+        double need = bar * (cleaned ? 1.25 : 1) * (bursts == 2 ? 1.3 : 1);
+        if (bursts < 3 && sneeze >= 0.3f && sneeze >= need * c) return "sneeze";
+        if (cough >= FOUND || c >= FOUND || (sneeze >= FOUND_SNEEZE && c >= 0.1f)) return "cough";
+        return null;
+    }
+
     /** Cough, sneeze or neither for one sound; counts it, and asks when it should. Returns the verdict in Telugu (for the test screen). */
-    private String decide(float[] s, double loud) {
-        float cough = s[COUGH], sneeze = s[SNEEZE];
-        String kind = null;
-        float sure = 0;
-        // one sound, one answer: whichever is stronger (throat clearing goes with a cough)
-        if (sneeze > cough + 0.5f * s[THROAT] && sneeze >= FOUND_SNEEZE) { kind = "sneeze"; sure = sneeze; }
-        else if (cough >= FOUND) { kind = "cough"; sure = cough; }
+    private String decide(float[] s, float[] rawPick, float[] cleanPick, double loud, float[] rms) {
+        // one sound, one answer, on one look: as heard; the hiss-cleaned look only when that is unclear
+        float[] look = rawPick != null ? rawPick : s;
+        boolean cleaned = false;
+        if (Math.max(look[COUGH], look[SNEEZE]) < CLEAR && cleanPick != null && strength(cleanPick) > strength(look)) { look = cleanPick; cleaned = true; }
+        float cough = look[COUGH], sneeze = look[SNEEZE];
+        int nb = bursts(rms);
+        String kind = pick(cough, sneeze, look[THROAT], nb, cleaned, sneezeBar(ctx));
+        float sure = kind == null ? 0 : kind.equals("sneeze") ? sneeze : Math.max(cough, cough + 0.5f * look[THROAT]);
         float[] f = feat(s);
         String taught = kind == null ? null : taught(f);
         if (taught != null && !taught.equals(kind)) { // he told Jarvis what a sound just like this one is
@@ -405,7 +453,7 @@ final class CoughDetector {
                 + (kind != null && sure < CLEAR ? " (మెల్లగా: ఇంకోటి వస్తే అడుగుతాను)" : "") + (taught != null ? " · మీరు నేర్పినట్టు" : "");
         if (testing()) return verdict; // the test only shows what was heard: nothing counted or asked
         lastHeard = java.time.LocalTime.now().withNano(0) + " " + (kind == null ? "ఏమీ కాదు" : kind.equals("cough") ? "దగ్గు" : "తుమ్ము")
-                + " (దగ్గు " + Math.round(cough * 100) + "%, తుమ్ము " + Math.round(sneeze * 100) + "%, శబ్దం " + Math.round(loud) + ")"
+                + " (దగ్గు " + Math.round(cough * 100) + "%, తుమ్ము " + Math.round(sneeze * 100) + "%, శబ్దం " + Math.round(loud) + (nb > 1 ? ", " + nb + " సార్లు" : "") + ")"
                 + (taught != null ? " · మీరు నేర్పినట్టు" : "");
         if (kind == null) return verdict;
         boolean video = false;
@@ -487,6 +535,10 @@ final class CoughDetector {
             JSONArray ordered = new JSONArray();
             for (int i = keep.length() - 1; i >= 0; i--) ordered.put(keep.get(i));
             android.content.SharedPreferences.Editor e = p.sp.edit().putString("cough_taught", ordered.toString());
+            // his own sound: a cough taken for a sneeze makes a sneeze need to sound clearer from now on (and the other way back a little)
+            float bar = p.sp.getFloat("sneeze_bar", 1.4f);
+            if (k.equals("cough") && askedKind.equals("sneeze")) e.putFloat("sneeze_bar", Math.min(2.5f, bar + 0.3f));
+            else if (k.equals("sneeze") && askedKind.equals("cough")) e.putFloat("sneeze_bar", Math.max(1.0f, bar - 0.2f));
             // asked about the wrong one: that one may be asked about later; the real one is being talked about now
             if (!k.equals(askedKind)) {
                 e.remove(askedKind.equals("sneeze") ? "sneeze_asked" : "cough_asked");
