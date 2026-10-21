@@ -108,8 +108,8 @@ final class CallControl {
      */
     static String openCallScreen(Context c) {
         Notification n = ongoing;
-        PendingIntent[] ways = {appCallFull, n == null ? null : n.contentIntent, n == null ? null : n.fullScreenIntent, appCallOpen};
-        String[] names = {"full-screen", "call-notification", "call-full-screen", "ring-notification"};
+        PendingIntent[] ways = {n == null ? null : n.contentIntent, n == null ? null : n.fullScreenIntent, appCallFull, appCallOpen};
+        String[] names = {"call-notification", "call-full-screen", "full-screen", "ring-notification"};
         for (int i = 0; i < ways.length; i++) {
             if (ways[i] == null) continue;
             try { send(c, ways[i]); return names[i]; } catch (Exception ignored) {}

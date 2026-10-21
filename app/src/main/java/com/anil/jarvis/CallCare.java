@@ -535,13 +535,16 @@ final class CallCare {
             if (appCall) {
                 if (CallControl.pressSpeakerButton(app)) r = settledAudio(onNow) ? "on|నోటిఫికేషన్|Speaker" : "pressed_not_on|నోటిఫికేషన్ Speaker"; // its call notification's own button
                 else {
-                    r = JarvisAccessibility.pressSpeaker(1500, onNow); // (its call screen, if it is up)
-                    if (r.startsWith("no_button") && CallControl.pressSpeakerButton(app)) r = settledAudio(onNow) ? "on|నోటిఫికేషన్|Speaker" : "pressed_not_on|నోటిఫికేషన్ Speaker";
-                    // answered from its notification, its call screen may not be up: brought up, then its Speaker pressed
-                    if (r.startsWith("no_button")) {
+                    r = JarvisAccessibility.pressSpeaker(1500, onNow, true); // (its full call screen, if it is up)
+                    if ((r.startsWith("no_button") || r.startsWith("small_window")) && CallControl.pressSpeakerButton(app))
+                        r = settledAudio(onNow) ? "on|నోటిఫికేషన్|Speaker" : "pressed_not_on|నోటిఫికేషన్ Speaker";
+                    // answered from its notification, its call is a small floating picture / not up: its full call screen brought up, then pressed
+                    if (r.startsWith("no_button") || r.startsWith("small_window")) {
+                        String before = r.startsWith("small_window") ? r.substring(12).trim() : "";
                         String how = CallControl.openCallScreen(app);
-                        if (!how.isEmpty()) r = JarvisAccessibility.pressSpeaker(7000, onNow);
-                        if (r.startsWith("no_button")) r = r + " · తెరిచే దారి: " + (how.isEmpty() ? "లేదు" : how);
+                        if (!how.isEmpty()) r = JarvisAccessibility.pressSpeaker(7000, onNow, true);
+                        if (r.startsWith("small_window")) r = "no_button చిన్న విండో మాత్రమే: " + r.substring(12).trim();
+                        if (r.startsWith("no_button")) r = r + " · తెరిచే దారి: " + (how.isEmpty() ? "లేదు" : how) + (before.isEmpty() ? "" : " · ముందు: " + before);
                     }
                 }
             } else {

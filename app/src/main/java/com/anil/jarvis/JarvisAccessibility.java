@@ -172,13 +172,22 @@ public class JarvisAccessibility extends AccessibilityService {
      * checked before the next is tried, and a toggle is never pressed again once it has turned on. Returns "on|how|label",
      * "already", "pressed_not_on|label", "no_accessibility" or "no_button…".
      */
-    static String pressSpeaker(long timeoutMs, java.util.function.BooleanSupplier on) {
+    static String pressSpeaker(long timeoutMs, java.util.function.BooleanSupplier on) { return pressSpeaker(timeoutMs, on, false); }
+
+    /**
+     * bigOnly: only a call screen that fills the screen (an app's call shrunk to a small floating picture - over the home
+     * screen - takes no presses: its buttons there do nothing); such a small one gives "small_window…" so the caller brings
+     * the full call screen up first.
+     */
+    static String pressSpeaker(long timeoutMs, java.util.function.BooleanSupplier on, boolean bigOnly) {
         JarvisAccessibility s = instance;
         if (s == null) return "no_accessibility";
         if (on != null && on.getAsBoolean()) return "already";
         long end = SystemClock.uptimeMillis() + timeoutMs;
-        String seen = "";
+        String seen = "", small = "";
         java.util.Set<String> windows = new java.util.LinkedHashSet<>();
+        android.util.DisplayMetrics dm = s.getResources().getDisplayMetrics();
+        long screen = Math.max(1L, (long) dm.widthPixels * dm.heightPixels);
         while (SystemClock.uptimeMillis() < end) {
             SystemClock.sleep(450); // (the call screen takes a moment to come up after the answer)
             try {
@@ -190,6 +199,11 @@ public class JarvisAccessibility extends AccessibilityService {
                     if (windows.size() < 6) windows.add(pkg.replace("com.", "").replace("android.", ""));
                     if (!(pkg.contains("incallui") || pkg.contains("dialer") || pkg.contains("telecom") || pkg.contains("phone") || pkg.contains("whatsapp")
                             || pkg.contains("telegram") || pkg.contains("signal") || pkg.contains("contacts"))) continue;
+                    android.graphics.Rect wb = new android.graphics.Rect();
+                    w.getBoundsInScreen(wb);
+                    int pct = (int) Math.min(100, 100L * wb.width() * wb.height() / screen);
+                    boolean pip = w.isInPictureInPictureMode();
+                    if (bigOnly && (pip || pct < 50)) { small = pkg.replace("com.", "") + " " + (pip ? "చిన్న చిత్రం (PiP)" : pct + "% విండో"); continue; }
                     AccessibilityNodeInfo b = findSpeaker(root, 0);
                     if (b == null) {
                         StringBuilder names = new StringBuilder(pkg.replace("com.", "")).append(":");
@@ -205,13 +219,17 @@ public class JarvisAccessibility extends AccessibilityService {
                     // pressed: the button itself if it takes a click (WhatsApp's is a toggle, not "clickable"), else its button, else a tap on
                     // it; after each, the phone's audio (or the button) must say "on" before the next way is tried
                     String name = label(b);
-                    if (b.isEnabled() && takesClick(b) && b.performAction(AccessibilityNodeInfo.ACTION_CLICK) && settled(on, b)) return "on|బటన్|" + name;
-                    if (c != null && c != b && c.isClickable() && c.isEnabled() && c.performAction(AccessibilityNodeInfo.ACTION_CLICK) && settled(on, c)) return "on|పై బటన్|" + name;
-                    if (tapOn(root, c != null && c.isClickable() ? c : b) && settled(on, b)) return "on|తట్టడం|" + name;
-                    return "pressed_not_on|" + name; // (pressed every way, still not on: never pressed again, a toggle would go off)
+                    String info = name + " · " + shortClass(b) + " · విండో " + pct + "%";
+                    // ONE press (a toggle pressed twice goes off again): the button itself if it takes a click, else its button; only
+                    // when neither can be pressed, a tap on its place. Then the phone's audio (or the button) must say "on".
+                    AccessibilityNodeInfo target = b.isEnabled() && takesClick(b) ? b : c != null && c.isClickable() && c.isEnabled() ? c : null;
+                    if (target != null && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return settled(on, target) ? "on|బటన్|" + name : "pressed_not_on|" + info;
+                    if (tapOn(root, c != null && c.isClickable() ? c : b)) return settled(on, b) ? "on|తట్టడం|" + name : "pressed_not_on|తట్టాను · " + info;
+                    seen = " '" + info + "' దొరికింది, నొక్కడం కుదరలేదు";
                 }
             } catch (Exception ignored) {}
         }
+        if (!small.isEmpty() && seen.isEmpty()) return "small_window" + small; // (only a small floating call picture: its full screen needed)
         // (no call screen at all: which screens were up, so the note shows it)
         return "no_button" + (seen.isEmpty() ? (windows.isEmpty() ? "" : "కనిపించిన స్క్రీన్లు: " + android.text.TextUtils.join(", ", windows)) : "చూసిన బటన్లు: " + seen);
     }
@@ -236,6 +254,12 @@ public class JarvisAccessibility extends AccessibilityService {
             String t = d == null ? "" : d.toString().toLowerCase(Locale.ROOT).trim();
             return (t.equals("on") || t.startsWith("on,") || t.contains("ఆన్") || t.equals("checked") || t.equals("selected")) && !t.contains("off") && !t.contains("ఆఫ్");
         } catch (Exception e) { return false; }
+    }
+
+    private static String shortClass(AccessibilityNodeInfo n) {
+        CharSequence k = n.getClassName();
+        String t = k == null ? "?" : k.toString().replaceAll("^.*\\.", "");
+        return t + (n.isClickable() ? " c✓" : " c✗") + (n.isCheckable() ? (n.isChecked() ? " ✓ఆన్" : " k✓") : "");
     }
 
     private static boolean takesClick(AccessibilityNodeInfo n) {
