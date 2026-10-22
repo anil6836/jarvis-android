@@ -951,6 +951,8 @@ final class WatchHub {
     /** The ringing call being told on the watch (its key), or null. */
     private static volatile String callKey;
     private static int callTries;
+    /** 📞 The caller's name is said this many times on the watch (as on the phone's panel), then the ringtone alone. */
+    private static final int CALL_SAYS = 2;
 
     /** W17: who is calling, said on the watch; "ఎత్తు" / "కట్" by voice or the card's buttons. Main thread. */
     static void call(Context c, String key, String say, Runnable phoneWay) { call(c, key, say, phoneWay, true, 0); }
@@ -1021,9 +1023,9 @@ final class WatchHub {
         }
         CallWords.Word w = CallWords.classify(text, new String[]{CallCare.who, new Prefs(app).name()});
         if (w.kind == CallWords.NONE) {
-            // (after 3 tries it stops asking; the card's buttons still answer the call while it rings)
-            if (++callTries >= 3 || CallCare.silenced) { talk(false); state(app, "idle", null, null, "ఎత్తాలంటే వాచ్ కార్డ్‌లో \"ఎత్తు\" / ఫోన్‌లో ఆకుపచ్చ నొక్కండి"); return; }
-            reply(app, CallCare.shortLine() + ". ఎత్తమంటారా?", false, speakOn(app), () -> listen(app, "call")); // (the name each time: 3 in all)
+            // (after 2 tries it stops asking, so his ringtone is heard; the card's buttons still answer the call while it rings)
+            if (++callTries >= CALL_SAYS || CallCare.silenced) { talk(false); state(app, "idle", null, null, "ఎత్తాలంటే వాచ్ కార్డ్‌లో \"ఎత్తు\" / ఫోన్‌లో ఆకుపచ్చ నొక్కండి"); return; }
+            reply(app, CallCare.shortLine() + ". ఎత్తమంటారా?", false, speakOn(app), () -> listen(app, "call")); // (the name each time: 2 in all)
             return;
         }
         if (w.kind == CallWords.SILENT) {
@@ -1092,7 +1094,7 @@ final class WatchHub {
     static void callQuiet(Context c, boolean ok) {
         dropReply();
         if (callKey == null) return;
-        callTries = 3;
+        callTries = CALL_SAYS;
         Context app = c.getApplicationContext();
         Session s = cur;
         if (s != null && !s.wake) { s.stopped = true; s.end(); ListenMic l = s.ears; s.ears = null; if (l != null) l.cancel(); }

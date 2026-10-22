@@ -135,10 +135,10 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     static final String EXTRA_CALL_AT = "jarvis_call_at";
     private String callText, callShort; // non-null while asking about a ringing call
     private long callAt;
-    /** Times his answer was listened for in this ring: the name is said 3 times in all (then the buttons only). */
+    /** Times his answer was listened for in this ring: the name is said 2 times in all (then the buttons only, so his ringtone is heard). */
     private int callTries;
     /** 📞 How long each listen for his word to the ringing call (seconds), and his ringtone at his own volume between two. */
-    private static final int CALL_LISTEN_S = 4, CALL_RING_GAP_MS = 1500, CALL_SAYS = 3;
+    private static final int CALL_LISTEN_S = 4, CALL_RING_GAP_MS = 1500, CALL_SAYS = 2;
     private LinearLayout callRow, quickRow;
     private final Runnable watchCall = new Runnable() {
         @Override public void run() {
@@ -558,7 +558,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             main.postDelayed(autoClose, 4000);
             return;
         }
-        if (callText != null) voice.listenShort(prefs.listenLang(), CALL_LISTEN_S); // 📞 one short word: the name fits 3 times in a ring
+        if (callText != null) voice.listenShort(prefs.listenLang(), CALL_LISTEN_S); // 📞 one short word: the name said twice, then the ringtone alone
         else voice.listen(prefs.listenLang());
         orb.setState(OrbView.LISTENING);
         status.setText("వింటున్నాను…");
