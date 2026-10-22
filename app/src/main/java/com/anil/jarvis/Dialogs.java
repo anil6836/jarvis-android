@@ -16,6 +16,18 @@ import java.util.concurrent.atomic.AtomicReference;
 final class Dialogs {
     private Dialogs() {}
 
+    /** The yes/no dialog open now (and its answer), so a call ringing can close it as "no". */
+    private static volatile AlertDialog openDialog;
+    private static volatile AtomicBoolean openOk;
+
+    /** A call rang (the panel holds): an open yes/no closes as "no" — nothing is done on it. Main thread. */
+    static void cancelOpen() {
+        AtomicBoolean o = openOk;
+        AlertDialog d = openDialog;
+        if (o != null) o.set(false);
+        if (d != null) try { d.dismiss(); } catch (Exception ignored) {}
+    }
+
     /**
      * Shows a Yes/No dialog and waits (call from a background thread).
      * With autoSeconds > 0 it counts down on the Yes button and confirms by itself,
@@ -34,7 +46,7 @@ final class Dialogs {
                     .setMessage(message)
                     .setPositiveButton(yes, (x, w) -> ok.set(true))
                     .setNegativeButton("వద్దు", (x, w) -> ok.set(false))
-                    .setOnDismissListener(x -> done.countDown())
+                    .setOnDismissListener(x -> { if (openDialog == x) { openDialog = null; openOk = null; } done.countDown(); })
                     .create();
             try {
                 d.show();
@@ -43,6 +55,8 @@ final class Dialogs {
                 return;
             }
             shown.set(d);
+            openDialog = d;
+            openOk = ok;
             if (autoSeconds > 0) {
                 final int[] left = {autoSeconds};
                 Runnable[] step = new Runnable[1];

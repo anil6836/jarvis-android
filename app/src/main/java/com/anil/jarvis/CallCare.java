@@ -100,6 +100,7 @@ final class CallCare {
             return;
         }
         main.removeCallbacks(stateFallback); // (the notification came: no need of the phone-state way)
+        SheetActivity.callComing(); // any ring (said or not): his talk with Jarvis holds (▶ after the call), the panel steps back
         if (!CallControl.isRinging() || !sbnKey.equals(key)) restoreRing(c); // (a ring an earlier call left low)
         long now = System.currentTimeMillis();
         key = sbnKey;
@@ -150,7 +151,18 @@ final class CallCare {
         String say = line(p);
         String route;
         boolean panel = false;
-        if (p.callByVoice() && android.provider.Settings.canDrawOverlays(c)) {
+        if (p.callByVoice() && JarvisAccessibility.enabled()) { // (Build 2: on the top card, not the panel)
+            String title = who.isEmpty() ? (number.isEmpty() ? "తెలియని నంబర్" : "తెలియని నంబర్ …" + CallWords.lastFour(number)) : who;
+            String sub = (phone || app.isEmpty() ? "ఫోన్ కాల్" : app + " కాల్") + (vip ? " · ⭐" : "") + (repeat ? " · 🔁 మళ్ళీ చేస్తున్నారు" : "")
+                    + (warn.isEmpty() ? "" : " · ⚠️ " + warn.replaceAll("[.]$", ""));
+            if (TopCard.call(c, title, say, shortLine(), sub, !warn.isEmpty(), ringAt)) {
+                route = "📢 పైన కార్డ్‌లో చెప్పాను (పేరు చెప్పి, మీ మాట వింటుంది)";
+                panel = true;
+            } else {
+                sayOverRing(c, say);
+                route = "📢 ఫోన్‌లో చెప్పాను (పైన కార్డ్ రాలేదు)";
+            }
+        } else if (p.callByVoice() && android.provider.Settings.canDrawOverlays(c)) { // (Jarvis's screen access off: the panel, as before)
             try {
                 c.startActivity(new Intent(c, SheetActivity.class).putExtra(SheetActivity.EXTRA_CALL, say).putExtra(SheetActivity.EXTRA_CALL_SHORT, shortLine())
                         .putExtra(SheetActivity.EXTRA_CALL_AT, ringAt).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
@@ -549,8 +561,8 @@ final class CallCare {
         // the phone's own audio says whether the call is on the loudspeaker (also for WhatsApp's calls)
         final java.util.function.BooleanSupplier onNow = () -> { try { return am != null && am.isSpeakerphoneOn(); } catch (Exception e) { return false; } };
         new Thread(() -> {
-            // Jarvis's own panel must be gone first (it sits at the bottom, where the call screen's buttons are)
-            for (int i = 0; i < 15 && SheetActivity.open; i++) { try { Thread.sleep(100); } catch (InterruptedException ignored) {} }
+            // Jarvis's own panel / call card must be gone first (they must never cover the call screen's buttons)
+            for (int i = 0; i < 15 && (SheetActivity.onScreen() || TopCard.callUp()); i++) { try { Thread.sleep(100); } catch (InterruptedException ignored) {} }
             try { Thread.sleep(250); } catch (InterruptedException ignored) {}
             String r = "";
             if (appCall) {

@@ -44,6 +44,8 @@ final class TopCard {
     }
 
     static final String MSG = "msg", ASK = "ask", RUN = "run";
+    /** 📞 A ringing call (CardCall), and the panel he was talking in, minimised here (CardPanel). Build 2. */
+    static final String CALL = "call", PANEL = "panel";
 
     /** One card: a chat's new messages, or Jarvis's question / job. */
     static final class Msg {
@@ -65,9 +67,12 @@ final class TopCard {
         String title = "";
         /** No window: the phone is locked or the screen is off; Jarvis says it and listens. */
         boolean voiceOnly;
+        /** CALL: the line under the name (the app, a warning); PANEL: the panel itself. */
+        String sub = "";
+        SheetActivity panel;
     }
 
-    private static TopCard showing;
+    private static volatile TopCard showing;
 
     private final AccessibilityService svc;
     private final WindowManager wm;
@@ -77,9 +82,12 @@ final class TopCard {
     private final Prefs p;
     private final int accent;
     private LinearLayout view, buttons;
+    private View chips;
+    private boolean compact;
     private TextView line2, status, sub;
     private OrbView orb;
-    private boolean touched, done, heard, expanded;
+    private boolean touched, heard, expanded;
+    private volatile boolean done;
     private int bodyLines = 2;
     private float downY;
     private final Runnable autoHide = () -> close(true);
@@ -110,9 +118,11 @@ final class TopCard {
      * then false, and the caller waits its turn (a message) or leaves a notification (Jarvis's question / job).
      */
     static boolean show(AccessibilityService svc, Msg m) {
-        if (!MSG.equals(m.kind)) pendingAt = 0; // (this is the question / job that was on its way)
-        if (busy()) return false;
-        if (showing != null) showing.close(true);
+        boolean first = CALL.equals(m.kind) || PANEL.equals(m.kind); // (a call, or his own talk: before any other card)
+        if (PANEL.equals(m.kind) && callCardUp()) return false; // (never over a call's card: ringing, or its talk after a cut)
+        if (ASK.equals(m.kind) || RUN.equals(m.kind)) pendingAt = 0; // (this is the question / job that was on its way)
+        if (!first && busy()) return false;
+        if (showing != null) showing.close(true, first ? false : true); // (a talk on it stops: its messages under 📬, a question a notification)
         TopCard t = new TopCard(svc, m);
         if (!m.voiceOnly && !t.build()) return false;
         showing = t;
@@ -120,12 +130,74 @@ final class TopCard {
         if (MSG.equals(m.kind)) {
             if (m.talk || m.voiceOnly) t.startTalk(CardTalk.START_ASK);
             else t.main.postDelayed(t.autoHide, t.p.cardSecs() * 1000L);
+        } else if (CALL.equals(m.kind)) {
+            t.heard = true; // (nothing of a call waits under 📬)
+            CardCall c = new CardCall(svc, t, m);
+            t.talk = c;
+            c.start();
+        } else if (PANEL.equals(m.kind)) {
+            t.heard = true;
+            CardPanel c = new CardPanel(t, m.panel);
+            t.talk = c;
+            c.start();
         } else {
             CardAsk a = new CardAsk(svc, t, m);
             t.talk = a;
             a.start();
         }
         return true;
+    }
+
+    /**
+     * Main thread. 📞 A ringing call on the card (who: the name line; say / sayShort: what Jarvis says the first / second
+     * time; sub: "ఫోన్ కాల్" / "WhatsApp కాల్" and a warning). It comes before any other card. False: it can't (Jarvis's
+     * screen access is off): the caller uses the panel as before.
+     */
+    static boolean call(Context c, String who, String say, String sayShort, String sub, boolean warn, long ringAt) {
+        if (!JarvisAccessibility.enabled()) return false;
+        Msg m = new Msg();
+        m.kind = CALL;
+        m.title = "📞 " + who;
+        m.say = say == null ? "" : say;
+        m.ask = sayShort == null || sayShort.isEmpty() ? m.say : sayShort;
+        m.sub = sub == null ? "" : sub;
+        m.group = warn; // (a warning: the card red)
+        m.postedAt = ringAt;
+        m.voiceOnly = !screenUsable(c);
+        return JarvisAccessibility.messageCard(m);
+    }
+
+    /** Main thread. The panel he was talking in, minimised into the card (the talk goes on here); null if it can't be. */
+    static CardPanel panel(Context c, SheetActivity a) {
+        if (!JarvisAccessibility.enabled() || a == null) return null;
+        Msg m = new Msg();
+        m.kind = PANEL;
+        m.panel = a;
+        m.postedAt = System.currentTimeMillis();
+        m.voiceOnly = !screenUsable(c);
+        if (!JarvisAccessibility.messageCard(m)) return null;
+        TopCard t = showing;
+        return t != null && t.talk instanceof CardPanel ? (CardPanel) t.talk : null;
+    }
+
+    /** A ringing call's card is up (the loudspeaker is pressed only once it is gone). */
+    static boolean callUp() {
+        TopCard t = showing;
+        Flow f = t == null ? null : t.talk;
+        return t != null && CALL.equals(t.m.kind) && !t.done && f instanceof CardCall && ((CardCall) f).ringingNow();
+    }
+
+    /** A call's card is up (ringing, or the talk after a cut). */
+    static boolean callCardUp() {
+        TopCard t = showing;
+        return t != null && CALL.equals(t.m.kind) && !t.done;
+    }
+
+    /** A screen of Jarvis's own came up (the app): message / question / panel cards step aside; a ringing call's card stays. */
+    static void stepAsideExceptCall() {
+        TopCard t = showing;
+        if (t == null || CALL.equals(t.m.kind)) return;
+        stepAside(t);
     }
 
     // ================================================================ where Jarvis's own words go
@@ -176,6 +248,7 @@ final class TopCard {
     /** Main thread. A screenshot is about to be taken: a card on the screen goes at once (a voice-only one has none). */
     static void dismissShown() {
         TopCard t = showing;
+        if (t != null && (CALL.equals(t.m.kind) || PANEL.equals(t.m.kind))) { t.hideBriefly(); return; } // (a call / his own talk goes on: only out of the picture)
         if (t != null && (!t.m.voiceOnly || screenUsable(t.svc))) t.close(true, false); // (a voice-only talk on an unlocked phone too)
         TopCard c = leaving;
         if (c != null) c.removeView();
@@ -188,6 +261,17 @@ final class TopCard {
     static void stepAside() {
         TopCard t = showing;
         if (t == null) return;
+        stepAside(t);
+    }
+
+    /** A call notification came or changed: a message / question card steps aside; the call card and his own talk stay. */
+    static void stepAsideForCall() {
+        TopCard t = showing;
+        if (t == null || CALL.equals(t.m.kind) || PANEL.equals(t.m.kind)) return;
+        stepAside(t);
+    }
+
+    private static void stepAside(TopCard t) {
         Flow c = t.talk;
         t.talk = null;
         if (c != null) c.stop(CardTalk.YIELD_BEFORE);
@@ -207,6 +291,13 @@ final class TopCard {
         TopCard t = showing;
         Flow c = t == null ? null : t.talk;
         return c != null && c.busy();
+    }
+
+    /** Out of a screenshot for a moment (the floating button's screen features), then back. */
+    private void hideBriefly() {
+        if (view == null || removed || done) return;
+        view.setVisibility(View.INVISIBLE);
+        main.postDelayed(() -> { if (view != null && !done) view.setVisibility(View.VISIBLE); }, 2500);
     }
 
     /** A card closed but not yet off the screen (its slide-out). */
@@ -258,6 +349,9 @@ final class TopCard {
 
     /** A card built later (on unlock): the talk's text, status, buttons and orb as they are now. */
     private void replay() {
+        boolean c = compact;
+        compact = false;
+        compact(c);
         if (lastBody != null) body(lastBody, lastBodyLines);
         status(lastStatus);
         if (lastButtons != null) buttons(lastButtons);
@@ -269,6 +363,8 @@ final class TopCard {
     /** The kind's colour: a chat blue; Jarvis's question green for health, amber for a reminder, violet for a job; else cyan. */
     static int accent(Msg m) {
         if (MSG.equals(m.kind)) return 0xFF3B82F6;
+        if (CALL.equals(m.kind)) return m.group ? 0xFFEF4444 : 0xFF22C55E; // (a warning about the number: red)
+        if (PANEL.equals(m.kind)) return 0xFF8B5CF6;
         if (RUN.equals(m.kind)) return 0xFFA855F7;
         String t = (m.title + " " + m.say + " " + m.ask).toLowerCase(Locale.ROOT);
         for (String w : HEALTH) if (t.contains(w)) return 0xFF22C55E;
@@ -283,6 +379,7 @@ final class TopCard {
     /** The card's title line. */
     private String title() {
         if (MSG.equals(m.kind)) return "💬 " + m.from + (m.group ? " గ్రూప్" : "");
+        if (PANEL.equals(m.kind)) return "🤖 Jarvis";
         if (!m.title.isEmpty()) return m.title;
         return (accent == 0xFF22C55E ? "🩺 " : accent == 0xFFF59E0B ? "⏰ " : RUN.equals(m.kind) ? "🌙 " : "🤖 ") + "Jarvis";
     }
@@ -295,6 +392,11 @@ final class TopCard {
             long ago = m.postedAt > 0 ? (System.currentTimeMillis() - m.postedAt) / 60_000 : 0;
             b.append(" · ").append(ago < 1 ? "ఇప్పుడే" : ago + " ని. క్రితం");
             if (m.texts.size() > 1) b.append(" · ").append(m.texts.size()).append(" మెసేజ్‌లు");
+        } else if (CALL.equals(m.kind)) {
+            b.append(m.sub.isEmpty() ? "కాల్ వస్తోంది" : m.sub);
+            return b.toString(); // (no 📬 count on a ringing call)
+        } else if (PANEL.equals(m.kind)) {
+            b.append("మీతో మాట్లాడుతున్నాడు");
         } else {
             b.append(RUN.equals(m.kind) ? "Jarvis చేస్తున్నాడు" : "Jarvis అడుగుతున్నాడు");
         }
@@ -360,6 +462,8 @@ final class TopCard {
         line2 = new TextView(svc);
         int n = m.texts.size();
         if (MSG.equals(m.kind)) line2.setText(n == 0 ? "" : Otp.shown(m.texts.get(n - 1)));
+        else if (CALL.equals(m.kind)) line2.setText(m.say);
+        else if (PANEL.equals(m.kind)) line2.setText(m.panel == null ? "" : m.panel.miniText());
         else line2.setText(RUN.equals(m.kind) ? "చూస్తున్నాను…" : (m.say + (m.ask.isEmpty() ? "" : "\n" + m.ask)).trim());
         line2.setTextColor(0xFFF2F7FF);
         line2.setTextSize(sp(14.5f));
@@ -380,6 +484,7 @@ final class TopCard {
 
         // the buttons: chips in one row that scrolls sideways when there are many
         HorizontalScrollView hs = new HorizontalScrollView(svc);
+        chips = hs;
         hs.setHorizontalScrollBarEnabled(false);
         buttons = new LinearLayout(svc);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
@@ -403,7 +508,7 @@ final class TopCard {
                         | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON, // (a talk isn't cut by the screen timeout)
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        lp.y = dp(p.cardLow() ? 110 : 30);
+        lp.y = dp(CALL.equals(m.kind) ? 200 : p.cardLow() ? 110 : 30); // (a call: below the phone's own call pop-up and its buttons)
         try {
             wm.addView(view, lp);
         } catch (Exception e) {
@@ -463,7 +568,8 @@ final class TopCard {
                 view.animate().translationY(0).setDuration(120).start();
                 if (e.getActionMasked() == MotionEvent.ACTION_UP && (dy > dp(30) || Math.abs(dy) < dp(8))) { // pulled down / tapped: open or fold the text
                     touched = true;
-                    setExpanded(!expanded || dy > dp(30));
+                    if (compact) compact(false); // (the slim pill tapped: the full card with its buttons)
+                    else setExpanded(!expanded || dy > dp(30));
                 }
                 if (talk == null) main.postDelayed(autoHide, touched ? p.cardSecs() * 2000L : 4000); // (opened to read: longer)
                 else if (hidePending) main.postDelayed(hide, Math.max(hideMs, p.cardSecs() * 2000L));
@@ -541,6 +647,17 @@ final class TopCard {
         }
     }
 
+    /** The slim pill ("🎙️ Jarvis వింటున్నాడు…": the orb and one line) while he only has to speak; the full card again after. */
+    void compact(boolean on) {
+        if (on && touched) on = false; // (he tapped it open: it stays the full card)
+        if (compact == on) return;
+        compact = on;
+        if (done || line2 == null) return;
+        line2.setVisibility(on ? View.GONE : View.VISIBLE);
+        if (sub != null) sub.setVisibility(on ? View.GONE : View.VISIBLE);
+        if (chips != null) chips.setVisibility(on ? View.GONE : View.VISIBLE);
+    }
+
     /** The buttons for this step: label, Runnable, label, Runnable… */
     void buttons(Object... labelThenAction) {
         lastButtons = labelThenAction;
@@ -589,6 +706,15 @@ final class TopCard {
         talk = null;
         close(later);
     }
+
+    /** The talk ended itself: the card off the screen at once (a call answered: nothing may cover the call screen). */
+    void closeFromTalkNow() {
+        talk = null;
+        close(false, false);
+    }
+
+    /** The card's text now (the panel's answer, when the card is built later). */
+    boolean done() { return done; }
 
     private void close(boolean later) { close(later, true); }
 

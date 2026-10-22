@@ -214,7 +214,7 @@ final class VoiceIO {
         });
         ttsReady = true;
         l.onVoiceReady();
-        if (pending != null) {
+        if (pending != null && !paused) { // (⏸ meanwhile, e.g. a call rang: it waits for ▶)
             String p = pending;
             pending = null;
             speakGoogle(p, pendingRate);
@@ -443,7 +443,9 @@ final class VoiceIO {
                 naturalError = message;
                 naturalNow = false;
                 if (guardRetrying) { guardRetrying = false; guardNote(2, null); }
-                if (speaking) phoneVoiceFrom(naturalOffset, rate); // (from where this try began: all of it, as before, on a first try)
+                if (!speaking) return;
+                if (holdPhoneVoice(naturalOffset, rate)) return; // (⏸ meanwhile, e.g. a call: nothing said now; ▶ carries on)
+                phoneVoiceFrom(naturalOffset, rate); // (from where this try began: all of it, as before, on a first try)
             }
             @Override public void onCut(String message) { naturalCut = message; }
             @Override public void onAudible(long at) { turnAudible(at); }
@@ -503,16 +505,20 @@ final class VoiceIO {
         natural.stop();
         naturalNow = false;
         int at = naturalOffset + from;
-        if (paused && tts != null && ttsReady && !ttsFailed) { // ▶ carries on with the phone's voice from here
-            googleShown = naturalShown;
-            googleSaid = naturalSaid;
-            googleText = naturalSaid.text;
-            googleBase = 0;
-            googlePos = at;
-            googleRate = rate;
-            return;
-        }
+        if (holdPhoneVoice(at, rate)) return; // ▶ carries on with the phone's voice from here
         phoneVoiceFrom(at, rate);
+    }
+
+    /** Paused (⏸, a call): the phone's voice is set to carry on from here when ▶ comes; nothing is said now. */
+    private boolean holdPhoneVoice(int at, float rate) {
+        if (!paused || tts == null || !ttsReady || ttsFailed || naturalSaid == null) return false;
+        googleShown = naturalShown;
+        googleSaid = naturalSaid;
+        googleText = naturalSaid.text;
+        googleBase = 0;
+        googlePos = at;
+        googleRate = rate;
+        return true;
     }
 
     /** The phone's voice says the answer from this spoken-text position (0: all of it, exactly as before). */
@@ -891,6 +897,10 @@ final class VoiceIO {
             natural.resume();
             watchBargeIn();
             main.post(wordTicker);
+        } else if (ttsReady && pending != null) { // (the voice engine got ready while it was held: this speech from its start)
+            String p = pending;
+            pending = null;
+            speakGoogle(p, pendingRate);
         } else if (ttsReady) {
             String full = googleText;
             int from = sentenceStart(full, googlePos);

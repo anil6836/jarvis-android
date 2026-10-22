@@ -282,7 +282,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onResume() {
         super.onResume();
-        TopCard.stepAside(); // a message card talking at the top stops: this screen talks now
+        TopCard.stepAsideExceptCall(); // a message card talking at the top stops: this screen talks now (a ringing call's card stays)
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         if (prefs.homeMode() != (home != null)) { recreate(); return; } // the home Jarvis was switched on / off in settings

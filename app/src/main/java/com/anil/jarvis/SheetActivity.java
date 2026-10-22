@@ -57,8 +57,261 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     /** The panel is open and quiet (not talking, listening, thinking or holding a paused speech): a question / job can be taken here. */
     static boolean idleOpen() {
         SheetActivity a = current;
-        if (a == null || !open || a.voice == null) return false;
+        if (a == null || !open || a.voice == null || a.stopped || a.mini != null || a.callHold || a.callResumable) return false; // (on the screen only)
         return !a.greeting && !a.busy && a.callText == null && a.live == null && !a.voice.listening && !a.voice.speaking;
+    }
+
+    /** The panel is on the screen now (not minimised into the top card, not behind another app). */
+    static boolean onScreen() {
+        SheetActivity a = current;
+        return a != null && open && !a.stopped && !a.isFinishing();
+    }
+
+    // ================================================================ minimised into the top card (Build 2)
+
+    /** Where the talk is, for the top card that shows it while the panel is minimised. */
+    static final int M_IDLE = 0, M_LISTEN = 1, M_THINK = 2, M_SPEAK = 3, M_PAUSED = 4, M_CALL = 5, M_GREET = 6, M_LIVE = 7;
+    /** ⬆️ on the card: the panel comes back as it is (no new greeting). */
+    static final String EXTRA_RESTORE = "jarvis_restore";
+    /** The top card showing this talk while the panel is minimised, else null. */
+    private CardPanel mini;
+    /** A call rang in the middle of the talk: held until the call is over, then "▶ కొనసాగించు". */
+    private boolean callHold, callResumable;
+    /** The answer that came while the call rang / went on: said when he carries on. */
+    private String heldAnswer;
+    private static final long MINI_IDLE_MS = 20_000, CALL_RESUME_MS = 120_000;
+
+    /** A yes is open in the panel (Dialogs.confirm): it isn't minimised meanwhile (the card couldn't show that dialog). */
+    private volatile boolean confirming;
+    /** The question on its way when a call rang (its job was cut): asked again on ▶. */
+    private String heldQuestion, lastQuestion;
+    /** A job of the question now on its way has started (then it is never re-run by itself after a call). */
+    private volatile boolean toolRan;
+    /** The call cut a job that had started: ▶ says so and listens (he asks again himself). */
+    private boolean cutNote;
+    /** Clear checks in a row that the call is over (an app call shows its end before its start, for a moment). */
+    private int callClear;
+    /** The panel went behind an app a job of Jarvis's opened (or while it was thinking): it finishes there and closes, as before. */
+    private boolean awayByJob;
+
+    /** A talk is going on here (greeting, listening, thinking, speaking or held, Live, or held for a call). */
+    private boolean talkingHere() {
+        return greeting || busy || voice.listening || voice.speaking || live != null || heldAnswer != null || callHold || callResumable;
+    }
+
+    /**
+     * The talk goes on in the top card (toBack: he tapped outside: the app below comes back). False: it can't — then the
+     * panel behaves as before (closes on a tap outside; behind another app it finishes its line and closes). Never on the
+     * lock screen (a talk he can't see or stop), never over Jarvis's own screens, a call, or a job working in another app
+     * (the card would cover what it taps), and never while a yes is open in the panel; force: after a call (▶).
+     */
+    private boolean minimise(boolean toBack) { return minimise(toBack, false); }
+
+    private boolean minimise(boolean toBack, boolean force) {
+        if (mini != null) { if (toBack) moveTaskToBack(true); return true; }
+        if (callText != null || callReply != null || callHold || isFinishing() || !JarvisAccessibility.enabled()) return false;
+        if (confirming || TopCard.callCardUp()) return false;
+        if (!force && (!TopCard.screenUsable(this) || JarvisCamera.open || MainActivity.visible
+                || CallControl.busyWithCall() || Tools.appTaskRunning())) return false;
+        mini = TopCard.panel(this, this);
+        if (mini == null) return false;
+        if (toBack) moveTaskToBack(true);
+        return true;
+    }
+
+    /** The panel takes the talk back from the card (it is on the screen again, or it closes). */
+    private void unminimise() {
+        CardPanel c = mini;
+        mini = null;
+        if (c != null) c.detach();
+    }
+
+    int miniState() {
+        if (callHold || callResumable) return M_CALL;
+        if (live != null) return M_LIVE;
+        if (greeting) return M_GREET;
+        if (voice.isPaused()) return M_PAUSED;
+        if (voice.speaking) return M_SPEAK;
+        if (busy) return M_THINK;
+        if (voice.listening) return M_LISTEN;
+        return M_IDLE;
+    }
+
+    String miniStatus() { return status == null ? "" : status.getText().toString(); }
+
+    CharSequence miniText() {
+        if (reply != null && reply.getVisibility() == View.VISIBLE) return reply.getText().toString();
+        if (heard != null && heard.getVisibility() == View.VISIBLE) return heard.getText().toString();
+        return "";
+    }
+
+    boolean miniTalking() {
+        return greeting || busy || callText != null || live != null || voice.listening || (voice.speaking && !voice.isPaused());
+    }
+
+    void miniPlayPause() { if (callResumable) resumeAfterCall(); else togglePause(); }
+
+    /** ⏪ on the card: the last answer once more. */
+    void miniAgain() {
+        CharSequence t = reply != null && reply.getVisibility() == View.VISIBLE ? reply.getText() : null;
+        if (t == null || t.toString().trim().isEmpty() || busy || live != null) return;
+        callResumable = false;
+        main.removeCallbacks(autoClose);
+        if (voice.listening) voice.cancelListening();
+        if (voice.speaking) voice.stopSpeaking();
+        waiting = false;
+        MainActivity.talking(true);
+        WakeService.pause(this);
+        followUps = Math.max(followUps, 1);
+        voice.speak(t.toString(), prefs.speechRate());
+    }
+
+    void miniTalk() { callResumable = false; heldAnswer = null; listenAgain(true); }
+
+    void miniResume() { resumeAfterCall(); }
+
+    /** ⬆️ on the card: the panel back on the screen, as it is. */
+    void miniRestore() {
+        try {
+            startActivity(new Intent(this, SheetActivity.class).putExtra(EXTRA_RESTORE, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+        } catch (Exception ignored) {}
+    }
+
+    /** The card was closed (✕, swipe, Jarvis's service going, another Jarvis screen): the talk ends with it. */
+    void miniGone() {
+        mini = null;
+        if (isFinishing()) return;
+        generation++; cutInflight();
+        busy = false;
+        cancelGreeting();
+        if (voice.listening) voice.cancelListening();
+        if (voice.speaking) voice.stopSpeaking();
+        if (live != null) live.stop("user");
+        closeSheet();
+    }
+
+    /** CallCare (main thread): a call rings; the call card comes up. A talk in the panel holds (▶ after the call). */
+    static void callComing() {
+        if (!JarvisAccessibility.enabled()) return; // (no call card: the panel's own call mode takes the call, as before)
+        SheetActivity a = current;
+        if (a != null && open && !a.isFinishing() && !a.toHome) a.holdForCall();
+    }
+
+    private void holdForCall() {
+        if (callText != null || callReply != null) return; // (the panel's own call mode)
+        if (callHold) { unminimise(); callClear = 0; return; } // (held already: another ring)
+        boolean talk = greeting || busy || voice.listening || voice.speaking || live != null || heldAnswer != null || callResumable;
+        unminimise(); // (the call card takes the top)
+        if (!talk) { // nothing going on: the panel goes (its own "talking" mark first, so the call card takes it)
+            MainActivity.talking(false);
+            closeSheet();
+            return;
+        }
+        WaMedia.stop(); // (a voice note playing: not into the call)
+        Dialogs.cancelOpen(); // (a yes still open: "no" — nothing is done on it now)
+        if (busy) { // a job on its way: cut (nothing it opens or plays may come over the call); asked again on ▶ if nothing of it ran yet
+            heldQuestion = toolRan ? null : lastQuestion;
+            cutNote = toolRan;
+            generation++; cutInflight();
+            busy = false;
+            if (voice.speaking) voice.stopSpeaking(); // (its first sentence, if one began: not kept for ▶)
+        }
+        cancelGreeting();
+        if (live != null) live.stop("call");
+        if (voice.listening) voice.cancelListening();
+        if (voice.speaking && !voice.isPaused()) voice.pause();
+        Filler.stop();
+        callHold = true;
+        callResumable = false;
+        callClear = 0;
+        main.removeCallbacks(autoClose);
+        orb.setState(OrbView.IDLE);
+        status.setText("📞 కాల్ వచ్చింది: కాల్ అయ్యాక ▶ తో కొనసాగిస్తాను");
+        syncPause();
+        if (!stopped) moveTaskToBack(true); // (the call card and the phone's call screen in front)
+        main.removeCallbacks(callWatch);
+        main.postDelayed(callWatch, 1500);
+    }
+
+    /** Polls till the call is over (not ringing, not in a call, no call card), then offers ▶. */
+    private final Runnable callWatch = new Runnable() {
+        @Override public void run() {
+            if (isFinishing()) return;
+            boolean call = CallControl.busyWithCall() || CallCare.inCall(SheetActivity.this) || TopCard.callCardUp();
+            if (callResumable) { // ▶ offered: a call showing again (an app call's start after its ring) holds it again
+                if (call) { callResumable = false; callHold = true; callClear = 0; unminimise(); if (!stopped) moveTaskToBack(true); }
+                main.postDelayed(this, 1000);
+                return;
+            }
+            if (!callHold) return;
+            if (call) { callClear = 0; main.postDelayed(this, 1000); return; }
+            if (++callClear < 3) { main.postDelayed(this, 1000); return; } // (over for 3 s in a row)
+            callOver();
+            main.postDelayed(this, 1000); // (watched a while more, for an app call's late start)
+        }
+    };
+
+    private void callOver() {
+        callHold = false;
+        callResumable = true;
+        MainActivity.talking(false); // ("Jarvis" works meanwhile)
+        if (prefs.wakeReady()) WakeService.resume(this);
+        status.setText("📞 కాల్ అయింది. ▶ నొక్కితే అక్కడి నుంచి కొనసాగిస్తాను");
+        setAction(IconView.PLAY);
+        main.removeCallbacks(autoClose);
+        main.postDelayed(autoClose, CALL_RESUME_MS);
+        if (stopped) minimise(false, true); // (behind another app: on the top card, held, with ▶; on the lock screen by voice-less card till unlocked)
+    }
+
+    /** ▶ after the call: the held answer said, the held speech carried on, or he is listened to again. */
+    private void resumeAfterCall() {
+        if (callHold) return; // (the call is still on)
+        callResumable = false;
+        main.removeCallbacks(callWatch);
+        main.removeCallbacks(autoClose);
+        if (cutNote && heldAnswer == null) { // a job the call cut midway: never re-run by itself
+            cutNote = false;
+            heldQuestion = null;
+            showReply("కాల్ వచ్చినప్పుడు ఆ పని మధ్యలో ఆగింది. కావాలంటే మళ్ళీ అడగండి.", false);
+            listenAgain(true);
+            return;
+        }
+        if (heldQuestion != null && heldAnswer == null) { // the question whose job the call cut: asked again
+            String q = heldQuestion;
+            heldQuestion = null;
+            MainActivity.talking(true);
+            WakeService.pause(this);
+            followUps = Math.max(followUps, 1);
+            ask(q);
+            return;
+        }
+        heldQuestion = null;
+        if (heldAnswer != null) {
+            String a = heldAnswer;
+            heldAnswer = null;
+            waiting = false;
+            MainActivity.talking(true);
+            WakeService.pause(this);
+            showReply(a, false);
+            setAction(IconView.STOP);
+            if (prefs.voiceReplies()) voice.speak(a, prefs.speechRate()); else idle();
+            return;
+        }
+        if (voice.isPaused()) {
+            voice.resume();
+            afterPaused(VoiceIO.RESUMED);
+            return;
+        }
+        if (busy) { // (the answer is still on its way: it is said when it comes)
+            MainActivity.talking(true);
+            WakeService.pause(this);
+            orb.setState(OrbView.THINKING);
+            status.setText("ఆలోచిస్తున్నాను…");
+            setAction(IconView.STOP);
+            return;
+        }
+        listenAgain(true);
     }
 
     static boolean talkingNow() {
@@ -121,6 +374,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     private final Runnable autoClose = new Runnable() {
         @Override public void run() {
+            if (callHold) { main.postDelayed(this, 5000); return; } // (held for a call: never closed in the middle of it)
             if (Radio.holdPanel()) { main.postDelayed(this, 3000); return; } // his radio list is open / the radio app is being asked
             closeSheet();
         }
@@ -206,6 +460,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (toHome || prefs == null || prefs.homeMode()) { sendHome(this, intent); finish(); return; }
+        if (intent != null && intent.getBooleanExtra(EXTRA_RESTORE, false)) { // ⬆️ from the card: back as it is (onStart takes the talk back)
+            if (callHold) moveTaskToBack(true); // (not over a call)
+            return;
+        }
+        if (callHold && intent != null && intent.getStringExtra(EXTRA_CALL) == null) { moveTaskToBack(true); return; } // (a call is on: nothing here till it is over)
         if (startCallMode(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startAnnounce(intent)) return;
         if (live == null && !busy && !greeting && !voice.listening && !voice.speaking && startRun(intent)) return;
@@ -224,24 +483,42 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override protected void onStart() {
         super.onStart();
-        stopped = false; // back on top (e.g. after Jarvis typed a message in WhatsApp)
+        stopped = false; // back on top (e.g. after Jarvis typed a message in WhatsApp, or ⬆️ on the card)
         main.removeCallbacks(closeIfAway);
+        main.removeCallbacks(awayCheck);
+        awayByJob = false;
+        boolean wasMini = mini != null;
+        unminimise(); // the talk is back here
+        if (wasMini && waiting && !callResumable) { main.removeCallbacks(autoClose); main.postDelayed(autoClose, STAY_OPEN_MS); } // (on the screen again: the usual stay)
     }
 
     @Override protected void onStop() {
         super.onStop();
         stopped = true;
-        // Another app came in front (e.g. Jarvis opened YouTube): finish once Jarvis has finished. Not at once: on the
-        // lock screen the panel is often stopped and started again in a moment while the screen lights up, and the
-        // greeting or the mic must not be cut by that.
+        // Another app came in front (he opened one, or Jarvis did): while they talk, the talk goes on in the top card
+        // (Anil, 22 Oct); else the panel closes once Jarvis has finished. Not at once: on the lock screen the panel is
+        // often stopped and started again in a moment while the screen lights up, and the greeting or the mic must not
+        // be cut by that.
         main.removeCallbacks(closeIfAway);
-        main.postDelayed(closeIfAway, 1500);
+        main.removeCallbacks(awayCheck);
+        awayByJob = busy || Tools.openedWithin(4000); // (Jarvis's own job opened that app: not him leaving)
+        main.postDelayed(awayCheck, 1500);
     }
 
-    /** Still away and nothing going on (no greeting, mic, answer or call): close. */
-    private final Runnable closeIfAway = () -> {
-        if (stopped && callText == null && callReply == null && live == null && !greeting && !voice.listening && !voice.speaking && !busy) closeSheet();
+    /** Still away a moment later: a talk going on moves to the top card; nothing going on: close. */
+    private final Runnable awayCheck = () -> {
+        if (!stopped || isFinishing() || callHold) return;
+        if (mini == null && !awayByJob && !Tools.openedWithin(4000) && talkingHere() && minimise(false)) return;
+        if (mini == null) main.post(this::closeIfAwayNow);
     };
+
+    /** Still away and nothing going on (no greeting, mic, answer or call): close. */
+    private final Runnable closeIfAway = this::closeIfAwayNow;
+
+    private void closeIfAwayNow() {
+        if (stopped && mini == null && callText == null && callReply == null && live == null && !greeting && !voice.listening && !voice.speaking && !busy
+                && !callHold && !callResumable) closeSheet();
+    }
 
     /**
      * The home tablet (his mother's): whatever would open this panel (the wake word, the assist button, a tile, a
@@ -266,11 +543,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override protected void onDestroy() {
         if (toHome) { super.onDestroy(); return; } // (never shown: nothing was set up)
+        unminimise(); // (its card goes with it)
         Radio.dismissPicker();
         generation++; cutInflight(); // a reply still on its way is dropped, and its remaining tools don't run
         greetToken++;
         WaMedia.stop();
-        CallCare.ringLow(this, false); // (his ringtone back to his own volume)
+        boolean cardCall = TopCard.callUp(); // (the call card lowered the ring and holds the talk now: left as they are)
+        if (!cardCall) CallCare.ringLow(this, false); // (his ringtone back to his own volume)
         if (callReply != null) CallCare.releaseReply("panel");
         if (live != null) live.stop("closed");
         voice.shutdown();
@@ -278,9 +557,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         main.removeCallbacksAndMessages(null);
         if (current == this) { // a newer panel may already be talking and listening
             current = null;
-            MainActivity.talking(false);
             open = false;
-            if (prefs.wakeReady()) WakeService.resume(this);
+            if (!cardCall) {
+                MainActivity.talking(false);
+                if (prefs.wakeReady()) WakeService.resume(this);
+            }
         }
         super.onDestroy();
     }
@@ -298,7 +579,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     private View buildUi() {
         FrameLayout root = new FrameLayout(this);
-        root.setOnClickListener(v -> { FindPhone.stop(this); closeSheet(); }); // tap outside the card to dismiss
+        root.setOnClickListener(v -> { // tap outside: while they talk, the talk goes on in the top card (Anil, 22 Oct); else it closes
+            FindPhone.stop(this);
+            if (talkingHere() && minimise(true)) return;
+            closeSheet();
+        });
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -455,6 +740,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onWord(String spoken, int start, int end) {
         if (reply.getVisibility() == View.VISIBLE) karaoke.word(spoken, start, end, java.util.Collections.singletonList(reply), textScroll);
+        CardPanel c = mini;
+        if (c != null) c.highlight(spoken, start, end); // (minimised: lit on the top card)
     }
 
     private void togglePause() {
@@ -479,6 +766,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             setAction(IconView.STOP);
             main.postDelayed(autoClose, PAUSED_OPEN_MS); // not lit up for ever
         } else if (r == VoiceIO.RESUMED) {
+            callResumable = false;
             orb.setState(OrbView.SPEAKING);
             status.setText("మాట్లాడుతున్నాను…");
             MainActivity.talking(true);
@@ -505,6 +793,9 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     private void begin() {
         main.removeCallbacks(autoClose);
+        callResumable = false; // (a new talk: what a call held is let go)
+        heldAnswer = null;
+        heldQuestion = null;
         waiting = false;
         followUps = 1;
         followListen = false;
@@ -553,6 +844,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     private void listen() {
+        if (callHold) return; // (a call is on: the mic is the call's)
         ScreenReader.pauseIfReading(this); // the mic must not hear the page being read
         main.removeCallbacks(autoClose);
         waiting = false;
@@ -579,6 +871,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (text == null) return false;
         i.removeExtra(EXTRA_CALL);
         waiting = false;
+        callHold = false; // (the panel's own call mode: Jarvis's screen access is off)
+        callResumable = false;
+        heldAnswer = null;
+        main.removeCallbacks(callWatch);
+        unminimise();
         cancelGreeting();
         if (live != null) live.stop("call");
         voice.stopSpeaking();
@@ -614,6 +911,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (text == null) return false;
         i.removeExtra(EXTRA_RUN);
         waiting = false;
+        callResumable = false; heldAnswer = null; heldQuestion = null; main.removeCallbacks(callWatch);
         main.removeCallbacks(autoClose);
         MainActivity.talking(true);
         WakeService.pause(this);
@@ -629,6 +927,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         String ctx = i.getStringExtra(EXTRA_ANNOUNCE_CONTEXT);
         i.removeExtra(EXTRA_ANNOUNCE);
         waiting = false;
+        callResumable = false; heldAnswer = null; heldQuestion = null; main.removeCallbacks(callWatch);
         main.removeCallbacks(autoClose);
         MainActivity.talking(true);
         WakeService.pause(this);
@@ -818,6 +1117,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     }
 
     private void onAction() {
+        if (callResumable) { resumeAfterCall(); return; } // ▶ after the call
         WaMedia.stop(); // a voice message playing: the stop button stops it
         if (callReply != null) { callReply = null; CallCare.releaseReply("panel"); stopCallTalk(); closeSheet(); return; }
         if (callText != null) { endCallMode(); closeSheet(); return; }
@@ -841,6 +1141,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     @Override public void onHeard(String text) {
         partialHeard = "";
+        if (callHold) return; // (held for a call: nothing heard counts until ▶)
         if (callReply != null) { replyHeard(text == null ? "" : text); return; }
         if (callText != null) {
             if (text == null || text.trim().isEmpty()) askCallAgain(); else onCallWords(text);
@@ -858,6 +1159,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public void onListenFailed(int error) {
         String partial = partialHeard; // heard in this listen only (reset by listen())
         partialHeard = "";
+        if (callHold) return; // (the listen was cut for the call)
         if (callReply != null) { replyHeard(partial); return; }
         if (callText != null) {
             if (!partial.isEmpty()) onCallWords(partial); else askCallAgain();
@@ -883,7 +1185,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
                 + (prefs.wakeReady() ? "మళ్లీ \"Jarvis\" అనండి లేదా మైక్ నొక్కండి" : "మళ్లీ మైక్ నొక్కండి"));
     }
 
-    @Override public void onMicTaken() { idle(); }
+    @Override public void onMicTaken() { if (!callHold) idle(); }
 
     @Override public void onLevel(float level) { orb.setLevel(level); }
 
@@ -899,6 +1201,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         showHeldReply(); // (the voice failed before it started: the words come now)
         if (live == null) setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC); // (Jarvis is quiet: songs again)
         syncPause();
+        if (callHold) return; // (the speech ended for the call: ▶ after it decides what comes next)
         if (callText != null) { main.postDelayed(this::listen, 150); return; }
         if (callReply != null) { if (replyStep != null && replyStep.listen) main.postDelayed(this::listen, 200); return; }
         if (busy) return; // (⚡ B: the brain still writes this answer: its arrival ends the turn, not this)
@@ -912,7 +1215,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             startInterpreter(lang);
             return;
         }
-        if (stopped) { closeSheet(); return; }
+        if (stopped && mini == null) { closeSheet(); return; } // (behind another app with no card: done; on the card the talk goes on)
         // Booking in an app: Jarvis asked him a choice (theatre, time, seats): listen for the answer.
         if (Tools.awaitingAnswer()) { followListen = false; main.postDelayed(this::listen, 250); return; }
         // One follow-up question without saying "Jarvis" again, like a real conversation.
@@ -946,6 +1249,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
 
     /** Nothing more to say or hear now: the panel stays a while, listening for "Jarvis" again, then closes. */
     private void idle(long stayMs) {
+        if (callHold) return; // (held for a call: it waits for ▶ after the call)
         Filler.stop(); // (the talk is over, e.g. an error after a phone job: the wake mic may open now)
         Tools.takeInterpreter(); // an interpreter request that was never started must not start later
         orb.setState(OrbView.IDLE);
@@ -956,8 +1260,8 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         waiting = true;
         MainActivity.talking(false); // the talk is over: the wake word may listen
         if (wake) WakeService.resume(this);
-        main.postDelayed(autoClose, stayMs);
-        if (stopped) { main.removeCallbacks(closeIfAway); main.postDelayed(closeIfAway, 1500); } // he is in another app
+        main.postDelayed(autoClose, mini != null ? Math.min(stayMs, MINI_IDLE_MS) : stayMs); // (on the card: a short while for 🎙️, then it goes)
+        if (stopped && mini == null) { main.removeCallbacks(closeIfAway); main.postDelayed(closeIfAway, 1500); } // he is in another app
     }
 
     /** Switched to Live by voice: Live starts when the confirmation has been said. */
@@ -981,6 +1285,15 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     private void ask(String text) {
         main.removeCallbacks(autoClose);
         waiting = false;
+        lastQuestion = text;
+        toolRan = false;
+        if (!callHold) { // a new question: what a call held is let go
+            cutNote = false;
+            callResumable = false;
+            heldAnswer = null;
+            heldQuestion = null;
+            main.removeCallbacks(callWatch);
+        }
         String mode = VoiceSwitch.match(text);
         if (mode != null) { switchVoice(text, mode); return; }
         if (!prefs.hasBrain()) {
@@ -1010,11 +1323,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         Brain.Status progress = new Brain.Status() {
             @Override public void update(String s) { main.post(() -> { if (gen == generation) status.setText(s); }); }
             // ⚡ B: the answer's first sentence is spoken at once; its rest follows when written
-            @Override public boolean wantsEarly() { return prefs.voiceReplies() && live == null && !isFinishing() && voice.canSpeakEarly(); }
+            @Override public boolean wantsEarly() { return prefs.voiceReplies() && live == null && !isFinishing() && !callHold && voice.canSpeakEarly(); }
             @Override public boolean early(String first) {
-                if (gen != generation || live != null || isFinishing()) return false;
+                if (gen != generation || live != null || isFinishing() || callHold || callResumable) return false;
                 main.post(() -> {
-                    if (gen != generation || !busy || live != null || isFinishing() || early[0] != null) return;
+                    if (gen != generation || !busy || live != null || isFinishing() || early[0] != null || callHold || callResumable) return;
                     Filler.stop();
                     if (!voice.speakFirst(first, prefs.speechRate())) return;
                     early[0] = first;
@@ -1025,12 +1338,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             @Override public boolean cancelled() { return gen != generation; } // stop pressed / panel closed
             // ⚡ F: a phone job inside the answer: "ఒక్క క్షణం, చూస్తున్నాను" (once, and only if it isn't over at once)
             @Override public void toolRound(String tool) {
+                if (gen == generation) toolRan = true; // (a job of this question began: never re-run by itself after a call)
                 if (!Filler.before(tool)) return;
                 main.post(() -> {
                     if (gen != generation || fillerSaid[0] || !prefs.speedF() || !prefs.voiceReplies() || live != null || isFinishing()) return;
                     fillerSaid[0] = true;
                     main.postDelayed(() -> {
-                        if (gen == generation && busy && live == null && !isFinishing() && !voice.speaking && !voice.listening)
+                        if (gen == generation && busy && live == null && !isFinishing() && !callHold && !voice.speaking && !voice.listening)
                             Filler.play(SheetActivity.this, prefs);
                     }, 500);
                 });
@@ -1058,6 +1372,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
                 if (gen != generation || isFinishing()) return;
                 busy = false;
                 boolean spoke = early[0] != null;
+                if (callHold || callResumable) { // a call rang meanwhile: the answer waits for ▶ (never said into / over a call)
+                    if (spoke) voice.stopSpeaking();
+                    if (err == null && a != null && !a.trim().isEmpty()) { store.addChat("assistant", a, false); heldAnswer = a; showReply(a, false); }
+                    else showReply(err != null ? err : Brain.EMPTY, true);
+                    return;
+                }
                 if (err == null && (a == null || a.trim().isEmpty())) { // (never stuck)
                     showReply(Brain.EMPTY, true);
                     if (!(spoke && voice.finishOpen(null))) idle();
@@ -1130,7 +1450,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         if (session != live) return; // an older session: the current one is still running
         live = null;
         setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
-        if (isFinishing() || callText != null) return; // a call took over: keep the panel for it
+        if (isFinishing() || callText != null || callHold) return; // a call took over: keep the panel for it
         String lang = session.interpreterLang();
         if (lang != null) { startInterpreter(lang); return; } // the interpreter tool ran in live mode
         if ("switched".equals(reason)) { // he switched how Jarvis listens by voice: carry on the new way
@@ -1145,7 +1465,24 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
     @Override public Activity activity() { return this; }
 
     @Override public boolean confirm(String title, String message, String yes, int autoSeconds) {
-        return Dialogs.confirm(this, title, message, yes, autoSeconds);
+        if (callHold || CallControl.isRinging()) return false; // (a call rang: nothing is done on a yes now; he asks again after it)
+        CardPanel c = mini;
+        if (c != null && stopped) { // minimised: the yes is asked on the top card
+            Boolean r = c.confirm(title, message, yes, autoSeconds);
+            if (r != null) return r;
+            if (callHold || CallControl.isRinging()) return false;
+            if (stopped) { // no card to tap (locked), or the panel took it back: asked here, on the screen
+                runOnUiThread(this::miniRestore);
+                for (int i = 0; i < 30 && stopped && !isFinishing(); i++) { try { Thread.sleep(100); } catch (InterruptedException e) { break; } }
+            }
+            if (callHold || CallControl.isRinging()) return false; // (a call rang meanwhile)
+        }
+        confirming = true;
+        try {
+            return Dialogs.confirm(this, title, message, yes, autoSeconds);
+        } finally {
+            confirming = false;
+        }
     }
 
     @Override public void askPermissions(String[] permissions) {

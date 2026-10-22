@@ -1555,7 +1555,20 @@ final class Tools {
     /** Opens a screen from where the jobs run (from the top card's service it needs a new task). */
     private void startIn(Intent i) {
         if (!(act() instanceof Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        openedAt = android.os.SystemClock.elapsedRealtime();
         act().startActivity(i);
+    }
+
+    /** When a job last opened a screen (an app, a page, the dialer): the panel then isn't "left" by him. */
+    static volatile long openedAt;
+
+    /** A job opened a screen in the last ms. */
+    static boolean openedWithin(long ms) { return android.os.SystemClock.elapsedRealtime() - openedAt < ms; }
+
+    /** A multi-step job in another app is going on (Jarvis is tapping and typing there). */
+    static boolean appTaskRunning() {
+        AppTask t = appTask;
+        return t != null && android.os.SystemClock.elapsedRealtime() - t.time < 5 * 60 * 1000L;
     }
 
     private void start(Intent i) throws InterruptedException {
