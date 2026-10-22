@@ -540,11 +540,13 @@ final class Tools {
                         + "code = tell him the code; set_code = change it (at least 6 letters/digits); on / off = the code feature; stop = stop ringing.",
                 schema(new String[][]{{"action", "string", "ring (default), code, set_code, on, off or stop"}, {"code", "string", "For set_code: the new code"}})));
         DEFS.add(new Def("add_expense",
-                "Write down an expense (e.g. from a bill photo he shows, or 'petrol 500 రాసుకో'). It counts in bank_spending, day_summary and weekly_report.",
+                "Write down an expense (e.g. from a bill photo he shows, or 'petrol 500 రాసుకో'). It counts in bank_spending, day_summary and weekly_report. "
+                        + "His car's diesel fill or service is car_account instead (it writes the expense itself); a car diesel bunk bill photo: car_account fill "
+                        + "(rupees, litres, rate from the bill) — it links to an expense already written, never twice.",
                 schema(new String[][]{{"amount", "number", "Amount in rupees (for a bill: the grand total he paid, with tax)"},
                         {"what", "string", "Short description, e.g. 'Groceries - More supermarket'"},
                         {"shop", "string", "Shop or restaurant name on the bill, if any"},
-                        {"category", "string", "One of: food, groceries, fuel, charging, shopping, medicine, bills, travel, other"},
+                        {"category", "string", "One of: food, groceries, fuel, charging, shopping, medicine, bills, travel, car (car service / repair), other"},
                         {"date", "string", "Date printed on the bill, YYYY-MM-DD (empty = today)"}}, "amount")));
         DEFS.add(new Def("bike_range", "His electric bike (Matter Aera): how far he can go on the battery % he says ('బ్యాటరీ 40%, ఎంత దూరం వెళ్లగలను?').",
                 schema(new String[][]{{"battery_percent", "integer", "Battery % shown on the bike, 0-100"}}, "battery_percent")));
@@ -664,6 +666,37 @@ final class Tools {
                         {"from_start", "boolean", "For setup: he said the start / the first rate was wrong from the beginning (earlier bills change)"},
                         {"vendor", "string", "For setup: the milkman's name (optional)"},
                         {"confirmed", "boolean", "For remove: he said yes to removing the whole account"}})));
+        DEFS.add(new Def("car_account", "His car's fuel (diesel), mileage and service (కారు లెక్కలు). Actions: "
+                + "fill (a fill at the bunk: rupees and litres, or rupees and rate, or litres and rate; rupees alone = litres from his last rate, said as approx; "
+                + "odometer = the car's total meter (ODO) reading if he says it, never the trip meter (Trip A / B); full = true only when he says the tank was filled full / ఫుల్ ట్యాంక్; "
+                + "date if not today, e.g. 'నిన్న') "
+                + "e.g. 'కారుకి ₹3000 డీజిల్ కొట్టించాను, 32 లీటర్లు, మీటర్ 45,230, ఫుల్' = fill rupees 3000 litres 32 odometer 45230 full true; "
+                + "'మూడు వేలు' = 3000, '45 వేల 230' = 45230; "
+                + "meter (only the meter reading, 'కారు మీటర్ 45,500'); "
+                + "service (the car was serviced: rupees, odometer, what was done, date); "
+                + "status (default: mileage, this month, the last fill, when the next service is); month (a month's diesel, km, mileage, ₹ per km: month = YYYY-MM, this or last); "
+                + "setup (name e.g. 'Swift', fuel diesel / petrol / cng, every_km and every_months from his service book, last_service_date and last_service_km = "
+                + "the last service before Jarvis kept the account); "
+                + "report (the month's PDF, opened); share (that PDF into WhatsApp: he picks the chat and taps send himself); "
+                + "undo (the last entry was wrong: first without confirmed, it says what would go and its id; after his yes, confirmed = true with that id); "
+                + "remove (the whole car account: only when he clearly asks, confirmed = true after his yes). "
+                + "Fills and services go into his month's expenses by themselves: never also add_expense for them. "
+                + "The bike is NOT the car: bike charging / bike service are other tools. Never pay or open a payment app.",
+                schema(new String[][]{{"action", "string", "status (default), fill, meter, service, month, setup, report, share, undo or remove"},
+                        {"rupees", "number", "For fill / service: rupees paid"}, {"litres", "number", "For fill: litres put in"},
+                        {"rate", "number", "For fill: rupees per litre, if he says it"}, {"odometer", "number", "For fill / meter / service: the meter (odometer) reading in km"},
+                        {"full", "boolean", "For fill: the tank was filled full (only when he says so)"},
+                        {"date", "string", "For fill / meter / service: YYYY-MM-DD, or నిన్న (default today)"},
+                        {"what", "string", "For service: what was done (optional, e.g. 'ఆయిల్ మార్పు')"},
+                        {"month", "string", "For month / report / share: YYYY-MM, this or last"},
+                        {"name", "string", "For setup: the car's name"}, {"fuel", "string", "For setup or the first fill: diesel, petrol or cng"},
+                        {"every_km", "integer", "For setup: service every this many km (from his service book)"},
+                        {"every_months", "integer", "For setup: or every this many months"},
+                        {"last_service_date", "string", "For setup: the last service's date, YYYY-MM-DD"},
+                        {"last_service_km", "number", "For setup: the meter at the last service"},
+                        {"meter_ok", "boolean", "For fill / meter / service: he said the meter reading is right after Jarvis asked about a big jump (big_jump)"},
+                        {"id", "string", "For undo: the id the first undo answer gave"},
+                        {"confirmed", "boolean", "For undo / remove: he said yes"}})));
         DEFS.add(new Def("debts", "Money between him and others, and monthly payments: lent (he gave someone money, they owe him), borrowed (he owes someone), "
                 + "emi (a loan EMI on a day of the month), chit (చిట్టీ instalment on a day of the month). "
                 + "add: a new one; paid: he paid / got money back (lent/borrowed: amount, 0 = all; emi/chit: this month's instalment is paid); list: open ones and totals; remove. "
@@ -926,13 +959,20 @@ final class Tools {
     private List<Def> sendable(java.util.Set<String> only) {
         List<Def> out = new ArrayList<>();
         if (only == null) {
-            for (Def d : DEFS) if (!"home_care".equals(d.name) || prefs.homeMode()) out.add(d); // (home_care: the home tablet only)
+            for (Def d : DEFS) if (forHere(d)) out.add(d);
             return out;
         }
-        for (Def d : DEFS) if (only.contains(d.name) && SpeedGroups.groupOf(d.name) == null && (!"home_care".equals(d.name) || prefs.homeMode())) out.add(d);
+        for (Def d : DEFS) if (only.contains(d.name) && SpeedGroups.groupOf(d.name) == null && forHere(d)) out.add(d);
         out.add(MORE_TOOLS);
-        for (Def d : DEFS) if (only.contains(d.name) && SpeedGroups.groupOf(d.name) != null && (!"home_care".equals(d.name) || prefs.homeMode())) out.add(d);
+        for (Def d : DEFS) if (only.contains(d.name) && SpeedGroups.groupOf(d.name) != null && forHere(d)) out.add(d);
         return out;
+    }
+
+    /** home_care: the home tablet only; car_account: his phone only (the car account isn't on the tablet). */
+    private boolean forHere(Def d) {
+        if ("home_care".equals(d.name)) return prefs.homeMode();
+        if ("car_account".equals(d.name)) return !prefs.homeMode();
+        return true;
     }
 
     /** ⚡ A: the AI asks for a group of jobs it wasn't sent (Brain answers it; it never reaches execute()). */
@@ -1012,6 +1052,7 @@ final class Tools {
             case "local_news": return "మీ ప్రాంతాల వార్తలు తెస్తున్నాను…";
             case "debts": return "అప్పులు, EMI లు చూస్తున్నాను…";
             case "house_accounts": return "పాల లెక్క…";
+            case "car_account": return "కారు లెక్క…";
             case "health_advice": return "చూస్తున్నాను…";
             case "cough_log": return "దగ్గు లెక్క…";
             case "home_sounds": return "వింటున్నాను…";
@@ -1209,6 +1250,7 @@ final class Tools {
                 case "local_news": return localNews(a);
                 case "debts": return debts(a);
                 case "house_accounts": return houseAccounts(a);
+                case "car_account": return carAccount(a);
                 case "health_advice": return healthAdvice(a);
                 case "cough_log": return coughLog(a);
                 case "home_sounds": return homeSounds(a);
@@ -3614,6 +3656,8 @@ final class Tools {
                 if (d != null && d.getTime() + 12 * 3600000L <= when && when - d.getTime() < 366L * 86400000L) when = d.getTime() + 12 * 3600000L;
             } catch (Exception ignored) {}
         }
+        if (!prefs.homeMode() && Car.covers(act(), amount, when, category)) // (a bunk bill / service bill whose fill / service he already told)
+            return ok().put("added", false).put("why", "Already in his expenses: the car account wrote this fill / service (" + Math.round(amount) + ") when he told it. Not added twice.").toString();
         JSONObject e = Money.add(act(), amount, what == null ? "" : what.trim(), shop, category, when);
         return ok().put("added", e).put("month_total_bills", Math.round(Money.totalSince(act(), monthStart()))).toString();
     }
@@ -6436,6 +6480,8 @@ final class Tools {
         if (ex != null) {
             JSONObject o = new JSONObject(addExpense(Double.parseDouble(ex[0]), ex[1], "", ex[2], ""));
             if (!o.optBoolean("ok")) return problem(o);
+            if (o.has("added") && !(o.opt("added") instanceof JSONObject)) // (the car account wrote this fill / service already)
+                return "₹" + ex[0] + " ఇప్పటికే కారు లెక్కలో ఉంది, నెల ఖర్చుల్లో కూడా ఉంది: రెండోసారి రాయలేదు.";
             return "₹" + ex[0] + " " + (ex[1].isEmpty() ? "" : ex[1] + " ") + "ఖర్చు రాశాను. ఈ నెల మొత్తం ₹" + o.optLong("month_total_bills") + ".";
         }
         if (t.contains("ఖర్చు") && any(t, "ఎంత", "చెప్పు", "ఎన్ని", "ఏమేమి")) {
@@ -7784,6 +7830,30 @@ final class Tools {
         }
         if (action.equals("paid") || action.equals("unpaid") || action.equals("bill")) House.freshen(act()); // (what was said at home first: no money written twice)
         return House.tool(act(), a).toString();
+    }
+
+    /** 🚗 The car's diesel, mileage and service (Car / CarBook); the month's PDF is opened / shared here (his phone only). */
+    private String carAccount(JSONObject a) throws Exception {
+        if (prefs.homeMode()) return err("phone_only", "The car account is kept on Anil's phone.");
+        String action = a.optString("action", "").trim().toLowerCase(Locale.ROOT);
+        if (action.equals("report") || action.equals("share") || action.equals("pdf")) {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            java.time.YearMonth ym = HouseBook.month(a.optString("month"), today);
+            if (ym == null) return err("bad_month", "month: YYYY-MM, this or last.");
+            Coder.Made m = Car.pdf(act(), ym);
+            if (m == null) return err("not_set", "The car account isn't started yet: it starts with his first fill ('కారుకి ₹3000 డీజిల్, 32 లీటర్లు, మీటర్ …').");
+            boolean share = action.equals("share");
+            boolean opened = m.uri != null && unlocked();
+            if (opened) {
+                if (share) Cards.share(act(), m, CarBook.MONTHS[ym.getMonthValue() - 1] + " కారు లెక్క");
+                else Cards.view(act(), m);
+            }
+            return ok().put("pdf", m.where).put("month", CarBook.MONTHS[ym.getMonthValue() - 1] + " " + ym.getYear()).put("opened", opened)
+                    .put("next", !opened ? "Say the PDF is saved in " + m.where + " (the phone is locked, so it wasn't opened)."
+                            : share ? "Say WhatsApp is open with the PDF: he picks the chat and taps send himself."
+                            : "Say in one line the PDF is saved in " + m.where + " and opened; offer to share it on WhatsApp (car_account share).").toString();
+        }
+        return Car.tool(act(), a).toString();
     }
 
     private String debts(JSONObject a) throws Exception {

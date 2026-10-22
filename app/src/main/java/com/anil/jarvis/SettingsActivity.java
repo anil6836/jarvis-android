@@ -1046,6 +1046,7 @@ public class SettingsActivity extends Activity {
         button("🔔 ఇప్పుడు 5 సెకన్లు మోగించి చూడు", v -> FindPhone.start(this, 5000));
 
         if (!prefs.homeMode()) houseSection(); // 🥛 the milk account (his phone keeps it; the tablet only takes her words)
+        if (!prefs.homeMode()) carSection(); // 🚗 the car's diesel, mileage and service (his phone only)
 
         section("రోజువారీ హెచ్చరికలు");
         stormAlert = toggle("⛈️ గంటలోపు పిడుగులు / భారీ వర్షం వచ్చేలా ఉంటే చెప్పు", prefs.stormAlert());
@@ -1833,6 +1834,7 @@ public class SettingsActivity extends Activity {
         notifyInfo.setText(NotifyListener.enabled(this) ? "✓ నోటిఫికేషన్ యాక్సెస్: ఇచ్చారు" : "✗ నోటిఫికేషన్ యాక్సెస్: ఇవ్వలేదు");
         showCallChecks(); // 📞 (back from a permission screen: ticks afresh)
         showHouse(); // 🥛 (a day said meanwhile)
+        showCar(); // 🚗 (a fill said meanwhile)
         screenInfo.setText(JarvisAccessibility.enabled() ? "✓ స్క్రీన్ యాక్సెస్: ఆన్" : "✗ స్క్రీన్ యాక్సెస్: ఆఫ్");
         screenInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
         if (WakeService.wordStatus != null) s.append("\n\"Jarvis\" పదం: ").append(WakeService.wordStatus);
@@ -2642,6 +2644,304 @@ public class SettingsActivity extends Activity {
                 runOnUiThread(() -> Toast.makeText(this, "PDF కాలేదు: " + e.getMessage(), Toast.LENGTH_LONG).show());
             }
         }, "house-pdf").start();
+    }
+
+    // ================================================================ 🚗 the car's diesel, mileage and service
+
+    private TextView carAcctInfo;
+
+    /** 🚗 What is kept, typing a fill / service / meter reading, the car's details, the switches, the month's pages, undo. */
+    private void carSection() {
+        section("🚗 కారు లెక్కలు (ఇంధనం, మైలేజ్, సర్వీస్)", "🚗");
+        note("బంక్‌లో కొట్టించాక Jarvis కి చెప్పండి: 'కారుకి ₹3000 డీజిల్, 32 లీటర్లు, మీటర్ 45,230, ఫుల్'. మీటర్ రీడింగ్ చెబితే మైలేజ్ కచ్చితంగా వస్తుంది "
+                + "(ట్యాంక్ ఫుల్ చేయించినప్పుడు 'ఫుల్' అంటే ఇంకా కచ్చితం); చెప్పకపోతే GPS కారు ట్రిప్పుల కి.మీ తో సుమారు లెక్క. అడగొచ్చు: 'మైలేజ్ ఎంత వస్తోంది?', "
+                + "'ఈ నెల డీజిల్‌కి ఎంత?', 'కారు సర్వీస్ ఎప్పుడు?'. Jarvis డబ్బులు కట్టడు; అన్నీ ఈ ఫోన్‌లోనే.");
+        carAcctInfo = Ui.text(this, "", 15, Ui.TEXT);
+        carAcctInfo.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
+        box.addView(carAcctInfo);
+        showCar();
+        String fw = CarBook.fuelWord(CarBook.fuel(Car.load(this)));
+        button("⛽ " + fw + " కొట్టించినది రాయి (టైప్ చేసి)", v -> carFillDialog());
+        button("🔧 కారు సర్వీస్ అయింది", v -> carServiceDialog());
+        button("📏 మీటర్ రీడింగ్ మాత్రమే రాయి", v -> carOdoDialog());
+        button("✏️ కారు వివరాలు (పేరు, ఇంధనం, సర్వీస్ ఎప్పుడు)", v -> carSetupDialog());
+        String[][] sw = {{Car.SERVICE, "🔧 సర్వీస్ దగ్గర పడితే ముందే గుర్తుచేయి (15 రోజులు / 500 కి.మీ ముందు)"},
+                {Car.TO_EXPENSE, "💰 ఇంధనం, సర్వీస్ ఖర్చు నెల ఖర్చుల్లో కలుపు"},
+                {Car.DROP_TELL, "📉 మైలేజ్ మామూలు కంటే బాగా తగ్గితే చెప్పు (మీటర్ రీడింగ్ లెక్క నుంచే)"}};
+        for (String[] t : sw) {
+            Switch x = toggle(t[1], Car.on(this, t[0]));
+            x.setOnCheckedChangeListener((b, v) -> Car.set(this, t[0], v));
+        }
+        button("📄 ఈ నెల కారు లెక్క PDF", v -> carPdf(java.time.YearMonth.now(), false));
+        button("📄 గత నెల కారు లెక్క PDF", v -> carPdf(java.time.YearMonth.now().minusMonths(1), false));
+        button("📤 ఈ నెల PDF WhatsApp లో (చాట్ మీరే ఎంచుకుని పంపాలి)", v -> carPdf(java.time.YearMonth.now(), true));
+        button("↩️ చివరిగా రాసింది తీసేయి (తప్పుగా రాస్తే)", v -> carUndo());
+    }
+
+    private void showCar() {
+        if (carAcctInfo == null) return;
+        final android.content.Context app = getApplicationContext();
+        new Thread(() -> { // (the trip diary is read from a file)
+            String text;
+            try {
+                org.json.JSONObject st = Car.load(app);
+                if (!CarBook.isSet(st)) {
+                    text = "ఇంకా మొదలవలేదు: మొదటిసారి డీజిల్ కొట్టించినప్పుడు Jarvis కి చెప్పండి, లేదా కింద ⛽ నొక్కి రాయండి. ✏️ లో చివరి సర్వీస్ తేదీ పెడితే సర్వీస్ ముందే గుర్తుచేస్తాను.";
+                } else {
+                    java.util.List<double[]> tr = Car.trips(app);
+                    long now = System.currentTimeMillis();
+                    java.time.ZoneId z = java.time.ZoneId.systemDefault();
+                    java.time.LocalDate today = java.time.LocalDate.now(z);
+                    StringBuilder b = new StringBuilder("✓ ").append(CarBook.name(st)).append(" · ").append(CarBook.fuelWord(CarBook.fuel(st)))
+                            .append(" · సర్వీస్ ప్రతి ").append(CarBook.km(CarBook.everyKm(st))).append(" కి.మీ / ").append(CarBook.everyMonths(st)).append(" నెలలు\n\n")
+                            .append(CarBook.mileageLine(st, tr));
+                    String m = CarBook.monthLine(st, CarBook.month(st, tr, java.time.YearMonth.from(today), today, now, z));
+                    if (!m.isEmpty()) b.append("\n").append(m);
+                    java.util.List<org.json.JSONObject> fs = CarBook.fills(st);
+                    if (!fs.isEmpty()) b.append("\nచివరిసారి: ").append(CarBook.dayName(fs.get(fs.size() - 1).optString("d"))).append(" · ")
+                            .append(CarBook.fillText(fs.get(fs.size() - 1), CarBook.fuel(st)));
+                    b.append("\n").append(CarBook.serviceLine(st, CarBook.service(st, tr, today, now, z)));
+                    text = b.toString();
+                }
+            } catch (Exception e) {
+                text = "కారు లెక్క చూపించలేకపోయాను: " + e.getMessage();
+            }
+            final String t = text;
+            runOnUiThread(() -> { if (carAcctInfo != null) carAcctInfo.setText(t); });
+        }, "car-info").start();
+    }
+
+    private EditText carNumber(LinearLayout l, String label, String hint, String value) {
+        l.addView(Ui.text(this, label, 14, Ui.MUTED));
+        EditText e = new EditText(this);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        e.setHint(hint);
+        if (value != null) e.setText(value);
+        l.addView(e);
+        return e;
+    }
+
+    /** A date line he taps to change (today unless he picks another day). */
+    private TextView carDay(LinearLayout l, java.time.LocalDate[] day, String label) {
+        TextView t = Ui.text(this, "", 15, Ui.CYAN);
+        t.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 6));
+        Runnable show = () -> t.setText("📅 " + label + ": " + (day[0] == null ? "పెట్టలేదు" : CarBook.dayName(day[0].toString()) + ", " + day[0].getYear()) + "  (మార్చడానికి నొక్కండి)");
+        show.run();
+        t.setOnClickListener(v -> {
+            java.time.LocalDate d0 = day[0] == null ? java.time.LocalDate.now() : day[0];
+            android.app.DatePickerDialog dp = new android.app.DatePickerDialog(this, (x, y, m, d) -> { day[0] = java.time.LocalDate.of(y, m + 1, d); show.run(); },
+                    d0.getYear(), d0.getMonthValue() - 1, d0.getDayOfMonth());
+            dp.getDatePicker().setMaxDate(System.currentTimeMillis());
+            dp.show();
+        });
+        l.addView(t);
+        return t;
+    }
+
+    private LinearLayout carBox() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        int pad = Ui.dp(this, 18);
+        l.setPadding(pad, Ui.dp(this, 8), pad, 0);
+        return l;
+    }
+
+    /** A dialog's values as the car tool's words (null: a message was shown, the box stays open); meterOk: he said a big jump is right. */
+    private interface CarArgs { org.json.JSONObject make(boolean meterOk) throws Exception; }
+
+    /** The dialog stays open on a wrong number (what he typed stays); a good save shows what was written. */
+    private void carSave(android.app.AlertDialog dlg, CarArgs args) {
+        dlg.setOnShowListener(x -> dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> carSend(dlg, args, false)));
+        dlg.show();
+    }
+
+    /** Saved off the main thread (the trip diary is read for the mileage); the answer is shown if the screen is still open. */
+    private void carSend(android.app.AlertDialog dlg, CarArgs args, boolean meterOk) {
+        org.json.JSONObject a;
+        try { a = args.make(meterOk); } catch (Exception e) { Toast.makeText(this, "సేవ్ కాలేదు: " + e.getMessage(), Toast.LENGTH_LONG).show(); return; }
+        if (a == null) return;
+        android.view.View save = dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE);
+        save.setEnabled(false);
+        final android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            org.json.JSONObject r;
+            String fail = "";
+            try { r = Car.tool(app, a); } catch (Exception e) { r = null; fail = String.valueOf(e.getMessage()); }
+            final org.json.JSONObject res = r;
+            final String why = fail;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                save.setEnabled(true);
+                if (res == null) { Toast.makeText(this, "సేవ్ కాలేదు: " + why, Toast.LENGTH_LONG).show(); return; }
+                if (!res.optBoolean("ok")) {
+                    if ("big_jump".equals(res.optString("error")))
+                        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("📏 మీటర్ సరైనదేనా?").setMessage(res.optString("say"))
+                                .setPositiveButton("సరైనదే, రాయి", (d, w) -> carSend(dlg, args, true)).setNegativeButton("మార్చుతాను", null).show();
+                    else Toast.makeText(this, res.optString("say", "సేవ్ కాలేదు, మళ్ళీ చూడండి."), Toast.LENGTH_LONG).show();
+                    return;
+                }
+                dlg.dismiss();
+                StringBuilder b = new StringBuilder(res.optString("said"));
+                if (res.has("mileage")) b.append("\n\n").append(res.optString("mileage"));
+                if (res.has("mileage_drop")) b.append("\n\n📉 ").append(res.optString("mileage_drop"));
+                if (res.has("service")) b.append("\n\n🔧 ").append(res.optString("service"));
+                new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("✓ సేవ్ అయింది").setMessage(b.toString())
+                        .setPositiveButton("సరే", null).show();
+                showCar();
+            });
+        }, "car-save").start();
+    }
+
+    private android.app.AlertDialog carDialog(String title, LinearLayout l) {
+        ScrollView sc = new ScrollView(this);
+        sc.addView(l);
+        return new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle(title).setView(sc)
+                .setPositiveButton("సేవ్", null).setNegativeButton("వద్దు", null).create();
+    }
+
+    private static void putNum(org.json.JSONObject o, String k, EditText e) throws Exception {
+        double v = num(e);
+        if (!Double.isNaN(v)) o.put(k, v);
+    }
+
+    /** ⛽ A fill, typed: rupees, litres (or the rate), the meter, full tank, the day. */
+    private void carFillDialog() {
+        String fw = CarBook.fuelWord(CarBook.fuel(Car.load(this)));
+        LinearLayout l = carBox();
+        EditText rs = carNumber(l, "💰 ఎన్ని రూపాయలు:", "ఉదా: 3000", null);
+        EditText lt = carNumber(l, "⛽ ఎన్ని లీటర్లు:", "ఉదా: 32", null);
+        EditText rate = carNumber(l, "🏷️ లీటర్ రేటు (లీటర్లు రాయకపోతే):", "ఉదా: 93.75", null);
+        EditText odo = carNumber(l, "📏 మీటర్ రీడింగ్ (మొత్తం ODO కి.మీ, ట్రిప్ మీటర్ కాదు; వీలైతే):", "ఉదా: 45230", null);
+        android.widget.CheckBox full = new android.widget.CheckBox(this);
+        full.setText("ట్యాంక్ ఫుల్ చేయించాను");
+        full.setTextColor(Ui.TEXT);
+        l.addView(full);
+        final java.time.LocalDate[] day = {java.time.LocalDate.now()};
+        carDay(l, day, "ఏ రోజు");
+        android.app.AlertDialog dlg = carDialog("⛽ " + fw + " రాయి", l);
+        carSave(dlg, ok -> {
+            org.json.JSONObject a = new org.json.JSONObject().put("action", "fill").put("full", full.isChecked()).put("date", day[0].toString()).put("meter_ok", ok);
+            putNum(a, "rupees", rs);
+            putNum(a, "litres", lt);
+            putNum(a, "rate", rate);
+            putNum(a, "odometer", odo);
+            return a;
+        });
+    }
+
+    /** 🔧 A service done: the cost, the meter, what was done, the day (each one optional). */
+    private void carServiceDialog() {
+        LinearLayout l = carBox();
+        EditText rs = carNumber(l, "💰 సర్వీస్ ఖర్చు (రూపాయలు):", "ఉదా: 4500", null);
+        EditText odo = carNumber(l, "📏 మీటర్ రీడింగ్ (కి.మీ):", "ఉదా: 50150", null);
+        l.addView(Ui.text(this, "🛠️ ఏం చేశారు (అవసరం లేదు):", 14, Ui.MUTED));
+        EditText what = new EditText(this);
+        what.setHint("ఉదా: ఆయిల్ మార్పు, ఫిల్టర్");
+        l.addView(what);
+        final java.time.LocalDate[] day = {java.time.LocalDate.now()};
+        carDay(l, day, "ఏ రోజు");
+        carSave(carDialog("🔧 కారు సర్వీస్ అయింది", l), ok -> {
+            org.json.JSONObject a = new org.json.JSONObject().put("action", "service").put("date", day[0].toString()).put("what", what.getText().toString().trim())
+                    .put("meter_ok", ok);
+            putNum(a, "rupees", rs);
+            putNum(a, "odometer", odo);
+            return a;
+        });
+    }
+
+    /** 📏 Only the meter reading (helps the km and the service). */
+    private void carOdoDialog() {
+        LinearLayout l = carBox();
+        EditText odo = carNumber(l, "📏 మీటర్ రీడింగ్ (కి.మీ):", "ఉదా: 45500", null);
+        final java.time.LocalDate[] day = {java.time.LocalDate.now()};
+        carDay(l, day, "ఏ రోజు");
+        carSave(carDialog("📏 మీటర్ రీడింగ్", l), ok -> {
+            if (!(num(odo) > 0)) { Toast.makeText(this, "మీటర్ రీడింగ్ రాయండి (మొత్తం ODO).", Toast.LENGTH_LONG).show(); return null; }
+            return new org.json.JSONObject().put("action", "meter").put("odometer", num(odo)).put("date", day[0].toString()).put("meter_ok", ok);
+        });
+    }
+
+    /** ✏️ The car's name, its fuel, the service (every N km / months, the last one before Jarvis kept the account). */
+    private void carSetupDialog() {
+        org.json.JSONObject st = Car.load(this);
+        org.json.JSONObject car = CarBook.car(st);
+        LinearLayout l = carBox();
+        l.addView(Ui.text(this, "🚗 కారు పేరు:", 14, Ui.MUTED));
+        EditText name = new EditText(this);
+        name.setText(CarBook.name(st));
+        l.addView(name);
+        l.addView(Ui.text(this, "⛽ ఇంధనం:", 14, Ui.MUTED));
+        RadioGroup fuel = new RadioGroup(this);
+        fuel.setOrientation(RadioGroup.HORIZONTAL);
+        String[][] fuels = {{"diesel", "డీజిల్"}, {"petrol", "పెట్రోల్"}, {"cng", "CNG"}};
+        java.util.Map<Integer, String> fuelOf = new java.util.HashMap<>();
+        for (String[] f : fuels) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(f[1]);
+            rb.setId(View.generateViewId());
+            fuel.addView(rb);
+            fuelOf.put(rb.getId(), f[0]);
+            if (f[0].equals(CarBook.fuel(st))) fuel.check(rb.getId());
+        }
+        l.addView(fuel);
+        EditText km = carNumber(l, "🔧 సర్వీస్ ప్రతి ఎన్ని కి.మీ కి (సర్వీస్ బుక్‌లో ఉన్నట్టు):", "ఉదా: 10000", String.valueOf(CarBook.everyKm(st)));
+        EditText months = carNumber(l, "🔧 లేదా ఎన్ని నెలలకి:", "ఉదా: 12", String.valueOf(CarBook.everyMonths(st)));
+        final java.time.LocalDate[] last = {car == null || car.optString("svc0_date").isEmpty() ? null : java.time.LocalDate.parse(car.optString("svc0_date"))};
+        final java.time.LocalDate last0 = last[0];
+        carDay(l, last, "Jarvis లెక్క మొదలవక ముందు చివరి సర్వీస్");
+        final String km0 = car != null && car.has("svc0_odo") ? String.valueOf(car.optLong("svc0_odo")) : "";
+        EditText lastKm = carNumber(l, "📏 ఆ సర్వీస్ అప్పుడు మీటర్ (కి.మీ, తెలిస్తే):", "ఉదా: 40000", km0.isEmpty() ? null : km0);
+        carSave(carDialog(car == null ? "🚗 కారు లెక్క మొదలుపెట్టు" : "🚗 కారు వివరాలు మార్చు", l), ok -> {
+            double k = num(km), mo = num(months);
+            if (!(k >= 1000 && k <= 60_000)) { Toast.makeText(this, "సర్వీస్ కి.మీ: 1,000 నుంచి 60,000 మధ్య రాయండి.", Toast.LENGTH_LONG).show(); return null; }
+            if (!(mo >= 1 && mo <= 36)) { Toast.makeText(this, "సర్వీస్ నెలలు: 1 నుంచి 36 మధ్య రాయండి.", Toast.LENGTH_LONG).show(); return null; }
+            String f = fuelOf.containsKey(fuel.getCheckedRadioButtonId()) ? fuelOf.get(fuel.getCheckedRadioButtonId()) : CarBook.fuel(st);
+            org.json.JSONObject a = new org.json.JSONObject().put("action", "setup").put("name", name.getText().toString().trim()).put("fuel", f)
+                    .put("every_km", Math.round(k)).put("every_months", Math.round(mo));
+            boolean newDay = last[0] != null && !last[0].equals(last0); // (only what he changed: the same date keeps its time, a new one drops the old reading)
+            if (newDay) a.put("last_service_date", last[0].toString());
+            if (!lastKm.getText().toString().trim().equals(km0)) putNum(a, "last_service_km", lastKm); // (a new date with the old km left in the box: that reading is dropped)
+            return a;
+        });
+    }
+
+    /** ↩️ The newest entry, shown first; taken out only after his yes. */
+    private void carUndo() {
+        try {
+            org.json.JSONObject r = Car.tool(this, new org.json.JSONObject().put("action", "undo"));
+            if (!r.optBoolean("ok")) { Toast.makeText(this, r.optString("say", "తీసేయడానికి ఏమీ లేదు."), Toast.LENGTH_LONG).show(); return; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("↩️ తీసేయనా?").setMessage(r.optString("ask"))
+                    .setPositiveButton("అవును, తీసేయి", (d, w) -> {
+                        try {
+                            org.json.JSONObject x = Car.tool(this, new org.json.JSONObject().put("action", "undo").put("confirmed", true).put("id", r.optString("id")));
+                            Toast.makeText(this, x.optBoolean("ok") ? x.optString("said") : x.optString("say"), Toast.LENGTH_LONG).show();
+                        } catch (Exception e) {
+                            Toast.makeText(this, "తీసేయలేకపోయాను: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        }
+                        showCar();
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "చూడలేకపోయాను: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** The month's page: opened, or into WhatsApp (he picks the chat and sends). */
+    private void carPdf(java.time.YearMonth ym, boolean share) {
+        Toast.makeText(this, "PDF తయారవుతోంది…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                Coder.Made m = Car.pdf(getApplicationContext(), ym);
+                runOnUiThread(() -> {
+                    if (m == null) Toast.makeText(this, "కారు లెక్క ఇంకా మొదలవలేదు.", Toast.LENGTH_LONG).show();
+                    else if (m.uri == null) Toast.makeText(this, "సేవ్ అయింది: " + m.where, Toast.LENGTH_LONG).show();
+                    else if (share) Cards.share(this, m, CarBook.MONTHS[ym.getMonthValue() - 1] + " కారు లెక్క");
+                    else Cards.view(this, m);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "PDF కాలేదు: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        }, "car-pdf").start();
     }
 
     /** Saves a text box as he types (no Save button needed). */

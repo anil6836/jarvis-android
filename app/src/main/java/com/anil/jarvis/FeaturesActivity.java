@@ -373,6 +373,15 @@ public class FeaturesActivity extends Activity {
                     ask("😴", "కారులో నిద్ర వస్తోంది", "సలహా + 5 నిమిషాలకి ఒకసారి చెక్", "కారు నడుపుతున్నాను, నిద్ర వస్తోంది (car_care sleepy)."),
                     open("👁️", "కళ్ళ చెక్, కారు అలర్ట్ సెట్టింగ్స్", "కెమెరా టెస్ట్, సమయాలు", "కారు నిద్ర అలర్ట్"),
                     ask("🏁", "డ్రైవింగ్ అయిపోయింది", "పార్కింగ్ చోటు గుర్తుంచుకుంటుంది", "డ్రైవింగ్ అయిపోయింది (driving_mode off).")),
+            new Cat("car", "⛽", "కారు లెక్కలు", "డీజిల్, మైలేజ్, సర్వీస్, నెల ఖర్చు", 0xFF22C55E,
+                    fill("⛽", "డీజిల్ కొట్టించాను", "ఉదా: ₹3000, 32 లీటర్లు, మీటర్ 45230, ఫుల్", "కారుకి డీజిల్ కొట్టించాను, రాసుకో (car_account fill): "),
+                    ask("📊", "మైలేజ్ ఎంత వస్తోంది?", "లీటర్‌కి కి.మీ, కి.మీ.కి ఖర్చు", "నా కారు మైలేజ్ ఎంత వస్తోంది? కి.మీ.కి ఎంత ఖర్చు? (car_account status)"),
+                    ask("💰", "ఈ నెల డీజిల్ ఖర్చు", "ఎన్నిసార్లు, లీటర్లు, కి.మీ", "ఈ నెల కారుకి డీజిల్ ఎంత అయింది? ఎన్ని కి.మీ తిరిగింది? (car_account month)"),
+                    ask("🔧", "కారు సర్వీస్ ఎప్పుడు?", "తేదీ / కి.మీ ఏది ముందైతే", "నా కారు తర్వాతి సర్వీస్ ఎప్పుడు? (car_account status)"),
+                    fill("🛠️", "కారు సర్వీస్ అయింది", "ఎంత, మీటర్, ఏం చేశారు", "కారు సర్వీస్ అయింది, రాసుకో (car_account service): "),
+                    fill("📏", "మీటర్ రీడింగ్", "కి.మీ", "కారు మీటర్ రీడింగ్ ఇది, రాసుకో (car_account meter): "),
+                    act("📄", "ఈ నెల కారు లెక్క PDF", "ప్రతి డీజిల్, మైలేజ్, సర్వీస్; WhatsApp లో పంపొచ్చు", "car_pdf"),
+                    open("⚙️", "కారు లెక్క సెట్టింగ్స్", "టైప్ చేసి రాయడం, సర్వీస్ వివరాలు, స్విచ్‌లు", "కారు లెక్కలు")),
             new Cat("travel", "🌍", "ప్రయాణం, బయటకు", "బస్, ట్రైన్, టికెట్లు, ట్రిప్, ఫుడ్", 0xFF34D399,
                     fill("🚆", "ట్రైన్ స్టేటస్", "Where is my Train లో: నంబర్, పేరు లేదా PNR", "ట్రైన్ స్టేటస్: "),
                     fill("🚃", "ట్రైన్ కోచ్ ఎక్కడ?", "ప్లాట్‌ఫాంపై మీ కోచ్ ఎక్కడ ఆగుతుంది", "ఈ ట్రైన్‌లో ఈ కోచ్ ప్లాట్‌ఫాంపై ఎక్కడ ఆగుతుంది (train_status coach), ట్రైన్ నంబర్, కోచ్, స్టేషన్: "),
@@ -592,7 +601,7 @@ public class FeaturesActivity extends Activity {
             {"డబ్బు", "money", "debts", "house", "prices", "shopping"},
             {"ఆరోగ్యం", "medicine", "doctor", "wellness"},
             {"వాచ్", "watch"},
-            {"ప్రయాణం", "drive", "travel", "places"},
+            {"ప్రయాణం", "drive", "car", "travel", "places"},
             {"వార్తలు, వినోదం", "news", "fun", "kids", "home"},
             {"ఫోన్, టూల్స్", "phone", "camera", "daily", "live", "code", "jarvis"}};
 
@@ -788,7 +797,7 @@ public class FeaturesActivity extends Activity {
     /** This device is the home tablet: its own folder for "అమ్మగారి టాబ్లెట్" is not shown here. */
     private boolean homeMode;
 
-    private boolean hidden(Cat c) { return homeMode && ("amma".equals(c.id) || "house".equals(c.id)); } // (the milk account is kept on his phone)
+    private boolean hidden(Cat c) { return homeMode && ("amma".equals(c.id) || "house".equals(c.id) || "car".equals(c.id)); } // (the milk and car accounts are kept on his phone)
 
     @Override public void onBackPressed() {
         if (!search.getText().toString().isEmpty()) { search.setText(""); return; }
@@ -907,6 +916,7 @@ public class FeaturesActivity extends Activity {
         if ("birthdays".equals(c.id)) addBirthdays(c);
         if ("debts".equals(c.id)) addDebts(c);
         if ("house".equals(c.id)) addHouse(c);
+        if ("car".equals(c.id)) addCar(c);
         if ("expiry".equals(c.id)) addExpiry(c);
         if ("holidays".equals(c.id)) addHolidays(c);
         scroll.scrollTo(0, 0);
@@ -1092,6 +1102,7 @@ public class FeaturesActivity extends Activity {
                 runOnUiThread(() -> {
                     if (m == null) android.widget.Toast.makeText(app, "పాల లెక్క ఇంకా సెట్ చేయలేదు.", android.widget.Toast.LENGTH_LONG).show();
                     else if (m.uri == null) android.widget.Toast.makeText(app, "సేవ్ అయింది: " + m.where, android.widget.Toast.LENGTH_LONG).show();
+                    else if (isFinishing() || isDestroyed()) android.widget.Toast.makeText(app, "సేవ్ అయింది: " + m.where, android.widget.Toast.LENGTH_LONG).show(); // (he left the screen)
                     else new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("📄 ఈ నెల పాల లెక్క")
                                 .setMessage("సేవ్ అయింది: " + m.where)
                                 .setPositiveButton("తెరువు", (d, w) -> Cards.view(this, m))
@@ -1102,6 +1113,60 @@ public class FeaturesActivity extends Activity {
                 runOnUiThread(() -> android.widget.Toast.makeText(app, "PDF కాలేదు: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show());
             }
         }, "house-pdf").start();
+        return true;
+    }
+
+    /** 🚗 The mileage, this month, the service and the newest five fills (taking one back: Settings → ↩️, or by voice). */
+    private void addCar(Cat c) {
+        try {
+            org.json.JSONObject st = Car.load(this);
+            if (!CarBook.isSet(st)) {
+                header(c, "ఇంకా మొదలవలేదు");
+                empty("డీజిల్ కొట్టించినప్పుడు Jarvis కి చెప్పండి: \"కారుకి ₹3000 డీజిల్, 32 లీటర్లు, మీటర్ 45,230, ఫుల్\" (లేదా కింద ⚙️ సెట్టింగ్స్‌లో రాయండి).");
+                return;
+            }
+            java.util.List<double[]> tr = Car.trips(this);
+            long now = System.currentTimeMillis();
+            java.time.ZoneId z = java.time.ZoneId.systemDefault();
+            java.time.LocalDate today = java.time.LocalDate.now(z);
+            header(c, CarBook.name(st) + " · " + CarBook.fuelWord(CarBook.fuel(st)));
+            content.addView(row(c, new Opt("📊", CarBook.mileageLine(st, tr), "", INFO, ""), false), rowParams());
+            String m = CarBook.monthLine(st, CarBook.month(st, tr, java.time.YearMonth.from(today), today, now, z));
+            if (!m.isEmpty()) content.addView(row(c, new Opt("💰", m, "", INFO, ""), false), rowParams());
+            content.addView(row(c, new Opt("🔧", CarBook.serviceLine(st, CarBook.service(st, tr, today, now, z)), "", INFO, ""), false), rowParams());
+            java.util.List<org.json.JSONObject> fs = CarBook.fills(st);
+            header(c, "చివరి " + CarBook.fuelWord(CarBook.fuel(st)) + " (" + Math.min(5, fs.size()) + ")");
+            if (fs.isEmpty()) { empty("ఇంకా ఏమీ రాయలేదు."); return; }
+            for (int i = fs.size() - 1; i >= Math.max(0, fs.size() - 5); i--) {
+                org.json.JSONObject f = fs.get(i);
+                content.addView(row(c, new Opt("⛽", CarBook.dayName(f.optString("d")), CarBook.fillText(f, CarBook.fuel(st)), INFO, ""), false), rowParams());
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /** 🚗 The month's page, made and opened from here (no AI). */
+    private boolean carAction(String code) {
+        if (!"car_pdf".equals(code)) return false;
+        android.widget.Toast.makeText(this, "PDF తయారవుతోంది…", android.widget.Toast.LENGTH_SHORT).show();
+        final android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            try {
+                java.time.YearMonth ym = java.time.YearMonth.now();
+                Coder.Made m = Car.pdf(app, ym);
+                runOnUiThread(() -> {
+                    if (m == null) android.widget.Toast.makeText(app, "కారు లెక్క ఇంకా మొదలవలేదు.", android.widget.Toast.LENGTH_LONG).show();
+                    else if (m.uri == null) android.widget.Toast.makeText(app, "సేవ్ అయింది: " + m.where, android.widget.Toast.LENGTH_LONG).show();
+                    else if (isFinishing() || isDestroyed()) android.widget.Toast.makeText(app, "సేవ్ అయింది: " + m.where, android.widget.Toast.LENGTH_LONG).show(); // (he left the screen)
+                    else new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("📄 ఈ నెల కారు లెక్క")
+                                .setMessage("సేవ్ అయింది: " + m.where)
+                                .setPositiveButton("తెరువు", (d, w) -> Cards.view(this, m))
+                                .setNeutralButton("WhatsApp లో", (d, w) -> Cards.share(this, m, CarBook.MONTHS[ym.getMonthValue() - 1] + " కారు లెక్క"))
+                                .setNegativeButton("సరే", null).show();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> android.widget.Toast.makeText(app, "PDF కాలేదు: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show());
+            }
+        }, "car-pdf").start();
         return true;
     }
 
@@ -1354,6 +1419,7 @@ public class FeaturesActivity extends Activity {
         }
         if (o.type == DO && tabletAction(o.payload)) return;
         if (o.type == DO && houseAction(o.payload)) return;
+        if (o.type == DO && carAction(o.payload)) return;
         if (o.type == DO && o.payload.startsWith("duty_")) { // the duty calendar opens straight from here
             startActivity(new Intent(this, DutyActivity.class).putExtra(DutyActivity.EXTRA_SETUP, o.payload.equals("duty_setup")));
             return;
