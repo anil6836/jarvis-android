@@ -295,7 +295,7 @@ final class Automations {
 
     /**
      * Says it, or has Jarvis do it; with if_rain, only when rain is expected in the next 3 hours. When he should not be
-     * disturbed, or the panel can't open, a "do" rule waits in a notification that runs it when he taps it.
+     * disturbed, or Jarvis can't ask now, a "do" rule waits in a notification that runs it when he taps it.
      */
     private static void act(Context c, JSONObject r) {
         if (r.optBoolean("if_rain") && !Boolean.TRUE.equals(rainSoon(c, 3))) return;
@@ -304,17 +304,8 @@ final class Automations {
         boolean quiet = hush(c, p);
         if ("do".equals(r.optString("action"))) {
             String cmd = "(" + p.name() + " పెట్టిన ఆటోమేషన్) " + what;
-            if (!quiet && android.provider.Settings.canDrawOverlays(c) && !MainActivity.busyTalking()) { Proactive.run(c, cmd); return; }
-            try {
-                Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        .putExtra(MainActivity.EXTRA_ASK, cmd).putExtra(MainActivity.EXTRA_LABEL, "⚙️ " + what);
-                PendingIntent pi = PendingIntent.getActivity(c, ("aud" + r.optString("id")).hashCode(), open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-                android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
-                nm.createNotificationChannel(new android.app.NotificationChannel("jarvis_auto", "Jarvis ఆటోమేషన్లు", android.app.NotificationManager.IMPORTANCE_DEFAULT));
-                nm.notify(("au" + r.optString("id")).hashCode(), new android.app.Notification.Builder(c, "jarvis_auto")
-                        .setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("⚙️ " + what).setContentText("నొక్కితే Jarvis చేస్తాడు")
-                        .setContentIntent(pi).setAutoCancel(true).build());
-            } catch (Exception ignored) {}
+            if (!quiet && Proactive.run(c, cmd)) return; // (on his phone the top card; the tablet's panel)
+            Proactive.runLater(c, cmd, "⚙️ " + what, ("au" + r.optString("id")).hashCode()); // tapped: Jarvis does it
             return;
         }
         Reminders.notify(c, "⚙️ Jarvis ఆటోమేషన్", what, ("au" + r.optString("id")).hashCode());

@@ -383,6 +383,7 @@ public class NotifyListener extends NotificationListenerService {
             q.texts.addAll(fresh);
             while (q.texts.size() > 12) q.texts.remove(0);
             q.lastAt = now;
+            try { android.graphics.drawable.Icon ic = n.getLargeIcon(); if (ic != null) q.photo = ic; } catch (Exception ignored) {}
         }
         note(app, from, "వచ్చింది, వరుసలో ఉంది: చెప్తాను");
         schedule(2500); // wait a moment: messages usually come in a burst, say them together
@@ -405,6 +406,8 @@ public class NotifyListener extends NotificationListenerService {
     /** Messages of one chat waiting to be said. */
     private static final class Pending {
         String key, pkg, app, from;
+        /** The sender's picture on the notification (for the top card), or null. */
+        android.graphics.drawable.Icon photo;
         boolean group, canReply, rested;
         int id;
         final List<String> texts = new ArrayList<>();
@@ -481,8 +484,9 @@ public class NotifyListener extends NotificationListenerService {
             for (Iterator<Pending> it = queue.values().iterator(); it.hasNext(); ) {
                 Pending q = it.next();
                 if (resting) { q.rested = true; continue; } // sleeping after duty: they wait until he wakes
-                if (!q.rested && now - q.firstAt > 30 * 60000L) { // busy for half an hour: too late to announce
-                    note(q.app, q.from, "చెప్పలేకపోయాను: అరగంట పాటు కాల్ / మాటల్లో ఉన్నారు (\"కొత్త మెసేజ్‌లు చదువు\" అంటే చదువుతాను)");
+                if (!q.rested && now - q.firstAt > 30 * 60000L) { // busy for half an hour: too late to announce; it waits under 📬
+                    note(q.app, q.from, "చెప్పలేకపోయాను: అరగంట పాటు కాల్ / మాటల్లో ఉన్నారు · 📬 లో ఉంది (\"చదువు\" అంటే చదువుతాను)");
+                    try { LaterMessages.add(this, q.app, q.from, q.texts, q.id); } catch (Exception ignored) {}
                     it.remove();
                 }
             }
@@ -502,7 +506,8 @@ public class NotifyListener extends NotificationListenerService {
             note(next.app, next.from, "చదవలేదు: నైట్ మోడ్ ఆన్‌లో ఉంది");
             return;
         }
-        if (MainActivity.busyTalking() || TopCard.busy() || JarvisCamera.open || CallControl.busyWithCall() || now < nextAllowed || FindPhone.running()) {
+        if (MainActivity.busyTalking() || TopCard.busy() || JarvisCamera.open || CallControl.busyWithCall() || now < nextAllowed || FindPhone.running()
+                || SheetActivity.open && !p.homeMode()) { // (his phone: not over the panel he opened; it waits till it closes)
             note(next.app, next.from, "వరుసలో ఉంది: " + (CallControl.busyWithCall() ? "కాల్ అయ్యాక" : "ఇప్పటి మాటలు అయ్యాక") + " చెప్తాను");
             schedule(3000);
             return;
@@ -517,7 +522,7 @@ public class NotifyListener extends NotificationListenerService {
     private void announce(Pending q, Prefs p) {
         String app = q.app, from = q.from;
         int id = q.id, count = q.texts.size();
-        String last = q.texts.get(count - 1);
+        String last = Otp.spoken(q.texts.get(count - 1)); // (a one-time code's digits never go to the AI or aloud)
         if (last.length() > 220) last = last.substring(0, 220) + "…";
         // First only who and where; the message itself is read only if Anil says yes.
         String who = from.isEmpty() ? app : from;
@@ -553,7 +558,7 @@ public class NotifyListener extends NotificationListenerService {
             ask = "చదవమంటారా?";
             StringBuilder all = new StringBuilder();
             for (int i = 0; i < count; i++) {
-                String t = q.texts.get(i);
+                String t = Otp.spoken(q.texts.get(i));
                 if (t.length() > 200) t = t.substring(0, 200) + "…";
                 all.append(i + 1).append(") ").append(t).append(i < count - 1 ? " | " : "");
             }
@@ -565,79 +570,93 @@ public class NotifyListener extends NotificationListenerService {
         }
         if (WatchHub.routeToWatch(this, false)) { // the phone is in his pocket and the watch on his wrist: told and answered there (W16)
             note(app, from, "వాచ్‌లో చెప్పాను ⌚" + (count > 1 ? " · " + count + " మెసేజ్‌లు కలిపి" : ""));
-            final String fSay = say, fAsk = ask, fContext = context;
-            WatchHub.announce(this, say, ask, context, () -> { // the watch couldn't be reached after all: as before, on the phone
+            final String fSay = say, fAsk = ask, fContext = context, fMedia = media, fWho = who;
+            WatchHub.announce(this, say, ask, context, () -> { // the watch couldn't be reached after all: on the phone
                 note(app, from, "వాచ్ అందలేదు: ఫోన్‌లో చెప్పాను");
-                openPanel(app, from, fSay, fAsk, fContext, count);
+                toPhone(q, fWho, fSay, fAsk, fContext, fMedia, count, id);
             });
             return;
         }
-        if (cardFits(p)) { // he is in another app: a small card at the top, not the panel from the bottom
-            final TopCard.Msg m = new TopCard.Msg();
-            m.app = app;
-            m.from = who;
-            m.pkg = q.pkg;
-            m.group = q.group;
-            m.id = q.canReply ? id : 0;
-            m.texts.addAll(q.texts);
-            m.say = say;
-            m.ask = ask;
-            m.context = context;
-            m.media = media;
-            m.postedAt = q.firstAt;
-            final String fSay = say, fAsk = ask, fContext = context;
-            final int fCount = count;
-            main.postDelayed(() -> { // after the app's own banner has gone
-                if (TopCard.busy()) { // he started talking on the card now up: this one waits its turn (not the panel over it)
-                    synchronized (queue) { // a newer message from the same chat may be waiting already: these go before it
-                        Pending cur = queue.get(q.key);
-                        if (cur == null) queue.put(q.key, q);
-                        else {
-                            cur.texts.addAll(0, q.texts);
-                            while (cur.texts.size() > 12) cur.texts.remove(0);
-                            cur.firstAt = Math.min(cur.firstAt, q.firstAt);
-                            cur.rested |= q.rested;
-                        }
-                    }
-                    note(app, from, "వరుసలో ఉంది: పైన కార్డ్‌లో మాటలు అయ్యాక చెప్తాను");
-                    schedule(3000);
-                    return;
-                }
-                m.typing = JarvisAccessibility.keyboardOpen();
-                Prefs now = new Prefs(this);
-                String typing = now.typingMode(); // while he types: read (like any time) / say who only / silent card
-                m.talk = !m.typing || "read".equals(typing);
-                if (cardFits(now) && JarvisAccessibility.messageCard(m)) {
-                    Store.get(this).addChat("assistant", fSay + " " + fAsk + fContext, false); // "Jarvis, చదువు / రిప్లై" later works too
-                    note(app, from, m.talk ? "పైన కార్డ్‌లో చెప్పి అడిగాను" + (m.typing ? " (టైప్ చేస్తున్నా: సెట్టింగ్ 'చదువు')" : "")
-                            : "name".equals(typing) ? "పైన కార్డ్ చూపించి ఎవరో మాత్రమే చెప్పాను (టైప్ చేస్తున్నారు)"
-                            : "పైన కార్డ్ మాత్రమే చూపించాను (టైప్ చేస్తున్నారు: సెట్టింగ్ 'నిశ్శబ్దం')");
-                    if (!m.talk && "name".equals(typing)) Announcer.say(this, fSay);
-                } else {
-                    openPanel(app, from, fSay, fAsk, fContext, fCount);
-                }
-            }, 2500);
-            return;
-        }
-        openPanel(app, from, say, ask, context, count);
+        toPhone(q, who, say, ask, context, media, count, id);
     }
 
     /**
-     * The top card fits: the screen is on and unlocked, he is in an app (not the home screen, not a Jarvis screen) and
-     * not riding, and the floating button is on (messages put off for later wait as its 📬 dot). Locked, home screen or
-     * riding: the panel, so he can answer by voice without touching the phone.
+     * On the phone (Anil, 22 Oct: the panel from the bottom only when he calls "Jarvis"): the top card while the screen is
+     * on and unlocked (any app, the home screen, the Jarvis app, driving too); with the phone locked or the screen off,
+     * Jarvis says it and listens, by voice only. If neither can be (Jarvis's screen access is off), only who wrote is said
+     * and the messages wait under 📬. Jarvis చెక్'s last-message line says which and why.
      */
-    private boolean cardFits(Prefs p) {
-        if (!JarvisAccessibility.enabled() || !FloatBubble.on(this) || p.driving() || MainActivity.visible || SheetActivity.open || JarvisCamera.open) return false;
-        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
-        android.app.KeyguardManager km = getSystemService(android.app.KeyguardManager.class);
-        if (pm == null || !pm.isInteractive() || km == null || km.isKeyguardLocked()) return false;
-        String front = JarvisAccessibility.frontPackage();
-        if (JarvisAccessibility.isKeyboard(front) || "com.android.systemui".equals(front)) front = JarvisAccessibility.currentPackage();
-        return front != null && !front.isEmpty() && !JarvisAccessibility.homeScreen(this, front);
+    private void toPhone(Pending q, String who, String say, String ask, String context, String media, int count, int id) {
+        String app = q.app, from = q.from;
+        if (new Prefs(this).homeMode()) { openPanel(app, from, say, ask, context, count); return; } // (the home tablet: as before, for అమ్మగారు)
+        if (!JarvisAccessibility.enabled()) { voiceLine(q, say, ask, context, count, "Jarvis స్క్రీన్ యాక్సెస్ ఆఫ్‌లో ఉంది"); return; }
+        final TopCard.Msg m = new TopCard.Msg();
+        m.app = app;
+        m.from = who;
+        m.pkg = q.pkg;
+        m.group = q.group;
+        m.id = q.canReply ? id : 0;
+        m.texts.addAll(q.texts);
+        m.say = say;
+        m.ask = ask;
+        m.context = context;
+        m.media = media;
+        m.postedAt = q.firstAt;
+        m.photo = q.photo;
+        if (!TopCard.screenUsable(this)) { // locked / screen off: by voice only, at once
+            if (TopCard.busy() || SheetActivity.open || JarvisCamera.open) { requeue(q); return; } // (a talk goes on: after it)
+            m.voiceOnly = true;
+            m.talk = true;
+            if (JarvisAccessibility.messageCard(m)) {
+                Store.get(this).addChat("assistant", say + " " + ask + context, false);
+                note(app, from, "ఫోన్ లాక్‌లో ఉంది: మాటతో చెప్పి అడిగాను" + (count > 1 ? " · " + count + " మెసేజ్‌లు కలిపి" : ""));
+            } else if (TopCard.busy()) {
+                requeue(q);
+            } else {
+                voiceLine(q, say, ask, context, count, "కార్డ్ / మాట మొదలవలేదు");
+            }
+            return;
+        }
+        main.postDelayed(() -> { // after the app's own banner has gone
+            if (TopCard.busy() || SheetActivity.open || JarvisCamera.open) { requeue(q); return; } // (he is talking on a card / the panel, or the camera is up: it waits its turn)
+            m.voiceOnly = !TopCard.screenUsable(this); // (locked in these seconds: by voice only)
+            m.typing = !m.voiceOnly && JarvisAccessibility.keyboardOpen();
+            Prefs now = new Prefs(this);
+            String typing = now.typingMode(); // while he types: read (like any time) / say who only / silent card
+            m.talk = m.voiceOnly || !m.typing || "read".equals(typing);
+            if (JarvisAccessibility.enabled() && JarvisAccessibility.messageCard(m)) {
+                Store.get(this).addChat("assistant", say + " " + ask + context, false); // "Jarvis, చదువు / రిప్లై" later works too
+                note(app, from, m.voiceOnly ? "ఫోన్ లాక్‌లో ఉంది: మాటతో చెప్పి అడిగాను"
+                        : m.talk ? "పైన కార్డ్‌లో చెప్పి అడిగాను" + (m.typing ? " (టైప్ చేస్తున్నా: సెట్టింగ్ 'చదువు')" : "")
+                        : "name".equals(typing) ? "పైన కార్డ్ చూపించి ఎవరో మాత్రమే చెప్పాను (టైప్ చేస్తున్నారు)"
+                        : "పైన కార్డ్ మాత్రమే చూపించాను (టైప్ చేస్తున్నారు: సెట్టింగ్ 'నిశ్శబ్దం')");
+                if (!m.talk && "name".equals(typing)) Announcer.say(this, say);
+            } else if (TopCard.busy()) {
+                requeue(q); // (a card's talk began in between: after it)
+            } else {
+                voiceLine(q, say, ask, context, count, JarvisAccessibility.enabled() ? "కార్డ్ చూపించలేకపోయాను" : "Jarvis స్క్రీన్ యాక్సెస్ ఆఫ్‌లో ఉంది");
+            }
+        }, 2500);
     }
 
-    /** Jarvis's panel from the bottom: says who wrote and asks "చదవమంటారా?". */
+    /** A talk on a card / the panel or the camera is on: this chat waits its turn (before a newer message of the same chat). */
+    private void requeue(Pending q) {
+        synchronized (queue) {
+            Pending cur = queue.get(q.key);
+            if (cur == null) queue.put(q.key, q);
+            else {
+                cur.texts.addAll(0, q.texts);
+                while (cur.texts.size() > 12) cur.texts.remove(0);
+                cur.firstAt = Math.min(cur.firstAt, q.firstAt);
+                cur.rested |= q.rested;
+                if (cur.photo == null) cur.photo = q.photo;
+            }
+        }
+        note(q.app, q.from, "వరుసలో ఉంది: " + (SheetActivity.open ? "Jarvis తో మాటలు" : JarvisCamera.open ? "కెమెరా" : "పైన కార్డ్‌లో మాటలు") + " అయ్యాక చెప్తాను");
+        schedule(3000);
+    }
+
+    /** The home tablet only (his phone never opens the panel by itself): Jarvis's panel says who wrote and asks "చదవమంటారా?". */
     private void openPanel(String app, String from, String say, String ask, String context, int count) {
         if (android.provider.Settings.canDrawOverlays(this)) {
             try {
@@ -651,11 +670,23 @@ public class NotifyListener extends NotificationListenerService {
                 return;
             } catch (Exception ignored) {}
         }
-        // No panel: say only who wrote; if he calls Jarvis and says "చదువు", the brain has the message.
-        note(app, from, android.provider.Settings.canDrawOverlays(this) ? "చెప్పాను (గొంతుతో మాత్రమే: panel తెరవలేకపోయాను)"
-                : "చెప్పాను (గొంతుతో మాత్రమే: 'Display over other apps' అనుమతి లేదు)");
+        note(app, from, "చెప్పాను (గొంతుతో మాత్రమే: panel తెరవలేకపోయాను)");
         Store.get(this).addChat("assistant", say + " " + ask + context, false);
         Announcer.say(this, say + " కావాలంటే Jarvis అని పిలిచి చెప్పండి.");
+    }
+
+    /** No card and no voice talk: who wrote is said, the messages wait under 📬, and "Jarvis, చదువు" reads them (never the panel by itself). */
+    private void voiceLine(Pending q, String say, String ask, String context, int count, String why) {
+        note(q.app, q.from, "చెప్పాను (గొంతుతో మాత్రమే: " + why + ") · 📬 లో ఉంది" + (count > 1 ? " · " + count + " మెసేజ్‌లు" : ""));
+        Store.get(this).addChat("assistant", say + " " + ask + context, false);
+        try { LaterMessages.add(this, q.app, q.from, q.texts, q.id); } catch (Exception ignored) {}
+        if (!JarvisAccessibility.enabled() || !FloatBubble.on(this)) { // (no floating button to show the 📬 dot: a notification points to them)
+            try {
+                Reminders.notify(this, "📬 " + q.from + " (" + q.app + ")", (count > 1 ? count + " మెసేజ్‌లు" : "ఒక మెసేజ్") + " Jarvis దగ్గర ఉన్నాయి: Jarvis అని పిలిచి 'చదువు' అనండి",
+                        ("later" + q.key).hashCode());
+            } catch (Exception ignored) {}
+        }
+        Announcer.say(this, say + " చదవాలంటే Jarvis అని పిలిచి 'చదువు' అనండి.");
     }
 
     /** The incoming call already said, per notification key: {when, who} (the dialer posts updates of one ring; cleared when it goes). */

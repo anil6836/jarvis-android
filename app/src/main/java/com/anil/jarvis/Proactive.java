@@ -143,7 +143,7 @@ public class Proactive extends BroadcastReceiver {
         if (!quiet) Life.limitTick(c, p);
         if (!quiet) Life.cricketTick(c, p);
         if (!quiet && p.nightSummary() && (hour == 21 && now.get(Calendar.MINUTE) >= 30 || hour == 22) && onceToday(c, "night_summary")) {
-            run(c, "రాత్రి సారాంశం: day_summary తో ఈరోజు ఏం జరిగిందో, calendar_events మరియు list_reminders తో రేపు ఏం ఉందో 4-5 వాక్యాల్లో చెప్పు.");
+            runOrLater(c, "రాత్రి సారాంశం: day_summary తో ఈరోజు ఏం జరిగిందో, calendar_events మరియు list_reminders తో రేపు ఏం ఉందో 4-5 వాక్యాల్లో చెప్పు.");
         }
     }
 
@@ -168,16 +168,66 @@ public class Proactive extends BroadcastReceiver {
         } catch (Exception ignored) {}
     }
 
-    /** Opens the panel and has Jarvis do something on his own (nightly summary, arriving somewhere). */
-    static void run(Context c, String command) {
-        if (android.provider.Settings.canDrawOverlays(c) && !MainActivity.busyTalking()) {
+    /**
+     * Jarvis can ask him now and take his spoken answer: on his phone the top card (Jarvis's screen access on) or the panel
+     * he already has open; on the home tablet the panel.
+     */
+    static boolean canAsk(Context c) {
+        if (new Prefs(c).homeMode()) return android.provider.Settings.canDrawOverlays(c);
+        return JarvisAccessibility.enabled() || SheetActivity.idleOpen() && android.provider.Settings.canDrawOverlays(c);
+    }
+
+    /**
+     * Jarvis does something on his own (nightly summary, arriving somewhere, an automation): on the top card (voice only
+     * when locked); the panel only on the tablet, or when he has it open already. False: not now (the caller leaves it).
+     */
+    static boolean run(Context c, String command) {
+        if (MainActivity.busyTalking()) return false;
+        if (new Prefs(c).homeMode() || SheetActivity.idleOpen()) { // (the tablet, or the panel he opened and is quiet: as before)
+            if (!android.provider.Settings.canDrawOverlays(c)) return false;
             try {
                 c.startActivity(new Intent(c, SheetActivity.class).putExtra(SheetActivity.EXTRA_RUN, command)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
-                return;
-            } catch (Exception ignored) {}
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
         }
-        Reminders.notify(c, "Jarvis", command, command.hashCode());
+        return TopCard.jarvis(c, TopCard.RUN, command, null, null, () -> runLater(c, command, null, command.hashCode()));
+    }
+
+    /** run(), else a notification that has Jarvis do it when he taps it. */
+    static void runOrLater(Context c, String command) {
+        if (!run(c, command)) runLater(c, command, null, command.hashCode());
+    }
+
+    /** A job left for later: its notification, tapped, opens Jarvis and he does it (label: what it shows). */
+    static void runLater(Context c, String command, String label, int id) {
+        try {
+            Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    .putExtra(MainActivity.EXTRA_ASK, command).putExtra(MainActivity.EXTRA_LABEL, label == null ? "🤖 " + command : label);
+            PendingIntent pi = PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+            nm.createNotificationChannel(new android.app.NotificationChannel("jarvis_auto", "Jarvis ఆటోమేషన్లు", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+            String title = label == null ? "🤖 Jarvis" : label;
+            nm.notify(id, new android.app.Notification.Builder(c, "jarvis_auto")
+                    .setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title)
+                    .setContentText(label == null ? command : "నొక్కితే Jarvis చేస్తాడు")
+                    .setStyle(new android.app.Notification.BigTextStyle().bigText((label == null ? command + "\n" : "") + "నొక్కితే Jarvis చేస్తాడు"))
+                    .setContentIntent(pi).setAutoCancel(true).build());
+        } catch (Exception ignored) {}
+    }
+
+    /** A question left for later: its notification, tapped, has the panel ask it again (his tap, so the panel may open). */
+    static void askLater(Context c, String text, String question, String context) {
+        String all = (text + (question == null || question.isEmpty() ? "" : " " + question)).trim();
+        Intent tap = null;
+        if (question != null && !question.isEmpty())
+            tap = new Intent(c, SheetActivity.class).putExtra(SheetActivity.EXTRA_ANNOUNCE, text)
+                    .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, question)
+                    .putExtra(SheetActivity.EXTRA_ANNOUNCE_CONTEXT, context == null ? "" : context)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        try { Reminders.notify(c, "Jarvis", all, all.hashCode(), tap); } catch (Exception ignored) {}
     }
 
     /** Bills due today or tomorrow, found in SMS: said once per bill. */
@@ -204,22 +254,33 @@ public class Proactive extends BroadcastReceiver {
         return nm != null && nm.getCurrentInterruptionFilter() > android.app.NotificationManager.INTERRUPTION_FILTER_ALL;
     }
 
-    /** Speaks up. With a question, opens the panel so Anil can answer by voice. */
-    /** Returns true when the panel opened (so his spoken answer can be taken with the suggestion), false when only told. */
+    /** Speaks up. With a question, the top card asks it (voice only when locked) so Anil can answer by voice. */
+    /** Returns true when the card (or the voice-only talk, or the panel he has open) took it; false when only told. */
     static boolean say(Context c, String text, String question, String context) {
-        if (question != null && android.provider.Settings.canDrawOverlays(c) && !MainActivity.busyTalking() && !DutyMode.on(c)) {
-            try {
-                c.startActivity(new Intent(c, SheetActivity.class)
-                        .putExtra(SheetActivity.EXTRA_ANNOUNCE, text)
-                        .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, question)
-                        .putExtra(SheetActivity.EXTRA_ANNOUNCE_CONTEXT, context == null ? "" : context)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
-                return true;
-            } catch (Exception ignored) {}
+        // (Anil, 22 Oct: the panel only when he calls "Jarvis"; a question comes as the top card, or by voice when locked)
+        if (question != null && !MainActivity.busyTalking() && !DutyMode.on(c)) {
+            if (new Prefs(c).homeMode() || SheetActivity.idleOpen()) { // (the tablet, or the panel he opened and is quiet: it asks there)
+                if (android.provider.Settings.canDrawOverlays(c)) {
+                    try {
+                        c.startActivity(new Intent(c, SheetActivity.class)
+                                .putExtra(SheetActivity.EXTRA_ANNOUNCE, text)
+                                .putExtra(SheetActivity.EXTRA_ANNOUNCE_ASK, question)
+                                .putExtra(SheetActivity.EXTRA_ANNOUNCE_CONTEXT, context == null ? "" : context)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+                        return true;
+                    } catch (Exception ignored) {}
+                }
+            } else if (TopCard.jarvis(c, TopCard.ASK, text, question, context == null ? "" : context,
+                    () -> told(c, text, question, context))) return true;
         }
-        Reminders.notify(c, "Jarvis", text + (question == null ? "" : " " + question), text.hashCode());
-        if (!DutyMode.on(c)) Announcer.say(c, text + (question == null ? "" : " " + question)); // (at work: the notification only)
+        told(c, text, question, context);
         return false;
+    }
+
+    /** Not asked now: a notification (a question: tapped, the panel asks it) and, unless at work, said once. */
+    private static void told(Context c, String text, String question, String context) {
+        askLater(c, text, question, context);
+        if (!DutyMode.on(c)) Announcer.say(c, text + (question == null ? "" : " " + question)); // (at work: the notification only)
     }
 
     // ---------------------------------------------------------------- meetings

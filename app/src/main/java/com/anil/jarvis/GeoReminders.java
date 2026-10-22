@@ -170,7 +170,7 @@ final class GeoReminders {
             if (r.optBoolean("command")) {
                 // an automatic mode for this place: keep it, and let Jarvis carry it out
                 saveAll(c, list);
-                Proactive.run(c, "(" + where + (entering ? " చేరారు" : " నుంచి బయలుదేరారు") + ", ఆటోమేటిక్‌గా) " + text);
+                Proactive.runOrLater(c, "(" + where + (entering ? " చేరారు" : " నుంచి బయలుదేరారు") + ", ఆటోమేటిక్‌గా) " + text);
                 return;
             }
             disarm(c, r);

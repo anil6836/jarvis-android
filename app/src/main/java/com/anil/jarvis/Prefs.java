@@ -197,6 +197,10 @@ final class Prefs {
     /** Group chat messages: "all", "mine" (only when one of his names is in it) or "none". Before this choice existed, "read group messages" on meant all. */
     /** A message while he types (top card): "read" (told and asked like any time), "name" (who wrote only), "silent" (card only). */
     String typingMode() { return sp.getString("typing_mode", "read"); }
+    /** 🗂️ The top card: seconds it stays when nobody taps it (5 / 10 / 20), bigger letters, a little lower on the screen. */
+    int cardSecs() { int v = sp.getInt("card_secs", 10); return v == 5 || v == 20 ? v : 10; }
+    boolean cardBig() { return sp.getBoolean("card_big", false); }
+    boolean cardLow() { return sp.getBoolean("card_low", false); }
     String groupMode() { return sp.getString("group_mode", sp.getBoolean("read_groups", false) ? "all" : "mine"); }
     /** The names people call him by in groups (his name first; comma separated in settings). */
     String myNames() {

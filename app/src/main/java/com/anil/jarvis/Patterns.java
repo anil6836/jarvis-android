@@ -38,7 +38,7 @@ final class Patterns {
         String today = LocalDate.now().toString();
         if (today.equals(sp(c).getString("looked", ""))) return;
         sp(c).edit().putString("looked", today).apply();
-        if (!android.provider.Settings.canDrawOverlays(c) || MainActivity.busyTalking()) return; // his "yes" can only be taken in the panel
+        if (!Proactive.canAsk(c) || MainActivity.busyTalking()) return; // his "yes" is taken on the top card (the tablet: the panel)
         String[] offer = callRoutine(c);
         if (offer == null) return;
         if (Proactive.say(c, p.name() + ", " + offer[1], offer[2], " [suggestion: " + offer[3] + " if he says yes]"))

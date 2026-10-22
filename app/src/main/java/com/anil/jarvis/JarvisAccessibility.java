@@ -1719,11 +1719,17 @@ public class JarvisAccessibility extends AccessibilityService {
     }
 
     /** A new message's card at the top of the screen; false when the screen access is off (then the panel is used). */
-    static boolean messageCard(TopCard.Msg m) {
+    static boolean messageCard(TopCard.Msg m) { return messageCard(m, null); }
+
+    /** The top card (or its voice-only talk); off the main thread it is posted, and orElse runs if it then can't be shown. */
+    static boolean messageCard(TopCard.Msg m, Runnable orElse) {
         JarvisAccessibility s = instance;
         if (s == null) return false;
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return TopCard.show(s, m); // so a failure falls back to the panel
-        MAIN.post(() -> { if (instance == s) TopCard.show(s, m); });
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return TopCard.show(s, m); // (the caller handles a failure)
+        MAIN.post(() -> {
+            boolean shown = instance == s && TopCard.show(s, m);
+            if (!shown && orElse != null) orElse.run();
+        });
         return true;
     }
 

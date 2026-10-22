@@ -38,7 +38,10 @@ final class Tools {
 
     /** What the tools need from the screen: an activity, confirmations, permission prompts. */
     interface Host {
+        /** The screen the tools run from; null on the top card (then a job that needs a screen says so). */
         Activity activity();
+        /** Their context: the screen, or Jarvis's service behind the top card. */
+        default android.content.Context context() { return activity(); }
         /** Blocks the calling (background) thread until Anil answers. autoSeconds > 0 confirms automatically. */
         boolean confirm(String title, String message, String yes, int autoSeconds);
         void askPermissions(String[] permissions);
@@ -50,6 +53,8 @@ final class Tools {
         default boolean watchTrusted() { return false; }
         /** He is asking on his watch (WatchTalkActivity): a timer then runs on the watch itself (W33). */
         default boolean fromWatch() { return false; }
+        /** Something he must do now (unlock the phone), said aloud where there is no screen to show it on (the top card). */
+        default void tellHim(String text) { notice(text); }
     }
 
     private final Host host;
@@ -1291,7 +1296,7 @@ final class Tools {
                 case "make_app": return makeApp(a.optString("name", ""), a.optString("description", ""), a.optString("change", ""));
                 case "bank_balance": return bankBalance();
                 case "scan_document":
-                    act().startActivity(new Intent(act(), MainActivity.class).putExtra(MainActivity.EXTRA_SCAN, true)
+                    startIn(new Intent(act(), MainActivity.class).putExtra(MainActivity.EXTRA_SCAN, true)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
                     return ok().put("next", "Say the scanner is opening: photograph each page, then Save; the PDF goes to Downloads/Jarvis/scans and he can share it or ask about it.").toString();
                 case "api_usage": return Usage.summary().put("ok", true)
@@ -1504,17 +1509,34 @@ final class Tools {
         }
     }
 
-    private Activity act() { return host.activity(); }
+    /** The context the jobs run in (a screen, or the top card's service). */
+    private android.content.Context act() { return host.context(); }
+
+    /** The screen, when the jobs run from one (null on the top card). */
+    private Activity screen() { return host.activity(); }
+
+    /** For a job that needs a screen (a permission prompt, a picker, the camera): asked from the top card. */
+    private String needsScreen(String what) {
+        return err("needs_screen", "This needs the Jarvis screen (" + what + "): tell Anil to say 'Jarvis' (the panel opens) and ask again.");
+    }
 
     /** The app context for Jarvis's other parts (the situation snapshot). */
-    android.content.Context context() { Activity a = act(); return a == null ? null : a.getApplicationContext(); }
+    android.content.Context context() { android.content.Context a = act(); return a == null ? null : a.getApplicationContext(); }
 
     private boolean has(String perm) {
         return act().checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED;
     }
 
+    /** What to tell him about a permission prompt: shown on the screen, or (the top card) only in the panel. */
+    private String promptNote() {
+        return screen() == null ? "No prompt could be shown here: tell him to say 'Jarvis' (the panel opens) and ask again there, where the prompt appears."
+                : "A permission prompt was shown; ask him to allow it and try again.";
+    }
+
     private String needPermission(String perm, String what) {
         host.askPermissions(new String[]{perm});
+        if (screen() == null) // (the top card can't show the system's prompt)
+            return err("permission_needed", "Anil must allow " + what + " for Jarvis. No prompt could be shown here: tell him to say 'Jarvis' (the panel opens) and ask again there, where the prompt appears.");
         return err("permission_needed", "Anil must allow " + what + " for Jarvis. A permission prompt was shown; ask him to allow it and try again.");
     }
 
@@ -1523,15 +1545,21 @@ final class Tools {
         if (Http.stopped()) throw new java.util.concurrent.CancellationException("stopped");
         CountDownLatch done = new CountDownLatch(1);
         final RuntimeException[] fail = new RuntimeException[1];
-        act().runOnUiThread(() -> {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             try { r.run(); } catch (RuntimeException e) { fail[0] = e; } finally { done.countDown(); }
         });
         done.await(10, TimeUnit.SECONDS);
         if (fail[0] != null) throw fail[0];
     }
 
+    /** Opens a screen from where the jobs run (from the top card's service it needs a new task). */
+    private void startIn(Intent i) {
+        if (!(act() instanceof Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        act().startActivity(i);
+    }
+
     private void start(Intent i) throws InterruptedException {
-        onUi(() -> act().startActivity(i));
+        onUi(() -> startIn(i));
     }
 
     /** If the phone is locked, ask Anil to unlock first. Returns true when it is safe to continue. */
@@ -1543,9 +1571,20 @@ final class Tools {
     private boolean unlocked(int seconds) throws InterruptedException {
         KeyguardManager km = (KeyguardManager) act().getSystemService(Activity.KEYGUARD_SERVICE);
         if (km == null || !km.isKeyguardLocked()) return true;
+        Activity sa = screen();
+        if (sa == null) { // the top card / its voice-only talk: he is asked to unlock, and Jarvis waits for it
+            host.tellHim(prefs.name() + ", ఫోన్ అన్‌లాక్ చేయండి.");
+            long until = android.os.SystemClock.elapsedRealtime() + seconds * 1000L;
+            while (android.os.SystemClock.elapsedRealtime() < until) {
+                if (Http.stopped()) return false;
+                Thread.sleep(500);
+                if (!km.isKeyguardLocked()) return true;
+            }
+            return false;
+        }
         CountDownLatch done = new CountDownLatch(1);
         AtomicBoolean ok = new AtomicBoolean(false);
-        act().runOnUiThread(() -> km.requestDismissKeyguard(act(), new KeyguardManager.KeyguardDismissCallback() {
+        sa.runOnUiThread(() -> km.requestDismissKeyguard(sa, new KeyguardManager.KeyguardDismissCallback() {
             @Override public void onDismissSucceeded() { ok.set(true); done.countDown(); }
             @Override public void onDismissCancelled() { done.countDown(); }
             @Override public void onDismissError() { done.countDown(); }
@@ -1805,7 +1844,8 @@ final class Tools {
     /** Brings the Jarvis panel (or screen) back on top of the app, so the voice conversation continues. */
     private void backToJarvis() {
         try {
-            Activity a = act();
+            Activity a = screen();
+            if (a == null) return; // (the top card stays over the app by itself)
             start(new Intent(a, a.getClass()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                     | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP));
         } catch (Exception ignored) {}
@@ -1840,8 +1880,8 @@ final class Tools {
         String r = JarvisAccessibility.clickSend(d.pkg, 1500);
         // 2) step Jarvis aside so the app is in front, then press Send
         if (!"sent".equals(r)) {
-            onUi(() -> act().moveTaskToBack(true));
-            Thread.sleep(700);
+            Activity sa = screen();
+            if (sa != null) { onUi(() -> sa.moveTaskToBack(true)); Thread.sleep(700); } // (from the top card the app is in front already)
             r = JarvisAccessibility.clickSend(d.pkg, 6000);
         }
         // 3) last try: bring the app forward by its icon
@@ -2631,7 +2671,7 @@ final class Tools {
 
     private String readNotifications(String app, int limit) throws Exception {
         if (!NotifyListener.enabled(act())) {
-            onUi(() -> act().startActivity(NotifyListener.settingsIntent()));
+            onUi(() -> startIn(NotifyListener.settingsIntent()));
             return err("notification_access_off", "Jarvis does not have notification access yet. The settings screen was opened: Anil must switch on 'Jarvis' under Notification access, then ask again.");
         }
         limit = Math.max(1, Math.min(20, limit <= 0 ? 8 : limit));
@@ -2640,7 +2680,7 @@ final class Tools {
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM HH:mm", Locale.ENGLISH);
         for (NotifyListener.Item i : list) {
             arr.put(new JSONObject().put("id", i.id).put("app", i.app).put("from", i.from)
-                    .put("text", i.text).put("time", f.format(new java.util.Date(i.when)))
+                    .put("text", Otp.spoken(i.text)).put("time", f.format(new java.util.Date(i.when))) // (a one-time code never goes to the AI)
                     .put("can_reply", i.reply != null));
         }
         JSONObject o = ok().put("notifications", arr);
@@ -2798,7 +2838,7 @@ final class Tools {
     private String addCalendarEvent(String title, String start, int minutes, String location) throws Exception {
         if (!has(Manifest.permission.WRITE_CALENDAR)) {
             host.askPermissions(new String[]{Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR});
-            return err("permission_needed", "Anil must allow calendar access. A permission prompt was shown; ask him to allow it and try again.");
+            return err("permission_needed", "Anil must allow calendar access. " + promptNote());
         }
         long begin = parseLocal(start);
         if (begin < 0) return err("bad_time", "Give the start as 'yyyy-MM-dd HH:mm'.");
@@ -3046,7 +3086,7 @@ final class Tools {
 
     private String nowPlaying() throws Exception {
         if (!NotifyListener.enabled(act())) {
-            onUi(() -> act().startActivity(NotifyListener.settingsIntent()));
+            onUi(() -> startIn(NotifyListener.settingsIntent()));
             return err("notification_access_off", "To see what is playing, Anil must switch on notification access for Jarvis (settings opened).");
         }
         android.media.session.MediaController mc = activeMedia();
@@ -3432,7 +3472,7 @@ final class Tools {
         }
         if (!has(Manifest.permission.READ_CALL_LOG)) {
             host.askPermissions(new String[]{Manifest.permission.READ_CALL_LOG});
-            return err("no_permission", "Call history needs the call-log permission (a prompt was shown).");
+            return err("no_permission", "Call history needs the call-log permission. " + promptNote());
         }
         switch (a) {
             case "missed": return CallHistory.missedJson(act()).toString();
@@ -3700,7 +3740,7 @@ final class Tools {
             o.put("calls", new JSONObject().put("incoming", in).put("outgoing", out).put("missed", missed).put("missed_from", missedFrom));
         } else {
             host.askPermissions(new String[]{Manifest.permission.READ_CALL_LOG});
-            o.put("calls", "Call history needs the call-log permission (a prompt was shown).");
+            o.put("calls", "Call history needs the call-log permission. " + promptNote());
         }
         // messages
         java.util.Map<String, Integer> senders = new java.util.LinkedHashMap<>();
@@ -4219,7 +4259,8 @@ final class Tools {
                 if (android.os.Build.VERSION.SDK_INT < 34 || !HealthData.available(c)) return err("no_health_connect", HealthData.status(c));
                 String[] need = HealthData.toAsk(c);
                 if (need.length == 0) return ok().put("connected", true).put("next", "Say Health Connect is already connected.").toString();
-                Activity act = act();
+                Activity act = screen();
+                if (act == null) return needsScreen("the Health Connect permission page");
                 final String[] why = {null};
                 final CountDownLatch asked = new CountDownLatch(1);
                 act.runOnUiThread(() -> {
@@ -4376,7 +4417,7 @@ final class Tools {
             if (!q.isEmpty() && !it.from.toLowerCase(Locale.ROOT).contains(q)) continue;
             if (chars > 6000) break;
             chars += it.text.length();
-            out.put(new JSONObject().put("app", it.app).put("group", it.from).put("messages", it.text));
+            out.put(new JSONObject().put("app", it.app).put("group", it.from).put("messages", Otp.spoken(it.text))); // (a forwarded code never goes to the AI)
         }
         if (out.length() == 0) return err("none", "No recent group messages" + (q.isEmpty() ? "" : " from '" + name + "'") + " (only messages from the last day that came as notifications).");
         return ok().put("groups", out).put("next", "Summarise per group: main topics, decisions, anything asked of Anil. 3-6 sentences.").toString();
@@ -4433,7 +4474,7 @@ final class Tools {
 
     private String readScreen(String mode, String item) throws Exception {
         String m = mode == null || mode.trim().isEmpty() ? "read" : mode.trim().toLowerCase(Locale.ROOT);
-        Activity c = act();
+        android.content.Context c = act(); // (from the top card too: the floating button's reader needs no Jarvis screen)
         if (m.startsWith("saved")) { // pages kept to read later
             if (m.equals("saved_list")) {
                 List<String> t = ReadLater.titles(c);
@@ -5531,7 +5572,7 @@ final class Tools {
             return ok().put("stopped", true).toString();
         }
         if (!JarvisAccessibility.enabled()) {
-            onUi(() -> act().startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+            onUi(() -> startIn(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
             return err("screen_access_off", "Jarvis needs its screen switch to work inside apps. Accessibility settings were opened: Anil must switch on 'Jarvis స్క్రీన్'.");
         }
         if (Build.VERSION.SDK_INT < 30) return err("old_android", "Working inside apps needs Android 11 or newer.");
@@ -5608,8 +5649,8 @@ final class Tools {
             if (answer != null && !answer.trim().isEmpty()) t.answers.put(answer.trim());
             if (goal != null && !goal.trim().isEmpty() && !goal.trim().equals(t.goal)) t.goal = t.goal + ". Change: " + goal.trim();
             if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
-            onUi(() -> act().moveTaskToBack(true)); // step aside so the app is in front again
-            Thread.sleep(1200);
+            Activity sa = screen();
+            if (sa != null) { onUi(() -> sa.moveTaskToBack(true)); Thread.sleep(1200); } // step aside so the app is in front again
         }
         t.time = android.os.SystemClock.elapsedRealtime();
         t.awaiting = false;
@@ -7516,12 +7557,12 @@ final class Tools {
     private JSONObject radioAsk(int minutes, String groupOrNote) throws Exception {
         JSONArray all = Radio.list(act());
         JSONArray favs = Radio.favorites(act());
-        Radio.showPicker(act(), minutes);
+        if (screen() != null) Radio.showPicker(screen(), minutes); // (from the top card: the names are said, no list on screen)
         Radio.asked();
         boolean group = Radio.FILM.equals(groupOrNote) || Radio.CHRISTIAN.equals(groupOrNote);
         JSONArray favNames = new JSONArray();
         for (int i = 0; i < favs.length(); i++) favNames.put(favs.getJSONObject(i).optInt("n") + " " + favs.getJSONObject(i).optString("name"));
-        JSONObject r = ok().put("ask", true).put("shown_on_screen", act() != null).put("favorites", favNames)
+        JSONObject r = ok().put("ask", true).put("shown_on_screen", screen() != null).put("favorites", favNames)
                 .put("film_music", Radio.names(all, Radio.FILM, AppRadio.installed(act()))).put("christian", Radio.names(all, Radio.CHRISTIAN, AppRadio.installed(act())));
         String last = Radio.last(act());
         if (!last.isEmpty()) r.put("last_played", last);
@@ -7586,11 +7627,11 @@ final class Tools {
         }
         if (action.startsWith("test")) {
             Intent i = new Intent(act(), AlarmActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            act().startActivity(i);
+            startIn(i);
             return ok().put("ringing", "now (test)").toString();
         }
         if (action.startsWith("song")) {
-            act().startActivity(new Intent(act(), SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, "అలారం").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            startIn(new Intent(act(), SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, "అలారం").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return ok().put("opened", "Settings: tap 'అలారం పాట ఎంచుకో' and choose a song file").toString();
         }
         return ok().put("alarms", SongAlarm.listJson(act())).put("song", prefs.alarmSong().isEmpty() ? "alarm tone" : prefs.alarmSongName()).toString();
@@ -7657,7 +7698,7 @@ final class Tools {
             } catch (Exception ignored) {}
         });
         try {
-            act().startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://echallan.tspolice.gov.in/publicview/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            startIn(new Intent(Intent.ACTION_VIEW, Uri.parse("https://echallan.tspolice.gov.in/publicview/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         } catch (Exception e) {
             return err("no_browser", "Could not open the browser.");
         }
@@ -7712,7 +7753,7 @@ final class Tools {
         if (!a.optString("note").trim().isEmpty()) i.putExtra(android.provider.ContactsContract.Intents.Insert.NOTES, a.optString("note").trim());
         i.putExtra("finishActivityOnSaveCompleted", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
-            act().startActivity(i);
+            startIn(i);
         } catch (Exception e) {
             return err("no_contacts_app", "Could not open the Contacts app.");
         }
@@ -8443,7 +8484,7 @@ final class Tools {
 
     private String lookAtScreen(String question) throws Exception {
         if (!JarvisAccessibility.enabled()) {
-            onUi(() -> act().startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+            onUi(() -> startIn(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
             return err("screen_access_off", "Jarvis cannot see the screen yet. Accessibility settings were opened: Anil must switch on 'Jarvis స్క్రీన్'. On Android 13+, if it is greyed out: App info → ⋮ → Allow restricted settings.");
         }
         JarvisAccessibility.Capture cap = JarvisAccessibility.recent(120000);
@@ -8463,7 +8504,7 @@ final class Tools {
     /** Cameras: the live back camera, and the front camera that lets Jarvis's face see him and know people he introduced. */
     private String camera(JSONObject a) throws Exception {
         String action = a.optString("action").trim().toLowerCase(Locale.ROOT);
-        Activity c = act();
+        android.content.Context c = act();
         switch (action) {
             case "face_show":
             case "face_hide":
@@ -8476,7 +8517,7 @@ final class Tools {
                 if (on) { FaceSight.set(c, "face_on", true); FaceSight.set(c, "face_asked", true); FaceSight.wakeUp(); }
                 if (on && !FaceSight.allowed(c)) {
                     host.askPermissions(new String[]{Manifest.permission.CAMERA});
-                    return err("no_camera_permission", "The camera permission was asked; once he allows it the face can see him.");
+                    return err("no_camera_permission", "The camera permission is needed. " + promptNote());
                 }
                 return ok().put("front_camera", on ? "on: the face looks at him while Jarvis's home screen is open (it switches off by itself after 10 minutes with no one)" : "off").toString();
             }
@@ -8518,13 +8559,14 @@ final class Tools {
 
     /** Learns the face of the one person looking at the phone, under the name Anil gave (kept only on the phone). */
     private String meet(String name, boolean owner) throws Exception {
-        Activity c = act();
+        Activity c = screen();
+        if (c == null) return needsScreen("the camera");
         if (owner && name.isEmpty()) name = prefs.name();
         if (name.isEmpty()) return err("no_name", "Ask him the person's name first.");
         if (name.length() > 40) name = name.substring(0, 40);
         if (!FaceSight.allowed(c)) {
             host.askPermissions(new String[]{Manifest.permission.CAMERA});
-            return err("no_camera_permission", "The camera permission was asked; try again after he allows it.");
+            return err("no_camera_permission", "The camera permission is needed. " + promptNote());
         }
         if (!FaceNet.ready(c)) {
             host.notice("ముఖాలు గుర్తుపట్టే మోడల్ తెస్తున్నాను (ఒక్కసారే, సుమారు 23 MB)…");

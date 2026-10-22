@@ -801,8 +801,29 @@ public class SettingsActivity extends Activity {
         note("మీరు వేరే యాప్‌లో ఉన్నప్పుడు మెసేజ్ వస్తే కింది నుంచి పెద్ద ప్యానెల్ రాదు: పైన చిన్న కార్డ్ వస్తుంది. Jarvis అక్కడే ఎవరి నుంచో చెప్పి "
                 + "\"చదవమంటారా?\" అని అడుగుతాడు, చదివి, \"రిప్లై ఇవ్వమంటారా?\" అని అడిగి, మీ జవాబు చదివి వినిపించి \"పంపమంటారా?\" అన్నాకే పంపుతాడు. "
                 + "అంతా background‌లోనే: మీరు వాడుతున్న యాప్ ఆగదు, కీబోర్డ్ మూసుకోదు. ప్రతి స్టెప్ కార్డ్‌లోని బటన్‌తోనూ చేయొచ్చు. "
-                + "⏰ తర్వాత అన్నా, పైకి స్వైప్ చేసినా అది ఫ్లోటింగ్ బటన్ మీద చుక్కగా (📬) ఉంటుంది. "
-                + "ఫోన్ లాక్‌లో ఉన్నప్పుడు, హోమ్ స్క్రీన్‌లో, బైక్ నడుపుతున్నప్పుడు మాత్రం పెద్ద ప్యానెల్ వస్తుంది (ఫోన్ ముట్టుకోకుండా మాట్లాడటానికి).");
+                + "⏰ తర్వాత అన్నా, పైకి స్వైప్ చేసినా అది ఫ్లోటింగ్ బటన్ మీద చుక్కగా (📬) ఉంటుంది. చదివేటప్పుడు ⏸ / ▶ / ⏪. "
+                + "కింది పెద్ద ప్యానెల్ మీరు \"Jarvis\" అని పిలిచినప్పుడు మాత్రమే. దగ్గు, నీళ్లు, డైరీ లాంటి Jarvis సొంత ప్రశ్నలు కూడా పైన కార్డ్‌లోనే. "
+                + "ఫోన్ లాక్‌లో / స్క్రీన్ ఆఫ్‌లో ఉంటే స్క్రీన్ వెలగదు: Jarvis మాటతో చెప్పి మీ జవాబు వింటాడు. OTP అంకెలు ఎప్పుడూ గట్టిగా చదవడు.");
+        TextView cl = Ui.text(this, "🗂️ పైన కార్డ్ (ఎవరూ నొక్కకపోతే ఎంతసేపు ఉండాలి):", 15, Ui.TEXT);
+        cl.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
+        box.addView(cl);
+        RadioGroup cardSecs = new RadioGroup(this);
+        cardSecs.setOrientation(RadioGroup.HORIZONTAL);
+        int[] secs = {5, 10, 20};
+        for (int sc : secs) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(sc + " సెకన్లు");
+            rb.setTextColor(Ui.TEXT);
+            rb.setId(View.generateViewId());
+            cardSecs.addView(rb);
+            if (sc == prefs.cardSecs()) cardSecs.check(rb.getId());
+            rb.setOnCheckedChangeListener((bt, on) -> { if (on) prefs.sp.edit().putInt("card_secs", sc).apply(); });
+        }
+        box.addView(cardSecs);
+        Switch cardBig = toggle("🔠 కార్డ్‌లో పెద్ద అక్షరాలు", prefs.cardBig());
+        cardBig.setOnCheckedChangeListener((bt, v) -> prefs.sp.edit().putBoolean("card_big", v).apply());
+        Switch cardLow = toggle("⬇️ కార్డ్ కొంచెం కిందికి (యాప్ పై భాగానికి అడ్డం రాకుండా)", prefs.cardLow());
+        cardLow.setOnCheckedChangeListener((bt, v) -> prefs.sp.edit().putBoolean("card_low", v).apply());
         TextView tl = Ui.text(this, "⌨️ మీరు టైప్ చేస్తున్నప్పుడు మెసేజ్ వస్తే:", 15, Ui.TEXT);
         tl.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
         box.addView(tl);

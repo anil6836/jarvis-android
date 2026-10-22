@@ -704,7 +704,7 @@ final class FloatBubble implements ScreenReader.Listener {
     /** Hides Jarvis's own windows for a moment, captures the screen, then shows them again. */
     private void captureThen(java.util.function.Consumer<JarvisAccessibility.Capture> then) {
         if (locked() || gone) return;
-        TopCard.dismissNow(); // someone's message on the top card is not part of this screen
+        TopCard.dismissShown(); // someone's message on the top card is not part of this screen (a voice-only one has no window)
         if (bubble != null) bubble.setVisibility(View.INVISIBLE);
         if (card != null) card.setVisibility(View.INVISIBLE);
         final long asked = SystemClock.elapsedRealtime();
@@ -1179,7 +1179,7 @@ final class FloatBubble implements ScreenReader.Listener {
     /** Hides Jarvis's own windows for a moment (for a clean screenshot), then runs this. */
     private void hideOwnThen(Runnable then) {
         if (locked() || gone) { busy = false; refresh(); return; }
-        TopCard.dismissNow(); // someone's message on the top card is not part of this screen
+        TopCard.dismissShown(); // someone's message on the top card is not part of this screen (a voice-only one has no window)
         if (bubble != null) bubble.setVisibility(View.INVISIBLE);
         if (card != null) card.setVisibility(View.INVISIBLE);
         main.postDelayed(() -> { if (!gone) then.run(); }, 200);

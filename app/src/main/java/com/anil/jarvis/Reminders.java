@@ -141,12 +141,16 @@ final class Reminders {
         }
     }
 
-    static void notify(Context c, String title, String text, int id) {
+    static void notify(Context c, String title, String text, int id) { notify(c, title, text, id, null); }
+
+    /** tap: what a tap opens (a question the panel asks again, a job Jarvis then does); null: the Jarvis app. */
+    static void notify(Context c, String title, String text, int id, Intent tap) {
         NotificationManager nm = c.getSystemService(NotificationManager.class);
         if (nm == null) return;
         nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Jarvis రిమైండర్లు", NotificationManager.IMPORTANCE_HIGH));
-        PendingIntent open = PendingIntent.getActivity(c, 4, new Intent(c, MainActivity.class),
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent open = tap == null
+                ? PendingIntent.getActivity(c, 4, new Intent(c, MainActivity.class), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
+                : PendingIntent.getActivity(c, id, tap, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT); // (its own code: its own extras)
         Notification n = new Notification.Builder(c, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_popup_reminder)
                 .setContentTitle(title)

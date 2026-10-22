@@ -26,7 +26,7 @@ import java.util.Locale;
  * nothing covers the screen. Every step can also be tapped. Voice notes are played, photos described or shown, videos
  * opened, like before. When the panel, a call or the Jarvis app comes up, the card steps aside.
  */
-final class CardTalk implements VoiceIO.Listener {
+final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
     /** How it starts: asking first, reading at once (he tapped 🔊 చదువు), or summing up (📝 సారాంశం). */
     static final int START_ASK = 0, START_READ = 1, START_SUMMARY = 2;
 
@@ -53,6 +53,8 @@ final class CardTalk implements VoiceIO.Listener {
     private volatile boolean cancelPlay;
     /** Answers not understood in a row (asked once more, then the buttons wait). */
     private int unclear;
+    /** Held on a locked phone: how many times the mic opened for "కొనసాగించు". */
+    private int heldListens;
     /** His other sound (a video, music) paused while he dictates and confirms a reply, so its words are never taken for his. */
     private AudioFocusRequest focus;
 
@@ -67,6 +69,7 @@ final class CardTalk implements VoiceIO.Listener {
 
     void start(int how) {
         voice = new VoiceIO(svc, p, this);
+        if (othersUp()) { yieldToOthers(); return; } // (before taking the talk: what is up keeps it)
         hold();
         if (how == START_SUMMARY) summary();
         else if (how == START_READ) {
@@ -78,12 +81,12 @@ final class CardTalk implements VoiceIO.Listener {
     }
 
     /** Jarvis is talking or listening on the card (the panel and the wake word wait); never counted for over 10 minutes. */
-    boolean talking() { return !stopped && talkSet && android.os.SystemClock.elapsedRealtime() - holdSince < 10 * 60_000L; }
+    @Override public boolean talking() { return !stopped && talkSet && android.os.SystemClock.elapsedRealtime() - holdSince < 10 * 60_000L; }
 
     private long holdSince;
 
     /** Busy with him: talking, or waiting for his tap in the middle of a reply or a held speech (a new card must wait). */
-    boolean busy() { return !stopped && (talkSet || step == DICTATE || step == CONFIRM || voice != null && voice.isPaused()); }
+    @Override public boolean busy() { return !stopped && (talkSet || step == DICTATE || step == CONFIRM || voice != null && voice.isPaused()); }
 
     /** Jarvis is talking with him: the wake word lets go of the mic, other messages and remarks wait their turn. */
     private void hold() {
@@ -98,6 +101,7 @@ final class CardTalk implements VoiceIO.Listener {
 
     /** Not talking now (waiting for a tap, or done): "Jarvis" and the next message may come; his own sound comes back. */
     private void letGo() {
+        card.orb(OrbView.IDLE);
         focus(false);
         if (!talkSet) return;
         talkSet = false;
@@ -109,13 +113,13 @@ final class CardTalk implements VoiceIO.Listener {
     static final int YIELD_BEFORE = 1, YIELD_AFTER = 2;
 
     /** The card is closing: everything stops, nothing more is said or heard. */
-    void stop() { stop(0); }
+    @Override public void stop() { stop(0); }
 
     /**
      * yield: another Jarvis screen (the panel, a call, the app) is taking over. Before it starts, only the card's own
      * "talking" mark goes (it sets its own and handles the wake word); once it has started, its state is left untouched.
      */
-    void stop(int yield) {
+    @Override public void stop(int yield) {
         if (stopped) return;
         stopped = true;
         main.removeCallbacksAndMessages(null);
@@ -139,16 +143,18 @@ final class CardTalk implements VoiceIO.Listener {
         card.closeFromTalk(later);
     }
 
-    /** The panel, a call, the Jarvis app or the camera is up: the card must not talk over it or take its mic. */
+    /**
+     * The panel, a call, the camera, or a talk in the Jarvis app is on: the card must not talk over it or take its mic.
+     * (The Jarvis app merely open is fine: the card tells it there too, Anil 22 Oct.)
+     */
     private boolean othersUp() {
-        return SheetActivity.open || MainActivity.visible || JarvisCamera.open || CallControl.busyWithCall();
+        return SheetActivity.open || JarvisCamera.open || CallControl.busyWithCall() || MainActivity.inConversation && !talkSet;
     }
 
-    /** Steps aside for what is up: a Jarvis screen keeps its own talk state; for a call, the card's own mark is cleared. */
+    /** Steps aside for what is up: the talk mark this card took is given back (the panel / camera then sets its own). */
     private void yieldToOthers() {
-        boolean screen = SheetActivity.open || MainActivity.visible || JarvisCamera.open;
         boolean later = !card.heard();
-        stop(screen ? YIELD_AFTER : 0);
+        stop(SheetActivity.open || JarvisCamera.open ? YIELD_BEFORE : 0);
         card.closeFromTalk(later);
     }
 
@@ -188,7 +194,9 @@ final class CardTalk implements VoiceIO.Listener {
                 }
                 break;
             case READING:
-                card.buttons("⏹ ఆపు", (Runnable) this::stopReading, "✕", (Runnable) () -> end(false));
+                if (voiceBusy) card.buttons("⏹ ఆపు", (Runnable) this::stopReading, "✕", (Runnable) () -> end(false)); // (a voice note: it can only stop)
+                else card.buttons("⏸", (Runnable) this::pauseReading, "⏪", (Runnable) this::readAgain, "⏹ ఆపు", (Runnable) this::stopReading,
+                        "✕", (Runnable) () -> end(false));
                 break;
             case ASK_REPLY:
                 card.buttons("↩️ జవాబు", (Runnable) this::dictate, "✕", (Runnable) () -> end(false));
@@ -227,7 +235,9 @@ final class CardTalk implements VoiceIO.Listener {
         card.status("📝 సారాంశం చేస్తున్నాను…");
         card.buttons("✕", (Runnable) () -> end(false));
         StringBuilder all = new StringBuilder();
-        for (String t : m.texts) all.append(t).append('\n');
+        boolean code = false;
+        for (String t : m.texts) { all.append(Otp.spoken(t)).append('\n'); code |= Otp.has(t); } // (a one-time code never goes to the AI)
+        final boolean hadCode = code;
         final String names = p.myNames();
         new Thread(() -> {
             String out;
@@ -239,7 +249,8 @@ final class CardTalk implements VoiceIO.Listener {
             } catch (Exception e) {
                 out = null;
             }
-            final String o = out == null ? "" : out.replaceAll("[*#_`>]", "").trim();
+            String o0 = out == null ? "" : out.replaceAll("[*#_`>]", "").trim();
+            final String o = hadCode ? Otp.mask(o0) : o0; // (and no number that looks like one is said back)
             main.post(() -> {
                 if (stopped || step != READING) return;
                 if (o.isEmpty()) { readNow(false); return; } // no summary came: read them as they are
@@ -253,6 +264,24 @@ final class CardTalk implements VoiceIO.Listener {
     }
 
     /** ⏹ while reading (or a voice note playing): stop there and go on to the reply question. */
+    /** ⏸ while reading: held, ▶ carries on from the same word. */
+    private void pauseReading() {
+        if (stopped || voice == null || !voice.speaking || voice.isPaused()) return;
+        voice.pause();
+        afterPaused(VoiceIO.HELD);
+    }
+
+    /** ⏪: the messages read once more from the start. */
+    private void readAgain() {
+        if (stopped || reading.isEmpty()) return;
+        quiet();
+        hold();
+        step = READING;
+        card.body(reading, 10);
+        stepButtons();
+        speak(reading);
+    }
+
     private void stopReading() {
         if (voiceBusy) { // the voice note stops in a moment and its thread goes on to afterReading() itself
             cancelPlay = true;
@@ -414,6 +443,12 @@ final class CardTalk implements VoiceIO.Listener {
     /** 👁 / ▶: the photo or video opens in the phone's viewer (he asked to see it), and the card goes. */
     private void openMedia(String kind) {
         quiet();
+        if (!TopCard.screenUsable(svc)) { // (locked: a viewer behind the lock screen would never be seen)
+            hold();
+            card.notHeard(); // (so it is kept under 📬, as said)
+            cannot("ఫోన్ అన్‌లాక్ చేసి చూడండి. తర్వాత చూడటానికి దాచాను.");
+            return;
+        }
         card.status("⏳ వెతుకుతున్నాను…");
         new Thread(() -> {
             WaMedia.Found f = newest(kind);
@@ -562,6 +597,19 @@ final class CardTalk implements VoiceIO.Listener {
     /** No (clear) answer: Jarvis stops talking; the card waits for a tap for a while, then goes. */
     private void waitForTap(String status) {
         if (voice != null && voice.listening) voice.cancelListening();
+        if (card.voiceOnly()) { // (no card to tap)
+            if (step == DICTATE || step == CONFIRM) { // a reply was on its way: said that it wasn't sent; the chat waits under 📬
+                reply = "";
+                step = DONE;
+                doneLater = true;
+                doneMs = 1500;
+                card.notHeard();
+                speak("సరే, పంపలేదు. తర్వాత జవాబు ఇవ్వడానికి దాచాను.");
+                return;
+            }
+            end(step == ASK && !card.heard()); // unheard: it waits under 📬
+            return;
+        }
         card.status(status);
         letGo();
         stepButtons();
@@ -600,7 +648,8 @@ final class CardTalk implements VoiceIO.Listener {
         if (othersUp()) { yieldToOthers(); return; }
         hold();
         card.stayOpen();
-        voice.speak(text, p.speechRate());
+        card.orb(OrbView.SPEAKING);
+        voice.speak(Otp.spoken(text), p.speechRate()); // (a one-time code is never said aloud)
     }
 
     /** A tap while Jarvis speaks or listens: that stops first. */
@@ -624,6 +673,7 @@ final class CardTalk implements VoiceIO.Listener {
         hold();
         if (step == DICTATE || step == CONFIRM) focus(true); // his video / music pauses while he gives the reply
         if (step == DICTATE || step == ASK_REPLY) voice.listenLong(p.listenLang()); else voice.listen(p.listenLang()); // (a reply may be long)
+        card.orb(OrbView.LISTENING);
         card.status("🎙️ ఒక్క క్షణం…");
     }
 
@@ -673,8 +723,17 @@ final class CardTalk implements VoiceIO.Listener {
         if (r == VoiceIO.HELD) {
             card.status("⏸ ఆపాను");
             letGo();
-            card.buttons("▶ కొనసాగించు", (Runnable) this::carryOn, "✕", (Runnable) () -> end(step == ASK && !card.heard()));
-            card.hideIn(60_000, step == ASK && !card.heard());
+            card.orb(OrbView.IDLE);
+            if (step == READING) card.notHeard(); // (read only in part: if it goes now, it waits under 📬)
+            boolean later = step == READING || step == ASK && !card.heard();
+            if (card.voiceOnly()) { // no ▶ to tap: one listen for "కొనసాగించు", then it waits under 📬
+                if (heldListens++ < 1) main.postDelayed(this::listenWhileHeld, 400);
+                else end(later);
+                return true;
+            }
+            if (step == READING) card.buttons("▶ కొనసాగించు", (Runnable) this::carryOn, "⏪", (Runnable) this::readAgain, "✕", (Runnable) () -> end(false));
+            else card.buttons("▶ కొనసాగించు", (Runnable) this::carryOn, "✕", (Runnable) () -> end(later));
+            card.hideIn(60_000, later);
             return true;
         }
         if (r == VoiceIO.STOPPED) { // "చాలు"
@@ -683,6 +742,14 @@ final class CardTalk implements VoiceIO.Listener {
             return true;
         }
         return false; // a new answer: the held speech is dropped
+    }
+
+    /** Held with no screen: the mic opens once for "కొనసాగించు" (the step stays where it was). */
+    private void listenWhileHeld() {
+        if (stopped || voice == null) return;
+        hold();
+        card.orb(OrbView.LISTENING);
+        voice.listen(p.listenLang());
     }
 
     /** ▶ కొనసాగించు: the held speech carries on (if it is still held), and the step's own buttons come back. */
@@ -710,7 +777,7 @@ final class CardTalk implements VoiceIO.Listener {
         waitForTap(why + ": కింద బటన్ నొక్కండి");
     }
 
-    @Override public void onLevel(float level) {}
+    @Override public void onLevel(float level) { if (!stopped) card.level(level); }
 
     @Override public void onSpeakStart() {
         if (stopped) return;
@@ -748,7 +815,16 @@ final class CardTalk implements VoiceIO.Listener {
     }
 
     @Override public void onWord(String spoken, int start, int end) {
-        if (!stopped && step == READING) card.highlight(spoken, start, end);
+        if (!stopped && step == READING && !hasCode(reading)) card.highlight(spoken, start, end); // (with a code: its digits stay on the card)
+    }
+
+    /** Otp.has for the text being read, worked out once per text (onWord comes for every word). */
+    private String codeFor;
+    private boolean codeIs;
+
+    private boolean hasCode(String s) {
+        if (s != codeFor) { codeFor = s; codeIs = Otp.has(s); }
+        return codeIs;
     }
 
     /** Another Jarvis screen started listening (he opened the panel or the app): the card steps aside. */

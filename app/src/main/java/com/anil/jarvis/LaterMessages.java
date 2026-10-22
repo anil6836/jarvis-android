@@ -44,15 +44,12 @@ final class LaterMessages {
         if (li != null) li.changed(l.size());
     }
 
-    /** A one-time code: never kept (it is in the SMS app if he needs it). */
-    private static final java.util.regex.Pattern CODE = java.util.regex.Pattern.compile(
-            "(?is).*(otp|one[ -]?time|verification|passcode|security code|code\\s*(is|:)|ఓటీపీ).*\\b\\d{4,8}\\b.*"
-                    + "|(?is).*\\b\\d{4,8}\\b.*(otp|one[ -]?time|verification|passcode|ఓటీపీ).*");
+    /** A one-time code (Otp.has): never kept (it is in the SMS app if he needs it). */
 
     /** One chat's messages, put off for later (the same chat again: its messages are added to it). */
     static synchronized void add(Context c, String app, String from, List<String> texts, int id) {
         List<String> keep = new ArrayList<>();
-        for (String t : texts) if (t != null && !CODE.matcher(t).matches()) keep.add(t);
+        for (String t : texts) if (t != null && !Otp.has(t)) keep.add(t);
         if (keep.isEmpty()) return;
         texts = keep;
         try {

@@ -54,6 +54,13 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
      * The panel is really in a talk right now (greeting, listening, thinking, speaking, a call or Live), whatever the
      * shared "talking" flag says: another screen ending its own talk must not let the wake word take the mic from it.
      */
+    /** The panel is open and quiet (not talking, listening, thinking or holding a paused speech): a question / job can be taken here. */
+    static boolean idleOpen() {
+        SheetActivity a = current;
+        if (a == null || !open || a.voice == null) return false;
+        return !a.greeting && !a.busy && a.callText == null && a.live == null && !a.voice.listening && !a.voice.speaking;
+    }
+
     static boolean talkingNow() {
         SheetActivity a = current;
         if (a == null || !open || a.voice == null) return false;
