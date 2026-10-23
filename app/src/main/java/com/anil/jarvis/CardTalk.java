@@ -32,6 +32,8 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
 
     // where the talk is
     private static final int ASK = 0, READING = 1, ASK_REPLY = 2, DICTATE = 3, CONFIRM = 4, DONE = 5;
+    /** 📬: read from the list, its notification gone (no reply from here): "… తెరవమంటారా?" (Anil, 23 Oct). */
+    private static final int ASK_OPEN = 6;
 
     private final AccessibilityService svc;
     private final TopCard card;
@@ -187,7 +189,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
                     card.buttons("💬 ఏముంది", (Runnable) this::describePhoto, "👁 చూపించు", (Runnable) () -> openMedia("photo"), "⏰ తర్వాత", (Runnable) () -> end(true));
                 } else if ("video".equals(m.media)) {
                     card.buttons("▶ ప్లే", (Runnable) () -> openMedia("video"), "⏰ తర్వాత", (Runnable) () -> end(true));
-                } else if (m.group || m.texts.size() >= 3) {
+                } else if ((m.group || m.texts.size() >= 3) && !m.laterAll) { // (📬 all: never bundled off to the AI)
                     card.buttons("🔊 చదువు", (Runnable) () -> readNow(false), "📝 సారాంశం", (Runnable) this::summary, "⏰ తర్వాత", (Runnable) () -> end(true));
                 } else {
                     card.buttons("🔊 చదువు", (Runnable) () -> readNow(false), "⏰ తర్వాత", (Runnable) () -> end(true));
@@ -207,6 +209,9 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
             case CONFIRM:
                 card.buttons("📤 పంపు", (Runnable) this::send, "✏️ మార్చు", (Runnable) this::dictate, "✕", (Runnable) () -> end(false));
                 break;
+            case ASK_OPEN:
+                card.buttons("📲 " + m.app + " తెరువు", (Runnable) this::openApp, "✕", (Runnable) () -> end(false));
+                break;
             default:
                 card.buttons("✕", (Runnable) () -> end(false));
         }
@@ -214,6 +219,14 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
 
     /** Reads the messages (withWho: he tapped 🔊 without the question, so who wrote comes first). */
     private void readNow(boolean withWho) {
+        if (m.laterAll || m.fromLater) { // (📬: in short parts, each out once said; asked again: from the part it was at)
+            quiet();
+            hold();
+            if (queue.isEmpty()) { buildQueue(); laterIdx = 0; }
+            if (laterIdx >= queue.size()) laterIdx = 0;
+            readLaterItem();
+            return;
+        }
         quiet();
         hold();
         step = READING;
@@ -224,6 +237,112 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         card.body(reading, 10);
         stepButtons();
         speak(reading);
+    }
+
+    // ---------------------------------------------------------------- 📬: read in short parts, each part's texts out of 📬 once said
+
+    /** One utterance: what is said, and the chat's texts it carries (none for the overview). */
+    private static final class Part {
+        final String app, from, say;
+        final java.util.List<String> texts;
+        Part(String app, String from, String say, java.util.List<String> texts) { this.app = app; this.from = from; this.say = say; this.texts = texts; }
+    }
+
+    /** At most this much in one utterance (the voices cut long text: a part is only ever said whole). */
+    private static final int PART_MAX = 2200;
+    private final java.util.List<Part> queue = new java.util.ArrayList<>();
+    private int laterIdx;
+    /** The voice really began this utterance (a speech that never started is not "read"). */
+    private boolean spokeStarted;
+
+    /** 📬 all: the overview, then each chat; one chat from the list: that chat — each split at its messages into short parts. */
+    private void buildQueue() {
+        queue.clear();
+        if (m.laterAll) {
+            if (!m.laterOverview.isEmpty()) queue.add(new Part("", "", m.laterOverview, java.util.Collections.emptyList()));
+            if (m.laterEntries != null) for (org.json.JSONObject e : m.laterEntries) addParts(e.optString("app"), e.optString("from"), e.optBoolean("group"), texts(e));
+        } else {
+            addParts(m.app, m.from, m.group, m.texts);
+        }
+    }
+
+    private void addParts(String app, String from, boolean group, java.util.List<String> ts) {
+        int n = ts.size(), i = 0;
+        boolean first = true;
+        while (i < n) {
+            StringBuilder b = new StringBuilder();
+            b.append(from).append(group ? " గ్రూప్‌లో " : " నుంచి ").append(app).append(" లో ")
+                    .append(first ? (n == 1 ? "మెసేజ్" : n + " మెసేజ్‌లు") : "(కొనసాగింపు)").append(":\n");
+            java.util.List<String> part = new java.util.ArrayList<>();
+            while (i < n && (part.isEmpty() || b.length() + ts.get(i).length() + 3 <= PART_MAX)) {
+                String t = ts.get(i);
+                b.append("• ").append(t.length() > PART_MAX ? t.substring(0, PART_MAX) + "…" : t).append('\n');
+                part.add(t);
+                i++;
+            }
+            queue.add(new Part(app, from, b.toString().trim(), part));
+            first = false;
+        }
+    }
+
+    private static java.util.List<String> texts(org.json.JSONObject e) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        org.json.JSONArray t = e.optJSONArray("texts");
+        for (int i = 0; t != null && i < t.length(); i++) out.add(t.optString(i));
+        return out;
+    }
+
+    private void readLaterItem() {
+        if (stopped) return;
+        if (laterIdx >= queue.size()) { afterReading(); return; }
+        step = READING;
+        reading = queue.get(laterIdx).say;
+        card.status(queue.size() > 1 ? "📬 " + (laterIdx + 1) + " / " + queue.size() : "");
+        card.body(reading, 10);
+        stepButtons();
+        speak(reading);
+    }
+
+    /** One part said whole: its texts out of 📬, then the next; a voice that never started: the rest stay. */
+    private void laterItemDone() {
+        if (!spokeStarted) { finishSoon("చదవలేకపోయాను: మిగతావి 📬 లోనే ఉన్నాయి", 5000); return; }
+        Part pt = queue.get(laterIdx);
+        if (!pt.texts.isEmpty()) {
+            if (m.laterAll) LaterMessages.consume(svc, pt.app, pt.from, pt.texts);
+            else outOnce(pt.texts);
+        }
+        laterIdx++;
+        if (laterIdx < queue.size()) { readLaterItem(); return; }
+        afterReading();
+    }
+
+    /** 📬 stopped before the end (⏹, "చాలు", talked over): what wasn't said stays there. */
+    private boolean laterLeft() { return (m.laterAll || m.fromLater) && !queue.isEmpty() && laterIdx < queue.size(); }
+
+    /** "✓ చదివాను", or, 📬 stopped before the end, that the rest are still there. */
+    private String doneLine() { return laterLeft() ? "⏹ ఆపాను: మిగతావి 📬 లోనే" : "✓ చదివాను"; }
+
+    /** The 📬 chat's texts already taken out (each once: a text that came again meanwhile stays). */
+    private final java.util.List<String> outAlready = new java.util.ArrayList<>();
+
+    private void outOnce(java.util.List<String> ts) {
+        java.util.List<String> had = new java.util.ArrayList<>(outAlready), now = new java.util.ArrayList<>();
+        for (String t : ts) if (!had.remove(t)) now.add(t);
+        if (now.isEmpty()) return;
+        LaterMessages.consume(svc, m.app, m.from, now);
+        outAlready.addAll(now);
+    }
+
+    /** 📬 one chat: played / described / summed up / answered in full: its texts leave 📬 (read in parts: each part did). */
+    private void consumeLater() {
+        if (m.fromLater && queue.isEmpty()) outOnce(m.texts);
+    }
+
+    /** 📬 one chat: its app / the photo opened for him: all of it is in front of him now. */
+    private void consumeOpened() {
+        if (!m.fromLater) return;
+        outOnce(m.texts);
+        laterIdx = queue.size();
     }
 
     /** A busy chat summed up in Telugu (needs the AI), then read like the messages. */
@@ -296,7 +415,12 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         if (stopped || step != READING) return;
         card.status("");
         if (!reading.isEmpty()) card.body(reading, 10); // the highlight off
-        if (m.id <= 0) { finishSoon("✓ చదివాను", 6000); return; }
+        if (m.laterAll) { finishSoon(doneLine(), 5000); return; }
+        if (m.id <= 0) {
+            if (offerOpen()) return;
+            finishSoon(doneLine(), 6000);
+            return;
+        }
         step = ASK_REPLY;
         stepButtons();
         speak("రిప్లై ఇవ్వమంటారా?");
@@ -334,12 +458,14 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
             return;
         }
         try {
+            LaterMessages.hold(m.pkg); // (the app clearing this chat's note after the reply: not the other 📬 chats "read")
             NotifyListener.reply(svc, it, text);
         } catch (Exception e) {
             cannot("పంపలేకపోయాను. " + m.app + " తెరిచి పంపండి.");
             return;
         }
         Store.get(svc).addChat("assistant", m.from + " కి " + m.app + " లో పంపాను: \"" + text + "\"", false);
+        consumeLater(); // (📬: answered)
         card.status("✓ పంపాను");
         card.buttons("✕", (Runnable) () -> end(false));
         speak("పంపాను.");
@@ -371,6 +497,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
                 if (stopped) return;
                 if (!found && !cancelPlay) { mediaMissing(kind); return; }
                 if (!played && !cancelPlay) { cannot("వాయిస్ మెసేజ్ ఈ ఫోన్‌లో ప్లే కాలేదు. " + m.app + " తెరిచి వినండి."); return; }
+                if (played && !cancelPlay) consumeLater(); // (📬: heard in full)
                 afterReading(); // played, or ⏹ stopped it
             });
         }, "jarvis-card-voice").start();
@@ -458,6 +585,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
                 try {
                     svc.startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(f.uri, "video".equals(kind) ? "video/*" : "image/*")
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION));
+                    consumeOpened(); // (📬: he has it open)
                     card.heardNow();
                     end(false);
                 } catch (Exception e) {
@@ -475,6 +603,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
      * message); it may still be downloading, so looked for again once. Off the main thread.
      */
     private WaMedia.Found newest(String kind) {
+        if (m.fromLater && m.postedAt > 0) return nearest(kind); // (from 📬, hours later: that message's own file, not the newest one)
         long since = (m.postedAt > 0 ? m.postedAt : System.currentTimeMillis()) - MEDIA_SLACK_MS;
         for (int i = 0; i < 2 && !stopped && !cancelPlay; i++) {
             if (i > 0) android.os.SystemClock.sleep(3000);
@@ -482,6 +611,18 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
             if (!f.isEmpty() && f.get(0).modified >= since) return f.get(0);
         }
         return null;
+    }
+
+    /** The file of this kind saved closest to when the message came (2 min before to 15 after), else null. */
+    private WaMedia.Found nearest(String kind) {
+        WaMedia.Found best = null;
+        long bestD = Long.MAX_VALUE;
+        for (WaMedia.Found f : WaMedia.newest(svc, kind, 150)) {
+            long dt = f.modified - m.postedAt;
+            if (dt < -MEDIA_SLACK_MS || dt > 15 * 60_000L) continue;
+            if (Math.abs(dt) < bestD) { bestD = Math.abs(dt); best = f; }
+        }
+        return best;
     }
 
     private void mediaMissing(String kind) {
@@ -529,7 +670,40 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
 
     // ================================================================ his answers
 
-    private static int where(int step) { return step == ASK ? Words.ASK : step == CONFIRM ? Words.CONFIRM : Words.REPLY; }
+    private static int where(int step) { return step == ASK || step == ASK_OPEN ? Words.ASK : step == CONFIRM ? Words.CONFIRM : Words.REPLY; }
+
+    /** 📬, its notification gone (no reply from here): "రిప్లై ఇవ్వాలంటే … తెరవమంటారా?". False: not such a chat. */
+    private boolean offerOpen() {
+        if (!m.fromLater || m.laterAll || m.pkg == null || m.pkg.isEmpty() || !launchable()) return false;
+        step = ASK_OPEN;
+        unclear = 0;
+        stepButtons();
+        speak("రిప్లై ఇవ్వాలంటే " + m.app + " తెరవమంటారా?");
+        return true;
+    }
+
+    /** The chat's app can be opened (it has a launcher screen). */
+    private boolean launchable() {
+        try { return svc.getPackageManager().getLaunchIntentForPackage(m.pkg) != null; } catch (Exception e) { return false; }
+    }
+
+    /** 📲: the chat's app opens (he asked), to reply there; the card goes. */
+    private void openApp() {
+        if (stopped) return;
+        quiet();
+        if (!TopCard.screenUsable(svc)) { card.heardNow(); finishSoon("ఫోన్ అన్‌లాక్ చేసి " + m.app + " తెరవండి", 4000); speak("ఫోన్ అన్‌లాక్ చేసి " + m.app + " తెరవండి."); return; }
+        try {
+            Intent i = svc.getPackageManager().getLaunchIntentForPackage(m.pkg);
+            if (i == null) throw new IllegalStateException("no launcher");
+            LaterMessages.hold(m.pkg); // (the app clearing its notes as it opens: not "read")
+            svc.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            consumeOpened(); // (📬: he has it open)
+            card.heardNow();
+            end(false);
+        } catch (Exception e) {
+            cannot(m.app + " తెరవలేకపోయాను. మీరే తెరవండి.");
+        }
+    }
 
     /** What he said, for the step Jarvis is at. */
     private void answer(String t) {
@@ -539,7 +713,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
             case ASK:
                 if (a == Words.NO) { card.heardNow(); finishSoon("సరే", 3000); speak("సరే."); return; }
                 if (a == Words.LATER) { step = DONE; doneLater = true; card.status("⏰ తర్వాత"); card.buttons("✕", (Runnable) () -> end(true)); speak("సరే, తర్వాత."); return; }
-                if (a == Words.SUMMARY) { summary(); return; }
+                if (a == Words.SUMMARY) { if (m.laterAll) readNow(false); else summary(); return; }
                 if ("voice".equals(m.media) || "audio".equals(m.media)) {
                     if (a == Words.WORDS || a == Words.DESCRIBE) { voiceWords(); return; } // (no OpenAI key: played instead)
                     if (a == Words.YES || a == Words.SHOW) { playVoice(); return; }
@@ -555,11 +729,17 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
                 notUnderstood(m.ask);
                 return;
             case READING: // he spoke over the reading ("రిప్లై ఇవ్వు", "చాలు"…): the reading stops there
+                if (m.laterAll) { // 📬 all: a "no / later" ends (the rest stay); anything else: this part again
+                    quiet();
+                    if (a == Words.NO || a == Words.LATER) { finishSoon("సరే: మిగతావి 📬 లోనే", 4000); speak("సరే."); return; }
+                    readLaterItem();
+                    return;
+                }
                 quiet();
                 // fall through: what he said answers "రిప్లై ఇవ్వమంటారా?"
             case ASK_REPLY:
-                if (m.id <= 0) { finishSoon("✓ చదివాను", 4000); return; } // this chat can't be answered from here
-                if (a == Words.NO || a == Words.LATER) { finishSoon("✓ చదివాను", 3000); speak("సరే."); return; }
+                if (m.id <= 0) { if (offerOpen()) return; finishSoon(doneLine(), 4000); return; } // this chat can't be answered from here
+                if (a == Words.NO || a == Words.LATER) { finishSoon(doneLine(), 3000); speak("సరే."); return; }
                 if (a == Words.YES) { dictate(); return; }
                 reply = Words.reply(t); // he said the reply straight away
                 confirm();
@@ -569,6 +749,11 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
                 reply = Words.reply(t);
                 if (reply.isEmpty()) { notUnderstood("ఏం చెప్పమంటారు?"); return; }
                 confirm();
+                return;
+            case ASK_OPEN:
+                if (a == Words.YES || a == Words.SHOW) { openApp(); return; }
+                if (a == Words.NO || a == Words.LATER) { finishSoon(doneLine(), 3000); speak("సరే."); return; }
+                notUnderstood(m.app + " తెరవమంటారా? ఆ లేదా వద్దు అనండి.");
                 return;
             case CONFIRM:
                 if (a == Words.YES) {
@@ -599,6 +784,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         if (voice != null && voice.listening) voice.cancelListening();
         if (card.voiceOnly()) { // (no card to tap)
             if (step == DICTATE || step == CONFIRM) { // a reply was on its way: said that it wasn't sent; the chat waits under 📬
+                if (m.fromLater) LaterMessages.add(svc, m.app, m.from, m.pkg, m.nkey, m.id, m.texts, m.group, m.media, m.postedAt); // (read already: back, for the reply)
                 reply = "";
                 step = DONE;
                 doneLater = true;
@@ -646,6 +832,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
     private void speak(String text) {
         if (stopped || voice == null) return;
         if (othersUp()) { yieldToOthers(); return; }
+        spokeStarted = false;
         hold();
         card.stayOpen();
         card.orb(OrbView.SPEAKING);
@@ -681,6 +868,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         switch (step) {
             case ASK: return "ఆ / వద్దు / తర్వాత";
             case ASK_REPLY: return "అవును / వద్దు, లేదా జవాబు చెప్పండి";
+            case ASK_OPEN: return "ఆ / వద్దు";
             case DICTATE: return "జవాబు చెప్పండి";
             case CONFIRM: return "పంపు / మార్చు / వద్దు";
             default: return "";
@@ -772,7 +960,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         }
         if (step == DONE) { letGo(); card.hideIn(doneMs, doneLater); return; }
         boolean silence = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
-        if (silence && step == ASK_REPLY) { finishSoon("✓ చదివాను", 5000); return; } // no reply wanted
+        if (silence && (step == ASK_REPLY || step == ASK_OPEN)) { finishSoon(doneLine(), 5000); return; } // no reply wanted
         String why = silence ? "జవాబు రాలేదు" : "🎙️ ఫోన్ ఇప్పుడు మైక్ ఇవ్వలేదు (" + VoiceIO.failText(error) + ")";
         waitForTap(why + ": కింద బటన్ నొక్కండి");
     }
@@ -781,7 +969,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
 
     @Override public void onSpeakStart() {
         if (stopped) return;
-        if (step == READING) card.heardNow(); // heard from here on: not put off for later
+        if (step == READING) { card.heardNow(); spokeStarted = true; } // heard from here on: not put off for later
         else card.status("🔊 …");
     }
 
@@ -789,10 +977,13 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         if (stopped) return;
         switch (step) {
             case READING:
+                if ((m.laterAll || m.fromLater) && !queue.isEmpty()) { laterItemDone(); break; } // (📬: the next part)
+                if (spokeStarted) consumeLater(); // (📬 one chat's photo described in full)
                 afterReading();
                 break;
             case ASK:
             case ASK_REPLY:
+            case ASK_OPEN:
             case DICTATE:
             case CONFIRM:
                 main.removeCallbacks(listenNow);

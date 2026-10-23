@@ -47,6 +47,9 @@ public class JarvisAccessibility extends AccessibilityService {
 
     static boolean enabled() { return instance != null; }
 
+    /** The running service (its overlay windows: the top card, the 📬 list), or null. */
+    static JarvisAccessibility service() { return instance; }
+
     /**
      * The app that was last in front (not Jarvis itself, and not the status bar, home screen, keyboard
      * or Settings), or "" if unknown.
@@ -1199,6 +1202,8 @@ public class JarvisAccessibility extends AccessibilityService {
     }
 
     @Override protected void onServiceConnected() {
+        TopCard.cancelShade(this); // (a card's note left by a killed process: no card behind it now)
+        LaterBox.noteChanged(this); // (📬's note as the list is now)
         instance = this;
         loadNotApps();
         syncBubble();
@@ -1245,14 +1250,14 @@ public class JarvisAccessibility extends AccessibilityService {
     @Override public boolean onUnbind(android.content.Intent intent) {
         instance = null;
         if (bubble != null) { bubble.remove(); bubble = null; }
-        try { TopCard.dismissNow(); BoxPicker.cancel(); } catch (Exception ignored) {}
+        try { TopCard.dismissNow(); BoxPicker.cancel(); LaterBox.closeIfOpen(); } catch (Exception ignored) {}
         return super.onUnbind(intent);
     }
 
     @Override public void onDestroy() {
         instance = null;
         if (bubble != null) { bubble.remove(); bubble = null; }
-        try { TopCard.dismissNow(); BoxPicker.cancel(); } catch (Exception ignored) {}
+        try { TopCard.dismissNow(); BoxPicker.cancel(); LaterBox.closeIfOpen(); } catch (Exception ignored) {}
         super.onDestroy();
     }
 

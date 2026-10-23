@@ -534,7 +534,7 @@ final class FloatBubble implements ScreenReader.Listener {
         int wide = cols * chipW + (cols - 1) * dp(6);
         int later = LaterMessages.count(svc);
         if (later > 0) {
-            TextView c = chip("📬 " + later + (later == 1 ? " చాట్ మెసేజ్‌లు" : " చాట్‌ల మెసేజ్‌లు") + " చదువు", true, () -> option(LATER));
+            TextView c = chip("📬 " + later + (later == 1 ? " చాట్ మెసేజ్‌లు" : " చాట్‌ల మెసేజ్‌లు") + " · లిస్ట్", true, () -> option(LATER));
             c.getLayoutParams().width = wide;
             items.addView(c);
         }
@@ -645,7 +645,7 @@ final class FloatBubble implements ScreenReader.Listener {
                 Toast.makeText(svc, "Jarvis బటన్ దాచాను. సెట్టింగ్స్ → ఫ్లోటింగ్ బటన్ లో మళ్ళీ ఆన్ చేయొచ్చు.", Toast.LENGTH_LONG).show();
                 break;
             case HIDE_APP: hideHere(); break;
-            case LATER: readLaterMessages(); break;
+            case LATER: LaterBox.show(svc); break; // (📬: the list — one chat at a time, or all; Anil, 23 Oct)
             case READ_HERE: readHere(); break;
             case PART:
             case SEARCH: boxThen(kind); break;
@@ -674,21 +674,6 @@ final class FloatBubble implements ScreenReader.Listener {
         refresh();
         main.removeCallbacks(recheck);
         main.postDelayed(recheck, 2000);
-    }
-
-    /** 📬: the messages put off on the top card, read out (then the dot goes). */
-    private void readLaterMessages() {
-        String all = LaterMessages.spoken(svc);
-        LaterMessages.clear(svc);
-        if (all.isEmpty()) { Toast.makeText(svc, "తర్వాత చదవాల్సిన మెసేజ్‌లు ఏవీ లేవు", Toast.LENGTH_SHORT).show(); return; }
-        lastAnswer = all;
-        lastTitle = "📬 తర్వాత చదవమన్న మెసేజ్‌లు";
-        ctxApp = "మెసేజ్‌లు";
-        ctxPage = all;
-        ctxShot = null;
-        turns.clear();
-        showCard("📬 మెసేజ్‌లు", all, false);
-        speak(all);
     }
 
     private void hideMenu() {

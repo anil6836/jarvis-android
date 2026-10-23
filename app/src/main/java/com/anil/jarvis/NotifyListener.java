@@ -160,6 +160,17 @@ public class NotifyListener extends NotificationListenerService {
         // the maps app itself ended its navigation (arrived / stopped), not him swiping it away
         if (sbn != null && Drive.isNavApp(sbn.getPackageName()) && (reason == REASON_APP_CANCEL || reason == REASON_APP_CANCEL_ALL))
             Drive.navEnded(this, sbn.getKey());
+        // 📬: a chat's notification he opened or swiped away: read, out of the list; cleared by its app (often: read there): checked first
+        if (sbn != null && !getPackageName().equals(sbn.getPackageName())) {
+            try {
+                Notification n = sbn.getNotification();
+                boolean byHim = reason == REASON_CLICK || reason == REASON_CANCEL;
+                if (n != null && (n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) LaterMessages.summaryGone(sbn.getPackageName(), byHim); // (the group's own line)
+                else if (byHim) LaterMessages.seen(this, sbn.getKey()); // (his own tap / swipe)
+                else if (reason == REASON_GROUP_SUMMARY_CANCELED) LaterMessages.groupChildGone(this, sbn.getPackageName(), sbn.getKey()); // (read only if he swiped the group)
+                else if (reason == REASON_APP_CANCEL || reason == REASON_APP_CANCEL_ALL) LaterMessages.appCleared(this, sbn.getPackageName(), sbn.getKey());
+            } catch (Exception ignored) {}
+        }
         super.onNotificationRemoved(sbn, rankingMap, reason);
     }
 
@@ -176,6 +187,7 @@ public class NotifyListener extends NotificationListenerService {
     private void add(StatusBarNotification sbn) {
         if (sbn == null) return;
         if (getPackageName().equals(sbn.getPackageName())) { WatchAlerts.posted(this, sbn); return; } // Jarvis's own: on the watch too (2b)
+        LaterMessages.posted(sbn.getKey()); // (a new message on a chat read before: not "read" any more)
         Notification n = sbn.getNotification();
         String pkgL = sbn.getPackageName().toLowerCase(Locale.ROOT);
         boolean dialer = pkgL.contains("incallui") || pkgL.contains("dialer") || pkgL.contains("telecom") || pkgL.equals("com.android.phone");
@@ -365,6 +377,12 @@ public class NotifyListener extends NotificationListenerService {
             Item it = items.get(sbn.getKey());
             if (it != null) { id = it.id; canReply = it.reply != null; }
         }
+        if (LaterMessages.quiet(this, sbn.getPackageName(), from)) { // 🔕 he said this chat never as a card: straight to 📬, nothing said
+            String media = fresh.size() == 1 && sbn.getPackageName().startsWith("com.whatsapp") ? mediaKind(withoutSender(fresh.get(0))) : null;
+            LaterMessages.add(this, app, from, sbn.getPackageName(), sbn.getKey(), id, fresh, group, media, sbn.getPostTime());
+            note(app, from, "🔕 ఈ చాట్ కార్డ్‌లో వద్దన్నారు: చెప్పలేదు, 📬 లో పెట్టాను");
+            return;
+        }
         long now = System.currentTimeMillis();
         synchronized (queue) {
             Pending q = queue.get(sbn.getKey());
@@ -486,7 +504,7 @@ public class NotifyListener extends NotificationListenerService {
                 if (resting) { q.rested = true; continue; } // sleeping after duty: they wait until he wakes
                 if (!q.rested && now - q.firstAt > 30 * 60000L) { // busy for half an hour: too late to announce; it waits under 📬
                     note(q.app, q.from, "చెప్పలేకపోయాను: అరగంట పాటు కాల్ / మాటల్లో ఉన్నారు · 📬 లో ఉంది (\"చదువు\" అంటే చదువుతాను)");
-                    try { LaterMessages.add(this, q.app, q.from, q.texts, q.id); } catch (Exception ignored) {}
+                    try { LaterMessages.add(this, q.app, q.from, q.pkg, q.key, q.id, q.texts, q.group, mediaOf(q), q.firstAt); } catch (Exception ignored) {}
                     it.remove();
                 }
             }
@@ -603,6 +621,7 @@ public class NotifyListener extends NotificationListenerService {
         m.media = media;
         m.postedAt = q.firstAt;
         m.photo = q.photo;
+        m.nkey = q.key; // (📬: its notification going away = read in its app)
         if (!TopCard.screenUsable(this)) { // locked / screen off: by voice only, at once
             if (TopCard.busy() || SheetActivity.open || JarvisCamera.open) { requeue(q); return; } // (a talk goes on: after it)
             m.voiceOnly = true;
@@ -679,7 +698,7 @@ public class NotifyListener extends NotificationListenerService {
     private void voiceLine(Pending q, String say, String ask, String context, int count, String why) {
         note(q.app, q.from, "చెప్పాను (గొంతుతో మాత్రమే: " + why + ") · 📬 లో ఉంది" + (count > 1 ? " · " + count + " మెసేజ్‌లు" : ""));
         Store.get(this).addChat("assistant", say + " " + ask + context, false);
-        try { LaterMessages.add(this, q.app, q.from, q.texts, q.id); } catch (Exception ignored) {}
+        try { LaterMessages.add(this, q.app, q.from, q.pkg, q.key, q.id, q.texts, q.group, mediaOf(q), q.firstAt); } catch (Exception ignored) {}
         if (!JarvisAccessibility.enabled() || !FloatBubble.on(this)) { // (no floating button to show the 📬 dot: a notification points to them)
             try {
                 Reminders.notify(this, "📬 " + q.from + " (" + q.app + ")", (count > 1 ? count + " మెసేజ్‌లు" : "ఒక మెసేజ్") + " Jarvis దగ్గర ఉన్నాయి: Jarvis అని పిలిచి 'చదువు' అనండి",
@@ -795,6 +814,33 @@ public class NotifyListener extends NotificationListenerService {
             }
         }
         return out;
+    }
+
+    /**
+     * 📬: the chat's notification as it is NOW — the same key, the same app and chat, still showing — else null (its
+     * saved number may belong to another chat after a restart: a reply never goes by that).
+     */
+    static Item liveItem(String key, String pkg, String from) {
+        if (key == null || key.isEmpty()) return null;
+        Item it;
+        synchronized (items) { it = items.get(key); }
+        if (it == null || pkg == null || !pkg.equals(it.pkg)) return null;
+        String f = from == null ? "" : from;
+        if (!(f.equals(it.from) || it.from.isEmpty() && f.equals(it.app))) return null;
+        NotifyListener l = self;
+        try {
+            StatusBarNotification[] a = l == null ? null : l.getActiveNotifications(new String[]{key});
+            if (a == null || a.length == 0) return null;
+        } catch (Exception e) {
+            return null;
+        }
+        return it;
+    }
+
+    /** A voice note / photo / video when the chat waited with one such message (for 📬). */
+    private static String mediaOf(Pending q) {
+        if (q.texts.size() != 1 || q.pkg == null || !q.pkg.startsWith("com.whatsapp")) return null;
+        return mediaKind(withoutSender(q.texts.get(0)));
     }
 
     static Item get(int id) {

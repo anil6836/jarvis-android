@@ -2,6 +2,7 @@ package com.anil.jarvis;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
+import android.app.PendingIntent;
 import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
@@ -31,7 +32,8 @@ import java.util.Locale;
  * - Jarvis's question or job (CardAsk): said and heard here, the brain answers here (its words on the card too).
  * Its look: a small Jarvis orb (listening / thinking / speaking), the sender's photo, a colour for the kind (💬 blue,
  * health green, reminder amber), how long ago, how many wait under 📬. A tap or a pull down opens the whole text; a swipe
- * up, or left alone, it goes, and what wasn't heard waits under the dot (a question: a notification). Nothing is lost.
+ * up sends it into the notification shade, where it keeps running (its buttons there, a tap brings it back — Anil, 23 Oct);
+ * left alone it goes, and what wasn't heard waits under the dot (a question: a notification). Nothing is lost.
  * With the phone locked or the screen off there is no card: Jarvis says it and listens (voiceOnly).
  */
 final class TopCard {
@@ -66,10 +68,18 @@ final class TopCard {
         /** ASK / RUN: the card's title ("Jarvis"), else from the kind. */
         String title = "";
         /** No window: the phone is locked or the screen is off; Jarvis says it and listens. */
-        boolean voiceOnly;
+        volatile boolean voiceOnly;
         /** CALL: the line under the name (the app, a warning); PANEL: the panel itself. */
         String sub = "";
         SheetActivity panel;
+        /** 📬: the notification the messages came on (gone = read in its app); how the talk starts (-1: ask first). */
+        String nkey = "";
+        int startHow = -1;
+        /** 📬: one chat from the list (fromLater), or all of them in one go (laterAll, with the entries taken out). */
+        boolean fromLater, laterAll;
+        java.util.List<org.json.JSONObject> laterEntries;
+        /** 📬 all: the one-line overview said before the chats ("" when the question said it already). */
+        String laterOverview = "";
     }
 
     private static volatile TopCard showing;
@@ -122,13 +132,14 @@ final class TopCard {
         if (PANEL.equals(m.kind) && callCardUp()) return false; // (never over a call's card: ringing, or its talk after a cut)
         if (ASK.equals(m.kind) || RUN.equals(m.kind)) pendingAt = 0; // (this is the question / job that was on its way)
         if (!first && busy()) return false;
+        if (first) LaterBox.closeIfOpen(); // (a call / his own talk: the 📬 list goes)
         if (showing != null) showing.close(true, first ? false : true); // (a talk on it stops: its messages under 📬, a question a notification)
         TopCard t = new TopCard(svc, m);
         if (!m.voiceOnly && !t.build()) return false;
         showing = t;
         if (m.voiceOnly) t.watchUnlock();
         if (MSG.equals(m.kind)) {
-            if (m.talk || m.voiceOnly) t.startTalk(CardTalk.START_ASK);
+            if (m.talk || m.voiceOnly) t.startTalk(m.startHow >= 0 ? m.startHow : CardTalk.START_ASK);
             else t.main.postDelayed(t.autoHide, t.p.cardSecs() * 1000L);
         } else if (CALL.equals(m.kind)) {
             t.heard = true; // (nothing of a call waits under 📬)
@@ -195,12 +206,19 @@ final class TopCard {
 
     /** A screen of Jarvis's own came up (the app): message / question / panel cards step aside; a ringing call's card stays. */
     static void stepAsideExceptCall() {
+        LaterBox.closeIfOpen();
         TopCard t = showing;
         if (t == null || CALL.equals(t.m.kind)) return;
         stepAside(t);
     }
 
     // ================================================================ where Jarvis's own words go
+
+    /** The screen is on and unlocked, by the running service (false without it). */
+    static boolean screenUsableNow() {
+        JarvisAccessibility s = JarvisAccessibility.service();
+        return s != null && screenUsable(s);
+    }
 
     /** The screen is on and unlocked (a card can be seen); else Jarvis talks by voice only. */
     static boolean screenUsable(Context c) {
@@ -248,6 +266,7 @@ final class TopCard {
     /** Main thread. A screenshot is about to be taken: a card on the screen goes at once (a voice-only one has none). */
     static void dismissShown() {
         TopCard t = showing;
+        if (t != null && t.inShade) return; // (down in the shade: not on the screen)
         if (t != null && (CALL.equals(t.m.kind) || PANEL.equals(t.m.kind))) { t.hideBriefly(); return; } // (a call / his own talk goes on: only out of the picture)
         if (t != null && (!t.m.voiceOnly || screenUsable(t.svc))) t.close(true, false); // (a voice-only talk on an unlocked phone too)
         TopCard c = leaving;
@@ -259,6 +278,7 @@ final class TopCard {
      * it talks (unheard messages under the dot), leaving the talk state to that screen.
      */
     static void stepAside() {
+        LaterBox.closeIfOpen(); // (another Jarvis screen: the 📬 list goes)
         TopCard t = showing;
         if (t == null) return;
         stepAside(t);
@@ -272,6 +292,7 @@ final class TopCard {
     }
 
     private static void stepAside(TopCard t) {
+        LaterBox.closeIfOpen(); // (the 📬 list goes too)
         Flow c = t.talk;
         t.talk = null;
         if (c != null) c.stop(CardTalk.YIELD_BEFORE);
@@ -288,6 +309,7 @@ final class TopCard {
     /** A card is busy with him (talking, or waiting for his tap mid-reply): a new card must wait. */
     static boolean busy() {
         if (android.os.SystemClock.elapsedRealtime() - pendingAt < 5000) return true;
+        if (LaterBox.isOpen() && TopCard.screenUsableNow()) return true; // (he is looking at the 📬 list: a new card waits, not over it)
         TopCard t = showing;
         Flow c = t == null ? null : t.talk;
         return c != null && c.busy();
@@ -300,6 +322,186 @@ final class TopCard {
         main.postDelayed(() -> { if (view != null && !done) view.setVisibility(View.VISIBLE); }, 2500);
     }
 
+    // ================================================================ in the notification shade (Anil, 23 Oct)
+
+    /** Swiped up: off the screen, but still running in the phone's notification shade (its buttons there; a tap: back). */
+    private volatile boolean inShade;
+    /** The note's tag (its own: no other note of Jarvis's is replaced by it). */
+    private static final String SHADE_TAG = "jarvis_card";
+    private static final String SHADE_CH = "jarvis_card";
+    /** Each new look of the shade note (counted across cards): its intents carry it, so a tap on an old look does nothing. */
+    private static int shadeCount;
+    private int shadeVer = -1;
+    /** The buttons the note shows now (a tap runs these, never newer ones it hasn't shown). */
+    private Object[] shadeBtns;
+    private int[] shadePick = new int[0];
+    private String shadeSig = "";
+    private final Runnable shadePost = this::postShade;
+    /** The last few looks' buttons, by their number. */
+    private final java.util.LinkedHashMap<Integer, Object[]> shadeLooks = new java.util.LinkedHashMap<>();
+
+    /** Seen by him now: on the screen (not voice only, not down in the shade). A countdown runs only while seen. */
+    boolean seen() { return !m.voiceOnly && !inShade && !done; }
+
+    /** Notes can be shown (allowed, and the card's channel not switched off). */
+    private boolean notesOk() {
+        try {
+            android.app.NotificationManager nm = svc.getSystemService(android.app.NotificationManager.class);
+            if (nm == null || !nm.areNotificationsEnabled()) return false;
+            android.app.NotificationChannel ch = nm.getNotificationChannel(SHADE_CH);
+            return ch == null || ch.getImportance() != android.app.NotificationManager.IMPORTANCE_NONE;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void toShade() {
+        if (done || inShade) return;
+        if (!notesOk()) { close(true); return; } // (no note can show: as before, it goes; unheard: under 📬)
+        inShade = true;
+        main.removeCallbacks(autoHide); // (a message waiting: it waits down there, not gone in a few seconds)
+        if (hidePending) main.postDelayed(hide, Math.max(hideMs, 3000)); // (a talk that was to end soon still ends: the touch had held it)
+        if (view != null && !removed) {
+            leaving = this;
+            view.animate().translationY(-dp(150)).alpha(0f).setDuration(180).withEndAction(this::removeView).start();
+            main.postDelayed(this::removeView, 400);
+        }
+        shadeSig = "";
+        postShade();
+    }
+
+    /** A tap on the shade note: the card back on the screen as it is now. */
+    private void fromShade() {
+        if (done || !inShade) return;
+        if (!screenUsable(svc)) return; // (locked: it stays down there)
+        removed = false;
+        m.voiceOnly = false;
+        if (!build()) { shadeSig = ""; postShade(); return; } // (no window: the note stays)
+        inShade = false;
+        main.removeCallbacks(shadePost);
+        cancelShade(svc);
+        replay();
+        closeShadePanel(svc);
+        if (talk == null && MSG.equals(m.kind)) main.postDelayed(autoHide, p.cardSecs() * 2000L);
+    }
+
+    /** The shade is pulled back up after a tap, so the card is seen at once. */
+    private static void closeShadePanel(AccessibilityService svc) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 31) svc.performGlobalAction(15); // GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE
+            else svc.sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
+        } catch (Exception ignored) {}
+    }
+
+    /** The screen went off with the card down in the shade: a talk carries on by voice only (no taps it can't get); else it goes. */
+    private void shadeScreenOff() {
+        Flow t = talk;
+        if (t != null && t.busy()) { m.voiceOnly = true; watchUnlock(); shadeSig = ""; shadeChanged(); return; }
+        close(true, false);
+    }
+
+    private boolean shadeQueued;
+
+    private void shadeChanged() {
+        if (!inShade || done || shadeQueued) return;
+        shadeQueued = true;
+        main.postDelayed(shadePost, 500); // (two looks a second at most, while it keeps changing: the shade isn't a screen)
+    }
+
+    private static PendingIntent shadeIntent(Context c, String op, int ver, int idx) {
+        Intent i = new Intent(c, CardShade.class).setAction(CardShade.ACTION).putExtra("op", op).putExtra("ver", ver).putExtra("idx", idx)
+                .setData(android.net.Uri.parse("jarvis-card://" + ver + "/" + op + "/" + idx)); // (its own intent: an old look's never gets newer extras)
+        return PendingIntent.getBroadcast(c, 0, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    /** The card's note in the shade: its title, what Jarvis is doing, the text, and up to 3 of its own buttons. */
+    private void postShade() {
+        shadeQueued = false;
+        main.removeCallbacks(shadePost);
+        if (!inShade || done) return;
+        try {
+            CharSequence text = lastBody != null ? lastBody : line2 != null ? line2.getText() : "";
+            String body = Otp.spoken((lastStatus.isEmpty() ? "" : lastStatus + "\n") + (text == null ? "" : text.toString())); // (a code: never on the lock screen)
+            Object[] b = lastButtons;
+            int nb = b == null ? 0 : b.length / 2;
+            int[] pick;
+            if (nb <= 3 || CALL.equals(m.kind)) { pick = new int[Math.min(3, nb)]; for (int i = 0; i < pick.length; i++) pick[i] = i; } // (a call: ఎత్తు / కట్ / సైలెంట్)
+            else pick = new int[]{0, 1, nb - 1}; // (the first two and the last: usually ✕)
+            Flow f0 = talk;
+            boolean running0 = f0 != null && f0.busy();
+            StringBuilder sig = new StringBuilder(title()).append('|').append(body).append('|').append(m.voiceOnly).append('|').append(running0);
+            for (int i : pick) sig.append('|').append(b[2 * i]);
+            if (sig.toString().equals(shadeSig) && shadeBtns == b) return;
+            final int ver = ++shadeCount; // (committed to this card only once the note is up)
+            android.app.NotificationManager nm = svc.getSystemService(android.app.NotificationManager.class);
+            if (nm == null) return;
+            android.app.NotificationChannel ch = new android.app.NotificationChannel(SHADE_CH, "Jarvis పైన కార్డ్ (నోటిఫికేషన్ బార్‌లో)",
+                    android.app.NotificationManager.IMPORTANCE_LOW); // (no sound, no pop-up: it must not cover anything again)
+            ch.setShowBadge(false);
+            nm.createNotificationChannel(ch);
+            Flow f = talk;
+            boolean running = f != null && f.busy();
+            String sub = subLine();
+            android.app.Notification.Builder nb2 = new android.app.Notification.Builder(svc, SHADE_CH)
+                    .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                    .setContentTitle(title())
+                    .setContentText(body.isEmpty() ? sub : body)
+                    .setStyle(new android.app.Notification.BigTextStyle().bigText(body.isEmpty() ? sub : body))
+                    .setSubText(running ? "🔊 Jarvis నడుస్తున్నాడు · నొక్కితే కార్డ్" : "నొక్కితే కార్డ్")
+                    .setOnlyAlertOnce(true)
+                    .setOngoing(running)
+                    .setShowWhen(false)
+                    .setVisibility(android.app.Notification.VISIBILITY_PRIVATE)
+                    .setPublicVersion(new android.app.Notification.Builder(svc, SHADE_CH).setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                            .setContentTitle("Jarvis").build()) // (the lock screen shows only "Jarvis" when he hides contents there)
+                    .setLocalOnly(true) // (not bridged to the watch)
+                    .setContentIntent(shadeIntent(svc, CardShade.OP_SHOW, ver, -1))
+                    .setDeleteIntent(shadeIntent(svc, CardShade.OP_GONE, ver, -1));
+            if (!m.voiceOnly) { // (locked: no buttons that act unseen; a tap there needs him to unlock anyway)
+                for (int i : pick) {
+                    android.app.Notification.Action.Builder ab = new android.app.Notification.Action.Builder(null, (String) b[2 * i],
+                            shadeIntent(svc, CardShade.OP_BUTTON, ver, i));
+                    if (android.os.Build.VERSION.SDK_INT >= 31) ab.setAuthenticationRequired(true); // (from the lock screen: unlock first)
+                    nb2.addAction(ab.build());
+                }
+            }
+            nm.notify(SHADE_TAG, 1, nb2.build());
+            shadeSig = sig.toString();
+            shadeVer = ver;
+            shadeBtns = b;
+            shadePick = pick;
+            shadeLooks.put(ver, b == null ? new Object[0] : b); // (a tap on a look a moment old still runs, if its buttons are still these)
+            while (shadeLooks.size() > 8) shadeLooks.remove(shadeLooks.keySet().iterator().next());
+        } catch (Exception ignored) {}
+    }
+
+    static void cancelShade(Context c) {
+        try {
+            android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+            if (nm != null) nm.cancel(SHADE_TAG, 1);
+        } catch (Exception ignored) {}
+    }
+
+    /** Main thread. From the shade note (CardShade): one of the card's buttons, a tap (the card back), or swiped away (closed). */
+    static void shade(Context c, String op, int ver, int idx) {
+        TopCard t = showing;
+        if (t == null || !t.inShade || t.done) { cancelShade(c); return; } // (an old note: the card is gone)
+        if (CardShade.OP_GONE.equals(op)) { t.close(true, false); return; } // (swiped away down there — only he does that: closed; unheard: under 📬 / a notification)
+        if (CardShade.OP_SHOW.equals(op)) { t.fromShade(); return; } // (a tap on the note: the card back, whichever look it was)
+        if (!CardShade.OP_BUTTON.equals(op)) return;
+        Object[] b = t.shadeLooks.get(ver);
+        if (b == null || b != t.lastButtons) { t.shadeSig = ""; t.postShade(); return; } // (its buttons changed meanwhile: the new look, nothing run)
+        if (idx < 0 || 2 * idx + 1 >= b.length) return;
+        t.touched = true;
+        t.main.removeCallbacks(t.autoHide);
+        t.main.removeCallbacks(t.hide); // (as a tap on the card itself)
+        String label = String.valueOf(b[2 * idx]);
+        try { ((Runnable) b[2 * idx + 1]).run(); } catch (Exception ignored) {}
+        // a button that opens a screen (the panel, a photo, a video, the chat's app): the shade goes up so it is seen
+        if (t.done || label.contains("⬆️") || label.contains("👁") || label.contains("▶ ప్లే") || label.contains("📲") || label.contains("📞 ఎత్తు"))
+            closeShadePanel(t.svc);
+    }
+
     /** A card closed but not yet off the screen (its slide-out). */
     private static TopCard leaving;
 
@@ -309,6 +511,7 @@ final class TopCard {
      */
     private final android.content.BroadcastReceiver screenOff = new android.content.BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
+            if (inShade && !done) { shadeScreenOff(); return; }
             Flow t = talk;
             if (t != null && t.busy() && !done) { toVoiceOnly(); return; }
             close(true, false);
@@ -318,6 +521,7 @@ final class TopCard {
     private final android.content.BroadcastReceiver unlocked = new android.content.BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             if (done || !m.voiceOnly || talk == null || !screenUsable(svc)) return;
+            if (inShade) { m.voiceOnly = false; shadeSig = ""; shadeChanged(); return; } // (he put it in the shade: it stays there, its buttons back)
             m.voiceOnly = false;
             removed = false;
             if (!build()) { m.voiceOnly = true; return; }
@@ -378,6 +582,7 @@ final class TopCard {
 
     /** The card's title line. */
     private String title() {
+        if (MSG.equals(m.kind) && m.laterAll) return "📬 తర్వాత మెసేజ్‌లు";
         if (MSG.equals(m.kind)) return "💬 " + m.from + (m.group ? " గ్రూప్" : "");
         if (PANEL.equals(m.kind)) return "🤖 Jarvis";
         if (!m.title.isEmpty()) return m.title;
@@ -491,10 +696,10 @@ final class TopCard {
         buttons.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         buttons.setPadding(0, dp(6), 0, dp(2));
         hs.addView(buttons);
-        if (MSG.equals(m.kind) && !m.talk) { // the talk sets its own buttons
-            buttons.addView(button("🔊 చదువు", v -> startTalk(CardTalk.START_READ)));
-            if (m.group || n >= 3) buttons.addView(button("📝 సారాంశం", v -> startTalk(CardTalk.START_SUMMARY)));
-            buttons.addView(button("⏰ తర్వాత", v -> close(true)));
+        if (MSG.equals(m.kind) && !m.talk && talk == null && lastButtons == null) { // the talk sets its own buttons
+            if (m.group || n >= 3) buttons("🔊 చదువు", (Runnable) () -> startTalk(CardTalk.START_READ), "📝 సారాంశం", (Runnable) () -> startTalk(CardTalk.START_SUMMARY),
+                    "⏰ తర్వాత", (Runnable) () -> close(true));
+            else buttons("🔊 చదువు", (Runnable) () -> startTalk(CardTalk.START_READ), "⏰ తర్వాత", (Runnable) () -> close(true));
         }
         LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         hp.gravity = Gravity.END;
@@ -517,7 +722,7 @@ final class TopCard {
         view.setTranslationY(-dp(140));
         view.setAlpha(0f);
         view.animate().translationY(0).alpha(1f).setDuration(240).start();
-        try {
+        if (!listeningScreen) try {
             svc.registerReceiver(screenOff, new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF));
             listeningScreen = true;
         } catch (Exception ignored) {}
@@ -564,7 +769,7 @@ final class TopCard {
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: {
                 float dy = e.getRawY() - downY;
-                if (dy < -dp(30)) { close(true); return true; }
+                if (dy < -dp(30)) { toShade(); return true; } // (swiped up: into the notification shade, still running — Anil, 23 Oct)
                 view.animate().translationY(0).setDuration(120).start();
                 if (e.getActionMasked() == MotionEvent.ACTION_UP && (dy > dp(30) || Math.abs(dy) < dp(8))) { // pulled down / tapped: open or fold the text
                     touched = true;
@@ -608,6 +813,7 @@ final class TopCard {
     /** The small line under the text: what Jarvis is doing ("🎙️ వింటున్నాను…"); empty hides it. */
     void status(String s) {
         lastStatus = s == null ? "" : s;
+        shadeChanged();
         if (done || status == null) return;
         status.setText(s == null ? "" : s);
         status.setVisibility(s == null || s.isEmpty() ? View.GONE : View.VISIBLE);
@@ -623,6 +829,7 @@ final class TopCard {
     void body(CharSequence s, int maxLines) {
         lastBody = s;
         lastBodyLines = maxLines;
+        shadeChanged();
         if (done || line2 == null) return;
         bodyLines = maxLines;
         int lines = expanded ? Math.max(16, maxLines) : maxLines;
@@ -661,6 +868,7 @@ final class TopCard {
     /** The buttons for this step: label, Runnable, label, Runnable… */
     void buttons(Object... labelThenAction) {
         lastButtons = labelThenAction;
+        shadeChanged();
         if (done || buttons == null) return;
         buttons.removeAllViews();
         for (int i = 0; i + 1 < labelThenAction.length; i += 2) {
@@ -676,6 +884,72 @@ final class TopCard {
 
     /** Read only in part (held, or a reply not sent): if the card goes now, the messages wait under the dot. */
     void notHeard() { heard = false; }
+
+    // ================================================================ 📬 read from the list (LaterBox)
+
+    /** Main thread. One chat from 📬, read on the card (a voice note played, a photo described), then the reply question. */
+    static boolean later(AccessibilityService svc, org.json.JSONObject row) {
+        if (svc == null || row == null || busy()) return false;
+        org.json.JSONObject e = LaterMessages.find(svc, row.optString("app"), row.optString("from")); // (as it is now: texts that came since the list was drawn too)
+        if (e == null) return false;
+        Msg m = new Msg();
+        m.kind = MSG;
+        m.app = e.optString("app");
+        m.from = e.optString("from");
+        m.pkg = e.optString("pkg");
+        m.nkey = e.optString("key");
+        m.group = e.optBoolean("group");
+        org.json.JSONArray t = e.optJSONArray("texts");
+        for (int i = 0; t != null && i < t.length(); i++) m.texts.add(t.optString(i));
+        String media = e.optString("media");
+        m.media = media.isEmpty() ? null : media;
+        m.postedAt = e.optLong("posted", e.optLong("t"));
+        NotifyListener.Item it = NotifyListener.liveItem(m.nkey, m.pkg, m.from); // (by its notification as it is now, never a saved number)
+        m.id = it != null && it.reply != null ? it.id : 0; // (its notification gone: no reply from here, the app is offered instead)
+        m.talk = true;
+        m.startHow = CardTalk.START_READ;
+        m.fromLater = true;
+        m.voiceOnly = !screenUsable(svc);
+        return show(svc, m); // (it stays in 📬 until its texts are read out in full)
+    }
+
+    /**
+     * Main thread. All of 📬 on the card: a one-line overview, then each chat, the important ones first. ask: asked first
+     * ("చదవమంటారా?", the hour's reminder); a "వద్దు" or a card left alone puts them all back.
+     */
+    static boolean laterAll(AccessibilityService svc, boolean ask) {
+        if (svc == null || busy()) return false;
+        String over = LaterMessages.overview(svc).replace("⭐", "");
+        java.util.List<org.json.JSONObject> l = LaterMessages.sorted(svc); // (nothing taken out: each chat leaves 📬 once read out in full)
+        if (l.isEmpty()) return false;
+        Msg m = new Msg();
+        m.kind = MSG;
+        m.app = "📬";
+        m.from = "తర్వాత మెసేజ్‌లు";
+        m.group = true; // (no "who" before the reading: each chat says its own)
+        m.laterOverview = ask ? "" : "తర్వాత చదవాల్సినవి: " + over + "."; // (asked first: the question already said it)
+        for (org.json.JSONObject e : l) m.texts.add(LaterMessages.spoken(java.util.Collections.singletonList(e)));
+        m.id = 0;
+        m.talk = true;
+        m.laterAll = true;
+        m.laterEntries = l;
+        m.postedAt = System.currentTimeMillis();
+        m.say = new Prefs(svc).name() + ", తర్వాత చదవాల్సిన మెసేజ్‌లు ఉన్నాయి: " + over + ".";
+        m.ask = "చదవమంటారా?";
+        m.startHow = ask ? CardTalk.START_ASK : CardTalk.START_READ;
+        m.voiceOnly = !screenUsable(svc);
+        return show(svc, m);
+    }
+
+    /** A short line on the screen (from Jarvis's service). */
+    static void toast(Context c, String s) {
+        try { android.widget.Toast.makeText(c, s, android.widget.Toast.LENGTH_SHORT).show(); } catch (Exception ignored) {}
+    }
+
+    static void toastApp(Context c, String s) { toast(c.getApplicationContext(), s); }
+
+    /** The notification shade pulled back up (a tap there opened something of Jarvis's on the screen). */
+    static void closeShadeNow(AccessibilityService svc) { closeShadePanel(svc); }
 
     /** No window (the phone is locked / the screen is off): only voice. */
     boolean voiceOnly() { return m.voiceOnly; }
@@ -730,8 +1004,10 @@ final class TopCard {
         if (showing == this) showing = null;
         if (listeningScreen) { listeningScreen = false; try { svc.unregisterReceiver(screenOff); } catch (Exception ignored) {} }
         if (listeningUnlock) { listeningUnlock = false; try { svc.unregisterReceiver(unlocked); } catch (Exception ignored) {} }
-        if (later && !heard) {
-            if (MSG.equals(m.kind)) { if (!m.texts.isEmpty()) LaterMessages.add(svc, m.app, m.from, m.texts, m.id); }
+        if (inShade) { inShade = false; main.removeCallbacks(shadePost); cancelShade(svc); }
+        if (MSG.equals(m.kind) && (m.laterAll || m.fromLater)) { /* (📬: its texts stay there until each is read out in full) */ }
+        else if (later && !heard) {
+            if (MSG.equals(m.kind)) { if (!m.texts.isEmpty()) LaterMessages.add(svc, m.app, m.from, m.pkg, m.nkey, m.id, m.texts, m.group, m.media, m.postedAt); }
             else if (onUnheard != null) try { onUnheard.run(); } catch (Exception ignored) {}
         }
         if (view == null || removed) return; // (voice only: no window)

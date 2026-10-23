@@ -151,7 +151,7 @@ final class CardPanel implements TopCard.Flow {
      * the card is seen. Null: no card to tap (the phone is locked) — the panel then comes back to ask it.
      */
     Boolean confirm(String title, String message, String yes, int autoSeconds) {
-        if (stopped || card.voiceOnly()) return null;
+        if (stopped || !card.seen()) return null; // (not seen — locked, or down in the shade: the panel comes back to ask it)
         final CountDownLatch done = new CountDownLatch(1);
         final AtomicInteger st = new AtomicInteger(0);
         confirmState = st;
@@ -169,7 +169,7 @@ final class CardPanel implements TopCard.Flow {
                 countdown = new Runnable() {
                     @Override public void run() {
                         if (confirmState != st || stopped) return;
-                        if (card.voiceOnly()) { left[0] = autoSeconds; card.status("⏱ స్క్రీన్ చూశాక లెక్కపెడతాను"); main.postDelayed(this, 1000); return; } // (never yes unseen)
+                        if (!card.seen()) { left[0] = autoSeconds; card.status("⏱ స్క్రీన్ చూశాక లెక్కపెడతాను"); main.postDelayed(this, 1000); return; } // (never yes unseen: not voice only, not in the shade)
                         if (left[0] <= 0) { answer(true); return; }
                         card.status("⏱ " + left[0] + " · వద్దంటే ✕");
                         left[0]--;

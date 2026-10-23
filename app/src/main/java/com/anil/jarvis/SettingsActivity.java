@@ -801,7 +801,8 @@ public class SettingsActivity extends Activity {
         note("మీరు వేరే యాప్‌లో ఉన్నప్పుడు మెసేజ్ వస్తే కింది నుంచి పెద్ద ప్యానెల్ రాదు: పైన చిన్న కార్డ్ వస్తుంది. Jarvis అక్కడే ఎవరి నుంచో చెప్పి "
                 + "\"చదవమంటారా?\" అని అడుగుతాడు, చదివి, \"రిప్లై ఇవ్వమంటారా?\" అని అడిగి, మీ జవాబు చదివి వినిపించి \"పంపమంటారా?\" అన్నాకే పంపుతాడు. "
                 + "అంతా background‌లోనే: మీరు వాడుతున్న యాప్ ఆగదు, కీబోర్డ్ మూసుకోదు. ప్రతి స్టెప్ కార్డ్‌లోని బటన్‌తోనూ చేయొచ్చు. "
-                + "⏰ తర్వాత అన్నా, పైకి స్వైప్ చేసినా అది ఫ్లోటింగ్ బటన్ మీద చుక్కగా (📬) ఉంటుంది. చదివేటప్పుడు ⏸ / ▶ / ⏪. "
+                + "⏰ తర్వాత అంటే అది ఫ్లోటింగ్ బటన్ మీద చుక్కగా (📬) ఉంటుంది: ఫ్లోటింగ్ బటన్ → 📬 లిస్ట్‌లో ఒక్కో చాట్ వినొచ్చు, రిప్లై ఇవ్వొచ్చు. కార్డ్ అడ్డం వస్తే పైకి స్వైప్ చేయండి: అది కిందకి లాగే నోటిఫికేషన్ బార్‌లోకి వెళ్ళి "
+                + "అక్కడే నడుస్తుంది (దాని బటన్లు అక్కడే; నొక్కితే కార్డ్ మళ్ళీ పైన; పక్కకి తోసేస్తే మూసుకుంటుంది). చదివేటప్పుడు ⏸ / ▶ / ⏪. "
                 + "కింది పెద్ద ప్యానెల్ మీరు \"Jarvis\" అని పిలిచినప్పుడు మాత్రమే. దగ్గు, నీళ్లు, డైరీ లాంటి Jarvis సొంత ప్రశ్నలు కూడా పైన కార్డ్‌లోనే. "
                 + "ఫోన్ లాక్‌లో / స్క్రీన్ ఆఫ్‌లో ఉంటే స్క్రీన్ వెలగదు: Jarvis మాటతో చెప్పి మీ జవాబు వింటాడు. OTP అంకెలు ఎప్పుడూ గట్టిగా చదవడు.");
         TextView cl = Ui.text(this, "🗂️ పైన కార్డ్ (ఎవరూ నొక్కకపోతే ఎంతసేపు ఉండాలి):", 15, Ui.TEXT);
@@ -824,6 +825,37 @@ public class SettingsActivity extends Activity {
         cardBig.setOnCheckedChangeListener((bt, v) -> prefs.sp.edit().putBoolean("card_big", v).apply());
         Switch cardLow = toggle("⬇️ కార్డ్ కొంచెం కిందికి (యాప్ పై భాగానికి అడ్డం రాకుండా)", prefs.cardLow());
         cardLow.setOnCheckedChangeListener((bt, v) -> prefs.sp.edit().putBoolean("card_low", v).apply());
+        // 📬 the later-messages box (Anil, 23 Oct)
+        TextView lk = Ui.text(this, "📬 తర్వాత మెసేజ్‌లు ఎంతసేపు ఉంచాలి:", 15, Ui.TEXT);
+        lk.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
+        box.addView(lk);
+        RadioGroup keepH = new RadioGroup(this);
+        keepH.setOrientation(RadioGroup.HORIZONTAL);
+        int[] hrs = {12, 24};
+        for (int h : hrs) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(h + " గంటలు");
+            rb.setTextColor(Ui.TEXT);
+            rb.setId(View.generateViewId());
+            keepH.addView(rb);
+            if (h == LaterMessages.keepHours(this)) keepH.check(rb.getId());
+            rb.setOnCheckedChangeListener((bt, on) -> { if (on) prefs.sp.edit().putInt("later_keep_h", h).apply(); });
+        }
+        box.addView(keepH);
+        Switch laterNote = toggle("📲 📬 నోటిఫికేషన్ బార్‌లో కూడా చూపించు (శబ్దం లేకుండా)", prefs.sp.getBoolean("later_note", true));
+        laterNote.setOnCheckedChangeListener((bt, v) -> { prefs.sp.edit().putBoolean("later_note", v).apply(); LaterBox.noteChanged(this); });
+        Switch laterRemind = toggle("⏰ 📬 లో మెసేజ్‌లు గంట నుంచి ఉంటే, మీరు ఖాళీగా ఉన్నప్పుడు ఒక్కసారి గుర్తుచేయి", prefs.sp.getBoolean("later_remind", true));
+        laterRemind.setOnCheckedChangeListener((bt, v) -> prefs.sp.edit().putBoolean("later_remind", v).apply());
+        final TextView quietInfo = Ui.text(this, "", 14, Ui.MUTED);
+        quietInfo.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(quietInfo);
+        Runnable showQuiet = () -> {
+            java.util.List<String> q = LaterMessages.quietNames(this);
+            quietInfo.setText(q.isEmpty() ? "🔕 కార్డ్‌లో చెప్పని చాట్‌లు: ఏవీ లేవు (📬 లిస్ట్‌లో ఒక చాట్ పక్కన 🔕 నొక్కితే ఇక్కడ వస్తుంది)"
+                    : "🔕 కార్డ్‌లో చెప్పని చాట్‌లు (నేరుగా 📬 లోకి): " + String.join(", ", q));
+        };
+        showQuiet.run();
+        button("🔔 అన్ని చాట్‌లు మళ్ళీ కార్డ్‌లో చెప్పు", v -> { LaterMessages.clearQuiet(this); showQuiet.run(); });
         TextView tl = Ui.text(this, "⌨️ మీరు టైప్ చేస్తున్నప్పుడు మెసేజ్ వస్తే:", 15, Ui.TEXT);
         tl.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
         box.addView(tl);

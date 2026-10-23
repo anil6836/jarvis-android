@@ -206,6 +206,11 @@
             android:name=".Proactive"
             android:exported="false" />
 
+        <!-- The top card swiped up into the notification shade: its buttons there, and a tap brings it back (TopCard) -->
+        <receiver
+            android:name=".CardShade"
+            android:exported="false" />
+
         <receiver
             android:name=".CarReceiver"
             android:exported="true">
