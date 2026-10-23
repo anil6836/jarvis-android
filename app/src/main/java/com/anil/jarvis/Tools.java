@@ -250,8 +250,13 @@ final class Tools {
                 "HOME TABLET ONLY (the home Jarvis with అమ్మగారు): note her day and reach Anil. ate = she had a meal (meal: tiffin, lunch, snack, dinner); "
                         + "tablet_taken = she took the tablet that is due; water = she drank water; sugar = her sugar reading (value); tell_son = a message to Anil's "
                         + "phone (text; also for anything worrying); quiet = she wants quiet for some minutes; out / back = she goes out / came back; "
-                        + "today = her day so far; story = a Bible story kept on the tablet.",
-                schema(new String[][]{{"action", "string", "ate, tablet_taken, water, sugar, tell_son, quiet, out, back, today or story"},
+                        + "today = her day so far; story = a Bible story kept on the tablet; shop_add = things the house needs on her shopping list "
+                        + "(items, comma-separated, her Telugu words; it reaches Anil's phone by itself), shop_list / shop_remove (items) / shop_clear; "
+                        + "good_night = she is going to sleep (her AC asked, soft songs, the screen dims); video_call = she wants a video call with her son "
+                        + "(the screen asks her yes / no first); read_paper = the camera opens to read a paper, letter, bill or label she shows.",
+                schema(new String[][]{{"action", "string", "ate, tablet_taken, water, sugar, tell_son, quiet, out, back, today, story, shop_add, shop_list, "
+                        + "shop_remove, shop_clear, good_night, video_call or read_paper"},
+                        {"items", "string", "For shop_add / shop_remove: the items, comma-separated, in Telugu as she said them"},
                         {"meal", "string", "For ate: tiffin, lunch, snack or dinner"}, {"value", "integer", "For sugar: the reading (mg/dL)"},
                         {"text", "string", "For tell_son: the message in Telugu"}, {"minutes", "integer", "For quiet: how long (default 120)"}}, "action")));
         DEFS.add(new Def("parking", "Where he parked: save = remember this spot ('బండి ఇక్కడ పెట్టాను'); find = walk him back to it ('నా బండి ఎక్కడ?').",

@@ -45,6 +45,8 @@ final class HomeScreen extends FrameLayout {
         void care(String what);
         /** Jarvis says this aloud (after a smart-home button). */
         void speak(String text);
+        /** Jarvis asks this aloud and listens for her answer. */
+        void ask(String text);
     }
 
     static final int NIGHT_FROM = 22, NIGHT_TO = 6;
@@ -144,7 +146,14 @@ final class HomeScreen extends FrameLayout {
         sideFit.addView(side, new LayoutParams(-1, -1));
 
         LinearLayout chips = new LinearLayout(a);
-        chips.setGravity(Gravity.END);
+        chips.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        // 🪴 Jarvis's garden: a plant a day, growing as she takes her tablets, meals and water (F7, Anil 24 Oct)
+        garden = new GardenView(a);
+        garden.setContentDescription("Jarvis తోట: ఈరోజు మొక్క ఎలా ఉందో వినడానికి నొక్కండి");
+        garden.setOnClickListener(v -> gardenSay());
+        LinearLayout.LayoutParams gdl = new LinearLayout.LayoutParams(0, dp(52), 1);
+        gdl.rightMargin = dp(10);
+        chips.addView(garden, gdl);
         net = chip(a);
         batt = chip(a);
         chips.addView(net);
@@ -182,7 +191,8 @@ final class HomeScreen extends FrameLayout {
         // అమ్మగారు's big buttons (🆘 సహాయం has its own place at the bottom, next to మాట్లాడు)
         String[][] care = {{"tablet", "💊 వేసుకున్నాను"}, {"ate", "🍽️ తిన్నాను"}, {"bible", "🙏 వాక్యం"},
                 {"read", "📖 బైబిల్ చదువు"}, {"songs", "🎵 పాటలు"}, {"game", "🎲 ఆట"},
-                {"photos", "🖼️ ఫోటోలు"}, {"son", "🎤 అబ్బాయికి చెప్పు"}};
+                {"photos", "🖼️ ఫోటోలు"}, {"shop", "🛒 సరుకులు"}, {"readpaper", "📄 చదివి చెప్పు"},
+                {"son", "🎤 అబ్బాయికి చెప్పు"}, {"video", "📹 వీడియో కాల్"}};
         grid = new LinearLayout(a);
         grid.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-1, -2);
@@ -197,10 +207,13 @@ final class HomeScreen extends FrameLayout {
                 grid.addView(gr, rl);
             }
             final String what = care[i][0];
-            TextView b = button(a, care[i][1], 0xFF1F3B5C, 0xFFFFFFFF, 16);
+            TextView b = button(a, care[i][1], "video".equals(what) ? 0xFF1E5A4A : 0xFF1F3B5C, 0xFFFFFFFF, 16);
+            fitText(b, 16); // (a long label shrinks a little, never cut)
+            if ("shop".equals(what)) shopBtn = b;
             b.setOnClickListener(v -> {
                 if ("photos".equals(what)) { showFrame(true); return; }
-                if ("ate".equals(what) || "tablet".equals(what)) { body.rig.poke(); body.rig.cheer(); } // (he claps for her)
+                if ("shop".equals(what)) { showShop(); return; }
+                if ("ate".equals(what) || "tablet".equals(what)) { body.rig.poke(); body.rig.cheer(); gardenSoon(); } // (he claps for her)
                 host.care(what);
             });
             LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(54), 1);
@@ -208,12 +221,21 @@ final class HomeScreen extends FrameLayout {
             gr.addView(b, bl);
         }
         // at her bedtime only the few she needs show; the rest wait behind "⋯ మరిన్ని" (T4)
+        nightRow = new LinearLayout(a);
+        moon = button(a, "🌙 పడుకుంటాను", 0xFF2A2F6B, 0xFFFFFFFF, 19);
+        fitText(moon, 19);
+        moon.setOnClickListener(v -> { body.rig.poke(); host.care("night"); }); // (F2: the good-night scene)
+        nightRow.addView(moon, new LinearLayout.LayoutParams(0, dp(54), 1.4f));
         more = button(a, "⋯ మరిన్ని", 0xFF1B3050, 0xFFDCE7F3, 17);
+        fitText(more, 17);
         more.setOnClickListener(v -> { moreUntil = moreOpen() ? 0 : System.currentTimeMillis() + 2 * 60_000L; nightLayout(); });
-        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-1, dp(46));
+        LinearLayout.LayoutParams mol = new LinearLayout.LayoutParams(0, dp(54), 1);
+        mol.leftMargin = dp(8);
+        nightRow.addView(more, mol);
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-1, -2);
         ml.topMargin = dp(12);
-        more.setVisibility(GONE);
-        side.addView(more, ml);
+        nightRow.setVisibility(GONE);
+        side.addView(nightRow, ml);
 
         smart = new LinearLayout(a);
         smart.setOrientation(LinearLayout.VERTICAL);
@@ -272,6 +294,11 @@ final class HomeScreen extends FrameLayout {
         ask.setClickable(true); // (nothing under it is pressed while it asks)
         ask.setVisibility(GONE);
         addView(ask, new LayoutParams(-1, -1));
+        shopPanel = new FrameLayout(a);
+        shopPanel.setBackgroundColor(0xC8050B14);
+        shopPanel.setClickable(true);
+        shopPanel.setVisibility(GONE);
+        addView(shopPanel, new LayoutParams(-1, -1));
         body.rig.setIdlePlays(true); // (when no one talks for a while he plays by himself: a kitten, a ball, bubbles…)
     }
 
@@ -285,9 +312,11 @@ final class HomeScreen extends FrameLayout {
     }
 
     // ================================================================ "⋯ మరిన్ని" at her bedtime (T4)
-    private LinearLayout grid;
-    private TextView more;
+    private LinearLayout grid, nightRow;
+    private TextView more, moon, shopBtn;
     private long moreUntil;
+    /** After the good-night scene: until the morning the screen is her bedtime screen and dims sooner. */
+    private long sleepUntil;
 
     private boolean moreOpen() { return System.currentTimeMillis() < moreUntil; }
 
@@ -303,14 +332,32 @@ final class HomeScreen extends FrameLayout {
         return bed > wake ? now >= bed || now < wake : now >= bed && now < wake;
     }
 
-    /** At bedtime: clock, the AC cards, సహాయం and మాట్లాడు only; "⋯ మరిన్ని" shows the rest for two minutes. */
+    /** At bedtime: clock, the AC cards, 🌙, సహాయం and మాట్లాడు only; "⋯ మరిన్ని" shows the rest for two minutes. */
     private void nightLayout() {
-        boolean bed = bedtime(), open = moreOpen();
+        boolean sleeping = System.currentTimeMillis() < sleepUntil, bed = bedtime() || sleeping, open = moreOpen();
         int g = !bed || open ? VISIBLE : GONE;
         if (grid.getVisibility() != g) grid.setVisibility(g);
         int m = bed ? VISIBLE : GONE;
-        if (more.getVisibility() != m) more.setVisibility(m);
+        if (nightRow.getVisibility() != m) nightRow.setVisibility(m);
+        int mn = bed && !sleeping ? VISIBLE : GONE; // (once she said good night: no second AC question by a stray tap)
+        if (moon.getVisibility() != mn) moon.setVisibility(mn);
         more.setText(open ? "⌃ తక్కువ" : "⋯ మరిన్ని");
+    }
+
+    /** 🌙 The good-night scene ran (HomeNight): Jarvis lies down under his blanket, the bedtime screen until the morning. */
+    void goodNight() {
+        Calendar k = Calendar.getInstance();
+        if (k.get(Calendar.HOUR_OF_DAY) >= NIGHT_TO) k.add(Calendar.DAY_OF_MONTH, 1);
+        k.set(Calendar.HOUR_OF_DAY, NIGHT_TO);
+        k.set(Calendar.MINUTE, 0);
+        k.set(Calendar.SECOND, 0);
+        sleepUntil = k.getTimeInMillis();
+        moreUntil = 0;
+        hideFrame();
+        body.rig.play("snore"); // (after his good-night words: he snores under his blanket)
+        nightLayout();
+        activeAt = System.currentTimeMillis() - 60_000L; // (the screen goes soft a little after he has said it)
+        applyLight();
     }
 
     // ================================================================ games
@@ -494,10 +541,11 @@ final class HomeScreen extends FrameLayout {
      */
     private void applyLight() {
         long now = System.currentTimeMillis();
-        boolean busy = body.rig.mode() != BodyRig.IDLE, recent = now - activeAt < (night ? 90_000L : 5 * 60_000L);
-        float level = night ? (busy || recent || now < lampUntil ? 0.16f : 0.03f)
+        boolean dark = night || now < sleepUntil; // (after her good night, also before 10 pm: the night screen)
+        boolean busy = body.rig.mode() != BodyRig.IDLE, recent = now - activeAt < (dark ? 90_000L : 5 * 60_000L);
+        float level = dark ? (busy || recent || now < lampUntil ? 0.16f : 0.03f)
                 : (busy || recent || frame.getVisibility() == VISIBLE ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE : 0.30f);
-        warm.setVisibility(night ? VISIBLE : GONE);
+        warm.setVisibility(dark ? VISIBLE : GONE);
         try {
             act.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             if (level == lightNow) return;
@@ -548,6 +596,8 @@ final class HomeScreen extends FrameLayout {
         running = true;
         shown = this;
         refreshSmart();
+        shopCount();
+        gardenRefresh();
         main.post(tick);
         main.post(quickTick);
     }
@@ -615,6 +665,9 @@ final class HomeScreen extends FrameLayout {
         nightLayout();
         occasion(c);
         mealTime();
+        sky.setBirds(h >= 6 && h < 10 && !night); // (F6: birds cross the morning sky)
+        morning(c);
+        if (System.currentTimeMillis() - gardenAt > 60_000L) gardenRefresh();
         if (night) hideFrame(); else frameCheck();
         applyLight();
         if (bubbleBox.getVisibility() == VISIBLE && System.currentTimeMillis() - bubbleAt > 30_000
@@ -647,6 +700,7 @@ final class HomeScreen extends FrameLayout {
         body.rig.setBase(n ? "sleepy" : "smile");
         body.rig.setNightPlays(n); // (night: only calm plays — a firefly, a sleeping kitten, a dream)
         sky.setDim(n);
+        garden.setDim(n);
         lightNow = -2f; // (the brightness is set again for the new part of the day)
         applyLight();
     }
@@ -836,10 +890,20 @@ final class HomeScreen extends FrameLayout {
         return dot > 0 ? s.substring(0, dot) : s;
     }
 
-    private void fetchWeather() {
+    /** The first number of a daily array (NaN when missing). */
+    private static double arr(JSONObject d, String k) {
+        org.json.JSONArray a = d.optJSONArray(k);
+        return a == null || a.length() == 0 || a.isNull(0) ? Double.NaN : a.optDouble(0, Double.NaN);
+    }
+
+    private void fetchWeather() { fetchWeather(false); }
+
+    /** now: the morning greeting waits for today's forecast (asked at once, at most every 2 minutes). */
+    private void fetchWeather(boolean now0) {
         android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
         long now = System.currentTimeMillis();
-        if (weatherBusy || now - sp.getLong("w_at", 0) < 30 * 60_000L || now - weatherTry < 10 * 60_000L) return;
+        if (weatherBusy || !now0 && (now - sp.getLong("w_at", 0) < 30 * 60_000L || now - weatherTry < 10 * 60_000L)
+                || now0 && now - weatherTry < 2 * 60_000L) return;
         weatherBusy = true;
         weatherTry = now;
         final Context app = getContext().getApplicationContext();
@@ -847,13 +911,23 @@ final class HomeScreen extends FrameLayout {
             try {
                 Location l = Devices.freshFix(app); // (a SIM-less tablet may have no last place yet: a fix is asked for)
                 if (l == null) return;
-                JSONObject cur = Http.get(String.format(Locale.US,
-                        "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code,is_day",
-                        l.getLatitude(), l.getLongitude())).optJSONObject("current");
+                JSONObject all = Http.get(String.format(Locale.US,
+                        "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code,is_day"
+                                + "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&forecast_days=1&timezone=auto",
+                        l.getLatitude(), l.getLongitude()));
+                JSONObject cur = all.optJSONObject("current");
                 if (cur == null || !cur.has("temperature_2m")) return;
-                app.getSharedPreferences(SP, Context.MODE_PRIVATE).edit().putFloat("w_temp", (float) cur.optDouble("temperature_2m"))
+                android.content.SharedPreferences.Editor e = app.getSharedPreferences(SP, Context.MODE_PRIVATE).edit()
+                        .putFloat("w_temp", (float) cur.optDouble("temperature_2m"))
                         .putInt("w_code", cur.optInt("weather_code", -1)).putInt("w_day", cur.optInt("is_day", -1))
-                        .putLong("w_at", System.currentTimeMillis()).apply();
+                        .putLong("w_at", System.currentTimeMillis());
+                JSONObject d = all.optJSONObject("daily"); // (today's: for the morning greeting, F6)
+                if (d != null && d.optJSONArray("time") != null && d.optJSONArray("time").length() > 0) {
+                    e.putString("d_day", d.optJSONArray("time").optString(0))
+                            .putFloat("d_max", (float) arr(d, "temperature_2m_max")).putFloat("d_min", (float) arr(d, "temperature_2m_min"))
+                            .putInt("d_rain", (int) Math.round(arr(d, "precipitation_probability_max"))).putInt("d_code", (int) Math.round(arr(d, "weather_code")));
+                }
+                e.apply();
                 main.post(() -> { if (running) showWeather(); });
             } catch (Throwable ignored) {
                 // offline / no location: the last weather stays
@@ -1015,7 +1089,15 @@ final class HomeScreen extends FrameLayout {
 
     /** The question over the screen with big అవును / వద్దు (goes by itself after 15 s, as a no). */
     private void confirm(String question, Runnable yes) {
+        askYesNo(question, yes, () -> show("సరే, ఏమీ చేయలేదు"), null, 15_000);
+    }
+
+    private Runnable askGone;
+
+    /** The question over everything: ✓ → yes, ✕ → no, nothing for timeoutMs → timeout (may be null: then just gone). */
+    private void askYesNo(String question, Runnable yes, Runnable no, Runnable timeout, long timeoutMs) {
         Context c = getContext();
+        hideShop(); // (the question is always on top: never hidden behind the list)
         ask.removeAllViews();
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -1029,19 +1111,49 @@ final class HomeScreen extends FrameLayout {
         LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, -2);
         rl.topMargin = dp(18);
         box.addView(row, rl);
-        final Runnable gone = () -> ask.setVisibility(GONE);
+        if (askGone != null) main.removeCallbacks(askGone);
+        final Runnable hide = () -> ask.setVisibility(GONE);
+        final Runnable gone = askGone = () -> { hide.run(); if (timeout != null) timeout.run(); };
         TextView y = button(c, "✓ అవును", 0xFF1E6B4A, 0xFFFFFFFF, 24);
-        y.setOnClickListener(v -> { main.removeCallbacks(gone); gone.run(); yes.run(); });
+        y.setOnClickListener(v -> { main.removeCallbacks(gone); hide.run(); active(); yes.run(); });
         row.addView(y, new LinearLayout.LayoutParams(dp(170), dp(70)));
         TextView n = button(c, "✕ వద్దు", 0xFF3A4658, 0xFFFFFFFF, 24);
-        n.setOnClickListener(v -> { main.removeCallbacks(gone); gone.run(); show("సరే, ఏమీ చేయలేదు"); });
+        n.setOnClickListener(v -> { main.removeCallbacks(gone); hide.run(); active(); no.run(); });
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(dp(170), dp(70));
         nl.leftMargin = dp(16);
         row.addView(n, nl);
         ask.addView(box, new LayoutParams(-2, -2, Gravity.CENTER));
         ask.setVisibility(VISIBLE);
-        main.removeCallbacks(gone);
-        main.postDelayed(gone, 15_000);
+        active();
+        main.postDelayed(gone, timeoutMs);
+    }
+
+    /** The question answered another way (her voice): it goes, nothing more is done. */
+    void hideAsk() {
+        if (askGone != null) main.removeCallbacks(askGone);
+        askGone = null;
+        ask.setVisibility(GONE);
+    }
+
+    /** 🌙 "AC ఆన్ చేయమంటారా?" (HomeNight): her ✓ / ✕ here, or her voice. */
+    void askNight(String q) {
+        final Context app = getContext().getApplicationContext();
+        askYesNo(q, () -> nightAnswer(app, true), () -> nightAnswer(app, false), null, 40_000);
+    }
+
+    private void nightAnswer(Context app, boolean ac) {
+        MainActivity.homeAnswered(); // (her ✓ / ✕: Jarvis stops waiting for a spoken answer)
+        new Thread(() -> {
+            String line = HomeNight.answer(app, ac);
+            if (line != null) HomeCare.say(app, line, "calm");
+        }, "home-night").start();
+    }
+
+    /** 📹 "అబ్బాయికి వీడియో కాల్ చేయనా?": her ✓ starts it, ✕ is a no. */
+    void askVideo(String q) {
+        askYesNo(q, () -> { String r = MainActivity.homeVideoAnswer(true); if (r != null && !r.isEmpty()) host.speak(r); },
+                () -> { String r = MainActivity.homeVideoAnswer(false); if (r != null && !r.isEmpty()) show(r); },
+                () -> { if ("video".equals(HomeCare.pending())) HomeCare.clearPending(); }, 90_000); // (no answer: no call later)
     }
 
     private void run(String base, String name, Boolean on, String url, TextView last) {
@@ -1222,6 +1334,280 @@ final class HomeScreen extends FrameLayout {
             ch.setPivotY(0);
             ch.setScaleX(s);
             ch.setScaleY(s);
+        }
+    }
+
+
+    // ================================================================ 🛒 the shopping list (F1)
+    private final FrameLayout shopPanel;
+    private final Runnable shopIdle = this::hideShop;
+
+    /** The list changed (any thread): the 🛒 button's count, and the panel when it is open. */
+    static void shopChanged() {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            HomeScreen h = shown;
+            if (h == null) return;
+            h.shopCount();
+            if (h.shopPanel.getVisibility() == VISIBLE) h.showShop();
+        });
+    }
+
+    private void shopCount() {
+        if (shopBtn == null) return;
+        int n = HomeShop.items(getContext()).size();
+        shopBtn.setText(n == 0 ? "🛒 సరుకులు" : "🛒 సరుకులు (" + n + ")");
+    }
+
+    /** The list, big: each item with "✓ తెచ్చారు"; "🎤 ఇంకోటి చెప్పండి", "📤 అబ్బాయికి పంపు", "✕ మూసేయి". */
+    void showShop() {
+        Context c = getContext();
+        shopPanel.removeAllViews();
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(26), dp(20), dp(26), dp(20));
+        box.setBackground(round(0xFF13233A, 0xFF2E4C74, 24));
+        box.addView(text(c, "🛒 సరుకుల లిస్ట్", 28, 0xFFF2B544, true));
+        List<String> items = HomeShop.items(c);
+        LinearLayout list = new LinearLayout(c);
+        list.setOrientation(LinearLayout.VERTICAL);
+        if (items.isEmpty()) {
+            TextView e = text(c, "లిస్ట్ ఖాళీగా ఉంది.\nఏదైనా అయిపోతే \"Jarvis, బియ్యం అయిపోయాయి\" అని చెప్పండి, లేదా కింద 🎤 నొక్కండి.", 21, 0xFFDCE7F3, false);
+            e.setPadding(0, dp(12), 0, dp(12));
+            list.addView(e);
+        }
+        for (String it : items) {
+            LinearLayout r = new LinearLayout(c);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(0, dp(6), 0, dp(6));
+            TextView name = text(c, "• " + it, 25, 0xFFF4F8FC, true);
+            r.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            TextView got = button(c, "✓ తెచ్చారు", 0xFF1E6B4A, 0xFFFFFFFF, 19);
+            got.setOnClickListener(v -> {
+                java.util.List<String> one = new ArrayList<>();
+                one.add(it);
+                HomeShop.remove(getContext(), one); // (the panel and the button refresh through shopChanged)
+                body.rig.poke();
+                body.rig.show("happy", 2000);
+            });
+            r.addView(got, new LinearLayout.LayoutParams(dp(150), dp(56)));
+            list.addView(r);
+        }
+        android.widget.ScrollView sc = new android.widget.ScrollView(c);
+        sc.addView(list);
+        LinearLayout.LayoutParams scl = new LinearLayout.LayoutParams(-1, 0, 1);
+        scl.topMargin = dp(8);
+        box.addView(sc, scl);
+        final TextView note = text(c, "", 17, 0xFF8FB4D9, false);
+        note.setPadding(0, dp(6), 0, dp(6));
+        box.addView(note);
+        LinearLayout row = new LinearLayout(c);
+        TextView tell = button(c, "🎤 ఇంకోటి చెప్పండి", 0xFFF2B544, 0xFF1A1206, 20);
+        fitText(tell, 20);
+        tell.setOnClickListener(v -> {
+            hideShop();
+            HomeCare.setPending("shop"); // (what she says now goes on the list)
+            host.ask(HomeCare.who(getContext()) + ", ఏమి కావాలో చెప్పండి.");
+        });
+        row.addView(tell, new LinearLayout.LayoutParams(0, dp(64), 1.3f));
+        TextView send = button(c, "📤 అబ్బాయికి పంపు", 0xFF1F3B5C, 0xFFFFFFFF, 20);
+        fitText(send, 20);
+        send.setEnabled(!items.isEmpty());
+        send.setAlpha(items.isEmpty() ? 0.45f : 1f);
+        send.setOnClickListener(v -> {
+            note.setText("పంపుతున్నాను…");
+            final Context app = getContext().getApplicationContext();
+            new Thread(() -> {
+                boolean ok = HomeShop.sendNow(app, true);
+                post(() -> note.setText(ok ? "✓ అబ్బాయి ఫోన్‌కి పంపాను" : "ఇప్పుడు పంపలేకపోయాను: కాసేపట్లో నేనే మళ్ళీ పంపుతాను"));
+            }, "home-shop").start();
+        });
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(0, dp(64), 1.2f);
+        sl.leftMargin = dp(10);
+        row.addView(send, sl);
+        TextView close = button(c, "✕", 0xFF3A4658, 0xFFFFFFFF, 24);
+        close.setContentDescription("మూసేయి");
+        close.setOnClickListener(v -> hideShop());
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(dp(72), dp(64));
+        cl.leftMargin = dp(10);
+        row.addView(close, cl);
+        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+        rl.topMargin = dp(8);
+        box.addView(row, rl);
+        LayoutParams bl = new LayoutParams(Math.min(dp(760), Math.round(getWidth() * 0.9f) > 0 ? Math.round(getWidth() * 0.9f) : dp(760)), -1, Gravity.CENTER);
+        bl.topMargin = dp(30);
+        bl.bottomMargin = dp(30);
+        shopPanel.addView(box, bl);
+        shopPanel.setVisibility(VISIBLE);
+        active();
+        main.removeCallbacks(shopIdle);
+        main.postDelayed(shopIdle, 90_000L);
+    }
+
+    private void hideShop() {
+        main.removeCallbacks(shopIdle);
+        shopPanel.setVisibility(GONE);
+        shopPanel.removeAllViews();
+    }
+
+    // ================================================================ 🌅 the morning greeting (F6)
+    private long morningSeenAt;
+
+    /**
+     * Once a morning (6–11), the first time someone is about: Jarvis stretches, then "శుభోదయం" with today's weather
+     * (an umbrella on a rainy day, water and shade on a hot one, a sweater when it is cold). Waits a few minutes for
+     * today's forecast; never while she asked for quiet, is out, or Jarvis is busy.
+     */
+    private void morning(Calendar c) {
+        int h = c.get(Calendar.HOUR_OF_DAY);
+        if (h < 6 || h >= 11) return;
+        android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
+        String day = String.format(Locale.US, "%04d-%02d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
+        if (day.equals(sp.getString("morning_said", ""))) return;
+        long now = System.currentTimeMillis(), life = HomeCare.sp(getContext()).getLong("life", 0);
+        boolean about = now - activeAt < 3 * 60_000L || now - life < 3 * 60_000L && life > startOfDay(c) + NIGHT_TO * 3600_000L;
+        if (!about || HomeCare.quiet(getContext()) || HomeCare.out(getContext()) || body.rig.mode() != BodyRig.IDLE || gamesOpen()) return;
+        boolean forecast = day.equals(sp.getString("d_day", ""));
+        if (!forecast && online(getContext())) {
+            if (morningSeenAt == 0) morningSeenAt = now;
+            if (now - morningSeenAt < 4 * 60_000L) { fetchWeather(true); return; } // (a few minutes for today's weather)
+        }
+        sp.edit().putString("morning_said", day).apply();
+        morningSeenAt = 0;
+        String line = morningLine(HomeCare.who(getContext()), DAYS[c.get(Calendar.DAY_OF_WEEK) - 1], forecast,
+                sp.getFloat("d_max", Float.NaN), sp.getFloat("d_min", Float.NaN), sp.getInt("d_rain", -1), sp.getInt("d_code", -1));
+        hideFrame();
+        body.rig.poke();
+        body.rig.play("stretch"); // (he stretches and yawns first, then the greeting)
+        main.postDelayed(() -> { if (running) host.speak(line); }, 5500);
+    }
+
+    /** "శుభోదయం అమ్మగారు! ఈరోజు శనివారం. ఈరోజు వర్షం పడేలా ఉంది…". Pure. */
+    static String morningLine(String w, String dayName, boolean forecast, float max, float min, int rain, int code) {
+        StringBuilder b = new StringBuilder("శుభోదయం " + w + "! ఈరోజు " + dayName + ". ");
+        if (forecast) {
+            boolean storm = code >= 95, wet = rain >= 50 || code >= 51 && code <= 67 || code >= 80 && code <= 82;
+            long hi = Float.isNaN(max) ? -100 : Math.round(max), lo = Float.isNaN(min) ? -100 : Math.round(min);
+            if (storm) b.append("ఈరోజు ఉరుములతో వర్షం రావచ్చు, వీలైనంత వరకు ఇంట్లోనే ఉండండి. ");
+            else if (wet) b.append("ఈరోజు వర్షం పడేలా ఉంది, బయటికి వెళ్తే గొడుగు తీసుకెళ్ళండి. ");
+            if (hi >= 37) b.append("ఎండ బాగా ఉంటుంది, ").append(hi).append(" డిగ్రీల వరకు. మధ్యాహ్నం బయటికి వెళ్ళకండి, నీళ్ళు ఎక్కువ తాగండి. ");
+            else if (lo > -100 && lo <= 18) b.append("చలిగా ఉంది, ").append(lo).append(" డిగ్రీలు. స్వెటర్ వేసుకోండి. ");
+            else if (!storm && !wet && hi > -100 && lo > -100) b.append("వాతావరణం బాగుంది, ").append(lo).append(" నుంచి ").append(hi).append(" డిగ్రీలు. ");
+        }
+        b.append("దేవుడు ఈ రోజంతా మిమ్మల్ని దీవించాలి!");
+        return b.toString();
+    }
+
+    // ================================================================ 🪴 Jarvis's garden (F7)
+    private final GardenView garden;
+    private long gardenAt;
+    private volatile boolean gardenBusy;
+
+    /** A care button was pressed: the garden looks again in a moment (the tick is written by then). */
+    private void gardenSoon() { main.postDelayed(this::gardenRefresh, 1500); }
+
+    /** The last seven days' plants (oldest first), from her ticks: tablets, meals, water. Off the main thread. */
+    private void gardenRefresh() {
+        gardenAt = System.currentTimeMillis();
+        if (gardenBusy) return;
+        gardenBusy = true;
+        final Context app = getContext().getApplicationContext();
+        new Thread(() -> {
+            try {
+                final int[] st = new int[7];
+                Calendar k = Calendar.getInstance();
+                k.add(Calendar.DAY_OF_MONTH, -6);
+                java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH);
+                for (int i = 0; i < 7; i++) {
+                    int[] g = gardenCounts(app, f.format(k.getTime()));
+                    st[i] = stage(g[0], g[1], g[2], g[3], g[4]);
+                    k.add(Calendar.DAY_OF_MONTH, 1);
+                }
+                post(() -> garden.scene.set(st));
+            } catch (Throwable ignored) {
+            } finally {
+                gardenBusy = false;
+            }
+        }, "home-garden").start();
+    }
+
+    /** One day's {tablets taken, tablets due, meals ticked, water, water times}. */
+    static int[] gardenCounts(Context c, String day) {
+        int[] d = {0, 0};
+        try { d = Medicine.dayDoses(c, day); } catch (Throwable ignored) {}
+        JSONObject l = HomeCare.dayLog(c, day);
+        int meals = 0;
+        for (String[] m : HomeCare.MEALS) if (l.has("meal_" + m[0])) meals++;
+        int waterTimes = Math.max(1, HomeCare.waterTimes(c).split(",").length);
+        return new int[]{d[0], d[1], meals, l.optInt("water"), waterTimes};
+    }
+
+    /**
+     * A day's plant (0 seed … 4 flower) from the share of her day that was done: tablets taken of those due, meals (4),
+     * water (as often as asked). Never a dead plant: a quiet day is just a small one. Pure.
+     */
+    static int stage(int taken, int due, int meals, int water, int waterTimes) {
+        int all = Math.max(0, due) + HomeCare.MEALS.length + Math.max(1, waterTimes);
+        int done = Math.min(taken, Math.max(0, due)) + Math.min(meals, HomeCare.MEALS.length) + Math.min(water, Math.max(1, waterTimes));
+        float s = done / (float) all;
+        return s >= 0.85f ? 4 : s >= 0.6f ? 3 : s >= 0.35f ? 2 : s >= 0.1f ? 1 : 0;
+    }
+
+    /** Her tap on the garden: today's plant in words, and what makes it flower. */
+    private void gardenSay() {
+        active();
+        body.rig.poke();
+        final Context app = getContext().getApplicationContext();
+        new Thread(() -> {
+            String day = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(new java.util.Date());
+            int[] g = gardenCounts(app, day);
+            String line = gardenLine(HomeCare.who(app), g, stage(g[0], g[1], g[2], g[3], g[4]));
+            post(() -> host.speak(line));
+        }, "home-garden-say").start();
+    }
+
+    /** What Jarvis says about today's plant. Pure. */
+    static String gardenLine(String w, int[] g, int stage) {
+        StringBuilder b = new StringBuilder(w + ", ఇది మన తోట. రోజుకి ఒక మొక్క. ");
+        if (stage >= 4) return b.append("ఈరోజు మొక్కకి పువ్వు పూసింది! మాత్రలు, భోజనం, నీళ్ళు అన్నీ బాగా చూసుకున్నారు. చాలా సంతోషం!").toString();
+        b.append("ఈరోజు మొక్క ఇంకా పెరుగుతోంది. ");
+        java.util.List<String> left = new ArrayList<>();
+        if (g[1] > g[0]) left.add("మాత్రలు");
+        if (g[2] < HomeCare.MEALS.length) left.add("భోజనం");
+        if (g[3] < g[4]) left.add("నీళ్ళు");
+        if (!left.isEmpty()) b.append(String.join(", ", left)).append(" టైమ్‌కి అయితే పువ్వు పూస్తుంది.");
+        return b.toString();
+    }
+
+    /** The garden in the corner (GardenScene through the sky's canvas pen); a gentle sway, ~12 frames a second. */
+    static final class GardenView extends View {
+        final GardenScene scene = new GardenScene();
+        private final WeatherSky.Pen pen = new WeatherSky.Pen();
+        private long last;
+
+        GardenView(Context c) { super(c); }
+
+        void setDim(boolean d) { scene.setDim(d); invalidate(); }
+
+        @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
+            super.onSizeChanged(w, h, ow, oh);
+            scene.resize(w, h);
+        }
+
+        @Override protected void onDraw(Canvas cv) {
+            long now = android.os.SystemClock.uptimeMillis();
+            float dt = last == 0 ? 0.08f : Math.min(0.25f, (now - last) / 1000f);
+            last = now;
+            scene.step(dt);
+            pen.cv = cv;
+            try { scene.draw(pen); } finally { pen.cv = null; }
+            if (scene.moving() && isShown() && getWindowVisibility() == VISIBLE) postInvalidateDelayed(80);
+            else last = 0;
+        }
+
+        @Override protected void onWindowVisibilityChanged(int vis) {
+            super.onWindowVisibilityChanged(vis);
+            last = 0;
+            if (vis == VISIBLE) invalidate();
         }
     }
 

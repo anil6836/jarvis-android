@@ -760,6 +760,7 @@ public class NotifyListener extends NotificationListenerService {
             else if (type == Notification.CallStyle.CALL_TYPE_ONGOING || type == Notification.CallStyle.CALL_TYPE_SCREENING) { incoming = false; typeSaysNot = true; }
         }
         TopCard.stepAsideForCall(); // a call: a message card talking at the top stops at once (the call card itself stays)
+        HomeVideo.callNoticed(this); // (the home tablet: a call's audio needs the mic, Jarvis lets go)
         String pkgLow = sbn.getPackageName().toLowerCase(Locale.ROOT);
         boolean phone = pkgLow.contains("dialer") || pkgLow.contains("telecom") || pkgLow.contains("incallui") || pkgLow.contains("phone") || pkgLow.contains("contacts");
         if (!incoming && !typeSaysNot && phone && CallCare.ringtoneMode(this) && !CallControl.onCall()) incoming = true; // (the phone app's ring without a full-screen mark)

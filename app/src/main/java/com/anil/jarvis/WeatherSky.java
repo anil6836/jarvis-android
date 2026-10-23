@@ -48,6 +48,12 @@ final class WeatherSky extends View {
         invalidate();
     }
 
+    /** Morning birds across the sky (day, fair weather only; SkyScene decides when they show). */
+    void setBirds(boolean on) {
+        sky.setBirds(on);
+        invalidate();
+    }
+
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
         sky.resize(w, h);
@@ -89,7 +95,8 @@ final class WeatherSky extends View {
     }
 
     // ================================================================ SkyScene.Brush on an Android canvas
-    private static final class Pen implements SkyScene.Brush {
+    /** SkyScene.Brush on an Android canvas (the garden in the corner draws with one too). */
+    static final class Pen implements SkyScene.Brush {
         Canvas cv;
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);

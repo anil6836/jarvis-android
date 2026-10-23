@@ -305,6 +305,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         syncWakeService();
         if (hudDash != null) hudDash.start();
         if (home != null) home.start();
+        if (home != null) HomeVideo.screenBack(this); // (back from her video call: the mic and the voice are Jarvis's again)
         UpdateJob.schedule(this); // "new version" notification when a build is out
         BackupJob.schedule(this); // the daily Drive backup (once he has set it up)
         String restored = Backup.takeRestoreNote(this); // just restarted after bringing a backup back
@@ -1562,6 +1563,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         @Override public void openSettings() { startActivity(new Intent(MainActivity.this, SettingsActivity.class)); }
         @Override public void care(String what) { homeButton(what); }
         @Override public void speak(String text) { homeSpeak(text, "happy", false, 0); }
+        @Override public void ask(String text) { homeSpeak(text, "caring", true, 0); }
     };
 
     // ---- the games on the home screen (GamePanel): Jarvis plays and talks like a person
@@ -1689,7 +1691,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void homeSpeak(String text, String feeling, boolean listen, int tries) {
         if (isFinishing() || home == null) { Announcer.sayDirect(this, text); return; }
-        if (busy || live != null || voice.speaking || voice.listening) { // a talk is going on: right after it
+        // a talk is going on: right after it; her 📹 call with her son: after the call (nothing is said over a call)
+        if (busy || live != null || voice.speaking || voice.listening || HomeVideo.holding(this)) {
             final Object[] item = {text, feeling, listen};
             homeQueue.add(item);
             homeWait(item, 0); // (never lost, never said over another voice)
@@ -1712,6 +1715,97 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         voice.speak(text, prefs.speechRate());
         setOrb(OrbView.SPEAKING);
         refreshAction();
+    }
+
+    // ---- 🌙 good night, 📹 video call, 📄 a paper read out (Anil, 24 Oct)
+    /** HomeNight: "AC ఆన్ చేయమంటారా?" over the screen with big ✓ / ✕ (any thread). */
+    static void homeNightAsk(String q) {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing()) return;
+        a.main.post(() -> { if (a.home != null && !a.isFinishing()) { a.showHome(); a.home.askNight(q); } });
+    }
+
+    /** Her ✓ / ✕ answered the spoken question: no listening for it any more (main thread). */
+    static void homeAnswered() {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing()) return;
+        a.homeAskListen = false;
+        a.lastWasVoice = false;
+        if (a.voice.listening) a.voice.cancelListening();
+    }
+
+    /** The question was answered (by voice) or timed out: it leaves the screen (any thread). */
+    static void homeNightAskGone() {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null) return;
+        a.main.post(() -> { if (a.home != null) a.home.hideAsk(); });
+    }
+
+    /** The good-night scene ran: Jarvis lies down, the bedtime screen until the morning (any thread). */
+    static void homeGoodNight() {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null) return;
+        a.main.post(() -> { if (a.home != null && !a.isFinishing()) a.home.goodNight(); });
+    }
+
+    /** "అబ్బాయికి వీడియో కాల్" (her button / words / the AI): asked once, on the screen too. The question, or null (no screen). */
+    static String homeVideoAsk() {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing()) return null;
+        String q = HomeCare.who(a) + ", అబ్బాయికి వీడియో కాల్ చేయనా?";
+        HomeCare.setPending("video");
+        a.main.post(() -> { if (a.home != null && !a.isFinishing()) { a.showHome(); a.home.askVideo(q); } });
+        return q;
+    }
+
+    /**
+     * Her answer (voice or the screen's ✓ / ✕; main thread). Yes: WhatsApp opens (Jarvis lets go of the mic first, and
+     * shows the line without saying it: "" back); when it could not start, the line to say. No: a short line.
+     */
+    static String homeVideoAnswer(boolean yes) {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing()) return null;
+        if ("video".equals(HomeCare.pending())) HomeCare.clearPending();
+        a.home.hideAsk();
+        if (!yes) return "సరే " + HomeCare.who(a) + ".";
+        a.homeAskListen = false; // (no listening after the question: the mic is WhatsApp's now)
+        a.lastWasVoice = false;
+        a.voice.stopSpeaking();
+        if (a.voice.listening) a.voice.cancelListening();
+        String line = HomeVideo.call(a);
+        if (HomeVideo.holding(a)) { a.home.say(line); return ""; } // (the call is starting: no voice over it)
+        return line;
+    }
+
+    /** "ఈ కాగితం చదివి చెప్పు" / 📄: the camera screen opens (any thread). What Jarvis says, or null (no screen). */
+    static String homeReadOpen() {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing()) return null;
+        a.main.post(() -> {
+            if (a.isFinishing()) return;
+            try { a.startActivity(new Intent(a, HomeReadActivity.class)); } catch (Exception ignored) {}
+        });
+        return "సరే " + HomeCare.who(a) + ", కెమెరా తెరుస్తున్నాను. కాగితాన్ని పసుపు గీతల మధ్యలో పట్టుకుని \"చదువు\" బటన్ నొక్కండి.";
+    }
+
+    /** HomeReadActivity: what the paper says, read out on Jarvis's screen (main thread). */
+    static void homeRead(android.content.Context c, String said) {
+        MainActivity a = homeNow;
+        if (said == null || said.trim().isEmpty()) return;
+        if (a == null || a.home == null || a.isFinishing()) { Announcer.sayDirect(c, said); return; }
+        a.homeSpeak(said.trim(), "calm", false, 0);
+    }
+
+    /** HomeVideo: the call is over: the wake word listens again and what waited is said (any thread). */
+    static void homeAfterCall() {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null) return;
+        a.main.postDelayed(() -> {
+            if (a.isFinishing() || a.home == null) return;
+            if (a.prefs.wakeReady()) WakeService.resume(a);
+            a.home.active();
+            a.homeDrain();
+        }, 1500);
     }
 
     /** HomeCare: light the home screen (the morning after the night). */
@@ -1738,8 +1832,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void homeWait(Object[] item, int minutes) {
         main.postDelayed(() -> {
             if (!homeQueue.contains(item)) return;
-            if (home != null && !isFinishing() && !(busy || live != null || voice.speaking || voice.listening)) { homeDrain(); return; }
-            if (minutes >= 15 && !voice.speaking && live == null) {
+            boolean call = HomeVideo.holding(this);
+            if (home != null && !isFinishing() && !(busy || live != null || voice.speaking || voice.listening || call)) { homeDrain(); return; }
+            if (minutes >= 15 && !voice.speaking && live == null && !call) {
                 if (homeQueue.remove(item)) Announcer.sayDirect(this, (String) item[0]);
                 return;
             }
@@ -1749,7 +1844,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** The next waiting home message, when nothing else is going on. */
     private void homeDrain() {
-        if (home == null || homeQueue.isEmpty() || isFinishing() || busy || live != null || voice.speaking || voice.listening) return;
+        if (home == null || homeQueue.isEmpty() || isFinishing() || busy || live != null || voice.speaking || voice.listening
+                || HomeVideo.holding(this)) return;
         Object[] q = homeQueue.poll();
         homeSpeak((String) q[0], (String) q[1], (Boolean) q[2], 0);
     }
@@ -1795,6 +1891,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 new Thread(() -> HomeCare.sayReading(this, HomeBible.start(this, null)), "home-bible").start();
                 break;
             case "game": home.openGames(gamesOuter, null, false); break; // (the games: the list, Jarvis asks which one)
+            case "shop": home.showShop(); break; // (🛒 the list, big)
+            case "readpaper": homeReadOpen(); break; // (📄 the camera opens: she shows the paper and presses 📸)
+            case "video": { String q = homeVideoAsk(); if (q != null) homeReply("📹 వీడియో కాల్", q); break; } // (asked once: ✓ / voice)
+            case "night": homeReply("🌙 పడుకుంటాను", HomeNight.start(this)); break; // (the good-night scene; the AC is asked first)
             case "bible":
                 new Thread(() -> {
                     String v = HomeCare.verse(this, true);

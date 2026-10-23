@@ -326,6 +326,7 @@ final class HomeLink {
             sp(c).edit().putLong("fetched", id).apply();
             if (m.optString("text").startsWith(STATUS)) { TabletWatch.save(c, m.optString("text").substring(STATUS.length())); return; } // (a late answer)
             if (m.optString("text").startsWith(House.FROM_HOME)) { House.fromHome(c, m.optString("text"), id); return; } // 🥛 what was said at home
+            if (m.optString("text").startsWith("🏠 🛒")) { HomeShop.toPhone(c, m.optString("text")); return; } // 🛒 అమ్మగారు's list: on his shopping list
             JSONObject inv = GameLink.inviteIn(m, true); // (అమ్మగారు asks him to play a game from the tablet)
             if (inv != null) { GameActivity.inviteNote(c, inv); return; }
             if (m.has("photo") && !m.optString("caption").startsWith(FRAME)) showPhoto(c, m); // (not his own photos for the frame)

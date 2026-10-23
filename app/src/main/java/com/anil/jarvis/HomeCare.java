@@ -184,6 +184,7 @@ final class HomeCare {
         batteryCare(c);
         if (Net.online(c)) flushOutbox(c);
         try { House.tabletTick(c); } catch (Throwable ignored) {} // 🥛 her milk entries to Anil's phone; the month's bill told to her
+        HomeShop.tick(c); // 🛒 the list's pin, or items not sent yet
     }
 
     // ================================================================ asking and talking
@@ -357,6 +358,21 @@ final class HomeCare {
                 return sent ? "సరే " + w + ", అబ్బాయికి పంపాను." : "నెట్ లేదు " + w + ", నెట్ రాగానే అబ్బాయికి పంపుతాను.";
             }
         }
+        // answers to the new questions (Anil, 24 Oct): only short ones, and only soon after the question — a sentence she says
+        // later is never taken as a yes (a call she didn't ask for, her words on the list)
+        boolean brief = t.trim().split("\\s+").length <= 5;
+        if (p.equals("night_ac") && HomeNight.asking()) { // 🌙 "AC ఆన్ చేయమంటారా?" (asked for 40 s at most: a longer answer counts)
+            Boolean yes = yesNo(t.replace("ఆన్ చేయి", " అవును ").replace("ఆన్ చెయ్యి", " అవును ").replace("పెట్టు", " అవును "));
+            if (yes != null) { String r = HomeNight.answer(c, yes); if (r != null) return r; }
+        }
+        if (p.equals("video") && pendingAge() > 90_000L) { pending = ""; p = ""; } // (📹 asked long ago: its screen question is gone too)
+        if (p.equals("video") && brief) { // 📹 "అబ్బాయికి వీడియో కాల్ చేయనా?"
+            Boolean yes = t.matches("(?s).*(వద్దు|చేయకు|చెయ్యకు|తర్వాత).*") ? Boolean.FALSE
+                    : t.matches("(?s).*(చేయి|చెయ్యి|చేయండి|కలుపు|కలపండి).*") ? Boolean.TRUE : yesNo(t);
+            if (yes != null) { pending = ""; String r = MainActivity.homeVideoAnswer(yes); if (r != null) return r; }
+        }
+        String shopAnswer = HomeShop.pendingAnswer(c, text, w); // 🛒 "వద్దు" just after an item, items after 🎤, "తీసేయనా?"
+        if (shopAnswer != null) return shopAnswer;
         if (p.startsWith("game:")) { // (a game's question waits for her: a few minutes, not every word for 15 minutes)
             pending = "";
             if (System.currentTimeMillis() - pendingAt < 3 * 60_000L) return HomeGames.answer(c, p, t);
@@ -384,11 +400,20 @@ final class HomeCare {
             // words about something else are not this question's answer (her tablet while the water / meal question waits,
             // "టిఫిన్ తిన్నాను" while the tablet question waits): they are ticked below as what they say
             boolean other = p.startsWith("med:") ? ate && !tablet : p.equals("water") ? tablet || ate : tablet;
+            // 🛒 "పంచదార అయిపోయింది" while the tablet question waits: about the shopping list, never "yes, I took it"
+            if (!other && (!HomeShop.wanted(t).isEmpty() || HomeShop.clears(t) || !HomeShop.brought(t, HomeShop.items(c)).isEmpty())) other = true;
             // a dose, a meal, water: only words that say it is done tick it ("సరే" alone is "OK, I will")
             boolean tick = p.startsWith("med:") || p.startsWith("meal:") || p.equals("water");
             Boolean yes = other ? null : yesNo(tick ? t.replace("సరే", " ").replace("ok", " ") : t);
             if (yes != null) return answer(c, p, yes);
         }
+        // 🌙 good night, 📹 a video call to him, 📄 a paper read out, 🛒 the shopping list (Anil, 24 Oct): after the answers to
+        // any waiting question ("బాగున్నాను, పడుకుంటున్నాను" answers "బాగున్నారా?" first)
+        if (HomeNight.asks(t)) return HomeNight.start(c);
+        if (videoWords(t)) { String r = MainActivity.homeVideoAsk(); if (r != null) return r; }
+        if (readWords(t)) { String r = MainActivity.homeReadOpen(); if (r != null) return r; }
+        String shop = HomeShop.heard(c, text, w);
+        if (shop != null) return shop;
         // a direct "I took my tablet / I ate" without being asked
         if (tablet) {
             Boolean yes = yesNo(t);
@@ -405,6 +430,26 @@ final class HomeCare {
             if (t.contains("వాక్యం") || t.contains("వచనం")) { String v = verse(c, false); if (v != null) return v; }
         }
         return null;
+    }
+
+    /** "అబ్బాయికి వీడియో కాల్ చేయి" (a video call to her son; not "అబ్బాయి వీడియో పంపాడు"). Pure. */
+    static boolean videoWords(String t) {
+        if (t == null || !t.contains("వీడియో")) return false;
+        return t.matches("(?s).*వీడియో\\s*కాల్.*") && !t.matches("(?s).*(వచ్చింది|వస్తోంది|చేశాడు|చేశారు|చేస్తాడా|పంపాడు).*");
+    }
+
+    /** "ఈ కాగితం చదివి చెప్పు", "ఈ బిల్లు చదువు" (a paper held up; not the Bible, not a message). Pure. */
+    static boolean readWords(String t) {
+        if (t == null || t.matches("(?s).*(బైబిల్|వాక్యం|మెసేజ్|అధ్యాయం|పాల|ఎంత|కట్టా|కట్టాలి|ఇచ్చా|వార్తలు|న్యూస్|పేపర్‌లో|పేపర్లో|పేపర్ లో).*")) return false; // (the milk bill: house_accounts; the news)
+        return t.matches("(?s).*(కాగితం|కాగితాన్ని|పేపర్|లెటర్|ఉత్తరం|బిల్లు|బిల్(?!డ)|పత్రిక|పత్రం|ఈ డబ్బా|ఈ అట్ట|లేబుల్|ఇది ఏంటో|ఇదేంటో|ఇందులో ఏముంది)"
+                + ".{0,30}(చదువు|చదివి|చదవు|చదవండి|ఏం రాసి|ఏమి రాసి|ఏముంది|చెప్పు).*");
+    }
+
+    /** It was not done today: marks it done (the 21:30 bedtime check said early by the good-night scene). */
+    static boolean markDoneToday(Context c, String key) {
+        if (today().equals(sp(c).getString("done_" + key, ""))) return false;
+        sp(c).edit().putString("done_" + key, today()).apply();
+        return true;
     }
 
     /** "తెలిసినవాళ్లే" → true, "తెలియదు" → false, else null (her answer about a person Jarvis doesn't know). */
@@ -655,6 +700,10 @@ final class HomeCare {
                 + "David, Daniel, Esther, Peter, Paul…) faithfully and simply, as a gentle message about God's love and the greatness of Jesus Christ; "
                 + "quote Bible verses ONLY through the bible tool (Telugu IRV) and never invent verse text; for Telugu Christian songs use the radio "
                 + "(christian stations). Use home_care for meals, tablets, water, sugar readings, quiet time and messages to Anil. "
+                + "Things the house needs (rice ran out, buy onions, the gas cylinder is empty): home_care shop_add (items, in her Telugu words); "
+                + "what is on the list: shop_list; brought: shop_remove / shop_clear (the list reaches Anil's phone by itself). "
+                + "She is going to sleep: home_care good_night. She wants to see her son on a video call: home_care video_call (it asks her first). "
+                + "She wants a paper, letter, bill or label read: home_care read_paper (the camera opens; she shows it and presses the button). "
                 + "The house's milk account: when she says the milk didn't come today, came more or less, won't be needed some days, she paid the milkman, "
                 + "or asks the milk bill -> house_accounts (day / paid / bill; it goes to Anil's phone by itself, no need to message him); the milk bill may be told to her. "
                 + "Her drinking milk or making tea is not a delivery: never write a day for that. "
@@ -839,6 +888,7 @@ final class HomeCare {
         if (!on(c)) return; // (an old guard phone at home that got the message: not the home tablet)
         sp(c).edit().putBoolean("son_home", coming).putLong("son_at", System.currentTimeMillis()).apply();
         HomeScreen.son(coming, 0); // (Jarvis on her screen: looks to the door happily / waves bye)
+        if (coming) HomeShop.sonComing(c); // (🛒 on his way: the list to him once more)
         if (coming && !night()) say(c, who(c) + ", అబ్బాయి ఇంటికి వచ్చేస్తున్నాడు!", "excited");
     }
 
@@ -853,6 +903,7 @@ final class HomeCare {
         boolean fresh = now - p.getLong("son_eta_said", 0) > 6 * 3600_000L; // (a new trip)
         p.edit().putLong("son_eta_at", arrive).putLong("son_eta_said", now).apply();
         if (minutes <= 20) HomeScreen.son(true, minutes); // (he is near: Jarvis keeps glancing at the door)
+        if (minutes <= 45) HomeShop.sonComing(c); // (🛒 on his way: the list to him once more, at most every 3 hours)
         if (night()) return;
         String tc = teClock(clock);
         String when = tc.isEmpty() ? "" : " (" + tc + " కి)";
@@ -885,8 +936,13 @@ final class HomeCare {
             if (j.has("room")) e.putString("room", "bedroom".equals(j.optString("room")) ? "bedroom" : "hall");
             if (j.has("camera")) e.putBoolean("cam_on", j.optBoolean("camera", true));
             if (j.has("birthdays")) e.putString("birthdays", j.optString("birthdays").trim()); // (🎂 "పేరు = 12-03, …")
+            if (j.has("video_number")) e.putString("video_number", j.optString("video_number").trim()); // (📹 her son's WhatsApp number)
             e.apply();
             if (j.optBoolean("settings_pin_clear")) TabletLock.clear(c); // (he forgot the tablet's Settings PIN: cleared from his phone)
+            if (j.optBoolean("shop_clear")) { // (🛒 he brought everything: the list is cleared from his phone)
+                HomeShop.clear(c);
+                if (j.length() == 1) return "🛒 సరుకుల లిస్ట్ ఖాళీ చేశాను ✓";
+            }
             SharedPreferences.Editor pe = new Prefs(c).sp.edit();
             if (j.has("voice")) pe.putString("natural_voice_name", j.optString("voice").trim());
             if (j.has("tts_model")) pe.putString("tts_model", j.optString("tts_model").trim());
@@ -930,6 +986,8 @@ final class HomeCare {
         b.append(" · AI ఈరోజు ").append(aiUsed(c)).append("/").append(aiLimit(c)).append('\n');
         java.util.List<String> bad = problems(c);
         b.append(bad.isEmpty() ? PROBLEMS_NONE : PROBLEMS + android.text.TextUtils.join(" · ", bad)).append('\n');
+        String shop = HomeShop.statusLine(c);
+        if (!shop.isEmpty()) b.append(shop).append('\n');
         b.append(reportText(c));
         return b.toString();
     }
@@ -1100,6 +1158,19 @@ final class HomeCare {
             case "back": setOut(c, false); r = "back home"; break;
             case "today": r = reportText(c); break;
             case "story": { String s = story(c); r = s == null ? "no kept story: tell one yourself, faithful to the Bible" : s; break; }
+            case "shop_add": case "shop_list": case "shop_remove": case "shop_clear": return HomeShop.tool(c, action, a.optString("items", a.optString("text", "")));
+            case "good_night": {
+                String line = HomeNight.start(c);
+                return new JSONObject().put("ok", true).put("say", line).put("note", "Say exactly this to her (it may be a question about her AC; her answer is heard by itself).").toString();
+            }
+            case "video_call": {
+                String q = MainActivity.homeVideoAsk();
+                return new JSONObject().put("ok", q != null).put("say", q == null ? "" : q).put("note", "The screen asks her with big yes / no buttons; say this question to her.").toString();
+            }
+            case "read_paper": {
+                String q = MainActivity.homeReadOpen();
+                return new JSONObject().put("ok", q != null).put("say", q == null ? "" : q).toString();
+            }
             default: return new JSONObject().put("ok", false).put("error", "unknown action").toString();
         }
         return new JSONObject().put("ok", true).put("result", r).toString();

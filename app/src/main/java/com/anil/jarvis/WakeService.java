@@ -134,7 +134,7 @@ public class WakeService extends Service {
         @Override public void run() {
             if (!running) return;
             applyPhoneState.run();
-            if (Sounds.holdMic(WakeService.this)) main.postDelayed(this, 30_000);
+            if (Sounds.holdMic(WakeService.this) || HomeVideo.holding(WakeService.this)) main.postDelayed(this, 30_000);
         }
     };
 
@@ -212,6 +212,7 @@ public class WakeService extends Service {
     /** Whether the wake word may listen right now, per the "when to listen" setting. */
     private boolean allowedNow() {
         if (RecorderService.recording) return false; // the mic is recording a sermon / meeting
+        if (HomeVideo.holding(this)) return false;   // the home tablet: అమ్మగారు's video call has the mic
         if (Sounds.holdMic(this)) return true;      // counting cooker whistles, learning a sound, the sound test
         String when = new Prefs(this).wakeWhen();
         if ("always".equals(when)) return true;

@@ -289,6 +289,12 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:theme="@style/JarvisTheme" />
+        <!-- 📄 the home tablet: a paper held to the camera, read out by Jarvis -->
+        <activity
+            android:name=".HomeReadActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/JarvisTheme" />
         <service
             android:name=".RecorderService"
             android:exported="false"

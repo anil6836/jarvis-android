@@ -10,9 +10,10 @@ package com.anil.jarvis;
  * (rain, or snow for 85/86, in bursts), 95–99 thunderstorm (a soft glow in the clouds at most once every 10–20 s —
  * never a white flash); anything else: only the round light. Below 20 °C mist (and on a clear sky thin clouds) drifts
  * by; above 34 °C in the day the sun is bigger and the air low down shimmers. Occasions sit on top: Christmas, New
- * Year, Sankranti, Easter, a birthday.
+ * Year, Sankranti, Easter, a birthday. In the morning (setBirds) a few small birds slowly cross the upper sky — by day
+ * under a clear, cloudy or grey sky only, never on the dimmed screen.
  *
- * <p>Everything is made in set / setDim / setOccasion / resize; step and draw allocate nothing.
+ * <p>Everything is made in set / setDim / setOccasion / setBirds / resize; step and draw allocate nothing.
  */
 final class SkyScene {
 
@@ -215,6 +216,31 @@ final class SkyScene {
     private int nFlags;
     private static final int[] FLAG_COLS = {0xFFE07890, 0xFFEBC261, 0xFF5DBFB0, 0xFFA58BDA, 0xFF6AA6DE};
 
+    // ---- morning birds: two loose flocks (three birds, and a pair) slowly crossing the upper sky. They use their own
+    // random numbers, so the weather's own randomness is the same with or without them.
+    private static final int MAX_BIRDS = 5, FLOCKS = 2;
+    private static final int[] FLOCK_FIRST = {0, 3}, FLOCK_SIZE = {3, 2};
+    private static final int[] BIRD_COLS = {0xFF0F1A2C, 0xFF172231, 0xFF121D34};
+    private static final float TAU = 6.2831855f;
+    private boolean birds;
+    /** The birds' fade (0..1): in when turned on, out when turned off; 0 while the sky has no birds. */
+    private float birdA;
+    private int birdSeed = 0x6D2B79F5;
+    // a flock: direction (+1 to the right), the leader's x, the height of its path, speed (px/s), the pause before it
+    // comes again (> 0: away), a slow rise and fall of the path, and how far behind the leader its last bird is (px)
+    private final float[] flockDir = new float[FLOCKS], flockX = new float[FLOCKS], flockY = new float[FLOCKS],
+            flockV = new float[FLOCKS], flockWait = new float[FLOCKS], flockWave = new float[FLOCKS],
+            flockWaveF = new float[FLOCKS], flockReach = new float[FLOCKS];
+    // a bird: its place behind the leader (units), wingspan (units), wing beats a second, the beat's phase, a gentle
+    // bob, how hard it flaps now (eases down while it glides) and how long until it switches
+    private final float[] birdDx = new float[MAX_BIRDS], birdDy = new float[MAX_BIRDS], birdSpan = new float[MAX_BIRDS],
+            birdHz = new float[MAX_BIRDS], birdPh = new float[MAX_BIRDS], birdBob = new float[MAX_BIRDS],
+            birdBobF = new float[MAX_BIRDS], birdAmp = new float[MAX_BIRDS], birdGlide = new float[MAX_BIRDS];
+    private final boolean[] birdFlaps = new boolean[MAX_BIRDS];
+    private final int[] birdCol = new int[MAX_BIRDS];
+    /** Scratch points for a bird's wings (tip to tip) and their thicker inner half. */
+    private final float[] wingPts = new float[2 * 9], wingIn = new float[2 * 5];
+
     // ================================================================ settings
     /** WMO weather code (-1 unknown), temperature °C (NaN unknown), day or night. */
     void set(int wmoCode, float tempC, boolean isDay) {
@@ -247,15 +273,26 @@ final class SkyScene {
         colours();
     }
 
+    /**
+     * Morning birds: a few small birds slowly crossing the upper sky. They show only by day under a clear, cloudy or
+     * grey sky, and not on the dimmed (night) screen; they fade in when turned on and out when turned off.
+     */
+    void setBirds(boolean on) {
+        if (on == birds) return;
+        birds = on;
+        if (on && birdA <= 0f) placeBirds();
+    }
+
     void resize(int width, int height) {
         if (width == w && height == h) return;
         w = width;
         h = height;
         build();
+        placeBirds();
     }
 
     /** True when something moves (else one frame is enough). */
-    boolean moving() { return kind != NONE || occ != O_NONE; }
+    boolean moving() { return kind != NONE || occ != O_NONE || (birds || birdA > 0f) && birdSky(); }
 
     /** Desk test: a lightning glow now (only in a thunderstorm). */
     void flash() { if (storm) startFlash(); }
@@ -471,6 +508,48 @@ final class SkyScene {
         hT[i] = 0f;
         hL[i] = rnd(5f, 8f);
         hP[i] = rnd(0f, 6.283f);
+    }
+
+    /** The birds' first places: the group of three already part-way across, the pair a few seconds away. */
+    private void placeBirds() {
+        if (w <= 0 || h <= 0) return;
+        flockWait[1] = brnd(2f, 7f);
+        launchFlock(0, true);
+    }
+
+    /** A flock sets off: from just off one side (or, at the start, part-way across), at its own height and pace. */
+    private void launchFlock(int f, boolean partWay) {
+        float dir = brnd() < 0.5f ? 1f : -1f;
+        float y = brnd(0.11f, 0.26f) * h;
+        int o = 1 - f; // (away from the other flock's path while it flies)
+        for (int tries = 0; tries < 8 && flockWait[o] <= 0f && Math.abs(y - flockY[o]) < 0.07f * h; tries++)
+            y = brnd(0.11f, 0.26f) * h;
+        flockDir[f] = dir;
+        flockY[f] = y;
+        flockV[f] = w / brnd(25f, 45f); // across in 25-45 s
+        flockWave[f] = brnd(0f, TAU);
+        flockWaveF[f] = TAU / brnd(16f, 28f);
+        float back = 0f;
+        for (int i = FLOCK_FIRST[f], end = i + FLOCK_SIZE[f]; i < end; i++) {
+            boolean lead = i == FLOCK_FIRST[f];
+            back += lead ? 0f : f == 0 ? brnd(34f, 80f) : brnd(110f, 260f);
+            birdDx[i] = back;
+            birdDy[i] = lead ? 0f : brnd(-24f, 24f);
+            birdSpan[i] = brnd(31f, 39f);
+            birdHz[i] = brnd(1.5f, 2.5f);
+            birdPh[i] = brnd(0f, TAU);
+            birdBob[i] = brnd(0f, TAU);
+            birdBobF[i] = TAU / brnd(2.6f, 4f);
+            birdFlaps[i] = brnd() < 0.75f;
+            birdAmp[i] = birdFlaps[i] ? 1f : 0.14f;
+            birdGlide[i] = birdFlaps[i] ? brnd(3f, 7f) : brnd(1.5f, 3.5f);
+            birdCol[i] = (int) (brnd() * BIRD_COLS.length) % BIRD_COLS.length;
+        }
+        flockReach[f] = back * u;
+        float edge = 30f * u;
+        flockX[f] = partWay ? (dir > 0f ? brnd(0.15f, 0.45f) * w : w - brnd(0.15f, 0.45f) * w)
+                : dir > 0f ? -edge : w + edge;
+        flockWait[f] = 0f;
     }
 
     private void buildOccasion() {
@@ -726,6 +805,42 @@ final class SkyScene {
                 }
             }
         }
+
+        if (birds || birdA > 0f) stepBirds(dt);
+    }
+
+    /** Birds fly by day under a clear, cloudy or grey sky, and not on the dimmed (night) screen. */
+    private boolean birdSky() {
+        return day && !dim && (kind == CLEAR || kind == CLOUDS || kind == OVERCAST) && w > 0 && h > 0;
+    }
+
+    private void stepBirds(float dt) {
+        if (!birdSky()) { birdA = 0f; return; } // (they fade in again when the sky has birds again)
+        float to = birds ? 1f : 0f, r = dt * 0.4f;
+        birdA = birdA < to ? Math.min(to, birdA + r) : Math.max(to, birdA - r);
+        if (birdA <= 0f) return;
+        float edge = 30f * u;
+        for (int f = 0; f < FLOCKS; f++) {
+            if (flockWait[f] > 0f) {
+                if ((flockWait[f] -= dt) <= 0f) launchFlock(f, false);
+                continue;
+            }
+            float d = flockDir[f];
+            flockX[f] += d * flockV[f] * dt;
+            flockWave[f] = wrap(flockWave[f] + flockWaveF[f] * dt);
+            float last = flockX[f] - d * flockReach[f];
+            if (d > 0f ? last - edge > w : last + edge < 0f) flockWait[f] = brnd(3f, 8f); // all across: a pause
+        }
+        for (int i = 0; i < MAX_BIRDS; i++) {
+            birdPh[i] = wrap(birdPh[i] + TAU * birdHz[i] * dt);
+            birdBob[i] = wrap(birdBob[i] + birdBobF[i] * dt);
+            if ((birdGlide[i] -= dt) <= 0f) { // flap a few seconds, glide a little, flap again
+                birdFlaps[i] = !birdFlaps[i];
+                birdGlide[i] = birdFlaps[i] ? brnd(3f, 7f) : brnd(1.5f, 3.5f);
+            }
+            float aim = birdFlaps[i] ? 1f : 0.14f, ease = Math.min(1f, dt * 1.6f);
+            birdAmp[i] += (aim - birdAmp[i]) * ease;
+        }
     }
 
     private void splash(float x, float y) {
@@ -797,6 +912,7 @@ final class SkyScene {
         for (int layer = 0; layer < 2; layer++)
             for (int i = 0; i < nClouds; i++) if (clLayer[i] == layer) drawCloud(b, i, fl);
         if (fl > 0f) b.radial(S_FLASH, flashX, flashY, gr * 1.0f, gr * 0.8f, flashC, MIST_AT, fl * (dim ? 0.5f : 0.9f));
+        if (birdA > 0f && birdSky()) drawBirds(b); // (in front of the clouds, behind the mist and everything after)
         for (int i = 0; i < nMist; i++)
             b.radial(S_MIST, mX[i], mY[i], mistR, mRy[i], mistC, MIST_AT, mA[i]);
 
@@ -940,6 +1056,65 @@ final class SkyScene {
                 b.polyline(pts, seg + 1, 2.6f * u, sf(fade(0xFFFFCF94, a * (line == 1 ? 1f : 0.75f))));
             }
         }
+    }
+
+    /** The morning birds (they fade out as they pass the sun, as if behind its glare). */
+    private void drawBirds(Brush b) {
+        float lo = 0.075f * h, hi = 0.295f * h;
+        for (int i = 0; i < MAX_BIRDS; i++) {
+            int f = i < FLOCK_FIRST[1] ? 0 : 1;
+            if (flockWait[f] > 0f) continue;
+            float d = flockDir[f], half = birdSpan[i] * 0.5f * u;
+            float flap = (float) Math.sin(birdPh[i]) * birdAmp[i];
+            float x = flockX[f] - d * birdDx[i] * u + (float) Math.cos(birdBob[i]) * 3f * u;
+            if (x + half < 0f || x - half > w) continue;
+            float y = flockY[f] + (float) Math.sin(flockWave[f]) * 0.012f * h + birdDy[i] * u
+                    + (float) Math.sin(birdBob[i]) * 4f * u + flap * 1.2f * u;
+            if (y < lo) y = lo; else if (y > hi) y = hi;
+            float a = birdA;
+            if (orb != ORB_NONE) {
+                float dx = x - oX, dy = y - oY, dd = (float) Math.sqrt(dx * dx + dy * dy);
+                float r0 = oR * 1.05f + half * 0.6f, r1 = oR * 1.6f + half;
+                if (dd < r1) {
+                    float k = dd <= r0 ? 0f : (dd - r0) / (r1 - r0);
+                    a *= k * k * (3f - 2f * k);
+                }
+            }
+            if (a < 0.02f) continue;
+            drawBird(b, x, y, d, half, flap, fade(BIRD_COLS[birdCol[i]], a));
+        }
+    }
+
+    /**
+     * One small bird seen from below: two curved wings from tip to tip (raised, level with the elbows up, or arched
+     * down as they beat) and a little body with its head towards d (+1 right, -1 left) and a short tail.
+     */
+    private void drawBird(Brush b, float x, float y, float d, float half, float flap, int c) {
+        float k = half / (17.5f * u); // 1 at a 35-unit wingspan
+        float tipA = flap * (flap > 0f ? 0.58f : 0.38f), elbowA = 0.5f * tipA + 0.38f; // radians above level
+        float sx = x + d * 1f * u * k, sy = y - 0.6f * u * k;   // the shoulders
+        float sweep = -d * 0.14f * half;                         // the tips trail a little
+        float ct = (float) Math.cos(tipA), st = (float) Math.sin(tipA);
+        float ce = (float) Math.cos(elbowA), se = (float) Math.sin(elbowA);
+        for (int s = -1; s <= 1; s += 2) {
+            // a curve from the shoulder S through the elbow E (at its middle) to the tip T: control = 2E - (S + T) / 2
+            float tx = sx + s * half * ct + sweep, ty = sy - half * st;
+            float ex = sx + s * 0.5f * half * ce + sweep * 0.3f, ey = sy - 0.5f * half * se;
+            float cx = 2f * ex - 0.5f * (sx + tx), cy = 2f * ey - 0.5f * (sy + ty);
+            for (int j = s < 0 ? 0 : 1; j <= 4; j++) {
+                float q = s < 0 ? 1f - j * 0.25f : j * 0.25f, p = 1f - q;
+                int at = s < 0 ? j : 4 + j;
+                wingPts[2 * at] = p * p * sx + 2f * q * p * cx + q * q * tx;
+                wingPts[2 * at + 1] = p * p * sy + 2f * q * p * cy + q * q * ty;
+            }
+        }
+        for (int j = 0; j < 10; j++) wingIn[j] = wingPts[4 + j]; // points 2..6: elbow to elbow
+        b.polyline(wingPts, 9, 2.5f * u * k, c);
+        b.polyline(wingIn, 5, 3.9f * u * k, c);
+        b.oval(x, y, 4.4f * u * k, 2.1f * u * k, c);
+        b.circle(x + d * 5.2f * u * k, y - 0.5f * u * k, 1.9f * u * k, c);
+        b.quad(x - d * 2.6f * u * k, y - 0.9f * u * k, x - d * 7.6f * u * k, y - 1.7f * u * k,
+                x - d * 7.2f * u * k, y + 1.8f * u * k, x - d * 2.6f * u * k, y + 1.2f * u * k, c);
     }
 
     // ---- occasions
@@ -1174,4 +1349,17 @@ final class SkyScene {
     }
 
     private float rnd(float a, float b) { return a + (b - a) * rnd(); }
+
+    /** The birds' own random numbers (the same xorshift on its own seed). */
+    private float brnd() {
+        birdSeed ^= birdSeed << 13;
+        birdSeed ^= birdSeed >>> 17;
+        birdSeed ^= birdSeed << 5;
+        return (birdSeed >>> 8) / 16777216f;
+    }
+
+    private float brnd(float a, float b) { return a + (b - a) * brnd(); }
+
+    /** A phase kept within one turn (phases add up per frame, so they stay exact however long the screen runs). */
+    private static float wrap(float a) { return a >= TAU ? a - TAU : a; }
 }

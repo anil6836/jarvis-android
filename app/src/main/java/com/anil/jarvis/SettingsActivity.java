@@ -3852,7 +3852,8 @@ public class SettingsActivity extends Activity {
             {"rest", "13:30-15:30", TAB_TIMES}, {"bed", "21:30", TAB_TIMES}, {"report", "21:45", TAB_TIMES}, {"silent_hours", "3", TAB_TIMES},
             {"meds_text", "", TAB_MEDS}, {"sugar_low", "70", TAB_MEDS}, {"sugar_high", "250", TAB_MEDS}, {"doctor_note", "", TAB_MEDS},
             {"voice", "", TAB_DEVICE}, {"tts_model", "", TAB_DEVICE}, {"room", "hall", TAB_DEVICE}, {"camera", "true", TAB_DEVICE},
-            {"stranger_photo", "true", TAB_DEVICE}, {"ai_limit", "200", TAB_DEVICE}, {"birthdays", "", TAB_TIMES}};
+            {"stranger_photo", "true", TAB_DEVICE}, {"ai_limit", "200", TAB_DEVICE}, {"birthdays", "", TAB_TIMES},
+            {"video_number", "", TAB_DEVICE}};
     private static final java.util.Set<String> TAB_INTS = new java.util.HashSet<>(java.util.Arrays.asList("silent_hours", "sugar_low", "sugar_high", "ai_limit"));
     private static final java.util.Set<String> TAB_BOOLS = new java.util.HashSet<>(java.util.Arrays.asList("camera", "stranger_photo"));
 
@@ -4075,6 +4076,25 @@ public class SettingsActivity extends Activity {
             }, "tab-remind").start();
         });
         box.addView(rInfo);
+        // ---- 🛒 her shopping list (it comes to his Telegram by itself; cleared here once he brought everything)
+        String shopNow = "";
+        for (String l : TabletWatch.text(this).split("\n")) if (l.startsWith("🛒")) shopNow = l;
+        TextView shopInfo = Ui.text(this, (shopNow.isEmpty() ? "🛒 అమ్మగారి సరుకుల లిస్ట్: అమ్మగారు \"Jarvis, బియ్యం అయిపోయాయి\" అంటే లిస్ట్‌లో పడి మీ Telegram కి వస్తుంది."
+                : shopNow + " (టాబ్లెట్ స్థితి నుంచి)"), 13.5f, Ui.MUTED);
+        button("🛒 లిస్ట్ ఖాళీ చేయి (సరుకులు అన్నీ తెచ్చాను)", v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setMessage("టాబ్లెట్‌లో అమ్మగారి సరుకుల లిస్ట్ మొత్తం ఖాళీ చేయనా?")
+                .setPositiveButton("ఖాళీ చేయి", (d, w) -> {
+                    shopInfo.setText("పంపుతున్నాను…");
+                    new Thread(() -> {
+                        String r;
+                        try { r = HomeLink.sendSettings(getApplicationContext(), new org.json.JSONObject().put("shop_clear", true)); }
+                        catch (Exception e) { r = "పంపలేకపోయాను."; }
+                        final String out = r.startsWith("పంపాను") ? "పంపాను ✓ సుమారు 20 సెకన్లలో టాబ్లెట్ లిస్ట్ ఖాళీ అవుతుంది." : r;
+                        runOnUiThread(() -> shopInfo.setText(out));
+                    }, "tab-shop").start();
+                })
+                .setNegativeButton("వద్దు", null).show());
+        box.addView(shopInfo);
 
         // ---- 4. a game with her from here, the photo frame, the week's report for her doctor
         section(TAB_FUN, "🎲");
@@ -4161,6 +4181,9 @@ public class SettingsActivity extends Activity {
         tab.put("stranger_photo", toggle("🚪 తెలియని మనిషి కనిపిస్తే (అమ్మగారు \"తెలియదు\" అంటే / జవాబు లేకపోతే) ఫోటో నాకు పంపు",
                 Boolean.parseBoolean(tabStart("stranger_photo", "true", draft))));
         tabField("ai_limit", "🧠 టాబ్లెట్ రోజు AI పరిమితి, ప్రశ్నలు; మీ key ఖర్చు (ఉదా: 200)", "200", draft);
+        EditText vn = tabField("video_number", "📹 అమ్మగారి \"వీడియో కాల్\" బటన్‌కి మీ WhatsApp నంబర్ (టాబ్లెట్‌లో WhatsApp ఉండాలి)", "", draft);
+        vn.setInputType(InputType.TYPE_CLASS_PHONE);
+        vn.setHint("ఉదా: +91 98xxxxxxxx");
         tabSendButton();
         tabChanged(); // (a draft from last time: its "● ఇంకా పంపలేదు" shows at once)
     }
