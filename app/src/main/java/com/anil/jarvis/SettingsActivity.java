@@ -160,8 +160,21 @@ public class SettingsActivity extends Activity {
     }
     private int accent = Ui.C_CYAN;
 
+    /** The home tablet with a Settings PIN, not given yet: nothing is built (TabletLock). */
+    private boolean gated;
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        if (TabletLock.active(this) && !TabletLock.isOpen()) { // the home tablet: Settings only after the PIN (Anil, 24 Oct)
+            gated = true;
+            android.view.View blank = new android.view.View(this);
+            blank.setBackgroundColor(0xFF0E1A2C);
+            setContentView(blank);
+            PinPad.check(this, "సెట్టింగ్స్ PIN", ok -> {
+                if (ok) { TabletLock.opened(); recreate(); } else finish();
+            });
+            return;
+        }
         Ui.loadTheme(this); // the chosen colours, before anything is built
         builtTheme = Ui.themeVersion;
         prefs = new Prefs(this);
@@ -1831,6 +1844,7 @@ public class SettingsActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (gated) { finish(); return; }
         if (!"home".equals(mode)) { goHome(); return; }
         leave();
     }
@@ -1866,6 +1880,8 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (gated) return;
+        if (TabletLock.active(this)) TabletLock.opened(); // (he is inside: a rebuild of this screen doesn't ask again)
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         showLock();
@@ -2399,6 +2415,7 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onPause() {
         super.onPause();
+        if (gated) return;
         tester.stop();
         autosave(); // nothing he changed is lost, however he leaves
         if (changed) {
@@ -2409,6 +2426,8 @@ public class SettingsActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (isFinishing()) TabletLock.close(); // (left Settings: the PIN is asked again next time)
+        if (gated) { super.onDestroy(); return; }
         if (showing == this) showing = null;
         try { prefs.sp.unregisterOnSharedPreferenceChangeListener(lockCalibrated); } catch (Exception ignored) {}
         if (pendingRestore != null) { Backup.discard(getApplicationContext(), pendingRestore); pendingRestore = null; } // its question went with the screen
@@ -3171,6 +3190,7 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
+        if (gated) return;
         if (code == REQ_FRAME && result == RESULT_OK && data != null) { // photos for the tablet's frame
             java.util.List<Uri> uris = new java.util.ArrayList<>();
             if (data.getClipData() != null) for (int i = 0; i < data.getClipData().getItemCount(); i++) uris.add(data.getClipData().getItemAt(i).getUri());
@@ -3725,6 +3745,7 @@ public class SettingsActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         super.onRequestPermissionsResult(code, perms, results);
+        if (gated) return;
         // the microphone for the guard's house sounds was just given: start listening
         if (code == 62 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) Guard.listen(this);
         if (code == 64 && hcStatus != null) hcStatus.setText("🔗 Health Connect: " + HealthData.status(this)); // (phase 4)
@@ -3831,7 +3852,7 @@ public class SettingsActivity extends Activity {
             {"rest", "13:30-15:30", TAB_TIMES}, {"bed", "21:30", TAB_TIMES}, {"report", "21:45", TAB_TIMES}, {"silent_hours", "3", TAB_TIMES},
             {"meds_text", "", TAB_MEDS}, {"sugar_low", "70", TAB_MEDS}, {"sugar_high", "250", TAB_MEDS}, {"doctor_note", "", TAB_MEDS},
             {"voice", "", TAB_DEVICE}, {"tts_model", "", TAB_DEVICE}, {"room", "hall", TAB_DEVICE}, {"camera", "true", TAB_DEVICE},
-            {"stranger_photo", "true", TAB_DEVICE}, {"ai_limit", "200", TAB_DEVICE}};
+            {"stranger_photo", "true", TAB_DEVICE}, {"ai_limit", "200", TAB_DEVICE}, {"birthdays", "", TAB_TIMES}};
     private static final java.util.Set<String> TAB_INTS = new java.util.HashSet<>(java.util.Arrays.asList("silent_hours", "sugar_low", "sugar_high", "ai_limit"));
     private static final java.util.Set<String> TAB_BOOLS = new java.util.HashSet<>(java.util.Arrays.asList("camera", "stranger_photo"));
 
@@ -3988,6 +4009,8 @@ public class SettingsActivity extends Activity {
         tabField("bed", "🌙 పడుకునే ముందు చెక్ (ఉదా: 21:30)", "21:30", draft);
         tabField("report", "📋 మీకు రోజు రిపోర్ట్, Telegram లో (ఉదా: 21:45)", "21:45", draft);
         tabField("silent_hours", "⏳ ఇన్ని గంటలు అలికిడి లేకపోతే \"బాగున్నారా?\" (ఉదా: 3)", "3", draft);
+        EditText bd = tabField("birthdays", "🎂 పుట్టినరోజులు: పేరు = రోజు-నెల, కామాతో (ఆ రోజు టాబ్లెట్ Jarvis కేక్‌తో శుభాకాంక్షలు చెబుతాడు)", "", draft);
+        bd.setHint("ఉదా: అమ్మగారు = 12-03, అనిల్ = 05-07");
         tabSendButton();
 
         // ---- 2. her tablets, sugar, the doctor's advice
@@ -4456,6 +4479,29 @@ public class SettingsActivity extends Activity {
         frameOn.setOnCheckedChangeListener((sw, v) -> hc.edit().putBoolean("frame_on", v).apply());
         note("హాల్‌లో ఉంటే: Jarvis మాట్లాడేటప్పుడు TV సౌండ్ తగ్గుతుంది (స్మార్ట్ హోమ్ బాక్స్‌లో \"tv quiet = లింక్\", \"tv back = లింక్\" లైన్లు పెడితే). "
                 + "బెడ్‌రూమ్‌లో ఉంటే TV కంట్రోల్ ఆఫ్. స్క్రీన్ ఎప్పుడూ ఆరిపోదు: ఎవరూ లేనప్పుడు వెలుతురు తగ్గుతుంది, రాత్రి కంటికి ఇబ్బంది లేకుండా చాలా తక్కువగా, వెచ్చని రంగుతో ఉంటుంది.");
+        pinSection();
+    }
+
+    /** The home tablet: the 4-digit PIN in front of Settings (TabletLock). */
+    private void pinSection() {
+        section("🔐 సెట్టింగ్స్ లాక్ (ఈ టాబ్లెట్)");
+        TextView st = Ui.text(this, "", 15.5f, Ui.TEXT);
+        st.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        box.addView(st);
+        Runnable show = () -> st.setText(TabletLock.has(this) ? "🔐 PIN ఉంది: ⚙️ నొక్కితే PIN అడుగుతుంది" : "🔓 PIN లేదు: ⚙️ ని నొక్కి పట్టుకుంటేనే సెట్టింగ్స్ తెరుచుకుంటుంది");
+        show.run();
+        button("🔐 PIN పెట్టు / మార్చు", v -> PinPad.set(this, ok -> {
+            show.run();
+            if (ok) { TabletLock.opened(); Toast.makeText(this, "PIN పెట్టాను ✓ గుర్తుంచుకోండి", Toast.LENGTH_LONG).show(); }
+        }));
+        button("🔓 PIN తీసేయి", v -> {
+            if (!TabletLock.has(this)) { Toast.makeText(this, "PIN లేదు", Toast.LENGTH_SHORT).show(); return; }
+            PinPad.check(this, "ఇప్పటి PIN", ok -> {
+                if (ok) { TabletLock.clear(this); TabletLock.opened(); show.run(); Toast.makeText(this, "PIN తీసేశాను", Toast.LENGTH_SHORT).show(); }
+            });
+        });
+        note("4 అంకెల PIN: అమ్మగారు పొరపాటున సెట్టింగ్స్‌లోకి (మీ keys ఉన్న చోటికి) వెళ్ళకుండా. PIN నంబర్ ఎక్కడా దాచబడదు (దాని గుర్తు మాత్రమే). "
+                + "5 సార్లు తప్పు అయితే కాసేపు ఆగాలి. మర్చిపోతే: మీ ఫోన్ Jarvis → ⚙️ → 📮 ఫోన్ ↔ టాబ్లెట్ లింక్ → \"🔐 టాబ్లెట్ PIN తీసేయి\".");
     }
 
     private static final String[] ROOM_NAMES = {"హాల్ (TV దగ్గర)", "అమ్మగారి బెడ్‌రూమ్"};
@@ -4493,6 +4539,19 @@ public class SettingsActivity extends Activity {
         });
         if (prefs.homeMode()) button("📷 ఫోన్ QR స్కాన్ చేయి", v -> JarvisCamera.open(this, "auto", null));
         else button("🔲 QR చూపించు (టాబ్లెట్ స్కాన్ చేయడానికి)", v -> QrPair.show(this));
+        if (!prefs.homeMode()) button("🔐 టాబ్లెట్ PIN తీసేయి (మర్చిపోతే)", v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setMessage("ఇంటి టాబ్లెట్ సెట్టింగ్స్ PIN తీసేయమంటారా? తర్వాత టాబ్లెట్‌లో కొత్త PIN పెట్టుకోవచ్చు.")
+                .setPositiveButton("తీసేయి", (d, w) -> {
+                    final android.content.Context app = getApplicationContext();
+                    new Thread(() -> {
+                        String r;
+                        try { r = HomeLink.sendSettings(app, new org.json.JSONObject().put("settings_pin_clear", true)); }
+                        catch (Exception e) { r = "పంపలేకపోయాను"; }
+                        final String said = r;
+                        runOnUiThread(() -> Toast.makeText(this, said, Toast.LENGTH_LONG).show());
+                    }, "tab-pin-clear").start();
+                })
+                .setNegativeButton("వద్దు", null).show());
     }
 
     // ================================================================ ⌚ the watch: its own group, six small cards
@@ -5126,6 +5185,7 @@ public class SettingsActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (gated) return;
         updateFromIntent(intent);
     }
 }

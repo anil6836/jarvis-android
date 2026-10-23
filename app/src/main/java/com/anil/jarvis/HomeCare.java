@@ -838,6 +838,7 @@ final class HomeCare {
     static void son(Context c, boolean coming) {
         if (!on(c)) return; // (an old guard phone at home that got the message: not the home tablet)
         sp(c).edit().putBoolean("son_home", coming).putLong("son_at", System.currentTimeMillis()).apply();
+        HomeScreen.son(coming, 0); // (Jarvis on her screen: looks to the door happily / waves bye)
         if (coming && !night()) say(c, who(c) + ", అబ్బాయి ఇంటికి వచ్చేస్తున్నాడు!", "excited");
     }
 
@@ -851,6 +852,7 @@ final class HomeCare {
         long now = System.currentTimeMillis(), arrive = now + minutes * 60_000L, before = p.getLong("son_eta_at", 0);
         boolean fresh = now - p.getLong("son_eta_said", 0) > 6 * 3600_000L; // (a new trip)
         p.edit().putLong("son_eta_at", arrive).putLong("son_eta_said", now).apply();
+        if (minutes <= 20) HomeScreen.son(true, minutes); // (he is near: Jarvis keeps glancing at the door)
         if (night()) return;
         String tc = teClock(clock);
         String when = tc.isEmpty() ? "" : " (" + tc + " కి)";
@@ -882,7 +884,9 @@ final class HomeCare {
             if (j.has("stranger_photo")) e.putBoolean("stranger_photo", j.optBoolean("stranger_photo", true));
             if (j.has("room")) e.putString("room", "bedroom".equals(j.optString("room")) ? "bedroom" : "hall");
             if (j.has("camera")) e.putBoolean("cam_on", j.optBoolean("camera", true));
+            if (j.has("birthdays")) e.putString("birthdays", j.optString("birthdays").trim()); // (🎂 "పేరు = 12-03, …")
             e.apply();
+            if (j.optBoolean("settings_pin_clear")) TabletLock.clear(c); // (he forgot the tablet's Settings PIN: cleared from his phone)
             SharedPreferences.Editor pe = new Prefs(c).sp.edit();
             if (j.has("voice")) pe.putString("natural_voice_name", j.optString("voice").trim());
             if (j.has("tts_model")) pe.putString("tts_model", j.optString("tts_model").trim());

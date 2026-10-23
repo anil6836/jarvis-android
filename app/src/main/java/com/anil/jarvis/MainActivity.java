@@ -631,7 +631,14 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         IconView gear = new IconView(this, IconView.GEAR, 0xFFFFFFFF);
         gear.setContentDescription("సెట్టింగ్స్");
         gear.setBackground(Ui.glass(this, 22));
-        gear.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        gear.setOnClickListener(v -> {
+            if (prefs.homeMode() && !TabletLock.has(this)) { // (the home tablet without a PIN: a long press, never a stray tap)
+                android.widget.Toast.makeText(this, "⚙️ సెట్టింగ్స్ కోసం నొక్కి పట్టుకోండి", android.widget.Toast.LENGTH_SHORT).show();
+                return;
+            }
+            startActivity(new Intent(this, SettingsActivity.class)); // (with a PIN: Settings asks for it)
+        });
+        gear.setOnLongClickListener(v -> { startActivity(new Intent(this, SettingsActivity.class)); return true; });
         hud.addView(gear, new LinearLayout.LayoutParams(dp(44), dp(44)));
         root.addView(hud);
 
@@ -1554,6 +1561,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         @Override public void openSettings() { startActivity(new Intent(MainActivity.this, SettingsActivity.class)); }
         @Override public void care(String what) { homeButton(what); }
+        @Override public void speak(String text) { homeSpeak(text, "happy", false, 0); }
     };
 
     // ---- the games on the home screen (GamePanel): Jarvis plays and talks like a person
@@ -2465,11 +2473,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (m != null && !voice.speaking) home.body.rig.show(m, "wink".equals(m) ? 1300 : 2600);
         }
 
+        private int waves;
+
         @Override public void onWave() {
             long now = android.os.SystemClock.elapsedRealtime();
             if (home == null || !HomeEyes.wave(now)) return;
-            home.body.rig.gesture("wave", 2400);
-            home.body.rig.show("happy", 2400);
+            if ((++waves & 1) == 0) home.body.rig.highFive(); // (every other wave: a high-five back)
+            else { home.body.rig.gesture("wave", 2400); home.body.rig.show("happy", 2400); }
             if (busy || live != null || voice.speaking || voice.listening || !HomeEyes.sayHi(now)) return;
             String names = FaceSight.whoNow(), name = "";
             if (!names.isEmpty() && !names.startsWith("someone") && Character.isLetter(names.charAt(0))) name = names.split("[,;]")[0].trim();

@@ -59,7 +59,8 @@ final class BodyView extends View implements BodyRig.Pen {
         }
         removeCallbacks(tick);
         if (isShown()) {
-            boolean busy = rig.mode() == BodyRig.SPEAKING || rig.mode() == BodyRig.LISTENING;
+            // (~30 fps while he talks, listens, or a day play / dance / reaction moves; 20 at rest; 10 at night)
+            boolean busy = rig.mode() == BodyRig.SPEAKING || rig.mode() == BodyRig.LISTENING || rig.busy();
             postDelayed(tick, slow ? 100 : busy && Ui.animate ? 33 : 50);
         }
     }
@@ -104,9 +105,32 @@ final class BodyView extends View implements BodyRig.Pen {
     @Override public void fillLinear(float x0, float y0, float x1, float y1, int[] colors, float[] stops) {
         if (x0 == x1 && y0 == y1) { fill(colors[0]); return; }
         fill.setColor(0xFFFFFFFF);
-        fill.setShader(new LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP));
+        fill.setShader(linear(x0, y0, x1, y1, colors, stops));
         cv.drawPath(path, fill);
         fill.setShader(null);
+    }
+
+    // the same few gradients come every frame (the torso, the face, the hair, the rim light): made once, kept
+    private final float[][] gAt = new float[12][4];
+    private final int[][] gCols = new int[12][];
+    private final float[][] gStops = new float[12][];
+    private final int[] gSum = new int[12];
+    private final Shader[] gShader = new Shader[12];
+    private int gNext;
+
+    private Shader linear(float x0, float y0, float x1, float y1, int[] colors, float[] stops) {
+        int sum = 0;
+        for (int c : colors) sum = sum * 31 + c;
+        for (int i = 0; i < gShader.length; i++) {
+            float[] a = gAt[i];
+            if (gShader[i] != null && gCols[i] == colors && gStops[i] == stops && gSum[i] == sum && a[0] == x0 && a[1] == y0 && a[2] == x1 && a[3] == y1)
+                return gShader[i];
+        }
+        int i = gNext;
+        gNext = (gNext + 1) % gShader.length;
+        gAt[i][0] = x0; gAt[i][1] = y0; gAt[i][2] = x1; gAt[i][3] = y1;
+        gCols[i] = colors; gStops[i] = stops; gSum[i] = sum;
+        return gShader[i] = new LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP);
     }
 
     @Override public void fillRadial(float cx, float cy, float r, int[] colors, float[] stops) {
@@ -128,7 +152,7 @@ final class BodyView extends View implements BodyRig.Pen {
         if (x0 == x1 && y0 == y1) return;
         line.setColor(0xFFFFFFFF);
         line.setStrokeWidth(width);
-        line.setShader(new LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP));
+        line.setShader(linear(x0, y0, x1, y1, colors, stops));
         cv.drawPath(path, line);
         line.setShader(null);
     }

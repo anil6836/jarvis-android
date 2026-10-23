@@ -43,6 +43,8 @@ final class HomeScreen extends FrameLayout {
         void openSettings();
         /** అమ్మగారు's big buttons: tablet, ate, bible, songs, son, help. */
         void care(String what);
+        /** Jarvis says this aloud (after a smart-home button). */
+        void speak(String text);
     }
 
     static final int NIGHT_FROM = 22, NIGHT_TO = 6;
@@ -71,6 +73,8 @@ final class HomeScreen extends FrameLayout {
     private float lightNow = -2f;
     /** A warm glass over the screen at night (easier on the eyes). */
     private final View warm;
+    /** "అబ్బాయి AC ఆఫ్ చేయమంటారా?" over everything (T2). */
+    private final FrameLayout ask;
     /** The photo frame (family photos when no one has been about for a while, in the day). */
     private final HomeFrame frame;
     private long frameCountAt;
@@ -78,6 +82,8 @@ final class HomeScreen extends FrameLayout {
     private long bubbleAt, weatherTry;
     private String lastWord, smartShown;
     private int lastStart = -1;
+    /** The weather (and festival decorations) behind Jarvis. */
+    private final WeatherSky sky;
     /** Jarvis's place on the home screen (he moves into the games panel while a game is open, and back). */
     private final FrameLayout stage;
     private final LayoutParams blp, bb;
@@ -99,12 +105,14 @@ final class HomeScreen extends FrameLayout {
         // ---- left: Jarvis
         stage = new FrameLayout(a);
         row.addView(stage, new LinearLayout.LayoutParams(0, -1, 58));
-        stage.addView(new Spot(a), new LayoutParams(-1, -1));
+        sky = new WeatherSky(a); // (the weather behind Jarvis: clouds drift, rain falls, snow, sun or moon — and the day's decorations)
+        stage.addView(sky, new LayoutParams(-1, -1));
         body = new BodyView(a);
         body.rig.setLook(prefs.bodyLook());
         body.rig.setSkin(prefs.bodySkin());
         body.setContentDescription("Jarvis: మాట్లాడటానికి నొక్కండి");
         body.setOnClickListener(v -> host.talk());
+        body.setOnLongClickListener(v -> { body.rig.poke(); body.rig.tickle(); active(); return true; }); // (held: he giggles)
         blp = new LayoutParams(-1, -1);
         blp.topMargin = dp(84);
         stage.addView(body, blp);
@@ -125,16 +133,15 @@ final class HomeScreen extends FrameLayout {
         bb.setMargins(dp(24), dp(18), dp(24), 0);
         stage.addView(bubbleBox, bb);
 
-        // ---- right: the day (in a scroll that fills the height: on a small or big-font screen nothing is cut off)
-        android.widget.ScrollView sideScroll = new android.widget.ScrollView(a);
-        sideScroll.setFillViewport(true);
-        sideScroll.setVerticalScrollBarEnabled(false);
-        sideScroll.setBackgroundColor(0xFF13233A);
-        row.addView(sideScroll, new LinearLayout.LayoutParams(0, -1, 42));
+        // ---- right: the day — always all of it on the screen: when it doesn't fit (big font, the night "more" open)
+        // everything shrinks together a little instead of scrolling, so the clock and "మాట్లాడు" are never cut (Anil, 24 Oct)
+        FitBox sideFit = new FitBox(a);
+        sideFit.setBackgroundColor(0xFF13233A);
+        row.addView(sideFit, new LinearLayout.LayoutParams(0, -1, 42));
         LinearLayout side = new LinearLayout(a);
         side.setOrientation(LinearLayout.VERTICAL);
         side.setPadding(dp(26), dp(16), dp(26), dp(16));
-        sideScroll.addView(side, new LayoutParams(-1, -2));
+        sideFit.addView(side, new LayoutParams(-1, -1));
 
         LinearLayout chips = new LinearLayout(a);
         chips.setGravity(Gravity.END);
@@ -172,11 +179,11 @@ final class HomeScreen extends FrameLayout {
         next.setEllipsize(TextUtils.TruncateAt.END);
         side.addView(next);
 
-        // అమ్మగారు's big buttons
+        // అమ్మగారు's big buttons (🆘 సహాయం has its own place at the bottom, next to మాట్లాడు)
         String[][] care = {{"tablet", "💊 వేసుకున్నాను"}, {"ate", "🍽️ తిన్నాను"}, {"bible", "🙏 వాక్యం"},
                 {"read", "📖 బైబిల్ చదువు"}, {"songs", "🎵 పాటలు"}, {"game", "🎲 ఆట"},
-                {"photos", "🖼️ ఫోటోలు"}, {"son", "🎤 అబ్బాయికి చెప్పు"}, {"help", "🆘 సహాయం"}};
-        LinearLayout grid = new LinearLayout(a);
+                {"photos", "🖼️ ఫోటోలు"}, {"son", "🎤 అబ్బాయికి చెప్పు"}};
+        grid = new LinearLayout(a);
         grid.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-1, -2);
         gl.topMargin = dp(12);
@@ -190,12 +197,23 @@ final class HomeScreen extends FrameLayout {
                 grid.addView(gr, rl);
             }
             final String what = care[i][0];
-            TextView b = button(a, care[i][1], "help".equals(what) ? 0xFF8B1E1E : 0xFF1F3B5C, 0xFFFFFFFF, 16);
-            b.setOnClickListener(v -> { if ("photos".equals(what)) showFrame(true); else host.care(what); });
+            TextView b = button(a, care[i][1], 0xFF1F3B5C, 0xFFFFFFFF, 16);
+            b.setOnClickListener(v -> {
+                if ("photos".equals(what)) { showFrame(true); return; }
+                if ("ate".equals(what) || "tablet".equals(what)) { body.rig.poke(); body.rig.cheer(); } // (he claps for her)
+                host.care(what);
+            });
             LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(54), 1);
             if (i % 3 != 0) bl.leftMargin = dp(8);
             gr.addView(b, bl);
         }
+        // at her bedtime only the few she needs show; the rest wait behind "⋯ మరిన్ని" (T4)
+        more = button(a, "⋯ మరిన్ని", 0xFF1B3050, 0xFFDCE7F3, 17);
+        more.setOnClickListener(v -> { moreUntil = moreOpen() ? 0 : System.currentTimeMillis() + 2 * 60_000L; nightLayout(); });
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-1, dp(46));
+        ml.topMargin = dp(12);
+        more.setVisibility(GONE);
+        side.addView(more, ml);
 
         smart = new LinearLayout(a);
         smart.setOrientation(LinearLayout.VERTICAL);
@@ -209,8 +227,15 @@ final class HomeScreen extends FrameLayout {
 
         LinearLayout buttons = new LinearLayout(a);
         TextView talk = button(a, "🎤  మాట్లాడు", 0xFFF2B544, 0xFF1A1206, 22);
+        fitText(talk, 22);
         talk.setOnClickListener(v -> host.talk());
-        buttons.addView(talk, new LinearLayout.LayoutParams(0, dp(64), 1));
+        buttons.addView(talk, new LinearLayout.LayoutParams(0, dp(64), 1.5f));
+        TextView help = button(a, "🆘 సహాయం", 0xFF8B1E1E, 0xFFFFFFFF, 20);
+        fitText(help, 20);
+        help.setOnClickListener(v -> host.care("help"));
+        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(0, dp(64), 1);
+        hl.leftMargin = dp(10);
+        buttons.addView(help, hl);
         TextView chat = button(a, "💬", 0xFF1B3050, 0xFFDCE7F3, 24);
         chat.setContentDescription("చాట్ తెరువు");
         chat.setOnClickListener(v -> host.openChat());
@@ -219,7 +244,15 @@ final class HomeScreen extends FrameLayout {
         buttons.addView(chat, sq);
         TextView set = button(a, "⚙️", 0xFF1B3050, 0xFFDCE7F3, 24);
         set.setContentDescription("సెట్టింగ్స్");
-        set.setOnClickListener(v -> host.openSettings());
+        // T6 + PIN: a stray tap never opens Settings (his keys are there): the PIN when he set one, else a long press
+        set.setOnClickListener(v -> {
+            if (TabletLock.has(getContext())) askPin();
+            else show("⚙️ సెట్టింగ్స్ కోసం ఈ బటన్‌ని నొక్కి పట్టుకోండి");
+        });
+        set.setOnLongClickListener(v -> {
+            if (TabletLock.has(getContext())) askPin(); else host.openSettings();
+            return true;
+        });
         LinearLayout.LayoutParams sq2 = new LinearLayout.LayoutParams(dp(64), dp(64));
         sq2.leftMargin = dp(10);
         buttons.addView(set, sq2);
@@ -234,6 +267,50 @@ final class HomeScreen extends FrameLayout {
         warm.setBackgroundColor(0x30FF8A1E);
         warm.setVisibility(GONE);
         addView(warm, new LayoutParams(-1, -1));
+        ask = new FrameLayout(a);
+        ask.setBackgroundColor(0xB0050B14);
+        ask.setClickable(true); // (nothing under it is pressed while it asks)
+        ask.setVisibility(GONE);
+        addView(ask, new LayoutParams(-1, -1));
+        body.rig.setIdlePlays(true); // (when no one talks for a while he plays by himself: a kitten, a ball, bubbles…)
+    }
+
+    // ================================================================ the Settings PIN (TabletLock)
+    private void askPin() {
+        PinPad.check(act, "సెట్టింగ్స్ PIN", ok -> {
+            if (!ok) return;
+            TabletLock.opened();
+            host.openSettings();
+        });
+    }
+
+    // ================================================================ "⋯ మరిన్ని" at her bedtime (T4)
+    private LinearLayout grid;
+    private TextView more;
+    private long moreUntil;
+
+    private boolean moreOpen() { return System.currentTimeMillis() < moreUntil; }
+
+    /** Her bedtime (the time set from his phone, 21:30 at first) until 6 in the morning. */
+    private boolean bedtime() {
+        Calendar c = Calendar.getInstance();
+        int now = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE), bed = 21 * 60 + 30;
+        try {
+            String[] p = HomeCare.bedTime(getContext()).trim().split(":");
+            bed = Integer.parseInt(p[0].trim()) * 60 + Integer.parseInt(p[1].trim());
+        } catch (Exception ignored) {}
+        int wake = NIGHT_TO * 60;
+        return bed > wake ? now >= bed || now < wake : now >= bed && now < wake;
+    }
+
+    /** At bedtime: clock, the AC cards, సహాయం and మాట్లాడు only; "⋯ మరిన్ని" shows the rest for two minutes. */
+    private void nightLayout() {
+        boolean bed = bedtime(), open = moreOpen();
+        int g = !bed || open ? VISIBLE : GONE;
+        if (grid.getVisibility() != g) grid.setVisibility(g);
+        int m = bed ? VISIBLE : GONE;
+        if (more.getVisibility() != m) more.setVisibility(m);
+        more.setText(open ? "⌃ తక్కువ" : "⋯ మరిన్ని");
     }
 
     // ================================================================ games
@@ -259,6 +336,7 @@ final class HomeScreen extends FrameLayout {
             move(bubbleBox, games.jarvisSlot, top);
         }
         games.setVisibility(VISIBLE);
+        sky.setVisibility(INVISIBLE); // (hidden under the games: it stops drawing)
         GamePanel.shown = games;
         games.touched();
         if (id == null) games.showPicker(quiet);
@@ -270,6 +348,7 @@ final class HomeScreen extends FrameLayout {
     private void closeGames() {
         if (games == null) return;
         games.setVisibility(GONE);
+        sky.setVisibility(VISIBLE);
         if (body.getParent() != stage) move(body, stage, blp);
         if (bubbleBox.getParent() != stage) move(bubbleBox, stage, bb);
     }
@@ -285,6 +364,7 @@ final class HomeScreen extends FrameLayout {
 
     // ================================================================ what Jarvis does (from MainActivity)
     void setState(int s) {
+        if (s != BodyRig.IDLE) body.rig.poke();
         body.rig.setMode(s);
         if (s != BodyRig.IDLE) active();
         if (s == BodyRig.LISTENING) show("వింటున్నాను…");
@@ -383,6 +463,7 @@ final class HomeScreen extends FrameLayout {
         if (night) HomeEyes.nightStir(getContext(), now); // (up at night: a soft light and "walk carefully")
         if (e.getAction() == android.view.MotionEvent.ACTION_DOWN) {
             if (HomeAlarm.ringing()) HomeAlarm.stop(); // (the help alarm: any touch stops it)
+            body.rig.poke(); // (someone is here: a play he is doing by himself ends)
             active();
         }
         return super.dispatchTouchEvent(e);
@@ -436,6 +517,7 @@ final class HomeScreen extends FrameLayout {
         }
         frame.setVisibility(VISIBLE);
         frame.start();
+        stage.setVisibility(INVISIBLE); // (the sky and Jarvis stop drawing under the photos)
         applyLight();
     }
 
@@ -443,6 +525,7 @@ final class HomeScreen extends FrameLayout {
         if (frame.getVisibility() != VISIBLE) return;
         frame.stop();
         frame.setVisibility(GONE);
+        stage.setVisibility(VISIBLE);
         applyLight();
     }
 
@@ -463,15 +546,55 @@ final class HomeScreen extends FrameLayout {
     void start() {
         if (running) return;
         running = true;
+        shown = this;
         refreshSmart();
         main.post(tick);
+        main.post(quickTick);
     }
 
     void stop() {
         running = false;
+        if (shown == this) shown = null;
         main.removeCallbacks(tick);
+        main.removeCallbacks(quickTick);
         hideFrame();
     }
+
+    /** The home screen on show now (main thread), for news from elsewhere (his phone: coming / gone). */
+    private static volatile HomeScreen shown;
+
+    /** Any thread. Her son: coming (minutes 0 = arriving now; else in that many minutes) → Jarvis glances at the door; gone → bye. */
+    static void son(boolean coming, int minutes) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            HomeScreen h = shown;
+            if (h == null) return;
+            if (coming) {
+                h.body.rig.waitDoor(true);
+                h.doorUntil = System.currentTimeMillis() + (minutes > 0 ? minutes + 15 : 30) * 60_000L;
+            } else {
+                h.doorUntil = 0;
+                h.body.rig.waitDoor(false);
+                h.body.rig.poke();
+                h.body.rig.waveBye();
+            }
+        });
+    }
+
+    private long doorUntil;
+
+    /** Every 2 s: dance while her songs play; the door watch ends by itself. */
+    private boolean dancing;
+    private final Runnable quickTick = new Runnable() {
+        @Override public void run() {
+            if (!running) return;
+            try {
+                boolean d = HomeSongs.playing();
+                if (d != dancing) { dancing = d; body.rig.setDance(d); if (d) body.rig.poke(); }
+                if (doorUntil > 0 && System.currentTimeMillis() > doorUntil) { doorUntil = 0; body.rig.waitDoor(false); }
+            } catch (Exception ignored) {}
+            main.postDelayed(this, 2000);
+        }
+    };
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
@@ -489,6 +612,9 @@ final class HomeScreen extends FrameLayout {
         part.setText(partOfDay(h));
         date.setText(DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)]);
         setNight(h >= NIGHT_FROM || h < NIGHT_TO);
+        nightLayout();
+        occasion(c);
+        mealTime();
         if (night) hideFrame(); else frameCheck();
         applyLight();
         if (bubbleBox.getVisibility() == VISIBLE && System.currentTimeMillis() - bubbleAt > 30_000
@@ -519,6 +645,8 @@ final class HomeScreen extends FrameLayout {
         night = n;
         body.setSlow(n);
         body.rig.setBase(n ? "sleepy" : "smile");
+        body.rig.setNightPlays(n); // (night: only calm plays — a firefly, a sleeping kitten, a dream)
+        sky.setDim(n);
         lightNow = -2f; // (the brightness is set again for the new part of the day)
         applyLight();
     }
@@ -608,8 +736,104 @@ final class HomeScreen extends FrameLayout {
         android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
         long at = sp.getLong("w_at", 0);
         if (at == 0) { weather.setText(""); return; }
-        String old = System.currentTimeMillis() - at > 3 * 3600_000L ? " (పాతది)" : "";
-        weather.setText(Math.round(sp.getFloat("w_temp", 0)) + "° · " + HudDashboard.sky(sp.getInt("w_code", -1)) + old);
+        boolean stale = System.currentTimeMillis() - at > 3 * 3600_000L;
+        String old = stale ? " (పాతది)" : "";
+        int code = sp.getInt("w_code", -1), dayFlag = sp.getInt("w_day", -1);
+        float temp = sp.getFloat("w_temp", Float.NaN);
+        weather.setText(Math.round(sp.getFloat("w_temp", 0)) + "° · " + skyTe(code) + old);
+        int hr = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        boolean fresh = System.currentTimeMillis() - at < 45 * 60_000L;
+        boolean day = fresh && dayFlag >= 0 ? dayFlag == 1 : hr >= 6 && hr < 18;
+        if (stale) { code = -1; temp = Float.NaN; } // (an old reading: only the calm sky, no rain that stopped hours ago)
+        sky.set(code, temp, day);
+        // ☔ what Jarvis wears: an umbrella in the rain, a sweater when it is cold, a hand fan on a hot day
+        String outfit = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95 ? "umbrella"
+                : !Float.isNaN(temp) && temp < 20 ? "sweater" : !Float.isNaN(temp) && temp > 34 && day ? "fan" : "none";
+        if (!outfit.equals(outfitNow)) { outfitNow = outfit; body.rig.setOutfit(outfit); }
+    }
+
+    private String outfitNow = "";
+
+    // ================================================================ 🎄 festivals, 🎂 birthdays, 🍽️ meals
+    private String occasionNow = "";
+
+    /** Today's occasion: a birthday first, then New Year, Sankranti, Easter, the Christmas month. */
+    private void occasion(Calendar c) {
+        String bday = birthdaysToday(getContext(), c);
+        int mo = c.get(Calendar.MONTH), d = c.get(Calendar.DAY_OF_MONTH);
+        String o = !bday.isEmpty() ? "birthday"
+                : mo == Calendar.JANUARY && d == 1 ? "newyear"
+                : mo == Calendar.JANUARY && d >= 13 && d <= 15 ? "sankranti"
+                : isEaster(c) ? "easter"
+                : mo == Calendar.DECEMBER ? "christmas" : "none";
+        if (!o.equals(occasionNow)) {
+            occasionNow = o;
+            body.rig.setOccasion(o);
+            sky.setOccasion(o);
+        }
+        // 🎂 once on the day, in the morning or later (never at night): the cake and a wish, aloud
+        if (!bday.isEmpty() && c.get(Calendar.HOUR_OF_DAY) >= 8 && !bedtime() && !night && !HomeCare.resting(getContext())
+                && body.rig.mode() == BodyRig.IDLE) {
+            android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
+            String key = c.get(Calendar.YEAR) + "-" + c.get(Calendar.DAY_OF_YEAR);
+            if (!key.equals(sp.getString("bday_said", ""))) {
+                sp.edit().putString("bday_said", key).apply();
+                body.rig.poke();
+                body.rig.play("cake");
+                host.speak("ఈ రోజు " + bday + " పుట్టినరోజు! 🎂 పుట్టినరోజు శుభాకాంక్షలు!");
+            }
+        }
+    }
+
+    /** Names whose birthday is today, from his phone's "🎂 పుట్టినరోజులు" ("అమ్మగారు = 12-03, అనిల్ = 05-07"). */
+    static String birthdaysToday(Context ctx, Calendar c) {
+        String all = HomeCare.sp(ctx).getString("birthdays", "");
+        StringBuilder out = new StringBuilder();
+        for (String item : all.split("[,;\\n]")) {
+            int eq = item.indexOf('=');
+            if (eq <= 0) continue;
+            String name = item.substring(0, eq).trim();
+            String[] dm = item.substring(eq + 1).trim().split("[-/.\\s]+");
+            try {
+                if (dm.length >= 2 && Integer.parseInt(dm[0].trim()) == c.get(Calendar.DAY_OF_MONTH)
+                        && Integer.parseInt(dm[1].trim()) == c.get(Calendar.MONTH) + 1 && !name.isEmpty()) {
+                    if (out.length() > 0) out.append(", ");
+                    out.append(name);
+                }
+            } catch (Exception ignored) {}
+        }
+        return out.toString();
+    }
+
+    /** Easter Sunday (HomeCare's date). */
+    static boolean isEaster(Calendar c) {
+        int[] e = HomeCare.easter(c.get(Calendar.YEAR));
+        return c.get(Calendar.MONTH) + 1 == e[0] && c.get(Calendar.DAY_OF_MONTH) == e[1];
+    }
+
+    /** 🍽️ At her meal times (until 20 minutes after) Jarvis eats too — once per meal, when he is free. */
+    private void mealTime() {
+        if (bedtime() || body.rig.mode() != BodyRig.IDLE || body.rig.playing() != null) return;
+        long now = System.currentTimeMillis();
+        android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
+        Calendar c = Calendar.getInstance();
+        for (String[] m : HomeCare.MEALS) {
+            long at = todayAt(HomeCare.time(getContext(), m[0], m[2]));
+            if (at < 0 || now < at || now > at + 20 * 60_000L) continue;
+            String key = m[0] + c.get(Calendar.DAY_OF_YEAR);
+            if (key.equals(sp.getString("meal_ate", ""))) continue;
+            sp.edit().putString("meal_ate", key).apply();
+            body.rig.play("eat");
+            return;
+        }
+    }
+
+    /** The sky in Telugu only (T3: no "clear" / "rain" in English on her screen). */
+    static String skyTe(int code) {
+        if (code == 0) return "ఆకాశం నిర్మలం";
+        String s = HudDashboard.sky(code);
+        int dot = s.indexOf(" · ");
+        return dot > 0 ? s.substring(0, dot) : s;
     }
 
     private void fetchWeather() {
@@ -624,11 +848,12 @@ final class HomeScreen extends FrameLayout {
                 Location l = Devices.freshFix(app); // (a SIM-less tablet may have no last place yet: a fix is asked for)
                 if (l == null) return;
                 JSONObject cur = Http.get(String.format(Locale.US,
-                        "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code",
+                        "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code,is_day",
                         l.getLatitude(), l.getLongitude())).optJSONObject("current");
                 if (cur == null || !cur.has("temperature_2m")) return;
                 app.getSharedPreferences(SP, Context.MODE_PRIVATE).edit().putFloat("w_temp", (float) cur.optDouble("temperature_2m"))
-                        .putInt("w_code", cur.optInt("weather_code", -1)).putLong("w_at", System.currentTimeMillis()).apply();
+                        .putInt("w_code", cur.optInt("weather_code", -1)).putInt("w_day", cur.optInt("is_day", -1))
+                        .putLong("w_at", System.currentTimeMillis()).apply();
                 main.post(() -> { if (running) showWeather(); });
             } catch (Throwable ignored) {
                 // offline / no location: the last weather stays
@@ -643,74 +868,361 @@ final class HomeScreen extends FrameLayout {
     private String smartKey() { return prefs.smartUrls() + "|" + HomeEyes.room(getContext()); }
 
     /**
-     * Up to 4 smart-home buttons from his Alexa links. By the room Anil set: the hall shows the TV's first; her bedroom
-     * shows the AC / fan / light ones and no TV (the TV is in the hall).
+     * The smart-home cards (T1, Anil 24 Oct): his Alexa links grouped per device — "amma ac on" + "amma ac off" make one
+     * card "నా AC" with a little AC picture and big ఆన్ / ఆఫ్; a line without on / off (a scene) gets one button. At most
+     * four cards, two in a row. By the room he set: the hall shows the TV's first; her bedroom the AC / fan / light ones and
+     * no TV (the TV is in the hall).
      */
     private void refreshSmart() {
         smartShown = smartKey();
         smart.removeAllViews();
         boolean hall = HomeEyes.inHall(getContext());
-        List<String[]> first = new ArrayList<>(), rest = new ArrayList<>();
+        java.util.LinkedHashMap<String, String[]> devs = new java.util.LinkedHashMap<>(); // base -> {on, off, plain}
         for (String line : prefs.smartUrls().split("\n")) {
             int eq = line.indexOf('=');
             if (eq <= 0) continue;
-            String name = line.substring(0, eq).trim(), url = line.substring(eq + 1).trim(), low = name.toLowerCase(Locale.ROOT);
+            String name = line.substring(0, eq).trim(), url = line.substring(eq + 1).trim(), low = name.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
             if (low.startsWith("charger")) continue; // (the battery-care links work by themselves)
             if (low.startsWith("tv quiet") || low.startsWith("tv back")) continue; // (Jarvis's own TV-volume links)
             if (name.isEmpty() || !url.startsWith("http")) continue;
-            boolean tv = low.matches(".*\\btv\\b.*|.*టీవీ.*");
-            if (!hall && tv) continue;
-            boolean cool = low.matches(".*\\b(ac|fan|light|lamp)\\b.*|.*(ఫ్యాన్|లైట్).*");
-            if (hall ? tv : cool) first.add(new String[]{name, url}); else rest.add(new String[]{name, url});
+            int kind = low.endsWith(" on") ? 0 : low.endsWith(" off") ? 1 : 2;
+            String base = kind == 0 ? low.substring(0, low.length() - 3).trim() : kind == 1 ? low.substring(0, low.length() - 4).trim() : low;
+            if (base.isEmpty()) continue;
+            String[] d = devs.get(base);
+            if (d == null) devs.put(base, d = new String[3]);
+            if (d[kind] == null) d[kind] = url;
         }
-        List<String[]> cmds = new ArrayList<>(first);
-        cmds.addAll(rest);
-        while (cmds.size() > 4) cmds.remove(cmds.size() - 1);
+        List<String> first = new ArrayList<>(), rest = new ArrayList<>();
+        for (String base : devs.keySet()) {
+            boolean tv = base.matches(".*\\btv\\b.*|.*టీవీ.*");
+            if (!hall && tv) continue;
+            boolean cool = base.matches(".*\\b(ac|fan|light|lamp)\\b.*|.*(ఫ్యాన్|లైట్).*");
+            if (hall ? tv : cool) first.add(base); else rest.add(base);
+        }
+        List<String> show = new ArrayList<>(first);
+        show.addAll(rest);
+        while (show.size() > 4) show.remove(show.size() - 1);
         LinearLayout r = null;
-        for (int i = 0; i < cmds.size(); i++) {
+        for (int i = 0; i < show.size(); i++) {
             if (i % 2 == 0) {
                 r = new LinearLayout(getContext());
                 LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
                 rl.topMargin = i == 0 ? 0 : dp(8);
                 smart.addView(r, rl);
             }
-            final String[] cmd = cmds.get(i);
-            final String label = label(cmd[0]);
-            TextView b = button(getContext(), label, 0xFF1B3050, 0xFFDCE7F3, 18);
-            b.setOnClickListener(v -> run(label, cmd[1]));
-            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, dp(48), 1);
-            if (i % 2 == 1) bl.leftMargin = dp(8);
-            r.addView(b, bl);
+            String base = show.get(i);
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(0, -2, 1);
+            if (i % 2 == 1) cl.leftMargin = dp(8);
+            r.addView(card(base, devs.get(base)), cl);
         }
-        if (cmds.size() % 2 == 1 && r != null) r.addView(new View(getContext()), new LinearLayout.LayoutParams(0, dp(48), 1));
+        if (show.size() % 2 == 1 && r != null) r.addView(new View(getContext()), new LinearLayout.LayoutParams(0, 1, 1));
     }
 
-    /** "ac on" -> "AC ఆన్", "fan off" -> "Fan ఆఫ్". */
-    static String label(String name) {
+    /** One device: its picture and name, then ఆన్ / ఆఫ్ (or one button for a scene), then what was done last. */
+    private View card(String base, String[] urls) {
+        Context c = getContext();
+        LinearLayout card = new LinearLayout(c);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(10), dp(8), dp(10), dp(8));
+        card.setBackground(round(0xFF1B3050, 0xFF2A4468, 18));
+        LinearLayout top = new LinearLayout(c);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        DeviceIcon icon = new DeviceIcon(c, DeviceIcon.kind(base));
+        top.addView(icon, new LinearLayout.LayoutParams(dp(46), dp(40)));
+        final String name = deviceName(base);
+        TextView title = text(c, name, 19, 0xFFF4F8FC, true);
+        title.setPadding(dp(8), 0, 0, 0);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        top.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        card.addView(top);
+        LinearLayout btns = new LinearLayout(c);
+        LinearLayout.LayoutParams bl0 = new LinearLayout.LayoutParams(-1, -2);
+        bl0.topMargin = dp(6);
+        card.addView(btns, bl0);
+        final TextView last = text(c, lastLine(base), 13, 0xFF8FB4D9, false);
+        last.setSingleLine(true);
+        last.setEllipsize(TextUtils.TruncateAt.END);
+        last.setPadding(0, dp(4), 0, 0);
+        final boolean his = base.matches(".*\\b(anil|son)\\b.*"); // (her son's AC: asked first — never switched by a stray tap)
+        if (urls[0] != null || urls[1] != null) {
+            if (urls[0] != null) {
+                TextView on = button(c, "ఆన్", 0xFF1E6B4A, 0xFFFFFFFF, 19);
+                on.setOnClickListener(v -> press(base, name, true, urls[0], his, last));
+                btns.addView(on, new LinearLayout.LayoutParams(0, dp(50), 1));
+            }
+            if (urls[1] != null) {
+                TextView off = button(c, "ఆఫ్", 0xFF3A4658, 0xFFFFFFFF, 19);
+                off.setOnClickListener(v -> press(base, name, false, urls[1], his, last));
+                LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(0, dp(50), 1);
+                if (urls[0] != null) ol.leftMargin = dp(8);
+                btns.addView(off, ol);
+            }
+        } else {
+            TextView go = button(c, "▶ నొక్కు", 0xFF1F3B5C, 0xFFFFFFFF, 18);
+            go.setOnClickListener(v -> press(base, name, null, urls[2], his, last));
+            btns.addView(go, new LinearLayout.LayoutParams(-1, dp(50)));
+        }
+        card.addView(last);
+        return card;
+    }
+
+    /**
+     * The name on her screen, in Telugu (only the screen: his box keeps English names): "amma ac" → "నా AC" (it is her
+     * tablet), "anil ac" → "అబ్బాయి AC", "fan" → "ఫ్యాన్", "hall light" → "హాల్ లైట్".
+     */
+    static String deviceName(String base) {
         StringBuilder out = new StringBuilder();
-        for (String w : name.trim().split("\\s+")) {
+        for (String w : base.trim().split("\\s+")) {
             String l = w.toLowerCase(Locale.ROOT), s;
-            if (l.equals("on")) s = "ఆన్";
-            else if (l.equals("off")) s = "ఆఫ్";
-            else if (l.length() <= 2 || l.equals("tv")) s = w.toUpperCase(Locale.ROOT);
-            else s = Character.toUpperCase(w.charAt(0)) + w.substring(1);
+            switch (l) {
+                case "amma": case "mom": case "mother": s = "నా"; break;
+                case "anil": case "son": s = "అబ్బాయి"; break;
+                case "ac": s = "AC"; break;
+                case "tv": s = "TV"; break;
+                case "fan": s = "ఫ్యాన్"; break;
+                case "light": case "lamp": s = "లైట్"; break;
+                case "hall": s = "హాల్"; break;
+                case "bedroom": s = "బెడ్‌రూమ్"; break;
+                case "kitchen": s = "వంటగది"; break;
+                case "good": s = "గుడ్"; break;
+                case "night": s = "నైట్"; break;
+                default: s = l.length() <= 2 ? w.toUpperCase(Locale.ROOT) : Character.toUpperCase(w.charAt(0)) + w.substring(1);
+            }
             if (out.length() > 0) out.append(' ');
             out.append(s);
         }
         return out.toString();
     }
 
-    private void run(String label, String url) {
+    /** "చివరిసారి: ఆన్ · రాత్రి 10:15" (the link can't tell whether it is on now: only what was pressed last). */
+    private String lastLine(String base) {
+        android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
+        String what = sp.getString("dev_" + base, "");
+        long at = sp.getLong("dev_at_" + base, 0);
+        if (what.isEmpty() || at == 0) return " ";
+        return "చివరిసారి: " + what + " · " + when(at, System.currentTimeMillis());
+    }
+
+    /** A card's button: her son's device asks first (T2), then the link; "✓ … చేశాను" said and shown. */
+    private void press(String base, String name, Boolean on, String url, boolean his, TextView last) {
+        active();
+        body.rig.poke();
+        String what = on == null ? "" : on ? "ఆన్" : "ఆఫ్";
+        if (his) { confirm(name + " " + what + " చేయమంటారా?", () -> run(base, name, on, url, last)); return; }
+        run(base, name, on, url, last);
+    }
+
+    /** The question over the screen with big అవును / వద్దు (goes by itself after 15 s, as a no). */
+    private void confirm(String question, Runnable yes) {
+        Context c = getContext();
+        ask.removeAllViews();
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER_HORIZONTAL);
+        box.setPadding(dp(28), dp(22), dp(28), dp(22));
+        box.setBackground(round(0xFF13233A, 0xFF2E4C74, 24));
+        TextView q = text(c, question, 26, 0xFFF4F8FC, true);
+        q.setGravity(Gravity.CENTER);
+        box.addView(q);
+        LinearLayout row = new LinearLayout(c);
+        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, -2);
+        rl.topMargin = dp(18);
+        box.addView(row, rl);
+        final Runnable gone = () -> ask.setVisibility(GONE);
+        TextView y = button(c, "✓ అవును", 0xFF1E6B4A, 0xFFFFFFFF, 24);
+        y.setOnClickListener(v -> { main.removeCallbacks(gone); gone.run(); yes.run(); });
+        row.addView(y, new LinearLayout.LayoutParams(dp(170), dp(70)));
+        TextView n = button(c, "✕ వద్దు", 0xFF3A4658, 0xFFFFFFFF, 24);
+        n.setOnClickListener(v -> { main.removeCallbacks(gone); gone.run(); show("సరే, ఏమీ చేయలేదు"); });
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(dp(170), dp(70));
+        nl.leftMargin = dp(16);
+        row.addView(n, nl);
+        ask.addView(box, new LayoutParams(-2, -2, Gravity.CENTER));
+        ask.setVisibility(VISIBLE);
+        main.removeCallbacks(gone);
+        main.postDelayed(gone, 15_000);
+    }
+
+    private void run(String base, String name, Boolean on, String url, TextView last) {
+        final String label = on == null ? name : name + " " + (on ? "ఆన్" : "ఆఫ్");
         show(label + "…");
         new Thread(() -> {
             boolean ok;
             try { Http.getText(url); ok = true; } catch (Exception e) { ok = false; }
             final boolean done = ok;
             main.post(() -> {
-                if (done) { show("✓ " + label + " చేశాను"); body.rig.show("happy", 2500); body.rig.gesture("thumb", 2500); }
-                else { show("⚠️ " + label + ": " + (online(getContext()) ? "లింక్ జవాబివ్వలేదు" : "నెట్ లేదు")); body.rig.show("worried", 2500); }
+                if (done) {
+                    show("✓ " + label + " చేశాను");
+                    body.rig.show("happy", 2500);
+                    body.rig.gesture("thumb", 2500);
+                    getContext().getSharedPreferences(SP, Context.MODE_PRIVATE).edit()
+                            .putString("dev_" + base, on == null ? "నొక్కాను" : on ? "ఆన్" : "ఆఫ్").putLong("dev_at_" + base, System.currentTimeMillis()).apply();
+                    last.setText(lastLine(base));
+                    if (!night && DeviceIcon.kind(base) != DeviceIcon.TV) host.speak(label + " చేశాను."); // (night: the ✓ only)
+                } else {
+                    show("⚠️ " + label + ": " + (online(getContext()) ? "లింక్ జవాబివ్వలేదు" : "నెట్ లేదు"));
+                    body.rig.show("worried", 2500);
+                }
             });
         }, "home-smart").start();
+    }
+
+    /** A small picture of the device (an AC unit with cool air, a fan, a bulb, a TV, a plug), so she knows it at a glance. */
+    static final class DeviceIcon extends View {
+        static final int AC = 0, FAN = 1, BULB = 2, TV = 3, PLUG = 4, SCENE = 5;
+        private final int kind;
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF r = new android.graphics.RectF();
+        private final android.graphics.Path path = new android.graphics.Path();
+
+        DeviceIcon(Context c, int kind) { super(c); this.kind = kind; }
+
+        static int kind(String base) {
+            if (base.matches(".*\\bac\\b.*")) return AC;
+            if (base.matches(".*\\bfan\\b.*|.*ఫ్యాన్.*")) return FAN;
+            if (base.matches(".*\\b(light|lamp|bulb)\\b.*|.*లైట్.*")) return BULB;
+            if (base.matches(".*\\btv\\b.*|.*టీవీ.*")) return TV;
+            if (base.matches(".*\\b(night|scene|good|morning)\\b.*")) return SCENE;
+            return PLUG;
+        }
+
+        @Override protected void onDraw(Canvas cv) {
+            float w = getWidth(), h = getHeight(), u = Math.min(w / 46f, h / 40f);
+            cv.save();
+            cv.translate((w - 46 * u) / 2f, (h - 40 * u) / 2f);
+            cv.scale(u, u);
+            p.setStyle(Paint.Style.FILL);
+            switch (kind) {
+                case AC: {
+                    p.setColor(0xFFEAF2FA); // the indoor unit
+                    r.set(3, 4, 43, 19);
+                    cv.drawRoundRect(r, 5, 5, p);
+                    p.setColor(0xFF9FB4CC); // its air slot
+                    r.set(7, 14.5f, 39, 16.5f);
+                    cv.drawRoundRect(r, 1, 1, p);
+                    p.setColor(0xFF2ECC71); // the little light
+                    cv.drawCircle(37, 8.5f, 1.6f, p);
+                    p.setStyle(Paint.Style.STROKE); // cool air coming out
+                    p.setStrokeCap(Paint.Cap.ROUND);
+                    p.setStrokeWidth(2.2f);
+                    p.setColor(0xFF7FD3FF);
+                    for (int i = 0; i < 3; i++) {
+                        float x = 12 + i * 11;
+                        path.rewind();
+                        path.moveTo(x, 22);
+                        path.cubicTo(x - 3, 26, x + 3, 29, x, 33);
+                        cv.drawPath(path, p);
+                    }
+                    p.setStrokeWidth(1.6f); // a small snowflake
+                    float sx = 40, sy = 31;
+                    for (int i = 0; i < 3; i++) {
+                        double t = Math.PI * i / 3;
+                        float dx = (float) Math.cos(t) * 4.5f, dy = (float) Math.sin(t) * 4.5f;
+                        cv.drawLine(sx - dx, sy - dy, sx + dx, sy + dy, p);
+                    }
+                    break;
+                }
+                case FAN: {
+                    p.setColor(0xFF7FD3FF);
+                    for (int i = 0; i < 3; i++) {
+                        cv.save();
+                        cv.rotate(i * 120, 23, 20);
+                        r.set(20, 2, 30, 19);
+                        cv.drawOval(r, p);
+                        cv.restore();
+                    }
+                    p.setColor(0xFFEAF2FA);
+                    cv.drawCircle(23, 20, 4.2f, p);
+                    break;
+                }
+                case BULB: {
+                    p.setColor(0xFFFFD166);
+                    cv.drawCircle(23, 16, 11, p);
+                    p.setColor(0xFF9FB4CC);
+                    r.set(18, 26, 28, 33);
+                    cv.drawRoundRect(r, 2, 2, p);
+                    p.setStyle(Paint.Style.STROKE);
+                    p.setStrokeWidth(1.6f);
+                    p.setColor(0x99FFD166);
+                    cv.drawCircle(23, 16, 15, p);
+                    break;
+                }
+                case TV: {
+                    p.setColor(0xFF9FB4CC);
+                    r.set(4, 4, 42, 29);
+                    cv.drawRoundRect(r, 4, 4, p);
+                    p.setColor(0xFF2E6FB7);
+                    r.set(7, 7, 39, 26);
+                    cv.drawRoundRect(r, 2, 2, p);
+                    p.setColor(0xFF9FB4CC);
+                    r.set(15, 31, 31, 34);
+                    cv.drawRoundRect(r, 1.5f, 1.5f, p);
+                    break;
+                }
+                case SCENE: {
+                    p.setColor(0xFFFFD166); // a moon and a star
+                    cv.drawCircle(20, 19, 12, p);
+                    p.setColor(0xFF1B3050);
+                    cv.drawCircle(25, 15, 10, p);
+                    p.setColor(0xFFFFE9A8);
+                    cv.drawCircle(36, 9, 2.4f, p);
+                    break;
+                }
+                default: {
+                    p.setColor(0xFFEAF2FA); // a plug
+                    r.set(13, 12, 33, 30);
+                    cv.drawRoundRect(r, 5, 5, p);
+                    p.setColor(0xFF9FB4CC);
+                    r.set(17, 5, 20, 13);
+                    cv.drawRect(r, p);
+                    r.set(26, 5, 29, 13);
+                    cv.drawRect(r, p);
+                    p.setStyle(Paint.Style.STROKE);
+                    p.setStrokeWidth(2.4f);
+                    cv.drawLine(23, 30, 23, 37, p);
+                }
+            }
+            p.setStyle(Paint.Style.FILL);
+            cv.restore();
+        }
+    }
+
+    /**
+     * Always all of its one child on the screen: when the child is taller than the room (a big font, the night "more"
+     * open), it is laid out a little wider and taller and shrunk to fit, everything together — nothing scrolls away.
+     */
+    static final class FitBox extends FrameLayout {
+        private float s = 1f;
+
+        FitBox(Context c) { super(c); }
+
+        @Override protected void onMeasure(int ws, int hs) {
+            int w = MeasureSpec.getSize(ws), h = MeasureSpec.getSize(hs);
+            View ch = getChildCount() > 0 ? getChildAt(0) : null;
+            if (ch == null || w <= 0 || h <= 0) { super.onMeasure(ws, hs); return; }
+            float sc = 1f;
+            for (int i = 0; i < 6; i++) {
+                ch.measure(MeasureSpec.makeMeasureSpec(Math.round(w / sc), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+                int need = Math.max(1, ch.getMeasuredHeight());
+                if (need * sc <= h + 1) break;
+                sc = Math.max(0.55f, Math.min(sc * 0.98f, h / (float) need));
+                if (sc <= 0.55f) break;
+            }
+            s = sc;
+            ch.measure(MeasureSpec.makeMeasureSpec(Math.round(w / s), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(Math.round(h / s), MeasureSpec.EXACTLY));
+            setMeasuredDimension(w, h);
+        }
+
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            View ch = getChildCount() > 0 ? getChildAt(0) : null;
+            if (ch == null) return;
+            ch.layout(0, 0, ch.getMeasuredWidth(), ch.getMeasuredHeight());
+            ch.setPivotX(0);
+            ch.setPivotY(0);
+            ch.setScaleX(s);
+            ch.setScaleY(s);
+        }
     }
 
     // ================================================================ small parts
@@ -723,6 +1235,13 @@ final class HomeScreen extends FrameLayout {
         t.setTextColor(color);
         if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
         return t;
+    }
+
+    /** One line that shrinks to fit its button (a big font never cuts "మాట్లాడు"). */
+    private static void fitText(TextView t, int maxSp) {
+        t.setSingleLine(true);
+        t.setPadding(t.getPaddingLeft() + 4, 0, t.getPaddingRight() + 4, 0);
+        try { t.setAutoSizeTextTypeUniformWithConfiguration(11, maxSp, 1, android.util.TypedValue.COMPLEX_UNIT_SP); } catch (Exception ignored) {}
     }
 
     private TextView chip(Context c) {
@@ -747,15 +1266,5 @@ final class HomeScreen extends FrameLayout {
         g.setCornerRadius(dp(r));
         g.setStroke(dp(1), stroke);
         return g;
-    }
-
-    /** The soft round light behind Jarvis. */
-    private static final class Spot extends View {
-        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        Spot(Context c) { super(c); p.setColor(0xFF15294A); }
-        @Override protected void onDraw(Canvas cv) {
-            float w = getWidth(), h = getHeight(), r = Math.min(w, h) * 0.36f;
-            cv.drawCircle(w / 2f, h * 0.46f, r, p);
-        }
     }
 }

@@ -11,6 +11,8 @@ package com.anil.jarvis;
  *
  * Plain Java (no Android classes): it draws through a Pen, so the tablet (BodyView) and a desk test can both draw it.
  * Units: the picture is 680 × 720 (x from -40 to 640, y from 0 down to 720); the neck's centre is x = 300.
+ * The home tablet's extras (idle plays, outfits, occasions, dancing, tickles…) live in IdlePlay; until one of them is
+ * used, none of that runs and he behaves exactly as before. update / draw allocate nothing per frame.
  */
 final class BodyRig {
     // the same numbers as FaceRig / OrbView: IDLE, LISTENING, THINKING, SPEAKING, OFFLINE
@@ -43,19 +45,26 @@ final class BodyRig {
     // ================================================================ looks and skins
     private static final class Look {
         final char hair; final int jacket, jacketHi, jacketDk, shirt, shirtDk, cuff, trim;
+        final int[] torsoG; // (the torso's gradient, made once)
         Look(char hair, int jacket, int jacketHi, int jacketDk, int shirt, int shirtDk, int cuff, int trim) {
             this.hair = hair; this.jacket = jacket; this.jacketHi = jacketHi; this.jacketDk = jacketDk;
             this.shirt = shirt; this.shirtDk = shirtDk; this.cuff = cuff; this.trim = trim;
+            torsoG = new int[]{jacketHi, jacket, jacketDk};
         }
     }
     private static final Look LOOK_A = new Look('a', 0xFF22314F, 0xFF30446B, 0xFF151F35, 0xFFF4F6F8, 0xFFCDD5DF, 0xFFF4F6F8, 0xFF22314F);
     private static final Look LOOK_B = new Look('b', 0xFF9FCDEB, 0xFFBEDDF2, 0xFF78ADD2, 0xFF9FCDEB, 0xFF78ADD2, 0xFF9FCDEB, 0xFFC9973F);
     private static final Look LOOK_C = new Look('c', 0xFF3B4252, 0xFF4C5568, 0xFF272D39, 0xFF2E7F7B, 0xFF21605D, 0xFF3B4252, 0xFF3B4252);
+    // the cold-day sweater (IdlePlay's "sweater" outfit draws its knit pattern and muffler; the hair stays his own look's)
+    private static final Look LOOK_KNIT = new Look('k', 0xFF9C3D4A, 0xFFB65564, 0xFF6E2531, 0xFFF1E4CC, 0xFFCDBB9C, 0xFF84303C, 0xFFF1E4CC);
+    private static final float[] TORSO_AT = {0, 0.45f, 1}, FACE_AT = {0, 0.55f, 1};
 
     private static final class Skin {
         final int base, light, dark, line, blush, lip, lipDk;
+        final int[] faceG; // (the face's gradient, made once)
         Skin(int base, int light, int dark, int line, int blush, int lip, int lipDk) {
             this.base = base; this.light = light; this.dark = dark; this.line = line; this.blush = blush; this.lip = lip; this.lipDk = lipDk;
+            faceG = new int[]{light, base, dark};
         }
     }
     private static final Skin SKIN_1 = new Skin(0xFFE6B48B, 0xFFF3CDA9, 0xFFC99068, 0xFF9C6744, 0xFFEC8A7A, 0xFFBE7466, 0xFF8E4A3F);
@@ -103,23 +112,40 @@ final class BodyRig {
         BASE[EYE] = 1f;
     }
 
-    private static final class Goal {
+    /** A face to ease towards (never changed once made: the same ones are used frame after frame). */
+    static final class Goal {
         final float[] v = BASE.clone();
         String eyeL = "open", eyeR = "open", gesture = "none";
     }
 
     static Goal goal(String mood) {
-        Goal g = new Goal();
         int i = 0;
         for (int k = 0; k < MOODS.length; k++) if (MOODS[k].equals(mood)) i = k;
-        for (String kv : MOOD_DEF[i].split(" ")) {
+        return face(MOOD_DEF[i]);
+    }
+
+    /** A face from "key=value ..." words (as in MOOD_DEF; es / esL / esR: eye shapes; g: its own gesture). */
+    static Goal face(String def) {
+        Goal g = new Goal();
+        for (String kv : def.split(" ")) {
             int e = kv.indexOf('=');
             String k = kv.substring(0, e), v = kv.substring(e + 1);
             if (k.equals("es")) { g.eyeL = v; g.eyeR = v; }
             else if (k.equals("esL")) g.eyeL = v;
+            else if (k.equals("esR")) g.eyeR = v;
             else if (k.equals("g")) g.gesture = v;
             else for (int j = 0; j < N; j++) if (KEYS[j].equals(k)) g.v[j] = Float.parseFloat(v);
         }
+        return g;
+    }
+
+    // goal(mood) read once per mood: every frame asks for one
+    private static final Goal[] GOALS = new Goal[MOODS.length];
+    private static Goal goalOf(String mood) {
+        int i = 0;
+        for (int k = 0; k < MOODS.length; k++) if (MOODS[k].equals(mood)) i = k;
+        Goal g = GOALS[i];
+        if (g == null) GOALS[i] = g = goal(MOODS[i]);
         return g;
     }
 
@@ -164,22 +190,31 @@ final class BodyRig {
         String s; float a; boolean down;
         Hand(String s, float a, boolean down) { this.s = s; this.a = a; this.down = down; }
     }
+    // reused every frame (nothing is made per frame)
+    private final Arm tgR = new Arm(152, 860, 0, "rest", true), tgL = new Arm(448, 860, 0, "rest", true);
+    private final float[] want = new float[3], qd = new float[N];
+    private final float[] e1 = new float[2], e2 = new float[2];
+    private final float[][] armR = {SH_R, new float[2], new float[2]}, armL = {SH_L, new float[2], new float[2]};
+    // the extras (idle plays, outfits…): null until one is used
+    private IdlePlay extra;
+    private float cross; // cross-eyed (a butterfly on his nose): 0 = never
 
     void setMode(int m) {
         if (m != mode && m == SPEAKING) vis = new float[0][];
+        if (m != mode && extra != null) extra.activity();
         mode = m;
     }
     int mode() { return mode; }
     void setMic(float l) { mic = l; }
     void setVoice(float l) { voice = l; }
     /** The reply's feeling (Emotion's words); it stays a few seconds after he stops talking. */
-    void setFeeling(String f) { feeling = moodFor(f); feelingUntil = ms() + 6000; }
+    void setFeeling(String f) { feeling = moodFor(f); feelingUntil = ms() + 6000; if (extra != null) extra.activity(); }
     /** The resting face (e.g. "sleepy" at night). */
     void setBase(String mood) { base = mood == null ? "smile" : mood; }
     /** A face for a while (ms), over everything but listening. */
-    void show(String mood, long forMs) { forced = mood; forcedUntil = ms() + forMs; }
+    void show(String mood, long forMs) { forced = mood; forcedUntil = ms() + forMs; if (extra != null) extra.override(); }
     /** A hand gesture for a while (ms): wave, namaste, chin, thumb, point, clap, stretch. */
-    void gesture(String g, long forMs) { forcedGesture = g; gestureUntil = ms() + forMs; }
+    void gesture(String g, long forMs) { forcedGesture = g; gestureUntil = ms() + forMs; if (extra != null) extra.override(); }
     void greet() { gesture("wave", 2600); show("happy", 2600); }
     /** Someone seen by the front camera (x, y: -1..1 in the picture), or nobody. */
     void look(boolean someone, float x, float y) {
@@ -191,9 +226,46 @@ final class BodyRig {
     void word(String w) {
         vis = visemes(w);
         visAt = t;
+        if (extra != null) extra.activity();
     }
 
     private long ms() { return (long) (t * 1000); }
+
+    // ================================================================ the home tablet's extras (IdlePlay)
+    private IdlePlay x() { if (extra == null) extra = new IdlePlay(); return extra; }
+
+    /** Little plays of his own when nobody has talked to him for 40 s (off by default; the home screen turns them on). */
+    void setIdlePlays(boolean on) { if (on || extra != null) x().setOn(on); }
+    /** Night: only the calm plays (a firefly, the kitten asleep, a dream, stars, snoring, humming). */
+    void setNightPlays(boolean night) { if (night || extra != null) x().setNight(night); }
+    /** Someone touched or talked: a play ends gracefully (within ~0.5 s) and the 40 s wait starts again. */
+    void poke() { if (extra != null) extra.poke(); }
+    /** Starts a play now (or as soon as he is idle again, within a minute): one of playIds, or "eat" / "cake". */
+    void play(String id) { x().play(id); }
+    /** The plays of the day (or night) that come by themselves. */
+    static String[] playIds(boolean night) { return IdlePlay.ids(night); }
+    /** The play going on (until it has fully ended), or null. */
+    String playing() { return extra == null ? null : extra.playing(); }
+    /** The weather's outfit: "none", "umbrella", "sweater" or "fan" (stays until changed). */
+    void setOutfit(String o) { if (o != null && !"none".equals(o) || extra != null) x().setOutfit(o); }
+    /** The day's occasion: "none", "christmas", "newyear", "sankranti", "easter" or "birthday". */
+    void setOccasion(String o) { if (o != null && !"none".equals(o) || extra != null) x().setOccasion(o); }
+    /** Touched and held: a 2.5 s giggle. */
+    void tickle() { x().moment(IdlePlay.TICKLE); }
+    /** An open palm raised towards her, happy (2 s). */
+    void highFive() { x().moment(IdlePlay.HIGH5); }
+    /** Waves goodbye, a little sad, then smiles (3 s). */
+    void waveBye() { x().moment(IdlePlay.BYE); }
+    /** Claps with a big smile (2.5 s): she ate, she took her tablet. */
+    void cheer() { gesture("clap", 2500); show("excited", 2500); }
+    /** While her songs play: a gentle head bob and swaying arms (~100 bpm). */
+    void setDance(boolean on) { if (on || extra != null) x().setDance(on); }
+    /** While on: he keeps glancing to the screen's right edge (the door), happy and expectant. */
+    void waitDoor(boolean on) { if (on || extra != null) x().setDoor(on); }
+    /** Something of his own is moving (a day play, a dance, a reaction): BodyView keeps ~30 frames a second. */
+    boolean busy() { return extra != null && extra.moving(mode); }
+    String base() { return base; }
+    double time() { return t; }
 
     // ================================================================ every frame
     void update(float dt) {
@@ -207,9 +279,17 @@ final class BodyRig {
         else if (mode == SPEAKING) mood = feeling;
         else if (mode == OFFLINE) mood = "neutral";
         else mood = now < feelingUntil ? feeling : base;
-        Goal g = goal(mood);
-        String gest = forcedGesture != null && now < gestureUntil ? forcedGesture
+        Goal g = goalOf(mood);
+        boolean gestOn = forcedGesture != null && now < gestureUntil;
+        String gest = gestOn ? forcedGesture
                 : mode == SPEAKING && !"excited".equals(mood) && !"calm".equals(mood) && !"proud".equals(mood) ? "none" : g.gesture;
+        // the extras: a play, a reaction, a dance… may lead the face, the eyes and the arms
+        IdlePlay x = extra;
+        if (x != null) {
+            x.frame(this, dt, forced != null && now < forcedUntil, gestOn, now < feelingUntil);
+            if (x.face != null) g = x.face;
+            if (x.gest != null) gest = x.gest;
+        }
         float k = 1 - (float) Math.pow(0.8, dt * 30); // ~0.2 a frame at 30 fps
         for (int i = 0; i < N; i++) cur[i] += (g.v[i] - cur[i]) * k;
         eyeL = g.eyeL; eyeR = g.eyeR;
@@ -218,7 +298,9 @@ final class BodyRig {
         lookIn -= dt;
         if (lookIn <= 0) { saccGx = (float) (Math.random() - 0.5) * 0.5f; saccGy = (float) (Math.random() - 0.5) * 0.3f; lookIn = 1.5f + (float) Math.random() * 2.5f; }
         float gx = present ? clamp(seenX, -1, 1) * 0.8f : saccGx, gy = present ? clamp(seenY, -1, 1) * 0.5f : saccGy;
+        if (x != null && x.gaze) { gx = x.gx; gy = x.gy; }
         saccX += (gx - saccX) * k * 1.2f; saccY += (gy - saccY) * k * 1.2f;
+        if (x != null) cross += (x.cross - cross) * Math.min(1, k * 1.5f);
 
         // blinking
         blinkIn -= dt;
@@ -226,12 +308,19 @@ final class BodyRig {
         if (blink >= 0) { blink += dt / 0.17f; if (blink > 1) blink = -1; }
 
         // the arms
-        Arm[] tg = targets(gest, t);
-        step(wR, hR, tg[0], k);
-        step(wL, hL, tg[1], k);
+        targets(gest, t, tgR, tgL);
+        if (x != null) {
+            x.arms(tgR, tgL, gestOn);
+            float ka = x.armK == 1 ? k : Math.min(k * x.armK, 1.1f);
+            step(wR, hR, tgR, ka);
+            step(wL, hL, tgL, ka);
+        } else {
+            step(wR, hR, tgR, k);
+            step(wL, hL, tgL, k);
+        }
 
         // the mouth while speaking: the syllable's shape, opened by the voice's loudness when known
-        float[] want = {0, 0, 0};
+        want[0] = 0; want[1] = 0; want[2] = 0;
         if (mode == SPEAKING) {
             double el = (t - visAt) / 0.13;
             int ix = (int) Math.floor(el);
@@ -248,27 +337,28 @@ final class BodyRig {
         for (int i = 0; i < 3; i++) mouth[i] += (want[i] - mouth[i]) * km;
     }
 
-    private static final class Arm {
-        final float x, y, a; final String s; final boolean down;
-        Arm(float x, float y, float a, String s, boolean down) { this.x = x; this.y = y; this.a = a; this.s = s; this.down = down; }
+    /** Where a wrist goes: x, y, the hand's angle, its shape (rest, open, side, point, thumb, hold) and the elbow (down / out). */
+    static final class Arm {
+        float x, y, a; String s; boolean down;
+        Arm(float x, float y, float a, String s, boolean down) { set(x, y, a, s, down); }
+        void set(float x, float y, float a, String s, boolean down) { this.x = x; this.y = y; this.a = a; this.s = s; this.down = down; }
     }
 
-    private static Arm[] targets(String g, double t) {
-        Arm R = new Arm(152, 860, 0, "rest", true), L = new Arm(448, 860, 0, "rest", true);
+    private static void targets(String g, double t, Arm R, Arm L) {
+        R.set(152, 860, 0, "rest", true); L.set(448, 860, 0, "rest", true);
         switch (g) {
-            case "wave": R = new Arm(84, 292, (float) (-8 + 16 * Math.sin(t * Math.PI * 2 * 1.6)), "open", false); break;
-            case "namaste": R = new Arm(287, 618, 2, "side", true); L = new Arm(313, 618, -2, "side", true); break;
-            case "chin": R = new Arm(250, 502, 14, "point", true); break;
-            case "thumb": R = new Arm(236, 600, -4, "thumb", true); break;
-            case "point": L = new Arm(530, 432, 42, "point", true); break;
+            case "wave": R.set(84, 292, (float) (-8 + 16 * Math.sin(t * Math.PI * 2 * 1.6)), "open", false); break;
+            case "namaste": R.set(287, 618, 2, "side", true); L.set(313, 618, -2, "side", true); break;
+            case "chin": R.set(250, 502, 14, "point", true); break;
+            case "thumb": R.set(236, 600, -4, "thumb", true); break;
+            case "point": L.set(530, 432, 42, "point", true); break;
             case "clap": {
                 float d = (float) (4 + 24 * (0.5 + 0.5 * Math.sin(t * Math.PI * 2 * 2.2)));
-                R = new Arm(268 - d, 604, 4, "side", true); L = new Arm(332 + d, 604, -4, "side", true); break;
+                R.set(268 - d, 604, 4, "side", true); L.set(332 + d, 604, -4, "side", true); break;
             }
-            case "stretch": R = new Arm(120, 218, -18, "open", false); L = new Arm(480, 218, 18, "open", false); break;
+            case "stretch": R.set(120, 218, -18, "open", false); L.set(480, 218, 18, "open", false); break;
             default: break;
         }
-        return new Arm[]{R, L};
     }
 
     private static void step(float[] w, Hand h, Arm g, float k) {
@@ -329,7 +419,8 @@ final class BodyRig {
 
     /** Draws one frame (in picture units; the Pen's owner maps the 680 × 720 picture onto the screen). */
     void draw(Pen p) {
-        float[] q = cur.clone();
+        float[] q = qd;
+        System.arraycopy(cur, 0, q, 0, N);
         float breath = (float) Math.sin(t * Math.PI * 2 / 4.2) * 2.2f;
         float bob = q[BOUNCE] * (float) Math.abs(Math.sin(t * Math.PI * 2 * 1.4)) * -5;
         float sway = (float) Math.sin(t * Math.PI * 2 / 7) * 1.6f;
@@ -343,35 +434,46 @@ final class BodyRig {
         float oL = q[EYE] + q[EYE_L], oR = q[EYE] + q[EYE_R];
         if (bl > 0 && bl <= 0.5f) { oL *= 1 - bl; oR *= 1 - bl; }
 
-        float[][] aR = ik(SH_R, wR, hR.down, true), aL = ik(SH_L, wL, hL.down, false);
-        Look lk = look; Skin sk = skin;
+        float[][] aR = ik(SH_R, wR, hR.down, true, armR), aL = ik(SH_L, wL, hL.down, false, armL);
+        IdlePlay x = extra;
+        boolean xo = x != null && x.offsets;
+        Look lk = x != null && x.knit() ? LOOK_KNIT : look; Skin sk = skin;
+        float bodyY = breath * 0.5f + bob * 0.5f;
+        float headX = 300 + sway * 0.6f, headY = 248 + q[NOD] + breath * 0.6f + bob, headR = q[TILT] + sway * 0.5f;
+        if (xo) { bodyY += x.bodyDy; headX += x.headDx; headY += x.headDy; headR += x.headTilt; }
+        if (x != null) {
+            x.seen(aR[2][0], aR[2][1], hR.a, hR.s, wR[1] > 760, aL[2][0], aL[2][1], hL.a, hL.s, wL[1] > 760, headX, headY, headR, bodyY);
+            x.draw(p, IdlePlay.BACK);
+        }
 
         // ---- body (moves with the breath)
         p.save();
-        p.translate(0, breath * 0.5f + bob * 0.5f);
+        if (xo) p.translate(x.bodyDx, bodyY); else p.translate(0, breath * 0.5f + bob * 0.5f);
         if (lk == LOOK_C) { path(p, HOOD_C); p.fill(lk.jacketDk); }
         tube(p, aR[0], aR[1], 33, 30); p.fill(lk.jacket); p.stroke(lk.jacketDk, 3);
         tube(p, aL[0], aL[1], 33, 30); p.fill(lk.jacket); p.stroke(lk.jacketDk, 3);
         path(p, NECK); p.fill(sk.base); p.stroke(alpha(sk.line, 0.5f), 2);
         path(p, NECK_SH); p.fill(alpha(sk.dark, 0.55f));
-        path(p, TORSO); p.fillLinear(0, 464, 0, 720, new int[]{lk.jacketHi, lk.jacket, lk.jacketDk}, new float[]{0, 0.45f, 1}); p.stroke(lk.jacketDk, 2.5f);
+        path(p, TORSO); p.fillLinear(0, 464, 0, 720, lk.torsoG, TORSO_AT); p.stroke(lk.jacketDk, 2.5f);
         path(p, TORSO); p.strokeLinear(96, 0, 504, 0, RIM, RIM_AT, 3);
         clothes(p, lk);
         if (wR[1] > 760) { path(p, "M 170 556 C 160 620 156 670 158 720"); p.stroke(lk.jacketDk, 2.6f); }
         if (wL[1] > 760) { path(p, "M 430 556 C 440 620 444 670 442 720"); p.stroke(lk.jacketDk, 2.6f); }
+        if (x != null) x.draw(p, IdlePlay.BODY);
         p.restore();
 
         // ---- head
         p.save();
-        p.translate(300 + sway * 0.6f, 248 + q[NOD] + breath * 0.6f + bob);
-        p.rotate(q[TILT] + sway * 0.5f);
+        if (xo) p.translate(headX, headY); else p.translate(300 + sway * 0.6f, 248 + q[NOD] + breath * 0.6f + bob);
+        if (xo) p.rotate(headR); else p.rotate(q[TILT] + sway * 0.5f);
         p.scale(1.18f);
-        String[] hair = lk.hair == 'a' ? HAIR_A : lk.hair == 'b' ? HAIR_B : HAIR_C;
+        Look hl = look; // (the hair is always his own look's)
+        String[] hair = hl.hair == 'a' ? HAIR_A : hl.hair == 'b' ? HAIR_B : HAIR_C;
         path(p, hair[0]); p.fill(0xFF120C09);
         path(p, EAR_L); p.fill(sk.base); p.stroke(sk.line, 2);
         path(p, EAR_R); p.fill(sk.dark); p.stroke(sk.line, 2);
         path(p, EAR_IN); p.stroke(alpha(sk.line, 0.55f), 2);
-        path(p, FACE); p.fillLinear(-115, -154, 115, -96, new int[]{sk.light, sk.base, sk.dark}, new float[]{0, 0.55f, 1}); p.stroke(alpha(sk.line, 0.55f), 2.2f);
+        path(p, FACE); p.fillLinear(-115, -154, 115, -96, sk.faceG, FACE_AT); p.stroke(alpha(sk.line, 0.55f), 2.2f);
         path(p, FACE); p.strokeLinear(-115, 0, 115, 0, RIM, RIM_AT, 3.2f);
         p.begin(); p.addOval(-46, 18, 20, 5); p.addOval(46, 18, 20, 5); p.fill(alpha(sk.dark, 0.1f));
         path(p, JAW_SH); p.fill(alpha(sk.dark, 0.35f));
@@ -381,8 +483,8 @@ final class BodyRig {
         path(p, NOSE_TIP); p.stroke(alpha(sk.dark, 0.55f), 2.4f);
         p.begin(); p.addOval(1, 44, 6, 4); p.fill(0x2EFFFFFF);
         path(p, NOSTRIL); p.stroke(alpha(sk.line, 0.75f), 2.4f);
-        eye(p, -46, -1, oL, shL, q, sk);
-        eye(p, 46, 1, oR, shR, q, sk);
+        eye(p, -46, -1, oL, shL, q, sk, cross);
+        eye(p, 46, 1, oR, shR, q, sk, cross);
         brow(p, -46, -1, q[BROW], q[BROW_ANG], q[BROW_L]); p.fill(0xFF1E1612);
         brow(p, 46, 1, q[BROW], q[BROW_ANG], q[BROW_R]); p.fill(0xFF1E1612);
         mouth(p, q, sk);
@@ -393,7 +495,9 @@ final class BodyRig {
         path(p, hair[3]); p.stroke(0x994A3A30, 5);
         if (q[TEAR] > 0.3f) { path(p, "M -52 18 C -58 30 -60 38 -54 42 C -48 44 -44 38 -48 30 Z"); p.fill(0xFF9FD3F5); p.stroke(0xFF5FA8D8, 1.5f); }
         if (q[SWEAT] > 0.3f) { path(p, "M 92 -70 C 84 -56 82 -46 90 -42 C 98 -40 102 -48 96 -60 Z"); p.fill(0xFFBFE3FA); p.stroke(0xFF6CB2DE, 1.5f); }
+        if (x != null) x.draw(p, IdlePlay.HEAD); // (hats: in the head's own units)
         p.restore();
+        if (x != null) x.draw(p, IdlePlay.MID); // (things held: behind the fingers)
 
         // ---- forearms and hands (in front)
         arm(p, aR, hR, 1, lk, sk, wR[1] > 760);
@@ -405,6 +509,7 @@ final class BodyRig {
             p.text("z", 430, 150 - ph * 40, 40, alpha(0xFF8EC9FF, 1 - ph));
             p.text("z", 462, 112 - ph * 40, 30, alpha(0xFF8EC9FF, (1 - ph) * 0.8f));
         }
+        if (x != null) x.draw(p, IdlePlay.FRONT);
     }
 
     private void clothes(Pen p, Look lk) {
@@ -423,6 +528,8 @@ final class BodyRig {
             path(p, "M 300 474 L 300 640"); p.stroke(lk.jacketDk, 2.4f);
             path(p, "M 288 474 L 288 640 M 312 474 L 312 640 M 250 470 C 272 484 328 484 350 470"); p.stroke(lk.trim, 2.6f);
             p.begin(); p.addCircle(300, 500, 3.6f); p.addCircle(300, 540, 3.6f); p.addCircle(300, 580, 3.6f); p.fill(lk.jacketDk);
+        } else if (lk == LOOK_KNIT) {
+            // the sweater's knit pattern and muffler: IdlePlay (its BODY layer)
         } else {
             path(p, "M 236 466 C 260 474 340 474 364 466 L 344 720 L 256 720 Z"); p.fill(lk.shirt); p.stroke(lk.shirtDk, 2);
             path(p, "M 236 466 L 256 720 L 246 720 L 226 474 Z M 364 466 L 344 720 L 354 720 L 374 474 Z"); p.fill(lk.jacketHi); p.stroke(lk.jacketDk, 2.4f);
@@ -431,7 +538,7 @@ final class BodyRig {
         }
     }
 
-    private static void eye(Pen p, float cx, int side, float open, String shape, float[] q, Skin sk) {
+    private static void eye(Pen p, float cx, int side, float open, String shape, float[] q, Skin sk, float cross) {
         float hw = 26, oc = cx + side * hw, ic = cx - side * hw;
         if ("happy".equals(shape)) {
             p.begin(); p.moveTo(ic, 4); p.quadTo(cx, -16, oc, 2); p.stroke(0xFF2A1912, 4);
@@ -451,6 +558,7 @@ final class BodyRig {
         p.save();
         p.clip();
         float ix = cx + q[LOOK_X] * 8, iy = -3 + q[LOOK_Y] * 6 + (open > 1 ? 0 : (1 - open) * 5), hs = 1 + q[SPARKLE] * 0.5f;
+        if (cross != 0) ix -= side * cross * 8; // (each eye towards the nose)
         p.begin(); p.addCircle(ix, iy, 16.5f); p.fillRadial(ix - 1.6f, iy - 3.3f, 9.9f * 2, IRIS, IRIS_AT);
         p.begin(); p.addCircle(ix, iy, 15.7f); p.stroke(0xFF24140A, 1.8f);
         p.begin(); p.addCircle(ix, iy, 7.8f + (open > 1.15f ? 1.2f : 0)); p.fill(0xFF120A06);
@@ -520,17 +628,19 @@ final class BodyRig {
     }
 
     // ---- arms
-    private static float[][] ik(float[] S, float[] W, boolean down, boolean right) {
+    /** The arm's joints {shoulder, elbow, wrist} into out (out[0] is the shoulder; elbow and wrist are written). */
+    private float[][] ik(float[] S, float[] W, boolean down, boolean right, float[][] out) {
         float dx = W[0] - S[0], dy = W[1] - S[1], d = (float) Math.sqrt(dx * dx + dy * dy);
         float maxd = L1 + L2 - 1, mind = Math.abs(L1 - L2) + 1, dd = clamp(d, mind, maxd);
         double th = Math.atan2(dy, dx), ph = Math.acos(clamp((L1 * L1 + dd * dd - L2 * L2) / (2 * L1 * dd), -1, 1));
-        float[] e1 = {S[0] + L1 * (float) Math.cos(th + ph), S[1] + L1 * (float) Math.sin(th + ph)};
-        float[] e2 = {S[0] + L1 * (float) Math.cos(th - ph), S[1] + L1 * (float) Math.sin(th - ph)};
+        e1[0] = S[0] + L1 * (float) Math.cos(th + ph); e1[1] = S[1] + L1 * (float) Math.sin(th + ph);
+        e2[0] = S[0] + L1 * (float) Math.cos(th - ph); e2[1] = S[1] + L1 * (float) Math.sin(th - ph);
         float[] E = down ? (e1[1] > e2[1] ? e1 : e2) : right ? (e1[0] < e2[0] ? e1 : e2) : (e1[0] > e2[0] ? e1 : e2);
-        float[] Wf;
-        if (d >= mind && d <= maxd) Wf = new float[]{W[0], W[1]};
-        else { double an = Math.atan2(W[1] - E[1], W[0] - E[0]); Wf = new float[]{E[0] + L2 * (float) Math.cos(an), E[1] + L2 * (float) Math.sin(an)}; }
-        return new float[][]{S, E, Wf};
+        float[] Eo = out[1], Wf = out[2];
+        Eo[0] = E[0]; Eo[1] = E[1];
+        if (d >= mind && d <= maxd) { Wf[0] = W[0]; Wf[1] = W[1]; }
+        else { double an = Math.atan2(W[1] - E[1], W[0] - E[0]); Wf[0] = E[0] + L2 * (float) Math.cos(an); Wf[1] = E[1] + L2 * (float) Math.sin(an); }
+        return out;
     }
 
     private void arm(Pen p, float[][] a, Hand h, int sx, Look lk, Skin sk, boolean rest) {
@@ -539,10 +649,10 @@ final class BodyRig {
         float dx = Wr[0] - E[0], dy = Wr[1] - E[1], L = (float) Math.sqrt(dx * dx + dy * dy);
         if (L < 1) L = 1;
         tube(p, E, Wr, 29, 25); p.fill(lk.jacket); p.stroke(lk.jacketDk, 3);
-        band(p, new float[]{Wr[0] - dx / L * 18, Wr[1] - dy / L * 18}, new float[]{Wr[0] - dx / L * 4, Wr[1] - dy / L * 4}, 26);
+        band(p, Wr[0] - dx / L * 18, Wr[1] - dy / L * 18, Wr[0] - dx / L * 4, Wr[1] - dy / L * 4, 26);
         p.fill(lk.cuff); p.stroke(lk.jacketDk, 2);
         if ("rest".equals(h.s)) return;
-        float[][] caps = caps(h.s, sx);
+        float[][] caps = capsOf(h.s, sx);
         float an = (float) Math.toRadians(h.a), c = (float) Math.cos(an), s = (float) Math.sin(an);
         // outlines first (palm + fingers), then the skin, then the creases
         p.save(); p.translate(Wr[0], Wr[1]); p.rotate(h.a); palm(p, h.s, sx); p.stroke(sk.line, 3.6f); p.restore();
@@ -553,9 +663,9 @@ final class BodyRig {
     }
 
     private static void capTube(Pen p, float[] k, float[] W, float c, float s, float r) {
-        float[] A = {W[0] + k[0] * c - k[1] * s, W[1] + k[0] * s + k[1] * c};
-        float[] B = {W[0] + k[2] * c - k[3] * s, W[1] + k[2] * s + k[3] * c};
-        tube(p, A, B, r, r);
+        float ax = W[0] + k[0] * c - k[1] * s, ay = W[1] + k[0] * s + k[1] * c;
+        float bx = W[0] + k[2] * c - k[3] * s, by = W[1] + k[2] * s + k[3] * c;
+        tube(p, ax, ay, bx, by, r, r);
     }
 
     /** Fingers and thumb as capsules {x1, y1, x2, y2, r} in hand units (wrist at 0,0, fingers up). */
@@ -566,17 +676,29 @@ final class BodyRig {
             case "thumb": c = new float[][]{{10, -70, 12, -116, 9.5f}}; break;
             case "point": c = new float[][]{{12, -58, 14, -112, 7.2f}, {-16, -38, 10, -32, 7.6f}}; break;
             case "side": c = new float[][]{{8, -22, 22, -50, 7}}; break;
+            case "hold": c = new float[][]{{16, -30, -6, -52, 8.4f}}; break; // (a fist round a handle: the thumb across)
             default: c = new float[0][];
         }
         for (float[] k : c) { k[0] *= sx; k[2] *= sx; }
         return c;
     }
 
+    // caps(shape, sx) made once per shape and side
+    private static final java.util.HashMap<String, float[][]> CAPS_R = new java.util.HashMap<>(), CAPS_L = new java.util.HashMap<>();
+    private static float[][] capsOf(String shape, int sx) {
+        java.util.HashMap<String, float[][]> m = sx > 0 ? CAPS_R : CAPS_L;
+        synchronized (m) {
+            float[][] c = m.get(shape);
+            if (c == null) m.put(shape, c = caps(shape, sx));
+            return c;
+        }
+    }
+
     private static void palm(Pen p, String shape, int sx) {
         p.begin();
         switch (shape) {
             case "open": p.moveTo(-20 * sx, 2); p.cubicTo(-25 * sx, -16, -28 * sx, -36, -26 * sx, -54); p.lineTo(24 * sx, -54); p.cubicTo(26 * sx, -36, 25 * sx, -14, 20 * sx, 2); break;
-            case "thumb": p.moveTo(-24 * sx, -4); p.cubicTo(-29 * sx, -24, -29 * sx, -58, -24 * sx, -74); p.cubicTo(-14 * sx, -82, 14 * sx, -82, 24 * sx, -72); p.cubicTo(29 * sx, -54, 29 * sx, -22, 22 * sx, -4); break;
+            case "thumb": case "hold": p.moveTo(-24 * sx, -4); p.cubicTo(-29 * sx, -24, -29 * sx, -58, -24 * sx, -74); p.cubicTo(-14 * sx, -82, 14 * sx, -82, 24 * sx, -72); p.cubicTo(29 * sx, -54, 29 * sx, -22, 22 * sx, -4); break;
             case "point": p.moveTo(-22 * sx, -2); p.cubicTo(-27 * sx, -20, -27 * sx, -46, -20 * sx, -60); p.cubicTo(-8 * sx, -66, 14 * sx, -66, 22 * sx, -56); p.cubicTo(27 * sx, -40, 26 * sx, -18, 20 * sx, -2); break;
             case "side": p.moveTo(-9 * sx, 2); p.cubicTo(-14 * sx, -30, -15 * sx, -72, -9 * sx, -100); p.cubicTo(-5 * sx, -112, 7 * sx, -112, 10 * sx, -100); p.cubicTo(15 * sx, -72, 15 * sx, -30, 12 * sx, 2); break;
             default: return;
@@ -598,30 +720,36 @@ final class BodyRig {
             case "side":
                 p.moveTo(-3 * sx, -62); p.lineTo(-3 * sx, -104); p.moveTo(3 * sx, -64); p.lineTo(3 * sx, -104);
                 p.moveTo(-8 * sx, -60); p.quadTo(-2 * sx, -56, 8 * sx, -60); break;
+            case "hold": // (the curled fingers)
+                p.moveTo(-25 * sx, -60); p.quadTo(-14 * sx, -57, -4 * sx, -61);
+                p.moveTo(-26 * sx, -44); p.quadTo(-14 * sx, -41, -2 * sx, -45);
+                p.moveTo(-25 * sx, -28); p.quadTo(-14 * sx, -25, -3 * sx, -29); break;
             default: break;
         }
     }
 
-    private static void band(Pen p, float[] a, float[] b, float r) {
-        float dx = b[0] - a[0], dy = b[1] - a[1], L = (float) Math.sqrt(dx * dx + dy * dy);
+    private static void band(Pen p, float ax, float ay, float bx, float by, float r) {
+        float dx = bx - ax, dy = by - ay, L = (float) Math.sqrt(dx * dx + dy * dy);
         if (L < 1e-3f) L = 1;
         float nx = -dy / L * r, ny = dx / L * r;
-        p.begin(); p.moveTo(a[0] + nx, a[1] + ny); p.lineTo(b[0] + nx, b[1] + ny); p.lineTo(b[0] - nx, b[1] - ny); p.lineTo(a[0] - nx, a[1] - ny); p.close();
+        p.begin(); p.moveTo(ax + nx, ay + ny); p.lineTo(bx + nx, by + ny); p.lineTo(bx - nx, by - ny); p.lineTo(ax - nx, ay - ny); p.close();
     }
 
     /** A capsule from a to b (radius ra at a, rb at b). */
-    private static void tube(Pen p, float[] a, float[] b, float ra, float rb) {
-        float dx = b[0] - a[0], dy = b[1] - a[1], L = (float) Math.sqrt(dx * dx + dy * dy);
+    private static void tube(Pen p, float[] a, float[] b, float ra, float rb) { tube(p, a[0], a[1], b[0], b[1], ra, rb); }
+
+    static void tube(Pen p, float ax, float ay, float bx, float by, float ra, float rb) {
+        float dx = bx - ax, dy = by - ay, L = (float) Math.sqrt(dx * dx + dy * dy);
         if (L < 1e-3f) L = 1;
         float nx = -dy / L, ny = dx / L, ux = dx / L, uy = dy / L, k = 0.552f;
         p.begin();
-        p.moveTo(a[0] + nx * ra, a[1] + ny * ra);
-        p.lineTo(b[0] + nx * rb, b[1] + ny * rb);
-        p.cubicTo(b[0] + nx * rb + ux * rb * k, b[1] + ny * rb + uy * rb * k, b[0] + ux * rb + nx * rb * k, b[1] + uy * rb + ny * rb * k, b[0] + ux * rb, b[1] + uy * rb);
-        p.cubicTo(b[0] + ux * rb - nx * rb * k, b[1] + uy * rb - ny * rb * k, b[0] - nx * rb + ux * rb * k, b[1] - ny * rb + uy * rb * k, b[0] - nx * rb, b[1] - ny * rb);
-        p.lineTo(a[0] - nx * ra, a[1] - ny * ra);
-        p.cubicTo(a[0] - nx * ra - ux * ra * k, a[1] - ny * ra - uy * ra * k, a[0] - ux * ra - nx * ra * k, a[1] - uy * ra - ny * ra * k, a[0] - ux * ra, a[1] - uy * ra);
-        p.cubicTo(a[0] - ux * ra + nx * ra * k, a[1] - uy * ra + ny * ra * k, a[0] + nx * ra - ux * ra * k, a[1] + ny * ra - uy * ra * k, a[0] + nx * ra, a[1] + ny * ra);
+        p.moveTo(ax + nx * ra, ay + ny * ra);
+        p.lineTo(bx + nx * rb, by + ny * rb);
+        p.cubicTo(bx + nx * rb + ux * rb * k, by + ny * rb + uy * rb * k, bx + ux * rb + nx * rb * k, by + uy * rb + ny * rb * k, bx + ux * rb, by + uy * rb);
+        p.cubicTo(bx + ux * rb - nx * rb * k, by + uy * rb - ny * rb * k, bx - nx * rb + ux * rb * k, by - ny * rb + uy * rb * k, bx - nx * rb, by - ny * rb);
+        p.lineTo(ax - nx * ra, ay - ny * ra);
+        p.cubicTo(ax - nx * ra - ux * ra * k, ay - ny * ra - uy * ra * k, ax - ux * ra - nx * ra * k, ay - uy * ra - ny * ra * k, ax - ux * ra, ay - uy * ra);
+        p.cubicTo(ax - ux * ra + nx * ra * k, ay - uy * ra + ny * ra * k, ax + nx * ra - ux * ra * k, ay + ny * ra - uy * ra * k, ax + nx * ra, ay + ny * ra);
         p.close();
     }
 
@@ -721,9 +849,10 @@ final class BodyRig {
         Goal g = goal(mood);
         System.arraycopy(g.v, 0, cur, 0, N);
         eyeL = g.eyeL; eyeR = g.eyeR;
-        Arm[] a = targets(gest != null ? gest : g.gesture, 1.2);
-        wR[0] = a[0].x; wR[1] = a[0].y; hR.s = a[0].s; hR.a = a[0].a; hR.down = a[0].down;
-        wL[0] = a[1].x; wL[1] = a[1].y; hL.s = a[1].s; hL.a = a[1].a; hL.down = a[1].down;
+        Arm aR = tgR, aL = tgL;
+        targets(gest != null ? gest : g.gesture, 1.2, aR, aL);
+        wR[0] = aR.x; wR[1] = aR.y; hR.s = aR.s; hR.a = aR.a; hR.down = aR.down;
+        wL[0] = aL.x; wL[1] = aL.y; hL.s = aL.s; hL.a = aL.a; hL.down = aL.down;
         t = 1.2; blink = -1; saccX = saccY = 0;
     }
 }
