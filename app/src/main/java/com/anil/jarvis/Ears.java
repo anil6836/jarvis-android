@@ -183,7 +183,9 @@ final class Ears implements ListenMic {
                 if (rec == null) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
             }
             post(() -> cb.opened());
-            Talk talk = p.homeMode() ? new Talk(longTalk ? 60_000 : 20_000, longTalk ? 2400 : 1700) // (the home tablet: she pauses longer)
+            // the home tablet: she pauses longer between words; one question at most 15 s; a TV / AC / fan in the room never
+            // keeps it listening (only sound near her own loudness counts as her voice: Anil, 24 Oct "వింటూనే ఉంది")
+            Talk talk = p.homeMode() ? new Talk(longTalk ? 60_000 : 15_000, longTalk ? 2400 : 1700).nearVoice()
                     : new Talk(longTalk ? 60_000 : 20_000);
             short[] f = new short[FRAME];
             long openedAt = SystemClock.elapsedRealtime();
@@ -446,6 +448,13 @@ final class Ears implements ListenMic {
             this.endSilenceMs = endSilenceMs;
         }
 
+        /** Only sound within NEAR_DB of the loudest of this talk is voice (the speaker close to the tablet, not the room). */
+        Talk nearVoice() { near = true; return this; }
+
+        private boolean near;
+        private float peakDb = -90f;
+        static final float NEAR_DB = 20f;
+
         long voicedMs() { return voicedMs; }
 
         /** When his voice was last heard. */
@@ -502,6 +511,7 @@ final class Ears implements ListenMic {
                     lastVoiceAt = now;
                     voicedMs = voicedRecent;
                     talkFloor = floor;
+                    peakDb = db;
                     for (short[] s : pre) write(s);
                     pre.clear();
                 }
@@ -511,6 +521,10 @@ final class Ears implements ListenMic {
             // the quiet level during the talk: the gaps between words (quickly down, slowly up: a louder road or wind)
             if (db < talkFloor) talkFloor = talkFloor * 0.6f + db * 0.4f; else talkFloor += (db - talkFloor) * 0.012f;
             boolean voice = db > Math.max(Math.max(floor, talkFloor) + 7f, -55f);
+            if (near) {
+                if (voice && db > peakDb) peakDb = db;
+                if (db < peakDb - NEAR_DB) voice = false; // (far softer than her: the room, a TV across the hall)
+            }
             if (voice) { lastVoiceAt = now; voicedMs += 20; }
             if (now - lastVoiceAt >= endSilenceMs) {
                 if (!enough()) { // only a noise: forget it and wait on

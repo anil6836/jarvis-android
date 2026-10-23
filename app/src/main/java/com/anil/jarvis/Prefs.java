@@ -357,8 +357,9 @@ final class Prefs {
     boolean micOnce() { return sp.getBoolean("mic_once", true); }
     int listenWindowSeconds() {
         int v = sp.getInt("listen_window", 8);
-        // the home tablet: అమ్మగారు takes a moment to start after "Jarvis" — never less than 12 s there (Anil, 24 Oct)
-        if (homeMode()) return Math.max(v, 12);
+        // the home tablet: అమ్మగారు takes a moment to start after "Jarvis" — never less than 12 s with Google's voice typing
+        // (it closes early and opens again); with Jarvis's own mic, which waits silently, 8 s (12 s felt too long: Anil, 24 Oct)
+        if (homeMode()) return Math.max(v, Ears.chosen(this) ? 8 : 12);
         // 5 s (the old default) was too short on some phones: 8 s unless he set it himself in this version's settings
         return sp.getBoolean("listen_window_set", false) ? v : Math.max(v, 8);
     }
