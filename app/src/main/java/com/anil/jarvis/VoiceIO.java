@@ -1311,14 +1311,18 @@ final class VoiceIO {
             offlineTried = true;
         }
         // A pause of ~1 s ends his sentence (where the recognizer decides that; with the mic held open, checkEnd does).
-        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
-        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
+        // The home tablet: అమ్మగారు speaks slowly and pauses between words — a pause of ~2.5 s there.
+        slowTalk = prefs.homeMode();
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, slowTalk ? 2000L : 900L);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, slowTalk ? 2500L : 1100L);
         lastIntent = i;
         listening = true;
         VoiceIO other = holder;
         holder = this;
         if (other != null && other != this && other.listening && !other.shut) other.micTaken(); // (after listening = true here)
-        once = prefs.micOnce();
+        // the home tablet: the mic is held open for the whole window and opened again if the tablet closes it before she
+        // speaks (mic once there ended the listen as soon as the tablet's voice typing gave up: Anil, 24 Oct)
+        once = prefs.micOnce() && !prefs.homeMode();
         if (Ears.chosen(prefs) && !offlineNow) { listenEars(dictation); return; } // Jarvis's own mic: no beeps
         if (once && musicDown == null) musicDown = Duck.hold(ctx); // songs go quieter while the phone listens (not muted)
         if (offlineNow) {
@@ -1589,20 +1593,30 @@ final class VoiceIO {
      * for longer). Without words: only on a phone that shows no words while he speaks, after one stretch of his voice
      * and quiet since (a noise or the road alone does not end it).
      */
-    static boolean finished(long now, long wordsAt, Level l, boolean wordsExpected) {
+    static boolean finished(long now, long wordsAt, Level l, boolean wordsExpected) { return finished(now, wordsAt, l, wordsExpected, false); }
+
+    /** slow: the home tablet (అమ్మగారు pauses between words): each wait a good deal longer. */
+    static boolean finished(long now, long wordsAt, Level l, boolean wordsExpected, boolean slow) {
         if (wordsAt > 0) {
             long noWords = now - wordsAt;
-            if (!l.useful()) return noWords >= DONE_BLIND_MS;
-            return (noWords >= DONE_WORDS_MS && now - l.loudAt >= DONE_QUIET_MS) || noWords >= DONE_NOISY_MS;
+            if (!l.useful()) return noWords >= (slow ? SLOW_BLIND_MS : DONE_BLIND_MS);
+            return (noWords >= (slow ? SLOW_WORDS_MS : DONE_WORDS_MS) && now - l.loudAt >= (slow ? SLOW_QUIET_MS : DONE_QUIET_MS))
+                    || noWords >= (slow ? SLOW_NOISY_MS : DONE_NOISY_MS);
         }
         if (wordsExpected || !l.useful()) return false;
-        return l.longestRunMs >= 700 && now - l.loudAt >= DONE_SOUND_MS;
+        return l.longestRunMs >= 700 && now - l.loudAt >= (slow ? SLOW_SOUND_MS : DONE_SOUND_MS);
     }
+
+    /** The home tablet's waits (see finished). */
+    private static final long SLOW_WORDS_MS = 2300, SLOW_QUIET_MS = 1300, SLOW_NOISY_MS = 5500, SLOW_BLIND_MS = 3800, SLOW_SOUND_MS = 2200;
+
+    /** This listen is on the home tablet (slower talk: longer pauses before it ends). */
+    private boolean slowTalk;
 
     /** The mic is held open: has he finished? Then the recognizer is asked for its result now, not at the window's end. */
     private void checkEnd() {
         if (shut || !listening || !recBusy || !holdOpen || ending || wrapUp || sr == null) return;
-        if (!finished(android.os.SystemClock.elapsedRealtime(), wordsAt, level, givesWords)) {
+        if (!finished(android.os.SystemClock.elapsedRealtime(), wordsAt, level, givesWords, slowTalk)) {
             main.postDelayed(endCheck, 150);
             return;
         }

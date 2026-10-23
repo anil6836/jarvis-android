@@ -183,7 +183,8 @@ final class Ears implements ListenMic {
                 if (rec == null) { fail(SpeechRecognizer.ERROR_AUDIO); return; }
             }
             post(() -> cb.opened());
-            Talk talk = new Talk(longTalk ? 60_000 : 20_000);
+            Talk talk = p.homeMode() ? new Talk(longTalk ? 60_000 : 20_000, longTalk ? 2400 : 1700) // (the home tablet: she pauses longer)
+                    : new Talk(longTalk ? 60_000 : 20_000);
             short[] f = new short[FRAME];
             long openedAt = SystemClock.elapsedRealtime();
             long lastLevel = 0, zeroSince = -1, frames = 0;
@@ -436,8 +437,13 @@ final class Ears implements ListenMic {
         Talk() { this(MAX_TALK_MS); }
 
         Talk(long maxTalkMs) {
+            this(maxTalkMs, maxTalkMs > MAX_TALK_MS ? LONG_END_SILENCE_MS : END_SILENCE_MS);
+        }
+
+        /** endSilenceMs: quiet this long ends the talk (the home tablet waits longer: అమ్మగారు pauses between words). */
+        Talk(long maxTalkMs, long endSilenceMs) {
             this.maxTalkMs = maxTalkMs;
-            endSilenceMs = maxTalkMs > MAX_TALK_MS ? LONG_END_SILENCE_MS : END_SILENCE_MS;
+            this.endSilenceMs = endSilenceMs;
         }
 
         long voicedMs() { return voicedMs; }
