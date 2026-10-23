@@ -196,7 +196,7 @@ final class VoiceIO {
                 if (shut || !("j" + utterance).equals(id)) return; // (a late start of a replaced / stopped answer: not over a listen)
                 speaking = true; turnSounded(); Duck.on(ctx); watchBargeIn(); l.onSpeakStart(); }); }
             @Override public void onDone(String id) { main.post(() -> finishSpeaking(id)); }
-            @Override public void onError(String id) { main.post(() -> finishSpeaking(id)); }
+            @Override public void onError(String id) { main.post(() -> { if (("j" + utterance).equals(id)) lastCut = true; finishSpeaking(id); }); }
             @Override public void onStop(String id, boolean interrupted) { main.post(() -> finishSpeaking(id)); }
             @Override public void onRangeStart(String id, int start, int end, int frame) {
                 if (!("j" + utterance).equals(id)) return;
@@ -220,6 +220,14 @@ final class VoiceIO {
             speakGoogle(p, pendingRate);
         }
     }
+
+    /**
+     * The last speech did not get said whole (the voice failed part-way, got stuck, cut it, or the text was over the
+     * voice's limit). Read right after onSpeakDone (📬: such a part is not "read"); cleared by the next speak.
+     */
+    private volatile boolean lastCut;
+
+    boolean lastCut() { return lastCut; }
 
     private void finishSpeaking(String id) {
         if (!("j" + utterance).equals(id)) return; // an older utterance that was replaced
@@ -351,6 +359,7 @@ final class VoiceIO {
 
     private void speak(String text, float rate, boolean early) {
         if (shut || text == null || text.trim().isEmpty()) return;
+        lastCut = false;
         main.removeCallbacks(openTimeout);
         open = false;
         voiceRun++; // (⚡ B: an earlier answer's rest, still on its way to the voice, is not for this one)
@@ -378,10 +387,11 @@ final class VoiceIO {
         stopGoogle();
         naturalNow = true;
         String clean = text.replaceAll("[*_#`>]", "").replaceAll("https?://\\S+", "").trim();
-        if (clean.length() > 3500) clean = clean.substring(0, 3500);
+        if (clean.length() > 3500) { clean = clean.substring(0, 3500); lastCut = true; }
         speaking = true;
         final String shown = clean;
-        Spoken.Out spoken = Spoken.of(clean).cut(3900); // numbers as Telugu words ("₹1,200" -> "వెయ్యి రెండు వందల రూపాయలు")
+        Spoken.Out whole = Spoken.of(clean), spoken = whole.cut(3900); // numbers as Telugu words ("₹1,200" -> "వెయ్యి రెండు వందల రూపాయలు")
+        if (spoken != whole) lastCut = true;
         final String said = spoken.text;
         naturalShown = shown;
         naturalSaid = spoken;
@@ -447,7 +457,7 @@ final class VoiceIO {
                 if (holdPhoneVoice(naturalOffset, rate)) return; // (⏸ meanwhile, e.g. a call: nothing said now; ▶ carries on)
                 phoneVoiceFrom(naturalOffset, rate); // (from where this try began: all of it, as before, on a first try)
             }
-            @Override public void onCut(String message) { naturalCut = message; }
+            @Override public void onCut(String message) { naturalCut = message; lastCut = true; }
             @Override public void onAudible(long at) { turnAudible(at); }
             @Override public void onStalled(String why, long heard) { voiceStalled(why, heard, key, rate); }
         };
@@ -614,7 +624,7 @@ final class VoiceIO {
     private void speakGoogleFrom(String full, int from, float rate, boolean add) {
         String clean = full.substring(from);
         int max = TextToSpeech.getMaxSpeechInputLength() - 10;
-        if (clean.length() > max) clean = clean.substring(0, max);
+        if (clean.length() > max) { clean = clean.substring(0, max); lastCut = true; }
         try {
             tts.setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(callVoice() ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_ASSISTANT) // (the AI assistant volume)
@@ -644,6 +654,7 @@ final class VoiceIO {
         main.postDelayed(() -> {
             if (shut || utterance != u || !speaking || naturalNow || paused || open) return; // (finished, replaced, paused, ⚡ B waiting: not stuck)
             voiceStuckAt = System.currentTimeMillis();
+            lastCut = true;
             utterance++; // (a late "done" from the engine is for nothing now)
             try { tts.stop(); } catch (Exception ignored) {}
             speaking = false;
@@ -853,6 +864,7 @@ final class VoiceIO {
     /** Speech could not start: end this turn as if it had been spoken, so the screen doesn't hang. */
     private void failSpeak() {
         pending = null;
+        lastCut = true;
         speaking = true;
         final int u = ++utterance;
         main.post(() -> {

@@ -248,10 +248,10 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         Part(String app, String from, String say, java.util.List<String> texts) { this.app = app; this.from = from; this.say = say; this.texts = texts; }
     }
 
-    /** At most this much in one utterance (the voices cut long text: a part is only ever said whole). */
-    private static final int PART_MAX = 2200;
     private final java.util.List<Part> queue = new java.util.ArrayList<>();
     private int laterIdx;
+    /** Talked over during "అన్నీ చదువు" (the same part again): at most twice. */
+    private int overTalk;
     /** The voice really began this utterance (a speech that never started is not "read"). */
     private boolean spokeStarted;
 
@@ -266,23 +266,66 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         }
     }
 
+    /**
+     * One chat's messages in parts that each fit one breath of the voice: measured as they are SAID (numbers become
+     * Telugu words, several times longer). A message too long alone goes in pieces and leaves 📬 with its last piece.
+     */
     private void addParts(String app, String from, boolean group, java.util.List<String> ts) {
         int n = ts.size(), i = 0;
+        String head1 = from + (group ? " గ్రూప్‌లో " : " నుంచి ") + app + " లో " + (n == 1 ? "మెసేజ్" : n + " మెసేజ్‌లు") + ":\n";
+        String headN = from + " (కొనసాగింపు):\n";
         boolean first = true;
         while (i < n) {
-            StringBuilder b = new StringBuilder();
-            b.append(from).append(group ? " గ్రూప్‌లో " : " నుంచి ").append(app).append(" లో ")
-                    .append(first ? (n == 1 ? "మెసేజ్" : n + " మెసేజ్‌లు") : "(కొనసాగింపు)").append(":\n");
+            String head = first ? head1 : headN;
+            first = false;
+            String t = ts.get(i);
+            if (!fits(head + "• " + t + "\n")) {
+                java.util.List<String> pcs = pieces(head1.length() > headN.length() ? head1 : headN, t);
+                for (int k = 0; k < pcs.size(); k++)
+                    queue.add(new Part(app, from, ((k == 0 ? head : headN) + "• " + pcs.get(k)).trim(),
+                            k == pcs.size() - 1 ? java.util.Collections.singletonList(t) : java.util.Collections.emptyList()));
+                i++;
+                continue;
+            }
+            StringBuilder b = new StringBuilder(head);
             java.util.List<String> part = new java.util.ArrayList<>();
-            while (i < n && (part.isEmpty() || b.length() + ts.get(i).length() + 3 <= PART_MAX)) {
-                String t = ts.get(i);
-                b.append("• ").append(t.length() > PART_MAX ? t.substring(0, PART_MAX) + "…" : t).append('\n');
-                part.add(t);
+            while (i < n) {
+                String line = "• " + ts.get(i) + "\n";
+                if (!part.isEmpty() && !fits(b + line)) break;
+                b.append(line);
+                part.add(ts.get(i));
                 i++;
             }
             queue.add(new Part(app, from, b.toString().trim(), part));
-            first = false;
         }
+    }
+
+    /** At most this much said in one go (the voices' limits are 3500 shown / 3900 said / the phone's own 4000). */
+    private static final int SAY_MAX = 3300, SHOW_MAX = 3000;
+
+    private static boolean fits(String s) {
+        return s.length() <= SHOW_MAX && Spoken.of(Otp.spoken(s)).text.length() <= SAY_MAX;
+    }
+
+    /** A message too long for one breath, cut at spaces into pieces that each fit (with a heading). */
+    private static java.util.List<String> pieces(String head, String t) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        int start = 0;
+        while (start < t.length()) {
+            int end = Math.min(t.length(), start + SHOW_MAX - head.length() - 4);
+            int said = Spoken.of(Otp.spoken(head + "• " + t.substring(start, end))).text.length();
+            if (said > SAY_MAX) end = start + Math.max(100, (int) ((long) (end - start) * SAY_MAX / said * 9 / 10)); // (numbers said as words: a first guess)
+            while (end - start > 100 && !fits(head + "• " + t.substring(start, end))) end -= Math.max(50, (end - start) / 8);
+            if (end < t.length()) { // (at a space, if one is near)
+                int sp = t.lastIndexOf(' ', end);
+                if (sp > start + (end - start) / 2) end = sp;
+                if (end > start && Character.isHighSurrogate(t.charAt(end - 1))) end--;
+            }
+            if (end <= start) end = Math.min(t.length(), start + 1);
+            out.add(t.substring(start, end).trim());
+            start = end;
+        }
+        return out;
     }
 
     private static java.util.List<String> texts(org.json.JSONObject e) {
@@ -305,7 +348,11 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
 
     /** One part said whole: its texts out of 📬, then the next; a voice that never started: the rest stay. */
     private void laterItemDone() {
-        if (!spokeStarted) { finishSoon("చదవలేకపోయాను: మిగతావి 📬 లోనే ఉన్నాయి", 5000); return; }
+        if (!spokeStarted || voice.lastCut()) { // (never started, or the voice failed / got cut part-way: not "read")
+            card.status("");
+            finishSoon("పూర్తిగా చదవలేకపోయాను: మిగతావి 📬 లోనే ఉన్నాయి", 5000);
+            return;
+        }
         Part pt = queue.get(laterIdx);
         if (!pt.texts.isEmpty()) {
             if (m.laterAll) LaterMessages.consume(svc, pt.app, pt.from, pt.texts);
@@ -317,7 +364,11 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
     }
 
     /** 📬 stopped before the end (⏹, "చాలు", talked over): what wasn't said stays there. */
-    private boolean laterLeft() { return (m.laterAll || m.fromLater) && !queue.isEmpty() && laterIdx < queue.size(); }
+    private boolean laterLeft() {
+        if (!m.laterAll && !m.fromLater) return false;
+        if (queue.isEmpty()) return m.fromLater && outAlready.isEmpty(); // (a voice note stopped, a photo not described: still there)
+        return laterIdx < queue.size();
+    }
 
     /** "✓ చదివాను", or, 📬 stopped before the end, that the rest are still there. */
     private String doneLine() { return laterLeft() ? "⏹ ఆపాను: మిగతావి 📬 లోనే" : "✓ చదివాను"; }
@@ -731,7 +782,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
             case READING: // he spoke over the reading ("రిప్లై ఇవ్వు", "చాలు"…): the reading stops there
                 if (m.laterAll) { // 📬 all: a "no / later" ends (the rest stay); anything else: this part again
                     quiet();
-                    if (a == Words.NO || a == Words.LATER) { finishSoon("సరే: మిగతావి 📬 లోనే", 4000); speak("సరే."); return; }
+                    if (a == Words.NO || a == Words.LATER || ++overTalk > 2) { finishSoon("సరే: మిగతావి 📬 లోనే", 4000); speak("సరే."); return; } // (a TV in the room must not hold it for ever)
                     readLaterItem();
                     return;
                 }
@@ -784,7 +835,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         if (voice != null && voice.listening) voice.cancelListening();
         if (card.voiceOnly()) { // (no card to tap)
             if (step == DICTATE || step == CONFIRM) { // a reply was on its way: said that it wasn't sent; the chat waits under 📬
-                if (m.fromLater) LaterMessages.add(svc, m.app, m.from, m.pkg, m.nkey, m.id, m.texts, m.group, m.media, m.postedAt); // (read already: back, for the reply)
+                if (m.fromLater) LaterMessages.restore(svc, m.app, m.from, m.pkg, m.nkey, m.id, m.texts, m.group, m.media, m.postedAt); // (read already: back, for the reply)
                 reply = "";
                 step = DONE;
                 doneLater = true;
@@ -978,7 +1029,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
         switch (step) {
             case READING:
                 if ((m.laterAll || m.fromLater) && !queue.isEmpty()) { laterItemDone(); break; } // (📬: the next part)
-                if (spokeStarted) consumeLater(); // (📬 one chat's photo described in full)
+                if (spokeStarted && !voice.lastCut()) consumeLater(); // (📬 one chat's photo described / summed up in full)
                 afterReading();
                 break;
             case ASK:

@@ -189,10 +189,23 @@ final class LaterBox {
         return true;
     }
 
+    /** The rows as last drawn (what he sees). */
+    private List<JSONObject> shown = new java.util.ArrayList<>();
+
+    /** A row taken away: only the messages that row showed (one that came since stays, and the row comes back with it). */
+    private void drop(JSONObject e) {
+        java.util.List<String> ts = new java.util.ArrayList<>();
+        JSONArray t = e.optJSONArray("texts");
+        for (int i = 0; t != null && i < t.length(); i++) ts.add(t.optString(i));
+        if (ts.isEmpty()) LaterMessages.remove(svc, e.optString("app"), e.optString("from"));
+        else LaterMessages.consume(svc, e.optString("app"), e.optString("from"), ts);
+    }
+
     /** The rows as the list is now (⭐ / direct / his name first). */
     private void refresh() {
         if (gone) return;
         List<JSONObject> l = LaterMessages.sorted(svc);
+        shown = l;
         head.setText("📬 తర్వాత చదవాల్సినవి · " + l.size());
         overview.setText(LaterMessages.overview(svc));
         int ex = expiredShown += LaterMessages.takeExpired(svc); // (stays said while the list is up)
@@ -262,7 +275,7 @@ final class LaterBox {
             TopCard.toast(svc, quiet ? "🔔 " + from + ": మళ్ళీ కార్డ్‌లో చెబుతాను" : "🔕 " + from + ": ఇక కార్డ్ రాదు, నేరుగా 📬 లోకి");
             refresh();
         }));
-        r.addView(chip("🗑", () -> { LaterMessages.remove(svc, app, from); refresh(); }));
+        r.addView(chip("🗑", () -> { drop(e); refresh(); }));
 
         // a tap: read this chat; a swipe aside: it goes
         final float[] down = new float[2];
@@ -282,7 +295,7 @@ final class LaterBox {
                     float dx = ev.getRawX() - down[0], dy = ev.getRawY() - down[1];
                     if (Math.abs(dx) > dp(90)) {
                         v.animate().translationX(dx > 0 ? v.getWidth() : -v.getWidth()).alpha(0f).setDuration(160)
-                                .withEndAction(() -> { LaterMessages.remove(svc, app, from); refresh(); }).start();
+                                .withEndAction(() -> { drop(e); refresh(); }).start();
                         return true;
                     }
                     v.animate().translationX(0).setDuration(120).start();
@@ -324,7 +337,7 @@ final class LaterBox {
             main.postDelayed(() -> { clearArmed = false; if (!gone) clearAll.setText("🗑 అన్నీ తీసేయి"); }, 4000);
             return;
         }
-        LaterMessages.clear(svc);
+        for (JSONObject e : shown) drop(e); // (only what he saw: a message that came this moment stays)
         close();
     }
 

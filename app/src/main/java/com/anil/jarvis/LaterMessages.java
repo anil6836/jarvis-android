@@ -91,12 +91,23 @@ final class LaterMessages {
      * going away = read in its own app); media: "voice" / "audio" / "photo" / "video" for a single such message;
      * postedAt: when it came (to find that file).
      */
-    static synchronized void add(Context c, String app, String from, String pkg, String key, int id, List<String> texts, boolean group,
-                                 String media, long postedAt) {
+    static void add(Context c, String app, String from, String pkg, String key, int id, List<String> texts, boolean group,
+                    String media, long postedAt) {
+        add(c, app, from, pkg, key, id, texts, group, media, postedAt, false);
+    }
+
+    /** Texts already read going back into 📬 (the reply to them wasn't sent): only those not still there, in order. */
+    static void restore(Context c, String app, String from, String pkg, String key, int id, List<String> texts, boolean group,
+                        String media, long postedAt) {
+        add(c, app, from, pkg, key, id, texts, group, media, postedAt, true);
+    }
+
+    private static synchronized void add(Context c, String app, String from, String pkg, String key, int id, List<String> texts,
+                                         boolean group, String media, long postedAt, boolean restoring) {
         List<String> keep = new ArrayList<>();
         for (String t : texts) if (t != null && !Otp.has(t)) keep.add(t); // (a code: never kept; it is in the SMS app)
         if (keep.isEmpty()) return;
-        if (key != null && !key.isEmpty() && seenAlready(key)) return; // (he read it in its own app meanwhile)
+        if (!restoring && key != null && !key.isEmpty() && seenAlready(key)) return; // (he read it in its own app meanwhile)
         try {
             List<JSONObject> l = list(c);
             JSONObject hit = null;
@@ -107,23 +118,41 @@ final class LaterMessages {
                 l.add(hit);
             }
             JSONArray t = hit.getJSONArray("texts");
-            // A notification shown again (a restart, the app refreshing it) repeats what is here already: only texts
-            // beyond those count as new ("సరే" twice in a row stays twice), and a pure repeat changes nothing.
-            Map<String, Integer> had = new HashMap<>();
-            for (int i = 0; i < t.length(); i++) had.merge(t.optString(i), 1, Integer::sum);
-            List<String> fresh = new ArrayList<>();
-            for (String s : keep) {
-                Integer n = had.get(s);
-                if (n != null && n > 0) had.put(s, n - 1);
-                else fresh.add(s);
+            int before = t.length();
+            List<String> fresh = keep; // (every caller gives only messages that are new: "సరే" again is a new "సరే")
+            if (restoring) {
+                // texts read already, going back (a reply that wasn't sent): those still here stay as they are; the
+                // others come back in their own order, before the ones that came after them
+                List<String> waiting = new ArrayList<>();
+                for (int i = 0; i < t.length(); i++) waiting.add(t.optString(i));
+                List<String> merged = new ArrayList<>(), rest = new ArrayList<>(waiting);
+                fresh = new ArrayList<>();
+                for (String s : keep) {
+                    if (!rest.remove(s)) fresh.add(s);
+                    merged.add(s);
+                }
+                if (fresh.isEmpty()) return; // (all still here: nothing changes)
+                merged.addAll(rest);
+                t = new JSONArray();
+                for (String s : merged) t.put(s);
+                hit.put("texts", t);
+            } else {
+                for (String s : fresh) t.put(s);
             }
-            if (fresh.isEmpty()) {
-                if (t.length() == 0) l.remove(hit);
+            while (t.length() > 15) t.remove(0);
+            if (restoring) { // (as it was: not a new message)
+                if (!hit.has("t")) hit.put("t", now); // (back just now: its own time to wait, not one already gone)
+                if (!hit.has("posted")) hit.put("posted", postedAt > 0 ? postedAt : now);
+                if (pkg != null && !pkg.isEmpty() && !hit.has("pkg")) hit.put("pkg", pkg);
+                if (key != null && !key.isEmpty() && !hit.has("key")) hit.put("key", key);
+                if (!hit.has("id")) hit.put("id", id);
+                hit.put("group", group || hit.optBoolean("group"));
+                hit.put("media", before == 0 && t.length() == 1 && media != null ? media : "");
+                hit.put("vip", !from.isEmpty() && !hit.optBoolean("group") && CallWords.vip(from, CallCare.vipList(c)));
+                trim(c, l);
+                write(c, l);
                 return;
             }
-            int before = t.length();
-            for (String s : fresh) t.put(s);
-            while (t.length() > 15) t.remove(0);
             hit.put("id", id).put("t", now);
             if (pkg != null && !pkg.isEmpty()) hit.put("pkg", pkg);
             if (key != null && !key.isEmpty()) hit.put("key", key);
@@ -273,7 +302,7 @@ final class LaterMessages {
 
     /**
      * A chat's notification went with its group: read only when he swiped / tapped that group (its summary, within 2 s,
-     * either order); the app clearing the group: as the app clearing it (checked the same careful way).
+     * either order); the app clearing its whole group (opened, not each chat read): the chats stay.
      */
     static void groupChildGone(Context c, String pkg, String key) {
         if (key == null || key.isEmpty() || pkg == null) return;
@@ -286,7 +315,7 @@ final class LaterMessages {
             pendingClear.remove(key);
             Long at = summaryByHim.get(pkg);
             if (at != null && Math.abs(at - now) < 2000) seen(app, key);
-            else appCleared(app, pkg, key);
+            // else: the app cleared the whole group (its chat list was opened): not read — the chats stay
         }, 800);
     }
 

@@ -436,6 +436,45 @@ public class NotifyListener extends NotificationListenerService {
     /** Per chat: the newest message time already taken, and the last text (for apps that give no times). */
     private static final Map<String, Long> seenUpTo = new java.util.HashMap<>();
     private static final Map<String, String> seenText = new java.util.HashMap<>();
+    /**
+     * Both kept across restarts too (only times and a short fingerprint of the last line, never the text): a restart
+     * must not bring the old messages back as new (📬 would get them twice, and he would hear them again).
+     */
+    private static boolean seenLoaded;
+    private static final String SEEN_SP = "jarvis_seen_msgs";
+
+    private void loadSeen() {
+        if (seenLoaded) return;
+        seenLoaded = true;
+        try {
+            for (Map.Entry<String, ?> e : getSharedPreferences(SEEN_SP, MODE_PRIVATE).getAll().entrySet()) {
+                String k = e.getKey();
+                Object v = e.getValue();
+                if (k.startsWith("u:") && v instanceof Long) seenUpTo.put(k.substring(2), (Long) v);
+                else if (k.startsWith("t:") && v instanceof String) seenText.put(k.substring(2), (String) v);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void saveSeen(String key) {
+        try {
+            android.content.SharedPreferences.Editor ed = getSharedPreferences(SEEN_SP, MODE_PRIVATE).edit();
+            if (seenUpTo.size() > 300 || seenText.size() > 300) { // (old chats: start afresh, as before)
+                seenUpTo.clear();
+                seenText.clear();
+                ed.clear().apply();
+                return;
+            }
+            Long u = seenUpTo.get(key);
+            String t = seenText.get(key);
+            if (u != null) ed.putLong("u:" + key, u);
+            if (t != null) ed.putString("t:" + key, t);
+            ed.apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** A last line's fingerprint (its length and hash: enough to see "the same line again", nothing readable). */
+    private static String print(String s) { return s.length() + ":" + Integer.toHexString(s.hashCode()); }
     private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable dispatcher = this::dispatch;
     private long nextAllowed;
@@ -452,6 +491,7 @@ public class NotifyListener extends NotificationListenerService {
         long now = System.currentTimeMillis();
         Parcelable[] arr = x.getParcelableArray(Notification.EXTRA_MESSAGES);
         synchronized (seenUpTo) {
+            loadSeen();
             if (arr != null && arr.length > 0) {
                 Long seen = seenUpTo.get(key);
                 // first time for this chat: all of them (a chat notification holds the unread messages; after a spell
@@ -477,18 +517,17 @@ public class NotifyListener extends NotificationListenerService {
                     out.add(group ? who + ": " + t : t);
                 }
                 if (anyTime) {
-                    if (newest > 0) seenUpTo.put(key, newest);
+                    if (newest > 0 && (seen == null || newest != seen)) { seenUpTo.put(key, newest); saveSeen(key); }
                     return out;
                 }
                 out.clear(); // an app that gives no message times: fall back to the text
             }
             String[] lines = text.split("\n");
             String last = lines[lines.length - 1].trim();
-            if (last.isEmpty() || last.equals(seenText.get(key))) return out;
-            seenText.put(key, last);
+            if (last.isEmpty() || print(last).equals(seenText.get(key))) return out;
+            seenText.put(key, print(last));
             out.add(last);
-            if (seenUpTo.size() > 300) seenUpTo.clear();
-            if (seenText.size() > 300) seenText.clear();
+            saveSeen(key);
         }
         return out;
     }
