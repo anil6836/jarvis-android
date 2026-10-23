@@ -190,14 +190,15 @@ final class IdlePlay {
     private final float[] hx = new float[2], hy = new float[2], ha = new float[2];
     private final boolean[] hidden = new boolean[2];
     private final String[] hs = {"rest", "rest"};
-    private float headX = 300, headY = 248, headRot, bodyY;
+    private float headX = 300, headY = 248, headRot, bodyY, shLx = 442, shLy = 530; // (shL: his left shoulder joint)
     private float px, py; // a point worked out by grip / headPt
 
     void seen(float rx, float ry, float ra, String rs, boolean rh, float lx, float ly, float la, String ls, boolean lh,
-              float headX, float headY, float headRot, float bodyY) {
+              float headX, float headY, float headRot, float bodyY, float shLx, float shLy) {
         hx[0] = rx; hy[0] = ry; ha[0] = ra; hs[0] = rs; hidden[0] = rh;
         hx[1] = lx; hy[1] = ly; ha[1] = la; hs[1] = ls; hidden[1] = lh;
         this.headX = headX; this.headY = headY; this.headRot = headRot; this.bodyY = bodyY;
+        this.shLx = shLx; this.shLy = shLy;
     }
 
     /** A point of a hand (in hand units: wrist at 0,0, fingers up; x as for his right hand) into (px, py). */
@@ -1195,7 +1196,7 @@ final class IdlePlay {
         int pose;
         if (t < 4.0f) { x = key(CN_X, t); y = FLOOR; pose = K_WALK; }
         else if (t < 5.6f) { float u = ss(t, 4.0f, 5.6f); x = mix(566, SHX, u); y = mix(FLOOR, SHY, u) - 70 * sin(PI * u); pose = K_POUNCE; }
-        else { x = SHX; y = SHY + bodyY; pose = t < 6.6f ? K_SIT : K_CURL; }
+        else { x = shLx + (SHX - 442); y = shLy + (SHY - 530); pose = t < 6.6f ? K_SIT : K_CURL; } // (on his shoulder, moving with it)
         kitten(p, x, y, pose == K_CURL ? 1.15f : 1.2f, -1, pose, t * (t < 4 ? 6 : 1.6f), pose == K_CURL ? E_SHUT : E_OPEN, 0);
         if (t > 15 && t < 27) { // a tiny zz from the kitten
             float u = ((t - 15) % 3) / 3;

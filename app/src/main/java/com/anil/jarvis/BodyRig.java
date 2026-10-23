@@ -193,8 +193,8 @@ final class BodyRig {
     // reused every frame (nothing is made per frame)
     private final Arm tgR = new Arm(152, 860, 0, "rest", true), tgL = new Arm(448, 860, 0, "rest", true);
     private final float[] want = new float[3], qd = new float[N];
-    private final float[] e1 = new float[2], e2 = new float[2];
-    private final float[][] armR = {SH_R, new float[2], new float[2]}, armL = {SH_L, new float[2], new float[2]};
+    private final float[] jR = new float[2], jL = new float[2]; // the shoulder joints this frame (they follow the arms)
+    private final float[][] armR = {jR, new float[2], new float[2]}, armL = {jL, new float[2], new float[2]};
     // the extras (idle plays, outfits…): null until one is used
     private IdlePlay extra;
     private float cross; // cross-eyed (a butterfly on his nose): 0 = never
@@ -345,7 +345,7 @@ final class BodyRig {
     }
 
     private static void targets(String g, double t, Arm R, Arm L) {
-        R.set(152, 860, 0, "rest", true); L.set(448, 860, 0, "rest", true);
+        R.set(REST_RX, 860, 0, "rest", true); L.set(REST_LX, 860, 0, "rest", true); // (arms hanging, a little out from the body)
         switch (g) {
             case "wave": R.set(84, 292, (float) (-8 + 16 * Math.sin(t * Math.PI * 2 * 1.6)), "open", false); break;
             case "namaste": R.set(287, 618, 2, "side", true); L.set(313, 618, -2, "side", true); break;
@@ -408,8 +408,10 @@ final class BodyRig {
     }
 
     // ================================================================ drawing
+    // the shoulder joints at rest (they move with the arms: see shoulder()), the arm's bones and its thickness
     private static final float[] SH_R = {158, 530}, SH_L = {442, 530};
-    private static final float L1 = 170, L2 = 160;
+    private static final float L1 = 170, L2 = 160, REST_RX = 104, REST_LX = 496;
+    private static final float R_SHOULDER = 35, R_ELBOW = 31, R_WRIST = 24;
     private static final int[] IRIS = {0xFF8A5A36, 0xFF5A3820, 0xFF2E1A0E};
     private static final float[] IRIS_AT = {0, 0.6f, 1};
     private static final int[] HAIR_G = {0xFF3A2B22, 0xFF1E1612, 0xFF120C09};
@@ -434,32 +436,47 @@ final class BodyRig {
         float oL = q[EYE] + q[EYE_L], oR = q[EYE] + q[EYE_R];
         if (bl > 0 && bl <= 0.5f) { oL *= 1 - bl; oR *= 1 - bl; }
 
-        float[][] aR = ik(SH_R, wR, hR.down, true, armR), aL = ik(SH_L, wL, hL.down, false, armL);
+        // the shoulders follow the hands (up and in when a hand is high, rolled in when it reaches across, a bounce in a laugh)
+        float laugh = q[BOUNCE] * (float) Math.abs(Math.sin(t * Math.PI * 2 * 1.4)) * 5;
+        shoulder(jR, SH_R[0], SH_R[1], wR, 1, laugh);
+        shoulder(jL, SH_L[0], SH_L[1], wL, -1, laugh);
+        float[][] aR = ik(jR, wR, hR.down, true, armR), aL = ik(jL, wL, hL.down, false, armL);
         IdlePlay x = extra;
         boolean xo = x != null && x.offsets;
         Look lk = x != null && x.knit() ? LOOK_KNIT : look; Skin sk = skin;
-        float bodyY = breath * 0.5f + bob * 0.5f;
+        float bodyY = breath * 0.5f + bob * 0.5f, bodyX = 0;
         float headX = 300 + sway * 0.6f, headY = 248 + q[NOD] + breath * 0.6f + bob, headR = q[TILT] + sway * 0.5f;
-        if (xo) { bodyY += x.bodyDy; headX += x.headDx; headY += x.headDy; headR += x.headTilt; }
+        if (xo) { bodyX = x.bodyDx; bodyY += x.bodyDy; headX += x.headDx; headY += x.headDy; headR += x.headTilt; }
         if (x != null) {
-            x.seen(aR[2][0], aR[2][1], hR.a, hR.s, wR[1] > 760, aL[2][0], aL[2][1], hL.a, hL.s, wL[1] > 760, headX, headY, headR, bodyY);
+            // (the arms move with the body: where the hands and the left shoulder are on the screen)
+            x.seen(aR[2][0] + bodyX, aR[2][1] + bodyY, hR.a, hR.s, wR[1] > 760, aL[2][0] + bodyX, aL[2][1] + bodyY, hL.a, hL.s, wL[1] > 760,
+                    headX, headY, headR, bodyY, jL[0] + bodyX, jL[1] + bodyY);
             x.draw(p, IdlePlay.BACK);
         }
 
-        // ---- body (moves with the breath)
+        // ---- body (moves with the breath): the trunk, the shoulders and the upper arms are one shape
         p.save();
-        if (xo) p.translate(x.bodyDx, bodyY); else p.translate(0, breath * 0.5f + bob * 0.5f);
+        p.translate(bodyX, bodyY);
         if (lk == LOOK_C) { path(p, HOOD_C); p.fill(lk.jacketDk); }
-        tube(p, aR[0], aR[1], 33, 30); p.fill(lk.jacket); p.stroke(lk.jacketDk, 3);
-        tube(p, aL[0], aL[1], 33, 30); p.fill(lk.jacket); p.stroke(lk.jacketDk, 3);
         path(p, NECK); p.fill(sk.base); p.stroke(alpha(sk.line, 0.5f), 2);
         path(p, NECK_SH); p.fill(alpha(sk.dark, 0.55f));
-        path(p, TORSO); p.fillLinear(0, 464, 0, 720, lk.torsoG, TORSO_AT); p.stroke(lk.jacketDk, 2.5f);
-        path(p, TORSO); p.strokeLinear(96, 0, 504, 0, RIM, RIM_AT, 3);
+        // (outlined together, then filled together: the outline is only round the outside, no seam at the shoulders)
+        for (int pass = 0; pass < 3; pass++) {
+            trunk(p); paint(p, pass, lk);
+            cap(p, aR); paint(p, pass, lk);
+            tube(p, aR[0], aR[1], R_SHOULDER, R_ELBOW); paint(p, pass, lk);
+            cap(p, aL); paint(p, pass, lk);
+            tube(p, aL[0], aL[1], R_SHOULDER, R_ELBOW); paint(p, pass, lk);
+        }
         clothes(p, lk);
-        if (wR[1] > 760) { path(p, "M 170 556 C 160 620 156 670 158 720"); p.stroke(lk.jacketDk, 2.6f); }
-        if (wL[1] > 760) { path(p, "M 430 556 C 440 620 444 670 442 720"); p.stroke(lk.jacketDk, 2.6f); }
-        if (x != null) x.draw(p, IdlePlay.BODY);
+        if (x != null) { p.save(); trunk(p); p.clip(); x.draw(p, IdlePlay.BODY); p.restore(); }
+        // (the sleeves again, fill only: the clothes' details and a sweater's pattern stay under his arms)
+        cap(p, aR); paint(p, 2, lk); tube(p, aR[0], aR[1], R_SHOULDER, R_ELBOW); paint(p, 2, lk);
+        cap(p, aL); paint(p, 2, lk); tube(p, aL[0], aL[1], R_SHOULDER, R_ELBOW); paint(p, 2, lk);
+        armLine(p, aR, lk, 0.24f, 1); armLine(p, aL, lk, 0.24f, 1);
+        // an arm at rest hangs by his side, behind anything in front of him (a kitten walking by)
+        if (wR[1] > 760) arm(p, aR, hR, 1, lk, sk);
+        if (wL[1] > 760) arm(p, aL, hL, -1, lk, sk);
         p.restore();
 
         // ---- head
@@ -499,9 +516,12 @@ final class BodyRig {
         p.restore();
         if (x != null) x.draw(p, IdlePlay.MID); // (things held: behind the fingers)
 
-        // ---- forearms and hands (in front)
-        arm(p, aR, hR, 1, lk, sk, wR[1] > 760);
-        arm(p, aL, hL, -1, lk, sk, wL[1] > 760);
+        // ---- forearms and hands (in front; with the body's breath)
+        p.save();
+        p.translate(bodyX, bodyY);
+        if (wR[1] <= 760) arm(p, aR, hR, 1, lk, sk);
+        if (wL[1] <= 760) arm(p, aL, hL, -1, lk, sk);
+        p.restore();
 
         // ---- zzz while asleep
         if (q[ZZZ] > 0.3f) {
@@ -628,28 +648,168 @@ final class BodyRig {
     }
 
     // ---- arms
-    /** The arm's joints {shoulder, elbow, wrist} into out (out[0] is the shoulder; elbow and wrist are written). */
+    /**
+     * The shoulder joint J for a hand at w (side in: +1 his right, -1 his left; the way to his neck). A hand above the chest
+     * lifts the shoulder and draws it in towards the neck; a hand reaching across rolls it in; a laugh bounces it. All of it
+     * follows the eased hand, so it never jumps; at most ~22 px up and ~17 px in.
+     */
+    private static void shoulder(float[] J, float bx, float by, float[] w, int in, float laugh) {
+        float hi = clamp((560 - w[1]) / 260f, 0, 1);
+        hi = hi * hi * (3 - 2 * hi);
+        float across = clamp((in > 0 ? w[0] - 250 : 350 - w[0]) / 160f, 0, 1);
+        float lift = 17 * hi + laugh;
+        J[0] = bx + in * (lift * 0.45f + 7 * across);
+        J[1] = by - lift + 3 * across;
+    }
+
+    /**
+     * The arm's joints {shoulder, elbow, wrist} into out (out[0] is the shoulder; elbow and wrist are written). A two-bone
+     * arm in 3-D seen from the front: a hand held in front of him ("down" hands) sits forward of the body at a relaxed reach,
+     * so its forearm comes towards us (drawn shorter) and the elbow hangs down by his side, a little out and back; raised
+     * "out" hands stay in the picture's plane with the elbow out to the side. Nothing is allocated.
+     */
     private float[][] ik(float[] S, float[] W, boolean down, boolean right, float[][] out) {
-        float dx = W[0] - S[0], dy = W[1] - S[1], d = (float) Math.sqrt(dx * dx + dy * dy);
-        float maxd = L1 + L2 - 1, mind = Math.abs(L1 - L2) + 1, dd = clamp(d, mind, maxd);
-        double th = Math.atan2(dy, dx), ph = Math.acos(clamp((L1 * L1 + dd * dd - L2 * L2) / (2 * L1 * dd), -1, 1));
-        e1[0] = S[0] + L1 * (float) Math.cos(th + ph); e1[1] = S[1] + L1 * (float) Math.sin(th + ph);
-        e2[0] = S[0] + L1 * (float) Math.cos(th - ph); e2[1] = S[1] + L1 * (float) Math.sin(th - ph);
-        float[] E = down ? (e1[1] > e2[1] ? e1 : e2) : right ? (e1[0] < e2[0] ? e1 : e2) : (e1[0] > e2[0] ? e1 : e2);
+        float dx = W[0] - S[0], dy = W[1] - S[1], d2 = (float) Math.sqrt(dx * dx + dy * dy);
+        float reach = (L1 + L2) * 0.78f, dz = down && d2 < reach ? (float) Math.sqrt(reach * reach - d2 * d2) : 0;
+        float d = (float) Math.sqrt(d2 * d2 + dz * dz), maxd = L1 + L2 - 1, mind = Math.abs(L1 - L2) + 1;
+        float k = d > maxd ? maxd / d : 1; // (out of reach: the arm straight towards it)
+        float wx = dx * k, wy = dy * k, wz = dz * k;
+        d = d * k;
+        if (d < mind) { // (folded right up: keep the bones' triangle)
+            if (d < 1e-3f) { wx = 0; wy = mind; wz = 0; } else { float f = mind / d; wx *= f; wy *= f; wz *= f; }
+            d = mind;
+        }
+        float ux = wx / d, uy = wy / d, uz = wz / d;
+        float a = (L1 * L1 - L2 * L2 + d * d) / (2 * d), h = (float) Math.sqrt(Math.max(0, L1 * L1 - a * a));
+        // the elbow points: down, a little out and back (a hand in front) / out to the side and a little down (a raised hand)
+        float side = right ? -1 : 1;
+        float px = side * (down ? 0.4f : 1f), py = down ? 1f : 0.55f, pz = down ? -0.5f : -0.2f;
+        float dot = px * ux + py * uy + pz * uz;
+        px -= dot * ux; py -= dot * uy; pz -= dot * uz;
+        float pl = (float) Math.sqrt(px * px + py * py + pz * pz);
+        if (pl < 1e-4f) { px = side; py = 0; pl = 1; }
         float[] Eo = out[1], Wf = out[2];
-        Eo[0] = E[0]; Eo[1] = E[1];
-        if (d >= mind && d <= maxd) { Wf[0] = W[0]; Wf[1] = W[1]; }
-        else { double an = Math.atan2(W[1] - E[1], W[0] - E[0]); Wf[0] = E[0] + L2 * (float) Math.cos(an); Wf[1] = E[1] + L2 * (float) Math.sin(an); }
+        Eo[0] = S[0] + a * ux + h * px / pl; Eo[1] = S[1] + a * uy + h * py / pl;
+        Wf[0] = S[0] + wx; Wf[1] = S[1] + wy;
         return out;
     }
 
-    private void arm(Pen p, float[][] a, Hand h, int sx, Look lk, Skin sk, boolean rest) {
-        if (rest) return;
-        float[] E = a[1], Wr = a[2];
+    /** The trunk (no arms): its shoulders run to the shoulder joints, so it changes with them. */
+    private void trunk(Pen p) {
+        float rx = jR[0], ry = jR[1], lx = jL[0], ly = jL[1];
+        p.begin();
+        p.moveTo(146, 720);
+        p.cubicTo(144, 668, 140, 624, 142, 592);                                   // the side, up to the armpit
+        p.cubicTo(138, 566, rx - 38, ry + 12, rx - 37, ry - 4);                    // the shoulder's outside
+        p.cubicTo(rx - 35, ry - 26, rx - 18, ry - 40, rx + 6, ry - 42);            // rounding over its top
+        p.cubicTo(rx + 44, ry - 46, 244, 470, 262, 468);                           // the slope up to the neck
+        p.cubicTo(286, 464, 314, 464, 338, 468);
+        p.cubicTo(356, 470, lx - 44, ly - 46, lx - 6, ly - 42);
+        p.cubicTo(lx + 18, ly - 40, lx + 35, ly - 26, lx + 37, ly - 4);
+        p.cubicTo(lx + 38, ly + 12, 462, 566, 458, 592);
+        p.cubicTo(460, 624, 456, 668, 454, 720);
+        p.close();
+    }
+
+    /** The shoulder's round cap (the deltoid), stretched along the upper arm so it turns with it. */
+    private static void cap(Pen p, float[][] a) {
+        float[] S = a[0], E = a[1];
+        float ux = E[0] - S[0], uy = E[1] - S[1], ul = (float) Math.sqrt(ux * ux + uy * uy);
+        if (ul < 1e-3f) { ux = 0; uy = 1; } else { ux /= ul; uy /= ul; }
+        p.begin();
+        ellipse(p, S[0] + ux * 5, S[1] + uy * 5, ux, uy, R_SHOULDER + 6, R_SHOULDER + 3);
+    }
+
+    /** The clothing: pass 0 its outline, 1 its rim light, 2 its fill (the same gradient everywhere: no colour seams). */
+    private static void paint(Pen p, int pass, Look lk) {
+        if (pass == 0) p.stroke(lk.jacketDk, 5.5f);
+        else if (pass == 1) p.strokeLinear(96, 0, 504, 0, RIM, RIM_AT, 3.4f);
+        else p.fillLinear(0, 464, 0, 720, lk.torsoG, TORSO_AT);
+    }
+
+    /** The upper arm hangs down (its inner edge lies over his body, drawn as a line, not as the outline). */
+    private static boolean hangs(float[][] a) {
+        float ux = a[1][0] - a[0][0], uy = a[1][1] - a[0][1], ul = (float) Math.sqrt(ux * ux + uy * uy);
+        return ul >= 20 && uy >= 0.35f * ul;
+    }
+
+    /** +1 when the upper arm's normal (-uy, ux) points to his middle, else -1. */
+    private static int inward(float[][] a) {
+        float ux = a[1][0] - a[0][0], uy = a[1][1] - a[0][1];
+        return (300 - a[0][0]) * -uy >= 0 ? 1 : -1;
+    }
+
+    /** The sleeve's inner edge against his body, from a quarter down the upper arm to f1 of the way (1 = the elbow). */
+    private static void armLine(Pen p, float[][] a, Look lk, float f0, float f1) {
+        if (!hangs(a)) return;
+        float[] S = a[0], E = a[1];
+        float ux = E[0] - S[0], uy = E[1] - S[1], ul = (float) Math.sqrt(ux * ux + uy * uy);
+        int in = inward(a);
+        float nx = -uy / ul * in, ny = ux / ul * in;
+        float r0 = R_SHOULDER + (R_ELBOW - R_SHOULDER) * f0, r1 = R_SHOULDER + (R_ELBOW - R_SHOULDER) * f1;
+        p.begin();
+        p.moveTo(S[0] + ux * f0 + nx * r0, S[1] + uy * f0 + ny * r0);
+        p.lineTo(S[0] + ux * f1 + nx * r1, S[1] + uy * f1 + ny * r1);
+        p.stroke(lk.jacketDk, 2.6f);
+    }
+
+    /** An ellipse with its first axis along (ux, uy) (a unit vector), radii ra (along) and rb (across), as cubics. */
+    private static void ellipse(Pen p, float cx, float cy, float ux, float uy, float ra, float rb) {
+        float k = 0.5523f, ax = ux * ra, ay = uy * ra, bx = -uy * rb, by = ux * rb;
+        p.moveTo(cx + ax, cy + ay);
+        p.cubicTo(cx + ax + bx * k, cy + ay + by * k, cx + bx + ax * k, cy + by + ay * k, cx + bx, cy + by);
+        p.cubicTo(cx + bx - ax * k, cy + by - ay * k, cx - ax + bx * k, cy - ay + by * k, cx - ax, cy - ay);
+        p.cubicTo(cx - ax - bx * k, cy - ay - by * k, cx - bx - ax * k, cy - by - ay * k, cx - bx, cy - by);
+        p.cubicTo(cx - bx + ax * k, cy - by + ay * k, cx + ax - bx * k, cy + ay - by * k, cx + ax, cy + ay);
+        p.close();
+    }
+
+    /** The forearm (with the upper arm's lower half again, so the elbow has no seam), the cuff and the hand. */
+    private void arm(Pen p, float[][] a, Hand h, int sx, Look lk, Skin sk) {
+        float[] S = a[0], E = a[1], Wr = a[2];
+        float ux = E[0] - S[0], uy = E[1] - S[1], ul = (float) Math.sqrt(ux * ux + uy * uy);
+        // the upper arm's lower half again (cut square at its middle, by a clip, so the cut leaves no mark), then the forearm:
+        // outlined together, filled together, so the elbow has no seam. While the arm hangs, its inner edge is a line.
+        boolean upper = ul > 8, hang = upper && hangs(a);
+        int in = upper ? inward(a) : 1;
+        float nx = 0, ny = 0, mx = 0, my = 0, f = 0.45f, rm = R_SHOULDER + (R_ELBOW - R_SHOULDER) * f;
+        if (upper) { nx = -uy / ul; ny = ux / ul; mx = S[0] + ux * f; my = S[1] + uy * f; }
+        for (int pass = 0; pass < 3; pass++) {
+            if (upper) {
+                p.save();
+                p.begin(); // (everything on the elbow's side of the line across the arm's middle)
+                p.moveTo(mx + nx * 400, my + ny * 400); p.lineTo(mx - nx * 400, my - ny * 400);
+                p.lineTo(mx - nx * 400 + ux / ul * 600, my - ny * 400 + uy / ul * 600); p.lineTo(mx + nx * 400 + ux / ul * 600, my + ny * 400 + uy / ul * 600);
+                p.close();
+                p.clip();
+                float sx0 = S[0] + ux * 0.3f, sy0 = S[1] + uy * 0.3f, r0 = R_SHOULDER + (R_ELBOW - R_SHOULDER) * 0.3f;
+                p.begin();
+                if (pass == 2) {
+                    p.moveTo(sx0 + nx * r0, sy0 + ny * r0); p.lineTo(E[0] + nx * R_ELBOW, E[1] + ny * R_ELBOW);
+                    p.lineTo(E[0] - nx * R_ELBOW, E[1] - ny * R_ELBOW); p.lineTo(sx0 - nx * r0, sy0 - ny * r0); p.close();
+                } else {
+                    if (!hang || in < 0) { p.moveTo(sx0 + nx * r0, sy0 + ny * r0); p.lineTo(E[0] + nx * R_ELBOW, E[1] + ny * R_ELBOW); }
+                    if (!hang || in > 0) { p.moveTo(sx0 - nx * r0, sy0 - ny * r0); p.lineTo(E[0] - nx * R_ELBOW, E[1] - ny * R_ELBOW); }
+                }
+                paint(p, pass, lk);
+                p.restore();
+            }
+            tube(p, E[0], E[1], Wr[0], Wr[1], R_ELBOW, R_WRIST); paint(p, pass, lk);
+        }
+        if (hang) {
+            p.save();
+            p.begin();
+            p.moveTo(mx + nx * 400, my + ny * 400); p.lineTo(mx - nx * 400, my - ny * 400);
+            p.lineTo(mx - nx * 400 + ux / ul * 600, my - ny * 400 + uy / ul * 600); p.lineTo(mx + nx * 400 + ux / ul * 600, my + ny * 400 + uy / ul * 600);
+            p.close();
+            p.clip();
+            armLine(p, a, lk, 0.3f, 1);
+            p.restore();
+        }
         float dx = Wr[0] - E[0], dy = Wr[1] - E[1], L = (float) Math.sqrt(dx * dx + dy * dy);
         if (L < 1) L = 1;
-        tube(p, E, Wr, 29, 25); p.fill(lk.jacket); p.stroke(lk.jacketDk, 3);
-        band(p, Wr[0] - dx / L * 18, Wr[1] - dy / L * 18, Wr[0] - dx / L * 4, Wr[1] - dy / L * 4, 26);
+        float cl = Math.min(18, L * 0.5f);
+        band(p, Wr[0] - dx / L * cl, Wr[1] - dy / L * cl, Wr[0] - dx / L * 4, Wr[1] - dy / L * 4, 26);
         p.fill(lk.cuff); p.stroke(lk.jacketDk, 2);
         if ("rest".equals(h.s)) return;
         float[][] caps = capsOf(h.s, sx);
@@ -765,7 +925,6 @@ final class BodyRig {
     private static final String NOSE_TIP = "M -9 52 C -4 57 4 57 9 52";
     private static final String NECK = "M 262 330 L 260 470 C 280 486 320 486 340 470 L 338 330 Z";
     private static final String NECK_SH = "M 262 396 C 280 436 320 436 338 396 L 338 448 C 318 464 282 464 262 448 Z";
-    private static final String TORSO = "M 96 720 C 96 640 100 572 120 536 C 136 508 176 488 220 478 C 240 474 254 470 262 468 C 286 464 314 464 338 468 C 346 470 360 474 380 478 C 424 488 464 508 480 536 C 500 572 504 640 504 720 Z";
     private static final String HOOD_C = "M 196 470 C 210 432 250 420 300 422 C 350 420 390 432 404 470 C 380 452 340 446 300 446 C 260 446 220 452 196 470 Z";
     // hair: {back, top, part, strands}
     private static final String[] HAIR_A = {
