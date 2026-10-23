@@ -991,6 +991,7 @@ final class VoiceIO {
     /** No internet, and the phone has no offline speech pack for this language (see OfflineKit). */
     static final int ERROR_NO_OFFLINE = 120;
     private static final int MAX_TRIES = 6;            // recognizer tries in one listen
+    private static final int HOME_TRIES = 2;           // the home tablet: tries while nothing at all is heard
     private static final int MAX_QUICK = 4;            // tries in a row that failed before the mic opened: give up
     private static final long READY_WAIT_MS = 4000;    // startListening .. the mic is open
     private static final long QUIET_WAIT_MS = 10000;   // after the last sign of words, waiting for the result
@@ -1718,6 +1719,9 @@ final class VoiceIO {
                 return;
             default: {
                 if (once && ready) { fail(error); return; } // mic once: it opened, he gets no second beep (he says "Jarvis" again)
+                // the home tablet: two tries and not a word nor a voice in this one — she isn't answering now: the mic stays
+                // closed (each new try is a beep as it opens and one as it closes; Anil, 24 Oct: too many beeps)
+                if (slowTalk && ready && tries >= HOME_TRIES && partial.isEmpty() && level.longestRunMs < 300) { fail(error); return; }
                 boolean inWindow = windowUntil == 0 ? now < hardUntil : now < windowUntil && now < hardUntil;
                 // out of time (or too little left), too many tries, or it keeps failing before the mic opens: stop (and say why)
                 if (!inWindow || spent(now) || tries >= MAX_TRIES || quick >= MAX_QUICK) { fail(error); return; }

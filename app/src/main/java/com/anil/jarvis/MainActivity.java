@@ -2136,7 +2136,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         boolean nothing = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
         if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
         else if (!nothing) Toast.makeText(this, VoiceIO.failText(error), error == 12 || error == 13 ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show();
-        Sfx.micOff(this, prefs); // he hears that the mic closed
+        if (home == null) Sfx.micOff(this, prefs); // he hears that the mic closed (the home tablet: no extra tone, its screen shows it)
         boolean followed = followListen;
         finishTurn();
         if (!(nothing && followed)) status.setText((nothing ? "ఏమీ వినిపించలేదు" : "మైక్ ఆగిపోయింది") + ". మళ్లీ మైక్ నొక్కండి లేదా \"Jarvis\" అనండి");
@@ -2179,13 +2179,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (lang != null && live == null && !busy) { startLive(Brain.interpreterInstructions(prefs.name(), lang)); return; }
         boolean asked = Tools.awaitingAnswer() || homeAskListen; // read every time: the "which one?" flag is used up here
         homeAskListen = false;
+        // the home tablet: listening again after an answer only when the answer asked her something (each listen is the
+        // tablet's beeps: Anil, 24 Oct); she calls "Jarvis" for anything new
+        boolean follow = prefs.followUp() && (home == null || lastReplyAsks);
+        lastReplyAsks = false;
         if (home != null && !asked) { // the home tablet: a waiting message first, then the Bible goes on
             if (!homeQueue.isEmpty()) { finishTurn(); return; }
             if (gameLine != null) { finishTurn(); return; } // (the game's newest line: finishTurn says it)
             if (HomeBible.reading) { finishTurn(); HomeBible.next(this); return; }
         }
         ScreenReader page = ScreenReader.get(this);
-        if (lastWasVoice && (prefs.followUp() || asked) && !paused && !busy && !(page.active() && !page.paused())) { // not while a page is read aloud (a paused one waits)
+        if (lastWasVoice && (follow || asked) && !paused && !busy && !(page.active() && !page.paused())) { // not while a page is read aloud (a paused one waits)
             lastWasVoice = false;
             main.postDelayed(() -> { startListening(); followListen = !asked; }, 250);
         } else {
@@ -2195,6 +2199,16 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** Switched to Live by voice: Live starts when the confirmation has been said. */
     private boolean liveAfterSpeak;
+
+    /** The answer being said asks something back (the home tablet listens again only then). */
+    private boolean lastReplyAsks;
+
+    /** The answer's last words are a question ("…ఇంకేమైనా కావాలా?"). Pure. */
+    static boolean asksBack(String reply) {
+        if (reply == null) return false;
+        String t = reply.replaceAll("[\\s\\p{So}\\p{Sk}\\u200d\\ufe0f)\"'”’]+$", "");
+        return t.endsWith("?") || t.endsWith("？");
+    }
 
     /** He asked by voice (or typed) to change how Jarvis listens / talks. */
     private void switchVoice(String said, String mode, boolean byVoice) {
@@ -2384,6 +2398,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             return;
         }
         store.addChat("assistant", reply, false);
+        lastReplyAsks = asksBack(reply);
         if (hold) {
             heldReply = reply;
             main.postDelayed(showHeld, 2500);
