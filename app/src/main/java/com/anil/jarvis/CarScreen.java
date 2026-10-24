@@ -894,7 +894,7 @@ final class CarScreen extends FrameLayout {
     private static TextView autoText(Context c, String s, boolean bold, int maxSp) {
         TextView t = new TextView(c);
         t.setText(s);
-        t.setSingleLine(true);
+        t.setMaxLines(1); // (not setSingleLine: that scrolls sideways, and the auto size then never shrinks a long Telugu word)
         t.setIncludeFontPadding(false);
         if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
         try { t.setAutoSizeTextTypeUniformWithConfiguration(9, maxSp, 1, TypedValue.COMPLEX_UNIT_SP); } catch (Exception ignored) {}
