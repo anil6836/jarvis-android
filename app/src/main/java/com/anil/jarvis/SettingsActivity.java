@@ -1886,6 +1886,7 @@ public class SettingsActivity extends Activity {
         if (TabletLock.active(this)) TabletLock.opened(); // (he is inside: a rebuild of this screen doesn't ask again)
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
+        if (wallShow != null) wallShow.run(); // (the car's photo was marked / the wallpaper picked meanwhile)
         showLock();
         if (bubbleMark != null) bubbleMark.run();
         showing = this;
@@ -3094,6 +3095,8 @@ public class SettingsActivity extends Activity {
         dance.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
         final TextView accentRow = Ui.text(this, "", 15.5f, accent), gaugeRow = Ui.text(this, "", 15.5f, accent);
         wallRow = Ui.text(this, "", 15.5f, accent);
+        heroRow = Ui.text(this, "", 15.5f, accent);
+        heroRow.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
         for (TextView t : new TextView[]{accentRow, gaugeRow, wallRow}) t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
         final String[] dances = {"always", "parked", "off"}, danceNames = {"ఎప్పుడూ (పాట వస్తే, రోడ్డు మీద కూడా)", "కారు ఆగినప్పుడే", "వద్దు"};
         Runnable show = () -> {
@@ -3108,6 +3111,7 @@ public class SettingsActivity extends Activity {
             gaugeRow.setText("🧭 స్పీడ్ మీటర్: " + GAUGE_NAMES[gi] + "  (మార్చడానికి నొక్కండి)");
             boolean has = new java.io.File(getFilesDir(), "car_wall.jpg").exists();
             wallRow.setText(has ? "🖼️ వాల్‌పేపర్: మీ ఫోటో  (మార్చడానికి / తీసేయడానికి నొక్కండి)" : "🖼️ వాల్‌పేపర్: థీమ్‌దే  (మీ ఫోటో పెట్టడానికి నొక్కండి)");
+            heroRow.setText("🚙 కారు: " + (CarPhoto.on(this, prefs) ? "నా ఫోటో" : "మన బొమ్మ") + "  (మార్చడానికి నొక్కండి)");
             int di = Math.max(0, java.util.Arrays.asList(dances).indexOf(prefs.carDance()));
             dance.setText("💃 Jarvis డాన్స్: " + danceNames[di] + "  (మార్చడానికి నొక్కండి)");
         };
@@ -3162,7 +3166,32 @@ public class SettingsActivity extends Activity {
                         else { if (!f.delete()) f.deleteOnExit(); show.run(); }
                     }).show();
         });
+        heroRow.setOnClickListener(v -> {
+            final boolean has = CarPhoto.file(this).exists();
+            java.util.List<String> items = new java.util.ArrayList<>();
+            items.add("🎨 మన బొమ్మ");
+            items.add(has ? "📷 నా ఫోటో" : "📷 నా కారు ఫోటో ఎంచుకో");
+            if (has) { items.add("🖼️ వేరే ఫోటో ఎంచుకో"); items.add("📍 చక్రాలు, లైట్లు మళ్ళీ గుర్తించు"); items.add("🗑️ ఫోటో తీసేయి"); }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("స్క్రీన్ మీద కారు (మీ ఫోటో: కారు పక్క నుంచి నేరుగా తీసింది, రెండు చక్రాలు గుండ్రంగా)")
+                    .setItems(items.toArray(new String[0]), (d, w) -> {
+                        String it = items.get(w);
+                        if (it.startsWith("🎨")) prefs.sp.edit().putString("car_hero", "drawing").apply();
+                        else if (it.startsWith("📷") && has) {
+                            if (CarPhoto.marks(prefs) == null) startActivity(new Intent(this, CarPhotoActivity.class)); // (not marked yet: mark first)
+                            else prefs.sp.edit().putString("car_hero", "photo").apply();
+                        }
+                        else if (it.startsWith("📷") || it.startsWith("🖼️")) pickCarPhoto();
+                        else if (it.startsWith("📍")) startActivity(new Intent(this, CarPhotoActivity.class));
+                        else if (it.startsWith("🗑️")) {
+                            if (!CarPhoto.file(this).delete()) CarPhoto.file(this).deleteOnExit();
+                            prefs.sp.edit().putString("car_hero", "drawing").remove("car_photo_marks").apply();
+                        }
+                        show.run();
+                    }).show();
+        });
         box.addView(theme);
+        box.addView(heroRow);
         box.addView(colour);
         box.addView(accentRow);
         box.addView(gaugeRow);
@@ -3192,7 +3221,16 @@ public class SettingsActivity extends Activity {
     private static final int[] ACCENTS = {0, 0xFF5FF3FF, 0xFF4D8DFF, 0xFF34E89E, 0xFFFFC24B, 0xFFFF8A3D, 0xFFFF5A5A, 0xFFFF6AD5, 0xFFB28DFF, 0xFFF2F6FA};
     private static final String[] ACCENT_NAMES = {"థీమ్‌దే", "సియాన్", "నీలం", "ఆకుపచ్చ", "బంగారు", "నారింజ", "ఎరుపు", "గులాబీ", "ఊదా", "తెలుపు"};
     private static final String[] GAUGES = {"", "arc", "needle"}, GAUGE_NAMES = {"థీమ్‌దే", "వెలిగే వంపు (ఆర్క్)", "క్లాసిక్ సూది డయల్"};
-    private static final int REQ_WALL = 47;
+    private static final int REQ_WALL = 47, REQ_CARPHOTO = 48;
+    private TextView heroRow;
+
+    private void pickCarPhoto() {
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_CARPHOTO);
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫోటో ఎంచుకునే యాప్ లేదు", Toast.LENGTH_LONG).show();
+        }
+    }
     private TextView wallRow;
     private Runnable wallShow;
 
@@ -3208,27 +3246,7 @@ public class SettingsActivity extends Activity {
     private void wallPicked(Uri uri) {
         final Uri u = uri;
         new Thread(() -> {
-            boolean ok = false;
-            try {
-                android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
-                o.inJustDecodeBounds = true;
-                try (java.io.InputStream in = getContentResolver().openInputStream(u)) { android.graphics.BitmapFactory.decodeStream(in, null, o); }
-                int sample = 1;
-                while (Math.max(o.outWidth, o.outHeight) / sample > 2400) sample *= 2;
-                android.graphics.BitmapFactory.Options o2 = new android.graphics.BitmapFactory.Options();
-                o2.inSampleSize = sample;
-                android.graphics.Bitmap b;
-                try (java.io.InputStream in = getContentResolver().openInputStream(u)) { b = android.graphics.BitmapFactory.decodeStream(in, null, o2); }
-                if (b != null) {
-                    float k = Math.min(1f, 1600f / Math.max(b.getWidth(), b.getHeight()));
-                    if (k < 1) { android.graphics.Bitmap s2 = android.graphics.Bitmap.createScaledBitmap(b, Math.round(b.getWidth() * k), Math.round(b.getHeight() * k), true); if (s2 != b) b.recycle(); b = s2; }
-                    java.io.File tmp = new java.io.File(getFilesDir(), "car_wall.jpg.part");
-                    try (java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) { ok = b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out); }
-                    ok = ok && tmp.renameTo(new java.io.File(getFilesDir(), "car_wall.jpg"));
-                    b.recycle();
-                }
-            } catch (Throwable ignored) {}
-            final boolean done = ok;
+            final boolean done = CarPhoto.keep(this, u, "car_wall.jpg", 1600); // (upright, ≤1600 px, only on this box)
             runOnUiThread(() -> {
                 Toast.makeText(this, done ? "సరే: కారు స్క్రీన్ వెనుక మీ ఫోటో" : "ఆ ఫోటో తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
                 if (wallShow != null) wallShow.run();
@@ -3412,6 +3430,18 @@ public class SettingsActivity extends Activity {
         super.onActivityResult(code, result, data);
         if (gated) return;
         if (code == REQ_WALL && result == RESULT_OK && data != null && data.getData() != null) wallPicked(data.getData()); // 🖼️ the car screen's wallpaper
+        if (code == REQ_CARPHOTO && result == RESULT_OK && data != null && data.getData() != null) { // 🚙 his own car's photo: kept, then marked
+            final Uri u = data.getData();
+            Toast.makeText(this, "ఫోటో తీసుకుంటున్నాను…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                boolean ok = CarPhoto.keep(this, u, CarPhoto.FILE, 1600);
+                runOnUiThread(() -> {
+                    if (!ok) { Toast.makeText(this, "ఆ ఫోటో తెరవలేకపోయాను", Toast.LENGTH_LONG).show(); return; }
+                    prefs.sp.edit().remove("car_photo_marks").apply(); // (a new photo: new marks)
+                    startActivity(new Intent(this, CarPhotoActivity.class));
+                });
+            }, "car-photo").start();
+        }
         if (code == REQ_FRAME && result == RESULT_OK && data != null) { // photos for the tablet's frame
             java.util.List<Uri> uris = new java.util.ArrayList<>();
             if (data.getClipData() != null) for (int i = 0; i < data.getClipData().getItemCount(); i++) uris.add(data.getClipData().getItemAt(i).getUri());

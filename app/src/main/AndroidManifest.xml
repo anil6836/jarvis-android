@@ -321,6 +321,11 @@
             android:exported="false"
             android:foregroundServiceType="camera" />
         <activity
+            android:name=".CarPhotoActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:theme="@style/JarvisTheme" />
+        <activity
             android:name=".CarEyesActivity"
             android:exported="false"
             android:excludeFromRecents="true"

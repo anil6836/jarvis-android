@@ -565,6 +565,25 @@ final class CarArt {
         void setRain(boolean on) { if (on != rain) { rain = on; kick(); } }
         void setLowMotion(boolean b) { lowMotion = b; }
 
+        // ---- 📷 his own car's photo instead of the drawing (CarPhoto): his wheels turn, his lamps light
+        private android.graphics.Bitmap photo;
+        private float[] pm; // {fx, fy, rx, ry, r, hx, hy, tx, ty} in the photo's pixels
+        private final android.graphics.Matrix fit = new android.graphics.Matrix();
+        private final Path clip = new Path();
+        private int fitW, fitH;
+        private float sc, ox, oy;
+        private Shader pHead, pBeam, pTail, pBrake, pAmber;
+
+        /** His photo and its marks (null: the drawing). */
+        void setPhoto(android.graphics.Bitmap b, float[] marks) {
+            photo = b != null && marks != null && marks.length == 9 ? b : null;
+            pm = photo == null ? null : marks;
+            fitW = fitH = 0;
+            invalidate();
+        }
+
+        boolean hasPhoto() { return photo != null; }
+
         private void kick() { invalidate(); }
 
         private boolean animating() { return !lowMotion && (speed > 0.5f || shownSpeed > 0.5f || rain || indicator != 0 || braking); }
@@ -614,6 +633,12 @@ final class CarArt {
                 laneOffset = (laneOffset + shownSpeed * dt * 4) % 60;
                 rainT = (rainT + dt) % 1000;
             }
+            if (photo != null) {
+                drawPhoto(cv, w, h, now);
+                removeCallbacks(frame);
+                if (animating() && isShown()) postOnAnimationDelayed(frame, 33);
+                return;
+            }
             float s = Math.min(w / UW, h / UH);
             cv.save();
             cv.translate((w - UW * s) / 2f, h - UH * s);
@@ -632,6 +657,93 @@ final class CarArt {
             cv.restore();
             removeCallbacks(frame);
             if (animating() && isShown()) postOnAnimationDelayed(frame, 33);
+        }
+
+        /** The photo fitted in the view (centred, rounded corners), and the lamps' glows made for that size. */
+        private void fitPhoto(int w, int h) {
+            fitW = w; fitH = h;
+            float pw = photo.getWidth(), ph = photo.getHeight();
+            sc = Math.min(w / pw, h / ph);
+            ox = (w - pw * sc) / 2f;
+            oy = (h - ph * sc) / 2f;
+            fit.setScale(sc, sc);
+            fit.postTranslate(ox, oy);
+            clip.rewind();
+            float rad = Math.min(pw * sc, ph * sc) * 0.08f;
+            clip.addRoundRect(new RectF(ox, oy, ox + pw * sc, oy + ph * sc), rad, rad, Path.Direction.CW);
+            float wr = pm[4] * sc, hx = X(pm[5]), hy = Y(pm[6]), tx = X(pm[7]), ty = Y(pm[8]);
+            int face = pm[0] >= pm[2] ? 1 : -1;
+            pHead = new RadialGradient(hx, hy, wr * 0.9f, new int[]{0xCCFFF6DE, 0x00FFF6DE}, null, Shader.TileMode.CLAMP);
+            pBeam = new LinearGradient(hx, 0, hx + face * w * 0.5f, 0, new int[]{0x77FFF4D6, 0x00FFF4D6}, null, Shader.TileMode.CLAMP);
+            pTail = new RadialGradient(tx, ty, wr * 0.55f, new int[]{0x99FF2020, 0x00FF2020}, null, Shader.TileMode.CLAMP);
+            pBrake = new RadialGradient(tx, ty, wr * 1.1f, new int[]{0xEEFF2020, 0x00FF2020}, null, Shader.TileMode.CLAMP);
+            pAmber = new RadialGradient(hx, hy, wr * 0.6f, new int[]{0xEEFFB020, 0x00FFB020}, null, Shader.TileMode.CLAMP);
+        }
+
+        private float X(float px) { return ox + px * sc; }
+        private float Y(float py) { return oy + py * sc; }
+
+        private void drawPhoto(Canvas cv, int w, int h, long now) {
+            if (fitW != w || fitH != h) fitPhoto(w, h);
+            p.setShader(null);
+            p.setFilterBitmap(true);
+            p.setStyle(Paint.Style.FILL);
+            cv.save();
+            cv.clipPath(clip);
+            cv.drawBitmap(photo, fit, p);
+            // his two wheels turn: each wheel's circle of the photo, turned about its centre (the way the car faces)
+            int face = pm[0] >= pm[2] ? 1 : -1;
+            float wr = pm[4] * sc;
+            for (int i = 0; i < 2; i++) {
+                float cx = X(pm[i * 2]), cy = Y(pm[i * 2 + 1]);
+                cv.save();
+                path.rewind();
+                path.addCircle(cx, cy, wr * 0.96f, Path.Direction.CW); // (just inside the tyre: the road under it stays still)
+                cv.clipPath(path);
+                cv.rotate(face * wheelAngle, cx, cy);
+                cv.drawBitmap(photo, fit, p);
+                cv.restore();
+            }
+            if (night) { p.setColor(0x80000000); cv.drawRect(0, 0, w, h, p); } // (a day photo, made evening-dark)
+            cv.restore();
+            // the lamps: on his own headlight and tail light
+            float hx = X(pm[5]), hy = Y(pm[6]), tx = X(pm[7]), ty = Y(pm[8]);
+            if (night) {
+                path.rewind();
+                path.moveTo(hx, hy); path.lineTo(hx + face * w * 0.5f, hy - wr * 0.9f); path.lineTo(hx + face * w * 0.5f, hy + wr * 1.4f); path.close();
+                p.setShader(pBeam); cv.drawPath(path, p);
+                p.setShader(pHead); cv.drawCircle(hx, hy, wr * 0.9f, p);
+                p.setShader(pTail); cv.drawCircle(tx, ty, wr * 0.55f, p);
+            }
+            if (braking) { p.setShader(pBrake); cv.drawCircle(tx, ty, wr * 1.1f, p); }
+            boolean blink = indicator != 0 && (now / 400) % 2 == 0;
+            if (blink) { p.setShader(pAmber); cv.drawCircle(hx, hy, wr * 0.6f, p); }
+            p.setShader(null);
+            // the frame's lit edge (the theme's colour)
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(1, Math.min(w, h) * 0.008f));
+            p.setColor(CarTheme.withAlpha(look.accent, 0x77));
+            cv.drawPath(clip, p);
+            // the turn's arrow, and rain over it all
+            if (blink) {
+                float u = h / 150f;
+                p.setStrokeWidth(4 * u);
+                p.setStrokeCap(Paint.Cap.ROUND);
+                p.setStrokeJoin(Paint.Join.ROUND);
+                p.setColor(0xFFFFB020);
+                float ax = indicator < 0 ? 24 * u : w - 24 * u, d = indicator < 0 ? -1 : 1;
+                path.rewind();
+                path.moveTo(ax - 12 * d * u, 18 * u); path.lineTo(ax, 26 * u); path.lineTo(ax - 12 * d * u, 34 * u);
+                path.moveTo(ax - 24 * d * u, 18 * u); path.lineTo(ax - 12 * d * u, 26 * u); path.lineTo(ax - 24 * d * u, 34 * u);
+                cv.drawPath(path, p);
+            }
+            if (rain) {
+                cv.save();
+                cv.scale(w / UW, h / UH);
+                rain(cv);
+                cv.restore();
+            }
+            p.setStyle(Paint.Style.FILL);
         }
 
         private void road(Canvas cv) {

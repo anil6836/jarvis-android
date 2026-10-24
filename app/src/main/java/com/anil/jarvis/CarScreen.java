@@ -1504,6 +1504,26 @@ final class CarScreen extends FrameLayout {
     }
 
     private long wallAt = -1;
+    private String heroKey = "";
+
+    /** 🚙 His own car's photo in place of the drawing (Settings → 🚙 కారు): read off the main thread, again only when it changed. */
+    private void heroPhoto() {
+        final Context c = getContext();
+        boolean on = CarPhoto.on(c, prefs);
+        java.io.File f = CarPhoto.file(c);
+        String key = on ? f.lastModified() + "|" + prefs.sp.getString("car_photo_marks", "") : "off";
+        if (key.equals(heroKey)) return;
+        heroKey = key;
+        if (!on) { hero.setPhoto(null, null); return; }
+        new Thread(() -> {
+            Object[] got = CarPhoto.load(c, prefs);
+            main.post(() -> {
+                if (!key.equals(heroKey)) return; // (changed again meanwhile)
+                if (got == null) hero.setPhoto(null, null); // (unreadable: the drawing)
+                else hero.setPhoto((android.graphics.Bitmap) got[0], (float[]) got[1]);
+            });
+        }, "car-hero-photo").start();
+    }
 
     /** 🖼️ His own photo (Settings → 🎨; kept only on this box, never in a backup): read again only when it changed. */
     private void wallpaper() {
@@ -1529,6 +1549,7 @@ final class CarScreen extends FrameLayout {
         if ("arc".equals(gs)) look.gauge = CarTheme.G_ARC;
         else if ("needle".equals(gs)) look.gauge = CarTheme.G_NEEDLE;
         wallpaper();
+        heroPhoto();
         tileBg = look.sheetFill;
         textMain = look.textMain;
         textSoft = look.textSoft;
