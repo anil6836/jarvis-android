@@ -643,7 +643,7 @@ final class Brain {
                 + "'నెల డ్యూటీ రిపోర్ట్', 'ఈ నెల ఎన్ని డ్యూటీలు / ఎక్స్‌ట్రా' -> duty report. 'బండి మీద చలాన్లు' -> bike_challan. "
                 + "'కొత్త సినిమాలు', 'OTT లో ఏం వచ్చాయి' -> new_movies. 'X ఎక్కడ చౌక', 'Amazon లోనా Flipkart లోనా' -> compare_prices. "
                 + "'ఒక కొత్త విషయం చెప్పు', 'ఇంగ్లీష్ పదం' -> daily_fact. 'వ్యాయామం చేద్దాం', 'అడుగుల లక్ష్యం' -> exercise. "
-                + "'పిల్లలకి కథ చెప్పు' -> story (a new one each time, then save its title). "
+                + "'పిల్లలకి కథ చెప్పు' -> story (a new one each time: save its title first, then your reply is the whole story). "
                 + "'పాటతో లేపు', 'పాట అలారం', 'డ్యూటీ రోజుల్లో 7 కి లేపు', 'సెలవు రోజుల్లో 8 కి లేపు' -> song_alarm; a plain alarm ('6 కి అలారం పెట్టు') or a timer -> set_alarm. "
                 + "A visiting card photo -> save_contact (he taps Save). "
                 + "'X కి బైక్ మీద వెళ్లగలనా', 'ఛార్జ్ సరిపోతుందా' -> ride_plan. 'హ్యాండోవర్ నోట్: ...' -> handover add. 'వచ్చే వారం ఏముంది' -> weekly_report ahead. "

@@ -131,7 +131,7 @@ final class HomeCare {
     /** The sound watch's scores (YAMNet): talk without a TV playing, footsteps, a door. */
     static void sounds(Context c, float[] s) {
         if (s == null || !on(c)) return;
-        if (Announcer.speaking()) return; // (Jarvis's own voice is not someone about)
+        if (Announcer.speaking() || MainActivity.homeCallWhileSpeaking()) return; // (Jarvis's own voice is not someone about, nor crying)
         HomeEyes.sounds(c, s, System.currentTimeMillis()); // crying → comfort; steps at night → a soft light
         boolean tv = s.length > SafetySounds.TV && s[SafetySounds.TV] >= 0.25f;
         if ((s[SafetySounds.SPEECH] >= 0.5f && !tv) || s[SafetySounds.WALK] >= 0.4f

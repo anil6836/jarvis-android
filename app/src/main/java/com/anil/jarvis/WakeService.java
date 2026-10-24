@@ -46,7 +46,10 @@ public class WakeService extends Service {
      * Someone else has the mic now: while the camera is open, the camera's own flag decides (it may be waiting for
      * "Jarvis" even if another screen's talk mark is still set); otherwise any Jarvis talk.
      */
-    private static boolean micBusy() { return JarvisCamera.open ? JarvisCamera.micInUse : MainActivity.busyTalking(); }
+    private static boolean micBusy() {
+        if (JarvisCamera.open) return JarvisCamera.micInUse;
+        return MainActivity.busyTalking() && !MainActivity.homeCallWhileSpeaking(); // (the home tablet: "Jarvis" over his voice)
+    }
     /** Progress or problem with the "Jarvis" word detector, shown in settings; null when fine. */
     static volatile String wordStatus;
     private static final String WAKE_HINT = "\"Jarvis\" లేదా \"Hey Jarvis\" అని పిలవండి";
@@ -278,6 +281,7 @@ public class WakeService extends Service {
             main.post(holdWatch);
         } else if (ACTION_PAUSE.equals(action)) {
             main.removeCallbacks(fallbackResume);
+            if (MainActivity.homeCallWhileSpeaking()) return START_STICKY; // (the home tablet speaking: "Jarvis" stays heard)
             stopEngine();
             main.removeCallbacks(watchdog);
             main.postDelayed(watchdog, 60_000);
@@ -432,7 +436,9 @@ public class WakeService extends Service {
     private void wakeNow() {
         if (!engineOn) return;
         if (CrashAlert.active && "fall".equals(CrashAlert.kind)) CrashAlert.ok(this); // "బాగున్నారా?" at home: calling Jarvis means he is fine
+        boolean hush = MainActivity.homeCallWhileSpeaking(); // (the home tablet: called over his voice)
         stopEngine(); // free the microphone for the conversation
+        if (hush) MainActivity.homeHush(); // (he stops talking at once, not when the screen comes up)
         wakeScreen();
         Vibrator v = getSystemService(Vibrator.class);
         if (v != null) v.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE));

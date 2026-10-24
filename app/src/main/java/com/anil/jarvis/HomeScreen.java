@@ -414,10 +414,16 @@ final class HomeScreen extends FrameLayout {
         if (s != BodyRig.IDLE) body.rig.poke();
         body.rig.setMode(s);
         if (s != BodyRig.IDLE) active();
-        if (s == BodyRig.LISTENING) show("వింటున్నాను…");
-        else if (s == BodyRig.THINKING) show("ఆలోచిస్తున్నాను…");
-        else if (s != BodyRig.SPEAKING) settleBubble();
+        if (s == BodyRig.LISTENING) show(LISTENING_TEXT);
+        else if (s == BodyRig.THINKING) show(THINKING_TEXT);
+        else if (s != BodyRig.SPEAKING) {
+            settleBubble();
+            // the mic is off / nothing more is coming: "వింటున్నాను…" / "ఆలోచిస్తున్నాను…" go at once (his words stay to read)
+            if (LISTENING_TEXT.equals(bubbleText) || THINKING_TEXT.equals(bubbleText)) { bubbleBox.setVisibility(GONE); bubbleText = ""; }
+        }
     }
+
+    static final String LISTENING_TEXT = "వింటున్నాను…", THINKING_TEXT = "ఆలోచిస్తున్నాను…";
 
     /** He finished saying it: the whole text bright again, no mark (the bubble stays a while to read). */
     private void settleBubble() {

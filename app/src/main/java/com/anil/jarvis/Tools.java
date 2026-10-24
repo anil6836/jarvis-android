@@ -809,7 +809,8 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "start (default), stop, goal or reminder"}, {"steps", "integer", "For goal: steps a day (0 = no goal)"},
                         {"hour", "integer", "For reminder: hour in the morning, 0 = off"}})));
         DEFS.add(new Def("story", "Stories for children in Telugu (bedtime, moral stories): gives the titles already told so each one is new. "
-                + "action tell (default): then tell a NEW story yourself; action save: after telling, save its title.",
+                + "action tell (default): then pick a NEW story; action save: save its title BEFORE you tell it (your final reply is the whole "
+                + "story itself: words written before a tool call are never heard). Never ask whether to save it.",
                 schema(new String[][]{{"action", "string", "tell (default) or save"}, {"title", "string", "For save: the story's title"},
                         {"theme", "string", "Optional: animals, kings, honesty, friendship, Bible story, Panchatantra..."}})));
         DEFS.add(new Def("song_alarm", "Jarvis's own alarm that wakes him with a song from his phone (chosen in Settings; else the alarm tone), then says good morning "
@@ -7677,7 +7678,8 @@ final class Tools {
         if (action.startsWith("save")) {
             String t = a.optString("title", "").trim();
             if (!t.isEmpty()) Notes.add(act(), "stories", new JSONObject().put("title", t).put("t", System.currentTimeMillis()), 300);
-            return ok().put("saved", t).toString();
+            return ok().put("saved", t).put("next", "Saved. Now your reply IS the whole story (its title, the story, the moral) in simple "
+                    + "spoken Telugu. Don't ask anything about saving and don't say it was told: tell it now.").toString();
         }
         JSONArray told = new JSONArray();
         java.util.List<JSONObject> l = Notes.list(act(), "stories");
@@ -7685,7 +7687,8 @@ final class Tools {
         return ok().put("already_told", told).put("theme", a.optString("theme", ""))
                 .put("next", "Tell a NEW short children's story in simple spoken Telugu (about 2-3 minutes), not one of already_told"
                         + (a.optString("theme").isEmpty() ? "" : ", on the theme asked") + ": a title, a warm beginning, a simple plot, and the moral (నీతి) at the end. "
-                        + "Then call story with action save and its title.").toString();
+                        + "Pick its title now and call story with action save and that title FIRST; then your final reply is the whole story "
+                        + "(text you write before a tool call is never heard). Never ask whether to save it.").toString();
     }
 
     private String healthLog(JSONObject a) throws Exception {

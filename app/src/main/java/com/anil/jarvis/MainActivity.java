@@ -93,6 +93,26 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
      * remarks wait. A flag left on by a talk that ended without saying so would keep them silent for good,
      * so after 3 minutes with no Jarvis screen, panel or Live open it is let go.
      */
+    /**
+     * The home tablet while Jarvis is only speaking (not listening, no call): "Jarvis" is listened for over his voice, so
+     * అమ్మగారు can stop him and ask something else (Anil, 24 Oct) — not while his words have his own name in them.
+     */
+    static boolean homeCallWhileSpeaking() {
+        MainActivity a = homeNow;
+        return a != null && a.home != null && !a.isFinishing() && a.voice.speaking && !a.voice.listening && a.live == null
+                && !a.voice.saysJarvis() && !HomeVideo.holding(a);
+    }
+
+    /** "Jarvis" was heard over his voice on the home tablet: he stops at once (main thread); the wake then asks "చెప్పండి". */
+    static void homeHush() {
+        MainActivity a = homeNow;
+        if (a == null || a.home == null || a.isFinishing() || !a.voice.speaking) return;
+        if (HomeBible.reading) HomeBible.stop(); // (stops where it is: "బైబిల్ చదువు" goes on from there)
+        a.homeAskListen = false;
+        a.lastWasVoice = false;
+        a.voice.stopSpeaking();
+    }
+
     static boolean busyTalking() {
         if (JarvisCamera.open) return true; // the camera is open: no panel or remark over it (its mic: WakeService.micBusy)
         if (SheetActivity.talkingNow()) return true; // the panel is talking, even if another screen cleared the flag
@@ -450,6 +470,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         if (home != null && wake) { // the home tablet: "చెప్పండి అమ్మగారు?" and then he listens (his wish)
             HomeCare.life(this);
+            homeHush(); // (she called "Jarvis" over his voice: he stops and listens)
             homeSpeak("చెప్పండి " + (HomeCare.ownerVoice(this) ? "Anil" : HomeCare.who(this)) + "?", "listening", true, 0);
             return;
         }
@@ -2162,6 +2183,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (face != null) face.setFeeling(feelingNext != null ? feelingNext : voice.feeling());
         if (home != null) home.setFeeling(feelingNext != null ? feelingNext : voice.feeling());
         feelingNext = null;
+        if (home != null && homeCallWhileSpeaking()) WakeService.resume(this); // (the tablet: "Jarvis" heard over his voice)
         setOrb(OrbView.SPEAKING);
         status.setText("మాట్లాడుతున్నాను…");
         refreshAction();

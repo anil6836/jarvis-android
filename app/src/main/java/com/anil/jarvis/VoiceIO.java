@@ -243,6 +243,10 @@ final class VoiceIO {
     /** The feeling of what is being said now (for the face). */
     String feeling() { return feeling; }
 
+    /** What is being said has his own name in it (then "Jarvis" is not listened for over it: it would be his own voice). */
+    private boolean saysJarvis;
+    boolean saysJarvis() { return saysJarvis; }
+
     void speak(String text, float rate) { speak(text, rate, false); }
 
     // ---- ⚡ B (build 3): an answer spoken while the brain is still writing it
@@ -359,6 +363,7 @@ final class VoiceIO {
 
     private void speak(String text, float rate, boolean early) {
         if (shut || text == null || text.trim().isEmpty()) return;
+        saysJarvis = text.toLowerCase(java.util.Locale.ROOT).matches("(?s).*(jarvis|జార్విస్|జార్వీస్|జార్విజ్).*");
         lastCut = false;
         main.removeCallbacks(openTimeout);
         open = false;
