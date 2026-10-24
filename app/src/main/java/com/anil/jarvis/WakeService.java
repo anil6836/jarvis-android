@@ -216,7 +216,9 @@ public class WakeService extends Service {
     private boolean allowedNow() {
         if (RecorderService.recording) return false; // the mic is recording a sermon / meeting
         if (HomeVideo.holding(this)) return false;   // the home tablet: అమ్మగారు's video call has the mic
+        if (CarBox.phoneQuiet(this)) return false;   // his phone in the car with the car's own Jarvis: only the box hears "Jarvis"
         if (Sounds.holdMic(this)) return true;      // counting cooker whistles, learning a sound, the sound test
+        if (CarBox.on(this)) return true;           // the car's box: it listens the whole trip (it is on only while the car is)
         String when = new Prefs(this).wakeWhen();
         if ("always".equals(when)) return true;
         if ("charging".equals(when)) return pluggedIn();
@@ -250,6 +252,7 @@ public class WakeService extends Service {
 
     private void sleeping() {
         String when = new Prefs(this).wakeWhen();
+        if (CarBox.phoneQuiet(this)) { goForeground("కారులో కారు Jarvis (box) వింటున్నాడు: ఫోన్ మైక్ ఆఫ్. కారు మోడ్ ఆగాక మళ్లీ వింటాడు"); return; }
         goForeground("charging".equals(when)
                 ? "మైక్ ఆఫ్. ఛార్జింగ్ పెట్టినప్పుడు మళ్లీ వింటాడు"
                 : "మైక్ ఆఫ్. స్క్రీన్ ఆన్ చేసినప్పుడు మళ్లీ వింటాడు");
@@ -457,12 +460,14 @@ public class WakeService extends Service {
     private void openJarvis() {
 
         Prefs wp = new Prefs(this);
-        Intent open = wp.compactPanel() && !wp.homeMode() // (the home tablet: Jarvis on its big screen answers, never a panel)
+        // (the home tablet: Jarvis on its big screen answers, never a panel; the car's box: its car screen when it is in
+        // front, the small panel over Maps)
+        Intent open = wp.compactPanel() && !wp.homeMode() && !(wp.carMode() && MainActivity.visible)
                 ? new Intent(this, SheetActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 : new Intent(this, MainActivity.class).putExtra(MainActivity.EXTRA_WAKE, true)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         boolean opened = false;
-        if (Settings.canDrawOverlays(this)) {
+        if (Settings.canDrawOverlays(this) || wp.carMode() && MainActivity.visible) { // (the car screen in front: it is Jarvis's own)
             try { startActivity(open); opened = true; } catch (Exception ignored) {}
         }
         if (!opened) {

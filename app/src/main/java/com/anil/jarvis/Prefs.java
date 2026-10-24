@@ -447,6 +447,12 @@ final class Prefs {
     /** This device is the home Jarvis (home screen, landscape, anyone at home may talk). */
     boolean homeMode() { return sp.getBoolean("home_mode", false); }
     void setHomeMode(boolean on) { sp.edit().putBoolean("home_mode", on).apply(); }
+    // ---- 🚗 the car Jarvis (his car's Android box: big car screen, the car's mic and speakers; CarBox)
+    /** This device is the car Jarvis (the Android box in his car). Never together with the home tablet's mode. */
+    boolean carMode() { return !homeMode() && sp.getBoolean("car_mode", false); }
+    void setCarMode(boolean on) { sp.edit().putBoolean("car_mode", on).apply(); }
+    /** His phone: the car has its own Jarvis (the box), so in car mode the phone stays quiet (no "Jarvis", no sleep questions). */
+    boolean boxInCar() { return sp.getBoolean("box_in_car", false); }
     /** The new Jarvis's look: a = navy jacket, b = kurta, c = zip jacket (Anil's pick). */
     String bodyLook() { return sp.getString("body_look", "c"); }
     /** Skin tone 1 (lighter) .. 3 (deeper). */

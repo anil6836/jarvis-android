@@ -73,6 +73,10 @@ final class HomeLink {
     static void homePoll(Context c) {
         JSONObject m = Guard.pinned(c);
         if (m == null) return;
+        // the car's box ↔ his phone (diesel): not for home, and nothing is marked read — the word pinned before it is
+        // pinned again in a moment and is still taken here
+        String mt = m.optString("text");
+        if (mt.startsWith(CarLink.OUT) || mt.startsWith(CarLink.BACK)) return;
         long id = m.optLong("message_id"), seen = sp(c).getLong("seen", 0);
         if (seen == 0) { // (first look: nothing old is replayed, but the milk account is the whole account: taken)
             sp(c).edit().putLong("seen", id).apply();
@@ -327,6 +331,7 @@ final class HomeLink {
             if (m.optString("text").startsWith(STATUS)) { TabletWatch.save(c, m.optString("text").substring(STATUS.length())); return; } // (a late answer)
             if (m.optString("text").startsWith(House.FROM_HOME)) { House.fromHome(c, m.optString("text"), id); return; } // 🥛 what was said at home
             if (m.optString("text").startsWith("🏠 🛒")) { HomeShop.toPhone(c, m.optString("text")); return; } // 🛒 అమ్మగారు's list: on his shopping list
+            if (m.optString("text").startsWith(CarLink.OUT)) { CarLink.fromCar(c, m.optString("text")); return; } // 🚗 ⛽ diesel told in the car: his car account
             JSONObject inv = GameLink.inviteIn(m, true); // (అమ్మగారు asks him to play a game from the tablet)
             if (inv != null) { GameActivity.inviteNote(c, inv); return; }
             if (m.has("photo") && !m.optString("caption").startsWith(FRAME)) showPhoto(c, m); // (not his own photos for the frame)

@@ -1102,6 +1102,7 @@ public class SettingsActivity extends Activity {
             try { startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); } catch (Exception ignored) {}
         });
         homeArrivalSwitch(); // (it was in the watch card)
+        boxSection();
         carSleepSection();
         jarvisMapsSection();
 
@@ -1940,6 +1941,18 @@ public class SettingsActivity extends Activity {
             crashClear.setVisibility(crash == null ? View.GONE : View.VISIBLE);
         }
         boolean access = NotifyListener.enabled(this);
+        boolean carBox = prefs.carMode();
+        if (carBox) { // 🚗 the car's box: its own lines (no messages here: those are his phone's)
+            String wait = CarLink.waitingLine(this);
+            s.append("🚗 కారు box: ").append(CarBox.speedWords()).append(" · ").append(CarBox.linkLine(this)).append(wait.isEmpty() ? "" : " · " + wait).append("\n");
+            String alert = CarCare.statusWords(this);
+            if (!alert.isEmpty()) s.append("• ").append(alert).append("\n");
+            s.append(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ? "✓ లొకేషన్: ఉంది (స్పీడ్, దారి)\n"
+                    : "✗ లొకేషన్ అనుమతి లేదు: స్పీడ్, నిద్ర అలర్ట్, దారి పనిచేయవు\n");
+            s.append(Settings.canDrawOverlays(this) ? "✓ Display over other apps: ఉంది (కారు స్టార్ట్‌తో Jarvis వస్తాడు)\n"
+                    : "✗ Display over other apps లేదు: కారు స్టార్ట్ అయినప్పుడు Jarvis తనంతట తానే రాడు\n");
+            s.append(!access ? "• నోటిఫికేషన్ యాక్సెస్ లేదు: Maps మలుపులు, పాట పేరు Jarvis కి తెలియవు\n" : "✓ నోటిఫికేషన్లు: Maps, పాటలు Jarvis కి తెలుస్తాయి\n");
+        } else {
         s.append(!access ? "✗ నోటిఫికేషన్ యాక్సెస్ లేదు: మెసేజ్‌లు Jarvis కి అందవు\n"
                 : NotifyListener.connected ? "✓ నోటిఫికేషన్లు Jarvis కి అందుతున్నాయి\n"
                 : "✗ యాక్సెస్ ఉంది, కానీ Android నోటిఫికేషన్లు పంపడం లేదు\n");
@@ -1950,6 +1963,7 @@ public class SettingsActivity extends Activity {
         android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
         boolean dnd = nm != null && nm.getCurrentInterruptionFilter() > android.app.NotificationManager.INTERRUPTION_FILTER_ALL;
         s.append(dnd ? "✗ Do Not Disturb ఆన్: మెసేజ్‌లు చదవను (ఫోన్ quick settings లో ఆఫ్ చేయండి)\n" : "✓ Do Not Disturb: ఆఫ్\n");
+        }
         PowerManager pm = getSystemService(PowerManager.class);
         s.append(pm != null && pm.isIgnoringBatteryOptimizations(getPackageName()) ? "✓ బ్యాటరీ సేవర్ మినహాయింపు: ఉంది\n"
                 : "✗ బ్యాటరీ సేవర్ మినహాయింపు లేదు: ఫోన్ Jarvis ని ఆపేయవచ్చు\n");
@@ -1968,7 +1982,8 @@ public class SettingsActivity extends Activity {
         if (prefs.naturalVoice() && VoiceIO.naturalCut != null)
             s.append("• సహజ గొంతు చివరి జవాబు మధ్యలో ఆగింది (మిగతాది టెక్స్ట్‌లో ఉంది): ").append(VoiceIO.naturalCut).append("\n");
         long backedUp = Backup.lastOk(this);
-        if (!Backup.configured(this)) s.append("✗ బ్యాకప్ సెట్ చేయలేదు: ఫోన్ పోతే Jarvis డేటా పోతుంది (కింద \"బ్యాకప్\" చూడండి)\n");
+        if (carBox && !Backup.configured(this)) s.append("• బ్యాకప్: box లో వద్దు (మీ డేటా ఫోన్‌లోనే)\n");
+        else if (!Backup.configured(this)) s.append("✗ బ్యాకప్ సెట్ చేయలేదు: ఫోన్ పోతే Jarvis డేటా పోతుంది (కింద \"బ్యాకప్\" చూడండి)\n");
         else if (System.currentTimeMillis() - backedUp > 3 * 86_400_000L)
             s.append("✗ చివరి బ్యాకప్ పాతది").append(backedUp == 0 ? "" : " (" + Backup.when(backedUp) + ")").append(": \"ఇప్పుడే బ్యాకప్ చేయి\" నొక్కండి\n");
         else s.append("✓ బ్యాకప్: ").append(Backup.when(backedUp)).append("\n");
@@ -3074,6 +3089,10 @@ public class SettingsActivity extends Activity {
         final android.content.SharedPreferences ds = CarCare.settings(this);
         Switch on = toggle("కారు నిద్ర అలర్ట్ ఆన్", CarCare.enabled(this));
         on.setOnCheckedChangeListener((sw, v) -> ds.edit().putBoolean("drive_fatigue", v).apply());
+        if (!prefs.carMode()) { // his phone: the car has its own Jarvis (the box) — then the phone stays quiet in the car
+            Switch quiet = toggle("🚗 కారులో box Jarvis ఉంది: కారు మోడ్‌లో ఫోన్ \"Jarvis\" వినదు, నిద్ర ప్రశ్నలు అడగదు (box అడుగుతుంది)", prefs.boxInCar());
+            quiet.setOnCheckedChangeListener((sw, v) -> { prefs.sp.edit().putBoolean("box_in_car", v).apply(); WakeService.recheck(this); });
+        }
         TextView w = Ui.text(this, "ఎప్పుడు అడగాలి?", 15, Ui.MUTED);
         w.setPadding(0, Ui.dp(this, 8), 0, 0);
         box.addView(w);
@@ -4506,6 +4525,105 @@ public class SettingsActivity extends Activity {
         pinSection();
     }
 
+    /** 🚗 The car Jarvis: this device is the Android box in his car (CarBox, CarScreen). Acts at once. */
+    private void boxSection() {
+        section("🚗 కారు Jarvis (కారులోని Android box)");
+        note("కారులో పెట్టిన Android box (Carlinkit లాంటిది) లో మాత్రమే ఆన్ చేయండి, మీ ఫోన్‌లో కాదు. ఆన్ చేస్తే: కారు స్క్రీన్‌కి పెద్ద బటన్ల Jarvis "
+                + "(🎤 మాట్లాడు, 🧭 దారి, 🎵 పాటలు, ⛽ డీజిల్, 🏠 ఇల్లు, 😴 నిద్ర), కారు mic తో \"Jarvis\" ఎప్పుడూ వింటాడు, కారు speakers లో మాట్లాడతాడు, "
+                + "కారు స్టార్ట్ అవ్వగానే తనంతట తానే వచ్చి \"శుభ ప్రయాణం\" అంటాడు, ప్రయాణం అంతా నిద్ర అలర్ట్, స్పీడ్. "
+                + "కాల్స్, మెసేజ్‌లు, డబ్బు, రిమైండర్లు, ఆరోగ్యం box లో ఉండవు (మీ ఫోన్‌లోనే). డీజిల్ చెబితే మీ ఫోన్‌లోని కారు లెక్కకి వెళ్తుంది (కింద 📮 లింక్ కావాలి).");
+        Switch on = toggle("ఈ డివైస్ కారు Jarvis (కారులోని box)", prefs.carMode());
+        final boolean[] asking = {false};
+        on.setOnCheckedChangeListener((sw, v) -> {
+            if (asking[0]) return;
+            if (!v) {
+                prefs.setCarMode(false);
+                try { CarCare.stop(this, "box"); } catch (Exception ignored) {} // (its sleep alert's car mode ends with it)
+                Toast.makeText(this, "కారు Jarvis ఆఫ్", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            asking[0] = true;
+            sw.setChecked(false);
+            asking[0] = false;
+            if (prefs.homeMode()) { Toast.makeText(this, "ఇది ఇంటి టాబ్లెట్: ముందు ఇంటి Jarvis ఆఫ్ చేయండి", Toast.LENGTH_LONG).show(); return; }
+            // (asked first: a tap by mistake on his phone must not turn the phone into the car's box)
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("ఈ డివైస్ కారు Jarvis అవ్వాలా?")
+                    .setMessage("ఇది కారులో పెట్టిన Android box కి మాత్రమే. ఆన్ చేస్తే ఇక్కడ కాల్స్, మెసేజ్‌లు, డబ్బు, రిమైండర్ల పనులు ఆగిపోతాయి, "
+                            + "\"Jarvis\" ఎప్పుడూ వింటాడు. మీ ఫోన్‌లో అయితే వద్దు నొక్కండి.")
+                    .setPositiveButton("అవును, ఇది కారు box", (d, w) -> {
+                        prefs.setCarMode(true);
+                        prefs.sp.edit().putBoolean("wake", true).putString("wake_when", "always").apply(); // (the car's mic hears "Jarvis" the whole trip)
+                        if (wake != null) wake.setChecked(true); // (this screen saves its own switches when left: they must say the same)
+                        if (wakeWhen != null) wakeWhen.check(23);
+                        asking[0] = true;
+                        sw.setChecked(true);
+                        asking[0] = false;
+                        Toast.makeText(this, "కారు Jarvis ఆన్: వెనక్కి వెళ్తే కారు స్క్రీన్ వస్తుంది", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("వద్దు", null)
+                    .show();
+        });
+        if (!prefs.carMode()) return;
+        TextView st = Ui.text(this, "", 14, Ui.MUTED);
+        st.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        box.addView(st);
+        String wait = CarLink.waitingLine(this);
+        st.setText("🚗 " + CarBox.speedWords() + " · " + CarBox.linkLine(this) + (wait.isEmpty() ? "" : " · " + wait));
+        button("🖥️ \"ఇతర యాప్‌ల మీద చూపించు\" అనుమతి (కారు స్టార్ట్‌తో Jarvis రావడానికి)", v -> {
+            try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + getPackageName()))); }
+            catch (Exception e) { Toast.makeText(this, "ఈ box లో ఆ పేజీ తెరవలేకపోయాను", Toast.LENGTH_SHORT).show(); }
+        });
+        button("📍 లొకేషన్ అనుమతి (స్పీడ్, దారి, నిద్ర అలర్ట్)", v -> {
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 9);
+            else Toast.makeText(this, "✓ లొకేషన్ అనుమతి ఉంది", Toast.LENGTH_SHORT).show();
+        });
+        button("🔊 నిద్ర అలర్ట్ గొంతు టెస్ట్", v -> Announcer.sayPhone(this, prefs.name() + ", మెలకువగా ఉన్నారా అని ఇలా అడుగుతాను."));
+        note("ఈ గొంతు వినిపించకపోతే: box సెట్టింగ్స్ → System → Languages → Text-to-speech → Google ఎంచుకుని, తెలుగు వాయిస్ డేటా install చేయండి. "
+                + "(నిద్ర అలర్ట్ నెట్ లేకపోయినా అడగాలని ఈ గొంతు.)");
+        button("🔔 అలారం శబ్దం టెస్ట్ (కారు speakers లో)", v -> CarCare.testTone(this));
+        // 🔌 C11: the OBD adapter (connected once in the scanner: then every trip by itself)
+        String obdName = prefs.sp.getString("obd_name", "");
+        TextView obdLine = Ui.text(this, ObdWatch.adapter(this).isEmpty() ? "🔌 OBD అడాప్టర్: ఇంకా కలపలేదు"
+                : "🔌 OBD అడాప్టర్: " + obdName + (ObdWatch.live() ? " · " + ObdWatch.chip() : ObdWatch.status.isEmpty() ? "" : " · " + ObdWatch.status), 14, Ui.MUTED);
+        obdLine.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(obdLine);
+        button("🔌 OBD అడాప్టర్ కలుపు (ఇంజిన్ వేడి, బ్యాటరీ, చెక్-ఇంజిన్, డీజిల్ లెవెల్)", v -> startActivity(new Intent(this, ObdActivity.class)));
+        note("ELM327 Bluetooth (classic, PIN 1234) అడాప్టర్‌ని స్టీరింగ్ కింద OBD పోర్ట్‌లో పెట్టి, box Bluetooth లో ఒక్కసారి జత చేసి, ఇక్కడ \"కనెక్ట్\" నొక్కండి. "
+                + "తర్వాత ప్రతి ప్రయాణంలో కారు Jarvis దాన్ని తనే కలిపి చూస్తుంటాడు: ఇంజిన్ 105° దాటితే, బ్యాటరీ ఛార్జ్ అవ్వకపోతే, చెక్-ఇంజిన్ లైట్ వెలిగితే చెబుతాడు. కోడ్‌లు ఇక్కడ ఎప్పుడూ తీసేయడు.");
+        // ⛽ C12: the tank and the mileage for the range
+        TextView fuelLine = Ui.text(this, CarFuel.settingsLine(this), 14, Ui.MUTED);
+        fuelLine.setPadding(0, Ui.dp(this, 6), 0, 0);
+        box.addView(fuelLine);
+        button("⛽ ట్యాంక్ లీటర్లు / మైలేజ్ మార్చు", v -> {
+            LinearLayout f = new LinearLayout(this);
+            f.setOrientation(LinearLayout.VERTICAL);
+            int pd = Ui.dp(this, 16);
+            f.setPadding(pd, pd / 2, pd, 0);
+            EditText tankBox = new EditText(this), kmplBox = new EditText(this);
+            tankBox.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            kmplBox.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            tankBox.setHint("ట్యాంక్ లీటర్లు (Nexon డీజిల్: 44)");
+            kmplBox.setHint("మైలేజ్ కి.మీ/లీ (ఫోన్ లెక్క వచ్చే వరకు)");
+            tankBox.setText(trimZero(CarFuel.tank(this)));
+            f.addView(tankBox);
+            f.addView(kmplBox);
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("⛽ కారు ట్యాంక్").setView(f)
+                    .setPositiveButton("సేవ్", (d, w) -> {
+                        try { float t = Float.parseFloat(tankBox.getText().toString().trim()); if (t >= 20 && t <= 90) CarFuel.setTank(this, t); } catch (Exception ignored) {}
+                        try { float k = Float.parseFloat(kmplBox.getText().toString().trim()); if (k > 3 && k < 40) CarFuel.setKmpl(this, k); } catch (Exception ignored) {}
+                        fuelLine.setText(CarFuel.settingsLine(this));
+                    })
+                    .setNegativeButton("వద్దు", null).show();
+        });
+        note("డీజిల్ ఎంత వరకు వస్తుందో: OBD adapter ఉంటే కారు చెప్పే లెవెల్‌తో; లేకపోతే box కి చెప్పిన ఫిల్ (ఫుల్ = ట్యాంక్ నిండా) నుంచి box లెక్కించిన కి.మీ తీసేసి. "
+                + "ఎప్పుడూ \"సుమారు\" మాత్రమే: కారు డాష్‌బోర్డ్‌లో చూపేదే నమ్మండి. box లెక్కించిన రోజు కి.మీ రోజుకి ఒకసారి ఫోన్ కారు లెక్కకి వెళ్తాయి (కి.మీ మాత్రమే, ఎక్కడికి వెళ్ళారో కాదు).");
+        note("🔑 Keys ఈ box లోనే మీరే పెట్టండి (chat లో, ఫోటోలో ఎప్పుడూ వద్దు). ఈ box కోసం OpenAI లో వేరే key తీసి, నెల limit పెట్టడం మంచిది. "
+                + "మీ ఫోన్ బ్యాకప్ ఈ box లో restore చేయకండి, box లో బ్యాకప్ కూడా పెట్టకండి. "
+                + "ఫోన్‌లో: ⚙️ → 🚗 కారు నిద్ర అలర్ట్ → \"కారులో box Jarvis ఉంది\" ఆన్ చేస్తే, కారులో ఫోన్, box రెండూ ఒకేసారి జవాబివ్వవు.");
+    }
+
     /** The home tablet: the 4-digit PIN in front of Settings (TabletLock). */
     private void pinSection() {
         section("🔐 సెట్టింగ్స్ లాక్ (ఈ టాబ్లెట్)");
@@ -4536,9 +4654,12 @@ public class SettingsActivity extends Activity {
 
     /** Both devices: joining his phone and the home tablet through his bot (token, chat, QR). Acts at once. */
     private void linkSection() {
-        section("📮 ఫోన్ ↔ టాబ్లెట్ లింక్");
+        section(prefs.carMode() ? "📮 ఫోన్ ↔ కారు box లింక్" : "📮 ఫోన్ ↔ టాబ్లెట్ లింక్"); // (the box: in the car group, by its car card)
         note(prefs.homeMode()
                 ? "అబ్బాయి ఫోన్‌తో కలపడానికి సులువైన దారి: \"📷 ఫోన్ QR స్కాన్ చేయి\" నొక్కి, అతని ఫోన్‌లో వచ్చే QR ని కెమెరాకి చూపించండి. లేదా అదే bot token కింద పెట్టి \"Telegram చాట్ కనుక్కో\" నొక్కండి."
+                : prefs.carMode()
+                ? "కారు box ని మీ ఫోన్‌తో కలపడానికి: మీ ఫోన్‌లో ఉన్న అదే bot token కింద పెట్టి (box లోనే టైప్ / paste చేయండి), \"Telegram చాట్ కనుక్కో\" నొక్కండి. "
+                        + "అప్పుడు డీజిల్ ఫోన్ కారు లెక్కకి, మీ రాక టైమ్ అమ్మగారి టాబ్లెట్‌కి వెళ్తాయి."
                 : "ఇంటి టాబ్లెట్‌తో కలపడానికి: ముందు ఇక్కడ మీ bot token పెట్టి \"Telegram చాట్ కనుక్కో\" నొక్కండి. తర్వాత \"🔲 QR చూపించు\" నొక్కి, టాబ్లెట్‌లో \"📷 ఫోన్ QR స్కాన్ చేయి\" తో స్కాన్ చేయించండి: టాబ్లెట్‌లో ఏమీ టైప్ చేయక్కర్లేదు. "
                         + "(పాత ఫోన్ కాపలా అవసరం లేదు; ఇది అదే bot.)");
         EditText tok = field("Telegram bot token", Guard.token(this), true);
@@ -4557,13 +4678,14 @@ public class SettingsActivity extends Activity {
         button("టెస్ట్ మెసేజ్ పంపు", v -> {
             Guard.setToken(this, tok.getText().toString());
             new Thread(() -> {
-                boolean ok = Guard.send(this, prefs.homeMode() ? "✅ ఇంటి టాబ్లెట్ నుంచి టెస్ట్: లింక్ పనిచేస్తోంది." : "✅ ఫోన్ నుంచి టెస్ట్: లింక్ పనిచేస్తోంది.");
+                boolean ok = Guard.send(this, prefs.homeMode() ? "✅ ఇంటి టాబ్లెట్ నుంచి టెస్ట్: లింక్ పనిచేస్తోంది."
+                        : prefs.carMode() ? "✅ కారు box నుంచి టెస్ట్: లింక్ పనిచేస్తోంది." : "✅ ఫోన్ నుంచి టెస్ట్: లింక్ పనిచేస్తోంది.");
                 runOnUiThread(() -> Toast.makeText(this, ok ? "పంపాను ✓ Telegram చూడండి" : "పంపలేకపోయాను: token / చాట్ చూడండి", Toast.LENGTH_LONG).show());
             }, "link-test").start();
         });
         if (prefs.homeMode()) button("📷 ఫోన్ QR స్కాన్ చేయి", v -> JarvisCamera.open(this, "auto", null));
-        else button("🔲 QR చూపించు (టాబ్లెట్ స్కాన్ చేయడానికి)", v -> QrPair.show(this));
-        if (!prefs.homeMode()) button("🔐 టాబ్లెట్ PIN తీసేయి (మర్చిపోతే)", v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        else if (!prefs.carMode()) button("🔲 QR చూపించు (టాబ్లెట్ స్కాన్ చేయడానికి)", v -> QrPair.show(this));
+        if (!prefs.homeMode() && !prefs.carMode()) button("🔐 టాబ్లెట్ PIN తీసేయి (మర్చిపోతే)", v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setMessage("ఇంటి టాబ్లెట్ సెట్టింగ్స్ PIN తీసేయమంటారా? తర్వాత టాబ్లెట్‌లో కొత్త PIN పెట్టుకోవచ్చు.")
                 .setPositiveButton("తీసేయి", (d, w) -> {
                     final android.content.Context app = getApplicationContext();

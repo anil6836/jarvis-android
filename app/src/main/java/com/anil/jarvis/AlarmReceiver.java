@@ -195,6 +195,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 Reminders.scheduleBriefing(c); // tomorrow
                 break;
             case Intent.ACTION_BOOT_COMPLETED:
+            case "android.intent.action.QUICKBOOT_POWERON": // (a car box waking from its quick sleep)
             case Intent.ACTION_MY_PACKAGE_REPLACED:
             case Intent.ACTION_TIME_CHANGED:
             case Intent.ACTION_TIMEZONE_CHANGED:
@@ -216,9 +217,17 @@ public class AlarmReceiver extends BroadcastReceiver {
                 try { Automations.schedule(c); } catch (Exception ignored) {}
                 UpdateJob.schedule(c);
                 if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) Updater.cancelNotice(c);
-                if (Intent.ACTION_BOOT_COMPLETED.equals(action) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
-                    // the home Jarvis (a tablet at home) opens its screen by itself after a restart / an update he installed
-                    try { if (new Prefs(c).homeMode()) c.startActivity(new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
+                if (Intent.ACTION_BOOT_COMPLETED.equals(action) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action) || "android.intent.action.QUICKBOOT_POWERON".equals(action)) {
+                    // the home Jarvis (a tablet at home) opens its screen by itself after a restart / an update he installed; the
+                    // car's box too, each time the car starts (C10; Android 10+ needs "display over other apps" for this)
+                    try {
+                        Prefs bp = new Prefs(c);
+                        boolean boot = !Intent.ACTION_MY_PACKAGE_REPLACED.equals(action);
+                        if (bp.carMode() && boot) CarBox.newBoot(); // (the car started: a new trip, even if Jarvis's process lived on)
+                        if (bp.homeMode() || bp.carMode()) c.startActivity(new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                .putExtra(MainActivity.EXTRA_CAR_BOOT, bp.carMode() && boot));
+                    } catch (Exception ignored) {}
+                    try { CarCare.rearm(c); } catch (Exception ignored) {} // (the car sleep alert's timer: Android forgets it at a restart)
                 }
                 break;
             case AppRadio.ACTION_PAUSE: // "30 నిమిషాలు" for a station playing in the Telugu Radios app

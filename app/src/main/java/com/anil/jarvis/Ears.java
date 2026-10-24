@@ -185,7 +185,9 @@ final class Ears implements ListenMic {
             post(() -> cb.opened());
             // the home tablet: she pauses longer between words; one question at most 15 s; a TV / AC / fan in the room never
             // keeps it listening (only sound near her own loudness counts as her voice: Anil, 24 Oct "వింటూనే ఉంది")
+            // the car's box: the road, the AC and the songs never keep it listening either (his voice near the car's mic counts)
             Talk talk = p.homeMode() ? new Talk(longTalk ? 60_000 : 15_000, longTalk ? 2400 : 1700).nearVoice()
+                    : p.carMode() ? new Talk(longTalk ? 60_000 : 15_000, longTalk ? 2400 : 1200).nearVoice()
                     : new Talk(longTalk ? 60_000 : 20_000);
             short[] f = new short[FRAME];
             long openedAt = SystemClock.elapsedRealtime();

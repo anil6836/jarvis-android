@@ -98,7 +98,7 @@ public class DriveService extends Service implements LocationListener, android.h
             startedAt = System.currentTimeMillis();
             main.postDelayed(watch, 60000);
             if (running) { try { RideCare.started(this); } catch (Exception ignored) {} } // never in the way of the alerts
-            if (Drive.settings(this).getBoolean("drive_crash", true)) {
+            if (Drive.settings(this).getBoolean("drive_crash", true) && !CarBox.on(this)) { // (the box: no SOS here; his phone in his pocket keeps the crash check)
                 try {
                     android.hardware.SensorManager sm = getSystemService(android.hardware.SensorManager.class);
                     android.hardware.Sensor acc = sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER);
@@ -120,7 +120,8 @@ public class DriveService extends Service implements LocationListener, android.h
             long still = lastMoving > 0 ? now - lastMoving : now - startedAt;
             Location l = last;
             boolean noGps = l == null || now - l.getTime() > 15 * 60000L;
-            if (!drivingMode && (still > 10 * 60000L || noGps && now - startedAt > 15 * 60000L)) {
+            // (the car's own box: the drive alerts and the speed run as long as the box is on, parked or not)
+            if (!drivingMode && !CarBox.on(DriveService.this) && (still > 10 * 60000L || noGps && now - startedAt > 15 * 60000L)) {
                 endWhy = still > 10 * 60000L && !noGps ? "parked" : "nogps";
                 if (l != null && tripMeters > 1000 && now - l.getTime() < 10 * 60000L) {
                     GeoReminders.savePlace(DriveService.this, "parking", l.getLatitude(), l.getLongitude());
@@ -129,6 +130,10 @@ public class DriveService extends Service implements LocationListener, android.h
                 Drive.clearDest(DriveService.this);
                 stopSelf();
                 return;
+            }
+            if (CarBox.on(DriveService.this)) { // 🚗 the car's box, whatever app is in front (Maps, songs): the road ahead and the tank
+                try { CarAhead.maybe(DriveService.this); } catch (Exception ignored) {} // 🌧️ C17
+                try { String low = CarFuel.lowWord(DriveService.this); if (low != null) Announcer.say(DriveService.this, low); } catch (Exception ignored) {} // ⛽ C12
             }
             main.postDelayed(this, 60000);
         }
@@ -163,6 +168,7 @@ public class DriveService extends Service implements LocationListener, android.h
             double m = Drive.meters(prev.getLatitude(), prev.getLongitude(), l.getLatitude(), l.getLongitude());
             if (!l.hasSpeed() && l.getTime() > prev.getTime()) kmh = m / ((l.getTime() - prev.getTime()) / 1000.0) * 3.6;
             if (m > 3 && m < 2000) tripMeters += m;
+            if (CarBox.on(this)) CarKm.add(this, m, now, kmh, l.getTime()); // 📏 the car's box: its own km, hour by hour (C13)
             if (m > 15) heading = (float) Drive.bearing(prev.getLatitude(), prev.getLongitude(), l.getLatitude(), l.getLongitude());
         }
         if (kmh > 8 && l.hasBearing()) heading = l.getBearing();
@@ -170,6 +176,8 @@ public class DriveService extends Service implements LocationListener, android.h
         speedAt = now;
         lastKmh = kmh;
         lastKmhAt = now;
+        limitNowKmh = roadLimit(l); // (the car screen: the limit of the road he is on, not one looked up far back)
+        if (CarBox.on(this)) CarBox.alive(this);
         if (CrashAlert.active && CrashAlert.fromWatch) { // (a check the watch began: riding on means he is fine)
             if (kmh >= 20) { if (++movingOn >= 3) { movingOn = 0; CrashAlert.ridingOn(this); } } else movingOn = 0;
         } else movingOn = 0;
@@ -193,7 +201,7 @@ public class DriveService extends Service implements LocationListener, android.h
         }
         int breakHours = s.getInt("drive_break_hours", 2);
         boolean carSays = CarCare.on(this) && CarCare.enabled(this) && CarCare.opt(this, "car_long"); // (the car alert says the 2 hours itself)
-        if (!carSays && breakHours > 0 && movingSince > 0 && now - movingSince > breakHours * 3600000L && now - breakAt > 30 * 60000L && kmh > 10) {
+        if (!carSays && !CarBox.phoneQuiet(this) && breakHours > 0 && movingSince > 0 && now - movingSince > breakHours * 3600000L && now - breakAt > 30 * 60000L && kmh > 10) {
             breakAt = now;
             Announcer.say(this, p.name() + ", " + ((now - movingSince) / 3600000L) + " గంటలకు పైగా ఆపకుండా డ్రైవ్ చేస్తున్నారు. "
                     + "కొంచెం బ్రేక్ తీసుకోండి, టీ తాగి కాసేపు నడవండి. దారిలో టీ షాప్ కావాలంటే అడగండి.");
@@ -209,7 +217,7 @@ public class DriveService extends Service implements LocationListener, android.h
             overCount++;
             if (overCount >= 3 && now - overAt > 90000) {
                 overAt = now;
-                Announcer.say(this, "స్పీడ్ " + Math.round(kmh) + " ఉంది. ఇక్కడ లిమిట్ " + lim + ". కొంచెం తగ్గించండి.");
+                if (!CarBox.phoneQuiet(this)) Announcer.say(this, "స్పీడ్ " + Math.round(kmh) + " ఉంది. ఇక్కడ లిమిట్ " + lim + ". కొంచెం తగ్గించండి."); // (the car's box says it)
             }
         } else overCount = 0;
 
@@ -279,7 +287,7 @@ public class DriveService extends Service implements LocationListener, android.h
             int lim = c[2] > 0 ? (int) c[2] : roadLimit(l);
             String say = "జాగ్రత్త, ముందు " + (Math.round(d / 50.0) * 50) + " మీటర్లలో స్పీడ్ కెమెరా ఉంది"
                     + (lim > 0 ? ", లిమిట్ " + lim : "") + (lim > 0 && kmh > lim ? ". స్పీడ్ తగ్గించండి." : ".");
-            Announcer.say(this, say);
+            if (!CarBox.phoneQuiet(this)) Announcer.say(this, say); // (his phone in the car with its own Jarvis: the box warns)
             break;
         }
     }
@@ -333,6 +341,8 @@ public class DriveService extends Service implements LocationListener, android.h
     private volatile double speedNow;
     /** The last GPS speed (km/h) and when (wall clock), for a fall the watch felt during the ride. */
     static volatile double lastKmh;
+    /** The road's limit where he is now (0: not known / looked up too far back). */
+    static volatile int limitNowKmh;
     static volatile long lastKmhAt;
     private int movingOn;
     private volatile long speedAt, knockAt, hardAt;

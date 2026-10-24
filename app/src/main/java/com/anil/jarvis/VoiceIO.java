@@ -90,7 +90,9 @@ final class VoiceIO {
     private void watchBargeIn() {
         // (the home tablet: no talk-over mic while he speaks - on Android 8 it fought Jarvis's ears and his own voice
         // set it off; she stops him with a tap on him or 🎤)
-        if (shut || paused || !prefs.bargeIn() || prefs.homeMode()) return;
+        // (the car's box too: its voice comes back into the car's mic from loud speakers, with the car's own delay; he stops
+        // Jarvis with a tap on 🎤 / the round orb)
+        if (shut || paused || !prefs.bargeIn() || prefs.homeMode() || prefs.carMode()) return;
         BargeIn.Callback cb = () -> {
             if (!speaking || shut || paused) return;
             pause(false); // hold, don't lose it: "కొనసాగించు" (or silence) carries on from here

@@ -80,6 +80,7 @@ public class Proactive extends BroadcastReceiver {
     }
 
     static void tick(Context c) {
+        if (CarBox.on(c)) return; // 🚗 the car's box: no remarks of the phone's own (his day, prices, diary: on his phone, C8)
         pruneSeen(c);
         try { Automations.tick(c); } catch (Throwable ignored) {} // his own rules first (before the slow fetches), even with Jarvis's own ideas off
         try { Guard.watch(c); } catch (Throwable ignored) {}       // on the phone at home: tell him if the guard stopped

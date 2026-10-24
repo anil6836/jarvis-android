@@ -61,6 +61,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** The theme this screen was built with (a change in Settings rebuilds it). */
     private int builtTheme;
     static final String EXTRA_WAKE = "wake";
+    /** The car's box just started (BOOT): the car screen greets the new trip. */
+    static final String EXTRA_CAR_BOOT = "car_boot";
     static final String EXTRA_BRIEF = "brief";
     /** Opened from a notification with a question to ask Jarvis right away. */
     static final String EXTRA_ASK = "jarvis_ask";
@@ -138,6 +140,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private HoloOrb orb;               // the hologram core in the header (same states as OrbView)
     private FaceView face;             // Jarvis's face on the home screen (Settings → Jarvis ముఖం)
     private HomeScreen home;           // the home Jarvis's screen (a tablet at home), over the chat; null on the phone
+    private CarScreen car;             // 🚗 the car Jarvis's screen (the car's Android box), over the chat; null elsewhere
     private FrameLayout faceBox;
     private TextView faceNote;         // 👁 while the front camera is watching
     private FaceSight sight;           // the front camera (only while the face is on the screen)
@@ -276,6 +279,17 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true);
             else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
             HomeCare.start(this); // అమ్మగారు's day: meals, tablets, water, checks, the home link
+        } else if (prefs.carMode()) { // 🚗 the car's box: its car screen over the chat (the chat stays under it)
+            FrameLayout f = new FrameLayout(this);
+            f.addView(ui, new FrameLayout.LayoutParams(-1, -1));
+            car = new CarScreen(this, prefs, carHost);
+            f.addView(car, new FrameLayout.LayoutParams(-1, -1));
+            setContentView(f);
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true);
+            else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); // (the car's display: Jarvis's screen stays while the car is on)
+            main.postDelayed(this::carGreet, 2500); // C10: "శుభ ప్రయాణం" once per trip
         } else {
             setContentView(ui);
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
@@ -306,9 +320,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         if (prefs.homeMode() != (home != null)) { recreate(); return; } // the home Jarvis was switched on / off in settings
+        if (prefs.carMode() != (car != null)) { recreate(); return; } // the car Jarvis was switched on / off in settings
         paused = false;
         visible = true;
-        if (home != null) fullScreen();
+        if (home != null || car != null) fullScreen();
         main.removeCallbacks(cancelIfAway);
         store.listener = this;
         // Opening Jarvis switches the wake word back on after "ఆపు" in the notification.
@@ -325,6 +340,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         syncWakeService();
         if (hudDash != null) hudDash.start();
         if (home != null) home.start();
+        if (car != null) car.start();
         if (home != null) HomeVideo.screenBack(this); // (back from her video call: the mic and the voice are Jarvis's again)
         UpdateJob.schedule(this); // "new version" notification when a build is out
         BackupJob.schedule(this); // the daily Drive backup (once he has set it up)
@@ -357,6 +373,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         super.onPause();
         if (hudDash != null) hudDash.stop();
         if (home != null) home.stop();
+        if (car != null) car.stop();
         paused = true;
         visible = false;
         if (sight != null) sight.stop(); // the front camera only watches while Jarvis is on the screen
@@ -379,7 +396,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onStop() {
         super.onStop();
-        if (home != null) return; // (the home Jarvis stays shown over the lock screen)
+        if (home != null || car != null) return; // (the home / car Jarvis stays shown over the lock screen)
         if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(false);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
     }
@@ -417,6 +434,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 talking(true);
                 main.postDelayed(this::startConversation, 450);
             }
+            return;
+        }
+        if (i.getBooleanExtra(EXTRA_CAR_BOOT, false)) { // the car's box started with the car: the new trip's greeting
+            i.removeExtra(EXTRA_CAR_BOOT);
+            if (car != null) { showCar(); main.postDelayed(this::carGreet, 2500); }
             return;
         }
         String installRepo = i.getStringExtra(AppMaker.EXTRA_INSTALL);
@@ -468,6 +490,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
             }
         }
+        if (car != null && (wake || assist)) { car.closeSheet(); showCar(); } // (the car: its screen, then the usual "Jarvis" talk)
         if (home != null && wake) { // the home tablet: "చెప్పండి అమ్మగారు?" and then he listens (his wish)
             HomeCare.life(this);
             homeHush(); // (she called "Jarvis" over his voice: he stops and listens)
@@ -1553,6 +1576,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (liveScreen != null && liveScreen.showing()) { onLiveEnd(); return; } // like ChatGPT: back ends the voice chat
         if (home != null && home.getVisibility() != View.VISIBLE) { showHome(); return; } // the home Jarvis: back to its screen
         if (home != null) return; // (the home Jarvis's screen stays: it is the tablet's home)
+        if (car != null && car.getVisibility() != View.VISIBLE) { showCar(); return; } // the car: back to its screen
+        if (car != null) { car.closeSheet(); return; } // (the car screen stays: it is the box's home)
         super.onBackPressed();
     }
 
@@ -1560,7 +1585,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @SuppressWarnings("deprecation")
     private void fullScreen() {
         try {
-            boolean on = home != null && home.getVisibility() == View.VISIBLE; // (the chat with its keyboard: the usual bars)
+            boolean on = home != null && home.getVisibility() == View.VISIBLE || car != null && car.getVisibility() == View.VISIBLE; // (the chat with its keyboard: the usual bars)
             getWindow().getDecorView().setSystemUiVisibility(!on ? 0 : View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
@@ -1569,7 +1594,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus && home != null) fullScreen(); // (back to full screen after a dialog / the keyboard / a swipe)
+        if (hasFocus && (home != null || car != null)) fullScreen(); // (back to full screen after a dialog / the keyboard / a swipe)
     }
 
     // ---- the home Jarvis (a tablet at home): its screen over the chat
@@ -1586,6 +1611,78 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         @Override public void speak(String text) { homeSpeak(text, "happy", false, 0); }
         @Override public void ask(String text) { homeSpeak(text, "caring", true, 0); }
     };
+
+    // ---- 🚗 the car Jarvis (the car's Android box): its screen over the chat
+    private final CarScreen.Host carHost = new CarScreen.Host() {
+        @Override public void talk() {
+            if (live != null) { onLiveEnd(); return; } // (a Live talk: 🎤 again ends it)
+            if (busy || voice.speaking || voice.listening) { onActionPressed(); return; } // (Jarvis talking / listening: stops, like the orb)
+            startConversation();
+        }
+        @Override public void ask(String text) { carSpeak(text, true); }
+        @Override public void speak(String text) { carSpeak(text, false); }
+        @Override public void openSettings() { startActivity(new Intent(MainActivity.this, SettingsActivity.class)); }
+        @Override public void openChat() {
+            car.setVisibility(View.GONE);
+            fullScreen();
+            main.removeCallbacks(backCar);
+            main.postDelayed(backCar, 2 * 60_000L); // back to the car screen when the chat is left alone
+        }
+    };
+
+    private final Runnable backCar = new Runnable() {
+        @Override public void run() {
+            if (car == null) return;
+            if (keyboardUp) { main.postDelayed(this, 60_000L); return; } // (he is typing: a minute more)
+            showCar();
+        }
+    };
+
+    private void showCar() {
+        if (car == null) return;
+        main.removeCallbacks(backCar);
+        try {
+            android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
+            if (imm != null && input != null) imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+        } catch (Exception ignored) {}
+        car.setVisibility(View.VISIBLE);
+        fullScreen();
+    }
+
+    /** The car: Jarvis says this on the car screen (and with listen, waits for his answer). A talk going on: said by the background voice after it. */
+    private void carSpeak(String text, boolean listen) { carSpeak(text, listen, 0); }
+
+    private void carSpeak(String text, boolean listen, int tries) {
+        if (isFinishing() || car == null || text == null || text.trim().isEmpty()) return;
+        if (busy || live != null || voice.speaking || voice.listening) {
+            // a button's result: said in turn when the talk ends (never over his voice or Jarvis's; given up after 2 minutes)
+            if (!listen && tries < 80) main.postDelayed(() -> carSpeak(text, false, tries + 1), 1500);
+            else if (listen) Toast.makeText(this, "Jarvis మాట్లాడుతున్నాడు: అయ్యాక మళ్లీ నొక్కండి", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        showCar();
+        long now = System.currentTimeMillis();
+        store.addChat("assistant", text, false);
+        addMessage("assistant", text, now, null);
+        car.say(text);
+        lastWasVoice = listen;
+        homeAskListen = listen; // (onSpeakDone listens again after a question)
+        keepScreenOn();
+        talking(true);
+        WakeService.pause(this);
+        voice.speak(text, prefs.speechRate());
+        setOrb(OrbView.SPEAKING);
+        refreshAction();
+    }
+
+    /** C10: the trip's first word, once (the box came up with the car). */
+    private void carGreet() {
+        if (car == null || isFinishing()) return;
+        String g = CarBox.startTrip(this); // (the sleep alert's car mode and the GPS start here too)
+        if (g == null) return;
+        car.say(g);
+        Announcer.say(this, g); // (the background voice: the road's own words, such as rain ahead, come after it in turn)
+    }
 
     // ---- the games on the home screen (GamePanel): Jarvis plays and talks like a person
     private final GamePanel.Outer gamesOuter = new GamePanel.Outer() {
@@ -1977,6 +2074,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onLiveState(int orbState, String text) {
         setOrb(orbState);
+        if (car != null && text != null && orbState == OrbView.LISTENING) car.partial("");
         status.setText(text);
         liveScreen.state(orbState, text);
     }
@@ -2008,6 +2106,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onLiveJarvis(String text) {
         liveScreen.caption(text, true);
         if (home != null) home.say(text);
+        if (car != null) car.say(text);
         if (liveBubble != null) liveBubble.setText(text);
         else addMessage("assistant", text, System.currentTimeMillis(), null);
         liveBubble = null;
@@ -2018,6 +2117,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         orb.setLevel(level);
         if (face != null) face.setMic(level);
         if (home != null) home.setMic(level);
+        if (car != null) car.setMic(level);
         liveScreen.orb.setMic(level);
     }
 
@@ -2025,6 +2125,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         liveScreen.orb.setVoice(level);
         if (face != null) face.setVoice(level);
         if (home != null) home.setVoice(level);
+        if (car != null) car.setVoice(level);
     }
 
     @Override public void onLiveError(String message) {
@@ -2107,6 +2208,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onUnderstanding() { status.setText("అర్థం చేసుకుంటున్నాను…"); }
 
     @Override public void onPartial(String text) {
+        if (car != null) car.partial(text);
         input.setText(text);
         input.setSelection(input.getText().length());
     }
@@ -2174,6 +2276,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         orb.setLevel(level);
         if (face != null) face.setMic(level);
         if (home != null) home.setMic(level);
+        if (car != null) car.setMic(level);
     }
 
     @Override public void onSpeakStart() {
@@ -2357,6 +2460,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                     Filler.stop();
                     if (!voice.speakFirst(first, prefs.speechRate())) return;
                     early[0] = first;
+                    if (car != null) car.say(first);
                     if (thinkingView != null) { thinkingView.setText(first + " …"); thinkingView.setTextColor(Ui.TEXT); }
                     setOrb(OrbView.SPEAKING);
                     refreshAction();
@@ -2415,6 +2519,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             TextView t = addMessage("assistant", error, System.currentTimeMillis(), null);
             t.setTextColor(Ui.RED);
             if (home != null) home.say(error);
+            if (car != null) car.say(error.replaceAll("\\n\\(.*$", "")); // (the car: the Telugu line, not the technical part)
             if (early != null && voice.finishOpen(null)) return; // ⚡ B: "the rest didn't come" after the first sentence; the turn ends with it
             finishTurn();
             return;
@@ -2429,6 +2534,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         if (face != null) face.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM);
         if (home != null) { home.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM); home.say(reply); }
+        if (car != null) car.say(reply);
         if (early != null) { // ⚡ B: the rest after the first sentence, in the same voice
             if (voice.finishOpen(reply)) { if (!voice.isPaused()) setOrb(OrbView.SPEAKING); refreshAction(); }
             else finishTurn(); // (that speech was stopped meanwhile: the words are on the screen)
@@ -2477,6 +2583,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** While Anil and Jarvis are talking the screen must not go dark. */
     private final Runnable letScreenSleep = () -> {
         if (home != null && home.keepOn()) return; // the home Jarvis's screen stays on in the day
+        if (car != null) return; // the car's screen stays on while the car is on (the box is off with it)
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     };
 
@@ -2660,6 +2767,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void setOrb(int s) {
         orb.setState(s);
         if (face != null) face.setState(s);
+        if (car != null) car.setState(s);
         if (home != null) {
             home.setState(s);
             main.removeCallbacks(tvBackLater);

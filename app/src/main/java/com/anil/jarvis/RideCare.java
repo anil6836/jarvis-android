@@ -100,7 +100,7 @@ final class RideCare {
                         : "ఇక్కడ ఇప్పుడు వర్షం పడుతోంది. రెయిన్‌కోట్ వేసుకుని, నెమ్మదిగా వెళ్లండి. ");
                 else if (max >= 50) say.append("రాబోయే రెండు గంటల్లో వర్షం పడే అవకాశం ").append(max).append(car ? "%. జాగ్రత్తగా వెళ్లండి. " : "%. రెయిన్‌కోట్ ఉందో చూసుకోండి. ");
                 if (!Double.isNaN(temp) && temp >= 40) say.append("బయట ").append(Math.round(temp)).append(" డిగ్రీల ఎండ ఉంది. నీళ్లు తాగి బయలుదేరండి. ");
-                if (say.length() > 0 && !CallControl.busyWithCall()) Announcer.say(app, say.toString().trim());
+                if (say.length() > 0 && !CallControl.busyWithCall() && !CarBox.phoneQuiet(app)) Announcer.say(app, say.toString().trim()); // (the car's box says it)
             } catch (Exception ignored) {}
         }, "ride-weather").start();
     }

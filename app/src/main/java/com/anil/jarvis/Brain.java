@@ -385,7 +385,8 @@ final class Brain {
             if (c.length() > 400) c = c.substring(0, 400) + "…";
             recent.append("assistant".equals(h.optString("role")) ? "Jarvis: " : name + ": ").append(c).append('\n');
         }
-        return "# Who is talking to you\n"
+        return (prefs.carMode() ? "# CAR MODE (this overrides anything below that does not fit)\n" + CarBox.persona(prefs.app) + "\n\n" : "")
+                + "# Who is talking to you\n"
                 + "- The person talking to you is " + name + ", the owner of this phone; you are his own Jarvis and you know him. "
                 + "If he asks his name ('నా పేరు ఏంటి?', 'నేనెవరు?'), tell him his name: " + name + " (in Telugu letters when you speak Telugu)."
                 + (!call.trim().equals(name) ? " He likes to be called '" + call.trim() + "'; that is how you address him, not his name." : "") + "\n"
@@ -539,6 +540,7 @@ final class Brain {
         }
 
         String head = (prefs.homeMode() ? "HOME MODE (this overrides anything below that does not fit): " + HomeCare.persona(prefs.app) + "\n\n" : "")
+                + (prefs.carMode() ? "CAR MODE (this overrides anything below that does not fit): " + CarBox.persona(prefs.app) + "\n\n" : "")
                 + "You are JARVIS, " + name + "'s personal AI assistant living on his Android phone, in the spirit of the JARVIS from the Iron Man films: calm, precise, quietly loyal, with dry British-butler wit.\n\n"
                 + "How you think (this is what makes you JARVIS):\n"
                 + "- Know his situation: the 'Right now' lines below say whether he is on duty or at home, where he is, the bike's charge, the phone's battery, "

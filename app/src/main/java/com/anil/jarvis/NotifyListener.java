@@ -187,6 +187,10 @@ public class NotifyListener extends NotificationListenerService {
     private void add(StatusBarNotification sbn) {
         if (sbn == null) return;
         if (getPackageName().equals(sbn.getPackageName())) { WatchAlerts.posted(this, sbn); return; } // Jarvis's own: on the watch too (2b)
+        if (CarBox.on(this)) { // 🚗 the car's box: messages and calls are his phone's (C8); only the maps' turns are read here
+            if (Drive.isNavApp(sbn.getPackageName())) Drive.fromNotification(this, sbn);
+            return;
+        }
         LaterMessages.posted(sbn.getKey()); // (a new message on a chat read before: not "read" any more)
         Notification n = sbn.getNotification();
         String pkgL = sbn.getPackageName().toLowerCase(Locale.ROOT);
@@ -215,7 +219,10 @@ public class NotifyListener extends NotificationListenerService {
         // W41 / W65: his own guard bot wrote on Telegram: the picture / voice from home (pinned there) to his phone and watch
         if (sbn.getPackageName().startsWith("org.telegram") && System.currentTimeMillis() - sbn.getPostTime() <= 60_000 && HomeLink.linked(this)) {
             String bot = Guard.sp(this).getString("tg_bot_name", "");
-            if (!bot.isEmpty() && (title.equalsIgnoreCase(bot) || title.startsWith(bot))) HomeLink.onBotNote(this);
+            if (!bot.isEmpty() && (title.equalsIgnoreCase(bot) || title.startsWith(bot))) {
+                HomeLink.onBotNote(this);
+                if (text.contains(CarLink.OUT.trim()) || text.contains(CarLink.BACK.trim())) return; // (the car's box ↔ phone mailbox: never read aloud)
+            }
         }
         // W44: Samsung's irregular heart rhythm warning (watch / Samsung Health Monitor): kept with the date, a doctor reminder
         if (System.currentTimeMillis() - sbn.getPostTime() <= 60_000 && HeartLog.isIrregular(sbn.getPackageName(), title + " " + text)) {

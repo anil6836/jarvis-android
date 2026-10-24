@@ -685,6 +685,7 @@ final class Tools {
                 + "meter (only the meter reading, 'కారు మీటర్ 45,500'); "
                 + "service (the car was serviced: rupees, odometer, what was done, date); "
                 + "status (default: mileage, this month, the last fill, when the next service is); month (a month's diesel, km, mileage, ₹ per km: month = YYYY-MM, this or last); "
+                + "on the car's box only: range = how far the diesel goes now (approx), engine = the engine's heat, battery and check-engine light now (OBD); "
                 + "setup (name e.g. 'Swift', fuel diesel / petrol / cng, every_km and every_months from his service book, last_service_date and last_service_km = "
                 + "the last service before Jarvis kept the account); "
                 + "report (the month's PDF, opened); share (that PDF into WhatsApp: he picks the chat and taps send himself); "
@@ -979,9 +980,13 @@ final class Tools {
         return out;
     }
 
-    /** home_care: the home tablet only; car_account: his phone only (the car account isn't on the tablet). */
+    /**
+     * home_care: the home tablet only; car_account: his phone only (the car account isn't on the tablet; the car's box sends
+     * it to the phone). The car's box: only the car's jobs (CarBox.toolHere: no calls, messages, money, reminders, health).
+     */
     private boolean forHere(Def d) {
         if ("home_care".equals(d.name)) return prefs.homeMode();
+        if (prefs.carMode()) return CarBox.toolHere(d.name);
         if ("car_account".equals(d.name)) return !prefs.homeMode();
         return true;
     }
@@ -1168,6 +1173,9 @@ final class Tools {
 
     String execute(String name, JSONObject a) {
         try {
+            // the car's box: a phone job never runs here, even if asked for by name (C8 / C9)
+            if (prefs.carMode() && !CarBox.toolHere(name) && !"web_search".equals(name) && !"end_conversation".equals(name))
+                return err("phone_only", CarBox.phoneOnly(prefs.name()));
             switch (name) {
                 case "call_contact": return call(a.optString("who"));
                 case "find_contact": return findContact(a.optString("name"));
@@ -1343,6 +1351,8 @@ final class Tools {
                 }
                 case "home_link": {
                     String ac = a.optString("action", "look").trim().toLowerCase(Locale.ROOT);
+                    if (prefs.carMode() && !ac.equals("say") && !ac.equals("remind")) // (the car's box: only a word / a reminder home; never a photo on the car's screen)
+                        return err("not_in_car", "In the car only say / remind work with home_link (his arrival time: drive home_eta).");
                     String said;
                     if (ac.equals("say")) {
                         String text = a.optString("text").trim();
@@ -2179,6 +2189,7 @@ final class Tools {
         if (name == null || name.trim().isEmpty()) return err("missing", "Which app?");
         java.util.regex.Matcher js = java.util.regex.Pattern.compile("(?i)^\\s*(jarvis\\s*settings|jarvis\\s*సెట్టింగ్స్|జార్విస్\\s*సెట్టింగ్స్)\\s*:?\\s*(.*)$").matcher(name);
         if (js.matches()) { // one of Jarvis's own settings cards: its group opens with that card unfolded
+            if (prefs.carMode() && CarBox.moving()) return err("moving", "In the car Settings open only when the car stands (safety): say so and offer it after he stops.");
             String topic = js.group(2).trim();
             start(new Intent(act(), SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, topic).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return ok().put("opened", topic.isEmpty() ? "Jarvis settings" : "Jarvis settings: " + topic).toString();
@@ -2186,6 +2197,8 @@ final class Tools {
         PackageManager pm = act().getPackageManager();
         ResolveInfo best = findApp(name);
         if (best == null) return err("not_found", "No installed app called '" + name + "'.");
+        if (prefs.carMode() && CarBox.payApp(best.activityInfo.packageName, String.valueOf(best.loadLabel(pm)))) // (C9: never a bank / payment app on the car's box)
+            return err("phone_only", "Payment and bank apps are never opened on the car's box.");
         Intent launch = pm.getLaunchIntentForPackage(best.activityInfo.packageName);
         if (launch == null) return err("cannot_open", "That app cannot be opened directly.");
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -6045,12 +6058,43 @@ final class Tools {
         if (cut > 0) said = said.substring(0, cut).trim();
         String r;
         try {
-            r = offlineDo(said);
+            r = prefs.carMode() ? offlineCarBox(said) : offlineDo(said); // (the car's box: only the car's jobs, C8)
         } catch (Exception e) {
             r = "అది చేయలేకపోయాను.";
         }
         if (r.startsWith(SAYS_NO_NET)) return r.substring(SAYS_NO_NET.length()); // (it says itself that there is no internet)
         return Offline.firstNote() + r;
+    }
+
+    /**
+     * 🚗 The car's box without internet: the sleep alert, the songs' keys, the time, and diesel kept in the box for his
+     * phone's car account (sent when the net is back). Nothing of the phone's (calls, SMS, money, reminders) runs here.
+     */
+    private String offlineCarBox(String said) throws Exception {
+        String t = said.toLowerCase(Locale.ROOT);
+        boolean off = word(t, "ఆఫ్", "off", "ఆపు", "ఆపేయ్", "ఆపేయి", "ఆపండి", "బంద్") || any(t, "ఆఫ్ చేయ", "ఆఫ్ చెయ్");
+        if (said.isEmpty()) return "చెప్పండి.";
+        if (Offline.secret(said)) return "అకౌంట్, కార్డ్, ఆధార్ లాంటి నంబర్లు, పిన్, OTP, పాస్‌వర్డ్‌లు నేను రాసుకోను, ఎక్కడా పెట్టను.";
+        String car = offlineCar(t, off);
+        if (car != null) return car;
+        JSONObject fill = CarLink.parseSpoken(said, lastJarvisSaid().trim().startsWith("⛽"));
+        if (fill != null) {
+            JSONObject r = CarLink.request(act(), fill);
+            String line = r.optString("said", r.optString("say", ""));
+            return CarLink.spoken(fill) + ". " + line;
+        }
+        if (any(t, "పాట", "song", "music", "మ్యూజిక్", "రేడియో", "radio", "సౌండ్", "volume", "వాల్యూమ్")) {
+            String a = any(t, "తర్వాత", "next", "మార్చు", "వేరే") ? "next" : any(t, "ముందు పాట", "previous", "వెనక") ? "previous"
+                    : any(t, "పెంచు", "పెద్ద", "up", "increase") ? "volume_up" : any(t, "తగ్గించు", "తగ్గించండి", "down", "decrease") ? "volume_down"
+                    : off ? "pause" : any(t, "పెట్టు", "ప్లే", "play", "కొనసాగించు") ? "play" : "";
+            if (!a.isEmpty()) { Music.control(act(), a); return "సరే."; }
+        }
+        if (any(t, "టైమ్", "టైం", "సమయం", "time", "ఎన్ని గంటలు")) {
+            return "ఇప్పుడు " + new java.text.SimpleDateFormat("h:mm a", Locale.ENGLISH).format(new java.util.Date()) + ".";
+        }
+        if (any(t, "స్పీడ్", "speed", "వేగం")) return "ఇప్పుడు స్పీడ్: " + CarBox.speedWords() + ".";
+        return "నెట్ లేదు. కారులో నెట్ లేకుండా: నిద్ర అలర్ట్ (\"నిద్ర వస్తోంది\"), పాటలు (\"తర్వాత పాట\", \"సౌండ్ పెంచు\"), టైమ్, స్పీడ్, "
+                + "డీజిల్ రాయడం (ఫోన్‌కి నెట్ వచ్చాక వెళ్తుంది). మిగతావి నెట్ వచ్చాక అడగండి.";
     }
 
     /** Phase 4 without internet: the same answers as health_watch, said as they are. */
@@ -7217,7 +7261,9 @@ final class Tools {
                 CrashAlert.ok(act());
                 return ok().put(asked ? "awake_check" : "crash_alert", asked ? "answered" : "cancelled").toString();
             }
-            case "reached_send": return RideCare.send(act()).put("next", "Say in one line who it was sent to.").toString();
+            case "reached_send":
+                if (prefs.carMode()) return err("phone_only", "Messages are sent from his phone, not the car's box."); // (C8)
+                return RideCare.send(act()).put("next", "Say in one line who it was sent to.").toString();
             case "reached_cancel": RideCare.dismissReached(act()); return ok().put("reached_offer", "dropped").toString();
             case "navigate": {
                 String place = a.optString("place", "").trim();
@@ -7897,6 +7943,13 @@ final class Tools {
     /** 🚗 The car's diesel, mileage and service (Car / CarBook); the month's PDF is opened / shared here (his phone only). */
     private String carAccount(JSONObject a) throws Exception {
         if (prefs.homeMode()) return err("phone_only", "The car account is kept on Anil's phone.");
+        if (prefs.carMode()) { // (the car's box: the tank and the engine here; the account on his phone, its answer back)
+            String ac = a.optString("action", "").trim().toLowerCase(Locale.ROOT);
+            if (ac.equals("range") || ac.equals("fuel_left")) return CarFuel.json(act()).toString();
+            if (ac.equals("engine") || ac.equals("obd")) return engineNow().toString();
+            if (ac.equals("km")) return err("not_here", "The box sends the car's km to the phone by itself once a day; never by hand."); // (C13: only sendDaily)
+            return CarLink.request(act(), a).toString();
+        }
         String action = a.optString("action", "").trim().toLowerCase(Locale.ROOT);
         if (action.equals("report") || action.equals("share") || action.equals("pdf")) {
             java.time.LocalDate today = java.time.LocalDate.now();
@@ -7916,6 +7969,20 @@ final class Tools {
                             : "Say in one line the PDF is saved in " + m.where + " and opened; offer to share it on WhatsApp (car_account share).").toString();
         }
         return Car.tool(act(), a).toString();
+    }
+
+    /** 🔌 car_account engine on the car's box: the OBD watch's last numbers (C11). */
+    private JSONObject engineNow() throws Exception {
+        if (ObdWatch.adapter(act()).isEmpty())
+            return new JSONObject().put("ok", false).put("error", "no_adapter").put("say", "OBD adapter ఇంకా కలపలేదు: కారు ఆపాక ⚙️ → 🚗 → 🔌 OBD అడాప్టర్ లో ఒక్కసారి కనెక్ట్ చేయండి.");
+        if (!ObdWatch.live()) return new JSONObject().put("ok", false).put("error", "not_live").put("say", "అడాప్టర్ నుంచి ఇప్పుడు నంబర్లు రావడం లేదు (" + ObdWatch.status + ").");
+        JSONObject o = new JSONObject().put("ok", true);
+        if (ObdWatch.coolant != Integer.MIN_VALUE) o.put("engine_temp_c", ObdWatch.coolant);
+        if (!Double.isNaN(ObdWatch.volts) && System.currentTimeMillis() - ObdWatch.voltsAt < 90_000) o.put("battery_volts", Math.round(ObdWatch.volts * 10) / 10.0);
+        if (ObdWatch.rpm >= 0) o.put("rpm", ObdWatch.rpm);
+        if (ObdWatch.mil >= 0) o.put("check_engine_light", ObdWatch.mil == 1); // (not read yet: left out, never "off")
+        if (ObdWatch.fuelPct >= 0) o.put("fuel_percent", ObdWatch.fuelPct);
+        return o.put("next", "Say it in one or two short Telugu lines: normal engine heat is about 85-100 °C; battery 13.5-14.5 V while running. Never say a hot engine is fine to drive.");
     }
 
     private String debts(JSONObject a) throws Exception {

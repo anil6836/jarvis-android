@@ -22,13 +22,29 @@ final class CarSense {
     static List<String> reasons(boolean nightOn, int hour, boolean dutyOn, boolean dutyTired, boolean sleepOn, boolean shortSleep,
                                 boolean longOn, long drivingMin, boolean sleepy, boolean tired) {
         List<String> r = new ArrayList<>();
-        if (sleepy) r.add("నిద్ర వస్తోందని చెప్పారు");
-        if (tired) r.add("కొద్దిసేపటి క్రితం అలసట కనిపించింది"); // (a missed answer / heavy or closed eyes: Jarvis saw it)
-        if (nightOn && night(hour)) r.add("రాత్రి డ్రైవింగ్");
-        if (dutyOn && dutyTired) r.add("డ్యూటీ తర్వాత నిద్రపోలేదు");
-        if (sleepOn && shortSleep) r.add("రాత్రి నిద్ర తక్కువైంది");
-        if (longOn && drivingMin >= 120) r.add("2 గంటలకు పైగా ఆపకుండా డ్రైవింగ్");
+        if (sleepy) r.add(R_SLEEPY);
+        if (tired) r.add(R_TIRED); // (a missed answer / heavy or closed eyes: Jarvis saw it)
+        if (nightOn && night(hour)) r.add(R_NIGHT);
+        if (dutyOn && dutyTired) r.add(R_DUTY);
+        if (sleepOn && shortSleep) r.add(R_SHORT);
+        if (longOn && drivingMin >= 120) r.add(R_LONG);
         return r;
+    }
+
+    static final String R_SLEEPY = "నిద్ర వస్తోందని చెప్పారు", R_TIRED = "కొద్దిసేపటి క్రితం అలసట కనిపించింది", R_NIGHT = "రాత్రి డ్రైవింగ్",
+            R_DUTY = "డ్యూటీ తర్వాత నిద్రపోలేదు", R_SHORT = "రాత్రి నిద్ర తక్కువైంది", R_LONG = "2 గంటలకు పైగా ఆపకుండా డ్రైవింగ్";
+
+    /**
+     * His phone, quiet in the car (the car's own Jarvis asks): the reasons only the phone knows — a duty with no sleep,
+     * a short night (his duty roster and sleep are on the phone) — when the car's box has none of its own (night, a long
+     * drive, "sleepy", tiredness seen): then the phone still asks (by its ✅). Else none: the box asks. Pure.
+     */
+    static List<String> phoneOwn(List<String> r) {
+        List<String> out = new ArrayList<>();
+        if (r == null || r.contains(R_NIGHT) || r.contains(R_LONG) || r.contains(R_SLEEPY) || r.contains(R_TIRED)) return out;
+        if (r.contains(R_DUTY)) out.add(R_DUTY);
+        if (r.contains(R_SHORT)) out.add(R_SHORT);
+        return out;
     }
 
     /** Minutes to the next question: after a missed answer 2, sleepy / heavy eyes 5, else his choice (kept within 10–30). */

@@ -100,9 +100,24 @@ public class ObdActivity extends Activity {
         return t;
     }
 
+    // (the car's box: its trip watch lets go of the adapter only while the scanner is on the screen; away, the scanner
+    // lets go — one Bluetooth line at a time)
+    @Override protected void onStart() {
+        super.onStart();
+        ObdWatch.held = true;
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        if (live) { live = false; status.setText("కనెక్షన్ ఆపాను (స్క్రీన్ వదిలారు). మళ్ళీ 🔗 కనెక్ట్ నొక్కండి."); }
+        if (!work.isShutdown()) work.execute(obd::close);
+        ObdWatch.held = false;
+    }
+
     @Override protected void onDestroy() {
         super.onDestroy();
         live = false;
+        ObdWatch.held = false;
         work.execute(obd::close);
         work.shutdown();
         Announcer.stop();
@@ -130,7 +145,8 @@ public class ObdActivity extends Activity {
             main.post(() -> {
                 if (isFinishing()) return;
                 if (er != null) { status.setText(er); return; }
-                status.setText("✅ " + name + " కనెక్ట్ అయింది");
+                status.setText("✅ " + name + " కనెక్ట్ అయింది" + (p.carMode() ? " · కారు Jarvis ప్రతి ప్రయాణంలో దీన్ని తనే కలుపుతాడు" : ""));
+                ObdWatch.remember(this, addr, name);
                 live = true;
                 tick();
             });

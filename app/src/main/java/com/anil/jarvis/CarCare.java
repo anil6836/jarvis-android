@@ -85,6 +85,15 @@ final class CarCare {
         if ("bt".equals(how)) say.append(", డ్రైవింగ్ మోడ్ కూడా. మెసేజ్‌లు, కాల్స్ నేను చెబుతాను");
         say.append(". ");
         List<String> r = reasons(app);
+        WakeService.recheck(app); // (his phone with the car's own Jarvis: its "Jarvis" mic rests for the trip)
+        if (CarBox.phoneQuiet(app)) { // his phone: the car's box asks the questions and hears "Jarvis" (never both)
+            say.append("కారు Jarvis (box) నిద్ర అలర్ట్ చూసుకుంటాడు; ఫోన్ \"Jarvis\" వినదు. జాగ్రత్తగా వెళ్లండి, ").append(name).append(".");
+            schedule(app, 10);
+            String text = say.toString();
+            if (speak) Announcer.sayPhone(app, text);
+            if (enabled(app) && "always".equals(eyesMode(app))) main.postDelayed(() -> maybeEyes(app, false), 8000); // (the phone in its holder: its eye check, C15)
+            return text;
+        }
         if (!enabled(app)) {
             say.append("జాగ్రత్తగా వెళ్లండి, ").append(name).append(".");
         } else if (r.isEmpty()) {
@@ -102,6 +111,15 @@ final class CarCare {
             else main.postDelayed(() -> maybeEyes(app, false), 8000); // (after Jarvis has said his answer)
         }
         return text;
+    }
+
+    /**
+     * After the device restarted (the car's box starts with the car): Android forgot the timer, but car mode may still be
+     * marked on. The questions go on: the timer is set again (a tick in a minute decides the rest).
+     */
+    static void rearm(Context c) {
+        Context app = c.getApplicationContext();
+        if (on(app)) schedule(app, 1);
     }
 
     /** The trip's end (Life.tripEnd: drive alerts off, the parking spot), waiting out the Bluetooth's minute. */
@@ -149,6 +167,7 @@ final class CarCare {
         Announcer.hold(app, false);
         cancel(app);
         endListen();
+        WakeService.recheck(app); // (his phone: "Jarvis" listens again after a quiet trip)
         clear(app, NOTE_ASK);
         clear(app, NOTE_EYES);
         WatchAlerts.directGone(app, WATCH_ASK);
@@ -217,11 +236,16 @@ final class CarCare {
 
     /** Fine to ask now: moving in the last 3 minutes (a signal, a toll), or the speed isn't known. */
     static boolean askable(Context c) {
+        if (box(c)) return speedKnown() && System.currentTimeMillis() - DriveService.lastMovingAt < 3 * MIN;
         return !btWaiting(c) && (!speedKnown() || System.currentTimeMillis() - DriveService.lastMovingAt < 3 * MIN);
     }
 
+    /** This is the car's own box (CarBox): its car mode lasts while it is on, and only its GPS says the car moves. */
+    private static boolean box(Context c) { return "box".equals(sp(c).getString("how", "")) || CarBox.on(c); }
+
     /** Fine to ring the loud alarm: moving in the last minute, or the speed isn't known (never over a nap in a parked car). */
     static boolean alarmable(Context c) {
+        if (box(c)) return speedKnown() && System.currentTimeMillis() - DriveService.lastMovingAt < 60_000;
         return !btWaiting(c) && (!speedKnown() || System.currentTimeMillis() - DriveService.lastMovingAt < 60_000);
     }
 
@@ -267,6 +291,7 @@ final class CarCare {
         }
         if (!enabled(app)) { schedule(app, 10); return; }
         List<String> r = reasons(app);
+        if (CarBox.phoneQuiet(app)) r = CarSense.phoneOwn(r); // (his phone with the car's own Jarvis: the box asks, but not about his duty / sleep)
         if (r.isEmpty()) { s.edit().remove("told").apply(); schedule(app, 10); return; }
         int next = CarSense.nextMinutes(often(app), false, every(app));
         // a reason he hasn't heard yet: said once (only the new ones), then the questions begin
@@ -298,8 +323,13 @@ final class CarCare {
 
     /** How he answers now: "Jarvis" while the wake word's mic is open, else the ✅. */
     private static String howToAnswer() {
-        return WakeService.hearing ? "'Jarvis' అని పిలవండి" : "ఫోన్ నోటిఫికేషన్‌లో ✅ నొక్కండి (వాచ్‌లో కూడా)";
+        if (WakeService.hearing) return "'Jarvis' అని పిలవండి";
+        Context a = appCtx;
+        return a != null && CarBox.on(a) ? "స్క్రీన్ మీద ✅ నొక్కండి" : "ఫోన్ నోటిఫికేషన్‌లో ✅ నొక్కండి (వాచ్‌లో కూడా)";
     }
+
+    /** How long ago the loud alarm rang (ms; the car screen shows "కారు పక్కకి ఆపండి" for a minute after it). */
+    static long alarmAgoMs() { return SystemClock.elapsedRealtime() - lastAlarm; }
 
     static void ask(Context c) { ask(c, false); }
 
@@ -309,6 +339,7 @@ final class CarCare {
         final long at = again ? sp(app).getLong("asked_at", 0) : System.currentTimeMillis();
         if (at == 0) return;
         if (!again) sp(app).edit().putLong("asked_at", at).apply();
+        appCtx = app;
         Announcer.hold(app, true); // other announcements wait until his answer window ends (nothing talks over his "Jarvis")
         final boolean voice = WakeService.hearing; // "Jarvis" can only be heard while the wake word's mic is open
         String name = new Prefs(app).name();
@@ -434,12 +465,12 @@ final class CarCare {
 
     private static volatile long lastAlarm = -60_000;
     /** His own alarm volume while Jarvis has it at full (main thread; -1: not changed). */
-    private static int savedVolume = -1;
+    private static int savedVolume = -1, savedStream = AudioManager.STREAM_ALARM;
     private static final Runnable restoreVolume = () -> {
         try {
             Context app = appCtx;
             AudioManager am = app == null ? null : app.getSystemService(AudioManager.class);
-            if (am != null && savedVolume >= 0) am.setStreamVolume(AudioManager.STREAM_ALARM, savedVolume, 0);
+            if (am != null && savedVolume >= 0) am.setStreamVolume(savedStream, savedVolume, 0);
         } catch (Exception ignored) {}
         savedVolume = -1;
     };
@@ -449,19 +480,23 @@ final class CarCare {
         appCtx = app;
         main.post(() -> {
             AudioManager am = app.getSystemService(AudioManager.class);
+            // (the car's box: its sound reaches the car's speakers as media; loud, never the amplifier's very top)
+            final int stream = CarBox.on(app) ? AudioManager.STREAM_MUSIC : AudioManager.STREAM_ALARM;
             try {
                 if (am != null) {
-                    if (savedVolume < 0) savedVolume = am.getStreamVolume(AudioManager.STREAM_ALARM); // (his own, never the alarm's max)
-                    am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0);
+                    if (savedVolume < 0) { savedVolume = am.getStreamVolume(stream); savedStream = stream; } // (his own, never the alarm's max)
+                    int max = am.getStreamMaxVolume(stream);
+                    am.setStreamVolume(stream, stream == AudioManager.STREAM_MUSIC ? Math.max(am.getStreamVolume(stream), Math.round(max * 0.85f)) : max, 0);
                 }
             } catch (Exception ignored) {}
             try {
-                android.media.ToneGenerator g = new android.media.ToneGenerator(AudioManager.STREAM_ALARM, 100);
+                android.media.ToneGenerator g = new android.media.ToneGenerator(stream, 100);
                 g.startTone(android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, ms);
                 main.postDelayed(g::release, ms + 500);
             } catch (Exception ignored) {}
             main.removeCallbacks(restoreVolume);
-            main.postDelayed(restoreVolume, ms + 1500);
+            // (the car's box: its words "కారు పక్కకి ఆపండి" come through the same sound, a moment after the tone: loud too)
+            main.postDelayed(restoreVolume, ms + (stream == AudioManager.STREAM_MUSIC ? 15_000 : 1500));
         });
     }
 
@@ -547,6 +582,10 @@ final class CarCare {
         Context app = c.getApplicationContext();
         if (!on(app)) return;
         if (CarEyes.running) { CarEyes.test = false; return; } // (a test left open when the car mode began: now the real one)
+        if (CarBox.on(app) && "front".equals(eyesSource(app))) return; // (the car's box: no front camera; a USB / Wi-Fi one only when he set it)
+        // (his phone, quiet in the car: the box is on watch; only "కారులో ఎప్పుడూ" keeps the phone's eye check — the phone
+        // in a holder facing him, C15)
+        if (CarBox.phoneQuiet(app) && !"always".equals(eyesMode(app))) return;
         String m = eyesMode(app);
         if (!now && ("off".equals(m) || !"always".equals(m) && reasons(app).isEmpty())) return;
         if (now) sp(app).edit().remove("eyes_told").apply();

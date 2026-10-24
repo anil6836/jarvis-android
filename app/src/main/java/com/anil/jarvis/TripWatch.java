@@ -42,7 +42,7 @@ final class TripWatch {
     /** Every GPS fix (main thread): the diary point; once a minute the checks, off the main thread. */
     static void fix(Context svc, Location l, double kmh) {
         final Context c = svc.getApplicationContext();
-        try { TripLog.fix(c, l, kmh); } catch (Exception ignored) {}
+        if (!CarBox.on(c)) { try { TripLog.fix(c, l, kmh); } catch (Exception ignored) {} } // (the trip diary is his phone's only: never on the car's box)
         long now = System.currentTimeMillis();
         if (startedAt == 0) startedAt = now;
         if (now - lastTick < 60_000 || busy) return;
@@ -59,7 +59,7 @@ final class TripWatch {
     /** The drive alerts ended: the diary saves the trip, the watch card goes, everything starts afresh next time. */
     static void end(Context svc, double meters) {
         Context c = svc.getApplicationContext();
-        try { TripLog.end(c, meters, Bike.riding(c)); } catch (Exception ignored) {}
+        if (!CarBox.on(c)) { try { TripLog.end(c, meters, Bike.riding(c)); } catch (Exception ignored) {} }
         try {
             work.execute(() -> { // (after a check still on its way: the card goes last, and the next trip starts clean)
                 if (cardShown) { try { WatchAlerts.directGone(c, WATCH_CARD); } catch (Exception ignored) {} }

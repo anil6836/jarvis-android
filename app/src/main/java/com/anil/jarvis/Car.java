@@ -54,14 +54,14 @@ final class Car {
     private static ZoneId zone() { return ZoneId.systemDefault(); }
 
     private static List<double[]> tripsCache;
-    private static long tripsMod = -1, tripsLen = -1;
+    private static long tripsMod = -1, tripsLen = -1, tripsBox = -1;
 
     /** The trip diary's car trips: {end ms, km} (the bike's rides are not the car's); read again only when the file changed. */
     static List<double[]> trips(Context c) {
         java.io.File f = new java.io.File(c.getFilesDir(), TripLog.FILE);
-        long m = f.lastModified(), n = f.length();
+        long m = f.lastModified(), n = f.length(), bx = sp(c).getLong("box_hours_at", 0);
         synchronized (Car.class) {
-            if (tripsCache != null && m == tripsMod && n == tripsLen) return new ArrayList<>(tripsCache);
+            if (tripsCache != null && m == tripsMod && n == tripsLen && bx == tripsBox) return new ArrayList<>(tripsCache);
         }
         List<double[]> out = new ArrayList<>();
         JSONArray a = TripLog.all(c);
@@ -69,10 +69,15 @@ final class Car {
             JSONObject t = a.optJSONObject(i);
             if (t != null && "car".equals(t.optString("by")) && t.optDouble("km", 0) > 0) out.add(new double[]{t.optLong("end"), t.optDouble("km")});
         }
+        try { // 📏 the car's box counted these days itself (C13): its hours instead of the diary's car trips
+            String bh = sp(c).getString("box_hours", "");
+            if (!bh.isEmpty()) out = CarKm.merge(out, new JSONObject(bh), zone());
+        } catch (Exception ignored) {}
         synchronized (Car.class) {
             tripsCache = out;
             tripsMod = m;
             tripsLen = n;
+            tripsBox = bx;
         }
         return new ArrayList<>(out);
     }
