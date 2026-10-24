@@ -68,12 +68,16 @@ final class CarScreen extends FrameLayout {
     private final LinearLayout content, leftCol, midCol, rightCol, tileGrid, chipRow;
     private final CarPortal portal;
     private final CarArt.Gauge gauge;
+    private final CarArt.Hero hero;
+    private final TextView apps;
     private final TextView clock, date, minis, stateText, subText, chips, gear, chat, driveChip, road1, road2, roadYes, roadNo, musicText, board;
     private final LinearLayout roadCard, musicStrip;
     private final CarArt.Icon roadIcon, prevKey, playKey, nextKey;
     private final List<View> tiles = new ArrayList<>();
     private final List<CarArt.Icon> tileIcons = new ArrayList<>();
-    private final FrameLayout sheet, ask, awake;
+    private final FrameLayout sheet, ask, awake, saver;
+    private final LinearLayout saverBox;
+    private final TextView saverClock, saverLine;
     private int W, H;
     private boolean night, running, wasMoving, dancing;
     private int state = OrbView.IDLE, mode = CarTheme.DRIVING;
@@ -123,7 +127,11 @@ final class CarScreen extends FrameLayout {
         chipRow.setGravity(Gravity.CENTER_VERTICAL);
         leftCol.addView(chipRow, new LinearLayout.LayoutParams(-1, 0, 11));
         chips = autoText(a, "", false, 26);
-        chipRow.addView(chips, new LinearLayout.LayoutParams(0, -1, 70));
+        chipRow.addView(chips, new LinearLayout.LayoutParams(0, -1, 55));
+        apps = autoText(a, "▦", false, 36); // the box's other apps (Jarvis as the box's home: the way back to them)
+        apps.setGravity(Gravity.CENTER);
+        apps.setOnClickListener(v -> tap(this::showApps));
+        chipRow.addView(apps, new LinearLayout.LayoutParams(0, -1, 15));
         chat = autoText(a, "💬", false, 36);
         chat.setGravity(Gravity.CENTER);
         chat.setOnClickListener(v -> tap(() -> { if (parkedOrSay()) host.openChat(); }));
@@ -139,19 +147,21 @@ final class CarScreen extends FrameLayout {
         midCol.setGravity(Gravity.CENTER_HORIZONTAL);
         content.addView(midCol, new LinearLayout.LayoutParams(0, -1, 30));
         gauge = new CarArt.Gauge(a);
-        midCol.addView(gauge, new LinearLayout.LayoutParams(-1, 0, 56));
+        midCol.addView(gauge, new LinearLayout.LayoutParams(-1, 0, 47));
+        hero = new CarArt.Hero(a); // 🚙 his car, drawn: wheels with the speed, lights, indicators, rain
+        midCol.addView(hero, new LinearLayout.LayoutParams(-1, 0, 19));
         clock = autoText(a, "", true, 70);
         clock.setGravity(Gravity.CENTER);
-        midCol.addView(clock, new LinearLayout.LayoutParams(-1, 0, 16));
+        midCol.addView(clock, new LinearLayout.LayoutParams(-1, 0, 13));
         date = autoText(a, "", false, 30);
         date.setGravity(Gravity.CENTER);
-        midCol.addView(date, new LinearLayout.LayoutParams(-1, 0, 8));
+        midCol.addView(date, new LinearLayout.LayoutParams(-1, 0, 7));
         minis = autoText(a, "", false, 28);
         minis.setGravity(Gravity.CENTER);
-        midCol.addView(minis, new LinearLayout.LayoutParams(-1, 0, 9));
+        midCol.addView(minis, new LinearLayout.LayoutParams(-1, 0, 7));
         driveChip = autoText(a, "", true, 30); // ⏱ how long he has driven (amber near 2 hours: the sleep alert's long-drive clock)
         driveChip.setGravity(Gravity.CENTER);
-        midCol.addView(driveChip, new LinearLayout.LayoutParams(-1, 0, 11));
+        midCol.addView(driveChip, new LinearLayout.LayoutParams(-1, 0, 7));
         board = new TextView(a); // 🎲 parked, a game on: the question big, for the passengers (the gauge says 0 anyway)
         board.setGravity(Gravity.CENTER);
         board.setEllipsize(TextUtils.TruncateAt.END);
@@ -233,6 +243,21 @@ final class CarScreen extends FrameLayout {
         sheet = overlay(a);
         ask = overlay(a);
         awake = overlay(a);
+        saver = new FrameLayout(a); // 🌙 parked and untouched 5 minutes: a dark clock (the sleep alert's question always comes over it)
+        saver.setBackgroundColor(0xFF000000);
+        saver.setVisibility(GONE);
+        saverBox = new LinearLayout(a);
+        saverBox.setOrientation(LinearLayout.VERTICAL);
+        saverBox.setGravity(Gravity.CENTER);
+        saverClock = new TextView(a);
+        saverClock.setGravity(Gravity.CENTER);
+        saverClock.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
+        saverLine = new TextView(a);
+        saverLine.setGravity(Gravity.CENTER);
+        saverBox.addView(saverClock, new LinearLayout.LayoutParams(-2, -2));
+        saverBox.addView(saverLine, new LinearLayout.LayoutParams(-2, -2));
+        saver.addView(saverBox, new LayoutParams(-2, -2, Gravity.CENTER));
+        addView(saver, new LayoutParams(-1, -1));
         addView(sheet, new LayoutParams(-1, -1));
         addView(ask, new LayoutParams(-1, -1));
         addView(awake, new LayoutParams(-1, -1));
@@ -295,6 +320,7 @@ final class CarScreen extends FrameLayout {
             modeCheck();
             roadCheck();
             boardCheck();
+            saverCheck();
             if (++ticks % 2 == 0) musicCheck();
             if (ticks % 10 == 1) driveCheck();
             main.postDelayed(this, 1000);
@@ -394,6 +420,12 @@ final class CarScreen extends FrameLayout {
         boolean hot = ObdWatch.live() && ObdWatch.coolant != Integer.MIN_VALUE && ObdWatch.coolant >= 105;
         gauge.set(s, lim, over, hot, ObdWatch.chip()); // 🔌 the engine's heat / battery under the speed (C11)
         long now = System.currentTimeMillis();
+        if (s >= 0 && lastKmh >= 8 && lastKmh - s >= 4 && now - lastKmhAt < 1800) brakeUntil = now + 1500; // (slowing hard: the brake lights)
+        if (s >= 0) { lastKmh = s; lastKmhAt = now; }
+        hero.setSpeed(Math.max(0, s));
+        hero.setBraking(now < brakeUntil);
+        hero.setIndicator(now < indicatorUntil ? indicatorDir : 0);
+        hero.setRain(rainNow);
         if (over) { // 😟 once per stretch over the limit: a worried face, a look at the gauge beside him
             underSince = 0;
             if (!overShown) { overShown = true; BodyRig rig = portal.body.rig; rig.show("worried", 3000); rig.glance(1f, 0.35f, 2600); }
@@ -407,6 +439,7 @@ final class CarScreen extends FrameLayout {
 
     void setState(int s) {
         if (s == OrbView.IDLE && state != OrbView.IDLE) idleSince = System.currentTimeMillis();
+        if (s != OrbView.IDLE && saverOn) saverShow(false); // (the steering button: the screen wakes with him)
         if (state == OrbView.LISTENING && s != OrbView.LISTENING && gameOn() && heard.matches("(?s).*(ఆట ఆపు|ఆట చాలు|ఆట వద్దు|ఆపేయ్|stop the game).*")) gameAt = 0; // (he / they said stop)
         state = s;
         BodyRig rig = portal.body.rig;
@@ -555,6 +588,9 @@ final class CarScreen extends FrameLayout {
     // driver (on the right in an Indian car) or, in a parked game, at the passengers. While moving only the road's own.
 
     private String cueKey = "";
+    private int lastKmh = -1, indicatorDir;
+    private long lastKmhAt, brakeUntil, indicatorUntil;
+    private boolean rainNow;
     private boolean overShown, fuelCued, stretchCued;
     private long underSince, stillSince, glanceAt;
     private String outfitNow = "", occasionNow = "";
@@ -567,6 +603,8 @@ final class CarScreen extends FrameLayout {
         String key = icon + "|" + (next + " " + det).replaceAll("[0-9]+([.,][0-9]+)?\\s*(km|m|ft|మీ|కి\\.?\\s?మీ)?", "").trim();
         if (key.equals(cueKey)) return;
         cueKey = key;
+        indicatorDir = dir; // (the car on the screen blinks that way for a few seconds)
+        indicatorUntil = System.currentTimeMillis() + 8000;
         if (state != OrbView.IDLE) return; // (talking: his hands are his words')
         BodyRig rig = portal.body.rig;
         rig.gesture(dir < 0 ? "point_l" : "point_r", 2600);
@@ -598,6 +636,7 @@ final class CarScreen extends FrameLayout {
         boolean fresh = at > 0 && now - at < 3 * 3600_000L;
         int code = fresh ? sp.getInt("w_code", -1) : -1;
         float temp = fresh ? sp.getFloat("w_temp", Float.NaN) : Float.NaN;
+        rainNow = at > 0 && now - at < 90 * 60_000L && ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95);
         String outfit = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95 ? "umbrella"
                 : !Float.isNaN(temp) && temp < 20 ? "sweater" : "none";
         BodyRig rig = portal.body.rig;
@@ -690,13 +729,153 @@ final class CarScreen extends FrameLayout {
         boolean show = gameOn() && mode == CarTheme.PARKED && !CarBox.moving();
         if (show != (board.getVisibility() == VISIBLE)) {
             int v = show ? GONE : VISIBLE;
-            for (View x : new View[]{gauge, clock, date, minis, driveChip}) x.setVisibility(v);
+            for (View x : new View[]{gauge, hero, clock, date, minis, driveChip}) x.setVisibility(v);
             board.setVisibility(show ? VISIBLE : GONE);
         }
         if (!show) return;
         String t = state == OrbView.LISTENING ? "🎙️ " + (heard.isEmpty() ? "మీ జవాబు చెప్పండి…" : heard)
                 : state == OrbView.THINKING ? "💭 …" : said.isEmpty() || saidAt < gameAt ? "🎲 ఆట మొదలవుతోంది…" : said;
         if (!t.contentEquals(board.getText())) board.setText(t);
+    }
+
+    // ---- 🌙 P5: the parked screensaver (a big quiet clock, moved a little every minute), and the apps drawer
+
+    private long lastTouch = System.currentTimeMillis(), saverMovedAt;
+    private boolean saverOn, swallow;
+
+    @Override public boolean dispatchTouchEvent(MotionEvent ev) {
+        int act = ev.getActionMasked();
+        if (act == MotionEvent.ACTION_DOWN) {
+            lastTouch = System.currentTimeMillis();
+            if (saverOn) { saverShow(false); swallow = true; return true; } // (the touch only wakes the screen)
+        }
+        if (swallow) { if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) swallow = false; return true; }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    private void saverCheck() {
+        long now = System.currentTimeMillis();
+        boolean want = prefs.carSaver() && mode == CarTheme.PARKED && !CarBox.moving() && now - lastTouch > 5 * 60_000L
+                && state == OrbView.IDLE && now - idleSince > 60_000 && now - saidAt > 5 * 60_000L && !songNow && !awakeShown
+                && sheet.getVisibility() != VISIBLE && ask.getVisibility() != VISIBLE && !gameOn() && acAt == 0;
+        if (want != saverOn) saverShow(want);
+        if (!saverOn) return;
+        Calendar c = Calendar.getInstance();
+        int h = c.get(Calendar.HOUR_OF_DAY), m = c.get(Calendar.MINUTE), h12 = h % 12 == 0 ? 12 : h % 12;
+        String t = String.format(Locale.ROOT, "%d:%02d", h12, m);
+        if (!t.contentEquals(saverClock.getText())) saverClock.setText(t);
+        String line = date.getText() + "   " + minis.getText();
+        if (!line.contentEquals(saverLine.getText())) saverLine.setText(line);
+        if (now - saverMovedAt > 60_000) { // (never the same pixels for long)
+            saverMovedAt = now;
+            saverBox.setTranslationX((rnd.nextFloat() - 0.5f) * W * 0.3f);
+            saverBox.setTranslationY((rnd.nextFloat() - 0.5f) * H * 0.3f);
+        }
+    }
+
+    private void saverShow(boolean on) {
+        saverOn = on;
+        if (on) {
+            int ink = night ? 0xFF56677A : 0xFFB8C7D6;
+            saverClock.setTextColor(ink);
+            saverLine.setTextColor(CarTheme.shade(ink, 0.75f));
+            saverClock.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(40, H / 3.2f));
+            saverLine.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(14, H / 24f));
+            saverMovedAt = 0;
+            saver.setVisibility(VISIBLE);
+            saver.bringToFront();
+            if (awakeShown) awake.bringToFront();
+            content.setVisibility(INVISIBLE); // (Jarvis and the rings rest under it: no frames drawn)
+        } else {
+            saver.setVisibility(GONE);
+            content.setVisibility(VISIBLE);
+            lastTouch = System.currentTimeMillis();
+        }
+    }
+
+    /**
+     * ▦ The box's apps: his favourites first (Maps, the music app, …; a long press adds / removes one), and parked, all
+     * of them. Moving: only the favourites (the rest wait for a stop).
+     */
+    private void showApps() {
+        final Context c = getContext();
+        sheet.removeAllViews();
+        LinearLayout box = panel(tileBg, accent);
+        TextView t = autoText(c, "▦ ఆప్స్", true, 50);
+        t.setGravity(Gravity.CENTER);
+        t.setTextColor(textMain);
+        box.addView(t, new LinearLayout.LayoutParams(-1, Math.max(1, H / 11)));
+        final boolean moving = CarBox.moving();
+        TextView n = autoText(c, moving ? "నడుపుతుండగా ఇష్టమైనవే · అన్నీ: కారు ఆపాక" : "ఎక్కువసేపు నొక్కితే ⭐ ఇష్టమైనవిలో చేరుతుంది / తీసేస్తుంది", false, 26);
+        n.setGravity(Gravity.CENTER);
+        n.setTextColor(textSoft);
+        box.addView(n, new LinearLayout.LayoutParams(-1, Math.max(1, H / 16)));
+        final LinearLayout grid = new LinearLayout(c);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        android.widget.ScrollView sc = new android.widget.ScrollView(c);
+        sc.addView(grid, new android.widget.ScrollView.LayoutParams(-1, -2));
+        box.addView(sc, new LinearLayout.LayoutParams(-1, Math.max(1, H * 55 / 100)));
+        LayoutParams lp = panelParams();
+        sheet.addView(box, lp);
+        sheet.setVisibility(VISIBLE);
+        sheet.bringToFront();
+        if (awakeShown) awake.bringToFront();
+        if (sheetGone != null) main.removeCallbacks(sheetGone);
+        sheetGone = this::closeSheet;
+        main.postDelayed(sheetGone, 40_000);
+        final Context app = c.getApplicationContext();
+        new Thread(() -> { // (the icons are read off the main thread)
+            List<Object[]> list = CarApps.list(app, prefs, moving);
+            main.post(() -> { if (sheet.getVisibility() == VISIBLE) fillApps(grid, list); });
+        }, "car-apps").start();
+    }
+
+    private void fillApps(LinearLayout grid, List<Object[]> list) {
+        Context c = getContext();
+        int per = 5, cell = Math.max(40, (W * 80 / 100 - 40) / per);
+        LinearLayout row = null;
+        for (int i = 0; i < list.size(); i++) {
+            if (i % per == 0) {
+                row = new LinearLayout(c);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                grid.addView(row, new LinearLayout.LayoutParams(-1, -2));
+            }
+            final Object[] a = list.get(i); // {package, label, icon, favourite}
+            LinearLayout cellBox = new LinearLayout(c);
+            cellBox.setOrientation(LinearLayout.VERTICAL);
+            cellBox.setGravity(Gravity.CENTER_HORIZONTAL);
+            cellBox.setPadding(4, 8, 4, 8);
+            android.widget.ImageView iv = new android.widget.ImageView(c);
+            iv.setImageDrawable((android.graphics.drawable.Drawable) a[2]);
+            cellBox.addView(iv, new LinearLayout.LayoutParams(cell * 55 / 100, cell * 55 / 100));
+            TextView l = new TextView(c);
+            l.setText(((Boolean) a[3] ? "⭐ " : "") + a[1]);
+            l.setMaxLines(1);
+            l.setEllipsize(TextUtils.TruncateAt.END);
+            l.setGravity(Gravity.CENTER);
+            l.setTextColor(textMain);
+            l.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, cell / 7.5f));
+            cellBox.addView(l, new LinearLayout.LayoutParams(-1, -2));
+            cellBox.setOnClickListener(v -> tap(() -> {
+                closeSheet();
+                Intent it = getContext().getPackageManager().getLaunchIntentForPackage((String) a[0]);
+                if (it == null) { toast("తెరవలేకపోయాను"); return; }
+                getContext().startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }));
+            cellBox.setOnLongClickListener(v -> {
+                boolean fav = CarApps.toggleFavourite(prefs, (String) a[0]);
+                toast(fav ? "⭐ ఇష్టమైనవిలో చేర్చాను" : "ఇష్టమైనవి నుంచి తీసేశాను");
+                closeSheet();
+                return true;
+            });
+            row.addView(cellBox, new LinearLayout.LayoutParams(0, -2, 1));
+        }
+        if (row != null) for (int k = list.size() % per; k != 0 && k < per; k++) row.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1));
+        if (list.isEmpty()) {
+            TextView e = autoText(c, "ఆప్స్ కనిపించలేదు", false, 30);
+            e.setTextColor(textSoft);
+            grid.addView(e, new LinearLayout.LayoutParams(-1, Math.max(1, H / 10)));
+        }
     }
 
     /** His own AC's "on" link among this box's smart-home lines (never shown anywhere): found → true. */
@@ -1324,15 +1503,42 @@ final class CarScreen extends FrameLayout {
         if (sheet.getVisibility() == VISIBLE) closeSheet(); // (its sizes were for the old screen)
     }
 
+    private long wallAt = -1;
+
+    /** 🖼️ His own photo (Settings → 🎨; kept only on this box, never in a backup): read again only when it changed. */
+    private void wallpaper() {
+        java.io.File f = new java.io.File(getContext().getFilesDir(), "car_wall.jpg");
+        long at = f.exists() ? f.lastModified() : 0;
+        if (at == wallAt) return;
+        wallAt = at;
+        android.graphics.Bitmap b = null;
+        if (at > 0) {
+            try {
+                android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+                o.inPreferredConfig = android.graphics.Bitmap.Config.RGB_565;
+                b = android.graphics.BitmapFactory.decodeFile(f.getPath(), o);
+            } catch (Throwable ignored) {}
+        }
+        backdrop.setPhoto(b);
+    }
+
     /** The theme's colours for the mode and the hour, put on everything. */
     private void palette() {
         look = CarTheme.of(prefs.carTheme()).look(mode, night, prefs.carAccent());
+        String gs = prefs.carGauge(); // (the theme editor: his own gauge style)
+        if ("arc".equals(gs)) look.gauge = CarTheme.G_ARC;
+        else if ("needle".equals(gs)) look.gauge = CarTheme.G_NEEDLE;
+        wallpaper();
         tileBg = look.sheetFill;
         textMain = look.textMain;
         textSoft = look.textSoft;
         accent = look.accent;
         backdrop.setLook(look);
         gauge.setLook(look);
+        hero.setLook(look);
+        hero.setColour(prefs.carColour());
+        hero.setNight(night);
+        hero.setLowMotion(prefs.carLowMotion());
         portal.setLook(look);
         portal.setLowMotion(prefs.carLowMotion());
         portal.body.setSlow(night && !dancing);
@@ -1340,6 +1546,7 @@ final class CarScreen extends FrameLayout {
         stateText.setTextColor(accent);
         for (TextView t : new TextView[]{date, minis, chips}) t.setTextColor(textSoft);
         gear.setTextColor(textSoft);
+        apps.setTextColor(textSoft);
         chat.setTextColor(textSoft);
         float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / 22f);
         for (View t : tiles) {

@@ -322,6 +322,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (prefs.homeMode() != (home != null)) { recreate(); return; } // the home Jarvis was switched on / off in settings
         if (prefs.carMode() != (car != null)) { recreate(); return; } // the car Jarvis was switched on / off in settings
         if (car != null) car.themeChanged(); // (the theme, his colour, the dance choice, Jarvis's look: from Settings)
+        if (car == null && CarApps.homeOn(this)) CarApps.setHome(this, false); // (car mode off: the box's own Home again; the phone never has it)
         paused = false;
         visible = true;
         if (home != null || car != null) fullScreen();
@@ -426,6 +427,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void handleIntent(Intent i) {
         if (i == null) return;
+        if (Intent.ACTION_MAIN.equals(i.getAction()) && i.hasCategory(Intent.CATEGORY_HOME)) { // 🏠 the box's Home button (Jarvis as its Home)
+            if (car != null) { car.closeSheet(); showCar(); }
+            return;
+        }
         // Opened from the launcher or by "Hey Google, open Jarvis": start listening right away.
         boolean launcher = Intent.ACTION_MAIN.equals(i.getAction()) && i.hasCategory(Intent.CATEGORY_LAUNCHER);
         if (launcher && !i.getBooleanExtra("jarvis_handled", false)) {

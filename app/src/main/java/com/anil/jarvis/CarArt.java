@@ -32,10 +32,26 @@ final class CarArt {
 
         void setLook(CarTheme.Look l) { look = l; invalidate(); }
 
+        private android.graphics.Bitmap photo;
+        private final android.graphics.Matrix fit = new android.graphics.Matrix();
+        /** His own photo as the wallpaper (null: the theme's), drawn filling the screen under a veil so the words stay readable. */
+        void setPhoto(android.graphics.Bitmap b) { photo = b; invalidate(); }
+
         @Override protected void onDraw(Canvas cv) {
             if (look == null) return;
             int w = getWidth(), h = getHeight();
             if (w <= 0 || h <= 0) return;
+            if (photo != null) {
+                float sc = Math.max(w / (float) photo.getWidth(), h / (float) photo.getHeight());
+                fit.setScale(sc, sc);
+                fit.postTranslate((w - photo.getWidth() * sc) / 2f, (h - photo.getHeight() * sc) / 2f);
+                p.setShader(null);
+                p.setFilterBitmap(true);
+                cv.drawBitmap(photo, fit, p);
+                p.setColor(look.light ? 0xB8FFFFFF : look.night ? 0xC8000000 : 0xA0000000); // (the veil: the theme's words stay readable)
+                cv.drawRect(0, 0, w, h, p);
+                return;
+            }
             p.setShader(new RadialGradient(w * 0.25f, 0, Math.max(w, h) * 1.1f, new int[]{look.bgTop, look.bgBottom}, new float[]{0, 1}, Shader.TileMode.CLAMP));
             cv.drawRect(0, 0, w, h, p);
             p.setShader(null);
@@ -493,6 +509,291 @@ final class CarArt {
                 default: // APPS: four rounded squares
                     q.addRoundRect(9, 9, 23, 23, 4, 4, Path.Direction.CW); q.addRoundRect(29, 9, 43, 23, 4, 4, Path.Direction.CW);
                     q.addRoundRect(9, 29, 23, 43, 4, 4, Path.Direction.CW); q.addRoundRect(29, 29, 43, 43, 4, 4, Path.Direction.CW);
+            }
+        }
+    }
+
+    // ================================================================ the car hero
+    /**
+     * 🚙 His car on the screen, drawn (our own compact SUV, no maker's badge or shape copied): side on, facing right, in
+     * his colour with a lit top and a dark sill (depth), blacked pillars, glass with a sky streak, a shadow under it, on a
+     * road whose lane marks run past with the speed. The wheels turn with the speed (their spokes blur when fast), the
+     * headlights throw a beam at night, the tail lights glow at night and flare when he slows hard, the amber lights
+     * blink before a turn (with a small arrow), and rain falls when it rains. Still (no frames) when parked and dry.
+     */
+    static final class Hero extends View {
+        private static final float UW = 400, UH = 150, GROUND = 136, R_TYRE = 25, ARCH_Y = 113, ARCH_R = 31;
+        private static final float[] WHEELS = {118, 292};
+        private int colour = 0xFF2F6FE4, indicator;
+        private float speed, shownSpeed, wheelAngle, laneOffset, rainT;
+        private boolean night, braking, rain, lowMotion;
+        private CarTheme.Look look;
+        private long lastFrame;
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path(), glass = new Path(), body = new Path();
+        private final RectF r = new RectF();
+        private final Runnable frame = this::invalidate;
+        private final float[] drops = new float[60];
+        // the gradients, made once (the paint's again only when his colour or the theme's light changes)
+        private Shader paintSh, roadSh;
+        private int paintFor, roadFor = -1;
+        private final Shader shadowSh = new RadialGradient(200, GROUND, 180, new int[]{0x99000000, 0x00000000}, new float[]{0.55f, 1}, Shader.TileMode.CLAMP),
+                glassSh = new LinearGradient(0, 40, 0, 66, new int[]{0xFF3A4A5C, 0xFF0C1218}, new float[]{0, 1}, Shader.TileMode.CLAMP),
+                beamSh = new LinearGradient(356, 0, UW + 120, 0, new int[]{0x88FFF4D6, 0x00FFF4D6}, new float[]{0, 1}, Shader.TileMode.CLAMP),
+                headSh = new RadialGradient(348, 78, 16, new int[]{0x88FFF4D6, 0x00FFF4D6}, null, Shader.TileMode.CLAMP),
+                brakeSh = new RadialGradient(64, 76, 22, new int[]{0xAAFF2020, 0x00FF2020}, null, Shader.TileMode.CLAMP),
+                tailSh = new RadialGradient(64, 76, 12, new int[]{0x66FF2020, 0x00FF2020}, null, Shader.TileMode.CLAMP),
+                amberSh = new RadialGradient(352, 96, 14, new int[]{0x99FFB020, 0x00FFB020}, null, Shader.TileMode.CLAMP);
+        private final Shader[] rimSh = {
+                new RadialGradient(WHEELS[0] - 4, GROUND - R_TYRE - 5, 18, new int[]{0xFFE9EEF3, 0xFF8C96A1, 0xFF3A424B}, new float[]{0, 0.6f, 1}, Shader.TileMode.CLAMP),
+                new RadialGradient(WHEELS[1] - 4, GROUND - R_TYRE - 5, 18, new int[]{0xFFE9EEF3, 0xFF8C96A1, 0xFF3A424B}, new float[]{0, 0.6f, 1}, Shader.TileMode.CLAMP)};
+
+        Hero(Context c) {
+            super(c);
+            java.util.Random rnd = new java.util.Random(11);
+            for (int i = 0; i < drops.length; i++) drops[i] = rnd.nextFloat();
+            buildBody();
+        }
+
+        void setLook(CarTheme.Look l) { look = l; invalidate(); }
+        void setColour(int c) { if (c != colour) { colour = c; invalidate(); } }
+        void setSpeed(int kmh) { speed = Math.max(0, kmh); kick(); }
+        void setNight(boolean n) { if (n != night) { night = n; invalidate(); } }
+        void setBraking(boolean b) { if (b != braking) { braking = b; kick(); } }
+        /** -1 left, +1 right, 0 off. */
+        void setIndicator(int d) { if (d != indicator) { indicator = d; kick(); } }
+        void setRain(boolean on) { if (on != rain) { rain = on; kick(); } }
+        void setLowMotion(boolean b) { lowMotion = b; }
+
+        private void kick() { invalidate(); }
+
+        private boolean animating() { return !lowMotion && (speed > 0.5f || shownSpeed > 0.5f || rain || indicator != 0 || braking); }
+
+        /** The body's outline in car units (side on, facing right). */
+        private void buildBody() {
+            // a compact SUV: short overhangs, a high bonnet, a roof falling gently to the hatch, big wheels in black arches
+            Path b = body;
+            b.moveTo(66, 112);
+            b.lineTo(87, 113);
+            b.arcTo(new RectF(WHEELS[0] - ARCH_R, ARCH_Y - ARCH_R, WHEELS[0] + ARCH_R, ARCH_Y + ARCH_R), 180, 180, false);
+            b.lineTo(261, 113);
+            b.arcTo(new RectF(WHEELS[1] - ARCH_R, ARCH_Y - ARCH_R, WHEELS[1] + ARCH_R, ARCH_Y + ARCH_R), 180, 180, false);
+            b.lineTo(344, 112);
+            b.quadTo(356, 110, 357, 100);
+            b.lineTo(357, 88);
+            b.quadTo(356, 76, 340, 72);
+            b.lineTo(300, 66);
+            b.lineTo(262, 36);
+            b.quadTo(210, 27, 150, 29);
+            b.lineTo(108, 35);
+            b.quadTo(84, 40, 76, 58);
+            b.lineTo(66, 66);
+            b.quadTo(60, 70, 60, 84);
+            b.lineTo(62, 106);
+            b.close();
+            Path g = glass;
+            g.moveTo(98, 63);
+            g.lineTo(108, 43);
+            g.quadTo(120, 36, 150, 34);
+            g.lineTo(256, 38);
+            g.lineTo(292, 63);
+            g.close();
+        }
+
+        @Override protected void onDetachedFromWindow() { super.onDetachedFromWindow(); removeCallbacks(frame); }
+
+        @Override protected void onDraw(Canvas cv) {
+            int w = getWidth(), h = getHeight();
+            if (w <= 0 || h <= 0 || look == null) return;
+            long now = android.os.SystemClock.uptimeMillis();
+            float dt = lastFrame == 0 ? 0 : Math.min(0.1f, (now - lastFrame) / 1000f);
+            lastFrame = now;
+            shownSpeed += (speed - shownSpeed) * Math.min(1, dt * 2);
+            if (!lowMotion) {
+                wheelAngle = (wheelAngle + shownSpeed * dt * 20) % 360;  // (a slowed turn: readable, never a strobe)
+                laneOffset = (laneOffset + shownSpeed * dt * 4) % 60;
+                rainT = (rainT + dt) % 1000;
+            }
+            float s = Math.min(w / UW, h / UH);
+            cv.save();
+            cv.translate((w - UW * s) / 2f, h - UH * s);
+            cv.scale(s, s);
+            road(cv);
+            if (night) beam(cv);
+            // the shadow under the car
+            p.setStyle(Paint.Style.FILL);
+            p.setShader(shadowSh);
+            cv.save(); cv.scale(1, 0.08f, 200, GROUND); cv.drawCircle(200, GROUND, 180, p); cv.restore();
+            p.setShader(null);
+            carBody(cv);
+            for (int i = 0; i < WHEELS.length; i++) wheel(cv, WHEELS[i], rimSh[i]);
+            lights(cv, now);
+            if (rain) rain(cv);
+            cv.restore();
+            removeCallbacks(frame);
+            if (animating() && isShown()) postOnAnimationDelayed(frame, 33);
+        }
+
+        private void road(Canvas cv) {
+            p.setStyle(Paint.Style.FILL);
+            int rf = look.light ? 1 : 0;
+            if (roadSh == null || roadFor != rf) { roadFor = rf; roadSh = new LinearGradient(0, GROUND - 6, 0, UH, new int[]{0x00000000, look.light ? 0x22000000 : 0x55000000}, new float[]{0, 1}, Shader.TileMode.CLAMP); }
+            p.setShader(roadSh);
+            cv.drawRect(-200, GROUND - 6, UW + 200, UH, p);
+            p.setShader(null);
+            p.setColor(CarTheme.withAlpha(look.accent, 0x55));
+            p.setStrokeWidth(1.2f);
+            p.setStyle(Paint.Style.STROKE);
+            cv.drawLine(-200, GROUND + 1, UW + 200, GROUND + 1, p);
+            // the lane marks running past
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(look.light ? 0x55000000 : 0x66FFFFFF);
+            for (float x = -60 - laneOffset; x < UW + 60; x += 60) cv.drawRect(x, 145, x + 28, 148, p);
+        }
+
+        private void beam(Canvas cv) {
+            path.rewind();
+            path.moveTo(356, 84); path.lineTo(UW + 120, 64); path.lineTo(UW + 120, 136); path.close();
+            p.setStyle(Paint.Style.FILL);
+            p.setShader(beamSh);
+            cv.drawPath(path, p);
+            p.setShader(null);
+        }
+
+        private void carBody(Canvas cv) {
+            int c = colour;
+            // the paint: lit from above, darker to the sill (the depth)
+            p.setStyle(Paint.Style.FILL);
+            if (paintSh == null || paintFor != c) { paintFor = c; paintSh = new LinearGradient(0, 34, 0, 112, new int[]{CarTheme.shade(c, 1.45f), c, CarTheme.shade(c, 0.5f)}, new float[]{0, 0.42f, 1}, Shader.TileMode.CLAMP); }
+            p.setShader(paintSh);
+            cv.drawPath(body, p);
+            p.setShader(null);
+            // the dark cladding along the bottom and round the wheels
+            cv.save();
+            cv.clipPath(body);
+            p.setColor(0xFF1A1E24);
+            cv.drawRect(50, 101, 370, 117, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(9);
+            for (float x : WHEELS) { r.set(x - ARCH_R, ARCH_Y - ARCH_R, x + ARCH_R, ARCH_Y + ARCH_R); cv.drawArc(r, 180, 180, false, p); }
+            cv.restore();
+            // the glass (blacked pillars), a sky streak on it
+            p.setStyle(Paint.Style.FILL);
+            p.setShader(glassSh);
+            cv.drawPath(glass, p);
+            p.setShader(null);
+            cv.save();
+            cv.clipPath(glass);
+            p.setColor(0x33FFFFFF);
+            path.rewind(); path.moveTo(166, 33); path.lineTo(194, 33); path.lineTo(166, 66); path.lineTo(138, 66); path.close();
+            cv.drawPath(path, p);
+            path.rewind(); path.moveTo(222, 35); path.lineTo(233, 35); path.lineTo(206, 66); path.lineTo(195, 66); path.close();
+            cv.drawPath(path, p);
+            cv.restore();
+            p.setColor(0xFF0B0F14);
+            cv.drawRect(197, 36, 203, 64, p);   // the B pillar
+            cv.drawRect(132, 34, 136, 64, p);   // the quarter glass's pillar
+            // the roof rail, the shoulder line's light, the door lines, the handles, the mirror
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setStrokeWidth(3);
+            p.setColor(0xFF1A1E24);
+            cv.drawLine(138, 27, 244, 29, p);
+            p.setStrokeWidth(1.6f);
+            p.setColor(0x80FFFFFF);
+            path.rewind(); path.moveTo(64, 76); path.quadTo(200, 70, 354, 80); cv.drawPath(path, p);
+            p.setColor(CarTheme.withAlpha(CarTheme.shade(c, 0.4f), 0xCC));
+            p.setStrokeWidth(1.2f);
+            cv.drawLine(200, 64, 200, 104, p);
+            path.rewind(); path.moveTo(276, 64); path.quadTo(268, 84, 268, 101); cv.drawPath(path, p);
+            path.rewind(); path.moveTo(132, 64); path.quadTo(142, 82, 146, 100); cv.drawPath(path, p);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(CarTheme.shade(c, 0.6f));
+            r.set(178, 74, 192, 77); cv.drawRoundRect(r, 1.5f, 1.5f, p);
+            r.set(254, 74, 268, 77); cv.drawRoundRect(r, 1.5f, 1.5f, p);
+            path.rewind(); path.moveTo(280, 58); path.lineTo(297, 55); path.quadTo(302, 60, 298, 66); path.lineTo(283, 66); path.close();
+            p.setColor(0xFF15191F); cv.drawPath(path, p);
+            // the whole outline's edge light
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(1);
+            p.setColor(0x40FFFFFF);
+            cv.drawPath(body, p);
+        }
+
+        private void wheel(Canvas cv, float x, Shader rim) {
+            float y = GROUND - R_TYRE;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFF0E1013);
+            cv.drawCircle(x, y, R_TYRE, p);
+            p.setShader(rim);
+            cv.drawCircle(x, y, 16, p);
+            p.setShader(null);
+            // the spokes, blurred when fast
+            boolean blur = shownSpeed > 45;
+            p.setColor(blur ? 0x993A424B : 0xFF2C333B);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setStrokeWidth(blur ? 2.2f : 3.2f);
+            for (int i = 0; i < 5; i++) {
+                double a = Math.toRadians(wheelAngle + 72 * i);
+                cv.drawLine(x + (float) (4.5 * Math.cos(a)), y + (float) (4.5 * Math.sin(a)), x + (float) (14.5 * Math.cos(a)), y + (float) (14.5 * Math.sin(a)), p);
+            }
+            if (blur) { p.setColor(0x334A525B); p.setStrokeWidth(6); cv.drawCircle(x, y, 10, p); }
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFF20262D);
+            cv.drawCircle(x, y, 3.6f, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(1);
+            p.setColor(0x55FFFFFF);
+            cv.drawCircle(x, y, R_TYRE - 0.5f, p);
+        }
+
+        private void lights(Canvas cv, long now) {
+            p.setStyle(Paint.Style.FILL);
+            // the headlight's LED line (brighter at night)
+            p.setColor(night ? 0xFFFFF6DE : 0xFFDDEBF7);
+            r.set(326, 74, 354, 78); cv.drawRoundRect(r, 2, 2, p);  // the DRL strip
+            r.set(344, 84, 356, 90); cv.drawRoundRect(r, 2, 2, p);  // the lamp
+            if (night) { p.setShader(headSh); cv.drawCircle(348, 78, 16, p); p.setShader(null); }
+            // the tail light: a dim red by day, lit at night, a flare when braking
+            int tail = braking ? 0xFFFF2B2B : night ? 0xFFE0303A : 0xFF8E1E26;
+            p.setColor(tail);
+            r.set(60, 72, 74, 80); cv.drawRoundRect(r, 2, 2, p);
+            if (braking || night) {
+                p.setShader(braking ? brakeSh : tailSh);
+                cv.drawCircle(64, 76, braking ? 22 : 12, p);
+                p.setShader(null);
+            }
+            // the amber indicators before a turn, and a small arrow which way
+            if (indicator != 0 && (now / 400) % 2 == 0) {
+                p.setColor(0xFFFFB020);
+                r.set(348, 94, 356, 99); cv.drawRoundRect(r, 1.5f, 1.5f, p);
+                r.set(289, 58, 296, 61); cv.drawRoundRect(r, 1, 1, p);
+                p.setShader(amberSh);
+                cv.drawCircle(352, 96, 14, p);
+                p.setShader(null);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(4);
+                p.setStrokeCap(Paint.Cap.ROUND);
+                p.setStrokeJoin(Paint.Join.ROUND);
+                p.setColor(0xFFFFB020);
+                float ax = indicator < 0 ? 24 : UW - 24, d = indicator < 0 ? -1 : 1;
+                path.rewind();
+                path.moveTo(ax - 12 * d, 18); path.lineTo(ax, 26); path.lineTo(ax - 12 * d, 34);
+                path.moveTo(ax - 24 * d, 18); path.lineTo(ax - 12 * d, 26); path.lineTo(ax - 24 * d, 34);
+                cv.drawPath(path, p);
+                p.setStyle(Paint.Style.FILL);
+            }
+        }
+
+        private void rain(Canvas cv) {
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(1.3f);
+            p.setColor(look.light ? 0x664A7FB0 : 0x88A9D4FF);
+            for (int i = 0; i < drops.length; i++) {
+                float x = drops[i] * (UW + 60) - 30;
+                float y = ((drops[(i + 7) % drops.length] * UH + rainT * 160) % (UH + 20)) - 10;
+                cv.drawLine(x, y, x - 3, y + 9, p);
             }
         }
     }

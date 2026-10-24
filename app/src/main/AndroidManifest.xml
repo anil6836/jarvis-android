@@ -399,6 +399,19 @@
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
         </activity>
+        <!-- 🏠 the car box only: Jarvis as its Home (off until he turns it on in Settings → 🚗; never on the phone) -->
+        <activity-alias
+            android:name=".CarHome"
+            android:enabled="false"
+            android:exported="true"
+            android:label="Jarvis కారు"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
         <activity-alias
             android:name="ViewPermissionUsageActivity"
             android:exported="true"

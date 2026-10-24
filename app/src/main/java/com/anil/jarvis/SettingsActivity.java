@@ -3092,12 +3092,22 @@ public class SettingsActivity extends Activity {
         colour.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
         TextView dance = Ui.text(this, "", 15.5f, accent);
         dance.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        final TextView accentRow = Ui.text(this, "", 15.5f, accent), gaugeRow = Ui.text(this, "", 15.5f, accent);
+        wallRow = Ui.text(this, "", 15.5f, accent);
+        for (TextView t : new TextView[]{accentRow, gaugeRow, wallRow}) t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
         final String[] dances = {"always", "parked", "off"}, danceNames = {"ఎప్పుడూ (పాట వస్తే, రోడ్డు మీద కూడా)", "కారు ఆగినప్పుడే", "వద్దు"};
         Runnable show = () -> {
             theme.setText("🖼️ థీమ్: " + CarTheme.of(prefs.carTheme()).name + "  (మార్చడానికి నొక్కండి)");
             int ci = 0;
             for (int i = 0; i < CarTheme.CAR_COLOURS.length; i++) if (CarTheme.CAR_COLOURS[i] == prefs.carColour()) ci = i;
-            colour.setText("🚙 మీ కారు రంగు: " + CarTheme.CAR_COLOUR_NAMES[ci] + "  (స్క్రీన్ మీద కారు బొమ్మ వచ్చాక కనిపిస్తుంది)");
+            colour.setText("🚙 స్క్రీన్ మీద కారు రంగు: " + CarTheme.CAR_COLOUR_NAMES[ci] + "  (మార్చడానికి నొక్కండి)");
+            int ai = 0;
+            for (int i = 0; i < ACCENTS.length; i++) if (ACCENTS[i] == prefs.carAccent()) ai = i;
+            accentRow.setText("✨ నడిపేటప్పుడు రంగు: " + ACCENT_NAMES[ai] + "  (మార్చడానికి నొక్కండి)");
+            int gi = Math.max(0, java.util.Arrays.asList(GAUGES).indexOf(prefs.carGauge()));
+            gaugeRow.setText("🧭 స్పీడ్ మీటర్: " + GAUGE_NAMES[gi] + "  (మార్చడానికి నొక్కండి)");
+            boolean has = new java.io.File(getFilesDir(), "car_wall.jpg").exists();
+            wallRow.setText(has ? "🖼️ వాల్‌పేపర్: మీ ఫోటో  (మార్చడానికి / తీసేయడానికి నొక్కండి)" : "🖼️ వాల్‌పేపర్: థీమ్‌దే  (మీ ఫోటో పెట్టడానికి నొక్కండి)");
             int di = Math.max(0, java.util.Arrays.asList(dances).indexOf(prefs.carDance()));
             dance.setText("💃 Jarvis డాన్స్: " + danceNames[di] + "  (మార్చడానికి నొక్కండి)");
         };
@@ -3127,14 +3137,103 @@ public class SettingsActivity extends Activity {
                     show.run();
                     d.dismiss();
                 }).show());
+        accentRow.setOnClickListener(v -> {
+            int ai = 0;
+            for (int i = 0; i < ACCENTS.length; i++) if (ACCENTS[i] == prefs.carAccent()) ai = i;
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("నడిపేటప్పుడు స్క్రీన్ రంగు (పాట / ఆగినప్పుడు థీమ్‌దే)")
+                    .setSingleChoiceItems(ACCENT_NAMES, ai, (d, w) -> { prefs.sp.edit().putInt("car_accent", ACCENTS[w]).apply(); show.run(); d.dismiss(); }).show();
+        });
+        gaugeRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("స్పీడ్ మీటర్ స్టైల్")
+                .setSingleChoiceItems(GAUGE_NAMES, Math.max(0, java.util.Arrays.asList(GAUGES).indexOf(prefs.carGauge())), (d, w) -> {
+                    prefs.sp.edit().putString("car_gauge", GAUGES[w]).apply();
+                    show.run();
+                    d.dismiss();
+                }).show());
+        wallShow = show;
+        wallRow.setOnClickListener(v -> {
+            final java.io.File f = new java.io.File(getFilesDir(), "car_wall.jpg");
+            if (!f.exists()) { pickWall(); return; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("వాల్‌పేపర్")
+                    .setItems(new String[]{"🖼️ వేరే ఫోటో", "🗑️ ఫోటో తీసేయి (థీమ్‌దే)"}, (d, w) -> {
+                        if (w == 0) pickWall();
+                        else { if (!f.delete()) f.deleteOnExit(); show.run(); }
+                    }).show();
+        });
         box.addView(theme);
         box.addView(colour);
+        box.addView(accentRow);
+        box.addView(gaugeRow);
+        box.addView(wallRow);
         box.addView(dance);
-        Switch low = toggle("🌙 కదలికలు తక్కువ (రింగులు ఆగుతాయి, నడుపుతుండగా డాన్స్ లేదు: ఒంటరిగా రాత్రి డ్రైవ్‌కి)", prefs.carLowMotion());
+        Switch low = toggle("🌙 కదలికలు తక్కువ (రింగులు, కారు బొమ్మ ఆగుతాయి, నడుపుతుండగా డాన్స్ లేదు: ఒంటరిగా రాత్రి డ్రైవ్‌కి)", prefs.carLowMotion());
         low.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_low_motion", v).apply());
+        Switch saver = toggle("🕰️ ఆగి 5 నిమిషాలు ఎవరూ తాకకపోతే నల్లని స్క్రీన్‌సేవర్ గడియారం (తాకితే లేస్తుంది)", prefs.carSaver());
+        saver.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_saver", v).apply());
+        Switch home = toggle("🏠 Jarvis ని ఈ box హోమ్‌గా పెట్టు (Home బటన్ → Jarvis; మిగతా ఆప్స్: స్క్రీన్‌పై ▦)", CarApps.homeOn(this));
+        home.setOnCheckedChangeListener((sw, v) -> {
+            CarApps.setHome(this, v);
+            if (!v) { Toast.makeText(this, "సరే: box పాత హోమ్ మళ్లీ", Toast.LENGTH_SHORT).show(); return; }
+            Toast.makeText(this, "ఇప్పుడు వచ్చే లిస్ట్‌లో 'Jarvis కారు' ఎంచుకుని 'ఎప్పుడూ' నొక్కండి", Toast.LENGTH_LONG).show();
+            try { startActivity(new Intent(android.provider.Settings.ACTION_HOME_SETTINGS)); }
+            catch (Exception e) {
+                try { startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
+            }
+        });
         note("Jarvis బొమ్మ, చర్మం రంగు: కింద '🏠 ఇంటి Jarvis' భాగంలోని 🧑 Jarvis రూపం / 🎨 చర్మం రంగు ఎంపికలే కారుకీ. "
                 + "పాట వస్తే Jarvis బీట్‌కి డాన్స్ చేస్తాడు (ప్రతి పాటకి వేరే స్టెప్; బొమ్మను తాకితే ఒక ప్రత్యేక స్టెప్). "
-                + "స్టీరింగ్ బటన్ నొక్కగానే ఆగి వింటాడు. బీట్ ఈ box ఇవ్వకపోతే మామూలు వేగంతో ఊగుతాడు.");
+                + "స్టీరింగ్ బటన్ నొక్కగానే ఆగి వింటాడు. బీట్ ఈ box ఇవ్వకపోతే మామూలు వేగంతో ఊగుతాడు. "
+                + "మీ ఫోటో ఈ box లోనే ఉంటుంది (బ్యాకప్‌కి వెళ్లదు).");
+    }
+
+    // the theme editor's choices
+    private static final int[] ACCENTS = {0, 0xFF5FF3FF, 0xFF4D8DFF, 0xFF34E89E, 0xFFFFC24B, 0xFFFF8A3D, 0xFFFF5A5A, 0xFFFF6AD5, 0xFFB28DFF, 0xFFF2F6FA};
+    private static final String[] ACCENT_NAMES = {"థీమ్‌దే", "సియాన్", "నీలం", "ఆకుపచ్చ", "బంగారు", "నారింజ", "ఎరుపు", "గులాబీ", "ఊదా", "తెలుపు"};
+    private static final String[] GAUGES = {"", "arc", "needle"}, GAUGE_NAMES = {"థీమ్‌దే", "వెలిగే వంపు (ఆర్క్)", "క్లాసిక్ సూది డయల్"};
+    private static final int REQ_WALL = 47;
+    private TextView wallRow;
+    private Runnable wallShow;
+
+    private void pickWall() {
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_WALL);
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫోటో ఎంచుకునే యాప్ లేదు", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** The photo he picked: made at most 1600 px and kept only in this app's own folder on this box (never in a backup). */
+    private void wallPicked(Uri uri) {
+        final Uri u = uri;
+        new Thread(() -> {
+            boolean ok = false;
+            try {
+                android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                try (java.io.InputStream in = getContentResolver().openInputStream(u)) { android.graphics.BitmapFactory.decodeStream(in, null, o); }
+                int sample = 1;
+                while (Math.max(o.outWidth, o.outHeight) / sample > 2400) sample *= 2;
+                android.graphics.BitmapFactory.Options o2 = new android.graphics.BitmapFactory.Options();
+                o2.inSampleSize = sample;
+                android.graphics.Bitmap b;
+                try (java.io.InputStream in = getContentResolver().openInputStream(u)) { b = android.graphics.BitmapFactory.decodeStream(in, null, o2); }
+                if (b != null) {
+                    float k = Math.min(1f, 1600f / Math.max(b.getWidth(), b.getHeight()));
+                    if (k < 1) { android.graphics.Bitmap s2 = android.graphics.Bitmap.createScaledBitmap(b, Math.round(b.getWidth() * k), Math.round(b.getHeight() * k), true); if (s2 != b) b.recycle(); b = s2; }
+                    java.io.File tmp = new java.io.File(getFilesDir(), "car_wall.jpg.part");
+                    try (java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) { ok = b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out); }
+                    ok = ok && tmp.renameTo(new java.io.File(getFilesDir(), "car_wall.jpg"));
+                    b.recycle();
+                }
+            } catch (Throwable ignored) {}
+            final boolean done = ok;
+            runOnUiThread(() -> {
+                Toast.makeText(this, done ? "సరే: కారు స్క్రీన్ వెనుక మీ ఫోటో" : "ఆ ఫోటో తెరవలేకపోయాను", Toast.LENGTH_LONG).show();
+                if (wallShow != null) wallShow.run();
+            });
+        }, "car-wall").start();
     }
 
     /** 🚗 The car sleep alert (Anil, 18 Oct): the car only (its Bluetooth or "కారు మోడ్"), never the bike. */
@@ -3312,6 +3411,7 @@ public class SettingsActivity extends Activity {
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
         if (gated) return;
+        if (code == REQ_WALL && result == RESULT_OK && data != null && data.getData() != null) wallPicked(data.getData()); // 🖼️ the car screen's wallpaper
         if (code == REQ_FRAME && result == RESULT_OK && data != null) { // photos for the tablet's frame
             java.util.List<Uri> uris = new java.util.ArrayList<>();
             if (data.getClipData() != null) for (int i = 0; i < data.getClipData().getItemCount(); i++) uris.add(data.getClipData().getItemAt(i).getUri());

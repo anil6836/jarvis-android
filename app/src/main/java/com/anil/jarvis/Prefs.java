@@ -460,6 +460,10 @@ final class Prefs {
     String carDance() { return sp.getString("car_dance", "always"); }
     boolean carLowMotion() { return sp.getBoolean("car_low_motion", false); }
     int carAccent() { return sp.getInt("car_accent", 0); }
+    /** The gauge: "" the theme's own, "arc", "needle". */
+    String carGauge() { return sp.getString("car_gauge", ""); }
+    /** 🌙 The parked screensaver clock (on by default). */
+    boolean carSaver() { return sp.getBoolean("car_saver", true); }
     /** The new Jarvis's look: a = navy jacket, b = kurta, c = zip jacket (Anil's pick). */
     String bodyLook() { return sp.getString("body_look", "c"); }
     /** Skin tone 1 (lighter) .. 3 (deeper). */
