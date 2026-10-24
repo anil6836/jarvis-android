@@ -87,8 +87,9 @@ final class CarPhoto {
     static boolean on(Context c, Prefs prefs) { return "photo".equals(prefs.sp.getString("car_hero", "drawing")) && file(c).exists() && marks(prefs) != null; }
 
     /**
-     * A picked picture kept as a JPEG in the app's own folder: turned upright (the camera's EXIF turn), at most maxPx on
-     * its long side. Off the main thread. True when saved.
+     * A picked picture kept in the app's own folder: turned upright (the camera's EXIF turn), at most maxPx on its long
+     * side; a JPEG, or a PNG (same name) when it is a cut-out with a see-through background (the phone's "Save as
+     * image" of the car alone), so the clear part stays clear. Off the main thread. True when saved.
      */
     static boolean keep(Context c, Uri uri, String name, int maxPx) {
         try {
@@ -120,8 +121,8 @@ final class CarPhoto {
                 b = t;
             }
             File tmp = new File(c.getFilesDir(), name + ".part");
-            boolean ok;
-            try (FileOutputStream out = new FileOutputStream(tmp)) { ok = b.compress(Bitmap.CompressFormat.JPEG, 88, out); }
+            boolean ok, clear = cutout(b);
+            try (FileOutputStream out = new FileOutputStream(tmp)) { ok = b.compress(clear ? Bitmap.CompressFormat.PNG : Bitmap.CompressFormat.JPEG, clear ? 100 : 88, out); }
             b.recycle();
             return ok && tmp.renameTo(new File(c.getFilesDir(), name));
         } catch (Throwable e) {
@@ -129,7 +130,16 @@ final class CarPhoto {
         }
     }
 
-    /** For the screen: the car's part of his photo (≤ 900 px wide) and the marks in it; null when off or unreadable. */
+    /** A cut-out: the picture has a see-through background (its four corners are clear). */
+    static boolean cutout(Bitmap b) {
+        if (b == null || !b.hasAlpha()) return false;
+        int w = b.getWidth() - 1, h = b.getHeight() - 1, clear = 0;
+        int[][] at = {{0, 0}, {w, 0}, {0, h}, {w, h}, {w / 2, 0}};
+        for (int[] p : at) if ((b.getPixel(p[0], p[1]) >>> 24) < 40) clear++;
+        return clear >= 3;
+    }
+
+    /** For the screen: {the car's part of his photo (≤ 900 px wide), the marks in it, a cut-out?}; null when off or unreadable. */
     static Object[] load(Context c, Prefs prefs) {
         float[] m = marks(prefs);
         File f = file(c);
@@ -137,6 +147,7 @@ final class CarPhoto {
         try {
             Bitmap full = BitmapFactory.decodeFile(f.getPath());
             if (full == null) return null;
+            boolean clear = cutout(full); // (before the cut: the full picture's corners)
             int[] cr = crop(full.getWidth(), full.getHeight(), m);
             int cw = cr[2] - cr[0], ch = cr[3] - cr[1];
             float k = Math.min(1f, 900f / cw);
@@ -144,7 +155,7 @@ final class CarPhoto {
             if (k < 1) { Bitmap s = Bitmap.createScaledBitmap(part, Math.max(1, Math.round(cw * k)), Math.max(1, Math.round(ch * k)), true); if (s != part) part.recycle(); part = s; }
             float[] at = inCrop(full.getWidth(), full.getHeight(), m, cr, k);
             if (part != full) full.recycle();
-            return new Object[]{part, at};
+            return new Object[]{part, at, clear};
         } catch (Throwable e) {
             return null;
         }

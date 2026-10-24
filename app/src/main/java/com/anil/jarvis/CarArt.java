@@ -574,10 +574,17 @@ final class CarArt {
         private float sc, ox, oy;
         private Shader pHead, pBeam, pTail, pBrake, pAmber;
 
-        /** His photo and its marks (null: the drawing). */
-        void setPhoto(android.graphics.Bitmap b, float[] marks) {
+        private boolean cut; // a cut-out (the car alone, a clear background): no frame, the moving road under it, a shadow
+        private float ground;
+        private Shader pShadow, pRoad;
+        private int pRoadFor = -1;
+        private final android.graphics.ColorFilter dusk = new android.graphics.LightingColorFilter(0xFF707078, 0);
+
+        /** His photo and its marks (null: the drawing); cutout: the car alone on a clear background. */
+        void setPhoto(android.graphics.Bitmap b, float[] marks, boolean cutout) {
             photo = b != null && marks != null && marks.length == 9 ? b : null;
             pm = photo == null ? null : marks;
+            cut = photo != null && cutout;
             fitW = fitH = 0;
             invalidate();
         }
@@ -663,9 +670,17 @@ final class CarArt {
         private void fitPhoto(int w, int h) {
             fitW = w; fitH = h;
             float pw = photo.getWidth(), ph = photo.getHeight();
-            sc = Math.min(w / pw, h / ph);
-            ox = (w - pw * sc) / 2f;
-            oy = (h - ph * sc) / 2f;
+            if (cut) { // the tyres stand on a road line 86 % down; the road runs under them
+                float tyreBottom = Math.max(pm[1], pm[3]) + pm[4];
+                ground = h * 0.86f;
+                sc = Math.min(w * 0.96f / pw, ground / Math.max(1, tyreBottom));
+                ox = (w - pw * sc) / 2f;
+                oy = ground - tyreBottom * sc;
+            } else {
+                sc = Math.min(w / pw, h / ph);
+                ox = (w - pw * sc) / 2f;
+                oy = (h - ph * sc) / 2f;
+            }
             fit.setScale(sc, sc);
             fit.postTranslate(ox, oy);
             clip.rewind();
@@ -678,6 +693,31 @@ final class CarArt {
             pTail = new RadialGradient(tx, ty, wr * 0.55f, new int[]{0x99FF2020, 0x00FF2020}, null, Shader.TileMode.CLAMP);
             pBrake = new RadialGradient(tx, ty, wr * 1.1f, new int[]{0xEEFF2020, 0x00FF2020}, null, Shader.TileMode.CLAMP);
             pAmber = new RadialGradient(hx, hy, wr * 0.6f, new int[]{0xEEFFB020, 0x00FFB020}, null, Shader.TileMode.CLAMP);
+            float mid = (X(pm[0]) + X(pm[2])) / 2f, half = Math.abs(X(pm[0]) - X(pm[2])) / 2f + wr * 1.6f;
+            pShadow = new RadialGradient(mid, ground, Math.max(1, half), new int[]{0x99000000, 0x00000000}, new float[]{0.55f, 1}, Shader.TileMode.CLAMP);
+            pRoad = null; // (the road's shade is made again for this size)
+        }
+
+        /** Under a cut-out: the road band, its edge line, the lane marks running past with the speed, the car's shadow. */
+        private void photoRoad(Canvas cv, int w, int h) {
+            p.setStyle(Paint.Style.FILL);
+            int lt = look.light ? 1 : 0;
+            if (pRoad == null || pRoadFor != lt) { pRoadFor = lt; pRoad = new LinearGradient(0, ground - 4, 0, h, new int[]{0x00000000, look.light ? 0x22000000 : 0x55000000}, new float[]{0, 1}, Shader.TileMode.CLAMP); }
+            p.setShader(pRoad);
+            cv.drawRect(0, ground - 4, w, h, p);
+            p.setShader(null);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(1, h / 125f));
+            p.setColor(CarTheme.withAlpha(look.accent, 0x55));
+            cv.drawLine(0, ground + 1, w, ground + 1, p);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(look.light ? 0x55000000 : 0x66FFFFFF);
+            float step = w * 0.15f, dash = w * 0.07f, y = ground + (h - ground) * 0.55f, th = Math.max(2, h / 50f);
+            for (float x = -step - laneOffset / 60f * step; x < w + step; x += step) cv.drawRect(x, y, x + dash, y + th, p);
+            p.setShader(pShadow);
+            float mid = (X(pm[0]) + X(pm[2])) / 2f;
+            cv.save(); cv.scale(1, 0.09f, mid, ground); cv.drawCircle(mid, ground, Math.abs(X(pm[0]) - X(pm[2])) / 2f + pm[4] * sc * 1.6f, p); cv.restore();
+            p.setShader(null);
         }
 
         private float X(float px) { return ox + px * sc; }
@@ -688,8 +728,19 @@ final class CarArt {
             p.setShader(null);
             p.setFilterBitmap(true);
             p.setStyle(Paint.Style.FILL);
+            int face0 = pm[0] >= pm[2] ? 1 : -1;
+            if (cut) { // the road first, the night beam ahead, then his car standing on it (darker at night, its own colours by day)
+                photoRoad(cv, w, h);
+                if (night) {
+                    float bx = X(pm[5]), by = Y(pm[6]), br = pm[4] * sc;
+                    path.rewind();
+                    path.moveTo(bx, by); path.lineTo(bx + face0 * w * 0.5f, by - br * 0.9f); path.lineTo(bx + face0 * w * 0.5f, by + br * 1.4f); path.close();
+                    p.setShader(pBeam); cv.drawPath(path, p); p.setShader(null);
+                }
+                p.setColorFilter(night ? dusk : null);
+            }
             cv.save();
-            cv.clipPath(clip);
+            if (!cut) cv.clipPath(clip);
             cv.drawBitmap(photo, fit, p);
             // his two wheels turn: each wheel's circle of the photo, turned about its centre (the way the car faces)
             int face = pm[0] >= pm[2] ? 1 : -1;
@@ -704,14 +755,15 @@ final class CarArt {
                 cv.drawBitmap(photo, fit, p);
                 cv.restore();
             }
-            if (night) { p.setColor(0x80000000); cv.drawRect(0, 0, w, h, p); } // (a day photo, made evening-dark)
+            if (night && !cut) { p.setColor(0x80000000); cv.drawRect(0, 0, w, h, p); } // (a day photo, made evening-dark)
             cv.restore();
+            p.setColorFilter(null);
             // the lamps: on his own headlight and tail light
             float hx = X(pm[5]), hy = Y(pm[6]), tx = X(pm[7]), ty = Y(pm[8]);
             if (night) {
                 path.rewind();
                 path.moveTo(hx, hy); path.lineTo(hx + face * w * 0.5f, hy - wr * 0.9f); path.lineTo(hx + face * w * 0.5f, hy + wr * 1.4f); path.close();
-                p.setShader(pBeam); cv.drawPath(path, p);
+                if (!cut) { p.setShader(pBeam); cv.drawPath(path, p); } // (a cut-out's beam is under the car, drawn before it)
                 p.setShader(pHead); cv.drawCircle(hx, hy, wr * 0.9f, p);
                 p.setShader(pTail); cv.drawCircle(tx, ty, wr * 0.55f, p);
             }
@@ -719,11 +771,13 @@ final class CarArt {
             boolean blink = indicator != 0 && (now / 400) % 2 == 0;
             if (blink) { p.setShader(pAmber); cv.drawCircle(hx, hy, wr * 0.6f, p); }
             p.setShader(null);
-            // the frame's lit edge (the theme's colour)
+            // the frame's lit edge (the theme's colour; a cut-out has no frame)
             p.setStyle(Paint.Style.STROKE);
-            p.setStrokeWidth(Math.max(1, Math.min(w, h) * 0.008f));
-            p.setColor(CarTheme.withAlpha(look.accent, 0x77));
-            cv.drawPath(clip, p);
+            if (!cut) {
+                p.setStrokeWidth(Math.max(1, Math.min(w, h) * 0.008f));
+                p.setColor(CarTheme.withAlpha(look.accent, 0x77));
+                cv.drawPath(clip, p);
+            }
             // the turn's arrow, and rain over it all
             if (blink) {
                 float u = h / 150f;

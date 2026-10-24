@@ -1514,13 +1514,13 @@ final class CarScreen extends FrameLayout {
         String key = on ? f.lastModified() + "|" + prefs.sp.getString("car_photo_marks", "") : "off";
         if (key.equals(heroKey)) return;
         heroKey = key;
-        if (!on) { hero.setPhoto(null, null); return; }
+        if (!on) { hero.setPhoto(null, null, false); return; }
         new Thread(() -> {
             Object[] got = CarPhoto.load(c, prefs);
             main.post(() -> {
                 if (!key.equals(heroKey)) return; // (changed again meanwhile)
-                if (got == null) hero.setPhoto(null, null); // (unreadable: the drawing)
-                else hero.setPhoto((android.graphics.Bitmap) got[0], (float[]) got[1]);
+                if (got == null) hero.setPhoto(null, null, false); // (unreadable: the drawing)
+                else hero.setPhoto((android.graphics.Bitmap) got[0], (float[]) got[1], (Boolean) got[2]);
             });
         }, "car-hero-photo").start();
     }
