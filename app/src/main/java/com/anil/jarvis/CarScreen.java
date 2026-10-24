@@ -382,6 +382,7 @@ final class CarScreen extends FrameLayout {
         boolean parked = !moving && CarBox.speed() >= 0 && now - DriveService.lastMovingAt > PARKED_AFTER_MS;
         int m = songNow ? CarTheme.MUSIC : parked ? CarTheme.PARKED : CarTheme.DRIVING;
         if (m != mode) { int was = mode; mode = m; palette(); showTalk(); modeChanged(was, m); }
+        rearCheck();
         String pref = prefs.carDance();
         boolean mayDance = songNow && !"off".equals(pref);
         if (mayDance != beatOn) { beatOn = mayDance; if (mayDance) beat.start(); else beat.stop(); } // (the beat is followed for the whole song, not switched at every signal)
@@ -1506,23 +1507,50 @@ final class CarScreen extends FrameLayout {
     private long wallAt = -1;
     private String heroKey = "";
 
-    /** 🚙 His own car's photo in place of the drawing (Settings → 🚙 కారు): read off the main thread, again only when it changed. */
+    private String rearKey = "";
+    private boolean fromBehind;
+
+    /** 🚙 His own car's photos in place of the drawing (Settings → 🚙 కారు): read off the main thread, again only when changed. */
     private void heroPhoto() {
         final Context c = getContext();
         boolean on = CarPhoto.on(c, prefs);
         java.io.File f = CarPhoto.file(c);
         String key = on ? f.lastModified() + "|" + prefs.sp.getString("car_photo_marks", "") : "off";
-        if (key.equals(heroKey)) return;
-        heroKey = key;
-        if (!on) { hero.setPhoto(null, null, false); return; }
-        new Thread(() -> {
-            Object[] got = CarPhoto.load(c, prefs);
-            main.post(() -> {
-                if (!key.equals(heroKey)) return; // (changed again meanwhile)
-                if (got == null) hero.setPhoto(null, null, false); // (unreadable: the drawing)
-                else hero.setPhoto((android.graphics.Bitmap) got[0], (float[]) got[1], (Boolean) got[2]);
-            });
-        }, "car-hero-photo").start();
+        if (!key.equals(heroKey)) {
+            heroKey = key;
+            if (!on) hero.setPhoto(null, null, false);
+            else new Thread(() -> {
+                Object[] got = CarPhoto.load(c, prefs);
+                main.post(() -> {
+                    if (!key.equals(heroKey)) return; // (changed again meanwhile)
+                    if (got == null) hero.setPhoto(null, null, false); // (unreadable: the drawing)
+                    else hero.setPhoto((android.graphics.Bitmap) got[0], (float[]) got[1], (Boolean) got[2]);
+                });
+            }, "car-hero-photo").start();
+        }
+        // 🚗 the rear photo: the chase view while he drives
+        fromBehind = CarPhoto.driveFromBehind(c, prefs);
+        java.io.File rf = CarPhoto.rearFile(c);
+        String rk = fromBehind ? rf.lastModified() + "|" + prefs.sp.getString("car_rear_marks", "") : "off";
+        if (!rk.equals(rearKey)) {
+            rearKey = rk;
+            if (!fromBehind) hero.setRear(null, null, false);
+            else new Thread(() -> {
+                Object[] got = CarPhoto.loadRear(c, prefs);
+                main.post(() -> {
+                    if (!rk.equals(rearKey)) return;
+                    if (got == null) hero.setRear(null, null, false);
+                    else hero.setRear((android.graphics.Bitmap) got[0], (float[]) got[1], (Boolean) got[2]);
+                });
+            }, "car-hero-rear").start();
+        }
+        rearCheck();
+    }
+
+    /** From behind while he drives; parked, from the side (his side photo, or the drawing) — or still from behind when no side photo. */
+    private void rearCheck() {
+        boolean parked = mode == CarTheme.PARKED;
+        hero.setRearNow(fromBehind && hero.hasRear() && (!parked || !hero.hasPhoto()));
     }
 
     /** 🖼️ His own photo (Settings → 🎨; kept only on this box, never in a backup): read again only when it changed. */

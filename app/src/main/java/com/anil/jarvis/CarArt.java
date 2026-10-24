@@ -555,7 +555,7 @@ final class CarArt {
             buildBody();
         }
 
-        void setLook(CarTheme.Look l) { look = l; invalidate(); }
+        void setLook(CarTheme.Look l) { look = l; rfitW = 0; invalidate(); } // (the rear road's shade follows the theme)
         void setColour(int c) { if (c != colour) { colour = c; invalidate(); } }
         void setSpeed(int kmh) { speed = Math.max(0, kmh); kick(); }
         void setNight(boolean n) { if (n != night) { night = n; invalidate(); } }
@@ -590,6 +590,29 @@ final class CarArt {
         }
 
         boolean hasPhoto() { return photo != null; }
+
+        // ---- 🚗 his car from behind (the chase view while he drives): the road runs ahead to the horizon
+        private android.graphics.Bitmap rearPic;
+        private float[] rm; // {lx, ly, rx, ry, topx, topy} in the rear picture's pixels (top: -1 when none)
+        private boolean rearCut, rearNow;
+        private final android.graphics.Matrix rfit = new android.graphics.Matrix();
+        private int rfitW, rfitH;
+        private float rsc, rox, roy, rcw;
+        private Shader rRoad, rBeam, rShadow;
+
+        /** The rear photo and its marks (null: none); cutout: the car alone on a clear background. */
+        void setRear(android.graphics.Bitmap b, float[] marks, boolean cutout) {
+            rearPic = b != null && marks != null && marks.length == 6 ? b : null;
+            rm = rearPic == null ? null : marks;
+            rearCut = rearPic != null && cutout;
+            rfitW = rfitH = 0;
+            invalidate();
+        }
+
+        boolean hasRear() { return rearPic != null; }
+
+        /** Show the car from behind now (while driving), else from the side. */
+        void setRearNow(boolean on) { if (on != rearNow) { rearNow = on; invalidate(); } }
 
         private void kick() { invalidate(); }
 
@@ -639,6 +662,12 @@ final class CarArt {
                 wheelAngle = (wheelAngle + shownSpeed * dt * 20) % 360;  // (a slowed turn: readable, never a strobe)
                 laneOffset = (laneOffset + shownSpeed * dt * 4) % 60;
                 rainT = (rainT + dt) % 1000;
+            }
+            if (rearNow && rearPic != null) {
+                drawRear(cv, w, h, now);
+                removeCallbacks(frame);
+                if (animating() && isShown()) postOnAnimationDelayed(frame, 33);
+                return;
             }
             if (photo != null) {
                 drawPhoto(cv, w, h, now);
@@ -696,6 +725,122 @@ final class CarArt {
             float mid = (X(pm[0]) + X(pm[2])) / 2f, half = Math.abs(X(pm[0]) - X(pm[2])) / 2f + wr * 1.6f;
             pShadow = new RadialGradient(mid, ground, Math.max(1, half), new int[]{0x99000000, 0x00000000}, new float[]{0.55f, 1}, Shader.TileMode.CLAMP);
             pRoad = null; // (the road's shade is made again for this size)
+        }
+
+        private float RX(float px) { return rox + px * rsc; }
+        private float RY(float py) { return roy + py * rsc; }
+
+        /** The rear view's sizes: the car 78 % of the height (half the width at most), standing on the road near the bottom. */
+        private void fitRear(int w, int h) {
+            rfitW = w; rfitH = h;
+            float pw = rearPic.getWidth(), ph = rearPic.getHeight(), gy = h * 0.95f, hz = h * 0.30f;
+            rsc = Math.min(h * 0.78f / ph, w * 0.5f / pw);
+            rcw = pw * rsc;
+            rox = (w - rcw) / 2f;
+            roy = gy - ph * rsc;
+            rfit.setScale(rsc, rsc);
+            rfit.postTranslate(rox, roy);
+            rRoad = new LinearGradient(0, hz, 0, h, new int[]{0x05FFFFFF, look != null && look.light ? 0x18000000 : 0x16FFFFFF}, null, Shader.TileMode.CLAMP);
+            rBeam = new LinearGradient(0, gy, 0, hz, new int[]{0x3AFFF4D6, 0x00FFF4D6}, null, Shader.TileMode.CLAMP);
+            rShadow = new RadialGradient(w / 2f, gy, Math.max(1, rcw * 0.62f), new int[]{0x99000000, 0x00000000}, new float[]{0.5f, 1}, Shader.TileMode.CLAMP);
+        }
+
+        /**
+         * The chase view: the road in perspective to a horizon a third of the way down, its edges in the theme's colour, the
+         * centre line's dashes on his car's right (India drives on the left) coming towards us with the speed; at night his
+         * headlights' light on the road ahead; his car from behind, its shadow; tail lights lit at night, all three brake
+         * lights when slowing hard, the turn's side blinking amber with the arrow; rain.
+         */
+        private void drawRear(Canvas cv, int w, int h, long now) {
+            if (rfitW != w || rfitH != h) fitRear(w, h);
+            float hz = h * 0.30f, gy = h * 0.95f, cx = w / 2f;
+            p.setShader(null);
+            p.setStyle(Paint.Style.FILL);
+            path.rewind();
+            path.moveTo(cx - w * 0.04f, hz); path.lineTo(cx + w * 0.04f, hz); path.lineTo(w * 1.05f, h); path.lineTo(-w * 0.05f, h); path.close();
+            p.setShader(rRoad); cv.drawPath(path, p); p.setShader(null);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(1, h / 100f));
+            p.setColor(CarTheme.withAlpha(look.accent, 0x77));
+            cv.drawLine(cx - w * 0.04f, hz, -w * 0.05f, h, p);
+            cv.drawLine(cx + w * 0.04f, hz, w * 1.05f, h, p);
+            // the centre line's dashes: 8 along the road, each moving from the horizon to us (perspective: t²)
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(look.light ? 0x66000000 : 0x8CFFFFFF);
+            float phase = laneOffset / 60f;
+            for (int n = 0; n < 8; n++) {
+                float t = (n / 8f + phase / 8f) % 1f, ta = Math.min(1, t + 0.05f), t2 = t * t, ta2 = ta * ta;
+                float y1 = hz + (h - hz) * t2, y2 = hz + (h - hz) * ta2, x1 = cx + w * 0.40f * t2, x2 = cx + w * 0.40f * ta2, wd = 1 + t2 * h / 30f;
+                path.rewind();
+                path.moveTo(x1 - wd / 2, y1); path.lineTo(x1 + wd / 2, y1); path.lineTo(x2 + wd / 2, y2); path.lineTo(x2 - wd / 2, y2); path.close();
+                cv.drawPath(path, p);
+            }
+            if (night) { // his headlights on the road ahead (the car is between us and them)
+                for (float side = -1; side <= 1; side += 2) {
+                    path.rewind();
+                    path.moveTo(cx + side * rcw * 0.2f, gy - h * 0.05f);
+                    path.lineTo(cx + side * w * 0.02f - w * 0.05f, hz + 2); path.lineTo(cx + side * w * 0.02f + w * 0.05f, hz + 2); path.close();
+                    p.setShader(rBeam); cv.drawPath(path, p); p.setShader(null);
+                }
+            }
+            p.setShader(rShadow);
+            cv.save(); cv.scale(1, 0.12f, cx, gy); cv.drawCircle(cx, gy, rcw * 0.62f, p); cv.restore();
+            p.setShader(null);
+            p.setFilterBitmap(true);
+            if (rearCut) {
+                p.setColorFilter(night ? dusk : null);
+                cv.drawBitmap(rearPic, rfit, p);
+                p.setColorFilter(null);
+            } else { // a plain photo: in a rounded frame standing on the road
+                cv.save();
+                path.rewind();
+                float rw = rearPic.getWidth() * rsc, rh = rearPic.getHeight() * rsc, rr = Math.min(rw, rh) * 0.08f;
+                path.addRoundRect(new RectF(rox, roy, rox + rw, roy + rh), rr, rr, Path.Direction.CW);
+                cv.clipPath(path);
+                cv.drawBitmap(rearPic, rfit, p);
+                if (night) { p.setColor(0x80000000); cv.drawRect(rox, roy, rox + rw, roy + rh, p); }
+                cv.restore();
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(Math.max(1, h * 0.008f));
+                p.setColor(CarTheme.withAlpha(look.accent, 0x77));
+                cv.drawPath(path, p);
+                p.setStyle(Paint.Style.FILL);
+            }
+            // the lights: tail lights at night, all three when slowing hard, the turn's side in amber
+            float lr = rcw * 0.09f, lx = RX(rm[0]), ly = RY(rm[1]), qx = RX(rm[2]), qy = RY(rm[3]);
+            boolean top = rm[4] >= 0;
+            if (night) { glow(cv, lx, ly, lr, 0x99FF2828); glow(cv, qx, qy, lr, 0x99FF2828); }
+            if (braking) {
+                glow(cv, lx, ly, lr * 1.6f, 0xF2FF2020); glow(cv, qx, qy, lr * 1.6f, 0xF2FF2020);
+                if (top) glow(cv, RX(rm[4]), RY(rm[5]), lr * 1.2f, 0xE6FF2020);
+            }
+            boolean blink = indicator != 0 && (now / 400) % 2 == 0;
+            if (blink) {
+                glow(cv, indicator < 0 ? lx : qx, indicator < 0 ? ly : qy, lr * 1.3f, 0xF2FFB020);
+                float u = h / 150f;
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(4 * u);
+                p.setStrokeCap(Paint.Cap.ROUND);
+                p.setStrokeJoin(Paint.Join.ROUND);
+                p.setColor(0xFFFFB020);
+                float ax = indicator < 0 ? 24 * u : w - 24 * u, d = indicator < 0 ? -1 : 1;
+                path.rewind();
+                path.moveTo(ax - 12 * d * u, 18 * u); path.lineTo(ax, 26 * u); path.lineTo(ax - 12 * d * u, 34 * u);
+                path.moveTo(ax - 24 * d * u, 18 * u); path.lineTo(ax - 12 * d * u, 26 * u); path.lineTo(ax - 24 * d * u, 34 * u);
+                cv.drawPath(path, p);
+                p.setStyle(Paint.Style.FILL);
+            }
+            if (rain) { cv.save(); cv.scale(w / UW, h / UH); rain(cv); cv.restore(); }
+            p.setStyle(Paint.Style.FILL);
+        }
+
+        /** A soft round light (made for its size; these are few and small). */
+        private void glow(Canvas cv, float x, float y, float r, int argb) {
+            if (r <= 0) return;
+            p.setStyle(Paint.Style.FILL);
+            p.setShader(new RadialGradient(x, y, r, new int[]{argb, argb & 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
+            cv.drawCircle(x, y, r, p);
+            p.setShader(null);
         }
 
         /** Under a cut-out: the road band, its edge line, the lane marks running past with the speed, the car's shadow. */

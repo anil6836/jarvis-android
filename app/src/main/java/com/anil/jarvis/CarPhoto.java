@@ -77,6 +77,87 @@ final class CarPhoto {
 
     private static int clamp(int v, int a, int b) { return v < a ? a : v > b ? b : v; }
 
+    // ================================================================ 🚗 the rear photo (the chase view while he drives)
+
+    static final String REAR = "car_rear.jpg";
+    /** Rear marks, as fractions of the photo: left tail light x, y; right tail light x, y; the top brake light x, y (-1, -1: none). */
+    static final int LX = 0, LY = 1, QX = 2, QY = 3, TOPX = 4, TOPY = 5, RN = 6;
+
+    static String formatRear(float[] m) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < RN; i++) { if (i > 0) b.append(','); b.append(String.format(Locale.ROOT, "%.5f", m[i])); }
+        return b.toString();
+    }
+
+    /** The stored rear marks, or null. The top light may be (-1, -1). Pure. */
+    static float[] parseRear(String s) {
+        if (s == null || s.isEmpty()) return null;
+        String[] p = s.split(",");
+        if (p.length != RN) return null;
+        float[] m = new float[RN];
+        try {
+            for (int i = 0; i < RN; i++) {
+                m[i] = Float.parseFloat(p[i].trim());
+                boolean top = i >= TOPX;
+                if (Float.isNaN(m[i]) || m[i] > 1 || m[i] < (top ? -1 : 0)) return null;
+                if (top && m[i] < 0 && m[i] != -1) return null;
+            }
+        } catch (Exception e) { return null; }
+        if (m[QX] - m[LX] < 0.15f) return null; // (the right light must be right of the left one, and apart)
+        if ((m[TOPX] < 0) != (m[TOPY] < 0)) return null;
+        return m;
+    }
+
+    /** The part of a rear photo shown: the car round its two tail lights, clamped. {left, top, right, bottom} px. Pure. */
+    static int[] rearCrop(int w, int h, float[] m) {
+        float lx = m[LX] * w, rx = m[QX] * w, ly = Math.min(m[LY], m[QY]) * h, low = Math.max(m[LY], m[QY]) * h, span = Math.max(1, rx - lx);
+        float top = ly - span * 0.35f;
+        if (m[TOPY] >= 0) top = Math.min(top, m[TOPY] * h);
+        top -= span * 0.08f;
+        int l = clamp(Math.round(lx - span * 0.14f), 0, w - 1), r = clamp(Math.round(rx + span * 0.14f), l + 1, w);
+        int b = clamp(Math.round(low + span * 0.64f), 1, h), t = clamp(Math.round(top), 0, b - 1);
+        return new int[]{l, t, r, b};
+    }
+
+    /** Rear marks in the cropped (and scaled by k) picture's pixels; the top light stays (-1, -1) when none. Pure. */
+    static float[] rearInCrop(int w, int h, float[] m, int[] c, float k) {
+        boolean top = m[TOPX] >= 0;
+        return new float[]{(m[LX] * w - c[0]) * k, (m[LY] * h - c[1]) * k, (m[QX] * w - c[0]) * k, (m[QY] * h - c[1]) * k,
+                top ? (m[TOPX] * w - c[0]) * k : -1, top ? (m[TOPY] * h - c[1]) * k : -1};
+    }
+
+    static File rearFile(Context c) { return new File(c.getFilesDir(), REAR); }
+
+    static float[] rearMarks(Prefs prefs) { return parseRear(prefs.sp.getString("car_rear_marks", "")); }
+
+    /** The rear photo is there and marked. */
+    static boolean rearReady(Context c, Prefs prefs) { return rearFile(c).exists() && rearMarks(prefs) != null; }
+
+    /** While driving, the car seen from behind ("rear", the default once a rear photo is there) or from the side ("side"). */
+    static boolean driveFromBehind(Context c, Prefs prefs) { return rearReady(c, prefs) && !"side".equals(prefs.sp.getString("car_drive_view", "rear")); }
+
+    /** For the screen: {the rear photo's car part (≤ 700 px tall), the rear marks in it, a cut-out?}; null when off / unreadable. */
+    static Object[] loadRear(Context c, Prefs prefs) {
+        float[] m = rearMarks(prefs);
+        File f = rearFile(c);
+        if (m == null || !f.exists()) return null;
+        try {
+            Bitmap full = BitmapFactory.decodeFile(f.getPath());
+            if (full == null) return null;
+            boolean clear = cutout(full);
+            int[] cr = rearCrop(full.getWidth(), full.getHeight(), m);
+            int cw = cr[2] - cr[0], ch = cr[3] - cr[1];
+            float k = Math.min(1f, 700f / ch);
+            Bitmap part = Bitmap.createBitmap(full, cr[0], cr[1], cw, ch);
+            if (k < 1) { Bitmap s = Bitmap.createScaledBitmap(part, Math.max(1, Math.round(cw * k)), Math.max(1, Math.round(ch * k)), true); if (s != part) part.recycle(); part = s; }
+            float[] at = rearInCrop(full.getWidth(), full.getHeight(), m, cr, k);
+            if (part != full) full.recycle();
+            return new Object[]{part, at, clear};
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
     // ================================================================ Android: keeping the photo, reading it back
 
     static File file(Context c) { return new File(c.getFilesDir(), FILE); }

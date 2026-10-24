@@ -17,11 +17,15 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * 📍 Once, on his own car's photo: he taps the front wheel's centre, the rear wheel's centre, the headlight and the tail
+ * 📍 Once, on his own car's photo (EXTRA_REAR: on the rear photo, the two tail lights and the top brake light instead): he taps the front wheel's centre, the rear wheel's centre, the headlight and the tail
  * light, and sets the wheels' size with a slider (two circles show it), so the car screen can turn his wheels and light
  * his lamps. A tap near a mark afterwards moves it. Nothing leaves the box.
  */
 public class CarPhotoActivity extends Activity {
+    static final String EXTRA_REAR = "rear";
+    private boolean rear;
+    private final float[] rmk = {0, 0, 0, 0, -1, -1};
+    private Button noTop;
     private Bitmap bmp;
     private final float[] m = new float[CarPhoto.N];
     private int step;
@@ -38,18 +42,27 @@ public class CarPhotoActivity extends Activity {
             "3/4 · హెడ్‌లైట్ మీద తాకండి",
             "4/4 · వెనుక లైట్ (టెయిల్ లైట్) మీద తాకండి",
             "కింది స్లైడర్‌తో రెండు గుండ్రటి గీతలు టైర్ అంచుకి సరిపోయేలా చేసి ✓ సేవ్. (ఏదైనా గుర్తు తప్పైతే దాని దగ్గర తాకితే అక్కడికి జరుగుతుంది)"};
+    private static final String[] REAR_STEPS = {
+            "1/3 · ఎడమ టెయిల్ లైట్ (ఫోటోలో ఎడమ వైపుది) మీద తాకండి",
+            "2/3 · కుడి టెయిల్ లైట్ మీద తాకండి",
+            "3/3 · పైన చిన్న బ్రేక్ లైట్ మీద తాకండి (లేకపోతే 'పైన లైట్ లేదు')",
+            "✓ సేవ్ నొక్కండి. (ఏదైనా గుర్తు తప్పైతే దాని దగ్గర తాకితే అక్కడికి జరుగుతుంది)"};
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = new Prefs(this);
+        rear = getIntent().getBooleanExtra(EXTRA_REAR, false);
         try {
-            BitmapFactory.Options o = new BitmapFactory.Options();
-            o.inSampleSize = 1;
-            bmp = BitmapFactory.decodeFile(CarPhoto.file(this).getPath(), o);
+            bmp = BitmapFactory.decodeFile((rear ? CarPhoto.rearFile(this) : CarPhoto.file(this)).getPath());
         } catch (Throwable ignored) {}
         if (bmp == null) { Toast.makeText(this, "కారు ఫోటో దొరకలేదు: మళ్ళీ ఎంచుకోండి", Toast.LENGTH_LONG).show(); finish(); return; }
-        float[] old = CarPhoto.marks(prefs);
-        if (old != null) { System.arraycopy(old, 0, m, 0, CarPhoto.N); step = 4; baseR = m[CarPhoto.R]; }
+        if (rear) {
+            float[] old = CarPhoto.rearMarks(prefs);
+            if (old != null) { System.arraycopy(old, 0, rmk, 0, CarPhoto.RN); step = 3; }
+        } else {
+            float[] old = CarPhoto.marks(prefs);
+            if (old != null) { System.arraycopy(old, 0, m, 0, CarPhoto.N); step = 4; baseR = m[CarPhoto.R]; }
+        }
 
         int p = Ui.dp(this, 12);
         LinearLayout col = new LinearLayout(this);
@@ -75,15 +88,26 @@ public class CarPhotoActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar s) {}
         });
         row.addView(size, new LinearLayout.LayoutParams(0, -2, 1));
-        col.addView(row);
+        if (!rear) col.addView(row);
         LinearLayout btns = new LinearLayout(this);
         btns.setGravity(Gravity.END);
         Button again = new Button(this);
         again.setText("↺ మళ్ళీ");
-        again.setOnClickListener(v -> { step = 0; baseR = 0; size.setProgress(50); show(); });
+        again.setOnClickListener(v -> { step = 0; baseR = 0; size.setProgress(50); rmk[4] = rmk[5] = -1; show(); });
+        noTop = new Button(this);
+        noTop.setText("పైన లైట్ లేదు");
+        noTop.setOnClickListener(v -> { rmk[4] = rmk[5] = -1; step = 3; show(); });
         save = new Button(this);
         save.setText("✓ సేవ్");
         save.setOnClickListener(v -> {
+            if (rear) {
+                String rs = CarPhoto.formatRear(rmk);
+                if (CarPhoto.parseRear(rs) == null) { Toast.makeText(this, "గుర్తులు సరిగా లేవు (ఎడమ లైట్ ఎడమవైపు ఉండాలి): ↺ మళ్ళీ", Toast.LENGTH_LONG).show(); return; }
+                prefs.sp.edit().putString("car_rear_marks", rs).putString("car_drive_view", "rear").apply();
+                Toast.makeText(this, "సరే: నడిపేటప్పుడు మీ కారు వెనుక నుంచి", Toast.LENGTH_LONG).show();
+                finish();
+                return;
+            }
             String s = CarPhoto.format(m);
             if (CarPhoto.parse(s) == null) { Toast.makeText(this, "గుర్తులు సరిగా లేవు: ↺ మళ్ళీ", Toast.LENGTH_LONG).show(); return; }
             prefs.sp.edit().putString("car_photo_marks", s).putString("car_hero", "photo").apply();
@@ -91,6 +115,7 @@ public class CarPhotoActivity extends Activity {
             finish();
         });
         btns.addView(again);
+        if (rear) btns.addView(noTop);
         btns.addView(save);
         col.addView(btns);
         setContentView(col);
@@ -98,13 +123,40 @@ public class CarPhotoActivity extends Activity {
     }
 
     private void show() {
-        title.setText(STEPS[Math.min(step, 4)]);
-        save.setEnabled(step >= 4);
-        size.setEnabled(step >= 4);
+        if (rear) {
+            title.setText(REAR_STEPS[Math.min(step, 3)]);
+            save.setEnabled(step >= 3);
+            noTop.setVisibility(step == 2 ? View.VISIBLE : View.GONE);
+        } else {
+            title.setText(STEPS[Math.min(step, 4)]);
+            save.setEnabled(step >= 4);
+            size.setEnabled(step >= 4);
+        }
+        view.invalidate();
+    }
+
+    private void tappedRear(float nx, float ny) {
+        float aspect = bmp.getHeight() / (float) bmp.getWidth();
+        if (step < 3) {
+            rmk[step * 2] = nx;
+            rmk[step * 2 + 1] = ny;
+            step++;
+            show();
+            return;
+        }
+        int best = -1; // done: the nearest mark moves here
+        double bd = 0.08;
+        for (int i = 0; i < 3; i++) {
+            if (rmk[i * 2] < 0) continue;
+            double d = Math.hypot(rmk[i * 2] - nx, (rmk[i * 2 + 1] - ny) * aspect);
+            if (d < bd) { bd = d; best = i; }
+        }
+        if (best >= 0) { rmk[best * 2] = nx; rmk[best * 2 + 1] = ny; }
         view.invalidate();
     }
 
     private void tapped(float nx, float ny) {
+        if (rear) { tappedRear(nx, ny); return; }
         float aspect = bmp.getHeight() / (float) bmp.getWidth();
         switch (step) {
             case 0: m[CarPhoto.FX] = nx; m[CarPhoto.FY] = ny; break;
@@ -154,6 +206,12 @@ public class CarPhotoActivity extends Activity {
             cv.restore();
             float bw = bmp.getWidth() * s, bh = bmp.getHeight() * s;
             p.setStrokeWidth(Math.max(3, w / 300f));
+            if (rear) {
+                if (step > 0) dot(cv, ox + rmk[0] * bw, oy + rmk[1] * bh, 0xFFFF4D4D, "ఎడమ లైట్");
+                if (step > 1) dot(cv, ox + rmk[2] * bw, oy + rmk[3] * bh, 0xFFFF4D4D, "కుడి లైట్");
+                if (step > 2 && rmk[4] >= 0) dot(cv, ox + rmk[4] * bw, oy + rmk[5] * bh, 0xFFFF8080, "పై లైట్");
+                return;
+            }
             if (step > 0) wheel(cv, ox + m[CarPhoto.FX] * bw, oy + m[CarPhoto.FY] * bh, m[CarPhoto.R] * bw, "ముందు");
             if (step > 1) wheel(cv, ox + m[CarPhoto.RX] * bw, oy + m[CarPhoto.RY] * bh, m[CarPhoto.R] * bw, "వెనుక");
             if (step > 2) dot(cv, ox + m[CarPhoto.HX] * bw, oy + m[CarPhoto.HY] * bh, 0xFFFFE066, "హెడ్‌లైట్");

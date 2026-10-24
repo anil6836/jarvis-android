@@ -3111,7 +3111,8 @@ public class SettingsActivity extends Activity {
             gaugeRow.setText("🧭 స్పీడ్ మీటర్: " + GAUGE_NAMES[gi] + "  (మార్చడానికి నొక్కండి)");
             boolean has = new java.io.File(getFilesDir(), "car_wall.jpg").exists();
             wallRow.setText(has ? "🖼️ వాల్‌పేపర్: మీ ఫోటో  (మార్చడానికి / తీసేయడానికి నొక్కండి)" : "🖼️ వాల్‌పేపర్: థీమ్‌దే  (మీ ఫోటో పెట్టడానికి నొక్కండి)");
-            heroRow.setText("🚙 కారు: " + (CarPhoto.on(this, prefs) ? "నా ఫోటో" : "మన బొమ్మ") + "  (మార్చడానికి నొక్కండి)");
+            heroRow.setText("🚙 కారు: " + (CarPhoto.on(this, prefs) ? "నా ఫోటో" : "మన బొమ్మ")
+                    + (CarPhoto.driveFromBehind(this, prefs) ? " · నడిపేటప్పుడు వెనుక నుంచి" : "") + "  (మార్చడానికి నొక్కండి)");
             int di = Math.max(0, java.util.Arrays.asList(dances).indexOf(prefs.carDance()));
             dance.setText("💃 Jarvis డాన్స్: " + danceNames[di] + "  (మార్చడానికి నొక్కండి)");
         };
@@ -3172,11 +3173,29 @@ public class SettingsActivity extends Activity {
             items.add("🎨 మన బొమ్మ");
             items.add(has ? "📷 నా ఫోటో" : "📷 నా కారు ఫోటో ఎంచుకో");
             if (has) { items.add("🖼️ వేరే ఫోటో ఎంచుకో"); items.add("📍 చక్రాలు, లైట్లు మళ్ళీ గుర్తించు"); items.add("🗑️ ఫోటో తీసేయి"); }
+            final boolean hasRear = CarPhoto.rearFile(this).exists();
+            if (!hasRear) items.add("🚗 వెనుక ఫోటో ఎంచుకో (నడిపేటప్పుడు వెనుక నుంచి)");
+            else {
+                items.add(CarPhoto.driveFromBehind(this, prefs) ? "🚗 నడిపేటప్పుడు: వెనుక నుంచి ✓ (పక్కకి మార్చు)" : "🚗 నడిపేటప్పుడు: పక్క నుంచి (వెనుకకి మార్చు)");
+                items.add("🚗 వేరే వెనుక ఫోటో ఎంచుకో");
+                items.add("🚗📍 వెనుక లైట్లు మళ్ళీ గుర్తించు");
+                items.add("🚗🗑️ వెనుక ఫోటో తీసేయి");
+            }
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                     .setTitle("స్క్రీన్ మీద కారు (మీ ఫోటో: కారు పక్క నుంచి నేరుగా తీసింది, రెండు చక్రాలు గుండ్రంగా)")
                     .setItems(items.toArray(new String[0]), (d, w) -> {
                         String it = items.get(w);
-                        if (it.startsWith("🎨")) prefs.sp.edit().putString("car_hero", "drawing").apply();
+                        if (it.startsWith("🚗📍")) startActivity(new Intent(this, CarPhotoActivity.class).putExtra(CarPhotoActivity.EXTRA_REAR, true));
+                        else if (it.startsWith("🚗🗑️")) {
+                            if (!CarPhoto.rearFile(this).delete()) CarPhoto.rearFile(this).deleteOnExit();
+                            prefs.sp.edit().remove("car_rear_marks").apply();
+                        }
+                        else if (it.startsWith("🚗 నడిపేటప్పుడు")) {
+                            if (CarPhoto.rearMarks(prefs) == null) startActivity(new Intent(this, CarPhotoActivity.class).putExtra(CarPhotoActivity.EXTRA_REAR, true));
+                            else prefs.sp.edit().putString("car_drive_view", CarPhoto.driveFromBehind(this, prefs) ? "side" : "rear").apply();
+                        }
+                        else if (it.startsWith("🚗")) pickCarRear();
+                        else if (it.startsWith("🎨")) prefs.sp.edit().putString("car_hero", "drawing").apply();
                         else if (it.startsWith("📷") && has) {
                             if (CarPhoto.marks(prefs) == null) startActivity(new Intent(this, CarPhotoActivity.class)); // (not marked yet: mark first)
                             else prefs.sp.edit().putString("car_hero", "photo").apply();
@@ -3221,7 +3240,15 @@ public class SettingsActivity extends Activity {
     private static final int[] ACCENTS = {0, 0xFF5FF3FF, 0xFF4D8DFF, 0xFF34E89E, 0xFFFFC24B, 0xFFFF8A3D, 0xFFFF5A5A, 0xFFFF6AD5, 0xFFB28DFF, 0xFFF2F6FA};
     private static final String[] ACCENT_NAMES = {"థీమ్‌దే", "సియాన్", "నీలం", "ఆకుపచ్చ", "బంగారు", "నారింజ", "ఎరుపు", "గులాబీ", "ఊదా", "తెలుపు"};
     private static final String[] GAUGES = {"", "arc", "needle"}, GAUGE_NAMES = {"థీమ్‌దే", "వెలిగే వంపు (ఆర్క్)", "క్లాసిక్ సూది డయల్"};
-    private static final int REQ_WALL = 47, REQ_CARPHOTO = 48;
+    private static final int REQ_WALL = 47, REQ_CARPHOTO = 48, REQ_CARREAR = 49;
+
+    private void pickCarRear() {
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_CARREAR);
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫోటో ఎంచుకునే యాప్ లేదు", Toast.LENGTH_LONG).show();
+        }
+    }
     private TextView heroRow;
 
     private void pickCarPhoto() {
@@ -3430,6 +3457,18 @@ public class SettingsActivity extends Activity {
         super.onActivityResult(code, result, data);
         if (gated) return;
         if (code == REQ_WALL && result == RESULT_OK && data != null && data.getData() != null) wallPicked(data.getData()); // 🖼️ the car screen's wallpaper
+        if (code == REQ_CARREAR && result == RESULT_OK && data != null && data.getData() != null) { // 🚗 his car from behind: kept, then its lights marked
+            final Uri u = data.getData();
+            Toast.makeText(this, "ఫోటో తీసుకుంటున్నాను…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                boolean ok = CarPhoto.keep(this, u, CarPhoto.REAR, 1400);
+                runOnUiThread(() -> {
+                    if (!ok) { Toast.makeText(this, "ఆ ఫోటో తెరవలేకపోయాను", Toast.LENGTH_LONG).show(); return; }
+                    prefs.sp.edit().remove("car_rear_marks").apply();
+                    startActivity(new Intent(this, CarPhotoActivity.class).putExtra(CarPhotoActivity.EXTRA_REAR, true));
+                });
+            }, "car-rear").start();
+        }
         if (code == REQ_CARPHOTO && result == RESULT_OK && data != null && data.getData() != null) { // 🚙 his own car's photo: kept, then marked
             final Uri u = data.getData();
             Toast.makeText(this, "ఫోటో తీసుకుంటున్నాను…", Toast.LENGTH_SHORT).show();
