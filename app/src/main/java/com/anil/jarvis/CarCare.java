@@ -48,7 +48,43 @@ final class CarCare {
     static String eyesMode(Context c) { return settings(c).getString("car_eyes", "night"); }
     /** "front" (the phone's front camera), "usb" (an outside camera on the phone's USB) or "url" (a Wi-Fi camera's link). */
     static String eyesSource(Context c) { return settings(c).getString("car_eyes_src", "front"); }
-    static String eyesUrl(Context c) { return settings(c).getString("car_eyes_url", "").trim(); }
+    /**
+     * The Wi-Fi camera's link, its login and its own Wi-Fi's name and password: in a file of their own that no backup
+     * takes (not Google's, not his Drive one) — they stay on this device.
+     */
+    static final String CAM_PRIVATE = "car_cam_private";
+    static SharedPreferences cam(Context c) { return c.getSharedPreferences(CAM_PRIVATE, Context.MODE_PRIVATE); }
+
+    static String eyesUrl(Context c) {
+        SharedPreferences p = cam(c), d = settings(c);
+        String u = p.getString("url", "");
+        if (d.contains("car_eyes_url")) { // (from before: the link was kept among the drive settings, which are backed up)
+            String old = d.getString("car_eyes_url", "").trim();
+            if (u.trim().isEmpty() && !old.isEmpty()) { u = old; p.edit().putString("url", old).apply(); }
+            d.edit().remove("car_eyes_url").apply();
+        }
+        return u.trim();
+    }
+
+    static void setEyesUrl(Context c, String u) { cam(c).edit().putString("url", u == null ? "" : u.trim()).apply(); }
+    static String camUser(Context c) { return cam(c).getString("user", "").trim(); }
+    static String camPass(Context c) { return cam(c).getString("pass", ""); }
+    /** The camera's own Wi-Fi name ("": this device is already on the camera's network). */
+    static String camSsid(Context c) { return cam(c).getString("ssid", "").trim(); }
+    static String camWifiPass(Context c) { return cam(c).getString("wifi_pass", ""); }
+    static void setCam(Context c, String key, String v) { cam(c).edit().putString(key, v == null ? "" : v).apply(); }
+    /**
+     * The camera's own address (BSSID) once Android's "connect to this device?" was answered yes for this Wi-Fi name: then
+     * Android joins it later without asking. "" before (or after the name was changed).
+     */
+    static String camBssid(Context c) {
+        String s = camSsid(c);
+        return !s.isEmpty() && s.equals(cam(c).getString("ssid_ok", "")) ? cam(c).getString("bssid_ok", "") : "";
+    }
+
+    static boolean camApproved(Context c) { return !camBssid(c).isEmpty(); }
+    static void camApprovedNow(Context c, String ssid, String bssid) { cam(c).edit().putString("ssid_ok", ssid).putString("bssid_ok", bssid).apply(); }
+
     static boolean eyesAgreed(Context c) { return sp(c).getBoolean("eyes_ok", false); }
     static void agreeEyes(Context c) { sp(c).edit().putBoolean("eyes_ok", true).apply(); }
 
@@ -591,9 +627,11 @@ final class CarCare {
         if (now) sp(app).edit().remove("eyes_told").apply();
         boolean camOk = app.checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED;
         boolean canOpen = MainActivity.visible || android.provider.Settings.canDrawOverlays(app);
-        if (eyesAgreed(app) && camOk && canOpen) {
+        // (the camera's own Wi-Fi not yet allowed by him once: Android would ask on the screen — only on his tap, never by itself)
+        boolean askWifi = "url".equals(eyesSource(app)) && !camSsid(app).isEmpty() && !camApproved(app);
+        if (eyesAgreed(app) && camOk && canOpen && (now || !askWifi)) {
             try {
-                app.startActivity(new Intent(app, CarEyesActivity.class).putExtra(CarEyesActivity.EXTRA_AUTO, true)
+                app.startActivity(new Intent(app, CarEyesActivity.class).putExtra(CarEyesActivity.EXTRA_AUTO, true).putExtra(CarEyesActivity.EXTRA_ASKED, now)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
                 return;
             } catch (Exception ignored) {}
@@ -605,16 +643,18 @@ final class CarCare {
         SharedPreferences s = sp(app);
         if (s.getBoolean("eyes_told", false)) return;
         s.edit().putBoolean("eyes_told", true).apply();
+        boolean wifi = "url".equals(eyesSource(app));
         try {
             NotificationManager nm = app.getSystemService(NotificationManager.class);
             nm.createNotificationChannel(new NotificationChannel("jarvis_awake", "మెలకువ చెక్", NotificationManager.IMPORTANCE_HIGH));
             PendingIntent open = PendingIntent.getActivity(app, 247, new Intent(app, CarEyesActivity.class).putExtra(CarEyesActivity.EXTRA_AUTO, true)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                    .putExtra(CarEyesActivity.EXTRA_ASKED, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             nm.notify(NOTE_EYES, new Notification.Builder(app, "jarvis_awake").setSmallIcon(android.R.drawable.ic_menu_camera)
-                    .setContentTitle("👁️ కళ్ళ చెక్ మొదలుపెట్టాలా?").setContentText("ఫోన్‌ని హోల్డర్‌లో మీ ముఖం వైపు పెట్టి ఇక్కడ నొక్కండి")
+                    .setContentTitle("👁️ కళ్ళ చెక్ మొదలుపెట్టాలా?").setContentText(wifi ? "Wi-Fi కెమెరాతో: ఇక్కడ నొక్కండి" : "ఫోన్‌ని హోల్డర్‌లో మీ ముఖం వైపు పెట్టి ఇక్కడ నొక్కండి")
                     .setContentIntent(open).setAutoCancel(true).setTimeoutAfter(60 * MIN).build());
         } catch (Exception ignored) {}
-        if (speak) Announcer.sayPhone(app, "కళ్ళ చెక్ కావాలంటే, ఫోన్‌ని హోల్డర్‌లో మీ ముఖం వైపు పెట్టి, నోటిఫికేషన్ నొక్కండి.");
+        if (speak) Announcer.sayPhone(app, wifi ? "Wi-Fi కెమెరాతో కళ్ళ చెక్ కావాలంటే, నోటిఫికేషన్ నొక్కండి."
+                : "కళ్ళ చెక్ కావాలంటే, ఫోన్‌ని హోల్డర్‌లో మీ ముఖం వైపు పెట్టి, నోటిఫికేషన్ నొక్కండి.");
     }
 
     // ---------------------------------------------------------------- the question's cards (phone, and straight to the watch)

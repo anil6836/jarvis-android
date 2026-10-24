@@ -50,8 +50,10 @@ import java.util.concurrent.Executor;
  * eyes closed for about 2 seconds, or the head dropped -> {@link CarCare#eyes} rings the alarm. Pictures are only looked
  * at, about 6 a second: never saved, never sent anywhere, never shown to any AI.
  * The camera: the phone's front camera, an outside camera on the phone's USB (when Android offers it as a camera), or a
- * Wi-Fi camera's MJPEG / JPEG link (a night-vision car camera, later). For an outside camera its way up isn't known, so
- * the four turns are tried until his face is found.
+ * Wi-Fi camera's link: MJPEG / JPEG (http://…) or its RTSP live picture (rtsp://…, H.264 / H.265, {@link RtspEyes}) — a
+ * night-vision car camera. A camera that makes its own Wi-Fi is joined by its name and password (Settings) only while the
+ * check runs, then let go: the device goes back to its own Wi-Fi. For an outside camera its way up isn't known, so the
+ * four turns are tried until his face is found.
  * A foreground service (camera), started only from {@link CarEyesActivity} while it is on screen (Android's rule), so
  * the check goes on when Maps comes back on top.
  */
@@ -64,14 +66,20 @@ public class CarEyes extends Service {
     private static final int NOTE = 249;
     private static final long GAP_MS = 150;
 
-    static void start(Context c, boolean test) {
-        Intent i = new Intent(c, CarEyes.class).putExtra("test", test);
+    static void start(Context c, boolean test) { start(c, test, test); }
+
+    /** asked: started by his own word or tap — Android may then ask him on the screen about the camera's Wi-Fi. */
+    static void start(Context c, boolean test, boolean asked) {
+        Intent i = new Intent(c, CarEyes.class).putExtra("test", test).putExtra("asked", asked);
         if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
     }
 
     static void stop(Context c) {
         try { c.stopService(new Intent(c, CarEyes.class)); } catch (Exception ignored) {}
     }
+
+    /** "ఫోన్‌లోనే" / "ఈ box లోనే": where the pictures stay. */
+    static String here(Context c) { return CarBox.on(c) ? "ఈ box లోనే" : "ఫోన్‌లోనే"; }
 
     private HandlerThread thread;
     private Handler h;
@@ -82,6 +90,12 @@ public class CarEyes extends Service {
     private ImageReader reader;
     private FaceDetector detector;
     private Thread urlThread;
+    private volatile RtspEyes rtsp;
+    /** The camera's own Wi-Fi, asked from Android while the check runs (null until it is joined). */
+    private volatile android.net.Network camNet;
+    private volatile android.net.ConnectivityManager.NetworkCallback camCb;
+    private volatile long camRetryAt;
+    private volatile boolean asked;
     private final CarSense.Eyes eyes = new CarSense.Eyes();
     private boolean front, outside, rotLocked;
     private int sensor = 270, rotation, fails;
@@ -100,6 +114,7 @@ public class CarEyes extends Service {
     @Override public int onStartCommand(Intent i, int flags, int id) {
         if (i != null && ACTION_STOP.equals(i.getAction())) { stopSelf(); return START_NOT_STICKY; }
         boolean t = i != null && i.getBooleanExtra("test", false);
+        if (i != null && i.getBooleanExtra("asked", false)) asked = true;
         if (running) { // already watching: a real start over a test makes it real
             if (!t) test = false;
             note(status, true); // (each start asks for the foreground again)
@@ -140,7 +155,7 @@ public class CarEyes extends Service {
             PendingIntent open = PendingIntent.getActivity(this, 250, new Intent(this, CarEyesActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             Notification n = new Notification.Builder(this, "jarvis_car_eyes").setSmallIcon(android.R.drawable.ic_menu_camera)
-                    .setContentTitle("👁️ కళ్ళ చెక్ ఆన్ (ఫోన్‌లోనే, ఏదీ సేవ్ / పంపదు)").setContentText(text).setOngoing(true).setShowWhen(false)
+                    .setContentTitle("👁️ కళ్ళ చెక్ ఆన్ (" + here(this) + ", ఏదీ సేవ్ / పంపదు)").setContentText(text).setOngoing(true).setShowWhen(false)
                     .setOnlyAlertOnce(true).setContentIntent(open)
                     .addAction(new Notification.Action.Builder(null, "⏹ ఆపు", stop).build()).build();
             if (foreground) {
@@ -177,18 +192,18 @@ public class CarEyes extends Service {
     @SuppressWarnings("MissingPermission")
     private void open() {
         if (!alive) return;
+        String src = CarCare.eyesSource(this);
         try {
             detector = FaceDetection.getClient(new FaceDetectorOptions.Builder()
                     .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
                     .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
                     .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-                    .setMinFaceSize(0.15f)
+                    .setMinFaceSize("url".equals(src) ? 0.08f : 0.15f) // (a car camera sees the whole front seat: his face is smaller)
                     .build());
         } catch (Throwable e) {
             fail("ముఖాలు చూసే Google మోడల్ పనిచేయడం లేదు");
             return;
         }
-        String src = CarCare.eyesSource(this);
         if ("url".equals(src)) {
             outside = true;
             String url = CarCare.eyesUrl(this);
@@ -462,7 +477,11 @@ public class CarEyes extends Service {
         while (alive) {
             long t0 = SystemClock.elapsedRealtime();
             try {
-                urlOnce(url);
+                if (!CarCare.camSsid(this).isEmpty()) modelReady();
+                android.net.Network n = camWifi();
+                if (!alive) return;
+                if (url.regionMatches(true, 0, "rtsp://", 0, 7)) rtspOnce(url, n);
+                else urlOnce(url, n);
                 if (alive && SystemClock.elapsedRealtime() - t0 < 1000) SystemClock.sleep(150); // (a snapshot link: asked again)
             } catch (IllegalArgumentException e) {
                 fail(e.getMessage());
@@ -474,14 +493,222 @@ public class CarEyes extends Service {
                 if (!alive) return;
                 say("Wi-Fi కెమెరాకి కనెక్ట్ కాలేదు: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()) + " (5 సెకన్లలో మళ్ళీ)");
                 if (++urlMisses == 3 && !test && CarCare.on(this)) // (said once: the car's own check must not stay silently blind)
-                    Announcer.sayPhone(this, "Wi-Fi కెమెరాకి కనెక్ట్ కావడం లేదు. ఫోన్ ఆ కెమెరా Wi-Fi కి కనెక్ట్ అయ్యిందో చూడండి. మాటల చెక్ కొనసాగుతుంది.");
+                    Announcer.sayPhone(this, "Wi-Fi కెమెరాకి కనెక్ట్ కావడం లేదు. కెమెరా ఆన్‌లో ఉందో, దాని Wi-Fi దొరుకుతోందో చూడండి. మాటల చెక్ కొనసాగుతుంది.");
                 SystemClock.sleep(5000);
             }
         }
     }
 
+    /** One RTSP session (its own thread's loop goes on after it ends). */
+    private void rtspOnce(String url, android.net.Network n) throws Exception {
+        RtspEyes r = new RtspEyes(url, CarCare.camUser(this), CarCare.camPass(this), n != null ? n : wifiNet(), new RtspEyes.Sink() {
+            @Override public boolean wants() { return alive && !busy && detector != null && SystemClock.elapsedRealtime() - lastFrame >= GAP_MS; }
+            @Override public void nv21(byte[] nv, int w, int h) { frameNv21(nv, w, h); }
+            @Override public void status(String s) { say(s); }
+        });
+        rtsp = r;
+        try {
+            if (alive) r.run();
+        } finally {
+            rtsp = null;
+            r.stop();
+        }
+    }
+
+    /**
+     * The face model ready while this device still has internet (the first time it comes from Google Play services): the
+     * camera's own Wi-Fi may take the internet away on a device that keeps only one Wi-Fi at a time.
+     */
+    private void modelReady() {
+        if (CarCare.cam(this).getBoolean("face_ok", false)) return;
+        Bitmap blank = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+        long until = SystemClock.elapsedRealtime() + 60_000;
+        try {
+            while (alive && SystemClock.elapsedRealtime() < until) {
+                FaceDetector d = detector;
+                if (d == null) return;
+                try {
+                    com.google.android.gms.tasks.Tasks.await(d.process(InputImage.fromBitmap(blank, 0)), 10, java.util.concurrent.TimeUnit.SECONDS);
+                    CarCare.cam(this).edit().putBoolean("face_ok", true).apply();
+                    return;
+                } catch (Exception e) {
+                    say("ముఖాలు చూసే Google మోడల్ వస్తోంది… (internet కావాలి)");
+                    SystemClock.sleep(2000);
+                }
+            }
+        } finally {
+            blank.recycle();
+        }
+    }
+
+    // ---------------------------------------------------------------- the camera's own Wi-Fi
+
+    private final Object camLock = new Object();
+    /** This run already asked Android once with its question on the screen (only one such ask per start by him). */
+    private boolean camAskUsed;
+    private int camMisses;
+
+    /**
+     * The camera's own Wi-Fi when its name is set in Settings, null when not (the camera is on the Wi-Fi this device is
+     * already on). Android's question ("connect to this device?") may appear only once, and only when he himself started
+     * the check (the Settings test, his tap or his word) — never by itself while he drives. After his yes Android
+     * remembers that camera (its name and its own address): later it is asked for only while it is on the air (seen in a
+     * fresh Wi-Fi scan), when Android joins it without a question. Kept while the check runs, let go at its end.
+     */
+    private android.net.Network camWifi() throws IOException {
+        String ssid = CarCare.camSsid(this);
+        if (ssid.isEmpty()) return null;
+        android.net.Network n = camNet;
+        if (n != null) return n;
+        if (Build.VERSION.SDK_INT < 29)
+            throw new IllegalArgumentException("కెమెరా Wi-Fi పేరుతో కలవడం Android 10 నుంచే: ఈ పరికరాన్ని ఆ Wi-Fi కి మీరే కలిపి, పేరు ఖాళీగా ఉంచండి");
+        String bssid = CarCare.camBssid(this);
+        boolean first = bssid.isEmpty();
+        if (camCb == null) {
+            if (!first) {
+                if (SystemClock.elapsedRealtime() < camRetryAt) throw new IOException("కెమెరా Wi-Fi '" + ssid + "' కి కలవలేదు");
+                if (!onAir(bssid)) throw new IOException("కెమెరా Wi-Fi '" + ssid + "' కనబడడం లేదు (కెమెరా ఆన్‌లో ఉందా?)");
+                requestCam(ssid, bssid);
+            } else {
+                if (camAskUsed) throw new IllegalArgumentException("కెమెరా Wi-Fi '" + ssid + "' కి కలవలేదు (పేరు / password సరిగ్గా ఉన్నాయా? Android అడిగితే 'కనెక్ట్' నొక్కారా?): కారు ఆపి సెట్టింగ్స్ → '▶ కళ్ళ చెక్ టెస్ట్' మళ్ళీ");
+                if (!test && !asked) throw new IllegalArgumentException("కెమెరా Wi-Fi కి ఇంకా ఒకసారి అనుమతి ఇవ్వలేదు: కారు ఆపి ఉన్నప్పుడు సెట్టింగ్స్ → '▶ కళ్ళ చెక్ టెస్ట్' చేయండి");
+                camAskUsed = true; // (one question per start by him: never again by itself)
+                requestCam(ssid, null);
+            }
+        }
+        say("📶 కెమెరా Wi-Fi '" + ssid + "' కి కలుస్తున్నాను…" + (first ? " (Android అడిగితే ఆ పేరు ఎంచుకుని 'కనెక్ట్' నొక్కండి)" : ""));
+        long until = SystemClock.elapsedRealtime() + (first ? 80_000 : 35_000);
+        while (alive && camNet == null && camCb != null && SystemClock.elapsedRealtime() < until) SystemClock.sleep(250);
+        n = camNet;
+        if (n == null && alive) {
+            releaseCam(); // (a request that went quiet or was refused: let go, so the next round asks afresh — by the rules above)
+            if (first) throw new IllegalArgumentException("కెమెరా Wi-Fi '" + ssid + "' కి కలవలేదు (కెమెరా ఆన్‌లో ఉందా? పేరు / password సరిగ్గా ఉన్నాయా? Android అడిగితే 'కనెక్ట్' నొక్కారా?)");
+            camRetryAt = SystemClock.elapsedRealtime() + 30_000;
+            if (++camMisses >= 3 && !test) // (seen on the air, yet Android doesn't join it: something changed — no more asking this drive)
+                throw new IllegalArgumentException("కెమెరా Wi-Fi '" + ssid + "' కి 3 సార్లు కలవలేదు: కారు ఆపి సెట్టింగ్స్ → '▶ కళ్ళ చెక్ టెస్ట్' మళ్ళీ చేయండి");
+            throw new IOException("కెమెరా Wi-Fi '" + ssid + "' కి కలవలేదు");
+        }
+        return n;
+    }
+
+    /** The camera's own address is in a Wi-Fi scan of the last 20 seconds (else a new scan is asked for). */
+    @android.annotation.SuppressLint("MissingPermission")
+    private boolean onAir(String bssid) {
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+            long nowUs = SystemClock.elapsedRealtime() * 1000L;
+            for (android.net.wifi.ScanResult r : wm.getScanResults())
+                if (bssid.equalsIgnoreCase(r.BSSID) && nowUs - r.timestamp < 20_000_000L) return true;
+            wm.startScan(); // (Android may allow only a few a minute: the next round looks again)
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    @android.annotation.TargetApi(29)
+    private void requestCam(String ssid, String bssid) {
+        final android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
+        android.net.NetworkRequest req;
+        try {
+            android.net.wifi.WifiNetworkSpecifier.Builder b = new android.net.wifi.WifiNetworkSpecifier.Builder().setSsid(ssid);
+            if (bssid != null) b.setBssid(android.net.MacAddress.fromString(bssid));
+            String pw = CarCare.camWifiPass(this);
+            if (!pw.isEmpty()) b.setWpa2Passphrase(pw);
+            req = new android.net.NetworkRequest.Builder()
+                    .addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+                    .removeCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .setNetworkSpecifier(b.build())
+                    .build();
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("కెమెరా Wi-Fi పేరు / password సరిగ్గా లేవు (password 8 అక్షరాలు పైనే ఉండాలి)");
+        }
+        CamCb cb = Build.VERSION.SDK_INT >= 31 ? new CamCb(ssid, cm, android.net.ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO) : new CamCb(ssid, cm);
+        synchronized (camLock) { // (with releaseCam: a check that ends right now never leaves the request behind)
+            if (!alive) return;
+            camCb = cb;
+            try {
+                cm.requestNetwork(req, cb, bssid != null ? 30_000 : 75_000);
+            } catch (SecurityException e) {
+                camCb = null;
+                throw new IllegalArgumentException("Android Wi-Fi అనుమతి ఇవ్వలేదు");
+            } catch (RuntimeException e) {
+                camCb = null;
+                throw new IllegalArgumentException("Android కెమెరా Wi-Fi ని అడగనివ్వలేదు: " + e.getClass().getSimpleName());
+            }
+        }
+    }
+
+    /** The answer to one ask for the camera's Wi-Fi; on his yes it notes the camera's own address (for later, no question). */
+    private final class CamCb extends android.net.ConnectivityManager.NetworkCallback {
+        private final String ssid;
+        private final android.net.ConnectivityManager cm;
+
+        CamCb(String ssid, android.net.ConnectivityManager cm) { this.ssid = ssid; this.cm = cm; }
+
+        @android.annotation.TargetApi(31)
+        CamCb(String ssid, android.net.ConnectivityManager cm, int flags) { super(flags); this.ssid = ssid; this.cm = cm; }
+
+        @Override public void onAvailable(android.net.Network net) {
+            synchronized (camLock) {
+                if (camCb != this) return;
+                camNet = net;
+                camMisses = 0;
+            }
+            if (Build.VERSION.SDK_INT < 31) note(oldBssid());
+        }
+
+        @Override public void onCapabilitiesChanged(android.net.Network net, android.net.NetworkCapabilities nc) {
+            if (Build.VERSION.SDK_INT < 31) return;
+            if (camCb != this) return;
+            try {
+                Object ti = nc.getTransportInfo();
+                if (ti instanceof android.net.wifi.WifiInfo) note(((android.net.wifi.WifiInfo) ti).getBSSID());
+            } catch (Exception ignored) {}
+        }
+
+        @SuppressWarnings("deprecation")
+        @android.annotation.SuppressLint("MissingPermission")
+        private String oldBssid() { // (Android 10 / 11: the camera's Wi-Fi is the one this device is on now)
+            try {
+                android.net.wifi.WifiInfo wi = ((android.net.wifi.WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE)).getConnectionInfo();
+                return wi != null && ("\"" + ssid + "\"").equals(wi.getSSID()) ? wi.getBSSID() : null;
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        private void note(String bssid) {
+            if (bssid == null || !bssid.matches("(?i)[0-9a-f]{2}(:[0-9a-f]{2}){5}") || bssid.equals("02:00:00:00:00:00")) return; // (hidden by Android)
+            CarCare.camApprovedNow(CarEyes.this, ssid, bssid.toLowerCase(java.util.Locale.ROOT));
+        }
+
+        @Override public void onLost(android.net.Network net) {
+            synchronized (camLock) {
+                if (camCb == this && net.equals(camNet)) camNet = null; // (out of reach: the stream fails, the next round waits, then asks again)
+            }
+        }
+
+        @Override public void onUnavailable() { // (not found in time, or he said no)
+            synchronized (camLock) {
+                if (camCb != this) return;
+                camCb = null;
+                camNet = null;
+            }
+            try { cm.unregisterNetworkCallback(this); } catch (Exception ignored) {}
+        }
+    }
+
+    private void releaseCam() {
+        android.net.ConnectivityManager.NetworkCallback cb;
+        synchronized (camLock) {
+            cb = camCb;
+            camCb = null;
+            camNet = null;
+        }
+        if (cb != null) try { getSystemService(android.net.ConnectivityManager.class).unregisterNetworkCallback(cb); } catch (Exception ignored) {}
+    }
+
     /** One connection: plain HTTP over the camera's Wi-Fi (its own network, often without internet). */
-    private void urlOnce(String url) throws Exception {
+    private void urlOnce(String url, android.net.Network cn) throws Exception {
         java.net.URI u = new java.net.URI(url);
         String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase(java.util.Locale.ROOT);
         if (scheme.startsWith("rtsp")) throw new IllegalArgumentException("RTSP లింక్‌తో ఇంకా పనిచేయదు: కెమెరా యాప్‌లో MJPEG / JPEG (http://…) లింక్ చూసి పెట్టండి");
@@ -490,15 +717,19 @@ public class CarEyes extends Service {
         if (host == null) throw new IllegalArgumentException("లింక్ సరిగ్గా లేదు");
         int port = u.getPort() > 0 ? u.getPort() : 80;
         String path = (u.getRawPath() == null || u.getRawPath().isEmpty() ? "/" : u.getRawPath()) + (u.getRawQuery() == null ? "" : "?" + u.getRawQuery());
-        javax.net.SocketFactory f = wifiSockets();
+        android.net.Network net = cn != null ? cn : wifiNet();
+        javax.net.SocketFactory f = net != null ? net.getSocketFactory() : javax.net.SocketFactory.getDefault();
         try (java.net.Socket s = f.createSocket()) {
-            s.connect(new java.net.InetSocketAddress(host, port), 4000);
+            java.net.InetAddress addr = net != null ? net.getByName(host) : java.net.InetAddress.getByName(host); // (a name: asked on the camera's network)
+            s.connect(new java.net.InetSocketAddress(addr, port), 4000);
             s.setSoTimeout(6000);
             StringBuilder req = new StringBuilder("GET ").append(path).append(" HTTP/1.0\r\nHost: ").append(host)
                     .append("\r\nUser-Agent: Jarvis\r\nConnection: close\r\n");
             String user = u.getRawUserInfo();
-            if (user != null) req.append("Authorization: Basic ")
-                    .append(java.util.Base64.getEncoder().encodeToString(java.net.URLDecoder.decode(user.replace("+", "%2B"), "UTF-8").getBytes(StandardCharsets.UTF_8))).append("\r\n");
+            String login = user != null ? java.net.URLDecoder.decode(user.replace("+", "%2B"), "UTF-8")
+                    : CarCare.camUser(this).isEmpty() ? null : CarCare.camUser(this) + ":" + CarCare.camPass(this);
+            if (login != null) req.append("Authorization: Basic ")
+                    .append(java.util.Base64.getEncoder().encodeToString(login.getBytes(StandardCharsets.UTF_8))).append("\r\n");
             req.append("\r\n");
             OutputStream out = s.getOutputStream();
             out.write(req.toString().getBytes(StandardCharsets.ISO_8859_1));
@@ -510,7 +741,7 @@ public class CarEyes extends Service {
             CarSense.Jpegs j = new CarSense.Jpegs();
             byte[] b = new byte[16384];
             int n;
-            if (status.startsWith("కెమెరా తెరుస్తున్నాను") || status.startsWith("Wi-Fi")) say("👁️ చూస్తున్నాను: మీ ముఖం కోసం…");
+            if (status.startsWith("కెమెరా తెరుస్తున్నాను") || status.startsWith("Wi-Fi") || status.startsWith("📶")) say("👁️ చూస్తున్నాను: మీ ముఖం కోసం…");
             while (alive && (n = in.read(b)) > 0) {
                 byte[] pic = j.add(b, n);
                 if (pic != null) frame(pic);
@@ -518,20 +749,20 @@ public class CarEyes extends Service {
         }
     }
 
-    /** The camera's Wi-Fi (it may have no internet: Android would otherwise go by mobile data). */
-    private javax.net.SocketFactory wifiSockets() {
+    /** The Wi-Fi this device is on (a camera's own one may have no internet: Android would otherwise go by mobile data). */
+    private android.net.Network wifiNet() {
         try {
             android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
             android.net.Network any = null;
             for (android.net.Network n : cm.getAllNetworks()) {
                 android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(n);
                 if (nc == null || !nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) continue;
-                if (!nc.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return n.getSocketFactory(); // (a camera's own Wi-Fi)
+                if (!nc.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return n; // (a camera's own Wi-Fi)
                 if (any == null) any = n;
             }
-            if (any != null) return any.getSocketFactory();
+            return any;
         } catch (Exception ignored) {}
-        return javax.net.SocketFactory.getDefault();
+        return null;
     }
 
     private static String line(InputStream in) throws IOException {
@@ -575,6 +806,36 @@ public class CarEyes extends Service {
         look(InputImage.fromBitmap(bmp, rot), bmp::recycle);
     }
 
+    /** A small NV21 picture from the RTSP camera (its own thread): to the face finder when it is free. */
+    private void frameNv21(byte[] nv, int w, int h) {
+        long now = SystemClock.elapsedRealtime();
+        if (busy || detector == null || now - lastFrame < GAP_MS) return;
+        urlMisses = 0; // (the camera answers: only misses in a row count)
+        busy = true;
+        lastFrame = now;
+        int rot = rotation;
+        if (watching && now - lastPreview > 300) {
+            lastPreview = now;
+            try {
+                ByteArrayOutputStream jb = new ByteArrayOutputStream();
+                new android.graphics.YuvImage(nv, ImageFormat.NV21, w, h, null).compressToJpeg(new Rect(0, 0, w, h), 60, jb);
+                BitmapFactory.Options o = new BitmapFactory.Options();
+                o.inSampleSize = Math.max(1, w / 320);
+                Bitmap small = BitmapFactory.decodeByteArray(jb.toByteArray(), 0, jb.size(), o);
+                if (small != null) {
+                    android.graphics.Matrix m = new android.graphics.Matrix();
+                    float sc = 160f / Math.max(1, small.getWidth());
+                    m.postScale(sc, sc);
+                    m.postRotate(rot);
+                    preview = Bitmap.createBitmap(small, 0, 0, small.getWidth(), small.getHeight(), m, true);
+                }
+            } catch (Throwable ignored) {}
+        }
+        frameW = rot % 180 == 0 ? w : h;
+        frameH = rot % 180 == 0 ? h : w;
+        look(InputImage.fromByteArray(nv, w, h, rot, InputImage.IMAGE_FORMAT_NV21), () -> {});
+    }
+
     // ---------------------------------------------------------------- the end
 
     @Override public void onDestroy() {
@@ -586,6 +847,9 @@ public class CarEyes extends Service {
         Thread u = urlThread;
         urlThread = null;
         if (u != null) u.interrupt();
+        RtspEyes r = rtsp;
+        if (r != null) r.stop();
+        releaseCam(); // (Android drops the camera's Wi-Fi: this device goes back to its own)
         if (h != null) {
             h.post(() -> {
                 try { if (session != null) session.close(); } catch (Exception ignored) {}

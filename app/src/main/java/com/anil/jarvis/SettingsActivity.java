@@ -3128,28 +3128,71 @@ public class SettingsActivity extends Activity {
         TextView src = Ui.text(this, "కెమెరా ఏది?", 15, Ui.MUTED);
         src.setPadding(0, Ui.dp(this, 8), 0, 0);
         box.addView(src);
+        boolean carBox = prefs.carMode();
         RadioGroup cams = new RadioGroup(this);
-        cams.addView(radio(137, "📱 ఫోన్ ముందు కెమెరా (పగలు బాగా; చీకట్లో కళ్ళు కనబడవు)"));
-        cams.addView(radio(138, "🔌 బయటి USB కెమెరా (ఫోన్ దాన్ని కెమెరాగా ఇస్తేనే)"));
-        cams.addView(radio(139, "📶 Wi-Fi కెమెరా (MJPEG / JPEG లింక్)"));
+        cams.addView(radio(137, carBox ? "📱 ముందు కెమెరా (box కి ఉండదు: ఫోన్‌లో మాత్రమే — ఫోన్ హోల్డర్‌లో)"
+                : "📱 ఫోన్ ముందు కెమెరా — ఫోన్ హోల్డర్‌లో మీ ముఖం వైపు (పగలు బాగా; చీకట్లో కళ్ళు కనబడవు)"));
+        cams.addView(radio(138, "🔌 బయటి USB కెమెరా (" + (carBox ? "box" : "ఫోన్") + " దాన్ని కెమెరాగా ఇస్తేనే)"));
+        cams.addView(radio(139, "📶 Wi-Fi కెమెరా (night vision కెమెరా: MJPEG / JPEG లేదా RTSP లింక్)"));
         String cs = CarCare.eyesSource(this);
         cams.check("usb".equals(cs) ? 138 : "url".equals(cs) ? 139 : 137);
         cams.setOnCheckedChangeListener((g, id) -> ds.edit().putString("car_eyes_src", id == 138 ? "usb" : id == 139 ? "url" : "front").apply());
         box.addView(cams);
-        EditText url = field("📶 Wi-Fi కెమెరా లింక్ (ఉదా: http://192.168.1.254:8080/video)", CarCare.eyesUrl(this), false);
-        url.addTextChangedListener(new android.text.TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
-            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
-            @Override public void afterTextChanged(android.text.Editable s) { ds.edit().putString("car_eyes_url", s.toString().trim()).apply(); }
-        });
-        note("రాత్రి చీకట్లో ఫోన్ కెమెరాకి కళ్ళు కనబడవు; అప్పుడు మాటల చెక్ పనిచేస్తుంది. రాత్రికి IR (night vision) కెమెరా పెడితే ఇదే కళ్ళ చెక్ పనిచేస్తుంది: "
-                + "కొనే ముందు కింది టెస్ట్‌తో ఆ కెమెరా కనబడుతుందో చూద్దాం (USB కెమెరాని అన్ని ఫోన్లు ఇవ్వవు; Wi-Fi కెమెరాకి MJPEG / JPEG లింక్ ఉండాలి, RTSP కాదు).");
+        // (the camera's link, login and Wi-Fi: kept in a file no backup takes — they stay on this device)
+        camField("📶 Wi-Fi కెమెరా లింక్ (ఉదా: rtsp://192.168.1.254/live లేదా http://192.168.1.254:8192)", CarCare.eyesUrl(this), false,
+                v -> CarCare.setEyesUrl(this, v));
+        camField("👤 కెమెరా user (అడిగితేనే; లేకపోతే ఖాళీ)", CarCare.camUser(this), false, v -> CarCare.setCam(this, "user", v.trim()));
+        camField("🔑 కెమెరా password (అడిగితేనే)", CarCare.camPass(this), true, v -> CarCare.setCam(this, "pass", v));
+        camField("📡 కెమెరా తన Wi-Fi ఇస్తే దాని పేరు (ఈ " + (carBox ? "box" : "ఫోన్") + " ఇప్పటికే ఆ Wi-Fi లో ఉంటే ఖాళీ)", CarCare.camSsid(this), false,
+                v -> CarCare.setCam(this, "ssid", v.trim()));
+        camField("🔑 కెమెరా Wi-Fi password", CarCare.camWifiPass(this), true, v -> CarCare.setCam(this, "wifi_pass", v));
+        note("ఈ లింక్, user, password లు ఈ " + (carBox ? "box" : "ఫోన్") + " లోనే ఉంటాయి: ఏ backup కీ, ఎక్కడికీ వెళ్ళవు. వీటిని chat లో / స్క్రీన్‌షాట్‌లో పంపకండి.");
+        TextView two = Ui.text(this, twoWifiLine(carBox) + (CarCare.camSsid(this).isEmpty() ? ""
+                : CarCare.camApproved(this) ? "\n📶 కెమెరా Wi-Fi కి Android ఒప్పుకుంది ✓ (ఇక అడగకుండా తనే కలుస్తుంది)"
+                : "\n📶 కెమెరా Wi-Fi: కారు ఆపి ఒకసారి '▶ కళ్ళ చెక్ టెస్ట్' చేయాలి (Android అడిగితే 'కనెక్ట్')"), 14, Ui.TEXT);
+        two.setPadding(0, Ui.dp(this, 8), 0, 0);
+        box.addView(two);
+        if (carBox) note("box లో SIM లేనప్పుడు box internet ఫోన్ hotspot నుంచే. ✅ అయితే కెమెరా Wi-Fi తో పాటు hotspot కూడా ఉంటుంది: ఏదీ ఆగదు. "
+                + "⚠️ అయితే కళ్ళ చెక్ నడిచినంత సేపు box కెమెరా Wi-Fi లోనే ఉంటుంది: అప్పుడు AI జవాబులు, 📮 ఫోన్ లింక్, ముందు వాతావరణం ఆగుతాయి; "
+                + "నిద్ర ప్రశ్నలు ('Jarvis' అని జవాబు), అలారం, కళ్ళ చెక్ internet లేకుండానే పనిచేస్తాయి. కళ్ళ చెక్ ఆగగానే box మళ్ళీ hotspot కి వస్తుంది. "
+                + "SIM వేశాక ఈ ఇబ్బంది ఉండదు.");
+        note("రాత్రి చీకట్లో ఫోన్ కెమెరాకి కళ్ళు కనబడవు; అప్పుడు మాటల చెక్ పనిచేస్తుంది. రాత్రికి IR (night vision) Wi-Fi కెమెరా పెడితే ఇదే కళ్ళ చెక్ పనిచేస్తుంది. "
+                + "రెండూ కావాలంటే: ఫోన్‌లో '📱 ముందు కెమెరా' (హోల్డర్‌లో, 'కారులో ఎప్పుడూ'), box లో '📶 Wi-Fi కెమెరా'. "
+                + "కెమెరా కొన్నాక / కొనే ముందు కింది టెస్ట్‌తో ఆ కెమెరా బొమ్మ ఇక్కడ కనబడుతుందో చూద్దాం (దాని యాప్‌లో RTSP / MJPEG లింక్ ఉండాలి). "
+                + "మొదటి టెస్ట్‌లో Android 'కెమెరా Wi-Fi కి కలవాలా?' అని అడుగుతుంది: ఆ పేరు ఎంచుకుని 'కనెక్ట్' నొక్కండి; తర్వాత అడగదు.");
         button("▶ కళ్ళ చెక్ టెస్ట్", v -> startActivity(new Intent(this, CarEyesActivity.class)));
         button("🔔 అలారం శబ్దం టెస్ట్ (2 సెకన్లు)", v -> CarCare.testTone(this));
         String st = CarCare.statusWords(this);
         TextView now = Ui.text(this, st.isEmpty() ? "ఇప్పుడు కారు మోడ్ ఆఫ్." : st, 14, Ui.MUTED);
         now.setPadding(0, Ui.dp(this, 8), 0, 0);
         box.addView(now);
+    }
+
+    /** A Wi-Fi camera box: saved as he types (secret: shown as dots). */
+    private void camField(String label, String value, boolean secret, java.util.function.Consumer<String> save) {
+        EditText e = field(label, value, secret);
+        e.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) { save.accept(s.toString()); }
+        });
+    }
+
+    /** Can this device keep its own Wi-Fi (its internet) and join the camera's Wi-Fi at the same time? */
+    private String twoWifiLine(boolean carBox) {
+        if (Build.VERSION.SDK_INT < 31) return "📶 రెండు Wi-Fi లు ఒకేసారి: తెలియదు (Android 12 కంటే పాతది) — టెస్ట్‌లో చూద్దాం";
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+            if (wm == null) return "📶 రెండు Wi-Fi లు ఒకేసారి: తెలియదు";
+            String s = wm.isStaConcurrencyForLocalOnlyConnectionsSupported()
+                    ? "📶 ఈ " + (carBox ? "box" : "ఫోన్") + " రెండు Wi-Fi లు ఒకేసారి పెట్టగలదు ✅ (కెమెరా Wi-Fi తో పాటు internet Wi-Fi కూడా ఉంటుంది)"
+                    : "📶 ఈ " + (carBox ? "box" : "ఫోన్") + " ఒకసారి ఒక Wi-Fi కే కలుస్తుంది ⚠️ (కెమెరా Wi-Fi లో ఉన్నంత సేపు Wi-Fi internet ఉండదు)";
+            if (!carBox) s += wm.isStaApConcurrencySupported() ? "\n📶 hotspot ఆన్‌లో ఉండగానే కెమెరా Wi-Fi కి కలవగలదు ✅"
+                    : "\n📶 hotspot ఆన్‌లో ఉండగా కెమెరా Wi-Fi కి కలవలేకపోవచ్చు ⚠️";
+            return s;
+        } catch (Exception e) {
+            return "📶 రెండు Wi-Fi లు ఒకేసారి: తెలియదు";
+        }
     }
 
     /** "🏍️ బైక్: <name> ✓" (the paired device's name when Android lets Jarvis see it). */

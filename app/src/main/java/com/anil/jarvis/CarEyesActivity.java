@@ -26,6 +26,8 @@ import android.widget.Toast;
  */
 public class CarEyesActivity extends Activity {
     static final String EXTRA_AUTO = "auto";
+    /** Started by his own word or tap (not by the car alert alone): Android may ask him about the camera's Wi-Fi now. */
+    static final String EXTRA_ASKED = "asked";
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean auto, started;
     private TextView statusT, eventT, tip;
@@ -45,7 +47,7 @@ public class CarEyesActivity extends Activity {
         col.setBackgroundColor(0xFF02070D);
         col.addView(Ui.text(this, "👁️ కారు కళ్ళ చెక్", 24, Ui.TEXT));
         TextView info = Ui.text(this, "కెమెరా మీ కళ్ళు చూస్తుంది: 2 సెకన్లకు మించి కళ్ళు మూసుకున్నా, తల వాలిపోయినా వెంటనే అలారం. "
-                + "ఫోటోలు సేవ్ చేయదు, ఎక్కడికీ పంపదు; అంతా ఫోన్‌లోనే.", 14, Ui.MUTED);
+                + "ఫోటోలు సేవ్ చేయదు, ఎక్కడికీ పంపదు; అంతా " + CarEyes.here(this) + ".", 14, Ui.MUTED);
         info.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 16));
         col.addView(info);
         statusT = Ui.text(this, "…", 22, Ui.CYAN);
@@ -96,7 +98,7 @@ public class CarEyesActivity extends Activity {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("👁️ కళ్ళ చెక్ పెట్టాలా?")
                 .setMessage("కారు నడుపుతున్నప్పుడు కెమెరా మీ కళ్ళు చూస్తుంది. 2 సెకన్లకు మించి కళ్ళు మూసుకుపోతే, లేదా తల కిందకి వాలిపోతే వెంటనే గట్టిగా అలారం మోగుతుంది.\n\n"
-                        + "ఫోటోలు, వీడియోలు సేవ్ చేయదు. ఎక్కడికీ (ఏ AI కీ కూడా) పంపదు. అంతా ఫోన్‌లోనే. ఎప్పుడైనా సెట్టింగ్స్‌లో ఆపొచ్చు.")
+                        + "ఫోటోలు, వీడియోలు సేవ్ చేయదు. ఎక్కడికీ (ఏ AI కీ కూడా) పంపదు. అంతా " + CarEyes.here(this) + ". ఎప్పుడైనా సెట్టింగ్స్‌లో ఆపొచ్చు.")
                 .setPositiveButton("సరే, పెట్టు", (d, w) -> { CarCare.agreeEyes(this); permission(); })
                 .setNegativeButton("వద్దు", (d, w) -> finish())
                 .setOnCancelListener(d -> finish())
@@ -119,7 +121,8 @@ public class CarEyesActivity extends Activity {
         started = true;
         CarEyes.watching = true;
         try {
-            if (!CarEyes.running) CarEyes.start(this, !auto); // (from Settings: a test, soft beeps only; a check already on is only watched)
+            // (from Settings: a test, soft beeps only; a check already on is only watched)
+            if (!CarEyes.running) CarEyes.start(this, !auto, !auto || getIntent().getBooleanExtra(EXTRA_ASKED, false));
         } catch (Exception e) {
             statusT.setText("కెమెరా చెక్ మొదలవ్వలేదు: " + e.getMessage());
             return;
