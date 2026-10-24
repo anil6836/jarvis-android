@@ -256,18 +256,24 @@ final class Updater {
     private static String verify(Context c, File apk, int build) {
         PackageManager pm = c.getPackageManager();
         int flags = Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES;
-        PackageInfo got = pm.getPackageArchiveInfo(apk.getPath(), flags);
+        // (both kinds asked for the downloaded file: some Android builds fill only the older one)
+        PackageInfo got = pm.getPackageArchiveInfo(apk.getPath(), Build.VERSION.SDK_INT >= 28 ? flags | PackageManager.GET_SIGNATURES : flags);
         if (got == null) return "డౌన్‌లోడ్ చేసిన ఫైల్ సరైన యాప్ కాదు";
         if (!c.getPackageName().equals(got.packageName)) return "వేరే యాప్ ఫైల్";
         long code = Build.VERSION.SDK_INT >= 28 ? got.getLongVersionCode() : got.versionCode;
         if (code != build) return "వెర్షన్ సరిపోలలేదు";
         try {
             PackageInfo mine = pm.getPackageInfo(c.getPackageName(), flags);
-            if (!Arrays.equals(signatures(mine), signatures(got))) return "సంతకం (signing key) సరిపోలలేదు, ఇన్‌స్టాల్ చేయను";
+            String[] have = signatures(mine);
+            if (Arrays.equals(have, signatures(got))) return null;
+            // Some Android builds (the car's box) give no / another certificate for a downloaded file through
+            // PackageManager: read it from the file's own signing block and compare that before saying no.
+            byte[] cert = ApkSig.firstCert(apk);
+            if (cert != null && Arrays.equals(have, new String[]{new Signature(cert).toCharsString()})) return null;
+            return "సంతకం (signing key) సరిపోలలేదు, ఇన్‌స్టాల్ చేయను";
         } catch (Exception e) {
             return "సంతకం చూడలేకపోయాను";
         }
-        return null;
     }
 
     @SuppressWarnings("deprecation")
