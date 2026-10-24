@@ -358,8 +358,9 @@ final class Prefs {
     int listenWindowSeconds() {
         int v = sp.getInt("listen_window", 8);
         // the home tablet: అమ్మగారు takes a moment to start after "Jarvis" — never less than 12 s with Google's voice typing
-        // (it closes early and opens again); with Jarvis's own mic, which waits silently, 8 s (12 s felt too long: Anil, 24 Oct)
-        if (homeMode()) return Math.max(v, Ears.chosen(this) ? 8 : 12);
+        // (it closes early and opens again); with Jarvis's own mic, which waits silently, 6 s (Anil, 24 Oct: "6 sec పెట్టు";
+        // the slider doesn't change it there)
+        if (homeMode()) return Ears.chosen(this) ? 6 : Math.max(v, 12);
         // 5 s (the old default) was too short on some phones: 8 s unless he set it himself in this version's settings
         return sp.getBoolean("listen_window_set", false) ? v : Math.max(v, 8);
     }
