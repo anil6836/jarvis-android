@@ -482,6 +482,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (!wake && !assist) return;
         i.removeExtra(EXTRA_WAKE);
         if (assist) i.setAction(Intent.ACTION_MAIN); // handle a long-press only once
+        // The car's "మెలకువగా ఉన్నారా?" is on: one press of the steering voice button is his answer (half asleep he needn't
+        // speak; Anil, 24 Oct). Jarvis says "సరే" and whatever was on the car screen (Maps) comes back; no listening.
+        final boolean away = !visible; // (onNewIntent comes before onResume: still the screen he had)
+        if (car != null && CarCare.asking(this) && CarCare.answered(this, "tap")) {
+            if (away) main.postDelayed(() -> { if (!isFinishing()) moveTaskToBack(true); }, 400);
+            return;
+        }
         if (wake || assist) {
             if (Build.VERSION.SDK_INT >= 27) {
                 setShowWhenLocked(true);
