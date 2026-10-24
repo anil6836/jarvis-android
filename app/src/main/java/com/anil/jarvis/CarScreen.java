@@ -46,6 +46,8 @@ final class CarScreen extends FrameLayout {
         void ask(String text);
         /** Jarvis says this (a button's result). */
         void speak(String text);
+        /** A request to Jarvis's brain as if he had said it (label: what the chat shows); the answer is spoken. */
+        void request(String prompt, String label);
         void openSettings();
         void openChat();
     }
@@ -66,7 +68,7 @@ final class CarScreen extends FrameLayout {
     private final LinearLayout content, leftCol, midCol, rightCol, tileGrid, chipRow;
     private final CarPortal portal;
     private final CarArt.Gauge gauge;
-    private final TextView clock, date, minis, stateText, subText, chips, gear, chat, driveChip, road1, road2, roadYes, roadNo, musicText;
+    private final TextView clock, date, minis, stateText, subText, chips, gear, chat, driveChip, road1, road2, roadYes, roadNo, musicText, board;
     private final LinearLayout roadCard, musicStrip;
     private final CarArt.Icon roadIcon, prevKey, playKey, nextKey;
     private final List<View> tiles = new ArrayList<>();
@@ -106,7 +108,7 @@ final class CarScreen extends FrameLayout {
         leftCol.setGravity(Gravity.CENTER_HORIZONTAL);
         content.addView(leftCol, new LinearLayout.LayoutParams(0, -1, 27));
         portal = new CarPortal(a);
-        portal.setOnClickListener(v -> tap(() -> { if (dancing) portal.body.rig.danceTap(); else host.talk(); }));
+        portal.setOnClickListener(v -> tap(this::portalTap));
         leftCol.addView(portal, new LinearLayout.LayoutParams(-1, 0, 58));
         stateText = autoText(a, "", true, 34);
         stateText.setGravity(Gravity.CENTER);
@@ -150,6 +152,12 @@ final class CarScreen extends FrameLayout {
         driveChip = autoText(a, "", true, 30); // ⏱ how long he has driven (amber near 2 hours: the sleep alert's long-drive clock)
         driveChip.setGravity(Gravity.CENTER);
         midCol.addView(driveChip, new LinearLayout.LayoutParams(-1, 0, 11));
+        board = new TextView(a); // 🎲 parked, a game on: the question big, for the passengers (the gauge says 0 anyway)
+        board.setGravity(Gravity.CENTER);
+        board.setEllipsize(TextUtils.TruncateAt.END);
+        board.setVisibility(GONE);
+        board.setOnClickListener(v -> tap(host::talk));
+        midCol.addView(board, new LinearLayout.LayoutParams(-1, 0, 100));
 
         // ---- right: the six big buttons (glass, thin lit icons)
         rightCol = new LinearLayout(a);
@@ -179,7 +187,7 @@ final class CarScreen extends FrameLayout {
             b.setVisibility(GONE);
             roadCard.addView(b, new LinearLayout.LayoutParams(0, -1, b == roadYes ? 30 : 18));
         }
-        roadYes.setOnClickListener(v -> tap(this::acYes));
+        roadYes.setOnClickListener(v -> tap(() -> { if (acAt > 0) acYes(); else showGames(); }));
         roadNo.setOnClickListener(v -> tap(() -> { acAt = 0; roadKey = ""; roadCheck(); }));
         roadCard.setOnClickListener(v -> tap(() -> { if (Drive.navState() != null) openMaps(getContext()); }));
         rightCol.addView(roadCard, new LinearLayout.LayoutParams(-1, 0, 25));
@@ -277,8 +285,10 @@ final class CarScreen extends FrameLayout {
             boolean m = CarBox.moving();
             if (m != wasMoving) { wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f); }
             portal.setBelted(m);
+            tripCount();
             modeCheck();
             roadCheck();
+            boardCheck();
             if (++ticks % 2 == 0) musicCheck();
             if (ticks % 10 == 1) driveCheck();
             main.postDelayed(this, 1000);
@@ -338,7 +348,7 @@ final class CarScreen extends FrameLayout {
         boolean moving = CarBox.moving();
         boolean parked = !moving && CarBox.speed() >= 0 && now - DriveService.lastMovingAt > PARKED_AFTER_MS;
         int m = songNow ? CarTheme.MUSIC : parked ? CarTheme.PARKED : CarTheme.DRIVING;
-        if (m != mode) { mode = m; palette(); showTalk(); }
+        if (m != mode) { int was = mode; mode = m; palette(); showTalk(); modeChanged(was, m); }
         String pref = prefs.carDance();
         boolean mayDance = songNow && !"off".equals(pref);
         if (mayDance != beatOn) { beatOn = mayDance; if (mayDance) beat.start(); else beat.stop(); } // (the beat is followed for the whole song, not switched at every signal)
@@ -350,6 +360,7 @@ final class CarScreen extends FrameLayout {
         if (on == dancing) return;
         dancing = on;
         BodyRig rig = portal.body.rig;
+        rig.setIdlePlays(mode == CarTheme.PARKED && !on); // (his own plays wait while he dances)
         if (on) {
             // a new dance: another style than the last one; the slow sway only to a slow song
             int pick;
@@ -381,6 +392,7 @@ final class CarScreen extends FrameLayout {
 
     void setState(int s) {
         if (s == OrbView.IDLE && state != OrbView.IDLE) idleSince = System.currentTimeMillis();
+        if (state == OrbView.LISTENING && s != OrbView.LISTENING && gameOn() && heard.matches("(?s).*(ఆట ఆపు|ఆట చాలు|ఆట వద్దు|ఆపేయ్|stop the game).*")) gameAt = 0; // (he / they said stop)
         state = s;
         BodyRig rig = portal.body.rig;
         if (s != BodyRig.IDLE) rig.poke();
@@ -409,7 +421,9 @@ final class CarScreen extends FrameLayout {
     void say(String text) {
         said = text == null ? "" : text.trim();
         saidAt = System.currentTimeMillis();
+        if (gameOn() && mode == CarTheme.PARKED && !CarBox.moving() && CarRoad.praise(said)) portal.body.rig.cheer(); // 👏 a right answer
         showTalk();
+        boardCheck();
     }
 
     private void showTalk() {
@@ -419,7 +433,7 @@ final class CarScreen extends FrameLayout {
         else if (state == OrbView.THINKING) { st = "💭 ఆలోచిస్తున్నాను…"; sub = ""; }
         else if (state == OrbView.SPEAKING) { st = "◉ Jarvis చెబుతున్నాడు…"; sub = said.isEmpty() ? "" : moving ? CarBox.shortLine(said, 40) : said; }
         else {
-            st = dancing ? "♪ Jarvis డాన్స్ చేస్తున్నాడు" : mode == CarTheme.MUSIC ? "♪ పాట వస్తోంది" : mode == CarTheme.PARKED ? "● ఆగి ఉన్నారు" : "● నడుపుతున్నారు · అంతా బాగుంది";
+            st = dancing ? "♪ Jarvis డాన్స్ చేస్తున్నాడు" : mode == CarTheme.MUSIC ? "♪ పాట వస్తోంది" : mode == CarTheme.PARKED ? "● ఆగి ఉన్నారు · నన్ను తాకండి 🙂" : "● నడుపుతున్నారు · అంతా బాగుంది";
             if (!said.isEmpty() && System.currentTimeMillis() - saidAt < 30_000) sub = moving ? CarBox.shortLine(said, 40) : said;
             else sub = hint();
         }
@@ -486,6 +500,11 @@ final class CarScreen extends FrameLayout {
             l1 = next.isEmpty() ? det : next;
             String rest = next.isEmpty() ? "" : det;
             l2 = trip.isEmpty() ? rest : rest.isEmpty() ? trip : rest + " · " + trip;
+        } else if (mode == CarTheme.PARKED) { // 🅿️ the trip's numbers (no places), and the games for the passengers
+            icon = CarArt.Icon.STAR;
+            String[] tl = CarRoad.tripLines(DriveService.tripMeters / 1000, movingSecs, tripStartAt == 0 ? 0 : Math.max(0, DriveService.lastMovingAt - tripStartAt) / 60_000L, kmpl());
+            if (tl != null) { l1 = tl[0]; l2 = tl[1].isEmpty() ? "పిల్లలకి ఆటలు, క్విజ్, కథ →" : tl[1]; }
+            else { icon = CarArt.Icon.PARK; l1 = "🅿️ ఆగి ఉన్నారు"; l2 = "పిల్లలకి ఆటలు, క్విజ్, కథ →"; }
         } else if (!CarAhead.card.isEmpty() && now - CarAhead.cardAt < 20 * 60_000L) {
             icon = CarAhead.cardRain ? CarArt.Icon.RAIN : CarArt.Icon.FOG;
             l1 = CarAhead.card;
@@ -501,15 +520,95 @@ final class CarScreen extends FrameLayout {
             double km = DriveService.tripMeters / 1000;
             l2 = CarBox.speed() < 0 ? "GPS కోసం చూస్తున్నాను…" : km >= 0.5 ? "ఈ ప్రయాణం " + (km < 10 ? String.format(Locale.ROOT, "%.1f", km) : String.valueOf(Math.round(km))) + " కి.మీ" : "";
         }
-        String key = icon + "|" + l1 + "|" + l2 + "|" + ac;
+        boolean games = !ac && mode == CarTheme.PARKED && (nav == null || icon == CarArt.Icon.STAR || icon == CarArt.Icon.PARK);
+        String key = icon + "|" + l1 + "|" + l2 + "|" + ac + games;
         if (key.equals(roadKey)) return;
         roadKey = key;
         roadIcon.setKind(icon);
         roadIcon.setColour(ac ? 0xFF7FD8FF : accent);
         road1.setText(l1);
         road2.setText(l2);
-        roadYes.setVisibility(ac ? VISIBLE : GONE);
+        roadYes.setText(ac ? "✓ ఆన్" : "🎲 ఆటలు");
+        roadYes.setVisibility(ac || games ? VISIBLE : GONE);
         roadNo.setVisibility(ac ? VISIBLE : GONE);
+    }
+
+    // ---- 🅿️ P3: parked — the trip's numbers, Jarvis's own little plays, games on the screen for the passengers
+
+    private long tripStartAt, movingSecs, gameAt;
+    private double tripMetersSeen;
+    private boolean tickleNext;
+
+    /** Once a second: when this trip began (the first move since the drive alerts' count began) and its moving seconds. */
+    private void tripCount() {
+        double tm = DriveService.tripMeters;
+        if (tm + 1 < tripMetersSeen) { tripStartAt = 0; movingSecs = 0; } // (a new count: a new trip)
+        tripMetersSeen = tm;
+        int sp = CarBox.speed();
+        if (sp >= 5) { movingSecs++; if (tripStartAt == 0) tripStartAt = System.currentTimeMillis(); }
+    }
+
+    private double kmpl() {
+        try { return CarFuel.kmpl(getContext()); } catch (Exception e) { return 0; }
+    }
+
+    /** The mode changed: parked — his plays may come (never while moving), a wave at the trip's end. */
+    private void modeChanged(int was, int now) {
+        BodyRig rig = portal.body.rig;
+        boolean parked = now == CarTheme.PARKED;
+        rig.setIdlePlays(parked && !dancing);
+        rig.setNightPlays(night);
+        if (parked && was == CarTheme.DRIVING && DriveService.tripMeters >= 1000) rig.waveBye(); // 👋 the trip is over
+        if (!parked) { gameAt = 0; boardCheck(); }
+    }
+
+    /** A tap on Jarvis: dancing → a cheer move; parked → he plays (a giggle, a high five); else he listens. */
+    private void portalTap() {
+        BodyRig rig = portal.body.rig;
+        if (dancing) { rig.danceTap(); return; }
+        if (mode == CarTheme.PARKED && !CarBox.moving() && state == OrbView.IDLE) {
+            if (tickleNext) rig.tickle(); else rig.highFive();
+            tickleNext = !tickleNext;
+            rig.poke();
+            return;
+        }
+        host.talk();
+    }
+
+    /** 🎲 The trip games (any time by voice; parked, the question also shows big in the middle). */
+    private void showGames() {
+        List<String[]> rows = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
+        String[][] g = {
+                {"❓ క్విజ్", "🎲 కారులో అందరికీ ఒక క్విజ్ ఆడదాం: పిల్లలకి కూడా అర్థమయ్యే సులభమైన ప్రశ్నలు, ఒక్కోసారి ఒక్క ప్రశ్న, నాలుగు ఆప్షన్లతో (A, B, C, D). జవాబు చెప్పాక సరైనదో కాదో చెప్పి, తర్వాతి ప్రశ్న అడుగు."},
+                {"🧩 పొడుపు కథలు", "🎲 కారులో అందరికీ తెలుగు పొడుపు కథలు అడుగు: ఒక్కోసారి ఒక్కటి. జవాబు చెప్పాక సరైనదో కాదో చెప్పి, తర్వాతిది అడుగు."},
+                {"🎬 అంత్యాక్షరి", "🎲 సినిమా పాటల పేర్లతో అంత్యాక్షరి ఆడదాం (పాట పేరు మాత్రమే, పాట పదాలు వద్దు). నువ్వు ఒక పాట పేరుతో మొదలుపెట్టు, దాని చివరి అక్షరంతో మేము చెబుతాం."},
+                {"🤔 20 ప్రశ్నలు", "🎲 20 ప్రశ్నల ఆట: నేను ఒక వస్తువు / జంతువు అనుకుంటాను, నువ్వు అవును / కాదు ప్రశ్నలతో కనుక్కో. ఒక్కోసారి ఒక్క ప్రశ్న అడుగు."},
+                {"📖 చిన్న కథ", "🎲 పిల్లలకి ఒక చిన్న మంచి కథ చెప్పు (ఒక నిమిషం), చివర్లో ఒక చిన్న నీతి."},
+                {"🔢 లెక్కల ఆట", "🎲 పిల్లలకి సులభమైన మనసులో లెక్కల ప్రశ్నలు అడుగు: ఒక్కోసారి ఒక్కటి, జవాబు చెప్పాక సరైనదో కాదో చెప్పి తర్వాతిది అడుగు."}};
+        for (String[] x : g) {
+            rows.add(new String[]{x[0]});
+            final String ask = x[1];
+            final String label = x[0];
+            acts.add(() -> { closeSheet(); gameAt = System.currentTimeMillis(); boardCheck(); host.request(ask, label); });
+        }
+        openSheet("🎲 ప్రయాణ ఆటలు", CarBox.moving() ? null : "ఆగి ఉన్నప్పుడు ప్రశ్న మధ్యలో పెద్దగా కనిపిస్తుంది. 'ఆట ఆపు' అంటే ఆగుతుంది.", rows, acts, 2);
+    }
+
+    boolean gameOn() { return gameAt > 0 && System.currentTimeMillis() - gameAt < 10 * 60_000L; }
+
+    /** Parked with a game on: the middle shows the question big (the gauge and clock come back the moment the car moves). */
+    private void boardCheck() {
+        boolean show = gameOn() && mode == CarTheme.PARKED && !CarBox.moving();
+        if (show != (board.getVisibility() == VISIBLE)) {
+            int v = show ? GONE : VISIBLE;
+            for (View x : new View[]{gauge, clock, date, minis, driveChip}) x.setVisibility(v);
+            board.setVisibility(show ? VISIBLE : GONE);
+        }
+        if (!show) return;
+        String t = state == OrbView.LISTENING ? "🎙️ " + (heard.isEmpty() ? "మీ జవాబు చెప్పండి…" : heard)
+                : state == OrbView.THINKING ? "💭 …" : said.isEmpty() || saidAt < gameAt ? "🎲 ఆట మొదలవుతోంది…" : said;
+        if (!t.contentEquals(board.getText())) board.setText(t);
     }
 
     /** His own AC's "on" link among this box's smart-home lines (never shown anywhere): found → true. */
@@ -676,7 +775,7 @@ final class CarScreen extends FrameLayout {
         rows.add(new String[]{"🎵 మ్యూజిక్ యాప్"});
         acts.add(() -> musicApp(getContext()));
         rows.add(new String[]{"🎲 ప్రయాణ ఆటలు"});
-        acts.add(this::games);
+        acts.add(this::showGames);
         String now;
         try {
             JSONObject o = Music.panel(c);
@@ -1115,10 +1214,14 @@ final class CarScreen extends FrameLayout {
         roadCard.setPadding(cp, cp / 2, cp, cp / 2);
         musicStrip.setPadding(cp * 2, cp / 3, cp, cp / 3);
         subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, h / 24f));
+        board.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(14, h / 15f));
+        board.setMaxLines(7);
+        board.setPadding(cp * 2, cp * 2, cp * 2, cp * 2);
         float rad = Math.max(10, Math.min(w, h) / 22f);
         for (View t : tiles) t.setBackground(CarArt.glass(look, rad, true));
         roadCard.setBackground(CarArt.glass(look, rad, false));
         musicStrip.setBackground(CarArt.glass(look, rad, false));
+        board.setBackground(CarArt.glass(look, rad, false));
         if (sheet.getVisibility() == VISIBLE) closeSheet(); // (its sizes were for the old screen)
     }
 
@@ -1148,6 +1251,9 @@ final class CarScreen extends FrameLayout {
         for (CarArt.Icon i : tileIcons) i.setColour(accent);
         roadCard.setBackground(CarArt.glass(look, rad, false));
         musicStrip.setBackground(CarArt.glass(look, rad, false));
+        board.setBackground(CarArt.glass(look, rad, false));
+        board.setTextColor(textMain);
+        portal.body.rig.setNightPlays(night);
         road1.setTextColor(textMain);
         road2.setTextColor(textSoft);
         musicText.setTextColor(textMain);

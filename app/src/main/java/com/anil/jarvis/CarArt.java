@@ -422,9 +422,9 @@ final class CarArt {
                     q.moveTo(22, 46); q.lineTo(22, 30); q.lineTo(36, 14);
                     q.moveTo(37, 24); q.lineTo(37, 13); q.lineTo(26, 13);
                     break;
-                case UTURN:
-                    q.moveTo(34, 46); q.lineTo(34, 20); q.arcTo(new RectF(16, 8, 34, 26), 0, -180, false); q.lineTo(16, 36);
-                    q.moveTo(9, 29); q.lineTo(16, 37); q.lineTo(23, 29);
+                case UTURN: // (India drives on the left: up, round to the right, back down)
+                    q.moveTo(18, 46); q.lineTo(18, 20); q.arcTo(new RectF(18, 8, 36, 26), 180, 180, false); q.lineTo(36, 36);
+                    q.moveTo(29, 29); q.lineTo(36, 37); q.lineTo(43, 29);
                     break;
                 case ROUND:
                     q.addCircle(26, 24, 9, Path.Direction.CW);

@@ -1630,6 +1630,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         @Override public void ask(String text) { carSpeak(text, true); }
         @Override public void speak(String text) { carSpeak(text, false); }
+        @Override public void request(String prompt, String label) {
+            if (busy || voice.speaking || voice.listening) { Toast.makeText(MainActivity.this, "Jarvis మాట్లాడుతున్నాడు: అయ్యాక మళ్లీ నొక్కండి", Toast.LENGTH_SHORT).show(); return; }
+            showCar();
+            if (live != null && live.isOpen()) { askFromOutside(prompt, label); return; }
+            send(prompt, label, true); // (as if said: the answer is spoken, and a game's question is listened for)
+        }
         @Override public void openSettings() { startActivity(new Intent(MainActivity.this, SettingsActivity.class)); }
         @Override public void openChat() {
             car.setVisibility(View.GONE);
@@ -2545,6 +2551,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (home != null) { home.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM); home.say(reply); }
         if (car != null) car.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM);
         if (car != null) car.say(reply);
+        if (car != null && car.gameOn() && reply != null && reply.trim().matches("(?s).*[?？]\\s*$")) homeAskListen = true; // 🎲 a game's question: listened for after it is said
         if (early != null) { // ⚡ B: the rest after the first sentence, in the same voice
             if (voice.finishOpen(reply)) { if (!voice.isPaused()) setOrb(OrbView.SPEAKING); refreshAction(); }
             else finishTurn(); // (that speech was stopped meanwhile: the words are on the screen)
