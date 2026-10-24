@@ -321,6 +321,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         if (prefs.homeMode() != (home != null)) { recreate(); return; } // the home Jarvis was switched on / off in settings
         if (prefs.carMode() != (car != null)) { recreate(); return; } // the car Jarvis was switched on / off in settings
+        if (car != null) car.themeChanged(); // (the theme, his colour, the dance choice, Jarvis's look: from Settings)
         paused = false;
         visible = true;
         if (home != null || car != null) fullScreen();
@@ -1449,6 +1450,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override public void onWord(String spoken, int start, int end) {
         if (face != null) face.word(spoken, start, end);
         if (home != null) home.word(spoken, start, end);
+        if (car != null && spoken != null && start >= 0 && end <= spoken.length() && start < end) car.word(spoken.substring(start, end)); // (the car's Jarvis moves his lips)
         if (showingChat()) karaoke.word(spoken, start, end, jarvisBodies, chatScroll);
     }
 
@@ -2541,6 +2543,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         if (face != null) face.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM);
         if (home != null) { home.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM); home.say(reply); }
+        if (car != null) car.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM);
         if (car != null) car.say(reply);
         if (early != null) { // ⚡ B: the rest after the first sentence, in the same voice
             if (voice.finishOpen(reply)) { if (!voice.isPaused()) setOrb(OrbView.SPEAKING); refreshAction(); }

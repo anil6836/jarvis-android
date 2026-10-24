@@ -3079,6 +3079,64 @@ public class SettingsActivity extends Activity {
         button("🗺️ Jarvis Maps తెరువు", v -> JarvisMaps.open(this, ""));
     }
 
+    /** 🎨 The car screen's look (inside the car Jarvis section, the box only): one of ten themes, his car's colour, the dance, Jarvis's look. */
+    private void carLookSection() {
+        TextView head = Ui.text(this, "🎨 కారు స్క్రీన్ రూపం", 15.5f, Ui.TEXT);
+        head.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 4));
+        box.addView(head);
+        final String[] themeNames = new String[CarTheme.COUNT];
+        for (int i = 0; i < CarTheme.COUNT; i++) themeNames[i] = (i + 1) + " · " + CarTheme.ALL[i].name;
+        TextView theme = Ui.text(this, "", 15.5f, accent);
+        theme.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        TextView colour = Ui.text(this, "", 15.5f, accent);
+        colour.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        TextView dance = Ui.text(this, "", 15.5f, accent);
+        dance.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        final String[] dances = {"always", "parked", "off"}, danceNames = {"ఎప్పుడూ (పాట వస్తే, రోడ్డు మీద కూడా)", "కారు ఆగినప్పుడే", "వద్దు"};
+        Runnable show = () -> {
+            theme.setText("🖼️ థీమ్: " + CarTheme.of(prefs.carTheme()).name + "  (మార్చడానికి నొక్కండి)");
+            int ci = 0;
+            for (int i = 0; i < CarTheme.CAR_COLOURS.length; i++) if (CarTheme.CAR_COLOURS[i] == prefs.carColour()) ci = i;
+            colour.setText("🚙 మీ కారు రంగు: " + CarTheme.CAR_COLOUR_NAMES[ci] + "  (స్క్రీన్ మీద కారు బొమ్మ వచ్చాక కనిపిస్తుంది)");
+            int di = Math.max(0, java.util.Arrays.asList(dances).indexOf(prefs.carDance()));
+            dance.setText("💃 Jarvis డాన్స్: " + danceNames[di] + "  (మార్చడానికి నొక్కండి)");
+        };
+        show.run();
+        theme.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("కారు స్క్రీన్ థీమ్")
+                .setSingleChoiceItems(themeNames, Math.max(0, prefs.carTheme() - 1), (d, w) -> {
+                    prefs.sp.edit().putInt("car_theme", w + 1).apply();
+                    show.run();
+                    d.dismiss();
+                }).show());
+        colour.setOnClickListener(v -> {
+            int ci = 0;
+            for (int i = 0; i < CarTheme.CAR_COLOURS.length; i++) if (CarTheme.CAR_COLOURS[i] == prefs.carColour()) ci = i;
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("మీ కారు రంగు (స్క్రీన్ మీద కారు బొమ్మకి)")
+                    .setSingleChoiceItems(CarTheme.CAR_COLOUR_NAMES, ci, (d, w) -> {
+                        prefs.sp.edit().putInt("car_colour", CarTheme.CAR_COLOURS[w]).apply();
+                        show.run();
+                        d.dismiss();
+                    }).show();
+        });
+        dance.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("పాట వస్తే Jarvis డాన్స్")
+                .setSingleChoiceItems(danceNames, Math.max(0, java.util.Arrays.asList(dances).indexOf(prefs.carDance())), (d, w) -> {
+                    prefs.sp.edit().putString("car_dance", dances[w]).apply();
+                    show.run();
+                    d.dismiss();
+                }).show());
+        box.addView(theme);
+        box.addView(colour);
+        box.addView(dance);
+        Switch low = toggle("🌙 కదలికలు తక్కువ (రింగులు ఆగుతాయి, నడుపుతుండగా డాన్స్ లేదు: ఒంటరిగా రాత్రి డ్రైవ్‌కి)", prefs.carLowMotion());
+        low.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_low_motion", v).apply());
+        note("Jarvis బొమ్మ, చర్మం రంగు: కింద '🏠 ఇంటి Jarvis' భాగంలోని 🧑 Jarvis రూపం / 🎨 చర్మం రంగు ఎంపికలే కారుకీ. "
+                + "పాట వస్తే Jarvis బీట్‌కి డాన్స్ చేస్తాడు (ప్రతి పాటకి వేరే స్టెప్; బొమ్మను తాకితే ఒక ప్రత్యేక స్టెప్). "
+                + "స్టీరింగ్ బటన్ నొక్కగానే ఆగి వింటాడు. బీట్ ఈ box ఇవ్వకపోతే మామూలు వేగంతో ఊగుతాడు.");
+    }
+
     /** 🚗 The car sleep alert (Anil, 18 Oct): the car only (its Bluetooth or "కారు మోడ్"), never the bike. */
     private void carSleepSection() {
         section("🚗 కారు నిద్ర అలర్ట్", "🚗");
@@ -4608,6 +4666,7 @@ public class SettingsActivity extends Activity {
                     .show();
         });
         if (!prefs.carMode()) return;
+        carLookSection(); // 🎨 the car screen's theme, his car's colour, the dance, Jarvis's look
         TextView st = Ui.text(this, "", 14, Ui.MUTED);
         st.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
         box.addView(st);

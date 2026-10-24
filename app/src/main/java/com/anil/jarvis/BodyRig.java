@@ -260,6 +260,13 @@ final class BodyRig {
     void cheer() { gesture("clap", 2500); show("excited", 2500); }
     /** While her songs play: a gentle head bob and swaying arms (~100 bpm). */
     void setDance(boolean on) { if (on || extra != null) x().setDance(on); }
+    /** The car's dances: which (IdlePlay.D_*), the song's beat (seconds), a tap's special move. */
+    void setDanceStyle(int st) { x().setDanceStyle(st); }
+    void setBeat(float secondsPerBeat) { x().setBeat(secondsPerBeat); }
+    void danceTap() { if (extra != null) extra.danceTap(); }
+    boolean dancing() { return extra != null && extra.dancingNow(mode); }
+    float beat() { return extra == null ? 0.6f : extra.beat(); }
+    int danceStyle() { return extra == null ? IdlePlay.D_SWAY : extra.danceStyle(); }
     /** While on: he keeps glancing to the screen's right edge (the door), happy and expectant. */
     void waitDoor(boolean on) { if (on || extra != null) x().setDoor(on); }
     /** Something of his own is moving (a day play, a dance, a reaction): BodyView keeps ~30 frames a second. */

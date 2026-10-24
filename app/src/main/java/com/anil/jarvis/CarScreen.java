@@ -29,9 +29,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 🚗 C1: the car Jarvis's own screen on the car's display (the Android box's screen, landscape, small): the clock, the
- * car's speed and the road's limit, the weather, what Jarvis is doing / saying, and six big buttons a hand finds without
- * looking long — 🎤 మాట్లాడు, 🧭 దారి, 🎵 పాటలు, ⛽ డీజిల్, 🏠 ఇల్లు, 😴 నిద్ర. Dark always, darker at night. While the
+ * 🚗 C1: the car Jarvis's own screen on the car's display (the Android box's screen, landscape). Three columns: Jarvis
+ * himself in a glowing window ({@link CarPortal}: the home tablet's young man, with a seat belt while the car moves, who
+ * dances when a song plays — Anil's wish, the passengers watch), the speed gauge with depth ({@link CarArt.Gauge}),
+ * the clock and small facts, and six big glass buttons with thin lit icons — 🎤 మాట్లాడు, 🧭 దారి, 🎵 పాటలు, ⛽ డీజిల్,
+ * 🏠 ఇల్లు, 😴 నిద్ర. Ten themes ({@link CarTheme}); the mode (driving / a song / parked) colours the screen. While the
  * car moves the words are one short line (the rest is spoken), Settings and typing wait for a stop (C9). The sleep
  * alert's question comes over everything with one giant ✅ (C4). Every size follows the screen (any box, any display).
  */
@@ -52,25 +54,36 @@ final class CarScreen extends FrameLayout {
     private static final String[] MONTHS = {"జనవరి", "ఫిబ్రవరి", "మార్చి", "ఏప్రిల్", "మే", "జూన్", "జూలై", "ఆగస్టు",
             "సెప్టెంబర్", "అక్టోబర్", "నవంబర్", "డిసెంబర్"};
     private static final String SP = "car_screen";
+    private static final long PARKED_AFTER_MS = 90_000;
+    private static final int SONG_IN = 4, SONG_OUT = 4; // (seconds in a row before a song counts as begun / ended)
 
     private final Activity act;
     private final Prefs prefs;
     private final Host host;
     private final Handler main = new Handler(Looper.getMainLooper());
 
-    private final LinearLayout content, left, right;
-    private final TextView clock, date, speedNum, speedUnit, limit, weather, talkText, chips, gear, chat;
-    private final HoloOrb orb;
+    private final CarArt.Backdrop backdrop;
+    private final LinearLayout content, leftCol, midCol, rightCol, tileGrid, chipRow;
+    private final CarPortal portal;
+    private final CarArt.Gauge gauge;
+    private final TextView clock, date, minis, stateText, subText, chips, gear, chat;
     private final List<View> tiles = new ArrayList<>();
+    private final List<CarArt.Icon> tileIcons = new ArrayList<>();
     private final FrameLayout sheet, ask, awake;
     private int W, H;
-    private boolean night, running, wasMoving;
-    private int state = OrbView.IDLE;
+    private boolean night, running, wasMoving, dancing;
+    private int state = OrbView.IDLE, mode = CarTheme.DRIVING;
     private String said = "", heard = "";
     private long saidAt;
+    private CarTheme.Look look;
+    private final CarBeat beat;
+    private int danceStyle = -1;
+    private boolean songNow, beatOn;
+    private int songOn, songOff;
+    private long idleSince;
 
-    // the palette (day / night)
-    private int bg1, bg2, tileBg, tileStroke, textMain, textSoft, accent;
+    // the palette in use (kept as fields: the sheets and buttons read them)
+    private int tileBg, textMain, textSoft, accent;
 
     CarScreen(Activity a, Prefs prefs, Host host) {
         super(a);
@@ -78,77 +91,79 @@ final class CarScreen extends FrameLayout {
         this.prefs = prefs;
         this.host = host;
         setClickable(true); // (taps never fall through to the chat under it)
+        backdrop = new CarArt.Backdrop(a);
+        addView(backdrop, new LayoutParams(-1, -1));
         content = new LinearLayout(a);
         content.setOrientation(LinearLayout.HORIZONTAL);
         addView(content, new LayoutParams(-1, -1));
 
-        // ---- left: clock, date, speed, weather, Jarvis, small chips
-        left = new LinearLayout(a);
-        left.setOrientation(LinearLayout.VERTICAL);
-        content.addView(left, new LinearLayout.LayoutParams(0, -1, 40));
-        clock = autoText(a, "", true, 120);
-        clock.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        left.addView(clock, new LinearLayout.LayoutParams(-1, 0, 24));
-        date = autoText(a, "", false, 40);
-        left.addView(date, new LinearLayout.LayoutParams(-1, 0, 7));
-        LinearLayout speedRow = new LinearLayout(a);
-        speedRow.setOrientation(LinearLayout.HORIZONTAL);
-        speedRow.setGravity(Gravity.CENTER_VERTICAL);
-        left.addView(speedRow, new LinearLayout.LayoutParams(-1, 0, 20));
-        speedNum = autoText(a, "–", true, 110);
-        speedNum.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        speedRow.addView(speedNum, new LinearLayout.LayoutParams(0, -1, 46));
-        LinearLayout su = new LinearLayout(a);
-        su.setOrientation(LinearLayout.VERTICAL);
-        speedRow.addView(su, new LinearLayout.LayoutParams(0, -1, 54));
-        speedUnit = autoText(a, "km/h", false, 40);
-        su.addView(speedUnit, new LinearLayout.LayoutParams(-1, 0, 1));
-        limit = autoText(a, "", true, 40);
-        su.addView(limit, new LinearLayout.LayoutParams(-1, 0, 1));
-        weather = autoText(a, "", false, 36);
-        left.addView(weather, new LinearLayout.LayoutParams(-1, 0, 7));
-        LinearLayout talkRow = new LinearLayout(a);
-        talkRow.setOrientation(LinearLayout.HORIZONTAL);
-        talkRow.setGravity(Gravity.CENTER_VERTICAL);
-        left.addView(talkRow, new LinearLayout.LayoutParams(-1, 0, 30));
-        orb = new HoloOrb(a, 70);
-        orb.setPace(80, 0);
-        orb.setOnClickListener(v -> tap(host::talk));
-        talkRow.addView(orb, new LinearLayout.LayoutParams(0, -1, 30));
-        talkText = new TextView(a);
-        talkText.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        talkText.setEllipsize(TextUtils.TruncateAt.END);
-        talkText.setOnClickListener(v -> tap(host::talk));
-        talkRow.addView(talkText, new LinearLayout.LayoutParams(0, -1, 70));
-        LinearLayout bottom = new LinearLayout(a);
-        bottom.setOrientation(LinearLayout.HORIZONTAL);
-        bottom.setGravity(Gravity.CENTER_VERTICAL);
-        left.addView(bottom, new LinearLayout.LayoutParams(-1, 0, 9));
-        chips = autoText(a, "", false, 30);
-        bottom.addView(chips, new LinearLayout.LayoutParams(0, -1, 70));
-        chat = autoText(a, "💬", false, 40);
+        // ---- left: Jarvis's window, what he is doing, the last words, small chips
+        leftCol = new LinearLayout(a);
+        leftCol.setOrientation(LinearLayout.VERTICAL);
+        leftCol.setGravity(Gravity.CENTER_HORIZONTAL);
+        content.addView(leftCol, new LinearLayout.LayoutParams(0, -1, 27));
+        portal = new CarPortal(a);
+        portal.setOnClickListener(v -> tap(() -> { if (dancing) portal.body.rig.danceTap(); else host.talk(); }));
+        leftCol.addView(portal, new LinearLayout.LayoutParams(-1, 0, 58));
+        stateText = autoText(a, "", true, 34);
+        stateText.setGravity(Gravity.CENTER);
+        leftCol.addView(stateText, new LinearLayout.LayoutParams(-1, 0, 9));
+        subText = new TextView(a);
+        subText.setGravity(Gravity.CENTER);
+        subText.setEllipsize(TextUtils.TruncateAt.END);
+        subText.setOnClickListener(v -> tap(host::talk));
+        leftCol.addView(subText, new LinearLayout.LayoutParams(-1, 0, 22));
+        chipRow = new LinearLayout(a);
+        chipRow.setOrientation(LinearLayout.HORIZONTAL);
+        chipRow.setGravity(Gravity.CENTER_VERTICAL);
+        leftCol.addView(chipRow, new LinearLayout.LayoutParams(-1, 0, 11));
+        chips = autoText(a, "", false, 26);
+        chipRow.addView(chips, new LinearLayout.LayoutParams(0, -1, 70));
+        chat = autoText(a, "💬", false, 36);
         chat.setGravity(Gravity.CENTER);
         chat.setOnClickListener(v -> tap(() -> { if (parkedOrSay()) host.openChat(); }));
-        bottom.addView(chat, new LinearLayout.LayoutParams(0, -1, 15));
-        gear = autoText(a, "⚙️", false, 40);
+        chipRow.addView(chat, new LinearLayout.LayoutParams(0, -1, 15));
+        gear = autoText(a, "⚙️", false, 36);
         gear.setGravity(Gravity.CENTER);
         gear.setOnClickListener(v -> tap(() -> { if (parkedOrSay()) host.openSettings(); }));
-        bottom.addView(gear, new LinearLayout.LayoutParams(0, -1, 15));
+        chipRow.addView(gear, new LinearLayout.LayoutParams(0, -1, 15));
 
-        // ---- right: the six big buttons
-        right = new LinearLayout(a);
-        right.setOrientation(LinearLayout.VERTICAL);
-        content.addView(right, new LinearLayout.LayoutParams(0, -1, 60));
-        String[][] t = {{"🎤", "మాట్లాడు", "talk"}, {"🧭", "దారి", "way"}, {"🎵", "పాటలు", "music"},
-                {"⛽", "డీజిల్", "fuel"}, {"🏠", "ఇల్లు", "home"}, {"😴", "నిద్ర", "sleep"}};
+        // ---- middle: the gauge, the clock, small facts (weather, diesel), later the car and the road's cards
+        midCol = new LinearLayout(a);
+        midCol.setOrientation(LinearLayout.VERTICAL);
+        midCol.setGravity(Gravity.CENTER_HORIZONTAL);
+        content.addView(midCol, new LinearLayout.LayoutParams(0, -1, 30));
+        gauge = new CarArt.Gauge(a);
+        midCol.addView(gauge, new LinearLayout.LayoutParams(-1, 0, 56));
+        clock = autoText(a, "", true, 70);
+        clock.setGravity(Gravity.CENTER);
+        midCol.addView(clock, new LinearLayout.LayoutParams(-1, 0, 16));
+        date = autoText(a, "", false, 30);
+        date.setGravity(Gravity.CENTER);
+        midCol.addView(date, new LinearLayout.LayoutParams(-1, 0, 8));
+        minis = autoText(a, "", false, 28);
+        minis.setGravity(Gravity.CENTER);
+        midCol.addView(minis, new LinearLayout.LayoutParams(-1, 0, 9));
+        midCol.addView(new View(a), new LinearLayout.LayoutParams(-1, 0, 11)); // (room for the road's cards)
+
+        // ---- right: the six big buttons (glass, thin lit icons)
+        rightCol = new LinearLayout(a);
+        rightCol.setOrientation(LinearLayout.VERTICAL);
+        content.addView(rightCol, new LinearLayout.LayoutParams(0, -1, 43));
+        tileGrid = new LinearLayout(a);
+        tileGrid.setOrientation(LinearLayout.VERTICAL);
+        rightCol.addView(tileGrid, new LinearLayout.LayoutParams(-1, 0, 1));
+        Object[][] t = {{CarArt.Icon.MIC, "మాట్లాడు", "talk"}, {CarArt.Icon.WAY, "దారి", "way"}, {CarArt.Icon.MUSIC, "పాటలు", "music"},
+                {CarArt.Icon.FUEL, "డీజిల్", "fuel"}, {CarArt.Icon.HOME, "ఇల్లు", "home"}, {CarArt.Icon.SLEEP, "నిద్ర", "sleep"}};
         for (int r = 0; r < 2; r++) {
             LinearLayout row = new LinearLayout(a);
             row.setOrientation(LinearLayout.HORIZONTAL);
-            right.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
+            tileGrid.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
             for (int i = 0; i < 3; i++) {
-                String[] x = t[r * 3 + i];
-                View tile = tile(a, x[0], x[1]);
-                tile.setOnClickListener(v -> tap(() -> button(x[2])));
+                Object[] x = t[r * 3 + i];
+                View tile = tile(a, (Integer) x[0], (String) x[1]);
+                final String what = (String) x[2];
+                tile.setOnClickListener(v -> tap(() -> button(what)));
                 row.addView(tile, new LinearLayout.LayoutParams(0, -1, 1));
                 tiles.add(tile);
             }
@@ -161,6 +176,11 @@ final class CarScreen extends FrameLayout {
         addView(sheet, new LayoutParams(-1, -1));
         addView(ask, new LayoutParams(-1, -1));
         addView(awake, new LayoutParams(-1, -1));
+
+        beat = new CarBeat(per -> { if (dancing) { portal.body.rig.setBeat(per); portal.beat(); } });
+        portal.body.rig.setLook(prefs.bodyLook());
+        portal.body.rig.setSkin(prefs.bodySkin());
+        portal.body.rig.setIdlePlays(false); // (the car: no kitten / bubbles on the road; the parked plays come later)
         night = nightNow();
         palette();
         update();
@@ -181,9 +201,19 @@ final class CarScreen extends FrameLayout {
         running = false;
         main.removeCallbacks(quick);
         main.removeCallbacks(slow);
+        setDancing(false);
+        if (beatOn) { beatOn = false; beat.stop(); }
     }
 
-    /** Every second: the speed, the sleep alert's question, moving / parked. */
+    /** Settings were left: the theme, his colour, the dance choice, Jarvis's look may have changed. */
+    void themeChanged() {
+        portal.body.rig.setLook(prefs.bodyLook());
+        portal.body.rig.setSkin(prefs.bodySkin());
+        palette();
+        showTalk();
+    }
+
+    /** Every second: the speed, the sleep alert's question, moving / parked, the song and the dance. */
     private final Runnable quick = new Runnable() {
         @Override public void run() {
             if (!running) return;
@@ -191,6 +221,8 @@ final class CarScreen extends FrameLayout {
             awakeCheck();
             boolean m = CarBox.moving();
             if (m != wasMoving) { wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f); }
+            portal.setBelted(m);
+            modeCheck();
             main.postDelayed(this, 1000);
         }
     };
@@ -212,7 +244,7 @@ final class CarScreen extends FrameLayout {
         date.setText(HomeScreen.partOfDay(h) + " · " + DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)]);
         boolean n = nightNow();
         if (n != night) { night = n; palette(); }
-        StringBuilder b = new StringBuilder(Net.online(getContext()) ? "📶 నెట్ ✓" : "📶 నెట్ లేదు");
+        StringBuilder b = new StringBuilder(Net.online(getContext()) ? "📶 ✓" : "📶 నెట్ లేదు");
         b.append("  ").append(CarBox.linkLine(getContext()));
         try { if (CarCare.on(getContext()) && CarCare.enabled(getContext())) b.append("  😴 ✓"); } catch (Exception ignored) {}
         String wait = CarLink.waitingLine(getContext());
@@ -229,33 +261,85 @@ final class CarScreen extends FrameLayout {
         return h >= 19 || h < 6;
     }
 
+    // ================================================================ the mode: driving, a song, parked — and the dance
+
+    /**
+     * Once a second. A song is "on" only after it was heard {@link #SONG_IN} seconds in a row, and "off" only after
+     * {@link #SONG_OUT} quiet seconds: a map direction, a buffering pause between two songs or Jarvis's own voice never
+     * recolours the screen or starts a dance. Sound on the box (no music app session) counts only while Jarvis has been
+     * quiet for a moment.
+     */
+    private void modeCheck() {
+        Context c = getContext();
+        long now = System.currentTimeMillis();
+        boolean quiet = state == OrbView.IDLE && now - idleSince > 1500 && now - saidAt > 1500;
+        boolean heard = CarBeat.songPlaying(c, quiet);
+        if (heard) { songOn++; songOff = 0; } else { songOff++; songOn = 0; }
+        if (!songNow && songOn >= SONG_IN) songNow = true;
+        else if (songNow && songOff >= SONG_OUT) songNow = false;
+        boolean moving = CarBox.moving();
+        boolean parked = !moving && CarBox.speed() >= 0 && now - DriveService.lastMovingAt > PARKED_AFTER_MS;
+        int m = songNow ? CarTheme.MUSIC : parked ? CarTheme.PARKED : CarTheme.DRIVING;
+        if (m != mode) { mode = m; palette(); showTalk(); }
+        String pref = prefs.carDance();
+        boolean mayDance = songNow && !"off".equals(pref);
+        if (mayDance != beatOn) { beatOn = mayDance; if (mayDance) beat.start(); else beat.stop(); } // (the beat is followed for the whole song, not switched at every signal)
+        boolean dance = mayDance && ("always".equals(pref) || !moving) && !(prefs.carLowMotion() && moving);
+        setDancing(dance);
+    }
+
+    private void setDancing(boolean on) {
+        if (on == dancing) return;
+        dancing = on;
+        BodyRig rig = portal.body.rig;
+        if (on) {
+            // a new dance: another style than the last one; the slow sway only to a slow song
+            int pick;
+            if (beat.period() > 0.75f && danceStyle != IdlePlay.D_SLOW) pick = IdlePlay.D_SLOW;
+            else { java.util.Random rnd = new java.util.Random(); do { pick = rnd.nextInt(IdlePlay.D_STYLES); } while (pick == IdlePlay.D_SLOW || pick == danceStyle); }
+            danceStyle = pick;
+            rig.setDanceStyle(danceStyle);
+            rig.setBeat(beat.period());
+            rig.setDance(true);
+            rig.poke();
+        } else {
+            rig.setDance(false);
+        }
+        portal.body.setSlow(night && !dancing); // (the night's slower frames would make the dance choppy)
+        showTalk();
+    }
+
     // ================================================================ speed
 
     private void speed() {
         int s = CarBox.speed();
-        speedNum.setText(s < 0 ? "–" : String.valueOf(s));
         int lim = s < 0 ? 0 : DriveService.limitNowKmh;
         boolean over = s >= 0 && lim > 0 && s > lim + 5;
-        speedNum.setTextColor(over ? 0xFFFF6B5E : textMain);
-        String eng = ObdWatch.chip(); // 🔌 the engine's heat / battery under the speed (C11)
-        String l = s < 0 ? "GPS…" : lim > 0 ? "🚦 " + lim : "";
-        limit.setText(eng.isEmpty() ? l : l.isEmpty() ? eng : l + "   " + eng);
         boolean hot = ObdWatch.live() && ObdWatch.coolant != Integer.MIN_VALUE && ObdWatch.coolant >= 105;
-        limit.setTextColor(over || hot ? 0xFFFF6B5E : textSoft);
+        gauge.set(s, lim, over, hot, ObdWatch.chip()); // 🔌 the engine's heat / battery under the speed (C11)
     }
 
     // ================================================================ what Jarvis is doing
 
     void setState(int s) {
+        if (s == OrbView.IDLE && state != OrbView.IDLE) idleSince = System.currentTimeMillis();
         state = s;
-        orb.setState(s);
+        BodyRig rig = portal.body.rig;
+        if (s != BodyRig.IDLE) rig.poke();
+        rig.setMode(s);
+        portal.setState(s);
         if (s == OrbView.LISTENING) heard = "";
         showTalk();
     }
 
-    void setMic(float level) { orb.setMic(level); }
+    void setMic(float level) { portal.body.rig.setMic(level); }
 
-    void setVoice(float level) { orb.setVoice(level); }
+    void setVoice(float level) { portal.body.rig.setVoice(level); portal.voice(level); }
+
+    void setFeeling(String f) { portal.body.rig.setFeeling(f); }
+
+    /** The word Jarvis says now (his lips follow it). */
+    void word(String w) { portal.body.rig.word(w); }
 
     /** His words while he says them. */
     void partial(String text) {
@@ -271,15 +355,26 @@ final class CarScreen extends FrameLayout {
     }
 
     private void showTalk() {
-        String t;
         boolean moving = CarBox.moving();
-        if (state == OrbView.LISTENING) t = heard.isEmpty() ? "🎙️ వింటున్నాను…" : "🎙️ " + (moving ? CarBox.shortLine(heard, 50) : heard);
-        else if (state == OrbView.THINKING) t = "💭 ఆలోచిస్తున్నాను…";
-        else if (state == OrbView.SPEAKING || !said.isEmpty() && System.currentTimeMillis() - saidAt < 30_000)
-            t = said.isEmpty() ? "🔊 …" : moving ? CarBox.shortLine(said, 70) : said;
-        else t = prefs.hasBrain() ? "'Jarvis' అని పిలవండి, లేదా 🎤 నొక్కండి" : "మెదడుకి API key కావాలి (⚙️ → Jarvis మెదడు)";
-        talkText.setText(t);
-        talkText.setMaxLines(moving ? 2 : 4);
+        String st, sub;
+        if (state == OrbView.LISTENING) { st = "🎙️ వింటున్నాను…"; sub = heard.isEmpty() ? "" : (moving ? CarBox.shortLine(heard, 50) : heard); }
+        else if (state == OrbView.THINKING) { st = "💭 ఆలోచిస్తున్నాను…"; sub = ""; }
+        else if (state == OrbView.SPEAKING) { st = "◉ Jarvis చెబుతున్నాడు…"; sub = said.isEmpty() ? "" : moving ? CarBox.shortLine(said, 40) : said; }
+        else {
+            st = dancing ? "♪ Jarvis డాన్స్ చేస్తున్నాడు" : mode == CarTheme.MUSIC ? "♪ పాట వస్తోంది" : mode == CarTheme.PARKED ? "● ఆగి ఉన్నారు" : "● నడుపుతున్నారు · అంతా బాగుంది";
+            if (!said.isEmpty() && System.currentTimeMillis() - saidAt < 30_000) sub = moving ? CarBox.shortLine(said, 40) : said;
+            else sub = hint();
+        }
+        stateText.setText(st);
+        subText.setText(sub);
+        subText.setMaxLines(moving ? 2 : 3);
+    }
+
+    /** How to call Jarvis right now: by name while the wake word's mic is open, else the steering wheel's button / 🎤. */
+    private String hint() {
+        if (!prefs.hasBrain()) return "మెదడుకి API key కావాలి (⚙️ → Jarvis మెదడు)";
+        if (WakeService.hearing) return "'Jarvis' అని పిలవండి, లేదా 🎤 నొక్కండి";
+        return "🎙️ స్టీరింగ్ బటన్ నొక్కి అడగండి (లేదా 🎤)";
     }
 
     // ================================================================ the six buttons
@@ -626,6 +721,7 @@ final class CarScreen extends FrameLayout {
         LinearLayout box = panel(tileBg, accent);
         TextView t = autoText(getContext(), title, true, 60);
         t.setGravity(Gravity.CENTER);
+        t.setTextColor(textMain); // (dark on the white theme's sheet)
         box.addView(t, new LinearLayout.LayoutParams(-1, Math.max(1, H / 9)));
         if (note != null && !note.isEmpty() && !CarBox.moving()) {
             TextView n = autoText(getContext(), note, false, 30);
@@ -671,7 +767,7 @@ final class CarScreen extends FrameLayout {
             LinearLayout row = new LinearLayout(getContext());
             row.setOrientation(LinearLayout.HORIZONTAL);
             for (int k = 0; k < labels.length; k++) {
-                TextView b = bigButton(labels[k], 0xFF1F3B5C);
+                TextView b = bigButton(labels[k], CarTheme.withAlpha(accent, 0x55));
                 final Runnable go = ra[k];
                 b.setOnClickListener(v -> { sheetTouched(); go.run(); });
                 LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, -1, 1);
@@ -682,7 +778,7 @@ final class CarScreen extends FrameLayout {
             rl.topMargin = H / 60;
             box.addView(row, rl);
         }
-        TextView close = bigButton("✕ మూసేయి", 0xFF3A4658);
+        TextView close = bigButton("✕ మూసేయి", 0x663A4658);
         close.setOnClickListener(v -> closeSheet());
         LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-1, rowH);
         cl.topMargin = H / 40;
@@ -718,11 +814,11 @@ final class CarScreen extends FrameLayout {
     /** A yes / no over the screen: ✓ → yes; ✕ or 15 s untouched → nothing is done. */
     private void confirm(String question, Runnable yes) {
         ask.removeAllViews();
-        LinearLayout box = panel(0xFF13233A, accent);
+        LinearLayout box = panel(tileBg, accent);
         TextView q = autoText(getContext(), question, true, 60);
         q.setGravity(Gravity.CENTER);
         q.setMaxLines(2);
-        q.setTextColor(Color.WHITE);
+        q.setTextColor(look != null && look.light ? 0xFF17232F : Color.WHITE);
         box.addView(q, new LinearLayout.LayoutParams(-1, Math.max(1, H / 5)));
         LinearLayout row = new LinearLayout(getContext());
         LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, Math.max(1, H / 4));
@@ -733,7 +829,7 @@ final class CarScreen extends FrameLayout {
         TextView y = bigButton("✓ అవును", 0xFF1E6B4A);
         y.setOnClickListener(v -> { main.removeCallbacks(hide); hide.run(); yes.run(); });
         row.addView(y, new LinearLayout.LayoutParams(0, -1, 1));
-        TextView n = bigButton("✕ వద్దు", 0xFF3A4658);
+        TextView n = bigButton("✕ వద్దు", 0x663A4658);
         n.setOnClickListener(v -> { main.removeCallbacks(hide); hide.run(); toast("సరే, ఏమీ చేయలేదు"); });
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -1, 1);
         nl.leftMargin = W / 60;
@@ -761,8 +857,8 @@ final class CarScreen extends FrameLayout {
         android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
         long at = sp.getLong("w_at", 0);
         String fuel = CarFuel.chip(getContext()); // ⛽ how far the diesel goes, beside the weather (C12)
-        if (at == 0 || System.currentTimeMillis() - at > 3 * 3600_000L) { weather.setText(fuel); return; }
-        weather.setText("🌡️ " + Math.round(sp.getFloat("w_temp", 0)) + "° · " + HomeScreen.skyTe(sp.getInt("w_code", -1)) + (fuel.isEmpty() ? "" : "   " + fuel));
+        if (at == 0 || System.currentTimeMillis() - at > 3 * 3600_000L) { minis.setText(fuel); return; }
+        minis.setText("🌡️ " + Math.round(sp.getFloat("w_temp", 0)) + "° · " + HomeScreen.skyTe(sp.getInt("w_code", -1)) + (fuel.isEmpty() ? "" : "   " + fuel));
     }
 
     private void fetchWeather() {
@@ -798,50 +894,62 @@ final class CarScreen extends FrameLayout {
         super.onSizeChanged(w, h, ow, oh);
         W = w;
         H = h;
-        int pad = Math.max(4, Math.min(w, h) / 30);
+        int pad = Math.max(4, Math.min(w, h) / 34);
         content.setPadding(pad, pad, pad, pad);
-        left.setPadding(0, 0, pad, 0);
+        midCol.setPadding(pad / 2, 0, pad / 2, 0);
         int m = Math.max(3, Math.min(w, h) / 70);
         for (View t : tiles) {
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
             lp.setMargins(m, m, m, m);
             t.setLayoutParams(lp);
         }
-        talkText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(12, h / 19f));
+        subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, h / 24f));
+        float rad = Math.max(10, Math.min(w, h) / 22f);
+        for (View t : tiles) t.setBackground(CarArt.glass(look, rad, true));
         if (sheet.getVisibility() == VISIBLE) closeSheet(); // (its sizes were for the old screen)
     }
 
+    /** The theme's colours for the mode and the hour, put on everything. */
     private void palette() {
-        if (night) {
-            bg1 = 0xFF04070B; bg2 = 0xFF070C12; tileBg = 0xFF0B121B; tileStroke = 0xFF1A2633;
-            textMain = 0xFFB9C4CF; textSoft = 0xFF6E7C8A; accent = 0xFFB58A3C;
-        } else {
-            bg1 = 0xFF0A1220; bg2 = 0xFF0F1B2D; tileBg = 0xFF15253B; tileStroke = 0xFF27405F;
-            textMain = 0xFFF2F6FA; textSoft = 0xFF93A9C2; accent = 0xFF3BB7D6;
-        }
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{bg1, bg2});
-        setBackground(g);
-        for (TextView t : new TextView[]{clock, speedNum, talkText}) t.setTextColor(textMain);
-        for (TextView t : new TextView[]{date, speedUnit, weather, chips, limit}) t.setTextColor(textSoft);
+        look = CarTheme.of(prefs.carTheme()).look(mode, night, prefs.carAccent());
+        tileBg = look.sheetFill;
+        textMain = look.textMain;
+        textSoft = look.textSoft;
+        accent = look.accent;
+        backdrop.setLook(look);
+        gauge.setLook(look);
+        portal.setLook(look);
+        portal.setLowMotion(prefs.carLowMotion());
+        portal.body.setSlow(night && !dancing);
+        for (TextView t : new TextView[]{clock, subText}) t.setTextColor(textMain);
+        stateText.setTextColor(accent);
+        for (TextView t : new TextView[]{date, minis, chips}) t.setTextColor(textSoft);
         gear.setTextColor(textSoft);
         chat.setTextColor(textSoft);
+        float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / 22f);
         for (View t : tiles) {
-            t.setBackground(round(tileBg, tileStroke, 22));
+            t.setBackground(CarArt.glass(look, rad, true));
             LinearLayout l = (LinearLayout) t;
             ((TextView) l.getChildAt(1)).setTextColor(textMain);
-            l.getChildAt(0).setAlpha(night ? 0.8f : 1f);
         }
-        orb.setAlpha(night ? 0.7f : 1f);
+        for (CarArt.Icon i : tileIcons) i.setColour(accent);
+        GradientDrawable sub = new GradientDrawable();
+        sub.setColor(look.light ? 0x66FFFFFF : 0x14FFFFFF);
+        sub.setCornerRadius(rad);
+        sub.setStroke(1, look.light ? 0x33000000 : 0x1AFFFFFF);
+        subText.setBackground(sub);
+        int px = Math.max(6, Math.min(Math.max(W, 600), Math.max(H, 300)) / 60);
+        subText.setPadding(px * 2, px / 2, px * 2, px / 2);
     }
 
-    private View tile(Context c, String emoji, String label) {
+    private View tile(Context c, int icon, String label) {
         LinearLayout t = new LinearLayout(c);
         t.setOrientation(LinearLayout.VERTICAL);
         t.setGravity(Gravity.CENTER);
         t.setClickable(true);
         t.setFocusable(true);
-        TextView e = autoText(c, emoji, false, 120);
-        e.setGravity(Gravity.CENTER);
+        CarArt.Icon e = new CarArt.Icon(c, icon);
+        tileIcons.add(e);
         t.addView(e, new LinearLayout.LayoutParams(-1, 0, 56));
         TextView l = autoText(c, label, true, 60);
         l.setGravity(Gravity.CENTER);
@@ -881,8 +989,8 @@ final class CarScreen extends FrameLayout {
     private TextView bigButton(String s, int bg) {
         TextView t = autoText(getContext(), s, true, 70);
         t.setGravity(Gravity.CENTER);
-        t.setTextColor(Color.WHITE);
-        t.setBackground(round(bg, 0xFF2A4468, 18));
+        t.setTextColor((bg >>> 24) == 0xFF || look == null || !look.light ? Color.WHITE : 0xFF17232F); // (a solid button: white words)
+        t.setBackground(round(bg, CarTheme.withAlpha(accent, 0x88), 18));
         t.setClickable(true);
         t.setFocusable(true);
         int p = Math.max(4, H / 60);

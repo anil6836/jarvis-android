@@ -453,6 +453,13 @@ final class Prefs {
     void setCarMode(boolean on) { sp.edit().putBoolean("car_mode", on).apply(); }
     /** His phone: the car has its own Jarvis (the box), so in car mode the phone stays quiet (no "Jarvis", no sleep questions). */
     boolean boxInCar() { return sp.getBoolean("box_in_car", false); }
+    // 🎨 the car screen's look (the box): theme 1–10, his car's colour, the dance, fewer movements
+    int carTheme() { return sp.getInt("car_theme", 1); }
+    int carColour() { return sp.getInt("car_colour", CarTheme.CAR_COLOURS[0]); }
+    /** "always" (songs on the road too — his wish, the passengers watch), "parked", "off". */
+    String carDance() { return sp.getString("car_dance", "always"); }
+    boolean carLowMotion() { return sp.getBoolean("car_low_motion", false); }
+    int carAccent() { return sp.getInt("car_accent", 0); }
     /** The new Jarvis's look: a = navy jacket, b = kurta, c = zip jacket (Anil's pick). */
     String bodyLook() { return sp.getString("body_look", "c"); }
     /** Skin tone 1 (lighter) .. 3 (deeper). */
