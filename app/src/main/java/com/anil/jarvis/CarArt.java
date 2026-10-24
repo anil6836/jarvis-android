@@ -749,7 +749,7 @@ final class CarArt {
                 float cx = X(pm[i * 2]), cy = Y(pm[i * 2 + 1]);
                 cv.save();
                 path.rewind();
-                path.addCircle(cx, cy, wr * 0.96f, Path.Direction.CW); // (just inside the tyre: the road under it stays still)
+                path.addCircle(cx, cy, wr * 0.64f, Path.Direction.CW); // (the alloy rim turns; the tyre ring, the road and a cut tyre bottom stay still)
                 cv.clipPath(path);
                 cv.rotate(face * wheelAngle, cx, cy);
                 cv.drawBitmap(photo, fit, p);
