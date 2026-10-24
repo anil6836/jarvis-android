@@ -20,6 +20,11 @@ final class CarAhead {
     private static volatile long lastCheck, rainTold, fogTold;
     private static volatile boolean busy;
 
+    /** The car screen's weather card: the last warning in a few words ("" none), when, and whether it was rain or fog. */
+    static volatile String card = "";
+    static volatile long cardAt;
+    static volatile boolean cardRain;
+
     /** From the drive alerts' minute (whatever app is in front); does its work at most every 15 minutes, off the main thread. */
     static void maybe(Context c) {
         long now = System.currentTimeMillis();
@@ -88,16 +93,22 @@ final class CarAhead {
         if (!rainHere && where != null && now - rainTold > 60 * 60_000L) {
             rainTold = now;
             boolean heavy = Math.max(a15[0], a30[0]) >= 7.5;
+            card = "~" + where + " కి.మీ ముందు " + (heavy ? "గట్టి వర్షం" : "వర్షం");
+            cardAt = now;
+            cardRain = true;
             return "ముందు సుమారు " + where + " కి.మీ దగ్గర " + (heavy ? "గట్టి వర్షం" : "వర్షం") + " పడుతోంది / పడేలా ఉంది. వేగం తగ్గించి, దూరం పెట్టి, లైట్లు వేసుకోండి.";
         }
         double fog = Math.min(here[1], Math.min(a15[1], a30[1]));
         if (fog < 1000 && now - fogTold > 60 * 60_000L) {
             fogTold = now;
+            card = (here[1] < 1000 ? "ఇక్కడ" : "ముందు") + " పొగమంచు · ~" + Math.round(fog / 100) * 100 + " మీ.";
+            cardAt = now;
+            cardRain = false;
             return (here[1] < 1000 ? "ఇక్కడ" : "ముందు దారిలో") + " పొగమంచు (సుమారు " + Math.round(fog / 100) * 100 + " మీటర్ల వరకే కనిపిస్తుంది). ఫాగ్ లైట్లు, నెమ్మదిగా, ముందు వాహనానికి దూరంగా.";
         }
         return null;
     }
 
     /** (desk tests: start clean) */
-    static void reset() { rainTold = 0; fogTold = 0; lastCheck = 0; }
+    static void reset() { rainTold = 0; fogTold = 0; lastCheck = 0; card = ""; cardAt = 0; }
 }

@@ -66,7 +66,9 @@ final class CarScreen extends FrameLayout {
     private final LinearLayout content, leftCol, midCol, rightCol, tileGrid, chipRow;
     private final CarPortal portal;
     private final CarArt.Gauge gauge;
-    private final TextView clock, date, minis, stateText, subText, chips, gear, chat;
+    private final TextView clock, date, minis, stateText, subText, chips, gear, chat, driveChip, road1, road2, roadYes, roadNo, musicText;
+    private final LinearLayout roadCard, musicStrip;
+    private final CarArt.Icon roadIcon, prevKey, playKey, nextKey;
     private final List<View> tiles = new ArrayList<>();
     private final List<CarArt.Icon> tileIcons = new ArrayList<>();
     private final FrameLayout sheet, ask, awake;
@@ -79,6 +81,7 @@ final class CarScreen extends FrameLayout {
     private final CarBeat beat;
     private int danceStyle = -1;
     private boolean songNow, beatOn;
+    private int ticks;
     private int songOn, songOff;
     private long idleSince;
 
@@ -144,7 +147,9 @@ final class CarScreen extends FrameLayout {
         minis = autoText(a, "", false, 28);
         minis.setGravity(Gravity.CENTER);
         midCol.addView(minis, new LinearLayout.LayoutParams(-1, 0, 9));
-        midCol.addView(new View(a), new LinearLayout.LayoutParams(-1, 0, 11)); // (room for the road's cards)
+        driveChip = autoText(a, "", true, 30); // ⏱ how long he has driven (amber near 2 hours: the sleep alert's long-drive clock)
+        driveChip.setGravity(Gravity.CENTER);
+        midCol.addView(driveChip, new LinearLayout.LayoutParams(-1, 0, 11));
 
         // ---- right: the six big buttons (glass, thin lit icons)
         rightCol = new LinearLayout(a);
@@ -152,7 +157,33 @@ final class CarScreen extends FrameLayout {
         content.addView(rightCol, new LinearLayout.LayoutParams(0, -1, 43));
         tileGrid = new LinearLayout(a);
         tileGrid.setOrientation(LinearLayout.VERTICAL);
-        rightCol.addView(tileGrid, new LinearLayout.LayoutParams(-1, 0, 1));
+        // the road card on top: the maps app's next turn, the weather ahead, coming home (and the AC question), the road
+        roadCard = new LinearLayout(a);
+        roadCard.setOrientation(LinearLayout.HORIZONTAL);
+        roadCard.setGravity(Gravity.CENTER_VERTICAL);
+        roadIcon = new CarArt.Icon(a, CarArt.Icon.ROAD);
+        roadCard.addView(roadIcon, new LinearLayout.LayoutParams(0, -1, 20));
+        LinearLayout roadText = new LinearLayout(a);
+        roadText.setOrientation(LinearLayout.VERTICAL);
+        roadCard.addView(roadText, new LinearLayout.LayoutParams(0, -1, 80));
+        road1 = autoText(a, "", true, 46);
+        road1.setGravity(Gravity.CENTER_VERTICAL);
+        roadText.addView(road1, new LinearLayout.LayoutParams(-1, 0, 58));
+        road2 = autoText(a, "", false, 30);
+        road2.setGravity(Gravity.CENTER_VERTICAL);
+        roadText.addView(road2, new LinearLayout.LayoutParams(-1, 0, 42));
+        roadYes = autoText(a, "✓ ఆన్", true, 40);
+        roadNo = autoText(a, "✕", true, 40);
+        for (TextView b : new TextView[]{roadYes, roadNo}) {
+            b.setGravity(Gravity.CENTER);
+            b.setVisibility(GONE);
+            roadCard.addView(b, new LinearLayout.LayoutParams(0, -1, b == roadYes ? 30 : 18));
+        }
+        roadYes.setOnClickListener(v -> tap(this::acYes));
+        roadNo.setOnClickListener(v -> tap(() -> { acAt = 0; roadKey = ""; roadCheck(); }));
+        roadCard.setOnClickListener(v -> tap(() -> { if (Drive.navState() != null) openMaps(getContext()); }));
+        rightCol.addView(roadCard, new LinearLayout.LayoutParams(-1, 0, 25));
+        rightCol.addView(tileGrid, new LinearLayout.LayoutParams(-1, 0, 57));
         Object[][] t = {{CarArt.Icon.MIC, "మాట్లాడు", "talk"}, {CarArt.Icon.WAY, "దారి", "way"}, {CarArt.Icon.MUSIC, "పాటలు", "music"},
                 {CarArt.Icon.FUEL, "డీజిల్", "fuel"}, {CarArt.Icon.HOME, "ఇల్లు", "home"}, {CarArt.Icon.SLEEP, "నిద్ర", "sleep"}};
         for (int r = 0; r < 2; r++) {
@@ -168,6 +199,27 @@ final class CarScreen extends FrameLayout {
                 tiles.add(tile);
             }
         }
+
+        // the song strip at the bottom: its name and ⏮ ⏯ ⏭ (the music app's own keys)
+        musicStrip = new LinearLayout(a);
+        musicStrip.setOrientation(LinearLayout.HORIZONTAL);
+        musicStrip.setGravity(Gravity.CENTER_VERTICAL);
+        musicText = autoText(a, "", false, 32);
+        musicText.setGravity(Gravity.CENTER_VERTICAL);
+        musicText.setOnClickListener(v -> tap(this::showMusic));
+        musicStrip.addView(musicText, new LinearLayout.LayoutParams(0, -1, 52));
+        prevKey = new CarArt.Icon(a, CarArt.Icon.PREV);
+        playKey = new CarArt.Icon(a, CarArt.Icon.PLAY);
+        nextKey = new CarArt.Icon(a, CarArt.Icon.NEXT);
+        String[] keyAct = {"⏮", "⏯", "⏭"};
+        CarArt.Icon[] keys = {prevKey, playKey, nextKey};
+        for (int i = 0; i < 3; i++) {
+            final String k = keyAct[i];
+            keys[i].setClickable(true);
+            keys[i].setOnClickListener(v -> tap(() -> { musicKey(k); main.postDelayed(this::musicCheck, 700); }));
+            musicStrip.addView(keys[i], new LinearLayout.LayoutParams(0, -1, 16));
+        }
+        rightCol.addView(musicStrip, new LinearLayout.LayoutParams(-1, 0, 18));
 
         // ---- over everything: a sheet of choices, a yes / no question, the sleep alert's ✅
         sheet = overlay(a);
@@ -185,6 +237,9 @@ final class CarScreen extends FrameLayout {
         palette();
         update();
         showTalk();
+        roadCheck();
+        musicCheck();
+        driveCheck();
     }
 
     // ================================================================ the screen's life
@@ -223,6 +278,9 @@ final class CarScreen extends FrameLayout {
             if (m != wasMoving) { wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f); }
             portal.setBelted(m);
             modeCheck();
+            roadCheck();
+            if (++ticks % 2 == 0) musicCheck();
+            if (ticks % 10 == 1) driveCheck();
             main.postDelayed(this, 1000);
         }
     };
@@ -375,6 +433,148 @@ final class CarScreen extends FrameLayout {
         if (!prefs.hasBrain()) return "మెదడుకి API key కావాలి (⚙️ → Jarvis మెదడు)";
         if (WakeService.hearing) return "'Jarvis' అని పిలవండి, లేదా 🎤 నొక్కండి";
         return "🎙️ స్టీరింగ్ బటన్ నొక్కి అడగండి (లేదా 🎤)";
+    }
+
+    // ================================================================ the road card, the song strip, the drive time (P2)
+
+    private final CarRoad.Home homeTrack = new CarRoad.Home();
+    private long homeSampleAt, acAt;
+    private int homeMin = -1;
+    private long lastDriveMin;
+    private boolean acOffered;
+    private String roadKey = "", musicKeyNow = "";
+    private String acUrl, acName;
+
+    /**
+     * Once a second, the card on top of the buttons — the most useful one now: the AC question when home is ~10 minutes
+     * away (30 s, only on his ✓), the maps app's next turn (its own words; a tap opens the maps app), rain / fog ahead,
+     * coming home (a guess from the GPS: shown here only, nothing is sent), else the road and the trip's km. Redrawn
+     * only when its words change.
+     */
+    private void roadCheck() {
+        Context c = getContext();
+        long now = System.currentTimeMillis();
+        if (now - homeSampleAt >= 10_000) {
+            homeSampleAt = now;
+            Location l = DriveService.last;
+            JSONObject h = l == null || now - l.getTime() > 60_000 ? null : Travel.home(c);
+            if (h != null && h.has("lat")) {
+                double km = MapMath.meters(l.getLatitude(), l.getLongitude(), h.optDouble("lat"), h.optDouble("lon")) / 1000;
+                if (km < 0.3) homeTrack.reset(); // (home: the next trip learns its own distances)
+                else homeTrack.sample(now, km);
+                if (km > 15) acOffered = false; // (far from home again: the next coming home may ask once more)
+            }
+            homeMin = homeTrack.minutes();
+        }
+        JSONObject nav = Drive.navState();
+        int hm = homeMin;
+        int navMin = nav == null ? -1 : CarRoad.minutesIn(nav.optString("trip"));
+        if (hm > 0 && navMin >= 0) hm = navMin > hm + 15 ? -1 : navMin; // (the maps app goes past home: not home; else its minutes are better)
+        // the AC question: once per coming home, only with his own AC's "on" link, never over the sleep alert's question
+        if (!acOffered && hm > 0 && CarRoad.acTime(hm) && acLink() && !awakeShown) { acOffered = true; acAt = now; }
+        boolean ac = acAt > 0 && now - acAt < 30_000;
+        if (!ac) acAt = 0;
+        int icon;
+        String l1, l2;
+        if (ac) {
+            icon = CarArt.Icon.SNOW;
+            l1 = "ఇంట్లో " + acName + " ఆన్ చేయనా?";
+            l2 = "🏠 ఇంటికి సుమారు " + hm + " ని.";
+        } else if (nav != null && !(nav.optString("next").isEmpty() && nav.optString("detail").isEmpty())) {
+            String next = nav.optString("next"), det = nav.optString("detail"), trip = nav.optString("trip");
+            icon = CarRoad.turnIcon(next + " " + det);
+            l1 = next.isEmpty() ? det : next;
+            String rest = next.isEmpty() ? "" : det;
+            l2 = trip.isEmpty() ? rest : rest.isEmpty() ? trip : rest + " · " + trip;
+        } else if (!CarAhead.card.isEmpty() && now - CarAhead.cardAt < 20 * 60_000L) {
+            icon = CarAhead.cardRain ? CarArt.Icon.RAIN : CarArt.Icon.FOG;
+            l1 = CarAhead.card;
+            l2 = CarAhead.cardRain ? "నెమ్మదిగా, దూరం పెట్టి, లైట్లు వేసుకోండి" : "ఫాగ్ లైట్లు, నెమ్మదిగా";
+        } else if (hm > 0) {
+            icon = CarArt.Icon.HOME;
+            l1 = "ఇంటికి సుమారు " + hm + " ని.";
+            l2 = "సుమారు " + new java.text.SimpleDateFormat("h:mm", Locale.ROOT).format(new java.util.Date(now + hm * 60_000L)) + " కి చేరుకుంటారు";
+        } else {
+            icon = CarArt.Icon.ROAD;
+            String rd = DriveService.roadName == null ? "" : DriveService.roadName.trim();
+            l1 = rd.isEmpty() ? "🛣️ శుభ ప్రయాణం" : rd;
+            double km = DriveService.tripMeters / 1000;
+            l2 = CarBox.speed() < 0 ? "GPS కోసం చూస్తున్నాను…" : km >= 0.5 ? "ఈ ప్రయాణం " + (km < 10 ? String.format(Locale.ROOT, "%.1f", km) : String.valueOf(Math.round(km))) + " కి.మీ" : "";
+        }
+        String key = icon + "|" + l1 + "|" + l2 + "|" + ac;
+        if (key.equals(roadKey)) return;
+        roadKey = key;
+        roadIcon.setKind(icon);
+        roadIcon.setColour(ac ? 0xFF7FD8FF : accent);
+        road1.setText(l1);
+        road2.setText(l2);
+        roadYes.setVisibility(ac ? VISIBLE : GONE);
+        roadNo.setVisibility(ac ? VISIBLE : GONE);
+    }
+
+    /** His own AC's "on" link among this box's smart-home lines (never shown anywhere): found → true. */
+    private boolean acLink() {
+        LinkedHashMap<String, String[]> devs = devices(prefs.smartUrls());
+        String base = CarRoad.myAc(devs.keySet());
+        String[] u = base == null ? null : devs.get(base);
+        if (u == null || u[0] == null) return false;
+        acUrl = u[0];
+        acName = deviceName(base);
+        return true;
+    }
+
+    /** ✓ on the AC question: his tap is the yes — the link is pressed, the answer said. */
+    private void acYes() {
+        final String url = acUrl, name = acName;
+        acAt = 0;
+        roadKey = "";
+        roadCheck();
+        if (url == null) return;
+        new Thread(() -> {
+            boolean ok;
+            try { Http.getText(url); ok = true; } catch (Exception e) { ok = false; }
+            final boolean done = ok;
+            main.post(() -> host.speak(done ? "సరే, ఇంట్లో " + name + " ఆన్ చేశాను. మీరు వచ్చేసరికి చల్లగా ఉంటుంది." : name + " ఆన్ కాలేదు: నెట్ చూడండి."));
+        }, "car-ac").start();
+    }
+
+    /** Every 2 s: the song strip — its name and app (never more than the title), and the keys while something plays. */
+    private void musicCheck() {
+        String t;
+        boolean keys;
+        try {
+            JSONObject o = Music.panel(getContext());
+            if (o.optBoolean("none")) {
+                keys = false;
+                t = o.optBoolean("access", true) ? "🎵 పాట లేదు · ఇక్కడ నొక్కండి" : "🎵 పాట పేరు కోసం: నోటిఫికేషన్ యాక్సెస్ ఇవ్వండి";
+            } else {
+                keys = true;
+                String title = o.optString("title");
+                t = (o.optBoolean("playing") ? "♪ " : "⏸ ") + (title.isEmpty() ? o.optString("app") : title + " · " + o.optString("app"));
+            }
+        } catch (Exception e) {
+            keys = false;
+            t = "🎵";
+        }
+        String key = t + keys;
+        if (key.equals(musicKeyNow)) return;
+        musicKeyNow = key;
+        musicText.setText(t);
+        int v = keys ? VISIBLE : INVISIBLE;
+        prevKey.setVisibility(v);
+        playKey.setVisibility(v);
+        nextKey.setVisibility(v);
+    }
+
+    /** Every 10 s: how long he has driven without a real stop; amber near 2 hours, the tea cup after. */
+    private void driveCheck() {
+        long min = 0;
+        try { min = CarCare.drivingMinutes(getContext()); } catch (Exception ignored) {}
+        if (!CarBox.moving() && System.currentTimeMillis() - DriveService.lastMovingAt > 15 * 60_000L) min = 0; // (a real stop: a fresh count)
+        lastDriveMin = min;
+        driveChip.setText(CarRoad.driveLine(min));
+        int lvl = CarRoad.driveLevel(min);
+        driveChip.setTextColor(lvl == 0 ? textSoft : look != null && look.light ? 0xFFB26A00 : 0xFFFFB74D);
     }
 
     // ================================================================ the six buttons
@@ -857,7 +1057,12 @@ final class CarScreen extends FrameLayout {
         android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
         long at = sp.getLong("w_at", 0);
         String fuel = CarFuel.chip(getContext()); // ⛽ how far the diesel goes, beside the weather (C12)
-        if (at == 0 || System.currentTimeMillis() - at > 3 * 3600_000L) { minis.setText(fuel); return; }
+        long now = System.currentTimeMillis();
+        if (Drive.navState() != null && !CarAhead.card.isEmpty() && now - CarAhead.cardAt < 20 * 60_000L) { // (the turn has the card: the warning goes here)
+            minis.setText((CarAhead.cardRain ? "🌧️ " : "🌫️ ") + CarAhead.card);
+            return;
+        }
+        if (at == 0 || now - at > 3 * 3600_000L) { minis.setText(fuel); return; }
         minis.setText("🌡️ " + Math.round(sp.getFloat("w_temp", 0)) + "° · " + HomeScreen.skyTe(sp.getInt("w_code", -1)) + (fuel.isEmpty() ? "" : "   " + fuel));
     }
 
@@ -898,14 +1103,22 @@ final class CarScreen extends FrameLayout {
         content.setPadding(pad, pad, pad, pad);
         midCol.setPadding(pad / 2, 0, pad / 2, 0);
         int m = Math.max(3, Math.min(w, h) / 70);
-        for (View t : tiles) {
+        List<View> boxes = new ArrayList<>(tiles);
+        boxes.add(roadCard);
+        boxes.add(musicStrip);
+        for (View t : boxes) {
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
             lp.setMargins(m, m, m, m);
             t.setLayoutParams(lp);
         }
+        int cp = Math.max(4, Math.min(w, h) / 50);
+        roadCard.setPadding(cp, cp / 2, cp, cp / 2);
+        musicStrip.setPadding(cp * 2, cp / 3, cp, cp / 3);
         subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, h / 24f));
         float rad = Math.max(10, Math.min(w, h) / 22f);
         for (View t : tiles) t.setBackground(CarArt.glass(look, rad, true));
+        roadCard.setBackground(CarArt.glass(look, rad, false));
+        musicStrip.setBackground(CarArt.glass(look, rad, false));
         if (sheet.getVisibility() == VISIBLE) closeSheet(); // (its sizes were for the old screen)
     }
 
@@ -933,6 +1146,17 @@ final class CarScreen extends FrameLayout {
             ((TextView) l.getChildAt(1)).setTextColor(textMain);
         }
         for (CarArt.Icon i : tileIcons) i.setColour(accent);
+        roadCard.setBackground(CarArt.glass(look, rad, false));
+        musicStrip.setBackground(CarArt.glass(look, rad, false));
+        road1.setTextColor(textMain);
+        road2.setTextColor(textSoft);
+        musicText.setTextColor(textMain);
+        roadYes.setTextColor(Color.WHITE);
+        roadYes.setBackground(round(0xFF1E6B4A, CarTheme.withAlpha(accent, 0x88), 14));
+        roadNo.setTextColor(textSoft);
+        roadIcon.setColour(acAt > 0 ? 0xFF7FD8FF : accent);
+        for (CarArt.Icon k : new CarArt.Icon[]{prevKey, playKey, nextKey}) k.setColour(accent);
+        driveChip.setTextColor(CarRoad.driveLevel(lastDriveMin) == 0 ? textSoft : look.light ? 0xFFB26A00 : 0xFFFFB74D);
         GradientDrawable sub = new GradientDrawable();
         sub.setColor(look.light ? 0x66FFFFFF : 0x14FFFFFF);
         sub.setCornerRadius(rad);

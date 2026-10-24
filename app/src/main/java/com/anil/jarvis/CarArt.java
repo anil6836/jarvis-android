@@ -315,10 +315,16 @@ final class CarArt {
     }
 
     // ================================================================ the icons
-    /** A thin glowing line icon for a tile (mic, way, music, fuel, home, sleep, games, quiz, story, apps). */
+    /**
+     * A thin glowing line icon: the tiles (mic, way, music, fuel, home, sleep, games, quiz, story, apps), the road card
+     * (the turn's arrow, arrival, rain, fog, the road, a snowflake for the AC, a clock, parking, a trophy) and the song's
+     * keys (previous, play / pause, next).
+     */
     static final class Icon extends View {
-        static final int MIC = 0, WAY = 1, MUSIC = 2, FUEL = 3, HOME = 4, SLEEP = 5, GAMES = 6, QUIZ = 7, STORY = 8, APPS = 9;
-        private final int kind;
+        static final int MIC = 0, WAY = 1, MUSIC = 2, FUEL = 3, HOME = 4, SLEEP = 5, GAMES = 6, QUIZ = 7, STORY = 8, APPS = 9,
+                LEFT = 10, RIGHT = 11, AHEAD = 12, UTURN = 13, ROUND = 14, ARRIVE = 15, SLIGHT_LEFT = 16, SLIGHT_RIGHT = 17,
+                RAIN = 18, FOG = 19, ROAD = 20, SNOW = 21, CLOCK = 22, PARK = 23, PREV = 24, PLAY = 25, NEXT = 26, CUP = 27, STAR = 28;
+        private int kind;
         private int colour = 0xFF5FF3FF;
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path path = new Path();
@@ -331,7 +337,9 @@ final class CarArt {
             p.setStrokeJoin(Paint.Join.ROUND);
         }
 
-        void setColour(int c) { colour = c; invalidate(); }
+        void setColour(int c) { if (colour != c) { colour = c; invalidate(); } }
+        void setKind(int k) { if (kind != k) { kind = k; invalidate(); } }
+        int kind() { return kind; }
 
         @Override protected void onDraw(Canvas cv) {
             float s = Math.min(getWidth(), getHeight());
@@ -397,6 +405,90 @@ final class CarArt {
                 case STORY:
                     q.moveTo(8, 10); q.lineTo(22, 10); q.quadTo(26, 10, 26, 14); q.lineTo(26, 42); q.quadTo(26, 38, 22, 38); q.lineTo(8, 38); q.close();
                     q.moveTo(44, 10); q.lineTo(30, 10); q.quadTo(26, 10, 26, 14); q.lineTo(26, 42); q.quadTo(26, 38, 30, 38); q.lineTo(44, 38); q.close();
+                    break;
+                case LEFT: // up, then a bend to the left with the arrow's head
+                    q.moveTo(32, 46); q.lineTo(32, 26); q.quadTo(32, 18, 24, 18); q.lineTo(12, 18);
+                    q.moveTo(19, 10); q.lineTo(11, 18); q.lineTo(19, 26);
+                    break;
+                case RIGHT:
+                    q.moveTo(20, 46); q.lineTo(20, 26); q.quadTo(20, 18, 28, 18); q.lineTo(40, 18);
+                    q.moveTo(33, 10); q.lineTo(41, 18); q.lineTo(33, 26);
+                    break;
+                case SLIGHT_LEFT:
+                    q.moveTo(30, 46); q.lineTo(30, 30); q.lineTo(16, 14);
+                    q.moveTo(15, 24); q.lineTo(15, 13); q.lineTo(26, 13);
+                    break;
+                case SLIGHT_RIGHT:
+                    q.moveTo(22, 46); q.lineTo(22, 30); q.lineTo(36, 14);
+                    q.moveTo(37, 24); q.lineTo(37, 13); q.lineTo(26, 13);
+                    break;
+                case UTURN:
+                    q.moveTo(34, 46); q.lineTo(34, 20); q.arcTo(new RectF(16, 8, 34, 26), 0, -180, false); q.lineTo(16, 36);
+                    q.moveTo(9, 29); q.lineTo(16, 37); q.lineTo(23, 29);
+                    break;
+                case ROUND:
+                    q.addCircle(26, 24, 9, Path.Direction.CW);
+                    q.moveTo(26, 46); q.lineTo(26, 33); q.moveTo(33, 18); q.lineTo(42, 10);
+                    q.moveTo(35, 9); q.lineTo(43, 9); q.lineTo(43, 17);
+                    break;
+                case ARRIVE: // a map pin
+                    q.moveTo(26, 46); q.quadTo(12, 30, 12, 21); q.arcTo(new RectF(12, 7, 40, 35), 180, 180, false); q.quadTo(40, 30, 26, 46); q.close();
+                    q.addCircle(26, 21, 5, Path.Direction.CW);
+                    break;
+                case RAIN:
+                    q.moveTo(14, 28); q.arcTo(new RectF(8, 16, 20, 28), 90, 180, false); q.arcTo(new RectF(15, 6, 35, 26), 200, 140, false);
+                    q.arcTo(new RectF(32, 14, 44, 28), 270, 180, false); q.close();
+                    q.moveTo(17, 34); q.lineTo(14, 42); q.moveTo(26, 34); q.lineTo(23, 44); q.moveTo(35, 34); q.lineTo(32, 42);
+                    break;
+                case FOG:
+                    q.moveTo(8, 16); q.lineTo(44, 16); q.moveTo(12, 24); q.lineTo(40, 24); q.moveTo(8, 32); q.lineTo(44, 32); q.moveTo(14, 40); q.lineTo(38, 40);
+                    break;
+                case ROAD: // a road running to the horizon with its centre line
+                    q.moveTo(20, 8); q.lineTo(8, 46); q.moveTo(32, 8); q.lineTo(44, 46);
+                    q.moveTo(26, 10); q.lineTo(26, 16); q.moveTo(26, 22); q.lineTo(26, 30); q.moveTo(26, 36); q.lineTo(26, 46);
+                    break;
+                case SNOW:
+                    for (int i = 0; i < 3; i++) {
+                        double a = Math.toRadians(90 + 60 * i);
+                        float dx = (float) (18 * Math.cos(a)), dy = (float) (18 * Math.sin(a));
+                        q.moveTo(26 - dx, 26 - dy); q.lineTo(26 + dx, 26 + dy);
+                    }
+                    q.moveTo(21, 11); q.lineTo(26, 15); q.lineTo(31, 11); q.moveTo(21, 41); q.lineTo(26, 37); q.lineTo(31, 41);
+                    break;
+                case CLOCK:
+                    q.addCircle(26, 26, 18, Path.Direction.CW);
+                    q.moveTo(26, 15); q.lineTo(26, 26); q.lineTo(34, 31);
+                    break;
+                case PARK:
+                    q.addRoundRect(8, 8, 44, 44, 9, 9, Path.Direction.CW);
+                    q.moveTo(21, 38); q.lineTo(21, 15); q.lineTo(28, 15); q.arcTo(new RectF(22, 15, 36, 29), 270, 180, false); q.lineTo(21, 29);
+                    break;
+                case PREV:
+                    q.moveTo(14, 14); q.lineTo(14, 38); q.moveTo(38, 14); q.lineTo(19, 26); q.lineTo(38, 38); q.close();
+                    break;
+                case PLAY: // play and pause together: the strip doesn't guess which one the app is in
+                    q.moveTo(10, 13); q.lineTo(28, 26); q.lineTo(10, 39); q.close();
+                    q.moveTo(34, 14); q.lineTo(34, 38); q.moveTo(42, 14); q.lineTo(42, 38);
+                    break;
+                case NEXT:
+                    q.moveTo(38, 14); q.lineTo(38, 38); q.moveTo(14, 14); q.lineTo(33, 26); q.lineTo(14, 38); q.close();
+                    break;
+                case CUP: // a tea cup with steam
+                    q.moveTo(10, 24); q.lineTo(36, 24); q.lineTo(34, 38); q.quadTo(33, 42, 29, 42); q.lineTo(17, 42); q.quadTo(13, 42, 12, 38); q.close();
+                    q.moveTo(36, 27); q.quadTo(44, 27, 42, 33); q.quadTo(40, 36, 35, 35);
+                    q.moveTo(18, 18); q.quadTo(16, 14, 19, 10); q.moveTo(26, 18); q.quadTo(24, 14, 27, 10);
+                    break;
+                case STAR:
+                    for (int i = 0; i < 10; i++) {
+                        double a = Math.toRadians(-90 + 36 * i);
+                        float rr = i % 2 == 0 ? 19 : 8;
+                        float x = (float) (26 + rr * Math.cos(a)), y = (float) (27 + rr * Math.sin(a));
+                        if (i == 0) q.moveTo(x, y); else q.lineTo(x, y);
+                    }
+                    q.close();
+                    break;
+                case AHEAD:
+                    q.moveTo(26, 46); q.lineTo(26, 10); q.moveTo(17, 19); q.lineTo(26, 9); q.lineTo(35, 19);
                     break;
                 default: // APPS: four rounded squares
                     q.addRoundRect(9, 9, 23, 23, 4, 4, Path.Direction.CW); q.addRoundRect(29, 9, 43, 23, 4, 4, Path.Direction.CW);
