@@ -216,6 +216,18 @@ final class BodyRig {
     /** A hand gesture for a while (ms): wave, namaste, chin, thumb, point, clap, stretch. */
     void gesture(String g, long forMs) { forcedGesture = g; gestureUntil = ms() + forMs; if (extra != null) extra.override(); }
     void greet() { gesture("wave", 2600); show("happy", 2600); }
+    /**
+     * A look somewhere for a while, with no greeting (x, y: -1..1; +x is the viewer's right): the car's turn, the
+     * speed gauge beside him, the driver (on the right in an Indian car) or the passengers (on the left).
+     */
+    void glance(float x, float y, long forMs) { glX = clamp(x, -1, 1); glY = clamp(y, -1, 1); glUntil = ms() + forMs; }
+    private float glX, glY;
+    private long glUntil;
+    /** 🕶️ Sunglasses (the car on a bright afternoon): drawn over his eyes, his own design. */
+    void setShades(boolean on) { shades = on; }
+    boolean shades() { return shades; }
+    private boolean shades;
+
     /** Someone seen by the front camera (x, y: -1..1 in the picture), or nobody. */
     void look(boolean someone, float x, float y) {
         if (someone && !present) greet();
@@ -305,6 +317,7 @@ final class BodyRig {
         lookIn -= dt;
         if (lookIn <= 0) { saccGx = (float) (Math.random() - 0.5) * 0.5f; saccGy = (float) (Math.random() - 0.5) * 0.3f; lookIn = 1.5f + (float) Math.random() * 2.5f; }
         float gx = present ? clamp(seenX, -1, 1) * 0.8f : saccGx, gy = present ? clamp(seenY, -1, 1) * 0.5f : saccGy;
+        if (now < glUntil) { gx = glX; gy = glY * 0.6f; }
         if (x != null && x.gaze) { gx = x.gx; gy = x.gy; }
         saccX += (gx - saccX) * k * 1.2f; saccY += (gy - saccY) * k * 1.2f;
         if (x != null) cross += (x.cross - cross) * Math.min(1, k * 1.5f);
@@ -358,7 +371,8 @@ final class BodyRig {
             case "namaste": R.set(287, 618, 2, "side", true); L.set(313, 618, -2, "side", true); break;
             case "chin": R.set(250, 502, 14, "point", true); break;
             case "thumb": R.set(236, 600, -4, "thumb", true); break;
-            case "point": L.set(530, 432, 42, "point", true); break;
+            case "point": case "point_r": L.set(530, 432, 42, "point", true); break; // (towards the viewer's right)
+            case "point_l": R.set(70, 432, -42, "point", true); break;               // (towards the viewer's left)
             case "clap": {
                 float d = (float) (4 + 24 * (0.5 + 0.5 * Math.sin(t * Math.PI * 2 * 2.2)));
                 R.set(268 - d, 604, 4, "side", true); L.set(332 + d, 604, -4, "side", true); break;
@@ -509,6 +523,7 @@ final class BodyRig {
         path(p, NOSTRIL); p.stroke(alpha(sk.line, 0.75f), 2.4f);
         eye(p, -46, -1, oL, shL, q, sk, cross);
         eye(p, 46, 1, oR, shR, q, sk, cross);
+        if (shades) shades(p);
         brow(p, -46, -1, q[BROW], q[BROW_ANG], q[BROW_L]); p.fill(0xFF1E1612);
         brow(p, 46, 1, q[BROW], q[BROW_ANG], q[BROW_R]); p.fill(0xFF1E1612);
         mouth(p, q, sk);
@@ -652,6 +667,25 @@ final class BodyRig {
             p.moveTo(R + 2, cyC + 4); p.quadTo(R + 4, cyC, R + 1, cyC - 3);
             p.stroke(alpha(sk.lipDk, 0.55f), 2);
         }
+    }
+
+    // ---- 🕶️ the car's sunglasses: two soft-cornered dark lenses, a thin bridge, the arms to the ears, a glint
+    private static final int[] LENS_G = {0xF0263544, 0xF00B1219};
+    private static final float[] LENS_AT = {0, 1};
+
+    private static void lens(Pen p, float cx) {
+        p.begin();
+        p.moveTo(cx - 30, -20); p.quadTo(cx, -26, cx + 30, -20);
+        p.quadTo(cx + 33, 5, cx + 20, 17); p.quadTo(cx, 24, cx - 20, 17);
+        p.quadTo(cx - 33, 5, cx - 30, -20); p.close();
+    }
+
+    private static void shades(Pen p) {
+        p.begin(); p.moveTo(-77, -12); p.lineTo(-104, -6); p.moveTo(77, -12); p.lineTo(104, -6); p.stroke(0xFF0E141A, 4);
+        lens(p, -46); p.fillLinear(0, -25, 0, 22, LENS_G, LENS_AT); p.stroke(0xFF0A0F14, 3.2f);
+        lens(p, 46); p.fillLinear(0, -25, 0, 22, LENS_G, LENS_AT); p.stroke(0xFF0A0F14, 3.2f);
+        p.begin(); p.moveTo(-16, -13); p.quadTo(0, -19, 16, -13); p.stroke(0xFF0A0F14, 3.4f);
+        p.begin(); p.moveTo(-64, -12); p.lineTo(-52, -14); p.moveTo(28, -12); p.lineTo(40, -14); p.stroke(0x66FFFFFF, 2.4f);
     }
 
     // ---- arms

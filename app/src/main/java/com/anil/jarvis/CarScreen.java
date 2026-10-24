@@ -283,7 +283,13 @@ final class CarScreen extends FrameLayout {
             speed();
             awakeCheck();
             boolean m = CarBox.moving();
-            if (m != wasMoving) { wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f); }
+            if (m != wasMoving) {
+                long now = System.currentTimeMillis();
+                if (m && (stillSince == 0 || now - stillSince > 5 * 60_000L)) portal.body.rig.greet(); // 👋 off we go
+                if (!m) stillSince = now;
+                wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f);
+            }
+            glances();
             portal.setBelted(m);
             tripCount();
             modeCheck();
@@ -321,6 +327,7 @@ final class CarScreen extends FrameLayout {
         showWeather();
         fetchWeather();
         CarBox.keep(getContext());
+        occasion();
         if (state == OrbView.IDLE) showTalk(); // (an old answer gives way to the hint)
     }
 
@@ -386,6 +393,14 @@ final class CarScreen extends FrameLayout {
         boolean over = s >= 0 && lim > 0 && s > lim + 5;
         boolean hot = ObdWatch.live() && ObdWatch.coolant != Integer.MIN_VALUE && ObdWatch.coolant >= 105;
         gauge.set(s, lim, over, hot, ObdWatch.chip()); // 🔌 the engine's heat / battery under the speed (C11)
+        long now = System.currentTimeMillis();
+        if (over) { // 😟 once per stretch over the limit: a worried face, a look at the gauge beside him
+            underSince = 0;
+            if (!overShown) { overShown = true; BodyRig rig = portal.body.rig; rig.show("worried", 3000); rig.glance(1f, 0.35f, 2600); }
+        } else if (overShown) {
+            if (underSince == 0) underSince = now;
+            else if (now - underSince > 30_000) overShown = false;
+        }
     }
 
     // ================================================================ what Jarvis is doing
@@ -497,6 +512,7 @@ final class CarScreen extends FrameLayout {
         } else if (nav != null && !(nav.optString("next").isEmpty() && nav.optString("detail").isEmpty())) {
             String next = nav.optString("next"), det = nav.optString("detail"), trip = nav.optString("trip");
             icon = CarRoad.turnIcon(next + " " + det);
+            turnCue(icon, next, det);
             l1 = next.isEmpty() ? det : next;
             String rest = next.isEmpty() ? "" : det;
             l2 = trip.isEmpty() ? rest : rest.isEmpty() ? trip : rest + " · " + trip;
@@ -531,6 +547,78 @@ final class CarScreen extends FrameLayout {
         roadYes.setText(ac ? "✓ ఆన్" : "🎲 ఆటలు");
         roadYes.setVisibility(ac || games ? VISIBLE : GONE);
         roadNo.setVisibility(ac ? VISIBLE : GONE);
+    }
+
+    // ---- 🙂 P4: Jarvis with the road — he points at the turn, worries over the limit, a thumbs-up for an answered
+    // sleep question, points at the diesel button when it runs low, stretches at two hours, waves at the start and the
+    // end, dresses for the weather, wears sunglasses on a bright afternoon, keeps the day's festival, and glances at the
+    // driver (on the right in an Indian car) or, in a parked game, at the passengers. While moving only the road's own.
+
+    private String cueKey = "";
+    private boolean overShown, fuelCued, stretchCued;
+    private long underSince, stillSince, glanceAt;
+    private String outfitNow = "", occasionNow = "";
+    private final java.util.Random rnd = new java.util.Random();
+
+    /** The maps app's turn is near (400 m or less): he points that way and looks, once per turn. */
+    private void turnCue(int icon, String next, String det) {
+        int dir = CarRoad.pointFor(icon, CarRoad.metersIn(next + " " + det));
+        if (dir == 0) return;
+        String key = icon + "|" + (next + " " + det).replaceAll("[0-9]+([.,][0-9]+)?\\s*(km|m|ft|మీ|కి\\.?\\s?మీ)?", "").trim();
+        if (key.equals(cueKey)) return;
+        cueKey = key;
+        if (state != OrbView.IDLE) return; // (talking: his hands are his words')
+        BodyRig rig = portal.body.rig;
+        rig.gesture(dir < 0 ? "point_l" : "point_r", 2600);
+        rig.glance(dir < 0 ? -0.95f : 0.95f, 0, 2600);
+    }
+
+    private void thumbsUp() {
+        BodyRig rig = portal.body.rig;
+        rig.gesture("thumb", 2600);
+        rig.show("proud", 2600);
+    }
+
+    /** Where he looks between words: at the driver while he talks or listens; now and then while moving; the passengers in a game. */
+    private void glances() {
+        BodyRig rig = portal.body.rig;
+        if (state == OrbView.SPEAKING || state == OrbView.LISTENING) { rig.glance(0.55f, 0.05f, 1300); return; }
+        long now = System.currentTimeMillis();
+        if (state != OrbView.IDLE || dancing || now < glanceAt) return;
+        boolean game = gameOn() && mode == CarTheme.PARKED;
+        if (CarBox.moving() || game) {
+            boolean driver = !game || rnd.nextBoolean();
+            rig.glance(driver ? 0.8f : -0.75f, 0.05f, 1400 + rnd.nextInt(1200));
+        }
+        glanceAt = now + 8000 + rnd.nextInt(8000);
+    }
+
+    /** The weather's clothes (the box's own weather): an umbrella in the rain, a sweater when it's cold; 🕶️ on a bright hot afternoon. */
+    private void dress(android.content.SharedPreferences sp, long at, long now) {
+        boolean fresh = at > 0 && now - at < 3 * 3600_000L;
+        int code = fresh ? sp.getInt("w_code", -1) : -1;
+        float temp = fresh ? sp.getFloat("w_temp", Float.NaN) : Float.NaN;
+        String outfit = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95 ? "umbrella"
+                : !Float.isNaN(temp) && temp < 20 ? "sweater" : "none";
+        BodyRig rig = portal.body.rig;
+        if (!outfit.equals(outfitNow)) { outfitNow = outfit; rig.setOutfit(outfit); }
+        int hr = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        rig.setShades(!night && hr >= 11 && hr < 16 && code >= 0 && code <= 2 && !Float.isNaN(temp) && temp >= 26);
+    }
+
+    /** The day's festival (the same days as the home tablet's: New Year, Sankranti, Easter, the Christmas month, a birthday). */
+    private void occasion() {
+        Calendar c = Calendar.getInstance();
+        String o;
+        try {
+            int mo = c.get(Calendar.MONTH), d = c.get(Calendar.DAY_OF_MONTH);
+            o = !HomeScreen.birthdaysToday(getContext(), c).isEmpty() ? "birthday"
+                    : mo == Calendar.JANUARY && d == 1 ? "newyear"
+                    : mo == Calendar.JANUARY && d >= 13 && d <= 15 ? "sankranti"
+                    : HomeScreen.isEaster(c) ? "easter"
+                    : mo == Calendar.DECEMBER ? "christmas" : "none";
+        } catch (Exception e) { o = "none"; }
+        if (!o.equals(occasionNow)) { occasionNow = o; portal.body.rig.setOccasion(o); }
     }
 
     // ---- 🅿️ P3: parked — the trip's numbers, Jarvis's own little plays, games on the screen for the passengers
@@ -673,6 +761,15 @@ final class CarScreen extends FrameLayout {
         lastDriveMin = min;
         driveChip.setText(CarRoad.driveLine(min));
         int lvl = CarRoad.driveLevel(min);
+        BodyRig rig = portal.body.rig;
+        if (lvl == 2 && !stretchCued) { stretchCued = true; rig.gesture("stretch", 3200); rig.show("caring", 3200); } // 🙆 two hours: a stretch (the tea word is the chip's)
+        if (min == 0) stretchCued = false;
+        double range = Double.NaN;
+        try { range = CarFuel.rangeKm(getContext()); } catch (Exception ignored) {}
+        if (!Double.isNaN(range)) {
+            if (range < 80 && !fuelCued && CarBox.moving()) { fuelCued = true; rig.show("worried", 2600); rig.gesture("point_r", 2600); } // ⛽ towards the diesel button
+            else if (range > 120) fuelCued = false;
+        }
         driveChip.setTextColor(lvl == 0 ? textSoft : look != null && look.light ? 0xFFB26A00 : 0xFFFFB74D);
     }
 
@@ -981,7 +1078,7 @@ final class CarScreen extends FrameLayout {
             long ago = CarCare.alarmAgoMs(); // (an alarm he already answered with ✅ stays gone; a new one comes back)
             alarm = CarCare.on(c) && ago < 60_000 && (dismissedAt == 0 || ago < android.os.SystemClock.elapsedRealtime() - dismissedAt);
         } catch (Exception ignored) {}
-        if (!asking && !alarm) { if (awakeShown) { awake.setVisibility(GONE); awakeShown = false; } return; }
+        if (!asking && !alarm) { if (awakeShown) { awake.setVisibility(GONE); awakeShown = false; if (awakeKind == 1) thumbsUp(); } return; }
         int kind = alarm ? 2 : 1;
         if (awakeShown && kind == awakeKind || H == 0) return; // (shown already; not laid out yet: the next second)
         awakeShown = true;
@@ -998,6 +1095,7 @@ final class CarScreen extends FrameLayout {
             dismissedAt = android.os.SystemClock.elapsedRealtime();
             awake.setVisibility(GONE);
             awakeShown = false;
+            if (awakeKind == 1) thumbsUp();
         });
         LinearLayout.LayoutParams yl = new LinearLayout.LayoutParams(-1, Math.max(1, H * 30 / 100));
         yl.topMargin = H / 30;
@@ -1157,6 +1255,7 @@ final class CarScreen extends FrameLayout {
         long at = sp.getLong("w_at", 0);
         String fuel = CarFuel.chip(getContext()); // ⛽ how far the diesel goes, beside the weather (C12)
         long now = System.currentTimeMillis();
+        dress(sp, at, now);
         if (Drive.navState() != null && !CarAhead.card.isEmpty() && now - CarAhead.cardAt < 20 * 60_000L) { // (the turn has the card: the warning goes here)
             minis.setText((CarAhead.cardRain ? "🌧️ " : "🌫️ ") + CarAhead.card);
             return;
