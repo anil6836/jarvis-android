@@ -46,8 +46,8 @@ final class CarScreen extends FrameLayout {
         void ask(String text);
         /** Jarvis says this (a button's result). */
         void speak(String text);
-        /** A request to Jarvis's brain as if he had said it (label: what the chat shows); the answer is spoken. */
-        void request(String prompt, String label);
+        /** A request to Jarvis's brain as if he had said it (label: what the chat shows); the answer is spoken. False: not now (busy). */
+        boolean request(String prompt, String label);
         void openSettings();
         void openChat();
     }
@@ -167,6 +167,7 @@ final class CarScreen extends FrameLayout {
         board.setEllipsize(TextUtils.TruncateAt.END);
         board.setVisibility(GONE);
         board.setOnClickListener(v -> tap(host::talk));
+        board.setOnLongClickListener(v -> { gameAt = 0; boardCheck(); toast("ఆట ఆపాను"); return true; }); // (a long press: the game ends, the gauge is back)
         midCol.addView(board, new LinearLayout.LayoutParams(-1, 0, 100));
 
         // ---- right: the six big buttons (glass, thin lit icons)
@@ -197,7 +198,10 @@ final class CarScreen extends FrameLayout {
             b.setVisibility(GONE);
             roadCard.addView(b, new LinearLayout.LayoutParams(0, -1, b == roadYes ? 30 : 18));
         }
-        roadYes.setOnClickListener(v -> tap(() -> { if (acAt > 0) acYes(); else showGames(); }));
+        roadYes.setOnClickListener(v -> tap(() -> {
+            if (System.currentTimeMillis() - roadYesAt < 1500) return; // (it just changed what it does: a tap meant for the old one does nothing)
+            if (acAt > 0) acYes(); else showGames();
+        }));
         roadNo.setOnClickListener(v -> tap(() -> { acAt = 0; roadKey = ""; roadCheck(); }));
         roadCard.setOnClickListener(v -> tap(() -> { if (Drive.navState() != null) openMaps(getContext()); }));
         rightCol.addView(roadCard, new LinearLayout.LayoutParams(-1, 0, 25));
@@ -379,7 +383,7 @@ final class CarScreen extends FrameLayout {
         if (!songNow && songOn >= SONG_IN) songNow = true;
         else if (songNow && songOff >= SONG_OUT) songNow = false;
         boolean moving = CarBox.moving();
-        boolean parked = !moving && CarBox.speed() >= 0 && now - DriveService.lastMovingAt > PARKED_AFTER_MS;
+        boolean parked = parkedNow();
         int m = songNow ? CarTheme.MUSIC : parked ? CarTheme.PARKED : CarTheme.DRIVING;
         if (m != mode) { int was = mode; mode = m; palette(); showTalk(); modeChanged(was, m); }
         rearCheck();
@@ -388,6 +392,11 @@ final class CarScreen extends FrameLayout {
         if (mayDance != beatOn) { beatOn = mayDance; if (mayDance) beat.start(); else beat.stop(); } // (the beat is followed for the whole song, not switched at every signal)
         boolean dance = mayDance && ("always".equals(pref) || !moving) && !(prefs.carLowMotion() && moving);
         setDancing(dance);
+    }
+
+    /** Stopped a minute and a half with the speed known (a song playing or not). */
+    private boolean parkedNow() {
+        return !CarBox.moving() && CarBox.speed() >= 0 && System.currentTimeMillis() - DriveService.lastMovingAt > PARKED_AFTER_MS;
     }
 
     private void setDancing(boolean on) {
@@ -503,6 +512,7 @@ final class CarScreen extends FrameLayout {
     private final CarRoad.Home homeTrack = new CarRoad.Home();
     private long homeSampleAt, acAt;
     private int homeMin = -1;
+    private long roadYesAt;
     private long lastDriveMin;
     private boolean acOffered;
     private String roadKey = "", musicKeyNow = "";
@@ -520,21 +530,22 @@ final class CarScreen extends FrameLayout {
         if (now - homeSampleAt >= 10_000) {
             homeSampleAt = now;
             Location l = DriveService.last;
-            JSONObject h = l == null || now - l.getTime() > 60_000 ? null : Travel.home(c);
+            boolean fresh = l != null && android.os.SystemClock.elapsedRealtimeNanos() - l.getElapsedRealtimeNanos() < 60_000_000_000L; // (the box's own clock: a GPS time / box time mismatch doesn't matter)
+            JSONObject h = !fresh ? null : Travel.home(c);
             if (h != null && h.has("lat")) {
                 double km = MapMath.meters(l.getLatitude(), l.getLongitude(), h.optDouble("lat"), h.optDouble("lon")) / 1000;
-                if (km < 0.3) homeTrack.reset(); // (home: the next trip learns its own distances)
+                if (km < 0.3) { homeTrack.reset(); acOffered = false; } // (home: the next trip learns its own distances, and may ask again)
                 else homeTrack.sample(now, km);
                 if (km > 15) acOffered = false; // (far from home again: the next coming home may ask once more)
             }
-            homeMin = homeTrack.minutes();
         }
+        homeMin = homeTrack.minutes(now); // (-1 as soon as no fresh GPS came for 30 s: never a stale "ఇంటికి N ని.")
         JSONObject nav = Drive.navState();
         int hm = homeMin;
         int navMin = nav == null ? -1 : CarRoad.minutesIn(nav.optString("trip"));
         if (hm > 0 && navMin >= 0) hm = navMin > hm + 15 ? -1 : navMin; // (the maps app goes past home: not home; else its minutes are better)
         // the AC question: once per coming home, only with his own AC's "on" link, never over the sleep alert's question
-        if (!acOffered && hm > 0 && CarRoad.acTime(hm) && acLink() && !awakeShown) { acOffered = true; acAt = now; }
+        if (!acOffered && hm > 0 && CarRoad.acTime(hm) && CarBox.moving() && acLink() && !awakeShown) { acOffered = true; acAt = now; } // (only on the way: never over the parked 🎲)
         boolean ac = acAt > 0 && now - acAt < 30_000;
         if (!ac) acAt = 0;
         int icon;
@@ -578,7 +589,9 @@ final class CarScreen extends FrameLayout {
         roadIcon.setColour(ac ? 0xFF7FD8FF : accent);
         road1.setText(l1);
         road2.setText(l2);
-        roadYes.setText(ac ? "✓ ఆన్" : "🎲 ఆటలు");
+        String yes = ac ? "✓ ఆన్" : "🎲 ఆటలు";
+        if (!yes.contentEquals(roadYes.getText())) roadYesAt = System.currentTimeMillis();
+        roadYes.setText(yes);
         roadYes.setVisibility(ac || games ? VISIBLE : GONE);
         roadNo.setVisibility(ac ? VISIBLE : GONE);
     }
@@ -599,7 +612,9 @@ final class CarScreen extends FrameLayout {
 
     /** The maps app's turn is near (400 m or less): he points that way and looks, once per turn. */
     private void turnCue(int icon, String next, String det) {
-        int dir = CarRoad.pointFor(icon, CarRoad.metersIn(next + " " + det));
+        int at = CarRoad.metersIn(next);
+        if (at < 0) at = CarRoad.metersIn(det);
+        int dir = CarRoad.pointFor(icon, at);
         if (dir == 0) return;
         String key = icon + "|" + (next + " " + det).replaceAll("[0-9]+([.,][0-9]+)?\\s*(km|m|ft|మీ|కి\\.?\\s?మీ)?", "").trim();
         if (key.equals(cueKey)) return;
@@ -718,7 +733,7 @@ final class CarScreen extends FrameLayout {
             rows.add(new String[]{x[0]});
             final String ask = x[1];
             final String label = x[0];
-            acts.add(() -> { closeSheet(); gameAt = System.currentTimeMillis(); boardCheck(); host.request(ask, label); });
+            acts.add(() -> { closeSheet(); if (host.request(ask, label)) { gameAt = System.currentTimeMillis(); boardCheck(); } });
         }
         openSheet("🎲 ప్రయాణ ఆటలు", CarBox.moving() ? null : "ఆగి ఉన్నప్పుడు ప్రశ్న మధ్యలో పెద్దగా కనిపిస్తుంది. 'ఆట ఆపు' అంటే ఆగుతుంది.", rows, acts, 2);
     }
@@ -1549,25 +1564,27 @@ final class CarScreen extends FrameLayout {
 
     /** From behind while he drives; parked, from the side (his side photo, or the drawing) — or still from behind when no side photo. */
     private void rearCheck() {
-        boolean parked = mode == CarTheme.PARKED;
+        boolean parked = parkedNow();
         hero.setRearNow(fromBehind && hero.hasRear() && (!parked || !hero.hasPhoto()));
     }
 
     /** 🖼️ His own photo (Settings → 🎨; kept only on this box, never in a backup): read again only when it changed. */
     private void wallpaper() {
         java.io.File f = new java.io.File(getContext().getFilesDir(), "car_wall.jpg");
-        long at = f.exists() ? f.lastModified() : 0;
+        final long at = f.exists() ? f.lastModified() : 0;
         if (at == wallAt) return;
         wallAt = at;
-        android.graphics.Bitmap b = null;
-        if (at > 0) {
+        if (at == 0) { backdrop.setPhoto(null); return; }
+        new Thread(() -> { // (read off the main thread)
+            android.graphics.Bitmap b = null;
             try {
                 android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
                 o.inPreferredConfig = android.graphics.Bitmap.Config.RGB_565;
                 b = android.graphics.BitmapFactory.decodeFile(f.getPath(), o);
             } catch (Throwable ignored) {}
-        }
-        backdrop.setPhoto(b);
+            final android.graphics.Bitmap got = b;
+            main.post(() -> { if (wallAt == at) backdrop.setPhoto(got); });
+        }, "car-wall").start();
     }
 
     /** The theme's colours for the mode and the hour, put on everything. */

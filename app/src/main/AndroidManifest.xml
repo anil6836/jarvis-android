@@ -404,13 +404,21 @@
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
         </activity>
-        <!-- 🏠 the car box only: Jarvis as its Home (off until he turns it on in Settings → 🚗; never on the phone) -->
+        <!-- 🏠 the car box only: Jarvis as its Home (off until he turns it on in Settings → 🚗; never on the phone). It points at a
+             screenless step that brings the one MainActivity forward (a Home activity lives in a Home task of its own). -->
+        <activity
+            android:name=".CarHomeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity="com.anil.jarvis.carhome"
+            android:theme="@android:style/Theme.NoDisplay" />
         <activity-alias
             android:name=".CarHome"
             android:enabled="false"
             android:exported="true"
             android:label="Jarvis కారు"
-            android:targetActivity=".MainActivity">
+            android:targetActivity=".CarHomeActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />

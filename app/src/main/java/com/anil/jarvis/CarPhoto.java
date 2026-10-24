@@ -145,12 +145,13 @@ final class CarPhoto {
             Bitmap full = BitmapFactory.decodeFile(f.getPath());
             if (full == null) return null;
             boolean clear = cutout(full);
-            int[] cr = rearCrop(full.getWidth(), full.getHeight(), m);
+            int fw = full.getWidth(), fh = full.getHeight();
+            int[] cr = rearCrop(fw, fh, m);
             int cw = cr[2] - cr[0], ch = cr[3] - cr[1];
             float k = Math.min(1f, 700f / ch);
             Bitmap part = Bitmap.createBitmap(full, cr[0], cr[1], cw, ch);
             if (k < 1) { Bitmap s = Bitmap.createScaledBitmap(part, Math.max(1, Math.round(cw * k)), Math.max(1, Math.round(ch * k)), true); if (s != part) part.recycle(); part = s; }
-            float[] at = rearInCrop(full.getWidth(), full.getHeight(), m, cr, k);
+            float[] at = rearInCrop(fw, fh, m, cr, k);
             if (part != full) full.recycle();
             return new Object[]{part, at, clear};
         } catch (Throwable e) {
@@ -205,7 +206,9 @@ final class CarPhoto {
             boolean ok, clear = cutout(b);
             try (FileOutputStream out = new FileOutputStream(tmp)) { ok = b.compress(clear ? Bitmap.CompressFormat.PNG : Bitmap.CompressFormat.JPEG, clear ? 100 : 88, out); }
             b.recycle();
-            return ok && tmp.renameTo(new File(c.getFilesDir(), name));
+            boolean done = ok && tmp.renameTo(new File(c.getFilesDir(), name));
+            if (!done && !tmp.delete()) tmp.deleteOnExit(); // (no half-written file left behind)
+            return done;
         } catch (Throwable e) {
             return false;
         }
@@ -229,12 +232,13 @@ final class CarPhoto {
             Bitmap full = BitmapFactory.decodeFile(f.getPath());
             if (full == null) return null;
             boolean clear = cutout(full); // (before the cut: the full picture's corners)
-            int[] cr = crop(full.getWidth(), full.getHeight(), m);
+            int fw = full.getWidth(), fh = full.getHeight(); // (kept: the full picture may be recycled below)
+            int[] cr = crop(fw, fh, m);
             int cw = cr[2] - cr[0], ch = cr[3] - cr[1];
             float k = Math.min(1f, 900f / cw);
             Bitmap part = Bitmap.createBitmap(full, cr[0], cr[1], cw, ch);
             if (k < 1) { Bitmap s = Bitmap.createScaledBitmap(part, Math.max(1, Math.round(cw * k)), Math.max(1, Math.round(ch * k)), true); if (s != part) part.recycle(); part = s; }
-            float[] at = inCrop(full.getWidth(), full.getHeight(), m, cr, k);
+            float[] at = inCrop(fw, fh, m, cr, k);
             if (part != full) full.recycle();
             return new Object[]{part, at, clear};
         } catch (Throwable e) {

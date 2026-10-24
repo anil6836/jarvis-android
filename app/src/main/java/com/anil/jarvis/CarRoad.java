@@ -40,7 +40,7 @@ final class CarRoad {
         return Math.max(0, hours) * 60 + Math.max(0, mins);
     }
 
-    private static final Pattern DIST = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(km|కి\\.?\\s?మీ|m\\b|మీ|ft\\b|feet)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DIST = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(km|కి\\.?\\s?మీ|m\\b|మీ|ft\\b(?!\\s*(?:road|rd)\\b))(?!\\s*(?:road|rd)\\b)", Pattern.CASE_INSENSITIVE); // (not "100 Feet Rd", "80 ft road")
 
     /** The distance to the turn in its words ("300 m", "0.4 km", "500 ft", "200 మీ"), in metres, or -1. Pure. */
     static int metersIn(String words) {
@@ -50,7 +50,7 @@ final class CarRoad {
         double v;
         try { v = Double.parseDouble(m.group(1).replace(',', '.')); } catch (Exception e) { return -1; }
         String u = m.group(2).toLowerCase(Locale.ROOT);
-        double metres = u.startsWith("km") || u.startsWith("కి") ? v * 1000 : u.startsWith("ft") || u.startsWith("feet") ? v * 0.3048 : v;
+        double metres = u.startsWith("km") || u.startsWith("కి") ? v * 1000 : u.startsWith("ft") ? v * 0.3048 : v;
         return (int) Math.round(metres);
     }
 
@@ -152,8 +152,9 @@ final class CarRoad {
 
         boolean coming() { return farthest >= 2 && nowKm() >= 0 && rate() > 0; }
 
-        /** Minutes to home (a guess), or -1 when he isn't coming home. */
-        int minutes() {
+        /** Minutes to home (a guess), or -1 when he isn't coming home — or the last sample is over 30 s old (no fresh GPS). */
+        int minutes(long now) {
+            if (n == 0 || now - at[(n - 1) % at.length] > 30_000) return -1;
             double r = rate(), d = nowKm();
             if (!coming() || r <= 0) return -1;
             r = Math.max(12 / 60.0, Math.min(70 / 60.0, r));

@@ -103,12 +103,12 @@ final class CarPortal extends FrameLayout {
         }
         // the glow behind the window
         p.setStyle(Paint.Style.FILL);
-        p.setShader(glow);
+        p.setAlpha(255); p.setShader(glow);
         cv.drawRect(0, 0, w, h, p);
         // the window's dark glass (behind Jarvis)
         float inset = s * 0.085f, rad = (s - 2 * inset) * 0.42f;
         r.set(inset, inset, w - inset, h - inset);
-        p.setShader(glass);
+        p.setAlpha(255); p.setShader(glass);
         cv.drawRoundRect(r, rad, rad, p);
         p.setShader(null);
         super.onDraw(cv);

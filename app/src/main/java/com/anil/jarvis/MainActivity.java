@@ -66,6 +66,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     static final String EXTRA_BRIEF = "brief";
     /** Opened from a notification with a question to ask Jarvis right away. */
     static final String EXTRA_ASK = "jarvis_ask";
+    /** From the car box's Home button (CarHomeActivity): the car screen, nothing else. */
+    static final String EXTRA_CAR_HOME = "jarvis_car_home";
     /** From the features screen: what to show as his message for EXTRA_ASK, a request to finish typing, an action. */
     static final String EXTRA_LABEL = "jarvis_label", EXTRA_FILL = "jarvis_fill", EXTRA_DO = "jarvis_do";
     /** Open the document scanner (from the scan_document tool, possibly started from the Hey Jarvis panel). */
@@ -427,7 +429,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void handleIntent(Intent i) {
         if (i == null) return;
-        if (Intent.ACTION_MAIN.equals(i.getAction()) && i.hasCategory(Intent.CATEGORY_HOME)) { // 🏠 the box's Home button (Jarvis as its Home)
+        if (i.getBooleanExtra(EXTRA_CAR_HOME, false) || Intent.ACTION_MAIN.equals(i.getAction()) && i.hasCategory(Intent.CATEGORY_HOME)) { // 🏠 the box's Home button
+            i.removeExtra(EXTRA_CAR_HOME);
             if (car != null) { car.closeSheet(); showCar(); }
             return;
         }
@@ -1635,11 +1638,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         @Override public void ask(String text) { carSpeak(text, true); }
         @Override public void speak(String text) { carSpeak(text, false); }
-        @Override public void request(String prompt, String label) {
-            if (busy || voice.speaking || voice.listening) { Toast.makeText(MainActivity.this, "Jarvis మాట్లాడుతున్నాడు: అయ్యాక మళ్లీ నొక్కండి", Toast.LENGTH_SHORT).show(); return; }
+        @Override public boolean request(String prompt, String label) {
+            if (busy || voice.speaking || voice.listening) { Toast.makeText(MainActivity.this, "Jarvis మాట్లాడుతున్నాడు: అయ్యాక మళ్లీ నొక్కండి", Toast.LENGTH_SHORT).show(); return false; }
             showCar();
-            if (live != null && live.isOpen()) { askFromOutside(prompt, label); return; }
+            if (live != null && live.isOpen()) { askFromOutside(prompt, label); return true; }
             send(prompt, label, true); // (as if said: the answer is spoken, and a game's question is listened for)
+            return true;
         }
         @Override public void openSettings() { startActivity(new Intent(MainActivity.this, SettingsActivity.class)); }
         @Override public void openChat() {
@@ -2556,7 +2560,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (home != null) { home.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM); home.say(reply); }
         if (car != null) car.setFeeling(prefs.emotions() ? Emotion.forText(reply) : Emotion.CALM);
         if (car != null) car.say(reply);
-        if (car != null && car.gameOn() && reply != null && reply.trim().matches("(?s).*[?？]\\s*$")) homeAskListen = true; // 🎲 a game's question: listened for after it is said
+        if (car != null && car.gameOn()) homeAskListen = true; // 🎲 a game on: Jarvis listens after each turn (a quiz ends with its "D) …", not a "?")
         if (early != null) { // ⚡ B: the rest after the first sentence, in the same voice
             if (voice.finishOpen(reply)) { if (!voice.isPaused()) setOrb(OrbView.SPEAKING); refreshAction(); }
             else finishTurn(); // (that speech was stopped meanwhile: the words are on the screen)
