@@ -180,6 +180,8 @@ final class BodyRig {
     private float mic, voice;
     // the arms: wrist positions (eased) and the hand shapes shown
     private final float[] wR = {152, 860}, wL = {448, 860};
+    /** Where his wrists are now {right x, y, left x, y} (the desk test: the car's steps stay in the window). */
+    float[] wrists() { return new float[]{wR[0], wR[1], wL[0], wL[1]}; }
     private final Hand hR = new Hand("rest", 0, true), hL = new Hand("rest", 0, true);
     // speech: one mouth shape per syllable of the word being spoken
     private float[][] vis = new float[0][];
@@ -274,6 +276,8 @@ final class BodyRig {
     void setDance(boolean on) { if (on || extra != null) x().setDance(on); }
     /** The car's dances: which (IdlePlay.D_*), the song's beat (seconds), a tap's special move. */
     void setDanceStyle(int st) { x().setDanceStyle(st); }
+    /** The next step, from the next bar of the music. */
+    void queueDanceStyle(int st) { x().queueDanceStyle(st); }
     void setBeat(float secondsPerBeat) { x().setBeat(secondsPerBeat); }
     void danceTap() { if (extra != null) extra.danceTap(); }
     boolean dancing() { return extra != null && extra.dancingNow(mode); }

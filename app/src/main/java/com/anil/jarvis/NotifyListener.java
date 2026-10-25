@@ -85,6 +85,48 @@ public class NotifyListener extends NotificationListenerService {
         }
     }
 
+    /** Each music app's player card (the notification carrying its media session): its key, kept as it is posted. */
+    private static final java.util.Map<String, String> playerKeys = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static void notePlayer(StatusBarNotification sbn) {
+        try {
+            android.app.Notification n = sbn.getNotification();
+            if (n != null && n.extras != null && n.extras.containsKey(android.app.Notification.EXTRA_MEDIA_SESSION)) playerKeys.put(sbn.getPackageName(), sbn.getKey());
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * The picture on a music app's player card (the song's album art), or null — for the car screen's song strip. Only
+     * that one notification is fetched (by its key), and only when it is this session's card and shows this song (so
+     * the last song's picture never stays on the next one).
+     */
+    static android.graphics.Bitmap playerPicture(Context c, String pkg, android.media.session.MediaSession.Token token, String title) {
+        NotifyListener l = self;
+        String key = pkg == null ? null : playerKeys.get(pkg);
+        if (l == null || key == null) return null;
+        try {
+            StatusBarNotification[] got = l.getActiveNotifications(new String[]{key});
+            if (got == null || got.length == 0) return null;
+            android.app.Notification n = got[0].getNotification();
+            if (n == null || n.extras == null) return null;
+            Object t = n.extras.getParcelable(android.app.Notification.EXTRA_MEDIA_SESSION);
+            if (token != null && t != null && !token.equals(t)) return null; // (another player of the same app)
+            CharSequence shown = n.extras.getCharSequence(android.app.Notification.EXTRA_TITLE);
+            if (title != null && !title.trim().isEmpty() && (shown == null || !shown.toString().trim().equalsIgnoreCase(title.trim()))) return null; // (still the last song's card)
+            android.graphics.drawable.Icon ic = n.getLargeIcon();
+            android.graphics.drawable.Drawable d = ic == null ? null : ic.loadDrawable(c);
+            if (d instanceof android.graphics.drawable.BitmapDrawable) return ((android.graphics.drawable.BitmapDrawable) d).getBitmap();
+            if (d != null && d.getIntrinsicWidth() > 0 && d.getIntrinsicHeight() > 0) {
+                android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(Math.min(512, d.getIntrinsicWidth()), Math.min(512, d.getIntrinsicHeight()), android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Canvas cv = new android.graphics.Canvas(b);
+                d.setBounds(0, 0, b.getWidth(), b.getHeight());
+                d.draw(cv);
+                return b;
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
     @Override public void onListenerDisconnected() {
         connected = false;
         self = null;
@@ -148,11 +190,12 @@ public class NotifyListener extends NotificationListenerService {
         CallCare.restoreIfLeft(this); // 📞 a ring left softer / silent by a call that ended while Jarvis was away
         try {
             StatusBarNotification[] active = getActiveNotifications();
-            if (active != null) for (StatusBarNotification sbn : active) add(sbn);
+            if (active != null) for (StatusBarNotification sbn : active) { add(sbn); notePlayer(sbn); }
         } catch (Exception ignored) {}
     }
 
     @Override public void onNotificationPosted(StatusBarNotification sbn) {
+        notePlayer(sbn);
         add(sbn);
     }
 

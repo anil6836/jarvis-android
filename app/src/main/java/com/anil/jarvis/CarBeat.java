@@ -66,18 +66,52 @@ final class CarBeat {
 
     float period() { return period; }
 
+    // The song's loudness now (~2 s) against its own over the last ~20 s: a chorus is louder than its verse. Measured by
+    // the Visualizer's own RMS meter (before its waveform is scaled to full size — that waveform shows the beat, not the
+    // level). Silence (a gap between songs, a break) is skipped: the averages wait; a new song starts them again.
+    private final Visualizer.MeasurementPeakRms meas = new Visualizer.MeasurementPeakRms();
+    private boolean measOk;
+    private float eShort = -1, eLong = -1, voiced; // (voiced: seconds of sound measured so far in this song)
+    private long heardAt, sampledAt, loudAt;
+    private static final float SHORT_S = 2f, LONG_S = 20f, WARM_S = 4f;
+    private static final int SILENT_MB = -6000; // (-60 dB: nothing playing)
+
+    /**
+     * The loudness now against the song's own (1: as usual; 1.3: a loud part; 0.7: a quiet one), or 0 when unknown —
+     * no meter on this box, the song's first seconds, or silence. Only numbers: nothing of the sound is kept.
+     */
+    float energy() {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (!on || !measOk || now - loudAt > 2000 || voiced < WARM_S || eLong <= 0) return 0;
+        return eShort / eLong;
+    }
+
+    /** A new song began (the strip saw another title): its loudness is measured afresh, not against the last one's. */
+    void newSong() { eShort = eLong = -1; voiced = 0; }
+
+    /** The beat heard lately, in beats a minute (for the screen; kept 15 s through a quiet passage), or 0. */
+    int bpm() {
+        long now = android.os.SystemClock.uptimeMillis();
+        return on && gapN >= 3 && now - heardAt < 15_000 ? Math.round(60f / period) : 0;
+    }
+
     void start() {
         if (on) return;
         on = true;
         avg = -1;
         gapN = 0;
+        eShort = eLong = -1;
+        voiced = 0;
+        heardAt = sampledAt = loudAt = 0;
+        measOk = false;
         try {
             vis = new Visualizer(0); // (the output mix: what the car speakers get)
             vis.setEnabled(false);
             vis.setCaptureSize(256);
+            try { measOk = vis.setMeasurementMode(Visualizer.MEASUREMENT_MODE_PEAK_RMS) == Visualizer.SUCCESS; } catch (Throwable ignored) {}
             int rate = Math.min(Visualizer.getMaxCaptureRate(), 40_000); // (milli-Hz: 40 a second)
             vis.setDataCaptureListener(new Visualizer.OnDataCaptureListener() {
-                @Override public void onWaveFormDataCapture(Visualizer v, byte[] wave, int sr) { sample(wave); }
+                @Override public void onWaveFormDataCapture(Visualizer v, byte[] wave, int sr) { sample(v, wave); }
                 @Override public void onFftDataCapture(Visualizer v, byte[] fft, int sr) {}
             }, rate, true, false);
             vis.setEnabled(true);
@@ -96,20 +130,38 @@ final class CarBeat {
         vis = null;
     }
 
-    /** One capture: its loudness against the running average; a clear jump after at least 0.3 s is a beat. */
-    private void sample(byte[] wave) {
+    /**
+     * One capture (on the main thread: the listener was set there): the song's level from the meter for the loud / quiet
+     * parts; the waveform's own loudness against its running average for the beat — a clear jump after 0.3 s is one.
+     */
+    private void sample(Visualizer v, byte[] wave) {
+        long now = android.os.SystemClock.uptimeMillis();
+        float dt = sampledAt == 0 ? 0.05f : Math.min(1f, (now - sampledAt) / 1000f); // (the box decides how often: 10–40 a second)
+        sampledAt = now;
+        if (measOk) {
+            int mb = SILENT_MB - 1;
+            try { if (v.getMeasurementPeakRms(meas) == Visualizer.SUCCESS) mb = meas.mRms; } catch (Throwable ignored) {}
+            if (mb > SILENT_MB) { // (silence: the averages wait)
+                float lv = (float) Math.pow(10, mb / 2000.0); // (millibels → amplitude)
+                loudAt = now;
+                voiced += dt;
+                float aS = Math.max(1 - (float) Math.exp(-dt / SHORT_S), dt / voiced), aL = Math.max(1 - (float) Math.exp(-dt / LONG_S), dt / voiced); // (a plain average while warming up)
+                if (eShort < 0) { eShort = lv; eLong = lv; }
+                else { eShort += (lv - eShort) * Math.min(1, aS); eLong += (lv - eLong) * Math.min(1, aL); }
+            }
+        }
         double sum = 0;
-        for (byte b : wave) { int v = (b & 0xFF) - 128; sum += v * v; }
+        for (byte b : wave) { int x = (b & 0xFF) - 128; sum += x * x; }
         float e = (float) Math.sqrt(sum / Math.max(1, wave.length));
         if (avg < 0) { avg = e; return; }
         boolean hit = e > avg * 1.45f && e > 6;
         avg += (e - avg) * 0.08f;
         if (!hit) return;
-        long now = android.os.SystemClock.uptimeMillis();
         if (now - lastBeat < 300) return;
         float gap = (now - lastBeat) / 1000f;
         lastBeat = now;
         if (gap > 0.35f && gap < 0.9f) {
+            heardAt = now;
             gaps[gapN % gaps.length] = gap;
             gapN++;
             if (gapN >= 3) {
@@ -118,6 +170,7 @@ final class CarBeat {
                 period = s[s.length / 2]; // (the median: one odd gap doesn't throw the dance)
             }
         } else if (gap >= 0.9f && gap < 1.8f) { // (a beat every other bar was heard: half of it)
+            heardAt = now;
             float half = gap / 2;
             if (half > 0.35f) period = period * 0.7f + half * 0.3f;
         }

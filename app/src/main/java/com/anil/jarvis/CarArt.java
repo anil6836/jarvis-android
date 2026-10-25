@@ -339,9 +339,11 @@ final class CarArt {
     static final class Icon extends View {
         static final int MIC = 0, WAY = 1, MUSIC = 2, FUEL = 3, HOME = 4, SLEEP = 5, GAMES = 6, QUIZ = 7, STORY = 8, APPS = 9,
                 LEFT = 10, RIGHT = 11, AHEAD = 12, UTURN = 13, ROUND = 14, ARRIVE = 15, SLIGHT_LEFT = 16, SLIGHT_RIGHT = 17,
-                RAIN = 18, FOG = 19, ROAD = 20, SNOW = 21, CLOCK = 22, PARK = 23, PREV = 24, PLAY = 25, NEXT = 26, CUP = 27, STAR = 28;
+                RAIN = 18, FOG = 19, ROAD = 20, SNOW = 21, CLOCK = 22, PARK = 23, PREV = 24, PLAY = 25, NEXT = 26, CUP = 27, STAR = 28,
+                PAUSE = 29;
         private int kind;
         private int colour = 0xFF5FF3FF;
+        private boolean ring; // (the song's play key: a lit round button, so it stands out between ⏮ and ⏭)
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path path = new Path();
 
@@ -355,15 +357,29 @@ final class CarArt {
 
         void setColour(int c) { if (colour != c) { colour = c; invalidate(); } }
         void setKind(int k) { if (kind != k) { kind = k; invalidate(); } }
+        void setRing(boolean b) { if (ring != b) { ring = b; invalidate(); } }
+        private float fill = 1;
+        /** The sign this part of the view's square (the rest: room around it that still takes the tap). */
+        void setFill(float f) { f = Math.max(0.2f, Math.min(1, f)); if (fill != f) { fill = f; invalidate(); } }
         int kind() { return kind; }
 
         @Override protected void onDraw(Canvas cv) {
-            float s = Math.min(getWidth(), getHeight());
+            float s = Math.min(getWidth(), getHeight()) * fill;
             if (s <= 0) return;
             float u = s / 52f; // the icons are drawn on a 52-unit box
             cv.save();
             cv.translate((getWidth() - s) / 2f, (getHeight() - s) / 2f);
             cv.scale(u, u);
+            if (ring) { // a soft disc in the colour and its rim
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(CarTheme.withAlpha(colour, 0x2E));
+                cv.drawCircle(26, 26, 24, p);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(2f);
+                p.setColor(CarTheme.withAlpha(colour, 0xAA));
+                cv.drawCircle(26, 26, 24, p);
+                cv.scale(0.62f, 0.62f, 26, 26); // (the sign inside the ring)
+            }
             p.setStrokeWidth(2.6f);
             // the glow, then the line
             p.setColor(CarTheme.withAlpha(colour, 0x55));
@@ -482,9 +498,11 @@ final class CarArt {
                 case PREV:
                     q.moveTo(14, 14); q.lineTo(14, 38); q.moveTo(38, 14); q.lineTo(19, 26); q.lineTo(38, 38); q.close();
                     break;
-                case PLAY: // play and pause together: the strip doesn't guess which one the app is in
-                    q.moveTo(10, 13); q.lineTo(28, 26); q.lineTo(10, 39); q.close();
-                    q.moveTo(34, 14); q.lineTo(34, 38); q.moveTo(42, 14); q.lineTo(42, 38);
+                case PLAY: // ▶ (the song is paused: tap to play)
+                    q.moveTo(17, 11); q.lineTo(40, 26); q.lineTo(17, 41); q.close();
+                    break;
+                case PAUSE: // ⏸ (the song plays: tap to pause)
+                    q.moveTo(19, 12); q.lineTo(19, 40); q.moveTo(33, 12); q.lineTo(33, 40);
                     break;
                 case NEXT:
                     q.moveTo(38, 14); q.lineTo(38, 38); q.moveTo(14, 14); q.lineTo(33, 26); q.lineTo(14, 38); q.close();

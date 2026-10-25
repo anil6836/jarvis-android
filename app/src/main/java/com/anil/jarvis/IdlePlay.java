@@ -98,17 +98,27 @@ final class IdlePlay {
     private static final int I_UMBRELLA = 1, I_KITE = 2, I_FAN = 3;          // what his free hand holds
 
     void moment(int m) { idle = 0; end(); moment = m; mt = 0; }
-    void setDance(boolean b) { if (b && !dance) dancePhase = 0; dance = b; if (b) end(); }
+    void setDance(boolean b) { if (b && !dance) dancePhase = 0; if (!b) queuedStyle = -1; dance = b; if (b) end(); }
 
-    // ---- the dance (the home tablet: style 0 at 100 beats a minute, as before; the car picks styles and hears the beat)
-    static final int D_SWAY = 0, D_SHIMMY = 1, D_CLAP = 2, D_STEPS = 3, D_SLOW = 4, D_DRUMS = 5, D_STYLES = 6;
-    private int danceStyle;
+    // ---- the dance (the home tablet: style 0 at 100 beats a minute, as before; the car changes the step with the song
+    // (CarDance) and hears the beat)
+    static final int D_SWAY = 0, D_SHIMMY = 1, D_CLAP = 2, D_STEPS = 3, D_SLOW = 4, D_DRUMS = 5,
+            D_HANDS_UP = 6, D_POINT = 7, D_ROLL = 8, D_PUMP = 9, D_LASSO = 10, D_ROBOT = 11, D_SHOULDER = 12, D_STYLES = 13;
+    private int danceStyle, queuedStyle = -1;
+    private float queuedAt; // (the beat the queued step starts on: the next bar)
     private float beat = 0.6f, special, specialAt, dancePhase; // (dancePhase: beats danced so far, advanced each frame — a new tempo never jumps the dance)
     private static final float SPECIAL_LEN = 1.6f;
 
-    /** Which dance (D_*); out of range: the sway. */
-    void setDanceStyle(int st) { danceStyle = st < 0 || st >= D_STYLES ? D_SWAY : st; }
+    /** Which dance (D_*), at once; out of range: the sway. */
+    void setDanceStyle(int st) { danceStyle = st < 0 || st >= D_STYLES ? D_SWAY : st; queuedStyle = -1; }
+    /** The next step, from the next bar (every 4 beats) — a step change lands on the music, not in the middle of a move. */
+    void queueDanceStyle(int st) {
+        if (!dance) { setDanceStyle(st); return; }
+        queuedStyle = st < 0 || st >= D_STYLES ? D_SWAY : st;
+        queuedAt = (float) Math.floor(dancePhase / 4 + 1) * 4;
+    }
     int danceStyle() { return danceStyle; }
+    int queuedStyle() { return queuedStyle; }
     /** Seconds per beat of the song (0.35–0.9; else kept). */
     void setBeat(float secondsPerBeat) {
         if (secondsPerBeat < 0.35f || secondsPerBeat > 0.9f) return;
@@ -148,7 +158,10 @@ final class IdlePlay {
         this.dt = dt;
         T += dt;
         idle += dt;
-        if (dance) dancePhase += dt / beat;
+        if (dance) {
+            dancePhase += dt / beat;
+            if (queuedStyle >= 0 && dancePhase >= queuedAt) { danceStyle = queuedStyle; queuedStyle = -1; }
+        }
         int mode = r.mode();
         boolean still = mode == BodyRig.IDLE;
         if (moment >= 0 && (mt += dt) >= MOMENT_LEN[moment]) moment = -1;
@@ -1506,30 +1519,102 @@ final class IdlePlay {
                 return;
             }
         }
+        // the car's steps are quicker on the beat than the tablet's gentle sway (the arms follow faster)
+        if (danceStyle != D_SWAY && danceStyle != D_SLOW) armK = danceStyle == D_ROBOT ? 3.2f : 2.2f;
+        int bar = (int) Math.floor(b / 8); // (two bars: the steps that use one side swap sides every 8 beats)
+        float dir = bar % 2 == 0 ? -1 : 1; // (-1: his right hand, the screen's left; +1: his left)
+        int s0 = dir < 0 ? 0 : 1, s1 = 1 - s0;
         switch (danceStyle) {
-            case D_SHIMMY: { // shoulders in, out, a snap of the fingers at the chest
-                float sh = sin(PI * b);
-                bodyDx = 6 * sh; headTilt = -4 * sh; headDy = 3 * bob;
+            case D_SHIMMY: { // shoulders in, out, a snap of the fingers at the chest; the hands lift on the bar's first beat
+                float sh = sin(PI * b), lift = ((int) Math.floor(b)) % 2 == 0 ? (1 - ph) : 0; // (a lift every other beat)
+                bodyDx = 10 * sh; headTilt = -6 * sh; headDy = 4 * bob;
                 if (!otherFace) face = ((int) (b / 4)) % 2 == 0 ? DANCE1 : DANCE2;
-                arm(0, 232 + 12 * sh, 598 - 6 * bob, 18 + 10 * sh, ph < 0.15f ? "open" : "thumb", false);
-                arm(1, 368 + 12 * sh, 598 - 6 * bob, -18 + 10 * sh, ph < 0.15f ? "open" : "thumb", false);
+                arm(0, 226 + 36 * sh, 594 - 10 * bob - 80 * lift, 18 + 14 * sh, ph < 0.15f ? "open" : "thumb", false);
+                arm(1, 374 + 36 * sh, 594 - 10 * bob - 80 * lift, -18 + 14 * sh, ph < 0.15f ? "open" : "thumb", false);
                 break;
             }
-            case D_CLAP: { // the hands meet on every beat
-                float gap = 18 + 70 * (float) Math.pow(Math.abs(sin(PI * ph)), 0.7); // (wide, together on the beat)
-                headDy = 5 * bob; headTilt = 4 * sw;
+            case D_CLAP: { // the hands meet on every beat, up at the face on the bar's first beat
+                float gap = 18 + 84 * (float) Math.pow(Math.abs(sin(PI * ph)), 0.7); // (wide, together on the beat)
+                float hi = ((int) Math.floor(b)) % 4 == 0 ? 90 : 0;
+                headDy = 6 * bob; headTilt = 5 * sw; bodyDx = 4 * sw;
                 if (!otherFace) face = DANCE2;
-                arm(0, 300 - gap, 600 - 8 * bob, 8 + 0.2f * gap, "open", false);
-                arm(1, 300 + gap, 600 - 8 * bob, -8 - 0.2f * gap, "open", false);
+                arm(0, 300 - gap, 590 - 10 * bob - hi, 8 + 0.2f * gap, "open", false);
+                arm(1, 300 + gap, 590 - 10 * bob - hi, -8 - 0.2f * gap, "open", false);
                 break;
             }
             case D_STEPS: { // the mass step: one arm up, the other low, swapping every beat; the body bounces
                 boolean left = ((int) Math.floor(b)) % 2 == 0;
                 float up = (float) Math.sin(PI * ph); // (the raised arm pumps)
-                bodyDy = 6 * bob; headTilt = left ? -8 : 8; headDy = 4 * bob;
+                bodyDy = 8 * bob; bodyDx = left ? -6 : 6; headTilt = left ? -10 : 10; headDy = 5 * bob;
                 if (!otherFace) face = ((int) (b / 2)) % 2 == 0 ? DANCE2 : DANCE1;
-                if (left) { arm(0, 168, 330 - 26 * up, -20, "open", false); arm(1, 372 + 8 * up, 650, -8, "open", true); }
-                else { arm(1, 432, 330 - 26 * up, 20, "open", false); arm(0, 228 - 8 * up, 650, 8, "open", true); }
+                if (left) { arm(0, 160, 300 - 30 * up, -22, "open", false); arm(1, 380 + 10 * up, 650, -8, "open", true); }
+                else { arm(1, 440, 300 - 30 * up, 22, "open", false); arm(0, 220 - 10 * up, 650, 8, "open", true); }
+                break;
+            }
+            case D_HANDS_UP: { // a concert: both hands up, swaying together, a little jump up on each beat
+                float pulse = (1 - ph) * (1 - ph);
+                bodyDx = 10 * sw; bodyDy = 3 * bob; headTilt = 7 * sw; headDy = 5 * bob;
+                if (!otherFace) face = bar % 2 == 0 ? DANCE_WOW : DANCE2;
+                arm(0, 140 + 46 * sw, 256 - 24 * pulse, -16 + 18 * sw, "open", false);
+                arm(1, 460 + 46 * sw, 256 - 24 * pulse, 16 + 18 * sw, "open", false);
+                break;
+            }
+            case D_POINT: { // the disco point: up and out on the beat, down to the hip between; the other hand on the hip
+                boolean up = ((int) Math.floor(b)) % 2 == 0;
+                headDy = 4 * bob; headTilt = up ? 9 * dir : -3 * dir; bodyDx = up ? 7 * dir : 0;
+                if (!otherFace) face = ((int) (b / 4)) % 2 == 0 ? DANCE1 : DANCE2;
+                if (up) { arm(s0, 300 + 196 * dir, 224, 30 * dir, "point", false); gaze = true; gx = 0.9f * dir; gy = -0.6f; }
+                else arm(s0, 300 + 110 * dir, 660, -10 * dir, "open", true);
+                arm(s1, 300 - 150 * dir, 664, -26 * dir, "side", true);
+                break;
+            }
+            case D_ROLL: { // rolling the forearms round each other at the chest, a turn every two beats
+                double a = PI * b;
+                float r = 50;
+                bodyDy = 5 * bob; bodyDx = 5 * sw; headDy = 6 * bob; headTilt = 5 * sw;
+                if (!otherFace) face = ((int) (b / 4)) % 2 == 0 ? DANCE2 : DANCE1;
+                arm(0, 262 + r * (float) Math.cos(a), 552 + 32 * (float) Math.sin(a), 40, "hold", true);
+                arm(1, 338 + r * (float) Math.cos(a + PI), 552 + 32 * (float) Math.sin(a + PI), -40, "hold", true);
+                break;
+            }
+            case D_PUMP: { // the fist pump: one fist punches up on every beat, the other at the chest; a big nod
+                float hit = (float) Math.pow(1 - ph, 1.6);
+                headDy = 9 * hit; headTilt = 4 * dir * hit; bodyDy = 4 * hit;
+                if (!otherFace) face = ((int) Math.floor(b)) % 4 == 0 ? DANCE_WOW : DANCE2;
+                arm(s0, 300 + 168 * dir, 474 - 214 * hit, -10 * dir, "hold", false); // (out beside the head, never at the face)
+                arm(s1, 300 - 70 * dir, 600, -20 * dir, "hold", true);
+                break;
+            }
+            case D_LASSO: { // one hand twirls above the shoulder (a towel round and round), the other on the hip
+                double a = PI * b;
+                bodyDx = 5 * dir * Math.abs(sw); headTilt = 5 * dir + 3 * sw; headDy = 5 * bob;
+                if (!otherFace) face = bar % 2 == 0 ? DANCE2 : DANCE_WOW;
+                arm(s0, 300 + 176 * dir + 40 * (float) Math.cos(a), 240 + 16 * (float) Math.sin(a), 12 * dir, "point", false); // (beside the head, not over it)
+                arm(s1, 300 - 150 * dir, 664, -26 * dir, "side", true);
+                gaze = true; gx = 0.7f * dir; gy = -0.45f;
+                break;
+            }
+            case D_ROBOT: { // the robot: stiff poses that click into place on each beat, the head turning in steps
+                int pose = ((int) Math.floor(b)) % 4;
+                headDy = 2 * bob;
+                headTilt = pose == 0 ? -8 : pose == 1 ? 8 : pose == 2 ? 0 : 4;
+                headDx = pose == 0 ? -6 : pose == 1 ? 6 : 0;
+                if (!otherFace) face = DANCE1;
+                switch (pose) {
+                    case 0: arm(0, 150, 360, 0, "side", false); arm(1, 420, 540, -90, "side", true); break; // (right forearm up, left forward)
+                    case 1: arm(0, 180, 540, 90, "side", true); arm(1, 450, 360, 0, "side", false); break;  // (swapped)
+                    case 2: arm(0, 210, 536, 90, "side", true); arm(1, 390, 536, -90, "side", true); break; // (both forward)
+                    default: arm(0, 150, 360, 0, "side", false); arm(1, 450, 360, 0, "side", false);        // (both up)
+                }
+                break;
+            }
+            case D_SHOULDER: { // shoulder pops: one shoulder up on each beat, the head nodding, the hands loose and low
+                boolean left = ((int) Math.floor(b)) % 2 == 0;
+                float pop = (float) Math.pow(1 - ph, 2);
+                bodyDx = (left ? -7 : 7) * pop; bodyDy = -3 * pop; headTilt = (left ? 7 : -7) * pop; headDy = 6 * bob;
+                if (!otherFace) face = ((int) (b / 4)) % 2 == 0 ? DANCE1 : DANCE2;
+                arm(0, 204 - (left ? 30 * pop : 0), 676 - (left ? 96 * pop : 6), 12, "open", true);
+                arm(1, 396 + (left ? 0 : 30 * pop), 676 - (left ? 6 : 96 * pop), -12, "open", true);
                 break;
             }
             case D_SLOW: { // a slow song: eyes closed, a gentle sway at half the beat, humming
@@ -1540,13 +1625,17 @@ final class IdlePlay {
                 arm(1, 338 + 10 * s2, 630, -10, "open", true);
                 break;
             }
-            case D_DRUMS: { // air drums: the fists hit left, right, left…
-                boolean left = ((int) Math.floor(b)) % 2 == 0;
-                float hit = 1 - (float) Math.pow(ph, 0.5); // (down fast at the beat, up again)
-                headDy = 7 * bob; headTilt = 3 * sw;
+            case D_DRUMS: { // air drums: the sticks come down on the beat, left, right…, and a cymbal crash on the bar's last beat
+                int beatNo = ((int) Math.floor(b)) % 4;
+                boolean left = beatNo % 2 == 0;
+                float rise = ph * ph; // (down on the beat, lifted again for the next)
+                headDy = 8 * bob; headTilt = 4 * sw;
                 if (!otherFace) face = ((int) (b / 4)) % 2 == 0 ? DANCE1 : DANCE2;
-                arm(0, 200, 560 + (left ? 40 * hit : 10), 24, "hold", true);
-                arm(1, 400, 560 + (left ? 10 : 40 * hit), -24, "hold", true);
+                if (beatNo == 3) { arm(0, 118, 392, -30, "hold", false); arm(1, 400, 520, -24, "hold", true); }
+                else {
+                    arm(0, 196, left ? 616 - 130 * rise : 520, 24, "hold", true);
+                    arm(1, 404, left ? 520 : 616 - 130 * rise, -24, "hold", true);
+                }
                 break;
             }
             default: { // the sway (the home tablet's dance): hands low and loose, swaying together from side to side

@@ -72,7 +72,11 @@ final class CarScreen extends FrameLayout {
     private final TextView apps;
     private final TextView clock, date, minis, stateText, subText, chips, gear, chat, driveChip, road1, road2, roadYes, roadNo, musicText, board;
     private final LinearLayout roadCard, musicStrip;
-    private final CarArt.Icon roadIcon, prevKey, playKey, nextKey;
+    private final CarArt.Icon roadIcon, prevKey, playKey, nextKey, artIcon;
+    private final FrameLayout artBox;
+    private final android.widget.ImageView artImg;
+    private final TextView songSub;
+    private int stripW, stripH;
     private final List<View> tiles = new ArrayList<>();
     private final List<CarArt.Icon> tileIcons = new ArrayList<>();
     private final FrameLayout sheet, ask, awake, saver;
@@ -85,7 +89,10 @@ final class CarScreen extends FrameLayout {
     private long saidAt;
     private CarTheme.Look look;
     private final CarBeat beat;
-    private int danceStyle = -1;
+    private final CarDance dj = new CarDance(); // 💃 the next step, with the song's beat and loudness
+    private long danceTickAt;
+    private int bpmShown;
+    private final boolean[] cheerNow = new boolean[1];
     private boolean songNow, beatOn;
     private int ticks;
     private int songOn, songOff;
@@ -205,7 +212,7 @@ final class CarScreen extends FrameLayout {
         roadNo.setOnClickListener(v -> tap(() -> { acAt = 0; roadKey = ""; roadCheck(); }));
         roadCard.setOnClickListener(v -> tap(() -> { if (Drive.navState() != null) openMaps(getContext()); }));
         rightCol.addView(roadCard, new LinearLayout.LayoutParams(-1, 0, 25));
-        rightCol.addView(tileGrid, new LinearLayout.LayoutParams(-1, 0, 57));
+        rightCol.addView(tileGrid, new LinearLayout.LayoutParams(-1, 0, 54));
         Object[][] t = {{CarArt.Icon.MIC, "మాట్లాడు", "talk"}, {CarArt.Icon.WAY, "దారి", "way"}, {CarArt.Icon.MUSIC, "పాటలు", "music"},
                 {CarArt.Icon.FUEL, "డీజిల్", "fuel"}, {CarArt.Icon.HOME, "ఇల్లు", "home"}, {CarArt.Icon.SLEEP, "నిద్ర", "sleep"}};
         for (int r = 0; r < 2; r++) {
@@ -222,16 +229,45 @@ final class CarScreen extends FrameLayout {
             }
         }
 
-        // the song strip at the bottom: its name and ⏮ ⏯ ⏭ (the music app's own keys)
+        // the song strip at the bottom: the song's picture, its name (and singer · app), and ⏮ ⏯ ⏭ well apart
         musicStrip = new LinearLayout(a);
         musicStrip.setOrientation(LinearLayout.HORIZONTAL);
         musicStrip.setGravity(Gravity.CENTER_VERTICAL);
-        musicText = autoText(a, "", false, 32);
-        musicText.setGravity(Gravity.CENTER_VERTICAL);
-        musicText.setOnClickListener(v -> tap(this::showMusic));
-        musicStrip.addView(musicText, new LinearLayout.LayoutParams(0, -1, 52));
+        artBox = new FrameLayout(a);
+        artIcon = new CarArt.Icon(a, CarArt.Icon.MUSIC); // (no picture: a note)
+        artIcon.setFill(0.72f);
+        artBox.addView(artIcon, new FrameLayout.LayoutParams(-1, -1));
+        artImg = new android.widget.ImageView(a);
+        artImg.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        artImg.setClipToOutline(true);
+        artImg.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override public void getOutline(View v, android.graphics.Outline o) {
+                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), Math.min(v.getWidth(), v.getHeight()) * 0.18f);
+            }
+        });
+        artImg.setVisibility(GONE);
+        artBox.addView(artImg, new FrameLayout.LayoutParams(-1, -1));
+        artBox.setOnClickListener(v -> tap(this::showMusic));
+        musicStrip.addView(artBox, new LinearLayout.LayoutParams(0, 0));
+        LinearLayout words = new LinearLayout(a);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.setGravity(Gravity.CENTER_VERTICAL);
+        musicText = new TextView(a); // (the song's name: one line, cut with "…" — never shrunk to a size nobody can read)
+        musicText.setTypeface(Typeface.DEFAULT_BOLD);
+        musicText.setMaxLines(1);
+        musicText.setEllipsize(TextUtils.TruncateAt.END);
+        musicText.setIncludeFontPadding(false);
+        songSub = new TextView(a); // (the singer · the app)
+        songSub.setMaxLines(1);
+        songSub.setEllipsize(TextUtils.TruncateAt.END);
+        songSub.setIncludeFontPadding(false);
+        words.addView(musicText, new LinearLayout.LayoutParams(-1, -2));
+        words.addView(songSub, new LinearLayout.LayoutParams(-1, -2));
+        words.setOnClickListener(v -> tap(this::showMusic));
+        musicStrip.addView(words, new LinearLayout.LayoutParams(0, -1, 1));
         prevKey = new CarArt.Icon(a, CarArt.Icon.PREV);
         playKey = new CarArt.Icon(a, CarArt.Icon.PLAY);
+        playKey.setRing(true);
         nextKey = new CarArt.Icon(a, CarArt.Icon.NEXT);
         String[] keyAct = {"⏮", "⏯", "⏭"};
         CarArt.Icon[] keys = {prevKey, playKey, nextKey};
@@ -239,9 +275,14 @@ final class CarScreen extends FrameLayout {
             final String k = keyAct[i];
             keys[i].setClickable(true);
             keys[i].setOnClickListener(v -> tap(() -> { musicKey(k); main.postDelayed(this::musicCheck, 700); }));
-            musicStrip.addView(keys[i], new LinearLayout.LayoutParams(0, -1, 16));
+            musicStrip.addView(keys[i], new LinearLayout.LayoutParams(0, 0));
         }
-        rightCol.addView(musicStrip, new LinearLayout.LayoutParams(-1, 0, 18));
+        // the picture, the words and the keys are sized from the strip's own height (known only after layout)
+        musicStrip.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> {
+            int w = r0 - l0, h = b0 - t0;
+            if (w > 0 && h > 0 && (w != stripW || h != stripH)) { stripW = w; stripH = h; main.post(() -> sizeStrip(w, h)); }
+        });
+        rightCol.addView(musicStrip, new LinearLayout.LayoutParams(-1, 0, 21)); // (a little taller: the song's picture and two lines)
 
         // ---- over everything: a sheet of choices, a yes / no question, the sleep alert's ✅
         sheet = overlay(a);
@@ -392,6 +433,22 @@ final class CarScreen extends FrameLayout {
         if (mayDance != beatOn) { beatOn = mayDance; if (mayDance) beat.start(); else beat.stop(); } // (the beat is followed for the whole song, not switched at every signal)
         boolean dance = mayDance && ("always".equals(pref) || !moving) && !(prefs.carLowMotion() && moving);
         setDancing(dance);
+        if (dancing) danceTick();
+    }
+
+    /** While he dances (each second): the next step when the phrase is over or the song turns quiet / loud; the beat shown. */
+    private void danceTick() {
+        long now = android.os.SystemClock.uptimeMillis();
+        float dt = Math.min(3f, (now - danceTickAt) / 1000f);
+        danceTickAt = now;
+        BodyRig rig = portal.body.rig;
+        if (rig.dancing()) { // (not while he listens or talks: the dance waits, and so do its phrases)
+            int next = dj.tick(dt, beat.period(), beat.energy(), rnd, cheerNow);
+            if (cheerNow[0]) rig.danceTap(); // 🙌 the song just got loud: a cheer first
+            if (next >= 0) rig.queueDanceStyle(next);
+        }
+        int bpm = Math.round(beat.bpm() / 5f) * 5; // (to the nearest 5: the number doesn't flicker)
+        if (bpm != bpmShown) { bpmShown = bpm; showTalk(); }
     }
 
     /** Stopped a minute and a half with the speed known (a song playing or not). */
@@ -405,15 +462,12 @@ final class CarScreen extends FrameLayout {
         BodyRig rig = portal.body.rig;
         rig.setIdlePlays(mode == CarTheme.PARKED && !on); // (his own plays wait while he dances)
         if (on) {
-            // a new dance: another style than the last one; the slow sway only to a slow song
-            int pick;
-            if (beat.period() > 0.75f && danceStyle != IdlePlay.D_SLOW) pick = IdlePlay.D_SLOW;
-            else { java.util.Random rnd = new java.util.Random(); do { pick = rnd.nextInt(IdlePlay.D_STYLES); } while (pick == IdlePlay.D_SLOW || pick == danceStyle); }
-            danceStyle = pick;
-            rig.setDanceStyle(danceStyle);
+            // a new dance: another step than the last song's; the slow sway to a slow song (then the steps change with it)
+            rig.setDanceStyle(dj.start(beat.period(), beat.energy(), rnd));
             rig.setBeat(beat.period());
             rig.setDance(true);
             rig.poke();
+            danceTickAt = android.os.SystemClock.uptimeMillis();
         } else {
             rig.setDance(false);
         }
@@ -491,7 +545,7 @@ final class CarScreen extends FrameLayout {
         else if (state == OrbView.THINKING) { st = "💭 ఆలోచిస్తున్నాను…"; sub = ""; }
         else if (state == OrbView.SPEAKING) { st = "◉ Jarvis చెబుతున్నాడు…"; sub = said.isEmpty() ? "" : moving ? CarBox.shortLine(said, 40) : said; }
         else {
-            st = dancing ? "♪ Jarvis డాన్స్ చేస్తున్నాడు" : mode == CarTheme.MUSIC ? "♪ పాట వస్తోంది" : mode == CarTheme.PARKED ? "● ఆగి ఉన్నారు · నన్ను తాకండి 🙂" : "● నడుపుతున్నారు · అంతా బాగుంది";
+            st = dancing ? (bpmShown > 0 ? "♪ Jarvis డాన్స్ · బీట్ " + bpmShown : "♪ Jarvis డాన్స్ చేస్తున్నాడు") : mode == CarTheme.MUSIC ? "♪ పాట వస్తోంది" : mode == CarTheme.PARKED ? "● ఆగి ఉన్నారు · నన్ను తాకండి 🙂" : "● నడుపుతున్నారు · అంతా బాగుంది";
             if (!said.isEmpty() && System.currentTimeMillis() - saidAt < 30_000) sub = moving ? CarBox.shortLine(said, 40) : said;
             else sub = hint();
         }
@@ -920,32 +974,109 @@ final class CarScreen extends FrameLayout {
         }, "car-ac").start();
     }
 
-    /** Every 2 s: the song strip — its name and app (never more than the title), and the keys while something plays. */
+    /**
+     * Every 2 s: the song strip — the song's picture (the album art its app gives), its name, the singer · the app (never
+     * more than that), and the keys while something plays: ▶ when it is paused, ⏸ while it plays.
+     */
     private void musicCheck() {
-        String t;
-        boolean keys;
+        String t, sub, artKey = "";
+        boolean keys, playing = false;
         try {
             JSONObject o = Music.panel(getContext());
             if (o.optBoolean("none")) {
                 keys = false;
-                t = o.optBoolean("access", true) ? "🎵 పాట లేదు · ఇక్కడ నొక్కండి" : "🎵 పాట పేరు కోసం: నోటిఫికేషన్ యాక్సెస్ ఇవ్వండి";
+                boolean access = o.optBoolean("access", true);
+                t = access ? "🎵 పాట లేదు" : "🎵 పాట పేరు కోసం";
+                sub = access ? "ఇక్కడ నొక్కండి" : "నోటిఫికేషన్ యాక్సెస్ ఇవ్వండి";
             } else {
                 keys = true;
-                String title = o.optString("title");
-                t = (o.optBoolean("playing") ? "♪ " : "⏸ ") + (title.isEmpty() ? o.optString("app") : title + " · " + o.optString("app"));
+                playing = o.optBoolean("playing");
+                String title = o.optString("title"), artist = o.optString("artist"), app = o.optString("app");
+                t = title.isEmpty() ? app : title;
+                sub = title.isEmpty() ? (playing ? "ప్లే అవుతోంది" : "ఆగింది") : artist.isEmpty() ? app : artist + " · " + app;
+                if (!o.optBoolean("jarvis")) artKey = app + "|" + title + "|" + artist; // (Jarvis's own radio has no picture)
+                songCheck(app + "|" + title + "|" + artist);
             }
         } catch (Exception e) {
             keys = false;
             t = "🎵";
+            sub = "";
         }
-        String key = t + keys;
+        artCheck(artKey);
+        String key = t + "|" + sub + "|" + keys + playing;
         if (key.equals(musicKeyNow)) return;
         musicKeyNow = key;
         musicText.setText(t);
+        songSub.setText(sub);
+        playKey.setKind(playing ? CarArt.Icon.PAUSE : CarArt.Icon.PLAY);
         int v = keys ? VISIBLE : INVISIBLE;
         prevKey.setVisibility(v);
         playKey.setVisibility(v);
         nextKey.setVisibility(v);
+    }
+
+    private String songNowKey = "";
+
+    /** Another song in the same run of music: its loudness measured afresh, and a new opening step to it. */
+    private void songCheck(String key) {
+        if (key.equals(songNowKey)) return;
+        boolean had = !songNowKey.isEmpty();
+        songNowKey = key;
+        if (!had || !dancing) return;
+        beat.newSong();
+        portal.body.rig.queueDanceStyle(dj.start(beat.period(), 0, rnd));
+    }
+
+    private String artKeyNow = "", artMissKey = "";
+    private int artMiss;
+
+    /** The song changed: its picture, read off the main thread (asked again a few times: apps often send it a moment after the name). */
+    private void artCheck(String key) {
+        if (key.equals(artKeyNow)) return;
+        artKeyNow = key;
+        if (key.isEmpty()) { showArt(null); return; }
+        final Context c = getContext().getApplicationContext();
+        final int size = 256; // (sharp at any strip size: the strip may not be laid out yet when the first song is read)
+        new Thread(() -> {
+            android.graphics.Bitmap b = null;
+            try { b = Music.art(c, size); } catch (Throwable ignored) {}
+            final android.graphics.Bitmap got = b;
+            main.post(() -> {
+                if (!key.equals(artKeyNow)) return; // (another song meanwhile)
+                showArt(got);
+                if (got == null) {
+                    if (!key.equals(artMissKey)) { artMissKey = key; artMiss = 0; }
+                    if (++artMiss < 4) artKeyNow = "?" + key; // (the next look, 2 s later, asks again)
+                }
+            });
+        }, "car-song-art").start();
+    }
+
+    private void showArt(android.graphics.Bitmap b) {
+        artImg.setImageBitmap(b);
+        artImg.setVisibility(b == null ? GONE : VISIBLE);
+        artIcon.setVisibility(b == null ? VISIBLE : INVISIBLE);
+    }
+
+    /** The strip's parts from its own size: the picture a square, the words in the middle, ⏮ ⏯ ⏭ in their own slots with room between. */
+    private void sizeStrip(int w, int h) {
+        int inner = Math.max(1, h - musicStrip.getPaddingTop() - musicStrip.getPaddingBottom());
+        int avail = Math.max(1, w - musicStrip.getPaddingLeft() - musicStrip.getPaddingRight());
+        int art = Math.max(1, Math.min(Math.round(inner * 0.94f), Math.round(avail * 0.16f)));
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(art, art);
+        ap.rightMargin = Math.round(art * 0.2f);
+        artBox.setLayoutParams(ap);
+        musicText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(12, inner * 0.27f));
+        songSub.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(10, inner * 0.20f));
+        songSub.setPadding(0, Math.round(inner * 0.06f), 0, 0);
+        int slot = Math.max(1, Math.round(avail * 0.14f)); // (three slots: 42 % of the strip; each key is its slot's middle, room on both sides)
+        int key = Math.max(1, Math.min(Math.round(slot * 0.62f), Math.round(inner * 0.55f)));
+        int play = Math.max(1, Math.min(Math.round(slot * 0.86f), Math.round(inner * 0.85f)));
+        CarArt.Icon[] keys = {prevKey, playKey, nextKey};
+        for (int i = 0; i < 3; i++) { // (each key takes taps over its whole slot; the sign sits small in its middle)
+            keys[i].setLayoutParams(new LinearLayout.LayoutParams(slot, -1));
+            keys[i].setFill((i == 1 ? play : key) / (float) Math.max(1, Math.min(slot, inner)));
+        }
     }
 
     /** Every 10 s: how long he has driven without a real stop; amber near 2 hours, the tea cup after. */
@@ -1506,7 +1637,7 @@ final class CarScreen extends FrameLayout {
         }
         int cp = Math.max(4, Math.min(w, h) / 50);
         roadCard.setPadding(cp, cp / 2, cp, cp / 2);
-        musicStrip.setPadding(cp * 2, cp / 3, cp, cp / 3);
+        musicStrip.setPadding(cp, cp / 3, cp / 2, cp / 3);
         subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, h / 24f));
         board.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(14, h / 15f));
         board.setMaxLines(7);
@@ -1629,6 +1760,9 @@ final class CarScreen extends FrameLayout {
         road1.setTextColor(textMain);
         road2.setTextColor(textSoft);
         musicText.setTextColor(textMain);
+        songSub.setTextColor(textSoft);
+        artIcon.setColour(accent);
+        artBox.setBackground(round(CarTheme.withAlpha(accent, 0x22), CarTheme.withAlpha(accent, 0x55), 10));
         roadYes.setTextColor(Color.WHITE);
         roadYes.setBackground(round(0xFF1E6B4A, CarTheme.withAlpha(accent, 0x88), 14));
         roadNo.setTextColor(textSoft);

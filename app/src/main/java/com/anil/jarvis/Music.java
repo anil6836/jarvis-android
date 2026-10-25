@@ -65,7 +65,7 @@ final class Music {
         AudioManager am = c.getSystemService(AudioManager.class);
         if (am != null) o.put("vol", am.getStreamVolume(AudioManager.STREAM_MUSIC) * 100 / Math.max(1, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)));
         if (SoundService.radioOn || !SoundService.nowPlaying.isEmpty()) {
-            return o.put("app", "Jarvis రేడియో").put("title", SoundService.station.isEmpty() ? SoundService.nowPlaying : SoundService.station).put("playing", true).put("jarvis", true);
+            return o.put("app", "Jarvis రేడియో").put("title", SoundService.station.isEmpty() ? SoundService.nowPlaying : SoundService.station).put("playing", !(SoundService.radioOn && SoundService.radioPaused)).put("jarvis", true); // (the radio paused: ▶ on the keys)
         }
         MediaController mc = active(c);
         if (mc == null) return o.put("none", true).put("access", NotifyListener.enabled(c));
@@ -76,6 +76,83 @@ final class Music {
     }
 
     private static String nz(String s) { return s == null ? "" : s; }
+
+    /**
+     * The song's picture for the car screen (off the main thread), at most {@code size} pixels, or null: the picture the
+     * music app gives with the song, else its player notification's picture, else the picture's link in the song's
+     * details (the app's own file, or its https image). Only the playing app's player card is looked at, nothing else.
+     */
+    static android.graphics.Bitmap art(Context c, int size) {
+        MediaController mc = active(c);
+        if (mc == null) return null;
+        android.graphics.Bitmap b = null;
+        MediaMetadata md = mc.getMetadata();
+        if (md != null) {
+            for (String k : new String[]{MediaMetadata.METADATA_KEY_ALBUM_ART, MediaMetadata.METADATA_KEY_ART, MediaMetadata.METADATA_KEY_DISPLAY_ICON}) {
+                try { b = md.getBitmap(k); } catch (Exception ignored) {}
+                if (b != null) break;
+            }
+        }
+        if (b == null) b = NotifyListener.playerPicture(c, mc.getPackageName(), mc.getSessionToken(), md == null ? null : md.getString(MediaMetadata.METADATA_KEY_TITLE));
+        if (b == null && md != null) {
+            for (String k : new String[]{MediaMetadata.METADATA_KEY_ALBUM_ART_URI, MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI}) {
+                String u = md.getString(k);
+                if (u != null && !u.isEmpty()) b = pictureAt(c, u, size);
+                if (b != null) break;
+            }
+        }
+        return b == null ? null : fit(b, size);
+    }
+
+    /** A picture from the song's link: the app's own content / file, or an https image (≤ 3 MB, 8 s). */
+    private static android.graphics.Bitmap pictureAt(Context c, String link, int size) {
+        try {
+            android.net.Uri u = android.net.Uri.parse(link);
+            String s = u.getScheme() == null ? "" : u.getScheme().toLowerCase(java.util.Locale.ROOT);
+            byte[] data;
+            if (s.equals("content") || s.equals("android.resource") || s.equals("file")) {
+                try (java.io.InputStream in = c.getContentResolver().openInputStream(u)) { data = read(in); }
+            } else if (s.equals("https")) {
+                java.net.HttpURLConnection h = (java.net.HttpURLConnection) new java.net.URL(link).openConnection();
+                h.setConnectTimeout(8000);
+                h.setReadTimeout(8000);
+                try (java.io.InputStream in = h.getInputStream()) { data = read(in); } finally { h.disconnect(); }
+            } else return null;
+            if (data == null) return null;
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            android.graphics.BitmapFactory.decodeByteArray(data, 0, data.length, o);
+            int big = Math.max(o.outWidth, o.outHeight), sample = 1;
+            while (big / (sample * 2) >= size) sample *= 2;
+            o = new android.graphics.BitmapFactory.Options();
+            o.inSampleSize = sample;
+            return android.graphics.BitmapFactory.decodeByteArray(data, 0, data.length, o);
+        } catch (Throwable e) {
+            return null; // (not readable for us: the note stays)
+        }
+    }
+
+    private static byte[] read(java.io.InputStream in) throws java.io.IOException {
+        if (in == null) return null;
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        int n, total = 0;
+        while ((n = in.read(buf)) > 0) {
+            total += n;
+            if (total > 3_000_000) return null; // (not a song's picture)
+            out.write(buf, 0, n);
+        }
+        return out.toByteArray();
+    }
+
+    /** At most size × size (the screen shows it small; a phone-sized picture would only cost memory). */
+    private static android.graphics.Bitmap fit(android.graphics.Bitmap b, int size) {
+        int w = b.getWidth(), h = b.getHeight(), big = Math.max(w, h);
+        if (w <= 0 || h <= 0) return null;
+        if (big <= size) return b;
+        float k = size / (float) big;
+        return android.graphics.Bitmap.createScaledBitmap(b, Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)), true);
+    }
 
     /** "ఈ పాట ఏది?" (also offline). */
     static String nowLine(Context c) {
