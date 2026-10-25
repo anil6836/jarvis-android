@@ -186,6 +186,45 @@ final class CarKit {
         }
     }
 
+    // ================================================================ ⑧'s light
+
+    /** ⑧: a soft cone of the theme's colour from the top onto Jarvis, and a lit floor under him. */
+    static Drawable spotlight(final CarTheme.Look l) {
+        return new Drawable() {
+            private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final android.graphics.Path cone = new android.graphics.Path();
+            private Shader coneSh, floorSh;
+            private Rect made;
+
+            @Override public void draw(Canvas cv) {
+                Rect b = getBounds();
+                float w = b.width(), h = b.height();
+                if (w <= 0 || h <= 0) return;
+                float cx = b.exactCenterX(), top = b.top, floorY = top + h * 0.86f;
+                if (made == null || !made.equals(b)) {
+                    made = new Rect(b);
+                    cone.rewind();
+                    cone.moveTo(cx - w * 0.07f, top); cone.lineTo(cx + w * 0.07f, top); cone.lineTo(cx + w * 0.40f, floorY); cone.lineTo(cx - w * 0.40f, floorY); cone.close();
+                    coneSh = new android.graphics.LinearGradient(0, top, 0, floorY, new int[]{CarTheme.withAlpha(l.accent, 0x50), CarTheme.withAlpha(l.accent, 0x0A)}, null, Shader.TileMode.CLAMP);
+                    floorSh = new RadialGradient(cx, floorY, Math.max(1, w * 0.40f), new int[]{CarTheme.withAlpha(l.accent, 0x70), CarTheme.withAlpha(l.accent, 0x00)}, null, Shader.TileMode.CLAMP);
+                }
+                p.setStyle(Paint.Style.FILL);
+                p.setShader(coneSh);
+                cv.drawPath(cone, p);
+                int s = cv.save();
+                cv.scale(1, 0.16f, cx, floorY);
+                p.setShader(floorSh);
+                cv.drawCircle(cx, floorY, w * 0.40f, p);
+                cv.restoreToCount(s);
+                p.setShader(null);
+            }
+
+            @Override public void setAlpha(int alpha) {}
+            @Override public void setColorFilter(ColorFilter cf) {}
+            @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+        };
+    }
+
     // ================================================================ the chrome round button (behind a tile's sign)
 
     /**

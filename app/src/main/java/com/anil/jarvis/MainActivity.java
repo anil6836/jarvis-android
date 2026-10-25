@@ -2386,6 +2386,28 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
     }
 
+    /** A thing Jarvis did here at once (no AI): his words, the answer said. */
+    private void localSay(String said, String say) {
+        long now = System.currentTimeMillis();
+        showTab(0);
+        store.addChat("user", said, false);
+        addMessage("user", said, now, null);
+        store.addChat("assistant", say, false);
+        addMessage("assistant", say, now, null);
+        lastWasVoice = false; // (done: no listening after it)
+        if (prefs.voiceReplies()) {
+            talking(true);
+            voice.speak(say, prefs.speechRate());
+        } else {
+            finishTurn();
+        }
+    }
+
+    @Override public void onMultiWindowModeChanged(boolean inMultiWindow, android.content.res.Configuration c) {
+        super.onMultiWindowModeChanged(inMultiWindow, c);
+        if (car != null) car.windowChanged(); // (G2: the box's split screen began / ended)
+    }
+
     private TextView thinkingView;
     private View thinkingWrap;
 
@@ -2407,6 +2429,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 switchVoice(prompt, mode, byVoice);
                 return;
             }
+            String g = car == null ? null : CarLayout.mapWords(prompt); // 🗺️ the box: "Google Maps పెట్టు" / "నీ మ్యాప్ పెట్టు" — the car's map, at once
+            if (g != null) { localSay(prompt, car.mapMode(g)); return; }
         }
         if (home != null && prompt != null && !prompt.trim().isEmpty()) { // the home tablet: the day's AI limit (his key pays)
             if (HomeCare.overLimit(this)) { homeReply(prompt, HomeCare.limitText(this)); return; }

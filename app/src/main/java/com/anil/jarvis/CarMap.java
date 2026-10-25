@@ -41,6 +41,8 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         void menu();
         /** ⤢: the Google Maps app itself. */
         void bigMaps();
+        /** "🗺️ మ్యాప్ మార్చు": the Google Maps app beside Jarvis (G2) instead of this map. */
+        void switchMap();
     }
 
     static final String[][] CHIPS = {{"☕ టీ", "tea", "☕ టీ / కాఫీ"}, {"⛽ బంక్", "petrol", "⛽ పెట్రోల్"}, {"🍛 హోటల్", "restaurant", "🍛 హోటల్ / దాబా"},
@@ -55,7 +57,8 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     private final List<TextView> chipViews = new ArrayList<>(), sideViews = new ArrayList<>();
     private final CarArt.Icon turnIcon;
     private final TextView turn1, turn2, eta, speed, note;
-    private final TextView trafficBtn, satBtn;
+    private final TextView trafficBtn, satBtn, mapPill;
+    private final HorizontalScrollView chipScroll;
     private boolean shown, googleOff, started, sourceBusy;
     private long googleOffAt, sourceAskedAt;
     private String session = "", keyTag = "", noteKey = "";
@@ -91,7 +94,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         addView(map, new LayoutParams(-1, -1));
 
         // top: the quick chips (Jarvis Maps' "on my way")
-        HorizontalScrollView hs = new HorizontalScrollView(c);
+        HorizontalScrollView hs = chipScroll = new HorizontalScrollView(c);
         hs.setHorizontalScrollBarEnabled(false);
         chipBar = new LinearLayout(c);
         chipBar.setOrientation(LinearLayout.HORIZONTAL);
@@ -107,6 +110,10 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         chipViews.add(all);
         hs.addView(chipBar);
         addView(hs, new LayoutParams(-1, -2, Gravity.TOP));
+        // top right: "🗺️ మ్యాప్ మార్చు" → the Google Maps app beside Jarvis (G2)
+        mapPill = pill(c, "🗺️ మ్యాప్ మార్చు");
+        mapPill.setOnClickListener(v -> tap(host::switchMap));
+        addView(mapPill, new LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
 
         // the turn (the Google Maps app's next step) under the chips
         turn = new LinearLayout(c);
@@ -225,6 +232,16 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
             t.setLayoutParams(lp);
         }
         chipBar.setPadding(pad, 0, pad, 0);
+        mapPill.setTextSize(TypedValue.COMPLEX_UNIT_PX, txt);
+        mapPill.setPadding(pad * 2, pad, pad * 2, pad);
+        mapPill.setBackground(card(999, true));
+        LayoutParams pl = (LayoutParams) mapPill.getLayoutParams();
+        pl.setMargins(0, pad, pad, 0);
+        mapPill.setLayoutParams(pl);
+        mapPill.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        LayoutParams cl = (LayoutParams) chipScroll.getLayoutParams(); // (the chips scroll beside it, never under it)
+        cl.setMargins(0, 0, mapPill.getMeasuredWidth() + pad * 2, 0);
+        chipScroll.setLayoutParams(cl);
         for (TextView t : sideViews) {
             t.setTextSize(TypedValue.COMPLEX_UNIT_PX, btn * 0.42f);
             t.setBackground(card(btn * 0.28f, false));
@@ -291,6 +308,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         textSoft = look.light ? 0xFF3A4656 : 0xFFB9CCDA;
         for (TextView t : chipViews) t.setTextColor(textMain);
         for (TextView t : sideViews) t.setTextColor(textMain);
+        mapPill.setTextColor(textMain);
         for (TextView t : new TextView[]{turn1, eta, speed}) t.setTextColor(textMain);
         turnIcon.setColour(look.light ? 0xFF0B1118 : 0xFFFFFFFF);
         sizes(getWidth(), getHeight());

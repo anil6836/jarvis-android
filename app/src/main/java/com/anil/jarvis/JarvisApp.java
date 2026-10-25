@@ -16,6 +16,7 @@ public class JarvisApp extends Application {
         try { VoskModel.dropTelugu(this); } catch (Throwable ignored) {} // the removed offline Telugu model's files (58 MB) go
         try { WatchAlerts.schedule(this); } catch (Exception ignored) {} // the watch's half-hourly news (after a phone restart too)
         try { HomeCare.start(this); } catch (Exception ignored) {} // the home tablet: అమ్మగారు's day (only in home mode)
+        try { CarBubble.hook(this); } catch (Exception ignored) {} // 🫧 the box: the small Jarvis over Google Maps while the car screen is away
     }
 
     /**

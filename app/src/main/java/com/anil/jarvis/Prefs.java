@@ -482,6 +482,11 @@ final class Prefs {
     String carMapZoom() { return sp.getString("car_map_zoom", ""); }
     /** ③: the map card leans back (3D). */
     boolean carMapTilt() { return sp.getBoolean("car_map_tilt", true); }
+    /** 🗺️ The car's map: "g1" Jarvis's own map on the car screen, "g2" the Google Maps app beside Jarvis (the box's window). */
+    String carMapMode() { return sp.getString("car_map_mode", "g1"); }
+    /** ⑧ Parked with a song: Jarvis's stage. 🫧 The small Jarvis over other apps while the car screen is away. */
+    boolean carStage() { return sp.getBoolean("car_stage", true); }
+    boolean carBubble() { return sp.getBoolean("car_bubble", true); }
     /** The new Jarvis's look: a = navy jacket, b = kurta, c = zip jacket (Anil's pick). */
     String bodyLook() { return sp.getString("body_look", "c"); }
     /** Skin tone 1 (lighter) .. 3 (deeper). */

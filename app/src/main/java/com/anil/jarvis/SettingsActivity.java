@@ -3331,6 +3331,25 @@ public class SettingsActivity extends Activity {
         box.addView(gaugeRow);
         box.addView(wallRow);
         box.addView(dance);
+        Switch stage = toggle("🕺 ఆగి ఉన్నప్పుడు పాట వస్తే Jarvis స్టేజ్ (⑧: Jarvis పెద్దగా లైట్ కింద డాన్స్; కారు కదలగానే మీ స్క్రీన్; ✕ నొక్కితే ఆ పాటకి వద్దు)", prefs.carStage());
+        stage.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_stage", v).apply());
+        // 🗺️ G1 / G2, and what this box allows for G2
+        final TextView mapModeRow = Ui.text(this, "", 15.5f, accent), splitRow = Ui.text(this, "🧪 Google Maps పక్క కిటికీ పరీక్ష (G2: ఈ box ఇస్తుందా?)", 15.5f, accent);
+        for (TextView t : new TextView[]{mapModeRow, splitRow}) t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        final String[] modes = {"g1", "g2"}, modeNames = {"Jarvis మ్యాప్ (G1: మన స్క్రీన్‌లోనే)", "Google Maps పక్కన (G2: box కిటికీలో, Jarvis కుడివైపు)"};
+        Runnable showMode = () -> mapModeRow.setText("🗺️ దారి మ్యాప్: " + ("g2".equals(prefs.carMapMode()) ? modeNames[1] : modeNames[0]) + "  (మార్చడానికి నొక్కండి)");
+        showMode.run();
+        mapModeRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("దారి మ్యాప్ (కారు స్క్రీన్ మీద \"🗺️ మ్యాప్ మార్చు\" తో కూడా మారుతుంది)")
+                .setSingleChoiceItems(modeNames, "g2".equals(prefs.carMapMode()) ? 1 : 0, (d, w) -> {
+                    prefs.sp.edit().putString("car_map_mode", modes[w]).apply();
+                    showMode.run();
+                    d.dismiss();
+                }).show());
+        splitRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🧪 G2: Google Maps పక్క కిటికీ").setMessage(CarSplit.report(this)).setPositiveButton("సరే", null).show());
+        box.addView(mapModeRow);
+        box.addView(splitRow);
         box.addView(mapColourRow);
         box.addView(zoomRow);
         Switch tilt = toggle("📐 ③ 3D మ్యాప్ డాష్‌లో మ్యాప్ వెనక్కి వంగి ఉండాలి (3D లాగా)", prefs.carMapTilt());
@@ -3339,6 +3358,12 @@ public class SettingsActivity extends Activity {
         low.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_low_motion", v).apply());
         Switch saver = toggle("🕰️ ఆగి 5 నిమిషాలు ఎవరూ తాకకపోతే నల్లని స్క్రీన్‌సేవర్ గడియారం (తాకితే లేస్తుంది)", prefs.carSaver());
         saver.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_saver", v).apply());
+        Switch bubble = toggle("🫧 Google Maps / వేరే యాప్ పైన చిన్న Jarvis బుడగ (లోపల స్పీడ్; నొక్కితే Jarvis స్క్రీన్, పట్టుకుంటే వింటాడు; లాగి ఎక్కడైనా పెట్టుకోవచ్చు)", prefs.carBubble());
+        bubble.setOnCheckedChangeListener((sw, v) -> {
+            prefs.sp.edit().putBoolean("car_bubble", v).apply();
+            CarBubble.refresh();
+            if (v && !Settings.canDrawOverlays(this)) Toast.makeText(this, "బుడగకి 'Display over other apps' అనుమతి కావాలి: Jarvis చెక్‌లో ఇవ్వండి", Toast.LENGTH_LONG).show();
+        });
         Switch home = toggle("🏠 Jarvis ని ఈ box హోమ్‌గా పెట్టు (Home బటన్ → Jarvis; మిగతా ఆప్స్: స్క్రీన్‌పై ▦)", CarApps.homeOn(this));
         home.setOnCheckedChangeListener((sw, v) -> {
             CarApps.setHome(this, v);

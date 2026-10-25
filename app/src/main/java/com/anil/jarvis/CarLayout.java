@@ -10,7 +10,11 @@ final class CarLayout {
     private CarLayout() {}
 
     static final String CLASSIC = "classic", MAPCARDS = "mapcards", HALFMAP = "halfmap", NAV = "nav",
-            COCKPIT = "cockpit", CHROME = "chrome", MAP3D = "map3d";
+            COCKPIT = "cockpit", CHROME = "chrome", MAP3D = "map3d",
+            /** ⑧ parked with a song: Jarvis big on a lit stage (never picked by hand: it comes and goes by itself). */
+            STAGE = "stage",
+            /** G2: the Google Maps app in the box's own window beside Jarvis; Jarvis's column on the right. */
+            SIDE = "side";
     /** The shapes he can pick (in this order in ⚙️), and their names. */
     static final String[] CHOICES = {COCKPIT, CHROME, MAP3D, MAPCARDS, CLASSIC, HALFMAP};
     static final String[] NAMES = {"① కాక్‌పిట్ 3D", "② క్రోమ్ డయల్స్", "③ 3D మ్యాప్ డాష్", "④ మ్యాప్ + కార్డులు", "⑥ ఇప్పటి స్క్రీన్ (క్లాసిక్)", "⑦ సగం మ్యాప్"};
@@ -32,6 +36,36 @@ final class CarLayout {
         String c = valid(chosen);
         if (trip && mapOnTrip && !hasMap(c)) return deep(c) ? MAP3D : NAV;
         return c;
+    }
+
+    /**
+     * The same, with G2 chosen (the Google Maps app beside Jarvis instead of Jarvis's map): a shape that would show the
+     * map gives its room to Google Maps' window. Pure.
+     */
+    static String now(String chosen, boolean trip, boolean mapOnTrip, boolean g2) {
+        String c = now(chosen, trip, mapOnTrip);
+        return g2 && hasMap(c) ? SIDE : c;
+    }
+
+    private static final java.util.regex.Pattern G2_WORDS = java.util.regex.Pattern.compile(
+            "^(google maps?|గూగుల్ మ్యాప్(స్)?|గూగుల్ మేప్(స్)?)\\s*(ని|ను|నే)?\\s*(పక్కన )?(పెట్టు|పెట్టండి|పెట్టవా|పెట్టరా|కి మారు|కు మారు|కి మార్చు|కు మార్చు)$"
+                    + "|^(switch to|put|show) google maps?( beside)?$");
+    private static final java.util.regex.Pattern G1_WORDS = java.util.regex.Pattern.compile(
+            "^(నీ|మన|నా|నీ సొంత)?\\s*(మ్యాప్|మ్యాపు|మేప్|map)\\s*(ని|ను)?\\s*(పెట్టు|పెట్టండి|పెట్టవా|కి మారు|కు మారు|కి మార్చు|కు మార్చు|చూపించు)$"
+                    + "|^(switch to|put|show) (your |the )?map$"); // (his name is taken out first: "switch to Jarvis map" → "switch to map")
+
+    /**
+     * 🗺️ His words to switch the car's map: "g2" ("Jarvis, Google Maps పెట్టు"), "g1" ("Jarvis, నీ మ్యాప్ పెట్టు"), else
+     * null. Only the whole short sentence counts ("Google Maps లో దారి పెట్టు" is not a switch). Pure.
+     */
+    static String mapWords(String text) {
+        if (text == null) return null;
+        String t = text.toLowerCase(java.util.Locale.ROOT).replaceAll("[\u200c\u200d]", "").replaceAll("(jarvis|జార్విస్|జర్విస్)", " ")
+                .replaceAll("[,.!?।\"'“”]", " ").replaceAll("\\s+", " ").trim();
+        if (t.isEmpty() || t.length() > 60) return null;
+        if (G2_WORDS.matcher(t).matches()) return "g2";
+        if (G1_WORDS.matcher(t).matches()) return "g1";
+        return null;
     }
 
     /** This shape shows the map. Pure. */

@@ -89,6 +89,11 @@ final class CarScreen extends FrameLayout {
     private final java.util.Map<TextView, Integer> autoMax = new java.util.LinkedHashMap<>(); // (the words that grow with their box, and their biggest size)
     private float textScale = 1f;
     private String deckKey = "";
+    // ⑧ the stage (parked with a song) and G2 (the Google Maps app beside Jarvis)
+    private final LinearLayout stageLeft, stageMid, sideTop, sideText;
+    private final List<View> stageBtns = new ArrayList<>();
+    private final TextView stageExit, mapPill, mapGap;
+    private boolean stageSkip, besideNow;
     private final List<View> tiles = new ArrayList<>();
     private final List<CarArt.Icon> tileIcons = new ArrayList<>();
     private final FrameLayout sheet, ask, awake, saver;
@@ -302,6 +307,7 @@ final class CarScreen extends FrameLayout {
             @Override public void along(String what, String label) { JarvisMaps.openAlong(getContext(), what, label); }
             @Override public void menu() { JarvisMaps.open(getContext(), ""); }
             @Override public void bigMaps() { openMaps(getContext()); }
+            @Override public void switchMap() { toast(mapMode("g2")); }
         });
 
         // ---- 🎛️ ① ② ③'s cards (not on the screen until a 3D shape wants them): the parts above are put into them
@@ -338,6 +344,35 @@ final class CarScreen extends FrameLayout {
         chip(a, "➕ అన్నీ", () -> JarvisMaps.open(getContext(), ""));
         alongScroll.addView(alongRow, new FrameLayout.LayoutParams(-1, -1));
         gauge.setOnLongClickListener(v -> { chooseGauge(); return true; }); // (held, parked: the speed's look)
+
+        // ---- ⑧ the stage: 🗺️ 🎲 🎤 down the left, Jarvis big under a light, ✕ to leave it for this song
+        stageLeft = column(a);
+        stageMid = column(a);
+        int[] sk = {CarArt.Icon.MAP, CarArt.Icon.GAMES, CarArt.Icon.MIC};
+        Runnable[] sr = {() -> JarvisMaps.open(getContext(), ""), this::showGames, host::talk};
+        for (int i = 0; i < 3; i++) {
+            CarArt.Icon b = new CarArt.Icon(a, sk[i]);
+            b.setFill(0.48f);
+            b.setClickable(true);
+            final Runnable r = sr[i];
+            b.setOnClickListener(v -> tap(r));
+            stageBtns.add(b);
+        }
+        stageExit = autoText(a, "✕ స్టేజ్ ఆపు", true, 30);
+        stageExit.setGravity(Gravity.CENTER);
+        stageExit.setOnClickListener(v -> tap(() -> { stageSkip = true; shapeCheck(); })); // (this song: the usual screen; the next song brings the stage again)
+        // ---- G2: Google Maps' own window on the left, Jarvis's column on the right with "🗺️ మ్యాప్ మార్చు"
+        sideTop = new LinearLayout(a);
+        sideTop.setOrientation(LinearLayout.HORIZONTAL);
+        sideTop.setGravity(Gravity.CENTER_VERTICAL);
+        sideText = column(a);
+        mapPill = autoText(a, "🗺️ మ్యాప్ మార్చు", true, 30);
+        mapPill.setGravity(Gravity.CENTER);
+        mapPill.setOnClickListener(v -> tap(() -> toast(mapMode("g1"))));
+        mapGap = new TextView(a); // (under Google Maps' window; seen only when it isn't there: a tap brings it)
+        mapGap.setText("🗺️ Google Maps ఇక్కడ వస్తుంది\n(రాకపోతే ఇక్కడ నొక్కండి)");
+        mapGap.setGravity(Gravity.CENTER);
+        mapGap.setOnClickListener(v -> tap(() -> toast(openBeside())));
         portal.setOnLongClickListener(v -> { chooseJarvis(); return true; }); // (held, parked: Jarvis's size)
 
         // ---- over everything: a sheet of choices, a yes / no question, the sleep alert's ✅
@@ -513,6 +548,7 @@ final class CarScreen extends FrameLayout {
         if (heard) { songOn++; songOff = 0; } else { songOff++; songOn = 0; }
         if (!songNow && songOn >= SONG_IN) songNow = true;
         else if (songNow && songOff >= SONG_OUT) songNow = false;
+        if (!songNow) stageSkip = false; // (✕ was for that song only)
         boolean moving = CarBox.moving();
         boolean parked = parkedNow();
         int m = songNow ? CarTheme.MUSIC : parked ? CarTheme.PARKED : CarTheme.DRIVING;
@@ -1876,7 +1912,82 @@ final class CarScreen extends FrameLayout {
     private void shapeCheck() {
         JSONObject nav = Drive.navState();
         boolean trip = nav != null && !(nav.optString("next").isEmpty() && nav.optString("detail").isEmpty());
-        arrange(CarLayout.now(prefs.carLayout(), trip, prefs.carNavMap()));
+        boolean g2 = "g2".equals(prefs.carMapMode());
+        String s = CarLayout.now(prefs.carLayout(), trip, prefs.carNavMap(), g2);
+        if (g2 && besideNow) s = CarLayout.SIDE; // (he asked for Google Maps beside: Jarvis on the right whatever the shape)
+        else if (!CarLayout.SIDE.equals(s) && stageNow()) s = CarLayout.STAGE;
+        arrange(s);
+    }
+
+    /** ⑧: parked a while, a song on and Jarvis dancing (and he didn't close it for this song). */
+    private boolean stageNow() {
+        return prefs.carStage() && dancing && !stageSkip && parkedNow() && !CarBox.moving();
+    }
+
+    /**
+     * 🗺️ G1 (Jarvis's map on this screen) or G2 (the Google Maps app beside Jarvis): his words ("Jarvis, Google Maps
+     * పెట్టు" / "నీ మ్యాప్ పెట్టు") or the pill. What to say back.
+     */
+    String mapMode(String g) {
+        if (!"g1".equals(g)) return openBeside();
+        prefs.sp.edit().putString("car_map_mode", "g1").apply();
+        besideNow = false;
+        main.removeCallbacks(besideCheck);
+        shapeCheck();
+        if (!CarLayout.hasMap(shape)) { // (this shape has no map now: Jarvis Maps itself)
+            JarvisMaps.open(getContext(), "");
+            return "సరే, Jarvis Maps తెరిచాను.";
+        }
+        return act.isInMultiWindowMode() ? "సరే, మన మ్యాప్ పెట్టాను. పక్కన Google Maps కిటికీ వద్దంటే దాన్ని మూసేయండి." : "సరే, మన మ్యాప్ పెట్టాను.";
+    }
+
+    /**
+     * G2: the Google Maps app in the box's own window on the left (split screen, or a freeform window there), Jarvis's
+     * column on the right. Whether the box allowed it shows 2.5 s later: Jarvis still on the display, or not.
+     */
+    private String openBeside() {
+        Context c = getContext();
+        Intent i = c.getPackageManager().getLaunchIntentForPackage(CarSplit.MAPS);
+        if (i == null) return "ఈ box లో Google Maps యాప్ లేదు: మన మ్యాప్‌లోనే ఉందాం.";
+        prefs.sp.edit().putString("car_map_mode", "g2").apply();
+        besideNow = true;
+        shapeCheck(); // (Jarvis to the right first: the left is for Google Maps' window)
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
+        android.os.Bundle opts = null;
+        if (!act.isInMultiWindowMode() && W > 0 && H > 0) { // (a freeform window where the left room is; a box without them ignores this)
+            int[] at = new int[2];
+            getLocationOnScreen(at);
+            android.app.ActivityOptions o = android.app.ActivityOptions.makeBasic();
+            o.setLaunchBounds(new android.graphics.Rect(at[0], at[1], at[0] + Math.round(W * 0.62f), at[1] + H));
+            opts = o.toBundle();
+        }
+        try {
+            act.startActivity(i, opts);
+        } catch (Exception e) {
+            prefs.sp.edit().putString("car_map_mode", "g1").apply();
+            besideNow = false;
+            shapeCheck();
+            return "Google Maps తెరవలేకపోయాను: మన మ్యాప్‌లోనే ఉందాం.";
+        }
+        main.removeCallbacks(besideCheck);
+        main.postDelayed(besideCheck, 2500);
+        return "సరే, Google Maps పక్కన పెడుతున్నాను.";
+    }
+
+    /** Jarvis still on the display: Google Maps is beside him. Not: the box gave Google Maps the whole screen (said, and G1 again). */
+    private final Runnable besideCheck = this::besideSeen;
+
+    private void besideSeen() {
+        if (CarBubble.ownShown()) return;
+        prefs.sp.edit().putString("car_map_mode", "g1").apply();
+        besideNow = false;
+        Toast.makeText(getContext().getApplicationContext(), "ఈ box Google Maps కి పక్క కిటికీ ఇవ్వలేదు: పూర్తి స్క్రీన్‌లో తెరిచాను. 🫧 బుడగ నొక్కితే Jarvis (మన మ్యాప్ G1). ⚙️ → 🧪 పక్క కిటికీ పరీక్ష చూడండి.",
+                Toast.LENGTH_LONG).show();
+    }
+
+    /** The box's split screen began / ended: G2's room for Google Maps comes or goes. */
+    void windowChanged() {
+        if (CarLayout.SIDE.equals(shape)) relayout();
     }
 
     private static void detach(View v) {
@@ -1898,7 +2009,7 @@ final class CarScreen extends FrameLayout {
     private void arrange(String s) {
         if (s.equals(shape)) return;
         shape = s;
-        for (LinearLayout g : new LinearLayout[]{content, leftCol, midCol, rightCol, wingLIn, wingRIn, panelIn, panelTop, centreCol}) g.removeAllViews();
+        for (LinearLayout g : new LinearLayout[]{content, leftCol, midCol, rightCol, wingLIn, wingRIn, panelIn, panelTop, centreCol, stageLeft, stageMid, sideTop, sideText}) g.removeAllViews();
         mapTilt.removeAllViews();
         detach(carMap);
         boolean deep = CarLayout.deep(s);
@@ -1933,6 +2044,22 @@ final class CarScreen extends FrameLayout {
                 musicStrip.setOrientation(LinearLayout.VERTICAL);
                 put(wingRIn, gauge, 34); put(wingRIn, roadCard, 18); put(wingRIn, musicStrip, 48);
                 fillTiles(tileGrid, 0, 6, 6);
+                break;
+            case CarLayout.STAGE: // ⑧ parked, a song on: Jarvis big under a light; 🗺️ 🎲 🎤 on the left; the clock, the beat and ✕ on the right; the song under him
+                put(content, stageLeft, 11); put(content, stageMid, 64); put(content, rightCol, 25);
+                for (View b : stageBtns) put(stageLeft, b, 1);
+                put(stageMid, portal, 82); put(stageMid, musicStrip, 18); put(stageMid, board, 100);
+                put(rightCol, clock, 20); put(rightCol, date, 8); put(rightCol, stateText, 9); put(rightCol, subText, 33); put(rightCol, stageExit, 11); put(rightCol, chipRow, 12);
+                break;
+            case CarLayout.SIDE: // G2: Google Maps' own window on the left (the box's split / freeform window); Jarvis's column on the right
+                boolean split = act.isInMultiWindowMode(); // (split screen: this window is already beside Google Maps — all of it is Jarvis's)
+                if (!split) put(content, mapGap, 62);
+                put(content, rightCol, split ? 100 : 38);
+                put(rightCol, sideTop, 26 * Math.max(1f, j)); put(rightCol, gauge, 16); put(rightCol, roadCard, 12); put(rightCol, tileGrid, 26);
+                put(rightCol, musicStrip, 13); put(rightCol, chipRow, 7); put(rightCol, board, 100);
+                put(sideTop, portal, 42 * j); put(sideTop, sideText, 58);
+                put(sideText, stateText, 18); put(sideText, clock, 34); put(sideText, minis, 18); put(sideText, mapPill, 30);
+                fillTiles(tileGrid, 0, 6, 3);
                 break;
             case CarLayout.MAPCARDS: // ④ the map, then a column of Jarvis + the speed + the clock, then the buttons
                 put(content, carMap, 50); put(content, midCol, 21); put(content, rightCol, 29);
@@ -2032,6 +2159,7 @@ final class CarScreen extends FrameLayout {
         else if (CarLayout.COCKPIT.equals(shape)) g = CarTheme.G_DIGITS;
         else if (CarLayout.CHROME.equals(shape)) g = CarTheme.G_NEEDLE;
         else if (CarLayout.MAP3D.equals(shape)) g = CarTheme.G_ARC;
+        else if (CarLayout.SIDE.equals(shape)) g = CarTheme.G_DIGITS;
         else g = CarTheme.of(prefs.carTheme()).gauge;
         look.gauge = g;
         gauge.setLook(look);
@@ -2061,6 +2189,10 @@ final class CarScreen extends FrameLayout {
         boxes.add(wingR);
         boxes.add(panel);
         boxes.add(mapTilt);
+        boxes.add(mapGap);
+        boxes.addAll(stageBtns);
+        boxes.add(stageExit);
+        boxes.add(mapPill);
         for (View t : boxes) {
             if (!(t.getLayoutParams() instanceof LinearLayout.LayoutParams)) continue; // (not on the screen in this shape)
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
@@ -2095,6 +2227,8 @@ final class CarScreen extends FrameLayout {
             card.setBackground(CarArt.glass(look, rad, false));
             card.setPadding(cp, cp, cp, cp);
         }
+        for (TextView t : new TextView[]{stageExit, mapPill}) t.setPadding(cp, cp / 3, cp, cp / 3);
+        mapGap.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(14, h / 26f));
         float ct = Math.max(12, h / 36f) * textScale; // ① ②'s chips row
         int cq = Math.max(3, h / 110);
         for (TextView t : alongChips) {
@@ -2206,6 +2340,14 @@ final class CarScreen extends FrameLayout {
         dressTiles();
         for (LinearLayout card : new LinearLayout[]{wingLIn, wingRIn, panelIn}) card.setBackground(CarArt.glass(look, rad, false));
         for (CarKit.Dial d : dials) d.setLook(look);
+        stageMid.setBackground(CarKit.spotlight(look));
+        for (View b : stageBtns) { b.setBackground(CarKit.chromeButton(look, 1f)); ((CarArt.Icon) b).setColour(accent); }
+        for (TextView t : new TextView[]{stageExit, mapPill}) {
+            t.setTextColor(textMain);
+            t.setBackground(round(look.light ? 0xCCFFFFFF : 0x99060A10, CarTheme.withAlpha(accent, 0xAA), 999));
+        }
+        mapGap.setTextColor(textSoft);
+        mapGap.setBackground(round(CarTheme.withAlpha(accent, 0x10), CarTheme.withAlpha(accent, 0x55), 18));
         for (TextView t : alongChips) {
             t.setTextColor(textMain);
             t.setBackground(round(look.light ? 0xCCFFFFFF : 0x99060A10, CarTheme.withAlpha(accent, 0x99), 999));
