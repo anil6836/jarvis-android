@@ -2405,7 +2405,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onMultiWindowModeChanged(boolean inMultiWindow, android.content.res.Configuration c) {
         super.onMultiWindowModeChanged(inMultiWindow, c);
-        if (car != null) car.windowChanged(); // (G2: the box's split screen began / ended)
+        if (car != null) car.windowChanged(inMultiWindow); // (G2: the box's split screen began / ended)
     }
 
     private TextView thinkingView;

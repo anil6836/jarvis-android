@@ -32,6 +32,7 @@ final class CarBubble {
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static Context app;
     private static int started; // (Jarvis's own screens on the display now)
+    private static long allStoppedAt; // (when the last of them left the display)
     private static Dot dot;
     private static WindowManager wm;
     private static WindowManager.LayoutParams lp;
@@ -43,6 +44,7 @@ final class CarBubble {
                 Prefs p = new Prefs(app);
                 int a = p.carAccent() != 0 ? p.carAccent() : CarTheme.of(p.carTheme()).accent;
                 dot.set(CarBox.speed(), DriveService.limitNowKmh, a);
+                if (CallControl.busyWithCall()) { syncNow(); return; } // (a call began: the bubble goes)
             } catch (Exception ignored) {}
             main.postDelayed(this, 1000);
         }
@@ -53,7 +55,12 @@ final class CarBubble {
         app = a.getApplicationContext();
         a.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
             @Override public void onActivityStarted(Activity x) { started++; main.removeCallbacks(sync); syncNow(); }
-            @Override public void onActivityStopped(Activity x) { started = Math.max(0, started - 1); main.removeCallbacks(sync); main.postDelayed(sync, 800); }
+            @Override public void onActivityStopped(Activity x) {
+                started = Math.max(0, started - 1);
+                if (started == 0) allStoppedAt = System.currentTimeMillis();
+                main.removeCallbacks(sync);
+                main.postDelayed(sync, 800);
+            }
             @Override public void onActivityCreated(Activity x, Bundle b) {}
             @Override public void onActivityResumed(Activity x) {}
             @Override public void onActivityPaused(Activity x) {}
@@ -65,16 +72,21 @@ final class CarBubble {
     /** A screen of Jarvis's own is on the display (the car screen beside Google Maps counts). */
     static boolean ownShown() { return started > 0; }
 
+    /** When the last of Jarvis's screens left the display (0: never). */
+    static long allStoppedAt() { return allStoppedAt; }
+
     /** A setting changed: shown / hidden as it should be now. */
     static void refresh() { main.removeCallbacks(sync); main.post(sync); }
 
     private static void syncNow() {
-        boolean want = false;
+        boolean want = false, call = false;
         try {
             Prefs p = new Prefs(app);
             want = started == 0 && p.carMode() && p.carBubble() && android.provider.Settings.canDrawOverlays(app);
+            call = CallControl.busyWithCall();
         } catch (Exception ignored) {}
-        if (want) show(); else hide();
+        if (want && !call) show(); else hide();
+        if (want && call) { main.removeCallbacks(sync); main.postDelayed(sync, 3000); } // (a call: no bubble — back after it ends)
     }
 
     private static void show() {
@@ -110,6 +122,7 @@ final class CarBubble {
 
     /** The car screen back (and listening, when held). The bubble's own window lets Jarvis come to the front. */
     private static void back(boolean listen) {
+        if (listen && CallControl.busyWithCall()) listen = false; // (never a listen during a call)
         try {
             Intent i = listen ? new Intent(Intent.ACTION_ASSIST).setClass(app, MainActivity.class)
                     : new Intent(app, MainActivity.class).putExtra(MainActivity.EXTRA_CAR_HOME, true);

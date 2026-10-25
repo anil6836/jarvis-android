@@ -49,7 +49,7 @@ final class CarLayout {
 
     private static final java.util.regex.Pattern G2_WORDS = java.util.regex.Pattern.compile(
             "^(google maps?|గూగుల్ మ్యాప్(స్)?|గూగుల్ మేప్(స్)?)\\s*(ని|ను|నే)?\\s*(పక్కన )?(పెట్టు|పెట్టండి|పెట్టవా|పెట్టరా|కి మారు|కు మారు|కి మార్చు|కు మార్చు)$"
-                    + "|^(switch to|put|show) google maps?( beside)?$");
+                    + "|^(switch to|put) google maps?( beside)?$"); // (not "show google maps": that is often "open it")
     private static final java.util.regex.Pattern G1_WORDS = java.util.regex.Pattern.compile(
             "^(నీ|మన|నా|నీ సొంత)?\\s*(మ్యాప్|మ్యాపు|మేప్|map)\\s*(ని|ను)?\\s*(పెట్టు|పెట్టండి|పెట్టవా|కి మారు|కు మారు|కి మార్చు|కు మార్చు|చూపించు)$"
                     + "|^(switch to|put|show) (your |the )?map$"); // (his name is taken out first: "switch to Jarvis map" → "switch to map")

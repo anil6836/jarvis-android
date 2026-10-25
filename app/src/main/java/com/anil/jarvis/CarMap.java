@@ -75,7 +75,8 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     private boolean routeBusy;
     private final Runnable retrySource = this::source;
     // 🌙 the map's colours (dark at night, or his choice) and its zoom (fixed, or with the speed)
-    private boolean dark, darkNo, darkStale;
+    private boolean dark, darkStale;
+    private long darkNoUntil; // (Google refused the dark colours: the day map until then)
     private String zoomSeen;
     private int zoomWant;
     private long zoomWantSince, zoomTouchedAt;
@@ -378,6 +379,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         // Google's map never came (no net when the box woke, Google slow): asked again once a minute while there is net
         long now0 = System.currentTimeMillis();
         if (session.isEmpty() && !googleOff && !sourceBusy && GMaps.has(getContext()) && now0 - sourceAskedAt > 60_000 && Net.online(getContext())) source();
+        else if (dark && darkNoUntil != 0 && darkNoUntil != Long.MAX_VALUE && now0 >= darkNoUntil && !sourceBusy && googleMap()) { darkNoUntil = 0; source(); } // (night colours asked again)
         // the trip's turn and arrival
         boolean trip = nav != null && !(nav.optString("next").isEmpty() && nav.optString("detail").isEmpty());
         if (trip) {
@@ -514,13 +516,15 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         final Context app = c.getApplicationContext();
         sourceBusy = true;
         sourceAskedAt = System.currentTimeMillis();
-        final boolean dk = dark && !darkNo && !sat;
+        final boolean dk = dark && System.currentTimeMillis() >= darkNoUntil && !sat;
         run(() -> {
             String s = null, err = null;
             boolean refused = false, dayInstead = false;
+            int dkStatus = 0;
             try { s = GMaps.session(app, sat, tr, false, dk); }
             catch (Exception e) {
                 boolean four = e instanceof GMaps.Error && ((GMaps.Error) e).status >= 400 && ((GMaps.Error) e).status < 500;
+                if (four) dkStatus = ((GMaps.Error) e).status;
                 if (dk && four) { // (Google said no to the dark colours: its day map, said once — not the free map)
                     try { s = GMaps.session(app, sat, tr, false, false); dayInstead = true; }
                     catch (Exception e2) { err = GMaps.telugu(e2); refused = e2 instanceof GMaps.Error && ((GMaps.Error) e2).status >= 400 && ((GMaps.Error) e2).status < 500; }
@@ -528,6 +532,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
             }
             final String ses = s, er = err;
             final boolean no = refused, day = dayInstead;
+            final int st = dkStatus;
             main.post(() -> {
                 if (seq == sourceSeq) sourceBusy = false;
                 if (googleOff || seq != sourceSeq) return;
@@ -539,7 +544,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
                 }
                 sourceTries = 0;
                 session = ses;
-                if (day) darkNo = true;
+                if (day) darkNoUntil = st == 400 ? Long.MAX_VALUE : System.currentTimeMillis() + 30 * 60_000L; // (a passing refusal: tried again later)
                 map.setSource(ses, sat, tr, dk && !day);
                 say(day ? "darkno" : "", day ? "🌙 రాత్రి రంగుల మ్యాప్ Google ఇవ్వలేదు: పగలు రంగులోనే" : "");
                 settled();
@@ -575,7 +580,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         googleOff = false;
         sourceTries = 0;
         clearWay();
-        darkNo = false;
+        darkNoUntil = 0;
         map.setCredit("");
         map.setSource("", false, false, dark);
         final Context app = getContext().getApplicationContext();
@@ -618,7 +623,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     @Override public void placeTapped(int index) {}
     private long touchedAt;
 
-    @Override public void moved() { touchedAt = System.currentTimeMillis(); }
+    @Override public void moved() { touchedAt = System.currentTimeMillis(); zoomTouchedAt = touchedAt; } // (his pinch / drag: his zoom for a minute too)
     @Override public void longPressed(double lat, double lon) { host.menu(); }
 
     private void followMe() {

@@ -3336,7 +3336,7 @@ public class SettingsActivity extends Activity {
         // 🗺️ G1 / G2, and what this box allows for G2
         final TextView mapModeRow = Ui.text(this, "", 15.5f, accent), splitRow = Ui.text(this, "🧪 Google Maps పక్క కిటికీ పరీక్ష (G2: ఈ box ఇస్తుందా?)", 15.5f, accent);
         for (TextView t : new TextView[]{mapModeRow, splitRow}) t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
-        final String[] modes = {"g1", "g2"}, modeNames = {"Jarvis మ్యాప్ (G1: మన స్క్రీన్‌లోనే)", "Google Maps పక్కన (G2: box కిటికీలో, Jarvis కుడివైపు)"};
+        final String[] modes = {"g1", "g2"}, modeNames = {"Jarvis మ్యాప్ (G1: మన స్క్రీన్‌లోనే)", "Google Maps పక్కన (G2: దారిలో Jarvis కుడివైపు; ఎడమ ఖాళీ నొక్కితే Google Maps కిటికీ)"};
         Runnable showMode = () -> mapModeRow.setText("🗺️ దారి మ్యాప్: " + ("g2".equals(prefs.carMapMode()) ? modeNames[1] : modeNames[0]) + "  (మార్చడానికి నొక్కండి)");
         showMode.run();
         mapModeRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
