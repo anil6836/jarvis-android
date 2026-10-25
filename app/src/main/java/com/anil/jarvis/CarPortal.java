@@ -78,12 +78,12 @@ final class CarPortal extends FrameLayout {
     private void holoLayer() {
         int ac = look == null ? 0xFF4FD2FF : look.accent;
         float r = Color.red(ac) / 255f, g = Color.green(ac) / 255f, b = Color.blue(ac) / 255f;
-        float k = 1.25f;
+        float k = 1.7f; // (brighter: his dark jacket still reads as light)
         holoPaint.setColorFilter(new android.graphics.ColorMatrixColorFilter(new float[]{
-                0.30f * r * k, 0.59f * r * k, 0.11f * r * k, 0, 18 * r,
-                0.30f * g * k, 0.59f * g * k, 0.11f * g * k, 0, 18 * g,
-                0.30f * b * k, 0.59f * b * k, 0.11f * b * k, 0, 18 * b,
-                0, 0, 0, 0.82f, 0}));
+                0.30f * r * k, 0.59f * r * k, 0.11f * r * k, 0, 34 * r,
+                0.30f * g * k, 0.59f * g * k, 0.11f * g * k, 0, 34 * g,
+                0.30f * b * k, 0.59f * b * k, 0.11f * b * k, 0, 34 * b,
+                0, 0, 0, 0.88f, 0}));
         body.setLayerType(LAYER_TYPE_HARDWARE, holoPaint);
     }
     void setState(int s) { if (state != s) { state = s; invalidate(); } }
@@ -247,8 +247,8 @@ final class CarPortal extends FrameLayout {
             for (float y = body.getTop(); y < body.getBottom(); y += step) cv.drawRect(body.getLeft(), y, body.getRight(), y + step * 0.35f, p);
             if (!lowMotion) {
                 float cyc = (now % 3600) / 3600f, by = body.getTop() + (body.getBottom() - body.getTop()) * cyc * 1.2f;
-                p.setColor(CarTheme.withAlpha(ac, 0x28));
-                cv.drawRect(body.getLeft(), by, body.getRight(), by + s * 0.05f, p);
+                p.setColor(CarTheme.withAlpha(ac, 0x1C));
+                cv.drawRect(body.getLeft(), by, body.getRight(), by + s * 0.025f, p);
             }
             cv.restoreToCount(sv);
         }
