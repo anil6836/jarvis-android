@@ -78,6 +78,25 @@ final class Music {
     private static String nz(String s) { return s == null ? "" : s; }
 
     /**
+     * How far the song is, as its music app tells it: {position ms, when that was (elapsed clock), speed × 1000,
+     * playing 1/0, length ms (-1 unknown)}; null with no music app (or Jarvis's own radio: no length).
+     */
+    static long[] progress(Context c) {
+        try {
+            if (SoundService.radioOn) return null;
+            MediaController mc = active(c);
+            if (mc == null) return null;
+            android.media.session.PlaybackState st = mc.getPlaybackState();
+            MediaMetadata md = mc.getMetadata();
+            long dur = md == null ? -1 : md.getLong(MediaMetadata.METADATA_KEY_DURATION);
+            if (st == null) return new long[]{-1, 0, 1000, 0, dur <= 0 ? -1 : dur};
+            return new long[]{st.getPosition(), st.getLastPositionUpdateTime(), Math.round(st.getPlaybackSpeed() * 1000), playing(mc) ? 1 : 0, dur <= 0 ? -1 : dur};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * The song's picture for the car screen (off the main thread), at most {@code size} pixels, or null: the picture the
      * music app gives with the song, else its player notification's picture, else the picture's link in the song's
      * details (the app's own file, or its https image). Only the playing app's player card is looked at, nothing else.

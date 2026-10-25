@@ -126,6 +126,15 @@ final class CarKit {
 
         void setShift(float s) { if (s != shift) { shift = s; ring = null; invalidate(); } }
 
+        private boolean big;
+        private float angle = -1;
+        private Typeface num;
+        /** ⑨'s big dial: a dark face with a ring of ticks (no chrome), the compass needle when it shows the way. */
+        void setBig(boolean b) { if (b != big) { big = b; invalidate(); } }
+        /** The compass: the car's heading in degrees (-1: not a compass / unknown). */
+        void setAngle(float a) { if (Math.abs(a - angle) > 0.5f) { angle = a; invalidate(); } }
+        void setFont(Typeface t) { if (t != num) { num = t; invalidate(); } }
+
         /** Where its circle is (the zigzag moves it): centre x, centre y, radius, in its own coordinates. */
         float[] circle() {
             float w = getWidth(), h = getHeight(), r = Math.min(w, h) * 0.47f;
@@ -141,10 +150,76 @@ final class CarKit {
             invalidate();
         }
 
+        /** ⑨: ticks round a dark face; the sign, the value (his font), the words; for the compass the needle and N E S W. */
+        private void drawBig(Canvas cv, int w, int h) {
+            float r = Math.min(w, h) * 0.46f, cx = w / 2f, cy = h / 2f;
+            int lit = warn ? 0xFFFF6B5E : look.accent;
+            p.setShader(null);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(look.light ? 0x22000000 : 0xCC060B16);
+            cv.drawCircle(cx, cy, r, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(1, r * 0.012f));
+            p.setColor(CarTheme.withAlpha(lit, 0x55));
+            cv.drawCircle(cx, cy, r, p);
+            boolean compass = angle >= 0;
+            float rot = compass ? -angle : 0; // (north turns as the car turns)
+            for (int i = 0; i < 48; i++) {
+                double a = Math.toRadians(rot + i * 7.5 - 90);
+                boolean major = i % 6 == 0;
+                p.setStrokeWidth(Math.max(1, r * (major ? 0.022f : 0.01f)));
+                p.setColor(major ? CarTheme.withAlpha(lit, 0xEE) : (look.light ? 0x55000000 : 0x66FFFFFF));
+                float r1 = r * 0.93f, r2 = r * (major ? 0.80f : 0.86f);
+                cv.drawLine(cx + (float) (r1 * Math.cos(a)), cy + (float) (r1 * Math.sin(a)), cx + (float) (r2 * Math.cos(a)), cy + (float) (r2 * Math.sin(a)), p);
+            }
+            if (compass) {
+                String[] nesw = {"N", "E", "S", "W"};
+                t.setTypeface(num != null ? num : Typeface.DEFAULT_BOLD);
+                t.setTextSize(r * 0.13f);
+                for (int k = 0; k < 4; k++) {
+                    double a = Math.toRadians(rot + k * 90 - 90);
+                    t.setColor(k == 0 ? 0xFFFF6B5E : look.textMain);
+                    cv.drawText(nesw[k], cx + (float) (r * 0.66f * Math.cos(a)), cy + (float) (r * 0.66f * Math.sin(a)) + r * 0.045f, t);
+                }
+                cv.save();
+                cv.rotate(rot, cx, cy);
+                android.graphics.Path n = new android.graphics.Path();
+                p.setStyle(Paint.Style.FILL);
+                n.moveTo(cx, cy - r * 0.52f); n.lineTo(cx + r * 0.07f, cy); n.lineTo(cx - r * 0.07f, cy); n.close();
+                p.setColor(0xFFFF4D6D);
+                cv.drawPath(n, p);
+                n.rewind();
+                n.moveTo(cx, cy + r * 0.52f); n.lineTo(cx + r * 0.07f, cy); n.lineTo(cx - r * 0.07f, cy); n.close();
+                p.setColor(look.light ? 0xFF5D6C7A : 0xFFCFD8E3);
+                cv.drawPath(n, p);
+                cv.restore();
+                p.setColor(look.light ? 0xFF17232F : 0xFFF2F6FA);
+                cv.drawCircle(cx, cy, r * 0.05f, p);
+                t.setTypeface(num != null ? num : Typeface.DEFAULT_BOLD);
+                t.setColor(look.textMain);
+                fit(value, r * 0.16f, r * 0.9f);
+                cv.drawText(value, cx, cy + r * 0.40f, t);
+                return;
+            }
+            t.setTypeface(Typeface.DEFAULT);
+            t.setColor(look.textMain);
+            t.setTextSize(r * 0.22f);
+            cv.drawText(sign, cx, cy - r * 0.30f, t);
+            t.setTypeface(num != null ? num : Typeface.DEFAULT_BOLD);
+            fit(value, r * 0.46f, r * 1.4f);
+            t.setColor(warn ? 0xFFFF6B5E : look.textMain);
+            cv.drawText(value, cx, cy + r * 0.16f, t);
+            t.setTypeface(Typeface.DEFAULT);
+            fit(words, r * 0.14f, r * 1.4f);
+            t.setColor(warn ? 0xFFFF6B5E : look.textSoft);
+            cv.drawText(words, cx, cy + r * 0.44f, t);
+        }
+
         @Override protected void onDraw(Canvas cv) {
             if (look == null) return;
             int w = getWidth(), h = getHeight();
             if (w <= 0 || h <= 0) return;
+            if (big) { drawBig(cv, w, h); return; }
             float r = Math.min(w, h) * 0.47f;
             float room = Math.max(0, w / 2f - r);
             float cx = w / 2f + shift * room, cy = h / 2f;
@@ -178,7 +253,7 @@ final class CarKit {
             t.setColor(0xFFFFFFFF);
             t.setTextSize(r * 0.28f);
             cv.drawText(sign, cx, cy - r * 0.30f, t);
-            t.setTypeface(Typeface.DEFAULT_BOLD);
+            t.setTypeface(num != null ? num : Typeface.DEFAULT_BOLD);
             fit(value, r * 0.44f, r * 1.25f);
             t.setColor(warn ? warnCol : 0xFFF2F6FA);
             cv.drawText(value, cx, cy + r * 0.16f, t);
@@ -218,6 +293,11 @@ final class CarKit {
 
         void setOn(boolean b) { if (b != on) { on = b; invalidateSelf(); } }
         void setCalm(boolean b) { calm = b; }
+        private int style = CarStyle.EQ_BARS;
+        /** 25 LED blocks, 26 mirror (CarStyle.EQ_…). */
+        void setStyle(int s) { if (s != style) { style = s; mirrorUp = null; invalidateSelf(); } }
+        private Shader mirrorUp, mirrorDown;
+        private float mirrorFor;
         /** How high the bars may reach (part of the strip's height), and where they start (the song's picture covers the left). */
         void setReach(float f, float leftPx) { reach = f; left = leftPx; invalidateSelf(); }
 
@@ -244,7 +324,9 @@ final class CarKit {
             hue = (hue + dt * 14) % 360; // (the rainbow drifts slowly)
             int a = calm ? 0x48 : 0x8C, capA = calm ? 0x70 : 0xD8;
             p.setStyle(Paint.Style.FILL);
-            for (int i = 0; i < n; i++) {
+            if (style == CarStyle.EQ_BLOCKS) blocks(c, n, x0, slot, bw, base, hgt, a, capA);
+            else if (style == CarStyle.EQ_MIRROR) mirror(c, n, x0, slot, bw, base, hgt, a);
+            else for (int i = 0; i < n; i++) {
                 float lv = eq.level[i], pk = eq.peak[i];
                 float x = x0 + slot * i + (slot - bw) / 2;
                 hsv[0] = (hue + i * (300f / n)) % 360; hsv[1] = 0.78f; hsv[2] = 1f;
@@ -261,9 +343,59 @@ final class CarKit {
                     c.drawRoundRect(r, bw * 0.14f, bw * 0.14f, p);
                 }
             }
+            p.setShader(null);
             unscheduleSelf(this); // (one loop only, whoever else redraws the strip)
             if (eq.alive(now)) scheduleSelf(this, now + 33); // (~30 frames a second while there is music)
             else running = false;
+        }
+
+        /** 25: each bar a stack of small blocks, green → yellow → red, the peak a white block. */
+        private void blocks(Canvas c, int n, float x0, float slot, float bw, float base, float hgt, int a, int capA) {
+            int segs = 10;
+            float sh = hgt / segs, gap = Math.max(1, sh * 0.22f);
+            for (int i = 0; i < n; i++) {
+                float x = x0 + slot * i + (slot - bw) / 2;
+                int lit = Math.round(eq.level[i] * segs), pk = Math.round(eq.peak[i] * segs);
+                for (int j = 0; j < segs; j++) {
+                    boolean on = j < lit;
+                    int col = CarStyle.blockColour(j, segs);
+                    p.setColor(CarTheme.withAlpha(col, on ? Math.min(255, a + 0x40) : 0x10));
+                    r.set(x, base - (j + 1) * sh + gap / 2, x + bw, base - j * sh - gap / 2);
+                    c.drawRect(r, p);
+                }
+                if (pk > 0 && pk <= segs) {
+                    p.setColor(CarTheme.withAlpha(0xFFFFFFFF, capA));
+                    r.set(x, base - pk * sh + gap / 2, x + bw, base - pk * sh + gap / 2 + Math.max(1.5f, sh * 0.3f));
+                    c.drawRect(r, p);
+                }
+            }
+        }
+
+        /** 26: rounded bars in pink → violet → gold from a line across, their soft reflection under it. */
+        private void mirror(Canvas c, int n, float x0, float slot, float bw, float base, float hgt, int a) {
+            float line = base - hgt * 0.26f, up = hgt * 0.74f, down = hgt * 0.24f;
+            if (mirrorUp == null || mirrorFor != line + up) {
+                mirrorFor = line + up;
+                mirrorUp = new android.graphics.LinearGradient(0, line, 0, line - up, new int[]{0xFF7B5CFF, 0xFFFF3FA4, 0xFFFFD166}, new float[]{0, 0.6f, 1}, Shader.TileMode.CLAMP);
+                mirrorDown = new android.graphics.LinearGradient(0, line, 0, line + down, new int[]{0x887B5CFF, 0x007B5CFF}, null, Shader.TileMode.CLAMP);
+            }
+            p.setAlpha(255);
+            for (int i = 0; i < n; i++) {
+                float lv = eq.level[i];
+                if (lv <= 0.01f) continue;
+                float x = x0 + slot * i + (slot - bw) / 2;
+                p.setShader(mirrorUp);
+                p.setAlpha(Math.min(255, a + 0x50));
+                r.set(x, line - Math.max(bw * 0.6f, up * lv), x + bw, line);
+                c.drawRoundRect(r, bw / 2, bw / 2, p);
+                p.setShader(mirrorDown);
+                p.setAlpha(255);
+                r.set(x, line + Math.max(1, hgt * 0.02f), x + bw, line + Math.max(bw * 0.4f, down * lv));
+                c.drawRoundRect(r, bw / 2, bw / 2, p);
+            }
+            p.setShader(null);
+            p.setColor(0x22FFFFFF);
+            c.drawRect(x0, line, x0 + slot * n, line + Math.max(1, hgt * 0.01f), p);
         }
 
         @Override public void setAlpha(int alpha) {}
@@ -372,20 +504,39 @@ final class CarKit {
             for (int i = 0; i < a.length; i++) { a[i] = rnd.nextFloat(); b[i] = rnd.nextFloat(); c[i] = rnd.nextFloat(); e[i] = rnd.nextFloat(); }
         }
 
-        void set(String kind, boolean on, int accent, int accent2) {
-            boolean change = !kind.equals(this.kind) || on != this.on || accent != this.accent || accent2 != this.accent2;
-            this.kind = kind; this.on = on; this.accent = accent; this.accent2 = accent2;
+        void set(String kind, boolean on, int accent, int accent2) { set(kind, on, accent, accent2, light); }
+
+        private boolean light;
+        private final CarLooks.Scene scene = new CarLooks.Scene();
+
+        /** light: the white theme (a whole picture gets a light veil: its dark words stay readable). */
+        void set(String kind, boolean on, int accent, int accent2, boolean light) {
+            boolean change = !kind.equals(this.kind) || on != this.on || accent != this.accent || accent2 != this.accent2 || light != this.light;
+            boolean wasScene = CarStyle.scene(this.kind);
+            this.kind = kind; this.on = on; this.accent = accent; this.accent2 = accent2; this.light = light;
+            if (wasScene && !CarStyle.scene(kind)) scene.release(); // (its picture let go)
             if (change) { blobs = null; removeCallbacks(this); invalidate(); }
         }
 
         @Override public void run() { invalidate(); }
 
-        @Override protected void onDetachedFromWindow() { super.onDetachedFromWindow(); removeCallbacks(this); }
+        @Override protected void onDetachedFromWindow() { super.onDetachedFromWindow(); removeCallbacks(this); scene.release(); }
 
         @Override protected void onDraw(Canvas cv) {
-            if (!on || kind.isEmpty()) return;
+            if (kind.isEmpty()) return;
             int w = getWidth(), h = getHeight();
             if (w <= 0 || h <= 0) return;
+            if (CarStyle.scene(kind)) { // 9–16: a whole picture; with "fewer movements" it stays still (no frames)
+                long now = android.os.SystemClock.uptimeMillis();
+                float dt = last == 0 || !on ? 0 : Math.min(0.2f, (now - last) / 1000f);
+                last = now;
+                t += dt;
+                scene.draw(cv, kind, w, h, t, light);
+                if (on && isShown()) postOnAnimationDelayed(this, 50);
+                else last = 0;
+                return;
+            }
+            if (!on) return;
             long now = android.os.SystemClock.uptimeMillis();
             float dt = last == 0 ? 0.05f : Math.min(0.2f, (now - last) / 1000f);
             last = now;

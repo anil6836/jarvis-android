@@ -4,7 +4,8 @@ package com.anil.jarvis;
  * 🧩 The car screen's shapes (no Android here: desk-tested). Anil picks one in ⚙️; the same parts (Jarvis, the speed,
  * the clock, the road card, the six buttons, the song strip) are arranged around the map in the map shapes, and on
  * leaning 3D cards in ① ② ③ (our own designs). While a Google Maps trip runs, a shape without the map turns into a
- * map screen — when that switch is on — and turns back when the trip ends: ⑥ into the half map (G1), ① ② into ③.
+ * map screen — when that switch is on — and turns back when the trip ends: ⑥ into the half map (G1), ① ② into ③, ⑨
+ * into ⑩.
  */
 final class CarLayout {
     private CarLayout() {}
@@ -14,10 +15,13 @@ final class CarLayout {
             /** ⑧ parked with a song: Jarvis big on a lit stage (never picked by hand: it comes and goes by itself). */
             STAGE = "stage",
             /** G2: the Google Maps app in the box's own window beside Jarvis; Jarvis's column on the right. */
-            SIDE = "side";
+            SIDE = "side",
+            /** ⑨ two big dials with Jarvis between them, a thin row of buttons under; ⑩ a big map, the way and the song beside it, a dock of buttons under, his apps down the left. */
+            CLUSTER = "cluster", DOCK = "dock";
     /** The shapes he can pick (in this order in ⚙️), and their names. */
-    static final String[] CHOICES = {COCKPIT, CHROME, MAP3D, MAPCARDS, CLASSIC, HALFMAP};
-    static final String[] NAMES = {"① కాక్‌పిట్ 3D", "② క్రోమ్ డయల్స్", "③ 3D మ్యాప్ డాష్", "④ మ్యాప్ + కార్డులు", "⑥ ఇప్పటి స్క్రీన్ (క్లాసిక్)", "⑦ సగం మ్యాప్"};
+    static final String[] CHOICES = {COCKPIT, CHROME, MAP3D, MAPCARDS, CLASSIC, HALFMAP, CLUSTER, DOCK};
+    static final String[] NAMES = {"① కాక్‌పిట్ 3D", "② క్రోమ్ డయల్స్", "③ 3D మ్యాప్ డాష్", "④ మ్యాప్ + కార్డులు", "⑥ ఇప్పటి స్క్రీన్ (క్లాసిక్)", "⑦ సగం మ్యాప్",
+            "⑨ క్లస్టర్ (రెండు పెద్ద డయల్స్)", "⑩ డాక్ (పెద్ద మ్యాప్ + కార్డులు)"};
 
     /** A shape he can pick (anything else: the classic one). Pure. */
     static String valid(String s) {
@@ -31,10 +35,10 @@ final class CarLayout {
         return NAMES[0];
     }
 
-    /** The shape on the screen now: his pick; one without the map becomes a map screen while a trip runs (if he wants). Pure. */
+    /** The shape on the screen now: his pick; one without the map becomes a map screen while a trip runs (if he wants): ⑨ into ⑩. Pure. */
     static String now(String chosen, boolean trip, boolean mapOnTrip) {
         String c = valid(chosen);
-        if (trip && mapOnTrip && !hasMap(c)) return deep(c) ? MAP3D : NAV;
+        if (trip && mapOnTrip && !hasMap(c)) return deep(c) ? MAP3D : CLUSTER.equals(c) ? DOCK : NAV;
         return c;
     }
 
@@ -69,7 +73,7 @@ final class CarLayout {
     }
 
     /** This shape shows the map. Pure. */
-    static boolean hasMap(String shape) { return MAPCARDS.equals(shape) || HALFMAP.equals(shape) || NAV.equals(shape) || MAP3D.equals(shape); }
+    static boolean hasMap(String shape) { return MAPCARDS.equals(shape) || HALFMAP.equals(shape) || NAV.equals(shape) || MAP3D.equals(shape) || DOCK.equals(shape); }
 
     /** One of the 3D shapes (leaning cards, chrome round buttons). Pure. */
     static boolean deep(String shape) { return COCKPIT.equals(shape) || CHROME.equals(shape) || MAP3D.equals(shape); }

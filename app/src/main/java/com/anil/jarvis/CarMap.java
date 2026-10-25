@@ -57,6 +57,10 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     private final List<TextView> chipViews = new ArrayList<>(), sideViews = new ArrayList<>();
     private final CarArt.Icon turnIcon;
     private final TextView turn1, turn2, eta, speed, note;
+    // 21: the limit sign with the speed; 22: the arrival as short pills (each his switch)
+    private final CarLooks.SpeedBadge badge;
+    private final LinearLayout pills;
+    private final TextView[] pillViews = new TextView[3];
     private final TextView trafficBtn, satBtn, mapPill;
     private final HorizontalScrollView chipScroll;
     private boolean shown, googleOff, started, sourceBusy;
@@ -154,8 +158,20 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         eta.setVisibility(GONE);
         eta.setOnClickListener(v -> tap(host::bigMaps));
         speed = line(c, true);
+        pills = new LinearLayout(c);
+        pills.setOrientation(LinearLayout.HORIZONTAL);
+        pills.setVisibility(GONE);
+        for (int i = 0; i < 3; i++) {
+            pillViews[i] = line(c, true);
+            pillViews[i].setOnClickListener(v -> tap(host::bigMaps));
+            pills.addView(pillViews[i]);
+        }
+        badge = new CarLooks.SpeedBadge(c);
+        badge.setVisibility(GONE);
         bottom.addView(eta);
+        bottom.addView(pills);
         bottom.addView(speed);
+        bottom.addView(badge);
         addView(bottom, new LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START));
         bottom.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> map.setInset(getHeight() - t + dp(4))); // (the credit sits above them)
         note = line(c, false);
@@ -274,14 +290,20 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         turn2.setTextColor(textSoft);
         turn1.setMaxWidth(Math.max(dp(120), (int) (w * 0.62f)));
         turn2.setMaxWidth(Math.max(dp(120), (int) (w * 0.62f)));
-        for (TextView t : new TextView[]{eta, speed}) {
+        for (TextView t : new TextView[]{eta, speed, pillViews[0], pillViews[1], pillViews[2]}) {
             t.setTextSize(TypedValue.COMPLEX_UNIT_PX, txt * 1.15f);
             t.setPadding(pad * 2, pad, pad * 2, pad);
-            t.setBackground(card(pad * 2, false));
+            t.setBackground(card(t == eta || t == speed ? pad * 2 : 999, false));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
             lp.setMargins(0, 0, pad, 0);
+            lp.gravity = Gravity.CENTER_VERTICAL;
             t.setLayoutParams(lp);
         }
+        int bh = (int) (txt * 2.5f); // (the limit sign and the speed: a little taller than a pill)
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams((int) (bh * 2.5f), bh);
+        bp.gravity = Gravity.CENTER_VERTICAL;
+        badge.setLayoutParams(bp);
+        badge.setColours(fillCol, textMain, false);
         LayoutParams bl = (LayoutParams) bottom.getLayoutParams();
         bl.setMargins(pad, 0, 0, pad);
         bottom.setLayoutParams(bl);
@@ -310,8 +332,11 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         for (TextView t : chipViews) t.setTextColor(textMain);
         for (TextView t : sideViews) t.setTextColor(textMain);
         mapPill.setTextColor(textMain);
-        for (TextView t : new TextView[]{turn1, eta, speed}) t.setTextColor(textMain);
+        for (TextView t : new TextView[]{turn1, eta, speed, pillViews[0], pillViews[1], pillViews[2]}) t.setTextColor(textMain);
         turnIcon.setColour(look.light ? 0xFF0B1118 : 0xFFFFFFFF);
+        boolean low = p.carLowMotion();
+        turnIcon.setChevrons(p.carTurnArrows() && !low); // 20
+        map.setRouteGlow(p.carRouteGlow(), !low); // 19
         sizes(getWidth(), getHeight());
         boolean dk = CarDeck.darkMap(p.carMapNight(), look.night);
         if (dk != dark) { // (night came / went, or his choice changed: the map's colours with it — now if on the screen, else when it comes)
@@ -319,6 +344,9 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
             if (started && shown) source(); else darkStale = started;
         }
     }
+
+    /** The numbers' font (his choice) for the speed in the corner. */
+    void setFont(Typeface t) { badge.setFont(t); }
 
     // ---------------------------------------------------------------- shown / hidden
 
@@ -390,9 +418,16 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
             turn2.setVisibility(next.isEmpty() || det.isEmpty() ? GONE : VISIBLE);
             setText(eta, tr.isEmpty() ? "🏁 " + nav.optString("app") : "🏁 " + tr);
         }
+        String[] pl = trip && p.carMapPills() ? CarStyle.tripPills(nav.optString("trip")) : null; // 22: when, how long, how far
+        if (pl != null) for (int i = 0; i < 3; i++) { setText(pillViews[i], pl[i]); pillViews[i].setVisibility(pl[i].isEmpty() ? GONE : VISIBLE); }
         turn.setVisibility(trip ? VISIBLE : GONE);
-        eta.setVisibility(trip ? VISIBLE : GONE);
-        // the speed and the limit (red over it)
+        pills.setVisibility(pl != null ? VISIBLE : GONE);
+        eta.setVisibility(trip && pl == null ? VISIBLE : GONE);
+        // the speed and the limit (red over it): 21's sign and box, or the line
+        boolean b = p.carMapLimit();
+        badge.setVisibility(b ? VISIBLE : GONE);
+        speed.setVisibility(b ? GONE : VISIBLE);
+        if (b) badge.set(kmh, limit);
         String sp = kmh < 0 ? "📡 GPS…" : kmh + " కి.మీ/గం" + (limit > 0 ? "  ·  లిమిట్ " + limit : "");
         setText(speed, sp);
         speed.setTextColor(limit > 0 && kmh > limit ? 0xFFFF6B5E : textMain);

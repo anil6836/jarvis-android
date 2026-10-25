@@ -267,8 +267,10 @@ final class CarDeck {
         return CarLayout.CHOICES[0];
     }
 
-    static final String[] BG_MOTIONS = {"", "stars", "rain", "road", "clouds"};
-    static final String[] BG_MOTION_NAMES = {"కదలిక లేదు (థీమ్‌దే)", "✨ నక్షత్రాలు", "🌧️ గాజు మీద వర్షం చుక్కలు", "🛣️ కదిలే రోడ్డు గీతలు", "☁️ రంగుల మేఘాలు"};
+    static final String[] BG_MOTIONS = {"", "stars", "rain", "road", "clouds", "sunset", "waterfall", "space", "synth", "hud", "sport", "streaks", "teal"};
+    static final String[] BG_MOTION_NAMES = {"కదలిక లేదు (థీమ్‌దే)", "✨ నక్షత్రాలు", "🌧️ గాజు మీద వర్షం చుక్కలు", "🛣️ కదిలే రోడ్డు గీతలు", "☁️ రంగుల మేఘాలు",
+            "9 · 🌄 ఊదా సూర్యాస్తమయం", "10 · 🏞️ జలపాతం సాయంత్రం", "11 · 🪐 అంతరిక్షం", "12 · 🌆 సింథ్‌వేవ్ గ్రిడ్", "13 · 🔷 HUD గ్రిడ్",
+            "14 · 🏁 స్పోర్ట్ మెష్", "15 · 💫 స్పీడ్ గీతలు", "16 · 🌈 టీల్-పర్పుల్ మెరుపు"};
     static final String[] CLOCKS = {"", "thin", "led", "analog"};
     static final String[] CLOCK_NAMES = {"పెద్ద అంకెలు", "సన్నని అంకెలు", "డిజిటల్ LED", "🕰️ ముళ్ల గడియారం"};
     static final String[] NIGHT_DIMS = {"", "mid", "low"};
@@ -430,13 +432,18 @@ final class CarDeck {
     /** The settings a kept look holds: how the screen looks only (no photos, no places, nothing private). */
     static final String[] LOOK_KEYS = {"car_theme", "car_accent", "car_colour", "car_gauge", "car_layout", "car_nav_map", "car_buttons", "car_btn_style",
             "car_dials", "car_jarvis", "car_text", "car_map_night", "car_map_zoom", "car_map_tilt", "car_dance", "car_low_motion", "car_eq_level", "car_beat_lights",
-            "car_art_colour", "car_bg_motion", "car_clock", "car_night_dim", "car_welcome"};
+            "car_art_colour", "car_bg_motion", "car_clock", "car_night_dim", "car_welcome",
+            // v3 (25 Oct, his pictures' looks)
+            "car_font", "car_card", "car_icons", "car_eq_style", "car_welcome_look", "car_jarvis_look", "car_platform", "car_vinyl", "car_wave",
+            "car_route_glow", "car_turn_arrows", "car_map_limit", "car_map_pills", "car_cluster_dial"};
+    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23). */
+    private static int known(int v) { return v >= 3 ? LOOK_KEYS.length : v == 2 ? 23 : 0; }
     static final int MINE = 3;
 
     /** The look now (from all the settings) as one line to keep. */
     static String keep(Map<String, ?> all) {
         JSONObject o = new JSONObject();
-        try { o.put("v", 2); } catch (Exception ignored) {} // (v2: every look key there; an older one only knew some)
+        try { o.put("v", 3); } catch (Exception ignored) {} // (v3: every look key there; an older one only knew some)
         for (String k : LOOK_KEYS) {
             Object v = all == null ? null : all.get(k);
             try { if (v instanceof Integer || v instanceof Boolean || v instanceof String) o.put(k, v); } catch (Exception ignored) {}
@@ -453,9 +460,10 @@ final class CarDeck {
         JSONObject o;
         try { o = new JSONObject(kept); } catch (Exception e) { return null; }
         Map<String, Object> out = new LinkedHashMap<>();
-        boolean whole = o.optInt("v", 1) >= 2; // (an older kept look never resets a setting it didn't know about)
-        for (String k : LOOK_KEYS) {
-            if (!whole && !o.has(k)) continue;
+        int knew = known(o.optInt("v", 1)); // (an older kept look never resets a setting it didn't know about)
+        for (int i = 0; i < LOOK_KEYS.length; i++) {
+            String k = LOOK_KEYS[i];
+            if (i >= knew && !o.has(k)) continue;
             Object v = o.opt(k);
             if (v instanceof Integer || v instanceof Boolean || v instanceof String) out.put(k, v);
             else if (v instanceof Long && (Long) v >= Integer.MIN_VALUE && (Long) v <= Integer.MAX_VALUE) out.put(k, (int) (long) (Long) v);

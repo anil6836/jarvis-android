@@ -502,6 +502,25 @@ final class Prefs {
     /** 🔆 At night Jarvis's screen light ("" the box's, "mid", "low"); 🌗 his day and night themes ("d,n", "" off). His switches only. */
     String carNightDim() { return sp.getString("car_night_dim", ""); }
     String carDayNight() { return sp.getString("car_dn", ""); }
+    // ✨ his pictures' looks (CarStyle; every one his choice): the numbers' font, the cards, the icons, the equalizer, the welcome, Jarvis
+    String carFont() { return sp.getString("car_font", ""); }
+    String carCard() { return sp.getString("car_card", ""); }
+    String carIcons() { return sp.getString("car_icons", ""); }
+    String carEqStyle() { return sp.getString("car_eq_style", ""); }
+    String carWelcomeLook() { return sp.getString("car_welcome_look", ""); }
+    String carJarvisLook() { return sp.getString("car_jarvis_look", ""); }
+    /** 27: parked, the car drawing on a lit ring stage (instead of the road). */
+    boolean carPlatform() { return sp.getBoolean("car_platform", false); }
+    /** 23: the song picture on a turning record with a ring of how far; 24: little waves under the song's name. */
+    boolean carVinyl() { return sp.getBoolean("car_vinyl", false); }
+    boolean carWave() { return sp.getBoolean("car_wave", false); }
+    /** 19–22 on the car map: the way lit with flowing arrows, the turn's arrows, the limit sign with the speed, the arrival pills. */
+    boolean carRouteGlow() { return sp.getBoolean("car_route_glow", true); }
+    boolean carTurnArrows() { return sp.getBoolean("car_turn_arrows", true); }
+    boolean carMapLimit() { return sp.getBoolean("car_map_limit", true); }
+    boolean carMapPills() { return sp.getBoolean("car_map_pills", true); }
+    /** ⑨'s big right dial (one of CarDeck.DIALS). */
+    String carClusterDial() { String d = sp.getString("car_cluster_dial", "compass"); return CarDeck.dialIndex(d) < 0 ? "compass" : d; }
 
     /** A kept look put on (CarDeck.back: a key with null goes back to its default). */
     void applyLook(java.util.Map<String, Object> m) {

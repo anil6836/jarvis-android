@@ -54,7 +54,38 @@ final class CarPortal extends FrameLayout {
         });
     }
 
-    void setLook(CarTheme.Look l) { look = l; invalidate(); }
+    void setLook(CarTheme.Look l) {
+        boolean recolour = holo && (look == null || look.accent != l.accent);
+        look = l;
+        if (recolour) holoLayer();
+        invalidate();
+    }
+
+    // ---- 29: the hologram look — Jarvis in the theme's light (his own drawing, tinted), fine lines over him, a ring stage
+    private boolean holo;
+    private final Paint holoPaint = new Paint();
+    private RadialGradient cone;
+    private int coneW, coneH, coneAc;
+
+    void setHolo(boolean on) {
+        if (on == holo) return;
+        holo = on;
+        if (on) holoLayer(); else body.setLayerType(LAYER_TYPE_NONE, null);
+        invalidate();
+    }
+
+    /** Jarvis drawn through a filter: his light and shade kept, every colour turned into the theme's light, a little see-through. */
+    private void holoLayer() {
+        int ac = look == null ? 0xFF4FD2FF : look.accent;
+        float r = Color.red(ac) / 255f, g = Color.green(ac) / 255f, b = Color.blue(ac) / 255f;
+        float k = 1.25f;
+        holoPaint.setColorFilter(new android.graphics.ColorMatrixColorFilter(new float[]{
+                0.30f * r * k, 0.59f * r * k, 0.11f * r * k, 0, 18 * r,
+                0.30f * g * k, 0.59f * g * k, 0.11f * g * k, 0, 18 * g,
+                0.30f * b * k, 0.59f * b * k, 0.11f * b * k, 0, 18 * b,
+                0, 0, 0, 0.82f, 0}));
+        body.setLayerType(LAYER_TYPE_HARDWARE, holoPaint);
+    }
     void setState(int s) { if (state != s) { state = s; invalidate(); } }
     void setBelted(boolean b) { if (belted != b) { belted = b; invalidate(); } }
     void setLowMotion(boolean b) { lowMotion = b; }
@@ -105,8 +136,22 @@ final class CarPortal extends FrameLayout {
         p.setStyle(Paint.Style.FILL);
         p.setAlpha(255); p.setShader(glow);
         cv.drawRect(0, 0, w, h, p);
-        // the window's dark glass (behind Jarvis)
+        // the window's dark glass (behind Jarvis); the hologram has none: a cone of light from his stage instead
         float inset = s * 0.085f, rad = (s - 2 * inset) * 0.42f;
+        if (holo) {
+            if (cone == null || coneW != w || coneH != h || coneAc != ac) {
+                coneW = w; coneH = h; coneAc = ac;
+                cone = new RadialGradient(cx, h - inset, Math.max(1, h * 0.9f), new int[]{CarTheme.withAlpha(ac, 0x55), CarTheme.withAlpha(ac, 0x14), 0}, new float[]{0, 0.6f, 1}, Shader.TileMode.CLAMP);
+            }
+            p.setAlpha(255);
+            p.setShader(cone);
+            belt.rewind();
+            belt.moveTo(cx - w * 0.12f, inset); belt.lineTo(cx + w * 0.12f, inset); belt.lineTo(cx + w * 0.40f, h - inset); belt.lineTo(cx - w * 0.40f, h - inset); belt.close();
+            cv.drawPath(belt, p);
+            p.setShader(null);
+            super.onDraw(cv);
+            return;
+        }
         r.set(inset, inset, w - inset, h - inset);
         p.setAlpha(255); p.setShader(glass);
         cv.drawRoundRect(r, rad, rad, p);
@@ -145,14 +190,16 @@ final class CarPortal extends FrameLayout {
             p.setPathEffect(null);
             cv.restore();
         }
+        long now0 = SystemClock.uptimeMillis();
+        if (holo) holoOver(cv, w, h, s, cx, inset, ac, now0);
         // the window's lit edge
         r.set(inset, inset, w - inset, h - inset);
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeWidth(Math.max(1.5f, s * 0.006f));
         p.setColor(CarTheme.withAlpha(ac, 0x66));
-        cv.drawRoundRect(r, rad, rad, p);
+        if (!holo) cv.drawRoundRect(r, rad, rad, p);
         // the orbit rings (two tilted ellipses, one in front, one behind — drawn here as thin lines over the glass edge)
-        for (int k = 0; k < 2; k++) {
+        for (int k = 0; !holo && k < 2; k++) {
             cv.save();
             cv.rotate(k == 0 ? -18 + 14 * (float) Math.sin(Math.toRadians(orbit * 0.5)) : 24 - 10 * (float) Math.sin(Math.toRadians(orbit * 0.3)), cx, cy); // (a slow wobble, whole cycles inside the 3600° wrap)
             r.set(cx - s * 0.53f, cy - s * (k == 0 ? 0.13f : 0.2f), cx + s * 0.53f, cy + s * (k == 0 ? 0.13f : 0.2f));
@@ -187,6 +234,40 @@ final class CarPortal extends FrameLayout {
         boolean moving = state != BodyRig.IDLE || beatPulse > 0 || !lowMotion;
         removeCallbacks(frame); // (one loop only: an outside invalidate never starts a second one)
         if (moving && isShown()) postOnAnimationDelayed(frame, state == BodyRig.IDLE && beatPulse == 0 ? 66 : 33);
+    }
+
+    /** Over the hologram: fine lines across him, a brighter band sliding down now and then, the ring stage under him (brighter while he speaks). */
+    private void holoOver(Canvas cv, int w, int h, float s, float cx, float inset, int ac, long now) {
+        if (body.getWidth() > 0) {
+            int sv = cv.save();
+            cv.clipRect(body.getLeft(), body.getTop(), body.getRight(), body.getBottom());
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(CarTheme.withAlpha(0xFF000000, 0x30));
+            float step = Math.max(3, s / 90f);
+            for (float y = body.getTop(); y < body.getBottom(); y += step) cv.drawRect(body.getLeft(), y, body.getRight(), y + step * 0.35f, p);
+            if (!lowMotion) {
+                float cyc = (now % 3600) / 3600f, by = body.getTop() + (body.getBottom() - body.getTop()) * cyc * 1.2f;
+                p.setColor(CarTheme.withAlpha(ac, 0x28));
+                cv.drawRect(body.getLeft(), by, body.getRight(), by + s * 0.05f, p);
+            }
+            cv.restoreToCount(sv);
+        }
+        float gy = h - inset * 0.9f, rx = w * 0.36f;
+        float talk = state == BodyRig.SPEAKING ? 1 : 0, pulse = lowMotion ? 0 : (float) Math.sin(now / 700.0);
+        p.setStyle(Paint.Style.STROKE);
+        float[] ks = {1f, 0.72f, 0.45f};
+        int[] al = {0x55, 0x8C, 0xE6};
+        for (int i = 0; i < 3; i++) {
+            float k = ks[i] * (1 + 0.04f * pulse);
+            p.setStrokeWidth(Math.max(1.5f, s * 0.008f));
+            p.setColor(CarTheme.withAlpha(ac, Math.min(255, al[i] + Math.round(0x30 * talk))));
+            r.set(cx - rx * k, gy - rx * k * 0.2f, cx + rx * k, gy + rx * k * 0.2f);
+            cv.drawOval(r, p);
+        }
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(CarTheme.withAlpha(0xFFFFFFFF, 0x66));
+        r.set(cx - rx * 0.36f, gy - rx * 0.05f, cx + rx * 0.36f, gy + rx * 0.05f);
+        cv.drawOval(r, p);
     }
 
     @Override protected void onDetachedFromWindow() {

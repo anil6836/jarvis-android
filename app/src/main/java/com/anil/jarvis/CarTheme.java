@@ -1,7 +1,7 @@
 package com.anil.jarvis;
 
 /**
- * 🎨 The car screen's ten looks (Anil, 24 Oct: "car launcher లాగా 10 థీమ్స్", 3D, modern). A theme is its colours
+ * 🎨 The car screen's sixteen looks (Anil, 24 Oct: "car launcher లాగా 10 థీమ్స్", 3D, modern). A theme is its colours
  * (day and night), its background pattern, its gauge style and its tile style; the screen's mode (driving / a song
  * playing / parked) picks the accent. Plain Java: {@link #look(int, boolean, int)} resolves everything to ints, so a
  * desk test can check the set without Android. Our own designs; the car drawing carries no maker's badge.
@@ -11,8 +11,10 @@ final class CarTheme {
     // background patterns (drawn by CarBackdrop)
     static final int P_NONE = 0, P_GRID = 1, P_CARBON = 2, P_HEX = 3, P_WIRE = 4, P_SCAN = 5, P_LEATHER = 6, P_HORIZON = 7, P_STARS = 8;
     // gauge styles
-    static final int G_ARC = 0, G_NEEDLE = 1, G_DIGITS = 2;
-    static final int COUNT = 10;
+    static final int G_ARC = 0, G_NEEDLE = 1, G_DIGITS = 2,
+            // 25 Oct, the sheet's 1–8 (CarLooks draws them)
+            G_TICK = 3, G_FAN = 4, G_BLOCKS = 5, G_RING = 6, G_NEON = 7, G_HALF = 8, G_CYBER = 9, G_SCOPE = 10;
+    static final int COUNT = 16;
 
     final int id;
     final String name;
@@ -20,12 +22,19 @@ final class CarTheme {
     final int accent, musicAccent, parkAccent, nightAccent;
     final int pattern, gauge;
     final boolean light;
+    /** The cards' frame of its own (CarStyle.C_…: glass, HUD, glow). */
+    final int card;
 
     private CarTheme(int id, String name, int bgTop, int bgBottom, int nightTop, int nightBottom, int accent, int musicAccent, int parkAccent,
                      int nightAccent, int pattern, int gauge, boolean light) {
+        this(id, name, bgTop, bgBottom, nightTop, nightBottom, accent, musicAccent, parkAccent, nightAccent, pattern, gauge, light, CarStyle.C_GLASS);
+    }
+
+    private CarTheme(int id, String name, int bgTop, int bgBottom, int nightTop, int nightBottom, int accent, int musicAccent, int parkAccent,
+                     int nightAccent, int pattern, int gauge, boolean light, int card) {
         this.id = id; this.name = name; this.bgTop = bgTop; this.bgBottom = bgBottom; this.nightTop = nightTop; this.nightBottom = nightBottom;
         this.accent = accent; this.musicAccent = musicAccent; this.parkAccent = parkAccent; this.nightAccent = nightAccent;
-        this.pattern = pattern; this.gauge = gauge; this.light = light;
+        this.pattern = pattern; this.gauge = gauge; this.light = light; this.card = card;
     }
 
     static final CarTheme[] ALL = {
@@ -39,6 +48,13 @@ final class CarTheme {
             new CarTheme(8, "అడవి ఆకుపచ్చ", 0xFF0F3A2E, 0xFF04070D, 0xFF07201A, 0xFF020504, 0xFF7DFFC8, 0xFFB8FF7A, 0xFF5FF3FF, 0xFF4FD6A3, P_HEX, G_ARC, false),
             new CarTheme(9, "బంగారు", 0xFF171310, 0xFF070605, 0xFF0F0C0A, 0xFF030202, 0xFFFFD166, 0xFFFF9F66, 0xFFE6FFB0, 0xFFD6AE4E, P_NONE, G_ARC, false),
             new CarTheme(10, "హోలోగ్రామ్", 0xFF0A2440, 0xFF03101F, 0xFF061728, 0xFF020810, 0xFF5FB3FF, 0xFFB08CFF, 0xFF7DFFC8, 0xFF4A96DB, P_WIRE, G_ARC, false),
+            // 25 Oct, from the colours of his pictures (A–F on the sheet): our own sets
+            new CarTheme(11, "A · నియాన్ లైమ్", 0xFF1E2024, 0xFF08090A, 0xFF121316, 0xFF030303, 0xFFD4FF3A, 0xFFFF4FD8, 0xFF7DFFC8, 0xFFA6CC2E, P_CARBON, G_TICK, false),
+            new CarTheme(12, "B · సిల్వర్ గ్లాస్", 0xFFE4E8ED, 0xFFB7BFC9, 0xFF1E242C, 0xFF0B0F14, 0xFFD98E00, 0xFF8A4DFF, 0xFF13A37A, 0xFFFFC21A, P_NONE, G_HALF, true),
+            new CarTheme(13, "C · సింథ్‌వేవ్", 0xFF2A1050, 0xFF0A0418, 0xFF180A30, 0xFF05020C, 0xFFFF3FA4, 0xFF5FF3FF, 0xFFFFD166, 0xFFD6358A, P_HORIZON, G_RING, false),
+            new CarTheme(14, "D · HUD బ్లూ", 0xFF0B2A50, 0xFF020A16, 0xFF071A33, 0xFF01050B, 0xFF4FD2FF, 0xFF9F7BFF, 0xFF7DFFC8, 0xFF3BA8D6, P_WIRE, G_SCOPE, false, CarStyle.C_HUD),
+            new CarTheme(15, "E · స్పోర్ట్ రెడ్-బ్లూ", 0xFF1C2838, 0xFF070B12, 0xFF111A26, 0xFF030508, 0xFFE8343A, 0xFF3B82F6, 0xFFFFFFFF, 0xFFC42A30, P_CARBON, G_BLOCKS, false),
+            new CarTheme(16, "F · నైట్ గ్రీన్", 0xFF0A2A1E, 0xFF020806, 0xFF061A13, 0xFF010403, 0xFF4DFFA6, 0xFFB8FF7A, 0xFF5FF3FF, 0xFF34C784, P_HEX, G_CYBER, false),
     };
 
     static CarTheme of(int id) {
@@ -51,6 +67,9 @@ final class CarTheme {
         int bgTop, bgBottom, accent, glow, glassFill, glassStroke, tileFill, tileStroke, textMain, textSoft, textFaint, sheetFill, patternInk;
         int pattern, gauge;
         boolean light, night;
+        /** The cards' frame (CarStyle.C_…) and "fewer movements" (a frame's running light rests). */
+        int card;
+        boolean lowMotion;
     }
 
     Look look(int mode, boolean night) { return look(mode, night, 0); }
@@ -81,6 +100,7 @@ final class CarTheme {
         }
         l.pattern = pattern;
         l.gauge = gauge;
+        l.card = card;
         return l;
     }
 

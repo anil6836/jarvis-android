@@ -3107,8 +3107,8 @@ public class SettingsActivity extends Activity {
             int ai = 0;
             for (int i = 0; i < ACCENTS.length; i++) if (ACCENTS[i] == prefs.carAccent()) ai = i;
             accentRow.setText("✨ నడిపేటప్పుడు రంగు: " + ACCENT_NAMES[ai] + "  (మార్చడానికి నొక్కండి)");
-            int gi = Math.max(0, java.util.Arrays.asList(GAUGES).indexOf(prefs.carGauge()));
-            gaugeRow.setText("🧭 స్పీడ్ మీటర్: " + GAUGE_NAMES[gi] + "  (మార్చడానికి నొక్కండి)");
+            int gi = Math.max(0, java.util.Arrays.asList(CarStyle.GAUGES).indexOf(prefs.carGauge()));
+            gaugeRow.setText("🧭 స్పీడ్ మీటర్: " + CarStyle.GAUGE_NAMES[gi] + "  (మార్చడానికి నొక్కండి)");
             boolean has = new java.io.File(getFilesDir(), "car_wall.jpg").exists();
             wallRow.setText(has ? "🖼️ వాల్‌పేపర్: మీ ఫోటో  (మార్చడానికి / తీసేయడానికి నొక్కండి)" : "🖼️ వాల్‌పేపర్: థీమ్‌దే  (మీ ఫోటో పెట్టడానికి నొక్కండి)");
             heroRow.setText("🚙 కారు: " + (CarPhoto.on(this, prefs) ? "నా ఫోటో" : "మన బొమ్మ")
@@ -3151,8 +3151,8 @@ public class SettingsActivity extends Activity {
         });
         gaugeRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("స్పీడ్ మీటర్ స్టైల్")
-                .setSingleChoiceItems(GAUGE_NAMES, Math.max(0, java.util.Arrays.asList(GAUGES).indexOf(prefs.carGauge())), (d, w) -> {
-                    prefs.sp.edit().putString("car_gauge", GAUGES[w]).apply();
+                .setSingleChoiceItems(CarStyle.GAUGE_NAMES, Math.max(0, java.util.Arrays.asList(CarStyle.GAUGES).indexOf(prefs.carGauge())), (d, w) -> {
+                    prefs.sp.edit().putString("car_gauge", CarStyle.GAUGES[w]).apply();
                     show.run();
                     d.dismiss();
                 }).show());
@@ -3449,8 +3449,79 @@ public class SettingsActivity extends Activity {
                 try { startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
             }
         });
+        // ✨ his pictures' looks (25 Oct): the numbers' font, the cards, the icons, the equalizer's look, the welcome, Jarvis, ⑨'s dial
+        TextView newHead = Ui.text(this, "✨ కొత్త రూపాలు (మీరు పంపిన బొమ్మల స్ఫూర్తితో, మన సొంత బొమ్మలు)", 15.5f, Ui.TEXT);
+        newHead.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4));
+        box.addView(newHead);
+        final String[][] pick = {
+                {"car_font", "🔢 అంకెల ఫాంట్ (స్పీడ్, గడియారం, డయల్స్)"},
+                {"car_card", "🃏 కార్డుల అంచులు"},
+                {"car_icons", "🎛️ బటన్ల ఐకాన్లు"},
+                {"car_eq_style", "🎚️ ఈక్వలైజర్ రూపం"},
+                {"car_welcome_look", "🚗 స్వాగతం ఎలా"},
+                {"car_jarvis_look", "🧍 Jarvis రూపం"},
+                {"car_cluster_dial", "🔵 ⑨ క్లస్టర్ కుడి పెద్ద డయల్"}};
+        final String[][][] lists = {
+                {CarStyle.FONTS, CarStyle.FONT_NAMES}, {CarStyle.CARDS, CarStyle.CARD_NAMES}, {CarStyle.ICONS, CarStyle.ICON_NAMES},
+                {CarStyle.EQ_STYLES, CarStyle.EQ_STYLE_NAMES}, {CarStyle.WELCOMES, CarStyle.WELCOME_NAMES}, {CarStyle.JARVIS_LOOKS, CarStyle.JARVIS_LOOK_NAMES},
+                {CarDeck.DIALS, CarDeck.DIAL_NAMES}};
+        final TextView[] pickRows = new TextView[pick.length];
+        final Runnable showPicks = () -> {
+            for (int i = 0; i < pick.length; i++) {
+                String cur = "car_cluster_dial".equals(pick[i][0]) ? prefs.carClusterDial() : prefs.sp.getString(pick[i][0], "");
+                pickRows[i].setText(pick[i][1] + ": " + CarDeck.nameOf(lists[i][0], lists[i][1], cur) + "  (మార్చడానికి నొక్కండి)");
+            }
+        };
+        for (int i = 0; i < pick.length; i++) {
+            final int k = i;
+            pickRows[i] = Ui.text(this, "", 15.5f, accent);
+            pickRows[i].setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+            pickRows[i].setOnClickListener(v -> {
+                String cur = "car_cluster_dial".equals(pick[k][0]) ? prefs.carClusterDial() : prefs.sp.getString(pick[k][0], "");
+                new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle(pick[k][1])
+                        .setSingleChoiceItems(lists[k][1], Math.max(0, java.util.Arrays.asList(lists[k][0]).indexOf(cur)), (dl, w) -> {
+                            prefs.sp.edit().putString(pick[k][0], lists[k][0][w]).apply();
+                            showPicks.run();
+                            dl.dismiss();
+                        }).show();
+            });
+            box.addView(pickRows[i]);
+        }
+        showPicks.run();
+        Switch platSw = toggle("27 · 🚗 ఆగి ఉన్నప్పుడు కారు బొమ్మ వెలిగే వలయాల వేదిక మీద (రోడ్డు బదులు)", prefs.carPlatform());
+        platSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_platform", v).apply());
+        Switch vinylSw = toggle("23 · 💿 పాట బొమ్మ రికార్డులా తిరుగుతుంది, చుట్టూ పాట ఎంత అయిందో వలయం", prefs.carVinyl());
+        vinylSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_vinyl", v).apply());
+        Switch waveSw = toggle("24 · 〰️ పాట పేరు కింద అలలు (అలంకారం మాత్రమే: పాట అసలు అలలు కాదు; అయిన భాగం రంగులో. పాట సమయం ఇవ్వని యాప్స్‌లో కదలదు)", prefs.carWave());
+        waveSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_wave", v).apply());
+        Switch routeSw = toggle("19 · 🛣️ కారు మ్యాప్ మీద దారి బంగారు రంగులో వెలుగుతూ, బాణాలు ముందుకు పారుతాయి (Jarvis మొదలుపెట్టిన దారి, Google మ్యాప్ ఉన్నప్పుడు)", prefs.carRouteGlow());
+        routeSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_route_glow", v).apply());
+        Switch turnSw = toggle("20 · ➤➤➤ మలుపు గుర్తు మూడు బాణాలుగా వరుసగా వెలుగుతుంది", prefs.carTurnArrows());
+        turnSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_turn_arrows", v).apply());
+        Switch limitSw = toggle("21 · 🔴 మ్యాప్ మూలలో లిమిట్ బోర్డు + మీ వేగం (దాటితే ఎరుపు; రోడ్డు లిమిట్ తెలిసిన చోటే బోర్డు)", prefs.carMapLimit());
+        limitSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_map_limit", v).apply());
+        Switch pillSw = toggle("22 · 🕐 దారిలో చేరే సమయం, ఎంతసేపు, ఎంత దూరం చిన్న పిల్స్‌గా", prefs.carMapPills());
+        pillSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_map_pills", v).apply());
         // 💾 a kept look back: every look setting at once (the rows and switches here show it at once too)
-        final Switch[] sws = {navMap, tilt, low, beatSw, stage, artSw, welcomeSw};
+        final Switch[] sws = {navMap, tilt, low, beatSw, stage, artSw, welcomeSw, platSw, vinylSw, waveSw, routeSw, turnSw, limitSw, pillSw};
+        final Runnable showAll = () -> {
+            show.run(); showShape.run(); showDeck.run(); showEq.run(); showMore.run(); showPicks.run();
+            sws[0].setChecked(prefs.carNavMap()); sws[1].setChecked(prefs.carMapTilt()); sws[2].setChecked(prefs.carLowMotion());
+            sws[3].setChecked(prefs.carBeatLights()); sws[4].setChecked(prefs.carStage());
+            sws[5].setChecked(prefs.carArtColour()); sws[6].setChecked(prefs.carWelcome());
+            sws[7].setChecked(prefs.carPlatform()); sws[8].setChecked(prefs.carVinyl()); sws[9].setChecked(prefs.carWave());
+            sws[10].setChecked(prefs.carRouteGlow()); sws[11].setChecked(prefs.carTurnArrows()); sws[12].setChecked(prefs.carMapLimit()); sws[13].setChecked(prefs.carMapPills());
+        };
+        TextView suggest = Ui.text(this, "✨ నా సలహా సెట్ పెట్టు: ⑩ డాక్ · 5 నియాన్ సూది · D HUD బ్లూ · 11 అంతరిక్షం · 29 హోలోగ్రామ్ · 31 నియాన్ ఐకాన్లు · 19–22 · 23 రికార్డు · 26 అద్దం EQ", 15.5f, accent);
+        suggest.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        suggest.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("✨ సలహా సెట్")
+                .setMessage("ఇవి మాత్రమే మారతాయి: ఆకారం, స్పీడ్ మీటర్, థీమ్, వెనక బొమ్మ, Jarvis రూపం, ఐకాన్లు, మ్యాప్ ముక్కలు, రికార్డు, ఈక్వలైజర్. మిగతావి మీవే. "
+                        + "ఇప్పటి రూపం కావాలంటే ముందు 💾 నా థీమ్‌లో దాచుకోండి.")
+                .setPositiveButton("పెట్టు", (dl, w) -> { prefs.applyLook(CarStyle.suggested()); showAll.run(); Toast.makeText(this, "✨ సలహా సెట్ పెట్టాను", Toast.LENGTH_SHORT).show(); })
+                .setNegativeButton("వద్దు", null).show());
+        box.addView(suggest);
         mineRow.setOnClickListener(v -> {
             String[] items = new String[CarDeck.MINE];
             for (int i = 0; i < CarDeck.MINE; i++) {
@@ -3459,12 +3530,7 @@ public class SettingsActivity extends Activity {
             }
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                     .setTitle("నా థీమ్‌లు")
-                    .setItems(items, (d, w) -> mineSlot(w + 1, () -> {
-                        show.run(); showShape.run(); showDeck.run();
-                        sws[0].setChecked(prefs.carNavMap()); sws[1].setChecked(prefs.carMapTilt()); sws[2].setChecked(prefs.carLowMotion());
-                        sws[3].setChecked(prefs.carBeatLights()); sws[4].setChecked(prefs.carStage()); showEq.run();
-                        sws[5].setChecked(prefs.carArtColour()); sws[6].setChecked(prefs.carWelcome()); showMore.run();
-                    })).show();
+                    .setItems(items, (d, w) -> mineSlot(w + 1, showAll)).show();
         });
         note("కారు ఆగి ఉన్నప్పుడు కారు స్క్రీన్ మీద: ఒక బటన్‌ని కాసేపు నొక్కి పట్టుకుంటే దాని స్థానంలో వేరే బటన్; ② చిన్న డయల్‌ని పట్టుకుంటే అందులో ఏం చూపించాలో; "
                 + "స్పీడ్ మీటర్‌ని పట్టుకుంటే దాని రూపం; Jarvis ని పట్టుకుంటే అతని సైజు; పాట పట్టీని పట్టుకుంటే 🎚️ ఈక్వలైజర్ / 💡 బీట్ లైట్లు / 🕺 స్టేజ్. "
@@ -3512,8 +3578,6 @@ public class SettingsActivity extends Activity {
     // the theme editor's choices
     private static final int[] ACCENTS = {0, 0xFF5FF3FF, 0xFF4D8DFF, 0xFF34E89E, 0xFFFFC24B, 0xFFFF8A3D, 0xFFFF5A5A, 0xFFFF6AD5, 0xFFB28DFF, 0xFFF2F6FA};
     private static final String[] ACCENT_NAMES = {"థీమ్‌దే", "సియాన్", "నీలం", "ఆకుపచ్చ", "బంగారు", "నారింజ", "ఎరుపు", "గులాబీ", "ఊదా", "తెలుపు"};
-    private static final String[] GAUGES = {"", "arc", "needle", "digits"},
-            GAUGE_NAMES = {"థీమ్‌దే (①②③ లో ఆకారానిదే)", "వెలిగే వంపు (ఆర్క్)", "క్లాసిక్ సూది డయల్", "పెద్ద అంకెలు మాత్రమే"};
     private static final int REQ_WALL = 47, REQ_CARPHOTO = 48, REQ_CARREAR = 49;
 
     private void pickCarRear() {

@@ -160,6 +160,10 @@ final class CarArt {
 
         void setLook(CarTheme.Look l) { look = l; invalidate(); }
 
+        private final CarLooks.G g = new CarLooks.G();
+        /** The numbers' font (his choice; null: the phone's bold). */
+        void setFont(Typeface t) { if (t != g.num) { g.num = t; invalidate(); } }
+
         /** speed < 0: no GPS yet. */
         void set(int speed, int limit, boolean over, boolean hot, String engine) {
             boolean change = speed != this.speed || limit != this.limit || over != this.over || hot != this.hot || !engine.equals(this.engine);
@@ -188,6 +192,7 @@ final class CarArt {
                 postOnAnimationDelayed(ease, 33); // (30 frames a second are plenty for a number)
             } else drawn = target;
             lastFrame = now;
+            if (look.gauge >= CarTheme.G_TICK) { CarLooks.gauge(cv, g, look.gauge, w, h, drawn, speed, limit, over, hot, engine, look); return; } // (the sheet's 1–8)
             if (look.gauge == CarTheme.G_DIGITS) { digits(cv, w, h); return; }
             boolean needle = look.gauge == CarTheme.G_NEEDLE;
             int accent = over ? 0xFFFF5A4E : look.accent;
@@ -195,7 +200,7 @@ final class CarArt {
             if (needle) dial(cv, cx, cy, r, accent);
             else arcGauge(cv, cx, cy, r, sw, accent);
             // the speed
-            t.setTypeface(Typeface.DEFAULT_BOLD);
+            t.setTypeface(g.num != null ? g.num : Typeface.DEFAULT_BOLD);
             t.setColor(over ? warn : look.textMain);
             t.setTextSize(needle ? r * 0.42f : r * 0.78f);
             t.setShadowLayer(needle ? 0 : r * 0.06f, 0, r * 0.03f, 0x66000000);
@@ -236,7 +241,7 @@ final class CarArt {
         private void digits(Canvas cv, int w, int h) {
             int warn = look.light ? 0xFFC62828 : 0xFFFF8A80;
             String num = speed < 0 ? "–" : String.valueOf(Math.round(drawn));
-            t.setTypeface(Typeface.DEFAULT_BOLD);
+            t.setTypeface(g.num != null ? g.num : Typeface.DEFAULT_BOLD);
             float size = Math.min(h * 0.66f, w * 0.42f);
             t.setTextSize(size);
             float tw = t.measureText(num);
@@ -382,6 +387,19 @@ final class CarArt {
 
         void setColour(int c) { if (colour != c) { colour = c; invalidate(); } }
         void setKind(int k) { if (kind != k) { kind = k; invalidate(); } }
+
+        private int style = CarStyle.I_GLOW, own = 0xFF5FF3FF;
+        /** 30–32: thin lines (in ink), neon (its own colour, a glowing ring), a colour tile (its own colour, a white sign). */
+        void setStyle(int style, int own) { if (style != this.style || own != this.own) { this.style = style; this.own = own; invalidate(); } }
+
+        private boolean chevrons;
+        /** 20: a turn's sign as three arrows lighting one after another (left, right, ahead). */
+        void setChevrons(boolean on) { if (on != chevrons) { chevrons = on; invalidate(); } }
+        private final Runnable chevFrame = this::invalidate;
+
+        private boolean turnKind() { return kind == LEFT || kind == RIGHT || kind == SLIGHT_LEFT || kind == SLIGHT_RIGHT || kind == AHEAD; }
+
+        @Override protected void onDetachedFromWindow() { super.onDetachedFromWindow(); removeCallbacks(chevFrame); }
         void setRing(boolean b) { if (ring != b) { ring = b; invalidate(); } }
         private float fill = 1;
         /** The sign this part of the view's square (the rest: room around it that still takes the tap). */
@@ -395,6 +413,45 @@ final class CarArt {
             cv.save();
             cv.translate((getWidth() - s) / 2f, (getHeight() - s) / 2f);
             cv.scale(u, u);
+            if (chevrons && turnKind()) { chevronsDraw(cv); cv.restore(); return; }
+            int col = colour;
+            if (style == CarStyle.I_TILE) { // a rounded tile in its colour, a light on its top half, the sign white
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(0xFFFFFFFF); // (a shader takes the paint's alpha: full)
+                if (tileSh == null || tileFor != own) { tileFor = own; tileSh = new LinearGradient(0, 4, 0, 48, own, CarTheme.shade(own, 0.55f), Shader.TileMode.CLAMP); }
+                p.setShader(tileSh);
+                tileR.set(4, 4, 48, 48);
+                cv.drawRoundRect(tileR, 12, 12, p);
+                p.setShader(null);
+                p.setColor(0x24FFFFFF);
+                tileR.set(4, 4, 48, 24);
+                cv.drawRoundRect(tileR, 12, 12, p);
+                p.setStyle(Paint.Style.STROKE);
+                cv.scale(0.6f, 0.6f, 26, 26);
+                p.setStrokeWidth(3.6f);
+                p.setColor(0xFFFFFFFF);
+                shape();
+                cv.drawPath(path, p);
+                cv.restore();
+                return;
+            }
+            if (style == CarStyle.I_LINE) { // thin lines, no glow
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(1.8f);
+                p.setColor(own);
+                shape();
+                cv.drawPath(path, p);
+                cv.restore();
+                return;
+            }
+            if (style == CarStyle.I_NEON) { // its own colour, a faint ring round it, a strong glow
+                col = own;
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(1.6f);
+                p.setColor(CarTheme.withAlpha(own, 0x55));
+                cv.drawCircle(26, 26, 24, p);
+                cv.scale(0.74f, 0.74f, 26, 26);
+            }
             if (ring) { // a soft disc in the colour and its rim
                 p.setStyle(Paint.Style.FILL);
                 p.setColor(CarTheme.withAlpha(colour, 0x2E));
@@ -407,15 +464,41 @@ final class CarArt {
             }
             p.setStrokeWidth(2.6f);
             // the glow, then the line
-            p.setColor(CarTheme.withAlpha(colour, 0x55));
+            p.setColor(CarTheme.withAlpha(col, style == CarStyle.I_NEON ? 0x77 : 0x55));
             p.setMaskFilter(null);
-            p.setStrokeWidth(5.5f);
+            p.setStrokeWidth(style == CarStyle.I_NEON ? 8f : 5.5f);
             shape();
             cv.drawPath(path, p);
-            p.setColor(colour);
+            p.setColor(col);
             p.setStrokeWidth(2.6f);
             cv.drawPath(path, p);
             cv.restore();
+        }
+
+        private Shader tileSh;
+        private int tileFor;
+        private final RectF tileR = new RectF();
+
+        /** Three arrows the turn's way, lighting one after another towards its tip (CarStyle.chevron), ~15 frames a second. */
+        private void chevronsDraw(Canvas cv) {
+            float t = (android.os.SystemClock.uptimeMillis() % 100_000L) / 1000f;
+            int dir = kind == LEFT || kind == SLIGHT_LEFT ? -1 : kind == AHEAD ? 0 : 1;
+            p.setStyle(Paint.Style.STROKE);
+            for (int i = 0; i < 3; i++) {
+                path.rewind();
+                float o = 9 + i * 14; // (the first arrow is the tail's, the third the tip's)
+                if (dir == 0) { float y = 52 - o - 2; path.moveTo(15, y + 4); path.lineTo(26, y - 5); path.lineTo(37, y + 4); }
+                else { float x = dir > 0 ? o : 52 - o; path.moveTo(x - dir * 4, 15); path.lineTo(x + dir * 5, 26); path.lineTo(x - dir * 4, 37); }
+                float a = CarStyle.chevron(i, t);
+                p.setColor(CarTheme.withAlpha(colour, Math.round(0x55 * a)));
+                p.setStrokeWidth(9f);
+                cv.drawPath(path, p);
+                p.setColor(CarTheme.withAlpha(colour, Math.round(255 * a)));
+                p.setStrokeWidth(4.2f);
+                cv.drawPath(path, p);
+            }
+            removeCallbacks(chevFrame);
+            if (isShown()) postOnAnimationDelayed(chevFrame, 66);
         }
 
         private void shape() {
@@ -569,8 +652,8 @@ final class CarArt {
      * blink before a turn (with a small arrow), and rain falls when it rains. Still (no frames) when parked and dry.
      */
     static final class Hero extends View {
-        private static final float UW = 400, UH = 150, GROUND = 136, R_TYRE = 25, ARCH_Y = 113, ARCH_R = 31;
-        private static final float[] WHEELS = {118, 292};
+        static final float UW = 400, UH = 150, GROUND = 136, R_TYRE = 25, ARCH_Y = 113, ARCH_R = 31;
+        static final float[] WHEELS = {118, 292};
         private int colour = 0xFF2F6FE4, indicator;
         private float speed, shownSpeed, wheelAngle, laneOffset, rainT;
         private boolean night, braking, rain, lowMotion;
@@ -611,6 +694,39 @@ final class CarArt {
         void setIndicator(int d) { if (d != indicator) { indicator = d; kick(); } }
         void setRain(boolean on) { if (on != rain) { rain = on; kick(); } }
         void setLowMotion(boolean b) { lowMotion = b; }
+
+        // ---- 27: parked, the car on a lit ring stage instead of the road
+        private boolean platform;
+        private Shader platSh;
+        private int platFor;
+        void setPlatform(boolean b) { if (b != platform) { platform = b; kick(); } }
+        private boolean onPlatform() { return platform && shownSpeed < 0.5f && speed < 0.5f; }
+
+        /** The lit stage under the car: a soft pool of the theme's colour and three rings, breathing slowly. */
+        private void platform(Canvas cv, float cx, float gy, float half, long now) {
+            int ac = look.accent;
+            float pulse = lowMotion ? 0 : (float) Math.sin(now / 900.0);
+            int key = ac ^ Math.round(cx * 7 + gy * 3 + half);
+            if (platSh == null || platFor != key) { platFor = key; platSh = new RadialGradient(cx, gy, Math.max(1, half * 1.05f), new int[]{CarTheme.withAlpha(ac, 0x70), CarTheme.withAlpha(ac, 0)}, null, Shader.TileMode.CLAMP); }
+            p.setStyle(Paint.Style.FILL);
+            p.setAlpha(255); p.setShader(platSh);
+            cv.save(); cv.scale(1, 0.12f, cx, gy); cv.drawCircle(cx, gy, half * 1.05f, p); cv.restore();
+            p.setShader(null);
+            p.setStyle(Paint.Style.STROKE);
+            float[] ks = {1f, 0.78f, 0.56f};
+            int[] al = {0x55, 0x88, 0xDD};
+            for (int i = 0; i < 3; i++) {
+                float k = ks[i] * (1 + 0.03f * pulse * (i + 1) / 3f);
+                p.setStrokeWidth(Math.max(1, half * 0.012f));
+                p.setColor(CarTheme.withAlpha(ac, al[i]));
+                r.set(cx - half * k, gy - half * k * 0.075f, cx + half * k, gy + half * k * 0.075f);
+                cv.drawOval(r, p);
+            }
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(CarTheme.withAlpha(0xFFFFFFFF, 0x55));
+            r.set(cx - half * 0.4f, gy - half * 0.012f, cx + half * 0.4f, gy + half * 0.012f);
+            cv.drawOval(r, p);
+        }
 
         // ---- 📷 his own car's photo instead of the drawing (CarPhoto): his wheels turn, his lamps light
         private android.graphics.Bitmap photo;
@@ -663,10 +779,15 @@ final class CarArt {
 
         private void kick() { invalidate(); }
 
-        private boolean animating() { return !lowMotion && (speed > 0.5f || shownSpeed > 0.5f || rain || indicator != 0 || braking); }
+        private boolean animating() { return !lowMotion && (speed > 0.5f || shownSpeed > 0.5f || rain || indicator != 0 || braking || onPlatform()); }
 
-        /** The body's outline in car units (side on, facing right). */
-        private void buildBody() {
+        /** Only the stage breathes: a slower frame is plenty. */
+        private int frameMs() { return onPlatform() && speed <= 0.5f && shownSpeed <= 0.5f && !rain && indicator == 0 && !braking ? 80 : 33; }
+
+        private void buildBody() { outline(body, glass); }
+
+        /** The body's outline and its glass in car units (side on, facing right): our own drawing, also the welcome's neon car. */
+        static void outline(Path body, Path glass) {
             // a compact SUV: short overhangs, a high bonnet, a roof falling gently to the hatch, big wheels in black arches
             Path b = body;
             b.moveTo(66, 112);
@@ -719,14 +840,14 @@ final class CarArt {
             if (photo != null) {
                 drawPhoto(cv, w, h, now);
                 removeCallbacks(frame);
-                if (animating() && isShown()) postOnAnimationDelayed(frame, 33);
+                if (animating() && isShown()) postOnAnimationDelayed(frame, frameMs());
                 return;
             }
             float s = Math.min(w / UW, h / UH);
             cv.save();
             cv.translate((w - UW * s) / 2f, h - UH * s);
             cv.scale(s, s);
-            road(cv);
+            if (onPlatform()) platform(cv, 200, GROUND, 196, now); else road(cv);
             if (night) beam(cv);
             // the shadow under the car
             p.setStyle(Paint.Style.FILL);
@@ -739,7 +860,7 @@ final class CarArt {
             if (rain) rain(cv);
             cv.restore();
             removeCallbacks(frame);
-            if (animating() && isShown()) postOnAnimationDelayed(frame, 33);
+            if (animating() && isShown()) postOnAnimationDelayed(frame, frameMs());
         }
 
         /** The photo fitted in the view (centred, rounded corners), and the lamps' glows made for that size. */
@@ -922,7 +1043,8 @@ final class CarArt {
             p.setStyle(Paint.Style.FILL);
             int face0 = pm[0] >= pm[2] ? 1 : -1;
             if (cut) { // the road first, the night beam ahead, then his car standing on it (darker at night, its own colours by day)
-                photoRoad(cv, w, h);
+                if (onPlatform()) platform(cv, (X(pm[0]) + X(pm[2])) / 2f, ground, Math.abs(X(pm[0]) - X(pm[2])) / 2f + pm[4] * sc * 2f, now);
+                else photoRoad(cv, w, h);
                 if (night) {
                     float bx = X(pm[5]), by = Y(pm[6]), br = pm[4] * sc;
                     path.rewind();
@@ -1159,6 +1281,8 @@ final class CarArt {
     // ================================================================ glass
     /** A glass panel: a translucent fill, a thin lit edge, a soft shadow (drawn, so it works on every Android). */
     static android.graphics.drawable.Drawable glass(final CarTheme.Look l, final float radiusPx, final boolean tile) {
+        if (l != null && l.card == CarStyle.C_HUD) return CarLooks.hud(l, radiusPx, tile); // 17
+        if (l != null && l.card == CarStyle.C_GLOW) return CarLooks.glow(l, radiusPx, tile); // 18
         return new android.graphics.drawable.Drawable() {
             private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
             private final RectF r = new RectF();

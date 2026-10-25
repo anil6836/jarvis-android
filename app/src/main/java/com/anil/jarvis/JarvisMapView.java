@@ -257,6 +257,17 @@ final class JarvisMapView extends View {
     double[] me() { return me; }
 
     void setRoutes(List<List<double[]>> rs, int sel) { routes.clear(); if (rs != null) routes.addAll(rs); routeSel = sel; invalidate(); }
+
+    // 19 (the car screen only): the chosen way lit in gold with arrows flowing along it towards where he goes
+    private boolean routeGlow, routeFlow;
+    private final Path arrow = new Path();
+    private final Runnable flowFrame = this::invalidate;
+    void setRouteGlow(boolean on, boolean flow) {
+        if (on == routeGlow && flow == routeFlow) return;
+        routeGlow = on;
+        routeFlow = flow;
+        invalidate();
+    }
     void selectRoute(int i) { routeSel = i; invalidate(); }
     void setAhead(List<double[]> pts) { ahead = pts == null ? new ArrayList<>() : pts; invalidate(); }
     void setPlaces(List<GMaps.Place> ps) { places.clear(); if (ps != null) places.addAll(ps); placeSel = -1; invalidate(); }
@@ -396,6 +407,7 @@ final class JarvisMapView extends View {
             boolean sel = i == routeSel;
             if (sel != (pass == 1)) continue; // (the chosen one on top)
             path(routes.get(i));
+            if (sel && routeGlow) { litRoute(c); continue; }
             line.setColor(sel ? 0xFF0B3D91 : 0xFF5B6B7A);
             line.setStrokeWidth((sel ? 9 : 7) * d);
             c.drawPath(pathBuf, line);
@@ -403,6 +415,31 @@ final class JarvisMapView extends View {
             line.setStrokeWidth((sel ? 6 : 4.5f) * d);
             c.drawPath(pathBuf, line);
         }
+    }
+
+    /** 19: the way as a lit gold road — a soft wide glow, the bright band, a white core, arrows flowing along it. */
+    private void litRoute(Canvas c) {
+        line.setColor(0x55FFC21A);
+        line.setStrokeWidth(18 * d);
+        c.drawPath(pathBuf, line);
+        line.setColor(0xFFFFD23A);
+        line.setStrokeWidth(8 * d);
+        c.drawPath(pathBuf, line);
+        line.setColor(0xB3FFFFFF);
+        line.setStrokeWidth(2.2f * d);
+        c.drawPath(pathBuf, line);
+        if (arrow.isEmpty()) { // (a small chevron, pointing along the way)
+            arrow.moveTo(-4 * d, -4.5f * d); arrow.lineTo(2 * d, 0); arrow.lineTo(-4 * d, 4.5f * d); arrow.lineTo(-1.5f * d, 0); arrow.close();
+        }
+        float gap = 34 * d, phase = routeFlow ? (android.os.SystemClock.uptimeMillis() % 100_000L) / 1000f * 46 * d % gap : 0;
+        line.setPathEffect(new android.graphics.PathDashPathEffect(arrow, gap, -phase, android.graphics.PathDashPathEffect.Style.ROTATE));
+        line.setColor(0xF2FFFFFF);
+        line.setStyle(Paint.Style.FILL);
+        c.drawPath(pathBuf, line);
+        line.setStyle(Paint.Style.STROKE);
+        line.setPathEffect(null);
+        removeCallbacks(flowFrame);
+        if (routeFlow && isShown()) postOnAnimationDelayed(flowFrame, 66);
     }
 
     private final Path pathBuf = new Path();
