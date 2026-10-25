@@ -12,7 +12,7 @@ import android.os.Looper;
  * audible on the box. The beat: Android's Visualizer on the output mix gives the loudness ~40 times a second; a jump in
  * loudness is a beat; the time between beats, steadied, is the tempo (70–170 a minute). Some boxes refuse the
  * Visualizer: then there is no beat and Jarvis dances at his usual 100 a minute. Nothing is recorded or kept — only a
- * loudness number comes out of it.
+ * loudness number comes out of it, and the equalizer's bar heights (its FFT: {@link CarEq}).
  */
 final class CarBeat {
     interface Ear {
@@ -27,6 +27,8 @@ final class CarBeat {
     private final float[] gaps = new float[6];
     private int gapN;
     private boolean on;
+    /** 🎚️ The song strip's equalizer bars (fed from the same Visualizer). */
+    final CarEq eq = new CarEq();
 
     CarBeat(Ear ear) { this.ear = ear; }
 
@@ -112,8 +114,8 @@ final class CarBeat {
             int rate = Math.min(Visualizer.getMaxCaptureRate(), 40_000); // (milli-Hz: 40 a second)
             vis.setDataCaptureListener(new Visualizer.OnDataCaptureListener() {
                 @Override public void onWaveFormDataCapture(Visualizer v, byte[] wave, int sr) { sample(v, wave); }
-                @Override public void onFftDataCapture(Visualizer v, byte[] fft, int sr) {}
-            }, rate, true, false);
+                @Override public void onFftDataCapture(Visualizer v, byte[] fft, int sr) { eq.feed(CarEq.bars(fft, CarEq.BARS), android.os.SystemClock.uptimeMillis()); }
+            }, rate, true, true);
             vis.setEnabled(true);
         } catch (Throwable e) { // (no permission on this Android, or the box refuses it): no beat, the usual tempo
             release();

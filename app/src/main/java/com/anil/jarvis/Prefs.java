@@ -487,6 +487,9 @@ final class Prefs {
     /** ⑧ Parked with a song: Jarvis's stage. 🫧 The small Jarvis over other apps while the car screen is away. */
     boolean carStage() { return sp.getBoolean("car_stage", true); }
     boolean carBubble() { return sp.getBoolean("car_bubble", true); }
+    /** 🎚️ The colourful equalizer behind the song strip; 💡 parked with a song, the cards' edges light up on the beat. */
+    boolean carEq() { return sp.getBoolean("car_eq", true); }
+    boolean carBeatLights() { return sp.getBoolean("car_beat_lights", true); }
     /** The new Jarvis's look: a = navy jacket, b = kurta, c = zip jacket (Anil's pick). */
     String bodyLook() { return sp.getString("body_look", "c"); }
     /** Skin tone 1 (lighter) .. 3 (deeper). */

@@ -94,6 +94,11 @@ final class CarScreen extends FrameLayout {
     private final List<View> stageBtns = new ArrayList<>();
     private final TextView stageExit, mapPill, mapGap;
     private boolean stageSkip, besideNow, settingSheet, rightOnly;
+    // 💡 the beat lights over the cards, 🎚️ the equalizer behind the song strip
+    private final CarKit.BeatLights lights;
+    private final CarKit.Spectrum eqDraw;
+    private final List<android.graphics.Path> pathPool = new ArrayList<>();
+    private int pathUsed;
     private long besideAt;
     private final List<View> tiles = new ArrayList<>();
     private final List<CarArt.Icon> tileIcons = new ArrayList<>();
@@ -394,6 +399,8 @@ final class CarScreen extends FrameLayout {
         saverBox.addView(saverClock, new LinearLayout.LayoutParams(-2, -2));
         saverBox.addView(saverLine, new LinearLayout.LayoutParams(-2, -2));
         saver.addView(saverBox, new LayoutParams(-2, -2, Gravity.CENTER));
+        lights = new CarKit.BeatLights(a, this::outlines); // (over the cards, under the screensaver and the questions; takes no touch)
+        addView(lights, new LayoutParams(-1, -1));
         addView(saver, new LayoutParams(-1, -1));
         addView(sheet, new LayoutParams(-1, -1));
         addView(ask, new LayoutParams(-1, -1));
@@ -406,7 +413,10 @@ final class CarScreen extends FrameLayout {
         deckKey = deckKey();
         textSizes();
 
-        beat = new CarBeat(per -> { if (dancing) { portal.body.rig.setBeat(per); portal.beat(); } });
+        beat = new CarBeat(per -> { if (dancing) { portal.body.rig.setBeat(per); portal.beat(); } lights.beat(); });
+        eqDraw = new CarKit.Spectrum(beat.eq);
+        musicText.setShadowLayer(3, 0, 1, 0xCC000000); // (readable over the equalizer's bars)
+        songSub.setShadowLayer(3, 0, 1, 0xCC000000);
         portal.body.rig.setLook(prefs.bodyLook());
         portal.body.rig.setSkin(prefs.bodySkin());
         portal.body.rig.setIdlePlays(false); // (the car: no kitten / bubbles on the road; the parked plays come later)
@@ -437,6 +447,7 @@ final class CarScreen extends FrameLayout {
         main.removeCallbacks(quick);
         main.removeCallbacks(slow);
         setDancing(false);
+        lights.setActive(false);
         if (beatOn) { beatOn = false; beat.stop(); }
     }
 
@@ -559,7 +570,12 @@ final class CarScreen extends FrameLayout {
         rearCheck();
         String pref = prefs.carDance();
         boolean mayDance = songNow && !"off".equals(pref);
-        if (mayDance != beatOn) { beatOn = mayDance; if (mayDance) beat.start(); else beat.stop(); } // (the beat is followed for the whole song, not switched at every signal)
+        boolean lightsOk = !prefs.carLowMotion() && (prefs.carEq() || prefs.carBeatLights()); // (🎚️ 💡 follow the beat too, even with the dance off)
+        boolean wantBeat = mayDance || songNow && lightsOk;
+        if (wantBeat != beatOn) { beatOn = wantBeat; if (wantBeat) beat.start(); else beat.stop(); } // (the beat is followed for the whole song, not switched at every signal)
+        eqDraw.setOn(prefs.carEq() && !prefs.carLowMotion());
+        eqDraw.setCalm(moving); // (on the road: fainter)
+        lights.setActive(prefs.carBeatLights() && !prefs.carLowMotion() && songNow && parked && !moving && !saverOn);
         boolean dance = mayDance && ("always".equals(pref) || !moving) && !(prefs.carLowMotion() && moving);
         setDancing(dance);
         if (dancing) danceTick();
@@ -1223,6 +1239,7 @@ final class CarScreen extends FrameLayout {
                 keys[i].setLayoutParams(new LinearLayout.LayoutParams(0, -1, 1));
                 keys[i].setFill((i == 1 ? play : key) / (float) Math.max(1, Math.min(slot, keyH)));
             }
+            eqDraw.setReach(0.42f, 0); // (standing: the bars under the picture, behind the words and keys)
             return;
         }
         int art = Math.max(1, Math.min(Math.round(inner * 0.94f), Math.round(avail * 0.16f)));
@@ -1245,6 +1262,7 @@ final class CarScreen extends FrameLayout {
             keys[i].setLayoutParams(new LinearLayout.LayoutParams(slot, -1));
             keys[i].setFill((i == 1 ? play : key) / (float) Math.max(1, Math.min(slot, inner)));
         }
+        eqDraw.setReach(0.85f, musicStrip.getPaddingLeft() + art + ap.rightMargin); // (lying: the bars beside the picture, behind the words and keys)
     }
 
     /** Every 10 s: how long he has driven without a real stop; amber near 2 hours, the tea cup after. */
@@ -2148,6 +2166,73 @@ final class CarScreen extends FrameLayout {
     /** The width the pop-ups have (all of it, or Jarvis's column in G2 beside Google Maps' window). */
     private int roomW() { return rightOnly && W > 0 ? W - Math.round(W * 0.62f) : W; }
 
+    /** 💡 The cards' outlines on the screen now: leaning cards along their lean, round buttons and ②'s dials as circles. */
+    private void outlines(List<android.graphics.Path> into) {
+        pathUsed = 0;
+        boolean roundTiles = CarDeck.round(prefs.carBtnStyle(), CarLayout.deep(shape));
+        for (View t : tiles) addOutline(into, t, roundTiles ? 1 : 0);
+        for (View v : new View[]{roadCard, musicStrip, carMap, wingLIn, wingRIn, panelIn, board, stageMid}) addOutline(into, v, 0);
+        for (CarKit.Dial dl : dials) addOutline(into, dl, 2);
+    }
+
+    private android.graphics.Path nextPath() {
+        if (pathUsed < pathPool.size()) { android.graphics.Path p = pathPool.get(pathUsed++); p.rewind(); return p; }
+        android.graphics.Path p = new android.graphics.Path();
+        pathPool.add(p);
+        pathUsed++;
+        return p;
+    }
+
+    /** round: 0 its rounded box, 1 a round button's circle (its top part), 2 a dial's circle. */
+    private void addOutline(List<android.graphics.Path> into, View v, int round) {
+        if (v == null || !v.isShown() || v.getWidth() <= 0 || v.getHeight() <= 0) return;
+        float w = v.getWidth(), h = v.getHeight();
+        float[] q;
+        if (round == 1) {
+            float r = Math.min(w * 0.47f, h * 0.64f * 0.47f);
+            q = new float[]{w / 2f, h * 0.32f, w / 2f + r, h * 0.32f};
+        } else if (round == 2) {
+            float[] c = ((CarKit.Dial) v).circle();
+            q = new float[]{c[0], c[1], c[0] + c[2], c[1]};
+        } else {
+            q = new float[]{0, 0, w, 0, w, h, 0, h};
+        }
+        int seen = toScreen(v, q);
+        if (seen == 0) return;
+        android.graphics.Path p = nextPath();
+        if (round != 0) {
+            p.addCircle(q[0], q[1], (float) Math.hypot(q[2] - q[0], q[3] - q[1]), android.graphics.Path.Direction.CW);
+        } else if (seen == 1) { // (a flat card: its rounded corners)
+            float rad = Math.max(10, Math.min(W, H) / 22f);
+            p.addRoundRect(q[0], q[1], q[4], q[5], rad, rad, android.graphics.Path.Direction.CW);
+        } else { // (a leaning card: its four corners as seen)
+            p.moveTo(q[0], q[1]); p.lineTo(q[2], q[3]); p.lineTo(q[4], q[5]); p.lineTo(q[6], q[7]); p.close();
+        }
+        into.add(p);
+    }
+
+    /** Points in a view's own coordinates → this screen's, through any leaning card on the way. 0: not on this screen, 1: flat, 2: leaning. */
+    private int toScreen(View v, float[] pts) {
+        int res = 1;
+        View cur = v;
+        while (cur != this) {
+            android.view.ViewParent par = cur.getParent();
+            if (!(par instanceof View)) return 0;
+            View pv = (View) par;
+            float dx = cur.getLeft() + cur.getTranslationX() - pv.getScrollX(), dy = cur.getTop() + cur.getTranslationY() - pv.getScrollY();
+            for (int i = 0; i + 1 < pts.length; i += 2) { pts[i] += dx; pts[i + 1] += dy; }
+            if (pv instanceof CarKit.Tilt) {
+                float[] m = ((CarKit.Tilt) pv).forward();
+                if (m != null) {
+                    res = 2;
+                    for (int i = 0; i + 1 < pts.length; i += 2) { float[] t = CarDeck.apply(m, pts[i], pts[i + 1]); pts[i] = t[0]; pts[i + 1] = t[1]; }
+                }
+            }
+            cur = pv;
+        }
+        return res;
+    }
+
     /** The same shape laid out again (Jarvis's size, his buttons, the map's lean changed). */
     private void relayout() {
         String s = shape;
@@ -2270,7 +2355,7 @@ final class CarScreen extends FrameLayout {
         float rad = Math.max(10, Math.min(w, h) / 22f);
         dressTiles();
         roadCard.setBackground(CarArt.glass(look, rad, false));
-        musicStrip.setBackground(CarArt.glass(look, rad, false));
+        musicStrip.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{CarArt.glass(look, rad, false), eqDraw}));
         board.setBackground(CarArt.glass(look, rad, false));
         for (LinearLayout card : new LinearLayout[]{wingLIn, wingRIn, panelIn}) {
             card.setBackground(CarArt.glass(look, rad, false));
@@ -2403,7 +2488,7 @@ final class CarScreen extends FrameLayout {
         }
         for (CarArt.Icon i : tileIcons) i.setColour(accent);
         roadCard.setBackground(CarArt.glass(look, rad, false));
-        musicStrip.setBackground(CarArt.glass(look, rad, false));
+        musicStrip.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{CarArt.glass(look, rad, false), eqDraw}));
         board.setBackground(CarArt.glass(look, rad, false));
         board.setTextColor(textMain);
         portal.body.rig.setNightPlays(night);

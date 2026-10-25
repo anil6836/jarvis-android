@@ -273,7 +273,8 @@ final class CarDeck {
 
     /** The settings a kept look holds: how the screen looks only (no photos, no places, nothing private). */
     static final String[] LOOK_KEYS = {"car_theme", "car_accent", "car_colour", "car_gauge", "car_layout", "car_nav_map", "car_buttons", "car_btn_style",
-            "car_dials", "car_jarvis", "car_text", "car_map_night", "car_map_zoom", "car_map_tilt", "car_dance", "car_low_motion"};
+            "car_dials", "car_jarvis", "car_text", "car_map_night", "car_map_zoom", "car_map_tilt", "car_dance", "car_low_motion", "car_eq", "car_beat_lights",
+            "car_stage"};
     static final int MINE = 3;
 
     /** The look now (from all the settings) as one line to keep. */

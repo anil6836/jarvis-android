@@ -3331,6 +3331,10 @@ public class SettingsActivity extends Activity {
         box.addView(gaugeRow);
         box.addView(wallRow);
         box.addView(dance);
+        Switch eqSw = toggle("🎚️ పాట పట్టీలో రంగుల ఈక్వలైజర్ (పాట బీట్‌కి కదిలే రంగుల గీతలు; నడిపేటప్పుడు మసకగా)", prefs.carEq());
+        eqSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_eq", v).apply());
+        Switch beatSw = toggle("💡 బీట్ లైట్లు (కారు ఆగి పాట వస్తే, బీట్‌కి కార్డుల అంచులు రంగులుగా వెలుగుతాయి)", prefs.carBeatLights());
+        beatSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_beat_lights", v).apply());
         Switch stage = toggle("🕺 ఆగి ఉన్నప్పుడు పాట వస్తే Jarvis స్టేజ్ (⑧: Jarvis పెద్దగా లైట్ కింద డాన్స్; కారు కదలగానే మీ స్క్రీన్; ✕ నొక్కితే ఆ పాటకి వద్దు)", prefs.carStage());
         stage.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_stage", v).apply());
         // 🗺️ G1 / G2, and what this box allows for G2
@@ -3375,7 +3379,7 @@ public class SettingsActivity extends Activity {
             }
         });
         // 💾 a kept look back: every look setting at once (the rows and switches here show it at once too)
-        final Switch[] sws = {navMap, tilt, low};
+        final Switch[] sws = {navMap, tilt, low, eqSw, beatSw, stage};
         mineRow.setOnClickListener(v -> {
             String[] items = new String[CarDeck.MINE];
             for (int i = 0; i < CarDeck.MINE; i++) {
@@ -3387,6 +3391,7 @@ public class SettingsActivity extends Activity {
                     .setItems(items, (d, w) -> mineSlot(w + 1, () -> {
                         show.run(); showShape.run(); showDeck.run();
                         sws[0].setChecked(prefs.carNavMap()); sws[1].setChecked(prefs.carMapTilt()); sws[2].setChecked(prefs.carLowMotion());
+                        sws[3].setChecked(prefs.carEq()); sws[4].setChecked(prefs.carBeatLights()); sws[5].setChecked(prefs.carStage());
                     })).show();
         });
         note("కారు ఆగి ఉన్నప్పుడు కారు స్క్రీన్ మీద: ఒక బటన్‌ని కాసేపు నొక్కి పట్టుకుంటే దాని స్థానంలో వేరే బటన్; ② చిన్న డయల్‌ని పట్టుకుంటే అందులో ఏం చూపించాలో; "
