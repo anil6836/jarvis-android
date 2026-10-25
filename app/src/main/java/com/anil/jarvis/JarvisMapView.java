@@ -258,15 +258,43 @@ final class JarvisMapView extends View {
 
     void setRoutes(List<List<double[]>> rs, int sel) { routes.clear(); if (rs != null) routes.addAll(rs); routeSel = sel; invalidate(); }
 
-    // 19 (the car screen only): the chosen way lit in gold with arrows flowing along it towards where he goes
-    private boolean routeGlow, routeFlow;
-    private final Path arrow = new Path();
-    private final Runnable flowFrame = this::invalidate;
-    void setRouteGlow(boolean on, boolean flow) {
-        if (on == routeGlow && flow == routeFlow) return;
+    // 19 (the car screen only): the chosen way lit in gold; its flowing arrows are drawn by a thin layer over the map
+    // (CarMap's), so the map's pictures are not drawn again for them
+    private boolean routeGlow;
+    /** The layer with the flowing arrows: drawn again whenever the map is (they move with it). */
+    View flowView;
+    void setRouteGlow(boolean on) {
+        if (on == routeGlow) return;
         routeGlow = on;
-        routeFlow = flow;
         invalidate();
+    }
+
+    boolean routeGlow() { return routeGlow && !routes.isEmpty(); }
+
+    /**
+     * The chosen way's part on the screen (from the first point near it to the last), into out, in this view's pixels;
+     * the way's length before that part (px; the arrows keep their places along the way), or -1 when nothing to draw.
+     */
+    float visibleRoute(Path out) {
+        out.rewind();
+        if (!routeGlow() || routeSel < 0 || routeSel >= routes.size()) return -1;
+        List<double[]> pts = routes.get(routeSel);
+        int n = pts.size();
+        if (n < 2) return -1;
+        float m = 40 * d, W = getWidth(), H = getHeight();
+        float[] xs = new float[n], ys = new float[n];
+        for (int i = 0; i < n; i++) { float[] xy = xy(pts.get(i)[0], pts.get(i)[1]); xs[i] = xy[0]; ys[i] = xy[1]; }
+        int first = -1, last = -1;
+        for (int i = 1; i < n; i++) {
+            boolean near = Math.max(xs[i - 1], xs[i]) >= -m && Math.min(xs[i - 1], xs[i]) <= W + m && Math.max(ys[i - 1], ys[i]) >= -m && Math.min(ys[i - 1], ys[i]) <= H + m;
+            if (near) { if (first < 0) first = i - 1; last = i; }
+        }
+        if (first < 0) return -1;
+        float before = 0;
+        for (int i = 1; i <= first; i++) before += (float) Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1]);
+        out.moveTo(xs[first], ys[first]);
+        for (int i = first + 1; i <= last; i++) out.lineTo(xs[i], ys[i]);
+        return before;
     }
     void selectRoute(int i) { routeSel = i; invalidate(); }
     void setAhead(List<double[]> pts) { ahead = pts == null ? new ArrayList<>() : pts; invalidate(); }
@@ -375,6 +403,7 @@ final class JarvisMapView extends View {
         drawPlaces(c);
         drawMe(c);
         drawCredit(c, W, H);
+        if (flowView != null) flowView.invalidate(); // (19's arrows follow the map at once)
     }
 
     /** The tile one level up that holds this one (stretched while this one loads); null if not here. */
@@ -417,7 +446,7 @@ final class JarvisMapView extends View {
         }
     }
 
-    /** 19: the way as a lit gold road — a soft wide glow, the bright band, a white core, arrows flowing along it. */
+    /** 19: the way as a lit gold road — a soft wide glow, the bright band, a white core (the arrows: CarMap's layer). */
     private void litRoute(Canvas c) {
         line.setColor(0x55FFC21A);
         line.setStrokeWidth(18 * d);
@@ -428,18 +457,6 @@ final class JarvisMapView extends View {
         line.setColor(0xB3FFFFFF);
         line.setStrokeWidth(2.2f * d);
         c.drawPath(pathBuf, line);
-        if (arrow.isEmpty()) { // (a small chevron, pointing along the way)
-            arrow.moveTo(-4 * d, -4.5f * d); arrow.lineTo(2 * d, 0); arrow.lineTo(-4 * d, 4.5f * d); arrow.lineTo(-1.5f * d, 0); arrow.close();
-        }
-        float gap = 34 * d, phase = routeFlow ? (android.os.SystemClock.uptimeMillis() % 100_000L) / 1000f * 46 * d % gap : 0;
-        line.setPathEffect(new android.graphics.PathDashPathEffect(arrow, gap, -phase, android.graphics.PathDashPathEffect.Style.ROTATE));
-        line.setColor(0xF2FFFFFF);
-        line.setStyle(Paint.Style.FILL);
-        c.drawPath(pathBuf, line);
-        line.setStyle(Paint.Style.STROKE);
-        line.setPathEffect(null);
-        removeCallbacks(flowFrame);
-        if (routeFlow && isShown()) postOnAnimationDelayed(flowFrame, 66);
     }
 
     private final Path pathBuf = new Path();

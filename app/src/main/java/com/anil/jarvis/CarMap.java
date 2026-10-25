@@ -59,6 +59,49 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     private final TextView turn1, turn2, eta, speed, note;
     // 21: the limit sign with the speed; 22: the arrival as short pills (each his switch)
     private final CarLooks.SpeedBadge badge;
+    private final Flow flow;
+
+    /**
+     * 19: small white arrows flowing along the lit way, towards where he goes — their own thin layer, about 10 frames a
+     * second, so the map's pictures are never drawn again for them; only the way's part on the screen; resting (still
+     * arrows) with "fewer movements".
+     */
+    private final class Flow extends View implements Runnable {
+        private final android.graphics.Path way = new android.graphics.Path(), arrow = new android.graphics.Path();
+        private final android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.PathDashPathEffect[] steps = new android.graphics.PathDashPathEffect[8];
+        private boolean moving = true;
+        private float gap;
+
+        Flow(Context c) {
+            super(c);
+            float d = c.getResources().getDisplayMetrics().density;
+            arrow.moveTo(-4 * d, -4.5f * d); arrow.lineTo(2 * d, 0); arrow.lineTo(-4 * d, 4.5f * d); arrow.lineTo(-1.5f * d, 0); arrow.close();
+            gap = 34 * d;
+            p.setStyle(android.graphics.Paint.Style.FILL);
+            p.setColor(0xF2FFFFFF);
+        }
+
+        void setMoving(boolean m) { if (m != moving) { moving = m; invalidate(); } }
+
+        @Override public void run() { invalidate(); }
+
+        @Override protected void onDetachedFromWindow() { super.onDetachedFromWindow(); removeCallbacks(this); }
+
+        @Override protected void onDraw(android.graphics.Canvas c) {
+            removeCallbacks(this);
+            float before = map.visibleRoute(way);
+            if (before < 0) return;
+            float run = moving ? (android.os.SystemClock.uptimeMillis() % 100_000L) / 1000f * 46 * getResources().getDisplayMetrics().density : 0;
+            float ph = ((before - run) % gap + gap) % gap; // (the arrows keep their places along the way, moving on with time)
+            int q = Math.min(7, (int) (ph / gap * 8));
+            if (steps[q] == null) steps[q] = new android.graphics.PathDashPathEffect(arrow, gap, q * gap / 8f, android.graphics.PathDashPathEffect.Style.ROTATE);
+            p.setPathEffect(steps[q]);
+            c.drawPath(way, p);
+            p.setPathEffect(null);
+            if (moving && isShown()) postOnAnimationDelayed(this, CarLooks.tick(99));
+        }
+    }
     private final LinearLayout pills;
     private final TextView[] pillViews = new TextView[3];
     private final TextView trafficBtn, satBtn, mapPill;
@@ -97,6 +140,9 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         map.listener = this;
         map.zoom = 16;
         addView(map, new LayoutParams(-1, -1));
+        flow = new Flow(c); // 19's arrows, over the map (they take no touch)
+        map.flowView = flow;
+        addView(flow, new LayoutParams(-1, -1));
 
         // top: the quick chips (Jarvis Maps' "on my way")
         HorizontalScrollView hs = chipScroll = new HorizontalScrollView(c);
@@ -336,7 +382,9 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         turnIcon.setColour(look.light ? 0xFF0B1118 : 0xFFFFFFFF);
         boolean low = p.carLowMotion();
         turnIcon.setChevrons(p.carTurnArrows() && !low); // 20
-        map.setRouteGlow(p.carRouteGlow(), !low); // 19
+        map.setRouteGlow(p.carRouteGlow()); // 19
+        flow.setMoving(!low);
+        badge.setLowMotion(low);
         sizes(getWidth(), getHeight());
         boolean dk = CarDeck.darkMap(p.carMapNight(), look.night);
         if (dk != dark) { // (night came / went, or his choice changed: the map's colours with it — now if on the screen, else when it comes)

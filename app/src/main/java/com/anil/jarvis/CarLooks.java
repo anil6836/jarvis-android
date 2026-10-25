@@ -53,6 +53,15 @@ final class CarLooks {
         }
     }
 
+    /**
+     * How long until the next frame on a shared grid of `period` ms (33, 66, 99…): every decoration's loop lands on the
+     * same screen refreshes, so the box redraws a few times a second together — never on every refresh by turns.
+     */
+    static long tick(int period) {
+        long now = SystemClock.uptimeMillis();
+        return period - (now % period);
+    }
+
     static int hueShift(int c, float deg) {
         float[] hsv = new float[3];
         Color.colorToHSV(c, hsv);
@@ -73,7 +82,8 @@ final class CarLooks {
         Typeface num;
         // a gradient is made again only when its size or colour changed
         Shader sh1, sh2;
-        int shKey1, shKey2, style = -1;
+        int shKey1, shKey2, style = -1, dashKey;
+        DashPathEffect dash;
 
         G() { p.setStrokeCap(Paint.Cap.ROUND); t.setTextAlign(Paint.Align.CENTER); }
     }
@@ -382,7 +392,9 @@ final class CarLooks {
                 p.setStrokeWidth(Math.max(1, s * 0.01f));
                 p.setColor(CarTheme.withAlpha(look.accent, 0x66));
                 float dash = r * 0.12f;
-                p.setPathEffect(new DashPathEffect(new float[]{dash, dash * 0.7f}, -kmh * r * 0.02f)); // (it turns as the speed goes up)
+                int key = Math.round(kmh) * 7919 + Math.round(dash * 10);
+                if (g.dash == null || g.dashKey != key) { g.dashKey = key; g.dash = new DashPathEffect(new float[]{dash, dash * 0.7f}, -Math.round(kmh) * r * 0.02f); } // (it turns as the speed goes up)
+                p.setPathEffect(g.dash);
                 cv.drawCircle(cx, cy, r * 1.1f, p);
                 p.setPathEffect(null);
                 // the speed: a bright arc on the inner ring
@@ -513,11 +525,18 @@ final class CarLooks {
         private Bitmap base;
         private String baseKind = "";
         private int bw, bh;
+        /** The worker's finished picture with what it is for (one object: never a picture with another's name). */
+        private static final class Ready { final Bitmap b; final String key; Ready(Bitmap b, String key) { this.b = b; this.key = key; } }
+        private volatile Ready rd;
+        private String building = "";
+        /** Told (on any thread) when a still picture got ready: the view draws again. */
+        Runnable onReady;
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path path = new Path();
         private final RectF r = new RectF();
         private final float[] a = new float[64], b = new float[64], c = new float[64];
-        private Shader meshTile, glowSh;
+        private Shader meshTile, glowSh, flareSh, sweepSh, cometSh;
+        private final DashPathEffect[][] meterDash = new DashPathEffect[3][12];
 
         Scene() {
             java.util.Random rnd = new java.util.Random(13);
@@ -528,24 +547,50 @@ final class CarLooks {
             if (base != null) base.recycle();
             base = null;
             baseKind = "";
+            rd = null; // (a picture not taken yet is left to the memory's own cleaning: the worker never frees one)
+            building = "";
+        }
+
+        /** The still picture for this kind and size, drawn on a worker (the screen never waits for it). */
+        private void build(final String kind, final int w, final int h) {
+            final String key = kind + "|" + w + "x" + h;
+            if (key.equals(building)) return;
+            building = key;
+            new Thread(() -> {
+                Bitmap bm = null;
+                try {
+                    bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                    Scene worker = new Scene(); // (its own paints: the drawing thread never shares them)
+                    Canvas bc = new Canvas(bm);
+                    frame(bc, w, h);
+                    worker.still(bc, kind);
+                } catch (Throwable e) { // (no memory for it: the theme's background stays)
+                    if (bm != null) bm.recycle();
+                    bm = null;
+                }
+                if (bm != null) rd = new Ready(bm, key);
+                Runnable r = onReady;
+                if (r != null) r.run();
+            }, "car-scene").start();
         }
 
         /** The picture for this frame (t: seconds; move: false with "fewer movements" — the still picture only). */
         void draw(Canvas cv, String kind, int w, int h, float t, boolean light) {
             if (w <= 0 || h <= 0) return;
             if (base == null || !kind.equals(baseKind) || bw != w || bh != h) {
-                release();
-                try {
-                    base = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-                    Canvas bc = new Canvas(base);
-                    frame(bc, w, h);
-                    still(bc, kind);
+                String key = kind + "|" + w + "x" + h;
+                Ready got = rd;
+                if (got != null && key.equals(got.key)) { // (the worker's picture is ready: it takes over; only this thread frees pictures)
+                    Bitmap r = got.b;
+                    if (base != null && base != r) base.recycle();
+                    base = r;
                     baseKind = kind;
                     bw = w;
                     bh = h;
-                } catch (Throwable e) { // (no memory for it: nothing drawn, the theme's background shows)
-                    release();
-                    return;
+                    building = "";
+                } else {
+                    build(kind, w, h);
+                    if (base == null || !kind.equals(baseKind)) { cv.drawColor(0xFF05070C); return; } // (a moment: dark until it is ready)
                 }
             }
             p.setShader(null);
@@ -783,13 +828,19 @@ final class CarLooks {
                     if (cyc < 3.2f) {
                         float k = cyc / 3.2f, x = -10 + 210 * k, y = 34 + 40 * k;
                         int al = Math.round(255 * Math.min(1, Math.min(k * 5, (1 - k) * 4)));
+                        if (cometSh == null) cometSh = new LinearGradient(-47, 0, 0, 0, new int[]{0x00FF4FD8, 0xFFFFD1FF}, null, Shader.TileMode.CLAMP);
+                        int sv = cv.save();
+                        cv.translate(x, y);
+                        cv.rotate((float) Math.toDegrees(Math.atan2(10, 46)));
                         p.setColor(0xFFFFFFFF);
-                        p.setShader(new LinearGradient(x - 46, y - 10, x, y, new int[]{0x00FF4FD8, CarTheme.withAlpha(0xFFFFD1FF, al)}, null, Shader.TileMode.CLAMP));
+                        p.setAlpha(al); // (a shader takes the paint's alpha: the comet fades in and out)
+                        p.setShader(cometSh);
                         p.setStyle(Paint.Style.STROKE);
                         p.setStrokeWidth(4);
                         p.setStrokeCap(Paint.Cap.ROUND);
-                        cv.drawLine(x - 46, y - 10, x, y, p);
+                        cv.drawLine(-47, 0, 0, 0, p);
                         p.setShader(null);
+                        cv.restoreToCount(sv);
                         p.setStyle(Paint.Style.FILL);
                         p.setColor(CarTheme.withAlpha(0xFFFFE6A0, al));
                         cv.drawCircle(x, y, 2.2f, p);
@@ -828,10 +879,13 @@ final class CarLooks {
                         r.set(150 - rr, 140 - rr * 0.22f, 150 + rr, 140 + rr * 0.22f);
                         cv.drawOval(r, p);
                     }
-                    for (int k = 0; k < 3; k++) { // little round meters turning
+                    for (int k = 0; k < 3; k++) { // little round meters turning (12 kept steps each: nothing made per frame)
                         p.setStrokeWidth(2.5f);
                         p.setColor(0xFF4FD2FF);
-                        p.setPathEffect(new DashPathEffect(new float[]{20 - k * 5, 40}, -t * (12 + k * 5)));
+                        float len = 60 - k * 5;
+                        int q = (int) ((t * (12 + k * 5) % len) / len * 12) % 12;
+                        if (meterDash[k][q] == null) meterDash[k][q] = new DashPathEffect(new float[]{20 - k * 5, 40}, -len * q / 12f);
+                        p.setPathEffect(meterDash[k][q]);
                         cv.drawCircle(250 + k * 16, 150, 6, p);
                     }
                     p.setPathEffect(null);
@@ -848,10 +902,16 @@ final class CarLooks {
                 }
                 case "sport": {
                     float pulse = 0.5f + 0.5f * (float) Math.sin(t * 2.1f);
+                    if (flareSh == null) flareSh = new RadialGradient(0, 0, 40, new int[]{0xFFBFE8FF, 0xCC2F8BFF, 0x002F8BFF}, new float[]{0, 0.22f, 1}, Shader.TileMode.CLAMP);
+                    int sv0 = cv.save();
+                    cv.translate(150, 88);
+                    float fs = (40 + 6 * pulse) / 40f;
+                    cv.scale(fs, fs);
                     p.setColor(0xFFFFFFFF);
-                    p.setShader(new RadialGradient(150, 88, 40 + 6 * pulse, new int[]{0xFFBFE8FF, 0xCC2F8BFF, 0x002F8BFF}, new float[]{0, 0.22f, 1}, Shader.TileMode.CLAMP));
-                    cv.drawCircle(150, 88, 46 + 6 * pulse, p);
+                    p.setShader(flareSh);
+                    cv.drawCircle(0, 0, 46, p);
                     p.setShader(null);
+                    cv.restoreToCount(sv0);
                     p.setStyle(Paint.Style.STROKE);
                     p.setStrokeWidth(1);
                     p.setColor(CarTheme.withAlpha(0xFFD9F2FF, Math.round(150 + 90 * pulse)));
@@ -861,11 +921,15 @@ final class CarLooks {
                     cv.restore();
                     p.setStyle(Paint.Style.FILL);
                     float sx = ((t * 40) % 520) - 110; // a light sweeping over the mesh
+                    if (sweepSh == null) sweepSh = new LinearGradient(-30, 0, 30, 0, new int[]{0x00FFFFFF, 0x1AFFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP);
+                    int sv1 = cv.save();
+                    cv.translate(sx, 0);
                     p.setColor(0xFFFFFFFF);
-                    p.setShader(new LinearGradient(sx - 30, 0, sx + 30, 0, new int[]{0x00FFFFFF, 0x1AFFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
-                    path.rewind(); path.moveTo(sx - 30, -60); path.lineTo(sx + 30, -60); path.lineTo(sx - 10, 240); path.lineTo(sx - 70, 240); path.close();
+                    p.setShader(sweepSh);
+                    path.rewind(); path.moveTo(-30, -60); path.lineTo(30, -60); path.lineTo(-10, 240); path.lineTo(-70, 240); path.close();
                     cv.drawPath(path, p);
                     p.setShader(null);
+                    cv.restoreToCount(sv1);
                     break;
                 }
                 case "streaks": {
@@ -1036,7 +1100,7 @@ final class CarLooks {
             p.setStrokeWidth(2.6f);
             cv.drawPath(seg, p);
             unscheduleSelf(this);
-            scheduleSelf(this, now + 66); // (15 frames a second are plenty for a light running round)
+            scheduleSelf(this, now + tick(66)); // (15 frames a second, on the shared grid)
         }
 
         @Override public void setAlpha(int a) {}
@@ -1137,7 +1201,7 @@ final class CarLooks {
             p.setColor(0xFF111111);
             cv.drawCircle(cx, cy, Math.max(2, rr * 0.05f), p);
             removeCallbacks(frame);
-            if (playing && !low && isShown()) postOnAnimationDelayed(frame, 40);
+            if (playing && !low && isShown()) postOnAnimationDelayed(frame, tick(66)); // (a slow turn: 15 frames a second are smooth)
             else if (playing && f >= 0 && isShown()) postDelayed(frame, 1000); // (resting: only the ring moves on)
         }
     }
@@ -1263,10 +1327,12 @@ final class CarLooks {
             removeCallbacks(frame);
             if (t < 2.6f) postOnAnimationDelayed(frame, 33);
             else {
-                setVisibility(GONE);
                 Runnable a = after;
                 after = null;
-                if (a != null) a.run();
+                post(() -> { // (not inside the drawing: the layout changes after it)
+                    setVisibility(GONE);
+                    if (a != null) a.run();
+                });
             }
         }
 
@@ -1300,9 +1366,12 @@ final class CarLooks {
         private final G g = new G();
         private boolean light;
         private int fill = 0xE6061420, ink = 0xFFFFFFFF;
+        private boolean low;
         private final Runnable frame = this::invalidate;
 
         SpeedBadge(Context c) { super(c); }
+
+        void setLowMotion(boolean b) { if (b != low) { low = b; invalidate(); } }
 
         void setFont(Typeface t) { g.num = t; invalidate(); }
         void setColours(int fill, int ink, boolean light) { this.fill = fill; this.ink = ink; this.light = light; invalidate(); }
@@ -1326,7 +1395,7 @@ final class CarLooks {
             Paint p = g.p;
             p.setStyle(Paint.Style.FILL);
             if (over) {
-                float pulse = 0.5f + 0.5f * (float) Math.sin(SystemClock.uptimeMillis() / 260.0);
+                float pulse = low ? 0.5f : 0.5f + 0.5f * (float) Math.sin(SystemClock.uptimeMillis() / 260.0);
                 p.setColor(CarTheme.withAlpha(0xFFFF5A4E, Math.round(0x40 + 0x50 * pulse)));
                 g.r.inset(-h * 0.07f, -h * 0.07f);
                 cv.drawRoundRect(g.r, h * 0.3f, h * 0.3f, p);
@@ -1345,7 +1414,7 @@ final class CarLooks {
             t.setColor(over ? 0xFFFF8A80 : ink);
             cv.drawText(s, x + bw / 2f, h * 0.52f + t.getTextSize() * 0.36f, t);
             removeCallbacks(frame);
-            if (over && isShown()) postOnAnimationDelayed(frame, 66);
+            if (over && !low && isShown()) postOnAnimationDelayed(frame, tick(66));
         }
     }
 }

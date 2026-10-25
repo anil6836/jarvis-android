@@ -63,28 +63,26 @@ final class CarPortal extends FrameLayout {
 
     // ---- 29: the hologram look — Jarvis in the theme's light (his own drawing, tinted), fine lines over him, a ring stage
     private boolean holo;
-    private final Paint holoPaint = new Paint();
     private RadialGradient cone;
     private int coneW, coneH, coneAc;
 
     void setHolo(boolean on) {
         if (on == holo) return;
         holo = on;
-        if (on) holoLayer(); else body.setLayerType(LAYER_TYPE_NONE, null);
+        if (on) holoLayer(); else body.setTint(null);
         invalidate();
     }
 
-    /** Jarvis drawn through a filter: his light and shade kept, every colour turned into the theme's light, a little see-through. */
+    /** Jarvis drawn through a filter on his own paints (no extra layer: light on a weak box): his light and shade kept, every colour in the theme's light. */
     private void holoLayer() {
         int ac = look == null ? 0xFF4FD2FF : look.accent;
         float r = Color.red(ac) / 255f, g = Color.green(ac) / 255f, b = Color.blue(ac) / 255f;
         float k = 1.7f; // (brighter: his dark jacket still reads as light)
-        holoPaint.setColorFilter(new android.graphics.ColorMatrixColorFilter(new float[]{
+        body.setTint(new android.graphics.ColorMatrixColorFilter(new float[]{
                 0.30f * r * k, 0.59f * r * k, 0.11f * r * k, 0, 34 * r,
                 0.30f * g * k, 0.59f * g * k, 0.11f * g * k, 0, 34 * g,
                 0.30f * b * k, 0.59f * b * k, 0.11f * b * k, 0, 34 * b,
-                0, 0, 0, 0.88f, 0}));
-        body.setLayerType(LAYER_TYPE_HARDWARE, holoPaint);
+                0, 0, 0, 1, 0}));
     }
     void setState(int s) { if (state != s) { state = s; invalidate(); } }
     void setBelted(boolean b) { if (belted != b) { belted = b; invalidate(); } }
@@ -233,7 +231,7 @@ final class CarPortal extends FrameLayout {
         }
         boolean moving = state != BodyRig.IDLE || beatPulse > 0 || !lowMotion;
         removeCallbacks(frame); // (one loop only: an outside invalidate never starts a second one)
-        if (moving && isShown()) postOnAnimationDelayed(frame, state == BodyRig.IDLE && beatPulse == 0 ? 66 : 33);
+        if (moving && isShown()) postOnAnimationDelayed(frame, CarLooks.tick(state == BodyRig.IDLE && beatPulse == 0 ? 66 : 33)); // (on the shared grid)
     }
 
     /** Over the hologram: fine lines across him, a brighter band sliding down now and then, the ring stage under him (brighter while he speaks). */

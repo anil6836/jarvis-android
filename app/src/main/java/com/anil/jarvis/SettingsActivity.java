@@ -3489,7 +3489,7 @@ public class SettingsActivity extends Activity {
             box.addView(pickRows[i]);
         }
         showPicks.run();
-        Switch platSw = toggle("27 · 🚗 ఆగి ఉన్నప్పుడు కారు బొమ్మ వెలిగే వలయాల వేదిక మీద (రోడ్డు బదులు)", prefs.carPlatform());
+        Switch platSw = toggle("27 · 🚗 కారు బొమ్మ వెలిగే వలయాల వేదిక మీద (రోడ్డు బదులు; ఆన్ చేస్తే ఎప్పుడూ, ఆపే వరకు)", prefs.carPlatform());
         platSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_platform", v).apply());
         Switch vinylSw = toggle("23 · 💿 పాట బొమ్మ రికార్డులా తిరుగుతుంది, చుట్టూ పాట ఎంత అయిందో వలయం", prefs.carVinyl());
         vinylSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_vinyl", v).apply());

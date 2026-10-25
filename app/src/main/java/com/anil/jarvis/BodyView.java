@@ -39,6 +39,14 @@ final class BodyView extends View implements BodyRig.Pen {
     /** Fewer frames (night, dimmed screen). */
     void setSlow(boolean s) { slow = s; }
 
+    /** A colour filter on everything he is drawn with (the car's hologram look; null: his own colours). No extra layer. */
+    void setTint(android.graphics.ColorFilter f) {
+        fill.setColorFilter(f);
+        line.setColorFilter(f);
+        text.setColorFilter(f);
+        invalidate();
+    }
+
     @Override protected void onDraw(Canvas canvas) {
         long now = SystemClock.uptimeMillis();
         float dt = last == 0 ? 1 / 30f : (now - last) / 1000f;

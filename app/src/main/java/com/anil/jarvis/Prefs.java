@@ -509,7 +509,7 @@ final class Prefs {
     String carEqStyle() { return sp.getString("car_eq_style", ""); }
     String carWelcomeLook() { return sp.getString("car_welcome_look", ""); }
     String carJarvisLook() { return sp.getString("car_jarvis_look", ""); }
-    /** 27: parked, the car drawing on a lit ring stage (instead of the road). */
+    /** 27: the car drawing on a lit ring stage instead of the road (his switch: the same driving or parked). */
     boolean carPlatform() { return sp.getBoolean("car_platform", false); }
     /** 23: the song picture on a turning record with a ring of how far; 24: little waves under the song's name. */
     boolean carVinyl() { return sp.getBoolean("car_vinyl", false); }

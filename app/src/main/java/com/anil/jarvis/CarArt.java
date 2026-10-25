@@ -498,7 +498,7 @@ final class CarArt {
                 cv.drawPath(path, p);
             }
             removeCallbacks(chevFrame);
-            if (isShown()) postOnAnimationDelayed(chevFrame, 66);
+            if (isShown()) postOnAnimationDelayed(chevFrame, CarLooks.tick(66));
         }
 
         private void shape() {
@@ -700,7 +700,7 @@ final class CarArt {
         private Shader platSh;
         private int platFor;
         void setPlatform(boolean b) { if (b != platform) { platform = b; kick(); } }
-        private boolean onPlatform() { return platform && shownSpeed < 0.5f && speed < 0.5f; }
+        private boolean onPlatform() { return platform; } // (his switch only: the same driving or parked)
 
         /** The lit stage under the car: a soft pool of the theme's colour and three rings, breathing slowly. */
         private void platform(Canvas cv, float cx, float gy, float half, long now) {
@@ -782,7 +782,7 @@ final class CarArt {
         private boolean animating() { return !lowMotion && (speed > 0.5f || shownSpeed > 0.5f || rain || indicator != 0 || braking || onPlatform()); }
 
         /** Only the stage breathes: a slower frame is plenty. */
-        private int frameMs() { return onPlatform() && speed <= 0.5f && shownSpeed <= 0.5f && !rain && indicator == 0 && !braking ? 80 : 33; }
+        private int frameMs() { return (int) CarLooks.tick(onPlatform() && speed <= 0.5f && shownSpeed <= 0.5f && !rain && indicator == 0 && !braking ? 99 : 33); }
 
         private void buildBody() { outline(body, glass); }
 
@@ -834,7 +834,7 @@ final class CarArt {
             if (rearNow && rearPic != null) {
                 drawRear(cv, w, h, now);
                 removeCallbacks(frame);
-                if (animating() && isShown()) postOnAnimationDelayed(frame, 33);
+                if (animating() && isShown()) postOnAnimationDelayed(frame, CarLooks.tick(33));
                 return;
             }
             if (photo != null) {

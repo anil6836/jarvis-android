@@ -196,7 +196,8 @@ final class CarStyle {
         return step >= i + 1 ? 1f : step >= i ? 0.45f + 0.55f * (step - i) : 0.45f; // (never fainter than about half: the way always reads)
     }
 
-    private static final Pattern ARRIVE = Pattern.compile("(\\d{1,2})[:.](\\d{2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)?", Pattern.CASE_INSENSITIVE);
+    // (a time: "5:42", "5:42 PM", "5.42 pm" — a dot only with am / pm; never a distance like "12.50 km")
+    private static final Pattern ARRIVE = Pattern.compile("(\\d{1,2}):(\\d{2})(?![\\d.,])(?!\\s*(?:km|m\\b|కి|మీ))\\s*(am|pm|a\\.m\\.|p\\.m\\.)?|(\\d{1,2})\\.(\\d{2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)", Pattern.CASE_INSENSITIVE);
     private static final Pattern DIST = Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(km|కి\\.?\\s?మీ|m\\b|మీ)", Pattern.CASE_INSENSITIVE);
 
     /**
@@ -207,8 +208,13 @@ final class CarStyle {
         if (trip == null || trip.trim().isEmpty()) return null;
         String at = "", left = "", far = "";
         Matcher a = ARRIVE.matcher(trip);
-        if (a.find()) at = "🕐 " + Integer.parseInt(a.group(1)) + ":" + a.group(2) + " కి చేరతాం";
-        int m = CarRoad.minutesIn(trip.replaceAll("\\d{1,2}[:.]\\d{2}\\s*(?i:am|pm|a\\.m\\.|p\\.m\\.)?", " "));
+        String rest = trip;
+        if (a.find()) {
+            boolean colon = a.group(1) != null;
+            at = "🕐 " + Integer.parseInt(colon ? a.group(1) : a.group(4)) + ":" + (colon ? a.group(2) : a.group(5)) + " కి చేరతాం";
+            rest = trip.substring(0, a.start()) + " " + trip.substring(a.end()); // (its minutes are not the trip's minutes)
+        }
+        int m = CarRoad.minutesIn(rest);
         if (m >= 0) left = "⏱️ " + (m >= 60 ? (m / 60) + " గం " + (m % 60 == 0 ? "" : (m % 60) + " ని") : m + " ని").trim();
         Matcher d = DIST.matcher(trip);
         if (d.find()) {

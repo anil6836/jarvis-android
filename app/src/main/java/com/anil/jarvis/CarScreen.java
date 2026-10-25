@@ -1195,6 +1195,7 @@ final class CarScreen extends FrameLayout {
             JSONObject o = Music.panel(getContext());
             if (o.optBoolean("none")) {
                 keys = false;
+                waveSeed = "";
                 boolean access = o.optBoolean("access", true);
                 t = access ? "🎵 పాట లేదు" : "🎵 పాట పేరు కోసం";
                 sub = access ? "ఇక్కడ నొక్కండి" : "నోటిఫికేషన్ యాక్సెస్ ఇవ్వండి";
@@ -1205,6 +1206,7 @@ final class CarScreen extends FrameLayout {
                 t = title.isEmpty() ? app : title;
                 sub = title.isEmpty() ? (playing ? "ప్లే అవుతోంది" : "ఆగింది") : artist.isEmpty() ? app : artist + " · " + app;
                 if (!o.optBoolean("jarvis")) artKey = app + "|" + title + "|" + artist; // (Jarvis's own radio has no picture)
+                waveSeed = app + "|" + title + "|" + artist; // (24: the same song, the same waves — playing or paused)
                 songCheck(app + "|" + title + "|" + artist);
             }
         } catch (Exception e) {
@@ -1222,7 +1224,7 @@ final class CarScreen extends FrameLayout {
                 vinyl.setTiming(-1, 0, 1, playing, -1);
                 waveBar.setTiming(-1, 0, 1, playing, -1);
             }
-            waveBar.setSeed(t + "|" + sub);
+            waveBar.setSeed(waveSeed);
         }
         String key = t + "|" + sub + "|" + keys + playing;
         if (key.equals(musicKeyNow)) return;
@@ -1236,7 +1238,7 @@ final class CarScreen extends FrameLayout {
         nextKey.setVisibility(v);
     }
 
-    private String songNowKey = "";
+    private String songNowKey = "", waveSeed = "";
 
     /** Another song in the same run of music: its loudness measured afresh, and a new opening step to it. */
     private void songCheck(String key) {
@@ -1339,7 +1341,7 @@ final class CarScreen extends FrameLayout {
         if (musicStrip.getOrientation() == LinearLayout.VERTICAL) {
             int keyH = Math.max(1, Math.round(inner * 0.22f));
             float tsz = Math.max(12, Math.min(avail * 0.085f, inner * 0.06f)) * textScale;
-            int wordsH = Math.round(tsz * 2.8f);
+            int wordsH = Math.round(tsz * (waveBar.getVisibility() == VISIBLE ? 4.2f : 2.8f)); // (the waves' row too, when on)
             int art = Math.max(1, Math.min(Math.round(avail * 0.78f), inner - keyH - wordsH - Math.round(inner * 0.06f)));
             LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(art, art);
             ap.gravity = Gravity.CENTER_HORIZONTAL;
@@ -2861,7 +2863,7 @@ final class CarScreen extends FrameLayout {
         portal.setHolo("holo".equals(prefs.carJarvisLook())); // 29
         hero.setPlatform(prefs.carPlatform()); // 27
         eqDraw.setStyle(CarStyle.eqStyle(prefs.carEqStyle())); // 25 / 26
-        roadIcon.setChevrons(prefs.carTurnArrows() && !prefs.carLowMotion()); // 20
+        backdrop.setVisibility(CarStyle.scene(prefs.carBgMotion()) ? INVISIBLE : VISIBLE); // (a whole picture covers it: not drawn under it)
         gaugeStyle(); // (his own gauge style, else the shape's / the theme's)
         wallpaper();
         heroPhoto();

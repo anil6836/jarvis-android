@@ -345,7 +345,7 @@ final class CarKit {
             }
             p.setShader(null);
             unscheduleSelf(this); // (one loop only, whoever else redraws the strip)
-            if (eq.alive(now)) scheduleSelf(this, now + 33); // (~30 frames a second while there is music)
+            if (eq.alive(now)) scheduleSelf(this, now + CarLooks.tick(33)); // (~30 frames a second while there is music, on the shared grid)
             else running = false;
         }
 
@@ -469,7 +469,7 @@ final class CarKit {
                 p.setColor(android.graphics.Color.HSVToColor(Math.round(255 * 0.95f * glow), hsv));
                 c.drawPath(paths.get(i), p);
             }
-            if (pulse > 0) postOnAnimationDelayed(this, 33); // (between beats only the faint edges stay: nothing more to draw)
+            if (pulse > 0) postOnAnimationDelayed(this, CarLooks.tick(33)); // (between beats only the faint edges stay: nothing more to draw)
             else last = 0;
         }
 
@@ -501,6 +501,7 @@ final class CarKit {
 
         Ambient(Context cx) {
             super(cx);
+            scene.onReady = this::postInvalidate; // (a picture got ready on its worker: drawn now)
             for (int i = 0; i < a.length; i++) { a[i] = rnd.nextFloat(); b[i] = rnd.nextFloat(); c[i] = rnd.nextFloat(); e[i] = rnd.nextFloat(); }
         }
 
@@ -532,7 +533,8 @@ final class CarKit {
                 last = now;
                 t += dt;
                 scene.draw(cv, kind, w, h, t, light);
-                if (on && isShown()) postOnAnimationDelayed(this, 50);
+                removeCallbacks(this); // (one loop only, whoever else asks for a drawing)
+                if (on && isShown()) postOnAnimationDelayed(this, CarLooks.tick(66));
                 else last = 0;
                 return;
             }
@@ -548,7 +550,8 @@ final class CarKit {
                 case "clouds": clouds(cv, w, h); break;
                 default: return;
             }
-            postOnAnimationDelayed(this, 50);
+            removeCallbacks(this);
+            if (isShown()) postOnAnimationDelayed(this, CarLooks.tick(66));
         }
 
         private void stars(Canvas cv, int w, int h) {
