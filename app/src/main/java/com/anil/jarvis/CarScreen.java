@@ -380,7 +380,7 @@ final class CarScreen extends FrameLayout {
         }
         stageExit = autoText(a, "✕ స్టేజ్ ఆపు", true, 30);
         stageExit.setGravity(Gravity.CENTER);
-        stageExit.setOnClickListener(v -> tap(() -> setStage(false))); // (off until he puts it on again)
+        stageExit.setOnClickListener(v -> tap(() -> setStage(false))); // (off until he puts it on again; any time: it goes back to his screen)
         // ---- G2: Google Maps' own window on the left, Jarvis's column on the right with "🗺️ మ్యాప్ మార్చు"
         sideTop = new LinearLayout(a);
         sideTop.setOrientation(LinearLayout.HORIZONTAL);
@@ -421,7 +421,7 @@ final class CarScreen extends FrameLayout {
         addView(awake, new LayoutParams(-1, -1));
 
         Object[][] grow = {{stateText, 34}, {clock, 70}, {date, 30}, {minis, 28}, {driveChip, 30}, {chips, 26}, {road1, 46}, {road2, 30},
-                {roadYes, 40}, {roadNo, 40}, {apps, 36}, {chat, 36}, {gear, 36}};
+                {roadYes, 40}, {roadNo, 40}, {apps, 36}, {chat, 36}, {gear, 36}, {shapeBtn, 36}};
         for (Object[] g : grow) autoMax.put((TextView) g[0], (Integer) g[1]);
         for (View t : tiles) autoMax.put((TextView) ((LinearLayout) t).getChildAt(1), 60);
         deckKey = deckKey();
@@ -477,8 +477,8 @@ final class CarScreen extends FrameLayout {
         portal.body.rig.setSkin(prefs.bodySkin());
         palette();
         showTalk();
+        if (dayNightCheck()) { nightLight(); return; } // (his day / night theme just went on: all of it is fresh)
         nightLight();
-        if (dayNightCheck()) return; // (his day / night theme just went on: all of it is fresh)
         String k = deckKey();
         if (!k.equals(deckKey)) { // (his buttons, the dials, sizes, the map's lean changed in ⚙️: the shape laid out again)
             deckKey = k;
@@ -588,7 +588,7 @@ final class CarScreen extends FrameLayout {
         String pref = prefs.carDance();
         boolean mayDance = songNow && !"off".equals(pref);
         boolean lightsOk = !prefs.carLowMotion() && (prefs.carEq() || prefs.carBeatLights()); // (🎚️ 💡 follow the beat too, even with the dance off)
-        boolean wantBeat = mayDance || songNow && lightsOk;
+        boolean wantBeat = (mayDance || songNow && lightsOk) && !CallControl.busyWithCall(); // (a call: nothing of its sound is looked at)
         if (wantBeat != beatOn) { beatOn = wantBeat; if (wantBeat) beat.start(); else beat.stop(); } // (the beat is followed for the whole song, not switched at every signal)
         lightsNow(); // (his choices only: never switched by moving / parked)
         boolean dance = mayDance && ("always".equals(pref) || !moving) && !(prefs.carLowMotion() && moving);
@@ -1019,9 +1019,11 @@ final class CarScreen extends FrameLayout {
             saver.bringToFront();
             if (awakeShown) awake.bringToFront();
             content.setVisibility(INVISIBLE); // (Jarvis and the rings rest under it: no frames drawn)
+            ambient.setVisibility(INVISIBLE);
         } else {
             saver.setVisibility(GONE);
             content.setVisibility(VISIBLE);
+            ambient.setVisibility(VISIBLE);
             lastTouch = System.currentTimeMillis();
         }
     }
@@ -1223,10 +1225,13 @@ final class CarScreen extends FrameLayout {
         if (b != null) {
             try { // 🎨 the picture's own colour (a tiny copy is enough)
                 android.graphics.Bitmap sm = android.graphics.Bitmap.createScaledBitmap(b, 24, 24, true);
-                int[] px = new int[24 * 24];
-                sm.getPixels(px, 0, 24, 0, 0, 24, 24);
-                if (sm != b) sm.recycle();
-                col = CarDeck.artAccent(px);
+                try {
+                    int[] px = new int[24 * 24];
+                    sm.getPixels(px, 0, 24, 0, 0, 24, 24);
+                    col = CarDeck.artAccent(px);
+                } finally {
+                    if (sm != b) sm.recycle();
+                }
             } catch (Exception ignored) {}
         }
         artColourTo(col);
@@ -1242,12 +1247,26 @@ final class CarScreen extends FrameLayout {
         final int from = songAccent != 0 ? songAccent : look != null ? look.accent : target;
         for (int k = 1; k <= 6; k++) {
             final float f = k / 6f;
+            final boolean last = k == 6;
             main.postDelayed(() -> {
                 if (seq != fadeSeq) return;
                 songAccent = CarDeck.blend(from, target, f);
-                if (mode == CarTheme.MUSIC) palette();
+                if (mode != CarTheme.MUSIC) return;
+                if (last) palette(); // (the whole screen once, at the end)
+                else accentTo(songAccent); // (the steps: only what carries the colour)
             }, k * 140L);
         }
+    }
+
+    /** A step of the song colour's change: the colour on the parts that carry it (cheap), the rest at the end. */
+    private void accentTo(int c) {
+        if (look == null) return;
+        look.accent = c;
+        accent = c;
+        stateText.setTextColor(c);
+        for (CarArt.Icon i : tileIcons) i.setColour(c);
+        for (CarArt.Icon k : new CarArt.Icon[]{prevKey, playKey, nextKey, artIcon, roadIcon}) k.setColour(c);
+        gauge.invalidate();
     }
 
     /**
@@ -1343,7 +1362,7 @@ final class CarScreen extends FrameLayout {
             case "maps": JarvisMaps.open(getContext(), ""); break;
             case "games": showGames(); break;
             case "apps": showApps(); break;
-            case "stage": setStage(!prefs.carStage()); break;
+            case "stage": if (!prefs.carStage() && !parkedOrSay()) return; setStage(!prefs.carStage()); break; // (on by a tap: parked; off any time)
             default: break;
         }
     }
@@ -1766,10 +1785,11 @@ final class CarScreen extends FrameLayout {
             long ago = CarCare.alarmAgoMs(); // (an alarm he already answered with ✅ stays gone; a new one comes back)
             alarm = CarCare.on(c) && ago < 60_000 && (dismissedAt == 0 || ago < android.os.SystemClock.elapsedRealtime() - dismissedAt);
         } catch (Exception ignored) {}
-        if (!asking && !alarm) { if (awakeShown) { awake.setVisibility(GONE); awakeShown = false; if (awakeKind == 1) thumbsUp(); } return; }
+        if (!asking && !alarm) { if (awakeShown) { awake.setVisibility(GONE); awakeShown = false; nightLight(); if (awakeKind == 1) thumbsUp(); } return; }
         int kind = alarm ? 2 : 1;
         if (awakeShown && kind == awakeKind || H == 0) return; // (shown already; not laid out yet: the next second)
         awakeShown = true;
+        nightLight();
         awakeKind = kind; // (the question became the alarm: the red one now)
         awake.removeAllViews();
         LinearLayout box = panel(alarm ? 0xFF5A1010 : 0xFF13233A, alarm ? 0xFFFF6B5E : accent);
@@ -2141,11 +2161,11 @@ final class CarScreen extends FrameLayout {
                 fillTiles(tileGrid, 0, 6, 6);
                 break;
             case CarLayout.STAGE: // ⑧ parked, a song on: Jarvis big under a light; 🗺️ 🎲 🎤 on the left; the clock, the beat and ✕ on the right; the song under him
-                put(content, stageLeft, 11); put(content, stageMid, 64); put(content, rightCol, 25);
+                put(content, stageLeft, 10); put(content, stageMid, 60); put(content, rightCol, 30);
                 for (View b : stageBtns) put(stageLeft, b, 1);
                 put(stageMid, portal, 82); put(stageMid, musicStrip, 18); put(stageMid, board, 100);
-                put(rightCol, clock, 15); put(rightCol, gauge, 15); put(rightCol, stateText, 7); put(rightCol, roadCard, 13); put(rightCol, subText, 22); // (the speed and the road card stay: it may be on while he drives)
-                put(rightCol, stageExit, 10); put(rightCol, chipRow, 10);
+                put(rightCol, clock, 13); put(rightCol, gauge, 14); put(rightCol, stateText, 6); put(rightCol, roadCard, 24); put(rightCol, subText, 17); // (the speed and a big road card: it may be on while he drives — turns, rain ahead, the AC question)
+                put(rightCol, stageExit, 8); put(rightCol, chipRow, 9);
                 break;
             case CarLayout.SIDE: // G2: Google Maps' own window on the left (the box's split / freeform window); Jarvis's column on the right
                 boolean split = act.isInMultiWindowMode(); // (split screen: this window is already beside Google Maps — all of it is Jarvis's)
@@ -2204,6 +2224,12 @@ final class CarScreen extends FrameLayout {
         overlayRoom();
         dialsCheck();
         requestLayout();
+        lights.invalidate(); // (the beat lights' edges where the cards are now)
+    }
+
+    @Override protected void onVisibilityChanged(View changed, int visibility) {
+        super.onVisibilityChanged(changed, visibility);
+        nightLight(); // (the chat over it: the box's own light; back: his night light)
     }
 
     /** G2 with Google Maps' own window over the left: the choices, the questions and the sleep alert come in Jarvis's column, never under it. */
@@ -2241,15 +2267,24 @@ final class CarScreen extends FrameLayout {
     }
 
     private String shapeSaid() {
+        if (prefs.carStage()) { // (the stage covers the shape: it goes first, his shape shows)
+            setStage(false);
+            return "స్టేజ్ ఆపాను: " + CarLayout.name(prefs.carLayout());
+        }
+        if (besideNow && "g2".equals(prefs.carMapMode())) return "Google Maps పక్కన ఉంది: ముందు \"నీ మ్యాప్ పెట్టు\" అనండి";
         String next = CarDeck.nextShape(prefs.carLayout());
         prefs.sp.edit().putString("car_layout", next).apply();
         shapeCheck();
-        return CarLayout.name(next);
+        boolean shown = CarLayout.valid(next).equals(shape);
+        return CarLayout.name(next) + (shown ? "" : " (దారి అయిపోయాక కనిపిస్తుంది: ఇప్పుడు దారి మ్యాప్)");
     }
 
     /** 🚗 The box started with the car (a new trip): the cards come in turning, Jarvis waves. His switch; never with "fewer movements". */
+    private long welcomeUntil;
+
     void welcome() {
         if (!prefs.carWelcome() || prefs.carLowMotion()) return;
+        welcomeUntil = android.os.SystemClock.uptimeMillis() + 2000;
         portal.body.rig.greet();
         float d = getResources().getDisplayMetrics().density;
         int n = content.getChildCount();
@@ -2268,7 +2303,7 @@ final class CarScreen extends FrameLayout {
     /** 🔆 At night Jarvis's screen as light as he chose (by day, and with "the box's", the box's own light). */
     private void nightLight() {
         try {
-            float b = CarDeck.nightLight(prefs.carNightDim(), night);
+            float b = awakeShown || !isShown() ? -1f : CarDeck.nightLight(prefs.carNightDim(), night); // (the sleep alert and the chat: the box's own light)
             android.view.WindowManager.LayoutParams lp = act.getWindow().getAttributes();
             if (lp.screenBrightness != b) { lp.screenBrightness = b; act.getWindow().setAttributes(lp); }
         } catch (Exception ignored) {}
@@ -2281,7 +2316,7 @@ final class CarScreen extends FrameLayout {
     private boolean dayNightCheck() {
         int slot = CarDeck.dayNightSlot(prefs.carDayNight(), night);
         if (slot == 0) return false;
-        String period = (night ? "n" : "d") + slot;
+        String period = CarDeck.dayNightMark(night, slot, System.currentTimeMillis(), java.util.TimeZone.getDefault());
         if (period.equals(prefs.sp.getString("car_dn_applied", ""))) return false;
         java.util.Map<String, Object> m = CarDeck.back(prefs.sp.getString("car_mine_" + slot, ""));
         prefs.sp.edit().putString("car_dn_applied", period).apply();
@@ -2305,7 +2340,7 @@ final class CarScreen extends FrameLayout {
 
     /** "Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు", "బీట్ లైట్లు ఆపు / పెట్టు": done at once; what to say back. */
     String lightsSaid(String[] w) {
-        if ("shape".equals(w[0])) return "సరే, " + shapeSaid() + " పెట్టాను.";
+        if ("shape".equals(w[0])) return "సరే, " + shapeSaid() + ".";
         if ("stage".equals(w[0])) {
             boolean on = "on".equals(w[1]);
             setStage(on);
@@ -2314,11 +2349,13 @@ final class CarScreen extends FrameLayout {
         if ("eq".equals(w[0])) {
             prefs.sp.edit().putString("car_eq_level", w[1]).apply();
             lightsNow();
-            return "off".equals(w[1]) ? "సరే, ఈక్వలైజర్ ఆపాను." : "dim".equals(w[1]) ? "సరే, ఈక్వలైజర్ మసకగా పెట్టాను." : "సరే, ఈక్వలైజర్ పూర్తి రంగుల్లో పెట్టాను.";
+            String r = "off".equals(w[1]) ? "సరే, ఈక్వలైజర్ ఆపాను." : "dim".equals(w[1]) ? "సరే, ఈక్వలైజర్ మసకగా పెట్టాను." : "సరే, ఈక్వలైజర్ పూర్తి రంగుల్లో పెట్టాను.";
+            return !"off".equals(w[1]) && prefs.carLowMotion() ? r + " కానీ \"కదలికలు తక్కువ\" ఆన్‌లో ఉంది: అది ఆపితేనే కనిపిస్తుంది." : r;
         }
         boolean on = "on".equals(w[1]);
         prefs.sp.edit().putBoolean("car_beat_lights", on).apply();
         lightsNow();
+        if (on && prefs.carLowMotion()) return "సరే, బీట్ లైట్లు పెట్టాను. కానీ \"కదలికలు తక్కువ\" ఆన్‌లో ఉంది: అది ఆపితేనే కనిపిస్తాయి.";
         return on ? "సరే, బీట్ లైట్లు పెట్టాను." : "సరే, బీట్ లైట్లు ఆపాను.";
     }
 
@@ -2347,6 +2384,7 @@ final class CarScreen extends FrameLayout {
     /** 💡 The cards' outlines on the screen now: leaning cards along their lean, round buttons and ②'s dials as circles. */
     private void outlines(List<android.graphics.Path> into) {
         pathUsed = 0;
+        if (android.os.SystemClock.uptimeMillis() < welcomeUntil) return; // (the cards are still turning in)
         boolean roundTiles = CarDeck.round(prefs.carBtnStyle(), CarLayout.deep(shape));
         for (View t : tiles) addOutline(into, t, roundTiles ? 1 : 0);
         for (View v : new View[]{roadCard, musicStrip, carMap, wingLIn, wingRIn, panelIn, board, stageMid}) addOutline(into, v, 0);
@@ -2403,7 +2441,12 @@ final class CarScreen extends FrameLayout {
                 float[] m = ((CarKit.Tilt) pv).forward();
                 if (m != null) {
                     res = 2;
-                    for (int i = 0; i + 1 < pts.length; i += 2) { float[] t = CarDeck.apply(m, pts[i], pts[i + 1]); pts[i] = t[0]; pts[i + 1] = t[1]; }
+                    for (int i = 0; i + 1 < pts.length; i += 2) { // (through the lean, in place)
+                        float px = pts[i], py = pts[i + 1], z = m[6] * px + m[7] * py + m[8];
+                        if (Math.abs(z) < 1e-6f) z = 1e-6f;
+                        pts[i] = (m[0] * px + m[1] * py + m[2]) / z;
+                        pts[i + 1] = (m[3] * px + m[4] * py + m[5]) / z;
+                    }
                 }
             }
             cur = pv;
@@ -2523,6 +2566,7 @@ final class CarScreen extends FrameLayout {
         midCol.setPadding(pad / 2, 0, pad / 2, 0);
         boxMargins();
         overlayRoom();
+        lights.invalidate();
         int cp = Math.max(4, Math.min(w, h) / 50);
         roadCard.setPadding(cp, cp / 2, cp, cp / 2);
         musicStrip.setPadding(cp, cp / 3, cp / 2, cp / 3);

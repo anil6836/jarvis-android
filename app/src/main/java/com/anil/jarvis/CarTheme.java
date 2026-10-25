@@ -67,7 +67,7 @@ final class CarTheme {
         l.bgBottom = night ? nightBottom : bgBottom;
         int a = mode == MUSIC ? musicAccent : mode == PARKED ? parkAccent : night ? nightAccent : accent;
         if (accentOverride != 0 && mode == DRIVING) a = accentOverride;
-        if (songAccent != 0 && mode == MUSIC) a = night ? shade(songAccent, 0.8f) : songAccent; // (a little softer at night, like the theme's)
+        if (songAccent != 0 && mode == MUSIC) a = night ? shade(songAccent, 0.8f) : l.light ? shade(songAccent, 0.55f) : songAccent; // (softer at night; darker on the white theme: readable)
         l.accent = a;
         l.glow = withAlpha(a, night ? 0x44 : 0x66);
         if (l.light) {

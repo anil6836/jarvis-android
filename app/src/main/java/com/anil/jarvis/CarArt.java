@@ -1162,6 +1162,8 @@ final class CarArt {
         return new android.graphics.drawable.Drawable() {
             private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
             private final RectF r = new RectF();
+            private Shader fill;
+            private final android.graphics.Rect fillFor = new android.graphics.Rect();
 
             @Override public void draw(Canvas cv) {
                 r.set(getBounds());
@@ -1173,8 +1175,12 @@ final class CarArt {
                 cv.drawRoundRect(r, radiusPx, radiusPx, p);
                 r.offset(0, -radiusPx * 0.25f);
                 // the fill with a light from the top
-                p.setAlpha(255); p.setShader(new LinearGradient(r.left, r.top, r.right, r.bottom, new int[]{tile ? l.tileFill : l.glassFill, CarTheme.withAlpha(tile ? l.tileFill : l.glassFill, 0x10)},
-                        new float[]{0, 1}, Shader.TileMode.CLAMP));
+                if (fill == null || !fillFor.equals(getBounds())) { // (made once per size: the song strip is redrawn with its equalizer)
+                    fillFor.set(getBounds());
+                    fill = new LinearGradient(r.left, r.top, r.right, r.bottom, new int[]{tile ? l.tileFill : l.glassFill, CarTheme.withAlpha(tile ? l.tileFill : l.glassFill, 0x10)},
+                            new float[]{0, 1}, Shader.TileMode.CLAMP);
+                }
+                p.setAlpha(255); p.setShader(fill);
                 cv.drawRoundRect(r, radiusPx, radiusPx, p);
                 p.setShader(null);
                 // the edge, brighter on top

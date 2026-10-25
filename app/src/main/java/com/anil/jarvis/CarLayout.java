@@ -59,7 +59,7 @@ final class CarLayout {
      * null. Only the whole short sentence counts ("Google Maps లో దారి పెట్టు" is not a switch). Pure.
      */
     static String mapWords(String text) {
-        if (text == null) return null;
+        if (text == null || text.contains("?") || text.contains("？")) return null; // (a question goes to Jarvis)
         String t = text.toLowerCase(java.util.Locale.ROOT).replaceAll("[\u200c\u200d]", "").replaceAll("(jarvis|జార్విస్|జర్విస్)", " ")
                 .replaceAll("[,.!?।\"'“”]", " ").replaceAll("\\s+", " ").trim();
         if (t.isEmpty() || t.length() > 60) return null;

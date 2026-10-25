@@ -229,7 +229,7 @@ final class CarDeck {
      * short sentence only ("ఇంట్లో లైట్లు ఆపు" is the home's lights, never these). Pure.
      */
     static String[] lightWords(String text) {
-        if (text == null) return null;
+        if (text == null || text.contains("?") || text.contains("？")) return null; // (a question goes to Jarvis)
         String t = text.toLowerCase(Locale.ROOT).replaceAll("[\u200c\u200d]", "").replaceAll("(jarvis|జార్విస్|జర్విస్)", " ")
                 .replaceAll("[,.!?।\"'“”]", " ").replaceAll("\\s+", " ").trim();
         if (t.isEmpty() || t.length() > 50) return null;
@@ -285,6 +285,16 @@ final class CarDeck {
         if ("mid".equals(pref)) return 0.35f;
         if ("low".equals(pref)) return 0.12f;
         return -1f;
+    }
+
+    /**
+     * 🌗 The day / night period now, as a mark (slot, day or night, and its date — a night past midnight keeps the date
+     * it began): a theme goes on once per real day / night, again the next one. Pure.
+     */
+    static String dayNightMark(boolean night, int slot, long now, java.util.TimeZone tz) {
+        java.util.Calendar c = java.util.Calendar.getInstance(tz);
+        c.setTimeInMillis(now - 6 * 3_600_000L);
+        return (night ? "n" : "d") + slot + "@" + c.get(java.util.Calendar.YEAR) + "-" + c.get(java.util.Calendar.DAY_OF_YEAR);
     }
 
     /** 🌗 "d,n": his day and night themes (1–3); the place for now (0: off / not set). Pure. */
@@ -426,6 +436,7 @@ final class CarDeck {
     /** The look now (from all the settings) as one line to keep. */
     static String keep(Map<String, ?> all) {
         JSONObject o = new JSONObject();
+        try { o.put("v", 2); } catch (Exception ignored) {} // (v2: every look key there; an older one only knew some)
         for (String k : LOOK_KEYS) {
             Object v = all == null ? null : all.get(k);
             try { if (v instanceof Integer || v instanceof Boolean || v instanceof String) o.put(k, v); } catch (Exception ignored) {}
@@ -442,7 +453,9 @@ final class CarDeck {
         JSONObject o;
         try { o = new JSONObject(kept); } catch (Exception e) { return null; }
         Map<String, Object> out = new LinkedHashMap<>();
+        boolean whole = o.optInt("v", 1) >= 2; // (an older kept look never resets a setting it didn't know about)
         for (String k : LOOK_KEYS) {
+            if (!whole && !o.has(k)) continue;
             Object v = o.opt(k);
             if (v instanceof Integer || v instanceof Boolean || v instanceof String) out.put(k, v);
             else if (v instanceof Long && (Long) v >= Integer.MIN_VALUE && (Long) v <= Integer.MAX_VALUE) out.put(k, (int) (long) (Long) v);

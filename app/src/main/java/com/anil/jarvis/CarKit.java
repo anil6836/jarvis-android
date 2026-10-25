@@ -261,6 +261,7 @@ final class CarKit {
                     c.drawRoundRect(r, bw * 0.14f, bw * 0.14f, p);
                 }
             }
+            unscheduleSelf(this); // (one loop only, whoever else redraws the strip)
             if (eq.alive(now)) scheduleSelf(this, now + 33); // (~30 frames a second while there is music)
             else running = false;
         }
@@ -320,6 +321,7 @@ final class CarKit {
             long now = android.os.SystemClock.uptimeMillis();
             float dt = last == 0 ? 0.03f : Math.min(0.2f, (now - last) / 1000f);
             last = now;
+            if (pulse <= 0) dt = 0; // (resting: drawn once, no frames)
             pulse = Math.max(0, pulse - dt * 2.8f); // (gone in about a third of a second)
             float glow = 0.16f + 0.84f * pulse;
             paths.clear();
@@ -335,7 +337,8 @@ final class CarKit {
                 p.setColor(android.graphics.Color.HSVToColor(Math.round(255 * 0.95f * glow), hsv));
                 c.drawPath(paths.get(i), p);
             }
-            postOnAnimationDelayed(this, 33);
+            if (pulse > 0) postOnAnimationDelayed(this, 33); // (between beats only the faint edges stay: nothing more to draw)
+            else last = 0;
         }
 
         @Override protected void onDetachedFromWindow() {
