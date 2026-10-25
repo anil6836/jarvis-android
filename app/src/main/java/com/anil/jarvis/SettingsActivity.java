@@ -3345,8 +3345,8 @@ public class SettingsActivity extends Activity {
         box.addView(eqRow);
         Switch beatSw = toggle("💡 బీట్ లైట్లు (పాట వస్తే, బీట్‌కి కార్డుల అంచులు రంగులుగా వెలుగుతాయి)", prefs.carBeatLights());
         beatSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_beat_lights", v).apply());
-        Switch stage = toggle("🕺 ఆగి ఉన్నప్పుడు పాట వస్తే Jarvis స్టేజ్ (⑧: Jarvis పెద్దగా లైట్ కింద డాన్స్; కారు కదలగానే మీ స్క్రీన్; ✕ నొక్కితే ఆ పాటకి వద్దు)", prefs.carStage());
-        stage.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_stage", v).apply());
+        Switch stage = toggle("🕺 Jarvis స్టేజ్ (⑧: Jarvis పెద్దగా లైట్ కింద; స్పీడ్ కూడా; మీరు ఆపే వరకు అలాగే. \"Jarvis, స్టేజ్ పెట్టు / ఆపు\" తో కూడా)", prefs.carStage());
+        stage.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_stage_on", v).apply());
         // 🗺️ G1 / G2, and what this box allows for G2
         final TextView mapModeRow = Ui.text(this, "", 15.5f, accent), splitRow = Ui.text(this, "🧪 Google Maps పక్క కిటికీ పరీక్ష (G2: ఈ box ఇస్తుందా?)", 15.5f, accent);
         for (TextView t : new TextView[]{mapModeRow, splitRow}) t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
@@ -3405,8 +3405,8 @@ public class SettingsActivity extends Activity {
                     })).show();
         });
         note("కారు ఆగి ఉన్నప్పుడు కారు స్క్రీన్ మీద: ఒక బటన్‌ని కాసేపు నొక్కి పట్టుకుంటే దాని స్థానంలో వేరే బటన్; ② చిన్న డయల్‌ని పట్టుకుంటే అందులో ఏం చూపించాలో; "
-                + "స్పీడ్ మీటర్‌ని పట్టుకుంటే దాని రూపం; Jarvis ని పట్టుకుంటే అతని సైజు; పాట పట్టీని పట్టుకుంటే 🎚️ ఈక్వలైజర్ / 💡 బీట్ లైట్లు. "
-                + "నడుపుతున్నప్పుడు ఇవి మారవు (భద్రత కోసం): అప్పుడు మాటతో \"Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు\", \"Jarvis, బీట్ లైట్లు ఆపు / పెట్టు\".");
+                + "స్పీడ్ మీటర్‌ని పట్టుకుంటే దాని రూపం; Jarvis ని పట్టుకుంటే అతని సైజు; పాట పట్టీని పట్టుకుంటే 🎚️ ఈక్వలైజర్ / 💡 బీట్ లైట్లు / 🕺 స్టేజ్. "
+                + "నడుపుతున్నప్పుడు ఇవి మారవు (భద్రత కోసం): అప్పుడు మాటతో \"Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు\", \"బీట్ లైట్లు ఆపు / పెట్టు\", \"స్టేజ్ పెట్టు / ఆపు\".");
         note("Jarvis బొమ్మ, చర్మం రంగు: కింద '🏠 ఇంటి Jarvis' భాగంలోని 🧑 Jarvis రూపం / 🎨 చర్మం రంగు ఎంపికలే కారుకీ. "
                 + "పాట వస్తే Jarvis బీట్‌కి డాన్స్ చేస్తాడు (ప్రతి 16 బీట్లకి కొత్త స్టెప్, కోరస్‌కి పెద్ద స్టెప్పులు; బొమ్మను తాకితే ఒక ప్రత్యేక స్టెప్). "
                 + "స్టీరింగ్ బటన్ నొక్కగానే ఆగి వింటాడు. బీట్ ఈ box ఇవ్వకపోతే మామూలు వేగంతో ఊగుతాడు. "

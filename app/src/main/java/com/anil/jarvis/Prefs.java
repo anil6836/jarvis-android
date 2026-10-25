@@ -484,8 +484,9 @@ final class Prefs {
     boolean carMapTilt() { return sp.getBoolean("car_map_tilt", true); }
     /** 🗺️ The car's map: "g1" Jarvis's own map on the car screen, "g2" the Google Maps app beside Jarvis (the box's window). */
     String carMapMode() { return sp.getString("car_map_mode", "g1"); }
-    /** ⑧ Parked with a song: Jarvis's stage. 🫧 The small Jarvis over other apps while the car screen is away. */
-    boolean carStage() { return sp.getBoolean("car_stage", true); }
+    /** 🫧 The small Jarvis over other apps while the car screen is away. */
+    /** ⑧ On only when he puts it on (⚙️, the song strip, a button of his six, his words), until he puts it off. */
+    boolean carStage() { return sp.getBoolean("car_stage_on", false); }
     boolean carBubble() { return sp.getBoolean("car_bubble", true); }
     /** 🎚️ The colourful equalizer behind the song strip: "off", "dim", "full" — his choice only (never switched by moving / parked). */
     String carEqLevel() { return sp.getString("car_eq_level", "full"); }

@@ -93,7 +93,7 @@ final class CarScreen extends FrameLayout {
     private final LinearLayout stageLeft, stageMid, sideTop, sideText;
     private final List<View> stageBtns = new ArrayList<>();
     private final TextView stageExit, mapPill, mapGap;
-    private boolean stageSkip, besideNow, settingSheet, rightOnly;
+    private boolean besideNow, settingSheet, rightOnly;
     // 💡 the beat lights over the cards, 🎚️ the equalizer behind the song strip
     private final CarKit.BeatLights lights;
     private final CarKit.Spectrum eqDraw;
@@ -368,7 +368,7 @@ final class CarScreen extends FrameLayout {
         }
         stageExit = autoText(a, "✕ స్టేజ్ ఆపు", true, 30);
         stageExit.setGravity(Gravity.CENTER);
-        stageExit.setOnClickListener(v -> tap(() -> { stageSkip = true; shapeCheck(); })); // (this song: the usual screen; the next song brings the stage again)
+        stageExit.setOnClickListener(v -> tap(() -> setStage(false))); // (off until he puts it on again)
         // ---- G2: Google Maps' own window on the left, Jarvis's column on the right with "🗺️ మ్యాప్ మార్చు"
         sideTop = new LinearLayout(a);
         sideTop.setOrientation(LinearLayout.HORIZONTAL);
@@ -498,7 +498,6 @@ final class CarScreen extends FrameLayout {
                 if (!m) stillSince = now;
                 wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f);
                 if (m && settingSheet) closeSheet(); // (a look chooser left open: gone when the car moves)
-                if (m) stageSkip = false;
             }
             glances();
             portal.setBelted(m);
@@ -564,7 +563,6 @@ final class CarScreen extends FrameLayout {
         if (heard) { songOn++; songOff = 0; } else { songOff++; songOn = 0; }
         if (!songNow && songOn >= SONG_IN) songNow = true;
         else if (songNow && songOff >= SONG_OUT) songNow = false;
-        if (!songNow) stageSkip = false; // (✕ was for that song only)
         boolean moving = CarBox.moving();
         boolean parked = parkedNow();
         int m = songNow ? CarTheme.MUSIC : parked ? CarTheme.PARKED : CarTheme.DRIVING;
@@ -1170,7 +1168,6 @@ final class CarScreen extends FrameLayout {
         if (key.equals(songNowKey)) return;
         boolean had = !songNowKey.isEmpty();
         songNowKey = key;
-        if (had) stageSkip = false; // (✕ on the stage was for the last song)
         if (!had || !dancing) return;
         beat.newSong();
         portal.body.rig.queueDanceStyle(dj.start(beat.period(), 0, rnd));
@@ -1300,6 +1297,7 @@ final class CarScreen extends FrameLayout {
             case "maps": JarvisMaps.open(getContext(), ""); break;
             case "games": showGames(); break;
             case "apps": showApps(); break;
+            case "stage": setStage(!prefs.carStage()); break;
             default: break;
         }
     }
@@ -1314,6 +1312,7 @@ final class CarScreen extends FrameLayout {
             case "sleep": return CarArt.Icon.SLEEP;
             case "games": return CarArt.Icon.GAMES;
             case "apps": return CarArt.Icon.APPS;
+            case "stage": return CarArt.Icon.STAR;
             default: return CarArt.Icon.MIC;
         }
     }
@@ -1944,13 +1943,14 @@ final class CarScreen extends FrameLayout {
         boolean g2 = "g2".equals(prefs.carMapMode());
         String s = CarLayout.now(prefs.carLayout(), trip, prefs.carNavMap(), g2 && (besideNow || trip)); // (G2 on a trip: Google Maps' room on the left, a tap there brings it)
         if (g2 && besideNow) s = CarLayout.SIDE; // (he put Google Maps beside: Jarvis on the right whatever the shape)
-        else if (!CarLayout.SIDE.equals(s) && stageNow()) s = CarLayout.STAGE;
+        else if (!CarLayout.SIDE.equals(s) && prefs.carStage()) s = CarLayout.STAGE; // (⑧: only when he put it on, until he puts it off)
         arrange(s);
     }
 
-    /** ⑧: parked a while, a song on and Jarvis dancing (and he didn't close it for this song). */
-    private boolean stageNow() {
-        return prefs.carStage() && dancing && !stageSkip && parkedNow() && !CarBox.moving();
+    /** ⑧ on / off: his tap (✕, his button, the song strip, ⚙️) or his words. Nothing else turns it on or off. */
+    void setStage(boolean on) {
+        prefs.sp.edit().putBoolean("car_stage_on", on).apply();
+        shapeCheck();
     }
 
     /**
@@ -2098,7 +2098,8 @@ final class CarScreen extends FrameLayout {
                 put(content, stageLeft, 11); put(content, stageMid, 64); put(content, rightCol, 25);
                 for (View b : stageBtns) put(stageLeft, b, 1);
                 put(stageMid, portal, 82); put(stageMid, musicStrip, 18); put(stageMid, board, 100);
-                put(rightCol, clock, 20); put(rightCol, date, 8); put(rightCol, stateText, 9); put(rightCol, subText, 33); put(rightCol, stageExit, 11); put(rightCol, chipRow, 12);
+                put(rightCol, clock, 15); put(rightCol, gauge, 15); put(rightCol, stateText, 7); put(rightCol, roadCard, 13); put(rightCol, subText, 22); // (the speed and the road card stay: it may be on while he drives)
+                put(rightCol, stageExit, 10); put(rightCol, chipRow, 10);
                 break;
             case CarLayout.SIDE: // G2: Google Maps' own window on the left (the box's split / freeform window); Jarvis's column on the right
                 boolean split = act.isInMultiWindowMode(); // (split screen: this window is already beside Google Maps — all of it is Jarvis's)
@@ -2176,6 +2177,11 @@ final class CarScreen extends FrameLayout {
 
     /** "Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు", "బీట్ లైట్లు ఆపు / పెట్టు": done at once; what to say back. */
     String lightsSaid(String[] w) {
+        if ("stage".equals(w[0])) {
+            boolean on = "on".equals(w[1]);
+            setStage(on);
+            return on ? "సరే, స్టేజ్ పెట్టాను." : "సరే, స్టేజ్ ఆపాను.";
+        }
         if ("eq".equals(w[0])) {
             prefs.sp.edit().putString("car_eq_level", w[1]).apply();
             lightsNow();
@@ -2201,7 +2207,9 @@ final class CarScreen extends FrameLayout {
             rows.add(new String[]{(on == prefs.carBeatLights() ? "✓ " : "") + "💡 బీట్ లైట్లు: " + (on ? "ఆన్" : "ఆఫ్")});
             acts.add(() -> { closeSheet(); if (!parkedOrSay()) return; prefs.sp.edit().putBoolean("car_beat_lights", on).apply(); lightsNow(); });
         }
-        openSheet("🎚️ ఈక్వలైజర్ · 💡 బీట్ లైట్లు", "నడుపుతున్నప్పుడు మాటతో: \"Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు\", \"Jarvis, బీట్ లైట్లు ఆపు / పెట్టు\"", rows, acts, 3);
+        rows.add(new String[]{prefs.carStage() ? "🕺 స్టేజ్ ఆపు" : "🕺 Jarvis స్టేజ్ పెట్టు"});
+        acts.add(() -> { closeSheet(); if (!parkedOrSay()) return; setStage(!prefs.carStage()); });
+        openSheet("🎚️ ఈక్వలైజర్ · 💡 బీట్ లైట్లు · 🕺 స్టేజ్", "నడుపుతున్నప్పుడు మాటతో: \"Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు\", \"బీట్ లైట్లు ఆపు / పెట్టు\", \"స్టేజ్ పెట్టు / ఆపు\"", rows, acts, 3);
         settingSheet = true;
     }
 
@@ -2331,7 +2339,7 @@ final class CarScreen extends FrameLayout {
         else if (CarLayout.COCKPIT.equals(shape)) g = CarTheme.G_DIGITS;
         else if (CarLayout.CHROME.equals(shape)) g = CarTheme.G_NEEDLE;
         else if (CarLayout.MAP3D.equals(shape)) g = CarTheme.G_ARC;
-        else if (CarLayout.SIDE.equals(shape)) g = CarTheme.G_DIGITS;
+        else if (CarLayout.SIDE.equals(shape) || CarLayout.STAGE.equals(shape)) g = CarTheme.G_DIGITS;
         else g = CarTheme.of(prefs.carTheme()).gauge;
         look.gauge = g;
         gauge.setLook(look);

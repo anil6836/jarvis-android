@@ -19,10 +19,10 @@ final class CarDeck {
 
     // ================================================================ the six buttons
 
-    static final String[] BUTTONS = {"talk", "maps", "way", "music", "fuel", "home", "sleep", "games", "apps"};
+    static final String[] BUTTONS = {"talk", "maps", "way", "music", "fuel", "home", "sleep", "games", "apps", "stage"};
     static final String[] BUTTON_NAMES = {"🎤 మాట్లాడు", "🗺️ Jarvis Maps", "🧭 దారి (ఇల్లు, నా చోట్లు)", "🎵 పాటలు", "⛽ డీజిల్ కొట్టించాను",
-            "🏠 ఇల్లు (లైట్లు, ఇంటికి)", "😴 నిద్ర అలర్ట్", "🎲 ప్రయాణ ఆటలు", "▦ box ఆప్స్"};
-    static final String[] BUTTON_LABELS = {"మాట్లాడు", "Jarvis Maps", "దారి", "పాటలు", "డీజిల్", "ఇల్లు", "నిద్ర", "ఆటలు", "ఆప్స్"};
+            "🏠 ఇల్లు (లైట్లు, ఇంటికి)", "😴 నిద్ర అలర్ట్", "🎲 ప్రయాణ ఆటలు", "▦ box ఆప్స్", "🕺 Jarvis స్టేజ్ (ఆన్ / ఆఫ్)"};
+    static final String[] BUTTON_LABELS = {"మాట్లాడు", "Jarvis Maps", "దారి", "పాటలు", "డీజిల్", "ఇల్లు", "నిద్ర", "ఆటలు", "ఆప్స్", "స్టేజ్"};
     /** ⑥ ④ ⑦ as they always were; the 3D shapes (① ② ③) have Jarvis Maps in దారి's place. */
     static final String[] CLASSIC_SIX = {"talk", "way", "music", "fuel", "home", "sleep"};
     static final String[] DEEP_SIX = {"talk", "maps", "music", "fuel", "home", "sleep"};
@@ -219,11 +219,12 @@ final class CarDeck {
     private static final String DIM_W = "(మసకగా పెట్టు|మసకగా|మసక|తగ్గించు|dim)";
     private static final java.util.regex.Pattern EQ_W = java.util.regex.Pattern.compile("^(ఈక్వలైజర్|ఈక్వలైజరు|ఇక్వలైజర్|equali[sz]er|రంగుల గీతలు)\\s*(ని|ను)?\\s*(.+)$");
     private static final java.util.regex.Pattern BL_W = java.util.regex.Pattern.compile("^(బీట్ లైట్లు|బీట్ లైట్స్|బీట్ లైట్|beat lights?)\\s*(ని|ను)?\\s*(.+)$");
+    private static final java.util.regex.Pattern ST_W = java.util.regex.Pattern.compile("^(డాన్స్ స్టేజ్|స్టేజ్|stage|dance stage)\\s*(ని|ను|మీద)?\\s*(.+)$");
 
     /**
-     * His words for the song strip's equalizer and the beat lights (any time, also while driving: words only): {"eq",
-     * "off" | "dim" | "full"} or {"lights", "off" | "on"}; else null. The whole short sentence only ("ఇంట్లో లైట్లు ఆపు" is
-     * the home's lights, never these). Pure.
+     * His words for the song strip's equalizer, the beat lights and ⑧ the stage (any time, also while driving: words
+     * only): {"eq", "off" | "dim" | "full"}, {"lights", "off" | "on"} or {"stage", "off" | "on"}; else null. The whole
+     * short sentence only ("ఇంట్లో లైట్లు ఆపు" is the home's lights, never these). Pure.
      */
     static String[] lightWords(String text) {
         if (text == null) return null;
@@ -243,6 +244,13 @@ final class CarDeck {
             String rest = m.group(3).trim();
             if (rest.matches(OFF_W)) return new String[]{"lights", "off"};
             if (rest.matches(ON_W)) return new String[]{"lights", "on"};
+            return null;
+        }
+        m = ST_W.matcher(t);
+        if (m.matches()) {
+            String rest = m.group(3).trim();
+            if (rest.matches(OFF_W)) return new String[]{"stage", "off"};
+            if (rest.matches(ON_W)) return new String[]{"stage", "on"};
         }
         return null;
     }
@@ -316,8 +324,7 @@ final class CarDeck {
 
     /** The settings a kept look holds: how the screen looks only (no photos, no places, nothing private). */
     static final String[] LOOK_KEYS = {"car_theme", "car_accent", "car_colour", "car_gauge", "car_layout", "car_nav_map", "car_buttons", "car_btn_style",
-            "car_dials", "car_jarvis", "car_text", "car_map_night", "car_map_zoom", "car_map_tilt", "car_dance", "car_low_motion", "car_eq_level", "car_beat_lights",
-            "car_stage"};
+            "car_dials", "car_jarvis", "car_text", "car_map_night", "car_map_zoom", "car_map_tilt", "car_dance", "car_low_motion", "car_eq_level", "car_beat_lights"};
     static final int MINE = 3;
 
     /** The look now (from all the settings) as one line to keep. */
