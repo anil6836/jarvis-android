@@ -188,6 +188,7 @@ final class CarArt {
                 postOnAnimationDelayed(ease, 33); // (30 frames a second are plenty for a number)
             } else drawn = target;
             lastFrame = now;
+            if (look.gauge == CarTheme.G_DIGITS) { digits(cv, w, h); return; }
             boolean needle = look.gauge == CarTheme.G_NEEDLE;
             int accent = over ? 0xFFFF5A4E : look.accent;
             int warn = look.light ? 0xFFC62828 : 0xFFFF8A80; // (the warning red readable on the white theme too)
@@ -229,6 +230,30 @@ final class CarArt {
                 t.setTextSize(r * 0.16f);
                 cv.drawText(engine, cx, h - r * 0.08f, t);
             }
+        }
+
+        /** ①'s head-up look: the big number alone, km/h and the limit (and the engine's chip) under it; red over the limit. */
+        private void digits(Canvas cv, int w, int h) {
+            int warn = look.light ? 0xFFC62828 : 0xFFFF8A80;
+            String num = speed < 0 ? "–" : String.valueOf(Math.round(drawn));
+            t.setTypeface(Typeface.DEFAULT_BOLD);
+            float size = Math.min(h * 0.66f, w * 0.42f);
+            t.setTextSize(size);
+            float tw = t.measureText(num);
+            if (tw > w * 0.9f) { size *= w * 0.9f / tw; t.setTextSize(size); }
+            t.setColor(over ? warn : look.textMain);
+            t.setShadowLayer(size * 0.08f, 0, 0, CarTheme.withAlpha(over ? warn : look.accent, 0x99));
+            float base = h * 0.10f + size * 0.80f;
+            cv.drawText(num, w / 2f, base, t);
+            t.setShadowLayer(0, 0, 0, 0);
+            t.setTypeface(Typeface.DEFAULT);
+            String line = speed < 0 ? "GPS…" : "కి.మీ/గం" + (limit > 0 ? "  ·  లిమిట్ " + limit : "") + (engine.isEmpty() ? "" : "  ·  " + engine);
+            float ls = Math.min(h * 0.15f, size * 0.24f);
+            t.setTextSize(ls);
+            float lw = t.measureText(line);
+            if (lw > w * 0.94f) t.setTextSize(ls * w * 0.94f / lw);
+            t.setColor(over || hot ? warn : look.textSoft);
+            cv.drawText(line, w / 2f, Math.min(h - ls * 0.3f, base + ls * 1.5f), t);
         }
 
         private void arcGauge(Canvas cv, float cx, float cy, float r, float sw, int accent) {
@@ -340,7 +365,7 @@ final class CarArt {
         static final int MIC = 0, WAY = 1, MUSIC = 2, FUEL = 3, HOME = 4, SLEEP = 5, GAMES = 6, QUIZ = 7, STORY = 8, APPS = 9,
                 LEFT = 10, RIGHT = 11, AHEAD = 12, UTURN = 13, ROUND = 14, ARRIVE = 15, SLIGHT_LEFT = 16, SLIGHT_RIGHT = 17,
                 RAIN = 18, FOG = 19, ROAD = 20, SNOW = 21, CLOCK = 22, PARK = 23, PREV = 24, PLAY = 25, NEXT = 26, CUP = 27, STAR = 28,
-                PAUSE = 29;
+                PAUSE = 29, MAP = 30;
         private int kind;
         private int colour = 0xFF5FF3FF;
         private boolean ring; // (the song's play key: a lit round button, so it stands out between ⏮ and ⏭)
@@ -423,6 +448,10 @@ final class CarArt {
                 case SLEEP:
                     q.moveTo(36, 33); q.arcTo(new RectF(7, 11, 37, 41), -20, -250, false); q.quadTo(20, 34, 36, 33);
                     q.moveTo(33, 9); q.lineTo(40, 9); q.lineTo(33, 17); q.lineTo(40, 17);
+                    break;
+                case MAP: // a folded map
+                    q.moveTo(6, 14); q.lineTo(18, 9); q.lineTo(34, 14); q.lineTo(46, 9); q.lineTo(46, 40); q.lineTo(34, 45); q.lineTo(18, 40); q.lineTo(6, 45); q.close();
+                    q.moveTo(18, 9); q.lineTo(18, 40); q.moveTo(34, 14); q.lineTo(34, 45);
                     break;
                 case GAMES:
                     q.addRoundRect(6, 16, 46, 40, 10, 10, Path.Direction.CW);

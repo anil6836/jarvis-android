@@ -71,6 +71,11 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     private int routeAsks;
     private boolean routeBusy;
     private final Runnable retrySource = this::source;
+    // 🌙 the map's colours (dark at night, or his choice) and its zoom (fixed, or with the speed)
+    private boolean dark, darkNo, darkStale;
+    private String zoomSeen;
+    private int zoomWant;
+    private long zoomWantSince, zoomTouchedAt;
 
     CarMap(Context c, Prefs prefs, Host host) {
         super(c);
@@ -289,6 +294,11 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         for (TextView t : new TextView[]{turn1, eta, speed}) t.setTextColor(textMain);
         turnIcon.setColour(look.light ? 0xFF0B1118 : 0xFFFFFFFF);
         sizes(getWidth(), getHeight());
+        boolean dk = CarDeck.darkMap(p.carMapNight(), look.night);
+        if (dk != dark) { // (night came / went, or his choice changed: the map's colours with it — now if on the screen, else when it comes)
+            dark = dk;
+            if (started && shown) source(); else darkStale = started;
+        }
     }
 
     // ---------------------------------------------------------------- shown / hidden
@@ -302,6 +312,8 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
             if (!started) { started = true; keyTag = kt; source(); }
             else if (!kt.equals(keyTag)) { keyTag = kt; resetGoogle(); } // (the key put in / changed / taken out: a fresh start, nothing of the old kept)
             else if (googleOff && System.currentTimeMillis() - googleOffAt > 30 * 60_000L) { googleOff = false; sourceTries = 0; source(); } // (refused a while ago: Google tried again)
+            else if (darkStale) source();
+            darkStale = false;
             try { // 🏠 his home on the map (the box's own saved place)
                 JSONObject hm = Travel.home(getContext());
                 List<JarvisMapView.Pin> ps = new ArrayList<>();
@@ -344,6 +356,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
             map.setMe(l.getLatitude(), l.getLongitude(), heading, l.hasAccuracy() ? l.getAccuracy() : 0);
             if (map.follow && System.currentTimeMillis() - creditAt > 60_000) settled(); // (following him: the credit right for where the map is)
         }
+        zoomCheck(kmh);
         // Google's map never came (no net when the box woke, Google slow): asked again once a minute while there is net
         long now0 = System.currentTimeMillis();
         if (session.isEmpty() && !googleOff && !sourceBusy && GMaps.has(getContext()) && now0 - sourceAskedAt > 60_000 && Net.online(getContext())) source();
@@ -471,7 +484,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         trafficBtn.setAlpha(tr ? 1f : 0.55f);
         satBtn.setAlpha(sat ? 1f : 0.55f);
         if (!GMaps.has(c) || googleOff) {
-            map.setSource("", false, false);
+            map.setSource("", false, false, dark);
             way = null; // (nothing of Google's on the free map: its way, its credit)
             map.setRoutes(null, 0);
             map.setCredit("");
@@ -483,26 +496,34 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         final Context app = c.getApplicationContext();
         sourceBusy = true;
         sourceAskedAt = System.currentTimeMillis();
+        final boolean dk = dark && !darkNo && !sat;
         run(() -> {
             String s = null, err = null;
-            boolean refused = false;
-            try { s = GMaps.session(app, sat, tr); }
-            catch (Exception e) { err = GMaps.telugu(e); refused = e instanceof GMaps.Error && ((GMaps.Error) e).status >= 400 && ((GMaps.Error) e).status < 500; }
+            boolean refused = false, dayInstead = false;
+            try { s = GMaps.session(app, sat, tr, false, dk); }
+            catch (Exception e) {
+                boolean four = e instanceof GMaps.Error && ((GMaps.Error) e).status >= 400 && ((GMaps.Error) e).status < 500;
+                if (dk && four) { // (Google said no to the dark colours: its day map, said once — not the free map)
+                    try { s = GMaps.session(app, sat, tr, false, false); dayInstead = true; }
+                    catch (Exception e2) { err = GMaps.telugu(e2); refused = e2 instanceof GMaps.Error && ((GMaps.Error) e2).status >= 400 && ((GMaps.Error) e2).status < 500; }
+                } else { err = GMaps.telugu(e); refused = four; }
+            }
             final String ses = s, er = err;
-            final boolean no = refused;
+            final boolean no = refused, day = dayInstead;
             main.post(() -> {
                 if (seq == sourceSeq) sourceBusy = false;
                 if (googleOff || seq != sourceSeq) return;
                 if (ses == null && no) { googleFailed(er); return; }
                 if (ses == null) { // (no net / Google slow: the free map's kept pictures meanwhile, tried again in a while)
-                    if (session.isEmpty()) map.setSource("", false, false);
+                    if (session.isEmpty()) map.setSource("", false, false, dark);
                     if (sourceTries++ < 6) main.postDelayed(retrySource, 30_000);
                     return;
                 }
                 sourceTries = 0;
                 session = ses;
-                map.setSource(ses, sat, tr);
-                say("", "");
+                if (day) darkNo = true;
+                map.setSource(ses, sat, tr, dk && !day);
+                say(day ? "darkno" : "", day ? "🌙 రాత్రి రంగుల మ్యాప్ Google ఇవ్వలేదు: పగలు రంగులోనే" : "");
                 settled();
             });
         });
@@ -536,8 +557,9 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         googleOff = false;
         sourceTries = 0;
         clearWay();
+        darkNo = false;
         map.setCredit("");
-        map.setSource("", false, false);
+        map.setSource("", false, false, dark);
         final Context app = getContext().getApplicationContext();
         run(() -> { GMaps.dropSessions(app); main.post(this::source); });
     }
@@ -551,7 +573,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         main.removeCallbacks(retrySource);
         sourceSeq++;
         session = "";
-        map.setSource("", false, false);
+        map.setSource("", false, false, dark);
         map.setRoutes(null, 0); // (nothing of Google's on the free map)
         map.setCredit("");
         way = null;
@@ -589,7 +611,33 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         map.follow = true;
     }
 
+    /**
+     * The zoom: his fixed choice (put when chosen, or the first time the map shows), or with the speed while the map
+     * follows him — a new zoom only after 5 s of that speed (no pumping at a band's edge), and his own ＋ / － wins a minute.
+     */
+    private void zoomCheck(int kmh) {
+        String zp = p.carMapZoom();
+        long now = System.currentTimeMillis();
+        if (!zp.equals(zoomSeen)) {
+            zoomSeen = zp;
+            if (!"auto".equals(zp)) setZoom(CarDeck.fixedZoom(zp));
+        }
+        if (!"auto".equals(zp) || !map.follow || now - zoomTouchedAt < 60_000) { zoomWantSince = 0; return; }
+        int want = CarDeck.autoZoom(kmh);
+        if (want < 0 || want == Math.round(map.zoom)) { zoomWantSince = 0; return; }
+        if (want != zoomWant || zoomWantSince == 0) { zoomWant = want; zoomWantSince = now; return; }
+        if (now - zoomWantSince >= 5000) { zoomWantSince = 0; setZoom(want); }
+    }
+
+    private void setZoom(int z) {
+        double[] m = map.me();
+        if (map.follow && m != null) { map.centerOn(m[0], m[1], z); map.follow = true; }
+        else { map.zoom = z; map.invalidate(); }
+        main.postDelayed(this::settled, 500);
+    }
+
     private void zoomBy(int d) {
+        zoomTouchedAt = System.currentTimeMillis();
         double[] m = map.me();
         float z = Math.max(5f, Math.min(19f, Math.round(map.zoom) + d));
         if (map.follow && m != null) { map.centerOn(m[0], m[1], z); map.follow = true; }

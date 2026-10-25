@@ -3224,8 +3224,106 @@ public class SettingsActivity extends Activity {
                         Toast.makeText(this, "మ్యాప్ ఇప్పుడు ఉచిత మ్యాప్‌తో వస్తుంది. Google మ్యాప్, ట్రాఫిక్ కోసం కింద 🗺️ Jarvis Maps లో Maps key పెట్టండి.", Toast.LENGTH_LONG).show();
                 }).show());
         box.addView(shapeRow);
-        Switch navMap = toggle("🗺️ Google Maps లో దారి మొదలైతే మ్యాప్ స్క్రీన్‌కి మారు (మలుపు, చేరే టైమ్, స్పీడ్ ఒకే చోట; దారి అయిపోగానే మామూలు స్క్రీన్)", prefs.carNavMap());
+        Switch navMap = toggle("🗺️ Google Maps లో దారి మొదలైతే మ్యాప్ స్క్రీన్‌కి మారు (⑥ అయితే సగం మ్యాప్, ① ② అయితే ③ 3D మ్యాప్; మలుపు, చేరే టైమ్, స్పీడ్ ఒకే చోట; దారి అయిపోగానే మీ స్క్రీన్)", prefs.carNavMap());
         navMap.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_nav_map", v).apply());
+        // 💾 నా థీమ్ 1–3, the six buttons, the dials, the buttons' look, sizes
+        final TextView mineRow = Ui.text(this, "💾 నా థీమ్‌లు 1–3: ఇప్పటి రూపం దాచుకోండి, తర్వాత ఒక్క నొక్కుతో మళ్లీ పెట్టుకోండి", 15.5f, accent);
+        final TextView buttonsRow = Ui.text(this, "", 15.5f, accent), styleRow = Ui.text(this, "", 15.5f, accent), dialsRow = Ui.text(this, "", 15.5f, accent);
+        final TextView jarvisRow = Ui.text(this, "", 15.5f, accent), textRow = Ui.text(this, "", 15.5f, accent);
+        final TextView mapColourRow = Ui.text(this, "", 15.5f, accent), zoomRow = Ui.text(this, "", 15.5f, accent);
+        for (TextView t : new TextView[]{mineRow, buttonsRow, styleRow, dialsRow, jarvisRow, textRow, mapColourRow, zoomRow}) t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        Runnable showDeck = () -> {
+            boolean deep = CarLayout.deep(prefs.carLayout());
+            StringBuilder b = new StringBuilder();
+            for (String k : CarDeck.six(prefs.carButtons(), deep)) b.append(b.length() == 0 ? "" : " · ").append(CarDeck.buttonLabel(k));
+            buttonsRow.setText("🎛️ ఆరు బటన్లు: " + b + "  (మార్చడానికి నొక్కండి)");
+            int si = Math.max(0, java.util.Arrays.asList(CarDeck.STYLES).indexOf(prefs.carBtnStyle()));
+            styleRow.setText("🔘 బటన్లు ఎలా: " + CarDeck.STYLE_NAMES[si] + "  (మార్చడానికి నొక్కండి)");
+            StringBuilder d = new StringBuilder();
+            for (String k : CarDeck.three(prefs.carDials())) d.append(d.length() == 0 ? "" : " · ").append(CarDeck.dialName(k));
+            dialsRow.setText("🔵 ② లో చిన్న డయల్స్: " + d + "  (మార్చడానికి నొక్కండి)");
+            jarvisRow.setText("🧍 Jarvis సైజు: " + CarDeck.sizeName(prefs.carJarvis()) + "  (మార్చడానికి నొక్కండి)");
+            textRow.setText("🔠 అక్షరాలు: " + CarDeck.sizeName(prefs.carText()) + "  (మార్చడానికి నొక్కండి)");
+            int mi = Math.max(0, java.util.Arrays.asList(CarDeck.MAP_COLOURS).indexOf(prefs.carMapNight()));
+            mapColourRow.setText("🌗 కారు మ్యాప్ రంగు: " + CarDeck.MAP_COLOUR_NAMES[mi] + "  (మార్చడానికి నొక్కండి)");
+            int zi = Math.max(0, java.util.Arrays.asList(CarDeck.ZOOMS).indexOf(prefs.carMapZoom()));
+            zoomRow.setText("🔍 కారు మ్యాప్ జూమ్: " + CarDeck.ZOOM_NAMES[zi] + "  (మార్చడానికి నొక్కండి)");
+        };
+        showDeck.run();
+        box.addView(mineRow);
+        box.addView(buttonsRow);
+        box.addView(styleRow);
+        box.addView(dialsRow);
+        box.addView(jarvisRow);
+        box.addView(textRow);
+        buttonsRow.setOnClickListener(v -> {
+            final String[] six = CarDeck.six(prefs.carButtons(), CarLayout.deep(prefs.carLayout()));
+            String[] slots = new String[7];
+            for (int i = 0; i < 6; i++) slots[i] = (i + 1) + "వ బటన్: " + CarDeck.buttonName(six[i]);
+            slots[6] = "↺ మొదటి ఆరు బటన్లు (ఆకారానివి)";
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("ఏ స్థానంలో బటన్ మార్చాలి? (ఇంకో చోట ఉన్నది ఎంచుకుంటే రెండూ స్థానాలు మారతాయి)")
+                    .setItems(slots, (d, slot) -> {
+                        if (slot == 6) { prefs.sp.edit().remove("car_buttons").apply(); showDeck.run(); return; }
+                        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                                .setTitle((slot + 1) + "వ బటన్")
+                                .setSingleChoiceItems(CarDeck.BUTTON_NAMES, Math.max(0, CarDeck.buttonIndex(six[slot])), (d2, w) -> {
+                                    prefs.sp.edit().putString("car_buttons", CarDeck.join(CarDeck.put(six, slot, CarDeck.BUTTONS[w]))).apply();
+                                    showDeck.run();
+                                    d2.dismiss();
+                                }).show();
+                    }).show();
+        });
+        styleRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("ఆరు బటన్లు ఎలా ఉండాలి?")
+                .setSingleChoiceItems(CarDeck.STYLE_NAMES, Math.max(0, java.util.Arrays.asList(CarDeck.STYLES).indexOf(prefs.carBtnStyle())), (d, w) -> {
+                    prefs.sp.edit().putString("car_btn_style", CarDeck.STYLES[w]).apply();
+                    showDeck.run();
+                    d.dismiss();
+                }).show());
+        dialsRow.setOnClickListener(v -> {
+            final String[] three = CarDeck.three(prefs.carDials());
+            String[] slots = new String[3];
+            for (int i = 0; i < 3; i++) slots[i] = (i + 1) + "వ డయల్: " + CarDeck.dialName(three[i]);
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("② క్రోమ్ డయల్స్‌లో ఏ డయల్ మార్చాలి?")
+                    .setItems(slots, (d, slot) -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                            .setTitle((slot + 1) + "వ డయల్‌లో ఏం చూపించాలి?")
+                            .setSingleChoiceItems(CarDeck.DIAL_NAMES, Math.max(0, CarDeck.dialIndex(three[slot])), (d2, w) -> {
+                                three[slot] = CarDeck.DIALS[w];
+                                prefs.sp.edit().putString("car_dials", CarDeck.join(three)).apply();
+                                showDeck.run();
+                                d2.dismiss();
+                            }).show()).show();
+        });
+        jarvisRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("కారు స్క్రీన్ మీద Jarvis ఎంత పెద్దగా?")
+                .setSingleChoiceItems(CarDeck.SIZE_NAMES, Math.max(0, java.util.Arrays.asList(CarDeck.SIZES).indexOf(prefs.carJarvis())), (d, w) -> {
+                    prefs.sp.edit().putString("car_jarvis", CarDeck.SIZES[w]).apply();
+                    showDeck.run();
+                    d.dismiss();
+                }).show());
+        textRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("కారు స్క్రీన్ అక్షరాల సైజు")
+                .setSingleChoiceItems(CarDeck.SIZE_NAMES, Math.max(0, java.util.Arrays.asList(CarDeck.SIZES).indexOf(prefs.carText())), (d, w) -> {
+                    prefs.sp.edit().putString("car_text", CarDeck.SIZES[w]).apply();
+                    showDeck.run();
+                    d.dismiss();
+                }).show());
+        mapColourRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("కారు మ్యాప్ రంగు (Google మ్యాప్: Google ఇచ్చే ముదురు రంగు)")
+                .setSingleChoiceItems(CarDeck.MAP_COLOUR_NAMES, Math.max(0, java.util.Arrays.asList(CarDeck.MAP_COLOURS).indexOf(prefs.carMapNight())), (d, w) -> {
+                    prefs.sp.edit().putString("car_map_night", CarDeck.MAP_COLOURS[w]).apply();
+                    showDeck.run();
+                    d.dismiss();
+                }).show());
+        zoomRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("కారు మ్యాప్ జూమ్ (＋ － నొక్కితే ఒక నిమిషం మీదే)")
+                .setSingleChoiceItems(CarDeck.ZOOM_NAMES, Math.max(0, java.util.Arrays.asList(CarDeck.ZOOMS).indexOf(prefs.carMapZoom())), (d, w) -> {
+                    prefs.sp.edit().putString("car_map_zoom", CarDeck.ZOOMS[w]).apply();
+                    showDeck.run();
+                    d.dismiss();
+                }).show());
         box.addView(theme);
         box.addView(heroRow);
         box.addView(colour);
@@ -3233,6 +3331,10 @@ public class SettingsActivity extends Activity {
         box.addView(gaugeRow);
         box.addView(wallRow);
         box.addView(dance);
+        box.addView(mapColourRow);
+        box.addView(zoomRow);
+        Switch tilt = toggle("📐 ③ 3D మ్యాప్ డాష్‌లో మ్యాప్ వెనక్కి వంగి ఉండాలి (3D లాగా)", prefs.carMapTilt());
+        tilt.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_map_tilt", v).apply());
         Switch low = toggle("🌙 కదలికలు తక్కువ (రింగులు, కారు బొమ్మ ఆగుతాయి, నడుపుతుండగా డాన్స్ లేదు: ఒంటరిగా రాత్రి డ్రైవ్‌కి)", prefs.carLowMotion());
         low.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_low_motion", v).apply());
         Switch saver = toggle("🕰️ ఆగి 5 నిమిషాలు ఎవరూ తాకకపోతే నల్లని స్క్రీన్‌సేవర్ గడియారం (తాకితే లేస్తుంది)", prefs.carSaver());
@@ -3247,16 +3349,68 @@ public class SettingsActivity extends Activity {
                 try { startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
             }
         });
+        // 💾 a kept look back: every look setting at once (the rows and switches here show it at once too)
+        final Switch[] sws = {navMap, tilt, low};
+        mineRow.setOnClickListener(v -> {
+            String[] items = new String[CarDeck.MINE];
+            for (int i = 0; i < CarDeck.MINE; i++) {
+                String sum = CarDeck.summary(prefs.sp.getString("car_mine_" + (i + 1), ""));
+                items[i] = "💾 నా థీమ్ " + (i + 1) + ": " + (sum.isEmpty() ? "ఖాళీ" : sum);
+            }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("నా థీమ్‌లు")
+                    .setItems(items, (d, w) -> mineSlot(w + 1, () -> {
+                        show.run(); showShape.run(); showDeck.run();
+                        sws[0].setChecked(prefs.carNavMap()); sws[1].setChecked(prefs.carMapTilt()); sws[2].setChecked(prefs.carLowMotion());
+                    })).show();
+        });
+        note("కారు ఆగి ఉన్నప్పుడు కారు స్క్రీన్ మీద: ఒక బటన్‌ని కాసేపు నొక్కి పట్టుకుంటే దాని స్థానంలో వేరే బటన్; ② చిన్న డయల్‌ని పట్టుకుంటే అందులో ఏం చూపించాలో; "
+                + "స్పీడ్ మీటర్‌ని పట్టుకుంటే దాని రూపం; Jarvis ని పట్టుకుంటే అతని సైజు. నడుపుతున్నప్పుడు ఇవి మారవు (భద్రత కోసం).");
         note("Jarvis బొమ్మ, చర్మం రంగు: కింద '🏠 ఇంటి Jarvis' భాగంలోని 🧑 Jarvis రూపం / 🎨 చర్మం రంగు ఎంపికలే కారుకీ. "
                 + "పాట వస్తే Jarvis బీట్‌కి డాన్స్ చేస్తాడు (ప్రతి 16 బీట్లకి కొత్త స్టెప్, కోరస్‌కి పెద్ద స్టెప్పులు; బొమ్మను తాకితే ఒక ప్రత్యేక స్టెప్). "
                 + "స్టీరింగ్ బటన్ నొక్కగానే ఆగి వింటాడు. బీట్ ఈ box ఇవ్వకపోతే మామూలు వేగంతో ఊగుతాడు. "
                 + "మీ ఫోటో ఈ box లోనే ఉంటుంది (బ్యాకప్‌కి వెళ్లదు).");
     }
 
+    /** 💾 నా థీమ్ n: put it on, keep the look now in it, or empty it. */
+    private void mineSlot(int n, Runnable after) {
+        final String key = "car_mine_" + n, kept = prefs.sp.getString(key, "");
+        java.util.List<String> items = new java.util.ArrayList<>();
+        if (!kept.isEmpty()) items.add("📥 ఈ థీమ్ పెట్టు (" + CarDeck.summary(kept) + ")");
+        items.add("💾 ఇప్పటి రూపం ఇక్కడ దాచు");
+        if (!kept.isEmpty()) items.add("🗑️ ఈ థీమ్ తీసేయి");
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("💾 నా థీమ్ " + n)
+                .setItems(items.toArray(new String[0]), (d, w) -> {
+                    String it = items.get(w);
+                    if (it.startsWith("📥")) {
+                        java.util.Map<String, Object> m = CarDeck.back(kept);
+                        if (m == null) { Toast.makeText(this, "ఈ థీమ్ చదవలేకపోయాను", Toast.LENGTH_SHORT).show(); return; }
+                        android.content.SharedPreferences.Editor e = prefs.sp.edit();
+                        for (java.util.Map.Entry<String, Object> x : m.entrySet()) {
+                            Object val = x.getValue();
+                            if (val == null) e.remove(x.getKey());
+                            else if (val instanceof Integer) e.putInt(x.getKey(), (Integer) val);
+                            else if (val instanceof Boolean) e.putBoolean(x.getKey(), (Boolean) val);
+                            else e.putString(x.getKey(), (String) val);
+                        }
+                        e.apply();
+                        Toast.makeText(this, "నా థీమ్ " + n + " పెట్టాను", Toast.LENGTH_SHORT).show();
+                    } else if (it.startsWith("💾")) {
+                        prefs.sp.edit().putString(key, CarDeck.keep(prefs.sp.getAll())).apply();
+                        Toast.makeText(this, "ఇప్పటి రూపం 'నా థీమ్ " + n + "' లో దాచాను", Toast.LENGTH_SHORT).show();
+                    } else {
+                        prefs.sp.edit().remove(key).apply();
+                    }
+                    after.run();
+                }).show();
+    }
+
     // the theme editor's choices
     private static final int[] ACCENTS = {0, 0xFF5FF3FF, 0xFF4D8DFF, 0xFF34E89E, 0xFFFFC24B, 0xFFFF8A3D, 0xFFFF5A5A, 0xFFFF6AD5, 0xFFB28DFF, 0xFFF2F6FA};
     private static final String[] ACCENT_NAMES = {"థీమ్‌దే", "సియాన్", "నీలం", "ఆకుపచ్చ", "బంగారు", "నారింజ", "ఎరుపు", "గులాబీ", "ఊదా", "తెలుపు"};
-    private static final String[] GAUGES = {"", "arc", "needle"}, GAUGE_NAMES = {"థీమ్‌దే", "వెలిగే వంపు (ఆర్క్)", "క్లాసిక్ సూది డయల్"};
+    private static final String[] GAUGES = {"", "arc", "needle", "digits"},
+            GAUGE_NAMES = {"థీమ్‌దే (①②③ లో ఆకారానిదే)", "వెలిగే వంపు (ఆర్క్)", "క్లాసిక్ సూది డయల్", "పెద్ద అంకెలు మాత్రమే"};
     private static final int REQ_WALL = 47, REQ_CARPHOTO = 48, REQ_CARREAR = 49;
 
     private void pickCarRear() {

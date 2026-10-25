@@ -11,7 +11,7 @@ final class CarTheme {
     // background patterns (drawn by CarBackdrop)
     static final int P_NONE = 0, P_GRID = 1, P_CARBON = 2, P_HEX = 3, P_WIRE = 4, P_SCAN = 5, P_LEATHER = 6, P_HORIZON = 7, P_STARS = 8;
     // gauge styles
-    static final int G_ARC = 0, G_NEEDLE = 1;
+    static final int G_ARC = 0, G_NEEDLE = 1, G_DIGITS = 2;
     static final int COUNT = 10;
 
     final int id;

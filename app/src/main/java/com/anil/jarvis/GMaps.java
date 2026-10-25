@@ -207,11 +207,26 @@ final class GMaps {
     // ---------------------------------------------------------------- the map's pictures (Map Tiles API)
 
     /** A tile session (roadmap / satellite, traffic on or off), made once and kept until a day before Google's expiry. */
-    static String session(Context c, boolean satellite, boolean traffic) throws Exception { return session(c, satellite, traffic, false); }
+    static String session(Context c, boolean satellite, boolean traffic) throws Exception { return session(c, satellite, traffic, false, false); }
 
-    /** force: ask Google for a new one even if one is kept (the key test: Google must really answer). */
-    static synchronized String session(Context c, boolean satellite, boolean traffic, boolean force) throws Exception {
-        String kind = (satellite ? "sat" : "road") + (traffic ? "_tr" : "");
+    static String session(Context c, boolean satellite, boolean traffic, boolean force) throws Exception { return session(c, satellite, traffic, force, false); }
+
+    /** Google's own dark colours for the road map (the car screen at night): asked of Google with the session, never painted over its pictures. */
+    private static final String DARK_STYLES = "["
+            + "{\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#1d2c3a\"}]},"
+            + "{\"elementType\":\"labels.text.fill\",\"stylers\":[{\"color\":\"#a9bccb\"}]},"
+            + "{\"elementType\":\"labels.text.stroke\",\"stylers\":[{\"color\":\"#14202b\"}]},"
+            + "{\"featureType\":\"road\",\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#3a4d5e\"}]},"
+            + "{\"featureType\":\"road.highway\",\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#5a6f52\"}]},"
+            + "{\"featureType\":\"water\",\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#0e1a24\"}]},"
+            + "{\"featureType\":\"poi.park\",\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#1f3a2e\"}]},"
+            + "{\"featureType\":\"transit\",\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#2b3846\"}]}"
+            + "]";
+
+    /** force: ask Google for a new one even if one is kept (the key test: Google must really answer). dark: the road map in Google's dark colours. */
+    static synchronized String session(Context c, boolean satellite, boolean traffic, boolean force, boolean dark) throws Exception {
+        boolean dk = dark && !satellite; // (the photo has no colours to change)
+        String kind = (satellite ? "sat" : "road") + (dk ? "_dk" : "") + (traffic ? "_tr" : "");
         SharedPreferences p = store(c);
         String s = p.getString("ses_" + kind, "");
         long exp = p.getLong("ses_" + kind + "_exp", 0);
@@ -223,6 +238,7 @@ final class GMaps {
         if (satellite) layers.put("layerRoadmap"); // (names over the photo)
         if (traffic) layers.put("layerTraffic");
         if (layers.length() > 0) body.put("layerTypes", layers);
+        if (dk) body.put("styles", new JSONArray(DARK_STYLES));
         JSONObject r = send(c, "POST", "https://tile.googleapis.com/v1/createSession", body, null);
         s = r.optString("session", "");
         if (s.isEmpty()) throw new Error(0, "NO_SESSION", "Map Tiles API gave no session");
@@ -235,7 +251,7 @@ final class GMaps {
     /** Google refused the map's pictures (key, billing, quota): the kept sessions are dropped so the next try asks afresh. */
     static synchronized void dropSessions(Context c) {
         SharedPreferences.Editor e = store(c).edit();
-        for (String k : new String[]{"road", "road_tr", "sat", "sat_tr"}) e.remove("ses_" + k).remove("ses_" + k + "_exp").remove("ses_" + k + "_k");
+        for (String k : new String[]{"road", "road_tr", "sat", "sat_tr", "road_dk", "road_dk_tr"}) e.remove("ses_" + k).remove("ses_" + k + "_exp").remove("ses_" + k + "_k");
         e.apply();
     }
 

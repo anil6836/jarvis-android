@@ -460,14 +460,28 @@ final class Prefs {
     String carDance() { return sp.getString("car_dance", "always"); }
     boolean carLowMotion() { return sp.getBoolean("car_low_motion", false); }
     int carAccent() { return sp.getInt("car_accent", 0); }
-    /** The gauge: "" the theme's own, "arc", "needle". */
+    /** The gauge: "" the theme's (or the 3D shape's) own, "arc", "needle", "digits". */
     String carGauge() { return sp.getString("car_gauge", ""); }
     /** 🌙 The parked screensaver clock (on by default). */
     boolean carSaver() { return sp.getBoolean("car_saver", true); }
-    /** 🧩 The car screen's shape: "classic" (⑥ today's three columns), "mapcards" (④ map + cards), "halfmap" (⑦ half map). */
+    /** 🧩 The car screen's shape (CarLayout): ① "cockpit", ② "chrome", ③ "map3d", ④ "mapcards", ⑥ "classic" (today's three columns), ⑦ "halfmap". */
     String carLayout() { return sp.getString("car_layout", CarLayout.CLASSIC); }
-    /** 🗺️ When a Google Maps trip starts: the classic screen turns into the map screen (G1) until the trip ends. */
+    /** 🗺️ When a Google Maps trip starts: a shape without the map turns into a map screen until the trip ends. */
     boolean carNavMap() { return sp.getBoolean("car_nav_map", true); }
+    /** 🎛️ His six buttons ("talk,maps,…"; "" the shape's own: CarDeck.six). */
+    String carButtons() { return sp.getString("car_buttons", ""); }
+    /** ②'s three dials ("fuel,drive,engine"; CarDeck.three). */
+    String carDials() { return sp.getString("car_dials", ""); }
+    /** The buttons' look: "" by the shape, "glass", "round". */
+    String carBtnStyle() { return sp.getString("car_btn_style", ""); }
+    /** Jarvis's size on the car screen and the words' size: "s", "" (normal), "l". */
+    String carJarvis() { return sp.getString("car_jarvis", ""); }
+    String carText() { return sp.getString("car_text", ""); }
+    /** The car map's colours ("auto": dark at night, "day", "night") and zoom ("auto" with the speed, "near", "", "far"). */
+    String carMapNight() { return sp.getString("car_map_night", "auto"); }
+    String carMapZoom() { return sp.getString("car_map_zoom", ""); }
+    /** ③: the map card leans back (3D). */
+    boolean carMapTilt() { return sp.getBoolean("car_map_tilt", true); }
     /** The new Jarvis's look: a = navy jacket, b = kurta, c = zip jacket (Anil's pick). */
     String bodyLook() { return sp.getString("body_look", "c"); }
     /** Skin tone 1 (lighter) .. 3 (deeper). */

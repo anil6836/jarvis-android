@@ -208,9 +208,16 @@ final class JarvisMapView extends View {
     // ---------------------------------------------------------------- the picture source
 
     /** Google's pictures (session made by the screen) or OpenStreetMap's (session empty). */
-    void setSource(String googleSession, boolean satellite, boolean traffic) {
+    void setSource(String googleSession, boolean satellite, boolean traffic) { setSource(googleSession, satellite, traffic, false); }
+
+    /**
+     * dark: the car screen at night — Google's pictures came dark from Google itself (its session's own styles; kept apart
+     * from the day ones), the free map's pictures are dimmed here (OpenStreetMap's may be).
+     */
+    void setSource(String googleSession, boolean satellite, boolean traffic, boolean dark) {
         boolean g = googleSession != null && !googleSession.isEmpty();
-        if (!ready || g != google || !String.valueOf(googleSession).equals(session) || satellite != this.satellite || traffic != this.traffic) {
+        img.setColorFilter(dark && !g ? DIM : null);
+        if (!ready || g != google || !String.valueOf(googleSession).equals(session) || satellite != this.satellite || traffic != this.traffic || darkTiles != (dark && g && !satellite)) {
             srcGen++; // (pictures on their way for the old source are dropped)
             tiles.clear();
             loading.clear();
@@ -222,8 +229,17 @@ final class JarvisMapView extends View {
         failSaid = false;
         this.satellite = satellite;
         this.traffic = traffic;
+        darkTiles = dark && g && !satellite;
         invalidate();
     }
+
+    private boolean darkTiles;
+    /** The free map at night: dimmed, a little blue (never used on Google's pictures). */
+    private static final android.graphics.ColorMatrixColorFilter DIM = new android.graphics.ColorMatrixColorFilter(new float[]{
+            0.38f, 0, 0, 0, 0,
+            0, 0.40f, 0, 0, 0,
+            0, 0, 0.46f, 0, 4,
+            0, 0, 0, 1, 0});
 
     boolean google() { return google; }
     void setCredit(String s) { credit = s == null ? "" : s; invalidate(); }
@@ -520,7 +536,7 @@ final class JarvisMapView extends View {
         loading.add(key);
         final boolean g = google;
         final String ses = session;
-        final String kind = g ? (satellite ? "gs" : "gr") + (traffic ? "t" : "") : "osm";
+        final String kind = g ? (satellite ? "gs" : "gr") + (traffic ? "t" : "") + (darkTiles ? "d" : "") : "osm";
         final int gen = srcGen;
         final Context app = getContext().getApplicationContext();
         try {
