@@ -139,6 +139,12 @@ final class Drive {
         settings(c).edit().putString("dest", name.trim()).putLong("dest_at", System.currentTimeMillis()).remove("dest_ll").apply();
     }
 
+    /** Where Jarvis is starting a trip to, with its place known (the car screen's 🧭): the map's way follows it. */
+    static void setDestAt(Context c, String name, double lat, double lon) {
+        settings(c).edit().putString("dest", name == null || name.trim().isEmpty() ? lat + "," + lon : name.trim())
+                .putString("dest_ll", lat + "," + lon).putLong("dest_at", System.currentTimeMillis()).apply();
+    }
+
     /** {name, lat, lon} of the place he is driving to (set within 12 hours), or null. Looks it up once (network). */
     static JSONObject dest(Context c) {
         SharedPreferences p = settings(c);

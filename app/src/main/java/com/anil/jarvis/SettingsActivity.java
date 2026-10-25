@@ -3209,6 +3209,23 @@ public class SettingsActivity extends Activity {
                         show.run();
                     }).show();
         });
+        // 🧩 the screen's shape (⑥ classic, ④ map + cards, ⑦ half map) and the map screen on a trip
+        final TextView shapeRow = Ui.text(this, "", 15.5f, accent);
+        shapeRow.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        Runnable showShape = () -> shapeRow.setText("🧩 స్క్రీన్ ఆకారం: " + CarLayout.name(prefs.carLayout()) + "  (మార్చడానికి నొక్కండి)");
+        showShape.run();
+        shapeRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("కారు స్క్రీన్ ఆకారం")
+                .setSingleChoiceItems(CarLayout.NAMES, Math.max(0, java.util.Arrays.asList(CarLayout.CHOICES).indexOf(CarLayout.valid(prefs.carLayout()))), (d, w) -> {
+                    prefs.sp.edit().putString("car_layout", CarLayout.CHOICES[w]).apply();
+                    showShape.run();
+                    d.dismiss();
+                    if (CarLayout.hasMap(CarLayout.CHOICES[w]) && !GMaps.has(this))
+                        Toast.makeText(this, "మ్యాప్ ఇప్పుడు ఉచిత మ్యాప్‌తో వస్తుంది. Google మ్యాప్, ట్రాఫిక్ కోసం కింద 🗺️ Jarvis Maps లో Maps key పెట్టండి.", Toast.LENGTH_LONG).show();
+                }).show());
+        box.addView(shapeRow);
+        Switch navMap = toggle("🗺️ Google Maps లో దారి మొదలైతే మ్యాప్ స్క్రీన్‌కి మారు (మలుపు, చేరే టైమ్, స్పీడ్ ఒకే చోట; దారి అయిపోగానే మామూలు స్క్రీన్)", prefs.carNavMap());
+        navMap.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_nav_map", v).apply());
         box.addView(theme);
         box.addView(heroRow);
         box.addView(colour);
@@ -3231,7 +3248,7 @@ public class SettingsActivity extends Activity {
             }
         });
         note("Jarvis బొమ్మ, చర్మం రంగు: కింద '🏠 ఇంటి Jarvis' భాగంలోని 🧑 Jarvis రూపం / 🎨 చర్మం రంగు ఎంపికలే కారుకీ. "
-                + "పాట వస్తే Jarvis బీట్‌కి డాన్స్ చేస్తాడు (ప్రతి పాటకి వేరే స్టెప్; బొమ్మను తాకితే ఒక ప్రత్యేక స్టెప్). "
+                + "పాట వస్తే Jarvis బీట్‌కి డాన్స్ చేస్తాడు (ప్రతి 16 బీట్లకి కొత్త స్టెప్, కోరస్‌కి పెద్ద స్టెప్పులు; బొమ్మను తాకితే ఒక ప్రత్యేక స్టెప్). "
                 + "స్టీరింగ్ బటన్ నొక్కగానే ఆగి వింటాడు. బీట్ ఈ box ఇవ్వకపోతే మామూలు వేగంతో ఊగుతాడు. "
                 + "మీ ఫోటో ఈ box లోనే ఉంటుంది (బ్యాకప్‌కి వెళ్లదు).");
     }

@@ -695,6 +695,55 @@ final class MapsPlus {
                 + "before it runs low (km on the way). If the battery is unknown, ask him the % first.");
     }
 
+    // ================================================================ ⛽ the car (the box): does the diesel reach?
+
+    /**
+     * Does the diesel reach (to — a place; empty: where Jarvis knows he is going)? The range is his car account's (the
+     * fills he told, the mileage), the trip the free router's road km (no Google cost). Short: bunks around where it
+     * would run low (40 km spare). Always "about": the dashboard's own gauge is the one to trust.
+     */
+    static JSONObject carRange(Context c, String to, boolean freeOnly) throws Exception {
+        Location l = Drive.here(c);
+        if (l == null) return noLocation();
+        boolean named = to != null && !to.trim().isEmpty();
+        double[] dl = named ? whereTo(c, to.trim(), l, freeOnly) : null;
+        if (named && dl == null) return fail("not_found", "Could not find '" + to.trim() + "' on the map.");
+        JSONObject d = Drive.dest(c);
+        if (dl == null && d != null && d.has("lat")) dl = new double[]{d.optDouble("lat"), d.optDouble("lon")};
+        double range = CarFuel.rangeKm(c);
+        JSONObject car = new JSONObject().put("range_known", !Double.isNaN(range));
+        if (!Double.isNaN(range)) car.put("range_km", Math.round(range));
+        if (dl == null) return new JSONObject().put("ok", true).put("car", car);
+        Drive.Path p = Drive.freeRoute(l.getLatitude(), l.getLongitude(), dl[0], dl[1]);
+        if (p == null) return fail("no_route", "No road route found to there.");
+        car.put("trip_km", Math.round(p.totalKm));
+        JSONObject o = new JSONObject().put("ok", true).put("car", car).put("to", named ? to.trim() : d.optString("name"));
+        if (Double.isNaN(range)) return o;
+        boolean reaches = range >= p.totalKm + 30;
+        car.put("reaches", reaches).put("left_km", Math.round(range - p.totalKm));
+        if (!reaches) { // bunks before it runs low (40 km spare)
+            double at = Math.max(5, Math.min(p.totalKm, range - 40));
+            car.put("fill_before_km", Math.round(at));
+            List<double[]> cut = MapMath.cut(p.pts, at);
+            double[] pt = cut.get(cut.size() - 1);
+            JSONObject bk = null;
+            if (GMaps.has(c) && !freeOnly) {
+                try {
+                    List<GMaps.Place> ps = GMaps.search(c, "petrol pump", pt[0], pt[1], 12000, null, false, 8, true, true);
+                    List<JSONObject> list = new ArrayList<>();
+                    for (GMaps.Place gp : ps) {
+                        double[] on = Drive.place(p.pts, gp.lat, gp.lon);
+                        list.add(Drive.item(gp).put("km_on_the_way", Math.round(on[0])).put("off_road_km", Math.round(on[1] / 100) / 10.0));
+                    }
+                    bk = new JSONObject().put("source", "Google Maps").put("places", top(list, 5));
+                } catch (Exception e) { o.put("google_error", GMaps.telugu(e)); }
+            }
+            if (bk == null) { try { bk = freeAround(new String[]{"[amenity=fuel]", "పెట్రోల్ బంక్"}, pt[0], pt[1], 12000, l); } catch (Exception ignored) {} }
+            if (bk != null) o.put("bunks_before_it_runs_low", bk.optJSONArray("places"));
+        }
+        return o;
+    }
+
     // ================================================================ 🏞️ worth seeing on the way
 
     static JSONObject sights(Context c, double km, boolean freeOnly) throws Exception {

@@ -407,6 +407,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onDestroy() {
         if (homeNow == this) homeNow = null;
+        if (car != null) car.destroy(); // (🗺️ the car map's workers end with this screen)
         if (home != null && home.gamesPanel() != null) home.gamesPanel().close(false); // (its far-game polling and timers end with this screen)
         Radio.dismissPicker();
         generation++; cutInflight(); // late replies (onReply) are dropped and the Brain stops running tools

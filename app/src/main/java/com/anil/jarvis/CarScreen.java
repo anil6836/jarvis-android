@@ -77,6 +77,8 @@ final class CarScreen extends FrameLayout {
     private final android.widget.ImageView artImg;
     private final TextView songSub;
     private int stripW, stripH;
+    private final CarMap carMap; // 🗺️ G1: the map in the map shapes and on a trip
+    private String shape = CarLayout.CLASSIC;
     private final List<View> tiles = new ArrayList<>();
     private final List<CarArt.Icon> tileIcons = new ArrayList<>();
     private final FrameLayout sheet, ask, awake, saver;
@@ -284,6 +286,13 @@ final class CarScreen extends FrameLayout {
         });
         rightCol.addView(musicStrip, new LinearLayout.LayoutParams(-1, 0, 21)); // (a little taller: the song's picture and two lines)
 
+        // ---- 🗺️ the map (the ④ / ⑦ shapes and a trip's map screen): not on the screen until a shape wants it
+        carMap = new CarMap(a, prefs, new CarMap.Host() {
+            @Override public void along(String what, String label) { JarvisMaps.openAlong(getContext(), what, label); }
+            @Override public void menu() { JarvisMaps.open(getContext(), ""); }
+            @Override public void bigMaps() { openMaps(getContext()); }
+        });
+
         // ---- over everything: a sheet of choices, a yes / no question, the sleep alert's ✅
         sheet = overlay(a);
         ask = overlay(a);
@@ -324,6 +333,8 @@ final class CarScreen extends FrameLayout {
 
     void start() {
         running = true;
+        shapeCheck(); // (the shape for now first: a map shape left in ⚙️ never asks Google for nothing)
+        carMap.setShown(CarLayout.hasMap(shape));
         main.removeCallbacks(quick);
         main.removeCallbacks(slow);
         main.post(quick);
@@ -332,10 +343,17 @@ final class CarScreen extends FrameLayout {
 
     void stop() {
         running = false;
+        carMap.setShown(false); // (the map's pictures let go while the screen is away)
         main.removeCallbacks(quick);
         main.removeCallbacks(slow);
         setDancing(false);
         if (beatOn) { beatOn = false; beat.stop(); }
+    }
+
+    /** The activity is gone for good: the map's workers end. */
+    void destroy() {
+        stop();
+        carMap.shutdown();
     }
 
     /** Settings were left: the theme, his colour, the dance choice, Jarvis's look may have changed. */
@@ -351,6 +369,12 @@ final class CarScreen extends FrameLayout {
         @Override public void run() {
             if (!running) return;
             speed();
+            shapeCheck();
+            if (carMap.shown()) {
+                Location l = DriveService.last;
+                boolean fresh = l != null && android.os.SystemClock.elapsedRealtimeNanos() - l.getElapsedRealtimeNanos() < 60_000_000_000L;
+                carMap.tick(fresh ? l : null, Drive.navState(), CarBox.speed(), DriveService.limitNowKmh);
+            }
             awakeCheck();
             boolean m = CarBox.moving();
             if (m != wasMoving) {
@@ -604,18 +628,21 @@ final class CarScreen extends FrameLayout {
         if (!ac) acAt = 0;
         int icon;
         String l1, l2;
+        boolean navTurn = nav != null && !(nav.optString("next").isEmpty() && nav.optString("detail").isEmpty());
+        boolean onMap = navTurn && carMap.shown(); // (the map shows the turn itself: this card shows the rest)
+        if (onMap) turnCue(CarRoad.turnIcon(nav.optString("next") + " " + nav.optString("detail")), nav.optString("next"), nav.optString("detail"));
         if (ac) {
             icon = CarArt.Icon.SNOW;
             l1 = "ఇంట్లో " + acName + " ఆన్ చేయనా?";
             l2 = "🏠 ఇంటికి సుమారు " + hm + " ని.";
-        } else if (nav != null && !(nav.optString("next").isEmpty() && nav.optString("detail").isEmpty())) {
+        } else if (navTurn && !onMap) {
             String next = nav.optString("next"), det = nav.optString("detail"), trip = nav.optString("trip");
             icon = CarRoad.turnIcon(next + " " + det);
             turnCue(icon, next, det);
             l1 = next.isEmpty() ? det : next;
             String rest = next.isEmpty() ? "" : det;
             l2 = trip.isEmpty() ? rest : rest.isEmpty() ? trip : rest + " · " + trip;
-        } else if (mode == CarTheme.PARKED) { // 🅿️ the trip's numbers (no places), and the games for the passengers
+        } else if (mode == CarTheme.PARKED && !navTurn) { // 🅿️ the trip's numbers (no places), and the games for the passengers (not mid-trip)
             icon = CarArt.Icon.STAR;
             String[] tl = CarRoad.tripLines(DriveService.tripMeters / 1000, movingSecs, tripStartAt == 0 ? 0 : Math.max(0, DriveService.lastMovingAt - tripStartAt) / 60_000L, kmpl());
             if (tl != null) { l1 = tl[0]; l2 = tl[1].isEmpty() ? "పిల్లలకి ఆటలు, క్విజ్, కథ →" : tl[1]; }
@@ -1147,6 +1174,9 @@ final class CarScreen extends FrameLayout {
 
     private void go(JSONObject p) {
         closeSheet();
+        // where this trip goes (Drive's one place for it: the map draws its way once the maps app's trip shows)
+        if (p.has("lat")) Drive.setDestAt(getContext(), p.optString("name"), p.optDouble("lat"), p.optDouble("lon"));
+        else if (!p.optString("name").isEmpty()) Drive.setDest(getContext(), p.optString("name"));
         try {
             Places.open(getContext(), p, true);
             host.speak(p.optString("name") + " కి దారి మొదలుపెట్టాను.");
@@ -1617,6 +1647,79 @@ final class CarScreen extends FrameLayout {
         }, "car-weather").start();
     }
 
+    // ================================================================ 🧩 the screen's shape: ⑥ classic, ④ map + cards, ⑦ half map, a trip's map screen
+
+    /** Each second: his shape, or the map screen while a Google Maps trip runs (the classic shape, if he wants it). */
+    private void shapeCheck() {
+        JSONObject nav = Drive.navState();
+        boolean trip = nav != null && !(nav.optString("next").isEmpty() && nav.optString("detail").isEmpty());
+        arrange(CarLayout.now(prefs.carLayout(), trip, prefs.carNavMap()));
+    }
+
+    private static void detach(View v) {
+        android.view.ViewParent g = v.getParent();
+        if (g instanceof android.view.ViewGroup) ((android.view.ViewGroup) g).removeView(v);
+    }
+
+    /** The view into a column / row with its share of it. */
+    private static void put(LinearLayout to, View v, float weight) {
+        detach(v);
+        to.addView(v, to.getOrientation() == LinearLayout.HORIZONTAL ? new LinearLayout.LayoutParams(0, -1, weight) : new LinearLayout.LayoutParams(-1, 0, weight));
+    }
+
+    /**
+     * The same parts (Jarvis, the speed, the clock, the road card, the six buttons, the song) arranged for a shape; the
+     * map comes in or goes. Every part keeps working as before: only where it sits changes.
+     */
+    private void arrange(String s) {
+        if (s.equals(shape)) return;
+        shape = s;
+        for (LinearLayout g : new LinearLayout[]{content, leftCol, midCol, rightCol}) g.removeAllViews();
+        detach(carMap);
+        switch (s) {
+            case CarLayout.MAPCARDS: // ④ the map, then a column of Jarvis + the speed + the clock, then the buttons
+                put(content, carMap, 50); put(content, midCol, 21); put(content, rightCol, 29);
+                put(midCol, portal, 30); put(midCol, stateText, 6); put(midCol, gauge, 27); put(midCol, hero, 11);
+                put(midCol, clock, 10); put(midCol, minis, 6); put(midCol, chipRow, 10); put(midCol, board, 100);
+                put(rightCol, roadCard, 22); put(rightCol, tileGrid, 52); put(rightCol, musicStrip, 26);
+                break;
+            case CarLayout.HALFMAP: // ⑦ half the screen the map, then Jarvis big, then the buttons (the speed is on the map)
+            case CarLayout.NAV:     // the trip's map screen (G1): the same, the map a little wider
+                boolean nav = CarLayout.NAV.equals(s);
+                put(content, carMap, nav ? 56 : 52); put(content, leftCol, nav ? 18 : 19); put(content, rightCol, nav ? 26 : 29);
+                put(leftCol, portal, 44); put(leftCol, stateText, 8); put(leftCol, subText, 16); put(leftCol, clock, 13);
+                put(leftCol, minis, 7); put(leftCol, chipRow, 12); put(leftCol, board, 100);
+                put(rightCol, roadCard, 20); put(rightCol, tileGrid, 57); put(rightCol, musicStrip, 23);
+                break;
+            default: // ⑥ the three columns as they always were
+                put(content, leftCol, 27); put(content, midCol, 30); put(content, rightCol, 43);
+                put(leftCol, portal, 58); put(leftCol, stateText, 9); put(leftCol, subText, 22); put(leftCol, chipRow, 11);
+                put(midCol, gauge, 47); put(midCol, hero, 19); put(midCol, clock, 13); put(midCol, date, 7); put(midCol, minis, 7);
+                put(midCol, driveChip, 7); put(midCol, board, 100);
+                put(rightCol, roadCard, 25); put(rightCol, tileGrid, 54); put(rightCol, musicStrip, 21);
+        }
+        carMap.setShown(CarLayout.hasMap(s) && running);
+        roadKey = ""; // (the road card again: the turn moved to the map, or back)
+        boxMargins();
+        requestLayout();
+    }
+
+    /** The cards' room around them (the six buttons, the road card, the song strip, the map), from the screen's size. */
+    private void boxMargins() {
+        if (W <= 0 || H <= 0) return;
+        int m = Math.max(3, Math.min(W, H) / 70);
+        List<View> boxes = new ArrayList<>(tiles);
+        boxes.add(roadCard);
+        boxes.add(musicStrip);
+        boxes.add(carMap);
+        for (View t : boxes) {
+            if (!(t.getLayoutParams() instanceof LinearLayout.LayoutParams)) continue; // (not on the screen in this shape)
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
+            lp.setMargins(m, m, m, m);
+            t.setLayoutParams(lp);
+        }
+    }
+
     // ================================================================ sizes and colours
 
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
@@ -1626,15 +1729,7 @@ final class CarScreen extends FrameLayout {
         int pad = Math.max(4, Math.min(w, h) / 34);
         content.setPadding(pad, pad, pad, pad);
         midCol.setPadding(pad / 2, 0, pad / 2, 0);
-        int m = Math.max(3, Math.min(w, h) / 70);
-        List<View> boxes = new ArrayList<>(tiles);
-        boxes.add(roadCard);
-        boxes.add(musicStrip);
-        for (View t : boxes) {
-            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
-            lp.setMargins(m, m, m, m);
-            t.setLayoutParams(lp);
-        }
+        boxMargins();
         int cp = Math.max(4, Math.min(w, h) / 50);
         roadCard.setPadding(cp, cp / 2, cp, cp / 2);
         musicStrip.setPadding(cp, cp / 3, cp / 2, cp / 3);
@@ -1731,6 +1826,7 @@ final class CarScreen extends FrameLayout {
         textSoft = look.textSoft;
         accent = look.accent;
         backdrop.setLook(look);
+        carMap.setLook(look);
         gauge.setLook(look);
         hero.setLook(look);
         hero.setColour(prefs.carColour());

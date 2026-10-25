@@ -464,6 +464,10 @@ final class Prefs {
     String carGauge() { return sp.getString("car_gauge", ""); }
     /** 🌙 The parked screensaver clock (on by default). */
     boolean carSaver() { return sp.getBoolean("car_saver", true); }
+    /** 🧩 The car screen's shape: "classic" (⑥ today's three columns), "mapcards" (④ map + cards), "halfmap" (⑦ half map). */
+    String carLayout() { return sp.getString("car_layout", CarLayout.CLASSIC); }
+    /** 🗺️ When a Google Maps trip starts: the classic screen turns into the map screen (G1) until the trip ends. */
+    boolean carNavMap() { return sp.getBoolean("car_nav_map", true); }
     /** The new Jarvis's look: a = navy jacket, b = kurta, c = zip jacket (Anil's pick). */
     String bodyLook() { return sp.getString("body_look", "c"); }
     /** Skin tone 1 (lighter) .. 3 (deeper). */

@@ -48,10 +48,15 @@ import java.util.concurrent.Executors;
  * 📌 a finger held on a spot, 🗣️ the map by words, 📴 the free map kept for roads without signal.
  */
 public class JarvisMaps extends Activity implements JarvisMapView.Listener {
-    static final String EXTRA_Q = "jmaps_q";
+    static final String EXTRA_Q = "jmaps_q", EXTRA_ALONG = "jmaps_along", EXTRA_ALONG_LABEL = "jmaps_along_label";
     private static final int REQ_LOC = 71, REQ_VOICE = 72;
 
     static void open(Context c, String query) { c.startActivity(intent(c, query)); }
+
+    /** 🚗 The car screen's quick chips: Jarvis Maps opened with "this, on my way" (☕ ⛽ 🍛 …). */
+    static void openAlong(Context c, String what, String label) {
+        c.startActivity(intent(c, "").putExtra(EXTRA_ALONG, what == null ? "" : what).putExtra(EXTRA_ALONG_LABEL, label == null ? "" : label));
+    }
 
     /** Opens it (or brings it up again with a new search: one Jarvis Maps at a time). */
     static Intent intent(Context c, String query) {
@@ -86,6 +91,8 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     private String foundMode = ""; // ("", "movie", "help", "point", "plan")
     private final List<String> foundNotes = new ArrayList<>();
     private boolean atHome, driveMode, driveExited, offlineFree;
+    /** 🚗 On the car box: bigger words, the panel at the side of a wide screen, the car's buttons (⛽, no trip diary here). */
+    private boolean car, wide;
     private int fastFixes;
     private long driveInfoAt, netCheckAt;
     private Location lastLoc;
@@ -97,13 +104,17 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
         super.onCreate(b);
         p = new Prefs(this);
         bike = Bike.riding(this);
+        car = p.carMode();
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        wide = dm.widthPixels > dm.heightPixels * 1.2f; // (the car box's wide screen: the map on the left, the panel on the right)
+        final int mapW = wide ? Math.round(dm.widthPixels * 0.58f) : -1, panelW = wide ? dm.widthPixels - mapW : -1;
         getWindow().setStatusBarColor(0xFF04101B);
         getWindow().setNavigationBarColor(0xFF04101B);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF04101B);
         map = new JarvisMapView(this);
         map.listener = this;
-        root.addView(map, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(map, new FrameLayout.LayoutParams(wide ? mapW : -1, -1, Gravity.START));
 
         // top: ✕, search, 🎙️, then the quick chips
         LinearLayout top = new LinearLayout(this);
@@ -117,7 +128,7 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
         search.setHint("ఎక్కడికి? / ఏం వెతకాలి?");
         search.setHintTextColor(0x99FFFFFF);
         search.setTextColor(0xFFFFFFFF);
-        search.setTextSize(15);
+        search.setTextSize(car ? 17 : 15);
         search.setSingleLine(true);
         search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         search.setBackground(Ui.round(this, 0x66000000, 0x55FFFFFF, 999));
@@ -145,7 +156,10 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
         }
         hs.addView(chips);
         top.addView(hs);
-        root.addView(top, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+        root.addView(top, new FrameLayout.LayoutParams(wide ? mapW : -1, -2, Gravity.TOP | Gravity.START));
+        if (car) search.setOnFocusChangeListener((v, has) -> { // (🚗 no typing while the car moves: 🎙️ only)
+            if (has && CarBox.moving()) { v.clearFocus(); toast("నడిపేటప్పుడు టైప్ వద్దు: 🎙️ నొక్కి చెప్పండి."); }
+        });
 
         // right: follow me, traffic, satellite
         LinearLayout side = new LinearLayout(this);
@@ -156,12 +170,14 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
         side.addView(trafficBtn);
         side.addView(satBtn);
         FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(-2, -2, Gravity.END | Gravity.CENTER_VERTICAL);
-        sl.setMargins(0, 0, dp(8), dp(60));
+        sl.setMargins(0, 0, wide ? panelW + dp(8) : dp(8), wide ? 0 : dp(60));
         root.addView(side, sl);
 
         // bottom: the panel (buttons, results, a place, a route, an answer)
-        ScrollView sv = new ScrollView(this) { // (never taller than about half the screen: the map stays in sight)
+        final boolean side2 = wide;
+        ScrollView sv = new ScrollView(this) { // (never taller than about half the screen: the map stays in sight; on a wide screen, the whole side)
             @Override protected void onMeasure(int w, int h) {
+                if (side2) { super.onMeasure(w, h); return; }
                 super.onMeasure(w, MeasureSpec.makeMeasureSpec((int) (getResources().getDisplayMetrics().heightPixels * 0.46f), MeasureSpec.AT_MOST));
             }
         };
@@ -170,10 +186,11 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
         panel.setPadding(dp(12), dp(10), dp(12), dp(28));
         panel.setBackground(Ui.round(this, 0xF2071624, 0x3322D3EE, 18));
         sv.addView(panel);
-        FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        pl.setMargins(dp(6), 0, dp(6), dp(6));
+        FrameLayout.LayoutParams pl = wide ? new FrameLayout.LayoutParams(panelW - dp(10), -1, Gravity.END) : new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        pl.setMargins(dp(6), wide ? dp(6) : 0, dp(6), dp(6));
         root.addView(sv, pl);
-        sv.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> map.setInset(v.getHeight() + dp(6))); // (the credit and the map's middle above the panel)
+        if (wide) map.setInset(dp(6));
+        else sv.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> map.setInset(v.getHeight() + dp(6))); // (the credit and the map's middle above the panel)
         setContentView(root);
 
         lm = getSystemService(LocationManager.class);
@@ -198,6 +215,13 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     private String keyTag() { return GMaps.has(this) ? Integer.toHexString(GMaps.key(this).hashCode()) : ""; }
 
     private void searchFrom(Intent i) {
+        String al = i == null ? null : i.getStringExtra(EXTRA_ALONG);
+        if (al != null && !al.trim().isEmpty()) { // (🚗 a quick chip on the car screen: that, on his way)
+            String lb = i.getStringExtra(EXTRA_ALONG_LABEL);
+            i.removeExtra(EXTRA_ALONG);
+            main.postDelayed(() -> { if (!isDestroyed()) along(al.trim(), lb == null || lb.isEmpty() ? al : lb); }, 600);
+            return;
+        }
         String q = i == null ? null : i.getStringExtra(EXTRA_Q);
         if (q != null && !q.trim().isEmpty()) main.postDelayed(() -> { if (!isDestroyed()) { search.setText(q); doSearch(q); } }, 600);
     }
@@ -268,7 +292,7 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     }
 
     private TextView chip(String s) {
-        TextView t = Ui.text(this, s, 13, 0xFFFFFFFF);
+        TextView t = Ui.text(this, s, car ? 15 : 13, 0xFFFFFFFF);
         t.setSingleLine(true);
         t.setPadding(dp(12), dp(6), dp(12), dp(6));
         t.setBackground(Ui.round(this, 0x99071624, 0x6622D3EE, 999));
@@ -279,9 +303,9 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     }
 
     private TextView button(String s, int fillCol, View.OnClickListener l) {
-        TextView t = Ui.text(this, s, 15, 0xFFFFFFFF);
+        TextView t = Ui.text(this, s, car ? 17 : 15, 0xFFFFFFFF);
         t.setGravity(Gravity.CENTER);
-        t.setPadding(dp(10), dp(12), dp(10), dp(12));
+        t.setPadding(dp(10), dp(car ? 14 : 12), dp(10), dp(car ? 14 : 12));
         t.setBackground(Ui.round(this, fillCol, 0x44FFFFFF, 14));
         t.setOnClickListener(l);
         return t;
@@ -327,8 +351,13 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
         panel.removeAllViews();
         panel.addView(row(button("🛣️ ఈ రోడ్డు ఎటు?", 0xFF0E4A6B, v -> roadAhead()), button("😴 నిద్ర వస్తోంది", 0xFF6B3A0E, v -> sleepy())));
         panel.addView(row(small("🗓️ ప్రయాణం ప్లాన్", v -> planAsk()), small("🎬 సినిమా", v -> movieAsk("")), small("🆘 సహాయం", v -> helpNow())));
-        panel.addView(row(small("🌧️ దారిలో వాన", v -> rainNow()), small("🏞️ చూడదగ్గవి", v -> sightsNow()), small("🧾 ప్రయాణాలు", v -> tripsView())));
-        panel.addView(row(small("🔋 బైక్ ఛార్జ్", v -> bikeAsk()), small("↩️ ఎప్పుడు బయలుదేరాలి", v -> bestAsk()), small("🚗 డ్రైవ్ స్క్రీన్", v -> driveScreen(true))));
+        if (car) { // 🚗 the car box: the diesel instead of the bike's battery; the trip diary stays on the phone
+            panel.addView(row(small("🌧️ దారిలో వాన", v -> rainNow()), small("🏞️ చూడదగ్గవి", v -> sightsNow()), small("⛽ డీజిల్ సరిపోతుందా?", v -> fuelAsk())));
+            panel.addView(row(small("↩️ ఎప్పుడు బయలుదేరాలి", v -> bestAsk()), small("🚗 డ్రైవ్ స్క్రీన్", v -> driveScreen(true))));
+        } else {
+            panel.addView(row(small("🌧️ దారిలో వాన", v -> rainNow()), small("🏞️ చూడదగ్గవి", v -> sightsNow()), small("🧾 ప్రయాణాలు", v -> tripsView())));
+            panel.addView(row(small("🔋 బైక్ ఛార్జ్", v -> bikeAsk()), small("↩️ ఎప్పుడు బయలుదేరాలి", v -> bestAsk()), small("🚗 డ్రైవ్ స్క్రీన్", v -> driveScreen(true))));
+        }
         if (!GMaps.has(this)) {
             line("ఉచిత మ్యాప్ (OpenStreetMap). ⚙️ → 🗺️ Jarvis Maps లో Google Maps key పెడితే: తెలుగు పేర్ల Google మ్యాప్, ట్రాఫిక్, దారిలో షాప్‌లు ఇంకా బాగా.", 12, 0xAAFFFFFF);
             TextView set = button("⚙️ Maps key పెట్టు", 0xFF1F2937, v -> startActivity(new Intent(this, SettingsActivity.class)));
@@ -398,7 +427,7 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
         if (t0.type.toLowerCase(Locale.ROOT).contains("hotel") || t0.type.toLowerCase(Locale.ROOT).contains("lodg") || "rooms".equals(lastKind))
             line("గది ధరలు Google ఇవ్వదు: ఫోన్ చేసి గానీ, మీ booking app లో గానీ చూడండి.", 12, 0xFFFFD08A);
         panel.addView(row(button("🧭 దారి చూపు", 0xFF0E4A6B, v -> route()), button("▶️ వెళ్దాం", 0xFF15803D, v -> go(target))));
-        panel.addView(row(button("🔗 షేర్", 0xFF1F2937, v -> share(target)), button("← లిస్ట్", 0xFF1F2937, v -> { map.selectPlace(-1); results(); })));
+        panel.addView(row(button(car ? "📱 ఫోన్‌కి పంపు" : "🔗 షేర్", 0xFF1F2937, v -> share(target)), button("← లిస్ట్", 0xFF1F2937, v -> { map.selectPlace(-1); results(); })));
     }
 
     // ---------------------------------------------------------------- where he is
@@ -412,6 +441,10 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
 
     private void here(Location l) {
         if (l == null) return;
+        if (car && search.hasFocus() && CarBox.moving()) { // (🚗 started moving while the search box was open: the keyboard goes)
+            search.clearFocus();
+            try { ((android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(search.getWindowToken(), 0); } catch (Exception ignored) {}
+        }
         boolean gps = LocationManager.GPS_PROVIDER.equals(l.getProvider());
         if (lastLoc == null || gps || l.getTime() - lastLoc.getTime() > 10_000) lastLoc = l; // (a rough network fix never covers a fresh GPS one)
         if (l.hasBearing() && l.hasSpeed() && l.getSpeed() > 2) heading = l.getBearing();
@@ -960,6 +993,11 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     private void share(GMaps.Place x) {
         if (x == null) return;
         String link = !x.mapsUri.isEmpty() ? x.mapsUri : String.format(Locale.US, "https://www.google.com/maps/search/?api=1&query=%.6f,%.6f", x.lat, x.lon);
+        if (car && !Guard.token(this).isEmpty() && !Guard.chat(this).isEmpty()) { // 🚗 the box: to his own phone (his Telegram chat with his bot), on his tap
+            final String text = "📍 " + x.name + "\n" + link;
+            run(() -> { boolean ok = Guard.send(this, text); main.post(() -> toast(ok ? "📱 ఫోన్‌కి పంపాను: " + x.name : "పంపలేకపోయాను: నెట్ చూడండి.")); });
+            return;
+        }
         Intent s = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, x.name + "\n" + link);
         startActivity(Intent.createChooser(s, "📍 " + x.name));
     }
@@ -972,15 +1010,27 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
 
     private TextView small(String s, View.OnClickListener l) {
         TextView t = button(s, 0xFF13324A, l);
-        t.setTextSize(12.5f);
-        t.setPadding(dp(4), dp(10), dp(4), dp(10));
+        t.setTextSize(car ? 14.5f : 12.5f);
+        t.setPadding(dp(4), dp(car ? 13 : 10), dp(4), dp(car ? 13 : 10));
         return t;
     }
 
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
 
+    /** 🚗 On the car box while it moves: no typing (a word with 🎙️ / the steering button instead). True = blocked (said). */
+    private boolean typingBlocked() {
+        if (!car || !CarBox.moving()) return false;
+        toast("నడిపేటప్పుడు టైప్ వద్దు: 🎙️ నొక్కి చెప్పండి, లేదా ఆగాక చూడండి.");
+        return true;
+    }
+
     /** The phone's dialer with the number in it: he presses call himself (Jarvis never calls from here). */
     private void dial(String number) {
+        if (car || !getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) { // 🚗 the car box (no SIM, even with a slot): the number, big, for his phone
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("📞 " + number)
+                    .setMessage("ఈ box లో SIM లేదు: మీ ఫోన్ నుంచి " + number + " కి కాల్ చేయండి.").setPositiveButton("సరే", null).show();
+            return;
+        }
         try { startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + number.replaceAll("[^0-9+]", "")))); }
         catch (Exception e) { toast("డయలర్ తెరవలేకపోయాను."); }
     }
@@ -1039,7 +1089,7 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
             case "sat_on": case "sat_off": p.sp.edit().putBoolean("maps_sat", cmd.equals("sat_on")).apply(); source(); return true;
             case "me": followMe(); return true;
             case "drive": driveScreen(true); return true;
-            case "trips": tripsView(); return true;
+            case "trips": if (car) toast("🧾 ప్రయాణాల డైరీ మీ ఫోన్‌లోనే ఉంటుంది (ఈ box లో కాదు)."); else tripsView(); return true;
             case "help": helpNow(); return true;
             case "rain": rainNow(); return true;
             case "plan": planAsk(); return true;
@@ -1068,6 +1118,7 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
         town.setHint("ఏ ఊరు? (ఉదా: విశాఖపట్నం)");
         town.setSingleLine(true);
         town.setVisibility("town".equals(sheetWhere) ? View.VISIBLE : View.GONE);
+        if (car && CarBox.moving()) { town.setEnabled(false); town.setHint("ఊరు పేరు: ఆగాక టైప్ చేయండి (లేదా 🎙️)"); } // (🚗 no typing on the road)
         for (String[] w : ws) {
             TextView t = chip(w[1]);
             t.setAlpha(w[0].equals(sheetWhere) ? 1f : 0.45f);
@@ -1140,6 +1191,7 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     // ================================================================ 🎬 which theatres show a movie
 
     private void movieAsk(String preset) {
+        if (typingBlocked()) return;
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(18), dp(6), dp(18), dp(6));
@@ -1222,6 +1274,7 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     private boolean planArrive;
 
     private void planAsk() {
+        if (typingBlocked()) return;
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(18), dp(6), dp(18), dp(6));
@@ -1405,6 +1458,7 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     }
 
     private void bestAsk() {
+        if (typingBlocked()) return;
         EditText to = new EditText(this);
         to.setHint("ఎక్కడికి? (ఉదా: ఇంటికి, హైదరాబాద్)");
         to.setSingleLine(true);
@@ -1552,6 +1606,57 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
                 if (res.has("chargers_before_it_runs_low") && ch.isEmpty()) notes.add("ఛార్జ్ తగ్గే చోటు దగ్గర EV ఛార్జర్లు దొరకలేదు: బయలుదేరే ముందే పూర్తిగా ఛార్జ్ చేయండి.");
                 alongStops = false;
                 showFound("🔋 బైక్" + (res.optString("to").isEmpty() ? "" : " · " + res.optString("to")) + (ch.isEmpty() ? "" : " · ఛార్జ్ తగ్గే లోపు ఛార్జర్లు"), ch, "bike", notes);
+            });
+        });
+    }
+
+    // ================================================================ ⛽ the car: does the diesel reach? (the box)
+
+    private void fuelAsk() {
+        if (CarBox.moving()) { fuelNow(""); return; } // (no typing on the road: the trip Jarvis knows, or the range alone)
+        EditText to = new EditText(this);
+        to.setHint("ఎక్కడికి? (ఖాళీ = Jarvis కి తెలిసిన గమ్యం)");
+        to.setSingleLine(true);
+        LinearLayout box = new LinearLayout(this);
+        box.setPadding(dp(18), dp(6), dp(18), dp(6));
+        box.addView(to, new LinearLayout.LayoutParams(-1, -2));
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("⛽ డీజిల్ సరిపోతుందా?").setView(box)
+                .setPositiveButton("చూడు", (d, i) -> fuelNow(to.getText().toString().trim())).setNegativeButton("వద్దు", null).show();
+    }
+
+    private void fuelNow(String to) {
+        if (!hasLoc()) { startLocation(); return; }
+        final int my = ++gen;
+        final boolean g = googleMap();
+        busy("డీజిల్, దారి లెక్కిస్తున్నాను…");
+        run(() -> {
+            JSONObject r = null;
+            String err = null;
+            try { r = MapsPlus.carRange(this, to, !g); } catch (Exception e) { err = GMaps.telugu(e); }
+            final JSONObject res = r;
+            final String er = err;
+            main.post(() -> {
+                if (isDestroyed() || my != gen) return;
+                if (g && !googleMap()) { fuelNow(to); return; } // (Google's map went away meanwhile: the free answer)
+                if (res == null || !res.optBoolean("ok", false)) { homeWarn("⚠️ " + (er != null ? er : notOk(res))); return; }
+                JSONObject car = res.optJSONObject("car");
+                List<String> notes = new ArrayList<>();
+                if (car == null || !car.optBoolean("range_known")) {
+                    notes.add("డీజిల్ ఎంత ఉందో ఇంకా తెలియదు: కారు స్క్రీన్‌లో ⛽ నొక్కి ఫిల్ చెప్పండి (మొదటిసారి ట్యాంక్ ఫుల్ చేయించి 'ఫుల్' అనండి).");
+                    if (car != null && car.has("trip_km")) notes.add("దారి సుమారు " + car.optLong("trip_km") + " కి.మీ.");
+                } else if (!car.has("trip_km")) {
+                    notes.add("⛽ ట్యాంక్‌లో సుమారు " + car.optLong("range_km") + " కి.మీ వస్తుంది. ఎక్కడికో చెబితే ఆ దారికి సరిపోతుందో చెబుతాను.");
+                } else if (car.optBoolean("reaches")) {
+                    notes.add("✓ సరిపోతుంది: దారి " + car.optLong("trip_km") + " కి.మీ, డీజిల్ సుమారు " + car.optLong("range_km") + " కి.మీ వస్తుంది · చేరాక సుమారు " + car.optLong("left_km") + " కి.మీ మిగులుతుంది.");
+                } else {
+                    notes.add("⚠️ సరిపోదు: దారి " + car.optLong("trip_km") + " కి.మీ, డీజిల్ సుమారు " + car.optLong("range_km") + " కి.మీ మాత్రమే · దారిలో " + car.optLong("fill_before_km") + " కి.మీ లోపు కొట్టించండి.");
+                }
+                notes.add("(సుమారు లెక్క: కారు డాష్‌బోర్డ్ మీటర్‌నే నమ్మండి)");
+                List<GMaps.Place> bunks = new ArrayList<>();
+                JSONArray bs = res.optJSONArray("bunks_before_it_runs_low");
+                if (bs != null) bunks = placesOf(bs);
+                alongStops = false;
+                showFound("⛽ డీజిల్" + (res.optString("to").isEmpty() ? "" : " · " + res.optString("to")) + (bunks.isEmpty() ? "" : " · అయిపోయే లోపు బంకులు"), bunks, "car", notes);
             });
         });
     }
@@ -1776,10 +1881,11 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
         r1.add(button("💾 సేవ్", 0xFF1F2937, v -> savePoint(lat, lon)));
         panel.addView(row(r1.toArray(new View[0])));
         panel.addView(row(button("🧭 దారి", 0xFF0E4A6B, v -> route()), button("▶️ వెళ్దాం", 0xFF15803D, v -> { alongStops = false; go(x); })));
-        panel.addView(row(button("🔗 షేర్", 0xFF1F2937, v -> share(x)), button("← వెనక్కి", 0xFF1F2937, v -> { map.setPlaces(null); home(); })));
+        panel.addView(row(button(car ? "📱 ఫోన్‌కి పంపు" : "🔗 షేర్", 0xFF1F2937, v -> share(x)), button("← వెనక్కి", 0xFF1F2937, v -> { map.setPlaces(null); home(); })));
     }
 
     private void savePoint(double lat, double lon) {
+        if (typingBlocked()) return;
         EditText name = new EditText(this);
         name.setHint("పేరు (ఉదా: మామయ్య ఇల్లు)");
         name.setSingleLine(true);

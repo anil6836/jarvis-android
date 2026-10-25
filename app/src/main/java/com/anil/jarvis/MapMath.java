@@ -108,6 +108,21 @@ final class MapMath {
         return out;
     }
 
+    /** The shortest distance in metres from (lat, lon) to the line through pts (a flat local picture: fine for a few km). Pure. */
+    static double metersToLine(double lat, double lon, List<double[]> pts) {
+        if (pts == null || pts.isEmpty()) return Double.MAX_VALUE;
+        double kx = 111_320 * Math.cos(Math.toRadians(lat)), ky = 110_574, best = Double.MAX_VALUE;
+        for (int i = 0; i < pts.size(); i++) {
+            double ax = (pts.get(i)[1] - lon) * kx, ay = (pts.get(i)[0] - lat) * ky;
+            if (i == pts.size() - 1 || pts.size() == 1) { best = Math.min(best, Math.hypot(ax, ay)); break; }
+            double bx = (pts.get(i + 1)[1] - lon) * kx, by = (pts.get(i + 1)[0] - lat) * ky;
+            double dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+            double u = len == 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)); // (the nearest point of the segment to the origin, us)
+            best = Math.min(best, Math.hypot(ax + u * dx, ay + u * dy));
+        }
+        return best;
+    }
+
     /** A path's length in km. */
     static double km(List<double[]> pts) {
         double run = 0;
