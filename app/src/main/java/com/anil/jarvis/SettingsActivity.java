@@ -3347,6 +3347,67 @@ public class SettingsActivity extends Activity {
         beatSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_beat_lights", v).apply());
         Switch stage = toggle("🕺 Jarvis స్టేజ్ (⑧: Jarvis పెద్దగా లైట్ కింద; స్పీడ్ కూడా; మీరు ఆపే వరకు అలాగే. \"Jarvis, స్టేజ్ పెట్టు / ఆపు\" తో కూడా)", prefs.carStage());
         stage.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_stage_on", v).apply());
+        // 🎨 the song's colour, 🚗 the welcome, 🌌 the moving background, 🕐 the clock, 🔆 the night light, 🌗 day / night themes
+        Switch artSw = toggle("🎨 పాట వస్తే స్క్రీన్ రంగు ఆ పాట బొమ్మ రంగుకి (పాట అయిపోగానే థీమ్ రంగు)", prefs.carArtColour());
+        artSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_art_colour", v).apply());
+        Switch welcomeSw = toggle("🚗 కారు స్టార్ట్ అయినప్పుడు స్వాగతం (కార్డులు 3D లో తిరిగి వస్తాయి, Jarvis చేయి ఊపుతాడు)", prefs.carWelcome());
+        welcomeSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_welcome", v).apply());
+        final TextView bgRow = Ui.text(this, "", 15.5f, accent), clockRow = Ui.text(this, "", 15.5f, accent), dimRow = Ui.text(this, "", 15.5f, accent), dnRow = Ui.text(this, "", 15.5f, accent);
+        for (TextView t : new TextView[]{bgRow, clockRow, dimRow, dnRow}) t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        final Runnable showMore = () -> {
+            bgRow.setText("🌌 కదిలే బ్యాక్‌గ్రౌండ్: " + CarDeck.nameOf(CarDeck.BG_MOTIONS, CarDeck.BG_MOTION_NAMES, prefs.carBgMotion()) + "  (మార్చడానికి నొక్కండి)");
+            clockRow.setText("🕐 గడియారం: " + CarDeck.nameOf(CarDeck.CLOCKS, CarDeck.CLOCK_NAMES, prefs.carClock()) + "  (మార్చడానికి నొక్కండి)");
+            dimRow.setText("🔆 రాత్రి స్క్రీన్ కాంతి: " + CarDeck.nameOf(CarDeck.NIGHT_DIMS, CarDeck.NIGHT_DIM_NAMES, prefs.carNightDim()) + "  (మార్చడానికి నొక్కండి)");
+            int d = CarDeck.dayNightSlot(prefs.carDayNight(), false), n = CarDeck.dayNightSlot(prefs.carDayNight(), true);
+            dnRow.setText("🌗 పగలు / రాత్రి నా థీమ్: " + (d == 0 ? "ఆఫ్" : "పగలు నా థీమ్ " + d + " · రాత్రి నా థీమ్ " + n) + "  (మార్చడానికి నొక్కండి)");
+        };
+        showMore.run();
+        box.addView(bgRow);
+        box.addView(clockRow);
+        box.addView(dimRow);
+        box.addView(dnRow);
+        bgRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🌌 కదిలే బ్యాక్‌గ్రౌండ్ (\"🌙 కదలికలు తక్కువ\" ఆన్ అయితే ఆగుతుంది)")
+                .setSingleChoiceItems(CarDeck.BG_MOTION_NAMES, Math.max(0, java.util.Arrays.asList(CarDeck.BG_MOTIONS).indexOf(prefs.carBgMotion())), (dl, w) -> {
+                    prefs.sp.edit().putString("car_bg_motion", CarDeck.BG_MOTIONS[w]).apply();
+                    showMore.run();
+                    dl.dismiss();
+                }).show());
+        clockRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🕐 కారు స్క్రీన్ గడియారం")
+                .setSingleChoiceItems(CarDeck.CLOCK_NAMES, Math.max(0, java.util.Arrays.asList(CarDeck.CLOCKS).indexOf(prefs.carClock())), (dl, w) -> {
+                    prefs.sp.edit().putString("car_clock", CarDeck.CLOCKS[w]).apply();
+                    showMore.run();
+                    dl.dismiss();
+                }).show());
+        dimRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🔆 రాత్రి (7 నుంచి ఉదయం 6) Jarvis స్క్రీన్ కాంతి")
+                .setSingleChoiceItems(CarDeck.NIGHT_DIM_NAMES, Math.max(0, java.util.Arrays.asList(CarDeck.NIGHT_DIMS).indexOf(prefs.carNightDim())), (dl, w) -> {
+                    prefs.sp.edit().putString("car_night_dim", CarDeck.NIGHT_DIMS[w]).apply();
+                    showMore.run();
+                    dl.dismiss();
+                }).show());
+        dnRow.setOnClickListener(v -> {
+            String[] slots = new String[CarDeck.MINE];
+            for (int i = 0; i < CarDeck.MINE; i++) {
+                String sum = CarDeck.summary(prefs.sp.getString("car_mine_" + (i + 1), ""));
+                slots[i] = "💾 నా థీమ్ " + (i + 1) + ": " + (sum.isEmpty() ? "ఖాళీ (ముందు 💾 లో దాచుకోండి)" : sum);
+            }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("🌗 పగలు / రాత్రి నా థీమ్")
+                    .setItems(new String[]{"ఆఫ్ (మారదు)", "ఆన్: పగలు, రాత్రి థీమ్‌లు ఎంచుకోండి"}, (dl, w) -> {
+                        if (w == 0) { prefs.sp.edit().putString("car_dn", "").remove("car_dn_applied").apply(); showMore.run(); return; }
+                        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                                .setTitle("☀️ పగలు (ఉదయం 6 నుంచి)")
+                                .setItems(slots, (d2, day) -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                                        .setTitle("🌙 రాత్రి (సాయంత్రం 7 నుంచి)")
+                                        .setItems(slots, (d3, nightSlot) -> {
+                                            prefs.sp.edit().putString("car_dn", (day + 1) + "," + (nightSlot + 1)).remove("car_dn_applied").apply();
+                                            showMore.run();
+                                            Toast.makeText(this, "సరే: పగలు నా థీమ్ " + (day + 1) + ", రాత్రి నా థీమ్ " + (nightSlot + 1) + " (ఖాళీ థీమ్ అయితే ఏమీ మారదు)", Toast.LENGTH_LONG).show();
+                                        }).show()).show();
+                    }).show();
+        });
         // 🗺️ G1 / G2, and what this box allows for G2
         final TextView mapModeRow = Ui.text(this, "", 15.5f, accent), splitRow = Ui.text(this, "🧪 Google Maps పక్క కిటికీ పరీక్ష (G2: ఈ box ఇస్తుందా?)", 15.5f, accent);
         for (TextView t : new TextView[]{mapModeRow, splitRow}) t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
@@ -3389,7 +3450,7 @@ public class SettingsActivity extends Activity {
             }
         });
         // 💾 a kept look back: every look setting at once (the rows and switches here show it at once too)
-        final Switch[] sws = {navMap, tilt, low, beatSw, stage};
+        final Switch[] sws = {navMap, tilt, low, beatSw, stage, artSw, welcomeSw};
         mineRow.setOnClickListener(v -> {
             String[] items = new String[CarDeck.MINE];
             for (int i = 0; i < CarDeck.MINE; i++) {
@@ -3402,6 +3463,7 @@ public class SettingsActivity extends Activity {
                         show.run(); showShape.run(); showDeck.run();
                         sws[0].setChecked(prefs.carNavMap()); sws[1].setChecked(prefs.carMapTilt()); sws[2].setChecked(prefs.carLowMotion());
                         sws[3].setChecked(prefs.carBeatLights()); sws[4].setChecked(prefs.carStage()); showEq.run();
+                        sws[5].setChecked(prefs.carArtColour()); sws[6].setChecked(prefs.carWelcome()); showMore.run();
                     })).show();
         });
         note("కారు ఆగి ఉన్నప్పుడు కారు స్క్రీన్ మీద: ఒక బటన్‌ని కాసేపు నొక్కి పట్టుకుంటే దాని స్థానంలో వేరే బటన్; ② చిన్న డయల్‌ని పట్టుకుంటే అందులో ఏం చూపించాలో; "

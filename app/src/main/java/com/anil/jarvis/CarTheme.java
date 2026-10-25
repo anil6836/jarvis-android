@@ -56,7 +56,10 @@ final class CarTheme {
     Look look(int mode, boolean night) { return look(mode, night, 0); }
 
     /** accentOverride: his own colour from the theme editor (0: the theme's). */
-    Look look(int mode, boolean night, int accentOverride) {
+    Look look(int mode, boolean night, int accentOverride) { return look(mode, night, accentOverride, 0); }
+
+    /** songAccent: 🎨 the song picture's colour while a song plays (0: the theme's music colour). */
+    Look look(int mode, boolean night, int accentOverride, int songAccent) {
         Look l = new Look();
         l.night = night;
         l.light = light && !night; // (the light theme goes dark at night: no white screen in a dark car)
@@ -64,6 +67,7 @@ final class CarTheme {
         l.bgBottom = night ? nightBottom : bgBottom;
         int a = mode == MUSIC ? musicAccent : mode == PARKED ? parkAccent : night ? nightAccent : accent;
         if (accentOverride != 0 && mode == DRIVING) a = accentOverride;
+        if (songAccent != 0 && mode == MUSIC) a = night ? shade(songAccent, 0.8f) : songAccent; // (a little softer at night, like the theme's)
         l.accent = a;
         l.glow = withAlpha(a, night ? 0x44 : 0x66);
         if (l.light) {

@@ -219,6 +219,8 @@ final class CarDeck {
     private static final String DIM_W = "(మసకగా పెట్టు|మసకగా|మసక|తగ్గించు|dim)";
     private static final java.util.regex.Pattern EQ_W = java.util.regex.Pattern.compile("^(ఈక్వలైజర్|ఈక్వలైజరు|ఇక్వలైజర్|equali[sz]er|రంగుల గీతలు)\\s*(ని|ను)?\\s*(.+)$");
     private static final java.util.regex.Pattern BL_W = java.util.regex.Pattern.compile("^(బీట్ లైట్లు|బీట్ లైట్స్|బీట్ లైట్|beat lights?)\\s*(ని|ను)?\\s*(.+)$");
+    private static final java.util.regex.Pattern SHAPE_W = java.util.regex.Pattern.compile(
+            "^((స్క్రీన్ )?ఆకారం (మార్చు|మార్చండి|మార్చవా)|తర్వాతి ఆకారం( పెట్టు)?|వేరే ఆకారం( పెట్టు)?|next (shape|layout)|change (the )?(shape|layout))$");
     private static final java.util.regex.Pattern ST_W = java.util.regex.Pattern.compile("^(డాన్స్ స్టేజ్|స్టేజ్|stage|dance stage)\\s*(ని|ను|మీద)?\\s*(.+)$");
 
     /**
@@ -231,6 +233,7 @@ final class CarDeck {
         String t = text.toLowerCase(Locale.ROOT).replaceAll("[\u200c\u200d]", "").replaceAll("(jarvis|జార్విస్|జర్విస్)", " ")
                 .replaceAll("[,.!?।\"'“”]", " ").replaceAll("\\s+", " ").trim();
         if (t.isEmpty() || t.length() > 50) return null;
+        if (SHAPE_W.matcher(t).matches()) return new String[]{"shape", "next"};
         java.util.regex.Matcher m = EQ_W.matcher(t);
         if (m.matches()) {
             String rest = m.group(3).trim();
@@ -253,6 +256,98 @@ final class CarDeck {
             if (rest.matches(ON_W)) return new String[]{"stage", "on"};
         }
         return null;
+    }
+
+    // ================================================================ the rest of the look: the song's colour, the moving background, the clock, the night light
+
+    /** 🧩 The next shape after this one (in ⚙️'s order, round and round). */
+    static String nextShape(String cur) {
+        String v = CarLayout.valid(cur);
+        for (int i = 0; i < CarLayout.CHOICES.length; i++) if (CarLayout.CHOICES[i].equals(v)) return CarLayout.CHOICES[(i + 1) % CarLayout.CHOICES.length];
+        return CarLayout.CHOICES[0];
+    }
+
+    static final String[] BG_MOTIONS = {"", "stars", "rain", "road", "clouds"};
+    static final String[] BG_MOTION_NAMES = {"కదలిక లేదు (థీమ్‌దే)", "✨ నక్షత్రాలు", "🌧️ గాజు మీద వర్షం చుక్కలు", "🛣️ కదిలే రోడ్డు గీతలు", "☁️ రంగుల మేఘాలు"};
+    static final String[] CLOCKS = {"", "thin", "led", "analog"};
+    static final String[] CLOCK_NAMES = {"పెద్ద అంకెలు", "సన్నని అంకెలు", "డిజిటల్ LED", "🕰️ ముళ్ల గడియారం"};
+    static final String[] NIGHT_DIMS = {"", "mid", "low"};
+    static final String[] NIGHT_DIM_NAMES = {"box దే (మార్చదు)", "రాత్రి కొంచెం తక్కువ", "రాత్రి బాగా తక్కువ"};
+
+    static String nameOf(String[] keys, String[] names, String k) {
+        for (int i = 0; i < keys.length; i++) if (keys[i].equals(k)) return names[i];
+        return names[0];
+    }
+
+    /** 🔆 The screen's light for Jarvis's window: -1 the box's own; at night his choice (0–1). Pure. */
+    static float nightLight(String pref, boolean night) {
+        if (!night) return -1f;
+        if ("mid".equals(pref)) return 0.35f;
+        if ("low".equals(pref)) return 0.12f;
+        return -1f;
+    }
+
+    /** 🌗 "d,n": his day and night themes (1–3); the place for now (0: off / not set). Pure. */
+    static int dayNightSlot(String pref, boolean night) {
+        if (pref == null) return 0;
+        String[] p = pref.split(",");
+        if (p.length != 2) return 0;
+        try {
+            int s = Integer.parseInt(p[night ? 1 : 0].trim());
+            return s >= 1 && s <= MINE ? s : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * 🎨 The song picture's own colour (pixels as ARGB): the hue most of its vivid pixels share, made bright; 0 when the
+     * picture has hardly any colour (grey, black and white). Pure.
+     */
+    static int artAccent(int[] px) {
+        if (px == null || px.length == 0) return 0;
+        float[] w = new float[36], sat = new float[36];
+        float total = 0;
+        for (int c : px) {
+            int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+            int mx = Math.max(r, Math.max(g, b)), mn = Math.min(r, Math.min(g, b));
+            if (mx == 0) continue;
+            float s = (mx - mn) / (float) mx, v = mx / 255f;
+            if (s < 0.35f || v < 0.35f) continue;
+            float h;
+            int d = mx - mn;
+            if (mx == r) h = 60f * (((g - b) / (float) d) % 6);
+            else if (mx == g) h = 60f * ((b - r) / (float) d + 2);
+            else h = 60f * ((r - g) / (float) d + 4);
+            if (h < 0) h += 360;
+            int k = Math.min(35, (int) (h / 10));
+            float wt = s * v;
+            w[k] += wt;
+            sat[k] += s * wt;
+            total += wt;
+        }
+        if (total < px.length * 0.03f) return 0; // (hardly any colour: the theme's own)
+        int best = 0;
+        for (int k = 1; k < 36; k++) if (w[k] + 0.5f * (w[(k + 35) % 36] + w[(k + 1) % 36]) > w[best] + 0.5f * (w[(best + 35) % 36] + w[(best + 1) % 36])) best = k;
+        float hue = best * 10 + 5, s = Math.max(0.6f, Math.min(0.9f, sat[best] / Math.max(1e-6f, w[best])));
+        return hsv(hue, s, 1f);
+    }
+
+    /** HSV (h 0–360, s, v 0–1) → an opaque colour. Pure. */
+    static int hsv(float h, float s, float v) {
+        float c = v * s, x = c * (1 - Math.abs((h / 60f) % 2 - 1)), m = v - c;
+        float r, g, b;
+        if (h < 60) { r = c; g = x; b = 0; } else if (h < 120) { r = x; g = c; b = 0; } else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; } else if (h < 300) { r = x; g = 0; b = c; } else { r = c; g = 0; b = x; }
+        return 0xFF000000 | (Math.round((r + m) * 255) << 16) | (Math.round((g + m) * 255) << 8) | Math.round((b + m) * 255);
+    }
+
+    /** Between two colours (k 0–1). Pure. */
+    static int blend(int a, int b, float k) {
+        k = Math.max(0, Math.min(1, k));
+        int r = Math.round(((a >> 16) & 0xFF) * (1 - k) + ((b >> 16) & 0xFF) * k), g = Math.round(((a >> 8) & 0xFF) * (1 - k) + ((b >> 8) & 0xFF) * k),
+                bl = Math.round((a & 0xFF) * (1 - k) + (b & 0xFF) * k);
+        return 0xFF000000 | (r << 16) | (g << 8) | bl;
     }
 
     // ================================================================ the lean (① ② ③'s 3D cards)
@@ -324,7 +419,8 @@ final class CarDeck {
 
     /** The settings a kept look holds: how the screen looks only (no photos, no places, nothing private). */
     static final String[] LOOK_KEYS = {"car_theme", "car_accent", "car_colour", "car_gauge", "car_layout", "car_nav_map", "car_buttons", "car_btn_style",
-            "car_dials", "car_jarvis", "car_text", "car_map_night", "car_map_zoom", "car_map_tilt", "car_dance", "car_low_motion", "car_eq_level", "car_beat_lights"};
+            "car_dials", "car_jarvis", "car_text", "car_map_night", "car_map_zoom", "car_map_tilt", "car_dance", "car_low_motion", "car_eq_level", "car_beat_lights",
+            "car_art_colour", "car_bg_motion", "car_clock", "car_night_dim", "car_welcome"};
     static final int MINE = 3;
 
     /** The look now (from all the settings) as one line to keep. */

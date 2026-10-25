@@ -344,6 +344,168 @@ final class CarKit {
         }
     }
 
+    // ================================================================ 🌌 the moving background
+
+    /**
+     * Over the theme's background, under everything else: ✨ stars twinkling and drifting, 🌧️ drops running down the
+     * glass, 🛣️ lane lines coming towards us, or ☁️ soft colour clouds drifting. Gentle and the same all the time (his
+     * choice; "fewer movements" stops it); about 20 frames a second; takes no touch.
+     */
+    static final class Ambient extends View implements Runnable {
+        private String kind = "";
+        private boolean on;
+        private int accent = 0xFF5FF3FF, accent2 = 0xFFD58CFF;
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float[] a = new float[90], b = new float[90], c = new float[90], e = new float[90];
+        private final java.util.Random rnd = new java.util.Random(5);
+        private float t;
+        private long last;
+        private final android.graphics.Path path = new android.graphics.Path();
+        private Shader[] blobs;
+        private int blobsFor;
+
+        Ambient(Context cx) {
+            super(cx);
+            for (int i = 0; i < a.length; i++) { a[i] = rnd.nextFloat(); b[i] = rnd.nextFloat(); c[i] = rnd.nextFloat(); e[i] = rnd.nextFloat(); }
+        }
+
+        void set(String kind, boolean on, int accent, int accent2) {
+            boolean change = !kind.equals(this.kind) || on != this.on || accent != this.accent || accent2 != this.accent2;
+            this.kind = kind; this.on = on; this.accent = accent; this.accent2 = accent2;
+            if (change) { blobs = null; removeCallbacks(this); invalidate(); }
+        }
+
+        @Override public void run() { invalidate(); }
+
+        @Override protected void onDetachedFromWindow() { super.onDetachedFromWindow(); removeCallbacks(this); }
+
+        @Override protected void onDraw(Canvas cv) {
+            if (!on || kind.isEmpty()) return;
+            int w = getWidth(), h = getHeight();
+            if (w <= 0 || h <= 0) return;
+            long now = android.os.SystemClock.uptimeMillis();
+            float dt = last == 0 ? 0.05f : Math.min(0.2f, (now - last) / 1000f);
+            last = now;
+            t += dt;
+            switch (kind) {
+                case "stars": stars(cv, w, h); break;
+                case "rain": rain(cv, w, h); break;
+                case "road": road(cv, w, h); break;
+                case "clouds": clouds(cv, w, h); break;
+                default: return;
+            }
+            postOnAnimationDelayed(this, 50);
+        }
+
+        private void stars(Canvas cv, int w, int h) {
+            p.setStyle(Paint.Style.FILL);
+            for (int i = 0; i < 70; i++) {
+                float x = ((a[i] - t * 0.004f * (0.5f + c[i])) % 1f + 1f) % 1f * w, y = b[i] * h;
+                float tw = 0.5f + 0.5f * (float) Math.sin(t * (1.2f + c[i] * 2.5f) + e[i] * 6.28f);
+                float r = (0.6f + c[i] * 1.6f) * getResources().getDisplayMetrics().density;
+                p.setColor(CarTheme.withAlpha(i % 5 == 0 ? accent : 0xFFFFFFFF, Math.round(40 + 160 * tw * (0.4f + 0.6f * c[i]))));
+                cv.drawCircle(x, y, r, p);
+            }
+        }
+
+        private void rain(Canvas cv, int w, int h) {
+            float d = getResources().getDisplayMetrics().density;
+            p.setStyle(Paint.Style.FILL);
+            for (int i = 0; i < 55; i++) {
+                float speed = 0.05f + 0.12f * c[i];
+                float y = ((b[i] + t * speed) % 1.15f) * h - 0.1f * h, x = a[i] * w + (float) Math.sin(t * 0.7f + e[i] * 6) * 2 * d;
+                float r = (1.2f + 2.4f * e[i]) * d;
+                p.setColor(0x26FFFFFF);
+                cv.drawRect(x - r * 0.25f, y - r * 9 * c[i], x + r * 0.25f, y, p); // (its wet trail)
+                p.setColor(CarTheme.withAlpha(accent, 0x55));
+                cv.drawCircle(x, y, r, p);
+                p.setColor(0x66FFFFFF);
+                cv.drawCircle(x - r * 0.35f, y - r * 0.35f, r * 0.35f, p); // (the light in the drop)
+            }
+        }
+
+        private void road(Canvas cv, int w, int h) {
+            float hz = h * 0.48f, cx = w / 2f;
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(1, h / 260f));
+            p.setColor(CarTheme.withAlpha(accent, 0x40));
+            cv.drawLine(cx - w * 0.02f, hz, -w * 0.15f, h, p);
+            cv.drawLine(cx + w * 0.02f, hz, w * 1.15f, h, p);
+            p.setStyle(Paint.Style.FILL);
+            for (int side = -1; side <= 1; side += 2) {
+                for (int n = 0; n < 10; n++) { // (the lane dashes running at us: perspective, t²)
+                    float k = ((n / 10f + t * 0.06f) % 1f), ka = Math.min(1, k + 0.035f), k2 = k * k, ka2 = ka * ka;
+                    float y1 = hz + (h - hz) * k2, y2 = hz + (h - hz) * ka2, x1 = cx + side * w * 0.33f * k2, x2 = cx + side * w * 0.33f * ka2, wd = 1 + k2 * h / 70f;
+                    p.setColor(CarTheme.withAlpha(side < 0 ? accent : accent2, Math.round(30 + 90 * k)));
+                    path.rewind();
+                    path.moveTo(x1 - wd / 2, y1); path.lineTo(x1 + wd / 2, y1); path.lineTo(x2 + wd / 2, y2); path.lineTo(x2 - wd / 2, y2); path.close();
+                    cv.drawPath(path, p);
+                }
+            }
+        }
+
+        private void clouds(Canvas cv, int w, int h) {
+            int key = accent ^ (accent2 * 31) ^ (w * 7) ^ h;
+            if (blobs == null || blobsFor != key) {
+                blobsFor = key;
+                blobs = new Shader[5];
+                for (int i = 0; i < 5; i++) {
+                    int col = i % 2 == 0 ? accent : accent2;
+                    blobs[i] = new RadialGradient(0, 0, Math.max(w, h) * (0.22f + 0.1f * c[i]), new int[]{CarTheme.withAlpha(col, 0x2A), CarTheme.withAlpha(col, 0)}, null, Shader.TileMode.CLAMP);
+                }
+            }
+            p.setStyle(Paint.Style.FILL);
+            for (int i = 0; i < 5; i++) {
+                float x = (((a[i] + t * 0.008f * (0.5f + c[i])) % 1.4f) - 0.2f) * w, y = (0.15f + 0.7f * b[i]) * h + (float) Math.sin(t * 0.1f + e[i] * 6) * h * 0.05f;
+                p.setShader(blobs[i]);
+                int sv = cv.save();
+                cv.translate(x, y);
+                cv.drawCircle(0, 0, Math.max(w, h) * (0.22f + 0.1f * c[i]), p);
+                cv.restoreToCount(sv);
+            }
+            p.setShader(null);
+        }
+    }
+
+    // ================================================================ 🕰️ the clock with hands
+
+    /** A round clock with hands (his clock choice): our own face, ticks, the hands in the theme's colours. */
+    static final class ClockFace extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private int ink = 0xFFEAF6FF, soft = 0xFF9FB6C9, accent = 0xFF5FF3FF;
+
+        ClockFace(Context c) { super(c); p.setStrokeCap(Paint.Cap.ROUND); }
+
+        void setColours(int ink, int soft, int accent) { this.ink = ink; this.soft = soft; this.accent = accent; invalidate(); }
+
+        @Override protected void onDraw(Canvas cv) {
+            float w = getWidth(), h = getHeight(), r = Math.min(w, h) * 0.46f, cx = w / 2f, cy = h / 2f;
+            if (r <= 2) return;
+            java.util.Calendar now = java.util.Calendar.getInstance();
+            float min = now.get(java.util.Calendar.MINUTE), hr = now.get(java.util.Calendar.HOUR) + min / 60f;
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(1, r * 0.05f));
+            p.setColor(CarTheme.withAlpha(accent, 0x88));
+            cv.drawCircle(cx, cy, r, p);
+            for (int i = 0; i < 12; i++) {
+                double an = Math.toRadians(i * 30);
+                float r1 = r * (i % 3 == 0 ? 0.74f : 0.82f), r2 = r * 0.9f;
+                p.setStrokeWidth(Math.max(1, r * (i % 3 == 0 ? 0.06f : 0.03f)));
+                p.setColor(i % 3 == 0 ? ink : soft);
+                cv.drawLine(cx + (float) (r1 * Math.sin(an)), cy - (float) (r1 * Math.cos(an)), cx + (float) (r2 * Math.sin(an)), cy - (float) (r2 * Math.cos(an)), p);
+            }
+            double ha = Math.toRadians(hr * 30), ma = Math.toRadians(min * 6);
+            p.setColor(ink);
+            p.setStrokeWidth(Math.max(2, r * 0.09f));
+            cv.drawLine(cx, cy, cx + (float) (r * 0.5f * Math.sin(ha)), cy - (float) (r * 0.5f * Math.cos(ha)), p);
+            p.setColor(accent);
+            p.setStrokeWidth(Math.max(2, r * 0.055f));
+            cv.drawLine(cx, cy, cx + (float) (r * 0.78f * Math.sin(ma)), cy - (float) (r * 0.78f * Math.cos(ma)), p);
+            p.setStyle(Paint.Style.FILL);
+            cv.drawCircle(cx, cy, r * 0.07f, p);
+        }
+    }
+
     // ================================================================ ⑧'s light
 
     /** ⑧: a soft cone of the theme's colour from the top onto Jarvis, and a lit floor under him. */

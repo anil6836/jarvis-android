@@ -493,6 +493,28 @@ final class Prefs {
     boolean carEq() { return !"off".equals(carEqLevel()); }
     /** 💡 With a song, the cards' edges light up on the beat (on / off: his choice only). */
     boolean carBeatLights() { return sp.getBoolean("car_beat_lights", true); }
+    /** 🎨 While a song plays the screen takes the song picture's colour; 🚗 the welcome when the box starts with the car. */
+    boolean carArtColour() { return sp.getBoolean("car_art_colour", true); }
+    boolean carWelcome() { return sp.getBoolean("car_welcome", true); }
+    /** 🌌 The moving background ("" none, "stars", "rain", "road", "clouds"); 🕐 the clock ("" bold, "thin", "led", "analog"). */
+    String carBgMotion() { return sp.getString("car_bg_motion", ""); }
+    String carClock() { return sp.getString("car_clock", ""); }
+    /** 🔆 At night Jarvis's screen light ("" the box's, "mid", "low"); 🌗 his day and night themes ("d,n", "" off). His switches only. */
+    String carNightDim() { return sp.getString("car_night_dim", ""); }
+    String carDayNight() { return sp.getString("car_dn", ""); }
+
+    /** A kept look put on (CarDeck.back: a key with null goes back to its default). */
+    void applyLook(java.util.Map<String, Object> m) {
+        android.content.SharedPreferences.Editor e = sp.edit();
+        for (java.util.Map.Entry<String, Object> x : m.entrySet()) {
+            Object v = x.getValue();
+            if (v == null) e.remove(x.getKey());
+            else if (v instanceof Integer) e.putInt(x.getKey(), (Integer) v);
+            else if (v instanceof Boolean) e.putBoolean(x.getKey(), (Boolean) v);
+            else e.putString(x.getKey(), String.valueOf(v));
+        }
+        e.apply();
+    }
     /** The new Jarvis's look: a = navy jacket, b = kurta, c = zip jacket (Anil's pick). */
     String bodyLook() { return sp.getString("body_look", "c"); }
     /** Skin tone 1 (lighter) .. 3 (deeper). */

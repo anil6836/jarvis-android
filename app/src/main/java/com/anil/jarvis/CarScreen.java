@@ -98,6 +98,11 @@ final class CarScreen extends FrameLayout {
     private final CarKit.BeatLights lights;
     private final CarKit.Spectrum eqDraw;
     private final List<android.graphics.Path> pathPool = new ArrayList<>();
+    // 🌌 the moving background, 🕰️ the clock with hands, 🧩 the shape button, 🎨 the song picture's colour
+    private final CarKit.Ambient ambient;
+    private final CarKit.ClockFace clockFace;
+    private final TextView shapeBtn;
+    private int songAccent, fadeSeq;
     private int pathUsed;
     private long besideAt;
     private final List<View> tiles = new ArrayList<>();
@@ -132,6 +137,9 @@ final class CarScreen extends FrameLayout {
         setClickable(true); // (taps never fall through to the chat under it)
         backdrop = new CarArt.Backdrop(a);
         addView(backdrop, new LayoutParams(-1, -1));
+        ambient = new CarKit.Ambient(a); // (🌌 over the theme's background, under everything else)
+        addView(ambient, new LayoutParams(-1, -1));
+        clockFace = new CarKit.ClockFace(a);
         content = new LinearLayout(a);
         content.setOrientation(LinearLayout.HORIZONTAL);
         addView(content, new LayoutParams(-1, -1));
@@ -157,7 +165,11 @@ final class CarScreen extends FrameLayout {
         chipRow.setGravity(Gravity.CENTER_VERTICAL);
         leftCol.addView(chipRow, new LinearLayout.LayoutParams(-1, 0, 11));
         chips = autoText(a, "", false, 26);
-        chipRow.addView(chips, new LinearLayout.LayoutParams(0, -1, 55));
+        chipRow.addView(chips, new LinearLayout.LayoutParams(0, -1, 42));
+        shapeBtn = autoText(a, "🧩", false, 36); // (parked: each tap the next shape)
+        shapeBtn.setGravity(Gravity.CENTER);
+        shapeBtn.setOnClickListener(v -> tap(this::nextShape));
+        chipRow.addView(shapeBtn, new LinearLayout.LayoutParams(0, -1, 13));
         apps = autoText(a, "▦", false, 36); // the box's other apps (Jarvis as the box's home: the way back to them)
         apps.setGravity(Gravity.CENTER);
         apps.setOnClickListener(v -> tap(this::showApps));
@@ -465,6 +477,8 @@ final class CarScreen extends FrameLayout {
         portal.body.rig.setSkin(prefs.bodySkin());
         palette();
         showTalk();
+        nightLight();
+        if (dayNightCheck()) return; // (his day / night theme just went on: all of it is fresh)
         String k = deckKey();
         if (!k.equals(deckKey)) { // (his buttons, the dials, sizes, the map's lean changed in ⚙️: the shape laid out again)
             deckKey = k;
@@ -476,7 +490,8 @@ final class CarScreen extends FrameLayout {
 
     /** What the shape's layout depends on besides the shape (⚙️ choices). */
     private String deckKey() {
-        return prefs.carButtons() + "|" + prefs.carBtnStyle() + "|" + prefs.carJarvis() + "|" + prefs.carText() + "|" + prefs.carDials() + "|" + prefs.carMapTilt();
+        return prefs.carButtons() + "|" + prefs.carBtnStyle() + "|" + prefs.carJarvis() + "|" + prefs.carText() + "|" + prefs.carDials() + "|" + prefs.carMapTilt()
+                + "|" + prefs.carClock();
     }
 
     /** Every second: the speed, the sleep alert's question, moving / parked, the song and the dance. */
@@ -496,7 +511,7 @@ final class CarScreen extends FrameLayout {
                 long now = System.currentTimeMillis();
                 if (m && (stillSince == 0 || now - stillSince > 5 * 60_000L)) portal.body.rig.greet(); // 👋 off we go
                 if (!m) stillSince = now;
-                wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f);
+                wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f); shapeBtn.setAlpha(m ? 0.35f : 1f);
                 if (m && settingSheet) closeSheet(); // (a look chooser left open: gone when the car moves)
             }
             glances();
@@ -526,9 +541,11 @@ final class CarScreen extends FrameLayout {
         int h = c.get(Calendar.HOUR_OF_DAY), m = c.get(Calendar.MINUTE);
         int h12 = h % 12 == 0 ? 12 : h % 12;
         clock.setText(String.format(Locale.ROOT, "%d:%02d", h12, m));
+        clockFace.invalidate();
         date.setText(HomeScreen.partOfDay(h) + " · " + DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)]);
         boolean n = nightNow();
-        if (n != night) { night = n; palette(); }
+        if (n != night) { night = n; if (!dayNightCheck()) palette(); }
+        nightLight();
         StringBuilder b = new StringBuilder(Net.online(getContext()) ? "📶 ✓" : "📶 నెట్ లేదు");
         b.append("  ").append(CarBox.linkLine(getContext()));
         try { if (CarCare.on(getContext()) && CarCare.enabled(getContext())) b.append("  😴 ✓"); } catch (Exception ignored) {}
@@ -945,7 +962,7 @@ final class CarScreen extends FrameLayout {
         boolean show = gameOn() && (mode == CarTheme.PARKED || CarLayout.STAGE.equals(shape)) && !CarBox.moving(); // (⑧'s 🎲: the question on the stage)
         if (show != (board.getVisibility() == VISIBLE)) {
             int v = show ? GONE : VISIBLE;
-            for (View x : new View[]{gauge, hero, clock, date, minis, driveChip, mapTilt}) x.setVisibility(v);
+            for (View x : new View[]{gauge, hero, clock, clockFace, date, minis, driveChip, mapTilt}) x.setVisibility(v);
             board.setVisibility(show ? VISIBLE : GONE);
         }
         if (!show) return;
@@ -1202,6 +1219,35 @@ final class CarScreen extends FrameLayout {
         artImg.setImageBitmap(b);
         artImg.setVisibility(b == null ? GONE : VISIBLE);
         artIcon.setVisibility(b == null ? VISIBLE : INVISIBLE);
+        int col = 0;
+        if (b != null) {
+            try { // 🎨 the picture's own colour (a tiny copy is enough)
+                android.graphics.Bitmap sm = android.graphics.Bitmap.createScaledBitmap(b, 24, 24, true);
+                int[] px = new int[24 * 24];
+                sm.getPixels(px, 0, 24, 0, 0, 24, 24);
+                if (sm != b) sm.recycle();
+                col = CarDeck.artAccent(px);
+            } catch (Exception ignored) {}
+        }
+        artColourTo(col);
+    }
+
+    /** 🎨 The screen's colour moves to the song picture's (0: back to the theme's) in a few soft steps. */
+    private void artColourTo(int target) {
+        final int seq = ++fadeSeq;
+        if (target == 0 || !prefs.carArtColour()) {
+            if (songAccent != 0) { songAccent = 0; palette(); }
+            return;
+        }
+        final int from = songAccent != 0 ? songAccent : look != null ? look.accent : target;
+        for (int k = 1; k <= 6; k++) {
+            final float f = k / 6f;
+            main.postDelayed(() -> {
+                if (seq != fadeSeq) return;
+                songAccent = CarDeck.blend(from, target, f);
+                if (mode == CarTheme.MUSIC) palette();
+            }, k * 140L);
+        }
     }
 
     /**
@@ -2136,6 +2182,14 @@ final class CarScreen extends FrameLayout {
                 put(rightCol, roadCard, 25); put(rightCol, tileGrid, 54); put(rightCol, musicStrip, 21);
                 fillTiles(tileGrid, 0, 6, 3);
         }
+        if ("analog".equals(prefs.carClock()) && clock.getParent() instanceof LinearLayout) { // 🕰️ the clock with hands where the clock sits
+            LinearLayout par = (LinearLayout) clock.getParent();
+            int idx = par.indexOfChild(clock);
+            android.view.ViewGroup.LayoutParams lp = clock.getLayoutParams();
+            par.removeView(clock);
+            detach(clockFace);
+            par.addView(clockFace, idx, lp);
+        }
         wingL.setTilt(CarDeck.WING_L, deep ? 0.07f : 0);
         wingR.setTilt(CarDeck.WING_R, deep ? 0.07f : 0);
         panel.setTilt(CarDeck.BACK, 0.06f);
@@ -2167,6 +2221,80 @@ final class CarScreen extends FrameLayout {
     /** The width the pop-ups have (all of it, or Jarvis's column in G2 beside Google Maps' window). */
     private int roomW() { return rightOnly && W > 0 ? W - Math.round(W * 0.62f) : W; }
 
+    /** 🕐 The clock as he chose it: bold, thin, a glowing LED, or (in its place on the screen) the clock with hands. */
+    private void clockStyle() {
+        String cs = prefs.carClock();
+        clock.setShadowLayer(0, 0, 0, 0);
+        if ("thin".equals(cs)) clock.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
+        else if ("led".equals(cs)) {
+            clock.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+            clock.setTextColor(accent);
+            clock.setShadowLayer(12, 0, 0, CarTheme.withAlpha(accent, 0xCC));
+        } else clock.setTypeface(Typeface.DEFAULT_BOLD);
+        clockFace.setColours(textMain, textSoft, accent);
+    }
+
+    /** 🧩 Parked: the next shape (his words do it any time: "Jarvis, ఆకారం మార్చు"). */
+    private void nextShape() {
+        if (CarBox.moving()) { toast("కారు ఆపాక నొక్కండి, లేదా \"Jarvis, ఆకారం మార్చు\" అనండి"); return; }
+        toast(shapeSaid());
+    }
+
+    private String shapeSaid() {
+        String next = CarDeck.nextShape(prefs.carLayout());
+        prefs.sp.edit().putString("car_layout", next).apply();
+        shapeCheck();
+        return CarLayout.name(next);
+    }
+
+    /** 🚗 The box started with the car (a new trip): the cards come in turning, Jarvis waves. His switch; never with "fewer movements". */
+    void welcome() {
+        if (!prefs.carWelcome() || prefs.carLowMotion()) return;
+        portal.body.rig.greet();
+        float d = getResources().getDisplayMetrics().density;
+        int n = content.getChildCount();
+        for (int i = 0; i < n; i++) {
+            View v = content.getChildAt(i);
+            v.setCameraDistance(8000 * d);
+            v.setAlpha(0f);
+            v.setRotationY(i == 0 ? 55 : i == n - 1 ? -55 : 0);
+            v.setRotationX(i == 0 || i == n - 1 ? 0 : 35);
+            v.setTranslationY(30 * d);
+            v.animate().alpha(1).rotationY(0).rotationX(0).translationY(0).setStartDelay(150 + i * 220L).setDuration(750)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
+        }
+    }
+
+    /** 🔆 At night Jarvis's screen as light as he chose (by day, and with "the box's", the box's own light). */
+    private void nightLight() {
+        try {
+            float b = CarDeck.nightLight(prefs.carNightDim(), night);
+            android.view.WindowManager.LayoutParams lp = act.getWindow().getAttributes();
+            if (lp.screenBrightness != b) { lp.screenBrightness = b; act.getWindow().setAttributes(lp); }
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * 🌗 His day and night themes (only when he set them): when the day / the night begins, that kept theme goes on once
+     * (what he changes himself afterwards stays until the next change of day). True when one went on.
+     */
+    private boolean dayNightCheck() {
+        int slot = CarDeck.dayNightSlot(prefs.carDayNight(), night);
+        if (slot == 0) return false;
+        String period = (night ? "n" : "d") + slot;
+        if (period.equals(prefs.sp.getString("car_dn_applied", ""))) return false;
+        java.util.Map<String, Object> m = CarDeck.back(prefs.sp.getString("car_mine_" + slot, ""));
+        prefs.sp.edit().putString("car_dn_applied", period).apply();
+        if (m == null) return false; // (that place is empty: nothing changes)
+        prefs.applyLook(m);
+        dialKinds = CarDeck.three(prefs.carDials());
+        deckKey = deckKey();
+        textSizes();
+        palette();
+        relayout();
+        return true;
+    }
+
     /** 🎚️ 💡 As he set them (⚙️, holding the song strip, or his words): on, dim, off — the same driving or parked. */
     private void lightsNow() {
         boolean low = prefs.carLowMotion();
@@ -2177,6 +2305,7 @@ final class CarScreen extends FrameLayout {
 
     /** "Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు", "బీట్ లైట్లు ఆపు / పెట్టు": done at once; what to say back. */
     String lightsSaid(String[] w) {
+        if ("shape".equals(w[0])) return "సరే, " + shapeSaid() + " పెట్టాను.";
         if ("stage".equals(w[0])) {
             boolean on = "on".equals(w[1]);
             setStage(on);
@@ -2209,7 +2338,9 @@ final class CarScreen extends FrameLayout {
         }
         rows.add(new String[]{prefs.carStage() ? "🕺 స్టేజ్ ఆపు" : "🕺 Jarvis స్టేజ్ పెట్టు"});
         acts.add(() -> { closeSheet(); if (!parkedOrSay()) return; setStage(!prefs.carStage()); });
-        openSheet("🎚️ ఈక్వలైజర్ · 💡 బీట్ లైట్లు · 🕺 స్టేజ్", "నడుపుతున్నప్పుడు మాటతో: \"Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు\", \"బీట్ లైట్లు ఆపు / పెట్టు\", \"స్టేజ్ పెట్టు / ఆపు\"", rows, acts, 3);
+        rows.add(new String[]{prefs.carArtColour() ? "🎨 పాట బొమ్మ రంగు ఆపు" : "🎨 పాట బొమ్మ రంగు పెట్టు"});
+        acts.add(() -> { closeSheet(); if (!parkedOrSay()) return; prefs.sp.edit().putBoolean("car_art_colour", !prefs.carArtColour()).apply(); palette(); });
+        openSheet("🎚️ ఈక్వలైజర్ · 💡 బీట్ లైట్లు · 🕺 స్టేజ్ · 🎨 రంగు", "నడుపుతున్నప్పుడు మాటతో: \"Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు\", \"బీట్ లైట్లు ఆపు / పెట్టు\", \"స్టేజ్ పెట్టు / ఆపు\"", rows, acts, 3);
         settingSheet = true;
     }
 
@@ -2492,7 +2623,9 @@ final class CarScreen extends FrameLayout {
 
     /** The theme's colours for the mode and the hour, put on everything. */
     private void palette() {
-        look = CarTheme.of(prefs.carTheme()).look(mode, night, prefs.carAccent());
+        CarTheme th = CarTheme.of(prefs.carTheme());
+        look = th.look(mode, night, prefs.carAccent(), prefs.carArtColour() ? songAccent : 0);
+        ambient.set(prefs.carBgMotion(), !prefs.carLowMotion(), look.accent, night ? th.nightAccent : th.musicAccent);
         gaugeStyle(); // (his own gauge style, else the shape's / the theme's)
         wallpaper();
         heroPhoto();
@@ -2511,6 +2644,8 @@ final class CarScreen extends FrameLayout {
         portal.setLowMotion(prefs.carLowMotion());
         portal.body.setSlow(night && !dancing);
         for (TextView t : new TextView[]{clock, subText}) t.setTextColor(textMain);
+        clockStyle();
+        shapeBtn.setTextColor(textSoft);
         stateText.setTextColor(accent);
         for (TextView t : new TextView[]{date, minis, chips}) t.setTextColor(textSoft);
         gear.setTextColor(textSoft);

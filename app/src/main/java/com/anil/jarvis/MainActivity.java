@@ -1705,6 +1705,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (car == null || isFinishing()) return;
         String g = CarBox.startTrip(this); // (the sleep alert's car mode and the GPS start here too)
         if (g == null) return;
+        car.welcome(); // 🚗 the cards come in, Jarvis waves (his switch)
         car.say(g);
         Announcer.say(this, g); // (the background voice: the road's own words, such as rain ahead, come after it in turn)
     }
