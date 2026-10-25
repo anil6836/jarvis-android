@@ -2431,6 +2431,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             }
             String g = car == null ? null : CarLayout.mapWords(prompt); // 🗺️ the box: "Google Maps పెట్టు" / "నీ మ్యాప్ పెట్టు" — the car's map, at once
             if (g != null) { localSay(prompt, car.mapMode(g)); return; }
+            String[] lw = car == null ? null : CarDeck.lightWords(prompt); // 🎚️ 💡 "ఈక్వలైజర్ ఆపు", "బీట్ లైట్లు పెట్టు": at once, any time
+            if (lw != null) { localSay(prompt, car.lightsSaid(lw)); return; }
         }
         if (home != null && prompt != null && !prompt.trim().isEmpty()) { // the home tablet: the day's AI limit (his key pays)
             if (HomeCare.overLimit(this)) { homeReply(prompt, HomeCare.limitText(this)); return; }

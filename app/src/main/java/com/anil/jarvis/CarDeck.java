@@ -204,6 +204,49 @@ final class CarDeck {
         return deep;
     }
 
+    // ================================================================ 🎚️ the equalizer and 💡 the beat lights: his words
+
+    static final String[] EQ_LEVELS = {"off", "dim", "full"};
+    static final String[] EQ_NAMES = {"ఆఫ్", "మసకగా", "పూర్తి రంగుల్లో"};
+
+    static String eqName(String level) {
+        for (int i = 0; i < EQ_LEVELS.length; i++) if (EQ_LEVELS[i].equals(level)) return EQ_NAMES[i];
+        return EQ_NAMES[2];
+    }
+
+    private static final String OFF_W = "(ఆపు|ఆపేయ్|ఆపేయి|ఆఫ్ చేయి|ఆఫ్ చెయ్|ఆఫ్|వద్దు|తీసేయి|తీసేయ్|off|stop)";
+    private static final String ON_W = "(పెట్టు|పెట్టండి|ఆన్ చేయి|ఆన్ చెయ్|ఆన్|వేయి|వెయ్|కావాలి|on|start)";
+    private static final String DIM_W = "(మసకగా పెట్టు|మసకగా|మసక|తగ్గించు|dim)";
+    private static final java.util.regex.Pattern EQ_W = java.util.regex.Pattern.compile("^(ఈక్వలైజర్|ఈక్వలైజరు|ఇక్వలైజర్|equali[sz]er|రంగుల గీతలు)\\s*(ని|ను)?\\s*(.+)$");
+    private static final java.util.regex.Pattern BL_W = java.util.regex.Pattern.compile("^(బీట్ లైట్లు|బీట్ లైట్స్|బీట్ లైట్|beat lights?)\\s*(ని|ను)?\\s*(.+)$");
+
+    /**
+     * His words for the song strip's equalizer and the beat lights (any time, also while driving: words only): {"eq",
+     * "off" | "dim" | "full"} or {"lights", "off" | "on"}; else null. The whole short sentence only ("ఇంట్లో లైట్లు ఆపు" is
+     * the home's lights, never these). Pure.
+     */
+    static String[] lightWords(String text) {
+        if (text == null) return null;
+        String t = text.toLowerCase(Locale.ROOT).replaceAll("[\u200c\u200d]", "").replaceAll("(jarvis|జార్విస్|జర్విస్)", " ")
+                .replaceAll("[,.!?।\"'“”]", " ").replaceAll("\\s+", " ").trim();
+        if (t.isEmpty() || t.length() > 50) return null;
+        java.util.regex.Matcher m = EQ_W.matcher(t);
+        if (m.matches()) {
+            String rest = m.group(3).trim();
+            if (rest.matches(DIM_W)) return new String[]{"eq", "dim"};
+            if (rest.matches(OFF_W)) return new String[]{"eq", "off"};
+            if (rest.matches(ON_W) || rest.matches("(పూర్తిగా|పూర్తి రంగుల్లో|full)( పెట్టు)?")) return new String[]{"eq", "full"};
+            return null;
+        }
+        m = BL_W.matcher(t);
+        if (m.matches()) {
+            String rest = m.group(3).trim();
+            if (rest.matches(OFF_W)) return new String[]{"lights", "off"};
+            if (rest.matches(ON_W)) return new String[]{"lights", "on"};
+        }
+        return null;
+    }
+
     // ================================================================ the lean (① ② ③'s 3D cards)
 
     static final int FLAT = 0, WING_L = 1, WING_R = 2, BACK = 3;
@@ -273,7 +316,7 @@ final class CarDeck {
 
     /** The settings a kept look holds: how the screen looks only (no photos, no places, nothing private). */
     static final String[] LOOK_KEYS = {"car_theme", "car_accent", "car_colour", "car_gauge", "car_layout", "car_nav_map", "car_buttons", "car_btn_style",
-            "car_dials", "car_jarvis", "car_text", "car_map_night", "car_map_zoom", "car_map_tilt", "car_dance", "car_low_motion", "car_eq", "car_beat_lights",
+            "car_dials", "car_jarvis", "car_text", "car_map_night", "car_map_zoom", "car_map_tilt", "car_dance", "car_low_motion", "car_eq_level", "car_beat_lights",
             "car_stage"};
     static final int MINE = 3;
 

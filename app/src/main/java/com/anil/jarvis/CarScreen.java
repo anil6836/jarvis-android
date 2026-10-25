@@ -268,6 +268,7 @@ final class CarScreen extends FrameLayout {
         artImg.setVisibility(GONE);
         artBox.addView(artImg, new FrameLayout.LayoutParams(-1, -1));
         artBox.setOnClickListener(v -> tap(this::showMusic));
+        artBox.setOnLongClickListener(v -> { if (CarBox.moving()) return false; chooseLights(); return true; }); // (held, parked: 🎚️ 💡)
         musicStrip.addView(artBox, new LinearLayout.LayoutParams(0, 0));
         LinearLayout words = songWords = new LinearLayout(a);
         words.setOrientation(LinearLayout.VERTICAL);
@@ -284,6 +285,7 @@ final class CarScreen extends FrameLayout {
         words.addView(musicText, new LinearLayout.LayoutParams(-1, -2));
         words.addView(songSub, new LinearLayout.LayoutParams(-1, -2));
         words.setOnClickListener(v -> tap(this::showMusic));
+        words.setOnLongClickListener(v -> { if (CarBox.moving()) return false; chooseLights(); return true; });
         musicStrip.addView(words, new LinearLayout.LayoutParams(0, -1, 1));
         prevKey = new CarArt.Icon(a, CarArt.Icon.PREV);
         playKey = new CarArt.Icon(a, CarArt.Icon.PLAY);
@@ -573,9 +575,7 @@ final class CarScreen extends FrameLayout {
         boolean lightsOk = !prefs.carLowMotion() && (prefs.carEq() || prefs.carBeatLights()); // (🎚️ 💡 follow the beat too, even with the dance off)
         boolean wantBeat = mayDance || songNow && lightsOk;
         if (wantBeat != beatOn) { beatOn = wantBeat; if (wantBeat) beat.start(); else beat.stop(); } // (the beat is followed for the whole song, not switched at every signal)
-        eqDraw.setOn(prefs.carEq() && !prefs.carLowMotion());
-        eqDraw.setCalm(moving); // (on the road: fainter)
-        lights.setActive(prefs.carBeatLights() && !prefs.carLowMotion() && songNow && parked && !moving && !saverOn);
+        lightsNow(); // (his choices only: never switched by moving / parked)
         boolean dance = mayDance && ("always".equals(pref) || !moving) && !(prefs.carLowMotion() && moving);
         setDancing(dance);
         if (dancing) danceTick();
@@ -2165,6 +2165,45 @@ final class CarScreen extends FrameLayout {
 
     /** The width the pop-ups have (all of it, or Jarvis's column in G2 beside Google Maps' window). */
     private int roomW() { return rightOnly && W > 0 ? W - Math.round(W * 0.62f) : W; }
+
+    /** 🎚️ 💡 As he set them (⚙️, holding the song strip, or his words): on, dim, off — the same driving or parked. */
+    private void lightsNow() {
+        boolean low = prefs.carLowMotion();
+        eqDraw.setOn(prefs.carEq() && !low);
+        eqDraw.setCalm("dim".equals(prefs.carEqLevel()));
+        lights.setActive(prefs.carBeatLights() && !low && songNow && !saverOn);
+    }
+
+    /** "Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు", "బీట్ లైట్లు ఆపు / పెట్టు": done at once; what to say back. */
+    String lightsSaid(String[] w) {
+        if ("eq".equals(w[0])) {
+            prefs.sp.edit().putString("car_eq_level", w[1]).apply();
+            lightsNow();
+            return "off".equals(w[1]) ? "సరే, ఈక్వలైజర్ ఆపాను." : "dim".equals(w[1]) ? "సరే, ఈక్వలైజర్ మసకగా పెట్టాను." : "సరే, ఈక్వలైజర్ పూర్తి రంగుల్లో పెట్టాను.";
+        }
+        boolean on = "on".equals(w[1]);
+        prefs.sp.edit().putBoolean("car_beat_lights", on).apply();
+        lightsNow();
+        return on ? "సరే, బీట్ లైట్లు పెట్టాను." : "సరే, బీట్ లైట్లు ఆపాను.";
+    }
+
+    /** 🎚️ 💡 The song strip held (parked): the equalizer and the beat lights, in one place. */
+    private void chooseLights() {
+        if (!parkedOrSay()) return;
+        List<String[]> rows = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
+        for (int i = 0; i < CarDeck.EQ_LEVELS.length; i++) {
+            final String lv = CarDeck.EQ_LEVELS[i];
+            rows.add(new String[]{(lv.equals(prefs.carEqLevel()) ? "✓ " : "") + "🎚️ ఈక్వలైజర్: " + CarDeck.EQ_NAMES[i]});
+            acts.add(() -> { closeSheet(); if (!parkedOrSay()) return; prefs.sp.edit().putString("car_eq_level", lv).apply(); lightsNow(); });
+        }
+        for (boolean on : new boolean[]{true, false}) {
+            rows.add(new String[]{(on == prefs.carBeatLights() ? "✓ " : "") + "💡 బీట్ లైట్లు: " + (on ? "ఆన్" : "ఆఫ్")});
+            acts.add(() -> { closeSheet(); if (!parkedOrSay()) return; prefs.sp.edit().putBoolean("car_beat_lights", on).apply(); lightsNow(); });
+        }
+        openSheet("🎚️ ఈక్వలైజర్ · 💡 బీట్ లైట్లు", "నడుపుతున్నప్పుడు మాటతో: \"Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు\", \"Jarvis, బీట్ లైట్లు ఆపు / పెట్టు\"", rows, acts, 3);
+        settingSheet = true;
+    }
 
     /** 💡 The cards' outlines on the screen now: leaning cards along their lean, round buttons and ②'s dials as circles. */
     private void outlines(List<android.graphics.Path> into) {

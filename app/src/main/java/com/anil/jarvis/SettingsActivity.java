@@ -3331,9 +3331,19 @@ public class SettingsActivity extends Activity {
         box.addView(gaugeRow);
         box.addView(wallRow);
         box.addView(dance);
-        Switch eqSw = toggle("🎚️ పాట పట్టీలో రంగుల ఈక్వలైజర్ (పాట బీట్‌కి కదిలే రంగుల గీతలు; నడిపేటప్పుడు మసకగా)", prefs.carEq());
-        eqSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_eq", v).apply());
-        Switch beatSw = toggle("💡 బీట్ లైట్లు (కారు ఆగి పాట వస్తే, బీట్‌కి కార్డుల అంచులు రంగులుగా వెలుగుతాయి)", prefs.carBeatLights());
+        final TextView eqRow = Ui.text(this, "", 15.5f, accent);
+        eqRow.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        final Runnable showEq = () -> eqRow.setText("🎚️ పాట పట్టీలో రంగుల ఈక్వలైజర్: " + CarDeck.eqName(prefs.carEqLevel()) + "  (మార్చడానికి నొక్కండి)");
+        showEq.run();
+        eqRow.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🎚️ ఈక్వలైజర్ (పాట బీట్‌కి కదిలే రంగుల గీతలు)")
+                .setSingleChoiceItems(CarDeck.EQ_NAMES, Math.max(0, java.util.Arrays.asList(CarDeck.EQ_LEVELS).indexOf(prefs.carEqLevel())), (d, w) -> {
+                    prefs.sp.edit().putString("car_eq_level", CarDeck.EQ_LEVELS[w]).apply();
+                    showEq.run();
+                    d.dismiss();
+                }).show());
+        box.addView(eqRow);
+        Switch beatSw = toggle("💡 బీట్ లైట్లు (పాట వస్తే, బీట్‌కి కార్డుల అంచులు రంగులుగా వెలుగుతాయి)", prefs.carBeatLights());
         beatSw.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_beat_lights", v).apply());
         Switch stage = toggle("🕺 ఆగి ఉన్నప్పుడు పాట వస్తే Jarvis స్టేజ్ (⑧: Jarvis పెద్దగా లైట్ కింద డాన్స్; కారు కదలగానే మీ స్క్రీన్; ✕ నొక్కితే ఆ పాటకి వద్దు)", prefs.carStage());
         stage.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_stage", v).apply());
@@ -3379,7 +3389,7 @@ public class SettingsActivity extends Activity {
             }
         });
         // 💾 a kept look back: every look setting at once (the rows and switches here show it at once too)
-        final Switch[] sws = {navMap, tilt, low, eqSw, beatSw, stage};
+        final Switch[] sws = {navMap, tilt, low, beatSw, stage};
         mineRow.setOnClickListener(v -> {
             String[] items = new String[CarDeck.MINE];
             for (int i = 0; i < CarDeck.MINE; i++) {
@@ -3391,11 +3401,12 @@ public class SettingsActivity extends Activity {
                     .setItems(items, (d, w) -> mineSlot(w + 1, () -> {
                         show.run(); showShape.run(); showDeck.run();
                         sws[0].setChecked(prefs.carNavMap()); sws[1].setChecked(prefs.carMapTilt()); sws[2].setChecked(prefs.carLowMotion());
-                        sws[3].setChecked(prefs.carEq()); sws[4].setChecked(prefs.carBeatLights()); sws[5].setChecked(prefs.carStage());
+                        sws[3].setChecked(prefs.carBeatLights()); sws[4].setChecked(prefs.carStage()); showEq.run();
                     })).show();
         });
         note("కారు ఆగి ఉన్నప్పుడు కారు స్క్రీన్ మీద: ఒక బటన్‌ని కాసేపు నొక్కి పట్టుకుంటే దాని స్థానంలో వేరే బటన్; ② చిన్న డయల్‌ని పట్టుకుంటే అందులో ఏం చూపించాలో; "
-                + "స్పీడ్ మీటర్‌ని పట్టుకుంటే దాని రూపం; Jarvis ని పట్టుకుంటే అతని సైజు. నడుపుతున్నప్పుడు ఇవి మారవు (భద్రత కోసం).");
+                + "స్పీడ్ మీటర్‌ని పట్టుకుంటే దాని రూపం; Jarvis ని పట్టుకుంటే అతని సైజు; పాట పట్టీని పట్టుకుంటే 🎚️ ఈక్వలైజర్ / 💡 బీట్ లైట్లు. "
+                + "నడుపుతున్నప్పుడు ఇవి మారవు (భద్రత కోసం): అప్పుడు మాటతో \"Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు\", \"Jarvis, బీట్ లైట్లు ఆపు / పెట్టు\".");
         note("Jarvis బొమ్మ, చర్మం రంగు: కింద '🏠 ఇంటి Jarvis' భాగంలోని 🧑 Jarvis రూపం / 🎨 చర్మం రంగు ఎంపికలే కారుకీ. "
                 + "పాట వస్తే Jarvis బీట్‌కి డాన్స్ చేస్తాడు (ప్రతి 16 బీట్లకి కొత్త స్టెప్, కోరస్‌కి పెద్ద స్టెప్పులు; బొమ్మను తాకితే ఒక ప్రత్యేక స్టెప్). "
                 + "స్టీరింగ్ బటన్ నొక్కగానే ఆగి వింటాడు. బీట్ ఈ box ఇవ్వకపోతే మామూలు వేగంతో ఊగుతాడు. "
