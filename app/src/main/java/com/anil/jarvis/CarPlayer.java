@@ -323,6 +323,7 @@ final class CarPlayer extends LinearLayout {
             }
             if (CarBox.moving()) { // (no fine finger work while he drives: ⏪10 / 10⏩, or his words)
                 if (e.getAction() == MotionEvent.ACTION_UP) Toast.makeText(getContext(), "నడుపుతుండగా ⏪10 / 10⏩ వాడండి (లాగడం కారు ఆగాక)", Toast.LENGTH_SHORT).show();
+                if (dragAt >= 0) { dragAt = -1; invalidate(); } // (a drag the car's start cut short: the song's own place again)
                 return true;
             }
             float f = Math.max(0, Math.min(1, (e.getX() - x0) / Math.max(1, x1 - x0)));

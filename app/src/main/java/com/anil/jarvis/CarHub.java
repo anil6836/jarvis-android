@@ -131,8 +131,7 @@ final class CarHub extends FrameLayout {
     /** Opens at this part (CarHubSpec ids). */
     void show(String cat) {
         catNow = CarHubSpec.cat(cat).id;
-        setVisibility(VISIBLE);
-        bringToFront();
+        setVisibility(VISIBLE); // (the screen raises it once; a part tapped never puts it over the sleep alert)
         fill();
     }
 
@@ -332,8 +331,9 @@ final class CarHub extends FrameLayout {
     private void act(CarHubSpec.Opt o) {
         if (CarBox.moving() && !o.key.equals("quiet") && !o.key.startsWith("vol")) { host.say("కారు ఆపాక (మాటతో ఎప్పుడైనా)"); return; }
         if (o.key.equals("mine")) { keepAsk(); return; }
+        int y = bodyScroll.getScrollY();
         host.act(o.key);
-        if (shown()) { int y = bodyScroll.getScrollY(); fill(); bodyScroll.post(() -> bodyScroll.scrollTo(0, y)); }
+        if (shown()) { fill(); bodyScroll.post(() -> bodyScroll.scrollTo(0, y)); }
     }
 
     /** 💾 Which of his three places: the look now kept there (what each holds now, in a few words). */

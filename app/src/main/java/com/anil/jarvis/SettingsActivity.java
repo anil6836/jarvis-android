@@ -3255,7 +3255,7 @@ public class SettingsActivity extends Activity {
         Runnable showDeck = () -> {
             boolean deep = CarLayout.deep(prefs.carLayout());
             StringBuilder b = new StringBuilder();
-            for (String k : CarDeck.sixFor(prefs.carButtons(), prefs.carLayout())) b.append(b.length() == 0 ? "" : " · ").append(CarDeck.buttonLabel(k));
+            for (String k : CarDeck.sixFor(prefs.carButtonsFor(prefs.carLayout()), prefs.carLayout())) b.append(b.length() == 0 ? "" : " · ").append(CarDeck.buttonLabel(k));
             buttonsRow.setText("🎛️ ఆరు బటన్లు: " + b + "  (మార్చడానికి నొక్కండి)");
             int si = Math.max(0, java.util.Arrays.asList(CarDeck.STYLES).indexOf(prefs.carBtnStyle()));
             styleRow.setText("🔘 బటన్లు ఎలా: " + CarDeck.STYLE_NAMES[si] + "  (మార్చడానికి నొక్కండి)");
@@ -3277,18 +3277,19 @@ public class SettingsActivity extends Activity {
         box.addView(jarvisRow);
         box.addView(textRow);
         buttonsRow.setOnClickListener(v -> {
-            final String[] six = CarDeck.sixFor(prefs.carButtons(), prefs.carLayout());
+            final String[] six = CarDeck.sixFor(prefs.carButtonsFor(prefs.carLayout()), prefs.carLayout());
+            final String bkey = Prefs.buttonsKey(prefs.carLayout()); // (⑪ its own six, the other shapes theirs)
             String[] slots = new String[7];
             for (int i = 0; i < 6; i++) slots[i] = (i + 1) + "వ బటన్: " + CarDeck.buttonName(six[i]);
             slots[6] = "↺ మొదటి ఆరు బటన్లు (ఆకారానివి)";
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                     .setTitle("ఏ స్థానంలో బటన్ మార్చాలి? (ఇంకో చోట ఉన్నది ఎంచుకుంటే రెండూ స్థానాలు మారతాయి)")
                     .setItems(slots, (d, slot) -> {
-                        if (slot == 6) { prefs.sp.edit().remove("car_buttons").apply(); showDeck.run(); return; }
+                        if (slot == 6) { prefs.sp.edit().remove(bkey).apply(); showDeck.run(); return; }
                         new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                                 .setTitle((slot + 1) + "వ బటన్")
                                 .setSingleChoiceItems(CarDeck.BUTTON_NAMES, Math.max(0, CarDeck.buttonIndex(six[slot])), (d2, w) -> {
-                                    prefs.sp.edit().putString("car_buttons", CarDeck.join(CarDeck.put(six, slot, CarDeck.BUTTONS[w]))).apply();
+                                    prefs.sp.edit().putString(bkey, CarDeck.join(CarDeck.put(six, slot, CarDeck.BUTTONS[w]))).apply();
                                     showDeck.run();
                                     d2.dismiss();
                                 }).show();

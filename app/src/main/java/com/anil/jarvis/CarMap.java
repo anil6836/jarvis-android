@@ -341,13 +341,19 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
 
     /** 🌙 The map's colours: dark ↔ day (his choice; "auto" again from 🎛️). */
     private void nightTap() {
+        if (CarBox.moving()) { Toast.makeText(getContext(), "కారు ఆపాక మార్చండి", Toast.LENGTH_SHORT).show(); return; } // (a look: parked only)
         p.sp.edit().putString("car_map_night", dark ? "day" : "night").apply();
         if (lastLook != null) setLook(lastLook);
     }
 
     /** 🧭 The way ahead up ↔ north up. */
     private void rotateTap() {
-        boolean on = !p.carMapRotate();
+        if (CarBox.moving()) { Toast.makeText(getContext(), "కారు ఆపాక, లేదా మాటతో: \"Jarvis, దారి పైకి పెట్టు\" / \"ఉత్తరం పైకి పెట్టు\"", Toast.LENGTH_LONG).show(); return; }
+        setRotate(!p.carMapRotate());
+    }
+
+    /** 🧭 on / off (his tap while parked, or his words any time). */
+    void setRotate(boolean on) {
         p.sp.edit().putBoolean("car_map_rotate", on).apply();
         map.follow = true;
         carCheck();

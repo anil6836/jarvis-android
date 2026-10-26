@@ -525,6 +525,9 @@ final class Prefs {
     String carJarvisSide() { return sp.getString("car_jarvis_side", ""); }
     String carJarvisGlow() { return sp.getString("car_jarvis_glow", ""); }
     String carJarvisRing() { return sp.getString("car_jarvis_ring", ""); }
+    /** 🎛️ ⑪ keeps its own six ("car_buttons_sp"): a change there never changes the other shapes' six (and theirs never ⑪'s). */
+    static String buttonsKey(String shape) { return CarLayout.SPECIAL.equals(shape) ? "car_buttons_sp" : "car_buttons"; }
+    String carButtonsFor(String shape) { return sp.getString(buttonsKey(shape), ""); }
     /** 💬 ⑪: his last words in a bubble beside Jarvis. */
     boolean carTalkBubble() { return sp.getBoolean("car_talk_bubble", true); }
     String carMapCar() { String k = sp.getString("car_map_car", ""); return CarDeck.mapCarIndex(k) < 0 ? "" : k; }

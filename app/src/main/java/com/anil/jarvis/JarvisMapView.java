@@ -203,9 +203,17 @@ final class JarvisMapView extends View {
 
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
+        keepCount();
+        if (rotate && follow && me != null) { double[] c = centerFor(me[0], me[1]); cLat = c[0]; cLon = c[1]; } // (🧭: his car stays at its place)
+    }
+
+    /** As many pictures kept as twice what the screen shows (🧭 turned: a little more, the screen's diagonal). */
+    private void keepCount() {
+        int w = getWidth(), h = getHeight();
         float size = 256 * unit() * 0.7f; // (the smallest a tile is drawn, between zoom levels)
-        float diag = (float) Math.hypot(w, h); // (the map turned: a square around the screen's diagonal)
-        int visible = (int) ((diag / size + 2) * (diag / size + 2));
+        int visible;
+        if (rotate) { float diag = (float) Math.hypot(w, h); visible = (int) ((diag / size + 2) * (diag / size + 2)); }
+        else visible = (int) ((w / size + 2) * (h / size + 2));
         maxTiles = Math.max(60, visible * 2);
     }
 
@@ -235,6 +243,7 @@ final class JarvisMapView extends View {
         calm = lowMotion;
         if (on == rotate) return;
         rotate = on;
+        keepCount();
         if (follow && me != null) { double[] c = centerFor(me[0], me[1]); cLat = c[0]; cLon = c[1]; }
         invalidate();
     }
@@ -459,8 +468,15 @@ final class JarvisMapView extends View {
                 ty0 = (int) Math.floor(cy + (y0 - H / 2f) / size), ty1 = (int) Math.floor(cy + (y1 - H / 2f) / size);
         visZ = z; visX0 = tx0; visX1 = tx1; visY0 = ty0; visY1 = ty1; // (what is on the screen now: a picture asked for earlier and no longer in sight is not fetched)
         RectF r = new RectF();
+        double ra = Math.toRadians(rot), cosR = Math.cos(ra), sinR = Math.sin(ra);
+        float pvx = W / 2f, pvy = pivotY(), reach = size * 0.71f; // (half a picture's diagonal)
         for (int tx = tx0; tx <= tx1; tx++) for (int ty = ty0; ty <= ty1; ty++) {
             if (ty < 0 || ty >= n) continue;
+            if (rot != 0) { // 🧭 the turned screen's corners: a picture wholly outside it is neither drawn nor fetched (Google's are paid)
+                double mx = W / 2f + (tx + 0.5 - cx) * size - pvx, my = H / 2f + (ty + 0.5 - cy) * size - pvy;
+                double sx = pvx + mx * cosR - my * sinR, sy = pvy + mx * sinR + my * cosR;
+                if (sx < -reach || sx > W + reach || sy < -reach || sy > H + reach) continue;
+            }
             int wx = (int) (((tx % (long) n) + (long) n) % (long) n);
             float left = (float) (W / 2f + (tx - cx) * size), top = (float) (H / 2f + (ty - cy) * size);
             String key = z + "/" + wx + "/" + ty;
@@ -613,8 +629,9 @@ final class JarvisMapView extends View {
         float hd = meHeading >= 0 ? meHeading + rot : -1; // (the way he faces on the screen: the map may be turned)
         if (!carKind.isEmpty()) { // 🚙 his car from above (⑪'s choice), or the arrow; his photo when he gave one
             float len = Math.max(34 * d, Math.min(getWidth(), getHeight()) * ("arrow".equals(carKind) ? 0.075f : 0.115f));
-            if ("photo".equals(carKind) && carPhoto != null) CarTop.photo(c, carPhoto, xy[0], xy[1], Math.max(0, hd), len, carNight);
-            else CarTop.draw(c, "photo".equals(carKind) ? "suv" : carKind, xy[0], xy[1], Math.max(0, hd), len, carColour, carNight, carAccent);
+            float deg = meHeading < 0 ? 0 : hd; // (no heading yet: nose up)
+            if ("photo".equals(carKind) && carPhoto != null) CarTop.photo(c, carPhoto, xy[0], xy[1], deg, len, carNight);
+            else CarTop.draw(c, "photo".equals(carKind) ? "suv" : carKind, xy[0], xy[1], deg, len, carColour, carNight, carAccent);
             return;
         }
         if (meHeading >= 0) { // the way he faces: a soft wedge

@@ -225,7 +225,8 @@ final class CarBox {
     }
 
     static void setQuiet(Context c, boolean on) {
-        new Prefs(c).sp.edit().putLong("car_quiet_until", on ? System.currentTimeMillis() + 12 * 3600_000L : 0).apply();
+        long now = System.currentTimeMillis();
+        new Prefs(c).sp.edit().putLong("car_quiet_until", on ? now + 12 * 3600_000L : 0).putLong("car_quiet_at", on ? now : 0).apply();
     }
 
     // ================================================================ the screen's small lines

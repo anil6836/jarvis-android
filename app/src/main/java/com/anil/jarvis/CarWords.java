@@ -19,8 +19,12 @@ final class CarWords {
     private static final Pattern GTILES = Pattern.compile(
             "^(నీ |మన |నా )?(మ్యాప్|మ్యాపు|మేప్)\\s*(లో|మీద)\\s*(గూగుల్|google)\\s*(బొమ్మలు|మ్యాప్)?\\s*" + PUT + "$"
                     + "|^(use |put )?google tiles$");
+    /** (no "చూపించు" here: "నా కారు చూపించు" is a question for Jarvis, never a change of the map's car) */
+    private static final String PUT_CAR = "(పెట్టు|పెట్టండి|పెట్టవా|పెట్టరా|కి మారు|కు మారు|కి మార్చు|కు మార్చు)";
     private static final Pattern CAR = Pattern.compile(
-            "^(మ్యాప్\\s*(లో|మీద)\\s*)?(.+?)\\s*(కారు|car)?\\s*(బొమ్మ)?\\s*(ని|ను)?\\s*" + PUT + "$");
+            "^(మ్యాప్\\s*(లో|మీద)\\s*)?(.+?)\\s*(కారు|car)?\\s*(బొమ్మ)?\\s*(ని|ను)?\\s*" + PUT_CAR + "$");
+    private static final Pattern ROT_ON = Pattern.compile("^((మ్యాప్ )?దారి పైకి (పెట్టు|పెట్టండి|తిప్పు)|మ్యాప్ (తిప్పు|తిరగనివ్వు)|heading up)$");
+    private static final Pattern ROT_OFF = Pattern.compile("^((మ్యాప్ )?ఉత్తరం పైకి (పెట్టు|పెట్టండి)|north up)$");
     private static final Pattern QUIET_ON = Pattern.compile(
             "^(ఈ (ప్రయాణం|ట్రిప్)\\s*)?(నిశ్శబ్దంగా ఉండు|నిశ్శబ్దంగా ఉండండి|నిశ్శబ్దం (పెట్టు|ఆన్ చేయి|ఆన్)|సైలెంట్ గా ఉండు|quiet mode( on)?|be quiet for (this|the) trip)$");
     private static final Pattern QUIET_OFF = Pattern.compile(
@@ -30,7 +34,7 @@ final class CarWords {
     private static final Pattern SMALL_MAP = Pattern.compile("^(మ్యాప్ (చిన్నది|చిన్నగా) (చేయి|చెయ్|పెట్టు)|small map)$");
 
     /**
-     * {"src", "osm" | "google"}, {"car", one of CarDeck.MAP_CARS}, {"quiet", "on" | "off"}, {"map", "big" | "small"};
+     * {"src", "osm" | "google"}, {"car", one of CarDeck.MAP_CARS}, {"quiet", "on" | "off"}, {"map", "big" | "small"}, {"rotate", "on" | "off"};
      * null when it isn't one of these. Pure.
      */
     static String[] parse(String text) {
@@ -44,6 +48,8 @@ final class CarWords {
         if (QUIET_OFF.matcher(t).matches()) return new String[]{"quiet", "off"};
         if (BIG_MAP.matcher(t).matches()) return new String[]{"map", "big"};
         if (SMALL_MAP.matcher(t).matches()) return new String[]{"map", "small"};
+        if (ROT_ON.matcher(t).matches()) return new String[]{"rotate", "on"};
+        if (ROT_OFF.matcher(t).matches()) return new String[]{"rotate", "off"};
         java.util.regex.Matcher m = CAR.matcher(t);
         if (m.matches()) {
             String w = m.group(3).trim();
@@ -65,7 +71,7 @@ final class CarWords {
             case "కాన్సెప్ట్": case "concept": case "ఫ్యూచర్": return "concept";
             case "బాణం": case "బాణాన్ని": case "arrow": case "నావిగేషన్ బాణం": return "arrow";
             case "నీలి చుక్క": case "నీలం చుక్క": case "చుక్క": case "blue dot": case "dot": return "";
-            case "నా కారు ఫోటో": case "నా కారు ఫొటో": case "నా ఫోటో": case "my car photo": case "నా కారు": return "photo";
+            case "నా కారు ఫోటో": case "నా కారు ఫొటో": case "my car photo": return "photo"; // (always with "కారు": "నా ఫోటో" is not this)
             default: return null;
         }
     }

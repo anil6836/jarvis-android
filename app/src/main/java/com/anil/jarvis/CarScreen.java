@@ -368,7 +368,7 @@ final class CarScreen extends FrameLayout {
             @Override public void places() { showWay(); }
             @Override public void expand() { specialFull = !specialFull; carMap.setExpanded(specialFull); relayout(); }
             @Override public void road() { JarvisMaps.openDo(getContext(), "road"); }
-            @Override public void stopWay() { stopWay(); }
+            @Override public void stopWay() { CarScreen.this.stopWay(); } // (the screen's own: asks, then stops)
             @Override public void held() { if (CarLayout.SPECIAL.equals(shape) && !CarBox.moving()) openHub("map"); else JarvisMaps.open(getContext(), ""); }
         });
 
@@ -638,7 +638,7 @@ final class CarScreen extends FrameLayout {
 
     /** What the shape's layout depends on besides the shape (⚙️ choices). */
     private String deckKey() {
-        return prefs.carButtons() + "|" + prefs.carBtnStyle() + "|" + prefs.carJarvis() + "|" + prefs.carText() + "|" + prefs.carDials() + "|" + prefs.carMapTilt()
+        return prefs.carButtons() + "|" + prefs.carButtonsFor(CarLayout.SPECIAL) + "|" + prefs.carBtnStyle() + "|" + prefs.carJarvis() + "|" + prefs.carText() + "|" + prefs.carDials() + "|" + prefs.carMapTilt()
                 + "|" + prefs.carClock() + "|" + prefs.carJarvisSide() + "|" + prefs.carTalkBubble() + "|" + prefs.carJarvisRing();
     }
 
@@ -1256,6 +1256,7 @@ final class CarScreen extends FrameLayout {
                 toast(fav ? "⭐ ఇష్టమైనవిలో చేర్చాను" : "ఇష్టమైనవి నుంచి తీసేశాను");
                 closeSheet();
                 if (CarLayout.DOCK.equals(shape)) railFill(); // (⑩'s rail: his favourites as they are now)
+                if (CarLayout.SPECIAL.equals(shape)) specialApps(); // (⑪'s eight)
                 return true;
             });
             row.addView(cellBox, new LinearLayout.LayoutParams(0, -2, 1));
@@ -1521,10 +1522,14 @@ final class CarScreen extends FrameLayout {
     /** 🔇 The trip's quiet ends by itself when the trip does: parked half an hour. */
     private void quietCheck() {
         Context c = getContext();
-        if (!CarBox.quiet(c)) return;
-        long last = DriveService.lastMovingAt;
-        if (!CarBox.moving() && last > 0 && System.currentTimeMillis() - last > 30 * 60_000L) { CarBox.setQuiet(c, false); setButtons(); }
+        boolean q = CarBox.quiet(c);
+        if (q != quietShown) { quietShown = q; setButtons(); } // (its 12 hours ran out: the button says so)
+        if (!q) return;
+        long last = Math.max(DriveService.lastMovingAt, prefs.sp.getLong("car_quiet_at", 0)); // (said before driving off: counted from then)
+        if (!CarBox.moving() && last > 0 && System.currentTimeMillis() - last > 30 * 60_000L) { CarBox.setQuiet(c, false); quietShown = false; setButtons(); }
     }
+
+    private boolean quietShown;
 
     /** Every 10 s: how long he has driven without a real stop; amber near 2 hours, the tea cup after. */
     private void driveCheck() {
@@ -1642,6 +1647,7 @@ final class CarScreen extends FrameLayout {
         if (cat != null) hubCat = cat;
         hubLook();
         hub.show(hubCat);
+        hub.bringToFront();
         if (awakeShown) awake.bringToFront(); // (the sleep alert's question always on top)
         settingSheet = true;
     }
@@ -1739,8 +1745,14 @@ final class CarScreen extends FrameLayout {
 
     /** 📃 Up next: the music app's own list (only when the app gives it); a tap plays that one. */
     private void showQueue() {
-        JSONObject x = Music.extras(getContext());
-        org.json.JSONArray q = x == null ? null : x.optJSONArray("queue");
+        final Context app = getContext().getApplicationContext();
+        new Thread(() -> { // (the app's list read off the main thread: it may be long)
+            org.json.JSONArray q = Music.queue(app);
+            main.post(() -> queueSheet(q));
+        }, "car-queue").start();
+    }
+
+    private void queueSheet(org.json.JSONArray q) {
         if (q == null || q.length() == 0) { toast("ఈ యాప్ తర్వాతి పాటల జాబితా ఇవ్వదు"); return; }
         List<String[]> rows = new ArrayList<>();
         List<Runnable> acts = new ArrayList<>();
@@ -1753,7 +1765,7 @@ final class CarScreen extends FrameLayout {
             rows.add(new String[]{(it.optBoolean("now") ? "▶ " : "") + (t.isEmpty() ? "పాట" : t)});
             acts.add(() -> { closeSheet(); playerKey("queue:" + id); });
         }
-        openSheet("📃 తర్వాతి పాటలు", x.optString("app").isEmpty() ? null : "మ్యూజిక్ యాప్ ఇచ్చిన జాబితా", rows, acts, 1);
+        openSheet("📃 తర్వాతి పాటలు", "మ్యూజిక్ యాప్ ఇచ్చిన జాబితా", rows, acts, 1);
     }
 
     /** The app chip: the box's music apps (the one playing first); a tap opens it. */
@@ -1914,8 +1926,13 @@ final class CarScreen extends FrameLayout {
                 setButtons();
                 return on ? "సరే, ఈ ప్రయాణం నిశ్శబ్దంగా ఉంటాను: పిలిస్తేనే మాట్లాడతాను. ప్రమాద హెచ్చరికలు మాత్రం చెబుతాను." : "సరే, మళ్ళీ మామూలుగా చెబుతాను.";
             }
+            case "rotate": {
+                boolean on = "on".equals(w[1]);
+                carMap.setRotate(on);
+                return on ? "సరే, మ్యాప్ దారి పైకి: కారుతో తిరుగుతుంది." : "సరే, మ్యాప్ ఉత్తరం పైకి.";
+            }
             case "map": {
-                if (!CarLayout.SPECIAL.equals(shape)) return "పెద్ద మ్యాప్ ⑪ స్పెషల్ ఆకారంలో ఉంది: 🗺️ Jarvis Maps తెరవాలంటే \"Jarvis Maps తెరువు\" అనండి.";
+                if (!CarLayout.SPECIAL.equals(shape)) return null; // (not ⑪: these words go to Jarvis as before)
                 boolean big = "big".equals(w[1]);
                 if (big != specialFull) { specialFull = big; carMap.setExpanded(big); relayout(); }
                 return big ? "సరే, మ్యాప్ పెద్దది చేశాను." : "సరే, మ్యాప్ మామూలుగా పెట్టాను.";
@@ -1993,7 +2010,7 @@ final class CarScreen extends FrameLayout {
 
     /** The six buttons' signs and words for his six (or the shape's). */
     private void setButtons() {
-        sixKinds = CarDeck.sixFor(prefs.carButtons(), shape);
+        sixKinds = CarDeck.sixFor(prefs.carButtonsFor(shape), shape); // (⑪ its own six)
         boolean quiet = CarBox.quiet(getContext());
         for (int i = 0; i < tiles.size() && i < 6; i++) {
             tileIcons.get(i).setKind(iconOf(sixKinds[i]));
@@ -2036,13 +2053,13 @@ final class CarScreen extends FrameLayout {
             acts.add(() -> {
                 closeSheet();
                 if (!parkedOrSay()) return; // (the car moved meanwhile)
-                prefs.sp.edit().putString("car_buttons", CarDeck.join(CarDeck.put(sixKinds, slot, k))).apply();
+                prefs.sp.edit().putString(Prefs.buttonsKey(shape), CarDeck.join(CarDeck.put(sixKinds, slot, k))).apply(); // (⑪'s own six, or the other shapes')
                 deckKey = deckKey();
                 setButtons();
             });
         }
         rows.add(new String[]{"↺ మొదటి ఆరు బటన్లు"});
-        acts.add(() -> { closeSheet(); if (!parkedOrSay()) return; prefs.sp.edit().remove("car_buttons").apply(); deckKey = deckKey(); setButtons(); });
+        acts.add(() -> { closeSheet(); if (!parkedOrSay()) return; prefs.sp.edit().remove(Prefs.buttonsKey(shape)).apply(); deckKey = deckKey(); setButtons(); });
         openSheet("🎛️ ఈ స్థానంలో ఏ బటన్?", "ఇంకో చోట ఉన్న బటన్ ఎంచుకుంటే, రెండూ స్థానాలు మారతాయి.", rows, acts, 2);
         settingSheet = true;
     }
@@ -2571,6 +2588,7 @@ final class CarScreen extends FrameLayout {
         sheet.setVisibility(VISIBLE);
         sheet.setOnClickListener(v -> closeSheet()); // (a tap outside the panel)
         sheetTouched();
+        sheet.bringToFront(); // (over the big player and 🎛️, which may be up)
         if (awakeShown) awake.bringToFront();
     }
 
@@ -2809,9 +2827,11 @@ final class CarScreen extends FrameLayout {
         detach(hero);
         detach(carMap);
         subText.setVisibility(VISIBLE); // (⑪'s bubble may be off: everywhere else his words always show)
-        stateText.setBackground(null); // (⑪'s chip: only in ⑪)
+        stateText.setBackground(null); // (⑪'s chip and bubble: only in ⑪; the other shapes as they always were)
         stateText.setPadding(0, 0, 0, 0);
         stateText.setGravity(Gravity.CENTER);
+        subText.setGravity(Gravity.CENTER);
+        if (W > 0) subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, H / 24f) * textScale);
         boolean special = CarLayout.SPECIAL.equals(s);
         if (!special) specialFull = false;
         carMap.setSpecial(special);

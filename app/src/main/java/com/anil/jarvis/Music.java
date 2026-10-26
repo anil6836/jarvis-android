@@ -296,9 +296,7 @@ final class Music {
             MediaController mc = active(c);
             if (mc == null) return null;
             PlaybackState st = mc.getPlaybackState();
-            List<android.media.session.MediaSession.QueueItem> q = null;
-            try { q = mc.getQueue(); } catch (Exception ignored) {}
-            boolean hasQ = q != null && !q.isEmpty() && st != null && (st.getActions() & A_SKIP_TO_QUEUE_ITEM) != 0;
+            boolean hasQ = st != null && (st.getActions() & A_SKIP_TO_QUEUE_ITEM) != 0; // (the list itself only when he opens 📃: queue())
             int cp = caps(st == null ? 0 : st.getActions(), customs(st), mc.getRatingType(), hasQ);
             int[] a = asked.get(mc.getPackageName());
             boolean liked = false;
@@ -309,20 +307,34 @@ final class Music {
                     if (r != null && r.isRated()) liked = r.getRatingStyle() == android.media.Rating.RATING_HEART ? r.hasHeart() : r.getRatingStyle() == android.media.Rating.RATING_THUMB_UP_DOWN && r.isThumbUp();
                 } catch (Exception ignored) {}
             }
-            JSONArray qa = new JSONArray();
-            if (hasQ) {
-                long cur = st.getActiveQueueItemId();
-                for (int i = 0; i < q.size() && qa.length() < 30; i++) {
-                    android.media.session.MediaSession.QueueItem it = q.get(i);
-                    CharSequence t = it.getDescription().getTitle(), sub = it.getDescription().getSubtitle();
-                    qa.put(new JSONObject().put("id", it.getQueueId()).put("title", t == null ? "" : t.toString()).put("sub", sub == null ? "" : sub.toString()).put("now", it.getQueueId() == cur));
-                }
-            }
             return new JSONObject().put("caps", cp).put("shuffle", a == null ? -1 : a[0]).put("repeat", a == null ? -1 : a[1]).put("liked", liked)
-                    .put("queue", qa).put("app", mc.getPackageName());
+                    .put("app", mc.getPackageName());
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 📃 Up next: the music app's own list from the song now (up to 30 {id, title, sub, now}); empty when the app gives none. */
+    static JSONArray queue(Context c) {
+        JSONArray qa = new JSONArray();
+        try {
+            if (SoundService.radioOn) return qa;
+            MediaController mc = active(c);
+            if (mc == null) return qa;
+            PlaybackState st = mc.getPlaybackState();
+            if (st == null || (st.getActions() & A_SKIP_TO_QUEUE_ITEM) == 0) return qa;
+            List<android.media.session.MediaSession.QueueItem> q = mc.getQueue();
+            if (q == null) return qa;
+            long cur = st.getActiveQueueItemId();
+            int from = 0;
+            for (int i = 0; i < q.size(); i++) if (q.get(i).getQueueId() == cur) { from = i; break; }
+            for (int i = from; i < q.size() && qa.length() < 30; i++) {
+                android.media.session.MediaSession.QueueItem it = q.get(i);
+                CharSequence t = it.getDescription().getTitle(), sub = it.getDescription().getSubtitle();
+                qa.put(new JSONObject().put("id", it.getQueueId()).put("title", t == null ? "" : t.toString()).put("sub", sub == null ? "" : sub.toString()).put("now", it.getQueueId() == cur));
+            }
+        } catch (Exception ignored) {}
+        return qa;
     }
 
     /**

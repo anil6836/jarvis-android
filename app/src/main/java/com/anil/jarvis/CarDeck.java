@@ -504,7 +504,7 @@ final class CarDeck {
             "car_font", "car_card", "car_icons", "car_eq_style", "car_welcome_look", "car_jarvis_look", "car_platform", "car_vinyl", "car_wave",
             "car_route_glow", "car_turn_arrows", "car_map_limit", "car_map_pills", "car_cluster_dial",
             // v4 (26 Oct, ⑪): Jarvis's side and glow, his clothes and skin, the ring under him, the car on the map, the map turning with the car
-            "car_jarvis_side", "car_jarvis_glow", "body_look", "body_skin", "car_jarvis_ring", "car_talk_bubble", "car_map_car", "car_map_rotate"};
+            "car_jarvis_side", "car_jarvis_glow", "body_look", "body_skin", "car_jarvis_ring", "car_talk_bubble", "car_map_car", "car_map_rotate", "car_buttons_sp"};
     /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37). */
     private static int known(int v) { return v >= 4 ? LOOK_KEYS.length : v == 3 ? 37 : v == 2 ? 23 : 0; }
     static final int MINE = 3;
