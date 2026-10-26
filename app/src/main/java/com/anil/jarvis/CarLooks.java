@@ -1206,6 +1206,140 @@ final class CarLooks {
         }
     }
 
+    // ================================================================ ⑫ the song round: its picture, its place, the music all round
+
+    /**
+     * ⑫'s player (27 Oct): the song's picture in a circle, a ring round it that fills as the song goes on, and the music
+     * as coloured bars standing out all round it — the car speakers' own equalizer ({@link CarEq}), the bass at the top,
+     * the same on both sides; nothing made up (no song heard: short still marks). Resting with "fewer movements".
+     */
+    static final class RoundArt extends View {
+        private Bitmap art;
+        private BitmapShader artSh;
+        private final Matrix am = new Matrix();
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF r = new RectF();
+        private final float[] hsv = new float[3];
+        private CarEq eq;
+        private int accent = 0xFF1F8FFF;
+        private boolean light, low, eqOn = true, calm, playing, showArt = true;
+        private long pos = -1, upd, dur = -1, last;
+        private float speed = 1, hue;
+        private Shader blank;
+        private int blankFor;
+        private final Runnable frame = this::invalidate;
+
+        RoundArt(Context c) { super(c); p.setStrokeCap(Paint.Cap.ROUND); }
+
+        void setArt(Bitmap b) {
+            if (b == art) return;
+            art = b;
+            artSh = b == null || b.isRecycled() ? null : new BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            invalidate();
+        }
+
+        void setEq(CarEq e) { eq = e; invalidate(); }
+        void setLook(int accent, boolean light) { this.accent = accent; this.light = light; invalidate(); }
+        void setLowMotion(boolean b) { low = b; invalidate(); }
+        /** His 🎚️ (on / dim / off). */
+        void setEqOn(boolean on, boolean calm) { eqOn = on; this.calm = calm; invalidate(); }
+        /** 💿 the record lies over the middle (its own picture): only the ring and the music here. */
+        void setShowArt(boolean on) { showArt = on; invalidate(); }
+
+        void setTiming(long pos, long upd, float speed, boolean playing, long dur) {
+            this.pos = pos; this.upd = upd; this.speed = speed; this.playing = playing; this.dur = dur;
+            invalidate();
+        }
+
+        @Override protected void onDetachedFromWindow() { super.onDetachedFromWindow(); removeCallbacks(frame); }
+
+        @Override protected void onDraw(Canvas cv) {
+            int w = getWidth(), h = getHeight();
+            if (w <= 0 || h <= 0) return;
+            float s = Math.min(w, h), cx = w / 2f, cy = h / 2f;
+            float eqR0 = s * 0.405f, eqLen = s * 0.088f, ringR = s * 0.355f, ringW = Math.max(2, s * 0.022f), artR = s * 0.315f;
+            long now = SystemClock.uptimeMillis();
+            float dt = last == 0 ? 0.03f : Math.min(0.2f, (now - last) / 1000f);
+            last = now;
+            boolean alive = false;
+            int n = 48;
+            p.setShader(null);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(1.5f, s * 0.013f));
+            if (eq != null && eqOn && !low) { // the music all round (the bass on top, mirrored)
+                eq.tick(now);
+                alive = eq.alive(now);
+                hue = (hue + dt * 14) % 360;
+                for (int i = 0; i < n; i++) {
+                    int k = i < n / 2 ? i : n - 1 - i;
+                    float lv = eq.level[Math.min(CarEq.BARS - 1, k * CarEq.BARS / (n / 2))];
+                    double a = Math.toRadians(-90 + 360.0 * i / n);
+                    float len = eqLen * Math.max(0.12f, lv);
+                    hsv[0] = (hue + i * (300f / n)) % 360; hsv[1] = light ? 0.85f : 0.75f; hsv[2] = light ? 0.9f : 1f;
+                    p.setColor(Color.HSVToColor(lv > 0.02f ? (calm ? 0x70 : 0xD8) : 0x50, hsv));
+                    float c = (float) Math.cos(a), sn = (float) Math.sin(a);
+                    cv.drawLine(cx + c * eqR0, cy + sn * eqR0, cx + c * (eqR0 + len), cy + sn * (eqR0 + len), p);
+                }
+            } else { // resting: short still marks round it
+                p.setColor(CarTheme.withAlpha(accent, 0x44));
+                for (int i = 0; i < n; i++) {
+                    double a = Math.toRadians(-90 + 360.0 * i / n);
+                    float c = (float) Math.cos(a), sn = (float) Math.sin(a), len = eqLen * 0.14f;
+                    cv.drawLine(cx + c * eqR0, cy + sn * eqR0, cx + c * (eqR0 + len), cy + sn * (eqR0 + len), p);
+                }
+            }
+            // the ring: how far the song is
+            p.setStrokeWidth(ringW);
+            r.set(cx - ringR, cy - ringR, cx + ringR, cy + ringR);
+            p.setColor(light ? 0x26000000 : 0x38FFFFFF);
+            cv.drawArc(r, 0, 360, false, p);
+            float f = CarStyle.songFraction(pos, upd, speed, playing, SystemClock.elapsedRealtime(), dur);
+            if (f >= 0) {
+                p.setColor(accent);
+                cv.drawArc(r, -90, Math.max(1, 360 * f), false, p);
+                double a = Math.toRadians(-90 + 360 * f);
+                float kx = cx + (float) (ringR * Math.cos(a)), ky = cy + (float) (ringR * Math.sin(a));
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(0xFFFFFFFF);
+                cv.drawCircle(kx, ky, ringW * 1.15f, p);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(Math.max(1, ringW * 0.45f));
+                p.setColor(accent);
+                cv.drawCircle(kx, ky, ringW * 1.15f, p);
+            }
+            if (showArt) { // the picture, round, a soft shadow under it
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(light ? 0x22000000 : 0x55000000);
+                cv.drawCircle(cx, cy + artR * 0.05f, artR, p);
+                p.setColor(0xFFFFFFFF);
+                if (artSh != null && art != null && !art.isRecycled()) {
+                    float sc = 2 * artR / Math.min(art.getWidth(), art.getHeight());
+                    am.setScale(sc, sc);
+                    am.postTranslate(cx - art.getWidth() * sc / 2f, cy - art.getHeight() * sc / 2f);
+                    artSh.setLocalMatrix(am);
+                    p.setShader(artSh);
+                    cv.drawCircle(cx, cy, artR, p);
+                    p.setShader(null);
+                } else { // no picture: the theme's colour and a note
+                    int key = accent * 31 + Math.round(artR * 10 + cx);
+                    if (blank == null || blankFor != key) { blankFor = key; blank = new LinearGradient(cx - artR, cy - artR, cx + artR, cy + artR, accent, hueShift(accent, -60), Shader.TileMode.CLAMP); }
+                    p.setShader(blank);
+                    cv.drawCircle(cx, cy, artR, p);
+                    p.setShader(null);
+                    p.setColor(0xEEFFFFFF);
+                    p.setTextAlign(Paint.Align.CENTER);
+                    p.setTextSize(artR * 0.9f);
+                    cv.drawText("♪", cx, cy + artR * 0.32f, p);
+                    p.setTextAlign(Paint.Align.LEFT);
+                }
+            }
+            removeCallbacks(frame);
+            if (!isShown()) return;
+            if (alive) postOnAnimationDelayed(frame, tick(33)); // (~30 frames a second while the music is heard)
+            else if (playing) postDelayed(frame, eqOn && !low ? 250 : 1000); // (resting: the ring moves on, new music looked for)
+        }
+    }
+
     // ================================================================ 〰️ 24: the little waves of the song
 
     /** Waves under the song's name (a decoration made from its name), the played part in colour, a dot where it is. */

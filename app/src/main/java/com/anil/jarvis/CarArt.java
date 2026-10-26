@@ -373,7 +373,9 @@ final class CarArt {
                 PAUSE = 29, MAP = 30,
                 // ⑪'s player and buttons (26 Oct)
                 SHUFFLE = 31, REPEAT = 32, REPEAT_ONE = 33, BACK10 = 34, FWD10 = 35, HEART = 36, QUEUE = 37, VOLUME = 38, CAMERA = 39,
-                QUIET = 40, HUB = 41, PERSON = 42;
+                QUIET = 40, HUB = 41, PERSON = 42,
+                // ⑫'s dock (27 Oct): the look's colours, the car, safety, more
+                PALETTE = 43, CAR = 44, SHIELD = 45, GEAR = 46;
         private int kind;
         private int colour = 0xFF5FF3FF;
         private boolean ring; // (the song's play key: a lit round button, so it stands out between ⏮ and ⏭)
@@ -395,9 +397,11 @@ final class CarArt {
         /** 30–32: thin lines (in ink), neon (its own colour, a glowing ring), a colour tile (its own colour, a white sign). */
         void setStyle(int style, int own) { if (style != this.style || own != this.own) { this.style = style; this.own = own; invalidate(); } }
 
-        private boolean chevrons;
+        private boolean chevrons, boards, boardsStill;
         /** 20: a turn's sign as three arrows lighting one after another (left, right, ahead). */
         void setChevrons(boolean on) { if (on != chevrons) { chevrons = on; invalidate(); } }
+        /** ⑭ (27 Oct): the turn's three arrows as yellow road boards, lighting one after another (still: all lit). */
+        void setBoards(boolean on, boolean still) { if (on != boards || still != boardsStill) { boards = on; boardsStill = still; invalidate(); } }
         private final Runnable chevFrame = this::invalidate;
 
         private boolean turnKind() { return kind == LEFT || kind == RIGHT || kind == SLIGHT_LEFT || kind == SLIGHT_RIGHT || kind == AHEAD; }
@@ -416,6 +420,7 @@ final class CarArt {
             cv.save();
             cv.translate((getWidth() - s) / 2f, (getHeight() - s) / 2f);
             cv.scale(u, u);
+            if (boards && turnKind()) { boardsDraw(cv); cv.restore(); return; }
             if (chevrons && turnKind()) { chevronsDraw(cv); cv.restore(); return; }
             if (knob != 0) { knobDraw(cv); cv.restore(); return; }
             int col = colour;
@@ -539,6 +544,31 @@ final class CarArt {
             cv.drawPath(path, p);
             p.setStyle(Paint.Style.STROKE);
             cv.restore();
+        }
+
+        /** ⑭: three yellow boards side by side (stacked for "ahead"), a dark arrow on each the turn's way, lighting in turn. */
+        private void boardsDraw(Canvas cv) {
+            float t = (android.os.SystemClock.uptimeMillis() % 100_000L) / 1000f;
+            int dir = kind == LEFT || kind == SLIGHT_LEFT ? -1 : kind == AHEAD ? 0 : 1;
+            for (int i = 0; i < 3; i++) {
+                float a = boardsStill ? 1f : 0.35f + 0.65f * CarStyle.chevron(i, t);
+                int slot = dir < 0 ? 2 - i : i; // (the first lit board: the tail's side)
+                if (dir == 0) tileR.set(14, 34 - slot * 15.5f, 38, 46 - slot * 15.5f);
+                else tileR.set(2 + slot * 16.5f, 14, 2 + slot * 16.5f + 14.5f, 38);
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(CarTheme.withAlpha(0xFFFFD21A, Math.round(255 * a)));
+                cv.drawRoundRect(tileR, 2.4f, 2.4f, p);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(2.6f);
+                p.setColor(CarTheme.withAlpha(0xFF1A1405, Math.round(255 * Math.max(0.5f, a))));
+                path.rewind();
+                float mx = tileR.centerX(), my = tileR.centerY();
+                if (dir == 0) { path.moveTo(mx - 6, my + 2.5f); path.lineTo(mx, my - 3); path.lineTo(mx + 6, my + 2.5f); }
+                else { path.moveTo(mx - dir * 3, my - 6); path.lineTo(mx + dir * 3, my); path.lineTo(mx - dir * 3, my + 6); }
+                cv.drawPath(path, p);
+            }
+            removeCallbacks(chevFrame);
+            if (!boardsStill && isShown()) postOnAnimationDelayed(chevFrame, CarLooks.tick(66));
         }
 
         /** Three arrows the turn's way, lighting one after another towards its tip (CarStyle.chevron), ~15 frames a second. */
@@ -745,6 +775,31 @@ final class CarArt {
                 case PERSON:
                     q.addCircle(26, 16, 8, Path.Direction.CW);
                     q.moveTo(10, 44); q.quadTo(10, 28, 26, 28); q.quadTo(42, 28, 42, 44);
+                    break;
+                case PALETTE: // a painter's palette with its colour dots
+                    q.moveTo(26, 8); q.cubicTo(14, 8, 7, 17, 7, 27); q.cubicTo(7, 38, 16, 45, 26, 45); q.cubicTo(30, 45, 31, 42, 29, 39);
+                    q.cubicTo(27, 36, 29, 33, 33, 33); q.lineTo(38, 33); q.cubicTo(43, 33, 45, 29, 45, 25); q.cubicTo(45, 15, 37, 8, 26, 8); q.close();
+                    q.addCircle(16, 25, 2.6f, Path.Direction.CW); q.addCircle(21, 16, 2.6f, Path.Direction.CW);
+                    q.addCircle(31, 15, 2.6f, Path.Direction.CW); q.addCircle(17, 35, 2.6f, Path.Direction.CW);
+                    break;
+                case CAR: // a car from the front (no maker's badge)
+                    q.moveTo(11, 29); q.lineTo(15, 18); q.quadTo(16, 15, 19, 15); q.lineTo(33, 15); q.quadTo(36, 15, 37, 18); q.lineTo(41, 29);
+                    q.addRoundRect(8, 29, 44, 39, 4, 4, Path.Direction.CW);
+                    q.moveTo(13, 39); q.lineTo(13, 44); q.moveTo(39, 39); q.lineTo(39, 44);
+                    q.addCircle(15, 34, 1.8f, Path.Direction.CW); q.addCircle(37, 34, 1.8f, Path.Direction.CW);
+                    break;
+                case SHIELD: // a shield with a tick
+                    q.moveTo(26, 7); q.lineTo(42, 13); q.lineTo(42, 25); q.cubicTo(42, 35, 35, 42, 26, 46); q.cubicTo(17, 42, 10, 35, 10, 25); q.lineTo(10, 13); q.close();
+                    q.moveTo(19, 26); q.lineTo(24, 31); q.lineTo(33, 21);
+                    break;
+                case GEAR: // a cog
+                    q.addCircle(26, 26, 6.5f, Path.Direction.CW);
+                    q.addCircle(26, 26, 14, Path.Direction.CW);
+                    for (int k = 0; k < 8; k++) {
+                        double a = Math.PI * k / 4;
+                        q.moveTo(26 + (float) (14 * Math.cos(a)), 26 + (float) (14 * Math.sin(a)));
+                        q.lineTo(26 + (float) (19.5f * Math.cos(a)), 26 + (float) (19.5f * Math.sin(a)));
+                    }
                     break;
                 default: // APPS: four rounded squares
                     q.addRoundRect(9, 9, 23, 23, 4, 4, Path.Direction.CW); q.addRoundRect(29, 9, 43, 23, 4, 4, Path.Direction.CW);

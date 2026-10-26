@@ -47,7 +47,68 @@ final class CarDeck {
 
     /** His six for this shape: his own, else ⑪'s, the 3D shapes', or the classic six. */
     static String[] sixFor(String saved, String shape) {
-        return six(saved, CarLayout.SPECIAL.equals(shape) ? SPECIAL_SIX : CarLayout.deep(shape) ? DEEP_SIX : CLASSIC_SIX);
+        return six(saved, CarLayout.family(shape) ? SPECIAL_SIX : CarLayout.deep(shape) ? DEEP_SIX : CLASSIC_SIX); // (⑫ ⑬ ⑭: ⑪'s six)
+    }
+
+    // ================================================================ stage 2 (27 Oct): ⑫ ⑬ ⑭
+
+    /** ⑫ white glass, ⑭ neon: the shape's own colours (his theme when it is already one of those), else his theme. Pure. */
+    static int themeFor(String shape, int his) {
+        if (CarLayout.GLASS.equals(shape)) return his == 5 || his == 12 ? his : 5;
+        if (CarLayout.NEON.equals(shape)) return his == 3 || his == 11 || his == 13 ? his : 13;
+        return his;
+    }
+
+    /** ⑫ at night: dark only when he chose it ("dark"); else the glass stays white (his choice, never by itself). Pure. */
+    static boolean glassDark(String pref, boolean night) { return night && "dark".equals(pref); }
+    static final String[] GLASS_NIGHTS = {"", "dark"};
+    static final String[] GLASS_NIGHT_NAMES = {"☀️ రాత్రి కూడా తెల్లటి గాజు", "🌙 రాత్రి ముదురు రంగు"};
+
+    /**
+     * ⑬'s wheel in a w × h box: Jarvis's round card on the left (its left, top, size) and n buttons on an arc beside
+     * him (each one's centre), as big as the box lets them be with no button over another or over him — the biggest
+     * size that fits, found by halving. Returns {orbX, orbY, orbD, tileW, tileH, cx0, cy0, cx1, cy1, …}. Pure.
+     */
+    static float[] wheel(int w, int h, int n) {
+        float m = Math.max(2, Math.min(w, h) / 40f);
+        float lo = 1, hi = Math.max(2, Math.min(w, h));
+        float[] best = null;
+        for (int it = 0; it < 40; it++) {
+            float d = (lo + hi) / 2;
+            float[] at = wheelAt(w, h, n, d, m);
+            if (wheelFits(at, w, h, n, m)) { lo = d; best = at; } else hi = d;
+        }
+        return best != null ? best : wheelAt(w, h, n, 1, m);
+    }
+
+    /** The button's width (part of Jarvis's size), its gap from him (part of its width), the arc's spread (degrees). */
+    private static final float WHEEL_TILE = 0.36f, WHEEL_GAP = 0.9f, WHEEL_SPREAD = 170;
+
+    private static float[] wheelAt(int w, int h, int n, float d, float m) {
+        float tw = d * WHEEL_TILE, th = tw * 1.1f, r = d / 2f + tw * WHEEL_GAP;
+        float ox = m, oy = (h - d) / 2f, cx = ox + d / 2f, cy = h / 2f;
+        float[] out = new float[5 + 2 * Math.max(0, n)];
+        out[0] = ox; out[1] = oy; out[2] = d; out[3] = tw; out[4] = th;
+        for (int i = 0; i < n; i++) {
+            double a = Math.toRadians(n == 1 ? 0 : -WHEEL_SPREAD / 2 + WHEEL_SPREAD * i / (n - 1));
+            out[5 + 2 * i] = cx + (float) (r * Math.cos(a));
+            out[6 + 2 * i] = cy + (float) (r * Math.sin(a));
+        }
+        return out;
+    }
+
+    private static boolean wheelFits(float[] at, int w, int h, int n, float m) {
+        float d = at[2], tw = at[3], th = at[4], cx = at[0] + d / 2f, cy = at[1] + d / 2f;
+        if (at[1] < m - 0.01f || at[0] + d > w - m) return false;
+        for (int i = 0; i < n; i++) {
+            float x = at[5 + 2 * i], y = at[6 + 2 * i];
+            if (x - tw / 2 < m || x + tw / 2 > w - m || y - th / 2 < m || y + th / 2 > h - m) return false;
+            if (Math.hypot(x - cx, y - cy) < d / 2 + tw * 0.45f) return false; // (never over Jarvis)
+            for (int k = i + 1; k < n; k++) {
+                if (Math.abs(x - at[5 + 2 * k]) < tw && Math.abs(y - at[6 + 2 * k]) < th) return false; // (never one over another)
+            }
+        }
+        return true;
     }
 
     /** The same with a shape's own six as the default (⑪'s). */
@@ -504,15 +565,17 @@ final class CarDeck {
             "car_font", "car_card", "car_icons", "car_eq_style", "car_welcome_look", "car_jarvis_look", "car_platform", "car_vinyl", "car_wave",
             "car_route_glow", "car_turn_arrows", "car_map_limit", "car_map_pills", "car_cluster_dial",
             // v4 (26 Oct, ⑪): Jarvis's side and glow, his clothes and skin, the ring under him, the car on the map, the map turning with the car
-            "car_jarvis_side", "car_jarvis_glow", "body_look", "body_skin", "car_jarvis_ring", "car_talk_bubble", "car_map_car", "car_map_rotate", "car_buttons_sp"};
-    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37). */
-    private static int known(int v) { return v >= 4 ? LOOK_KEYS.length : v == 3 ? 37 : v == 2 ? 23 : 0; }
+            "car_jarvis_side", "car_jarvis_glow", "body_look", "body_skin", "car_jarvis_ring", "car_talk_bubble", "car_map_car", "car_map_rotate", "car_buttons_sp",
+            // v5 (27 Oct, ⑫ ⑬ ⑭): ⑫'s glass at night
+            "car_glass_night"};
+    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37, v4 the first 46). */
+    private static int known(int v) { return v >= 5 ? LOOK_KEYS.length : v == 4 ? 46 : v == 3 ? 37 : v == 2 ? 23 : 0; }
     static final int MINE = 3;
 
     /** The look now (from all the settings) as one line to keep. */
     static String keep(Map<String, ?> all) {
         JSONObject o = new JSONObject();
-        try { o.put("v", 4); } catch (Exception ignored) {} // (v4: every look key there; an older one only knew some)
+        try { o.put("v", 5); } catch (Exception ignored) {} // (v5: every look key there; an older one only knew some)
         for (String k : LOOK_KEYS) {
             Object v = all == null ? null : all.get(k);
             try { if (v instanceof Integer || v instanceof Boolean || v instanceof String) o.put(k, v); } catch (Exception ignored) {}

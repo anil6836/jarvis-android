@@ -317,7 +317,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         int v = on ? VISIBLE : GONE, old = on ? GONE : VISIBLE;
         topBar.setVisibility(v);
         sideSp.setVisibility(v);
-        expandBtn.setVisibility(v);
+        expandBtn.setVisibility(on && expandable ? VISIBLE : GONE);
         roadBtn.setVisibility(v);
         parkChip.setVisibility(v);
         side.setVisibility(old);
@@ -328,6 +328,33 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
 
     /** ⑪'s ⤢: the map big now (its sign shows the way back). */
     void setExpanded(boolean big) { expandBtn.setText(big ? "⤡" : "⤢"); }
+
+    // stage 2 (27 Oct): ⑬'s song floats over the map's foot (the map's own buttons keep clear of it); ⑬ has no ⤢ (the map is big
+    // already); ⑭'s turn card as yellow road boards
+    private int padL, padT, padR, padB;
+    private boolean expandable = true, boards;
+
+    /** Room kept free at the map's edges for cards lying over it: its buttons, chips and the credit stay inside. */
+    void setPads(int l, int t, int r, int b) {
+        if (l == padL && t == padT && r == padR && b == padB) return;
+        padL = l; padT = t; padR = r; padB = b;
+        sizes(getWidth(), getHeight());
+    }
+
+    /** ⤢ shown (⑪ ⑫ ⑭) or not (⑬: the map is the screen already). */
+    void setExpandable(boolean on) {
+        if (on == expandable) return;
+        expandable = on;
+        expandBtn.setVisibility(special && on ? VISIBLE : GONE);
+        sizes(getWidth(), getHeight());
+    }
+
+    /** ⑭: the turn's arrows as yellow boards, the distance in yellow (the other shapes as they always were). */
+    void setBoards(boolean on) {
+        if (on == boards) return;
+        boards = on;
+        if (lastLook != null) setLook(lastLook); else sizes(getWidth(), getHeight());
+    }
 
     /** 🚦 Traffic: Google's map only (the free map has none: said honestly). */
     private void trafficTap() {
@@ -433,6 +460,15 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         try { r.run(); } catch (Exception e) { Toast.makeText(getContext(), "అది ఇప్పుడు కాలేదు", Toast.LENGTH_SHORT).show(); }
     }
 
+    /** ⑭'s turn card: dark, a yellow edge. */
+    private GradientDrawable boardCard(float r) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(0xF2140A24);
+        g.setCornerRadius(r);
+        g.setStroke(Math.max(2, dp(2f)), 0xFFFFD21A);
+        return g;
+    }
+
     private GradientDrawable card(float r, boolean lit) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(fillCol);
@@ -466,11 +502,11 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         mapPill.setPadding(pad * 2, pad, pad * 2, pad);
         mapPill.setBackground(card(999, true));
         LayoutParams pl = (LayoutParams) mapPill.getLayoutParams();
-        pl.setMargins(0, pad, pad, 0);
+        pl.setMargins(0, pad + padT, pad + padR, 0);
         mapPill.setLayoutParams(pl);
         mapPill.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         LayoutParams cl = (LayoutParams) chipScroll.getLayoutParams(); // (the chips scroll beside it, never under it)
-        cl.setMargins(0, 0, mapPill.getMeasuredWidth() + pad * 2, 0);
+        cl.setMargins(padL, padT, mapPill.getMeasuredWidth() + pad * 2 + padR, 0);
         chipScroll.setLayoutParams(cl);
         for (TextView t : sideViews) {
             t.setTextSize(TypedValue.COMPLEX_UNIT_PX, btn * 0.42f);
@@ -501,41 +537,44 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
             t.setLayoutParams(lp);
         }
         topBar.setPadding(pad, pad, pad, 0);
+        LayoutParams tbl = (LayoutParams) topBar.getLayoutParams();
+        tbl.setMargins(padL, padT, padR, 0);
+        topBar.setLayoutParams(tbl);
         expandBtn.setTextSize(TypedValue.COMPLEX_UNIT_PX, sbtn * 0.45f);
         expandBtn.setBackground(card(sbtn * 0.28f, true));
         LayoutParams el = (LayoutParams) expandBtn.getLayoutParams();
         el.width = sbtn;
         el.height = sbtn;
-        el.setMargins(0, 0, pad, pad);
+        el.setMargins(0, 0, pad + padR, pad + padB);
         expandBtn.setLayoutParams(el);
         int spTop = special ? barH + pad : 0; // (⑪: the chips under the search bar)
         LayoutParams csl = (LayoutParams) chipScroll.getLayoutParams();
-        csl.topMargin = spTop;
-        if (special) csl.rightMargin = sbtn + pad * 2;
+        csl.topMargin = spTop + padT;
+        if (special) csl.rightMargin = sbtn + pad * 2 + padR;
         chipScroll.setLayoutParams(csl);
         int chipsH = (int) (txt * 2.6f) + pad * 2;
-        int spRoom = Math.max(0, (h <= 0 ? dp(400) : h) - spTop - chipsH - sbtn - pad * 3);
+        int spRoom = Math.max(0, (h <= 0 ? dp(400) : h) - spTop - chipsH - sbtn - pad * 3 - padT - padB);
         int spEach = sbtn + pad * 2 / 3;
         boolean spZoom = spRoom >= sideSpViews.size() * spEach;
         for (int i = 0; i < sideSpViews.size(); i++) sideSpViews.get(i).setVisibility(i >= sideSpViews.size() - 2 && !spZoom ? GONE : VISIBLE);
         LayoutParams spl = (LayoutParams) sideSp.getLayoutParams();
-        spl.setMargins(0, spTop + chipsH - pad, pad, 0);
+        spl.setMargins(0, spTop + chipsH - pad + padT, pad + padR, 0);
         sideSp.setLayoutParams(spl);
         // the buttons between the chips and the bottom row + the map's credit (never over the credit), centred in that room;
         // too little room (a small screen): ＋ － go (a pinch still zooms, ⤢ has the big map)
         int topRoom = (int) (txt * 2.6f) + pad * 2, bottomRoom = (int) (txt * 1.15f * 1.4f) + pad * 3 + dp(44);
-        int room = Math.max(0, (h <= 0 ? dp(400) : h) - topRoom - bottomRoom), each = btn + pad;
+        int room = Math.max(0, (h <= 0 ? dp(400) : h) - topRoom - bottomRoom - padT - padB), each = btn + pad;
         boolean zoomFits = room >= sideViews.size() * each;
         int shownBtns = zoomFits ? sideViews.size() : sideViews.size() - 2;
         for (int i = 0; i < sideViews.size(); i++) sideViews.get(i).setVisibility(i >= sideViews.size() - 2 && !zoomFits ? GONE : VISIBLE);
         LayoutParams sl = (LayoutParams) side.getLayoutParams();
         sl.gravity = Gravity.END | Gravity.TOP;
-        sl.setMargins(0, topRoom + Math.max(0, (room - shownBtns * each) / 2), pad, 0);
+        sl.setMargins(0, topRoom + padT + Math.max(0, (room - shownBtns * each) / 2), pad + padR, 0);
         side.setLayoutParams(sl);
         turn.setPadding(pad * 2, pad, pad * 3, pad);
-        turn.setBackground(card(pad * 2.5f, true));
+        turn.setBackground(boards ? boardCard(pad * 2.5f) : card(pad * 2.5f, true));
         LayoutParams tl = (LayoutParams) turn.getLayoutParams();
-        tl.setMargins(pad, (int) (txt * 2.6f) + pad * 2 + spTop, (special ? sbtn : btn) + pad * 3, 0);
+        tl.setMargins(pad + padL, (int) (txt * 2.6f) + pad * 2 + spTop + padT, (special ? sbtn : btn) + pad * 3 + padR, 0);
         turn.setLayoutParams(tl);
         LinearLayout.LayoutParams il = new LinearLayout.LayoutParams((int) (big * 2.2f), (int) (big * 2.2f));
         il.setMargins(0, 0, pad * 2, 0);
@@ -560,7 +599,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         badge.setLayoutParams(bp);
         badge.setColours(fillCol, textMain, false);
         LayoutParams bl = (LayoutParams) bottom.getLayoutParams();
-        bl.setMargins(pad, 0, special ? sbtn + pad * 2 : 0, pad);
+        bl.setMargins(pad + padL, 0, (special && expandable ? sbtn + pad * 2 : 0) + padR, pad + padB);
         bottom.setLayoutParams(bl);
         note.setTextSize(TypedValue.COMPLEX_UNIT_PX, txt * 0.9f);
         note.setTextColor(0xFFFFE0A0);
@@ -568,7 +607,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         note.setBackground(card(pad * 2, false));
         note.setMaxWidth(Math.max(dp(160), (int) (w * 0.5f)));
         LayoutParams nl = (LayoutParams) note.getLayoutParams();
-        nl.setMargins(0, 0, btn + pad * 3, pad);
+        nl.setMargins(0, 0, btn + pad * 3 + padR, pad + padB);
         note.setLayoutParams(nl);
     }
 
@@ -596,6 +635,8 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         turnIcon.setColour(look.light ? 0xFF0B1118 : 0xFFFFFFFF);
         boolean low = p.carLowMotion();
         turnIcon.setChevrons(p.carTurnArrows() && !low); // 20
+        turnIcon.setBoards(boards, low || !p.carTurnArrows()); // ⑭'s yellow boards (still with "fewer movements" or his arrows off)
+        if (boards) turn1.setTextColor(0xFFFFD21A);
         map.setRouteGlow(p.carRouteGlow()); // 19
         flow.setMoving(!low);
         badge.setLowMotion(low);

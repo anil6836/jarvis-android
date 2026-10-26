@@ -128,6 +128,18 @@ final class CarScreen extends FrameLayout {
     private final CarPlayer player, bigPlayer;
     private final CarHub hub;
     private boolean specialFull;
+    // ✨ stage 2 (27 Oct): ⑪'s parts in new places — ⑫ the glass with the dock, ⑬ the big map with Jarvis's wheel, ⑭ neon
+    private final FrameLayout g12, g13Mid;
+    private final LinearLayout g12Col, g12Top, g12Left, g12Mid, g12Right, g12Dock, g12DockEnd, g13Left, g13Right, g14Main, g14Side, g14Bottom;
+    private final View g12Gap, g12DockGap;
+    private final List<View> dockItems = new ArrayList<>();
+    private final List<CarArt.Icon> dockIcons = new ArrayList<>();
+    private final List<TextView> dockWords = new ArrayList<>();
+    private final CarWheel wheel;
+    private final android.widget.ScrollView appsV;
+    private final android.widget.HorizontalScrollView appsH;
+    private final LinearLayout appsVList, appsHList;
+    private boolean eqOnPlayer;
     private String hubCat = "jarvis";
     private Typeface numFont;
     private android.graphics.Bitmap artNow;
@@ -384,7 +396,7 @@ final class CarScreen extends FrameLayout {
             @Override public void expand() { specialFull = !specialFull; carMap.setExpanded(specialFull); relayout(); }
             @Override public void road() { JarvisMaps.openDo(getContext(), "road"); }
             @Override public void stopWay() { CarScreen.this.stopWay(); } // (the screen's own: asks, then stops)
-            @Override public void held() { if (CarLayout.SPECIAL.equals(shape) && !CarBox.moving()) openHub("map"); else JarvisMaps.open(getContext(), ""); }
+            @Override public void held() { if (CarLayout.family(shape) && !CarBox.moving()) openHub("map"); else JarvisMaps.open(getContext(), ""); }
         });
 
         // ---- 🎛️ ① ② ③'s cards (not on the screen until a 3D shape wants them): the parts above are put into them
@@ -420,7 +432,7 @@ final class CarScreen extends FrameLayout {
         for (String[] ch : CarMap.CHIPS) chip(a, ch[0], () -> JarvisMaps.openAlong(getContext(), ch[1], ch[2]));
         chip(a, "➕ అన్నీ", () -> JarvisMaps.open(getContext(), ""));
         alongScroll.addView(alongRow, new FrameLayout.LayoutParams(-1, -1));
-        gauge.setOnLongClickListener(v -> { if (CarBox.moving()) return false; if (CarLayout.SPECIAL.equals(shape)) openHub("meter"); else chooseGauge(); return true; }); // (held, parked: the speed's look)
+        gauge.setOnLongClickListener(v -> { if (CarBox.moving()) return false; if (CarLayout.family(shape)) openHub("meter"); else chooseGauge(); return true; }); // (held, parked: the speed's look)
 
         // ---- ⑧ the stage: 🗺️ 🎲 🎤 down the left, Jarvis big under a light, ✕ to leave it for this song
         stageLeft = column(a);
@@ -450,7 +462,7 @@ final class CarScreen extends FrameLayout {
         mapGap.setText("🗺️ Google Maps ఇక్కడ వస్తుంది\n(రాకపోతే ఇక్కడ నొక్కండి)");
         mapGap.setGravity(Gravity.CENTER);
         mapGap.setOnClickListener(v -> tap(() -> toast(openBeside())));
-        portal.setOnLongClickListener(v -> { if (CarBox.moving()) return false; if (CarLayout.SPECIAL.equals(shape)) openHub("jarvis"); else chooseJarvis(); return true; }); // (held, parked: Jarvis's size — ⑪: his page; moving: the tap)
+        portal.setOnLongClickListener(v -> { if (CarBox.moving()) return false; if (CarLayout.family(shape)) openHub("jarvis"); else chooseJarvis(); return true; }); // (held, parked: Jarvis's size — ⑪ ⑫ ⑬ ⑭: his page; moving: the tap)
 
         // ---- ⑨ ⑩'s own rows (not on the screen until those shapes want them)
         clusterBox = column(a);
@@ -526,7 +538,7 @@ final class CarScreen extends FrameLayout {
         player = new CarPlayer(a, playerL);
         player.setFew(true); // (his word, 26 Oct: only 🔀 ⏮ ⏯ ⏭ 🔁 here, big 3D buttons; the big player keeps all ten)
         player.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("music"); return true; });
-        player.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (CarLayout.SPECIAL.equals(shape)) playerEq(); });
+        player.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (eqOnPlayer) playerEq(); });
         bigBox = new FrameLayout(a); // (the picture tapped: the player big over the screen; a tap outside, or 40 s, and it goes)
         bigBox.setBackgroundColor(0xCC000000);
         bigBox.setVisibility(GONE);
@@ -535,6 +547,60 @@ final class CarScreen extends FrameLayout {
         bigPlayer = new CarPlayer(a, playerL);
         bigPlayer.setClickable(true);
         bigBox.addView(bigPlayer, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        // ---- ✨ stage 2: ⑫ ⑬ ⑭'s own rows (not on the screen until those shapes want them)
+        g12 = new FrameLayout(a);
+        g12Col = column(a);
+        g12Top = row(a);
+        g12Left = column(a);
+        g12Mid = column(a);
+        g12Right = column(a);
+        g12Dock = row(a);
+        g12DockEnd = row(a);
+        g12Gap = new View(a); // (the speed rises into it)
+        g12DockGap = new View(a); // (the speed stands on it)
+        Object[][] dock = {{CarArt.Icon.APPS, "యాప్స్", null}, {CarArt.Icon.MAP, "మ్యాప్", "map"}, {CarArt.Icon.MUSIC, "పాటలు", "music"},
+                {CarArt.Icon.PERSON, "Jarvis", "jarvis"}, {CarArt.Icon.PALETTE, "రూపం", "look"}, {CarArt.Icon.CLOCK, "మీటర్", "meter"},
+                {CarArt.Icon.CAR, "కారు", "car"}, {CarArt.Icon.SHIELD, "భద్రత", "safe"}, {CarArt.Icon.GEAR, "ఇంకా", "more"}};
+        for (Object[] d : dock) { // ⑫'s dock: a tap opens that part of 🎛️ (parked; ▦ his apps any time)
+            LinearLayout it = column(a);
+            it.setGravity(Gravity.CENTER);
+            it.setClickable(true);
+            CarArt.Icon ic = new CarArt.Icon(a, (Integer) d[0]);
+            ic.setFill(0.72f);
+            it.addView(ic, new LinearLayout.LayoutParams(-1, 0, 60));
+            TextView w = autoText(a, (String) d[1], false, 24);
+            w.setGravity(Gravity.CENTER);
+            it.addView(w, new LinearLayout.LayoutParams(-1, 0, 32));
+            final String cat = (String) d[2];
+            it.setOnClickListener(v -> tap(() -> { if (cat == null) showApps(); else openHub(cat); }));
+            it.setOnTouchListener((v, ev) -> { // (a press shows at once)
+                if (ev.getAction() == MotionEvent.ACTION_DOWN) v.setAlpha(0.6f);
+                else if (ev.getAction() == MotionEvent.ACTION_UP || ev.getAction() == MotionEvent.ACTION_CANCEL) v.setAlpha(1f);
+                return false;
+            });
+            dockItems.add(it);
+            dockIcons.add(ic);
+            dockWords.add(w);
+            autoMax.put(w, 24);
+        }
+        wheel = new CarWheel(a);
+        g13Left = column(a);
+        g13Mid = new FrameLayout(a);
+        g13Right = column(a);
+        appsV = new android.widget.ScrollView(a); // ⑬'s apps standing down the right
+        appsV.setVerticalScrollBarEnabled(false);
+        appsVList = column(a);
+        appsV.addView(appsVList, new android.widget.ScrollView.LayoutParams(-1, -2));
+        appsV.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (r0 - l0 != or - ol && spAppsNow != null) main.post(() -> appsShow(spAppsNow)); });
+        appsH = new android.widget.HorizontalScrollView(a); // ⑭'s lying in a row
+        appsH.setHorizontalScrollBarEnabled(false);
+        appsHList = row(a);
+        appsH.addView(appsHList, new FrameLayout.LayoutParams(-2, -1));
+        appsH.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (b0 - t0 != ob - ot && spAppsNow != null) main.post(() -> appsShow(spAppsNow)); });
+        g14Main = column(a);
+        g14Side = column(a);
+        g14Bottom = row(a);
+
         hub = new CarHub(a, prefs, new CarHub.Host() {
             @Override public void changed(String key) { hubChanged(key); }
             @Override public void act(String id) { hubAct(id); }
@@ -581,6 +647,7 @@ final class CarScreen extends FrameLayout {
 
         beat = new CarBeat(per -> { if (dancing) { portal.body.rig.setBeat(per); portal.beat(); } lights.beat(); });
         eqDraw = new CarKit.Spectrum(beat.eq);
+        player.setEq(beat.eq, prefs.carEq() && !prefs.carLowMotion(), "dim".equals(prefs.carEqLevel()), prefs.carLowMotion()); // (⑫: the music round the picture)
         musicText.setShadowLayer(3, 0, 1, 0xCC000000); // (readable over the equalizer's bars)
         songSub.setShadowLayer(3, 0, 1, 0xCC000000);
         portal.body.rig.setLook(prefs.bodyLook());
@@ -630,7 +697,7 @@ final class CarScreen extends FrameLayout {
         portal.body.rig.setSkin(prefs.bodySkin());
         palette();
         hubLook();
-        if (CarLayout.SPECIAL.equals(shape)) specialApps(); // (his favourites may have changed in ⚙️)
+        if (CarLayout.family(shape)) specialApps(); // (his favourites may have changed in ⚙️)
         showTalk();
         if (CarLayout.DOCK.equals(shape)) railFill();
         if (dayNightCheck()) { nightLight(); return; } // (his day / night theme just went on: all of it is fresh)
@@ -678,7 +745,7 @@ final class CarScreen extends FrameLayout {
             roadCheck();
             boardCheck();
             saverCheck();
-            if (++ticks % 2 == 0) { musicCheck(); dialsCheck(); if (CarLayout.SPECIAL.equals(shape)) specialInfo(); }
+            if (++ticks % 2 == 0) { musicCheck(); dialsCheck(); if (CarLayout.family(shape)) specialInfo(); }
             if (ticks % 10 == 1) { driveCheck(); quietCheck(); }
             main.postDelayed(this, 1000);
         }
@@ -699,7 +766,7 @@ final class CarScreen extends FrameLayout {
         int h12 = h % 12 == 0 ? 12 : h % 12;
         clock.setText(String.format(Locale.ROOT, "%d:%02d", h12, m));
         clockFace.invalidate();
-        date.setText(CarLayout.SPECIAL.equals(shape) ? DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)] // (⑪'s small clock card: the day and the date, whole)
+        date.setText(CarLayout.family(shape) ? DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)] // (⑪'s small clock card: the day and the date, whole)
                 : HomeScreen.partOfDay(h) + " · " + DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)]);
         boolean n = nightNow();
         if (n != night) { night = n; if (!dayNightCheck()) palette(); }
@@ -870,9 +937,9 @@ final class CarScreen extends FrameLayout {
         stateText.setText(st);
         subText.setText(sub);
         subText.setMaxLines(moving ? 2 : 3);
-        if (subText.getParent() == jCard) { // ⑪: the bubble over Jarvis only with his words (what he hears / says), never the hint (his word, 26 Oct)
+        if (subText.getParent() == jCard || CarLayout.FULLMAP.equals(shape)) { // ⑪ ⑫ ⑭: the bubble over Jarvis only with his words (what he hears / says), never the hint (his word, 26 Oct); ⑬ under his wheel the same
             boolean words = !sub.isEmpty() && !sub.equals(hint()) && prefs.carTalkBubble();
-            subText.setVisibility(words ? VISIBLE : GONE);
+            subText.setVisibility(words ? VISIBLE : subText.getParent() == jCard ? GONE : INVISIBLE);
         }
     }
 
@@ -978,9 +1045,12 @@ final class CarScreen extends FrameLayout {
 
     /** ⑪ ⤢ big map: the road card only for the AC question (the parked card and the rest stay off there: his word). */
     private void roadFull() {
-        boolean onlyAc = specialFull && CarLayout.SPECIAL.equals(shape);
+        boolean onlyAc = specialFull && CarLayout.family(shape) || CarLayout.FULLMAP.equals(shape); // (⑬: the card floats on the map only for the question)
         int v = !onlyAc || acAt > 0 ? VISIBLE : GONE;
-        if (roadCard.getVisibility() != v) roadCard.setVisibility(v);
+        if (roadCard.getVisibility() != v) {
+            roadCard.setVisibility(v);
+            if (roadCard.getParent() == g13Mid) shapeSizes(); // (⑬: the map's buttons above the question while it is up)
+        }
     }
 
     // ---- 🙂 P4: Jarvis with the road — he points at the turn, worries over the limit, a thumbs-up for an answered
@@ -1133,7 +1203,7 @@ final class CarScreen extends FrameLayout {
         if (show != (board.getVisibility() == VISIBLE)) {
             int v = show ? GONE : VISIBLE;
             for (View x : new View[]{gauge, hero, clock, clockFace, date, minis, driveChip, mapTilt, bigDial}) x.setVisibility(v);
-            if (CarLayout.SPECIAL.equals(shape)) { carMap.setVisibility(v); player.setVisibility(v); } // (⑪: the question where the map and the player were)
+            if (CarLayout.family(shape)) { carMap.setVisibility(v); player.setVisibility(v); } // (⑪ ⑫ ⑬ ⑭: the question where the map and the player were)
             board.setVisibility(show ? VISIBLE : GONE);
         }
         if (!show) return;
@@ -1273,7 +1343,7 @@ final class CarScreen extends FrameLayout {
                 toast(fav ? "⭐ ఇష్టమైనవిలో చేర్చాను" : "ఇష్టమైనవి నుంచి తీసేశాను");
                 closeSheet();
                 if (CarLayout.DOCK.equals(shape)) railFill(); // (⑩'s rail: his favourites as they are now)
-                if (CarLayout.SPECIAL.equals(shape)) specialApps(); // (⑪'s eight)
+                if (CarLayout.family(shape)) specialApps(); // (⑪ ⑫ ⑬ ⑭'s apps)
                 return true;
             });
             row.addView(cellBox, new LinearLayout.LayoutParams(0, -2, 1));
@@ -1619,9 +1689,11 @@ final class CarScreen extends FrameLayout {
         detach(stateText);
         detach(subText);
         jCard.addView(portal, new FrameLayout.LayoutParams(-1, -1));
-        if (!specialFull) jCard.addView(stateText, new FrameLayout.LayoutParams(1, 1, Gravity.TOP | Gravity.START)); // (⤢ big map: no line over Jarvis — his word, 26 Oct)
-        jCard.addView(subText, new FrameLayout.LayoutParams(1, -2, Gravity.TOP | Gravity.END));
-        subText.setVisibility(GONE); // (showTalk shows it when he has words)
+        if (!specialFull && CarLayout.SPECIAL.equals(shape)) jCard.addView(stateText, new FrameLayout.LayoutParams(1, 1, Gravity.TOP | Gravity.START)); // (⤢ big map, ⑫ ⑬ ⑭: no line over Jarvis — his word, 26 Oct)
+        if (!CarLayout.FULLMAP.equals(shape)) { // (⑬'s round card: his words under the wheel instead)
+            jCard.addView(subText, new FrameLayout.LayoutParams(1, -2, Gravity.TOP | Gravity.END));
+            subText.setVisibility(GONE); // (showTalk shows it when he has words)
+        }
         if (look != null) stateText.setBackground(round(look.light ? 0xCCFFFFFF : 0x99060A10, CarTheme.withAlpha(accent, 0x88), 999));
         int pd = Math.max(4, Math.min(Math.max(W, 600), Math.max(H, 300)) / 70);
         stateText.setPadding(pd * 2, 0, pd * 2, 0);
@@ -1633,7 +1705,7 @@ final class CarScreen extends FrameLayout {
     private void specialLook(float rad) {
         for (View card : new View[]{jCard, spMeter, spApps, spRoadCard}) card.setBackground(CarArt.glass(look, rad, false));
         portal.setGlow(CarDeck.glowColour(prefs.carJarvisGlow())); // 🌟
-        portal.setRings(CarDeck.ringOn(prefs.carJarvisRing(), CarLayout.SPECIAL.equals(shape))); // 💫
+        portal.setRings(CarDeck.ringOn(prefs.carJarvisRing(), CarLayout.family(shape))); // 💫
         wideJ.setBackground(round(CarTheme.withAlpha(0xFF6A3DE8, 0x66), CarTheme.withAlpha(0xFFB08CFF, 0xCC), 14));
         wideHub.setBackground(round(CarTheme.withAlpha(0xFF14806E, 0x66), CarTheme.withAlpha(0xFF4DFFC8, 0xAA), 14));
         wideTalk.setBackground(round(CarTheme.withAlpha(accent, 0x2E), CarTheme.withAlpha(accent, 0xDD), 14));
@@ -1644,7 +1716,7 @@ final class CarScreen extends FrameLayout {
         }
         spAppsTitle.setTextColor(textMain);
         spAppsEdit.setTextColor(accent);
-        if (spAppsNow != null) fillSpecialApps(spAppsNow); // (the colours of the theme now)
+        if (spAppsNow != null) appsShow(spAppsNow); // (the colours of the theme now)
         roadCaption.setTextColor(look.light ? 0xFF0B1118 : Color.WHITE);
         if (stateText.getParent() == jCard) stateText.setBackground(round(look.light ? 0xCCFFFFFF : 0x99060A10, CarTheme.withAlpha(accent, 0x88), 999));
         for (CarPlayer cp : new CarPlayer[]{player, bigPlayer}) {
@@ -1708,7 +1780,7 @@ final class CarScreen extends FrameLayout {
 
     private void hubLook() {
         if (look == null) return;
-        hub.setLook(textMain, textSoft, accent, look.light ? 0xF2F4F7FA : 0xF20A1220, look.light, "right".equals(prefs.carJarvisSide()));
+        hub.setLook(textMain, textSoft, accent, look.light ? 0xF2F4F7FA : 0xF20A1220, look.light, jarvisRight()); // (the panel on the other side from him)
     }
 
     /** A choice made in 🎛️: the screen takes it now. */
@@ -1872,8 +1944,63 @@ final class CarScreen extends FrameLayout {
             List<Object[]> list;
             try { list = CarApps.list(app, prefs, true); } catch (Exception e) { list = new ArrayList<>(); }
             final List<Object[]> got = list;
-            main.post(() -> fillSpecialApps(got));
+            main.post(() -> appsShow(got));
         }, "car-sp-apps").start();
+    }
+
+    /** His favourites where this shape shows them: ⑪ ⑫'s rows of three, ⑬'s column, ⑭'s row (only the ones on the screen are filled). */
+    private void appsShow(List<Object[]> got) {
+        spAppsNow = got;
+        if (spApps.getParent() != null) fillSpecialApps(got); else spAppsList.removeAllViews();
+        if (appsV.getParent() != null) stripFill(appsVList, got, true, appsV.getWidth()); else appsVList.removeAllViews();
+        if (appsH.getParent() != null) stripFill(appsHList, got, false, appsH.getHeight()); else appsHList.removeAllViews();
+    }
+
+    /** ⑬ (standing) / ⑭ (lying): all his favourites one after another, then ＋; as many as fit in sight, the rest scrolled to. */
+    private void stripFill(LinearLayout list, List<Object[]> got, boolean standing, int side) {
+        list.removeAllViews();
+        if (side <= 0) return; // (laid out later: its own listener fills it then)
+        Context c = getContext();
+        int iq = Math.max(2, H / 160), cell = standing ? side : Math.round(side * 0.9f);
+        for (int k = 0; k <= got.size(); k++) {
+            LinearLayout box = appCell(c, k < got.size() ? got.get(k) : null, iq);
+            list.addView(box, standing ? new LinearLayout.LayoutParams(-1, Math.round(cell * 0.86f)) : new LinearLayout.LayoutParams(cell, -1));
+        }
+    }
+
+    /** One app (its picture and name; a tap opens it), or ＋ for null (the apps, to add one). Held, parked: 🎛️'s apps. */
+    private LinearLayout appCell(Context c, Object[] x, int iq) {
+        LinearLayout cell = column(c);
+        cell.setGravity(Gravity.CENTER);
+        cell.setPadding(iq, iq, iq, iq);
+        TextView lb = autoText(c, "", false, 18);
+        lb.setGravity(Gravity.CENTER);
+        lb.setTextColor(textSoft);
+        if (x != null) { // {package, label, icon, favourite}
+            android.widget.ImageView iv = new android.widget.ImageView(c);
+            iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            android.graphics.drawable.Drawable d = (android.graphics.drawable.Drawable) x[2];
+            android.graphics.drawable.Drawable.ConstantState cs = d == null ? null : d.getConstantState();
+            iv.setImageDrawable(cs != null ? cs.newDrawable(getResources()) : d); // (its own copy: one picture never sits in two places)
+            cell.addView(iv, new LinearLayout.LayoutParams(-1, 0, 72));
+            lb.setText((String) x[1]);
+            cell.setOnClickListener(v -> tap(() -> {
+                Intent it = getContext().getPackageManager().getLaunchIntentForPackage((String) x[0]);
+                if (it == null) { toast("తెరవలేకపోయాను"); return; }
+                getContext().startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }));
+        } else { // ＋: add one (the drawer, a long press there adds it)
+            TextView plus = autoText(c, "＋", false, 40);
+            plus.setGravity(Gravity.CENTER);
+            plus.setTextColor(accent);
+            plus.setBackground(round(look != null && look.light ? 0x14000000 : 0x14FFFFFF, CarTheme.withAlpha(accent, 0x66), 14));
+            cell.addView(plus, new LinearLayout.LayoutParams(-1, 0, 72));
+            lb.setText("జోడించు");
+            cell.setOnClickListener(v -> tap(this::showApps));
+        }
+        cell.addView(lb, new LinearLayout.LayoutParams(-1, 0, 28));
+        cell.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("apps"); return true; });
+        return cell;
     }
 
     /** The rows: three apps each, two rows in sight (the card's height), more rows scrolled up; the last place ＋. */
@@ -1891,35 +2018,7 @@ final class CarScreen extends FrameLayout {
             spAppsList.addView(row, new LinearLayout.LayoutParams(-1, rowH));
             for (int k = i; k < i + 3; k++) {
                 if (k >= n) { row.addView(new View(c), new LinearLayout.LayoutParams(0, -1, 1)); continue; }
-                LinearLayout cell = column(c);
-                cell.setGravity(Gravity.CENTER);
-                cell.setPadding(iq, iq, iq, iq);
-                TextView lb = autoText(c, "", false, 18);
-                lb.setGravity(Gravity.CENTER);
-                lb.setTextColor(textSoft);
-                if (k < got.size()) {
-                    final Object[] x = got.get(k); // {package, label, icon, favourite}
-                    android.widget.ImageView iv = new android.widget.ImageView(c);
-                    iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-                    iv.setImageDrawable((android.graphics.drawable.Drawable) x[2]);
-                    cell.addView(iv, new LinearLayout.LayoutParams(-1, 0, 72));
-                    lb.setText((String) x[1]);
-                    cell.setOnClickListener(v -> tap(() -> {
-                        Intent it = getContext().getPackageManager().getLaunchIntentForPackage((String) x[0]);
-                        if (it == null) { toast("తెరవలేకపోయాను"); return; }
-                        getContext().startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-                    }));
-                } else { // ＋: add one (the drawer, a long press there adds it)
-                    TextView plus = autoText(c, "＋", false, 40);
-                    plus.setGravity(Gravity.CENTER);
-                    plus.setTextColor(accent);
-                    plus.setBackground(round(look != null && look.light ? 0x14000000 : 0x14FFFFFF, CarTheme.withAlpha(accent, 0x66), 14));
-                    cell.addView(plus, new LinearLayout.LayoutParams(-1, 0, 72));
-                    lb.setText("జోడించు");
-                    cell.setOnClickListener(v -> tap(this::showApps));
-                }
-                cell.addView(lb, new LinearLayout.LayoutParams(-1, 0, 28));
-                cell.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("apps"); return true; });
+                LinearLayout cell = appCell(c, k < got.size() ? got.get(k) : null, iq);
                 row.addView(cell, new LinearLayout.LayoutParams(0, -1, 1));
                 spAppCells.add(cell);
             }
@@ -2012,8 +2111,9 @@ final class CarScreen extends FrameLayout {
                 return on ? "సరే, మ్యాప్ దారి పైకి: కారుతో తిరుగుతుంది." : "సరే, మ్యాప్ ఉత్తరం పైకి.";
             }
             case "map": {
-                if (!CarLayout.SPECIAL.equals(shape)) return null; // (not ⑪: these words go to Jarvis as before)
+                if (!CarLayout.family(shape)) return null; // (not ⑪ ⑫ ⑬ ⑭: these words go to Jarvis as before)
                 boolean big = "big".equals(w[1]);
+                if (CarLayout.FULLMAP.equals(shape)) return big ? "⑬ లో మ్యాప్ ఇప్పటికే పెద్దది." : "⑬ లో మ్యాప్ పెద్దదే: చిన్న మ్యాప్ కావాలంటే ⑪ లేదా ⑫ పెట్టండి.";
                 if (big != specialFull) { specialFull = big; carMap.setExpanded(big); relayout(); }
                 return big ? "సరే, మ్యాప్ పెద్దది చేశాను." : "సరే, మ్యాప్ మామూలుగా పెట్టాను.";
             }
@@ -2027,22 +2127,203 @@ final class CarScreen extends FrameLayout {
     /** The map's car, its turn and its pictures from his choices now. */
     private void mapPrefs() { if (look != null) carMap.setLook(look); }
 
-    /** The colourful equalizer lives behind one card at a time: ⑪'s player there, the song strip elsewhere. */
+    /**
+     * The colourful equalizer lives behind one card at a time: the lying player there (⑪ ⑬ ⑭), the song strip elsewhere
+     * (⑫'s standing player has its own music round the picture). ⑬'s player floats on the map: a solid layer under its glass.
+     */
     private void eqHome() {
         if (look == null) return;
         float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / 22f);
-        boolean sp = CarLayout.SPECIAL.equals(shape) && player.getParent() != null;
-        android.graphics.drawable.Drawable[] withEq = {CarArt.glass(look, rad, false), eqDraw};
+        boolean sp = eqOnPlayer = CarLayout.family(shape) && player.getParent() != null && !player.isRound();
+        boolean floats = player.getParent() == g13Mid;
+        android.graphics.drawable.Drawable[] withEq = floats ? new android.graphics.drawable.Drawable[]{scrim(rad), CarArt.glass(look, rad, false), eqDraw}
+                : new android.graphics.drawable.Drawable[]{CarArt.glass(look, rad, false), eqDraw};
         if (sp) {
             musicStrip.setBackground(CarArt.glass(look, rad, false));
             player.setBackground(new android.graphics.drawable.LayerDrawable(withEq)); // (made last: the bars draw here)
             eqDraw.setReach(0.8f, player.artRight());
         } else {
             player.setBackground(CarArt.glass(look, rad, false));
-            musicStrip.setBackground(new android.graphics.drawable.LayerDrawable(withEq));
+            musicStrip.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{CarArt.glass(look, rad, false), eqDraw}));
             stripW = stripH = 0; // (the strip's bars measured again)
             musicStrip.requestLayout();
         }
+    }
+
+    // ================================================================ ✨ stage 2 (27 Oct): ⑫ ⑬ ⑭
+
+    /** ⑫'s glass and ⑭'s neon carry their own colours; every other shape his theme's. */
+    private static String ownLook(String s) { return CarLayout.GLASS.equals(s) || CarLayout.NEON.equals(s) ? s : ""; }
+
+    private String colourKey = "";
+
+    /** Whose colours: the shape on the screen, but G2 beside Google Maps and ⑧'s stage keep his chosen shape's (no colours changing by themselves on a trip). */
+    private String colourShape() {
+        return CarLayout.SIDE.equals(shape) || CarLayout.STAGE.equals(shape) || CarLayout.NAV.equals(shape) ? CarLayout.valid(prefs.carLayout()) : shape;
+    }
+
+    /** Jarvis on the screen's right: ⑭, or ⑪ when he put him there (🎛️ comes on the other side). */
+    private boolean jarvisRight() { return CarLayout.NEON.equals(shape) || CarLayout.SPECIAL.equals(shape) && "right".equals(prefs.carJarvisSide()); }
+
+    /** ⤢ the map big (⑪ ⑫ ⑭); beside it (his photos, 26 Oct): Jarvis big with 🎙️ right under him, the time and the day, the song standing. */
+    private void bigMapArrange(boolean right, float j) {
+        put(content, right ? carMap : spLeft, right ? 74 : 26);
+        put(content, right ? spLeft : carMap, right ? 26 : 74);
+        musicStrip.setOrientation(LinearLayout.VERTICAL); // (standing: the picture on top, the name, 🔀 ⏮ ⏯ ⏭ 🔁 as big 3D buttons — his word)
+        // (no speed dial here — his word: the map's own corner shows the speed and the limit; the song big in its place)
+        put(spLeft, jCard, 40 * Math.min(j, 1.12f)); put(spLeft, wideTalk, 9); put(spLeft, clock, 10); put(spLeft, date, 4);
+        put(spLeft, roadCard, 12); // (only while the AC question is up: roadCheck; the parked card not here — his word)
+        put(spLeft, musicStrip, 37); put(spLeft, board, 100);
+    }
+
+    /**
+     * ⑫: Jarvis with 🎙️ under him and the six on the left; the map, the road card and his car's road in the middle; the
+     * song standing round and his apps on the right; at the foot a dark dock of 🎛️'s parts with the weather and the clock,
+     * the speed rising over its left end. One way to the choices: the dock (his word on ⑪: one button, not two).
+     */
+    private void glassArrange(float j) {
+        put(content, g12, 100);
+        g12.addView(g12Col, new FrameLayout.LayoutParams(-1, -1));
+        put(g12Col, g12Top, 79); put(g12Col, g12Dock, 21);
+        put(g12Top, g12Left, 23); put(g12Top, g12Mid, 50); put(g12Top, g12Right, 27);
+        put(g12Left, jCard, 46 * Math.min(j, 1.12f)); put(g12Left, wideTalk, 8); put(g12Left, tileGrid, 30); put(g12Left, chipRow, 6); put(g12Left, g12Gap, 12);
+        put(g12Mid, carMap, 64); put(g12Mid, roadCard, 13); put(g12Mid, spRoadCard, 23); put(g12Mid, board, 100);
+        put(g12Right, player, 63); put(g12Right, spApps, 37);
+        spRoadCard.addView(hero, 0, new FrameLayout.LayoutParams(-1, -1));
+        put(g12Dock, g12DockGap, 17);
+        for (View d : dockItems) put(g12Dock, d, 6.8f);
+        put(g12Dock, g12DockEnd, 21.8f);
+        String cs = prefs.carClock();
+        put(g12DockEnd, cs.isEmpty() || "analog".equals(cs) ? clockFace : clock, 42);
+        put(g12DockEnd, spClockCol, 58);
+        put(spClockCol, minis, 55); put(spClockCol, date, 45);
+        detach(gauge);
+        g12.addView(gauge, new FrameLayout.LayoutParams(1, 1, Gravity.BOTTOM | Gravity.START)); // (its size: shapeSizes)
+        fillTiles(tileGrid, 0, 6, 3);
+        specialApps();
+    }
+
+    /**
+     * ⑬: Jarvis round with his six on an arc beside him, his words, 🎙️ and 🎛️ on the left; the map big in the middle with
+     * the song floating at its foot (the map's own buttons keep clear of it); the speed, the clock and his apps standing
+     * down the right. The map is never drawn under a card it can't be seen through.
+     */
+    private void fullArrange(float j) {
+        put(content, g13Left, 27); put(content, g13Mid, 61); put(content, g13Right, 12);
+        detach(jCard);
+        wheel.addView(jCard);
+        for (View t : tiles) { detach(t); wheel.addView(t); }
+        put(g13Left, wheel, 72); put(g13Left, subText, 9); put(g13Left, wideTalk, 7); put(g13Left, wideHub, 6); put(g13Left, chipRow, 6);
+        if (W > 0) subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, H / 32f) * textScale);
+        g13Mid.addView(carMap, new FrameLayout.LayoutParams(-1, -1));
+        g13Mid.addView(roadCard, new FrameLayout.LayoutParams(-1, 1, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL)); // (only the AC question: roadFull)
+        g13Mid.addView(player, new FrameLayout.LayoutParams(-1, 1, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL)); // (its size: shapeSizes)
+        g13Mid.addView(board, new FrameLayout.LayoutParams(-1, -1));
+        String cs = prefs.carClock();
+        put(g13Right, gauge, 25); put(g13Right, cs.isEmpty() || "analog".equals(cs) ? clockFace : clock, 15); put(g13Right, minis, 6); put(g13Right, date, 5);
+        put(g13Right, appsV, 49);
+        specialApps();
+    }
+
+    /** ⑭: the song wide on top, the map, the road card, his car's neon road and his apps under it; the speed and the clock, Jarvis, 🎙️, the six and 🎛️ on the right. */
+    private void neonArrange(float j) {
+        put(content, g14Main, 71); put(content, g14Side, 29);
+        put(g14Main, player, 22); put(g14Main, carMap, 53); put(g14Main, roadCard, 9); put(g14Main, g14Bottom, 16); put(g14Main, board, 100);
+        put(g14Bottom, spRoadCard, 62); put(g14Bottom, appsH, 38);
+        spRoadCard.addView(hero, 0, new FrameLayout.LayoutParams(-1, -1));
+        put(g14Side, spMeter, 25); put(g14Side, jCard, 35 * Math.min(j, 1.12f)); put(g14Side, wideTalk, 8); put(g14Side, tileGrid, 21); put(g14Side, wideHub, 7); put(g14Side, chipRow, 5);
+        put(spMeter, spMeterTop, 78); put(spMeter, spInfo, 22);
+        put(spMeterTop, gauge, 54); put(spMeterTop, spClockCol, 46);
+        String cs = prefs.carClock();
+        put(spClockCol, cs.isEmpty() || "analog".equals(cs) ? clockFace : clock, 62);
+        put(spClockCol, date, 19); put(spClockCol, minis, 19);
+        fillTiles(tileGrid, 0, 6, 3);
+        specialApps();
+    }
+
+    /** ⑫'s speed over the dock; ⑬'s floating song, its AC question card and the map's room for them: from the screen's size. */
+    private void shapeSizes() {
+        if (W <= 0 || H <= 0) return;
+        int m = Math.max(2, Math.min(W, H) / 130);
+        if (gauge.getParent() == g12) {
+            int g = Math.max(1, Math.min(Math.round(W * 0.165f), Math.round(H * 0.29f))); // (never over the chips row above the dock, on any screen)
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(g, g, Gravity.BOTTOM | Gravity.START);
+            lp.setMargins(m * 2, 0, 0, m * 2);
+            gauge.setLayoutParams(lp);
+        }
+        int pd = Math.max(4, Math.min(W, H) / 70);
+        g12Dock.setPadding(pd, pd / 3, pd, pd / 3);
+        if (player.getParent() == g13Mid) {
+            int ph = Math.round(H * 0.21f);
+            FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(-1, ph, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+            pl.setMargins(m * 3, 0, m * 3, m * 3);
+            player.setLayoutParams(pl);
+            FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(-1, Math.round(H * 0.14f), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+            rl.setMargins(m * 8, 0, m * 8, ph + m * 6);
+            roadCard.setLayoutParams(rl);
+            int qa = roadCard.getVisibility() == VISIBLE ? rl.height + m * 2 : 0; // (the AC question up: the map's buttons and its credit above it too)
+            FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-1, -1);
+            bl.setMargins(m, m, m, m);
+            board.setLayoutParams(bl);
+            carMap.setPads(0, 0, 0, ph + m * 4 + qa);
+        } else carMap.setPads(0, 0, 0, 0);
+        if (subText.getParent() == g13Left) {
+            LinearLayout.LayoutParams sl = (LinearLayout.LayoutParams) subText.getLayoutParams();
+            sl.setMargins(m * 2, m, m * 2, m);
+            subText.setLayoutParams(sl);
+            subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, H / 32f) * textScale); // (⑬'s words: smaller, after any resize too)
+        }
+    }
+
+    /** A solid layer of the theme's own dark (or white) under a card lying on the map: readable over any map. */
+    private android.graphics.drawable.Drawable scrim(float rad) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(look == null ? 0xE6060A10 : look.light ? 0xEEFFFFFF : CarTheme.withAlpha(CarTheme.shade(look.bgBottom, 1f), 0xE6));
+        g.setCornerRadius(rad);
+        return g;
+    }
+
+    /**
+     * Each new shape's own touches over the theme's colours (after palette() and after a new shape): ⑫'s dark dock with
+     * white signs and the clock on it, ⑬'s round Jarvis and the card lying on its map; the other shapes as they always were.
+     */
+    private void shapeLook() {
+        if (look == null) return;
+        float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / 22f);
+        boolean onDock = clockFace.getParent() == g12DockEnd || clock.getParent() == g12DockEnd;
+        boolean full = CarLayout.FULLMAP.equals(shape);
+        g12Dock.setBackground(round(0xF2141A22, CarTheme.withAlpha(accent, 0x77), 20));
+        for (CarArt.Icon ic : dockIcons) ic.setColour(0xFFFFFFFF);
+        for (TextView t : dockWords) t.setTextColor(0xFFCFD8E3);
+        int ink = onDock ? 0xFFFFFFFF : textMain, soft = onDock ? 0xFFB9C4D0 : textSoft;
+        if (!"led".equals(prefs.carClock())) clock.setTextColor(ink);
+        minis.setTextColor(soft);
+        date.setTextColor(soft);
+        clockFace.setColours(ink, soft, accent);
+        if (full) { // ⑬: Jarvis in a round window
+            GradientDrawable orb = new GradientDrawable();
+            orb.setShape(GradientDrawable.OVAL);
+            orb.setColor(look.light ? 0xE6FFFFFF : 0xCC0A1220);
+            orb.setStroke(Math.max(2, Ui.dp(getContext(), 2)), CarTheme.withAlpha(accent, 0xCC));
+            jCard.setBackground(orb);
+            jCard.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override public void getOutline(View v, android.graphics.Outline o) { o.setOval(0, 0, v.getWidth(), v.getHeight()); }
+            });
+            jCard.setClipToOutline(true);
+        } else if (jCard.getClipToOutline()) {
+            jCard.setClipToOutline(false);
+            jCard.setOutlineProvider(android.view.ViewOutlineProvider.BACKGROUND);
+            jCard.setBackground(CarArt.glass(look, rad, false));
+        }
+        roadCard.setBackground(full ? new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{scrim(rad), CarArt.glass(look, rad, false)})
+                : CarArt.glass(look, rad, false));
+        if (gauge.getParent() == g12) { // ⑫: the speed stands over the dark dock: its own round face in the theme's light (or dark) glass, readable all over
+            GradientDrawable face = new GradientDrawable();
+            face.setShape(GradientDrawable.OVAL);
+            face.setColor(look.light ? 0xF7FFFFFF : 0xF20A1220);
+            face.setStroke(Math.max(2, Ui.dp(getContext(), 2)), CarTheme.withAlpha(accent, 0xAA));
+            gauge.setBackground(face);
+        } else if (gauge.getBackground() != null) gauge.setBackground(null); // (every other shape as it always was)
     }
 
     // ================================================================ the six buttons
@@ -2739,7 +3020,7 @@ final class CarScreen extends FrameLayout {
     private void showWeather() {
         android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
         long at = sp.getLong("w_at", 0);
-        String fuel = CarLayout.SPECIAL.equals(shape) ? "" : CarFuel.chip(getContext()); // ⛽ how far the diesel goes, beside the weather (C12; ⑪ has its own ⛽ under the speed)
+        String fuel = spInfo.getParent() != null ? "" : CarFuel.chip(getContext()); // ⛽ how far the diesel goes, beside the weather (C12; ⑪ ⑭ have their own ⛽ under the speed)
         long now = System.currentTimeMillis();
         dress(sp, at, now);
         if (Drive.navState() != null && !CarAhead.card.isEmpty() && now - CarAhead.cardAt < 20 * 60_000L) { // (the turn has the card: the warning goes here)
@@ -2747,7 +3028,7 @@ final class CarScreen extends FrameLayout {
             return;
         }
         if (at == 0 || now - at > 3 * 3600_000L) { minis.setText(fuel); return; }
-        if (CarLayout.SPECIAL.equals(shape)) { minis.setText(skyIcon(sp.getInt("w_code", -1)) + " " + Math.round(sp.getFloat("w_temp", 0)) + "°"); return; } // (⑪: the sky's sign and the heat, whole)
+        if (CarLayout.family(shape)) { minis.setText(skyIcon(sp.getInt("w_code", -1)) + " " + Math.round(sp.getFloat("w_temp", 0)) + "°" + (fuel.isEmpty() ? "" : "  " + fuel)); return; } // (⑪ ⑭: the sky's sign and the heat, whole; ⑫ ⑬: the ⛽ beside them)
         minis.setText("🌡️ " + Math.round(sp.getFloat("w_temp", 0)) + "° · " + HomeScreen.skyTe(sp.getInt("w_code", -1)) + (fuel.isEmpty() ? "" : "   " + fuel));
     }
 
@@ -2914,11 +3195,17 @@ final class CarScreen extends FrameLayout {
      */
     private void arrange(String s) {
         if (s.equals(shape)) return;
+        if (!shape.isEmpty() && CarLayout.family(s)) specialFull = false; // (another shape: its own layout first, not the last one's ⤢; a relayout keeps it)
         shape = s;
+        if (!ownLook(colourShape()).equals(colourKey)) palette(); // (into / out of ⑫'s glass or ⑭'s neon: the colours again)
         for (LinearLayout g : new LinearLayout[]{content, leftCol, midCol, rightCol, wingLIn, wingRIn, panelIn, panelTop, centreCol, stageLeft, stageMid, sideTop, sideText,
-                clusterBox, clusterTop, clusterMid, clusterDock, railCol, dockMain, dockTop, dockCards, dockRow, spLeft, spMid, spRight, spMeter, spMeterTop, spClockCol}) g.removeAllViews();
+                clusterBox, clusterTop, clusterMid, clusterDock, railCol, dockMain, dockTop, dockCards, dockRow, spLeft, spMid, spRight, spMeter, spMeterTop, spClockCol,
+                g12Col, g12Top, g12Left, g12Mid, g12Right, g12Dock, g12DockEnd, g13Left, g13Right, g14Main, g14Side, g14Bottom}) g.removeAllViews();
         mapTilt.removeAllViews();
         jCard.removeAllViews();
+        g12.removeAllViews();
+        g13Mid.removeAllViews();
+        wheel.removeAllViews();
         detach(hero);
         detach(carMap);
         subText.setVisibility(VISIBLE); // (⑪'s bubble may be off: everywhere else his words always show)
@@ -2927,8 +3214,8 @@ final class CarScreen extends FrameLayout {
         stateText.setGravity(Gravity.CENTER);
         subText.setGravity(Gravity.CENTER);
         if (W > 0) subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, H / 24f) * textScale);
-        boolean special = CarLayout.SPECIAL.equals(s);
-        if (!special) specialFull = false;
+        boolean special = CarLayout.family(s); // (⑪ and ⑫ ⑬ ⑭, made from its parts)
+        if (!special || CarLayout.FULLMAP.equals(s)) specialFull = false; // (⑬: the map is big already)
         boolean s3 = special && specialFull;
         if (s3 != strip3d) {
             strip3d = s3;
@@ -2938,9 +3225,12 @@ final class CarScreen extends FrameLayout {
             stripW = stripH = 0; // (the card's keys measured again)
         }
         carMap.setSpecial(special);
+        carMap.setExpandable(!CarLayout.FULLMAP.equals(s));
+        carMap.setBoards(CarLayout.NEON.equals(s)); // (⑭'s yellow turn boards)
         carMap.setExpanded(specialFull);
         carMap.setVisibility(VISIBLE);
         player.setVisibility(VISIBLE);
+        player.setRound(CarLayout.GLASS.equals(s) && !specialFull); // (⑫: the song standing, round)
         boolean deep = CarLayout.deep(s);
         rightOnly = false;
         float j = CarDeck.jarvisScale(prefs.carJarvis()); // (Jarvis smaller / bigger: his window's share of its column)
@@ -3029,19 +3319,19 @@ final class CarScreen extends FrameLayout {
                 put(rightCol, roadCard, 20); put(rightCol, tileGrid, 57); put(rightCol, musicStrip, 23);
                 fillTiles(tileGrid, 0, 6, 3);
                 break;
+            case CarLayout.GLASS: // ⑫ the white glass: Jarvis and the six on the left, the map in the middle, the song round on the right, the dock under all
+            case CarLayout.FULLMAP: // ⑬ the map big in the middle, Jarvis round with his six on an arc on the left, the song floating on the map
+            case CarLayout.NEON: // ⑭ neon: the song wide on top, the map, his car's road and his apps under it; the speed, Jarvis and the six on the right
+                jCardFill();
+                if (specialFull) { bigMapArrange(CarLayout.NEON.equals(s), j); break; }
+                if (CarLayout.GLASS.equals(s)) glassArrange(j);
+                else if (CarLayout.FULLMAP.equals(s)) fullArrange(j);
+                else neonArrange(j);
+                break;
             case CarLayout.SPECIAL: { // ⑪ Jarvis on his lit stage, six buttons and three wide ones; the big map with all its tools and the big player; the speed, the clock, his apps, the road
                 boolean right = "right".equals(prefs.carJarvisSide());
                 jCardFill();
-                if (specialFull) { // ⤢ the map big; beside it (his photos, 26 Oct): Jarvis big with 🎙️ right under him, the time and the day, the speed, the song; the map a little narrower for it
-                    put(content, right ? carMap : spLeft, right ? 74 : 26);
-                    put(content, right ? spLeft : carMap, right ? 26 : 74);
-                    musicStrip.setOrientation(LinearLayout.VERTICAL); // (standing: the picture on top, the name, 🔀 ⏮ ⏯ ⏭ 🔁 as big 3D buttons — his word)
-                    // (no speed dial here — his word: the map's own corner shows the speed and the limit; the song big in its place)
-                    put(spLeft, jCard, 40 * Math.min(j, 1.12f)); put(spLeft, wideTalk, 9); put(spLeft, clock, 10); put(spLeft, date, 4);
-                    put(spLeft, roadCard, 12); // (only while the AC question is up: roadCheck; the parked card not here — his word)
-                    put(spLeft, musicStrip, 37); put(spLeft, board, 100);
-                    break;
-                }
+                if (specialFull) { bigMapArrange(right, j); break; }
                 // (his car photo, 26 Oct: the sides closer to the screen's edges and bigger, the map bigger — the room comes from the edges and the gaps)
                 put(content, right ? spRight : spLeft, right ? 25 : 24);
                 put(content, spMid, 51);
@@ -3094,7 +3384,9 @@ final class CarScreen extends FrameLayout {
         overlayRoom();
         dialsCheck();
         eqHome();
-        if (special) { specialInfo(); musicKeyNow = ""; main.post(this::musicCheck); }
+        if (special) { specialInfo(); showWeather(); musicKeyNow = ""; main.post(this::musicCheck); } // (⛽ beside the weather where no meter card shows it)
+        shapeSizes();
+        shapeLook();
         requestLayout();
         lights.invalidate(); // (the beat lights' edges where the cards are now)
     }
@@ -3217,6 +3509,7 @@ final class CarScreen extends FrameLayout {
         boolean low = prefs.carLowMotion();
         eqDraw.setOn(prefs.carEq() && !low);
         eqDraw.setCalm("dim".equals(prefs.carEqLevel()));
+        player.setEq(beat.eq, prefs.carEq() && !low, "dim".equals(prefs.carEqLevel()), low); // (⑫'s music round the picture: the same choice)
         lights.setActive(prefs.carBeatLights() && !low && songNow && !saverOn);
     }
 
@@ -3276,9 +3569,10 @@ final class CarScreen extends FrameLayout {
     private void outlines(List<android.graphics.Path> into) {
         pathUsed = 0;
         if (android.os.SystemClock.uptimeMillis() < welcomeUntil) return; // (the cards are still turning in)
-        boolean roundTiles = CarDeck.round(prefs.carBtnStyle(), CarLayout.deep(shape));
+        boolean roundTiles = CarDeck.round(prefs.carBtnStyle(), CarLayout.deep(shape)) || CarLayout.FULLMAP.equals(shape);
         for (View t : tiles) addOutline(into, t, roundTiles ? 1 : 0);
-        for (View v : new View[]{roadCard, musicStrip, carMap, wingLIn, wingRIn, panelIn, board, stageMid, jCard, spMeter, spApps, spRoadCard, player}) addOutline(into, v, 0);
+        for (View v : new View[]{roadCard, musicStrip, carMap, wingLIn, wingRIn, panelIn, board, stageMid, spMeter, spApps, spRoadCard, player, g12Dock, appsV, appsH}) addOutline(into, v, 0);
+        addOutline(into, jCard, CarLayout.FULLMAP.equals(shape) ? 3 : 0); // (⑬: Jarvis's round window)
         for (CarKit.Dial dl : dials) addOutline(into, dl, 2);
         addOutline(into, bigDial, 2);
     }
@@ -3291,7 +3585,7 @@ final class CarScreen extends FrameLayout {
         return p;
     }
 
-    /** round: 0 its rounded box, 1 a round button's circle (its top part), 2 a dial's circle. */
+    /** round: 0 its rounded box, 1 a round button's circle (its top part), 2 a dial's circle, 3 the view's own circle (⑬'s Jarvis). */
     private void addOutline(List<android.graphics.Path> into, View v, int round) {
         if (v == null || !v.isShown() || v.getWidth() <= 0 || v.getHeight() <= 0) return;
         float w = v.getWidth(), h = v.getHeight();
@@ -3302,6 +3596,8 @@ final class CarScreen extends FrameLayout {
         } else if (round == 2) {
             float[] c = ((CarKit.Dial) v).circle();
             q = new float[]{c[0], c[1], c[0] + c[2], c[1]};
+        } else if (round == 3) {
+            q = new float[]{w / 2f, h / 2f, w / 2f + Math.min(w, h) / 2f, h / 2f};
         } else {
             q = new float[]{0, 0, w, 0, w, h, 0, h};
         }
@@ -3393,11 +3689,12 @@ final class CarScreen extends FrameLayout {
     /** The six buttons' look: glass squares, or chrome round buttons (the 3D shapes, or his choice). */
     /** ⑪'s six: less room round the sign and the word, the word given more height (the other shapes' as they always were). */
     private void tileLook(boolean sp) {
+        boolean onWheel = CarLayout.FULLMAP.equals(shape); // (⑬: the round button on top, its word under it)
         for (View t : tiles) {
             LinearLayout l = (LinearLayout) t;
             if (sp) l.setPadding(2, 2, 2, 2); else l.setPadding(4, 8, 4, 8);
-            weight(l.getChildAt(0), sp ? 54 : 56);
-            weight(l.getChildAt(1), sp ? 40 : 30);
+            weight(l.getChildAt(0), onWheel ? 64 : sp ? 54 : 56);
+            weight(l.getChildAt(1), onWheel ? 36 : sp ? 40 : 30);
         }
     }
 
@@ -3412,14 +3709,14 @@ final class CarScreen extends FrameLayout {
     /** The room round the whole screen: ⑪ goes nearly to the edges (his wish); the other shapes as they always were. */
     private void contentPad() {
         if (W <= 0 || H <= 0) return;
-        int pad = CarLayout.SPECIAL.equals(shape) ? Math.max(3, Math.min(W, H) / 110) : Math.max(4, Math.min(W, H) / 34);
+        int pad = CarLayout.family(shape) ? Math.max(3, Math.min(W, H) / 110) : Math.max(4, Math.min(W, H) / 34);
         content.setPadding(pad, pad, pad, pad);
     }
 
     private void dressTiles() {
         if (look == null) return;
-        boolean roundNow = CarDeck.round(prefs.carBtnStyle(), CarLayout.deep(shape));
-        float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / (CarLayout.SPECIAL.equals(shape) ? 40f : 22f)); // (⑪: flatter corners, more room inside)
+        boolean roundNow = CarDeck.round(prefs.carBtnStyle(), CarLayout.deep(shape)) || CarLayout.FULLMAP.equals(shape); // (⑬'s wheel: round buttons)
+        float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / (CarLayout.family(shape) ? 40f : 22f)); // (⑪ ⑫ ⑬ ⑭: flatter corners, more room inside)
         for (int i = 0; i < tiles.size(); i++) {
             tiles.get(i).setBackground(roundNow ? CarKit.chromeButton(look, 0.64f) : CarArt.glass(look, rad, true));
             tileIcons.get(i).setFill(roundNow ? 0.5f : 1f);
@@ -3436,7 +3733,7 @@ final class CarScreen extends FrameLayout {
         else if (CarLayout.CHROME.equals(shape)) g = CarTheme.G_NEEDLE;
         else if (CarLayout.MAP3D.equals(shape)) g = CarTheme.G_ARC;
         else if (CarLayout.SIDE.equals(shape) || CarLayout.STAGE.equals(shape)) g = CarTheme.G_DIGITS;
-        else g = CarTheme.of(prefs.carTheme()).gauge;
+        else g = CarTheme.of(CarDeck.themeFor(colourShape(), prefs.carTheme())).gauge; // (⑫ ⑭: their own colours' meter)
         look.gauge = g;
         gauge.setLook(look);
     }
@@ -3456,7 +3753,7 @@ final class CarScreen extends FrameLayout {
     /** The cards' room around them (the six buttons, the road card, the song strip, the map, ① ② ③'s cards), from the screen's size. */
     private void boxMargins() {
         if (W <= 0 || H <= 0) return;
-        int m = CarLayout.SPECIAL.equals(shape) ? Math.max(2, Math.min(W, H) / 130) : Math.max(3, Math.min(W, H) / 70); // (⑪: smaller gaps between the cards)
+        int m = CarLayout.family(shape) ? Math.max(2, Math.min(W, H) / 130) : Math.max(3, Math.min(W, H) / 70); // (⑪ ⑫ ⑬ ⑭: smaller gaps between the cards)
         List<View> boxes = new ArrayList<>(tiles);
         boxes.add(roadCard);
         boxes.add(musicStrip);
@@ -3471,7 +3768,7 @@ final class CarScreen extends FrameLayout {
         boxes.add(mapPill);
         boxes.addAll(railApps);
         boxes.add(railMore);
-        for (View v : new View[]{jCard, spMeter, spApps, spRoadCard, player, wideJ, wideHub, wideTalk}) boxes.add(v);
+        for (View v : new View[]{jCard, spMeter, spApps, spRoadCard, player, wideJ, wideHub, wideTalk, g12Dock, wheel, appsV, appsH}) boxes.add(v);
         for (View t : boxes) {
             if (!(t.getLayoutParams() instanceof LinearLayout.LayoutParams)) continue; // (not on the screen in this shape)
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
@@ -3509,6 +3806,8 @@ final class CarScreen extends FrameLayout {
             card.setPadding(cp, cp, cp, cp);
         }
         specialSizes(rad, cp);
+        shapeSizes();
+        shapeLook();
         for (TextView t : new TextView[]{stageExit, mapPill}) t.setPadding(cp, cp / 3, cp, cp / 3);
         mapGap.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(14, h / 26f));
         float ct = Math.max(12, h / 36f) * textScale; // ① ②'s chips row
@@ -3593,8 +3892,12 @@ final class CarScreen extends FrameLayout {
 
     /** The theme's colours for the mode and the hour, put on everything. */
     private void palette() {
-        CarTheme th = CarTheme.of(prefs.carTheme());
-        look = th.look(mode, night, prefs.carAccent(), prefs.carArtColour() ? songAccent : 0);
+        String cs = colourShape();
+        colourKey = ownLook(cs);
+        CarTheme th = CarTheme.of(CarDeck.themeFor(cs, prefs.carTheme())); // (⑫ white glass, ⑭ neon: their own colours)
+        boolean whiteNight = CarLayout.GLASS.equals(cs) && night && !CarDeck.glassDark(prefs.carGlassNight(), night); // (⑫ at night: white unless he chose dark)
+        look = th.look(mode, night && !whiteNight, prefs.carAccent(), prefs.carArtColour() ? songAccent : 0);
+        if (whiteNight) look.night = true; // (the map and the car's lights still know it is night)
         look.card = CarStyle.cardCode(prefs.carCard(), th.card); // 17 / 18
         look.lowMotion = prefs.carLowMotion();
         ambient.set(prefs.carBgMotion(), !prefs.carLowMotion(), look.accent, night ? th.nightAccent : th.musicAccent, look.light);
@@ -3684,6 +3987,7 @@ final class CarScreen extends FrameLayout {
         subText.setBackground(sub);
         int px = Math.max(6, Math.min(Math.max(W, 600), Math.max(H, 300)) / 60);
         subText.setPadding(px * 2, px / 2, px * 2, px / 2);
+        shapeLook(); // (⑫ ⑬'s own touches over the colours)
     }
 
     private View tile(Context c, int icon, String label) {

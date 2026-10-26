@@ -109,6 +109,8 @@ final class CarHubSpec {
                         ints("car_theme", "🎨 థీమ్", themeIds(), themeNames(), 1),
                         ints("car_accent", "💡 వెలుగు రంగు", ACCENTS, ACCENT_NAMES, 0),
                         str("car_layout", "🧩 స్క్రీన్ ఆకారం", CarLayout.CHOICES, CarLayout.NAMES, CarLayout.CLASSIC),
+                        strNew("car_glass_night", "🌙 ⑫ గ్లాస్ డాక్: రాత్రి రంగు", CarDeck.GLASS_NIGHTS, CarDeck.GLASS_NIGHT_NAMES, ""),
+                        info("own_colours", "🎨 ⑫ తెల్లటి గాజు, ⑭ నియాన్ రంగులు వాటివే: మీ థీమ్ మిగతా ఆకారాల్లో"),
                         str("car_card", "🃏 కార్డులు", CarStyle.CARDS, CarStyle.CARD_NAMES, ""),
                         str("car_icons", "✳️ ఐకాన్లు", CarStyle.ICONS, CarStyle.ICON_NAMES, ""),
                         str("car_bg_motion", "🌌 వెనక బొమ్మ", CarDeck.BG_MOTIONS, CarDeck.BG_MOTION_NAMES, ""),

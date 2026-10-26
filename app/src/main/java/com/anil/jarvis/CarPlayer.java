@@ -26,7 +26,8 @@ import org.json.JSONObject;
  * ⏯ ⏭ 10⏩ 🔁 ❤️ 📃 🔊. Shuffle, repeat, like and "up next" only where the music app allows them: else their key is dim,
  * and a tap says so honestly. The colourful equalizer is the card's own background (the screen's one).
  * His word (26 Oct): every key a big raised 3D button; ⑪'s own player shows only 🔀 ⏮ ⏯ ⏭ 🔁 ({@link #setFew}), the big
- * player (a tap on the picture) keeps them all.
+ * player (a tap on the picture) keeps them all. ⑫ (27 Oct) stands it up ({@link #setRound}): the picture round with its
+ * ring and the music all round it on top, the name, the place, the keys under it.
  */
 final class CarPlayer extends LinearLayout {
 
@@ -44,7 +45,9 @@ final class CarPlayer extends LinearLayout {
     private final ImageView artImg;
     private final CarArt.Icon artIcon;
     private final CarLooks.Vinyl vinyl;
-    private final LinearLayout right, top, keys;
+    private final CarLooks.RoundArt roundArt;
+    private boolean round;
+    private final LinearLayout right, top, keys, words;
     private final TextView title, sub, app;
     private final Seek seek;
     private final CarArt.Icon[] keyViews;
@@ -64,6 +67,9 @@ final class CarPlayer extends LinearLayout {
         setOrientation(HORIZONTAL);
         setGravity(Gravity.CENTER_VERTICAL);
         artBox = new FrameLayout(c);
+        roundArt = new CarLooks.RoundArt(c); // (⑫: standing, round)
+        roundArt.setVisibility(GONE);
+        artBox.addView(roundArt, new FrameLayout.LayoutParams(-1, -1));
         artIcon = new CarArt.Icon(c, CarArt.Icon.MUSIC);
         artIcon.setFill(0.6f);
         artBox.addView(artIcon, new FrameLayout.LayoutParams(-1, -1));
@@ -88,7 +94,7 @@ final class CarPlayer extends LinearLayout {
         top = new LinearLayout(c);
         top.setOrientation(HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout words = new LinearLayout(c);
+        words = new LinearLayout(c);
         words.setOrientation(VERTICAL);
         title = new TextView(c);
         title.setTypeface(Typeface.DEFAULT_BOLD);
@@ -152,27 +158,51 @@ final class CarPlayer extends LinearLayout {
         art = b;
         artImg.setImageBitmap(b);
         vinyl.setArt(b);
+        roundArt.setArt(b);
         showArt();
+    }
+
+    /** ⑫: standing and round (true), or lying as everywhere else. */
+    void setRound(boolean on) {
+        if (on == round) return;
+        round = on;
+        setOrientation(on ? VERTICAL : HORIZONTAL);
+        setGravity(on ? Gravity.CENTER_HORIZONTAL : Gravity.CENTER_VERTICAL);
+        right.setLayoutParams(on ? new LayoutParams(-1, 0, 1) : new LayoutParams(0, -1, 1));
+        showArt();
+        if (sw > 0) post(() -> sizes(sw, sh));
+    }
+
+    boolean isRound() { return round; }
+
+    /** ⑫'s music all round the picture: the car speakers' equalizer, as he set it (🎚️ on / dim / off, fewer movements). */
+    void setEq(CarEq eq, boolean on, boolean calm, boolean low) {
+        roundArt.setEq(eq);
+        roundArt.setEqOn(on, calm);
+        roundArt.setLowMotion(low);
     }
 
     /** 💿 the song's picture on a turning record (his switch, as on the song strip). */
     void setVinyl(boolean on, boolean lowMotion) {
         vinylOn = on;
         vinyl.setLowMotion(lowMotion);
+        roundArt.setShowArt(!on);
         showArt();
     }
 
     private void showArt() {
-        artImg.setVisibility(art != null && !vinylOn ? VISIBLE : GONE);
+        roundArt.setVisibility(round ? VISIBLE : GONE);
+        artImg.setVisibility(!round && art != null && !vinylOn ? VISIBLE : GONE);
         vinyl.setVisibility(vinylOn ? VISIBLE : GONE);
-        artIcon.setVisibility(art == null && !vinylOn ? VISIBLE : INVISIBLE);
+        artIcon.setVisibility(!round && art == null && !vinylOn ? VISIBLE : round ? GONE : INVISIBLE);
     }
 
     /** The music app's numbers (Music.progress), or null. */
     void setProgress(long[] pr) {
-        if (pr == null) { seek.set(-1, 0, 1, false, -1); vinyl.setTiming(-1, 0, 1, playing, -1); return; }
+        if (pr == null) { seek.set(-1, 0, 1, false, -1); vinyl.setTiming(-1, 0, 1, playing, -1); roundArt.setTiming(-1, 0, 1, playing, -1); return; }
         seek.set(pr[0], pr[1], pr[2] / 1000f, pr[3] == 1, pr[4]);
         vinyl.setTiming(pr[0], pr[1], pr[2] / 1000f, pr[3] == 1, pr[4]);
+        roundArt.setTiming(pr[0], pr[1], pr[2] / 1000f, pr[3] == 1, pr[4]);
     }
 
     /** What the app allows and what we last asked it (Music.extras), or null (none / Jarvis's radio). */
@@ -243,10 +273,12 @@ final class CarPlayer extends LinearLayout {
         app.setBackground(g);
         artIcon.setColour(acc);
         vinyl.setAccent(acc);
+        roundArt.setLook(acc, light);
         GradientDrawable ab = new GradientDrawable();
         ab.setColor(CarTheme.withAlpha(acc, 0x22));
         ab.setCornerRadius(Ui.dp(getContext(), 10));
-        artBox.setBackground(ab);
+        artBox.setBackground(round ? null : ab); // (⑫'s round picture draws its own)
+        artBg = ab;
         seek.invalidate();
         dims();
     }
@@ -263,8 +295,16 @@ final class CarPlayer extends LinearLayout {
         post(() -> sizes(w, h));
     }
 
+    private GradientDrawable artBg;
+
     private void sizes(int w, int h) {
         int inner = Math.max(1, h - getPaddingTop() - getPaddingBottom()), avail = Math.max(1, w - getPaddingLeft() - getPaddingRight());
+        if (round) { roundSizes(inner, avail); return; }
+        artBox.setBackground(artBg);
+        vinyl.setLayoutParams(new FrameLayout.LayoutParams(-1, -1));
+        words.setGravity(Gravity.START);
+        title.setGravity(Gravity.START);
+        sub.setGravity(Gravity.START);
         int a = Math.max(1, Math.min(Math.round(inner * 0.94f), Math.round(avail * 0.3f)));
         LayoutParams ap = new LayoutParams(a, a);
         ap.rightMargin = Math.round(a * 0.1f);
@@ -279,6 +319,32 @@ final class CarPlayer extends LinearLayout {
         app.setPadding(pp * 2, pp, pp * 2, pp);
         seek.setLayoutParams(new LayoutParams(-1, Math.round(inner * (few ? 0.16f : 0.2f))));
         keys.setLayoutParams(new LayoutParams(-1, Math.round(inner * (few ? 0.48f : 0.4f)))); // (his word: the keys big)
+        for (int i = 0; i < keyViews.length; i++) keyViews[i].setFill(i == 3 ? 1f : 0.86f);
+    }
+
+    /** ⑫ standing: the round picture as big as the card allows (its top half or so), the name and the place, the keys. */
+    private void roundSizes(int inner, int avail) {
+        int a = Math.max(1, Math.min(Math.round(avail * 0.94f), Math.round(inner * 0.56f)));
+        LayoutParams ap = new LayoutParams(a, a);
+        ap.gravity = Gravity.CENTER_HORIZONTAL;
+        artBox.setLayoutParams(ap);
+        artBox.setBackground(null);
+        int in = Math.round(a * 0.185f); // (💿 the record over the middle, inside the ring)
+        FrameLayout.LayoutParams vl = new FrameLayout.LayoutParams(-1, -1);
+        vl.setMargins(in, in, in, in);
+        vinyl.setLayoutParams(vl);
+        float t = Math.max(12, Math.min(inner * 0.05f, avail * 0.065f));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, t);
+        sub.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(10, t * 0.74f));
+        sub.setPadding(0, Math.round(t * 0.18f), 0, 0);
+        app.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(10, t * 0.66f));
+        int pp = Math.round(t * 0.35f);
+        app.setPadding(pp * 2, pp, pp * 2, pp);
+        words.setGravity(Gravity.CENTER_HORIZONTAL);
+        title.setGravity(Gravity.CENTER_HORIZONTAL);
+        sub.setGravity(Gravity.CENTER_HORIZONTAL);
+        seek.setLayoutParams(new LayoutParams(-1, Math.round(inner * 0.085f)));
+        keys.setLayoutParams(new LayoutParams(-1, Math.round(inner * 0.2f)));
         for (int i = 0; i < keyViews.length; i++) keyViews[i].setFill(i == 3 ? 1f : 0.86f);
     }
 
