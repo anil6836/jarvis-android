@@ -32,6 +32,11 @@
         <exclude domain="file" path="car3d_rear_right" />
         <exclude domain="file" path="car3d_rear_right.part" />
         <exclude domain="file" path="world3d/" />
+        <exclude domain="file" path="mbgl-offline.db" />
+        <exclude domain="file" path="mbgl-offline.db-journal" />
+        <exclude domain="file" path="mbgl-offline.db-wal" />
+        <exclude domain="file" path="mbgl-offline.db-shm" />
+        <exclude domain="file" path="map15/" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
@@ -81,6 +86,11 @@
         <exclude domain="file" path="car3d_rear_right" />
         <exclude domain="file" path="car3d_rear_right.part" />
         <exclude domain="file" path="world3d/" />
+        <exclude domain="file" path="mbgl-offline.db" />
+        <exclude domain="file" path="mbgl-offline.db-journal" />
+        <exclude domain="file" path="mbgl-offline.db-wal" />
+        <exclude domain="file" path="mbgl-offline.db-shm" />
+        <exclude domain="file" path="map15/" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />

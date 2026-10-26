@@ -246,6 +246,7 @@ final class Backup {
                 || name.equals("bible") // (the home tablet's copy of the Bible, fetched again by itself)
                 || name.equals("car_wall.jpg") || name.equals(CarPhoto.FILE) || name.equals(CarPhoto.REAR) || name.equals(CarPhoto.TOP) // (his photos on the car box: on the box only)
                 || CarPhotos3D.isPhoto(name) || name.equals(World3DStore.DIR) // (his 3D car photos: on the box only; the 3D map's pieces round where he drove: his alone)
+                || name.startsWith("mbgl-offline.db") || name.equals("map15") // (⑮'s map pieces kept by MapLibre round where he drove: his alone; the free style, fetched again)
                 || (name.startsWith("greet_") && name.endsWith(".pcm"));
     }
 

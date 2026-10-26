@@ -56,7 +56,7 @@ final class CarDeck {
     static int themeFor(String shape, int his) {
         if (CarLayout.GLASS.equals(shape)) return his == 5 || his == 12 ? his : 5;
         if (CarLayout.NEON.equals(shape)) return his == 3 || his == 11 || his == 13 ? his : 13;
-        if (CarLayout.CHASE.equals(shape)) return his == 5 || his == 12 ? 1 : his; // (⑯: cards over the 3D view are never white glass: his own dark theme, else the blue glass)
+        if (CarLayout.CHASE.equals(shape) || CarLayout.CITY.equals(shape)) return his == 5 || his == 12 ? 1 : his; // (⑮ ⑯: cards over the 3D world are never white glass: his own dark theme, else the blue glass)
         return his;
     }
 
@@ -75,6 +75,24 @@ final class CarDeck {
     static String nextSky(String now) {
         for (int i = 0; i < SKIES_3D.length; i++) if (SKIES_3D[i].equals(now)) return SKIES_3D[(i + 1) % SKIES_3D.length];
         return SKIES_3D[1];
+    }
+
+    // ⑮ (stage 4): 3D / 2D, the camera's height, the map's colours, north up, the game view — all his choice (parked, or his words)
+    static final String[] D3_15 = {"", "2d"};
+    static final String[] D3_15_NAMES = {"🏙️ 3D (వాలుగా, బిల్డింగ్‌లతో)", "🗺️ 2D (పై నుంచి)"};
+    static final int[] EYES_15 = {0, 1, 2};
+    static final String[] EYE_15_NAMES = {"👁️ కెమెరా దగ్గరగా", "👁️ కెమెరా మధ్యలో", "👁️ కెమెరా పైనుంచి దూరంగా"};
+    static final String[] LOOKS_15 = {"", "day", "night"};
+    static final String[] LOOK_15_NAMES = {"🌗 స్క్రీన్ పగలు / రాత్రితో", "☀️ ఎప్పుడూ తెల్లటి గాజు", "🌙 ఎప్పుడూ చీకటి"};
+    static final String[] NORTH_15 = {"", "north"};
+    static final String[] NORTH_15_NAMES = {"🚗 దారి పైకి (కారుతో తిరుగుతుంది)", "🧭 ఉత్తరం పైకి"};
+    static final String[] GAME_15 = {"", "on"};
+    static final String[] GAME_15_NAMES = {"🏙️ 3D సిటీ మ్యాప్", "🎮 గేమ్ వ్యూ (⑯ బొమ్మ)"};
+
+    /** 🌙's next colours (his tap goes round: the screen's, day, night). Pure. */
+    static String nextLook15(String now) {
+        for (int i = 0; i < LOOKS_15.length; i++) if (LOOKS_15[i].equals(now)) return LOOKS_15[(i + 1) % LOOKS_15.length];
+        return LOOKS_15[1];
     }
     static final String[] GLASS_NIGHTS = {"", "dark"};
     static final String[] GLASS_NIGHT_NAMES = {"☀️ రాత్రి కూడా తెల్లటి గాజు", "🌙 రాత్రి ముదురు రంగు"};
@@ -584,15 +602,17 @@ final class CarDeck {
             // v5 (27 Oct, ⑫ ⑬ ⑭): ⑫'s glass at night
             "car_glass_night",
             // v6 (27 Oct, ⑯): the 3D car, its finish, headlights, glow, the sky, the buildings, his photo car's plate
-            "car_3d_kind", "car_3d_finish", "car_3d_head", "car_3d_glow", "car_3d_sky", "car_3d_city", "car_plate"};
-    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37, v4 the first 46, v5 47). */
-    private static int known(int v) { return v >= 6 ? LOOK_KEYS.length : v == 5 ? 47 : v == 4 ? 46 : v == 3 ? 37 : v == 2 ? 23 : 0; }
+            "car_3d_kind", "car_3d_finish", "car_3d_head", "car_3d_glow", "car_3d_sky", "car_3d_city", "car_plate",
+            // v7 (27 Oct, ⑮): 3D / 2D, the camera's height, the map's colours, north up, the game view
+            "car_15_3d", "car_15_eye", "car_15_look", "car_15_north", "car_15_game"};
+    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37, v4 the first 46, v5 47, v6 54). */
+    private static int known(int v) { return v >= 7 ? LOOK_KEYS.length : v == 6 ? 54 : v == 5 ? 47 : v == 4 ? 46 : v == 3 ? 37 : v == 2 ? 23 : 0; }
     static final int MINE = 3;
 
     /** The look now (from all the settings) as one line to keep. */
     static String keep(Map<String, ?> all) {
         JSONObject o = new JSONObject();
-        try { o.put("v", 6); } catch (Exception ignored) {} // (v6: every look key there; an older one only knew some)
+        try { o.put("v", 7); } catch (Exception ignored) {} // (v7: every look key there; an older one only knew some)
         for (String k : LOOK_KEYS) {
             Object v = all == null ? null : all.get(k);
             try { if (v instanceof Integer || v instanceof Boolean || v instanceof String) o.put(k, v); } catch (Exception ignored) {}

@@ -32,6 +32,7 @@ final class CarHubSpec {
     static Opt str(String key, String title, String[] values, String[] names, String def) { return new Opt(key, title, K_STR, values, null, names, def, 0, false, false); }
     static Opt strNew(String key, String title, String[] values, String[] names, String def) { return new Opt(key, title, K_STR, values, null, names, def, 0, false, true); }
     static Opt ints(String key, String title, int[] values, String[] names, int def) { return new Opt(key, title, K_INT, null, values, names, null, def, false, false); }
+    static Opt intsNew(String key, String title, int[] values, String[] names, int def) { return new Opt(key, title, K_INT, null, values, names, null, def, false, true); }
     static Opt bool(String key, String title, boolean def) { return new Opt(key, title, K_BOOL, null, null, new String[]{"ఆన్", "ఆఫ్"}, null, 0, def, false); }
     static Opt boolNew(String key, String title, boolean def) { return new Opt(key, title, K_BOOL, null, null, new String[]{"ఆన్", "ఆఫ్"}, null, 0, def, true); }
     static Opt act(String id, String title) { return new Opt(id, title, K_ACT, null, null, null, null, 0, false, false); }
@@ -110,13 +111,13 @@ final class CarHubSpec {
                         ints("car_accent", "💡 వెలుగు రంగు", ACCENTS, ACCENT_NAMES, 0),
                         str("car_layout", "🧩 స్క్రీన్ ఆకారం", CarLayout.CHOICES, CarLayout.NAMES, CarLayout.CLASSIC),
                         strNew("car_glass_night", "🌙 ⑫ గ్లాస్ డాక్: రాత్రి రంగు", CarDeck.GLASS_NIGHTS, CarDeck.GLASS_NIGHT_NAMES, ""),
-                        info("own_colours", "🎨 ⑫ తెల్లటి గాజు, ⑭ నియాన్ రంగులు వాటివే; ⑯ లో తెల్ల థీమ్ బదులు నీలి గాజు: మీ థీమ్ మిగతా ఆకారాల్లో"),
+                        info("own_colours", "🎨 ⑫ తెల్లటి గాజు, ⑭ నియాన్ రంగులు వాటివే; ⑮ ⑯ లో తెల్ల థీమ్ బదులు నీలి గాజు: మీ థీమ్ మిగతా ఆకారాల్లో"),
                         str("car_card", "🃏 కార్డులు", CarStyle.CARDS, CarStyle.CARD_NAMES, ""),
                         str("car_icons", "✳️ ఐకాన్లు", CarStyle.ICONS, CarStyle.ICON_NAMES, ""),
                         str("car_bg_motion", "🌌 వెనక బొమ్మ", CarDeck.BG_MOTIONS, CarDeck.BG_MOTION_NAMES, ""),
                         str("car_font", "🔢 అంకెల ఫాంట్", CarStyle.FONTS, CarStyle.FONT_NAMES, ""),
                         str("car_night_dim", "🔆 రాత్రి వెలుతురు", CarDeck.NIGHT_DIMS, CarDeck.NIGHT_DIM_NAMES, "")),
-                new Cat("3d", "🎮", "3D ⑯",
+                new Cat("3d", "🎮", "3D ⑮ ⑯",
                         strNew("car_3d_kind", "🚗 3D కారు", CarDeck.KINDS_3D, CarDeck.KIND_3D_NAMES, "suv"),
                         act("car3d_pick", "🔄 కారు ఎంచుకో (తిరిగే 3D బొమ్మతో)"),
                         ints("car_colour", "🎨 కారు రంగు", CarTheme.CAR_COLOURS, CarTheme.CAR_COLOUR_NAMES, CarTheme.CAR_COLOURS[0]),
@@ -127,8 +128,13 @@ final class CarHubSpec {
                         strNew("car_3d_city", "🏙️ బిల్డింగ్‌లు", CarDeck.CITIES_3D, CarDeck.CITY_3D_NAMES, ""),
                         act("car3d_photos", "📷 నా కారు ఫోటోలు 3D కోసం (7 వైపులు)"),
                         strNew("car_plate", "🔤 ఫోటో కారు నంబర్ ప్లేట్", CarPhotos3D.PLATES, CarPhotos3D.PLATE_NAMES, ""),
-                        info("osm3d", "🗺️ 3D రోడ్లు, బిల్డింగ్‌లు OpenStreetMap నుంచి: కొన్ని చోట్ల బిల్డింగ్‌లు ఉండవు, ఎత్తులు తెలియనివి మావి. Google 3D వాడము."),
-                        act("map3d_clear", "🗑️ 3D మ్యాప్ ముక్కలు తీసేయి (బాక్స్‌లో దాచినవి)")),
+                        strNew("car_15_3d", "🏙️ ⑮ మ్యాప్: 3D / 2D", CarDeck.D3_15, CarDeck.D3_15_NAMES, ""),
+                        intsNew("car_15_eye", "👁️ ⑮ కెమెరా ఎత్తు", CarDeck.EYES_15, CarDeck.EYE_15_NAMES, 1),
+                        strNew("car_15_look", "🌙 ⑮ మ్యాప్ రంగులు", CarDeck.LOOKS_15, CarDeck.LOOK_15_NAMES, ""),
+                        strNew("car_15_north", "🧭 ⑮ మ్యాప్ తిరగడం", CarDeck.NORTH_15, CarDeck.NORTH_15_NAMES, ""),
+                        strNew("car_15_game", "🎮 ⑮ లో ఏది", CarDeck.GAME_15, CarDeck.GAME_15_NAMES, ""),
+                        info("osm3d", "🗺️ 3D రోడ్లు, బిల్డింగ్‌లు OpenStreetMap నుంచి (⑮: OpenFreeMap): కొన్ని చోట్ల బిల్డింగ్‌లు ఉండవు, ఎత్తులు తెలియనివి మావి. Google 3D వాడము."),
+                        act("map3d_clear", "🗑️ 3D మ్యాప్ ముక్కలు తీసేయి (⑮ ⑯, బాక్స్‌లో దాచినవి)")),
                 new Cat("meter", "🧭", "మీటర్, గడియారం",
                         str("car_gauge", "🧭 స్పీడ్ మీటర్", CarStyle.GAUGES, CarStyle.GAUGE_NAMES, ""),
                         str("car_clock", "🕐 గడియారం", CarDeck.CLOCKS, CarDeck.CLOCK_NAMES, ""),

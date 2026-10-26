@@ -270,7 +270,8 @@ final class JarvisMapView extends View {
      */
     void setSource(String googleSession, boolean satellite, boolean traffic, boolean dark) {
         boolean g = googleSession != null && !googleSession.isEmpty();
-        img.setColorFilter(dark && !g ? DIM : null);
+        tintDark = dark;
+        img.setColorFilter(g ? null : tintFilter(tint, dark)); // (Google's pictures never recoloured)
         if (!ready || g != google || !String.valueOf(googleSession).equals(session) || satellite != this.satellite || traffic != this.traffic || darkTiles != (dark && g && !satellite)) {
             srcGen++; // (pictures on their way for the old source are dropped)
             tiles.clear();
@@ -287,13 +288,28 @@ final class JarvisMapView extends View {
         invalidate();
     }
 
-    private boolean darkTiles;
-    /** The free map at night: dimmed, a little blue (never used on Google's pictures). */
-    private static final android.graphics.ColorMatrixColorFilter DIM = new android.graphics.ColorMatrixColorFilter(new float[]{
-            0.38f, 0, 0, 0, 0,
-            0, 0.40f, 0, 0, 0,
-            0, 0, 0.46f, 0, 4,
-            0, 0, 0, 1, 0});
+    private boolean darkTiles, tintDark;
+    private String tint = MapTint.NONE;
+    private static final java.util.Map<String, android.graphics.ColorMatrixColorFilter> TINTS = new java.util.HashMap<>();
+
+    /** The free map in the car look's colours (MapTint: ⑫ glass, ⑭ neon, ⑪–⑭ dark at night); "" as always (night: dimmed). */
+    void setTint(String t) {
+        String n = t == null ? MapTint.NONE : t;
+        if (n.equals(tint)) return;
+        tint = n;
+        img.setColorFilter(google ? null : tintFilter(tint, tintDark));
+        invalidate();
+    }
+
+    /** The free map's filter for a tint (made once each; null: as it is). Never used on Google's pictures. */
+    private static android.graphics.ColorMatrixColorFilter tintFilter(String tint, boolean night) {
+        float[] m = MapTint.matrix(tint, night);
+        if (m == null) return null;
+        String k = tint + (night ? ":n" : ":d");
+        android.graphics.ColorMatrixColorFilter f = TINTS.get(k);
+        if (f == null) { f = new android.graphics.ColorMatrixColorFilter(m); TINTS.put(k, f); }
+        return f;
+    }
 
     boolean google() { return google; }
     void setCredit(String s) { credit = s == null ? "" : s; invalidate(); }

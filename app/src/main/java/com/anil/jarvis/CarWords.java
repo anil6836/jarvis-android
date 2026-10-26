@@ -37,9 +37,21 @@ final class CarWords {
             "^(3d|3డి|త్రీడీ|త్రీ డీ)\\s*(లో|మ్యాప్ లో|మ్యాప్‌లో)?\\s*(.+?)\\s*(కి|కు)?\\s*దారి\\s*(పెట్టు|పెట్టండి|చూపించు|చూపు|వేయి)?$"
                     + "|^(3d )?(way|route) to (.+?) in 3d$");
 
+    /** ⑮ (stage 4): "2D మ్యాప్ పెట్టు", "3D మ్యాప్ పెట్టు", "గేమ్ వ్యూ", "మ్యాప్ వ్యూ", "కెమెరా పైకి / దగ్గరగా / మధ్యలో", "చీకటి మ్యాప్ పెట్టు", "తెల్లటి మ్యాప్ పెట్టు". */
+    private static final String DO = "(పెట్టు|పెట్టండి|చేయి|చెయ్|చూపించు)";
+    private static final Pattern C2D = Pattern.compile("^(మ్యాప్ )?(2d|2డి|టూడీ|టూ డీ)( మ్యాప్)?( " + DO + ")?$|^(2d|flat) map$");
+    private static final Pattern C3D = Pattern.compile("^(మ్యాప్ )?(3d|3డి|త్రీడీ|త్రీ డీ)( మ్యాప్)? " + DO + "$|^3d map$");
+    private static final Pattern CGAME = Pattern.compile("^(గేమ్ వ్యూ|గేమ్ లాగా|game view)( " + DO + ")?$");
+    private static final Pattern CMAP = Pattern.compile("^(మ్యాప్ వ్యూ|map view)( " + DO + ")?$");
+    private static final Pattern CNEAR = Pattern.compile("^కెమెరా (దగ్గరగా|దగ్గరికి|కిందికి|కిందకి)( (పెట్టు|రా|తీసుకురా))?$|^camera (closer|near|down)$");
+    private static final Pattern CMID = Pattern.compile("^కెమెరా మధ్యలో( పెట్టు)?$|^camera middle$");
+    private static final Pattern CFAR = Pattern.compile("^కెమెరా (పైకి|దూరంగా|ఎత్తుగా|ఎత్తులో)( (పెట్టు|వెళ్ళు|తీసుకెళ్ళు))?$|^camera (higher|far|up)$");
+    private static final Pattern CDARK = Pattern.compile("^(మ్యాప్ )?(చీకటి|నలుపు|నైట్) (మ్యాప్ )?(రంగు )?" + DO + "$|^dark map$");
+    private static final Pattern CLIGHT = Pattern.compile("^(మ్యాప్ )?(తెల్లగా|తెల్లటి|తెలుపు|వైట్) (మ్యాప్ )?(రంగు )?" + DO + "$|^(white|light) map$");
+
     /**
      * {"src", "osm" | "google"}, {"car", one of CarDeck.MAP_CARS}, {"quiet", "on" | "off"}, {"map", "big" | "small"}, {"rotate", "on" | "off"},
-     * {"way3d", the place ("home" for home)};
+     * {"way3d", the place ("home" for home)}, {"city", "2d" | "3d" | "gameon" | "gameoff" | "near" | "mid" | "far" | "dark" | "light"};
      * null when it isn't one of these. Pure.
      */
     static String[] parse(String text) {
@@ -55,6 +67,15 @@ final class CarWords {
         if (SMALL_MAP.matcher(t).matches()) return new String[]{"map", "small"};
         if (ROT_ON.matcher(t).matches()) return new String[]{"rotate", "on"};
         if (ROT_OFF.matcher(t).matches()) return new String[]{"rotate", "off"};
+        if (C2D.matcher(t).matches()) return new String[]{"city", "2d"};
+        if (C3D.matcher(t).matches()) return new String[]{"city", "3d"};
+        if (CGAME.matcher(t).matches()) return new String[]{"city", "gameon"};
+        if (CMAP.matcher(t).matches()) return new String[]{"city", "gameoff"};
+        if (CNEAR.matcher(t).matches()) return new String[]{"city", "near"};
+        if (CMID.matcher(t).matches()) return new String[]{"city", "mid"};
+        if (CFAR.matcher(t).matches()) return new String[]{"city", "far"};
+        if (CDARK.matcher(t).matches()) return new String[]{"city", "dark"};
+        if (CLIGHT.matcher(t).matches()) return new String[]{"city", "light"};
         java.util.regex.Matcher w3 = WAY3D.matcher(t);
         if (w3.matches()) {
             String place = (w3.group(3) != null ? w3.group(3) : w3.group(8)).trim();

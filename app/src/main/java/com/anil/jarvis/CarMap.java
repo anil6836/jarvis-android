@@ -384,6 +384,9 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         miniHide();
     }
 
+    /** The free map's colours for the shape (MapTint: ⑫ glass, ⑭ neon, ⑪–⑭ dark at night); Google's pictures as they come. */
+    void setTint(String tint) { map.setTint(tint); }
+
     /** ⑭: the turn's arrows as yellow boards, the distance in yellow (the other shapes as they always were). */
     void setBoards(boolean on) {
         if (on == boards) return;
