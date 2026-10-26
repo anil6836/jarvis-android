@@ -56,11 +56,26 @@ final class CarDeck {
     static int themeFor(String shape, int his) {
         if (CarLayout.GLASS.equals(shape)) return his == 5 || his == 12 ? his : 5;
         if (CarLayout.NEON.equals(shape)) return his == 3 || his == 11 || his == 13 ? his : 13;
+        if (CarLayout.CHASE.equals(shape)) return his == 5 || his == 12 ? 1 : his; // (⑯: cards over the 3D view are never white glass: his own dark theme, else the blue glass)
         return his;
     }
 
     /** ⑫ at night: dark only when he chose it ("dark"); else the glass stays white (his choice, never by itself). Pure. */
     static boolean glassDark(String pref, boolean night) { return night && "dark".equals(pref); }
+
+    // ⑯ (stage 3): the 3D car's kinds (our six, or his own photos), the sky, the buildings
+    static final String[] KINDS_3D = {"suv", "sedan", "hatch", "sports", "jeep", "concept", "photo"};
+    static final String[] KIND_3D_NAMES = {"🚙 కాంపాక్ట్ SUV", "🚗 సెడాన్", "🚘 హ్యాచ్‌బ్యాక్", "🏎️ స్పోర్ట్స్ కూపే", "🛻 ఆఫ్-రోడ్ జీప్", "🛸 ఫ్యూచర్ కాన్సెప్ట్", "📷 నా కారు (ఫోటోలు)"};
+    static final String[] SKIES_3D = {"", "day", "dusk", "night"};
+    static final String[] SKY_3D_NAMES = {"🌗 స్క్రీన్ పగలు / రాత్రితో", "☀️ పగలు", "🌇 సాయంత్రం", "🌙 రాత్రి"};
+    static final String[] CITIES_3D = {"", "toy"};
+    static final String[] CITY_3D_NAMES = {"🏢 నిజమైన బిల్డింగ్‌లు (OSM)", "🧱 బొమ్మ బిల్డింగ్‌లు"};
+
+    /** 🌅's next sky (his tap goes round: screen's, day, dusk, night). Pure. */
+    static String nextSky(String now) {
+        for (int i = 0; i < SKIES_3D.length; i++) if (SKIES_3D[i].equals(now)) return SKIES_3D[(i + 1) % SKIES_3D.length];
+        return SKIES_3D[1];
+    }
     static final String[] GLASS_NIGHTS = {"", "dark"};
     static final String[] GLASS_NIGHT_NAMES = {"☀️ రాత్రి కూడా తెల్లటి గాజు", "🌙 రాత్రి ముదురు రంగు"};
 
@@ -567,15 +582,17 @@ final class CarDeck {
             // v4 (26 Oct, ⑪): Jarvis's side and glow, his clothes and skin, the ring under him, the car on the map, the map turning with the car
             "car_jarvis_side", "car_jarvis_glow", "body_look", "body_skin", "car_jarvis_ring", "car_talk_bubble", "car_map_car", "car_map_rotate", "car_buttons_sp",
             // v5 (27 Oct, ⑫ ⑬ ⑭): ⑫'s glass at night
-            "car_glass_night"};
-    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37, v4 the first 46). */
-    private static int known(int v) { return v >= 5 ? LOOK_KEYS.length : v == 4 ? 46 : v == 3 ? 37 : v == 2 ? 23 : 0; }
+            "car_glass_night",
+            // v6 (27 Oct, ⑯): the 3D car, its finish, headlights, glow, the sky, the buildings, his photo car's plate
+            "car_3d_kind", "car_3d_finish", "car_3d_head", "car_3d_glow", "car_3d_sky", "car_3d_city", "car_plate"};
+    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37, v4 the first 46, v5 47). */
+    private static int known(int v) { return v >= 6 ? LOOK_KEYS.length : v == 5 ? 47 : v == 4 ? 46 : v == 3 ? 37 : v == 2 ? 23 : 0; }
     static final int MINE = 3;
 
     /** The look now (from all the settings) as one line to keep. */
     static String keep(Map<String, ?> all) {
         JSONObject o = new JSONObject();
-        try { o.put("v", 5); } catch (Exception ignored) {} // (v5: every look key there; an older one only knew some)
+        try { o.put("v", 6); } catch (Exception ignored) {} // (v6: every look key there; an older one only knew some)
         for (String k : LOOK_KEYS) {
             Object v = all == null ? null : all.get(k);
             try { if (v instanceof Integer || v instanceof Boolean || v instanceof String) o.put(k, v); } catch (Exception ignored) {}

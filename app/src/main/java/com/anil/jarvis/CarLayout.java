@@ -25,12 +25,14 @@ final class CarLayout {
              * speed rising over it; ⑬ the map big in the middle, Jarvis round with his six buttons on an arc beside him, the song
              * floating on the map; ⑭ neon colours, the song wide on top, Jarvis on the right, yellow turn boards.
              */
-            GLASS = "glass", FULLMAP = "fullmap", NEON = "neon";
+            GLASS = "glass", FULLMAP = "fullmap", NEON = "neon",
+            /** Stage 3 (27 Oct): ⑯ our own 3D view — his car from behind on the real roads (OpenStreetMap), ⑪'s parts round it. */
+            CHASE = "chase";
     /** The shapes he can pick (in this order in ⚙️), and their names. */
-    static final String[] CHOICES = {COCKPIT, CHROME, MAP3D, MAPCARDS, CLASSIC, HALFMAP, CLUSTER, DOCK, SPECIAL, GLASS, FULLMAP, NEON};
+    static final String[] CHOICES = {COCKPIT, CHROME, MAP3D, MAPCARDS, CLASSIC, HALFMAP, CLUSTER, DOCK, SPECIAL, GLASS, FULLMAP, NEON, CHASE};
     static final String[] NAMES = {"① కాక్‌పిట్ 3D", "② క్రోమ్ డయల్స్", "③ 3D మ్యాప్ డాష్", "④ మ్యాప్ + కార్డులు", "⑥ ఇప్పటి స్క్రీన్ (క్లాసిక్)", "⑦ సగం మ్యాప్",
             "⑨ క్లస్టర్ (రెండు పెద్ద డయల్స్)", "⑩ డాక్ (పెద్ద మ్యాప్ + కార్డులు)", "⑪ స్పెషల్ (అన్నీ ఒకే చోట)",
-            "⑫ గ్లాస్ డాక్ (తెల్లటి గాజు)", "⑬ ఫుల్ మ్యాప్ (Jarvis చక్రం)", "⑭ నియాన్ రేసర్"};
+            "⑫ గ్లాస్ డాక్ (తెల్లటి గాజు)", "⑬ ఫుల్ మ్యాప్ (Jarvis చక్రం)", "⑭ నియాన్ రేసర్", "⑯ 3D చేజ్ (కారు వెనక నుంచి, గేమ్ లాగా)"};
 
     /** A shape he can pick (anything else: the classic one). Pure. */
     static String valid(String s) {
@@ -84,8 +86,8 @@ final class CarLayout {
     /** This shape shows the map. Pure. */
     static boolean hasMap(String shape) { return MAPCARDS.equals(shape) || HALFMAP.equals(shape) || NAV.equals(shape) || MAP3D.equals(shape) || DOCK.equals(shape) || family(shape); }
 
-    /** ⑪ and the shapes made from its parts (⑫ ⑬ ⑭): 🎛️, the map's own tools, the player with the 3D keys, his apps, ⑪'s six. Pure. */
-    static boolean family(String shape) { return SPECIAL.equals(shape) || GLASS.equals(shape) || FULLMAP.equals(shape) || NEON.equals(shape); }
+    /** ⑪ and the shapes made from its parts (⑫ ⑬ ⑭ ⑯): 🎛️, the map's own tools, the player with the 3D keys, his apps, ⑪'s six. Pure. */
+    static boolean family(String shape) { return SPECIAL.equals(shape) || GLASS.equals(shape) || FULLMAP.equals(shape) || NEON.equals(shape) || CHASE.equals(shape); }
 
     /** One of the 3D shapes (leaning cards, chrome round buttons). Pure. */
     static boolean deep(String shape) { return COCKPIT.equals(shape) || CHROME.equals(shape) || MAP3D.equals(shape); }

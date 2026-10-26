@@ -324,6 +324,40 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         mapPill.setVisibility(old);
         if (!on) stopBtn.setVisibility(GONE);
         sizes(getWidth(), getHeight());
+        miniHide();
+    }
+
+    // ⑯ (stage 3, 27 Oct): a small map card in the corner over the 3D view — only the map, the way and his car; a tap
+    // makes it big (⑯'s ⤢), the big one has all its buttons again
+    private boolean mini;
+    private View miniTap;
+
+    void setMini(boolean on) {
+        if (on == mini) return;
+        mini = on;
+        if (miniTap == null) {
+            miniTap = new View(getContext());
+            miniTap.setOnClickListener(v -> tap(host::expand));
+            addView(miniTap, new LayoutParams(-1, -1));
+        }
+        miniTap.setVisibility(on ? VISIBLE : GONE);
+        if (on) { miniTap.bringToFront(); miniHide(); return; }
+        chipScroll.setVisibility(VISIBLE); // (all as the mode wants again; the trip's parts come back with the next second)
+        bottom.setVisibility(VISIBLE); // (the speed, 🛣️, ✖ row: never left hidden after ⑯)
+        boolean sp = special;
+        special = !sp;
+        setSpecial(sp);
+    }
+
+    boolean mini() { return mini; }
+
+    /** In the small card: everything but the map, the way's arrows and the tap hidden. */
+    private void miniHide() {
+        if (!mini) return;
+        for (int i = 0; i < getChildCount(); i++) {
+            View v = getChildAt(i);
+            if (v != map && v != flow && v != miniTap && v.getVisibility() != GONE) v.setVisibility(GONE);
+        }
     }
 
     /** ⑪'s ⤢: the map big now (its sign shows the way back). */
@@ -347,6 +381,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         expandable = on;
         expandBtn.setVisibility(special && on ? VISIBLE : GONE);
         sizes(getWidth(), getHeight());
+        miniHide();
     }
 
     /** ⑭: the turn's arrows as yellow boards, the distance in yellow (the other shapes as they always were). */
@@ -744,6 +779,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         speed.setTextColor(limit > 0 && kmh > limit ? 0xFFFF6B5E : textMain);
         // the way: only a trip Jarvis started, Google's map on (Google's way never on the free map)
         wayCheck(l, trip);
+        miniHide();
     }
 
     private static void setText(TextView t, String s) { if (!s.contentEquals(t.getText())) t.setText(s); }
@@ -911,7 +947,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         if (key.equals(noteKey)) return;
         noteKey = key;
         note.setText(s);
-        note.setVisibility(s.isEmpty() ? GONE : VISIBLE);
+        note.setVisibility(s.isEmpty() || mini ? GONE : VISIBLE);
         if (!s.isEmpty()) main.postDelayed(() -> { if (key.equals(noteKey)) note.setVisibility(GONE); }, 20_000);
     }
 

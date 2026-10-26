@@ -136,6 +136,18 @@ final class CarScreen extends FrameLayout {
     private final List<CarArt.Icon> dockIcons = new ArrayList<>();
     private final List<TextView> dockWords = new ArrayList<>();
     private final CarWheel wheel;
+    // 🎮 stage 3 (27 Oct): ⑯ our own 3D view with ⑪'s parts round it (the 3D view is made only when ⑯ first shows)
+    private Chase3D chase;
+    private final FrameLayout g16;
+    private final LinearLayout g16Row, g16Left, g16Mid, g16Right, g16Dock, g16Btns, g16Clock;
+    private final Car16.SpeedArc arc16;
+    private final Car16.Banner banner16;
+    private final List<TextView> btn16 = new ArrayList<>();
+    private String[] wayCard;
+    private String wayLeft = "";
+    private volatile String look3dKey = "";
+    private android.app.AlertDialog typeBox;
+    private Car3DView pickView;
     private final android.widget.ScrollView appsV;
     private final android.widget.HorizontalScrollView appsH;
     private final LinearLayout appsVList, appsHList;
@@ -600,6 +612,29 @@ final class CarScreen extends FrameLayout {
         g14Main = column(a);
         g14Side = column(a);
         g14Bottom = row(a);
+        g16 = new FrameLayout(a);
+        g16Row = row(a);
+        g16Left = column(a);
+        g16Mid = column(a);
+        g16Right = column(a);
+        g16Dock = row(a);
+        g16Btns = row(a);
+        g16Clock = row(a);
+        arc16 = new Car16.SpeedArc(a);
+        banner16 = new Car16.Banner(a);
+        banner16.setVisibility(INVISIBLE);
+        banner16.stop.setOnClickListener(v -> tap(this::stopWay3d));
+        banner16.setOnClickListener(v -> tap(this::find3d));
+        banner16.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (b0 - t0 != ob - ot) banner16.sizes(b0 - t0); });
+        String[][] b16 = {{"🔍", "find"}, {"🏙️", "city"}, {"🔄", "orbit"}, {"🌅", "sky"}, {"🚗", "car"}};
+        for (String[] b : b16) { // ⑯'s own: 🔍 where to (our free way), 🏙️ real / toy buildings, 🔄 round the car, 🌅 the sky, 🚗 the car
+            TextView t = autoText(a, b[0], false, 34);
+            t.setGravity(Gravity.CENTER);
+            final String id = b[1];
+            t.setOnClickListener(v -> tap(() -> btn16(id)));
+            btn16.add(t);
+            autoMax.put(t, 34);
+        }
 
         hub = new CarHub(a, prefs, new CarHub.Host() {
             @Override public void changed(String key) { hubChanged(key); }
@@ -672,10 +707,14 @@ final class CarScreen extends FrameLayout {
         main.removeCallbacks(slow);
         main.post(quick);
         main.post(slow);
+        chaseShow();
     }
 
     void stop() {
         running = false;
+        dropPick();
+        if (typeBox != null) { typeBox.dismiss(); typeBox = null; }
+        chaseShow(); // (the 3D view rests)
         if (neonCar.getVisibility() == VISIBLE) { neonCar.stop(); content.setAlpha(1f); welcomeUntil = 0; }
         carMap.setShown(false); // (the map's pictures let go while the screen is away)
         main.removeCallbacks(quick);
@@ -689,10 +728,13 @@ final class CarScreen extends FrameLayout {
     void destroy() {
         stop();
         carMap.shutdown();
+        if (chase != null) { chase.close(); chase = null; }
+        photoWork.shutdownNow();
     }
 
     /** Settings were left: the theme, his colour, the dance choice, Jarvis's look may have changed. */
     void themeChanged() {
+        chaseLook(); // (⑯'s car, plate, photos may have changed in ⚙️)
         portal.body.rig.setLook(prefs.bodyLook());
         portal.body.rig.setSkin(prefs.bodySkin());
         palette();
@@ -723,6 +765,7 @@ final class CarScreen extends FrameLayout {
             if (!running) return;
             speed();
             shapeCheck();
+            chaseTick();
             if (carMap.shown()) {
                 Location l = DriveService.last;
                 boolean fresh = l != null && android.os.SystemClock.elapsedRealtimeNanos() - l.getElapsedRealtimeNanos() < 60_000_000_000L;
@@ -736,6 +779,7 @@ final class CarScreen extends FrameLayout {
                 if (!m) stillSince = now;
                 wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f); shapeBtn.setAlpha(m ? 0.35f : 1f);
                 if (m && settingSheet) closeSheet(); // (a look chooser left open: gone when the car moves)
+                if (m && typeBox != null) { typeBox.dismiss(); typeBox = null; } // (no typing while moving: ⑯'s 🔤 box goes)
                 if (m && hub.shown()) hub.hide(); // (🎛️ too)
             }
             glances();
@@ -1045,7 +1089,7 @@ final class CarScreen extends FrameLayout {
 
     /** ⑪ ⤢ big map: the road card only for the AC question (the parked card and the rest stay off there: his word). */
     private void roadFull() {
-        boolean onlyAc = specialFull && CarLayout.family(shape) || CarLayout.FULLMAP.equals(shape); // (⑬: the card floats on the map only for the question)
+        boolean onlyAc = specialFull && CarLayout.family(shape) || CarLayout.FULLMAP.equals(shape) || CarLayout.CHASE.equals(shape); // (⑬ ⑯: the card only for the question)
         int v = !onlyAc || acAt > 0 ? VISIBLE : GONE;
         if (roadCard.getVisibility() != v) {
             roadCard.setVisibility(v);
@@ -1249,6 +1293,7 @@ final class CarScreen extends FrameLayout {
 
     private void saverShow(boolean on) {
         saverOn = on;
+        chaseShow(); // (the dark clock over ⑯: the 3D view rests)
         if (on) {
             int ink = night ? 0xFF56677A : 0xFFB8C7D6;
             saverClock.setTextColor(ink);
@@ -1275,6 +1320,7 @@ final class CarScreen extends FrameLayout {
      */
     private void showApps() {
         final Context c = getContext();
+        dropPick();
         sheet.removeAllViews();
         LinearLayout box = panel(tileBg, accent);
         TextView t = autoText(c, "▦ ఆప్స్", true, 50);
@@ -1786,6 +1832,7 @@ final class CarScreen extends FrameLayout {
     /** A choice made in 🎛️: the screen takes it now. */
     private void hubChanged(String key) {
         if ("car_layout".equals(key)) shapeCheck();
+        if (key != null && (key.startsWith("car_3d") || "car_colour".equals(key) || "car_plate".equals(key) || "car_low_motion".equals(key))) chaseLook();
         themeChanged();
         lightsNow();
         musicKeyNow = "";
@@ -1803,6 +1850,9 @@ final class CarScreen extends FrameLayout {
             case "g2": hub.hide(); toast(mapMode("g2")); break;
             case "photo_top": hub.hide(); host.openSettingsAt("car_top"); break;
             case "photos": hub.hide(); host.openSettingsAt("car"); break;
+            case "car3d_photos": hub.hide(); host.openSettingsAt("car3d"); break;
+            case "car3d_pick": hub.hide(); carPick3d(); break;
+            case "map3d_clear": World3DStore.clear(c); toast("🗑️ 3D మ్యాప్ ముక్కలు తీసేశాను: మళ్ళీ కావాలంటే నెట్ నుంచి వస్తాయి"); break;
             case "stage": setStage(!prefs.carStage()); toast(prefs.carStage() ? "🕺 స్టేజ్ పెట్టాను" : "🕺 స్టేజ్ ఆపాను"); break;
             case "music_app": hub.hide(); musicApps(); break;
             case "apps": hub.hide(); showApps(); break;
@@ -2094,6 +2144,7 @@ final class CarScreen extends FrameLayout {
             }
             case "car": {
                 prefs.sp.edit().putString("car_map_car", w[1]).apply();
+                if (java.util.Arrays.asList(CarDeck.KINDS_3D).contains(w[1])) { prefs.sp.edit().putString("car_3d_kind", w[1]).apply(); chaseLook(); } // (⑯'s 3D car too)
                 mapPrefs();
                 String name = CarDeck.MAP_CAR_NAMES[Math.max(0, CarDeck.mapCarIndex(w[1]))];
                 if ("photo".equals(w[1]) && !CarPhoto.topFile(c).exists()) return "మీ కారు పై నుంచి ఫోటో ఇంకా లేదు: కారు ఆగాక 🎛️ → మ్యాప్ → 📷 లో ఎంచుకోండి. అప్పటిదాకా SUV బొమ్మ.";
@@ -2109,6 +2160,30 @@ final class CarScreen extends FrameLayout {
                 boolean on = "on".equals(w[1]);
                 carMap.setRotate(on);
                 return on ? "సరే, మ్యాప్ దారి పైకి: కారుతో తిరుగుతుంది." : "సరే, మ్యాప్ ఉత్తరం పైకి.";
+            }
+            case "way3d": {
+                if (!CarLayout.CHASE.equals(shape)) return null; // (not ⑯: the words go to Jarvis as before)
+                if ("home".equals(w[1])) {
+                    JSONObject h = Travel.home(c);
+                    if (h == null || !h.has("lat")) return "ఇల్లు ఇంకా తెలియదు: ఇంటి దగ్గర 🧭 → 'ఇక్కడే మా ఇల్లు' నొక్కండి.";
+                    List<String[]> rows = new ArrayList<>();
+                    List<Runnable> acts = new ArrayList<>();
+                    rows.add(new String[]{"🏠 ఇంటికి 3D దారి"});
+                    acts.add(() -> go3d(h.optString("name", "ఇల్లు"), h.optDouble("lat"), h.optDouble("lon")));
+                    openSheet("🏠 ఇంటికి?", null, rows, acts, 1);
+                    return "ఇంటికి దారి: తెర మీద నొక్కండి.";
+                }
+                double[] saved = GeoReminders.place(c, w[1]);
+                if (saved != null) {
+                    List<String[]> rows = new ArrayList<>();
+                    List<Runnable> acts = new ArrayList<>();
+                    rows.add(new String[]{"📍 " + w[1] + " కి 3D దారి"});
+                    acts.add(() -> go3d(w[1], saved[0], saved[1]));
+                    openSheet("📍 " + w[1] + "?", null, rows, acts, 1);
+                    return w[1] + " కి దారి: తెర మీద నొక్కండి.";
+                }
+                search3d(w[1]);
+                return w[1] + " ఉచిత మ్యాప్‌లో వెతుకుతున్నాను: దొరికినవి తెర మీద, మీకు కావాల్సింది నొక్కండి.";
             }
             case "map": {
                 if (!CarLayout.family(shape)) return null; // (not ⑪ ⑫ ⑬ ⑭: these words go to Jarvis as before)
@@ -2153,7 +2228,7 @@ final class CarScreen extends FrameLayout {
     // ================================================================ ✨ stage 2 (27 Oct): ⑫ ⑬ ⑭
 
     /** ⑫'s glass and ⑭'s neon carry their own colours; every other shape his theme's. */
-    private static String ownLook(String s) { return CarLayout.GLASS.equals(s) || CarLayout.NEON.equals(s) ? s : ""; }
+    private static String ownLook(String s) { return CarLayout.GLASS.equals(s) || CarLayout.NEON.equals(s) || CarLayout.CHASE.equals(s) ? s : ""; }
 
     private String colourKey = "";
 
@@ -2241,6 +2316,337 @@ final class CarScreen extends FrameLayout {
         specialApps();
     }
 
+    /**
+     * ⑯: the 3D view under everything; Jarvis with 🎙️, the six and 🎛️ on the left; the yellow turn banner, the speed arc
+     * round his car and a dock of his apps with ⑯'s own buttons (🔍 🏙️ 🔄 🌅 🚗) in the middle; the small map, the clock
+     * and the song on the right. One way to the choices (🎛️), the song's five 3D keys, no words on the car.
+     */
+    private void chaseArrange(float j) {
+        put(content, g16, 100);
+        Chase3D ch = chase();
+        detach(ch.view);
+        g16.addView(ch.view, new FrameLayout.LayoutParams(-1, -1));
+        g16.addView(g16Row, new FrameLayout.LayoutParams(-1, -1));
+        put(g16Row, g16Left, 24); put(g16Row, g16Mid, 52); put(g16Row, g16Right, 24); // (the middle in the middle: the speed arc round the car)
+        put(g16Left, jCard, 40 * Math.min(j, 1.12f)); put(g16Left, wideTalk, 8); put(g16Left, tileGrid, 32); put(g16Left, wideHub, 8); put(g16Left, chipRow, 6);
+        put(g16Mid, banner16, 13); put(g16Mid, roadCard, 11); put(g16Mid, arc16, 60); put(g16Mid, g16Dock, 16); put(g16Mid, board, 100);
+        put(g16Dock, appsH, 55); put(g16Dock, g16Btns, 45);
+        for (TextView t : btn16) put(g16Btns, t, 1);
+        put(g16Right, carMap, 36); put(g16Right, g16Clock, 17); put(g16Right, player, 47);
+        String cs = prefs.carClock();
+        put(g16Clock, cs.isEmpty() || "analog".equals(cs) ? clockFace : clock, 42);
+        put(g16Clock, spClockCol, 58);
+        put(spClockCol, date, 45); put(spClockCol, minis, 55);
+        fillTiles(tileGrid, 0, 6, 3);
+        specialApps();
+        chaseLook();
+        chaseShow();
+    }
+
+    /** ⑯'s 3D view and its keeper, made once (the first time ⑯ shows). */
+    private Chase3D chase() {
+        if (chase != null) return chase;
+        chase = new Chase3D(getContext(), prefs, new Chase3D.Host() {
+            @Override public void card(String[] card, String left) { wayCard = card; wayLeft = left == null ? "" : left; bannerNow(); }
+            @Override public void arrived(String name) { wayCard = null; bannerNow(); host.speak("🏁 " + name + " చేరుకున్నాం " + prefs.name() + "."); }
+            @Override public void wayFailed(String why) { toast(why); }
+        });
+        chase.view.setListener(new Car3DView.Listener() {
+            @Override public void tapped() { if (chase != null && chase.view.orbit()) btn16("orbit"); } // (a tap while going round: back behind the car)
+            @Override public void failed() { toast("🎮 ఈ box లో 3D బొమ్మ రాలేదు (GPU ఒప్పుకోలేదు). వేరే ఆకారం పెట్టండి."); }
+        });
+        chase.view.setEq(beat.eq);
+        return chase;
+    }
+
+    /** ⑯ drawn only while it is on the screen, the screen awake and no chooser over it. */
+    private void chaseShow() {
+        if (chase == null) return;
+        chase.setShown(running && CarLayout.CHASE.equals(shape) && !specialFull && !saverOn && pickView == null && chase.view.getParent() != null);
+    }
+
+    /** ⑯'s car, sky and buildings from his choices (🎛️ → 🎮 3D, ⚙️, his words). */
+    private void chaseLook() {
+        if (chase == null) return;
+        String kind = prefs.sp.getString("car_3d_kind", "suv");
+        Car3DView v = chase.view;
+        v.setCar(kind, prefs.sp.getString("car_3d_finish", ""), prefs.sp.getString("car_3d_head", ""), prefs.sp.getString("car_3d_glow", ""), prefs.carColour());
+        v.setSky(Cam3D.sky(prefs.sp.getString("car_3d_sky", ""), night));
+        v.setLow(prefs.carLowMotion());
+        arc16.setLow(prefs.carLowMotion());
+        // his photos: made again only when the kind, the plate's choice or a photo itself changed
+        StringBuilder k = new StringBuilder(kind).append('|').append(prefs.sp.getString("car_plate", ""));
+        if ("photo".equals(kind)) {
+            for (int i = 0; i < CarPhotos3D.SLOTS.length; i++) k.append('|').append(CarPhotos3D.file(getContext(), i).lastModified());
+            k.append('|').append(CarPhoto.rearFile(getContext()).lastModified());
+        }
+        final String key = k.toString();
+        if (key.equals(look3dKey)) return;
+        look3dKey = key;
+        if (!"photo".equals(kind)) { v.setPhotos(null); return; }
+        final Context app = getContext().getApplicationContext();
+        photoWork.execute(() -> { // (one at a time; a newer choice meanwhile: this one is dropped)
+            if (!key.equals(look3dKey)) return;
+            CarPhotos3D.Set set = CarPhotos3D.load(app, prefs);
+            main.post(() -> {
+                if (chase == null || !key.equals(look3dKey)) return;
+                chase.view.setPhotos(set);
+                if (set == null) toast("📷 3D కోసం మీ కారు ఫోటోలు ఇంకా లేవు: 🎛️ → 🎮 3D → 📷 లో పెట్టండి. అప్పటిదాకా SUV.");
+                else if (set.blurred > 0) toast("🔤 " + set.blurred + " ఫోటో(ల)లో ప్లేట్ సరిగ్గా కనబడలేదు: ప్లేట్ ఉండే భాగం మసక చేశాను.");
+            });
+        });
+    }
+
+    private final java.util.concurrent.ExecutorService photoWork = java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    /** Every second on ⑯: his place into the 3D view, the lights, the speed arc, the banner. */
+    private void chaseTick() {
+        if (chase == null || !CarLayout.CHASE.equals(shape)) return;
+        Location l = DriveService.last;
+        boolean fresh = l != null && android.os.SystemClock.elapsedRealtimeNanos() - l.getElapsedRealtimeNanos() < 60_000_000_000L;
+        int kmh = CarBox.speed();
+        chase.tick(fresh ? l : lastFix3d(), kmh);
+        long now = System.currentTimeMillis();
+        chase.view.setLights(now < brakeUntil, now < indicatorUntil ? indicatorDir : 0, rainNow);
+        chase.view.setSky(Cam3D.sky(prefs.sp.getString("car_3d_sky", ""), night));
+        if (chase.view.orbit() && CarBox.moving()) { chase.view.setOrbit(false); btnMarks(); } // (driving off: behind the car again)
+        arc16.set(kmh, kmh < 0 ? 0 : DriveService.limitNowKmh);
+        bannerNow();
+    }
+
+    private long lastFix3dAt;
+    private Location lastFix3d;
+
+    /** Parked with no fresh drive fix: where the box last knew (at most every 30 s). */
+    private Location lastFix3d() {
+        long now = System.currentTimeMillis();
+        if (now - lastFix3dAt < 30_000) return lastFix3d;
+        lastFix3dAt = now;
+        try {
+            android.location.LocationManager lm = getContext().getSystemService(android.location.LocationManager.class);
+            Location a = lm == null ? null : lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+            if (a == null && lm != null) a = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+            lastFix3d = a;
+        } catch (Exception e) { lastFix3d = null; } // (no location permission)
+        return lastFix3d;
+    }
+
+    /** The yellow banner: our own way's turn; else the Google Maps app's turn (its own card, never on the 3D roads); else hidden. */
+    private void bannerNow() {
+        if (!CarLayout.CHASE.equals(shape)) return;
+        String[] c = wayCard;
+        if (c != null) { banner16.set(c[0], c[1], wayLeft, true); banner16.setVisibility(VISIBLE); return; }
+        JSONObject nav = Drive.navState();
+        boolean trip = nav != null && !(nav.optString("next").isEmpty() && nav.optString("detail").isEmpty());
+        if (trip) {
+            String next = nav.optString("next"), det = nav.optString("detail");
+            banner16.set(next.isEmpty() ? det : next, next.isEmpty() ? "" : det, nav.optString("trip").isEmpty() ? "" : "🏁 " + nav.optString("trip"), false);
+            banner16.setVisibility(VISIBLE);
+            return;
+        }
+        banner16.setVisibility(INVISIBLE);
+    }
+
+    /** ⑯'s own buttons. Looks (🏙️ 🌅 🚗) change only while parked; 🔍 and 🔄's way back any time. */
+    private void btn16(String id) {
+        if (chase == null) return;
+        switch (id) {
+            case "find": find3d(); break;
+            case "orbit":
+                if (!chase.view.orbit() && !parkedOrSay()) return; // (round the car: parked, his tap)
+                chase.view.setOrbit(!chase.view.orbit());
+                btnMarks();
+                break;
+            case "city": {
+                if (!parkedOrSay()) return;
+                boolean toy = !"toy".equals(prefs.sp.getString("car_3d_city", ""));
+                prefs.sp.edit().putString("car_3d_city", toy ? "toy" : "").apply();
+                toast(toy ? "🧱 బొమ్మ బిల్డింగ్‌లు" : "🏢 నిజమైన బిల్డింగ్‌లు (OpenStreetMap)");
+                btnMarks();
+                break;
+            }
+            case "sky": {
+                if (!parkedOrSay()) return;
+                String next = CarDeck.nextSky(prefs.sp.getString("car_3d_sky", ""));
+                prefs.sp.edit().putString("car_3d_sky", next).apply();
+                toast(CarDeck.SKY_3D_NAMES[Math.max(0, java.util.Arrays.asList(CarDeck.SKIES_3D).indexOf(next))]);
+                chaseLook();
+                break;
+            }
+            case "car": carPick3d(); break;
+            default: break;
+        }
+    }
+
+    /** 🔄 and 🏙️ lit when on. */
+    private void btnMarks() {
+        if (btn16.size() < 5) return;
+        btn16.get(1).setAlpha("toy".equals(prefs.sp.getString("car_3d_city", "")) ? 1f : 0.75f);
+        btn16.get(2).setAlpha(chase != null && chase.view.orbit() ? 1f : 0.75f);
+    }
+
+    /** 🔍 ⑯: where to on our own free way — home, his places, a name (parked: typed; any time: his words "3D లో … కి దారి"). */
+    private void find3d() {
+        if (chase == null) return;
+        Context c = getContext();
+        List<String[]> rows = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
+        JSONObject home = Travel.home(c);
+        if (home != null && home.has("lat")) { rows.add(new String[]{"🏠 ఇంటికి"}); acts.add(() -> go3d(home.optString("name", "ఇల్లు"), home.optDouble("lat"), home.optDouble("lon"))); }
+        int n = 0;
+        for (JSONObject p : Places.all(c)) {
+            if (n >= 4 || !p.has("lat")) continue;
+            if (home != null && p.optString("name").equals(home.optString("name"))) continue;
+            rows.add(new String[]{"📍 " + p.optString("name")});
+            acts.add(() -> go3d(p.optString("name"), p.optDouble("lat"), p.optDouble("lon")));
+            n++;
+        }
+        if (!CarBox.moving()) { rows.add(new String[]{"🔤 పేరుతో వెతుకు"}); acts.add(this::type3d); }
+        if (chase.hasWay()) { rows.add(new String[]{"✖ దారి ఆపు"}); acts.add(() -> { closeSheet(); stopWay3d(); }); }
+        openSheet("🔍 3D లో ఎక్కడికి?", "మాటతో: \"Jarvis, 3D లో (ఊరు) కి దారి\" · ఉచిత మ్యాప్ (OpenStreetMap) దారి", rows, acts, 2);
+    }
+
+    /** 🔤 Parked: a name typed, then OSM's places for it. */
+    private void type3d() {
+        closeSheet();
+        if (!parkedOrSay()) return;
+        final android.widget.EditText e = new android.widget.EditText(getContext());
+        e.setSingleLine(true);
+        e.setHint("ఊరు / చోటు పేరు");
+        typeBox = new android.app.AlertDialog.Builder(getContext(), android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🔍 3D దారి: ఎక్కడికి?")
+                .setView(e)
+                .setPositiveButton("వెతుకు", (d, w) -> { typeBox = null; if (parkedOrSay()) search3d(e.getText().toString()); })
+                .setNegativeButton("వద్దు", (d, w) -> typeBox = null)
+                .show();
+    }
+
+    /** OSM's places for his words: a list; his tap starts the way (nothing starts by itself). */
+    void search3d(String q) {
+        if (q == null || q.trim().isEmpty() || chase() == null) return;
+        toast("🔍 వెతుకుతున్నాను…");
+        chase.search(q.trim(), (places, err) -> {
+            if (err != null) { toast(err); return; }
+            if (places.isEmpty()) { toast("'" + q.trim() + "' ఉచిత మ్యాప్‌లో దొరకలేదు Sir"); return; }
+            List<String[]> rows = new ArrayList<>();
+            List<Runnable> acts = new ArrayList<>();
+            for (int i = 0; i < places.size() && i < 6; i++) {
+                Chase3D.Place p = places.get(i);
+                rows.add(new String[]{"📍 " + p.name + " · " + String.format(java.util.Locale.ROOT, "%.1f కి.మీ", p.km)});
+                acts.add(() -> go3d(p.name, p.lat, p.lon));
+            }
+            openSheet("🔍 " + q.trim(), places.get(0).detail, rows, acts, 1);
+        });
+    }
+
+    /** His tap on a place: our own free way there in ⑯ (his tap is the yes). */
+    private void go3d(String name, double lat, double lon) {
+        closeSheet();
+        chase().go(name, lat, lon);
+        host.speak("సరే, " + name + " కి 3D దారి పెడుతున్నాను.");
+    }
+
+    /** ✖ our own way: ended (his tap; a Google trip ends in Google Maps itself). */
+    private void stopWay3d() {
+        if (chase == null || !chase.hasWay()) { if (Drive.navState() != null) stopWay(); return; }
+        confirm("3D దారి ఆపనా?", () -> { chase.stopWay(); wayCard = null; bannerNow(); toast("సరే, 3D దారి ఆపాను"); });
+    }
+
+    /**
+     * 🚗 ⑯'s car chooser (parked): our six cars and his photo car turning on a round floor; his colour, the finish, the
+     * headlights, the glow under it. Each tap shows at once and is kept.
+     */
+    private void carPick3d() {
+        if (!parkedOrSay()) return;
+        Context c = getContext();
+        closeSheet();
+        settingSheet = true;
+        LinearLayout box = panel(tileBg, accent);
+        TextView title = autoText(c, "🚗 3D కారు ఎంచుకోండి (వేలితో తిప్పవచ్చు)", true, 48);
+        title.setGravity(Gravity.CENTER);
+        title.setTextColor(textMain);
+        box.addView(title, new LinearLayout.LayoutParams(-1, Math.max(1, H / 11)));
+        LinearLayout body = row(c);
+        final Car3DView v = new Car3DView(c);
+        v.setZOrderMediaOverlay(true); // (over ⑯'s own 3D view, which rests behind the sheet: two 3D views never hide each other)
+        v.setShowroom(true);
+        v.setLow(prefs.carLowMotion());
+        pickView = v;
+        chaseShow(); // (the big 3D view rests while this one turns)
+        FrameLayout prev = new FrameLayout(c);
+        prev.setBackground(round(0xFF0B1018, CarTheme.withAlpha(accent, 0x66), 18));
+        prev.addView(v, new FrameLayout.LayoutParams(-1, -1));
+        body.addView(prev, new LinearLayout.LayoutParams(0, -1, 46));
+        android.widget.ScrollView sc = new android.widget.ScrollView(c);
+        LinearLayout col = column(c);
+        sc.addView(col, new android.widget.ScrollView.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(0, -1, 54);
+        sl.leftMargin = W / 80;
+        body.addView(sc, sl);
+        box.addView(body, new LinearLayout.LayoutParams(-1, H * 58 / 100));
+        Runnable[] refresh = new Runnable[1];
+        refresh[0] = () -> {
+            String kind = prefs.sp.getString("car_3d_kind", "suv");
+            v.setCar("photo".equals(kind) ? "suv" : kind, prefs.sp.getString("car_3d_finish", ""), prefs.sp.getString("car_3d_head", ""), prefs.sp.getString("car_3d_glow", ""), prefs.carColour());
+            col.removeAllViews();
+            chips(col, "కారు", CarDeck.KIND_3D_NAMES, java.util.Arrays.asList(CarDeck.KINDS_3D).indexOf(kind), w -> { prefs.sp.edit().putString("car_3d_kind", CarDeck.KINDS_3D[w]).apply(); refresh[0].run(); });
+            int ci = 0;
+            for (int i = 0; i < CarTheme.CAR_COLOURS.length; i++) if (CarTheme.CAR_COLOURS[i] == prefs.carColour()) ci = i;
+            chips(col, "రంగు", CarTheme.CAR_COLOUR_NAMES, ci, w -> { prefs.sp.edit().putInt("car_colour", CarTheme.CAR_COLOURS[w]).apply(); refresh[0].run(); });
+            chips(col, "మెరుపు", Car3D.FINISH_NAMES, java.util.Arrays.asList(Car3D.FINISHES).indexOf(prefs.sp.getString("car_3d_finish", "")), w -> { prefs.sp.edit().putString("car_3d_finish", Car3D.FINISHES[w]).apply(); refresh[0].run(); });
+            chips(col, "హెడ్‌లైట్", Car3D.HEAD_NAMES, java.util.Arrays.asList(Car3D.HEADS).indexOf(prefs.sp.getString("car_3d_head", "")), w -> { prefs.sp.edit().putString("car_3d_head", Car3D.HEADS[w]).apply(); refresh[0].run(); });
+            chips(col, "కింద వెలుగు", Car3D.GLOW_NAMES, java.util.Arrays.asList(Car3D.GLOWS).indexOf(prefs.sp.getString("car_3d_glow", "")), w -> { prefs.sp.edit().putString("car_3d_glow", Car3D.GLOWS[w]).apply(); refresh[0].run(); });
+            if ("photo".equals(kind)) {
+                TextView note = autoText(c, CarPhotos3D.any(c) ? "📷 మీ కారు ఫోటోలతో: రోడ్డు మీద దగ్గరి వైపు ఫోటో వస్తుంది (ఇక్కడ బొమ్మ కారు చూపిస్తున్నాను)" : "📷 ఫోటోలు ఇంకా లేవు: ⚙️ → 📷 ⑯ 3D కోసం నా కారు ఫోటోలు", false, 26);
+                note.setTextColor(textSoft);
+                note.setMaxLines(3);
+                col.addView(note, new LinearLayout.LayoutParams(-1, -2));
+            }
+            chaseLook();
+        };
+        refresh[0].run();
+        TextView close = bigButton("✓ సరే", CarTheme.withAlpha(accent, 0x66));
+        close.setOnClickListener(x -> closeSheet());
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-1, Math.max(1, H / 10));
+        cl.topMargin = H / 60;
+        box.addView(close, cl);
+        sheet.removeAllViews();
+        sheet.addView(box, panelParams());
+        sheet.setVisibility(VISIBLE);
+        sheet.setOnClickListener(x -> closeSheet());
+        sheet.bringToFront();
+        if (awakeShown) awake.bringToFront();
+        v.setRunning(true);
+    }
+
+    /** A row of choices as chips (the chosen one lit), its name before it. */
+    private void chips(LinearLayout col, String name, String[] names, int sel, java.util.function.IntConsumer pick) {
+        Context c = getContext();
+        TextView h = autoText(c, name, true, 24);
+        h.setTextColor(textSoft);
+        col.addView(h, new LinearLayout.LayoutParams(-1, Math.max(1, H / 18)));
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout r = row(c);
+        hs.addView(r, new FrameLayout.LayoutParams(-2, -1));
+        for (int i = 0; i < names.length; i++) {
+            TextView t = new TextView(c);
+            t.setText(names[i]);
+            t.setGravity(Gravity.CENTER);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(12, H / 30f));
+            t.setTextColor(i == sel ? Color.WHITE : textMain);
+            t.setBackground(round(i == sel ? CarTheme.withAlpha(accent, 0xCC) : CarTheme.withAlpha(accent, 0x26), CarTheme.withAlpha(accent, 0x88), 16));
+            int p = Math.max(6, H / 70);
+            t.setPadding(p * 2, p, p * 2, p);
+            final int w = i;
+            t.setOnClickListener(x -> { sheetTouched(); pick.accept(w); });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -1);
+            lp.rightMargin = p;
+            r.addView(t, lp);
+        }
+        col.addView(hs, new LinearLayout.LayoutParams(-1, Math.max(1, H / 11)));
+    }
+
     /** ⑫'s speed over the dock; ⑬'s floating song, its AC question card and the map's room for them: from the screen's size. */
     private void shapeSizes() {
         if (W <= 0 || H <= 0) return;
@@ -2289,6 +2695,15 @@ final class CarScreen extends FrameLayout {
      */
     private void shapeLook() {
         if (look == null) return;
+        if (CarLayout.CHASE.equals(shape)) { // ⑯: the sides a little darker so the cards read over the 3D world; the dock its own dark glass
+            g16Left.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xA6050A12, 0x00050A12}));
+            g16Right.setBackground(new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT, new int[]{0xA6050A12, 0x00050A12}));
+            g16Dock.setBackground(round(0xD90A1220, CarTheme.withAlpha(accent, 0x66), 18));
+            for (TextView t : btn16) t.setTextColor(0xFFFFFFFF);
+            arc16.setAccent(accent);
+            arc16.setFont(numFont);
+            btnMarks();
+        }
         float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / 22f);
         boolean onDock = clockFace.getParent() == g12DockEnd || clock.getParent() == g12DockEnd;
         boolean full = CarLayout.FULLMAP.equals(shape);
@@ -2879,6 +3294,7 @@ final class CarScreen extends FrameLayout {
      * row of several (their labels decide: the media keys, the AC's ఆన్ / ఆఫ్)). Closes by itself after 25 s untouched.
      */
     private void openSheet(String title, String note, List<String[]> rows, List<Runnable> acts, int perRow) {
+        dropPick();
         sheet.removeAllViews();
         LinearLayout box = panel(tileBg, accent);
         TextView t = autoText(getContext(), title, true, 60);
@@ -2970,7 +3386,17 @@ final class CarScreen extends FrameLayout {
         settingSheet = false;
         if (sheetGone != null) main.removeCallbacks(sheetGone);
         sheet.setVisibility(GONE);
+        dropPick(); // (the chooser's turntable stops)
         sheet.removeAllViews();
+        chaseShow();
+    }
+
+    /** The chooser's turntable gone (closed, another sheet over it, the screen away): ⑯'s own view may draw again. */
+    private void dropPick() {
+        if (pickView == null) return;
+        pickView.setRunning(false);
+        pickView = null;
+        chaseShow();
     }
 
     private Runnable askGone;
@@ -3200,7 +3626,10 @@ final class CarScreen extends FrameLayout {
         if (!ownLook(colourShape()).equals(colourKey)) palette(); // (into / out of ⑫'s glass or ⑭'s neon: the colours again)
         for (LinearLayout g : new LinearLayout[]{content, leftCol, midCol, rightCol, wingLIn, wingRIn, panelIn, panelTop, centreCol, stageLeft, stageMid, sideTop, sideText,
                 clusterBox, clusterTop, clusterMid, clusterDock, railCol, dockMain, dockTop, dockCards, dockRow, spLeft, spMid, spRight, spMeter, spMeterTop, spClockCol,
-                g12Col, g12Top, g12Left, g12Mid, g12Right, g12Dock, g12DockEnd, g13Left, g13Right, g14Main, g14Side, g14Bottom}) g.removeAllViews();
+                g12Col, g12Top, g12Left, g12Mid, g12Right, g12Dock, g12DockEnd, g13Left, g13Right, g14Main, g14Side, g14Bottom,
+                g16Row, g16Left, g16Mid, g16Right, g16Dock, g16Btns, g16Clock}) g.removeAllViews();
+        if (chase != null && !CarLayout.CHASE.equals(s)) chase.setShown(false); // (out of ⑯: the 3D view rests)
+        g16.removeAllViews();
         mapTilt.removeAllViews();
         jCard.removeAllViews();
         g12.removeAllViews();
@@ -3227,6 +3656,7 @@ final class CarScreen extends FrameLayout {
         carMap.setSpecial(special);
         carMap.setExpandable(!CarLayout.FULLMAP.equals(s));
         carMap.setBoards(CarLayout.NEON.equals(s)); // (⑭'s yellow turn boards)
+        carMap.setMini(CarLayout.CHASE.equals(s) && !specialFull); // (⑯: a small map card; a tap makes it big)
         carMap.setExpanded(specialFull);
         carMap.setVisibility(VISIBLE);
         player.setVisibility(VISIBLE);
@@ -3327,6 +3757,11 @@ final class CarScreen extends FrameLayout {
                 if (CarLayout.GLASS.equals(s)) glassArrange(j);
                 else if (CarLayout.FULLMAP.equals(s)) fullArrange(j);
                 else neonArrange(j);
+                break;
+            case CarLayout.CHASE: // ⑯ our 3D view: his car from behind on the real roads; Jarvis and the six on the left, the turn and the speed round the car, the small map, the clock and the song on the right
+                jCardFill();
+                if (specialFull) { bigMapArrange(false, j); break; }
+                chaseArrange(j);
                 break;
             case CarLayout.SPECIAL: { // ⑪ Jarvis on his lit stage, six buttons and three wide ones; the big map with all its tools and the big player; the speed, the clock, his apps, the road
                 boolean right = "right".equals(prefs.carJarvisSide());

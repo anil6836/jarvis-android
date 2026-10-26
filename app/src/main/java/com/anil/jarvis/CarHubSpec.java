@@ -65,7 +65,7 @@ final class CarHubSpec {
 
     private static Cat[] all;
 
-    /** The ten parts, in this order on the screen. */
+    /** The eleven parts, in this order on the screen. */
     static Cat[] cats() {
         if (all != null) return all;
         all = new Cat[]{
@@ -110,12 +110,25 @@ final class CarHubSpec {
                         ints("car_accent", "💡 వెలుగు రంగు", ACCENTS, ACCENT_NAMES, 0),
                         str("car_layout", "🧩 స్క్రీన్ ఆకారం", CarLayout.CHOICES, CarLayout.NAMES, CarLayout.CLASSIC),
                         strNew("car_glass_night", "🌙 ⑫ గ్లాస్ డాక్: రాత్రి రంగు", CarDeck.GLASS_NIGHTS, CarDeck.GLASS_NIGHT_NAMES, ""),
-                        info("own_colours", "🎨 ⑫ తెల్లటి గాజు, ⑭ నియాన్ రంగులు వాటివే: మీ థీమ్ మిగతా ఆకారాల్లో"),
+                        info("own_colours", "🎨 ⑫ తెల్లటి గాజు, ⑭ నియాన్ రంగులు వాటివే; ⑯ లో తెల్ల థీమ్ బదులు నీలి గాజు: మీ థీమ్ మిగతా ఆకారాల్లో"),
                         str("car_card", "🃏 కార్డులు", CarStyle.CARDS, CarStyle.CARD_NAMES, ""),
                         str("car_icons", "✳️ ఐకాన్లు", CarStyle.ICONS, CarStyle.ICON_NAMES, ""),
                         str("car_bg_motion", "🌌 వెనక బొమ్మ", CarDeck.BG_MOTIONS, CarDeck.BG_MOTION_NAMES, ""),
                         str("car_font", "🔢 అంకెల ఫాంట్", CarStyle.FONTS, CarStyle.FONT_NAMES, ""),
                         str("car_night_dim", "🔆 రాత్రి వెలుతురు", CarDeck.NIGHT_DIMS, CarDeck.NIGHT_DIM_NAMES, "")),
+                new Cat("3d", "🎮", "3D ⑯",
+                        strNew("car_3d_kind", "🚗 3D కారు", CarDeck.KINDS_3D, CarDeck.KIND_3D_NAMES, "suv"),
+                        act("car3d_pick", "🔄 కారు ఎంచుకో (తిరిగే 3D బొమ్మతో)"),
+                        ints("car_colour", "🎨 కారు రంగు", CarTheme.CAR_COLOURS, CarTheme.CAR_COLOUR_NAMES, CarTheme.CAR_COLOURS[0]),
+                        strNew("car_3d_finish", "✨ రంగు మెరుపు", Car3D.FINISHES, Car3D.FINISH_NAMES, ""),
+                        strNew("car_3d_head", "🔦 హెడ్‌లైట్", Car3D.HEADS, Car3D.HEAD_NAMES, ""),
+                        strNew("car_3d_glow", "🌈 కారు కింద వెలుగు (పాట బీట్‌తో)", Car3D.GLOWS, Car3D.GLOW_NAMES, ""),
+                        strNew("car_3d_sky", "🌅 ఆకాశం", CarDeck.SKIES_3D, CarDeck.SKY_3D_NAMES, ""),
+                        strNew("car_3d_city", "🏙️ బిల్డింగ్‌లు", CarDeck.CITIES_3D, CarDeck.CITY_3D_NAMES, ""),
+                        act("car3d_photos", "📷 నా కారు ఫోటోలు 3D కోసం (7 వైపులు)"),
+                        strNew("car_plate", "🔤 ఫోటో కారు నంబర్ ప్లేట్", CarPhotos3D.PLATES, CarPhotos3D.PLATE_NAMES, ""),
+                        info("osm3d", "🗺️ 3D రోడ్లు, బిల్డింగ్‌లు OpenStreetMap నుంచి: కొన్ని చోట్ల బిల్డింగ్‌లు ఉండవు, ఎత్తులు తెలియనివి మావి. Google 3D వాడము."),
+                        act("map3d_clear", "🗑️ 3D మ్యాప్ ముక్కలు తీసేయి (బాక్స్‌లో దాచినవి)")),
                 new Cat("meter", "🧭", "మీటర్, గడియారం",
                         str("car_gauge", "🧭 స్పీడ్ మీటర్", CarStyle.GAUGES, CarStyle.GAUGE_NAMES, ""),
                         str("car_clock", "🕐 గడియారం", CarDeck.CLOCKS, CarDeck.CLOCK_NAMES, ""),

@@ -3246,6 +3246,12 @@ public class SettingsActivity extends Activity {
                     }).show();
         });
         box.addView(topRow);
+        // 📷 ⑯ (stage 3): his car's own photos for the 3D view, seven sides (on this box only)
+        photo3dRow = Ui.text(this, "", 15.5f, accent);
+        photo3dRow.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        show3d();
+        photo3dRow.setOnClickListener(v -> photos3d());
+        box.addView(photo3dRow);
         // 💾 నా థీమ్ 1–3, the six buttons, the dials, the buttons' look, sizes
         final TextView mineRow = Ui.text(this, "💾 నా థీమ్‌లు 1–3: ఇప్పటి రూపం దాచుకోండి, తర్వాత ఒక్క నొక్కుతో మళ్లీ పెట్టుకోండి", 15.5f, accent);
         final TextView buttonsRow = Ui.text(this, "", 15.5f, accent), styleRow = Ui.text(this, "", 15.5f, accent), dialsRow = Ui.text(this, "", 15.5f, accent);
@@ -3599,7 +3605,7 @@ public class SettingsActivity extends Activity {
     // the theme editor's choices
     private static final int[] ACCENTS = {0, 0xFF5FF3FF, 0xFF4D8DFF, 0xFF34E89E, 0xFFFFC24B, 0xFFFF8A3D, 0xFFFF5A5A, 0xFFFF6AD5, 0xFFB28DFF, 0xFFF2F6FA};
     private static final String[] ACCENT_NAMES = {"థీమ్‌దే", "సియాన్", "నీలం", "ఆకుపచ్చ", "బంగారు", "నారింజ", "ఎరుపు", "గులాబీ", "ఊదా", "తెలుపు"};
-    private static final int REQ_WALL = 47, REQ_CARPHOTO = 48, REQ_CARREAR = 49, REQ_CARTOP = 50;
+    private static final int REQ_WALL = 47, REQ_CARPHOTO = 48, REQ_CARREAR = 49, REQ_CARTOP = 50, REQ_CAR3D = 70; // (70–76: ⑯'s seven sides)
 
     private void pickCarRear() {
         try {
@@ -3608,7 +3614,40 @@ public class SettingsActivity extends Activity {
             Toast.makeText(this, "ఫోటో ఎంచుకునే యాప్ లేదు", Toast.LENGTH_LONG).show();
         }
     }
-    private TextView heroRow, topRow;
+    private TextView heroRow, topRow, photo3dRow;
+
+    /** 📷 ⑯: how many of his seven 3D photos are there. */
+    private void show3d() {
+        if (photo3dRow == null) return;
+        int n = 0;
+        for (int i = 0; i < CarPhotos3D.SLOTS.length; i++) if (CarPhotos3D.file(this, i).exists()) n++;
+        photo3dRow.setText("📷 ⑯ 3D కోసం నా కారు ఫోటోలు: " + n + " / 7  (నొక్కండి · Gallery లో కారుని పట్టుకుని 'Save as image' చేసినవి బాగుంటాయి · ఈ box లోనే ఉంటాయి)");
+    }
+
+    /** 📷 ⑯: his seven sides — each picked from the gallery, or taken away. */
+    private void photos3d() {
+        String[] items = new String[CarPhotos3D.SLOTS.length];
+        for (int i = 0; i < items.length; i++) items[i] = (CarPhotos3D.file(this, i).exists() ? "✅ " : "➕ ") + CarPhotos3D.SLOT_NAMES[i];
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("📷 నా కారు ఫోటోలు (3D కోసం): ఏ వైపు?")
+                .setItems(items, (d, w) -> {
+                    if (!CarPhotos3D.file(this, w).exists()) { pick3d(w); return; }
+                    new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                            .setTitle(CarPhotos3D.SLOT_NAMES[w])
+                            .setItems(new String[]{"🖼️ వేరే ఫోటో ఎంచుకో", "🗑️ ఈ ఫోటో తీసేయి"}, (d2, w2) -> {
+                                if (w2 == 0) pick3d(w);
+                                else { CarPhotos3D.remove(this, w); show3d(); }
+                            }).show();
+                }).show();
+    }
+
+    private void pick3d(int slot) {
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_CAR3D + slot);
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫోటో ఎంచుకునే యాప్ లేదు", Toast.LENGTH_LONG).show();
+        }
+    }
 
     /** One of ⑪'s new choices as a row: its name and the one on now; a tap: all of them to pick from (the car screen takes it when he goes back). */
     private TextView hubRow(CarHubSpec.Opt o) {
@@ -3865,6 +3904,19 @@ public class SettingsActivity extends Activity {
         super.onActivityResult(code, result, data);
         if (gated) return;
         if (code == REQ_WALL && result == RESULT_OK && data != null && data.getData() != null) wallPicked(data.getData()); // 🖼️ the car screen's wallpaper
+        if (code >= REQ_CAR3D && code < REQ_CAR3D + CarPhotos3D.SLOTS.length && result == RESULT_OK && data != null && data.getData() != null) { // 📷 ⑯: one side of his car, kept on this box
+            final Uri u = data.getData();
+            final int slot = code - REQ_CAR3D;
+            Toast.makeText(this, "ఫోటో తీసుకుంటున్నాను…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                boolean ok = CarPhotos3D.keep(this, u, slot);
+                runOnUiThread(() -> {
+                    if (!ok) { Toast.makeText(this, "ఆ ఫోటో తెరవలేకపోయాను", Toast.LENGTH_LONG).show(); return; }
+                    show3d();
+                    Toast.makeText(this, "✅ " + CarPhotos3D.SLOT_NAMES[slot] + ": పెట్టాను. నంబర్ ప్లేట్ వెతికి దాని మీద 'NEXON' పెడతాను (కనబడకపోతే ఆ భాగం మసక; 🎛️ → 🎮 3D లో మార్చుకోవచ్చు).", Toast.LENGTH_LONG).show();
+                });
+            }, "car3d").start();
+        }
         if (code == REQ_CARREAR && result == RESULT_OK && data != null && data.getData() != null) { // 🚗 his car from behind: kept, then its lights marked
             final Uri u = data.getData();
             Toast.makeText(this, "ఫోటో తీసుకుంటున్నాను…", Toast.LENGTH_SHORT).show();
@@ -6009,6 +6061,10 @@ public class SettingsActivity extends Activity {
         if (i != null && "car_top".equals(i.getStringExtra(EXTRA_ACTION))) { // (the car screen's 🎛️ → 📷 his car from above)
             i.removeExtra(EXTRA_ACTION);
             pickCarTop();
+        }
+        if (i != null && "car3d".equals(i.getStringExtra(EXTRA_ACTION))) { // (the car screen's 🎛️ → 🎮 → 📷 his car's seven sides)
+            i.removeExtra(EXTRA_ACTION);
+            photos3d();
         }
         if (i != null && "frame".equals(i.getStringExtra(EXTRA_ACTION)) && !tab.isEmpty()) { // (All Features → 🖼️ photos for her frame)
             i.removeExtra(EXTRA_ACTION);

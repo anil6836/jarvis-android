@@ -32,9 +32,14 @@ final class CarWords {
     private static final Pattern BIG_MAP = Pattern.compile(
             "^(మ్యాప్ (పెద్దది|పెద్దగా) (చేయి|చెయ్|పెట్టు)|పెద్ద మ్యాప్ (పెట్టు|చూపించు)|full map|big map)$");
     private static final Pattern SMALL_MAP = Pattern.compile("^(మ్యాప్ (చిన్నది|చిన్నగా) (చేయి|చెయ్|పెట్టు)|small map)$");
+    /** ⑯ (stage 3): "3D లో విజయవాడ కి దారి", "3డి లో ఇంటికి దారి పెట్టు" — our own free way in the 3D view (a list; his tap starts it). */
+    private static final Pattern WAY3D = Pattern.compile(
+            "^(3d|3డి|త్రీడీ|త్రీ డీ)\\s*(లో|మ్యాప్ లో|మ్యాప్‌లో)?\\s*(.+?)\\s*(కి|కు)?\\s*దారి\\s*(పెట్టు|పెట్టండి|చూపించు|చూపు|వేయి)?$"
+                    + "|^(3d )?(way|route) to (.+?) in 3d$");
 
     /**
-     * {"src", "osm" | "google"}, {"car", one of CarDeck.MAP_CARS}, {"quiet", "on" | "off"}, {"map", "big" | "small"}, {"rotate", "on" | "off"};
+     * {"src", "osm" | "google"}, {"car", one of CarDeck.MAP_CARS}, {"quiet", "on" | "off"}, {"map", "big" | "small"}, {"rotate", "on" | "off"},
+     * {"way3d", the place ("home" for home)};
      * null when it isn't one of these. Pure.
      */
     static String[] parse(String text) {
@@ -50,6 +55,12 @@ final class CarWords {
         if (SMALL_MAP.matcher(t).matches()) return new String[]{"map", "small"};
         if (ROT_ON.matcher(t).matches()) return new String[]{"rotate", "on"};
         if (ROT_OFF.matcher(t).matches()) return new String[]{"rotate", "off"};
+        java.util.regex.Matcher w3 = WAY3D.matcher(t);
+        if (w3.matches()) {
+            String place = (w3.group(3) != null ? w3.group(3) : w3.group(8)).trim();
+            if (place.equals("ఇంటి") || place.equals("ఇల్లు") || place.equals("ఇంటికి")) place = "home";
+            if (!place.isEmpty()) return new String[]{"way3d", place};
+        }
         java.util.regex.Matcher m = CAR.matcher(t);
         if (m.matches()) {
             String w = m.group(3).trim();
