@@ -74,7 +74,10 @@ final class CarScreen extends FrameLayout {
     private final TextView apps;
     private final TextView clock, date, minis, stateText, subText, chips, gear, chat, driveChip, road1, road2, roadYes, roadNo, musicText, board;
     private final LinearLayout roadCard, musicStrip;
-    private final CarArt.Icon roadIcon, prevKey, playKey, nextKey, artIcon;
+    private final CarArt.Icon roadIcon, prevKey, playKey, nextKey, artIcon, shufKey, repKey;
+    /** ⑪ ⤢ (his word, 26 Oct): the song card's keys as ⑪'s player — 🔀 ⏮ ⏯ ⏭ 🔁, big 3D buttons; every other shape ⏮ ⏯ ⏭ as always. */
+    private boolean strip3d;
+    private int stripCaps = -1, stripShuffle = -1, stripRepeat = -1;
     private final FrameLayout artBox;
     private final android.widget.ImageView artImg;
     private final TextView songSub;
@@ -339,12 +342,22 @@ final class CarScreen extends FrameLayout {
         keyRow = new LinearLayout(a);
         keyRow.setOrientation(LinearLayout.HORIZONTAL);
         keyRow.setGravity(Gravity.CENTER);
+        shufKey = new CarArt.Icon(a, CarArt.Icon.SHUFFLE); // (⑪ ⤢ only: strip3d)
+        repKey = new CarArt.Icon(a, CarArt.Icon.REPEAT);
+        for (CarArt.Icon k : new CarArt.Icon[]{shufKey, repKey}) {
+            final String w = k == shufKey ? "shuffle" : "repeat";
+            k.setClickable(true);
+            k.setVisibility(GONE);
+            k.setOnClickListener(v -> tap(() -> playerKey(w))); // (as ⑪'s player: where the app allows it, else it says so)
+        }
+        keyRow.addView(shufKey, new LinearLayout.LayoutParams(0, 0));
         for (int i = 0; i < 3; i++) {
             final String k = keyAct[i];
             keys[i].setClickable(true);
             keys[i].setOnClickListener(v -> tap(() -> { musicKey(k); main.postDelayed(this::musicCheck, 700); }));
             keyRow.addView(keys[i], new LinearLayout.LayoutParams(0, 0));
         }
+        keyRow.addView(repKey, new LinearLayout.LayoutParams(0, 0));
         musicStrip.addView(keyRow, new LinearLayout.LayoutParams(-2, -1));
         // the picture, the words and the keys are sized from the strip's own height (known only after layout)
         musicStrip.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> {
@@ -1333,9 +1346,11 @@ final class CarScreen extends FrameLayout {
         artCheck(artKey);
         boolean pl = player.isShown() || bigPlayer.isShown(); // (⑪'s player, the big player: the place in the song, what the app allows)
         long[] pr = keys && (pl || prefs.carVinyl() || prefs.carWave()) ? Music.progress(getContext()) : null;
+        boolean st = strip3d && musicStrip.isShown(); // (⑪ ⤢'s song card: 🔀 / 🔁 lit or dim as the app says)
+        JSONObject x = keys && (pl || st) ? Music.extras(getContext()) : null;
+        if (st) stripExtras(x);
         if (pl) {
             String ps = !keys ? sub : sub.equals(appNow) ? (playing ? "ప్లే అవుతోంది" : "ఆగింది") : sub.replace(" · " + appNow, ""); // (the app has its own chip)
-            JSONObject x = keys ? Music.extras(getContext()) : null;
             for (CarPlayer cp : new CarPlayer[]{player, bigPlayer}) {
                 if (!cp.isShown()) continue;
                 cp.setSong(t, ps, appNow, playing, keys);
@@ -1363,6 +1378,29 @@ final class CarScreen extends FrameLayout {
         prevKey.setVisibility(v);
         playKey.setVisibility(v);
         nextKey.setVisibility(v);
+        shufKey.setVisibility(strip3d ? v : GONE);
+        repKey.setVisibility(strip3d ? v : GONE);
+    }
+
+    /** ⑪ ⤢'s song card: what the music app allows and what is on (Music.extras), or null. */
+    private void stripExtras(JSONObject x) {
+        stripCaps = x == null ? 0 : x.optInt("caps");
+        stripShuffle = x == null ? -1 : x.optInt("shuffle", -1);
+        stripRepeat = x == null ? -1 : x.optInt("repeat", -1);
+        repKey.setKind(stripRepeat == Music.R_ONE ? CarArt.Icon.REPEAT_ONE : CarArt.Icon.REPEAT);
+        stripLook();
+    }
+
+    /** The song card's keys: 3D buttons in ⑪ ⤢ (dim where the app doesn't allow it), else the plain signs in the theme's colour as always. */
+    private void stripLook() {
+        boolean light = look != null && look.light;
+        for (CarArt.Icon k : new CarArt.Icon[]{shufKey, prevKey, playKey, nextKey, repKey}) {
+            if (!strip3d) { k.setKnob(0, 0); k.setColour(accent); k.setAlpha(1f); continue; }
+            boolean lit = k == shufKey && stripShuffle == 1 || k == repKey && stripRepeat > 0;
+            CarPlayer.knob(k, k == playKey, lit, accent, light);
+            int cap = k == shufKey ? Music.C_SHUFFLE : k == repKey ? Music.C_REPEAT : 0;
+            k.setAlpha(cap == 0 || stripCaps < 0 || (stripCaps & cap) != 0 ? 1f : 0.38f);
+        }
     }
 
     private String songNowKey = "", waveSeed = "";
@@ -1455,7 +1493,8 @@ final class CarScreen extends FrameLayout {
         accent = c;
         stateText.setTextColor(c);
         for (CarArt.Icon i : tileIcons) i.setColour(c);
-        for (CarArt.Icon k : new CarArt.Icon[]{prevKey, playKey, nextKey, artIcon, roadIcon}) k.setColour(c);
+        for (CarArt.Icon k : new CarArt.Icon[]{artIcon, roadIcon}) k.setColour(c);
+        stripLook();
         gauge.invalidate();
     }
 
@@ -1468,7 +1507,7 @@ final class CarScreen extends FrameLayout {
         int avail = Math.max(1, w - musicStrip.getPaddingLeft() - musicStrip.getPaddingRight());
         CarArt.Icon[] keys = {prevKey, playKey, nextKey};
         if (musicStrip.getOrientation() == LinearLayout.VERTICAL) {
-            int keyH = Math.max(1, Math.round(inner * 0.22f));
+            int keyH = Math.max(1, Math.round(inner * (strip3d ? 0.27f : 0.22f))); // (⑪ ⤢: five big 3D keys)
             float tsz = Math.max(12, Math.min(avail * 0.085f, inner * 0.06f)) * textScale;
             int wordsH = Math.round(tsz * (waveBar.getVisibility() == VISIBLE ? 4.2f : 2.8f)); // (the waves' row too, when on)
             int art = Math.max(1, Math.min(Math.round(avail * 0.78f), inner - keyH - wordsH - Math.round(inner * 0.06f)));
@@ -1487,6 +1526,14 @@ final class CarScreen extends FrameLayout {
             wl.topMargin = Math.round(tsz * 0.3f);
             waveBar.setLayoutParams(wl);
             keyRow.setLayoutParams(new LinearLayout.LayoutParams(-1, keyH));
+            eqDraw.setReach(0.42f, 0); // (standing: the bars under the picture, behind the words and keys)
+            if (strip3d) { // 🔀 ⏮ ⏯ ⏭ 🔁 across, ⏯ the biggest
+                for (CarArt.Icon k : new CarArt.Icon[]{shufKey, prevKey, playKey, nextKey, repKey}) {
+                    k.setLayoutParams(new LinearLayout.LayoutParams(0, -1, k == playKey ? 1.4f : 1));
+                    k.setFill(k == playKey ? 1f : 0.88f);
+                }
+                return;
+            }
             int slot = Math.max(1, avail / 3);
             int key = Math.max(1, Math.min(Math.round(slot * 0.5f), Math.round(keyH * 0.62f)));
             int play = Math.max(1, Math.min(Math.round(slot * 0.72f), Math.round(keyH * 0.95f)));
@@ -1494,7 +1541,6 @@ final class CarScreen extends FrameLayout {
                 keys[i].setLayoutParams(new LinearLayout.LayoutParams(0, -1, 1));
                 keys[i].setFill((i == 1 ? play : key) / (float) Math.max(1, Math.min(slot, keyH)));
             }
-            eqDraw.setReach(0.42f, 0); // (standing: the bars under the picture, behind the words and keys)
             return;
         }
         int art = Math.max(1, Math.min(Math.round(inner * 0.94f), Math.round(avail * 0.16f)));
@@ -2883,6 +2929,14 @@ final class CarScreen extends FrameLayout {
         if (W > 0) subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, H / 24f) * textScale);
         boolean special = CarLayout.SPECIAL.equals(s);
         if (!special) specialFull = false;
+        boolean s3 = special && specialFull;
+        if (s3 != strip3d) {
+            strip3d = s3;
+            shufKey.setVisibility(s3 ? prevKey.getVisibility() : GONE);
+            repKey.setVisibility(s3 ? prevKey.getVisibility() : GONE);
+            stripLook();
+            stripW = stripH = 0; // (the card's keys measured again)
+        }
         carMap.setSpecial(special);
         carMap.setExpanded(specialFull);
         carMap.setVisibility(VISIBLE);
@@ -2981,7 +3035,7 @@ final class CarScreen extends FrameLayout {
                 if (specialFull) { // ⤢ the map big; beside it (his photos, 26 Oct): Jarvis big with 🎙️ right under him, the time and the day, the speed, the song; the map a little narrower for it
                     put(content, right ? carMap : spLeft, right ? 74 : 26);
                     put(content, right ? spLeft : carMap, right ? 26 : 74);
-                    musicStrip.setOrientation(LinearLayout.VERTICAL); // (standing: the picture on top, the name, ⏮ ⏯ ⏭)
+                    musicStrip.setOrientation(LinearLayout.VERTICAL); // (standing: the picture on top, the name, 🔀 ⏮ ⏯ ⏭ 🔁 as big 3D buttons — his word)
                     // (no speed dial here — his word: the map's own corner shows the speed and the limit; the song big in its place)
                     put(spLeft, jCard, 40 * Math.min(j, 1.12f)); put(spLeft, wideTalk, 9); put(spLeft, clock, 10); put(spLeft, date, 4);
                     put(spLeft, roadCard, 12); // (only while the AC question is up: roadCheck; the parked card not here — his word)
@@ -3621,7 +3675,7 @@ final class CarScreen extends FrameLayout {
         roadYes.setBackground(round(0xFF1E6B4A, CarTheme.withAlpha(accent, 0x88), 14));
         roadNo.setTextColor(textSoft);
         roadIcon.setColour(acAt > 0 ? 0xFF7FD8FF : accent);
-        for (CarArt.Icon k : new CarArt.Icon[]{prevKey, playKey, nextKey}) k.setColour(accent);
+        stripLook();
         driveChip.setTextColor(CarRoad.driveLevel(lastDriveMin) == 0 ? textSoft : look.light ? 0xFFB26A00 : 0xFFFFB74D);
         GradientDrawable sub = new GradientDrawable();
         sub.setColor(look.light ? 0x66FFFFFF : 0x14FFFFFF);

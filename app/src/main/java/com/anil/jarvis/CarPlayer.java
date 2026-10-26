@@ -211,12 +211,18 @@ final class CarPlayer extends LinearLayout {
             else if (k.equals("volume")) ok = true;
             keyViews[i].setAlpha(ok ? 1f : 0.38f);
             boolean lit = k.equals("shuffle") && shuffle == 1 || k.equals("repeat") && repeat > 0 || k.equals("like") && liked;
-            boolean play = k.equals("toggle");
-            // the 3D buttons: ⏯ in the theme's colour, the rest dark (light on a light theme); a lit one's sign yellow
-            keyViews[i].setKnob(play ? accent : light ? 0xFFE3E9EF : 0xFF26303B, lit ? 0xFFFFD166 : accent);
-            keyViews[i].setColour(play ? (bright(accent) ? 0xFF0B1118 : 0xFFFFFFFF) : lit ? (light ? 0xFFC77700 : 0xFFFFD166) : light ? 0xFF0B1118 : 0xFFFFFFFF);
+            knob(keyViews[i], k.equals("toggle"), lit, accent, light);
         }
         seek.setAlpha(allows(Music.C_SEEK) ? 1f : 0.6f);
+    }
+
+    /**
+     * A key as a 3D button (his word, 26 Oct; ⑪'s player and ⑪ ⤢'s song card the same): ⏯ in the theme's colour, the rest
+     * dark (light on a light theme), a lit one (shuffle / repeat on) with a yellow sign and rim.
+     */
+    static void knob(CarArt.Icon k, boolean play, boolean lit, int accent, boolean light) {
+        k.setKnob(play ? accent : light ? 0xFFE3E9EF : 0xFF26303B, lit ? 0xFFFFD166 : accent);
+        k.setColour(play ? (bright(accent) ? 0xFF0B1118 : 0xFFFFFFFF) : lit ? (light ? 0xFFC77700 : 0xFFFFD166) : light ? 0xFF0B1118 : 0xFFFFFFFF);
     }
 
     /** A light colour (a dark sign reads better on it). */
