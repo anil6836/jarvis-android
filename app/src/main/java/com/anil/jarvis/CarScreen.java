@@ -499,16 +499,16 @@ final class CarScreen extends FrameLayout {
                 cell.setGravity(Gravity.CENTER);
                 android.widget.ImageView iv = new android.widget.ImageView(a);
                 iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-                cell.addView(iv, new LinearLayout.LayoutParams(-1, 0, 68));
+                cell.addView(iv, new LinearLayout.LayoutParams(-1, 0, 74));
                 TextView lb = autoText(a, "", false, 18);
                 lb.setGravity(Gravity.CENTER);
-                cell.addView(lb, new LinearLayout.LayoutParams(-1, 0, 32));
+                cell.addView(lb, new LinearLayout.LayoutParams(-1, 0, 26));
                 rr.addView(cell, new LinearLayout.LayoutParams(0, -1, 1));
                 spAppCells.add(cell);
             }
         }
-        spApps.addView(spAppsHead, new LinearLayout.LayoutParams(-1, 0, 20));
-        spApps.addView(spAppsGrid, new LinearLayout.LayoutParams(-1, 0, 80));
+        spApps.addView(spAppsHead, new LinearLayout.LayoutParams(-1, 0, 16));
+        spApps.addView(spAppsGrid, new LinearLayout.LayoutParams(-1, 0, 84));
         spRoadCard = new FrameLayout(a);
         spRoadCard.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("car"); return true; });
         roadCaption = new TextView(a);
@@ -1607,14 +1607,14 @@ final class CarScreen extends FrameLayout {
     private void specialSizes(float rad, int cp) {
         for (LinearLayout card : new LinearLayout[]{spMeter, spApps}) card.setPadding(cp, cp / 2, cp, cp / 2);
         player.setPadding(cp, cp / 2, cp, cp / 2);
-        int iq = Math.max(3, H / 110);
+        int iq = Math.max(2, H / 160);
         for (TextView t : infoChips) {
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
             lp.setMargins(iq, iq, iq, iq);
             t.setLayoutParams(lp);
             t.setPadding(iq * 2, 0, iq * 2, 0);
         }
-        for (LinearLayout cell : spAppCells) cell.setPadding(iq, iq, iq, iq);
+        for (LinearLayout cell : spAppCells) cell.setPadding(iq / 2, iq / 2, iq / 2, iq / 2);
         roadCaption.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, H / 34f) * textScale);
         roadCaption.setPadding(cp, cp / 2, cp, 0);
         for (TextView t : new TextView[]{wideJ, wideHub, wideTalk}) t.setPadding(cp, 0, cp, 0);
@@ -1627,7 +1627,7 @@ final class CarScreen extends FrameLayout {
         if (w <= 0 || h <= 0 || stateText.getParent() != jCard) return;
         int m = Math.max(4, Math.min(w, h) / 30);
         FrameLayout.LayoutParams sl = (FrameLayout.LayoutParams) stateText.getLayoutParams();
-        sl.width = Math.round(w * 0.62f);
+        sl.width = Math.round(w * 0.9f); // (what he does now, in one line)
         sl.height = Math.max(1, Math.round(h * 0.085f));
         sl.setMargins(m, m, 0, 0);
         stateText.setLayoutParams(sl);
@@ -2935,12 +2935,13 @@ final class CarScreen extends FrameLayout {
                     put(spLeft, jCard, 50 * j); put(spLeft, gauge, 30); put(spLeft, wideTalk, 12); put(spLeft, board, 100);
                     break;
                 }
-                put(content, right ? spRight : spLeft, right ? 26 : 22);
-                put(content, spMid, 52);
-                put(content, right ? spLeft : spRight, right ? 22 : 26);
-                put(spLeft, jCard, 40 * j); put(spLeft, tileGrid, 25); put(spLeft, wideJ, 8); put(spLeft, wideHub, 8); put(spLeft, wideTalk, 10); put(spLeft, chipRow, 7);
-                put(spMid, carMap, 66); put(spMid, player, 34); put(spMid, board, 100);
-                put(spRight, spMeter, 37); put(spRight, roadCard, 14); put(spRight, spApps, 29); put(spRight, spRoadCard, 20);
+                // (his car photo, 26 Oct: the sides closer to the screen's edges and bigger, the map bigger — the room comes from the edges and the gaps)
+                put(content, right ? spRight : spLeft, right ? 25 : 24);
+                put(content, spMid, 51);
+                put(content, right ? spLeft : spRight, right ? 24 : 25);
+                put(spLeft, jCard, 34 * Math.min(j, 1.12f)); put(spLeft, tileGrid, 32); put(spLeft, wideJ, 7); put(spLeft, wideHub, 7); put(spLeft, wideTalk, 9); put(spLeft, chipRow, 6);
+                put(spMid, carMap, 72); put(spMid, player, 28); put(spMid, board, 100);
+                put(spRight, spMeter, 37); put(spRight, roadCard, 11); put(spRight, spApps, 33); put(spRight, spRoadCard, 19);
                 put(spMeter, spMeterTop, 78); put(spMeter, spInfo, 22);
                 put(spMeterTop, gauge, 54); put(spMeterTop, spClockCol, 46);
                 String cs = prefs.carClock();
@@ -2968,6 +2969,8 @@ final class CarScreen extends FrameLayout {
             par.addView(clockFace, idx, lp);
         }
         portal.setRings(CarDeck.ringOn(prefs.carJarvisRing(), special)); // 💫
+        tileLook(special);
+        contentPad();
         wingL.setTilt(CarDeck.WING_L, deep ? 0.07f : 0);
         wingR.setTilt(CarDeck.WING_R, deep ? 0.07f : 0);
         panel.setTilt(CarDeck.BACK, 0.06f);
@@ -3279,10 +3282,35 @@ final class CarScreen extends FrameLayout {
     }
 
     /** The six buttons' look: glass squares, or chrome round buttons (the 3D shapes, or his choice). */
+    /** ⑪'s six: less room round the sign and the word, the word given more height (the other shapes' as they always were). */
+    private void tileLook(boolean sp) {
+        for (View t : tiles) {
+            LinearLayout l = (LinearLayout) t;
+            if (sp) l.setPadding(2, 2, 2, 2); else l.setPadding(4, 8, 4, 8);
+            weight(l.getChildAt(0), sp ? 54 : 56);
+            weight(l.getChildAt(1), sp ? 40 : 30);
+        }
+    }
+
+    private static void weight(View v, float w) {
+        if (!(v.getLayoutParams() instanceof LinearLayout.LayoutParams)) return;
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) v.getLayoutParams();
+        if (lp.weight == w) return;
+        lp.weight = w;
+        v.setLayoutParams(lp);
+    }
+
+    /** The room round the whole screen: ⑪ goes nearly to the edges (his wish); the other shapes as they always were. */
+    private void contentPad() {
+        if (W <= 0 || H <= 0) return;
+        int pad = CarLayout.SPECIAL.equals(shape) ? Math.max(3, Math.min(W, H) / 110) : Math.max(4, Math.min(W, H) / 34);
+        content.setPadding(pad, pad, pad, pad);
+    }
+
     private void dressTiles() {
         if (look == null) return;
         boolean roundNow = CarDeck.round(prefs.carBtnStyle(), CarLayout.deep(shape));
-        float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / 22f);
+        float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / (CarLayout.SPECIAL.equals(shape) ? 40f : 22f)); // (⑪: flatter corners, more room inside)
         for (int i = 0; i < tiles.size(); i++) {
             tiles.get(i).setBackground(roundNow ? CarKit.chromeButton(look, 0.64f) : CarArt.glass(look, rad, true));
             tileIcons.get(i).setFill(roundNow ? 0.5f : 1f);
@@ -3319,7 +3347,7 @@ final class CarScreen extends FrameLayout {
     /** The cards' room around them (the six buttons, the road card, the song strip, the map, ① ② ③'s cards), from the screen's size. */
     private void boxMargins() {
         if (W <= 0 || H <= 0) return;
-        int m = Math.max(3, Math.min(W, H) / 70);
+        int m = CarLayout.SPECIAL.equals(shape) ? Math.max(2, Math.min(W, H) / 130) : Math.max(3, Math.min(W, H) / 70); // (⑪: smaller gaps between the cards)
         List<View> boxes = new ArrayList<>(tiles);
         boxes.add(roadCard);
         boxes.add(musicStrip);
@@ -3350,7 +3378,7 @@ final class CarScreen extends FrameLayout {
         W = w;
         H = h;
         int pad = Math.max(4, Math.min(w, h) / 34);
-        content.setPadding(pad, pad, pad, pad);
+        contentPad();
         midCol.setPadding(pad / 2, 0, pad / 2, 0);
         boxMargins();
         overlayRoom();
