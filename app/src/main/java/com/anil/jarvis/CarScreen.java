@@ -961,7 +961,15 @@ final class CarScreen extends FrameLayout {
         if (!yes.contentEquals(roadYes.getText())) roadYesAt = System.currentTimeMillis();
         roadYes.setText(yes);
         roadYes.setVisibility(ac || games ? VISIBLE : GONE);
+        roadFull();
         roadNo.setVisibility(ac ? VISIBLE : GONE);
+    }
+
+    /** ⑪ ⤢ big map: the road card only for the AC question (the parked card and the rest stay off there: his word). */
+    private void roadFull() {
+        boolean onlyAc = specialFull && CarLayout.SPECIAL.equals(shape);
+        int v = !onlyAc || acAt > 0 ? VISIBLE : GONE;
+        if (roadCard.getVisibility() != v) roadCard.setVisibility(v);
     }
 
     // ---- 🙂 P4: Jarvis with the road — he points at the turn, worries over the limit, a thumbs-up for an answered
@@ -1567,7 +1575,7 @@ final class CarScreen extends FrameLayout {
         detach(stateText);
         detach(subText);
         jCard.addView(portal, new FrameLayout.LayoutParams(-1, -1));
-        jCard.addView(stateText, new FrameLayout.LayoutParams(1, 1, Gravity.TOP | Gravity.START));
+        if (!specialFull) jCard.addView(stateText, new FrameLayout.LayoutParams(1, 1, Gravity.TOP | Gravity.START)); // (⤢ big map: no line over Jarvis — his word, 26 Oct)
         jCard.addView(subText, new FrameLayout.LayoutParams(1, -2, Gravity.TOP | Gravity.END));
         subText.setVisibility(GONE); // (showTalk shows it when he has words)
         if (look != null) stateText.setBackground(round(look.light ? 0xCCFFFFFF : 0x99060A10, CarTheme.withAlpha(accent, 0x88), 999));
@@ -1623,17 +1631,20 @@ final class CarScreen extends FrameLayout {
 
     private void sizeJCard() {
         int w = jCard.getWidth(), h = jCard.getHeight();
-        if (w <= 0 || h <= 0 || stateText.getParent() != jCard) return;
-        int m = Math.max(4, Math.min(w, h) / 30);
-        FrameLayout.LayoutParams sl = (FrameLayout.LayoutParams) stateText.getLayoutParams();
-        sl.width = Math.round(w * 0.9f); // (what he does now, in one line)
-        sl.height = Math.max(1, Math.round(h * 0.085f));
-        sl.setMargins(m, m, 0, 0);
-        stateText.setLayoutParams(sl);
-        stateText.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        if (w <= 0 || h <= 0 || subText.getParent() != jCard) return;
+        int m = Math.max(4, Math.min(w, h) / 30), top = m;
+        if (stateText.getParent() == jCard) {
+            FrameLayout.LayoutParams sl = (FrameLayout.LayoutParams) stateText.getLayoutParams();
+            sl.width = Math.round(w * 0.9f); // (what he does now, in one line)
+            sl.height = Math.max(1, Math.round(h * 0.085f));
+            sl.setMargins(m, m, 0, 0);
+            stateText.setLayoutParams(sl);
+            stateText.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+            top = m + sl.height + m / 2;
+        }
         FrameLayout.LayoutParams bl = (FrameLayout.LayoutParams) subText.getLayoutParams();
         bl.width = Math.round(w * 0.5f);
-        bl.setMargins(0, m + sl.height + m / 2, m, 0);
+        bl.setMargins(0, top, m, 0);
         subText.setLayoutParams(bl);
         subText.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, Math.min(h / 17f, w / 15f)) * textScale);
@@ -2969,12 +2980,13 @@ final class CarScreen extends FrameLayout {
             case CarLayout.SPECIAL: { // ⑪ Jarvis on his lit stage, six buttons and three wide ones; the big map with all its tools and the big player; the speed, the clock, his apps, the road
                 boolean right = "right".equals(prefs.carJarvisSide());
                 jCardFill();
-                if (specialFull) { // ⤢ the map big; beside it (his photo, 26 Oct): Jarvis in a smaller card (no empty room over him), the time, the speed, the road card (AC question, home), the song, 🎙️
-                    put(content, right ? carMap : spLeft, right ? 78 : 22);
-                    put(content, right ? spLeft : carMap, right ? 22 : 78);
+                if (specialFull) { // ⤢ the map big; beside it (his photos, 26 Oct): Jarvis big with 🎙️ right under him, the time and the day, the speed, the song; the map a little narrower for it
+                    put(content, right ? carMap : spLeft, right ? 74 : 26);
+                    put(content, right ? spLeft : carMap, right ? 26 : 74);
                     musicStrip.setOrientation(LinearLayout.VERTICAL); // (standing: the picture on top, the name, ⏮ ⏯ ⏭)
-                    put(spLeft, jCard, 27 * Math.min(j, 1.12f)); put(spLeft, clock, 9); put(spLeft, date, 4); put(spLeft, gauge, 16); put(spLeft, roadCard, 11);
-                    put(spLeft, musicStrip, 25); put(spLeft, wideTalk, 8); put(spLeft, board, 100);
+                    put(spLeft, jCard, 40 * Math.min(j, 1.12f)); put(spLeft, wideTalk, 9); put(spLeft, clock, 10); put(spLeft, date, 4); put(spLeft, gauge, 14);
+                    put(spLeft, roadCard, 12); // (only while the AC question is up: roadCheck; the parked card not here — his word)
+                    put(spLeft, musicStrip, 22); put(spLeft, board, 100);
                     break;
                 }
                 // (his car photo, 26 Oct: the sides closer to the screen's edges and bigger, the map bigger — the room comes from the edges and the gaps)
@@ -3014,6 +3026,7 @@ final class CarScreen extends FrameLayout {
         portal.setRings(CarDeck.ringOn(prefs.carJarvisRing(), special)); // 💫
         tileLook(special);
         contentPad();
+        roadFull();
         wingL.setTilt(CarDeck.WING_L, deep ? 0.07f : 0);
         wingR.setTilt(CarDeck.WING_R, deep ? 0.07f : 0);
         panel.setTilt(CarDeck.BACK, 0.06f);
