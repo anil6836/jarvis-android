@@ -25,6 +25,8 @@ import org.json.JSONObject;
  * (a tap: another music app), the place in the song with its times (dragged only while parked), and the keys 🔀 ⏪10 ⏮
  * ⏯ ⏭ 10⏩ 🔁 ❤️ 📃 🔊. Shuffle, repeat, like and "up next" only where the music app allows them: else their key is dim,
  * and a tap says so honestly. The colourful equalizer is the card's own background (the screen's one).
+ * His word (26 Oct): every key a big raised 3D button; ⑪'s own player shows only 🔀 ⏮ ⏯ ⏭ 🔁 ({@link #setFew}), the big
+ * player (a tap on the picture) keeps them all.
  */
 final class CarPlayer extends LinearLayout {
 
@@ -51,7 +53,9 @@ final class CarPlayer extends LinearLayout {
             CarArt.Icon.REPEAT, CarArt.Icon.HEART, CarArt.Icon.QUEUE, CarArt.Icon.VOLUME};
     private int caps = -1, textMain = 0xFFFFFFFF, textSoft = 0xFFB9CCDA, accent = 0xFF5FF3FF;
     private int shuffle = -1, repeat = -1;
-    private boolean liked, playing, hasSong, vinylOn;
+    private boolean liked, playing, hasSong, vinylOn, few, light;
+    /** The keys ⑪'s own player keeps (his word, 26 Oct): shuffle, the song before, play / pause, the next song, repeat. */
+    static final String[] FEW = {"shuffle", "prev", "toggle", "next", "repeat"};
     private Bitmap art;
 
     CarPlayer(Context c, Listener l) {
@@ -118,7 +122,6 @@ final class CarPlayer extends LinearLayout {
             final String k = KEYS[i];
             CarArt.Icon ic = new CarArt.Icon(c, KIND[i]);
             ic.setClickable(true);
-            if (k.equals("toggle")) ic.setRing(true);
             ic.setOnClickListener(v -> tap(() -> l.key(k)));
             keyViews[i] = ic;
             keys.addView(ic, new LayoutParams(0, -1, k.equals("toggle") ? 1.5f : 1));
@@ -182,6 +185,14 @@ final class CarPlayer extends LinearLayout {
         dims();
     }
 
+    /** Only 🔀 ⏮ ⏯ ⏭ 🔁, bigger (⑪'s own player); false: all ten (the big player). */
+    void setFew(boolean on) {
+        if (few == on) return;
+        few = on;
+        for (int i = 0; i < KEYS.length; i++) keyViews[i].setVisibility(!on || java.util.Arrays.asList(FEW).contains(KEYS[i]) ? VISIBLE : GONE);
+        if (sw > 0) post(() -> sizes(sw, sh));
+    }
+
     /** Where the picture ends (the equalizer's bars start after it). */
     int artRight() { return artBox.getRight(); }
 
@@ -198,14 +209,21 @@ final class CarPlayer extends LinearLayout {
             else if (k.equals("back10") || k.equals("fwd10")) ok &= allows(Music.C_SEEK);
             else if (k.equals("queue")) ok &= allows(Music.C_QUEUE);
             else if (k.equals("volume")) ok = true;
-            keyViews[i].setAlpha(ok ? 1f : 0.32f);
+            keyViews[i].setAlpha(ok ? 1f : 0.38f);
             boolean lit = k.equals("shuffle") && shuffle == 1 || k.equals("repeat") && repeat > 0 || k.equals("like") && liked;
-            keyViews[i].setColour(lit ? 0xFFFFD166 : k.equals("toggle") ? accent : textMain);
+            boolean play = k.equals("toggle");
+            // the 3D buttons: ⏯ in the theme's colour, the rest dark (light on a light theme); a lit one's sign yellow
+            keyViews[i].setKnob(play ? accent : light ? 0xFFE3E9EF : 0xFF26303B, lit ? 0xFFFFD166 : accent);
+            keyViews[i].setColour(play ? (bright(accent) ? 0xFF0B1118 : 0xFFFFFFFF) : lit ? (light ? 0xFFC77700 : 0xFFFFD166) : light ? 0xFF0B1118 : 0xFFFFFFFF);
         }
         seek.setAlpha(allows(Music.C_SEEK) ? 1f : 0.6f);
     }
 
+    /** A light colour (a dark sign reads better on it). */
+    static boolean bright(int c) { return (0.299f * ((c >> 16) & 0xFF) + 0.587f * ((c >> 8) & 0xFF) + 0.114f * (c & 0xFF)) / 255f > 0.62f; }
+
     void setColours(int main, int soft, int acc, boolean light) {
+        this.light = light;
         textMain = main;
         textSoft = soft;
         accent = acc;
@@ -253,9 +271,9 @@ final class CarPlayer extends LinearLayout {
         app.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(10, t * 0.66f));
         int pp = Math.round(t * 0.35f);
         app.setPadding(pp * 2, pp, pp * 2, pp);
-        seek.setLayoutParams(new LayoutParams(-1, Math.round(inner * 0.2f)));
-        keys.setLayoutParams(new LayoutParams(-1, Math.round(inner * 0.36f)));
-        for (int i = 0; i < keyViews.length; i++) keyViews[i].setFill(i == 3 ? 0.98f : 0.62f);
+        seek.setLayoutParams(new LayoutParams(-1, Math.round(inner * (few ? 0.16f : 0.2f))));
+        keys.setLayoutParams(new LayoutParams(-1, Math.round(inner * (few ? 0.48f : 0.4f)))); // (his word: the keys big)
+        for (int i = 0; i < keyViews.length; i++) keyViews[i].setFill(i == 3 ? 1f : 0.86f);
     }
 
     // ---------------------------------------------------------------- the place in the song
@@ -322,7 +340,7 @@ final class CarPlayer extends LinearLayout {
                 return true;
             }
             if (CarBox.moving()) { // (no fine finger work while he drives: ⏪10 / 10⏩, or his words)
-                if (e.getAction() == MotionEvent.ACTION_UP) Toast.makeText(getContext(), "నడుపుతుండగా ⏪10 / 10⏩ వాడండి (లాగడం కారు ఆగాక)", Toast.LENGTH_SHORT).show();
+                if (e.getAction() == MotionEvent.ACTION_UP) Toast.makeText(getContext(), few ? "పాటలో ముందుకు / వెనక్కి లాగడం కారు ఆగాక" : "నడుపుతుండగా ⏪10 / 10⏩ వాడండి (లాగడం కారు ఆగాక)", Toast.LENGTH_SHORT).show();
                 if (dragAt >= 0) { dragAt = -1; invalidate(); } // (a drag the car's start cut short: the song's own place again)
                 return true;
             }

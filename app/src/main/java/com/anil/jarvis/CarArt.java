@@ -417,6 +417,7 @@ final class CarArt {
             cv.translate((getWidth() - s) / 2f, (getHeight() - s) / 2f);
             cv.scale(u, u);
             if (chevrons && turnKind()) { chevronsDraw(cv); cv.restore(); return; }
+            if (knob != 0) { knobDraw(cv); cv.restore(); return; }
             int col = colour;
             if (style == CarStyle.I_TILE) { // a rounded tile in its colour, a light on its top half, the sign white
                 p.setStyle(Paint.Style.FILL);
@@ -481,6 +482,64 @@ final class CarArt {
         private Shader tileSh;
         private int tileFor;
         private final RectF tileR = new RectF();
+
+        private int knob, knobRim, knobFor;
+        private Shader knobSh, glossSh;
+        /**
+         * ⑪'s player keys (26 Oct, his "3d controls"): the sign on a raised round button of this colour — a shadow under
+         * it, lit from above with a shine on its top, a thin light of the theme's colour round it, and pressed in under
+         * his finger. 0: none (the sign alone, as everywhere else).
+         */
+        void setKnob(int base, int rim) { if (knob != base || knobRim != rim) { knob = base; knobRim = rim; invalidate(); } }
+
+        @Override protected void drawableStateChanged() { super.drawableStateChanged(); if (knob != 0) invalidate(); }
+
+        private void knobDraw(Canvas cv) {
+            boolean down = isPressed();
+            p.setShader(null);
+            p.setMaskFilter(null);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0x2A000000); // the shadow under it (closer when pressed in)
+            cv.drawCircle(26, down ? 27.6f : 29.6f, 24.4f, p);
+            p.setColor(0x4A000000);
+            cv.drawCircle(26, down ? 27f : 28.2f, 23.6f, p);
+            cv.save();
+            if (down) cv.translate(0, 1.4f);
+            p.setColor(CarTheme.shade(knob, 0.42f)); // its edge
+            cv.drawCircle(26, 26, 23f, p);
+            if (knobSh == null || knobFor != knob) {
+                knobFor = knob;
+                knobSh = new LinearGradient(0, 4, 0, 48, CarTheme.shade(knob, 1.55f), CarTheme.shade(knob, 0.68f), Shader.TileMode.CLAMP);
+                glossSh = new LinearGradient(0, 5, 0, 27, 0x5CFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
+            }
+            p.setColor(0xFFFFFFFF); // (a shader takes the paint's alpha: full)
+            p.setShader(knobSh);
+            cv.drawCircle(26, 26, 21.4f, p);
+            p.setShader(null);
+            if (down) { p.setColor(0x2E000000); cv.drawCircle(26, 26, 21.4f, p); p.setColor(0xFFFFFFFF); } // (pressed in: a little darker)
+            p.setShader(glossSh); // the shine on its top half
+            tileR.set(11, 5.6f, 41, 27);
+            cv.drawOval(tileR, p);
+            p.setShader(null);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(1.3f);
+            p.setColor(CarTheme.withAlpha(knobRim, down ? 0xFF : 0xB4));
+            cv.drawCircle(26, 26, 21.6f, p);
+            cv.scale(0.56f, 0.56f, 26, 26); // the sign inside, solid and thick, with a dark shadow under it
+            boolean solid = kind == PLAY || kind == PREV || kind == NEXT;
+            shape();
+            p.setStyle(solid ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+            p.setStrokeWidth(solid ? 3.4f : 5.6f);
+            p.setColor(0x73000000);
+            cv.save();
+            cv.translate(0, 2f);
+            cv.drawPath(path, p);
+            cv.restore();
+            p.setColor(colour);
+            cv.drawPath(path, p);
+            p.setStyle(Paint.Style.STROKE);
+            cv.restore();
+        }
 
         /** Three arrows the turn's way, lighting one after another towards its tip (CarStyle.chevron), ~15 frames a second. */
         private void chevronsDraw(Canvas cv) {

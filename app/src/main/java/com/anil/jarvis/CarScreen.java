@@ -509,7 +509,9 @@ final class CarScreen extends FrameLayout {
         roadCaption.setEllipsize(TextUtils.TruncateAt.END);
         roadCaption.setShadowLayer(4, 0, 1, 0xEE000000);
         spRoadCard.addView(roadCaption, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP | Gravity.START));
+        roadCaption.setVisibility(GONE); // (his word, 26 Oct: no "🚙 మీ కారు" or other words on his car; the speed is on the meter)
         player = new CarPlayer(a, playerL);
+        player.setFew(true); // (his word, 26 Oct: only 🔀 ⏮ ⏯ ⏭ 🔁 here, big 3D buttons; the big player keeps all ten)
         player.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("music"); return true; });
         player.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (CarLayout.SPECIAL.equals(shape)) playerEq(); });
         bigBox = new FrameLayout(a); // (the picture tapped: the player big over the screen; a tap outside, or 40 s, and it goes)
@@ -793,10 +795,6 @@ final class CarScreen extends FrameLayout {
         hero.setBraking(now < brakeUntil);
         hero.setIndicator(now < indicatorUntil ? indicatorDir : 0);
         hero.setRain(rainNow);
-        if (CarLayout.SPECIAL.equals(shape)) { // ⑪'s road strip says it
-            String cap = s < 0 ? "🚗 GPS కోసం చూస్తున్నాను…" : s >= CarBox.MOVING_KMH ? "🚗 రోడ్డు కదులుతోంది · " + s + " కి.మీ/గం" : "🚙 మీ కారు"; // (parked: Jarvis's line already says so)
-            if (!cap.contentEquals(roadCaption.getText())) roadCaption.setText(cap);
-        }
         if (over) { // 😟 once per stretch over the limit: a worried face, a look at the gauge beside him
             underSince = 0;
             if (!overShown) { overShown = true; BodyRig rig = portal.body.rig; rig.show("worried", 3000); rig.glance(1f, 0.35f, 2600); }
