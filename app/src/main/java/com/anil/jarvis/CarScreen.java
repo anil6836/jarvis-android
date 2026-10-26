@@ -2984,9 +2984,10 @@ final class CarScreen extends FrameLayout {
                     put(content, right ? carMap : spLeft, right ? 74 : 26);
                     put(content, right ? spLeft : carMap, right ? 26 : 74);
                     musicStrip.setOrientation(LinearLayout.VERTICAL); // (standing: the picture on top, the name, ⏮ ⏯ ⏭)
-                    put(spLeft, jCard, 40 * Math.min(j, 1.12f)); put(spLeft, wideTalk, 9); put(spLeft, clock, 10); put(spLeft, date, 4); put(spLeft, gauge, 14);
+                    // (no speed dial here — his word: the map's own corner shows the speed and the limit; the song big in its place)
+                    put(spLeft, jCard, 40 * Math.min(j, 1.12f)); put(spLeft, wideTalk, 9); put(spLeft, clock, 10); put(spLeft, date, 4);
                     put(spLeft, roadCard, 12); // (only while the AC question is up: roadCheck; the parked card not here — his word)
-                    put(spLeft, musicStrip, 22); put(spLeft, board, 100);
+                    put(spLeft, musicStrip, 37); put(spLeft, board, 100);
                     break;
                 }
                 // (his car photo, 26 Oct: the sides closer to the screen's edges and bigger, the map bigger — the room comes from the edges and the gaps)
