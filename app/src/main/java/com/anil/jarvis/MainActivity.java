@@ -1647,6 +1647,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             return true;
         }
         @Override public void openSettings() { startActivity(new Intent(MainActivity.this, SettingsActivity.class)); }
+        @Override public void openSettingsAt(String action) {
+            Intent i = new Intent(MainActivity.this, SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, "కారు Jarvis");
+            if ("car_top".equals(action)) i.putExtra(SettingsActivity.EXTRA_ACTION, "car_top");
+            startActivity(i);
+        }
         @Override public void openChat() {
             car.setVisibility(View.GONE);
             fullScreen();
@@ -2434,6 +2439,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (g != null) { localSay(prompt, car.mapMode(g)); return; }
             String[] lw = car == null ? null : CarDeck.lightWords(prompt); // 🎚️ 💡 "ఈక్వలైజర్ ఆపు", "బీట్ లైట్లు పెట్టు": at once, any time
             if (lw != null) { localSay(prompt, car.lightsSaid(lw)); return; }
+            String[] cw = car == null ? null : CarWords.parse(prompt); // ⑪ "ఉచిత మ్యాప్ పెట్టు", "జీప్ పెట్టు", "నిశ్శబ్దంగా ఉండు", "మ్యాప్ పెద్దది చేయి": at once, any time
+            if (cw != null) { localSay(prompt, car.wordsSaid(cw)); return; }
         }
         if (home != null && prompt != null && !prompt.trim().isEmpty()) { // the home tablet: the day's AI limit (his key pays)
             if (HomeCare.overLimit(this)) { homeReply(prompt, HomeCare.limitText(this)); return; }

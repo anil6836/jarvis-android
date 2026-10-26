@@ -163,6 +163,67 @@ final class CarPhoto {
 
     static File file(Context c) { return new File(c.getFilesDir(), FILE); }
 
+    // ---- 🚙 ⑪ (26 Oct): his car from above, for the map (kept only on this box, never in a backup)
+    static final String TOP = "car_top.jpg";
+
+    static File topFile(Context c) { return new File(c.getFilesDir(), TOP); }
+
+    /**
+     * His photo from above for the map (off the main thread): turned so the car's nose is up (his "car_top_turn": the
+     * nose was right / down / left), its clear margins cut off when it is a cut-out, at most 256 px long; null when none.
+     */
+    static Bitmap loadTop(Context c, Prefs prefs) {
+        File f = topFile(c);
+        if (!f.exists()) return null;
+        try {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(f.getPath(), o);
+            int sample = 1;
+            while (Math.max(o.outWidth, o.outHeight) / (sample * 2) >= 512) sample *= 2;
+            BitmapFactory.Options o2 = new BitmapFactory.Options();
+            o2.inSampleSize = sample;
+            Bitmap b = BitmapFactory.decodeFile(f.getPath(), o2);
+            if (b == null) return null;
+            if (cutout(b)) { // (the car alone: the clear part around it cut off, so the drawing is the car's own size)
+                int[] box = opaqueBox(b);
+                if (box != null && (box[2] - box[0] < b.getWidth() || box[3] - box[1] < b.getHeight())) {
+                    Bitmap t = Bitmap.createBitmap(b, box[0], box[1], box[2] - box[0], box[3] - box[1]);
+                    if (t != b) b.recycle();
+                    b = t;
+                }
+            }
+            int turn = topTurn(prefs.sp.getString("car_top_turn", "0"));
+            float k = Math.min(1f, 256f / Math.max(b.getWidth(), b.getHeight()));
+            if (k < 1 || turn != 0) {
+                Matrix mx = new Matrix();
+                mx.postScale(k, k);
+                mx.postRotate(turn);
+                Bitmap t = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), mx, true);
+                if (t != b) b.recycle();
+                b = t;
+            }
+            return b;
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    /** How far to turn his photo so the nose is up: the nose was "0" up, "90" left (turned right), "180" down, "270" right. Pure. */
+    static int topTurn(String s) { return "90".equals(s) ? 90 : "180".equals(s) ? 180 : "270".equals(s) ? 270 : 0; }
+
+    /** The box round the picture's seen part (alpha ≥ 40), every 2nd pixel looked at; null when nothing seen. */
+    private static int[] opaqueBox(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight(), x0 = w, y0 = h, x1 = -1, y1 = -1;
+        int[] row = new int[w];
+        for (int y = 0; y < h; y += 2) {
+            b.getPixels(row, 0, w, 0, y, w, 1);
+            for (int x = 0; x < w; x += 2) if ((row[x] >>> 24) >= 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+        if (x1 < 0) return null;
+        return new int[]{Math.max(0, x0 - 2), Math.max(0, y0 - 2), Math.min(w, x1 + 3), Math.min(h, y1 + 3)};
+    }
+
     static float[] marks(Prefs prefs) { return parse(prefs.sp.getString("car_photo_marks", "")); }
 
     /** "photo" only when the photo and its marks are there; else the drawing. */

@@ -370,7 +370,10 @@ final class CarArt {
         static final int MIC = 0, WAY = 1, MUSIC = 2, FUEL = 3, HOME = 4, SLEEP = 5, GAMES = 6, QUIZ = 7, STORY = 8, APPS = 9,
                 LEFT = 10, RIGHT = 11, AHEAD = 12, UTURN = 13, ROUND = 14, ARRIVE = 15, SLIGHT_LEFT = 16, SLIGHT_RIGHT = 17,
                 RAIN = 18, FOG = 19, ROAD = 20, SNOW = 21, CLOCK = 22, PARK = 23, PREV = 24, PLAY = 25, NEXT = 26, CUP = 27, STAR = 28,
-                PAUSE = 29, MAP = 30;
+                PAUSE = 29, MAP = 30,
+                // ⑪'s player and buttons (26 Oct)
+                SHUFFLE = 31, REPEAT = 32, REPEAT_ONE = 33, BACK10 = 34, FWD10 = 35, HEART = 36, QUEUE = 37, VOLUME = 38, CAMERA = 39,
+                QUIET = 40, HUB = 41, PERSON = 42;
         private int kind;
         private int colour = 0xFF5FF3FF;
         private boolean ring; // (the song's play key: a lit round button, so it stands out between ⏮ and ⏭)
@@ -635,6 +638,54 @@ final class CarArt {
                     break;
                 case AHEAD:
                     q.moveTo(26, 46); q.lineTo(26, 10); q.moveTo(17, 19); q.lineTo(26, 9); q.lineTo(35, 19);
+                    break;
+                case SHUFFLE: // two crossing ways, each with its arrow's head
+                    q.moveTo(8, 16); q.lineTo(16, 16); q.cubicTo(26, 16, 26, 36, 36, 36); q.lineTo(43, 36);
+                    q.moveTo(8, 36); q.lineTo(16, 36); q.cubicTo(21, 36, 23, 31, 25, 27); q.moveTo(28, 22); q.cubicTo(30, 18, 32, 16, 36, 16); q.lineTo(43, 16);
+                    q.moveTo(38, 11); q.lineTo(44, 16); q.lineTo(38, 21); q.moveTo(38, 31); q.lineTo(44, 36); q.lineTo(38, 41);
+                    break;
+                case REPEAT:
+                case REPEAT_ONE: // a loop with two arrows' heads (one: a "1" inside)
+                    q.moveTo(12, 30); q.lineTo(12, 22); q.quadTo(12, 16, 18, 16); q.lineTo(40, 16);
+                    q.moveTo(35, 11); q.lineTo(41, 16); q.lineTo(35, 21);
+                    q.moveTo(40, 22); q.lineTo(40, 30); q.quadTo(40, 36, 34, 36); q.lineTo(12, 36);
+                    q.moveTo(17, 31); q.lineTo(11, 36); q.lineTo(17, 41);
+                    if (kind == REPEAT_ONE) { q.moveTo(24, 24); q.lineTo(27, 22); q.lineTo(27, 31); }
+                    break;
+                case BACK10:
+                case FWD10: { // a round arrow back / on, "10" inside
+                    boolean fwd = kind == FWD10;
+                    q.addArc(new RectF(8, 8, 44, 44), fwd ? -60 : -120, fwd ? 290 : -290);
+                    if (fwd) { q.moveTo(36, 6); q.lineTo(36, 14); q.lineTo(28, 13); } else { q.moveTo(16, 6); q.lineTo(16, 14); q.lineTo(24, 13); }
+                    q.moveTo(19, 22); q.lineTo(21, 21); q.lineTo(21, 32);
+                    q.addOval(new RectF(25, 21, 33, 32), Path.Direction.CW);
+                    break;
+                }
+                case HEART:
+                    q.moveTo(26, 43); q.cubicTo(4, 29, 8, 9, 20, 11); q.quadTo(24, 12, 26, 17); q.quadTo(28, 12, 32, 11); q.cubicTo(44, 9, 48, 29, 26, 43); q.close();
+                    break;
+                case QUEUE: // the list after this song
+                    q.moveTo(8, 14); q.lineTo(34, 14); q.moveTo(8, 23); q.lineTo(34, 23); q.moveTo(8, 32); q.lineTo(24, 32);
+                    q.moveTo(31, 30); q.lineTo(31, 42); q.lineTo(42, 36); q.close();
+                    break;
+                case VOLUME:
+                case QUIET: // a speaker, its waves (quiet: a cross instead)
+                    q.moveTo(8, 21); q.lineTo(15, 21); q.lineTo(25, 12); q.lineTo(25, 40); q.lineTo(15, 31); q.lineTo(8, 31); q.close();
+                    if (kind == VOLUME) { q.moveTo(31, 20); q.quadTo(35, 26, 31, 32); q.moveTo(36, 15); q.quadTo(44, 26, 36, 37); }
+                    else { q.moveTo(32, 20); q.lineTo(44, 32); q.moveTo(44, 20); q.lineTo(32, 32); }
+                    break;
+                case CAMERA:
+                    q.addRoundRect(6, 15, 46, 42, 6, 6, Path.Direction.CW);
+                    q.moveTo(17, 15); q.lineTo(20, 9); q.lineTo(32, 9); q.lineTo(35, 15);
+                    q.addCircle(26, 28, 8, Path.Direction.CW);
+                    break;
+                case HUB: // three sliders
+                    q.moveTo(14, 8); q.lineTo(14, 44); q.moveTo(26, 8); q.lineTo(26, 44); q.moveTo(38, 8); q.lineTo(38, 44);
+                    q.addRoundRect(9, 27, 19, 33, 3, 3, Path.Direction.CW); q.addRoundRect(21, 14, 31, 20, 3, 3, Path.Direction.CW); q.addRoundRect(33, 33, 43, 39, 3, 3, Path.Direction.CW);
+                    break;
+                case PERSON:
+                    q.addCircle(26, 16, 8, Path.Direction.CW);
+                    q.moveTo(10, 44); q.quadTo(10, 28, 26, 28); q.quadTo(42, 28, 42, 44);
                     break;
                 default: // APPS: four rounded squares
                     q.addRoundRect(9, 9, 23, 23, 4, 4, Path.Direction.CW); q.addRoundRect(29, 9, 43, 23, 4, 4, Path.Direction.CW);

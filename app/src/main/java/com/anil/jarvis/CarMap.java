@@ -43,6 +43,16 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         void bigMaps();
         /** "🗺️ మ్యాప్ మార్చు": the Google Maps app beside Jarvis (G2) instead of this map. */
         void switchMap();
+        // ⑪'s own (26 Oct): 🔍 / 🎤 where to, 🏠 home (his tap is the yes), ⭐ his places, ⤢ the map big, 🛣️ where this road goes, ✖ stop the way
+        default void search() { menu(); }
+        default void askWhere() { menu(); }
+        default void goHome() { menu(); }
+        default void places() { menu(); }
+        default void expand() { bigMaps(); }
+        default void road() { menu(); }
+        default void stopWay() {}
+        /** A finger held on the map: Jarvis Maps (⑪, parked: the map's own choices). */
+        default void held() { menu(); }
     }
 
     static final String[][] CHIPS = {{"☕ టీ", "tea", "☕ టీ / కాఫీ"}, {"⛽ బంక్", "petrol", "⛽ పెట్రోల్"}, {"🍛 హోటల్", "restaurant", "🍛 హోటల్ / దాబా"},
@@ -105,6 +115,11 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     private final LinearLayout pills;
     private final TextView[] pillViews = new TextView[3];
     private final TextView trafficBtn, satBtn, mapPill;
+    // ⑪: the search bar on top (🔍 🎤 🏠 ⭐), 🅿️ among the chips, its own tools (🚦 🛰️ 🌙 🧭 📍 ＋ －), ⤢ in the corner, 🛣️ and ✖ at the bottom
+    private boolean special;
+    private final LinearLayout topBar, sideSp;
+    private final TextView searchPill, micBtn, homePill, placesPill, parkChip, expandBtn, roadBtn, stopBtn, trafficSp, satSp, nightSp, rotateSp;
+    private final List<TextView> topViews = new ArrayList<>(), sideSpViews = new ArrayList<>();
     private final HorizontalScrollView chipScroll;
     private boolean shown, googleOff, started, sourceBusy;
     private long googleOffAt, sourceAskedAt;
@@ -155,6 +170,11 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
             chipBar.addView(t);
             chipViews.add(t);
         }
+        parkChip = pill(c, "🅿️ పార్కింగ్"); // (⑪)
+        parkChip.setOnClickListener(v -> tap(() -> host.along("parking", "🅿️ పార్కింగ్")));
+        parkChip.setVisibility(GONE);
+        chipBar.addView(parkChip);
+        chipViews.add(parkChip);
         TextView all = pill(c, "➕ అన్నీ");
         all.setOnClickListener(v -> tap(host::menu));
         chipBar.addView(all);
@@ -225,8 +245,149 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         note.setMaxLines(2);
         note.setOnClickListener(v -> note.setVisibility(GONE));
         addView(note, new LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END));
+
+        // ⑪'s own parts (seen only in ⑪)
+        topBar = new LinearLayout(c);
+        topBar.setOrientation(LinearLayout.HORIZONTAL);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+        searchPill = pill(c, "🔍  ఎక్కడికి వెళ్దాం " + prefs.name() + "?");
+        searchPill.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        searchPill.setEllipsize(TextUtils.TruncateAt.END);
+        searchPill.setOnClickListener(v -> tap(host::search));
+        micBtn = pill(c, "🎤");
+        micBtn.setOnClickListener(v -> tap(host::askWhere));
+        homePill = pill(c, "🏠 ఇంటికి");
+        homePill.setOnClickListener(v -> tap(host::goHome));
+        placesPill = pill(c, "⭐ నా చోట్లు");
+        placesPill.setOnClickListener(v -> tap(host::places));
+        for (TextView t : new TextView[]{searchPill, micBtn, homePill, placesPill}) topViews.add(t);
+        topBar.addView(searchPill, new LinearLayout.LayoutParams(0, -2, 1));
+        topBar.addView(micBtn);
+        topBar.addView(homePill);
+        topBar.addView(placesPill);
+        topBar.setVisibility(GONE);
+        addView(topBar, new LayoutParams(-1, -2, Gravity.TOP));
+        sideSp = new LinearLayout(c);
+        sideSp.setOrientation(LinearLayout.VERTICAL);
+        trafficSp = spBtn(c, "🚦", this::trafficTap);
+        satSp = spBtn(c, "🛰️", () -> {
+            if ("osm".equals(p.carMapSrc()) || !GMaps.has(getContext())) { Toast.makeText(getContext(), "ఉచిత మ్యాప్‌లో శాటిలైట్ లేదు: Google మ్యాప్‌లోనే", Toast.LENGTH_LONG).show(); return; }
+            p.sp.edit().putBoolean("maps_sat", !p.sp.getBoolean("maps_sat", false)).apply();
+            source();
+        });
+        nightSp = spBtn(c, "🌙", this::nightTap);
+        rotateSp = spBtn(c, "🧭", this::rotateTap);
+        spBtn(c, "📍", this::followMe);
+        spBtn(c, "＋", () -> zoomBy(1));
+        spBtn(c, "－", () -> zoomBy(-1));
+        sideSp.setVisibility(GONE);
+        addView(sideSp, new LayoutParams(-2, -2, Gravity.END | Gravity.TOP));
+        expandBtn = pill(c, "⤢");
+        expandBtn.setOnClickListener(v -> tap(host::expand));
+        expandBtn.setVisibility(GONE);
+        addView(expandBtn, new LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END));
+        roadBtn = line(c, true);
+        roadBtn.setText("🛣️ ఈ రోడ్డు ఎటు?");
+        roadBtn.setOnClickListener(v -> tap(host::road));
+        roadBtn.setVisibility(GONE);
+        stopBtn = line(c, true);
+        stopBtn.setText("✖ దారి ఆపు");
+        stopBtn.setOnClickListener(v -> tap(host::stopWay));
+        stopBtn.setVisibility(GONE);
+        bottom.addView(roadBtn);
+        bottom.addView(stopBtn);
         sizes(0, 0);
     }
+
+    private TextView spBtn(Context c, String s, Runnable r) {
+        TextView t = new TextView(c);
+        t.setText(s);
+        t.setGravity(Gravity.CENTER);
+        t.setTextColor(textMain);
+        t.setOnClickListener(v -> tap(r));
+        sideSp.addView(t);
+        sideSpViews.add(t);
+        return t;
+    }
+
+    /** ⑪: the search bar, 🅿️, its own tools, ⤢ in the corner, 🛣️ and ✖ (the other shapes keep the map as it always was). */
+    void setSpecial(boolean on) {
+        if (on == special) return;
+        special = on;
+        int v = on ? VISIBLE : GONE, old = on ? GONE : VISIBLE;
+        topBar.setVisibility(v);
+        sideSp.setVisibility(v);
+        expandBtn.setVisibility(v);
+        roadBtn.setVisibility(v);
+        parkChip.setVisibility(v);
+        side.setVisibility(old);
+        mapPill.setVisibility(old);
+        if (!on) stopBtn.setVisibility(GONE);
+        sizes(getWidth(), getHeight());
+    }
+
+    /** ⑪'s ⤢: the map big now (its sign shows the way back). */
+    void setExpanded(boolean big) { expandBtn.setText(big ? "⤡" : "⤢"); }
+
+    /** 🚦 Traffic: Google's map only (the free map has none: said honestly). */
+    private void trafficTap() {
+        if ("osm".equals(p.carMapSrc()) || !GMaps.has(getContext()) || googleOff) {
+            Toast.makeText(getContext(), "ఉచిత మ్యాప్‌లో ట్రాఫిక్ లేదు: 🎛️ → మ్యాప్ లో Google మ్యాప్ పెట్టండి", Toast.LENGTH_LONG).show();
+            return;
+        }
+        p.sp.edit().putBoolean("maps_traffic", !p.sp.getBoolean("maps_traffic", false)).apply();
+        source();
+    }
+
+    /** 🌙 The map's colours: dark ↔ day (his choice; "auto" again from 🎛️). */
+    private void nightTap() {
+        p.sp.edit().putString("car_map_night", dark ? "day" : "night").apply();
+        if (lastLook != null) setLook(lastLook);
+    }
+
+    /** 🧭 The way ahead up ↔ north up. */
+    private void rotateTap() {
+        boolean on = !p.carMapRotate();
+        p.sp.edit().putBoolean("car_map_rotate", on).apply();
+        map.follow = true;
+        carCheck();
+        Toast.makeText(getContext(), on ? "🧭 దారి పైకి: మ్యాప్ కారుతో తిరుగుతుంది" : "🧭 ఉత్తరం పైకి", Toast.LENGTH_SHORT).show();
+    }
+
+    // ---------------------------------------------------------------- 🚙 his car on the map, 🧭 the turn
+
+    private String carKey = "";
+    private android.graphics.Bitmap topPhoto;
+    private long topPhotoAt = -1;
+
+    /** His car as he chose it (🎛️ / his words), the map turning or not: read again from his choices. */
+    void carCheck() {
+        String kind = p.carMapCar();
+        boolean night = lastLook != null && lastLook.night;
+        int acc = lastLook != null ? lastLook.accent : accent;
+        map.setRotate(p.carMapRotate(), p.carLowMotion());
+        rotateSp.setAlpha(p.carMapRotate() ? 1f : 0.55f);
+        if ("photo".equals(kind)) {
+            java.io.File f = CarPhoto.topFile(getContext());
+            long at = f.exists() ? f.lastModified() : 0;
+            String turn = p.sp.getString("car_top_turn", "0");
+            if (at != topPhotoAt || !turn.equals(topTurnSeen)) {
+                topPhotoAt = at;
+                topTurnSeen = turn;
+                final Context app = getContext().getApplicationContext();
+                run(() -> {
+                    android.graphics.Bitmap b = at == 0 ? null : CarPhoto.loadTop(app, p);
+                    main.post(() -> { topPhoto = b; carCheck(); });
+                });
+            }
+        }
+        String key = kind + "|" + p.carColour() + "|" + night + "|" + acc + "|" + (topPhoto != null);
+        if (key.equals(carKey)) return;
+        carKey = key;
+        map.setCar(kind, p.carColour(), night, acc, "photo".equals(kind) ? topPhoto : null);
+    }
+
+    private String topTurnSeen = "";
 
     // ---------------------------------------------------------------- small views
 
@@ -312,6 +473,48 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
             lp.setMargins(0, pad / 2, 0, pad / 2);
             t.setLayoutParams(lp);
         }
+        int sbtn = Math.max(dp(36), s / 10); // ⑪'s tools: a little smaller (seven of them)
+        for (TextView t : sideSpViews) {
+            t.setTextSize(TypedValue.COMPLEX_UNIT_PX, sbtn * 0.42f);
+            t.setBackground(card(sbtn * 0.28f, false));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(sbtn, sbtn);
+            lp.setMargins(0, pad / 3, 0, pad / 3);
+            t.setLayoutParams(lp);
+        }
+        int barH = (int) (txt * 2.3f) + pad; // ⑪'s search bar
+        for (TextView t : topViews) {
+            t.setTextSize(TypedValue.COMPLEX_UNIT_PX, txt * 1.05f);
+            t.setTextColor(t == searchPill ? textSoft : textMain);
+            t.setPadding(t == micBtn ? 0 : pad * 2, 0, t == micBtn ? 0 : pad * 2, 0);
+            t.setBackground(card(999, t == micBtn));
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
+            if (lp == null) lp = new LinearLayout.LayoutParams(-2, barH);
+            lp.height = barH;
+            if (t == micBtn) lp.width = barH;
+            lp.setMargins(t == searchPill ? 0 : pad, 0, 0, 0);
+            t.setLayoutParams(lp);
+        }
+        topBar.setPadding(pad, pad, pad, 0);
+        expandBtn.setTextSize(TypedValue.COMPLEX_UNIT_PX, sbtn * 0.45f);
+        expandBtn.setBackground(card(sbtn * 0.28f, true));
+        LayoutParams el = (LayoutParams) expandBtn.getLayoutParams();
+        el.width = sbtn;
+        el.height = sbtn;
+        el.setMargins(0, 0, pad, pad);
+        expandBtn.setLayoutParams(el);
+        int spTop = special ? barH + pad : 0; // (⑪: the chips under the search bar)
+        LayoutParams csl = (LayoutParams) chipScroll.getLayoutParams();
+        csl.topMargin = spTop;
+        if (special) csl.rightMargin = sbtn + pad * 2;
+        chipScroll.setLayoutParams(csl);
+        int chipsH = (int) (txt * 2.6f) + pad * 2;
+        int spRoom = Math.max(0, (h <= 0 ? dp(400) : h) - spTop - chipsH - sbtn - pad * 3);
+        int spEach = sbtn + pad * 2 / 3;
+        boolean spZoom = spRoom >= sideSpViews.size() * spEach;
+        for (int i = 0; i < sideSpViews.size(); i++) sideSpViews.get(i).setVisibility(i >= sideSpViews.size() - 2 && !spZoom ? GONE : VISIBLE);
+        LayoutParams spl = (LayoutParams) sideSp.getLayoutParams();
+        spl.setMargins(0, spTop + chipsH - pad, pad, 0);
+        sideSp.setLayoutParams(spl);
         // the buttons between the chips and the bottom row + the map's credit (never over the credit), centred in that room;
         // too little room (a small screen): ＋ － go (a pinch still zooms, ⤢ has the big map)
         int topRoom = (int) (txt * 2.6f) + pad * 2, bottomRoom = (int) (txt * 1.15f * 1.4f) + pad * 3 + dp(44);
@@ -326,7 +529,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         turn.setPadding(pad * 2, pad, pad * 3, pad);
         turn.setBackground(card(pad * 2.5f, true));
         LayoutParams tl = (LayoutParams) turn.getLayoutParams();
-        tl.setMargins(pad, (int) (txt * 2.6f) + pad * 2, btn + pad * 3, 0);
+        tl.setMargins(pad, (int) (txt * 2.6f) + pad * 2 + spTop, (special ? sbtn : btn) + pad * 3, 0);
         turn.setLayoutParams(tl);
         LinearLayout.LayoutParams il = new LinearLayout.LayoutParams((int) (big * 2.2f), (int) (big * 2.2f));
         il.setMargins(0, 0, pad * 2, 0);
@@ -336,10 +539,10 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         turn2.setTextColor(textSoft);
         turn1.setMaxWidth(Math.max(dp(120), (int) (w * 0.62f)));
         turn2.setMaxWidth(Math.max(dp(120), (int) (w * 0.62f)));
-        for (TextView t : new TextView[]{eta, speed, pillViews[0], pillViews[1], pillViews[2]}) {
+        for (TextView t : new TextView[]{eta, speed, pillViews[0], pillViews[1], pillViews[2], roadBtn, stopBtn}) {
             t.setTextSize(TypedValue.COMPLEX_UNIT_PX, txt * 1.15f);
             t.setPadding(pad * 2, pad, pad * 2, pad);
-            t.setBackground(card(t == eta || t == speed ? pad * 2 : 999, false));
+            t.setBackground(card(t == eta || t == speed ? pad * 2 : 999, t == stopBtn));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
             lp.setMargins(0, 0, pad, 0);
             lp.gravity = Gravity.CENTER_VERTICAL;
@@ -351,7 +554,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         badge.setLayoutParams(bp);
         badge.setColours(fillCol, textMain, false);
         LayoutParams bl = (LayoutParams) bottom.getLayoutParams();
-        bl.setMargins(pad, 0, 0, pad);
+        bl.setMargins(pad, 0, special ? sbtn + pad * 2 : 0, pad);
         bottom.setLayoutParams(bl);
         note.setTextSize(TypedValue.COMPLEX_UNIT_PX, txt * 0.9f);
         note.setTextColor(0xFFFFE0A0);
@@ -369,16 +572,21 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     }
 
     /** The theme's colours on the map's cards and buttons. */
+    private CarTheme.Look lastLook;
+
     void setLook(CarTheme.Look look) {
         if (look == null) return;
+        lastLook = look;
         accent = look.accent;
         fillCol = look.light ? 0xEEFFFFFF : 0xE6061420;
         textMain = look.light ? 0xFF0B1118 : 0xFFFFFFFF;
         textSoft = look.light ? 0xFF3A4656 : 0xFFB9CCDA;
         for (TextView t : chipViews) t.setTextColor(textMain);
         for (TextView t : sideViews) t.setTextColor(textMain);
+        for (TextView t : sideSpViews) t.setTextColor(textMain);
+        expandBtn.setTextColor(textMain);
         mapPill.setTextColor(textMain);
-        for (TextView t : new TextView[]{turn1, eta, speed, pillViews[0], pillViews[1], pillViews[2]}) t.setTextColor(textMain);
+        for (TextView t : new TextView[]{turn1, eta, speed, pillViews[0], pillViews[1], pillViews[2], roadBtn, stopBtn}) t.setTextColor(textMain);
         turnIcon.setColour(look.light ? 0xFF0B1118 : 0xFFFFFFFF);
         boolean low = p.carLowMotion();
         turnIcon.setChevrons(p.carTurnArrows() && !low); // 20
@@ -387,11 +595,18 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         badge.setLowMotion(low);
         sizes(getWidth(), getHeight());
         boolean dk = CarDeck.darkMap(p.carMapNight(), look.night);
-        if (dk != dark) { // (night came / went, or his choice changed: the map's colours with it — now if on the screen, else when it comes)
+        String src = p.carMapSrc();
+        boolean srcChanged = !src.equals(srcSeen);
+        srcSeen = src;
+        if (dk != dark || srcChanged) { // (night came / went, his choice changed, or the free map ↔ Google: the map's pictures with it — now if on the screen, else when it comes)
             dark = dk;
             if (started && shown) source(); else darkStale = started;
         }
+        nightSp.setAlpha(dark ? 1f : 0.55f);
+        carCheck();
     }
+
+    private String srcSeen = "";
 
     /** The numbers' font (his choice) for the speed in the corner. */
     void setFont(Typeface t) { badge.setFont(t); }
@@ -454,7 +669,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         zoomCheck(kmh);
         // Google's map never came (no net when the box woke, Google slow): asked again once a minute while there is net
         long now0 = System.currentTimeMillis();
-        if (session.isEmpty() && !googleOff && !sourceBusy && GMaps.has(getContext()) && now0 - sourceAskedAt > 60_000 && Net.online(getContext())) source();
+        if (session.isEmpty() && !googleOff && !sourceBusy && GMaps.has(getContext()) && !"osm".equals(p.carMapSrc()) && now0 - sourceAskedAt > 60_000 && Net.online(getContext())) source();
         else if (dark && darkNoUntil != 0 && darkNoUntil != Long.MAX_VALUE && now0 >= darkNoUntil && !sourceBusy && googleMap()) { darkNoUntil = 0; source(); } // (night colours asked again)
         // the trip's turn and arrival
         boolean trip = nav != null && !(nav.optString("next").isEmpty() && nav.optString("detail").isEmpty());
@@ -469,6 +684,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
         String[] pl = trip && p.carMapPills() ? CarStyle.tripPills(nav.optString("trip")) : null; // 22: when, how long, how far
         if (pl != null) for (int i = 0; i < 3; i++) { setText(pillViews[i], pl[i]); pillViews[i].setVisibility(pl[i].isEmpty() ? GONE : VISIBLE); }
         turn.setVisibility(trip ? VISIBLE : GONE);
+        if (special) stopBtn.setVisibility(trip || dest != null ? VISIBLE : GONE); // ✖ only while there is a way
         pills.setVisibility(pl != null ? VISIBLE : GONE);
         eta.setVisibility(trip && pl == null ? VISIBLE : GONE);
         // the speed and the limit (red over it): 21's sign and box, or the line
@@ -584,14 +800,22 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     private void source() {
         Context c = getContext();
         boolean sat = p.sp.getBoolean("maps_sat", false), tr = p.sp.getBoolean("maps_traffic", false);
-        trafficBtn.setAlpha(tr ? 1f : 0.55f);
-        satBtn.setAlpha(sat ? 1f : 0.55f);
-        if (!GMaps.has(c) || googleOff) {
+        boolean mine = "osm".equals(p.carMapSrc()); // (his choice: the free map, Google's not asked at all)
+        trafficBtn.setAlpha(tr && !mine ? 1f : 0.55f);
+        satBtn.setAlpha(sat && !mine ? 1f : 0.55f);
+        trafficSp.setAlpha(tr && !mine ? 1f : 0.55f);
+        satSp.setAlpha(sat && !mine ? 1f : 0.55f);
+        if (!GMaps.has(c) || googleOff || mine) {
+            main.removeCallbacks(retrySource);
+            sourceSeq++; // (a Google answer still on its way is dropped)
+            sourceBusy = false;
+            session = "";
             map.setSource("", false, false, dark);
             way = null; // (nothing of Google's on the free map: its way, its credit)
             map.setRoutes(null, 0);
             map.setCredit("");
-            if (!GMaps.has(c)) say("free", "ఉచిత మ్యాప్ (OpenStreetMap) · Google మ్యాప్, ట్రాఫిక్ కోసం: ⚙️ → 🗺️ Jarvis Maps లో Maps key");
+            if (mine) say("mine", "🆓 ఉచిత మ్యాప్ (OpenStreetMap) · మీ ఎంపిక: Google కి 🎛️ → మ్యాప్");
+            else if (!GMaps.has(c)) say("free", "ఉచిత మ్యాప్ (OpenStreetMap) · Google మ్యాప్, ట్రాఫిక్ కోసం: ⚙️ → 🗺️ Jarvis Maps లో Maps key");
             return;
         }
         main.removeCallbacks(retrySource);
@@ -707,7 +931,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     private long touchedAt;
 
     @Override public void moved() { touchedAt = System.currentTimeMillis(); zoomTouchedAt = touchedAt; } // (his pinch / drag: his zoom for a minute too)
-    @Override public void longPressed(double lat, double lon) { host.menu(); }
+    @Override public void longPressed(double lat, double lon) { host.held(); }
 
     private void followMe() {
         map.follow = true;

@@ -114,6 +114,10 @@ final class CarStyle {
             case "games": return 0xFFFF8A3C;
             case "apps": return 0xFF9FB6C9;
             case "stage": return 0xFFFFD166;
+            case "tea": return 0xFFE0A46E;
+            case "camera": return 0xFF7FC8FF;
+            case "rain": return 0xFF4F9DFF;
+            case "quiet": return 0xFFA3ADBE;
             default: return 0xFF5FF3FF;
         }
     }

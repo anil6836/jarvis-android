@@ -67,6 +67,13 @@ final class JarvisMapView extends View {
     boolean follow = true;
     private double[] me;
     private float meHeading = -1, meAcc;
+    // 🚙 ⑪ (26 Oct): his car drawn from above instead of the dot (the car screen's choice), and 🧭 the map turning so the way ahead is up
+    private String carKind = "";
+    private int carColour = 0xFF2F6FE4, carAccent = 0xFF5FF3FF;
+    private boolean carNight, rotate, calm;
+    private Bitmap carPhoto;
+    /** The map's turn on the screen now (degrees; 0 = north up), easing towards where it should be. */
+    private float rot;
 
     // the map's pictures
     private boolean google, satellite, traffic;
@@ -127,7 +134,9 @@ final class JarvisMapView extends View {
         });
         taps = new GestureDetector(c, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
-            @Override public boolean onScroll(MotionEvent a, MotionEvent b, float dx, float dy) {
+            @Override public boolean onScroll(MotionEvent a, MotionEvent b, float dx0, float dy0) {
+                double ra = Math.toRadians(rot); // (a finger on a turned map: its way on the map itself)
+                float dx = (float) (dx0 * Math.cos(ra) + dy0 * Math.sin(ra)), dy = (float) (-dx0 * Math.sin(ra) + dy0 * Math.cos(ra));
                 double[] p = world(cLat, cLon);
                 double[] ll = MapMath.latLon((p[0] + dx) / unit(), (p[1] + dy) / unit(), zoom);
                 cLat = Math.max(-85, Math.min(85, ll[0]));
@@ -164,7 +173,7 @@ final class JarvisMapView extends View {
     }
 
     private void moved() {
-        follow = false;
+        follow = false; // (and the map goes back to north up while he looks around: 🧭)
         lastFit = null;
         invalidate();
         if (listener != null) listener.moved();
@@ -195,14 +204,50 @@ final class JarvisMapView extends View {
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
         float size = 256 * unit() * 0.7f; // (the smallest a tile is drawn, between zoom levels)
-        int visible = (int) ((w / size + 2) * (h / size + 2));
+        float diag = (float) Math.hypot(w, h); // (the map turned: a square around the screen's diagonal)
+        int visible = (int) ((diag / size + 2) * (diag / size + 2));
         maxTiles = Math.max(60, visible * 2);
     }
 
-    /** The map's middle that puts (lat, lon) in the middle of the part above the panel. */
+    /** The map's middle that puts (lat, lon) at the pivot: the middle of the part above the panel (🧭 turned: lower, more road ahead). */
     private double[] centerFor(double lat, double lon) {
         double[] p = world(lat, lon);
-        return MapMath.latLon(p[0] / unit(), (p[1] + inset / 2.0) / unit(), zoom);
+        return MapMath.latLon(p[0] / unit(), (p[1] - (pivotY() - getHeight() / 2.0)) / unit(), zoom);
+    }
+
+    /** Where his car sits and the map turns around: the part above the panel's middle; 🧭 a little lower. */
+    private float pivotY() { int H = getHeight(); return rotate ? (H - inset) * 0.64f : (H - inset) / 2f; }
+
+    // ---------------------------------------------------------------- 🚙 his car on the map, 🧭 the map turning with it
+
+    /** kind: one of CarDeck.MAP_CARS ("" the dot); his colour; night (the beams); the theme's light (the arrow); his photo from above (or null). */
+    void setCar(String kind, int colour, boolean night, int accent, Bitmap photo) {
+        carKind = kind == null ? "" : kind;
+        carColour = colour;
+        carNight = night;
+        carAccent = accent;
+        carPhoto = photo;
+        invalidate();
+    }
+
+    /** 🧭 The way ahead up (only while the map follows him; moved by a finger: north up until it follows again). */
+    void setRotate(boolean on, boolean lowMotion) {
+        calm = lowMotion;
+        if (on == rotate) return;
+        rotate = on;
+        if (follow && me != null) { double[] c = centerFor(me[0], me[1]); cLat = c[0]; cLon = c[1]; }
+        invalidate();
+    }
+
+    /** The turn the map should have now. */
+    private float rotWant() { return rotate && follow && meHeading >= 0 ? -meHeading : 0; }
+
+    /** One step of the turn towards where it should be (the shorter way round); true while still turning. */
+    private boolean rotStep() {
+        float want = rotWant(), diff = ((want - rot) % 360 + 540) % 360 - 180;
+        if (Math.abs(diff) < 0.4f || calm) { rot = want; return false; }
+        rot += diff * 0.18f;
+        return true;
     }
 
     // ---------------------------------------------------------------- the picture source
@@ -251,7 +296,7 @@ final class JarvisMapView extends View {
         if (heading >= 0) meHeading = heading;
         meAcc = acc;
         if (follow) { double[] c = centerFor(lat, lon); cLat = c[0]; cLon = c[1]; }
-        invalidate();
+        invalidate(); // (🧭 a new heading: the turn eases there in the next frames)
     }
 
     double[] me() { return me; }
@@ -346,19 +391,36 @@ final class JarvisMapView extends View {
 
     float[] xy(double lat, double lon) {
         double[] p = world(lat, lon), c = world(cLat, cLon);
-        return new float[]{(float) (getWidth() / 2.0 + p[0] - c[0]), (float) (getHeight() / 2.0 + p[1] - c[1])};
+        float x = (float) (getWidth() / 2.0 + p[0] - c[0]), y = (float) (getHeight() / 2.0 + p[1] - c[1]);
+        if (rot == 0) return new float[]{x, y};
+        double a = Math.toRadians(rot), px = getWidth() / 2.0, py = pivotY(), dx = x - px, dy = y - py; // (turned round the pivot, as the pictures are)
+        return new float[]{(float) (px + dx * Math.cos(a) - dy * Math.sin(a)), (float) (py + dx * Math.sin(a) + dy * Math.cos(a))};
     }
 
     double[] latLonAt(float sx, float sy) {
         double[] c = world(cLat, cLon);
-        return MapMath.latLon((c[0] + sx - getWidth() / 2.0) / unit(), (c[1] + sy - getHeight() / 2.0) / unit(), zoom);
+        double x = sx, y = sy;
+        if (rot != 0) { // (back through the turn)
+            double a = Math.toRadians(-rot), px = getWidth() / 2.0, py = pivotY(), dx = x - px, dy = y - py;
+            x = px + dx * Math.cos(a) - dy * Math.sin(a);
+            y = py + dx * Math.sin(a) + dy * Math.cos(a);
+        }
+        return MapMath.latLon((c[0] + x - getWidth() / 2.0) / unit(), (c[1] + y - getHeight() / 2.0) / unit(), zoom);
     }
 
     /** {north, south, east, west} of what is on the screen (null before it is laid out). */
     double[] bounds() {
         if (getWidth() == 0 || getHeight() == 0) return null;
-        double[] nw = latLonAt(0, 0), se = latLonAt(getWidth(), getHeight());
-        return new double[]{nw[0], se[0], se[1], nw[1]};
+        if (rot == 0) {
+            double[] nw = latLonAt(0, 0), se = latLonAt(getWidth(), getHeight());
+            return new double[]{nw[0], se[0], se[1], nw[1]};
+        }
+        double n = -90, so = 90, e = -180, w = 180;
+        for (float[] k : new float[][]{{0, 0}, {getWidth(), 0}, {0, getHeight()}, {getWidth(), getHeight()}}) {
+            double[] ll = latLonAt(k[0], k[1]);
+            n = Math.max(n, ll[0]); so = Math.min(so, ll[0]); e = Math.max(e, ll[1]); w = Math.min(w, ll[1]);
+        }
+        return new double[]{n, so, e, w};
     }
 
     @Override public boolean onTouchEvent(MotionEvent e) {
@@ -372,13 +434,29 @@ final class JarvisMapView extends View {
     @Override protected void onDraw(Canvas c) {
         int W = getWidth(), H = getHeight();
         c.drawColor(0xFF0B1A26);
+        boolean turning = rotStep(); // 🧭
         int z = Math.max(0, Math.min(google ? 22 : maxFreeZoom, Math.round(zoom)));
         double scale = Math.pow(2, zoom - z) * unit(); // (between levels the tiles are stretched a little)
         double n = Math.pow(2, z);
         double[] cp = MapMath.pixel(cLat, cLon, z);
         double cx = cp[0] / 256, cy = cp[1] / 256;
         float size = (float) (256 * scale);
-        int tx0 = (int) Math.floor(cx - W / 2f / size), tx1 = (int) Math.floor(cx + W / 2f / size), ty0 = (int) Math.floor(cy - H / 2f / size), ty1 = (int) Math.floor(cy + H / 2f / size);
+        float x0 = 0, x1 = W, y0 = 0, y1 = H; // (the screen in the map's own unturned pixels)
+        int saved = -1;
+        if (rot != 0) {
+            float px = W / 2f, py = pivotY();
+            double a = Math.toRadians(-rot);
+            x0 = Float.MAX_VALUE; x1 = -Float.MAX_VALUE; y0 = Float.MAX_VALUE; y1 = -Float.MAX_VALUE;
+            for (float[] k : new float[][]{{0, 0}, {W, 0}, {0, H}, {W, H}}) {
+                double dx = k[0] - px, dy = k[1] - py;
+                float ux = (float) (px + dx * Math.cos(a) - dy * Math.sin(a)), uy = (float) (py + dx * Math.sin(a) + dy * Math.cos(a));
+                x0 = Math.min(x0, ux); x1 = Math.max(x1, ux); y0 = Math.min(y0, uy); y1 = Math.max(y1, uy);
+            }
+            saved = c.save();
+            c.rotate(rot, px, py);
+        }
+        int tx0 = (int) Math.floor(cx + (x0 - W / 2f) / size), tx1 = (int) Math.floor(cx + (x1 - W / 2f) / size),
+                ty0 = (int) Math.floor(cy + (y0 - H / 2f) / size), ty1 = (int) Math.floor(cy + (y1 - H / 2f) / size);
         visZ = z; visX0 = tx0; visX1 = tx1; visY0 = ty0; visY1 = ty1; // (what is on the screen now: a picture asked for earlier and no longer in sight is not fetched)
         RectF r = new RectF();
         for (int tx = tx0; tx <= tx1; tx++) for (int ty = ty0; ty <= ty1; ty++) {
@@ -397,6 +475,7 @@ final class JarvisMapView extends View {
             }
             c.drawBitmap(b, null, r, img);
         }
+        if (saved >= 0) c.restoreToCount(saved);
         drawAhead(c);
         drawRoutes(c);
         if (showPins) drawPins(c);
@@ -404,6 +483,7 @@ final class JarvisMapView extends View {
         drawMe(c);
         drawCredit(c, W, H);
         if (flowView != null) flowView.invalidate(); // (19's arrows follow the map at once)
+        if (turning) postInvalidateOnAnimation();
     }
 
     /** The tile one level up that holds this one (stretched while this one loads); null if not here. */
@@ -530,10 +610,17 @@ final class JarvisMapView extends View {
                 c.drawCircle(xy[0], xy[1], rr, fill);
             }
         }
+        float hd = meHeading >= 0 ? meHeading + rot : -1; // (the way he faces on the screen: the map may be turned)
+        if (!carKind.isEmpty()) { // 🚙 his car from above (⑪'s choice), or the arrow; his photo when he gave one
+            float len = Math.max(34 * d, Math.min(getWidth(), getHeight()) * ("arrow".equals(carKind) ? 0.075f : 0.115f));
+            if ("photo".equals(carKind) && carPhoto != null) CarTop.photo(c, carPhoto, xy[0], xy[1], Math.max(0, hd), len, carNight);
+            else CarTop.draw(c, "photo".equals(carKind) ? "suv" : carKind, xy[0], xy[1], Math.max(0, hd), len, carColour, carNight, carAccent);
+            return;
+        }
         if (meHeading >= 0) { // the way he faces: a soft wedge
             Path w = new Path();
             w.moveTo(xy[0], xy[1]);
-            double a1 = Math.toRadians(meHeading - 28 - 90), a2 = Math.toRadians(meHeading + 28 - 90);
+            double a1 = Math.toRadians(hd - 28 - 90), a2 = Math.toRadians(hd + 28 - 90);
             float L = 34 * d;
             w.lineTo(xy[0] + (float) Math.cos(a1) * L, xy[1] + (float) Math.sin(a1) * L);
             w.lineTo(xy[0] + (float) Math.cos(a2) * L, xy[1] + (float) Math.sin(a2) * L);

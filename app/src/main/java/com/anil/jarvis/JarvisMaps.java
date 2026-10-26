@@ -48,7 +48,9 @@ import java.util.concurrent.Executors;
  * 📌 a finger held on a spot, 🗣️ the map by words, 📴 the free map kept for roads without signal.
  */
 public class JarvisMaps extends Activity implements JarvisMapView.Listener {
-    static final String EXTRA_Q = "jmaps_q", EXTRA_ALONG = "jmaps_along", EXTRA_ALONG_LABEL = "jmaps_along_label";
+    static final String EXTRA_Q = "jmaps_q", EXTRA_ALONG = "jmaps_along", EXTRA_ALONG_LABEL = "jmaps_along_label",
+            /** 🚗 ⑪'s buttons: "road" (🛣️ where this road goes), "rain" (🌧️ rain on the way). */
+            EXTRA_DO = "jmaps_do";
     private static final int REQ_LOC = 71, REQ_VOICE = 72;
 
     static void open(Context c, String query) { c.startActivity(intent(c, query)); }
@@ -56,6 +58,11 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     /** 🚗 The car screen's quick chips: Jarvis Maps opened with "this, on my way" (☕ ⛽ 🍛 …). */
     static void openAlong(Context c, String what, String label) {
         c.startActivity(intent(c, "").putExtra(EXTRA_ALONG, what == null ? "" : what).putExtra(EXTRA_ALONG_LABEL, label == null ? "" : label));
+    }
+
+    /** 🚗 The car screen's 🛣️ / 🌧️: Jarvis Maps opened straight at that ("road", "rain"). */
+    static void openDo(Context c, String what) {
+        c.startActivity(intent(c, "").putExtra(EXTRA_DO, what == null ? "" : what));
     }
 
     /** Opens it (or brings it up again with a new search: one Jarvis Maps at a time). */
@@ -215,6 +222,12 @@ public class JarvisMaps extends Activity implements JarvisMapView.Listener {
     private String keyTag() { return GMaps.has(this) ? Integer.toHexString(GMaps.key(this).hashCode()) : ""; }
 
     private void searchFrom(Intent i) {
+        String todo = i == null ? null : i.getStringExtra(EXTRA_DO);
+        if (todo != null && !todo.isEmpty()) { // (🚗 ⑪: 🛣️ / 🌧️)
+            i.removeExtra(EXTRA_DO);
+            main.postDelayed(() -> { if (isDestroyed()) return; if ("road".equals(todo)) roadAhead(); else if ("rain".equals(todo)) rainNow(); }, 600);
+            return;
+        }
         String al = i == null ? null : i.getStringExtra(EXTRA_ALONG);
         if (al != null && !al.trim().isEmpty()) { // (🚗 a quick chip on the car screen: that, on his way)
             String lb = i.getStringExtra(EXTRA_ALONG_LABEL);

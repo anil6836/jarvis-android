@@ -3226,6 +3226,26 @@ public class SettingsActivity extends Activity {
         box.addView(shapeRow);
         Switch navMap = toggle("🗺️ Google Maps లో దారి మొదలైతే మ్యాప్ స్క్రీన్‌కి మారు (⑥ అయితే సగం మ్యాప్, ① ② అయితే ③ 3D మ్యాప్; మలుపు, చేరే టైమ్, స్పీడ్ ఒకే చోట; దారి అయిపోగానే మీ స్క్రీన్)", prefs.carNavMap());
         navMap.setOnCheckedChangeListener((sw, v) -> prefs.sp.edit().putBoolean("car_nav_map", v).apply());
+        // ⑪ (26 Oct): the new choices (the same as on the car screen's 🎛️), and his car's photo from above for the map
+        for (CarHubSpec.Cat cat : CarHubSpec.cats()) for (CarHubSpec.Opt o : cat.opts) if (o.fresh) box.addView(hubRow(o));
+        topRow = Ui.text(this, "", 15.5f, accent);
+        topRow.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        showTop();
+        topRow.setOnClickListener(v -> {
+            if (!CarPhoto.topFile(this).exists()) { pickCarTop(); return; }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("📷 మ్యాప్ మీద నా కారు ఫోటో (పై నుంచి)")
+                    .setItems(new String[]{"🖼️ వేరే ఫోటో ఎంచుకో", "↻ కారు ముందు భాగం ఏ వైపు?", "🗑️ ఫోటో తీసేయి"}, (d, w) -> {
+                        if (w == 0) pickCarTop();
+                        else if (w == 1) askTopTurn();
+                        else {
+                            if (!CarPhoto.topFile(this).delete()) CarPhoto.topFile(this).deleteOnExit();
+                            if ("photo".equals(prefs.carMapCar())) prefs.sp.edit().putString("car_map_car", "suv").apply();
+                            showTop();
+                        }
+                    }).show();
+        });
+        box.addView(topRow);
         // 💾 నా థీమ్ 1–3, the six buttons, the dials, the buttons' look, sizes
         final TextView mineRow = Ui.text(this, "💾 నా థీమ్‌లు 1–3: ఇప్పటి రూపం దాచుకోండి, తర్వాత ఒక్క నొక్కుతో మళ్లీ పెట్టుకోండి", 15.5f, accent);
         final TextView buttonsRow = Ui.text(this, "", 15.5f, accent), styleRow = Ui.text(this, "", 15.5f, accent), dialsRow = Ui.text(this, "", 15.5f, accent);
@@ -3235,7 +3255,7 @@ public class SettingsActivity extends Activity {
         Runnable showDeck = () -> {
             boolean deep = CarLayout.deep(prefs.carLayout());
             StringBuilder b = new StringBuilder();
-            for (String k : CarDeck.six(prefs.carButtons(), deep)) b.append(b.length() == 0 ? "" : " · ").append(CarDeck.buttonLabel(k));
+            for (String k : CarDeck.sixFor(prefs.carButtons(), prefs.carLayout())) b.append(b.length() == 0 ? "" : " · ").append(CarDeck.buttonLabel(k));
             buttonsRow.setText("🎛️ ఆరు బటన్లు: " + b + "  (మార్చడానికి నొక్కండి)");
             int si = Math.max(0, java.util.Arrays.asList(CarDeck.STYLES).indexOf(prefs.carBtnStyle()));
             styleRow.setText("🔘 బటన్లు ఎలా: " + CarDeck.STYLE_NAMES[si] + "  (మార్చడానికి నొక్కండి)");
@@ -3257,7 +3277,7 @@ public class SettingsActivity extends Activity {
         box.addView(jarvisRow);
         box.addView(textRow);
         buttonsRow.setOnClickListener(v -> {
-            final String[] six = CarDeck.six(prefs.carButtons(), CarLayout.deep(prefs.carLayout()));
+            final String[] six = CarDeck.sixFor(prefs.carButtons(), prefs.carLayout());
             String[] slots = new String[7];
             for (int i = 0; i < 6; i++) slots[i] = (i + 1) + "వ బటన్: " + CarDeck.buttonName(six[i]);
             slots[6] = "↺ మొదటి ఆరు బటన్లు (ఆకారానివి)";
@@ -3578,7 +3598,7 @@ public class SettingsActivity extends Activity {
     // the theme editor's choices
     private static final int[] ACCENTS = {0, 0xFF5FF3FF, 0xFF4D8DFF, 0xFF34E89E, 0xFFFFC24B, 0xFFFF8A3D, 0xFFFF5A5A, 0xFFFF6AD5, 0xFFB28DFF, 0xFFF2F6FA};
     private static final String[] ACCENT_NAMES = {"థీమ్‌దే", "సియాన్", "నీలం", "ఆకుపచ్చ", "బంగారు", "నారింజ", "ఎరుపు", "గులాబీ", "ఊదా", "తెలుపు"};
-    private static final int REQ_WALL = 47, REQ_CARPHOTO = 48, REQ_CARREAR = 49;
+    private static final int REQ_WALL = 47, REQ_CARPHOTO = 48, REQ_CARREAR = 49, REQ_CARTOP = 50;
 
     private void pickCarRear() {
         try {
@@ -3587,7 +3607,56 @@ public class SettingsActivity extends Activity {
             Toast.makeText(this, "ఫోటో ఎంచుకునే యాప్ లేదు", Toast.LENGTH_LONG).show();
         }
     }
-    private TextView heroRow;
+    private TextView heroRow, topRow;
+
+    /** One of ⑪'s new choices as a row: its name and the one on now; a tap: all of them to pick from (the car screen takes it when he goes back). */
+    private TextView hubRow(CarHubSpec.Opt o) {
+        final TextView t = Ui.text(this, "", 15.5f, accent);
+        t.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        final Runnable show = () -> {
+            int i = CarHubSpec.selected(o, prefs.sp.getAll().get(o.key));
+            t.setText(o.title + ": " + (i < 0 ? "" : o.names[i]) + "  (మార్చడానికి నొక్కండి)");
+        };
+        show.run();
+        t.setOnClickListener(v -> new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(o.title)
+                .setSingleChoiceItems(o.names, Math.max(0, CarHubSpec.selected(o, prefs.sp.getAll().get(o.key))), (d, w) -> {
+                    android.content.SharedPreferences.Editor e = prefs.sp.edit();
+                    if (o.kind == CarHubSpec.K_STR) e.putString(o.key, o.values[w]);
+                    else if (o.kind == CarHubSpec.K_INT) e.putInt(o.key, o.ints[w]);
+                    else e.putBoolean(o.key, w == 0);
+                    e.apply();
+                    show.run();
+                    d.dismiss();
+                    if ("car_map_car".equals(o.key) && "photo".equals(o.values[w]) && !CarPhoto.topFile(this).exists()) pickCarTop();
+                }).show());
+        return t;
+    }
+
+    private void showTop() {
+        if (topRow == null) return;
+        topRow.setText("📷 మ్యాప్ మీద నా కారు ఫోటో (పై నుంచి): " + (CarPhoto.topFile(this).exists() ? "ఉంది ✓" : "లేదు") + "  (నొక్కండి · ఫోటో ఈ box లోనే ఉంటుంది)");
+    }
+
+    private void pickCarTop() {
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_CARTOP);
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫోటో ఎంచుకునే యాప్ లేదు", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** Which way the car's nose points in his photo (so the map turns it nose up). */
+    private void askTopTurn() {
+        final String[] names = {"⬆️ పైకి", "➡️ కుడికి", "⬇️ కిందికి", "⬅️ ఎడమకి"}, turns = {"0", "270", "180", "90"};
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("ఫోటోలో కారు ముందు భాగం ఏ వైపు ఉంది?")
+                .setSingleChoiceItems(names, Math.max(0, java.util.Arrays.asList(turns).indexOf(prefs.sp.getString("car_top_turn", "0"))), (d, w) -> {
+                    prefs.sp.edit().putString("car_top_turn", turns[w]).apply();
+                    d.dismiss();
+                    Toast.makeText(this, "సరే: మ్యాప్ మీద కారు ముందు భాగం దారి వైపు ఉంటుంది", Toast.LENGTH_SHORT).show();
+                }).show();
+    }
 
     private void pickCarPhoto() {
         try {
@@ -3806,6 +3875,19 @@ public class SettingsActivity extends Activity {
                     startActivity(new Intent(this, CarPhotoActivity.class).putExtra(CarPhotoActivity.EXTRA_REAR, true));
                 });
             }, "car-rear").start();
+        }
+        if (code == REQ_CARTOP && result == RESULT_OK && data != null && data.getData() != null) { // 🚙 ⑪: his car from above for the map: kept on this box, then which way its nose points
+            final Uri u = data.getData();
+            Toast.makeText(this, "ఫోటో తీసుకుంటున్నాను…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                boolean ok = CarPhoto.keep(this, u, CarPhoto.TOP, 900);
+                runOnUiThread(() -> {
+                    if (!ok) { Toast.makeText(this, "ఆ ఫోటో తెరవలేకపోయాను", Toast.LENGTH_LONG).show(); return; }
+                    prefs.sp.edit().putString("car_map_car", "photo").apply();
+                    showTop();
+                    askTopTurn();
+                });
+            }, "car-top").start();
         }
         if (code == REQ_CARPHOTO && result == RESULT_OK && data != null && data.getData() != null) { // 🚙 his own car's photo: kept, then marked
             final Uri u = data.getData();
@@ -5923,6 +6005,10 @@ public class SettingsActivity extends Activity {
         jumpToSection(i);
         String q = i == null ? null : i.getStringExtra(EXTRA_SEARCH); // (from All Features: the same words here)
         if (q != null && !q.trim().isEmpty()) { i.removeExtra(EXTRA_SEARCH); search.setText(q.trim()); }
+        if (i != null && "car_top".equals(i.getStringExtra(EXTRA_ACTION))) { // (the car screen's 🎛️ → 📷 his car from above)
+            i.removeExtra(EXTRA_ACTION);
+            pickCarTop();
+        }
         if (i != null && "frame".equals(i.getStringExtra(EXTRA_ACTION)) && !tab.isEmpty()) { // (All Features → 🖼️ photos for her frame)
             i.removeExtra(EXTRA_ACTION);
             Card c = cardTitled(TAB_FUN);

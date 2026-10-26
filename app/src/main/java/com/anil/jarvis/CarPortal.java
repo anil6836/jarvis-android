@@ -55,11 +55,27 @@ final class CarPortal extends FrameLayout {
     }
 
     void setLook(CarTheme.Look l) {
-        boolean recolour = holo && (look == null || look.accent != l.accent);
+        boolean recolour = holo && (look == null || look.accent != l.accent) && glowOwn == 0;
         look = l;
         if (recolour) holoLayer();
         invalidate();
     }
+
+    // ---- ⑪ (26 Oct): 🌟 his own colour for Jarvis's light (0: the theme's), 💫 the lit rings under him (the hologram has its own)
+    private int glowOwn;
+    private boolean rings;
+
+    void setGlow(int colour) {
+        if (colour == glowOwn) return;
+        glowOwn = colour;
+        if (holo) holoLayer();
+        invalidate();
+    }
+
+    void setRings(boolean on) { if (on != rings) { rings = on; invalidate(); } }
+
+    /** Jarvis's light now: his colour, else the theme's. */
+    private int ac() { return glowOwn != 0 ? glowOwn : look == null ? 0xFF4FD2FF : look.accent; }
 
     // ---- 29: the hologram look — Jarvis in the theme's light (his own drawing, tinted), fine lines over him, a ring stage
     private boolean holo;
@@ -75,7 +91,7 @@ final class CarPortal extends FrameLayout {
 
     /** Jarvis drawn through a filter on his own paints (no extra layer: light on a weak box): his light and shade kept, every colour in the theme's light. */
     private void holoLayer() {
-        int ac = look == null ? 0xFF4FD2FF : look.accent;
+        int ac = ac();
         float r = Color.red(ac) / 255f, g = Color.green(ac) / 255f, b = Color.blue(ac) / 255f;
         float k = 1.7f; // (brighter: his dark jacket still reads as light)
         body.setTint(new android.graphics.ColorMatrixColorFilter(new float[]{
@@ -120,7 +136,7 @@ final class CarPortal extends FrameLayout {
         float dt = lastFrame == 0 ? 0.03f : Math.min(0.1f, (now - lastFrame) / 1000f);
         lastFrame = now;
         if (!lowMotion) orbit = (orbit + dt * 7.5f) % 3600; // (degrees of the rings' turn; a long wrap: no visible jump)
-        int ac = look.accent;
+        int ac = ac();
         if (beatPulse > 0) beatPulse = Math.max(0, 1 - (now - pulseAt) / 420f);
         int step = Math.round(beatPulse * 12); // (the swell in 13 steps: a gradient per step, not per frame)
         if (glow == null || glowW != w || glowH != h || glowAc != ac || glowStep != step || glowLight != look.light) {
@@ -163,7 +179,7 @@ final class CarPortal extends FrameLayout {
         int w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
         float s = Math.min(w, h), cx = w / 2f, cy = h / 2f, inset = s * 0.085f, rad = (s - 2 * inset) * 0.42f;
-        int ac = look.accent;
+        int ac = ac();
         // the seat belt over his chest (the body's own coordinates: rig units -> this view's pixels)
         if (belted && body.getWidth() > 0 && body.getHeight() > 0) {
             float bw = body.getWidth(), bh = body.getHeight();
@@ -190,6 +206,7 @@ final class CarPortal extends FrameLayout {
         }
         long now0 = SystemClock.uptimeMillis();
         if (holo) holoOver(cv, w, h, s, cx, inset, ac, now0);
+        else if (rings) stage(cv, w, h, s, cx, inset, ac, now0); // 💫
         // the window's lit edge
         r.set(inset, inset, w - inset, h - inset);
         p.setStyle(Paint.Style.STROKE);
@@ -250,6 +267,11 @@ final class CarPortal extends FrameLayout {
             }
             cv.restoreToCount(sv);
         }
+        stage(cv, w, h, s, cx, inset, ac, now);
+    }
+
+    /** 💫 The ring stage under him: three lit rings (brighter while he speaks, a slow breath), a white light in the middle. */
+    private void stage(Canvas cv, int w, int h, float s, float cx, float inset, int ac, long now) {
         float gy = h - inset * 0.9f, rx = w * 0.36f;
         float talk = state == BodyRig.SPEAKING ? 1 : 0, pulse = lowMotion ? 0 : (float) Math.sin(now / 700.0);
         p.setStyle(Paint.Style.STROKE);

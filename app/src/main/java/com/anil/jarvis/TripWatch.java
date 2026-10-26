@@ -196,6 +196,6 @@ final class TripWatch {
             if (nav != null) b.setContentIntent(PendingIntent.getActivity(c, id, nav, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
             nm.notify(id, b.build());
         } catch (Exception ignored) {}
-        if (!MainActivity.busyTalking() && !CarCare.asking(c)) Announcer.say(c, text);
+        if (!MainActivity.busyTalking() && !CarCare.asking(c)) Announcer.chat(c, text); // (🔇 quiet trip: the notification only)
     }
 }

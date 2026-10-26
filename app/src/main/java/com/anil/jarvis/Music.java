@@ -223,6 +223,168 @@ final class Music {
         return "🔊 " + am.getStreamVolume(AudioManager.STREAM_MUSIC) * 100 / Math.max(1, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)) + "%";
     }
 
+    // ---------------------------------------------------------------- ⑪'s player: 🔀 🔁 ⏪10 10⏩ the place in the song, ❤️, 📃 up next
+    // (only where the music app allows them: the app says so in its own player state; else the key greys out and says so)
+
+    static final int C_SHUFFLE = 1, C_REPEAT = 2, C_LIKE = 4, C_SEEK = 8, C_QUEUE = 16;
+    // the player state's action bits (the framework's, and the compat library's that ride in the same number)
+    static final long A_SET_RATING = 1L << 7, A_SEEK_TO = 1L << 8, A_SKIP_TO_QUEUE_ITEM = 1L << 12, A_SET_REPEAT = 1L << 18, A_SET_SHUFFLE = 1L << 21;
+    private static final String SET_SHUFFLE = "android.support.v4.media.session.action.SET_SHUFFLE_MODE",
+            ARG_SHUFFLE = "android.support.v4.media.session.action.ARGUMENT_SHUFFLE_MODE",
+            SET_REPEAT = "android.support.v4.media.session.action.SET_REPEAT_MODE",
+            ARG_REPEAT = "android.support.v4.media.session.action.ARGUMENT_REPEAT_MODE";
+    /** The compat library's repeat modes: none, one, all. */
+    static final int R_NONE = 0, R_ONE = 1, R_ALL = 2;
+
+    /** The app's own button for this ("shuffle", "repeat", "like") among its extra buttons ("id|name" each); -1: none. Pure. */
+    static int customFor(String what, String[] customs) {
+        if (customs == null) return -1;
+        for (int i = 0; i < customs.length; i++) {
+            String n = customs[i] == null ? "" : customs[i].toLowerCase(java.util.Locale.ROOT);
+            switch (what) {
+                case "shuffle": if (n.contains("shuffle") || n.contains("షఫుల్")) return i; break;
+                case "repeat": if (n.contains("repeat") || n.contains("loop")) return i; break;
+                case "like":
+                    if (n.contains("dislike") || n.contains("unlike") || n.contains("down") || n.contains("remove")) break;
+                    if (n.contains("like") || n.contains("thumb") || n.contains("heart") || n.contains("favo") || n.contains("love") || n.contains("library")) return i;
+                    break;
+                default: break;
+            }
+        }
+        return -1;
+    }
+
+    /** What the app allows (C_… bits), from its player state's actions, its extra buttons, its rating kind and its queue. Pure. */
+    static int caps(long actions, String[] customs, int ratingType, boolean queue) {
+        int c = 0;
+        if ((actions & A_SET_SHUFFLE) != 0 || customFor("shuffle", customs) >= 0) c |= C_SHUFFLE;
+        if ((actions & A_SET_REPEAT) != 0 || customFor("repeat", customs) >= 0) c |= C_REPEAT;
+        if ((actions & A_SET_RATING) != 0 && (ratingType == 1 /* heart */ || ratingType == 2 /* thumbs */) || customFor("like", customs) >= 0) c |= C_LIKE;
+        if ((actions & A_SEEK_TO) != 0) c |= C_SEEK;
+        if (queue) c |= C_QUEUE;
+        return c;
+    }
+
+    /** Where ±delta lands in a song of this length (never before 0, never past its end; length unknown: only not before 0). Pure. */
+    static long seekTarget(long pos, long dur, long delta) {
+        long t = Math.max(0, pos + delta);
+        if (dur > 0) t = Math.min(t, Math.max(0, dur - 1000));
+        return t;
+    }
+
+    /** 🔁 off → all → one → off. Pure. */
+    static int nextRepeat(int now) { return now == R_NONE ? R_ALL : now == R_ALL ? R_ONE : R_NONE; }
+
+    /** What we last asked each app for (the app keeps its own: we show what we asked, said honestly as such). */
+    private static final java.util.Map<String, int[]> asked = new java.util.HashMap<>();
+
+    private static String[] customs(PlaybackState st) {
+        if (st == null || st.getCustomActions() == null) return new String[0];
+        List<PlaybackState.CustomAction> ca = st.getCustomActions();
+        String[] out = new String[ca.size()];
+        for (int i = 0; i < out.length; i++) out[i] = ca.get(i).getAction() + "|" + ca.get(i).getName();
+        return out;
+    }
+
+    /**
+     * ⑪'s player: {caps (C_… bits), shuffle 0/1, repeat (R_…), liked, queue (titles, up to 30), app (package)} for the
+     * playing app; null with none (or Jarvis's radio).
+     */
+    static JSONObject extras(Context c) {
+        try {
+            if (SoundService.radioOn) return null;
+            MediaController mc = active(c);
+            if (mc == null) return null;
+            PlaybackState st = mc.getPlaybackState();
+            List<android.media.session.MediaSession.QueueItem> q = null;
+            try { q = mc.getQueue(); } catch (Exception ignored) {}
+            boolean hasQ = q != null && !q.isEmpty() && st != null && (st.getActions() & A_SKIP_TO_QUEUE_ITEM) != 0;
+            int cp = caps(st == null ? 0 : st.getActions(), customs(st), mc.getRatingType(), hasQ);
+            int[] a = asked.get(mc.getPackageName());
+            boolean liked = false;
+            MediaMetadata md = mc.getMetadata();
+            if (md != null) {
+                try {
+                    android.media.Rating r = md.getRating(MediaMetadata.METADATA_KEY_USER_RATING);
+                    if (r != null && r.isRated()) liked = r.getRatingStyle() == android.media.Rating.RATING_HEART ? r.hasHeart() : r.getRatingStyle() == android.media.Rating.RATING_THUMB_UP_DOWN && r.isThumbUp();
+                } catch (Exception ignored) {}
+            }
+            JSONArray qa = new JSONArray();
+            if (hasQ) {
+                long cur = st.getActiveQueueItemId();
+                for (int i = 0; i < q.size() && qa.length() < 30; i++) {
+                    android.media.session.MediaSession.QueueItem it = q.get(i);
+                    CharSequence t = it.getDescription().getTitle(), sub = it.getDescription().getSubtitle();
+                    qa.put(new JSONObject().put("id", it.getQueueId()).put("title", t == null ? "" : t.toString()).put("sub", sub == null ? "" : sub.toString()).put("now", it.getQueueId() == cur));
+                }
+            }
+            return new JSONObject().put("caps", cp).put("shuffle", a == null ? -1 : a[0]).put("repeat", a == null ? -1 : a[1]).put("liked", liked)
+                    .put("queue", qa).put("app", mc.getPackageName());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * A key of ⑪'s player: "shuffle", "repeat", "like", "back10", "fwd10", "seek:<ms>", "queue:<id>". A short word back
+     * (honest when the app doesn't allow it).
+     */
+    static String extra(Context c, String what) {
+        MediaController mc = active(c);
+        if (SoundService.radioOn || mc == null) return "ఇప్పుడు మ్యూజిక్ యాప్ పాట లేదు";
+        PlaybackState st = mc.getPlaybackState();
+        long acts = st == null ? 0 : st.getActions();
+        String[] cs = customs(st);
+        MediaController.TransportControls tc = mc.getTransportControls();
+        String app = appName(c, mc.getPackageName());
+        int[] a = asked.get(mc.getPackageName());
+        if (a == null) asked.put(mc.getPackageName(), a = new int[]{0, R_NONE});
+        try {
+            if (what.equals("shuffle") || what.equals("repeat")) {
+                int k = customFor(what, cs);
+                boolean shuffle = what.equals("shuffle");
+                if (k >= 0) { // (the app's own button: it knows its state, and shows it)
+                    tc.sendCustomAction(st.getCustomActions().get(k), null);
+                    if (shuffle) a[0] = 1 - a[0]; else a[1] = nextRepeat(a[1]);
+                    return (shuffle ? "🔀 " : "🔁 ") + app + " కి చెప్పాను";
+                }
+                if ((acts & (shuffle ? A_SET_SHUFFLE : A_SET_REPEAT)) == 0) return app + " లో " + (shuffle ? "షఫుల్" : "రిపీట్") + " ఇక్కడి నుంచి మార్చడానికి ఆ యాప్ ఒప్పుకోదు: ఆ యాప్‌లోనే మార్చండి";
+                android.os.Bundle b = new android.os.Bundle();
+                if (shuffle) { a[0] = 1 - a[0]; b.putInt(ARG_SHUFFLE, a[0]); tc.sendCustomAction(SET_SHUFFLE, b); return a[0] == 1 ? "🔀 షఫుల్ ఆన్" : "🔀 షఫుల్ ఆఫ్"; }
+                a[1] = nextRepeat(a[1]);
+                b.putInt(ARG_REPEAT, a[1]);
+                tc.sendCustomAction(SET_REPEAT, b);
+                return a[1] == R_ONE ? "🔂 ఈ పాటే మళ్ళీ మళ్ళీ" : a[1] == R_ALL ? "🔁 అన్నీ మళ్ళీ" : "🔁 రిపీట్ ఆఫ్";
+            }
+            if (what.equals("like")) {
+                int k = customFor("like", cs);
+                if (k >= 0) { tc.sendCustomAction(st.getCustomActions().get(k), null); return "❤️ " + app + " కి చెప్పాను"; }
+                int rt = mc.getRatingType();
+                if ((acts & A_SET_RATING) == 0 || (rt != android.media.Rating.RATING_HEART && rt != android.media.Rating.RATING_THUMB_UP_DOWN))
+                    return app + " లో ❤️ ఇక్కడి నుంచి కుదరదు: ఆ యాప్‌లోనే నొక్కండి";
+                tc.setRating(rt == android.media.Rating.RATING_HEART ? android.media.Rating.newHeartRating(true) : android.media.Rating.newThumbRating(true));
+                return "❤️ నచ్చింది అని " + app + " కి చెప్పాను";
+            }
+            if (what.equals("back10") || what.equals("fwd10") || what.startsWith("seek:")) {
+                if ((acts & A_SEEK_TO) == 0) return app + " పాటలో ముందుకు / వెనక్కి వెళ్లనివ్వదు";
+                long[] pr = progress(c);
+                long pos = pr == null || pr[0] < 0 ? 0 : pr[0] + (pr[3] == 1 ? Math.round((SystemClock.elapsedRealtime() - pr[1]) * (pr[2] / 1000.0)) : 0);
+                long dur = pr == null ? -1 : pr[4];
+                long to = what.startsWith("seek:") ? seekTarget(Long.parseLong(what.substring(5)), dur, 0) : seekTarget(pos, dur, what.equals("back10") ? -10_000 : 10_000);
+                tc.seekTo(to);
+                return what.equals("back10") ? "⏪ 10 సె" : what.equals("fwd10") ? "10 సె ⏩" : "";
+            }
+            if (what.startsWith("queue:")) {
+                if ((acts & A_SKIP_TO_QUEUE_ITEM) == 0) return app + " తర్వాతి పాటల జాబితా నుంచి ఎంచుకోనివ్వదు";
+                tc.skipToQueueItem(Long.parseLong(what.substring(6)));
+                return "▶";
+            }
+        } catch (Exception e) {
+            return "అది ఇప్పుడు కాలేదు";
+        }
+        return "";
+    }
+
     // ---------------------------------------------------------------- O46: the sleep timer
 
     private static PendingIntent sleepPi(Context c) {

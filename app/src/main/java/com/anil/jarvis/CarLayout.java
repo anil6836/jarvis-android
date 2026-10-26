@@ -17,11 +17,13 @@ final class CarLayout {
             /** G2: the Google Maps app in the box's own window beside Jarvis; Jarvis's column on the right. */
             SIDE = "side",
             /** ⑨ two big dials with Jarvis between them, a thin row of buttons under; ⑩ a big map, the way and the song beside it, a dock of buttons under, his apps down the left. */
-            CLUSTER = "cluster", DOCK = "dock";
+            CLUSTER = "cluster", DOCK = "dock",
+            /** ⑪ the special: Jarvis on his lit stage with six buttons, a big map with all its tools, the big player under it, the speed, the clock, his apps and the road on the right. */
+            SPECIAL = "special";
     /** The shapes he can pick (in this order in ⚙️), and their names. */
-    static final String[] CHOICES = {COCKPIT, CHROME, MAP3D, MAPCARDS, CLASSIC, HALFMAP, CLUSTER, DOCK};
+    static final String[] CHOICES = {COCKPIT, CHROME, MAP3D, MAPCARDS, CLASSIC, HALFMAP, CLUSTER, DOCK, SPECIAL};
     static final String[] NAMES = {"① కాక్‌పిట్ 3D", "② క్రోమ్ డయల్స్", "③ 3D మ్యాప్ డాష్", "④ మ్యాప్ + కార్డులు", "⑥ ఇప్పటి స్క్రీన్ (క్లాసిక్)", "⑦ సగం మ్యాప్",
-            "⑨ క్లస్టర్ (రెండు పెద్ద డయల్స్)", "⑩ డాక్ (పెద్ద మ్యాప్ + కార్డులు)"};
+            "⑨ క్లస్టర్ (రెండు పెద్ద డయల్స్)", "⑩ డాక్ (పెద్ద మ్యాప్ + కార్డులు)", "⑪ స్పెషల్ (అన్నీ ఒకే చోట)"};
 
     /** A shape he can pick (anything else: the classic one). Pure. */
     static String valid(String s) {
@@ -73,7 +75,7 @@ final class CarLayout {
     }
 
     /** This shape shows the map. Pure. */
-    static boolean hasMap(String shape) { return MAPCARDS.equals(shape) || HALFMAP.equals(shape) || NAV.equals(shape) || MAP3D.equals(shape) || DOCK.equals(shape); }
+    static boolean hasMap(String shape) { return MAPCARDS.equals(shape) || HALFMAP.equals(shape) || NAV.equals(shape) || MAP3D.equals(shape) || DOCK.equals(shape) || SPECIAL.equals(shape); }
 
     /** One of the 3D shapes (leaning cards, chrome round buttons). Pure. */
     static boolean deep(String shape) { return COCKPIT.equals(shape) || CHROME.equals(shape) || MAP3D.equals(shape); }

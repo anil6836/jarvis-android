@@ -19,10 +19,16 @@ final class CarDeck {
 
     // ================================================================ the six buttons
 
-    static final String[] BUTTONS = {"talk", "maps", "way", "music", "fuel", "home", "sleep", "games", "apps", "stage"};
+    static final String[] BUTTONS = {"talk", "maps", "way", "music", "fuel", "home", "sleep", "games", "apps", "stage",
+            // ⑪ (26 Oct): ☕ a tea break on the way, 📷 the camera, 🌧️ rain on the way, 🔇 quiet for this trip
+            "tea", "camera", "rain", "quiet"};
     static final String[] BUTTON_NAMES = {"🎤 మాట్లాడు", "🗺️ Jarvis Maps", "🧭 దారి (ఇల్లు, నా చోట్లు)", "🎵 పాటలు", "⛽ డీజిల్ కొట్టించాను",
-            "🏠 ఇల్లు (లైట్లు, ఇంటికి)", "😴 నిద్ర అలర్ట్", "🎲 ప్రయాణ ఆటలు", "▦ box ఆప్స్", "🕺 Jarvis స్టేజ్ (ఆన్ / ఆఫ్)"};
-    static final String[] BUTTON_LABELS = {"మాట్లాడు", "Jarvis Maps", "దారి", "పాటలు", "డీజిల్", "ఇల్లు", "నిద్ర", "ఆటలు", "ఆప్స్", "స్టేజ్"};
+            "🏠 ఇల్లు (లైట్లు, ఇంటికి)", "😴 నిద్ర అలర్ట్", "🎲 ప్రయాణ ఆటలు", "▦ box ఆప్స్", "🕺 Jarvis స్టేజ్ (ఆన్ / ఆఫ్)",
+            "☕ బ్రేక్ (దారిలో టీ)", "📷 కెమెరా", "🌧️ దారిలో వాన", "🔇 నిశ్శబ్దం (ఈ ప్రయాణం)"};
+    static final String[] BUTTON_LABELS = {"మాట్లాడు", "Jarvis Maps", "దారి", "పాటలు", "డీజిల్", "ఇల్లు", "నిద్ర", "ఆటలు", "ఆప్స్", "స్టేజ్",
+            "బ్రేక్", "కెమెరా", "దారిలో వాన", "నిశ్శబ్దం"};
+    /** ⑪'s own six (his own six, when he made them, as everywhere). */
+    static final String[] SPECIAL_SIX = {"home", "fuel", "camera", "rain", "tea", "sleep"};
     /** ⑥ ④ ⑦ as they always were; the 3D shapes (① ② ③) have Jarvis Maps in దారి's place. */
     static final String[] CLASSIC_SIX = {"talk", "way", "music", "fuel", "home", "sleep"};
     static final String[] DEEP_SIX = {"talk", "maps", "music", "fuel", "home", "sleep"};
@@ -37,8 +43,15 @@ final class CarDeck {
     static String buttonName(String k) { int i = buttonIndex(k); return i < 0 ? "" : BUTTON_NAMES[i]; }
 
     /** The six on the screen: his own (saved "a,b,c,d,e,f") if he made them, else the shape's. Never a repeat, never an unknown one. */
-    static String[] six(String saved, boolean deep) {
-        String[] def = deep ? DEEP_SIX : CLASSIC_SIX;
+    static String[] six(String saved, boolean deep) { return six(saved, deep ? DEEP_SIX : CLASSIC_SIX); }
+
+    /** His six for this shape: his own, else ⑪'s, the 3D shapes', or the classic six. */
+    static String[] sixFor(String saved, String shape) {
+        return six(saved, CarLayout.SPECIAL.equals(shape) ? SPECIAL_SIX : CarLayout.deep(shape) ? DEEP_SIX : CLASSIC_SIX);
+    }
+
+    /** The same with a shape's own six as the default (⑪'s). */
+    static String[] six(String saved, String[] def) {
         if (saved == null || saved.trim().isEmpty()) return def.clone();
         String[] out = new String[6];
         LinkedHashSet<String> seen = new LinkedHashSet<>();
@@ -427,6 +440,60 @@ final class CarDeck {
         return new float[]{(float) ((m[0] * x + m[1] * y + m[2]) / z), (float) ((m[3] * x + m[4] * y + m[5]) / z)};
     }
 
+    // ================================================================ ⑪ (26 Oct): Jarvis's side and glow, the car on the map, the map's pictures
+
+    /** 🧍 Jarvis's side in ⑪ (left as in the picture, or right: the columns change places). */
+    static final String[] SIDES = {"", "right"};
+    static final String[] SIDE_NAMES = {"ఎడమ", "కుడి"};
+    /** 🌟 Jarvis's light: the theme's, or his own colour. */
+    static final String[] GLOWS = {"", "cyan", "violet", "gold", "green", "pink"};
+    static final String[] GLOW_NAMES = {"థీమ్ రంగే", "నీలి", "ఊదా", "బంగారు", "ఆకుపచ్చ", "గులాబీ"};
+    private static final int[] GLOW_COLOURS = {0, 0xFF3FE3FF, 0xFFB08CFF, 0xFFFFD24D, 0xFF5BF29A, 0xFFFF6FAE};
+
+    /** The glow's colour (0: the theme's). Pure. */
+    static int glowColour(String g) {
+        for (int i = 0; i < GLOWS.length; i++) if (GLOWS[i].equals(g)) return GLOW_COLOURS[i];
+        return 0;
+    }
+
+    /** 💫 The lit rings under Jarvis: "" in ⑪ only, "on" everywhere, "off" never. Pure. */
+    static final String[] RINGS = {"", "on", "off"};
+    static final String[] RING_NAMES = {"⑪ లో మాత్రమే", "అన్ని ఆకారాల్లో", "వద్దు"};
+
+    static boolean ringOn(String pref, boolean special) { return "on".equals(pref) || !"off".equals(pref) && special; }
+
+    /** A song's time as m:ss (h:mm:ss past an hour; "–:––" unknown). Pure. */
+    static String songTime(long ms) {
+        if (ms < 0) return "–:––";
+        long s = ms / 1000, h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
+        return h > 0 ? String.format(Locale.ROOT, "%d:%02d:%02d", h, m, sec) : String.format(Locale.ROOT, "%d:%02d", m, sec);
+    }
+
+    /** Where a song is now from its app's numbers: the position then, plus the time since at its speed (playing), within its length. Pure. */
+    static long songAt(long pos, long upd, float speed, boolean playing, long dur, long nowElapsed) {
+        if (pos < 0) return -1;
+        long at = playing && upd > 0 ? pos + Math.round((nowElapsed - upd) * speed) : pos;
+        if (dur > 0) at = Math.min(at, dur);
+        return Math.max(0, at);
+    }
+
+    /**
+     * 🚙 His car on the map: our own top-down drawings (no maker's shape), the arrow, the old blue dot, or his own photo
+     * from above (kept on the box only).
+     */
+    static final String[] MAP_CARS = {"", "arrow", "suv", "sedan", "hatch", "sports", "jeep", "concept", "photo"};
+    static final String[] MAP_CAR_NAMES = {"🔵 నీలి చుక్క (ఇప్పటిది)", "➤ బాణం", "🚙 SUV", "🚗 సెడాన్", "🚘 హ్యాచ్‌బ్యాక్", "🏎️ స్పోర్ట్స్", "🛻 జీప్",
+            "🛸 కాన్సెప్ట్", "📷 నా కారు ఫోటో (పై నుంచి)"};
+
+    static int mapCarIndex(String k) {
+        for (int i = 0; i < MAP_CARS.length; i++) if (MAP_CARS[i].equals(k)) return i;
+        return -1;
+    }
+
+    /** The map's pictures with our map (G1): Google's (his key) or the free OpenStreetMap; G2 is the Google Maps app itself. */
+    static final String[] MAP_SRCS = {"", "osm"};
+    static final String[] MAP_SRC_NAMES = {"🗺️ Google మ్యాప్ (మీ key తో, ట్రాఫిక్ తో)", "🆓 ఉచిత మ్యాప్ (OpenStreetMap)"};
+
     // ================================================================ "నా థీమ్ 1–3"
 
     /** The settings a kept look holds: how the screen looks only (no photos, no places, nothing private). */
@@ -435,15 +502,17 @@ final class CarDeck {
             "car_art_colour", "car_bg_motion", "car_clock", "car_night_dim", "car_welcome",
             // v3 (25 Oct, his pictures' looks)
             "car_font", "car_card", "car_icons", "car_eq_style", "car_welcome_look", "car_jarvis_look", "car_platform", "car_vinyl", "car_wave",
-            "car_route_glow", "car_turn_arrows", "car_map_limit", "car_map_pills", "car_cluster_dial"};
-    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23). */
-    private static int known(int v) { return v >= 3 ? LOOK_KEYS.length : v == 2 ? 23 : 0; }
+            "car_route_glow", "car_turn_arrows", "car_map_limit", "car_map_pills", "car_cluster_dial",
+            // v4 (26 Oct, ⑪): Jarvis's side and glow, his clothes and skin, the ring under him, the car on the map, the map turning with the car
+            "car_jarvis_side", "car_jarvis_glow", "body_look", "body_skin", "car_jarvis_ring", "car_talk_bubble", "car_map_car", "car_map_rotate"};
+    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37). */
+    private static int known(int v) { return v >= 4 ? LOOK_KEYS.length : v == 3 ? 37 : v == 2 ? 23 : 0; }
     static final int MINE = 3;
 
     /** The look now (from all the settings) as one line to keep. */
     static String keep(Map<String, ?> all) {
         JSONObject o = new JSONObject();
-        try { o.put("v", 3); } catch (Exception ignored) {} // (v3: every look key there; an older one only knew some)
+        try { o.put("v", 4); } catch (Exception ignored) {} // (v4: every look key there; an older one only knew some)
         for (String k : LOOK_KEYS) {
             Object v = all == null ? null : all.get(k);
             try { if (v instanceof Integer || v instanceof Boolean || v instanceof String) o.put(k, v); } catch (Exception ignored) {}

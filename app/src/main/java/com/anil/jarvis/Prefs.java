@@ -521,6 +521,19 @@ final class Prefs {
     boolean carMapPills() { return sp.getBoolean("car_map_pills", true); }
     /** ⑨'s big right dial (one of CarDeck.DIALS). */
     String carClusterDial() { String d = sp.getString("car_cluster_dial", "compass"); return CarDeck.dialIndex(d) < 0 ? "compass" : d; }
+    // ⑪ (26 Oct): Jarvis's side and light, the rings under him; the car on the map, the map turning with the car, the map's pictures
+    String carJarvisSide() { return sp.getString("car_jarvis_side", ""); }
+    String carJarvisGlow() { return sp.getString("car_jarvis_glow", ""); }
+    String carJarvisRing() { return sp.getString("car_jarvis_ring", ""); }
+    /** 💬 ⑪: his last words in a bubble beside Jarvis. */
+    boolean carTalkBubble() { return sp.getBoolean("car_talk_bubble", true); }
+    String carMapCar() { String k = sp.getString("car_map_car", ""); return CarDeck.mapCarIndex(k) < 0 ? "" : k; }
+    /** 🧭 The map turns so the way ahead is up (off: north up, as it always was). */
+    boolean carMapRotate() { return sp.getBoolean("car_map_rotate", false); }
+    /** 🗺️ Our map's pictures: "" Google's (with his key), "osm" the free OpenStreetMap (his choice). */
+    String carMapSrc() { return "osm".equals(sp.getString("car_map_src", "")) ? "osm" : ""; }
+    /** 🔇 Quiet for this trip: until when (0: off). Jarvis speaks only when called; the safety alerts still speak. */
+    long carQuietUntil() { return sp.getLong("car_quiet_until", 0); }
 
     /** A kept look put on (CarDeck.back: a key with null goes back to its default). */
     void applyLook(java.util.Map<String, Object> m) {

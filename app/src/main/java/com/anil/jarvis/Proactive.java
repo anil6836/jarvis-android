@@ -282,7 +282,7 @@ public class Proactive extends BroadcastReceiver {
     /** Not asked now: a notification (a question: tapped, the panel asks it) and, unless at work, said once. */
     private static void told(Context c, String text, String question, String context) {
         askLater(c, text, question, context);
-        if (!DutyMode.on(c)) Announcer.say(c, text + (question == null ? "" : " " + question)); // (at work: the notification only)
+        if (!DutyMode.on(c)) Announcer.chat(c, text + (question == null ? "" : " " + question)); // (at work: the notification only)
     }
 
     // ---------------------------------------------------------------- meetings

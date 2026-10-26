@@ -123,6 +123,15 @@ final class Announcer {
         sayDirect(c, text);
     }
 
+    /**
+     * Said unasked and not about safety (a message read out, the news, a traffic note, a fuel-log reply): as {@link #say},
+     * except on the car box while he chose 🔇 quiet for this trip — then only the notification / the screen has it.
+     */
+    static void chat(Context c, String text) {
+        if (CarBox.quiet(c)) return;
+        say(c, text);
+    }
+
     /** Spoken by the background voice itself (the home screen's own fallback; anything when there is no home screen). */
     static void sayDirect(Context c, String text) { sayDirect(c, text, false); }
 

@@ -298,7 +298,7 @@ final class CarLink {
             if (System.currentTimeMillis() - e.optLong("at") > GIVE_UP) {
                 drop(app, id);
                 if ("km".equals(action(a))) continue; // (the day's km: dropped quietly; the box keeps the hours and sends them again)
-                Announcer.say(app, "ఇందాక చెప్పిన " + spoken(a) + " మూడు రోజులైనా ఫోన్‌కి చేరలేదు. ఫోన్ Jarvis కి మీరే ఒకసారి చెప్పండి.");
+                Announcer.chat(app, "ఇందాక చెప్పిన " + spoken(a) + " మూడు రోజులైనా ఫోన్‌కి చేరలేదు. ఫోన్ Jarvis కి మీరే ఒకసారి చెప్పండి.");
                 continue;
             }
             if (!Net.online(app) || !HomeLink.linked(app)) return;
@@ -311,8 +311,8 @@ final class CarLink {
             if ("fill".equals(action(a)) && r.optBoolean("ok")) CarFuel.boxFillWritten(app, r.optString("id")); // (first: its own fill is not counted again)
             CarKm.fromPhone(app, r);
             if ("km".equals(action(a))) { if (r.optBoolean("ok")) CarKm.delivered(app, a.optJSONObject("hours")); continue; } // (the day's km: nothing to say)
-            if (r.optBoolean("ok")) Announcer.say(app, "ఇందాక చెప్పిన " + spoken(a) + " ఫోన్ కారు లెక్కలో చేరింది.");
-            else Announcer.say(app, "ఇందాక చెప్పినది ఫోన్ లెక్కలో చేరలేదు: " + r.optString("say", "ఫోన్ ఒప్పుకోలేదు") + " ఫోన్‌లో ఒకసారి చూడండి.");
+            if (r.optBoolean("ok")) Announcer.chat(app, "ఇందాక చెప్పిన " + spoken(a) + " ఫోన్ కారు లెక్కలో చేరింది.");
+            else Announcer.chat(app, "ఇందాక చెప్పినది ఫోన్ లెక్కలో చేరలేదు: " + r.optString("say", "ఫోన్ ఒప్పుకోలేదు") + " ఫోన్‌లో ఒకసారి చూడండి.");
         }
     }
 

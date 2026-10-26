@@ -209,6 +209,25 @@ final class CarBox {
         try { return CarCare.on(c); } catch (Exception e) { return false; }
     }
 
+    // ================================================================ 🔇 quiet for this trip (⑪, 26 Oct)
+
+    /**
+     * 🔇 On the box, his "quiet" for this trip: Jarvis speaks only when called (his answers, his taps' results); the
+     * safety alerts (sleep, speed, engine heat, rain or fog ahead, low diesel, long drive) always speak. Ends by his word,
+     * or by itself when the trip ends (parked half an hour) or after 12 hours.
+     */
+    static boolean quiet(Context c) {
+        if (c == null) return false;
+        try {
+            Prefs p = new Prefs(c);
+            return p.carMode() && System.currentTimeMillis() < p.carQuietUntil();
+        } catch (Exception e) { return false; }
+    }
+
+    static void setQuiet(Context c, boolean on) {
+        new Prefs(c).sp.edit().putLong("car_quiet_until", on ? System.currentTimeMillis() + 12 * 3600_000L : 0).apply();
+    }
+
     // ================================================================ the screen's small lines
 
     /** "📮 ఫోన్ లింక్ ✓" / "📮 ఫోన్ లింక్ లేదు" for the car screen. */

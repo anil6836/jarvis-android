@@ -50,6 +50,8 @@ final class CarScreen extends FrameLayout {
         boolean request(String prompt, String label);
         void openSettings();
         void openChat();
+        /** ⚙️ opened at something to do there: "car_top" (pick his car's photo from above), "car" (the car's part). */
+        default void openSettingsAt(String action) { openSettings(); }
     }
 
     private static final String[] DAYS = {"ఆదివారం", "సోమవారం", "మంగళవారం", "బుధవారం", "గురువారం", "శుక్రవారం", "శనివారం"};
@@ -111,6 +113,17 @@ final class CarScreen extends FrameLayout {
     private final CarLooks.Vinyl vinyl;
     private final CarLooks.WaveBar waveBar;
     private final CarLooks.NeonCar neonCar;
+    // ✨ ⑪ the special (26 Oct): Jarvis's card with his bubble, three wide buttons, the big player, the meter card with the
+    // clock and three facts, his eight apps, the road; 🎛️ every choice in one place; the big player over the screen
+    private final FrameLayout jCard, spRoadCard, bigBox;
+    private final LinearLayout spLeft, spMid, spRight, spMeter, spMeterTop, spClockCol, spInfo, spApps, spAppsHead, spAppsGrid;
+    private final TextView wideJ, wideHub, wideTalk, spAppsTitle, spAppsEdit, roadCaption;
+    private final TextView[] infoChips = new TextView[3];
+    private final List<LinearLayout> spAppCells = new ArrayList<>();
+    private final CarPlayer player, bigPlayer;
+    private final CarHub hub;
+    private boolean specialFull;
+    private String hubCat = "jarvis";
     private Typeface numFont;
     private android.graphics.Bitmap artNow;
     private int pathUsed;
@@ -344,6 +357,19 @@ final class CarScreen extends FrameLayout {
             @Override public void menu() { JarvisMaps.open(getContext(), ""); }
             @Override public void bigMaps() { openMaps(getContext()); }
             @Override public void switchMap() { toast(mapMode("g2")); }
+            // ⑪'s own
+            @Override public void search() { if (CarBox.moving()) host.ask("ఎక్కడికి వెళ్దాం " + prefs.name() + "?"); else JarvisMaps.open(getContext(), ""); }
+            @Override public void askWhere() { host.ask("ఎక్కడికి వెళ్దాం " + prefs.name() + "?"); }
+            @Override public void goHome() {
+                JSONObject h = Travel.home(getContext());
+                if (h == null) { toast("ఇల్లు ఇంకా తెలియదు: ఇంటి దగ్గర 🧭 → 'ఇక్కడే మా ఇల్లు' నొక్కండి"); return; }
+                go(h); // (his 🏠 tap is the yes)
+            }
+            @Override public void places() { showWay(); }
+            @Override public void expand() { specialFull = !specialFull; carMap.setExpanded(specialFull); relayout(); }
+            @Override public void road() { JarvisMaps.openDo(getContext(), "road"); }
+            @Override public void stopWay() { stopWay(); }
+            @Override public void held() { if (CarLayout.SPECIAL.equals(shape) && !CarBox.moving()) openHub("map"); else JarvisMaps.open(getContext(), ""); }
         });
 
         // ---- 🎛️ ① ② ③'s cards (not on the screen until a 3D shape wants them): the parts above are put into them
@@ -379,7 +405,7 @@ final class CarScreen extends FrameLayout {
         for (String[] ch : CarMap.CHIPS) chip(a, ch[0], () -> JarvisMaps.openAlong(getContext(), ch[1], ch[2]));
         chip(a, "➕ అన్నీ", () -> JarvisMaps.open(getContext(), ""));
         alongScroll.addView(alongRow, new FrameLayout.LayoutParams(-1, -1));
-        gauge.setOnLongClickListener(v -> { if (CarBox.moving()) return false; chooseGauge(); return true; }); // (held, parked: the speed's look)
+        gauge.setOnLongClickListener(v -> { if (CarBox.moving()) return false; if (CarLayout.SPECIAL.equals(shape)) openHub("meter"); else chooseGauge(); return true; }); // (held, parked: the speed's look)
 
         // ---- ⑧ the stage: 🗺️ 🎲 🎤 down the left, Jarvis big under a light, ✕ to leave it for this song
         stageLeft = column(a);
@@ -409,7 +435,7 @@ final class CarScreen extends FrameLayout {
         mapGap.setText("🗺️ Google Maps ఇక్కడ వస్తుంది\n(రాకపోతే ఇక్కడ నొక్కండి)");
         mapGap.setGravity(Gravity.CENTER);
         mapGap.setOnClickListener(v -> tap(() -> toast(openBeside())));
-        portal.setOnLongClickListener(v -> { if (CarBox.moving()) return false; chooseJarvis(); return true; }); // (held, parked: Jarvis's size; moving: the tap)
+        portal.setOnLongClickListener(v -> { if (CarBox.moving()) return false; if (CarLayout.SPECIAL.equals(shape)) openHub("jarvis"); else chooseJarvis(); return true; }); // (held, parked: Jarvis's size — ⑪: his page; moving: the tap)
 
         // ---- ⑨ ⑩'s own rows (not on the screen until those shapes want them)
         clusterBox = column(a);
@@ -435,6 +461,79 @@ final class CarScreen extends FrameLayout {
         railMore.setGravity(Gravity.CENTER);
         railMore.setOnClickListener(v -> tap(this::showApps));
 
+        // ---- ⑪ the special's own parts (not on the screen until ⑪ wants them)
+        spLeft = column(a);
+        spMid = column(a);
+        spRight = column(a);
+        jCard = new FrameLayout(a);
+        jCard.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (r0 - l0 != or - ol || b0 - t0 != ob - ot) main.post(this::sizeJCard); });
+        wideJ = wide(a, "🧍 Jarvis సెట్టింగ్స్", () -> openHub("jarvis"));
+        wideHub = wide(a, "🎛️ అన్ని ఎంపికలు", () -> openHub(null));
+        wideTalk = wide(a, "🎙️ Jarvis, మాట్లాడు", host::talk);
+        spMeter = column(a);
+        spMeter.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("meter"); return true; });
+        spMeterTop = row(a);
+        spClockCol = column(a);
+        spInfo = row(a);
+        for (int i = 0; i < 3; i++) {
+            infoChips[i] = autoText(a, "", false, 24);
+            infoChips[i].setGravity(Gravity.CENTER);
+            spInfo.addView(infoChips[i], new LinearLayout.LayoutParams(0, -1, 1));
+        }
+        spApps = column(a);
+        spApps.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("apps"); return true; });
+        spAppsHead = row(a);
+        spAppsTitle = autoText(a, "⭐ నా యాప్స్", true, 26);
+        spAppsTitle.setGravity(Gravity.CENTER_VERTICAL);
+        spAppsEdit = autoText(a, "✏️ మార్చు", false, 24);
+        spAppsEdit.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+        spAppsEdit.setOnClickListener(v -> tap(this::showApps));
+        spAppsHead.addView(spAppsTitle, new LinearLayout.LayoutParams(0, -1, 1));
+        spAppsHead.addView(spAppsEdit, new LinearLayout.LayoutParams(0, -1, 1));
+        spAppsGrid = column(a);
+        for (int r = 0; r < 2; r++) {
+            LinearLayout rr = row(a);
+            spAppsGrid.addView(rr, new LinearLayout.LayoutParams(-1, 0, 1));
+            for (int k = 0; k < 4; k++) {
+                LinearLayout cell = column(a);
+                cell.setGravity(Gravity.CENTER);
+                android.widget.ImageView iv = new android.widget.ImageView(a);
+                iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                cell.addView(iv, new LinearLayout.LayoutParams(-1, 0, 68));
+                TextView lb = autoText(a, "", false, 18);
+                lb.setGravity(Gravity.CENTER);
+                cell.addView(lb, new LinearLayout.LayoutParams(-1, 0, 32));
+                rr.addView(cell, new LinearLayout.LayoutParams(0, -1, 1));
+                spAppCells.add(cell);
+            }
+        }
+        spApps.addView(spAppsHead, new LinearLayout.LayoutParams(-1, 0, 20));
+        spApps.addView(spAppsGrid, new LinearLayout.LayoutParams(-1, 0, 80));
+        spRoadCard = new FrameLayout(a);
+        spRoadCard.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("car"); return true; });
+        roadCaption = new TextView(a);
+        roadCaption.setMaxLines(1);
+        roadCaption.setEllipsize(TextUtils.TruncateAt.END);
+        roadCaption.setShadowLayer(4, 0, 1, 0xEE000000);
+        spRoadCard.addView(roadCaption, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP | Gravity.START));
+        player = new CarPlayer(a, playerL);
+        player.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("music"); return true; });
+        player.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (CarLayout.SPECIAL.equals(shape)) playerEq(); });
+        bigBox = new FrameLayout(a); // (the picture tapped: the player big over the screen; a tap outside, or 40 s, and it goes)
+        bigBox.setBackgroundColor(0xCC000000);
+        bigBox.setVisibility(GONE);
+        bigBox.setClickable(true);
+        bigBox.setOnClickListener(v -> bigShow(false));
+        bigPlayer = new CarPlayer(a, playerL);
+        bigPlayer.setClickable(true);
+        bigBox.addView(bigPlayer, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        hub = new CarHub(a, prefs, new CarHub.Host() {
+            @Override public void changed(String key) { hubChanged(key); }
+            @Override public void act(String id) { hubAct(id); }
+            @Override public void say(String text) { toast(text); }
+            @Override public void closed() { settingSheet = false; }
+        });
+
         // ---- over everything: a sheet of choices, a yes / no question, the sleep alert's ✅
         sheet = overlay(a);
         ask = overlay(a);
@@ -458,12 +557,15 @@ final class CarScreen extends FrameLayout {
         neonCar = new CarLooks.NeonCar(a); // 28: the welcome's neon car (over the cards while it draws itself)
         addView(neonCar, new LayoutParams(-1, -1));
         addView(saver, new LayoutParams(-1, -1));
+        addView(hub, new LayoutParams(-1, -1));
+        addView(bigBox, new LayoutParams(-1, -1));
         addView(sheet, new LayoutParams(-1, -1));
         addView(ask, new LayoutParams(-1, -1));
         addView(awake, new LayoutParams(-1, -1));
 
         Object[][] grow = {{stateText, 34}, {clock, 70}, {date, 30}, {minis, 28}, {driveChip, 30}, {chips, 26}, {road1, 46}, {road2, 30},
-                {roadYes, 40}, {roadNo, 40}, {apps, 36}, {chat, 36}, {gear, 36}, {shapeBtn, 36}};
+                {roadYes, 40}, {roadNo, 40}, {apps, 36}, {chat, 36}, {gear, 36}, {shapeBtn, 36},
+                {wideJ, 30}, {wideHub, 30}, {wideTalk, 34}, {infoChips[0], 22}, {infoChips[1], 22}, {infoChips[2], 22}, {spAppsTitle, 24}, {spAppsEdit, 22}};
         for (Object[] g : grow) autoMax.put((TextView) g[0], (Integer) g[1]);
         for (View t : tiles) autoMax.put((TextView) ((LinearLayout) t).getChildAt(1), 60);
         deckKey = deckKey();
@@ -519,6 +621,8 @@ final class CarScreen extends FrameLayout {
         portal.body.rig.setLook(prefs.bodyLook());
         portal.body.rig.setSkin(prefs.bodySkin());
         palette();
+        hubLook();
+        if (CarLayout.SPECIAL.equals(shape)) specialApps(); // (his favourites may have changed in ⚙️)
         showTalk();
         if (CarLayout.DOCK.equals(shape)) railFill();
         if (dayNightCheck()) { nightLight(); return; } // (his day / night theme just went on: all of it is fresh)
@@ -535,7 +639,7 @@ final class CarScreen extends FrameLayout {
     /** What the shape's layout depends on besides the shape (⚙️ choices). */
     private String deckKey() {
         return prefs.carButtons() + "|" + prefs.carBtnStyle() + "|" + prefs.carJarvis() + "|" + prefs.carText() + "|" + prefs.carDials() + "|" + prefs.carMapTilt()
-                + "|" + prefs.carClock();
+                + "|" + prefs.carClock() + "|" + prefs.carJarvisSide() + "|" + prefs.carTalkBubble() + "|" + prefs.carJarvisRing();
     }
 
     /** Every second: the speed, the sleep alert's question, moving / parked, the song and the dance. */
@@ -557,6 +661,7 @@ final class CarScreen extends FrameLayout {
                 if (!m) stillSince = now;
                 wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f); shapeBtn.setAlpha(m ? 0.35f : 1f);
                 if (m && settingSheet) closeSheet(); // (a look chooser left open: gone when the car moves)
+                if (m && hub.shown()) hub.hide(); // (🎛️ too)
             }
             glances();
             portal.setBelted(m);
@@ -565,8 +670,8 @@ final class CarScreen extends FrameLayout {
             roadCheck();
             boardCheck();
             saverCheck();
-            if (++ticks % 2 == 0) { musicCheck(); dialsCheck(); }
-            if (ticks % 10 == 1) driveCheck();
+            if (++ticks % 2 == 0) { musicCheck(); dialsCheck(); if (CarLayout.SPECIAL.equals(shape)) specialInfo(); }
+            if (ticks % 10 == 1) { driveCheck(); quietCheck(); }
             main.postDelayed(this, 1000);
         }
     };
@@ -694,6 +799,10 @@ final class CarScreen extends FrameLayout {
         hero.setBraking(now < brakeUntil);
         hero.setIndicator(now < indicatorUntil ? indicatorDir : 0);
         hero.setRain(rainNow);
+        if (CarLayout.SPECIAL.equals(shape)) { // ⑪'s road strip says it
+            String cap = s < 0 ? "🚗 GPS కోసం చూస్తున్నాను…" : s >= CarBox.MOVING_KMH ? "🚗 రోడ్డు కదులుతోంది · " + s + " కి.మీ/గం" : "🅿️ ఆగి ఉంది";
+            if (!cap.contentEquals(roadCaption.getText())) roadCaption.setText(cap);
+        }
         if (over) { // 😟 once per stretch over the limit: a worried face, a look at the gauge beside him
             underSince = 0;
             if (!overShown) { overShown = true; BodyRig rig = portal.body.rig; rig.show("worried", 3000); rig.glance(1f, 0.35f, 2600); }
@@ -1007,6 +1116,7 @@ final class CarScreen extends FrameLayout {
         if (show != (board.getVisibility() == VISIBLE)) {
             int v = show ? GONE : VISIBLE;
             for (View x : new View[]{gauge, hero, clock, clockFace, date, minis, driveChip, mapTilt, bigDial}) x.setVisibility(v);
+            if (CarLayout.SPECIAL.equals(shape)) { carMap.setVisibility(v); player.setVisibility(v); } // (⑪: the question where the map and the player were)
             board.setVisibility(show ? VISIBLE : GONE);
         }
         if (!show) return;
@@ -1034,7 +1144,7 @@ final class CarScreen extends FrameLayout {
         long now = System.currentTimeMillis();
         boolean want = prefs.carSaver() && mode == CarTheme.PARKED && !CarBox.moving() && now - lastTouch > 5 * 60_000L
                 && state == OrbView.IDLE && now - idleSince > 60_000 && now - saidAt > 5 * 60_000L && !songNow && !awakeShown
-                && sheet.getVisibility() != VISIBLE && ask.getVisibility() != VISIBLE && !gameOn() && acAt == 0;
+                && sheet.getVisibility() != VISIBLE && ask.getVisibility() != VISIBLE && !gameOn() && acAt == 0 && !hub.shown() && bigBox.getVisibility() != VISIBLE;
         if (want != saverOn) saverShow(want);
         if (!saverOn) return;
         Calendar c = Calendar.getInstance();
@@ -1189,7 +1299,7 @@ final class CarScreen extends FrameLayout {
      * more than that), and the keys while something plays: ▶ when it is paused, ⏸ while it plays.
      */
     private void musicCheck() {
-        String t, sub, artKey = "";
+        String t, sub, artKey = "", appNow = "";
         boolean keys, playing = false;
         try {
             JSONObject o = Music.panel(getContext());
@@ -1203,6 +1313,7 @@ final class CarScreen extends FrameLayout {
                 keys = true;
                 playing = o.optBoolean("playing");
                 String title = o.optString("title"), artist = o.optString("artist"), app = o.optString("app");
+                appNow = app;
                 t = title.isEmpty() ? app : title;
                 sub = title.isEmpty() ? (playing ? "ప్లే అవుతోంది" : "ఆగింది") : artist.isEmpty() ? app : artist + " · " + app;
                 if (!o.optBoolean("jarvis")) artKey = app + "|" + title + "|" + artist; // (Jarvis's own radio has no picture)
@@ -1215,8 +1326,19 @@ final class CarScreen extends FrameLayout {
             sub = "";
         }
         artCheck(artKey);
+        boolean pl = player.isShown() || bigPlayer.isShown(); // (⑪'s player, the big player: the place in the song, what the app allows)
+        long[] pr = keys && (pl || prefs.carVinyl() || prefs.carWave()) ? Music.progress(getContext()) : null;
+        if (pl) {
+            String ps = !keys ? sub : sub.equals(appNow) ? (playing ? "ప్లే అవుతోంది" : "ఆగింది") : sub.replace(" · " + appNow, ""); // (the app has its own chip)
+            JSONObject x = keys ? Music.extras(getContext()) : null;
+            for (CarPlayer cp : new CarPlayer[]{player, bigPlayer}) {
+                if (!cp.isShown()) continue;
+                cp.setSong(t, ps, appNow, playing, keys);
+                cp.setProgress(pr);
+                cp.setExtras(x);
+            }
+        }
         if (prefs.carVinyl() || prefs.carWave()) { // 23 / 24: how far the song is (the music app's own numbers)
-            long[] pr = keys ? Music.progress(getContext()) : null;
             if (pr != null) {
                 vinyl.setTiming(pr[0], pr[1], pr[2] / 1000f, pr[3] == 1, pr[4]);
                 waveBar.setTiming(pr[0], pr[1], pr[2] / 1000f, pr[3] == 1, pr[4]);
@@ -1282,6 +1404,8 @@ final class CarScreen extends FrameLayout {
         artImg.setVisibility(b == null || rec ? GONE : VISIBLE);
         artIcon.setVisibility(b == null && !rec ? VISIBLE : INVISIBLE);
         vinyl.setArt(b);
+        player.setArt(b);
+        bigPlayer.setArt(b);
         int col = 0;
         if (b != null) {
             try { // 🎨 the picture's own colour (a tiny copy is enough)
@@ -1394,6 +1518,14 @@ final class CarScreen extends FrameLayout {
         eqDraw.setReach(0.85f, musicStrip.getPaddingLeft() + art + ap.rightMargin); // (lying: the bars beside the picture, behind the words and keys)
     }
 
+    /** 🔇 The trip's quiet ends by itself when the trip does: parked half an hour. */
+    private void quietCheck() {
+        Context c = getContext();
+        if (!CarBox.quiet(c)) return;
+        long last = DriveService.lastMovingAt;
+        if (!CarBox.moving() && last > 0 && System.currentTimeMillis() - last > 30 * 60_000L) { CarBox.setQuiet(c, false); setButtons(); }
+    }
+
     /** Every 10 s: how long he has driven without a real stop; amber near 2 hours, the tea cup after. */
     private void driveCheck() {
         long min = 0;
@@ -1414,6 +1546,408 @@ final class CarScreen extends FrameLayout {
         driveChip.setTextColor(lvl == 0 ? textSoft : look != null && look.light ? 0xFFB26A00 : 0xFFFFB74D);
     }
 
+    // ================================================================ ⑪ the special (26 Oct)
+
+    /** One of ⑪'s three wide buttons (🧍 Jarvis సెట్టింగ్స్, 🎛️ అన్ని ఎంపికలు, 🎙️ Jarvis, మాట్లాడు). */
+    private TextView wide(Context a, String label, Runnable r) {
+        TextView t = autoText(a, label, true, 34);
+        t.setGravity(Gravity.CENTER);
+        t.setClickable(true);
+        t.setOnClickListener(v -> tap(r));
+        return t;
+    }
+
+    /** Jarvis's card: him on his stage, what he does in a chip on top, his words in a bubble beside him (his switch). */
+    private void jCardFill() {
+        jCard.removeAllViews();
+        detach(portal);
+        detach(stateText);
+        detach(subText);
+        jCard.addView(portal, new FrameLayout.LayoutParams(-1, -1));
+        jCard.addView(stateText, new FrameLayout.LayoutParams(1, 1, Gravity.TOP | Gravity.START));
+        jCard.addView(subText, new FrameLayout.LayoutParams(1, -2, Gravity.TOP | Gravity.END));
+        subText.setVisibility(prefs.carTalkBubble() ? VISIBLE : GONE);
+        if (look != null) stateText.setBackground(round(look.light ? 0xCCFFFFFF : 0x99060A10, CarTheme.withAlpha(accent, 0x88), 999));
+        int pd = Math.max(4, Math.min(Math.max(W, 600), Math.max(H, 300)) / 70);
+        stateText.setPadding(pd * 2, 0, pd * 2, 0);
+        sizeJCard();
+    }
+
+    /** ⑪'s cards in the theme's colours: the glass, Jarvis's light and stage, the wide buttons, the facts, the apps, the players. */
+    private void specialLook(float rad) {
+        for (View card : new View[]{jCard, spMeter, spApps, spRoadCard}) card.setBackground(CarArt.glass(look, rad, false));
+        portal.setGlow(CarDeck.glowColour(prefs.carJarvisGlow())); // 🌟
+        portal.setRings(CarDeck.ringOn(prefs.carJarvisRing(), CarLayout.SPECIAL.equals(shape))); // 💫
+        wideJ.setBackground(round(CarTheme.withAlpha(0xFF6A3DE8, 0x66), CarTheme.withAlpha(0xFFB08CFF, 0xCC), 14));
+        wideHub.setBackground(round(CarTheme.withAlpha(0xFF14806E, 0x66), CarTheme.withAlpha(0xFF4DFFC8, 0xAA), 14));
+        wideTalk.setBackground(round(CarTheme.withAlpha(accent, 0x2E), CarTheme.withAlpha(accent, 0xDD), 14));
+        for (TextView t : new TextView[]{wideJ, wideHub, wideTalk}) t.setTextColor(look.light ? 0xFF0B1118 : Color.WHITE);
+        for (TextView t : infoChips) {
+            t.setTextColor(textMain);
+            t.setBackground(round(look.light ? 0x22000000 : 0x1AFFFFFF, CarTheme.withAlpha(accent, 0x55), 999));
+        }
+        spAppsTitle.setTextColor(textMain);
+        spAppsEdit.setTextColor(accent);
+        for (LinearLayout cell : spAppCells) ((TextView) cell.getChildAt(1)).setTextColor(textSoft);
+        roadCaption.setTextColor(look.light ? 0xFF0B1118 : Color.WHITE);
+        if (stateText.getParent() == jCard) stateText.setBackground(round(look.light ? 0xCCFFFFFF : 0x99060A10, CarTheme.withAlpha(accent, 0x88), 999));
+        for (CarPlayer cp : new CarPlayer[]{player, bigPlayer}) {
+            cp.setColours(textMain, textSoft, accent, look.light);
+            cp.setVinyl(prefs.carVinyl(), prefs.carLowMotion());
+        }
+        hubLook();
+    }
+
+    /** ⑪'s inner room from the screen's size. */
+    private void specialSizes(float rad, int cp) {
+        for (LinearLayout card : new LinearLayout[]{spMeter, spApps}) card.setPadding(cp, cp / 2, cp, cp / 2);
+        player.setPadding(cp, cp / 2, cp, cp / 2);
+        int iq = Math.max(3, H / 110);
+        for (TextView t : infoChips) {
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
+            lp.setMargins(iq, iq, iq, iq);
+            t.setLayoutParams(lp);
+            t.setPadding(iq * 2, 0, iq * 2, 0);
+        }
+        for (LinearLayout cell : spAppCells) cell.setPadding(iq, iq, iq, iq);
+        roadCaption.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, H / 34f) * textScale);
+        roadCaption.setPadding(cp, cp / 2, cp, 0);
+        for (TextView t : new TextView[]{wideJ, wideHub, wideTalk}) t.setPadding(cp, 0, cp, 0);
+        if (bigBox.getVisibility() == VISIBLE) bigShow(true);
+        sizeJCard();
+    }
+
+    private void sizeJCard() {
+        int w = jCard.getWidth(), h = jCard.getHeight();
+        if (w <= 0 || h <= 0 || stateText.getParent() != jCard) return;
+        int m = Math.max(4, Math.min(w, h) / 30);
+        FrameLayout.LayoutParams sl = (FrameLayout.LayoutParams) stateText.getLayoutParams();
+        sl.width = Math.round(w * 0.62f);
+        sl.height = Math.max(1, Math.round(h * 0.085f));
+        sl.setMargins(m, m, 0, 0);
+        stateText.setLayoutParams(sl);
+        stateText.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        FrameLayout.LayoutParams bl = (FrameLayout.LayoutParams) subText.getLayoutParams();
+        bl.width = Math.round(w * 0.5f);
+        bl.setMargins(0, m + sl.height + m / 2, m, 0);
+        subText.setLayoutParams(bl);
+        subText.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        subText.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, Math.min(h / 17f, w / 15f)) * textScale);
+    }
+
+    /** 🎛️ Every choice in one place (parked): at this part (null: where he was last). */
+    private void openHub(String cat) {
+        if (!parkedOrSay()) return;
+        closeSheet();
+        if (cat != null) hubCat = cat;
+        hubLook();
+        hub.show(hubCat);
+        if (awakeShown) awake.bringToFront(); // (the sleep alert's question always on top)
+        settingSheet = true;
+    }
+
+    private void hubLook() {
+        if (look == null) return;
+        hub.setLook(textMain, textSoft, accent, look.light ? 0xF2F4F7FA : 0xF20A1220, look.light, "right".equals(prefs.carJarvisSide()));
+    }
+
+    /** A choice made in 🎛️: the screen takes it now. */
+    private void hubChanged(String key) {
+        if ("car_layout".equals(key)) shapeCheck();
+        themeChanged();
+        lightsNow();
+        musicKeyNow = "";
+        musicCheck();
+        dialsCheck();
+        if ("car_bubble".equals(key)) CarBubble.refresh();
+        if ("car_layout".equals(key) || "car_jarvis_side".equals(key) || "car_mine".equals(key)) relayout();
+        hubLook();
+    }
+
+    /** A button in 🎛️. */
+    private void hubAct(String id) {
+        Context c = getContext();
+        switch (id) {
+            case "g2": hub.hide(); toast(mapMode("g2")); break;
+            case "photo_top": hub.hide(); host.openSettingsAt("car_top"); break;
+            case "photos": hub.hide(); host.openSettingsAt("car"); break;
+            case "stage": setStage(!prefs.carStage()); toast(prefs.carStage() ? "🕺 స్టేజ్ పెట్టాను" : "🕺 స్టేజ్ ఆపాను"); break;
+            case "music_app": hub.hide(); musicApps(); break;
+            case "apps": hub.hide(); showApps(); break;
+            case "buttons": hub.hide(); chooseSlot(); break;
+            case "fatigue": {
+                boolean on = CarCare.enabled(c);
+                CarCare.settings(c).edit().putBoolean("drive_fatigue", !on).apply();
+                toast(on ? "😴 నిద్ర అలర్ట్ ఆఫ్" : "😴 నిద్ర అలర్ట్ ఆన్");
+                break;
+            }
+            case "alarm_test": CarCare.testTone(c); break;
+            case "eyes": hub.hide(); c.startActivity(new Intent(c, CarEyesActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); break;
+            case "quiet": quietToggle(); break;
+            case "vol_down": case "vol_up": { String r = Music.control(c, id.equals("vol_up") ? "volume_up" : "volume_down"); if (r != null && !r.isEmpty()) toast(r); break; }
+            case "settings": hub.hide(); host.openSettings(); break;
+            default: break;
+        }
+    }
+
+    /** 🎛️ "ఆరు బటన్లు మార్చు": which place first (then which button there). */
+    private void chooseSlot() {
+        if (!parkedOrSay()) return;
+        List<String[]> rows = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
+        for (int i = 0; i < 6 && i < sixKinds.length; i++) {
+            final int slot = i;
+            rows.add(new String[]{(i + 1) + " · " + CarDeck.buttonName(sixKinds[i])});
+            acts.add(() -> { closeSheet(); chooseButton(slot); });
+        }
+        openSheet("🎛️ ఏ స్థానంలో బటన్ మార్చాలి?", "(బటన్‌ని ఎక్కువసేపు నొక్కినా ఇదే వస్తుంది)", rows, acts, 2);
+        settingSheet = true;
+    }
+
+    /** ⑪'s player keys (and the big player's). */
+    private final CarPlayer.Listener playerL = new CarPlayer.Listener() {
+        @Override public void key(String what) { playerKey(what); }
+        @Override public void apps() { musicApps(); }
+        @Override public void art() { bigShow(bigBox.getVisibility() != VISIBLE); }
+    };
+
+    private void playerKey(String what) {
+        Context c = getContext();
+        String r;
+        switch (what) {
+            case "prev": r = Music.control(c, "previous"); break;
+            case "toggle": r = Music.control(c, "toggle"); break;
+            case "next": r = Music.control(c, "next"); break;
+            case "volume": volumeSheet(); return;
+            case "queue": showQueue(); return;
+            default: r = Music.extra(c, what);
+        }
+        if (r != null && !r.isEmpty() && !what.startsWith("seek:") && !what.equals("toggle")) toast(r);
+        main.postDelayed(() -> { musicKeyNow = ""; musicCheck(); }, 700);
+    }
+
+    /** 🔊 the song's loudness: down / up (the box's music volume only). */
+    private void volumeSheet() {
+        List<String[]> rows = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
+        rows.add(new String[]{"🔉 తగ్గించు", "🔊 పెంచు"});
+        acts.add(null);
+        String now = "";
+        try { JSONObject o = Music.panel(getContext()); if (o.has("vol")) now = "ఇప్పుడు " + o.optInt("vol") + "%"; } catch (Exception ignored) {}
+        openSheet("🔊 పాట శబ్దం", now, rows, acts, 2);
+    }
+
+    /** 📃 Up next: the music app's own list (only when the app gives it); a tap plays that one. */
+    private void showQueue() {
+        JSONObject x = Music.extras(getContext());
+        org.json.JSONArray q = x == null ? null : x.optJSONArray("queue");
+        if (q == null || q.length() == 0) { toast("ఈ యాప్ తర్వాతి పాటల జాబితా ఇవ్వదు"); return; }
+        List<String[]> rows = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
+        int start = 0;
+        for (int i = 0; i < q.length(); i++) if (q.optJSONObject(i).optBoolean("now")) { start = i; break; }
+        for (int i = start; i < q.length() && rows.size() < 8; i++) {
+            JSONObject it = q.optJSONObject(i);
+            final long id = it.optLong("id");
+            String t = it.optString("title");
+            rows.add(new String[]{(it.optBoolean("now") ? "▶ " : "") + (t.isEmpty() ? "పాట" : t)});
+            acts.add(() -> { closeSheet(); playerKey("queue:" + id); });
+        }
+        openSheet("📃 తర్వాతి పాటలు", x.optString("app").isEmpty() ? null : "మ్యూజిక్ యాప్ ఇచ్చిన జాబితా", rows, acts, 1);
+    }
+
+    /** The app chip: the box's music apps (the one playing first); a tap opens it. */
+    private void musicApps() {
+        Context c = getContext();
+        List<String[]> rows = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
+        java.util.LinkedHashSet<String> pk = new java.util.LinkedHashSet<>();
+        try { android.media.session.MediaController mc = Music.active(c); if (mc != null) pk.add(mc.getPackageName()); } catch (Exception ignored) {}
+        for (String m : MUSIC_APPS) pk.add(m);
+        android.content.pm.PackageManager pm = c.getPackageManager();
+        for (String p : pk) {
+            Intent it = pm.getLaunchIntentForPackage(p);
+            if (it == null) continue;
+            String name;
+            try { name = pm.getApplicationLabel(pm.getApplicationInfo(p, 0)).toString(); } catch (Exception e) { name = p; }
+            rows.add(new String[]{"🎵 " + name});
+            acts.add(() -> { closeSheet(); try { getContext().startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception e) { toast("తెరవలేకపోయాను"); } });
+        }
+        if (rows.isEmpty()) { toast("ఈ box లో మ్యూజిక్ యాప్ కనిపించలేదు"); return; }
+        openSheet("🎵 మ్యూజిక్ యాప్", "మాటతో: \"Jarvis, ___ పాట పెట్టు\"", rows, acts, 2);
+    }
+
+    private Runnable bigGone;
+
+    /** The big player over the screen (the picture tapped), or back. */
+    private void bigShow(boolean on) {
+        if (bigGone != null) main.removeCallbacks(bigGone);
+        if (!on) { bigBox.setVisibility(GONE); return; }
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) bigPlayer.getLayoutParams();
+        lp.width = Math.round(W * 0.86f);
+        lp.height = Math.round(H * 0.56f);
+        bigPlayer.setLayoutParams(lp);
+        int pd = Math.max(8, Math.min(W, H) / 30);
+        bigPlayer.setPadding(pd, pd, pd, pd);
+        if (look != null) bigPlayer.setBackground(CarArt.glass(look, Math.max(12, Math.min(W, H) / 22f), false));
+        bigBox.setVisibility(VISIBLE);
+        bigBox.bringToFront();
+        if (awakeShown) awake.bringToFront();
+        musicKeyNow = "";
+        musicCheck();
+        bigGone = () -> bigShow(false);
+        main.postDelayed(bigGone, 40_000);
+    }
+
+    /** ⑪'s eight apps: his favourites (the drawer's own list); the free places: ＋ (a tap: the apps, to add one). */
+    private void specialApps() {
+        final Context app = getContext().getApplicationContext();
+        new Thread(() -> {
+            List<Object[]> list;
+            try { list = CarApps.list(app, prefs, true); } catch (Exception e) { list = new ArrayList<>(); }
+            final List<Object[]> got = list;
+            main.post(() -> {
+                for (int i = 0; i < spAppCells.size(); i++) {
+                    LinearLayout cell = spAppCells.get(i);
+                    android.widget.ImageView iv = (android.widget.ImageView) cell.getChildAt(0);
+                    TextView lb = (TextView) cell.getChildAt(1);
+                    if (i < got.size()) {
+                        final Object[] x = got.get(i); // {package, label, icon, favourite}
+                        iv.setImageDrawable((android.graphics.drawable.Drawable) x[2]);
+                        lb.setText((String) x[1]);
+                        cell.setVisibility(VISIBLE);
+                        cell.setOnClickListener(v -> tap(() -> {
+                            Intent it = getContext().getPackageManager().getLaunchIntentForPackage((String) x[0]);
+                            if (it == null) { toast("తెరవలేకపోయాను"); return; }
+                            getContext().startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                        }));
+                    } else if (i == got.size()) {
+                        iv.setImageDrawable(null);
+                        lb.setText("＋ జోడించు");
+                        cell.setVisibility(VISIBLE);
+                        cell.setOnClickListener(v -> tap(this::showApps));
+                    } else {
+                        cell.setVisibility(INVISIBLE);
+                        cell.setOnClickListener(null);
+                    }
+                }
+            });
+        }, "car-sp-apps").start();
+    }
+
+    /** ⑪'s three facts under the speed: how far the diesel goes, this trip's km, the way he goes. Every 2 s. */
+    private void specialInfo() {
+        Context c = getContext();
+        double range = Double.NaN;
+        try { range = CarFuel.rangeKm(c); } catch (Exception ignored) {}
+        String a = Double.isNaN(range) ? "⛽ –" : "⛽ " + Math.max(0, Math.round(range)) + " కి.మీ";
+        double km = DriveService.tripMeters / 1000;
+        String b = "🛣️ " + (km < 10 ? String.format(Locale.ROOT, "%.1f", Math.max(0, km)) : String.valueOf(Math.round(km))) + " కి.మీ";
+        Location l = DriveService.last;
+        if (l != null && l.hasBearing() && l.hasSpeed() && l.getSpeed() > 2) lastBearing = l.getBearing();
+        String d = "🧭 " + (lastBearing < 0 ? "–" : CarDeck.compass(lastBearing));
+        String[] t = {a, b, d};
+        for (int i = 0; i < 3; i++) if (!t[i].contentEquals(infoChips[i].getText())) infoChips[i].setText(t[i]);
+    }
+
+    /** ✖ దారి ఆపు (his tap, then his yes): Jarvis's way forgotten; Google Maps opened so he ends its trip there (only it can). */
+    private void stopWay() {
+        confirm("దారి ఆపనా?", () -> {
+            Context c = getContext();
+            Drive.clearDest(c);
+            boolean trip = Drive.navState() != null;
+            if (trip) {
+                openMaps(c);
+                Toast.makeText(c.getApplicationContext(), "Google Maps దారి ఆపడానికి అక్కడ ✕ (Exit) నొక్కండి: అది వాళ్ళ యాప్‌లోనే ఆగుతుంది", Toast.LENGTH_LONG).show();
+            } else toast("సరే, దారి ఆపాను");
+        });
+    }
+
+    /** 📷: the eye check's camera (to see it is right) or the box's camera app — parked only. */
+    private void showCamera() {
+        if (!parkedOrSay()) return;
+        Context c = getContext();
+        List<String[]> rows = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
+        rows.add(new String[]{"👁️ కళ్ళ చెక్ కెమెరా చూడు"});
+        acts.add(() -> { closeSheet(); c.startActivity(new Intent(c, CarEyesActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); });
+        final Intent cam = new Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (cam.resolveActivity(c.getPackageManager()) != null) {
+            rows.add(new String[]{"📷 కెమెరా యాప్"});
+            acts.add(() -> { closeSheet(); try { c.startActivity(cam); } catch (Exception e) { toast("కెమెరా యాప్ తెరవలేకపోయాను"); } });
+        }
+        openSheet("📷 కెమెరా", cam.resolveActivity(c.getPackageManager()) == null ? "ఈ box లో కెమెరా యాప్ లేదు" : null, rows, acts, 1);
+    }
+
+    /** 🔇 Quiet for this trip ↔ as always (said either way; the safety alerts always speak). */
+    private void quietToggle() {
+        Context c = getContext();
+        boolean on = !CarBox.quiet(c);
+        CarBox.setQuiet(c, on);
+        setButtons();
+        host.speak(on ? "సరే, ఈ ప్రయాణం నిశ్శబ్దంగా ఉంటాను: మీరు పిలిస్తేనే మాట్లాడతాను. ప్రమాద హెచ్చరికలు మాత్రం ఎప్పుడూ చెబుతాను."
+                : "సరే, మళ్ళీ మామూలుగా చెబుతాను.");
+    }
+
+    /** His short words for ⑪'s choices (CarWords): done at once, any time; what to say back. */
+    String wordsSaid(String[] w) {
+        Context c = getContext();
+        switch (w[0]) {
+            case "src": {
+                boolean osm = "osm".equals(w[1]);
+                prefs.sp.edit().putString("car_map_src", osm ? "osm" : "").apply();
+                if ("g2".equals(prefs.carMapMode())) mapMode("g1", false); // (our map again: Google Maps beside no more)
+                mapPrefs();
+                if (osm) return "సరే, మన మ్యాప్‌లో ఉచిత మ్యాప్ (OpenStreetMap) పెట్టాను. ట్రాఫిక్ Google మ్యాప్‌లోనే.";
+                return GMaps.has(c) ? "సరే, మన మ్యాప్‌లో Google బొమ్మలు పెట్టాను." : "Google మ్యాప్ కి Maps key కావాలి (⚙️ → Jarvis Maps): అప్పటిదాకా ఉచిత మ్యాప్.";
+            }
+            case "car": {
+                prefs.sp.edit().putString("car_map_car", w[1]).apply();
+                mapPrefs();
+                String name = CarDeck.MAP_CAR_NAMES[Math.max(0, CarDeck.mapCarIndex(w[1]))];
+                if ("photo".equals(w[1]) && !CarPhoto.topFile(c).exists()) return "మీ కారు పై నుంచి ఫోటో ఇంకా లేదు: కారు ఆగాక 🎛️ → మ్యాప్ → 📷 లో ఎంచుకోండి. అప్పటిదాకా SUV బొమ్మ.";
+                return "సరే, మ్యాప్ మీద " + name.replaceAll("^[^\\p{L}]+", "") + " పెట్టాను.";
+            }
+            case "quiet": {
+                boolean on = "on".equals(w[1]);
+                CarBox.setQuiet(c, on);
+                setButtons();
+                return on ? "సరే, ఈ ప్రయాణం నిశ్శబ్దంగా ఉంటాను: పిలిస్తేనే మాట్లాడతాను. ప్రమాద హెచ్చరికలు మాత్రం చెబుతాను." : "సరే, మళ్ళీ మామూలుగా చెబుతాను.";
+            }
+            case "map": {
+                if (!CarLayout.SPECIAL.equals(shape)) return "పెద్ద మ్యాప్ ⑪ స్పెషల్ ఆకారంలో ఉంది: 🗺️ Jarvis Maps తెరవాలంటే \"Jarvis Maps తెరువు\" అనండి.";
+                boolean big = "big".equals(w[1]);
+                if (big != specialFull) { specialFull = big; carMap.setExpanded(big); relayout(); }
+                return big ? "సరే, మ్యాప్ పెద్దది చేశాను." : "సరే, మ్యాప్ మామూలుగా పెట్టాను.";
+            }
+            default: return "";
+        }
+    }
+
+    /** ⑪: the equalizer's bars start after the player's picture. */
+    private void playerEq() { eqDraw.setReach(0.8f, player.artRight()); }
+
+    /** The map's car, its turn and its pictures from his choices now. */
+    private void mapPrefs() { if (look != null) carMap.setLook(look); }
+
+    /** The colourful equalizer lives behind one card at a time: ⑪'s player there, the song strip elsewhere. */
+    private void eqHome() {
+        if (look == null) return;
+        float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / 22f);
+        boolean sp = CarLayout.SPECIAL.equals(shape) && player.getParent() != null;
+        android.graphics.drawable.Drawable[] withEq = {CarArt.glass(look, rad, false), eqDraw};
+        if (sp) {
+            musicStrip.setBackground(CarArt.glass(look, rad, false));
+            player.setBackground(new android.graphics.drawable.LayerDrawable(withEq)); // (made last: the bars draw here)
+            eqDraw.setReach(0.8f, player.artRight());
+        } else {
+            player.setBackground(CarArt.glass(look, rad, false));
+            musicStrip.setBackground(new android.graphics.drawable.LayerDrawable(withEq));
+            stripW = stripH = 0; // (the strip's bars measured again)
+            musicStrip.requestLayout();
+        }
+    }
+
     // ================================================================ the six buttons
 
     private void button(String what) {
@@ -1430,6 +1964,10 @@ final class CarScreen extends FrameLayout {
             case "games": showGames(); break;
             case "apps": showApps(); break;
             case "stage": if (!prefs.carStage() && !parkedOrSay()) return; setStage(!prefs.carStage()); break; // (on by a tap: parked; off any time)
+            case "tea": JarvisMaps.openAlong(getContext(), "tea", "☕ టీ / కాఫీ"); break; // ☕ a break: tea places on his way
+            case "camera": showCamera(); break;
+            case "rain": JarvisMaps.openDo(getContext(), "rain"); break;
+            case "quiet": quietToggle(); break;
             default: break;
         }
     }
@@ -1445,16 +1983,23 @@ final class CarScreen extends FrameLayout {
             case "games": return CarArt.Icon.GAMES;
             case "apps": return CarArt.Icon.APPS;
             case "stage": return CarArt.Icon.STAR;
+            case "tea": return CarArt.Icon.CUP;
+            case "camera": return CarArt.Icon.CAMERA;
+            case "rain": return CarArt.Icon.RAIN;
+            case "quiet": return CarArt.Icon.QUIET;
             default: return CarArt.Icon.MIC;
         }
     }
 
     /** The six buttons' signs and words for his six (or the shape's). */
     private void setButtons() {
-        sixKinds = CarDeck.six(prefs.carButtons(), CarLayout.deep(shape));
+        sixKinds = CarDeck.sixFor(prefs.carButtons(), shape);
+        boolean quiet = CarBox.quiet(getContext());
         for (int i = 0; i < tiles.size() && i < 6; i++) {
             tileIcons.get(i).setKind(iconOf(sixKinds[i]));
-            ((TextView) ((LinearLayout) tiles.get(i)).getChildAt(1)).setText(CarDeck.buttonLabel(sixKinds[i]));
+            String label = CarDeck.buttonLabel(sixKinds[i]);
+            if ("quiet".equals(sixKinds[i]) && quiet) label = "నిశ్శబ్దం ✓"; // (on for this trip)
+            ((TextView) ((LinearLayout) tiles.get(i)).getChildAt(1)).setText(label);
         }
         iconStyle();
     }
@@ -2096,7 +2641,7 @@ final class CarScreen extends FrameLayout {
     private void showWeather() {
         android.content.SharedPreferences sp = getContext().getSharedPreferences(SP, Context.MODE_PRIVATE);
         long at = sp.getLong("w_at", 0);
-        String fuel = CarFuel.chip(getContext()); // ⛽ how far the diesel goes, beside the weather (C12)
+        String fuel = CarLayout.SPECIAL.equals(shape) ? "" : CarFuel.chip(getContext()); // ⛽ how far the diesel goes, beside the weather (C12; ⑪ has its own ⛽ under the speed)
         long now = System.currentTimeMillis();
         dress(sp, at, now);
         if (Drive.navState() != null && !CarAhead.card.isEmpty() && now - CarAhead.cardAt < 20 * 60_000L) { // (the turn has the card: the warning goes here)
@@ -2258,9 +2803,21 @@ final class CarScreen extends FrameLayout {
         if (s.equals(shape)) return;
         shape = s;
         for (LinearLayout g : new LinearLayout[]{content, leftCol, midCol, rightCol, wingLIn, wingRIn, panelIn, panelTop, centreCol, stageLeft, stageMid, sideTop, sideText,
-                clusterBox, clusterTop, clusterMid, clusterDock, railCol, dockMain, dockTop, dockCards, dockRow}) g.removeAllViews();
+                clusterBox, clusterTop, clusterMid, clusterDock, railCol, dockMain, dockTop, dockCards, dockRow, spLeft, spMid, spRight, spMeter, spMeterTop, spClockCol}) g.removeAllViews();
         mapTilt.removeAllViews();
+        jCard.removeAllViews();
+        detach(hero);
         detach(carMap);
+        subText.setVisibility(VISIBLE); // (⑪'s bubble may be off: everywhere else his words always show)
+        stateText.setBackground(null); // (⑪'s chip: only in ⑪)
+        stateText.setPadding(0, 0, 0, 0);
+        stateText.setGravity(Gravity.CENTER);
+        boolean special = CarLayout.SPECIAL.equals(s);
+        if (!special) specialFull = false;
+        carMap.setSpecial(special);
+        carMap.setExpanded(specialFull);
+        carMap.setVisibility(VISIBLE);
+        player.setVisibility(VISIBLE);
         boolean deep = CarLayout.deep(s);
         rightOnly = false;
         float j = CarDeck.jarvisScale(prefs.carJarvis()); // (Jarvis smaller / bigger: his window's share of its column)
@@ -2349,6 +2906,31 @@ final class CarScreen extends FrameLayout {
                 put(rightCol, roadCard, 20); put(rightCol, tileGrid, 57); put(rightCol, musicStrip, 23);
                 fillTiles(tileGrid, 0, 6, 3);
                 break;
+            case CarLayout.SPECIAL: { // ⑪ Jarvis on his lit stage, six buttons and three wide ones; the big map with all its tools and the big player; the speed, the clock, his apps, the road
+                boolean right = "right".equals(prefs.carJarvisSide());
+                jCardFill();
+                if (specialFull) { // ⤢ the map big, Jarvis small beside it
+                    put(content, right ? carMap : spLeft, right ? 80 : 20);
+                    put(content, right ? spLeft : carMap, right ? 20 : 80);
+                    put(spLeft, jCard, 50 * j); put(spLeft, gauge, 30); put(spLeft, wideTalk, 12); put(spLeft, board, 100);
+                    break;
+                }
+                put(content, right ? spRight : spLeft, right ? 26 : 22);
+                put(content, spMid, 52);
+                put(content, right ? spLeft : spRight, right ? 22 : 26);
+                put(spLeft, jCard, 40 * j); put(spLeft, tileGrid, 25); put(spLeft, wideJ, 8); put(spLeft, wideHub, 8); put(spLeft, wideTalk, 10); put(spLeft, chipRow, 7);
+                put(spMid, carMap, 66); put(spMid, player, 34); put(spMid, board, 100);
+                put(spRight, spMeter, 37); put(spRight, roadCard, 14); put(spRight, spApps, 29); put(spRight, spRoadCard, 20);
+                put(spMeter, spMeterTop, 78); put(spMeter, spInfo, 22);
+                put(spMeterTop, gauge, 54); put(spMeterTop, spClockCol, 46);
+                String cs = prefs.carClock();
+                put(spClockCol, cs.isEmpty() || "analog".equals(cs) ? clockFace : clock, 62); // (his clock: ⑪'s with hands, unless he chose numbers)
+                put(spClockCol, date, 19); put(spClockCol, minis, 19);
+                spRoadCard.addView(hero, 0, new FrameLayout.LayoutParams(-1, -1));
+                fillTiles(tileGrid, 0, 6, 3);
+                specialApps();
+                break;
+            }
             default: // ⑥ the three columns as they always were
                 put(content, leftCol, 27); put(content, midCol, 30); put(content, rightCol, 43);
                 put(leftCol, portal, 58 * j); put(leftCol, stateText, 9); put(leftCol, subText, 22); put(leftCol, chipRow, 11);
@@ -2365,6 +2947,7 @@ final class CarScreen extends FrameLayout {
             detach(clockFace);
             par.addView(clockFace, idx, lp);
         }
+        portal.setRings(CarDeck.ringOn(prefs.carJarvisRing(), special)); // 💫
         wingL.setTilt(CarDeck.WING_L, deep ? 0.07f : 0);
         wingR.setTilt(CarDeck.WING_R, deep ? 0.07f : 0);
         panel.setTilt(CarDeck.BACK, 0.06f);
@@ -2378,6 +2961,8 @@ final class CarScreen extends FrameLayout {
         boxMargins();
         overlayRoom();
         dialsCheck();
+        eqHome();
+        if (special) { specialInfo(); musicKeyNow = ""; main.post(this::musicCheck); }
         requestLayout();
         lights.invalidate(); // (the beat lights' edges where the cards are now)
     }
@@ -2561,7 +3146,7 @@ final class CarScreen extends FrameLayout {
         if (android.os.SystemClock.uptimeMillis() < welcomeUntil) return; // (the cards are still turning in)
         boolean roundTiles = CarDeck.round(prefs.carBtnStyle(), CarLayout.deep(shape));
         for (View t : tiles) addOutline(into, t, roundTiles ? 1 : 0);
-        for (View v : new View[]{roadCard, musicStrip, carMap, wingLIn, wingRIn, panelIn, board, stageMid}) addOutline(into, v, 0);
+        for (View v : new View[]{roadCard, musicStrip, carMap, wingLIn, wingRIn, panelIn, board, stageMid, jCard, spMeter, spApps, spRoadCard, player}) addOutline(into, v, 0);
         for (CarKit.Dial dl : dials) addOutline(into, dl, 2);
         addOutline(into, bigDial, 2);
     }
@@ -2729,6 +3314,7 @@ final class CarScreen extends FrameLayout {
         boxes.add(mapPill);
         boxes.addAll(railApps);
         boxes.add(railMore);
+        for (View v : new View[]{jCard, spMeter, spApps, spRoadCard, player, wideJ, wideHub, wideTalk}) boxes.add(v);
         for (View t : boxes) {
             if (!(t.getLayoutParams() instanceof LinearLayout.LayoutParams)) continue; // (not on the screen in this shape)
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
@@ -2759,12 +3345,13 @@ final class CarScreen extends FrameLayout {
         float rad = Math.max(10, Math.min(w, h) / 22f);
         dressTiles();
         roadCard.setBackground(CarArt.glass(look, rad, false));
-        musicStrip.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{CarArt.glass(look, rad, false), eqDraw}));
+        eqHome();
         board.setBackground(CarArt.glass(look, rad, false));
         for (LinearLayout card : new LinearLayout[]{wingLIn, wingRIn, panelIn}) {
             card.setBackground(CarArt.glass(look, rad, false));
             card.setPadding(cp, cp, cp, cp);
         }
+        specialSizes(rad, cp);
         for (TextView t : new TextView[]{stageExit, mapPill}) t.setPadding(cp, cp / 3, cp, cp / 3);
         mapGap.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(14, h / 26f));
         float ct = Math.max(12, h / 36f) * textScale; // ① ②'s chips row
@@ -2916,9 +3503,10 @@ final class CarScreen extends FrameLayout {
         }
         railMore.setTextColor(textSoft);
         roadCard.setBackground(CarArt.glass(look, rad, false));
-        musicStrip.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{CarArt.glass(look, rad, false), eqDraw}));
+        eqHome();
         board.setBackground(CarArt.glass(look, rad, false));
         board.setTextColor(textMain);
+        specialLook(rad);
         portal.body.rig.setNightPlays(night);
         road1.setTextColor(textMain);
         road2.setTextColor(textSoft);

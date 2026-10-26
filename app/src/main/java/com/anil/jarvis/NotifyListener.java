@@ -350,7 +350,7 @@ public class NotifyListener extends NotificationListenerService {
             if (newsSaid.containsKey(said)) return; // the same story posted again
             newsSaid.put(said, now);
         }
-        Announcer.say(this, "Way2News వార్త: " + said);
+        Announcer.chat(this, "Way2News వార్త: " + said);
     }
 
     // ---------------------------------------------------------------- read new messages aloud
@@ -738,7 +738,7 @@ public class NotifyListener extends NotificationListenerService {
                         : m.talk ? "పైన కార్డ్‌లో చెప్పి అడిగాను" + (m.typing ? " (టైప్ చేస్తున్నా: సెట్టింగ్ 'చదువు')" : "")
                         : "name".equals(typing) ? "పైన కార్డ్ చూపించి ఎవరో మాత్రమే చెప్పాను (టైప్ చేస్తున్నారు)"
                         : "పైన కార్డ్ మాత్రమే చూపించాను (టైప్ చేస్తున్నారు: సెట్టింగ్ 'నిశ్శబ్దం')");
-                if (!m.talk && "name".equals(typing)) Announcer.say(this, say);
+                if (!m.talk && "name".equals(typing)) Announcer.chat(this, say);
             } else if (TopCard.busy()) {
                 requeue(q); // (a card's talk began in between: after it)
             } else {
@@ -780,7 +780,7 @@ public class NotifyListener extends NotificationListenerService {
         }
         note(app, from, "చెప్పాను (గొంతుతో మాత్రమే: panel తెరవలేకపోయాను)");
         Store.get(this).addChat("assistant", say + " " + ask + context, false);
-        Announcer.say(this, say + " కావాలంటే Jarvis అని పిలిచి చెప్పండి.");
+        Announcer.chat(this, say + " కావాలంటే Jarvis అని పిలిచి చెప్పండి.");
     }
 
     /** No card and no voice talk: who wrote is said, the messages wait under 📬, and "Jarvis, చదువు" reads them (never the panel by itself). */
@@ -794,7 +794,7 @@ public class NotifyListener extends NotificationListenerService {
                         ("later" + q.key).hashCode());
             } catch (Exception ignored) {}
         }
-        Announcer.say(this, say + " చదవాలంటే Jarvis అని పిలిచి 'చదువు' అనండి.");
+        Announcer.chat(this, say + " చదవాలంటే Jarvis అని పిలిచి 'చదువు' అనండి.");
     }
 
     /** The incoming call already said, per notification key: {when, who} (the dialer posts updates of one ring; cleared when it goes). */

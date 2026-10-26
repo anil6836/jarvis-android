@@ -12,9 +12,11 @@
         <exclude domain="file" path="car_wall.jpg" />
         <exclude domain="file" path="car_photo.jpg" />
         <exclude domain="file" path="car_rear.jpg" />
+        <exclude domain="file" path="car_top.jpg" />
         <exclude domain="file" path="car_wall.jpg.part" />
         <exclude domain="file" path="car_photo.jpg.part" />
         <exclude domain="file" path="car_rear.jpg.part" />
+        <exclude domain="file" path="car_top.jpg.part" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
@@ -44,9 +46,11 @@
         <exclude domain="file" path="car_wall.jpg" />
         <exclude domain="file" path="car_photo.jpg" />
         <exclude domain="file" path="car_rear.jpg" />
+        <exclude domain="file" path="car_top.jpg" />
         <exclude domain="file" path="car_wall.jpg.part" />
         <exclude domain="file" path="car_photo.jpg.part" />
         <exclude domain="file" path="car_rear.jpg.part" />
+        <exclude domain="file" path="car_top.jpg.part" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
