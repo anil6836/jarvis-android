@@ -2969,10 +2969,12 @@ final class CarScreen extends FrameLayout {
             case CarLayout.SPECIAL: { // ⑪ Jarvis on his lit stage, six buttons and three wide ones; the big map with all its tools and the big player; the speed, the clock, his apps, the road
                 boolean right = "right".equals(prefs.carJarvisSide());
                 jCardFill();
-                if (specialFull) { // ⤢ the map big, Jarvis small beside it
-                    put(content, right ? carMap : spLeft, right ? 80 : 20);
-                    put(content, right ? spLeft : carMap, right ? 20 : 80);
-                    put(spLeft, jCard, 50 * j); put(spLeft, gauge, 30); put(spLeft, wideTalk, 12); put(spLeft, board, 100);
+                if (specialFull) { // ⤢ the map big; beside it (his photo, 26 Oct): Jarvis in a smaller card (no empty room over him), the time, the speed, the road card (AC question, home), the song, 🎙️
+                    put(content, right ? carMap : spLeft, right ? 78 : 22);
+                    put(content, right ? spLeft : carMap, right ? 22 : 78);
+                    musicStrip.setOrientation(LinearLayout.VERTICAL); // (standing: the picture on top, the name, ⏮ ⏯ ⏭)
+                    put(spLeft, jCard, 27 * Math.min(j, 1.12f)); put(spLeft, clock, 9); put(spLeft, date, 4); put(spLeft, gauge, 16); put(spLeft, roadCard, 11);
+                    put(spLeft, musicStrip, 25); put(spLeft, wideTalk, 8); put(spLeft, board, 100);
                     break;
                 }
                 // (his car photo, 26 Oct: the sides closer to the screen's edges and bigger, the map bigger — the room comes from the edges and the gaps)
