@@ -116,7 +116,9 @@ final class CarScreen extends FrameLayout {
     // ✨ ⑪ the special (26 Oct): Jarvis's card with his bubble, three wide buttons, the big player, the meter card with the
     // clock and three facts, his eight apps, the road; 🎛️ every choice in one place; the big player over the screen
     private final FrameLayout jCard, spRoadCard, bigBox;
-    private final LinearLayout spLeft, spMid, spRight, spMeter, spMeterTop, spClockCol, spInfo, spApps, spAppsHead, spAppsGrid;
+    private final LinearLayout spLeft, spMid, spRight, spMeter, spMeterTop, spClockCol, spInfo, spApps, spAppsHead, spAppsList;
+    private final android.widget.ScrollView spAppsScroll;
+    private List<Object[]> spAppsNow;
     private final TextView wideJ, wideHub, wideTalk, spAppsTitle, spAppsEdit, roadCaption;
     private final TextView[] infoChips = new TextView[3];
     private final List<LinearLayout> spAppCells = new ArrayList<>();
@@ -468,7 +470,7 @@ final class CarScreen extends FrameLayout {
         jCard = new FrameLayout(a);
         jCard.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (r0 - l0 != or - ol || b0 - t0 != ob - ot) main.post(this::sizeJCard); });
         wideJ = wide(a, "🧍 Jarvis సెట్టింగ్స్", () -> openHub("jarvis"));
-        wideHub = wide(a, "🎛️ అన్ని ఎంపికలు", () -> openHub(null));
+        wideHub = wide(a, "🎛️ అన్ని ఎంపికలు · సెట్టింగ్స్", () -> openHub(null));
         wideTalk = wide(a, "🎙️ Jarvis, మాట్లాడు", host::talk);
         spMeter = column(a);
         spMeter.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("meter"); return true; });
@@ -490,25 +492,16 @@ final class CarScreen extends FrameLayout {
         spAppsEdit.setOnClickListener(v -> tap(this::showApps));
         spAppsHead.addView(spAppsTitle, new LinearLayout.LayoutParams(0, -1, 1));
         spAppsHead.addView(spAppsEdit, new LinearLayout.LayoutParams(0, -1, 1));
-        spAppsGrid = column(a);
-        for (int r = 0; r < 2; r++) {
-            LinearLayout rr = row(a);
-            spAppsGrid.addView(rr, new LinearLayout.LayoutParams(-1, 0, 1));
-            for (int k = 0; k < 4; k++) {
-                LinearLayout cell = column(a);
-                cell.setGravity(Gravity.CENTER);
-                android.widget.ImageView iv = new android.widget.ImageView(a);
-                iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-                cell.addView(iv, new LinearLayout.LayoutParams(-1, 0, 74));
-                TextView lb = autoText(a, "", false, 18);
-                lb.setGravity(Gravity.CENTER);
-                cell.addView(lb, new LinearLayout.LayoutParams(-1, 0, 26));
-                rr.addView(cell, new LinearLayout.LayoutParams(0, -1, 1));
-                spAppCells.add(cell);
-            }
-        }
+        // (his wish, 26 Oct: three in a row, the rest in rows under them, scrolled up to see more)
+        spAppsScroll = new android.widget.ScrollView(a);
+        spAppsScroll.setVerticalScrollBarEnabled(false);
+        spAppsList = column(a);
+        spAppsScroll.addView(spAppsList, new android.widget.ScrollView.LayoutParams(-1, -2));
+        spAppsScroll.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> {
+            if (b0 - t0 != ob - ot && spAppsNow != null) main.post(() -> fillSpecialApps(spAppsNow)); // (two rows always in sight)
+        });
         spApps.addView(spAppsHead, new LinearLayout.LayoutParams(-1, 0, 16));
-        spApps.addView(spAppsGrid, new LinearLayout.LayoutParams(-1, 0, 84));
+        spApps.addView(spAppsScroll, new LinearLayout.LayoutParams(-1, 0, 84));
         spRoadCard = new FrameLayout(a);
         spRoadCard.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("car"); return true; });
         roadCaption = new TextView(a);
@@ -691,7 +684,8 @@ final class CarScreen extends FrameLayout {
         int h12 = h % 12 == 0 ? 12 : h % 12;
         clock.setText(String.format(Locale.ROOT, "%d:%02d", h12, m));
         clockFace.invalidate();
-        date.setText(HomeScreen.partOfDay(h) + " · " + DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)]);
+        date.setText(CarLayout.SPECIAL.equals(shape) ? DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)] // (⑪'s small clock card: the day and the date, whole)
+                : HomeScreen.partOfDay(h) + " · " + DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)]);
         boolean n = nightNow();
         if (n != night) { night = n; if (!dayNightCheck()) palette(); }
         nightLight();
@@ -800,7 +794,7 @@ final class CarScreen extends FrameLayout {
         hero.setIndicator(now < indicatorUntil ? indicatorDir : 0);
         hero.setRain(rainNow);
         if (CarLayout.SPECIAL.equals(shape)) { // ⑪'s road strip says it
-            String cap = s < 0 ? "🚗 GPS కోసం చూస్తున్నాను…" : s >= CarBox.MOVING_KMH ? "🚗 రోడ్డు కదులుతోంది · " + s + " కి.మీ/గం" : "🅿️ ఆగి ఉంది";
+            String cap = s < 0 ? "🚗 GPS కోసం చూస్తున్నాను…" : s >= CarBox.MOVING_KMH ? "🚗 రోడ్డు కదులుతోంది · " + s + " కి.మీ/గం" : "🚙 మీ కారు"; // (parked: Jarvis's line already says so)
             if (!cap.contentEquals(roadCaption.getText())) roadCaption.setText(cap);
         }
         if (over) { // 😟 once per stretch over the limit: a worried face, a look at the gauge beside him
@@ -865,6 +859,10 @@ final class CarScreen extends FrameLayout {
         stateText.setText(st);
         subText.setText(sub);
         subText.setMaxLines(moving ? 2 : 3);
+        if (subText.getParent() == jCard) { // ⑪: the bubble over Jarvis only with his words (what he hears / says), never the hint (his word, 26 Oct)
+            boolean words = !sub.isEmpty() && !sub.equals(hint()) && prefs.carTalkBubble();
+            subText.setVisibility(words ? VISIBLE : GONE);
+        }
     }
 
     /** How to call Jarvis right now: by name while the wake word's mic is open, else the steering wheel's button / 🎤. */
@@ -1571,11 +1569,12 @@ final class CarScreen extends FrameLayout {
         jCard.addView(portal, new FrameLayout.LayoutParams(-1, -1));
         jCard.addView(stateText, new FrameLayout.LayoutParams(1, 1, Gravity.TOP | Gravity.START));
         jCard.addView(subText, new FrameLayout.LayoutParams(1, -2, Gravity.TOP | Gravity.END));
-        subText.setVisibility(prefs.carTalkBubble() ? VISIBLE : GONE);
+        subText.setVisibility(GONE); // (showTalk shows it when he has words)
         if (look != null) stateText.setBackground(round(look.light ? 0xCCFFFFFF : 0x99060A10, CarTheme.withAlpha(accent, 0x88), 999));
         int pd = Math.max(4, Math.min(Math.max(W, 600), Math.max(H, 300)) / 70);
         stateText.setPadding(pd * 2, 0, pd * 2, 0);
         sizeJCard();
+        showTalk();
     }
 
     /** ⑪'s cards in the theme's colours: the glass, Jarvis's light and stage, the wide buttons, the facts, the apps, the players. */
@@ -1593,7 +1592,7 @@ final class CarScreen extends FrameLayout {
         }
         spAppsTitle.setTextColor(textMain);
         spAppsEdit.setTextColor(accent);
-        for (LinearLayout cell : spAppCells) ((TextView) cell.getChildAt(1)).setTextColor(textSoft);
+        if (spAppsNow != null) fillSpecialApps(spAppsNow); // (the colours of the theme now)
         roadCaption.setTextColor(look.light ? 0xFF0B1118 : Color.WHITE);
         if (stateText.getParent() == jCard) stateText.setBackground(round(look.light ? 0xCCFFFFFF : 0x99060A10, CarTheme.withAlpha(accent, 0x88), 999));
         for (CarPlayer cp : new CarPlayer[]{player, bigPlayer}) {
@@ -1614,7 +1613,7 @@ final class CarScreen extends FrameLayout {
             t.setLayoutParams(lp);
             t.setPadding(iq * 2, 0, iq * 2, 0);
         }
-        for (LinearLayout cell : spAppCells) cell.setPadding(iq / 2, iq / 2, iq / 2, iq / 2);
+
         roadCaption.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(11, H / 34f) * textScale);
         roadCaption.setPadding(cp, cp / 2, cp, 0);
         for (TextView t : new TextView[]{wideJ, wideHub, wideTalk}) t.setPadding(cp, 0, cp, 0);
@@ -1811,40 +1810,66 @@ final class CarScreen extends FrameLayout {
         main.postDelayed(bigGone, 40_000);
     }
 
-    /** ⑪'s eight apps: his favourites (the drawer's own list); the free places: ＋ (a tap: the apps, to add one). */
+    /** ⑪'s apps: all his favourites (the drawer's own list), three in a row, then ＋ (a tap: the apps, to add one). */
     private void specialApps() {
         final Context app = getContext().getApplicationContext();
         new Thread(() -> {
             List<Object[]> list;
             try { list = CarApps.list(app, prefs, true); } catch (Exception e) { list = new ArrayList<>(); }
             final List<Object[]> got = list;
-            main.post(() -> {
-                for (int i = 0; i < spAppCells.size(); i++) {
-                    LinearLayout cell = spAppCells.get(i);
-                    android.widget.ImageView iv = (android.widget.ImageView) cell.getChildAt(0);
-                    TextView lb = (TextView) cell.getChildAt(1);
-                    if (i < got.size()) {
-                        final Object[] x = got.get(i); // {package, label, icon, favourite}
-                        iv.setImageDrawable((android.graphics.drawable.Drawable) x[2]);
-                        lb.setText((String) x[1]);
-                        cell.setVisibility(VISIBLE);
-                        cell.setOnClickListener(v -> tap(() -> {
-                            Intent it = getContext().getPackageManager().getLaunchIntentForPackage((String) x[0]);
-                            if (it == null) { toast("తెరవలేకపోయాను"); return; }
-                            getContext().startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-                        }));
-                    } else if (i == got.size()) {
-                        iv.setImageDrawable(null);
-                        lb.setText("＋ జోడించు");
-                        cell.setVisibility(VISIBLE);
-                        cell.setOnClickListener(v -> tap(this::showApps));
-                    } else {
-                        cell.setVisibility(INVISIBLE);
-                        cell.setOnClickListener(null);
-                    }
-                }
-            });
+            main.post(() -> fillSpecialApps(got));
         }, "car-sp-apps").start();
+    }
+
+    /** The rows: three apps each, two rows in sight (the card's height), more rows scrolled up; the last place ＋. */
+    private void fillSpecialApps(List<Object[]> got) {
+        spAppsNow = got;
+        int h = spAppsScroll.getHeight();
+        if (h <= 0) return; // (laid out later: its own listener fills it then)
+        Context c = getContext();
+        int y = spAppsScroll.getScrollY();
+        spAppsList.removeAllViews();
+        spAppCells.clear();
+        int rowH = Math.max(1, h / 2), n = got.size() + 1, iq = Math.max(2, H / 160);
+        for (int i = 0; i < n; i += 3) {
+            LinearLayout row = row(c);
+            spAppsList.addView(row, new LinearLayout.LayoutParams(-1, rowH));
+            for (int k = i; k < i + 3; k++) {
+                if (k >= n) { row.addView(new View(c), new LinearLayout.LayoutParams(0, -1, 1)); continue; }
+                LinearLayout cell = column(c);
+                cell.setGravity(Gravity.CENTER);
+                cell.setPadding(iq, iq, iq, iq);
+                TextView lb = autoText(c, "", false, 18);
+                lb.setGravity(Gravity.CENTER);
+                lb.setTextColor(textSoft);
+                if (k < got.size()) {
+                    final Object[] x = got.get(k); // {package, label, icon, favourite}
+                    android.widget.ImageView iv = new android.widget.ImageView(c);
+                    iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                    iv.setImageDrawable((android.graphics.drawable.Drawable) x[2]);
+                    cell.addView(iv, new LinearLayout.LayoutParams(-1, 0, 72));
+                    lb.setText((String) x[1]);
+                    cell.setOnClickListener(v -> tap(() -> {
+                        Intent it = getContext().getPackageManager().getLaunchIntentForPackage((String) x[0]);
+                        if (it == null) { toast("తెరవలేకపోయాను"); return; }
+                        getContext().startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    }));
+                } else { // ＋: add one (the drawer, a long press there adds it)
+                    TextView plus = autoText(c, "＋", false, 40);
+                    plus.setGravity(Gravity.CENTER);
+                    plus.setTextColor(accent);
+                    plus.setBackground(round(look != null && look.light ? 0x14000000 : 0x14FFFFFF, CarTheme.withAlpha(accent, 0x66), 14));
+                    cell.addView(plus, new LinearLayout.LayoutParams(-1, 0, 72));
+                    lb.setText("జోడించు");
+                    cell.setOnClickListener(v -> tap(this::showApps));
+                }
+                cell.addView(lb, new LinearLayout.LayoutParams(-1, 0, 28));
+                cell.setOnLongClickListener(v -> { if (CarBox.moving()) return false; openHub("apps"); return true; });
+                row.addView(cell, new LinearLayout.LayoutParams(0, -1, 1));
+                spAppCells.add(cell);
+            }
+        }
+        spAppsScroll.post(() -> spAppsScroll.scrollTo(0, y));
     }
 
     /** ⑪'s three facts under the speed: how far the diesel goes, this trip's km, the way he goes. Every 2 s. */
@@ -2667,7 +2692,22 @@ final class CarScreen extends FrameLayout {
             return;
         }
         if (at == 0 || now - at > 3 * 3600_000L) { minis.setText(fuel); return; }
+        if (CarLayout.SPECIAL.equals(shape)) { minis.setText(skyIcon(sp.getInt("w_code", -1)) + " " + Math.round(sp.getFloat("w_temp", 0)) + "°"); return; } // (⑪: the sky's sign and the heat, whole)
         minis.setText("🌡️ " + Math.round(sp.getFloat("w_temp", 0)) + "° · " + HomeScreen.skyTe(sp.getInt("w_code", -1)) + (fuel.isEmpty() ? "" : "   " + fuel));
+    }
+
+    /** The sky as one sign (the weather code: open-meteo's WMO numbers). */
+    static String skyIcon(int code) {
+        if (code < 0) return "🌡️";
+        if (code == 0) return "☀️";
+        if (code <= 2) return "🌤️";
+        if (code == 3) return "☁️";
+        if (code == 45 || code == 48) return "🌫️";
+        if (code >= 51 && code <= 67) return "🌧️";
+        if (code >= 71 && code <= 77) return "❄️";
+        if (code >= 80 && code <= 82) return "🌦️";
+        if (code >= 95) return "⛈️";
+        return "🌡️";
     }
 
     private void fetchWeather() {
@@ -2939,7 +2979,8 @@ final class CarScreen extends FrameLayout {
                 put(content, right ? spRight : spLeft, right ? 25 : 24);
                 put(content, spMid, 51);
                 put(content, right ? spLeft : spRight, right ? 24 : 25);
-                put(spLeft, jCard, 34 * Math.min(j, 1.12f)); put(spLeft, tileGrid, 32); put(spLeft, wideJ, 7); put(spLeft, wideHub, 7); put(spLeft, wideTalk, 9); put(spLeft, chipRow, 6);
+                // (one 🎛️ button: 🧍 and 🎛️ opened the same choices — his word, 26 Oct; Jarvis's own page is its first part, and holding Jarvis opens it too)
+                put(spLeft, jCard, 38 * Math.min(j, 1.12f)); put(spLeft, tileGrid, 34); put(spLeft, wideHub, 9); put(spLeft, wideTalk, 10); put(spLeft, chipRow, 6);
                 put(spMid, carMap, 72); put(spMid, player, 28); put(spMid, board, 100);
                 put(spRight, spMeter, 37); put(spRight, roadCard, 11); put(spRight, spApps, 33); put(spRight, spRoadCard, 19);
                 put(spMeter, spMeterTop, 78); put(spMeter, spInfo, 22);

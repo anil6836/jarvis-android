@@ -78,7 +78,7 @@ final class CarHubSpec {
                         strNew("car_jarvis_ring", "💫 వెలిగే వలయాల వేదిక", CarDeck.RINGS, CarDeck.RING_NAMES, ""),
                         bool("car_welcome", "👋 స్వాగతం (కారు ఆన్ అయినప్పుడు)", true),
                         str("car_welcome_look", "🚗 స్వాగతం రూపం", CarStyle.WELCOMES, new String[]{"మామూలు", "నియాన్"}, ""),
-                        boolNew("car_talk_bubble", "💬 మాటల బుడగ (⑪)", true),
+                        boolNew("car_talk_bubble", "💬 మాటల బుడగ (⑪: Jarvis మాట్లాడినప్పుడే)", true),
                         strNew("car_jarvis_side", "↔️ Jarvis ఎటు వైపు (⑪)", CarDeck.SIDES, CarDeck.SIDE_NAMES, ""),
                         strNew("car_jarvis_glow", "🌟 Jarvis వెలుగు రంగు", CarDeck.GLOWS, CarDeck.GLOW_NAMES, ""),
                         info("voice", "🗣️ గొంతు: మీరు ఎంచుకున్నదే (ఇక్కడ మారదు)")),
