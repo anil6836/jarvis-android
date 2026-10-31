@@ -546,6 +546,7 @@ final class HomeScreen extends FrameLayout {
      * no one for 90 s → very low, Jarvis still in sight. A warm glass is over the screen at night.
      */
     private void applyLight() {
+        if (!running) return; // (🚗 the tablet's car screen over her screen: its own light; hers again at start)
         long now = System.currentTimeMillis();
         boolean dark = night || now < sleepUntil; // (after her good night, also before 10 pm: the night screen)
         boolean busy = body.rig.mode() != BodyRig.IDLE, recent = now - activeAt < (dark ? 90_000L : 5 * 60_000L);
@@ -615,6 +616,9 @@ final class HomeScreen extends FrameLayout {
         main.removeCallbacks(quickTick);
         hideFrame();
     }
+
+    /** Back from the tablet's car screen (it set the screen's light its own way): the next tick sets her light again. */
+    void relight() { lightNow = -2f; }
 
     /** The home screen on show now (main thread), for news from elsewhere (his phone: coming / gone). */
     private static volatile HomeScreen shown;

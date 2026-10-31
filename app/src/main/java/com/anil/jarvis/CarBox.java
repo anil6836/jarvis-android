@@ -30,8 +30,23 @@ final class CarBox {
     /** At or over this the car is moving: short words on the screen, no typing, no Settings. */
     static final int MOVING_KMH = 8;
 
+    /**
+     * 🚗 The home tablet showing the car screen (Anil, 31 Oct: every car build is looked at on the tablet first, then the
+     * car gets it). The tablet has no car under it: it stands still, or with its ▶️ it "drives" at a made-up town speed so
+     * the driving look can be seen. Written on the main thread by the tablet's screen; off everywhere else (the box, the phone).
+     */
+    static volatile boolean tab, tabDrive;
+    static volatile long tabDriveAt;
+
+    /** The tablet's ▶️ drive: a made-up 37–53 km/h, gently up and down (ms since ▶️). Pure. */
+    static int tabKmh(long ms) {
+        double t = Math.max(0, ms) / 1000.0;
+        return (int) Math.round(45 + 6 * Math.sin(t / 9.0) + 2 * Math.sin(t / 2.7));
+    }
+
     /** The speed now (km/h), or -1 when the GPS hasn't said anything for 20 seconds. */
     static int speed() {
+        if (tab) return tabDrive ? tabKmh(System.currentTimeMillis() - tabDriveAt) : 0;
         long at = DriveService.lastKmhAt;
         if (!DriveService.running || at == 0 || System.currentTimeMillis() - at > 20_000) return -1;
         return (int) Math.round(Math.max(0, DriveService.lastKmh));
@@ -39,6 +54,7 @@ final class CarBox {
 
     /** Moving now (or a moment ago: a signal's few seconds don't count as parked). */
     static boolean moving() {
+        if (tab) return tabDrive;
         int s = speed();
         return s >= MOVING_KMH || DriveService.lastMovingAt > 0 && System.currentTimeMillis() - DriveService.lastMovingAt < 15_000;
     }

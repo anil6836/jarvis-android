@@ -872,9 +872,11 @@ final class CarScreen extends FrameLayout {
         if (fv != null) fv.setRunning(false); // 🎬 every player lets go while the screen is away
     }
 
-    /** The activity is gone for good: the map's workers end. */
+    /** The activity is gone for good (or the tablet's car screen closed): the map's workers end. */
     void destroy() {
         stop();
+        destroyed = true;
+        main.removeCallbacksAndMessages(null); // (🚗 the tablet opens and closes this screen often: nothing of it runs on afterwards)
         carMap.shutdown();
         if (chase != null) { chase.close(); chase = null; }
         if (city != null) { city.close(); city = null; }
@@ -917,45 +919,49 @@ final class CarScreen extends FrameLayout {
     private final Runnable quick = new Runnable() {
         @Override public void run() {
             if (!running) return;
-            speed();
-            shapeCheck();
-            wayTick();
-            chaseTick();
-            cityTick();
-            if (carMap.shown()) {
-                Location l = DriveService.last;
-                boolean fresh = l != null && android.os.SystemClock.elapsedRealtimeNanos() - l.getElapsedRealtimeNanos() < 60_000_000_000L;
-                carMap.tick(fresh ? l : null, Drive.navState(), CarBox.speed(), DriveService.limitNowKmh);
-            }
-            awakeCheck();
-            boolean m = CarBox.moving();
-            if (m != wasMoving) {
-                long now = System.currentTimeMillis();
-                if (m && (stillSince == 0 || now - stillSince > 5 * 60_000L)) portal.body.rig.greet(); // 👋 off we go
-                if (!m) stillSince = now;
-                wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f); shapeBtn.setAlpha(m ? 0.35f : 1f);
-                if (m && settingSheet) closeSheet(); // (a look chooser left open: gone when the car moves)
-                if (m && typeBox != null) { typeBox.dismiss(); typeBox = null; } // (no typing while moving: ⑯'s 🔤 box goes)
-                if (m && hub.shown()) hub.hide(); // (🎛️ too)
-            }
-            glances();
-            portal.setBelted(m);
-            tripCount();
-            modeCheck();
-            roadCheck();
-            boardCheck();
-            saverCheck();
-            if (++ticks % 2 == 0) { musicCheck(); dialsCheck(); if (CarLayout.family(shape)) specialInfo(); }
-            if (ticks % 10 == 1) { driveCheck(); quietCheck(); }
+            if (!guarded(CarScreen.this::quickTick)) return;
             main.postDelayed(this, 1000);
         }
     };
+
+    private void quickTick() {
+        speed();
+        shapeCheck();
+        wayTick();
+        chaseTick();
+        cityTick();
+        if (carMap.shown()) {
+            Location l = DriveService.last;
+            boolean fresh = l != null && android.os.SystemClock.elapsedRealtimeNanos() - l.getElapsedRealtimeNanos() < 60_000_000_000L;
+            carMap.tick(fresh ? l : null, Drive.navState(), CarBox.speed(), DriveService.limitNowKmh);
+        }
+        awakeCheck();
+        boolean m = CarBox.moving();
+        if (m != wasMoving) {
+            long now = System.currentTimeMillis();
+            if (m && (stillSince == 0 || now - stillSince > 5 * 60_000L)) portal.body.rig.greet(); // 👋 off we go
+            if (!m) stillSince = now;
+            wasMoving = m; showTalk(); gear.setAlpha(m ? 0.35f : 1f); chat.setAlpha(m ? 0.35f : 1f); shapeBtn.setAlpha(m ? 0.35f : 1f);
+            if (m && settingSheet) closeSheet(); // (a look chooser left open: gone when the car moves)
+            if (m && typeBox != null) { typeBox.dismiss(); typeBox = null; } // (no typing while moving: ⑯'s 🔤 box goes)
+            if (m && hub.shown()) hub.hide(); // (🎛️ too)
+        }
+        glances();
+        portal.setBelted(m);
+        tripCount();
+        modeCheck();
+        roadCheck();
+        boardCheck();
+        saverCheck();
+        if (++ticks % 2 == 0) { musicCheck(); dialsCheck(); if (CarLayout.family(shape)) specialInfo(); }
+        if (ticks % 10 == 1) { driveCheck(); quietCheck(); }
+    }
 
     /** Every 20 seconds: the clock, the day / night colours, the chips, the weather (every half hour). */
     private final Runnable slow = new Runnable() {
         @Override public void run() {
             if (!running) return;
-            update();
+            if (!guarded(CarScreen.this::update)) return;
             main.postDelayed(this, 20_000);
         }
     };
@@ -1079,7 +1085,7 @@ final class CarScreen extends FrameLayout {
             if (!filmLoading) {
                 filmLoading = true;
                 final Context c = getContext().getApplicationContext();
-                photoWork.execute(() -> {
+                work(photoWork, () -> {
                     final FilmPack p = FilmPack.load(c.getFilesDir());
                     main.post(() -> { filmLoading = false; filmGen = g; filmPack = p; filmKind = ""; filmCheck(); });
                 });
@@ -3038,7 +3044,7 @@ final class CarScreen extends FrameLayout {
         toast("🔍 దగ్గరలో " + OsmPlaces.SIGNS[k] + " " + OsmPlaces.NAMES[k] + " వెతుకుతున్నాను…");
         final double la = l.getLatitude(), lo = l.getLongitude();
         final int ask = ++placesAsk;
-        placeWork.execute(() -> {
+        work(placeWork, () -> {
             List<OsmPlaces.Place> got = null;
             try { // (near first: Overpass answers in its own order, so a small circle finds the nearest; few there: wider)
                 got = OsmPlaces.parse(Drive.overpass(OsmPlaces.query(id, la, lo, 800)), id, la, lo, 12);
@@ -3102,7 +3108,7 @@ final class CarScreen extends FrameLayout {
         look3dKey = key;
         if (!"photo".equals(kind)) { if (chase != null) chase.view.setPhotos(null); if (city != null) city.setPhoto(null); return; }
         final Context app = getContext().getApplicationContext();
-        photoWork.execute(() -> { // (one at a time; a newer choice meanwhile: this one is dropped)
+        work(photoWork, () -> { // (one at a time; a newer choice meanwhile: this one is dropped)
             if (!key.equals(look3dKey)) return;
             CarPhotos3D.Set set = CarPhotos3D.load(app, prefs);
             main.post(() -> {
@@ -3116,6 +3122,31 @@ final class CarScreen extends FrameLayout {
     }
 
     private final java.util.concurrent.ExecutorService photoWork = java.util.concurrent.Executors.newSingleThreadExecutor();
+    /** destroy() was called: the pools are shut, no new work. */
+    private boolean destroyed;
+
+    /**
+     * 🚗 The home tablet's car screen (CarBox.tab): a fault in a tick must not take her home Jarvis down with it — this
+     * screen stops and tabFault (MainActivity: back to her home screen, the fault's words kept) runs. The box: as before.
+     */
+    static volatile java.util.function.Consumer<Throwable> tabFault;
+
+    private boolean guarded(Runnable r) {
+        if (!CarBox.tab) { r.run(); return true; }
+        try { r.run(); return true; }
+        catch (Throwable t) {
+            running = false;
+            java.util.function.Consumer<Throwable> f = tabFault;
+            if (f != null) f.accept(t);
+            return false;
+        }
+    }
+
+    /** Work off the screen's thread; after destroy() (a late answer posting back) quietly nothing. */
+    private void work(java.util.concurrent.ExecutorService ex, Runnable r) {
+        if (destroyed) return;
+        try { ex.execute(r); } catch (java.util.concurrent.RejectedExecutionException ignored) {}
+    }
 
     /** Every second on ⑯: his place into the 3D view, the lights, the speed arc, the banner. */
     private void chaseTick() {
@@ -4063,13 +4094,16 @@ final class CarScreen extends FrameLayout {
         }
         boolean linked = HomeLink.linked(c);
         rows.add(new String[]{"🕒 అమ్మగారికి నా రాక టైమ్"});
-        acts.add(() -> { if (!linked) host.speak(notLinked()); else confirm("అమ్మగారి టాబ్లెట్‌కి మీరు వచ్చే టైమ్ చెప్పనా?", this::eta); });
+        acts.add(() -> { if (CarBox.tab) host.speak(TAB_NOT_HERE); else if (!linked) host.speak(notLinked()); else confirm("అమ్మగారి టాబ్లెట్‌కి మీరు వచ్చే టైమ్ చెప్పనా?", this::eta); });
         rows.add(new String[]{"📢 ఇంటికి ఒక మాట"});
-        acts.add(() -> { if (!linked) host.speak(notLinked()); else host.ask("ఇంట్లో ఏమని వినిపించమంటారు " + prefs.name() + "?"); });
+        acts.add(() -> { if (CarBox.tab) host.speak(TAB_NOT_HERE); else if (!linked) host.speak(notLinked()); else host.ask("ఇంట్లో ఏమని వినిపించమంటారు " + prefs.name() + "?"); });
         openSheet("🏠 ఇల్లు", devs.isEmpty() ? "AC / ఫ్యాన్ బటన్ల కోసం: ⚙️ → స్మార్ట్ హోమ్ లో 'anil ac on = లింక్' లాంటి లైన్లు పెట్టండి." : null, rows, acts, 2);
     }
 
     private final java.util.Map<String, String> tagLinks = new java.util.HashMap<>();
+
+    /** 🚗 The home tablet's car screen: the car → home messages belong to the box (from here they would go to his phone). */
+    private static final String TAB_NOT_HERE = "ఇది కారు box నుంచి ఇంటికి మాత్రమే: టాబ్లెట్ కారులో పనిచేయదు.";
 
     private static String notLinked() { return "ఈ box ఇంకా ఇంటి లింక్‌తో కలవలేదు: ⚙️ → 🚗 → 📮 ఫోన్ ↔ కారు box లింక్ లో మీ bot token పెట్టండి."; }
 
@@ -4318,6 +4352,15 @@ final class CarScreen extends FrameLayout {
         if (sheetGone != null) main.removeCallbacks(sheetGone);
         sheetGone = this::closeSheet;
         main.postDelayed(sheetGone, 25_000);
+    }
+
+    /** ← on the home tablet's car screen: the 🎛️ page or a sheet over the screen closes first (true); nothing open: false. */
+    boolean backClose() {
+        if (ask.getVisibility() == VISIBLE) { if (askGone != null) main.removeCallbacks(askGone); ask.setVisibility(GONE); return true; }
+        if (bigBox.getVisibility() == VISIBLE) { bigShow(false); return true; }
+        if (hub.shown()) { hub.hide(); return true; }
+        if (sheet.getVisibility() == VISIBLE) { closeSheet(); return true; }
+        return false;
     }
 
     void closeSheet() {

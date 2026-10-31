@@ -3472,6 +3472,7 @@ public class SettingsActivity extends Activity {
             CarBubble.refresh();
             if (v && !Settings.canDrawOverlays(this)) Toast.makeText(this, "బుడగకి 'Display over other apps' అనుమతి కావాలి: Jarvis చెక్‌లో ఇవ్వండి", Toast.LENGTH_LONG).show();
         });
+        if (prefs.carMode()) { // (the box only: never her tablet's Home button)
         Switch home = toggle("🏠 Jarvis ని ఈ box హోమ్‌గా పెట్టు (Home బటన్ → Jarvis; మిగతా ఆప్స్: స్క్రీన్‌పై ▦)", CarApps.homeOn(this));
         home.setOnCheckedChangeListener((sw, v) -> {
             CarApps.setHome(this, v);
@@ -3482,6 +3483,7 @@ public class SettingsActivity extends Activity {
                 try { startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
             }
         });
+        }
         // ✨ his pictures' looks (25 Oct): the numbers' font, the cards, the icons, the equalizer's look, the welcome, Jarvis, ⑨'s dial
         TextView newHead = Ui.text(this, "✨ కొత్త రూపాలు (మీరు పంపిన బొమ్మల స్ఫూర్తితో, మన సొంత బొమ్మలు)", 15.5f, Ui.TEXT);
         newHead.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4));
@@ -5325,6 +5327,28 @@ public class SettingsActivity extends Activity {
         note("హాల్‌లో ఉంటే: Jarvis మాట్లాడేటప్పుడు TV సౌండ్ తగ్గుతుంది (స్మార్ట్ హోమ్ బాక్స్‌లో \"tv quiet = లింక్\", \"tv back = లింక్\" లైన్లు పెడితే). "
                 + "బెడ్‌రూమ్‌లో ఉంటే TV కంట్రోల్ ఆఫ్. స్క్రీన్ ఎప్పుడూ ఆరిపోదు: ఎవరూ లేనప్పుడు వెలుతురు తగ్గుతుంది, రాత్రి కంటికి ఇబ్బంది లేకుండా చాలా తక్కువగా, వెచ్చని రంగుతో ఉంటుంది.");
         pinSection();
+        section("🚗 టాబ్లెట్ కారు (కారు స్క్రీన్ ముందుగా ఇక్కడ)");
+        tabCarPart();
+    }
+
+    /**
+     * 🚗 The home tablet: the car screen of the car's box, here (Anil, 31 Oct: every car build is looked at on the tablet
+     * first; the car gets it when he turns the car on — its own updates never wait for this).
+     */
+    private void tabCarPart() {
+        note("కారు box లో ఉండే అదే కారు స్క్రీన్, ఈ టాబ్లెట్‌లో. కొత్త అప్డేట్ వచ్చినప్పుడు ముందు ఇక్కడ చూసి, నచ్చాక కారు ఆన్ చేసినప్పుడు box లో ఇన్‌స్టాల్ చేయండి "
+                + "(box అప్డేట్లు ఎప్పటిలాగే వస్తాయి, దీని కోసం ఆగవు). పైన 🚗 పట్టీలో ▶️ నొక్కితే కారు నడుస్తున్నట్టు చూపిస్తుంది. "
+                + "✕ లేదా ← నొక్కితే అమ్మగారి ఇంటి స్క్రీన్; 30 నిమిషాలు ఎవరూ తాకకపోతే తనంతట తానే ఇంటి స్క్రీన్. అమ్మగారి పనులు (భోజనం, టాబ్లెట్లు, సహాయం, అలారం, వీడియో కాల్), "
+                + "ఫోన్ కాల్, స్క్రీన్ ఆరిపోవడం, Jarvis వేరే మాట (రిమైండర్, మెసేజ్) చెప్పడం: వెంటనే ఇంటి స్క్రీన్. "
+                + "\"Jarvis\" అని పిలిస్తే: మీ గొంతు అని గుర్తుపడితేనే కారు స్క్రీన్‌లో వింటాడు, లేకపోతే అమ్మగారి వైపు. కారు స్క్రీన్‌లో మాట్లాడటానికి 🎙️ బటన్ నొక్కండి. "
+                + "అమ్మగారి ఇంటి Jarvis లో ఏదీ మారదు: ఇక్కడ మార్చిన Jarvis బట్టలు / చర్మం రంగు, సౌండ్ మీరు బయటికి రాగానే ఆవిడవి మళ్లీ. ఇక్కడ ఎంచుకునే కారు రూపాలు ఈ టాబ్లెట్‌వే (కారు box వి మారవు). "
+                + "ఇక్కడ రావు: నిజమైన స్పీడ్, Maps మలుపులు, కారు mic / speakers, నిద్ర అలర్ట్, కారు స్టార్ట్ స్వాగతం.");
+        button("🚗 కారు స్క్రీన్ తెరువు", v -> {
+            MainActivity.tabCarAllowedAt = android.os.SystemClock.uptimeMillis(); // (only this PIN-guarded button opens it)
+            startActivity(new Intent(this, MainActivity.class).putExtra(MainActivity.EXTRA_TAB_CAR, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            finish();
+        });
     }
 
     /** 🚗 The car Jarvis: this device is the Android box in his car (CarBox, CarScreen). Acts at once. */
@@ -5366,7 +5390,14 @@ public class SettingsActivity extends Activity {
                     .setNegativeButton("వద్దు", null)
                     .show();
         });
-        if (!prefs.carMode()) return;
+        if (!prefs.carMode()) {
+            if (prefs.homeMode()) { // 🚗 the home tablet: not the box, but the car screen is here too (its ⚙️ lands here)
+                note("ఈ టాబ్లెట్ కారు box కాదు (పై స్విచ్ వద్దు). కింద ఉన్నవి ఈ టాబ్లెట్ కారు స్క్రీన్‌కి మాత్రమే.");
+                tabCarPart();
+                carLookSection();
+            }
+            return;
+        }
         carLookSection(); // 🎨 the car screen's theme, his car's colour, the dance, Jarvis's look
         TextView st = Ui.text(this, "", 14, Ui.MUTED);
         st.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));

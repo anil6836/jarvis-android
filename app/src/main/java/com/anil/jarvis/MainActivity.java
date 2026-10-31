@@ -68,6 +68,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     static final String EXTRA_ASK = "jarvis_ask";
     /** From the car box's Home button (CarHomeActivity): the car screen, nothing else. */
     static final String EXTRA_CAR_HOME = "jarvis_car_home";
+    /** 🚗 The home tablet's Settings → "కారు స్క్రీన్ తెరువు": the car screen over her home screen (his look at a new build first). */
+    static final String EXTRA_TAB_CAR = "jarvis_tab_car";
+    /** The tablet's car screen goes back to her home screen by itself after this long untouched (Anil: 30 minutes). */
+    static final long TAB_CAR_IDLE_MS = 30 * 60_000L;
     /** From the features screen: what to show as his message for EXTRA_ASK, a request to finish typing, an action. */
     static final String EXTRA_LABEL = "jarvis_label", EXTRA_FILL = "jarvis_fill", EXTRA_DO = "jarvis_do";
     /** Open the document scanner (from the scan_document tool, possibly started from the Hey Jarvis panel). */
@@ -143,6 +147,16 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private FaceView face;             // Jarvis's face on the home screen (Settings → Jarvis ముఖం)
     private HomeScreen home;           // the home Jarvis's screen (a tablet at home), over the chat; null on the phone
     private CarScreen car;             // 🚗 the car Jarvis's screen (the car's Android box), over the chat; null elsewhere
+    /** 🚗 The home tablet showing the car screen over her home screen (tabCar): the root both sit in, the small bar on top. */
+    private FrameLayout homeRoot;
+    private boolean tabCar;
+    private long tabCarTouched;
+    /** He left the tablet's car screen by his own tap (its ⚙️, an app from its ▦): it waits for him; anything else closes it. */
+    private boolean tabCarOwnTrip;
+    /** Only the tablet's own ⚙️ button opens it (its PIN in front): set there just before, honoured once within 10 s. */
+    static volatile long tabCarAllowedAt;
+    private LinearLayout tabBar;
+    private TextView tabLabel, tabDriveKey, tabCloseKey;
     private FrameLayout faceBox;
     private TextView faceNote;         // 👁 while the front camera is watching
     private FaceSight sight;           // the front camera (only while the face is on the screen)
@@ -274,6 +288,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             f.addView(ui, new FrameLayout.LayoutParams(-1, -1));
             home = new HomeScreen(this, prefs, homeHost);
             f.addView(home, new FrameLayout.LayoutParams(-1, -1));
+            homeRoot = f; // (🚗 the tablet's car screen, when he opens it, goes over her home screen here)
+            CarBox.tab = false; // (a fresh screen: her home screen first, the car screen only when he opens it)
+            CarBox.tabDrive = false;
+            tabCarGiveBack(); // (her Jarvis's clothes / skin and the sound, if a tablet car screen was cut off)
             setContentView(f);
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
             homeNow = this;
@@ -322,7 +340,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         if (prefs.homeMode() != (home != null)) { recreate(); return; } // the home Jarvis was switched on / off in settings
-        if (prefs.carMode() != (car != null)) { recreate(); return; } // the car Jarvis was switched on / off in settings
+        if (prefs.carMode() != (car != null && !tabCar)) { recreate(); return; } // the car Jarvis was switched on / off in settings (🚗 the tablet's car screen is not that)
+        if (tabCar) { // (back from its own ⚙️ / an app he opened from it: he is still looking; long away: her screen)
+            if (tabCarOwnTrip) tabCarTouched = android.os.SystemClock.uptimeMillis();
+            tabCarOwnTrip = false;
+            if (android.os.SystemClock.uptimeMillis() - tabCarTouched > TAB_CAR_IDLE_MS) closeTabCar();
+        }
         if (car != null) car.themeChanged(); // (the theme, his colour, the dance choice, Jarvis's look: from Settings)
         if (car == null && CarApps.homeOn(this)) CarApps.setHome(this, false); // (car mode off: the box's own Home again; the phone never has it)
         paused = false;
@@ -343,7 +366,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (live == null && !busy) renderChat();
         syncWakeService();
         if (hudDash != null) hudDash.start();
-        if (home != null) home.start();
+        if (home != null && !tabCar) home.start(); // (🚗 the tablet's car screen over it: her screen rests until he leaves)
         if (car != null) car.start();
         if (home != null) HomeVideo.screenBack(this); // (back from her video call: the mic and the voice are Jarvis's again)
         UpdateJob.schedule(this); // "new version" notification when a build is out
@@ -400,6 +423,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onStop() {
         super.onStop();
+        if (tabCar) { // 🚗 the tablet's car screen went out of sight
+            if (android.os.SystemClock.uptimeMillis() - tabCarTouched < 5000) tabCarOwnTrip = true; // (his tap just now opened something: it waits)
+            else closeTabCar(); // (a call, her screens, the screen off: her home screen when the tablet comes back)
+        }
         if (home != null || car != null) return; // (the home / car Jarvis stays shown over the lock screen)
         if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(false);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
@@ -408,6 +435,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override protected void onDestroy() {
         if (homeNow == this) homeNow = null;
         if (car != null) car.destroy(); // (🗺️ the car map's workers end with this screen)
+        if (tabCar) { // (🚗 the tablet: no made-up speed left behind; her Jarvis's look and the sound as they were)
+            CarBox.tab = false; CarBox.tabDrive = false; CarScreen.tabFault = null;
+            main.removeCallbacks(tabCarIdle); main.removeCallbacks(tabBarFold);
+            tabCarGiveBack();
+        }
         if (home != null && home.gamesPanel() != null) home.gamesPanel().close(false); // (its far-game polling and timers end with this screen)
         Radio.dismissPicker();
         generation++; cutInflight(); // late replies (onReply) are dropped and the Brain stops running tools
@@ -433,6 +465,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (i.getBooleanExtra(EXTRA_CAR_HOME, false) || Intent.ACTION_MAIN.equals(i.getAction()) && i.hasCategory(Intent.CATEGORY_HOME)) { // 🏠 the box's Home button
             i.removeExtra(EXTRA_CAR_HOME);
             if (car != null) { car.closeSheet(); showCar(); }
+            return;
+        }
+        if (i.getBooleanExtra(EXTRA_TAB_CAR, false)) { // 🚗 the home tablet: he opened the car screen from ⚙️
+            i.removeExtra(EXTRA_TAB_CAR);
+            long at = tabCarAllowedAt;
+            tabCarAllowedAt = 0;
+            if (at > 0 && android.os.SystemClock.uptimeMillis() - at < 10_000) openTabCar(); // (only its PIN-guarded button; never a restore or another app)
             return;
         }
         // Opened from the launcher or by "Hey Google, open Jarvis": start listening right away.
@@ -507,7 +546,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
             }
         }
+        if (tabCar && wake && !HomeCare.ownerVoice(this)) closeTabCar(); // (🚗 not his own voice: her home screen and her way, at once)
         if (car != null && (wake || assist)) { car.closeSheet(); showCar(); } // (the car: its screen, then the usual "Jarvis" talk)
+        if (tabCar && (wake || assist)) { talking(true); beep(); main.postDelayed(this::startListening, 300); return; } // (🚗 his voice on the tablet's car screen)
         if (home != null && wake) { // the home tablet: "చెప్పండి అమ్మగారు?" and then he listens (his wish)
             HomeCare.life(this);
             homeHush(); // (she called "Jarvis" over his voice: he stops and listens)
@@ -1592,6 +1633,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onBackPressed() {
         if (liveScreen != null && liveScreen.showing()) { onLiveEnd(); return; } // like ChatGPT: back ends the voice chat
+        if (tabCar && car != null) { // 🚗 the tablet's car screen: the chat → the car screen; a page / sheet closes; then her home screen
+            if (car.getVisibility() != View.VISIBLE) { showCar(); return; }
+            if (car.backClose()) return;
+            closeTabCar();
+            return;
+        }
         if (home != null && home.getVisibility() != View.VISIBLE) { showHome(); return; } // the home Jarvis: back to its screen
         if (home != null) return; // (the home Jarvis's screen stays: it is the tablet's home)
         if (car != null && car.getVisibility() != View.VISIBLE) { showCar(); return; } // the car: back to its screen
@@ -1635,6 +1682,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         @Override public void talk() {
             if (live != null) { onLiveEnd(); return; } // (a Live talk: 🎤 again ends it)
             if (busy || voice.speaking || voice.listening) { onActionPressed(); return; } // (Jarvis talking / listening: stops, like the orb)
+            if (tabCar) { startListening(); return; } // (🚗 the tablet: the classic listen, so her care words still reach HomeCare)
             startConversation();
         }
         @Override public void ask(String text) { carSpeak(text, true); }
@@ -1654,6 +1702,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         }
         @Override public void openChat() {
             car.setVisibility(View.GONE);
+            if (tabBar != null) tabBar.setVisibility(View.GONE); // (🚗 the tablet's bar belongs to the car screen)
             fullScreen();
             main.removeCallbacks(backCar);
             main.postDelayed(backCar, 2 * 60_000L); // back to the car screen when the chat is left alone
@@ -1676,8 +1725,198 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (imm != null && input != null) imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
         } catch (Exception ignored) {}
         car.setVisibility(View.VISIBLE);
+        if (tabBar != null) { tabBar.setVisibility(View.VISIBLE); tabBar.bringToFront(); }
         fullScreen();
     }
+
+    // ---- 🚗 the home tablet's car screen (Anil, 31 Oct): every car build is looked at here first, the car gets it after.
+    // The same CarScreen as the box, over her home screen; her home Jarvis keeps its day (her care brings her screen back
+    // at once); the box and the phone are not touched, and the box's own updates never wait for this.
+
+    /** Opens the car screen over her home screen (from the tablet's ⚙️). */
+    private void openTabCar() {
+        if (home == null || homeRoot == null || isFinishing()) return;
+        main.removeCallbacks(backHome);
+        if (!tabCar) {
+            tabCar = true;
+            tabCarOwnTrip = false;
+            CarBox.tabDrive = false;
+            CarBox.tab = true;
+            tabCarKeep(); // (her Jarvis's clothes / skin and the sound: kept, given back when he leaves)
+            CarScreen.tabFault = t -> main.post(() -> tabCarFault(t));
+            try {
+                if (home.gamesPanel() != null) home.gamesPanel().close(false); // (a game left open on her screen ends: its timers too)
+                home.stop();
+                car = new CarScreen(this, prefs, carHost);
+                homeRoot.addView(car, new FrameLayout.LayoutParams(-1, -1));
+                tabBar = tabCarBar();
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+                lp.topMargin = Ui.dp(this, 4);
+                homeRoot.addView(tabBar, lp);
+                if (visible) car.start(); // (not shown yet: onResume starts it)
+            } catch (Throwable t) { tabCarFault(t); return; } // (the car screen could not be made here: her screen, untouched)
+        }
+        home.setVisibility(View.GONE);
+        showCar();
+        keepScreenOn();
+        tabCarTouched = android.os.SystemClock.uptimeMillis();
+        main.removeCallbacks(tabCarIdle);
+        main.postDelayed(tabCarIdle, 60_000L);
+        tabBarOpen();
+    }
+
+    /** Back to her home screen: the car screen and its made-up speed go, her screen and its light come back. */
+    private void closeTabCar() {
+        if (!tabCar) return;
+        tabCar = false;
+        tabCarOwnTrip = false;
+        main.removeCallbacks(tabCarIdle);
+        main.removeCallbacks(tabBarFold);
+        main.removeCallbacks(backCar);
+        CarBox.tabDrive = false;
+        CarBox.tab = false;
+        CarScreen.tabFault = null;
+        if (car != null) {
+            try { car.destroy(); } catch (Throwable ignored) {} // (whatever it was doing: her screen comes back regardless)
+            if (homeRoot != null) homeRoot.removeView(car);
+            car = null;
+        }
+        tabCarGiveBack();
+        if (tabBar != null) {
+            if (homeRoot != null) homeRoot.removeView(tabBar);
+            tabBar = null;
+            tabLabel = tabDriveKey = tabCloseKey = null;
+        }
+        try { // (the car screen's night light: the screen's own light until her screen sets hers)
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+            getWindow().setAttributes(lp);
+        } catch (Exception ignored) {}
+        if (home != null) {
+            home.relight();
+            home.setVisibility(View.VISIBLE);
+            if (visible) home.start(); // (away now: onResume starts it)
+        }
+        main.post(letScreenSleep);
+        fullScreen();
+    }
+
+    /** A fault in the car screen on her tablet: her screen back at once; the fault's words in the toast (and kept as tab_car_fault) for him to send. */
+    private void tabCarFault(Throwable t) {
+        String w = t == null ? "?" : t.getClass().getSimpleName() + (t.getMessage() == null ? "" : ": " + t.getMessage());
+        prefs.sp.edit().putString("tab_car_fault", w.length() > 300 ? w.substring(0, 300) : w).apply();
+        closeTabCar();
+        if (!tabCar && car == null && home != null) home.setVisibility(View.VISIBLE);
+        Toast.makeText(this, "🚗 టాబ్లెట్ కారు స్క్రీన్‌లో లోపం వచ్చింది: ఇంటి స్క్రీన్‌కి వచ్చాను. (" + w + ")", Toast.LENGTH_LONG).show();
+    }
+
+    /** Kept when he opens the tablet's car screen: her Jarvis's clothes and skin (the car's 🎛️ shares them) and the sound. */
+    private void tabCarKeep() {
+        android.content.SharedPreferences sp = prefs.sp;
+        if (sp.contains("tab_keep_on")) return; // (already kept: a second open keeps the first, hers)
+        android.content.SharedPreferences.Editor e = sp.edit().putBoolean("tab_keep_on", true)
+                .putString("tab_keep_look", sp.getString("body_look", "(none)"))
+                .putString("tab_keep_skin", sp.getString("body_skin", "(none)"));
+        try {
+            AudioManager am = getSystemService(AudioManager.class);
+            if (am != null) e.putInt("tab_keep_vol", am.getStreamVolume(AudioManager.STREAM_MUSIC));
+        } catch (Exception ignored) {}
+        e.apply();
+    }
+
+    /** Given back when he leaves (or the next time her screen starts, if the tablet car was cut off). */
+    private void tabCarGiveBack() {
+        android.content.SharedPreferences sp = prefs.sp;
+        if (!sp.getBoolean("tab_keep_on", false)) return;
+        android.content.SharedPreferences.Editor e = sp.edit();
+        for (String[] k : new String[][]{{"tab_keep_look", "body_look"}, {"tab_keep_skin", "body_skin"}}) {
+            String v = sp.getString(k[0], "(none)");
+            if ("(none)".equals(v)) e.remove(k[1]); else e.putString(k[1], v);
+        }
+        int vol = sp.getInt("tab_keep_vol", -1);
+        if (vol >= 0) try {
+            AudioManager am = getSystemService(AudioManager.class);
+            if (am != null && am.getStreamVolume(AudioManager.STREAM_MUSIC) != vol) am.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0);
+        } catch (Exception ignored) {}
+        e.remove("tab_keep_on").remove("tab_keep_look").remove("tab_keep_skin").remove("tab_keep_vol").apply();
+    }
+
+    /** Untouched for 30 minutes (and no talk going on): back to her home screen by itself. */
+    private final Runnable tabCarIdle = new Runnable() {
+        @Override public void run() {
+            if (!tabCar) return;
+            boolean talk = busy || live != null || voice.speaking || voice.listening;
+            if (!talk && android.os.SystemClock.uptimeMillis() - tabCarTouched > TAB_CAR_IDLE_MS) { closeTabCar(); return; }
+            main.postDelayed(this, 60_000L);
+        }
+    };
+
+    @Override public void onUserInteraction() {
+        super.onUserInteraction();
+        if (!tabCar) return;
+        tabCarTouched = android.os.SystemClock.uptimeMillis();
+        if (HomeAlarm.ringing()) { HomeAlarm.stop(); showHome(); } // (her alarm: a touch anywhere stops it, as on her screen)
+    }
+
+    /** The small bar on top of the tablet's car screen: 🚗 · ▶️ drive / 🅿️ stop · ✕ her home screen. Folds to 🚗 after a few seconds. */
+    private LinearLayout tabCarBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0xD90B1220);
+        bg.setCornerRadius(Ui.dp(this, 22));
+        bg.setStroke(Ui.dp(this, 1), 0x6682D4FF);
+        bar.setBackground(bg);
+        bar.setPadding(Ui.dp(this, 4), Ui.dp(this, 2), Ui.dp(this, 4), Ui.dp(this, 2));
+        bar.setElevation(Ui.dp(this, 12));
+        tabLabel = tabKey("🚗 టాబ్లెట్ కారు");
+        tabLabel.setOnClickListener(v -> tabBarOpen());
+        tabDriveKey = tabKey("");
+        tabDriveKey.setOnClickListener(v -> {
+            boolean on = !CarBox.tabDrive;
+            CarBox.tabDriveAt = System.currentTimeMillis();
+            CarBox.tabDrive = on;
+            Toast.makeText(this, on ? "▶️ కారు నడుస్తున్నట్టు (టాబ్లెట్‌లో చూపడానికి మాత్రమే)" : "🅿️ కారు ఆగినట్టు", Toast.LENGTH_SHORT).show();
+            tabBarOpen();
+        });
+        tabCloseKey = tabKey("✕ ఇంటి స్క్రీన్");
+        tabCloseKey.setOnClickListener(v -> closeTabCar());
+        bar.addView(tabLabel);
+        bar.addView(tabDriveKey);
+        bar.addView(tabCloseKey);
+        return bar;
+    }
+
+    private TextView tabKey(String text) {
+        TextView t = Ui.text(this, text, 14, 0xFFE8F1FF);
+        t.setGravity(Gravity.CENTER);
+        t.setMinHeight(Ui.dp(this, 40));
+        t.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), 0);
+        t.setSingleLine(true);
+        return t;
+    }
+
+    /** The bar opened out (its words), folding again after 8 s. */
+    private void tabBarOpen() {
+        if (tabBar == null || tabLabel == null) return;
+        tabLabel.setText("🚗 టాబ్లెట్ కారు");
+        tabDriveKey.setText(CarBox.tabDrive ? "🅿️ ఆపు" : "▶️ నడుస్తున్నట్టు");
+        tabDriveKey.setVisibility(View.VISIBLE);
+        tabCloseKey.setVisibility(View.VISIBLE);
+        tabBar.setAlpha(1f);
+        main.removeCallbacks(tabBarFold);
+        main.postDelayed(tabBarFold, 8000);
+    }
+
+    /** Folded: only 🚗 (▶️ beside it while it "drives"), faint, so the car screen under it shows. */
+    private final Runnable tabBarFold = () -> {
+        if (tabBar == null || tabLabel == null) return;
+        tabLabel.setText(CarBox.tabDrive ? "🚗 ▶️" : "🚗");
+        tabDriveKey.setVisibility(View.GONE);
+        tabCloseKey.setVisibility(View.GONE);
+        tabBar.setAlpha(0.7f);
+    };
 
     /** The car: Jarvis says this on the car screen (and with listen, waits for his answer). A talk going on: said by the background voice after it. */
     private void carSpeak(String text, boolean listen) { carSpeak(text, listen, 0); }
@@ -1770,6 +2009,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     static String homeGameHeard(String t) {
         MainActivity a = homeNow;
         if (a == null || a.home == null || a.isFinishing() || t == null) return null;
+        if (a.tabCar) return null; // (🚗 he is on the tablet's car screen: his words are the car's — its own 🎲 games)
         GamePanel p = a.home.gamesPanel();
         String id = Games.named(t);
         if (a.home.gamesOpen() && p != null) {
@@ -1961,7 +2201,10 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     static void homeWake() {
         MainActivity a = homeNow;
         if (a == null || a.home == null || a.isFinishing()) return;
-        a.main.post(a::wakeScreen);
+        a.main.post(() -> {
+            if (a.tabCar) a.showHome(); // (🚗 her alarm / her morning: her screen over the car screen, and its touch-to-stop)
+            a.wakeScreen();
+        });
     }
 
     /** Turns a sleeping screen on for a little while (then the day's keep-on, or the usual sleep at night). */
@@ -2004,6 +2247,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     /** HomeCare answered her words itself (offline too). */
     private void homeReply(String heard, String reply) {
+        if (tabCar) showHome(); // (🚗 her words answered by her care — a help call too: her screen at once)
         long now = System.currentTimeMillis();
         store.addChat("user", heard, false);
         addMessage("user", heard, now, null);
@@ -2056,6 +2300,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void showHome() {
         if (home == null) return;
+        if (tabCar) closeTabCar(); // (🚗 her care, her call, her game: her screen comes back over the car screen at once)
         main.removeCallbacks(backHome);
         try {
             android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
@@ -2443,7 +2688,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             String cr = cw == null ? null : car.wordsSaid(cw);
             if (cr != null) { localSay(prompt, cr); return; } // (null: not for this screen now: to Jarvis as before)
         }
-        if (home != null && prompt != null && !prompt.trim().isEmpty()) { // the home tablet: the day's AI limit (his key pays)
+        if (home != null && !tabCar && prompt != null && !prompt.trim().isEmpty()) { // the home tablet: the day's AI limit (his key pays; 🚗 his car-screen talk is not her day's)
             if (HomeCare.overLimit(this)) { homeReply(prompt, HomeCare.limitText(this)); return; }
             HomeCare.countAi(this);
         }
