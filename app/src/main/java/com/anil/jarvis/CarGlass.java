@@ -79,6 +79,7 @@ final class CarGlass {
                 boolean lt = l.light;
                 float in = Math.max(2, rad * 0.12f), rr = Math.min(rad, Math.min(b.width(), b.height()) / 2.2f);
                 q.set(b.left + in, b.top + in, b.right - in, b.bottom - in * 1.7f);
+                if (q.width() < 4 || q.height() < 4) return; // (too small to draw)
                 if (fresh || fill == null) {
                     fill = new LinearGradient(q.left, q.top, q.right, q.bottom, lt ? (tile ? new int[]{0xF2FFFFFF, 0xC4FFFFFF} : new int[]{0xD9FFFFFF, 0x9EFFFFFF})
                             : (tile ? new int[]{0x3DFFFFFF, 0x17FFFFFF} : new int[]{0x2EFFFFFF, 0x10FFFFFF}), null, Shader.TileMode.CLAMP);
@@ -91,8 +92,8 @@ final class CarGlass {
                 }
                 p.setShader(null);
                 p.setStyle(Paint.Style.FILL);
-                for (int k = 3; k >= 1; k--) { // (a soft shadow: three layers)
-                    p.setColor(lt ? alpha(0xFF6B5BB5, 7 * k) : alpha(0xFF000000, 26 * k));
+                for (int k = 2; k >= 1; k--) { // (a soft shadow: two layers)
+                    p.setColor(lt ? alpha(0xFF6B5BB5, 9 * k) : alpha(0xFF000000, 32 * k));
                     cv.drawRoundRect(q.left + k, q.top + in * 0.35f * k, q.right - k, q.bottom + in * 0.35f * k, rr, rr, p);
                 }
                 p.setShader(fill);
@@ -162,13 +163,14 @@ final class CarGlass {
                 int base = lt ? 0xFFEAEEF4 : 0xFF1F2534;
                 p.setShader(null);
                 p.setStyle(Paint.Style.FILL);
-                int[] dark = lt ? new int[]{0x0E, 0x18, 0x26} : new int[]{0x22, 0x40, 0x66};
-                int[] light = lt ? new int[]{0x55, 0x99, 0xEE} : new int[]{0x05, 0x08, 0x0C};
-                for (int k = 3; k >= 1; k--) {
-                    float o = d * k * 0.75f;
-                    p.setColor(alpha(lt ? 0xFF8E9BB3 : 0xFF000000, dark[3 - k]));
+                int[] dark = lt ? new int[]{0x14, 0x26} : new int[]{0x30, 0x66};
+                int[] light = lt ? new int[]{0x77, 0xEE} : new int[]{0x06, 0x0C};
+                if (q.width() < 4 || q.height() < 4) return;
+                for (int k = 2; k >= 1; k--) { // (two layers each way: soft enough, little to draw)
+                    float o = d * k * 1.1f;
+                    p.setColor(alpha(lt ? 0xFF8E9BB3 : 0xFF000000, dark[2 - k]));
                     cv.drawRoundRect(q.left + o, q.top + o, q.right + o, q.bottom + o, rr, rr, p);
-                    p.setColor(alpha(0xFFFFFFFF, light[3 - k]));
+                    p.setColor(alpha(0xFFFFFFFF, light[2 - k]));
                     cv.drawRoundRect(q.left - o * 0.8f, q.top - o * 0.8f, q.right - o * 0.8f, q.bottom - o * 0.8f, rr, rr, p);
                 }
                 p.setColor(base);
@@ -298,6 +300,9 @@ final class CarGlass {
         private final long t0 = SystemClock.uptimeMillis();
         private int state = OrbView.IDLE;
         private boolean low, on = true;
+        /** The ball's light and the thinking ring, made once per state and size (only the canvas moves each frame). */
+        private Shader ball, ring;
+        private int shaderKey = -1;
 
         void setState(int s) { if (s == state) return; state = s; invalidateSelf(); }
         int state() { return state; }
@@ -318,7 +323,13 @@ final class CarGlass {
             if (R < 3) return;
             float t = low ? 0 : (SystemClock.uptimeMillis() - t0) / 1000f;
             int c = orbColour(state);
-            float ball = R * 0.66f;
+            float ballR = R * 0.66f;
+            int key = state * 100000 + Math.round(R * 10);
+            if (key != shaderKey) { // (the ball drawn round (0, 0): its light the same every frame)
+                shaderKey = key;
+                ball = new RadialGradient(-ballR * 0.3f, -ballR * 0.35f, ballR * 1.4f, new int[]{lighten(c, 0.55f), c, darken(c, 0.55f)}, new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP);
+                ring = new SweepGradient(0, 0, new int[]{0xFFFF7AC6, 0xFFFFD166, 0xFF5EEAD4, 0xFF60A5FA, 0xFFA78BFA, 0xFFFF7AC6}, null);
+            }
             p.setStyle(Paint.Style.STROKE);
             p.setShader(null);
             if (state == OrbView.LISTENING) { // (rings going out)
@@ -326,14 +337,15 @@ final class CarGlass {
                     float ph = (t * 0.7f + k * 0.5f) % 1f;
                     p.setStrokeWidth(Math.max(1.5f, R * 0.06f));
                     p.setColor(alpha(c, Math.round((1 - ph) * 0xB0)));
-                    cv.drawCircle(cx, cy, ball + (R - ball) * ph, p);
+                    cv.drawCircle(cx, cy, ballR + (R - ballR) * ph, p);
                 }
             } else if (state == OrbView.THINKING) { // (a turning rainbow ring)
                 cv.save();
-                cv.rotate(t * 220f % 360f, cx, cy);
-                p.setShader(new SweepGradient(cx, cy, new int[]{0xFFFF7AC6, 0xFFFFD166, 0xFF5EEAD4, 0xFF60A5FA, 0xFFA78BFA, 0xFFFF7AC6}, null));
+                cv.translate(cx, cy);
+                cv.rotate(t * 220f % 360f);
+                p.setShader(ring);
                 p.setStrokeWidth(Math.max(2, R * 0.13f));
-                cv.drawCircle(cx, cy, R * 0.86f, p);
+                cv.drawCircle(0, 0, R * 0.86f, p);
                 p.setShader(null);
                 cv.restore();
             } else if (state == OrbView.SPEAKING) {
@@ -342,11 +354,13 @@ final class CarGlass {
                 cv.drawCircle(cx, cy, R * 0.9f, p);
             }
             p.setStyle(Paint.Style.FILL);
-            float breathe = state == OrbView.IDLE && !low ? 1f + 0.03f * (float) Math.sin(t * 2.1f) : 1f;
-            float br = ball * breathe;
-            p.setShader(new RadialGradient(cx - br * 0.3f, cy - br * 0.35f, br * 1.4f, new int[]{lighten(c, 0.55f), c, darken(c, 0.55f)}, new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
-            cv.drawCircle(cx, cy, br, p);
+            float br = ballR;
+            cv.save();
+            cv.translate(cx, cy);
+            p.setShader(ball);
+            cv.drawCircle(0, 0, br, p);
             p.setShader(null);
+            cv.restore();
             p.setColor(0xFFFFFFFF);
             if (state == OrbView.THINKING) { // (three dots)
                 for (int i = 0; i < 3; i++) {
@@ -364,7 +378,8 @@ final class CarGlass {
                 }
                 p.setStyle(Paint.Style.FILL);
             } else mic(cv, cx, cy, br * 0.5f);
-            if (!low && on) scheduleSelf(this, SystemClock.uptimeMillis() + (state == OrbView.IDLE ? 90 : 40));
+            unscheduleSelf(this); // (one next frame at a time, however often the button is drawn)
+            if (!low && on && state != OrbView.IDLE) scheduleSelf(this, SystemClock.uptimeMillis() + 66); // (at rest it stands still; moving: as Jarvis's own frames)
         }
 
         private void mic(Canvas cv, float cx, float cy, float s) {
@@ -410,6 +425,7 @@ final class CarGlass {
 
         @Override protected void onDraw(Canvas cv) {
             float w = getWidth(), h = getHeight();
+            if (w < 8 || h < 8) return;
             float ph = Math.min(h * 0.86f, w * 0.48f), pw = Math.min(w * 0.94f, ph * 2.1f);
             q.set((w - pw) / 2, (h - ph) / 2, (w + pw) / 2, (h + ph) / 2);
             float rr = ph / 2;
@@ -581,8 +597,12 @@ final class CarGlass {
 
         boolean listShown() { return "stack".equals(mode) && getWidth() > getHeight() * 1.25f; }
 
+        private float downX, downY;
+
         @Override public boolean onTouchEvent(MotionEvent e) {
-            if (e.getAction() == MotionEvent.ACTION_UP && tap != null) {
+            if (e.getAction() == MotionEvent.ACTION_DOWN) { downX = e.getX(); downY = e.getY(); }
+            float slop = 12 * getResources().getDisplayMetrics().density;
+            if (e.getAction() == MotionEvent.ACTION_UP && tap != null && Math.hypot(e.getX() - downX, e.getY() - downY) < slop) { // (a tap, not a swipe)
                 if (listShown() && e.getX() > splitX) {
                     for (int i = 0; i < nextAt.size(); i++) if (nextAt.get(i).contains(e.getX(), e.getY())) { tap.next(i); return true; }
                     return true;
@@ -767,6 +787,7 @@ final class CarGlass {
 
         @Override protected void onDraw(Canvas cv) {
             float w = getWidth(), h = getHeight();
+            if (w < 6 || h < 6) return;
             float th = Math.min(h * 0.7f, w * 0.5f), tw = Math.min(w, th * 1.9f);
             q.set(w - tw, (h - th) / 2, w, (h + th) / 2);
             p.setStyle(Paint.Style.FILL);

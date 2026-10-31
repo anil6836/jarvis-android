@@ -41,6 +41,23 @@ final class Mesh3D {
         put(cx, cy, cz, nx, ny, nz, r, g, b, mat);
     }
 
+    /**
+     * A smooth triangle: each corner its own normal (a curved surface lit softly, no facets). Wound counter-clockwise
+     * from the side its normals point to (swapped when it isn't), so the shader's "seen from behind" never flips it.
+     */
+    void triN(float[] a, float[] na, float[] b, float[] nb, float[] c, float[] nc, int rgb, float mat) {
+        float ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], wx = c[0] - a[0], wy = c[1] - a[1], wz = c[2] - a[2];
+        float gx = uy * wz - uz * wy, gy = uz * wx - ux * wz, gz = ux * wy - uy * wx;
+        if (gx * gx + gy * gy + gz * gz < 1e-14f) return;
+        float sx = na[0] + nb[0] + nc[0], sy = na[1] + nb[1] + nc[1], sz = na[2] + nb[2] + nc[2];
+        if (gx * sx + gy * sy + gz * sz < 0) { float[] t = b; b = c; c = t; t = nb; nb = nc; nc = t; }
+        grow(STRIDE * 3);
+        float r = ((rgb >> 16) & 0xFF) / 255f, g = ((rgb >> 8) & 0xFF) / 255f, bl = (rgb & 0xFF) / 255f;
+        put(a[0], a[1], a[2], na[0], na[1], na[2], r, g, bl, mat);
+        put(b[0], b[1], b[2], nb[0], nb[1], nb[2], r, g, bl, mat);
+        put(c[0], c[1], c[2], nc[0], nc[1], nc[2], r, g, bl, mat);
+    }
+
     private void put(float x, float y, float z, float nx, float ny, float nz, float r, float g, float b, float m) {
         v[n++] = x; v[n++] = y; v[n++] = z; v[n++] = nx; v[n++] = ny; v[n++] = nz; v[n++] = r; v[n++] = g; v[n++] = b; v[n++] = m;
     }

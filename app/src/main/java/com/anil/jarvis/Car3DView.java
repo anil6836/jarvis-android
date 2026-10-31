@@ -121,7 +121,7 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
 
     /** Our car: its kind, finish, headlight colour, glow under it ("" off, "blue", "pink"), paint (RGB). */
     void setCar(String kind, String finish, String head, String glow, int paintRgb) {
-        String k = Car3D.kindIndex(kind) < 0 ? "suv" : kind;
+        String k = Car3D.valid(kind) ? kind : "suv";
         int g = "blue".equals(glow) ? 0x2E8BFF : "pink".equals(glow) ? 0xFF3FA4 : 0;
         int pr = paintRgb & 0xFFFFFF;
         if (k.equals(this.kind) && finish.equals(this.finish) && head.equals(this.head) && g == glowRgb && pr == paint) return;
@@ -131,6 +131,18 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
     }
 
     /** His photos instead of our car (null: our car). */
+    private volatile String roof = "", rim = "";
+    private volatile boolean ledBar = true;
+
+    /** ㉑'s parts: the roof (the new cars: "" his colour, "black"), the rims' colour (CarRealRIMS), the LED bar at the back. */
+    void setParts(String roof, String rim, boolean ledBar) {
+        String r0 = roof == null ? "" : roof, r1 = rim == null ? "" : rim;
+        if (r0.equals(this.roof) && r1.equals(this.rim) && ledBar == this.ledBar) return;
+        this.roof = r0; this.rim = r1; this.ledBar = ledBar;
+        carGen++;
+        poke();
+    }
+
     void setPhotos(CarPhotos3D.Set s) {
         photos = s;
         usePhotos = s != null && s.any();
@@ -460,7 +472,7 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
             carGenGl = carGen;
             kindGl = kind;
             Vbo.free(carVbo); Vbo.free(neonVbo); Vbo.free(beamVbo); Vbo.free(underVbo);
-            carVbo = Vbo.of(Car3D.build(kindGl));
+            carVbo = Vbo.of(Car3D.build(kindGl, roof, rim, ledBar));
             neonVbo = Vbo.of(Car3D.neon(kindGl));
             beamVbo = Vbo.of(Car3D.beams(kindGl));
             Car3D.Size s = Car3D.size(kindGl);

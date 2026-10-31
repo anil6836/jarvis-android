@@ -21,6 +21,9 @@ final class Car3D {
     static final String[] GLOWS = {"", "blue", "pink"};
     static final String[] GLOW_NAMES = {"కింద వెలుగు: ఆఫ్", "🔵 నీలం", "🩷 గులాబీ"};
 
+    /** One of our cars: the six, or the four new real-look ones (㉑). Pure. */
+    static boolean valid(String k) { return kindIndex(k) >= 0 || CarReal.is(k); }
+
     static int kindIndex(String k) {
         for (int i = 0; i < KINDS.length; i++) if (KINDS[i].equals(k)) return i;
         return -1;
@@ -37,6 +40,7 @@ final class Car3D {
 
     /** The measurements of each kind (the cabin's places as parts of the length from the nose). Pure. */
     static Size size(String kind) {
+        if (CarReal.is(kind)) return CarReal.size(kind);
         switch (kind == null ? "" : kind) {
             case "sedan":   return new Size(4.40f, 1.76f, 1.46f, 0.31f, 2.62f, 0.16f, 0.84f, 0.80f, 0.86f, 0.30f, 0.43f, 0.68f, 0.82f);
             case "hatch":   return new Size(3.85f, 1.72f, 1.50f, 0.30f, 2.45f, 0.16f, 0.86f, 0.80f, 0.92f, 0.28f, 0.42f, 0.86f, 0.97f);
@@ -51,7 +55,12 @@ final class Car3D {
     static final int TYRE = 0x1B1D21, RIM = 0xC9CED6, HUB = 0x55606B, GRILLE = 0x15181D, PLATE = 0xEEF1F4, ARCH = 0x22262C, TRIM = 0x2A2F36, RAIL = 0xA8B0BA;
 
     /** One of our cars (unknown kind: the SUV). */
-    static Mesh3D build(String kind) {
+    static Mesh3D build(String kind) { return build(kind, "", "", true); }
+
+    /** The same with ㉑'s parts: the roof ("" / "black": the new cars), the rims' colour (CarReal.RIMS), the LED bar at the back (the new cars). */
+    static Mesh3D build(String kind, String roof, String rim, boolean ledBar) {
+        if (CarReal.is(kind)) return CarReal.build(kind, roof, rim, ledBar);
+        int rimRgb = rim == null || rim.isEmpty() ? RIM : CarReal.rimRgb(rim);
         String k = kindIndex(kind) < 0 ? "suv" : kind;
         Size s = size(k);
         Mesh3D m = new Mesh3D();
@@ -89,7 +98,7 @@ final class Car3D {
                 float xo = sd * (w2 - tw / 2 + 0.03f);
                 m.wheelX(xo, s.r, zw, s.r, tw, 18, TYRE, Mesh3D.M_MATTE);
                 float face = xo + sd * (tw / 2 + 0.004f);
-                m.discX(face, s.r, zw, s.r * 0.66f, 18, sd, RIM, Mesh3D.M_CHROME);
+                m.discX(face, s.r, zw, s.r * 0.66f, 18, sd, rimRgb, Mesh3D.M_CHROME);
                 m.discX(face + sd * 0.002f, s.r, zw, s.r * 0.22f, 10, sd, HUB, Mesh3D.M_MATTE);
                 spokes(m, face + sd * 0.003f, s.r, zw, s.r * 0.62f, sd);
                 // the dark arch, never above the body's edge over the wheel (a low car's tight arches: none)
@@ -139,7 +148,7 @@ final class Car3D {
 
     /** 💠 The neon edges (his "neon" finish): lines of light along the sills and the belt, and round the tail. */
     static Mesh3D neon(String kind) {
-        Size s = size(kindIndex(kind) < 0 ? "suv" : kind);
+        Size s = size(valid(kind) ? kind : "suv");
         Mesh3D m = new Mesh3D();
         float w2 = s.w / 2;
         for (int sd = -1; sd <= 1; sd += 2) {
@@ -169,7 +178,7 @@ final class Car3D {
      * road (drawn as added light: the shader fades them along their length).
      */
     static Mesh3D beams(String kind) {
-        Size s = size(kindIndex(kind) < 0 ? "suv" : kind);
+        Size s = size(valid(kind) ? kind : "suv");
         Mesh3D m = new Mesh3D();
         float zf = -s.l / 2, y = s.clear + (s.hood - s.clear) * 0.7f, hx = s.w / 2 - 0.3f, len = 14f, seg = 8;
         for (int sd = -1; sd <= 1; sd += 2) {

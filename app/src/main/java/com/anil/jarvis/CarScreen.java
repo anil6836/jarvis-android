@@ -165,7 +165,7 @@ final class CarScreen extends FrameLayout {
     private final List<CarGlass.Switch> switches = new ArrayList<>();
     private final List<TextView> switchWords = new ArrayList<>();
     private final CarGlass.Orb orb = new CarGlass.Orb();
-    private boolean orbShown;
+    private boolean orbShown, tiles20Was;
     private int orbSize;
     /** The song whose "next" list the stack player last asked for. */
     private String nextFor = "";
@@ -1190,7 +1190,7 @@ final class CarScreen extends FrameLayout {
         stateText.setText(st);
         subText.setText(sub);
         subText.setMaxLines(moving ? 2 : 3);
-        if (subText.getParent() == jCard || CarLayout.FULLMAP.equals(shape)) { // ⑪ ⑫ ⑭: the bubble over Jarvis only with his words (what he hears / says), never the hint (his word, 26 Oct); ⑬ under his wheel the same
+        if (subText.getParent() == jCard || CarLayout.FULLMAP.equals(shape) || CarLayout.SOFTWHITE.equals(shape)) { // ⑪ ⑫ ⑭: the bubble over Jarvis only with his words (what he hears / says), never the hint (his word, 26 Oct); ⑬ under his wheel the same
             boolean words = !sub.isEmpty() && !sub.equals(hint()) && prefs.carTalkBubble();
             subText.setVisibility(words ? VISIBLE : subText.getParent() == jCard ? GONE : INVISIBLE);
         }
@@ -1798,6 +1798,7 @@ final class CarScreen extends FrameLayout {
     /** 🎨 The screen's colour moves to the song picture's (0: back to the theme's) in a few soft steps. */
     private void artColourTo(int target) {
         final int seq = ++fadeSeq;
+        if (CarLayout.newLook(colourShape()) || CarLayout.CHASE.equals(colourShape()) && "white".equals(prefs.car16Hud())) { songAccent = 0; return; } // (⑰–⑳, ⑯'s white HUD: their own colours, never the song's)
         if (target == 0 || !prefs.carArtColour()) {
             if (songAccent != 0) { songAccent = 0; palette(); }
             return;
@@ -2394,8 +2395,8 @@ final class CarScreen extends FrameLayout {
                 boolean dark = "dark".equals(w[1]);
                 prefs.sp.edit().putString("car_new_night", dark ? "dark" : "").apply();
                 hubChanged("car_new_night");
-                if (CarLayout.NAVYGLASS.equals(shape)) return "⑱ ఎప్పుడూ ముదురు నీలమే. ⑰ ⑲ ⑳ లో " + (dark ? "రాత్రి" : "పగలు") + " రూపం పెట్టాను.";
-                if (!CarLayout.newLook(shape)) return "సరే, ⑰ ⑲ ⑳ కి " + (dark ? "రాత్రి" : "పగలు") + " రూపం పెట్టాను (ఈ ఆకారం ఎప్పటిలాగే).";
+                if (CarLayout.NAVYGLASS.equals(colourShape())) return "⑱ ఎప్పుడూ ముదురు నీలమే. ⑰ ⑲ ⑳ లో " + (dark ? "రాత్రి" : "పగలు") + " రూపం పెట్టాను.";
+                if (!CarLayout.newLook(colourShape())) return "సరే, ⑰ ⑲ ⑳ కి " + (dark ? "రాత్రి" : "పగలు") + " రూపం పెట్టాను (ఈ ఆకారం ఎప్పటిలాగే).";
                 return dark ? "సరే, రాత్రి రూపం పెట్టాను." : "సరే, పగలు రూపం పెట్టాను.";
             }
             case "src": {
@@ -2472,7 +2473,7 @@ final class CarScreen extends FrameLayout {
     }
 
     /** ⑪: the equalizer's bars start after the player's picture. */
-    private void playerEq() { eqDraw.setReach(0.8f, player.artRight()); }
+    private void playerEq() { eqDraw.setReach(0.8f, player.getOrientation() == LinearLayout.HORIZONTAL ? player.artRight() : 0); } // (standing: the bars across the card's foot)
 
     /** The map's car, its turn and its pictures from his choices now. */
     private void mapPrefs() { if (look != null) carMap.setLook(look); }
@@ -2484,14 +2485,15 @@ final class CarScreen extends FrameLayout {
     private void eqHome() {
         if (look == null) return;
         float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / 22f);
-        boolean sp = eqOnPlayer = CarLayout.family(shape) && player.getParent() != null && "old".equals(player.look()); // (the new looks draw their own music)
+        String pl = player.look();
+        boolean sp = eqOnPlayer = CarLayout.family(shape) && player.getParent() != null && !"round".equals(pl) && !"wave".equals(pl); // (round and wave draw their own music; the rest carry the bars)
         boolean floats = player.getParent() == g13Mid;
         android.graphics.drawable.Drawable[] withEq = floats ? new android.graphics.drawable.Drawable[]{scrim(rad), CarArt.glass(look, rad, false), eqDraw}
                 : new android.graphics.drawable.Drawable[]{CarArt.glass(look, rad, false), eqDraw};
         if (sp) {
             musicStrip.setBackground(CarArt.glass(look, rad, false));
             player.setBackground(new android.graphics.drawable.LayerDrawable(withEq)); // (made last: the bars draw here)
-            eqDraw.setReach(0.8f, player.artRight());
+            playerEq();
         } else {
             player.setBackground(CarArt.glass(look, rad, false));
             musicStrip.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{CarArt.glass(look, rad, false), eqDraw}));
@@ -2504,6 +2506,15 @@ final class CarScreen extends FrameLayout {
 
     /** ⑫'s glass and ⑭'s neon carry their own colours; every other shape his theme's. */
     private static String ownLook(String s) { return CarLayout.GLASS.equals(s) || CarLayout.NEON.equals(s) || CarLayout.CHASE.equals(s) || CarLayout.CITY.equals(s) || CarLayout.newLook(s) ? s : ""; }
+
+    /**
+     * Whose colours, as a key (a change: palette() again): the shape's own look; ⑳'s colours away from ⑳ (G2 beside
+     * Google Maps, ⑧'s stage, the trip's map) are its dark ones — its white tiles are only in ⑳ itself.
+     */
+    private String colourKeyNow() {
+        String cs = colourShape(), k = ownLook(cs);
+        return CarLayout.GLOWTILES.equals(cs) && !cs.equals(shape) ? k + "|away" : k;
+    }
 
     /** Our own 2D map card is on this shape (⑮ is a map itself: its own 3D map, never our 2D one under it). */
     private static boolean mapCard(String s) { return CarLayout.hasMap(s) && !CarLayout.CITY.equals(s); }
@@ -2724,7 +2735,7 @@ final class CarScreen extends FrameLayout {
             case CarLayout.SOFTWHITE:
                 put(content, g19C1, 25); put(content, g19C2, 19); put(content, g19C3, 21); put(content, g19C4, 35);
                 put(g19C1, clock, 28); put(g19C1, date, 8); put(g19C1, week, 20); put(g19C1, tileGrid, 44);
-                put(g19C2, jCard, 38 * jj); put(g19C2, wideTalk, 10); put(g19C2, carMap, 28); put(g19C2, gauge, 24);
+                put(g19C2, jCard, 34 * jj); put(g19C2, subText, 8); put(g19C2, wideTalk, 10); put(g19C2, carMap, 26); put(g19C2, gauge, 22); // (his words under the round window, as ⑬)
                 put(g19C3, clockFace, 46); put(g19C3, minis, 16); put(g19C3, wideHub, 12); put(g19C3, roadCard, 14); put(g19C3, chipRow, 12); put(g19C3, board, 100);
                 put(g19C4, player, 48); put(g19C4, spApps, 52);
                 week.today();
@@ -2752,6 +2763,10 @@ final class CarScreen extends FrameLayout {
     private void newLook(float rad) {
         String s = shape;
         boolean nl = CarLayout.newLook(s), tiles20 = CarLayout.GLOWTILES.equals(s);
+        boolean leftTiles = tiles20Was && !tiles20; // (out of ⑳ without the colours changing (G2, ⑧): the six's names and icons as the look has them)
+        tiles20Was = tiles20;
+        if (leftTiles) { for (View t : tiles) ((TextView) ((LinearLayout) t).getChildAt(1)).setTextColor(textMain); iconStyle(); }
+        for (View g : new View[]{minis, week, g17Rail, g17Switches, g18Cluster, g18Dock}) if (g.getBackground() != null) g.setBackground(null); // (each new look sets its own again below)
         for (int i = 0; i < tiles.size(); i++) { // (⑳: the six as white tiles with their own light; their names in navy pills)
             TextView lab = (TextView) ((LinearLayout) tiles.get(i)).getChildAt(1);
             if (tiles20) {
@@ -2799,7 +2814,14 @@ final class CarScreen extends FrameLayout {
                 clockFace.setColours(0xFFFFFFFF, 0xFFB8C2D6, accent);
                 jCard.setBackground(CarGlass.tile(look, rad, false, 0xFFA855F7));
                 gauge.setBackground(CarGlass.tile(look, rad, false, 0xFF22C55E));
-                player.setBackground(CarGlass.tile(look, rad, false, 0xFFEC4899));
+                android.graphics.drawable.Drawable pt = CarGlass.tile(look, rad, false, 0xFFEC4899);
+                player.setBackground(eqOnPlayer ? new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{pt, eqDraw}) : pt);
+                if (look.light) { // (on ⑳'s dark floor: 🎙️ on a white pill, the chips' words light)
+                    wideTalk.setBackground(CarGlass.pill(0xFFF7F9FD, CarTheme.withAlpha(accent, 0x88)));
+                    wideTalk.setTextColor(CarGlass.NAVY);
+                }
+                chips.setTextColor(0xFFB8C2D6);
+                for (TextView t : new TextView[]{shapeBtn, apps, chat, gear}) t.setTextColor(0xFFB8C2D6);
                 dayNight.setDark(CarDeck.newDark(s, prefs.carNewNight()));
                 break;
         }
@@ -2854,7 +2876,8 @@ final class CarScreen extends FrameLayout {
                 wideTalk.setCompoundDrawablesRelative(orb, null, null, null);
                 orbShown = true;
             }
-            wideTalk.setCompoundDrawablePadding(Math.max(4, sz / 4));
+            int padNow = Math.max(4, sz / 4);
+            if (wideTalk.getCompoundDrawablePadding() != padNow) wideTalk.setCompoundDrawablePadding(padNow);
             String w = CarGlass.orbWords(state);
             if (!w.contentEquals(wideTalk.getText())) wideTalk.setText(w);
         } else if (orbShown) {
@@ -2875,7 +2898,7 @@ final class CarScreen extends FrameLayout {
             org.json.JSONArray q = null;
             try { q = Music.queue(app); } catch (Exception ignored) {}
             final org.json.JSONArray got = q;
-            main.post(() -> player.setNext(got));
+            main.post(() -> { if (k.equals(nextFor)) player.setNext(got); }); // (an older song's list never over the new one's)
         }, "car-next").start();
     }
 
@@ -3048,6 +3071,7 @@ final class CarScreen extends FrameLayout {
         if (chase != null) {
             Car3DView v = chase.view;
             v.setCar(kind, prefs.sp.getString("car_3d_finish", ""), prefs.sp.getString("car_3d_head", ""), prefs.sp.getString("car_3d_glow", ""), prefs.carColour());
+            v.setParts(prefs.sp.getString("car_3d_roof", ""), prefs.sp.getString("car_3d_rim", ""), prefs.sp.getBoolean("car_3d_led", true)); // ㉑
             v.setSky(Cam3D.sky(prefs.sp.getString("car_3d_sky", ""), night));
             v.setLow(prefs.carLowMotion());
         }
@@ -3258,62 +3282,202 @@ final class CarScreen extends FrameLayout {
      * 🚗 ⑯'s car chooser (parked): our six cars and his photo car turning on a round floor; his colour, the finish, the
      * headlights, the glow under it. Each tap shows at once and is kept.
      */
+    /**
+     * ㉑ The garage (31 Oct, his "car chooser" pictures' style, our own): his car turning on a lit stage, ‹ › for the next
+     * car, tabs for the car, its colour, its wheels and its lights, a glass panel with that tab's choices, the cars in a row
+     * (our six, the four new real-look ones, his own photos), and "✓ ఇది పెట్టు": only that writes his choice (← leaves it
+     * as it was). Parked only (his words change the car any time).
+     */
     private void carPick3d() {
         if (!parkedOrSay()) return;
         Context c = getContext();
         closeSheet();
         settingSheet = true;
-        LinearLayout box = panel(tileBg, accent);
-        TextView title = autoText(c, "🚗 3D కారు ఎంచుకోండి (వేలితో తిప్పవచ్చు)", true, 48);
-        title.setGravity(Gravity.CENTER);
-        title.setTextColor(textMain);
-        box.addView(title, new LinearLayout.LayoutParams(-1, Math.max(1, H / 11)));
-        LinearLayout body = row(c);
+        final String[] g = {prefs.sp.getString("car_3d_kind", "suv"), prefs.sp.getString("car_3d_finish", ""), prefs.sp.getString("car_3d_head", ""),
+                prefs.sp.getString("car_3d_glow", ""), prefs.sp.getString("car_3d_roof", ""), prefs.sp.getString("car_3d_rim", ""), "", "car"};
+        final int[] col = {prefs.carColour()};
+        final boolean[] led = {prefs.sp.getBoolean("car_3d_led", true)};
+        LinearLayout box = panel(0xF40A0F1C, CarTheme.withAlpha(0xFF3B82F6, 0x88));
+        // ---- the top: ←, the car's name, the tabs, "parked only"
+        LinearLayout top = row(c);
+        TextView back = autoText(c, "‹", true, 44);
+        back.setGravity(Gravity.CENTER);
+        back.setTextColor(Color.WHITE);
+        back.setBackground(round(0x26FFFFFF, 0x33FFFFFF, 14));
+        back.setOnClickListener(x -> closeSheet()); // (← : nothing written)
+        top.addView(back, new LinearLayout.LayoutParams(0, -1, 6));
+        LinearLayout nameCol = column(c);
+        nameCol.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name = autoText(c, "", true, 40), about = autoText(c, "", false, 22);
+        for (TextView t : new TextView[]{name, about}) t.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        name.setTextColor(Color.WHITE);
+        about.setTextColor(0xFF9FB2C8);
+        nameCol.addView(name, new LinearLayout.LayoutParams(-1, 0, 62));
+        nameCol.addView(about, new LinearLayout.LayoutParams(-1, 0, 38));
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -1, 28);
+        nl.leftMargin = W / 80;
+        top.addView(nameCol, nl);
+        LinearLayout tabs = row(c);
+        tabs.setBackground(round(0x1FFFFFFF, 0x26FFFFFF, 999));
+        String[][] tabDefs = {{"🚗 కారు", "car"}, {"🎨 రంగు", "colour"}, {"⚙️ చక్రాలు", "wheels"}, {"💡 లైట్లు", "lights"}};
+        List<TextView> tabViews = new ArrayList<>();
+        top.addView(tabs, new LinearLayout.LayoutParams(0, -1, 46));
+        TextView park = autoText(c, "🅿️ కారు ఆగి ఉన్నప్పుడే", false, 22);
+        park.setGravity(Gravity.CENTER);
+        park.setTextColor(0xFFFFD166);
+        park.setBackground(round(0x26FFD166, 0x88FFD166, 999));
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(0, -1, 20);
+        pl.leftMargin = W / 80;
+        top.addView(park, pl);
+        box.addView(top, new LinearLayout.LayoutParams(-1, Math.max(1, H / 9)));
+        // ---- the middle: the turning car with ‹ ›, the glass panel
+        LinearLayout mid = row(c);
+        FrameLayout stage = new FrameLayout(c);
         final Car3DView v = new Car3DView(c);
-        v.setZOrderMediaOverlay(true); // (over ⑯'s own 3D view, which rests behind the sheet: two 3D views never hide each other)
+        v.setZOrderMediaOverlay(true); // (over ⑯'s own 3D view, which rests behind the sheet)
         v.setShowroom(true);
         v.setLow(prefs.carLowMotion());
         pickView = v;
         chaseShow(); // (the big 3D view rests while this one turns)
-        FrameLayout prev = new FrameLayout(c);
-        prev.setBackground(round(0xFF0B1018, CarTheme.withAlpha(accent, 0x66), 18));
-        prev.addView(v, new FrameLayout.LayoutParams(-1, -1));
-        body.addView(prev, new LinearLayout.LayoutParams(0, -1, 46));
+        stage.setBackground(round(0xFF070B14, CarTheme.withAlpha(0xFF38BDF8, 0x66), 18));
+        stage.addView(v, new FrameLayout.LayoutParams(-1, -1));
+        TextView prevCar = autoText(c, "‹", true, 44), nextCar = autoText(c, "›", true, 44);
+        TextView hint = autoText(c, "↻ వేలితో తిప్పి చూడండి", false, 22);
+        hint.setGravity(Gravity.CENTER);
+        hint.setTextColor(0xAAFFFFFF);
+        int ab = Math.max(36, H / 10);
+        for (TextView t : new TextView[]{prevCar, nextCar}) { t.setGravity(Gravity.CENTER); t.setTextColor(Color.WHITE); t.setBackground(round(0x40000000, 0x40FFFFFF, 999)); }
+        stage.addView(prevCar, new FrameLayout.LayoutParams(ab, ab, Gravity.START | Gravity.CENTER_VERTICAL));
+        stage.addView(nextCar, new FrameLayout.LayoutParams(ab, ab, Gravity.END | Gravity.CENTER_VERTICAL));
+        stage.addView(hint, new FrameLayout.LayoutParams(-1, Math.max(1, H / 18), Gravity.BOTTOM));
+        mid.addView(stage, new LinearLayout.LayoutParams(0, -1, 68));
         android.widget.ScrollView sc = new android.widget.ScrollView(c);
-        LinearLayout col = column(c);
-        sc.addView(col, new android.widget.ScrollView.LayoutParams(-1, -2));
-        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(0, -1, 54);
-        sl.leftMargin = W / 80;
-        body.addView(sc, sl);
-        box.addView(body, new LinearLayout.LayoutParams(-1, H * 58 / 100));
+        sc.setBackground(round(0x14FFFFFF, 0x26FFFFFF, 18));
+        LinearLayout side = column(c);
+        int sp = Math.max(6, H / 60);
+        side.setPadding(sp, sp, sp, sp);
+        sc.addView(side, new android.widget.ScrollView.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams scl = new LinearLayout.LayoutParams(0, -1, 32);
+        scl.leftMargin = W / 80;
+        mid.addView(sc, scl);
+        box.addView(mid, new LinearLayout.LayoutParams(-1, H * 50 / 100));
+        // ---- the bottom: the cars in a row, ✓ ఇది పెట్టు
+        LinearLayout bottom = row(c);
+        android.widget.HorizontalScrollView cars = new android.widget.HorizontalScrollView(c);
+        cars.setHorizontalScrollBarEnabled(false);
+        LinearLayout carRow = row(c);
+        cars.addView(carRow, new FrameLayout.LayoutParams(-2, -1));
+        bottom.addView(cars, new LinearLayout.LayoutParams(0, -1, 78));
+        TextView ok = autoText(c, "✓ ఇది పెట్టు", true, 36);
+        ok.setGravity(Gravity.CENTER);
+        ok.setTextColor(Color.WHITE);
+        GradientDrawable okBg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF3B82F6, 0xFF2563EB});
+        okBg.setCornerRadius(18);
+        ok.setBackground(okBg);
+        LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(0, -1, 22);
+        ol.leftMargin = W / 80;
+        bottom.addView(ok, ol);
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, H * 17 / 100);
+        bl.topMargin = H / 60;
+        box.addView(bottom, bl);
+
         Runnable[] refresh = new Runnable[1];
         refresh[0] = () -> {
-            String kind = prefs.sp.getString("car_3d_kind", "suv");
-            v.setCar("photo".equals(kind) ? "suv" : kind, prefs.sp.getString("car_3d_finish", ""), prefs.sp.getString("car_3d_head", ""), prefs.sp.getString("car_3d_glow", ""), prefs.carColour());
-            col.removeAllViews();
-            chips(col, "కారు", CarDeck.KIND_3D_NAMES, java.util.Arrays.asList(CarDeck.KINDS_3D).indexOf(kind), w -> { prefs.sp.edit().putString("car_3d_kind", CarDeck.KINDS_3D[w]).apply(); refresh[0].run(); });
-            int ci = 0;
-            for (int i = 0; i < CarTheme.CAR_COLOURS.length; i++) if (CarTheme.CAR_COLOURS[i] == prefs.carColour()) ci = i;
-            chips(col, "రంగు", CarTheme.CAR_COLOUR_NAMES, ci, w -> { prefs.sp.edit().putInt("car_colour", CarTheme.CAR_COLOURS[w]).apply(); refresh[0].run(); });
-            chips(col, "మెరుపు", Car3D.FINISH_NAMES, java.util.Arrays.asList(Car3D.FINISHES).indexOf(prefs.sp.getString("car_3d_finish", "")), w -> { prefs.sp.edit().putString("car_3d_finish", Car3D.FINISHES[w]).apply(); refresh[0].run(); });
-            chips(col, "హెడ్‌లైట్", Car3D.HEAD_NAMES, java.util.Arrays.asList(Car3D.HEADS).indexOf(prefs.sp.getString("car_3d_head", "")), w -> { prefs.sp.edit().putString("car_3d_head", Car3D.HEADS[w]).apply(); refresh[0].run(); });
-            chips(col, "కింద వెలుగు", Car3D.GLOW_NAMES, java.util.Arrays.asList(Car3D.GLOWS).indexOf(prefs.sp.getString("car_3d_glow", "")), w -> { prefs.sp.edit().putString("car_3d_glow", Car3D.GLOWS[w]).apply(); refresh[0].run(); });
-            if ("photo".equals(kind)) {
-                TextView note = autoText(c, CarPhotos3D.any(c) ? "📷 మీ కారు ఫోటోలతో: రోడ్డు మీద దగ్గరి వైపు ఫోటో వస్తుంది (ఇక్కడ బొమ్మ కారు చూపిస్తున్నాను)" : "📷 ఫోటోలు ఇంకా లేవు: ⚙️ → 📷 ⑯ 3D కోసం నా కారు ఫోటోలు", false, 26);
-                note.setTextColor(textSoft);
-                note.setMaxLines(3);
-                col.addView(note, new LinearLayout.LayoutParams(-1, -2));
+            String kind = g[0];
+            boolean real = CarReal.is(kind), photo = "photo".equals(kind);
+            v.setCar(photo ? "suv" : kind, g[1], g[2], g[3], col[0]);
+            v.setParts(g[4], g[5], led[0]);
+            int ki = Math.max(0, java.util.Arrays.asList(CarDeck.KINDS_3D).indexOf(kind));
+            name.setText(CarDeck.KIND_3D_NAMES[ki]);
+            Car3D.Size sz = Car3D.size(photo ? "suv" : kind);
+            about.setText(photo ? "మీ కారు ఫోటోలతో (రోడ్డు మీద · ఫోటోలు box లోనే)" : String.format(Locale.ROOT, "మన సొంత డిజైన్ · పొడవు %.2f m%s", sz.l, real ? " · రియల్ లుక్" : ""));
+            for (TextView t : tabViews) {
+                boolean on = g[7].equals(t.getTag());
+                t.setTextColor(on ? Color.WHITE : 0xFFB9C6D6);
+                if (on) { GradientDrawable tb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF3B82F6, 0xFF6366F1}); tb.setCornerRadius(999); t.setBackground(tb); }
+                else t.setBackground(null);
             }
-            chaseLook();
+            // the panel: the tab's choices
+            side.removeAllViews();
+            switch (g[7]) {
+                case "colour": {
+                    garageHead(side, "రంగు");
+                    swatches(side, CarTheme.CAR_COLOURS, CarTheme.CAR_COLOUR_NAMES, col[0], w -> { col[0] = CarTheme.CAR_COLOURS[w]; refresh[0].run(); });
+                    garageHead(side, "మెరుపు");
+                    chips(side, "", Car3D.FINISH_NAMES, java.util.Arrays.asList(Car3D.FINISHES).indexOf(g[1]), w -> { g[1] = Car3D.FINISHES[w]; refresh[0].run(); });
+                    break;
+                }
+                case "wheels":
+                    garageHead(side, "చక్రాలు (రిమ్ రంగు)");
+                    chips(side, "", CarReal.RIM_NAMES, Math.max(0, java.util.Arrays.asList(CarReal.RIMS).indexOf(g[5])), w -> { g[5] = CarReal.RIMS[w]; refresh[0].run(); });
+                    break;
+                case "lights":
+                    garageHead(side, "వెనక LED పట్టీ" + (real ? "" : " (కొత్త కార్లకే)"));
+                    chips(side, "", new String[]{"ఆన్", "ఆఫ్"}, led[0] ? 0 : 1, w -> { led[0] = w == 0; refresh[0].run(); });
+                    garageHead(side, "హెడ్‌లైట్");
+                    chips(side, "", Car3D.HEAD_NAMES, java.util.Arrays.asList(Car3D.HEADS).indexOf(g[2]), w -> { g[2] = Car3D.HEADS[w]; refresh[0].run(); });
+                    garageHead(side, "కింద వెలుగు (పాట బీట్‌తో)");
+                    chips(side, "", Car3D.GLOW_NAMES, java.util.Arrays.asList(Car3D.GLOWS).indexOf(g[3]), w -> { g[3] = Car3D.GLOWS[w]; refresh[0].run(); });
+                    break;
+                default: // the car
+                    garageHead(side, "పైకప్పు" + (real ? "" : " (కొత్త కార్లకే)"));
+                    chips(side, "", CarReal.ROOF_NAMES, Math.max(0, java.util.Arrays.asList(CarReal.ROOFS).indexOf(g[4])), w -> { g[4] = CarReal.ROOFS[w]; refresh[0].run(); });
+                    if (photo) {
+                        TextView note = autoText(c, CarPhotos3D.any(c) ? "📷 మీ కారు ఫోటోలతో: రోడ్డు మీద దగ్గరి వైపు ఫోటో వస్తుంది (ఇక్కడ బొమ్మ కారు)" : "📷 ఫోటోలు ఇంకా లేవు: 🎛️ → 🎮 3D → 📷 లో పెట్టండి", false, 24);
+                        note.setTextColor(0xFFB9C6D6);
+                        note.setMaxLines(3);
+                        side.addView(note, new LinearLayout.LayoutParams(-1, -2));
+                    }
+                    break;
+            }
+            // the cars' row
+            carRow.removeAllViews();
+            int cw = Math.max(80, W / 7), cp = Math.max(4, H / 90);
+            for (int i = 0; i < CarDeck.KINDS_3D.length; i++) {
+                final String k = CarDeck.KINDS_3D[i];
+                LinearLayout card = column(c);
+                card.setGravity(Gravity.CENTER);
+                boolean on = k.equals(kind);
+                card.setBackground(round(on ? 0x332563EB : 0x14FFFFFF, on ? 0xFF38BDF8 : 0x26FFFFFF, 16));
+                TextView pic = autoText(c, "photo".equals(k) ? "📷" : CarReal.is(k) ? "✨🚘" : "🚗", false, 40);
+                pic.setGravity(Gravity.CENTER);
+                pic.setTextColor(Color.WHITE);
+                TextView nm = autoText(c, CarDeck.KIND_3D_NAMES[i].replaceFirst("^\\S+\\s", ""), true, 22);
+                nm.setGravity(Gravity.CENTER);
+                nm.setMaxLines(2);
+                nm.setTextColor(on ? Color.WHITE : 0xFFB9C6D6);
+                card.addView(pic, new LinearLayout.LayoutParams(-1, 0, 52));
+                card.addView(nm, new LinearLayout.LayoutParams(-1, 0, 48));
+                card.setPadding(cp, cp, cp, cp);
+                card.setOnClickListener(x -> { sheetTouched(); g[0] = k; refresh[0].run(); });
+                LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(cw, -1);
+                clp.rightMargin = cp * 2;
+                carRow.addView(card, clp);
+            }
         };
+        for (String[] t : tabDefs) {
+            TextView tv = autoText(c, t[0], false, 26);
+            tv.setGravity(Gravity.CENTER);
+            tv.setTag(t[1]);
+            tv.setOnClickListener(x -> { sheetTouched(); g[7] = t[1]; refresh[0].run(); });
+            tabs.addView(tv, new LinearLayout.LayoutParams(0, -1, 1));
+            tabViews.add(tv);
+        }
+        prevCar.setOnClickListener(x -> { sheetTouched(); g[0] = CarDeck.KINDS_3D[(java.util.Arrays.asList(CarDeck.KINDS_3D).indexOf(g[0]) + CarDeck.KINDS_3D.length - 1) % CarDeck.KINDS_3D.length]; refresh[0].run(); });
+        nextCar.setOnClickListener(x -> { sheetTouched(); g[0] = CarDeck.KINDS_3D[(java.util.Arrays.asList(CarDeck.KINDS_3D).indexOf(g[0]) + 1) % CarDeck.KINDS_3D.length]; refresh[0].run(); });
+        ok.setOnClickListener(x -> { // (only this writes his choice)
+            if (!parkedOrSay()) return;
+            prefs.sp.edit().putString("car_3d_kind", g[0]).putString("car_3d_finish", g[1]).putString("car_3d_head", g[2]).putString("car_3d_glow", g[3])
+                    .putString("car_3d_roof", g[4]).putString("car_3d_rim", g[5]).putBoolean("car_3d_led", led[0]).putInt("car_colour", col[0]).apply();
+            closeSheet();
+            chaseLook();
+            mapPrefs();
+            toast("✓ " + name.getText() + " పెట్టాను");
+        });
         refresh[0].run();
-        TextView close = bigButton("✓ సరే", CarTheme.withAlpha(accent, 0x66));
-        close.setOnClickListener(x -> closeSheet());
-        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-1, Math.max(1, H / 10));
-        cl.topMargin = H / 60;
-        box.addView(close, cl);
         sheet.removeAllViews();
-        sheet.addView(box, panelParams());
+        FrameLayout.LayoutParams gp = new FrameLayout.LayoutParams(Math.max(1, roomW() * 96 / 100), -2, Gravity.CENTER);
+        sheet.addView(box, gp);
         sheet.setVisibility(VISIBLE);
         sheet.setOnClickListener(x -> closeSheet());
         sheet.bringToFront();
@@ -3321,12 +3485,42 @@ final class CarScreen extends FrameLayout {
         v.setRunning(true);
     }
 
+    /** A small heading in ㉑'s panel. */
+    private void garageHead(LinearLayout col, String t) {
+        TextView h = autoText(getContext(), t, true, 24);
+        h.setTextColor(0xFFDCE6F2);
+        col.addView(h, new LinearLayout.LayoutParams(-1, Math.max(1, H / 16)));
+    }
+
+    /** ㉑'s colours as round swatches (the chosen one ringed). */
+    private void swatches(LinearLayout col, int[] colours, String[] names, int now, java.util.function.IntConsumer pick) {
+        Context c = getContext();
+        int per = 5, d = Math.max(28, H / 12), gap = Math.max(4, H / 70);
+        LinearLayout r = null;
+        for (int i = 0; i < colours.length; i++) {
+            if (i % per == 0) { r = row(c); col.addView(r, new LinearLayout.LayoutParams(-1, d + gap * 2)); }
+            View sw = new View(c);
+            GradientDrawable dot = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{CarGlass.lighten(colours[i] | 0xFF000000, 0.35f), colours[i] | 0xFF000000});
+            dot.setShape(GradientDrawable.OVAL);
+            dot.setStroke(Math.max(2, d / 12), colours[i] == now ? 0xFF38BDF8 : 0x33FFFFFF);
+            sw.setBackground(dot);
+            sw.setContentDescription(names[i]);
+            final int w = i;
+            sw.setOnClickListener(x -> { sheetTouched(); pick.accept(w); });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(d, d);
+            lp.setMargins(gap, gap, gap, gap);
+            r.addView(sw, lp);
+        }
+    }
+
     /** A row of choices as chips (the chosen one lit), its name before it. */
     private void chips(LinearLayout col, String name, String[] names, int sel, java.util.function.IntConsumer pick) {
         Context c = getContext();
-        TextView h = autoText(c, name, true, 24);
-        h.setTextColor(textSoft);
-        col.addView(h, new LinearLayout.LayoutParams(-1, Math.max(1, H / 18)));
+        if (!name.isEmpty()) { // (㉑'s panel puts its own heading)
+            TextView h = autoText(c, name, true, 24);
+            h.setTextColor(textSoft);
+            col.addView(h, new LinearLayout.LayoutParams(-1, Math.max(1, H / 18)));
+        }
         android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
         hs.setHorizontalScrollBarEnabled(false);
         LinearLayout r = row(c);
@@ -3514,6 +3708,7 @@ final class CarScreen extends FrameLayout {
     private void setButtons() {
         sixKinds = CarDeck.sixFor(prefs.carButtonsFor(shape), shape); // (⑪ its own six)
         boolean quiet = CarBox.quiet(getContext());
+        switchesShow(); // (⑰'s 🔇 switch too)
         for (int i = 0; i < tiles.size() && i < 6; i++) {
             tileIcons.get(i).setKind(iconOf(sixKinds[i]));
             String label = CarDeck.buttonLabel(sixKinds[i]);
@@ -4349,7 +4544,7 @@ final class CarScreen extends FrameLayout {
         if (s.equals(shape)) return;
         if (!shape.isEmpty() && CarLayout.family(s)) specialFull = false; // (another shape: its own layout first, not the last one's ⤢; a relayout keeps it)
         shape = s;
-        if (!ownLook(colourShape()).equals(colourKey)) palette(); // (into / out of ⑫'s glass or ⑭'s neon: the colours again)
+        if (!colourKeyNow().equals(colourKey)) palette(); // (into / out of ⑫'s glass or ⑭'s neon: the colours again)
         for (LinearLayout g : new LinearLayout[]{content, leftCol, midCol, rightCol, wingLIn, wingRIn, panelIn, panelTop, centreCol, stageLeft, stageMid, sideTop, sideText,
                 clusterBox, clusterTop, clusterMid, clusterDock, railCol, dockMain, dockTop, dockCards, dockRow, spLeft, spMid, spRight, spMeter, spMeterTop, spClockCol,
                 g12Col, g12Top, g12Left, g12Mid, g12Right, g12Dock, g12DockEnd, g13Left, g13Right, g14Main, g14Side, g14Bottom,
@@ -4399,6 +4594,7 @@ final class CarScreen extends FrameLayout {
         player.setLook(specialFull ? "old" : pl); // (⑫: the song standing, round; ⑰–⑳ their own; or his pick)
         player.setWaveRest(CarLayout.SOFTWHITE.equals(s) ? CarGlass.YELLOW : 0);
         nextFor = ""; // (the stack's "next" list asked for again)
+        main.post(this::nextSongs);
         boolean deep = CarLayout.deep(s);
         rightOnly = false;
         float j = CarDeck.jarvisScale(prefs.carJarvis()); // (Jarvis smaller / bigger: his window's share of its column)
@@ -4543,7 +4739,7 @@ final class CarScreen extends FrameLayout {
                 put(rightCol, roadCard, 25); put(rightCol, tileGrid, 54); put(rightCol, musicStrip, 21);
                 fillTiles(tileGrid, 0, 6, 3);
         }
-        if ("analog".equals(prefs.carClock()) && clock.getParent() instanceof LinearLayout) { // 🕰️ the clock with hands where the clock sits
+        if ("analog".equals(prefs.carClock()) && clock.getParent() instanceof LinearLayout && !CarLayout.SOFTWHITE.equals(s)) { // 🕰️ the clock with hands where the clock sits (⑲ shows both already)
             LinearLayout par = (LinearLayout) clock.getParent();
             int idx = par.indexOfChild(clock);
             android.view.ViewGroup.LayoutParams lp = clock.getLayoutParams();
@@ -4698,6 +4894,7 @@ final class CarScreen extends FrameLayout {
         eqDraw.setCalm("dim".equals(prefs.carEqLevel()));
         player.setEq(beat.eq, prefs.carEq() && !low, "dim".equals(prefs.carEqLevel()), low); // (⑫'s music round the picture: the same choice)
         lights.setActive(prefs.carBeatLights() && !low && songNow && !saverOn);
+        switchesShow(); // (⑰'s switches show his words' changes too)
     }
 
     /** "Jarvis, ఈక్వలైజర్ ఆపు / మసకగా / పెట్టు", "బీట్ లైట్లు ఆపు / పెట్టు": done at once; what to say back. */
@@ -5089,7 +5286,7 @@ final class CarScreen extends FrameLayout {
     /** The theme's colours for the mode and the hour, put on everything. */
     private void palette() {
         String cs = colourShape();
-        colourKey = ownLook(cs);
+        colourKey = colourKeyNow();
         CarTheme th = CarTheme.of(CarDeck.themeFor(cs, prefs.carTheme(), prefs.car16Hud())); // (⑫ white glass, ⑭ neon: their own colours; ⑯'s HUDs theirs)
         boolean whiteNight = CarLayout.GLASS.equals(cs) && night && !CarDeck.glassDark(prefs.carGlassNight(), night); // (⑫ at night: white unless he chose dark)
         if (CarLayout.CHASE.equals(cs) && "white".equals(prefs.car16Hud())) { // ⑯'s white HUD: ⑰'s light glass, day and night (his choice)
@@ -5097,8 +5294,8 @@ final class CarScreen extends FrameLayout {
             look.night = night;
             look.card = th.card;
         } else if (CarLayout.newLook(cs)) { // ⑰ ⑱ ⑲ ⑳: their own colours and cards; their night only when he picks it (the hour never changes them)
-            boolean dark = CarDeck.newDark(cs, prefs.carNewNight());
-            look = th.look(mode, dark, 0, 0);
+            boolean dark = CarDeck.newDark(cs, prefs.carNewNight()) || CarLayout.GLOWTILES.equals(cs) && !cs.equals(shape); // (⑳ away from its tiles: its dark colours, readable on its dark floor)
+            look = th.look(CarLayout.SOFTWHITE.equals(cs) && dark ? CarTheme.DRIVING : mode, dark, 0, 0); // (⑲'s night: its yellow, never navy on dark)
             look.night = dark || night; // (the map and the car's lights still know it is night)
             look.card = th.card;
         } else {
