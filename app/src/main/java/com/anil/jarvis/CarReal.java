@@ -185,12 +185,22 @@ final class CarReal {
     /** Smooth normals of a loft (each point: the faces round it), outward. */
     private static float[][][] normals(Rings o) {
         int N = o.N, M = o.M;
-        float[][][] nr = new float[N + 1][M][3];
+        float[][][] nr = new float[N + 1][M][3], all = new float[N + 1][M][3];
         for (int i = 0; i < N; i++) for (int j = 0; j < M; j++) {
-            float[] a = o.p[i][j], b = o.p[i][(j + 1) % M], c = o.p[i + 1][j];
+            int j1 = (j + 1) % M;
+            float[] a = o.p[i][j], b = o.p[i][j1], c = o.p[i + 1][j];
             float ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], wx = c[0] - a[0], wy = c[1] - a[1], wz = c[2] - a[2];
             float nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
-            for (int[] k : new int[][]{{i, j}, {i, (j + 1) % M}, {i + 1, j}, {i + 1, (j + 1) % M}}) { nr[k[0]][k[1]][0] += nx; nr[k[0]][k[1]][1] += ny; nr[k[0]][k[1]][2] += nz; }
+            boolean wellFace = o.well[i][j] && o.well[i][j1] && o.well[i + 1][j] && o.well[i + 1][j1]; // (as emit() colours it)
+            for (int[] k : new int[][]{{i, j}, {i, j1}, {i + 1, j}, {i + 1, j1}}) {
+                all[k[0]][k[1]][0] += nx; all[k[0]][k[1]][1] += ny; all[k[0]][k[1]][2] += nz;
+                if (o.well[k[0]][k[1]] != wellFace) continue; // (the arch's step: the paint's light never mixed with the well's)
+                nr[k[0]][k[1]][0] += nx; nr[k[0]][k[1]][1] += ny; nr[k[0]][k[1]][2] += nz;
+            }
+        }
+        for (int i = 0; i <= N; i++) for (int j = 0; j < M; j++) { // (a corner with no face of its own part: all its faces)
+            float[] v = nr[i][j];
+            if (v[0] * v[0] + v[1] * v[1] + v[2] * v[2] < 1e-18f) { v[0] = all[i][j][0]; v[1] = all[i][j][1]; v[2] = all[i][j][2]; }
         }
         // outward: the top middle's normal points up (else every one turned round; the ring starts at the bottom middle)
         float flip = nr[N / 2][M / 2][1] < 0 ? -1 : 1;
@@ -307,7 +317,7 @@ final class CarReal {
         float yT = k.top.at(0.97f) - 0.13f, wr = W / 2 * k.width.at(1);
         float headY = k.top.at(0.035f) - 0.1f;
         int ti = ringSpanning(b, yT, true), hi = ringSpanning(b, headY, false);
-        float tailZ = edgeZ(b, yT, 0.06f, true) + 0.006f, headZ = edgeZ(b, headY, 0.05f, false) - 0.006f;
+        float tailZ = surfaceZ(b, ti, yT, true) + 0.006f, headZ = surfaceZ(b, hi, headY, false) - 0.004f; // (on the body at that very height)
         float wf = W / 2 * k.width.at(0);
         float tailW = Math.max(0.3f, halfWidthAt(b, ti, yT) * 0.96f), headW = Math.max(0.3f, halfWidthAt(b, hi, headY) * 0.96f);
         m.box(0, yT - 0.03f, tailZ - 0.004f, tailW * 2, 0.1f, 0.012f, 0x120306, Mesh3D.M_GLASS); // (a smoked lens band across the back)
@@ -338,6 +348,22 @@ final class CarReal {
         return m;
     }
 
+    /**
+     * 💠 The neon finish on our new cars: a line of light along each side's shoulder (the body's widest line, so it lies
+     * on the paint), front wheel to back. Pure.
+     */
+    static Mesh3D neon(String kindName) {
+        Kind k = kind(kindName);
+        Mesh3D m = new Mesh3D();
+        int seg = 18;
+        for (int sd = -1; sd <= 1; sd += 2) for (int i = 0; i < seg; i++) {
+            float u0 = 0.1f + 0.8f * i / seg, u1 = 0.1f + 0.8f * (i + 1) / seg, um = (u0 + u1) / 2;
+            float x = sd * (k.W / 2 * k.width.at(um) + 0.008f), y = k.shoulder.at(um), z0 = -k.L / 2 + u0 * k.L, z1 = -k.L / 2 + u1 * k.L;
+            m.box(x, y, (z0 + z1) / 2, 0.012f, 0.02f, z1 - z0 + 0.004f, 0, Mesh3D.M_NEON);
+        }
+        return m;
+    }
+
     /** The wheels' x: the tyre's outer face flush with the side. */
     private static float wx(Kind k, float u) { return k.W / 2 * k.width.at(u) * (1 - k.tuck * 0.45f) - 0.27f / 2 - 0.015f; }
 
@@ -361,6 +387,26 @@ final class CarReal {
             best = back ? Math.max(best, p[2]) : Math.min(best, p[2]);
         }
         return Math.abs(best) > 1e6f ? (back ? b.p[b.N][0][2] : b.p[0][0][2]) : best;
+    }
+
+    /**
+     * The body's real front (or back) at height y: between ring i (the outermost reaching y) and the next one out (which
+     * does not), where its top crosses y. Pure.
+     */
+    private static float surfaceZ(Rings b, int i, float y, boolean back) {
+        int o = back ? i + 1 : i - 1;
+        float zi = b.p[i][b.M / 2][2];
+        if (o < 0 || o > b.N) return zi;
+        float ti = top(b, i), to = top(b, o), zo = b.p[o][b.M / 2][2];
+        if (ti - to < 1e-4f || y <= to) return zi;
+        float f = Math.max(0, Math.min(1, (y - to) / (ti - to)));
+        return zo + (zi - zo) * f;
+    }
+
+    private static float top(Rings b, int i) {
+        float t = -Float.MAX_VALUE;
+        for (int j = 0; j < b.M; j++) t = Math.max(t, b.p[i][j][1]);
+        return t;
     }
 
     /** The body's half width at height y on ring i. */
@@ -476,8 +522,7 @@ final class CarReal {
         float nr = dx, nx = -dr; // (perpendicular to the profile, pointing out)
         float l = (float) Math.sqrt(nr * nr + nx * nx);
         if (l < 1e-9f) { nr = 1; nx = 0; l = 1; }
-        nr /= l; nx /= l;
-        if (nr < 0) { nr = -nr; nx = -nx; }
+        nr /= l; nx /= l; // (perpendicular to the profile: already pointing out)
         return new float[]{nx, nr * (float) Math.sin(a), nr * (float) Math.cos(a)};
     }
 }

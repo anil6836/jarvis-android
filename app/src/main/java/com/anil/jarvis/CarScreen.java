@@ -146,7 +146,7 @@ final class CarScreen extends FrameLayout {
     private final List<TextView> btn16 = new ArrayList<>();
     // ⑯'s HUDs (31 Oct): the neon racing one (a round map, the six on a thin strip, the racing meter) and the white ADAS one
     private final FrameLayout g16MapBox;
-    private final LinearLayout g16Btm, g16Info, g16InfoClock;
+    private final LinearLayout g16Btm, g16BtmL, g16Info, g16InfoClock;
     private final View g16GapL, g16GapM, g16GapB;
     private final Car16.Adas adas16;
     // 🏙️ stage 4 (27 Oct): ⑮ the 3D city map (MapLibre + OpenFreeMap) with ⑪'s parts round it (made only when ⑮ first shows)
@@ -661,6 +661,8 @@ final class CarScreen extends FrameLayout {
         g16Clock = row(a);
         g16MapBox = new FrameLayout(a);
         g16Btm = row(a);
+        g16BtmL = column(a);
+        g16MapBox.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (r0 - l0 != or - ol || b0 - t0 != ob - ot) main.post(this::mapBoxSize); });
         g16Info = row(a);
         g16InfoClock = column(a);
         g16GapL = new View(a);
@@ -2648,14 +2650,17 @@ final class CarScreen extends FrameLayout {
             put(g16Left, jCard, 34 * jj); put(g16Left, wideTalk, 8); put(g16Left, player, 19); put(g16Left, g16GapL, 5); put(g16Left, g16MapBox, 34);
             g16MapBox.addView(carMap, new FrameLayout.LayoutParams(1, 1, Gravity.CENTER)); // (its size: shapeSizes — round, as big as the box)
             carMap.setRoundMap(true);
-            put(g16Mid, banner16, 13); put(g16Mid, roadCard, 11); put(g16Mid, g16GapM, 46); put(g16Mid, g16Btm, 30); put(g16Mid, board, 100);
-            put(g16Btm, g16GapB, 68); put(g16Btm, gauge, 32);
-            put(g16Right, tileGrid, 80); put(g16Right, wideHub, 12); put(g16Right, chipRow, 8);
+            put(g16Mid, banner16, 13); put(g16Mid, roadCard, 11); put(g16Mid, g16GapM, 40); put(g16Mid, g16Btm, 36); put(g16Mid, board, 100);
+            put(g16Btm, g16BtmL, 68); put(g16Btm, gauge, 32);
+            put(g16BtmL, g16GapB, 64); put(g16BtmL, g16Btns, 36); // (⑯'s own 🔍 🏙️ 🔄 🌅 🚗 stay)
+            for (TextView t : btn16) put(g16Btns, t, 1);
+            put(g16Right, clock, 10); put(g16Right, tileGrid, 70); put(g16Right, wideHub, 12); put(g16Right, chipRow, 8);
             fillTiles(tileGrid, 0, 6, 1);
         } else {
             put(g16Row, g16Left, 22); put(g16Row, g16Mid, 56); put(g16Row, g16Right, 22);
             put(g16Left, jCard, 36 * jj); put(g16Left, wideTalk, 9); put(g16Left, tileGrid, 36); put(g16Left, wideHub, 9); put(g16Left, chipRow, 6);
-            put(g16Mid, adas16, 16); put(g16Mid, roadCard, 11); put(g16Mid, g16GapM, 73); put(g16Mid, board, 100);
+            put(g16Mid, adas16, 16); put(g16Mid, roadCard, 11); put(g16Mid, g16GapM, 61); put(g16Mid, g16Btns, 12); put(g16Mid, board, 100); // (⑯'s own buttons at the foot)
+            for (TextView t : btn16) put(g16Btns, t, 1);
             put(g16Right, player, 44); put(g16Right, carMap, 32); put(g16Right, g16Info, 24);
             put(g16Info, minis, 52); put(g16Info, g16InfoClock, 48);
             put(g16InfoClock, "analog".equals(cs) ? clockFace : clock, 62); put(g16InfoClock, date, 38);
@@ -2664,6 +2669,16 @@ final class CarScreen extends FrameLayout {
         specialApps();
         chaseLook();
         chaseShow();
+    }
+
+    /** ⑯'s racing HUD: the map round, as big as its box (measured) allows — a whole circle, never cut flat. */
+    private void mapBoxSize() {
+        if (carMap.getParent() != g16MapBox) return;
+        int w = g16MapBox.getWidth(), h = g16MapBox.getHeight();
+        int ms = w > 0 && h > 0 ? Math.min(w, h) - 4 : Math.max(1, Math.min(Math.round(W * 0.2f), Math.round(H * 0.28f)));
+        android.view.ViewGroup.LayoutParams lp = carMap.getLayoutParams();
+        if (lp != null && lp.width == ms && lp.height == ms) return;
+        carMap.setLayoutParams(new FrameLayout.LayoutParams(Math.max(1, ms), Math.max(1, ms), Gravity.CENTER));
     }
 
     /** The next turn now (our free way's, else the Google Maps app's): {words, how far}; null: none. */
@@ -3070,8 +3085,8 @@ final class CarScreen extends FrameLayout {
         String kind = prefs.sp.getString("car_3d_kind", "suv");
         if (chase != null) {
             Car3DView v = chase.view;
-            v.setCar(kind, prefs.sp.getString("car_3d_finish", ""), prefs.sp.getString("car_3d_head", ""), prefs.sp.getString("car_3d_glow", ""), prefs.carColour());
-            v.setParts(prefs.sp.getString("car_3d_roof", ""), prefs.sp.getString("car_3d_rim", ""), prefs.sp.getBoolean("car_3d_led", true)); // ㉑
+            v.setCar(kind, prefs.sp.getString("car_3d_finish", ""), prefs.sp.getString("car_3d_head", ""), prefs.sp.getString("car_3d_glow", ""), prefs.carColour(),
+                    prefs.sp.getString("car_3d_roof", ""), prefs.sp.getString("car_3d_rim", ""), prefs.sp.getBoolean("car_3d_led", true)); // (㉑'s parts too: one rebuild at most)
             v.setSky(Cam3D.sky(prefs.sp.getString("car_3d_sky", ""), night));
             v.setLow(prefs.carLowMotion());
         }
@@ -3300,11 +3315,11 @@ final class CarScreen extends FrameLayout {
         LinearLayout box = panel(0xF40A0F1C, CarTheme.withAlpha(0xFF3B82F6, 0x88));
         // ---- the top: ←, the car's name, the tabs, "parked only"
         LinearLayout top = row(c);
-        TextView back = autoText(c, "‹", true, 44);
+        TextView back = autoText(c, "✕", true, 40);
         back.setGravity(Gravity.CENTER);
         back.setTextColor(Color.WHITE);
         back.setBackground(round(0x26FFFFFF, 0x33FFFFFF, 14));
-        back.setOnClickListener(x -> closeSheet()); // (← : nothing written)
+        back.setOnClickListener(x -> closeSheet()); // (✕: nothing written)
         top.addView(back, new LinearLayout.LayoutParams(0, -1, 6));
         LinearLayout nameCol = column(c);
         nameCol.setGravity(Gravity.CENTER_VERTICAL);
@@ -3337,6 +3352,7 @@ final class CarScreen extends FrameLayout {
         v.setZOrderMediaOverlay(true); // (over ⑯'s own 3D view, which rests behind the sheet)
         v.setShowroom(true);
         v.setLow(prefs.carLowMotion());
+        v.setOnTouchListener((vv, e) -> { sheetTouched(); return false; }); // (turning the car by finger keeps the garage open)
         pickView = v;
         chaseShow(); // (the big 3D view rests while this one turns)
         stage.setBackground(round(0xFF070B14, CarTheme.withAlpha(0xFF38BDF8, 0x66), 18));
@@ -3385,8 +3401,7 @@ final class CarScreen extends FrameLayout {
         refresh[0] = () -> {
             String kind = g[0];
             boolean real = CarReal.is(kind), photo = "photo".equals(kind);
-            v.setCar(photo ? "suv" : kind, g[1], g[2], g[3], col[0]);
-            v.setParts(g[4], g[5], led[0]);
+            v.setCar(photo ? "suv" : kind, g[1], g[2], g[3], col[0], g[4], g[5], led[0]); // (the mesh made again only for another car or its parts)
             int ki = Math.max(0, java.util.Arrays.asList(CarDeck.KINDS_3D).indexOf(kind));
             name.setText(CarDeck.KIND_3D_NAMES[ki]);
             Car3D.Size sz = Car3D.size(photo ? "suv" : kind);
@@ -3404,24 +3419,24 @@ final class CarScreen extends FrameLayout {
                     garageHead(side, "రంగు");
                     swatches(side, CarTheme.CAR_COLOURS, CarTheme.CAR_COLOUR_NAMES, col[0], w -> { col[0] = CarTheme.CAR_COLOURS[w]; refresh[0].run(); });
                     garageHead(side, "మెరుపు");
-                    chips(side, "", Car3D.FINISH_NAMES, java.util.Arrays.asList(Car3D.FINISHES).indexOf(g[1]), w -> { g[1] = Car3D.FINISHES[w]; refresh[0].run(); });
+                    chips(side, "", Car3D.FINISH_NAMES, java.util.Arrays.asList(Car3D.FINISHES).indexOf(g[1]), w -> { g[1] = Car3D.FINISHES[w]; refresh[0].run(); }, 0xFFDCE6F2);
                     break;
                 }
                 case "wheels":
                     garageHead(side, "చక్రాలు (రిమ్ రంగు)");
-                    chips(side, "", CarReal.RIM_NAMES, Math.max(0, java.util.Arrays.asList(CarReal.RIMS).indexOf(g[5])), w -> { g[5] = CarReal.RIMS[w]; refresh[0].run(); });
+                    chips(side, "", CarReal.RIM_NAMES, Math.max(0, java.util.Arrays.asList(CarReal.RIMS).indexOf(g[5])), w -> { g[5] = CarReal.RIMS[w]; refresh[0].run(); }, 0xFFDCE6F2);
                     break;
                 case "lights":
                     garageHead(side, "వెనక LED పట్టీ" + (real ? "" : " (కొత్త కార్లకే)"));
-                    chips(side, "", new String[]{"ఆన్", "ఆఫ్"}, led[0] ? 0 : 1, w -> { led[0] = w == 0; refresh[0].run(); });
+                    chips(side, "", new String[]{"ఆన్", "ఆఫ్"}, led[0] ? 0 : 1, w -> { led[0] = w == 0; refresh[0].run(); }, 0xFFDCE6F2);
                     garageHead(side, "హెడ్‌లైట్");
-                    chips(side, "", Car3D.HEAD_NAMES, java.util.Arrays.asList(Car3D.HEADS).indexOf(g[2]), w -> { g[2] = Car3D.HEADS[w]; refresh[0].run(); });
+                    chips(side, "", Car3D.HEAD_NAMES, java.util.Arrays.asList(Car3D.HEADS).indexOf(g[2]), w -> { g[2] = Car3D.HEADS[w]; refresh[0].run(); }, 0xFFDCE6F2);
                     garageHead(side, "కింద వెలుగు (పాట బీట్‌తో)");
-                    chips(side, "", Car3D.GLOW_NAMES, java.util.Arrays.asList(Car3D.GLOWS).indexOf(g[3]), w -> { g[3] = Car3D.GLOWS[w]; refresh[0].run(); });
+                    chips(side, "", Car3D.GLOW_NAMES, java.util.Arrays.asList(Car3D.GLOWS).indexOf(g[3]), w -> { g[3] = Car3D.GLOWS[w]; refresh[0].run(); }, 0xFFDCE6F2);
                     break;
                 default: // the car
                     garageHead(side, "పైకప్పు" + (real ? "" : " (కొత్త కార్లకే)"));
-                    chips(side, "", CarReal.ROOF_NAMES, Math.max(0, java.util.Arrays.asList(CarReal.ROOFS).indexOf(g[4])), w -> { g[4] = CarReal.ROOFS[w]; refresh[0].run(); });
+                    chips(side, "", CarReal.ROOF_NAMES, Math.max(0, java.util.Arrays.asList(CarReal.ROOFS).indexOf(g[4])), w -> { g[4] = CarReal.ROOFS[w]; refresh[0].run(); }, 0xFFDCE6F2);
                     if (photo) {
                         TextView note = autoText(c, CarPhotos3D.any(c) ? "📷 మీ కారు ఫోటోలతో: రోడ్డు మీద దగ్గరి వైపు ఫోటో వస్తుంది (ఇక్కడ బొమ్మ కారు)" : "📷 ఫోటోలు ఇంకా లేవు: 🎛️ → 🎮 3D → 📷 లో పెట్టండి", false, 24);
                         note.setTextColor(0xFFB9C6D6);
@@ -3475,6 +3490,7 @@ final class CarScreen extends FrameLayout {
             toast("✓ " + name.getText() + " పెట్టాను");
         });
         refresh[0].run();
+        sheetTouched(); // (the garage closes by itself only after a while untouched)
         sheet.removeAllViews();
         FrameLayout.LayoutParams gp = new FrameLayout.LayoutParams(Math.max(1, roomW() * 96 / 100), -2, Gravity.CENTER);
         sheet.addView(box, gp);
@@ -3514,7 +3530,10 @@ final class CarScreen extends FrameLayout {
     }
 
     /** A row of choices as chips (the chosen one lit), its name before it. */
-    private void chips(LinearLayout col, String name, String[] names, int sel, java.util.function.IntConsumer pick) {
+    private void chips(LinearLayout col, String name, String[] names, int sel, java.util.function.IntConsumer pick) { chips(col, name, names, sel, pick, textMain); }
+
+    /** The same with the words' colour of the panel it sits on (㉑'s dark panel: light words on any look). */
+    private void chips(LinearLayout col, String name, String[] names, int sel, java.util.function.IntConsumer pick, int ink) {
         Context c = getContext();
         if (!name.isEmpty()) { // (㉑'s panel puts its own heading)
             TextView h = autoText(c, name, true, 24);
@@ -3530,7 +3549,7 @@ final class CarScreen extends FrameLayout {
             t.setText(names[i]);
             t.setGravity(Gravity.CENTER);
             t.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(12, H / 30f));
-            t.setTextColor(i == sel ? Color.WHITE : textMain);
+            t.setTextColor(i == sel ? Color.WHITE : ink);
             t.setBackground(round(i == sel ? CarTheme.withAlpha(accent, 0xCC) : CarTheme.withAlpha(accent, 0x26), CarTheme.withAlpha(accent, 0x88), 16));
             int p = Math.max(6, H / 70);
             t.setPadding(p * 2, p, p * 2, p);
@@ -3555,10 +3574,7 @@ final class CarScreen extends FrameLayout {
         }
         int pd = Math.max(4, Math.min(W, H) / 70);
         g12Dock.setPadding(pd, pd / 3, pd, pd / 3);
-        if (carMap.getParent() == g16MapBox) { // (⑯'s racing HUD: the map round, as big as its corner allows)
-            int ms = Math.max(1, Math.min(Math.round(W * 0.22f) - m * 4, Math.round(H * 0.34f) - m * 2));
-            carMap.setLayoutParams(new FrameLayout.LayoutParams(ms, ms, Gravity.CENTER));
-        }
+        mapBoxSize();
         if (player.getParent() == g13Mid) {
             int ph = Math.round(H * 0.21f);
             FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(-1, ph, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -3603,6 +3619,7 @@ final class CarScreen extends FrameLayout {
                     : new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT, wh ? new int[]{0x8CFFFFFF, 0x00FFFFFF} : new int[]{0xA6050A12, 0x00050A12}));
             if (wh) g16Info.setBackground(CarArt.glass(look, Math.max(10, Math.min(W, H) / 22f), false));
             if (gauge.getParent() == g16Btm) gauge.setBackground(null);
+            g16Btns.setBackground(ne || wh ? round(0xCC0A1220, CarTheme.withAlpha(accent, 0x66), 999) : null); // (the HUDs: ⑯'s buttons on their own dark pill)
             g16Dock.setBackground(round(0xD90A1220, CarTheme.withAlpha(accent, 0x66), 18));
             for (TextView t : btn16) t.setTextColor(0xFFFFFFFF);
             arc16.setAccent(accent);
@@ -4551,7 +4568,7 @@ final class CarScreen extends FrameLayout {
                 g16Row, g16Left, g16Mid, g16Right, g16Dock, g16Btns, g16Clock,
                 g15Row, g15Left, g15Mid, g15Right, g15Tools, g15Bottom, g15BottomRow, g15Chips1, g15Chips2,
                 g17Rail, g17Left, g17Mid, g17Top, g17Clock, g17Bottom, g17Right, g18Left, g18Main, g18Cluster, g18Status, g18Panels, g18Mid, g18Dock,
-                g19C1, g19C2, g19C3, g19C4, g20Col, g20Top, g20Clock, g20Pills, g20Row, g20Left, g20Mid, g20Right, g20Bottom, g16Btm, g16Info, g16InfoClock}) g.removeAllViews();
+                g19C1, g19C2, g19C3, g19C4, g20Col, g20Top, g20Clock, g20Pills, g20Row, g20Left, g20Mid, g20Right, g20Bottom, g16Btm, g16BtmL, g16Info, g16InfoClock}) g.removeAllViews();
         g16MapBox.removeAllViews();
         carMap.setRoundMap(false); // (⑯'s racing HUD only)
         if (chase != null && !CarLayout.CHASE.equals(s) && !CarLayout.CITY.equals(s)) chase.setShown(false); // (out of ⑯ (and ⑮'s 🎮): the 3D view rests)

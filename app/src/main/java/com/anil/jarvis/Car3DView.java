@@ -120,13 +120,22 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
     // ================================================================ what to show (main thread)
 
     /** Our car: its kind, finish, headlight colour, glow under it ("" off, "blue", "pink"), paint (RGB). */
-    void setCar(String kind, String finish, String head, String glow, int paintRgb) {
+    void setCar(String kind, String finish, String head, String glow, int paintRgb) { setCar(kind, finish, head, glow, paintRgb, roof, rim, ledBar); }
+
+    /**
+     * The car and ㉑'s parts at once (one rebuild at most): the mesh is made again only when the kind, the roof, the
+     * rims or the LED bar changed — the paint, the finish, the headlights and the glow are the shader's numbers.
+     */
+    void setCar(String kind, String finish, String head, String glow, int paintRgb, String roof, String rim, boolean ledBar) {
         String k = Car3D.valid(kind) ? kind : "suv";
         int g = "blue".equals(glow) ? 0x2E8BFF : "pink".equals(glow) ? 0xFF3FA4 : 0;
         int pr = paintRgb & 0xFFFFFF;
-        if (k.equals(this.kind) && finish.equals(this.finish) && head.equals(this.head) && g == glowRgb && pr == paint) return;
+        String r0 = roof == null ? "" : roof, r1 = rim == null ? "" : rim;
+        boolean mesh = !k.equals(this.kind) || !r0.equals(this.roof) || !r1.equals(this.rim) || ledBar != this.ledBar;
+        if (!mesh && finish.equals(this.finish) && head.equals(this.head) && g == glowRgb && pr == paint) return;
         this.kind = k; this.finish = finish == null ? "" : finish; this.head = head == null ? "" : head; glowRgb = g; paint = pr;
-        carGen++;
+        this.roof = r0; this.rim = r1; this.ledBar = ledBar;
+        if (mesh) carGen++;
         poke();
     }
 
@@ -135,13 +144,17 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
     private volatile boolean ledBar = true;
 
     /** ㉑'s parts: the roof (the new cars: "" his colour, "black"), the rims' colour (CarRealRIMS), the LED bar at the back. */
-    void setParts(String roof, String rim, boolean ledBar) {
-        String r0 = roof == null ? "" : roof, r1 = rim == null ? "" : rim;
-        if (r0.equals(this.roof) && r1.equals(this.rim) && ledBar == this.ledBar) return;
-        this.roof = r0; this.rim = r1; this.ledBar = ledBar;
-        carGen++;
-        poke();
-    }
+    void setParts(String roof, String rim, boolean ledBar) { setCar(kind, finish, head, glowName(), paint, roof, rim, ledBar); }
+
+    private String glowName() { return glowRgb == 0x2E8BFF ? "blue" : glowRgb == 0xFF3FA4 ? "pink" : ""; }
+
+    /** The last few cars made (the garage's taps back and forth: no making them again), on the GL thread only. */
+    private final java.util.LinkedHashMap<String, Mesh3D> meshes = new java.util.LinkedHashMap<String, Mesh3D>(4, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Mesh3D> e) { return size() > 3; }
+    };
+    /** The car's measurements now (made once per car, not each frame). */
+    private Car3D.Size sizeGl = Car3D.size("suv");
+    private final float[][] lightT = new float[9][], worldT = new float[9][];
 
     void setPhotos(CarPhotos3D.Set s) {
         photos = s;
@@ -341,8 +354,12 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0);
 
         // ---- the sky's light, eased towards his choice
-        skyNow = Cam3D.mix(skyNow, Cam3D.light(showroom ? Cam3D.DUSK : skyKind), Cam3D.ease(1.5f, dt));
-        worldNow = Cam3D.mix(worldNow, Cam3D.world(showroom ? Cam3D.DUSK : skyKind), Cam3D.ease(1.5f, dt)); // (a world's own colours, the same smooth way)
+        int sk = showroom ? Cam3D.DUSK : Math.max(0, Math.min(8, skyKind));
+        if (lightT[sk] == null) { lightT[sk] = Cam3D.light(sk); worldT[sk] = Cam3D.world(sk); }
+        float ek = Cam3D.ease(1.5f, dt);
+        Cam3D.mixInto(skyNow, lightT[sk], ek); // (in place: nothing new each frame)
+        Cam3D.mixInto(worldNow, worldT[sk], ek); // (a world's own colours, the same smooth way)
+        worldNow[10] = worldT[sk][10]; // (the windows' kind is a switch, not a colour: never half way)
         float[] wn = worldNow;
         float night = skyNow[14];
         GLES20.glClearColor(skyNow[10], skyNow[11], skyNow[12], 1);
@@ -397,7 +414,7 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
         boolean on = (now / 400) % 2 == 0; // (the indicators blink about once a second)
         GLES20.glUniform1f(uIndL, blink < 0 && on ? 1 : 0);
         GLES20.glUniform1f(uIndR, blink > 0 && on ? 1 : 0);
-        Car3D.Size cs = Car3D.size(kindGl);
+        Car3D.Size cs = sizeGl;
         GLES20.glUniform4f(uCar, carX - ex, carZ - ez, Cam3D.dirX(carH), Cam3D.dirZ(carH));
         GLES20.glUniform2f(uCarSize, cs.w / 2 + 0.35f, cs.l / 2 + 0.4f);
         GLES20.glUniform1f(uRain, rain ? 1 : 0);
@@ -472,10 +489,14 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
             carGenGl = carGen;
             kindGl = kind;
             Vbo.free(carVbo); Vbo.free(neonVbo); Vbo.free(beamVbo); Vbo.free(underVbo);
-            carVbo = Vbo.of(Car3D.build(kindGl, roof, rim, ledBar));
+            String mk = kindGl + "|" + roof + "|" + rim + "|" + ledBar;
+            Mesh3D car = meshes.get(mk);
+            if (car == null) { car = Car3D.build(kindGl, roof, rim, ledBar); meshes.put(mk, car); }
+            carVbo = Vbo.of(car);
             neonVbo = Vbo.of(Car3D.neon(kindGl));
             beamVbo = Vbo.of(Car3D.beams(kindGl));
             Car3D.Size s = Car3D.size(kindGl);
+            sizeGl = s;
             Mesh3D u = new Mesh3D();
             float sw = s.w / 2 + 0.35f, sl = s.l / 2 + 0.4f, gw = sw + 0.9f, gl = sl + 0.9f;
             u.quadFacing(new float[]{-sw, 0.01f, -sl}, new float[]{sw, 0.01f, -sl}, new float[]{sw, 0.01f, sl}, new float[]{-sw, 0.01f, sl}, 0, 1, 0, 0, Mesh3D.M_SHADOW);
@@ -833,7 +854,7 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
                     + "      col += uHead * pool * 0.55 * uNight;\n"
                     + "    } else col = c * lit;\n" // matte
                     + "  }\n"
-                    + "  if (uFlat > 0.5 || (m >= 12.0 && m < 13.0)) {\n" // the white world's floor: rings round the car, a grid (decoration: no sensors)
+                    + "  if (uRings + uGrid > 0.001 && (uFlat > 0.5 || (m >= 12.0 && m < 13.0))) {\n" // the white world's floor (only there: the other skies exactly as before): rings round the car, a grid (decoration: no sensors)
                     + "    float r = length(d);\n"
                     + "    float ring = (1.0 - smoothstep(0.03, 0.12, abs(r - 4.4))) + (1.0 - smoothstep(0.03, 0.12, abs(r - 7.6)));\n"
                     + "    col = mix(col, vec3(0.98), clamp(ring, 0.0, 1.0) * uRings * 0.75 * step(r, 9.0));\n"
@@ -869,8 +890,8 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
                     + "    col = mix(col, uDiscC, disc * uDisc.w) + uDiscC * halo * (1.0 - disc) * uDisc.w * 0.5;\n"
                     + "  }\n"
                     + "  if (uHills.a > 0.01) {\n" // a world's hills along the horizon
-                    + "    float ra = radians(a);\n"
-                    + "    float hh = uHorizon + 0.03 + 0.025 * sin(ra * 3.0) + 0.018 * sin(ra * 7.3 + 1.0) + 0.01 * sin(ra * 17.0 + 2.0);\n"
+                    + "    float ra = uYaw + (gl_FragCoord.x / uSize.x - 0.5) * 1.0472 * uSize.x / uSize.y;\n" // (radians, whole-number waves: no jump going south)
+                    + "    float hh = uHorizon + 0.03 + 0.025 * sin(ra * 3.0) + 0.018 * sin(ra * 7.0 + 1.0) + 0.01 * sin(ra * 17.0 + 2.0);\n"
                     + "    col = mix(col, uHills.rgb, uHills.a * (1.0 - smoothstep(hh - 0.002, hh + 0.002, t)) * step(uHorizon - 0.02, t));\n"
                     + "  }\n"
                     + "  gl_FragColor = vec4(col, 1.0);\n"

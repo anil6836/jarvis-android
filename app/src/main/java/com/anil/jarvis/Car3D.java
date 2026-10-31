@@ -148,6 +148,7 @@ final class Car3D {
 
     /** 💠 The neon edges (his "neon" finish): lines of light along the sills and the belt, and round the tail. */
     static Mesh3D neon(String kind) {
+        if (CarReal.is(kind)) return CarReal.neon(kind); // (the new cars: along their own shoulders)
         Size s = size(valid(kind) ? kind : "suv");
         Mesh3D m = new Mesh3D();
         float w2 = s.w / 2;

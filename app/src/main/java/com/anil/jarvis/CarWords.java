@@ -59,7 +59,7 @@ final class CarWords {
     /** ✨ (31 Oct) ⑰ ⑲ ⑳'s day / night: "రాత్రి రూపం పెట్టు" ↔ "పగలు రూపం పెట్టు" (his words: the hour never changes them). */
     private static final Pattern NEW_DARK = Pattern.compile("^(రాత్రి|చీకటి|డార్క్|ముదురు|నైట్) (రూపం|థీమ్|లుక్) " + DO + "$|^(dark|night) (look|theme)$");
     /** 🏁 (31 Oct) ⑯'s HUD: "నియాన్ HUD పెట్టు", "తెల్లటి HUD పెట్టు", "మామూలు HUD పెట్టు"; 🌆 its world: "నియాన్ ప్రపంచం పెట్టు". */
-    private static final String HUD = "(hud|హడ్|హెచ్ యు డి|హెచ్‌యూడీ)";
+    private static final String HUD = "(hud|హడ్|హెచ్ యు డి|హెచ్యూడీ)"; // (no joiners: the words arrive without them)
     private static final Pattern HUD_NEON = Pattern.compile("^(నియాన్|రేసింగ్|గేమ్) " + HUD + " " + DO + "$|^(neon|racing) hud$");
     private static final Pattern HUD_WHITE = Pattern.compile("^(తెల్లటి|తెల్ల|వైట్|adas|ఏడాస్) " + HUD + " " + DO + "$|^(white|adas) hud$");
     private static final Pattern HUD_OFF = Pattern.compile("^(మామూలు|పాత) " + HUD + " " + DO + "$|^(normal|old) hud$");
@@ -130,7 +130,7 @@ final class CarWords {
         String w = w0 == null ? "" : w0.trim();
         if (w.contains("ఊదా") || w.contains("purple") || w.contains("violet")) return "whitev";
         if (w.contains("నియాన్") || w.contains("neon")) return "neon";
-        if (w.contains("సూర్యాస్తమయ") || w.contains("సన్‌సెట్") || w.contains("సన్ సెట్") || w.contains("sunset")) return "sunset";
+        if (w.contains("సూర్యాస్తమయ") || w.contains("సన్సెట్") || w.contains("సన్ సెట్") || w.contains("sunset")) return "sunset";
         if (w.contains("తెల్ల") || w.contains("వైట్") || w.contains("white")) return "white";
         boolean ar = w.matches("(?s).*\\bar\\b.*") || w.contains("ఏఆర్");
         if (w.contains("పగలు") || ar || w.matches("(?s).*\\bday\\b.*")) return w.contains("హైవే") || w.contains("highway") || ar ? "dayar" : null;

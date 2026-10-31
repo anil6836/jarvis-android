@@ -250,7 +250,8 @@ final class Car16 {
         void set(int kmh, String turn, String far) {
             String sp = kmh < 0 ? "--" : String.valueOf(kmh);
             if (!sp.contentEquals(speed.getText())) speed.setText(sp);
-            unit.setText(kmh < 0 ? "GPS…" : "km/h");
+            String u = kmh < 0 ? "GPS…" : "km/h";
+            if (!u.contentEquals(unit.getText())) unit.setText(u);
             boolean t = turn != null && !turn.isEmpty();
             String d = t ? (far == null || far.isEmpty() ? "" : far) : "↑";
             String w = t ? short2(turn) : "నేరుగా";
@@ -262,7 +263,12 @@ final class Car16 {
         /** The turn's words, short: its first few words. Pure. */
         static String short2(String w) {
             String s = w.trim().replaceAll("\\s+", " ");
-            return s.length() <= 14 ? s : s.substring(0, 13) + "…";
+            if (s.codePointCount(0, s.length()) <= 14) return s;
+            java.text.BreakIterator bi = java.text.BreakIterator.getCharacterInstance(); // (never half a letter: a Telugu vowel sign stays with its letter)
+            bi.setText(s);
+            int end = 0, n = 0;
+            for (int b = bi.next(); b != java.text.BreakIterator.DONE && n < 13; b = bi.next()) { end = b; n++; }
+            return s.substring(0, end) + "…";
         }
 
         @Override protected void onSizeChanged(int w, int h, int ow, int oh) {

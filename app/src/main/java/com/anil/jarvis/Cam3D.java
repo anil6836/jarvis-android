@@ -171,6 +171,11 @@ final class Cam3D {
         }
     }
 
+    /** The same in place (no new array each frame): now moves part of the way to the target. Pure. */
+    static void mixInto(float[] now, float[] target, float k) {
+        for (int i = 0; i < now.length && i < target.length; i++) now[i] += (target[i] - now[i]) * k;
+    }
+
     /** One sky's numbers part of the way to another's (k 0–1): the change is smooth. Pure. */
     static float[] mix(float[] a, float[] b, float k) {
         float[] o = new float[a.length];

@@ -629,17 +629,18 @@ final class CarDeck {
             "car_3d_kind", "car_3d_finish", "car_3d_head", "car_3d_glow", "car_3d_sky", "car_3d_city", "car_plate",
             // v7 (27 Oct, ⑮): 3D / 2D, the camera's height, the map's colours, north up, the game view
             "car_15_3d", "car_15_eye", "car_15_look", "car_15_north", "car_15_game",
-            // v8 (31 Oct, 🎬 and ⑰–⑳): the film Jarvis or the drawn one, the heroines' set with songs; the new looks' day / night,
-            // the player's look, 🎛️'s page, the 🎙️ orb
-            "car_jarvis_kind", "car_film_sets", "car_new_night", "car_player_look", "car_hub_look", "car_orb", "car_16_hud", "car_3d_roof", "car_3d_rim", "car_3d_led"};
-    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37, v4 the first 46, v5 47, v6 54, v7 59). */
-    private static int known(int v) { return v >= 8 ? LOOK_KEYS.length : v == 7 ? 59 : v == 6 ? 54 : v == 5 ? 47 : v == 4 ? 46 : v == 3 ? 37 : v == 2 ? 23 : 0; }
+            // v8 (31 Oct, 🎬): the film Jarvis or the drawn one, the heroines' set with songs
+            "car_jarvis_kind", "car_film_sets",
+            // v9 (31 Oct, ⑰–⑳, ⑯'s worlds and HUDs, ㉑): the new looks' day / night, the player's look, 🎛️'s page, the 🎙️ orb, ⑯'s HUD, the car's roof, rims, LED bar
+            "car_new_night", "car_player_look", "car_hub_look", "car_orb", "car_16_hud", "car_3d_roof", "car_3d_rim", "car_3d_led"};
+    /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37, v4 the first 46, v5 47, v6 54, v7 59, v8 61). */
+    private static int known(int v) { return v >= 9 ? LOOK_KEYS.length : v == 8 ? 61 : v == 7 ? 59 : v == 6 ? 54 : v == 5 ? 47 : v == 4 ? 46 : v == 3 ? 37 : v == 2 ? 23 : 0; }
     static final int MINE = 3;
 
     /** The look now (from all the settings) as one line to keep. */
     static String keep(Map<String, ?> all) {
         JSONObject o = new JSONObject();
-        try { o.put("v", 8); } catch (Exception ignored) {} // (v8: every look key there; an older one only knew some)
+        try { o.put("v", 9); } catch (Exception ignored) {} // (v9: every look key there; an older one only knew some)
         for (String k : LOOK_KEYS) {
             Object v = all == null ? null : all.get(k);
             try { if (v instanceof Integer || v instanceof Boolean || v instanceof String) o.put(k, v); } catch (Exception ignored) {}

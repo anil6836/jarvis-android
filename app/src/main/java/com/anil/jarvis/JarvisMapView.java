@@ -667,7 +667,31 @@ final class JarvisMapView extends View {
         c.drawCircle(xy[0], xy[1], 6.5f * d, fill);
     }
 
+    /** ⑯'s racing HUD: the map drawn in a circle — its credit then centred inside the circle (never cut off). */
+    private boolean round;
+
+    void setRound(boolean on) { if (on != round) { round = on; invalidate(); } }
+
+    /** The credit centred inside the round map, wrapped to the circle's width there. */
+    private void drawCreditRound(Canvas c, int W, int H) {
+        List<String> lines = new ArrayList<>();
+        float max = W * 0.62f;
+        String all = google ? (credit.isEmpty() ? "Google Maps" : "Google Maps · " + credit) : "© OpenStreetMap contributors";
+        String rest = all;
+        while (!rest.isEmpty() && lines.size() < 4) {
+            int n = small.breakText(rest, true, max, null);
+            if (n <= 0) break;
+            int cut = n < rest.length() ? Math.max(rest.lastIndexOf(' ', n), 1) : n;
+            if (cut <= 0 || cut > n) cut = n;
+            lines.add(rest.substring(0, cut).trim());
+            rest = rest.substring(cut).trim();
+        }
+        float y = H * 0.86f - (lines.size() - 1) * 12 * d;
+        for (String ln : lines) { c.drawText(ln, (W - small.measureText(ln)) / 2f, y, small); y += 12 * d; }
+    }
+
     private void drawCredit(Canvas c, int W, int H) {
+        if (round) { drawCreditRound(c, W, H); return; }
         float y = H - inset - 8 * d; // (above the panel: always in sight)
         // the map data's credit in full (wrapped, never cut), then "Google Maps" exactly as Google writes it (not translated, not split)
         List<String> lines = new ArrayList<>();

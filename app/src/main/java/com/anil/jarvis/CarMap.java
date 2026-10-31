@@ -146,7 +146,7 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     /** ⑯'s neon racing HUD: the small map round, like a game's. */
     private boolean roundMap;
 
-    void setRoundMap(boolean on) { if (on != roundMap) { roundMap = on; invalidateOutline(); } }
+    void setRoundMap(boolean on) { if (on != roundMap) { roundMap = on; invalidateOutline(); map.setRound(on); } } // (the map's credit inside the circle)
 
     CarMap(Context c, Prefs prefs, Host host) {
         super(c);
