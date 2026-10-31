@@ -23,6 +23,9 @@ import java.util.List;
  * the look as "నా థీమ్ 1–3". 🧍 opens it straight at Jarvis's part, a card held (parked) at its own part. Only while
  * parked: the car moving closes it (his words still work any time). What he picks is written at once and the screen
  * follows it ({@link Host#changed}); nothing here is ever removed from the old ⚙️.
+ * The new look (31 Oct, his "liquid glass" settings pictures; the old one stays his choice): a pastel glass panel with a
+ * rainbow edge (deep navy glass on a dark screen), the parts on a glass rail, each choice a card of glass, the chip that
+ * is on lit in a blue-violet light. Only how it looks changes: every choice is the same.
  */
 final class CarHub extends FrameLayout {
 
@@ -45,7 +48,7 @@ final class CarHub extends FrameLayout {
     private final List<TextView> catViews = new ArrayList<>();
     private String catNow = "jarvis";
     private int textMain = 0xFFFFFFFF, textSoft = 0xFFB9CCDA, accent = 0xFF5FF3FF, fill = 0xF00A1220;
-    private boolean light;
+    private boolean light, glass = true;
     private int W, H;
     /** Where the panel sits: false = on the right (Jarvis on the left), true = on the left. */
     private boolean leftSide;
@@ -142,6 +145,52 @@ final class CarHub extends FrameLayout {
         host.closed();
     }
 
+    /** ✨ The new glass look (true) or the old one. */
+    void setGlass(boolean on) { if (on == glass) return; glass = on; place(); if (shown()) fill(); }
+
+    private CarTheme.Look glassLook() {
+        CarTheme.Look l = new CarTheme.Look();
+        l.light = light;
+        l.accent = accent;
+        return l;
+    }
+
+    /** The panel itself: pastel glass with a rainbow edge (dark: deep navy glass), nearly solid (the screen is under it). */
+    private android.graphics.drawable.Drawable panelBg(float r) {
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, light ? new int[]{0xFAF6F2FF, 0xFAE6F4FB} : new int[]{0xF7161C3A, 0xF70A0F22});
+        g.setCornerRadius(r);
+        return new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{g, CarGlass.liquid(glassLook(), r, false)});
+    }
+
+    /** A part on the rail: the one open a white glass pill (dark: a lit glass one); the rest bare. */
+    private android.graphics.drawable.Drawable catBg(boolean on, float r) {
+        if (!glass) return round(on ? CarTheme.withAlpha(accent, 0x44) : (light ? 0x22000000 : 0x18FFFFFF), on ? accent : 0, r);
+        if (!on) return null;
+        return CarGlass.liquid(glassLook(), r, true);
+    }
+
+    /** A choice's card. */
+    private android.graphics.drawable.Drawable cardBg(boolean button, float r) {
+        if (!glass) return button ? round(CarTheme.withAlpha(accent, 0x26), CarTheme.withAlpha(accent, 0x88), r) : round(light ? 0x14000000 : 0x14FFFFFF, CarTheme.withAlpha(accent, 0x33), r);
+        if (button) {
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF4F7BFF, 0xFF8B5CF6});
+            g.setCornerRadius(r);
+            return g;
+        }
+        return CarGlass.liquid(glassLook(), r, false);
+    }
+
+    /** A chip: the one on lit blue-violet; the rest soft glass. */
+    private android.graphics.drawable.Drawable chipBg(boolean on) {
+        if (!glass) return round(on ? CarTheme.withAlpha(accent, 0x40) : (light ? 0x18000000 : 0x14FFFFFF), on ? accent : CarTheme.withAlpha(textSoft, 0x44), 999);
+        if (on) {
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF4F7BFF, 0xFF8B5CF6});
+            g.setCornerRadius(999);
+            return g;
+        }
+        return round(light ? 0xB3FFFFFF : 0x1FFFFFFF, light ? 0x22000000 : 0x26FFFFFF, 999);
+    }
+
     /** The screen's colours; where the panel sits (Jarvis's side stays free). */
     void setLook(int main, int soft, int acc, int sheet, boolean light, boolean onLeft) {
         textMain = main;
@@ -163,6 +212,9 @@ final class CarHub extends FrameLayout {
 
     private int dp(float v) { return Ui.dp(getContext(), v); }
 
+    /** A gap from the screen's size (k × the panel's padding). */
+    private int p0(float k) { return Math.round(Math.max(6, Math.min(W, H) / 60f) * k); }
+
     private GradientDrawable round(int f, int stroke, float r) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(f);
@@ -179,7 +231,9 @@ final class CarHub extends FrameLayout {
         int side = Math.round(W * 0.23f); // (Jarvis's column stays in sight)
         lp.setMargins(leftSide ? m : side, m, leftSide ? side : m, m);
         box.setLayoutParams(lp);
-        box.setBackground(round(fill, CarTheme.withAlpha(accent, 0x88), Math.max(12, Math.min(W, H) / 26f)));
+        box.setBackground(glass ? panelBg(Math.max(12, Math.min(W, H) / 26f)) : round(fill, CarTheme.withAlpha(accent, 0x88), Math.max(12, Math.min(W, H) / 26f)));
+        catScroll.setBackground(glass ? CarGlass.liquid(glassLook(), Math.max(10, Math.min(W, H) / 32f), false) : null); // (the parts on their own glass rail)
+        catScroll.setPadding(glass ? p0(0.5f) : 0, glass ? p0(0.6f) : 0, glass ? p0(0.3f) : 0, glass ? p0(0.6f) : 0);
         int p = Math.max(6, Math.min(W, H) / 60);
         box.setPadding(p, p, p, p);
         float t = Math.max(13, Math.min(W, H) / 30f);
@@ -187,8 +241,9 @@ final class CarHub extends FrameLayout {
             c.setTextSize(TypedValue.COMPLEX_UNIT_PX, t);
             c.setPadding(p * 2, p, p, p);
             boolean on = catNow.equals(c.getTag());
-            c.setTextColor(on ? textMain : textSoft);
-            c.setBackground(round(on ? CarTheme.withAlpha(accent, 0x44) : (light ? 0x22000000 : 0x18FFFFFF), on ? accent : 0, Math.max(8, t * 0.6f)));
+            c.setTextColor(on ? (glass ? (light ? 0xFF3B4BD8 : 0xFFFFFFFF) : textMain) : textSoft);
+            c.setTypeface(on && glass ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+            c.setBackground(catBg(on, Math.max(8, t * 0.6f)));
             LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-1, Math.round(t * 2.6f));
             cl.setMargins(0, 0, p, p);
             c.setLayoutParams(cl);
@@ -196,7 +251,7 @@ final class CarHub extends FrameLayout {
         title.setTextSize(TypedValue.COMPLEX_UNIT_PX, t * 1.25f);
         title.setTextColor(textMain);
         note.setTextSize(TypedValue.COMPLEX_UNIT_PX, t * 0.7f);
-        note.setTextColor(0xFFFFD166);
+        note.setTextColor(glass && light ? 0xFFB26A00 : 0xFFFFD166);
         note.setPadding(p * 2, 0, p, 0);
         close.setTextSize(TypedValue.COMPLEX_UNIT_PX, t * 1.2f);
         close.setTextColor(textMain);
@@ -207,7 +262,10 @@ final class CarHub extends FrameLayout {
             b.setTextSize(TypedValue.COMPLEX_UNIT_PX, t * 0.85f);
             b.setTextColor(textMain);
             b.setPadding(p * 2, p, p * 2, p);
-            b.setBackground(round(b == keep ? CarTheme.withAlpha(0xFF1E6B4A, 0xDD) : (light ? 0x22000000 : 0x22FFFFFF), CarTheme.withAlpha(accent, 0x88), Math.max(8, t * 0.5f)));
+            if (glass) {
+                if (b == keep) { GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF4F7BFF, 0xFF6C5CFF}); g.setCornerRadius(999); b.setBackground(g); b.setTextColor(0xFFFFFFFF); }
+                else b.setBackground(chipBg(false));
+            } else b.setBackground(round(b == keep ? CarTheme.withAlpha(0xFF1E6B4A, 0xDD) : (light ? 0x22000000 : 0x22FFFFFF), CarTheme.withAlpha(accent, 0x88), Math.max(8, t * 0.5f)));
             LinearLayout.LayoutParams bl = (LinearLayout.LayoutParams) b.getLayoutParams();
             bl.setMargins(0, p, p, 0);
             b.setLayoutParams(bl);
@@ -251,7 +309,7 @@ final class CarHub extends FrameLayout {
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(p * 2, p, p * 2, p + p / 2);
-        card.setBackground(round(light ? 0x14000000 : 0x14FFFFFF, CarTheme.withAlpha(accent, 0x33), Math.max(8, t * 0.6f)));
+        card.setBackground(cardBg(false, Math.max(8, t * 0.6f)));
         LinearLayout head = new LinearLayout(c);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
@@ -262,7 +320,8 @@ final class CarHub extends FrameLayout {
         if (o.kind == CarHubSpec.K_ACT) { // (a button: the whole card is it)
             tt.setTypeface(Typeface.DEFAULT_BOLD);
             card.setOnClickListener(v -> act(o));
-            card.setBackground(round(CarTheme.withAlpha(accent, 0x26), CarTheme.withAlpha(accent, 0x88), Math.max(8, t * 0.6f)));
+            card.setBackground(cardBg(true, Math.max(8, t * 0.6f)));
+            if (glass) tt.setTextColor(0xFFFFFFFF);
         }
         head.addView(tt, new LinearLayout.LayoutParams(0, -2, 1));
         if (o.fresh) {
@@ -285,14 +344,14 @@ final class CarHub extends FrameLayout {
             ch.setMaxLines(1);
             ch.setTextSize(TypedValue.COMPLEX_UNIT_PX, t * 0.72f);
             boolean on = i == sel;
-            ch.setTextColor(on ? textMain : textSoft);
+            ch.setTextColor(on ? (glass ? 0xFFFFFFFF : textMain) : textSoft);
             ch.setPadding(p * 2, p / 2 + 2, p * 2, p / 2 + 2);
             if (o.kind == CarHubSpec.K_INT && o.key.equals("car_colour") || (o.key.equals("car_jarvis_glow") || o.key.equals("car_accent")) && i > 0) { // (colours: a dot of it before the name)
                 int col = o.kind == CarHubSpec.K_INT ? o.ints[i] : CarDeck.glowColour(o.values[i]);
                 ch.setCompoundDrawablesRelative(dot(col, Math.round(t * 0.7f)), null, null, null);
                 ch.setCompoundDrawablePadding(p / 2);
             }
-            ch.setBackground(round(on ? CarTheme.withAlpha(accent, 0x40) : (light ? 0x18000000 : 0x14FFFFFF), on ? accent : CarTheme.withAlpha(textSoft, 0x44), 999));
+            ch.setBackground(chipBg(on));
             ch.setOnClickListener(v -> pick(o, idx));
             chips.addView(ch);
         }

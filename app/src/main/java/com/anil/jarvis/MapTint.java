@@ -14,7 +14,7 @@ final class MapTint {
 
     /** The free map's tint for a car screen shape. Pure. */
     static String forShape(String shape) {
-        if (CarLayout.GLASS.equals(shape)) return GLASS;
+        if (CarLayout.GLASS.equals(shape) || CarLayout.LIQUID.equals(shape) || CarLayout.SOFTWHITE.equals(shape)) return GLASS; // (⑰ ⑲'s light glass too)
         if (CarLayout.NEON.equals(shape)) return NEON;
         return CarLayout.family(shape) ? FAMILY : NONE;
     }

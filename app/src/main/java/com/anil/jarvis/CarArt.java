@@ -1448,6 +1448,10 @@ final class CarArt {
     static android.graphics.drawable.Drawable glass(final CarTheme.Look l, final float radiusPx, final boolean tile) {
         if (l != null && l.card == CarStyle.C_HUD) return CarLooks.hud(l, radiusPx, tile); // 17
         if (l != null && l.card == CarStyle.C_GLOW) return CarLooks.glow(l, radiusPx, tile); // 18
+        if (l != null && l.card == CarStyle.C_LIQUID) return CarGlass.liquid(l, radiusPx, tile); // ⑰
+        if (l != null && l.card == CarStyle.C_NAVY) return CarGlass.navy(l, radiusPx, tile); // ⑱
+        if (l != null && l.card == CarStyle.C_SOFT) return CarGlass.soft(l, radiusPx, tile); // ⑲
+        if (l != null && l.card == CarStyle.C_TILES) return CarGlass.tile(l, radiusPx, tile, l.accent); // ⑳
         return new android.graphics.drawable.Drawable() {
             private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
             private final RectF r = new RectF();

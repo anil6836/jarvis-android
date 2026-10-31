@@ -57,6 +57,10 @@ final class CarDeck {
         if (CarLayout.GLASS.equals(shape)) return his == 5 || his == 12 ? his : 5;
         if (CarLayout.NEON.equals(shape)) return his == 3 || his == 11 || his == 13 ? his : 13;
         if (CarLayout.CHASE.equals(shape) || CarLayout.CITY.equals(shape)) return his == 5 || his == 12 ? 1 : his; // (⑮ ⑯: cards over the 3D world are never white glass: his own dark theme, else the blue glass)
+        if (CarLayout.LIQUID.equals(shape)) return 17; // (⑰ ⑱ ⑲ ⑳: always their own)
+        if (CarLayout.NAVYGLASS.equals(shape)) return 18;
+        if (CarLayout.SOFTWHITE.equals(shape)) return 19;
+        if (CarLayout.GLOWTILES.equals(shape)) return 20;
         return his;
     }
 
@@ -94,6 +98,13 @@ final class CarDeck {
         for (int i = 0; i < LOOKS_15.length; i++) if (LOOKS_15[i].equals(now)) return LOOKS_15[(i + 1) % LOOKS_15.length];
         return LOOKS_15[1];
     }
+    /** ⑰ ⑲ ⑳'s day / night: only his tap (🌗, ⑳'s switch, his words); the hour never changes it. ⑱ is always the dark navy. */
+    static final String[] NEW_NIGHTS = {"", "dark"};
+    static final String[] NEW_NIGHT_NAMES = {"☀️ పగలు రూపం", "🌙 రాత్రి రూపం (ముదురు)"};
+
+    /** ⑰–⑳ in their dark colours now. Pure. */
+    static boolean newDark(String shape, String pref) { return CarLayout.NAVYGLASS.equals(shape) || CarLayout.newLook(shape) && "dark".equals(pref); }
+
     static final String[] GLASS_NIGHTS = {"", "dark"};
     static final String[] GLASS_NIGHT_NAMES = {"☀️ రాత్రి కూడా తెల్లటి గాజు", "🌙 రాత్రి ముదురు రంగు"};
 
@@ -605,8 +616,9 @@ final class CarDeck {
             "car_3d_kind", "car_3d_finish", "car_3d_head", "car_3d_glow", "car_3d_sky", "car_3d_city", "car_plate",
             // v7 (27 Oct, ⑮): 3D / 2D, the camera's height, the map's colours, north up, the game view
             "car_15_3d", "car_15_eye", "car_15_look", "car_15_north", "car_15_game",
-            // v8 (31 Oct, 🎬): the film Jarvis or the drawn one, the heroines' set with songs
-            "car_jarvis_kind", "car_film_sets"};
+            // v8 (31 Oct, 🎬 and ⑰–⑳): the film Jarvis or the drawn one, the heroines' set with songs; the new looks' day / night,
+            // the player's look, 🎛️'s page, the 🎙️ orb
+            "car_jarvis_kind", "car_film_sets", "car_new_night", "car_player_look", "car_hub_look", "car_orb"};
     /** How many of LOOK_KEYS a kept look of each version knew (v1 kept only what it had; v2 knew the first 23, v3 the first 37, v4 the first 46, v5 47, v6 54, v7 59). */
     private static int known(int v) { return v >= 8 ? LOOK_KEYS.length : v == 7 ? 59 : v == 6 ? 54 : v == 5 ? 47 : v == 4 ? 46 : v == 3 ? 37 : v == 2 ? 23 : 0; }
     static final int MINE = 3;

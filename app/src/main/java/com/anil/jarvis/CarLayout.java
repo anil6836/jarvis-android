@@ -29,12 +29,22 @@ final class CarLayout {
             /** Stage 3 (27 Oct): ⑯ our own 3D view — his car from behind on the real roads (OpenStreetMap), ⑪'s parts round it. */
             CHASE = "chase",
             /** Stage 4 (27 Oct): ⑮ the 3D city map (MapLibre on OpenFreeMap) from above at a slant, glass cards round it. */
-            CITY = "city";
+            CITY = "city",
+            /**
+             * The new looks (31 Oct, his pictures' styles, our own designs), ⑪'s parts again: ⑰ liquid glass (pastel glass
+             * with rainbow edges, a rail of 🎛️'s parts down the left); ⑱ dark glass cluster (navy: the map, his car under the
+             * speed and the song in one big card, a glowing dock of his apps); ⑲ soft white (raised white cards, navy and
+             * yellow, the clock face, the song's wave); ⑳ glow tiles (white tiles with navy names and coloured light under
+             * them, the day / night switch).
+             */
+            LIQUID = "liquid", NAVYGLASS = "navyglass", SOFTWHITE = "softwhite", GLOWTILES = "glowtiles";
     /** The shapes he can pick (in this order in ⚙️), and their names. */
-    static final String[] CHOICES = {COCKPIT, CHROME, MAP3D, MAPCARDS, CLASSIC, HALFMAP, CLUSTER, DOCK, SPECIAL, GLASS, FULLMAP, NEON, CHASE, CITY};
+    static final String[] CHOICES = {COCKPIT, CHROME, MAP3D, MAPCARDS, CLASSIC, HALFMAP, CLUSTER, DOCK, SPECIAL, GLASS, FULLMAP, NEON, CHASE, CITY,
+            LIQUID, NAVYGLASS, SOFTWHITE, GLOWTILES};
     static final String[] NAMES = {"① కాక్‌పిట్ 3D", "② క్రోమ్ డయల్స్", "③ 3D మ్యాప్ డాష్", "④ మ్యాప్ + కార్డులు", "⑥ ఇప్పటి స్క్రీన్ (క్లాసిక్)", "⑦ సగం మ్యాప్",
             "⑨ క్లస్టర్ (రెండు పెద్ద డయల్స్)", "⑩ డాక్ (పెద్ద మ్యాప్ + కార్డులు)", "⑪ స్పెషల్ (అన్నీ ఒకే చోట)",
-            "⑫ గ్లాస్ డాక్ (తెల్లటి గాజు)", "⑬ ఫుల్ మ్యాప్ (Jarvis చక్రం)", "⑭ నియాన్ రేసర్", "⑯ 3D చేజ్ (కారు వెనక నుంచి, గేమ్ లాగా)", "⑮ 3D సిటీ మ్యాప్ (పై నుంచి వాలుగా)"};
+            "⑫ గ్లాస్ డాక్ (తెల్లటి గాజు)", "⑬ ఫుల్ మ్యాప్ (Jarvis చక్రం)", "⑭ నియాన్ రేసర్", "⑯ 3D చేజ్ (కారు వెనక నుంచి, గేమ్ లాగా)", "⑮ 3D సిటీ మ్యాప్ (పై నుంచి వాలుగా)",
+            "⑰ లిక్విడ్ గ్లాస్ (రంగుల గాజు)", "⑱ డార్క్ గ్లాస్ క్లస్టర్ (నీలి గాజు)", "⑲ సాఫ్ట్ వైట్ (మెత్తటి తెలుపు)", "⑳ గ్లో టైల్స్ (వెలిగే టైల్స్)"};
 
     /** A shape he can pick (anything else: the classic one). Pure. */
     static String valid(String s) {
@@ -88,8 +98,11 @@ final class CarLayout {
     /** This shape shows the map. Pure. */
     static boolean hasMap(String shape) { return MAPCARDS.equals(shape) || HALFMAP.equals(shape) || NAV.equals(shape) || MAP3D.equals(shape) || DOCK.equals(shape) || family(shape); }
 
-    /** ⑪ and the shapes made from its parts (⑫ ⑬ ⑭ ⑯ ⑮): 🎛️, the map's own tools, the player with the 3D keys, his apps, ⑪'s six. Pure. */
-    static boolean family(String shape) { return SPECIAL.equals(shape) || GLASS.equals(shape) || FULLMAP.equals(shape) || NEON.equals(shape) || CHASE.equals(shape) || CITY.equals(shape); }
+    /** ⑪ and the shapes made from its parts (⑫ ⑬ ⑭ ⑯ ⑮ ⑰ ⑱ ⑲ ⑳): 🎛️, the map's own tools, the player with the 3D keys, his apps, ⑪'s six. Pure. */
+    static boolean family(String shape) { return SPECIAL.equals(shape) || GLASS.equals(shape) || FULLMAP.equals(shape) || NEON.equals(shape) || CHASE.equals(shape) || CITY.equals(shape) || newLook(shape); }
+
+    /** ⑰ ⑱ ⑲ ⑳ (31 Oct): their own colours, cards, player and the 🎙️ orb. Pure. */
+    static boolean newLook(String shape) { return LIQUID.equals(shape) || NAVYGLASS.equals(shape) || SOFTWHITE.equals(shape) || GLOWTILES.equals(shape); }
 
     /** One of the 3D shapes (leaning cards, chrome round buttons). Pure. */
     static boolean deep(String shape) { return COCKPIT.equals(shape) || CHROME.equals(shape) || MAP3D.equals(shape); }

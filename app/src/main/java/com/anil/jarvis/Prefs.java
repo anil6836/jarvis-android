@@ -533,6 +533,14 @@ final class Prefs {
     static String buttonsKey(String shape) { return CarLayout.family(shape) ? "car_buttons_sp" : "car_buttons"; } // (⑫ ⑬ ⑭ share ⑪'s six)
     /** ⑫ at night: "" the white glass stays, "dark" the dark colours (his choice). */
     String carGlassNight() { return sp.getString("car_glass_night", ""); }
+    /** ⑰ ⑲ ⑳ day ("") or night ("dark"): his tap only (31 Oct). */
+    String carNewNight() { return sp.getString("car_new_night", ""); }
+    /** 🎵 the player's look (CarStyle.PLAYERS; "": the shape's own). */
+    String carPlayerLook() { return sp.getString("car_player_look", ""); }
+    /** 🎛️'s page: "" the new glass, "old". */
+    String carHubLook() { return sp.getString("car_hub_look", ""); }
+    /** 🎙️ the orb: "" in ⑰–⑳, "all" ⑪–⑳, "off". */
+    String carOrb() { return sp.getString("car_orb", ""); }
     String carButtonsFor(String shape) { return sp.getString(buttonsKey(shape), ""); }
     /** 💬 ⑪: his last words in a bubble beside Jarvis. */
     boolean carTalkBubble() { return sp.getBoolean("car_talk_bubble", true); }

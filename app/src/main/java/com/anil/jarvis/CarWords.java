@@ -56,9 +56,12 @@ final class CarWords {
     private static final String HEROINES = "(హీరోయిన్లు|హీరోయిన్స్|హీరోయిన్లను|హీరోయిన్ సెట్|హీరోయిన్ల సెట్|heroines?|heroine set)";
     private static final Pattern SETS_OFF = Pattern.compile("^" + HEROINES + "\\s*(వద్దు|ఆపు|ఆపేయ్|ఆపేయి|ఆఫ్|off)$");
     private static final Pattern SETS_ON = Pattern.compile("^" + HEROINES + "\\s*(పెట్టు|పెట్టండి|రావాలి|కావాలి|ఆన్|on)$");
+    /** ✨ (31 Oct) ⑰ ⑲ ⑳'s day / night: "రాత్రి రూపం పెట్టు" ↔ "పగలు రూపం పెట్టు" (his words: the hour never changes them). */
+    private static final Pattern NEW_DARK = Pattern.compile("^(రాత్రి|చీకటి|డార్క్|ముదురు|నైట్) (రూపం|థీమ్|లుక్) " + DO + "$|^(dark|night) (look|theme)$");
+    private static final Pattern NEW_LIGHT = Pattern.compile("^(పగలు|పగటి|తెల్లటి|తెల్ల|లైట్|డే) (రూపం|థీమ్|లుక్) " + DO + "$|^(light|day) (look|theme)$");
 
     /**
-     * {"jarvis", "film" | "2d"}, {"sets", "on" | "off"},
+     * {"jarvis", "film" | "2d"}, {"sets", "on" | "off"}, {"newnight", "dark" | "day"},
      * {"src", "osm" | "google"}, {"car", one of CarDeck.MAP_CARS}, {"quiet", "on" | "off"}, {"map", "big" | "small"}, {"rotate", "on" | "off"},
      * {"way3d", the place ("home" for home)}, {"city", "2d" | "3d" | "gameon" | "gameoff" | "near" | "mid" | "far" | "dark" | "light"};
      * null when it isn't one of these. Pure.
@@ -91,6 +94,8 @@ final class CarWords {
         if (CFAR.matcher(t).matches()) return new String[]{"city", "far"};
         if (CDARK.matcher(t).matches()) return new String[]{"city", "dark"};
         if (CLIGHT.matcher(t).matches()) return new String[]{"city", "light"};
+        if (NEW_DARK.matcher(t).matches()) return new String[]{"newnight", "dark"};
+        if (NEW_LIGHT.matcher(t).matches()) return new String[]{"newnight", "day"};
         java.util.regex.Matcher w3 = WAY3D.matcher(t);
         if (w3.matches()) {
             String place = (w3.group(3) != null ? w3.group(3) : w3.group(8)).trim();

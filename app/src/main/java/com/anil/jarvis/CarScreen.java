@@ -149,6 +149,21 @@ final class CarScreen extends FrameLayout {
     private final FrameLayout g15;
     private final LinearLayout g15Row, g15Left, g15Mid, g15Right, g15Tools, g15Bottom, g15BottomRow, g15Chips1, g15Chips2;
     private final View g15Gap, g15GapL, g15GapR;
+    // ✨ the new looks (31 Oct): ⑰ liquid glass, ⑱ dark glass cluster, ⑲ soft white, ⑳ glow tiles — ⑪'s parts in their own places and colours
+    private final LinearLayout g17Rail, g17Left, g17Mid, g17Top, g17Clock, g17Bottom, g17Right, g17Switches;
+    private final LinearLayout g18Left, g18Main, g18Cluster, g18Status, g18Panels, g18Mid, g18Dock;
+    private final LinearLayout g19C1, g19C2, g19C3, g19C4;
+    private final LinearLayout g20Col, g20Top, g20Clock, g20Pills, g20Row, g20Left, g20Mid, g20Right, g20Bottom;
+    private final TextView moon17;
+    private final CarGlass.DayNight dayNight;
+    private final CarGlass.Week week;
+    private final List<CarGlass.Switch> switches = new ArrayList<>();
+    private final List<TextView> switchWords = new ArrayList<>();
+    private final CarGlass.Orb orb = new CarGlass.Orb();
+    private boolean orbShown;
+    private int orbSize;
+    /** The song whose "next" list the stack player last asked for. */
+    private String nextFor = "";
     private final Car16.Banner banner15;
     private final TextView search15;
     private final List<TextView> btn15 = new ArrayList<>(), chip15 = new ArrayList<>();
@@ -695,6 +710,60 @@ final class CarScreen extends FrameLayout {
             autoMax.put(t, 34);
         }
 
+        // ---- ✨ ⑰ ⑱ ⑲ ⑳ (31 Oct): their own rows (not on the screen until those shapes want them)
+        g17Rail = column(a);
+        g17Left = column(a);
+        g17Mid = column(a);
+        g17Top = row(a);
+        g17Clock = column(a);
+        g17Bottom = row(a);
+        g17Right = column(a);
+        g17Switches = column(a);
+        moon17 = autoText(a, "🌙", false, 30); // (⑰'s rail: day / night, his tap)
+        moon17.setGravity(Gravity.CENTER);
+        moon17.setOnClickListener(v -> tap(this::newNightToggle));
+        autoMax.put(moon17, 30);
+        String[][] sw = {{"🎚️ ఈక్వలైజర్", "eq"}, {"💡 బీట్ లైట్లు", "beat"}, {"🔇 నిశ్శబ్దం", "quiet"}};
+        for (String[] w : sw) { // ⑰'s switches: the equalizer and the beat lights (parked), quiet (any time)
+            LinearLayout r = row(a);
+            r.setClickable(true);
+            TextView t = autoText(a, w[0], false, 24);
+            t.setGravity(Gravity.CENTER_VERTICAL);
+            CarGlass.Switch v = new CarGlass.Switch(a);
+            r.addView(t, new LinearLayout.LayoutParams(0, -1, 66));
+            r.addView(v, new LinearLayout.LayoutParams(0, -1, 34));
+            final String id = w[1];
+            r.setOnClickListener(v2 -> tap(() -> switch17(id)));
+            g17Switches.addView(r, new LinearLayout.LayoutParams(-1, 0, 1));
+            switches.add(v);
+            switchWords.add(t);
+            autoMax.put(t, 24);
+        }
+        g18Left = column(a);
+        g18Main = column(a);
+        g18Cluster = column(a);
+        g18Status = row(a);
+        g18Panels = row(a);
+        g18Mid = column(a);
+        g18Dock = row(a);
+        g19C1 = column(a);
+        g19C2 = column(a);
+        g19C3 = column(a);
+        g19C4 = column(a);
+        week = new CarGlass.Week(a);
+        g20Col = column(a);
+        g20Top = row(a);
+        g20Clock = column(a);
+        g20Pills = row(a);
+        g20Row = row(a);
+        g20Left = column(a);
+        g20Mid = column(a);
+        g20Right = column(a);
+        g20Bottom = row(a);
+        dayNight = new CarGlass.DayNight(a); // ⑳'s switch (his tap only)
+        dayNight.setOnClickListener(v -> tap(this::newNightToggle));
+        wideTalk.addOnLayoutChangeListener((v, l0, t0, r0, b0, ol, ot, or, ob) -> { if (b0 - t0 != ob - ot) main.post(this::orbLook); });
+
         hub = new CarHub(a, prefs, new CarHub.Host() {
             @Override public void changed(String key) { hubChanged(key); }
             @Override public void act(String id) { hubAct(id); }
@@ -881,6 +950,7 @@ final class CarScreen extends FrameLayout {
         int h12 = h % 12 == 0 ? 12 : h % 12;
         clock.setText(String.format(Locale.ROOT, "%d:%02d", h12, m));
         clockFace.invalidate();
+        week.today();
         date.setText(CarLayout.family(shape) ? DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)] // (⑪'s small clock card: the day and the date, whole)
                 : HomeScreen.partOfDay(h) + " · " + DAYS[c.get(Calendar.DAY_OF_WEEK) - 1] + ", " + c.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[c.get(Calendar.MONTH)]);
         boolean n = nightNow();
@@ -1063,6 +1133,7 @@ final class CarScreen extends FrameLayout {
         portal.setState(s);
         FilmView fv = portal.film();
         if (fv != null) fv.setTalk(s); // 🎬 (the half-body clips, once he has them)
+        if (orbShown) orbLook(); // 🎙️ the orb shows it
         if (s == OrbView.LISTENING) heard = "";
         showTalk();
     }
@@ -1654,6 +1725,7 @@ final class CarScreen extends FrameLayout {
         songNowKey = key;
         FilmView fv = portal.film();
         if (fv != null) fv.songStart(); // 🎬 one heroines' set a song
+        main.post(this::nextSongs); // (⑱'s stack: the songs after this one)
         if (!had || !dancing) return;
         beat.newSong();
         portal.body.rig.queueDanceStyle(dj.start(beat.period(), 0, rnd));
@@ -1954,6 +2026,7 @@ final class CarScreen extends FrameLayout {
 
     private void hubLook() {
         if (look == null) return;
+        hub.setGlass(!"old".equals(prefs.carHubLook())); // ✨ the new glass page (his choice: the old one)
         hub.setLook(textMain, textSoft, accent, look.light ? 0xF2F4F7FA : 0xF20A1220, look.light, jarvisRight()); // (the panel on the other side from him)
     }
 
@@ -1961,6 +2034,7 @@ final class CarScreen extends FrameLayout {
     private void hubChanged(String key) {
         if ("car_layout".equals(key)) shapeCheck();
         if ("car_jarvis_kind".equals(key) || "car_film_sets".equals(key)) { filmKind = ""; filmCheck(); } // 🎬
+        if ("car_player_look".equals(key)) relayout(); // 🎵 the player's look (it is chosen as the shape is laid out)
         if (key != null && (key.startsWith("car_3d") || "car_colour".equals(key) || "car_plate".equals(key) || "car_low_motion".equals(key))) chaseLook();
         if (key != null && key.startsWith("car_15")) { // (⑮'s choices in 🎛️: 🎮 swaps the map and the game view; the rest on the map at once)
             if ("car_15_game".equals(key) && CarLayout.CITY.equals(shape)) relayout();
@@ -2037,7 +2111,12 @@ final class CarScreen extends FrameLayout {
             case "next": r = Music.control(c, "next"); break;
             case "volume": volumeSheet(); return;
             case "queue": showQueue(); return;
-            default: r = Music.extra(c, what);
+            default:
+                if (what.startsWith("next:")) { // (⑱'s stack: a song that comes next — parked only, as any list)
+                    if (!parkedOrSay()) return;
+                    what = "queue:" + what.substring(5);
+                }
+                r = Music.extra(c, what);
         }
         if (r != null && !r.isEmpty() && !what.startsWith("seek:") && !what.equals("toggle")) toast(r);
         main.postDelayed(() -> { musicKeyNow = ""; musicCheck(); }, 700);
@@ -2285,6 +2364,14 @@ final class CarScreen extends FrameLayout {
                 if (fv != null) fv.setSets(on);
                 return on ? "సరే, పాటల్లో హీరోయిన్లతో సెట్ వస్తుంది (పాటకు ఒకసారి)." : "సరే, హీరోయిన్ల సెట్ ఆపాను: నేను ఒక్కడినే డాన్స్ చేస్తాను.";
             }
+            case "newnight": { // ✨ ⑰ ⑲ ⑳'s day / night (his words: any time)
+                boolean dark = "dark".equals(w[1]);
+                prefs.sp.edit().putString("car_new_night", dark ? "dark" : "").apply();
+                hubChanged("car_new_night");
+                if (CarLayout.NAVYGLASS.equals(shape)) return "⑱ ఎప్పుడూ ముదురు నీలమే. ⑰ ⑲ ⑳ లో " + (dark ? "రాత్రి" : "పగలు") + " రూపం పెట్టాను.";
+                if (!CarLayout.newLook(shape)) return "సరే, ⑰ ⑲ ⑳ కి " + (dark ? "రాత్రి" : "పగలు") + " రూపం పెట్టాను (ఈ ఆకారం ఎప్పటిలాగే).";
+                return dark ? "సరే, రాత్రి రూపం పెట్టాను." : "సరే, పగలు రూపం పెట్టాను.";
+            }
             case "src": {
                 boolean osm = "osm".equals(w[1]);
                 prefs.sp.edit().putString("car_map_src", osm ? "osm" : "").apply();
@@ -2371,7 +2458,7 @@ final class CarScreen extends FrameLayout {
     private void eqHome() {
         if (look == null) return;
         float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / 22f);
-        boolean sp = eqOnPlayer = CarLayout.family(shape) && player.getParent() != null && !player.isRound();
+        boolean sp = eqOnPlayer = CarLayout.family(shape) && player.getParent() != null && "old".equals(player.look()); // (the new looks draw their own music)
         boolean floats = player.getParent() == g13Mid;
         android.graphics.drawable.Drawable[] withEq = floats ? new android.graphics.drawable.Drawable[]{scrim(rad), CarArt.glass(look, rad, false), eqDraw}
                 : new android.graphics.drawable.Drawable[]{CarArt.glass(look, rad, false), eqDraw};
@@ -2390,7 +2477,7 @@ final class CarScreen extends FrameLayout {
     // ================================================================ ✨ stage 2 (27 Oct): ⑫ ⑬ ⑭
 
     /** ⑫'s glass and ⑭'s neon carry their own colours; every other shape his theme's. */
-    private static String ownLook(String s) { return CarLayout.GLASS.equals(s) || CarLayout.NEON.equals(s) || CarLayout.CHASE.equals(s) || CarLayout.CITY.equals(s) ? s : ""; }
+    private static String ownLook(String s) { return CarLayout.GLASS.equals(s) || CarLayout.NEON.equals(s) || CarLayout.CHASE.equals(s) || CarLayout.CITY.equals(s) || CarLayout.newLook(s) ? s : ""; }
 
     /** Our own 2D map card is on this shape (⑮ is a map itself: its own 3D map, never our 2D one under it). */
     private static boolean mapCard(String s) { return CarLayout.hasMap(s) && !CarLayout.CITY.equals(s); }
@@ -2530,6 +2617,195 @@ final class CarScreen extends FrameLayout {
             @Override public void failed(String why) { toast(why); }
         });
         return freeWay;
+    }
+
+    // ================================================================ ✨ the new looks (31 Oct): ⑰ ⑱ ⑲ ⑳
+
+    /** The clock his way in a new look: the digital time unless he chose the clock face. */
+    private View clockFor() { return "analog".equals(prefs.carClock()) ? clockFace : clock; }
+
+    /** ⑰ ⑱ ⑲ ⑳'s places (his sheets, our own designs): the same parts as ⑪, every one working as before. */
+    private void newArrange(String s, float j) {
+        float jj = Math.min(j, 1.12f);
+        switch (s) {
+            case CarLayout.LIQUID:
+                put(content, g17Rail, 6); put(content, g17Left, 25); put(content, g17Mid, 37); put(content, g17Right, 32);
+                for (int k : new int[]{1, 2, 3, 4, 0, 8}) put(g17Rail, dockItems.get(k), 1); // (🗺️ 🎵 🧍 🎨 ▦ ⚙️, then day / night)
+                put(g17Rail, moon17, 1);
+                put(g17Left, jCard, 40 * jj); put(g17Left, wideTalk, 9); put(g17Left, tileGrid, 36); put(g17Left, wideHub, 9); put(g17Left, chipRow, 5);
+                put(g17Mid, g17Top, 20); put(g17Mid, carMap, 50); put(g17Mid, roadCard, 12); put(g17Mid, g17Bottom, 28); put(g17Mid, board, 100);
+                put(g17Top, g17Clock, 58); put(g17Top, minis, 42);
+                put(g17Clock, clockFor(), 72); put(g17Clock, date, 28);
+                put(g17Bottom, gauge, 50); put(g17Bottom, g17Switches, 50);
+                put(g17Right, player, 63); put(g17Right, spApps, 37);
+                break;
+            case CarLayout.NAVYGLASS:
+                put(content, g18Left, 24); put(content, g18Main, 76);
+                put(g18Left, jCard, 42 * jj); put(g18Left, wideTalk, 9); put(g18Left, tileGrid, 36); put(g18Left, wideHub, 9); put(g18Left, chipRow, 4);
+                put(g18Main, g18Cluster, 79); put(g18Main, g18Dock, 21);
+                put(g18Cluster, g18Status, 10); put(g18Cluster, g18Panels, 90);
+                put(g18Status, date, 50); put(g18Status, minis, 32); put(g18Status, clock, 18);
+                put(g18Panels, carMap, 34); put(g18Panels, g18Mid, 33); put(g18Panels, player, 33);
+                put(g18Mid, roadCard, 14); put(g18Mid, gauge, 36); put(g18Mid, spRoadCard, 50); put(g18Mid, board, 100);
+                spRoadCard.addView(hero, 0, new FrameLayout.LayoutParams(-1, -1)); // (his car on the road under the speed)
+                put(g18Dock, appsH, 100);
+                break;
+            case CarLayout.SOFTWHITE:
+                put(content, g19C1, 25); put(content, g19C2, 19); put(content, g19C3, 21); put(content, g19C4, 35);
+                put(g19C1, clock, 28); put(g19C1, date, 8); put(g19C1, week, 20); put(g19C1, tileGrid, 44);
+                put(g19C2, jCard, 38 * jj); put(g19C2, wideTalk, 10); put(g19C2, carMap, 28); put(g19C2, gauge, 24);
+                put(g19C3, clockFace, 46); put(g19C3, minis, 16); put(g19C3, wideHub, 12); put(g19C3, roadCard, 14); put(g19C3, chipRow, 12); put(g19C3, board, 100);
+                put(g19C4, player, 48); put(g19C4, spApps, 52);
+                week.today();
+                break;
+            default: // ⑳
+                put(content, g20Col, 100);
+                put(g20Col, g20Top, 13); put(g20Col, g20Row, 87);
+                put(g20Top, g20Clock, 24); put(g20Top, g20Pills, 56); put(g20Top, chipRow, 20);
+                put(g20Clock, clockFor(), 62); put(g20Clock, date, 38);
+                for (int k : new int[]{1, 2, 3, 4, 6}) put(g20Pills, dockItems.get(k), 1); // (🗺️ 🎵 🧍 🎨 🚗: each opens its part of 🎛️)
+                put(g20Row, g20Left, 25); put(g20Row, g20Mid, 38); put(g20Row, g20Right, 37);
+                put(g20Left, jCard, 84 * jj); put(g20Left, wideTalk, 16);
+                put(g20Mid, tileGrid, 100);
+                put(g20Right, carMap, 38); put(g20Right, roadCard, 12); put(g20Right, player, 30); put(g20Right, g20Bottom, 26); put(g20Right, board, 100);
+                put(g20Bottom, dayNight, 45); put(g20Bottom, gauge, 55);
+                break;
+        }
+        fillTiles(tileGrid, 0, 6, 3);
+        specialApps();
+        switchesShow();
+        nextSongs();
+    }
+
+    /** ⑰ ⑱ ⑲ ⑳'s own touches over their colours (cards, the rail, the pills, the lit tiles); every other shape as it was. */
+    private void newLook(float rad) {
+        String s = shape;
+        boolean nl = CarLayout.newLook(s), tiles20 = CarLayout.GLOWTILES.equals(s);
+        for (int i = 0; i < tiles.size(); i++) { // (⑳: the six as white tiles with their own light; their names in navy pills)
+            TextView lab = (TextView) ((LinearLayout) tiles.get(i)).getChildAt(1);
+            if (tiles20) {
+                lab.setBackground(CarGlass.pill(look.light ? CarGlass.NAVY : 0xFF2A3A7A, 0));
+                lab.setTextColor(0xFFFFFFFF);
+                int lp = Math.max(4, H / 120);
+                lab.setPadding(lp * 2, lp / 2, lp * 2, lp / 2);
+                tileIcons.get(i).setColour(look.light ? CarGlass.NAVY : 0xFFEAF0FF);
+            } else if (lab.getBackground() != null) { lab.setBackground(null); lab.setPadding(0, 0, 0, 0); }
+        }
+        for (int i = 0; i < dockItems.size(); i++) { // (the parts' buttons: ⑳ navy pills with their light under them, ⑰ on its glass rail, ⑫ on its dark dock)
+            View d = dockItems.get(i);
+            d.setBackground(tiles20 ? CarGlass.glowPill(CarGlass.glow(i + 1)) : null);
+            if (CarLayout.LIQUID.equals(s)) { dockIcons.get(i).setColour(accent); dockWords.get(i).setTextColor(textSoft); }
+            else if (tiles20) { dockIcons.get(i).setColour(0xFFFFFFFF); dockWords.get(i).setTextColor(0xFFE6ECF7); }
+        }
+        if (!nl) return;
+        android.graphics.drawable.Drawable card = CarArt.glass(look, rad, false);
+        switch (s) {
+            case CarLayout.LIQUID:
+                g17Rail.setBackground(CarArt.glass(look, rad, false));
+                g17Switches.setBackground(CarArt.glass(look, rad, false));
+                minis.setBackground(CarArt.glass(look, rad, false));
+                moon17.setTextColor(textMain);
+                moon17.setText(CarDeck.newDark(s, prefs.carNewNight()) ? "☀️" : "🌙");
+                gauge.setBackground(CarArt.glass(look, rad, false));
+                break;
+            case CarLayout.NAVYGLASS:
+                g18Cluster.setBackground(card);
+                g18Dock.setBackground(CarArt.glass(look, rad, true));
+                clock.setTextColor(0xFFFFFFFF);
+                break;
+            case CarLayout.SOFTWHITE:
+                minis.setBackground(CarArt.glass(look, rad, false));
+                week.setColours(textMain, textSoft, accent, look.light);
+                week.setBackground(CarArt.glass(look, rad, false));
+                gauge.setBackground(CarArt.glass(look, rad, false));
+                clockFace.setBackground(null);
+                clockFace.setColours(textMain, textSoft, look.light ? CarGlass.YELLOW : accent);
+                if (!"led".equals(prefs.carClock())) clock.setTextColor(look.light ? accent : 0xFFF5C518);
+                break;
+            default: // ⑳: the floor is dark — the time and its words in white
+                if (!"led".equals(prefs.carClock())) clock.setTextColor(0xFFFFFFFF);
+                date.setTextColor(0xFFB8C2D6);
+                clockFace.setColours(0xFFFFFFFF, 0xFFB8C2D6, accent);
+                jCard.setBackground(CarGlass.tile(look, rad, false, 0xFFA855F7));
+                gauge.setBackground(CarGlass.tile(look, rad, false, 0xFF22C55E));
+                player.setBackground(CarGlass.tile(look, rad, false, 0xFFEC4899));
+                dayNight.setDark(CarDeck.newDark(s, prefs.carNewNight()));
+                break;
+        }
+        for (TextView t : switchWords) t.setTextColor(textMain);
+        switchesShow();
+    }
+
+    /** ⑰'s switches as they are now. */
+    private void switchesShow() {
+        if (switches.size() < 3 || look == null) return;
+        switches.get(0).set(prefs.carEq(), accent, look.light);
+        switches.get(1).set(prefs.carBeatLights(), accent, look.light);
+        switches.get(2).set(CarBox.quiet(getContext()), accent, look.light);
+    }
+
+    /** ⑰'s switch tapped: the equalizer and the beat lights only parked (looks), quiet any time (as its button). */
+    private void switch17(String id) {
+        if ("quiet".equals(id)) { quietToggle(); switchesShow(); return; }
+        if (!parkedOrSay()) return;
+        if ("eq".equals(id)) {
+            prefs.sp.edit().putString("car_eq_level", prefs.carEq() ? "off" : "full").apply();
+            hubChanged("car_eq_level");
+            toast(prefs.carEq() ? "🎚️ ఈక్వలైజర్ పెట్టాను" : "🎚️ ఈక్వలైజర్ ఆపాను");
+        } else {
+            prefs.sp.edit().putBoolean("car_beat_lights", !prefs.carBeatLights()).apply();
+            hubChanged("car_beat_lights");
+            toast(prefs.carBeatLights() ? "💡 బీట్ లైట్లు పెట్టాను" : "💡 బీట్ లైట్లు ఆపాను");
+        }
+        switchesShow();
+    }
+
+    /** 🌗 ⑰ ⑲ ⑳ day ↔ night (his tap, parked; his words any time). Never by the hour. */
+    private void newNightToggle() {
+        if (CarLayout.NAVYGLASS.equals(shape)) { toast("⑱ ఎప్పుడూ ముదురు నీలమే"); return; }
+        if (!parkedOrSay()) return;
+        boolean dark = !"dark".equals(prefs.carNewNight());
+        prefs.sp.edit().putString("car_new_night", dark ? "dark" : "").apply();
+        hubChanged("car_new_night");
+        toast(dark ? "🌙 రాత్రి రూపం" : "☀️ పగలు రూపం");
+    }
+
+    /** 🎙️ The orb in "Jarvis, మాట్లాడు" (⑰–⑳, or every ⑪–⑳ shape when he chose it): what Jarvis is doing, and its words. */
+    private void orbLook() {
+        boolean on = look != null && CarStyle.orbOn(prefs.carOrb(), shape) && wideTalk.getParent() != null;
+        if (on) {
+            int sz = Math.max(16, Math.round(Math.min(wideTalk.getHeight() * 0.78f, Math.max(24, H / 10f))));
+            orb.setLowMotion(prefs.carLowMotion());
+            orb.setState(state == OrbView.OFFLINE ? OrbView.IDLE : state);
+            if (!orbShown || sz != orbSize) { // (the button's size taken again when it changes)
+                orbSize = sz;
+                orb.setBounds(0, 0, sz, sz);
+                wideTalk.setCompoundDrawablesRelative(orb, null, null, null);
+                orbShown = true;
+            }
+            wideTalk.setCompoundDrawablePadding(Math.max(4, sz / 4));
+            String w = CarGlass.orbWords(state);
+            if (!w.contentEquals(wideTalk.getText())) wideTalk.setText(w);
+        } else if (orbShown) {
+            orbShown = false;
+            wideTalk.setCompoundDrawablesRelative(null, null, null, null);
+            wideTalk.setText("🎙️ Jarvis, మాట్లాడు");
+        }
+    }
+
+    /** ⑱'s stack: the songs that come next (only when his music app tells them), asked once a song. */
+    private void nextSongs() {
+        if (!"stack".equals(player.look()) || player.getParent() == null) return;
+        String k = waveSeed == null ? "" : waveSeed;
+        if (k.equals(nextFor)) return;
+        nextFor = k;
+        final Context app = getContext().getApplicationContext();
+        new Thread(() -> {
+            org.json.JSONArray q = null;
+            try { q = Music.queue(app); } catch (Exception ignored) {}
+            final org.json.JSONArray got = q;
+            main.post(() -> player.setNext(got));
+        }, "car-next").start();
     }
 
     // ================================================================ 🏙️ stage 4 (27 Oct): ⑮ the 3D city map
@@ -3081,7 +3357,7 @@ final class CarScreen extends FrameLayout {
         minis.setTextColor(soft);
         date.setTextColor(soft);
         clockFace.setColours(ink, soft, accent);
-        if (full) { // ⑬: Jarvis in a round window
+        if (full || CarLayout.SOFTWHITE.equals(shape)) { // ⑬ (and ⑲): Jarvis in a round window
             GradientDrawable orb = new GradientDrawable();
             orb.setShape(GradientDrawable.OVAL);
             orb.setColor(look.light ? 0xE6FFFFFF : 0xCC0A1220);
@@ -3105,6 +3381,9 @@ final class CarScreen extends FrameLayout {
             face.setStroke(Math.max(2, Ui.dp(getContext(), 2)), CarTheme.withAlpha(accent, 0xAA));
             gauge.setBackground(face);
         } else if (gauge.getBackground() != null) gauge.setBackground(null); // (every other shape as it always was)
+        if (!CarLayout.newLook(shape)) for (View g : new View[]{minis, week, g17Rail, g17Switches, g18Cluster, g18Dock}) if (g.getBackground() != null) g.setBackground(null);
+        newLook(rad); // ⑰ ⑱ ⑲ ⑳
+        orbLook();
     }
 
     // ================================================================ the six buttons
@@ -3994,7 +4273,9 @@ final class CarScreen extends FrameLayout {
                 clusterBox, clusterTop, clusterMid, clusterDock, railCol, dockMain, dockTop, dockCards, dockRow, spLeft, spMid, spRight, spMeter, spMeterTop, spClockCol,
                 g12Col, g12Top, g12Left, g12Mid, g12Right, g12Dock, g12DockEnd, g13Left, g13Right, g14Main, g14Side, g14Bottom,
                 g16Row, g16Left, g16Mid, g16Right, g16Dock, g16Btns, g16Clock,
-                g15Row, g15Left, g15Mid, g15Right, g15Tools, g15Bottom, g15BottomRow, g15Chips1, g15Chips2}) g.removeAllViews();
+                g15Row, g15Left, g15Mid, g15Right, g15Tools, g15Bottom, g15BottomRow, g15Chips1, g15Chips2,
+                g17Rail, g17Left, g17Mid, g17Top, g17Clock, g17Bottom, g17Right, g18Left, g18Main, g18Cluster, g18Status, g18Panels, g18Mid, g18Dock,
+                g19C1, g19C2, g19C3, g19C4, g20Col, g20Top, g20Clock, g20Pills, g20Row, g20Left, g20Mid, g20Right, g20Bottom}) g.removeAllViews();
         if (chase != null && !CarLayout.CHASE.equals(s) && !CarLayout.CITY.equals(s)) chase.setShown(false); // (out of ⑯ (and ⑮'s 🎮): the 3D view rests)
         if (city != null && !CarLayout.CITY.equals(s)) city.setShown(false); // (out of ⑮: the 3D map rests)
         g16.removeAllViews();
@@ -4030,7 +4311,9 @@ final class CarScreen extends FrameLayout {
         carMap.setExpanded(specialFull);
         carMap.setVisibility(VISIBLE);
         player.setVisibility(VISIBLE);
-        player.setRound(CarLayout.GLASS.equals(s) && !specialFull); // (⑫: the song standing, round)
+        player.setLook(specialFull ? "old" : CarStyle.playerFor(prefs.carPlayerLook(), s)); // (⑫: the song standing, round; ⑰–⑳ their own; or his pick)
+        player.setWaveRest(CarLayout.SOFTWHITE.equals(s) ? CarGlass.YELLOW : 0);
+        nextFor = ""; // (the stack's "next" list asked for again)
         boolean deep = CarLayout.deep(s);
         rightOnly = false;
         float j = CarDeck.jarvisScale(prefs.carJarvis()); // (Jarvis smaller / bigger: his window's share of its column)
@@ -4132,6 +4415,14 @@ final class CarScreen extends FrameLayout {
                 jCardFill();
                 if (specialFull) { bigMapArrange(false, j); break; }
                 chaseArrange(j);
+                break;
+            case CarLayout.LIQUID: // ⑰ liquid glass: a rail of 🎛️'s parts, Jarvis and the six, the clock and the weather over the map, the speed and three switches under it, the song and his apps
+            case CarLayout.NAVYGLASS: // ⑱ dark glass: Jarvis and the six on the left; one big card of the map, his car under the speed, and the song; a glowing dock of his apps
+            case CarLayout.SOFTWHITE: // ⑲ soft white: the big time, the week, the six; Jarvis round, the map, the speed; the clock face, the weather, 🎛️; the song's wave, his apps
+            case CarLayout.GLOWTILES: // ⑳ glow tiles: the time and 🎛️'s parts on top; Jarvis; the six as big lit tiles; the map, the song, day / night and the speed
+                jCardFill();
+                if (specialFull) { bigMapArrange(false, j); break; }
+                newArrange(s, j);
                 break;
             case CarLayout.CITY: // ⑮ the 3D city map under everything; Jarvis, the six, 🎛️ and the map's buttons on the left; the turn on top, the speed and the clock at the foot; where to, the chips, the song and his apps on the right
                 jCardFill();
@@ -4528,8 +4819,9 @@ final class CarScreen extends FrameLayout {
         if (look == null) return;
         boolean roundNow = CarDeck.round(prefs.carBtnStyle(), CarLayout.deep(shape)) || CarLayout.FULLMAP.equals(shape); // (⑬'s wheel: round buttons)
         float rad = Math.max(10, Math.min(Math.max(W, 600), Math.max(H, 300)) / (CarLayout.family(shape) ? 40f : 22f)); // (⑪ ⑫ ⑬ ⑭: flatter corners, more room inside)
+        boolean lit = CarLayout.GLOWTILES.equals(shape) && !roundNow; // (⑳: each tile its own light under it)
         for (int i = 0; i < tiles.size(); i++) {
-            tiles.get(i).setBackground(roundNow ? CarKit.chromeButton(look, 0.64f) : CarArt.glass(look, rad, true));
+            tiles.get(i).setBackground(roundNow ? CarKit.chromeButton(look, 0.64f) : lit ? CarGlass.tile(look, rad, true, CarGlass.glow(i)) : CarArt.glass(look, rad, true));
             tileIcons.get(i).setFill(roundNow ? 0.5f : 1f);
         }
     }
@@ -4580,6 +4872,13 @@ final class CarScreen extends FrameLayout {
         boxes.addAll(railApps);
         boxes.add(railMore);
         for (View v : new View[]{jCard, spMeter, spApps, spRoadCard, player, wideJ, wideHub, wideTalk, g12Dock, wheel, appsV, appsH}) boxes.add(v);
+        for (View v : new View[]{g17Rail, g17Switches, g18Cluster, g18Dock, week, dayNight, moon17}) boxes.add(v); // (⑰–⑳'s own cards)
+        if (CarLayout.newLook(shape)) { // (their weather, speed and clock cards too; ⑳'s pills; in the old shapes these sit as they always did)
+            boxes.add(minis);
+            boxes.add(gauge);
+            if (CarLayout.SOFTWHITE.equals(shape)) boxes.add(clockFace);
+            if (CarLayout.GLOWTILES.equals(shape)) boxes.addAll(dockItems);
+        }
         for (View t : boxes) {
             if (!(t.getLayoutParams() instanceof LinearLayout.LayoutParams)) continue; // (not on the screen in this shape)
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
@@ -4707,9 +5006,16 @@ final class CarScreen extends FrameLayout {
         colourKey = ownLook(cs);
         CarTheme th = CarTheme.of(CarDeck.themeFor(cs, prefs.carTheme())); // (⑫ white glass, ⑭ neon: their own colours)
         boolean whiteNight = CarLayout.GLASS.equals(cs) && night && !CarDeck.glassDark(prefs.carGlassNight(), night); // (⑫ at night: white unless he chose dark)
-        look = th.look(mode, night && !whiteNight, prefs.carAccent(), prefs.carArtColour() ? songAccent : 0);
-        if (whiteNight) look.night = true; // (the map and the car's lights still know it is night)
-        look.card = CarStyle.cardCode(prefs.carCard(), th.card); // 17 / 18
+        if (CarLayout.newLook(cs)) { // ⑰ ⑱ ⑲ ⑳: their own colours and cards; their night only when he picks it (the hour never changes them)
+            boolean dark = CarDeck.newDark(cs, prefs.carNewNight());
+            look = th.look(mode, dark, 0, 0);
+            look.night = dark || night; // (the map and the car's lights still know it is night)
+            look.card = th.card;
+        } else {
+            look = th.look(mode, night && !whiteNight, prefs.carAccent(), prefs.carArtColour() ? songAccent : 0);
+            if (whiteNight) look.night = true; // (the map and the car's lights still know it is night)
+            look.card = CarStyle.cardCode(prefs.carCard(), th.card); // 17 / 18
+        }
         look.lowMotion = prefs.carLowMotion();
         ambient.set(prefs.carBgMotion(), !prefs.carLowMotion(), look.accent, night ? th.nightAccent : th.musicAccent, look.light);
         numFont = CarLooks.font(getContext(), prefs.carFont());

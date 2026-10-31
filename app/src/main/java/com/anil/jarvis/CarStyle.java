@@ -78,7 +78,9 @@ final class CarStyle {
 
     // ================================================================ 🃏 the cards' frames (17, 18)
 
-    static final int C_GLASS = 0, C_HUD = 1, C_GLOW = 2;
+    static final int C_GLASS = 0, C_HUD = 1, C_GLOW = 2,
+            /** ⑰ ⑱ ⑲ ⑳'s own frames (CarGlass; never in his card list: those looks keep their own). */
+            C_LIQUID = 3, C_NAVY = 4, C_SOFT = 5, C_TILES = 6;
     static final String[] CARDS = {"", "glass", "hud", "glow"};
     static final String[] CARD_NAMES = {"థీమ్‌దే", "గాజు కార్డులు", "17 · HUD మూలల కార్డులు", "18 · మెరుపు అంచు కార్డులు"};
 
@@ -88,6 +90,47 @@ final class CarStyle {
         if ("hud".equals(pref)) return C_HUD;
         if ("glow".equals(pref)) return C_GLOW;
         return themeCard;
+    }
+
+    // ================================================================ 🎵 the player's looks (31 Oct, the players' sheet)
+
+    /** "": the shape's own (⑫ round, ⑰ warm glass, ⑱ the dark stack, ⑲ ⑳ the wave, the rest lying); else his pick for every shape. */
+    static final String[] PLAYERS = {"", "old", "round", "cover", "warm", "stack", "wave"};
+    static final String[] PLAYER_NAMES = {"ఆకారానిదే", "పాతది (పడుకున్న పట్టీ)", "⑫ గుండ్రని బొమ్మ", "1 · కవర్ వెలుగు", "2 · వెచ్చని గాజు", "3 · చీకటి స్టాక్ (తర్వాతి పాటలతో)", "4 · తెల్లటి తరంగం"};
+
+    /** The player's look on this shape: his pick, else the shape's own. Pure. */
+    static String playerFor(String pref, String shape) {
+        for (int i = 1; i < PLAYERS.length; i++) if (PLAYERS[i].equals(pref)) return pref;
+        if (CarLayout.GLASS.equals(shape)) return "round";
+        if (CarLayout.LIQUID.equals(shape)) return "warm";
+        if (CarLayout.NAVYGLASS.equals(shape)) return "stack";
+        if (CarLayout.SOFTWHITE.equals(shape) || CarLayout.GLOWTILES.equals(shape)) return "wave";
+        return "old";
+    }
+
+    /**
+     * The wave look's bar i of n (0.15–1): the same song always the same wave (from its name), louder in the middle like a
+     * song's own picture, never two bars alike side by side. Pure.
+     */
+    static float waveBar(int seed, int i, int n) {
+        int s = (seed & 0x7FFFFFFF) % 997;
+        double a = Math.abs(Math.sin(i * 0.61 + s * 0.13)) * 0.6 + Math.abs(Math.sin(i * 0.23 + s * 0.071)) * 0.4;
+        double env = 0.55 + 0.45 * Math.sin(Math.PI * (i + 0.5) / Math.max(1, n));
+        return (float) Math.max(0.15, Math.min(1.0, a * env * 1.15));
+    }
+
+    /** 🎛️'s own page: the new liquid glass (as on his sheet) or the old one. */
+    static final String[] HUB_LOOKS = {"", "old"};
+    static final String[] HUB_LOOK_NAMES = {"✨ కొత్త గాజు", "పాతది"};
+
+    /** 🎙️ the orb in "Jarvis, మాట్లాడు": in ⑰–⑳ (their own), in every ⑪–⑳ shape, or not at all. */
+    static final String[] ORBS = {"", "all", "off"};
+    static final String[] ORB_NAMES = {"⑰ ⑱ ⑲ ⑳ లో", "⑪ నుంచి ⑳ అన్నిట్లో", "వద్దు (పాత బటన్)"};
+
+    /** The orb shows in this shape. Pure. */
+    static boolean orbOn(String pref, String shape) {
+        if ("off".equals(pref)) return false;
+        return CarLayout.newLook(shape) || "all".equals(pref) && CarLayout.family(shape);
     }
 
     // ================================================================ 🎛️ the buttons' icons (30, 31, 32)

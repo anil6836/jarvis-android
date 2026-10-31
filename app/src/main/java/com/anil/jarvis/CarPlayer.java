@@ -28,6 +28,10 @@ import org.json.JSONObject;
  * His word (26 Oct): every key a big raised 3D button; ⑪'s own player shows only 🔀 ⏮ ⏯ ⏭ 🔁 ({@link #setFew}), the big
  * player (a tap on the picture) keeps them all. ⑫ (27 Oct) stands it up ({@link #setRound}): the picture round with its
  * ring and the music all round it on top, the name, the place, the keys under it.
+ * The new looks (31 Oct, the players' sheet; {@link #setLook}): "cover" — the picture in the middle with two leaning
+ * beside it and its colour glowing under it; "warm" — the song's own colours softly behind the whole card, the name and
+ * the keys on a glass bar; "stack" — the picture on a little stack with the songs that come next beside it (when the
+ * app tells them); "wave" — the place in the song drawn as the song's wave. Standing in a tall card, lying in a wide one.
  */
 final class CarPlayer extends LinearLayout {
 
@@ -59,7 +63,16 @@ final class CarPlayer extends LinearLayout {
     private boolean liked, playing, hasSong, vinylOn, few, light;
     /** The keys ⑪'s own player keeps (his word, 26 Oct): shuffle, the song before, play / pause, the next song, repeat. */
     static final String[] FEW = {"shuffle", "prev", "toggle", "next", "repeat"};
-    private Bitmap art;
+    private Bitmap art, warmArt;
+    /** The look (CarStyle.PLAYERS but ""): old, round, cover, warm, stack, wave. */
+    private String look = "old";
+    private boolean standing;
+    private final CarGlass.Covers covers;
+    private long[] nextIds = new long[0];
+    private int waveRest;
+    private final RectF warmBox = new RectF();
+    private final Paint warmPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final android.graphics.Path warmClip = new android.graphics.Path();
 
     CarPlayer(Context c, Listener l) {
         super(c);
@@ -84,6 +97,13 @@ final class CarPlayer extends LinearLayout {
         vinyl = new CarLooks.Vinyl(c);
         vinyl.setVisibility(GONE);
         artBox.addView(vinyl, new FrameLayout.LayoutParams(-1, -1));
+        covers = new CarGlass.Covers(c); // (the new looks' pictures: cover / stack)
+        covers.setVisibility(GONE);
+        covers.setTap(new CarGlass.Covers.Tap() {
+            @Override public void art() { tap(l::art); }
+            @Override public void next(int i) { if (i < nextIds.length) tap(() -> l.key("next:" + nextIds[i])); }
+        });
+        artBox.addView(covers, new FrameLayout.LayoutParams(-1, -1));
         artBox.setOnClickListener(v -> tap(l::art));
         addView(artBox, new LayoutParams(0, 0));
 
@@ -159,21 +179,91 @@ final class CarPlayer extends LinearLayout {
         artImg.setImageBitmap(b);
         vinyl.setArt(b);
         roundArt.setArt(b);
+        covers.setArt(b);
+        warmArt = null;
+        if (b != null) try { warmArt = Bitmap.createScaledBitmap(b, 24, 24, true); } catch (Throwable ignored) {} // (a tiny copy drawn big: the song's colours, soft)
         showArt();
+        invalidate();
     }
 
     /** ⑫: standing and round (true), or lying as everywhere else. */
-    void setRound(boolean on) {
-        if (on == round) return;
-        round = on;
-        setOrientation(on ? VERTICAL : HORIZONTAL);
-        setGravity(on ? Gravity.CENTER_HORIZONTAL : Gravity.CENTER_VERTICAL);
-        right.setLayoutParams(on ? new LayoutParams(-1, 0, 1) : new LayoutParams(0, -1, 1));
+    void setRound(boolean on) { setLook(on ? "round" : "old"); }
+
+    boolean isRound() { return round; }
+
+    /** The look (CarStyle.PLAYERS): "old", "round" (⑫), "cover", "warm", "stack", "wave". */
+    void setLook(String lk) {
+        String l = lk == null || lk.isEmpty() ? "old" : lk;
+        if (l.equals(look)) return;
+        look = l;
+        round = "round".equals(l);
+        covers.setMode("stack".equals(l) ? "stack" : "cover");
+        seek.setWave("wave".equals(l));
+        stand(round);
         showArt();
+        invalidate();
         if (sw > 0) post(() -> sizes(sw, sh));
     }
 
-    boolean isRound() { return round; }
+    String look() { return look; }
+
+    /** The old lying player (its card carries the screen's equalizer behind the keys). */
+    boolean lyingOld() { return "old".equals(look) && !standing; }
+
+    /** Standing (the picture on top) or lying (the picture on the left). */
+    private void stand(boolean on) {
+        if (on == standing && getOrientation() == (on ? VERTICAL : HORIZONTAL)) return;
+        standing = on;
+        setOrientation(on ? VERTICAL : HORIZONTAL);
+        setGravity(on ? Gravity.CENTER_HORIZONTAL : Gravity.CENTER_VERTICAL);
+        right.setLayoutParams(on ? new LayoutParams(-1, 0, 1) : new LayoutParams(0, -1, 1));
+    }
+
+    /** The songs that come next (the music app's list from Music.queue: the ones after the one playing), for the stack. */
+    void setNext(org.json.JSONArray q) {
+        java.util.List<String[]> rows = new java.util.ArrayList<>();
+        java.util.List<Long> ids = new java.util.ArrayList<>();
+        if (q != null) {
+            int start = -1;
+            for (int i = 0; i < q.length(); i++) { JSONObject it = q.optJSONObject(i); if (it != null && it.optBoolean("now")) { start = i; break; } }
+            for (int i = start + 1; i < q.length() && rows.size() < 3; i++) {
+                JSONObject it = q.optJSONObject(i);
+                if (it == null) continue;
+                String t = it.optString("title");
+                rows.add(new String[]{t.isEmpty() ? "పాట" : t, it.optString("sub")});
+                ids.add(it.optLong("id"));
+            }
+        }
+        nextIds = new long[ids.size()];
+        for (int i = 0; i < nextIds.length; i++) nextIds[i] = ids.get(i);
+        covers.setNext(rows);
+    }
+
+    /** The wave's colour after the place in the song (⑲: its yellow; 0: soft). */
+    void setWaveRest(int c) { waveRest = c; seek.invalidate(); }
+
+    @Override protected void dispatchDraw(Canvas c) {
+        if ("warm".equals(look) && warmArt != null && getWidth() > 0) { // (the song's own colours softly behind the whole card)
+            float in = Math.max(3, Math.min(getWidth(), getHeight()) * 0.035f), rr = Math.max(8, Math.min(getWidth(), getHeight()) * 0.08f);
+            warmBox.set(in, in, getWidth() - in, getHeight() - in * 1.4f);
+            warmClip.reset();
+            warmClip.addRoundRect(warmBox, rr, rr, android.graphics.Path.Direction.CW);
+            c.save();
+            c.clipPath(warmClip);
+            float sc = Math.max(warmBox.width(), warmBox.height()) / 24f;
+            c.translate(warmBox.centerX() - 12 * sc, warmBox.centerY() - 12 * sc);
+            c.scale(sc, sc);
+            warmPaint.setAlpha(light ? 150 : 210);
+            c.drawBitmap(warmArt, 0, 0, warmPaint);
+            c.restore();
+            warmPaint.setAlpha(255);
+            warmPaint.setShader(new android.graphics.LinearGradient(0, warmBox.top, 0, warmBox.bottom, light ? new int[]{0x22FFFFFF, 0xAAFFFFFF} : new int[]{0x22000000, 0xAA000000},
+                    null, android.graphics.Shader.TileMode.CLAMP));
+            c.drawRoundRect(warmBox, rr, rr, warmPaint);
+            warmPaint.setShader(null);
+        }
+        super.dispatchDraw(c);
+    }
 
     /** ⑫'s music all round the picture: the car speakers' equalizer, as he set it (🎚️ on / dim / off, fewer movements). */
     void setEq(CarEq eq, boolean on, boolean calm, boolean low) {
@@ -191,10 +281,12 @@ final class CarPlayer extends LinearLayout {
     }
 
     private void showArt() {
+        boolean cv = "cover".equals(look) || "stack".equals(look);
         roundArt.setVisibility(round ? VISIBLE : GONE);
-        artImg.setVisibility(!round && art != null && !vinylOn ? VISIBLE : GONE);
-        vinyl.setVisibility(vinylOn ? VISIBLE : GONE);
-        artIcon.setVisibility(!round && art == null && !vinylOn ? VISIBLE : round ? GONE : INVISIBLE);
+        covers.setVisibility(cv ? VISIBLE : GONE);
+        artImg.setVisibility(!round && !cv && art != null && !vinylOn ? VISIBLE : GONE);
+        vinyl.setVisibility(vinylOn && !cv ? VISIBLE : GONE);
+        artIcon.setVisibility(!round && !cv && art == null && !vinylOn ? VISIBLE : round || cv ? GONE : INVISIBLE);
     }
 
     /** The music app's numbers (Music.progress), or null. */
@@ -274,10 +366,11 @@ final class CarPlayer extends LinearLayout {
         artIcon.setColour(acc);
         vinyl.setAccent(acc);
         roundArt.setLook(acc, light);
+        covers.setColours(main, soft, acc, light);
         GradientDrawable ab = new GradientDrawable();
         ab.setColor(CarTheme.withAlpha(acc, 0x22));
         ab.setCornerRadius(Ui.dp(getContext(), 10));
-        artBox.setBackground(round ? null : ab); // (⑫'s round picture draws its own)
+        artBox.setBackground(round || "cover".equals(look) || "stack".equals(look) ? null : ab); // (⑫'s round picture, the covers: their own)
         artBg = ab;
         seek.invalidate();
         dims();
@@ -299,14 +392,20 @@ final class CarPlayer extends LinearLayout {
 
     private void sizes(int w, int h) {
         int inner = Math.max(1, h - getPaddingTop() - getPaddingBottom()), avail = Math.max(1, w - getPaddingLeft() - getPaddingRight());
+        boolean tallLook = "cover".equals(look) || "warm".equals(look) || "stack".equals(look);
+        stand(round || tallLook && inner >= avail * 0.72f); // (the new looks stand in a tall card, lie in a wide one)
+        right.setBackground(null);
+        right.setPadding(0, 0, 0, 0); // (warm's glass bar only while it stands)
         if (round) { roundSizes(inner, avail); return; }
-        artBox.setBackground(artBg);
+        if (standing) { standSizes(inner, avail); return; }
+        boolean cv = "cover".equals(look) || "stack".equals(look);
+        artBox.setBackground(cv ? null : artBg);
         vinyl.setLayoutParams(new FrameLayout.LayoutParams(-1, -1));
         words.setGravity(Gravity.START);
         title.setGravity(Gravity.START);
         sub.setGravity(Gravity.START);
         int a = Math.max(1, Math.min(Math.round(inner * 0.94f), Math.round(avail * 0.3f)));
-        LayoutParams ap = new LayoutParams(a, a);
+        LayoutParams ap = new LayoutParams(cv ? Math.round(a * ("stack".equals(look) ? 1.15f : 1.5f)) : a, a); // (the covers: a little wider, for the leaning ones)
         ap.rightMargin = Math.round(a * 0.1f);
         ap.gravity = Gravity.CENTER_VERTICAL;
         artBox.setLayoutParams(ap);
@@ -317,9 +416,46 @@ final class CarPlayer extends LinearLayout {
         app.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(10, t * 0.66f));
         int pp = Math.round(t * 0.35f);
         app.setPadding(pp * 2, pp, pp * 2, pp);
-        seek.setLayoutParams(new LayoutParams(-1, Math.round(inner * (few ? 0.16f : 0.2f))));
-        keys.setLayoutParams(new LayoutParams(-1, Math.round(inner * (few ? 0.48f : 0.4f)))); // (his word: the keys big)
+        boolean wave = "wave".equals(look);
+        seek.setLayoutParams(new LayoutParams(-1, Math.round(inner * (wave ? 0.34f : few ? 0.16f : 0.2f))));
+        keys.setLayoutParams(new LayoutParams(-1, Math.round(inner * (wave ? 0.36f : few ? 0.48f : 0.4f)))); // (his word: the keys big)
         for (int i = 0; i < keyViews.length; i++) keyViews[i].setFill(i == 3 ? 1f : 0.86f);
+    }
+
+    /** The new looks standing: the picture(s) on top as big as the card allows, the name, the place, the keys (warm: on a glass bar). */
+    private void standSizes(int inner, int avail) {
+        boolean warm = "warm".equals(look), stack = "stack".equals(look);
+        int ah = Math.max(1, Math.round(inner * (warm ? 0.5f : 0.52f)));
+        int aw = warm ? Math.min(ah, avail) : avail;
+        if (warm) ah = aw;
+        LayoutParams ap = new LayoutParams(aw, ah);
+        ap.gravity = Gravity.CENTER_HORIZONTAL;
+        ap.bottomMargin = Math.round(inner * 0.02f);
+        artBox.setLayoutParams(ap);
+        artBox.setBackground(warm ? artBg : null);
+        float t = Math.max(12, Math.min(inner * 0.055f, avail * 0.065f));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, t);
+        sub.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(10, t * 0.74f));
+        sub.setPadding(0, Math.round(t * 0.18f), 0, 0);
+        app.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(10, t * 0.66f));
+        int pp = Math.round(t * 0.35f);
+        app.setPadding(pp * 2, pp, pp * 2, pp);
+        int g = stack ? Gravity.START : Gravity.CENTER_HORIZONTAL; // (the stack's name on the left, as on his sheet)
+        words.setGravity(g);
+        title.setGravity(g);
+        sub.setGravity(g);
+        seek.setLayoutParams(new LayoutParams(-1, Math.round(inner * 0.09f)));
+        keys.setLayoutParams(new LayoutParams(-1, Math.round(inner * 0.2f)));
+        for (int i = 0; i < keyViews.length; i++) keyViews[i].setFill(i == 3 ? 1f : 0.86f);
+        if (warm) { // (the name, the place and the keys on a glass bar over the song's colours)
+            GradientDrawable bar = new GradientDrawable();
+            bar.setColor(light ? 0x8CFFFFFF : 0x40FFFFFF);
+            bar.setCornerRadius(Math.max(8, t * 0.9f));
+            bar.setStroke(Math.max(1, Ui.dp(getContext(), 1)), light ? 0x66FFFFFF : 0x55FFFFFF);
+            right.setBackground(bar);
+            int bp = Math.round(t * 0.5f);
+            right.setPadding(bp, bp / 2, bp, bp / 2);
+        } else right.setPadding(0, 0, 0, 0);
     }
 
     /** ⑫ standing: the round picture as big as the card allows (its top half or so), the name and the place, the keys. */
@@ -358,7 +494,12 @@ final class CarPlayer extends LinearLayout {
         private float speed = 1;
         private boolean on;
 
+        private boolean wave;
+
         Seek(Context c) { super(c); }
+
+        /** The place in the song drawn as the song's wave (the "wave" look). */
+        void setWave(boolean on) { wave = on; invalidate(); }
 
         void set(long pos, long upd, float speed, boolean playing, long dur) {
             this.pos = pos; this.upd = upd; this.speed = speed; this.on = playing; this.dur = dur;
@@ -376,6 +517,11 @@ final class CarPlayer extends LinearLayout {
         @Override protected void onDraw(Canvas c) {
             int w = getWidth(), h = getHeight();
             if (w <= 0 || h <= 0) return;
+            if (wave) { // (the wave look: its own drawing)
+                long at0 = dragAt >= 0 ? dragAt : now();
+                float f0 = dur > 0 && at0 >= 0 ? Math.min(1f, at0 / (float) dur) : 0;
+                if (drawWave(c, w, h, f0)) { removeCallbacks(this); if (on && dragAt < 0 && isShown()) postDelayed(this, 500); return; }
+            }
             float ts = Math.max(10, h * 0.5f);
             p.setTextSize(ts);
             p.setTypeface(Typeface.DEFAULT_BOLD);
@@ -404,6 +550,41 @@ final class CarPlayer extends LinearLayout {
             }
             removeCallbacks(this);
             if (on && dragAt < 0 && isShown()) postDelayed(this, 500);
+        }
+
+        /**
+         * The wave: bars across the card (their heights from the song's name: the same song, the same wave), the part
+         * already played in the card's colour, the rest soft (⑲: yellow); the times at the ends under it.
+         */
+        private boolean drawWave(Canvas c, int w, int h, float f) {
+            float ts = Math.max(9, Math.min(h * 0.2f, 14 * getResources().getDisplayMetrics().density));
+            p.setTextSize(ts);
+            p.setTypeface(Typeface.DEFAULT_BOLD);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(textSoft);
+            String a = CarDeck.songTime(dragAt >= 0 ? dragAt : now()), b = CarDeck.songTime(dur);
+            c.drawText(a, 0, h - ts * 0.25f, p);
+            c.drawText(b, w - p.measureText(b), h - ts * 0.25f, p);
+            float top = h * 0.04f, bottom = h - ts * 1.45f;
+            if (bottom - top < 6) return false;
+            x0 = 0;
+            x1 = w;
+            float bw = Math.max(2, Math.min(6 * getResources().getDisplayMetrics().density, w / 70f)), step = bw * 1.75f;
+            int n = Math.max(8, (int) (w / step));
+            int seed = title.getText().toString().hashCode();
+            float mid = (top + bottom) / 2, half = (bottom - top) / 2;
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setStrokeWidth(bw);
+            p.setStyle(Paint.Style.STROKE);
+            for (int i = 0; i < n; i++) {
+                float x = (i + 0.5f) * (w / (float) n);
+                float k = CarStyle.waveBar(seed, i, n);
+                float hh = Math.max(bw * 0.6f, half * k);
+                p.setColor(x / w <= f ? accent : waveRest != 0 ? waveRest : CarTheme.withAlpha(textSoft, 0x66));
+                c.drawLine(x, mid - hh, x, mid + hh, p);
+            }
+            p.setStyle(Paint.Style.FILL);
+            return true;
         }
 
         @Override public boolean onTouchEvent(MotionEvent e) {

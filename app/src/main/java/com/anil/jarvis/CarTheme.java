@@ -57,8 +57,21 @@ final class CarTheme {
             new CarTheme(16, "F · నైట్ గ్రీన్", 0xFF0A2A1E, 0xFF020806, 0xFF061A13, 0xFF010403, 0xFF4DFFA6, 0xFFB8FF7A, 0xFF5FF3FF, 0xFF34C784, P_HEX, G_CYBER, false),
     };
 
+    /**
+     * ⑰ ⑱ ⑲ ⑳'s own colours (31 Oct): only those shapes wear them (never in his theme list). ⑰ pastel glass, ⑱ navy
+     * glass (always dark), ⑲ soft white with navy (its yellow is drawn where it belongs), ⑳ white tiles on a dark floor.
+     * Their night colours only when he picks it (🌗): the hour never changes them.
+     */
+    static final CarTheme[] OWN = {
+            new CarTheme(17, "⑰ లిక్విడ్ గ్లాస్", 0xFFEDEBFB, 0xFFDDF1F7, 0xFF181B36, 0xFF0A0C1C, 0xFF6C5CFF, 0xFFC026D3, 0xFF0EA5B7, 0xFF8B7CFF, P_NONE, G_DIGITS, true, CarStyle.C_LIQUID),
+            new CarTheme(18, "⑱ డార్క్ గ్లాస్", 0xFF0C1C44, 0xFF040A1C, 0xFF081431, 0xFF02060F, 0xFF3B8BFF, 0xFF6FA8FF, 0xFF34D399, 0xFF2F72DA, P_NONE, G_DIGITS, false, CarStyle.C_NAVY),
+            new CarTheme(19, "⑲ సాఫ్ట్ వైట్", 0xFFEAEEF4, 0xFFE1E6EE, 0xFF1D2331, 0xFF141925, 0xFF1E2A78, 0xFF1E2A78, 0xFF1E2A78, 0xFFF5C518, P_NONE, G_DIGITS, true, CarStyle.C_SOFT),
+            new CarTheme(20, "⑳ గ్లో టైల్స్", 0xFF11141F, 0xFF06070D, 0xFF0B0D16, 0xFF040509, 0xFF3A6BFF, 0xFFE0408A, 0xFF16A34A, 0xFF5B7CFF, P_NONE, G_DIGITS, true, CarStyle.C_TILES),
+    };
+
     static CarTheme of(int id) {
         for (CarTheme t : ALL) if (t.id == id) return t;
+        for (CarTheme t : OWN) if (t.id == id) return t;
         return ALL[0];
     }
 
