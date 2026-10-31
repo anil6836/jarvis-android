@@ -39,8 +39,25 @@ final class FilmPlan {
     /** Back on the still picture (the dance ended, a clip broke): from the stage again, no set half done. */
     void reset() { at = STAGE; queue.clear(); }
 
-    /** A clip that couldn't play (a broken file): never again this trip. */
-    void broken(FilmPack.Clip c) { if (c != null) bad.add(c.id); queue.clear(); at = STAGE; }
+    private final java.util.Map<String, Integer> fails = new java.util.HashMap<>();
+
+    /**
+     * A clip that couldn't play: after its second time, never again this trip (once may be the box busy for a moment).
+     * {@code shownTo}: where the picture on the screen ends now (the clip still playing, or the stage when none): the
+     * plan goes on from there (back to the stage the shortest way), so nobody vanishes in a jump.
+     */
+    void broken(FilmPack.Clip c, String shownTo) {
+        if (c != null) {
+            int n = fails.containsKey(c.id) ? fails.get(c.id) + 1 : 1;
+            fails.put(c.id, n);
+            if (n >= 2) bad.add(c.id);
+        }
+        queue.clear();
+        at = shownTo == null || shownTo.isEmpty() ? STAGE : shownTo;
+    }
+
+    /** Never to be played again this trip. */
+    boolean banned(FilmPack.Clip c) { return c != null && bad.contains(c.id); }
 
     /** The clip that plays now (it ends where its "to" says). */
     private FilmPack.Clip played(FilmPack.Clip c) {

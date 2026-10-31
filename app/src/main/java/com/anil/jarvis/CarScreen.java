@@ -179,7 +179,9 @@ final class CarScreen extends FrameLayout {
     // 🎬 the film Jarvis (31 Oct): his clip pack on the box (loaded off the main thread), which load of it we have, his choice
     private FilmPack filmPack;
     private int filmGen = -1;
-    private boolean filmLoading, filmHelloDone;
+    private boolean filmLoading;
+    /** 👋 The trip's welcome asked for the film Jarvis's hello clip (the pack may still be loading): until when it may still play. */
+    private long filmHelloUntil;
     private String filmKind = "";
     private int state = OrbView.IDLE, mode = CarTheme.DRIVING;
     private String said = "", heard = "";
@@ -765,7 +767,6 @@ final class CarScreen extends FrameLayout {
         main.post(quick);
         main.post(slow);
         chaseShow();
-        filmHelloDone = false; // (👋 the film Jarvis's welcome once more on this start)
         filmKind = ""; // (the window told again)
         filmCheck();
     }
@@ -988,27 +989,41 @@ final class CarScreen extends FrameLayout {
     private void filmCheck() {
         String kind = prefs.carJarvisKind();
         int g = FilmPack.gen();
-        if (g != filmGen && !filmLoading) {
-            filmLoading = true;
-            final Context c = getContext().getApplicationContext();
-            photoWork.execute(() -> {
-                final FilmPack p = FilmPack.load(c.getFilesDir());
-                main.post(() -> { filmLoading = false; filmGen = g; filmPack = p; filmKind = ""; filmCheck(); });
-            });
+        if (g != filmGen) { // (a new pack came, or it went: read again; meanwhile nothing changes — never the old pack against new files)
+            if (!filmLoading) {
+                filmLoading = true;
+                final Context c = getContext().getApplicationContext();
+                photoWork.execute(() -> {
+                    final FilmPack p = FilmPack.load(c.getFilesDir());
+                    main.post(() -> { filmLoading = false; filmGen = g; filmPack = p; filmKind = ""; filmCheck(); });
+                });
+            }
             return;
         }
         boolean want = "film".equals(kind) && filmPack != null && filmPack.hasDance();
         String now = want ? kind + "|" + filmGen : "2d";
-        if (now.equals(filmKind)) return;
-        filmKind = now;
-        portal.setFilm(want ? filmPack : null);
+        if (!now.equals(filmKind)) {
+            filmKind = now;
+            portal.setFilm(want ? filmPack : null);
+            FilmView fv = portal.film();
+            if (fv != null) {
+                fv.setSets(prefs.carFilmSets());
+                fv.setTalk(state);
+                fv.setDancing(dancing, dj.level()); // (before it runs: one clip chosen, the right kind)
+                fv.setRunning(running && !saverOn);
+            }
+        }
+        filmHello();
+    }
+
+    /** 👋 The trip's welcome on the film Jarvis (once, soon after the car started; never while dancing or moving). */
+    private void filmHello() {
+        if (filmHelloUntil == 0) return;
+        if (android.os.SystemClock.uptimeMillis() > filmHelloUntil) { filmHelloUntil = 0; return; }
         FilmView fv = portal.film();
-        if (fv == null) return;
-        fv.setSets(prefs.carFilmSets());
-        fv.setTalk(state);
-        fv.setRunning(running && !saverOn);
-        if (dancing) fv.setDancing(true, dj.level());
-        if (!filmHelloDone && running && !CarBox.moving() && !dancing && prefs.carWelcome()) { filmHelloDone = true; fv.hello(); } // 👋 once a start
+        if (fv == null || !running || saverOn || dancing || CarBox.moving()) return;
+        filmHelloUntil = 0;
+        fv.hello();
     }
 
     // ================================================================ speed
@@ -4242,6 +4257,8 @@ final class CarScreen extends FrameLayout {
 
     void welcome() {
         if (!prefs.carWelcome() || prefs.carLowMotion()) return;
+        filmHelloUntil = android.os.SystemClock.uptimeMillis() + 45_000; // 🎬 the film Jarvis's hello too (when his pack is there; it may still be loading)
+        filmHello();
         if ("neon".equals(prefs.carWelcomeLook()) && W > 0) { // 28: the neon car draws itself, then the cards come in
             welcomeUntil = android.os.SystemClock.uptimeMillis() + 5000;
             content.setAlpha(0f);

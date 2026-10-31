@@ -3646,12 +3646,13 @@ public class SettingsActivity extends Activity {
 
     /** 🎬 Add a pack (his zip), or take it away. */
     private void filmPackMenu() {
+        if (FilmPack.BUSY.get()) { Toast.makeText(this, "📦 క్లిప్స్ ఇంకా కలుస్తున్నాయి… అయ్యాక", Toast.LENGTH_SHORT).show(); return; } // (one at a time)
         if (!new java.io.File(getFilesDir(), FilmPack.DIR).exists()) { pickFilmPack(); return; }
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("🎬 సినిమా Jarvis క్లిప్స్")
                 .setItems(new String[]{"📦 కొత్త ప్యాక్ కలుపు (పాతది పోతుంది)", "🗑️ క్లిప్స్ తీసేయి (పాత 2D Jarvis వస్తాడు)"}, (d, w) -> {
                     if (w == 0) pickFilmPack();
-                    else new Thread(() -> { FilmPack.remove(getFilesDir()); runOnUiThread(() -> { showFilm(); Toast.makeText(this, "🗑️ క్లిప్స్ తీసేశాను", Toast.LENGTH_SHORT).show(); }); }, "film-del").start();
+                    else new Thread(() -> { boolean ok = FilmPack.remove(getFilesDir()); runOnUiThread(() -> { showFilm(); Toast.makeText(this, ok ? "🗑️ క్లిప్స్ తీసేశాను" : "📦 క్లిప్స్ ఇంకా కలుస్తున్నాయి… అయ్యాక తీసేయండి", Toast.LENGTH_SHORT).show(); }); }, "film-del").start();
                 }).show();
     }
 

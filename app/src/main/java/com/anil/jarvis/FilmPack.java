@@ -116,7 +116,7 @@ final class FilmPack {
     /** The still of a frame (null: none). */
     File still(String frame) {
         String f = stills == null ? "" : stills.optString(frame, "");
-        if (f.isEmpty() || dir == null) return null;
+        if (f.isEmpty() || dir == null || !safeName(f)) return null;
         File out = new File(dir, f);
         return out.exists() ? out : null;
     }
@@ -134,9 +134,11 @@ final class FilmPack {
 
     // ================================================================ reading the manifest
 
-    /** The pack kept on the box (null: none or broken). */
+    /** The pack kept on the box (null: none or broken). A swap cut off half way (the box switched off): the old pack back. */
     static FilmPack load(File filesDir) {
-        File d = new File(filesDir, DIR);
+        File d = new File(filesDir, DIR), old = new File(filesDir, DIR + ".old");
+        if (!d.exists() && old.isDirectory() && !BUSY.get()) //noinspection ResultOfMethodCallIgnored
+            old.renameTo(d);
         File m = new File(d, MANIFEST);
         if (!m.isFile()) return null;
         try { return parse(readAll(m), d); } catch (Exception e) { return null; }
@@ -173,6 +175,25 @@ final class FilmPack {
         return b;
     }
 
+    /**
+     * What a manifest names that isn't there, and the song sets that can't be played as one chain (each clip starting
+     * where the one before ended, from the stage back to the stage): his words for each, empty when all is well. Pure
+     * but for the files' being there.
+     */
+    static List<String> problems(String json, File dir) {
+        List<String> out = new ArrayList<>();
+        try {
+            for (Clip c : parse(json, null).clips) // (the clips it would play: odd entries are left out anyway)
+                if (dir != null && !new File(dir, c.file).isFile()) out.add(c.file + " లేదు");
+            FilmPack p = parse(json, dir);
+            FilmPlan plan = new FilmPlan(p);
+            for (String set : p.sets()) if (plan.setPath(set).isEmpty()) out.add("'" + set + "' సెట్ వరుస కలవడం లేదు");
+        } catch (Exception e) {
+            out.add("క్లిప్స్ జాబితా (manifest) చదవలేకపోయాను");
+        }
+        return out;
+    }
+
     static boolean safeName(String n) { return n != null && NAME.matcher(n).matches() && !n.startsWith(".") && !n.contains(".."); }
 
     // ================================================================ the zip he picked
@@ -183,6 +204,14 @@ final class FilmPack {
      * then the old pack goes and the new one takes its place. Returns the new pack, or null with the reason in {@code why[0]}.
      */
     static FilmPack importZip(File filesDir, InputStream in, String[] why) {
+        if (!BUSY.compareAndSet(false, true)) { say(why, "ఇంకో ప్యాక్ ఇప్పుడే కలుస్తోంది: అది అయ్యాక"); return null; } // (one at a time: two would mix their files)
+        try { return importNow(filesDir, in, why); } finally { BUSY.set(false); }
+    }
+
+    /** A pack is going in or out now (📦 / 🗑️ wait). */
+    static final java.util.concurrent.atomic.AtomicBoolean BUSY = new java.util.concurrent.atomic.AtomicBoolean();
+
+    private static FilmPack importNow(File filesDir, InputStream in, String[] why) {
         File part = new File(filesDir, PART), dir = new File(filesDir, DIR);
         deleteTree(part);
         if (!part.mkdirs()) { say(why, "బాక్స్‌లో చోటు లేదు"); return null; }
@@ -214,27 +243,41 @@ final class FilmPack {
             }
         } catch (Exception ex) {
             deleteTree(part);
-            say(why, "ఆ ఫైల్ zip కాదు లేదా పాడైంది");
+            say(why, filesDir.getUsableSpace() < 64L * 1024 * 1024 ? "box లో చోటు సరిపోలేదు (పాత ఫైళ్లు తీసేయండి)" : "ఆ ఫైల్ zip కాదు లేదా పాడైంది");
             return null;
         }
         if (files == 0) { deleteTree(part); say(why, "ఆ zip లో క్లిప్స్ లేవు"); return null; }
         FilmPack p;
-        try { p = parse(readAll(new File(part, MANIFEST)), part); } catch (Exception ex) { deleteTree(part); say(why, "ప్యాక్‌లో క్లిప్స్ జాబితా (manifest) లేదు"); return null; }
-        if (!p.hasDance() && p.of("idle").isEmpty()) { deleteTree(part); say(why, "ప్యాక్‌లో డాన్స్ క్లిప్స్ లేవు"); return null; }
+        String json;
+        try { json = readAll(new File(part, MANIFEST)); p = parse(json, part); } catch (Exception ex) { deleteTree(part); say(why, "ప్యాక్‌లో క్లిప్స్ జాబితా (manifest) లేదు"); return null; }
+        if (!p.hasDance()) { deleteTree(part); say(why, "ప్యాక్‌లో డాన్స్ క్లిప్స్ లేవు"); return null; } // (the film Jarvis shows only with a dance)
+        List<String> bad = problems(json, part);
+        if (!bad.isEmpty()) { deleteTree(part); say(why, String.join(", ", bad.size() > 3 ? bad.subList(0, 3) : bad) + (bad.size() > 3 ? " …" : "")); return null; } // (all of it, or nothing: never half a set)
         File old = new File(filesDir, DIR + ".old");
         deleteTree(old);
-        if (dir.exists() && !dir.renameTo(old)) deleteTree(dir);
-        if (!part.renameTo(dir)) { deleteTree(part); say(why, "క్లిప్స్ దాచలేకపోయాను"); return null; }
+        if (dir.exists() && !dir.renameTo(old)) { deleteTree(part); say(why, "పాత క్లిప్స్ పక్కకు జరపలేకపోయాను: పాతవే ఉన్నాయి"); return null; } // (the old pack stays whole)
+        if (!part.renameTo(dir)) {
+            if (old.isDirectory()) //noinspection ResultOfMethodCallIgnored
+                old.renameTo(dir); // (the old one back)
+            deleteTree(part);
+            say(why, "క్లిప్స్ దాచలేకపోయాను: పాతవే ఉన్నాయి");
+            return null;
+        }
         deleteTree(old);
         bump();
         return load(filesDir);
     }
 
-    /** Takes the pack away (🗑️). */
-    static void remove(File filesDir) {
-        deleteTree(new File(filesDir, DIR));
-        deleteTree(new File(filesDir, PART));
-        bump();
+    /** Takes the pack away (🗑️). False: a pack is going in just now (try after it). */
+    static boolean remove(File filesDir) {
+        if (!BUSY.compareAndSet(false, true)) return false;
+        try {
+            deleteTree(new File(filesDir, DIR));
+            deleteTree(new File(filesDir, DIR + ".old"));
+            deleteTree(new File(filesDir, PART));
+            bump();
+            return true;
+        } finally { BUSY.set(false); }
     }
 
     private static void say(String[] why, String s) { if (why != null && why.length > 0) why[0] = s; }

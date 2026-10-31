@@ -39,7 +39,12 @@ final class FilmView extends FrameLayout {
     private float[] stillBox = FilmPack.SOLO_BOX;
     private boolean running, dancing, sets = true, helloWanted;
     private int level = -1, talk = OrbView.IDLE;
-    private Slot now, next;
+    /** On the screen; loading / ready to come next; fading out under {@code now} (the crossover). */
+    private Slot now, next, prev;
+    /** Clips that failed one after another (a working one sets it back): tries stop after a few. */
+    private int failsInRow;
+    /** Players let go off the screen's thread (a release can take a moment on the box). */
+    private static android.os.Handler releaser;
     private final Runnable tick = this::tick;
     /** Each frame while the view opens out / closes in (the set's first and last clips). */
     private final Runnable zoom = new Runnable() {
@@ -96,17 +101,17 @@ final class FilmView extends FrameLayout {
                 if (surface != null) mp.setSurface(surface);
                 mp.setDataSource(f.getAbsolutePath());
                 mp.setLooping(c.loop && !"dance".equals(c.kind) && !"set".equals(c.kind)); // (a rest clip loops by itself; dances follow each other)
-                final MediaPlayer me = mp;
-                mp.setOnVideoSizeChangedListener((p, w, hh) -> { if (p == me) { vw = w; vh = hh; fit(this); } });
+                // (each callback checks it is still this layer's player: a let-go one may still call back once)
+                mp.setOnVideoSizeChangedListener((p, w, hh) -> { if (p == mp) { vw = w; vh = hh; fit(this); } });
                 mp.setOnPreparedListener(p -> {
-                    if (p != me) return;
+                    if (p != mp) return;
                     prepared = true;
                     vw = p.getVideoWidth(); vh = p.getVideoHeight();
                     fit(this);
                     if (startWhenReady) go();
                 });
-                mp.setOnCompletionListener(p -> { if (p == me) ended(this); });
-                mp.setOnErrorListener((p, what, extra) -> { if (p == me) { Log.w(TAG, "clip " + c.id + " error " + what + "/" + extra); failed(this); } return true; });
+                mp.setOnCompletionListener(p -> { if (p == mp) ended(this); });
+                mp.setOnErrorListener((p, what, extra) -> { if (p == mp) { Log.w(TAG, "clip " + c.id + " error " + what + "/" + extra); failed(this); } return true; });
                 mp.prepareAsync();
             } catch (Exception e) {
                 Log.w(TAG, "clip " + c.id + ": " + e);
@@ -114,21 +119,24 @@ final class FilmView extends FrameLayout {
             }
         }
 
-        /** Starts the loaded clip and brings this layer in over the other one. */
+        /** Starts the loaded clip (still loading: the moment it is ready) and brings this layer in over the other one. */
         void go() {
             startWhenReady = true;
             if (!prepared || mp == null) return;
             try { mp.start(); } catch (Exception e) { failed(this); return; }
-            Slot old = now;
+            failsInRow = 0;
+            final Slot old = now;
             now = this;
             if (next == this) next = null;
+            if (prev != null && prev != old && prev != this) { prev.drop(); } // (a crossover cut short: only one goes out at a time)
+            prev = old != null && old != this ? old : null;
             tv.bringToFront();
             tv.animate().cancel();
             boolean fromStill = old == null;
             tv.setAlpha(fromStill ? 0f : 0.02f);
             tv.animate().alpha(1f).setDuration(fromStill ? OUT_MS : CROSS_MS).withEndAction(() -> {
-                if (old != null && old != this && old != now) old.drop();
-                still.setVisibility(INVISIBLE); // (the picture under the film: saved drawing while it plays)
+                if (old != null && prev == old && old != now && old != next) { old.drop(); prev = null; }
+                if (now == this) still.setVisibility(INVISIBLE); // (the picture under the film: saved drawing while it plays)
             }).start();
             if (old == null) still.setVisibility(VISIBLE);
             schedule();
@@ -141,7 +149,7 @@ final class FilmView extends FrameLayout {
         void drop() {
             tv.animate().cancel();
             tv.setAlpha(0f);
-            if (mp != null) { try { mp.release(); } catch (Exception ignored) {} }
+            if (mp != null) release(mp);
             mp = null;
             clip = null;
             prepared = false;
@@ -159,11 +167,12 @@ final class FilmView extends FrameLayout {
 
     // ================================================================ what the car screen tells it
 
-    /** The pack (null: none — the window shows nothing of its own). */
+    /** The pack (null: none — the window shows nothing of its own, and no dance goes on in it). */
     void setPack(FilmPack p) {
         if (p == pack) return;
         stopAll();
         pack = p;
+        if (p == null) dancing = false; // (hidden: the song's end never reaches it; the screen tells it again when it comes back)
         plan = p == null ? null : new FilmPlan(p);
         stillBox = p == null ? FilmPack.SOLO_BOX : p.stillBox;
         loadStill();
@@ -228,16 +237,19 @@ final class FilmView extends FrameLayout {
             c = plan.forKind(FilmPlan.kindFor(talk));
             if (c == null && talk != OrbView.IDLE) c = plan.forKind("idle");
             if (c != null && now != null && now.clip == c) return; // (the same rest clip plays on)
+            if (c == null && !force && now != null && now.clip != null && "hello".equals(now.clip.kind)) return; // (the welcome plays to its end; then the still)
             if (c == null) { toStill(); return; }
         }
         if (c == null) { toStill(); return; }
         Slot s = free();
         s.load(c, true);
+        if (s.mp != null) next = s; // (until it starts: nothing else is loaded over it)
     }
 
-    /** The layer not showing now. */
+    /** The layer not showing now (a crossover still going: cut short, its layer taken). */
     private Slot free() {
         Slot s = slots[0] == now ? slots[1] : slots[0];
+        if (s == prev) prev = null;
         if (s == next) next = null;
         return s;
     }
@@ -249,11 +261,12 @@ final class FilmView extends FrameLayout {
         int left = now.left();
         if (left == Integer.MAX_VALUE) { schedule(); return; }
         if (now.clip.loop && !dancing) { schedule(); return; } // (a rest loop plays on by itself)
+        if (prev != null) { schedule(); return; } // (the crossover still going: its layer is not free yet)
         if (next == null && left < NEXT_AHEAD_MS) {
             FilmPack.Clip c = dancing ? plan.nextDance(level, sets, rnd) : restAfter();
-            if (c != null) { next = free(); next.load(c, false); }
+            if (c != null) { Slot s = free(); s.load(c, false); if (s.mp != null) next = s; }
         }
-        if (next != null && left <= CROSS_MS + 40) { Slot n = next; next = null; n.go(); return; }
+        if (next != null && left <= CROSS_MS + 40) { next.go(); if (now == next) return; } // (not ready yet: it starts the moment it is)
         schedule();
     }
 
@@ -266,43 +279,72 @@ final class FilmView extends FrameLayout {
 
     private void schedule() { h.removeCallbacks(tick); if (running) h.postDelayed(tick, 100); }
 
-    /** A clip played to its end with nothing ready after it. */
+    /** A clip played to its end (its last picture stays until the next one starts). */
     private void ended(Slot s) {
         if (s != now) return;
-        if (next != null) { Slot n = next; next = null; n.go(); return; } // (ready: now; still loading: the moment it is)
-        if (dancing) { FilmPack.Clip c = plan.nextDance(level, sets, rnd); if (c != null) { free().load(c, true); return; } }
-        else { FilmPack.Clip c = restAfter(); if (c != null && (s.clip == null || c != s.clip)) { free().load(c, true); return; } }
-        if (plan != null) plan.reset();
+        if (next != null) { next.go(); return; } // (ready: now; still loading: the moment it is)
+        if (plan == null) { toStill(); return; }
+        FilmPack.Clip c = dancing ? plan.nextDance(level, sets, rnd) : restAfter();
+        if (c != null && (dancing || s.clip == null || c != s.clip)) { Slot f = free(); f.load(c, true); if (f.mp != null) next = f; return; }
+        plan.reset();
         toStill();
     }
 
-    /** A clip that couldn't play: never again this trip; the still now, and the next one tried. */
+    /**
+     * A clip that couldn't play: the plan goes on from the picture on the screen (a second failure of the same clip and it
+     * is never tried again this trip); nothing on the screen any more: the still, and another clip tried in a moment (a
+     * few times at most).
+     */
     private void failed(Slot s) {
-        if (plan != null) plan.broken(s.clip);
+        if (plan != null) plan.broken(s.clip, now != null && now != s && now.clip != null ? now.clip.to : FilmPlan.STAGE);
+        failsInRow++;
+        if (s == prev) { prev = null; s.drop(); return; }
         boolean wasNow = s == now;
         if (s == next) next = null;
         s.drop();
-        if (wasNow) { now = null; toStill(); if (dancing) h.postDelayed(() -> decide(true), 400); }
+        if (wasNow) {
+            now = null;
+            if (prev != null) { prev.drop(); prev = null; }
+            toStill();
+        }
+        if (now == null && next == null && running && failsInRow <= 6) h.postDelayed(() -> { if (now == null && next == null) decide(true); }, 400);
     }
 
-    /** The still picture back (the film fades out over it). */
+    /** The still picture back (the film fades out over it; nothing else stays playing). */
     private void toStill() {
         h.removeCallbacks(tick);
         still.setVisibility(VISIBLE);
         if (next != null) { next.drop(); next = null; }
+        if (prev != null) { prev.drop(); prev = null; } // (a crossover cut short: its end never comes)
         final Slot old = now;
         now = null;
-        if (old != null) old.tv.animate().cancel();
-        if (old != null) old.tv.animate().alpha(0f).setDuration(OUT_MS).withEndAction(() -> { if (old != now) old.drop(); }).start();
+        if (old != null) {
+            old.tv.animate().cancel();
+            old.tv.animate().alpha(0f).setDuration(OUT_MS).withEndAction(() -> { if (old != now && old != next) old.drop(); }).start();
+        }
     }
 
     private void stopAll() {
         h.removeCallbacks(tick);
+        removeCallbacks(zoom);
         for (Slot s : slots) s.drop();
         now = null;
         next = null;
+        prev = null;
         still.setVisibility(VISIBLE);
         if (plan != null) plan.reset();
+    }
+
+    /** A player let go away from the screen's thread. */
+    private static void release(final MediaPlayer m) {
+        synchronized (FilmView.class) {
+            if (releaser == null) {
+                android.os.HandlerThread t = new android.os.HandlerThread("film-release");
+                t.start();
+                releaser = new Handler(t.getLooper());
+            }
+        }
+        releaser.post(() -> { try { m.release(); } catch (Exception ignored) {} });
     }
 
     // ================================================================ pictures in the window
@@ -315,14 +357,18 @@ final class FilmView extends FrameLayout {
         final File f = p.still(FilmPlan.STAGE);
         if (f == null) return;
         new Thread(() -> {
-            BitmapFactory.Options o = new BitmapFactory.Options();
-            o.inJustDecodeBounds = true;
-            BitmapFactory.decodeFile(f.getAbsolutePath(), o);
-            int s = 1;
-            while (o.outWidth / (s * 2) >= 1280) s *= 2;
-            o = new BitmapFactory.Options();
-            o.inSampleSize = s;
-            final Bitmap b = BitmapFactory.decodeFile(f.getAbsolutePath(), o);
+            Bitmap got = null;
+            try {
+                BitmapFactory.Options o = new BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(f.getAbsolutePath(), o);
+                int s = 1;
+                while (o.outWidth / (s * 2) >= 1280 || o.outHeight / (s * 2) >= 1280) s *= 2; // (both sides: a tall picture too)
+                o = new BitmapFactory.Options();
+                o.inSampleSize = s;
+                got = BitmapFactory.decodeFile(f.getAbsolutePath(), o);
+            } catch (Throwable e) { Log.w(TAG, "still: " + e); }
+            final Bitmap b = got;
             post(() -> {
                 if (pack != p || b == null) return;
                 stillBmp = b;
@@ -381,11 +427,15 @@ final class FilmView extends FrameLayout {
         return new float[]{s, left, top};
     }
 
+    /** Taken off the screen (the screen's shape changed: the window moves): everything lets go, the still shows. */
     @Override protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        h.removeCallbacks(tick);
-        for (Slot s : slots) s.drop();
-        now = null;
-        next = null;
+        stopAll();
+    }
+
+    /** Back on the screen: what should play plays again. */
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (running && plan != null) post(() -> { if (now == null && next == null) decide(true); });
     }
 }
