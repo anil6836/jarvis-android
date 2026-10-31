@@ -143,12 +143,19 @@ final class CarMap extends FrameLayout implements JarvisMapView.Listener {
     private int zoomWant;
     private long zoomWantSince, zoomTouchedAt;
 
+    /** ⑯'s neon racing HUD: the small map round, like a game's. */
+    private boolean roundMap;
+
+    void setRoundMap(boolean on) { if (on != roundMap) { roundMap = on; invalidateOutline(); } }
+
     CarMap(Context c, Prefs prefs, Host host) {
         super(c);
         this.p = prefs;
         this.host = host;
-        setOutlineProvider(new android.view.ViewOutlineProvider() { // (a rounded card, like the screen's other cards)
-            @Override public void getOutline(View v, android.graphics.Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius); }
+        setOutlineProvider(new android.view.ViewOutlineProvider() { // (a rounded card, like the screen's other cards; ⑯'s neon HUD: round)
+            @Override public void getOutline(View v, android.graphics.Outline o) {
+                if (roundMap) o.setOval(0, 0, v.getWidth(), v.getHeight()); else o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius);
+            }
         });
         setClipToOutline(true);
         map = new JarvisMapView(c);

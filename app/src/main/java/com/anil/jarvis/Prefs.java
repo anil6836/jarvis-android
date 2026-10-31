@@ -541,6 +541,8 @@ final class Prefs {
     String carHubLook() { return sp.getString("car_hub_look", ""); }
     /** 🎙️ the orb: "" in ⑰–⑳, "all" ⑪–⑳, "off". */
     String carOrb() { return sp.getString("car_orb", ""); }
+    /** ⑯'s HUD: "" as it was, "neon", "white" (31 Oct). */
+    String car16Hud() { return sp.getString("car_16_hud", ""); }
     String carButtonsFor(String shape) { return sp.getString(buttonsKey(shape), ""); }
     /** 💬 ⑪: his last words in a bubble beside Jarvis. */
     boolean carTalkBubble() { return sp.getBoolean("car_talk_bubble", true); }

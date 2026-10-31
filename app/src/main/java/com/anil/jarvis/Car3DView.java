@@ -78,8 +78,9 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
     // ---- the GL thread's own
     private int prog, sky, photo, line;
     private int aPos, aNor, aCol, aMat, uVP, uM, uEye, uSun, uSunCol, uAmb, uSkyTop, uFog, uFogK, uNight, uPaint, uFinish, uHead, uNeon, uNeonOn,
-            uBrake, uIndL, uIndR, uCar, uCarSize, uRain, uGround, uOff;
-    private int sP, sTop, sFog, sNight, sYaw, sHorizon, sSize;
+            uBrake, uIndL, uIndR, uCar, uCarSize, uRain, uGround, uOff,
+            uWall, uWinA, uWinB, uWinM, uRoadT, uLane, uWet, uGrid, uRings, uGroundT, uFlat;
+    private int sP, sTop, sFog, sNight, sYaw, sHorizon, sSize, sDisc, sDiscC, sHills;
     private int pPos, pUV, pVP, pTex, pDark, pMode, pColor;
     private int lPos, lVP, lColor;
     private final float[] proj = new float[16], view = new float[16], vp = new float[16], model = new float[16], tmp = new float[16];
@@ -101,6 +102,8 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
     private float orbitYaw, orbitSpin = 1;
     private long lastFrame, t0 = SystemClock.uptimeMillis();
     private float[] skyNow = Cam3D.light(Cam3D.DAY);
+    /** The world's own look now (Cam3D.world), eased like the sky. */
+    private float[] worldNow = Cam3D.world(Cam3D.DAY);
     private float beatGl;
 
     Car3DView(Context c) {
@@ -257,9 +260,11 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
         uFinish = u(prog, "uFinish"); uHead = u(prog, "uHead"); uNeon = u(prog, "uNeon"); uNeonOn = u(prog, "uNeonOn"); uBrake = u(prog, "uBrake");
         uIndL = u(prog, "uIndL"); uIndR = u(prog, "uIndR"); uCar = u(prog, "uCar"); uCarSize = u(prog, "uCarSize"); uRain = u(prog, "uRain");
         uGround = u(prog, "uGround"); uOff = u(prog, "uOff");
+        uWall = u(prog, "uWall"); uWinA = u(prog, "uWinA"); uWinB = u(prog, "uWinB"); uWinM = u(prog, "uWinM"); uRoadT = u(prog, "uRoadT"); uLane = u(prog, "uLane");
+        uWet = u(prog, "uWet"); uGrid = u(prog, "uGrid"); uRings = u(prog, "uRings"); uGroundT = u(prog, "uGroundT"); uFlat = u(prog, "uFlat");
         sky = program(SKY_V, SKY_F);
         sP = GLES20.glGetAttribLocation(sky, "aP"); sTop = u(sky, "uTop"); sFog = u(sky, "uFog"); sNight = u(sky, "uNight"); sYaw = u(sky, "uYaw");
-        sHorizon = u(sky, "uHorizon"); sSize = u(sky, "uSize");
+        sHorizon = u(sky, "uHorizon"); sSize = u(sky, "uSize"); sDisc = u(sky, "uDisc"); sDiscC = u(sky, "uDiscC"); sHills = u(sky, "uHills");
         photo = program(PHOTO_V, PHOTO_F);
         pPos = GLES20.glGetAttribLocation(photo, "aPos"); pUV = GLES20.glGetAttribLocation(photo, "aUV");
         pVP = u(photo, "uVP"); pTex = u(photo, "uTex"); pDark = u(photo, "uDark"); pMode = u(photo, "uMode"); pColor = u(photo, "uColor");
@@ -325,6 +330,8 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
 
         // ---- the sky's light, eased towards his choice
         skyNow = Cam3D.mix(skyNow, Cam3D.light(showroom ? Cam3D.DUSK : skyKind), Cam3D.ease(1.5f, dt));
+        worldNow = Cam3D.mix(worldNow, Cam3D.world(showroom ? Cam3D.DUSK : skyKind), Cam3D.ease(1.5f, dt)); // (a world's own colours, the same smooth way)
+        float[] wn = worldNow;
         float night = skyNow[14];
         GLES20.glClearColor(skyNow[10], skyNow[11], skyNow[12], 1);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
@@ -343,6 +350,9 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
         float pitch = (float) Math.atan2(cam[4] - cam[1], (float) Math.hypot(cam[3] - ex, cam[5] - ez));
         GLES20.glUniform1f(sHorizon, 0.5f - (float) Math.tan(pitch) / (2 * (float) Math.tan(Math.toRadians(25))));
         GLES20.glUniform2f(sSize, vw, vh);
+        GLES20.glUniform4f(sDisc, wn[26], wn[27], wn[28], wn[29]); // (the moon / the sun)
+        GLES20.glUniform3f(sDiscC, wn[30], wn[31], wn[32]);
+        GLES20.glUniform4f(sHills, wn[33], wn[34], wn[35], wn[36]);
         skyBuf.position(0);
         GLES20.glVertexAttribPointer(sP, 2, GLES20.GL_FLOAT, false, 8, skyBuf);
         GLES20.glEnableVertexAttribArray(sP);
@@ -380,11 +390,24 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
         GLES20.glUniform2f(uCarSize, cs.w / 2 + 0.35f, cs.l / 2 + 0.4f);
         GLES20.glUniform1f(uRain, rain ? 1 : 0);
         GLES20.glUniform3f(uGround, skyNow[15], skyNow[16], skyNow[17]);
+        GLES20.glUniform4f(uWall, wn[0], wn[1], wn[2], wn[3]); // (the world's own colours: 0 = as always)
+        GLES20.glUniform3f(uWinA, wn[4], wn[5], wn[6]);
+        GLES20.glUniform3f(uWinB, wn[7], wn[8], wn[9]);
+        GLES20.glUniform1f(uWinM, wn[10]);
+        GLES20.glUniform4f(uRoadT, wn[11], wn[12], wn[13], wn[14]);
+        GLES20.glUniform4f(uLane, wn[15], wn[16], wn[17], wn[18]);
+        GLES20.glUniform1f(uWet, wn[19]);
+        GLES20.glUniform1f(uGrid, wn[20]);
+        GLES20.glUniform1f(uRings, wn[21]);
+        GLES20.glUniform4f(uGroundT, wn[22], wn[23], wn[24], wn[25]);
+        GLES20.glUniform1f(uFlat, 0);
 
         // ---- the flat things on the ground, in order (no depth: they never hide each other wrongly)
         if (!showroom) {
-            ident(0, 0, 0, 0);
+            ident(0, 0, ex, ez); // (the ground moves with the eye; its place in the world for the white world's grid)
+            GLES20.glUniform1f(uFlat, 1);
             groundVbo.draw(this);
+            GLES20.glUniform1f(uFlat, 0);
             if (kerbVbo != null) { ident(wOx - ex, wOz - ez, wOx, wOz); draw(kerbVbo); draw(asphaltVbo); draw(lineVbo); }
             if (flatMarkVbo != null) { ident(mOx - ex, mOz - ez, mOx, mOz); flatMarkVbo.draw(this); }
         } else { // the showroom's floor
@@ -725,6 +748,7 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
                     + "uniform vec3 uEye, uSun, uSunCol, uSkyTop, uFog, uPaint, uHead, uNeon, uGround;\n"
                     + "uniform float uAmb, uFogK, uNight, uFinish, uNeonOn, uBrake, uIndL, uIndR, uRain;\n"
                     + "uniform vec4 uCar; uniform vec2 uCarSize; uniform vec2 uOff;\n"
+                    + "uniform vec4 uWall, uRoadT, uLane, uGroundT; uniform vec3 uWinA, uWinB; uniform float uWinM, uWet, uGrid, uRings, uFlat;\n"
                     + "varying vec3 vN; varying vec3 vW; varying vec3 vC; varying vec3 vL; varying float vM;\n"
                     + "float hash(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }\n"
                     + "void main() {\n"
@@ -744,8 +768,12 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
                     + "  vec3 n = normalize(vN); if (!gl_FrontFacing) n = -n;\n"
                     + "  vec3 v = normalize(uEye - vW);\n"
                     + "  vec3 c = vC; vec3 col;\n"
+                    + "  if (uFlat > 0.5) c = mix(c, uGroundT.rgb, uGroundT.a);\n" // (a world's ground: green fields, the white floor)
                     + "  float dist = length(uEye - vW);\n"
-                    + "  if (m >= 1.0 && m < 2.0) col = c * (1.0 - 0.25 * uNight * step(c.r + c.g + c.b, 2.0));\n" // lights, road paint
+                    + "  if (m >= 1.0 && m < 2.0) {\n" // lights, road paint (a world's lane colour on the yellow: the lane's edges, the boards)
+                    + "    c = mix(c, min(uLane.rgb * 1.15, vec3(1.0)), uLane.a * step(0.45, c.r - c.b) * step(0.5, c.g));\n"
+                    + "    col = c * (1.0 - 0.25 * uNight * step(c.r + c.g + c.b, 2.0));\n"
+                    + "  }\n"
                     + "  else if (m >= 8.0 && m < 9.0) col = mix(vec3(0.82, 0.88, 0.95), uHead * 1.25, uNight);\n" // headlights
                     + "  else if (m >= 5.0 && m < 6.0) col = c * (0.45 + 0.4 * uNight + 0.75 * uBrake) + vec3(0.25, 0.0, 0.0) * uBrake;\n" // tail lights
                     + "  else if (m >= 6.0 && m < 8.0) col = c * (0.3 + 1.0 * (m < 7.0 ? uIndL : uIndR));\n" // indicators
@@ -766,9 +794,10 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
                     + "    } else if (m >= 11.0 && m < 12.0) {\n" // chrome
                     + "      col = c * 0.55 * lit + uSkyTop * 0.35 + uSunCol * pow(nh, 20.0) * 0.8;\n"
                     + "    } else if (m >= 3.0 && m < 4.0) {\n" // walls: windows on the walls, lit at night
+                    + "      c = mix(c, uWall.rgb, uWall.a);\n" // (a world's walls: white clay, dark neon towers)
                     + "      col = c * lit;\n"
                     + "#ifndef NOWIN\n" // (windows need the GPU's fine numbers: without them, plain walls)
-                    + "      if (abs(n.y) < 0.5 && vL.y > 1.0) {\n"
+                    + "      if (abs(n.y) < 0.5 && vL.y > 1.0 && uWinM < 1.5) {\n"
                     + "        vec2 wp = vL.xz + uOff;\n"
                     + "        float al = dot(wp, vec2(-n.z, n.x));\n"
                     + "        vec2 cell = mod(vec2(floor(al / 2.8), floor(vL.y / 3.2)), 256.0);\n"
@@ -777,15 +806,29 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
                     + "        float on = step(0.55, hash(cell + mod(floor(wp / 41.0), 64.0)));\n"
                     + "        vec3 glass = vec3(0.16, 0.22, 0.3) * lit + uSkyTop * 0.18 + uSunCol * pow(nh, 30.0) * 0.4;\n"
                     + "        vec3 warm = vec3(1.0, 0.8, 0.48) * (0.75 + 0.25 * hash(cell * 1.7));\n"
-                    + "        col = mix(col, mix(glass, mix(glass * 0.5, warm, on), uNight), win);\n"
+                    + "        if (uWinM > 0.5) { vec3 nw = mix(uWinA, uWinB, step(0.5, hash(cell * 2.3 + 7.0))); col = mix(col, mix(glass, mix(glass * 0.4, nw * 1.1, on), max(uNight, 0.6)), win); }\n" // (neon windows)
+                    + "        else col = mix(col, mix(glass, mix(glass * 0.5, warm, on), uNight), win);\n"
                     + "      }\n"
                     + "#endif\n"
                     + "    } else if (m >= 12.0 && m < 13.0) {\n" // the road: wet in the rain, the headlights' pool at night
-                    + "      col = c * lit * (1.0 - 0.25 * uRain) + uSunCol * pow(nh, 30.0) * 0.35 * uRain;\n"
+                    + "      float gold = step(0.15, c.r - c.b);\n" // (the gold lane: a world's lane colour; the rest its road)
+                    + "      c = mix(c, uRoadT.rgb, uRoadT.a * (1.0 - gold));\n"
+                    + "      c = mix(c, uLane.rgb, uLane.a * gold);\n"
+                    + "      float wet = max(uRain, uWet);\n"
+                    + "      col = c * lit * (1.0 - 0.25 * wet) + uSunCol * pow(nh, 30.0) * 0.35 * wet + uFog * fr * 0.55 * uWet;\n" // (wet: the sky's colour on the road)
                     + "      vec2 fd = d - f * uCarSize.y; float al = dot(fd, f), sd = abs(dot(fd, rt));\n"
                     + "      float pool = step(0.0, al) * clamp(1.0 - sd / (0.9 + al * 0.35), 0.0, 1.0) * exp(-al / 16.0);\n"
                     + "      col += uHead * pool * 0.55 * uNight;\n"
                     + "    } else col = c * lit;\n" // matte
+                    + "  }\n"
+                    + "  if (uFlat > 0.5 || (m >= 12.0 && m < 13.0)) {\n" // the white world's floor: rings round the car, a grid (decoration: no sensors)
+                    + "    float r = length(d);\n"
+                    + "    float ring = (1.0 - smoothstep(0.03, 0.12, abs(r - 4.4))) + (1.0 - smoothstep(0.03, 0.12, abs(r - 7.6)));\n"
+                    + "    col = mix(col, vec3(0.98), clamp(ring, 0.0, 1.0) * uRings * 0.75 * step(r, 9.0));\n"
+                    + "#ifndef NOWIN\n"
+                    + "    vec2 gq = abs(fract((vL.xz + uOff) / 3.0) - 0.5);\n"
+                    + "    col = mix(col, col * 0.84, smoothstep(0.465, 0.49, max(gq.x, gq.y)) * uGrid);\n"
+                    + "#endif\n"
                     + "  }\n"
                     + "  float fog = 1.0 - exp(-dist * uFogK);\n"
                     + "  gl_FragColor = vec4(mix(col, uFog, clamp(fog, 0.0, 1.0)), 1.0);\n"
@@ -796,6 +839,7 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
     static final String SKY_F =
             "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n"
                     + "uniform vec3 uTop, uFog; uniform float uNight, uYaw, uHorizon; uniform vec2 uSize;\n"
+                    + "uniform vec4 uDisc, uHills; uniform vec3 uDiscC;\n"
                     + "float hash(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }\n"
                     + "void main() {\n"
                     + "  float t = gl_FragCoord.y / uSize.y;\n"
@@ -804,7 +848,20 @@ final class Car3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
                     + "  float a = uYaw * 57.3 + (gl_FragCoord.x / uSize.x - 0.5) * 60.0 * uSize.x / uSize.y;\n"
                     + "  vec2 cell = mod(floor(vec2(a * 3.0, (t - uHorizon) * 220.0)), 512.0);\n"
                     + "  float star = step(0.996, hash(cell)) * smoothstep(uHorizon + 0.06, uHorizon + 0.3, t) * uNight;\n"
-                    + "  gl_FragColor = vec4(col + vec3(star * 0.8), 1.0);\n"
+                    + "  col += vec3(star * 0.8);\n"
+                    + "  if (uDisc.w > 0.01) {\n" // a world's moon / sun: a disc with a soft glow round it
+                    + "    vec2 p = vec2((gl_FragCoord.x / uSize.x - uDisc.x) * uSize.x / uSize.y, t - (uHorizon + uDisc.y));\n"
+                    + "    float r = length(p);\n"
+                    + "    float disc = 1.0 - smoothstep(uDisc.z - 0.004, uDisc.z, r);\n"
+                    + "    float halo = exp(-max(r - uDisc.z, 0.0) * 9.0) * 0.5;\n"
+                    + "    col = mix(col, uDiscC, disc * uDisc.w) + uDiscC * halo * (1.0 - disc) * uDisc.w * 0.5;\n"
+                    + "  }\n"
+                    + "  if (uHills.a > 0.01) {\n" // a world's hills along the horizon
+                    + "    float ra = radians(a);\n"
+                    + "    float hh = uHorizon + 0.03 + 0.025 * sin(ra * 3.0) + 0.018 * sin(ra * 7.3 + 1.0) + 0.01 * sin(ra * 17.0 + 2.0);\n"
+                    + "    col = mix(col, uHills.rgb, uHills.a * (1.0 - smoothstep(hh - 0.002, hh + 0.002, t)) * step(uHorizon - 0.02, t));\n"
+                    + "  }\n"
+                    + "  gl_FragColor = vec4(col, 1.0);\n"
                     + "}\n";
 
     static final String PHOTO_V =

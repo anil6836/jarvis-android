@@ -95,14 +95,24 @@ final class Cam3D {
 
     // ================================================================ the sky
 
-    /** Sky kinds: day, dusk, night. */
-    static final int DAY = 0, DUSK = 1, NIGHT = 2;
+    /**
+     * Sky kinds: day, dusk, night; and the worlds (31 Oct, his pictures' styles, our own): a neon city under a big moon,
+     * the same at sunset, a white city with a blue or a violet way, a night highway with hills and a green way, a day
+     * highway with green fields and the way lit on the lane.
+     */
+    static final int DAY = 0, DUSK = 1, NIGHT = 2, NEON = 3, SUNSET = 4, WHITE = 5, WHITE_VIOLET = 6, HIGHWAY = 7, DAY_AR = 8;
 
-    /** His "car_3d_sky": "" (with the screen's day / night), "day", "dusk", "night". Pure. */
+    /** His "car_3d_sky": "" (with the screen's day / night), "day", "dusk", "night", or a world. Pure. */
     static int sky(String pref, boolean screenNight) {
         if ("day".equals(pref)) return DAY;
         if ("dusk".equals(pref)) return DUSK;
         if ("night".equals(pref)) return NIGHT;
+        if ("neon".equals(pref)) return NEON;
+        if ("sunset".equals(pref)) return SUNSET;
+        if ("white".equals(pref)) return WHITE;
+        if ("whitev".equals(pref)) return WHITE_VIOLET;
+        if ("highway".equals(pref)) return HIGHWAY;
+        if ("dayar".equals(pref)) return DAY_AR;
         return screenNight ? NIGHT : DAY;
     }
 
@@ -116,8 +126,48 @@ final class Cam3D {
                     0.27f, 0.25f, 0.27f, 0.25f, 0.25f, 0.29f, 0};
             case NIGHT: return new float[]{0.3f, 0.75f, 0.25f, 0.14f, 0.16f, 0.22f, 0.17f, 0.015f, 0.025f, 0.07f, 0.06f, 0.07f, 0.15f, 0.0052f, 1f,
                     0.16f, 0.17f, 0.20f, 0.20f, 0.21f, 0.25f, 0};
+            case NEON: return new float[]{0.3f, 0.75f, 0.25f, 0.30f, 0.20f, 0.45f, 0.30f, 0.10f, 0.04f, 0.24f, 0.42f, 0.12f, 0.45f, 0.0048f, 1f,
+                    0.10f, 0.08f, 0.16f, 0.12f, 0.10f, 0.18f, 0};
+            case SUNSET: return new float[]{-0.2f, 0.15f, -0.9f, 1.0f, 0.55f, 0.45f, 0.32f, 0.45f, 0.05f, 0.30f, 1.0f, 0.45f, 0.42f, 0.0045f, 0.75f,
+                    0.20f, 0.10f, 0.16f, 0.18f, 0.12f, 0.18f, 0};
+            case WHITE: case WHITE_VIOLET: return new float[]{0.35f, 0.85f, 0.4f, 0.55f, 0.55f, 0.56f, 0.62f, 0.88f, 0.90f, 0.94f, 0.94f, 0.95f, 0.97f, 0.006f, 0f,
+                    0.86f, 0.88f, 0.91f, 0.82f, 0.84f, 0.88f, 0};
+            case HIGHWAY: return new float[]{0.3f, 0.75f, 0.25f, 0.12f, 0.14f, 0.20f, 0.15f, 0.01f, 0.015f, 0.04f, 0.04f, 0.05f, 0.09f, 0.006f, 1f,
+                    0.07f, 0.08f, 0.10f, 0.14f, 0.15f, 0.18f, 0};
+            case DAY_AR: return new float[]{0.45f, 0.8f, 0.35f, 0.78f, 0.76f, 0.70f, 0.50f, 0.36f, 0.60f, 0.90f, 0.80f, 0.88f, 0.95f, 0.0035f, 0f,
+                    0.38f, 0.52f, 0.25f, 0.32f, 0.33f, 0.36f, 0};
             default: return new float[]{0.45f, 0.8f, 0.35f, 0.75f, 0.73f, 0.68f, 0.46f, 0.30f, 0.52f, 0.86f, 0.74f, 0.83f, 0.92f, 0.0034f, 0f,
                     0.40f, 0.45f, 0.38f, 0.30f, 0.32f, 0.36f, 0};
+        }
+    }
+
+    /** How many numbers a world's own look has ({@link #world}). */
+    static final int WORLD_N = 37;
+
+    /**
+     * A world's own look over its light, 37 numbers (all 0 for day / dusk / night: everything as it always was): the
+     * walls' tint (rgb, how much), the windows' two colours (rgb, rgb) and their kind (0 the warm ones, 1 neon, 2 none),
+     * the road's tint (rgb, how much), the lane's colour (rgb, how much: the gold lane, its edges and the boards), wet
+     * (0–1), the grid on the road (0–1), rings round the car (0–1), the ground's tint (rgb, how much), the moon / sun
+     * (x on the screen 0–1, height over the horizon, size, on), its colour (rgb), the hills (rgb, on). The rings and the
+     * grid are decoration only: we have no sensors. Pure.
+     */
+    static float[] world(int sky) {
+        switch (sky) {
+            case NEON: return new float[]{0.07f, 0.06f, 0.16f, 0.85f, 1.0f, 0.31f, 0.85f, 0.21f, 0.94f, 1.0f, 1, 0.10f, 0.09f, 0.17f, 0.7f, 0.21f, 0.94f, 1.0f, 0.9f,
+                    1, 0, 0, 0.08f, 0.06f, 0.14f, 0.8f, 0.5f, 0.16f, 0.13f, 1, 0.98f, 0.92f, 1.0f, 0, 0, 0, 0};
+            case SUNSET: return new float[]{0.16f, 0.07f, 0.20f, 0.8f, 1.0f, 0.35f, 0.7f, 0.25f, 0.85f, 1.0f, 1, 0.14f, 0.09f, 0.15f, 0.65f, 0.21f, 0.94f, 1.0f, 0.85f,
+                    0.8f, 0, 0, 0.16f, 0.08f, 0.14f, 0.75f, 0.5f, 0.1f, 0.14f, 1, 1.0f, 0.88f, 0.55f, 0, 0, 0, 0};
+            case WHITE: case WHITE_VIOLET: {
+                boolean v = sky == WHITE_VIOLET;
+                return new float[]{0.95f, 0.96f, 0.97f, 0.92f, 0, 0, 0, 0, 0, 0, 2, 0.84f, 0.86f, 0.89f, 0.85f, v ? 0.55f : 0.23f, v ? 0.36f : 0.51f, 0.96f, 0.95f,
+                        0, 1, 1, 0.90f, 0.91f, 0.93f, 0.9f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+            }
+            case HIGHWAY: return new float[]{0.10f, 0.11f, 0.14f, 0.6f, 0, 0, 0, 0, 0, 0, 0, 0.13f, 0.14f, 0.17f, 0.6f, 0.13f, 0.77f, 0.37f, 0.95f,
+                    0.3f, 0, 0, 0.05f, 0.06f, 0.07f, 0.8f, 0, 0, 0, 0, 0, 0, 0, 0.075f, 0.09f, 0.13f, 1};
+            case DAY_AR: return new float[]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.33f, 0.34f, 0.37f, 0.4f, 0.18f, 0.9f, 0.65f, 0.9f,
+                    0, 0, 0, 0.40f, 0.56f, 0.24f, 0.9f, 0.3f, 0.13f, 0.05f, 1, 1.0f, 1.0f, 0.96f, 0.30f, 0.45f, 0.30f, 1};
+            default: return new float[WORLD_N];
         }
     }
 

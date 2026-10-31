@@ -144,6 +144,11 @@ final class CarScreen extends FrameLayout {
     private final Car16.SpeedArc arc16;
     private final Car16.Banner banner16;
     private final List<TextView> btn16 = new ArrayList<>();
+    // ⑯'s HUDs (31 Oct): the neon racing one (a round map, the six on a thin strip, the racing meter) and the white ADAS one
+    private final FrameLayout g16MapBox;
+    private final LinearLayout g16Btm, g16Info, g16InfoClock;
+    private final View g16GapL, g16GapM, g16GapB;
+    private final Car16.Adas adas16;
     // 🏙️ stage 4 (27 Oct): ⑮ the 3D city map (MapLibre + OpenFreeMap) with ⑪'s parts round it (made only when ⑮ first shows)
     private City15 city;
     private final FrameLayout g15;
@@ -654,6 +659,15 @@ final class CarScreen extends FrameLayout {
         g16Dock = row(a);
         g16Btns = row(a);
         g16Clock = row(a);
+        g16MapBox = new FrameLayout(a);
+        g16Btm = row(a);
+        g16Info = row(a);
+        g16InfoClock = column(a);
+        g16GapL = new View(a);
+        g16GapM = new View(a);
+        g16GapB = new View(a);
+        adas16 = new Car16.Adas(a);
+        adas16.setOnClickListener(v -> tap(this::find3d)); // (a tap: where to, as ⑯'s 🔍)
         arc16 = new Car16.SpeedArc(a);
         banner16 = new Car16.Banner(a);
         banner16.setVisibility(INVISIBLE);
@@ -2034,7 +2048,7 @@ final class CarScreen extends FrameLayout {
     private void hubChanged(String key) {
         if ("car_layout".equals(key)) shapeCheck();
         if ("car_jarvis_kind".equals(key) || "car_film_sets".equals(key)) { filmKind = ""; filmCheck(); } // 🎬
-        if ("car_player_look".equals(key)) relayout(); // 🎵 the player's look (it is chosen as the shape is laid out)
+        if ("car_player_look".equals(key) || "car_16_hud".equals(key)) relayout(); // 🎵 the player's look, ⑯'s HUD (chosen as the shape is laid out)
         if (key != null && (key.startsWith("car_3d") || "car_colour".equals(key) || "car_plate".equals(key) || "car_low_motion".equals(key))) chaseLook();
         if (key != null && key.startsWith("car_15")) { // (⑮'s choices in 🎛️: 🎮 swaps the map and the game view; the rest on the map at once)
             if ("car_15_game".equals(key) && CarLayout.CITY.equals(shape)) relayout();
@@ -2364,6 +2378,18 @@ final class CarScreen extends FrameLayout {
                 if (fv != null) fv.setSets(on);
                 return on ? "సరే, పాటల్లో హీరోయిన్లతో సెట్ వస్తుంది (పాటకు ఒకసారి)." : "సరే, హీరోయిన్ల సెట్ ఆపాను: నేను ఒక్కడినే డాన్స్ చేస్తాను.";
             }
+            case "hud16": { // 🏁 ⑯'s HUD (his words: any time)
+                prefs.sp.edit().putString("car_16_hud", w[1]).apply();
+                hubChanged("car_16_hud");
+                String nm = CarDeck.HUD_16_NAMES[Math.max(0, java.util.Arrays.asList(CarDeck.HUDS_16).indexOf(w[1]))];
+                return "సరే, " + nm + " పెట్టాను" + (CarLayout.CHASE.equals(shape) ? "." : " (⑯ లో కనిపిస్తుంది).");
+            }
+            case "world": { // 🌆 ⑯'s world (his words: any time)
+                prefs.sp.edit().putString("car_3d_sky", w[1]).apply();
+                chaseLook();
+                String nm = CarDeck.SKY_3D_NAMES[Math.max(0, java.util.Arrays.asList(CarDeck.SKIES_3D).indexOf(w[1]))];
+                return "సరే, " + nm + " పెట్టాను" + (CarLayout.CHASE.equals(shape) || CarLayout.CITY.equals(shape) && game15() ? "." : " (⑯ లో కనిపిస్తుంది).");
+            }
             case "newnight": { // ✨ ⑰ ⑲ ⑳'s day / night (his words: any time)
                 boolean dark = "dark".equals(w[1]);
                 prefs.sp.edit().putString("car_new_night", dark ? "dark" : "").apply();
@@ -2579,6 +2605,8 @@ final class CarScreen extends FrameLayout {
         detach(ch.view);
         g16.addView(ch.view, new FrameLayout.LayoutParams(-1, -1));
         g16.addView(g16Row, new FrameLayout.LayoutParams(-1, -1));
+        String hud = prefs.car16Hud();
+        if ("neon".equals(hud) || "white".equals(hud)) { hud16Arrange(hud, j); return; }
         put(g16Row, g16Left, 24); put(g16Row, g16Mid, 52); put(g16Row, g16Right, 24); // (the middle in the middle: the speed arc round the car)
         put(g16Left, jCard, 40 * Math.min(j, 1.12f)); put(g16Left, wideTalk, 8); put(g16Left, tileGrid, 32); put(g16Left, wideHub, 8); put(g16Left, chipRow, 6);
         put(g16Mid, banner16, 13); put(g16Mid, roadCard, 11); put(g16Mid, arc16, 60); put(g16Mid, g16Dock, 16); put(g16Mid, board, 100);
@@ -2593,6 +2621,49 @@ final class CarScreen extends FrameLayout {
         specialApps();
         chaseLook();
         chaseShow();
+    }
+
+    /**
+     * ⑯'s HUDs (31 Oct, his pictures' styles, our own): "neon" — Jarvis, 🎙️ and the song small on the left with the map
+     * round under them, the turn on top, the racing meter at the right foot, the six on a thin strip down the right edge
+     * (the most room for the 3D world); "white" — Jarvis, 🎙️, the six and 🎛️ in white glass on the left, the speed-and-turn
+     * card on top, the song, the small map and the weather / time on the right.
+     */
+    private void hud16Arrange(String hud, float j) {
+        float jj = Math.min(j, 1.12f);
+        String cs = prefs.carClock();
+        if ("neon".equals(hud)) {
+            put(g16Row, g16Left, 22); put(g16Row, g16Mid, 63); put(g16Row, g16Right, 15);
+            put(g16Left, jCard, 34 * jj); put(g16Left, wideTalk, 8); put(g16Left, player, 19); put(g16Left, g16GapL, 5); put(g16Left, g16MapBox, 34);
+            g16MapBox.addView(carMap, new FrameLayout.LayoutParams(1, 1, Gravity.CENTER)); // (its size: shapeSizes — round, as big as the box)
+            carMap.setRoundMap(true);
+            put(g16Mid, banner16, 13); put(g16Mid, roadCard, 11); put(g16Mid, g16GapM, 46); put(g16Mid, g16Btm, 30); put(g16Mid, board, 100);
+            put(g16Btm, g16GapB, 68); put(g16Btm, gauge, 32);
+            put(g16Right, tileGrid, 80); put(g16Right, wideHub, 12); put(g16Right, chipRow, 8);
+            fillTiles(tileGrid, 0, 6, 1);
+        } else {
+            put(g16Row, g16Left, 22); put(g16Row, g16Mid, 56); put(g16Row, g16Right, 22);
+            put(g16Left, jCard, 36 * jj); put(g16Left, wideTalk, 9); put(g16Left, tileGrid, 36); put(g16Left, wideHub, 9); put(g16Left, chipRow, 6);
+            put(g16Mid, adas16, 16); put(g16Mid, roadCard, 11); put(g16Mid, g16GapM, 73); put(g16Mid, board, 100);
+            put(g16Right, player, 44); put(g16Right, carMap, 32); put(g16Right, g16Info, 24);
+            put(g16Info, minis, 52); put(g16Info, g16InfoClock, 48);
+            put(g16InfoClock, "analog".equals(cs) ? clockFace : clock, 62); put(g16InfoClock, date, 38);
+            fillTiles(tileGrid, 0, 6, 3);
+        }
+        specialApps();
+        chaseLook();
+        chaseShow();
+    }
+
+    /** The next turn now (our free way's, else the Google Maps app's): {words, how far}; null: none. */
+    private String[] turnNow() {
+        String[] c = wayCard;
+        if (c != null) return new String[]{c[0], c[1]};
+        JSONObject nav = Drive.navState();
+        if (nav == null) return null;
+        String next = nav.optString("next"), det = nav.optString("detail");
+        if (next.isEmpty() && det.isEmpty()) return null;
+        return next.isEmpty() ? new String[]{det, ""} : new String[]{next, det};
     }
 
     /** ⑯'s 3D view and its keeper, made once (the first time ⑯ shows). */
@@ -3017,6 +3088,7 @@ final class CarScreen extends FrameLayout {
         chase.view.setSky(Cam3D.sky(prefs.sp.getString("car_3d_sky", ""), night));
         if (chase.view.orbit() && CarBox.moving()) { chase.view.setOrbit(false); btnMarks(); } // (driving off: behind the car again)
         arc16.set(kmh, kmh < 0 ? 0 : DriveService.limitNowKmh);
+        if (adas16.getParent() != null) { String[] t = turnNow(); adas16.set(kmh, t == null ? null : t[0], t == null ? null : t[1]); } // (⑯'s white HUD)
         bannerNow();
     }
 
@@ -3289,6 +3361,10 @@ final class CarScreen extends FrameLayout {
         }
         int pd = Math.max(4, Math.min(W, H) / 70);
         g12Dock.setPadding(pd, pd / 3, pd, pd / 3);
+        if (carMap.getParent() == g16MapBox) { // (⑯'s racing HUD: the map round, as big as its corner allows)
+            int ms = Math.max(1, Math.min(Math.round(W * 0.22f) - m * 4, Math.round(H * 0.34f) - m * 2));
+            carMap.setLayoutParams(new FrameLayout.LayoutParams(ms, ms, Gravity.CENTER));
+        }
         if (player.getParent() == g13Mid) {
             int ph = Math.round(H * 0.21f);
             FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(-1, ph, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -3326,8 +3402,13 @@ final class CarScreen extends FrameLayout {
     private void shapeLook() {
         if (look == null) return;
         if (CarLayout.CHASE.equals(shape)) { // ⑯: the sides a little darker so the cards read over the 3D world; the dock its own dark glass
-            g16Left.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xA6050A12, 0x00050A12}));
-            g16Right.setBackground(new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT, new int[]{0xA6050A12, 0x00050A12}));
+            String hud = prefs.car16Hud();
+            boolean wh = "white".equals(hud), ne = "neon".equals(hud);
+            g16Left.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, wh ? new int[]{0x8CFFFFFF, 0x00FFFFFF} : new int[]{0xA6050A12, 0x00050A12}));
+            g16Right.setBackground(ne ? CarArt.glass(look, Math.max(10, Math.min(W, H) / 30f), false) // (the racing HUD: the six on a thin glass strip)
+                    : new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT, wh ? new int[]{0x8CFFFFFF, 0x00FFFFFF} : new int[]{0xA6050A12, 0x00050A12}));
+            if (wh) g16Info.setBackground(CarArt.glass(look, Math.max(10, Math.min(W, H) / 22f), false));
+            if (gauge.getParent() == g16Btm) gauge.setBackground(null);
             g16Dock.setBackground(round(0xD90A1220, CarTheme.withAlpha(accent, 0x66), 18));
             for (TextView t : btn16) t.setTextColor(0xFFFFFFFF);
             arc16.setAccent(accent);
@@ -4275,7 +4356,9 @@ final class CarScreen extends FrameLayout {
                 g16Row, g16Left, g16Mid, g16Right, g16Dock, g16Btns, g16Clock,
                 g15Row, g15Left, g15Mid, g15Right, g15Tools, g15Bottom, g15BottomRow, g15Chips1, g15Chips2,
                 g17Rail, g17Left, g17Mid, g17Top, g17Clock, g17Bottom, g17Right, g18Left, g18Main, g18Cluster, g18Status, g18Panels, g18Mid, g18Dock,
-                g19C1, g19C2, g19C3, g19C4, g20Col, g20Top, g20Clock, g20Pills, g20Row, g20Left, g20Mid, g20Right, g20Bottom}) g.removeAllViews();
+                g19C1, g19C2, g19C3, g19C4, g20Col, g20Top, g20Clock, g20Pills, g20Row, g20Left, g20Mid, g20Right, g20Bottom, g16Btm, g16Info, g16InfoClock}) g.removeAllViews();
+        g16MapBox.removeAllViews();
+        carMap.setRoundMap(false); // (⑯'s racing HUD only)
         if (chase != null && !CarLayout.CHASE.equals(s) && !CarLayout.CITY.equals(s)) chase.setShown(false); // (out of ⑯ (and ⑮'s 🎮): the 3D view rests)
         if (city != null && !CarLayout.CITY.equals(s)) city.setShown(false); // (out of ⑮: the 3D map rests)
         g16.removeAllViews();
@@ -4311,7 +4394,9 @@ final class CarScreen extends FrameLayout {
         carMap.setExpanded(specialFull);
         carMap.setVisibility(VISIBLE);
         player.setVisibility(VISIBLE);
-        player.setLook(specialFull ? "old" : CarStyle.playerFor(prefs.carPlayerLook(), s)); // (⑫: the song standing, round; ⑰–⑳ their own; or his pick)
+        String pl = CarStyle.playerFor(prefs.carPlayerLook(), s);
+        if (CarLayout.CHASE.equals(s) && prefs.carPlayerLook().isEmpty() && "white".equals(prefs.car16Hud())) pl = "round"; // (⑯'s white HUD: the song round, like a glass ball)
+        player.setLook(specialFull ? "old" : pl); // (⑫: the song standing, round; ⑰–⑳ their own; or his pick)
         player.setWaveRest(CarLayout.SOFTWHITE.equals(s) ? CarGlass.YELLOW : 0);
         nextFor = ""; // (the stack's "next" list asked for again)
         boolean deep = CarLayout.deep(s);
@@ -4836,7 +4921,8 @@ final class CarScreen extends FrameLayout {
         else if (CarLayout.CHROME.equals(shape)) g = CarTheme.G_NEEDLE;
         else if (CarLayout.MAP3D.equals(shape)) g = CarTheme.G_ARC;
         else if (CarLayout.SIDE.equals(shape) || CarLayout.STAGE.equals(shape)) g = CarTheme.G_DIGITS;
-        else g = CarTheme.of(CarDeck.themeFor(colourShape(), prefs.carTheme())).gauge; // (⑫ ⑭: their own colours' meter)
+        else if (CarLayout.CHASE.equals(shape) && "neon".equals(prefs.car16Hud())) g = CarTheme.G_TICK; // (⑯'s racing HUD: the racing meter)
+        else g = CarTheme.of(CarDeck.themeFor(colourShape(), prefs.carTheme(), prefs.car16Hud())).gauge; // (⑫ ⑭: their own colours' meter)
         look.gauge = g;
         gauge.setLook(look);
     }
@@ -4872,7 +4958,7 @@ final class CarScreen extends FrameLayout {
         boxes.addAll(railApps);
         boxes.add(railMore);
         for (View v : new View[]{jCard, spMeter, spApps, spRoadCard, player, wideJ, wideHub, wideTalk, g12Dock, wheel, appsV, appsH}) boxes.add(v);
-        for (View v : new View[]{g17Rail, g17Switches, g18Cluster, g18Dock, week, dayNight, moon17}) boxes.add(v); // (⑰–⑳'s own cards)
+        for (View v : new View[]{g17Rail, g17Switches, g18Cluster, g18Dock, week, dayNight, moon17, g16Info, adas16, g16MapBox}) boxes.add(v); // (⑰–⑳'s own cards, ⑯'s HUDs')
         if (CarLayout.newLook(shape)) { // (their weather, speed and clock cards too; ⑳'s pills; in the old shapes these sit as they always did)
             boxes.add(minis);
             boxes.add(gauge);
@@ -5004,9 +5090,13 @@ final class CarScreen extends FrameLayout {
     private void palette() {
         String cs = colourShape();
         colourKey = ownLook(cs);
-        CarTheme th = CarTheme.of(CarDeck.themeFor(cs, prefs.carTheme())); // (⑫ white glass, ⑭ neon: their own colours)
+        CarTheme th = CarTheme.of(CarDeck.themeFor(cs, prefs.carTheme(), prefs.car16Hud())); // (⑫ white glass, ⑭ neon: their own colours; ⑯'s HUDs theirs)
         boolean whiteNight = CarLayout.GLASS.equals(cs) && night && !CarDeck.glassDark(prefs.carGlassNight(), night); // (⑫ at night: white unless he chose dark)
-        if (CarLayout.newLook(cs)) { // ⑰ ⑱ ⑲ ⑳: their own colours and cards; their night only when he picks it (the hour never changes them)
+        if (CarLayout.CHASE.equals(cs) && "white".equals(prefs.car16Hud())) { // ⑯'s white HUD: ⑰'s light glass, day and night (his choice)
+            look = th.look(mode, false, 0, 0);
+            look.night = night;
+            look.card = th.card;
+        } else if (CarLayout.newLook(cs)) { // ⑰ ⑱ ⑲ ⑳: their own colours and cards; their night only when he picks it (the hour never changes them)
             boolean dark = CarDeck.newDark(cs, prefs.carNewNight());
             look = th.look(mode, dark, 0, 0);
             look.night = dark || night; // (the map and the car's lights still know it is night)

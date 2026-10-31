@@ -58,10 +58,16 @@ final class CarWords {
     private static final Pattern SETS_ON = Pattern.compile("^" + HEROINES + "\\s*(పెట్టు|పెట్టండి|రావాలి|కావాలి|ఆన్|on)$");
     /** ✨ (31 Oct) ⑰ ⑲ ⑳'s day / night: "రాత్రి రూపం పెట్టు" ↔ "పగలు రూపం పెట్టు" (his words: the hour never changes them). */
     private static final Pattern NEW_DARK = Pattern.compile("^(రాత్రి|చీకటి|డార్క్|ముదురు|నైట్) (రూపం|థీమ్|లుక్) " + DO + "$|^(dark|night) (look|theme)$");
+    /** 🏁 (31 Oct) ⑯'s HUD: "నియాన్ HUD పెట్టు", "తెల్లటి HUD పెట్టు", "మామూలు HUD పెట్టు"; 🌆 its world: "నియాన్ ప్రపంచం పెట్టు". */
+    private static final String HUD = "(hud|హడ్|హెచ్ యు డి|హెచ్‌యూడీ)";
+    private static final Pattern HUD_NEON = Pattern.compile("^(నియాన్|రేసింగ్|గేమ్) " + HUD + " " + DO + "$|^(neon|racing) hud$");
+    private static final Pattern HUD_WHITE = Pattern.compile("^(తెల్లటి|తెల్ల|వైట్|adas|ఏడాస్) " + HUD + " " + DO + "$|^(white|adas) hud$");
+    private static final Pattern HUD_OFF = Pattern.compile("^(మామూలు|పాత) " + HUD + " " + DO + "$|^(normal|old) hud$");
+    private static final Pattern WORLD = Pattern.compile("^(.{2,24}?) (ప్రపంచం|వరల్డ్) " + DO + "$|^(.{2,24}?) world$");
     private static final Pattern NEW_LIGHT = Pattern.compile("^(పగలు|పగటి|తెల్లటి|తెల్ల|లైట్|డే) (రూపం|థీమ్|లుక్) " + DO + "$|^(light|day) (look|theme)$");
 
     /**
-     * {"jarvis", "film" | "2d"}, {"sets", "on" | "off"}, {"newnight", "dark" | "day"},
+     * {"jarvis", "film" | "2d"}, {"sets", "on" | "off"}, {"newnight", "dark" | "day"}, {"hud16", "" | "neon" | "white"}, {"world", a CarDeck.SKIES_3D key},
      * {"src", "osm" | "google"}, {"car", one of CarDeck.MAP_CARS}, {"quiet", "on" | "off"}, {"map", "big" | "small"}, {"rotate", "on" | "off"},
      * {"way3d", the place ("home" for home)}, {"city", "2d" | "3d" | "gameon" | "gameoff" | "near" | "mid" | "far" | "dark" | "light"};
      * null when it isn't one of these. Pure.
@@ -94,6 +100,14 @@ final class CarWords {
         if (CFAR.matcher(t).matches()) return new String[]{"city", "far"};
         if (CDARK.matcher(t).matches()) return new String[]{"city", "dark"};
         if (CLIGHT.matcher(t).matches()) return new String[]{"city", "light"};
+        if (HUD_NEON.matcher(t).matches()) return new String[]{"hud16", "neon"};
+        if (HUD_WHITE.matcher(t).matches()) return new String[]{"hud16", "white"};
+        if (HUD_OFF.matcher(t).matches()) return new String[]{"hud16", ""};
+        java.util.regex.Matcher wm = WORLD.matcher(t);
+        if (wm.matches()) {
+            String k = worldKey(wm.group(1) != null ? wm.group(1) : wm.group(4));
+            if (k != null) return new String[]{"world", k};
+        }
         if (NEW_DARK.matcher(t).matches()) return new String[]{"newnight", "dark"};
         if (NEW_LIGHT.matcher(t).matches()) return new String[]{"newnight", "day"};
         java.util.regex.Matcher w3 = WAY3D.matcher(t);
@@ -108,6 +122,19 @@ final class CarWords {
             String k = (w.equals("నా") || w.equals("మన")) && m.group(4) != null ? "photo" : carKind(w); // ("నా కారు బొమ్మ పెట్టు": his own photo)
             if (k != null) return new String[]{"car", k};
         }
+        return null;
+    }
+
+    /** ⑯'s world from its name ("నియాన్", "సూర్యాస్తమయం", "తెల్లటి", "ఊదా", "రాత్రి హైవే", "పగలు హైవే"); null: none. Pure. */
+    static String worldKey(String w0) {
+        String w = w0 == null ? "" : w0.trim();
+        if (w.contains("ఊదా") || w.contains("purple") || w.contains("violet")) return "whitev";
+        if (w.contains("నియాన్") || w.contains("neon")) return "neon";
+        if (w.contains("సూర్యాస్తమయ") || w.contains("సన్‌సెట్") || w.contains("సన్ సెట్") || w.contains("sunset")) return "sunset";
+        if (w.contains("తెల్ల") || w.contains("వైట్") || w.contains("white")) return "white";
+        boolean ar = w.matches("(?s).*\\bar\\b.*") || w.contains("ఏఆర్");
+        if (w.contains("పగలు") || ar || w.matches("(?s).*\\bday\\b.*")) return w.contains("హైవే") || w.contains("highway") || ar ? "dayar" : null;
+        if (w.contains("హైవే") || w.contains("highway")) return "highway";
         return null;
     }
 

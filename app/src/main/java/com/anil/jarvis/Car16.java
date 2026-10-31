@@ -196,4 +196,117 @@ final class Car16 {
             stop.setVisibility(canStop ? VISIBLE : INVISIBLE);
         }
     }
+
+    /**
+     * ⑯'s white ADAS card (31 Oct, his "31 km/h" picture's style, our own): the speed on the left, the next turn's arrow
+     * in a round badge, how far and which way on the right, in a glass card with pointed ends. No turn: the arrow
+     * straight up, "నేరుగా". Decoration and words only: nothing here senses the road.
+     */
+    static final class Adas extends LinearLayout {
+        final TextView speed, unit, dist, way;
+        final CarArt.Icon arrow;
+        private final android.widget.FrameLayout badge;
+        private final android.graphics.Path edge = new android.graphics.Path();
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private Shader rim;
+
+        Adas(Context c) {
+            super(c);
+            setOrientation(HORIZONTAL);
+            setGravity(Gravity.CENTER_VERTICAL);
+            setWillNotDraw(false);
+            LinearLayout l = col(c), r = col(c);
+            speed = Banner.line(c, true, 0xFF141B3C);
+            unit = Banner.line(c, false, 0xFF6B7A90);
+            dist = Banner.line(c, true, 0xFF141B3C);
+            way = Banner.line(c, false, 0xFF6B7A90);
+            for (TextView t : new TextView[]{speed, unit, dist, way}) t.setGravity(Gravity.CENTER);
+            l.addView(speed);
+            l.addView(unit);
+            r.addView(dist);
+            r.addView(way);
+            badge = new android.widget.FrameLayout(c);
+            GradientDrawable b = new GradientDrawable();
+            b.setShape(GradientDrawable.OVAL);
+            b.setColor(0xFFDCE7FF);
+            badge.setBackground(b);
+            arrow = new CarArt.Icon(c, CarArt.Icon.AHEAD);
+            arrow.setColour(0xFF2D5BFF);
+            badge.addView(arrow, new android.widget.FrameLayout.LayoutParams(-1, -1));
+            addView(l, new LayoutParams(0, -1, 38));
+            addView(badge, new LayoutParams(0, -1, 24));
+            addView(r, new LayoutParams(0, -1, 38));
+            set(-1, null, null);
+        }
+
+        private static LinearLayout col(Context c) {
+            LinearLayout l = new LinearLayout(c);
+            l.setOrientation(VERTICAL);
+            l.setGravity(Gravity.CENTER);
+            return l;
+        }
+
+        /** The speed (−1 unknown), the next turn's words and its distance (null: no turn now). */
+        void set(int kmh, String turn, String far) {
+            String sp = kmh < 0 ? "--" : String.valueOf(kmh);
+            if (!sp.contentEquals(speed.getText())) speed.setText(sp);
+            unit.setText(kmh < 0 ? "GPS…" : "km/h");
+            boolean t = turn != null && !turn.isEmpty();
+            String d = t ? (far == null || far.isEmpty() ? "" : far) : "↑";
+            String w = t ? short2(turn) : "నేరుగా";
+            if (!d.contentEquals(dist.getText())) dist.setText(d);
+            if (!w.contentEquals(way.getText())) way.setText(w);
+            arrow.setKind(t ? CarRoad.turnIcon(turn) : CarArt.Icon.AHEAD);
+        }
+
+        /** The turn's words, short: its first few words. Pure. */
+        static String short2(String w) {
+            String s = w.trim().replaceAll("\\s+", " ");
+            return s.length() <= 14 ? s : s.substring(0, 13) + "…";
+        }
+
+        @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
+            super.onSizeChanged(w, h, ow, oh);
+            speed.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(14, h * 0.4f));
+            dist.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(13, h * 0.32f));
+            unit.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(10, h * 0.15f));
+            way.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(10, h * 0.15f));
+            int bs = Math.round(h * 0.62f);
+            LayoutParams bl = new LayoutParams(bs, bs);
+            bl.gravity = Gravity.CENTER;
+            int side = Math.max(0, Math.round(w * 0.24f) - bs) / 2;
+            bl.setMargins(side, 0, side, 0);
+            badge.setLayoutParams(bl);
+            int pad = Math.round(h * 0.22f);
+            setPadding(pad, 0, pad, 0);
+            edge.reset(); // (a glass card with pointed ends)
+            float in = 3, tip = h * 0.28f;
+            edge.moveTo(in + tip, in);
+            edge.lineTo(w - in - tip, in);
+            edge.lineTo(w - in, h / 2f);
+            edge.lineTo(w - in - tip, h - in);
+            edge.lineTo(in + tip, h - in);
+            edge.lineTo(in, h / 2f);
+            edge.close();
+            p.setPathEffect(new android.graphics.CornerPathEffect(h * 0.12f));
+            rim = new LinearGradient(0, 0, w, 0, new int[]{0xFF38BDF8, 0xFF6366F1, 0xFFA855F7}, null, Shader.TileMode.CLAMP);
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            p.setStyle(Paint.Style.FILL);
+            p.setShader(null);
+            p.setColor(0x26000000);
+            c.save();
+            c.translate(0, 3);
+            c.drawPath(edge, p);
+            c.restore();
+            p.setColor(0xEBFFFFFF);
+            c.drawPath(edge, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(2f, getHeight() * 0.03f));
+            p.setShader(rim);
+            c.drawPath(edge, p);
+            p.setShader(null);
+        }
+    }
 }
