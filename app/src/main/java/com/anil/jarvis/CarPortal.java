@@ -23,6 +23,8 @@ import android.widget.FrameLayout;
  */
 final class CarPortal extends FrameLayout {
     final BodyView body;
+    /** 🎬 The film Jarvis (31 Oct): made the first time his clip pack is used; null until then. */
+    private FilmView film;
     private CarTheme.Look look;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
@@ -45,14 +47,42 @@ final class CarPortal extends FrameLayout {
         body = new BodyView(c);
         addView(body, new LayoutParams(-1, -1));
         body.setClipToOutline(true);
-        body.setOutlineProvider(new ViewOutlineProvider() {
-            @Override public void getOutline(View v, Outline o) {
-                int w = v.getWidth(), h = v.getHeight();
-                float rad = Math.min(w, h) * 0.42f;
-                o.setRoundRect(0, 0, w, h, rad);
-            }
-        });
+        body.setOutlineProvider(ROUND);
     }
+
+    /** The window's rounded inside (Jarvis — drawn or filmed — never spills over the glass's edge). */
+    private static final ViewOutlineProvider ROUND = new ViewOutlineProvider() {
+        @Override public void getOutline(View v, Outline o) {
+            int w = v.getWidth(), h = v.getHeight();
+            float rad = Math.min(w, h) * 0.42f;
+            o.setRoundRect(0, 0, w, h, rad);
+        }
+    };
+
+    // ---- 🎬 the film Jarvis (31 Oct): his own clips in the same window; the drawn Jarvis rests hidden meanwhile
+
+    /** The film Jarvis with this pack (null: the drawn Jarvis again). */
+    void setFilm(FilmPack p) {
+        if (p == null) {
+            if (film != null) { film.setPack(null); film.setVisibility(GONE); }
+            body.setVisibility(VISIBLE);
+            invalidate();
+            return;
+        }
+        if (film == null) {
+            film = new FilmView(getContext());
+            film.setClipToOutline(true);
+            film.setOutlineProvider(ROUND);
+            addView(film, new LayoutParams(-1, -1));
+        }
+        film.setPack(p);
+        film.setVisibility(VISIBLE);
+        body.setVisibility(INVISIBLE);
+        invalidate();
+    }
+
+    /** The film Jarvis when he is the one shown (null: the drawn one). */
+    FilmView film() { return film != null && film.getVisibility() == VISIBLE ? film : null; }
 
     void setLook(CarTheme.Look l) {
         boolean recolour = holo && (look == null || look.accent != l.accent) && glowOwn == 0;
@@ -118,13 +148,16 @@ final class CarPortal extends FrameLayout {
     // Jarvis sits inside the window's edge: measured and laid out with that inset (no second layout pass)
     @Override protected void onMeasure(int ws, int hs) {
         int w = MeasureSpec.getSize(ws), h = MeasureSpec.getSize(hs), in = inset(w, h);
-        body.measure(MeasureSpec.makeMeasureSpec(Math.max(0, w - 2 * in), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(Math.max(0, h - 2 * in), MeasureSpec.EXACTLY));
+        int ws2 = MeasureSpec.makeMeasureSpec(Math.max(0, w - 2 * in), MeasureSpec.EXACTLY), hs2 = MeasureSpec.makeMeasureSpec(Math.max(0, h - 2 * in), MeasureSpec.EXACTLY);
+        body.measure(ws2, hs2);
+        if (film != null) film.measure(ws2, hs2);
         setMeasuredDimension(w, h);
     }
 
     @Override protected void onLayout(boolean changed, int l, int t, int rt, int bt) {
         int w = rt - l, h = bt - t, in = inset(w, h);
         body.layout(in, in, Math.max(in, w - in), Math.max(in, h - in));
+        if (film != null) film.layout(in, in, Math.max(in, w - in), Math.max(in, h - in));
     }
 
     @Override protected void onDraw(Canvas cv) {
@@ -152,7 +185,7 @@ final class CarPortal extends FrameLayout {
         cv.drawRect(0, 0, w, h, p);
         // the window's dark glass (behind Jarvis); the hologram has none: a cone of light from his stage instead
         float inset = s * 0.085f, rad = (s - 2 * inset) * 0.42f;
-        if (holo) {
+        if (holo && film() == null) {
             if (cone == null || coneW != w || coneH != h || coneAc != ac) {
                 coneW = w; coneH = h; coneAc = ac;
                 cone = new RadialGradient(cx, h - inset, Math.max(1, h * 0.9f), new int[]{CarTheme.withAlpha(ac, 0x55), CarTheme.withAlpha(ac, 0x14), 0}, new float[]{0, 0.6f, 1}, Shader.TileMode.CLAMP);
@@ -181,7 +214,8 @@ final class CarPortal extends FrameLayout {
         float s = Math.min(w, h), cx = w / 2f, cy = h / 2f, inset = s * 0.085f, rad = (s - 2 * inset) * 0.42f;
         int ac = ac();
         // the seat belt over his chest (the body's own coordinates: rig units -> this view's pixels)
-        if (belted && body.getWidth() > 0 && body.getHeight() > 0) {
+        boolean filmed = film() != null; // (🎬: the film Jarvis has no drawn belt or hologram lines over him)
+        if (belted && !filmed && body.getWidth() > 0 && body.getHeight() > 0) {
             float bw = body.getWidth(), bh = body.getHeight();
             float sc = Math.min(bw / BodyRig.W, bh / BodyRig.H);
             float ox = body.getLeft() + (bw - BodyRig.W * sc) / 2f - BodyRig.LEFT * sc, oy = body.getTop() + bh - BodyRig.H * sc;
@@ -205,16 +239,16 @@ final class CarPortal extends FrameLayout {
             cv.restore();
         }
         long now0 = SystemClock.uptimeMillis();
-        if (holo) holoOver(cv, w, h, s, cx, inset, ac, now0);
+        if (holo && !filmed) holoOver(cv, w, h, s, cx, inset, ac, now0);
         else if (rings) stage(cv, w, h, s, cx, inset, ac, now0); // 💫
         // the window's lit edge
         r.set(inset, inset, w - inset, h - inset);
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeWidth(Math.max(1.5f, s * 0.006f));
         p.setColor(CarTheme.withAlpha(ac, 0x66));
-        if (!holo) cv.drawRoundRect(r, rad, rad, p);
+        if (!holo || filmed) cv.drawRoundRect(r, rad, rad, p);
         // the orbit rings (two tilted ellipses, one in front, one behind — drawn here as thin lines over the glass edge)
-        for (int k = 0; !holo && k < 2; k++) {
+        for (int k = 0; (!holo || filmed) && k < 2; k++) {
             cv.save();
             cv.rotate(k == 0 ? -18 + 14 * (float) Math.sin(Math.toRadians(orbit * 0.5)) : 24 - 10 * (float) Math.sin(Math.toRadians(orbit * 0.3)), cx, cy); // (a slow wobble, whole cycles inside the 3600° wrap)
             r.set(cx - s * 0.53f, cy - s * (k == 0 ? 0.13f : 0.2f), cx + s * 0.53f, cy + s * (k == 0 ? 0.13f : 0.2f));

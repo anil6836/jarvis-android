@@ -176,6 +176,11 @@ final class CarScreen extends FrameLayout {
     private final TextView saverClock, saverLine;
     private int W, H;
     private boolean night, running, wasMoving, dancing;
+    // 🎬 the film Jarvis (31 Oct): his clip pack on the box (loaded off the main thread), which load of it we have, his choice
+    private FilmPack filmPack;
+    private int filmGen = -1;
+    private boolean filmLoading, filmHelloDone;
+    private String filmKind = "";
     private int state = OrbView.IDLE, mode = CarTheme.DRIVING;
     private String said = "", heard = "";
     private long saidAt;
@@ -760,6 +765,9 @@ final class CarScreen extends FrameLayout {
         main.post(quick);
         main.post(slow);
         chaseShow();
+        filmHelloDone = false; // (👋 the film Jarvis's welcome once more on this start)
+        filmKind = ""; // (the window told again)
+        filmCheck();
     }
 
     void stop() {
@@ -774,6 +782,8 @@ final class CarScreen extends FrameLayout {
         setDancing(false);
         lights.setActive(false);
         if (beatOn) { beatOn = false; beat.stop(); }
+        FilmView fv = portal.film();
+        if (fv != null) fv.setRunning(false); // 🎬 every player lets go while the screen is away
     }
 
     /** The activity is gone for good: the map's workers end. */
@@ -790,6 +800,8 @@ final class CarScreen extends FrameLayout {
     /** Settings were left: the theme, his colour, the dance choice, Jarvis's look may have changed. */
     void themeChanged() {
         chaseLook(); // (⑯'s car, plate, photos may have changed in ⚙️)
+        filmKind = ""; // 🎬 (the film Jarvis's choice or a new pack from ⚙️)
+        filmCheck();
         portal.body.rig.setLook(prefs.bodyLook());
         portal.body.rig.setSkin(prefs.bodySkin());
         palette();
@@ -921,6 +933,7 @@ final class CarScreen extends FrameLayout {
         boolean dance = mayDance && ("always".equals(pref) || !moving) && !(prefs.carLowMotion() && moving);
         setDancing(dance);
         if (dancing) danceTick();
+        filmCheck();
     }
 
     /** While he dances (each second): the next step when the phrase is over or the song turns quiet / loud; the beat shown. */
@@ -934,6 +947,8 @@ final class CarScreen extends FrameLayout {
             if (cheerNow[0]) rig.danceTap(); // 🙌 the song just got loud: a cheer first
             if (next >= 0) rig.queueDanceStyle(next);
         }
+        FilmView fv = portal.film();
+        if (fv != null) fv.setLevel(dj.level()); // 🎬 the next clip for the song's loudness now
         int bpm = Math.round(beat.bpm() / 5f) * 5; // (to the nearest 5: the number doesn't flicker)
         if (bpm != bpmShown) { bpmShown = bpm; showTalk(); }
     }
@@ -958,8 +973,42 @@ final class CarScreen extends FrameLayout {
         } else {
             rig.setDance(false);
         }
+        FilmView fv = portal.film();
+        if (fv != null) { fv.setSets(prefs.carFilmSets()); fv.setDancing(on, dj.level()); } // 🎬 his own dance clips
         portal.body.setSlow(night && !dancing); // (the night's slower frames would make the dance choppy)
         showTalk();
+    }
+
+    // ================================================================ 🎬 the film Jarvis (31 Oct)
+
+    /**
+     * Each second and after a choice: his clip pack read again when a new one came (📦) and the window told which Jarvis
+     * shows: the film one when he chose it and a pack with dances is on the box, else the drawn one (nothing lost).
+     */
+    private void filmCheck() {
+        String kind = prefs.carJarvisKind();
+        int g = FilmPack.gen();
+        if (g != filmGen && !filmLoading) {
+            filmLoading = true;
+            final Context c = getContext().getApplicationContext();
+            photoWork.execute(() -> {
+                final FilmPack p = FilmPack.load(c.getFilesDir());
+                main.post(() -> { filmLoading = false; filmGen = g; filmPack = p; filmKind = ""; filmCheck(); });
+            });
+            return;
+        }
+        boolean want = "film".equals(kind) && filmPack != null && filmPack.hasDance();
+        String now = want ? kind + "|" + filmGen : "2d";
+        if (now.equals(filmKind)) return;
+        filmKind = now;
+        portal.setFilm(want ? filmPack : null);
+        FilmView fv = portal.film();
+        if (fv == null) return;
+        fv.setSets(prefs.carFilmSets());
+        fv.setTalk(state);
+        fv.setRunning(running && !saverOn);
+        if (dancing) fv.setDancing(true, dj.level());
+        if (!filmHelloDone && running && !CarBox.moving() && !dancing && prefs.carWelcome()) { filmHelloDone = true; fv.hello(); } // 👋 once a start
     }
 
     // ================================================================ speed
@@ -997,6 +1046,8 @@ final class CarScreen extends FrameLayout {
         if (s != BodyRig.IDLE) rig.poke();
         rig.setMode(s);
         portal.setState(s);
+        FilmView fv = portal.film();
+        if (fv != null) fv.setTalk(s); // 🎬 (the half-body clips, once he has them)
         if (s == OrbView.LISTENING) heard = "";
         showTalk();
     }
@@ -1352,6 +1403,8 @@ final class CarScreen extends FrameLayout {
     private void saverShow(boolean on) {
         saverOn = on;
         chaseShow(); // (the dark clock over ⑯: the 3D view rests)
+        FilmView fv = portal.film();
+        if (fv != null) fv.setRunning(running && !on); // 🎬 (the dark clock over him: his clips rest too)
         if (on) {
             int ink = night ? 0xFF56677A : 0xFFB8C7D6;
             saverClock.setTextColor(ink);
@@ -1584,6 +1637,8 @@ final class CarScreen extends FrameLayout {
         if (key.equals(songNowKey)) return;
         boolean had = !songNowKey.isEmpty();
         songNowKey = key;
+        FilmView fv = portal.film();
+        if (fv != null) fv.songStart(); // 🎬 one heroines' set a song
         if (!had || !dancing) return;
         beat.newSong();
         portal.body.rig.queueDanceStyle(dj.start(beat.period(), 0, rnd));
@@ -1890,6 +1945,7 @@ final class CarScreen extends FrameLayout {
     /** A choice made in 🎛️: the screen takes it now. */
     private void hubChanged(String key) {
         if ("car_layout".equals(key)) shapeCheck();
+        if ("car_jarvis_kind".equals(key) || "car_film_sets".equals(key)) { filmKind = ""; filmCheck(); } // 🎬
         if (key != null && (key.startsWith("car_3d") || "car_colour".equals(key) || "car_plate".equals(key) || "car_low_motion".equals(key))) chaseLook();
         if (key != null && key.startsWith("car_15")) { // (⑮'s choices in 🎛️: 🎮 swaps the map and the game view; the rest on the map at once)
             if ("car_15_game".equals(key) && CarLayout.CITY.equals(shape)) relayout();
@@ -1914,6 +1970,7 @@ final class CarScreen extends FrameLayout {
             case "photo_top": hub.hide(); host.openSettingsAt("car_top"); break;
             case "photos": hub.hide(); host.openSettingsAt("car"); break;
             case "car3d_photos": hub.hide(); host.openSettingsAt("car3d"); break;
+            case "film_pack": hub.hide(); host.openSettingsAt("film_pack"); break; // 🎬 his zip of clips (⚙️ opens the picker)
             case "car3d_pick": hub.hide(); carPick3d(); break;
             case "map3d_clear": World3DStore.clear(c); City15.clearCache(c); toast("🗑️ 3D మ్యాప్ ముక్కలు (⑮ ⑯) తీసేశాను: మళ్ళీ కావాలంటే నెట్ నుంచి వస్తాయి"); break;
             case "stage": setStage(!prefs.carStage()); toast(prefs.carStage() ? "🕺 స్టేజ్ పెట్టాను" : "🕺 స్టేజ్ ఆపాను"); break;
@@ -2197,6 +2254,22 @@ final class CarScreen extends FrameLayout {
     String wordsSaid(String[] w) {
         Context c = getContext();
         switch (w[0]) {
+            case "jarvis": { // 🎬 the film Jarvis or the drawn one (his words: any time)
+                boolean film = "film".equals(w[1]);
+                prefs.sp.edit().putString("car_jarvis_kind", film ? "film" : "2d").apply();
+                filmKind = "";
+                filmCheck();
+                if (!film) return "సరే, పాత 2D Jarvis పెట్టాను.";
+                if (filmPack == null || !filmPack.hasDance()) return "సినిమా Jarvis క్లిప్స్ ప్యాక్ ఇంకా ఈ box లో లేదు: కారు ఆగాక 🎛️ → 🧍 Jarvis → 📦 లో కలపండి. అప్పటిదాకా పాత Jarvis.";
+                return "సరే, సినిమా Jarvis పెట్టాను.";
+            }
+            case "sets": {
+                boolean on = "on".equals(w[1]);
+                prefs.sp.edit().putBoolean("car_film_sets", on).apply();
+                FilmView fv = portal.film();
+                if (fv != null) fv.setSets(on);
+                return on ? "సరే, పాటల్లో హీరోయిన్లతో సెట్ వస్తుంది (పాటకు ఒకసారి)." : "సరే, హీరోయిన్ల సెట్ ఆపాను: నేను ఒక్కడినే డాన్స్ చేస్తాను.";
+            }
             case "src": {
                 boolean osm = "osm".equals(w[1]);
                 prefs.sp.edit().putString("car_map_src", osm ? "osm" : "").apply();

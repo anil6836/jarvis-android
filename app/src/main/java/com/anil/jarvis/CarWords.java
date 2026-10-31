@@ -49,13 +49,28 @@ final class CarWords {
     private static final Pattern CDARK = Pattern.compile("^(మ్యాప్ )?(చీకటి|నలుపు|నైట్) (మ్యాప్ )?(రంగు )?" + DO + "$|^dark map$");
     private static final Pattern CLIGHT = Pattern.compile("^(మ్యాప్ )?(తెల్లగా|తెల్లటి|తెలుపు|వైట్) (మ్యాప్ )?(రంగు )?" + DO + "$|^(white|light) map$");
 
+    /** 🎬 (31 Oct) "కొత్త Jarvis పెట్టు" / "సినిమా Jarvis పెట్టు" ↔ "పాత Jarvis పెట్టు"; "హీరోయిన్లు వద్దు" / "హీరోయిన్లు పెట్టు". */
+    private static final String JV = "(jarvis|జార్విస్|జర్విస్|జార్వీస్)";
+    private static final Pattern FILM_ON = Pattern.compile("^(కొత్త|సినిమా|ఏఐ|ai|వీడియో|new|film)\\s*" + JV + "\\s*(ని|ను)?\\s*" + PUT_CAR + "$|^(put |show )?(the )?(new|film) jarvis$");
+    private static final Pattern FILM_OFF = Pattern.compile("^(పాత|2d|2డి|టూడీ|బొమ్మ|old)\\s*" + JV + "\\s*(ని|ను)?\\s*" + PUT_CAR + "$|^(put |show )?(the )?(old|2d) jarvis$");
+    private static final String HEROINES = "(హీరోయిన్లు|హీరోయిన్స్|హీరోయిన్లను|హీరోయిన్ సెట్|హీరోయిన్ల సెట్|heroines?|heroine set)";
+    private static final Pattern SETS_OFF = Pattern.compile("^" + HEROINES + "\\s*(వద్దు|ఆపు|ఆపేయ్|ఆపేయి|ఆఫ్|off)$");
+    private static final Pattern SETS_ON = Pattern.compile("^" + HEROINES + "\\s*(పెట్టు|పెట్టండి|రావాలి|కావాలి|ఆన్|on)$");
+
     /**
+     * {"jarvis", "film" | "2d"}, {"sets", "on" | "off"},
      * {"src", "osm" | "google"}, {"car", one of CarDeck.MAP_CARS}, {"quiet", "on" | "off"}, {"map", "big" | "small"}, {"rotate", "on" | "off"},
      * {"way3d", the place ("home" for home)}, {"city", "2d" | "3d" | "gameon" | "gameoff" | "near" | "mid" | "far" | "dark" | "light"};
      * null when it isn't one of these. Pure.
      */
     static String[] parse(String text) {
         if (text == null || text.contains("?") || text.contains("？")) return null;
+        String jw = text.toLowerCase(Locale.ROOT).replaceAll("[‌‍]", "").replaceAll("[,.!?।\"'“”]", " ").replaceAll("\\s+", " ").trim()
+                .replaceAll("^" + JV + "\\s+", ""); // (only the call in front taken off: "Jarvis" is a word of these)
+        if (FILM_ON.matcher(jw).matches()) return new String[]{"jarvis", "film"};
+        if (FILM_OFF.matcher(jw).matches()) return new String[]{"jarvis", "2d"};
+        if (SETS_OFF.matcher(jw).matches()) return new String[]{"sets", "off"};
+        if (SETS_ON.matcher(jw).matches()) return new String[]{"sets", "on"};
         String t = text.toLowerCase(Locale.ROOT).replaceAll("[‌‍]", "").replaceAll("(jarvis|జార్విస్|జర్విస్)", " ")
                 .replaceAll("[,.!?।\"'“”]", " ").replaceAll("\\s+", " ").trim();
         if (t.isEmpty() || t.length() > 60) return null;

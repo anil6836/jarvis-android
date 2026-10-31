@@ -51,6 +51,8 @@ final class CarHubSpec {
     static final String[] DANCES = {"always", "parked", "off"}, DANCE_NAMES = {"ఎప్పుడూ", "ఆగినప్పుడే", "వద్దు"};
     static final String[] OUTFITS = {"a", "b", "c"}, OUTFIT_NAMES = {"A · జాకెట్", "B · కుర్తా", "C · క్యాజువల్"};
     static final String[] SKINS = {"1", "2", "3"}, SKIN_NAMES = {"లేత", "మధ్యస్థం", "ముదురు"};
+    /** 🎬 (31 Oct): the film Jarvis (his own clips) or the drawn one. */
+    static final String[] JARVIS_KINDS = {"film", "2d"}, JARVIS_KIND_NAMES = {"🎬 కొత్త సినిమా Jarvis", "🧍 పాత 2D Jarvis"};
 
     private static int[] themeIds() {
         int[] out = new int[CarTheme.ALL.length];
@@ -71,6 +73,10 @@ final class CarHubSpec {
         if (all != null) return all;
         all = new Cat[]{
                 new Cat("jarvis", "🧍", "Jarvis",
+                        strNew("car_jarvis_kind", "🎬 Jarvis ఎవరు", JARVIS_KINDS, JARVIS_KIND_NAMES, "film"),
+                        act("film_pack", "📦 Jarvis క్లిప్స్ ప్యాక్ కలుపు (🎬 సినిమా Jarvis)"),
+                        boolNew("car_film_sets", "💃 పాటలో హీరోయిన్లతో సెట్ (🎬, పాటకు ఒకసారి)", true),
+                        info("film", "🎬 క్లిప్స్ ఈ box లోనే ఉంటాయి (APK, GitHub, బ్యాకప్‌లో ఉండవు). ప్యాక్ లేకపోతే పాత 2D Jarvis."),
                         str("car_jarvis", "📏 సైజు", CarDeck.SIZES, CarDeck.SIZE_NAMES, ""),
                         str("car_jarvis_look", "✨ రూపం", CarStyle.JARVIS_LOOKS, new String[]{"మామూలు", "🔷 హోలోగ్రామ్"}, ""),
                         str("body_look", "👕 బట్టలు", OUTFITS, OUTFIT_NAMES, "c"),

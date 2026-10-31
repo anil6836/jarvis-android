@@ -525,6 +525,10 @@ final class Prefs {
     String carJarvisSide() { return sp.getString("car_jarvis_side", ""); }
     String carJarvisGlow() { return sp.getString("car_jarvis_glow", ""); }
     String carJarvisRing() { return sp.getString("car_jarvis_ring", ""); }
+    /** 🎬 (31 Oct) Jarvis on the car screen: "film" his own AI clips (the pack on the box; none → the drawn one), "2d" the drawn Jarvis. */
+    String carJarvisKind() { return sp.getString("car_jarvis_kind", "film"); }
+    /** 🎬 With a song, once a song the set with the heroines (his switch). */
+    boolean carFilmSets() { return sp.getBoolean("car_film_sets", true); }
     /** 🎛️ ⑪ keeps its own six ("car_buttons_sp"): a change there never changes the other shapes' six (and theirs never ⑪'s). */
     static String buttonsKey(String shape) { return CarLayout.family(shape) ? "car_buttons_sp" : "car_buttons"; } // (⑫ ⑬ ⑭ share ⑪'s six)
     /** ⑫ at night: "" the white glass stays, "dark" the dark colours (his choice). */

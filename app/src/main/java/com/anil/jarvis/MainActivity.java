@@ -1649,7 +1649,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         @Override public void openSettings() { startActivity(new Intent(MainActivity.this, SettingsActivity.class)); }
         @Override public void openSettingsAt(String action) {
             Intent i = new Intent(MainActivity.this, SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, "కారు Jarvis");
-            if ("car_top".equals(action) || "car3d".equals(action)) i.putExtra(SettingsActivity.EXTRA_ACTION, action);
+            if ("car_top".equals(action) || "car3d".equals(action) || "film_pack".equals(action)) i.putExtra(SettingsActivity.EXTRA_ACTION, action);
             startActivity(i);
         }
         @Override public void openChat() {

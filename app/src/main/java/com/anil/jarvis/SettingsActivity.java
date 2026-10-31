@@ -3252,6 +3252,12 @@ public class SettingsActivity extends Activity {
         show3d();
         photo3dRow.setOnClickListener(v -> photos3d());
         box.addView(photo3dRow);
+        // 🎬 the film Jarvis's clips (31 Oct): one zip he picks; on this box only
+        filmRow = Ui.text(this, "", 15.5f, accent);
+        filmRow.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+        showFilm();
+        filmRow.setOnClickListener(v -> filmPackMenu());
+        box.addView(filmRow);
         // 💾 నా థీమ్ 1–3, the six buttons, the dials, the buttons' look, sizes
         final TextView mineRow = Ui.text(this, "💾 నా థీమ్‌లు 1–3: ఇప్పటి రూపం దాచుకోండి, తర్వాత ఒక్క నొక్కుతో మళ్లీ పెట్టుకోండి", 15.5f, accent);
         final TextView buttonsRow = Ui.text(this, "", 15.5f, accent), styleRow = Ui.text(this, "", 15.5f, accent), dialsRow = Ui.text(this, "", 15.5f, accent);
@@ -3606,6 +3612,7 @@ public class SettingsActivity extends Activity {
     private static final int[] ACCENTS = {0, 0xFF5FF3FF, 0xFF4D8DFF, 0xFF34E89E, 0xFFFFC24B, 0xFFFF8A3D, 0xFFFF5A5A, 0xFFFF6AD5, 0xFFB28DFF, 0xFFF2F6FA};
     private static final String[] ACCENT_NAMES = {"థీమ్‌దే", "సియాన్", "నీలం", "ఆకుపచ్చ", "బంగారు", "నారింజ", "ఎరుపు", "గులాబీ", "ఊదా", "తెలుపు"};
     private static final int REQ_WALL = 47, REQ_CARPHOTO = 48, REQ_CARREAR = 49, REQ_CARTOP = 50, REQ_CAR3D = 70; // (70–76: ⑯'s seven sides)
+    private static final int REQ_FILMPACK = 77; // 🎬 his zip of film Jarvis clips
 
     private void pickCarRear() {
         try {
@@ -3622,6 +3629,39 @@ public class SettingsActivity extends Activity {
         int n = 0;
         for (int i = 0; i < CarPhotos3D.SLOTS.length; i++) if (CarPhotos3D.file(this, i).exists()) n++;
         photo3dRow.setText("📷 ⑯ 3D కోసం నా కారు ఫోటోలు: " + n + " / 7  (నొక్కండి · Gallery లో కారుని పట్టుకుని 'Save as image' చేసినవి బాగుంటాయి · ఈ box లోనే ఉంటాయి)");
+    }
+
+    private TextView filmRow;
+
+    /** 🎬 What clip pack is on this box. */
+    private void showFilm() {
+        if (filmRow == null) return;
+        final TextView row = filmRow;
+        new Thread(() -> {
+            FilmPack p = FilmPack.load(getFilesDir());
+            final String t = "🎬 సినిమా Jarvis క్లిప్స్ ప్యాక్: " + (p == null ? "లేదు" : p.summary()) + "  (నొక్కండి · ఈ box లోనే ఉంటాయి, బ్యాకప్‌లో ఉండవు)";
+            runOnUiThread(() -> row.setText(t));
+        }, "film-row").start();
+    }
+
+    /** 🎬 Add a pack (his zip), or take it away. */
+    private void filmPackMenu() {
+        if (!new java.io.File(getFilesDir(), FilmPack.DIR).exists()) { pickFilmPack(); return; }
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🎬 సినిమా Jarvis క్లిప్స్")
+                .setItems(new String[]{"📦 కొత్త ప్యాక్ కలుపు (పాతది పోతుంది)", "🗑️ క్లిప్స్ తీసేయి (పాత 2D Jarvis వస్తాడు)"}, (d, w) -> {
+                    if (w == 0) pickFilmPack();
+                    else new Thread(() -> { FilmPack.remove(getFilesDir()); runOnUiThread(() -> { showFilm(); Toast.makeText(this, "🗑️ క్లిప్స్ తీసేశాను", Toast.LENGTH_SHORT).show(); }); }, "film-del").start();
+                }).show();
+    }
+
+    private void pickFilmPack() {
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                    .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/zip", "application/x-zip-compressed", "application/octet-stream"}), REQ_FILMPACK);
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫైల్ ఎంచుకునే యాప్ లేదు", Toast.LENGTH_LONG).show();
+        }
     }
 
     /** 📷 ⑯: his seven sides — each picked from the gallery, or taken away. */
@@ -3928,6 +3968,24 @@ public class SettingsActivity extends Activity {
                     startActivity(new Intent(this, CarPhotoActivity.class).putExtra(CarPhotoActivity.EXTRA_REAR, true));
                 });
             }, "car-rear").start();
+        }
+        if (code == REQ_FILMPACK && result == RESULT_OK && data != null && data.getData() != null) { // 🎬 his zip of film Jarvis clips: into files/car_show on this box only
+            final Uri u = data.getData();
+            Toast.makeText(this, "📦 క్లిప్స్ కలుపుతున్నాను… (ఒక నిమిషం పట్టొచ్చు)", Toast.LENGTH_LONG).show();
+            new Thread(() -> {
+                String[] why = {""};
+                FilmPack p = null;
+                try (java.io.InputStream in = getContentResolver().openInputStream(u)) {
+                    if (in != null) p = FilmPack.importZip(getFilesDir(), new java.io.BufferedInputStream(in, 256 * 1024), why);
+                } catch (Exception e) { why[0] = "ఆ ఫైల్ తెరవలేకపోయాను"; }
+                final FilmPack got = p;
+                runOnUiThread(() -> {
+                    showFilm();
+                    if (got == null) { Toast.makeText(this, "❌ ప్యాక్ కలవలేదు: " + why[0], Toast.LENGTH_LONG).show(); return; }
+                    if (!"film".equals(prefs.sp.getString("car_jarvis_kind", "film"))) prefs.sp.edit().putString("car_jarvis_kind", "film").apply(); // (he added clips: the film Jarvis shows them)
+                    Toast.makeText(this, "✅ కలిశాయి: " + got.summary() + ". కారు స్క్రీన్‌కి వెళ్ళగానే సినిమా Jarvis.", Toast.LENGTH_LONG).show();
+                });
+            }, "film-pack").start();
         }
         if (code == REQ_CARTOP && result == RESULT_OK && data != null && data.getData() != null) { // 🚙 ⑪: his car from above for the map: kept on this box, then which way its nose points
             final Uri u = data.getData();
@@ -6065,6 +6123,10 @@ public class SettingsActivity extends Activity {
         if (i != null && "car3d".equals(i.getStringExtra(EXTRA_ACTION))) { // (the car screen's 🎛️ → 🎮 → 📷 his car's seven sides)
             i.removeExtra(EXTRA_ACTION);
             photos3d();
+        }
+        if (i != null && "film_pack".equals(i.getStringExtra(EXTRA_ACTION))) { // (the car screen's 🎛️ → 🧍 → 📦 his film Jarvis clips)
+            i.removeExtra(EXTRA_ACTION);
+            filmPackMenu();
         }
         if (i != null && "frame".equals(i.getStringExtra(EXTRA_ACTION)) && !tab.isEmpty()) { // (All Features → 🖼️ photos for her frame)
             i.removeExtra(EXTRA_ACTION);
