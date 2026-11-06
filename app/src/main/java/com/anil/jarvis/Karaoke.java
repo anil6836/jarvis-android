@@ -2,8 +2,6 @@ package com.anil.jarvis;
 
 import android.text.Layout;
 import android.text.Spannable;
-import android.text.style.BackgroundColorSpan;
-import android.text.style.ForegroundColorSpan;
 import android.view.View;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -16,8 +14,8 @@ import java.util.List;
  * links taken out, so its positions are mapped back onto the text shown.
  */
 final class Karaoke {
-    private final BackgroundColorSpan bg = new BackgroundColorSpan(0x5548D1FF);
-    private final ForegroundColorSpan fg = new ForegroundColorSpan(0xFFFFFFFF);
+    /** Only the word being said, yellow and bold (ReadGlow: the same everywhere). */
+    private final ReadGlow glow = new ReadGlow();
     private TextView view;
     private ScrollView scroll;
     private String spoken;
@@ -44,21 +42,13 @@ final class Karaoke {
         int e = map[Math.min(end - 1, map.length - 1)] + 1;
         CharSequence cs = view.getText();
         if (!(cs instanceof Spannable) || e > cs.length() || s >= e) return;
-        Spannable sp = (Spannable) cs;
-        sp.removeSpan(bg);
-        sp.removeSpan(fg);
-        sp.setSpan(bg, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        sp.setSpan(fg, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        glow.word((Spannable) cs, s, e);
         follow(s);
     }
 
     /** Takes the highlight off (speech finished or stopped). */
     void clear() {
-        if (view != null && view.getText() instanceof Spannable) {
-            Spannable sp = (Spannable) view.getText();
-            sp.removeSpan(bg);
-            sp.removeSpan(fg);
-        }
+        if (view != null && view.getText() instanceof Spannable) glow.clear((Spannable) view.getText());
         view = null;
         map = null;
         spoken = null;

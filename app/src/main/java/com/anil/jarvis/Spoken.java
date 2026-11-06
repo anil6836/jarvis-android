@@ -41,6 +41,20 @@ final class Spoken {
             return new Out(all, s);
         }
 
+        /**
+         * What is said from the original's position at on (going on mid-part from a word): the same words the whole text
+         * gives (so a number keeps its reading, which can depend on the words before it), starting at a spoken word's
+         * start; still mapped onto the whole original.
+         */
+        Out from(int at) {
+            if (at <= 0) return this;
+            int i = 0;
+            while (i < src.length && src[i] < at) i++;
+            while (i > 0 && i < text.length() && !Character.isWhitespace(text.charAt(i - 1))) i--; // never half a spoken word
+            if (i <= 0) return this;
+            return new Out(text.substring(i), Arrays.copyOfRange(src, i, src.length));
+        }
+
         /** Original [start, end) for spoken [a, b). */
         int[] range(int a, int b) {
             if (src.length == 0) return new int[]{0, 0};

@@ -94,7 +94,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
     private void hold() {
         if (talkSet || stopped) return;
         Announcer.stop();
-        ScreenReader.pauseIfReading(svc);
+        ScreenReader.pauseForMessage(svc); // a page being read waits, and goes on from the same word when this card is done
         talkSet = !MainActivity.inConversation;
         if (talkSet) MainActivity.talking(true);
         holdSince = android.os.SystemClock.elapsedRealtime();
@@ -105,11 +105,20 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
     private void letGo() {
         card.orb(OrbView.IDLE);
         focus(false);
+        if (stopped || step == DONE) { // the talk is over: a page this card paused goes on from the same word
+            if (yielded) ScreenReader.keepPausedAfterMessage(); // (another Jarvis screen took over: it stays paused)
+            else ScreenReader.afterMessage(svc);
+        }
         if (!talkSet) return;
         talkSet = false;
         MainActivity.talking(false);
         if (p.wakeReady()) WakeService.resume(svc);
     }
+
+    /** It stopped because another Jarvis screen (the panel, a call, the app) took over, or he opened the chat / the media. */
+    private boolean yielded;
+    /** He opened the chat's app or the photo / video from the card: a page it paused stays paused (not over that). */
+    private boolean handedOver;
 
     /** Another Jarvis screen is about to start (it sets its own talk state), or already has (its state is left alone). */
     static final int YIELD_BEFORE = 1, YIELD_AFTER = 2;
@@ -124,6 +133,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
     @Override public void stop(int yield) {
         if (stopped) return;
         stopped = true;
+        yielded = yield != 0 || othersUp() || handedOver;
         main.removeCallbacksAndMessages(null);
         cancelPlay = true; // a voice note stops by itself within a moment (its own thread releases the player)
         if (yield == YIELD_AFTER) talkSet = false;
@@ -638,6 +648,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION));
                     consumeOpened(); // (📬: he has it open)
                     card.heardNow();
+                    handedOver = true;
                     end(false);
                 } catch (Exception e) {
                     cannot("ఇది తెరవలేకపోయాను. " + m.app + " తెరిచి చూడండి.");
@@ -750,6 +761,7 @@ final class CardTalk implements VoiceIO.Listener, TopCard.Flow {
             svc.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             consumeOpened(); // (📬: he has it open)
             card.heardNow();
+            handedOver = true;
             end(false);
         } catch (Exception e) {
             cannot(m.app + " తెరవలేకపోయాను. మీరే తెరవండి.");

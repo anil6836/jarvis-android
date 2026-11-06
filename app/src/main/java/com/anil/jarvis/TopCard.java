@@ -268,7 +268,10 @@ final class TopCard {
         TopCard t = showing;
         if (t != null && t.inShade) return; // (down in the shade: not on the screen)
         if (t != null && (CALL.equals(t.m.kind) || PANEL.equals(t.m.kind))) { t.hideBriefly(); return; } // (a call / his own talk goes on: only out of the picture)
-        if (t != null && (!t.m.voiceOnly || screenUsable(t.svc))) t.close(true, false); // (a voice-only talk on an unlocked phone too)
+        if (t != null && (!t.m.voiceOnly || screenUsable(t.svc))) {
+            t.close(true, false); // (a voice-only talk on an unlocked phone too)
+            ScreenReader.keepPausedAfterMessage(); // (he chose a floating-button feature: a page that card paused stays paused)
+        }
         TopCard c = leaving;
         if (c != null) c.removeView();
     }
@@ -304,6 +307,13 @@ final class TopCard {
         TopCard t = showing;
         Flow c = t == null ? null : t.talk;
         return c != null && c.talking();
+    }
+
+    /** A message card is busy talking with him now (when it ends it lets a page it paused go on: ScreenReader). */
+    static boolean messageTalkUp() {
+        TopCard t = showing;
+        Flow c = t == null ? null : t.talk;
+        return c instanceof CardTalk && c.busy();
     }
 
     /** A card is busy with him (talking, or waiting for his tap mid-reply): a new card must wait. */
@@ -839,12 +849,14 @@ final class TopCard {
         line2.scrollTo(0, 0);
     }
 
+    private final ReadGlow glow = new ReadGlow();
+
     /** The word being read now, lit, and scrolled into view. */
     void highlight(String text, int start, int end) {
         if (done || line2 == null || text == null) return;
         android.text.SpannableString sp = new android.text.SpannableString(text);
         int a = Math.max(0, Math.min(start, text.length())), b = Math.max(a, Math.min(end, text.length()));
-        if (b > a) sp.setSpan(new android.text.style.BackgroundColorSpan(FaceRig.withAlpha(accent, 0x70)), a, b, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        glow.word(sp, a, b); // only the word being said, yellow and bold (the same as the floating button's card)
         line2.setText(sp);
         android.text.Layout l = line2.getLayout();
         if (l != null && line2.getHeight() > 0) {

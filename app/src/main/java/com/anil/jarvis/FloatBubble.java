@@ -1796,17 +1796,24 @@ final class FloatBubble implements ScreenReader.Listener {
 
     /** Short answers in Jarvis's voice (natural voice if chosen); long ones with the phone's voice, which can pause and stop. */
     /** The card's answer read aloud (the phone voice, so ⏸ can pause it and ▶ go on from there). */
-    private void speak(String text) {
+    private void speak(String text) { speakFrom(text, -1, 0); }
+
+    /** ... from part fromPart's word fromWord (▶ after ⏹: where it stopped), or from the start (fromPart < 0). */
+    private void speakFrom(String text, int fromPart, int fromWord) {
         reader.stop();
         Announcer.stop();
         cardSpoken = text;
+        cardSpokenFor = lastAnswer;
         boolean shown = cardText != null && cardText.getText().toString().equals(text);
-        reader.read(CARD, text, shown ? cardFollow : null);
+        reader.readFrom(CARD, text, shown ? cardFollow : null, 0, null, null, fromPart, fromWord);
     }
 
     private String cardSpoken = "";
+    /** The answer on the card when cardSpoken was said (some cards say other words than they show: a reply, a reminder). */
+    private String cardSpokenFor = "";
+    private final ReadGlow cardGlow = new ReadGlow();
 
-    /** In the card: the sentence being read is lit, the word being said brighter, and the card scrolls along. */
+    /** In the card: the word being said is lit (yellow, bold: ReadGlow), and the card scrolls along with the sentence. */
     private final ScreenReader.Follow cardFollow = new ScreenReader.Follow() {
         private int ps = -1, pe = -1;
         @Override public void onPart(int line, int start, int end) { ps = start; pe = end; paint(ps, pe, -1, -1, true); }
@@ -1819,12 +1826,7 @@ final class FloatBubble implements ScreenReader.Listener {
         String t = cardText.getText().toString();
         if (!t.equals(cardSpoken)) return; // the card shows something else now
         android.text.SpannableString sp = new android.text.SpannableString(t);
-        int flag = android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE;
-        if (ps >= 0 && ps < pe && pe <= t.length()) sp.setSpan(new android.text.style.BackgroundColorSpan(FaceRig.withAlpha(Ui.CYAN, 0x3A)), ps, pe, flag);
-        if (ws >= 0 && ws < we && we <= t.length()) {
-            sp.setSpan(new android.text.style.ForegroundColorSpan(0xFFFFE27A), ws, we, flag);
-            sp.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), ws, we, flag);
-        }
+        if (ws >= 0 && ws < we && we <= t.length()) cardGlow.word(sp, ws, we);
         cardText.setText(sp);
         if (scroll && ps >= 0) cardText.post(() -> scrollCardTo(ps));
     }
@@ -1847,7 +1849,11 @@ final class FloatBubble implements ScreenReader.Listener {
         if (lastAnswer.isEmpty()) return;
         if (cardSpeaking()) reader.pause();
         else if (reader.active() && reader.paused() && CARD.equals(reader.title())) reader.resume();
-        else speak(lastAnswer); // finished or stopped: from the start
+        else { // stopped (⏹, a call, another sound): from the word it stopped at; read to the end: from the start (🔁 too)
+            int[] place = cardSpokenFor.equals(lastAnswer) ? reader.stoppedPlace(CARD, cardSpoken) : null;
+            if (place != null) speakFrom(cardSpoken, place[0], place[1]);
+            else speak(lastAnswer);
+        }
     }
 
     /** Hold the globe (or 🎙️): Jarvis's small panel opens and listens, with this screen already seen. */

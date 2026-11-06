@@ -483,6 +483,15 @@ public class NotifyListener extends NotificationListenerService {
     }
 
     private static final LinkedHashMap<String, Pending> queue = new LinkedHashMap<>();
+
+    /** Chats waiting in line to be said soon (not the ones kept while he rests): a page being read waits for them too. */
+    static boolean waiting() {
+        synchronized (queue) {
+            for (Pending q : queue.values()) if (!q.rested) return true;
+            return false;
+        }
+    }
+
     /** Per chat: the newest message time already taken, and the last text (for apps that give no times). */
     private static final Map<String, Long> seenUpTo = new java.util.HashMap<>();
     private static final Map<String, String> seenText = new java.util.HashMap<>();
