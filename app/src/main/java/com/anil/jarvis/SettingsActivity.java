@@ -871,7 +871,7 @@ public class SettingsActivity extends Activity {
             RadioButton rb = new RadioButton(this);
             rb.setText(sc + " సెకన్లు");
             rb.setTextColor(Ui.TEXT);
-            rb.setId(View.generateViewId());
+            rb.setId(freeId());
             cardSecs.addView(rb);
             if (sc == prefs.cardSecs()) cardSecs.check(rb.getId());
             rb.setOnCheckedChangeListener((bt, on) -> { if (on) prefs.sp.edit().putInt("card_secs", sc).apply(); });
@@ -892,7 +892,7 @@ public class SettingsActivity extends Activity {
             RadioButton rb = new RadioButton(this);
             rb.setText(h + " గంటలు");
             rb.setTextColor(Ui.TEXT);
-            rb.setId(View.generateViewId());
+            rb.setId(freeId());
             keepH.addView(rb);
             if (h == LaterMessages.keepHours(this)) keepH.check(rb.getId());
             rb.setOnCheckedChangeListener((bt, on) -> { if (on) prefs.sp.edit().putInt("later_keep_h", h).apply(); });
@@ -2519,6 +2519,26 @@ public class SettingsActivity extends Activity {
         });
     }
 
+    /**
+     * This screen builds itself again from the saved settings every time (a theme / look change, a rebuild): Android must
+     * never put the old screen's switch / choice states back on the new one. (7 Nov, v1.0.195 bug: its ids clashed —
+     * the small numbers of the AI / voice choices and the numbers Android hands out — so a rebuild after a look change
+     * ticked the wrong choices and his AI and voice changed by themselves.)
+     */
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.remove("android:viewHierarchyState");
+    }
+
+    @Override protected void onRestoreInstanceState(Bundle in) {
+        if (in != null) in.remove("android:viewHierarchyState");
+        super.onRestoreInstanceState(in);
+    }
+
+    /** Ids for the choices built in code, far from the small fixed ids (1–3 AI, 11–12 language, 21–23, 41–44, 71–103…). */
+    private static int nextFreeId = 0x0FF00000;
+    private static int freeId() { return nextFreeId++; }
+
     @Override protected void onPause() {
         super.onPause();
         if (gated) return;
@@ -2719,7 +2739,7 @@ public class SettingsActivity extends Activity {
         for (String un : units) {
             RadioButton rb = new RadioButton(this);
             rb.setText(un);
-            rb.setId(View.generateViewId());
+            rb.setId(freeId());
             unit.addView(rb);
             unitOf.put(rb.getId(), un);
             if (un.equals(unit0)) unit.check(rb.getId());
@@ -2754,8 +2774,8 @@ public class SettingsActivity extends Activity {
         RadioButton fromToday = new RadioButton(this), fromStart = new RadioButton(this);
         fromToday.setText("ధర / రోజూ ఎన్ని మారితే: ఈ రోజు నుంచి (ముందు రోజులు పాత ధరకే)");
         fromStart.setText("లెక్క మొదలు నుంచే (ముందు చెప్పింది తప్పు; తర్వాత మార్చిన తేదీలు అలాగే)");
-        fromToday.setId(View.generateViewId());
-        fromStart.setId(View.generateViewId());
+        fromToday.setId(freeId());
+        fromStart.setId(freeId());
         when.addView(fromToday);
         when.addView(fromStart);
         when.check(fromToday.getId());
@@ -3058,7 +3078,7 @@ public class SettingsActivity extends Activity {
         for (String[] f : fuels) {
             RadioButton rb = new RadioButton(this);
             rb.setText(f[1]);
-            rb.setId(View.generateViewId());
+            rb.setId(freeId());
             fuel.addView(rb);
             fuelOf.put(rb.getId(), f[0]);
             if (f[0].equals(CarBook.fuel(st))) fuel.check(rb.getId());
