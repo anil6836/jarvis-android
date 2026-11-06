@@ -14,10 +14,10 @@ final class PageTheme {
     static final int GLASS = 0, NEU = 1, GLOW_EDGE = 2, CUT = 3, TILE = 4, OLD = 5;
     /** Background pictures (all drawn by Jarvis itself, standing still in the pages). */
     static final int BG_AURORA = 0, BG_SOFT = 1, BG_LEAVES = 2, BG_CLOUDS = 3, BG_DARK = 4, BG_NEON = 5, BG_LAMPS = 6,
-            BG_WIRE = 7, BG_BLOBS = 8, BG_NAVY = 9, BG_TILES = 10;
+            BG_WIRE = 7, BG_BLOBS = 8, BG_NAVY = 9, BG_TILES = 10, BG_LIQUID = 11, BG_SPACE = 12;
 
     final String id, emoji, name, note;
-    /** 0: the old three, 1: from his pictures, 2: from the car box. */
+    /** 0: the old three, 1: from his pictures, 2: from the car box, 3: a main-screen look's own (pages follow the look). */
     final int from;
     /** The page background is light (dark letters on it). */
     boolean lightPage;
@@ -157,6 +157,24 @@ final class PageTheme {
         t.field = 0xFFE6E9F1; t.fieldEdge = 0x333A6BFF; t.swOn = 0xFF3A6BFF; t.swOff = 0xFFD9DCE6; t.thumb = 0xFFFFFFFF; t.thumbOff = 0xFFFFFFFF;
         t.badge = 0xFFFFB02E; t.badgeInk = 0xFF111111; t.good = 0xFF13834F; t.warn = 0xFFA35A00; t.bad = 0xFFC62828; t.glow = 0x553A6BFF;
         l.add(t);
+        // ---- two that come with the main-screen looks (not in the theme chooser: the pages take them with the look)
+        t = new PageTheme("liquid", "💎", "లిక్విడ్ గాజు", "మెయిన్ స్క్రీన్ లుక్ తో: రంగుల మీద మెరిసే గాజు", 3);
+        t.bg = BG_LIQUID; t.style = GLASS; t.bgTop = 0xFF2A0E52; t.bgBottom = 0xFF0E2A44;
+        t.card = 0x5A1A0A30; t.card2 = 0x461A0A30; t.edge = 0x66FFFFFF; t.radius = 22;
+        t.ink = 0xFFFFFFFF; t.inkPage = 0xFFFFFFFF; t.muted = 0xE0FFFFFF; t.mutedPage = 0xE6FFFFFF; t.faint = 0xA6FFFFFF;
+        t.accent = 0xFFFFD0F0; t.accent2 = 0xFF9FE8FF; t.title1 = 0xFFFFFFFF; t.title2 = 0xFFFFC6EC; t.iconBg = 0x33FFFFFF;
+        t.field = 0x701A0A30; t.fieldEdge = 0x55FFFFFF; t.swOn = 0xFFFF5FB8; t.swOff = 0x40FFFFFF; t.thumb = 0xFFFFFFFF; t.thumbOff = 0xFFE8E0F0;
+        t.badge = 0xFFFFD166; t.badgeInk = 0xFF111111; t.good = 0xFFB9F6CA; t.warn = 0xFFFFE08A; t.bad = 0xFFFFC2C2; t.glow = 0x66FF5FB8;
+        l.add(t);
+
+        t = new PageTheme("space", "🪐", "కక్ష్య", "మెయిన్ స్క్రీన్ లుక్ తో: అంతరిక్షం మీద గాజు", 3);
+        t.bg = BG_SPACE; t.style = GLASS; t.bgTop = 0xFF120A30; t.bgBottom = 0xFF05040F;
+        t.card = 0x40403A7A; t.card2 = 0x2E201A4A; t.edge = 0x55A8B4FF; t.radius = 18;
+        t.ink = 0xFFF0F2FF; t.inkPage = 0xFFF0F2FF; t.muted = 0xFFAEB4D6; t.mutedPage = 0xFFAEB4D6; t.faint = 0xFF7F86AA;
+        t.accent = 0xFF8FB0FF; t.accent2 = 0xFFC08BFF; t.title1 = 0xFFE8ECFF; t.title2 = 0xFF8FB0FF; t.iconBg = 0x338FB0FF;
+        t.field = 0x66080618; t.fieldEdge = 0x55A8B4FF; t.swOn = 0xFF6F8BFF; t.swOff = 0x2EFFFFFF; t.thumb = 0xFFFFFFFF; t.thumbOff = 0xFFB8BCD6;
+        t.badge = 0xFFFFB02E; t.badgeInk = 0xFF111111; t.good = 0xFF9DF5C4; t.warn = 0xFFFFD27A; t.bad = 0xFFFFB4B4; t.glow = 0x666F8BFF;
+        l.add(t);
         ALL = l.toArray(new PageTheme[0]);
     }
 
@@ -191,8 +209,8 @@ final class PageTheme {
         return o != null && !o.isNew() ? o : ALL[0];
     }
 
-    /** The page style a main-screen look brings (none yet: the looks come in stage 2; the old look has none). */
-    static PageTheme forLook(String look) { return null; }
+    /** The page style a main-screen look brings (the old look has none: the pages keep his theme). */
+    static PageTheme forLook(String look) { return of(MainLook.pageStyle(look)); }
 
     // ================================================================ colours (for painting and the desk tests)
 

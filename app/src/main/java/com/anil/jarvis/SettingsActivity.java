@@ -286,6 +286,18 @@ public class SettingsActivity extends Activity {
         note("బ్యాటరీ సేవర్ ఆన్‌లో ఉంటే వలయాలు తమంతట తామే ఆగుతాయి.");
         } // (old view)
 
+        // ---- 🎨 the main screen's look (stage 2): the phone only (the home tablet and the car box keep their own screens)
+        if (!prefs.homeMode() && !prefs.carMode()) {
+            section("మెయిన్ స్క్రీన్ లుక్", "🎨");
+            lookNote = Ui.text(this, "", 14.5f, Ui.TEXT);
+            lookNote.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
+            box.addView(lookNote);
+            showLookNote();
+            note("🛸 హోలో స్టేజ్, 💎 లిక్విడ్ గాజు, 🪐 కక్ష్య, లేదా 🗂️ పాత రూపం (ఇప్పుడు ఉన్నట్టే). బొమ్మ నొక్కితే ముందుగా చూపిస్తుంది; \"✓ ఇదే పెట్టు\" అంటేనే మారుతుంది. "
+                    + "\"Jarvis, లుక్ మార్చు\" అన్నా ఈ పేజీ తెరుస్తాను. Jarvis గోళం ఏ లుక్‌లోనూ మారదు.");
+            button("🎨 లుక్ మార్చు పేజీ తెరువు", v -> LookChooserActivity.open(this));
+        }
+
         // ---- Jarvis's face on the home screen (applies at once)
         section("Jarvis ముఖం");
         note("హోమ్ స్క్రీన్ మీద Jarvis కి మనిషి ముఖం: మాట్లాడేటప్పుడు పెదాలు కదులుతాయి, జవాబులోని భావం (సంతోషం, బాధ, ఆశ్చర్యం…) ముఖంలో కనిపిస్తుంది. "
@@ -915,6 +927,16 @@ public class SettingsActivity extends Activity {
         newsPlaces.setHint("తెలంగాణ, ఆంధ్రప్రదేశ్, మీ జిల్లా, మీ ఊరు");
         newsAuto = toggle("📰 ఈ ప్రాంతాల కొత్త వార్తలు ఉదయం 8, మధ్యాహ్నం 1, సాయంత్రం 7 కి తనంతట తానే చదువు", prefs.newsAuto());
         batteryWarn = toggle("బ్యాటరీ 15%, 5% కి పడితే గొంతుతో చెప్పు", prefs.batteryWarn());
+        if (!prefs.homeMode() && !prefs.carMode()) { // D (7 Nov): the charger in / out, the phone only
+            Switch cs = toggle("⚡ చార్జర్ పెట్టినప్పుడు / తీసినప్పుడు చార్జింగ్ ద్రవం బొమ్మ చూపించు (Jarvis లో పెద్ద కార్డు, వేరే యాప్‌లో పైన చిన్న పట్టీ)",
+                    prefs.sp.getBoolean("charge_show", true));
+            cs.setOnCheckedChangeListener((sw0, on) -> prefs.sp.edit().putBoolean("charge_show", on).apply());
+            Switch cv = toggle("🔋 చార్జర్ పెట్టినప్పుడు / తీసినప్పుడు గొంతుతో చెప్పు (\"చార్జింగ్ ఎక్కుతోంది, ఇప్పుడు 34 శాతం\")",
+                    prefs.sp.getBoolean("charge_say", true));
+            cv.setOnCheckedChangeListener((sw0, on) -> prefs.sp.edit().putBoolean("charge_say", on).apply());
+            note("రాత్రి మోడ్ / విశ్రాంతిలో, కాల్‌లో ఉన్నప్పుడు మాట్లాడను. వైర్ వదులుగా ఉండి పెట్టి-తీసినట్టు అయితే ఒక్కసారే చెబుతాను. "
+                    + "పై పట్టీకి \"Jarvis స్క్రీన్\" అనుమతి కావాలి. 95% మాట ఇంతకుముందు లాగే.");
+        }
         briefing = toggle("రోజూ ఉదయం బ్రీఫింగ్ తనంతట తానే", prefs.briefingOn());
         briefHour = prefs.briefingHour();
         briefMinute = prefs.briefingMinute();
@@ -1341,7 +1363,7 @@ public class SettingsActivity extends Activity {
         if (t.contains("Jarvis చెక్")) return "check";
         if (t.endsWith("(టాబ్లెట్)")) return "tab"; // (the tablet's cards, whatever their words: "మెసేజ్", "ఆరోగ్యం"…)
         if (t.contains("వాచ్")) return "watch"; // (the watch's six cards: "ఆరోగ్యం: వాచ్…", "రోడ్డు, భద్రత (వాచ్)"…)
-        if (t.contains("మీరు") || t.contains("థీమ్") || t.contains("Jarvis ముఖం") || t.contains("ఫ్లోటింగ్")) return "me";
+        if (t.contains("మీరు") || t.contains("థీమ్") || t.contains("స్క్రీన్ లుక్") || t.contains("Jarvis ముఖం") || t.contains("ఫ్లోటింగ్")) return "me";
         if (t.contains("మెదడు") || t.contains("API ఖర్చు") || t.contains("కోడింగ్")) return "brain";
         if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")
                 || t.startsWith("వేగం")) return "voice";
@@ -1946,6 +1968,7 @@ public class SettingsActivity extends Activity {
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         if (!builtPage.equals(PageSkin.stamp(this))) { recreate(); return; } // (the page theme too)
         if (wallShow != null) wallShow.run(); // (the car's photo was marked / the wallpaper picked meanwhile)
+        showLookNote(); // (back from 🎨: the look he has now)
         showLock();
         if (bubbleMark != null) bubbleMark.run();
         showing = this;
@@ -6821,6 +6844,12 @@ public class SettingsActivity extends Activity {
 
     // ---------------------------------------------------------------- 🎨 the theme chooser (pictures)
 
+    private TextView lookNote;
+
+    private void showLookNote() {
+        if (lookNote != null) lookNote.setText("ఇప్పుడు: " + MainLook.label(LookScreen.current(this, prefs)));
+    }
+
     private void themePicker() {
         note("బొమ్మ నొక్కగానే ఆ థీమ్ వస్తుంది (నచ్చకపోతే 🕘 ఇటీవల మార్చినవి → ↩️ వెనక్కి). కొత్త 10: పేజీలకు (సెట్టింగ్స్, అన్ని ఫీచర్స్, డ్యూటీ, ఫోటోలు). "
                 + "పాత 3: ఇంతకుముందు లాగే మెయిన్ స్క్రీన్, వాచ్ రంగులు కూడా. Jarvis గోళం ఎప్పుడూ మారదు; ప్రతి పరికరం తన థీమ్ తనదే.");
@@ -6851,8 +6880,14 @@ public class SettingsActivity extends Activity {
         // H: the pages take the main screen's look (the looks come in the next stage)
         Switch follow = toggle("📄 పేజీలు కూడా ఈ లుక్ లోనే: కొత్త మెయిన్ స్క్రీన్ లుక్ ఎంచుకుంటే సెట్టింగ్స్, ఫీచర్స్ పేజీలు ఆ లుక్ రంగుల్లో",
                 prefs.sp.getBoolean("pages_follow_look", true));
-        follow.setOnCheckedChangeListener((b, on) -> prefs.sp.edit().putBoolean("pages_follow_look", on).apply());
-        note("మెయిన్ స్క్రీన్ ఇప్పుడు 'పాత రూపం' లోనే ఉంది: కొత్త లుక్స్ తర్వాతి దశలో వస్తాయి. అప్పటివరకు పేజీలు పైన మీరు ఎంచుకున్న థీమ్‌లోనే.");
+        follow.setOnCheckedChangeListener((b, on) -> {
+            prefs.sp.edit().putBoolean("pages_follow_look", on).apply();
+            if (!builtPage.equals(PageSkin.stamp(this))) { autosave(); recreate(); } // (the pages' colours change at once)
+        });
+        String look = prefs.homeMode() || prefs.carMode() ? MainLook.OLD : MainLook.valid(prefs.sp.getString("main_look", MainLook.OLD));
+        if (pal.from == 3 || PageTheme.forLook(look) != null && prefs.sp.getBoolean("pages_follow_look", true))
+            note("ఇప్పుడు పేజీలు మెయిన్ స్క్రీన్ లుక్ (" + MainLook.label(look) + ") రంగుల్లో ఉన్నాయి. పైన ఒక థీమ్ నొక్కితే 'పేజీలు కూడా ఈ లుక్ లోనే' ఆగిపోతుంది, ఆ థీమ్ వస్తుంది (నచ్చకపోతే 🕘 → ↩️).");
+        else note("కొత్త మెయిన్ స్క్రీన్ లుక్స్: కింద 🎨 మెయిన్ స్క్రీన్ లుక్ కార్డులో. ఈ స్విచ్ ఆన్‌లో ఉండి కొత్త లుక్ ఎంచుకుంటే పేజీలు ఆ లుక్ రంగుల్లోకి వస్తాయి.");
         TextView[] motion = new TextView[1];
         Runnable mark = () -> motion[0].setText(Ui.hudMotion(this) ? "🌀  పాత 3 లో వలయాల కదలిక: ఆన్ (ఆపడానికి నొక్కండి)" : "⏸  పాత 3 లో వలయాల కదలిక: ఆఫ్ (ఆన్ చేయడానికి నొక్కండి)");
         motion[0] = button("", v -> { Ui.setTheme(this, Ui.theme(this), !Ui.hudMotion(this)); builtTheme = Ui.themeVersion; mark.run(); });
@@ -6883,15 +6918,20 @@ public class SettingsActivity extends Activity {
 
     /** His tap on a theme: saved, kept in 🕘 (↩️ brings the one before back), the screen built again in it. */
     private void chooseTheme(PageTheme t) {
-        if (t.id.equals(pal.id)) return;
+        String look = prefs.homeMode() || prefs.carMode() ? MainLook.OLD : MainLook.valid(prefs.sp.getString("main_look", MainLook.OLD));
+        boolean following = PageTheme.forLook(look) != null && prefs.sp.getBoolean("pages_follow_look", true); // (the pages wear the look now)
+        if (t.id.equals(pal.id) && !following) return;
         autosave();
-        String fromPage = pal.id, fromOld = Ui.theme(this);
+        String fromPage = following ? prefs.sp.getString("page_theme", "") : pal.id, fromOld = Ui.theme(this);
         try {
-            addRecent(new org.json.JSONObject().put("k", "theme").put("v", fromPage).put("o", fromOld)
-                    .put("l", "🎨 థీమ్: " + pal.label() + " → " + t.label()));
+            org.json.JSONObject e = new org.json.JSONObject().put("k", "theme").put("v", fromPage).put("o", fromOld)
+                    .put("l", "🎨 థీమ్: " + pal.label() + " → " + t.label());
+            if (following) e.put("f", true); // (↩️ puts "pages follow the look" back on too)
+            addRecent(e);
         } catch (Exception ignored) {}
+        if (following) prefs.sp.edit().putBoolean("pages_follow_look", false).apply();
         PageSkin.choose(this, t.id);
-        Toast.makeText(this, "🎨 " + t.label(), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "🎨 " + t.label() + (following ? " (📄 పేజీలు ఇక లుక్ రంగుల్లో కాదు)" : ""), Toast.LENGTH_SHORT).show();
         recreate();
     }
 
@@ -7267,6 +7307,7 @@ public class SettingsActivity extends Activity {
             if (PageTheme.isOldId(old) && !old.equals(Ui.theme(this))) Ui.setTheme(this, old, Ui.hudMotion(this));
             PageTheme p = PageTheme.of(pg);
             prefs.sp.edit().putString("page_theme", p != null && p.isNew() ? pg : "").apply();
+            if (e.has("f")) prefs.sp.edit().putBoolean("pages_follow_look", e.optBoolean("f", true)).apply();
             Toast.makeText(this, "↩️ " + label, Toast.LENGTH_SHORT).show();
             autosave();
             recreate();

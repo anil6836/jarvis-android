@@ -60,6 +60,43 @@ final class HudDashboard extends LinearLayout {
     private final boolean netAllowed;
 
     private boolean running, collapsed, dotOn;
+
+    // ---- 7 Nov (stage 2): the same statuses for the new main-screen looks (their own cards read them here)
+    /** One status as the cards show it: its value, its line under, colour; the battery's / bike's % for a liquid. */
+    static final class Stat {
+        String value = NONE, sub = "";
+        int color = Ui.TEXT, pct = -1;
+        boolean charging;
+    }
+    private final java.util.Map<String, Stat> stats = new java.util.HashMap<>();
+    /** A look listens: told after each refresh (and the dashboard keeps ticking while hidden). */
+    Runnable onChange;
+    private long extrasAt;
+
+    /** The status with this key (MainLook.STATUS), never null. */
+    Stat stat(String key) {
+        Stat s = stats.get(key);
+        if (s == null) { s = new Stat(); stats.put(key, s); }
+        return s;
+    }
+
+    private void put(String key, String v, String sub, int color) {
+        Stat s = stat(key);
+        s.value = TextUtils.isEmpty(v) ? NONE : v;
+        s.sub = sub == null ? "" : sub;
+        s.color = color;
+    }
+
+    private void changed() { Runnable r = onChange; if (r != null) r.run(); }
+
+    /** Rain in the next hour (H5): {minutes from now, chance %}, or null. */
+    int[] rain() {
+        long at = sp.getLong("rain_at", 0);
+        if (at == 0 || System.currentTimeMillis() - sp.getLong("w_at", 0) > 2 * 3600_000L) return null;
+        long now = System.currentTimeMillis();
+        if (at + 3600_000L < now || at - now > 3600_000L) return null;
+        return new int[]{(int) Math.max(0, (at - now) / 60_000L), sp.getInt("rain_pct", 0)};
+    }
     private int seconds;
     private String battShort = NONE, weatherShort = NONE;
 
@@ -158,7 +195,7 @@ final class HudDashboard extends LinearLayout {
 
     private void tick() {
         seconds++;
-        if (!isShown()) return;
+        if (!isShown() && onChange == null) return; // (a new look reads these even with the old tiles hidden)
         dotOn = !dotOn;
         dot.setAlpha(dotOn ? 1f : 0.3f);
         updateTime();
@@ -181,7 +218,12 @@ final class HudDashboard extends LinearLayout {
         updateNext();
         updateWake();
         updateSummary();
+        if (onChange != null && SystemClock.elapsedRealtime() - extrasAt > 120_000L) refreshExtras();
+        changed();
     }
+
+    /** Now, not at the next half minute (the charger went in / out). */
+    void refreshNow() { refreshCheap(); }
 
     /** Folds the tiles into the one-line summary (kept; a tap opens them again). */
     void collapse() { if (!collapsed) setCollapsed(true, true); }
@@ -203,6 +245,7 @@ final class HudDashboard extends LinearLayout {
     private void updateTime() {
         scratchDate.setTime(System.currentTimeMillis());
         tTime.set(timeFmt.format(scratchDate), dateFmt.format(scratchDate), Ui.TEXT);
+        put("time", timeFmt.format(scratchDate), dateFmt.format(scratchDate), Ui.TEXT);
         updateSummary();
     }
 
@@ -218,9 +261,13 @@ final class HudDashboard extends LinearLayout {
             battShort = pct + "%" + (charging ? "⚡" : "");
             String sub = charging ? (st == BatteryManager.BATTERY_STATUS_FULL ? "పూర్తి · full" : "ఛార్జింగ్") : pct <= 15 ? "తక్కువ · low" : "బ్యాటరీపై";
             tBattery.set(battShort, sub, pct <= 15 && !charging ? Ui.RED : Ui.TEXT);
+            put("battery", pct + "%", sub, pct <= 15 && !charging ? Ui.RED : Ui.TEXT);
+            stat("battery").pct = pct;
+            stat("battery").charging = charging;
         } catch (Exception e) {
             battShort = NONE;
             tBattery.set(NONE, "", Ui.TEXT);
+            put("battery", NONE, "", Ui.TEXT);
         }
     }
 
@@ -231,13 +278,24 @@ final class HudDashboard extends LinearLayout {
             if (ch != null && !ch.optBoolean("logged")) {
                 scratchDate.setTime(ch.optLong("eta"));
                 tBike.set("⚡ " + timeFmt.format(scratchDate), ch.optInt("to") + "% అయ్యే టైమ్", Ui.OK);
+                long now = System.currentTimeMillis(), eta = ch.optLong("eta");
+                int est = MainLook.chargingPct(ch.optInt("from", -1), ch.optInt("to", 100), ch.optLong("t"), eta, now); // (H3: where this charge is now)
+                boolean on = now < eta;
+                put("bike", est >= 0 ? "~" + est + "%" : "⚡", on ? "⚡ " + timeFmt.format(scratchDate) + " కి " + ch.optInt("to") + "%" : "⚡ " + ch.optInt("to") + "% అయి ఉండాలి", Ui.OK);
+                stat("bike").pct = est;
+                stat("bike").charging = on; // (H3: the liquid moves while the Aera charges)
                 return;
             }
             int pct = Bike.estimatePct(getContext());
-            if (pct < 0) { tBike.set(NONE, "ఛార్జ్ చెప్పలేదు", Ui.MUTED); return; }
-            tBike.set("~" + pct + "%", "~" + Math.round(pct / 100.0 * Bike.fullRangeKm(new Prefs(getContext()))) + " కి.మీ.", pct <= 20 ? Ui.RED : Ui.TEXT);
+            stat("bike").charging = false;
+            stat("bike").pct = pct;
+            if (pct < 0) { tBike.set(NONE, "ఛార్జ్ చెప్పలేదు", Ui.MUTED); put("bike", NONE, "ఛార్జ్ చెప్పలేదు", Ui.MUTED); return; }
+            String km = "~" + Math.round(pct / 100.0 * Bike.fullRangeKm(new Prefs(getContext()))) + " కి.మీ.";
+            tBike.set("~" + pct + "%", km, pct <= 20 ? Ui.RED : Ui.TEXT);
+            put("bike", "~" + pct + "%", km, pct <= 20 ? Ui.RED : Ui.TEXT);
         } catch (Exception e) {
             tBike.set(NONE, "", Ui.TEXT);
+            put("bike", NONE, "", Ui.TEXT);
         }
     }
 
@@ -245,16 +303,22 @@ final class HudDashboard extends LinearLayout {
     private void updateDuty() {
         try {
             java.time.LocalDateTime[] d = Duty.nowOrNext(getContext());
-            if (d == null) { tDuty.set(NONE, Duty.ready(Duty.load(getContext())) ? "త్వరలో లేదు" : "క్యాలెండర్ సెట్ చేయలేదు", Ui.MUTED); return; }
+            if (d == null) {
+                String w = Duty.ready(Duty.load(getContext())) ? "త్వరలో లేదు" : "క్యాలెండర్ సెట్ చేయలేదు";
+                tDuty.set(NONE, w, Ui.MUTED);
+                put("duty", NONE, w, Ui.MUTED);
+                return;
+            }
             java.time.LocalDateTime now = java.time.LocalDateTime.now();
             java.time.format.DateTimeFormatter f = java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH);
             java.time.LocalDateTime at = !now.isBefore(d[0]) ? d[1] : d[0];
             long days = java.time.temporal.ChronoUnit.DAYS.between(now.toLocalDate(), at.toLocalDate());
             String day = days == 0 ? "ఈరోజు" : days == 1 ? "రేపు" : days == 2 ? "ఎల్లుండి" : Duty.day(at.toLocalDate());
-            if (!now.isBefore(d[0])) tDuty.set("డ్యూటీలో", day + " " + at.format(f) + " వరకు", Ui.GOLD);
-            else tDuty.set(at.format(f), day, Ui.TEXT);
+            if (!now.isBefore(d[0])) { tDuty.set("డ్యూటీలో", day + " " + at.format(f) + " వరకు", Ui.GOLD); put("duty", "డ్యూటీలో", day + " " + at.format(f) + " వరకు", Ui.GOLD); }
+            else { tDuty.set(at.format(f), day, Ui.TEXT); put("duty", day + " " + at.format(f), "డ్యూటీ", Ui.TEXT); }
         } catch (Exception e) {
             tDuty.set(NONE, "", Ui.TEXT);
+            put("duty", NONE, "", Ui.TEXT);
         }
     }
 
@@ -263,14 +327,16 @@ final class HudDashboard extends LinearLayout {
         try {
             ConnectivityManager cm = getContext().getSystemService(ConnectivityManager.class);
             NetworkCapabilities nc = cm == null ? null : cm.getNetworkCapabilities(cm.getActiveNetwork());
-            if (nc == null) { tNet.set("Offline", "నెట్ లేదు", Ui.MUTED); return; }
+            if (nc == null) { tNet.set("Offline", "నెట్ లేదు", Ui.MUTED); put("net", "Offline", "నెట్ లేదు", Ui.MUTED); return; }
             String kind = nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ? "Wi-Fi"
                     : nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ? "Mobile"
                     : nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ? "LAN" : "Online";
             boolean ok = nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
             tNet.set(kind, ok ? "ఆన్‌లైన్" : "ఇంటర్నెట్ లేదు", ok ? Ui.TEXT : Ui.GOLD);
+            put("net", kind, ok ? "ఆన్‌లైన్" : "ఇంటర్నెట్ లేదు", ok ? Ui.TEXT : Ui.GOLD);
         } catch (Exception e) {
             tNet.set(NONE, "", Ui.TEXT);
+            put("net", NONE, "", Ui.TEXT);
         }
     }
 
@@ -285,15 +351,17 @@ final class HudDashboard extends LinearLayout {
                 long at = r.optLong("at", 0);
                 if (at >= now && at < bestAt) { bestAt = at; best = r; }
             }
-            if (best == null) { tNext.set(NONE, "రిమైండర్లు లేవు", Ui.MUTED); return; }
+            if (best == null) { tNext.set(NONE, "రిమైండర్లు లేవు", Ui.MUTED); put("next", NONE, "రిమైండర్లు లేవు", Ui.MUTED); return; }
             scratchDate.setTime(bestAt);
             Calendar a = Calendar.getInstance(), n = Calendar.getInstance();
             a.setTimeInMillis(bestAt);
             boolean today = a.get(Calendar.YEAR) == n.get(Calendar.YEAR) && a.get(Calendar.DAY_OF_YEAR) == n.get(Calendar.DAY_OF_YEAR);
             String when = (today ? timeFmt : dayTimeFmt).format(scratchDate);
             tNext.set(when, best.optString("text", ""), Ui.GOLD);
+            put("next", when, best.optString("text", ""), Ui.GOLD);
         } catch (Exception e) {
             tNext.set(NONE, "", Ui.TEXT);
+            put("next", NONE, "", Ui.TEXT);
         }
     }
 
@@ -302,11 +370,12 @@ final class HudDashboard extends LinearLayout {
         try { screen = JarvisAccessibility.enabled() ? "స్క్రీన్ ✓" : "స్క్రీన్ ✗"; } catch (Throwable t) { screen = ""; }
         try {
             if (prefs == null) throw new IllegalStateException();
-            if (prefs.wakeReady()) tWake.set("ON", "Jarvis వింటున్నాడు · " + screen, Ui.OK);
-            else if (prefs.wakePaused()) tWake.set("PAUSED", "ఆపారు · " + screen, Ui.GOLD);
-            else tWake.set("OFF", "ఆఫ్ · " + screen, Ui.MUTED);
+            if (prefs.wakeReady()) { tWake.set("ON", "Jarvis వింటున్నాడు · " + screen, Ui.OK); put("wake", "ఆన్", "\"Jarvis\" వింటున్నాను · " + screen, Ui.OK); }
+            else if (prefs.wakePaused()) { tWake.set("PAUSED", "ఆపారు · " + screen, Ui.GOLD); put("wake", "ఆపారు", screen, Ui.GOLD); }
+            else { tWake.set("OFF", "ఆఫ్ · " + screen, Ui.MUTED); put("wake", "ఆఫ్", screen, Ui.MUTED); }
         } catch (Exception e) {
             tWake.set(NONE, screen, Ui.TEXT);
+            put("wake", NONE, screen, Ui.TEXT);
         }
     }
 
@@ -321,13 +390,15 @@ final class HudDashboard extends LinearLayout {
 
     private void showCachedWeather() {
         long at = sp.getLong("w_at", 0);
-        if (at == 0) { weatherShort = NONE; tWeather.set(NONE, "", Ui.TEXT); return; }
+        if (at == 0) { weatherShort = NONE; tWeather.set(NONE, "", Ui.TEXT); put("weather", NONE, "", Ui.TEXT); return; }
         int temp = Math.round(sp.getFloat("w_temp", 0));
         int code = sp.getInt("w_code", -1);
         weatherShort = temp + "°C";
         boolean stale = System.currentTimeMillis() - at > 3 * 3600_000L;
         tWeather.set(weatherShort, sky(code), stale ? Ui.MUTED : Ui.TEXT);
+        put("weather", temp + "°", sky(code), stale ? Ui.MUTED : Ui.TEXT);
         updateSummary();
+        changed();
     }
 
     private void maybeFetchWeather() {
@@ -343,15 +414,36 @@ final class HudDashboard extends LinearLayout {
                 Location loc = Tools.lastLocation(app);
                 if (loc == null) return;
                 String url = String.format(Locale.US,
-                        "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code",
+                        "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code"
+                                + "&hourly=precipitation_probability,precipitation&forecast_days=1&timezone=auto",
                         loc.getLatitude(), loc.getLongitude());
-                JSONObject cur = Http.get(url).optJSONObject("current");
+                JSONObject all = Http.get(url);
+                JSONObject cur = all.optJSONObject("current");
                 if (cur == null || !cur.has("temperature_2m")) return;
-                app.getSharedPreferences(SP, Context.MODE_PRIVATE).edit()
+                SharedPreferences.Editor ed = app.getSharedPreferences(SP, Context.MODE_PRIVATE).edit()
                         .putFloat("w_temp", (float) cur.optDouble("temperature_2m"))
                         .putInt("w_code", cur.optInt("weather_code", -1))
-                        .putLong("w_at", System.currentTimeMillis())
-                        .apply();
+                        .putLong("w_at", System.currentTimeMillis());
+                long rainAt = 0;
+                int rainPct = 0;
+                try { // H5: rain in the next hour (the hourly chance and mm, in his own time zone)
+                    JSONObject hr = all.optJSONObject("hourly");
+                    org.json.JSONArray tt = hr == null ? null : hr.optJSONArray("time");
+                    if (tt != null && cur.has("time")) {
+                        String[] times = new String[tt.length()];
+                        int[] ch = new int[tt.length()];
+                        double[] mm = new double[tt.length()];
+                        org.json.JSONArray pp = hr.optJSONArray("precipitation_probability"), pr = hr.optJSONArray("precipitation");
+                        for (int i = 0; i < times.length; i++) {
+                            times[i] = tt.optString(i);
+                            ch[i] = pp == null ? 0 : pp.optInt(i, 0);
+                            mm[i] = pr == null ? 0 : pr.optDouble(i, 0);
+                        }
+                        int[] r = MainLook.rainSoon(times, ch, mm, cur.optString("time"));
+                        if (r != null) { rainAt = System.currentTimeMillis() + r[0] * 60_000L; rainPct = r[1]; }
+                    }
+                } catch (Exception ignored) {}
+                ed.putLong("rain_at", rainAt).putInt("rain_pct", rainPct).apply();
                 main.post(() -> { if (running) showCachedWeather(); });
             } catch (Throwable ignored) {
                 // offline / no location / API trouble: keep showing the cached value
@@ -359,6 +451,51 @@ final class HudDashboard extends LinearLayout {
                 weatherInFlight = false;
             }
         }, "hud-weather");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** ⌚ 👣 🚗 🥛 💰 🏡 and 📬 for the looks' cards (off the main thread; every two minutes while a look shows them). */
+    private void refreshExtras() {
+        extrasAt = SystemClock.elapsedRealtime();
+        final Context app = getContext().getApplicationContext();
+        Thread t = new Thread(() -> {
+            final java.util.Map<String, String[]> got = new java.util.HashMap<>();
+            try {
+                JSONObject w = WatchHub.info;
+                int bat = w == null ? -1 : w.optInt("bat", -1);
+                got.put("watch", bat < 0 ? new String[]{NONE, "వాచ్ కలవలేదు"} : new String[]{bat + "%", w.optString("model", "Galaxy Watch")});
+            } catch (Throwable ignored) {}
+            try { long st = Wellness.stepsToday(app); got.put("steps", st < 0 ? new String[]{NONE, "ఇంకా తెలియదు"} : new String[]{String.valueOf(st), "ఈరోజు అడుగులు"}); } catch (Throwable ignored) {}
+            try {
+                String cw = CarCare.statusWords(app);
+                got.put("car", new String[]{cw == null || cw.isEmpty() ? "✓" : "⚠️", cw == null || cw.isEmpty() ? "అంతా బాగుంది" : cw});
+            } catch (Throwable ignored) {}
+            try {
+                String ml = House.monthLines(app, java.time.YearMonth.now()).trim();
+                String first = ml.isEmpty() ? "" : ml.split("\n")[0].trim();
+                got.put("milk", first.isEmpty() ? new String[]{NONE, "ఈ నెల లెక్క లేదు"} : new String[]{"🥛", first});
+            } catch (Throwable ignored) {}
+            try {
+                java.time.LocalDate d1 = java.time.LocalDate.now().withDayOfMonth(1);
+                long since = d1.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+                double m = Money.totalSince(app, since);
+                got.put("money", new String[]{"₹" + Math.round(m), "ఈ నెల ఖర్చు"});
+            } catch (Throwable ignored) {}
+            try {
+                Object[] tw = TabletWatch.tile(app);
+                int kind = (Integer) tw[1];
+                got.put("tablet", new String[]{kind == 2 ? "⚠️" : kind == 0 ? "✓" : "…", String.valueOf(tw[0])});
+            } catch (Throwable ignored) {}
+            try { // 📬: how many, never who (H6)
+                int later = LaterMessages.count(app), calls = CallHistory.unseen(app, 0).size();
+                got.put("mail", new String[]{(calls > 0 ? "📞" + calls + " " : "") + "💬" + later, later + calls == 0 ? "కొత్తవి లేవు" : "నొక్కితే చూపిస్తాను"});
+            } catch (Throwable ignored) {}
+            main.post(() -> {
+                for (java.util.Map.Entry<String, String[]> e : got.entrySet()) put(e.getKey(), e.getValue()[0], e.getValue()[1], Ui.TEXT);
+                changed();
+            });
+        }, "hud-extras");
         t.setDaemon(true);
         t.start();
     }

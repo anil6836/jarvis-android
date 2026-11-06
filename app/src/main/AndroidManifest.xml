@@ -455,6 +455,11 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
 
+        <activity
+            android:name=".LookChooserActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+
         <!-- The Jarvis camera: full screen, upright (the picture and the boxes on it stay in step). Its own task with the
              hologram, so closing it goes back to wherever he opened it from (an endoscope app, Jarvis's home...). -->
         <activity

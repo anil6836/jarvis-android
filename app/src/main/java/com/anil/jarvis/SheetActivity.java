@@ -1307,6 +1307,16 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             if (prefs.voiceReplies()) voice.speak(say, prefs.speechRate()); else idle();
             return;
         }
+        if (!prefs.homeMode() && !prefs.carMode() && MainLook.lookWords(text)) { // 🎨 "లుక్ మార్చు": the look page (the phone only)
+            showHeard(text);
+            store.addChat("user", text, false);
+            String say = MainLook.lookReply(prefs.name());
+            store.addChat("assistant", say, false);
+            showReply(say, false);
+            try { LookChooserActivity.open(this); } catch (Exception ignored) {}
+            if (prefs.voiceReplies()) voice.speak(say, prefs.speechRate()); else idle();
+            return;
+        }
         if (!prefs.hasBrain()) {
             showReply("నా మెదడుకి API key లేదు. Jarvis యాప్ సెట్టింగ్స్‌లో పెట్టండి.", true);
             idle();

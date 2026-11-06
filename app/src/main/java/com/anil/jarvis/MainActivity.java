@@ -176,6 +176,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             + "use it only when it matters (how he looks or feels, something he shows you, or when he asks about it); do not describe it otherwise.)";
     private TextView greeting;
     private HudDashboard hudDash;      // status tiles under the header (chat tab only)
+    /** Jarvis's screen in front now (the charging card goes on it), else null. */
+    static MainActivity front;
+    /** The phone's new main-screen look (null = the old screen, exactly as before). */
+    private LookScreen lookUi;
+    private String builtLook = MainLook.OLD;
     private TextView status, clock, dateView, setupCard, undoBar;
     private LinearLayout chatList, missionList, doneList, memoryList;
     private TextView missionEmpty, memoryEmpty, doneLabel, missionCount, memoryCount;
@@ -315,8 +320,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         }
         getSharedPreferences("jarvis", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(faceKeys);
-        getWindow().setStatusBarColor(Ui.BG_TOP);
-        getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
+        getWindow().setStatusBarColor(lookUi != null ? lookUi.barTop() : Ui.BG_TOP);
+        getWindow().setNavigationBarColor(lookUi != null ? lookUi.barBottom() : Ui.BG_BOTTOM);
         renderChat();
         onStoreChanged();
         tick();
@@ -341,6 +346,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         if (prefs.homeMode() != (home != null)) { recreate(); return; } // the home Jarvis was switched on / off in settings
         if (prefs.carMode() != (car != null && !tabCar)) { recreate(); return; } // the car Jarvis was switched on / off in settings (🚗 the tablet's car screen is not that)
+        if (!LookScreen.current(this, prefs).equals(builtLook)) { recreate(); return; } // 🎨 he chose another main-screen look
+        if (lookUi != null && lookUi.compact != FaceSight.faceOn(this)) { recreate(); return; } // (the face on / off: the stage's size)
         if (tabCar) { // (back from its own ⚙️ / an app he opened from it: he is still looking; long away: her screen)
             if (tabCarOwnTrip) tabCarTouched = android.os.SystemClock.uptimeMillis();
             tabCarOwnTrip = false;
@@ -350,6 +357,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (car == null && CarApps.homeOn(this)) CarApps.setHome(this, false); // (car mode off: the box's own Home again; the phone never has it)
         paused = false;
         visible = true;
+        front = this;
         if (home != null || car != null) fullScreen();
         main.removeCallbacks(cancelIfAway);
         store.listener = this;
@@ -366,6 +374,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (live == null && !busy) renderChat();
         syncWakeService();
         if (hudDash != null) hudDash.start();
+        if (lookUi != null) lookUi.start();
         if (home != null && !tabCar) home.start(); // (🚗 the tablet's car screen over it: her screen rests until he leaves)
         if (car != null) car.start();
         if (home != null) HomeVideo.screenBack(this); // (back from her video call: the mic and the voice are Jarvis's again)
@@ -389,6 +398,9 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     /** "New version" note at the top of the chat; tapping it opens the update in Settings. */
+    /** The charger went in / out: the statuses now (the 🔋 liquid), not at the next half minute. */
+    void chargeChanged() { if (hudDash != null) hudDash.refreshNow(); }
+
     private void showUpdateBanner() {
         if (updateBanner == null || isFinishing()) return;
         boolean show = Updater.newAvailable(this);
@@ -399,10 +411,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     @Override protected void onPause() {
         super.onPause();
         if (hudDash != null) hudDash.stop();
+        if (lookUi != null) lookUi.stop();
         if (home != null) home.stop();
         if (car != null) car.stop();
         paused = true;
         visible = false;
+        if (front == this) front = null;
         if (sight != null) sight.stop(); // the front camera only watches while Jarvis is on the screen
         if (camera != null && camera.isOpen()) {
             camera.close();
@@ -433,6 +447,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     }
 
     @Override protected void onDestroy() {
+        if (front == this) front = null;
+        if (lookUi != null) lookUi.destroy();
         if (homeNow == this) homeNow = null;
         if (car != null) car.destroy(); // (🗺️ the car map's workers end with this screen)
         if (tabCar) { // (🚗 the tablet: no made-up speed left behind; her Jarvis's look and the sound as they were)
@@ -806,7 +822,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         final View rootView = root;
         root.getViewTreeObserver().addOnGlobalLayoutListener(() -> { // the keyboard takes the face's room; the chat keeps its room
             boolean up = rootView.getRootView().getHeight() - rootView.getHeight() > dp(220);
-            if (up != keyboardUp) { keyboardUp = up; main.post(this::updateFace); return; }
+            if (up != keyboardUp) { keyboardUp = up; if (lookUi != null) lookUi.keyboard(up); main.post(this::updateFace); return; }
             int room = faceRoom();
             if (room >= 0 && Math.abs(room - faceRoom) > dp(2)) { faceRoom = room; main.post(this::updateFace); }
         });
@@ -986,9 +1002,20 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         FrameLayout top = new FrameLayout(this);
         top.setBackground(new Ui.Aurora());
         top.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        builtLook = LookScreen.current(this, prefs);
+        if (!MainLook.OLD.equals(builtLook)) { // 🎨 a new look (phone only): the same parts arranged again over its background
+            LookScreen.Parts lp = new LookScreen.Parts();
+            lp.root = root; lp.hud = hud; lp.ident = ident; lp.tabs = tabs; lp.dock = dock; lp.chips = chips;
+            lp.brand = brand; lp.greeting = greeting; lp.status = status; lp.orb = orb; lp.dash = hudDash;
+            lp.faceBox = faceBox; lp.cameraBox = cameraBox; lp.stage = stage; lp.top = top;
+            lp.icons = new View[]{camIcon, all, gear};
+            lookUi = new LookScreen(this, builtLook, lp, this::askFromOutside, false);
+            lookUi.showTab(tab);
+        }
         liveScreen = new LiveScreen(this, this);
         liveScreen.setVisibility(View.GONE);
         top.addView(liveScreen, new FrameLayout.LayoutParams(-1, -1));
+        if (lookUi != null) liveScreen.coverChanged = () -> { if (lookUi != null) lookUi.covered(liveScreen.showing()); };
         if (!HudBoot.shown) { // "JARVIS ఆన్‌లైన్" once when the app starts
             HudBoot.shown = true;
             top.addView(new HudBoot(this), new FrameLayout.LayoutParams(-1, -1));
@@ -1174,7 +1201,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             tabLines[i].setBackground(i == idx ? Ui.grad(this, new int[]{Ui.C_BLUE, Ui.C_VIOLET}, 20, null) : null);
         }
         dock.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
-        if (hudDash != null) hudDash.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
+        if (hudDash != null) hudDash.setVisibility(idx == 0 && lookUi == null ? View.VISIBLE : View.GONE); // (a new look: its own cards)
+        if (lookUi != null) lookUi.showTab(idx);
         tab = idx;
         updateFace();
         if (idx == 0) scrollToEnd();
@@ -2391,6 +2419,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onLiveLevel(float level) {
         orb.setLevel(level);
+        if (lookUi != null) lookUi.level(level);
         if (face != null) face.setMic(level);
         if (home != null) home.setMic(level);
         if (car != null) car.setMic(level);
@@ -2399,6 +2428,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onLiveVoiceLevel(float level) {
         liveScreen.orb.setVoice(level);
+        if (lookUi != null) lookUi.level(level);
         if (face != null) face.setVoice(level);
         if (home != null) home.setVoice(level);
         if (car != null) car.setVoice(level);
@@ -2550,6 +2580,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override public void onLevel(float level) {
         orb.setLevel(level);
+        if (lookUi != null) lookUi.level(level);
         if (face != null) face.setMic(level);
         if (home != null) home.setMic(level);
         if (car != null) car.setMic(level);
@@ -2684,6 +2715,11 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             if (sv != null && (home == null || HomeCare.ownerVoice(this))) {
                 localSay(prompt, SettingsActivity.setView(this, sv));
                 try { startActivity(new Intent(this, SettingsActivity.class)); } catch (Exception ignored) {}
+                return;
+            }
+            if (home == null && car == null && MainLook.lookWords(prompt)) { // 🎨 "లుక్ మార్చు": the look page (the phone only)
+                localSay(prompt, MainLook.lookReply(prefs.name()));
+                try { LookChooserActivity.open(this); } catch (Exception ignored) {}
                 return;
             }
             String g = car == null ? null : CarLayout.mapWords(prompt); // 🗺️ the box: "Google Maps పెట్టు" / "నీ మ్యాప్ పెట్టు" — the car's map, at once
@@ -2938,7 +2974,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         FaceSight.homeEyes = false; // (a device taken out of home mode: the phone's camera rules again)
         if (place && visible && !FaceSight.asked(this) && !askingFace) askFaceCamera();
         // the eyes keep watching while he types (only the drawing makes room for the keyboard)
-        boolean eyes = place && visible && FaceSight.camOn(this) && FaceSight.allowed(this) && !sightPaused && !Guard.running(this);
+        boolean eyes = place && visible && FaceSight.camOn(this) && FaceSight.allowed(this) && !sightPaused && !Guard.running(this)
+                && (lookUi == null || keyboardUp || faceBox.getVisibility() == View.VISIBLE); // (a look with no room for the face: no camera either)
         if (eyes) sight.start(); else sight.stop();
         faceNote.setText(sight.isOn() ? "👁" : sightPaused && place && FaceSight.camOn(this) ? "💤" : "");
         if (!sight.isOn()) face.look(false, 0, 0, 0);
@@ -3079,6 +3116,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     /** What Jarvis is doing, on the hologram core and on his face. */
     private void setOrb(int s) {
         orb.setState(s);
+        if (lookUi != null) lookUi.state(s);
         if (face != null) face.setState(s);
         if (car != null) car.setState(s);
         if (home != null) {

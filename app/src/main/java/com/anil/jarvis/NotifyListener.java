@@ -146,7 +146,7 @@ public class NotifyListener extends NotificationListenerService {
     private boolean screenRegistered;
     /** The battery level, for "95% ఛార్జ్ అయింది" (this listener stays alive even without the wake word). */
     private final android.content.BroadcastReceiver battery = new android.content.BroadcastReceiver() {
-        @Override public void onReceive(android.content.Context c, Intent i) { Charge.onBattery(c, i); }
+        @Override public void onReceive(android.content.Context c, Intent i) { Charge.onBattery(c, i, isInitialStickyBroadcast()); }
     };
 
     /** 📞 RINGING / OFFHOOK / IDLE of SIM calls (needs the phone-state permission; the number with the call-log one). */

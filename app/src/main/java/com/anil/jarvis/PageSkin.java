@@ -56,8 +56,9 @@ final class PageSkin {
     /** The page theme this device uses now (his choice in Settings; else the old theme). */
     static PageTheme current(Context c) {
         android.content.SharedPreferences sp = c.getSharedPreferences("jarvis", Context.MODE_PRIVATE);
-        return PageTheme.resolve(sp.getString("page_theme", ""), sp.getString("theme", "mix"),
-                sp.getBoolean("pages_follow_look", true), sp.getString("main_look", "old"));
+        Prefs p = new Prefs(c); // (the home tablet and the car box never wear the phone's look)
+        String look = p.homeMode() || p.carMode() ? "old" : sp.getString("main_look", "old");
+        return PageTheme.resolve(sp.getString("page_theme", ""), sp.getString("theme", "mix"), sp.getBoolean("pages_follow_look", true), look);
     }
 
     /** A painter for this page, or null when the page keeps its old colours (one of the old three). */
@@ -204,6 +205,23 @@ final class PageSkin {
                 glow(cv, 0xFF3B8BFF, w * .8f, h * .1f, w * .7f, .3f);
                 glow(cv, 0xFF1D4ED8, w * .1f, h * .8f, w * .7f, .25f);
                 break;
+            case PageTheme.BG_LIQUID: // the liquid look's colours, standing still in the pages
+                glow(cv, 0xFFFF3D9A, w * .15f, h * .2f, w * .8f, .45f);
+                glow(cv, 0xFF7B3CFF, w * .9f, h * .45f, w * .8f, .5f);
+                glow(cv, 0xFF18A6B6, w * .2f, h * .85f, w * .8f, .45f);
+                break;
+            case PageTheme.BG_SPACE: { // stars and a soft nebula
+                glow(cv, 0xFF6A3CFF, w * .8f, h * .25f, w * .7f, .28f);
+                glow(cv, 0xFF2F6BFF, w * .1f, h * .7f, w * .7f, .22f);
+                g.setColor(0xFFFFFFFF);
+                for (int i = 0; i < 140; i++) {
+                    g.setAlpha(60 + rnd.nextInt(170));
+                    float r = rnd.nextFloat() < .1f ? d / 300f : d / 700f;
+                    cv.drawCircle(rnd.nextFloat() * w, rnd.nextFloat() * h, Math.max(.6f, r), g);
+                }
+                g.setAlpha(255);
+                break;
+            }
             case PageTheme.BG_TILES:
                 glow(cv, 0xFF3A6BFF, w * .85f, h * .12f, w * .6f, .18f);
                 glow(cv, 0xFFE0408A, w * .1f, h * .55f, w * .5f, .1f);

@@ -117,6 +117,8 @@ final class LiveScreen extends FrameLayout {
     }
 
     private boolean wanted;
+    /** Told when it comes over the screen / goes (a main-screen look stops its motion behind it). */
+    Runnable coverChanged;
 
     void show() {
         if (wanted && getVisibility() == VISIBLE) return;
@@ -124,10 +126,12 @@ final class LiveScreen extends FrameLayout {
         animate().cancel();
         if (getVisibility() != VISIBLE) { setAlpha(0f); setVisibility(VISIBLE); }
         animate().alpha(1f).setDuration(220).start();
+        if (coverChanged != null) coverChanged.run();
     }
 
     void hide() {
         wanted = false;
+        if (coverChanged != null) coverChanged.run();
         if (getVisibility() != VISIBLE) return;
         animate().cancel();
         animate().alpha(0f).setDuration(180).withEndAction(() -> { if (!wanted) setVisibility(GONE); }).start();
