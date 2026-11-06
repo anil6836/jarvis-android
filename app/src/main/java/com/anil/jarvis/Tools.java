@@ -2191,7 +2191,7 @@ final class Tools {
         if (js.matches()) { // one of Jarvis's own settings cards: its group opens with that card unfolded
             if (prefs.carMode() && CarBox.moving()) return err("moving", "In the car Settings open only when the car stands (safety): say so and offer it after he stops.");
             String topic = js.group(2).trim();
-            start(new Intent(act(), SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, topic).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            start(new Intent(act(), SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, topic).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | FeaturesActivity.ONE_SCREEN));
             return ok().put("opened", topic.isEmpty() ? "Jarvis settings" : "Jarvis settings: " + topic).toString();
         }
         PackageManager pm = act().getPackageManager();
@@ -7696,7 +7696,7 @@ final class Tools {
             return ok().put("ringing", "now (test)").toString();
         }
         if (action.startsWith("song")) {
-            startIn(new Intent(act(), SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, "అలారం").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            startIn(new Intent(act(), SettingsActivity.class).putExtra(SettingsActivity.EXTRA_SECTION, "అలారం").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | FeaturesActivity.ONE_SCREEN));
             return ok().put("opened", "Settings: tap 'అలారం పాట ఎంచుకో' and choose a song file").toString();
         }
         return ok().put("alarms", SongAlarm.listJson(act())).put("song", prefs.alarmSong().isEmpty() ? "alarm tone" : prefs.alarmSongName()).toString();

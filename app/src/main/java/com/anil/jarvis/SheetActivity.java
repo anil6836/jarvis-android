@@ -1303,7 +1303,7 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
             String say = SettingsActivity.setView(this, sv);
             store.addChat("assistant", say, false);
             showReply(say, false);
-            try { startActivity(new Intent(this, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
+            try { startActivity(new Intent(this, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | FeaturesActivity.ONE_SCREEN)); } catch (Exception ignored) {} // (one Settings screen, never a second on top)
             if (prefs.voiceReplies()) voice.speak(say, prefs.speechRate()); else idle();
             return;
         }

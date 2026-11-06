@@ -53,6 +53,8 @@ public class SettingsActivity extends Activity {
     private int lockStart = -1;
     private final SharedPreferences.OnSharedPreferenceChangeListener lockCalibrated = (sp, key) -> {
         if (!"voice_lock_max".equals(key) || lockSlider == null) return;
+        java.util.Map<String, Object> sv = SettingsActivity.this.savedVals;
+        if (sv != null && !SettingsActivity.this.writingOwn) sv.remove("voice_lock_max"); // (calibrated elsewhere: a later move of his is saved)
         lockSlider.setProgress(Math.round((prefs.voiceLockMax() - 0.30f) * 100));
         lockStart = lockSlider.getProgress();
         showLock();
@@ -274,6 +276,19 @@ public class SettingsActivity extends Activity {
         for (int i = 0; i < Ui.THEMES.length; i++) {
             final String id = Ui.THEMES[i][0];
             themeBtns[i] = button("", v -> {
+                String fromOld = Ui.theme(this), fromPage = prefs.sp.getString("page_theme", "");
+                PageTheme pagesNow = PageSkin.current(this); // (an own new page theme, or the look's when the pages follow it)
+                if (id.equals(fromOld) && !pagesNow.isNew()) { Toast.makeText(this, "ఇప్పుడు ఇదే థీమ్", Toast.LENGTH_SHORT).show(); return; } // (the same one: nothing changes)
+                String look = prefs.homeMode() || prefs.carMode() ? MainLook.OLD : MainLook.valid(prefs.sp.getString("main_look", MainLook.OLD));
+                boolean following = PageTheme.forLook(look) != null && prefs.sp.getBoolean("pages_follow_look", true);
+                autosave();
+                try {
+                    org.json.JSONObject en = new org.json.JSONObject().put("k", "theme").put("v", fromPage).put("o", fromOld)
+                            .put("l", "🎨 థీమ్: " + (pagesNow.isNew() ? pagesNow.label() : oldThemeName(fromOld)) + " → " + oldThemeName(id));
+                    if (following) en.put("f", true); // (↩️ puts "pages follow the look" back on too)
+                    addRecent(en);
+                } catch (Exception ignored) {}
+                if (following) prefs.sp.edit().putBoolean("pages_follow_look", false).apply();
                 PageSkin.choose(this, id); // (= Ui.setTheme, and the pages follow it as before)
                 builtTheme = Ui.themeVersion; // this page keeps its look until reopened (unsaved fields stay)
                 builtPage = PageSkin.stamp(this);
@@ -815,6 +830,7 @@ public class SettingsActivity extends Activity {
         lockSlider.setProgress(Math.round((prefs.voiceLockMax() - 0.30f) * 100));
         lockStart = lockSlider.getProgress();
         prefs.sp.registerOnSharedPreferenceChangeListener(lockCalibrated);
+        prefs.sp.registerOnSharedPreferenceChangeListener(elsewhere); // (7 Nov: a setting changed elsewhere while this screen waits behind)
         lockSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean u) { showLock(); }
             @Override public void onStartTrackingTouch(SeekBar s) {}
@@ -1354,7 +1370,8 @@ public class SettingsActivity extends Activity {
         snapAll();
         showHome(); // (its afterMode paints the page in its theme)
         updateFromIntent(getIntent());
-        page.post(this::putBackScrambledOnce);
+        readControls(); // what the controls say now: the starting point of "what he changed"
+        changedElsewhere = false; // (what this build itself wrote is not "elsewhere")
     }
 
     // ================================================================ groups, search, folding, saving by itself
@@ -1900,10 +1917,36 @@ public class SettingsActivity extends Activity {
         }
     }
 
+    // ---- 7 Nov (v1.0.197): this screen saves ONLY what he changed on it, and shows a change made elsewhere
+    /**
+     * What this screen's controls said when it was built / last saved (key → value, from writePrefs's own reading).
+     * A save writes only the keys whose control he changed since then: a setting changed elsewhere meanwhile (the
+     * panel's "Live ఆపు", Jarvis's tools, the watch, another Settings screen) is never written over by an old switch.
+     */
+    private java.util.Map<String, Object> savedVals;
+    /** In front; this screen's own writing; a setting it shows changed elsewhere meanwhile; built again for that. */
+    private boolean resumedNow, writingOwn, changedElsewhere, dropStale, resultJustCame;
+    private final java.util.Set<String> elsewhereKeys = new java.util.HashSet<>();
+    private final SharedPreferences.OnSharedPreferenceChangeListener elsewhere = (sp, key) -> {
+        if (writingOwn || resumedNow || key == null) return;
+        java.util.Map<String, Object> m = savedVals;
+        if (m != null && m.containsKey(key)) { changedElsewhere = true; elsewhereKeys.add(key); }
+    };
+
+    /** A setting changed elsewhere that this screen shows differently now (not just written again with the same value). */
+    private boolean showsOld() {
+        java.util.Map<String, Object> m = savedVals;
+        if (m == null) return false;
+        java.util.Map<String, ?> all = prefs.sp.getAll();
+        for (String k : elsewhereKeys) if (!java.util.Objects.equals(all.get(k), m.get(k))) return true;
+        return false;
+    }
+
     /** Saves what changed (right away, quietly); what has to follow a change runs when he leaves the screen. */
     private void autosave() {
         ui.removeCallbacks(autosaveSoon);
         if (name == null || page == null || isDestroyed()) return;
+        if (dropStale) return; // (built again because of a change elsewhere: these old values are not saved over it)
         tabChanged(); // (the tablet's boxes: kept as unsent until 📤, never lost)
         String f = fingerprint();
         if (f.equals(lastFp)) return;
@@ -1966,8 +2009,23 @@ public class SettingsActivity extends Activity {
         if (gated) return;
         if (TabletLock.active(this)) TabletLock.opened(); // (he is inside: a rebuild of this screen doesn't ask again)
         Ui.loadTheme(this);
+        boolean afterResult = resultJustCame;
+        resultJustCame = false;
+        if (changedElsewhere && !showsOld()) { changedElsewhere = false; elsewhereKeys.clear(); } // (the same value again: nothing to show)
+        if (changedElsewhere) dropStale = true; // (any rebuild now: its old values are not saved on the way)
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
         if (!builtPage.equals(PageSkin.stamp(this))) { recreate(); return; } // (the page theme too)
+        if (newView != !"old".equals(uiSp.getString("settings_view", "new"))) { recreate(); return; } // ("పాత / కొత్త సెట్టింగ్స్ పెట్టు" said meanwhile)
+        if (changedElsewhere && !afterResult) {
+            // a setting this screen shows changed somewhere else while it waited behind (a second Settings screen, the
+            // panel's "Live ఆపు" / "OpenAI కి మారు", Jarvis's tools): built again so it shows the saved settings
+            // (right after a picker's answer it waits for the next time: its answer and dialog stay)
+            recreate();
+            return;
+        }
+        dropStale = false;
+        if (!afterResult) { changedElsewhere = false; elsewhereKeys.clear(); }
+        resumedNow = true;
         if (wallShow != null) wallShow.run(); // (the car's photo was marked / the wallpaper picked meanwhile)
         showLookNote(); // (back from 🎨: the look he has now)
         showLock();
@@ -2163,8 +2221,41 @@ public class SettingsActivity extends Activity {
     }
 
     /** Writes every setting on the page (quietly; autosave() calls it when something changed). */
+    /** Saves the settings he changed on this screen since the last save (only those; see savedVals). */
     private void writePrefs() {
-        SharedPreferences.Editor e = prefs.sp.edit();
+        Collect now = new Collect();
+        writePrefsNow(now);
+        java.util.Map<String, Object> was = savedVals;
+        savedVals = now.vals;
+        java.util.List<String> keys = SettingsDiff.changed(was, now.vals); // (no starting point at all: everything, as before)
+        if (keys.isEmpty()) return;
+        writingOwn = true;
+        try {
+            SharedPreferences.Editor e = prefs.sp.edit();
+            for (String k : now.removes) e.remove(k);
+            if (keys.contains("ears_model")) e.remove("ears_stream"); // (a new listening model: sending while he talks is tried again)
+            for (String k : keys) {
+                Object v = now.vals.get(k);
+                if (k.startsWith("@bal:")) { saveBalanceNow(k.substring(5)); continue; } // (the balance box he edited)
+                if (v instanceof Boolean) e.putBoolean(k, (Boolean) v);
+                else if (v instanceof Integer) e.putInt(k, (Integer) v);
+                else if (v instanceof Long) e.putLong(k, (Long) v);
+                else if (v instanceof Float) e.putFloat(k, (Float) v);
+                else if (v instanceof java.util.Set) { @SuppressWarnings("unchecked") java.util.Set<String> ss = (java.util.Set<String>) v; e.putStringSet(k, ss); }
+                else e.putString(k, (String) v);
+            }
+            for (java.util.Map.Entry<String, Boolean> c : SettingsDiff.companions(keys).entrySet()) e.putBoolean(c.getKey(), c.getValue());
+            e.apply();
+        } finally { writingOwn = false; }
+        if (keys.contains("wake_when")) ui.postDelayed(() -> Sounds.armNightEdge(getApplicationContext()), 1500); // the night timer follows the listen mode
+    }
+
+    /** The controls read once more without saving (the starting point after a build). */
+    private void readControls() {
+        try { Collect now = new Collect(); writePrefsNow(now); savedVals = now.vals; } catch (Exception ignored) {}
+    }
+
+    private void writePrefsNow(Collect e) {
         String n = name.getText().toString().trim();
         e.putString("name", n.isEmpty() ? "Anil" : n);
         int chosen = provider.getCheckedRadioButtonId();
@@ -2196,7 +2287,6 @@ public class SettingsActivity extends Activity {
         e.putBoolean("cam_always_listen", camAlways.isChecked());
         int ww = wakeWhen.getCheckedRadioButtonId();
         e.putString("wake_when", ww == 22 ? "charging" : ww == 21 ? "screen_on" : "always");
-        ui.postDelayed(() -> Sounds.armNightEdge(getApplicationContext()), 1500); // the night timer follows the listen mode
         e.putBoolean("announce_calls", announceCalls.isChecked());
         e.putBoolean("call_voice", callVoice.isChecked());
         e.putBoolean("read_messages", readMessages.isChecked());
@@ -2213,7 +2303,6 @@ public class SettingsActivity extends Activity {
         e.putString("gemini_live_model", geminiLiveModel.getText().toString().trim());
         e.putString("gemini_live_voice", liveVoiceChoice);
         String earsModelNow = earsModel.getText().toString().trim();
-        if (!earsModelNow.equals(prefs.sp.getString("ears_model", "").trim())) e.remove("ears_stream"); // a new model: sending while he talks is tried again
         e.putString("ears_model", earsModelNow);
         int tmc = typingMode.getCheckedRadioButtonId();
         e.putString("typing_mode", tmc == 72 ? "name" : tmc == 73 ? "silent" : "read");
@@ -2245,9 +2334,9 @@ public class SettingsActivity extends Activity {
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("live_patient", livePatient.isChecked());
         e.putBoolean("scam_guard", scamGuard.isChecked());
-        saveBalance(balGemini, Usage.GEMINI);
-        saveBalance(balOpenAi, Usage.OPENAI);
-        saveBalance(balAnthropic, Usage.ANTHROPIC);
+        e.putString("@bal:" + Usage.GEMINI, balGemini.getText().toString().trim()); // (saved only when he edits the box: the
+        e.putString("@bal:" + Usage.OPENAI, balOpenAi.getText().toString().trim()); //  balance counts down by itself meanwhile)
+        e.putString("@bal:" + Usage.ANTHROPIC, balAnthropic.getText().toString().trim());
         e.putBoolean("barge_in", bargeIn.isChecked());
         e.putBoolean("speed_g", speedG.isChecked());
         e.putBoolean("speed_k", speedK.isChecked());
@@ -2267,7 +2356,6 @@ public class SettingsActivity extends Activity {
         e.putFloat("rate", 0.5f + rate.getProgress() / 100f);
         e.putString("lang", lang.getCheckedRadioButtonId() == 12 ? "en-IN" : "te-IN");
         e.putBoolean("wake", wake.isChecked());
-        e.putBoolean("wake_paused", false);
         e.putBoolean("voice_lock", voiceLock.isChecked() && VoiceLock.print(this) != null);
         if (lockSlider.getProgress() != lockStart) e.putFloat("voice_lock_max", 0.30f + lockSlider.getProgress() / 100f);
         e.putBoolean("proactive", proactive.isChecked());
@@ -2313,6 +2401,22 @@ public class SettingsActivity extends Activity {
         try { int h = Integer.parseInt(exerciseHour.getText().toString().trim()); e.putInt("exercise_hour", h <= 0 ? -1 : Math.max(5, Math.min(12, h))); } catch (Exception ignored) {}
         try { e.putInt("fact_hour", Math.max(6, Math.min(21, Integer.parseInt(factHour.getText().toString().trim())))); } catch (Exception ignored) {}
         e.apply();
+    }
+
+    /** writePrefsNow's reading: every value its controls say (key → value), and the keys it removes; writes nothing. */
+    private static final class Collect implements SharedPreferences.Editor {
+        final java.util.Map<String, Object> vals = new java.util.LinkedHashMap<>();
+        final java.util.Set<String> removes = new java.util.LinkedHashSet<>();
+        @Override public SharedPreferences.Editor putString(String key, String v) { vals.put(key, v); return this; }
+        @Override public SharedPreferences.Editor putStringSet(String key, java.util.Set<String> v) { vals.put(key, v == null ? null : new java.util.HashSet<>(v)); return this; }
+        @Override public SharedPreferences.Editor putInt(String key, int v) { vals.put(key, v); return this; }
+        @Override public SharedPreferences.Editor putLong(String key, long v) { vals.put(key, v); return this; }
+        @Override public SharedPreferences.Editor putFloat(String key, float v) { vals.put(key, v); return this; }
+        @Override public SharedPreferences.Editor putBoolean(String key, boolean v) { vals.put(key, v); return this; }
+        @Override public SharedPreferences.Editor remove(String key) { removes.add(key); return this; }
+        @Override public SharedPreferences.Editor clear() { return this; }
+        @Override public boolean commit() { return true; }
+        @Override public void apply() {}
     }
 
     private void showLiveVoice() {
@@ -2542,6 +2646,7 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onPause() {
         super.onPause();
+        resumedNow = false;
         if (gated) return;
         tester.stop();
         autosave(); // nothing he changed is lost, however he leaves
@@ -2557,6 +2662,7 @@ public class SettingsActivity extends Activity {
         if (gated) { super.onDestroy(); return; }
         if (showing == this) showing = null;
         try { prefs.sp.unregisterOnSharedPreferenceChangeListener(lockCalibrated); } catch (Exception ignored) {}
+        try { prefs.sp.unregisterOnSharedPreferenceChangeListener(elsewhere); } catch (Exception ignored) {}
         if (pendingRestore != null) { Backup.discard(getApplicationContext(), pendingRestore); pendingRestore = null; } // its question went with the screen
         super.onDestroy();
     }
@@ -4055,6 +4161,7 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
+        resultJustCame = true;
         if (gated) return;
         if (voiceFound(code, result, data)) return;
         if (code == REQ_WALL && result == RESULT_OK && data != null && data.getData() != null) wallPicked(data.getData()); // 🖼️ the car screen's wallpaper
@@ -4561,6 +4668,12 @@ public class SettingsActivity extends Activity {
     }
 
     /** A changed balance starts a new count-down; an unchanged one keeps counting. */
+    private void saveBalanceNow(String provider) {
+        if (Usage.GEMINI.equals(provider)) saveBalance(balGemini, provider);
+        else if (Usage.OPENAI.equals(provider)) saveBalance(balOpenAi, provider);
+        else if (Usage.ANTHROPIC.equals(provider)) saveBalance(balAnthropic, provider);
+    }
+
     private void saveBalance(EditText e, String provider) {
         float v = 0;
         try { v = Float.parseFloat(e.getText().toString().trim().replace(",", "")); } catch (Exception ignored) {}
@@ -5510,6 +5623,7 @@ public class SettingsActivity extends Activity {
                         asking[0] = true;
                         sw.setChecked(true);
                         asking[0] = false;
+                        autosave(); // (this screen's starting point now says the same: a later change of these is saved)
                         Toast.makeText(this, "కారు Jarvis ఆన్: వెనక్కి వెళ్తే కారు స్క్రీన్ వస్తుంది", Toast.LENGTH_SHORT).show();
                     })
                     .setNegativeButton("వద్దు", null)
@@ -6867,6 +6981,11 @@ public class SettingsActivity extends Activity {
 
     private TextView lookNote;
 
+    private static String oldThemeName(String id) {
+        for (String[] t : Ui.THEMES) if (t[0].equals(id)) return t[1] + " " + t[2];
+        return id;
+    }
+
     private void showLookNote() {
         if (lookNote != null) lookNote.setText("ఇప్పుడు: " + MainLook.label(LookScreen.current(this, prefs)));
     }
@@ -7187,10 +7306,26 @@ public class SettingsActivity extends Activity {
                     String id = Long.toString(System.nanoTime(), 36);
                     typedBefore.put(id, was); // (his words stay in this screen only)
                     e.put("k", "text").put("id", id);
-                } else e.put("k", "ctl").put("v", was);
+                } else {
+                    e.put("k", "ctl").put("v", was);
+                    if (v instanceof RadioGroup) { // (its words too: choices built in code get new numbers each build)
+                        View rb = choiceById((RadioGroup) v, was);
+                        if (rb != null) e.put("wt", String.valueOf(((TextView) rb).getText()));
+                    }
+                }
                 addRecent(e);
             } catch (Exception ignored) {}
         }
+    }
+
+    /** The group's own choice with this number (as text), or null. */
+    private static View choiceById(RadioGroup g, String id) {
+        try {
+            int n = Integer.parseInt(id);
+            if (n == -1) return null;
+            for (int j = 0; j < g.getChildCount(); j++) if (g.getChildAt(j).getId() == n && g.getChildAt(j) instanceof RadioButton) return g.getChildAt(j);
+        } catch (Exception ignored) {}
+        return null;
     }
 
     /** A control's own words (a switch's text, a box's label): checked again before a change is brought back. */
@@ -7344,7 +7479,18 @@ public class SettingsActivity extends Activity {
                 if (was != null) { ((EditText) v).setText(was); done = true; }
             } else if ("ctl".equals(k) && v != null) {
                 String was = e.optString("v");
-                if (v instanceof RadioGroup) { ((RadioGroup) v).check(Integer.parseInt(was)); done = true; }
+                if (v instanceof RadioGroup) { // the very choice: by its words when known (numbers of choices built in code change), never a guess
+                    RadioGroup g = (RadioGroup) v;
+                    View rb = choiceById(g, was);
+                    if (e.has("wt")) {
+                        if (rb != null && !e.optString("wt").contentEquals(((RadioButton) rb).getText())) rb = null;
+                        if (rb == null) for (int j = 0; j < g.getChildCount(); j++) {
+                            View x = g.getChildAt(j);
+                            if (x instanceof RadioButton && e.optString("wt").contentEquals(((RadioButton) x).getText())) { rb = x; break; }
+                        }
+                    }
+                    if (rb != null) { g.check(rb.getId()); done = g.getCheckedRadioButtonId() == rb.getId(); }
+                }
                 else if (v instanceof SeekBar) { ((SeekBar) v).setProgress(Integer.parseInt(was)); done = true; }
                 else if (v instanceof Spinner) { ((Spinner) v).setSelection(Integer.parseInt(was)); done = true; }
                 else if (v instanceof android.widget.CompoundButton) { ((android.widget.CompoundButton) v).setChecked("1".equals(was)); done = true; }
@@ -7361,61 +7507,6 @@ public class SettingsActivity extends Activity {
         if (c != null && !"home".equals(mode)) summarize(c);
         refreshQuick();
         Toast.makeText(this, "↩️ వెనక్కి: " + label, Toast.LENGTH_SHORT).show();
-    }
-
-    /**
-     * v1.0.196, once (his word 7 Nov 02:53: "ఇంతకముందు సెట్టింగ్స్ లో ఆప్షన్స్ ఎలా ఉన్నాయో అలా పెట్టు"): the choices the
-     * id clash ticked by themselves go back to what they were, from 🕘 (each change there keeps the choice before it;
-     * newest first, so a choice changed twice ends at the first one). Only the round choices — the clash never touched
-     * switches, boxes or keys. What is put back is shown to him; ↩️ in 🕘 can take any of it back again.
-     */
-    private void putBackScrambledOnce() {
-        if (uiSp == null || uiSp.getBoolean("fix_choices_196", false) || isFinishing()) return;
-        uiSp.edit().putBoolean("fix_choices_196", true).apply();
-        org.json.JSONArray r = recent();
-        java.util.Set<String> used = new java.util.HashSet<>();
-        java.util.LinkedHashMap<String, String> back = new java.util.LinkedHashMap<>();
-        java.util.LinkedHashSet<String> left = new java.util.LinkedHashSet<>();
-        undoing = true;
-        try {
-            for (int j = 0; j < r.length(); j++) { // newest first
-                org.json.JSONObject e = r.optJSONObject(j);
-                if (e == null || !"ctl".equals(e.optString("k"))) continue;
-                Card c = cardExact(e.optString("c"));
-                View v = c == null ? null : atPath(c.view, e.optString("p"));
-                if (!(v instanceof RadioGroup)) continue;
-                if (e.has("t") && !idOf(v, c.title).equals(e.optString("t"))) continue;
-                int id;
-                try { id = Integer.parseInt(e.optString("v")); } catch (Exception x) { continue; }
-                used.add(e.optString("u"));
-                View rb = id == -1 ? null : v.findViewById(id);
-                String key = c.title + "|" + e.optString("p");
-                if (rb instanceof RadioButton && rb.getParent() == v) {
-                    ((RadioGroup) v).check(id);
-                    back.put(key, c.title + ": " + ((RadioButton) rb).getText());
-                    left.remove(c.title);
-                } else if (!back.containsKey(key)) left.add(c.title); // (a choice built in code: its old number is gone)
-            }
-        } catch (Exception ignored) {
-        } finally { undoing = false; }
-        if (used.isEmpty()) return;
-        try { // the changes used here leave 🕘
-            org.json.JSONArray now = new org.json.JSONArray();
-            for (int j = 0; j < r.length(); j++) if (!used.contains(r.optJSONObject(j).optString("u"))) now.put(r.opt(j));
-            uiSp.edit().putString("recent", now.toString()).apply();
-        } catch (Exception ignored) {}
-        autosave(); // (saved; 🕘 now holds "what it was a moment ago", so ↩️ can still undo any of these)
-        refreshRecent();
-        StringBuilder b = new StringBuilder();
-        for (String l : back.values()) b.append("• ").append(l.length() > 90 ? l.substring(0, 88) + "…" : l).append('\n');
-        if (!left.isEmpty()) {
-            b.append("\nఇవి నేను వెనక్కి తేలేకపోయాను, ఒకసారి చూడండి:\n");
-            for (String l : left) b.append("• ").append(l).append('\n');
-        }
-        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("🩹 తనంతట తానే మారినవి ఇంతకుముందు లాగే పెట్టాను")
-                .setMessage(b.toString().trim())
-                .setPositiveButton("సరే", null).show();
     }
 
     private void dropRecent(int i) {
