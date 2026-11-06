@@ -28,6 +28,7 @@ final class IconView extends View {
 
     void setIcon(int icon) { this.icon = icon; invalidate(); }
     void setColor(int color) { p.setColor(color); invalidate(); }
+    int color() { return p.getColor(); }
 
     @Override protected void onDraw(Canvas canvas) {
         float s = Math.min(getWidth(), getHeight());

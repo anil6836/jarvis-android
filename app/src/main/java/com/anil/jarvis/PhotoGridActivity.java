@@ -28,6 +28,9 @@ import java.util.concurrent.Executors;
 public class PhotoGridActivity extends Activity {
     /** The theme this screen was built with (a change in Settings rebuilds it). */
     private int builtTheme;
+    /** The page theme (7 Nov): null keeps the old colours. */
+    private PageSkin skin;
+    private String builtPage = "";
     private static final String EXTRA_URIS = "uris", EXTRA_TITLE = "title";
 
     static void show(Context c, String title, List<Uri> uris) {
@@ -42,22 +45,25 @@ public class PhotoGridActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         Ui.loadTheme(this);
-        if (builtTheme != Ui.themeVersion) recreate(); // the theme changed in Settings meanwhile
+        if (builtTheme != Ui.themeVersion || !builtPage.equals(PageSkin.stamp(this))) recreate(); // the theme changed in Settings meanwhile
     }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         Ui.loadTheme(this); // the chosen colours, before anything is built
         builtTheme = Ui.themeVersion;
-        getWindow().setStatusBarColor(Ui.BG_TOP);
-        getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
+        builtPage = PageSkin.stamp(this);
+        skin = PageSkin.forPage(this);
+        getWindow().setStatusBarColor(skin != null ? skin.t.bgTop : Ui.BG_TOP);
+        getWindow().setNavigationBarColor(skin != null ? skin.t.bgBottom : Ui.BG_BOTTOM);
+        if (skin != null && skin.t.lightPage) SettingsActivity.lightBars(getWindow());
         List<String> raw = getIntent().getStringArrayListExtra(EXTRA_URIS);
         final List<Uri> uris = new ArrayList<>();
         if (raw != null) for (String s : raw) uris.add(Uri.parse(s));
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(new Ui.Aurora());
+        root.setBackground(skin != null ? skin.background() : new Ui.Aurora());
         int p = Ui.dp(this, 16);
         root.setPadding(p, p, p, 0);
 
@@ -91,7 +97,8 @@ public class PhotoGridActivity extends Activity {
                 ImageView iv = reuse instanceof ImageView ? (ImageView) reuse : new ImageView(PhotoGridActivity.this);
                 iv.setLayoutParams(new GridView.LayoutParams(cell, cell));
                 iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                iv.setBackground(Ui.round(PhotoGridActivity.this, 0x22FFFFFF, 0, 10));
+                iv.setBackground(skin != null ? skin.chip(skin.t.lightPage ? 0x14000000 : 0x22FFFFFF, 0, 10) // (a page theme: a soft square)
+                        : Ui.round(PhotoGridActivity.this, 0x22FFFFFF, 0, 10));
                 iv.setClipToOutline(true);
                 Uri u = uris.get(i);
                 iv.setTag(u);
@@ -110,6 +117,7 @@ public class PhotoGridActivity extends Activity {
         });
         root.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
+        if (skin != null) skin.apply(root); // (the page theme)
     }
 
     private void shareAll(List<Uri> uris) {

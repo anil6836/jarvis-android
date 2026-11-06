@@ -2680,6 +2680,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 switchVoice(prompt, mode, byVoice);
                 return;
             }
+            String sv = SettingsActivity.viewWords(prompt); // 🗂️ "పాత సెట్టింగ్స్ పెట్టు" / "కొత్త సెట్టింగ్స్ పెట్టు": at once
+            if (sv != null && (home == null || HomeCare.ownerVoice(this))) {
+                localSay(prompt, SettingsActivity.setView(this, sv));
+                try { startActivity(new Intent(this, SettingsActivity.class)); } catch (Exception ignored) {}
+                return;
+            }
             String g = car == null ? null : CarLayout.mapWords(prompt); // 🗺️ the box: "Google Maps పెట్టు" / "నీ మ్యాప్ పెట్టు" — the car's map, at once
             if (g != null) { localSay(prompt, car.mapMode(g)); return; }
             String[] lw = car == null ? null : CarDeck.lightWords(prompt); // 🎚️ 💡 "ఈక్వలైజర్ ఆపు", "బీట్ లైట్లు పెట్టు": at once, any time

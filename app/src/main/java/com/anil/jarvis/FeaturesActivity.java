@@ -707,18 +707,30 @@ public class FeaturesActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         Ui.loadTheme(this);
-        if (builtTheme != Ui.themeVersion) recreate(); // the theme changed in Settings meanwhile
+        if (builtTheme != Ui.themeVersion || !builtPage.equals(PageSkin.stamp(this))) recreate(); // the theme changed in Settings meanwhile
     }
+
+    /** The page theme (7 Nov): null keeps the old colours. */
+    private PageSkin skin;
+    private String builtPage = "";
+    private View skinRoot;
+
+    /** The page painted again in its theme after a part of it was rebuilt. */
+    private void paint() { if (skin != null && skinRoot != null) skin.apply(skinRoot); }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         Ui.loadTheme(this); // the chosen colours, before anything is built
         builtTheme = Ui.themeVersion;
-        getWindow().setStatusBarColor(Ui.BG_TOP);
-        getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
+        builtPage = PageSkin.stamp(this);
+        skin = PageSkin.forPage(this);
+        getWindow().setStatusBarColor(skin != null ? skin.t.bgTop : Ui.BG_TOP);
+        getWindow().setNavigationBarColor(skin != null ? skin.t.bgBottom : Ui.BG_BOTTOM);
+        if (skin != null && skin.t.lightPage) SettingsActivity.lightBars(getWindow());
         LinearLayout root = new LinearLayout(this);
+        skinRoot = root;
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(new Ui.Aurora());
+        root.setBackground(skin != null ? skin.background() : new Ui.Aurora());
         root.setPadding(dp(16), dp(12), dp(16), 0);
         root.setFocusableInTouchMode(true); // the search box stays closed until he taps it
 
@@ -836,6 +848,7 @@ public class FeaturesActivity extends Activity {
         for (Cat c : CATS) if (!hidden(c) && shown.add(c.id)) rest.add(c);
         grid("ఇంకా", rest);
         scroll.scrollTo(0, 0);
+        paint(); // (the page theme)
     }
 
     private void section(String text) {
@@ -920,6 +933,7 @@ public class FeaturesActivity extends Activity {
         if ("expiry".equals(c.id)) addExpiry(c);
         if ("holidays".equals(c.id)) addHolidays(c);
         scroll.scrollTo(0, 0);
+        paint(); // (the page theme)
     }
 
     /** The places he saved: tap = on the map; hold = directions, share, delete. */
@@ -1312,6 +1326,7 @@ public class FeaturesActivity extends Activity {
         LinearLayout.LayoutParams slp = rowParams();
         slp.topMargin = dp(16);
         content.addView(s, slp);
+        paint(); // (the page theme)
     }
 
     private static boolean hits(Cat c, Opt o, String q) {

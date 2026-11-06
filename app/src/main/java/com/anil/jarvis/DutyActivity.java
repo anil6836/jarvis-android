@@ -35,6 +35,9 @@ import java.util.Locale;
 public class DutyActivity extends Activity {
     /** The theme this screen was built with (a change in Settings rebuilds it). */
     private int builtTheme;
+    /** The page theme (7 Nov): null keeps the old colours. */
+    private PageSkin skin;
+    private String builtPage = "";
     static final String EXTRA_MONTH = "month"; // "yyyy-MM"
     static final String EXTRA_SETUP = "setup";
 
@@ -53,11 +56,14 @@ public class DutyActivity extends Activity {
         super.onCreate(b);
         Ui.loadTheme(this); // the chosen colours, before anything is built
         builtTheme = Ui.themeVersion;
-        getWindow().setStatusBarColor(Ui.BG_TOP);
-        getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
+        builtPage = PageSkin.stamp(this);
+        skin = PageSkin.forPage(this);
+        getWindow().setStatusBarColor(skin != null ? skin.t.bgTop : Ui.BG_TOP);
+        getWindow().setNavigationBarColor(skin != null ? skin.t.bgBottom : Ui.BG_BOTTOM);
+        if (skin != null && skin.t.lightPage) SettingsActivity.lightBars(getWindow());
         try { String m = getIntent().getStringExtra(EXTRA_MONTH); if (m != null && !m.isEmpty()) month = YearMonth.parse(m); } catch (Exception ignored) {}
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackground(new Ui.Aurora());
+        scroll.setBackground(skin != null ? skin.background() : new Ui.Aurora());
         scroll.setFillViewport(true);
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -70,7 +76,7 @@ public class DutyActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         Ui.loadTheme(this);
-        if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
+        if (builtTheme != Ui.themeVersion || !builtPage.equals(PageSkin.stamp(this))) { recreate(); return; } // the theme changed while this screen was open
         render();
     }
 
@@ -133,6 +139,7 @@ public class DutyActivity extends Activity {
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
         slp.topMargin = dp(16);
         content.addView(share, slp);
+        if (skin != null) skin.apply(content); // (the page theme)
     }
 
     /** "మీ తర్వాతి డ్యూటీ" at the top. */
@@ -260,7 +267,7 @@ public class DutyActivity extends Activity {
         int col = bs.isEmpty() ? 0x22FFFFFF : colorOf(bs.get(0));
         android.graphics.drawable.GradientDrawable bg = Ui.round(this, bs.isEmpty() ? 0x10FFFFFF : Ui.alpha(col, 0x38), 0, 10);
         if (mine) bg.setStroke(dp(2), GOLD);
-        else if (today) bg.setStroke(dp(1.5f), 0xFFFFFFFF);
+        else if (today) bg.setStroke(dp(1.5f), skin != null ? skin.t.accent : 0xFFFFFFFF); // (a page theme: today's line in its colour)
         c.setBackground(bg);
         if (!inMonth) c.setAlpha(0.35f);
         LinearLayout top = new LinearLayout(this);

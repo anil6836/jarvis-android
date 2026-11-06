@@ -152,13 +152,24 @@ public class SettingsActivity extends Activity {
     /** Something was saved since the screen opened (the wake word restarts with it when he leaves). */
     private boolean changed, askedWakePerms;
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
-    private final Runnable autosaveSoon = this::autosave;
+    private final Runnable autosaveSoon = () -> { autosave(); reskin(); }; // (and rows a tap rebuilt: in the page theme)
 
     private void openScreenAccess() {
         try { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); } catch (Exception ignored) {}
         Toast.makeText(this, "Accessibility లో 'Jarvis స్క్రీన్' ఆన్ చేయండి (గ్రే అయితే: App info → ⋮ → Allow restricted settings)", Toast.LENGTH_LONG).show();
     }
     private int accent = Ui.C_CYAN;
+
+    // ---- 7 Nov (stage 1): the new Settings (C), the way back to the old one (C0), the page themes (B)
+    /** The new Settings ("new", the start: his "A") or exactly the old one ("old": 🗂️ పాత రూపం). Per device. */
+    private boolean newView;
+    /** The page theme in use (the old three too, for the new parts' colours) and its painter (null: the old colours). */
+    private PageTheme pal = PageTheme.ALL[0];
+    private PageSkin skin;
+    /** The page theme this screen was built with (a change elsewhere rebuilds it). */
+    private String builtPage = "";
+    /** This screen's own choices: the view, సులభం / అన్నీ, the quick tiles, recent changes (never his settings). */
+    private android.content.SharedPreferences uiSp;
 
     /** The home tablet with a Settings PIN, not given yet: nothing is built (TabletLock). */
     private boolean gated;
@@ -178,8 +189,15 @@ public class SettingsActivity extends Activity {
         Ui.loadTheme(this); // the chosen colours, before anything is built
         builtTheme = Ui.themeVersion;
         prefs = new Prefs(this);
+        uiSp = getSharedPreferences("jarvis_settings_ui", MODE_PRIVATE);
+        newView = !"old".equals(uiSp.getString("settings_view", "new"));
+        PageTheme now = PageSkin.current(this);
+        builtPage = now.id;
+        if (newView) { pal = now; if (pal.isNew()) skin = PageSkin.of(this, pal); }
+        else { PageTheme o = PageTheme.of(Ui.theme(this)); pal = o != null ? o : PageTheme.ALL[0]; } // (🗂️: the old colours)
+        if (skin != null) accent = pal.accent;
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackground(new Ui.Aurora());
+        scroll.setBackground(skin != null ? skin.background() : new Ui.Aurora());
         box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 16);
@@ -187,8 +205,9 @@ public class SettingsActivity extends Activity {
         scroll.addView(box);
         page = box;
         setContentView(scroll);
-        getWindow().setStatusBarColor(Ui.BG_TOP);
-        getWindow().setNavigationBarColor(Ui.BG_BOTTOM);
+        getWindow().setStatusBarColor(skin != null ? pal.bgTop : Ui.BG_TOP);
+        getWindow().setNavigationBarColor(skin != null ? pal.bgBottom : Ui.BG_BOTTOM);
+        if (skin != null && pal.lightPage) lightBars(getWindow());
         pageScroll = scroll;
 
         LinearLayout head = new LinearLayout(this);
@@ -242,6 +261,7 @@ public class SettingsActivity extends Activity {
 
         // ---- theme: applies at once (no Save needed); the other screens take it when they open
         section("థీమ్ (రంగులు)");
+        if (newView) themePicker(); else {
         note("Jarvis రంగులు ఎంచుకోండి. నొక్కగానే మారుతుంది; ఈ పేజీ మూసి తెరిస్తే ఇక్కడ కూడా కొత్త రంగులు.");
         TextView[] themeBtns = new TextView[Ui.THEMES.length];
         TextView[] motionBtn = new TextView[1];
@@ -254,8 +274,9 @@ public class SettingsActivity extends Activity {
         for (int i = 0; i < Ui.THEMES.length; i++) {
             final String id = Ui.THEMES[i][0];
             themeBtns[i] = button("", v -> {
-                Ui.setTheme(this, id, Ui.hudMotion(this));
+                PageSkin.choose(this, id); // (= Ui.setTheme, and the pages follow it as before)
                 builtTheme = Ui.themeVersion; // this page keeps its look until reopened (unsaved fields stay)
+                builtPage = PageSkin.stamp(this);
                 marks.run();
                 Toast.makeText(this, "థీమ్ మారింది", Toast.LENGTH_SHORT).show();
             });
@@ -263,6 +284,7 @@ public class SettingsActivity extends Activity {
         motionBtn[0] = button("", v -> { Ui.setTheme(this, Ui.theme(this), !Ui.hudMotion(this)); marks.run(); });
         marks.run();
         note("బ్యాటరీ సేవర్ ఆన్‌లో ఉంటే వలయాలు తమంతట తామే ఆగుతాయి.");
+        } // (old view)
 
         // ---- Jarvis's face on the home screen (applies at once)
         section("Jarvis ముఖం");
@@ -419,14 +441,14 @@ public class SettingsActivity extends Activity {
         opus.setOnClickListener(v -> codeModel.setText("claude-opus-5-5"));
         presets.addView(astra);
         presets.addView(opus);
-        box.addView(presets);
+        boxOf(codeModel).addView(presets);
         TextView allCode = Ui.text(this, "📋 అన్ని కంపెనీల మోడల్స్ చూపించు, ఎంచుకో", 14.5f, Ui.CYAN);
         allCode.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 8));
         allCode.setOnClickListener(v -> Models.pick(this, "కోడింగ్ మోడల్ ఎంచుకోండి",
                 new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
                 new String[]{openAiKey.getText().toString(), anthropicKey.getText().toString(), geminiKey.getText().toString()},
                 codeModel.getText().toString(), it -> chose(codeModel, "code_model", it.id)));
-        box.addView(allCode);
+        boxOf(codeModel).addView(allCode);
         note("gpt-6-astra కి పైన OpenAI key, claude-opus-5-5 కి Anthropic key ఉండాలి. మోడల్ పేరు తప్పైతే Jarvis వేరే మోడల్‌కి మారకుండా తప్పు అని చెబుతుంది.");
         githubToken = field("GitHub token (వెబ్‌సైట్ ఆన్‌లైన్, యాప్‌లు తయారీ కోసం)", prefs.githubToken(), true);
         note("ఒక్కసారి: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → "
@@ -534,7 +556,13 @@ public class SettingsActivity extends Activity {
         vl.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         box.addView(vl);
         voicePick = new Spinner(this);
-        ArrayAdapter<String> va = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, NaturalVoice.VOICES);
+        ArrayAdapter<String> va = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, NaturalVoice.VOICES) {
+            @Override public View getView(int pos, View old, android.view.ViewGroup parent) { // (a page theme: the chosen voice in its ink)
+                View v = super.getView(pos, old, parent);
+                if (skin != null && v instanceof TextView) ((TextView) v).setTextColor(pal.ink);
+                return v;
+            }
+        };
         voicePick.setAdapter(va);
         voicePick.setBackground(fieldBg());
         int current = 0;
@@ -1291,10 +1319,18 @@ public class SettingsActivity extends Activity {
             View card = page.getChildAt(i);
             if (card.getTag() instanceof Integer) tint(card, (Integer) card.getTag());
         }
-        buildHome();
+        if (newView) {
+            for (Card c : cardList) c.group = groupOfNew(c.title); // (the new groups; 🗂️ keeps the old ones)
+            buildHomeNew();
+            buildSaveStrip();
+        } else {
+            buildHome();
+            oldViewButton();
+        }
         watchTyping(page);
         lastFp = fingerprint();
-        showHome();
+        snapAll();
+        showHome(); // (its afterMode paints the page in its theme)
         updateFromIntent(getIntent());
     }
 
@@ -1317,9 +1353,9 @@ public class SettingsActivity extends Activity {
         return "daily"; // డైరీ, హెచ్చరికలు, అలారం, ఆరోగ్యం, తనంతట తానే
     }
 
-    private static String groupName(String id) {
+    private String groupName(String id) {
         if ("check".equals(id)) return "🩺 Jarvis చెక్";
-        for (String[] g : GROUPS) if (g[0].equals(id)) return g[1] + " " + g[2];
+        for (String[] g : newView ? GROUPS_NEW : GROUPS) if (g[0].equals(id)) return g[1] + " " + g[2];
         return "";
     }
 
@@ -1525,7 +1561,15 @@ public class SettingsActivity extends Activity {
             TextView t = e.getValue();
             t.setText(text);
             t.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
-            t.setTextColor(kind == 2 ? 0xFFFFB4B4 : kind == 1 ? 0xFFFDE68A : kind == 0 ? 0xFFB9F6CA : Ui.MUTED);
+            t.setTextColor(newView ? (kind == 2 ? pal.bad : kind == 1 ? pal.warn : kind == 0 ? pal.good : pal.muted)
+                    : kind == 2 ? 0xFFFFB4B4 : kind == 1 ? 0xFFFDE68A : kind == 0 ? 0xFFB9F6CA : Ui.MUTED);
+            TextView badge = tileBadge.get(e.getKey());
+            if (badge != null) {
+                badge.setText(kind == 2 ? "⚠️" : "●");
+                badge.setVisibility(kind == 2 || kind == 1 ? View.VISIBLE : View.GONE);
+                badge.setTextColor(kind == 2 ? pal.badgeInk : pal.warn);
+                badge.setBackground(kind == 2 ? Ui.round(this, pal.badge, 0, 8) : null);
+            }
         }
     }
 
@@ -1567,7 +1611,9 @@ public class SettingsActivity extends Activity {
                 if (!NotifyListener.enabled(this)) return new Object[]{"✗ నోటిఫికేషన్ యాక్సెస్ లేదు: మెసేజ్‌లు అందవు", 2};
                 if (!prefs.readMessages()) return new Object[]{"మెసేజ్‌లు చెప్పడం: ఆఫ్", 1};
                 return new Object[]{"✓ కొత్త మెసేజ్‌లు చెబుతాను", 0};
+            case "calls": case "car": case "money": return new Object[]{groupSummary(id), -1};
             case "bike": {
+                if (newView) return new Object[]{groupSummary(id), -1}; // (the new 🏍️ బైక్, దారి: smart home went to 🏡 ఇల్లు)
                 int n = 0;
                 for (String l : smartUrls.getText().toString().split("\n")) if (l.indexOf('=') > 0 && l.contains("http")) n++;
                 return new Object[]{"స్మార్ట్ హోమ్: " + n + " బటన్లు" + (Guard.running(this) ? " · 🛡️ కాపలా ఆన్" : ""), -1};
@@ -1580,6 +1626,7 @@ public class SettingsActivity extends Activity {
                 }
                 Object[] w = TabletWatch.tile(this);
                 java.util.List<String> ch = tabChangedCards();
+                if (newView && ch.isEmpty() && (Integer) w[1] < 1 && Guard.running(this)) return new Object[]{w[0] + " · 🛡️ కాపలా ఆన్", w[1]};
                 if (ch.isEmpty()) return w;
                 int kind = Math.max(1, (Integer) w[1]);
                 return new Object[]{"● ఇంకా పంపలేదు (" + tabShorts(ch) + ")" + ((Integer) w[1] == 2 ? "\n" + w[0] : ""), kind};
@@ -1618,6 +1665,7 @@ public class SettingsActivity extends Activity {
         for (Card c : cardList) c.view.setVisibility(View.GONE);
         refreshTiles();
         hideKeyboard();
+        afterMode();
         if (pageScroll != null) pageScroll.post(() -> pageScroll.scrollTo(0, 0));
     }
 
@@ -1625,6 +1673,8 @@ public class SettingsActivity extends Activity {
     private void openGroup(String id) {
         autosave();
         mode = "group";
+        openGroupId = id;
+        clearGlow();
         search.setVisibility(View.GONE);
         checkLine.setVisibility(View.GONE);
         grid.setVisibility(View.GONE);
@@ -1641,12 +1691,14 @@ public class SettingsActivity extends Activity {
         }
         if (shown == 1 && !only.open) toggle(only); // one card (Jarvis చెక్): open at once
         hideKeyboard();
+        afterMode();
         if (pageScroll != null) pageScroll.post(() -> pageScroll.scrollTo(0, 0));
     }
 
     /** Typing in the search box: the cards that have those words (in their title, settings or explanations). */
     private void runSearch(String q) {
         String w = q.trim().toLowerCase(Locale.ROOT);
+        clearGlow();
         if (w.length() < 2) { if (!"home".equals(mode)) showHome(); return; }
         mode = "search";
         checkLine.setVisibility(View.GONE);
@@ -1666,20 +1718,24 @@ public class SettingsActivity extends Activity {
         int f = prefs.homeMode() ? 0 : FeaturesActivity.countMatches(q.trim());
         if (featHit != null) {
             featHit.setText(f == 0 ? "📂 అన్ని ఫీచర్స్‌లో \"" + q.trim() + "\" కి ఏమీ లేదు" : "📂 అన్ని ఫీచర్స్‌లో " + f + " దొరికాయి: చూడటానికి నొక్కండి ›");
-            featHit.setTextColor(f == 0 ? Ui.MUTED : Ui.C_CYAN);
+            featHit.setTextColor(newView ? (f == 0 ? pal.mutedPage : pal.accent) : f == 0 ? Ui.MUTED : Ui.C_CYAN);
             featHit.setOnClickListener(f == 0 ? null : v -> startActivity(new Intent(this, FeaturesActivity.class).putExtra(FeaturesActivity.EXTRA_SEARCH, q.trim()).addFlags(FeaturesActivity.ONE_SCREEN)));
             featHit.setVisibility(prefs.homeMode() ? View.GONE : View.VISIBLE);
         }
+        afterMode();
+        if (newView) glowHits(hits, w);
     }
 
     /** All the words of a card, for the search. */
     private String words(Card c) {
         StringBuilder b = new StringBuilder(c.title).append(' ');
+        if (newView) b.append(oldGroupName(c.title)).append(' ').append(groupName(c.group)).append(' '); // (old and new names)
         collectWords(c.body, b);
         return b.toString().toLowerCase(Locale.ROOT);
     }
 
     private static void collectWords(View v, StringBuilder b) {
+        if (NOT_SEARCHED.equals(v.getTag())) return;
         if (v instanceof EditText) {
             CharSequence h = ((EditText) v).getHint();
             if (h != null) b.append(h).append(' ');
@@ -1725,6 +1781,7 @@ public class SettingsActivity extends Activity {
         if (t.equals(W_LINK)) return WatchHub.status(this).split("\n")[0]; // (is the watch there)
         if (t.contains("మీరు")) return "పేరు: " + name.getText().toString().trim();
         if (t.contains("థీమ్")) {
+            if (newView) return pal.label(); // (the page theme in use)
             String id = Ui.theme(this);
             for (String[] th : Ui.THEMES) if (th[0].equals(id)) return th[1];
             return "";
@@ -1809,7 +1866,7 @@ public class SettingsActivity extends Activity {
     }
 
     private void fp(View v, StringBuilder b) {
-        if (v == search) return;
+        if (v == search || (newView && v == grid)) return;
         if (v instanceof android.widget.CompoundButton) b.append(((android.widget.CompoundButton) v).isChecked() ? '1' : '0');
         else if (v instanceof EditText) b.append(((EditText) v).getText()).append('\u0001');
         else if (v instanceof SeekBar) b.append(((SeekBar) v).getProgress()).append(',');
@@ -1829,13 +1886,14 @@ public class SettingsActivity extends Activity {
         if (f.equals(lastFp)) return;
         lastFp = f;
         writePrefs();
+        recordChanges();
         changed = true;
         BackupJob.soon(this); // into the Drive backup in a little while
         summarizeShown();
         if (subtitle != null) {
             subtitle.setText("✓ సేవ్ అయింది");
-            subtitle.setTextColor(Ui.C_GREEN);
-            ui.postDelayed(() -> { subtitle.setText("Jarvis ని మీకు నచ్చినట్టు మార్చుకోండి"); subtitle.setTextColor(Ui.MUTED); }, 1500);
+            subtitle.setTextColor(newView ? pal.good : Ui.C_GREEN);
+            ui.postDelayed(() -> { subtitle.setText("Jarvis ని మీకు నచ్చినట్టు మార్చుకోండి"); subtitle.setTextColor(newView ? pal.mutedPage : Ui.MUTED); }, 1500);
         }
         if (!askedWakePerms && wake.isChecked() && Build.VERSION.SDK_INT >= 33
                 && (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
@@ -1886,6 +1944,7 @@ public class SettingsActivity extends Activity {
         if (TabletLock.active(this)) TabletLock.opened(); // (he is inside: a rebuild of this screen doesn't ask again)
         Ui.loadTheme(this);
         if (builtTheme != Ui.themeVersion) { recreate(); return; } // the theme changed while this screen was open
+        if (!builtPage.equals(PageSkin.stamp(this))) { recreate(); return; } // (the page theme too)
         if (wallShow != null) wallShow.run(); // (the car's photo was marked / the wallpaper picked meanwhile)
         showLock();
         if (bubbleMark != null) bubbleMark.run();
@@ -1919,8 +1978,10 @@ public class SettingsActivity extends Activity {
         showCheck();
         if (cardList.size() > 0) summarizeShown();
         if (!tileState.isEmpty() && "home".equals(mode)) refreshTiles();
-        if (!prefs.homeMode()) TabletWatch.refreshIfOld(this, () -> { if (!isDestroyed()) { refreshTiles(); showTabStatus(); } }); // (the 🏠 tile)
+        if (!prefs.homeMode()) TabletWatch.refreshIfOld(this, () -> { if (!isDestroyed()) { refreshTiles(); showTabStatus(); reskin(); } }); // (the 🏠 tile)
         tabReloadIfSentElsewhere();
+        if (newView) refreshNewHome();
+        reskin();
     }
 
     /** A talk flag left on with no Jarvis screen, panel or Live open. */
@@ -2042,6 +2103,11 @@ public class SettingsActivity extends Activity {
                     ? "🩺 ✓ Jarvis చెక్: అంతా సరిగ్గా ఉంది" + (ok > 0 ? " · బ్యాకప్ " + Backup.when(ok) : "")
                     : "🩺 ✗ Jarvis చెక్: " + bad + " సమస్య" + (bad > 1 ? "లు" : "") + " · చూడటానికి నొక్కండి");
             checkLine.setTextColor(bad == 0 ? 0xFFB9F6CA : 0xFFFFB4B4);
+            if (newView) { // the ring: how many checks are fine
+                int good = 0;
+                for (String line : s.toString().split("\n")) if (line.startsWith("✓")) good++;
+                showCheckRing(good, good + bad, bad);
+            }
         }
     }
 
@@ -3946,6 +4012,7 @@ public class SettingsActivity extends Activity {
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
         if (gated) return;
+        if (voiceFound(code, result, data)) return;
         if (code == REQ_WALL && result == RESULT_OK && data != null && data.getData() != null) wallPicked(data.getData()); // 🖼️ the car screen's wallpaper
         if (code >= REQ_CAR3D && code < REQ_CAR3D + CarPhotos3D.SLOTS.length && result == RESULT_OK && data != null && data.getData() != null) { // 📷 ⑯: one side of his car, kept on this box
             final Uri u = data.getData();
@@ -4382,36 +4449,40 @@ public class SettingsActivity extends Activity {
             if (s.contains(LOOKS[i][0])) { emoji = LOOKS[i][1]; color = colors[i % colors.length]; break; }
         }
         cards++;
+        if (skin != null) color = pal.accent; // (a page theme: every card in its style, like his pictures)
         accent = color;
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         int p = Ui.dp(this, 16);
         card.setPadding(p, Ui.dp(this, 14), p, Ui.dp(this, 16));
-        android.graphics.drawable.GradientDrawable bg = Ui.grad(this, new int[]{Ui.alpha(color, 0x24), Ui.alpha(color, 0x08)}, 20,
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR);
-        bg.setStroke(Ui.dp(this, 1), Ui.alpha(color, 0x55));
-        card.setBackground(bg);
+        if (skin != null) card.setBackground(skin.card(20));
+        else {
+            android.graphics.drawable.GradientDrawable bg = Ui.grad(this, new int[]{Ui.alpha(color, 0x24), Ui.alpha(color, 0x08)}, 20,
+                    android.graphics.drawable.GradientDrawable.Orientation.TL_BR);
+            bg.setStroke(Ui.dp(this, 1), Ui.alpha(color, 0x55));
+            card.setBackground(bg);
+        }
         card.setTag(color);
         cardTitles.add(new Object[]{s, card});
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
         TextView e = Ui.text(this, emoji, 18, 0xFFFFFFFF);
-        e.setBackground(Ui.round(this, Ui.alpha(color, 0x33), 0, 12));
+        e.setBackground(skin != null ? skin.chip(pal.iconBg, 0, 12) : Ui.round(this, Ui.alpha(color, 0x33), 0, 12));
         e.setGravity(Gravity.CENTER);
         head.addView(e, new LinearLayout.LayoutParams(Ui.dp(this, 36), Ui.dp(this, 36)));
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(Ui.dp(this, 12), 0, 0, 0);
-        TextView t = Ui.text(this, s, 17, color);
+        TextView t = Ui.text(this, s, 17, skin != null ? pal.ink : color);
         t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         col.addView(t);
-        TextView sum = Ui.text(this, "", 13, Ui.MUTED);
+        TextView sum = Ui.text(this, "", 13, skin != null ? pal.muted : Ui.MUTED);
         sum.setSingleLine(true);
         sum.setEllipsize(android.text.TextUtils.TruncateAt.END);
         sum.setVisibility(View.GONE);
         col.addView(sum);
         head.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView chev = Ui.text(this, "⌄", 20, color);
+        TextView chev = Ui.text(this, "⌄", 20, skin != null ? pal.muted : color);
         chev.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 2), 0);
         head.addView(chev);
         card.addView(head);
@@ -4453,10 +4524,11 @@ public class SettingsActivity extends Activity {
     }
 
     /** A darker inset box for typing, inside the glass cards. */
-    private android.graphics.drawable.GradientDrawable fieldBg() { return Ui.round(this, 0x47000000, 0x2BFFFFFF, 14); }
+    private android.graphics.drawable.Drawable fieldBg() { return skin != null ? skin.field(14) : Ui.round(this, 0x47000000, 0x2BFFFFFF, 14); }
 
     /** Switches, sliders and choices inside a card take the card's colour. */
     private void tint(View v, int color) {
+        if (skin != null) { skinTint(v); return; }
         android.content.res.ColorStateList on = android.content.res.ColorStateList.valueOf(color);
         if (v instanceof SeekBar) {
             SeekBar sb = (SeekBar) v;
@@ -4477,7 +4549,7 @@ public class SettingsActivity extends Activity {
     }
 
     private void note(String s) {
-        TextView t = Ui.text(this, s, 14, Ui.MUTED);
+        TextView t = Ui.text(this, s, 14, skin != null ? pal.muted : Ui.MUTED);
         t.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         box.addView(t);
         if (cur == null || s.length() <= 90 || box != cur.body) return;
@@ -4546,13 +4618,22 @@ public class SettingsActivity extends Activity {
     }
 
     private EditText field(String label, String value, boolean secret) {
-        TextView l = Ui.text(this, label, 14, Ui.MUTED);
+        LinearLayout into = box;
+        if (newView && technical(label)) { // (a model name, a token: in "సులభం" these wait in "అన్నీ")
+            LinearLayout w = new LinearLayout(this);
+            w.setOrientation(LinearLayout.VERTICAL);
+            box.addView(w, new LinearLayout.LayoutParams(-1, -2));
+            techRows.add(w);
+            if (cur != null) techCount.put(cur, techCount.containsKey(cur) ? techCount.get(cur) + 1 : 1);
+            into = w;
+        }
+        TextView l = Ui.text(this, label, 14, skin != null ? pal.muted : Ui.MUTED);
         l.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4));
-        box.addView(l);
+        into.addView(l);
         EditText e = new EditText(this);
         e.setText(value);
-        e.setTextColor(Ui.TEXT);
-        e.setHintTextColor(Ui.FAINT);
+        e.setTextColor(skin != null ? pal.ink : Ui.TEXT);
+        e.setHintTextColor(skin != null ? pal.faint : Ui.FAINT);
         String ex = exampleFor(label); // (an empty box shows how to fill it)
         if (ex != null) e.setHint(ex);
         e.setTextSize(16);
@@ -4563,7 +4644,7 @@ public class SettingsActivity extends Activity {
         e.setInputType(secret
                 ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
                 : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        box.addView(e, new LinearLayout.LayoutParams(-1, -2));
+        into.addView(e, new LinearLayout.LayoutParams(-1, -2));
         return e;
     }
 
@@ -5939,7 +6020,7 @@ public class SettingsActivity extends Activity {
     private Switch toggle(String label, boolean on) {
         Switch s = new Switch(this);
         s.setText(label);
-        s.setTextColor(Ui.TEXT);
+        s.setTextColor(skin != null ? pal.ink : Ui.TEXT);
         s.setTextSize(16);
         s.setChecked(on);
         s.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 12));
@@ -5951,7 +6032,7 @@ public class SettingsActivity extends Activity {
         RadioButton r = new RadioButton(this);
         r.setId(id);
         r.setText(label);
-        r.setTextColor(Ui.TEXT);
+        r.setTextColor(skin != null ? pal.ink : Ui.TEXT);
         r.setTextSize(16);
         r.setPadding(Ui.dp(this, 6), Ui.dp(this, 8), 0, Ui.dp(this, 8));
         return r;
@@ -5964,7 +6045,7 @@ public class SettingsActivity extends Activity {
         t.setOnClickListener(v -> Models.pick(this, Models.company(provider) + " మోడల్ ఎంచుకోండి",
                 new String[]{provider}, new String[]{keyField.getText().toString()},
                 into.getText().toString(), it -> chose(into, pref, it.id)));
-        box.addView(t);
+        boxOf(into).addView(t);
     }
 
     private void chose(EditText into, String pref, String model) {
@@ -6008,6 +6089,7 @@ public class SettingsActivity extends Activity {
             row.addView(forget);
             peopleBox.addView(row);
         }
+        reskin();
         String sc = FaceSight.lastScore;
         if (!names.isEmpty() && !sc.isEmpty()) {
             TextView t = Ui.text(this, "చివరిసారి చూసిన ముఖం పోలిక: " + sc + " (" + People.SAME + " పైన ఉంటే గుర్తుపడతాడు)", 12.5f, Ui.MUTED);
@@ -6062,10 +6144,13 @@ public class SettingsActivity extends Activity {
     }
 
     private TextView button(String label, View.OnClickListener l) {
-        TextView t = Ui.text(this, label, 15.5f, 0xFFFFFFFF);
-        android.graphics.drawable.GradientDrawable g = Ui.grad(this, new int[]{Ui.alpha(accent, 0x4D), Ui.alpha(accent, 0x22)}, 14, null);
-        g.setStroke(Ui.dp(this, 1), Ui.alpha(accent, 0x88));
-        t.setBackground(g);
+        TextView t = Ui.text(this, label, 15.5f, skin != null ? pal.ink : 0xFFFFFFFF);
+        if (skin != null) t.setBackground(skin.button(14));
+        else {
+            android.graphics.drawable.GradientDrawable g = Ui.grad(this, new int[]{Ui.alpha(accent, 0x4D), Ui.alpha(accent, 0x22)}, 14, null);
+            g.setStroke(Ui.dp(this, 1), Ui.alpha(accent, 0x88));
+            t.setBackground(g);
+        }
         int p = Ui.dp(this, 13);
         t.setPadding(p, p, p, p);
         t.setOnClickListener(l);
@@ -6074,6 +6159,1155 @@ public class SettingsActivity extends Activity {
         box.addView(t, lp);
         return t;
     }
+
+    // ================================================================ 7 Nov (stage 1): the new Settings (C), the way back (C0), themes (B)
+
+    /** {id, emoji, name, what is inside}: the new Settings' groups; 🗂️ పాత రూపం keeps the old GROUPS (nothing removed). */
+    static final String[][] GROUPS_NEW = {
+            {"me", "👤", "నేను, లుక్", "పేరు, థీమ్, ముఖం, ఫ్లోటింగ్ బటన్"},
+            {"brain", "🧠", "మెదడు", "AI, మోడల్స్, API keys, కోడింగ్"},
+            {"voice", "🔊", "గొంతు, వినడం", "వాయిస్, సహజ గొంతు, Live, ⚡ వేగం, వేక్ వర్డ్, పవర్ బటన్"},
+            {"msg", "💬", "మెసేజ్‌లు", "బ్రీఫింగ్, నోటిఫికేషన్లు, WhatsApp, స్క్రీన్, మోసం గార్డ్"},
+            {"calls", "📞", "కాల్స్", "కాల్ వచ్చినప్పుడు, బిజీ, VIP"},
+            {"bike", "🏍️", "బైక్, దారి", "బైక్, కదలికలు, Jarvis Maps"},
+            {"car", "🚗", "కారు", "కారు box Jarvis, నిద్ర అలర్ట్"},
+            {"tab", "🏡", "ఇల్లు", "అమ్మగారి టాబ్లెట్, స్మార్ట్ హోమ్, కాపలా"},
+            {"watch", "⌚", "వాచ్", "వినడం, అలర్ట్స్, రోజువారీ, ఆరోగ్యం, రోడ్డు, రూపం"},
+            {"daily", "❤️", "రోజువారీ, ఆరోగ్యం", "అలారం, డైరీ, హెచ్చరికలు, ఆరోగ్యం, తనంతట తానే"},
+            {"money", "💰", "లెక్కలు", "పాల లెక్క, కారు లెక్కలు, API ఖర్చు"},
+            {"safe", "🛡️", "భద్రత", "SOS, టికెట్ పేమెంట్, డాక్యుమెంట్లు"},
+            {"data", "☁️", "బ్యాకప్, అప్డేట్లు", "Drive బ్యాకప్, అప్డేట్లు, అనుమతులు"}};
+    /** The groups shown at once on the first screen; the rest behind "▾ ఇంకా". */
+    private static final int GROUPS_SHOWN = 8;
+
+    /** A card's group in the new Settings (the few cards that moved; all others stay in their old group). */
+    static String groupOfNew(String t) {
+        String old = groupOf(t);
+        if ("check".equals(old) || "watch".equals(old)) return old;
+        if (t.contains("API ఖర్చు") || t.contains("ఇంటి లెక్కలు") || t.contains("కారు లెక్కలు")) return "money";
+        if (t.contains("📞 కాల్స్")) return "calls";
+        if (t.contains("Jarvis Maps")) return "bike";
+        if ("bike".equals(old) && (t.contains("స్మార్ట్ హోమ్") || t.contains("కాపలా"))) return "tab";
+        if ("bike".equals(old) && t.contains("కారు")) return "car";
+        return old;
+    }
+
+    /** A card's group name in the old Settings (for the 📍 card and the search). */
+    private static String oldGroupName(String title) {
+        String id = groupOf(title);
+        if ("check".equals(id)) return "🩺 Jarvis చెక్";
+        for (String[] g : GROUPS) if (g[0].equals(id)) return g[1] + " " + g[2];
+        return "";
+    }
+
+    /** Light status / navigation bars (dark icons) for the light page themes. */
+    static void lightBars(android.view.Window w) {
+        try {
+            int f = w.getDecorView().getSystemUiVisibility() | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= 26) f |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            w.getDecorView().setSystemUiVisibility(f);
+        } catch (Exception ignored) {}
+    }
+
+    /** Model names and tokens: technical rows ("సులభం" leaves them in "అన్నీ"); API keys always show. */
+    private static boolean technical(String label) {
+        String l = label.toLowerCase(Locale.ROOT);
+        return l.contains("మోడల్") || l.contains("model") || l.contains("token");
+    }
+
+    private final java.util.Set<View> techRows = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+    /** Where things that belong to box e go: its సులభం wrapper (a technical box), else the card. */
+    private LinearLayout boxOf(EditText e) {
+        if (e.getParent() instanceof LinearLayout && techRows.contains((View) e.getParent())) return (LinearLayout) e.getParent();
+        return box;
+    }
+
+    /** Marks the 🔧 notes (never searched: their words would match every card). */
+    static final String NOT_SEARCHED = "\u0000not-searched";
+    private final java.util.Map<Card, Integer> techCount = new java.util.IdentityHashMap<>();
+    private final java.util.Map<Card, TextView> techNotes = new java.util.IdentityHashMap<>();
+    private final java.util.Map<String, TextView> tileBadge = new java.util.HashMap<>();
+    private LinearLayout searchRow, simpleBar, saveStrip, quickRow1, quickRow2, moreGroups;
+    private TextView saveLine, recentLine, checkText, moreLine, simpleBtn, allBtn;
+    private Ring checkRing;
+
+    /** Every switch / slider / choice in the theme's colours. */
+    private void skinTint(View v) {
+        if (skin == null) return;
+        if (v instanceof Switch || v instanceof SeekBar || v instanceof android.widget.CompoundButton) skin.tint(v);
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) skinTint(g.getChildAt(i));
+        }
+    }
+
+    /** The page painted again in its theme (after a part of it changed). */
+    private void reskin() { if (skin != null && pageScroll != null) skin.apply(pageScroll); }
+
+    // ---------------------------------------------------------------- 🗂️ ⇄ ✨
+
+    /** The old Settings' only new thing: a way back to the new one (top of the page). */
+    private void oldViewButton() {
+        TextView b = Ui.text(this, "✨ కొత్త సెట్టింగ్స్ రూపం చూడు", 14, 0xFFFFFFFF);
+        b.setBackground(Ui.round(this, Ui.alpha(Ui.C_CYAN, 0x26), Ui.alpha(Ui.C_CYAN, 0x88), 999));
+        b.setPadding(Ui.dp(this, 14), Ui.dp(this, 7), Ui.dp(this, 14), Ui.dp(this, 7));
+        b.setOnClickListener(v -> switchView("new"));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.topMargin = Ui.dp(this, 10);
+        page.addView(b, 1, lp);
+    }
+
+    /** "పాత సెట్టింగ్స్ పెట్టు" → "old", "కొత్త సెట్టింగ్స్ పెట్టు" → "new" (a short command only); anything else null. */
+    static String viewWords(String said) {
+        if (said == null) return null;
+        String t = said.toLowerCase(Locale.ROOT).replaceAll("[\\p{Punct}।]+", " ").replace("jarvis", " ").replace("జార్విస్", " ")
+                .replaceAll("\\s+", " ").trim();
+        if (t.isEmpty() || t.length() > 60 || t.split(" ").length > 5) return null;
+        if (!t.contains("సెట్టింగ్") && !t.contains("settings")) return null;
+        boolean old = t.contains("పాత") || t.matches(".*\\bold\\b.*"), nw = t.contains("కొత్త") || t.matches(".*\\bnew\\b.*");
+        if (old == nw) return null;
+        boolean verb = t.contains("పెట్టు") || t.contains("మార్చు") || t.contains("చూపించు") || t.contains("తెరువు") || t.contains("కావాలి")
+                || t.contains("రూపం") || t.matches(".*\\b(put|show|open|switch|use|set)\\b.*");
+        return verb ? (old ? "old" : "new") : null;
+    }
+
+    /** Keeps that view of Settings on this device (the next time Settings opens) and what Jarvis says about it. */
+    static String setView(android.content.Context c, String v) {
+        c.getSharedPreferences("jarvis_settings_ui", MODE_PRIVATE).edit().putString("settings_view", v).apply();
+        String n = new Prefs(c).name();
+        return "old".equals(v) ? "సరే " + n + ", సెట్టింగ్స్ పాత రూపంలో పెట్టాను: ఇంతకుముందు లాగే. కొత్తది కావాలంటే \"కొత్త సెట్టింగ్స్ పెట్టు\" అనండి."
+                : "సరే " + n + ", కొత్త సెట్టింగ్స్ రూపం పెట్టాను. పాతది కావాలంటే \"పాత సెట్టింగ్స్ పెట్టు\" అనండి.";
+    }
+
+    /** Saves what he typed, keeps the choice (this device only) and builds the screen again in that view. */
+    private void switchView(String v) {
+        autosave();
+        uiSp.edit().putString("settings_view", v).apply();
+        Toast.makeText(this, "new".equals(v) ? "✨ కొత్త రూపం" : "🗂️ పాత రూపం: ఇంతకుముందు లాగే", Toast.LENGTH_SHORT).show();
+        recreate();
+    }
+
+    // ---------------------------------------------------------------- the first screen
+
+    private TextView pill(String s, View.OnClickListener l) {
+        TextView t = Ui.text(this, s, 13, pal.ink);
+        t.setBackground(skin != null ? skin.card(999) : Ui.glass(this, 999));
+        t.setPadding(Ui.dp(this, 13), Ui.dp(this, 7), Ui.dp(this, 13), Ui.dp(this, 7));
+        t.setOnClickListener(l);
+        return t;
+    }
+
+    private TextView head(String s) {
+        TextView t = Ui.text(this, s, 14, pal.inkPage);
+        t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        t.setPadding(Ui.dp(this, 4), Ui.dp(this, 14), 0, Ui.dp(this, 6));
+        return t;
+    }
+
+    private android.graphics.drawable.Drawable tileBg(float r) { return skin != null ? skin.card(r) : Ui.glass(this, r); }
+
+    /** The new first screen: 🗂️ / 📜, search + 🎤, 📍 what moved, the check ring, ⭐ quick tiles, the groups, 🕘 recent. */
+    private void buildHomeNew() {
+        int at = 1;
+        LinearLayout home = new LinearLayout(this);
+        home.setOrientation(LinearLayout.VERTICAL);
+        grid = home; // (shown on the first screen only, like the old tiles)
+
+        LinearLayout pills = new LinearLayout(this);
+        pills.addView(pill("🗂️ పాత రూపం", v -> switchView("old")));
+        TextView all = pill("📜 అన్నీ ఒకే పేజీ", v -> showAll());
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(-2, -2);
+        plp.leftMargin = Ui.dp(this, 8);
+        pills.addView(all, plp);
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(-1, -2);
+        pl.topMargin = Ui.dp(this, 10);
+        home.addView(pills, pl);
+
+        // the search (outside the first-screen box: it stays while he types)
+        searchRow = new LinearLayout(this);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        search = new EditText(this);
+        search.setHint("🔍  వెతుకు: గొంతు, బ్యాకప్, అమ్మ, మాత్ర, బైక్…");
+        search.setSingleLine(true);
+        search.setTextColor(pal.ink);
+        search.setHintTextColor(pal.faint);
+        search.setTextSize(15.5f);
+        search.setBackground(skin != null ? skin.field(22) : Ui.round(this, 0x47000000, 0x2BFFFFFF, 22));
+        int p = Ui.dp(this, 12);
+        search.setPadding(Ui.dp(this, 16), p, p, p);
+        search.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void afterTextChanged(android.text.Editable e) { runSearch(e.toString()); }
+        });
+        searchRow.addView(search, new LinearLayout.LayoutParams(0, -2, 1));
+        IconView mic = new IconView(this, IconView.MIC, pal.accent);
+        mic.setBackground(skin != null ? skin.chip(pal.iconBg, 0, 999) : Ui.glass(this, 999));
+        mic.setContentDescription("మాటతో వెతుకు");
+        mic.setOnClickListener(v -> voiceFind());
+        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46));
+        mlp.leftMargin = Ui.dp(this, 8);
+        searchRow.addView(mic, mlp);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
+        slp.topMargin = Ui.dp(this, 12);
+
+        // 📍 what moved where (until he closes it)
+        View moved = buildMoved();
+        if (moved != null) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.topMargin = Ui.dp(this, 12);
+            home.addView(moved, lp);
+        }
+        whatsNew = buildWhatsNew();
+        if (whatsNew != null) {
+            LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(-1, -2);
+            wlp.topMargin = Ui.dp(this, 12);
+            home.addView(whatsNew, wlp);
+        }
+
+        // 🩺 the check with its ring
+        LinearLayout chk = new LinearLayout(this);
+        chk.setGravity(Gravity.CENTER_VERTICAL);
+        chk.setPadding(Ui.dp(this, 10), Ui.dp(this, 10), Ui.dp(this, 14), Ui.dp(this, 10));
+        chk.setBackground(tileBg(18));
+        checkRing = new Ring(this, pal);
+        chk.addView(checkRing, new LinearLayout.LayoutParams(Ui.dp(this, 50), Ui.dp(this, 50)));
+        LinearLayout cc = new LinearLayout(this);
+        cc.setOrientation(LinearLayout.VERTICAL);
+        cc.setPadding(Ui.dp(this, 12), 0, 0, 0);
+        TextView ct = Ui.text(this, "🩺 Jarvis చెక్", 15, pal.ink);
+        ct.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        cc.addView(ct);
+        checkText = Ui.text(this, "", 12.5f, pal.muted);
+        checkText.setMaxLines(2);
+        checkText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        cc.addView(checkText);
+        chk.addView(cc, new LinearLayout.LayoutParams(0, -2, 1));
+        chk.setOnClickListener(v -> openGroup("check"));
+        checkLine = Ui.text(this, "", 1, 0); // (the old one-line check: kept for showCheck, never shown here)
+        checkLine.setVisibility(View.GONE);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-1, -2);
+        clp.topMargin = Ui.dp(this, 12);
+        home.addView(chk, clp);
+
+        // ⭐ the six quick tiles (fixed; only his 📌 changes them)
+        home.addView(head("⭐ తరచుగా వాడేవి   (📌 మార్చడానికి వేలు నొక్కి పట్టుకోండి)"));
+        quickRow1 = new LinearLayout(this);
+        quickRow2 = new LinearLayout(this);
+        home.addView(quickRow1, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams q2 = new LinearLayout.LayoutParams(-1, -2);
+        q2.topMargin = Ui.dp(this, 8);
+        home.addView(quickRow2, q2);
+
+        // the groups (with a line of how each stands, ⚠️ when something needs him)
+        home.addView(head("విభాగాలు"));
+        moreGroups = new LinearLayout(this);
+        moreGroups.setOrientation(LinearLayout.VERTICAL);
+        moreGroups.setVisibility(View.GONE);
+        java.util.List<String[]> used = new java.util.ArrayList<>();
+        for (String[] g : GROUPS_NEW) {
+            boolean any = false;
+            for (Card c : cardList) if (c.group.equals(g[0])) { any = true; break; }
+            if (any) used.add(g);
+        }
+        LinearLayout row = null;
+        StringBuilder more = new StringBuilder();
+        int moreN = 0;
+        for (int i = 0; i < used.size(); i++) {
+            String[] g = used.get(i);
+            LinearLayout into = i < GROUPS_SHOWN ? home : moreGroups;
+            if (i % 2 == 0) {
+                row = new LinearLayout(this);
+                row.setClipChildren(false);
+                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
+                rlp.topMargin = Ui.dp(this, i == 0 || i == GROUPS_SHOWN ? 0 : 9);
+                into.addView(row, rlp);
+            }
+            if (i >= GROUPS_SHOWN) { more.append(moreN++ == 0 ? "" : " · ").append(g[1]).append(' ').append(g[2]); }
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -1, 1);
+            if (i % 2 == 0) tlp.rightMargin = Ui.dp(this, 5); else tlp.leftMargin = Ui.dp(this, 5);
+            row.addView(groupTile(g), tlp);
+            if (i % 2 == 0 && i == used.size() - 1) {
+                LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, -1, 1);
+                sp.leftMargin = Ui.dp(this, 5);
+                row.addView(new View(this), sp);
+            }
+        }
+        if (moreN > 0) {
+            moreLine = Ui.text(this, "▾ ఇంకా " + moreN + ": " + more, 12.5f, pal.mutedPage);
+            moreLine.setGravity(Gravity.CENTER);
+            moreLine.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 4));
+            final String moreWords = more.toString();
+            final int mn = moreN;
+            moreLine.setOnClickListener(v -> {
+                boolean open = moreGroups.getVisibility() != View.VISIBLE;
+                moreGroups.setVisibility(open ? View.VISIBLE : View.GONE);
+                moreLine.setText(open ? "▴ తక్కువ చూపించు" : "▾ ఇంకా " + mn + ": " + moreWords);
+                reskin();
+            });
+            home.addView(moreLine, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout.LayoutParams mg = new LinearLayout.LayoutParams(-1, -2);
+            mg.topMargin = Ui.dp(this, 4);
+            home.addView(moreGroups, mg);
+        }
+
+        // 🕘 recent changes, ↩️ the last one back
+        LinearLayout rec = new LinearLayout(this);
+        rec.setGravity(Gravity.CENTER_VERTICAL);
+        rec.setPadding(Ui.dp(this, 14), Ui.dp(this, 11), Ui.dp(this, 12), Ui.dp(this, 11));
+        rec.setBackground(tileBg(16));
+        recentLine = Ui.text(this, "", 13.5f, pal.ink);
+        recentLine.setMaxLines(1);
+        recentLine.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        rec.addView(recentLine, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView back = Ui.text(this, "↩️ వెనక్కి", 13.5f, pal.accent);
+        back.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        back.setPadding(Ui.dp(this, 10), Ui.dp(this, 2), 0, Ui.dp(this, 2));
+        back.setOnClickListener(v -> undoLast());
+        rec.addView(back);
+        rec.setOnClickListener(v -> showRecent());
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
+        rlp.topMargin = Ui.dp(this, 14);
+        home.addView(rec, rlp);
+
+        page.addView(searchRow, at++, slp);
+        page.addView(home, at++, new LinearLayout.LayoutParams(-1, -2));
+        page.setClipChildren(false);
+        home.setClipChildren(false);
+
+        groupBar = new LinearLayout(this);
+        groupBar.setGravity(Gravity.CENTER_VERTICAL);
+        groupBar.setPadding(0, Ui.dp(this, 12), 0, 0);
+        TextView backArrow = Ui.text(this, "‹", 30, pal.inkPage);
+        backArrow.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 12), Ui.dp(this, 4));
+        groupBar.addView(backArrow);
+        groupTitle = Ui.text(this, "", 20, pal.inkPage);
+        groupTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        groupBar.addView(groupTitle, new LinearLayout.LayoutParams(0, -2, 1));
+        groupBar.setOnClickListener(v -> goHome());
+        page.addView(groupBar, at++, new LinearLayout.LayoutParams(-1, -2));
+
+        // సులభం / అన్నీ (inside a group; starts in అన్నీ so nothing looks hidden)
+        simpleBar = new LinearLayout(this);
+        simpleBar.setPadding(Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4));
+        simpleBar.setBackground(skin != null ? skin.field(16) : Ui.glass(this, 16));
+        simpleBtn = Ui.text(this, "సులభం", 14, pal.ink);
+        allBtn = Ui.text(this, "అన్నీ (టెక్నికల్ కూడా)", 14, pal.ink);
+        for (TextView b : new TextView[]{simpleBtn, allBtn}) {
+            b.setGravity(Gravity.CENTER);
+            b.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+            simpleBar.addView(b, new LinearLayout.LayoutParams(0, -2, 1));
+        }
+        simpleBtn.setOnClickListener(v -> setSimple(true));
+        allBtn.setOnClickListener(v -> setSimple(false));
+        LinearLayout.LayoutParams sb = new LinearLayout.LayoutParams(-1, -2);
+        sb.topMargin = Ui.dp(this, 10);
+        page.addView(simpleBar, at++, sb);
+
+        featHit = Ui.text(this, "", 14.5f, pal.accent); // (in a search: the same words in All Features)
+        featHit.setPadding(Ui.dp(this, 4), Ui.dp(this, 10), 0, Ui.dp(this, 2));
+        featHit.setVisibility(View.GONE);
+        page.addView(featHit, at, new LinearLayout.LayoutParams(-1, -2));
+
+        // each card that hides rows in సులభం says so ("🔧 2 'అన్నీ' లో"), a tap shows them
+        for (Card c : cardList) {
+            Integer n = techCount.get(c);
+            if (n == null || n == 0) continue;
+            TextView t = Ui.text(this, "🔧 మోడల్ పేర్లు / టోకెన్లు (" + n + ") \"అన్నీ\" లో ఉన్నాయి: చూడటానికి నొక్కండి", 13, pal.accent);
+            t.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 2));
+            t.setOnClickListener(v -> setSimple(false));
+            t.setVisibility(View.GONE);
+            t.setTag(NOT_SEARCHED);
+            c.body.addView(t);
+            techNotes.put(c, t);
+        }
+        buildQuick();
+        refreshRecent();
+    }
+
+    /** One group's tile: its emoji, name, how it stands now (refreshTiles) and a ⚠️ badge. */
+    private View groupTile(String[] g) {
+        final String id = g[0];
+        android.widget.FrameLayout f = new android.widget.FrameLayout(this);
+        LinearLayout tile = new LinearLayout(this);
+        tile.setGravity(Gravity.CENTER_VERTICAL);
+        tile.setPadding(Ui.dp(this, 10), Ui.dp(this, 11), Ui.dp(this, 10), Ui.dp(this, 11));
+        f.setBackground(tileBg(16));
+        TextView ic = Ui.text(this, g[1], 18, pal.ink);
+        ic.setGravity(Gravity.CENTER);
+        ic.setBackground(skin != null ? skin.chip(pal.iconBg, 0, 11) : Ui.round(this, Ui.alpha(pal.accent, 0x26), 0, 11));
+        tile.addView(ic, new LinearLayout.LayoutParams(Ui.dp(this, 36), Ui.dp(this, 36)));
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(Ui.dp(this, 9), 0, Ui.dp(this, 6), 0);
+        TextView name = Ui.text(this, g[2], 14, pal.ink);
+        name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        name.setMaxLines(1);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        col.addView(name);
+        TextView state = Ui.text(this, g[3], 11.5f, pal.muted);
+        state.setMaxLines(2);
+        state.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        col.addView(state);
+        tileState.put(id, state);
+        tile.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
+        f.addView(tile, new android.widget.FrameLayout.LayoutParams(-1, -2));
+        TextView badge = Ui.text(this, "", 11, pal.badgeInk);
+        badge.setPadding(Ui.dp(this, 5), 0, Ui.dp(this, 5), 0);
+        badge.setVisibility(View.GONE);
+        android.widget.FrameLayout.LayoutParams blp = new android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        blp.topMargin = Ui.dp(this, 6);
+        blp.rightMargin = Ui.dp(this, 7);
+        f.addView(badge, blp);
+        tileBadge.put(id, badge);
+        f.setOnClickListener(v -> openGroup(id));
+        return f;
+    }
+
+    /** A new group's line when it has no special one: the first cards' own lines. */
+    private String groupSummary(String id) {
+        StringBuilder b = new StringBuilder();
+        int n = 0;
+        for (Card c : cardList) {
+            if (!c.group.equals(id)) continue;
+            String s = "";
+            try { s = summaryOf(c); } catch (Exception ignored) {}
+            if (s.isEmpty()) continue;
+            if (n++ > 0) b.append(" · ");
+            b.append(s);
+            if (n == 2) break;
+        }
+        return b.toString();
+    }
+
+    /** The check card's ring and line (showCheck's counts). */
+    private void showCheckRing(int good, int all, int bad) {
+        if (checkRing == null || checkText == null) return;
+        checkRing.set(good, all, bad);
+        checkText.setText(bad == 0 ? "✓ అంతా బాగుంది" : "⚠️ " + bad + " సమస్య" + (bad > 1 ? "లు" : "") + ": చూడటానికి నొక్కండి ›");
+        checkText.setTextColor(bad == 0 ? pal.good : pal.warn);
+    }
+
+    /** The check's little ring: how many of its checks are fine. */
+    static final class Ring extends View {
+        private final android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final PageTheme t;
+        private final android.graphics.RectF r = new android.graphics.RectF();
+        private int good, all, bad;
+
+        Ring(android.content.Context c, PageTheme t) { super(c); this.t = t; }
+
+        void set(int good, int all, int bad) { this.good = good; this.all = all; this.bad = bad; invalidate(); }
+
+        @Override protected void onDraw(android.graphics.Canvas cv) {
+            float w = getWidth(), h = getHeight(), s = Math.min(w, h), sw = s * .09f;
+            r.set((w - s) / 2 + sw, (h - s) / 2 + sw, (w + s) / 2 - sw, (h + s) / 2 - sw);
+            p.setStyle(android.graphics.Paint.Style.STROKE);
+            p.setStrokeWidth(sw);
+            p.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+            p.setColor(PageTheme.withAlpha(t.lightCard ? t.ink : 0xFFFFFFFF, 0x26));
+            cv.drawArc(r, 0, 360, false, p);
+            p.setColor(bad == 0 ? t.good : t.warn);
+            if (all > 0) cv.drawArc(r, -90, 360f * good / all, false, p);
+            p.setStyle(android.graphics.Paint.Style.FILL);
+            p.setColor(t.ink);
+            p.setTextAlign(android.graphics.Paint.Align.CENTER);
+            p.setTextSize(s * .22f);
+            p.setFakeBoldText(true);
+            String txt = all == 0 ? "…" : good + "/" + all;
+            cv.drawText(txt, w / 2, h / 2 - (p.descent() + p.ascent()) / 2, p);
+        }
+    }
+
+    // ---------------------------------------------------------------- 📍 what moved (the first opens, until ✕)
+
+    private View buildMoved() {
+        if (uiSp.getBoolean("moved_seen", false) || prefs.homeMode()) return null;
+        LinearLayout w = new LinearLayout(this);
+        w.setOrientation(LinearLayout.VERTICAL);
+        w.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
+        w.setBackground(tileBg(18));
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView t = Ui.text(this, "📍 కొత్త సెట్టింగ్స్: ఏది ఎక్కడికి వెళ్ళింది", 15, pal.ink);
+        t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        head.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView x = Ui.text(this, "✕", 20, pal.muted);
+        x.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 4), 0);
+        x.setContentDescription("మూసేయి");
+        x.setOnClickListener(v -> { uiSp.edit().putBoolean("moved_seen", true).apply(); w.setVisibility(View.GONE); });
+        head.addView(x);
+        w.addView(head);
+        String[] lines = {
+                "ఏ సెట్టింగ్ తీసేయలేదు: అన్నీ ఉన్నాయి. పైన 🗂️ పాత రూపం నొక్కితే ఇంతకుముందు సెట్టింగ్స్ అలాగే వస్తాయి.",
+                "⭐ తరచుగా వాడేవి: పైన 6. మార్చాలంటే ఆ బటన్ మీద వేలు నొక్కి పట్టుకోండి (📌). తమంతట తామే మారవు.",
+                "🔍 వెతికితే పాత పేర్లతో కూడా దొరుకుతుంది; 🎤 నొక్కి మాటతో కూడా. \"Jarvis, సెట్టింగ్స్‌లో … తెరువు\" ఎప్పటిలాగే.",
+                "📜 అన్నీ ఒకే పేజీ: అన్ని కార్డులు ఒకే వరుసలో, ఇంతకుముందు క్రమంలోనే.",
+                "🕘 ఇటీవల మార్చినవి: ప్రతి మార్పు అక్కడ కనిపిస్తుంది, ↩️ తో వెనక్కి (స్విచ్‌లు, బాక్స్‌లు, స్లైడర్లు, ఎంపికలు, థీమ్)."};
+        for (String l : lines) {
+            TextView n = Ui.text(this, "• " + l, 13, pal.muted);
+            n.setPadding(0, Ui.dp(this, 6), 0, 0);
+            w.addView(n);
+        }
+        TextView mv = Ui.text(this, "కొత్త చోటుకి వెళ్ళినవి (నొక్కితే అక్కడికే):", 13.5f, pal.ink);
+        mv.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        mv.setPadding(0, Ui.dp(this, 10), 0, 0);
+        w.addView(mv);
+        int n = 0;
+        for (Card c : cardList) {
+            if (groupOf(c.title).equals(c.group)) continue; // (same group: maybe a new name, said below)
+            String was = oldGroupName(c.title), now = groupName(c.group);
+            if (was.isEmpty() || now.isEmpty()) continue;
+            TextView r = Ui.text(this, "› " + c.title + ":  " + was + "  →  " + now, 13, pal.accent);
+            r.setPadding(0, Ui.dp(this, 7), 0, Ui.dp(this, 1));
+            final Card to = c;
+            r.setOnClickListener(v -> showCard(to));
+            w.addView(r);
+            n++;
+        }
+        if (n == 0) mv.setVisibility(View.GONE);
+        StringBuilder renamed = new StringBuilder();
+        for (String[] o : GROUPS) for (String[] g : GROUPS_NEW)
+            if (o[0].equals(g[0]) && !(o[1] + o[2]).equals(g[1] + g[2]))
+                renamed.append(renamed.length() == 0 ? "" : " · ").append(o[1]).append(' ').append(o[2]).append(" → ").append(g[1]).append(' ').append(g[2]);
+        if (renamed.length() > 0) {
+            TextView rn = Ui.text(this, "పేరు మారిన విభాగాలు (లోపలి కార్డులు అవే): " + renamed, 13, pal.muted);
+            rn.setPadding(0, Ui.dp(this, 10), 0, 0);
+            w.addView(rn);
+        }
+        return w;
+    }
+
+    // ---------------------------------------------------------------- 🎤 find by voice
+
+    private static final int REQ_VOICE_FIND = 91;
+
+    private void voiceFind() {
+        Intent i = new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, prefs.listenLang().startsWith("en") ? "en-IN" : "te-IN")
+                .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "ఏ సెట్టింగ్ కావాలి?");
+        try { startActivityForResult(i, REQ_VOICE_FIND); }
+        catch (Exception e) { Toast.makeText(this, "ఈ ఫోన్‌లో మాటతో వెతకడం లేదు: టైప్ చేయండి", Toast.LENGTH_SHORT).show(); }
+    }
+
+    /** (from onActivityResult) What he said goes into the search. */
+    private boolean voiceFound(int code, int result, Intent data) {
+        if (code != REQ_VOICE_FIND) return false;
+        if (result == RESULT_OK && data != null) {
+            java.util.ArrayList<String> said = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+            if (said != null && !said.isEmpty() && search != null) search.setText(said.get(0).trim());
+        }
+        return true;
+    }
+
+    // ---------------------------------------------------------------- the parts that follow the mode
+
+    /** After home / a group / a search / all: the new view's parts shown or hidden, సులభం applied, painted again. */
+    private void afterMode() {
+        if (!newView) return;
+        if (searchRow != null) searchRow.setVisibility(search.getVisibility());
+        boolean inGroup = "group".equals(mode) && !"check".equals(openGroupId);
+        if (simpleBar != null) simpleBar.setVisibility(inGroup ? View.VISIBLE : View.GONE);
+        if (saveStrip != null) saveStrip.setVisibility("home".equals(mode) ? View.GONE : View.VISIBLE);
+        applySimple();
+        if ("home".equals(mode)) refreshNewHome();
+        if (!"search".equals(mode)) reskin(); // (a search only shows cards already painted)
+    }
+
+    private String openGroupId = "";
+
+    private boolean simple() { return uiSp.getBoolean("settings_simple", false); }
+
+    private void setSimple(boolean on) {
+        uiSp.edit().putBoolean("settings_simple", on).apply();
+        applySimple();
+        reskin();
+    }
+
+    /** సులభం: the technical rows wait (only inside a group; a search and 📜 show everything). */
+    private void applySimple() {
+        boolean hide = newView && simple() && "group".equals(mode);
+        for (View v : techRows) v.setVisibility(hide ? View.GONE : View.VISIBLE);
+        for (java.util.Map.Entry<Card, TextView> e : techNotes.entrySet()) e.getValue().setVisibility(hide ? View.VISIBLE : View.GONE);
+        if (simpleBtn == null) return;
+        boolean s = simple();
+        simpleBtn.setBackground(s ? Ui.round(this, pal.swOn, 0, 12) : null);
+        allBtn.setBackground(!s ? Ui.round(this, pal.swOn, 0, 12) : null);
+        int on = pal.swOn | 0xFF000000;
+        int onInk = PageTheme.contrast(0xFF111111, on) >= PageTheme.contrast(0xFFFFFFFF, on) ? 0xFF111111 : 0xFFFFFFFF;
+        simpleBtn.setTextColor(s ? onInk : pal.ink);
+        allBtn.setTextColor(!s ? onInk : pal.ink);
+    }
+
+    /** 📜 every card on one page, in the old order (folded, each with its line). */
+    private void showAll() {
+        autosave();
+        mode = "all";
+        clearGlow();
+        search.setVisibility(View.GONE);
+        grid.setVisibility(View.GONE);
+        if (featHit != null) featHit.setVisibility(View.GONE);
+        groupBar.setVisibility(View.VISIBLE);
+        groupTitle.setText("📜 అన్ని సెట్టింగ్స్ (ఒకే పేజీ)");
+        for (Card c : cardList) { c.view.setVisibility(View.VISIBLE); summarize(c); }
+        hideKeyboard();
+        afterMode();
+        if (pageScroll != null) pageScroll.post(() -> pageScroll.scrollTo(0, 0));
+    }
+
+    /** The bottom line inside a group: "✓ saved as you change · last: …  ↩️". */
+    private void buildSaveStrip() {
+        saveStrip = new LinearLayout(this);
+        saveStrip.setGravity(Gravity.CENTER_VERTICAL);
+        saveStrip.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
+        saveStrip.setBackground(tileBg(16));
+        saveLine = Ui.text(this, "", 13, pal.muted);
+        saveLine.setMaxLines(2);
+        saveLine.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        saveStrip.addView(saveLine, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView back = Ui.text(this, "↩️", 18, pal.accent);
+        back.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 2), 0);
+        back.setContentDescription("చివరి మార్పు వెనక్కి");
+        back.setOnClickListener(v -> undoLast());
+        saveStrip.addView(back);
+        saveStrip.setOnClickListener(v -> showRecent());
+        saveStrip.setVisibility(View.GONE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = Ui.dp(this, 16);
+        page.addView(saveStrip, lp);
+        refreshRecent();
+    }
+
+    private void refreshNewHome() {
+        refreshQuick();
+        refreshRecent();
+    }
+
+    // ---------------------------------------------------------------- 🔍 the row he searched for glows
+
+    private final java.util.Map<View, android.graphics.drawable.Drawable> glowing = new java.util.IdentityHashMap<>();
+
+    private void glowHits(java.util.List<Card> hits, String w) {
+        if (hits.size() > 8) return; // (too many: only the cards)
+        for (Card c : hits) glowIn(c.body, w);
+    }
+
+    private void glowIn(View v, String w) {
+        if (v instanceof TextView && !(v instanceof EditText) && v.getVisibility() == View.VISIBLE) {
+            CharSequence txt = v.getTag() instanceof String[] ? ((String[]) v.getTag())[1] : ((TextView) v).getText();
+            if (txt != null && txt.length() > 0 && SearchWords.matches(txt.toString().toLowerCase(Locale.ROOT), w)) {
+                if (!glowing.containsKey(v)) glowing.put(v, v.getBackground());
+                android.graphics.drawable.GradientDrawable g = new PageSkin.Box();
+                g.setColor(pal.glow);
+                g.setCornerRadius(Ui.dp(this, 10));
+                g.setStroke(Ui.dp(this, 1), PageTheme.withAlpha(pal.accent, 0x99));
+                v.setBackground(g);
+                return;
+            }
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) glowIn(g.getChildAt(i), w);
+        }
+    }
+
+    private void clearGlow() {
+        for (java.util.Map.Entry<View, android.graphics.drawable.Drawable> e : glowing.entrySet()) e.getKey().setBackground(e.getValue());
+        glowing.clear();
+    }
+
+    // ---------------------------------------------------------------- 🎨 the theme chooser (pictures)
+
+    private void themePicker() {
+        note("బొమ్మ నొక్కగానే ఆ థీమ్ వస్తుంది (నచ్చకపోతే 🕘 ఇటీవల మార్చినవి → ↩️ వెనక్కి). కొత్త 10: పేజీలకు (సెట్టింగ్స్, అన్ని ఫీచర్స్, డ్యూటీ, ఫోటోలు). "
+                + "పాత 3: ఇంతకుముందు లాగే మెయిన్ స్క్రీన్, వాచ్ రంగులు కూడా. Jarvis గోళం ఎప్పుడూ మారదు; ప్రతి పరికరం తన థీమ్ తనదే.");
+        String[][] parts = {{"🆕 మీ ఫోటోల నుంచి", "1"}, {"🚗 కారు box నుంచి", "2"}, {"🗂️ పాత 3", "0"}};
+        for (String[] part : parts) {
+            TextView h = Ui.text(this, part[0], 13.5f, skin != null ? pal.muted : Ui.MUTED);
+            h.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            h.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 6));
+            box.addView(h);
+            LinearLayout row = null;
+            int n = 0, from = Integer.parseInt(part[1]);
+            for (PageTheme t : PageTheme.ALL) {
+                if (t.from != from) continue;
+                if (n % 3 == 0) {
+                    row = new LinearLayout(this);
+                    LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+                    rl.topMargin = Ui.dp(this, n == 0 ? 0 : 8);
+                    box.addView(row, rl);
+                }
+                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, -2, 1);
+                tl.leftMargin = n % 3 == 0 ? 0 : Ui.dp(this, 4);
+                tl.rightMargin = n % 3 == 2 ? 0 : Ui.dp(this, 4);
+                row.addView(themeTile(t), tl);
+                n++;
+            }
+            while (n % 3 != 0) { row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1)); n++; }
+        }
+        // H: the pages take the main screen's look (the looks come in the next stage)
+        Switch follow = toggle("📄 పేజీలు కూడా ఈ లుక్ లోనే: కొత్త మెయిన్ స్క్రీన్ లుక్ ఎంచుకుంటే సెట్టింగ్స్, ఫీచర్స్ పేజీలు ఆ లుక్ రంగుల్లో",
+                prefs.sp.getBoolean("pages_follow_look", true));
+        follow.setOnCheckedChangeListener((b, on) -> prefs.sp.edit().putBoolean("pages_follow_look", on).apply());
+        note("మెయిన్ స్క్రీన్ ఇప్పుడు 'పాత రూపం' లోనే ఉంది: కొత్త లుక్స్ తర్వాతి దశలో వస్తాయి. అప్పటివరకు పేజీలు పైన మీరు ఎంచుకున్న థీమ్‌లోనే.");
+        TextView[] motion = new TextView[1];
+        Runnable mark = () -> motion[0].setText(Ui.hudMotion(this) ? "🌀  పాత 3 లో వలయాల కదలిక: ఆన్ (ఆపడానికి నొక్కండి)" : "⏸  పాత 3 లో వలయాల కదలిక: ఆఫ్ (ఆన్ చేయడానికి నొక్కండి)");
+        motion[0] = button("", v -> { Ui.setTheme(this, Ui.theme(this), !Ui.hudMotion(this)); builtTheme = Ui.themeVersion; mark.run(); });
+        mark.run();
+        note("బ్యాటరీ సేవర్ ఆన్‌లో ఉంటే వలయాలు తమంతట తామే ఆగుతాయి. కొత్త థీమ్‌ల బొమ్మలు పేజీల్లో కదలవు.");
+    }
+
+    private View themeTile(PageTheme t) {
+        boolean on = t.id.equals(pal.id);
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER_HORIZONTAL);
+        tile.setPadding(Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 6));
+        if (on) tile.setBackground(Ui.round(this, PageTheme.withAlpha(pal.accent, 0x22), pal.accent, 14));
+        View pic = new View(this);
+        pic.setBackground(PageSkin.preview(this, t));
+        tile.addView(pic, new LinearLayout.LayoutParams(-1, Ui.dp(this, 88)));
+        TextView name = Ui.text(this, (on ? "✓ " : "") + t.label(), 12, skin != null ? pal.ink : Ui.TEXT);
+        name.setGravity(Gravity.CENTER);
+        name.setMaxLines(2);
+        name.setPadding(0, Ui.dp(this, 5), 0, 0);
+        if (on) name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        tile.addView(name);
+        tile.setContentDescription(t.name + (on ? " (ఇప్పుడు ఇదే)" : ""));
+        tile.setOnClickListener(v -> chooseTheme(t));
+        return tile;
+    }
+
+    /** His tap on a theme: saved, kept in 🕘 (↩️ brings the one before back), the screen built again in it. */
+    private void chooseTheme(PageTheme t) {
+        if (t.id.equals(pal.id)) return;
+        autosave();
+        String fromPage = pal.id, fromOld = Ui.theme(this);
+        try {
+            addRecent(new org.json.JSONObject().put("k", "theme").put("v", fromPage).put("o", fromOld)
+                    .put("l", "🎨 థీమ్: " + pal.label() + " → " + t.label()));
+        } catch (Exception ignored) {}
+        PageSkin.choose(this, t.id);
+        Toast.makeText(this, "🎨 " + t.label(), Toast.LENGTH_SHORT).show();
+        recreate();
+    }
+
+    // ---------------------------------------------------------------- ⭐ quick tiles (fixed six; 📌 by him only)
+
+    /** {kind s(witch) / c(ard), the card's title words, the switch's first words, emoji, name}. */
+    private static final String[] QUICK_DEFAULT = {
+            "s|వేక్ వర్డ్|వేక్ వర్డ్ ఆన్|👂|వేక్ వర్డ్", "s|సహజ గొంతు|సహజ గొంతు వాడు|🗣️|సహజ గొంతు",
+            "s|మెసేజ్‌లు, ఉదయం బ్రీఫింగ్|కొత్త మెసేజ్ వస్తే|💬|మెసేజ్ చెప్పడం", "c|ఫ్లోటింగ్ బటన్||🔵|ఫ్లోటింగ్ బటన్",
+            "c|బ్యాకప్ & రీస్టోర్||☁️|బ్యాకప్", "c|థీమ్ (రంగులు)||🎨|థీమ్"};
+    /** Taken in turn when one of the six is not on this device (the tablet, the car box). */
+    private static final String[] QUICK_SPARE = {"c|వాయిస్||🔊|వాయిస్", "c|అప్డేట్లు||⬆️|అప్డేట్లు", "c|Jarvis మెదడు||🧠|మెదడు",
+            "c|అలారం||⏰|అలారం", "c|Jarvis ముఖం||🙂|Jarvis ముఖం", "c|అనుమతులు||🔐|అనుమతులు"};
+
+    private java.util.List<String> quickSpecs() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        String saved = uiSp.getString("quick", "");
+        String[] mine = saved.isEmpty() ? QUICK_DEFAULT : saved.split("\n");
+        java.util.List<String> spare = new java.util.ArrayList<>(java.util.Arrays.asList(QUICK_SPARE));
+        for (int i = 0; i < 6; i++) {
+            String s = i < mine.length ? mine[i] : "";
+            while (resolve(s) == null && !spare.isEmpty()) s = spare.remove(0);
+            out.add(s);
+        }
+        return out;
+    }
+
+    /** {card, its switch or null} for a tile's words; null when this device has no such card. */
+    private Object[] resolve(String spec) {
+        String[] p = spec.split("\\|", -1);
+        if (p.length < 5) return null;
+        Card c = cardExact(p[1]);
+        if (c == null) return null;
+        if (!"s".equals(p[0])) return new Object[]{c, null};
+        Switch sw = findSwitch(c.body, p[2]);
+        return sw == null ? null : new Object[]{c, sw};
+    }
+
+    private static Switch findSwitch(View v, String startsWith) {
+        if (v instanceof Switch && String.valueOf(((Switch) v).getText()).startsWith(startsWith)) return (Switch) v;
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) { Switch s = findSwitch(g.getChildAt(i), startsWith); if (s != null) return s; }
+        }
+        return null;
+    }
+
+    private final java.util.List<Runnable> quickMarks = new java.util.ArrayList<>();
+
+    private void buildQuick() {
+        if (quickRow1 == null) return;
+        quickRow1.removeAllViews();
+        quickRow2.removeAllViews();
+        quickMarks.clear();
+        java.util.List<String> specs = quickSpecs();
+        for (int i = 0; i < 6; i++) {
+            LinearLayout row = i < 3 ? quickRow1 : quickRow2;
+            row.setClipChildren(false);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, Ui.dp(this, 82), 1);
+            if (i % 3 != 0) lp.leftMargin = Ui.dp(this, 8);
+            row.addView(quickTile(i, specs.get(i)), lp);
+        }
+    }
+
+    private View quickTile(int slot, String spec) {
+        String[] p = spec.split("\\|", -1);
+        Object[] r = resolve(spec);
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setPadding(Ui.dp(this, 9), Ui.dp(this, 7), Ui.dp(this, 8), Ui.dp(this, 7));
+        tile.setBackground(tileBg(16));
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        TextView ic = Ui.text(this, p.length > 3 ? p[3] : "✦", 14, pal.ink);
+        ic.setGravity(Gravity.CENTER);
+        ic.setBackground(skin != null ? skin.chip(pal.iconBg, 0, 999) : Ui.round(this, Ui.alpha(pal.accent, 0x26), 0, 999));
+        top.addView(ic, new LinearLayout.LayoutParams(Ui.dp(this, 28), Ui.dp(this, 28)));
+        top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        TextView name = Ui.text(this, p.length > 4 ? p[4] : "?", 12.5f, pal.ink);
+        name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        name.setMaxLines(1);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        TextView val = Ui.text(this, "", 11, pal.muted);
+        val.setMaxLines(1);
+        val.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        if (r != null && r[1] != null) {
+            final Switch target = (Switch) r[1];
+            final Switch mine = new Switch(this);
+            mine.setShowText(false);
+            mine.setClickable(false); // (the whole tile is the button)
+            mine.setFocusable(false);
+            if (skin != null) skin.tint(mine); else tint(mine, pal.accent);
+            top.addView(mine);
+            Runnable mark = () -> { mine.setChecked(target.isChecked()); val.setText(target.isChecked() ? "ఆన్" : "ఆఫ్"); };
+            quickMarks.add(mark);
+            mark.run();
+            tile.setOnClickListener(v -> { target.setChecked(!target.isChecked()); autosave(); mark.run(); });
+        } else if (r != null) {
+            final Card c = (Card) r[0];
+            top.addView(Ui.text(this, "›", 20, pal.muted));
+            Runnable mark = () -> { String s = ""; try { s = summaryOf(c); } catch (Exception ignored) {} val.setText(s.isEmpty() ? "తెరువు" : s); };
+            quickMarks.add(mark);
+            mark.run();
+            tile.setOnClickListener(v -> showCard(c));
+        } else {
+            val.setText("📌 ఏదైనా పెట్టుకోండి");
+            tile.setOnClickListener(v -> pinQuick(slot));
+        }
+        tile.setOnLongClickListener(v -> { pinQuick(slot); return true; });
+        tile.addView(top, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
+        nl.topMargin = Ui.dp(this, 4);
+        tile.addView(name, nl);
+        tile.addView(val);
+        return tile;
+    }
+
+    private void refreshQuick() { for (Runnable r : quickMarks) r.run(); }
+
+    /** 📌: he picks what this tile shows (a card, or one switch in it). */
+    private void pinQuick(int slot) {
+        java.util.List<String> labels = new java.util.ArrayList<>(), specs = new java.util.ArrayList<>();
+        labels.add("↺ మొదట ఉన్నది పెట్టు");
+        specs.add(QUICK_DEFAULT[slot]);
+        for (Card c : cardList) {
+            if ("check".equals(c.group)) continue;
+            String e = emojiFor(c.title);
+            labels.add(e + "  " + c.title);
+            specs.add("c|" + c.title + "||" + e + "|" + shortName(c.title));
+            java.util.List<Switch> sws = new java.util.ArrayList<>();
+            switches(c.body, sws);
+            for (Switch s : sws) {
+                String l = String.valueOf(s.getText());
+                if (l.isEmpty()) continue;
+                String first = l.length() > 24 ? l.substring(0, 24) : l;
+                labels.add("        🔘 " + (l.length() > 60 ? l.substring(0, 60) + "…" : l));
+                specs.add("s|" + c.title + "|" + first + "|" + e + "|" + shortName(l));
+            }
+        }
+        dialog().setTitle("📌 ఈ చోట ఏది ఉండాలి?")
+                .setItems(labels.toArray(new String[0]), (d, which) -> {
+                    String saved = uiSp.getString("quick", "");
+                    java.util.List<String> now = new java.util.ArrayList<>(java.util.Arrays.asList(saved.isEmpty() ? QUICK_DEFAULT : saved.split("\n", -1)));
+                    while (now.size() < 6) now.add("");
+                    now.set(slot, specs.get(which));
+                    uiSp.edit().putString("quick", android.text.TextUtils.join("\n", now)).apply();
+                    buildQuick();
+                    reskin();
+                    Toast.makeText(this, "📌 పెట్టాను", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("వద్దు", null).show();
+    }
+
+    private static void switches(View v, java.util.List<Switch> out) {
+        if (v instanceof Switch) { out.add((Switch) v); return; }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) switches(g.getChildAt(i), out);
+        }
+    }
+
+    private static String emojiFor(String title) {
+        for (String[] l : LOOKS) if (title.contains(l[0])) return l[1];
+        int cp = title.isEmpty() ? 0 : title.codePointAt(0);
+        return cp > 0x2000 ? new String(Character.toChars(cp)) : "✦";
+    }
+
+    /** A short name for a tile (the first words, without the leading emoji). */
+    private static String shortName(String s) {
+        String t = s.trim();
+        int cp = t.isEmpty() ? 0 : t.codePointAt(0);
+        if (cp > 0x2000) t = t.substring(Character.charCount(cp)).trim();
+        if (t.startsWith("️")) t = t.substring(1).trim();
+        int cut = t.indexOf('(');
+        if (cut > 3) t = t.substring(0, cut).trim();
+        return t.length() > 18 ? t.substring(0, 18).trim() + "…" : t;
+    }
+
+    // ---------------------------------------------------------------- 🕘 recent changes, ↩️ undo
+
+    /** What each control said at the last save (only a real change is kept). */
+    private final java.util.IdentityHashMap<View, String> snap = new java.util.IdentityHashMap<>();
+    /** Old words of boxes he typed in (kept only while this screen is open: never saved anywhere). */
+    private final java.util.Map<String, String> typedBefore = new java.util.HashMap<>();
+    private boolean undoing;
+
+    private void controls(View v, java.util.List<View> out) {
+        if (v == search || (newView && v == grid)) return;
+        if (v instanceof RadioGroup || v instanceof SeekBar || v instanceof Spinner || v instanceof EditText
+                || (v instanceof android.widget.CompoundButton && !(v instanceof RadioButton))) { out.add(v); return; }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) controls(g.getChildAt(i), out);
+        }
+    }
+
+    private static String valueOf(View v) {
+        if (v instanceof RadioGroup) return String.valueOf(((RadioGroup) v).getCheckedRadioButtonId());
+        if (v instanceof SeekBar) return String.valueOf(((SeekBar) v).getProgress());
+        if (v instanceof Spinner) return String.valueOf(((Spinner) v).getSelectedItemPosition());
+        if (v instanceof EditText) return String.valueOf(((EditText) v).getText());
+        if (v instanceof android.widget.CompoundButton) return ((android.widget.CompoundButton) v).isChecked() ? "1" : "0";
+        return "";
+    }
+
+    private void snapAll() {
+        snap.clear();
+        java.util.List<View> all = new java.util.ArrayList<>();
+        controls(page, all);
+        for (View v : all) snap.put(v, valueOf(v));
+    }
+
+    /** After a save: each control that changed goes into 🕘 (with what it was, to bring back). */
+    private void recordChanges() {
+        java.util.List<View> all = new java.util.ArrayList<>();
+        controls(page, all);
+        for (View v : all) {
+            String now = valueOf(v), was = snap.get(v);
+            snap.put(v, now);
+            if (undoing || was == null || was.equals(now)) continue;
+            Card c = cardOf(v);
+            if (c == null) continue;
+            try {
+                String path = pathIn(c.view, v);
+                if (v instanceof EditText) { // (still typing in the same box: the one line stays, with what it was before)
+                    org.json.JSONObject top = recent().optJSONObject(0);
+                    if (top != null && "text".equals(top.optString("k")) && c.title.equals(top.optString("c")) && path.equals(top.optString("p"))
+                            && System.currentTimeMillis() - top.optLong("w") < 3 * 60_000L && typedBefore.containsKey(top.optString("id"))) continue;
+                }
+                org.json.JSONObject e = new org.json.JSONObject().put("c", c.title).put("p", path).put("l", labelFor(c, v, now)).put("t", idOf(v, c.title));
+                if (v instanceof EditText) {
+                    String id = Long.toString(System.nanoTime(), 36);
+                    typedBefore.put(id, was); // (his words stay in this screen only)
+                    e.put("k", "text").put("id", id);
+                } else e.put("k", "ctl").put("v", was);
+                addRecent(e);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    /** A control's own words (a switch's text, a box's label): checked again before a change is brought back. */
+    private static String idOf(View v, String fallback) {
+        String s = v instanceof android.widget.CompoundButton ? String.valueOf(((TextView) v).getText()) : labelBefore(v, fallback);
+        return s.length() > 40 ? s.substring(0, 40) : s;
+    }
+
+    /** The card with exactly this title (else the first whose title has these words). */
+    private Card cardExact(String title) {
+        for (Card c : cardList) if (c.title.equals(title)) return c;
+        return cardTitled(title);
+    }
+
+    private Card cardOf(View v) {
+        for (View p = v; p != null; p = p.getParent() instanceof View ? (View) p.getParent() : null)
+            for (Card c : cardList) if (c.view == p) return c;
+        return null;
+    }
+
+    /** The child numbers from the card down to v ("2/0/5"). */
+    private static String pathIn(View top, View v) {
+        java.util.List<Integer> idx = new java.util.ArrayList<>();
+        for (View p = v; p != null && p != top; p = (View) p.getParent()) {
+            if (!(p.getParent() instanceof android.view.ViewGroup)) return "";
+            idx.add(0, ((android.view.ViewGroup) p.getParent()).indexOfChild(p));
+        }
+        return android.text.TextUtils.join("/", idx);
+    }
+
+    private static View atPath(View top, String path) {
+        View v = top;
+        if (path == null || path.isEmpty()) return null;
+        for (String s : path.split("/")) {
+            if (!(v instanceof android.view.ViewGroup)) return null;
+            int i;
+            try { i = Integer.parseInt(s); } catch (Exception e) { return null; }
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            if (i < 0 || i >= g.getChildCount()) return null;
+            v = g.getChildAt(i);
+        }
+        return v;
+    }
+
+    /** "వేక్ వర్డ్ ఆన్: ఆఫ్", "సహజ గొంతు: Gemini", "OpenAI మోడల్ మార్చారు" (a box's words are never shown). */
+    private String labelFor(Card c, View v, String now) {
+        String what;
+        if (v instanceof RadioGroup) {
+            View rb = v.findViewById(Integer.parseInt(now));
+            what = c.title + ": " + (rb instanceof TextView ? ((TextView) rb).getText() : "మార్చారు");
+        } else if (v instanceof Spinner) {
+            Object item = ((Spinner) v).getSelectedItem();
+            what = c.title + ": " + (item == null ? "మార్చారు" : item);
+        } else if (v instanceof EditText) {
+            what = labelBefore(v, c.title) + " మార్చారు";
+        } else if (v instanceof SeekBar) {
+            what = labelBefore(v, c.title) + ": " + now;
+        } else {
+            what = ((TextView) v).getText() + ": " + ("1".equals(now) ? "ఆన్" : "ఆఫ్");
+        }
+        return what.length() > 90 ? what.substring(0, 88) + "…" : what;
+    }
+
+    /** The words just above a box or slider (its label), else the card's title. */
+    private static String labelBefore(View v, String fallback) {
+        if (v.getParent() instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v.getParent();
+            for (int i = g.indexOfChild(v) - 1; i >= 0; i--) {
+                View s = g.getChildAt(i);
+                if (s instanceof TextView && !(s instanceof EditText) && !(s instanceof android.widget.Button)) {
+                    String t = String.valueOf(((TextView) s).getText()).trim();
+                    if (!t.isEmpty()) return t.length() > 50 ? t.substring(0, 48) + "…" : t;
+                }
+            }
+        }
+        return fallback;
+    }
+
+    private org.json.JSONArray recent() {
+        try { return new org.json.JSONArray(uiSp.getString("recent", "[]")); } catch (Exception e) { return new org.json.JSONArray(); }
+    }
+
+    private void addRecent(org.json.JSONObject e) {
+        try {
+            e.put("w", System.currentTimeMillis()).put("u", Long.toString(System.nanoTime(), 36));
+            org.json.JSONArray old = recent(), now = new org.json.JSONArray().put(e);
+            for (int i = 0; i < old.length() && now.length() < 25; i++) now.put(old.get(i));
+            uiSp.edit().putString("recent", now.toString()).apply();
+        } catch (Exception ignored) {}
+        refreshRecent();
+    }
+
+    private void refreshRecent() {
+        org.json.JSONArray r = recent();
+        String last = r.length() == 0 ? "" : r.optJSONObject(0).optString("l");
+        if (recentLine != null) recentLine.setText(r.length() == 0 ? "🕘 ఇటీవల మార్చినవి: ఇంకా ఏమీ లేదు" : "🕘 ఇటీవల మార్చినవి (" + r.length() + ") · " + last);
+        if (saveLine != null) saveLine.setText("✓ మార్చగానే సేవ్ అవుతుంది" + (last.isEmpty() ? "" : " · చివరిది: " + last));
+    }
+
+    private void showRecent() {
+        autosave();
+        org.json.JSONArray r = recent();
+        if (r.length() == 0) { Toast.makeText(this, "ఇంకా ఏ మార్పూ లేదు", Toast.LENGTH_SHORT).show(); return; }
+        String[] items = new String[r.length()];
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM, h:mm a", new Locale("te", "IN"));
+        for (int i = 0; i < r.length(); i++) {
+            org.json.JSONObject e = r.optJSONObject(i);
+            items[i] = f.format(new java.util.Date(e.optLong("w"))) + "\n" + e.optString("l");
+        }
+        dialog().setTitle("🕘 ఇటీవల మార్చినవి (నొక్కితే వెనక్కి)")
+                .setItems(items, (d, which) -> dialog().setMessage("ఇది వెనక్కి తేవాలా?\n\n" + r.optJSONObject(which).optString("l"))
+                        .setPositiveButton("↩️ వెనక్కి", (d2, w2) -> undo(r.optJSONObject(which).optString("u"))).setNegativeButton("వద్దు", null).show())
+                .setNegativeButton("మూసేయి", null).show();
+    }
+
+    private void undoLast() {
+        autosave(); // (what he just typed is in the list first)
+        org.json.JSONArray r = recent();
+        if (r.length() == 0) { Toast.makeText(this, "వెనక్కి తేవడానికి ఏ మార్పూ లేదు", Toast.LENGTH_SHORT).show(); return; }
+        undo(r.optJSONObject(0).optString("u"));
+    }
+
+    /** Brings that change back as it was (then it leaves the list). */
+    private void undo(String uid) {
+        org.json.JSONArray r = recent();
+        int i = -1;
+        for (int j = 0; j < r.length(); j++) if (uid != null && uid.equals(r.optJSONObject(j).optString("u"))) { i = j; break; }
+        org.json.JSONObject e = i < 0 ? null : r.optJSONObject(i);
+        if (e == null) return;
+        String k = e.optString("k"), label = e.optString("l");
+        boolean done = false;
+        if ("theme".equals(k)) {
+            dropRecent(i);
+            String old = e.optString("o", "mix"), pg = e.optString("v", "");
+            if (PageTheme.isOldId(old) && !old.equals(Ui.theme(this))) Ui.setTheme(this, old, Ui.hudMotion(this));
+            PageTheme p = PageTheme.of(pg);
+            prefs.sp.edit().putString("page_theme", p != null && p.isNew() ? pg : "").apply();
+            Toast.makeText(this, "↩️ " + label, Toast.LENGTH_SHORT).show();
+            autosave();
+            recreate();
+            return;
+        }
+        Card c = cardExact(e.optString("c"));
+        View v = c == null ? null : atPath(c.view, e.optString("p"));
+        if (v != null && e.has("t") && !idOf(v, c.title).equals(e.optString("t"))) v = null; // (the page is laid out differently now: not that one)
+        undoing = true;
+        try {
+            if ("text".equals(k) && v instanceof EditText) {
+                String was = typedBefore.remove(e.optString("id"));
+                if (was != null) { ((EditText) v).setText(was); done = true; }
+            } else if ("ctl".equals(k) && v != null) {
+                String was = e.optString("v");
+                if (v instanceof RadioGroup) { ((RadioGroup) v).check(Integer.parseInt(was)); done = true; }
+                else if (v instanceof SeekBar) { ((SeekBar) v).setProgress(Integer.parseInt(was)); done = true; }
+                else if (v instanceof Spinner) { ((Spinner) v).setSelection(Integer.parseInt(was)); done = true; }
+                else if (v instanceof android.widget.CompoundButton) { ((android.widget.CompoundButton) v).setChecked("1".equals(was)); done = true; }
+            }
+            if (done) autosave();
+        } catch (Exception ignored) {
+        } finally { undoing = false; }
+        if (!done) {
+            Toast.makeText(this, "text".equals(k) ? "బాక్స్‌లో రాసినది ఈ పేజీ మూసే ముందే వెనక్కి తేగలను: ఇప్పుడు మీరే మార్చండి"
+                    : "ఇది వెనక్కి తేలేకపోయాను: మీరే మార్చండి", Toast.LENGTH_LONG).show();
+            return;
+        }
+        dropRecent(i);
+        if (c != null && !"home".equals(mode)) summarize(c);
+        refreshQuick();
+        Toast.makeText(this, "↩️ వెనక్కి: " + label, Toast.LENGTH_SHORT).show();
+    }
+
+    private void dropRecent(int i) {
+        org.json.JSONArray r = recent(), now = new org.json.JSONArray();
+        for (int j = 0; j < r.length(); j++) if (j != i) now.put(r.opt(j));
+        uiSp.edit().putString("recent", now.toString()).apply();
+        refreshRecent();
+    }
+
 
     // ---------------------------------------------------------------- updates (only when he presses)
 
@@ -6109,7 +7343,7 @@ public class SettingsActivity extends Activity {
         if (want == null || want.trim().isEmpty() || pageScroll == null) return;
         i.removeExtra(EXTRA_SECTION);
         if (want.startsWith("group:")) { openGroup(want.substring(6).trim()); return; } // (a whole group: "group:tab")
-        for (String[] g : GROUPS) if (want.trim().equalsIgnoreCase(g[2]) || want.trim().equalsIgnoreCase(g[0])) { openGroup(g[0]); return; } // ("వాచ్")
+        for (String[] g : newView ? GROUPS_NEW : GROUPS) if (want.trim().equalsIgnoreCase(g[2]) || want.trim().equalsIgnoreCase(g[0])) { openGroup(g[0]); return; } // ("వాచ్")
         Card c = findCard(want.trim());
         if (c == null) { search.setText(want.trim()); return; } // no card by that name: show what the search finds
         showCard(c);

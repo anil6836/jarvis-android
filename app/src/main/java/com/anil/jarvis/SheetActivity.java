@@ -1296,6 +1296,17 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         }
         String mode = VoiceSwitch.match(text);
         if (mode != null) { switchVoice(text, mode); return; }
+        String sv = prefs.homeMode() ? null : SettingsActivity.viewWords(text); // 🗂️ "పాత / కొత్త సెట్టింగ్స్ పెట్టు": at once
+        if (sv != null) {
+            showHeard(text);
+            store.addChat("user", text, false);
+            String say = SettingsActivity.setView(this, sv);
+            store.addChat("assistant", say, false);
+            showReply(say, false);
+            try { startActivity(new Intent(this, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
+            if (prefs.voiceReplies()) voice.speak(say, prefs.speechRate()); else idle();
+            return;
+        }
         if (!prefs.hasBrain()) {
             showReply("నా మెదడుకి API key లేదు. Jarvis యాప్ సెట్టింగ్స్‌లో పెట్టండి.", true);
             idle();
