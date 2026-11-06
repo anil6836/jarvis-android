@@ -1354,6 +1354,7 @@ public class SettingsActivity extends Activity {
         snapAll();
         showHome(); // (its afterMode paints the page in its theme)
         updateFromIntent(getIntent());
+        page.post(this::putBackScrambledOnce);
     }
 
     // ================================================================ groups, search, folding, saving by itself
@@ -7360,6 +7361,61 @@ public class SettingsActivity extends Activity {
         if (c != null && !"home".equals(mode)) summarize(c);
         refreshQuick();
         Toast.makeText(this, "↩️ వెనక్కి: " + label, Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * v1.0.196, once (his word 7 Nov 02:53: "ఇంతకముందు సెట్టింగ్స్ లో ఆప్షన్స్ ఎలా ఉన్నాయో అలా పెట్టు"): the choices the
+     * id clash ticked by themselves go back to what they were, from 🕘 (each change there keeps the choice before it;
+     * newest first, so a choice changed twice ends at the first one). Only the round choices — the clash never touched
+     * switches, boxes or keys. What is put back is shown to him; ↩️ in 🕘 can take any of it back again.
+     */
+    private void putBackScrambledOnce() {
+        if (uiSp == null || uiSp.getBoolean("fix_choices_196", false) || isFinishing()) return;
+        uiSp.edit().putBoolean("fix_choices_196", true).apply();
+        org.json.JSONArray r = recent();
+        java.util.Set<String> used = new java.util.HashSet<>();
+        java.util.LinkedHashMap<String, String> back = new java.util.LinkedHashMap<>();
+        java.util.LinkedHashSet<String> left = new java.util.LinkedHashSet<>();
+        undoing = true;
+        try {
+            for (int j = 0; j < r.length(); j++) { // newest first
+                org.json.JSONObject e = r.optJSONObject(j);
+                if (e == null || !"ctl".equals(e.optString("k"))) continue;
+                Card c = cardExact(e.optString("c"));
+                View v = c == null ? null : atPath(c.view, e.optString("p"));
+                if (!(v instanceof RadioGroup)) continue;
+                if (e.has("t") && !idOf(v, c.title).equals(e.optString("t"))) continue;
+                int id;
+                try { id = Integer.parseInt(e.optString("v")); } catch (Exception x) { continue; }
+                used.add(e.optString("u"));
+                View rb = id == -1 ? null : v.findViewById(id);
+                String key = c.title + "|" + e.optString("p");
+                if (rb instanceof RadioButton && rb.getParent() == v) {
+                    ((RadioGroup) v).check(id);
+                    back.put(key, c.title + ": " + ((RadioButton) rb).getText());
+                    left.remove(c.title);
+                } else if (!back.containsKey(key)) left.add(c.title); // (a choice built in code: its old number is gone)
+            }
+        } catch (Exception ignored) {
+        } finally { undoing = false; }
+        if (used.isEmpty()) return;
+        try { // the changes used here leave 🕘
+            org.json.JSONArray now = new org.json.JSONArray();
+            for (int j = 0; j < r.length(); j++) if (!used.contains(r.optJSONObject(j).optString("u"))) now.put(r.opt(j));
+            uiSp.edit().putString("recent", now.toString()).apply();
+        } catch (Exception ignored) {}
+        autosave(); // (saved; 🕘 now holds "what it was a moment ago", so ↩️ can still undo any of these)
+        refreshRecent();
+        StringBuilder b = new StringBuilder();
+        for (String l : back.values()) b.append("• ").append(l.length() > 90 ? l.substring(0, 88) + "…" : l).append('\n');
+        if (!left.isEmpty()) {
+            b.append("\nఇవి నేను వెనక్కి తేలేకపోయాను, ఒకసారి చూడండి:\n");
+            for (String l : left) b.append("• ").append(l).append('\n');
+        }
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("🩹 తనంతట తానే మారినవి ఇంతకుముందు లాగే పెట్టాను")
+                .setMessage(b.toString().trim())
+                .setPositiveButton("సరే", null).show();
     }
 
     private void dropRecent(int i) {
