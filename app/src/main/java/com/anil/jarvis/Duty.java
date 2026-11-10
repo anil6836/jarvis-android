@@ -429,17 +429,19 @@ final class Duty {
             if (s.equals(today.plusDays(1)) && eveWindow(now, r.eveMin) && once(c, "eve|" + s)) {
                 String bag = checklist(c);
                 // 🌙 the evening check (10 Nov): the alarm for the morning, the phone's charge (the rain on the way and the bike's charge follow)
-                String[] alarm = alarmCheck(leave, nextAlarm(c), now);
+                long[] na = nextAlarm(c);
+                String[] alarm = alarmCheck(leave, na[0], na[1] == 1, nextSong(c), now);
                 int[] bat = phoneBattery(c);
                 String phone = phoneLine(bat[0], bat[1] == 1);
                 String base = day(s) + ", " + when + ". ఇంటి నుంచి " + go + " కల్లా బయలుదేరండి." + (bag.isEmpty() ? "" : "\n🎒 బ్యాగ్: " + bag)
                         + (alarm == null ? "" : "\n" + alarm[1]) + (phone == null ? "" : "\n" + phone);
                 int id = ("eve" + s).hashCode();
-                Notification.Action act = alarm != null && "need".equals(alarm[0]) ? alarmAction(c, id, leave.minusMinutes(60)) : null;
+                Notification.Action act = alarm != null && !"ok".equals(alarm[0]) ? alarmAction(c, id, leave.minusMinutes(60)) : null;
                 notify(c, id, "🗓️ రేపు మీ డ్యూటీ", base, act);
                 if (!quiet) Announcer.say(c, p.name() + ", రేపు మీ డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి."
                         + (bag.isEmpty() ? "" : " బ్యాగ్ ఇప్పుడే సర్దుకోండి: " + bag + ".")
                         + (alarm != null && "need".equals(alarm[0]) ? " రేపటికి అలారం లేదు, " + hm(leave.minusMinutes(60)) + " కి పెట్టుకోండి." : "")
+                        + (alarm != null && "unknown".equals(alarm[0]) ? " రేపు ఉదయం " + hm(leave.minusMinutes(60)) + " కి అలారం ఉందో ఒకసారి చూసుకోండి." : "")
                         + (phone != null && bat[1] != 1 && bat[0] >= 0 && bat[0] < PHONE_LOW ? " ఫోన్ " + bat[0] + " శాతమే ఉంది, రాత్రి ఛార్జ్ పెట్టండి." : ""));
                 tripLater(c, r, leave, start, true, id, "🗓️ రేపు మీ డ్యూటీ", base, quiet, act);
             }
@@ -649,19 +651,27 @@ final class Duty {
     }
 
     /**
-     * A morning duty's alarm: an hour before leaving home (as the nap / bed lines count it). {"ok", line} when an alarm (any clock
-     * app's) rings between now and leaving; {"need", line} when none does; null for a duty he leaves for after noon (no morning
-     * alarm needed). next = the phone's next alarm (ms), 0 = none. Pure.
+     * A morning duty's alarm: an hour before leaving home (as the nap / bed lines count it); an alarm counts when it rings from three
+     * hours before that up to leaving. {"ok", line}: one does (Jarvis's own song alarm, or another clock app's); {"need", line}: none
+     * does; {"unknown", line}: the phone's first alarm is earlier (tonight, or a Jarvis reminder) so the morning's can't be seen —
+     * he is asked to look; null for a duty he leaves for after noon. next = the phone's next alarm (ms, 0 = none), nextOurs = it is
+     * Jarvis's own (a reminder, not a wake-up), song = Jarvis's next song alarm (ms, 0 = none). Pure.
      */
-    static String[] alarmCheck(LocalDateTime leave, long next, LocalDateTime now) {
+    static String[] alarmCheck(LocalDateTime leave, long next, boolean nextOurs, long song, LocalDateTime now) {
         if (leave.getHour() >= 12) return null;
-        LocalDateTime wake = leave.minusMinutes(60);
+        LocalDateTime wake = leave.minusMinutes(60), from = wake.minusHours(3);
+        LocalDateTime s = song > 0 ? at(song) : null;
+        if (s != null && !s.isBefore(from) && !s.isAfter(leave)) return new String[]{"ok", "⏰ రేపు " + hm(s) + " కి అలారం ఉంది ✓"};
         if (next > 0) {
-            LocalDateTime at = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(next), java.time.ZoneId.systemDefault());
-            if (at.isAfter(now) && !at.isAfter(leave)) return new String[]{"ok", "⏰ రేపు " + hm(at) + " కి అలారం ఉంది ✓"};
+            LocalDateTime t = at(next);
+            if (!nextOurs && !t.isBefore(from) && !t.isAfter(leave)) return new String[]{"ok", "⏰ రేపు " + hm(t) + " కి అలారం ఉంది ✓"};
+            if (t.isAfter(now) && t.isBefore(from) || nextOurs && !t.isAfter(leave))
+                return new String[]{"unknown", "⏰ రేపు ఉదయం అలారం ఉందో ఒకసారి చూసుకోండి (" + hm(wake) + " కి కావాలి)"};
         }
         return new String[]{"need", "⏰ రేపటికి అలారం లేదు: " + hm(wake) + " కి పెట్టుకోండి (కింది బటన్)"};
     }
+
+    private static LocalDateTime at(long ms) { return LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(ms), java.time.ZoneId.systemDefault()); }
 
     /** "📱 ఫోన్ 45%: రాత్రి ఛార్జ్ పెట్టండి" / "ఛార్జింగ్‌లో ఉంది ✓" / "ఫోన్ 92% ✓"; null when not known. Pure. */
     static String phoneLine(int pct, boolean charging) {
@@ -670,13 +680,30 @@ final class Duty {
         return pct < PHONE_LOW ? "📱 ఫోన్ " + pct + "%: రాత్రి ఛార్జ్ పెట్టండి" : "📱 ఫోన్ " + pct + "% ✓";
     }
 
-    /** The phone's next alarm (any clock app's), 0 = none. */
-    private static long nextAlarm(Context c) {
+    /** {the phone's next alarm (any clock app's, ms; 0 = none), 1 when it is Jarvis's own (a reminder or a song alarm)}. */
+    private static long[] nextAlarm(Context c) {
         try {
             android.app.AlarmManager am = c.getSystemService(android.app.AlarmManager.class);
             android.app.AlarmManager.AlarmClockInfo a = am == null ? null : am.getNextAlarmClock();
-            return a == null ? 0 : a.getTriggerTime();
-        } catch (Exception e) { return 0; }
+            if (a == null) return new long[]{0, 0};
+            boolean ours = a.getShowIntent() != null && c.getPackageName().equals(a.getShowIntent().getCreatorPackage());
+            return new long[]{a.getTriggerTime(), ours ? 1 : 0};
+        } catch (Exception e) { return new long[]{0, 0}; }
+    }
+
+    /** Jarvis's own song alarms: the earliest coming one (ms), 0 = none. */
+    private static long nextSong(Context c) {
+        long best = 0;
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            for (JSONObject o : SongAlarm.all(c)) {
+                LocalDateTime t = SongAlarm.next(c, o, now);
+                if (t == null) continue;
+                long ms = t.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+                if (best == 0 || ms < best) best = ms;
+            }
+        } catch (Exception ignored) {}
+        return best;
     }
 
     /** {percent (-1 unknown), 1 = charging}. */

@@ -75,6 +75,21 @@ final class OfflineRead {
         }
     }
 
+    /**
+     * B7: the printed text with a recognizer the caller keeps open for many photos (background thread); null when the reading
+     * itself failed (not "" — a photo with no words is a different thing and is remembered as read).
+     */
+    static String text(TextRecognizer r, Bitmap pic) {
+        try {
+            Text t = Tasks.await(r.process(InputImage.fromBitmap(pic, 0)), 15, TimeUnit.SECONDS);
+            return t == null ? "" : t.getText().trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static TextRecognizer recognizer() { return TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS); }
+
     /** O30: what to say about the picture without internet: its English in Telugu (or as it is, with how to get Telugu). */
     static String readAloud(Context c, Bitmap pic) {
         String en = text(pic).replaceAll("\\s+", " ").trim();

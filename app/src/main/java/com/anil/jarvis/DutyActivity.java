@@ -631,7 +631,7 @@ public class DutyActivity extends Activity {
         jobs.setChecked(LeaveJobs.on(this));
         jobs.setPadding(0, dp(12), 0, dp(6));
         f.addView(jobs);
-        f.addView(label("🗓️ సెలవు రోజు పనుల లిస్ట్ ఉదయం ఎన్ని గంటలకి (ఉదా: 9:00)"));
+        f.addView(label("🗓️ సెలవు రోజు పనుల లిస్ట్ ఉదయం ఎన్ని గంటలకి (ఉదా: 9:00; మధ్యాహ్నం 2 లోపు)"));
         int jm = LeaveJobs.morningMin(this);
         EditText jobsAt = text("9:00", String.format(java.util.Locale.ENGLISH, "%d:%02d", jm / 60, jm % 60));
         f.addView(jobsAt);
@@ -658,8 +658,11 @@ public class DutyActivity extends Activity {
                     try { roster.leaveBefore = Math.max(0, Math.min(600, Integer.parseInt(travel.getText().toString().trim()))); } catch (Exception ignored) {}
                     try { roster.tripKm = Math.max(0, Math.min(500, Integer.parseInt(tripKm.getText().toString().trim()))); } catch (Exception ignored) {}
                     java.util.regex.Matcher em = java.util.regex.Pattern.compile("^\\s*(\\d{1,2})[:.](\\d{2})\\s*$").matcher(eve.getText().toString());
-                    if (em.matches() && Integer.parseInt(em.group(1)) < 24 && Integer.parseInt(em.group(2)) < 60)
-                        roster.eveMin = Integer.parseInt(em.group(1)) * 60 + Integer.parseInt(em.group(2));
+                    if (em.matches() && Integer.parseInt(em.group(1)) < 24 && Integer.parseInt(em.group(2)) < 60) {
+                        int eh = Integer.parseInt(em.group(1));
+                        if (eh < 12) eh += 12; // (the evening before: "6:00" is 6 in the evening)
+                        roster.eveMin = eh * 60 + Integer.parseInt(em.group(2));
+                    }
                     LeaveJobs.setOn(this, jobs.isChecked());
                     java.util.regex.Matcher jm2 = java.util.regex.Pattern.compile("^\\s*(\\d{1,2})[:.](\\d{2})\\s*$").matcher(jobsAt.getText().toString());
                     if (jm2.matches() && Integer.parseInt(jm2.group(1)) < 24 && Integer.parseInt(jm2.group(2)) < 60)

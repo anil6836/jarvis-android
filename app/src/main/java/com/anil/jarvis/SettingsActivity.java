@@ -1037,22 +1037,10 @@ public class SettingsActivity extends Activity {
         note("ఫోటోలు ఎక్కడికీ వెళ్లవు, AI కి కూడా కాదు: ఫోన్‌లోనే చదువుతాడు, మాటలు మాత్రమే ఫోన్‌లో ఉంచుతాడు (బ్యాకప్‌లోకి వెళ్లవు). "
                 + "పొడవైన నంబర్లు (ఫోన్, ఖాతా, కార్డ్, ఆధార్, పాలసీ), PAN / బండి నంబర్ లాంటి కోడ్‌లు ఎప్పుడూ ఉంచడు. ఇంగ్లీష్ రాత మాత్రమే చదవగలడు. "
                 + "ఆఫ్ చేస్తే ఇప్పటిదాకా చదివినవన్నీ మర్చిపోతాడు.");
-        {
-            TextView pt = Ui.text(this, "📷 చదివినవి: …", 14, Ui.MUTED);
-            pt.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 6));
-            box.addView(pt);
-            if (!PhotoText.allowed(this)) { // (no photo permission yet: asked on his tap)
-                pt.setText("📷 ఫోటోల అనుమతి ఇంకా లేదు: చదవడానికి ఇక్కడ నొక్కి \"Allow all\" ఇవ్వండి");
-                pt.setTextColor(Ui.GOLD);
-                pt.setOnClickListener(v -> {
-                    try { requestPermissions(new String[]{Build.VERSION.SDK_INT >= 33 ? "android.permission.READ_MEDIA_IMAGES" : android.Manifest.permission.READ_EXTERNAL_STORAGE}, 7301); }
-                    catch (Exception ignored) {}
-                });
-            } else new Thread(() -> {
-                int[] pr = PhotoText.progress(this);
-                runOnUiThread(() -> pt.setText("📷 చదివినవి: " + pr[0] + " ఫోటోల్లో " + pr[1] + (pr[1] < pr[0] ? " (మిగతావి ఛార్జింగ్‌లో ఉన్నప్పుడు కొద్దికొద్దిగా)" : " ✓")));
-            }, "photo-text-count").start();
-        }
+        photoTextLabel = Ui.text(this, "📷 చదివినవి: …", 14, Ui.MUTED);
+        photoTextLabel.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 6));
+        box.addView(photoTextLabel);
+        photoTextRefresh(false);
 
         section("Jarvis తనంతట తానే");
         proactive = toggle("అడగకుండానే ముఖ్యమైనవి చెప్పు: మీటింగ్ దగ్గర పడితే, వర్షం వస్తే, ఇష్టమైనవాళ్లకి చాలా రోజులుగా ఫోన్ చేయకపోతే, మీ అలవాట్లు, నీళ్లు, ధర హెచ్చరికలు", prefs.proactive());
@@ -4858,6 +4846,7 @@ public class SettingsActivity extends Activity {
         if (gated) return;
         // the microphone for the guard's house sounds was just given: start listening
         if (code == 62 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) Guard.listen(this);
+        if (code == 7301) photoTextRefresh(!PhotoText.allowed(this)); // 📷 B7
         if (code == 64 && hcStatus != null) hcStatus.setText("🔗 Health Connect: " + HealthData.status(this)); // (phase 4)
         // older data (his height set long ago): asked on its own, once, after the others
         if (code == 64 && HealthData.connected(this) && HealthData.historyToAsk(this)
@@ -4871,6 +4860,37 @@ public class SettingsActivity extends Activity {
     }
 
     private TextView hcStatus;
+
+    /** 📷 B7: the photo-text line under its switch: how many read, or the permission to give (asked only on his tap). */
+    private TextView photoTextLabel;
+
+    private void photoTextRefresh(boolean justDenied) {
+        TextView pt = photoTextLabel;
+        if (pt == null) return;
+        if (!PhotoText.allowed(this)) {
+            pt.setTextColor(Ui.GOLD);
+            if (justDenied) { // (he said no, or Android won't ask again: the app's own page, where he can still give it)
+                pt.setText("📷 ఫోటోల అనుమతి రాలేదు. ఇవ్వాలంటే ఇక్కడ నొక్కండి → Permissions → Photos and videos → \"Allow all\"");
+                pt.setOnClickListener(v -> {
+                    try { startActivity(new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + getPackageName()))); }
+                    catch (Exception ignored) {}
+                });
+            } else {
+                pt.setText("📷 ఫోటోల అనుమతి ఇంకా లేదు: చదవడానికి ఇక్కడ నొక్కి \"Allow all\" ఇవ్వండి");
+                pt.setOnClickListener(v -> { try { requestPermissions(PhotoText.perms(), 7301); } catch (Exception ignored) {} });
+            }
+            return;
+        }
+        pt.setTextColor(Ui.MUTED);
+        boolean some = !PhotoText.allowedAll(this);
+        pt.setOnClickListener(some ? v -> { try { requestPermissions(PhotoText.perms(), 7301); } catch (Exception ignored) {} } : null);
+        pt.setClickable(some);
+        new Thread(() -> {
+            int[] pr = PhotoText.progress(this);
+            runOnUiThread(() -> pt.setText("📷 చదివినవి: " + pr[0] + " ఫోటోల్లో " + pr[1] + (pr[1] < pr[0] ? " (మిగతావి ఛార్జింగ్‌లో, స్క్రీన్ ఆఫ్‌లో ఉన్నప్పుడు కొద్దికొద్దిగా)" : " ✓")
+                    + (some ? "\nమీరు ఎంచుకున్న ఫోటోలకే అనుమతి ఉంది: అన్నీ కావాలంటే ఇక్కడ నొక్కి \"Allow all\"" : "")));
+        }, "photo-text-count").start();
+    }
 
     private String heightText() {
         double cm = Wellness.heightCm(this);

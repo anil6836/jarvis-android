@@ -27,12 +27,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.google.mlkit.vision.text.TextRecognizer;
+
 /**
  * 📷 B7 (10 Nov): finding his photos by the words printed on them ("బైక్ ఇన్సూరెన్స్ ఫోటో చూపించు", a bill, a ticket, a
  * certificate) — read on the phone with ML Kit (his choice "ఫోన్‌లోనే": no photo goes anywhere). The reading happens a few
  * at a time while the phone charges, newest first, and is kept as words only in files/photo_text.idx (left out of every
- * backup). Long runs of digits are never kept (phone, account, card, ID, policy numbers), nor letter-and-number codes
- * (PAN, vehicle, serial), only plain words and short numbers (a year, an amount). English print only (ML Kit's Latin).
+ * backup). Numbers of 4+ digits are never kept, even split by spaces / dashes / commas / lines (phone, account, card, ID,
+ * policy numbers, OTPs, amounts) — only a year (19xx / 20xx) — nor the word after OTP / CVV / PIN / password, nor letter-and-
+ * number codes (PAN, vehicle, serial). English print only (ML Kit's Latin). It reads only with the screen off, on the charger,
+ * while the battery is below 40 °C.
  */
 final class PhotoText {
     private PhotoText() {}
@@ -43,27 +47,36 @@ final class PhotoText {
     private static final AtomicBoolean RUNNING = new AtomicBoolean();
     /** The index in memory: photo id → its words (loaded once, kept up to date by the reader). */
     private static Map<Long, String[]> index;
+    /** Bumped by {@link #clear}: a reading started before it never writes after it. */
+    private static int gen;
 
     static boolean on(Context c) { return c.getSharedPreferences("jarvis", Context.MODE_PRIVATE).getBoolean("photo_text", true); }
 
     // ================================================================ the words kept (pure)
 
     /**
-     * The words worth keeping from a photo's printed text: small letters, each once, 3+ letters, numbers of up to 6 digits;
-     * never a longer run of digits (even split by spaces / dashes: 9876 543 210 is one phone number) or a code mixing letters
-     * and digits 6+ long. Pure.
+     * The words worth keeping from a photo's printed text: small letters, each once, words of 3+ letters, numbers of up to 3
+     * digits and years (19xx / 20xx). Never a number of 4+ digits, even split by spaces / dashes / dots / commas / colons / lines
+     * (98765 - 43210, 1234 5678 9012, 1,250 are whole numbers), never the word after OTP / CVV / PIN / MPIN / password
+     * (whatever it is), never a code mixing letters and digits 6+ long. Pure.
      */
     static List<String> words(String text) {
         Set<String> out = new LinkedHashSet<>();
         if (text == null) return new ArrayList<>(out);
-        // runs of digits joined by spaces / dashes / dots first: a long one is a number to drop whole
-        String t = text.toLowerCase(Locale.ROOT).replaceAll("(?<=\\d)[ \\-./](?=\\d)", "");
-        for (String w : t.split("[^\\p{L}\\p{N}]+")) {
+        // runs of digits joined across spaces / dashes / dots / commas / colons / line breaks first: a long one is a number to drop whole
+        String t = text.toLowerCase(Locale.ROOT).replaceAll("(?<=\\d)[\\s\\-\u2013./,:]+(?=\\d)", "");
+        int secret = 0; // (tokens still to look past after "otp" / "cvv" / …)
+        for (String w : t.split("[^\\p{L}\\p{M}\\p{N}]+")) {
             if (w.isEmpty()) continue;
-            boolean digits = w.matches("\\d+"), letters = w.matches("\\p{L}+");
-            if (digits) { if (w.length() <= 6) out.add(w); continue; }
+            if (SECRET.contains(w)) { secret = 3; continue; }
+            if (secret > 0) { // the code itself goes, and the little words before it ("otp is 4829")
+                secret = FILLER.contains(w) ? secret - 1 : 0;
+                continue;
+            }
+            boolean digits = w.matches("\\d+"), letters = w.matches("[\\p{L}\\p{M}]+");
+            if (digits) { if (w.length() <= 3 || w.length() == 4 && (w.startsWith("19") || w.startsWith("20"))) out.add(w); continue; }
             if (letters) { if (w.codePointCount(0, w.length()) >= 3) out.add(w); continue; }
-            if (w.length() < 6) out.add(w); // (mixed, short: "4g", "a4")
+            if (w.length() < 6 && w.replaceAll("\\D", "").length() <= 3) out.add(w); // (mixed, short: "4g", "a4")
             if (out.size() >= MAX_WORDS) break;
         }
         List<String> l = new ArrayList<>(out);
@@ -77,6 +90,8 @@ final class PhotoText {
         return out;
     }
 
+    private static final Set<String> SECRET = new java.util.HashSet<>(java.util.Arrays.asList("otp", "cvv", "cvc", "pin", "mpin", "tpin", "upipin", "password", "passcode", "pwd"));
+    private static final Set<String> FILLER = new java.util.HashSet<>(java.util.Arrays.asList("is", "no", "num", "number", "code", "your", "the", "for", "to"));
     private static final Set<String> STOP = new java.util.HashSet<>(java.util.Arrays.asList("the", "and", "photo", "photos", "picture", "image", "of", "for", "with", "my"));
 
     /**
@@ -111,7 +126,10 @@ final class PhotoText {
 
     private static File file(Context c) { return new File(c.getFilesDir(), FILE); }
 
-    /** id \t taken (ms) \t words (space-separated); a photo read with no words keeps its line too (not read again). */
+    /**
+     * id \t taken (ms) \t words (space-separated); a photo read with no words keeps its line too (not read again). With a
+     * {@code taken} map (the search): a fresh copy read from the file, the shared index left alone.
+     */
     static synchronized Map<Long, String[]> load(Context c, Map<Long, Long> taken) {
         if (index != null && taken == null) return index;
         Map<Long, String[]> m = new HashMap<>();
@@ -130,12 +148,12 @@ final class PhotoText {
                 }
             } catch (Exception ignored) {}
         }
-        index = m;
+        if (taken == null) index = m;
         return m;
     }
 
-    private static synchronized void append(Context c, List<String> lines, Map<Long, String[]> add) {
-        if (lines.isEmpty()) return;
+    private static synchronized void append(Context c, List<String> lines, Map<Long, String[]> add, int started) {
+        if (lines.isEmpty() || started != gen || !on(c)) return; // (switched off / cleared meanwhile: nothing written back)
         try (Writer w = new OutputStreamWriter(new FileOutputStream(file(c), true), StandardCharsets.UTF_8)) {
             for (String l : lines) w.write(l + "\n");
         } catch (Exception ignored) {}
@@ -170,22 +188,38 @@ final class PhotoText {
         //noinspection ResultOfMethodCallIgnored
         new File(c.getFilesDir(), PART).delete();
         index = null;
+        gen++;
     }
+
+    private static synchronized int gen() { return gen; }
 
     static boolean isIndexFile(String name) { return FILE.equals(name) || PART.equals(name); }
 
     // ================================================================ reading while it charges
 
-    static boolean allowed(Context c) {
-        String perm = Build.VERSION.SDK_INT >= 33 ? "android.permission.READ_MEDIA_IMAGES" : android.Manifest.permission.READ_EXTERNAL_STORAGE; // (the 13+ name as text: same value)
-        return c.checkSelfPermission(perm) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    /** The permission names (as text: the 13+ / 14+ names are the same values). */
+    static final String ALL = "android.permission.READ_MEDIA_IMAGES", SOME = "android.permission.READ_MEDIA_VISUAL_USER_SELECTED";
+
+    static String[] perms() {
+        if (Build.VERSION.SDK_INT >= 34) return new String[]{ALL, SOME};
+        return new String[]{Build.VERSION.SDK_INT >= 33 ? ALL : android.Manifest.permission.READ_EXTERNAL_STORAGE};
     }
 
-    private static boolean charging(Context c) {
+    /** Any photos it may read: all of them, or (Android 14 "Select photos") the ones he picked. */
+    static boolean allowed(Context c) { return allowedAll(c) || Build.VERSION.SDK_INT >= 34 && granted(c, SOME); }
+
+    static boolean allowedAll(Context c) { return granted(c, Build.VERSION.SDK_INT >= 33 ? ALL : android.Manifest.permission.READ_EXTERNAL_STORAGE); }
+
+    private static boolean granted(Context c, String p) { return c.checkSelfPermission(p) == android.content.pm.PackageManager.PERMISSION_GRANTED; }
+
+    /** On the charger, the screen off (he isn't using it) and the battery below 40 °C: the only time it reads. */
+    private static boolean goodTime(Context c) {
         try {
             Intent b = c.registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-            int plug = b == null ? 0 : b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0);
-            return plug != 0;
+            if (b == null || b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) == 0) return false;
+            if (b.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 999) >= 400) return false; // (tenths of a °C)
+            android.os.PowerManager pm = c.getSystemService(android.os.PowerManager.class);
+            return pm != null && !pm.isInteractive();
         } catch (Exception e) { return false; }
     }
 
@@ -201,7 +235,7 @@ final class PhotoText {
     /** From the regular check: while it charges, a few minutes of reading the photos not read yet (newest first). */
     static void tick(Context c) {
         if (!on(c)) { if (file(c).isFile()) clear(c); return; } // (his switch off: what was read is forgotten)
-        if (!allowed(c) || !charging(c) || new Prefs(c).homeMode() || CarBox.on(c)) return;
+        if (!allowed(c) || !goodTime(c) || new Prefs(c).homeMode() || CarBox.on(c)) return;
         if (!RUNNING.compareAndSet(false, true)) return;
         new Thread(() -> {
             try { readSome(c, 4 * 60_000L); } catch (Throwable ignored) {} finally { RUNNING.set(false); }
@@ -210,6 +244,7 @@ final class PhotoText {
 
     private static void readSome(Context c, long budgetMs) {
         long until = System.currentTimeMillis() + budgetMs;
+        int started = gen();
         Map<Long, String[]> idx = load(c, null);
         Set<Long> alive = new java.util.HashSet<>();
         List<long[]> todo = new ArrayList<>(); // {id, taken}
@@ -224,21 +259,31 @@ final class PhotoText {
             }
         } catch (Exception e) { return; }
         if (idx.size() > alive.size() + 200) prune(c, alive); // (many deleted since: their words go)
+        if (todo.isEmpty()) return;
         List<String> lines = new ArrayList<>();
         Map<Long, String[]> add = new HashMap<>();
-        for (long[] p : todo) {
-            if (System.currentTimeMillis() > until || !charging(c) || !on(c)) break;
-            Uri u = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, p[0]);
-            List<String> w = words(readText(c, u));
-            lines.add(p[0] + "\t" + p[1] + "\t" + String.join(" ", w));
-            add.put(p[0], w.toArray(new String[0]));
-            if (lines.size() >= 20) { append(c, lines, add); lines.clear(); add.clear(); }
+        TextRecognizer r = OfflineRead.recognizer(); // (one for the whole run)
+        try {
+            int failed = 0;
+            for (long[] p : todo) {
+                if (System.currentTimeMillis() > until || !goodTime(c) || !on(c) || started != gen()) break;
+                Uri u = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, p[0]);
+                String text = readText(c, r, u);
+                if (text == null) { if (++failed >= 3) break; continue; } // (the reader failing: not remembered as read — tried again next time)
+                failed = 0;
+                List<String> w = words(text);
+                lines.add(p[0] + "\t" + p[1] + "\t" + String.join(" ", w));
+                add.put(p[0], w.toArray(new String[0]));
+                if (lines.size() >= 20) { append(c, lines, add, started); lines.clear(); add.clear(); }
+            }
+            append(c, lines, add, started);
+        } finally {
+            try { r.close(); } catch (Exception ignored) {}
         }
-        append(c, lines, add);
     }
 
-    /** One photo's printed text, read on the phone ("" when none or not readable). */
-    private static String readText(Context c, Uri u) {
+    /** One photo's printed text, read on the phone: "" when it has none or isn't a readable picture, null when the reading failed. */
+    private static String readText(Context c, TextRecognizer r, Uri u) {
         try {
             BitmapFactory.Options o = new BitmapFactory.Options();
             o.inJustDecodeBounds = true;
@@ -251,9 +296,9 @@ final class PhotoText {
             Bitmap b;
             try (java.io.InputStream in = c.getContentResolver().openInputStream(u)) { b = BitmapFactory.decodeStream(in, null, d); }
             if (b == null) return "";
-            try { return OfflineRead.text(b); } finally { b.recycle(); }
+            try { return OfflineRead.text(r, b); } finally { b.recycle(); }
         } catch (Throwable e) {
-            return "";
+            return ""; // (gone, or not a picture it can open: not a reader failure to try again — that one is null from the reader)
         }
     }
 

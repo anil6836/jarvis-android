@@ -149,39 +149,42 @@ final class BillText {
         }
     }
 
-    private static final Pattern TOLL = Pattern.compile("\\b(1[89]00|1860)[\\s\\-]?(\\d{3,4})[\\s\\-]?(\\d{3,4})\\b");
-    private static final Pattern PHONE = Pattern.compile("(?<![\\d])(?:\\+?91[\\s\\-]?)?(0?\\d{2,4}[\\s\\-]?\\d{6,8}|[6-9]\\d{4}[\\s\\-]?\\d{5})(?![\\d])");
-    private static final Pattern CARE = Pattern.compile("(?i)(customer\\s*care|care|service|helpline|help\\s*line|toll\\s*free|support|call|contact|ph\\.?|phone|mob|tel)");
+    private static final Pattern TOLL = Pattern.compile("(?<![\\d])(1800|1860)[\\s\\-]?(\\d{3,4})[\\s\\-]?(\\d{3,4})(?![\\d])");
+    private static final Pattern PHONE = Pattern.compile("(?<![\\d+])(\\+?91[\\s\\-]?)?(0\\d{2,4}[\\s\\-]?\\d{6,8}|[6-9]\\d{4}[\\s\\-]?\\d{5})(?![\\d])");
+    /** A line about calling the shop / the company (whole words only: "Hotel", "PhonePe", "Telangana" are not "tel" / "ph"). */
+    private static final Pattern CARE = Pattern.compile("(?i)(?<![a-z])(customer\\s*care|care|service|services|helpline|help\\s*line|toll\\s*free|support|call|contact|phone|ph|tel|telephone|landline)(?![a-z])");
+    /** A line about him, the payment or a document: never a number to call from there. */
+    private static final Pattern NOT_CARE = Pattern.compile("(?i)(?<![a-z])(ref|utr|upi|txn|pan|mob|auth|gst|gstin|acct|imei|a/c|s/n|dl|rc)(?![a-z])"
+            + "|(?i)(serial|sr\\.?\\s*no|ac\\s*no|account|transaction|order|invoice|bill\\s*no|receipt\\s*no|policy|card|aadhaar|aadhar|cust\\s*(name|id|no)"
+            + "|customer\\s*(name|id|no)|bill\\s*to|ship\\s*to|buyer|consignee|mobile\\s*no|approval)");
 
     /**
-     * The numbers to call for service: toll-free 1800 / 1860 numbers anywhere, and phone numbers on a line that says customer
-     * care / service / helpline / call / phone. Never a long run of digits that is not a phone number (invoice, serial, IMEI,
-     * card, account). Up to three, as printed with spaces. Pure.
+     * The numbers to call for service: toll-free 1800 / 1860 numbers and phone numbers (a mobile, or a landline written with its
+     * 0 STD code) on a line that says customer care / service / helpline / call / phone — never from a line about him, the
+     * payment or the bill (invoice, order, account, UPI / UTR / ref, card, policy, IMEI / serial, GST, bill to / buyer, his mobile).
+     * Up to three, as printed with spaces. Pure.
      */
     static List<String> serviceNumbers(String text) {
         List<String> out = new ArrayList<>();
-        Matcher t = TOLL.matcher(text);
-        while (t.find() && out.size() < 3) add(out, t.group(1) + " " + t.group(2) + " " + t.group(3));
         for (String l : text.split("\\r?\\n")) {
             if (out.size() >= 3) break;
+            if (NOT_CARE.matcher(l).find()) continue;
+            Matcher t = TOLL.matcher(l);
+            while (t.find() && out.size() < 3) add(out, t.group(1) + " " + t.group(2) + " " + t.group(3));
             if (!CARE.matcher(l).find()) continue;
-            String low = l.toLowerCase(Locale.ROOT);
-            if (low.contains("imei") || low.contains("serial") || low.contains("s/n") || low.contains("gst") || low.contains("a/c") || low.contains("account")
-                    || low.contains("invoice") || low.contains("card")) continue;
             Matcher p = PHONE.matcher(l);
             while (p.find() && out.size() < 3) {
-                String digits = p.group(1).replaceAll("[\\s\\-]", "");
-                if (digits.length() < 10 || digits.length() > 12) continue;
-                add(out, spaced(digits));
+                String digits = p.group(2).replaceAll("[\\s\\-]", "");
+                boolean mobile = digits.length() == 10 && digits.charAt(0) >= '6', land = digits.charAt(0) == '0' && digits.length() >= 10 && digits.length() <= 12;
+                if (!mobile && !land) continue;
+                if (digits.startsWith("1800") || digits.startsWith("1860")) continue;
+                add(out, mobile ? spaced(digits) : p.group(2).trim().replaceAll("[\\s\\-]+", " ")); // (a landline as printed: its STD code's own length)
             }
         }
         return out;
     }
 
-    private static String spaced(String d) {
-        if (d.length() == 10 && d.charAt(0) >= '6') return d.substring(0, 5) + " " + d.substring(5); // a mobile: 98765 43210
-        return d.length() > 7 ? d.substring(0, d.length() - 7) + " " + d.substring(d.length() - 7) : d; // a landline: 040 2345678
-    }
+    private static String spaced(String d) { return d.substring(0, 5) + " " + d.substring(5); } // a mobile: 98765 43210
 
     private static void add(List<String> out, String n) {
         String key = n.replaceAll("\\D", "");

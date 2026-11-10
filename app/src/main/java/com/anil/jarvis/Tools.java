@@ -745,8 +745,9 @@ final class Tools {
                         {"every_km", "integer", "For add_km: service every N km (e.g. 3000)"}})));
         DEFS.add(new Def("leave_jobs", "🗓️ Jobs that need an office's working hours (bank, post office, MRO / municipal office, gas agency, RTO, electricity office) "
                 + "that he does on his next day fully at home (from his duty roster): add = keep one ('సెలవు రోజు బ్యాంక్‌లో పాస్‌బుక్ అప్‌డేట్ చేయాలి'); "
-                + "list = what waits and which day; done = he did it (ids or his words); remove = not needed any more. That morning Jarvis lists them "
-                + "(usual hours, shut days, the way from home) and asks in the evening.",
+                + "list = what waits and which day; done = he did it (ids or his words: only the one job they fit best — on a tie it asks which); "
+                + "remove = not needed any more. Each job waits for a leave day its kind of office is open (a bank job skips Sundays and 2nd / 4th "
+                + "Saturdays). That morning Jarvis lists the ones open that day (usual hours, the way from home) and asks in the evening.",
                 schema(new String[][]{{"action", "string", "add, list (default), done or remove"},
                         {"text", "string", "For add: the job in his words (Telugu as he said it); for done / remove: the job's words or ids"}}, "action")));
         DEFS.add(new Def("market_prices", "Today's prices from the web: gold 22K/24K and silver in his city, crops at the market yard (mirchi / Teja chilli, cotton, paddy, maize, turmeric) per quintal, petrol/diesel. "
@@ -3343,7 +3344,7 @@ final class Tools {
         if (PhotoText.query(words).isEmpty()) return err("missing", "Which words are printed on the photo? Ask him in one short line (e.g. insurance, bill, ticket).");
         int[] pr = PhotoText.progress(act());
         List<Uri> hits = PhotoText.find(act(), words, 60);
-        String read = pr[1] + " of " + pr[0] + " photos read so far (the rest are read while the phone charges)";
+        String read = pr[1] + " of " + pr[0] + " photos read so far (the rest are read a few at a time while the phone charges with the screen off)";
         if (hits.isEmpty()) return ok().put("found", 0).put("read", read)
                 .put("next", "Say no photo with those words was found among the photos read so far (" + read + "); English print only. "
                         + "He can try other words, or 'photos search' looks at the pictures with the AI (photos are sent for that).").toString();
@@ -8064,37 +8065,42 @@ final class Tools {
                         + ". The line cuts by itself after a ring and the booking SMS follows; if it keeps ringing, call_control end. If a gas booking date is in expiry, renew it after the SMS.").toString();
     }
 
-    /** 🗓️ B5: jobs for his next day fully at home. */
+    /** 🗓️ B5: jobs for his next day fully at home (each job on the next such day its kind of place is open). */
     private String leaveJobs(JSONObject a) throws Exception {
         String action = a.optString("action", "list").toLowerCase(Locale.ROOT), text = a.optString("text").trim();
         java.time.LocalDate today = java.time.LocalDate.now();
-        java.time.LocalDate next = LeaveJobs.nextLeaveDay(act(), today);
-        String day = next == null ? "" : next.equals(today) ? "ఈ రోజే" : next.equals(today.plusDays(1)) ? "రేపు (" + Duty.day(next) + ")" : Duty.day(next);
         boolean roster = Duty.ready(Duty.load(act()));
+        String noRoster = roster ? "" : "No duty roster set: Saturday and Sunday are taken as his leave days (the duty calendar gives the real days).";
         if (action.startsWith("add")) {
             if (text.isEmpty()) return err("missing", "Which job? Ask him in one short line.");
             JSONObject o = LeaveJobs.add(act(), FloatBubble.noIds(text));
             if (o == null) return err("full", "The list is full (" + LeaveJobs.MAX + "). Ask him to mark some done first.");
-            String k = LeaveJobs.kind(text), h = LeaveJobs.hours(k), sh = next == null ? null : LeaveJobs.shut(k, next);
-            return ok().put("kept", o.optString("text")).put("next_leave_day", day).put("usual_hours", h == null ? "" : h).put("shut_that_day", sh == null ? "" : sh)
+            String k = LeaveJobs.kind(text), h = LeaveJobs.hours(k);
+            java.time.LocalDate next = LeaveJobs.nextLeaveDay(act(), today, k);
+            return ok().put("kept", o.optString("text")).put("its_leave_day", leaveDayText(next, today))
+                    .put("usual_hours", h == null ? "" : h)
                     .put("reminds", "that morning at " + LeaveJobs.morningMin(act()) / 60 + ":" + String.format(Locale.ENGLISH, "%02d", LeaveJobs.morningMin(act()) % 60) + ", and asks in the evening")
-                    .put("note", roster ? "" : "No duty roster set: Sunday is taken as the leave day (the duty calendar gives the real days).").toString();
+                    .put("note", (k == null ? "" : "its_leave_day already skips the days this kind of office is usually shut. ") + noRoster).toString();
         }
-        if (action.startsWith("done")) {
-            List<String> d = LeaveJobs.done(act(), text);
-            if (d.isEmpty()) return err("not_found", "No waiting job matched '" + text + "'. Waiting: " + LeaveJobs.pending(act()).toString());
-            return ok().put("done", new JSONArray(d)).put("still_waiting", LeaveJobs.pending(act()).size()).put("next_leave_day", day).toString();
+        if (action.startsWith("done") || action.startsWith("remove") || action.startsWith("delete")) {
+            boolean done = action.startsWith("done");
+            LeaveJobs.Picked d = done ? LeaveJobs.done(act(), text) : LeaveJobs.remove(act(), text);
+            if (d.acted.isEmpty() && !d.which.isEmpty())
+                return err("which", "His words fit more than one job equally: " + d.which + ". Ask him which one (read the job names, not the ids), then call again with that job's id.");
+            if (d.acted.isEmpty()) return err("not_found", "No waiting job matched '" + text + "'. Waiting: " + LeaveJobs.pending(act()).toString());
+            return ok().put(done ? "done" : "removed", new JSONArray(d.acted)).put("still_waiting", LeaveJobs.pending(act()).size()).toString();
         }
-        if (action.startsWith("remove") || action.startsWith("delete")) {
-            List<String> d = LeaveJobs.remove(act(), text);
-            if (d.isEmpty()) return err("not_found", "No job matched '" + text + "'.");
-            return ok().put("removed", new JSONArray(d)).toString();
-        }
-        List<String> lines = LeaveJobs.todayLines(act(), next == null ? today : next);
+        java.time.LocalDate next = LeaveJobs.nextLeaveDay(act(), today, null);
+        java.time.LocalDate on = next == null ? today : next;
         JSONArray ids = new JSONArray();
         for (JSONObject o : LeaveJobs.pending(act())) ids.put(o.optString("id") + " " + o.optString("text"));
-        return ok().put("next_leave_day", day).put("jobs_in_order", new JSONArray(lines)).put("ids", ids)
-                .put("note", roster ? "" : "No duty roster set: Sunday is taken as the leave day.").toString();
+        return ok().put("next_leave_day", leaveDayText(next, today)).put("jobs_that_day_in_order", new JSONArray(LeaveJobs.todayLines(act(), on)))
+                .put("not_that_day_office_shut", new JSONArray(LeaveJobs.laterLines(act(), on))).put("ids", ids).put("note", noRoster).toString();
+    }
+
+    private static String leaveDayText(java.time.LocalDate d, java.time.LocalDate today) {
+        if (d == null) return "none in the next two months";
+        return d.equals(today) ? "ఈ రోజే" : d.equals(today.plusDays(1)) ? "రేపు (" + Duty.day(d) + ")" : Duty.day(d);
     }
 
     private String expiry(JSONObject a) throws Exception {
