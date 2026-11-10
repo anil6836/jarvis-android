@@ -40,9 +40,6 @@
         <exclude domain="file" path="car_show/" />
         <exclude domain="file" path="car_show.part/" />
         <exclude domain="file" path="car_show.old/" />
-        <exclude domain="file" path="holo_show/" />
-        <exclude domain="file" path="holo_show.part/" />
-        <exclude domain="file" path="holo_show.old/" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
@@ -100,9 +97,6 @@
         <exclude domain="file" path="car_show/" />
         <exclude domain="file" path="car_show.part/" />
         <exclude domain="file" path="car_show.old/" />
-        <exclude domain="file" path="holo_show/" />
-        <exclude domain="file" path="holo_show.part/" />
-        <exclude domain="file" path="holo_show.old/" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
