@@ -524,6 +524,7 @@ final class LookScreen implements SensorEventListener {
         final int g = HoloPack.gen();
         if (g == filmGen && film.pack() != null) return;
         filmGen = g;
+        film.holdForPack(); // (nothing starts from the old pack while the new one is read)
         final java.io.File dir = a.getFilesDir();
         new Thread(() -> {
             final HoloPack pk = HoloPack.load(dir);

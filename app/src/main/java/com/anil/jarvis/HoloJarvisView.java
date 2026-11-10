@@ -47,6 +47,10 @@ final class HoloJarvisView extends FrameLayout {
     private final Handler h = new Handler(Looper.getMainLooper());
     private HoloPack pack;
     private boolean running, motion = true, blue = true, helloWanted, shown, gaveUp, released;
+    /** A new pack is being read: nothing starts from the old one meanwhile (its files may already be the new ones). */
+    private boolean holding;
+    /** After a clip that failed to get ready: no new one made ready before this (a bad moment doesn't use up every try at once). */
+    private long noPreloadUntil;
     private int state = OrbView.IDLE;
     /** On the screen; loading / ready to come next; fading out under {@code now} (the crossover). */
     private Slot now, next, prev;
@@ -69,6 +73,10 @@ final class HoloJarvisView extends FrameLayout {
         boolean prepared, startWhenReady;
         /** The new clip's first picture is on the layer (until then the layer may still hold the last clip's last picture). */
         boolean rendered, fadePending;
+        /** This layer's clip has come in (until then the orb isn't hidden for it). */
+        boolean in;
+        /** Players let go of this layer and still letting go (off the screen's thread): the new one takes the layer after. */
+        int releasing;
         int vw, vh, crossMs = CROSS_MS;
         private Slot fadeOld;
         private boolean fadeFromStill;
@@ -85,7 +93,7 @@ final class HoloJarvisView extends FrameLayout {
 
         @Override public void onSurfaceTextureAvailable(SurfaceTexture st, int w, int hh) {
             surface = new Surface(st);
-            if (mp != null) try { mp.setSurface(surface); } catch (Exception ignored) {}
+            attach();
             fit(this);
         }
         @Override public void onSurfaceTextureSizeChanged(SurfaceTexture st, int w, int hh) { fit(this); }
@@ -108,7 +116,7 @@ final class HoloJarvisView extends FrameLayout {
             try {
                 mp = new MediaPlayer();
                 mp.setVolume(0f, 0f);
-                if (surface != null) mp.setSurface(surface);
+                attach();
                 mp.setDataSource(f.getAbsolutePath());
                 mp.setLooping(c.loop && c.loopEndMs <= 0); // (a resting clip plays round by itself; talk goes back to its start before its still end)
                 // (each callback checks it is still this layer's player: a let-go one may still call back once)
@@ -165,7 +173,14 @@ final class HoloJarvisView extends FrameLayout {
             schedule();
         }
 
+        /** The layer to this player — only once the one before has let go of it (only one may hold it). */
+        void attach() {
+            if (releasing == 0 && mp != null && surface != null) try { mp.setSurface(surface); } catch (Exception ignored) {}
+        }
+
         private void fadeIn() {
+            in = true;
+            refreshShown();
             fadePending = false;
             h.removeCallbacks(fadeLate);
             final Slot old = fadeOld;
@@ -188,15 +203,15 @@ final class HoloJarvisView extends FrameLayout {
             h.removeCallbacks(fadeLate);
             fadePending = false;
             fadeOld = null;
-            if (mp != null) {
-                // (let go of the layer first, here and now: the next player takes it at once, and only one may hold it)
-                try { mp.setSurface(null); } catch (Exception ignored) {}
-                release(mp);
+            if (mp != null) { // (let go off the screen's thread; the next player takes the layer when this one has)
+                releasing++;
+                letGo(mp, () -> { releasing--; attach(); });
             }
             mp = null;
             clip = null;
             prepared = false;
             rendered = false;
+            in = false;
             startWhenReady = false;
         }
     }
@@ -227,17 +242,20 @@ final class HoloJarvisView extends FrameLayout {
 
     /** The pack (null: none — nothing shows, the orb stays). A new one starts afresh. */
     void setPack(HoloPack p) {
-        if (p == pack) return;
-        stopAll();
-        pack = p;
+        holding = false;
+        if (p == pack) { if (running) decide(); return; }
         gaveUp = false;
         failsInRow = 0;
-        stillBmp = null;
-        still.setImageDrawable(null);
+        stopAll();
+        pack = p;
+        if (p == null) { stillBmp = null; still.setImageDrawable(null); } // (a new pack: the old picture until its own comes, no flash of the orb)
         loadStill();
         refreshShown();
         if (running) decide();
     }
+
+    /** A new pack is on its way ({@link #setPack} ends the wait): nothing starts meanwhile, the welcome keeps. */
+    void holdForPack() { holding = true; }
 
     HoloPack pack() { return pack; }
 
@@ -264,6 +282,7 @@ final class HoloJarvisView extends FrameLayout {
 
     /** Motion allowed (false: battery saver / his switch — the still picture only). */
     void setMotion(boolean m) {
+        if (!m) helloWanted = false; // (no welcome later, when battery saver ends)
         if (m == motion) return;
         motion = m;
         if (!m) stopAll();
@@ -298,7 +317,7 @@ final class HoloJarvisView extends FrameLayout {
 
     // ================================================================ choosing and playing
 
-    private boolean canPlay() { return pack != null && running && motion && !gaveUp && !released; }
+    private boolean canPlay() { return pack != null && running && motion && !gaveUp && !released && !holding; }
 
     /** The clip for now: the welcome when wanted (only while resting), else the one for what Jarvis is doing. */
     private HoloPack.Clip want() {
@@ -323,7 +342,10 @@ final class HoloJarvisView extends FrameLayout {
             if (next != null && next.clip != c) { next.drop(); next = null; }
             return;
         }
-        if (now != null && now.clip != null && "hello".equals(now.clip.kind) && "idle".equals(c.kind)) return; // (the welcome plays to its end, then rest)
+        if (now != null && now.clip != null && "hello".equals(now.clip.kind) && "idle".equals(c.kind)) { // (the welcome plays to its end, then rest)
+            if (next != null && next.clip != c) { next.drop(); next = null; } // (one wanted a moment ago, e.g. listening that stopped at once: not now)
+            return;
+        }
         if (next != null && next.clip == c) { if (!next.startWhenReady) next.go(CROSS_MS); return; } // (already coming)
         Slot s = free();
         s.load(c, true);
@@ -332,7 +354,7 @@ final class HoloJarvisView extends FrameLayout {
 
     /** The layer not showing now (a crossover still going: cut short, its layer taken). */
     private Slot free() {
-        Slot s = slots[0] == now ? slots[1] : slots[0];
+        Slot s = now != null ? (slots[0] == now ? slots[1] : slots[0]) : next != null ? next : prev != null ? prev : slots[0]; // (nothing on: never a second player beside a waiting one)
         if (s == prev) { prev = null; s.drop(); }
         if (s == next) { next = null; s.drop(); }
         return s;
@@ -348,11 +370,16 @@ final class HoloJarvisView extends FrameLayout {
         if (at < 0 && !c.loop && dur > 0) { at = Math.max(0, dur - CROSS_MS - 60); cross = CROSS_MS; } // (the welcome: rest comes in over its last moment)
         if (at < 0 && c.loop) return; // (it plays round by itself: nothing to watch until what Jarvis does changes)
         if (at < 0 || pos < 0 || prev != null) { schedule(); return; } // (not ready yet / a crossover going)
-        if (next == null && pos >= at - AHEAD_MS) {
+        if (next == null && pos >= at - AHEAD_MS && android.os.SystemClock.uptimeMillis() >= noPreloadUntil) {
             HoloPack.Clip n = pack.forState(state);
             if (n != null) { Slot s = free(); s.load(n, false); if (s.mp != null) next = s; }
         }
-        if (next != null && pos >= at) { next.go(cross); return; }
+        if (next != null && pos >= at - 120) { // (a little early: its first picture takes a moment)
+            Slot n = next;
+            n.go(cross);
+            if (now != n) schedule(); // (not ready yet: still watched)
+            return;
+        }
         schedule();
     }
 
@@ -373,6 +400,7 @@ final class HoloJarvisView extends FrameLayout {
     private void failed(Slot s) {
         failsInRow++;
         boolean wasNow = s == now;
+        if (s == next && !wasNow) noPreloadUntil = android.os.SystemClock.uptimeMillis() + 1000;
         if (s == prev) prev = null;
         if (s == next) next = null;
         if (wasNow) {
@@ -388,7 +416,7 @@ final class HoloJarvisView extends FrameLayout {
             return;
         }
         if (wasNow) { still.setVisibility(VISIBLE); refreshShown(); }
-        if (canPlay()) h.postDelayed(() -> { if (next == null) decide(); }, 400); // (the clip for now tried again: even when another one still plays)
+        if (canPlay()) h.postDelayed(this::decide, 400); // (the clip for now tried again — or the one waiting started: never only the picture)
     }
 
     private void stopAll() {
@@ -403,8 +431,8 @@ final class HoloJarvisView extends FrameLayout {
         refreshShown();
     }
 
-    /** A player let go away from the screen's thread. */
-    private static void release(final MediaPlayer m) {
+    /** A player let go away from the screen's thread (letting go of its layer can take a moment); then {@code after} here. */
+    private void letGo(final MediaPlayer m, final Runnable after) {
         synchronized (HoloJarvisView.class) {
             if (releaser == null) {
                 android.os.HandlerThread t = new android.os.HandlerThread("holo-release");
@@ -412,12 +440,16 @@ final class HoloJarvisView extends FrameLayout {
                 releaser = new Handler(t.getLooper());
             }
         }
-        releaser.post(() -> { try { m.release(); } catch (Exception ignored) {} });
+        releaser.post(() -> {
+            try { m.setSurface(null); } catch (Exception ignored) {}
+            try { m.release(); } catch (Exception ignored) {}
+            h.post(after);
+        });
     }
 
     /** Tells the look whether Jarvis is there to be seen (the orb hides only then). */
     private void refreshShown() {
-        boolean on = pack != null && !gaveUp && !released && (stillBmp != null || now != null);
+        boolean on = pack != null && !gaveUp && !released && (stillBmp != null || (now != null && now.in));
         if (gaveUp) still.setVisibility(INVISIBLE);
         if (on == shown) return;
         shown = on;
