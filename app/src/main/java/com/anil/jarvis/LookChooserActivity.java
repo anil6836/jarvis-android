@@ -46,6 +46,7 @@ public class LookChooserActivity extends Activity {
         builtTheme = Ui.themeVersion;
         sp = getSharedPreferences(LookScreen.SP, MODE_PRIVATE);
         prefs = new Prefs(this);
+        if (b != null) pickForFilm = b.getBoolean("pick_for_film", false); // (the page made again while the file picker was open)
         builtPage = PageSkin.stamp(this);
         skin = PageSkin.forPage(this);
         bars(skin != null ? skin.t.bgTop : Ui.BG_TOP, skin != null ? skin.t.bgBottom : Ui.BG_BOTTOM);
@@ -68,6 +69,11 @@ public class LookChooserActivity extends Activity {
         super.onPause();
         if (previewDash != null) previewDash.stop();
         if (previewLook != null) previewLook.stop();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putBoolean("pick_for_film", pickForFilm);
     }
 
     @Override public void onBackPressed() {
@@ -176,6 +182,8 @@ public class LookChooserActivity extends Activity {
     private LinearLayout holoCard;
     private final TextView[] whoBtn = new TextView[2], colBtn = new TextView[2];
     private TextView packRow, holoLookNote;
+    /** The pack is being picked because he tapped 🎬 (only then does it come on by itself once the pack is in). */
+    private boolean pickForFilm;
 
     private LinearLayout buildHoloCard() {
         LinearLayout c = new LinearLayout(this);
@@ -254,7 +262,7 @@ public class LookChooserActivity extends Activity {
         }
         if (!new java.io.File(new java.io.File(getFilesDir(), HoloPack.DIR), HoloPack.MANIFEST).isFile()) {
             Toast.makeText(this, "📦 ముందు హోలో ప్యాక్ కలపండి: Downloads లో Jarvis-holo-pack.zip ఎంచుకోండి", Toast.LENGTH_LONG).show();
-            pickPack();
+            pickPack(true);
             return;
         }
         sp.edit().putString("holo_who", "film").apply();
@@ -283,11 +291,11 @@ public class LookChooserActivity extends Activity {
     private void packMenu() {
         if (!phone()) { Toast.makeText(this, "ఇది ఫోన్ కోసమే: ఈ పరికరం తన స్క్రీన్ తనదే", Toast.LENGTH_LONG).show(); return; }
         if (HoloPack.BUSY.get()) { Toast.makeText(this, "📦 ప్యాక్ ఇంకా కలుస్తోంది… అయ్యాక", Toast.LENGTH_SHORT).show(); return; }
-        if (!new java.io.File(getFilesDir(), HoloPack.DIR).exists()) { pickPack(); return; }
+        if (!new java.io.File(getFilesDir(), HoloPack.DIR).exists()) { pickPack(false); return; }
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("📦 హోలో ప్యాక్")
                 .setItems(new String[]{"📦 కొత్త ప్యాక్ కలుపు (పాతది పోతుంది)", "🗑️ ప్యాక్ తీసేయి (గోళం వస్తుంది)"}, (d, w) -> {
-                    if (w == 0) { pickPack(); return; }
+                    if (w == 0) { pickPack(false); return; }
                     new Thread(() -> {
                         boolean ok = HoloPack.remove(getFilesDir());
                         runOnUiThread(() -> {
@@ -300,7 +308,8 @@ public class LookChooserActivity extends Activity {
                 }).show();
     }
 
-    private void pickPack() {
+    private void pickPack(boolean forFilm) {
+        pickForFilm = forFilm;
         try {
             startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
                     .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/zip", "application/x-zip-compressed", "application/octet-stream"}), REQ_HOLOPACK);
@@ -318,7 +327,7 @@ public class LookChooserActivity extends Activity {
             String[] why = {""};
             HoloPack p = null;
             try (java.io.InputStream in = getContentResolver().openInputStream(u)) {
-                if (in != null) p = HoloPack.importZip(getFilesDir(), new java.io.BufferedInputStream(in, 256 * 1024), why);
+                if (in != null) p = HoloPack.importZip(getFilesDir(), new java.io.BufferedInputStream(in, 256 * 1024), why, HoloJarvisView::clipProblem);
                 else why[0] = "ఆ ఫైల్ తెరవలేకపోయాను";
             } catch (Exception e) { why[0] = "ఆ ఫైల్ తెరవలేకపోయాను"; }
             final HoloPack got = p;
@@ -326,9 +335,11 @@ public class LookChooserActivity extends Activity {
                 if (isFinishing()) return;
                 showPack();
                 if (got == null) { Toast.makeText(this, "❌ ప్యాక్ కలవలేదు: " + why[0], Toast.LENGTH_LONG).show(); return; }
-                sp.edit().putString("holo_who", "film").apply(); // (he added the pack to see him: 🔵 brings the orb back any time)
+                boolean film = pickForFilm || "film".equals(sp.getString("holo_who", "orb"));
+                if (pickForFilm) sp.edit().putString("holo_who", "film").apply(); // (he tapped 🎬 for him: 🔵 brings the orb back any time)
+                pickForFilm = false;
                 paintHolo();
-                Toast.makeText(this, "✅ కలిశాయి: " + got.summary() + ". 🛸 హోలో స్టేజ్ మీద కారు Jarvis (🔵 నొక్కితే గోళం మళ్ళీ).", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "✅ కలిశాయి: " + got.summary() + (film ? ". 🛸 హోలో స్టేజ్ మీద కారు Jarvis (🔵 నొక్కితే గోళం మళ్ళీ)." : ". 🎬 నొక్కితే ప్రొజెక్టర్ మీద కారు Jarvis."), Toast.LENGTH_LONG).show();
             });
         }, "holo-pack-in").start();
     }

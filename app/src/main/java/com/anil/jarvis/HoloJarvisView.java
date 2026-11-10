@@ -67,7 +67,13 @@ final class HoloJarvisView extends FrameLayout {
         MediaPlayer mp;
         HoloPack.Clip clip;
         boolean prepared, startWhenReady;
+        /** The new clip's first picture is on the layer (until then the layer may still hold the last clip's last picture). */
+        boolean rendered, fadePending;
         int vw, vh, crossMs = CROSS_MS;
+        private Slot fadeOld;
+        private boolean fadeFromStill;
+        /** No word of the first picture (some phones don't say): the layer comes in anyway. */
+        private final Runnable fadeLate = () -> { if (fadePending && now == this) fadeIn(); };
 
         Slot(Context c) {
             tv = new TextureView(c);
@@ -116,6 +122,10 @@ final class HoloJarvisView extends FrameLayout {
                 });
                 mp.setOnCompletionListener(p -> { if (p == mp) ended(this); });
                 mp.setOnErrorListener((p, what, extra) -> { if (p == mp) { Log.w(TAG, "clip " + c.kind + " error " + what + "/" + extra); failed(this); } return true; });
+                mp.setOnInfoListener((p, what, extra) -> {
+                    if (p == mp && what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) { rendered = true; if (fadePending) fadeIn(); }
+                    return false;
+                });
                 mp.prepareAsync();
             } catch (Exception e) {
                 Log.w(TAG, "clip " + c.kind + ": " + e);
@@ -123,29 +133,48 @@ final class HoloJarvisView extends FrameLayout {
             }
         }
 
-        /** Starts the loaded clip (still loading: the moment it is ready) and brings this layer in over the other one. */
+        /** Starts the loaded clip (still loading: the moment it is ready); this layer comes in over the other one with its first picture. */
         void go(int cross) {
             startWhenReady = true;
             crossMs = cross;
             if (!prepared || mp == null) return;
             if (!running || !motion || released) return;
             try { mp.start(); } catch (Exception e) { failed(this); return; }
-            failsInRow = 0;
             final Slot old = now;
+            if (old != null && old != this && old.fadePending) { // (the one before never came in: it stays out, under nothing)
+                old.fadePending = false;
+                h.removeCallbacks(old.fadeLate);
+                old.tv.animate().cancel();
+                old.tv.setAlpha(0f);
+            }
             now = this;
             if (next == this) next = null;
             if (prev != null && prev != old && prev != this) prev.drop(); // (a crossover cut short: only one goes out at a time)
             prev = old != null && old != this ? old : null;
             tv.bringToFront();
             tv.animate().cancel();
-            boolean fromStill = old == null;
-            tv.setAlpha(fromStill ? 0f : 0.02f);
-            tv.animate().alpha(1f).setDuration(fromStill ? IN_MS : cross).withEndAction(() -> {
+            tv.setAlpha(0f); // (never the last clip's last picture: in only with this clip's own first one)
+            fadeOld = old;
+            fadeFromStill = old == null;
+            fadePending = true;
+            h.removeCallbacks(fadeLate);
+            if (rendered) fadeIn(); else h.postDelayed(fadeLate, 300);
+            h.removeCallbacks(steady);
+            h.postDelayed(steady, 1200);
+            refreshShown();
+            schedule();
+        }
+
+        private void fadeIn() {
+            fadePending = false;
+            h.removeCallbacks(fadeLate);
+            final Slot old = fadeOld;
+            fadeOld = null;
+            tv.animate().cancel();
+            tv.animate().alpha(1f).setDuration(fadeFromStill ? IN_MS : crossMs).withEndAction(() -> {
                 if (old != null && prev == old && old != now && old != next) { old.drop(); prev = null; }
                 if (now == this) still.setVisibility(INVISIBLE); // (the picture under the clip: away while it plays, else it shows through)
             }).start();
-            refreshShown();
-            schedule();
         }
 
         /** Where the clip is now (ms), -1 unknown. */
@@ -156,13 +185,24 @@ final class HoloJarvisView extends FrameLayout {
         void drop() {
             tv.animate().cancel();
             tv.setAlpha(0f);
-            if (mp != null) release(mp);
+            h.removeCallbacks(fadeLate);
+            fadePending = false;
+            fadeOld = null;
+            if (mp != null) {
+                // (let go of the layer first, here and now: the next player takes it at once, and only one may hold it)
+                try { mp.setSurface(null); } catch (Exception ignored) {}
+                release(mp);
+            }
             mp = null;
             clip = null;
             prepared = false;
+            rendered = false;
             startWhenReady = false;
         }
     }
+
+    /** A clip that played a while: the failures before it are forgotten (one that breaks again and again still ends in the orb). */
+    private final Runnable steady = () -> { if (now != null && now.prepared && now.mp != null) failsInRow = 0; };
 
     HoloJarvisView(Context c) {
         super(c);
@@ -214,10 +254,12 @@ final class HoloJarvisView extends FrameLayout {
 
     /** On the screen and to be seen (true), or away / hidden / behind Live (false: every player lets go). */
     void setRunning(boolean on) {
+        if (!on) helloWanted = false; // (the welcome is for coming back to him, not for later)
         if (on == running) return;
         running = on;
-        if (!on) stopAll();
-        else decide();
+        if (!on) { stopAll(); return; }
+        if (gaveUp) { gaveUp = false; failsInRow = 0; still.setVisibility(VISIBLE); refreshShown(); } // (another try each time the screen comes back)
+        decide();
     }
 
     /** Motion allowed (false: battery saver / his switch — the still picture only). */
@@ -268,8 +310,12 @@ final class HoloJarvisView extends FrameLayout {
         return pack.forState(state);
     }
 
+    private final Runnable decideLater = this::decide;
+
     private void decide() {
         if (!canPlay()) return;
+        h.removeCallbacks(decideLater);
+        if (prev != null) { h.postDelayed(decideLater, 120); return; } // (a crossover going: the clip for now comes right after it — never a blank moment)
         HoloPack.Clip c = want();
         if (c == null) return;
         if ("hello".equals(c.kind)) helloWanted = false;
@@ -329,7 +375,10 @@ final class HoloJarvisView extends FrameLayout {
         boolean wasNow = s == now;
         if (s == prev) prev = null;
         if (s == next) next = null;
-        if (wasNow) now = null;
+        if (wasNow) {
+            now = null;
+            if (prev != null) { prev.drop(); prev = null; } // (the one it was crossing over: out too, never left on the screen)
+        }
         s.drop();
         if (failsInRow >= MAX_FAILS) {
             gaveUp = true;
@@ -339,11 +388,13 @@ final class HoloJarvisView extends FrameLayout {
             return;
         }
         if (wasNow) { still.setVisibility(VISIBLE); refreshShown(); }
-        if (now == null && next == null && canPlay()) h.postDelayed(() -> { if (now == null && next == null) decide(); }, 400);
+        if (canPlay()) h.postDelayed(() -> { if (next == null) decide(); }, 400); // (the clip for now tried again: even when another one still plays)
     }
 
     private void stopAll() {
         h.removeCallbacks(tick);
+        h.removeCallbacks(steady);
+        h.removeCallbacks(decideLater);
         for (Slot s : slots) s.drop();
         now = null;
         next = null;
@@ -435,6 +486,29 @@ final class HoloJarvisView extends FrameLayout {
         m.setScale(s.vw * t[0] / w, s.vh * t[0] / hh);
         m.postTranslate(t[1], t[2]);
         s.tv.setTransform(m);
+    }
+
+    /**
+     * A clip file in a pack he picks: a video with no sound track (a silent sound track still keeps the phone's music
+     * "playing" — songs, the cough listener and the door sound would think something plays). His words, or null: fine.
+     */
+    static String clipProblem(File f) {
+        android.media.MediaExtractor x = new android.media.MediaExtractor();
+        try {
+            x.setDataSource(f.getAbsolutePath());
+            boolean video = false;
+            for (int i = 0; i < x.getTrackCount(); i++) {
+                String mime = x.getTrackFormat(i).getString(android.media.MediaFormat.KEY_MIME);
+                if (mime == null) continue;
+                if (mime.startsWith("audio/")) return f.getName() + " లో శబ్దం ఉంది: శబ్దం లేని క్లిప్ కావాలి (Kling లో Native Audio ఆఫ్)";
+                if (mime.startsWith("video/")) video = true;
+            }
+            return video ? null : f.getName() + " వీడియో కాదు";
+        } catch (Exception e) {
+            return f.getName() + " చదవలేకపోయాను";
+        } finally {
+            try { x.release(); } catch (Exception ignored) {}
+        }
     }
 
     /** Black → see-through: 💠 his light turned hologram blue (darker parts fainter), 🎨 his own colours (only the black goes). */

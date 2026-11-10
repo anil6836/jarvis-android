@@ -151,7 +151,8 @@ final class HoloPack {
             int fade = Math.max(0, Math.min(1500, c.optInt("fadeMs", 300)));
             int end = c.optInt("loopEndMs", 0);
             if (end < 1000 || end <= fade || (ms > 0 && end > ms)) end = 0; // (no sensible place: it plays round as it is)
-            out.put(kind, new Clip(kind, file, ms, c.optBoolean("loop", !"hello".equals(kind)), end, fade));
+            boolean loop = !"hello".equals(kind) && c.optBoolean("loop", true); // (the welcome never plays round: once, then rest)
+            out.put(kind, new Clip(kind, file, ms, loop, "hello".equals(kind) ? 0 : end, fade));
         }
         if (!out.containsKey("idle")) throw new Exception("ప్యాక్‌లో 😌 (idle) క్లిప్ లేదు");
         JSONObject body = o.optJSONObject("body");
@@ -168,12 +169,17 @@ final class HoloPack {
      * pack goes and the new one takes its place (all of it, or nothing: the old one stays whole). Returns the new pack, or
      * null with the reason in {@code why[0]}.
      */
-    static HoloPack importZip(File filesDir, InputStream in, String[] why) {
+    static HoloPack importZip(File filesDir, InputStream in, String[] why) { return importZip(filesDir, in, why, null); }
+
+    /** A look at each clip file before the pack is kept (on the phone: it must be a video with no sound track); null: fine. */
+    interface Check { String problem(File clip); }
+
+    static HoloPack importZip(File filesDir, InputStream in, String[] why, Check check) {
         if (!BUSY.compareAndSet(false, true)) { say(why, "ఇంకో ప్యాక్ ఇప్పుడే కలుస్తోంది: అది అయ్యాక"); return null; }
-        try { return importNow(filesDir, in, why); } finally { BUSY.set(false); }
+        try { return importNow(filesDir, in, why, check); } finally { BUSY.set(false); }
     }
 
-    private static HoloPack importNow(File filesDir, InputStream in, String[] why) {
+    private static HoloPack importNow(File filesDir, InputStream in, String[] why, Check check) {
         File part = new File(filesDir, PART), dir = new File(filesDir, DIR);
         FilmPack.deleteTree(part);
         if (!part.mkdirs()) { say(why, "ఫోన్‌లో చోటు లేదు"); return null; }
@@ -223,6 +229,10 @@ final class HoloPack {
             List<String> missing = new ArrayList<>();
             for (Clip c : named.clips.values()) if (!new File(part, c.file).isFile()) missing.add(c.file);
             if (!missing.isEmpty()) throw new Exception(String.join(", ", missing) + " లేదు");
+            if (check != null) for (Clip c : named.clips.values()) {
+                String bad = check.problem(new File(part, c.file));
+                if (bad != null) throw new Exception(bad);
+            }
             parse(json, part);
         } catch (Exception ex) {
             FilmPack.deleteTree(part);
