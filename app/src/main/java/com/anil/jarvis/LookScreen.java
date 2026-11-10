@@ -78,6 +78,12 @@ final class LookScreen implements SensorEventListener {
     private SensorManager sensors;
     private float tx, ty;
     private final List<View> chipOrder = new ArrayList<>();
+    /** 🛸 🎬 the car Jarvis on the projector (holo look only; shown only when he chose it and his pack is on the phone). */
+    private HoloJarvisView film;
+    private boolean filmOn;
+    private int filmGen = -1;
+    /** When the main screen last went away with the car Jarvis on it (his 👋 again only after a while). */
+    private static long holoAway;
 
     LookScreen(Activity a, String look, Parts p, Host host, boolean preview) {
         this.a = a;
@@ -173,6 +179,17 @@ final class LookScreen implements SensorEventListener {
         olp.topMargin = orbTop;
         f.addView(p.orb, olp);
         int cw = dp(compact ? 92 : 98);
+        if (holo) { // 🎬 the car Jarvis's window on the projector, between the columns (hidden until he chose him and his pack is here)
+            film = new HoloJarvisView(a);
+            film.setVisibility(View.GONE);
+            FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(-1, dp(compact ? 138 : 212), Gravity.TOP);
+            flp.topMargin = dp(compact ? 0 : 4);
+            flp.leftMargin = flp.rightMargin = cw;
+            f.addView(film, flp);
+            film.setListener(on -> p.orb.setVisibility(on ? View.INVISIBLE : View.VISIBLE)); // (the orb itself never changes: only hidden while he stands there)
+            if (!preview) film.setOnClickListener(v -> p.orb.performClick()); // (a tap on him = a tap on the orb)
+            else film.setClickable(false);
+        }
         if (holo) { // two tilted glass columns beside the projector's light
             LinearLayout left = column(), right = column();
             for (int i = 0; i < 4; i++) {
@@ -485,6 +502,40 @@ final class LookScreen implements SensorEventListener {
             if (p.greeting != null) p.greeting.setVisibility(on ? View.GONE : View.VISIBLE);
         }
         if (!on) bg.setAnchor(-1, -1, 0);
+        filmRun();
+    }
+
+    // ================================================================ 🛸 🎬 the car Jarvis on the projector
+
+    /** His choice in 🎨: the car Jarvis when he chose him and his pack is on the phone (else the orb, as always); his colours. */
+    private void syncFilm() {
+        if (film == null) return;
+        film.setBlue(!"own".equals(sp.getString("holo_colour", "blue")));
+        if (!"film".equals(sp.getString("holo_who", "orb"))) {
+            filmOn = false;
+            filmGen = -1;
+            film.setPack(null);
+            film.setVisibility(View.GONE);
+            p.orb.setVisibility(View.VISIBLE);
+            return;
+        }
+        filmOn = true;
+        film.setVisibility(View.VISIBLE);
+        final int g = HoloPack.gen();
+        if (g == filmGen && film.pack() != null) return;
+        filmGen = g;
+        final java.io.File dir = a.getFilesDir();
+        new Thread(() -> {
+            final HoloPack pk = HoloPack.load(dir);
+            main.post(() -> { if (film != null && filmOn && filmGen == g) film.setPack(pk); });
+        }, "holo-pack").start();
+    }
+
+    /** The clips play only while the stage is on the screen (chat tab, not typing, not behind Live, the app in front). */
+    private void filmRun() {
+        if (film == null) return;
+        film.setMotion(motion);
+        film.setRunning(filmOn && started && !covered && hero != null && hero.getVisibility() == View.VISIBLE);
     }
 
     /** Where the orb sits on the background (the projector's light, the orbits go to it). */
@@ -492,7 +543,7 @@ final class LookScreen implements SensorEventListener {
         int rh = p.root.getHeight(); // (a short screen, e.g. the phone on its side: the stage would leave no room for the chat)
         boolean shortNow = rh > 0 && rh < dp((MainLook.LIQUID.equals(look) ? (compact ? 200 : 250) : heroHeight()) + 400);
         if (shortNow != tooShort) { tooShort = shortNow; main.post(this::update); }
-        if (hero == null || hero.getVisibility() != View.VISIBLE || !p.orb.isShown() || p.orb.getWidth() == 0) { bg.setAnchor(-1, -1, 0); return; }
+        if (hero == null || !hero.isShown() || p.orb.getVisibility() == View.GONE || p.orb.getWidth() == 0) { bg.setAnchor(-1, -1, 0); return; } // (the orb hidden for the car Jarvis: the light still goes to its place)
         int[] o = new int[2], t = new int[2];
         p.orb.getLocationInWindow(o);
         p.top.getLocationInWindow(t);
@@ -509,6 +560,7 @@ final class LookScreen implements SensorEventListener {
     void state(int s) {
         if (wave != null) wave.awake = s == OrbView.LISTENING || s == OrbView.SPEAKING;
         if (s != OrbView.LISTENING && s != OrbView.SPEAKING) bg.setLevel(0);
+        if (film != null) film.setState(s);
     }
 
     /** The full-screen Live view is over the look: nothing moves behind it. */
@@ -523,10 +575,14 @@ final class LookScreen implements SensorEventListener {
         stop();
         try { p.top.getViewTreeObserver().removeOnGlobalLayoutListener(layoutWatch); } catch (Exception ignored) {}
         if (p.dash != null) p.dash.onChange = null;
+        if (film != null) { film.release(); film = null; }
     }
 
     void start() {
+        boolean wasAway = !started;
         started = true;
+        syncFilm();
+        if (film != null && filmOn && wasAway && (preview || HoloPack.helloDue(System.currentTimeMillis(), holoAway))) film.hello(); // 👋 (the preview: always, to show him)
         setMotion(motionAllowed(a) && !covered);
         tickClock();
         if (motion && sp.getBoolean("look_tilt", true)) {
@@ -541,10 +597,12 @@ final class LookScreen implements SensorEventListener {
     }
 
     void stop() {
+        if (started && filmOn && !preview) holoAway = System.currentTimeMillis();
         started = false;
         main.removeCallbacks(clockTick);
         try { if (sensors != null) sensors.unregisterListener(this); } catch (Exception ignored) {}
         sensors = null;
+        filmRun();
     }
 
     private void setMotion(boolean m) {
@@ -552,6 +610,7 @@ final class LookScreen implements SensorEventListener {
         bg.animate = m;
         bg.invalidateSelf();
         if (wave != null) { wave.motion = m; wave.invalidate(); }
+        filmRun();
     }
 
     private final Runnable clockTick = this::tickClock;

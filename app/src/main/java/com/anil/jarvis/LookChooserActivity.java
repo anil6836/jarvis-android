@@ -156,10 +156,181 @@ public class LookChooserActivity extends Activity {
         swl.topMargin = dp(12);
         box.addView(sw, swl);
         skinMe.add(sw);
+        // 🛸 🎬 what stands on the holo projector
+        holoCard = buildHoloCard();
+        LinearLayout.LayoutParams hcl = new LinearLayout.LayoutParams(-1, -2);
+        hcl.topMargin = dp(12);
+        box.addView(holoCard, hcl);
+        skinMe.add(holoCard);
         scroll.addView(box);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         if (skin != null) for (View v : skinMe) skin.apply(v);
+        paintHolo();
+        showPack();
         return root;
+    }
+
+    // ================================================================ 🛸 🎬 the projector: the orb or the car Jarvis, his colours, his pack
+
+    private static final int REQ_HOLOPACK = 7101;
+    private LinearLayout holoCard;
+    private final TextView[] whoBtn = new TextView[2], colBtn = new TextView[2];
+    private TextView packRow, holoLookNote;
+
+    private LinearLayout buildHoloCard() {
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setBackground(Ui.glass(this, 20));
+        c.setPadding(dp(14), dp(12), dp(14), dp(12));
+        TextView t = Ui.text(this, "🛸 హోలో స్టేజ్: ప్రొజెక్టర్ మీద", 16, Ui.TEXT);
+        t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        c.addView(t);
+        holoLookNote = Ui.text(this, "", 12.5f, Ui.MUTED);
+        holoLookNote.setPadding(0, dp(2), 0, dp(4));
+        c.addView(holoLookNote);
+        c.addView(pillRow(whoBtn, new String[]{"🔵 Jarvis గోళం", "🎬 కారు Jarvis (నడుము వరకు)"}, this::chooseWho));
+        c.addView(pillRow(colBtn, new String[]{"💠 హోలోగ్రామ్ నీలం", "🎨 అసలు రంగులు"}, this::chooseColour));
+        packRow = Ui.text(this, "📦 హోలో ప్యాక్: …", 14, Ui.TEXT);
+        packRow.setPadding(dp(12), dp(10), dp(12), dp(10));
+        packRow.setBackground(Ui.round(this, 0x14FFFFFF, 0x44FFFFFF, 14));
+        packRow.setOnClickListener(v -> packMenu());
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(-1, -2);
+        pl.topMargin = dp(10);
+        c.addView(packRow, pl);
+        TextView note = Ui.text(this, "క్లిప్స్ మీ ఫోన్‌లోనే ఉంటాయి: యాప్‌లో, GitHub లో, బ్యాకప్‌లో ఎప్పుడూ ఉండవు. ప్యాక్ లేకపోతే గోళమే కనిపిస్తుంది. Jarvis మీద నొక్కితే గోళం మీద నొక్కినట్టే.", 12.5f, Ui.MUTED);
+        note.setPadding(0, dp(8), 0, 0);
+        c.addView(note);
+        return c;
+    }
+
+    private LinearLayout pillRow(TextView[] into, String[] names, java.util.function.IntConsumer tap) {
+        LinearLayout r = new LinearLayout(this);
+        r.setPadding(0, dp(8), 0, 0);
+        for (int i = 0; i < 2; i++) {
+            final int k = i;
+            TextView b = Ui.text(this, names[i], 14, Ui.TEXT);
+            b.setGravity(Gravity.CENTER);
+            b.setPadding(dp(8), dp(10), dp(8), dp(10));
+            b.setOnClickListener(v -> tap.accept(k));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
+            if (i == 1) lp.leftMargin = dp(8);
+            r.addView(b, lp);
+            into[i] = b;
+        }
+        return r;
+    }
+
+    /** The two choices drawn as they are saved: the chosen one solid with ✓ (the page theme leaves solid buttons as they are). */
+    private void paintHolo() {
+        if (holoCard == null) return;
+        boolean film = "film".equals(sp.getString("holo_who", "orb")), own = "own".equals(sp.getString("holo_colour", "blue"));
+        pill(whoBtn[0], "🔵 Jarvis గోళం", !film);
+        pill(whoBtn[1], "🎬 కారు Jarvis (నడుము వరకు)", film);
+        pill(colBtn[0], "💠 హోలోగ్రామ్ నీలం", !own);
+        pill(colBtn[1], "🎨 అసలు రంగులు", own);
+        String now = LookScreen.current(this, prefs);
+        holoLookNote.setText(!phone() ? "ఇది ఫోన్ కోసమే: ఈ పరికరంలో ఇక్కడ ఏది నొక్కినా ఏమీ మారదు."
+                : MainLook.HOLO.equals(now) ? "మీ మెయిన్ స్క్రీన్ ఇప్పుడు 🛸 హోలో స్టేజ్: ఇక్కడ ఎంచుకున్నది అక్కడే కనిపిస్తుంది."
+                : "ఇది 🛸 హోలో స్టేజ్ లుక్‌లోనే కనిపిస్తుంది (ఇప్పుడు మీ లుక్: " + MainLook.label(now) + "). పైన దాన్ని నొక్కి \"✓ ఇదే పెట్టు\" అంటే చాలు.");
+        holoLookNote.setTextColor(Ui.MUTED);
+        if (skin != null) skin.apply(holoCard);
+    }
+
+    private void pill(TextView b, String name, boolean on) {
+        b.setText(on ? "✓ " + name : name);
+        b.setTypeface(on ? android.graphics.Typeface.DEFAULT_BOLD : android.graphics.Typeface.DEFAULT);
+        b.setTextColor(on ? 0xFF041018 : Ui.TEXT);
+        b.setBackground(on ? Ui.round(this, 0xFF5FE9FF, 0, 14) : Ui.round(this, 0x14FFFFFF, 0x44FFFFFF, 14));
+    }
+
+    /** 🔵 the orb (as always) / 🎬 the car Jarvis: only on his tap, only on the phone; 🎬 without a pack asks for the pack first. */
+    private void chooseWho(int k) {
+        if (!phone()) { Toast.makeText(this, "ఇది ఫోన్ కోసమే: ఈ పరికరం తన స్క్రీన్ తనదే", Toast.LENGTH_LONG).show(); return; }
+        if (k == 0) {
+            sp.edit().putString("holo_who", "orb").apply();
+            Toast.makeText(this, "🔵 ప్రొజెక్టర్ మీద Jarvis గోళం: ఇంతకుముందు లాగే", Toast.LENGTH_SHORT).show();
+            paintHolo();
+            return;
+        }
+        if (!new java.io.File(new java.io.File(getFilesDir(), HoloPack.DIR), HoloPack.MANIFEST).isFile()) {
+            Toast.makeText(this, "📦 ముందు హోలో ప్యాక్ కలపండి: Downloads లో Jarvis-holo-pack.zip ఎంచుకోండి", Toast.LENGTH_LONG).show();
+            pickPack();
+            return;
+        }
+        sp.edit().putString("holo_who", "film").apply();
+        Toast.makeText(this, "🎬 ప్రొజెక్టర్ మీద కారు Jarvis" + (MainLook.HOLO.equals(LookScreen.current(this, prefs)) ? "" : " (🛸 హోలో స్టేజ్ లుక్‌లో)"), Toast.LENGTH_SHORT).show();
+        paintHolo();
+    }
+
+    private void chooseColour(int k) {
+        if (!phone()) { Toast.makeText(this, "ఇది ఫోన్ కోసమే: ఈ పరికరం తన స్క్రీన్ తనదే", Toast.LENGTH_LONG).show(); return; }
+        sp.edit().putString("holo_colour", k == 0 ? "blue" : "own").apply();
+        paintHolo();
+    }
+
+    /** 📦 What pack is on the phone. */
+    private void showPack() {
+        if (packRow == null) return;
+        final TextView row = packRow;
+        new Thread(() -> {
+            HoloPack p = HoloPack.load(getFilesDir());
+            final String t = "📦 హోలో ప్యాక్: " + (p == null ? "లేదు · నొక్కి కలపండి (Jarvis-holo-pack.zip)" : p.summary() + " · నొక్కితే మార్చు / తీసేయి");
+            runOnUiThread(() -> { if (!isFinishing()) { row.setText(t); row.setTextColor(Ui.TEXT); if (skin != null) skin.apply(row); } });
+        }, "holo-row").start();
+    }
+
+    /** 📦 Add his pack (the zip), or take it away. */
+    private void packMenu() {
+        if (!phone()) { Toast.makeText(this, "ఇది ఫోన్ కోసమే: ఈ పరికరం తన స్క్రీన్ తనదే", Toast.LENGTH_LONG).show(); return; }
+        if (HoloPack.BUSY.get()) { Toast.makeText(this, "📦 ప్యాక్ ఇంకా కలుస్తోంది… అయ్యాక", Toast.LENGTH_SHORT).show(); return; }
+        if (!new java.io.File(getFilesDir(), HoloPack.DIR).exists()) { pickPack(); return; }
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("📦 హోలో ప్యాక్")
+                .setItems(new String[]{"📦 కొత్త ప్యాక్ కలుపు (పాతది పోతుంది)", "🗑️ ప్యాక్ తీసేయి (గోళం వస్తుంది)"}, (d, w) -> {
+                    if (w == 0) { pickPack(); return; }
+                    new Thread(() -> {
+                        boolean ok = HoloPack.remove(getFilesDir());
+                        runOnUiThread(() -> {
+                            if (ok) sp.edit().putString("holo_who", "orb").apply();
+                            paintHolo();
+                            showPack();
+                            Toast.makeText(this, ok ? "🗑️ ప్యాక్ తీసేశాను: ప్రొజెక్టర్ మీద గోళం" : "📦 ప్యాక్ ఇంకా కలుస్తోంది… అయ్యాక తీసేయండి", Toast.LENGTH_SHORT).show();
+                        });
+                    }, "holo-del").start();
+                }).show();
+    }
+
+    private void pickPack() {
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                    .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/zip", "application/x-zip-compressed", "application/octet-stream"}), REQ_HOLOPACK);
+        } catch (Exception e) {
+            Toast.makeText(this, "ఫైల్ ఎంచుకునే యాప్ లేదు", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onActivityResult(int code, int result, Intent data) {
+        super.onActivityResult(code, result, data);
+        if (code != REQ_HOLOPACK || result != RESULT_OK || data == null || data.getData() == null || !phone()) return;
+        final android.net.Uri u = data.getData();
+        Toast.makeText(this, "📦 హోలో ప్యాక్ కలుపుతున్నాను…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String[] why = {""};
+            HoloPack p = null;
+            try (java.io.InputStream in = getContentResolver().openInputStream(u)) {
+                if (in != null) p = HoloPack.importZip(getFilesDir(), new java.io.BufferedInputStream(in, 256 * 1024), why);
+                else why[0] = "ఆ ఫైల్ తెరవలేకపోయాను";
+            } catch (Exception e) { why[0] = "ఆ ఫైల్ తెరవలేకపోయాను"; }
+            final HoloPack got = p;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                showPack();
+                if (got == null) { Toast.makeText(this, "❌ ప్యాక్ కలవలేదు: " + why[0], Toast.LENGTH_LONG).show(); return; }
+                sp.edit().putString("holo_who", "film").apply(); // (he added the pack to see him: 🔵 brings the orb back any time)
+                paintHolo();
+                Toast.makeText(this, "✅ కలిశాయి: " + got.summary() + ". 🛸 హోలో స్టేజ్ మీద కారు Jarvis (🔵 నొక్కితే గోళం మళ్ళీ).", Toast.LENGTH_LONG).show();
+            });
+        }, "holo-pack-in").start();
     }
 
     private static String laterNames() {

@@ -248,6 +248,7 @@ final class Backup {
                 || CarPhotos3D.isPhoto(name) || name.equals(World3DStore.DIR) // (his 3D car photos: on the box only; the 3D map's pieces round where he drove: his alone)
                 || name.startsWith("mbgl-offline.db") || name.equals("map15") // (⑮'s map pieces kept by MapLibre round where he drove: his alone; the free style, fetched again)
                 || name.equals(FilmPack.DIR) || name.equals(FilmPack.PART) || name.equals(FilmPack.DIR + ".old") // (🎬 his own clips: on the box only, never in a backup — his rule)
+                || HoloPack.isPackFile(name) // (🎬 his holo projector clips: on the phone only, never in a backup — his rule)
                 || (name.startsWith("greet_") && name.endsWith(".pcm"));
     }
 
