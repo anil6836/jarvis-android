@@ -76,6 +76,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 Sounds.armNightEdge(c);
                 break;
             case StopAlarm.ACTION_OFF: StopAlarm.stoppedFromNotification(c); break;
+            case ScamGuard.ACTION_TRUST: ScamGuard.trustFromNotice(c, i); break; // ✅ "ఇది మంచిదే" on a scam notice (his tap)
             case Guard.ACTION_STOP: Guard.stop(c); break;
             case Duty.ACTION_NAP: { // up 60 minutes before leaving at the latest; 90 minutes at most
                 long leave = i.getLongExtra("leave", 0);

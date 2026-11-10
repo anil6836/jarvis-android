@@ -108,6 +108,18 @@ final class Expiry {
         if (item == null || item.trim().isEmpty()) return null;
         LocalDate b = Debts.parse(bought), u = Debts.parse(until);
         if (u == null && b != null && months > 0) u = b.plusMonths(months);
+        // 🧾 B6: the bill photo read on the phone (nothing sent): the bought date / months he didn't say, the service numbers
+        byte[] jpg = null;
+        String photo0 = billPhoto;
+        if (photo0 != null && System.currentTimeMillis() - billPhotoAt < 15 * 60000L) {
+            try { jpg = android.util.Base64.decode(photo0, android.util.Base64.DEFAULT); } catch (Exception ignored) {}
+        }
+        BillText.Found read = jpg != null && android.os.Looper.myLooper() != android.os.Looper.getMainLooper() ? BillText.read(jpg) : null;
+        if (u == null && read != null) {
+            if (b == null) b = read.date;
+            if (months <= 0) months = read.months;
+            if (b != null && months > 0) u = b.plusMonths(months);
+        }
         if (u == null) return null;
         String what = item.trim().endsWith("వారంటీ") ? item.trim() : item.trim() + " వారంటీ";
         JSONObject o = exact(c, what);
@@ -119,16 +131,54 @@ final class Expiry {
         String photo = billPhoto;
         if (photo != null && System.currentTimeMillis() - billPhotoAt < 15 * 60000L) {
             try { // the warranty is kept even if the photo can't be saved
-                byte[] jpg = android.util.Base64.decode(photo, android.util.Base64.DEFAULT);
+                byte[] bytes = android.util.Base64.decode(photo, android.util.Base64.DEFAULT);
                 String file = item.trim().replaceAll("[^\\p{L}\\p{M}\\p{N}]+", "_") + "_bill_" + System.currentTimeMillis() % 100000 + ".jpg";
-                Coder.Made m = Coder.save(c, "Jarvis/bills", file, "image/jpeg", jpg);
+                Coder.Made m = Coder.save(c, "Jarvis/bills", file, "image/jpeg", bytes);
                 if (m.uri != null) o.put("bill", m.uri.toString());
                 o.put("bill_file", m.where);
                 billPhoto = null;
             } catch (Exception ignored) {}
         }
+        if (read != null && !read.service.isEmpty()) o.put("service", new org.json.JSONArray(read.service));
         put(c, o);
+        if (read == null && jpg != null) { // (asked from the main thread: read after, the numbers added to the saved warranty)
+            final byte[] j = jpg;
+            final String id = o.optString("id");
+            new Thread(() -> {
+                BillText.Found f = BillText.read(j);
+                if (f == null || f.service.isEmpty()) return;
+                try {
+                    for (JSONObject x : Notes.list(c, KEY)) if (id.equals(x.optString("id"))) { x.put("service", new org.json.JSONArray(f.service)); put(c, x); break; }
+                } catch (Exception ignored) {}
+            }, "bill-read").start();
+        }
         return o;
+    }
+
+    /**
+     * 🧾 B6 "ఫ్యాన్ పాడైంది": that thing's warranty — still on and for how long, or over since when; the shop; the service numbers
+     * read from its bill (read now on the phone when the bill was kept before the numbers were looked for). Null: no warranty
+     * of that name. Background thread (it may read the bill).
+     */
+    static JSONObject broken(Context c, String what) throws Exception {
+        JSONObject o = find(c, what);
+        if (o == null || !"warranty".equals(o.optString("kind"))) {
+            JSONObject w = find(c, (what == null ? "" : what.trim()) + " వారంటీ");
+            if (w == null || !"warranty".equals(w.optString("kind"))) return null;
+            o = w;
+        }
+        if (!o.has("service") && !o.optString("bill").isEmpty()) {
+            BillText.Found f = BillText.read(c, android.net.Uri.parse(o.optString("bill")));
+            if (f != null) { o.put("service", new org.json.JSONArray(f.service)); put(c, o); }
+        }
+        LocalDate until = LocalDate.parse(o.optString("date")), today = LocalDate.now();
+        long days = java.time.temporal.ChronoUnit.DAYS.between(today, until);
+        JSONObject r = new JSONObject().put("item", o.optString("what")).put("warranty_until", until.toString()).put("in_warranty", days >= 0)
+                .put("left", days >= 0 ? (days > 60 ? (days / 30) + " months" : days + " days") : "ended " + (-days) + " days ago")
+                .put("shop", o.optString("shop")).put("bill_photo", !o.optString("bill").isEmpty());
+        org.json.JSONArray sv = o.optJSONArray("service");
+        r.put("service_numbers", sv == null ? new org.json.JSONArray() : sv);
+        return r;
     }
 
     /** Opens the bill photo kept with a warranty. */

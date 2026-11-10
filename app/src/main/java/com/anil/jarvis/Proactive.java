@@ -101,6 +101,7 @@ public class Proactive extends BroadcastReceiver {
         try { House.tick(c, p, hush); } catch (Throwable ignored) {}         // 🥛 the milk bill on the 1st, the 5th / 10th; the tablet's entries
         try { Car.tick(c, p, hush); } catch (Throwable ignored) {}           // 🚗 the car's service before it is due; last month's note on the 1st
         try { Expiry.tick(c, p, hush); } catch (Throwable ignored) {}
+        try { LeaveJobs.tick(c, p, hush); } catch (Throwable ignored) {}    // 🗓️ B5: a leave day's jobs in the morning, "అయ్యాయా?" in the evening
         try { Lent.tick(c, p, hush); } catch (Throwable ignored) {}         // a thing lent a month ago, once
         try { DutyMode.tick(c); } catch (Throwable ignored) {}              // duty mode by itself when a duty starts (his choice)
         try { HealthWeek.tick(c); } catch (Throwable ignored) {}            // W49: Sunday evening's health graph
@@ -126,6 +127,7 @@ public class Proactive extends BroadcastReceiver {
         try { Companion.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {} // V14: a caring word after a duty / a long ride
         try { Forecast.tick(c, p, hush); } catch (Throwable ignored) {}     // V15: "ఇలాగే కొనసాగితే", evenings, only when something is red
         if (!hush) { try { LaterBox.remindTick(c, p); } catch (Throwable ignored) {} } // 📬 waited an hour and he is free: one "చదవమంటారా?" (its own switch)
+        try { PhotoText.tick(c); } catch (Throwable ignored) {}           // 📷 B7: while it charges, a few minutes of reading his photos' printed words (on the phone)
         if (!p.proactive()) return;
         boolean quiet = hush;
         Calendar now = Calendar.getInstance();

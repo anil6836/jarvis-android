@@ -55,6 +55,8 @@ final class Duty {
         int leaveBefore = 90;
         /** Home to duty, one way, in km (0 = not told): to see if the bike's charge is enough to go and come back. */
         int tripKm = 0;
+        /** 🌙 When the evening before a duty is said (minutes of the day; his choice 10 Nov: 18:00). */
+        int eveMin = 18 * 60;
         final List<Batch> batches = new ArrayList<>();
         final List<Change> changes = new ArrayList<>();
 
@@ -266,6 +268,7 @@ final class Duty {
             r.remind = o.optBoolean("remind", true);
             r.leaveBefore = o.optInt("leave_before", 90);
             r.tripKm = o.optInt("trip_km", 0);
+            r.eveMin = Math.max(0, Math.min(23 * 60 + 59, o.optInt("eve_min", 18 * 60)));
             JSONArray bs = o.optJSONArray("batches");
             for (int i = 0; bs != null && i < bs.length(); i++) {
                 JSONObject j = bs.getJSONObject(i);
@@ -304,7 +307,7 @@ final class Duty {
     static synchronized void save(Context c, Roster r) {
         try {
             JSONObject o = new JSONObject().put("on", r.on).put("off", r.off).put("mine", r.mine).put("remind", r.remind)
-                    .put("leave_before", r.leaveBefore).put("trip_km", r.tripKm);
+                    .put("leave_before", r.leaveBefore).put("trip_km", r.tripKm).put("eve_min", r.eveMin);
             JSONArray bs = new JSONArray();
             for (Batch b : r.batches) {
                 JSONArray ms = new JSONArray();
@@ -423,14 +426,22 @@ final class Duty {
             if (s.equals(today.plusDays(2)) && now.getHour() >= 9 && now.getHour() < 12 && once(c, "two|" + s)) {
                 notify(c, ("two" + s).hashCode(), "🗓️ ఎల్లుండి డ్యూటీ", day(s) + ", " + when);
             }
-            if (s.equals(today.plusDays(1)) && now.getHour() >= 20 && now.getHour() < 23 && once(c, "eve|" + s)) {
+            if (s.equals(today.plusDays(1)) && eveWindow(now, r.eveMin) && once(c, "eve|" + s)) {
                 String bag = checklist(c);
-                String base = day(s) + ", " + when + ". ఇంటి నుంచి " + go + " కల్లా బయలుదేరండి." + (bag.isEmpty() ? "" : "\n🎒 బ్యాగ్: " + bag);
+                // 🌙 the evening check (10 Nov): the alarm for the morning, the phone's charge (the rain on the way and the bike's charge follow)
+                String[] alarm = alarmCheck(leave, nextAlarm(c), now);
+                int[] bat = phoneBattery(c);
+                String phone = phoneLine(bat[0], bat[1] == 1);
+                String base = day(s) + ", " + when + ". ఇంటి నుంచి " + go + " కల్లా బయలుదేరండి." + (bag.isEmpty() ? "" : "\n🎒 బ్యాగ్: " + bag)
+                        + (alarm == null ? "" : "\n" + alarm[1]) + (phone == null ? "" : "\n" + phone);
                 int id = ("eve" + s).hashCode();
-                notify(c, id, "🗓️ రేపు మీ డ్యూటీ", base);
+                Notification.Action act = alarm != null && "need".equals(alarm[0]) ? alarmAction(c, id, leave.minusMinutes(60)) : null;
+                notify(c, id, "🗓️ రేపు మీ డ్యూటీ", base, act);
                 if (!quiet) Announcer.say(c, p.name() + ", రేపు మీ డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి."
-                        + (bag.isEmpty() ? "" : " బ్యాగ్ ఇప్పుడే సర్దుకోండి: " + bag + "."));
-                tripLater(c, r, leave, start, true, id, "🗓️ రేపు మీ డ్యూటీ", base, quiet);
+                        + (bag.isEmpty() ? "" : " బ్యాగ్ ఇప్పుడే సర్దుకోండి: " + bag + ".")
+                        + (alarm != null && "need".equals(alarm[0]) ? " రేపటికి అలారం లేదు, " + hm(leave.minusMinutes(60)) + " కి పెట్టుకోండి." : "")
+                        + (phone != null && bat[1] != 1 && bat[0] >= 0 && bat[0] < PHONE_LOW ? " ఫోన్ " + bat[0] + " శాతమే ఉంది, రాత్రి ఛార్జ్ పెట్టండి." : ""));
+                tripLater(c, r, leave, start, true, id, "🗓️ రేపు మీ డ్యూటీ", base, quiet, act);
             }
             if (!now.isBefore(leave.minusMinutes(60)) && now.isBefore(leave) && once(c, "day|" + s)) {
                 String bag = checklist(c);
@@ -439,7 +450,7 @@ final class Duty {
                 notify(c, id, "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", base);
                 Announcer.say(c, p.name() + ", ఈరోజు డ్యూటీ. " + t + " కి రిలీవ్ చేయాలి, " + go + " కల్లా బయలుదేరండి."
                         + (bag.isEmpty() ? "" : " మర్చిపోకండి: " + bag + "."));
-                tripLater(c, r, leave, start, false, id, "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", base, false);
+                tripLater(c, r, leave, start, false, id, "🗓️ ఈరోజు డ్యూటీ, " + go + " కల్లా బయలుదేరండి", base, false, null);
             }
             restBefore(c, p, s, start, leave, hours, quiet);
             if (!now.isBefore(leave) && now.isBefore(start) && once(c, "go|" + s)) {
@@ -517,11 +528,12 @@ final class Duty {
     }
 
     /** The reminder goes out at once; rain and bike charge follow on their own thread and fill the same notification. */
-    private static void tripLater(Context c, Roster r, LocalDateTime leave, LocalDateTime start, boolean evening, int id, String title, String base, boolean quiet) {
+    private static void tripLater(Context c, Roster r, LocalDateTime leave, LocalDateTime start, boolean evening, int id, String title, String base, boolean quiet,
+                                  Notification.Action act) {
         new Thread(() -> {
             String trip = tripCheck(c, r, leave, start, evening);
             if (trip.isEmpty()) return;
-            notify(c, id, title, base + "\n" + trip);
+            notify(c, id, title, base + "\n" + trip, act);
             if (!quiet && !CallControl.busyWithCall()) Announcer.say(c, trip);
         }, "duty-trip").start();
     }
@@ -623,16 +635,85 @@ final class Duty {
         return out.toString().trim();
     }
 
-    private static void notify(Context c, int id, String title, String text) {
+    private static void notify(Context c, int id, String title, String text) { notify(c, id, title, text, null); }
+
+    // ================================================================ 🌙 the evening check: alarm, phone (10 Nov)
+
+    /** The phone below this % in the evening before a duty: "charge it tonight". */
+    static final int PHONE_LOW = 80;
+
+    /** The evening-before window: from his time for about three hours (not past midnight). Pure. */
+    static boolean eveWindow(LocalDateTime now, int eveMin) {
+        int m = now.getHour() * 60 + now.getMinute();
+        return m >= eveMin && m < Math.min(eveMin + 180, 24 * 60);
+    }
+
+    /**
+     * A morning duty's alarm: an hour before leaving home (as the nap / bed lines count it). {"ok", line} when an alarm (any clock
+     * app's) rings between now and leaving; {"need", line} when none does; null for a duty he leaves for after noon (no morning
+     * alarm needed). next = the phone's next alarm (ms), 0 = none. Pure.
+     */
+    static String[] alarmCheck(LocalDateTime leave, long next, LocalDateTime now) {
+        if (leave.getHour() >= 12) return null;
+        LocalDateTime wake = leave.minusMinutes(60);
+        if (next > 0) {
+            LocalDateTime at = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(next), java.time.ZoneId.systemDefault());
+            if (at.isAfter(now) && !at.isAfter(leave)) return new String[]{"ok", "⏰ రేపు " + hm(at) + " కి అలారం ఉంది ✓"};
+        }
+        return new String[]{"need", "⏰ రేపటికి అలారం లేదు: " + hm(wake) + " కి పెట్టుకోండి (కింది బటన్)"};
+    }
+
+    /** "📱 ఫోన్ 45%: రాత్రి ఛార్జ్ పెట్టండి" / "ఛార్జింగ్‌లో ఉంది ✓" / "ఫోన్ 92% ✓"; null when not known. Pure. */
+    static String phoneLine(int pct, boolean charging) {
+        if (pct < 0) return null;
+        if (charging) return "📱 ఫోన్ ఛార్జింగ్‌లో ఉంది (" + pct + "%) ✓";
+        return pct < PHONE_LOW ? "📱 ఫోన్ " + pct + "%: రాత్రి ఛార్జ్ పెట్టండి" : "📱 ఫోన్ " + pct + "% ✓";
+    }
+
+    /** The phone's next alarm (any clock app's), 0 = none. */
+    private static long nextAlarm(Context c) {
+        try {
+            android.app.AlarmManager am = c.getSystemService(android.app.AlarmManager.class);
+            android.app.AlarmManager.AlarmClockInfo a = am == null ? null : am.getNextAlarmClock();
+            return a == null ? 0 : a.getTriggerTime();
+        } catch (Exception e) { return 0; }
+    }
+
+    /** {percent (-1 unknown), 1 = charging}. */
+    private static int[] phoneBattery(Context c) {
+        try {
+            Intent b = c.registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (b == null) return new int[]{-1, 0};
+            int lv = b.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1), sc = b.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
+            int st = b.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1);
+            boolean ch = st == android.os.BatteryManager.BATTERY_STATUS_CHARGING || st == android.os.BatteryManager.BATTERY_STATUS_FULL;
+            return new int[]{lv < 0 || sc <= 0 ? -1 : Math.round(lv * 100f / sc), ch ? 1 : 0};
+        } catch (Exception e) { return new int[]{-1, 0}; }
+    }
+
+    /** "⏰ 9:00 కి అలారం పెట్టు": opens the clock app with the alarm filled in (he saves it there — only his tap sets it). */
+    private static Notification.Action alarmAction(Context c, int id, LocalDateTime wake) {
+        try {
+            Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_ALARM).putExtra(android.provider.AlarmClock.EXTRA_HOUR, wake.getHour())
+                    .putExtra(android.provider.AlarmClock.EXTRA_MINUTES, wake.getMinute()).putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "డ్యూటీ")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            PendingIntent pi = PendingIntent.getActivity(c, id ^ 0xA1A, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            return new Notification.Action.Builder(null, "⏰ " + hm(wake) + " కి అలారం పెట్టు", pi).build();
+        } catch (Exception e) { return null; }
+    }
+
+    private static void notify(Context c, int id, String title, String text, Notification.Action act) {
         try {
             NotificationManager nm = c.getSystemService(NotificationManager.class);
             if (nm == null) return;
             nm.createNotificationChannel(new NotificationChannel("jarvis_duty", "డ్యూటీ రిమైండర్లు", NotificationManager.IMPORTANCE_HIGH));
             PendingIntent open = PendingIntent.getActivity(c, id, new Intent(c, DutyActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-            nm.notify("duty", id, new Notification.Builder(c, "jarvis_duty").setSmallIcon(android.R.drawable.ic_menu_my_calendar)
+            Notification.Builder nb = new Notification.Builder(c, "jarvis_duty").setSmallIcon(android.R.drawable.ic_menu_my_calendar)
                     .setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text))
-                    .setContentIntent(open).setAutoCancel(true).build());
+                    .setContentIntent(open).setAutoCancel(true);
+            if (act != null) nb.addAction(act);
+            nm.notify("duty", id, nb.build());
         } catch (Exception ignored) {}
     }
 

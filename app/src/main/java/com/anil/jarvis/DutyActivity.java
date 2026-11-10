@@ -619,10 +619,22 @@ public class DutyActivity extends Activity {
         EditText tripKm = number(String.valueOf(roster.tripKm));
         f.addView(tripKm);
         Switch remind = new Switch(this);
-        remind.setText("గుర్తు చేయి: ఎల్లుండి, ముందు రోజు రాత్రి 8కి, బయలుదేరే గంట ముందు, బయలుదేరే టైమ్‌కి (దారిలో వర్షం, బైక్ ఛార్జ్ కూడా చెప్తాను)");
+        remind.setText("గుర్తు చేయి: ఎల్లుండి, ముందు రోజు సాయంత్రం (కింది టైమ్‌కి: అలారం, ఫోన్ ఛార్జ్, బ్యాగ్, వర్షం, బైక్), బయలుదేరే గంట ముందు, బయలుదేరే టైమ్‌కి");
         remind.setChecked(roster.remind);
         remind.setPadding(0, dp(12), 0, dp(6));
         f.addView(remind);
+        f.addView(label("🌙 డ్యూటీ ముందు రోజు ఎన్ని గంటలకి చెప్పాలి (ఉదా: 18:00)"));
+        EditText eve = text("18:00", String.format(java.util.Locale.ENGLISH, "%d:%02d", roster.eveMin / 60, roster.eveMin % 60));
+        f.addView(eve);
+        Switch jobs = new Switch(this);
+        jobs.setText("🗓️ సెలవు రోజు పనులు: ఆ రోజు ఉదయం లిస్ట్, సాయంత్రం \"అయ్యాయా?\" (\"సెలవు రోజు బ్యాంక్‌కి వెళ్ళాలి\" అని చెబితే చాలు)");
+        jobs.setChecked(LeaveJobs.on(this));
+        jobs.setPadding(0, dp(12), 0, dp(6));
+        f.addView(jobs);
+        f.addView(label("🗓️ సెలవు రోజు పనుల లిస్ట్ ఉదయం ఎన్ని గంటలకి (ఉదా: 9:00)"));
+        int jm = LeaveJobs.morningMin(this);
+        EditText jobsAt = text("9:00", String.format(java.util.Locale.ENGLISH, "%d:%02d", jm / 60, jm % 60));
+        f.addView(jobsAt);
 
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("⚙️ బ్యాచ్‌లు, టైమింగ్స్")
@@ -645,6 +657,13 @@ public class DutyActivity extends Activity {
                     roster.remind = remind.isChecked();
                     try { roster.leaveBefore = Math.max(0, Math.min(600, Integer.parseInt(travel.getText().toString().trim()))); } catch (Exception ignored) {}
                     try { roster.tripKm = Math.max(0, Math.min(500, Integer.parseInt(tripKm.getText().toString().trim()))); } catch (Exception ignored) {}
+                    java.util.regex.Matcher em = java.util.regex.Pattern.compile("^\\s*(\\d{1,2})[:.](\\d{2})\\s*$").matcher(eve.getText().toString());
+                    if (em.matches() && Integer.parseInt(em.group(1)) < 24 && Integer.parseInt(em.group(2)) < 60)
+                        roster.eveMin = Integer.parseInt(em.group(1)) * 60 + Integer.parseInt(em.group(2));
+                    LeaveJobs.setOn(this, jobs.isChecked());
+                    java.util.regex.Matcher jm2 = java.util.regex.Pattern.compile("^\\s*(\\d{1,2})[:.](\\d{2})\\s*$").matcher(jobsAt.getText().toString());
+                    if (jm2.matches() && Integer.parseInt(jm2.group(1)) < 24 && Integer.parseInt(jm2.group(2)) < 60)
+                        LeaveJobs.setMorningMin(this, Integer.parseInt(jm2.group(1)) * 60 + Integer.parseInt(jm2.group(2)));
                     roster.fillStarts();
                     saveAndRender();
                     Toast.makeText(this, "సేవ్ చేశాను ✓", Toast.LENGTH_SHORT).show();

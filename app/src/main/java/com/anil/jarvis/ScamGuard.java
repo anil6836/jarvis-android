@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,6 +36,8 @@ final class ScamGuard {
 
     static final class Verdict {
         boolean scam, mandate;
+        /** It asks for OTP / PIN / CVV or an APK: warned about even from a sender he trusts. */
+        boolean always;
         int score;
         final List<String> reasons = new ArrayList<>();
         String merchant, maxAmount;
@@ -78,7 +81,7 @@ final class ScamGuard {
         boolean link = URL.matcher(t).find() || has(l, "t.me/", "wa.me/", "chat.whatsapp.com");
         boolean safeOtp = has(l, "do not share", "don't share", "dont share", "never share", "not share", "share mat", "shared with anyone",
                 "షేర్ చేయకండి", "ఎవరికీ చెప్పకండి", "ఎవరితోనూ");
-        if (has(l, ".apk")) add(v, 5, "APK ఫైల్ link (ఇలాంటి యాప్ ఇన్‌స్టాల్ చేస్తే ఫోన్, బ్యాంక్ ఖాతా హ్యాక్ అవ్వొచ్చు)");
+        if (has(l, ".apk")) { add(v, 5, "APK ఫైల్ link (ఇలాంటి యాప్ ఇన్‌స్టాల్ చేస్తే ఫోన్, బ్యాంక్ ఖాతా హ్యాక్ అవ్వొచ్చు)"); v.always = true; }
         if (IP_LINK.matcher(t).find()) add(v, 3, "పేరు లేని IP అడ్రస్ link");
         if (has(l, "bit.ly", "tinyurl", "cutt.ly", "rb.gy", "is.gd", "t.ly", "shorturl", "goo.gl", "tiny.cc", "ow.ly", "s.id/"))
             add(v, 2, "అసలు site ని దాచే చిన్న (short) link");
@@ -91,13 +94,13 @@ final class ScamGuard {
             add(v, 2, "ఖాతా / కార్డ్ / SIM బ్లాక్ అవుతుందని బెదిరింపు");
         if (has(l, "otp", "one time password", "ఓటీపీ") && !safeOtp
                 && has(l, "share", "send", "tell", "forward", "call us", "reply with", "batao", "bataye", "bhejo", "చెప్పండి", "పంపండి"))
-            add(v, 4, "OTP అడగడం (బ్యాంక్, కంపెనీలు ఎప్పుడూ OTP అడగవు)");
+            { add(v, 4, "OTP అడగడం (బ్యాంక్, కంపెనీలు ఎప్పుడూ OTP అడగవు)"); v.always = true; }
         if (has(l, "upi pin", "atm pin", "cvv", "card number", "net banking password", "mpin") && !safeOtp
                 && has(l, "enter", "share", "send", "update", "verify", "provide", "చెప్పండి"))
-            add(v, 4, "PIN / CVV / పాస్‌వర్డ్ అడగడం");
+            { add(v, 4, "PIN / CVV / పాస్‌వర్డ్ అడగడం"); v.always = true; }
         if (has(l, "receive", "credited to you", "get rs", "get ₹", "refund", "cashback", "you will get")
                 && has(l, "upi pin", "enter pin", "enter your pin", "approve the request", "collect request", "accept the request"))
-            add(v, 4, "డబ్బు రావడానికి PIN / approve అడగడం (డబ్బు రావడానికి PIN అవసరమే లేదు)");
+            { add(v, 4, "డబ్బు రావడానికి PIN / approve అడగడం (డబ్బు రావడానికి PIN అవసరమే లేదు)"); v.always = true; }
         if (has(l, "lottery", "lucky draw", "you have won", "you won", "winner", "congratulations you", "prize", "jackpot", "kbc",
                 "free gift", "లాటరీ", "బహుమతి", "గెలిచారు"))
         {
@@ -131,6 +134,52 @@ final class ScamGuard {
         return v;
     }
 
+    // ---------------------------------------------------------------- ✅ "ఇది మంచిదే": a sender he trusts
+
+    static final String ACTION_TRUST = "com.anil.jarvis.SCAM_TRUST";
+    private static final java.util.regex.Pattern SMS_ID = java.util.regex.Pattern.compile("(?i)^[a-z]{2}-([a-z0-9]{3,9})(-[a-z])?$");
+
+    /**
+     * The sender as one key: an SMS header without its operator prefix / DLT ending ("VM-SBIBNK-S" → "SBIBNK"), a phone number by its
+     * last 10 digits, a name in small letters. "" when there is none. Pure.
+     */
+    static String trustKey(String from) {
+        String f = from == null ? "" : from.trim();
+        if (f.isEmpty()) return "";
+        Matcher m = SMS_ID.matcher(f.replace(" ", ""));
+        if (m.matches()) return m.group(1).toUpperCase(Locale.ROOT);
+        String digits = f.replaceAll("[\\s()+-]", "");
+        if (digits.matches("\\d{10,13}")) return digits.substring(digits.length() - 10);
+        return f.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+    }
+
+    /** No warning: he said this sender is fine, and the message doesn't ask for OTP / PIN / CVV or carry an APK. Pure. */
+    static boolean quietFor(Verdict v, boolean trusted) { return trusted && v.scam && !v.always; }
+
+    private static SharedPreferences trustSp(Context c) { return c.getSharedPreferences("jarvis_scam_trust", Context.MODE_PRIVATE); }
+
+    static java.util.Set<String> trusted(Context c) { return new java.util.TreeSet<>(trustSp(c).getStringSet("who", new HashSet<>())); }
+
+    static boolean isTrusted(Context c, String key) { return key != null && !key.isEmpty() && trustSp(c).getStringSet("who", new HashSet<>()).contains(key); }
+
+    static void setTrusted(Context c, String key, boolean on) {
+        if (key == null || key.isEmpty()) return;
+        Set<String> s = new HashSet<>(trustSp(c).getStringSet("who", new HashSet<>()));
+        if (on && s.size() < 200) s.add(key); else if (!on) s.remove(key);
+        trustSp(c).edit().putStringSet("who", s).apply();
+    }
+
+    /** The notification's "✅ ఇది మంచిదే" (his tap). */
+    static void trustFromNotice(Context c, Intent i) {
+        String key = i.getStringExtra("who");
+        setTrusted(c, key, true);
+        try { c.getSystemService(NotificationManager.class).cancel("guard", i.getIntExtra("nid", 0)); } catch (Exception ignored) {}
+        try {
+            android.widget.Toast.makeText(c.getApplicationContext(), "✅ " + key + " నుంచి వచ్చే మెసేజ్‌లకు ఇక హెచ్చరిక ఇవ్వను (OTP / PIN / APK అడిగితే మాత్రం చెబుతాను). "
+                    + "సెట్టింగ్స్ → మోసం గార్డ్ లో తీసేయొచ్చు.", android.widget.Toast.LENGTH_LONG).show();
+        } catch (Exception ignored) {}
+    }
+
     private static void add(Verdict v, int points, String why) {
         v.score += points;
         if (!v.reasons.contains(why)) v.reasons.add(why);
@@ -147,6 +196,8 @@ final class ScamGuard {
             if (pkg == null || !APPS.contains(pkg) || !new Prefs(c).scamGuard()) return;
             Verdict v = judge(from, text);
             if (!v.scam && !v.mandate) return;
+            String tk = trustKey(from);
+            if (!v.mandate && quietFor(v, isTrusted(c, tk))) return; // ✅ he said this sender is fine (OTP / PIN / APK asks still warned)
             // one warning per sender and kind every 6 hours (chat notifications are posted again with each new line)
             String key = pkg + "|" + from + "|" + (v.mandate ? "m" + v.merchant : "s");
             long now = System.currentTimeMillis();
@@ -161,19 +212,20 @@ final class ScamGuard {
                 String title = "🔔 కొత్త autopay: " + (v.merchant != null ? v.merchant : "మీ card / ఖాతా మీద") + (v.maxAmount != null ? " (గరిష్ఠం " + v.maxAmount + ")" : "");
                 String body = "మీ card / ఖాతా మీద కొత్త autopay (mandate) పెట్టారు. మీరే పెడితే సరే. మీరు పెట్టకపోతే, లేదా అవసరం లేకపోతే bank app లో "
                         + "Standing Instructions / e-mandate లోకి వెళ్లి cancel చేయండి.\n\n" + who + ": " + snippet;
-                notify(c, key.hashCode(), title, body, "ఈ autopay మెసేజ్ గురించి చెప్పు, ఇది ఏంటి, cancel చేయాలా? మెసేజ్: " + who + ": " + text);
+                notify(c, key.hashCode(), title, body, "ఈ autopay మెసేజ్ గురించి చెప్పు, ఇది ఏంటి, cancel చేయాలా? మెసేజ్: " + who + ": " + text, "");
             } else {
                 StringBuilder b = new StringBuilder("ఎందుకు అనుమానం:");
                 for (String r : v.reasons) b.append("\n• ").append(r);
                 b.append("\n\nlink నొక్కకండి, OTP / PIN / CVV ఎవరికీ చెప్పకండి, డబ్బు పంపకండి. బ్యాంక్ ఇలా ఎప్పుడూ అడగదు. మోసపోతే వెంటనే 1930 (సైబర్ క్రైమ్ హెల్ప్‌లైన్) కి కాల్ చేయండి.\n\n")
                         .append(who).append(": ").append(snippet);
                 notify(c, key.hashCode(), "⚠️ మోసం అనుమానం · " + app + " · " + who, b.toString(),
-                        "ఈ మెసేజ్ మోసమా? జాగ్రత్తగా చెక్ చేసి చెప్పు, ఏం చేయాలో కూడా చెప్పు. మెసేజ్: " + who + ": " + text);
+                        "ఈ మెసేజ్ మోసమా? జాగ్రత్తగా చెక్ చేసి చెప్పు, ఏం చేయాలో కూడా చెప్పు. మెసేజ్: " + who + ": " + text, v.always ? "" : tk);
             }
         } catch (Exception ignored) {}
     }
 
-    private static void notify(Context c, int id, String title, String body, String ask) {
+    /** trust: the sender's key for a "✅ ఇది మంచిదే" button ("" = no button: an autopay notice, or an OTP / PIN / APK ask). */
+    private static void notify(Context c, int id, String title, String body, String ask, String trust) {
         NotificationManager nm = c.getSystemService(NotificationManager.class);
         if (nm == null) return;
         nm.createNotificationChannel(new NotificationChannel("jarvis_guard", "మోసం గార్డ్ హెచ్చరికలు", NotificationManager.IMPORTANCE_HIGH));
@@ -181,13 +233,18 @@ final class ScamGuard {
         Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .putExtra(MainActivity.EXTRA_ASK, ask.length() > 1500 ? ask.substring(0, 1500) : ask);
         PendingIntent pi = PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        nm.notify("guard", id, new Notification.Builder(c, "jarvis_guard")
+        Notification.Builder nb = new Notification.Builder(c, "jarvis_guard")
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
                 .setContentTitle(title)
                 .setContentText(body.split("\n")[0])
                 .setStyle(new Notification.BigTextStyle().bigText(body))
                 .setContentIntent(pi)
-                .setAutoCancel(true)
-                .build());
+                .setAutoCancel(true);
+        if (trust != null && !trust.isEmpty()) { // ✅ only on his tap: this sender's messages are fine
+            PendingIntent ok = PendingIntent.getBroadcast(c, id ^ 0x5A17, new Intent(c, AlarmReceiver.class).setAction(ACTION_TRUST).putExtra("who", trust).putExtra("nid", id),
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            nb.addAction(new Notification.Action.Builder(null, "✅ ఇది మంచిదే", ok).build());
+        }
+        nm.notify("guard", id, nb.build());
     }
 }

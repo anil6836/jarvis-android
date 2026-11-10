@@ -63,7 +63,7 @@ public class SettingsActivity extends Activity {
     private TextView lockInfo, docsInfo, waInfo;
     private EditText sosContacts, smartUrls, smartApp, walletMax;
     private Switch walletPay, emotions, micOnce;
-    private Switch alexaSpeak, livePatient, scamGuard, readNews;
+    private Switch alexaSpeak, livePatient, scamGuard, readNews, photoText;
     private Switch newsAuto;
     private EditText newsPlaces;
     private Switch diaryAsk, holidayRemind, findPhone, coughAsk;
@@ -1006,6 +1006,53 @@ public class SettingsActivity extends Activity {
         note("SMS, WhatsApp, Telegram, Gmail లో వచ్చే కొత్త మెసేజ్‌లను Jarvis ఫోన్‌లోనే చెక్ చేస్తాడు (ఏదీ బయటికి పంపడు, ఖర్చు లేదు): fake KYC, "
                 + "\"OTP / PIN చెప్పండి\", అనుమానపు links, లాటరీ, కరెంట్ కట్ బెదిరింపు, APK ఫైల్స్, డబ్బు రావడానికి UPI PIN అడగడం… అనుమానం వస్తే వెంటనే notification. "
                 + "మీ card మీద కొత్త autopay / mandate పెట్టినట్టు SMS వస్తే కూడా చెప్తాడు. దీనికి పై 'నోటిఫికేషన్ యాక్సెస్' కావాలి.");
+
+        { // ✅ senders he said are fine ("ఇది మంచిదే" on a warning): shown and taken back here
+            TextView trust = Ui.text(this, "", 14, Ui.CYAN);
+            trust.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+            Runnable show = () -> {
+                int n = ScamGuard.trusted(this).size();
+                trust.setText(n == 0 ? "✅ నమ్మిన పంపేవాళ్లు: ఎవరూ లేరు (హెచ్చరికలో \"✅ ఇది మంచిదే\" నొక్కితే ఇక్కడ వస్తారు)"
+                        : "✅ నమ్మిన పంపేవాళ్లు: " + n + " (వీళ్లకు హెచ్చరిక రాదు; OTP / PIN / APK అడిగితే మాత్రం వస్తుంది) · చూడటానికి / తీసేయడానికి నొక్కండి");
+            };
+            show.run();
+            trust.setOnClickListener(v -> {
+                final String[] who = ScamGuard.trusted(this).toArray(new String[0]);
+                if (who.length == 0) return;
+                final boolean[] drop = new boolean[who.length];
+                new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("✅ నమ్మిన పంపేవాళ్లు: తీసేయాల్సినవి ఎంచుకోండి")
+                        .setMultiChoiceItems(who, drop, (d, w, on) -> drop[w] = on)
+                        .setPositiveButton("తీసేయి", (d, w) -> {
+                            for (int k = 0; k < who.length; k++) if (drop[k]) ScamGuard.setTrusted(this, who[k], false);
+                            show.run();
+                        })
+                        .setNegativeButton("వద్దు", null).show();
+            });
+            box.addView(trust);
+        }
+
+        section("📷 ఫోటోల్లో రాత వెతకడం (డాక్యుమెంట్లు, బిల్లులు)");
+        photoText = toggle("ఛార్జింగ్‌లో ఉన్నప్పుడు నా ఫోటోల్లోని రాతను ఫోన్‌లోనే చదివి గుర్తుంచుకో (\"బైక్ ఇన్సూరెన్స్ ఫోటో చూపించు\")", PhotoText.on(this));
+        note("ఫోటోలు ఎక్కడికీ వెళ్లవు, AI కి కూడా కాదు: ఫోన్‌లోనే చదువుతాడు, మాటలు మాత్రమే ఫోన్‌లో ఉంచుతాడు (బ్యాకప్‌లోకి వెళ్లవు). "
+                + "పొడవైన నంబర్లు (ఫోన్, ఖాతా, కార్డ్, ఆధార్, పాలసీ), PAN / బండి నంబర్ లాంటి కోడ్‌లు ఎప్పుడూ ఉంచడు. ఇంగ్లీష్ రాత మాత్రమే చదవగలడు. "
+                + "ఆఫ్ చేస్తే ఇప్పటిదాకా చదివినవన్నీ మర్చిపోతాడు.");
+        {
+            TextView pt = Ui.text(this, "📷 చదివినవి: …", 14, Ui.MUTED);
+            pt.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 6));
+            box.addView(pt);
+            if (!PhotoText.allowed(this)) { // (no photo permission yet: asked on his tap)
+                pt.setText("📷 ఫోటోల అనుమతి ఇంకా లేదు: చదవడానికి ఇక్కడ నొక్కి \"Allow all\" ఇవ్వండి");
+                pt.setTextColor(Ui.GOLD);
+                pt.setOnClickListener(v -> {
+                    try { requestPermissions(new String[]{Build.VERSION.SDK_INT >= 33 ? "android.permission.READ_MEDIA_IMAGES" : android.Manifest.permission.READ_EXTERNAL_STORAGE}, 7301); }
+                    catch (Exception ignored) {}
+                });
+            } else new Thread(() -> {
+                int[] pr = PhotoText.progress(this);
+                runOnUiThread(() -> pt.setText("📷 చదివినవి: " + pr[0] + " ఫోటోల్లో " + pr[1] + (pr[1] < pr[0] ? " (మిగతావి ఛార్జింగ్‌లో ఉన్నప్పుడు కొద్దికొద్దిగా)" : " ✓")));
+            }, "photo-text-count").start();
+        }
 
         section("Jarvis తనంతట తానే");
         proactive = toggle("అడగకుండానే ముఖ్యమైనవి చెప్పు: మీటింగ్ దగ్గర పడితే, వర్షం వస్తే, ఇష్టమైనవాళ్లకి చాలా రోజులుగా ఫోన్ చేయకపోతే, మీ అలవాట్లు, నీళ్లు, ధర హెచ్చరికలు", prefs.proactive());
@@ -2334,6 +2381,7 @@ public class SettingsActivity extends Activity {
         e.putBoolean("live", liveMode.isChecked());
         e.putBoolean("live_patient", livePatient.isChecked());
         e.putBoolean("scam_guard", scamGuard.isChecked());
+        e.putBoolean("photo_text", photoText.isChecked());
         e.putString("@bal:" + Usage.GEMINI, balGemini.getText().toString().trim()); // (saved only when he edits the box: the
         e.putString("@bal:" + Usage.OPENAI, balOpenAi.getText().toString().trim()); //  balance counts down by itself meanwhile)
         e.putString("@bal:" + Usage.ANTHROPIC, balAnthropic.getText().toString().trim());
@@ -5274,6 +5322,7 @@ public class SettingsActivity extends Activity {
         }
         if (tabShowVoice != null) tabShowVoice.run();
         if (tabShowRoom != null) tabShowRoom.run();
+        for (View v : tab.values()) if (v != null && snap.containsKey(v)) snap.put(v, valueOf(v)); // (what the tablet has now: never a 🕘 line of his)
         lastFp = fingerprint(); // (not a change of his: nothing to save)
         tabChanged();
         summarizeShown();

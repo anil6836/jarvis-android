@@ -199,8 +199,11 @@ final class Tools {
         DEFS.add(new Def("photos",
                 "His phone's photos. action show = open them in the gallery; count = how many; send = send them on WhatsApp to a contact "
                         + "(opens WhatsApp with the photos attached as a draft; then ask 'పంపమంటారా?' and use send_draft); "
-                        + "search = find photos of something by looking at them ('గత నెల బైక్ ఫోటోలు చూపించు', 'ఆ బిల్లు ఫోటో ఎక్కడ'), shown in a grid.",
-                schema(new String[][]{{"action", "string", "show, send, count or search"},
+                        + "search = find photos of something by looking at them ('గత నెల బైక్ ఫోటోలు చూపించు', 'బీచ్ ఫోటోలు'), shown in a grid; "
+                        + "find_text = find photos by the English words printed on them (a bill, insurance, ticket, certificate: 'బైక్ ఇన్సూరెన్స్ ఫోటో చూపించు'), "
+                        + "read on the phone (no photo is sent anywhere), shown in a grid.",
+                schema(new String[][]{{"action", "string", "show, send, count, search or find_text"},
+                        {"words", "string", "For find_text: English words printed on the photo, e.g. 'bike insurance', 'electricity bill', 'train ticket'"},
                         {"what", "string", "For search: what the photos show, in English (e.g. motorcycle, bill or receipt, beach, my son)"},
                         {"when", "string", "latest (default), today, yesterday, this week, this month, or a date yyyy-MM-dd"},
                         {"who", "string", "For send: contact name"}, {"count", "integer", "For send: how many of the newest (default 1, max 10)"},
@@ -725,11 +728,13 @@ final class Tools {
                 + "add: what + last date (repeat_days for things that come back, e.g. recharge 28, gas 30); add_km: bike service every N km (counted from his rides); "
                 + "renew: done / renewed (new date, or + repeat days; km count starts again); list; remove. For a date in a saved document use ask_document first. "
                 + "add_warranty: a product's warranty (what = item, bought = purchase date, months, or date = warranty end; shop); the bill photo just sent is kept with it; "
-                + "reminded 30 days before it ends; show_bill: open that bill photo ('TV బిల్ చూపించు'). "
+                + "reminded 30 days before it ends (the bill photo is read on the phone for the bought date / months he didn't say and the service numbers); "
+                + "show_bill: open that bill photo ('TV బిల్ చూపించు'); broken: the thing broke / isn't working ('ఫ్యాన్ పాడైంది') -> still in warranty and "
+                + "how long, the shop, the service numbers read from its bill, and the bill photo opens. "
                 + "Keep only the name and date, never policy or licence numbers. "
                 + "book_gas: book his LPG cylinder refill through the gas company's official WhatsApp / missed-call number ('గ్యాస్ బుక్ చెయ్'); "
                 + "company = Indane, HP or Bharat (asked once, then remembered).",
-                schema(new String[][]{{"action", "string", "list (default), add, add_km, renew, remove, add_warranty, show_bill or book_gas"},
+                schema(new String[][]{{"action", "string", "list (default), add, add_km, renew, remove, add_warranty, show_bill, broken or book_gas"},
                         {"company", "string", "For book_gas: Indane, HP or Bharat; empty = the one he said before"},
                         {"bought", "string", "For add_warranty: purchase date YYYY-MM-DD"}, {"months", "integer", "For add_warranty: warranty months (12, 24...)"},
                         {"shop", "string", "For add_warranty: where bought (optional)"},
@@ -738,6 +743,12 @@ final class Tools {
                         {"repeat_days", "integer", "For add: comes back every N days (0 = no)"},
                         {"before_days", "integer", "For add: first reminder N days before (default 15; 2 for short repeats)"},
                         {"every_km", "integer", "For add_km: service every N km (e.g. 3000)"}})));
+        DEFS.add(new Def("leave_jobs", "🗓️ Jobs that need an office's working hours (bank, post office, MRO / municipal office, gas agency, RTO, electricity office) "
+                + "that he does on his next day fully at home (from his duty roster): add = keep one ('సెలవు రోజు బ్యాంక్‌లో పాస్‌బుక్ అప్‌డేట్ చేయాలి'); "
+                + "list = what waits and which day; done = he did it (ids or his words); remove = not needed any more. That morning Jarvis lists them "
+                + "(usual hours, shut days, the way from home) and asks in the evening.",
+                schema(new String[][]{{"action", "string", "add, list (default), done or remove"},
+                        {"text", "string", "For add: the job in his words (Telugu as he said it); for done / remove: the job's words or ids"}}, "action")));
         DEFS.add(new Def("market_prices", "Today's prices from the web: gold 22K/24K and silver in his city, crops at the market yard (mirchi / Teja chilli, cotton, paddy, maize, turmeric) per quintal, petrol/diesel. "
                 + "action daily: say these prices every morning at 10 ('what' = the list, 'off' = stop). For 'tell me when gold falls to X' use price_alert.",
                 schema(new String[][]{{"what", "string", "What prices, in his words (empty = gold and silver)"},
@@ -1093,6 +1104,7 @@ final class Tools {
             case "compare_prices": return "ధరలు పోలుస్తున్నాను…";
             case "daily_fact": return "ఒక కొత్త విషయం…";
             case "expiry": return "గడువులు చూస్తున్నాను…";
+            case "leave_jobs": return "సెలవు రోజు పనులు చూస్తున్నాను…";
             case "market_prices": return "ఈరోజు ధరలు వెతుకుతున్నాను…";
             case "diary": return "డైరీ…";
             case "holidays": return "పండుగలు, సెలవులు చూస్తున్నాను…";
@@ -1210,6 +1222,7 @@ final class Tools {
                 case "phone_setting": return phoneSetting(a.optString("setting"), a.optString("value", "on"));
                 case "photos":
                     if ("search".equalsIgnoreCase(a.optString("action"))) return photoSearch(a.optString("what"), a.optString("when", ""), a.optBoolean("screenshots", false));
+                    if (a.optString("action").toLowerCase(Locale.ROOT).startsWith("find")) return photoTextFind(a.optString("words", a.optString("what")));
                     return photos(a.optString("action", "show"), a.optString("when", ""), a.optString("who", ""),
                         a.optInt("count", 1), a.optString("caption", ""), a.optBoolean("screenshots", false));
                 case "call_control": return callControl(a.optString("action"));
@@ -1295,6 +1308,7 @@ final class Tools {
                 case "compare_prices": return comparePrices(a);
                 case "daily_fact": return dailyFact(a);
                 case "expiry": return expiry(a);
+                case "leave_jobs": return leaveJobs(a);
                 case "market_prices": return marketPrices(a);
                 case "diary": return diary(a);
                 case "holidays": return holidays(a);
@@ -3319,6 +3333,23 @@ final class Tools {
         PhotoGridActivity.show(act(), what.trim(), matches);
         return ok().put("found", matches.size()).put("checked", list.size()).put("when", w)
                 .put("next", "Say how many photos matched and that they are open on the screen; tapping one opens it big, 'షేర్' shares them.").toString();
+    }
+
+    /** 📷 B7: photos by the words printed on them, from what the phone has read of them while charging (nothing sent). */
+    private String photoTextFind(String words) throws Exception {
+        String e = photoPermission();
+        if (e != null) return e;
+        if (!PhotoText.on(act())) return err("off", "Reading the words in his photos is switched off (Settings → 📷 ఫోటోల్లో రాత). Say so in one line.");
+        if (PhotoText.query(words).isEmpty()) return err("missing", "Which words are printed on the photo? Ask him in one short line (e.g. insurance, bill, ticket).");
+        int[] pr = PhotoText.progress(act());
+        List<Uri> hits = PhotoText.find(act(), words, 60);
+        String read = pr[1] + " of " + pr[0] + " photos read so far (the rest are read while the phone charges)";
+        if (hits.isEmpty()) return ok().put("found", 0).put("read", read)
+                .put("next", "Say no photo with those words was found among the photos read so far (" + read + "); English print only. "
+                        + "He can try other words, or 'photos search' looks at the pictures with the AI (photos are sent for that).").toString();
+        PhotoGridActivity.show(act(), words.trim(), hits);
+        return ok().put("found", hits.size()).put("read", read)
+                .put("next", "Say how many photos with those words are open on the screen (tapping one opens it big). Never read any number from them aloud.").toString();
     }
 
     /** Up to 24 thumbnails in a numbered 6x4 grid, as a base64 JPEG. */
@@ -8033,6 +8064,39 @@ final class Tools {
                         + ". The line cuts by itself after a ring and the booking SMS follows; if it keeps ringing, call_control end. If a gas booking date is in expiry, renew it after the SMS.").toString();
     }
 
+    /** 🗓️ B5: jobs for his next day fully at home. */
+    private String leaveJobs(JSONObject a) throws Exception {
+        String action = a.optString("action", "list").toLowerCase(Locale.ROOT), text = a.optString("text").trim();
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate next = LeaveJobs.nextLeaveDay(act(), today);
+        String day = next == null ? "" : next.equals(today) ? "ఈ రోజే" : next.equals(today.plusDays(1)) ? "రేపు (" + Duty.day(next) + ")" : Duty.day(next);
+        boolean roster = Duty.ready(Duty.load(act()));
+        if (action.startsWith("add")) {
+            if (text.isEmpty()) return err("missing", "Which job? Ask him in one short line.");
+            JSONObject o = LeaveJobs.add(act(), FloatBubble.noIds(text));
+            if (o == null) return err("full", "The list is full (" + LeaveJobs.MAX + "). Ask him to mark some done first.");
+            String k = LeaveJobs.kind(text), h = LeaveJobs.hours(k), sh = next == null ? null : LeaveJobs.shut(k, next);
+            return ok().put("kept", o.optString("text")).put("next_leave_day", day).put("usual_hours", h == null ? "" : h).put("shut_that_day", sh == null ? "" : sh)
+                    .put("reminds", "that morning at " + LeaveJobs.morningMin(act()) / 60 + ":" + String.format(Locale.ENGLISH, "%02d", LeaveJobs.morningMin(act()) % 60) + ", and asks in the evening")
+                    .put("note", roster ? "" : "No duty roster set: Sunday is taken as the leave day (the duty calendar gives the real days).").toString();
+        }
+        if (action.startsWith("done")) {
+            List<String> d = LeaveJobs.done(act(), text);
+            if (d.isEmpty()) return err("not_found", "No waiting job matched '" + text + "'. Waiting: " + LeaveJobs.pending(act()).toString());
+            return ok().put("done", new JSONArray(d)).put("still_waiting", LeaveJobs.pending(act()).size()).put("next_leave_day", day).toString();
+        }
+        if (action.startsWith("remove") || action.startsWith("delete")) {
+            List<String> d = LeaveJobs.remove(act(), text);
+            if (d.isEmpty()) return err("not_found", "No job matched '" + text + "'.");
+            return ok().put("removed", new JSONArray(d)).toString();
+        }
+        List<String> lines = LeaveJobs.todayLines(act(), next == null ? today : next);
+        JSONArray ids = new JSONArray();
+        for (JSONObject o : LeaveJobs.pending(act())) ids.put(o.optString("id") + " " + o.optString("text"));
+        return ok().put("next_leave_day", day).put("jobs_in_order", new JSONArray(lines)).put("ids", ids)
+                .put("note", roster ? "" : "No duty roster set: Sunday is taken as the leave day.").toString();
+    }
+
     private String expiry(JSONObject a) throws Exception {
         String action = a.optString("action", "list").toLowerCase(Locale.ROOT), what = a.optString("what");
         if (action.contains("gas")) return bookGas(a.optString("company"));
@@ -8041,6 +8105,14 @@ final class Tools {
             if (o == null) return err("missing", "Need the item and the warranty end (bought date + months, or the last date). Ask him what is not on the bill.");
             return ok().put("saved", Expiry.line(act(), o)).put("bill_photo_kept", o.has("bill_file") ? o.optString("bill_file") : "no photo")
                     .put("reminds", "30 days before, 7 days, 1 day, on the day").toString();
+        }
+        if (action.startsWith("broke") || action.contains("repair")) { // 🧾 B6
+            JSONObject r = Expiry.broken(act(), what);
+            if (r == null) return err("no_warranty", "No warranty saved for '" + what + "'. Saved: " + Expiry.listJson(act()).optJSONArray("items")
+                    + ". Say so; if he has the bill, he can send its photo with the 🧾 chip to keep the warranty.");
+            boolean shown = r.optBoolean("bill_photo") && unlocked() && Expiry.showBill(act(), what);
+            return r.put("bill_opened", shown).put("next", "Tell him in one or two short lines: in warranty or not (and how long left / since when), "
+                    + "the shop, and the service number(s) to call if any (say them digit by digit). Never read any other number from the bill.").toString();
         }
         if (action.startsWith("show") || action.contains("bill")) {
             if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
