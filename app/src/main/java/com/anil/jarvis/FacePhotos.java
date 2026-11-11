@@ -248,7 +248,7 @@ final class FacePhotos {
         }
     }
 
-    private static Bitmap crop(Bitmap frame, Rect box) {
+    static Bitmap crop(Bitmap frame, Rect box) {
         int side = Math.min(Math.max(box.width(), box.height()), Math.min(frame.getWidth(), frame.getHeight()));
         if (side < 24) return null;
         int x = Math.max(0, Math.min(frame.getWidth() - side, box.centerX() - side / 2));
@@ -260,7 +260,7 @@ final class FacePhotos {
     }
 
     /** The photo turned the way the camera meant (EXIF), at most maxSide; null when it can't be opened. */
-    private static Bitmap upright(Context c, Uri u, int maxSide) {
+    static Bitmap upright(Context c, Uri u, int maxSide) {
         try {
             BitmapFactory.Options o = new BitmapFactory.Options();
             o.inJustDecodeBounds = true;

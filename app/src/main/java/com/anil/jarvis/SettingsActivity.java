@@ -1068,6 +1068,7 @@ public class SettingsActivity extends Activity {
             note("మీరు పరిచయం చేసినవాళ్ళను మాత్రమే గుర్తిస్తాడు. తెలియనివాళ్ళ ముఖాలను ఎప్పుడూ దాచడు, పేరు పెట్టడు. "
                     + "\"ఈ ఫోటోలో అమ్మ ఉంది\" అనే లిస్ట్ మాత్రమే ఫోన్‌లో ఉంటుంది, బ్యాకప్‌లోకి వెళ్లదు. ఆఫ్ చేస్తే, లేదా ఎవరినైనా మర్చిపోమంటే, ఆ లిస్ట్ డిలీట్ అవుతుంది.");
             box.addView(fl);
+            button("🖼️ ఫోటో నుంచి ఒకరిని పరిచయం చేయి", v -> faceFromPhotoAsk()); // 👤 B (12 Nov)
             new Thread(() -> {
                 java.util.List<String> who = People.names(this);
                 int[] pr = FacePhotos.progress(this);
@@ -4244,6 +4245,11 @@ public class SettingsActivity extends Activity {
         if (gated) return;
         if (voiceFound(code, result, data)) return;
         if (code == REQ_WALL && result == RESULT_OK && data != null && data.getData() != null) wallPicked(data.getData()); // 🖼️ the car screen's wallpaper
+        if (code == REQ_FACE_PHOTO && result == RESULT_OK && data != null && data.getData() != null) { // 👤 B: a face from a photo
+            final String nm = faceName;
+            Toast.makeText(this, "👤 ఫోటోలో ముఖం చూస్తున్నాను…", Toast.LENGTH_SHORT).show();
+            FaceLearn.choose(this, data.getData(), nm, faceOwner, r -> Toast.makeText(this, FaceLearn.say(r, nm), Toast.LENGTH_LONG).show());
+        }
         if (code >= REQ_CAR3D && code < REQ_CAR3D + CarPhotos3D.SLOTS.length && result == RESULT_OK && data != null && data.getData() != null) { // 📷 ⑯: one side of his car, kept on this box
             final Uri u = data.getData();
             final int slot = code - REQ_CAR3D;
@@ -4903,6 +4909,42 @@ public class SettingsActivity extends Activity {
     }
 
     private TextView hcStatus;
+
+    /** 👤 B: the name, then a photo from the gallery; its face (he taps it when there are several) is learned on the phone. */
+    private static final int REQ_FACE_PHOTO = 7302;
+    private String faceName = "";
+    private boolean faceOwner;
+
+    private void faceFromPhotoAsk() {
+        android.content.Context dc = new android.view.ContextThemeWrapper(this, android.R.style.Theme_Material_Dialog_Alert);
+        LinearLayout l = new LinearLayout(dc);
+        l.setOrientation(LinearLayout.VERTICAL);
+        int p = Ui.dp(this, 20);
+        l.setPadding(p, Ui.dp(this, 8), p, 0);
+        EditText name = new EditText(dc);
+        name.setHint("పేరు (ఉదా: అమ్మ, రవి)");
+        name.setSingleLine(true);
+        l.addView(name);
+        android.widget.CheckBox me = new android.widget.CheckBox(dc);
+        me.setText("ఈ ఫోటోలో ఉన్నది నేనే");
+        l.addView(me);
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🖼️ ఫోటో నుంచి పరిచయం")
+                .setMessage("ఆ వ్యక్తి ముఖం స్పష్టంగా ఉన్న ఫోటో ఎంచుకోండి. ఫోటోలో ఎక్కువ మంది ఉంటే, ఆ ముఖం నొక్కమని అడుగుతాను. ఫోటో ఎక్కడికీ పంపను, దాచను.")
+                .setView(l)
+                .setPositiveButton("ఫోటో ఎంచుకో", (d, w) -> {
+                    String n = name.getText().toString().trim();
+                    faceOwner = me.isChecked();
+                    faceName = n.isEmpty() && faceOwner ? prefs.name() : n;
+                    if (faceName.isEmpty()) { Toast.makeText(this, "ముందు పేరు రాయండి", Toast.LENGTH_SHORT).show(); return; }
+                    if (faceName.length() > 40) faceName = faceName.substring(0, 40);
+                    try {
+                        startActivityForResult(Intent.createChooser(new Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), "ఫోటో ఎంచుకోండి"), REQ_FACE_PHOTO);
+                    } catch (Exception e) { Toast.makeText(this, "గ్యాలరీ తెరవలేకపోయాను", Toast.LENGTH_SHORT).show(); }
+                })
+                .setNegativeButton("వద్దు", null)
+                .show();
+    }
 
     /** 📷 B7: the photo-text line under its switch: how many read, or the permission to give (asked only on his tap). */
     private TextView photoTextLabel;

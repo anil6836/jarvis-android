@@ -926,13 +926,16 @@ final class Tools {
         DEFS.add(new Def("look_through_camera",
                 "Cameras. No action: look through the live camera (when Anil has it open) and answer the question. "
                         + "front = look at the person in front of the phone now (front camera, while Jarvis's face watches). "
-                        + "meet = remember the face of the ONE person looking at the phone now, under name (only when Anil introduces someone; owner=true for Anil himself). "
+                        + "meet = remember the face of the ONE person looking at the phone now, under name (only when Anil introduces someone; owner=true for Anil himself); "
+                        + "when his 🎥 Live camera (back camera) is open, the person it is pointed at; from_photo=true: from a photo he picks in the gallery "
+                        + "('ఫోటో నుంచి అమ్మను పరిచయం చేయి', 'ఈ ఫోటోలో ఉన్నది అమ్మ') — the gallery opens, the face is matched on the phone (never sent). "
                         + "people = who Jarvis knows by face; forget = forget a face (name); face_show / face_hide = Jarvis's face on the home screen; "
                         + "eyes_on / eyes_off = the front camera that lets the face see him.",
                 schema(new String[][]{{"question", "string", "What Anil wants to know (for looking)"},
                         {"action", "string", "empty, front, meet, people, forget, face_show, face_hide, eyes_on or eyes_off"},
                         {"name", "string", "The person's name (meet / forget)"},
-                        {"owner", "boolean", "true when the face to remember is Anil's own"}})));
+                        {"owner", "boolean", "true when the face to remember is Anil's own"},
+                        {"from_photo", "boolean", "meet: from a photo he picks in the gallery"}})));
         DEFS.add(new Def("voice_mode",
                 "Change how Jarvis listens and talks, ONLY when Anil clearly asks to switch it ('Google వాయిస్‌కి మారు', 'Live పెట్టు', 'Live ఆపు', "
                         + "'OpenAI కి మారు', 'Gemini Live పెట్టు'). mode: live = Gemini Live (fast live talk, the next time he calls); live_openai = OpenAI's live talk; "
@@ -8745,7 +8748,7 @@ final class Tools {
                 return People.remove(c, name) ? ok().put("forgot", name).toString() : err("not_known", "No face is saved as '" + name + "'. Known: " + People.names(c));
             }
             case "meet":
-                return meet(a.optString("name").trim(), a.optBoolean("owner"));
+                return meet(a.optString("name").trim(), a.optBoolean("owner"), a.optBoolean("from_photo"));
             case "front":
                 return lookFront(a.optString("question"));
             default:
@@ -8771,12 +8774,19 @@ final class Tools {
     }
 
     /** Learns the face of the one person looking at the phone, under the name Anil gave (kept only on the phone). */
-    private String meet(String name, boolean owner) throws Exception {
+    private String meet(String name, boolean owner, boolean fromPhoto) throws Exception {
         Activity c = screen();
         if (c == null) return needsScreen("the camera");
         if (owner && name.isEmpty()) name = prefs.name();
         if (name.isEmpty()) return err("no_name", "Ask him the person's name first.");
         if (name.length() > 40) name = name.substring(0, 40);
+        if (fromPhoto) { // 👤 B: a photo from the gallery (MainActivity picks it, FaceLearn matches it on the phone)
+            if (!(c instanceof MainActivity)) return err("needs_main_screen", "Picking a photo needs Jarvis's main screen open. Ask him to open Jarvis and say it again.");
+            final String nm = name;
+            c.runOnUiThread(() -> ((MainActivity) c).meetFromPhoto(nm, owner));
+            return ok().put("gallery_opened", true).put("next", "Say in one line: pick a photo where " + name + "'s face is clear; if it has several faces, "
+                    + "tap the right one. Jarvis will say when it is saved (nothing more from you now).").toString();
+        }
         if (!FaceSight.allowed(c)) {
             host.askPermissions(new String[]{Manifest.permission.CAMERA});
             return err("no_camera_permission", "The camera permission is needed. " + promptNote());
@@ -8788,6 +8798,13 @@ final class Tools {
             } catch (Exception e) {
                 return err("model_download_failed", "Could not download the face model (about 23 MB): " + e.getMessage() + ". Check the internet and try again.");
             }
+        }
+        if (CameraPanel.latestFrame != null) { // 👤 A: the 🎥 Live camera (back) is open: the person it is pointed at
+            host.notice("👀 కెమెరాను " + name + " ముఖం వైపు నేరుగా పట్టుకోండి…");
+            String r = FaceLearn.fromLiveCamera(c, name, owner);
+            if (r.equals("ok")) return ok().put("remembered", name).put("owner", owner).put("camera", "back")
+                    .put("note", "Saved only on this phone as face fingerprints (no photo). Greet them warmly by name now.").toString();
+            return err(r.contains(":") ? r.substring(0, r.indexOf(':')) : r, FaceLearn.say(r, name) + " (Say this to him in Telugu, in one line.)");
         }
         if (!FaceSight.faceOn(c) || !FaceSight.camOn(c)) { FaceSight.set(c, "face_on", true); FaceSight.set(c, "face_cam", true); FaceSight.set(c, "face_asked", true); }
         FaceSight.wakeUp();

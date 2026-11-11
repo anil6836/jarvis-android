@@ -210,6 +210,21 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private static final String WARRANTY_PROMPT = "ఈ ఫోటో ఒక వస్తువు కొన్న బిల్లు (TV, ఫ్రిజ్, ఫోన్, మిక్సీ లాంటిది). వస్తువు పేరు (బ్రాండ్, మోడల్), షాప్, కొన్న తేదీ, మొత్తం, "
             + "వారంటీ ఎన్ని నెలలు (బిల్లు మీద ఉంటే) చదివి expiry add_warranty తో చేర్చు: what = తెలుగులో చిన్న పేరు (ఉదా: 'Samsung TV'), bought = YYYY-MM-DD, months. "
             + "వారంటీ కాలం బిల్లు మీద లేకపోతే చేర్చకుండా నన్ను అడుగు. సీరియల్ / IMEI నంబర్లు సేవ్ చేయకు. చేర్చాక ఒక వాక్యంలో చెప్పు, ఖర్చుల్లో కూడా చేర్చాలా అని అడుగు.";
+    /** 👤 B: the gallery photo picked to introduce someone by face (matched on the phone, never sent). */
+    private static final String MEET_PROMPT = "👤 meet from photo";
+    private String meetName = "";
+    private boolean meetOwner;
+
+    /** 👤 B (Tools meet from_photo): the gallery opens; the picked photo's face is learned under this name. Main thread. */
+    void meetFromPhoto(String name, boolean owner) {
+        meetName = name;
+        meetOwner = owner;
+        autoPrompt = MEET_PROMPT;
+        autoLabel = null;
+        autoAt = System.currentTimeMillis();
+        openGallery();
+    }
+
     private static final String HOMEWORK_PROMPT = "ఈ ఫోటోలో పిల్లల హోంవర్క్ / ప్రశ్న ఉంది. జవాబు మాత్రమే చెప్పకు: పిల్లలకి అర్థమయ్యేలా సరళమైన తెలుగులో "
             + "ఒక్కొక్క స్టెప్ నేర్పించు (లెక్క అయితే ప్రతి స్టెప్ ఎందుకో చెప్పు; ఇంగ్లీష్ / సైన్స్ అయితే అర్థం, ఉదాహరణ). చివర్లో ఇలాంటిదే ఒక చిన్న ప్రాక్టీస్ ప్రశ్న ఇవ్వు, జవాబు వాళ్లనే చెప్పమను.";
     private static final String PLANT_PROMPT = "ఈ ఫోటోలో ఒక మొక్క / పంట / ఆకు ఉంది. ఏ మొక్కో, ఏ తెగులు / పురుగు / పోషక లోపం కావచ్చో చెప్పు (ఖచ్చితంగా తెలియకపోతే అలాగే చెప్పు). "
@@ -3398,6 +3413,13 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                         takeAuto();
                         autoLabel = null;
                         warrantyOnPhone(uri, b64);
+                        return;
+                    }
+                    if (MEET_PROMPT.equals(autoPrompt)) { // 👤 B: a face from a photo, learned on the phone (never sent to the AI)
+                        takeAuto();
+                        autoLabel = null;
+                        final String nm = meetName;
+                        FaceLearn.choose(this, uri, nm, meetOwner, r -> localSay("👤 ఫోటో నుంచి " + nm + " ని పరిచయం", FaceLearn.say(r, nm)));
                         return;
                     }
                     if (BILL_PROMPT.equals(autoPrompt)) { // 🧾 "బిల్లు → ఖర్చు" (11 Nov, his "C మాత్రమే చేయి"): read here too, never sent to the AI
