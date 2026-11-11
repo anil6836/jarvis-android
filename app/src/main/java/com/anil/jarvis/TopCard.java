@@ -53,6 +53,8 @@ final class TopCard {
     static final class Msg {
         String kind = MSG;
         String app = "", from = "", pkg = "", say = "", ask = "", context = "";
+        /** 📞 B: what is pending with this caller (shown under the call, never said), or "". */
+        String memo = "";
         /** A WhatsApp voice note / audio / photo / video (one message), else null. */
         String media;
         /** When the message came (the media file must not be older). */
@@ -165,6 +167,10 @@ final class TopCard {
      * screen access is off): the caller uses the panel as before.
      */
     static boolean call(Context c, String who, String say, String sayShort, String sub, boolean warn, long ringAt) {
+        return call(c, who, say, sayShort, sub, warn, ringAt, "");
+    }
+
+    static boolean call(Context c, String who, String say, String sayShort, String sub, boolean warn, long ringAt, String memo) {
         if (!JarvisAccessibility.enabled()) return false;
         Msg m = new Msg();
         m.kind = CALL;
@@ -172,6 +178,7 @@ final class TopCard {
         m.say = say == null ? "" : say;
         m.ask = sayShort == null || sayShort.isEmpty() ? m.say : sayShort;
         m.sub = sub == null ? "" : sub;
+        m.memo = memo == null ? "" : memo;
         m.group = warn; // (a warning: the card red)
         m.postedAt = ringAt;
         m.voiceOnly = !screenUsable(c);
@@ -688,6 +695,17 @@ final class TopCard {
         line2.setEllipsize(TextUtils.TruncateAt.END);
         line2.setPadding(dp(2), dp(6), 0, dp(2));
         view.addView(line2); // (scrolled by code to follow the reading; not by touch, so a swipe anywhere moves the card)
+        if (CALL.equals(m.kind) && !m.memo.isEmpty()) { // 📞 B: what is pending with the caller, to see before answering (not said)
+            TextView memo = new TextView(svc);
+            memo.setText(m.memo);
+            memo.setTextColor(0xFFFFD58A);
+            memo.setTextSize(sp(13f));
+            memo.setLineSpacing(0, 1.1f);
+            memo.setMaxLines(4);
+            memo.setEllipsize(TextUtils.TruncateAt.END);
+            memo.setPadding(dp(2), dp(4), 0, dp(2));
+            view.addView(memo);
+        }
         status = new TextView(svc);
         status.setTextColor(FaceRig.withAlpha(accent, 0xEE));
         status.setTextSize(sp(12.5f));

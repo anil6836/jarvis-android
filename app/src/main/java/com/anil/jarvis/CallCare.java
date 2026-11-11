@@ -182,13 +182,14 @@ final class CallCare {
         if (HomeCare.on(c)) return; // (amma's tablet takes no calls)
 
         String say = line(p);
+        String memo = !who.isEmpty() && !tcName && CallMemo.on(c) ? CallMemo.forCall(c, who) : ""; // 📞 B: shown, never said
         String route;
         boolean panel = false;
         if (p.callByVoice() && JarvisAccessibility.enabled()) { // (Build 2: on the top card, not the panel)
             String title = who.isEmpty() ? (number.isEmpty() ? "తెలియని నంబర్" : "తెలియని నంబర్ …" + CallWords.lastFour(number)) : tcName ? who + " (Truecaller)" : who;
             String sub = (phone || app.isEmpty() ? "ఫోన్ కాల్" : app + " కాల్") + (tcName ? " · సేవ్ చేయని నంబర్ …" + CallWords.lastFour(number) : "") + (vip ? " · ⭐" : "") + (repeat ? " · 🔁 మళ్ళీ చేస్తున్నారు" : "")
                     + (warn.isEmpty() ? "" : " · ⚠️ " + warn.replaceAll("[.]$", ""));
-            if (TopCard.call(c, title, say, shortLine(), sub, !warn.isEmpty(), ringAt)) {
+            if (TopCard.call(c, title, say, shortLine(), sub, !warn.isEmpty(), ringAt, memo)) {
                 route = "📢 పైన కార్డ్‌లో చెప్పాను (పేరు చెప్పి, మీ మాట వింటుంది)";
                 panel = true;
             } else {
@@ -210,9 +211,10 @@ final class CallCare {
             route = "📢 ఫోన్‌లో చెప్పాను (మాట వినలేదు: " + (p.callByVoice() ? "'ఇతర యాప్‌ల పైన చూపడం' అనుమతి లేదు" : "మాటతో ఎత్తడం ఆఫ్") + ")";
         }
         if (quiet != null) route += " · " + (vip ? "⭐ ముఖ్యమైన వాళ్ళు" : "🔁 మళ్ళీ చేశారు") + ", " + quiet + " అయినా";
+        if (!memo.isEmpty()) route += " · 📋 గుర్తులు చూపించాను (" + memo.split("\n").length + ")";
         if (on(c, "call_watch_voice", true) && WatchHub.msgsOn(c) && WatchHub.watchHere(c) && !Boolean.FALSE.equals(WatchHub.worn(c)) && !WatchHub.riding(c)) {
             // (the watch says it too; it listens only when the phone's panel doesn't, so one mic never hears the other's voice)
-            WatchHub.call(c, sbnKey, say, () -> {}, !panel && p.callByVoice(), ringAt); // (his "by voice" switch off: the watch's buttons only)
+            WatchHub.call(c, sbnKey, say, () -> {}, !panel && p.callByVoice(), ringAt, memo); // (his "by voice" switch off: the watch's buttons only)
             route += panel ? " · ⌚ వాచ్‌లో కూడా (వాచ్ బటన్లు)" : " · ⌚ వాచ్‌లో కూడా (వాచ్ వింటుంది)";
         }
         log(c, route);

@@ -964,7 +964,10 @@ final class WatchHub {
      * W17 / 📞: the call on the watch: its card (ఎత్తు / కట్ / సైలెంట్) and its name said. listen: the watch's mic listens for
      * his word (only when the phone's panel doesn't: one mic never hears the other's voice).
      */
-    static void call(Context c, String key, String say, Runnable phoneWay, boolean listen, long ringAt) {
+    static void call(Context c, String key, String say, Runnable phoneWay, boolean listen, long ringAt) { call(c, key, say, phoneWay, listen, ringAt, ""); }
+
+    /** memo: 📞 B what is pending with the caller, shown on the watch's call card above the question (never said). */
+    static void call(Context c, String key, String say, Runnable phoneWay, boolean listen, long ringAt, String memo) {
         Context app = c.getApplicationContext();
         dropReply(); // (a new call: an old message talk is over)
         callAt = ringAt;
@@ -986,7 +989,7 @@ final class WatchHub {
         };
         try {
             send(app, WatchAlerts.P_ALERT, new JSONObject().put("id", ("call" + key).hashCode()).put("kind", "call").put("title", say)
-                    .put("text", "ఎత్తమంటారా? (కట్ / సైలెంట్ / మెసేజ్ కూడా చెప్పొచ్చు)").put("says", new org.json.JSONArray().put("ఎత్తు").put("కట్").put("సైలెంట్")), back, true);
+                    .put("text", (memo == null || memo.isEmpty() ? "" : memo + "\n") + "ఎత్తమంటారా? (కట్ / సైలెంట్ / మెసేజ్ కూడా చెప్పొచ్చు)").put("says", new org.json.JSONArray().put("ఎత్తు").put("కట్").put("సైలెంట్")), back, true);
         } catch (Exception ignored) {}
         reply(app, say + (listen ? ". ఎత్తమంటారా?" : ""), false, speakOn(app), () -> { // (never "కట్" aloud: the phone's mic hears it too)
             if (listen) listen(app, "call");
