@@ -1788,6 +1788,29 @@ public class JarvisAccessibility extends AccessibilityService {
         return sb.toString().trim();
     }
 
+    /** 📞 The texts of another app's windows on the screen now (Truecaller's caller pop-up), in screen order; empty when none. */
+    static java.util.List<String> windowTexts(String pkgPrefix) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        JarvisAccessibility s = instance;
+        if (s == null) return out;
+        try {
+            for (android.view.accessibility.AccessibilityWindowInfo w : s.getWindows()) {
+                AccessibilityNodeInfo r = w == null ? null : w.getRoot();
+                if (r == null || r.getPackageName() == null || !r.getPackageName().toString().startsWith(pkgPrefix)) continue;
+                collect(r, out, 0);
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    private static void collect(AccessibilityNodeInfo n, java.util.List<String> out, int depth) {
+        if (n == null || out.size() > 60 || depth > 30) return;
+        CharSequence t = n.getText();
+        if (t == null || t.length() == 0) t = n.getContentDescription();
+        if (t != null && t.length() > 0) out.add(t.toString());
+        for (int i = 0; i < n.getChildCount(); i++) collect(n.getChild(i), out, depth + 1);
+    }
+
     private static void walk(AccessibilityNodeInfo n, StringBuilder sb, int depth) {
         if (n == null || sb.length() > 4000 || depth > 40) return;
         CharSequence t = n.getText();

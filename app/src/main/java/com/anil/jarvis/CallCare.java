@@ -55,6 +55,8 @@ final class CallCare {
 
     static volatile String key = "", who = "", app = "", number = "", warn = "";
     static volatile boolean phone = true, silenced, vip, repeat, unknown, phoneSpam;
+    /** 🔎 the name being said is the one the Truecaller app showed (an unsaved number), not his contact's. */
+    static volatile boolean tcName;
     /** When this call began ringing (also the id of its line in the notes). */
     static volatile long ringAt;
     private static final Map<String, Long> lastRing = new HashMap<>();
@@ -111,6 +113,7 @@ final class CallCare {
         String w = name == null ? "" : name.trim();
         number = "";
         unknown = false;
+        tcName = false;
         if (CallWords.isNumber(w)) {
             number = w;
             String saved = CallHistory.nameFor(c, w);
@@ -141,6 +144,36 @@ final class CallCare {
         repeat = again;
         vip = !who.isEmpty() && CallWords.vip(who, p.sp.getString("call_vip", ""));
 
+        // 🔎 an unsaved number with the Truecaller app on the phone: its pop-up's name, looked for a few seconds before saying
+        if (phone && unknown && !number.isEmpty() && p.announceCalls() && TrueName.on(c) && JarvisAccessibility.enabled() && TrueName.installed(c)) {
+            final long at = ringAt; // (this ring: its notification may come meanwhile and change the key, not the ring)
+            final String num = number;
+            main.post(new Runnable() {
+                int tries;
+                @Override public void run() {
+                    if (ringAt != at) return; // (another ring took over)
+                    TrueName.Seen seen = null;
+                    try { seen = TrueName.look(num); } catch (Throwable ignored) {}
+                    tries++;
+                    boolean name = seen != null && seen.name != null;
+                    if (!name && tries < 12) { main.postDelayed(this, 300); return; } // (about 3.5 s in all; a spam mark alone waits for a name too)
+                    if (!CallControl.isRinging()) { log(c, TrueName.note(seen) + " · అంతలో రింగ్ ఆగిపోయింది"); return; } // (answered / cut meanwhile)
+                    if (seen != null) {
+                        String nm = TrueName.clean(seen.name);
+                        if (!nm.isEmpty()) { who = nm; tcName = true; }
+                        if (seen.spam && on(c, "call_scam", true) && !phoneSpam) { phoneSpam = true; warn = CallWords.warning("phone_spam"); }
+                    }
+                    log(c, TrueName.note(seen));
+                    announce(c, p, key);
+                }
+            });
+            return;
+        }
+        announce(c, p, sbnKey);
+    }
+
+    /** The ring said (top card / panel / voice) and on the watch, as his switches say; noted with what was done. */
+    private static void announce(Context c, Prefs p, String sbnKey) {
         if (!p.announceCalls()) { log(c, "📴 పేరు చెప్పడం ఆఫ్‌లో ఉంది (⚙️ → 📞 కాల్స్)"); return; }
         if (inCall(c)) { log(c, "📞 మీరు కాల్‌లో ఉన్నారు: పైకి చెప్పలేదు, విననూ లేదు (కాల్ స్క్రీన్ చూడండి)"); return; } // (call waiting: his words are for the call)
         String quiet = quietWhy(c, p);
@@ -152,8 +185,8 @@ final class CallCare {
         String route;
         boolean panel = false;
         if (p.callByVoice() && JarvisAccessibility.enabled()) { // (Build 2: on the top card, not the panel)
-            String title = who.isEmpty() ? (number.isEmpty() ? "తెలియని నంబర్" : "తెలియని నంబర్ …" + CallWords.lastFour(number)) : who;
-            String sub = (phone || app.isEmpty() ? "ఫోన్ కాల్" : app + " కాల్") + (vip ? " · ⭐" : "") + (repeat ? " · 🔁 మళ్ళీ చేస్తున్నారు" : "")
+            String title = who.isEmpty() ? (number.isEmpty() ? "తెలియని నంబర్" : "తెలియని నంబర్ …" + CallWords.lastFour(number)) : tcName ? who + " (Truecaller)" : who;
+            String sub = (phone || app.isEmpty() ? "ఫోన్ కాల్" : app + " కాల్") + (tcName ? " · సేవ్ చేయని నంబర్ …" + CallWords.lastFour(number) : "") + (vip ? " · ⭐" : "") + (repeat ? " · 🔁 మళ్ళీ చేస్తున్నారు" : "")
                     + (warn.isEmpty() ? "" : " · ⚠️ " + warn.replaceAll("[.]$", ""));
             if (TopCard.call(c, title, say, shortLine(), sub, !warn.isEmpty(), ringAt)) {
                 route = "📢 పైన కార్డ్‌లో చెప్పాను (పేరు చెప్పి, మీ మాట వింటుంది)";
@@ -319,7 +352,8 @@ final class CallCare {
     /** "Anil, రవి నుంచి కాల్ వస్తోంది. మళ్ళీ చేస్తున్నారు, అర్జెంట్ కావచ్చు." */
     private static String line(Prefs p) {
         String via = phone || app.isEmpty() ? "" : app + " ";
-        String base = p.name() + ", " + (who.isEmpty() ? (number.isEmpty() ? "తెలియని నంబర్" : "తెలియని నంబర్, చివరి అంకెలు " + CallWords.lastFour(number)) : who)
+        String base = p.name() + ", " + (tcName ? "Truecaller ప్రకారం " : "")
+                + (who.isEmpty() ? (number.isEmpty() ? "తెలియని నంబర్" : "తెలియని నంబర్, చివరి అంకెలు " + CallWords.lastFour(number)) : who)
                 + " నుంచి " + via + "కాల్ వస్తోంది";
         if (repeat) base += ". మళ్ళీ చేస్తున్నారు, అర్జెంట్ కావచ్చు";
         if (!warn.isEmpty()) base += ". " + warn.replaceAll("[.]$", "");
@@ -327,7 +361,7 @@ final class CallCare {
     }
 
     /** "రవి కాల్ చేస్తున్నారు" (the second time he is asked). */
-    static String shortLine() { return (who.isEmpty() ? "తెలియని నంబర్ నుంచి కాల్" : who + " కాల్ చేస్తున్నారు"); }
+    static String shortLine() { return (who.isEmpty() ? "తెలియని నంబర్ నుంచి కాల్" : (tcName ? "Truecaller ప్రకారం " : "") + who + " కాల్ చేస్తున్నారు"); }
 
     private static boolean phoneSaysSpam(Notification n) {
         if (n == null || n.extras == null) return false;
