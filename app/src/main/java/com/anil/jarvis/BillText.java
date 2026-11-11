@@ -73,7 +73,107 @@ final class BillText {
         }
     }
 
+    /** 🧾 "బిల్లు → ఖర్చు" (11 Nov, his "ఫోన్‌లోనే"): what an expense bill says — the total paid, the shop, the day, a guessed kind. */
+    static final class Spend {
+        double total;
+        String shop, category;
+        LocalDate date;
+    }
+
+    /** An expense bill read from an upright picture on the phone; background thread only. Null when nothing could be read. */
+    static Spend readSpend(Bitmap b) {
+        try {
+            String t = b == null ? "" : OfflineRead.text(b);
+            return t.isEmpty() ? null : spend(t, LocalDate.now());
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
     // ================================================================ parsing (pure)
+
+    static Spend spend(String text, LocalDate today) {
+        Spend s = new Spend();
+        if (text == null) return s;
+        s.total = total(text);
+        s.shop = shop(text);
+        s.date = date(text, today);
+        s.category = category(text);
+        return s;
+    }
+
+    private static final Pattern AMOUNT = Pattern.compile("(?i)(?<![\\d.,])(?:₹|rs\\.?|inr)?\\s*(\\d{1,3}(?:,\\d{2,3})+|\\d{1,7})(?:\\.(\\d{1,2}))?(?![\\d,%])(?!\\s*%)");
+    /** The paid total's words, surest first. */
+    private static final String[][] TOTAL_WORDS = {
+            {"grand total", "net payable", "amount payable", "total payable", "net amount", "amount to pay", "to pay", "net total", "bill amount",
+                    "total amount", "invoice total", "amount paid", "paid amount", "total due", "amount due"},
+            {"total"}};
+    /** A "total" line that isn't the bill's total. */
+    private static final Pattern NOT_TOTAL = Pattern.compile("(?i)(sub\\s*-?\\s*total|qty|quantity|items?\\b|tax|gst|cgst|sgst|igst|cess|sav(ed|ing)|discount|mrp|round|tender|change|weight|kg)");
+
+    /**
+     * The total he paid: the number on (or, when the reader split the columns, just under) a "Grand Total / Net Payable /
+     * Amount Paid …" line, else a plain "Total" line that isn't a sub-total / tax / items / savings line; the biggest of the surest
+     * kind found. 0 when none (he types it). Pure.
+     */
+    static double total(String text) {
+        if (text == null) return 0;
+        String[] lines = text.split("\\r?\\n");
+        double best = 0;
+        for (String[] words : TOTAL_WORDS) {
+            for (int i = 0; i < lines.length; i++) {
+                String low = lines[i].toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+                boolean hit = false;
+                for (String w : words) if (low.matches(".*(?<![a-z])" + Pattern.quote(w) + "(?![a-z]).*")) { hit = true; break; }
+                if (!hit || words.length == 1 && NOT_TOTAL.matcher(low).find()) continue;
+                double v = lastAmount(lines[i]);
+                for (int k = 1; v <= 0 && k <= 2 && i + k < lines.length; k++) // (the amount in its own column: the next line or two, numbers only)
+                    if (!lines[i + k].replaceAll("(?i)₹|rs\\.?|inr", "").matches(".*\\p{L}.*")) v = lastAmount(lines[i + k]);
+                if (v > best) best = v;
+            }
+            if (best > 0) return best;
+        }
+        return 0;
+    }
+
+    private static double lastAmount(String line) {
+        Matcher m = AMOUNT.matcher(line);
+        double v = 0;
+        while (m.find()) {
+            try {
+                double x = Double.parseDouble(m.group(1).replace(",", "") + (m.group(2) == null ? "" : "." + m.group(2)));
+                if (x >= 1 && x <= 1_000_000) v = x;
+            } catch (Exception ignored) {}
+        }
+        return v;
+    }
+
+    /** Words → the expense kinds Jarvis already counts by (food, groceries, fuel, …); the first kind whose word is on the bill. */
+    private static final String[][] KINDS = {
+            {"charging", "ev charging", "charging station", "kwh", "chargezone", "statiq", "tata power ez"},
+            {"bills", "electricity", "tsspdcl", "apspdcl", "tgspdcl", "water bill", "broadband", "fibernet", "recharge", "postpaid", "lpg", "indane",
+                    "bharatgas", "bharat gas", "hp gas", "cylinder"},
+            {"fuel", "petrol", "diesel", "fuel", "filling station", "hpcl", "bpcl", "iocl", "indian oil", "bharat petroleum", "hindustan petroleum",
+                    "nayara", "fuel station"},
+            {"medicine", "pharmacy", "pharma", "medical", "medicals", "chemist", "chemists", "drug", "apollo", "medplus", "tablet", "tablets", "syrup"},
+            {"groceries", "supermarket", "super market", "dmart", "d mart", "d-mart", "ratnadeep", "reliance fresh", "reliance smart", "kirana",
+                    "general store", "general stores", "provision", "provisions", "vegetables", "fruits", "grocery", "groceries", "bigbasket", "zepto",
+                    "blinkit", "instamart", "vijetha", "heritage fresh", "spencer", "hypermarket", "mart"},
+            {"food", "restaurant", "cafe", "café", "bakery", "bakers", "biryani", "kitchen", "dhaba", "tiffin", "tiffins", "sweets", "foods", "swiggy",
+                    "zomato", "pizza", "burger", "kfc", "mcdonald", "domino", "dominos", "juice", "mess", "bar", "hotel"},
+            {"travel", "irctc", "railway", "train", "tsrtc", "apsrtc", "tgsrtc", "redbus", "uber", "ola", "rapido", "toll", "fastag", "travels",
+                    "flight", "airlines", "metro", "bus"},
+            {"car", "car wash", "car care", "car service", "car spa", "tyres", "tyre", "wheel alignment"},
+            {"shopping", "electronics", "mobiles", "fashion", "textiles", "garments", "footwear", "trends", "lifestyle", "mall", "amazon",
+                    "flipkart", "myntra", "croma", "reliance digital", "bazaar", "store", "stores", "shop"}};
+
+    /** The bill's kind of expense, guessed from its words ("other" when none fits). Pure. */
+    static String category(String text) {
+        String low = " " + (text == null ? "" : text.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9é ]+", " ").replaceAll("\\s+", " ")) + " ";
+        for (String[] k : KINDS)
+            for (int i = 1; i < k.length; i++) if (low.contains(" " + k[i] + " ")) return k[0];
+        return "other";
+    }
 
     static Found parse(String text, LocalDate today) {
         Found f = new Found();

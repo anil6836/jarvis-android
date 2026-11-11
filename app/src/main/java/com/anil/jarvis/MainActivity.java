@@ -3400,6 +3400,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                         warrantyOnPhone(uri, b64);
                         return;
                     }
+                    if (BILL_PROMPT.equals(autoPrompt)) { // 🧾 "బిల్లు → ఖర్చు" (11 Nov, his "C మాత్రమే చేయి"): read here too, never sent to the AI
+                        takeAuto();
+                        autoLabel = null;
+                        expenseOnPhone(uri);
+                        return;
+                    }
                     clearAttachment();
                     pendingPhoto = b64;
                     pendingThumb = thumb;
@@ -3495,6 +3501,111 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                     localSay("🧾 " + it + " బిల్ వారంటీ గుర్తుపెట్టుకో", "సరే Sir, " + it + " వారంటీ " + until + " వరకు గుర్తుపెట్టుకున్నాను. బిల్లు ఫోటో కూడా దాచాను"
                             + (svc ? ", సర్వీస్ నంబర్ కూడా" : "") + ". అయిపోవడానికి 30 రోజుల ముందు గుర్తుచేస్తాను.");
                 });
+            });
+        }));
+        d.show();
+    }
+
+    /** 🧾 "బిల్లు → ఖర్చు" read on the phone (his choice, 11 Nov: nothing goes to the AI): total, shop, day and kind, shown to check and save. */
+    private void expenseOnPhone(Uri uri) {
+        Toast.makeText(this, "🧾 బిల్లు ఫోన్‌లోనే చదువుతున్నాను…", Toast.LENGTH_SHORT).show();
+        worker.submit(() -> {
+            BillText.Spend f = null;
+            try {
+                Bitmap big = loadScaled(uri, 1600); // (upright, as the camera meant it)
+                f = BillText.readSpend(big);
+                big.recycle();
+            } catch (Throwable ignored) {}
+            final BillText.Spend got = f;
+            main.post(() -> expenseForm(got));
+        });
+    }
+
+    /** The expense kinds Jarvis counts by, with the words he sees. */
+    private static final String[][] SPEND_KINDS = {{"groceries", "🛒 కిరాణా"}, {"food", "🍛 భోజనం, హోటల్"}, {"fuel", "⛽ పెట్రోల్ / డీజిల్"},
+            {"charging", "🔌 ఛార్జింగ్"}, {"medicine", "💊 మందులు"}, {"bills", "🧾 బిల్లులు (కరెంట్, ఫోన్, గ్యాస్)"}, {"shopping", "🛍️ షాపింగ్"},
+            {"travel", "🚌 ప్రయాణం"}, {"car", "🚗 కారు సర్వీస్ / రిపేర్"}, {"other", "📦 ఇతర"}};
+
+    private static int spendKind(String key) {
+        for (int i = 0; i < SPEND_KINDS.length; i++) if (SPEND_KINDS[i][0].equals(key)) return i;
+        return SPEND_KINDS.length - 1;
+    }
+
+    private void expenseForm(BillText.Spend f) {
+        if (isFinishing() || isDestroyed()) return;
+        int p = Ui.dp(this, 20);
+        android.content.Context dc = new android.view.ContextThemeWrapper(this, android.R.style.Theme_Material_Dialog_Alert); // (the dialog's own colours)
+        LinearLayout box = new LinearLayout(dc);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(p, Ui.dp(this, 8), p, 0);
+        java.time.format.DateTimeFormatter dmy = java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy");
+        java.time.LocalDate today = java.time.LocalDate.now();
+        boolean got = f != null && (f.total > 0 || f.date != null || f.shop != null);
+        TextView head = new TextView(dc);
+        head.setText(got ? "ఫోన్‌లోనే చదివాను, ఫోటో ఎక్కడికీ పంపలేదు. సరిగ్గా ఉన్నాయో చూసి సేవ్ నొక్కండి."
+                : "బిల్లులో రాత చదవలేకపోయాను (ఫోటో మసకగా ఉందేమో). వివరాలు మీరే రాయండి.");
+        head.setTextSize(14.5f);
+        head.setPadding(0, 0, 0, Ui.dp(this, 8));
+        box.addView(head);
+        String amt = f == null || f.total <= 0 ? "" : f.total == Math.rint(f.total) ? String.valueOf((long) f.total) : String.format(Locale.ENGLISH, "%.2f", f.total);
+        EditText amount = formField(dc, box, "మొత్తం ₹ (కట్టినది, GST తో)", amt, InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        EditText shop = formField(dc, box, "షాప్ (అవసరం లేకపోతే ఖాళీ)", f != null && f.shop != null ? f.shop : "", InputType.TYPE_CLASS_TEXT);
+        java.time.LocalDate d0 = f != null && f.date != null && !f.date.isBefore(today.minusDays(365)) ? f.date : today;
+        EditText date = formField(dc, box, "తేదీ (ఉదా: " + dmy.format(today) + ")", dmy.format(d0), InputType.TYPE_CLASS_DATETIME);
+        final int[] kind = {spendKind(f == null ? "other" : f.category)};
+        TextView kl = new TextView(dc);
+        kl.setText("రకం (మార్చడానికి నొక్కండి)");
+        kl.setTextSize(13f);
+        kl.setPadding(0, Ui.dp(this, 8), 0, 0);
+        box.addView(kl);
+        Button kb = new Button(dc);
+        kb.setAllCaps(false);
+        kb.setText(SPEND_KINDS[kind[0]][1] + "  ▾");
+        kb.setOnClickListener(v -> {
+            String[] names = new String[SPEND_KINDS.length];
+            for (int i = 0; i < names.length; i++) names[i] = SPEND_KINDS[i][1];
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("రకం")
+                    .setSingleChoiceItems(names, kind[0], (dd, w) -> { kind[0] = w; kb.setText(SPEND_KINDS[w][1] + "  ▾"); dd.dismiss(); })
+                    .show();
+        });
+        box.addView(kb);
+        android.widget.ScrollView sv = new android.widget.ScrollView(dc);
+        sv.addView(box);
+        android.app.AlertDialog d = new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🧾 బిల్లు → ఖర్చు")
+                .setView(sv)
+                .setPositiveButton("సేవ్", null)
+                .setNegativeButton("వద్దు", null)
+                .create();
+        d.setOnShowListener(x -> d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            double a;
+            try { a = Double.parseDouble(amount.getText().toString().replace(",", "").replace("₹", "").trim()); } catch (Exception e) { a = 0; }
+            java.time.LocalDate b = Debts.parse(date.getText().toString());
+            if (a <= 0 || a > 1_000_000) { amount.setError("బిల్లులో కట్టిన మొత్తం రాయండి"); amount.requestFocus(); return; }
+            if (b == null || b.isAfter(today) || b.isBefore(today.minusDays(365))) { date.setError("ఈ సంవత్సరంలోని తేదీ ఇలా రాయండి: " + dmy.format(today)); date.requestFocus(); return; }
+            d.dismiss();
+            final double money = a;
+            final String sh = shop.getText().toString().trim(), cat = SPEND_KINDS[kind[0]][0], label = SPEND_KINDS[kind[0]][1].replaceAll("^\\S+\\s+", "");
+            final String what = sh.isEmpty() ? label : label + " - " + sh;
+            final long when = b.equals(today) ? System.currentTimeMillis() : b.atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+            final String rupees = "₹" + (money == Math.rint(money) ? String.valueOf((long) money) : String.format(Locale.ENGLISH, "%.2f", money));
+            worker.submit(() -> {
+                String say;
+                try {
+                    if (!prefs.homeMode() && Car.covers(this, money, when, cat)) // (a bunk / service bill he already told the car account: not twice)
+                        say = "ఈ " + rupees + " ఇప్పటికే కారు లెక్కలో ఉంది Sir, మళ్ళీ రాయలేదు.";
+                    else {
+                        Money.add(this, money, what, sh, cat, when);
+                        long month = today.withDayOfMonth(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+                        say = "సరే Sir, " + rupees + " ఖర్చు రాశాను: " + what + (b.equals(today) ? "" : ", " + dmy.format(b)) + ". ఈ నెల బిల్లుల మొత్తం ₹"
+                                + Math.round(Money.totalSince(this, month)) + ".";
+                    }
+                } catch (Exception e) {
+                    say = "క్షమించండి Sir, ఖర్చు రాయలేకపోయాను. మళ్ళీ ప్రయత్నించండి.";
+                }
+                final String s2 = say;
+                main.post(() -> localSay("🧾 " + rupees + " బిల్లు నా ఖర్చుల్లో చేర్చు", s2));
             });
         }));
         d.show();
