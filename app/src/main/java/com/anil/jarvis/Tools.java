@@ -1186,7 +1186,18 @@ final class Tools {
 
     // ================================================================ dispatch
 
+    /** 🔁 E: his words this turn (Brain.ask), for noticing the jobs he asks for at the same time every day. */
+    volatile String heard;
+
     String execute(String name, JSONObject a) {
+        String r = executeJob(name, a);
+        if (HabitAuto.TOOLS.contains(name) && r != null && r.startsWith("{\"ok\":true") && !prefs.homeMode() && !prefs.carMode()) {
+            try { if (HabitAuto.on(act())) HabitAuto.note(act(), name, a, heard); } catch (Throwable ignored) {}
+        }
+        return r;
+    }
+
+    private String executeJob(String name, JSONObject a) {
         try {
             // the car's box: a phone job never runs here, even if asked for by name (C8 / C9)
             if (prefs.carMode() && !CarBox.toolHere(name) && !"web_search".equals(name) && !"end_conversation".equals(name))

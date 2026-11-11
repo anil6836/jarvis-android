@@ -131,6 +131,7 @@ public class Proactive extends BroadcastReceiver {
         try { Forecast.tick(c, p, hush); } catch (Throwable ignored) {}     // V15: "ఇలాగే కొనసాగితే", evenings, only when something is red
         if (!hush) { try { LaterBox.remindTick(c, p); } catch (Throwable ignored) {} } // 📬 waited an hour and he is free: one "చదవమంటారా?" (its own switch)
         if (!p.proactive()) return;
+        try { HabitAuto.tick(c, p, hush); } catch (Throwable ignored) {} // 🔁 E: "రోజూ నేనే చేయనా?" (once per habit)
         boolean quiet = hush;
         Calendar now = Calendar.getInstance();
         int hour = now.get(Calendar.HOUR_OF_DAY);

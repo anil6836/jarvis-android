@@ -1059,6 +1059,11 @@ public class SettingsActivity extends Activity {
         section("Jarvis తనంతట తానే");
         proactive = toggle("అడగకుండానే ముఖ్యమైనవి చెప్పు: మీటింగ్ దగ్గర పడితే, వర్షం వస్తే, ఇష్టమైనవాళ్లకి చాలా రోజులుగా ఫోన్ చేయకపోతే, మీ అలవాట్లు, నీళ్లు, ధర హెచ్చరికలు", prefs.proactive());
         note("రాత్రి మోడ్‌లో, కాల్ మాట్లాడుతున్నప్పుడు, Do Not Disturb లో మాట్లాడదు. \"ఇష్టమైనవాళ్లు\" = Contacts లో ⭐ పెట్టినవాళ్లు.");
+        { // 🔁 E (12 Nov): a job he asks at about the same time on many days → asked once whether Jarvis should do it daily
+            Switch ha = toggle("🔁 నేను రోజూ ఒకే టైమ్‌కి అడిగే పని (AC, లైట్, వాతావరణం, వార్తలు…) గమనించి \"రోజూ నేనే చేయనా?\" అని ఒక్కసారి అడుగు", HabitAuto.on(this));
+            ha.setOnCheckedChangeListener((sw0, v) -> { prefs.sp.edit().putBoolean("habit_suggest", v).apply(); if (!v) HabitAuto.clear(this); });
+            note("మీరు Jarvis కి చెప్పిన మాటలే, ఫోన్‌లోనే, ఒక నెల వరకు. మీరు \"సరే\" అంటేనే ఆటోమేషన్ పెడతాను. ఆఫ్ చేస్తే గమనించినవన్నీ మర్చిపోతాను.");
+        }
 
         section("స్మార్ట్ హోమ్ (లైట్లు, ఫ్యాన్లు)");
         note("మూడు మార్గాలు, Jarvis వరుసగా ప్రయత్నిస్తుంది:\n1) Alexa రొటీన్ లింక్‌లు (అన్నింటికన్నా నమ్మకమైనది): Voice Monkey లేదా URL Routine Trigger అనే Alexa skill లో ఒక్కో పనికి ఒక trigger చేసి, Alexa యాప్‌లో ఆ trigger తో రొటీన్ (ఉదా: హాల్ లైట్ ఆఫ్) పెట్టండి. ఆ trigger లింక్‌ను కింద \"పేరు = లింక్\" గా ఒక్కో లైన్‌లో పెట్టండి.\n2) మీ స్మార్ట్ హోమ్ యాప్ తెరిచి ఆ లైట్ స్విచ్ Jarvis నొక్కుతుంది (Accessibility కావాలి).\n3) దగ్గర్లో Echo ఉంటే Jarvis \"Alexa, …\" అని పైకి చెబుతుంది.");

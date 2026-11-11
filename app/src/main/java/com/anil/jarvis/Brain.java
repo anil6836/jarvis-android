@@ -108,6 +108,7 @@ final class Brain {
 
     String ask(List<JSONObject> history, String text, String jpegB64, Status status) throws Exception {
         // No internet: handle the simple everyday commands on the phone itself.
+        tools.heard = text; // (🔁 E: the jobs he asks for, noticed by time of day)
         if (!tools.online()) return tools.offlineCommand(text);
         Offline.netBack(prefs.app); // (the next stretch without internet is told again; questions kept without it are answered)
         deep = prefs.sp.getBoolean("deep_always", false) || (text != null && DEEP_WORDS.matcher(text).find());
