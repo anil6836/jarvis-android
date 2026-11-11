@@ -8,6 +8,7 @@
         <exclude domain="file" path="jarvis_trips.json" />
         <exclude domain="file" path="jarvis_trips.json.part" />
         <exclude domain="sharedpref" path="calls_private.xml" />
+        <exclude domain="sharedpref" path="jarvis_photo_text_runs.xml" />
         <exclude domain="sharedpref" path="car_cam_private.xml" />
         <exclude domain="file" path="car_wall.jpg" />
         <exclude domain="file" path="car_photo.jpg" />
@@ -67,6 +68,7 @@
         <exclude domain="file" path="jarvis_trips.json" />
         <exclude domain="file" path="jarvis_trips.json.part" />
         <exclude domain="sharedpref" path="calls_private.xml" />
+        <exclude domain="sharedpref" path="jarvis_photo_text_runs.xml" />
         <exclude domain="sharedpref" path="car_cam_private.xml" />
         <exclude domain="file" path="car_wall.jpg" />
         <exclude domain="file" path="car_photo.jpg" />

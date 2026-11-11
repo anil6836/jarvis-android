@@ -82,6 +82,9 @@ public class Proactive extends BroadcastReceiver {
     static void tick(Context c) {
         if (CarBox.on(c)) return; // 🚗 the car's box: no remarks of the phone's own (his day, prices, diary: on his phone, C8)
         pruneSeen(c);
+        // 📷 B7 first, while the alarm still holds the phone awake (it takes its own hold for its few minutes): on the charger with
+        // the screen off, reading his photos' printed words on the phone
+        try { PhotoText.tick(c); } catch (Throwable ignored) {}
         try { Automations.tick(c); } catch (Throwable ignored) {} // his own rules first (before the slow fetches), even with Jarvis's own ideas off
         try { Guard.watch(c); } catch (Throwable ignored) {}       // on the phone at home: tell him if the guard stopped
         Prefs p = new Prefs(c);
@@ -127,7 +130,6 @@ public class Proactive extends BroadcastReceiver {
         try { Companion.tick(c, p, hush || MainActivity.busyTalking()); } catch (Throwable ignored) {} // V14: a caring word after a duty / a long ride
         try { Forecast.tick(c, p, hush); } catch (Throwable ignored) {}     // V15: "ఇలాగే కొనసాగితే", evenings, only when something is red
         if (!hush) { try { LaterBox.remindTick(c, p); } catch (Throwable ignored) {} } // 📬 waited an hour and he is free: one "చదవమంటారా?" (its own switch)
-        try { PhotoText.tick(c); } catch (Throwable ignored) {}           // 📷 B7: while it charges, a few minutes of reading his photos' printed words (on the phone)
         if (!p.proactive()) return;
         boolean quiet = hush;
         Calendar now = Calendar.getInstance();

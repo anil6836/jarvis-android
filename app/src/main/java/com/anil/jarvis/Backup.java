@@ -235,6 +235,7 @@ final class Backup {
     private static boolean ownPrefs(String name) {
         if (name.equals(PREFS) || name.equals(AppCrash.PREFS)) return false; // (an app-error note belongs to this phone)
         if (name.equals(CallCare.PRIVATE)) return false; // (who called him and what Jarvis did: on this phone only)
+        if (name.equals(PhotoText.RUNS)) return false; // (📷 when this phone last read its photos: belongs to this phone, like the words)
         return name.startsWith("jarvis") || name.startsWith("hud_") || name.endsWith("Activity");
     }
 

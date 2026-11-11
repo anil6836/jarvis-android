@@ -4887,7 +4887,9 @@ public class SettingsActivity extends Activity {
         pt.setClickable(some);
         new Thread(() -> {
             int[] pr = PhotoText.progress(this);
+            String st = PhotoText.status(this);
             runOnUiThread(() -> pt.setText("📷 చదివినవి: " + pr[0] + " ఫోటోల్లో " + pr[1] + (pr[1] < pr[0] ? " (మిగతావి ఛార్జింగ్‌లో, స్క్రీన్ ఆఫ్‌లో ఉన్నప్పుడు కొద్దికొద్దిగా)" : " ✓")
+                    + "\n" + st
                     + (some ? "\nమీరు ఎంచుకున్న ఫోటోలకే అనుమతి ఉంది: అన్నీ కావాలంటే ఇక్కడ నొక్కి \"Allow all\"" : "")));
         }, "photo-text-count").start();
     }

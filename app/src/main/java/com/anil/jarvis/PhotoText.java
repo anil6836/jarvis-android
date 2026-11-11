@@ -3,6 +3,7 @@ package com.anil.jarvis;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -189,6 +190,7 @@ final class PhotoText {
         new File(c.getFilesDir(), PART).delete();
         index = null;
         gen++;
+        runs(c).edit().clear().apply();
     }
 
     private static synchronized int gen() { return gen; }
@@ -213,14 +215,45 @@ final class PhotoText {
     private static boolean granted(Context c, String p) { return c.checkSelfPermission(p) == android.content.pm.PackageManager.PERMISSION_GRANTED; }
 
     /** On the charger, the screen off (he isn't using it) and the battery below 40 °C: the only time it reads. */
-    private static boolean goodTime(Context c) {
+    private static boolean goodTime(Context c) { return whyNot(c) == null; }
+
+    /** Null when it may read now; else why not: "" not on the charger, "screen" the screen is on, "hot:41" the battery's °C. */
+    private static String whyNot(Context c) {
         try {
             Intent b = c.registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-            if (b == null || b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) == 0) return false;
-            if (b.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 999) >= 400) return false; // (tenths of a °C)
+            if (b == null || b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) == 0) return "";
+            int t = b.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 999); // (tenths of a °C)
+            if (t >= 400) return "hot:" + t / 10;
             android.os.PowerManager pm = c.getSystemService(android.os.PowerManager.class);
-            return pm != null && !pm.isInteractive();
-        } catch (Exception e) { return false; }
+            return pm != null && !pm.isInteractive() ? null : "screen";
+        } catch (Exception e) { return ""; }
+    }
+
+    // ---------------------------------------------------------------- what the 📷 line in Settings says about the last tries
+
+    static final String RUNS = "jarvis_photo_text_runs";
+
+    private static SharedPreferences runs(Context c) { return c.getSharedPreferences(RUNS, Context.MODE_PRIVATE); }
+
+    /** Settings' line: when it last read and how many, or (never yet) why it couldn't on the charger. */
+    static String status(Context c) {
+        SharedPreferences s = runs(c);
+        return statusText(s.getLong("last_at", 0), s.getInt("last_n", 0), s.getBoolean("last_fail", false), s.getString("skip", ""), s.getLong("skip_at", 0));
+    }
+
+    /** Pure (desk-tested). */
+    static String statusText(long lastAt, int lastN, boolean lastFail, String skip, long skipAt) {
+        String why = skip == null ? "" : skip.startsWith("hot:") ? "ఫోన్ " + skip.substring(4) + "°C వేడిగా ఉంది (40 కంటే తక్కువ అయ్యాక చదువుతాడు)"
+                : "screen".equals(skip) ? "ఛార్జింగ్‌లో ఉన్నప్పుడు స్క్రీన్ ఆన్‌లో ఉంది" : "";
+        String fail = lastFail ? " · ఫోటోలు చదవడం కుదరలేదు, మళ్ళీ ప్రయత్నిస్తాడు" : "";
+        if (lastAt > 0) {
+            String when = java.time.format.DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
+                    .format(java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(lastAt), java.time.ZoneId.systemDefault()));
+            String later = !why.isEmpty() && skipAt > lastAt ? "\nతర్వాత ఆగింది: " + why : "";
+            return "🕘 చివరిగా చదివింది: " + when + " (" + lastN + " ఫోటోలు)" + fail + later;
+        }
+        if (!why.isEmpty()) return "🕘 ఇంకా మొదలవలేదు: " + why;
+        return "🕘 ఇంకా మొదలవలేదు: ఛార్జర్ పెట్టి స్క్రీన్ ఆఫ్ చేసిన తర్వాత 15 నిమిషాల్లో మొదలవుతుంది";
     }
 
     /** {photos on the phone, read so far}. */
@@ -235,14 +268,44 @@ final class PhotoText {
     /** From the regular check: while it charges, a few minutes of reading the photos not read yet (newest first). */
     static void tick(Context c) {
         if (!on(c)) { if (file(c).isFile()) clear(c); return; } // (his switch off: what was read is forgotten)
-        if (!allowed(c) || !goodTime(c) || new Prefs(c).homeMode() || CarBox.on(c)) return;
+        if (!allowed(c) || new Prefs(c).homeMode() || CarBox.on(c)) return;
+        String why = whyNot(c);
+        if (why != null) { // (on the charger but not now: the reason kept for Settings' line)
+            if (!why.isEmpty()) runs(c).edit().putString("skip", why).putLong("skip_at", System.currentTimeMillis()).apply();
+            return;
+        }
         if (!RUNNING.compareAndSet(false, true)) return;
-        new Thread(() -> {
-            try { readSome(c, 4 * 60_000L); } catch (Throwable ignored) {} finally { RUNNING.set(false); }
-        }, "photo-text").start();
+        // With the screen off the phone sleeps a few seconds after the alarm unless something holds it awake: held only for
+        // this run (on the charger, at most 5 minutes), let go as soon as it ends.
+        android.os.PowerManager.WakeLock wl = null;
+        try {
+            android.os.PowerManager pm = c.getSystemService(android.os.PowerManager.class);
+            if (pm != null) {
+                wl = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "jarvis:photo-text");
+                wl.setReferenceCounted(false);
+                wl.acquire(5 * 60_000L);
+            }
+        } catch (Exception ignored) {}
+        final android.os.PowerManager.WakeLock lock = wl;
+        try {
+            new Thread(() -> {
+                try {
+                    int[] r = readSome(c, 4 * 60_000L);
+                    if (r != null) runs(c).edit().putLong("last_at", System.currentTimeMillis()).putInt("last_n", r[0]).putBoolean("last_fail", r[1] != 0).apply();
+                } catch (Throwable ignored) {
+                } finally {
+                    RUNNING.set(false);
+                    try { if (lock != null && lock.isHeld()) lock.release(); } catch (Exception ignored) {}
+                }
+            }, "photo-text").start();
+        } catch (Throwable e) {
+            RUNNING.set(false);
+            try { if (lock != null && lock.isHeld()) lock.release(); } catch (Exception ignored) {}
+        }
     }
 
-    private static void readSome(Context c, long budgetMs) {
+    /** Reads for up to budgetMs; {photos read, 1 when the reader kept failing} — null when there was nothing to read. */
+    private static int[] readSome(Context c, long budgetMs) {
         long until = System.currentTimeMillis() + budgetMs;
         int started = gen();
         Map<Long, String[]> idx = load(c, null);
@@ -251,26 +314,27 @@ final class PhotoText {
         try (Cursor cur = c.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_ADDED},
                 null, null, MediaStore.Images.Media.DATE_ADDED + " DESC")) {
-            if (cur == null) return;
+            if (cur == null) return null;
             while (cur.moveToNext()) {
                 long id = cur.getLong(0), taken = cur.isNull(1) ? cur.getLong(2) * 1000 : cur.getLong(1);
                 alive.add(id);
                 if (!idx.containsKey(id)) todo.add(new long[]{id, taken});
             }
-        } catch (Exception e) { return; }
+        } catch (Exception e) { return null; }
         if (idx.size() > alive.size() + 200) prune(c, alive); // (many deleted since: their words go)
-        if (todo.isEmpty()) return;
+        if (todo.isEmpty()) return null;
         List<String> lines = new ArrayList<>();
         Map<Long, String[]> add = new HashMap<>();
         TextRecognizer r = OfflineRead.recognizer(); // (one for the whole run)
+        int read = 0, failed = 0;
         try {
-            int failed = 0;
             for (long[] p : todo) {
                 if (System.currentTimeMillis() > until || !goodTime(c) || !on(c) || started != gen()) break;
                 Uri u = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, p[0]);
                 String text = readText(c, r, u);
                 if (text == null) { if (++failed >= 3) break; continue; } // (the reader failing: not remembered as read — tried again next time)
                 failed = 0;
+                read++;
                 List<String> w = words(text);
                 lines.add(p[0] + "\t" + p[1] + "\t" + String.join(" ", w));
                 add.put(p[0], w.toArray(new String[0]));
@@ -280,6 +344,7 @@ final class PhotoText {
         } finally {
             try { r.close(); } catch (Exception ignored) {}
         }
+        return new int[]{read, failed >= 3 ? 1 : 0};
     }
 
     /** One photo's printed text, read on the phone: "" when it has none or isn't a readable picture, null when the reading failed. */
