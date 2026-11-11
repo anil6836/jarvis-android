@@ -870,6 +870,20 @@ public class SettingsActivity extends Activity {
         box.addView(groupMode);
         myNames = field("గ్రూప్‌లో మిమ్మల్ని పిలిచే పేర్లు (కామాతో)", prefs.myNames(), false);
         myNames.setHint("Anil, అనిల్, @Anil");
+        { // 💬 one switch per messaging app (his ask, 12 Nov): the ones he doesn't want, off
+            TextView ml = Ui.text(this, "📱 ఏ యాప్ మెసేజ్‌లు చెప్పాలి (వద్దనుకున్నది ఆఫ్ చేయండి):", 15, Ui.TEXT);
+            ml.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 2));
+            box.addView(ml);
+            java.util.List<String[]> apps = MsgApps.list(this);
+            if (apps.isEmpty()) note("ఇంకా ఏ మెసేజ్ యాప్ కనిపించలేదు.");
+            for (String[] a : apps) {
+                Switch x = toggle(a[1], !MsgApps.off(this, a[0]));
+                x.setOnCheckedChangeListener((sw0, v) -> MsgApps.setOff(this, a[0], !v));
+            }
+            note("ఆఫ్ చేసిన యాప్ మెసేజ్‌లు Jarvis చెప్పడు: మాట, పైన కార్డ్, 📬, వాచ్ ఏదీ రాదు. ఫోన్ నోటిఫికేషన్ మాత్రం మామూలుగానే వస్తుంది. "
+                    + "మీరే అడిగితే (\"Telegram లో ఎవరు మెసేజ్ చేశారు?\") చెబుతాడు. మోసం మెసేజ్ హెచ్చరికలు ఎప్పుడూ వస్తాయి. "
+                    + "కొత్త యాప్ నుంచి మెసేజ్ వస్తే దాని స్విచ్ కూడా ఇక్కడ చేరుతుంది (ఆన్‌లో).");
+        }
         note("మీరు వేరే యాప్‌లో ఉన్నప్పుడు మెసేజ్ వస్తే కింది నుంచి పెద్ద ప్యానెల్ రాదు: పైన చిన్న కార్డ్ వస్తుంది. Jarvis అక్కడే ఎవరి నుంచో చెప్పి "
                 + "\"చదవమంటారా?\" అని అడుగుతాడు, చదివి, \"రిప్లై ఇవ్వమంటారా?\" అని అడిగి, మీ జవాబు చదివి వినిపించి \"పంపమంటారా?\" అన్నాకే పంపుతాడు. "
                 + "అంతా background‌లోనే: మీరు వాడుతున్న యాప్ ఆగదు, కీబోర్డ్ మూసుకోదు. ప్రతి స్టెప్ కార్డ్‌లోని బటన్‌తోనూ చేయొచ్చు. "

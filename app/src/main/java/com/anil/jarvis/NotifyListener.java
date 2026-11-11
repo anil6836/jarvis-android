@@ -399,6 +399,8 @@ public class NotifyListener extends NotificationListenerService {
         if (newsApp(sbn.getPackageName(), app)) return; // news is read out by maybeReadNews
         if (!chatApp(sbn.getPackageName(), n, x)) return;
         if (System.currentTimeMillis() - sbn.getPostTime() > 60000) return; // old ones shown again after a reboot or reconnect
+        MsgApps.seen(this, sbn.getPackageName()); // (a new messaging app gets its own switch in Settings)
+        if (MsgApps.off(this, sbn.getPackageName())) { note(app, from, "చదవలేదు: ⚙️ → మెసేజ్‌లు లో " + app + " ఆఫ్‌లో ఉంది"); return; } // 💬 his switch for this app
         Life.endNightIfMorning(this); // a night mode left on from last night ends in the morning
         Prefs p = new Prefs(this);
         boolean driving = p.driving();
