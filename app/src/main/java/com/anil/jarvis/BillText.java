@@ -24,6 +24,8 @@ final class BillText {
         LocalDate date;
         int months;
         final List<String> service = new ArrayList<>();
+        /** A guess at the shop's name from the bill's top lines (shown to him to change), or null. */
+        String shop;
     }
 
     // ================================================================ reading (Android)
@@ -41,6 +43,16 @@ final class BillText {
             Bitmap b = BitmapFactory.decodeByteArray(jpg, 0, jpg.length, o);
             if (b == null) return null;
             String t = OfflineRead.text(b);
+            return t.isEmpty() ? null : parse(t, LocalDate.now());
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    /** From an upright picture (the 🧾 warranty form's own reading); background thread only. Null when nothing could be read. */
+    static Found read(Bitmap b) {
+        try {
+            String t = b == null ? "" : OfflineRead.text(b);
             return t.isEmpty() ? null : parse(t, LocalDate.now());
         } catch (Throwable e) {
             return null;
@@ -69,7 +81,35 @@ final class BillText {
         f.date = date(text, today);
         f.months = warrantyMonths(text);
         f.service.addAll(serviceNumbers(text));
+        f.shop = shop(text);
         return f;
+    }
+
+    private static final java.util.Set<String> HEAD = new java.util.HashSet<>(java.util.Arrays.asList(
+            "invoice", "receipt", "memo", "bill", "original", "duplicate", "triplicate", "recipient", "estimate", "quotation", "welcome",
+            "thank", "thanks", "copy", "date", "address", "email", "www", "http", "gstin", "gst", "cin", "fssai", "tax", "cash", "credit",
+            "total", "subtotal", "amount", "qty", "item", "items", "description", "name", "rate", "price", "discount", "net", "paid", "balance",
+            "customer", "mobile", "phone", "ph", "tel", "no", "sl", "sno", "hsn", "sac", "state", "code", "place", "supply", "time", "payment",
+            "mode", "upi", "card", "terms", "conditions"));
+
+    /**
+     * The shop's name, guessed: the first of the bill's top six lines with 4+ letters, no long number, that isn't a heading
+     * ("Tax Invoice", "Cash Memo", "Original for Recipient"), an address / web / GST line, or about the buyer. Null when none. Pure.
+     */
+    static String shop(String text) {
+        if (text == null) return null;
+        String[] lines = text.split("\\r?\\n");
+        for (int i = 0, seen = 0; i < lines.length && seen < 6; i++) {
+            String l = lines[i].trim();
+            if (l.isEmpty()) continue;
+            seen++;
+            if (l.replaceAll("[^\\p{L}]", "").length() < 4 || l.matches(".*\\d{5,}.*") || l.contains("@") || NOT_CARE.matcher(l).find()) continue;
+            boolean head = false;
+            for (String w : l.toLowerCase(Locale.ROOT).split("[^a-z]+")) if (HEAD.contains(w)) { head = true; break; }
+            if (head) continue;
+            return l.length() > 40 ? l.substring(0, 40).trim() : l;
+        }
+        return null;
     }
 
     private static final Pattern YEARS = Pattern.compile("(?i)(\\d{1,2})\\s*(?:\\+\\s*\\d{1,2}\\s*)?(years?|yrs?|yr\\.?)\\b");

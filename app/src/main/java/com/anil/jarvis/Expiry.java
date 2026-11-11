@@ -99,6 +99,8 @@ final class Expiry {
     /** The bill photo sent with "బిల్ → వారంటీ" (base64 JPEG), kept with the warranty when it is saved. */
     static volatile String billPhoto;
     static volatile long billPhotoAt;
+    /** What the 🧾 form already read from that photo on the phone (so it isn't read twice). */
+    static volatile BillText.Found billFound;
 
     /**
      * A warranty: the item, when bought, how many months (or the last date), the shop. The bill photo he just sent is
@@ -114,7 +116,9 @@ final class Expiry {
         if (photo0 != null && System.currentTimeMillis() - billPhotoAt < 15 * 60000L) {
             try { jpg = android.util.Base64.decode(photo0, android.util.Base64.DEFAULT); } catch (Exception ignored) {}
         }
-        BillText.Found read = jpg != null && android.os.Looper.myLooper() != android.os.Looper.getMainLooper() ? BillText.read(jpg) : null;
+        BillText.Found read = jpg != null ? billFound : null;
+        billFound = null;
+        if (read == null && jpg != null && android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) read = BillText.read(jpg);
         if (u == null && read != null) {
             if (b == null) b = read.date;
             if (months <= 0) months = read.months;

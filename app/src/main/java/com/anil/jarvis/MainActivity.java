@@ -3394,6 +3394,12 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 Bitmap thumb = Bitmap.createScaledBitmap(bmp, Math.max(1, bmp.getWidth() * 360 / Math.max(bmp.getWidth(), bmp.getHeight())),
                         Math.max(1, bmp.getHeight() * 360 / Math.max(bmp.getWidth(), bmp.getHeight())), true);
                 main.post(() -> {
+                    if (WARRANTY_PROMPT.equals(autoPrompt)) { // 🧾 B6 (11 Nov, his "ఫోన్‌లోనే"): the warranty bill is read here, never sent to the AI
+                        takeAuto();
+                        autoLabel = null;
+                        warrantyOnPhone(uri, b64);
+                        return;
+                    }
                     clearAttachment();
                     pendingPhoto = b64;
                     pendingThumb = thumb;
@@ -3406,16 +3412,106 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                     refreshAction();
                     String p = takeAuto(), label = autoLabel;
                     autoLabel = null;
-                    if (p != null) { // the 🧾 bill chip (and the other photo chips): send it straight away
-                        boolean warranty = WARRANTY_PROMPT.equals(p);
-                        if (warranty) { Expiry.billPhoto = b64; Expiry.billPhotoAt = System.currentTimeMillis(); } // kept with the warranty
-                        send(p, warranty ? "🧾 ఈ బిల్ వారంటీ గుర్తుపెట్టుకో" : label != null ? label : "🧾 ఈ బిల్లు నా ఖర్చుల్లో చేర్చు", false);
-                    }
+                    if (p != null) // the 🧾 bill chip (and the other photo chips): send it straight away
+                        send(p, label != null ? label : "🧾 ఈ బిల్లు నా ఖర్చుల్లో చేర్చు", false);
                 });
             } catch (Exception e) {
                 main.post(() -> { autoPrompt = null; autoLabel = null; Toast.makeText(this, "ఫోటో తెరవలేకపోయాను", Toast.LENGTH_SHORT).show(); });
             }
         });
+    }
+
+    /**
+     * 🧾 B6: "బిల్ ఫోటో → వారంటీ" read on the phone (his choice, 11 Nov: nothing goes to the AI): the bought date, the warranty
+     * months, the service numbers and a guess at the shop, shown in a small form where he names the thing and saves.
+     */
+    private void warrantyOnPhone(Uri uri, String b64) {
+        Toast.makeText(this, "🧾 బిల్లు ఫోన్‌లోనే చదువుతున్నాను…", Toast.LENGTH_SHORT).show();
+        worker.submit(() -> {
+            BillText.Found f = null;
+            try {
+                Bitmap big = loadScaled(uri, 1600); // (upright, as the camera meant it)
+                f = BillText.read(big);
+                big.recycle();
+            } catch (Throwable ignored) {}
+            final BillText.Found got = f;
+            main.post(() -> warrantyForm(b64, got));
+        });
+    }
+
+    private void warrantyForm(String b64, BillText.Found f) {
+        if (isFinishing() || isDestroyed()) return;
+        int p = Ui.dp(this, 20);
+        android.content.Context dc = new android.view.ContextThemeWrapper(this, android.R.style.Theme_Material_Dialog_Alert); // (the dialog's own colours)
+        LinearLayout box = new LinearLayout(dc);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(p, Ui.dp(this, 8), p, 0);
+        java.time.format.DateTimeFormatter dmy = java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy");
+        StringBuilder sum = new StringBuilder(f == null ? "బిల్లులో రాత చదవలేకపోయాను (ఫోటో మసకగా ఉందేమో). వివరాలు మీరే రాయండి.\n"
+                : "ఫోన్‌లోనే చదివాను, ఫోటో ఎక్కడికీ పంపలేదు:\n");
+        if (f != null) {
+            sum.append("📅 కొన్న తేదీ: ").append(f.date == null ? "దొరకలేదు" : dmy.format(f.date)).append("\n");
+            sum.append("🛡️ వారంటీ: ").append(f.months > 0 ? f.months + " నెలలు" : "బిల్లులో లేదు").append("\n");
+            sum.append("📞 సర్వీస్ నంబర్: ").append(f.service.isEmpty() ? "దొరకలేదు" : String.join(", ", f.service)).append("\n");
+        }
+        TextView head = new TextView(dc);
+        head.setText(sum.toString().trim());
+        head.setTextSize(14.5f);
+        head.setPadding(0, 0, 0, Ui.dp(this, 8));
+        box.addView(head);
+        EditText item = formField(dc, box, "వస్తువు (ఉదా: Samsung TV, ఫ్యాన్)", "", InputType.TYPE_CLASS_TEXT);
+        EditText date = formField(dc, box, "కొన్న తేదీ (ఉదా: 12-03-2025)", f != null && f.date != null ? dmy.format(f.date) : "", InputType.TYPE_CLASS_DATETIME);
+        EditText months = formField(dc, box, "వారంటీ ఎన్ని నెలలు (ఉదా: 12)", f != null && f.months > 0 ? String.valueOf(f.months) : "", InputType.TYPE_CLASS_NUMBER);
+        EditText shop = formField(dc, box, "షాప్ (అవసరం లేకపోతే ఖాళీ)", f != null && f.shop != null ? f.shop : "", InputType.TYPE_CLASS_TEXT);
+        android.widget.ScrollView sv = new android.widget.ScrollView(dc);
+        sv.addView(box);
+        android.app.AlertDialog d = new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("🧾 బిల్ ఫోటో → వారంటీ")
+                .setView(sv)
+                .setPositiveButton("సేవ్", null)
+                .setNegativeButton("వద్దు", null)
+                .create();
+        d.setOnShowListener(x -> d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String it = item.getText().toString().trim(), sh = shop.getText().toString().trim();
+            java.time.LocalDate b = Debts.parse(date.getText().toString());
+            int m;
+            try { m = Integer.parseInt(months.getText().toString().trim()); } catch (Exception e) { m = 0; }
+            if (it.isEmpty()) { item.setError("వస్తువు పేరు రాయండి"); item.requestFocus(); return; }
+            if (b == null || b.isAfter(java.time.LocalDate.now())) { date.setError("తేదీ ఇలా రాయండి: 12-03-2025"); date.requestFocus(); return; }
+            if (m < 1 || m > 120) { months.setError("1 నుంచి 120 నెలల లోపు రాయండి"); months.requestFocus(); return; }
+            d.dismiss();
+            final int mm = m;
+            Expiry.billPhoto = b64; // (kept with the warranty in Downloads/Jarvis/bills, as before)
+            Expiry.billPhotoAt = System.currentTimeMillis();
+            Expiry.billFound = f;
+            worker.submit(() -> {
+                org.json.JSONObject o = null;
+                try { o = Expiry.addWarranty(this, it, b.toString(), mm, null, sh); } catch (Exception ignored) {}
+                final org.json.JSONObject saved = o;
+                main.post(() -> {
+                    if (saved == null) { localSay("🧾 " + it + " బిల్ వారంటీ గుర్తుపెట్టుకో", "క్షమించండి Sir, వారంటీ సేవ్ చేయలేకపోయాను. మళ్ళీ ప్రయత్నించండి."); return; }
+                    String until = dmy.format(java.time.LocalDate.parse(saved.optString("date")));
+                    boolean svc = saved.optJSONArray("service") != null && saved.optJSONArray("service").length() > 0;
+                    localSay("🧾 " + it + " బిల్ వారంటీ గుర్తుపెట్టుకో", "సరే Sir, " + it + " వారంటీ " + until + " వరకు గుర్తుపెట్టుకున్నాను. బిల్లు ఫోటో కూడా దాచాను"
+                            + (svc ? ", సర్వీస్ నంబర్ కూడా" : "") + ". అయిపోవడానికి 30 రోజుల ముందు గుర్తుచేస్తాను.");
+                });
+            });
+        }));
+        d.show();
+    }
+
+    private EditText formField(android.content.Context dc, LinearLayout box, String hint, String value, int type) {
+        TextView label = new TextView(dc);
+        label.setText(hint);
+        label.setTextSize(13f);
+        label.setPadding(0, Ui.dp(this, 8), 0, 0);
+        box.addView(label);
+        EditText e = new EditText(dc);
+        e.setSingleLine(true);
+        e.setInputType(type);
+        e.setText(value);
+        box.addView(e);
+        return e;
     }
 
     private Bitmap loadScaled(Uri uri, int maxSide) throws Exception {
