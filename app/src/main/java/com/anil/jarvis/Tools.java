@@ -201,12 +201,13 @@ final class Tools {
                         + "(opens WhatsApp with the photos attached as a draft; then ask 'పంపమంటారా?' and use send_draft); "
                         + "search = find photos of something by looking at them ('గత నెల బైక్ ఫోటోలు చూపించు', 'బీచ్ ఫోటోలు'), shown in a grid; "
                         + "find_text = find photos by the English words printed on them (a bill, insurance, ticket, certificate: 'బైక్ ఇన్సూరెన్స్ ఫోటో చూపించు'), "
-                        + "read on the phone (no photo is sent anywhere), shown in a grid.",
-                schema(new String[][]{{"action", "string", "show, send, count, search or find_text"},
+                        + "read on the phone (no photo is sent anywhere), shown in a grid; "
+                        + "find_person = photos with people he introduced to Jarvis by face ('అమ్మతో ఉన్న ఫోటోలు', 'నేను, రవి ఉన్న ఫోటోలు'), matched on the phone, shown in a grid.",
+                schema(new String[][]{{"action", "string", "show, send, count, search, find_text or find_person"},
                         {"words", "string", "For find_text: English words printed on the photo, e.g. 'bike insurance', 'electricity bill', 'train ticket'"},
                         {"what", "string", "For search: what the photos show, in English (e.g. motorcycle, bill or receipt, beach, my son)"},
                         {"when", "string", "latest (default), today, yesterday, this week, this month, or a date yyyy-MM-dd"},
-                        {"who", "string", "For send: contact name"}, {"count", "integer", "For send: how many of the newest (default 1, max 10)"},
+                        {"who", "string", "For send: contact name. For find_person: the person / people as he introduced them, comma-separated ('అమ్మ', 'నేను, రవి')"}, {"count", "integer", "For send: how many of the newest (default 1, max 10)"},
                         {"caption", "string", "For send: optional message with the photo"},
                         {"screenshots", "boolean", "Include screenshots (default false)"}}, "action")));
         DEFS.add(new Def("call_control",
@@ -1236,6 +1237,7 @@ final class Tools {
                 case "phone_setting": return phoneSetting(a.optString("setting"), a.optString("value", "on"));
                 case "photos":
                     if ("search".equalsIgnoreCase(a.optString("action"))) return photoSearch(a.optString("what"), a.optString("when", ""), a.optBoolean("screenshots", false));
+                    if ("find_person".equalsIgnoreCase(a.optString("action"))) return photoPersonFind(a.optString("who"));
                     if (a.optString("action").toLowerCase(Locale.ROOT).startsWith("find")) return photoTextFind(a.optString("words", a.optString("what")));
                     return photos(a.optString("action", "show"), a.optString("when", ""), a.optString("who", ""),
                         a.optInt("count", 1), a.optString("caption", ""), a.optBoolean("screenshots", false));
@@ -3350,6 +3352,35 @@ final class Tools {
     }
 
     /** 📷 B7: photos by the words printed on them, from what the phone has read of them while charging (nothing sent). */
+    /** 👤 A: the photos with the people he introduced (all of them in one photo), from FacePhotos' list. */
+    private String photoPersonFind(String who) throws Exception {
+        String e = photoPermission();
+        if (e != null) return e;
+        if (!FacePhotos.on(act())) return err("off", "Finding people in his photos is switched off (Settings → 🛡️ → 📷 → 👤). Say so in one line.");
+        List<People.Person> people = People.all(act());
+        if (people.isEmpty()) return err("no_people", "He hasn't introduced anyone to Jarvis by face yet. Tell him: with Jarvis's camera on the person, "
+                + "say 'ఈమె అమ్మ, గుర్తుపెట్టుకో' (only people he introduces are ever recognised).");
+        List<String> names = new ArrayList<>(), unknown = new ArrayList<>();
+        for (String w : (who == null ? "" : who).split("\\s*(,|\\band\\b|మరియు|&)\\s*")) {
+            if (w.trim().isEmpty()) continue;
+            String n = FacePhotos.known(people, w.trim());
+            if (n == null) unknown.add(w.trim()); else if (!names.contains(n)) names.add(n);
+        }
+        JSONArray intro = new JSONArray();
+        for (People.Person p : people) intro.put(p.name + (p.owner ? " (Anil himself)" : ""));
+        if (!unknown.isEmpty()) return err("not_introduced", unknown + " was never introduced to Jarvis by face, so Jarvis can't find them in photos. "
+                + "Introduced: " + intro + ". Say so in one line (he can introduce them with Jarvis's camera).");
+        if (names.isEmpty()) return err("missing", "Whose photos? Ask him in one short line. Introduced: " + intro);
+        int[] pr = FacePhotos.progress(act());
+        String seen = pr[1] + " of " + pr[0] + " photos looked at so far (the rest a few at a time while the phone charges with the screen off)";
+        List<Uri> hits = FacePhotos.find(act(), names, 60);
+        if (hits.isEmpty()) return ok().put("found", 0).put("looked_at", seen)
+                .put("next", "Say no photo with " + names + " was found among the photos looked at so far (" + seen + ").").toString();
+        PhotoGridActivity.show(act(), "👤 " + String.join(", ", names), hits);
+        return ok().put("found", hits.size()).put("looked_at", seen)
+                .put("next", "Say in one line how many photos with " + names + " are open on the screen (newest first; tapping one opens it big).").toString();
+    }
+
     private String photoTextFind(String words) throws Exception {
         String e = photoPermission();
         if (e != null) return e;

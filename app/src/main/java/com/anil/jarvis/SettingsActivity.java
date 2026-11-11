@@ -1060,6 +1060,23 @@ public class SettingsActivity extends Activity {
                     ShotWatch.on(this));
             sh.setOnCheckedChangeListener((sw0, v) -> prefs.sp.edit().putBoolean("shot_help", v).apply());
         }
+        { // 👤 A (12 Nov): photos with the people he introduced, matched on the phone while charging
+            Switch pf = toggle("👤 ఫోటోల్లో మీరు పరిచయం చేసినవాళ్ళను గుర్తించు (\"అమ్మతో ఉన్న ఫోటోలు చూపించు\"; ఛార్జింగ్‌లో, ఫోన్‌లోనే)", FacePhotos.on(this));
+            TextView fl = Ui.text(this, "👤 …", 14, Ui.MUTED);
+            fl.setPadding(0, Ui.dp(this, 2), 0, Ui.dp(this, 6));
+            pf.setOnCheckedChangeListener((sw0, v) -> { prefs.sp.edit().putBoolean("photo_faces", v).apply(); if (!v) FacePhotos.clear(this); });
+            note("మీరు పరిచయం చేసినవాళ్ళను మాత్రమే గుర్తిస్తాడు. తెలియనివాళ్ళ ముఖాలను ఎప్పుడూ దాచడు, పేరు పెట్టడు. "
+                    + "\"ఈ ఫోటోలో అమ్మ ఉంది\" అనే లిస్ట్ మాత్రమే ఫోన్‌లో ఉంటుంది, బ్యాకప్‌లోకి వెళ్లదు. ఆఫ్ చేస్తే, లేదా ఎవరినైనా మర్చిపోమంటే, ఆ లిస్ట్ డిలీట్ అవుతుంది.");
+            box.addView(fl);
+            new Thread(() -> {
+                java.util.List<String> who = People.names(this);
+                int[] pr = FacePhotos.progress(this);
+                String t = who.isEmpty() ? "👤 ఇంకా ఎవరినీ పరిచయం చేయలేదు: Jarvis కెమెరాలో ఆ వ్యక్తి కనిపిస్తుండగా \"ఈమె అమ్మ, గుర్తుపెట్టుకో\" అనండి."
+                        : "👤 చూసినవి: " + pr[0] + " ఫోటోల్లో " + pr[1] + (pr[1] < pr[0] ? " (మిగతావి ఛార్జింగ్‌లో, స్క్రీన్ ఆఫ్‌లో కొద్దికొద్దిగా)" : " ✓")
+                        + "\nపరిచయం చేసినవాళ్ళు: " + String.join(", ", who);
+                runOnUiThread(() -> fl.setText(t));
+            }, "photo-faces-count").start();
+        }
 
         section("Jarvis తనంతట తానే");
         proactive = toggle("అడగకుండానే ముఖ్యమైనవి చెప్పు: మీటింగ్ దగ్గర పడితే, వర్షం వస్తే, ఇష్టమైనవాళ్లకి చాలా రోజులుగా ఫోన్ చేయకపోతే, మీ అలవాట్లు, నీళ్లు, ధర హెచ్చరికలు", prefs.proactive());

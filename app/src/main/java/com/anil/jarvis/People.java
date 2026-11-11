@@ -100,10 +100,11 @@ final class People {
             sp(c).edit().remove("greeted_" + n).apply();
             FaceSight.forgetSeen(n);
         }
+        if (gone) try { FacePhotos.clear(c); } catch (Throwable ignored) {} // (👤 the photo list forgets them at once; rebuilt for the others)
         return gone;
     }
 
-    static synchronized void clear(Context c) { save(c, new ArrayList<>()); }
+    static synchronized void clear(Context c) { save(c, new ArrayList<>()); try { FacePhotos.clear(c); } catch (Throwable ignored) {} } // (👤 their photos forgotten too)
 
     private static void save(Context c, List<Person> list) {
         JSONArray a = new JSONArray();

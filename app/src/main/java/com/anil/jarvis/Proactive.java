@@ -84,7 +84,9 @@ public class Proactive extends BroadcastReceiver {
         pruneSeen(c);
         // 📷 B7 first, while the alarm still holds the phone awake (it takes its own hold for its few minutes): on the charger with
         // the screen off, reading his photos' printed words on the phone
-        try { PhotoText.tick(c); } catch (Throwable ignored) {}
+        // (📷 words and 👤 people take turns each quarter hour; whichever starts, the other waits)
+        if ((System.currentTimeMillis() / (15 * 60_000L)) % 2 == 0) { try { PhotoText.tick(c); } catch (Throwable ignored) {} try { FacePhotos.tick(c); } catch (Throwable ignored) {} }
+        else { try { FacePhotos.tick(c); } catch (Throwable ignored) {} try { PhotoText.tick(c); } catch (Throwable ignored) {} }
         try { Automations.tick(c); } catch (Throwable ignored) {} // his own rules first (before the slow fetches), even with Jarvis's own ideas off
         try { Guard.watch(c); } catch (Throwable ignored) {}       // on the phone at home: tell him if the guard stopped
         Prefs p = new Prefs(c);

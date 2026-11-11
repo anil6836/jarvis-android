@@ -217,6 +217,21 @@ final class PhotoText {
     /** On the charger, the screen off (he isn't using it) and the battery below 40 °C: the only time it reads. */
     private static boolean goodTime(Context c) { return whyNot(c) == null; }
 
+    /** 👤 FacePhotos uses the same moment (charger, screen off, cool). */
+    static boolean goodTimeNow(Context c) { return goodTime(c); }
+
+    /** A photo on the phone not in this list yet (a quick look: no reader started, no turn taken, when there is none). */
+    static boolean anyMissing(Context c, java.util.Set<Long> have) {
+        try (Cursor cur = c.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, new String[]{MediaStore.Images.Media._ID}, null, null, null)) {
+            if (cur == null) return false;
+            while (cur.moveToNext()) if (!have.contains(cur.getLong(0))) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    /** Reading now (👤 FacePhotos waits; the two never run at once). */
+    static boolean busy() { return RUNNING.get(); }
+
     /** Null when it may read now; else why not: "" not on the charger, "screen" the screen is on, "hot:41" the battery's °C. */
     private static String whyNot(Context c) {
         try {
@@ -268,12 +283,13 @@ final class PhotoText {
     /** From the regular check: while it charges, a few minutes of reading the photos not read yet (newest first). */
     static void tick(Context c) {
         if (!on(c)) { if (file(c).isFile()) clear(c); return; } // (his switch off: what was read is forgotten)
-        if (!allowed(c) || new Prefs(c).homeMode() || CarBox.on(c)) return;
+        if (!allowed(c) || new Prefs(c).homeMode() || CarBox.on(c) || FacePhotos.busy()) return;
         String why = whyNot(c);
         if (why != null) { // (on the charger but not now: the reason kept for Settings' line)
             if (!why.isEmpty()) runs(c).edit().putString("skip", why).putLong("skip_at", System.currentTimeMillis()).apply();
             return;
         }
+        if (!anyMissing(c, load(c, null).keySet())) return; // (all read: the turn left to 👤)
         if (!RUNNING.compareAndSet(false, true)) return;
         // With the screen off the phone sleeps a few seconds after the alarm unless something holds it awake: held only for
         // this run (on the charger, at most 5 minutes), let go as soon as it ends.

@@ -236,7 +236,8 @@ final class Backup {
         if (name.equals(PREFS) || name.equals(AppCrash.PREFS)) return false; // (an app-error note belongs to this phone)
         if (name.equals(CallCare.PRIVATE)) return false; // (who called him and what Jarvis did: on this phone only)
         if (name.equals(PhotoText.RUNS)) return false;
-        if (name.equals(HabitAuto.PREFS)) return false; // (🔁 what he asked Jarvis and when: on this phone only) // (📷 when this phone last read its photos: belongs to this phone, like the words)
+        if (name.equals(HabitAuto.PREFS)) return false;
+        if (name.equals("jarvis_photo_faces")) return false; // (👤 which introduced people are in which photo: on this phone only) // (🔁 what he asked Jarvis and when: on this phone only) // (📷 when this phone last read its photos: belongs to this phone, like the words)
         return name.startsWith("jarvis") || name.startsWith("hud_") || name.endsWith("Activity");
     }
 
@@ -250,7 +251,7 @@ final class Backup {
                 || CarPhotos3D.isPhoto(name) || name.equals(World3DStore.DIR) // (his 3D car photos: on the box only; the 3D map's pieces round where he drove: his alone)
                 || name.startsWith("mbgl-offline.db") || name.equals("map15") // (⑮'s map pieces kept by MapLibre round where he drove: his alone; the free style, fetched again)
                 || name.equals(FilmPack.DIR) || name.equals(FilmPack.PART) || name.equals(FilmPack.DIR + ".old") // (🎬 his own clips: on the box only, never in a backup — his rule)
-                || PhotoText.isIndexFile(name) // (📷 the words read from his photos: on the phone only, read again on a new one)
+                || PhotoText.isIndexFile(name) || FacePhotos.isIndexFile(name) // (📷 the words read from his photos: on the phone only, read again on a new one)
                 || (name.startsWith("greet_") && name.endsWith(".pcm"));
     }
 
