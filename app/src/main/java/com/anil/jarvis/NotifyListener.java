@@ -162,6 +162,7 @@ public class NotifyListener extends NotificationListenerService {
     @Override public void onDestroy() {
         if (phoneRegistered) { try { unregisterReceiver(phoneState); } catch (Exception ignored) {} phoneRegistered = false; }
         if (self == this) self = null;
+        try { ShotWatch.stop(this); } catch (Throwable ignored) {}
         if (screenRegistered) { try { unregisterReceiver(screenEvents); } catch (Exception ignored) {} screenRegistered = false; }
         try { unregisterReceiver(battery); } catch (Exception ignored) {}
         super.onDestroy();
@@ -181,6 +182,7 @@ public class NotifyListener extends NotificationListenerService {
         }
         connected = true;
         self = this;
+        try { ShotWatch.start(this); } catch (Throwable ignored) {} // 📸 C: new screenshots read on the phone, offered in a tap
         if (!phoneRegistered) { // 📞 the phone's own "a SIM call is ringing" (works even if the phone app's notification isn't marked as a call)
             try {
                 registerReceiver(phoneState, new android.content.IntentFilter(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED));

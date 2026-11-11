@@ -1055,6 +1055,11 @@ public class SettingsActivity extends Activity {
         photoTextLabel.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 6));
         box.addView(photoTextLabel);
         photoTextRefresh(false);
+        { // 📸 C (12 Nov): a screenshot's ticket / address / number offered in a tap
+            Switch sh = toggle("📸 స్క్రీన్‌షాట్ తీస్తే ఫోన్‌లోనే చదివి సహాయం: టికెట్ / ఫంక్షన్ / బిల్ తేదీ → ⏰ రిమైండర్, అడ్రస్ → 🗺️ మ్యాప్, షాప్ నంబర్ → 📇 కాంటాక్ట్ (మీరు నొక్కితేనే)",
+                    ShotWatch.on(this));
+            sh.setOnCheckedChangeListener((sw0, v) -> prefs.sp.edit().putBoolean("shot_help", v).apply());
+        }
 
         section("Jarvis తనంతట తానే");
         proactive = toggle("అడగకుండానే ముఖ్యమైనవి చెప్పు: మీటింగ్ దగ్గర పడితే, వర్షం వస్తే, ఇష్టమైనవాళ్లకి చాలా రోజులుగా ఫోన్ చేయకపోతే, మీ అలవాట్లు, నీళ్లు, ధర హెచ్చరికలు", prefs.proactive());
