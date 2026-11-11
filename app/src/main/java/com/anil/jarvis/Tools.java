@@ -241,7 +241,9 @@ final class Tools {
                         {"when", "string", "arrive (default) or leave"},
                         {"automatic", "boolean", "true = an automatic mode Jarvis carries out every time he arrives/leaves (not a one-time reminder)"},
                         {"id", "string", "For cancel: the reminder id from list"},
-                        {"km", "number", "stop_alarm: ring this many km before the stop (default 2; a train he sleeps on: 3)"}})));
+                        {"km", "number", "stop_alarm: ring this many km before the stop (default 2; a train he sleeps on: 3). add: fire this many km "
+                                + "before reaching the place (arrive) or after going this far from it (leave) — 'ఇంటికి 2 km ముందు AC ఆన్ చేయి' = place home, "
+                                + "when arrive, automatic true, km 2, text 'AC on'; default about 0.2 km (at the place)"}})));
         DEFS.add(new Def("smart_home",
                 "Control his smart lights, fans and plugs (Wipro, Syska, Homemate, Zeb Home, anything in Alexa): turn on/off, or run a saved scene. "
                         + "command 'list' shows his saved commands.",
@@ -1490,7 +1492,7 @@ final class Tools {
                     if (a.optString("action").trim().toLowerCase(Locale.ROOT).startsWith("stop_alarm"))
                         return stopAlarm(a.optString("action").trim().toLowerCase(Locale.ROOT), a.optString("place"), a.optDouble("km", 2));
                     return locationReminder(a.optString("action", "add"), a.optString("place"),
-                        a.optString("text"), a.optString("when", "arrive"), a.optString("id"), a.optBoolean("automatic", false));
+                        a.optString("text"), a.optString("when", "arrive"), a.optString("id"), a.optBoolean("automatic", false), a.optDouble("km", 0));
                 case "now_playing": return nowPlaying();
                 case "look_at_screen": return lookAtScreen(a.optString("question"));
                 case "look_through_camera": return camera(a);
@@ -8601,13 +8603,14 @@ final class Tools {
         return o.toString();
     }
 
-    private String locationReminder(String action, String place, String text, String when, String id, boolean automatic) throws Exception {
+    private String locationReminder(String action, String place, String text, String when, String id, boolean automatic, double km) throws Exception {
         String a = action == null || action.isEmpty() ? "add" : action.trim().toLowerCase(Locale.ROOT);
         if (a.equals("list")) {
             JSONArray arr = new JSONArray();
             for (JSONObject r : GeoReminders.all(act())) {
                 arr.put(new JSONObject().put("id", r.optString("id")).put("place", r.optString("place"))
-                        .put("when", r.optBoolean("arrive") ? "arrive" : "leave").put("text", r.optString("text")));
+                        .put("when", r.optBoolean("arrive") ? "arrive" : "leave").put("text", r.optString("text"))
+                        .put("automatic", r.optBoolean("command")).put("km", Math.round(r.optDouble("radius", GeoReminders.RADIUS_M) / 100.0) / 10.0));
             }
             return ok().put("location_reminders", arr).put("saved_places", GeoReminders.places(act())).toString();
         }
@@ -8628,9 +8631,11 @@ final class Tools {
         }
         boolean arrive = when == null || !when.toLowerCase(Locale.ROOT).startsWith("leav");
         Location here = lastLocation(act());
-        boolean inside = here != null && GeoReminders.distance(here.getLatitude(), here.getLongitude(), ll[0], ll[1]) < GeoReminders.RADIUS_M;
-        JSONObject r = GeoReminders.add(act(), place.trim(), ll[0], ll[1], text.trim(), arrive, inside, automatic);
-        JSONObject o = ok().put("id", r.optString("id")).put("place", place).put("when", arrive ? "arrive" : "leave").put("text", text);
+        float radius = km > 0 ? (float) Math.max(100, Math.min(20000, km * 1000)) : GeoReminders.RADIUS_M; // 🏡 D: "2 km ముందు"
+        boolean inside = here != null && GeoReminders.distance(here.getLatitude(), here.getLongitude(), ll[0], ll[1]) < radius;
+        JSONObject r = GeoReminders.add(act(), place.trim(), ll[0], ll[1], text.trim(), arrive, inside, automatic, radius);
+        JSONObject o = ok().put("id", r.optString("id")).put("place", place).put("when", arrive ? "arrive" : "leave").put("text", text)
+                .put("fires", GeoReminders.edgeWords(place.trim(), radius, arrive));
         if (Build.VERSION.SDK_INT >= 29 && !has(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
             host.askPermissions(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION});
             o.put("note", "Set. For it to work when Jarvis is closed, Anil must choose 'Allow all the time' for Jarvis's location (the page was opened).");

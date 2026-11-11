@@ -92,7 +92,15 @@ final class GeoReminders {
 
     /** command = true: "text" is something for Jarvis to do there (silent, lights on...), not a reminder. */
     static JSONObject add(Context c, String place, double lat, double lon, String text, boolean arrive, boolean insideNow, boolean command) throws Exception {
-        JSONObject r = new JSONObject().put("command", command)
+        return add(c, place, lat, lon, text, arrive, insideNow, command, RADIUS_M);
+    }
+
+    /**
+     * 🏡 D (12 Nov): radius = how far from the place it fires — "ఇంటికి 2 km ముందు AC ఆన్" fires on coming within 2 km (so the room
+     * is ready when he walks in), "2 km దూరం వెళ్ళాక" on going past it. 100 m – 20 km.
+     */
+    static JSONObject add(Context c, String place, double lat, double lon, String text, boolean arrive, boolean insideNow, boolean command, float radius) throws Exception {
+        JSONObject r = new JSONObject().put("command", command).put("radius", Math.max(100f, Math.min(20000f, radius)))
                 .put("id", "g" + Long.toString(System.currentTimeMillis() % 100000000L, 36))
                 .put("place", place).put("lat", lat).put("lon", lon)
                 .put("text", text).put("arrive", arrive).put("skip_first", insideNow);
@@ -133,7 +141,7 @@ final class GeoReminders {
         LocationManager lm = c.getSystemService(LocationManager.class);
         if (lm == null) return;
         try {
-            lm.addProximityAlert(r.optDouble("lat"), r.optDouble("lon"), RADIUS_M, -1, intent(c, r));
+            lm.addProximityAlert(r.optDouble("lat"), r.optDouble("lon"), (float) r.optDouble("radius", RADIUS_M), -1, intent(c, r));
         } catch (SecurityException ignored) {}
     }
 
@@ -168,9 +176,12 @@ final class GeoReminders {
             String where = r.optString("place");
             String text = r.optString("text");
             if (r.optBoolean("command")) {
-                // an automatic mode for this place: keep it, and let Jarvis carry it out
+                // an automatic mode for this place: keep it, and let Jarvis carry it out (not twice within the hour: GPS wobbling at the edge)
+                long now = System.currentTimeMillis();
+                if (now - r.optLong("last") < 60 * 60_000L) { saveAll(c, list); return; }
+                try { r.put("last", now); } catch (Exception ignored) {}
                 saveAll(c, list);
-                Proactive.runOrLater(c, "(" + where + (entering ? " చేరారు" : " నుంచి బయలుదేరారు") + ", ఆటోమేటిక్‌గా) " + text);
+                Proactive.runOrLater(c, "(" + edgeWords(where, r.optDouble("radius", RADIUS_M), entering) + ", ఆటోమేటిక్‌గా) " + text);
                 return;
             }
             disarm(c, r);
@@ -180,6 +191,13 @@ final class GeoReminders {
             Announcer.say(c, new Prefs(c).name() + ", " + where + (entering ? " చేరారు. " : " నుంచి బయలుదేరారు. ") + "గుర్తుచేస్తున్నాను: " + text);
             return;
         }
+    }
+
+    /** "home చేరారు" / "home కి 2 km దగ్గరలో ఉన్నారు" / "home నుంచి 2 km దూరం వెళ్ళారు". Pure. */
+    static String edgeWords(String where, double radius, boolean entering) {
+        if (radius <= 500) return where + (entering ? " చేరారు" : " నుంచి బయలుదేరారు");
+        String km = radius % 1000 == 0 ? String.valueOf((long) (radius / 1000)) : String.format(Locale.ENGLISH, "%.1f", radius / 1000);
+        return where + (entering ? " కి " + km + " km దగ్గరలో ఉన్నారు" : " నుంచి " + km + " km దూరం వెళ్ళారు");
     }
 
     static float distance(double lat1, double lon1, double lat2, double lon2) {
