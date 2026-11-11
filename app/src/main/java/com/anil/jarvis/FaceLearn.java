@@ -100,6 +100,11 @@ final class FaceLearn {
     static List<Bitmap> faces(Context c, Uri u) {
         Bitmap b = FacePhotos.upright(c, u, 1600);
         if (b == null) return null;
+        try { return faces(b); } finally { b.recycle(); }
+    }
+
+    /** The same from a picture already upright (the 📷 Jarvis camera's); the picture itself is left as it is. */
+    static List<Bitmap> faces(Bitmap b) {
         FaceDetector det = detector();
         try {
             List<Face> fs = new ArrayList<>(Tasks.await(det.process(InputImage.fromBitmap(b, 0)), 15, TimeUnit.SECONDS));
@@ -117,7 +122,6 @@ final class FaceLearn {
             return null;
         } finally {
             try { det.close(); } catch (Exception ignored) {}
-            b.recycle();
         }
     }
 
@@ -144,7 +148,23 @@ final class FaceLearn {
     static void choose(Activity a, Uri u, String name, boolean owner, java.util.function.Consumer<String> done) {
         new Thread(() -> {
             try { if (!FaceNet.ready(a)) FaceNet.ensure(a, t -> {}); } catch (Exception e) { main().post(() -> done.accept("no_model")); return; }
-            List<Bitmap> fs = faces(a, u);
+            pick(a, faces(a, u), name, owner, done);
+        }, "face-photo").start();
+    }
+
+    /** 📷 The Jarvis camera's picture now ("ఈమె అమ్మ, గుర్తుపెట్టుకో" said there): the same as a photo; the picture is recycled here. */
+    static void chooseBitmap(Activity a, Bitmap pic, String name, boolean owner, java.util.function.Consumer<String> done) {
+        new Thread(() -> {
+            try { if (!FaceNet.ready(a)) FaceNet.ensure(a, t -> {}); } catch (Exception e) { pic.recycle(); main().post(() -> done.accept("no_model")); return; }
+            List<Bitmap> fs = faces(pic);
+            pic.recycle();
+            pick(a, fs, name, owner, done);
+        }, "face-camera").start();
+    }
+
+    /** Background thread: none → said; one → learned; several → his tap on the right one. */
+    private static void pick(Activity a, List<Bitmap> fs, String name, boolean owner, java.util.function.Consumer<String> done) {
+        {
             if (fs == null || fs.isEmpty()) { main().post(() -> done.accept(fs == null ? "unreadable" : "no_face")); return; }
             if (fs.size() == 1) { String r = fromFace(a, fs.get(0), name, owner); fs.get(0).recycle(); main().post(() -> done.accept(r)); return; }
             main().post(() -> {
@@ -175,7 +195,22 @@ final class FaceLearn {
                         .create();
                 dlg[0].show();
             });
-        }, "face-photo").start();
+        }
+    }
+
+    /**
+     * His words introducing someone to the 📷 Jarvis camera: {name, ""} for "ఈమె అమ్మ, గుర్తుపెట్టుకో" / "ఇతని పేరు రవి, గుర్తుంచుకో" /
+     * "this is Ravi, remember", {"", "owner"} for "నన్ను గుర్తుపెట్టుకో"; null when it is something else. Pure.
+     */
+    static String[] introWords(String said) {
+        String t = said == null ? "" : said.trim().replaceAll("[.!?।]+$", "").trim();
+        String end = "(గుర్తు ?పెట్టుకో|గుర్తు ?పెట్టుకోండి|గుర్తుంచుకో|గుర్తుంచుకోండి|remember( (him|her|this (face|person)))?)";
+        if (t.matches("(?i)(నన్ను|నా ముఖం|నా మొహం|me|my face)[,\\s]*" + end + "|(?i)remember me")) return new String[]{"", "owner"};
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?i)^(ఇతను|ఇతడు|ఇతని పేరు|ఈమె|ఈమె పేరు|ఈయన|ఈయన పేరు|ఈవిడ|ఈవిడ పేరు|this is|his name is|her name is)\\s+(.{1,40}?)[,\\s]+" + end + "$").matcher(t);
+        if (!m.find()) return null;
+        String name = m.group(2).trim().replaceAll("[,.]+$", "").trim();
+        if (name.isEmpty() || name.split("\\s+").length > 4) return null;
+        return new String[]{name, ""};
     }
 
     /** What Jarvis says about the result (Telugu). */

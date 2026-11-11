@@ -913,6 +913,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (layersId != null && is(t, "అయిపోయింది", "పూర్తి", "done")) { layersDone(); return; }
             if (!guideNext.isEmpty() && is(t, "చూడు", "చూపిస్తున్నా", "చూపిస్తున్నాను", "అయింది", "రెడీ", "ఇదిగో", "ఇదిగో చూడు")) { guideStep(); return; }
         }
+        String[] intro = FaceLearn.introWords(text);
+        if (intro != null) { meetHere(intro[0], !intro[1].isEmpty()); return; } // 👤 "ఈమె అమ్మ, గుర్తుపెట్టుకో": learned on the phone, never sent to the AI
         boolean flow = pairKind != null || layersId != null || closeId != null || !guideNext.isEmpty() || shots != null;
         if (!flow && Hazards.isMark(text)) { markHazard(text); return; } // "ఇక్కడ గుంత ఉంది"
         if (!flow && !frozen && det != null && liveOn()) { // "ఎంత మంది ఉన్నారు?": the phone's own count, at once
@@ -3770,6 +3772,17 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     }
 
     /** The frozen picture as he sees it now (the zoomed part of it). */
+    /** 👤 (Anil, 12 Nov): "ఈమె అమ్మ, గుర్తుపెట్టుకో" said in the camera — the face in the picture now learned on the phone (several faces: he taps hers). */
+    private void meetHere(String name, boolean owner) {
+        final String nm = owner && name.isEmpty() ? new Prefs(this).name() : name;
+        Bitmap pic = frozen ? stillPic() : cam.frame(1400);
+        if (pic == null) { say("కెమెరా ఇంకా సిద్ధం కాలేదు. ఒక్క క్షణం ఆగి మళ్ళీ చెప్పండి."); return; }
+        Bitmap copy = pic.copy(Bitmap.Config.ARGB_8888, false); // (the frozen picture stays on the screen; this one is used and dropped)
+        if (copy == null) { say("కెమెరా చిత్రం తీసుకోలేకపోయాను. మళ్ళీ చెప్పండి."); return; }
+        tell("👤 " + nm + " ముఖం చూస్తున్నాను…", false);
+        FaceLearn.chooseBitmap(this, copy, nm, owner, r -> { if (!isFinishing()) { say(FaceLearn.say(r, nm)); listenSoon(600); } });
+    }
+
     private Bitmap stillPic() {
         if (photo == null || fromImage || stillZ <= 1.01f) return photo;
         try {
