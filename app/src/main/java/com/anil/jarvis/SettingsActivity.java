@@ -113,6 +113,7 @@ public class SettingsActivity extends Activity {
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
     private EditText workshopModel, workshopLimit; // 🛠️
+    private TextView wsSpent; // (this month's workshop spend: shown again after 🧪 and when he comes back)
     private TextView voiceInfo, notifyInfo, checkInfo, crashInfo, crashCopy, crashClear;
     private TextView backupInfo, backupSetBtn;
     private final NaturalVoice tester = new NaturalVoice();
@@ -531,18 +532,25 @@ public class SettingsActivity extends Activity {
                 }
                 final String s0 = said;
                 final boolean g0 = good;
-                runOnUiThread(() -> { if (!isDestroyed()) { wsTestInfo.setText(s0); wsTestInfo.setTextColor(g0 ? Ui.OK : Ui.RED); } });
+                runOnUiThread(() -> {
+                    if (isDestroyed()) return;
+                    wsTestInfo.setText(s0);
+                    wsTestInfo.setTextColor(g0 ? Ui.OK : Ui.RED);
+                    if (wsSpent != null) wsSpent.setText(Workshop.spendLine(this, new Prefs(this)));
+                });
             }, "jarvis-workshop-test").start();
         });
         box.addView(wsTest);
         box.addView(wsTestInfo);
         workshopLimit = field("నెలకి వర్క్‌షాప్ హద్దు (₹)", String.valueOf(prefs.workshopLimit()), false);
         workshopLimit.setInputType(InputType.TYPE_CLASS_NUMBER);
-        TextView wsSpent = Ui.text(this, Workshop.spendLine(this, prefs), 14, Ui.MUTED);
+        wsSpent = Ui.text(this, Workshop.spendLine(this, prefs), 14, Ui.MUTED);
         wsSpent.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
         box.addView(wsSpent);
         note("ఈ నెల వాడింది హద్దుకి చేరితే Jarvis కొత్త బొమ్మ మొదలుపెట్టడు, \"హద్దు అయిపోయింది\" అని చెబుతాడు; చౌకైన AI కి తనంతట తానే మారడు. "
                 + "తయారవుతున్న బొమ్మ మాత్రం పూర్తవుతుంది. AI పేరు తప్పైతే వేరే దానికి మారకుండా తప్పు అని చెబుతుంది.");
+        note("బొమ్మ తెరిచి ఉన్నప్పుడు \"రెక్కలు ఎరుపు చెయ్\" లాంటి మార్పు మారిన భాగాలనే మళ్ళీ తయారు చేస్తుంది (సుమారు ₹10–45). "
+                + "విడదీయి / కలుపు / పై నుంచి / జూమ్ / రాత్రి లైట్ / వెనక్కి లాంటి మాటలకి AI అవసరం లేదు, ఖర్చు ₹0.");
         TextView wsOpen = Ui.text(this, "🛠️ వర్క్‌షాప్ తెరువు →", 15, accent);
         wsOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         wsOpen.setOnClickListener(v -> { autosave(); WorkshopActivity.open(this, null, null, false); });
@@ -2151,6 +2159,7 @@ public class SettingsActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (gated) return;
+        if (wsSpent != null) wsSpent.setText(Workshop.spendLine(this, new Prefs(this))); // (a build or a change may have spent meanwhile)
         if (TabletLock.active(this)) TabletLock.opened(); // (he is inside: a rebuild of this screen doesn't ask again)
         Ui.loadTheme(this);
         boolean afterResult = resultJustCame;

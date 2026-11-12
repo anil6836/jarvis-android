@@ -33,6 +33,8 @@ final class Workshop {
     static final String PREFS = "jarvis_workshop";
     static final String DIR = "workshop";
     static final int MAX_OUT = 48000, REPAIR_OUT = 3000, MAX_REPAIRS = 3, MAX_REPAIRS_PART = 2;
+    /** A change or a question about the model on the stage (A2): at most this many tokens back, and 1 repair. */
+    static final int CHANGE_OUT = 5500, MAX_REPAIRS_CHANGE = 1;
     static final int DEFAULT_LIMIT = 300;
     static final String FABLE = "claude-fable-5-2", OPUS = "claude-opus-5-5";
     private static final int KEEP = 30;
@@ -136,6 +138,12 @@ final class Workshop {
             void part(String id, String status, String code, boolean cut);
             void say(String s);
             void refuse(String s);
+            /** (a change) take this part off the model. */
+            default void remove(String id) {}
+            /** (a question about the model) the answer, nothing changed. */
+            default void answer(String s) {}
+            /** (a change) he wants a different object altogether: build this instead. */
+            default void newBuild(String what) {}
         }
 
         private final Out out;
@@ -189,6 +197,9 @@ final class Workshop {
             if (t.startsWith("//@title")) out.title(cap(t.substring(8).trim(), 60));
             else if (t.startsWith("//@say")) out.say(cap(t.substring(6).trim(), 240));
             else if (t.startsWith("//@refuse")) out.refuse(cap(t.substring(9).trim(), 240));
+            else if (t.startsWith("//@remove")) { String id = t.substring(9).trim(); if (!id.isEmpty()) out.remove(cleanId(id)); }
+            else if (t.startsWith("//@answer")) out.answer(cap(t.substring(9).trim(), 600));
+            else if (t.startsWith("//@new")) out.newBuild(cap(t.substring(6).trim(), 300));
         }
 
         private void close(boolean cut) {
@@ -251,7 +262,8 @@ final class Workshop {
             "  W.ring(rIn, rOut, h, seg = 64)   a flat washer, axis along Y, centred",
             "  W.gear({teeth, r, depth, hole, toothDepth}) a flat spur gear, axis along Y, centred",
             "  W.lathe([[r, y], ...], seg = 64)   a turned profile around Y (knobs, bottles, lenses, housings)",
-            "  W.extrude([[x, y], ...], depth, {bevel, holes: [[[x, y], ...]]}) an outline in XY pushed along Z, centred on z",
+            "  W.extrude([[x, y], ...] or W.shape(), depth, {bevel, holes: [[[x, y], ...]]}) an outline in XY pushed along Z, centred on z",
+            "  W.shape() → a THREE.Shape for curved outlines: moveTo, lineTo, quadraticCurveTo, bezierCurveTo, absarc",
             "  W.tube([[x, y, z], ...], radius, seg = 64, closed = false) a smooth pipe or cable through the points",
             "Materials:",
             "  W.metal(kind, {rough}) kind: 'steel' 'brushed' 'aluminium' 'chrome' 'silver' 'brass' 'copper' 'gold' 'titanium' 'gunmetal' 'black' or '#rrggbb'",
@@ -273,6 +285,9 @@ final class Workshop {
             "- True proportions and real materials: a designer's product model, never a toy. Bevels, rounded edges, screws, seams, vents, buttons",
             "  and cables where they really are; the inner workings that are really there (gears, boards, coils, springs, bearings).",
             "- Moving pieces move: blades spin, gears turn, hands tick, LEDs pulse (W.spin / W.onTick).",
+            "- Things that are round or curved in reality (fan blades, petals, lenses, handles, rounded cases) are drawn with curves: a W.shape()",
+            "  with quadraticCurveTo / bezierCurveTo / absarc, or W.lathe / W.tube, with 32 or more segments; never a few straight segments.",
+            "- Give every piece you W.add a short label and an explode vector, so the model can be pulled apart with names.",
             "- A phone draws this: about 250,000 triangles for the whole build at most, seg 64 or less, a few hundred meshes at most; repeat small",
             "  pieces in loops. No text or lettering on surfaces.",
             "- Use only THREE and W. Never touch document, window, the network, storage, timers or anything outside the stage; never use eval,",
@@ -293,6 +308,60 @@ final class Workshop {
             b.append("\n(Anil's own words: ").append(heard.trim()).append(")");
         return b.toString();
     }
+
+    /**
+     * (A2) He said something while this model is on the stage: the AI answers with ONLY the parts that change, a removal,
+     * an answer to a question, or "build something else". The model's code goes with it so the change fits exactly.
+     */
+    static String changeMessage(String title, List<String[]> parts, String words) {
+        StringBuilder b = new StringBuilder("The build on the stage now: \"").append(title == null ? "" : title).append("\". Its parts, in order:\n");
+        for (String[] pt : parts) b.append("//@part ").append(pt[0]).append(" | ").append(pt[1]).append('\n').append(pt[2]).append(pt[2].endsWith("\n") ? "" : "\n").append("//@end\n");
+        b.append("\nAnil just said: \"").append(words == null ? "" : words.trim()).append("\"\n\n")
+                .append("Answer in exactly ONE of these ways, and nothing else:\n")
+                .append("1) A change to this build: write ONLY the parts that change or are new, each part complete (//@part <id> | <short Telugu status> ")
+                .append("then its code then //@end). The same id replaces that part; a new id adds a part. //@remove <id> takes a part off. ")
+                .append("Everything you do not write stays exactly as it is. Then //@say <one short Telugu line saying what you changed, calling him Sir>.\n")
+                .append("2) A question about this model (what a part is or does, how it works): //@answer <a short, plain Telugu answer, 1 to 3 sentences, calling him Sir>.\n")
+                .append("3) He wants a different object altogether: //@new <what to build, in English, with every detail he gave>.\n")
+                .append("The same rules as always: only THREE and W, original designs, no weapons (//@refuse <one polite Telugu line> if so).");
+        return b.toString();
+    }
+
+    /** (A2) What he said in the workshop that the screen does at once, with no AI and no cost; null = the AI decides. */
+    static String command(String text) {
+        if (text == null) return null;
+        String t = " " + text.toLowerCase(Locale.ROOT).replaceAll("[\\p{Punct}।॥“”‘’]+", " ").replaceAll("\\s+", " ").trim() + " ";
+        for (int round = 0; round < 2; round++) for (String f : FILLERS) t = t.replace(" " + f + " ", " "); // (twice: fillers side by side)
+        t = t.replaceAll("\\s+", " ").trim();
+        if (t.isEmpty()) return null;
+        for (String[] c : COMMANDS) for (int i = 1; i < c.length; i++) if (t.equals(c[i])) return c[0];
+        return null;
+    }
+
+    private static final String[] FILLERS = {"jarvis", "జార్విస్", "జార్వీస్", "sir", "సార్", "please", "ప్లీజ్", "ఒకసారి", "కొంచెం", "ఇంకా", "మళ్ళీ", "మళ్లీ",
+            "చూపించు", "చూపెట్టు", "చూపు", "చేయి", "చెయ్", "చేయ్", "చెయ్యి", "దీన్ని", "దాన్ని", "బొమ్మని", "బొమ్మను", "బొమ్మ", "it", "the", "now", "ఇప్పుడు", "show", "me", "view"};
+
+    /** {command, the words (after the fillers above are taken out)…} */
+    static final String[][] COMMANDS = {
+            {"explode", "విడదీయి", "విడదీ", "విడదీసి", "విడగొట్టు", "విప్పు", "విప్పి", "భాగాలు", "భాగాలు విడదీయి", "భాగాలుగా", "pull apart", "pull apart parts",
+                    "explode", "exploded", "take apart", "విడిగా"},
+            {"assemble", "కలుపు", "కలిపి", "జోడించు", "అమర్చు", "assemble", "put back", "put together", "join", "together", "ఒకటిగా"},
+            {"top", "పై నుంచి", "పైనుంచి", "పై వైపు", "పైన నుంచి", "top", "from top", "top view", "from above"},
+            {"front", "ముందు నుంచి", "ముందునుంచి", "ముందు వైపు", "front", "from front", "front view"},
+            {"back", "వెనుక నుంచి", "వెనక నుంచి", "వెనుక వైపు", "వెనక వైపు", "back", "from back", "from behind", "back view"},
+            {"side", "పక్క నుంచి", "పక్కనుంచి", "పక్క వైపు", "side", "from side", "side view"},
+            {"zoom_in", "జూమ్", "జూమ్ ఇన్", "దగ్గరగా", "zoom", "zoom in", "closer"},
+            {"zoom_out", "జూమ్ అవుట్", "దూరంగా", "zoom out", "farther", "further"},
+            {"spin_off", "తిప్పడం ఆపు", "ఆపు తిప్పడం", "తిరగడం ఆపు", "stop spinning", "stop rotating", "stop rotation"},
+            {"spin_on", "తిప్పు", "తిరగనివ్వు", "తిప్పుతూ ఉండు", "spin", "rotate", "start spinning"},
+            {"night", "రాత్రి లైట్", "రాత్రి", "చీకటి", "night", "night light", "dark"},
+            {"day", "మామూలు లైట్", "పగలు", "పగలు లైట్", "day", "day light", "normal light", "light"},
+            {"center", "మధ్యలో", "మధ్యకి", "center", "centre", "reset view"},
+            {"undo", "వెనక్కి", "వెనక్కు", "undo", "ముందులా", "ముందు లాగే", "పాతది", "మార్పు వద్దు", "మార్పు తీసేయి"},
+            {"cost", "ఎంత ఖర్చైంది", "ఖర్చు ఎంత", "ఎంత అయింది", "ఖర్చు", "cost", "how much"},
+            {"saved", "దాచినవి", "చివరి", "చివరి బిల్డ్", "saved", "last build", "last one"},
+            {"close", "మూసేయి", "మూసెయ్", "close", "exit"},
+            {"new", "కొత్తది", "కొత్త", "new", "new build", "start over"}};
 
     static String repairMessage(String title, String id, String status, String code, String error) {
         return "In the build \"" + (title == null ? "" : title) + "\" you wrote this part:\n//@part " + id + " | " + status + "\n" + code

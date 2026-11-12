@@ -221,6 +221,7 @@ const kit = {
     return m;
   },
   group(o = {}) { const g = new THREE.Group(); place(g, o); return g; },
+  shape() { return new THREE.Shape(); },
 };
 function clampSeg(s) { return Math.max(3, Math.min(96, Math.round(s) || 3)); }
 function place(o, p) {
@@ -238,6 +239,7 @@ function kitFor(rec) {
     obj.userData.explode = Array.isArray(o.explode) ? o.explode.slice(0, 3).map((v) => +v || 0) : [0, 0, 0];
     obj.traverse((x) => { if (x.isMesh) { x.castShadow = true; x.receiveShadow = true; } });
     rec.group.add(obj);
+    rec.pieces.push({ obj, label: obj.userData.label, explode: new THREE.Vector3().fromArray(obj.userData.explode), base: null, box: null });
     return obj;
   };
   w.onTick = (fn) => { if (typeof fn === 'function') rec.ticks.push(fn); };
@@ -270,6 +272,7 @@ function removePart(id) {
   model.remove(r.group);
   dispose(r.group);
   parts.delete(id);
+  labelsDirty = true;
 }
 
 function triangles(o) {
@@ -294,7 +297,7 @@ function fail(id, msg) {
 async function runPart(m) {
   const id = cleanId(m.id);
   removePart(id);
-  const rec = { id, group: new THREE.Group(), ticks: [], tris: 0, box: null, born: 0 };
+  const rec = { id, group: new THREE.Group(), ticks: [], pieces: [], tris: 0, box: null, born: 0 };
   rec.group.name = id;
   rec.group.visible = false;
   model.add(rec.group);
@@ -314,6 +317,13 @@ async function runPart(m) {
   rec.tris = triangles(rec.group);
   if (totalTris() > MAX_TRIS) { fail(id, 'too many triangles (' + rec.tris + ' in this part): use fewer segments'); return; }
   rec.box = box;
+  for (const pc of rec.pieces) { // (where each piece sits when assembled: the pull-apart moves it from here)
+    pc.base = pc.obj.position.clone();
+    pc.box = new THREE.Box3().setFromObject(pc.obj);
+    if (pc.box.isEmpty()) pc.box = null;
+  }
+  placePieces(rec, ease(explodeK));
+  labelsDirty = true;
   rec.born = performance.now();
   rec.group.visible = true;
   post({ t: 'ok', id, tris: rec.tris });
@@ -326,18 +336,141 @@ function stats() { post({ t: 'stats', parts: parts.size, tris: totalTris() }); }
 function reset() {
   for (const id of [...parts.keys()]) removePart(id);
   userFrame = false;
+  explodeK = explodeGoal = 0;
+  goal.zoom = 1;
+  goal.dir = null;
   stats();
 }
 
 // ------------------------------------------------------------------ framing, the floor and lights follow the model
 
-const goal = { target: new THREE.Vector3(0, 8, 0), dist: 60, floorY: 0, radius: 12 };
+const goal = { target: new THREE.Vector3(0, 8, 0), dist: 60, floorY: 0, radius: 12, zoom: 1, dir: null };
 let userFrame = false; // (he moved the camera himself: keep his angle, still follow the size)
 
 function modelBox() {
   const b = new THREE.Box3();
-  for (const r of parts.values()) if (r.box) b.union(r.box);
+  const k = ease(explodeGoal);
+  for (const r of parts.values()) {
+    if (!r.box) continue;
+    if (k === 0 || !r.pieces.some((pc) => pc.box)) { b.union(r.box); continue; }
+    for (const pc of r.pieces) if (pc.box) b.union(pc.box.clone().translate(pc.explode.clone().multiplyScalar(k)));
+  }
   return b;
+}
+
+// ------------------------------------------------------------------ pulled apart (an exploded view) with names
+
+let explodeK = 0, explodeGoal = 0, labelsDirty = true, labelGroups = [];
+const ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
+
+function placePieces(rec, e) {
+  for (const pc of rec.pieces) if (pc.base) pc.obj.position.copy(pc.base).addScaledVector(pc.explode, e);
+}
+
+// One name per (part, name): where its pieces sit when assembled, and which way they travel.
+function buildLabels() {
+  labelsDirty = false;
+  labelGroups = [];
+  for (const r of parts.values()) {
+    const byName = new Map();
+    for (const pc of r.pieces) {
+      if (!pc.label || !pc.box) continue;
+      let g = byName.get(pc.label);
+      if (!g) { g = { text: pc.label, rec: r, box: new THREE.Box3(), explode: pc.explode.clone(), el: null, w: 0, h: 0 }; byName.set(pc.label, g); }
+      g.box.union(pc.box);
+    }
+    for (const g of byName.values()) { g.center = g.box.getCenter(new THREE.Vector3()); labelGroups.push(g); }
+  }
+  labelGroups = labelGroups.slice(0, 18);
+  const box = document.getElementById('labels');
+  const svg = document.getElementById('lines');
+  for (const el of [...box.querySelectorAll('.lb')]) el.remove();
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  for (const g of labelGroups) {
+    const el = document.createElement('div');
+    el.className = 'lb';
+    el.textContent = g.text;
+    box.appendChild(el);
+    g.el = el;
+    g.w = el.offsetWidth;
+    g.h = el.offsetHeight;
+    g.line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    g.dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    g.dot.setAttribute('r', '2.6');
+    svg.appendChild(g.line);
+    svg.appendChild(g.dot);
+  }
+}
+
+const tmpV = new THREE.Vector3();
+function drawLabels() {
+  const box = document.getElementById('labels');
+  const a = ease(explodeK);
+  box.style.opacity = String(Math.max(0, (a - 0.35) / 0.65));
+  if (a < 0.35) return;
+  if (labelsDirty) buildLabels();
+  const w = window.innerWidth, h = window.innerHeight;
+  const top = h * inset.top + 6, bottom = h * (1 - inset.bottom) - 6;
+  const cols = { l: [], r: [] };
+  for (const g of labelGroups) {
+    tmpV.copy(g.center).addScaledVector(g.explode, a);
+    tmpV.y += g.rec.group.position.y;
+    tmpV.project(camera);
+    g.vis = tmpV.z < 1;
+    g.x = (tmpV.x + 1) / 2 * w;
+    g.y = (1 - tmpV.y) / 2 * h;
+    (g.x < w / 2 ? cols.l : cols.r).push(g);
+  }
+  for (const [side, list] of Object.entries(cols)) {
+    list.sort((p, q) => p.y - q.y);
+    let next = top;
+    for (const g of list) { g.ly = Math.max(next, g.y - g.h / 2); next = g.ly + g.h + 6; }
+    if (next - 6 > bottom) { // (ran past the bottom bar: push the column up from the bottom)
+      let up = bottom;
+      for (let i = list.length - 1; i >= 0; i--) { list[i].ly = Math.min(list[i].ly, up - list[i].h); up = list[i].ly - 6; }
+    }
+    for (const g of list) {
+      const lx = side === 'l' ? 8 : w - 8 - g.w;
+      g.el.style.transform = 'translate(' + Math.round(lx) + 'px,' + Math.round(g.ly) + 'px)';
+      g.el.style.visibility = g.vis ? 'visible' : 'hidden';
+      const ex = side === 'l' ? lx + g.w : lx, ey = g.ly + g.h / 2;
+      g.line.setAttribute('x1', g.x.toFixed(1)); g.line.setAttribute('y1', g.y.toFixed(1));
+      g.line.setAttribute('x2', ex.toFixed(1)); g.line.setAttribute('y2', ey.toFixed(1));
+      g.dot.setAttribute('cx', g.x.toFixed(1)); g.dot.setAttribute('cy', g.y.toFixed(1));
+      g.line.style.visibility = g.dot.style.visibility = g.vis ? 'visible' : 'hidden';
+    }
+  }
+}
+
+// ------------------------------------------------------------------ views and light, at once (no AI)
+
+const VIEWS = { front: [0, 0.28, 1], back: [0, 0.28, -1], left: [-1, 0.28, 0], side: [1, 0.28, 0.05], right: [1, 0.28, 0],
+  top: [0.001, 1, 0.03], bottom: [0.001, -0.6, 1], iso: [0.55, 0.42, 1] };
+function view(name) {
+  const v = VIEWS[name];
+  if (!v) return;
+  goal.dir = new THREE.Vector3().fromArray(v).normalize();
+  userFrame = false;
+}
+
+// Look across the way the pieces travel (pulled apart along z: from the side; along y: from the front, a little above).
+function sideOfTravel() {
+  const sum = new THREE.Vector3();
+  for (const r of parts.values()) for (const pc of r.pieces) sum.add(new THREE.Vector3(Math.abs(pc.explode.x), Math.abs(pc.explode.y), Math.abs(pc.explode.z)));
+  if (sum.z >= sum.x && sum.z >= sum.y) return 'side';
+  if (sum.x >= sum.y) return 'front';
+  return 'iso';
+}
+
+const DAY = { env: 1, key: 2.4, rim: 1.5, hemi: 0.3, exp: 1.0, bg: '' };
+function light(mode) {
+  const night = mode === 'night';
+  scene.environmentIntensity = night ? 0.16 : DAY.env;
+  key.intensity = night ? 0.55 : DAY.key;
+  rim.intensity = night ? 0.7 : DAY.rim;
+  hemi.intensity = night ? 0.06 : DAY.hemi;
+  renderer.toneMappingExposure = night ? 0.95 : DAY.exp;
+  document.body.style.background = night ? 'radial-gradient(ellipse 70% 60% at 50% 46%, #10151e 0%, #07090d 48%, #020304 100%)' : DAY.bg;
 }
 
 // The screen's own bars cover the top and bottom of the stage: the model is framed in the part that is left.
@@ -428,17 +561,30 @@ function tick(now) {
       if (k >= 1) { r.born = 0; r.group.position.y = 0; }
     }
   }
+  // pulled apart / put back together
+  if (explodeK !== explodeGoal) {
+    explodeK = explodeGoal > explodeK ? Math.min(explodeGoal, explodeK + dt / 1.1) : Math.max(explodeGoal, explodeK - dt / 0.9);
+    const e = ease(explodeK);
+    for (const r of parts.values()) placePieces(r, e);
+  }
   // the camera, floor and target glide to the model's size
   const a = 1 - Math.exp(-dt * 3);
   controls.target.lerp(goal.target, a);
   const off = camera.position.clone().sub(controls.target);
   const d = off.length();
-  if (!userFrame || d > goal.dist * 1.6 || d < goal.dist * 0.35) off.setLength(d + (goal.dist - d) * a);
+  if (goal.dir) { // a view he asked for: turn the camera there
+    const dir = off.clone().normalize().lerp(goal.dir, Math.min(1, a * 1.6)).normalize();
+    off.copy(dir).multiplyScalar(d);
+    if (dir.angleTo(goal.dir) < 0.01) goal.dir = null;
+  }
+  const want = goal.dist * goal.zoom;
+  if (!userFrame || d > want * 1.6 || d < want * 0.35) off.setLength(d + (want - d) * a);
   camera.position.copy(controls.target).add(off);
   floor.position.y += (goal.floorY - floor.position.y) * a;
   floor.scale.setScalar(floor.scale.x + (goal.radius * 9 - floor.scale.x) * a);
   controls.update();
   renderer.render(scene, camera);
+  drawLabels();
   // a phone that struggles: draw with fewer pixels rather than stutter
   slow = dt > 0.045 ? slow + dt : Math.max(0, slow - dt * 0.5);
   if (slow > 2 && pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - 0.25); renderer.setPixelRatio(pixelRatio); resize(); slow = 0; }
@@ -457,7 +603,7 @@ window.addEventListener('message', (e) => {
     case 'part': queue = queue.then(() => runPart(m)).catch((x) => post({ t: 'warn', id: cleanId(m.id), msg: String(x) })); break;
     case 'remove': queue = queue.then(() => { removePart(cleanId(m.id)); frameAll(false); stats(); }); break;
     case 'reset': queue = queue.then(reset); break;
-    case 'frame': frameAll(true); break;
+    case 'frame': goal.zoom = 1; goal.dir = null; frameAll(true); break;
     case 'inset':
       inset.top = Math.max(0, Math.min(0.4, +m.top || 0));
       inset.bottom = Math.max(0, Math.min(0.6, +m.bottom || 0));
@@ -465,6 +611,19 @@ window.addEventListener('message', (e) => {
       frameAll(false);
       break;
     case 'spin': spinWanted = !!m.on; controls.autoRotate = spinWanted; break;
+    case 'explode':
+      explodeGoal = m.on ? 1 : 0;
+      labelsDirty = true;
+      controls.autoRotate = m.on ? false : spinWanted; // (still while pulled apart: the names stay put)
+      if (m.on && m.turn !== false) view(sideOfTravel());
+      frameAll(false);
+      break;
+    case 'view': view(String(m.dir)); break;
+    case 'zoom':
+      goal.zoom = Math.max(0.3, Math.min(3, goal.zoom * (m.in ? 0.65 : 1 / 0.65)));
+      userFrame = false;
+      break;
+    case 'light': light(String(m.mode)); break;
     case 'pause': pause(); break;
     case 'resume': resume(); break;
     default: break;

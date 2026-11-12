@@ -383,9 +383,12 @@ final class Tools {
         DEFS.add(new Def("workshop",
                 "🛠️ The 3D workshop (phone only): build = the AI he chose in settings designs a PHYSICAL object or machine (fan, watch, drone, camera, lamp, "
                         + "engine, house...) and it is built live on a 3D stage, part by part; open_last = show the last saved build again (no AI, free); "
-                        + "cost = what the last build cost and this month's workshop spend against his limit. Not for websites, apps, code, food, pictures or scans.",
-                schema(new String[][]{{"action", "string", "build | open_last | cost"},
-                        {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used"}},
+                        + "cost = what the last build cost and this month's workshop spend against his limit; talk = while the workshop screen is open, "
+                        + "his words about the model on it (change / add / remove a part, colour, size, a question about a part, pull apart, a view, "
+                        + "the light, undo) go to the workshop as he said them. Not for websites, apps, code, food, pictures or scans.",
+                schema(new String[][]{{"action", "string", "build | open_last | cost | talk"},
+                        {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used. "
+                                + "talk: his exact words, unchanged"}},
                         "action")));
         DEFS.add(new Def("publish_website", "Put the last website online (GitHub Pages in his account) and give the link.", schema(new String[][]{})));
         DEFS.add(new Def("write_code",
@@ -1626,6 +1629,14 @@ final class Tools {
         if (!Workshop.here(c)) return err("phone_only", "The workshop is on his phone only (not the home tablet or the car box). Say so in one line.");
         Prefs p = new Prefs(c);
         if ("cost".equals(action)) return ok().put("said", Workshop.costSaid(c, p)).put("next", "Say this in Telugu, briefly.").toString();
+        if ("talk".equals(action)) {
+            String words = heard != null && !heard.trim().isEmpty() ? heard.trim() : what.trim(); // (his own words, not a rewrite)
+            if (words.isEmpty()) return err("what_missing", "Ask him in one short line what to change.");
+            if (WorkshopActivity.openTitle == null && Workshop.last(c) == null)
+                return err("nothing_open", "No model is open or saved yet. Ask what he wants built ('ఒక ___ తయారు చెయ్').");
+            startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_TALK, words).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            return ok().put("next", "Say only: 'సరే Sir.' The workshop answers or makes the change itself and says what it cost.").toString();
+        }
         if ("open_last".equals(action)) {
             if (Workshop.last(c) == null) return err("nothing_saved", "No build has been saved yet. Say so and that he can say 'ఒక ___ తయారు చెయ్'.");
             startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_OPEN_LAST, true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP));

@@ -36,7 +36,18 @@ final class Situation {
         try { weather(c, s); } catch (Throwable ignored) {}
         try { mood(c, s); } catch (Throwable ignored) {}
         try { sight(s); } catch (Throwable ignored) {}
+        try { workshop(s); } catch (Throwable ignored) {}
         return s.toString();
+    }
+
+    /** 🛠️ The workshop screen is open: what he says about its model goes there (A2). */
+    private static void workshop(StringBuilder s) {
+        String t = WorkshopActivity.openTitle;
+        if (t == null) return;
+        if (t.isEmpty()) { s.append("- 🛠️ The workshop screen is open, with no model on it yet: 'ఒక <object> తయారు చెయ్' -> workshop action=build.\n"); return; }
+        s.append("- 🛠️ The workshop screen is open, showing '").append(t).append("'. What he says about that model (change / add / remove a part, ")
+                .append("colour, size, pull apart, a view, light, undo, a question about it) -> workshop action=talk with his exact words; ")
+                .append("'ఒక <new object> తయారు చెయ్' -> action=build.\n");
     }
 
     private static String inHours(Duration d) {

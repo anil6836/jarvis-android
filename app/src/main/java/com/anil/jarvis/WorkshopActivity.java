@@ -66,7 +66,9 @@ import java.util.concurrent.CancellationException;
  * finished line with what it cost. Saved builds open again without asking the AI (free). Phone only.
  */
 public class WorkshopActivity extends Activity {
-    static final String EXTRA_WHAT = "what", EXTRA_HEARD = "heard", EXTRA_SAID = "said", EXTRA_OPEN_LAST = "open_last";
+    static final String EXTRA_WHAT = "what", EXTRA_HEARD = "heard", EXTRA_SAID = "said", EXTRA_OPEN_LAST = "open_last", EXTRA_TALK = "talk";
+    /** The name of the model on the stage while this screen is on (Jarvis's brain is told: what he says is about it); else null. */
+    static volatile String openTitle;
 
     private static final String HOST = "appassets.androidplatform.net";
     private static final String PATH = "/assets/workshop/";
@@ -92,6 +94,69 @@ public class WorkshopActivity extends Activity {
     private boolean destroyed;
     private View topBar, bottomBar;
     private float sentTop = -1, sentBottom = -1;
+    private TextView go, explodeBtn, undoBtn, nightBtn;
+    private boolean exploded, night;
+    private boolean started;
+
+    /** The model on the stage now (a finished build or a saved one): what a change is made to, and what is saved. */
+    private Shown shown;
+    /** Up to 5 models as they were before each change ("↩️ వెనక్కి" puts the last one back, with no AI). */
+    private final java.util.ArrayDeque<Shown> undo = new java.util.ArrayDeque<>();
+
+    private static final class Shown {
+        long at;
+        String title, what, model, say;
+        double cost;
+        boolean estimated;
+        int changes, repairs;
+        long seconds = -1, firstPart = -1;
+        /** id → {status, code}, in order. */
+        final LinkedHashMap<String, String[]> parts = new LinkedHashMap<>();
+
+        Shown copy() {
+            Shown c = new Shown();
+            c.at = at; c.title = title; c.what = what; c.model = model; c.say = say; c.cost = cost; c.estimated = estimated;
+            c.changes = changes; c.repairs = repairs; c.seconds = seconds; c.firstPart = firstPart;
+            for (Map.Entry<String, String[]> e : parts.entrySet()) c.parts.put(e.getKey(), e.getValue().clone());
+            return c;
+        }
+
+        List<String[]> list() {
+            List<String[]> l = new ArrayList<>();
+            for (Map.Entry<String, String[]> e : parts.entrySet()) l.add(new String[]{e.getKey(), e.getValue()[0], e.getValue()[1]});
+            return l;
+        }
+
+        JSONObject json() throws Exception {
+            JSONArray ps = new JSONArray();
+            for (Map.Entry<String, String[]> e : parts.entrySet())
+                ps.put(new JSONObject().put("id", e.getKey()).put("status", e.getValue()[0]).put("code", e.getValue()[1]));
+            return new JSONObject().put("at", at).put("title", title).put("what", what == null ? "" : what).put("model", model == null ? "" : model)
+                    .put("parts", ps).put("say", say == null ? "" : say).put("cost", cost).put("estimated", estimated).put("repairs", repairs)
+                    .put("changes", changes).put("seconds", seconds).put("first_part_seconds", firstPart);
+        }
+
+        static Shown of(JSONObject b) {
+            Shown s = new Shown();
+            s.at = b.optLong("at", System.currentTimeMillis());
+            s.title = b.optString("title");
+            s.what = b.optString("what");
+            s.model = b.optString("model");
+            s.say = b.optString("say");
+            s.cost = b.optDouble("cost", 0);
+            s.estimated = b.optBoolean("estimated");
+            s.changes = b.optInt("changes", 0);
+            s.repairs = b.optInt("repairs", 0);
+            s.seconds = b.optLong("seconds", -1);
+            s.firstPart = b.optLong("first_part_seconds", -1);
+            JSONArray ps = b.optJSONArray("parts");
+            for (int i = 0; ps != null && i < ps.length(); i++) {
+                JSONObject pt = ps.optJSONObject(i);
+                if (pt != null) s.parts.put(pt.optString("id"), new String[]{pt.optString("status", pt.optString("id")), pt.optString("code")});
+            }
+            return s;
+        }
+    }
 
     /** What is on the stage now, in order (id → code): sent again if the stage has to start over. */
     private final LinkedHashMap<String, String> onStage = new LinkedHashMap<>();
@@ -109,6 +174,10 @@ public class WorkshopActivity extends Activity {
         final Workshop.Engine engine;
         volatile boolean stopped;
         String title, say, refused;
+        /** (A2) a change / question about the model on the stage: what he said, the answer, a new object he asked for, parts taken off. */
+        final String talk;
+        String answer, newWhat;
+        final List<String> removed = new ArrayList<>();
         /** Written by the build's thread, read by the screen: one lock (iterate inside synchronized (parts)). */
         final Map<String, Part> parts = java.util.Collections.synchronizedMap(new LinkedHashMap<>());
         double rupees;
@@ -117,7 +186,8 @@ public class WorkshopActivity extends Activity {
         long firstPartAt;
         int waitLine;
         long nextLine = 10;
-        Job(String what, String heard, Workshop.Engine engine) { this.what = what; this.heard = heard; this.engine = engine; }
+        Job(String what, String heard, Workshop.Engine engine) { this(what, heard, engine, null); }
+        Job(String what, String heard, Workshop.Engine engine, String talk) { this.what = what; this.heard = heard; this.engine = engine; this.talk = talk; }
     }
 
     private static final class Part {
@@ -146,7 +216,7 @@ public class WorkshopActivity extends Activity {
         newStage();
         Intent i = getIntent();
         // brought back after Android closed it, or opened again from recent apps: never build (and pay) a second time
-        if (i != null && (b != null || (i.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0)) i.removeExtra(EXTRA_WHAT);
+        if (i != null && (b != null || (i.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0)) { i.removeExtra(EXTRA_WHAT); i.removeExtra(EXTRA_TALK); }
         handle(i);
     }
 
@@ -158,6 +228,13 @@ public class WorkshopActivity extends Activity {
 
     private void handle(Intent i) {
         if (i == null) return;
+        String talk = i.getStringExtra(EXTRA_TALK);
+        if (talk != null && !talk.trim().isEmpty()) { // ("Jarvis, రెక్కలు నీలం చెయ్" said over this screen, through the brain)
+            i.removeExtra(EXTRA_TALK);
+            if (shown == null && job == null) { JSONObject last = Workshop.last(this); if (last != null) show(last); }
+            said(talk.trim(), true);
+            return;
+        }
         String what = i.getStringExtra(EXTRA_WHAT);
         if (what != null && !what.trim().isEmpty()) {
             start(what.trim(), i.getStringExtra(EXTRA_HEARD), i.getBooleanExtra(EXTRA_SAID, false));
@@ -224,6 +301,8 @@ public class WorkshopActivity extends Activity {
             }
         };
         listScroll.addView(list);
+        listScroll.setVerticalFadingEdgeEnabled(true); // (the top row fades instead of looking cut)
+        listScroll.setFadingEdgeLength(dp(26));
         bottom.addView(listScroll, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout actions = new LinearLayout(this);
@@ -231,19 +310,23 @@ public class WorkshopActivity extends Activity {
         actions.setPadding(0, dp(8), 0, dp(8));
         TextView saved = pill("📂 దాచినవి", v -> savedList());
         TextView cost = pill("💰 ఖర్చు", v -> { String s = Workshop.costSaid(this, p); setStatus(s); Announcer.say(this, s); });
-        spinBtn = pill("⏸ తిప్పడం ఆపు", v -> {
-            spinning = !spinning;
-            try { send(json("spin").put("on", spinning)); } catch (Exception ignored) {}
-            spinBtn.setText(spinning ? "⏸ తిప్పడం ఆపు" : "▶️ తిప్పు");
-        });
-        TextView view = pill("🎯 మధ్యలో", v -> send(json("frame")));
+        spinBtn = pill("⏸ తిప్పడం ఆపు", v -> command(spinning ? "spin_off" : "spin_on", false));
+        TextView view = pill("🎯 మధ్యలో", v -> command("center", false));
         stopBtn = pill("⏹ ఆపు", v -> askStop());
         stopBtn.setVisibility(View.GONE);
+        explodeBtn = pill("💥 విడదీయి", v -> command(exploded ? "assemble" : "explode", false));
+        undoBtn = pill("↩️ వెనక్కి", v -> command("undo", false));
+        nightBtn = pill("🌙 రాత్రి", v -> command(night ? "day" : "night", false));
+        TextView fresh = pill("🆕 కొత్తది", v -> command("new", false));
         actions.addView(stopBtn);
+        actions.addView(explodeBtn);
+        actions.addView(undoBtn);
         actions.addView(saved);
         actions.addView(cost);
         actions.addView(spinBtn);
         actions.addView(view);
+        actions.addView(nightBtn);
+        actions.addView(fresh);
         HorizontalScrollView hs = new HorizontalScrollView(this);
         hs.setHorizontalScrollBarEnabled(false);
         hs.addView(actions);
@@ -267,7 +350,7 @@ public class WorkshopActivity extends Activity {
             return false;
         });
         ask.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView go = Ui.text(this, "🔨 తయారు చెయ్", 15, 0xFF04131A);
+        go = Ui.text(this, "🔨 తయారు చెయ్", 15, 0xFF04131A);
         go.setBackground(Ui.round(this, Ui.CYAN, Ui.CYAN, 14));
         go.setPadding(dp(14), dp(11), dp(14), dp(11));
         go.setOnClickListener(v -> typed());
@@ -289,6 +372,21 @@ public class WorkshopActivity extends Activity {
             try { send(json("inset").put("top", t).put("bottom", bt)); } catch (Exception ignored) {}
         });
         showChip();
+        refreshButtons();
+    }
+
+    /** The buttons and the request box follow what is on the stage (a model: "what to change"; nothing: "what to build"). */
+    private void refreshButtons() {
+        if (go == null) return;
+        boolean has = shown != null && !shown.parts.isEmpty();
+        go.setText(has ? "➤ పంపు" : "🔨 తయారు చెయ్");
+        input.setHint(has ? "ఏం మార్చాలి? ఉదా: రెక్కలు నీలం చెయ్ · విడదీయి" : "ఏం తయారు చేయాలి? ఉదా: ఒక టేబుల్ ఫ్యాన్");
+        explodeBtn.setVisibility(has ? View.VISIBLE : View.GONE);
+        explodeBtn.setText(exploded ? "🧩 కలుపు" : "💥 విడదీయి");
+        undoBtn.setVisibility(has && !undo.isEmpty() && job == null ? View.VISIBLE : View.GONE);
+        nightBtn.setText(night ? "☀️ పగలు" : "🌙 రాత్రి");
+        spinBtn.setText(spinning ? "⏸ తిప్పడం ఆపు" : "▶️ తిప్పు");
+        openTitle = started ? (has ? shown.title : "") : null;
     }
 
     private TextView pill(String s, View.OnClickListener l) {
@@ -321,7 +419,119 @@ public class WorkshopActivity extends Activity {
         InputMethodManager im = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         if (im != null) im.hideSoftInputFromWindow(input.getWindowToken(), 0);
         input.setText("");
-        start(s, s, false);
+        said(s, false);
+    }
+
+    // ================================================================ what he says (typed here, or said to Jarvis over this screen)
+
+    /** A view / light / pull-apart / undo word: done at once, no AI. Anything else: a new build, or a change to the model on the stage. */
+    private void said(String text, boolean byVoice) {
+        String cmd = Workshop.command(text);
+        if (cmd != null) { command(cmd, byVoice); return; }
+        if (job != null) {
+            String s = "ఒక పని ఇంకా జరుగుతోంది Sir. అది అయ్యాక చెప్పండి, లేదా ⏹ ఆపు నొక్కండి.";
+            setStatus(s);
+            Announcer.say(this, s);
+            return;
+        }
+        if (shown == null || shown.parts.isEmpty()) start(text, text, false);
+        else talk(text);
+    }
+
+    private void command(String cmd, boolean byVoice) {
+        boolean has = shown != null && !shown.parts.isEmpty();
+        String said = null;
+        switch (cmd) {
+            case "explode":
+            case "assemble":
+                if (!has) { said = "ముందు ఒక బొమ్మ తయారు చేయనివ్వండి Sir."; break; }
+                exploded = "explode".equals(cmd);
+                try { send(json("explode").put("on", exploded)); } catch (Exception ignored) {}
+                said = exploded ? "విడదీశాను Sir. ప్రతి భాగానికి పేరు ఉంది." : "మళ్ళీ కలిపాను Sir.";
+                break;
+            case "top": case "front": case "back": case "side":
+                spinning = false;
+                try { send(json("spin").put("on", false)); send(json("view").put("dir", cmd)); } catch (Exception ignored) {}
+                said = "top".equals(cmd) ? "పై నుంచి." : "front".equals(cmd) ? "ముందు నుంచి." : "back".equals(cmd) ? "వెనుక నుంచి." : "పక్క నుంచి.";
+                break;
+            case "zoom_in": case "zoom_out":
+                try { send(json("zoom").put("in", "zoom_in".equals(cmd))); } catch (Exception ignored) {}
+                break;
+            case "spin_off": case "spin_on":
+                spinning = "spin_on".equals(cmd);
+                try { send(json("spin").put("on", spinning)); } catch (Exception ignored) {}
+                break;
+            case "night": case "day":
+                night = "night".equals(cmd);
+                try { send(json("light").put("mode", night ? "night" : "day")); } catch (Exception ignored) {}
+                break;
+            case "center":
+                send(json("frame"));
+                break;
+            case "undo":
+                said = undoLast();
+                break;
+            case "cost":
+                said = Workshop.costSaid(this, p);
+                setStatus(said);
+                break;
+            case "saved":
+                savedList();
+                break;
+            case "close":
+                leave();
+                break;
+            case "new":
+                if (job != null) { said = "ఒక పని ఇంకా జరుగుతోంది Sir."; break; }
+                shown = null;
+                undo.clear();
+                exploded = false;
+                onStage.clear();
+                rows.clear();
+                list.removeAllViews();
+                send(json("reset"));
+                titleView.setText("");
+                setStatus("ఏం తయారు చేయాలో కింద రాయండి Sir, లేదా \"Jarvis, ఒక డ్రోన్ తయారు చెయ్\" అనండి.");
+                input.requestFocus();
+                break;
+            default: break;
+        }
+        refreshButtons();
+        if (said != null && (byVoice || "cost".equals(cmd) || "undo".equals(cmd))) Announcer.say(this, said);
+        if (said != null && !"cost".equals(cmd)) setStatus(said);
+    }
+
+    /** ↩️ The model as it was before the last change (no AI, no cost); saved like that. */
+    private String undoLast() {
+        if (job != null) return "ఒక పని ఇంకా జరుగుతోంది Sir.";
+        Shown before = undo.pollFirst();
+        if (before == null) return "వెనక్కి వెళ్ళడానికి ఏ మార్పూ లేదు Sir.";
+        if (shown != null) before.cost = shown.cost; // (what was spent stays spent)
+        shown = before;
+        putOnStage(shown);
+        save(shown);
+        return "↩️ ముందులా చేశాను Sir (ఖర్చు లేదు).";
+    }
+
+    /** The whole model onto a cleared stage (a saved build, an undo): no AI. */
+    private void putOnStage(Shown sh) {
+        onStage.clear();
+        rows.clear();
+        list.removeAllViews();
+        send(json("reset"));
+        exploded = false;
+        for (Map.Entry<String, String[]> e : sh.parts.entrySet()) {
+            onStage.put(e.getKey(), e.getValue()[1]);
+            sendPart(e.getKey(), e.getValue()[1]);
+            row(e.getKey(), "✓ " + e.getValue()[0], Ui.OK);
+        }
+        titleView.setText(sh.title);
+        if (sh.model != null && !sh.model.isEmpty()) chip.setText(label(sh.model));
+        refreshButtons();
+    }
+
+    private void save(Shown sh) {
+        try { Workshop.save(this, sh.json()); } catch (Exception ignored) {}
     }
 
     // ================================================================ the sealed stage
@@ -460,6 +670,11 @@ public class WorkshopActivity extends Activity {
         send(json("reset"));
         try { if (sentTop >= 0) send(json("inset").put("top", sentTop).put("bottom", sentBottom)); } catch (Exception ignored) {}
         for (Map.Entry<String, String> e : new ArrayList<>(onStage.entrySet())) sendPart(e.getKey(), e.getValue());
+        try {
+            if (exploded) send(json("explode").put("on", true).put("turn", false));
+            if (night) send(json("light").put("mode", "night"));
+            if (!spinning) send(json("spin").put("on", false));
+        } catch (Exception ignored) {}
         synchronized (acks) { // (a part that was waiting when the stage stopped: it failed)
             Job j = job;
             if (j != null) synchronized (j.parts) {
@@ -487,6 +702,9 @@ public class WorkshopActivity extends Activity {
         if (over != null) { setStatus(over); Announcer.say(this, over); return; }
         Job j = new Job(what, heard, e);
         job = j;
+        shown = null;
+        undo.clear();
+        exploded = false;
         onStage.clear();
         synchronized (acks) { acks.clear(); }
         rows.clear();
@@ -495,14 +713,21 @@ public class WorkshopActivity extends Activity {
         titleView.setText(what);
         showChip();
         stopBtn.setVisibility(View.VISIBLE);
+        refreshButtons();
         if (!saidAlready) Announcer.say(this, "బెంచ్ మీద పెడుతున్నాను Sir.");
         setStatus("🧠 " + label(e.model) + " డిజైన్ ఆలోచిస్తోంది…");
+        ticker(j, "డిజైన్ ఆలోచిస్తోంది");
+        new Thread(() -> run(j), "jarvis-workshop").start();
+    }
+
+    /** While the AI thinks (nothing on the stage yet): the seconds, and one short line about every ten seconds. */
+    private void ticker(Job j, String doing) {
         ui.postDelayed(new Runnable() {
             @Override public void run() {
                 if (job != j || destroyed) return;
                 long secs = (System.currentTimeMillis() - j.at) / 1000;
-                if (j.parts.isEmpty()) {
-                    setStatus("🧠 " + label(j.engine.model) + " డిజైన్ ఆలోచిస్తోంది… " + secs + " సె");
+                if (j.parts.isEmpty() && j.removed.isEmpty() && j.answer == null) {
+                    setStatus("🧠 " + label(j.engine.model) + " " + doing + "… " + secs + " సె");
                     if (secs >= j.nextLine) { // (one short line about every ten seconds: thinking never looks like a hang)
                         j.nextLine = secs + 10;
                         Announcer.say(WorkshopActivity.this, WAITING[j.waitLine++ % WAITING.length]);
@@ -511,7 +736,158 @@ public class WorkshopActivity extends Activity {
                 ui.postDelayed(this, 1000);
             }
         }, 1000);
-        new Thread(() -> run(j), "jarvis-workshop").start();
+    }
+
+    // ================================================================ a change / a question about the model on the stage (A2)
+
+    /** His words go to the AI with the model's parts; back come only the parts that change (or an answer, or "build X instead"). */
+    private void talk(String words) {
+        Workshop.Engine e;
+        try { e = Workshop.engine(p); }
+        catch (Workshop.Problem x) { setStatus(x.getMessage()); Announcer.say(this, x.getMessage()); return; }
+        String over = Workshop.overLimit(this, p);
+        if (over != null) { setStatus(over); Announcer.say(this, over); return; }
+        final Shown before = shown.copy();
+        Job j = new Job(before.what, words, e, words);
+        j.title = before.title;
+        job = j;
+        stopBtn.setVisibility(View.VISIBLE);
+        refreshButtons();
+        setStatus("🧠 \"" + words + "\" — ఆలోచిస్తోంది…");
+        ticker(j, "\"" + (words.length() > 30 ? words.substring(0, 30) + "…" : words) + "\" ఆలోచిస్తోంది");
+        new Thread(() -> runTalk(j, before), "jarvis-workshop-change").start();
+    }
+
+    private void runTalk(Job j, Shown before) {
+        Http.CANCEL.set(j.cancel);
+        String failure = null;
+        Workshop.Parser parser = new Workshop.Parser(new Workshop.Parser.Out() {
+            @Override public void title(String t) {}
+            @Override public void partStart(String id, String st) {
+                Part pt = j.parts.get(id);
+                if (pt == null) { pt = new Part(id); j.parts.put(id, pt); }
+                pt.status = st;
+                final boolean had = before.parts.containsKey(id);
+                ui.post(() -> { row(id, (had ? "🔁 " : "⏳ ") + st, Ui.CYAN); if (job == j) setStatus("🔧 " + st); });
+            }
+            @Override public void part(String id, String st, String code, boolean cut) {
+                Part pt = j.parts.get(id);
+                if (pt == null) { pt = new Part(id); j.parts.put(id, pt); }
+                pt.status = st;
+                pt.code = code;
+                if (cut) { pt.err = "the answer ended before this part was finished (it was cut off)"; return; }
+                put(j, pt);
+            }
+            @Override public void say(String sx) { j.say = sx; }
+            @Override public void refuse(String sx) { j.refused = sx; }
+            @Override public void remove(String id) {
+                if (!before.parts.containsKey(id)) return;
+                j.removed.add(id);
+                try { send(json("remove").put("id", id)); } catch (Exception ignored) {}
+                ui.post(() -> { TextView t = rows.remove(id); if (t != null) list.removeView(t); onStage.remove(id); });
+            }
+            @Override public void answer(String sx) { j.answer = sx; }
+            @Override public void newBuild(String what) { j.newWhat = what; }
+        });
+        Workshop.Bill b = new Workshop.Bill();
+        try {
+            Workshop.stream(j.engine, Workshop.SYSTEM, Workshop.changeMessage(before.title, before.list(), j.talk), Workshop.CHANGE_OUT,
+                    new Workshop.Sink() { @Override public void text(String sx) { parser.feed(sx); } }, b);
+            parser.finish();
+        } catch (CancellationException x) {
+            failure = "stopped";
+        } catch (Exception x) {
+            failure = Workshop.why(p, x, j.engine.provider);
+            parser.finish();
+        } finally {
+            add(j, b);
+        }
+        List<Part> all;
+        synchronized (j.parts) { all = new ArrayList<>(j.parts.values()); }
+        for (Part pt : all) if (pt.code != null && pt.err == null && !pt.ok) await(j, pt);
+        if (failure == null && j.refused == null && !j.stopped) {
+            for (Part pt : all) {
+                while (!pt.ok && pt.err != null && pt.tries < Workshop.MAX_REPAIRS_CHANGE && j.repairs < Workshop.MAX_REPAIRS_CHANGE && !j.stopped) {
+                    pt.tries++;
+                    j.repairs++;
+                    repair(j, pt);
+                }
+            }
+        }
+        finishTalk(j, before, failure, all);
+    }
+
+    private void finishTalk(Job j, Shown before, String failure, List<Part> all) {
+        Workshop.spend(this, j.rupees, false);
+        String cost = Workshop.money(j.rupees) + (j.estimated ? " (సుమారు)" : "");
+        int ok = 0, bad = 0;
+        for (Part pt : all) { if (pt.ok) ok++; else if (pt.code != null || pt.err != null) bad++; }
+        boolean changed = (ok > 0 || !j.removed.isEmpty()) && failure == null && j.refused == null && !j.stopped && j.answer == null && j.newWhat == null;
+        Shown after = before.copy();
+        String said, line;
+        if (changed) {
+            for (String id : j.removed) after.parts.remove(id);
+            for (Part pt : all) if (pt.ok) after.parts.put(pt.id, new String[]{pt.status, pt.code});
+            after.changes++;
+            String end = j.say != null && !j.say.isEmpty() ? j.say : "మార్చాను Sir.";
+            said = end + " ఈ మార్పుకి " + cost + " అయింది." + (bad > 0 ? " (" + bad + " భాగం రాలేదు, అది పాతదే ఉంచాను.)" : "");
+            line = "✏️ " + (ok + j.removed.size()) + " భాగాలు మారాయి · " + cost + (bad > 0 ? " · " + bad + " రాలేదు" : "");
+        } else if (j.answer != null && failure == null) {
+            said = j.answer;
+            line = "💬 " + j.answer + " · " + cost;
+        } else if (j.newWhat != null && failure == null) {
+            said = null;
+            line = null;
+        } else if (j.refused != null) {
+            said = j.refused;
+            line = "🚫 " + j.refused;
+        } else if ("stopped".equals(failure) || j.stopped) {
+            said = "ఆపేశాను Sir. బొమ్మ ముందులాగే ఉంది; ఖర్చు " + cost + ".";
+            line = "⏹ ఆపేశారు · " + cost;
+        } else if (failure != null) {
+            said = "మార్పు చేయలేకపోయాను Sir: " + failure;
+            line = "✗ " + failure;
+        } else {
+            said = "ఏం మార్చాలో నాకు అర్థం కాలేదు Sir. ఇంకోలా చెప్పండి.";
+            line = "? ఏమీ మారలేదు · " + cost;
+        }
+        after.cost = before.cost + j.rupees;
+        after.estimated |= j.estimated;
+        save(after);
+        final String words = said, status = line;
+        final boolean keep = changed;
+        final String next = j.newWhat != null && failure == null && !j.stopped ? j.newWhat : null;
+        ui.post(() -> {
+            if (job == j) job = null;
+            if (destroyed) return;
+            stopBtn.setVisibility(View.GONE);
+            if (keep) {
+                undo.addFirst(before);
+                while (undo.size() > 5) undo.removeLast();
+                shown = after;
+                // the parts that failed even after a repair: their old version goes back on the stage
+                for (Part pt : all) {
+                    if (pt.ok) continue;
+                    String[] old = before.parts.get(pt.id);
+                    if (old != null) sendPart(pt.id, old[1]);
+                    else { try { send(json("remove").put("id", pt.id)); } catch (Exception ignored) {} }
+                }
+                rows.clear();
+                list.removeAllViews();
+                for (Map.Entry<String, String[]> e : shown.parts.entrySet()) {
+                    onStage.put(e.getKey(), e.getValue()[1]);
+                    row(e.getKey(), "✓ " + e.getValue()[0], Ui.OK);
+                }
+            } else {
+                shown = after; // (the same model; what was spent is added)
+                if (j.parts.size() > 0 || !j.removed.isEmpty()) putOnStage(shown); // (half a change: the model as it was)
+                else { rows.clear(); list.removeAllViews(); for (Map.Entry<String, String[]> e : shown.parts.entrySet()) row(e.getKey(), "✓ " + e.getValue()[0], Ui.OK); }
+            }
+            refreshButtons();
+            if (status != null) setStatus(status);
+            if (words != null) Announcer.say(this, words);
+            if (next != null) start(next, j.talk, false);
+        });
     }
 
     /** The build itself (its own thread): the AI's answer, part by part onto the stage, repairs, saved, said. */
@@ -665,20 +1041,25 @@ public class WorkshopActivity extends Activity {
             said = end + " ఈ బొమ్మకి " + cost + " అయింది." + (ok < all ? " (" + (all - ok) + " భాగాలు రాలేదు.)" : "");
             if (failure != null) said += " (" + failure + ")";
         }
+        Shown made = null;
         if (ok > 0) {
-            try {
-                JSONArray ps = new JSONArray();
-                List<Part> done;
-                synchronized (j.parts) { done = new ArrayList<>(j.parts.values()); }
-                for (Part pt : done) if (pt.ok) ps.put(new JSONObject().put("id", pt.id).put("status", pt.status).put("code", pt.code));
-                JSONObject saved = new JSONObject().put("at", j.at).put("title", j.title != null ? j.title : j.what).put("what", j.what)
-                        .put("model", j.engine.model).put("parts", ps).put("say", j.say == null ? "" : j.say).put("cost", j.rupees)
-                        .put("estimated", j.estimated).put("repairs", j.repairs).put("seconds", secs)
-                        .put("first_part_seconds", j.firstPartAt == 0 ? -1 : (j.firstPartAt - j.at) / 1000)
-                        .put("stopped", j.stopped || failure != null);
-                Workshop.save(this, saved);
-            } catch (Exception ignored) {}
+            made = new Shown();
+            made.at = j.at;
+            made.title = j.title != null ? j.title : j.what;
+            made.what = j.what;
+            made.model = j.engine.model;
+            made.say = j.say;
+            made.cost = j.rupees;
+            made.estimated = j.estimated;
+            made.repairs = j.repairs;
+            made.seconds = secs;
+            made.firstPart = j.firstPartAt == 0 ? -1 : (j.firstPartAt - j.at) / 1000;
+            List<Part> done;
+            synchronized (j.parts) { done = new ArrayList<>(j.parts.values()); }
+            for (Part pt : done) if (pt.ok) made.parts.put(pt.id, new String[]{pt.status, pt.code});
+            save(made);
         }
+        final Shown result = made;
         final String words = said;
         final String line = (j.refused != null ? "🚫 " : ok > 0 ? "✓ " : "✗ ") + (j.refused != null ? j.refused
                 : ok + "/" + all + " భాగాలు · " + cost + " · " + (secs / 60 > 0 ? secs / 60 + " ని " : "") + secs % 60 + " సె"
@@ -686,7 +1067,9 @@ public class WorkshopActivity extends Activity {
         ui.post(() -> {
             if (job == j) job = null;
             if (destroyed) return;
+            if (result != null) shown = result;
             stopBtn.setVisibility(View.GONE);
+            refreshButtons();
             setStatus(line);
             Announcer.say(this, words);
         });
@@ -733,22 +1116,10 @@ public class WorkshopActivity extends Activity {
     // ================================================================ saved builds (no AI, no money)
 
     private void show(JSONObject b) {
-        JSONArray ps = b.optJSONArray("parts");
-        if (ps == null) return;
-        onStage.clear();
-        rows.clear();
-        list.removeAllViews();
-        send(json("reset"));
-        for (int i = 0; i < ps.length(); i++) {
-            JSONObject pt = ps.optJSONObject(i);
-            if (pt == null) continue;
-            String id = pt.optString("id"), code = pt.optString("code");
-            onStage.put(id, code);
-            sendPart(id, code);
-            row(id, "✓ " + pt.optString("status", id), Ui.OK);
-        }
-        titleView.setText(b.optString("title"));
-        chip.setText(label(b.optString("model", "")));
+        if (b.optJSONArray("parts") == null) return;
+        shown = Shown.of(b);
+        undo.clear();
+        putOnStage(shown);
         setStatus("📂 దాచిన బొమ్మ (మళ్ళీ తెరవడానికి ఖర్చు లేదు) · తయారైనప్పుడు " + Workshop.money(b.optDouble("cost", 0))
                 + (b.optBoolean("estimated") ? " (సుమారు)" : ""));
     }
@@ -772,6 +1143,18 @@ public class WorkshopActivity extends Activity {
 
     // ================================================================ lifecycle
 
+    @Override protected void onStart() {
+        super.onStart();
+        started = true;
+        refreshButtons();
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        started = false;
+        openTitle = null;
+    }
+
     @Override protected void onResume() {
         super.onResume();
         showChip();
@@ -785,6 +1168,7 @@ public class WorkshopActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        openTitle = null;
         Job j = job;
         if (j != null) stopJob(j);
         ui.removeCallbacksAndMessages(null);

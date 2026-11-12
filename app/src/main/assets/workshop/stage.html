@@ -10,10 +10,18 @@
   html, body { margin: 0; height: 100%; overflow: hidden; touch-action: none;
     background: radial-gradient(ellipse 70% 60% at 50% 46%, #2b3342 0%, #151a23 46%, #07080b 100%); }
   canvas { display: block; width: 100%; height: 100%; outline: none; }
+  #labels { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+  #lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  #lines line { stroke: rgba(79, 210, 255, 0.8); stroke-width: 1.2; }
+  #lines circle { fill: #4fd2ff; }
+  .lb { position: absolute; left: 0; top: 0; white-space: nowrap; max-width: 44vw; overflow: hidden; text-overflow: ellipsis;
+        font: 500 12px/1.35 system-ui, "Noto Sans Telugu", sans-serif; color: #e8f4ff; background: rgba(8, 14, 20, 0.8);
+        border: 1px solid rgba(79, 210, 255, 0.55); border-radius: 8px; padding: 3px 8px; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="labels"><svg id="lines"></svg></div>
 <script type="module" src="stage.js"></script>
 </body>
 </html>
