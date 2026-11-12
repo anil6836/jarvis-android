@@ -42,7 +42,7 @@ final class Situation {
 
     /** 🛠️ The workshop screen is open: what he says about its model goes there (A2). */
     private static void workshop(StringBuilder s) {
-        String t = WorkshopActivity.openTitle;
+        String t = WorkshopActivity.openTitle();
         if (t == null) return;
         if (t.isEmpty()) { s.append("- 🛠️ The workshop screen is open, with no model on it yet: 'ఒక <object> తయారు చెయ్' -> workshop action=build.\n"); return; }
         s.append("- 🛠️ The workshop screen is open, showing '").append(t).append("'. What he says about that model (change / add / remove a part, ")

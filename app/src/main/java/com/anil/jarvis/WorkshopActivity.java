@@ -68,7 +68,8 @@ import java.util.concurrent.CancellationException;
 public class WorkshopActivity extends Activity {
     static final String EXTRA_WHAT = "what", EXTRA_HEARD = "heard", EXTRA_SAID = "said", EXTRA_OPEN_LAST = "open_last", EXTRA_TALK = "talk";
     /** The name of the model on the stage while this screen is on (Jarvis's brain is told: what he says is about it); else null. */
-    static volatile String openTitle;
+    static volatile String openTitle; // (read through openTitle())
+    private static volatile long stoppedAt; // (when the screen went behind another; 0 = in front)
 
     private static final String HOST = "appassets.androidplatform.net";
     private static final String PATH = "/assets/workshop/";
@@ -386,7 +387,7 @@ public class WorkshopActivity extends Activity {
         undoBtn.setVisibility(has && !undo.isEmpty() && job == null ? View.VISIBLE : View.GONE);
         nightBtn.setText(night ? "☀️ పగలు" : "🌙 రాత్రి");
         spinBtn.setText(spinning ? "⏸ తిప్పడం ఆపు" : "▶️ తిప్పు");
-        openTitle = started ? (has ? shown.title : "") : null;
+        openTitle = has ? shown.title : "";
     }
 
     private TextView pill(String s, View.OnClickListener l) {
@@ -1155,13 +1156,21 @@ public class WorkshopActivity extends Activity {
     @Override protected void onStart() {
         super.onStart();
         started = true;
+        stoppedAt = 0;
         refreshButtons();
     }
 
     @Override protected void onStop() {
         super.onStop();
         started = false;
-        openTitle = null;
+        stoppedAt = System.currentTimeMillis(); // (the full Jarvis screen over it: still "open" for a while, so his words reach it)
+    }
+
+    /** The model on the workshop screen while it is in front or was left within the last 10 minutes; "" = open with no model; null = not open. */
+    static String openTitle() {
+        String t = openTitle;
+        long s = stoppedAt;
+        return t != null && s > 0 && System.currentTimeMillis() - s > 10 * 60_000L ? null : t;
     }
 
     @Override protected void onResume() {

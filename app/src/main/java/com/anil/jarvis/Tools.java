@@ -1632,14 +1632,14 @@ final class Tools {
         if ("talk".equals(action)) {
             String words = heard != null && !heard.trim().isEmpty() ? heard.trim() : what.trim(); // (his own words, not a rewrite)
             if (words.isEmpty()) return err("what_missing", "Ask him in one short line what to change.");
-            if (WorkshopActivity.openTitle == null && Workshop.last(c) == null)
+            if (WorkshopActivity.openTitle() == null && Workshop.last(c) == null)
                 return err("nothing_open", "No model is open or saved yet. Ask what he wants built ('ఒక ___ తయారు చెయ్').");
-            startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_TALK, words).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_TALK, words).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
             return ok().put("next", "Say only: 'సరే Sir.' The workshop answers or makes the change itself and says what it cost.").toString();
         }
         if ("open_last".equals(action)) {
             if (Workshop.last(c) == null) return err("nothing_saved", "No build has been saved yet. Say so and that he can say 'ఒక ___ తయారు చెయ్'.");
-            startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_OPEN_LAST, true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_OPEN_LAST, true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
             return ok().put("next", "Say in one short line that the last build is on the screen (opening it again costs nothing).").toString();
         }
         if (what.trim().isEmpty()) return err("what_missing", "Ask him in one short line what he wants built.");
@@ -1649,7 +1649,7 @@ final class Tools {
         if (over != null) return err("limit_reached", over + " Say exactly this to him.");
         startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_WHAT, what.trim())
                 .putExtra(WorkshopActivity.EXTRA_HEARD, heard == null ? what.trim() : heard).putExtra(WorkshopActivity.EXTRA_SAID, true)
-                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP));
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
         return ok().put("next", "Say only: 'బెంచ్ మీద పెడుతున్నాను Sir.' The workshop screen shows each part and says the cost when it is done.").toString();
     }
 
