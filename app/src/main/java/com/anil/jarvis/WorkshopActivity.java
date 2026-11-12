@@ -642,7 +642,16 @@ public class WorkshopActivity extends Activity {
     }
 
     private void sendPart(String id, String code) {
-        try { send(json("part").put("id", id).put("code", code)); } catch (Exception ignored) {}
+        try { send(json("part").put("id", id).put("code", code).put("label", Workshop.partLabel(statusOf(id), id))); } catch (Exception ignored) {}
+    }
+
+    /** The part's Telugu status line ("బేస్ పెడుతున్నాను"): its name when pulled apart if the code gave its pieces none (builds before A2). */
+    private String statusOf(String id) {
+        Job j = job;
+        Part pt = j == null ? null : j.parts.get(id);
+        if (pt != null && pt.status != null) return pt.status;
+        String[] s = shown == null ? null : shown.parts.get(id);
+        return s == null ? null : s[0];
     }
 
     /** "ok" / "err" for a part, from the stage (on the main thread). */

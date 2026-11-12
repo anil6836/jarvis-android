@@ -239,7 +239,8 @@ function kitFor(rec) {
     obj.userData.explode = Array.isArray(o.explode) ? o.explode.slice(0, 3).map((v) => +v || 0) : [0, 0, 0];
     obj.traverse((x) => { if (x.isMesh) { x.castShadow = true; x.receiveShadow = true; } });
     rec.group.add(obj);
-    rec.pieces.push({ obj, label: obj.userData.label, explode: new THREE.Vector3().fromArray(obj.userData.explode), base: null, box: null });
+    const given = new THREE.Vector3().fromArray(obj.userData.explode);
+    rec.pieces.push({ obj, label: obj.userData.label, given, explode: given.clone(), base: null, box: null });
     return obj;
   };
   w.onTick = (fn) => { if (typeof fn === 'function') rec.ticks.push(fn); };
@@ -272,7 +273,7 @@ function removePart(id) {
   model.remove(r.group);
   dispose(r.group);
   parts.delete(id);
-  labelsDirty = true;
+  autoExplode();
 }
 
 function triangles(o) {
@@ -297,7 +298,8 @@ function fail(id, msg) {
 async function runPart(m) {
   const id = cleanId(m.id);
   removePart(id);
-  const rec = { id, group: new THREE.Group(), ticks: [], pieces: [], tris: 0, box: null, born: 0 };
+  const rec = { id, group: new THREE.Group(), ticks: [], pieces: [], tris: 0, box: null, born: 0, auto: false,
+    label: typeof m.label === 'string' ? m.label.slice(0, 60) : '' };
   rec.group.name = id;
   rec.group.visible = false;
   model.add(rec.group);
@@ -322,8 +324,9 @@ async function runPart(m) {
     pc.box = new THREE.Box3().setFromObject(pc.obj);
     if (pc.box.isEmpty()) pc.box = null;
   }
-  placePieces(rec, ease(explodeK));
-  labelsDirty = true;
+  // (a part with no names and no pull-apart directions, like the builds made before A2: it moves away from the middle, named as a whole)
+  rec.auto = !rec.pieces.some((pc) => pc.label || pc.given.lengthSq() > 0);
+  autoExplode();
   rec.born = performance.now();
   rec.group.visible = true;
   post({ t: 'ok', id, tris: rec.tris });
@@ -367,11 +370,36 @@ function placePieces(rec, e) {
   for (const pc of rec.pieces) if (pc.base) pc.obj.position.copy(pc.base).addScaledVector(pc.explode, e);
 }
 
+// The directions for the "auto" parts: away from the middle of the assembled model, farther for parts farther out.
+function autoExplode() {
+  labelsDirty = true;
+  const all = new THREE.Box3();
+  for (const r of parts.values()) if (r.box) all.union(r.box);
+  if (all.isEmpty()) return;
+  const mid = all.getCenter(new THREE.Vector3());
+  const size = all.getSize(new THREE.Vector3());
+  const big = Math.max(size.x, size.y, size.z) || 1;
+  for (const r of parts.values()) {
+    if (!r.auto || !r.box) continue;
+    const d = r.box.getCenter(new THREE.Vector3()).sub(mid);
+    const v = d.length() > big * 0.04 ? d.clone().multiplyScalar(0.8).addScaledVector(d.clone().normalize(), big * 0.14) : new THREE.Vector3();
+    for (const pc of r.pieces) pc.explode.copy(v);
+  }
+  const e = ease(explodeK);
+  for (const r of parts.values()) placePieces(r, e);
+}
+
 // One name per (part, name): where its pieces sit when assembled, and which way they travel.
 function buildLabels() {
   labelsDirty = false;
   labelGroups = [];
   for (const r of parts.values()) {
+    if (r.auto) { // (one name for the whole part)
+      if (!r.box) continue;
+      const v = r.pieces.length ? r.pieces[0].explode.clone() : new THREE.Vector3();
+      labelGroups.push({ text: r.label || r.id, rec: r, box: r.box.clone(), explode: v, el: null, w: 0, h: 0, center: r.box.getCenter(new THREE.Vector3()) });
+      continue;
+    }
     const byName = new Map();
     for (const pc of r.pieces) {
       if (!pc.label || !pc.box) continue;

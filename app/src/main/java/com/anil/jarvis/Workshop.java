@@ -327,6 +327,22 @@ final class Workshop {
         return b.toString();
     }
 
+    /** (A2) A part's name from its status line: "మోటార్ హౌసింగ్ తయారు చేస్తున్నాను…" → "మోటార్ హౌసింగ్"; nothing left → the id. */
+    static String partLabel(String status, String id) {
+        String t = status == null ? "" : status.replaceAll("[.…!।]+\\s*$", "").replaceAll("\\s+", " ").trim();
+        String[] w = t.isEmpty() ? new String[0] : t.split(" ");
+        int n = w.length;
+        while (n > 1 && (w[n - 1].endsWith("ున్నాను") || w[n - 1].endsWith("ున్నా") || w[n - 1].endsWith("స్తాను") || w[n - 1].endsWith("తాను")
+                || VERB_WORDS.contains(w[n - 1]))) n--;
+        String out = String.join(" ", java.util.Arrays.copyOf(w, n)).replaceAll("[,:;\\-–]+$", "").trim();
+        if (out.isEmpty() || n == w.length && w.length > 0 && (w[n - 1].endsWith("ున్నాను") || w[n - 1].endsWith("ున్నా"))) out = "";
+        if (out.isEmpty()) out = id == null ? "" : id.replace('-', ' ');
+        return out.length() > 40 ? out.substring(0, 40) : out;
+    }
+
+    private static final java.util.Set<String> VERB_WORDS = new java.util.HashSet<>(Arrays.asList("తయారు", "చేస్తున్నాను", "పెడుతున్నాను", "ఇప్పుడు",
+            "వేస్తున్నాను", "కలుపుతున్నాను", "అమరుస్తున్నాను", "బిగిస్తున్నాను", "జోడిస్తున్నాను", "చెక్కుతున్నాను"));
+
     /** (A2) What he said in the workshop that the screen does at once, with no AI and no cost; null = the AI decides. */
     static String command(String text) {
         if (text == null) return null;
