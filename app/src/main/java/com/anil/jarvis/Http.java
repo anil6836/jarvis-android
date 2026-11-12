@@ -127,6 +127,55 @@ final class Http {
         }
     }
 
+    /**
+     * (A4) A multipart POST (a picture with its words: the image-edit API). The same stop, time limits and error
+     * messages as post(). fields: name, value pairs.
+     */
+    static JSONObject postMultipart(String url, String[] fields, String fileField, String fileName, String fileMime, byte[] file,
+                                    String... headers) throws IOException, ApiError {
+        Cancel k = CANCEL.get();
+        if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+        String b = "----jarvis" + Long.toHexString(System.nanoTime());
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        for (int i = 0; i + 1 < fields.length; i += 2) {
+            if (fields[i + 1] == null) continue;
+            body.write(("--" + b + "\r\nContent-Disposition: form-data; name=\"" + fields[i] + "\"\r\n\r\n" + fields[i + 1] + "\r\n").getBytes(StandardCharsets.UTF_8));
+        }
+        body.write(("--" + b + "\r\nContent-Disposition: form-data; name=\"" + fileField + "\"; filename=\"" + fileName + "\"\r\nContent-Type: "
+                + fileMime + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        body.write(file);
+        body.write(("\r\n--" + b + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        byte[] bytes = body.toByteArray();
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        if (k != null) k.conn = c;
+        try {
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(20000);
+            c.setReadTimeout(300000);
+            c.setRequestProperty("Accept", "application/json");
+            for (int i = 0; i + 1 < headers.length; i += 2) c.setRequestProperty(headers[i], headers[i + 1]);
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + b);
+            c.setFixedLengthStreamingMode(bytes.length);
+            c.connect();
+            if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+            try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
+            int status = c.getResponseCode();
+            InputStream in = status >= 400 ? c.getErrorStream() : c.getInputStream();
+            String text = in == null ? "" : readAll(in);
+            if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+            if (status >= 400) throw new ApiError(status, errorMessage(text));
+            try { return new JSONObject(text); }
+            catch (Exception e) { throw new ApiError(status, "Unexpected reply: " + text.substring(0, Math.min(200, text.length()))); }
+        } catch (IOException e) {
+            if (k != null && k.cancelled) throw new java.util.concurrent.CancellationException("stopped");
+            throw e;
+        } finally {
+            if (k != null) k.conn = null;
+            c.disconnect();
+        }
+    }
+
     /** One piece of a streamed answer (server-sent events: each "data:" line is a JSON object). */
     interface Sse { void data(JSONObject piece) throws Exception; }
 

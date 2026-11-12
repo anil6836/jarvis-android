@@ -263,7 +263,9 @@ const cleanId = (s) => (String(s || 'part').toLowerCase().replace(/[^a-z0-9-]+/g
 function dispose(o) {
   o.traverse((x) => {
     if (x.geometry) x.geometry.dispose();
-    if (x.material) (Array.isArray(x.material) ? x.material : [x.material]).forEach((m) => m.dispose());
+    const ms = new Set();
+    for (const m of [x.material, x.userData.m0, x.userData.mg]) for (const y of (m == null ? [] : Array.isArray(m) ? m : [m])) ms.add(y);
+    for (const m of ms) if (!SHARED.has(m)) m.dispose();
   });
 }
 
@@ -271,10 +273,16 @@ function removePart(id, replacing) {
   const r = parts.get(id);
   if (!r) { if (!replacing && repick && repick.id === id) { repick = null; post({ t: 'pick', id: '' }); } return; }
   if (picked && picked.rec === r) { // (its glow goes with it; a part written again keeps his pick)
-    if (replacing) repick = { id, label: picked.label };
+    if (replacing) repick = { id, label: picked.label, whole: picked.objs[0] === r.group };
     else post({ t: 'pick', id: '' });
-    unpick();
+    picked = null;
   } else if (!replacing && repick && repick.id === id) { repick = null; post({ t: 'pick', id: '' }); }
+  if (isolated && isolated.rec === r) { // (alone: the same, written again, stays alone)
+    if (replacing) reiso = { id, label: isolated.label, mode: isolated.mode, whole: isolated.objs[0] === r.group };
+    else post({ t: 'view', id: '', label: '' });
+    isolated = null;
+  } else if (!replacing && reiso && reiso.id === id) { reiso = null; post({ t: 'view', id: '', label: '' }); }
+  if (!replacing) for (let i = hiddenList.length - 1; i >= 0; i--) if (hiddenList[i].id === id) hiddenList.splice(i, 1);
   model.remove(r.group);
   dispose(r.group);
   parts.delete(id);
@@ -338,11 +346,17 @@ async function runPart(m) {
   if (repick && repick.id === id) { // (the part he had tapped, written again: it is still his pick)
     const rp = repick;
     repick = null;
-    const ps = rec.auto ? [] : rec.pieces.filter((pc) => pc.label === rp.label);
-    glow(rec, ps.length ? ps.map((pc) => pc.obj) : [rec.group]);
-    picked.label = rp.label;
+    picked = { rec, objs: objsFor(rec, rp.label, rp.whole), meshes: null, label: rp.label };
+    picked.meshes = meshesOf(picked.objs);
     post({ t: 'pick', id, label: rp.label });
   }
+  if (reiso && reiso.id === id) {
+    const ri = reiso;
+    reiso = null;
+    const objs = objsFor(rec, ri.label, ri.whole);
+    isolated = { rec, objs, meshes: meshesOf(objs), label: ri.label, mode: ri.mode };
+  }
+  look();
   frameAll(false);
   stats();
 }
@@ -350,8 +364,13 @@ async function runPart(m) {
 function stats() { post({ t: 'stats', parts: parts.size, tris: totalTris() }); }
 
 function reset() {
-  unpick();
+  picked = null;
   repick = null;
+  isolated = null;
+  reiso = null;
+  xray = false;
+  hiddenList.length = 0;
+  if (cut.on) { cut.on = false; cut.version++; }
   for (const id of [...parts.keys()]) removePart(id);
   userFrame = false;
   explodeK = explodeGoal = 0;
@@ -367,6 +386,10 @@ let userFrame = false; // (he moved the camera himself: keep his angle, still fo
 
 function modelBox() {
   const b = new THREE.Box3();
+  if (isolated) { // 🔍 alone: that part fills the view
+    for (const o of isolated.objs) b.union(new THREE.Box3().setFromObject(o));
+    if (!b.isEmpty()) return b;
+  }
   const k = ease(explodeGoal);
   for (const r of parts.values()) {
     if (!r.box) continue;
@@ -424,6 +447,7 @@ function buildLabels() {
     }
     for (const g of byName.values()) { g.center = g.box.getCenter(new THREE.Vector3()); labelGroups.push(g); }
   }
+  if (isolated) labelGroups = labelGroups.filter((g) => g.rec === isolated.rec && (isolated.objs[0] === g.rec.group || g.text === isolated.label || g.rec.auto));
   labelGroups = labelGroups.slice(0, 18);
   const box = document.getElementById('labels');
   const svg = document.getElementById('lines');
@@ -448,9 +472,9 @@ function buildLabels() {
 const tmpV = new THREE.Vector3();
 function drawLabels() {
   const box = document.getElementById('labels');
-  const a = ease(explodeK);
-  box.style.opacity = String(Math.max(0, (a - 0.35) / 0.65));
-  if (a < 0.35) return;
+  const a = ease(explodeK), show = Math.max(a, isolated ? 1 : 0);
+  box.style.opacity = String(Math.max(0, (show - 0.35) / 0.65));
+  if (show < 0.35) return;
   if (labelsDirty) buildLabels();
   const w = window.innerWidth, h = window.innerHeight;
   const top = h * inset.top + 6, bottom = h * (1 - inset.bottom) - 6;
@@ -606,8 +630,9 @@ function tick(now) {
   }
   if (picked) { // (a picked piece breathes)
     const k = 0.38 + 0.22 * Math.sin(t * 4.2);
-    for (const it of picked.list) for (const m of (Array.isArray(it.mesh.material) ? it.mesh.material : [it.mesh.material])) if (m.emissive) m.emissiveIntensity = k;
+    for (const x of picked.meshes) for (const m of mats(x.userData.mg)) if (m.emissive) m.emissiveIntensity = k;
   }
+  if (sizeBox && now > sizeUntil) { scene.remove(sizeBox); sizeBox.geometry.dispose(); sizeBox = null; }
   // pulled apart / put back together
   if (explodeK !== explodeGoal) {
     explodeK = explodeGoal > explodeK ? Math.min(explodeGoal, explodeK + dt / 1.1) : Math.max(explodeGoal, explodeK - dt / 0.9);
@@ -629,7 +654,9 @@ function tick(now) {
   camera.position.copy(controls.target).add(off);
   floor.position.y += (goal.floorY - floor.position.y) * a;
   floor.scale.setScalar(floor.scale.x + (goal.radius * 9 - floor.scale.x) * a);
+  tiltStep(dt);
   controls.update();
+  placeCut();
   renderer.render(scene, camera);
   drawLabels();
   // a phone that struggles: draw with fewer pixels rather than stutter
@@ -675,11 +702,37 @@ window.addEventListener('message', (e) => {
       const r = parts.get(cleanId(m.id || ''));
       if (!r) { unpick(); break; }
       const want = typeof m.label === 'string' ? m.label : '';
-      const ps = want && !r.auto ? r.pieces.filter((pc) => pc.label === want) : [];
-      glow(r, ps.length ? ps.map((pc) => pc.obj) : [r.group]);
+      glow(r, objsFor(r, want), want || r.label || r.id);
       break;
     }
     case 'unpick': unpick(); break;
+    case 'pickpart': { // 📋 a row in his list: that whole part
+      const r = parts.get(cleanId(m.id || ''));
+      if (!r) break;
+      if (isolated && isolated.rec !== r) isolate(false);
+      glow(r, [r.group], r.label || r.id);
+      post({ t: 'pick', id: r.id, label: r.label || r.id });
+      break;
+    }
+    case 'isolate': isolate(!!m.on, String(m.mode || 'ghost')); break;
+    case 'xray': setXray(!!m.on); break;
+    case 'hide': { const n = hide(!!m.on, typeof m.match === 'string' ? m.match.toLowerCase() : ''); post({ t: 'hid', id: '', label: n + '/' + hiddenList.length }); break; }
+    case 'showall':
+      isolated = null; reiso = null; xray = false; hiddenList.length = 0; post({ t: 'view', id: '', label: '' });
+      if (cut.on) { cut.on = false; cut.version++; }
+      controls.autoRotate = spinWanted;
+      look(); labelsDirty = true; frameAll(false);
+      break;
+    case 'cut': setCut(m.on === undefined ? undefined : !!m.on, m.k); break;
+    case 'measure': measure(); break;
+    case 'replay': replay(); break;
+    case 'tilt':
+      tilt.on = !!m.on;
+      if (tilt.on) { tilt.x = Math.max(-0.9, Math.min(0.9, +m.x || 0)); tilt.y = Math.max(-0.6, Math.min(0.6, +m.y || 0)); controls.autoRotate = false; }
+      else controls.autoRotate = spinWanted && !cut.on;
+      break;
+    case 'snap': snap(m.req, !!m.clean); break;
+    case 'stl': stl(m.req); break;
     case 'pause': pause(); break;
     case 'resume': resume(); break;
     default: break;
@@ -687,11 +740,23 @@ window.addEventListener('message', (e) => {
 });
 
 // ------------------------------------------------------------------ 👆 a tap picks a piece: it glows, and Jarvis is told its part and name
+// (A4) One "look" decides every mesh's material: its own, glowing (picked), or a see-through blue ghost (🔍 one part alone,
+// 🩻 X-ray); 🙈 hidden pieces; 🔪 the cut. Nothing in a part's own materials is changed except the cut's clipping.
 
 const ray = new THREE.Raycaster();
 const tapAt = new THREE.Vector2();
-let downAt = null, downs = 0, picked = null; // picked: { rec, list: [{ mesh, mat }], label }
-let repick = null; // (the picked part is being written again: { id, label })
+let downAt = null, downs = 0;
+let picked = null;   // { rec, objs, meshes: Set, label }
+let repick = null;   // (the picked part is being written again: { id, label })
+let isolated = null; // 🔍 { rec, objs, meshes: Set, label, mode: 'ghost' | 'hide' }
+let reiso = null;    // (the isolated part is being written again: { id, label, mode })
+let xray = false;
+const hiddenList = []; // 🙈 [{ id, label }] ('' label: the whole part)
+const cut = { on: false, k: 0.5, plane: new THREE.Plane(new THREE.Vector3(1, 0, 0), 0), version: 0 };
+renderer.localClippingEnabled = true;
+const ghostFill = new THREE.MeshBasicMaterial({ color: 0x4fd2ff, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide });
+const ghostLine = new THREE.LineBasicMaterial({ color: 0x4fd2ff, transparent: true, opacity: 0.38, depthWrite: false });
+const SHARED = new Set([ghostFill, ghostLine]);
 
 canvas.addEventListener('pointerdown', (e) => { downs++; downAt = downs === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; });
 canvas.addEventListener('pointercancel', () => { downs = Math.max(0, downs - 1); downAt = null; });
@@ -705,51 +770,319 @@ canvas.addEventListener('pointerup', (e) => {
 
 function shown(o) { for (let x = o; x; x = x.parent) if (!x.visible) return false; return true; }
 function inside(o, root) { for (let x = o; x; x = x.parent) if (x === root) return true; return false; }
+function meshesOf(objs) { const m = new Set(); for (const o of objs) o.traverse((x) => { if (x.isMesh && !x.userData.isEdge) m.add(x); }); return m; }
+
+/** The pieces a name stands for in a part (the whole part for one named from its status line). */
+function objsFor(rec, label, whole) {
+  if (whole || rec.auto || !label) return [rec.group];
+  const ps = rec.pieces.filter((pc) => pc.label === label);
+  return ps.length ? ps.map((pc) => pc.obj) : [rec.group];
+}
 
 function pickAt(x, y) {
   const b = canvas.getBoundingClientRect();
   tapAt.set(((x - b.left) / b.width) * 2 - 1, -((y - b.top) / b.height) * 2 + 1);
   ray.setFromCamera(tapAt, camera);
-  const hit = ray.intersectObject(model, true).find((h) => h.object.isMesh && shown(h.object));
+  const hit = ray.intersectObject(model, true).find((h) => h.object.isMesh && !h.object.userData.isEdge && shown(h.object)
+    && (!isolated || isolated.meshes.has(h.object))); // (alone: only that part answers a tap)
   if (!hit) { if (picked) { unpick(); post({ t: 'pick', id: '' }); } return; }
   for (const rec of parts.values()) {
     if (!inside(hit.object, rec.group)) continue;
     const pc = rec.auto ? null : rec.pieces.find((p) => inside(hit.object, p.obj));
     const label = rec.auto || !pc || !pc.label ? (rec.label || rec.id) : pc.label;
-    const objs = pc && pc.label && !rec.auto ? rec.pieces.filter((p) => p.label === pc.label).map((p) => p.obj) : pc && !rec.auto ? [pc.obj] : [rec.group];
+    const objs = pc && pc.label && !rec.auto ? objsFor(rec, pc.label) : pc && !rec.auto ? [pc.obj] : [rec.group];
     if (picked && picked.rec === rec && picked.label === label) { unpick(); post({ t: 'pick', id: '' }); return; } // (tapped again: let go)
-    glow(rec, objs);
-    picked.label = label;
+    glow(rec, objs, label);
     post({ t: 'pick', id: rec.id, label: label });
     return;
   }
 }
 
-function glow(rec, objs) {
-  unpick();
-  const list = [];
-  const lit = (m) => {
-    const c = m.clone();
-    if (c.color) c.color = c.color.clone().lerp(new THREE.Color(0x2aa8ff), c.emissive ? 0.35 : 0.45); // (a white part shows it too)
-    if (c.emissive) { c.emissive = new THREE.Color(0x2aa8ff); c.emissiveIntensity = 0.45; }
-    return c;
-  };
-  for (const o of objs) o.traverse((x) => {
-    if (!x.isMesh || !x.material) return;
-    list.push({ mesh: x, mat: x.material });
-    x.material = Array.isArray(x.material) ? x.material.map(lit) : lit(x.material);
-  });
-  picked = { rec, list, label: '' };
+function glow(rec, objs, label) {
+  picked = { rec, objs, meshes: meshesOf(objs), label: label || '' };
+  look();
 }
 
 function unpick() {
   if (!picked) return;
-  for (const it of picked.list) {
-    const cur = it.mesh.material;
-    it.mesh.material = it.mat;
-    (Array.isArray(cur) ? cur : [cur]).forEach((m) => m.dispose()); // (only the glowing copies)
-  }
   picked = null;
+  look();
+}
+
+function glowOf(x) {
+  if (!x.userData.mg) {
+    const lit = (m) => {
+      const c = m.clone();
+      if (c.color) c.color = c.color.clone().lerp(new THREE.Color(0x2aa8ff), c.emissive ? 0.35 : 0.45); // (a white part shows it too)
+      if (c.emissive) { c.emissive = new THREE.Color(0x2aa8ff); c.emissiveIntensity = 0.45; }
+      return c;
+    };
+    x.userData.mg = Array.isArray(x.userData.m0) ? x.userData.m0.map(lit) : lit(x.userData.m0);
+  }
+  return x.userData.mg;
+}
+
+function hiddenPiece(rec, pc) {
+  for (const h of hiddenList) if (h.id === rec.id && (!h.label || rec.auto || pc.label === h.label)) return true;
+  return false;
+}
+
+function mats(m) { return m == null ? [] : Array.isArray(m) ? m : [m]; }
+
+/** The cut's clipping on a material (its own side kept to put back). */
+function clipped(m) {
+  for (const x of mats(m)) {
+    if (x.userData.cutV === cut.version) continue;
+    x.userData.cutV = cut.version;
+    if (x.userData.side0 === undefined) x.userData.side0 = x.side;
+    x.clippingPlanes = cut.on ? [cut.plane] : null;
+    x.clipShadows = true;
+    x.side = cut.on ? THREE.DoubleSide : x.userData.side0; // (the inside of a cut shell shows)
+    x.needsUpdate = true;
+  }
+}
+
+/** Every mesh gets what it should look like now. */
+function look() {
+  const iso = isolated ? isolated.meshes : null, pick = picked ? picked.meshes : null;
+  clipped(ghostFill);
+  clipped(ghostLine);
+  for (const r of parts.values()) {
+    for (const pc of r.pieces) {
+      const hid = hiddenPiece(r, pc);
+      pc.obj.traverse((x) => {
+        if (!x.isMesh || x.userData.isEdge) return;
+        if (x.userData.m0 === undefined) { x.userData.m0 = x.material; x.userData.v0 = x.visible; x.userData.s0 = x.castShadow; }
+        const solid = iso ? iso.has(x) : !xray || (pick && pick.has(x));
+        const gone = (iso && !iso.has(x) && isolated.mode === 'hide') || (x === pc.obj && hid);
+        x.material = !solid ? ghostFill : pick && pick.has(x) && !iso ? glowOf(x) : x.userData.m0; // (alone: its own colours)
+        clipped(x.userData.m0);
+        if (x.userData.mg) clipped(x.userData.mg);
+        x.visible = !gone && x.userData.v0;
+        x.castShadow = solid && x.userData.s0;
+        let e = x.userData.edges;
+        if (!solid && !e && !x.isInstancedMesh && x.geometry) {
+          try {
+            e = new THREE.LineSegments(new THREE.EdgesGeometry(x.geometry, 28), ghostLine);
+            e.userData.isEdge = true;
+            e.raycast = () => {};
+            x.add(e);
+            x.userData.edges = e;
+          } catch (err) { e = null; }
+        }
+        if (e) e.visible = !solid;
+      });
+      if (!pc.obj.isMesh) { if (pc.obj.userData.gv0 === undefined) pc.obj.userData.gv0 = pc.obj.visible; pc.obj.visible = !hid && pc.obj.userData.gv0; }
+    }
+  }
+}
+
+// ------------------------------------------------------------------ 🔍 one part alone, 🩻 X-ray, 🙈 hide, 🔪 cut (A4, ₹0)
+
+function isolate(on, mode) {
+  if (!on) { isolated = null; reiso = null; look(); labelsDirty = true; frameAll(false); post({ t: 'view', id: '', label: '' }); return; }
+  if (!picked) { post({ t: 'view', id: '', label: 'nothing-picked' }); return; }
+  isolated = { rec: picked.rec, objs: picked.objs, meshes: picked.meshes, label: picked.label, mode: mode === 'hide' ? 'hide' : 'ghost' };
+  controls.autoRotate = spinWanted;
+  goal.zoom = 1;
+  goal.dir = null;
+  userFrame = false;
+  labelsDirty = true;
+  look();
+  frameAll(false);
+  post({ t: 'view', id: isolated.rec.id, label: isolated.label });
+}
+
+function setXray(on) { xray = !!on; look(); }
+
+/** 🙈 hide / show: the picked piece, or a part by a word in its id or name ("roof" / "పైకప్పు"). */
+function hide(on, match) {
+  if (!on) {
+    if (match) { for (let i = hiddenList.length - 1; i >= 0; i--) if (matches(hiddenList[i], match)) hiddenList.splice(i, 1); }
+    else hiddenList.length = 0;
+    look();
+    frameAll(false);
+    return 0;
+  }
+  let n = 0;
+  if (match) {
+    for (const r of parts.values()) if (r.id.includes(match) || (r.label || '').toLowerCase().includes(match)) { hiddenList.push({ id: r.id, label: '' }); n++; }
+  } else if (picked) {
+    hiddenList.push({ id: picked.rec.id, label: picked.rec.auto || picked.objs[0] === picked.rec.group ? '' : picked.label });
+    n = 1;
+    picked = null;
+    post({ t: 'pick', id: '' });
+  }
+  look();
+  frameAll(false);
+  return n;
+}
+function matches(h, match) { const r = parts.get(h.id); return h.id.includes(match) || (r && (r.label || '').toLowerCase().includes(match)); }
+
+function setCut(on, k) {
+  if (on !== undefined) cut.on = !!on;
+  if (k !== undefined && isFinite(+k)) cut.k = Math.max(0, Math.min(1, +k));
+  cut.version++;
+  if (cut.on) { controls.autoRotate = false; }
+  else controls.autoRotate = spinWanted && !isolated;
+  look();
+}
+
+/** 🔪 The cut faces the camera: the near half of the model is taken off, so its inside shows. */
+const fwd = new THREE.Vector3();
+function placeCut() {
+  if (!cut.on) return;
+  const b = new THREE.Box3();
+  for (const r of parts.values()) if (r.box) b.union(r.box);
+  if (b.isEmpty()) return;
+  fwd.copy(controls.target).sub(camera.position);
+  fwd.y = 0;
+  if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1);
+  fwd.normalize();
+  const mid = b.getCenter(new THREE.Vector3());
+  const half = Math.max(0.5, b.getSize(new THREE.Vector3()).length() / 2);
+  const at = mid.clone().addScaledVector(fwd, (cut.k - 0.5) * 2 * half);
+  cut.plane.setFromNormalAndCoplanarPoint(fwd, at); // (what is nearer the camera than the plane is clipped)
+}
+
+// ------------------------------------------------------------------ 📏 size, 🎬 the build played again, 📱 tilt
+
+let sizeBox = null, sizeUntil = 0;
+function measure() {
+  const b = new THREE.Box3();
+  let id = '', label = '';
+  if (picked) {
+    id = picked.rec.id;
+    label = picked.label;
+    const asm = picked.objs[0] === picked.rec.group ? [picked.rec.box] : picked.rec.pieces.filter((pc) => picked.objs.includes(pc.obj)).map((pc) => pc.box);
+    for (const x of asm) if (x) b.union(x);
+  } else {
+    for (const r of parts.values()) if (r.box) b.union(r.box);
+  }
+  if (b.isEmpty()) return;
+  const s = b.getSize(new THREE.Vector3());
+  post({ t: 'size', id, label, w: Math.round(s.x * 10) / 10, h: Math.round(s.y * 10) / 10, d: Math.round(s.z * 10) / 10 });
+  if (sizeBox) { scene.remove(sizeBox); sizeBox.geometry.dispose(); }
+  const now = new THREE.Box3();
+  if (picked) for (const o of picked.objs) now.union(new THREE.Box3().setFromObject(o)); else now.copy(modelBox());
+  sizeBox = new THREE.Box3Helper(now, 0x4fd2ff);
+  scene.add(sizeBox);
+  sizeUntil = performance.now() + 8000;
+}
+
+let replayAt = 0;
+function replay() {
+  const list = [...parts.values()];
+  if (!list.length) return;
+  list.forEach((r) => { r.group.visible = false; r.born = 0; });
+  replayAt = 0;
+  list.forEach((r, i) => setTimeout(() => {
+    if (parts.get(r.id) !== r) return;
+    r.group.visible = true;
+    r.born = performance.now();
+    post({ t: 'replay', id: r.id, label: String(i + 1) + '/' + list.length });
+  }, 350 + i * 520));
+}
+
+const tilt = { on: false, x: 0, y: 0, ax: 0, ay: 0 }; // (wanted, and applied so far)
+function tiltStep(dt) {
+  if (!tilt.on && Math.abs(tilt.ax) < 1e-4 && Math.abs(tilt.ay) < 1e-4) return;
+  const gx = tilt.on ? tilt.x : 0, gy = tilt.on ? tilt.y : 0;
+  const a = 1 - Math.exp(-dt * 8);
+  const nx = tilt.ax + (gx - tilt.ax) * a, ny = tilt.ay + (gy - tilt.ay) * a;
+  const off = camera.position.clone().sub(controls.target);
+  off.applyAxisAngle(new THREE.Vector3(0, 1, 0), -(nx - tilt.ax)); // (around)
+  const side = new THREE.Vector3(0, 1, 0).cross(off).normalize();
+  const turned = off.clone().applyAxisAngle(side, -(ny - tilt.ay)); // (up / down, never over the top)
+  const el = Math.asin(Math.max(-1, Math.min(1, turned.y / turned.length())));
+  if (el > -0.2 && el < 1.45) off.copy(turned);
+  camera.position.copy(controls.target).add(off);
+  tilt.ax = nx;
+  tilt.ay = ny;
+}
+
+// ------------------------------------------------------------------ 📸 a picture, 🖨️ a print file: only when Jarvis asks (A4)
+
+function b64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/** What he sees (clean: his own colours only, no glow, ghosts or cut), on the studio backdrop, as a JPEG. */
+function snap(req, clean) {
+  const keep = { picked, isolated, xray, cutOn: cut.on };
+  if (clean) { picked = null; isolated = null; xray = false; if (cut.on) { cut.on = false; cut.version++; } look(); }
+  if (sizeBox) sizeBox.visible = false;
+  renderer.render(scene, camera);
+  if (sizeBox) sizeBox.visible = true;
+  // (only the part of the stage he sees between the bars)
+  const sy = Math.round(canvas.height * inset.top), sh = Math.max(1, Math.round(canvas.height * (1 - inset.top - inset.bottom)));
+  const w = canvas.width, h = sh, k = Math.min(1, 1600 / Math.max(w, h));
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * k);
+  c.height = Math.round(h * k);
+  const g = c.getContext('2d');
+  const r = g.createRadialGradient(c.width / 2, c.height * 0.46, 0, c.width / 2, c.height * 0.46, Math.max(c.width, c.height) * 0.62);
+  r.addColorStop(0, '#2b3342');
+  r.addColorStop(0.46, '#151a23');
+  r.addColorStop(1, '#07080b');
+  g.fillStyle = r;
+  g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(canvas, 0, sy, w, sh, 0, 0, c.width, c.height);
+  const url = c.toDataURL('image/jpeg', 0.92);
+  if (clean) { picked = keep.picked; isolated = keep.isolated; xray = keep.xray; if (keep.cutOn) { cut.on = true; cut.version++; } look(); }
+  post({ t: 'file', req: String(req || ''), kind: 'jpg', data: url.slice(url.indexOf(',') + 1) });
+}
+
+/** 🖨️ The solid parts he sees, put together, as a binary STL: Z up, millimetres, the longest side 100 mm. */
+function stl(req) {
+  const e = ease(explodeK);
+  for (const r of parts.values()) placePieces(r, 0); // (assembled)
+  model.updateMatrixWorld(true);
+  const tris = [];
+  const v = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const inst = new THREE.Matrix4(), world = new THREE.Matrix4();
+  const box = new THREE.Box3();
+  for (const r of parts.values()) {
+    if (!r.group.visible) continue;
+    r.group.traverse((x) => {
+      if (!x.isMesh || x.userData.isEdge || !x.geometry || !shown(x)) return;
+      if (isolated && !isolated.meshes.has(x)) return;
+      const pos = x.geometry.attributes.position, idx = x.geometry.index;
+      if (!pos) return;
+      const n = x.isInstancedMesh ? x.count : 1;
+      for (let j = 0; j < n; j++) {
+        world.copy(x.matrixWorld);
+        if (x.isInstancedMesh) { x.getMatrixAt(j, inst); world.multiply(inst); }
+        const count = idx ? idx.count : pos.count;
+        for (let i = 0; i + 2 < count; i += 3) {
+          for (let q = 0; q < 3; q++) { v[q].fromBufferAttribute(pos, idx ? idx.getX(i + q) : i + q).applyMatrix4(world); box.expandByPoint(v[q]); }
+          tris.push(v[0].x, v[0].y, v[0].z, v[1].x, v[1].y, v[1].z, v[2].x, v[2].y, v[2].z);
+        }
+      }
+    });
+  }
+  for (const r of parts.values()) placePieces(r, e);
+  const n = tris.length / 9;
+  if (!n || box.isEmpty()) { post({ t: 'file', req: String(req || ''), kind: 'stl', data: '' }); return; }
+  const size = box.getSize(new THREE.Vector3()), k = 100 / Math.max(size.x, size.y, size.z);
+  const buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
+  const head = 'Jarvis workshop model (original design) - mm';
+  for (let i = 0; i < 80; i++) dv.setUint8(i, i < head.length ? head.charCodeAt(i) : 32);
+  dv.setUint32(80, n, true);
+  const a = new THREE.Vector3(), b2 = new THREE.Vector3(), c2 = new THREE.Vector3(), nn = new THREE.Vector3();
+  let o = 84;
+  for (let t = 0; t < n; t++) {
+    const P = (q) => new THREE.Vector3((tris[t * 9 + q * 3] - box.min.x) * k, -(tris[t * 9 + q * 3 + 2] - box.max.z) * k, (tris[t * 9 + q * 3 + 1] - box.min.y) * k);
+    a.copy(P(0)); b2.copy(P(1)); c2.copy(P(2)); // (three's Y up → the printer's Z up; on the bed at z 0)
+    nn.subVectors(b2, a).cross(new THREE.Vector3().subVectors(c2, a)).normalize();
+    for (const w of [nn, a, b2, c2]) { dv.setFloat32(o, w.x, true); dv.setFloat32(o + 4, w.y, true); dv.setFloat32(o + 8, w.z, true); o += 12; }
+    dv.setUint16(o, 0, true);
+    o += 2;
+  }
+  post({ t: 'file', req: String(req || ''), kind: 'stl', data: b64(new Uint8Array(buf)), tris: n,
+    w: Math.round(size.x * k), h: Math.round(size.z * k), d: Math.round(size.y * k) });
 }
 
 canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); post({ t: 'warn', id: 'stage', msg: 'webgl context lost' }); });

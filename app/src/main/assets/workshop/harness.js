@@ -8,7 +8,7 @@
   var toJarvis = [];        // (said by the stage before Jarvis's port came)
   var stageReady = false;
   var toStage = [];         // (sent by Jarvis before the stage was ready)
-  var KINDS = { ready: 1, ok: 1, err: 1, warn: 1, stats: 1, pick: 1 };
+  var KINDS = { ready: 1, ok: 1, err: 1, warn: 1, stats: 1, pick: 1, view: 1, size: 1, hid: 1, replay: 1, file: 1 };
 
   function clean(d) {
     if (!d || typeof d !== 'object' || typeof d.t !== 'string' || !KINDS[d.t]) return null;
@@ -18,6 +18,12 @@
     if (typeof d.tris === 'number' && isFinite(d.tris)) o.tris = Math.round(d.tris);
     if (typeof d.parts === 'number' && isFinite(d.parts)) o.parts = Math.round(d.parts);
     if (typeof d.label === 'string') o.label = d.label.slice(0, 60);
+    ['w', 'h', 'd', 'tris'].forEach(function (k) { if (typeof d[k] === 'number' && isFinite(d[k])) o[k] = d[k]; });
+    if (d.t === 'file') { // (a picture or a print file Jarvis asked for: base64, at most ~30 MB; Jarvis checks it)
+      if (typeof d.req === 'string') o.req = d.req.slice(0, 40);
+      if (d.kind === 'jpg' || d.kind === 'stl') o.kind = d.kind;
+      if (typeof d.data === 'string' && d.data.length <= 40000000) o.data = d.data;
+    }
     return o;
   }
 

@@ -112,7 +112,7 @@ public class SettingsActivity extends Activity {
     private TextView coughGapText;
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
-    private EditText workshopModel, workshopLimit; // 🛠️
+    private EditText workshopModel, workshopLimit, workshopImageModel; // 🛠️
     private TextView wsSpent; // (this month's workshop spend: shown again after 🧪 and when he comes back)
     private TextView voiceInfo, notifyInfo, checkInfo, crashInfo, crashCopy, crashClear;
     private TextView backupInfo, backupSetBtn;
@@ -554,6 +554,18 @@ public class SettingsActivity extends Activity {
         note("వర్క్‌షాప్ ముందు ఉన్నప్పుడు \"Jarvis\" అంటే ప్యానెల్ రాదు: వర్క్‌షాప్ తనే వింటుంది (🎙️ నొక్కినా వింటుంది). "
                 + "మాటతో చెప్పిన డబ్బు అయ్యే పని 3 సెకన్లు ఆగుతుంది: తప్పుగా విన్నట్టు అనిపిస్తే \"వద్దు\" అనండి లేదా ✋ నొక్కండి. "
                 + "బొమ్మలో ఒక భాగం తాకితే అది మెరుస్తుంది; \"ఇది ఏం చేస్తుంది?\", \"ఇది వివరంగా చెప్పు\" అంటే ఆ భాగం గురించే చెబుతుంది.");
+        // 🖼️ (A4) the image AI for studio / miniature photos of a model: his own choice, empty until he picks one
+        workshopImageModel = field("🖼️ స్టూడియో ఫోటో AI (ఖాళీ = ఇంకా ఎంచుకోలేదు)", prefs.workshopImageModel(), false);
+        TextView wsImgAll = Ui.text(this, "📋 అన్ని మోడల్స్ చూపించు", 14, Ui.CYAN);
+        wsImgAll.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 4));
+        wsImgAll.setOnClickListener(v -> Models.pick(this, "స్టూడియో ఫోటో AI ఎంచుకోండి",
+                new String[]{Prefs.OPENAI, Prefs.GEMINI},
+                new String[]{openAiKey.getText().toString(), geminiKey.getText().toString()},
+                workshopImageModel.getText().toString(), it -> chose(workshopImageModel, "workshop_image_model", it.id)));
+        boxOf(workshopImageModel).addView(wsImgAll);
+        note("బొమ్మలు గీసే మోడల్ పేరు మాత్రమే: OpenAI అయితే gpt-image… , Gemini అయితే పేరులో image ఉన్నది. Claude బొమ్మలు గీయదు. "
+                + "🖼️ స్టూడియో / 🏠 మినియేచర్ ఫోటో ఒక్కోటి సుమారు ₹1–15 (మోడల్‌ని బట్టి), వర్క్‌షాప్ నెల ఖర్చులో, హద్దులో కలుస్తుంది. "
+                + "📸 ఫోటో, 🖨️ ప్రింట్ ఫైల్ (STL), 🔍 ఒక్కటే, 🩻 ఎక్స్-రే, 🔪 లోపల, 📏 కొలతలు, 🎬 తయారీ, 📱 వంచు: AI అవసరం లేదు, ₹0.");
         TextView wsOpen = Ui.text(this, "🛠️ వర్క్‌షాప్ తెరువు →", 15, accent);
         wsOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         wsOpen.setOnClickListener(v -> { autosave(); WorkshopActivity.open(this, null, null, false); });
@@ -2426,6 +2438,7 @@ public class SettingsActivity extends Activity {
         e.putString("openai_model", openAiModel.getText().toString().trim());
         e.putString("code_model", codeModel.getText().toString().trim());
         if (workshopModel != null) e.putString("workshop_model", workshopModel.getText().toString().trim().replaceFirst("^models/", ""));
+        if (workshopImageModel != null) e.putString("workshop_image_model", workshopImageModel.getText().toString().trim().replaceFirst("^models/", ""));
         if (workshopLimit != null) {
             int lim = Workshop.DEFAULT_LIMIT;
             try { lim = Math.max(0, Math.min(1000000, Integer.parseInt(workshopLimit.getText().toString().trim()))); } catch (Exception ignored) {}

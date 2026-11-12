@@ -342,6 +342,8 @@ final class Prefs {
     String workshopModel() { return sp.getString("workshop_model", ""); }
     /** 🛠️ The workshop's spending limit for a month, in rupees (no new build starts once this month's spend reaches it). */
     int workshopLimit() { return sp.getInt("workshop_limit", Workshop.DEFAULT_LIMIT); }
+    /** 🖼️ (A4) The image AI that turns a workshop model into a studio / miniature photo: his own choice, empty until he picks. */
+    String workshopImageModel() { return sp.getString("workshop_image_model", ""); }
     /** GitHub token (on the phone only): puts websites online and builds his apps. */
     String githubToken() { return sp.getString("github_token", ""); }
     String lastSite() { return sp.getString("last_site", ""); }

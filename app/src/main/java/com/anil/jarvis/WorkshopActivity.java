@@ -115,6 +115,22 @@ public class WorkshopActivity extends Activity {
     private TextView answerTitle, answerBody;
     private final Runnable unglow = this::glowPicked;
 
+    // (A4) 🔍 one part alone, 🩻 X-ray, 🔪 the cut, 🙈 hidden, 📱 tilt; 📸 / 🖨️ / 🖼️ what the stage hands over
+    private TextView isoBtn, xrayBtn, cutBtn, hideBtn, allBtn, sizeBtn, snapBtn, studioBtn, stlBtn, replayBtn, tiltBtn, rotBtn;
+    private LinearLayout cutRow;
+    private boolean isolatedOn, xrayOn, cutOn, tiltOn, landscape;
+    private int hiddenCount;
+    /** The picture / print file asked of the stage (its one-time id) and what it is for: photo, stl, studio, mini. */
+    private String fileReq, fileFor;
+    private android.hardware.SensorManager sensors;
+    private android.hardware.SensorEventListener tiltL;
+    private float[] tilt0;
+    private long tiltSent;
+    private static final int REQ_CAM = 61, REQ_GAL = 62, REQ_CAM_PERM = 63;
+    private int photoKind = Workshop.PHOTO;
+    /** The last hide asked: "hide", "roof_off", "roof_on" (its answer says what happened). */
+    private String lastHide;
+
     /** The model on the stage now (a finished build or a saved one): what a change is made to, and what is saved. */
     private Shown shown;
     /** Up to 5 models as they were before each change ("↩️ వెనక్కి" puts the last one back, with no AI). */
@@ -197,6 +213,9 @@ public class WorkshopActivity extends Activity {
         /** (A3) the long answer was asked; the part an answer is about; the part he had tapped. */
         boolean detail;
         String about, pickedId, pickedName;
+        /** (A4) a build from his photo (JPEG, base64; never saved) and what it is: a thing or a floor plan. */
+        String photo;
+        int photoKind;
         final List<String> removed = new ArrayList<>();
         /** Written by the build's thread, read by the screen: one lock (iterate inside synchronized (parts)). */
         final Map<String, Part> parts = java.util.Collections.synchronizedMap(new LinkedHashMap<>());
@@ -232,7 +251,10 @@ public class WorkshopActivity extends Activity {
             finish();
             return;
         }
+        landscape = getSharedPreferences(Workshop.PREFS, MODE_PRIVATE).getBoolean("landscape", false);
+        if (landscape) setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         build();
+        fit(getResources().getConfiguration());
         newStage();
         ear = new WorkshopVoice(owner(), p);
         Intent i = getIntent();
@@ -300,6 +322,11 @@ public class WorkshopActivity extends Activity {
         chip.setBackground(Ui.round(this, 0x2216303F, Ui.CYAN_DIM, 999));
         chip.setPadding(dp(10), dp(4), dp(10), dp(4));
         top.addView(chip);
+        rotBtn = Ui.text(this, "🔄", 19, Ui.TEXT);
+        rotBtn.setPadding(dp(14), dp(6), dp(4), dp(6));
+        rotBtn.setContentDescription("అడ్డంగా / నిలువుగా");
+        rotBtn.setOnClickListener(v -> turnScreen(!landscape));
+        top.addView(rotBtn);
         TextView close = Ui.text(this, "✕", 22, Ui.TEXT);
         close.setPadding(dp(16), dp(6), dp(8), dp(6));
         close.setContentDescription("మూసేయి");
@@ -344,16 +371,58 @@ public class WorkshopActivity extends Activity {
         TextView fresh = pill("🆕 కొత్తది", v -> command("new", false));
         cancelBtn = pill("✋ వద్దు", v -> cancelWait(true));
         cancelBtn.setVisibility(View.GONE);
+        isoBtn = pill("🔍 ఒక్కటే", v -> command(isolatedOn ? "showall" : "alone", false));
+        xrayBtn = pill("🩻 ఎక్స్-రే", v -> command("xray", false));
+        cutBtn = pill("🔪 లోపల", v -> command(cutOn ? "cut_off" : "cut", false));
+        hideBtn = pill("🙈 దాచు", v -> command("hide", false));
+        allBtn = pill("👁️ అన్నీ చూపించు", v -> command("showall", false));
+        sizeBtn = pill("📏 కొలతలు", v -> command("measure", false));
+        snapBtn = pill("📸 ఫోటో", v -> command("photo", false));
+        studioBtn = pill("🖼️ స్టూడియో", v -> studioChoice());
+        stlBtn = pill("🖨️ ప్రింట్ ఫైల్", v -> command("stl", false));
+        replayBtn = pill("🎬 తయారీ", v -> command("replay", false));
+        tiltBtn = pill("📱 వంచు", v -> command(tiltOn ? "tilt_off" : "tilt_on", false));
+        TextView fromPhoto = pill("📷 ఫోటో నుంచి 3D", v -> photoChoice());
         actions.addView(cancelBtn);
         actions.addView(stopBtn);
         actions.addView(explodeBtn);
         actions.addView(undoBtn);
+        actions.addView(isoBtn);
+        actions.addView(hideBtn);
+        actions.addView(allBtn);
+        actions.addView(xrayBtn);
+        actions.addView(cutBtn);
+        actions.addView(sizeBtn);
+        actions.addView(snapBtn);
+        actions.addView(studioBtn);
+        actions.addView(stlBtn);
+        actions.addView(replayBtn);
+        actions.addView(tiltBtn);
+        actions.addView(fromPhoto);
         actions.addView(saved);
         actions.addView(cost);
         actions.addView(spinBtn);
         actions.addView(view);
         actions.addView(nightBtn);
         actions.addView(fresh);
+        // 🔪 where the cut is: a slider while it is on
+        cutRow = new LinearLayout(this);
+        cutRow.setGravity(Gravity.CENTER_VERTICAL);
+        cutRow.addView(Ui.text(this, "🔪 ముందు", 12.5f, Ui.MUTED));
+        android.widget.SeekBar cutBar = new android.widget.SeekBar(this);
+        cutBar.setMax(100);
+        cutBar.setProgress(50);
+        cutBar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(android.widget.SeekBar sb, int v, boolean user) {
+                if (user) { try { send(json("cut").put("k", v / 100.0)); } catch (Exception ignored) {} }
+            }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar sb) {}
+            @Override public void onStopTrackingTouch(android.widget.SeekBar sb) {}
+        });
+        cutRow.addView(cutBar, new LinearLayout.LayoutParams(0, -2, 1));
+        cutRow.addView(Ui.text(this, "వెనుక", 12.5f, Ui.MUTED));
+        cutRow.setVisibility(View.GONE);
+        bottom.addView(cutRow);
         HorizontalScrollView hs = new HorizontalScrollView(this);
         hs.setHorizontalScrollBarEnabled(false);
         hs.addView(actions);
@@ -452,6 +521,18 @@ public class WorkshopActivity extends Activity {
                 : has ? "ఏం మార్చాలి? ఉదా: రెక్కలు నీలం చెయ్ · విడదీయి · 👆 భాగం తాకండి" : "ఏం తయారు చేయాలి? ఉదా: ఒక టేబుల్ ఫ్యాన్");
         explodeBtn.setVisibility(has ? View.VISIBLE : View.GONE);
         explodeBtn.setText(exploded ? "🧩 కలుపు" : "💥 విడదీయి");
+        if (isoBtn != null) {
+            isoBtn.setVisibility(has && (pickedId != null || isolatedOn) ? View.VISIBLE : View.GONE);
+            isoBtn.setText(isolatedOn ? "🧩 అన్నీ" : "🔍 ఒక్కటే");
+            hideBtn.setVisibility(has && pickedId != null ? View.VISIBLE : View.GONE);
+            allBtn.setVisibility(has && (isolatedOn || xrayOn || cutOn || hiddenCount > 0) ? View.VISIBLE : View.GONE);
+            xrayBtn.setText(xrayOn ? "🩻 ఎక్స్-రే ఆపు" : "🩻 ఎక్స్-రే");
+            cutBtn.setText(cutOn ? "🔪 కోత తీసేయి" : "🔪 లోపల");
+            tiltBtn.setText(tiltOn ? "📱 వంచడం ఆపు" : "📱 వంచు");
+            for (TextView t : new TextView[]{xrayBtn, cutBtn, sizeBtn, snapBtn, studioBtn, stlBtn, replayBtn, tiltBtn})
+                t.setVisibility(has ? View.VISIBLE : View.GONE);
+            cutRow.setVisibility(has && cutOn ? View.VISIBLE : View.GONE);
+        }
         undoBtn.setVisibility(has && !undo.isEmpty() && job == null ? View.VISIBLE : View.GONE);
         nightBtn.setText(night ? "☀️ పగలు" : "🌙 రాత్రి");
         spinBtn.setText(spinning ? "⏸ తిప్పడం ఆపు" : "▶️ తిప్పు");
@@ -708,9 +789,73 @@ public class WorkshopActivity extends Activity {
                 send(json("reset"));
                 titleView.setText("");
                 forgetPick();
+                viewReset();
                 setStatus("ఏం తయారు చేయాలో కింద రాయండి Sir, లేదా \"Jarvis, ఒక డ్రోన్ తయారు చెయ్\" అనండి.");
                 input.requestFocus();
                 break;
+            // ---- (A4) the view tools, ₹0
+            case "alone": case "alone_hide":
+                if (!has) { said = "ముందు ఒక బొమ్మ తయారు చేయనివ్వండి Sir."; break; }
+                if (pickedId == null) { said = "ముందు బొమ్మలో ఒక భాగం తాకండి Sir (లేదా కింద జాబితాలో దాని పేరు)."; break; }
+                try { send(json("isolate").put("on", true).put("mode", "alone_hide".equals(cmd) ? "hide" : "ghost")); } catch (Exception ignored) {}
+                said = (pickedName != null ? pickedName : "ఈ భాగం") + " ఒక్కటే Sir." + ("alone_hide".equals(cmd) ? "" : " మిగతావి మసకగా ఉన్నాయి.");
+                break;
+            case "showall":
+                send(json("showall"));
+                isolatedOn = false; xrayOn = false; cutOn = false; hiddenCount = 0;
+                if (has) said = "అన్నీ చూపిస్తున్నాను Sir.";
+                break;
+            case "xray":
+                if (!has) break;
+                xrayOn = !xrayOn;
+                try { send(json("xray").put("on", xrayOn)); } catch (Exception ignored) {}
+                said = xrayOn ? "ఎక్స్-రే Sir." : "ఎక్స్-రే ఆపాను.";
+                break;
+            case "cut": case "cut_off":
+                if (!has) break;
+                cutOn = "cut".equals(cmd);
+                try { send(json("cut").put("on", cutOn).put("k", 0.5)); } catch (Exception ignored) {}
+                said = cutOn ? "సగానికి కోసి చూపిస్తున్నాను Sir. కింద జారే గీతతో కోత జరపొచ్చు." : "కోత తీసేశాను.";
+                break;
+            case "hide":
+                if (!has) break;
+                if (pickedId == null) { said = "ఏ భాగం దాచాలో ముందు దాన్ని తాకండి Sir."; break; }
+                lastHide = "hide";
+                try { send(json("hide").put("on", true)); } catch (Exception ignored) {}
+                break;
+            case "roof_off": case "roof_on":
+                if (!has) break;
+                lastHide = cmd;
+                try { send(json("hide").put("on", "roof_off".equals(cmd)).put("match", "roof")); } catch (Exception ignored) {}
+                if ("roof_on".equals(cmd)) said = "పైకప్పు పెట్టాను Sir.";
+                break;
+            case "measure":
+                if (!has) break;
+                send(json("measure"));
+                break;
+            case "replay":
+                if (!has) break;
+                send(json("replay"));
+                said = "ఎలా తయారైందో మళ్ళీ చూపిస్తున్నాను Sir.";
+                break;
+            case "tilt_on": case "tilt_off":
+                if (!has) break;
+                tilt("tilt_on".equals(cmd));
+                said = tiltOn ? "ఫోన్ కొంచెం వంచితే బొమ్మ చుట్టూ చూడొచ్చు Sir." : "వంచడం ఆపాను.";
+                break;
+            case "photo": case "stl":
+                if (!has) break;
+                askFile("photo".equals(cmd) ? "photo" : "stl");
+                said = "photo".equals(cmd) ? null : "ప్రింట్ ఫైల్ తయారు చేస్తున్నాను Sir.";
+                break;
+            case "studio": case "mini":
+                if (!has) break;
+                if (byVoice) { final String what = cmd; waitThen("studio".equals(cmd) ? "స్టూడియో ఫోటో" : "మినియేచర్ ఫోటో", () -> studio("mini".equals(what))); }
+                else studio("mini".equals(cmd));
+                break;
+            case "fromphoto": photoChoice(); break;
+            case "plan": photoKind = Workshop.PLAN; pickPhoto(Workshop.PLAN); break;
+            case "landscape": case "portrait": turnScreen("landscape".equals(cmd)); break;
             default: break;
         }
         refreshButtons();
@@ -733,6 +878,7 @@ public class WorkshopActivity extends Activity {
     /** The whole model onto a cleared stage (a saved build, an undo): no AI. */
     private void putOnStage(Shown sh) {
         forgetPick();
+        viewReset();
         onStage.clear();
         rows.clear();
         list.removeAllViews();
@@ -879,6 +1025,34 @@ public class WorkshopActivity extends Activity {
         try { m = new JSONObject(data); } catch (Exception e) { return; }
         String t = m.optString("t"), id = m.optString("id");
         if ("pick".equals(t)) { picked(id, m.optString("label")); return; }
+        if ("view".equals(t)) {
+            if (id.isEmpty()) { isolatedOn = false; if ("nothing-picked".equals(m.optString("label"))) setStatus("ముందు బొమ్మలో ఒక భాగం తాకండి Sir."); }
+            else { isolatedOn = true; setStatus("🔍 " + m.optString("label") + " ఒక్కటే · \"అన్నీ చూపించు\" అంటే మొత్తం బొమ్మ"); }
+            refreshButtons();
+            return;
+        }
+        if ("size".equals(t)) {
+            String nm = id.isEmpty() ? (shown != null ? shown.title : "బొమ్మ") : m.optString("label", id);
+            String line = "📏 " + nm + ": వెడల్పు " + cm(m.optDouble("w")) + " · ఎత్తు " + cm(m.optDouble("h")) + " · లోతు " + cm(m.optDouble("d")) + " సెం.మీ";
+            setStatus(line + " (AI డిజైన్ చేసిన కొలతలు)");
+            speak(nm + ": వెడల్పు " + cm(m.optDouble("w")) + ", ఎత్తు " + cm(m.optDouble("h")) + ", లోతు " + cm(m.optDouble("d")) + " సెంటీమీటర్లు Sir.", true);
+            return;
+        }
+        if ("hid".equals(t)) { // "newly hidden/hidden now"
+            String[] nt = m.optString("label", "0/0").split("/");
+            int n = 0, total = 0;
+            try { n = Integer.parseInt(nt[0]); total = Integer.parseInt(nt.length > 1 ? nt[1] : nt[0]); } catch (Exception ignored) {}
+            hiddenCount = total;
+            String was = lastHide;
+            lastHide = null;
+            if ("roof_on".equals(was)) setStatus(total == 0 ? "🏠 పైకప్పు పెట్టాను" : "🏠 పైకప్పు పెట్టాను · ఇంకా " + total + " దాచి ఉన్నాయి");
+            else if (n > 0) setStatus(("roof_off".equals(was) ? "🏠 పైకప్పు తీసేశాను" : "🙈 దాచాను") + " · \"అన్నీ చూపించు\" అంటే తిరిగి వస్తుంది");
+            else if ("roof_off".equals(was)) { setStatus("ఈ బొమ్మలో పైకప్పు భాగం లేదు Sir."); speak("ఈ బొమ్మలో పైకప్పు భాగం లేదు Sir.", true); }
+            refreshButtons();
+            return;
+        }
+        if ("replay".equals(t)) { String nm = nameOf(id); setStatus("🎬 " + m.optString("label") + " · " + (nm != null ? nm : id)); return; }
+        if ("file".equals(t)) { gotFile(m); return; }
         if ("ok".equals(t) || "err".equals(t)) {
             synchronized (acks) {
                 acks.put(id, new String[]{t, m.optString("msg")});
@@ -904,6 +1078,7 @@ public class WorkshopActivity extends Activity {
             if (!spinning) send(json("spin").put("on", false));
         } catch (Exception ignored) {}
         if (pickedId != null) glowPicked();
+        if (isolatedOn || xrayOn || cutOn || hiddenCount > 0) { viewReset(); refreshButtons(); } // (the new stage starts plain)
         synchronized (acks) { // (a part that was waiting when the stage stopped: it failed)
             Job j = job;
             if (j != null) synchronized (j.parts) {
@@ -917,7 +1092,9 @@ public class WorkshopActivity extends Activity {
 
     // ================================================================ a build
 
-    private void start(String what, String heard, boolean saidAlready) {
+    private void start(String what, String heard, boolean saidAlready) { start(what, heard, saidAlready, null, 0); }
+
+    private void start(String what, String heard, boolean saidAlready, String photo, int kind) {
         if (job != null) {
             String s = "ఒక బొమ్మ ఇంకా తయారవుతోంది Sir. అది అయ్యాక చెప్పండి, లేదా ⏹ ఆపు నొక్కండి.";
             setStatus(s);
@@ -930,11 +1107,14 @@ public class WorkshopActivity extends Activity {
         String over = Workshop.overLimit(this, p);
         if (over != null) { setStatus(over); speak(over, false); return; }
         Job j = new Job(what, heard, e);
+        j.photo = photo;
+        j.photoKind = kind;
         job = j;
         shown = null;
         undo.clear();
         exploded = false;
         forgetPick();
+        viewReset();
         onStage.clear();
         synchronized (acks) { acks.clear(); }
         rows.clear();
@@ -1163,7 +1343,8 @@ public class WorkshopActivity extends Activity {
         });
         Workshop.Bill main = new Workshop.Bill();
         try {
-            Workshop.stream(j.engine, Workshop.SYSTEM, Workshop.buildMessage(j.what, j.heard), Workshop.MAX_OUT, new Workshop.Sink() {
+            Workshop.stream(j.engine, Workshop.SYSTEM, j.photo != null ? Workshop.photoMessage(j.heard, j.photoKind) : Workshop.buildMessage(j.what, j.heard),
+                    j.photo, Workshop.MAX_OUT, new Workshop.Sink() {
                 @Override public void text(String s) { parser.feed(s); }
             }, main);
             parser.finish();
@@ -1328,6 +1509,7 @@ public class WorkshopActivity extends Activity {
         if (t == null) {
             t = Ui.text(this, text, 13.5f, color);
             t.setPadding(dp(2), dp(3), dp(2), dp(3));
+            t.setOnClickListener(v -> { if (job == null && shown != null && shown.parts.containsKey(id)) { try { send(json("pickpart").put("id", id)); } catch (Exception ignored) {} } });
             rows.put(id, t);
             list.addView(t);
             listScroll.post(() -> listScroll.fullScroll(View.FOCUS_DOWN));
@@ -1427,6 +1609,7 @@ public class WorkshopActivity extends Activity {
         JarvisAccessibility.bubbleAside(false);
         if (ear != null) ear.away();
         if (waiting != null) cancelWait(false); // (he left: nothing is spent on what was heard)
+        if (tiltOn) tilt(false);
     }
 
     @Override protected void onDestroy() {
@@ -1444,6 +1627,280 @@ public class WorkshopActivity extends Activity {
             try { web.destroy(); } catch (Throwable ignored) {}
         }
         super.onDestroy();
+    }
+
+    // ================================================================ (A4) the view tools, photos, print files, landscape
+
+    /** The stage starts plain again (a new build, a saved one, a fresh stage): no isolation, X-ray, cut, hidden parts, tilt. */
+    private void viewReset() {
+        isolatedOn = false;
+        xrayOn = false;
+        cutOn = false;
+        hiddenCount = 0;
+        if (tiltOn) tilt(false);
+    }
+
+    private static String cm(double v) {
+        return Math.abs(v - Math.round(v)) < 0.05 ? String.valueOf(Math.round(v)) : String.format(java.util.Locale.ENGLISH, "%.1f", v);
+    }
+
+    /** 📱 Tilt the phone to look around the model (the phone's motion sensor, only while this screen is in front). */
+    private void tilt(boolean on) {
+        if (sensors == null) sensors = (android.hardware.SensorManager) getSystemService(SENSOR_SERVICE);
+        if (tiltL != null && sensors != null) { try { sensors.unregisterListener(tiltL); } catch (Exception ignored) {} }
+        tiltL = null;
+        tilt0 = null;
+        tiltOn = false;
+        try { send(json("tilt").put("on", false)); } catch (Exception ignored) {}
+        if (!on || sensors == null) return;
+        android.hardware.Sensor sn = sensors.getDefaultSensor(android.hardware.Sensor.TYPE_GAME_ROTATION_VECTOR);
+        if (sn == null) sn = sensors.getDefaultSensor(android.hardware.Sensor.TYPE_ROTATION_VECTOR);
+        if (sn == null) { setStatus("ఈ ఫోన్‌లో వంపు సెన్సార్ లేదు Sir."); return; }
+        final float[] r = new float[9], rr = new float[9], o = new float[3];
+        tiltL = new android.hardware.SensorEventListener() {
+            @Override public void onSensorChanged(android.hardware.SensorEvent ev) {
+                long now = android.os.SystemClock.uptimeMillis();
+                if (now - tiltSent < 33) return;
+                tiltSent = now;
+                android.hardware.SensorManager.getRotationMatrixFromVector(r, ev.values);
+                int rot = getWindowManager().getDefaultDisplay().getRotation();
+                if (rot == android.view.Surface.ROTATION_90) android.hardware.SensorManager.remapCoordinateSystem(r, android.hardware.SensorManager.AXIS_Y, android.hardware.SensorManager.AXIS_MINUS_X, rr);
+                else if (rot == android.view.Surface.ROTATION_270) android.hardware.SensorManager.remapCoordinateSystem(r, android.hardware.SensorManager.AXIS_MINUS_Y, android.hardware.SensorManager.AXIS_X, rr);
+                else System.arraycopy(r, 0, rr, 0, 9);
+                android.hardware.SensorManager.getOrientation(rr, o);
+                if (tilt0 == null) { tilt0 = new float[]{o[1], o[2]}; return; } // (how he holds it now = straight ahead)
+                double x = (o[2] - tilt0[1]) * 1.3, y = -(o[1] - tilt0[0]);
+                try { send(json("tilt").put("on", true).put("x", x).put("y", y)); } catch (Exception ignored) {}
+            }
+            @Override public void onAccuracyChanged(android.hardware.Sensor s0, int a) {}
+        };
+        sensors.registerListener(tiltL, sn, android.hardware.SensorManager.SENSOR_DELAY_GAME);
+        tiltOn = true;
+    }
+
+    /** 📸 / 🖨️ / 🖼️: the stage is asked once for a picture or a print file; only that answer is taken. */
+    private void askFile(String what) {
+        fileReq = Long.toHexString(System.nanoTime()) + Integer.toHexString((int) (Math.random() * 0xFFFF));
+        fileFor = what;
+        try {
+            if ("stl".equals(what)) send(json("stl").put("req", fileReq));
+            else send(json("snap").put("req", fileReq).put("clean", !"photo".equals(what)));
+        } catch (Exception ignored) {}
+        if ("photo".equals(what)) setStatus("📸 …");
+    }
+
+    private void gotFile(JSONObject m) {
+        String req = m.optString("req"), what = fileFor;
+        if (fileReq == null || !fileReq.equals(req) || what == null) return; // (only the one asked for)
+        fileReq = null;
+        fileFor = null;
+        final String data = m.optString("data", ""), kind = m.optString("kind");
+        final String title = shown != null ? shown.title : "model";
+        final int w = m.optInt("w"), h = m.optInt("h"), d = m.optInt("d");
+        new Thread(() -> {
+            String line, said;
+            try {
+                byte[] b = data.isEmpty() ? null : android.util.Base64.decode(data, android.util.Base64.DEFAULT);
+                if ("stl".equals(what)) {
+                    if (!"stl".equals(kind) || !Workshop.stlOk(b)) throw new IllegalStateException("ప్రింట్ ఫైల్ సరిగ్గా రాలేదు");
+                    String name = Workshop.fileName(title, Math.max(w, Math.max(h, d)) + "mm.stl");
+                    Coder.Made made = Coder.save(this, "Jarvis/workshop", name, "model/stl", b);
+                    line = "🖨️ " + made.where + " · " + w + " × " + d + " × " + h + " మి.మీ";
+                    said = "ప్రింట్ ఫైల్ Downloads లో Jarvis, workshop ఫోల్డర్‌లో దాచాను Sir. పొడవైన వైపు 10 సెంటీమీటర్లు. ప్రింట్ చేసే ముందు slicer లో ఒకసారి చూడండి.";
+                } else if ("photo".equals(what)) {
+                    if (!"jpg".equals(kind) || !Workshop.jpegOk(b)) throw new IllegalStateException("ఫోటో సరిగ్గా రాలేదు");
+                    Coder.Made made = Workshop.savePicture(this, Workshop.fileName(title, System.currentTimeMillis() % 1000000 + ".jpg"), "image/jpeg", b);
+                    line = "📸 గ్యాలరీలో దాచాను: " + made.where;
+                    said = "ఫోటో గ్యాలరీలో దాచాను Sir.";
+                } else { // studio / mini: the render goes to his image AI
+                    if (!"jpg".equals(kind) || !Workshop.jpegOk(b)) throw new IllegalStateException("బొమ్మ ఫోటో సరిగ్గా రాలేదు");
+                    studioRun(b, "mini".equals(what), title);
+                    return;
+                }
+            } catch (Exception x) {
+                line = "✗ " + x.getMessage();
+                said = x.getMessage();
+            }
+            final String l0 = line, s0 = said;
+            ui.post(() -> { if (destroyed) return; setStatus(l0); speak(s0, true); });
+        }, "jarvis-workshop-file").start();
+    }
+
+    /** 🖼️ Which picture: a studio photo or a miniature (his image AI; the cost said before). */
+    private void studioChoice() {
+        new AlertDialog.Builder(this).setTitle("🖼️ బొమ్మని ఫోటోగా")
+                .setMessage("మీరు ⚙️ లో ఎంచుకున్న బొమ్మల AI ఈ 3D బొమ్మని నిజమైన ఫోటోలా మారుస్తుంది. ఒక్కో ఫోటో సుమారు ₹1–15 (మోడల్‌ని బట్టి), వర్క్‌షాప్ నెల ఖర్చులో కలుస్తుంది.")
+                .setPositiveButton("📸 స్టూడియో ఫోటో", (dd, ww) -> studio(false))
+                .setNeutralButton("🏠 మినియేచర్", (dd, ww) -> studio(true))
+                .setNegativeButton("వద్దు", null).show();
+    }
+
+    private void studio(boolean mini) {
+        if (shown == null || shown.parts.isEmpty()) return;
+        try { Workshop.imageEngine(p); }
+        catch (Workshop.Problem x) { setStatus(x.getMessage()); speak(x.getMessage(), true); return; }
+        String over = Workshop.overLimit(this, p);
+        if (over != null) { setStatus(over); speak(over, true); return; }
+        setStatus(mini ? "🏠 మినియేచర్ ఫోటో తయారవుతోంది…" : "🖼️ స్టూడియో ఫోటో తయారవుతోంది…");
+        askFile(mini ? "mini" : "studio");
+    }
+
+    /** (a background thread) The clean render → his image AI → saved in the gallery, shown, the cost said. */
+    private void studioRun(byte[] jpeg, boolean mini, String title) {
+        String line, said;
+        Workshop.Picture pic = null;
+        Coder.Made made = null;
+        try {
+            Workshop.Engine e = Workshop.imageEngine(p);
+            ui.post(() -> setStatus((mini ? "🏠 " : "🖼️ ") + label(e.model) + " ఫోటో గీస్తోంది… (ఒక నిమిషం వరకు)"));
+            pic = Workshop.studio(e, jpeg, mini);
+            Workshop.spend(this, pic.rupees, false);
+            String ext = pic.mime.contains("jpeg") || pic.mime.contains("jpg") ? ".jpg" : pic.mime.contains("webp") ? ".webp" : ".png";
+            made = Workshop.savePicture(this, Workshop.fileName(title, (mini ? "miniature-" : "studio-") + System.currentTimeMillis() % 1000000 + ext), pic.mime, pic.bytes);
+            line = (mini ? "🏠 " : "🖼️ ") + "గ్యాలరీలో: " + made.where + " · సుమారు " + Workshop.money(pic.rupees);
+            said = (mini ? "మినియేచర్" : "స్టూడియో") + " ఫోటో సిద్ధం Sir. గ్యాలరీలో దాచాను. సుమారు " + Workshop.money(pic.rupees) + " అయింది.";
+        } catch (Workshop.Problem x) {
+            line = x.getMessage();
+            said = x.getMessage();
+        } catch (Exception x) {
+            String why = Workshop.why(p, x, Workshop.provider(p.workshopImageModel().trim()));
+            line = "✗ ఫోటో రాలేదు: " + why;
+            said = "ఫోటో రాలేదు Sir: " + why;
+        }
+        final String l0 = line, s0 = said;
+        final Workshop.Picture pc = pic;
+        final Coder.Made md = made;
+        ui.post(() -> {
+            if (destroyed) return;
+            setStatus(l0);
+            speak(s0, true);
+            if (pc != null && md != null) showPicture(pc.bytes, md);
+        });
+    }
+
+    /** The picture he got, on the screen: 📤 to share (his tap, his choice of app), or close. */
+    private void showPicture(byte[] bytes, Coder.Made made) {
+        android.graphics.Bitmap bm = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        if (bm == null) return;
+        android.widget.ImageView iv = new android.widget.ImageView(this);
+        iv.setImageBitmap(bm);
+        iv.setAdjustViewBounds(true);
+        iv.setPadding(dp(8), dp(8), dp(8), dp(8));
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setView(iv).setPositiveButton("సరే", null);
+        if (made.uri != null) b.setNeutralButton("📤 పంచుకో", (d, w) -> {
+            Intent s = new Intent(Intent.ACTION_SEND).setType(made.mime).putExtra(Intent.EXTRA_STREAM, made.uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            try { startActivity(Intent.createChooser(s, "పంచుకోండి")); } catch (Exception ignored) {}
+        });
+        b.show();
+    }
+
+    /** 📷 A photo of a thing, or of a floor plan: from the camera or the gallery. */
+    private void photoChoice() {
+        String[] items = {"📷 వస్తువు ఫోటో తీయి", "🖼️ వస్తువు ఫోటో గ్యాలరీ నుంచి", "🏠 ఇంటి ప్లాన్ ఫోటో తీయి", "🏠 ఇంటి ప్లాన్ గ్యాలరీ నుంచి"};
+        new AlertDialog.Builder(this).setTitle("📷 ఫోటో నుంచి 3D")
+                .setItems(items, (d, w) -> { photoKind = w >= 2 ? Workshop.PLAN : Workshop.PHOTO; if (w % 2 == 0) openCam(); else openGallery(); })
+                .setNegativeButton("వద్దు", null).show();
+    }
+
+    private void pickPhoto(int kind) {
+        photoKind = kind;
+        new AlertDialog.Builder(this).setTitle(kind == Workshop.PLAN ? "🏠 ఇంటి ప్లాన్" : "📷 ఫోటో నుంచి 3D")
+                .setItems(new String[]{"📷 ఫోటో తీయి", "🖼️ గ్యాలరీ నుంచి"}, (d, w) -> { if (w == 0) openCam(); else openGallery(); })
+                .setNegativeButton("వద్దు", null).show();
+    }
+
+    private void openCam() {
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_CAM_PERM);
+            return;
+        }
+        File f = PhotoProvider.file(this);
+        if (f.exists()) //noinspection ResultOfMethodCallIgnored
+            f.delete();
+        Uri out = PhotoProvider.uri();
+        Intent i = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT, out);
+        i.setClipData(android.content.ClipData.newRawUri("photo", out));
+        i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try { startActivityForResult(i, REQ_CAM); }
+        catch (Exception e) { Toast.makeText(this, "కెమెరా యాప్ తెరవలేకపోయాను. గ్యాలరీ నుంచి ఎంచుకోండి.", Toast.LENGTH_LONG).show(); }
+    }
+
+    private void openGallery() {
+        Intent i = new Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE);
+        try { startActivityForResult(Intent.createChooser(i, "ఫోటో ఎంచుకోండి"), REQ_GAL); }
+        catch (Exception e) { Toast.makeText(this, "గ్యాలరీ తెరవలేకపోయాను", Toast.LENGTH_SHORT).show(); }
+    }
+
+    @Override public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req == REQ_CAM_PERM && res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) openCam();
+    }
+
+    @Override protected void onActivityResult(int req, int result, Intent data) {
+        super.onActivityResult(req, result, data);
+        if (result != RESULT_OK) return;
+        Uri u = req == REQ_CAM ? PhotoProvider.uri() : req == REQ_GAL && data != null ? data.getData() : null;
+        if (u == null) return;
+        final int kind = photoKind;
+        new Thread(() -> {
+            android.graphics.Bitmap bm = FacePhotos.upright(this, u, 1280);
+            if (bm == null) { ui.post(() -> setStatus("ఫోటో తెరవలేకపోయాను Sir.")); return; }
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out);
+            final String b64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP);
+            final android.graphics.Bitmap thumb = android.graphics.Bitmap.createScaledBitmap(bm, Math.max(1, bm.getWidth() * 480 / Math.max(bm.getWidth(), bm.getHeight())),
+                    Math.max(1, bm.getHeight() * 480 / Math.max(bm.getWidth(), bm.getHeight())), true);
+            if (req == REQ_CAM) { //noinspection ResultOfMethodCallIgnored
+                PhotoProvider.file(this).delete(); } // (his photo is not kept here)
+            ui.post(() -> { if (!destroyed) photoReady(b64, thumb, kind); });
+        }, "jarvis-workshop-photo").start();
+    }
+
+    /** The photo, his words (optional), and his tap to build: the photo goes to his AI with the request, and is not kept. */
+    private void photoReady(String b64, android.graphics.Bitmap thumb, int kind) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(8), dp(16), dp(0));
+        android.widget.ImageView iv = new android.widget.ImageView(this);
+        iv.setImageBitmap(thumb);
+        iv.setAdjustViewBounds(true);
+        iv.setMaxHeight(dp(220));
+        box.addView(iv);
+        EditText words = new EditText(this);
+        words.setHint(kind == Workshop.PLAN ? "ఏమైనా చెప్పాలా? ఉదా: రెండు అంతస్తులు (ఖాళీ అయినా సరే)" : "ఏమైనా చెప్పాలా? ఉదా: ఈ కుర్చీ, నీలం రంగులో (ఖాళీ అయినా సరే)");
+        box.addView(words);
+        TextView note = Ui.text(this, "ఈ ఫోటో మీరు ఎంచుకున్న AI కి ఈ ఒక్క పనికే వెళ్తుంది; ఫోన్‌లో దాచను. మనుషుల ముఖాలు 3D చేయను. ఖర్చు సుమారు ₹15–80.", 12.5f, Ui.MUTED);
+        note.setPadding(0, dp(6), 0, 0);
+        box.addView(note);
+        new AlertDialog.Builder(this).setTitle(kind == Workshop.PLAN ? "🏠 ఇంటి ప్లాన్ నుంచి 3D ఇల్లు" : "📷 ఫోటో నుంచి 3D")
+                .setView(box)
+                .setPositiveButton("🔨 తయారు చెయ్", (d, w) -> {
+                    String said = words.getText().toString().trim();
+                    String what = kind == Workshop.PLAN ? "ఇంటి ప్లాన్ నుంచి 3D ఇల్లు" + (said.isEmpty() ? "" : ": " + said) : said.isEmpty() ? "ఫోటోలోని వస్తువు" : said;
+                    start(what, said, false, b64, kind);
+                })
+                .setNegativeButton("వద్దు", null).show();
+    }
+
+    /** 🔄 Across (landscape) or upright, remembered for next time. */
+    private void turnScreen(boolean across) {
+        landscape = across;
+        getSharedPreferences(Workshop.PREFS, MODE_PRIVATE).edit().putBoolean("landscape", across).apply();
+        setRequestedOrientation(across ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        fit(c);
+    }
+
+    private void fit(android.content.res.Configuration c) {
+        boolean wide = c.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+        // across: the stage keeps most of the height (the part list folds away; a row of it still opens its part)
+        if (listScroll != null) listScroll.setVisibility(wide ? View.GONE : View.VISIBLE);
+        if (status != null) status.setMaxLines(wide ? 2 : 6);
+        if (answerBody != null) answerBody.setMaxLines(wide ? 6 : 40);
     }
 
     /** Opens the workshop (from ⚙️, a tool, the brain): a build to start, or the last saved one. */

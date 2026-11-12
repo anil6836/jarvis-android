@@ -385,7 +385,9 @@ final class Tools {
                         + "engine, house...) and it is built live on a 3D stage, part by part; open_last = show the last saved build again (no AI, free); "
                         + "cost = what the last build cost and this month's workshop spend against his limit; talk = while the workshop screen is open, "
                         + "his words about the model on it (change / add / remove a part, colour, size, a question about a part, pull apart, a view, "
-                        + "the light, undo) go to the workshop as he said them. Not for websites, apps, code, food, pictures or scans.",
+                        + "the light, undo, one part alone, X-ray, cut / inside, hide a part, roof off, size, replay, photo, studio / miniature "
+                        + "photo, STL print file, a 3D model from a photo or a floor plan, landscape) go to the workshop as he said them. "
+                        + "Not for websites, apps, code, food, pictures or scans.",
                 schema(new String[][]{{"action", "string", "build | open_last | cost | talk"},
                         {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used. "
                                 + "talk: his exact words, unchanged"}},
@@ -1630,7 +1632,7 @@ final class Tools {
         Prefs p = new Prefs(c);
         if ("cost".equals(action)) return ok().put("said", Workshop.costSaid(c, p)).put("next", "Say this in Telugu, briefly.").toString();
         if ("talk".equals(action)) {
-            String words = heard != null && !heard.trim().isEmpty() ? heard.trim() : what.trim(); // (his own words, not a rewrite)
+            String words = Workshop.hintless(heard != null && !heard.trim().isEmpty() ? heard.trim() : what.trim()); // (his own words, not a rewrite)
             if (words.isEmpty()) return err("what_missing", "Ask him in one short line what to change.");
             if (WorkshopActivity.openTitle() == null && Workshop.last(c) == null)
                 return err("nothing_open", "No model is open or saved yet. Ask what he wants built ('ఒక ___ తయారు చెయ్').");
