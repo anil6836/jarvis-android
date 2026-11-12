@@ -380,6 +380,13 @@ final class Tools {
                 "Build a website (one complete page) and show it on his screen; or change the last one. Saved in Downloads/Jarvis/websites.",
                 schema(new String[][]{{"description", "string", "New website: what it is for and what should be on it, in English (keep Telugu text he gives)"},
                         {"change", "string", "Changes to the last website (instead of description)"}})));
+        DEFS.add(new Def("workshop",
+                "🛠️ The 3D workshop (phone only): build = the AI he chose in settings designs a PHYSICAL object or machine (fan, watch, drone, camera, lamp, "
+                        + "engine, house...) and it is built live on a 3D stage, part by part; open_last = show the last saved build again (no AI, free); "
+                        + "cost = what the last build cost and this month's workshop spend against his limit. Not for websites, apps, code, food, pictures or scans.",
+                schema(new String[][]{{"action", "string", "build | open_last | cost"},
+                        {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used"}},
+                        "action")));
         DEFS.add(new Def("publish_website", "Put the last website online (GitHub Pages in his account) and give the link.", schema(new String[][]{})));
         DEFS.add(new Def("write_code",
                 "Write a code file in any language (Python, Java, Kotlin, C, JavaScript, HTML...), save it in Downloads/Jarvis/code and show it.",
@@ -1121,6 +1128,7 @@ final class Tools {
             case "phone_task": return "మీ ఫోన్‌లో చేస్తున్నాను…";
             case "run_python": return "కోడ్ రాసి రన్ చేస్తున్నాను…";
             case "make_website": return "వెబ్‌సైట్ తయారు చేస్తున్నాను…";
+            case "workshop": return "వర్క్‌షాప్ తెరుస్తున్నాను…";
             case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
             case "write_code": return "కోడ్ రాస్తున్నాను…";
             case "make_app": return "యాప్ తయారు చేస్తున్నాను…";
@@ -1339,6 +1347,7 @@ final class Tools {
                 case "run_python": return runPython(a.optString("task", ""));
                 case "make_website": return makeWebsite(a.optString("description", ""), a.optString("change", ""));
                 case "publish_website": return publishWebsite();
+                case "workshop": return workshop(a.optString("action", "build"), a.optString("what", ""));
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app": return makeApp(a.optString("name", ""), a.optString("description", ""), a.optString("change", ""));
                 case "bank_balance": return bankBalance();
@@ -1606,6 +1615,31 @@ final class Tools {
         if (!(act() instanceof Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         openedAt = android.os.SystemClock.elapsedRealtime();
         act().startActivity(i);
+    }
+
+    /**
+     * 🛠️ The workshop: checks first (phone only, his AI chosen and its key there, this month's limit) so the reason is said at
+     * once; then the workshop screen opens and builds (it speaks while it works and says the cost at the end).
+     */
+    private String workshop(String action, String what) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "The workshop is on his phone only (not the home tablet or the car box). Say so in one line.");
+        Prefs p = new Prefs(c);
+        if ("cost".equals(action)) return ok().put("said", Workshop.costSaid(c, p)).put("next", "Say this in Telugu, briefly.").toString();
+        if ("open_last".equals(action)) {
+            if (Workshop.last(c) == null) return err("nothing_saved", "No build has been saved yet. Say so and that he can say 'ఒక ___ తయారు చెయ్'.");
+            startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_OPEN_LAST, true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            return ok().put("next", "Say in one short line that the last build is on the screen (opening it again costs nothing).").toString();
+        }
+        if (what.trim().isEmpty()) return err("what_missing", "Ask him in one short line what he wants built.");
+        try { Workshop.engine(p); }
+        catch (Workshop.Problem x) { return err("no_ai", x.getMessage() + " Say exactly this to him. Do not pick or suggest a different AI yourself."); }
+        String over = Workshop.overLimit(c, p);
+        if (over != null) return err("limit_reached", over + " Say exactly this to him.");
+        startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_WHAT, what.trim())
+                .putExtra(WorkshopActivity.EXTRA_HEARD, heard == null ? what.trim() : heard).putExtra(WorkshopActivity.EXTRA_SAID, true)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP));
+        return ok().put("next", "Say only: 'బెంచ్ మీద పెడుతున్నాను Sir.' The workshop screen shows each part and says the cost when it is done.").toString();
     }
 
     /** When a job last opened a screen (an app, a page, the dialer): the panel then isn't "left" by him. */

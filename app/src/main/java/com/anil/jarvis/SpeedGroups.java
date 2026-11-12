@@ -122,6 +122,10 @@ final class SpeedGroups {
         group("watch", "his Galaxy Watch: find it, silent, wake with the watch, watch tools",
                 new String[]{"watch_tools"},
                 new String[]{"వాచ్", "watch"});
+        group("workshop", "the 3D workshop: build a 3D model of a physical object or machine, open the last build, what it cost",
+                new String[]{"workshop"},
+                new String[]{"3d", "3డి", "త్రీడీ", "వర్క్‌షాప్", "వర్క్ షాప్", "బిల్డ్", "తయారు చెయ్", "తయారుచెయ్", "తయారు చేయ్", "తయారు చేయి", "డిజైన్",
+                        "బొమ్మ", "workshop", "build", "design", "make me", "model"});
         group("coding", "making websites and apps, writing code, API usage",
                 new String[]{"make_website", "publish_website", "write_code", "make_app", "api_usage"},
                 new String[]{"కోడ్", "వెబ్‌సైట్", "వెబ్ సైట్", "యాప్ తయారు", "ప్రోగ్రామ్", "code", "website", "app", "program", "html", "github", "api"});

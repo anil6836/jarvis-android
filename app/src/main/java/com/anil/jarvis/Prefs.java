@@ -338,6 +338,10 @@ final class Prefs {
     void setLatestBuild(int b) { sp.edit().putInt("latest_build", b).apply(); }
     /** The AI for code, websites and apps (e.g. gpt-6-astra, claude-opus-5-5); empty = his normal brain. */
     String codeModel() { return sp.getString("code_model", ""); }
+    /** 🛠️ The AI that builds the workshop's 3D models: his own choice in ⚙️, empty until he picks one (Jarvis never picks). */
+    String workshopModel() { return sp.getString("workshop_model", ""); }
+    /** 🛠️ The workshop's spending limit for a month, in rupees (no new build starts once this month's spend reaches it). */
+    int workshopLimit() { return sp.getInt("workshop_limit", Workshop.DEFAULT_LIMIT); }
     /** GitHub token (on the phone only): puts websites online and builds his apps. */
     String githubToken() { return sp.getString("github_token", ""); }
     String lastSite() { return sp.getString("last_site", ""); }

@@ -112,6 +112,7 @@ public class SettingsActivity extends Activity {
     private TextView coughGapText;
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
+    private EditText workshopModel, workshopLimit; // 🛠️
     private TextView voiceInfo, notifyInfo, checkInfo, crashInfo, crashCopy, crashClear;
     private TextView backupInfo, backupSetBtn;
     private final NaturalVoice tester = new NaturalVoice();
@@ -481,6 +482,72 @@ public class SettingsActivity extends Activity {
         note("ఒక్కసారి: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → "
                 + "'repo', 'workflow' టిక్ చేసి Generate → వచ్చిన token ఇక్కడ పెట్టండి. ఇది మీ ఫోన్‌లో మాత్రమే ఉంటుంది. "
                 + "Jarvis మీ GitHub లో jarvis-sites (వెబ్‌సైట్లు), jarvis-app-… (యాప్‌లు) అనే పబ్లిక్ repos తయారు చేస్తుంది.");
+
+        // ---- 🛠️ the workshop (3D models built live by the AI he picks): on the phone only
+        if (Workshop.here(this)) {
+        section("🛠️ వర్క్‌షాప్ (3D బొమ్మలు)");
+        note("\"Jarvis, ఒక టేబుల్ ఫ్యాన్ తయారు చెయ్\" అంటే మీరు ఇక్కడ ఎంచుకున్న AI ఆ వస్తువుని డిజైన్ చేసి, భాగాలు ఒక్కొక్కటిగా 3D లో కట్టి చూపిస్తుంది. "
+                + "Fable 5.2 తో ఒక బొమ్మకి మామూలుగా ₹60–110 (ఎప్పటికీ ₹235 దాటదు); Opus 5.5 తో సగం. AI రాసిన కోడ్ ఇంటర్నెట్ లేని మూసిన గదిలో నడుస్తుంది; "
+                + "మీ keys దానికి కనిపించవు. దాచిన బొమ్మలు మళ్ళీ తెరవడానికి ఖర్చు లేదు. ఫోన్‌లో మాత్రమే.");
+        workshopModel = field("🛠️ బొమ్మలు తయారు చేసే AI (ఖాళీ = ఇంకా ఎంచుకోలేదు)", prefs.workshopModel(), false);
+        LinearLayout wsPresets = new LinearLayout(this);
+        TextView wsFable = Ui.text(this, "  Claude Fable 5.2  ", 14, Ui.CYAN);
+        wsFable.setPadding(0, Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 8));
+        wsFable.setOnClickListener(v -> chose(workshopModel, "workshop_model", Workshop.FABLE));
+        TextView wsOpus = Ui.text(this, "  Claude Opus 5.5  ", 14, Ui.CYAN);
+        wsOpus.setPadding(0, Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 8));
+        wsOpus.setOnClickListener(v -> chose(workshopModel, "workshop_model", Workshop.OPUS));
+        wsPresets.addView(wsFable);
+        wsPresets.addView(wsOpus);
+        boxOf(workshopModel).addView(wsPresets);
+        TextView wsAll = Ui.text(this, "📋 అన్ని కంపెనీల మోడల్స్ చూపించు, ఎంచుకో (Gemini, OpenAI కూడా)", 14.5f, Ui.CYAN);
+        wsAll.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 8));
+        wsAll.setOnClickListener(v -> Models.pick(this, "వర్క్‌షాప్ AI ఎంచుకోండి",
+                new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
+                new String[]{openAiKey.getText().toString(), anthropicKey.getText().toString(), geminiKey.getText().toString()},
+                workshopModel.getText().toString(), it -> chose(workshopModel, "workshop_model", it.id)));
+        boxOf(workshopModel).addView(wsAll);
+        final TextView wsTestInfo = Ui.text(this, "", 14, Ui.MUTED);
+        TextView wsTest = Ui.text(this, "🧪 టెస్ట్ చేయి (కొన్ని పైసలు)", 14.5f, Ui.CYAN);
+        wsTest.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 4));
+        wsTest.setOnClickListener(v -> {
+            autosave(); // (the key and the AI as they are in the boxes now)
+            wsTestInfo.setText("… అడుగుతున్నాను");
+            wsTestInfo.setTextColor(Ui.MUTED);
+            new Thread(() -> {
+                String said;
+                boolean good;
+                try {
+                    double r = Workshop.test(getApplicationContext(), new Prefs(getApplicationContext()));
+                    said = "✓ " + new Prefs(getApplicationContext()).workshopModel().trim() + " పనిచేస్తోంది (ఈ టెస్ట్‌కి " + Workshop.money(r) + ")";
+                    good = true;
+                } catch (Workshop.Problem x) {
+                    said = "✗ " + x.getMessage();
+                    good = false;
+                } catch (Exception x) {
+                    Prefs np = new Prefs(getApplicationContext());
+                    said = "✗ " + Workshop.why(np, x, Workshop.provider(np.workshopModel()));
+                    good = false;
+                }
+                final String s0 = said;
+                final boolean g0 = good;
+                runOnUiThread(() -> { if (!isDestroyed()) { wsTestInfo.setText(s0); wsTestInfo.setTextColor(g0 ? Ui.OK : Ui.RED); } });
+            }, "jarvis-workshop-test").start();
+        });
+        box.addView(wsTest);
+        box.addView(wsTestInfo);
+        workshopLimit = field("నెలకి వర్క్‌షాప్ హద్దు (₹)", String.valueOf(prefs.workshopLimit()), false);
+        workshopLimit.setInputType(InputType.TYPE_CLASS_NUMBER);
+        TextView wsSpent = Ui.text(this, Workshop.spendLine(this, prefs), 14, Ui.MUTED);
+        wsSpent.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
+        box.addView(wsSpent);
+        note("ఈ నెల వాడింది హద్దుకి చేరితే Jarvis కొత్త బొమ్మ మొదలుపెట్టడు, \"హద్దు అయిపోయింది\" అని చెబుతాడు; చౌకైన AI కి తనంతట తానే మారడు. "
+                + "తయారవుతున్న బొమ్మ మాత్రం పూర్తవుతుంది. AI పేరు తప్పైతే వేరే దానికి మారకుండా తప్పు అని చెబుతుంది.");
+        TextView wsOpen = Ui.text(this, "🛠️ వర్క్‌షాప్ తెరువు →", 15, accent);
+        wsOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        wsOpen.setOnClickListener(v -> { autosave(); WorkshopActivity.open(this, null, null, false); });
+        box.addView(wsOpen);
+        }
 
         // ---- voice
         section("వాయిస్");
@@ -1459,7 +1526,7 @@ public class SettingsActivity extends Activity {
         if (t.endsWith("(టాబ్లెట్)")) return "tab"; // (the tablet's cards, whatever their words: "మెసేజ్", "ఆరోగ్యం"…)
         if (t.contains("వాచ్")) return "watch"; // (the watch's six cards: "ఆరోగ్యం: వాచ్…", "రోడ్డు, భద్రత (వాచ్)"…)
         if (t.contains("మీరు") || t.contains("థీమ్") || t.contains("స్క్రీన్ లుక్") || t.contains("Jarvis ముఖం") || t.contains("ఫ్లోటింగ్")) return "me";
-        if (t.contains("మెదడు") || t.contains("API ఖర్చు") || t.contains("కోడింగ్")) return "brain";
+        if (t.contains("మెదడు") || t.contains("API ఖర్చు") || t.contains("కోడింగ్") || t.contains("వర్క్‌షాప్")) return "brain";
         if (t.contains("వాయిస్") || t.contains("సహజ గొంతు") || t.contains("Live") || t.contains("వేక్ వర్డ్") || t.contains("పవర్ బటన్")
                 || t.startsWith("వేగం")) return "voice";
         if (t.contains("కాల్స్") || t.contains("మెసేజ్") || t.contains("WhatsApp") || t.contains("స్క్రీన్ చూడటం") || t.contains("మోసం")) return "msg";
@@ -2346,6 +2413,12 @@ public class SettingsActivity extends Activity {
         if (mapsKey != null) e.putString("maps_key", mapsKey.getText().toString().trim());
         e.putString("openai_model", openAiModel.getText().toString().trim());
         e.putString("code_model", codeModel.getText().toString().trim());
+        if (workshopModel != null) e.putString("workshop_model", workshopModel.getText().toString().trim().replaceFirst("^models/", ""));
+        if (workshopLimit != null) {
+            int lim = Workshop.DEFAULT_LIMIT;
+            try { lim = Math.max(0, Math.min(1000000, Integer.parseInt(workshopLimit.getText().toString().trim()))); } catch (Exception ignored) {}
+            e.putInt("workshop_limit", lim);
+        }
         e.putString("github_token", githubToken.getText().toString().trim());
         e.putString("anthropic_key", anthropicKey.getText().toString().trim());
         e.putString("anthropic_model", anthropicModel.getText().toString().trim());

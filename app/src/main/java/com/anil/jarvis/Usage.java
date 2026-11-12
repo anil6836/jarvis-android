@@ -26,8 +26,8 @@ final class Usage {
 
     static final String GEMINI = Prefs.GEMINI, OPENAI = Prefs.OPENAI, ANTHROPIC = Prefs.ANTHROPIC;
     static final String[] PROVIDERS = {GEMINI, OPENAI, ANTHROPIC};
-    /** Rupees per dollar, roughly (Google bills the Gemini credit in rupees). */
-    static final float INR = 88f;
+    /** Rupees per dollar, roughly (Google bills the Gemini credit in rupees). (₹94.46 on 5 Nov 2026: 95 for the estimates.) */
+    static final float INR = 95f;
     private static final double WEB_SEARCH = 0.01;      // $10 per 1,000 searches (OpenAI, Anthropic)
     private static final double TTS_PER_MIN = 0.015;    // gpt-4o-mini-tts, about
 
@@ -49,7 +49,7 @@ final class Usage {
             {"gpt-6-astra", 10.00, 1.00, 50.00}, {"gpt-6-sol", 2.00, 0.20, 10.00}, {"gpt-6-luna", 0.10, 0.01, 0.50},
             {"gpt-4o-mini-transcribe", 1.25, 1.25, 5.00}, {"gpt-", 2.00, 0.20, 10.00}, {"o", 2.00, 0.20, 10.00},
             // Anthropic
-            {"claude-fable-5-1", 10.00, 0.25, 50.00}, {"claude-fable", 10.00, 1.00, 50.00}, {"claude-opus-5-5", 4.00, 0.20, 20.00},
+            {"claude-fable-5-2", 8.00, 0.20, 40.00}, {"claude-fable-5-1", 10.00, 0.25, 50.00}, {"claude-fable", 10.00, 1.00, 50.00}, {"claude-opus-5-5", 4.00, 0.20, 20.00},
             {"claude-opus", 5.00, 0.50, 25.00}, {"claude-sonnet-5", 2.00, 0.20, 10.00}, {"claude-sonnet", 3.00, 0.30, 15.00},
             {"claude-haiku", 1.00, 0.10, 5.00}, {"claude", 3.00, 0.30, 15.00},
     };
@@ -169,6 +169,18 @@ final class Usage {
     static void tts(long frames) {
         if (frames <= 0 || app == null) return;
         record(OPENAI, 0, 0, frames / 24000.0 / 60.0 * TTS_PER_MIN);
+    }
+
+    /** 🛠️ What a request of this size costs on this model, in dollars (the price list above; an unknown model: a middle price). */
+    static double cost(String model, long in, long cached, long out) {
+        double[] p = price(model);
+        return (Math.max(0, in) * p[0] + Math.max(0, cached) * p[1] + Math.max(0, out) * p[2]) / 1e6;
+    }
+
+    /** 🛠️ A streamed answer (the workshop): its sizes, put in the month's ledger like any other request. */
+    static void streamed(String provider, String model, long in, long cached, long out) {
+        if (app == null) return;
+        add(provider, model, in, cached, out, 0);
     }
 
     private static void add(String provider, String model, long in, long cached, long out, double extraUsd) {

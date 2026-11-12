@@ -455,6 +455,17 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
 
+        <!-- 🛠️ The workshop: a 3D stage where the AI he chose builds an object part by part. Kept across rotation (the stage
+             and a running build are not restarted); a new request while it is open comes to the same screen. -->
+        <activity
+            android:name=".WorkshopActivity"
+            android:exported="false"
+            android:label="Jarvis వర్క్‌షాప్"
+            android:launchMode="singleTop"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+
         <activity
             android:name=".LookChooserActivity"
             android:exported="false"

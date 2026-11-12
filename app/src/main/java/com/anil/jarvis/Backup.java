@@ -237,6 +237,7 @@ final class Backup {
         if (name.equals(CallCare.PRIVATE)) return false; // (who called him and what Jarvis did: on this phone only)
         if (name.equals(PhotoText.RUNS)) return false;
         if (name.equals(HabitAuto.PREFS)) return false;
+        if (name.equals(Workshop.PREFS)) return false; // (🛠️ this month's workshop spend: belongs to this phone and month)
         if (name.equals("jarvis_photo_faces")) return false; // (👤 which introduced people are in which photo: on this phone only) // (🔁 what he asked Jarvis and when: on this phone only) // (📷 when this phone last read its photos: belongs to this phone, like the words)
         return name.startsWith("jarvis") || name.startsWith("hud_") || name.endsWith("Activity");
     }

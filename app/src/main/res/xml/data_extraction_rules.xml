@@ -11,6 +11,7 @@
         <exclude domain="sharedpref" path="jarvis_photo_text_runs.xml" />
         <exclude domain="sharedpref" path="jarvis_habit_auto.xml" />
         <exclude domain="sharedpref" path="jarvis_photo_faces.xml" />
+        <exclude domain="sharedpref" path="jarvis_workshop.xml" />
         <exclude domain="sharedpref" path="car_cam_private.xml" />
         <exclude domain="file" path="car_wall.jpg" />
         <exclude domain="file" path="car_photo.jpg" />
@@ -47,6 +48,7 @@
         <exclude domain="file" path="photo_text.idx.part" />
         <exclude domain="file" path="photo_faces.idx" />
         <exclude domain="file" path="photo_faces.idx.part" />
+        <exclude domain="file" path="workshop/" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />
@@ -75,6 +77,7 @@
         <exclude domain="sharedpref" path="jarvis_photo_text_runs.xml" />
         <exclude domain="sharedpref" path="jarvis_habit_auto.xml" />
         <exclude domain="sharedpref" path="jarvis_photo_faces.xml" />
+        <exclude domain="sharedpref" path="jarvis_workshop.xml" />
         <exclude domain="sharedpref" path="car_cam_private.xml" />
         <exclude domain="file" path="car_wall.jpg" />
         <exclude domain="file" path="car_photo.jpg" />
@@ -111,6 +114,7 @@
         <exclude domain="file" path="photo_text.idx.part" />
         <exclude domain="file" path="photo_faces.idx" />
         <exclude domain="file" path="photo_faces.idx.part" />
+        <exclude domain="file" path="workshop/" />
         <exclude domain="file" path="read_later/" />
         <exclude domain="sharedpref" path="jarvis_read_later.xml" />
         <exclude domain="sharedpref" path="jarvis_later_msgs.xml" />

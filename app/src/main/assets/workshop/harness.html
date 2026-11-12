@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- 🛠️ The workshop's outer page: it only passes messages between Jarvis and the sealed stage below. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-src 'self'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+  html, body { margin: 0; height: 100%; background: #07080b; overflow: hidden; }
+  iframe { border: 0; width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<!-- The stage: AI-written code runs only in here. allow-scripts and nothing else: its own empty origin, no way out but postMessage. -->
+<iframe id="stage" sandbox="allow-scripts" src="stage.html" title="stage"></iframe>
+<script src="harness.js"></script>
+</body>
+</html>
