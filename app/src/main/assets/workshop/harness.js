@@ -8,7 +8,7 @@
   var toJarvis = [];        // (said by the stage before Jarvis's port came)
   var stageReady = false;
   var toStage = [];         // (sent by Jarvis before the stage was ready)
-  var KINDS = { ready: 1, ok: 1, err: 1, warn: 1, stats: 1 };
+  var KINDS = { ready: 1, ok: 1, err: 1, warn: 1, stats: 1, pick: 1 };
 
   function clean(d) {
     if (!d || typeof d !== 'object' || typeof d.t !== 'string' || !KINDS[d.t]) return null;
@@ -17,6 +17,7 @@
     if (typeof d.msg === 'string') o.msg = d.msg.slice(0, 400);
     if (typeof d.tris === 'number' && isFinite(d.tris)) o.tris = Math.round(d.tris);
     if (typeof d.parts === 'number' && isFinite(d.parts)) o.parts = Math.round(d.parts);
+    if (typeof d.label === 'string') o.label = d.label.slice(0, 60);
     return o;
   }
 

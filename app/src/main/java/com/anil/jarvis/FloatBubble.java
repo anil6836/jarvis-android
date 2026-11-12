@@ -270,6 +270,14 @@ final class FloatBubble implements ScreenReader.Listener {
         }
     };
 
+    /** 🛠️ The workshop is in front: out of its way (back, as it was, when he leaves it). */
+    private boolean aside;
+
+    void aside(boolean a) {
+        aside = a;
+        refresh();
+    }
+
     /** Out of the way while Jarvis is using the phone (taps and screenshots must not hit it). */
     void hold(boolean h) {
         held = h;
@@ -278,7 +286,7 @@ final class FloatBubble implements ScreenReader.Listener {
 
     private void refresh() {
         if (bubble == null) return;
-        boolean hide = away || held || fullHide;
+        boolean hide = away || held || fullHide || aside;
         bubble.setVisibility(hide ? View.GONE : View.VISIBLE);
         if (card != null) card.setVisibility(hide ? View.GONE : View.VISIBLE); // never on the lock screen or under Jarvis's own taps
         if (hide) hideMenu();

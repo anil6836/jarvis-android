@@ -267,9 +267,14 @@ function dispose(o) {
   });
 }
 
-function removePart(id) {
+function removePart(id, replacing) {
   const r = parts.get(id);
-  if (!r) return;
+  if (!r) { if (!replacing && repick && repick.id === id) { repick = null; post({ t: 'pick', id: '' }); } return; }
+  if (picked && picked.rec === r) { // (its glow goes with it; a part written again keeps his pick)
+    if (replacing) repick = { id, label: picked.label };
+    else post({ t: 'pick', id: '' });
+    unpick();
+  } else if (!replacing && repick && repick.id === id) { repick = null; post({ t: 'pick', id: '' }); }
   model.remove(r.group);
   dispose(r.group);
   parts.delete(id);
@@ -297,7 +302,7 @@ function fail(id, msg) {
 
 async function runPart(m) {
   const id = cleanId(m.id);
-  removePart(id);
+  removePart(id, true);
   const rec = { id, group: new THREE.Group(), ticks: [], pieces: [], tris: 0, box: null, born: 0, auto: false,
     label: typeof m.label === 'string' ? m.label.slice(0, 60) : '' };
   rec.group.name = id;
@@ -330,6 +335,14 @@ async function runPart(m) {
   rec.born = performance.now();
   rec.group.visible = true;
   post({ t: 'ok', id, tris: rec.tris });
+  if (repick && repick.id === id) { // (the part he had tapped, written again: it is still his pick)
+    const rp = repick;
+    repick = null;
+    const ps = rec.auto ? [] : rec.pieces.filter((pc) => pc.label === rp.label);
+    glow(rec, ps.length ? ps.map((pc) => pc.obj) : [rec.group]);
+    picked.label = rp.label;
+    post({ t: 'pick', id, label: rp.label });
+  }
   frameAll(false);
   stats();
 }
@@ -337,6 +350,8 @@ async function runPart(m) {
 function stats() { post({ t: 'stats', parts: parts.size, tris: totalTris() }); }
 
 function reset() {
+  unpick();
+  repick = null;
   for (const id of [...parts.keys()]) removePart(id);
   userFrame = false;
   explodeK = explodeGoal = 0;
@@ -589,6 +604,10 @@ function tick(now) {
       if (k >= 1) { r.born = 0; r.group.position.y = 0; }
     }
   }
+  if (picked) { // (a picked piece breathes)
+    const k = 0.38 + 0.22 * Math.sin(t * 4.2);
+    for (const it of picked.list) for (const m of (Array.isArray(it.mesh.material) ? it.mesh.material : [it.mesh.material])) if (m.emissive) m.emissiveIntensity = k;
+  }
   // pulled apart / put back together
   if (explodeK !== explodeGoal) {
     explodeK = explodeGoal > explodeK ? Math.min(explodeGoal, explodeK + dt / 1.1) : Math.max(explodeGoal, explodeK - dt / 0.9);
@@ -652,11 +671,86 @@ window.addEventListener('message', (e) => {
       userFrame = false;
       break;
     case 'light': light(String(m.mode)); break;
+    case 'glow': { // (Jarvis points at a part: an answer about it)
+      const r = parts.get(cleanId(m.id || ''));
+      if (!r) { unpick(); break; }
+      const want = typeof m.label === 'string' ? m.label : '';
+      const ps = want && !r.auto ? r.pieces.filter((pc) => pc.label === want) : [];
+      glow(r, ps.length ? ps.map((pc) => pc.obj) : [r.group]);
+      break;
+    }
+    case 'unpick': unpick(); break;
     case 'pause': pause(); break;
     case 'resume': resume(); break;
     default: break;
   }
 });
+
+// ------------------------------------------------------------------ 👆 a tap picks a piece: it glows, and Jarvis is told its part and name
+
+const ray = new THREE.Raycaster();
+const tapAt = new THREE.Vector2();
+let downAt = null, downs = 0, picked = null; // picked: { rec, list: [{ mesh, mat }], label }
+let repick = null; // (the picked part is being written again: { id, label })
+
+canvas.addEventListener('pointerdown', (e) => { downs++; downAt = downs === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; });
+canvas.addEventListener('pointercancel', () => { downs = Math.max(0, downs - 1); downAt = null; });
+canvas.addEventListener('pointerup', (e) => {
+  downs = Math.max(0, downs - 1);
+  const d = downAt;
+  downAt = null;
+  if (!d || performance.now() - d.t > 450 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10) return; // (a drag or a pinch turns / zooms)
+  pickAt(e.clientX, e.clientY);
+});
+
+function shown(o) { for (let x = o; x; x = x.parent) if (!x.visible) return false; return true; }
+function inside(o, root) { for (let x = o; x; x = x.parent) if (x === root) return true; return false; }
+
+function pickAt(x, y) {
+  const b = canvas.getBoundingClientRect();
+  tapAt.set(((x - b.left) / b.width) * 2 - 1, -((y - b.top) / b.height) * 2 + 1);
+  ray.setFromCamera(tapAt, camera);
+  const hit = ray.intersectObject(model, true).find((h) => h.object.isMesh && shown(h.object));
+  if (!hit) { if (picked) { unpick(); post({ t: 'pick', id: '' }); } return; }
+  for (const rec of parts.values()) {
+    if (!inside(hit.object, rec.group)) continue;
+    const pc = rec.auto ? null : rec.pieces.find((p) => inside(hit.object, p.obj));
+    const label = rec.auto || !pc || !pc.label ? (rec.label || rec.id) : pc.label;
+    const objs = pc && pc.label && !rec.auto ? rec.pieces.filter((p) => p.label === pc.label).map((p) => p.obj) : pc && !rec.auto ? [pc.obj] : [rec.group];
+    if (picked && picked.rec === rec && picked.label === label) { unpick(); post({ t: 'pick', id: '' }); return; } // (tapped again: let go)
+    glow(rec, objs);
+    picked.label = label;
+    post({ t: 'pick', id: rec.id, label: label });
+    return;
+  }
+}
+
+function glow(rec, objs) {
+  unpick();
+  const list = [];
+  const lit = (m) => {
+    const c = m.clone();
+    if (c.color) c.color = c.color.clone().lerp(new THREE.Color(0x2aa8ff), c.emissive ? 0.35 : 0.45); // (a white part shows it too)
+    if (c.emissive) { c.emissive = new THREE.Color(0x2aa8ff); c.emissiveIntensity = 0.45; }
+    return c;
+  };
+  for (const o of objs) o.traverse((x) => {
+    if (!x.isMesh || !x.material) return;
+    list.push({ mesh: x, mat: x.material });
+    x.material = Array.isArray(x.material) ? x.material.map(lit) : lit(x.material);
+  });
+  picked = { rec, list, label: '' };
+}
+
+function unpick() {
+  if (!picked) return;
+  for (const it of picked.list) {
+    const cur = it.mesh.material;
+    it.mesh.material = it.mat;
+    (Array.isArray(cur) ? cur : [cur]).forEach((m) => m.dispose()); // (only the glowing copies)
+  }
+  picked = null;
+}
 
 canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); post({ t: 'warn', id: 'stage', msg: 'webgl context lost' }); });
 

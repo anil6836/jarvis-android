@@ -144,6 +144,18 @@ final class Workshop {
             default void answer(String s) {}
             /** (a change) he wants a different object altogether: build this instead. */
             default void newBuild(String what) {}
+            /** (an answer) the part it is about: it glows while the answer is shown. */
+            default void about(String id) {}
+        }
+
+        /** (a detailed answer) its lines after //@answer, until the next //@ line or the end. */
+        private StringBuilder answer;
+
+        private void flushAnswer() {
+            if (answer == null) return;
+            String a = answer.toString().replaceAll("\\s+", " ").trim();
+            answer = null;
+            if (!a.isEmpty()) out.answer(cap(a, ANSWER_MAX));
         }
 
         private final Out out;
@@ -171,11 +183,16 @@ final class Workshop {
         void finish() {
             if (buf.length() > 0) { String l = buf.toString(); buf.setLength(0); line(l); }
             if (id != null) close(true);
+            flushAnswer();
         }
 
         private void line(String raw) {
             String l = raw.replace("\r", "");
             String t = l.trim();
+            if (answer != null && id == null) { // (an answer written over several lines)
+                if (!t.startsWith("//@")) { if (!t.isEmpty() && !t.startsWith("```")) answer.append(' ').append(t); return; }
+                flushAnswer();
+            }
             if (t.startsWith("//@part")) {
                 if (id != null) close(false);
                 String rest = t.substring(7).trim();
@@ -198,7 +215,8 @@ final class Workshop {
             else if (t.startsWith("//@say")) out.say(cap(t.substring(6).trim(), 240));
             else if (t.startsWith("//@refuse")) out.refuse(cap(t.substring(9).trim(), 240));
             else if (t.startsWith("//@remove")) { String id = t.substring(9).trim(); if (!id.isEmpty()) out.remove(cleanId(id)); }
-            else if (t.startsWith("//@answer")) out.answer(cap(t.substring(9).trim(), 600));
+            else if (t.startsWith("//@answer")) answer = new StringBuilder(t.substring(9).trim());
+            else if (t.startsWith("//@about")) { String a = t.substring(8).trim(); if (!a.isEmpty()) out.about(cleanId(a)); }
             else if (t.startsWith("//@new")) out.newBuild(cap(t.substring(6).trim(), 300));
         }
 
@@ -313,15 +331,29 @@ final class Workshop {
      * (A2) He said something while this model is on the stage: the AI answers with ONLY the parts that change, a removal,
      * an answer to a question, or "build something else". The model's code goes with it so the change fits exactly.
      */
-    static String changeMessage(String title, List<String[]> parts, String words) {
+    /** The longest answer kept (a detailed one is 6 to 8 sentences). */
+    static final int ANSWER_MAX = 1600;
+
+    static String changeMessage(String title, List<String[]> parts, String words) { return changeMessage(title, parts, words, null, null, false); }
+
+    /** (A3) picked = the part he tapped (its id and the piece's name); detail = he asked "వివరంగా". */
+    static String changeMessage(String title, List<String[]> parts, String words, String pickedId, String pickedName, boolean detail) {
         StringBuilder b = new StringBuilder("The build on the stage now: \"").append(title == null ? "" : title).append("\". Its parts, in order:\n");
         for (String[] pt : parts) b.append("//@part ").append(pt[0]).append(" | ").append(pt[1]).append('\n').append(pt[2]).append(pt[2].endsWith("\n") ? "" : "\n").append("//@end\n");
+        if (pickedId != null && !pickedId.isEmpty())
+            b.append("\nHe has tapped (is pointing at) part \"").append(pickedId).append("\"").append(pickedName == null || pickedName.isEmpty() ? "" : ", the piece named \"" + pickedName + "\"")
+                    .append(". When he says ఇది / ఈ భాగం / దీని / దీన్ని / this / it, he means exactly that piece.\n");
         b.append("\nAnil just said: \"").append(words == null ? "" : words.trim()).append("\"\n\n")
                 .append("Answer in exactly ONE of these ways, and nothing else:\n")
                 .append("1) A change to this build: write ONLY the parts that change or are new, each part complete (//@part <id> | <short Telugu status> ")
                 .append("then its code then //@end). The same id replaces that part; a new id adds a part. //@remove <id> takes a part off. ")
                 .append("Everything you do not write stays exactly as it is. Then //@say <one short Telugu line saying what you changed, calling him Sir>.\n")
-                .append("2) A question about this model (what a part is or does, how it works): //@answer <a short, plain Telugu answer, 1 to 3 sentences, calling him Sir>.\n")
+                .append(detail
+                        ? "2) A question about this model: //@about <the id of the part it is about> on one line, then //@answer <a DETAILED plain Telugu answer, "
+                          + "6 to 8 sentences, calling him Sir: what it is, what it does, how it works, what such parts are usually made of, and what commonly "
+                          + "goes wrong with them; general knowledge only, no exact factory measurements>.\n"
+                        : "2) A question about this model (what a part is or does, how it works): //@about <the id of the part it is about> on one line, "
+                          + "then //@answer <a short, plain Telugu answer, 1 to 3 sentences, calling him Sir>.\n")
                 .append("3) He wants a different object altogether: //@new <what to build, in English, with every detail he gave>.\n")
                 .append("The same rules as always: only THREE and W, original designs, no weapons (//@refuse <one polite Telugu line> if so).");
         return b.toString();
@@ -342,6 +374,49 @@ final class Workshop {
 
     private static final java.util.Set<String> VERB_WORDS = new java.util.HashSet<>(Arrays.asList("తయారు", "చేస్తున్నాను", "పెడుతున్నాను", "ఇప్పుడు",
             "వేస్తున్నాను", "కలుపుతున్నాను", "అమరుస్తున్నాను", "బిగిస్తున్నాను", "జోడిస్తున్నాను", "చెక్కుతున్నాను"));
+
+    /** (A3) He wants the long answer ("వివరంగా చెప్పు"). */
+    static boolean wantsDetail(String text) {
+        String t = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        for (String w : DETAIL) if (t.contains(w)) return true;
+        return false;
+    }
+
+    private static final String[] DETAIL = {"వివరంగా", "వివరం", "విపులంగా", "పూర్తిగా చెప్పు", "పూర్తి వివరాలు", "డీటెయిల్", "డిటైల్", "detail", "explain fully"};
+
+    /** (A3) "వద్దు" while a paid change waits its 3 seconds: not done. */
+    static boolean isCancel(String text) {
+        String t = " " + (text == null ? "" : text.toLowerCase(Locale.ROOT).replaceAll("[\\p{Punct}।]+", " ").replaceAll("\\s+", " ").trim()) + " ";
+        for (String f : new String[]{" jarvis ", " జార్విస్ ", " sir ", " సార్ "}) t = t.replace(f, " ");
+        t = t.trim();
+        for (String w : CANCEL) if (t.equals(w)) return true;
+        return false;
+    }
+
+    private static final String[] CANCEL = {"వద్దు", "వద్దులే", "వద్దు వద్దు", "ఆపు", "ఆగు", "ఆగండి", "ఆపేయ్", "ఆపేయి", "క్యాన్సిల్", "cancel", "stop",
+            "no", "నో", "వద్దు ఆపు", "మార్చకు", "చేయకు", "చెయ్యకు", "అక్కర్లేదు", "తప్పు", "అది కాదు", "కాదు"};
+
+    /**
+     * (A3) Said by voice in the workshop: is it plainly about the model on the stage (it names one of its parts or the
+     * model, a colour change, or "ఇది" while a part is tapped)? Those go straight to the workshop; anything else goes to
+     * Jarvis's brain first, which still sends model talk to the workshop.
+     */
+    static boolean aboutModel(String text, java.util.Collection<String> names, boolean picked) {
+        String t = " " + (text == null ? "" : text.toLowerCase(Locale.ROOT).replaceAll("[\\p{Punct}।]+", " ").replaceAll("\\s+", " ").trim()) + " ";
+        if (t.trim().isEmpty()) return false;
+        if (picked) for (String w : POINTING) if (t.contains(" " + w)) return true;
+        if (names != null) for (String n : names) {
+            String x = n == null ? "" : n.toLowerCase(Locale.ROOT).replaceAll("[\\p{Punct}]+", " ").replaceAll("\\s+", " ").trim();
+            if (x.length() >= 2 && t.contains(" " + x)) return true;
+        }
+        boolean colour = false;
+        for (String c : COLOURS) if (t.contains(" " + c)) { colour = true; break; }
+        return colour && (t.contains("రంగు") || t.contains("colour") || t.contains("color"));
+    }
+
+    private static final String[] POINTING = {"ఇది ", "ఇదే ", "దీని", "దీన్ని", "ఈ భాగం", "ఈ పార్ట్", "this ", "it "};
+    private static final String[] COLOURS = {"ఎరుపు", "ఎర్ర", "నీలం", "నీలి", "పచ్చ", "ఆకుపచ్చ", "పసుపు", "నలుపు", "నల్ల", "తెలుపు", "తెల్ల", "బంగారు", "వెండి",
+            "ఊదా", "గులాబీ", "నారింజ", "బూడిద", "red", "blue", "green", "yellow", "black", "white", "gold", "silver", "purple", "pink", "orange", "grey", "gray"};
 
     /** (A2) What he said in the workshop that the screen does at once, with no AI and no cost; null = the AI decides. */
     static String command(String text) {

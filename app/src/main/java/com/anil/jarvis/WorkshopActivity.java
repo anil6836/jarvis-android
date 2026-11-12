@@ -99,6 +99,22 @@ public class WorkshopActivity extends Activity {
     private boolean exploded, night;
     private boolean started;
 
+    /** 🎙️ (A3) while this screen is in front, "Jarvis" opens no panel: the workshop's own ears and voice hear him. */
+    static volatile boolean front;
+    private WorkshopVoice ear;
+    private final Runnable wakeR = () -> { if (ear != null && front && !destroyed) ear.wake(); };
+    private TextView micBtn, cancelBtn;
+    /** 👆 The part he tapped on the model (its id, the piece's name); null = none. */
+    private String pickedId, pickedName;
+    /** ✋ A paid job heard by voice waits 3 seconds for "వద్దు" (a misheard sentence costs nothing). */
+    private String waiting;
+    private Runnable waitGo;
+    private long waitSince;
+    /** 📖 The card with a detailed answer about a part. */
+    private LinearLayout answerCard;
+    private TextView answerTitle, answerBody;
+    private final Runnable unglow = this::glowPicked;
+
     /** The model on the stage now (a finished build or a saved one): what a change is made to, and what is saved. */
     private Shown shown;
     /** Up to 5 models as they were before each change ("↩️ వెనక్కి" puts the last one back, with no AI). */
@@ -178,6 +194,9 @@ public class WorkshopActivity extends Activity {
         /** (A2) a change / question about the model on the stage: what he said, the answer, a new object he asked for, parts taken off. */
         final String talk;
         String answer, newWhat;
+        /** (A3) the long answer was asked; the part an answer is about; the part he had tapped. */
+        boolean detail;
+        String about, pickedId, pickedName;
         final List<String> removed = new ArrayList<>();
         /** Written by the build's thread, read by the screen: one lock (iterate inside synchronized (parts)). */
         final Map<String, Part> parts = java.util.Collections.synchronizedMap(new LinkedHashMap<>());
@@ -215,6 +234,7 @@ public class WorkshopActivity extends Activity {
         }
         build();
         newStage();
+        ear = new WorkshopVoice(owner(), p);
         Intent i = getIntent();
         // brought back after Android closed it, or opened again from recent apps: never build (and pay) a second time
         if (i != null && (b != null || (i.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0)) { i.removeExtra(EXTRA_WHAT); i.removeExtra(EXTRA_TALK); }
@@ -238,8 +258,11 @@ public class WorkshopActivity extends Activity {
         }
         String what = i.getStringExtra(EXTRA_WHAT);
         if (what != null && !what.trim().isEmpty()) {
-            start(what.trim(), i.getStringExtra(EXTRA_HEARD), i.getBooleanExtra(EXTRA_SAID, false));
+            final String w0 = what.trim(), h0 = i.getStringExtra(EXTRA_HEARD);
+            final boolean s0 = i.getBooleanExtra(EXTRA_SAID, false);
             i.removeExtra(EXTRA_WHAT); // (a rotation or a return to the screen must not build it again)
+            if (front && ear != null && ear.voiceFlow) waitThen(w0, () -> start(w0, h0, s0)); // (asked by voice here: ✋ 3 seconds)
+            else start(w0, h0, s0);
             return;
         }
         if (job != null) return;
@@ -319,6 +342,9 @@ public class WorkshopActivity extends Activity {
         undoBtn = pill("↩️ వెనక్కి", v -> command("undo", false));
         nightBtn = pill("🌙 రాత్రి", v -> command(night ? "day" : "night", false));
         TextView fresh = pill("🆕 కొత్తది", v -> command("new", false));
+        cancelBtn = pill("✋ వద్దు", v -> cancelWait(true));
+        cancelBtn.setVisibility(View.GONE);
+        actions.addView(cancelBtn);
         actions.addView(stopBtn);
         actions.addView(explodeBtn);
         actions.addView(undoBtn);
@@ -351,6 +377,14 @@ public class WorkshopActivity extends Activity {
             return false;
         });
         ask.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
+        micBtn = Ui.text(this, "🎙️", 19, Ui.TEXT);
+        micBtn.setGravity(Gravity.CENTER);
+        micBtn.setContentDescription("మాట్లాడండి");
+        micBtn.setOnClickListener(v -> { if (ear != null) ear.tap(); });
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(dp(46), dp(46));
+        ml.leftMargin = dp(8);
+        ask.addView(micBtn, ml);
+        micLook(WorkshopVoice.IDLE);
         go = Ui.text(this, "🔨 తయారు చెయ్", 15, 0xFF04131A);
         go.setBackground(Ui.round(this, Ui.CYAN, Ui.CYAN, 14));
         go.setPadding(dp(14), dp(11), dp(14), dp(11));
@@ -361,6 +395,36 @@ public class WorkshopActivity extends Activity {
         bottom.addView(ask);
         root.addView(bottom, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
         bottomBar = bottom;
+
+        answerCard = new LinearLayout(this);
+        answerCard.setOrientation(LinearLayout.VERTICAL);
+        answerCard.setBackground(Ui.round(this, 0xEE0B1118, Ui.CYAN_DIM, 16));
+        answerCard.setPadding(dp(14), dp(10), dp(10), dp(12));
+        LinearLayout ah = new LinearLayout(this);
+        ah.setGravity(Gravity.CENTER_VERTICAL);
+        answerTitle = Ui.text(this, "", 15, Ui.CYAN);
+        ah.addView(answerTitle, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView ax = Ui.text(this, "✕", 18, Ui.TEXT);
+        ax.setPadding(dp(12), dp(2), dp(6), dp(2));
+        ax.setContentDescription("మూసేయి");
+        ax.setOnClickListener(v -> closeAnswer());
+        ah.addView(ax);
+        answerCard.addView(ah);
+        answerBody = Ui.text(this, "", 14.5f, Ui.TEXT);
+        answerBody.setLineSpacing(0, 1.18f);
+        ScrollView as = new ScrollView(this) {
+            @Override protected void onMeasure(int w, int h) {
+                int max = (int) (getResources().getDisplayMetrics().heightPixels * 0.30f);
+                super.onMeasure(w, MeasureSpec.makeMeasureSpec(max, MeasureSpec.AT_MOST));
+            }
+        };
+        as.addView(answerBody);
+        answerCard.addView(as, new LinearLayout.LayoutParams(-1, -2));
+        answerCard.setVisibility(View.GONE);
+        FrameLayout.LayoutParams acl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
+        acl.leftMargin = acl.rightMargin = dp(12);
+        acl.topMargin = dp(84);
+        root.addView(answerCard, acl);
         setContentView(root);
         // the stage frames the model in the space the bars leave (they are see-through at their soft edges: a little less)
         root.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
@@ -370,6 +434,9 @@ public class WorkshopActivity extends Activity {
             if (Math.abs(t - sentTop) < 0.01f && Math.abs(bt - sentBottom) < 0.01f) return;
             sentTop = t;
             sentBottom = bt;
+            FrameLayout.LayoutParams cl = (FrameLayout.LayoutParams) answerCard.getLayoutParams();
+            int want = Math.max(dp(40), topBar.getHeight() - dp(12));
+            if (cl.topMargin != want) { cl.topMargin = want; answerCard.setLayoutParams(cl); }
             try { send(json("inset").put("top", t).put("bottom", bt)); } catch (Exception ignored) {}
         });
         showChip();
@@ -381,7 +448,8 @@ public class WorkshopActivity extends Activity {
         if (go == null) return;
         boolean has = shown != null && !shown.parts.isEmpty();
         go.setText(has ? "➤ పంపు" : "🔨 తయారు చెయ్");
-        input.setHint(has ? "ఏం మార్చాలి? ఉదా: రెక్కలు నీలం చెయ్ · విడదీయి" : "ఏం తయారు చేయాలి? ఉదా: ఒక టేబుల్ ఫ్యాన్");
+        input.setHint(has && pickedName != null ? "👆 " + pickedName + ": ఇది ఏం చేస్తుంది? · ఇది ఎరుపు చెయ్"
+                : has ? "ఏం మార్చాలి? ఉదా: రెక్కలు నీలం చెయ్ · విడదీయి · 👆 భాగం తాకండి" : "ఏం తయారు చేయాలి? ఉదా: ఒక టేబుల్ ఫ్యాన్");
         explodeBtn.setVisibility(has ? View.VISIBLE : View.GONE);
         explodeBtn.setText(exploded ? "🧩 కలుపు" : "💥 విడదీయి");
         undoBtn.setVisibility(has && !undo.isEmpty() && job == null ? View.VISIBLE : View.GONE);
@@ -420,6 +488,8 @@ public class WorkshopActivity extends Activity {
         InputMethodManager im = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         if (im != null) im.hideSoftInputFromWindow(input.getWindowToken(), 0);
         input.setText("");
+        if (ear != null) ear.typed();
+        if (waiting != null) cancelWait(false);
         said(s, false);
     }
 
@@ -432,11 +502,156 @@ public class WorkshopActivity extends Activity {
         if (job != null) {
             String s = "ఒక పని ఇంకా జరుగుతోంది Sir. అది అయ్యాక చెప్పండి, లేదా ⏹ ఆపు నొక్కండి.";
             setStatus(s);
-            Announcer.say(this, s);
+            speak(s, false);
             return;
         }
-        if (shown == null || shown.parts.isEmpty()) start(text, text, false);
-        else talk(text);
+        boolean has = shown != null && !shown.parts.isEmpty();
+        Runnable job0 = has ? () -> talk(text) : () -> start(text, text, false);
+        if (byVoice) waitThen(text, job0); // (heard by voice: ✋ 3 seconds to say "వద్దు" before any money is spent)
+        else job0.run();
+    }
+
+    // ================================================================ ✋ a paid job heard by voice waits 3 seconds (A3)
+
+    private void waitThen(String words, Runnable then) {
+        cancelWait(false);
+        waiting = words;
+        waitSince = System.currentTimeMillis();
+        waitGo = new Runnable() {
+            @Override public void run() {
+                if (waiting == null || destroyed) return;
+                // (he is still saying something - maybe "వద్దు": wait for it, up to 8 seconds)
+                if (ear != null && ear.hearing() && System.currentTimeMillis() - waitSince < 8000) { ui.postDelayed(this, 400); return; }
+                waiting = null;
+                cancelBtn.setVisibility(View.GONE);
+                then.run();
+            }
+        };
+        cancelBtn.setVisibility(View.VISIBLE);
+        setStatus("✏️ “" + words + "” · 3 సెకన్లలో మొదలుపెడతాను · వద్దంటే ✋ వద్దు");
+        ui.postDelayed(waitGo, 3000);
+        if (ear != null && front) ui.postDelayed(() -> { if (waiting != null && ear != null) ear.listenShort(3); }, 300);
+    }
+
+    /** His words while a job waits: "వద్దు" stops it; anything else replaces it (false: they are routed as usual). */
+    private boolean waitHeard(String words) {
+        if (waiting == null) return false;
+        if (Workshop.isCancel(words)) { cancelWait(true); return true; }
+        cancelWait(false);
+        return false;
+    }
+
+    private void cancelWait(boolean said) {
+        if (waitGo != null) ui.removeCallbacks(waitGo);
+        boolean was = waiting != null;
+        waiting = null;
+        waitGo = null;
+        if (cancelBtn != null) cancelBtn.setVisibility(View.GONE);
+        if (said && was) {
+            setStatus("✋ సరే Sir, చేయలేదు · ఖర్చు ₹0");
+            speak("సరే Sir, చేయలేదు.", true);
+        }
+    }
+
+    // ================================================================ 🎙️ the workshop's own ears (A3)
+
+    private WorkshopVoice.Owner owner() {
+        return new WorkshopVoice.Owner() {
+            @Override public Activity screen() { return WorkshopActivity.this; }
+            @Override public boolean take(String words) { return tookByVoice(words); }
+            @Override public void line(String text) { setStatus(text); }
+            @Override public void mic(int state) { micLook(state); }
+            @Override public boolean front() { return front && !destroyed; }
+            @Override public boolean waitWords(String words) { return waitHeard(words); }
+        };
+    }
+
+    /** Heard by voice here: a ₹0 word, or plainly about the model (it names a part, a colour, "ఇది" with a part tapped). Else the brain. */
+    private boolean tookByVoice(String words) {
+        String cmd = Workshop.command(words);
+        if (cmd != null) { command(cmd, true); return true; }
+        boolean has = shown != null && !shown.parts.isEmpty();
+        if (has && Workshop.aboutModel(words, names(), pickedId != null)) { said(words, true); return true; }
+        return false;
+    }
+
+    /** The model's name and its parts' names (from their status lines). */
+    private List<String> names() {
+        List<String> n = new ArrayList<>();
+        if (shown == null) return n;
+        if (shown.title != null) for (String w : shown.title.split("[\\s\\-–]+")) if (w.length() >= 3) n.add(w);
+        for (Map.Entry<String, String[]> e : shown.parts.entrySet()) {
+            n.add(Workshop.partLabel(e.getValue()[0], e.getKey()));
+            n.add(e.getKey().replace('-', ' '));
+        }
+        if (pickedName != null) n.add(pickedName);
+        return n;
+    }
+
+    private void micLook(int state) {
+        if (micBtn == null) return;
+        int bg = state == WorkshopVoice.LISTENING ? Ui.CYAN : state == WorkshopVoice.THINKING ? 0x33F5C451 : state == WorkshopVoice.SPEAKING ? 0x334FD2FF : 0x1AFFFFFF;
+        micBtn.setBackground(Ui.round(this, bg, state == WorkshopVoice.LISTENING ? Ui.CYAN : Ui.LINE2, 999));
+        micBtn.setText(state == WorkshopVoice.LISTENING ? "👂" : "🎙️");
+    }
+
+    /** Said here: in Jarvis's voice with one more listen after it when he is talking by voice; else the usual announcement. */
+    private void speak(String s, boolean thenListen) {
+        if (s == null || s.trim().isEmpty()) return;
+        if (ear != null && ear.voiceFlow && front && !destroyed) ear.say(s, thenListen);
+        else Announcer.say(this, s);
+    }
+
+    // ================================================================ 👆 a tapped part, 📖 the answer card (A3)
+
+    private void picked(String id, String name) {
+        if (id == null || id.isEmpty()) {
+            boolean had = pickedId != null;
+            pickedId = null;
+            pickedName = null;
+            if (had && job == null && waiting == null) setStatus("👆 భాగం వదిలేశాను");
+        } else {
+            pickedId = id;
+            pickedName = name == null || name.isEmpty() ? id.replace('-', ' ') : name;
+            if (job == null && waiting == null) setStatus("👆 " + pickedName + " · \"ఇది ఏం చేస్తుంది?\" / \"ఇది ఎరుపు చెయ్\" అనండి లేదా రాయండి");
+        }
+        refreshButtons();
+    }
+
+    private void forgetPick() {
+        pickedId = null;
+        pickedName = null;
+        closeAnswer();
+    }
+
+    /** The tapped part glows again (after an answer's part glowed), or nothing glows. */
+    private void glowPicked() {
+        try {
+            if (pickedId != null) send(json("glow").put("id", pickedId).put("label", pickedName == null ? "" : pickedName));
+            else send(json("unpick"));
+        } catch (Exception ignored) {}
+    }
+
+    private void showAnswer(String title, String text, String aboutId) {
+        ui.removeCallbacks(unglow);
+        answerTitle.setText("📖 " + title);
+        answerBody.setText(text);
+        answerCard.setVisibility(View.VISIBLE);
+        if (aboutId != null) { try { send(json("glow").put("id", aboutId).put("label", aboutId.equals(pickedId) && pickedName != null ? pickedName : "")); } catch (Exception ignored) {} }
+    }
+
+    private void closeAnswer() {
+        if (answerCard == null || answerCard.getVisibility() != View.VISIBLE) return;
+        answerCard.setVisibility(View.GONE);
+        glowPicked();
+    }
+
+    /** The name of a part on the model (the tapped piece's name when it is that part). */
+    private String nameOf(String id) {
+        if (id == null) return null;
+        if (id.equals(pickedId) && pickedName != null) return pickedName;
+        String[] s = shown == null ? null : shown.parts.get(id);
+        return s == null ? null : Workshop.partLabel(s[0], id);
     }
 
     private void command(String cmd, boolean byVoice) {
@@ -492,13 +707,14 @@ public class WorkshopActivity extends Activity {
                 list.removeAllViews();
                 send(json("reset"));
                 titleView.setText("");
+                forgetPick();
                 setStatus("ఏం తయారు చేయాలో కింద రాయండి Sir, లేదా \"Jarvis, ఒక డ్రోన్ తయారు చెయ్\" అనండి.");
                 input.requestFocus();
                 break;
             default: break;
         }
         refreshButtons();
-        if (said != null && (byVoice || "cost".equals(cmd) || "undo".equals(cmd))) Announcer.say(this, said);
+        if (said != null && (byVoice || "cost".equals(cmd) || "undo".equals(cmd))) speak(said, byVoice);
         if (said != null && !"cost".equals(cmd)) setStatus(said);
     }
 
@@ -516,6 +732,7 @@ public class WorkshopActivity extends Activity {
 
     /** The whole model onto a cleared stage (a saved build, an undo): no AI. */
     private void putOnStage(Shown sh) {
+        forgetPick();
         onStage.clear();
         rows.clear();
         list.removeAllViews();
@@ -661,6 +878,7 @@ public class WorkshopActivity extends Activity {
         JSONObject m;
         try { m = new JSONObject(data); } catch (Exception e) { return; }
         String t = m.optString("t"), id = m.optString("id");
+        if ("pick".equals(t)) { picked(id, m.optString("label")); return; }
         if ("ok".equals(t) || "err".equals(t)) {
             synchronized (acks) {
                 acks.put(id, new String[]{t, m.optString("msg")});
@@ -685,6 +903,7 @@ public class WorkshopActivity extends Activity {
             if (night) send(json("light").put("mode", "night"));
             if (!spinning) send(json("spin").put("on", false));
         } catch (Exception ignored) {}
+        if (pickedId != null) glowPicked();
         synchronized (acks) { // (a part that was waiting when the stage stopped: it failed)
             Job j = job;
             if (j != null) synchronized (j.parts) {
@@ -702,19 +921,20 @@ public class WorkshopActivity extends Activity {
         if (job != null) {
             String s = "ఒక బొమ్మ ఇంకా తయారవుతోంది Sir. అది అయ్యాక చెప్పండి, లేదా ⏹ ఆపు నొక్కండి.";
             setStatus(s);
-            Announcer.say(this, s);
+            speak(s, false);
             return;
         }
         Workshop.Engine e;
         try { e = Workshop.engine(p); }
-        catch (Workshop.Problem x) { setStatus(x.getMessage()); Announcer.say(this, x.getMessage()); return; }
+        catch (Workshop.Problem x) { setStatus(x.getMessage()); speak(x.getMessage(), false); return; }
         String over = Workshop.overLimit(this, p);
-        if (over != null) { setStatus(over); Announcer.say(this, over); return; }
+        if (over != null) { setStatus(over); speak(over, false); return; }
         Job j = new Job(what, heard, e);
         job = j;
         shown = null;
         undo.clear();
         exploded = false;
+        forgetPick();
         onStage.clear();
         synchronized (acks) { acks.clear(); }
         rows.clear();
@@ -724,7 +944,7 @@ public class WorkshopActivity extends Activity {
         showChip();
         stopBtn.setVisibility(View.VISIBLE);
         refreshButtons();
-        if (!saidAlready) Announcer.say(this, "బెంచ్ మీద పెడుతున్నాను Sir.");
+        if (!saidAlready) speak("బెంచ్ మీద పెడుతున్నాను Sir.", false);
         setStatus("🧠 " + label(e.model) + " డిజైన్ ఆలోచిస్తోంది…");
         ticker(j, "డిజైన్ ఆలోచిస్తోంది");
         new Thread(() -> run(j), "jarvis-workshop").start();
@@ -754,12 +974,16 @@ public class WorkshopActivity extends Activity {
     private void talk(String words) {
         Workshop.Engine e;
         try { e = Workshop.engine(p); }
-        catch (Workshop.Problem x) { setStatus(x.getMessage()); Announcer.say(this, x.getMessage()); return; }
+        catch (Workshop.Problem x) { setStatus(x.getMessage()); speak(x.getMessage(), false); return; }
         String over = Workshop.overLimit(this, p);
-        if (over != null) { setStatus(over); Announcer.say(this, over); return; }
+        if (over != null) { setStatus(over); speak(over, false); return; }
         final Shown before = shown.copy();
         Job j = new Job(before.what, words, e, words);
         j.title = before.title;
+        j.detail = Workshop.wantsDetail(words);
+        j.pickedId = pickedId;
+        j.pickedName = pickedName;
+        closeAnswer();
         job = j;
         stopBtn.setVisibility(View.VISIBLE);
         refreshButtons();
@@ -798,10 +1022,11 @@ public class WorkshopActivity extends Activity {
             }
             @Override public void answer(String sx) { j.answer = sx; }
             @Override public void newBuild(String what) { j.newWhat = what; }
+            @Override public void about(String id) { if (before.parts.containsKey(id)) j.about = id; }
         });
         Workshop.Bill b = new Workshop.Bill();
         try {
-            Workshop.stream(j.engine, Workshop.SYSTEM, Workshop.changeMessage(before.title, before.list(), j.talk), Workshop.CHANGE_OUT,
+            Workshop.stream(j.engine, Workshop.SYSTEM, Workshop.changeMessage(before.title, before.list(), j.talk, j.pickedId, j.pickedName, j.detail), Workshop.CHANGE_OUT,
                     new Workshop.Sink() { @Override public void text(String sx) { parser.feed(sx); } }, b);
             parser.finish();
         } catch (CancellationException x) {
@@ -844,7 +1069,8 @@ public class WorkshopActivity extends Activity {
             line = "✏️ " + (ok + j.removed.size()) + " భాగాలు మారాయి · " + cost + (bad > 0 ? " · " + bad + " రాలేదు" : "");
         } else if (j.answer != null && failure == null) {
             said = j.answer;
-            line = "💬 " + j.answer + " · " + cost;
+            boolean card = j.detail || j.answer.length() > 160;
+            line = (card ? "📖 " + (j.about != null ? "వివరాలు పైన" : "జవాబు పైన") : "💬 " + j.answer) + " · " + cost;
         } else if (j.newWhat != null && failure == null) {
             said = null;
             line = null;
@@ -895,7 +1121,18 @@ public class WorkshopActivity extends Activity {
             }
             refreshButtons();
             if (status != null) setStatus(status);
-            if (words != null) Announcer.say(this, words);
+            if (j.answer != null && failure == null && !keep) { // 📖 the part it is about glows; a long answer on its card
+                String about = j.about != null ? j.about : j.pickedId;
+                if (j.detail || j.answer.length() > 160) {
+                    String nm = nameOf(about);
+                    showAnswer(nm != null ? nm : (shown != null ? shown.title : ""), j.answer, about);
+                } else if (about != null) {
+                    try { send(json("glow").put("id", about).put("label", about.equals(pickedId) && pickedName != null ? pickedName : "")); } catch (Exception ignored) {}
+                    ui.removeCallbacks(unglow);
+                    ui.postDelayed(unglow, 7000);
+                }
+            }
+            if (words != null) speak(words, true);
             if (next != null) start(next, j.talk, false);
         });
     }
@@ -1081,7 +1318,7 @@ public class WorkshopActivity extends Activity {
             stopBtn.setVisibility(View.GONE);
             refreshButtons();
             setStatus(line);
-            Announcer.say(this, words);
+            speak(words, true);
         });
     }
 
@@ -1177,16 +1414,27 @@ public class WorkshopActivity extends Activity {
         super.onResume();
         showChip();
         send(json("resume"));
+        front = true;
+        WakeService.workshopWake = wakeR; // (🎙️ "Jarvis" here: the workshop hears him, no panel over it)
+        JarvisAccessibility.bubbleAside(true);
     }
 
     @Override protected void onPause() {
         super.onPause();
         send(json("pause"));
+        front = false;
+        if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
+        JarvisAccessibility.bubbleAside(false);
+        if (ear != null) ear.away();
+        if (waiting != null) cancelWait(false); // (he left: nothing is spent on what was heard)
     }
 
     @Override protected void onDestroy() {
         destroyed = true;
         openTitle = null;
+        if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
+        if (front) { front = false; JarvisAccessibility.bubbleAside(false); }
+        if (ear != null) ear.shutdown();
         Job j = job;
         if (j != null) stopJob(j);
         ui.removeCallbacksAndMessages(null);

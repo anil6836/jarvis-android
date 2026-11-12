@@ -41,6 +41,8 @@ public class WakeService extends Service {
     static volatile boolean running;
     /** Set while the Jarvis camera is open: "Jarvis" makes the camera listen (no panel over it). */
     static volatile Runnable cameraWake;
+    /** 🛠️ The workshop in front hears him itself (no panel over it): set while it is in front. */
+    static volatile Runnable workshopWake;
 
     /**
      * Someone else has the mic now: while the camera is open, the camera's own flag decides (it may be waiting for
@@ -398,6 +400,8 @@ public class WakeService extends Service {
     /** Two shakes: open Jarvis just like saying "Jarvis". */
     private void onShake() {
         if (JarvisCamera.open) { Runnable cam = cameraWake; if (cam != null && !JarvisCamera.micInUse) cam.run(); return; } // the camera hears him itself
+        Runnable ws0 = workshopWake;
+        if (ws0 != null && WorkshopActivity.front) { if (!WorkshopVoice.micInUse) ws0.run(); return; } // (the workshop too)
         if (MainActivity.busyTalking()) return;
         stopEngine();
         wakeScreen();
@@ -450,6 +454,8 @@ public class WakeService extends Service {
             if (cam != null) cam.run();
             return;
         }
+        Runnable ws = workshopWake;
+        if (ws != null && WorkshopActivity.front) { ws.run(); return; } // 🛠️ the workshop in front listens itself: no panel over it
         // Look at the screen first (for "what's on my screen?"), then open Jarvis on top.
         final boolean[] opened = {false};
         Runnable open = () -> { if (!opened[0]) { opened[0] = true; openJarvis(); } };

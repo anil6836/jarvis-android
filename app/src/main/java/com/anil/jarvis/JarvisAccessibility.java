@@ -1542,6 +1542,13 @@ public class JarvisAccessibility extends AccessibilityService {
         });
     }
 
+    /** 🛠️ The workshop came to the front (true) or left it: the floating button steps aside meanwhile (it has its own 🎙️). */
+    static void bubbleAside(boolean aside) {
+        JarvisAccessibility s = instance;
+        if (s == null) return;
+        MAIN.post(() -> { if (instance == s && s.bubble != null) s.bubble.aside(aside); });
+    }
+
     // ------------------------------------------------------------------ for the floating button and the top message card
 
     /** The on-screen keyboard is open right now (he is typing). */
