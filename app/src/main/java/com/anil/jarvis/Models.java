@@ -42,6 +42,8 @@ final class Models {
     static final String GEMINI_TTS = "gemini_tts";
     /** Sarvam's speaking (Bulbul) and hearing (Saaras) models: their documents' lists (Sarvam has no list to ask for). */
     static final String SARVAM_TTS = "sarvam_tts", SARVAM_STT = "sarvam_stt";
+    /** 🖼️ (A4) The picture-making models (the workshop's studio photo): OpenAI's gpt-image…, Gemini's …image… . */
+    static final String OPENAI_IMAGE = "openai_image", GEMINI_IMAGE = "gemini_image";
     static final String[][] SARVAM_EARS = {
             {"saaras:v4", "Saaras v4 · కొత్తది (సిఫార్సు)"},
             {"saaras:v3", "Saaras v3 · పాతది"}};
@@ -56,7 +58,7 @@ final class Models {
     }
 
     static String company(String provider) {
-        return Prefs.GEMINI.equals(provider) || GEMINI_TTS.equals(provider) ? "Google Gemini" : Prefs.ANTHROPIC.equals(provider) ? "Anthropic Claude"
+        return Prefs.GEMINI.equals(provider) || GEMINI_TTS.equals(provider) || GEMINI_IMAGE.equals(provider) ? "Google Gemini" : Prefs.ANTHROPIC.equals(provider) ? "Anthropic Claude"
                 : REALTIME.equals(provider) ? "OpenAI Live" : SARVAM_TTS.equals(provider) || SARVAM_STT.equals(provider) ? "Sarvam" : "OpenAI";
     }
 
@@ -66,6 +68,7 @@ final class Models {
     static List<Item> list(String provider, String key) throws Exception {
         List<Item> out = new ArrayList<>();
         if (Prefs.GEMINI.equals(provider)) gemini(key, out);
+        else if (GEMINI_IMAGE.equals(provider)) geminiImage(key, out);
         else if (GEMINI_TTS.equals(provider)) geminiTts(key, out);
         else if (SARVAM_TTS.equals(provider)) fixed(SARVAM_TTS, CloudVoice.SARVAM_MODELS, out);
         else if (SARVAM_STT.equals(provider)) fixed(SARVAM_STT, SARVAM_EARS, out);
@@ -89,6 +92,10 @@ final class Models {
             }
             if (TTS.equals(provider)) { // the models that turn Jarvis's words into its voice
                 if (low.contains("tts")) out.add(new Item(TTS, id, "", o.optLong("created")));
+                continue;
+            }
+            if (OPENAI_IMAGE.equals(provider)) { // the models that draw (the image-edit API takes gpt-image…)
+                if (low.startsWith("gpt-image") || low.contains("image") && low.startsWith("gpt-")) out.add(new Item(OPENAI_IMAGE, id, "", o.optLong("created")));
                 continue;
             }
             boolean chat = low.startsWith("gpt-") || low.startsWith("chatgpt-") || low.startsWith("codex-") || low.matches("^o\\d.*");
@@ -182,6 +189,25 @@ final class Models {
     }
 
     // ---------------------------------------------------------------- the picker
+
+    /** Gemini's picture-making models (their names have "image"), newest first. */
+    private static void geminiImage(String key, List<Item> out) throws Exception {
+        JSONObject res = Http.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", "x-goog-api-key", key);
+        JSONArray list = res.optJSONArray("models");
+        for (int i = 0; list != null && i < list.length(); i++) {
+            JSONObject o = list.getJSONObject(i);
+            JSONArray ways = o.optJSONArray("supportedGenerationMethods");
+            if (ways == null || !ways.toString().contains("\"generateContent\"")) continue;
+            String id = o.optString("name").replaceFirst("^models/", "");
+            String low = id.toLowerCase(Locale.ROOT);
+            if (!low.startsWith("gemini") || !low.contains("image")) continue;
+            double rank = 0;
+            Matcher m = GEM_VERSION.matcher(low);
+            if (m.find()) try { rank = Double.parseDouble(m.group(1)) * 100; } catch (Exception ignored) {}
+            if (low.contains("preview") || low.contains("exp")) rank -= 1;
+            out.add(new Item(GEMINI_IMAGE, id, o.optString("displayName"), rank));
+        }
+    }
 
     interface Picked { void on(Item it); }
 

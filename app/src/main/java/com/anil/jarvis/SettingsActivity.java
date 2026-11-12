@@ -559,7 +559,7 @@ public class SettingsActivity extends Activity {
         TextView wsImgAll = Ui.text(this, "📋 అన్ని మోడల్స్ చూపించు", 14, Ui.CYAN);
         wsImgAll.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 4));
         wsImgAll.setOnClickListener(v -> Models.pick(this, "స్టూడియో ఫోటో AI ఎంచుకోండి",
-                new String[]{Prefs.OPENAI, Prefs.GEMINI},
+                new String[]{Models.OPENAI_IMAGE, Models.GEMINI_IMAGE},
                 new String[]{openAiKey.getText().toString(), geminiKey.getText().toString()},
                 workshopImageModel.getText().toString(), it -> chose(workshopImageModel, "workshop_image_model", it.id)));
         boxOf(workshopImageModel).addView(wsImgAll);
