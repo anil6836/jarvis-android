@@ -53,6 +53,8 @@ const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.autoRotate = true;
+controls.addEventListener('start', () => { turning = true; });
+controls.addEventListener('end', () => { turning = false; });
 controls.autoRotateSpeed = 1.1;
 controls.enablePan = false;
 let idleTimer = 0;
@@ -235,7 +237,7 @@ function kitFor(rec) {
   const w = Object.create(kit);
   w.add = (obj, o = {}) => {
     if (!obj || !obj.isObject3D) throw new Error('W.add needs a mesh or group');
-    obj.userData.label = typeof o.label === 'string' ? o.label.slice(0, 60) : '';
+    obj.userData.label = typeof o.label === 'string' ? te(o.label).slice(0, 60) : '';
     obj.userData.explode = Array.isArray(o.explode) ? o.explode.slice(0, 3).map((v) => +v || 0) : [0, 0, 0];
     obj.traverse((x) => { if (x.isMesh) { x.castShadow = true; x.receiveShadow = true; } });
     rec.group.add(obj);
@@ -364,6 +366,12 @@ async function runPart(m) {
 function stats() { post({ t: 'stats', parts: parts.size, tris: totalTris() }); }
 
 function reset() {
+  grabbed = null;
+  controls.enabled = true;
+  binList.length = 0;
+  goneList.length = 0;
+  handAnims.length = 0;
+  binBox();
   picked = null;
   repick = null;
   isolated = null;
@@ -402,10 +410,27 @@ function modelBox() {
 // ------------------------------------------------------------------ pulled apart (an exploded view) with names
 
 let explodeK = 0, explodeGoal = 0, labelsDirty = true, labelGroups = [];
+let labelsOn = true, turning = false; // (🏷️ his on/off; the model being turned by his finger)
 const ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
 
 function placePieces(rec, e) {
-  for (const pc of rec.pieces) if (pc.base) pc.obj.position.copy(pc.base).addScaledVector(pc.explode, e);
+  for (const pc of rec.pieces) {
+    if (!pc.base) continue;
+    pc.obj.position.copy(pc.base);
+    if (!pc.home) pc.obj.position.addScaledVector(pc.explode, e); // (put back in its place by his hand: home)
+    if (pc.drag) pc.obj.position.add(pc.drag); // (moved by his hand)
+  }
+}
+
+/** A name in Telugu only: "మోటార్ (Motor)" → "మోటార్", "Motor (మోటార్)" → "మోటార్"; a name with no Telugu stays as it is. */
+const TE = /[\u0C00-\u0C7F]/;
+function te(raw) {
+  const s = String(raw || '').trim();
+  if (!TE.test(s)) return s;
+  const outside = s.replace(/[(\[（][^)\]）]*[)\]）]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (TE.test(outside)) return outside.replace(/\s*[-–/|:]\s*[A-Za-z][A-Za-z0-9 .'-]*$/, '').replace(/^[A-Za-z][A-Za-z0-9 .'-]*\s*[-–/|:]\s*/, '').trim() || s;
+  const inside = (s.match(/[(\[（][^)\]）]*[)\]）]/g) || []).map((x) => x.slice(1, -1).trim()).find((x) => TE.test(x));
+  return inside || s;
 }
 
 // The directions for the "auto" parts: away from the middle of the assembled model, farther for parts farther out.
@@ -433,14 +458,14 @@ function buildLabels() {
   labelGroups = [];
   for (const r of parts.values()) {
     if (r.auto) { // (one name for the whole part)
-      if (!r.box) continue;
+      if (!r.box || (r.pieces.length && hiddenPiece(r, r.pieces[0]))) continue;
       const v = r.pieces.length ? r.pieces[0].explode.clone() : new THREE.Vector3();
       labelGroups.push({ text: r.label || r.id, rec: r, box: r.box.clone(), explode: v, el: null, w: 0, h: 0, center: r.box.getCenter(new THREE.Vector3()) });
       continue;
     }
     const byName = new Map();
     for (const pc of r.pieces) {
-      if (!pc.label || !pc.box) continue;
+      if (!pc.label || !pc.box || hiddenPiece(r, pc)) continue;
       let g = byName.get(pc.label);
       if (!g) { g = { text: pc.label, rec: r, box: new THREE.Box3(), explode: pc.explode.clone(), el: null, w: 0, h: 0 }; byName.set(pc.label, g); }
       g.box.union(pc.box);
@@ -448,7 +473,7 @@ function buildLabels() {
     for (const g of byName.values()) { g.center = g.box.getCenter(new THREE.Vector3()); labelGroups.push(g); }
   }
   if (isolated) labelGroups = labelGroups.filter((g) => g.rec === isolated.rec && (isolated.objs[0] === g.rec.group || g.text === isolated.label || g.rec.auto));
-  labelGroups = labelGroups.slice(0, 18);
+  labelGroups = labelGroups.slice(0, 12);
   const box = document.getElementById('labels');
   const svg = document.getElementById('lines');
   for (const el of [...box.querySelectorAll('.lb')]) el.remove();
@@ -457,6 +482,12 @@ function buildLabels() {
     const el = document.createElement('div');
     el.className = 'lb';
     el.textContent = g.text;
+    el.addEventListener('click', () => { // (a name tapped: that piece is picked)
+      if (parts.get(g.rec.id) !== g.rec) return;
+      const lab = g.rec.auto ? (g.rec.label || g.rec.id) : g.text;
+      glow(g.rec, objsFor(g.rec, g.rec.auto ? '' : g.text), lab);
+      post({ t: 'pick', id: g.rec.id, label: lab });
+    });
     box.appendChild(el);
     g.el = el;
     g.w = el.offsetWidth;
@@ -472,15 +503,18 @@ function buildLabels() {
 const tmpV = new THREE.Vector3();
 function drawLabels() {
   const box = document.getElementById('labels');
-  const a = ease(explodeK), show = Math.max(a, isolated ? 1 : 0);
-  box.style.opacity = String(Math.max(0, (show - 0.35) / 0.65));
+  const a = ease(explodeK), show = labelsOn ? Math.max(a, isolated ? 1 : 0) : 0;
+  box.style.opacity = String(Math.max(0, (show - 0.35) / 0.65) * (turning || grabbed ? 0.22 : 1)); // (faint while he turns or holds)
+  box.style.display = show < 0.35 ? 'none' : 'block'; // (hidden names never catch a tap)
   if (show < 0.35) return;
   if (labelsDirty) buildLabels();
   const w = window.innerWidth, h = window.innerHeight;
   const top = h * inset.top + 6, bottom = h * (1 - inset.bottom) - 6;
   const cols = { l: [], r: [] };
   for (const g of labelGroups) {
-    tmpV.copy(g.center).addScaledVector(g.explode, a);
+    const p0 = g.rec.auto ? g.rec.pieces[0] : g.rec.pieces.find((pc) => pc.label === g.text);
+    tmpV.copy(g.center).addScaledVector(g.explode, p0 && p0.home ? 0 : a);
+    if (p0 && p0.drag) tmpV.add(p0.drag);
     tmpV.y += g.rec.group.position.y;
     tmpV.project(camera);
     g.vis = tmpV.z < 1;
@@ -633,6 +667,7 @@ function tick(now) {
     for (const x of picked.meshes) for (const m of mats(x.userData.mg)) if (m.emissive) m.emissiveIntensity = k;
   }
   if (sizeBox && now > sizeUntil) { scene.remove(sizeBox); sizeBox.geometry.dispose(); sizeBox = null; }
+  if (handAnims.length) handStep(now);
   // pulled apart / put back together
   if (explodeK !== explodeGoal) {
     explodeK = explodeGoal > explodeK ? Math.min(explodeGoal, explodeK + dt / 1.1) : Math.max(explodeGoal, explodeK - dt / 0.9);
@@ -681,6 +716,7 @@ window.addEventListener('message', (e) => {
     case 'inset':
       inset.top = Math.max(0, Math.min(0.4, +m.top || 0));
       inset.bottom = Math.max(0, Math.min(0.6, +m.bottom || 0));
+      binBox();
       applyInset();
       frameAll(false);
       break;
@@ -688,6 +724,8 @@ window.addEventListener('message', (e) => {
     case 'explode':
       explodeGoal = m.on ? 1 : 0;
       labelsDirty = true;
+      handsOff(); // (moved or put back by hand: everything flies to its place)
+      binBox();
       controls.autoRotate = m.on ? false : spinWanted; // (still while pulled apart: the names stay put)
       if (m.on && m.turn !== false) view(sideOfTravel());
       frameAll(false);
@@ -732,6 +770,16 @@ window.addEventListener('message', (e) => {
       else controls.autoRotate = spinWanted && !cut.on;
       break;
     case 'snap': snap(m.req, !!m.clean); break;
+    case 'labels': labelsOn = !!m.on; break;
+    case 'bin': if (picked) toBin([unitOf(picked.rec, picked.label, picked.objs[0] === picked.rec.group)]); break;
+    case 'binothers': binOthers(); break;
+    case 'unbin': unbin(typeof m.id === 'string' ? m.id : '', typeof m.label === 'string' ? m.label : '', !!m.all); break;
+    case 'binclear': binList.length = 0; look(); labelsDirty = true; binBox(); postBin(''); break;
+    case 'gone':
+      goneList.length = 0;
+      if (Array.isArray(m.list)) for (const g of m.list.slice(0, 200)) if (g && typeof g.id === 'string') goneList.push({ id: g.id, label: typeof g.label === 'string' ? g.label : '' });
+      look(); labelsDirty = true;
+      break;
     case 'stl': stl(m.req); break;
     case 'pause': pause(); break;
     case 'resume': resume(); break;
@@ -745,25 +793,38 @@ window.addEventListener('message', (e) => {
 
 const ray = new THREE.Raycaster();
 const tapAt = new THREE.Vector2();
-let downAt = null, downs = 0;
+let downAt = null, downs = 0, holdTimer = 0;
 let picked = null;   // { rec, objs, meshes: Set, label }
 let repick = null;   // (the picked part is being written again: { id, label })
 let isolated = null; // 🔍 { rec, objs, meshes: Set, label, mode: 'ghost' | 'hide' }
 let reiso = null;    // (the isolated part is being written again: { id, label, mode })
 let xray = false;
 const hiddenList = []; // 🙈 [{ id, label }] ('' label: the whole part)
+const binList = [];    // 🗑️ in the bin: [{ id, label, whole }] (₹0; back with one tap)
+const goneList = [];   // taken off the model for good (he emptied the bin): [{ id, label }], kept with the saved model
 const cut = { on: false, k: 0.5, plane: new THREE.Plane(new THREE.Vector3(1, 0, 0), 0), version: 0 };
 renderer.localClippingEnabled = true;
 const ghostFill = new THREE.MeshBasicMaterial({ color: 0x4fd2ff, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide });
 const ghostLine = new THREE.LineBasicMaterial({ color: 0x4fd2ff, transparent: true, opacity: 0.38, depthWrite: false });
 const SHARED = new Set([ghostFill, ghostLine]);
 
-canvas.addEventListener('pointerdown', (e) => { downs++; downAt = downs === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; });
-canvas.addEventListener('pointercancel', () => { downs = Math.max(0, downs - 1); downAt = null; });
+canvas.addEventListener('pointerdown', (e) => {
+  downs++;
+  downAt = downs === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+  clearTimeout(holdTimer);
+  if (downs === 1) holdTimer = setTimeout(() => { if (downAt) startGrab(downAt.x, downAt.y); }, 450); // ✋ a hold grabs
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (grabbed) { moveGrab(e.clientX, e.clientY); return; }
+  if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 10) clearTimeout(holdTimer); // (a drag: turning)
+});
+canvas.addEventListener('pointercancel', () => { downs = Math.max(0, downs - 1); downAt = null; clearTimeout(holdTimer); if (grabbed) dropGrab(-1, -1); });
 canvas.addEventListener('pointerup', (e) => {
   downs = Math.max(0, downs - 1);
+  clearTimeout(holdTimer);
   const d = downAt;
   downAt = null;
+  if (grabbed) { dropGrab(e.clientX, e.clientY); return; }
   if (!d || performance.now() - d.t > 450 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10) return; // (a drag or a pinch turns / zooms)
   pickAt(e.clientX, e.clientY);
 });
@@ -823,7 +884,8 @@ function glowOf(x) {
 }
 
 function hiddenPiece(rec, pc) {
-  for (const h of hiddenList) if (h.id === rec.id && (!h.label || rec.auto || pc.label === h.label)) return true;
+  for (const list of [hiddenList, binList, goneList])
+    for (const h of list) if (h.id === rec.id && (!h.label || rec.auto || pc.label === h.label)) return true;
   return false;
 }
 
@@ -999,6 +1061,210 @@ function tiltStep(dt) {
   camera.position.copy(controls.target).add(off);
   tilt.ax = nx;
   tilt.ay = ny;
+}
+
+// ------------------------------------------------------------------ ✋ his hand: hold a piece, carry it, drop it in the 🗑️ bin,
+// anywhere on the stage, or back in its place (the 🧩 game). Nothing in the model's code changes; ₹0.
+
+let grabbed = null; // { rec, pcs, label, whole, plane, offset, center0, start: [Vector3], home: Box3, helper }
+const handAnims = [];  // [{ pcs, from: [Vector3], t0, dur, kind: 'back' | 'bin', done }]
+const binEl = document.getElementById('bin');
+if (binEl) binEl.addEventListener('click', () => post({ t: 'bintap' }));
+
+function unitOf(rec, label, whole) {
+  const all = whole || rec.auto || !label;
+  return { rec, label: all ? '' : label, whole: all, pcs: all ? rec.pieces.slice() : rec.pieces.filter((pc) => pc.label === label) };
+}
+
+function startGrab(x, y) {
+  const b = canvas.getBoundingClientRect();
+  tapAt.set(((x - b.left) / b.width) * 2 - 1, -((y - b.top) / b.height) * 2 + 1);
+  ray.setFromCamera(tapAt, camera);
+  const hit = ray.intersectObject(model, true).find((h) => h.object.isMesh && !h.object.userData.isEdge && shown(h.object)
+    && (!isolated || isolated.meshes.has(h.object)));
+  if (!hit) return;
+  let rec = null, pc = null;
+  for (const r of parts.values()) if (inside(hit.object, r.group)) { rec = r; pc = r.auto ? null : r.pieces.find((p) => inside(hit.object, p.obj)); break; }
+  if (!rec || !rec.pieces.length) return;
+  const u = unitOf(rec, pc && pc.label ? pc.label : '', !pc || !pc.label);
+  if (!u.pcs.length) return;
+  const box = new THREE.Box3();
+  for (const p of u.pcs) box.union(new THREE.Box3().setFromObject(p.obj));
+  const center0 = box.getCenter(new THREE.Vector3());
+  const n = camera.getWorldDirection(new THREE.Vector3());
+  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, center0);
+  const at = new THREE.Vector3();
+  if (!ray.ray.intersectPlane(plane, at)) return;
+  const home = new THREE.Box3();
+  for (const p of u.pcs) if (p.box) home.union(p.box); // (where it sits in the whole model)
+  grabbed = { rec, pcs: u.pcs, label: u.whole ? (rec.label || rec.id) : u.label, whole: u.whole, plane, offset: center0.clone().sub(at), center0,
+    start: u.pcs.map((p) => (p.drag ? p.drag.clone() : new THREE.Vector3())), home, helper: null, near: false };
+  for (const p of u.pcs) p.home = false;
+  if (explodeK > 0.5 && !home.isEmpty()) { grabbed.helper = new THREE.Box3Helper(home, 0x4fd2ff); grabbed.helper.material.transparent = true; grabbed.helper.material.opacity = 0.35; scene.add(grabbed.helper); }
+  controls.enabled = false;
+  downAt = null;
+  glow(rec, u.whole ? [rec.group] : u.pcs.map((p) => p.obj), grabbed.label);
+  post({ t: 'pick', id: rec.id, label: grabbed.label });
+  post({ t: 'grab', id: rec.id, label: grabbed.label });
+  binBox();
+}
+
+function moveGrab(x, y) {
+  const g = grabbed;
+  const b = canvas.getBoundingClientRect();
+  tapAt.set(((x - b.left) / b.width) * 2 - 1, -((y - b.top) / b.height) * 2 + 1);
+  ray.setFromCamera(tapAt, camera);
+  const at = new THREE.Vector3();
+  if (!ray.ray.intersectPlane(g.plane, at)) return;
+  const delta = at.add(g.offset).sub(g.center0);
+  g.pcs.forEach((p, i) => { p.drag = g.start[i].clone().add(delta); });
+  placePieces(g.rec, ease(explodeK));
+  if (binEl) binEl.classList.toggle('hot', overBin(x, y));
+  if (g.helper) { // (near its place: the outline brightens)
+    const near = nearHome(g);
+    if (near !== g.near) { g.near = near; g.helper.material.opacity = near ? 0.95 : 0.35; }
+  }
+}
+
+function overBin(x, y) {
+  if (!binEl || binEl.style.display === 'none') return false;
+  const r = binEl.getBoundingClientRect();
+  return x >= r.left - 18 && x <= r.right + 18 && y >= r.top - 18 && y <= r.bottom + 18;
+}
+
+/** Its centre now against where it sits in the whole model (a few % of the model's size counts as "in place"). */
+function nearHome(g) {
+  if (g.home.isEmpty()) return false;
+  const now = new THREE.Box3();
+  for (const p of g.pcs) now.union(new THREE.Box3().setFromObject(p.obj));
+  const all = new THREE.Box3();
+  for (const r of parts.values()) if (r.box) all.union(r.box);
+  const big = Math.max(1, all.getSize(new THREE.Vector3()).length());
+  return now.getCenter(new THREE.Vector3()).distanceTo(g.home.getCenter(new THREE.Vector3())) < Math.max(1.2, big * 0.07);
+}
+
+function dropGrab(x, y) {
+  const g = grabbed;
+  grabbed = null;
+  controls.enabled = true;
+  if (g.helper) { scene.remove(g.helper); g.helper.geometry.dispose(); }
+  if (binEl) binEl.classList.remove('hot');
+  if (x >= 0 && overBin(x, y)) { toBin([{ rec: g.rec, label: g.whole ? '' : g.label, whole: g.whole, pcs: g.pcs }]); binBox(); return; }
+  if (explodeK > 0.5 && nearHome(g)) { // 🧩 back in its place: it clicks in
+    for (const p of g.pcs) { p.drag = null; p.home = true; }
+    placePieces(g.rec, ease(explodeK));
+    const c = gameCount();
+    post({ t: 'snap', id: g.rec.id, label: c.done + '/' + c.all });
+  } else post({ t: 'moved', id: g.rec.id, label: g.label }); // (left where he put it)
+  labelsDirty = true;
+  binBox();
+}
+
+/** 🧩 How many pieces are in their place (a piece that never moves when pulled apart counts as placed). */
+function gameCount() {
+  let all = 0, done = 0;
+  const seen = new Set();
+  for (const r of parts.values()) {
+    for (const pc of r.pieces) {
+      const key = r.id + '|' + (r.auto || !pc.label ? '' : pc.label);
+      if (seen.has(key) || hiddenPiece(r, pc)) continue;
+      seen.add(key);
+      all++;
+      const still = pc.explode.lengthSq() < 1e-6 && !pc.drag;
+      if (pc.home && !pc.drag || still) done++;
+    }
+  }
+  return { all, done };
+}
+
+/** 🗑️ Into the bin: it shrinks away there; one tap on the bin brings it back. */
+function toBin(units) {
+  let n = 0;
+  units.forEach((u, i) => {
+    if (!u.pcs.length || binList.some((x) => x.id === u.rec.id && x.label === u.label)) return;
+    n++;
+    setTimeout(() => {
+      if (parts.get(u.rec.id) !== u.rec) return;
+      const s0 = u.pcs.map((p) => p.obj.scale.clone()); // (its own size, put back after)
+      handAnims.push({ pcs: u.pcs, s0, t0: performance.now(), dur: 280, kind: 'bin', done: () => {
+        binList.push({ id: u.rec.id, label: u.label, whole: !!u.whole, name: u.whole ? (u.rec.label || u.rec.id) : u.label });
+        u.pcs.forEach((p, j) => p.obj.scale.copy(s0[j]));
+        if (picked && picked.rec === u.rec && (u.whole || picked.label === u.label)) { picked = null; post({ t: 'pick', id: '' }); }
+        look(); labelsDirty = true; binBox(); postBin(u.whole ? (u.rec.label || u.rec.id) : u.label);
+      } });
+    }, i * 70);
+  });
+  return n;
+}
+
+/** 🗑️ Everything but the picked piece goes in the bin (his "మిగతావి బిన్‌లో వేయి"). */
+function binOthers() {
+  if (!picked) { post({ t: 'bin', id: '', label: 'nothing-picked', list: [] }); return; }
+  const units = [];
+  for (const r of parts.values()) {
+    if (r !== picked.rec) { if (!r.pieces.some((pc) => hiddenPiece(r, pc))) units.push(unitOf(r, '', true)); continue; }
+    if (r.auto || picked.objs[0] === r.group) continue;
+    const names = new Set(r.pieces.map((pc) => pc.label).filter((l) => l && l !== picked.label));
+    for (const l of names) units.push(unitOf(r, l, false));
+  }
+  toBin(units);
+}
+
+/** Back from the bin: it shows where it was dropped and flies to its place. */
+function unbin(id, label, all) {
+  const back = [];
+  for (let i = binList.length - 1; i >= 0; i--) {
+    const b = binList[i];
+    if (all || (b.id === id && b.label === label)) { back.push(b); binList.splice(i, 1); }
+  }
+  if (!back.length) return;
+  look();
+  for (const b of back) {
+    const r = parts.get(b.id);
+    if (!r) continue;
+    const pcs = b.whole ? r.pieces : r.pieces.filter((pc) => pc.label === b.label);
+    for (const p of pcs) p.home = false;
+    handAnims.push({ pcs, from: pcs.map((p) => (p.drag ? p.drag.clone() : new THREE.Vector3())), t0: performance.now(), dur: 450, kind: 'back' });
+  }
+  labelsDirty = true;
+  binBox();
+  postBin('');
+}
+
+/** Everything his hand moved or put back goes to its place again (pulled apart / put together). */
+function handsOff() {
+  for (const r of parts.values()) {
+    const pcs = r.pieces.filter((p) => p.drag || p.home);
+    if (!pcs.length) continue;
+    for (const p of pcs) p.home = false;
+    handAnims.push({ pcs, from: pcs.map((p) => (p.drag ? p.drag.clone() : new THREE.Vector3())), t0: performance.now(), dur: 450, kind: 'back' });
+  }
+}
+
+function handStep(now) {
+  for (let i = handAnims.length - 1; i >= 0; i--) {
+    const h = handAnims[i];
+    const k = Math.min(1, (now - h.t0) / h.dur), e2 = 1 - Math.pow(1 - k, 3);
+    if (h.kind === 'bin') h.pcs.forEach((p, j) => p.obj.scale.copy(h.s0[j]).multiplyScalar(Math.max(0.02, 1 - e2)));
+    else h.pcs.forEach((p, j) => { p.drag = k >= 1 ? null : h.from[j].clone().multiplyScalar(1 - e2); });
+    const recs = new Set(h.pcs.map((p) => p.obj.parent));
+    for (const r of parts.values()) if (recs.has(r.group)) placePieces(r, ease(explodeK));
+    if (k >= 1) { handAnims.splice(i, 1); if (h.done) h.done(); }
+  }
+}
+
+function postBin(last) {
+  post({ t: 'bin', id: '', label: last || '', list: binList.map((b) => ({ id: b.id, label: b.label, name: b.name || b.label, whole: !!b.whole })) });
+}
+
+/** The bin shows while pulled apart, while he holds a piece, or while something is in it. */
+function binBox() {
+  if (!binEl) return;
+  const on = parts.size > 0 && (explodeGoal > 0 || !!grabbed || binList.length > 0);
+  binEl.style.display = on ? 'flex' : 'none';
+  binEl.style.bottom = Math.round(window.innerHeight * inset.bottom + 14) + 'px';
+  const n = document.getElementById('binN');
+  if (n) n.textContent = binList.length ? String(binList.length) : '';
 }
 
 // ------------------------------------------------------------------ 📸 a picture, 🖨️ a print file: only when Jarvis asks (A4)

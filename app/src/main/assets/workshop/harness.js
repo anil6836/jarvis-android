@@ -8,7 +8,8 @@
   var toJarvis = [];        // (said by the stage before Jarvis's port came)
   var stageReady = false;
   var toStage = [];         // (sent by Jarvis before the stage was ready)
-  var KINDS = { ready: 1, ok: 1, err: 1, warn: 1, stats: 1, pick: 1, view: 1, size: 1, hid: 1, replay: 1, file: 1 };
+  var KINDS = { ready: 1, ok: 1, err: 1, warn: 1, stats: 1, pick: 1, view: 1, size: 1, hid: 1, replay: 1, file: 1,
+    grab: 1, moved: 1, snap: 1, bin: 1, bintap: 1 };
 
   function clean(d) {
     if (!d || typeof d !== 'object' || typeof d.t !== 'string' || !KINDS[d.t]) return null;
@@ -19,6 +20,11 @@
     if (typeof d.parts === 'number' && isFinite(d.parts)) o.parts = Math.round(d.parts);
     if (typeof d.label === 'string') o.label = d.label.slice(0, 60);
     ['w', 'h', 'd', 'tris'].forEach(function (k) { if (typeof d[k] === 'number' && isFinite(d[k])) o[k] = d[k]; });
+    if (d.t === 'bin' && Array.isArray(d.list)) { // (what is in the bin: names only)
+      o.list = d.list.slice(0, 80).filter(function (x) { return x && typeof x.id === 'string'; }).map(function (x) {
+        return { id: x.id.slice(0, 48), label: String(x.label || '').slice(0, 60), name: String(x.name || x.label || '').slice(0, 60), whole: !!x.whole };
+      });
+    }
     if (d.t === 'file') { // (a picture or a print file Jarvis asked for: base64, at most ~30 MB; Jarvis checks it)
       if (typeof d.req === 'string') o.req = d.req.slice(0, 40);
       if (d.kind === 'jpg' || d.kind === 'stl') o.kind = d.kind;

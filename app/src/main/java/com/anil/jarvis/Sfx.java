@@ -36,6 +36,17 @@ final class Sfx {
     /** The camera's HUD sounds on (his "Jarvis శబ్దాలు" and the camera's own 🔊 switch). */
     static boolean hudOn(Prefs p) { return p.sfx() && p.sp.getBoolean("cam_hud_sfx", true); }
 
+    /** 🛠️ (A5) The workshop hand's sounds (his "Jarvis శబ్దాలు"): grab, bin, back, snap, done. */
+    static void workshop(Context c, Prefs p, String kind) {
+        if (!p.sfx()) return;
+        String k = "grab".equals(kind) ? "mark" : "bin".equals(kind) ? "whoosh" : "back".equals(kind) ? "card" : "snap".equals(kind) ? "lock" : "done".equals(kind) ? "count" : "mark";
+        play(() -> {
+            short[] s = hudCache.get(k);
+            if (s == null) { s = makeHud(k); hudCache.put(k, s); }
+            return s;
+        });
+    }
+
     /** kind: scan, mark, tick, lock, whoosh, card, count. */
     static void hud(Context c, Prefs p, String kind) {
         if (!hudOn(p)) return;

@@ -298,7 +298,7 @@ final class Workshop {
             "Putting pieces in:",
             "  W.mesh(geometry, material, {at: [x, y, z], rot: [xDeg, yDeg, zDeg], scale}) → a THREE.Mesh (not added yet)",
             "  W.group({at, rot, scale}) → a THREE.Group",
-            "  W.add(object, {label: 'Telugu name (English name)', explode: [x, y, z]}) adds it to this part and returns it. explode is where this piece",
+            "  W.add(object, {label: 'Telugu name only, no English', explode: [x, y, z]}) adds it to this part and returns it. explode is where this piece",
             "    travels, in cm, when the model is pulled apart for an exploded diagram: layer the pieces along one main axis, none overlapping.",
             "Movement:",
             "  W.spin(object, 'x' | 'y' | 'z', turnsPerSecond)    W.onTick((t, dt) => { ... }) t and dt in seconds, keep it light",
@@ -461,6 +461,14 @@ final class Workshop {
             "చూపించు", "చూపెట్టు", "చూపు", "చేయి", "చెయ్", "చేయ్", "చెయ్యి", "దీన్ని", "దాన్ని", "బొమ్మని", "బొమ్మను", "బొమ్మ", "it", "the", "now", "ఇప్పుడు", "show", "me", "view",
             "వర్క్‌షాప్", "వర్క్‌షాప్‌లో", "వర్క్ షాప్", "workshop", "బొమ్మలో", "చూడు", "చూడండి", "చూపించండి"};
 
+    /** (A5) The pieces he took off this model for good (the AI must not bring them back unless he asks). */
+    static String goneNote(List<String[]> gone) {
+        if (gone == null || gone.isEmpty()) return "";
+        StringBuilder b = new StringBuilder("\n\nAnil took these pieces off the model himself (they stay hidden; do not add them back unless he asks):");
+        for (String[] g : gone) b.append("\n- part \"").append(g[0]).append("\", the piece named \"").append(g[1]).append("\"");
+        return b.toString();
+    }
+
     /** A Features row's words carry "(workshop talk)" for the brain: that hint is not his. */
     static String hintless(String text) {
         return text == null ? "" : text.replaceAll("\\s*\\((?:workshop|వర్క్‌షాప్)[^)]*\\)\\s*[:.]?", " ").trim();
@@ -508,7 +516,15 @@ final class Workshop {
             {"fromphoto", "ఫోటో నుంచి 3d", "ఫోటో నుంచి", "ఫోటో నుండి 3d", "photo to 3d", "from photo"},
             {"plan", "ఇంటి ప్లాన్", "ఇంటి ప్లాన్ నుంచి", "ప్లాన్ నుంచి ఇల్లు", "floor plan", "house plan"},
             {"landscape", "అడ్డంగా", "ల్యాండ్‌స్కేప్", "ల్యాండ్ స్కేప్", "landscape", "rotate"},
-            {"portrait", "నిలువుగా", "పోర్ట్రెయిట్", "portrait"}};
+            {"portrait", "నిలువుగా", "పోర్ట్రెయిట్", "portrait"},
+            // (A5) his hand and the bin, the names, ₹0
+            {"bin", "ఇది బిన్‌లో వేయి", "బిన్‌లో వేయి", "ఇది పారేయి", "పారేయి", "ఇది డస్ట్‌బిన్‌లో వేయి", "డస్ట్‌బిన్‌లో వేయి", "bin it", "throw it", "to the bin"},
+            {"bin_others", "మిగతావి బిన్‌లో వేయి", "మిగతావి బిన్‌లో", "మిగతావి పారేయి", "మిగతావి డస్ట్‌బిన్‌లో వేయి", "మిగతావన్నీ బిన్‌లో వేయి", "bin the rest", "bin others"},
+            {"bin_open", "బిన్", "డస్ట్‌బిన్", "బిన్‌లో ఏముంది", "బిన్ తెరువు", "open bin", "bin"},
+            {"unbin_all", "అన్నీ వెనక్కి", "బిన్ నుంచి అన్నీ", "బిన్ నుంచి అన్నీ వెనక్కి", "అన్నీ తిరిగి", "all back", "restore all"},
+            {"bin_empty", "బిన్ ఖాళీ చేయి", "బిన్ ఖాళీ", "డస్ట్‌బిన్ ఖాళీ చేయి", "empty bin", "empty the bin"},
+            {"labels_off", "పేర్లు దాచు", "పేర్లు వద్దు", "పేర్లు ఆపు", "పేర్లు తీసేయి", "hide names", "names off", "labels off"},
+            {"labels_on", "పేర్లు", "పేర్లు పెట్టు", "names", "names on", "labels on", "show names"}};
 
     // ================================================================ 🖼️ (A4) a studio / miniature photo by his image AI
 

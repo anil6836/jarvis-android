@@ -130,6 +130,12 @@ public class WorkshopActivity extends Activity {
     private int photoKind = Workshop.PHOTO;
     /** The last hide asked: "hide", "roof_off", "roof_on" (its answer says what happened). */
     private String lastHide;
+    // (A5) 🏷️ names on/off; 🗑️ what is in the bin (from the stage)
+    private TextView labelBtn, binBtn;
+    private boolean labelsOn = true;
+    private int binCount;
+    private final List<String[]> binItems = new ArrayList<>(); // {id, label, name, whole}
+    private android.os.Vibrator vib;
 
     /** The model on the stage now (a finished build or a saved one): what a change is made to, and what is saved. */
     private Shown shown;
@@ -145,12 +151,15 @@ public class WorkshopActivity extends Activity {
         long seconds = -1, firstPart = -1;
         /** id → {status, code}, in order. */
         final LinkedHashMap<String, String[]> parts = new LinkedHashMap<>();
+        /** (A5) pieces he emptied from the bin for good: {part id, piece name}; they stay hidden on this model. */
+        final List<String[]> gone = new ArrayList<>();
 
         Shown copy() {
             Shown c = new Shown();
             c.at = at; c.title = title; c.what = what; c.model = model; c.say = say; c.cost = cost; c.estimated = estimated;
             c.changes = changes; c.repairs = repairs; c.seconds = seconds; c.firstPart = firstPart;
             for (Map.Entry<String, String[]> e : parts.entrySet()) c.parts.put(e.getKey(), e.getValue().clone());
+            for (String[] g : gone) c.gone.add(g.clone());
             return c;
         }
 
@@ -164,9 +173,11 @@ public class WorkshopActivity extends Activity {
             JSONArray ps = new JSONArray();
             for (Map.Entry<String, String[]> e : parts.entrySet())
                 ps.put(new JSONObject().put("id", e.getKey()).put("status", e.getValue()[0]).put("code", e.getValue()[1]));
+            JSONArray gs = new JSONArray();
+            for (String[] g : gone) gs.put(new JSONObject().put("id", g[0]).put("label", g[1]));
             return new JSONObject().put("at", at).put("title", title).put("what", what == null ? "" : what).put("model", model == null ? "" : model)
                     .put("parts", ps).put("say", say == null ? "" : say).put("cost", cost).put("estimated", estimated).put("repairs", repairs)
-                    .put("changes", changes).put("seconds", seconds).put("first_part_seconds", firstPart);
+                    .put("changes", changes).put("seconds", seconds).put("first_part_seconds", firstPart).put("gone", gs);
         }
 
         static Shown of(JSONObject b) {
@@ -186,6 +197,11 @@ public class WorkshopActivity extends Activity {
             for (int i = 0; ps != null && i < ps.length(); i++) {
                 JSONObject pt = ps.optJSONObject(i);
                 if (pt != null) s.parts.put(pt.optString("id"), new String[]{pt.optString("status", pt.optString("id")), pt.optString("code")});
+            }
+            JSONArray gs = b.optJSONArray("gone");
+            for (int i = 0; gs != null && i < gs.length(); i++) {
+                JSONObject g = gs.optJSONObject(i);
+                if (g != null && s.parts.containsKey(g.optString("id"))) s.gone.add(new String[]{g.optString("id"), g.optString("label")});
             }
             return s;
         }
@@ -383,10 +399,14 @@ public class WorkshopActivity extends Activity {
         replayBtn = pill("🎬 తయారీ", v -> command("replay", false));
         tiltBtn = pill("📱 వంచు", v -> command(tiltOn ? "tilt_off" : "tilt_on", false));
         TextView fromPhoto = pill("📷 ఫోటో నుంచి 3D", v -> photoChoice());
+        labelBtn = pill("🏷️ పేర్లు దాచు", v -> command(labelsOn ? "labels_off" : "labels_on", false));
+        binBtn = pill("🗑️ బిన్", v -> binTray());
         actions.addView(cancelBtn);
         actions.addView(stopBtn);
         actions.addView(explodeBtn);
         actions.addView(undoBtn);
+        actions.addView(binBtn);
+        actions.addView(labelBtn);
         actions.addView(isoBtn);
         actions.addView(hideBtn);
         actions.addView(allBtn);
@@ -532,6 +552,10 @@ public class WorkshopActivity extends Activity {
             for (TextView t : new TextView[]{xrayBtn, cutBtn, sizeBtn, snapBtn, studioBtn, stlBtn, replayBtn, tiltBtn})
                 t.setVisibility(has ? View.VISIBLE : View.GONE);
             cutRow.setVisibility(has && cutOn ? View.VISIBLE : View.GONE);
+            labelBtn.setVisibility(has && (exploded || isolatedOn) ? View.VISIBLE : View.GONE);
+            labelBtn.setText(labelsOn ? "🏷️ పేర్లు దాచు" : "🏷️ పేర్లు చూపించు");
+            binBtn.setVisibility(has && binCount > 0 ? View.VISIBLE : View.GONE);
+            binBtn.setText("🗑️ బిన్ " + binCount);
         }
         undoBtn.setVisibility(has && !undo.isEmpty() && job == null ? View.VISIBLE : View.GONE);
         nightBtn.setText(night ? "☀️ పగలు" : "🌙 రాత్రి");
@@ -856,6 +880,30 @@ public class WorkshopActivity extends Activity {
             case "fromphoto": photoChoice(); break;
             case "plan": photoKind = Workshop.PLAN; pickPhoto(Workshop.PLAN); break;
             case "landscape": case "portrait": turnScreen("landscape".equals(cmd)); break;
+            // ---- (A5) the names, the bin
+            case "labels_off": case "labels_on":
+                labelsOn = "labels_on".equals(cmd);
+                try { send(json("labels").put("on", labelsOn)); } catch (Exception ignored) {}
+                said = labelsOn ? "పేర్లు చూపిస్తున్నాను Sir." : "పేర్లు దాచాను Sir.";
+                break;
+            case "bin":
+                if (!has) break;
+                if (pickedId == null) { said = "ఏది బిన్‌లో వేయాలో ముందు దాన్ని తాకండి Sir, లేదా దాని మీద వేలు అర సెకను నొక్కి 🗑️ వైపు లాగండి."; break; }
+                send(json("bin"));
+                break;
+            case "bin_others":
+                if (!has) break;
+                if (pickedId == null) { said = "ఉంచుకోవాల్సిన భాగాన్ని ముందు తాకండి Sir, తర్వాత \"మిగతావి బిన్‌లో వేయి\" అనండి."; break; }
+                send(json("binothers"));
+                said = (pickedName != null ? pickedName : "ఆ భాగం") + " తప్ప మిగతావి బిన్‌లో వేస్తున్నాను Sir.";
+                break;
+            case "bin_open": binTray(); break;
+            case "unbin_all":
+                if (binCount == 0) { said = "బిన్ ఖాళీగా ఉంది Sir."; break; }
+                try { send(json("unbin").put("all", true)); } catch (Exception ignored) {}
+                said = "అన్నీ వాటి చోటికి వస్తున్నాయి Sir.";
+                break;
+            case "bin_empty": emptyBin(); break;
             default: break;
         }
         refreshButtons();
@@ -889,9 +937,19 @@ public class WorkshopActivity extends Activity {
             sendPart(e.getKey(), e.getValue()[1]);
             row(e.getKey(), "✓ " + e.getValue()[0], Ui.OK);
         }
+        sendGone(sh);
         titleView.setText(sh.title);
         if (sh.model != null && !sh.model.isEmpty()) chip.setText(label(sh.model));
         refreshButtons();
+    }
+
+    /** The pieces he took off for good stay hidden on the stage. */
+    private void sendGone(Shown sh) {
+        try {
+            JSONArray l = new JSONArray();
+            if (sh != null) for (String[] g : sh.gone) l.put(new JSONObject().put("id", g[0]).put("label", g[1]));
+            send(json("gone").put("list", l));
+        } catch (Exception ignored) {}
     }
 
     private void save(Shown sh) {
@@ -1053,6 +1111,38 @@ public class WorkshopActivity extends Activity {
         }
         if ("replay".equals(t)) { String nm = nameOf(id); setStatus("🎬 " + m.optString("label") + " · " + (nm != null ? nm : id)); return; }
         if ("file".equals(t)) { gotFile(m); return; }
+        if ("grab".equals(t)) { // ✋ a piece in his hand
+            feel("grab", 18);
+            setStatus("✋ " + m.optString("label") + " · 🗑️ మీదకి లాగి వదిలితే బిన్‌లో; వేరే చోట వదిలితే అక్కడే" + (exploded ? "; దాని చోటికి తెస్తే అతుక్కుంటుంది" : ""));
+            return;
+        }
+        if ("moved".equals(t)) { setStatus("✋ " + m.optString("label") + " అక్కడే పెట్టాను · \"కలుపు\" అంటే అన్నీ వాటి చోటికి"); return; }
+        if ("snap".equals(t)) { // 🧩 back in its place by his hand
+            String[] dn = m.optString("label", "0/0").split("/");
+            boolean all = dn.length == 2 && dn[0].equals(dn[1]);
+            feel(all ? "done" : "snap", all ? 60 : 30);
+            String nm = nameOf(id);
+            setStatus(all ? "🎉 " + m.optString("label") + " · మొత్తం బొమ్మ మీరే అమర్చారు Sir!" : "🧩 " + (nm != null ? nm + " అతుక్కుంది · " : "") + m.optString("label") + " అమర్చారు");
+            if (all) speak("మొత్తం బొమ్మ మీరే అమర్చారు Sir!", true);
+            return;
+        }
+        if ("bin".equals(t)) { // 🗑️ what is in the bin now
+            if ("nothing-picked".equals(m.optString("label"))) { setStatus("ఉంచుకోవాల్సిన భాగాన్ని ముందు తాకండి Sir."); return; }
+            JSONArray l = m.optJSONArray("list");
+            int before = binCount;
+            binItems.clear();
+            for (int i = 0; l != null && i < l.length(); i++) {
+                JSONObject b = l.optJSONObject(i);
+                if (b != null) binItems.add(new String[]{b.optString("id"), b.optString("label"), b.optString("name", b.optString("label")), String.valueOf(b.optBoolean("whole"))});
+            }
+            binCount = binItems.size();
+            String last = m.optString("label");
+            if (binCount > before) { feel("bin", 22); setStatus("🗑️ " + (last.isEmpty() ? "" : last + " ") + "బిన్‌లో వేశాను · బిన్‌లో " + binCount + " · 🗑️ నొక్కితే తిరిగి తీసుకోవచ్చు"); }
+            else if (binCount < before) { feel("back", 15); setStatus(binCount == 0 ? "↩️ అన్నీ వాటి చోటికి వచ్చాయి" : "↩️ తిరిగి తెచ్చాను · బిన్‌లో ఇంకా " + binCount); }
+            refreshButtons();
+            return;
+        }
+        if ("bintap".equals(t)) { binTray(); return; }
         if ("ok".equals(t) || "err".equals(t)) {
             synchronized (acks) {
                 acks.put(id, new String[]{t, m.optString("msg")});
@@ -1078,6 +1168,10 @@ public class WorkshopActivity extends Activity {
             if (!spinning) send(json("spin").put("on", false));
         } catch (Exception ignored) {}
         if (pickedId != null) glowPicked();
+        if (shown != null && !shown.gone.isEmpty()) sendGone(shown);
+        if (!labelsOn) { try { send(json("labels").put("on", false)); } catch (Exception ignored) {} }
+        binCount = 0;
+        binItems.clear();
         if (isolatedOn || xrayOn || cutOn || hiddenCount > 0) { viewReset(); refreshButtons(); } // (the new stage starts plain)
         synchronized (acks) { // (a part that was waiting when the stage stopped: it failed)
             Job j = job;
@@ -1206,7 +1300,8 @@ public class WorkshopActivity extends Activity {
         });
         Workshop.Bill b = new Workshop.Bill();
         try {
-            Workshop.stream(j.engine, Workshop.SYSTEM, Workshop.changeMessage(before.title, before.list(), j.talk, j.pickedId, j.pickedName, j.detail), Workshop.CHANGE_OUT,
+            Workshop.stream(j.engine, Workshop.SYSTEM, Workshop.changeMessage(before.title, before.list(), j.talk, j.pickedId, j.pickedName, j.detail)
+                    + Workshop.goneNote(before.gone), Workshop.CHANGE_OUT,
                     new Workshop.Sink() { @Override public void text(String sx) { parser.feed(sx); } }, b);
             parser.finish();
         } catch (CancellationException x) {
@@ -1629,10 +1724,80 @@ public class WorkshopActivity extends Activity {
         super.onDestroy();
     }
 
+    // ================================================================ (A5) the bin, a sound and a little buzz
+
+    /** 🔊 + 📳 for his hand (his "Jarvis శబ్దాలు" setting decides the sound; nothing during a call). */
+    private void feel(String kind, int ms) {
+        if (CallControl.busyWithCall()) return;
+        Sfx.workshop(this, p, kind);
+        try {
+            if (vib == null) vib = getSystemService(android.os.Vibrator.class);
+            if (vib != null && vib.hasVibrator()) vib.vibrate(android.os.VibrationEffect.createOneShot(ms, android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+        } catch (Exception ignored) {}
+    }
+
+    /** 🗑️ What is in the bin: a tap brings one back; all back; or take them off the model for good. */
+    private void binTray() {
+        if (binItems.isEmpty()) {
+            setStatus("🗑️ బిన్ ఖాళీగా ఉంది · విడదీశాక భాగం మీద వేలు అర సెకను నొక్కి 🗑️ వైపు లాగండి");
+            return;
+        }
+        final List<String[]> items = new ArrayList<>(binItems);
+        String[] names = new String[items.size()];
+        for (int i = 0; i < items.size(); i++) names[i] = "↩️ " + items.get(i)[2];
+        new AlertDialog.Builder(this).setTitle("🗑️ బిన్‌లో " + items.size())
+                .setItems(names, (d, w) -> {
+                    String[] b = items.get(w);
+                    try { send(json("unbin").put("id", b[0]).put("label", b[1])); } catch (Exception ignored) {}
+                })
+                .setPositiveButton("↩️ అన్నీ వెనక్కి", (d, w) -> command("unbin_all", false))
+                .setNeutralButton("🗑️ శాశ్వతంగా తీసేయి", (d, w) -> emptyBin())
+                .setNegativeButton("మూసేయి", null).show();
+    }
+
+    /** 🗑️ Empty the bin: those pieces come off this model for good (₹0; ↩️ వెనక్కి brings them back). */
+    private void emptyBin() {
+        if (binItems.isEmpty() || shown == null) { setStatus("🗑️ బిన్ ఖాళీగా ఉంది"); return; }
+        final List<String[]> items = new ArrayList<>(binItems);
+        StringBuilder names = new StringBuilder();
+        for (String[] b : items) names.append(names.length() > 0 ? ", " : "").append(b[2]);
+        new AlertDialog.Builder(this).setTitle("🗑️ శాశ్వతంగా తీసేయాలా?")
+                .setMessage(names + "\n\nఈ బొమ్మ నుంచి తీసేస్తాను (ఖర్చు ₹0). మనసు మారితే ↩️ వెనక్కి నొక్కితే మళ్ళీ వస్తాయి.")
+                .setPositiveButton("తీసేయి", (d, w) -> {
+                    if (shown == null || job != null) return;
+                    undo.addFirst(shown.copy());
+                    while (undo.size() > 5) undo.removeLast();
+                    Shown after = shown.copy();
+                    for (String[] b : items) {
+                        if (!after.parts.containsKey(b[0])) continue;
+                        if (Boolean.parseBoolean(b[3])) { // (a whole part: out of the model)
+                            after.parts.remove(b[0]);
+                            try { send(json("remove").put("id", b[0])); } catch (Exception ignored) {}
+                            TextView tv = rows.remove(b[0]);
+                            if (tv != null) list.removeView(tv);
+                            onStage.remove(b[0]);
+                        } else after.gone.add(new String[]{b[0], b[1]});
+                    }
+                    after.changes++;
+                    shown = after;
+                    save(shown);
+                    sendGone(shown);
+                    send(json("binclear"));
+                    binItems.clear();
+                    binCount = 0;
+                    refreshButtons();
+                    setStatus("🗑️ తీసేశాను · ఖర్చు ₹0 · ↩️ వెనక్కి నొక్కితే మళ్ళీ వస్తాయి");
+                    speak("తీసేశాను Sir.", true);
+                })
+                .setNegativeButton("వద్దు", null).show();
+    }
+
     // ================================================================ (A4) the view tools, photos, print files, landscape
 
     /** The stage starts plain again (a new build, a saved one, a fresh stage): no isolation, X-ray, cut, hidden parts, tilt. */
     private void viewReset() {
+        binCount = 0;
+        binItems.clear();
         isolatedOn = false;
         xrayOn = false;
         cutOn = false;
