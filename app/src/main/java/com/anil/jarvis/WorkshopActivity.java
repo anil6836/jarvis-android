@@ -153,6 +153,13 @@ public class WorkshopActivity extends Activity {
     private boolean arOn;
     private android.hardware.display.DisplayManager.DisplayListener turnL;
     private static final int REQ_AR_PERM = 64;
+    // (1–9) 🎨 colours, 📏 tape, ⚖️ weight, 📐 drawing, 🎞️ show video, 🖼️ pictures, 🔀 second model, ✋ hand signs, 📏 real size
+    private TextView paintBtn, tapeBtn, weightBtn, drawBtn, videoBtn, guestBtn, guestTopBtn, guestOffBtn, handsBtn, realBtn;
+    private boolean tapeOn, guestTop, recordNext, recording, massVoice, drawVoice, paintVoice, handsOn, realOn;
+    private long recordAt;
+    private String guestTitle, massReq, drawReq, drawDesc, drawViews, paintReq, thumbReq;
+    private long thumbAt;
+    private Workshop.PaintSay paintAsk;
 
     /** The model on the stage now (a finished build or a saved one): what a change is made to, and what is saved. */
     private Shown shown;
@@ -173,12 +180,15 @@ public class WorkshopActivity extends Activity {
         /** (E, F) the 🎓 show (checked JSON) and the 🛠️ build guide made for this model, and at which change (-1: none). */
         String tour, guide;
         int tourAt = -1, guideAt = -1;
+        /** (1) 🎨 his own colours / materials: {part id, piece name ("" = the whole part), kind, colour}; the newest last. */
+        final List<String[]> paints = new ArrayList<>();
 
         Shown copy() {
             Shown c = new Shown();
             c.at = at; c.title = title; c.what = what; c.model = model; c.say = say; c.cost = cost; c.estimated = estimated;
             c.changes = changes; c.repairs = repairs; c.seconds = seconds; c.firstPart = firstPart;
             c.tour = tour; c.tourAt = tourAt; c.guide = guide; c.guideAt = guideAt;
+            for (String[] x : paints) c.paints.add(x.clone());
             for (Map.Entry<String, String[]> e : parts.entrySet()) c.parts.put(e.getKey(), e.getValue().clone());
             for (String[] g : gone) c.gone.add(g.clone());
             return c;
@@ -199,7 +209,14 @@ public class WorkshopActivity extends Activity {
             return new JSONObject().put("at", at).put("title", title).put("what", what == null ? "" : what).put("model", model == null ? "" : model)
                     .put("parts", ps).put("say", say == null ? "" : say).put("cost", cost).put("estimated", estimated).put("repairs", repairs)
                     .put("changes", changes).put("seconds", seconds).put("first_part_seconds", firstPart).put("gone", gs)
-                    .put("tour", tour == null ? "" : tour).put("tour_at", tourAt).put("guide", guide == null ? "" : guide).put("guide_at", guideAt);
+                    .put("tour", tour == null ? "" : tour).put("tour_at", tourAt).put("guide", guide == null ? "" : guide).put("guide_at", guideAt)
+                    .put("paints", paintsJson());
+        }
+
+        JSONArray paintsJson() {
+            JSONArray l = new JSONArray();
+            try { for (String[] x : paints) l.put(new JSONObject().put("id", x[0]).put("label", x[1]).put("kind", x[2]).put("color", x[3])); } catch (Exception ignored) {}
+            return l;
         }
 
         static Shown of(JSONObject b) {
@@ -230,6 +247,12 @@ public class WorkshopActivity extends Activity {
             s.tourAt = s.tour == null ? -1 : b.optInt("tour_at", -1);
             s.guide = gd.isEmpty() ? null : gd;
             s.guideAt = s.guide == null ? -1 : b.optInt("guide_at", -1);
+            JSONArray pl = b.optJSONArray("paints");
+            for (int i = 0; pl != null && i < pl.length() && i < 300; i++) {
+                JSONObject x = pl.optJSONObject(i);
+                if (x != null && s.parts.containsKey(x.optString("id")))
+                    s.paints.add(new String[]{x.optString("id"), x.optString("label"), x.optString("kind"), x.optString("color")});
+            }
             return s;
         }
     }
@@ -437,6 +460,16 @@ public class WorkshopActivity extends Activity {
         tourNextBtn = pill("⏭ తర్వాత", v -> command("show_next", false));
         guideBtn = pill("🛠️ తయారీ విధానం", v -> command("guide", false));
         arBtn = pill("📷 గదిలో చూడు", v -> command(arOn ? "ar_off" : "ar_on", false));
+        paintBtn = pill("🎨 రంగు", v -> paintCard());
+        tapeBtn = pill("📏 టేప్", v -> command(tapeOn ? "tape_off" : "tape_on", false));
+        weightBtn = pill("⚖️ బరువు", v -> command("weight", false));
+        drawBtn = pill("📐 డ్రాయింగ్", v -> command("drawing", false));
+        videoBtn = pill("🎞️ షో వీడియో", v -> command("show_video", false));
+        guestBtn = pill("🔀 కలిపి చూడు", v -> command("guest_add", false));
+        guestTopBtn = pill("🔝 పైన పెట్టు", v -> command(guestTop ? "guest_side" : "guest_top", false));
+        guestOffBtn = pill("✕ రెండో బొమ్మ", v -> command("guest_off", false));
+        handsBtn = pill("✋ సైగలు", v -> command(handsOn ? "hands_off" : "hands_on", false));
+        realBtn = pill("📏 నిజమైన సైజు", v -> command(realOn ? "real_off" : "real_on", false));
         actions.addView(cancelBtn);
         actions.addView(stopBtn);
         actions.addView(tourStopBtn);
@@ -446,14 +479,24 @@ public class WorkshopActivity extends Activity {
         actions.addView(tourBtn);
         actions.addView(guideBtn);
         actions.addView(arBtn);
+        actions.addView(realBtn);
+        actions.addView(handsBtn);
+        actions.addView(guestTopBtn);
+        actions.addView(guestOffBtn);
         actions.addView(binBtn);
         actions.addView(labelBtn);
         actions.addView(isoBtn);
+        actions.addView(paintBtn);
         actions.addView(hideBtn);
         actions.addView(allBtn);
         actions.addView(xrayBtn);
         actions.addView(cutBtn);
         actions.addView(sizeBtn);
+        actions.addView(tapeBtn);
+        actions.addView(weightBtn);
+        actions.addView(drawBtn);
+        actions.addView(videoBtn);
+        actions.addView(guestBtn);
         actions.addView(snapBtn);
         actions.addView(studioBtn);
         actions.addView(stlBtn);
@@ -607,6 +650,21 @@ public class WorkshopActivity extends Activity {
             arBtn.setVisibility(has || arOn ? View.VISIBLE : View.GONE);
             arBtn.setText(arOn ? "📷 గది ఆపు" : "📷 గదిలో చూడు");
         }
+        if (paintBtn != null) { // (1–9)
+            paintBtn.setVisibility(has && pickedId != null && !tapeOn ? View.VISIBLE : View.GONE);
+            paintBtn.setText("🎨 " + (pickedName != null ? Workshop.cap(pickedName, 14) + " " : "") + "రంగు");
+            for (TextView t : new TextView[]{tapeBtn, weightBtn, drawBtn}) t.setVisibility(has ? View.VISIBLE : View.GONE);
+            tapeBtn.setText(tapeOn ? "📏 టేప్ ఆపు" : "📏 టేప్");
+            videoBtn.setVisibility(has && tourSteps == null && !arOn && !realOn ? View.VISIBLE : View.GONE);
+            guestBtn.setVisibility(has && guestTitle == null && job == null && !realOn ? View.VISIBLE : View.GONE);
+            guestTopBtn.setVisibility(guestTitle != null ? View.VISIBLE : View.GONE);
+            guestTopBtn.setText(guestTop ? "↔️ పక్కన పెట్టు" : "🔝 పైన పెట్టు");
+            guestOffBtn.setVisibility(guestTitle != null ? View.VISIBLE : View.GONE);
+            handsBtn.setVisibility(handsOn ? View.VISIBLE : View.GONE); // (✋ / 📏 real size: the next update)
+            handsBtn.setText(handsOn ? "✋ సైగలు ఆపు" : "✋ సైగలు");
+            realBtn.setVisibility(realOn ? View.VISIBLE : View.GONE);
+            realBtn.setText(realOn ? "📏 నిజమైన సైజు ఆపు" : "📏 నిజమైన సైజు");
+        }
         undoBtn.setVisibility(has && !undo.isEmpty() && job == null ? View.VISIBLE : View.GONE);
         nightBtn.setText(night ? "☀️ పగలు" : "🌙 రాత్రి");
         spinBtn.setText(spinning ? "⏸ తిప్పడం ఆపు" : "▶️ తిప్పు");
@@ -656,6 +714,10 @@ public class WorkshopActivity extends Activity {
         String cmd = Workshop.command(text);
         if (cmd != null) { command(cmd, byVoice); return; }
         if (tourSteps != null) endTour(false); // (a question or a change: the show makes way)
+        if (job == null && shown != null && !shown.parts.isEmpty()) { // 🎨 "నీలం చెయ్": his own colour, ₹0, no AI
+            Workshop.PaintSay ps = Workshop.paintWords(text);
+            if (ps != null) { paintSaid(ps, byVoice); return; }
+        }
         if (job != null) {
             String s = "ఒక పని ఇంకా జరుగుతోంది Sir. అది అయ్యాక చెప్పండి, లేదా ⏹ ఆపు నొక్కండి.";
             setStatus(s);
@@ -924,7 +986,8 @@ public class WorkshopActivity extends Activity {
                 break;
             case "photo": case "stl":
                 if (!has) break;
-                if ("photo".equals(cmd) && arOn) { arPhoto(); break; } // (📷 in the room: the room and the model, as he sees them)
+                if ("photo".equals(cmd) && recording) { said = "వీడియో అవుతోంది Sir, అయ్యాక ఫోటో తీయండి."; break; }
+                if ("photo".equals(cmd) && (arOn || realOn)) { arPhoto(); break; } // (📷 in the room: the room and the model, as he sees them)
                 askFile("photo".equals(cmd) ? "photo" : "stl");
                 said = "photo".equals(cmd) ? null : "ప్రింట్ ఫైల్ తయారు చేస్తున్నాను Sir.";
                 break;
@@ -963,6 +1026,7 @@ public class WorkshopActivity extends Activity {
             // ---- (E, F, G) 🎓 the show, 🛠️ the build guide, 📷 the room
             case "show_how":
                 if (!has) { said = "ముందు ఒక బొమ్మ తయారు చేయనివ్వండి Sir."; break; }
+                recordNext = false; // (only 🎞️ records)
                 tourAsk(byVoice);
                 break;
             case "show_stop":
@@ -980,6 +1044,61 @@ public class WorkshopActivity extends Activity {
             case "ar_on": case "ar_off":
                 said = ar("ar_on".equals(cmd));
                 break;
+            // ---- (1–9)
+            case "tape_on": case "tape_off":
+                if (!has && "tape_on".equals(cmd)) break;
+                tapeOn = "tape_on".equals(cmd);
+                try { send(json("tape").put("on", tapeOn)); } catch (Exception ignored) {}
+                if (tapeOn) { pickedId = null; pickedName = null; closeAnswer(); }
+                said = tapeOn ? "📏 టేప్: బొమ్మ మీద మొదటి చోటు తాకండి Sir." : "📏 టేప్ ఆపాను.";
+                break;
+            case "weight":
+                if (!has) break;
+                massReq = "m" + Long.toHexString(System.nanoTime());
+                massVoice = byVoice;
+                try { send(json("mass").put("req", massReq)); } catch (Exception ignored) {}
+                setStatus("⚖️ లెక్కపెడుతోంది…");
+                break;
+            case "drawing":
+                if (!has) break;
+                drawReq = "d" + Long.toHexString(System.nanoTime());
+                drawDesc = null;
+                drawViews = null;
+                drawVoice = byVoice;
+                try { send(json("describe").put("req", drawReq)); send(json("ortho").put("req", drawReq)); } catch (Exception ignored) {}
+                setStatus("📐 డ్రాయింగ్ గీస్తోంది… (ఖర్చు లేదు)");
+                break;
+            case "show_video":
+                if (!has) break;
+                if (arOn || realOn) { said = "గదిలో చూస్తున్నప్పుడు వీడియో రాదు Sir. ముందు గది ఆపండి."; break; }
+                recordNext = true;
+                recordAt = System.currentTimeMillis();
+                tourAsk(byVoice); // (free when the show is ready for this model; else its cost is said first)
+                break;
+            case "guest_add":
+                if (!has) break;
+                if (realOn) { said = "నిజమైన సైజు చూస్తున్నప్పుడు కుదరదు Sir. ముందు అది ఆపండి."; break; }
+                if (job != null) { said = "ఒక పని ఇంకా జరుగుతోంది Sir."; break; }
+                gallery(true);
+                break;
+            case "guest_top": case "guest_side":
+                if (guestTitle == null) { said = "ముందు 🔀 కలిపి చూడు తో రెండో బొమ్మ పెట్టండి Sir."; break; }
+                guestTop = "guest_top".equals(cmd);
+                try { send(json("guestpos").put("where", guestTop ? "top" : "side")); } catch (Exception ignored) {}
+                said = guestTop ? "🔝 " + guestTitle + " ని దాని మీద పెట్టాను." : "↔️ " + guestTitle + " ని పక్కన పెట్టాను.";
+                break;
+            case "guest_off":
+                if (guestTitle == null) break;
+                send(json("guestoff"));
+                said = "✕ " + guestTitle + " తీసేశాను.";
+                guestTitle = null;
+                break;
+            case "hands_on": case "hands_off":
+                said = hands("hands_on".equals(cmd));
+                break;
+            case "real_on": case "real_off":
+                said = real("real_on".equals(cmd));
+                break;
             default: break;
         }
         refreshButtons();
@@ -996,6 +1115,7 @@ public class WorkshopActivity extends Activity {
         shown = before;
         putOnStage(shown);
         save(shown);
+        thumbLater();
         return "↩️ ముందులా చేశాను Sir (ఖర్చు లేదు).";
     }
 
@@ -1015,6 +1135,7 @@ public class WorkshopActivity extends Activity {
             row(e.getKey(), "✓ " + e.getValue()[0], Ui.OK);
         }
         sendGone(sh);
+        sendPaints(sh);
         titleView.setText(sh.title);
         if (sh.model != null && !sh.model.isEmpty()) chip.setText(label(sh.model));
         refreshButtons();
@@ -1031,6 +1152,11 @@ public class WorkshopActivity extends Activity {
 
     private void save(Shown sh) {
         try { Workshop.save(this, sh.json()); } catch (Exception ignored) {}
+    }
+
+    /** 🎨 His colours onto the stage (all of them; the stage dresses each part as it is made). */
+    private void sendPaints(Shown sh) {
+        try { send(json("paint").put("list", sh == null ? new JSONArray() : sh.paintsJson())); } catch (Exception ignored) {}
     }
 
     // ================================================================ the sealed stage
@@ -1188,6 +1314,8 @@ public class WorkshopActivity extends Activity {
         }
         if ("replay".equals(t)) { String nm = nameOf(id); setStatus("🎬 " + m.optString("label") + " · " + (nm != null ? nm : id)); return; }
         if ("file".equals(t)) { gotFile(m); return; }
+        if ("grab".equals(t) && "guest".equals(id)) { feel("grab", 18); setStatus("✋ " + guestTitle + " · వదిలిన చోట ఉంటుంది"); return; }
+        if ("moved".equals(t) && "guest".equals(id)) { guestTop = false; setStatus("✋ " + guestTitle + " అక్కడే పెట్టాను · 🔝 పైన పెట్టు / ↔️ పక్కన పెట్టు"); refreshButtons(); return; }
         if ("grab".equals(t)) { // ✋ a piece in his hand
             feel("grab", 18);
             setStatus("✋ " + m.optString("label") + " · 🗑️ మీదకి లాగి వదిలితే బిన్‌లో; వేరే చోట వదిలితే అక్కడే" + (exploded ? "; దాని చోటికి తెస్తే అతుక్కుంటుంది" : ""));
@@ -1220,6 +1348,54 @@ public class WorkshopActivity extends Activity {
             return;
         }
         if ("bintap".equals(t)) { binTray(); return; }
+        if ("painthit".equals(t)) { // 🎨 the part his words named
+            Workshop.PaintSay ps = paintAsk;
+            if (ps == null || paintReq == null || !paintReq.equals(m.optString("req"))) return;
+            paintAsk = null;
+            paintReq = null;
+            if (id.isEmpty() || shown == null || !shown.parts.containsKey(id)) {
+                String s0 = "ఏ భాగమో తెలియలేదు Sir. ఆ భాగాన్ని తాకి మళ్ళీ చెప్పండి (ఖర్చు లేదు).";
+                setStatus(s0);
+                speak(s0, paintVoice);
+                return;
+            }
+            String lb = m.optString("label");
+            paint(id, lb.isEmpty() ? shown.parts.get(id)[0] : lb, ps.kind, ps.color, paintVoice);
+            return;
+        }
+        if ("tape".equals(t)) { // 📏
+            if (m.optInt("n") < 2) { setStatus("📏 ఇప్పుడు రెండో చోటు తాకండి"); return; }
+            double d = m.optDouble("d", 0);
+            String len = d >= 100 ? String.format(java.util.Locale.ENGLISH, "%.2f", d / 100) + " మీటర్లు" : cm(d) + " సెం.మీ";
+            setStatus("📏 ఆ రెండు చోట్ల మధ్య " + len + " (AI డిజైన్ కొలత) · మళ్ళీ తాకితే కొత్త కొలత");
+            speak(len.replace("సెం.మీ", "సెంటీమీటర్లు") + " Sir.", false);
+            feel("snap", 15);
+            return;
+        }
+        if ("mass".equals(t)) { // ⚖️
+            if (massReq == null || !massReq.equals(m.optString("req"))) return;
+            massReq = null;
+            String[] card = Workshop.massCard(m.optString("data"), shown != null ? shown.title : "");
+            if (card == null) { setStatus("⚖️ బరువు లెక్కపెట్టలేకపోయాను Sir."); return; }
+            setStatus("⚖️ " + card[2]);
+            textCard(card[0], card[1]);
+            if (massVoice) speak(card[2], true);
+            return;
+        }
+        if ("ortho".equals(t)) { // 📐 the three views
+            if (drawReq == null || !drawReq.equals(m.optString("req"))) return;
+            drawViews = m.optString("data", "");
+            maybeDraw();
+            return;
+        }
+        if ("guest".equals(t)) { // 🔀 the second model is on the stage
+            if (guestTitle == null) return;
+            if (m.optInt("n") <= 0) { setStatus("🔀 ఆ బొమ్మ రాలేదు Sir."); guestTitle = null; refreshButtons(); return; }
+            setStatus("🔀 " + guestTitle + " పక్కన పెట్టాను · వేలు అర సెకను నొక్కి జరపండి · 🔝 పైన పెట్టు · ఖర్చు లేదు");
+            return;
+        }
+        if ("xrtap".equals(t)) { realTap(m.optDouble("x", -1), m.optDouble("y", -1)); return; }
+        if ("desc".equals(t) && drawReq != null && drawReq.equals(m.optString("req"))) { drawDesc = m.optString("data", "[]"); maybeDraw(); return; } // (📐 the parts list)
         if ("desc".equals(t)) { // (E, F) the model's description, asked for a show / a guide: now the AI writes it
             Job j = descJob;
             if (j == null || descReq == null || !descReq.equals(m.optString("req")) || job != j) return;
@@ -1258,6 +1434,9 @@ public class WorkshopActivity extends Activity {
         } catch (Exception ignored) {}
         if (pickedId != null) glowPicked();
         if (shown != null && !shown.gone.isEmpty()) sendGone(shown);
+        if (shown != null && !shown.paints.isEmpty()) sendPaints(shown);
+        tapeOn = false;
+        guestTitle = null;
         if (!labelsOn) { try { send(json("labels").put("on", false)); } catch (Exception ignored) {} }
         binCount = 0;
         binItems.clear();
@@ -1428,6 +1607,8 @@ public class WorkshopActivity extends Activity {
         if (changed) {
             for (String id : j.removed) after.parts.remove(id);
             for (Part pt : all) if (pt.ok) after.parts.put(pt.id, new String[]{pt.status, pt.code});
+            boolean looks = Workshop.mentionsLook(j.heard);
+            after.paints.removeIf(x -> !after.parts.containsKey(x[0]) || (looks && all.stream().anyMatch(pt -> pt.ok && pt.id.equals(x[0]))));
             after.changes++;
             String end = j.say != null && !j.say.isEmpty() ? j.say : "మార్చాను Sir.";
             said = end + " ఈ మార్పుకి " + cost + " అయింది." + (bad > 0 ? " (" + bad + " భాగం రాలేదు, అది పాతదే ఉంచాను.)" : "");
@@ -1479,6 +1660,8 @@ public class WorkshopActivity extends Activity {
                     onStage.put(e.getKey(), e.getValue()[1]);
                     row(e.getKey(), "✓ " + e.getValue()[0], Ui.OK);
                 }
+                sendPaints(shown);
+                thumbLater();
             } else {
                 shown = after; // (the same model; what was spent is added)
                 if (j.parts.size() > 0 || !j.removed.isEmpty()) putOnStage(shown); // (half a change: the model as it was)
@@ -1680,7 +1863,7 @@ public class WorkshopActivity extends Activity {
         ui.post(() -> {
             if (job == j) job = null;
             if (destroyed) return;
-            if (result != null) shown = result;
+            if (result != null) { shown = result; thumbLater(); }
             stopBtn.setVisibility(View.GONE);
             refreshButtons();
             setStatus(line);
@@ -1736,26 +1919,418 @@ public class WorkshopActivity extends Activity {
         shown = Shown.of(b);
         undo.clear();
         putOnStage(shown);
+        if (!Workshop.thumb(this, shown.at).isFile()) { ui.removeCallbacks(thumbR); ui.postDelayed(thumbR, 4500); } // (🖼️ an older save gets its picture)
         setStatus("📂 దాచిన బొమ్మ (మళ్ళీ తెరవడానికి ఖర్చు లేదు) · తయారైనప్పుడు " + Workshop.money(b.optDouble("cost", 0))
                 + (b.optBoolean("estimated") ? " (సుమారు)" : ""));
     }
 
-    private void savedList() {
+    private void savedList() { gallery(false); }
+
+    /** 📂 The saved models as small pictures (₹0): a tap opens one, or (🔀) puts it beside the one on the stage. */
+    private void gallery(boolean asGuest) {
         if (job != null) { Toast.makeText(this, "ముందు ఈ బొమ్మ పూర్తవనివ్వండి (లేదా ⏹)", Toast.LENGTH_SHORT).show(); return; }
         List<File> fs = Workshop.files(this);
-        if (fs.isEmpty()) { Toast.makeText(this, "ఇంకా దాచిన బొమ్మలు లేవు", Toast.LENGTH_SHORT).show(); return; }
-        List<JSONObject> bs = new ArrayList<>();
-        List<String> names = new ArrayList<>();
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale.ENGLISH);
+        boolean wide = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+        int per = wide ? 4 : 2, n = 0;
+        final AlertDialog[] dlg = new AlertDialog[1];
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(12), dp(6), dp(12), dp(6));
+        LinearLayout row = null;
         for (File x : fs) {
             JSONObject b = Workshop.read(x);
-            if (b == null) continue;
-            bs.add(b);
-            names.add(b.optString("title") + "  ·  " + f.format(new java.util.Date(b.optLong("at"))));
+            if (b == null || b.optJSONArray("parts") == null) continue;
+            if (asGuest && shown != null && b.optLong("at") == shown.at) continue; // (not itself)
+            if (n % per == 0) { row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL); col.addView(row, new LinearLayout.LayoutParams(-1, -2)); }
+            n++;
+            LinearLayout tile = new LinearLayout(this);
+            tile.setOrientation(LinearLayout.VERTICAL);
+            tile.setPadding(dp(4), dp(4), dp(4), dp(10));
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(0xFF111720);
+            bg.setCornerRadius(dp(10));
+            View pic;
+            android.graphics.Bitmap bm = null;
+            File th = Workshop.thumb(this, b.optLong("at"));
+            if (th.isFile()) { try { bm = android.graphics.BitmapFactory.decodeFile(th.getPath()); } catch (Throwable ignored) {} }
+            if (bm != null) {
+                android.widget.ImageView iv = new android.widget.ImageView(this);
+                iv.setImageBitmap(bm);
+                iv.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+                iv.setBackground(bg);
+                iv.setClipToOutline(true);
+                pic = iv;
+            } else {
+                TextView ph = Ui.text(this, "🧊", 34f, Ui.MUTED);
+                ph.setGravity(Gravity.CENTER);
+                ph.setBackground(bg);
+                pic = ph;
+            }
+            tile.addView(pic, new LinearLayout.LayoutParams(-1, dp(wide ? 96 : 124)));
+            TextView tt = Ui.text(this, b.optString("title"), 13.5f, Ui.TEXT);
+            tt.setMaxLines(2);
+            tt.setPadding(dp(2), dp(4), dp(2), 0);
+            tile.addView(tt);
+            tile.addView(Ui.text(this, f.format(new java.util.Date(b.optLong("at"))), 11f, Ui.MUTED));
+            tile.setOnClickListener(v -> {
+                if (dlg[0] != null) dlg[0].dismiss();
+                if (asGuest) addGuest(b); else show(b);
+            });
+            row.addView(tile, new LinearLayout.LayoutParams(0, -2, 1f));
         }
-        new AlertDialog.Builder(this).setTitle("📂 దాచిన బొమ్మలు (తెరవడానికి ఖర్చు లేదు)")
-                .setItems(names.toArray(new String[0]), (d, i) -> show(bs.get(i))).setNegativeButton("వద్దు", null).show();
+        if (n == 0) { Toast.makeText(this, asGuest ? "పక్కన పెట్టడానికి ఇంకో దాచిన బొమ్మ లేదు" : "ఇంకా దాచిన బొమ్మలు లేవు", Toast.LENGTH_SHORT).show(); return; }
+        while (row != null && row.getChildCount() < per) row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f)); // (the last row keeps the tiles' width)
+        ScrollView sv = new ScrollView(this);
+        sv.addView(col);
+        dlg[0] = new AlertDialog.Builder(this).setTitle(asGuest ? "🔀 ఏ బొమ్మని పక్కన పెట్టాలి? (ఖర్చు లేదు)" : "📂 దాచిన బొమ్మలు (తెరవడానికి ఖర్చు లేదు)")
+                .setView(sv).setNegativeButton("వద్దు", null).show();
     }
+
+    /** 🔀 A saved model beside this one (₹0; to look at only: it is not added to this model). */
+    private void addGuest(JSONObject b) {
+        if (shown == null || shown.parts.isEmpty()) return;
+        Shown g = Shown.of(b);
+        try {
+            JSONArray ps = new JSONArray(), gone = new JSONArray();
+            for (Map.Entry<String, String[]> e : g.parts.entrySet()) ps.put(new JSONObject().put("id", e.getKey()).put("code", e.getValue()[1]));
+            for (String[] x : g.gone) gone.put(new JSONObject().put("id", x[0]).put("label", x[1]));
+            guestTitle = g.title == null || g.title.isEmpty() ? "రెండో బొమ్మ" : g.title;
+            guestTop = false;
+            send(json("guest").put("title", guestTitle).put("parts", ps).put("gone", gone).put("paints", g.paintsJson()));
+            setStatus("🔀 " + guestTitle + " పెడుతున్నాను…");
+        } catch (Exception ignored) {}
+        refreshButtons();
+    }
+
+    // ================================================================ (1) 🎨 his own colours and materials (₹0, no AI)
+
+    /** The 🎨 card for the tapped piece: colours, materials, its own colour back. */
+    private void paintCard() {
+        if (shown == null || pickedId == null) { setStatus("ముందు బొమ్మలో ఒక భాగం తాకండి Sir."); return; }
+        final String id = pickedId, name = pickedName != null ? pickedName : pickedId;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(18), dp(6), dp(18), dp(6));
+        box.addView(Ui.text(this, "రంగు నొక్కితే వెంటనే మారుతుంది · ఖర్చు లేదు · ↩️ వెనక్కి తో ముందులా", 12.5f, Ui.MUTED));
+        box.addView(Ui.text(this, "\nరంగు", 13f, Ui.TEXT));
+        LinearLayout r = null;
+        for (int i = 0; i < Workshop.SWATCHES.length; i++) {
+            if (i % 7 == 0) { r = new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL); box.addView(r); }
+            final String[] sw = Workshop.SWATCHES[i];
+            TextView dot = new TextView(this);
+            GradientDrawable g = new GradientDrawable();
+            g.setShape(GradientDrawable.OVAL);
+            g.setColor(android.graphics.Color.parseColor(sw[0]));
+            g.setStroke(dp(1), 0x66FFFFFF);
+            dot.setBackground(g);
+            dot.setContentDescription(sw[1]);
+            dot.setOnClickListener(v -> paint(id, name, "", sw[0], false));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(34), dp(34));
+            lp.setMargins(dp(3), dp(4), dp(5), dp(4));
+            r.addView(dot, lp);
+        }
+        box.addView(Ui.text(this, "\nపదార్థం", 13f, Ui.TEXT));
+        LinearLayout r2 = null;
+        for (int i = 0; i < Workshop.MATERIAL_BUTTONS.length; i++) {
+            if (i % 3 == 0) {
+                r2 = new LinearLayout(this);
+                r2.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+                lp.topMargin = dp(6);
+                box.addView(r2, lp);
+            }
+            final String[] mb = Workshop.MATERIAL_BUTTONS[i];
+            r2.addView(pill(mb[1], v -> paint(id, name, mb[0], "", false)));
+        }
+        LinearLayout.LayoutParams back = new LinearLayout.LayoutParams(-2, -2);
+        back.topMargin = dp(12);
+        box.addView(pill("↩️ అసలు రంగు", v -> unpaint(id, name)), back);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(box);
+        new AlertDialog.Builder(this).setTitle("🎨 " + name).setView(sv).setPositiveButton("సరే", null).show();
+    }
+
+    /** "" for the whole part (its own name), else the piece's name. */
+    private String paintLabel(String id, String label) {
+        String[] pt = shown == null ? null : shown.parts.get(id);
+        return label == null || label.isEmpty() || label.equals(id) || (pt != null && label.equals(pt[0])) ? "" : label;
+    }
+
+    private void paint(String id, String label, String kind, String color, boolean byVoice) {
+        if (shown == null || job != null || !shown.parts.containsKey(id)) return;
+        String lb = paintLabel(id, label), k = kind == null ? "" : kind, c = color == null ? "" : color;
+        undo.addFirst(shown.copy());
+        while (undo.size() > 5) undo.removeLast();
+        Shown after = shown.copy();
+        String[] was = null;
+        for (java.util.Iterator<String[]> it = after.paints.iterator(); it.hasNext(); ) {
+            String[] x = it.next();
+            if (!x[0].equals(id)) continue;
+            if (x[1].equals(lb)) { was = x; it.remove(); }
+            else if (lb.isEmpty()) it.remove(); // (the whole part: its pieces' own colours make way)
+        }
+        if (was != null) { // (a colour after a material keeps the material, and the other way round; a metal shows its own colour)
+            if (k.isEmpty()) k = was[2];
+            if (c.isEmpty() && !(kind != null && kind.startsWith("metal "))) c = was[3];
+        }
+        after.paints.add(new String[]{id, lb, k, c});
+        if (!k.equals(was == null ? "" : was[2])) after.changes++; // (another material: the guide is for the old one)
+        shown = after;
+        save(shown);
+        sendPaints(shown);
+        thumbLater();
+        refreshButtons();
+        String what = (c.isEmpty() ? "" : colourTe(c)) + (k.isEmpty() ? "" : (c.isEmpty() ? "" : " ") + Workshop.kindTe(k));
+        setStatus("🎨 " + (label == null || label.isEmpty() ? nameOf(id) : label) + ": " + what + " · ఖర్చు ₹0 · ↩️ వెనక్కి తో ముందులా");
+        if (byVoice) speak("మార్చాను Sir. ఖర్చు లేదు.", true);
+    }
+
+    private void unpaint(String id, String label) {
+        if (shown == null || job != null) return;
+        String lb = paintLabel(id, label);
+        boolean any = false;
+        for (String[] x : shown.paints) if (x[0].equals(id) && (lb.isEmpty() || x[1].equals(lb))) any = true;
+        if (!any) { setStatus("🎨 దీనికి మీ రంగు లేదు, ఇది దాని అసలు రంగే Sir."); return; }
+        undo.addFirst(shown.copy());
+        while (undo.size() > 5) undo.removeLast();
+        Shown after = shown.copy();
+        after.paints.removeIf(x -> x[0].equals(id) && (lb.isEmpty() || x[1].equals(lb)));
+        after.changes++;
+        shown = after;
+        save(shown);
+        sendPaints(shown);
+        thumbLater();
+        refreshButtons();
+        setStatus("↩️ అసలు రంగు · ఖర్చు ₹0");
+    }
+
+    /** "మొత్తం తెల్లగా చెయ్": every part, whole. */
+    private void paintAll(String kind, String color, boolean byVoice) {
+        if (shown == null || job != null || shown.parts.isEmpty()) return;
+        undo.addFirst(shown.copy());
+        while (undo.size() > 5) undo.removeLast();
+        Shown after = shown.copy();
+        after.paints.clear();
+        for (String id : after.parts.keySet()) after.paints.add(new String[]{id, "", kind == null ? "" : kind, color == null ? "" : color});
+        if (kind != null && !kind.isEmpty()) after.changes++;
+        shown = after;
+        save(shown);
+        sendPaints(shown);
+        thumbLater();
+        refreshButtons();
+        setStatus("🎨 మొత్తం బొమ్మ: " + (color == null || color.isEmpty() ? "" : colourTe(color) + " ") + Workshop.kindTe(kind) + " · ఖర్చు ₹0 · ↩️ వెనక్కి తో ముందులా");
+        if (byVoice) speak("మార్చాను Sir. ఖర్చు లేదు.", true);
+    }
+
+    /** His words were a colour / material (and maybe a name): the tapped piece, every part, or the part his words name. */
+    private void paintSaid(Workshop.PaintSay ps, boolean byVoice) {
+        if (ps.all) { paintAll(ps.kind, ps.color, byVoice); return; }
+        if (ps.rest.isEmpty()) {
+            if (pickedId != null) { paint(pickedId, pickedName, ps.kind, ps.color, byVoice); return; }
+            String s0 = "ఏ భాగానికో ముందు తాకండి Sir, లేదా ఆ భాగం పేరుతో చెప్పండి (ఉదా: రెక్కలు నీలం చెయ్).";
+            setStatus(s0);
+            speak(s0, byVoice);
+            return;
+        }
+        paintAsk = ps;
+        paintVoice = byVoice;
+        paintReq = "p" + Long.toHexString(System.nanoTime());
+        try { send(json("paintname").put("req", paintReq).put("words", new JSONArray(ps.rest))); } catch (Exception ignored) {}
+    }
+
+    private static String colourTe(String hex) {
+        for (String[] sw : Workshop.SWATCHES) if (sw[0].equalsIgnoreCase(hex)) return sw[1];
+        for (String[] c : Workshop.PAINT_COLOURS) if (c[0].equalsIgnoreCase(hex)) return c[1];
+        return hex;
+    }
+
+    // ================================================================ ⚖️ / 📐 cards and the drawing's PDF (₹0)
+
+    /** A card with text that scrolls (the weight). */
+    private void textCard(String title, String text) {
+        TextView body = Ui.text(this, text, 14f, Ui.TEXT);
+        body.setLineSpacing(0, 1.18f);
+        body.setTextIsSelectable(true);
+        body.setPadding(dp(18), dp(8), dp(18), dp(6));
+        ScrollView sv = new ScrollView(this);
+        sv.addView(body);
+        new AlertDialog.Builder(this).setTitle(title).setView(sv).setPositiveButton("సరే", null).show();
+    }
+
+    /** 📐 When both the three views and the parts list are here: the PDF, into Downloads/Jarvis/workshop. */
+    private void maybeDraw() {
+        if (drawViews == null || drawDesc == null) return;
+        final String views = drawViews, desc = drawDesc, title = shown != null ? shown.title : "model";
+        final boolean voice = drawVoice;
+        drawReq = null;
+        drawViews = null;
+        drawDesc = null;
+        new Thread(() -> {
+            Coder.Made made = null;
+            String err = null;
+            try {
+                if (views.isEmpty()) throw new IllegalStateException("డ్రాయింగ్ రాలేదు");
+                byte[] pdf = drawingPdf(title, views, desc);
+                made = Coder.save(this, "Jarvis/workshop", Workshop.fileName(title, "డ్రాయింగ్.pdf"), "application/pdf", pdf);
+            } catch (Throwable x) { err = x.getMessage(); }
+            final Coder.Made m0 = made;
+            final String e0 = err;
+            ui.post(() -> {
+                if (destroyed) return;
+                if (m0 == null) { setStatus("✗ డ్రాయింగ్ కాలేదు Sir" + (e0 != null ? ": " + e0 : "")); return; }
+                setStatus("📐 " + m0.where + " · ఖర్చు ₹0");
+                if (voice) speak("డ్రాయింగ్ Downloads లో దాచాను Sir.", true);
+                new AlertDialog.Builder(this).setTitle("📐 డ్రాయింగ్ సిద్ధం")
+                        .setMessage(m0.where + "\n\nముందు, పై, పక్క నుంచి బొమ్మలు, కొలతలతో; రెండో పేజీలో భాగాల జాబితా. ఇవి AI డిజైన్ చేసిన కొలతలు.")
+                        .setPositiveButton("📄 తెరువు", (d, w) -> {
+                            try { startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(m0.uri, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)); }
+                            catch (Exception x) { Toast.makeText(this, "PDF తెరిచే యాప్ దొరకలేదు", Toast.LENGTH_SHORT).show(); }
+                        })
+                        .setNeutralButton("📤 పంచుకో", (d, w) -> {
+                            Intent sh = new Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, m0.uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            try { startActivity(Intent.createChooser(sh, "పంచుకోండి")); } catch (Exception ignored) {}
+                        })
+                        .setNegativeButton("సరే", null).show();
+            });
+        }, "jarvis-workshop-drawing").start();
+    }
+
+    /** A4 across: the three views at one scale (front, top above it, right side beside it), then the parts list. */
+    private byte[] drawingPdf(String title, String viewsJson, String descJson) throws Exception {
+        JSONArray vs = new JSONObject(viewsJson).getJSONArray("views");
+        java.util.Map<String, android.graphics.Bitmap> bm = new java.util.HashMap<>();
+        for (int i = 0; i < vs.length(); i++) {
+            JSONObject v = vs.getJSONObject(i);
+            byte[] b = android.util.Base64.decode(v.optString("img"), android.util.Base64.DEFAULT);
+            if (!Workshop.jpegOk(b)) throw new IllegalStateException("డ్రాయింగ్ బొమ్మ సరిగ్గా రాలేదు");
+            bm.put(v.optString("name"), android.graphics.BitmapFactory.decodeByteArray(b, 0, b.length));
+        }
+        android.graphics.Bitmap F = bm.get("front"), T = bm.get("top"), S = bm.get("side");
+        if (F == null || T == null || S == null) throw new IllegalStateException("డ్రాయింగ్ బొమ్మలు రాలేదు");
+        android.graphics.pdf.PdfDocument doc = new android.graphics.pdf.PdfDocument();
+        android.graphics.Paint ink = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        android.graphics.Paint img = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG | android.graphics.Paint.ANTI_ALIAS_FLAG);
+        String date = new java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.ENGLISH).format(new java.util.Date());
+        int pageNo = 1;
+        android.graphics.pdf.PdfDocument.Page pg = doc.startPage(new android.graphics.pdf.PdfDocument.PageInfo.Builder(842, 595, pageNo).create());
+        android.graphics.Canvas c = pg.getCanvas();
+        drawingHead(c, ink, "📐 " + title + " · 2D డ్రాయింగ్", "కొలతలు సెంటీమీటర్లలో · మూడు బొమ్మలూ ఒకే స్కేల్ · Jarvis 3D వర్క్‌షాప్ · " + date);
+        float gap = 10, x0 = 28, y0 = 64, aw = 786, ah = 476;
+        float sc = Math.min((aw - gap) / (F.getWidth() + S.getWidth()), (ah - gap) / (T.getHeight() + F.getHeight()));
+        android.graphics.RectF rt = new android.graphics.RectF(x0, y0, x0 + T.getWidth() * sc, y0 + T.getHeight() * sc);
+        android.graphics.RectF rf = new android.graphics.RectF(x0, rt.bottom + gap, x0 + F.getWidth() * sc, rt.bottom + gap + F.getHeight() * sc);
+        android.graphics.RectF rs = new android.graphics.RectF(rf.right + gap, rf.top, rf.right + gap + S.getWidth() * sc, rf.top + S.getHeight() * sc);
+        c.drawBitmap(T, null, rt, img);
+        c.drawBitmap(F, null, rf, img);
+        c.drawBitmap(S, null, rs, img);
+        ink.setStyle(android.graphics.Paint.Style.STROKE);
+        ink.setStrokeWidth(0.6f);
+        ink.setColor(0xFFC9D3DE);
+        for (android.graphics.RectF r : new android.graphics.RectF[]{rt, rf, rs}) c.drawRoundRect(r, 4, 4, ink);
+        ink.setStyle(android.graphics.Paint.Style.FILL);
+        ink.setColor(0xFF2A6FD6);
+        ink.setTextSize(10f);
+        ink.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD));
+        c.drawText("పై నుంచి", rt.left + 8, rt.top + 16, ink);
+        c.drawText("ముందు నుంచి", rf.left + 8, rf.top + 16, ink);
+        c.drawText("కుడి పక్క నుంచి", rs.left + 8, rs.top + 16, ink);
+        drawingFoot(c, ink, pageNo);
+        doc.finishPage(pg);
+        // the parts list
+        List<String[]> rows = Workshop.drawingRows(descJson);
+        int i = 0;
+        while (i < rows.size() || pageNo == 1) {
+            pageNo++;
+            pg = doc.startPage(new android.graphics.pdf.PdfDocument.PageInfo.Builder(842, 595, pageNo).create());
+            c = pg.getCanvas();
+            drawingHead(c, ink, "🔩 " + title + " · భాగాల జాబితా", "సైజు = వెడల్పు × ఎత్తు × లోతు (సెం.మీ) · పదార్థం బొమ్మలో వాడినది");
+            float y = 84;
+            ink.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD));
+            ink.setTextSize(10f);
+            ink.setColor(0xFF15202B);
+            float[] cx = {30, 68, 420, 470, 640};
+            String[] head = {"#", "భాగం", "ఎన్ని", "సైజు (సెం.మీ)", "పదార్థం"};
+            for (int k = 0; k < head.length; k++) c.drawText(head[k], cx[k], y, ink);
+            ink.setColor(0xFFC9D3DE);
+            c.drawRect(28, y + 5, 814, y + 5.8f, ink);
+            y += 22;
+            ink.setTypeface(android.graphics.Typeface.DEFAULT);
+            while (i < rows.size() && y < 548) {
+                String[] r = rows.get(i++);
+                boolean piece = "p".equals(r[5]);
+                ink.setColor(piece ? 0xFF4A5868 : 0xFF15202B);
+                ink.setTypeface(piece ? android.graphics.Typeface.DEFAULT : android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD));
+                c.drawText(r[0], cx[0], y, ink);
+                c.drawText((piece ? "   " : "") + r[1], cx[1], y, ink);
+                c.drawText(r[2], cx[2], y, ink);
+                c.drawText(r[3], cx[3], y, ink);
+                c.drawText(r[4], cx[4], y, ink);
+                y += piece ? 18 : 21;
+            }
+            if (rows.isEmpty()) { ink.setColor(0xFF4A5868); c.drawText("భాగాల వివరాలు రాలేదు.", 30, y, ink); }
+            drawingFoot(c, ink, pageNo);
+            doc.finishPage(pg);
+            if (rows.isEmpty()) break;
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        doc.writeTo(out);
+        doc.close();
+        for (android.graphics.Bitmap b : bm.values()) if (b != null) b.recycle();
+        return out.toByteArray();
+    }
+
+    private static void drawingHead(android.graphics.Canvas c, android.graphics.Paint ink, String title, String sub) {
+        ink.setStyle(android.graphics.Paint.Style.FILL);
+        ink.setColor(0xFFFFFFFF);
+        c.drawRect(0, 0, 842, 595, ink);
+        ink.setColor(0xFF15202B);
+        ink.setTextSize(16f);
+        ink.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD));
+        c.drawText(title, 28, 36, ink);
+        ink.setTextSize(9.5f);
+        ink.setTypeface(android.graphics.Typeface.DEFAULT);
+        ink.setColor(0xFF5B6876);
+        c.drawText(sub, 28, 52, ink);
+        ink.setStyle(android.graphics.Paint.Style.STROKE);
+        ink.setStrokeWidth(0.8f);
+        ink.setColor(0xFF9FB0C2);
+        c.drawRect(18, 16, 824, 579, ink);
+        ink.setStyle(android.graphics.Paint.Style.FILL);
+    }
+
+    private static void drawingFoot(android.graphics.Canvas c, android.graphics.Paint ink, int page) {
+        ink.setStyle(android.graphics.Paint.Style.FILL);
+        ink.setTypeface(android.graphics.Typeface.DEFAULT);
+        ink.setTextSize(8.5f);
+        ink.setColor(0xFF5B6876);
+        c.drawText("ఇవి AI డిజైన్ చేసిన కొలతలు; తయారు చేసే ముందు అసలు సామానుతో సరిచూడండి.", 28, 570, ink);
+        c.drawText("పేజీ " + page, 780, 570, ink);
+    }
+
+    // ================================================================ 🖼️ a saved model's small picture
+
+    private final Runnable thumbR = () -> {
+        if (destroyed || !front || shown == null || shown.parts.isEmpty() || job != null || tourSteps != null || arOn || realOn || guestTitle != null) return;
+        thumbReq = "t" + Long.toHexString(System.nanoTime());
+        thumbAt = shown.at;
+        try { send(json("snap").put("req", thumbReq).put("clean", true).put("most", 360)); } catch (Exception ignored) {}
+    };
+
+    private void thumbLater() {
+        ui.removeCallbacks(thumbR);
+        ui.postDelayed(thumbR, 3000);
+    }
+
+    // ================================================================ (7) ✋ hand signs, (8) 📏 real size on the floor (filled in below)
+
+    private String hands(boolean on) { return on ? "✋ చేతి సైగలు తర్వాతి అప్డేట్‌లో వస్తాయి Sir." : null; }
+
+    private String real(boolean on) { return on ? "📏 నిజమైన సైజు తర్వాతి అప్డేట్‌లో వస్తుంది Sir." : null; }
+
+    private void realTap(double x, double y) {}
+
+    /** Opens the workshop (from ⚙️, a tool, the brain): a build to start, or the last saved one. */
 
     // ================================================================ lifecycle
 
@@ -1892,6 +2467,7 @@ public class WorkshopActivity extends Activity {
                     binCount = 0;
                     refreshButtons();
                     setStatus("🗑️ తీసేశాను · ఖర్చు ₹0 · ↩️ వెనక్కి నొక్కితే మళ్ళీ వస్తాయి");
+                    thumbLater();
                     speak("తీసేశాను Sir.", true);
                 })
                 .setNegativeButton("వద్దు", null).show();
@@ -1901,6 +2477,9 @@ public class WorkshopActivity extends Activity {
 
     /** The stage starts plain again (a new build, a saved one, a fresh stage): no isolation, X-ray, cut, hidden parts, tilt. */
     private void viewReset() {
+        tapeOn = false; // (the stage's reset takes the tape and the second model away too)
+        guestTitle = null;
+        guestTop = false;
         binCount = 0;
         binItems.clear();
         isolatedOn = false;
@@ -1961,6 +2540,21 @@ public class WorkshopActivity extends Activity {
 
     private void gotFile(JSONObject m) {
         String req = m.optString("req"), what = fileFor;
+        if (thumbReq != null && thumbReq.equals(req)) { // 🖼️ a saved model's small picture
+            thumbReq = null;
+            final String data = m.optString("data", "");
+            final long at = thumbAt;
+            new Thread(() -> {
+                try {
+                    byte[] b = android.util.Base64.decode(data, android.util.Base64.DEFAULT);
+                    if (!"jpg".equals(m.optString("kind")) || !Workshop.jpegOk(b)) return;
+                    java.io.File f = Workshop.thumb(this, at), tmp = new java.io.File(f.getPath() + ".part");
+                    try (java.io.FileOutputStream o = new java.io.FileOutputStream(tmp)) { o.write(b); }
+                    if (!tmp.renameTo(f)) tmp.delete();
+                } catch (Exception ignored) {}
+            }, "jarvis-workshop-thumb").start();
+            return;
+        }
         if (fileReq == null || !fileReq.equals(req) || what == null) return; // (only the one asked for)
         fileReq = null;
         fileFor = null;
@@ -1977,6 +2571,13 @@ public class WorkshopActivity extends Activity {
                     Coder.Made made = Coder.save(this, "Jarvis/workshop", name, "model/stl", b);
                     line = "🖨️ " + made.where + " · " + w + " × " + d + " × " + h + " మి.మీ";
                     said = "ప్రింట్ ఫైల్ Downloads లో Jarvis, workshop ఫోల్డర్‌లో దాచాను Sir. పొడవైన వైపు 10 సెంటీమీటర్లు. ప్రింట్ చేసే ముందు slicer లో ఒకసారి చూడండి.";
+                } else if ("video".equals(what)) { // 🎞️ the show, as he saw it, with its lines written on
+                    if ("none".equals(kind) || b == null) throw new IllegalStateException("ఈ ఫోన్‌లో వీడియో రికార్డ్ కుదరలేదు Sir");
+                    if (!Workshop.videoOk(b, kind)) throw new IllegalStateException("వీడియో సరిగ్గా రాలేదు Sir");
+                    boolean mp4 = "mp4".equals(kind);
+                    Coder.Made made = Workshop.saveVideo(this, Workshop.fileName(title, "show-" + System.currentTimeMillis() % 1000000 + (mp4 ? ".mp4" : ".webm")), mp4 ? "video/mp4" : "video/webm", b);
+                    line = "🎞️ గ్యాలరీలో దాచాను: " + made.where + " · మాటలు అక్షరాలుగా (గొంతు లేదు)";
+                    said = "షో వీడియో గ్యాలరీలో దాచాను Sir.";
                 } else if ("photo".equals(what)) {
                     if (!"jpg".equals(kind) || !Workshop.jpegOk(b)) throw new IllegalStateException("ఫోటో సరిగ్గా రాలేదు");
                     Coder.Made made = Workshop.savePicture(this, Workshop.fileName(title, System.currentTimeMillis() % 1000000 + ".jpg"), "image/jpeg", b);
@@ -2184,7 +2785,8 @@ public class WorkshopActivity extends Activity {
 
     /** What he may ask while a show plays without stopping it. */
     private static final Set<String> TOUR_KEEPS = new HashSet<>(Arrays.asList("zoom_in", "zoom_out", "night", "day", "cost", "center",
-            "show_how", "show_next", "show_stop", "labels_on", "labels_off", "ar_on", "ar_off", "photo", "spin_on", "spin_off"));
+            "show_how", "show_next", "show_stop", "labels_on", "labels_off", "ar_on", "ar_off", "photo", "spin_on", "spin_off",
+            "hands_on", "hands_off", "show_video"));
 
     /** 🎓 The show for this model: free when it was made for it; else (said first what it costs) his AI writes one. */
     private void tourAsk(boolean byVoice) {
@@ -2341,6 +2943,14 @@ public class WorkshopActivity extends Activity {
         if (steps == null || steps.length() == 0) { setStatus("ఈ షోలో అడుగులు లేవు Sir."); return; }
         if (tourSteps != null) endTour(false);
         plainView();
+        recording = false;
+        if (recordNext && System.currentTimeMillis() - recordAt < 300_000 && !arOn && !realOn) { // 🎞️ this time it is recorded too
+            recording = true;
+            fileReq = "v" + Long.toHexString(System.nanoTime());
+            fileFor = "video";
+            try { send(json("rec").put("on", true).put("req", fileReq).put("title", shown != null ? shown.title : "")); } catch (Exception ignored) {}
+        }
+        recordNext = false;
         tourSteps = steps;
         tourIdx = -1;
         tourVoice = byVoice;
@@ -2372,7 +2982,7 @@ public class WorkshopActivity extends Activity {
         if (s == null) { tourAdvance(); return; }
         try { send(json("tour").put("step", s)); } catch (Exception ignored) {}
         String say = s.optString("say");
-        setStatus("🎓 " + (tourIdx + 1) + "/" + tourSteps.length() + (say.isEmpty() ? "" : " · " + say));
+        setStatus((recording ? "⏺ " : "🎓 ") + (tourIdx + 1) + "/" + tourSteps.length() + (say.isEmpty() ? "" : " · " + say));
         tourStepAt = System.currentTimeMillis();
         tourQuietAt = 0;
         tourMin = Math.round(Workshop.stepSeconds(s) * 1000);
@@ -2386,9 +2996,14 @@ public class WorkshopActivity extends Activity {
         ui.removeCallbacks(tourTick);
         tourSteps = null;
         send(json("tourend"));
+        if (recording) { // 🎞️ the video ends with the show (kept only when the show was seen to the end)
+            recording = false;
+            if (finished) { try { send(json("rec").put("stop", true)); } catch (Exception ignored) {} }
+            else { send(json("rec")); fileReq = null; fileFor = null; ui.post(() -> setStatus("🎞️ వీడియో ఆపాను (దాచలేదు)")); }
+        }
         refreshButtons();
         if (finished) {
-            setStatus("🎓 షో అయిపోయింది" + (tourCost != null ? " · " + tourCost : "") + " · మళ్ళీ చూడాలంటే 🎓 (ఉచితం)");
+            setStatus("🎓 షో అయిపోయింది" + (tourCost != null ? " · " + tourCost : "") + (fileFor != null && "video".equals(fileFor) ? " · 🎞️ వీడియో దాచుతోంది…" : " · మళ్ళీ చూడాలంటే 🎓 (ఉచితం)"));
             speak("అంతే Sir, ఇది ఇలా పనిచేస్తుంది." + (tourCost != null ? " ఈ షో తయారీకి " + tourCost + " అయింది; మళ్ళీ చూడటం ఉచితం." : ""), tourVoice);
         }
         tourCost = null;

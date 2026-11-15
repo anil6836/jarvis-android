@@ -275,7 +275,7 @@ function dispose(o) {
   o.traverse((x) => {
     if (x.geometry) x.geometry.dispose();
     const ms = new Set();
-    for (const m of [x.material, x.userData.m0, x.userData.mg]) for (const y of (m == null ? [] : Array.isArray(m) ? m : [m])) ms.add(y);
+    for (const m of [x.material, x.userData.m0, x.userData.mg, x.userData.p0]) for (const y of (m == null ? [] : Array.isArray(m) ? m : [m])) ms.add(y);
     for (const m of ms) if (!SHARED.has(m)) m.dispose();
   });
 }
@@ -367,6 +367,7 @@ async function runPart(m) {
     const objs = objsFor(rec, ri.label, ri.whole);
     isolated = { rec, objs, meshes: meshesOf(objs), label: ri.label, mode: ri.mode };
   }
+  if (paintList.length) applyPaints(rec); // (🎨 his own colours)
   look();
   frameAll(false);
   stats();
@@ -376,6 +377,10 @@ function stats() { post({ t: 'stats', parts: parts.size, tris: totalTris() }); }
 
 function reset() {
   endTour();
+  tape.on = false;
+  tapeClear();
+  if (guests.size) guestOff();
+  paintList.length = 0;
   grabbed = null;
   controls.enabled = true;
   binList.length = 0;
@@ -418,6 +423,7 @@ function modelBox() {
     if (!b.isEmpty()) return b;
   }
   const k = ease(explodeGoal);
+  if (guests.size) { const gb = guestBox(); if (!gb.isEmpty()) b.union(gb.translate(guestGroup.position)); } // (🔀 the second model too)
   for (const r of parts.values()) {
     if (!r.box) continue;
     if (k === 0 || !r.pieces.some((pc) => pc.box)) { b.union(r.box); continue; }
@@ -608,6 +614,7 @@ function backdrop() {
 // The screen's own bars cover the top and bottom of the stage: the model is framed in the part that is left.
 const inset = { top: 0, bottom: 0 };
 function applyInset() {
+  if (xr.on) return; // (📏 on the real floor the phone's AR gives the lens)
   const w = window.innerWidth || 1, h = window.innerHeight || 1;
   const shift = ((inset.bottom - inset.top) / 2) * h;
   if (Math.abs(shift) < 1) camera.clearViewOffset(); else camera.setViewOffset(w, h, 0, shift, w, h);
@@ -615,6 +622,7 @@ function applyInset() {
 }
 
 function frameAll(now) {
+  if (xr.on) return;
   const b = modelBox();
   if (b.isEmpty()) return;
   const c = b.getCenter(new THREE.Vector3());
@@ -693,6 +701,9 @@ function tick(now) {
       if (k >= 1) { r.born = 0; r.group.position.y = 0; }
     }
   }
+  for (const r of guests.values()) { // (🔀 the second model moves the way it was made to)
+    for (let i = r.ticks.length - 1; i >= 0; i--) { try { r.ticks[i](t, dt); } catch (e) { r.ticks.splice(i, 1); } }
+  }
   if (picked) { // (a picked piece breathes)
     const k = 0.38 + 0.22 * Math.sin(t * 4.2);
     for (const x of picked.meshes) for (const m of mats(x.userData.mg)) if (m.emissive) m.emissiveIntensity = k;
@@ -709,6 +720,13 @@ function tick(now) {
     explodeK = explodeGoal > explodeK ? Math.min(explodeGoal, explodeK + dt / 1.1) : Math.max(explodeGoal, explodeK - dt / 0.9);
     const e = ease(explodeK);
     for (const r of parts.values()) placePieces(r, e);
+  }
+  if (xr.on) { // 📏 on the real floor: the phone's AR moves the camera, nothing glides
+    xrPlaceModel();
+    renderer.render(scene, camera);
+    drawLabels();
+    tapeDraw();
+    return;
   }
   // the camera, floor and target glide to the model's size
   const a = 1 - Math.exp(-dt * 3);
@@ -730,7 +748,9 @@ function tick(now) {
   controls.update();
   placeCut();
   renderer.render(scene, camera);
+  recFrame(); // (🎞️ a video being made takes this frame)
   drawLabels();
+  tapeDraw();
   // a phone that struggles: draw with fewer pixels rather than stutter
   slow = dt > 0.045 ? slow + dt : Math.max(0, slow - dt * 0.5);
   if (slow > 2 && pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - 0.25); renderer.setPixelRatio(pixelRatio); resize(); slow = 0; }
@@ -806,7 +826,7 @@ window.addEventListener('message', (e) => {
       if (tilt.on) { tilt.x = Math.max(-0.9, Math.min(0.9, +m.x || 0)); tilt.y = Math.max(-0.6, Math.min(0.6, +m.y || 0)); controls.autoRotate = false; }
       else controls.autoRotate = spinWanted && !cut.on;
       break;
-    case 'snap': snap(m.req, !!m.clean); break;
+    case 'snap': snap(m.req, !!m.clean, Math.max(0, Math.min(1600, +m.most || 0))); break;
     case 'labels': labelsOn = !!m.on; break;
     case 'bin': if (picked) toBin([unitOf(picked.rec, picked.label, picked.objs[0] === picked.rec.group)]); break;
     case 'binothers': binOthers(); break;
@@ -823,6 +843,19 @@ window.addEventListener('message', (e) => {
     case 'tour': tourStep(m.step); break;
     case 'tourend': endTour(); break;
     case 'ar': setAr(!!m.on); break;
+    // (1–9) 🎨 colours, 📏 tape, ⚖️ weight, 🔀 a second model, 📐 drawing, 🎞️ video, ✋ hand, 📏 real floor
+    case 'paint': setPaints(m.list); break;
+    case 'paintname': paintName(m.req, m.words); break;
+    case 'tape': setTape(!!m.on); break;
+    case 'mass': massOf(m.req); break;
+    case 'guest': if (Array.isArray(m.parts)) setGuest(m); break;
+    case 'guestpos': placeGuest(m.where === 'top' ? 'top' : 'side'); break;
+    case 'guestoff': guestQueue = guestQueue.then(guestOff); break;
+    case 'ortho': ortho(m.req); break;
+    case 'rec': if (m.on) recStart(m); else if (m.stop) recStop(); else recCancel(); break;
+    case 'nudge': nudge(m); break;
+    case 'xr': setXr(!!m.on); break;
+    case 'xrpose': xrPose(m); break;
     case 'pause': pause(); break;
     case 'resume': resume(); break;
     default: break;
@@ -854,10 +887,12 @@ canvas.addEventListener('pointerdown', (e) => {
   downs++;
   downAt = downs === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
   clearTimeout(holdTimer);
-  if (downs === 1) holdTimer = setTimeout(() => { if (downAt) startGrab(downAt.x, downAt.y); }, 450); // ✋ a hold grabs
+  if (downs === 1 && !xr.on && !tape.on) holdTimer = setTimeout(() => { if (downAt) startGrab(downAt.x, downAt.y); }, 450); // ✋ a hold grabs
 });
+let xrLastX = null;
 canvas.addEventListener('pointermove', (e) => {
   if (grabbed) { moveGrab(e.clientX, e.clientY); return; }
+  if (xr.on && downAt && downs === 1) { if (xrLastX != null) xr.yaw += (e.clientX - xrLastX) * 0.012; xrLastX = e.clientX; } // (📏 one finger turns it)
   if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 10) clearTimeout(holdTimer); // (a drag: turning)
 });
 canvas.addEventListener('pointercancel', () => { downs = Math.max(0, downs - 1); downAt = null; clearTimeout(holdTimer); if (grabbed) dropGrab(-1, -1); });
@@ -867,9 +902,24 @@ canvas.addEventListener('pointerup', (e) => {
   const d = downAt;
   downAt = null;
   if (grabbed) { dropGrab(e.clientX, e.clientY); return; }
+  xrLastX = null;
   if (!d || performance.now() - d.t > 450 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10) return; // (a drag or a pinch turns / zooms)
+  if (tape.on) { tapeAt(e.clientX, e.clientY); return; } // (📏 the tape: a point on the model)
+  if (xr.on && !xrOnModel(e.clientX, e.clientY)) { // (📏 a tap on the floor: the model goes there)
+    const b = canvas.getBoundingClientRect();
+    post({ t: 'xrtap', x: (e.clientX - b.left) / b.width, y: (e.clientY - b.top) / b.height });
+    return;
+  }
   pickAt(e.clientX, e.clientY);
 });
+
+function xrOnModel(x, y) {
+  if (!xr.placed) return false;
+  const b = canvas.getBoundingClientRect();
+  tapAt.set(((x - b.left) / b.width) * 2 - 1, -((y - b.top) / b.height) * 2 + 1);
+  ray.setFromCamera(tapAt, camera);
+  return ray.intersectObject(model, true).some((h) => h.object.isMesh && !h.object.userData.isEdge && shown(h.object) && h.object !== xr.shadow);
+}
 
 function shown(o) { for (let x = o; x; x = x.parent) if (!x.visible) return false; return true; }
 function inside(o, root) { for (let x = o; x; x = x.parent) if (x === root) return true; return false; }
@@ -1127,6 +1177,16 @@ function startGrab(x, y) {
   const hit = ray.intersectObject(model, true).find((h) => h.object.isMesh && !h.object.userData.isEdge && shown(h.object)
     && (!isolated || isolated.meshes.has(h.object)));
   if (!hit) return;
+  if (hit.object.userData.guest) { // 🔀 the second model: a held finger moves all of it over the floor
+    const base = new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y);
+    const at0 = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(base, at0)) return;
+    grabbed = { guest: true, plane: base, at0, start: guestGroup.position.clone() };
+    controls.enabled = false;
+    downAt = null;
+    post({ t: 'grab', id: 'guest', label: guestTitle });
+    return;
+  }
   let rec = null, pc = null;
   for (const r of parts.values()) if (inside(hit.object, r.group)) { rec = r; pc = r.auto ? null : r.pieces.find((p) => inside(hit.object, p.obj)); break; }
   if (!rec || !rec.pieces.length) return;
@@ -1160,6 +1220,7 @@ function moveGrab(x, y) {
   ray.setFromCamera(tapAt, camera);
   const at = new THREE.Vector3();
   if (!ray.ray.intersectPlane(g.plane, at)) return;
+  if (g.guest) { guestGroup.position.set(g.start.x + at.x - g.at0.x, g.start.y, g.start.z + at.z - g.at0.z); return; }
   const delta = at.add(g.offset).sub(g.center0);
   g.pcs.forEach((p, i) => { p.drag = g.start[i].clone().add(delta); });
   placePieces(g.rec, ease(explodeK));
@@ -1191,6 +1252,7 @@ function dropGrab(x, y) {
   const g = grabbed;
   grabbed = null;
   controls.enabled = true;
+  if (g.guest) { guestPlace = 'free'; post({ t: 'moved', id: 'guest', label: guestTitle }); return; }
   if (g.helper) { scene.remove(g.helper); g.helper.geometry.dispose(); }
   if (binEl) binEl.classList.remove('hot');
   if (x >= 0 && overBin(x, y)) { toBin([{ rec: g.rec, label: g.whole ? '' : g.label, whole: g.whole, pcs: g.pcs }]); binBox(); return; }
@@ -1320,7 +1382,7 @@ function b64(bytes) {
 }
 
 /** What he sees (clean: his own colours only, no glow, ghosts or cut), on the studio backdrop, as a JPEG. */
-function snap(req, clean) {
+function snap(req, clean, most) {
   const keep = { picked, isolated, xray, cutOn: cut.on };
   if (clean) { picked = null; isolated = null; xray = false; if (cut.on) { cut.on = false; cut.version++; } look(); }
   if (sizeBox) sizeBox.visible = false;
@@ -1328,7 +1390,7 @@ function snap(req, clean) {
   if (sizeBox) sizeBox.visible = true;
   // (only the part of the stage he sees between the bars)
   const sy = Math.round(canvas.height * inset.top), sh = Math.max(1, Math.round(canvas.height * (1 - inset.top - inset.bottom)));
-  const w = canvas.width, h = sh, k = Math.min(1, 1600 / Math.max(w, h));
+  const w = canvas.width, h = sh, k = Math.min(1, (most > 0 ? most : 1600) / Math.max(w, h));
   const c = document.createElement('canvas');
   c.width = Math.round(w * k);
   c.height = Math.round(h * k);
@@ -1352,7 +1414,7 @@ function stl(req) {
   model.updateMatrixWorld(true);
   const tris = [];
   const v = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-  const inst = new THREE.Matrix4(), world = new THREE.Matrix4();
+  const inst = new THREE.Matrix4(), world = new THREE.Matrix4(), inv = model.matrixWorld.clone().invert();
   const box = new THREE.Box3();
   for (const r of parts.values()) {
     if (!r.group.visible) continue;
@@ -1363,7 +1425,7 @@ function stl(req) {
       if (!pos) return;
       const n = x.isInstancedMesh ? x.count : 1;
       for (let j = 0; j < n; j++) {
-        world.copy(x.matrixWorld);
+        world.multiplyMatrices(inv, x.matrixWorld);
         if (x.isInstancedMesh) { x.getMatrixAt(j, inst); world.multiply(inst); }
         const count = idx ? idx.count : pos.count;
         for (let i = 0; i + 2 < count; i += 3) {
@@ -1405,7 +1467,7 @@ const AXES = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: 
 const FLOW = { air: 0xbfe9ff, water: 0x3aa0ff, power: 0xffd34d, heat: 0xff8a3d, light: 0xfff3b0, fuel: 0xb48cff, signal: 0x7dff9b };
 const flowGeo = new THREE.ConeGeometry(0.5, 1.4, 14);
 const tourGroup = new THREE.Group();
-scene.add(tourGroup);
+model.add(tourGroup);
 const upTo = (a, n) => (Array.isArray(a) ? a.slice(0, n) : []);
 const num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
 
@@ -1449,6 +1511,7 @@ function tourStart() {
 /** One step: what glows, pulled apart or not, from where, what turns / slides / flows. */
 function tourStep(s) {
   if (!s || typeof s !== 'object') return;
+  if (recd.on) recd.caption = typeof s.say === 'string' ? s.say.slice(0, 240) : '';
   if (!tour.on) tourStart();
   tourStill();
   tour.focus = new Set();
@@ -1656,6 +1719,604 @@ function setAr(on) {
   catcher.position.y = floor.position.y;
   catcher.scale.setScalar(goal.radius * 3);
   backdrop();
+}
+
+// ------------------------------------------------------------------ 🎨 (1) his own colours and materials, ₹0 (no AI)
+// Jarvis keeps a list with the saved model: [{id, label, kind, color}] (label: a piece's name, or '' / the part's name for the
+// whole part). The part's code is never touched: after the part is made, those pieces are dressed in a new material.
+
+const paintList = [];
+const PAINT_KINDS = { 'metal steel': ['metal', 'steel'], 'metal chrome': ['metal', 'chrome'], 'metal brass': ['metal', 'brass'],
+  'metal copper': ['metal', 'copper'], 'metal gold': ['metal', 'gold'], 'metal black': ['metal', 'black'],
+  'metal aluminium': ['metal', 'aluminium'], plastic: ['plastic'], rubber: ['rubber'], paint: ['paint'], glass: ['glass'],
+  wood: ['wood'], ceramic: ['ceramic'], fabric: ['fabric'] };
+const HEX = /^#[0-9a-f]{6}$/i;
+
+function paintTargets(rec, label) {
+  if (!label || rec.auto || label === rec.label || label === rec.id) return [rec.group];
+  const ps = rec.pieces.filter((pc) => pc.label === label);
+  return ps.length ? ps.map((pc) => pc.obj) : [rec.group];
+}
+
+/** A new material for one mesh: the kind he chose (in his colour, or the old colour), or the old one in his colour. */
+function dressed(old, p) {
+  const was = old && old.color ? '#' + old.color.getHexString() : undefined;
+  const k = PAINT_KINDS[p.kind];
+  let m;
+  if (k) {
+    if (k[0] === 'metal') { m = kit.metal(k[1]); if (HEX.test(p.color)) m.color.set(p.color); }
+    else if (k[0] === 'glass') m = kit.glass(HEX.test(p.color) ? { tint: p.color } : {});
+    else m = kit[k[0]](HEX.test(p.color) ? p.color : was);
+  } else {
+    m = old && old.clone ? old.clone() : kit.plastic();
+    m.userData = Object.assign({}, old && old.userData ? old.userData : {});
+    if (HEX.test(p.color)) {
+      if (m.userData.kind === 'glow' && m.emissive) m.emissive.set(p.color); // (a light stays a light, in his colour)
+      else if (m.color) m.color.set(p.color);
+    }
+  }
+  delete m.userData.cutV;
+  delete m.userData.side0;
+  m.userData.painted = true;
+  return m;
+}
+
+function unpaint(rec) {
+  rec.group.traverse((x) => {
+    if (!x.isMesh || x.userData.isEdge || x.userData.p0 === undefined) return;
+    for (const m of mats(x.userData.m0)) if (m && m.userData && m.userData.painted) m.dispose();
+    for (const m of mats(x.userData.mg)) if (m && !SHARED.has(m)) m.dispose();
+    x.userData.m0 = x.userData.p0;
+    x.userData.mg = undefined;
+    x.userData.p0 = undefined;
+    x.material = x.userData.m0;
+  });
+}
+
+/** His colours on one part (or a guest's part), in the order he chose them. */
+function applyPaints(rec, list) {
+  unpaint(rec);
+  for (const p of list || paintList) {
+    if (p.id !== rec.id) continue;
+    for (const o of paintTargets(rec, p.label)) o.traverse((x) => {
+      if (!x.isMesh || x.userData.isEdge) return;
+      if (x.userData.m0 === undefined) { x.userData.m0 = x.material; x.userData.v0 = x.visible; x.userData.s0 = x.castShadow; }
+      if (x.userData.p0 === undefined) x.userData.p0 = x.userData.m0;
+      const old = x.userData.m0;
+      x.userData.m0 = Array.isArray(old) ? old.map((o2) => dressed(o2, p)) : dressed(old, p);
+      if (old !== x.userData.p0) for (const m of mats(old)) if (m.userData && m.userData.painted) m.dispose();
+      if (x.userData.mg) { for (const m of mats(x.userData.mg)) if (!SHARED.has(m)) m.dispose(); x.userData.mg = undefined; }
+      x.material = x.userData.m0;
+    });
+  }
+}
+
+function readPaints(l) {
+  const out = [];
+  if (Array.isArray(l)) for (const p of l.slice(0, 300)) {
+    if (!p || typeof p.id !== 'string') continue;
+    out.push({ id: cleanId(p.id), label: typeof p.label === 'string' ? te(p.label) : '', kind: PAINT_KINDS[p.kind] ? p.kind : '',
+      color: typeof p.color === 'string' && HEX.test(p.color) ? p.color : '' });
+  }
+  return out;
+}
+
+function setPaints(l) {
+  paintList.length = 0;
+  paintList.push(...readPaints(l));
+  for (const r of parts.values()) if (r.box) applyPaints(r);
+  look();
+}
+
+/** "రెక్కలు నీలం చెయ్": which part / piece his words name (the longest name that matches); nothing changes here. */
+function paintName(req, words) {
+  const ws = (Array.isArray(words) ? words : []).map((w) => String(w).toLowerCase().trim()).filter((w) => w.length >= 2).slice(0, 6);
+  let best = null;
+  const tryName = (rec, label, name) => {
+    const n = String(name || '').toLowerCase();
+    if (n.length < 2) return;
+    for (const w of ws) {
+      const ok = n.includes(w) || w.includes(n) || (w.length >= 3 && n.startsWith(w.slice(0, Math.max(3, w.length - 2))));
+      if (ok && (!best || Math.min(n.length, w.length) > best.score)) best = { id: rec.id, label, score: Math.min(n.length, w.length) };
+    }
+  };
+  for (const r of parts.values()) {
+    if (!r.box) continue;
+    tryName(r, '', r.label);
+    tryName(r, '', r.id.replace(/-/g, ' '));
+    if (!r.auto) for (const pc of r.pieces) if (pc.label) tryName(r, pc.label, pc.label);
+  }
+  post({ t: 'painthit', req: String(req || ''), id: best ? best.id : '', label: best ? best.label : '' });
+}
+
+// ------------------------------------------------------------------ 📏 (3) the tape: two taps on the model, the distance between
+
+const tape = { on: false, pts: [], marks: [], line: null, el: null, d: 0, mid: new THREE.Vector3() };
+const tapeMat = new THREE.MeshBasicMaterial({ color: 0xffd34d, depthTest: false, transparent: true });
+const tapeLineMat = new THREE.LineBasicMaterial({ color: 0xffd34d, depthTest: false, transparent: true });
+SHARED.add(tapeMat);
+SHARED.add(tapeLineMat);
+
+function tapeClear() {
+  for (const m of tape.marks) { model.remove(m); m.geometry.dispose(); }
+  tape.marks = [];
+  tape.pts = [];
+  if (tape.line) { model.remove(tape.line); tape.line.geometry.dispose(); tape.line = null; }
+  if (tape.el) tape.el.style.display = 'none';
+}
+
+function setTape(on) {
+  tape.on = !!on;
+  tapeClear();
+  if (tape.on) { if (picked) { unpick(); post({ t: 'pick', id: '' }); } controls.autoRotate = false; }
+  else controls.autoRotate = spinWanted && !cut.on && !tilt.on;
+}
+
+function tapeAt(x, y) {
+  const b = canvas.getBoundingClientRect();
+  tapAt.set(((x - b.left) / b.width) * 2 - 1, -((y - b.top) / b.height) * 2 + 1);
+  ray.setFromCamera(tapAt, camera);
+  const hit = ray.intersectObject(model, true).find((h) => h.object.isMesh && !h.object.userData.isEdge && !h.object.userData.isTape && shown(h.object)
+    && h.object.material !== ghostFill);
+  if (!hit) return;
+  if (tape.pts.length >= 2) tapeClear();
+  const p = model.worldToLocal(hit.point.clone());
+  tape.pts.push(p);
+  const r = Math.max(0.08, goal.radius * 0.014);
+  const mk = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), tapeMat);
+  mk.position.copy(p);
+  mk.renderOrder = 30;
+  mk.userData.isTape = true;
+  mk.raycast = () => {};
+  model.add(mk);
+  tape.marks.push(mk);
+  if (tape.pts.length === 1) { post({ t: 'tape', n: 1 }); return; }
+  const g = new THREE.BufferGeometry().setFromPoints(tape.pts);
+  tape.line = new THREE.Line(g, tapeLineMat);
+  tape.line.renderOrder = 30;
+  tape.line.userData.isTape = true;
+  tape.line.raycast = () => {};
+  model.add(tape.line);
+  tape.d = tape.pts[0].distanceTo(tape.pts[1]);
+  tape.mid.copy(tape.pts[0]).add(tape.pts[1]).multiplyScalar(0.5);
+  if (!tape.el) {
+    tape.el = document.createElement('div');
+    tape.el.className = 'lb tape';
+    document.body.appendChild(tape.el);
+  }
+  tape.el.textContent = '📏 ' + (tape.d >= 100 ? (tape.d / 100).toFixed(2) + ' m' : tape.d.toFixed(1) + ' cm');
+  tape.el.style.display = 'block';
+  post({ t: 'tape', n: 2, d: Math.round(tape.d * 10) / 10 });
+}
+
+function tapeDraw() {
+  if (!tape.el || tape.pts.length < 2 || tape.el.style.display === 'none') return;
+  const p = model.localToWorld(tape.mid.clone()).project(camera);
+  const w = window.innerWidth, h = window.innerHeight;
+  tape.el.style.transform = 'translate(' + Math.round((p.x + 1) / 2 * w - tape.el.offsetWidth / 2) + 'px,' + Math.round((1 - p.y) / 2 * h - 26) + 'px)';
+}
+
+// ------------------------------------------------------------------ ⚖️ (9) how much it holds: each part's volume and skin, by material
+
+/** The model as he has it (pieces taken off for good left out), put together: cm³ and cm² per part per material kind. */
+function massOf(req) {
+  const e = ease(explodeK);
+  for (const r of parts.values()) placePieces(r, 0);
+  model.updateMatrixWorld(true);
+  const inv = model.matrixWorld.clone().invert();
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), ab = new THREE.Vector3(), ac = new THREE.Vector3();
+  const inst = new THREE.Matrix4(), M = new THREE.Matrix4();
+  const all = new THREE.Box3();
+  const out = [];
+  const kindOf = (m) => {
+    if (m && m.userData && m.userData.kind) return m.userData.kind;
+    if (m && m.transmission > 0) return 'glass';
+    if (m && m.metalness >= 0.8) return 'metal steel';
+    return 'plastic';
+  };
+  for (const r of parts.values()) {
+    if (!r.box) continue;
+    const kinds = {};
+    for (const pc of r.pieces) {
+      if (goneList.some((h) => h.id === r.id && (!h.label || r.auto || pc.label === h.label))) continue;
+      pc.obj.traverse((x) => {
+        if (!x.isMesh || x.userData.isEdge || x.userData.isTape || !x.geometry || !x.geometry.attributes.position) return;
+        const m0 = mats(x.userData.m0 !== undefined ? x.userData.m0 : x.material)[0];
+        const kind = kindOf(m0);
+        const pos = x.geometry.attributes.position, idx = x.geometry.index;
+        const n = x.isInstancedMesh ? x.count : 1;
+        let vol = 0, area = 0;
+        const bb = new THREE.Box3();
+        for (let j = 0; j < n; j++) {
+          M.multiplyMatrices(inv, x.matrixWorld);
+          if (x.isInstancedMesh) { x.getMatrixAt(j, inst); M.multiply(inst); }
+          const count = idx ? idx.count : pos.count;
+          let v6 = 0;
+          for (let i = 0; i + 2 < count; i += 3) {
+            a.fromBufferAttribute(pos, idx ? idx.getX(i) : i).applyMatrix4(M);
+            b.fromBufferAttribute(pos, idx ? idx.getX(i + 1) : i + 1).applyMatrix4(M);
+            c.fromBufferAttribute(pos, idx ? idx.getX(i + 2) : i + 2).applyMatrix4(M);
+            v6 += a.dot(ab.copy(b).cross(c));
+            area += ab.subVectors(b, a).cross(ac.subVectors(c, a)).length() / 2;
+            bb.expandByPoint(a); bb.expandByPoint(b); bb.expandByPoint(c);
+          }
+          vol += Math.abs(v6) / 6;
+        }
+        if (bb.isEmpty()) return;
+        const s = bb.getSize(new THREE.Vector3());
+        vol = Math.min(vol, s.x * s.y * s.z); // (an open shape can't hold more than its box)
+        all.union(bb);
+        const k = kinds[kind] || (kinds[kind] = [0, 0]);
+        k[0] += vol;
+        k[1] += area;
+      });
+    }
+    for (const k of Object.keys(kinds)) kinds[k] = [Math.round(kinds[k][0] * 100) / 100, Math.round(kinds[k][1] * 100) / 100];
+    out.push({ id: r.id, name: r.label || r.id, kinds });
+    if (out.length >= 60) break;
+  }
+  for (const r of parts.values()) placePieces(r, e);
+  const sz = all.isEmpty() ? [0, 0, 0] : all.getSize(new THREE.Vector3()).toArray().map((v) => Math.round(v * 10) / 10);
+  post({ t: 'mass', req: String(req || ''), data: JSON.stringify({ parts: out, size: sz }) });
+}
+
+// ------------------------------------------------------------------ 🔀 (6) a second saved model on the same stage (to look at, ₹0)
+// It stands beside his model (or on top of it), moved by a held finger like a piece. It is not part of his model: no names,
+// no pull-apart, not in the show, the guide, the print file or the weight. Nothing of it is saved with his model.
+
+const guests = new Map();
+const guestGroup = new THREE.Group();
+guestGroup.name = 'guest';
+model.add(guestGroup);
+let guestQueue = Promise.resolve(), guestGone = [], guestPaints = [], guestTitle = '', guestPlace = 'side';
+
+async function runGuestPart(m) {
+  const id = cleanId(m.id);
+  const rec = { id, group: new THREE.Group(), ticks: [], pieces: [], tris: 0, box: null, born: 0, auto: false, label: '' };
+  guestGroup.add(rec.group);
+  guests.set(id, rec);
+  try { await new AsyncFunction('THREE', 'W', String(m.code || ''))(THREE, kitFor(rec)); }
+  catch (e) { guestGroup.remove(rec.group); dispose(rec.group); guests.delete(id); return; }
+  const tris = triangles(rec.group);
+  let all = 0;
+  for (const g of guests.values()) all += g.tris || 0;
+  if (totalTris() + all + tris > MAX_TRIS) { guestGroup.remove(rec.group); dispose(rec.group); guests.delete(id); return; }
+  rec.tris = tris;
+  rec.box = new THREE.Box3().setFromObject(rec.group);
+  for (const pc of rec.pieces) if (guestGone.some((h) => h.id === id && (!h.label || pc.label === h.label))) pc.obj.visible = false;
+  rec.auto = !rec.pieces.some((pc) => pc.label);
+  applyPaints(rec, guestPaints);
+  rec.group.traverse((x) => { if (x.isMesh) x.userData.guest = true; });
+}
+
+function guestOff() {
+  for (const r of guests.values()) { guestGroup.remove(r.group); dispose(r.group); }
+  guests.clear();
+  guestGroup.position.set(0, 0, 0);
+  guestTitle = '';
+  frameAll(false);
+}
+
+function guestBox() {
+  const b = new THREE.Box3();
+  for (const r of guests.values()) if (r.box) b.union(r.box);
+  return b;
+}
+
+/** Beside his model on the floor, or standing on top of it (in the middle). */
+function placeGuest(where) {
+  const gb = guestBox();
+  if (gb.isEmpty()) return;
+  const mb = new THREE.Box3();
+  for (const r of parts.values()) if (r.box) mb.union(r.box);
+  const gc = gb.getCenter(new THREE.Vector3()), mc = mb.isEmpty() ? new THREE.Vector3() : mb.getCenter(new THREE.Vector3());
+  guestPlace = where === 'top' ? 'top' : 'side';
+  if (guestPlace === 'top' && !mb.isEmpty()) guestGroup.position.set(mc.x - gc.x, mb.max.y - gb.min.y, mc.z - gc.z);
+  else {
+    const gap = Math.max(4, (gb.max.x - gb.min.x) * 0.15);
+    guestGroup.position.set((mb.isEmpty() ? 0 : mb.max.x) + gap - gb.min.x, (mb.isEmpty() ? 0 : mb.min.y) - gb.min.y, mc.z - gc.z);
+  }
+  userFrame = false;
+  frameAll(false);
+}
+
+function setGuest(m) {
+  guestQueue = guestQueue.then(async () => {
+    guestOff();
+    guestTitle = typeof m.title === 'string' ? m.title.slice(0, 60) : '';
+    guestGone = Array.isArray(m.gone) ? m.gone.filter((g) => g && typeof g.id === 'string').map((g) => ({ id: cleanId(g.id), label: typeof g.label === 'string' ? g.label : '' })) : [];
+    guestPaints = readPaints(m.paints);
+    for (const p of (Array.isArray(m.parts) ? m.parts : []).slice(0, 40)) if (p && typeof p.code === 'string') await runGuestPart(p);
+    placeGuest('side');
+    post({ t: 'guest', n: guests.size });
+  }).catch(() => post({ t: 'guest', n: guests.size }));
+}
+
+// ------------------------------------------------------------------ 📐 (2) a drawing sheet: the model from the front, top and side
+
+/**
+ * Flat (orthographic) views, put together, in drawing colours (light fills, dark edges) on white, all at one scale, with the
+ * overall sizes drawn on (cm). Jarvis lays them on a PDF page with the parts list.
+ */
+function ortho(req) {
+  const e = ease(explodeK);
+  for (const r of parts.values()) placePieces(r, 0);
+  const keepGuest = guestGroup.visible, keepTour = tourGroup.visible, keepFloor = floor.visible, keepCatch = catcher.visible;
+  guestGroup.visible = false; tourGroup.visible = false; floor.visible = false; catcher.visible = false;
+  for (const m of tape.marks) m.visible = false;
+  if (tape.line) tape.line.visible = false;
+  const keep = { picked, isolated, xray, cutOn: cut.on };
+  picked = null; isolated = null; xray = false;
+  if (cut.on) { cut.on = false; cut.version++; }
+  look();
+  model.updateMatrixWorld(true);
+  const inv = model.matrixWorld.clone().invert();
+  const box = new THREE.Box3();
+  for (const r of parts.values()) for (const pc of r.pieces) {
+    if (hiddenPiece(r, pc)) continue;
+    pc.obj.traverse((x) => { if (x.isMesh && x.visible && !x.userData.isEdge) box.union(new THREE.Box3().setFromObject(x).applyMatrix4(inv)); });
+  }
+  const fill = new THREE.MeshBasicMaterial({ color: 0xeef2f6, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  const ink = new THREE.LineBasicMaterial({ color: 0x1d2633 });
+  const temp = [], swapped = [];
+  for (const r of parts.values()) r.group.traverse((x) => {
+    if (!x.isMesh || x.userData.isEdge || !x.visible) return;
+    swapped.push([x, x.material]);
+    x.material = fill;
+    if (!x.isInstancedMesh && x.geometry) {
+      try { const l = new THREE.LineSegments(new THREE.EdgesGeometry(x.geometry, 30), ink); l.userData.isEdge = true; x.add(l); temp.push(l); } catch (err) { /* */ }
+    }
+  });
+  const keepBg = scene.background, keepEnv = scene.environment, keepPr = renderer.getPixelRatio(), keepTone = renderer.toneMapping;
+  scene.background = new THREE.Color(0xffffff);
+  renderer.toneMapping = THREE.NoToneMapping;
+  const s = box.getSize(new THREE.Vector3()), cen = box.getCenter(new THREE.Vector3());
+  const big = Math.max(s.x, s.y, s.z, 0.1), ppc = Math.min(40, 820 / big); // (one scale for every view: pixels per cm)
+  const pad = 120;
+  const views = [];
+  const VIEW = { // (where the camera looks from, its up, which sizes show across / up)
+    front: { from: [0, 0, 1], up: [0, 1, 0], w: s.x, h: s.y, wl: 'W', hl: 'H' },
+    top: { from: [0, 1, 0], up: [0, 0, -1], w: s.x, h: s.z, wl: 'W', hl: 'D' },
+    side: { from: [1, 0, 0], up: [0, 1, 0], w: s.z, h: s.y, wl: 'D', hl: 'H' },
+  };
+  for (const name of ['front', 'top', 'side']) {
+    const v = VIEW[name];
+    const W = Math.max(60, Math.round(v.w * ppc)) + pad * 2, H = Math.max(60, Math.round(v.h * ppc)) + pad * 2;
+    const oc = new THREE.OrthographicCamera(-W / ppc / 2, W / ppc / 2, H / ppc / 2, -H / ppc / 2, 0.01, big * 20 + 10);
+    const wc = model.localToWorld(cen.clone());
+    oc.position.copy(wc).add(new THREE.Vector3().fromArray(v.from).multiplyScalar(big * 5 + 5));
+    oc.up.fromArray(v.up);
+    oc.lookAt(wc);
+    oc.updateProjectionMatrix();
+    renderer.setPixelRatio(1);
+    renderer.setSize(W, H, false);
+    renderer.render(scene, oc);
+    const c2 = document.createElement('canvas');
+    c2.width = W; c2.height = H;
+    const g = c2.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    g.drawImage(canvas, 0, 0, W, H);
+    // the overall sizes: across under the view, up on its right
+    const x0 = pad, x1 = W - pad, y0 = pad, y1 = H - pad;
+    g.strokeStyle = '#2a6fd6'; g.fillStyle = '#2a6fd6'; g.lineWidth = 2;
+    g.font = '600 26px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const arrow = (ax, ay, bx, by) => {
+      g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+      for (const [px, py, qx, qy] of [[ax, ay, bx, by], [bx, by, ax, ay]]) {
+        const an = Math.atan2(qy - py, qx - px);
+        g.beginPath(); g.moveTo(px, py); g.lineTo(px + 14 * Math.cos(an + 0.4), py + 14 * Math.sin(an + 0.4));
+        g.lineTo(px + 14 * Math.cos(an - 0.4), py + 14 * Math.sin(an - 0.4)); g.closePath(); g.fill();
+      }
+    };
+    const fmt = (cm) => (Math.abs(cm - Math.round(cm)) < 0.05 ? String(Math.round(cm)) : cm.toFixed(1)) + ' cm';
+    g.setLineDash([6, 6]);
+    g.beginPath(); g.moveTo(x0, y1 + 8); g.lineTo(x0, y1 + 70); g.moveTo(x1, y1 + 8); g.lineTo(x1, y1 + 70);
+    g.moveTo(x1 + 8, y0); g.lineTo(x1 + 70, y0); g.moveTo(x1 + 8, y1); g.lineTo(x1 + 70, y1); g.stroke();
+    g.setLineDash([]);
+    arrow(x0, y1 + 56, x1, y1 + 56);
+    g.fillStyle = '#ffffff'; const tw = g.measureText(fmt(v.w)).width + 16; g.fillRect((x0 + x1) / 2 - tw / 2, y1 + 40, tw, 32);
+    g.fillStyle = '#2a6fd6'; g.fillText(fmt(v.w), (x0 + x1) / 2, y1 + 56);
+    arrow(x1 + 56, y0, x1 + 56, y1);
+    g.save(); g.translate(x1 + 56, (y0 + y1) / 2); g.rotate(-Math.PI / 2);
+    g.fillStyle = '#ffffff'; const th = g.measureText(fmt(v.h)).width + 16; g.fillRect(-th / 2, -16, th, 32);
+    g.fillStyle = '#2a6fd6'; g.fillText(fmt(v.h), 0, 0); g.restore();
+    const url = c2.toDataURL('image/jpeg', 0.93);
+    views.push({ name, w: W, h: H, img: url.slice(url.indexOf(',') + 1), across: Math.round(v.w * 10) / 10, up: Math.round(v.h * 10) / 10 });
+  }
+  for (const l of temp) { l.parent.remove(l); l.geometry.dispose(); }
+  for (const [x, m] of swapped) x.material = m;
+  fill.dispose(); ink.dispose();
+  scene.background = keepBg; scene.environment = keepEnv; renderer.toneMapping = keepTone;
+  renderer.setPixelRatio(keepPr);
+  guestGroup.visible = keepGuest; tourGroup.visible = keepTour; floor.visible = keepFloor; catcher.visible = keepCatch;
+  for (const m of tape.marks) m.visible = true;
+  if (tape.line) tape.line.visible = true;
+  picked = keep.picked; isolated = keep.isolated; xray = keep.xray;
+  if (keep.cutOn) { cut.on = true; cut.version++; }
+  for (const r of parts.values()) placePieces(r, e);
+  look();
+  resize();
+  post({ t: 'ortho', req: String(req || ''), data: JSON.stringify({ size: s.toArray().map((v) => Math.round(v * 10) / 10), views }) });
+}
+
+// ------------------------------------------------------------------ 🎞️ (4) the show as a video: what he sees, with the line said
+
+const recd = { on: false, mr: null, chunks: [], cv: null, g: null, caption: '', title: '', type: '', req: '', bg: null };
+
+function recStart(m) {
+  recCancel();
+  if (typeof MediaRecorder === 'undefined' || !canvas.captureStream) { post({ t: 'file', req: String(m.req || ''), kind: 'none', data: '' }); return; }
+  const sy = Math.round(canvas.height * inset.top), sh = Math.max(2, Math.round(canvas.height * (1 - inset.top - inset.bottom)));
+  const k = Math.min(1, 720 / Math.min(canvas.width, sh));
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(canvas.width * k / 2) * 2;
+  cv.height = Math.round(sh * k / 2) * 2;
+  const g = cv.getContext('2d');
+  const type = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+    .find((t) => { try { return MediaRecorder.isTypeSupported(t); } catch (e) { return false; } });
+  if (!type) { post({ t: 'file', req: String(m.req || ''), kind: 'none', data: '' }); return; }
+  const bg = g.createRadialGradient(cv.width / 2, cv.height * 0.46, 0, cv.width / 2, cv.height * 0.46, Math.max(cv.width, cv.height) * 0.62);
+  bg.addColorStop(0, nightOn ? '#10151e' : '#2b3342'); bg.addColorStop(0.46, nightOn ? '#07090d' : '#151a23'); bg.addColorStop(1, nightOn ? '#020304' : '#07080b');
+  let mr;
+  try { mr = new MediaRecorder(cv.captureStream(30), { mimeType: type, videoBitsPerSecond: 2500000 }); }
+  catch (e) { post({ t: 'file', req: String(m.req || ''), kind: 'none', data: '' }); return; }
+  Object.assign(recd, { on: true, mr, chunks: [], cv, g, caption: '', title: typeof m.title === 'string' ? m.title.slice(0, 60) : '', type, req: String(m.req || ''), bg, sy, sh });
+  mr.ondataavailable = (ev) => { if (ev.data && ev.data.size) recd.chunks.push(ev.data); };
+  mr.start(1000);
+}
+
+/** One frame: the backdrop, what was just drawn, the title, and the line being said (wrapped, at the bottom). */
+function recFrame() {
+  if (!recd.on) return;
+  const { g, cv } = recd;
+  g.fillStyle = recd.bg; g.fillRect(0, 0, cv.width, cv.height);
+  g.drawImage(canvas, 0, recd.sy, canvas.width, recd.sh, 0, 0, cv.width, cv.height);
+  const u = cv.width / 360;
+  g.font = '600 ' + Math.round(13 * u) + 'px system-ui, "Noto Sans Telugu", sans-serif';
+  g.textAlign = 'left'; g.textBaseline = 'top';
+  g.fillStyle = 'rgba(232, 244, 255, 0.92)';
+  g.fillText('🎓 ' + recd.title, 12 * u, 10 * u);
+  if (!recd.caption) return;
+  g.font = '500 ' + Math.round(15 * u) + 'px system-ui, "Noto Sans Telugu", sans-serif';
+  const max = cv.width - 40 * u, lines = [];
+  let line = '';
+  for (const w of recd.caption.split(/\s+/)) {
+    const t = line ? line + ' ' + w : w;
+    if (g.measureText(t).width > max && line) { lines.push(line); line = w; } else line = t;
+  }
+  if (line) lines.push(line);
+  const lh = 21 * u, boxH = lines.length * lh + 16 * u, y0 = cv.height - boxH - 14 * u;
+  g.fillStyle = 'rgba(6, 12, 18, 0.74)';
+  g.fillRect(12 * u, y0, cv.width - 24 * u, boxH);
+  g.fillStyle = '#e8f4ff'; g.textAlign = 'center';
+  lines.forEach((l, i) => g.fillText(l, cv.width / 2, y0 + 8 * u + i * lh));
+}
+
+function recStop() {
+  if (!recd.on) return;
+  const r = { mr: recd.mr, chunks: recd.chunks, type: recd.type, req: recd.req };
+  recd.on = false;
+  r.mr.onstop = async () => {
+    try {
+      const blob = new Blob(r.chunks, { type: r.type.split(';')[0] });
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      post({ t: 'file', req: r.req, kind: r.type.startsWith('video/mp4') ? 'mp4' : 'webm', data: b64(bytes) });
+    } catch (e) { post({ t: 'file', req: r.req, kind: 'none', data: '' }); }
+  };
+  try { r.mr.stop(); } catch (e) { post({ t: 'file', req: r.req, kind: 'none', data: '' }); }
+}
+
+function recCancel() {
+  if (!recd.on) return;
+  recd.on = false;
+  try { recd.mr.onstop = null; recd.mr.stop(); } catch (e) { /* */ }
+  recd.chunks = [];
+}
+
+// ------------------------------------------------------------------ ✋ (7) his hand in the air turns and zooms (Jarvis sends nudges)
+
+const sph = new THREE.Spherical();
+function nudge(m) {
+  if (xr.on) { if (isFinite(+m.az)) xr.yaw += +m.az; return; }
+  const off = camera.position.clone().sub(controls.target);
+  sph.setFromVector3(off);
+  if (isFinite(+m.az)) sph.theta -= Math.max(-0.5, Math.min(0.5, +m.az));
+  if (isFinite(+m.el)) sph.phi = Math.max(0.12, Math.min(Math.PI - 0.12, sph.phi - Math.max(-0.4, Math.min(0.4, +m.el))));
+  off.setFromSpherical(sph);
+  camera.position.copy(controls.target).add(off);
+  if (isFinite(+m.zoom) && +m.zoom > 0) goal.zoom = Math.max(0.3, Math.min(3, goal.zoom * Math.max(0.8, Math.min(1.25, +m.zoom))));
+  controls.autoRotate = false;
+  userFrame = true;
+  goal.dir = null;
+}
+
+// ------------------------------------------------------------------ 📏 (8) real size on the real floor: the phone's AR tells where the camera is
+
+const xr = { on: false, placed: false, yaw: 0, base: new THREE.Vector3(), shadow: null, reticle: null, v: new THREE.Matrix4(), p: new THREE.Matrix4(), a: new THREE.Matrix4() };
+
+function setXr(on) {
+  xr.on = !!on;
+  xr.placed = false;
+  if (xr.on) {
+    if (picked) { unpick(); post({ t: 'pick', id: '' }); }
+    controls.enabled = false;
+    controls.autoRotate = false;
+    camera.matrixAutoUpdate = false;
+    model.matrixAutoUpdate = false;
+    model.visible = false;
+    floor.visible = false;
+    catcher.visible = false;
+    key.castShadow = false;
+    document.documentElement.style.background = 'transparent';
+    document.body.style.background = 'transparent';
+    if (!xr.reticle) {
+      const rg = new THREE.RingGeometry(0.09, 0.12, 48).rotateX(-Math.PI / 2);
+      xr.reticle = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ color: 0x4fd2ff, transparent: true, opacity: 0.85, depthTest: false }));
+      xr.reticle.matrixAutoUpdate = false;
+      xr.reticle.renderOrder = 40;
+      xr.reticle.raycast = () => {};
+      scene.add(xr.reticle);
+    }
+    xr.reticle.visible = false;
+    if (!xr.shadow) {
+      xr.shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, alphaMap: fade(), depthWrite: false }));
+      xr.shadow.raycast = () => {};
+      xr.shadow.renderOrder = -1;
+      model.add(xr.shadow);
+    }
+    const b = new THREE.Box3();
+    for (const r of parts.values()) if (r.box) b.union(r.box);
+    const c = b.isEmpty() ? new THREE.Vector3() : b.getCenter(new THREE.Vector3());
+    xr.base.set(c.x, b.isEmpty() ? 0 : b.min.y, c.z);
+    const s = b.isEmpty() ? new THREE.Vector3(10, 10, 10) : b.getSize(new THREE.Vector3());
+    xr.shadow.position.set(c.x, xr.base.y + 0.05, c.z);
+    xr.shadow.scale.setScalar(Math.max(s.x, s.z) * 0.75);
+    xr.shadow.visible = true;
+  } else {
+    controls.enabled = true;
+    camera.matrixAutoUpdate = true;
+    model.matrixAutoUpdate = true;
+    model.position.set(0, 0, 0); model.rotation.set(0, 0, 0); model.scale.set(1, 1, 1);
+    model.updateMatrix();
+    model.visible = true;
+    floor.visible = !arOn;
+    catcher.visible = arOn;
+    key.castShadow = true;
+    if (xr.reticle) xr.reticle.visible = false;
+    if (xr.shadow) xr.shadow.visible = false;
+    backdrop();
+    resize();
+    jump();
+  }
+}
+
+/** Each frame from Jarvis: the camera's view and lens, where the model stands (anchor) and the ring where it would go. */
+function xrPose(m) {
+  if (!xr.on) return;
+  const ok16 = (a) => Array.isArray(a) && a.length === 16 && a.every((v) => typeof v === 'number' && isFinite(v));
+  if (ok16(m.v) && ok16(m.p)) {
+    xr.v.fromArray(m.v);
+    camera.matrix.copy(xr.v).invert();
+    camera.matrixWorldNeedsUpdate = true;
+    camera.projectionMatrix.fromArray(m.p);
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+  }
+  if (ok16(m.a)) { xr.a.fromArray(m.a); xr.placed = true; } else if (m.a === null) xr.placed = false;
+  model.visible = xr.placed;
+  if (xr.reticle) {
+    if (ok16(m.r) && !xr.placed) { xr.reticle.matrix.fromArray(m.r); xr.reticle.visible = true; } else xr.reticle.visible = false;
+  }
+}
+
+function xrPlaceModel() {
+  if (!xr.on || !xr.placed) return;
+  // anchor (metres) × his turn × centimetres → metres × the model's base middle at the anchor
+  const T = new THREE.Matrix4().makeTranslation(-xr.base.x, -xr.base.y, -xr.base.z);
+  const S = new THREE.Matrix4().makeScale(0.01, 0.01, 0.01);
+  const R = new THREE.Matrix4().makeRotationY(xr.yaw);
+  model.matrix.copy(xr.a).multiply(R).multiply(S).multiply(T);
+  model.matrixWorldNeedsUpdate = true;
 }
 
 canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); post({ t: 'warn', id: 'stage', msg: 'webgl context lost' }); });

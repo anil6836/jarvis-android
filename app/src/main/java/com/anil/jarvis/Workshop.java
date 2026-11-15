@@ -241,7 +241,7 @@ final class Workshop {
         return x.isEmpty() ? "part" : x;
     }
 
-    private static String cap(String s, int n) { return s.length() > n ? s.substring(0, n) : s; }
+    static String cap(String s, int n) { return s.length() > n ? s.substring(0, n) : s; }
 
     // ================================================================ what the AI's code may not use
 
@@ -652,6 +652,334 @@ final class Workshop {
         return s == null ? "" : s.replaceAll("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}\\x{200D}\\x{2B00}-\\x{2BFF}•]", " ").replaceAll("\\s+", " ").trim();
     }
 
+    // ================================================================ (1) 🎨 his own colours and materials (₹0, no AI)
+
+    /** Colour words he says → the colour (a few named twice: Telugu forms, English). Longer ones are tried first. */
+    static final String[][] PAINT_COLOURS = {
+            {"#1f2f5a", "ముదురు నీలం", "ముదురు నీలి", "navy", "dark blue"}, {"#7cc3f0", "లేత నీలం", "ఆకాశ నీలం", "sky blue", "light blue"},
+            {"#2f6fd6", "నీలం", "నీలి", "నీలిరంగు", "blue"}, {"#d23b3b", "ఎరుపు", "ఎర్ర", "ఎర్రని", "red"},
+            {"#3fa65a", "ఆకుపచ్చ", "పచ్చ", "పచ్చని", "green"}, {"#f2c94c", "పసుపు", "yellow"}, {"#f08a2c", "నారింజ", "ఆరెంజ్", "orange"},
+            {"#7a4fc2", "ఊదా", "వంకాయ రంగు", "purple", "violet"}, {"#e46aa6", "గులాబీ", "పింక్", "pink"},
+            {"#1d1f22", "నలుపు", "నల్ల", "నల్లని", "నల్లగా", "black"}, {"#f2f2f2", "తెలుపు", "తెల్ల", "తెల్లని", "తెల్లగా", "white"},
+            {"#8a8f96", "బూడిద", "గ్రే", "grey", "gray"}, {"#8a5a33", "గోధుమ", "బ్రౌన్", "brown"}, {"#efe3c8", "క్రీమ్", "cream"},
+            {"#22a6a1", "నెమలి రంగు", "teal"}};
+
+    /** Material words → the stage's kinds (the same names as PAINT_KINDS in stage.js). */
+    static final String[][] PAINT_MATERIALS = {
+            {"metal steel", "స్టీల్", "ఉక్కు", "steel"}, {"metal chrome", "క్రోమ్", "chrome"}, {"metal brass", "ఇత్తడి", "brass"},
+            {"metal copper", "రాగి", "copper"}, {"metal gold", "బంగారం", "బంగారు", "gold", "golden"}, {"metal aluminium", "అల్యూమినియం", "aluminium", "aluminum"},
+            {"metal black", "నల్ల లోహం", "black metal"}, {"plastic", "ప్లాస్టిక్", "plastic"}, {"rubber", "రబ్బర్", "రబ్బరు", "rubber"},
+            {"glass", "గాజు", "అద్దం", "glass"}, {"wood", "చెక్క", "కర్ర", "wood", "wooden"}, {"ceramic", "పింగాణీ", "ceramic"},
+            {"fabric", "గుడ్డ", "బట్ట", "fabric", "cloth"}, {"paint", "పెయింట్ ఫినిష్", "glossy paint"}};
+
+    /** The 🎨 card's swatches: {colour, its Telugu name}. */
+    static final String[][] SWATCHES = {{"#f2f2f2", "తెలుపు"}, {"#1d1f22", "నలుపు"}, {"#8a8f96", "బూడిద"}, {"#d23b3b", "ఎరుపు"},
+            {"#f08a2c", "నారింజ"}, {"#f2c94c", "పసుపు"}, {"#3fa65a", "ఆకుపచ్చ"}, {"#22a6a1", "నెమలి"}, {"#2f6fd6", "నీలం"},
+            {"#1f2f5a", "ముదురు నీలం"}, {"#7a4fc2", "ఊదా"}, {"#e46aa6", "గులాబీ"}, {"#8a5a33", "గోధుమ"}, {"#efe3c8", "క్రీమ్"}};
+
+    /** The 🎨 card's materials: {kind, button}. */
+    static final String[][] MATERIAL_BUTTONS = {{"metal steel", "🔩 స్టీల్"}, {"metal chrome", "✨ క్రోమ్"}, {"metal brass", "🟡 ఇత్తడి"},
+            {"metal copper", "🟠 రాగి"}, {"metal aluminium", "⚪ అల్యూమినియం"}, {"metal black", "⚫ నల్ల లోహం"}, {"plastic", "🧴 ప్లాస్టిక్"},
+            {"rubber", "🛞 రబ్బర్"}, {"wood", "🪵 చెక్క"}, {"glass", "🔍 గాజు"}, {"ceramic", "🏺 పింగాణీ"}, {"fabric", "🧵 గుడ్డ"}, {"paint", "🎨 మెరిసే పెయింట్"}};
+
+    /** What he said about a colour / material, if that is all he said: {kind or "", colour or "", the other words (a part's name)}. */
+    static final class PaintSay {
+        String kind = "", color = "";
+        boolean all;
+        final List<String> rest = new ArrayList<>();
+    }
+
+    private static final java.util.Set<String> PAINT_VERBS = new java.util.HashSet<>(Arrays.asList("చెయ్", "చేయి", "చెయ్యి", "చేయండి", "చెయ్యండి",
+            "మార్చు", "మార్చండి", "మార్చేయి", "వేయి", "వెయ్యి", "వేయండి", "వెయ్", "పెయింట్", "make", "paint", "change", "turn", "colour", "color"));
+    private static final java.util.Set<String> PAINT_FILLERS = new java.util.HashSet<>(Arrays.asList("రంగు", "రంగులో", "రంగుతో", "రంగుకి", "రంగులోకి",
+            "కలర్", "లోకి", "తో", "లో", "గా", "కి", "కు", "ని", "ను", "ఇది", "ఇదే", "దీన్ని", "దీనికి", "దీని", "ఈ", "ఆ", "భాగం", "భాగాన్ని",
+            "భాగానికి", "పార్ట్", "పార్టు", "పార్ట్‌ని", "jarvis", "జార్విస్", "sir", "సార్", "please", "ప్లీజ్", "to", "it", "this", "the", "in",
+            "with", "of", "బొమ్మ", "బొమ్మని", "బొమ్మకి", "బొమ్మలో", "ఒకసారి", "కొంచెం", "వర్క్‌షాప్", "వర్క్‌షాప్‌లో", "workshop"));
+    private static final java.util.Set<String> PAINT_ALL = new java.util.HashSet<>(Arrays.asList("మొత్తం", "అన్నీ", "అంతా", "అన్ని", "all", "whole", "everything"));
+    private static final Pattern QUESTION = Pattern.compile("[?]|\\b(why|what|how|which|when)\\b|ఎందుకు|ఏంటి|ఏమిటి|ఎలా|ఏది|ఏ |ఉందా|ఉన్నాయా|ఉంది|ఉన్నాయి|బాగుంటుందా");
+
+    /**
+     * "నీలం చెయ్", "రెక్కలు ఎరుపు రంగు వేయి", "బేస్ చెక్కతో చెయ్", "మొత్తం తెల్లగా చెయ్": a colour / material and nothing more
+     * than a short name; anything else (a question, a longer change) is null: it goes on to his AI as before.
+     */
+    static PaintSay paintWords(String text) {
+        if (text == null) return null;
+        String raw = hintless(text).toLowerCase(Locale.ROOT);
+        if (QUESTION.matcher(raw + " ").find()) return null;
+        String t = " " + raw.replaceAll("[\\p{Punct}।॥“”‘’]+", " ").replaceAll("\\s+", " ").trim() + " ";
+        PaintSay ps = new PaintSay();
+        // the two-word names first (ముదురు నీలం, నల్ల లోహం, sky blue…)
+        for (String[][] table : new String[][][]{PAINT_MATERIALS, PAINT_COLOURS}) {
+            for (String[] row : table) for (int i = 1; i < row.length; i++) {
+                String w = row[i];
+                if (!w.contains(" ")) continue;
+                if (t.contains(" " + w + " ")) { if (table == PAINT_MATERIALS) { if (ps.kind.isEmpty()) ps.kind = row[0]; } else if (ps.color.isEmpty()) ps.color = row[0]; t = t.replace(" " + w + " ", " "); }
+            }
+        }
+        boolean verb = false;
+        int words = 0;
+        for (String w0 : t.trim().split(" ")) {
+            if (w0.isEmpty()) continue;
+            words++;
+            String w = w0;
+            if (PAINT_VERBS.contains(w)) { verb = true; continue; }
+            if (PAINT_FILLERS.contains(w)) continue;
+            if (PAINT_ALL.contains(w)) { ps.all = true; continue; }
+            String c = word(PAINT_COLOURS, w), m = word(PAINT_MATERIALS, w);
+            if (c == null && m == null) { // (నీలంగా, చెక్కతో, రబ్బరుతో…: the word with its ending)
+                for (String end : new String[]{"రంగులో", "రంగుతో", "గా", "తో", "లో", "కి", "ది", "ని"}) {
+                    if (w.length() > end.length() + 1 && w.endsWith(end)) {
+                        String b = w.substring(0, w.length() - end.length());
+                        c = word(PAINT_COLOURS, b);
+                        m = word(PAINT_MATERIALS, b);
+                        if (c == null && m == null && b.endsWith("ు")) { c = word(PAINT_COLOURS, b.substring(0, b.length() - 1)); m = word(PAINT_MATERIALS, b.substring(0, b.length() - 1)); }
+                        if (c != null || m != null) break;
+                    }
+                }
+            }
+            if (c != null) { if (ps.color.isEmpty()) ps.color = c; continue; }
+            if (m != null) { if (ps.kind.isEmpty()) ps.kind = m; continue; }
+            ps.rest.add(w);
+        }
+        if (ps.color.isEmpty() && ps.kind.isEmpty()) return null;
+        if (ps.rest.size() > 3) return null; // (more than a name: a change for his AI)
+        if (!verb && !(ps.rest.isEmpty() && words <= 2)) return null; // ("నీలం" alone, or with "రంగు", is enough; else a "do it" word)
+        return ps;
+    }
+
+    private static String word(String[][] table, String w) {
+        for (String[] row : table) for (int i = 1; i < row.length; i++) if (!row[i].contains(" ") && row[i].equals(w)) return row[0];
+        return null;
+    }
+
+    /** His words name a colour or a material somewhere (an AI change about how it looks: his own colours on those parts make way). */
+    static boolean mentionsLook(String text) {
+        String t = " " + (text == null ? "" : text.toLowerCase(Locale.ROOT)).replaceAll("[\\p{Punct}।॥“”‘’]+", " ") + " ";
+        for (String[][] table : new String[][][]{PAINT_COLOURS, PAINT_MATERIALS})
+            for (String[] row : table) for (int i = 1; i < row.length; i++) if (t.contains(row[i])) return true;
+        return t.contains("రంగు") || t.contains("colour") || t.contains("color");
+    }
+
+    /** A material kind in his words (the drawing's parts list, the weight card). */
+    static String kindTe(String kind) {
+        if (kind == null) return "";
+        switch (kind) {
+            case "metal steel": return "స్టీల్";
+            case "metal chrome": return "క్రోమ్ లోహం";
+            case "metal brass": return "ఇత్తడి";
+            case "metal copper": return "రాగి";
+            case "metal gold": return "బంగారు రంగు లోహం";
+            case "metal aluminium": case "metal aluminum": return "అల్యూమినియం";
+            case "metal brushed": return "బ్రష్డ్ స్టీల్";
+            case "metal black": return "నల్ల లోహం";
+            case "metal gunmetal": return "గన్‌మెటల్";
+            case "metal titanium": return "టైటానియం";
+            case "metal silver": return "వెండి రంగు లోహం";
+            case "plastic": return "ప్లాస్టిక్";
+            case "rubber": return "రబ్బర్";
+            case "paint": return "పెయింట్ వేసినది";
+            case "glass": return "గాజు";
+            case "wood": return "చెక్క";
+            case "ceramic": return "పింగాణీ";
+            case "fabric": return "గుడ్డ";
+            case "glow": return "లైట్";
+            case "screen": return "స్క్రీన్";
+            default: return kind.startsWith("metal ") ? "లోహం" : kind;
+        }
+    }
+
+    // ================================================================ (9) ⚖️ how heavy, and what a 3D print takes (₹0, estimates)
+
+    /** {density g/cm³, a typical wall in cm (0: solid all through)} for a material kind. */
+    static double[] matter(String kind) {
+        String k = kind == null ? "" : kind;
+        if (k.startsWith("metal ")) {
+            if (k.contains("alumin")) return new double[]{2.7, 0.2};
+            if (k.contains("titanium")) return new double[]{4.5, 0.15};
+            if (k.contains("brass") || k.contains("gold")) return new double[]{8.5, 0.15};
+            if (k.contains("copper")) return new double[]{8.96, 0.15};
+            return new double[]{7.85, 0.15};
+        }
+        switch (k) {
+            case "rubber": return new double[]{1.2, 0};
+            case "wood": return new double[]{0.65, 0};
+            case "glass": return new double[]{2.5, 0.4};
+            case "ceramic": return new double[]{2.4, 0.6};
+            case "fabric": return new double[]{0.4, 0.1};
+            case "screen": return new double[]{2.5, 0.3};
+            default: return new double[]{1.2, 0.3}; // (plastic, paint, a light: a plastic shell)
+        }
+    }
+
+    /** One part's estimate: grams if it is made the usual way (shells hollow), grams if it were solid all through. */
+    static double[] grams(JSONObject kinds) {
+        double shell = 0, solid = 0;
+        if (kinds == null) return new double[]{0, 0};
+        for (java.util.Iterator<String> it = kinds.keys(); it.hasNext(); ) {
+            String k = it.next();
+            JSONArray va = kinds.optJSONArray(k);
+            if (va == null) continue;
+            double v = Math.max(0, va.optDouble(0, 0)), a = Math.max(0, va.optDouble(1, 0));
+            double[] m = matter(k);
+            solid += v * m[0];
+            shell += (m[1] <= 0 ? v : Math.min(v, a * m[1])) * m[0];
+        }
+        return new double[]{shell, solid};
+    }
+
+    /** A 3D print in PLA: {grams, hours, rupees} for volumes / areas scaled by k (1.2 mm walls, 15% inside). */
+    static double[] print(JSONArray parts, double k) {
+        double vol = 0;
+        for (int i = 0; parts != null && i < parts.length(); i++) {
+            JSONObject kinds = parts.optJSONObject(i) == null ? null : parts.optJSONObject(i).optJSONObject("kinds");
+            if (kinds == null) continue;
+            for (java.util.Iterator<String> it = kinds.keys(); it.hasNext(); ) {
+                JSONArray va = kinds.optJSONArray(it.next());
+                if (va == null) continue;
+                double v = Math.max(0, va.optDouble(0, 0)) * k * k * k, a = Math.max(0, va.optDouble(1, 0)) * k * k;
+                double wall = Math.min(v, a * 0.12);
+                vol += wall + 0.15 * Math.max(0, v - wall);
+            }
+        }
+        double g = vol * 1.24;
+        return new double[]{g, g / 12 + 0.25, g * 1.5};
+    }
+
+    static String weightText(double g) {
+        if (g >= 1000) return String.format(Locale.ENGLISH, "%.1f kg", g / 1000);
+        return Math.max(1, Math.round(g)) + " గ్రా";
+    }
+
+    /** ⚖️ The card and the spoken line: {title, card text, said}. */
+    static String[] massCard(String json, String title) {
+        try {
+            JSONObject o = new JSONObject(json == null ? "{}" : json);
+            JSONArray parts = o.optJSONArray("parts");
+            JSONArray size = o.optJSONArray("size");
+            double big = 0;
+            for (int i = 0; size != null && i < size.length(); i++) big = Math.max(big, size.optDouble(i, 0));
+            if (parts == null || parts.length() == 0 || big <= 0) return null;
+            double shell = 0, solid = 0;
+            StringBuilder rows = new StringBuilder();
+            for (int i = 0; i < parts.length(); i++) {
+                JSONObject pt = parts.optJSONObject(i);
+                if (pt == null) continue;
+                double[] g = grams(pt.optJSONObject("kinds"));
+                shell += g[0];
+                solid += g[1];
+                StringBuilder kinds = new StringBuilder();
+                JSONObject ks = pt.optJSONObject("kinds");
+                for (java.util.Iterator<String> it = ks == null ? java.util.Collections.<String>emptyIterator() : ks.keys(); it.hasNext(); ) {
+                    String kt = kindTe(it.next());
+                    if (!kinds.toString().contains(kt)) kinds.append(kinds.length() > 0 ? ", " : "").append(kt);
+                }
+                rows.append("• ").append(cap(oneLine(pt.optString("name")), 40)).append(kinds.length() > 0 ? " (" + kinds + ")" : "").append(": ").append(weightText(g[0])).append('\n');
+            }
+            double[] small = print(parts, 10 / big);
+            StringBuilder b = new StringBuilder();
+            b.append("మొత్తం సుమారు ").append(weightText(shell)).append(" (లోహం / ప్లాస్టిక్ డబ్బాలు లోపల ఖాళీ అనుకుని)\n");
+            b.append("అన్నీ నిండుగా అయితే ").append(weightText(solid)).append("\n\n").append(rows);
+            b.append("\n🖨️ 3D ప్రింట్ (STL ఫైల్ సైజు: పొడవైన వైపు 10 సెం.మీ, PLA ప్లాస్టిక్)\n");
+            b.append("ప్లాస్టిక్ సుమారు ").append(Math.max(1, Math.round(small[0]))).append(" గ్రా · సమయం సుమారు ").append(hours(small[1]))
+                    .append(" · ఖర్చు సుమారు ₹").append(Math.max(1, Math.round(small[2]))).append('\n');
+            if (big <= 22) {
+                double[] real = print(parts, 1);
+                b.append("నిజమైన సైజులో (").append(cm1(big)).append(" సెం.మీ): ").append(Math.max(1, Math.round(real[0]))).append(" గ్రా · ")
+                        .append(hours(real[1])).append(" · ₹").append(Math.max(1, Math.round(real[2]))).append('\n');
+            } else b.append("నిజమైన సైజు ").append(cm1(big)).append(" సెం.మీ: మామూలు ప్రింటర్‌కి (సుమారు 22 సెం.మీ) పెద్దది, ముక్కలుగా ప్రింట్ చేయాలి.\n");
+            b.append("\nఇవన్నీ అంచనాలే: AI డిజైన్ చేసిన కొలతలు, మామూలు పదార్థాల బరువు. పెయింట్ వేసినవి ప్లాస్టిక్ అనుకున్నాను.");
+            String said = "సుమారు " + weightText(shell).replace("kg", "కిలోలు").replace("గ్రా", "గ్రాములు") + " Sir. చిన్న సైజు 3D ప్రింట్‌కి సుమారు "
+                    + Math.max(1, Math.round(small[0])) + " గ్రాముల ప్లాస్టిక్, " + hours(small[1]) + ", " + Math.max(1, Math.round(small[2])) + " రూపాయలు.";
+            return new String[]{"⚖️ " + cap(oneLine(title), 40) + " · సుమారు బరువు", b.toString(), said};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String hours(double h) {
+        if (h < 1) return Math.max(10, Math.round(h * 60 / 5) * 5) + " నిమిషాలు";
+        return (Math.round(h * 2) / 2.0 == Math.rint(Math.round(h * 2) / 2.0) ? String.valueOf(Math.round(h)) : String.valueOf(Math.round(h * 2) / 2.0)) + " గంటలు";
+    }
+
+    private static String cm1(double v) {
+        return Math.abs(v - Math.round(v)) < 0.05 ? String.valueOf(Math.round(v)) : String.format(Locale.ENGLISH, "%.1f", v);
+    }
+
+    // ================================================================ (2) 📐 the drawing's parts list
+
+    /** The stage's description → the parts list rows: {no, name, count, W × H × D cm, material, "p" for a piece row}. */
+    static List<String[]> drawingRows(String json) {
+        List<String[]> rows = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(json == null ? "[]" : json);
+            int no = 0;
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject pt = a.optJSONObject(i);
+                if (pt == null) continue;
+                no++;
+                rows.add(new String[]{String.valueOf(no), cap(oneLine(pt.optString("name")), 40), "1", sizeText(pt.optJSONObject("box")), madeTe(pt.optJSONArray("made")), ""});
+                JSONArray ps = pt.optJSONArray("pieces");
+                for (int j = 0; ps != null && j < ps.length() && j < 16; j++) {
+                    JSONObject q = ps.optJSONObject(j);
+                    if (q == null) continue;
+                    rows.add(new String[]{no + "." + (j + 1), cap(oneLine(q.optString("name")), 40), String.valueOf(Math.max(1, q.optInt("n", 1))),
+                            sizeText(q.optJSONObject("box")), madeTe(q.optJSONArray("made")), "p"});
+                }
+            }
+        } catch (Exception ignored) {}
+        return rows;
+    }
+
+    private static String sizeText(JSONObject bx) {
+        JSONArray s = bx == null ? null : bx.optJSONArray("s");
+        if (s == null || s.length() < 3) return "";
+        return cm1(s.optDouble(0)) + " × " + cm1(s.optDouble(1)) + " × " + cm1(s.optDouble(2));
+    }
+
+    private static String madeTe(JSONArray a) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; a != null && i < a.length() && i < 3; i++) {
+            String k = kindTe(a.optString(i, ""));
+            if (!k.isEmpty() && !b.toString().contains(k)) b.append(b.length() > 0 ? ", " : "").append(k);
+        }
+        return b.toString();
+    }
+
+    // ================================================================ (4) 🎞️ the show's video, (5) 🖼️ the saved models' pictures
+
+    /** A video the stage made: an MP4 ("ftyp" at byte 4) or a WebM (the EBML mark), and not tiny. */
+    static boolean videoOk(byte[] b, String kind) {
+        if (b == null || b.length < 2000) return false;
+        if ("mp4".equals(kind)) return b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p';
+        if ("webm".equals(kind)) return (b[0] & 0xFF) == 0x1A && (b[1] & 0xFF) == 0x45 && (b[2] & 0xFF) == 0xDF && (b[3] & 0xFF) == 0xA3;
+        return false;
+    }
+
+    /** Into his gallery (Movies/Jarvis/workshop); before Android 10, Downloads. */
+    static Coder.Made saveVideo(Context c, String name, String mime, byte[] bytes) throws Exception {
+        if (Build.VERSION.SDK_INT < 29) return Coder.save(c, "Jarvis/workshop", name, mime, bytes);
+        ContentResolver cr = c.getContentResolver();
+        ContentValues v = new ContentValues();
+        v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+        v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+        v.put("relative_path" /* (MediaColumns.RELATIVE_PATH, Android 10+) */, Environment.DIRECTORY_MOVIES + "/Jarvis/workshop");
+        Uri uri = cr.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, v);
+        if (uri == null) throw new IllegalStateException("వీడియో సేవ్ కాలేదు");
+        try (java.io.OutputStream o = cr.openOutputStream(uri)) {
+            if (o == null) throw new IllegalStateException("వీడియో సేవ్ కాలేదు");
+            o.write(bytes);
+        }
+        Coder.Made m = new Coder.Made();
+        m.name = name;
+        m.mime = mime;
+        m.uri = uri;
+        m.where = "Movies/Jarvis/workshop/" + name;
+        return m;
+    }
+
+    /** 🖼️ A saved model's small picture (next to its file; gone with it). */
+    static File thumb(Context c, long at) { return new File(dir(c), at + ".jpg"); }
+
     /** A guide that is only a polite "no" (no steps, no list). */
     static boolean guideRefused(String guide) {
         String g = guide == null ? "" : guide;
@@ -836,7 +1164,22 @@ final class Workshop {
             {"guide", "ఎలా తయారు చేయాలి", "నిజంగా ఎలా తయారు చేయాలి", "ఇది ఎలా తయారు చేయాలి", "ఇది నిజంగా ఎలా తయారు చేయాలి", "ఎలా తయారుచేయాలి",
                     "తయారీ విధానం", "తయారు చేసే విధానం", "నిజంగా తయారు చేయాలంటే", "build guide", "how to make", "how to build", "how do i make"},
             {"ar_on", "గదిలో", "నా గదిలో", "గదిలో పెట్టు", "రూమ్‌లో", "రూమ్ లో", "కెమెరాలో", "room view", "in my room", "in room", "ar", "ar view"},
-            {"ar_off", "గది ఆపు", "గది వద్దు", "కెమెరా ఆపు", "కెమెరా వద్దు", "గది మూసేయి", "room off", "stop camera", "close room"}};
+            {"ar_off", "గది ఆపు", "గది వద్దు", "కెమెరా ఆపు", "కెమెరా వద్దు", "గది మూసేయి", "room off", "stop camera", "close room"},
+            // (1–9) 📏 the tape, ⚖️ weight, 📐 drawing, 🎞️ the show's video, 🔀 a second model, ✋ hand signs, 📏 real size on the floor
+            {"tape_on", "టేప్", "కొలత టేప్", "టేప్ పెట్టు", "టేప్‌తో కొలువు", "రెండు చోట్ల కొలువు", "tape", "measure tape", "tape measure"},
+            {"tape_off", "టేప్ ఆపు", "టేప్ వద్దు", "టేప్ తీసేయి", "tape off", "stop tape"},
+            {"weight", "బరువు", "బరువు ఎంత", "ఎంత బరువు", "ఎంత బరువు ఉంటుంది", "బరువు చెప్పు", "ప్రింట్ ఖర్చు", "3d ప్రింట్ ఖర్చు", "ప్రింట్‌కి ఎంత",
+                    "weight", "how heavy", "print cost", "3d print cost"},
+            {"drawing", "డ్రాయింగ్", "డ్రాయింగ్ షీట్", "2d డ్రాయింగ్", "ప్లాన్ కాగితం", "బ్లూప్రింట్", "drawing", "drawing sheet", "blueprint", "2d drawing"},
+            {"show_video", "షో వీడియో", "వీడియో తీయి", "వీడియో తీ", "షో వీడియో తీయి", "వీడియో", "show video", "record show", "record the show", "video"},
+            {"guest_add", "రెండో", "రెండో పెట్టు", "ఇంకో", "ఇంకో పెట్టు", "ఇంకోటి పక్కన పెట్టు", "రెండు బొమ్మలు", "two models", "add another model"}, // ("బొమ్మ" goes with the fillers)
+            {"guest_top", "పైన పెట్టు", "దాని మీద పెట్టు", "మీద పెట్టు", "put on top", "on top"},
+            {"guest_side", "పక్కన పెట్టు", "కింద పెట్టు", "put beside", "beside"},
+            {"guest_off", "రెండో తీసేయి", "రెండో వద్దు", "రెండోది తీసేయి", "remove second model"},
+            {"hands_on", "చేతి సైగలు", "సైగలు", "చేతితో తిప్పు", "హ్యాండ్ మోడ్", "hand signs", "hand gestures", "gestures", "hands"},
+            {"hands_off", "సైగలు ఆపు", "చేతి సైగలు ఆపు", "సైగలు వద్దు", "hands off", "stop gestures"},
+            {"real_on", "నిజమైన సైజులో", "నిజమైన సైజు", "నేల మీద పెట్టు", "నేల మీద", "నిజ సైజులో", "real size", "on the floor", "real size view"},
+            {"real_off", "నిజమైన సైజు ఆపు", "నేల ఆపు", "real size off"}};
 
     // ================================================================ 🖼️ (A4) a studio / miniature photo by his image AI
 
@@ -1244,7 +1587,11 @@ final class Workshop {
             try (FileOutputStream o = new FileOutputStream(tmp)) { o.write(build.toString().getBytes(StandardCharsets.UTF_8)); }
             if (!tmp.renameTo(f)) { tmp.delete(); return; }
             List<File> all = files(c);
-            for (int i = KEEP; i < all.size(); i++) all.get(i).delete();
+            for (int i = KEEP; i < all.size(); i++) {
+                File old = all.get(i);
+                old.delete();
+                new File(d, old.getName().replace(".json", ".jpg")).delete(); // (🖼️ its small picture too)
+            }
         } catch (Exception ignored) {}
     }
 
