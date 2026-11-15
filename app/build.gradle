@@ -76,4 +76,8 @@ dependencies {
     implementation 'com.google.mlkit:translate:17.0.2'
     // ⑮ the car box's 3D city map: MapLibre (free, open source) drawing OpenFreeMap's OpenStreetMap map, no key
     implementation 'org.maplibre.gl:android-sdk:11.13.5'
+    // ✋ (7) the 3D workshop's hand signs: Google's MediaPipe hand model on the phone (the model file is downloaded by the build)
+    implementation 'com.google.mediapipe:tasks-vision:0.10.14'
+    // 📏 (8) the 3D workshop's real size on the floor: Google's ARCore (AR optional: nothing changes until he turns it on)
+    implementation 'com.google.ar:core:1.45.0'
 }

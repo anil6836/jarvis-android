@@ -388,7 +388,7 @@ final class Tools {
                         + "the light, undo, one part alone, X-ray, cut / inside, hide a part, roof off, size, replay, photo, studio / miniature "
                         + "photo, STL print file, a 3D model from a photo or a floor plan, landscape, the how-it-works show, how to really make it, "
                         + "the model in his room on the camera, a colour or material for a part, the tape, the weight, the 2D drawing, the show's video, "
-                        + "a second saved model beside it) go to the workshop as he said them. "
+                        + "a second saved model beside it, hand signs in the air, the model at its real size on his floor) go to the workshop as he said them. "
                         + "Not for websites, apps, code, food, pictures or scans.",
                 schema(new String[][]{{"action", "string", "build | open_last | cost | talk"},
                         {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used. "

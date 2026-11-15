@@ -1386,8 +1386,15 @@ function snap(req, clean, most) {
   const keep = { picked, isolated, xray, cutOn: cut.on };
   if (clean) { picked = null; isolated = null; xray = false; if (cut.on) { cut.on = false; cut.version++; } look(); }
   if (sizeBox) sizeBox.visible = false;
+  if (xr.on && xr.reticle) xr.reticle.visible = false;
   renderer.render(scene, camera);
   if (sizeBox) sizeBox.visible = true;
+  if (xr.on) { // 📏 on his real floor: the whole see-through stage, Jarvis puts the camera's picture under it
+    const png = canvas.toDataURL('image/png');
+    if (clean) { picked = keep.picked; isolated = keep.isolated; xray = keep.xray; if (keep.cutOn) { cut.on = true; cut.version++; } look(); }
+    post({ t: 'file', req: String(req || ''), kind: 'png', data: png.slice(png.indexOf(',') + 1) });
+    return;
+  }
   // (only the part of the stage he sees between the bars)
   const sy = Math.round(canvas.height * inset.top), sh = Math.max(1, Math.round(canvas.height * (1 - inset.top - inset.bottom)));
   const w = canvas.width, h = sh, k = Math.min(1, (most > 0 ? most : 1600) / Math.max(w, h));
@@ -2303,6 +2310,14 @@ function xrPose(m) {
     camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
   }
   if (ok16(m.a)) { xr.a.fromArray(m.a); xr.placed = true; } else if (m.a === null) xr.placed = false;
+  if (xr.placed && m.fresh === true) { // (just put down: it faces him, and he hears how big it really is)
+    const eye = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().copy(xr.v).invert());
+    eye.applyMatrix4(new THREE.Matrix4().copy(xr.a).invert());
+    if (Math.hypot(eye.x, eye.z) > 1e-3) xr.yaw = Math.atan2(eye.x, eye.z);
+    const b = new THREE.Box3();
+    for (const r of parts.values()) if (r.box) b.union(r.box);
+    if (!b.isEmpty()) { const s = b.getSize(new THREE.Vector3()); post({ t: 'xrsize', w: Math.round(s.x * 10) / 10, h: Math.round(s.y * 10) / 10, d: Math.round(s.z * 10) / 10 }); }
+  }
   model.visible = xr.placed;
   if (xr.reticle) {
     if (ok16(m.r) && !xr.placed) { xr.reticle.matrix.fromArray(m.r); xr.reticle.visible = true; } else xr.reticle.visible = false;

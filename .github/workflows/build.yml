@@ -59,6 +59,16 @@ jobs:
             || { rm -f "$G"; echo "::warning::Big object finder (Lite2) not downloaded; the phone uses the small one"; }
           ls -la app/src/main/assets
 
+      - name: Download the workshop's hand sign model (MediaPipe gesture recognizer)
+        shell: bash
+        run: |
+          # Not fatal: without it the workshop's ✋ signs say the model did not come. Checked against its SHA-256 (Google's own sample pins it).
+          F=app/src/main/assets/gesture_recognizer.task
+          curl -fsSL --retry 3 -o "$F" "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task" \
+            && echo "97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482  $F" | sha256sum -c - \
+            || { rm -f "$F"; echo "::warning::Hand sign model not downloaded; the workshop's hand signs are off in this build"; }
+          ls -la app/src/main/assets
+
       - name: Download the face memory model (FaceNet), published next to the APK
         shell: bash
         run: |

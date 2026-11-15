@@ -160,6 +160,16 @@ public class WorkshopActivity extends Activity {
     private String guestTitle, massReq, drawReq, drawDesc, drawViews, paintReq, thumbReq;
     private long thumbAt;
     private Workshop.PaintSay paintAsk;
+    // (7) ✋ the front camera's hand signs; (8) 📏 the model at its real size on his floor (ARCore)
+    private HandCam handCam;
+    private HandCam.HoloHand holo;
+    private HandSigns signs;
+    private boolean signsCardShown, realPending, realBack;
+    private int holoW, holoH, realTries;
+    private RealFloor realF;
+    private String realState = "", realPhotoReq;
+    private android.graphics.Bitmap realPhotoBg;
+    private static final int REQ_HANDS_PERM = 65, REQ_REAL_PERM = 66;
 
     /** The model on the stage now (a finished build or a saved one): what a change is made to, and what is saved. */
     private Shown shown;
@@ -654,15 +664,16 @@ public class WorkshopActivity extends Activity {
             paintBtn.setVisibility(has && pickedId != null && !tapeOn ? View.VISIBLE : View.GONE);
             paintBtn.setText("🎨 " + (pickedName != null ? Workshop.cap(pickedName, 14) + " " : "") + "రంగు");
             for (TextView t : new TextView[]{tapeBtn, weightBtn, drawBtn}) t.setVisibility(has ? View.VISIBLE : View.GONE);
+            if (realOn) tapeBtn.setVisibility(View.GONE); // (📏 on the real floor the tape's centimetres would not be the model's)
             tapeBtn.setText(tapeOn ? "📏 టేప్ ఆపు" : "📏 టేప్");
             videoBtn.setVisibility(has && tourSteps == null && !arOn && !realOn ? View.VISIBLE : View.GONE);
             guestBtn.setVisibility(has && guestTitle == null && job == null && !realOn ? View.VISIBLE : View.GONE);
             guestTopBtn.setVisibility(guestTitle != null ? View.VISIBLE : View.GONE);
             guestTopBtn.setText(guestTop ? "↔️ పక్కన పెట్టు" : "🔝 పైన పెట్టు");
             guestOffBtn.setVisibility(guestTitle != null ? View.VISIBLE : View.GONE);
-            handsBtn.setVisibility(handsOn ? View.VISIBLE : View.GONE); // (✋ / 📏 real size: the next update)
+            handsBtn.setVisibility(has || handsOn ? View.VISIBLE : View.GONE);
             handsBtn.setText(handsOn ? "✋ సైగలు ఆపు" : "✋ సైగలు");
-            realBtn.setVisibility(realOn ? View.VISIBLE : View.GONE);
+            realBtn.setVisibility(has || realOn ? View.VISIBLE : View.GONE);
             realBtn.setText(realOn ? "📏 నిజమైన సైజు ఆపు" : "📏 నిజమైన సైజు");
         }
         undoBtn.setVisibility(has && !undo.isEmpty() && job == null ? View.VISIBLE : View.GONE);
@@ -987,7 +998,8 @@ public class WorkshopActivity extends Activity {
             case "photo": case "stl":
                 if (!has) break;
                 if ("photo".equals(cmd) && recording) { said = "వీడియో అవుతోంది Sir, అయ్యాక ఫోటో తీయండి."; break; }
-                if ("photo".equals(cmd) && (arOn || realOn)) { arPhoto(); break; } // (📷 in the room: the room and the model, as he sees them)
+                if ("photo".equals(cmd) && realOn) { realPhoto(); break; } // (📏 on his floor: the floor and the model, as he sees them)
+                if ("photo".equals(cmd) && arOn) { arPhoto(); break; } // (📷 in the room: the room and the model, as he sees them)
                 askFile("photo".equals(cmd) ? "photo" : "stl");
                 said = "photo".equals(cmd) ? null : "ప్రింట్ ఫైల్ తయారు చేస్తున్నాను Sir.";
                 break;
@@ -1395,6 +1407,14 @@ public class WorkshopActivity extends Activity {
             return;
         }
         if ("xrtap".equals(t)) { realTap(m.optDouble("x", -1), m.optDouble("y", -1)); return; }
+        if ("xrsize".equals(t)) { // 📏 just put down on his floor: how big it really is
+            if (!realOn) return;
+            String nm = shown != null ? shown.title : "బొమ్మ";
+            setStatus("📏 " + nm + " నిజమైన సైజులో: వెడల్పు " + cm(m.optDouble("w")) + " · ఎత్తు " + cm(m.optDouble("h")) + " · లోతు " + cm(m.optDouble("d"))
+                    + " సెం.మీ · ఒక వేలితో తిప్పండి · నేల మీద వేరే చోట తాకితే అక్కడికి వెళ్తుంది");
+            feel("snap", 15);
+            return;
+        }
         if ("desc".equals(t) && drawReq != null && drawReq.equals(m.optString("req"))) { drawDesc = m.optString("data", "[]"); maybeDraw(); return; } // (📐 the parts list)
         if ("desc".equals(t)) { // (E, F) the model's description, asked for a show / a guide: now the AI writes it
             Job j = descJob;
@@ -1425,6 +1445,7 @@ public class WorkshopActivity extends Activity {
         newStage();
         send(json("reset"));
         if (arOn) { try { send(json("ar").put("on", true)); } catch (Exception ignored) {} }
+        if (realOn) { try { send(json("xr").put("on", true)); } catch (Exception ignored) {} } // (📏 the new stage on his floor again)
         try { if (sentTop >= 0) send(json("inset").put("top", sentTop).put("bottom", sentBottom)); } catch (Exception ignored) {}
         for (Map.Entry<String, String> e : new ArrayList<>(onStage.entrySet())) sendPart(e.getKey(), e.getValue());
         try {
@@ -2322,15 +2343,293 @@ public class WorkshopActivity extends Activity {
         ui.postDelayed(thumbR, 3000);
     }
 
-    // ================================================================ (7) ✋ hand signs, (8) 📏 real size on the floor (filled in below)
+    // ================================================================ (7) ✋ hand signs in the air (front camera, on the phone, ₹0)
 
-    private String hands(boolean on) { return on ? "✋ చేతి సైగలు తర్వాతి అప్డేట్‌లో వస్తాయి Sir." : null; }
+    /** The signs, as a little chart (shown once a visit, the first time he turns them on). */
+    static final String SIGNS_CHART = "🖐️ చేయి తెరిచి కదపండి → బొమ్మ తిరుగుతుంది\n"
+            + "👐 రెండు చేతులు తెరిచి దూరం చేస్తే → పెద్దది, దగ్గర చేస్తే → చిన్నది\n"
+            + "✊ పిడికిలి బిగించి, ఒక్కసారిగా తెరిస్తే → భాగాలు విడిపోతాయి 💥\n"
+            + "👍 బొటనవేలు పైకి (అర సెకను) → భాగాలు మళ్ళీ కలుస్తాయి 🧩\n"
+            + "☝️ చూపుడు వేలు పైకి (అర సెకను) → తిప్పడం మొదలు / ఆపు\n"
+            + "✌️ రెండు వేళ్లు (షో నడుస్తున్నప్పుడు) → తర్వాతి అడుగు\n"
+            + "👎 బొటనవేలు కిందికి (ఒక సెకను) → సైగలు ఆపు\n\n"
+            + "ఫోన్‌ని ఎదురుగా పెట్టి, చేయి ముందు కెమెరాకి అర మీటర్ నుంచి ఒక మీటర్ దూరంలో చూపించండి. పైన మూలలో నీలం చేయి కనిపిస్తే Jarvis మీ చేయిని చూస్తున్నాడు.\n\n"
+            + "🔒 కెమెరా బొమ్మ ఎక్కడా కనిపించదు, దాచదు, పంపదు: ఫోన్‌లోనే చేతి 21 చుక్కలు మాత్రమే. 3 నిమిషాలు చేయి కనిపించకపోతే సైగలు తామే ఆగిపోతాయి.";
 
-    private String real(boolean on) { return on ? "📏 నిజమైన సైజు తర్వాతి అప్డేట్‌లో వస్తుంది Sir." : null; }
+    private String hands(boolean on) {
+        if (!on) {
+            if (!handsOn) return null;
+            handsStop();
+            return "✋ సైగలు ఆపాను Sir.";
+        }
+        boolean has = shown != null && !shown.parts.isEmpty();
+        if (!has) return "ముందు ఒక బొమ్మ తయారు చేయనివ్వండి Sir.";
+        if (handsOn) return null;
+        if (realOn || arOn) return "✋ సైగలు ఆన్ చేసే ముందు " + (realOn ? "📏 నిజమైన సైజు" : "📷 గది") + " ఆపండి Sir (ఒకసారి ఒక కెమెరానే).";
+        if (!HandCam.hasModel(this)) return "✋ ఈ బిల్డ్‌లో చేతి సైగల మోడల్ రాలేదు Sir. తర్వాతి అప్డేట్‌లో మళ్ళీ ప్రయత్నిస్తాను.";
+        if (!HandCam.hasFront(this)) return "ఈ ఫోన్‌లో ముందు కెమెరా దొరకలేదు Sir.";
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_HANDS_PERM);
+            return "📷 కెమెరా అనుమతి అడుగుతున్నాను Sir.";
+        }
+        handsOn = true;
+        signs = new HandSigns();
+        if (handCam == null) {
+            handCam = new HandCam(this, new HandCam.Listener() {
+                @Override public void onHands(List<HandSigns.Hand> hands, long ms, int w, int h) { sawHands(hands, ms, w, h); }
+                @Override public void onProblem(String problem) {
+                    if (!handsOn || destroyed) return;
+                    handsStop();
+                    setStatus("✋ " + problem + " Sir. సైగలు ఆపాను.");
+                    refreshButtons();
+                }
+            });
+        }
+        if (holo == null) {
+            holo = new HandCam.HoloHand(this);
+            rootView.addView(holo, new FrameLayout.LayoutParams(dp(112), dp(150)));
+        }
+        holo.setVisibility(View.VISIBLE);
+        holo.show(null, "✋ చేయి చూపించండి");
+        placeHolo(3, 4);
+        if (spinning) { spinning = false; try { send(json("spin").put("on", false)); } catch (Exception ignored) {} } // (his hand turns it now)
+        handCam.start(turnNow());
+        watchTurn(true);
+        if (!signsCardShown) { signsCardShown = true; textCard("✋ చేతి సైగలు", SIGNS_CHART); }
+        return "✋ సైగలు ఆన్ Sir · 🖐️ తిప్పు · 👐 పెద్దది/చిన్నది · ✊→🖐️ విడదీయి · 👍 కలుపు · ☝️ తిప్పడం · ✌️ షోలో తర్వాత · 👎 ఆపు · ఖర్చు లేదు";
+    }
 
-    private void realTap(double x, double y) {}
+    private void handsStop() {
+        handsOn = false;
+        if (handCam != null) handCam.stop();
+        if (holo != null) holo.setVisibility(View.GONE);
+        if (!arOn && !realOn) watchTurn(false);
+    }
 
-    /** Opens the workshop (from ⚙️, a tool, the brain): a build to start, or the last saved one. */
+    /** His little cyan hand: top corner, below the top bar, the camera picture's shape (never the picture). */
+    private void placeHolo(int w, int h) {
+        if (holo == null || w <= 0 || h <= 0) return;
+        holoW = w;
+        holoH = h;
+        int bw = w >= h ? dp(150) : dp(112), bh = Math.round(bw * (float) h / w) + dp(30);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(bw, bh, android.view.Gravity.TOP | android.view.Gravity.END);
+        lp.topMargin = (topBar == null ? 0 : topBar.getHeight()) + dp(8);
+        lp.rightMargin = dp(8);
+        FrameLayout.LayoutParams old = (FrameLayout.LayoutParams) holo.getLayoutParams();
+        if (old != null && old.width == lp.width && old.height == lp.height && old.topMargin == lp.topMargin && old.gravity == lp.gravity) return;
+        holo.setLayoutParams(lp);
+    }
+
+    /** One camera picture's hands → the model turns, grows, bursts apart, comes together. */
+    private void sawHands(List<HandSigns.Hand> hands, long ms, int w, int h) {
+        if (!handsOn || destroyed || signs == null) return;
+        List<HandSigns.Act> acts = signs.step(hands, ms, h > 0 ? w / (double) h : 0.75, exploded, tourSteps != null);
+        if (holo != null) {
+            if (w != holoW || h != holoH) placeHolo(w, h);
+            holo.show(hands, signs.label);
+        }
+        for (HandSigns.Act a : acts) {
+            try {
+                switch (a.kind) {
+                    case "turn":
+                        if (spinning) { spinning = false; send(json("spin").put("on", false)); refreshButtons(); }
+                        send(json("nudge").put("az", a.az).put("el", a.el));
+                        break;
+                    case "zoom":
+                        send(json("nudge").put("zoom", a.zoom));
+                        break;
+                    case "explode":
+                        feel("snap", 20);
+                        command("explode", false);
+                        setStatus("✊→🖐️ విడదీశాను Sir · 👍 చూపిస్తే మళ్ళీ కలుస్తుంది");
+                        break;
+                    case "assemble":
+                        feel("back", 20);
+                        command("assemble", false);
+                        setStatus("👍 మళ్ళీ కలిపాను Sir.");
+                        break;
+                    case "next":
+                        feel("grab", 15);
+                        command("show_next", false);
+                        break;
+                    case "spin":
+                        feel("grab", 15);
+                        command(spinning ? "spin_off" : "spin_on", false);
+                        setStatus(spinning ? "☝️ తిప్పుతున్నాను Sir · ☝️ మళ్ళీ చూపిస్తే ఆగుతుంది" : "☝️ తిప్పడం ఆపాను Sir.");
+                        break;
+                    case "off":
+                        feel("back", 25);
+                        command("hands_off", false);
+                        return;
+                    case "idle":
+                        handsStop();
+                        setStatus("✋ 3 నిమిషాలు చేయి కనిపించలేదు; సైగలు ఆపాను Sir (కెమెరా ఆగిపోయింది).");
+                        refreshButtons();
+                        return;
+                    default: break;
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
+    // ================================================================ (8) 📏 the model at its real size on his real floor (ARCore, ₹0)
+
+    private String real(boolean on) {
+        if (!on) {
+            if (!realOn) return null;
+            realStop();
+            return "📏 నిజమైన సైజు ఆపాను Sir.";
+        }
+        boolean has = shown != null && !shown.parts.isEmpty();
+        if (!has) return "ముందు ఒక బొమ్మ తయారు చేయనివ్వండి Sir.";
+        if (realOn) return null;
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_REAL_PERM);
+            return "📷 కెమెరా అనుమతి అడుగుతున్నాను Sir.";
+        }
+        String r = RealFloor.ready(this, !realBack); // (back from Google's page: not asked again)
+        realBack = false;
+        if ("checking".equals(r)) {
+            if (realTries++ < 6) {
+                ui.postDelayed(() -> { if (destroyed || realOn) return; String s = real(true); if (s != null) setStatus(s); refreshButtons(); }, 600);
+                return "📏 AR సిద్ధమవుతోంది…";
+            }
+            realTries = 0;
+            return "📏 AR ఇంకా సిద్ధం కాలేదు Sir. కొంచెం సేపు ఆగి మళ్ళీ నొక్కండి.";
+        }
+        realTries = 0;
+        if ("install".equals(r)) {
+            realPending = true;
+            return "📏 దీనికి Google \"Play Services for AR\" కావాలి Sir. Play Store లో Install / Update మీరే నొక్కి, ఇక్కడికి తిరిగి రండి.";
+        }
+        if ("no".equals(r)) return "ఈ ఫోన్‌లో AR (నేల కనుక్కోవడం) లేదు Sir. 📷 గదిలో చూడు వాడండి.";
+        if (!"ok".equals(r)) return "📏 " + r + " Sir.";
+        if (arOn) ar(false); // (the same back camera)
+        if (handsOn) handsStop(); // (one camera at a time)
+        if (tourSteps != null) endTour(false);
+        if (tapeOn) { tapeOn = false; try { send(json("tape").put("on", false)); } catch (Exception ignored) {} }
+        if (spinning) { spinning = false; try { send(json("spin").put("on", false)); } catch (Exception ignored) {} }
+        RealFloor f = new RealFloor(this, new RealFloor.Listener() {
+            @Override public void onPose(float[] v, float[] p, float[] a, float[] ring, boolean fresh) {
+                final String js = RealFloor.poseJson(v, p, a, ring, fresh);
+                ui.post(() -> { if (realOn && !destroyed && port != null) { try { port.postMessage(new WebMessage(js)); } catch (Throwable ignored) {} } });
+            }
+            @Override public void onState(String s) { ui.post(() -> realSaid(s)); }
+            @Override public void onProblem(String problem) {
+                ui.post(() -> {
+                    if (!realOn || destroyed) return;
+                    realStop();
+                    setStatus("📏 " + problem + " Sir. నిజమైన సైజు ఆపాను.");
+                    refreshButtons();
+                });
+            }
+        });
+        String bad = f.begin();
+        if (bad != null) return "📏 " + bad + " Sir.";
+        realF = f;
+        realOn = true;
+        realState = "";
+        rootView.addView(f.view, 0, new FrameLayout.LayoutParams(-1, -1));
+        f.view.onResume();
+        if (web != null) web.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        try { send(json("xr").put("on", true)); } catch (Exception ignored) {}
+        watchTurn(true);
+        return "📏 ఫోన్‌ని నేల వైపు చూపి నెమ్మదిగా అటూ ఇటూ కదపండి Sir… నేల దొరికితే నీలం రింగ్ వస్తుంది.";
+    }
+
+    private void realStop() {
+        realOn = false;
+        realState = "";
+        RealFloor f = realF;
+        realF = null;
+        if (f != null) {
+            f.end();
+            try { rootView.removeView(f.view); } catch (Throwable ignored) {}
+        }
+        try { send(json("xr").put("on", false)); } catch (Exception ignored) {}
+        if (web != null && !arOn) web.setBackgroundColor(0xFF07080B);
+        if (!arOn && !handsOn) watchTurn(false);
+        refreshButtons();
+    }
+
+    /** A tap on his floor (not on the model): the model goes there. */
+    private void realTap(double x, double y) {
+        if (realOn && realF != null) realF.tap(x, y);
+    }
+
+    /** What ARCore says now, as one line for him (only when it changes). */
+    private void realSaid(String s) {
+        if (!realOn || destroyed) return;
+        if ("nofloor".equals(s)) { setStatus("📏 అక్కడ నేల దొరకలేదు Sir. నీలం రింగ్ కనిపించే చోట తాకండి."); return; }
+        if (s.equals(realState)) return;
+        boolean wasPlaced = "placed".equals(realState);
+        realState = s;
+        switch (s) {
+            case "look": if (!wasPlaced) setStatus("📏 ఫోన్‌ని నేల వైపు చూపి నెమ్మదిగా అటూ ఇటూ కదపండి Sir…"); break;
+            case "floor": setStatus("📏 నేల దొరికింది Sir. నీలం రింగ్ ఉన్న చోట నేల మీద తాకండి: బొమ్మ అక్కడ నిజమైన సైజులో నిలబడుతుంది."); break;
+            case "dark": setStatus("📏 వెలుతురు తక్కువగా ఉంది Sir. లైట్ వేయండి."); break;
+            case "fast": setStatus("📏 ఫోన్ ఇంకా నెమ్మదిగా కదపండి Sir."); break;
+            case "plain": setStatus("📏 నేల మీద గుర్తులు కనిపించడం లేదు Sir. డిజైన్ ఉన్న చోటు లేదా చాప వైపు చూపండి."); break;
+            default: break; // ("placed": the size line comes from the stage)
+        }
+    }
+
+    /** 📸 on his floor: the camera's picture (from ARCore's drawing) with the model's see-through picture on top. */
+    private void realPhoto() {
+        RealFloor f = realF;
+        if (f == null) return;
+        int w = f.view.getWidth(), h = f.view.getHeight();
+        if (w <= 0 || h <= 0) return;
+        final android.graphics.Bitmap bg = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        setStatus("📸 …");
+        try {
+            android.view.PixelCopy.request(f.view, bg, result -> {
+                if (destroyed || !realOn) return;
+                if (result != android.view.PixelCopy.SUCCESS) { setStatus("✗ ఫోటో రాలేదు Sir."); return; }
+                realPhotoBg = bg;
+                realPhotoReq = "x" + Long.toHexString(System.nanoTime());
+                try { send(json("snap").put("req", realPhotoReq).put("clean", true)); } catch (Exception ignored) {}
+            }, ui);
+        } catch (Exception x) {
+            setStatus("✗ ఫోటో రాలేదు Sir.");
+        }
+    }
+
+    private void realPhotoDone(JSONObject m) {
+        realPhotoReq = null;
+        final android.graphics.Bitmap bg = realPhotoBg;
+        realPhotoBg = null;
+        final String data = m.optString("data", ""), kind = m.optString("kind");
+        if (bg == null || !"png".equals(kind) || data.isEmpty()) { setStatus("✗ ఫోటో రాలేదు Sir."); return; }
+        final int h = rootView.getHeight();
+        final int top = topBar == null ? 0 : topBar.getHeight(), bottom = h - (bottomBar == null ? 0 : bottomBar.getHeight());
+        final String title = shown != null ? shown.title : "model";
+        new Thread(() -> {
+            String line, said;
+            try {
+                byte[] b = android.util.Base64.decode(data, android.util.Base64.DEFAULT);
+                android.graphics.Bitmap fg = android.graphics.BitmapFactory.decodeByteArray(b, 0, b.length);
+                if (fg == null) throw new IllegalStateException("బొమ్మ చిత్రం రాలేదు");
+                android.graphics.Canvas c = new android.graphics.Canvas(bg);
+                c.drawBitmap(fg, null, new android.graphics.Rect(0, 0, bg.getWidth(), bg.getHeight()), new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
+                fg.recycle();
+                float k = h > 0 ? bg.getHeight() / (float) h : 1f; // (between the bars, as he sees it)
+                int y0 = Math.round(top * k), y1 = Math.round(bottom * k);
+                if (y1 - y0 < bg.getHeight() / 4) { y0 = 0; y1 = bg.getHeight(); }
+                android.graphics.Bitmap cut = android.graphics.Bitmap.createBitmap(bg, 0, Math.max(0, y0), bg.getWidth(), Math.min(bg.getHeight(), y1) - Math.max(0, y0));
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                cut.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out);
+                Coder.Made made = Workshop.savePicture(this, Workshop.fileName(title, "floor-" + System.currentTimeMillis() % 1000000 + ".jpg"), "image/jpeg", out.toByteArray());
+                line = "📸 గ్యాలరీలో దాచాను: " + made.where;
+                said = "నేల మీద బొమ్మ ఫోటో గ్యాలరీలో దాచాను Sir.";
+            } catch (Throwable x) {
+                line = "✗ " + x.getMessage();
+                said = "ఫోటో దాచలేకపోయాను Sir.";
+            }
+            final String l0 = line, s0 = said;
+            ui.post(() -> { if (destroyed) return; setStatus(l0); speak(s0, true); });
+        }, "jarvis-workshop-floor-photo").start();
+    }
 
     // ================================================================ lifecycle
 
@@ -2368,6 +2667,23 @@ public class WorkshopActivity extends Activity {
                 watchTurn(true);
             } else { String s = ar(false); if (s != null) setStatus(s); refreshButtons(); }
         }
+        if (handsOn && handCam != null) { // (✋ the front camera again, only now that the screen is in front)
+            if (checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                handCam.start(turnNow());
+                watchTurn(true);
+            } else { handsStop(); setStatus("✋ కెమెరా అనుమతి లేదు; సైగలు ఆపాను Sir."); refreshButtons(); }
+        }
+        if (realOn && realF != null) { // (📏 the floor's camera again)
+            String bad = checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED ? realF.resume() : "కెమెరా అనుమతి లేదు";
+            if (bad != null) { realStop(); setStatus("📏 " + bad + " Sir."); refreshButtons(); } else watchTurn(true);
+        }
+        if (realPending) { // (📏 back from Google's "Play Services for AR" page)
+            realPending = false;
+            realBack = true;
+            String s = real(true);
+            if (s != null) setStatus(s);
+            refreshButtons();
+        }
     }
 
     @Override protected void onPause() {
@@ -2382,6 +2698,8 @@ public class WorkshopActivity extends Activity {
         if (tourSteps != null) endTour(false); // (🎓 he left: the show stops)
         if (readState == READ_PLAYING) readPause(); // (🔊 the guide's reading waits for him: ▶️ goes on)
         if (cam != null) cam.close(); // (📷 never the camera behind his back; it opens again when he is back)
+        if (handCam != null) handCam.stop(); // (✋ the same)
+        if (realF != null) realF.pause(); // (📏 the same)
         watchTurn(false);
     }
 
@@ -2394,6 +2712,8 @@ public class WorkshopActivity extends Activity {
         Job j = job;
         if (j != null) stopJob(j);
         if (cam != null) cam.release();
+        if (handCam != null) handCam.release();
+        if (realF != null) { RealFloor f = realF; realF = null; f.end(); }
         watchTurn(false);
         ui.removeCallbacksAndMessages(null);
         if (port != null) { try { port.close(); } catch (Throwable ignored) {} }
@@ -2540,6 +2860,7 @@ public class WorkshopActivity extends Activity {
 
     private void gotFile(JSONObject m) {
         String req = m.optString("req"), what = fileFor;
+        if (realPhotoReq != null && realPhotoReq.equals(req)) { realPhotoDone(m); return; } // (📏 the model's see-through picture)
         if (thumbReq != null && thumbReq.equals(req)) { // 🖼️ a saved model's small picture
             thumbReq = null;
             final String data = m.optString("data", "");
@@ -2705,6 +3026,13 @@ public class WorkshopActivity extends Activity {
     @Override public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
         super.onRequestPermissionsResult(req, perms, res);
         if (req == REQ_CAM_PERM && res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) openCam();
+        if (req == REQ_HANDS_PERM || req == REQ_REAL_PERM) {
+            boolean ok = res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            String s = !ok ? "📷 కెమెరా అనుమతి లేకుండా " + (req == REQ_HANDS_PERM ? "సైగలు చూడలేను" : "నేల కనుక్కోలేను") + " Sir. కావాలంటే Android సెట్టింగ్స్ → యాప్స్ → Jarvis → అనుమతులు లో కెమెరా ఇవ్వండి."
+                    : req == REQ_HANDS_PERM ? hands(true) : real(true);
+            if (s != null) setStatus(s);
+            refreshButtons();
+        }
         if (req == REQ_AR_PERM) {
             boolean ok = res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
             String s = ok ? ar(true) : "📷 కెమెరా అనుమతి లేకుండా గదిలో చూపించలేను Sir. కావాలంటే Android సెట్టింగ్స్ → యాప్స్ → Jarvis → అనుమతులు లో కెమెరా ఇవ్వండి.";
@@ -2770,7 +3098,14 @@ public class WorkshopActivity extends Activity {
     @Override public void onConfigurationChanged(android.content.res.Configuration c) {
         super.onConfigurationChanged(c);
         fit(c);
-        if (cam != null && arOn) cam.setScreenTurn(turnNow()); // (📷 the room's picture turns with the screen)
+        turnedNow(); // (📷 / ✋ / 📏 the cameras' pictures turn with the screen)
+    }
+
+    private void turnedNow() {
+        if (cam != null && arOn) cam.setScreenTurn(turnNow());
+        if (handCam != null && handsOn) handCam.setScreenTurn(turnNow());
+        if (realF != null && realOn) realF.turned();
+        if (holo != null && handsOn && holoW > 0) placeHolo(holoW, holoH);
     }
 
     private void fit(android.content.res.Configuration c) {
@@ -3229,6 +3564,8 @@ public class WorkshopActivity extends Activity {
         }
         if (!has) return "ముందు ఒక బొమ్మ తయారు చేయనివ్వండి Sir.";
         if (arOn) return null;
+        if (realOn) realStop(); // (📏 → 📷: the same back camera, one at a time)
+        if (handsOn) handsStop(); // (one camera at a time)
         if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_AR_PERM);
             return "📷 కెమెరా అనుమతి అడుగుతున్నాను Sir.";
@@ -3260,11 +3597,11 @@ public class WorkshopActivity extends Activity {
         android.hardware.display.DisplayManager dm = (android.hardware.display.DisplayManager) getSystemService(DISPLAY_SERVICE);
         if (dm == null) return;
         if (turnL != null) { try { dm.unregisterDisplayListener(turnL); } catch (Exception ignored) {} turnL = null; }
-        if (!on || !arOn) return;
+        if (!on || !(arOn || realOn || handsOn)) return;
         turnL = new android.hardware.display.DisplayManager.DisplayListener() {
             @Override public void onDisplayAdded(int id) {}
             @Override public void onDisplayRemoved(int id) {}
-            @Override public void onDisplayChanged(int id) { if (cam != null && arOn) cam.setScreenTurn(turnNow()); }
+            @Override public void onDisplayChanged(int id) { turnedNow(); }
         };
         dm.registerDisplayListener(turnL, ui);
     }

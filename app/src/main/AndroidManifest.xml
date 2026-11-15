@@ -144,6 +144,10 @@
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="face" />
+        <!-- 📏 (8) the workshop's real size on the floor: Google Play Services for AR only if he turns it on (the app works without it) -->
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="optional" />
 
         <activity
             android:name=".MainActivity"
