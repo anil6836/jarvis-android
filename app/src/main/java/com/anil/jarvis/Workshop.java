@@ -625,6 +625,33 @@ final class Workshop {
         return t.length() > GUIDE_MAX ? t.substring(0, GUIDE_MAX).trim() + " …" : t;
     }
 
+    /** (F) 🔊 The guide read a line at a time: each line's {start, end}; a long line split after a sentence (so ⏸ / ▶️ lose little). */
+    static List<int[]> readParts(String text) {
+        List<int[]> out = new ArrayList<>();
+        String t = text == null ? "" : text;
+        int i = 0;
+        while (i < t.length()) {
+            int nl = t.indexOf('\n', i);
+            int end = nl < 0 ? t.length() : nl;
+            int a = i;
+            while (end - a > 260) { // (a long paragraph: cut after a full stop near 200 characters)
+                int cut = -1;
+                for (int k = a + 120; k < Math.min(end, a + 260); k++) { char ch = t.charAt(k); if ((ch == '.' || ch == '।' || ch == '!' || ch == '?') && k + 1 < end && t.charAt(k + 1) == ' ') cut = k + 1; }
+                if (cut < 0) cut = a + 260;
+                if (!speakable(t.substring(a, cut)).isEmpty()) out.add(new int[]{a, cut});
+                a = cut;
+            }
+            if (end > a && !speakable(t.substring(a, end)).isEmpty()) out.add(new int[]{a, end});
+            i = end + 1;
+        }
+        return out;
+    }
+
+    /** What is read aloud of a line: no pictures (emoji) or bullet marks. */
+    static String speakable(String s) {
+        return s == null ? "" : s.replaceAll("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}\\x{200D}\\x{2B00}-\\x{2BFF}•]", " ").replaceAll("\\s+", " ").trim();
+    }
+
     /** A guide that is only a polite "no" (no steps, no list). */
     static boolean guideRefused(String guide) {
         String g = guide == null ? "" : guide;

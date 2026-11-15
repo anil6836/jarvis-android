@@ -394,6 +394,14 @@ final class WorkshopVoice implements VoiceIO.Listener, Tools.Host {
         if (voice == null || !voice.speaking) { letGo(); state(IDLE); }
     }
 
+    /** (F) 🔊 ⏸ / ⏹ tapped: what Jarvis is saying here stops now; nothing is heard after it. */
+    void hush() {
+        main.removeCallbacks(listenR);
+        followUp = false;
+        if (voice != null && voice.speaking) voice.stopSpeaking();
+        if (state == SPEAKING) idle();
+    }
+
     /** He typed: the talk by voice is over. */
     void typed() { voiceFlow = false; }
 

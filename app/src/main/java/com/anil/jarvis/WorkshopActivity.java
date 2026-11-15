@@ -726,6 +726,7 @@ public class WorkshopActivity extends Activity {
     /** Heard by voice here: a ₹0 word, or plainly about the model (it names a part, a colour, "ఇది" with a part tapped). Else the brain. */
     private boolean tookByVoice(String words) {
         if (tourSteps != null && Workshop.isCancel(words)) { stopTourSaid(true); return true; }
+        if (readState == READ_PLAYING && Workshop.isCancel(words)) { readPause(); return true; } // (🔊 "ఆపు" while the guide is read: ⏸)
         String cmd = Workshop.command(words);
         if (cmd != null) { command(cmd, true); return true; }
         boolean has = shown != null && !shown.parts.isEmpty();
@@ -1804,6 +1805,7 @@ public class WorkshopActivity extends Activity {
         if (waiting != null) cancelWait(false); // (he left: nothing is spent on what was heard)
         if (tiltOn) tilt(false);
         if (tourSteps != null) endTour(false); // (🎓 he left: the show stops)
+        if (readState == READ_PLAYING) readPause(); // (🔊 the guide's reading waits for him: ▶️ goes on)
         if (cam != null) cam.close(); // (📷 never the camera behind his back; it opens again when he is back)
         watchTurn(false);
     }
@@ -2429,30 +2431,155 @@ public class WorkshopActivity extends Activity {
     /** The guide on the screen: 🔊 read aloud, 💾 into Downloads, 📤 share (each only on his tap). */
     private void showGuide(String text, boolean saved) {
         final String title = shown != null ? shown.title : "";
+        readStop(false);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(18), dp(8), dp(18), dp(4));
         TextView note = Ui.text(this, "💰 ఖర్చులు సుమారు అంచనా మాత్రమే (షాపు, ఊరుని బట్టి మారతాయి)" + (saved ? " · మళ్ళీ తెరవడానికి ఖర్చు లేదు" : ""), 12.5f, Ui.MUTED);
         box.addView(note);
-        TextView read = pill("🔊 చదివి వినిపించు", v -> speak(text.replaceAll("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}•]", " "), false));
+        // 🔊 read aloud: ▶️ play, ⏸ pause, ⏹ stop (a line at a time: after a pause it goes on from that line)
+        LinearLayout ctl = new LinearLayout(this);
+        ctl.setOrientation(LinearLayout.HORIZONTAL);
+        ctl.setGravity(Gravity.CENTER_VERTICAL);
+        readPlay = pill("▶️ చదువు", v -> readPlay());
+        readPause = pill("⏸ పాజ్", v -> readPause());
+        readStopBtn = pill("⏹ ఆపు", v -> readStop(true));
+        ctl.addView(readPlay);
+        ctl.addView(readPause);
+        ctl.addView(readStopBtn);
         LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, -2);
         rl.topMargin = dp(8);
-        rl.bottomMargin = dp(8);
-        box.addView(read, rl);
-        TextView body = Ui.text(this, text, 14.5f, Ui.TEXT);
+        box.addView(ctl, rl);
+        readLine = Ui.text(this, "🔊 ▶️ నొక్కితే Jarvis చదివి వినిపిస్తాడు", 12.5f, Ui.MUTED);
+        readLine.setPadding(0, dp(4), 0, dp(8));
+        box.addView(readLine);
+        TextView body = Ui.text(this, "", 14.5f, Ui.TEXT);
+        body.setText(text, TextView.BufferType.SPANNABLE);
         body.setLineSpacing(0, 1.2f);
         body.setTextIsSelectable(true);
         box.addView(body);
         ScrollView sv = new ScrollView(this);
         sv.addView(box);
-        new AlertDialog.Builder(this).setTitle("🛠️ " + title + " · నిజంగా ఎలా తయారు చేయాలి").setView(sv)
-                .setPositiveButton("💾 దాచు", (d, w) -> saveGuide(title, text))
-                .setNeutralButton("📤 పంచుకో", (d, w) -> {
-                    Intent s = new Intent(Intent.ACTION_SEND).setType("text/plain")
-                            .putExtra(Intent.EXTRA_SUBJECT, title + " · ఎలా తయారు చేయాలి").putExtra(Intent.EXTRA_TEXT, "🛠️ " + title + "\n\n" + text);
-                    try { startActivity(Intent.createChooser(s, "పంచుకోండి")); } catch (Exception ignored) {}
-                })
+        readText = text;
+        readParts.clear();
+        readParts.addAll(Workshop.readParts(text));
+        readIdx = 0;
+        readBody = body;
+        readScroll = sv;
+        readLook();
+        AlertDialog d = new AlertDialog.Builder(this).setTitle("🛠️ " + title + " · నిజంగా ఎలా తయారు చేయాలి").setView(sv)
+                .setPositiveButton("💾 దాచు", null)
+                .setNeutralButton("📤 పంచుకో", null)
                 .setNegativeButton("మూసేయి", null).show();
+        d.setOnDismissListener(x -> { if (readBody == body) { readStop(false); readBody = null; readScroll = null; readPlay = null; readPause = null; readStopBtn = null; readLine = null; } });
+        // (💾 and 📤 leave the card open: the reading goes on)
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> saveGuide(title, text));
+        d.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            Intent s = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, title + " · ఎలా తయారు చేయాలి").putExtra(Intent.EXTRA_TEXT, "🛠️ " + title + "\n\n" + text);
+            try { startActivity(Intent.createChooser(s, "పంచుకోండి")); } catch (Exception ignored) {}
+        });
+    }
+
+    // ---- 🔊 the guide read aloud (his ▶️ / ⏸ / ⏹)
+
+    private static final int READ_STOPPED = 0, READ_PLAYING = 1, READ_PAUSED = 2;
+    private int readState = READ_STOPPED, readIdx;
+    private String readText;
+    private final List<int[]> readParts = new ArrayList<>(); // {start, end} of each line in the guide
+    private long readAt, readQuietAt;
+    private TextView readPlay, readPause, readStopBtn, readLine, readBody;
+    private ScrollView readScroll;
+    private final Object readMark = new android.text.style.BackgroundColorSpan(0x553AA0FF);
+
+    private void readPlay() {
+        if (readText == null || readParts.isEmpty()) return;
+        if (readState == READ_STOPPED) readIdx = 0;
+        readState = READ_PLAYING;
+        readSay();
+    }
+
+    /** ⏸ The voice stops; ▶️ goes on from the start of this line. */
+    private void readPause() {
+        if (readState != READ_PLAYING) return;
+        readState = READ_PAUSED;
+        ui.removeCallbacks(readTick);
+        hushVoice();
+        readLook();
+    }
+
+    /** ⏹ The voice stops; ▶️ starts again from the top. */
+    private void readStop(boolean tapped) {
+        boolean was = readState != READ_STOPPED;
+        readState = READ_STOPPED;
+        readIdx = 0;
+        ui.removeCallbacks(readTick);
+        if (was) hushVoice();
+        readLook();
+        if (tapped && readLine != null) readLine.setText("⏹ ఆపాను · ▶️ నొక్కితే మొదటి నుంచి");
+    }
+
+    private void hushVoice() {
+        if (ear != null) ear.hush();
+        Announcer.stop();
+    }
+
+    private void readSay() {
+        ui.removeCallbacks(readTick);
+        if (readState != READ_PLAYING || readText == null) return;
+        String line = "";
+        while (readIdx < readParts.size() && (line = Workshop.speakable(readText.substring(readParts.get(readIdx)[0], readParts.get(readIdx)[1]))).isEmpty()) readIdx++;
+        if (readIdx >= readParts.size()) { // (all of it read)
+            readState = READ_STOPPED;
+            readIdx = 0;
+            readLook();
+            if (readLine != null) readLine.setText("✓ పూర్తిగా చదివాను · ▶️ నొక్కితే మళ్ళీ");
+            return;
+        }
+        speak(line, false);
+        readAt = System.currentTimeMillis();
+        readQuietAt = 0;
+        readLook();
+        ui.postDelayed(readTick, 700);
+    }
+
+    /** The next line once this one has been said (and a short breath). */
+    private final Runnable readTick = new Runnable() {
+        @Override public void run() {
+            if (readState != READ_PLAYING || destroyed) return;
+            long now = System.currentTimeMillis();
+            boolean talking = (ear != null && ear.speaking()) || Announcer.speaking();
+            if (talking) readQuietAt = 0;
+            else if (readQuietAt == 0) readQuietAt = now;
+            if ((readQuietAt > 0 && now - readQuietAt >= 350) || now - readAt > 60000) { readIdx++; readSay(); return; }
+            ui.postDelayed(this, 200);
+        }
+    };
+
+    /** The buttons, the line under them and the mark on the line being read follow the state. */
+    private void readLook() {
+        if (readPlay == null) return;
+        boolean playing = readState == READ_PLAYING, paused = readState == READ_PAUSED;
+        readPlay.setText(paused ? "▶️ కొనసాగించు" : "▶️ చదువు");
+        readPlay.setEnabled(!playing);
+        readPlay.setAlpha(playing ? 0.35f : 1f);
+        readPause.setEnabled(playing);
+        readPause.setAlpha(playing ? 1f : 0.35f);
+        readStopBtn.setEnabled(playing || paused);
+        readStopBtn.setAlpha(playing || paused ? 1f : 0.35f);
+        int n = readParts.size(), at = Math.min(readIdx + 1, n);
+        if (playing) readLine.setText("🔊 చదువుతోంది · " + at + "/" + n);
+        else if (paused) readLine.setText("⏸ " + at + "/" + n + " దగ్గర ఆపి ఉంచాను · ▶️ నొక్కితే ఇక్కడి నుంచే");
+        CharSequence cs = readBody == null ? null : readBody.getText();
+        if (!(cs instanceof android.text.Spannable)) return;
+        android.text.Spannable sp = (android.text.Spannable) cs;
+        sp.removeSpan(readMark);
+        if ((playing || paused) && readIdx < n) {
+            int[] r = readParts.get(readIdx);
+            if (r[1] <= sp.length()) sp.setSpan(readMark, r[0], r[1], android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            android.text.Layout l = readBody.getLayout();
+            if (l != null && readScroll != null) readScroll.smoothScrollTo(0, Math.max(0, readBody.getTop() + l.getLineTop(l.getLineForOffset(r[0])) - dp(70)));
+        }
     }
 
     private void saveGuide(String title, String text) {
@@ -2467,7 +2594,7 @@ public class WorkshopActivity extends Activity {
                 line = "✗ దాచలేకపోయాను: " + x.getMessage();
             }
             final String l0 = line;
-            ui.post(() -> { if (!destroyed) setStatus(l0); });
+            ui.post(() -> { if (destroyed) return; setStatus(l0); Toast.makeText(this, l0, Toast.LENGTH_LONG).show(); }); // (the card stays open over the screen)
         }, "jarvis-workshop-guide").start();
     }
 
