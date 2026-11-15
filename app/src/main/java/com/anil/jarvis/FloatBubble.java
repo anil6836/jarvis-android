@@ -161,6 +161,7 @@ final class FloatBubble implements ScreenReader.Listener {
             line = new EdgeLine(svc, right);
             line.setContentDescription("Jarvis: లోపలికి లాగండి");
             bubble.addView(line, new FrameLayout.LayoutParams(-1, -1));
+            keepBackSwipeOff(bubble);
         } else {
             GradientDrawable bg = new GradientDrawable();
             bg.setShape(GradientDrawable.OVAL);
@@ -749,6 +750,7 @@ final class FloatBubble implements ScreenReader.Listener {
         g.addView(l, new FrameLayout.LayoutParams(-1, -1));
         g.setLayoutParams(new LinearLayout.LayoutParams(dp(22), dp(96)));
         g.setContentDescription("మూసివేయి");
+        keepBackSwipeOff(g);
         final float[] at = new float[2];
         g.setOnTouchListener((v, e) -> {
             switch (e.getActionMasked()) {
@@ -769,6 +771,17 @@ final class FloatBubble implements ScreenReader.Listener {
             }
         });
         return g;
+    }
+
+    /**
+     * ▕ With the phone's swipe gestures a swipe in from the side edge means "back": on the little line (only its own
+     * 96 dp, far under Android's 200 dp limit) his pull is for Jarvis, not "back". Everywhere else the edge stays the phone's.
+     */
+    private static void keepBackSwipeOff(View v) {
+        if (android.os.Build.VERSION.SDK_INT < 29) return;
+        v.addOnLayoutChangeListener((x, l, tp, r, b, ol, ot, or, ob) -> {
+            try { x.setSystemGestureExclusionRects(java.util.Collections.singletonList(new Rect(0, 0, r - l, b - tp))); } catch (Throwable ignored) {}
+        });
     }
 
     /** The kind of app, in his words, for the drawer's top line. */
