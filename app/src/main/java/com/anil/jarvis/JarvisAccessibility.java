@@ -1542,6 +1542,18 @@ public class JarvisAccessibility extends AccessibilityService {
         });
     }
 
+    /** ▕ / ⚪ His tap changed the floating button's shape: the button is made again in the new shape (where it was, on the same side). */
+    static void reshapeBubble() {
+        JarvisAccessibility s = instance;
+        if (s == null) return;
+        MAIN.post(() -> {
+            if (instance != s || s.bubble == null) return;
+            s.bubble.remove();
+            s.bubble = new FloatBubble(s);
+            if (!s.bubble.show()) s.bubble = null;
+        });
+    }
+
     /** 🛠️ The workshop came to the front (true) or left it: the floating button steps aside meanwhile (it has its own 🎙️). */
     static void bubbleAside(boolean aside) {
         JarvisAccessibility s = instance;

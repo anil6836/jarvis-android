@@ -52,10 +52,20 @@ final class FloatBubble implements ScreenReader.Listener {
         JarvisAccessibility.syncBubble();
     }
 
+    /** The button's shape: "orb" (the round Jarvis globe, as it always was) or "edge" (a small see-through line at the screen's edge). Only his tap changes it. */
+    static final String SHAPE_KEY = "bubble_shape";
+
+    static boolean edgeShape(Context c) { return "edge".equals(c.getSharedPreferences("jarvis", Context.MODE_PRIVATE).getString(SHAPE_KEY, "orb")); }
+
+    static void setEdgeShape(Context c, boolean edge) {
+        c.getSharedPreferences("jarvis", Context.MODE_PRIVATE).edit().putString(SHAPE_KEY, edge ? "edge" : "orb").apply();
+        JarvisAccessibility.reshapeBubble();
+    }
+
     private static final int READ = 0, MEANING = 1, ABOUT = 2, TELUGU = 3, REPLY = 4, SCAM = 5, PHOTO = 6, REMIND = 7, PRICE = 8, VIDEO = 9,
             WORDS = 10, SAVE = 11, ASK = 12, HIDE = 13, WRITE = 14, SAVE_THIS = 15, ROUTE = 16, TRUTH = 17, READ_HERE = 18, PART = 19,
             COMPARE = 20, FORM = 21, VOICE_MSG = 22, GROUP_SUM = 23, BLUR = 24, SEARCH = 25, HIDE_APP = 26, LATER = 27, MORE = 28,
-            SCAN_SCREEN = 29, CAMERA = 30;
+            SCAN_SCREEN = 29, CAMERA = 30, SHAPE = 31;
     /** {kind, label} of every option. */
     private static final Object[][] OPTIONS = {
             {READ, "📖 చదువు"}, {READ_HERE, "👆 ఇక్కడి నుంచి చదువు"}, {MEANING, "🧠 అర్థం చెప్పు"}, {ABOUT, "💡 దీని గురించి"},
@@ -66,14 +76,14 @@ final class FloatBubble implements ScreenReader.Listener {
             {SAVE_THIS, "📥 దీన్ని సేవ్ చేయి"}, {ROUTE, "📍 దారి / కాల్"}, {REMIND, "⏰ గుర్తుపెట్టు"}, {FORM, "📋 ఫారమ్ సహాయం"},
             {SCAN_SCREEN, "🔬 Jarvis స్కాన్ (3D)"}, {CAMERA, "📷 Jarvis కెమెరా"},
             {PRICE, "🛒 ధర పోలిక"}, {COMPARE, "⚖️ రెండు పోల్చు"}, {VIDEO, "🎬 ఈ వీడియో"},
-            {ASK, "🎙️ అడుగు"}, {HIDE_APP, "🙈 ఈ యాప్‌లో దాచు"}, {HIDE, "✕ బటన్ దాచు"}};
+            {ASK, "🎙️ అడుగు"}, {HIDE_APP, "🙈 ఈ యాప్‌లో దాచు"}, {SHAPE, "▕ అంచు గీత / ⚪ గోళం"}, {HIDE, "✕ బటన్ దాచు"}};
     /** "▾ ఇంకా": every option, in four groups (and the button's own). */
     private static final Object[][] GROUPS = {
             {"📖 చదువు, అర్థం", new int[]{READ, READ_HERE, MEANING, ABOUT, TELUGU, WORDS, PART, PHOTO, SEARCH, SAVE}},
             {"💬 మెసేజ్‌లు, జాగ్రత్త", new int[]{REPLY, WRITE, VOICE_MSG, GROUP_SUM, SCAM, TRUTH, BLUR}},
             {"🛠️ పనులు", new int[]{SAVE_THIS, ROUTE, REMIND, FORM, SCAN_SCREEN, CAMERA}},
             {"🛒 షాపింగ్, వీడియో", new int[]{PRICE, COMPARE, VIDEO}},
-            {"⚙️ బటన్", new int[]{ASK, HIDE_APP, HIDE}}};
+            {"⚙️ బటన్", new int[]{ASK, HIDE_APP, SHAPE, HIDE}}};
 
     /** For Settings: the options he can switch off. */
     static Object[][] choosable() { return OPTIONS; }
@@ -91,6 +101,12 @@ final class FloatBubble implements ScreenReader.Listener {
     private final ScreenReader reader;
     private FrameLayout bubble;
     private HoloOrb orb;
+    // ▕ the edge shape: a small see-through line at the screen's edge; pulled in, the options slide out from that edge
+    private boolean edge;
+    private EdgeLine line;
+    private boolean pulling;         // his finger is pulling the options out (or pushing them back)
+    private float pullFrom;          // where the drawer was when this pull began (0 = in, 1 = out)
+    private int menuW;               // the drawer's width
     private WindowManager.LayoutParams blp;
     private LinearLayout menu;
     private LinearLayout card;
@@ -138,16 +154,24 @@ final class FloatBubble implements ScreenReader.Listener {
 
     boolean show() {
         if (bubble != null) return true;
+        edge = edgeShape(svc);
+        boolean right = svc.getSharedPreferences("jarvis", Context.MODE_PRIVATE).getBoolean("bubble_right", true);
         bubble = new FrameLayout(svc);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(0xE6061424);
-        bg.setStroke(Math.max(1, dp(1)), FaceRig.withAlpha(Ui.CYAN, 0x99));
-        bubble.setBackground(bg);
-        orb = new HoloOrb(svc, 36);
-        orb.setPace(160, 50); // a calm globe that does not eat the battery; livelier while working
-        orb.setContentDescription("Jarvis");
-        bubble.addView(orb, new FrameLayout.LayoutParams(-1, -1));
+        if (edge) { // ▕ only the little line (the globe is in the options when they come out)
+            line = new EdgeLine(svc, right);
+            line.setContentDescription("Jarvis: లోపలికి లాగండి");
+            bubble.addView(line, new FrameLayout.LayoutParams(-1, -1));
+        } else {
+            GradientDrawable bg = new GradientDrawable();
+            bg.setShape(GradientDrawable.OVAL);
+            bg.setColor(0xE6061424);
+            bg.setStroke(Math.max(1, dp(1)), FaceRig.withAlpha(Ui.CYAN, 0x99));
+            bubble.setBackground(bg);
+            orb = new HoloOrb(svc, 36);
+            orb.setPace(160, 50); // a calm globe that does not eat the battery; livelier while working
+            orb.setContentDescription("Jarvis");
+            bubble.addView(orb, new FrameLayout.LayoutParams(-1, -1));
+        }
         badge = new TextView(svc);
         badge.setTextColor(0xFFFFFFFF);
         badge.setTextSize(10f);
@@ -158,15 +182,16 @@ final class FloatBubble implements ScreenReader.Listener {
         bb.setColor(0xFFFF3B5C);
         badge.setBackground(bb);
         badge.setVisibility(View.GONE);
-        bubble.addView(badge, new FrameLayout.LayoutParams(dp(17), dp(17), Gravity.TOP | Gravity.END));
-        blp = new WindowManager.LayoutParams(size, size, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+        if (edge) badge.setTextSize(8.5f);
+        bubble.addView(badge, edge ? new FrameLayout.LayoutParams(dp(15), dp(15), Gravity.TOP | Gravity.CENTER_HORIZONTAL)
+                : new FrameLayout.LayoutParams(dp(17), dp(17), Gravity.TOP | Gravity.END));
+        blp = new WindowManager.LayoutParams(bw(), bh(), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT);
         blp.gravity = Gravity.TOP | Gravity.LEFT;
-        boolean right = svc.getSharedPreferences("jarvis", Context.MODE_PRIVATE).getBoolean("bubble_right", true);
-        blp.x = right ? screenW() - size - dp(4) : dp(4);
+        blp.x = restX(right);
         blp.y = clampY(svc.getSharedPreferences("jarvis", Context.MODE_PRIVATE).getInt("bubble_y", (int) (screenH() * 0.38f)));
         bubble.setOnTouchListener(this::touch);
-        try { wm.addView(bubble, blp); } catch (Exception e) { bubble = null; orb = null; return false; }
+        try { wm.addView(bubble, blp); } catch (Exception e) { bubble = null; orb = null; line = null; return false; }
         reader.listener = this;
         try {
             android.content.IntentFilter f = new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF);
@@ -291,6 +316,7 @@ final class FloatBubble implements ScreenReader.Listener {
         if (card != null) card.setVisibility(hide ? View.GONE : View.VISIBLE); // never on the lock screen or under Jarvis's own taps
         if (hide) hideMenu();
         if (orb != null) orb.setState(busy ? HoloOrb.THINKING : reader.active() && !reader.paused() ? HoloOrb.SPEAKING : HoloOrb.IDLE);
+        if (line != null) line.setLit(busy || reader.active() && !reader.paused()); // (▕ a faint blue while Jarvis works or reads)
         if (playBtn != null) playBtn.setText(cardSpeaking() ? "⏸ ఆపు" : "▶ ప్లే");
     }
 
@@ -298,15 +324,24 @@ final class FloatBubble implements ScreenReader.Listener {
 
     void onScreenTurned() {
         if (bubble == null) return;
-        boolean right = blp.x + size / 2 > screenW() / 2;
-        blp.x = right ? screenW() - size - dp(4) : dp(4);
+        boolean right = onRight();
+        blp.x = restX(right);
         blp.y = clampY(blp.y);
         try { wm.updateViewLayout(bubble, blp); } catch (Exception ignored) {}
         hideMenu();
         closeCard(); // its width was for the old screen
     }
 
-    private int clampY(int y) { return Math.max(dp(40), Math.min(screenH() - size - dp(60), y)); }
+    private int clampY(int y) { return Math.max(dp(40), Math.min(screenH() - bh() - dp(60), y)); }
+
+    /** The button window: the round globe, or (▕) a narrow strip whose middle is the little line (wider than the line, so a thumb finds it). */
+    private int bw() { return edge ? dp(28) : size; }
+    private int bh() { return edge ? dp(96) : size; }
+
+    /** Where it rests at a side: the globe a little in; the line right on the edge. */
+    private int restX(boolean right) { return edge ? (right ? screenW() - bw() : 0) : (right ? screenW() - size - dp(4) : dp(4)); }
+
+    private boolean onRight() { return blp.x + bw() / 2 > screenW() / 2; }
 
     private final Runnable fade = () -> { if (bubble != null && menu == null) bubble.animate().alpha(0.62f).setDuration(400).start(); };
 
@@ -332,6 +367,7 @@ final class FloatBubble implements ScreenReader.Listener {
                 startX = blp.x;
                 startY = blp.y;
                 dragging = false;
+                pulling = false;
                 longPressed = false;
                 bubble.animate().cancel();
                 bubble.setAlpha(1f);
@@ -339,13 +375,24 @@ final class FloatBubble implements ScreenReader.Listener {
                 return true;
             case MotionEvent.ACTION_MOVE: {
                 float dx = e.getRawX() - downX, dy = e.getRawY() - downY;
-                if (!dragging && Math.hypot(dx, dy) > ViewConfiguration.get(svc).getScaledTouchSlop()) {
-                    dragging = true;
+                float inward = onRight() ? -dx : dx;
+                if (!dragging && !pulling && Math.hypot(dx, dy) > ViewConfiguration.get(svc).getScaledTouchSlop()) {
                     main.removeCallbacks(holdToTalk);
-                    hideMenu();
+                    if (edge && inward > Math.abs(dy)) { // ▕ pulled in: the options come out with his finger
+                        pulling = true;
+                        pullFrom = 0;
+                        if (menu == null) showMenu(false, true);
+                    } else {
+                        dragging = true;
+                        hideMenu();
+                    }
+                }
+                if (pulling) {
+                    setPull(pullFrom + inward / Math.max(1f, menuW));
+                    return true;
                 }
                 if (dragging) {
-                    blp.x = Math.max(0, Math.min(screenW() - size, startX + Math.round(dx)));
+                    blp.x = Math.max(0, Math.min(screenW() - bw(), startX + Math.round(dx)));
                     blp.y = clampY(startY + Math.round(dy));
                     try { wm.updateViewLayout(bubble, blp); } catch (Exception ignored) {}
                 }
@@ -353,6 +400,7 @@ final class FloatBubble implements ScreenReader.Listener {
             }
             case MotionEvent.ACTION_UP:
                 main.removeCallbacks(holdToTalk);
+                if (pulling) { pulling = false; settleDrawer(); fadeSoon(); return true; }
                 if (dragging) snap();
                 else if (!longPressed) {
                     long now = SystemClock.elapsedRealtime();
@@ -373,6 +421,7 @@ final class FloatBubble implements ScreenReader.Listener {
                 return true;
             case MotionEvent.ACTION_CANCEL:
                 main.removeCallbacks(holdToTalk);
+                if (pulling) { pulling = false; closeDrawer(); }
                 if (dragging) snap();
                 fadeSoon();
                 return true;
@@ -383,12 +432,13 @@ final class FloatBubble implements ScreenReader.Listener {
 
     private boolean singleTapOpen;
     /** One tap (no second one came): the menu opens, or closes if it was open. */
-    private final Runnable singleTap = () -> { if (singleTapOpen) hideMenu(); else showMenu(); };
+    private final Runnable singleTap = () -> { if (singleTapOpen) closeDrawer(); else showMenu(); };
 
     /** Back to the nearest side, where it stays. */
     private void snap() {
-        final boolean right = blp.x + size / 2 > screenW() / 2;
-        final int from = blp.x, to = right ? screenW() - size - dp(4) : dp(4);
+        final boolean right = onRight();
+        final int from = blp.x, to = restX(right);
+        if (line != null) line.setRight(right);
         ValueAnimator a = ValueAnimator.ofInt(from, to).setDuration(180);
         a.addUpdateListener(an -> {
             if (bubble == null) return;
@@ -446,7 +496,7 @@ final class FloatBubble implements ScreenReader.Listener {
 
     /** He used this option in this kind of app (the ones he uses most come up to the top five). */
     private void used(String cat, int kind) {
-        if (kind == MORE || kind == LATER || kind == HIDE || kind == HIDE_APP) return;
+        if (kind == MORE || kind == LATER || kind == HIDE || kind == HIDE_APP || kind == SHAPE) return;
         android.content.SharedPreferences sp = uses();
         String k = cat + ":" + kind;
         sp.edit().putInt(k, Math.min(50, sp.getInt(k, 0) + 1)).apply();
@@ -459,7 +509,7 @@ final class FloatBubble implements ScreenReader.Listener {
         java.util.List<int[]> scored = new java.util.ArrayList<>(); // {kind, score, order}
         for (int i = 0; i < OPTIONS.length; i++) {
             int k = (int) OPTIONS[i][0];
-            if (off.contains(String.valueOf(k)) || k == HIDE) continue;
+            if (off.contains(String.valueOf(k)) || k == HIDE || k == SHAPE) continue;
             int score = 0;
             for (int j = 0; j < def.length; j++) if (def[j] == k) score += def.length - j + 1; // 6, 5, 4, 3, 2
             if (k != HIDE_APP) score += 2 * sp.getInt(cat + ":" + k, 0);
@@ -486,21 +536,38 @@ final class FloatBubble implements ScreenReader.Listener {
 
     private void showMenu() { showMenu(false); }
 
-    /** more: every option, in groups ("▾ ఇంకా"); else the five that fit this app. */
-    private void showMenu(boolean more) {
+    private void showMenu(boolean more) { showMenu(more, false); }
+
+    /**
+     * more: every option, in groups ("▾ ఇంకా"); else the five that fit this app. (▕ edge shape) The options are a drawer
+     * that comes out of the screen's edge: byHand = his finger is pulling it (it follows him), else it slides out by itself.
+     */
+    private void showMenu(boolean more, boolean byHand) {
         if (bubble == null || menu != null) return;
         menuMore = more;
         showBadge();
-        menu = new LinearLayout(svc);
-        menu.setOrientation(LinearLayout.VERTICAL);
+        final boolean right = onRight();
+        LinearLayout body = new LinearLayout(svc); // (the options' card; in the edge shape it sits in the drawer beside its little line)
+        body.setOrientation(LinearLayout.VERTICAL);
         items = new LinearLayout(svc);
         items.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(0xF2061424);
         bg.setStroke(Math.max(1, dp(1)), FaceRig.withAlpha(Ui.CYAN, 0x88));
-        bg.setCornerRadius(dp(16));
-        menu.setBackground(bg);
-        menu.setPadding(dp(6), dp(6), dp(6), dp(6));
+        if (edge) { float r = dp(16); bg.setCornerRadii(right ? new float[]{r, r, 0, 0, 0, 0, r, r} : new float[]{0, 0, r, r, r, r, 0, 0}); }
+        else bg.setCornerRadius(dp(16));
+        body.setBackground(bg);
+        body.setPadding(dp(6), dp(6), dp(6), dp(6));
+        View head = null;
+        if (edge) {
+            menu = new LinearLayout(svc);
+            menu.setOrientation(LinearLayout.HORIZONTAL);
+            menu.setGravity(Gravity.CENTER_VERTICAL);
+            View grip = drawerGrip(right);
+            if (right) { menu.addView(grip); menu.addView(body); } else { menu.addView(body); menu.addView(grip); }
+            head = drawerHead();
+            body.addView(head);
+        } else menu = body;
         if (reader.active()) { // reading: ⏮ ⏸ ⏭ 🐢 ⏩ ⏹
             LinearLayout row = new LinearLayout(svc);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -535,11 +602,12 @@ final class FloatBubble implements ScreenReader.Listener {
         java.util.Set<String> off = p.bubbleOff();
         boolean all = more || p.bubbleShowAll();
         String cat = category(frontApp());
-        int room = screenW() - size - dp(26); // beside the button
+        int room = edge ? screenW() - dp(76) : screenW() - size - dp(26); // beside the button (▕ the drawer: most of the width)
         chipW = Math.min(dp(134), room / 2 - dp(6));
         int cols = chipW < dp(96) ? 1 : 2;
         if (cols == 1) chipW = Math.min(dp(200), room - dp(12));
         int wide = cols * chipW + (cols - 1) * dp(6);
+        if (head != null) head.setLayoutParams(new LinearLayout.LayoutParams(cols * (chipW + dp(6)), -2)); // (▕ the globe's row as wide as the options)
         int later = LaterMessages.count(svc);
         if (later > 0) {
             TextView c = chip("📬 " + later + (later == 1 ? " చాట్ మెసేజ్‌లు" : " చాట్‌ల మెసేజ్‌లు") + " · లిస్ట్", true, () -> option(LATER));
@@ -578,23 +646,188 @@ final class FloatBubble implements ScreenReader.Listener {
             @Override protected void onMeasure(int w, int h) { super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(maxH, View.MeasureSpec.AT_MOST)); }
         };
         sc.addView(items);
-        menu.addView(sc);
+        body.addView(sc);
         menu.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         int w = menu.getMeasuredWidth(), h = Math.min(menu.getMeasuredHeight(), maxH + dp(12));
+        menuW = w;
         WindowManager.LayoutParams mlp = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
         mlp.gravity = Gravity.TOP | Gravity.LEFT;
-        boolean right = blp.x + size / 2 > screenW() / 2;
-        mlp.x = right ? Math.max(dp(4), blp.x - w - dp(6)) : Math.min(screenW() - w - dp(4), blp.x + size + dp(6));
-        mlp.y = Math.max(dp(30), Math.min(screenH() - h - dp(40), blp.y + size / 2 - h / 2));
+        if (edge) mlp.x = right ? screenW() - w : 0; // ▕ out of the very edge it was pulled from
+        else mlp.x = right ? Math.max(dp(4), blp.x - w - dp(6)) : Math.min(screenW() - w - dp(4), blp.x + size + dp(6));
+        mlp.y = Math.max(dp(30), Math.min(screenH() - h - dp(40), blp.y + bh() / 2 - h / 2));
         menu.setOnTouchListener((v, e) -> {
-            if (e.getActionMasked() == MotionEvent.ACTION_OUTSIDE) { hideMenu(); return true; }
+            if (e.getActionMasked() == MotionEvent.ACTION_OUTSIDE) { closeDrawer(); return true; } // (▕ back into the edge; the globe's menu just closes)
             return false;
         });
-        try { wm.addView(menu, mlp); } catch (Exception e) { menu = null; }
+        try { wm.addView(menu, mlp); } catch (Exception e) { menu = null; if (edge) orb = null; }
         main.removeCallbacks(fade);
+        if (edge && menu != null) {
+            if (byHand) setPull(0);
+            else { setPull(0); menu.animate().translationX(0).setDuration(200).start(); }
+            if (line != null) line.setVisibility(View.INVISIBLE); // (the drawer's own line takes its place)
+        }
+    }
+
+    // ---------------------------------------------------------------- ▕ the drawer (edge shape)
+
+    /** How far out the drawer is: 0 = in the edge, 1 = all out. */
+    private void setPull(float k) {
+        if (menu == null) return;
+        k = Math.max(0f, Math.min(1f, k));
+        menu.animate().cancel();
+        menu.setTranslationX((onRight() ? 1 : -1) * (1 - k) * menuW);
+    }
+
+    private float pullNow() { return menu == null || menuW <= 0 ? 0 : 1 - Math.abs(menu.getTranslationX()) / menuW; }
+
+    /** His finger let go: past about a third it opens all the way, else it goes back into the edge. */
+    private void settleDrawer() {
+        float k = pullNow();
+        boolean open = pullFrom > 0.5f ? k > 0.65f : k > 0.35f;
+        if (open && menu != null) menu.animate().translationX(0).setDuration(160).start();
+        else closeDrawer();
+    }
+
+    /** Back into the edge, then gone. */
+    private void closeDrawer() {
+        final LinearLayout m = menu;
+        if (m == null) return;
+        if (!edge) { hideMenu(); return; }
+        m.animate().translationX((onRight() ? 1 : -1) * menuW).setDuration(170).withEndAction(() -> { if (menu == m) hideMenu(); }).start();
+    }
+
+    /** The drawer's top: the Jarvis globe (exactly as on the round button), the kind of app, ✕. */
+    private View drawerHead() {
+        LinearLayout row = new LinearLayout(svc);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(2), dp(2), dp(2), dp(6));
+        orb = new HoloOrb(svc, 36);
+        orb.setPace(160, 50);
+        orb.setContentDescription("Jarvis");
+        orb.setState(busy ? HoloOrb.THINKING : reader.active() && !reader.paused() ? HoloOrb.SPEAKING : HoloOrb.IDLE);
+        row.addView(orb, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        LinearLayout words = new LinearLayout(svc);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.setPadding(dp(8), 0, dp(4), 0);
+        TextView name = new TextView(svc);
+        name.setText("Jarvis");
+        name.setTextColor(0xFFFFFFFF);
+        name.setTextSize(15f);
+        name.setTypeface(Typeface.DEFAULT_BOLD);
+        words.addView(name);
+        TextView kind = new TextView(svc);
+        kind.setText(kindTe(category(frontApp())) + " · మీరు ఎక్కువ వాడేవి ముందు");
+        kind.setTextColor(Ui.MUTED);
+        kind.setTextSize(11.5f);
+        kind.setSingleLine(true);
+        kind.setEllipsize(TextUtils.TruncateAt.END);
+        words.addView(kind);
+        row.addView(words, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView x = new TextView(svc);
+        x.setText("✕");
+        x.setTextColor(Ui.TEXT);
+        x.setTextSize(17f);
+        x.setGravity(Gravity.CENTER);
+        x.setContentDescription("మూసివేయి");
+        GradientDrawable xb = new GradientDrawable();
+        xb.setShape(GradientDrawable.OVAL);
+        xb.setColor(0x12FFFFFF);
+        x.setBackground(xb);
+        x.setOnClickListener(v -> closeDrawer());
+        row.addView(x, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        return row;
+    }
+
+    /** The drawer's own little line on its inside edge: pushed back toward the edge (or tapped), the drawer goes in. */
+    @SuppressWarnings("ClickableViewAccessibility")
+    private View drawerGrip(boolean right) {
+        FrameLayout g = new FrameLayout(svc);
+        EdgeLine l = new EdgeLine(svc, right, 36);
+        g.addView(l, new FrameLayout.LayoutParams(-1, -1));
+        g.setLayoutParams(new LinearLayout.LayoutParams(dp(22), dp(96)));
+        g.setContentDescription("మూసివేయి");
+        final float[] at = new float[2];
+        g.setOnTouchListener((v, e) -> {
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN: at[0] = e.getRawX(); at[1] = pullNow(); return true;
+                case MotionEvent.ACTION_MOVE: {
+                    float out = (right ? 1 : -1) * (e.getRawX() - at[0]);
+                    setPull(at[1] - Math.max(0, out) / Math.max(1f, menuW));
+                    return true;
+                }
+                case MotionEvent.ACTION_UP: {
+                    float moved = Math.abs(e.getRawX() - at[0]);
+                    if (moved < ViewConfiguration.get(svc).getScaledTouchSlop()) closeDrawer(); // (a tap)
+                    else { pullFrom = 1; settleDrawer(); }
+                    return true;
+                }
+                case MotionEvent.ACTION_CANCEL: setPull(1); return true;
+                default: return false;
+            }
+        });
+        return g;
+    }
+
+    /** The kind of app, in his words, for the drawer's top line. */
+    static String kindTe(String cat) {
+        switch (cat) {
+            case "whatsapp": return "WhatsApp";
+            case "chat": return "చాట్";
+            case "mail": return "మెయిల్";
+            case "sms": return "మెసేజ్‌లు";
+            case "shop": return "షాపింగ్";
+            case "video": return "వీడియో";
+            case "photo": return "ఫోటోలు";
+            case "social": return "సోషల్ మీడియా";
+            case "web": return "వెబ్ పేజీ";
+            default: return "ఈ యాప్";
+        }
+    }
+
+    /**
+     * ▕ The little see-through line: 4 dp wide, flush against the screen's edge (rounded only on its inner side, as if it
+     * came out of the edge), glass grey with a thin light rim; a faint blue while Jarvis works or reads.
+     */
+    static final class EdgeLine extends View {
+        private boolean right, lit;
+        private final int tall;
+        private final float d;
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG), out = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF r = new android.graphics.RectF();
+
+        EdgeLine(Context c, boolean right) { this(c, right, 46); }
+
+        EdgeLine(Context c, boolean right, int tallDp) {
+            super(c);
+            this.right = right;
+            tall = tallDp;
+            d = c.getResources().getDisplayMetrics().density;
+            rim.setStyle(Paint.Style.STROKE);
+            rim.setStrokeWidth(Math.max(1f, d));
+            rim.setColor(0x80FFFFFF);
+            out.setStyle(Paint.Style.STROKE);
+            out.setStrokeWidth(Math.max(1f, d));
+            out.setColor(0x1F141E28);
+        }
+
+        void setRight(boolean r) { if (right != r) { right = r; invalidate(); } }
+
+        void setLit(boolean l) { if (lit != l) { lit = l; invalidate(); } }
+
+        @Override protected void onDraw(Canvas c) {
+            float w = 4 * d, h = tall * d, cy = getHeight() / 2f, rad = 3 * d, extra = 4 * d;
+            if (right) r.set(getWidth() - w, cy - h / 2, getWidth() + extra, cy + h / 2);
+            else r.set(-extra, cy - h / 2, w, cy + h / 2);
+            fill.setColor(lit ? 0x8C74E4FF : 0x578C96A0);
+            c.drawRoundRect(r, rad, rad, fill);
+            r.inset(-d / 2, -d / 2);
+            c.drawRoundRect(r, rad, rad, out);
+            r.inset(d, d);
+            c.drawRoundRect(r, rad, rad, rim);
+        }
     }
 
     /** These options as chips, cols to a row. */
@@ -603,7 +836,7 @@ final class FloatBubble implements ScreenReader.Listener {
         for (int i = 0; i < kinds.length; i++) {
             if (i % cols == 0) { row = new LinearLayout(svc); items.addView(row); }
             final int kind = kinds[i];
-            String l = kind == COMPARE && cmpText != null ? "⚖️ రెండోది పోల్చు" : label(kind);
+            String l = kind == COMPARE && cmpText != null ? "⚖️ రెండోది పోల్చు" : kind == SHAPE ? (edge ? "⚪ గోళంగా మార్చు" : "▕ అంచు గీతగా మార్చు") : label(kind);
             row.addView(chip(l, lit, () -> option(kind)));
         }
     }
@@ -644,7 +877,7 @@ final class FloatBubble implements ScreenReader.Listener {
 
     private void option(int kind) {
         used(category(frontApp()), kind);
-        if (kind != ASK && kind != HIDE && kind != HIDE_APP) heardTo = null; // a new job: a spoken answer is no longer for the old one
+        if (kind != ASK && kind != HIDE && kind != HIDE_APP && kind != SHAPE) heardTo = null; // a new job: a spoken answer is no longer for the old one
         if (kind != BLUR) blurBmp = null;
         switch (kind) {
             case ASK: ask(); break;
@@ -653,6 +886,13 @@ final class FloatBubble implements ScreenReader.Listener {
                 Toast.makeText(svc, "Jarvis బటన్ దాచాను. సెట్టింగ్స్ → ఫ్లోటింగ్ బటన్ లో మళ్ళీ ఆన్ చేయొచ్చు.", Toast.LENGTH_LONG).show();
                 break;
             case HIDE_APP: hideHere(); break;
+            case SHAPE: { // (his tap: ▕ the edge line ↔ ⚪ the round globe; Settings → ఫ్లోటింగ్ బటన్ too)
+                boolean toEdge = !edge;
+                Toast.makeText(svc, toEdge ? "▕ ఇప్పుడు స్క్రీన్ అంచున చిన్న గీత. లోపలికి లాగితే ఆప్షన్లు. గోళం కావాలంటే మళ్ళీ ⚙️ బటన్ → ⚪ గోళంగా మార్చు."
+                        : "⚪ మళ్ళీ రౌండ్ గోళం.", Toast.LENGTH_LONG).show();
+                setEdgeShape(svc, toEdge);
+                break;
+            }
             case LATER: LaterBox.show(svc); break; // (📬: the list — one chat at a time, or all; Anil, 23 Oct)
             case READ_HERE: readHere(); break;
             case PART:
@@ -688,6 +928,7 @@ final class FloatBubble implements ScreenReader.Listener {
         if (menu == null) return;
         try { wm.removeView(menu); } catch (Exception ignored) {}
         menu = null;
+        if (edge) { orb = null; pulling = false; if (line != null) line.setVisibility(View.VISIBLE); } // (▕ the drawer's globe went with it; the line is back)
         menuClosedAt = SystemClock.elapsedRealtime();
         fadeSoon();
     }
