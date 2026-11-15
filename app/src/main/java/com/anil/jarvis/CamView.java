@@ -437,7 +437,8 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
     private void fit() {
         int W = getWidth(), H = getHeight();
         if (W == 0 || H == 0 || size == null) return;
-        boolean turned = sensorDeg == 90 || sensorDeg == 270;
+        boolean across = screenTurn == Surface.ROTATION_90 || screenTurn == Surface.ROTATION_270;
+        boolean turned = (sensorDeg == 90 || sensorDeg == 270) != across; // (a screen turned across shows the picture across)
         float pw = turned ? size.getHeight() : size.getWidth(), ph = turned ? size.getWidth() : size.getHeight();
         float s = Math.max(W / pw, H / ph);
         int tw = Math.round(pw * s), th = Math.round(ph * s);
@@ -448,6 +449,26 @@ final class CamView extends FrameLayout implements TextureView.SurfaceTextureLis
             lp.gravity = Gravity.CENTER;
             tex.setLayoutParams(lp);
         }
+        // the camera's picture comes upright for the phone held upright: a turned screen turns it back (only the workshop turns)
+        if (screenTurn == Surface.ROTATION_0) {
+            if (turnSet) { tex.setTransform(null); turnSet = false; }
+        } else {
+            android.graphics.Matrix m = new android.graphics.Matrix();
+            if (across) m.postScale(th / (float) tw, tw / (float) th, tw / 2f, th / 2f);
+            m.postRotate(across ? 90 * (screenTurn - 2) : 180, tw / 2f, th / 2f);
+            tex.setTransform(m);
+            turnSet = true;
+        }
+    }
+
+    /** (the 3D workshop's room view, which may be turned across) The screen's turn, Surface.ROTATION_*; the Jarvis camera stays upright (0). */
+    private int screenTurn = Surface.ROTATION_0;
+    private boolean turnSet;
+
+    void setScreenTurn(int turn) {
+        if (turn == screenTurn) return;
+        screenTurn = turn;
+        main.post(() -> { fit(); applyDigital(); });
     }
 
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {

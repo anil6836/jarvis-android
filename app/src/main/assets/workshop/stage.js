@@ -225,6 +225,15 @@ const kit = {
   group(o = {}) { const g = new THREE.Group(); place(g, o); return g; },
   shape() { return new THREE.Shape(); },
 };
+// (E) each material remembers which kind it is ("metal steel", "rubber"...): the "how it works" show and the build guide are told
+for (const k of ['metal', 'plastic', 'rubber', 'paint', 'glass', 'wood', 'ceramic', 'fabric', 'glow', 'screen']) {
+  const make = kit[k];
+  kit[k] = function (a, b) {
+    const m = make.call(kit, a, b);
+    m.userData.kind = k === 'metal' ? 'metal ' + (typeof a === 'string' ? a.slice(0, 16) : 'steel') : k;
+    return m;
+  };
+}
 function clampSeg(s) { return Math.max(3, Math.min(96, Math.round(s) || 3)); }
 function place(o, p) {
   if (p.at) o.position.set(p.at[0] || 0, p.at[1] || 0, p.at[2] || 0);
@@ -366,6 +375,7 @@ async function runPart(m) {
 function stats() { post({ t: 'stats', parts: parts.size, tris: totalTris() }); }
 
 function reset() {
+  endTour();
   grabbed = null;
   controls.enabled = true;
   binList.length = 0;
@@ -394,6 +404,15 @@ let userFrame = false; // (he moved the camera himself: keep his angle, still fo
 
 function modelBox() {
   const b = new THREE.Box3();
+  if (tour.on && tour.close && tour.units.length) { // 🎓 the show looks closer at what it talks about (never so close the rest is lost)
+    const k = ease(explodeGoal);
+    for (const u of tour.units) for (const pc of u.pcs) if (pc.box) b.union(pc.box.clone().translate(pc.explode.clone().multiplyScalar(pc.home ? 0 : k)));
+    if (!b.isEmpty()) {
+      const want = tour.size * 0.5, have = b.getSize(new THREE.Vector3()).length();
+      if (have < want) b.expandByScalar((want - have) / 3.4);
+      return b;
+    }
+  }
   if (isolated) { // 🔍 alone: that part fills the view
     for (const o of isolated.objs) b.union(new THREE.Box3().setFromObject(o));
     if (!b.isEmpty()) return b;
@@ -419,6 +438,8 @@ function placePieces(rec, e) {
     pc.obj.position.copy(pc.base);
     if (!pc.home) pc.obj.position.addScaledVector(pc.explode, e); // (put back in its place by his hand: home)
     if (pc.drag) pc.obj.position.add(pc.drag); // (moved by his hand)
+    if (pc.tourOff) pc.obj.position.add(pc.tourOff); // (🎓 the show slides it)
+    if (pc.spinOff) pc.obj.position.add(pc.spinOff); // (🎓 the show turns it around its middle)
   }
 }
 
@@ -473,6 +494,8 @@ function buildLabels() {
     for (const g of byName.values()) { g.center = g.box.getCenter(new THREE.Vector3()); labelGroups.push(g); }
   }
   if (isolated) labelGroups = labelGroups.filter((g) => g.rec === isolated.rec && (isolated.objs[0] === g.rec.group || g.text === isolated.label || g.rec.auto));
+  if (tour.on && tour.units.length) // (🎓 only the names the show talks about)
+    labelGroups = labelGroups.filter((g) => tour.units.some((u) => u.rec === g.rec && (g.rec.auto || u.pcs.some((pc) => pc.label === g.text))));
   labelGroups = labelGroups.slice(0, 12);
   const box = document.getElementById('labels');
   const svg = document.getElementById('lines');
@@ -503,7 +526,7 @@ function buildLabels() {
 const tmpV = new THREE.Vector3();
 function drawLabels() {
   const box = document.getElementById('labels');
-  const a = ease(explodeK), show = labelsOn ? Math.max(a, isolated ? 1 : 0) : 0;
+  const a = ease(explodeK), show = labelsOn ? Math.max(a, isolated || (tour.on && tour.units.length) ? 1 : 0) : 0;
   box.style.opacity = String(Math.max(0, (show - 0.35) / 0.65) * (turning || grabbed ? 0.22 : 1)); // (faint while he turns or holds)
   box.style.display = show < 0.35 ? 'none' : 'block'; // (hidden names never catch a tap)
   if (show < 0.35) return;
@@ -571,7 +594,15 @@ function light(mode) {
   rim.intensity = night ? 0.7 : DAY.rim;
   hemi.intensity = night ? 0.06 : DAY.hemi;
   renderer.toneMappingExposure = night ? 0.95 : DAY.exp;
-  document.body.style.background = night ? 'radial-gradient(ellipse 70% 60% at 50% 46%, #10151e 0%, #07090d 48%, #020304 100%)' : DAY.bg;
+  nightOn = night;
+  backdrop();
+}
+let nightOn = false;
+/** The page behind the model: the studio (day / night), or nothing at all over the room (📷 G). */
+function backdrop() {
+  document.documentElement.style.background = arOn ? 'transparent' : '';
+  document.body.style.background = arOn ? 'transparent'
+    : nightOn ? 'radial-gradient(ellipse 70% 60% at 50% 46%, #10151e 0%, #07090d 48%, #020304 100%)' : DAY.bg;
 }
 
 // The screen's own bars cover the top and bottom of the stage: the model is framed in the part that is left.
@@ -666,6 +697,11 @@ function tick(now) {
     const k = 0.38 + 0.22 * Math.sin(t * 4.2);
     for (const x of picked.meshes) for (const m of mats(x.userData.mg)) if (m.emissive) m.emissiveIntensity = k;
   }
+  if (tour.on) { // 🎓 what the show talks about breathes too; its pieces turn / slide; the arrows flow
+    const k = 0.42 + 0.26 * Math.sin(t * 3.6);
+    for (const x of tour.focus) for (const m of mats(x.userData.mg)) if (m.emissive) m.emissiveIntensity = k;
+    tourTick(now, dt);
+  }
   if (sizeBox && now > sizeUntil) { scene.remove(sizeBox); sizeBox.geometry.dispose(); sizeBox = null; }
   if (handAnims.length) handStep(now);
   // pulled apart / put back together
@@ -689,6 +725,7 @@ function tick(now) {
   camera.position.copy(controls.target).add(off);
   floor.position.y += (goal.floorY - floor.position.y) * a;
   floor.scale.setScalar(floor.scale.x + (goal.radius * 9 - floor.scale.x) * a);
+  if (arOn) { catcher.position.y = floor.position.y + goal.radius * 0.002; catcher.scale.setScalar(goal.radius * 3); }
   tiltStep(dt);
   controls.update();
   placeCut();
@@ -781,6 +818,11 @@ window.addEventListener('message', (e) => {
       look(); labelsDirty = true;
       break;
     case 'stl': stl(m.req); break;
+    // (E, G) 🎓 the show, 📷 the room
+    case 'describe': describe(m.req); break;
+    case 'tour': tourStep(m.step); break;
+    case 'tourend': endTour(); break;
+    case 'ar': setAr(!!m.on); break;
     case 'pause': pause(); break;
     case 'resume': resume(); break;
     default: break;
@@ -907,6 +949,7 @@ function clipped(m) {
 /** Every mesh gets what it should look like now. */
 function look() {
   const iso = isolated ? isolated.meshes : null, pick = picked ? picked.meshes : null;
+  const sf = tour.on && tour.focus.size ? tour.focus : null; // (🎓 the show: what it talks about glows, the rest fades)
   clipped(ghostFill);
   clipped(ghostLine);
   for (const r of parts.values()) {
@@ -915,9 +958,10 @@ function look() {
       pc.obj.traverse((x) => {
         if (!x.isMesh || x.userData.isEdge) return;
         if (x.userData.m0 === undefined) { x.userData.m0 = x.material; x.userData.v0 = x.visible; x.userData.s0 = x.castShadow; }
-        const solid = iso ? iso.has(x) : !xray || (pick && pick.has(x));
+        const solid = sf ? !tour.dim || sf.has(x) : iso ? iso.has(x) : !xray || (pick && pick.has(x));
         const gone = (iso && !iso.has(x) && isolated.mode === 'hide') || (x === pc.obj && hid);
-        x.material = !solid ? ghostFill : pick && pick.has(x) && !iso ? glowOf(x) : x.userData.m0; // (alone: its own colours)
+        x.material = !solid ? ghostFill : sf ? (sf.has(x) ? glowOf(x) : x.userData.m0)
+          : pick && pick.has(x) && !iso ? glowOf(x) : x.userData.m0; // (alone: its own colours)
         clipped(x.userData.m0);
         if (x.userData.mg) clipped(x.userData.mg);
         x.visible = !gone && x.userData.v0;
@@ -1260,7 +1304,7 @@ function postBin(last) {
 /** The bin shows while pulled apart, while he holds a piece, or while something is in it. */
 function binBox() {
   if (!binEl) return;
-  const on = parts.size > 0 && (explodeGoal > 0 || !!grabbed || binList.length > 0);
+  const on = parts.size > 0 && ((explodeGoal > 0 && !tour.on) || !!grabbed || binList.length > 0); // (not in the way of a 🎓 show)
   binEl.style.display = on ? 'flex' : 'none';
   binEl.style.bottom = Math.round(window.innerHeight * inset.bottom + 14) + 'px';
   const n = document.getElementById('binN');
@@ -1349,6 +1393,269 @@ function stl(req) {
   }
   post({ t: 'file', req: String(req || ''), kind: 'stl', data: b64(new Uint8Array(buf)), tris: n,
     w: Math.round(size.x * k), h: Math.round(size.z * k), d: Math.round(size.y * k) });
+}
+
+// ------------------------------------------------------------------ 🎓 (E) "how it works": a show Jarvis plays step by step
+// The steps were written once by his AI and checked in Java; here they are only names, numbers and colours: the pieces it
+// talks about glow and the rest fade, pieces turn or slide back and forth, little arrows flow from one part to another.
+// Nothing in the model's code changes; at the end every piece is back where it was.
+
+const tour = { on: false, focus: new Set(), units: [], dim: true, close: false, spins: [], moves: [], flows: [], t0: 0, size: 10, explode0: 0 };
+const AXES = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+const FLOW = { air: 0xbfe9ff, water: 0x3aa0ff, power: 0xffd34d, heat: 0xff8a3d, light: 0xfff3b0, fuel: 0xb48cff, signal: 0x7dff9b };
+const flowGeo = new THREE.ConeGeometry(0.5, 1.4, 14);
+const tourGroup = new THREE.Group();
+scene.add(tourGroup);
+const upTo = (a, n) => (Array.isArray(a) ? a.slice(0, n) : []);
+const num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
+
+/** {id, piece}: those pieces of that part (a name it doesn't have: the whole part); hidden ones left out. */
+function unitFor(ref) {
+  if (!ref || typeof ref.id !== 'string') return null;
+  const rec = parts.get(cleanId(ref.id));
+  if (!rec || !rec.pieces.length) return null;
+  const name = typeof ref.piece === 'string' ? te(ref.piece) : '';
+  let pcs = name && !rec.auto ? rec.pieces.filter((pc) => pc.label === name) : [];
+  if (!pcs.length) pcs = rec.pieces.slice();
+  pcs = pcs.filter((pc) => pc.base && !hiddenPiece(rec, pc));
+  return pcs.length ? { rec, pcs } : null;
+}
+
+/** Where a set of pieces is now (pulled apart, slid), its middle, in the stage's own space. */
+function centreNow(u, out) {
+  const b = new THREE.Box3();
+  for (const pc of u.pcs) {
+    if (!pc.box) continue;
+    const off = pc.obj.position.clone().sub(pc.base);
+    if (pc.spinOff) off.sub(pc.spinOff); // (turning around its own middle: the middle stays)
+    b.union(pc.box.clone().translate(off));
+  }
+  if (b.isEmpty()) return null;
+  b.getCenter(out);
+  out.y += u.rec.group.position.y;
+  return out;
+}
+
+function tourStart() {
+  tour.on = true;
+  tour.explode0 = explodeGoal;
+  handsOff();
+  if (picked) { picked = null; post({ t: 'pick', id: '' }); }
+  const all = new THREE.Box3();
+  for (const r of parts.values()) if (r.box) all.union(r.box);
+  tour.size = all.isEmpty() ? 10 : Math.max(1, all.getSize(new THREE.Vector3()).length());
+}
+
+/** One step: what glows, pulled apart or not, from where, what turns / slides / flows. */
+function tourStep(s) {
+  if (!s || typeof s !== 'object') return;
+  if (!tour.on) tourStart();
+  tourStill();
+  tour.focus = new Set();
+  tour.units = [];
+  for (const ref of upTo(s.focus, 8)) {
+    const u = unitFor(ref);
+    if (!u) continue;
+    tour.units.push(u);
+    for (const m of meshesOf(u.pcs.map((pc) => pc.obj))) tour.focus.add(m);
+  }
+  tour.dim = s.dim !== false && tour.units.length > 0;
+  tour.close = !!s.close && tour.units.length > 0;
+  if (typeof s.explode === 'boolean' && (s.explode ? 1 : 0) !== explodeGoal) explodeGoal = s.explode ? 1 : 0;
+  binBox();
+  for (const sp of upTo(s.spin, 4)) {
+    const u = unitFor(sp);
+    if (!u) continue;
+    const pivot = new THREE.Box3();
+    for (const pc of u.pcs) if (pc.box) pivot.union(pc.box);
+    if (pivot.isEmpty()) continue;
+    tour.spins.push({ u, axis: AXES[sp.axis] ? sp.axis : 'y', speed: num(sp.speed, -4, 4, 1), pivot: pivot.getCenter(new THREE.Vector3()) });
+  }
+  for (const mv of upTo(s.move, 4)) {
+    const u = unitFor(mv);
+    if (!u || !Array.isArray(mv.by)) continue;
+    const by = new THREE.Vector3(num(mv.by[0], -5000, 5000, 0), num(mv.by[1], -5000, 5000, 0), num(mv.by[2], -5000, 5000, 0));
+    if (by.lengthSq() < 1e-6) continue;
+    tour.moves.push({ u, by, secs: num(mv.secs, 0.4, 6, 1.5) });
+  }
+  for (const f of upTo(s.flow, 4)) addFlow(f);
+  tour.t0 = performance.now();
+  if (typeof s.view === 'string' && VIEWS[s.view]) view(s.view);
+  controls.autoRotate = false;
+  goal.zoom = 1;
+  userFrame = false;
+  labelsDirty = true;
+  look();
+  frameAll(false);
+}
+
+/** One end of an arrow: a part ("id", or {id, piece}) or a point [x, y, z] in cm. */
+function endFor(e, piece) {
+  if (Array.isArray(e) && e.length >= 3) return { at: new THREE.Vector3(num(e[0], -5000, 5000, 0), num(e[1], -5000, 5000, 0), num(e[2], -5000, 5000, 0)) };
+  if (typeof e === 'string') { const u = unitFor({ id: e, piece }); return u ? { u } : null; }
+  if (e && typeof e === 'object') { const u = unitFor(e); return u ? { u } : null; }
+  return null;
+}
+
+function pointOf(end, out) { return end.at ? out.copy(end.at) : centreNow(end.u, out); }
+
+function addFlow(f) {
+  if (!f || typeof f !== 'object') return;
+  const a = endFor(f.from, f.fromPiece), b = endFor(f.to, f.toPiece);
+  if (!a || !b) return;
+  const c = FLOW[f.kind] !== undefined ? FLOW[f.kind] : typeof f.kind === 'string' && /^#[0-9a-f]{6}$/i.test(f.kind) ? new THREE.Color(f.kind) : 0x4fd2ff;
+  const mat = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
+  const n = Math.round(num(f.count, 2, 12, 6));
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(flowGeo, mat);
+    m.renderOrder = 20;
+    m.raycast = () => {};
+    tourGroup.add(m);
+    items.push(m);
+  }
+  const lg = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  const line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.35, depthTest: false, depthWrite: false }));
+  line.renderOrder = 19;
+  line.raycast = () => {};
+  tourGroup.add(line);
+  tour.flows.push({ a, b, items, line, mat });
+}
+
+const UP = new THREE.Vector3(0, 1, 0), fa = new THREE.Vector3(), fb = new THREE.Vector3(), fd = new THREE.Vector3();
+function tourTick(now, dt) {
+  const t = (now - tour.t0) / 1000;
+  const recs = new Set();
+  for (const sp of tour.spins) { // (around the middle of those pieces, the way the AI said, a little at a time)
+    const dq = new THREE.Quaternion().setFromAxisAngle(AXES[sp.axis], sp.speed * Math.PI * 2 * dt);
+    for (const pc of sp.u.pcs) {
+      pc.spinQ = pc.spinQ ? dq.clone().multiply(pc.spinQ) : dq.clone();
+      pc.obj.quaternion.premultiply(dq);
+      const d = pc.base.clone().sub(sp.pivot);
+      pc.spinOff = d.clone().applyQuaternion(pc.spinQ).sub(d);
+    }
+    recs.add(sp.u.rec);
+  }
+  for (const mv of tour.moves) { // (there and back, like a piston or a button)
+    const k = 0.5 - 0.5 * Math.cos((t / mv.secs) * Math.PI * 2);
+    for (const pc of mv.u.pcs) pc.tourOff = mv.by.clone().multiplyScalar(k);
+    recs.add(mv.u.rec);
+  }
+  for (const r of recs) placePieces(r, ease(explodeK));
+  const size = tour.size * 0.022;
+  for (const f of tour.flows) {
+    if (!pointOf(f.a, fa) || !pointOf(f.b, fb)) { f.line.visible = false; for (const m of f.items) m.visible = false; continue; }
+    fd.subVectors(fb, fa);
+    const len = fd.length();
+    const on = len > size;
+    f.line.visible = on;
+    const pos = f.line.geometry.attributes.position;
+    pos.setXYZ(0, fa.x, fa.y, fa.z);
+    pos.setXYZ(1, fb.x, fb.y, fb.z);
+    pos.needsUpdate = true;
+    fd.normalize();
+    f.items.forEach((m, i) => {
+      m.visible = on;
+      if (!on) return;
+      const k = (t * 0.55 + i / f.items.length) % 1;
+      m.position.copy(fa).addScaledVector(fd, len * k);
+      m.quaternion.setFromUnitVectors(UP, fd);
+      m.scale.setScalar(size * (0.3 + 0.7 * Math.sin(Math.PI * k)));
+    });
+  }
+}
+
+/** The step's movement ends: every turned / slid piece back exactly as it was, the arrows gone. */
+function tourStill() {
+  const recs = new Set();
+  for (const sp of tour.spins) for (const pc of sp.u.pcs) {
+    if (pc.spinQ) { pc.obj.quaternion.premultiply(pc.spinQ.clone().invert()); pc.spinQ = null; }
+    pc.spinOff = null;
+    recs.add(sp.u.rec);
+  }
+  for (const mv of tour.moves) for (const pc of mv.u.pcs) { pc.tourOff = null; recs.add(mv.u.rec); }
+  for (const r of recs) if (parts.get(r.id) === r) placePieces(r, ease(explodeK));
+  for (const f of tour.flows) { f.mat.dispose(); f.line.geometry.dispose(); f.line.material.dispose(); }
+  while (tourGroup.children.length) tourGroup.remove(tourGroup.children[0]);
+  tour.spins = [];
+  tour.moves = [];
+  tour.flows = [];
+}
+
+function endTour() {
+  if (!tour.on) return;
+  tourStill();
+  tour.on = false;
+  tour.focus = new Set();
+  tour.units = [];
+  tour.close = false;
+  if (explodeGoal !== tour.explode0) explodeGoal = tour.explode0; // (pulled apart or not, as it was before the show)
+  binBox();
+  controls.autoRotate = spinWanted && !cut.on && !tilt.on;
+  labelsDirty = true;
+  look();
+  frameAll(false);
+}
+
+/**
+ * 🎓 / 🛠️ What the model is made of, for the AI that writes the show or the build guide: each part's id, name, size and place
+ * (cm), the names of its pieces, and their materials. Only what he sees (pieces taken off are left out); nothing else.
+ */
+function describe(req) {
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const bx = (b) => { const c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3()); return { c: [r1(c.x), r1(c.y), r1(c.z)], s: [r1(s.x), r1(s.y), r1(s.z)] }; };
+  const kinds = (objs) => {
+    const k = new Set();
+    for (const o of objs) o.traverse((x) => {
+      if (!x.isMesh || x.userData.isEdge) return;
+      for (const m of mats(x.userData.m0 !== undefined ? x.userData.m0 : x.material)) if (m && m.userData && m.userData.kind) k.add(m.userData.kind);
+    });
+    return [...k].slice(0, 4);
+  };
+  const out = [];
+  for (const r of parts.values()) {
+    if (!r.box) continue;
+    const vis = r.pieces.filter((pc) => !hiddenPiece(r, pc));
+    if (r.pieces.length && !vis.length) continue;
+    const p = { id: r.id, name: r.label || r.id, box: bx(r.box), made: kinds(vis.map((pc) => pc.obj)), moves: r.ticks.length > 0, pieces: [] };
+    if (!r.auto) {
+      const byName = new Map();
+      for (const pc of vis) {
+        if (!pc.label || !pc.box) continue;
+        let g = byName.get(pc.label);
+        if (!g) { g = { box: new THREE.Box3(), objs: [], n: 0 }; byName.set(pc.label, g); }
+        g.box.union(pc.box);
+        g.objs.push(pc.obj);
+        g.n++;
+      }
+      for (const [name, g] of byName) if (p.pieces.length < 16) p.pieces.push({ name, n: g.n, box: bx(g.box), made: kinds(g.objs) });
+    }
+    out.push(p);
+    if (out.length >= 40) break;
+  }
+  post({ t: 'desc', req: String(req || ''), data: JSON.stringify(out) });
+}
+
+// ------------------------------------------------------------------ 📷 (G) the model in his room: the camera's picture behind it
+// Jarvis puts the phone's camera under this page; here the backdrop and the floor go see-through and a soft shadow stays
+// under the model. Not fixed to the real floor (his finger turns and moves it) and the size is not the real size.
+
+let arOn = false;
+const catcher = new THREE.Mesh(new THREE.CircleGeometry(1, 64), new THREE.ShadowMaterial({ opacity: 0.34, depthWrite: false }));
+catcher.rotation.x = -Math.PI / 2;
+catcher.receiveShadow = true;
+catcher.visible = false;
+catcher.renderOrder = -1;
+catcher.raycast = () => {};
+scene.add(catcher);
+
+function setAr(on) {
+  arOn = !!on;
+  floor.visible = !arOn;
+  catcher.visible = arOn;
+  catcher.position.y = floor.position.y;
+  catcher.scale.setScalar(goal.radius * 3);
+  backdrop();
 }
 
 canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); post({ t: 'warn', id: 'stage', msg: 'webgl context lost' }); });

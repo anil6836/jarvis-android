@@ -136,6 +136,23 @@ public class WorkshopActivity extends Activity {
     private int binCount;
     private final List<String[]> binItems = new ArrayList<>(); // {id, label, name, whole}
     private android.os.Vibrator vib;
+    // (E) 🎓 the how-it-works show; (F) 🛠️ the build guide; (G) 📷 the model in his room
+    private TextView tourBtn, tourStopBtn, tourNextBtn, guideBtn, arBtn;
+    /** The show playing now (null = none), the step it is on, when that step began and how long it stays at least. */
+    private JSONArray tourSteps;
+    private int tourIdx;
+    private long tourStepAt, tourMin, tourQuietAt;
+    private boolean tourVoice;
+    /** (a show just made) what it cost, said at its end. */
+    private String tourCost;
+    /** The stage's description asked for a show / a guide: its one-time id and the job waiting for it. */
+    private String descReq;
+    private Job descJob;
+    private FrameLayout rootView;
+    private CamView cam;
+    private boolean arOn;
+    private android.hardware.display.DisplayManager.DisplayListener turnL;
+    private static final int REQ_AR_PERM = 64;
 
     /** The model on the stage now (a finished build or a saved one): what a change is made to, and what is saved. */
     private Shown shown;
@@ -153,11 +170,15 @@ public class WorkshopActivity extends Activity {
         final LinkedHashMap<String, String[]> parts = new LinkedHashMap<>();
         /** (A5) pieces he emptied from the bin for good: {part id, piece name}; they stay hidden on this model. */
         final List<String[]> gone = new ArrayList<>();
+        /** (E, F) the 🎓 show (checked JSON) and the 🛠️ build guide made for this model, and at which change (-1: none). */
+        String tour, guide;
+        int tourAt = -1, guideAt = -1;
 
         Shown copy() {
             Shown c = new Shown();
             c.at = at; c.title = title; c.what = what; c.model = model; c.say = say; c.cost = cost; c.estimated = estimated;
             c.changes = changes; c.repairs = repairs; c.seconds = seconds; c.firstPart = firstPart;
+            c.tour = tour; c.tourAt = tourAt; c.guide = guide; c.guideAt = guideAt;
             for (Map.Entry<String, String[]> e : parts.entrySet()) c.parts.put(e.getKey(), e.getValue().clone());
             for (String[] g : gone) c.gone.add(g.clone());
             return c;
@@ -177,7 +198,8 @@ public class WorkshopActivity extends Activity {
             for (String[] g : gone) gs.put(new JSONObject().put("id", g[0]).put("label", g[1]));
             return new JSONObject().put("at", at).put("title", title).put("what", what == null ? "" : what).put("model", model == null ? "" : model)
                     .put("parts", ps).put("say", say == null ? "" : say).put("cost", cost).put("estimated", estimated).put("repairs", repairs)
-                    .put("changes", changes).put("seconds", seconds).put("first_part_seconds", firstPart).put("gone", gs);
+                    .put("changes", changes).put("seconds", seconds).put("first_part_seconds", firstPart).put("gone", gs)
+                    .put("tour", tour == null ? "" : tour).put("tour_at", tourAt).put("guide", guide == null ? "" : guide).put("guide_at", guideAt);
         }
 
         static Shown of(JSONObject b) {
@@ -203,6 +225,11 @@ public class WorkshopActivity extends Activity {
                 JSONObject g = gs.optJSONObject(i);
                 if (g != null && s.parts.containsKey(g.optString("id"))) s.gone.add(new String[]{g.optString("id"), g.optString("label")});
             }
+            String t = b.optString("tour", ""), gd = b.optString("guide", "");
+            s.tour = t.isEmpty() ? null : t;
+            s.tourAt = s.tour == null ? -1 : b.optInt("tour_at", -1);
+            s.guide = gd.isEmpty() ? null : gd;
+            s.guideAt = s.guide == null ? -1 : b.optInt("guide_at", -1);
             return s;
         }
     }
@@ -233,6 +260,9 @@ public class WorkshopActivity extends Activity {
         String photo;
         int photoKind;
         final List<String> removed = new ArrayList<>();
+        /** (E, F) "tour" / "guide" (null: a build or a change); asked by voice; no "thinking" lines spoken while it waits. */
+        String kind;
+        boolean byVoice, quiet;
         /** Written by the build's thread, read by the screen: one lock (iterate inside synchronized (parts)). */
         final Map<String, Part> parts = java.util.Collections.synchronizedMap(new LinkedHashMap<>());
         double rupees;
@@ -317,6 +347,7 @@ public class WorkshopActivity extends Activity {
     private void build() {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF07080B);
+        rootView = root;
         stageBox = new FrameLayout(this);
         root.addView(stageBox, new FrameLayout.LayoutParams(-1, -1));
 
@@ -401,10 +432,20 @@ public class WorkshopActivity extends Activity {
         TextView fromPhoto = pill("📷 ఫోటో నుంచి 3D", v -> photoChoice());
         labelBtn = pill("🏷️ పేర్లు దాచు", v -> command(labelsOn ? "labels_off" : "labels_on", false));
         binBtn = pill("🗑️ బిన్", v -> binTray());
+        tourBtn = pill("🎓 ఎలా పనిచేస్తుంది", v -> command("show_how", false));
+        tourStopBtn = pill("⏹ షో ఆపు", v -> command("show_stop", false));
+        tourNextBtn = pill("⏭ తర్వాత", v -> command("show_next", false));
+        guideBtn = pill("🛠️ తయారీ విధానం", v -> command("guide", false));
+        arBtn = pill("📷 గదిలో చూడు", v -> command(arOn ? "ar_off" : "ar_on", false));
         actions.addView(cancelBtn);
         actions.addView(stopBtn);
+        actions.addView(tourStopBtn);
+        actions.addView(tourNextBtn);
         actions.addView(explodeBtn);
         actions.addView(undoBtn);
+        actions.addView(tourBtn);
+        actions.addView(guideBtn);
+        actions.addView(arBtn);
         actions.addView(binBtn);
         actions.addView(labelBtn);
         actions.addView(isoBtn);
@@ -557,6 +598,15 @@ public class WorkshopActivity extends Activity {
             binBtn.setVisibility(has && binCount > 0 ? View.VISIBLE : View.GONE);
             binBtn.setText("🗑️ బిన్ " + binCount);
         }
+        if (tourBtn != null) { // (E, F, G)
+            boolean playing = tourSteps != null;
+            tourBtn.setVisibility(has && !playing ? View.VISIBLE : View.GONE);
+            tourStopBtn.setVisibility(playing ? View.VISIBLE : View.GONE);
+            tourNextBtn.setVisibility(playing ? View.VISIBLE : View.GONE);
+            guideBtn.setVisibility(has ? View.VISIBLE : View.GONE);
+            arBtn.setVisibility(has || arOn ? View.VISIBLE : View.GONE);
+            arBtn.setText(arOn ? "📷 గది ఆపు" : "📷 గదిలో చూడు");
+        }
         undoBtn.setVisibility(has && !undo.isEmpty() && job == null ? View.VISIBLE : View.GONE);
         nightBtn.setText(night ? "☀️ పగలు" : "🌙 రాత్రి");
         spinBtn.setText(spinning ? "⏸ తిప్పడం ఆపు" : "▶️ తిప్పు");
@@ -602,8 +652,10 @@ public class WorkshopActivity extends Activity {
 
     /** A view / light / pull-apart / undo word: done at once, no AI. Anything else: a new build, or a change to the model on the stage. */
     private void said(String text, boolean byVoice) {
+        if (tourSteps != null && Workshop.isCancel(text)) { stopTourSaid(byVoice); return; } // (🎓 "ఆపు" during the show: the show stops, nothing is asked)
         String cmd = Workshop.command(text);
         if (cmd != null) { command(cmd, byVoice); return; }
+        if (tourSteps != null) endTour(false); // (a question or a change: the show makes way)
         if (job != null) {
             String s = "ఒక పని ఇంకా జరుగుతోంది Sir. అది అయ్యాక చెప్పండి, లేదా ⏹ ఆపు నొక్కండి.";
             setStatus(s);
@@ -673,6 +725,7 @@ public class WorkshopActivity extends Activity {
 
     /** Heard by voice here: a ₹0 word, or plainly about the model (it names a part, a colour, "ఇది" with a part tapped). Else the brain. */
     private boolean tookByVoice(String words) {
+        if (tourSteps != null && Workshop.isCancel(words)) { stopTourSaid(true); return true; }
         String cmd = Workshop.command(words);
         if (cmd != null) { command(cmd, true); return true; }
         boolean has = shown != null && !shown.parts.isEmpty();
@@ -762,6 +815,7 @@ public class WorkshopActivity extends Activity {
     private void command(String cmd, boolean byVoice) {
         boolean has = shown != null && !shown.parts.isEmpty();
         String said = null;
+        if (tourSteps != null && !TOUR_KEEPS.contains(cmd)) endTour(false); // (🎓 anything else he asks: the show makes way)
         switch (cmd) {
             case "explode":
             case "assemble":
@@ -869,6 +923,7 @@ public class WorkshopActivity extends Activity {
                 break;
             case "photo": case "stl":
                 if (!has) break;
+                if ("photo".equals(cmd) && arOn) { arPhoto(); break; } // (📷 in the room: the room and the model, as he sees them)
                 askFile("photo".equals(cmd) ? "photo" : "stl");
                 said = "photo".equals(cmd) ? null : "ప్రింట్ ఫైల్ తయారు చేస్తున్నాను Sir.";
                 break;
@@ -904,6 +959,26 @@ public class WorkshopActivity extends Activity {
                 said = "అన్నీ వాటి చోటికి వస్తున్నాయి Sir.";
                 break;
             case "bin_empty": emptyBin(); break;
+            // ---- (E, F, G) 🎓 the show, 🛠️ the build guide, 📷 the room
+            case "show_how":
+                if (!has) { said = "ముందు ఒక బొమ్మ తయారు చేయనివ్వండి Sir."; break; }
+                tourAsk(byVoice);
+                break;
+            case "show_stop":
+                if (tourSteps == null) break;
+                endTour(false);
+                said = "షో ఆపాను Sir.";
+                break;
+            case "show_next":
+                if (tourSteps != null) tourAdvance();
+                break;
+            case "guide":
+                if (!has) { said = "ముందు ఒక బొమ్మ తయారు చేయనివ్వండి Sir."; break; }
+                guideAsk(byVoice);
+                break;
+            case "ar_on": case "ar_off":
+                said = ar("ar_on".equals(cmd));
+                break;
             default: break;
         }
         refreshButtons();
@@ -925,6 +1000,7 @@ public class WorkshopActivity extends Activity {
 
     /** The whole model onto a cleared stage (a saved build, an undo): no AI. */
     private void putOnStage(Shown sh) {
+        if (tourSteps != null) endTour(false);
         forgetPick();
         viewReset();
         onStage.clear();
@@ -967,7 +1043,7 @@ public class WorkshopActivity extends Activity {
         port = null;
         WebView w = new WebView(this);
         web = w;
-        w.setBackgroundColor(0xFF07080B);
+        w.setBackgroundColor(arOn ? android.graphics.Color.TRANSPARENT : 0xFF07080B); // (📷 the room view: the camera shows through)
         WebSettings s = w.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(false);
@@ -1143,6 +1219,15 @@ public class WorkshopActivity extends Activity {
             return;
         }
         if ("bintap".equals(t)) { binTray(); return; }
+        if ("desc".equals(t)) { // (E, F) the model's description, asked for a show / a guide: now the AI writes it
+            Job j = descJob;
+            if (j == null || descReq == null || !descReq.equals(m.optString("req")) || job != j) return;
+            descJob = null;
+            descReq = null;
+            final String model = m.optString("data", "[]");
+            new Thread(() -> runMake(j, model), "jarvis-workshop-" + j.kind).start();
+            return;
+        }
         if ("ok".equals(t) || "err".equals(t)) {
             synchronized (acks) {
                 acks.put(id, new String[]{t, m.optString("msg")});
@@ -1158,8 +1243,11 @@ public class WorkshopActivity extends Activity {
 
     private void restartStage(String why) {
         if (destroyed) return;
+        if (tourSteps != null) endTour(false);
+        if (descJob != null) { Job dj = descJob; descJob = null; descReq = null; failMake(dj, "3D స్టేజ్ మళ్ళీ మొదలైంది, మళ్ళీ అడగండి"); }
         newStage();
         send(json("reset"));
+        if (arOn) { try { send(json("ar").put("on", true)); } catch (Exception ignored) {} }
         try { if (sentTop >= 0) send(json("inset").put("top", sentTop).put("bottom", sentBottom)); } catch (Exception ignored) {}
         for (Map.Entry<String, String> e : new ArrayList<>(onStage.entrySet())) sendPart(e.getKey(), e.getValue());
         try {
@@ -1200,6 +1288,7 @@ public class WorkshopActivity extends Activity {
         catch (Workshop.Problem x) { setStatus(x.getMessage()); speak(x.getMessage(), false); return; }
         String over = Workshop.overLimit(this, p);
         if (over != null) { setStatus(over); speak(over, false); return; }
+        if (tourSteps != null) endTour(false);
         Job j = new Job(what, heard, e);
         j.photo = photo;
         j.photoKind = kind;
@@ -1232,7 +1321,7 @@ public class WorkshopActivity extends Activity {
                 long secs = (System.currentTimeMillis() - j.at) / 1000;
                 if (j.parts.isEmpty() && j.removed.isEmpty() && j.answer == null) {
                     setStatus("🧠 " + label(j.engine.model) + " " + doing + "… " + secs + " సె");
-                    if (secs >= j.nextLine) { // (one short line about every ten seconds: thinking never looks like a hang)
+                    if (!j.quiet && secs >= j.nextLine) { // (one short line about every ten seconds: thinking never looks like a hang)
                         j.nextLine = secs + 10;
                         Announcer.say(WorkshopActivity.this, WAITING[j.waitLine++ % WAITING.length]);
                     }
@@ -1616,8 +1705,9 @@ public class WorkshopActivity extends Activity {
     private void askStop() {
         Job j = job;
         if (j == null) return;
-        new AlertDialog.Builder(this).setTitle("బొమ్మ తయారీ ఆపాలా?")
-                .setMessage("ఇప్పటివరకు వచ్చిన భాగాలు ఉంటాయి. ఇప్పటిదాకా అయిన ఖర్చు మాత్రం పడుతుంది.")
+        boolean other = j.kind != null; // (🎓 a show / 🛠️ a guide being written)
+        new AlertDialog.Builder(this).setTitle(!other ? "బొమ్మ తయారీ ఆపాలా?" : "tour".equals(j.kind) ? "షో తయారీ ఆపాలా?" : "తయారీ విధానం రాయడం ఆపాలా?")
+                .setMessage(other ? "ఇప్పటిదాకా అయిన ఖర్చు మాత్రం పడుతుంది." : "ఇప్పటివరకు వచ్చిన భాగాలు ఉంటాయి. ఇప్పటిదాకా అయిన ఖర్చు మాత్రం పడుతుంది.")
                 .setPositiveButton("⏹ ఆపు", (d, w) -> stopJob(j)).setNegativeButton("కొనసాగించు", null).show();
     }
 
@@ -1625,13 +1715,14 @@ public class WorkshopActivity extends Activity {
         j.stopped = true;
         j.cancel.cancel();
         synchronized (acks) { acks.notifyAll(); }
+        if (descJob == j) { descJob = null; descReq = null; ui.post(() -> failMake(j, null)); } // (stopped before the AI was asked: ₹0)
     }
 
     private void leave() {
         Job j = job;
         if (j == null) { finish(); return; }
-        new AlertDialog.Builder(this).setTitle("బొమ్మ ఇంకా తయారవుతోంది")
-                .setMessage("మూసేస్తే తయారీ ఆగిపోతుంది (ఇప్పటిదాకా అయిన ఖర్చు పడుతుంది). మూసేయాలా?")
+        new AlertDialog.Builder(this).setTitle(j.kind == null ? "బొమ్మ ఇంకా తయారవుతోంది" : "tour".equals(j.kind) ? "షో ఇంకా తయారవుతోంది" : "తయారీ విధానం ఇంకా రాస్తోంది")
+                .setMessage("మూసేస్తే అది ఆగిపోతుంది (ఇప్పటిదాకా అయిన ఖర్చు పడుతుంది). మూసేయాలా?")
                 .setPositiveButton("మూసేయి", (d, w) -> { stopJob(j); finish(); }).setNegativeButton("ఉండు", null).show();
     }
 
@@ -1694,6 +1785,13 @@ public class WorkshopActivity extends Activity {
         front = true;
         WakeService.workshopWake = wakeR; // (🎙️ "Jarvis" here: the workshop hears him, no panel over it)
         JarvisAccessibility.bubbleAside(true);
+        if (arOn && cam != null) { // (📷 the camera again, only now that the screen is in front)
+            if (checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                cam.setScreenTurn(turnNow());
+                cam.open();
+                watchTurn(true);
+            } else { String s = ar(false); if (s != null) setStatus(s); refreshButtons(); }
+        }
     }
 
     @Override protected void onPause() {
@@ -1705,6 +1803,9 @@ public class WorkshopActivity extends Activity {
         if (ear != null) ear.away();
         if (waiting != null) cancelWait(false); // (he left: nothing is spent on what was heard)
         if (tiltOn) tilt(false);
+        if (tourSteps != null) endTour(false); // (🎓 he left: the show stops)
+        if (cam != null) cam.close(); // (📷 never the camera behind his back; it opens again when he is back)
+        watchTurn(false);
     }
 
     @Override protected void onDestroy() {
@@ -1715,6 +1816,8 @@ public class WorkshopActivity extends Activity {
         if (ear != null) ear.shutdown();
         Job j = job;
         if (j != null) stopJob(j);
+        if (cam != null) cam.release();
+        watchTurn(false);
         ui.removeCallbacksAndMessages(null);
         if (port != null) { try { port.close(); } catch (Throwable ignored) {} }
         if (web != null) {
@@ -1999,6 +2102,12 @@ public class WorkshopActivity extends Activity {
     @Override public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
         super.onRequestPermissionsResult(req, perms, res);
         if (req == REQ_CAM_PERM && res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) openCam();
+        if (req == REQ_AR_PERM) {
+            boolean ok = res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            String s = ok ? ar(true) : "📷 కెమెరా అనుమతి లేకుండా గదిలో చూపించలేను Sir. కావాలంటే Android సెట్టింగ్స్ → యాప్స్ → Jarvis → అనుమతులు లో కెమెరా ఇవ్వండి.";
+            if (s != null) setStatus(s);
+            refreshButtons();
+        }
     }
 
     @Override protected void onActivityResult(int req, int result, Intent data) {
@@ -2058,6 +2167,7 @@ public class WorkshopActivity extends Activity {
     @Override public void onConfigurationChanged(android.content.res.Configuration c) {
         super.onConfigurationChanged(c);
         fit(c);
+        if (cam != null && arOn) cam.setScreenTurn(turnNow()); // (📷 the room's picture turns with the screen)
     }
 
     private void fit(android.content.res.Configuration c) {
@@ -2066,6 +2176,393 @@ public class WorkshopActivity extends Activity {
         if (listScroll != null) listScroll.setVisibility(wide ? View.GONE : View.VISIBLE);
         if (status != null) status.setMaxLines(wide ? 2 : 6);
         if (answerBody != null) answerBody.setMaxLines(wide ? 6 : 40);
+    }
+
+    // ================================================================ (E) 🎓 how it works: a show written once by his AI, then free
+
+    /** What he may ask while a show plays without stopping it. */
+    private static final Set<String> TOUR_KEEPS = new HashSet<>(Arrays.asList("zoom_in", "zoom_out", "night", "day", "cost", "center",
+            "show_how", "show_next", "show_stop", "labels_on", "labels_off", "ar_on", "ar_off", "photo", "spin_on", "spin_off"));
+
+    /** 🎓 The show for this model: free when it was made for it; else (said first what it costs) his AI writes one. */
+    private void tourAsk(boolean byVoice) {
+        if (job != null) { String s = "ఒక పని ఇంకా జరుగుతోంది Sir. అది అయ్యాక అడగండి."; setStatus(s); speak(s, byVoice); return; }
+        if (tourSteps != null) endTour(false);
+        final Shown sh = shown;
+        if (sh.tour != null && sh.tourAt == sh.changes) { // (made for this very model: free)
+            try { playTour(new JSONObject(sh.tour), byVoice, null); return; } catch (Exception ignored) {} // (unreadable: a new one)
+        }
+        String model = p.workshopModel().trim();
+        String about = model.isEmpty() ? "" : "సుమారు " + Workshop.aboutMoney(model);
+        boolean old = sh.tour != null;
+        if (byVoice) { // (✋ 3 seconds to say "వద్దు" before any money is spent)
+            waitThen("🎓 " + (old ? "బొమ్మ మారింది: కొత్త షో" : "ఎలా పనిచేస్తుందో షో") + (about.isEmpty() ? "" : " (" + about + ")"), () -> makeAsk("tour", true));
+            return;
+        }
+        AlertDialog.Builder d = new AlertDialog.Builder(this).setTitle("🎓 ఎలా పనిచేస్తుందో చూపించు")
+                .setMessage((old ? "షో తయారు చేశాక ఈ బొమ్మ మారింది. " : "")
+                        + "మీరు ఎంచుకున్న AI ఈ బొమ్మకి ఒక చిన్న కదిలే పాఠం తయారు చేస్తుంది: ఏ భాగం ఏం చేస్తుందో అది వెలుగుతూ, తిరుగుతూ, గాలి / కరెంట్ బాణాలతో, తెలుగులో చెబుతూ."
+                        + (about.isEmpty() ? "" : " ఒక్కసారికే " + about + ".") + " మళ్ళీ చూడటం ఉచితం.")
+                .setPositiveButton(old ? "🆕 కొత్తది తయారు చెయ్" : "▶ తయారు చెయ్", (x, w) -> makeAsk("tour", false))
+                .setNegativeButton("వద్దు", null);
+        if (old) d.setNeutralButton("▶ పాతదే (ఉచితం)", (x, w) -> { try { playTour(new JSONObject(sh.tour), false, null); } catch (Exception ignored) {} });
+        d.show();
+    }
+
+    /** (E, F) A show or a guide: the stage first describes the model (names, sizes, materials); then the AI writes. */
+    private void makeAsk(String kind, boolean byVoice) {
+        if (shown == null || shown.parts.isEmpty() || destroyed) return;
+        if (job != null) { String s = "ఒక పని ఇంకా జరుగుతోంది Sir."; setStatus(s); speak(s, byVoice); return; }
+        Workshop.Engine e;
+        try { e = Workshop.engine(p); }
+        catch (Workshop.Problem x) { setStatus(x.getMessage()); speak(x.getMessage(), byVoice); return; }
+        String over = Workshop.overLimit(this, p);
+        if (over != null) { setStatus(over); speak(over, byVoice); return; }
+        if (tourSteps != null) endTour(false);
+        Job j = new Job(shown.what, kind, e);
+        j.kind = kind;
+        j.title = shown.title;
+        j.byVoice = byVoice;
+        j.quiet = true;
+        job = j;
+        closeAnswer();
+        stopBtn.setVisibility(View.VISIBLE);
+        refreshButtons();
+        final String req = Long.toHexString(System.nanoTime()) + Integer.toHexString((int) (Math.random() * 0xFFFF));
+        descJob = j;
+        descReq = req;
+        try { send(json("describe").put("req", req)); } catch (Exception ignored) {}
+        String doing = "tour".equals(kind) ? "షో తయారు చేస్తోంది" : "తయారీ విధానం రాస్తోంది";
+        setStatus("🧠 " + label(e.model) + " " + doing + "…");
+        ticker(j, doing);
+        ui.postDelayed(() -> { if (descJob == j && req.equals(descReq)) { descJob = null; descReq = null; failMake(j, "3D స్టేజ్ బొమ్మ వివరాలు ఇవ్వలేదు"); } }, 10000);
+    }
+
+    /** (its own thread) The AI writes the show / the guide from the model's description; checked; then kept with the model. */
+    private void runMake(Job j, String data) {
+        Http.CANCEL.set(j.cancel);
+        final boolean tour = "tour".equals(j.kind);
+        String desc = Workshop.describeText(data);
+        StringBuilder out = new StringBuilder();
+        Workshop.Bill b = new Workshop.Bill();
+        String failure = null;
+        try {
+            if (desc.trim().isEmpty()) throw new Workshop.Problem("బొమ్మలో భాగాలు కనిపించలేదు");
+            Workshop.stream(j.engine, tour ? Workshop.TOUR_SYSTEM : Workshop.GUIDE_SYSTEM,
+                    tour ? Workshop.tourMessage(j.title, j.what, desc) : Workshop.guideMessage(j.title, j.what, desc),
+                    tour ? Workshop.TOUR_OUT : Workshop.GUIDE_OUT, new Workshop.Sink() { @Override public void text(String s) { out.append(s); } }, b);
+        } catch (CancellationException x) {
+            failure = "stopped";
+        } catch (Workshop.Problem x) {
+            failure = x.getMessage();
+        } catch (Exception x) {
+            failure = Workshop.why(p, x, j.engine.provider);
+        } finally {
+            add(j, b);
+        }
+        Workshop.spend(this, j.rupees, false);
+        JSONObject show = null;
+        String guide = null, refused = null;
+        if (failure == null && !j.stopped) {
+            if (tour) {
+                try {
+                    show = Workshop.parseTour(out.toString(), Workshop.describedIds(data));
+                    if (show.has("refuse")) { refused = show.optString("refuse"); show = null; }
+                } catch (Workshop.Problem x) { failure = x.getMessage(); }
+            } else {
+                guide = Workshop.cleanGuide(out.toString());
+                if (guide.isEmpty()) { failure = "AI ఏమీ రాయలేదు"; guide = null; }
+                else if (Workshop.guideRefused(guide)) { refused = Workshop.oneLine(guide); guide = null; }
+            }
+        }
+        final JSONObject s0 = show;
+        final String g0 = guide, r0 = refused, f0 = failure;
+        ui.post(() -> finishMake(j, s0, g0, r0, f0));
+    }
+
+    private void finishMake(Job j, JSONObject show, String guide, String refused, String failure) {
+        if (job == j) job = null;
+        if (destroyed) return;
+        stopBtn.setVisibility(View.GONE);
+        String cost = Workshop.money(j.rupees) + (j.estimated ? " (సుమారు)" : "");
+        if (shown != null && (show != null || guide != null || j.rupees > 0)) { // (what it cost goes on the model's bill; kept with it)
+            Shown after = shown.copy();
+            if (show != null) { after.tour = show.toString(); after.tourAt = after.changes; }
+            if (guide != null) { after.guide = guide; after.guideAt = after.changes; }
+            after.cost += j.rupees;
+            after.estimated |= j.estimated;
+            shown = after;
+            save(after);
+        }
+        refreshButtons();
+        boolean tour = "tour".equals(j.kind);
+        if (show != null) {
+            playTour(show, j.byVoice, cost);
+        } else if (guide != null) {
+            setStatus("🛠️ తయారీ విధానం సిద్ధం · " + cost + " · మళ్ళీ తెరవడానికి ఖర్చు లేదు");
+            showGuide(guide, false);
+            speak("తయారీ విధానం సిద్ధం Sir. దీనికి " + cost + " అయింది. ఖర్చులు సుమారు అంచనా మాత్రమే.", j.byVoice);
+        } else if (refused != null) {
+            setStatus("🚫 " + refused + " · " + cost);
+            speak(refused, j.byVoice);
+        } else if ("stopped".equals(failure) || j.stopped) {
+            setStatus("⏹ ఆపేశారు · " + cost);
+            speak("ఆపేశాను Sir. ఖర్చు " + cost + ".", j.byVoice);
+        } else {
+            setStatus("✗ " + failure + " · " + cost);
+            speak((tour ? "షో తయారు చేయలేకపోయాను Sir: " : "తయారీ విధానం రాయలేకపోయాను Sir: ") + failure, j.byVoice);
+        }
+    }
+
+    /** A show / guide that ended before the AI was asked (stopped, or the stage did not answer): nothing spent. */
+    private void failMake(Job j, String why) {
+        if (job == j) job = null;
+        if (destroyed) return;
+        stopBtn.setVisibility(View.GONE);
+        refreshButtons();
+        String s = why == null ? "⏹ ఆపేశారు · ఖర్చు ₹0" : "✗ " + why + " · ఖర్చు ₹0";
+        setStatus(s);
+        if (why != null) speak(why + " Sir. ఖర్చు లేదు.", j.byVoice);
+    }
+
+    /** The whole model in plain view before a show: nothing alone, see-through, cut or hidden; the bin's pieces back; no tap. */
+    private void plainView() {
+        if (isolatedOn || xrayOn || cutOn || hiddenCount > 0) { send(json("showall")); isolatedOn = false; xrayOn = false; cutOn = false; hiddenCount = 0; }
+        if (binCount > 0) { try { send(json("unbin").put("all", true)); } catch (Exception ignored) {} }
+        if (tiltOn) tilt(false);
+        if (pickedId != null) { send(json("unpick")); pickedId = null; pickedName = null; }
+        closeAnswer();
+    }
+
+    private void playTour(JSONObject t, boolean byVoice, String cost) {
+        JSONArray steps = t.optJSONArray("steps");
+        if (steps == null || steps.length() == 0) { setStatus("ఈ షోలో అడుగులు లేవు Sir."); return; }
+        if (tourSteps != null) endTour(false);
+        plainView();
+        tourSteps = steps;
+        tourIdx = -1;
+        tourVoice = byVoice;
+        tourCost = cost;
+        refreshButtons();
+        tourAdvance();
+    }
+
+    /** The next step when its time is up and Jarvis has finished saying its line (and a breath after). */
+    private final Runnable tourTick = new Runnable() {
+        @Override public void run() {
+            if (tourSteps == null || destroyed) return;
+            long now = System.currentTimeMillis();
+            boolean talking = (ear != null && ear.speaking()) || Announcer.speaking();
+            if (talking) tourQuietAt = 0;
+            else if (tourQuietAt == 0) tourQuietAt = now;
+            boolean timeUp = now - tourStepAt >= tourMin, said = tourQuietAt > 0 && now - tourQuietAt >= 600;
+            if (timeUp && (said || now - tourStepAt > tourMin + 20000)) { tourAdvance(); return; }
+            ui.postDelayed(this, 250);
+        }
+    };
+
+    private void tourAdvance() {
+        ui.removeCallbacks(tourTick);
+        if (tourSteps == null) return;
+        tourIdx++;
+        if (tourIdx >= tourSteps.length()) { endTour(true); return; }
+        JSONObject s = tourSteps.optJSONObject(tourIdx);
+        if (s == null) { tourAdvance(); return; }
+        try { send(json("tour").put("step", s)); } catch (Exception ignored) {}
+        String say = s.optString("say");
+        setStatus("🎓 " + (tourIdx + 1) + "/" + tourSteps.length() + (say.isEmpty() ? "" : " · " + say));
+        tourStepAt = System.currentTimeMillis();
+        tourQuietAt = 0;
+        tourMin = Math.round(Workshop.stepSeconds(s) * 1000);
+        if (!say.isEmpty()) speak(say, false);
+        ui.postDelayed(tourTick, 700);
+    }
+
+    /** The show ends (finished: a last line, and what it cost when it was just made); every piece back as it was. */
+    private void endTour(boolean finished) {
+        if (tourSteps == null) return;
+        ui.removeCallbacks(tourTick);
+        tourSteps = null;
+        send(json("tourend"));
+        refreshButtons();
+        if (finished) {
+            setStatus("🎓 షో అయిపోయింది" + (tourCost != null ? " · " + tourCost : "") + " · మళ్ళీ చూడాలంటే 🎓 (ఉచితం)");
+            speak("అంతే Sir, ఇది ఇలా పనిచేస్తుంది." + (tourCost != null ? " ఈ షో తయారీకి " + tourCost + " అయింది; మళ్ళీ చూడటం ఉచితం." : ""), tourVoice);
+        }
+        tourCost = null;
+    }
+
+    private void stopTourSaid(boolean byVoice) {
+        endTour(false);
+        setStatus("🎓 షో ఆపాను · మళ్ళీ చూడాలంటే 🎓 (ఉచితం)");
+        speak("సరే Sir, ఆపాను.", byVoice);
+    }
+
+    // ================================================================ (F) 🛠️ how to really make it: written once by his AI, kept
+
+    private void guideAsk(boolean byVoice) {
+        if (job != null) { String s = "ఒక పని ఇంకా జరుగుతోంది Sir. అది అయ్యాక అడగండి."; setStatus(s); speak(s, byVoice); return; }
+        final Shown sh = shown;
+        if (sh.guide != null && sh.guideAt == sh.changes) { // (written for this very model: free)
+            showGuide(sh.guide, true);
+            setStatus("🛠️ తయారీ విధానం · మళ్ళీ తెరవడానికి ఖర్చు లేదు");
+            if (byVoice) speak("తయారీ విధానం తెరిచాను Sir.", true);
+            return;
+        }
+        String model = p.workshopModel().trim();
+        String about = model.isEmpty() ? "" : "సుమారు " + Workshop.aboutMoney(model);
+        boolean old = sh.guide != null;
+        if (byVoice) {
+            waitThen("🛠️ " + (old ? "బొమ్మ మారింది: కొత్త తయారీ విధానం" : "నిజంగా ఎలా తయారు చేయాలి") + (about.isEmpty() ? "" : " (" + about + ")"), () -> makeAsk("guide", true));
+            return;
+        }
+        AlertDialog.Builder d = new AlertDialog.Builder(this).setTitle("🛠️ నిజంగా ఎలా తయారు చేయాలి")
+                .setMessage((old ? "ఇది రాశాక ఈ బొమ్మ మారింది. " : "")
+                        + "మీరు ఎంచుకున్న AI ఈ బొమ్మని నిజంగా తయారు చేయడానికి కావలసిన సామాను, పనిముట్లు, అడుగులు, సుమారు ఖర్చు, జాగ్రత్తలు తెలుగులో రాస్తుంది."
+                        + (about.isEmpty() ? "" : " ఒక్కసారికే " + about + ".") + " ధరలు అంచనా మాత్రమే.")
+                .setPositiveButton(old ? "🆕 కొత్తది రాయి" : "✍️ రాయి", (x, w) -> makeAsk("guide", false))
+                .setNegativeButton("వద్దు", null);
+        if (old) d.setNeutralButton("📄 పాతదే (ఉచితం)", (x, w) -> showGuide(sh.guide, true));
+        d.show();
+    }
+
+    /** The guide on the screen: 🔊 read aloud, 💾 into Downloads, 📤 share (each only on his tap). */
+    private void showGuide(String text, boolean saved) {
+        final String title = shown != null ? shown.title : "";
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(18), dp(8), dp(18), dp(4));
+        TextView note = Ui.text(this, "💰 ఖర్చులు సుమారు అంచనా మాత్రమే (షాపు, ఊరుని బట్టి మారతాయి)" + (saved ? " · మళ్ళీ తెరవడానికి ఖర్చు లేదు" : ""), 12.5f, Ui.MUTED);
+        box.addView(note);
+        TextView read = pill("🔊 చదివి వినిపించు", v -> speak(text.replaceAll("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}•]", " "), false));
+        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, -2);
+        rl.topMargin = dp(8);
+        rl.bottomMargin = dp(8);
+        box.addView(read, rl);
+        TextView body = Ui.text(this, text, 14.5f, Ui.TEXT);
+        body.setLineSpacing(0, 1.2f);
+        body.setTextIsSelectable(true);
+        box.addView(body);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(box);
+        new AlertDialog.Builder(this).setTitle("🛠️ " + title + " · నిజంగా ఎలా తయారు చేయాలి").setView(sv)
+                .setPositiveButton("💾 దాచు", (d, w) -> saveGuide(title, text))
+                .setNeutralButton("📤 పంచుకో", (d, w) -> {
+                    Intent s = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_SUBJECT, title + " · ఎలా తయారు చేయాలి").putExtra(Intent.EXTRA_TEXT, "🛠️ " + title + "\n\n" + text);
+                    try { startActivity(Intent.createChooser(s, "పంచుకోండి")); } catch (Exception ignored) {}
+                })
+                .setNegativeButton("మూసేయి", null).show();
+    }
+
+    private void saveGuide(String title, String text) {
+        new Thread(() -> {
+            String line;
+            try {
+                String head = "🛠️ " + title + " · నిజంగా ఎలా తయారు చేయాలి\n(Jarvis 3D వర్క్‌షాప్ · ఖర్చులు సుమారు అంచనా మాత్రమే)\n\n";
+                Coder.Made m = Coder.save(this, "Jarvis/workshop", Workshop.fileName(title, "తయారీ-విధానం.txt"), "text/plain",
+                        (head + text).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                line = "💾 " + m.where;
+            } catch (Exception x) {
+                line = "✗ దాచలేకపోయాను: " + x.getMessage();
+            }
+            final String l0 = line;
+            ui.post(() -> { if (!destroyed) setStatus(l0); });
+        }, "jarvis-workshop-guide").start();
+    }
+
+    // ================================================================ (G) 📷 the model in his room: the camera under the stage (₹0)
+
+    /** On: the phone's camera behind the see-through stage, a soft shadow under the model. Nothing is saved or sent. */
+    private String ar(boolean on) {
+        boolean has = shown != null && !shown.parts.isEmpty();
+        if (!on) {
+            if (!arOn) return null;
+            arOn = false;
+            if (cam != null) { cam.close(); cam.setVisibility(View.GONE); }
+            if (web != null) web.setBackgroundColor(0xFF07080B);
+            try { send(json("ar").put("on", false)); } catch (Exception ignored) {}
+            watchTurn(false);
+            return "📷 గది ఆపాను Sir.";
+        }
+        if (!has) return "ముందు ఒక బొమ్మ తయారు చేయనివ్వండి Sir.";
+        if (arOn) return null;
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_AR_PERM);
+            return "📷 కెమెరా అనుమతి అడుగుతున్నాను Sir.";
+        }
+        if (cam == null) {
+            CamView c = new CamView(this);
+            if (!c.hasCamera()) return "ఈ ఫోన్‌లో కెమెరా దొరకలేదు Sir.";
+            c.listener = (open, problem) -> { if (!open && problem != null && arOn && !destroyed) setStatus("📷 " + problem); };
+            cam = c;
+            rootView.addView(c, 0, new FrameLayout.LayoutParams(-1, -1));
+        }
+        arOn = true;
+        cam.setVisibility(View.VISIBLE);
+        cam.setScreenTurn(turnNow());
+        cam.open();
+        if (web != null) web.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        try { send(json("ar").put("on", true)); } catch (Exception ignored) {}
+        if (spinning) { spinning = false; try { send(json("spin").put("on", false)); } catch (Exception ignored) {} } // (a model in a room stands still)
+        watchTurn(true);
+        return "📷 బొమ్మ మీ గదిలో Sir. ఒక వేలితో తిప్పండి, రెండు వేళ్లతో చిన్నది / పెద్దది చేయండి. ఇది నేల మీద అతుక్కోదు, సైజు నిజమైనది కాదు.";
+    }
+
+    private int turnNow() {
+        try { return getWindowManager().getDefaultDisplay().getRotation(); } catch (Exception e) { return 0; }
+    }
+
+    /** (a turn from one side straight to the other is no configuration change: the display itself is watched while the room shows) */
+    private void watchTurn(boolean on) {
+        android.hardware.display.DisplayManager dm = (android.hardware.display.DisplayManager) getSystemService(DISPLAY_SERVICE);
+        if (dm == null) return;
+        if (turnL != null) { try { dm.unregisterDisplayListener(turnL); } catch (Exception ignored) {} turnL = null; }
+        if (!on || !arOn) return;
+        turnL = new android.hardware.display.DisplayManager.DisplayListener() {
+            @Override public void onDisplayAdded(int id) {}
+            @Override public void onDisplayRemoved(int id) {}
+            @Override public void onDisplayChanged(int id) { if (cam != null && arOn) cam.setScreenTurn(turnNow()); }
+        };
+        dm.registerDisplayListener(turnL, ui);
+    }
+
+    /** 📸 in the room: exactly what he sees (the room and the model) between the bars, into his gallery. Never sent anywhere. */
+    private void arPhoto() {
+        View root = rootView;
+        int w = root.getWidth(), h = root.getHeight();
+        if (w <= 0 || h <= 0) return;
+        int top = topBar == null ? 0 : topBar.getHeight(), bottom = h - (bottomBar == null ? 0 : bottomBar.getHeight());
+        if (bottom - top < h / 4) { top = 0; bottom = h; }
+        int[] at = new int[2];
+        root.getLocationInWindow(at);
+        android.graphics.Rect src = new android.graphics.Rect(at[0], at[1] + top, at[0] + w, at[1] + bottom);
+        final android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(src.width(), src.height(), android.graphics.Bitmap.Config.ARGB_8888);
+        final String title = shown != null ? shown.title : "model";
+        setStatus("📸 …");
+        try {
+            android.view.PixelCopy.request(getWindow(), src, bm, result -> {
+                if (destroyed) return;
+                if (result != android.view.PixelCopy.SUCCESS) { setStatus("✗ ఫోటో రాలేదు Sir."); return; }
+                new Thread(() -> {
+                    String line, said;
+                    try {
+                        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                        bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out);
+                        Coder.Made made = Workshop.savePicture(this, Workshop.fileName(title, "room-" + System.currentTimeMillis() % 1000000 + ".jpg"), "image/jpeg", out.toByteArray());
+                        line = "📸 గ్యాలరీలో దాచాను: " + made.where;
+                        said = "గదిలో బొమ్మ ఫోటో గ్యాలరీలో దాచాను Sir.";
+                    } catch (Exception x) {
+                        line = "✗ " + x.getMessage();
+                        said = "ఫోటో దాచలేకపోయాను Sir.";
+                    }
+                    final String l0 = line, s0 = said;
+                    ui.post(() -> { if (destroyed) return; setStatus(l0); speak(s0, true); });
+                }, "jarvis-workshop-room-photo").start();
+            }, ui);
+        } catch (Exception x) {
+            setStatus("✗ ఫోటో రాలేదు Sir.");
+        }
     }
 
     /** Opens the workshop (from ⚙️, a tool, the brain): a build to start, or the last saved one. */

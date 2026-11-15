@@ -114,6 +114,9 @@ final class WorkshopVoice implements VoiceIO.Listener, Tools.Host {
     /** He is saying something right now (the "వద్దు" wait holds on for it). */
     boolean hearing() { return voice != null && (understanding || voice.listening && !lastPartial.isEmpty()); }
 
+    /** (E) Jarvis is saying something here now (the 🎓 show waits for its line to end). */
+    boolean speaking() { return state == SPEAKING; }
+
     /** His words are being written out now (the AI ears, after he stopped talking). */
     private boolean understanding;
 

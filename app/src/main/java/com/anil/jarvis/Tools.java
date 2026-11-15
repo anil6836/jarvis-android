@@ -386,7 +386,8 @@ final class Tools {
                         + "cost = what the last build cost and this month's workshop spend against his limit; talk = while the workshop screen is open, "
                         + "his words about the model on it (change / add / remove a part, colour, size, a question about a part, pull apart, a view, "
                         + "the light, undo, one part alone, X-ray, cut / inside, hide a part, roof off, size, replay, photo, studio / miniature "
-                        + "photo, STL print file, a 3D model from a photo or a floor plan, landscape) go to the workshop as he said them. "
+                        + "photo, STL print file, a 3D model from a photo or a floor plan, landscape, the how-it-works show, how to really make it, "
+                        + "the model in his room on the camera) go to the workshop as he said them. "
                         + "Not for websites, apps, code, food, pictures or scans.",
                 schema(new String[][]{{"action", "string", "build | open_last | cost | talk"},
                         {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used. "
