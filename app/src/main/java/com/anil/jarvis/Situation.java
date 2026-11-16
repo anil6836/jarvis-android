@@ -38,6 +38,7 @@ final class Situation {
         try { sight(s); } catch (Throwable ignored) {}
         try { workshop(s); } catch (Throwable ignored) {}
         try { games(s); } catch (Throwable ignored) {}
+        try { circuits(s); } catch (Throwable ignored) {}
         return s.toString();
     }
 
@@ -58,6 +59,17 @@ final class Situation {
         s.append("- 🎮 The game studio screen is open").append(t.isEmpty() ? "" : ", showing the game '" + t + "'")
                 .append(": 'ఒక <game> గేమ్ తయారు చెయ్' -> game_studio action=build (a new game; the one on the screen stays on his shelf); ")
                 .append("'ఆడు' / 'మళ్ళీ' / 'నా గేమ్స్' are handled by the studio itself.\n");
+    }
+
+    /** ⚡ The circuit lab screen is open: its board in numbers (questions about it are answered from these). */
+    private static void circuits(StringBuilder s) {
+        String t = CircuitLabActivity.openTitle();
+        if (t == null) return;
+        String sum = CircuitLabActivity.openSummary();
+        s.append("- ⚡ The circuit lab screen is open").append(t.isEmpty() ? "" : ", showing the board '" + t + "'")
+                .append(sum == null || sum.isEmpty() ? "" : " (" + sum + "; the lab's own estimates)")
+                .append(": a question about it -> answer from these numbers; a change to it -> circuit_lab action=change with his exact words; ")
+                .append("'కొత్త సర్క్యూట్ …' -> circuit_lab action=build.\n");
     }
 
     private static String inHours(Duration d) {

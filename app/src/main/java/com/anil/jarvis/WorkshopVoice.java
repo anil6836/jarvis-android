@@ -405,6 +405,12 @@ final class WorkshopVoice implements VoiceIO.Listener, Tools.Host {
     /** He typed: the talk by voice is over. */
     void typed() { voiceFlow = false; }
 
+    /** (⚡ the circuit lab) Words it took but, after all, are not about its board: Jarvis's brain answers them, as if never taken. */
+    void toBrain(String text) {
+        if (text == null || text.trim().isEmpty()) return;
+        main.post(() -> { if (!stopped) think(text.trim()); });
+    }
+
     private void state(int s) {
         state = s;
         o.mic(s);

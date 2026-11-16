@@ -389,7 +389,7 @@ final class Tools {
                         + "photo, STL print file, a 3D model from a photo or a floor plan, landscape, the how-it-works show, how to really make it, "
                         + "the model in his room on the camera, a colour or material for a part, the tape, the weight, the 2D drawing, the show's video, "
                         + "a second saved model beside it, hand signs in the air, the model at its real size on his floor) go to the workshop as he said them. "
-                        + "Not for websites, apps, code, food, pictures, scans or games (games: game_studio).",
+                        + "Not for websites, apps, code, food, pictures, scans, games (game_studio) or electric circuits (circuit_lab).",
                 schema(new String[][]{{"action", "string", "build | open_last | cost | talk"},
                         {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used. "
                                 + "talk: his exact words, unchanged"}},
@@ -403,6 +403,19 @@ final class Tools {
                 schema(new String[][]{{"action", "string", "build | play | shelf | open_last | cost"},
                         {"what", "string", "build: the game in English with every detail he gave (how it plays, controls, look); keep Telugu names he used. "
                                 + "play: words of the saved game's name (or empty)"}},
+                        "action")));
+        DEFS.add(new Def("circuit_lab",
+                "⚡ The circuit lab (phone only): a board where electric circuits are drawn and simulated by Jarvis's own code (current, bulbs, "
+                        + "fuses / MCB, inverter + battery backup hours, solar, the monthly bill, challenges, lessons). build = the workshop's AI draws "
+                        + "the circuit he describes (house wiring with an inverter, solar + battery, a bike's 12 V lights, a staircase two-way switch, a "
+                        + "doorbell, LED + resistor...) as a board on the screen; change = his words about the board that is open (add / remove / "
+                        + "change a part, on / off); open = the lab with the board as he left it (free; building by hand, the numbers, the home bill and "
+                        + "the challenges never use the AI); shelf = his saved boards; tab = home (his home's appliances and bill) / calc (backup, "
+                        + "inverter, solar, charge-time numbers) / games (challenges) / learn (ready boards, V = I x R...); cost = this month's spend "
+                        + "(shared with the workshop's limit). Learning only: never instructions to open or change real mains wiring.",
+                schema(new String[][]{{"action", "string", "build | change | open | shelf | tab | cost"},
+                        {"what", "string", "build: the circuit in English with every detail he gave (parts, how many, ratings, how they connect); keep "
+                                + "Telugu names he used. change: his exact words. tab: home | calc | games | learn | board"}},
                         "action")));
         DEFS.add(new Def("publish_website", "Put the last website online (GitHub Pages in his account) and give the link.", schema(new String[][]{})));
         DEFS.add(new Def("write_code",
@@ -1148,6 +1161,7 @@ final class Tools {
             case "make_website": return "వెబ్‌సైట్ తయారు చేస్తున్నాను…";
             case "workshop": return "వర్క్‌షాప్ తెరుస్తున్నాను…";
             case "game_studio": return "గేమ్ స్టూడియో తెరుస్తున్నాను…";
+            case "circuit_lab": return "సర్క్యూట్ ల్యాబ్ తెరుస్తున్నాను…";
             case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
             case "write_code": return "కోడ్ రాస్తున్నాను…";
             case "make_app": return "యాప్ తయారు చేస్తున్నాను…";
@@ -1368,6 +1382,7 @@ final class Tools {
                 case "publish_website": return publishWebsite();
                 case "workshop": return workshop(a.optString("action", "build"), a.optString("what", ""));
                 case "game_studio": return gameStudio(a.optString("action", "build"), a.optString("what", ""));
+                case "circuit_lab": return circuitLab(a.optString("action", "open"), a.optString("what", ""));
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app": return makeApp(a.optString("name", ""), a.optString("description", ""), a.optString("change", ""));
                 case "bank_balance": return bankBalance();
@@ -1704,6 +1719,49 @@ final class Tools {
                 .putExtra(GameStudioActivity.EXTRA_HEARD, heard == null ? what.trim() : heard).putExtra(GameStudioActivity.EXTRA_SAID, true).addFlags(flags));
         return ok().put("next", "Say only: 'ఆట తయారు చేస్తున్నాను Sir, సుమారు " + GameStudio.aboutMoney(e.model)
                 + " అవుతుంది.' The studio shows each part and says the cost when it is done.").toString();
+    }
+
+    /**
+     * ⚡ The circuit lab: phone only; for a new board the same checks as the workshop (his AI chosen, this month's shared limit)
+     * so the reason is said at once; everything else opens the lab (free).
+     */
+    private String circuitLab(String action, String what) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "The circuit lab is on his phone only (not the home tablet or the car box). Say so in one line.");
+        Prefs p = new Prefs(c);
+        int flags = Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT;
+        if ("cost".equals(action)) return ok().put("said", CircuitLab.costSaid(c, p)).put("next", "Say this in Telugu, briefly.").toString();
+        if ("shelf".equals(action)) {
+            if (CircuitLab.files(c).isEmpty()) {
+                startIn(new Intent(c, CircuitLabActivity.class).addFlags(flags));
+                return err("nothing_saved", "No board has been saved yet; the lab is open. Say so in one line and that 💾 దాచు saves the board on the screen.");
+            }
+            startIn(new Intent(c, CircuitLabActivity.class).putExtra(CircuitLabActivity.EXTRA_SHELF, true).addFlags(flags));
+            return ok().put("next", "Say in one short line that his saved circuits are on the screen (opening them costs nothing).").toString();
+        }
+        if ("tab".equals(action)) {
+            String t = what.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!java.util.Arrays.asList("home", "calc", "games", "learn", "board").contains(t)) t = "board";
+            startIn(new Intent(c, CircuitLabActivity.class).putExtra(CircuitLabActivity.EXTRA_TAB, t).addFlags(flags));
+            return ok().put("next", "Say in one short line what is on the screen now (free, no AI).").toString();
+        }
+        if ("change".equals(action) && !what.trim().isEmpty()) {
+            startIn(new Intent(c, CircuitLabActivity.class).putExtra(CircuitLabActivity.EXTRA_CHANGE, heard != null && !heard.trim().isEmpty() ? heard.trim() : what.trim()).addFlags(flags));
+            return ok().put("next", "Say only: 'సరే Sir.' The lab does small changes itself for free and says the cost first for anything the AI must draw.").toString();
+        }
+        if (!"build".equals(action) || what.trim().isEmpty()) {
+            startIn(new Intent(c, CircuitLabActivity.class).addFlags(flags));
+            return ok().put("next", "Say in one short line that the circuit lab is open (building by hand, the numbers and the challenges are free).").toString();
+        }
+        Workshop.Engine e;
+        try { e = CircuitLab.engine(p); }
+        catch (Workshop.Problem x) { return err("no_ai", x.getMessage() + " Say exactly this to him. Do not pick or suggest a different AI yourself."); }
+        String over = CircuitLab.overLimit(c, p);
+        if (over != null) return err("limit_reached", over + " Say exactly this to him.");
+        startIn(new Intent(c, CircuitLabActivity.class).putExtra(CircuitLabActivity.EXTRA_WHAT, what.trim())
+                .putExtra(CircuitLabActivity.EXTRA_HEARD, heard == null ? what.trim() : heard).putExtra(CircuitLabActivity.EXTRA_SAID, true).addFlags(flags));
+        return ok().put("next", "Say only: 'సర్క్యూట్ గీస్తున్నాను Sir, సుమారు " + CircuitLab.aboutMoney(e.model, 0, false)
+                + " అవుతుంది.' The lab shows it and says the cost when it is done.").toString();
     }
 
     /** When a job last opened a screen (an app, a page, the dialer): the panel then isn't "left" by him. */

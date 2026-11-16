@@ -502,7 +502,7 @@ public class SettingsActivity extends Activity {
         note("\"Jarvis, ఒక టేబుల్ ఫ్యాన్ తయారు చెయ్\" అంటే మీరు ఇక్కడ ఎంచుకున్న AI ఆ వస్తువుని డిజైన్ చేసి, భాగాలు ఒక్కొక్కటిగా 3D లో కట్టి చూపిస్తుంది. "
                 + "Fable 5.2 తో ఒక బొమ్మకి మామూలుగా ₹60–110 (ఎప్పటికీ ₹235 దాటదు); Opus 5.5 తో సగం. AI రాసిన కోడ్ ఇంటర్నెట్ లేని మూసిన గదిలో నడుస్తుంది; "
                 + "మీ keys దానికి కనిపించవు. దాచిన బొమ్మలు మళ్ళీ తెరవడానికి ఖర్చు లేదు. ఫోన్‌లో మాత్రమే.");
-        workshopModel = field("🛠️ బొమ్మలు, 🎮 ఆటలు తయారు చేసే AI (ఖాళీ = ఇంకా ఎంచుకోలేదు)", prefs.workshopModel(), false);
+        workshopModel = field("🛠️ బొమ్మలు, 🎮 ఆటలు, ⚡ సర్క్యూట్లు తయారు చేసే AI (ఖాళీ = ఇంకా ఎంచుకోలేదు)", prefs.workshopModel(), false);
         LinearLayout wsPresets = new LinearLayout(this);
         TextView wsFable = Ui.text(this, "  Claude Fable 5.2  ", 14, Ui.CYAN);
         wsFable.setPadding(0, Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 8));
@@ -590,6 +590,13 @@ public class SettingsActivity extends Activity {
         gsOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         gsOpen.setOnClickListener(v -> { autosave(); GameStudioActivity.open(this, null, null, false); });
         box.addView(gsOpen);
+        // ⚡ the circuit lab draws boards with this same AI, in this same monthly limit (16 Nov)
+        note("⚡ సర్క్యూట్ ల్యాబ్ కూడా మాటలు / ఫోటో నుంచి బోర్డ్ గీయడానికి ఇదే AI వాడుతుంది (Fable 5.2 లో ఒక కొత్త బోర్డ్ సుమారు ₹3–15, మార్పు / ఫోటో ₹4–20; చౌక మోడల్ అయితే తక్కువ; ఇదే నెల హద్దులో; ఖర్చు ముందే చూపిస్తుంది). "
+                + "చేతితో కట్టడం, కరెంట్ చూడటం, బ్యాకప్ / బిల్ లెక్కలు, ఛాలెంజ్‌లు, \"బల్బ్ 2 ఆపు\" లాంటి మాటలు: AI లేకుండా, ₹0.");
+        TextView clOpen = Ui.text(this, "⚡ సర్క్యూట్ ల్యాబ్ తెరువు →", 15, accent);
+        clOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        clOpen.setOnClickListener(v -> { autosave(); CircuitLabActivity.open(this, null, null, false); });
+        box.addView(clOpen);
         }
 
         // ---- voice

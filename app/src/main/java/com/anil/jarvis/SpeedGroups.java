@@ -129,6 +129,10 @@ final class SpeedGroups {
         group("games", "the game studio: make a small game to play in Jarvis, play a saved game, his games shelf, what a game cost",
                 new String[]{"game_studio"},
                 new String[]{"గేమ్", "గేమ్స్", "ఆట", "ఆటలు", "ఆడు", "ఆడదాం", "game", "games", "play"});
+        group("circuits", "the circuit lab: draw and simulate electric circuits (house wiring, inverter, battery, solar, bike 12 V), the home bill, saved boards",
+                new String[]{"circuit_lab"},
+                new String[]{"సర్క్యూట్", "ఇన్వర్టర్", "బ్యాటరీ బ్యాకప్", "వైరింగ్", "ఫ్యూజ్", "ఎంసీబీ", "సోలార్", "కరెంట్ బిల్", "బల్బ్", "circuit", "inverter",
+                        "wiring", "fuse", "mcb", "solar", "electric", "ఎలక్ట్రిక్"});
         group("coding", "making websites and apps, writing code, API usage",
                 new String[]{"make_website", "publish_website", "write_code", "make_app", "api_usage"},
                 new String[]{"కోడ్", "వెబ్‌సైట్", "వెబ్ సైట్", "యాప్ తయారు", "ప్రోగ్రామ్", "code", "website", "app", "program", "html", "github", "api"});

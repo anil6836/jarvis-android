@@ -481,6 +481,17 @@
             android:windowSoftInputMode="adjustResize|stateHidden"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
 
+        <!-- ⚡ The circuit lab: the board page (our own simulator) in a sealed WebView; the workshop's AI only turns his words
+             or a photo into board data. Kept across rotation (the board stays as it is). -->
+        <activity
+            android:name=".CircuitLabActivity"
+            android:exported="false"
+            android:label="Jarvis సర్క్యూట్ ల్యాబ్"
+            android:launchMode="singleTop"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+
         <activity
             android:name=".LookChooserActivity"
             android:exported="false"

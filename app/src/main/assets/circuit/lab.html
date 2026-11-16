@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="te">
+<head>
+<meta charset="utf-8">
+<!-- ⚡ Jarvis's circuit lab. Only the lab's own scripts run here; boards from the AI are data, shown with textContent only. No network. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'none'; media-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+  :root { --bg: #07080b; --panel: #0e141c; --card: #121a24; --line: #233142; --text: #dceef5; --muted: #88a5b3; --faint: #557584;
+          --cyan: #74e4ff; --cyan2: #1e6a80; --gold: #f2b24c; --green: #6be3a4; --red: #ff6b6b; --amber: #ffc861; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: "Noto Sans Telugu", system-ui, "Noto Color Emoji", sans-serif;
+               font-size: 15px; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  #tabs { display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; background: var(--panel); border-bottom: 1px solid var(--line); scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.05); font-size: 14px; white-space: nowrap; }
+  .tab.on { background: var(--cyan); color: #04131a; border-color: var(--cyan); font-weight: 600; }
+  main { position: absolute; top: 47px; left: 0; right: 0; bottom: 0; }
+  section { position: absolute; inset: 0; display: none; }
+  section.on { display: block; }
+  section.scroll { overflow-y: auto; padding: 10px 12px 90px; -webkit-overflow-scrolling: touch; user-select: text; -webkit-user-select: text; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #strip { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none; }
+  .chip { pointer-events: auto; background: rgba(14,20,28,.86); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; font-size: 13px; }
+  .chip.warn { border-color: var(--amber); color: var(--amber); }
+  .chip.bad { border-color: var(--red); color: var(--red); }
+  #goal { position: absolute; left: 8px; right: 8px; top: 44px; background: rgba(18,26,36,.94); border: 1px solid var(--cyan2); border-radius: 14px; padding: 9px 12px;
+          font-size: 14px; display: none; line-height: 1.45; }
+  #goal b { color: var(--cyan); }
+  #goal .x { float: right; padding: 0 0 4px 12px; color: var(--muted); }
+  #tools { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 6px; padding: 8px; overflow-x: auto; background: linear-gradient(to top, rgba(7,8,11,.95), rgba(7,8,11,0)); scrollbar-width: none; }
+  #tools::-webkit-scrollbar { display: none; }
+  .tool { flex: none; background: rgba(18,26,36,.95); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; font-size: 14px; white-space: nowrap; }
+  .tool.on { border-color: var(--cyan); color: var(--cyan); }
+  .tool.main { background: var(--cyan); color: #04131a; border-color: var(--cyan); font-weight: 600; }
+  #hint { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); background: rgba(18,26,36,.95); border: 1px solid var(--cyan2); border-radius: 12px;
+          padding: 7px 12px; font-size: 13.5px; display: none; max-width: 92%; text-align: center; }
+  #sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 72%; background: var(--panel); border-top: 1px solid var(--cyan2); border-radius: 18px 18px 0 0;
+           padding: 8px 14px 18px; overflow-y: auto; transform: translateY(105%); transition: transform .18s ease-out; z-index: 5; user-select: text; -webkit-user-select: text; }
+  #sheet.on { transform: none; }
+  #sheet .grip { width: 44px; height: 5px; border-radius: 3px; background: var(--line); margin: 2px auto 8px; }
+  h2 { font-size: 18px; margin: 4px 0 8px; }
+  h3 { font-size: 15.5px; margin: 14px 0 6px; color: var(--cyan); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 8px 0; }
+  .muted { color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+  .big { font-size: 22px; font-weight: 700; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+  .row .k { flex: 1; min-width: 120px; }
+  .btn { background: rgba(255,255,255,.07); border: 1px solid var(--line); color: var(--text); border-radius: 11px; padding: 8px 12px; font: inherit; font-size: 14px; }
+  .btn.main { background: var(--cyan); color: #04131a; border-color: var(--cyan); font-weight: 600; }
+  .btn.warn { background: rgba(242,178,76,.15); border-color: var(--gold); color: var(--gold); }
+  .btn.small { padding: 5px 10px; min-width: 34px; }
+  .val { min-width: 74px; text-align: center; font-weight: 600; }
+  input, select { background: #0a1018; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 7px 9px; font: inherit; font-size: 14.5px; }
+  input[type=number] { width: 92px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .item { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 6px; text-align: center; font-size: 13px; }
+  .item .e { font-size: 26px; display: block; }
+  .bar { height: 9px; background: #1a2532; border-radius: 6px; overflow: hidden; margin: 4px 0; }
+  .bar > i { display: block; height: 100%; background: var(--cyan); border-radius: 6px; }
+  .bar.gold > i { background: var(--gold); } .bar.red > i { background: var(--red); } .bar.green > i { background: var(--green); }
+  .list > div { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; line-height: 1.45; }
+  .red { color: var(--red); } .amber { color: var(--amber); } .green { color: var(--green); } .cyan { color: var(--cyan); } .gold { color: var(--gold); }
+  .stars { color: var(--gold); letter-spacing: 2px; }
+  #toast { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); background: rgba(18,26,36,.97); border: 1px solid var(--gold); color: var(--text);
+           border-radius: 12px; padding: 9px 14px; font-size: 14px; max-width: 92%; display: none; z-index: 9; text-align: center; line-height: 1.45; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  td, th { padding: 5px 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  .num { text-align: right; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="tabs">
+  <span class="tab on" data-tab="board">⚡ బోర్డ్</span>
+  <span class="tab" data-tab="calc">🔋 లెక్కలు</span>
+  <span class="tab" data-tab="home">🏠 ఇల్లు</span>
+  <span class="tab" data-tab="games">🧩 ఛాలెంజ్</span>
+  <span class="tab" data-tab="learn">📘 నేర్చుకో</span>
+</div>
+<main>
+  <section id="board" class="on">
+    <canvas id="cv"></canvas>
+    <div id="strip"></div>
+    <div id="goal"></div>
+    <div id="hint"></div>
+    <div id="tools"></div>
+  </section>
+  <section id="calc" class="scroll"></section>
+  <section id="home" class="scroll"></section>
+  <section id="games" class="scroll"></section>
+  <section id="learn" class="scroll"></section>
+  <div id="sheet"></div>
+</main>
+<div id="toast"></div>
+<script src="sim.js"></script>
+<script src="labkit.js"></script>
+<script src="lab.js"></script>
+</body>
+</html>
