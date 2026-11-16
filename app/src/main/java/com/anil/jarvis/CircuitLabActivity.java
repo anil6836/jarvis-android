@@ -63,7 +63,10 @@ import java.util.concurrent.CancellationException;
  * shares himself. Phone only.
  */
 public class CircuitLabActivity extends Activity {
-    static final String EXTRA_WHAT = "what", EXTRA_HEARD = "heard", EXTRA_SAID = "said", EXTRA_CHANGE = "change", EXTRA_SHELF = "shelf", EXTRA_TAB = "tab";
+    static final String EXTRA_WHAT = "what", EXTRA_HEARD = "heard", EXTRA_SAID = "said", EXTRA_CHANGE = "change", EXTRA_SHELF = "shelf", EXTRA_TAB = "tab",
+            EXTRA_SCAN_TITLE = "scan_title", EXTRA_SCAN_PARTS = "scan_parts";
+    /** (G2) The camera's photo of a scanned board waits here (the app's private cache) only until the lab reads it, then it is deleted. */
+    private static final String SCAN_PHOTO = "circuit_scan.jpg";
     /** The lab is in front: "Jarvis" opens no panel over it (its own ears hear him). */
     static volatile boolean front;
     private static volatile String openTitle; // (read through openTitle())
@@ -73,7 +76,9 @@ public class CircuitLabActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final String PATH = "/assets/circuit/";
     private static final String PAGE = "https://" + HOST + PATH + "lab.html";
-    private static final Set<String> FILES = new HashSet<>(Arrays.asList("lab.html", "lab.js", "sim.js", "labkit.js"));
+    private static final Set<String> FILES = new HashSet<>(Arrays.asList("lab.html", "lab.js", "sim.js", "labkit.js", "view3d.js"));
+    /** 🧊 The 3D view uses the workshop's bundled three.js (one copy in the app), served here under the lab's own path. */
+    private static final Set<String> SHARED = new HashSet<>(Arrays.asList("three.module.min.js", "OrbitControls.js"));
     private static final int REQ_CAM = 71, REQ_GAL = 72, REQ_CAM_PERM = 73;
     /** Ready ideas for the AI: the chip, and the fuller request it puts in the box (he can change it before ⚡). */
     private static final String[][] IDEAS = {
@@ -126,6 +131,8 @@ public class CircuitLabActivity extends Activity {
         final Workshop.Engine engine;
         /** The board on the screen for a change (null = a new board); the photo (base64, never kept). */
         final String current;
+        /** (G2) a message of its own (a camera scan), else made from the words. */
+        String custom;
         volatile String photo;
         final boolean withPhoto;
         volatile boolean stopped;
@@ -152,7 +159,7 @@ public class CircuitLabActivity extends Activity {
         ear = new WorkshopVoice(owner(), p);
         Intent i = getIntent();
         // brought back after Android closed it, or opened again from recent apps: never ask (and pay) a second time
-        if (i != null && (b != null || (i.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0)) { i.removeExtra(EXTRA_WHAT); i.removeExtra(EXTRA_CHANGE); }
+        if (i != null && (b != null || (i.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0)) { i.removeExtra(EXTRA_WHAT); i.removeExtra(EXTRA_CHANGE); i.removeExtra(EXTRA_SCAN_PARTS); }
         handle(i);
     }
 
@@ -178,6 +185,14 @@ public class CircuitLabActivity extends Activity {
             return;
         }
         if (change != null && !change.trim().isEmpty()) { toPage(change.trim(), front && ear != null && ear.voiceFlow, true); return; } // (from Jarvis's brain: never handed back to it)
+        String scanParts = i.getStringExtra(EXTRA_SCAN_PARTS);
+        if (scanParts != null) {
+            String scanTitle = i.getStringExtra(EXTRA_SCAN_TITLE);
+            i.removeExtra(EXTRA_SCAN_PARTS);
+            i.removeExtra(EXTRA_SCAN_TITLE);
+            fromScanAsk(scanTitle == null ? "" : scanTitle, scanParts);
+            return;
+        }
         if (tab != null && !tab.isEmpty()) tab(tab);
         if (shelf) ui.postDelayed(this::shelf, 350);
     }
@@ -532,9 +547,9 @@ public class CircuitLabActivity extends Activity {
         String path = u == null ? null : u.getPath();
         if (u != null && "https".equals(u.getScheme()) && HOST.equals(u.getHost()) && path != null && path.startsWith(PATH)) {
             String name = path.substring(PATH.length());
-            if (FILES.contains(name)) {
+            if (FILES.contains(name) || SHARED.contains(name)) {
                 try {
-                    InputStream in = getAssets().open("circuit/" + name);
+                    InputStream in = getAssets().open((SHARED.contains(name) ? "workshop/" : "circuit/") + name);
                     String mime = name.endsWith(".html") ? "text/html" : "text/javascript";
                     return new WebResourceResponse(mime, "utf-8", 200, "OK", h, in);
                 } catch (Exception ignored) {}
@@ -701,6 +716,7 @@ public class CircuitLabActivity extends Activity {
         String over = CircuitLab.overLimit(this, p);
         if (over != null) { setStatus(over); speak(over, false); return; }
         Job j = new Job(what, heard, e, current, photo);
+        j.custom = nextCustom;
         job = j;
         showChip();
         refresh();
@@ -710,6 +726,34 @@ public class CircuitLabActivity extends Activity {
         ticker(j);
         new Thread(() -> run(j), "jarvis-circuit").start();
     }
+
+    /** ⚡ (G2) A camera scan: asked first (an approximate board, the cost), then the AI draws it; the photo is read once and deleted. */
+    private void fromScanAsk(String title, String parts) {
+        File f = new File(getCacheDir(), SCAN_PHOTO);
+        String b64 = null;
+        try {
+            if (f.isFile() && f.length() > 100 && f.length() < 8_000_000) {
+                byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
+                if (Workshop.jpegOk(b)) b64 = android.util.Base64.encodeToString(b, android.util.Base64.NO_WRAP);
+            }
+        } catch (Exception ignored) {}
+        //noinspection ResultOfMethodCallIgnored
+        f.delete(); // (his photo is not kept)
+        final String photo = b64;
+        final String t = title.isEmpty() ? "కెమెరా స్కాన్" : Workshop.cap(title, 40);
+        new AlertDialog.Builder(this).setTitle("⚡ \"" + t + "\" బోర్డ్‌గా గీయాలా?")
+                .setMessage("కెమెరా చదివిన భాగాలతో" + (photo != null ? ", ఫోటోతో" : "") + " AI ఒక అంచనా బోర్డ్ గీస్తుంది (" + estimate(false, photo != null)
+                        + "). ఫోటో నుంచి అన్ని కనెక్షన్లు తెలియవు: అసలు బోర్డ్‌తో సరిచూసుకోవాలి. చిప్స్ (IC) లాంటివి ల్యాబ్‌లో ఉండవు. ఫోటో ఎక్కడా దాచను.")
+                .setPositiveButton("⚡ గీయి", (d, w) -> askCustom("📷 " + t, CircuitLab.scanMessage(t, parts), photo))
+                .setNegativeButton("వద్దు", (d, w) -> setStatus("సరే Sir, గీయలేదు · ఖర్చు ₹0")).show();
+    }
+
+    private void askCustom(String what, String message, String photo) {
+        nextCustom = message; // (taken by the job that ask() makes, before its thread starts)
+        ask(what, null, photo, null, false);
+        nextCustom = null;
+    }
+    private String nextCustom;
 
     private void ticker(Job j) {
         ui.postDelayed(new Runnable() {
@@ -727,7 +771,7 @@ public class CircuitLabActivity extends Activity {
         StringBuilder text = new StringBuilder();
         Workshop.Bill bill = new Workshop.Bill();
         String failure = null;
-        String msg = j.photo != null ? CircuitLab.photoMessage(j.heard != null ? j.heard : "")
+        String msg = j.custom != null ? j.custom : j.photo != null ? CircuitLab.photoMessage(j.heard != null ? j.heard : "")
                 : j.current != null ? CircuitLab.editMessage(j.current, j.what) : CircuitLab.buildMessage(j.what, j.heard);
         try {
             Workshop.stream(j.engine, CircuitLab.SYSTEM, msg, j.photo, CircuitLab.MAX_OUT, s -> { if (text.length() < 200_000) text.append(s); }, bill);
@@ -1136,6 +1180,8 @@ public class CircuitLabActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        //noinspection ResultOfMethodCallIgnored
+        new File(getCacheDir(), SCAN_PHOTO).delete(); // (a scan photo never read stays nowhere)
         openTitle = null;
         openSummary = "";
         if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
@@ -1150,6 +1196,20 @@ public class CircuitLabActivity extends Activity {
             try { web.destroy(); } catch (Throwable ignored) {}
         }
         super.onDestroy();
+    }
+
+    /** ⚡ (G2) From the Jarvis camera: a scanned board's title, parts and photo (kept in the private cache only until the lab reads it). */
+    static void fromScan(Context c, String title, String parts, String jpegB64) {
+        File f = new File(c.getCacheDir(), SCAN_PHOTO);
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
+        if (jpegB64 != null && !jpegB64.isEmpty()) {
+            try (FileOutputStream o = new FileOutputStream(f)) { o.write(android.util.Base64.decode(jpegB64, android.util.Base64.DEFAULT)); } catch (Exception ignored) {}
+        }
+        Intent i = new Intent(c, CircuitLabActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                .putExtra(EXTRA_SCAN_TITLE, title == null ? "" : title).putExtra(EXTRA_SCAN_PARTS, parts == null ? "" : parts);
+        if (!(c instanceof Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        c.startActivity(i);
     }
 
     /** Opens the lab (from ⚙️, Features, a tool): a circuit to make, a change in words, the shelf, a tab; or just the board as he left it. */

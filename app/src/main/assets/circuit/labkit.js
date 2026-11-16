@@ -15,6 +15,11 @@
     switch2: { w: 2, h: 2, t: { c: [0, 1], 1: [2, 0.5], 2: [2, 1.5] } },
     inverter: { w: 3, h: 3, t: { 'in-l': [0, 0.6], 'in-n': [0, 1.2], 'b+': [0, 1.9], 'b-': [0, 2.5], 'out-l': [3, 1], 'out-n': [3, 2] } },
     charger: { w: 2, h: 2, t: { 'in-l': [0, 0.6], 'in-n': [0, 1.4], '+': [2, 0.6], '-': [2, 1.4] } },
+    // G2
+    npn: { w: 2, h: 2, t: { b: [0, 1], c: [2, 0.4], e: [2, 1.6] } },
+    pot: { w: 2, h: 2, t: { a: [0, 1.4], w: [1, 0], b: [2, 1.4] } },
+    regulator: { w: 2, h: 2, t: { in: [0, 1], gnd: [1, 2], out: [2, 1] } },
+    relay: { w: 3, h: 2, t: { c1: [0, 0.6], c2: [0, 1.4], no: [3, 0.4], com: [3, 1], nc: [3, 1.6] } },
   };
   function geom(type) { return GEOM[type] || GEOM._2; }
 
@@ -34,10 +39,12 @@
     bulb: 'bulb', ledbulb: 'bulb', tube: 'bulb', smallbulb: 'bulb', dclamp: 'bulb', headlight: 'headlight',
     fan: 'fan', tv: 'tv', fridge: 'fridge', mixie: 'mixie', ac: 'ac', iron: 'iron', geyser: 'geyser', motor: 'motor', dcmotor: 'motor',
     switch: 'switch', switch2: 'switch', fuse: 'fuse', mcb: 'mcb', battery: 'battery', cell: 'battery', inverter: 'inverter',
-    solar: 'solar', led: 'led', resistor: 'resistor', horn: 'horn', buzzer: 'buzzer', charger: 'charger', phone: 'phone', mains: 'mains' };
+    solar: 'solar', led: 'led', resistor: 'resistor', horn: 'horn', buzzer: 'buzzer', charger: 'charger', phone: 'phone', mains: 'mains',
+    capacitor: 'capacitor', diode: 'diode', npn: 'transistor', pot: 'pot', ldr: 'ldr', relay: 'relay', regulator: 'regulator', pushbtn: 'button' };
   const FAMILY_TE = { bulb: 'బల్బ్', headlight: 'హెడ్‌లైట్', fan: 'ఫ్యాన్', tv: 'TV', fridge: 'ఫ్రిజ్', mixie: 'మిక్సీ', ac: 'AC', iron: 'ఐరన్',
     geyser: 'గీజర్', motor: 'మోటార్', switch: 'స్విచ్', fuse: 'ఫ్యూజ్', mcb: 'MCB', battery: 'బ్యాటరీ', inverter: 'ఇన్వర్టర్', solar: 'సోలార్',
-    led: 'LED', resistor: 'రెసిస్టర్', horn: 'హారన్', buzzer: 'బజర్', charger: 'ఛార్జర్', phone: 'ఫోన్', mains: 'ఇంటి కరెంట్' };
+    led: 'LED', resistor: 'రెసిస్టర్', horn: 'హారన్', buzzer: 'బజర్', charger: 'ఛార్జర్', phone: 'ఫోన్', mains: 'ఇంటి కరెంట్',
+    capacitor: 'కెపాసిటర్', diode: 'డయోడ్', transistor: 'ట్రాన్సిస్టర్', pot: 'నాబ్', ldr: 'LDR', relay: 'రిలే', regulator: 'రెగ్యులేటర్', button: 'బటన్' };
 
   /** Every part's spoken name: its family and its number on this board ("బల్బ్ 2"), in board order. */
   function names(board) {
@@ -102,6 +109,30 @@
     { id: 'ohm', te: '📏 V = I × R', note: 'ఒకే బ్యాటరీకి 470Ω, 1000Ω రెసిస్టర్లు. Ω ఎక్కువైతే కరెంట్ తక్కువ: 9V ÷ 470Ω ≈ 19 mA, 9V ÷ 1000Ω ≈ 9 mA. 🔌 మీటర్ తో కొలిచి చూడండి.',
       board: () => ({ parts: [part('bat1', 'cell', 0, 2, { v: 9 }), part('res1', 'resistor', 5, 0, { ohm: 470 }), part('res2', 'resistor', 5, 4, { ohm: 1000 })],
         wires: [W('bat1.+', 'res1.a'), W('bat1.+', 'res2.a'), W('res1.b', 'bat1.-'), W('res2.b', 'bat1.-')] }) },
+    // G2 (16 Nov): electronics
+    { id: 'night-light', te: '🌙 చీకటి పడితే లైట్', note: 'LDR మీద వెలుతురు ఉంటే ట్రాన్సిస్టర్ బేస్‌కి కరెంట్ రాదు, LED ఆఫ్. LDR కార్డ్‌లో వెలుతురు తగ్గించండి (లేదా "రాత్రి అయింది" అనండి): ట్రాన్సిస్టర్ ఆన్, LED వెలుగుతుంది. వీధి లైట్లు ఇలాగే.',
+      board: () => ({ parts: [part('bat1', 'cell', 0, 3, { v: 9 }), part('res1', 'resistor', 4, 0, { ohm: 10000 }), part('ldr1', 'ldr', 4, 6, { light: 1 }, { rot: 1 }),
+        part('npn1', 'npn', 8, 3), part('res2', 'resistor', 12, 0, { ohm: 470 }), part('led1', 'led', 12, 3, { color: 'white' }, { rot: 1 })],
+        wires: [W('bat1.+', 'res1.a'), W('res1.b', 'npn1.b'), W('npn1.b', 'ldr1.a'), W('ldr1.b', 'bat1.-'), W('npn1.e', 'bat1.-'),
+          W('bat1.+', 'res2.a'), W('res2.b', 'led1.+'), W('led1.-', 'npn1.c')] }) },
+    { id: 'led-fade', te: '⏳ నిదానంగా ఆరిపోయే LED', note: 'స్విచ్ ఆన్: కెపాసిటర్ నిండుతుంది. స్విచ్ ఆఫ్ చేసి చూడండి: కెపాసిటర్ దాచుకున్న కరెంట్‌తో LED కొన్ని సెకన్లు వెలిగి, నిదానంగా ఆరిపోతుంది. µF పెంచితే ఇంకా ఎక్కువ సేపు.',
+      board: () => ({ parts: [part('bat1', 'cell', 0, 2, { v: 9 }), part('swi1', 'switch', 4, 0, { on: true }), part('cap1', 'capacitor', 8, 3, { uf: 2200, v: 16 }, { rot: 1 }),
+        part('res1', 'resistor', 11, 0, { ohm: 1000 }), part('led1', 'led', 14, 3, { color: 'blue' }, { rot: 1 })],
+        wires: [W('bat1.+', 'swi1.a'), W('swi1.b', 'cap1.+'), W('cap1.-', 'bat1.-'), W('swi1.b', 'res1.a'), W('res1.b', 'led1.+'), W('led1.-', 'bat1.-')] }) },
+    { id: 'relay-bulb', te: '🧲 రిలేతో 230V బల్బ్', note: 'ఎడమ వైపు 12V చిన్న కరెంట్ (స్విచ్ → రిలే కాయిల్), కుడి వైపు 230V బల్బ్. స్విచ్ ఆన్ చేస్తే కాయిల్ అయస్కాంతం COM ని NO కి కలుపుతుంది, బల్బ్ వెలుగుతుంది. రెండు వైపులా ఎప్పుడూ కలవవు. కాయిల్‌కి అడ్డంగా డయోడ్ ఆఫ్ చేసినప్పుడు వచ్చే దెబ్బ నుంచి కాపాడుతుంది.',
+      board: () => ({ parts: [part('bat1', 'battery', 0, 2, { v: 12, ah: 7 }), part('swi1', 'switch', 4, 0, { on: false }), part('dio1', 'diode', 4, 4, { }, { rot: 3 }),
+        part('rel1', 'relay', 8, 2, { v: 12 }), part('mai1', 'mains', 17, 6), part('bul1', 'ledbulb', 14, 0)],
+        wires: [W('bat1.+', 'swi1.a'), W('swi1.b', 'rel1.c1'), W('rel1.c2', 'bat1.-'), W('dio1.-', 'rel1.c1'), W('dio1.+', 'rel1.c2'),
+          W('mai1.l', 'rel1.com'), W('rel1.no', 'bul1.a'), W('bul1.b', 'mai1.n')] }) },
+    { id: 'usb-5v', te: '🔌 12V నుంచి 5V USB', note: 'బండి / ఇన్వర్టర్ బ్యాటరీ 12V; ఫోన్‌కి 5V చాలు. 7805 రెగ్యులేటర్ ఎప్పుడూ 5V ఇస్తుంది; మిగతా 7V వేడిగా పోతుంది (దాని కార్డ్‌లో "వేడి" చూడండి). ఫోన్ W పెంచి చూడండి: 1.5 A దాటితే అది కాలిపోతుంది.',
+      board: () => ({ parts: [part('bat1', 'battery', 0, 2, { v: 12, ah: 40 }), part('fus1', 'fuse', 4, 0, { amp: 3 }), part('reg1', 'regulator', 8, 2, { v: 5 }), part('pho1', 'phone', 12, 2, { w: 5, v: 5 })],
+        wires: [W('bat1.+', 'fus1.a'), W('fus1.b', 'reg1.in'), W('reg1.gnd', 'bat1.-'), W('reg1.out', 'pho1.+'), W('pho1.-', 'bat1.-')] }) },
+    { id: 'dimmer', te: '🎛️ LED డిమ్మర్', note: 'నాబ్ (పొటెన్షియోమీటర్) తిప్పితే దాని Ω మారుతుంది, LED వెలుగు మారుతుంది. నాబ్ కార్డ్‌లో "తిప్పు" మార్చండి. పక్కన 220Ω, నాబ్ పూర్తిగా తిప్పినా LED కాలకుండా.',
+      board: () => ({ parts: [part('bat1', 'cell', 0, 2, { v: 9 }), part('pot1', 'pot', 4, 1, { ohm: 10000, turn: 30 }), part('res1', 'resistor', 8, 0, { ohm: 220 }), part('led1', 'led', 11, 3, { color: 'yellow' }, { rot: 1 })],
+        wires: [W('bat1.+', 'pot1.a'), W('pot1.w', 'res1.a'), W('res1.b', 'led1.+'), W('led1.-', 'bat1.-')] }) },
+    { id: 'button-bell', te: '🔔 బటన్ బెల్', note: 'అసలు కాలింగ్ బెల్ లాగా: బటన్ నొక్కి పట్టుకున్నంత సేపే బజర్ మోగుతుంది. బోర్డ్ మీద బటన్‌ని వేలితో నొక్కి పట్టుకోండి.',
+      board: () => ({ parts: [part('bat1', 'cell', 0, 1, { v: 9 }), part('but1', 'pushbtn', 4, 0), part('buz1', 'buzzer', 8, 1)],
+        wires: [W('bat1.+', 'but1.a'), W('but1.b', 'buz1.a'), W('buz1.b', 'bat1.-')] }) },
   ];
 
   // ---------------------------------------------------------------- 🧩 challenges
@@ -156,7 +187,35 @@
     { id: 'c10', te: 'ఫోన్ ఛార్జ్', goal: 'ఇంటి కరెంట్ నుంచి ఛార్జర్ ద్వారా ఫోన్ ఛార్జ్ అవ్వాలి.', wires: 4,
       board: () => ({ parts: [part('mai1', 'mains', 0, 1), part('cha1', 'charger', 5, 1, { v: 5, w: 20 }), part('pho1', 'phone', 10, 1)], wires: [] }),
       check: (b, r) => ({ done: lit(r, 'pho1') }) },
+    // G2
+    { id: 'c11', te: 'చీకటి పడితే లైట్', goal: 'చీకట్లో (LDR వెలుతురు 0) LED వెలగాలి, ఎండలో (వెలుతురు 1) ఆరిపోవాలి. ట్రాన్సిస్టర్ బేస్‌కి 10 kΩ ద్వారా కరెంట్, LDR బేస్ నుంచి − కి.', wires: 8,
+      board: () => ({ parts: [part('bat1', 'cell', 0, 3, { v: 9 }), part('res1', 'resistor', 4, 0, { ohm: 10000 }), part('ldr1', 'ldr', 4, 6, { light: 1 }),
+        part('npn1', 'npn', 8, 3), part('res2', 'resistor', 12, 0, { ohm: 470 }), part('led1', 'led', 12, 5, { color: 'white' })], wires: [] }),
+      check: (b) => ({ done: lit(S.solve(setP(b, 'ldr1', 'light', 0)), 'led1') && !lit(S.solve(setP(b, 'ldr1', 'light', 1)), 'led1') }) },
+    { id: 'c12', te: 'ఆరిపోయే LED', goal: 'స్విచ్ ఆఫ్ చేసిన తర్వాత కూడా LED కనీసం 2 సెకన్లు వెలగాలి (కెపాసిటర్ తో).', wires: 6,
+      board: () => ({ parts: [part('bat1', 'cell', 0, 3, { v: 9 }), part('swi1', 'switch', 4, 0, { on: true }), part('cap1', 'capacitor', 8, 4, { uf: 2200, v: 16 }),
+        part('res1', 'resistor', 11, 0, { ohm: 1000 }), part('led1', 'led', 14, 4, { color: 'blue' })], wires: [] }),
+      check: (b) => { const t = glowAfterOff(b, 'swi1', 'led1'); return { done: t >= 2, best: t >= 4 }; } },
+    { id: 'c13', te: 'రిలేతో బల్బ్', goal: '12V స్విచ్ ఆన్ చేస్తే 230V బల్బ్ వెలగాలి, ఆఫ్ చేస్తే ఆరాలి. బ్యాటరీ వైపు, ఇంటి కరెంట్ వైపు కలవకూడదు.', wires: 6,
+      board: () => ({ parts: [part('bat1', 'battery', 0, 2, { v: 12, ah: 7 }), part('swi1', 'switch', 4, 0, { on: true }), part('rel1', 'relay', 8, 2, { v: 12 }),
+        part('mai1', 'mains', 16, 6), part('bul1', 'ledbulb', 14, 0)], wires: [] }),
+      check: (b) => { const on = S.solve(setP(b, 'swi1', 'on', true)), off = S.solve(setP(b, 'swi1', 'on', false)); return { done: on.ok && lit(on, 'bul1') && !lit(off, 'bul1') }; } },
+    { id: 'c14', te: 'ఫోన్‌కి 5V', goal: '12V బ్యాటరీ నుంచి రెగ్యులేటర్ ద్వారా ఫోన్‌కి 5V రావాలి. ⭐⭐⭐ కి బ్యాటరీ దగ్గర ఫ్యూజ్.', wires: 5,
+      board: () => ({ parts: [part('bat1', 'battery', 0, 2, { v: 12, ah: 40 }), part('fus1', 'fuse', 4, 0, { amp: 3 }), part('reg1', 'regulator', 8, 2, { v: 5 }), part('pho1', 'phone', 12, 2, { w: 5, v: 5 })], wires: [] }),
+      check: (b, r) => { const ph = r.parts.pho1 || {}; return { done: lit(r, 'pho1') && Math.abs(Math.abs(ph.v || 0) - 5) < 0.3, best: guards(b, ['fus1'], 'pho1') }; } },
   ];
+
+  /** ⏳ Switch on until the capacitor is full, then off: how many seconds the LED stays lit (0.1 s steps, at most 12 s). */
+  function glowAfterOff(b, swId, ledId) {
+    let x = setP(b, swId, 'on', true), st = {}, r = S.solve(x, st, { dt: 0.2 });
+    for (let k = 0; k < 60; k++) { const z = S.settle(x, r.st, r); st = z.st; r = S.solve(x, st, { dt: 0.2 }); if (!z.moving) break; }
+    if (!lit(r, ledId)) return 0;
+    x = setP(b, swId, 'on', false);
+    r = S.solve(x, st, { dt: 0.1 });
+    let t = 0;
+    while (lit(r, ledId) && t < 12) { st = S.settle(x, r.st, r).st; r = S.solve(x, st, { dt: 0.1 }); t += 0.1; }
+    return Math.round(t * 10) / 10;
+  }
 
   /** Stars for a finished challenge: ⭐ done, ⭐⭐ in the fewest wires (or the "best" condition), ⭐⭐⭐ also nothing burnt / blown on the way. */
   function stars(ch, board, res, brokeOnTheWay) {
@@ -230,6 +289,13 @@
       const r = r0.parts[bat.id] || {};
       if (r.i > 0.5) out.push({ level: 'amber', te: '🔋 ' + N[bat.id] + ' దగ్గర ఫ్యూజ్ లేదు: పెద్ద బ్యాటరీ షార్ట్ అయితే వైర్లు కాలిపోతాయి. బ్యాటరీ + దగ్గరే ఫ్యూజ్ పెట్టండి.', ids: [bat.id] });
     }
+    for (const k of board.parts.filter((q) => q.type === 'relay')) {
+      if (!res.node) break;
+      const n1 = res.node(k.id + '.c1'), n2 = res.node(k.id + '.c2');
+      const byTransistor = board.parts.some((q) => q.type === 'npn' && [n1, n2].includes(res.node(q.id + '.c')));
+      const guarded = board.parts.some((q) => q.type === 'diode' && ((res.node(q.id + '.+') === n2 && res.node(q.id + '.-') === n1) || (res.node(q.id + '.+') === n1 && res.node(q.id + '.-') === n2)));
+      if (byTransistor && !guarded) out.push({ level: 'amber', te: '🧲 ' + N[k.id] + ' కాయిల్‌కి అడ్డంగా డయోడ్ లేదు: కాయిల్ ఆఫ్ అయిన క్షణం వచ్చే వోల్టేజ్ దెబ్బ ట్రాన్సిస్టర్‌ని పాడు చేస్తుంది. డయోడ్ − ని కాయిల్ + వైపు పెట్టండి.', ids: [k.id] });
+    }
     for (const p of board.parts.filter((q) => q.type === 'iron' || q.type === 'geyser'))
       out.push({ level: 'info', te: '🔩 ' + N[p.id] + ': లోహపు బాడీ; నిజంగా అయితే మూడు పిన్నుల ప్లగ్, ఎర్త్ వైర్ తప్పనిసరి.', ids: [p.id] });
     if (!out.some((o) => o.level !== 'info')) out.unshift({ level: 'ok', te: '✅ పెద్ద సమస్యలు కనిపించలేదు. (ఇది నేర్చుకోవడానికి మాత్రమే; ఇంట్లో అసలు వైరింగ్ లైసెన్స్ ఉన్న ఎలక్ట్రీషియన్ తోనే.)', ids: [] });
@@ -246,7 +312,11 @@
     ['geyser', ['గీజర్', 'geyser']], ['motor', ['మోటార్', 'మోటర్', 'motor', 'pump', 'పంపు']], ['switch', ['స్విచ్', 'switch']],
     ['fuse', ['ఫ్యూజ్', 'fuse']], ['mcb', ['ఎంసీబీ', 'mcb', 'ఎం సి బి']], ['battery', ['బ్యాటరీ', 'battery', 'బ్యాటరి']], ['inverter', ['ఇన్వర్టర్', 'inverter']],
     ['solar', ['సోలార్', 'solar', 'ప్యానెల్']], ['led', ['ఎల్ఈడీ', 'led']], ['resistor', ['రెసిస్టర్', 'resistor']], ['headlight', ['హెడ్‌లైట్', 'హెడ్ లైట్', 'headlight']],
-    ['horn', ['హారన్', 'horn']], ['buzzer', ['బజర్', 'బెల్', 'buzzer', 'bell']], ['charger', ['ఛార్జర్', 'charger']], ['phone', ['ఫోన్', 'phone']]];
+    ['horn', ['హారన్', 'horn']], ['buzzer', ['బజర్', 'బెల్', 'buzzer', 'bell']], ['charger', ['ఛార్జర్', 'charger']], ['phone', ['ఫోన్', 'phone']],
+    ['capacitor', ['కెపాసిటర్', 'capacitor']], ['diode', ['డయోడ్', 'diode']], ['transistor', ['ట్రాన్సిస్టర్', 'transistor']], ['pot', ['నాబ్', 'పొటెన్షియోమీటర్', 'knob', 'pot']],
+    ['ldr', ['ఎల్డీఆర్', 'ldr', 'సెన్సార్']], ['relay', ['రిలే', 'relay']], ['regulator', ['రెగ్యులేటర్', '7805', 'regulator']], ['button', ['బటన్', 'button']]];
+  const NIGHT = /(రాత్రి అయింది|రాత్రి చెయ్|చీకటి|చీకటి చెయ్|night|dark)/;
+  const DAY = /(పగలు|తెల్లారింది|వెలుతురు ఇవ్వు|ఎండ వచ్చింది|daylight|day time|morning)/;
   const OFF = /(ఆపు|ఆపేయి|ఆఫ్|ఆర్పు|ఆపండి|\boff\b|turn off|switch off)/;
   const ON = /(ఆన్|వెయ్|వేయి|వెలిగించు|తిప్పు|\bon\b|turn on|switch on)/;
   const ADD = /(ఇంకో|ఇంకొక|మరో|ఇంకా ఒక|another|add one more|add another)/;
@@ -279,6 +349,12 @@
     for (const [fw, ws] of WORDS) for (const w of ws) if (text.includes(w)) fams.add(fw);
     if (fams.size >= 3 || text.trim().split(' ').length > 9) return null;
     const mains = board.parts.filter((p) => p.type === 'mains');
+    const lights = board.parts.filter((p) => p.type === 'ldr' || p.type === 'solar');
+    if (lights.length && (NIGHT.test(text) || DAY.test(text)) && !/(\d+\s*%|శాతం)/.test(text)) {
+      const day = !NIGHT.test(text);
+      lights.forEach((p) => { p.props = Object.assign({}, p.props, p.type === 'ldr' ? { light: day ? 1 : 0 } : { sun: day ? 1 : 0 }); });
+      return { board, said: day ? '☀️ పగలు (బొమ్మలో): వెలుతురు పూర్తిగా.' : '🌙 రాత్రి (బొమ్మలో): చీకటి.' };
+    }
     if (CUT.test(text) && mains.length) { mains.forEach((p) => { p.props = Object.assign({}, p.props, { on: false }); }); return { board, said: '⚡ కరెంట్ పోయింది (బొమ్మలో).' }; }
     if (BACK.test(text) && mains.length) { mains.forEach((p) => { p.props = Object.assign({}, p.props, { on: true }); }); return { board, said: '⚡ కరెంట్ వచ్చింది.' }; }
     const f = family(text);
@@ -316,6 +392,14 @@
     const m = text.match(/(\d+(?:\.\d+)?)\s*(ah|ఏహెచ్|va|వీఏ|w\b|వాట్స్|వాట్|v\b|వోల్ట్స్|వోల్ట్|a\b|ఆంప్స్|ఆంపియర్|ohm|ఓమ్స్|Ω|mah)/i);
     const speed = text.match(/(స్పీడ్|speed)\s*(\d)/);
     if (speed && p.type === 'fan') { p.props = Object.assign({}, p.props, { speed: +speed[2] }); return { board, said: N[p.id] + ' స్పీడ్ ' + speed[2] + '.' }; }
+    const pc = text.match(/(\d+(?:\.\d+)?)\s*(%|శాతం)/);
+    if (pc && (p.type === 'pot' || p.type === 'ldr' || p.type === 'solar')) {
+      const v = Math.max(0, Math.min(100, +pc[1]));
+      p.props = Object.assign({}, p.props, p.type === 'pot' ? { turn: v } : p.type === 'ldr' ? { light: v / 100 } : { sun: v / 100 });
+      return { board, said: N[p.id] + (p.type === 'pot' ? ' ' + v + '% తిప్పాను.' : p.type === 'ldr' ? ' మీద వెలుతురు ' + v + '%.' : ' మీద ఎండ ' + v + '%.') };
+    }
+    const uf = text.match(/(\d+(?:\.\d+)?)\s*(uf|µf|మైక్రో)/i);
+    if (uf && p.type === 'capacitor') { p.props = Object.assign({}, p.props, { uf: +uf[1] }); return { board, said: N[p.id] + ' ఇప్పుడు ' + uf[1] + ' µF.' }; }
     if (m) {
       const v = +m[1], u = m[2].toLowerCase();
       const key = /ah|ఏహెచ్/.test(u) ? 'ah' : /mah/.test(u) ? 'mah' : /va|వీఏ/.test(u) ? 'va' : /w|వాట్/.test(u) ? 'w' : /v|వోల్ట్/.test(u) ? 'v' : /a|ఆంప్|ఆంపియర్/.test(u) ? 'amp' : 'ohm';

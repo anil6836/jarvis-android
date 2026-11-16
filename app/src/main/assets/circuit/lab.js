@@ -73,15 +73,65 @@
     if (tab !== 'board') renderTab();
   }
 
-  function resolve(quiet) {
+  function resolve(quiet, tick) {
     names = K.names(board);
     res = S.solve(board, st);
     st = res.st;
     if (!res.ok) { toast('⛔ ' + res.error, 'bad'); highlight = res.bad || []; }
     for (const e of res.events) { if (!quiet) toast('🔥 ' + e.te, 'bad'); post({ t: 'event', te: e.te }); if (chall) chall.broke = true; }
-    if (chall) checkChallenge();
+    if (chall && !tick) checkChallenge();
     strip();
     kick();
+    capTick();
+    if (v3dOpen()) window.__view3d.update();
+  }
+
+  // ---------------------------------------------------------------- 🧊 the 3D view (view3d.js, loaded the first time it is opened)
+
+  function v3dOpen() { return !!(window.__view3d && window.__view3d.isOpen()); }
+  let v3dLoading = false;
+  function open3d() {
+    if (!board.parts.length) { hint('ముందు బోర్డ్ మీద ఏదైనా పెట్టండి (➕ భాగాలు, లేదా 📘 నేర్చుకో లో ఒక బోర్డ్)'); return; }
+    closeSheet();
+    const go = () => window.__view3d.open({
+      board: () => board, res: () => res, st: () => st, names: () => names, K, S,
+      reading: (p) => reading(p, res.parts[p.id] || {}, S.props(p), st[p.id] || {}),
+      onTap: tap3d, onClose: () => kick() });
+    if (window.__view3d) { go(); return; }
+    if (v3dLoading) return;
+    v3dLoading = true;
+    hint('🧊 3D తెరుస్తున్నాను…');
+    window.addEventListener('view3d-ready', () => { v3dLoading = false; hint(''); go(); }, { once: true });
+    const sc = document.createElement('script');
+    sc.type = 'module';
+    sc.src = 'view3d.js';
+    sc.onerror = () => { v3dLoading = false; hint('3D తెరవలేకపోయాను Sir; 2D బోర్డ్ అలాగే పనిచేస్తుంది.'); };
+    document.head.appendChild(sc);
+  }
+  /** A tap in 3D: a switch turns; anything else says its reading. */
+  function tap3d(id) {
+    const p = board.parts.find((q) => q.id === id);
+    if (!p) return;
+    if (p.type === 'switch') { change(() => { p.props = Object.assign({}, p.props, { on: !S.props(p).on }); }); return; }
+    if (p.type === 'switch2') { change(() => { p.props = Object.assign({}, p.props, { pos: S.props(p).pos === 2 ? 1 : 2 }); }); return; }
+    toast((S.def(p.type).emoji || '') + ' ' + (p.label || names[id] || S.def(p.type).te) + ': ' + reading(p, res.parts[id] || {}, S.props(p), st[id] || {}));
+  }
+
+  // ⏳ capacitors fill and empty in real time: a step every 50 ms while one is still moving
+  let capT = null, capN = 0;
+  function capTick() {
+    if (capT || !res.ok || !board.parts.some((p) => p.type === 'capacitor')) return;
+    capT = setTimeout(() => {
+      capT = null;
+      if (!board.parts.some((p) => p.type === 'capacitor')) return;
+      const z = S.settle(board, st, res);
+      st = z.st;
+      if (!z.moving) { saveSoon(); if (chall) checkChallenge(); return; }
+      resolve(false, true);
+      if (++capN % 10) return; // (the card and the numbers: twice a second is enough)
+      if (sheetFor && sheetFor.part && $('sheet').classList.contains('on')) { const q = board.parts.find((x) => x.id === sheetFor.part); if (q && q.type === 'capacitor') showPart(q.id, true); }
+      if (tab === 'calc') renderTab();
+    }, S.DT * 1000);
   }
 
   function setBoard(b, opts) {
@@ -223,7 +273,8 @@
           ctx.fillStyle = '#88a5b3';
           ctx.font = Math.max(9, 10.5 * view.z) + 'px ' + FONT;
           ctx.textAlign = 'center';
-          const lab = { '+': '+', '-': '−', l: 'L', n: 'N', 'b+': 'B+', 'b-': 'B−', 'in-l': 'IN L', 'in-n': 'IN N', 'out-l': 'OUT L', 'out-n': 'OUT N', c: 'C', 1: '1', 2: '2' }[term] || '';
+          const lab = { '+': '+', '-': '−', l: 'L', n: 'N', 'b+': 'B+', 'b-': 'B−', 'in-l': 'IN L', 'in-n': 'IN N', 'out-l': 'OUT L', 'out-n': 'OUT N', c: 'C', 1: '1', 2: '2',
+            a: 'A', b: 'B', e: 'E', w: 'W', in: 'IN', gnd: 'GND', out: 'OUT', c1: 'C1', c2: 'C2', com: 'COM', no: 'NO', nc: 'NC' }[term] || '';
           const g = K.geom(p.type), tt = g.t[term];
           const right = tt && tt[0] >= g.w - 0.01;
           ctx.textAlign = (p.rot || 0) % 2 ? 'center' : right ? 'left' : 'right';
@@ -300,6 +351,8 @@
       rr(cx - b.w * 0.18, b.y + b.h * 0.18, b.w * 0.36, b.h * 0.64, 5 * z); ctx.fillStyle = '#e8eef3'; ctx.fill();
       ctx.fillStyle = s.tripped ? '#ff6b6b' : '#3ddc84';
       rr(cx - b.w * 0.09, s.tripped ? cy + 2 * z : cy - b.h * 0.24, b.w * 0.18, b.h * 0.22, 3 * z); ctx.fill();
+    } else if (G2_DRAW[p.type]) {
+      G2_DRAW[p.type](p, b, cx, cy, z, r, o, s, t);
     } else if (p.type === 'resistor') {
       ctx.strokeStyle = '#d9b26a'; ctx.lineWidth = Math.max(1.5, 2.6 * z); ctx.beginPath();
       const x0 = b.x + b.w * 0.15, x1 = b.x + b.w * 0.85, n = 6, hh = b.h * 0.12;
@@ -338,6 +391,93 @@
     ctx.fillText(reading(p, r, o, s), cx, b.y + b.h + fs * 2 + 3);
   }
 
+  // G2 parts drawn as their circuit symbols (on the dark board, our own colours)
+  function zig(x0, x1, y, hh, n) { ctx.beginPath(); ctx.moveTo(x0, y); for (let k = 0; k <= n; k++) ctx.lineTo(x0 + (x1 - x0) * (k + 0.5) / (n + 1), y + (k % 2 ? hh : -hh)); ctx.lineTo(x1, y); ctx.stroke(); }
+  const G2_DRAW = {
+    capacitor(p, b, cx, cy, z, r, o, s) {
+      const fill = Math.max(0, Math.min(1, (r.v || 0) / Math.max(0.1, o.v)));
+      const pw = b.w * 0.07, ph = b.h * 0.46;
+      // the charge as a level between the plates
+      ctx.fillStyle = 'rgba(116,228,255,' + (0.12 + 0.5 * fill) + ')';
+      rr(cx - pw * 1.6, cy + ph / 2 - ph * fill, pw * 3.2, ph * fill, 2 * z); ctx.fill();
+      ctx.strokeStyle = r.state === 'burnt' ? '#ff6b6b' : '#c9d6df'; ctx.lineWidth = Math.max(2, 3.4 * z); ctx.lineCap = 'butt';
+      ctx.beginPath(); ctx.moveTo(cx - pw * 1.6, cy - ph / 2); ctx.lineTo(cx - pw * 1.6, cy + ph / 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx + pw * 4.5, cy, ph * 0.62, Math.PI * 0.78, Math.PI * 1.22); ctx.stroke();
+      ctx.lineWidth = Math.max(1.4, 2.2 * z);
+      ctx.beginPath(); ctx.moveTo(b.x + b.w * 0.12, cy); ctx.lineTo(cx - pw * 1.6, cy); ctx.moveTo(cx + pw * 4.5 - ph * 0.62 * 0.77, cy); ctx.lineTo(b.x + b.w * 0.88, cy); ctx.stroke();
+      ctx.fillStyle = '#88a5b3'; ctx.font = Math.max(8, 10 * z) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('+', cx - pw * 3.6, cy - ph * 0.45);
+      if (r.state === 'burnt') { ctx.fillStyle = 'rgba(255,107,107,0.5)'; ctx.beginPath(); ctx.arc(cx, cy, b.w * 0.3, 0, 7); ctx.fill(); }
+    },
+    diode(p, b, cx, cy, z, r) {
+      const hw = b.w * 0.18;
+      ctx.fillStyle = r.on ? '#74e4ff' : '#c9d6df'; ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = Math.max(1.6, 2.6 * z);
+      ctx.beginPath(); ctx.moveTo(b.x + b.w * 0.12, cy); ctx.lineTo(b.x + b.w * 0.88, cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - hw, cy - hw); ctx.lineTo(cx + hw * 0.8, cy); ctx.lineTo(cx - hw, cy + hw); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(cx + hw * 0.8, cy - hw); ctx.lineTo(cx + hw * 0.8, cy + hw); ctx.stroke();
+    },
+    npn(p, b, cx, cy, z, r) {
+      const R = Math.min(b.w, b.h) * 0.3, col = r.mode === 'sat' ? '#6be3a4' : r.mode === 'act' ? '#ffc861' : '#c9d6df';
+      ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.4, 2.2 * z);
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
+      const bx = cx - R * 0.25;
+      ctx.lineWidth = Math.max(2, 3.4 * z);
+      ctx.beginPath(); ctx.moveTo(bx, cy - R * 0.55); ctx.lineTo(bx, cy + R * 0.55); ctx.stroke();
+      ctx.lineWidth = Math.max(1.4, 2.2 * z);
+      ctx.beginPath(); ctx.moveTo(b.x + b.w * 0.08, cy); ctx.lineTo(bx, cy);
+      ctx.moveTo(bx, cy - R * 0.25); ctx.lineTo(b.x + b.w * 0.92, b.y + b.h * 0.2);
+      ctx.moveTo(bx, cy + R * 0.25); ctx.lineTo(b.x + b.w * 0.92, b.y + b.h * 0.8); ctx.stroke();
+      // the emitter's arrow
+      const ax = cx + R * 0.55, ay = cy + R * 0.62;
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(ax + 4 * z, ay + 3 * z); ctx.lineTo(ax - 4 * z, ay + 2 * z); ctx.lineTo(ax + 1 * z, ay - 4 * z); ctx.closePath(); ctx.fill();
+    },
+    pot(p, b, cx, cy, z, r, o) {
+      ctx.strokeStyle = '#d9b26a'; ctx.lineWidth = Math.max(1.5, 2.6 * z);
+      const y = b.y + b.h * 0.7;
+      zig(b.x + b.w * 0.08, b.x + b.w * 0.92, y, b.h * 0.1, 6);
+      // the wiper: where it is turned to
+      const wx = b.x + b.w * (0.15 + 0.7 * o.turn / 100);
+      ctx.strokeStyle = '#74e4ff'; ctx.beginPath(); ctx.moveTo(cx, b.y + b.h * 0.08); ctx.lineTo(cx, b.y + b.h * 0.28); ctx.lineTo(wx, b.y + b.h * 0.28); ctx.lineTo(wx, y - b.h * 0.14); ctx.stroke();
+      ctx.fillStyle = '#74e4ff'; ctx.beginPath(); ctx.moveTo(wx, y - b.h * 0.1); ctx.lineTo(wx - 4 * z, y - b.h * 0.2); ctx.lineTo(wx + 4 * z, y - b.h * 0.2); ctx.closePath(); ctx.fill();
+    },
+    ldr(p, b, cx, cy, z, r, o) {
+      const R = Math.min(b.w, b.h) * 0.3;
+      ctx.fillStyle = 'rgba(255,214,100,' + (0.08 + 0.4 * o.light) + ')'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#c9d6df'; ctx.lineWidth = Math.max(1.2, 2 * z); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
+      ctx.strokeStyle = '#d9b26a'; zig(b.x + b.w * 0.1, b.x + b.w * 0.9, cy, b.h * 0.07, 5);
+      ctx.strokeStyle = o.light > 0.3 ? '#ffd36b' : '#557584'; ctx.lineWidth = Math.max(1.2, 1.8 * z);
+      for (const dx of [-0.12, 0.06]) { const x0 = cx + b.w * dx, y0 = b.y + b.h * 0.12; ctx.beginPath(); ctx.moveTo(x0 - 6 * z, y0 - 6 * z); ctx.lineTo(x0 + 2 * z, y0 + 2 * z); ctx.lineTo(x0 - 2 * z, y0 + 2 * z); ctx.moveTo(x0 + 2 * z, y0 + 2 * z); ctx.lineTo(x0 + 2 * z, y0 - 2 * z); ctx.stroke(); }
+    },
+    relay(p, b, cx, cy, z, r) {
+      // the coil on the left, the switch on the right: the arm on NO when the coil is on
+      const lx = b.x + b.w * 0.32;
+      ctx.strokeStyle = r.on ? '#74e4ff' : '#c9d6df'; ctx.lineWidth = Math.max(1.4, 2.2 * z);
+      rr(lx - b.w * 0.1, b.y + b.h * 0.22, b.w * 0.2, b.h * 0.56, 3 * z); ctx.stroke();
+      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(lx - b.w * 0.1, b.y + b.h * (0.3 + k * 0.13)); ctx.lineTo(lx + b.w * 0.1, b.y + b.h * (0.36 + k * 0.13)); ctx.stroke(); }
+      ctx.setLineDash([3 * z, 3 * z]); ctx.beginPath(); ctx.moveTo(lx + b.w * 0.12, cy); ctx.lineTo(b.x + b.w * 0.62, cy); ctx.stroke(); ctx.setLineDash([]);
+      const px = b.x + b.w * 0.92, comY = b.y + b.h * 0.5, noY = b.y + b.h * 0.2, ncY = b.y + b.h * 0.8;
+      ctx.strokeStyle = r.on ? '#6be3a4' : '#ffc861'; ctx.lineWidth = Math.max(2, 3.2 * z); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(px, comY); ctx.lineTo(b.x + b.w * 0.66, r.on ? noY + 2 * z : ncY - 2 * z); ctx.stroke();
+      ctx.fillStyle = '#88a5b3'; [noY, comY, ncY].forEach((y) => { ctx.beginPath(); ctx.arc(px, y, 2.6 * z, 0, 7); ctx.fill(); });
+    },
+    regulator(p, b, cx, cy, z, r, o) {
+      rr(b.x + b.w * 0.18, b.y + b.h * 0.2, b.w * 0.64, b.h * 0.6, 4 * z);
+      ctx.fillStyle = '#1b1f24'; ctx.fill();
+      const heat = Math.max(0, Math.min(1, (r.p || 0) / 6));
+      ctx.strokeStyle = heat > 0.3 ? 'rgb(255,' + Math.round(200 - 120 * heat) + ',80)' : '#5d6b78'; ctx.lineWidth = Math.max(1.2, 2 * z); ctx.stroke();
+      ctx.fillStyle = '#c9d6df'; ctx.font = '600 ' + Math.max(8, 11 * z) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(o.v === 5 ? '7805' : '78' + String(Math.round(o.v)).padStart(2, '0'), cx, cy);
+    },
+    pushbtn(p, b, cx, cy, z, r) {
+      const down = !!r.on;
+      ctx.strokeStyle = down ? '#6be3a4' : '#c9d6df'; ctx.lineWidth = Math.max(1.6, 2.6 * z); ctx.lineCap = 'round';
+      const y = down ? cy : cy - b.h * 0.14;
+      ctx.beginPath(); ctx.moveTo(b.x + b.w * 0.12, cy); ctx.lineTo(b.x + b.w * 0.28, cy); ctx.moveTo(b.x + b.w * 0.72, cy); ctx.lineTo(b.x + b.w * 0.88, cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(b.x + b.w * 0.26, y); ctx.lineTo(b.x + b.w * 0.74, y); ctx.moveTo(cx, y); ctx.lineTo(cx, y - b.h * 0.18); ctx.stroke();
+      ctx.fillStyle = down ? '#6be3a4' : '#ff8a8a'; rr(cx - b.w * 0.13, y - b.h * 0.3, b.w * 0.26, b.h * 0.12, 3 * z); ctx.fill();
+    },
+  };
+
   function reading(p, r, o, s) {
     const d = S.def(p.type);
     if (r.state === 'burnt') return 'కాలిపోయింది';
@@ -359,6 +499,14 @@
       case 'fuse': case 'mcb': return o.amp + ' A' + (Math.abs(r.i) > 0.001 ? ' · ' + fmtA(r.i) : '');
       case 'switch': return o.on ? 'ఆన్' : 'ఆఫ్';
       case 'switch2': return 'C→' + (o.pos === 2 ? '2' : '1');
+      case 'capacitor': return fmtV(r.v || 0) + (Math.abs(r.i || 0) > 1e-4 ? (r.i > 0 ? ' ↑' : ' ↓') : '');
+      case 'diode': return r.on ? fmtA(r.i) : 'ఆఫ్';
+      case 'npn': return { off: 'ఆఫ్', act: 'సగం · ' + fmtA(r.i || 0), sat: 'ఆన్ · ' + fmtA(r.i || 0) }[r.mode] || 'ఆఫ్';
+      case 'pot': return Math.round(o.turn) + '% · ' + fmtOhm(o.ohm);
+      case 'ldr': return fmtOhm(S.ldrR(o.light)) + ' · ' + (o.light >= 0.75 ? '☀️' : o.light >= 0.3 ? '⛅' : '🌙');
+      case 'relay': return r.on ? 'ఆన్ (COM→NO)' : 'ఆఫ్ (COM→NC)';
+      case 'regulator': return r.mode === 'on' ? fmtV(r.v || 0) + (Math.abs(r.i) > 0.001 ? ' · ' + fmtA(r.i) : '') : r.on ? 'తక్కువ ' + fmtV(r.v || 0) : 'ఇన్‌పుట్ లేదు';
+      case 'pushbtn': return r.on ? 'నొక్కారు' : 'నొక్కి పట్టుకోండి';
       default: return '';
     }
   }
@@ -413,7 +561,14 @@
     const term = hitTerm(q.x, q.y);
     const p = term ? null : hitPart(q.x, q.y);
     drag = { kind: p ? 'part' : 'pan', id: p && p.id, term, x: q.x, y: q.y, moved: false, px: p && p.x, py: p && p.y, ox: view.ox, oy: view.oy, at: performance.now(), before: p ? snapshot() : null };
+    if (p && p.type === 'pushbtn' && mode !== 'meter') { drag.press = p.id; press(p.id, true); }
   });
+  function press(id, down) {
+    const s0 = st[id] || (st[id] = {});
+    if (!!s0.pressed === down) return;
+    s0.pressed = down;
+    resolve(false);
+  }
   cv.addEventListener('pointermove', (e) => {
     const q = local(e);
     pointer.x = q.x; pointer.y = q.y;
@@ -430,7 +585,7 @@
       return;
     }
     const dx = q.x - drag.x, dy = q.y - drag.y;
-    if (!drag.moved && Math.hypot(dx, dy) > 8 && !drag.term) drag.moved = true;
+    if (!drag.moved && Math.hypot(dx, dy) > 8 && !drag.term) { drag.moved = true; if (drag.press) press(drag.press, false); }
     if (!drag.moved) return;
     if (drag.kind === 'part') {
       const p = board.parts.find((x) => x.id === drag.id);
@@ -444,6 +599,7 @@
     if (!d) return;
     if (d.kind === 'pinch') { if (downs.size === 0) drag = null; return; }
     drag = null;
+    if (d.press) { press(d.press, false); if (d.moved || performance.now() - d.at > 260) { if (d.moved) saveSoon(); kick(); if (!d.moved) return; } }
     const q = local(e);
     if (d.kind === 'part' && d.moved) {
       const p = board.parts.find((x) => x.id === d.id);
@@ -459,7 +615,7 @@
     tap(q.x, q.y, d, performance.now() - d.at);
   }
   cv.addEventListener('pointerup', up);
-  cv.addEventListener('pointercancel', (e) => { downs.delete(e.pointerId); drag = null; });
+  cv.addEventListener('pointercancel', (e) => { downs.delete(e.pointerId); if (drag && drag.press) press(drag.press, false); drag = null; });
 
   function tap(x, y, d, ms) {
     const term = d.term || hitTerm(x, y);
@@ -541,6 +697,7 @@
     add('🔌 మీటర్', mode === 'meter' ? 'on' : '', () => { mode = mode === 'meter' ? 'edit' : 'meter'; probes = []; wireFrom = null; hint(mode === 'meter' ? '🔌 మీటర్: రెండు చుక్కలు తాకితే వోల్టేజ్; ఒక భాగం తాకితే కరెంట్' : ''); tools(); kick(); });
     add(timeSpeed ? '⏩ ' + ({ 60: '1 ని/సె', 600: '10 ని/సె', 3600: '1 గం/సె' }[timeSpeed]) : '⏩ సమయం', timeSpeed ? 'on' : '', () => setTime());
     add('⚠️ సేఫ్టీ', '', () => showSafety());
+    add('🧊 3D', '', () => open3d());
     add('⤢ మొత్తం', '', () => fit());
     add('🧹 కొత్తది', '', () => { if (!board.parts.length) return; change(() => { board = { title: '', parts: [], wires: [] }; st = {}; }); exitChallenge(true); post({ t: 'title', title: '' }); });
   }
@@ -587,9 +744,13 @@
     eff: [0.8, 0.85, 0.9, 0.95], charge: [5, 10, 15, 20], wh: [10, 15, 19, 25, 40, 74],
     w: [0.3, 0.75, 1, 3, 5, 9, 10, 15, 20, 28, 40, 55, 60, 75, 100, 150, 200, 250, 330, 370, 400, 500, 540, 750, 1000, 1200, 1500, 2000, 3000, 5000],
     v_battery: [6, 12, 24, 48], v_cell: [1.5, 3, 4.5, 6, 9, 12], v_charger: [5, 9, 12, 14.4, 20, 48, 60], v_solar: [12, 18, 24, 36, 41],
-    v: [1.5, 2.5, 5, 6, 9, 12, 24, 48, 110, 230] };
-  const UNIT = { v: 'V', ah: 'Ah', mah: 'mAh', va: 'VA', amp: 'A', ohm: 'Ω', w: 'W', speed: '', sun: '', eff: '', charge: 'A', wh: 'Wh' };
-  const KEY_TE = { v: 'వోల్ట్స్', ah: 'Ah (సైజు)', mah: 'mAh', va: 'VA (సైజు)', amp: 'ఎన్ని A దాకా', ohm: 'Ω', w: 'వాట్స్', speed: 'స్పీడ్', sun: 'ఎండ', eff: 'సామర్థ్యం', charge: 'ఛార్జింగ్ A', wh: 'బ్యాటరీ Wh' };
+    v: [1.5, 2.5, 5, 6, 9, 12, 24, 48, 110, 230],
+    uf: [1, 10, 47, 100, 220, 470, 1000, 2200, 4700, 10000], v_capacitor: [6.3, 10, 16, 25, 35, 50, 63, 100, 450],
+    beta: [50, 100, 200, 300], turn: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], light: [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1],
+    v_relay: [5, 6, 12, 24], v_regulator: [3.3, 5, 6, 9, 12], ohm_pot: [1000, 4700, 10000, 47000, 100000] };
+  const UNIT = { v: 'V', ah: 'Ah', mah: 'mAh', va: 'VA', amp: 'A', ohm: 'Ω', w: 'W', speed: '', sun: '', eff: '', charge: 'A', wh: 'Wh', uf: 'µF', beta: '', turn: '%', light: '' };
+  const KEY_TE = { v: 'వోల్ట్స్', ah: 'Ah (సైజు)', mah: 'mAh', va: 'VA (సైజు)', amp: 'ఎన్ని A దాకా', ohm: 'Ω', w: 'వాట్స్', speed: 'స్పీడ్', sun: 'ఎండ', eff: 'సామర్థ్యం', charge: 'ఛార్జింగ్ A', wh: 'బ్యాటరీ Wh',
+    uf: 'µF (సైజు)', beta: 'β (ఎన్ని రెట్లు)', turn: 'తిప్పు', light: 'వెలుతురు' };
   function stepVal(p, k, v, dir) {
     const list = STEPS[k + '_' + p.type] || STEPS[k] || [v];
     if (dir > 0) { for (const x of list) if (x > v + 1e-9) return x; return list[list.length - 1]; }
@@ -619,7 +780,34 @@
         if (R && Math.abs(r.i) > 1e-5) c.appendChild(el('div', 'muted', '📏 V = I × R: ' + r1(Math.abs(r.v)) + ' V = ' + (Math.abs(r.i) < 1 ? r1(Math.abs(r.i) * 1000) + ' mA' : r1(Math.abs(r.i)) + ' A') + ' × ' + fmtOhm(R)));
         if (d.load && r.rated > 0) c.appendChild(el('div', 'muted', 'పూర్తి ' + fmtW(r.rated) + ' లో ' + Math.round(Math.min(1.6, r.bright || 0) * 100) + '% వస్తోంది'));
       }
-      if (p.type === 'fuse' || p.type === 'mcb' || p.type === 'switch') row('ఇప్పుడు వెళ్తున్న కరెంట్', fmtA(r.i || 0));
+      if (p.type === 'fuse' || p.type === 'mcb' || p.type === 'switch' || p.type === 'pushbtn') row('ఇప్పుడు వెళ్తున్న కరెంట్', fmtA(r.i || 0));
+      if (p.type === 'capacitor') {
+        row('వోల్టేజ్ (V)', fmtV(r.v || 0) + ' / ' + o.v + ' V');
+        row('కరెంట్', Math.abs(r.i || 0) > 1e-4 ? fmtA(r.i) + (r.i > 0 ? ' (నిండుతోంది ↑)' : ' (ఖాళీ అవుతోంది ↓)') : 'ఆగింది (నిండింది / ఖాళీ)');
+        c.appendChild(el('div', 'muted', '⏳ దాచుకున్న శక్తి: ' + r1(0.5 * o.uf * 1e-6 * (r.v || 0) * (r.v || 0) * 1000) + ' mJ. µF × Ω పెద్దదైతే నిండడానికీ, ఖాళీ అవ్వడానికీ ఎక్కువ సేపు.'));
+      }
+      if (p.type === 'diode' || p.type === 'ldr') { row('వోల్టేజ్ (V)', fmtV(r.v || 0)); row('కరెంట్ (I)', fmtA(r.i || 0)); }
+      if (p.type === 'ldr') row('ఇప్పుడు దాని Ω', fmtOhm(S.ldrR(o.light)));
+      if (p.type === 'npn') {
+        row('పని', { off: 'ఆఫ్: బేస్‌కి కరెంట్ లేదు', act: 'సగం ఆన్: Ic = β × Ib', sat: 'పూర్తిగా ఆన్ (స్విచ్ లాగా)' }[r.mode] || 'ఆఫ్');
+        row('బేస్ కరెంట్ (Ib)', fmtA(r.ib || 0));
+        row('కలెక్టర్ కరెంట్ (Ic)', fmtA(r.i || 0));
+        row('C–E వోల్టేజ్', fmtV(r.v || 0));
+        if (r.mode === 'act') c.appendChild(el('div', 'muted', '📏 ' + fmtA(r.i || 0) + ' ≈ ' + o.beta + ' × ' + fmtA(r.ib || 0)));
+      }
+      if (p.type === 'relay') {
+        row('కాయిల్', fmtV(r.v || 0) + ' · ' + fmtA(r.i || 0) + ' (' + o.v + ' V రిలే)');
+        row('స్విచ్ వైపు', r.on ? 'COM → NO (ఆన్)' : 'COM → NC (ఆఫ్)');
+        row('స్విచ్ గుండా కరెంట్', fmtA(r.contactI || 0));
+      }
+      if (p.type === 'regulator') {
+        row('ఇన్‌పుట్', fmtV(r.vin || 0));
+        row('అవుట్‌పుట్', fmtV(r.v || 0) + (r.mode === 'drop' && r.vin > 0.5 ? ' (ఇన్‌పుట్ తక్కువ: ' + r1(o.v + 2) + ' V కావాలి)' : ''));
+        row('కరెంట్', fmtA(r.i || 0));
+        row('వేడిగా పోయేది', fmtW(r.p || 0));
+      }
+      if (p.type === 'pot') { row('A–W', fmtOhm(Math.max(1, o.ohm * o.turn / 100))); row('W–B', fmtOhm(Math.max(1, o.ohm * (1 - o.turn / 100)))); row('కరెంట్', fmtA(r.i || 0)); }
+      if (p.type === 'pushbtn') c.appendChild(el('div', 'muted', '👆 బోర్డ్ మీద బటన్‌ని వేలితో నొక్కి పట్టుకోండి; వదిలితే దారి తెగిపోతుంది.'));
       if (p.type === 'battery' || p.type === 'cell') row('ఛార్జ్', Math.round((typeof s.soc === 'number' ? s.soc : 1) * 100) + '%' + (r.i < -0.05 ? ' (నిండుతోంది ↑)' : ''));
       if (p.type === 'inverter') { row('పని', { mains: 'కరెంట్ ఉంది: పంపుతోంది, బ్యాటరీ నింపుతోంది', battery: 'కరెంట్ లేదు: బ్యాటరీ నుంచి', overload: 'ఓవర్‌లోడ్: ఆగిపోయింది', nobattery: 'బ్యాటరీ లేదు' }[r.mode] || 'ఆఫ్'); row('లోడ్', fmtW(r.loadW || 0) + ' / ' + Math.round(o.va * 0.8) + ' W'); }
       if (c.childNodes.length) sh.appendChild(c);
@@ -628,10 +816,17 @@
       for (const k of Object.keys(d.props)) {
         const v0 = o[k];
         const x = el('div', 'row');
+        if (k === 'pos' && p.type === 'switch2') {
+          x.appendChild(el('span', 'k', 'C ని దేనికి'));
+          x.appendChild(btn('1', v0 !== 2 ? 'main small' : 'small', () => change(() => { p.props = Object.assign({}, p.props, { pos: 1 }); })));
+          x.appendChild(btn('2', v0 === 2 ? 'main small' : 'small', () => change(() => { p.props = Object.assign({}, p.props, { pos: 2 }); })));
+          set.appendChild(x);
+          continue;
+        }
         if (typeof d.props[k] === 'number') {
           x.appendChild(el('span', 'k', KEY_TE[k] || k));
           x.appendChild(btn('−', 'small', () => change(() => { p.props = Object.assign({}, p.props, { [k]: stepVal(p, k, v0, -1) }); })));
-          x.appendChild(el('span', 'val', (k === 'sun' ? Math.round(v0 * 100) + '%' : k === 'eff' ? Math.round(v0 * 100) + '%' : v0) + ' ' + (UNIT[k] || '')));
+          x.appendChild(el('span', 'val', (k === 'sun' || k === 'eff' || k === 'light' ? Math.round(v0 * 100) + '%' : v0) + ' ' + (UNIT[k] || '')));
           x.appendChild(btn('+', 'small', () => change(() => { p.props = Object.assign({}, p.props, { [k]: stepVal(p, k, v0, 1) }); })));
         } else if (typeof d.props[k] === 'boolean') {
           const te = k === 'on' ? (p.type === 'mains' ? (v0 ? '🏠 కరెంట్ ఉంది' : '🏠 కరెంట్ పోయింది') : (v0 ? 'ఆన్' : 'ఆఫ్')) : k;
@@ -664,7 +859,8 @@
       if (r.state === 'blown') act.appendChild(btn('🧯 కొత్త ఫ్యూజ్', 'main', () => change(() => { st[id].blown = false; })));
       if (r.state === 'tripped') act.appendChild(btn('🎚️ MCB పైకి వెయ్', 'main', () => change(() => { st[id].tripped = false; })));
       if (r.state === 'overload') act.appendChild(btn('🔁 ఇన్వర్టర్ రీసెట్', 'main', () => change(() => { st[id].overload = false; })));
-      if (r.state === 'burnt') act.appendChild(btn('🔁 కొత్తది పెట్టు', 'main', () => change(() => { st[id].burnt = false; })));
+      if (r.state === 'burnt') act.appendChild(btn('🔁 కొత్తది పెట్టు', 'main', () => change(() => { st[id].burnt = false; if (p.type === 'capacitor') st[id].vc = 0; })));
+      if (p.type === 'capacitor' && Math.abs(r.v || 0) > 0.05) act.appendChild(btn('🫗 ఖాళీ చెయ్', '', () => change(() => { st[id].vc = 0; })));
       if (p.type === 'battery' || p.type === 'cell') act.appendChild(btn('🔋 100% నింపు', '', () => change(() => { st[id].soc = 1; st[id].dead = false; })));
       act.appendChild(btn('🔄 తిప్పు', '', () => change(() => { p.rot = ((p.rot || 0) + 1) % 4; })));
       act.appendChild(btn('🗑️ తీసేయి', 'warn', () => { change(() => { board.parts = board.parts.filter((q) => q.id !== id); board.wires = board.wires.filter((w) => !w.a.startsWith(id + '.') && !w.b.startsWith(id + '.')); }); closeSheet(); }));
@@ -690,10 +886,11 @@
 
   const TRAY = [
     ['⚡ కరెంట్ ఇచ్చేవి', ['mains', 'battery', 'cell', 'solar', 'inverter', 'charger']],
-    ['🎛️ కంట్రోల్ / రక్షణ', ['switch', 'switch2', 'fuse', 'mcb']],
+    ['🎛️ కంట్రోల్ / రక్షణ', ['switch', 'switch2', 'pushbtn', 'relay', 'fuse', 'mcb']],
     ['💡 ఇంట్లో వాడేవి', ['ledbulb', 'bulb', 'tube', 'fan', 'tv', 'fridge', 'mixie', 'ac', 'iron', 'geyser', 'motor']],
     ['🚗 కార్ / 12V', ['dclamp', 'headlight', 'horn', 'phone']],
-    ['🔧 ఎలక్ట్రానిక్స్ కిట్', ['smallbulb', 'led', 'resistor', 'buzzer', 'dcmotor']]];
+    ['🔧 ఎలక్ట్రానిక్స్ కిట్', ['smallbulb', 'led', 'resistor', 'buzzer', 'dcmotor']],
+    ['🧪 ఎలక్ట్రానిక్స్ (ఇంకా)', ['capacitor', 'diode', 'npn', 'pot', 'ldr', 'regulator']]];
 
   function showTray() {
     openSheet((sh) => {
@@ -790,6 +987,7 @@
 
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
   function showTab(name) {
+    if (name !== 'board' && v3dOpen()) window.__view3d.close();
     tab = name;
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === name));
     document.querySelectorAll('main > section').forEach((s) => s.classList.toggle('on', s.id === name));
@@ -1121,7 +1319,8 @@
       }
       case 'tab': if (typeof m.name === 'string') showTab(m.name); break;
       case 'back': // (the phone's back: first the open card, then the board's tab, then Jarvis leaves the lab)
-        if ($('sheet').classList.contains('on')) { closeSheet(); post({ t: 'back', used: true }); }
+        if (v3dOpen()) { window.__view3d.close(); kick(); post({ t: 'back', used: true }); }
+        else if ($('sheet').classList.contains('on')) { closeSheet(); post({ t: 'back', used: true }); }
         else if (wireFrom || mode === 'meter') { wireFrom = null; if (mode === 'meter') { mode = 'edit'; probes = []; tools(); } hint(''); kick(); post({ t: 'back', used: true }); }
         else if (tab !== 'board') { showTab('board'); post({ t: 'back', used: true }); }
         else post({ t: 'back', used: false });
@@ -1147,5 +1346,5 @@
   strip();
   kick();
   // (desk tests reach in here)
-  window.__lab = { get board() { return board; }, get res() { return res; }, get st() { return st; }, onJarvis, setBoard, showTab, tap, fit, view, get store() { return store; }, K, S, picture };
+  window.__lab = { get board() { return board; }, get res() { return res; }, get st() { return st; }, onJarvis, setBoard, showTab, tap, fit, view, get store() { return store; }, K, S, picture, open3d, tap3d };
 })();

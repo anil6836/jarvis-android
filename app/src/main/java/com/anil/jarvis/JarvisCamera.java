@@ -1140,6 +1140,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             }
             if (!deep && onScreen && (r.hologram || r.items.size() >= 6) && !hasType(acts, "hologram")) acts.add(act("hologram"));
             if (("pcb".equals(r.kind) || "electronics".equals(r.kind)) && !hasType(acts, "pdf")) acts.add(act("pdf"));
+            if (("pcb".equals(r.kind) || "electronics".equals(r.kind) || "wiring".equals(r.kind)) && !hasType(acts, "lab") && Workshop.here(this)) acts.add(act("lab")); // ⚡ (G2)
             if ("firstaid".equals(mode) && !hasType(acts, "dial")) acts.add(0, new JSONObject().put("type", "dial").put("number", "108").put("label", "📞 108 అంబులెన్స్"));
         } catch (Exception ignored) {}
         setActions(acts);
@@ -1548,6 +1549,22 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         s.compress(Bitmap.CompressFormat.JPEG, quality, o);
         if (s != b) s.recycle();
         return android.util.Base64.encodeToString(o.toByteArray(), android.util.Base64.NO_WRAP);
+    }
+
+    /** ⚡ (G2) This scan's parts (and the photo, for that one board only) to the circuit lab; it asks him and says the cost first. */
+    @Override public void lab() {
+        if (last == null || last.items.isEmpty()) { tell("ముందు ఒక సర్క్యూట్ బోర్డ్ స్కాన్ చేయండి Sir.", true); return; }
+        StringBuilder parts = new StringBuilder();
+        for (ScanBrain.Item it : last.items) {
+            if (it.name.isEmpty()) continue;
+            parts.append("- ").append(it.name);
+            if (!it.value.isEmpty()) parts.append(" (").append(it.value).append(")");
+            if (!it.pins.isEmpty()) parts.append(", pins: ").append(ScanStore.cut(it.pins, 80));
+            if (!it.note.isEmpty()) parts.append(" - ").append(ScanStore.cut(it.note, 80));
+            parts.append('\n');
+            if (parts.length() > 3500) break;
+        }
+        CircuitLabActivity.fromScan(this, last.title, parts.toString(), photoJpeg());
     }
 
     @Override public String photoJpeg() { Bitmap b = shownPic != null ? shownPic : photo; return b == null ? null : jpeg(b, 1400, 85); }

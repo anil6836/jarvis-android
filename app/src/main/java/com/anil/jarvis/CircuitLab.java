@@ -96,6 +96,17 @@ final class CircuitLab {
             "Small kit, for cells:  smallbulb (a b) w 0.75, v 2.5 · buzzer (a b) w 0.3, v 9 · dcmotor (a b) w 3, v 6 · resistor (a b) ohm 470 ·",
             "  led (+ -) color red | yellow | green | blue | white",
             "Every load also takes its rated \"v\" and \"w\" in props.",
+            "More electronics:",
+            "  capacitor (+ -) uf 1000, v 25   (electrolytic: + to the higher side; it fills and empties over time)",
+            "  diode (+ -)                     (+ = anode; current only from + to -, about 0.7 V lost)",
+            "  npn (c b e) beta 100            (a small transistor used as a switch: always a resistor of 1k-10k into b; at most 0.5 A",
+            "                                  through c; for a bigger load let it switch a relay coil, with a diode across the coil)",
+            "  pot (a w b) ohm 10000, turn 50  (a knob: w moves between a and b, turn 0-100; a and w alone make a dimmer)",
+            "  ldr (a b) light 0.9             (a light sensor: about 200 ohm in sun, 1 Mohm in the dark; light 0 = dark, 1 = sun)",
+            "  regulator (in gnd out) v 5      (a 7805: in at least v + 2 volts, out a steady v, at most 1.5 A)",
+            "  pushbtn (a b)                   (joined only while he holds it, like a doorbell button)",
+            "  relay (c1 c2 com no nc) v 12    (coil c1 c2 at its v: com joins no; otherwise com joins nc. The coil side may be a",
+            "                                  battery and the contact side 230 V mains: they never join)",
             "",
             "A WIRE: {\"a\": \"<id>.<terminal>\", \"b\": \"<id>.<terminal>\"}, e.g. {\"a\": \"bat1.+\", \"b\": \"fus1.a\"}. A wire joins two terminals;",
             "several wires may meet at one terminal (that is how parallel branches are made).",
@@ -136,6 +147,15 @@ final class CircuitLab {
     static String editMessage(String boardJson, String words) {
         return "The board on the screen now:\n" + (boardJson == null ? "{}" : boardJson) + "\n\nAnil says: " + (words == null ? "" : words.trim())
                 + "\nChange the board as he says and answer with the whole new board; or, if it is only a question, answer it in \"say\" and leave \"board\" out.";
+    }
+
+    /** ⚡ (G2) A Jarvis camera scan of a real circuit board: its title and the parts it read (the photo goes with it). */
+    static String scanMessage(String title, String parts) {
+        return "Jarvis's camera scanned a real circuit board (PCB) in this photo: " + (title == null ? "" : title.trim()) + ".\nParts it read:\n"
+                + (parts == null ? "" : parts.trim()) + "\n\nDraw an APPROXIMATE board of its main circuit with the types above: where the power comes in, "
+                + "the main parts with these values, and how they most likely connect (from the photo where the tracks can be seen). Leave out parts that "
+                + "have no type here (chips / ICs, transformers) and say so in \"say\". Start \"say\" with \"అంచనా:\" and say in one line that a photo "
+                + "cannot show every connection, so the real board must be checked.";
     }
 
     static String photoMessage(String words) {

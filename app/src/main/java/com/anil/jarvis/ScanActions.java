@@ -39,6 +39,8 @@ final class ScanActions {
         /** A line in the captions (and spoken when speak). */
         void tell(String text, boolean speak);
         void needLocation();
+        /** ⚡ (G2) the scanned circuit board into the circuit lab, as an approximate board (the lab says the cost first). */
+        default void lab() {}
     }
 
     static String label(JSONObject a) {
@@ -62,6 +64,7 @@ final class ScanActions {
             case "link": return "🔗 లింక్";
             case "hologram": return "🧊 3D హోలోగ్రామ్";
             case "pdf": return "📄 తెలుగు PDF";
+            case "lab": return "⚡ సర్క్యూట్ ల్యాబ్";
             case "checkup": return "✅ చెకప్ మొదలు";
             case "open_layers": return "🧅 తెరుస్తూ స్కాన్";
             case "obd": return "🔌 OBD స్కానర్";
@@ -118,6 +121,7 @@ final class ScanActions {
                 case "link": link(act, a.optString("url"), h); break;
                 case "hologram": h.hologram(); break;
                 case "pdf": h.pdf(); break;
+                case "lab": h.lab(); break;
                 case "checkup": h.checkup(a.optString("what")); break;
                 case "open_layers": h.layers(a.optString("device")); break;
                 case "obd": h.obd(); break;

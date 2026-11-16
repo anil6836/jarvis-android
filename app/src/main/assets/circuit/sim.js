@@ -80,10 +80,36 @@
       info: 'రెసిస్టర్ కరెంట్‌ని తగ్గిస్తుంది (Ω ఎక్కువైతే కరెంట్ తక్కువ). LED ని కాలిపోకుండా కాపాడుతుంది. V = I × R.' },
     led: { te: 'LED', emoji: '🔴', cat: 'kit', terms: ['+', '-'], props: { color: 'red' }, glow: 1,
       info: 'LED ఒకే వైపు మాత్రమే కరెంట్ పంపుతుంది (+ పొడవు కాలు). రెసిస్టర్ లేకుండా బ్యాటరీకి నేరుగా కలిపితే కాలిపోతుంది.' },
+
+    // G2 (16 Nov): electronics that change with time, light and small currents
+    pushbtn: { te: 'పుష్ బటన్', emoji: '⏺️', cat: 'ctl', terms: ['a', 'b'], link: true, props: {},
+      info: 'నొక్కి పట్టుకున్నంత సేపే దారి కలుస్తుంది; వదిలితే తెగిపోతుంది (కాలింగ్ బెల్ బటన్ లాగా). బోర్డ్ మీద దాన్ని వేలితో నొక్కి పట్టుకోండి.' },
+    relay: { te: 'రిలే', emoji: '🧲', cat: 'ctl', terms: ['c1', 'c2', 'com', 'no', 'nc'], link: true, props: { v: 12 },
+      info: 'చిన్న కరెంట్‌తో పెద్ద కరెంట్‌ని ఆన్ / ఆఫ్ చేసే స్విచ్. కాయిల్ (C1, C2) కి దాని వోల్ట్స్ వస్తే లోపలి అయస్కాంతం COM ని NO కి కలుపుతుంది; రాకపోతే COM, NC కలిసి ఉంటాయి. కాయిల్ వైపు, స్విచ్ వైపు వేరు వేరు: 12V కాయిల్‌తో 230V బల్బ్ ఆన్ చేయొచ్చు.' },
+    capacitor: { te: 'కెపాసిటర్', emoji: '🫙', cat: 'kit', terms: ['+', '-'], props: { uf: 1000, v: 25 },
+      info: 'కరెంట్‌ని కొద్దిసేపు దాచుకునే చిన్న "నీళ్ళ ట్యాంక్": నిదానంగా నిండుతుంది, తర్వాత నిదానంగా ఖాళీ అవుతుంది. µF ఎక్కువైతే ఎక్కువ సేపు. దాని V కంటే ఎక్కువ వోల్ట్స్ ఇచ్చినా, + − తిప్పి కలిపినా ఉబ్బి పేలిపోతుంది.' },
+    diode: { te: 'డయోడ్', emoji: '▶️', cat: 'kit', terms: ['+', '-'], props: {},
+      info: 'కరెంట్‌ని ఒకే వైపు (+ నుంచి − కి) మాత్రమే పంపే వన్-వే గేటు; దాని మీద సుమారు 0.7 V పోతుంది. బ్యాటరీ తిప్పి పెట్టినా పాడవకుండా కాపాడుతుంది.' },
+    npn: { te: 'ట్రాన్సిస్టర్ (NPN)', emoji: '🔺', cat: 'kit', terms: ['c', 'b', 'e'], props: { beta: 100 },
+      info: 'చిన్న కరెంట్‌తో నడిచే స్విచ్: B (బేస్) లోకి కొంచెం కరెంట్ వెళ్తే C (కలెక్టర్) నుంచి E (ఎమిటర్) కి దాని β రెట్లు కరెంట్ వెళ్తుంది. బేస్‌కి ఎప్పుడూ రెసిస్టర్ పెట్టాలి. ఇది చిన్న ట్రాన్సిస్టర్: 0.5 A దాకానే; పెద్ద లోడ్‌కి రిలే వాడాలి.' },
+    pot: { te: 'పొటెన్షియోమీటర్', emoji: '🎛️', cat: 'kit', terms: ['a', 'w', 'b'], props: { ohm: 10000, turn: 50 },
+      info: 'తిప్పే రెసిస్టర్ (రేడియో వాల్యూమ్ నాబ్ లాగా): A–B మధ్య మొత్తం Ω; మధ్య కాలు W తిప్పిన చోటికి కదులుతుంది. A, W మాత్రమే వాడితే డిమ్మర్ అవుతుంది.' },
+    ldr: { te: 'LDR (వెలుతురు సెన్సార్)', emoji: '🌗', cat: 'kit', terms: ['a', 'b'], props: { light: 0.9 },
+      info: 'వెలుతురుని బట్టి మారే రెసిస్టర్: ఎండలో సుమారు 200 Ω, చీకట్లో 1 MΩ. వీధి లైట్లు చీకటి పడగానే వెలగడం దీని వల్లే.' },
+    regulator: { te: 'రెగ్యులేటర్ (7805)', emoji: '⬛', cat: 'kit', terms: ['in', 'gnd', 'out'], props: { v: 5 },
+      info: 'ఎక్కువ వోల్ట్స్‌ని (7 V నుంచి 35 V) స్థిరమైన 5 V గా మారుస్తుంది: 12V బ్యాటరీ నుంచి ఫోన్‌కి USB 5V లాగా. ఇన్‌పుట్ కనీసం 2 V ఎక్కువ ఉండాలి; 1.5 A దాకానే, మిగతా వోల్ట్స్ వేడిగా పోతాయి.' },
   };
 
   const LED_VF = { red: 1.9, yellow: 2.0, green: 2.1, blue: 3.0, white: 3.0 };
   const LED_R = 15, LED_MAX = 0.03, LED_BURN = 0.06;
+  // G2: a diode, a small NPN transistor (its base a 0.65 V diode, C→E β × the base current, or "full on" at 0.2 V), a relay coil
+  const DIODE_VF = 0.7, DIODE_R = 0.2, DIODE_BURN = 3;
+  const RBE = 50, VBE = 0.65, VCE_SAT = 0.2, IC_MAX = 0.5, IB_MAX = 0.05;
+  const REG_DROP = 2, REG_MAX = 1.5, REG_Q = 0.005;
+  /** The default step of time for a capacitor in one solve (the page's real-time tick). */
+  const DT = 0.05;
+  function ldrR(light) { return 200 * Math.pow(5000, 1 - Math.max(0, Math.min(1, light))); }
+  function coilR(o) { return (o.v * o.v) / 0.36; }
   /** Hours a day each thing usually runs (for the month's units); he can change them. */
   const HOURS = { dclamp: 5, bulb: 6, ledbulb: 6, tube: 6, fan: 10, tv: 4, fridge: 9.6, mixie: 0.3, ac: 6, iron: 0.5, geyser: 1, motor: 1,
     phone: 2, headlight: 1, horn: 0.02, smallbulb: 1, buzzer: 0.05, dcmotor: 0.5 };
@@ -109,6 +135,10 @@
     if (o.va != null) o.va = Math.max(50, Math.min(20000, o.va));
     if (o.speed != null) o.speed = Math.max(0, Math.min(5, Math.round(o.speed)));
     if (o.sun != null) o.sun = Math.max(0, Math.min(1, o.sun));
+    if (o.uf != null) o.uf = Math.max(0.1, Math.min(1e6, o.uf));
+    if (o.beta != null) o.beta = Math.max(10, Math.min(1000, o.beta));
+    if (o.turn != null) o.turn = Math.max(0, Math.min(100, o.turn));
+    if (o.light != null) o.light = Math.max(0, Math.min(1, o.light));
     return o;
   }
 
@@ -137,7 +167,7 @@
   const T = (id, t) => id + '.' + t;
 
   /** The links that join terminals now (wires, closed switches, whole fuses, MCBs that are up): [{a, b, kind, ref}]. */
-  function links(board, st) {
+  function links(board, st, modes) {
     const out = [];
     board.wires.forEach((w, i) => out.push({ a: w.a, b: w.b, kind: 'wire', ref: i }));
     for (const p of board.parts) {
@@ -147,6 +177,11 @@
       if (p.type === 'switch' && o.on) out.push({ a: T(p.id, 'a'), b: T(p.id, 'b'), kind: 'part', ref: p.id });
       if (p.type === 'switch2') out.push({ a: T(p.id, 'c'), b: T(p.id, o.pos === 2 ? '2' : '1'), kind: 'part', ref: p.id });
       if ((p.type === 'fuse' && !s.blown) || (p.type === 'mcb' && !s.tripped)) out.push({ a: T(p.id, 'a'), b: T(p.id, 'b'), kind: 'part', ref: p.id });
+      if (p.type === 'pushbtn' && s.pressed) out.push({ a: T(p.id, 'a'), b: T(p.id, 'b'), kind: 'part', ref: p.id });
+      if (p.type === 'relay') {
+        const on = !!(modes && modes.get('rly:' + p.id)) && !s.burnt;
+        out.push({ a: T(p.id, 'com'), b: T(p.id, on ? 'no' : 'nc'), kind: 'part', ref: p.id, contact: true });
+      }
     }
     return out;
   }
@@ -183,8 +218,9 @@
    * Solves the board as it is now. st: the parts' states that last (blown fuses, tripped MCBs, burnt parts, battery charge,
    * an inverter stopped by overload); it is updated here (a fuse blows, a part burns) and returned with the readings.
    */
-  function solve(board, stIn) {
+  function solve(board, stIn, opts) {
     board = normalise(board);
+    const dt = opts && opts.dt > 0 ? opts.dt : DT;
     const st = JSON.parse(JSON.stringify(stIn || {}));
     for (const p of board.parts) {
       st[p.id] = st[p.id] || {};
@@ -199,9 +235,29 @@
     const invDraw = {};
     Object.defineProperty(invDraw, '__ledOff', { value: new Set(), enumerable: false });
     Object.defineProperty(invDraw, '__knee', { value: new Set(), enumerable: false });
-    for (let round = 0; round < 16; round++) {
+    Object.defineProperty(invDraw, '__mode', { value: new Map(), enumerable: false });   // npn:id → act|sat, rly:id → on, reg:id → on|drop
+    Object.defineProperty(invDraw, '__flips', { value: new Map(), enumerable: false });  // (a part that keeps flipping is left as it is)
+    Object.defineProperty(invDraw, '__dt', { value: dt, enumerable: false });
+    for (let round = 0; round < 40; round++) {
       res = once(board, st, invDraw);
-      if (res.ledBack.length) { res.ledBack.forEach((id) => (id.startsWith('knee:') ? invDraw.__knee.add(id.slice(5)) : invDraw.__ledOff.add(id))); continue; }
+      if (res.ledBack.length) {
+        let changed = false;
+        for (const id of res.ledBack) {
+          if (id.startsWith('knee:')) { invDraw.__knee.add(id.slice(5)); changed = true; continue; }
+          const m = /^(npn|rly|reg)=(.*?):(.*)$/.exec(id);
+          if (m) {
+            const key = m[1] + ':' + m[3], val = m[2] === '1' ? true : m[2] === '0' ? false : m[2];
+            const n = invDraw.__flips.get(key) || 0;
+            if (n >= 4 || invDraw.__mode.get(key) === val) continue;
+            invDraw.__flips.set(key, n + 1);
+            invDraw.__mode.set(key, val);
+            changed = true;
+            continue;
+          }
+          if (!invDraw.__ledOff.has(id)) { invDraw.__ledOff.add(id); changed = true; }
+        }
+        if (changed) continue;
+      }
       // the inverter's battery side draws what its AC side gives (÷ its efficiency): solve again with that
       let moved = false;
       for (const id of Object.keys(res.invOut)) {
@@ -216,6 +272,7 @@
     res.events = events;
     res.st = st;
     res.ok = true;
+    res.dt = dt;
     res.warnings = warnings(board, res);
     return res;
   }
@@ -250,6 +307,7 @@
       const d = def(p.type);
       if (p.type === 'inverter') { uf.union(T(p.id, 'b+'), T(p.id, 'b-')); uf.union(T(p.id, 'in-l'), T(p.id, 'in-n')); uf.union(T(p.id, 'out-l'), T(p.id, 'out-n')); uf.union(T(p.id, 'in-l'), T(p.id, 'out-l')); continue; }
       if (p.type === 'charger') { uf.union(T(p.id, 'in-l'), T(p.id, 'in-n')); uf.union(T(p.id, '+'), T(p.id, '-')); continue; }
+      if (p.type === 'relay') { uf.union(T(p.id, 'c1'), T(p.id, 'c2')); uf.union(T(p.id, 'com'), T(p.id, 'no')); uf.union(T(p.id, 'com'), T(p.id, 'nc')); continue; }
       for (let i = 1; i < d.terms.length; i++) uf.union(T(p.id, d.terms[0]), T(p.id, d.terms[i]));
     }
     const kind = new Map();
@@ -270,7 +328,10 @@
 
   function once(board, st, invDraw) {
     const uf = new UF();
-    const L = links(board, st);
+    const modes = invDraw.__mode || new Map();
+    const L = links(board, st, modes);
+    const dt = invDraw.__dt || DT;
+    const off = (id) => invDraw.__ledOff && invDraw.__ledOff.has(id);
     for (const p of board.parts) for (const t of def(p.type).terms) uf.find(T(p.id, t));
     for (const l of L) uf.union(l.a, l.b);
     const idx = new Map();
@@ -286,6 +347,8 @@
     const elems = [];        // two-terminal conductances for the readings: {id, a, b, R, vf}
     const sinks = [];        // {id, plus, minus, I} current drawn from plus back to minus
     const invOut = {}, invMode = {}, chg = {}, ledBack = [];
+    const vccs = [];         // npn transistors working as amplifiers: {id, c, b, e, k} with Ic = k (Vb − Ve − VBE)
+    const regs = {};         // regulators: id → on | drop
 
     // the AC side first: which inverters see mains on their input
     const acOn = (tl, tn) => board.parts.some((q) => q.type === 'mains' && props(q).on && !(st[q.id] || {}).short
@@ -335,6 +398,36 @@
       } else if (p.type === 'led') {
         if (s.burnt || o.off) continue;
         if (!invDraw.__ledOff || !invDraw.__ledOff.has(p.id)) elems.push({ id: p.id, a: T(p.id, '+'), b: T(p.id, '-'), R: LED_R, vf: LED_VF[o.color] || 2 });
+      } else if (p.type === 'diode') {
+        if (s.burnt) continue;
+        if (!off(p.id)) elems.push({ id: p.id, a: T(p.id, '+'), b: T(p.id, '-'), R: DIODE_R, vf: DIODE_VF });
+      } else if (p.type === 'capacitor') {
+        if (s.burnt) continue;
+        // one step of time (backward Euler): like a battery at its present volts behind a resistance of dt / C
+        elems.push({ id: p.id, a: T(p.id, '+'), b: T(p.id, '-'), R: dt / (o.uf * 1e-6), vf: typeof s.vc === 'number' ? s.vc : 0, cap: true });
+      } else if (p.type === 'pot') {
+        const k = o.turn / 100;
+        elems.push({ id: p.id + ':aw', a: T(p.id, 'a'), b: T(p.id, 'w'), R: Math.max(1, o.ohm * k), sub: true });
+        elems.push({ id: p.id + ':wb', a: T(p.id, 'w'), b: T(p.id, 'b'), R: Math.max(1, o.ohm * (1 - k)), sub: true });
+      } else if (p.type === 'ldr') {
+        elems.push({ id: p.id, a: T(p.id, 'a'), b: T(p.id, 'b'), R: ldrR(o.light) });
+      } else if (p.type === 'relay') {
+        if (!s.burnt) elems.push({ id: p.id, a: T(p.id, 'c1'), b: T(p.id, 'c2'), R: coilR(o) });
+      } else if (p.type === 'npn') {
+        if (s.burnt) continue;
+        const be = p.id + ':be';
+        if (off(be)) continue; // (no base current: off)
+        elems.push({ id: be, a: T(p.id, 'b'), b: T(p.id, 'e'), R: RBE, vf: VBE, sub: true });
+        if ((modes.get('npn:' + p.id) || 'act') === 'act') vccs.push({ id: p.id, c: T(p.id, 'c'), b: T(p.id, 'b'), e: T(p.id, 'e'), k: o.beta / RBE });
+        else if (!off(p.id + ':ce')) elems.push({ id: p.id + ':ce', a: T(p.id, 'c'), b: T(p.id, 'e'), R: 0.5, vf: VCE_SAT, sub: true });
+      } else if (p.type === 'regulator') {
+        if (s.burnt) continue;
+        const m = modes.get('reg:' + p.id) || 'on';
+        regs[p.id] = m;
+        if (m === 'on') {
+          sources.push({ id: p.id, plus: T(p.id, 'out'), minus: T(p.id, 'gnd'), v: o.v, r: 0.05, kind: 'reg' });
+          if (invDraw[p.id]) sinks.push({ id: p.id + ':in', plus: T(p.id, 'in'), minus: T(p.id, 'gnd'), I: invDraw[p.id] });
+        } else elems.push({ id: p.id + ':drop', a: T(p.id, 'in'), b: T(p.id, 'out'), R: 1, vf: REG_DROP, sub: true });
       }
     }
     // an inverter on battery needs a live battery on its b+ / b- side
@@ -356,6 +449,11 @@
       const i = node(e.a), j = node(e.b);
       if (e.vf) { g(i, j, 1 / e.R); inj(i, e.vf / e.R); inj(j, -e.vf / e.R); } // (an LED: I = (Va − Vb − vf) / R)
       else g(i, j, 1 / e.R);
+    }
+    for (const q of vccs) { // (C → E inside the transistor: Ic = k (Vb − Ve − VBE))
+      const c = node(q.c), bb = node(q.b), e = node(q.e);
+      A[c][bb] += q.k; A[c][e] -= q.k; b[c] += q.k * VBE;
+      A[e][bb] -= q.k; A[e][e] += q.k; b[e] -= q.k * VBE;
     }
     for (const k of sinks) { inj(node(k.plus), -k.I); inj(node(k.minus), k.I); }
     const v = n ? gauss(A, b.slice()) : [];
@@ -380,6 +478,7 @@
       if (shorted.includes(s)) r.state = 'short';
       if (s.kind === 'inv') { invOut[s.id] = Math.max(0, r.p) / Math.max(0.3, props(board.parts.find((q) => q.id === s.id)).eff); }
       if (s.kind === 'chg') invOut[s.id] = Math.max(0, r.p);
+      if (s.kind === 'reg') { invOut[s.id] = Math.max(0, cur) + REG_Q; r.vin = V(T(s.id, 'in')) - V(T(s.id, 'gnd')); }
     }
     for (const k of sinks) {
       add(k.plus, -k.I); add(k.minus, k.I);
@@ -387,13 +486,62 @@
       if (k.id.endsWith(':dc')) { parts[id].dcI = k.I; parts[id].dcW = k.I * (V(k.plus) - V(k.minus)); }
       if (k.id.endsWith(':in')) { parts[id].inI = k.I; }
     }
+    const sub = {};
     for (const e of elems) {
       const vab = V(e.a) - V(e.b);
       let cur = e.vf ? (vab - e.vf) / e.R : vab / e.R;
-      if (e.vf && cur < -1e-9) ledBack.push(e.id); // (an LED the wrong way, or below its vf: it does not conduct; solved again)
+      if (e.vf && !e.cap && cur < -1e-9) ledBack.push(e.id); // (an LED the wrong way, or below its vf: it does not conduct; solved again)
       add(e.a, -cur); add(e.b, cur);
+      if (e.sub) { sub[e.id] = { v: vab, i: cur }; continue; }
       const r = parts[e.id];
       r.v = vab; r.i = cur; r.p = Math.abs(vab * cur);
+    }
+    for (const q of vccs) {
+      const ic = (q.k * (V(q.b) - V(q.e) - VBE));
+      add(q.c, -ic); add(q.e, ic);
+      sub[q.id + ':ic'] = { i: ic };
+    }
+    // G2 parts: their readings, and whether a transistor / relay / regulator must be solved again in another state
+    for (const p of board.parts) {
+      const r = parts[p.id], o = props(p), s = st[p.id];
+      if (p.type === 'npn') {
+        const be = sub[p.id + ':be'], ib = be ? Math.max(0, be.i) : 0;
+        const m = modes.get('npn:' + p.id) || 'act';
+        const ic = !be ? 0 : m === 'act' ? Math.max(0, (sub[p.id + ':ic'] || {}).i || 0) : Math.max(0, (sub[p.id + ':ce'] || {}).i || 0);
+        const vce = V(T(p.id, 'c')) - V(T(p.id, 'e'));
+        r.v = vce; r.i = ic; r.ib = ib; r.p = Math.abs(vce * ic);
+        r.mode = !be || ib < 1e-7 ? 'off' : m === 'act' ? 'act' : 'sat';
+        r.on = ic > 0.001;
+        if (be && m === 'act' && vce < VCE_SAT) ledBack.push('npn=sat:' + p.id);
+        else if (be && m === 'sat' && sub[p.id + ':ce'] && ic > o.beta * ib * 1.02 + 1e-6) ledBack.push('npn=act:' + p.id);
+        if (s.burnt) { r.state = 'burnt'; r.on = false; }
+      } else if (p.type === 'relay') {
+        const vc = Math.abs(V(T(p.id, 'c1')) - V(T(p.id, 'c2')));
+        const on = !!modes.get('rly:' + p.id);
+        r.v = vc; r.i = vc / coilR(o); r.p = vc * r.i; r.on = on && !s.burnt;
+        if (!s.burnt && !on && vc >= o.v * 0.7) ledBack.push('rly=1:' + p.id);
+        else if (on && vc < o.v * 0.35) ledBack.push('rly=0:' + p.id);
+        if (s.burnt) r.state = 'burnt';
+      } else if (p.type === 'regulator') {
+        const vin = V(T(p.id, 'in')) - V(T(p.id, 'gnd'));
+        r.vin = vin;
+        r.mode = regs[p.id] || 'off';
+        if (r.mode === 'drop') { const d = sub[p.id + ':drop']; r.v = V(T(p.id, 'out')) - V(T(p.id, 'gnd')); r.i = d ? Math.max(0, d.i) : 0; r.p = Math.abs((vin - r.v) * r.i); if (vin >= o.v + REG_DROP + 0.3) ledBack.push('reg=on:' + p.id); }
+        else if (r.mode === 'on') { r.p = Math.abs((vin - r.v) * r.i); if (vin < o.v + REG_DROP - 0.2) ledBack.push('reg=drop:' + p.id); }
+        r.on = r.v > 0.5;
+        if (s.burnt) { r.state = 'burnt'; r.on = false; }
+      } else if (p.type === 'pot') {
+        const aw = sub[p.id + ':aw'] || { v: 0, i: 0 }, wb = sub[p.id + ':wb'] || { v: 0, i: 0 };
+        r.v = V(T(p.id, 'a')) - V(T(p.id, 'b')); r.i = Math.abs(aw.i) > Math.abs(wb.i) ? aw.i : wb.i; r.p = Math.abs(aw.v * aw.i) + Math.abs(wb.v * wb.i);
+        r.vw = V(T(p.id, 'w')) - V(T(p.id, 'b')); r.on = Math.abs(r.i) > 1e-6;
+      } else if (p.type === 'ldr') { r.on = Math.abs(r.i) > 1e-6; r.ohm = ldrR(o.light); }
+      else if (p.type === 'capacitor') {
+        r.vc0 = typeof s.vc === 'number' ? s.vc : 0;
+        r.on = Math.abs(r.i) > 1e-4;
+        r.pct = o.v > 0 ? Math.max(0, r.v) / o.v : 0;
+        if (s.burnt) { r.state = 'burnt'; r.on = false; }
+      } else if (p.type === 'diode') { r.on = r.i > 0.001; if (s.burnt) { r.state = 'burnt'; r.on = false; } }
+      else if (p.type === 'pushbtn') r.on = !!s.pressed;
     }
     for (const p of board.parts) {
       const r = parts[p.id], d = def(p.type), o = props(p), s = st[p.id];
@@ -437,6 +585,7 @@
     const wires = board.wires.map(() => 0);
     L.forEach((l, k) => {
       if (l.kind === 'wire') wires[l.ref] = linkI[k];
+      else if (l.contact) { const r = parts[l.ref]; r.contactI = Math.abs(linkI[k]); r.flow = linkI[k]; }
       else { const r = parts[l.ref]; r.i = Math.abs(linkI[k]); r.flow = linkI[k]; }
     });
     return { parts, wires, invOut, V: (t) => V(t), node, shorted: shorted.map((s) => s.id), links: L, linkI, ledBack };
@@ -482,6 +631,19 @@
       const d = def(p.type);
       if (d.load && !s.burnt && r.rated > 0 && Math.abs(r.v) > o.v * 1.35 && r.p > r.rated * 1.8)
         cand.push({ id: p.id, over: Math.abs(r.v) / o.v, set: () => { s.burnt = true; }, te: d.te + ' కాలిపోయింది: ' + Math.round(Math.abs(r.v)) + ' V వచ్చింది, ఇది ' + o.v + ' V ది.' });
+      if (p.type === 'diode' && !s.burnt && r.i > DIODE_BURN)
+        cand.push({ id: p.id, over: r.i / DIODE_BURN, set: () => { s.burnt = true; }, te: 'డయోడ్ కాలిపోయింది: ' + amps(r.i) + ' వెళ్ళింది (ఇది ' + DIODE_BURN + ' A దాకానే).' });
+      if (p.type === 'npn' && !s.burnt && (r.ib > IB_MAX || r.i > IC_MAX))
+        cand.push({ id: p.id, over: Math.max(r.ib / IB_MAX, r.i / IC_MAX), set: () => { s.burnt = true; },
+          te: r.ib > IB_MAX ? 'ట్రాన్సిస్టర్ కాలిపోయింది: బేస్‌లోకి ' + amps(r.ib) + ' వెళ్ళింది. బేస్‌కి ఎప్పుడూ రెసిస్టర్ (ఉదా: 10 kΩ) పెట్టాలి.'
+            : 'ట్రాన్సిస్టర్ కాలిపోయింది: ' + amps(r.i) + ' వెళ్ళింది, ఇది ' + IC_MAX + ' A దాకానే. పెద్ద లోడ్‌కి రిలే వాడాలి.' });
+      if (p.type === 'capacitor' && !s.burnt && (r.v > o.v * 1.15 || r.v < -1.5))
+        cand.push({ id: p.id, over: r.v < -1.5 ? 2 : r.v / o.v, set: () => { s.burnt = true; s.vc = 0; },
+          te: r.v < -1.5 ? 'కెపాసిటర్ ఉబ్బి పేలిపోయింది: + − తిప్పి కలిపారు.' : 'కెపాసిటర్ ఉబ్బి పేలిపోయింది: ' + Math.round(r.v) + ' V వచ్చింది, ఇది ' + o.v + ' V దాకానే.' });
+      if (p.type === 'relay' && !s.burnt && r.v > o.v * 1.6)
+        cand.push({ id: p.id, over: r.v / o.v, set: () => { s.burnt = true; }, te: 'రిలే కాయిల్ కాలిపోయింది: ' + Math.round(r.v) + ' V వచ్చింది, ఇది ' + o.v + ' V రిలే.' });
+      if (p.type === 'regulator' && !s.burnt && r.i > REG_MAX)
+        cand.push({ id: p.id, over: r.i / REG_MAX, set: () => { s.burnt = true; }, te: 'రెగ్యులేటర్ వేడెక్కి కాలిపోయింది: ' + amps(r.i) + ' అడిగారు, ఇది ' + REG_MAX + ' A దాకానే.' });
       if (p.type === 'led' && !s.burnt && r.i > LED_BURN)
         cand.push({ id: p.id, over: r.i / LED_MAX, set: () => { s.burnt = true; }, te: 'LED కాలిపోయింది: ' + amps(r.i) + ' వెళ్ళింది (20 mA చాలు). మధ్యలో రెసిస్టర్ పెట్టాలి.' });
     }
@@ -514,7 +676,7 @@
 
   /** Moves time on: batteries drain or fill by the current they give / take. */
   function advance(board, st, res, seconds) {
-    const out = JSON.parse(JSON.stringify(st));
+    const out = settle(board, st, res).st;
     for (const p of board.parts) {
       if (p.type !== 'battery' && p.type !== 'cell') continue;
       const o = props(p), s = out[p.id] || (out[p.id] = { soc: 1 });
@@ -526,6 +688,24 @@
       s.charging = i < -0.05;
     }
     return out;
+  }
+
+  /**
+   * ⏱️ After a solve: each capacitor keeps the volts it reached in that step of time (the next solve starts from them).
+   * moving = a capacitor is still filling / emptying (the page keeps time ticking while it is).
+   */
+  function settle(board, st, res) {
+    const out = JSON.parse(JSON.stringify(st || {}));
+    let moving = false;
+    for (const p of (board && board.parts) || []) {
+      if (p.type !== 'capacitor') continue;
+      const s = out[p.id] || (out[p.id] = {}), r = (res && res.parts && res.parts[p.id]) || {};
+      if (s.burnt) { s.vc = 0; continue; }
+      const before = typeof s.vc === 'number' ? s.vc : 0, now = typeof r.v === 'number' ? r.v : before;
+      s.vc = now;
+      if (Math.abs(r.i || 0) > 2e-4 || Math.abs(now - before) > 2e-3) moving = true;
+    }
+    return { st: out, moving };
   }
 
   /** The numbers for the 🔋 card: what each battery gives, how long it lasts, inverter load, solar filling time, the month's units. */
@@ -584,6 +764,6 @@
     return { hours: hoursWanted, budgetW: Math.round(budgetW), keep, off, lastsHours: used > 0 ? usable * eff / used : null };
   }
 
-  root.CircuitSim = { PARTS: P, HOURS, LED_VF, def, props, solve, advance, estimates, planBackup, amps, normalise };
+  root.CircuitSim = { PARTS: P, HOURS, LED_VF, DT, def, props, solve, advance, settle, estimates, planBackup, amps, normalise, ldrR };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.CircuitSim;
 })(typeof window !== 'undefined' ? window : globalThis);
