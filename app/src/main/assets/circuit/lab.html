@@ -66,6 +66,14 @@
   #toast { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); background: rgba(18,26,36,.97); border: 1px solid var(--gold); color: var(--text);
            border-radius: 12px; padding: 9px 14px; font-size: 14px; max-width: 92%; display: none; z-index: 9; text-align: center; line-height: 1.45; }
   body.v3d #toast { top: 104px; }
+  .chip.main { background: var(--cyan); color: #04131a; border-color: var(--cyan); font-weight: 600; }
+  /* ⛶ full screen: only the drawing (Jarvis hides its own bars too) */
+  #mini { position: absolute; top: 8px; right: 8px; display: none; gap: 6px; z-index: 6; }
+  body.full #mini { display: flex; }
+  body.full #tabs, body.full #tools, body.full #strip { display: none; }
+  body.full main { top: 0; }
+  body.full #hint { bottom: 12px; }
+  body.full #toast { top: 54px; }
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   td, th { padding: 5px 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
   th { color: var(--muted); font-weight: 500; }
@@ -87,6 +95,7 @@
     <div id="goal"></div>
     <div id="hint"></div>
     <div id="tools"></div>
+    <div id="mini"></div>
   </section>
   <section id="calc" class="scroll"></section>
   <section id="home" class="scroll"></section>

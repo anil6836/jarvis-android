@@ -20,6 +20,7 @@
     pot: { w: 2, h: 2, t: { a: [0, 1.4], w: [1, 0], b: [2, 1.4] } },
     regulator: { w: 2, h: 2, t: { in: [0, 1], gnd: [1, 2], out: [2, 1] } },
     relay: { w: 3, h: 2, t: { c1: [0, 0.6], c2: [0, 1.4], no: [3, 0.4], com: [3, 1], nc: [3, 1.6] } },
+    transformer: { w: 3, h: 2, t: { p1: [0, 0.6], p2: [0, 1.4], s1: [3, 0.6], s2: [3, 1.4] } },
   };
   function geom(type) { return GEOM[type] || GEOM._2; }
 
@@ -40,11 +41,11 @@
     fan: 'fan', tv: 'tv', fridge: 'fridge', mixie: 'mixie', ac: 'ac', iron: 'iron', geyser: 'geyser', motor: 'motor', dcmotor: 'motor',
     switch: 'switch', switch2: 'switch', fuse: 'fuse', mcb: 'mcb', battery: 'battery', cell: 'battery', inverter: 'inverter',
     solar: 'solar', led: 'led', resistor: 'resistor', horn: 'horn', buzzer: 'buzzer', charger: 'charger', phone: 'phone', mains: 'mains',
-    capacitor: 'capacitor', diode: 'diode', npn: 'transistor', pot: 'pot', ldr: 'ldr', relay: 'relay', regulator: 'regulator', pushbtn: 'button' };
+    capacitor: 'capacitor', diode: 'diode', npn: 'transistor', pot: 'pot', ldr: 'ldr', relay: 'relay', regulator: 'regulator', pushbtn: 'button', transformer: 'transformer' };
   const FAMILY_TE = { bulb: 'బల్బ్', headlight: 'హెడ్‌లైట్', fan: 'ఫ్యాన్', tv: 'TV', fridge: 'ఫ్రిజ్', mixie: 'మిక్సీ', ac: 'AC', iron: 'ఐరన్',
     geyser: 'గీజర్', motor: 'మోటార్', switch: 'స్విచ్', fuse: 'ఫ్యూజ్', mcb: 'MCB', battery: 'బ్యాటరీ', inverter: 'ఇన్వర్టర్', solar: 'సోలార్',
     led: 'LED', resistor: 'రెసిస్టర్', horn: 'హారన్', buzzer: 'బజర్', charger: 'ఛార్జర్', phone: 'ఫోన్', mains: 'ఇంటి కరెంట్',
-    capacitor: 'కెపాసిటర్', diode: 'డయోడ్', transistor: 'ట్రాన్సిస్టర్', pot: 'నాబ్', ldr: 'LDR', relay: 'రిలే', regulator: 'రెగ్యులేటర్', button: 'బటన్' };
+    capacitor: 'కెపాసిటర్', diode: 'డయోడ్', transistor: 'ట్రాన్సిస్టర్', pot: 'నాబ్', ldr: 'LDR', relay: 'రిలే', regulator: 'రెగ్యులేటర్', button: 'బటన్', transformer: 'ట్రాన్స్‌ఫార్మర్' };
 
   /** Every part's spoken name: its family and its number on this board ("బల్బ్ 2"), in board order. */
   function names(board) {
@@ -314,7 +315,8 @@
     ['solar', ['సోలార్', 'solar', 'ప్యానెల్']], ['led', ['ఎల్ఈడీ', 'led']], ['resistor', ['రెసిస్టర్', 'resistor']], ['headlight', ['హెడ్‌లైట్', 'హెడ్ లైట్', 'headlight']],
     ['horn', ['హారన్', 'horn']], ['buzzer', ['బజర్', 'బెల్', 'buzzer', 'bell']], ['charger', ['ఛార్జర్', 'charger']], ['phone', ['ఫోన్', 'phone']],
     ['capacitor', ['కెపాసిటర్', 'capacitor']], ['diode', ['డయోడ్', 'diode']], ['transistor', ['ట్రాన్సిస్టర్', 'transistor']], ['pot', ['నాబ్', 'పొటెన్షియోమీటర్', 'knob', 'pot']],
-    ['ldr', ['ఎల్డీఆర్', 'ldr', 'సెన్సార్']], ['relay', ['రిలే', 'relay']], ['regulator', ['రెగ్యులేటర్', '7805', 'regulator']], ['button', ['బటన్', 'button']]];
+    ['ldr', ['ఎల్డీఆర్', 'ldr', 'సెన్సార్']], ['relay', ['రిలే', 'relay']], ['regulator', ['రెగ్యులేటర్', '7805', 'regulator']], ['button', ['బటన్', 'button']],
+    ['transformer', ['ట్రాన్స్‌ఫార్మర్', 'ట్రాన్స్ ఫార్మర్', 'transformer']]];
   const NIGHT = /(రాత్రి అయింది|రాత్రి చెయ్|చీకటి|చీకటి చెయ్|night|dark)/;
   const DAY = /(పగలు|తెల్లారింది|వెలుతురు ఇవ్వు|ఎండ వచ్చింది|daylight|day time|morning)/;
   const OFF = /(ఆపు|ఆపేయి|ఆఫ్|ఆర్పు|ఆపండి|\boff\b|turn off|switch off)/;
@@ -571,10 +573,89 @@
       const a = term(w && (w.a || w[0])), c = term(w && (w.b || w[1]));
       if (a && c && a !== c && !b.wires.some((x) => (x.a === a && x.b === c) || (x.a === c && x.b === a))) b.wires.push({ a, b: c });
     }
+    const sl = cleanSld(boardIn.sld);
+    if (sl) b.sld = sl;
     return layout(b);
   }
 
+  // ---------------------------------------------------------------- 📐 a drawing like the photo (single-line diagram), cleaned
+
+  const SLD_KINDS = new Set(['bus', 'line', 'breaker', 'transformer', 'motor', 'meter', 'device', 'arrow', 'text', 'box']);
+  /** The AI's drawing made safe: known kinds only, numbers inside the sheet, short strings, ≤ 400 items; null when there is none. */
+  function cleanSld(x) {
+    if (!x || typeof x !== 'object' || !Array.isArray(x.items)) return null;
+    const w = Math.max(20, Math.min(400, +x.w || 100)), h = Math.max(12, Math.min(400, +x.h || 60));
+    const num = (v, lo, hi, d) => { v = +v; return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; };
+    const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : typeof v === 'number' ? String(v).slice(0, n) : undefined);
+    const ref = (v) => (typeof v === 'string' && /^[A-Za-z0-9_-]{1,16}(\.[A-Za-z0-9+_-]{1,8})?$/.test(v) ? v : undefined);
+    const out = { w, h, phase3: !!x.phase3, items: [] };
+    for (const it of x.items.slice(0, 400)) {
+      if (!it || typeof it !== 'object' || !SLD_KINDS.has(it.k)) continue;
+      const q = { k: it.k };
+      for (const k of ['x', 'x1', 'x2']) if (it[k] !== undefined) q[k] = num(it[k], -5, w + 5, 0);
+      for (const k of ['y', 'y1', 'y2']) if (it[k] !== undefined) q[k] = num(it[k], -5, h + 5, 0);
+      if (it.k === 'box') { q.w = num(it.w, 0.5, w + 5, 5); q.h = num(it.h, 0.5, h + 5, 5); q.dash = it.dash !== false; }
+      if (it.k === 'line' && Array.isArray(it.pts)) q.pts = it.pts.slice(0, 40).filter((p) => Array.isArray(p) && p.length >= 2).map((p) => [num(p[0], -5, w + 5, 0), num(p[1], -5, h + 5, 0)]);
+      if (it.k === 'line' && !(q.pts && q.pts.length >= 2)) continue;
+      if (it.k === 'bus' && (q.x1 === undefined || q.x2 === undefined)) continue;
+      if (it.dir !== undefined) q.dir = ['v', 'h', 'up', 'down'].includes(it.dir) ? it.dir : 'v';
+      if (it.len !== undefined) q.len = num(it.len, 1, 20, 4);
+      if (it.size !== undefined) q.size = num(it.size, 0.6, 5, 1.2);
+      if (it.align !== undefined) q.align = it.align === 'center' ? 'center' : it.align === 'right' ? 'right' : 'left';
+      if (it.c !== undefined) q.c = it.c === 'r' ? 'r' : it.c === 'g' ? 'g' : undefined;
+      if (it.on !== undefined) q.on = !!it.on;
+      if (it.run !== undefined) q.run = !!it.run;
+      for (const k of ['s', 'label', 'l1', 'l2']) { const v = str(it[k], 48); if (v !== undefined) q[k] = v; }
+      for (const k of ['a', 'kv']) { const v = str(it[k], 10); if (v !== undefined) q[k] = v; }
+      const pr = ref(it.part); if (pr && !pr.includes('.')) q.part = pr;
+      const sw = ref(it.sw); if (sw && !sw.includes('.')) q.sw = sw;
+      const tr = ref(it.t); if (tr && tr.includes('.')) q.t = tr;
+      if (q.c === undefined) delete q.c;
+      out.items.push(q);
+    }
+    return out.items.length ? out : null;
+  }
+
+  /** Links from the AI ({i, part, t}) put into a drawing's items (a board made later for a drawing that had none). */
+  function linkSld(sld, links) {
+    if (!sld || !Array.isArray(links)) return sld;
+    const out = clone(sld);
+    for (const l of links.slice(0, 400)) {
+      const it = l && out.items[+l.i];
+      if (!it) continue;
+      if (typeof l.part === 'string' && /^[A-Za-z0-9_-]{1,16}$/.test(l.part)) it.part = l.part;
+      if (typeof l.sw === 'string' && /^[A-Za-z0-9_-]{1,16}$/.test(l.sw)) it.sw = l.sw;
+      if (typeof l.t === 'string' && /^[A-Za-z0-9_-]{1,16}\.[A-Za-z0-9+_-]{1,8}$/.test(l.t)) it.t = l.t;
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- ↔ room between parts (names under them must not overlap)
+
+  function boxOf(p, mx, my) {
+    const g = geom(p.type), w = (p.rot % 2) ? g.h : g.w, h = (p.rot % 2) ? g.w : g.h;
+    return [p.x - mx, p.y - 0.1, p.x + w + mx, p.y + h + my];
+  }
+  /** Do two parts (with the room their name and reading need under them) overlap? */
+  function crowded(b) {
+    const ps = b.parts;
+    for (let i = 0; i < ps.length; i++) {
+      const A = boxOf(ps[i], 0.45, 1.25);
+      for (let j = i + 1; j < ps.length; j++) {
+        const B = boxOf(ps[j], 0.45, 1.25);
+        if (A[0] < B[2] && B[0] < A[2] && A[1] < B[3] && B[1] < A[3]) return true;
+      }
+    }
+    return false;
+  }
+  /** Spreads a crowded board out (the same arrangement, more room), a few steps at most; the board as it was when it is not crowded. */
+  function spread(boardIn) {
+    const b = clone(boardIn);
+    for (let k = 0; k < 4 && crowded(b); k++) for (const p of b.parts) { p.x = Math.round(p.x * 1.35 * 2) / 2; p.y = Math.round(p.y * 1.3 * 2) / 2; }
+    return b;
+  }
+
   root.LabKit = { GEOM, geom, termPos, names, newId, FAMILY, FAMILY_TE, TEMPLATES, CHALLENGES, stars, safety, voiceEdit, HOME_ITEMS, homeBill, homeSavings,
-    homeBoard, chargeHours, solarPlan, layout, clean };
+    homeBoard, chargeHours, solarPlan, layout, clean, cleanSld, linkSld, crowded, spread };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.LabKit;
 })(typeof window !== 'undefined' ? window : globalThis);

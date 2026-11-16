@@ -60,7 +60,8 @@ import java.util.concurrent.CancellationException;
  * own files load, no network, no keys, one message port), and around it: what he types or says ("బల్బ్ 2 ఆపు" is done by
  * the page for ₹0; anything bigger goes to the workshop's AI, which answers with the board as data), 📷 a photo of a circuit
  * drawn on paper (sent to the AI for that one board, never kept), 📂 saved boards, 💾 save, 📤 a picture or a PDF report he
- * shares himself. Phone only.
+ * shares himself. Phone only. (G2.1) ⛶ full screen and 🔄 sideways by his tap; a photo becomes ⚡ a board, 📐 a drawing just
+ * like it (a single-line diagram, live when linked to the board), or both: his choice, each with its cost said first.
  */
 public class CircuitLabActivity extends Activity {
     static final String EXTRA_WHAT = "what", EXTRA_HEARD = "heard", EXTRA_SAID = "said", EXTRA_CHANGE = "change", EXTRA_SHELF = "shelf", EXTRA_TAB = "tab",
@@ -99,6 +100,10 @@ public class CircuitLabActivity extends Activity {
     private TextView titleView, chip, status, go, micBtn, cancelBtn, stopBtn;
     private HorizontalScrollView ideas;
     private EditText input;
+    /** ⛶ Only the board / drawing on the screen, and 🔄 turned sideways: both by his tap, both undone the same way. */
+    private boolean full;
+    private LinearLayout topBar, bottomBar;
+    private TextView turnBtn;
 
     private volatile Job job;
     /** The board as the page last reported it (with its switches and battery levels), its title, and how many changes since it came. */
@@ -133,6 +138,9 @@ public class CircuitLabActivity extends Activity {
         final String current;
         /** (G2) a message of its own (a camera scan), else made from the words. */
         String custom;
+        /** 📐 (G2.1) board / both / sld (a photo made into a board, the drawing like it, or both); fromSld: a board for this saved drawing. */
+        String mode = CircuitLab.MODE_BOARD;
+        JSONObject sld;
         volatile String photo;
         final boolean withPhoto;
         volatile boolean stopped;
@@ -222,12 +230,23 @@ public class CircuitLabActivity extends Activity {
         chip.setBackground(Ui.round(this, 0x2216303F, Ui.CYAN_DIM, 999));
         chip.setPadding(dp(10), dp(4), dp(10), dp(4));
         top.addView(chip);
+        TextView fullBtn = Ui.text(this, "⛶", 20, Ui.TEXT);
+        fullBtn.setPadding(dp(12), dp(4), dp(6), dp(4));
+        fullBtn.setContentDescription("పూర్తి స్క్రీన్");
+        fullBtn.setOnClickListener(v -> setFull(true));
+        top.addView(fullBtn);
+        turnBtn = Ui.text(this, "🔄", 18, Ui.TEXT);
+        turnBtn.setPadding(dp(8), dp(4), dp(6), dp(4));
+        turnBtn.setOnClickListener(v -> turn());
+        turnLook(false);
+        top.addView(turnBtn);
         TextView close = Ui.text(this, "✕", 21, Ui.TEXT);
         close.setPadding(dp(14), dp(4), dp(8), dp(4));
         close.setContentDescription("మూసేయి");
         close.setOnClickListener(v -> leave());
         top.addView(close);
         root.addView(top, new LinearLayout.LayoutParams(-1, -2));
+        topBar = top;
 
         pageBox = new FrameLayout(this);
         root.addView(pageBox, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -316,6 +335,7 @@ public class CircuitLabActivity extends Activity {
         ask.addView(go, gl);
         bottom.addView(ask);
         root.addView(bottom, new LinearLayout.LayoutParams(-1, -2));
+        bottomBar = bottom;
         setContentView(root);
         showChip();
         setStatus("మాటల్లో చెప్పండి లేదా 📷 కాగితం మీద గీసిన సర్క్యూట్ చూపించండి (AI, ఖర్చు ముందే చెబుతాను); "
@@ -346,12 +366,21 @@ public class CircuitLabActivity extends Activity {
         return "సుమారు " + CircuitLab.aboutMoney(m, size, photo);
     }
 
+    /** 📐 The estimate for one of the photo's choices, or for a board made from the saved drawing (chars = its size). */
+    private String estimate(String mode, int chars, boolean photo) {
+        String m = p.workshopModel().trim();
+        if (m.isEmpty()) return "ఎంచుకోలేదు (⚙️ → 🛠️)";
+        return "సుమారు " + CircuitLab.aboutMoney(m, mode, chars, photo);
+    }
+
     private void refresh() {
         if (go == null) return;
-        boolean busy = job != null, empty = CircuitLab.partCount(board) == 0;
-        ideas.setVisibility(!busy && empty ? View.VISIBLE : View.GONE);
+        boolean busy = job != null, empty = CircuitLab.empty(board), wide = wide();
+        ideas.setVisibility(!busy && empty && !wide ? View.VISIBLE : View.GONE);
+        status.setMaxLines(wide ? 2 : 4);
         stopBtn.setVisibility(busy ? View.VISIBLE : View.GONE);
-        input.setHint(empty ? "ఏ సర్క్యూట్? ఉదా: ఇన్వర్టర్, 4 బల్బులు, 2 ఫ్యాన్లు" : "మార్పు చెప్పండి: ఉదా: ఇంకో ఫ్యాన్ పెట్టు · బల్బ్ 2 ఆపు");
+        input.setHint(empty ? "ఏ సర్క్యూట్? ఉదా: ఇన్వర్టర్, 4 బల్బులు, 2 ఫ్యాన్లు" : CircuitLab.partCount(board) == 0 ? "📐 బొమ్మ మాత్రమే · కొత్త సర్క్యూట్ చెప్పండి"
+                : "మార్పు చెప్పండి: ఉదా: ఇంకో ఫ్యాన్ పెట్టు · బల్బ్ 2 ఆపు");
         titleView.setText(title == null || title.isEmpty() ? (empty ? "ఖాళీ బోర్డ్" : "నా సర్క్యూట్") : title);
     }
 
@@ -534,8 +563,9 @@ public class CircuitLabActivity extends Activity {
         try {
             JSONObject init = json("init").put("store", CircuitLab.stored(this));
             JSONObject cur = board != null ? board : CircuitLab.current0(this);
-            if (cur != null && CircuitLab.partCount(cur) > 0) init.put("board", cur);
+            if (cur != null && !CircuitLab.empty(cur)) init.put("board", cur);
             send(init);
+            if (full) send(json("full").put("on", true));
         } catch (Exception ignored) {}
     }
 
@@ -631,6 +661,9 @@ public class CircuitLabActivity extends Activity {
             }
             case "file": gotFile(m); break;
             case "report": gotReport(m); break;
+            case "full": setFull(m.optBoolean("on")); break;
+            case "rotate": turn(); break;
+            case "makeboard": makeBoardAsk(); break;
             case "back": {
                 if (backTimeout != null) { ui.removeCallbacks(backTimeout); backTimeout = null; }
                 if (!m.optBoolean("used")) leave();
@@ -668,7 +701,7 @@ public class CircuitLabActivity extends Activity {
         openSummary = summaryLine(sum);
         CircuitLab.keepCurrent(this, b);
         JSONObject ps = pendingShelf;
-        if (ps != null && CircuitLab.partCount(b) > 0) {
+        if (ps != null && !CircuitLab.empty(b)) {
             pendingShelf = null;
             try {
                 ps.put("board", b);
@@ -717,12 +750,16 @@ public class CircuitLabActivity extends Activity {
         if (over != null) { setStatus(over); speak(over, false); return; }
         Job j = new Job(what, heard, e, current, photo);
         j.custom = nextCustom;
+        if (nextMode != null) j.mode = nextMode;
+        j.sld = nextSld;
         job = j;
         showChip();
         refresh();
-        String money = "సుమారు " + CircuitLab.aboutMoney(e.model, current == null ? 0 : current.length(), photo != null);
-        if (!saidAlready && current == null) speak((photo != null ? "ఫోటోలోని సర్క్యూట్ గీస్తున్నాను Sir, " : "సర్క్యూట్ గీస్తున్నాను Sir, ") + money + " అవుతుంది.", false);
-        setStatus("🧠 " + WorkshopActivity.label(e.model) + (current != null ? " మార్పు చేస్తోంది… · " : photo != null ? " ఫోటో చూస్తోంది… · " : " సర్క్యూట్ గీస్తోంది… · ") + money);
+        String money = "సుమారు " + CircuitLab.aboutMoney(e.model, j.mode, j.sld != null ? j.sld.toString().length() : current == null ? 0 : current.length(), photo != null);
+        String start = CircuitLab.MODE_BOTH.equals(j.mode) ? "ఫోటో నుంచి బోర్డ్, 📐 బొమ్మ రెండూ గీస్తున్నాను Sir, " : CircuitLab.MODE_SLD.equals(j.mode) ? "ఫోటో లాగా బొమ్మ గీస్తున్నాను Sir, "
+                : CircuitLab.MODE_FROM_SLD.equals(j.mode) ? "బొమ్మకి బోర్డ్ కడుతున్నాను Sir, " : photo != null ? "ఫోటోలోని సర్క్యూట్ గీస్తున్నాను Sir, " : "సర్క్యూట్ గీస్తున్నాను Sir, ";
+        if (!saidAlready && current == null) speak(start + money + " అవుతుంది.", false);
+        setStatus("🧠 " + WorkshopActivity.label(e.model) + doing(j) + "· " + money);
         ticker(j);
         new Thread(() -> run(j), "jarvis-circuit").start();
     }
@@ -748,19 +785,33 @@ public class CircuitLabActivity extends Activity {
                 .setNegativeButton("వద్దు", (d, w) -> setStatus("సరే Sir, గీయలేదు · ఖర్చు ₹0")).show();
     }
 
-    private void askCustom(String what, String message, String photo) {
-        nextCustom = message; // (taken by the job that ask() makes, before its thread starts)
-        ask(what, null, photo, null, false);
-        nextCustom = null;
+    private void askCustom(String what, String message, String photo) { askMode(what, null, photo, null, null, message); }
+
+    /** A job with a mode of its own (📐) or a message of its own (a scan): taken by the job that ask() makes, before its thread starts. */
+    private void askMode(String what, String heard, String photo, String mode, JSONObject sld, String message) {
+        nextCustom = message;
+        nextMode = mode;
+        nextSld = sld;
+        try { ask(what, heard, photo, null, false); }
+        finally { nextCustom = null; nextMode = null; nextSld = null; }
     }
-    private String nextCustom;
+    private String nextCustom, nextMode;
+    private JSONObject nextSld;
+
+    /** What the AI is doing, for the line under the board. */
+    private static String doing(Job j) {
+        if (CircuitLab.MODE_BOTH.equals(j.mode)) return " బోర్డ్ + 📐 బొమ్మ గీస్తోంది… ";
+        if (CircuitLab.MODE_SLD.equals(j.mode)) return " 📐 ఫోటో లాగా గీస్తోంది… ";
+        if (CircuitLab.MODE_FROM_SLD.equals(j.mode)) return " 📐 బొమ్మకి బోర్డ్ కడుతోంది… ";
+        return j.current != null ? " మార్పు చేస్తోంది… " : j.withPhoto ? " ఫోటో చూస్తోంది… " : " సర్క్యూట్ గీస్తోంది… ";
+    }
 
     private void ticker(Job j) {
         ui.postDelayed(new Runnable() {
             @Override public void run() {
                 if (job != j || destroyed) return;
                 long secs = (System.currentTimeMillis() - j.at) / 1000;
-                setStatus("🧠 " + WorkshopActivity.label(j.engine.model) + (j.current != null ? " మార్పు చేస్తోంది… " : " సర్క్యూట్ గీస్తోంది… ") + secs + " సె");
+                setStatus("🧠 " + WorkshopActivity.label(j.engine.model) + doing(j) + secs + " సె");
                 ui.postDelayed(this, 1000);
             }
         }, 1000);
@@ -771,10 +822,14 @@ public class CircuitLabActivity extends Activity {
         StringBuilder text = new StringBuilder();
         Workshop.Bill bill = new Workshop.Bill();
         String failure = null;
-        String msg = j.custom != null ? j.custom : j.photo != null ? CircuitLab.photoMessage(j.heard != null ? j.heard : "")
+        String msg = j.custom != null ? j.custom
+                : CircuitLab.MODE_BOTH.equals(j.mode) ? CircuitLab.bothMessage(j.heard)
+                : CircuitLab.MODE_SLD.equals(j.mode) ? CircuitLab.sldMessage(j.heard)
+                : CircuitLab.MODE_FROM_SLD.equals(j.mode) ? CircuitLab.fromSldMessage(j.what, j.sld)
+                : j.photo != null ? CircuitLab.photoMessage(j.heard != null ? j.heard : "")
                 : j.current != null ? CircuitLab.editMessage(j.current, j.what) : CircuitLab.buildMessage(j.what, j.heard);
         try {
-            Workshop.stream(j.engine, CircuitLab.SYSTEM, msg, j.photo, CircuitLab.MAX_OUT, s -> { if (text.length() < 200_000) text.append(s); }, bill);
+            Workshop.stream(j.engine, CircuitLab.SYSTEM, msg, j.photo, CircuitLab.maxOut(j.mode), s -> { if (text.length() < 200_000) text.append(s); }, bill);
         } catch (CancellationException x) {
             failure = "stopped";
         } catch (Exception x) {
@@ -784,7 +839,7 @@ public class CircuitLabActivity extends Activity {
             Http.CANCEL.remove();
         }
         CircuitLab.Answer a = failure == null && !j.stopped ? CircuitLab.parse(text.toString()) : null;
-        boolean made = a != null && a.refuse == null && a.board != null;
+        boolean made = a != null && a.refuse == null && (a.board != null || a.sld != null && (CircuitLab.MODE_BOTH.equals(j.mode) || CircuitLab.MODE_SLD.equals(j.mode)));
         Workshop.spendLab(this, bill.rupees, made && j.current == null);
         final String f = j.stopped ? "stopped" : failure;
         ui.post(() -> done(j, f, a, bill));
@@ -794,30 +849,43 @@ public class CircuitLabActivity extends Activity {
         if (job == j) job = null;
         if (destroyed) return;
         String cost = Workshop.money(bill.rupees) + (bill.estimated ? " (సుమారు)" : "");
+        boolean both = CircuitLab.MODE_BOTH.equals(j.mode), sldOnly = CircuitLab.MODE_SLD.equals(j.mode), fromSld = CircuitLab.MODE_FROM_SLD.equals(j.mode);
+        // 📐 what goes on the screen: the board (not for "the drawing only"), and the drawing (the photo's, or the saved one with its links)
+        JSONObject newBoard = a == null || sldOnly ? null : a.board;
+        JSONObject drawing = a == null ? null : fromSld ? (a.board != null ? CircuitLab.linkSld(j.sld, a.links) : null) : both || sldOnly ? a.sld : null;
         String said, line;
         if ("stopped".equals(failure)) { said = "ఆపేశాను Sir. ఇప్పటిదాకా ఖర్చు " + cost + "."; line = "⏹ " + said; }
         else if (failure != null) { said = "సర్క్యూట్ రాలేదు Sir: " + failure; line = "✗ " + failure + " · " + cost; }
         else if (a == null) { said = "AI జవాబు సరిగా రాలేదు Sir, ఇంకోసారి కొంచెం వేరేగా చెప్పండి. ఖర్చు " + cost + "."; line = "✗ " + said; }
         else if (a.refuse != null) { said = a.refuse; line = "🚫 " + a.refuse; }
-        else if (a.board == null) { said = a.say + " (" + cost + ")"; line = "💬 " + said; }
+        else if (newBoard == null && drawing == null && (both || sldOnly || fromSld)) {
+            said = (fromSld ? "బోర్డ్ రాలేదు Sir" : sldOnly ? "📐 బొమ్మ రాలేదు Sir" : "బోర్డ్, బొమ్మ రెండూ రాలేదు Sir") + ", ఇంకోసారి ప్రయత్నించండి. ఖర్చు " + cost + ".";
+            line = "✗ " + said;
+        }
+        else if (newBoard == null && drawing == null) { said = a.say + " (" + cost + ")"; line = "💬 " + said; }
         else {
             try {
                 if (j.current != null) {
                     send(json("aiedit").put("board", a.board).put("said", a.say));
                 } else {
-                    String t = a.title.isEmpty() ? Workshop.cap(j.what, 30) : a.title;
+                    JSONObject b = newBoard != null ? new JSONObject(newBoard.toString()) : new JSONObject().put("parts", new JSONArray()).put("wires", new JSONArray());
+                    if (drawing != null) b.put("sld", drawing);
+                    String t = fromSld && j.what != null && !j.what.isEmpty() ? j.what : a.title.isEmpty() ? Workshop.cap(j.what, 30) : a.title;
                     pendingShelf = new JSONObject().put("at", j.at).put("title", t).put("what", j.what).put("model", j.engine.model)
                             .put("cost", bill.rupees).put("estimated", bill.estimated).put("ai", true).put("photo", j.withPhoto);
-                    send(json("load").put("board", a.board).put("title", t).put("note", a.say));
+                    send(json("load").put("board", b).put("title", t).put("note", a.say).put("spread", true).put("view", drawing != null ? "sld" : "board"));
                     title = t;
                     openTitle = t;
                 }
             } catch (Exception ignored) {}
-            said = (a.say.isEmpty() ? "బోర్డ్ రెడీ Sir." : a.say) + " ఖర్చు " + cost + ".";
+            String part = both && drawing == null ? " (📐 బొమ్మ రాలేదు, బోర్డ్ మాత్రమే వచ్చింది.)"
+                    : both && newBoard == null ? " (⚡ బోర్డ్ రాలేదు, 📐 బొమ్మ మాత్రమే వచ్చింది: పైన \"⚡ బోర్డ్ కూడా చెయ్\" తో తర్వాత చేయొచ్చు.)" : "";
+            said = (a.say.isEmpty() ? (sldOnly ? "📐 బొమ్మ రెడీ Sir." : "బోర్డ్ రెడీ Sir.") : a.say) + part + " ఖర్చు " + cost + ".";
             line = "✓ " + said;
         }
         refresh();
         setStatus(line);
+        if (full) Toast.makeText(this, line, Toast.LENGTH_LONG).show();
         speak(said, true);
     }
 
@@ -842,6 +910,7 @@ public class CircuitLabActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (full) { setFull(false); return; }
         if (port == null) { leave(); return; }
         // the page first: its open card, the meter, another tab; it says back if there was nothing to close
         send(json("back"));
@@ -850,12 +919,79 @@ public class CircuitLabActivity extends Activity {
         ui.postDelayed(backTimeout, 700);
     }
 
-    // ================================================================ 📷 a circuit drawn on paper
+    // ================================================================ ⛶ full screen, 🔄 sideways (his taps; back leaves full screen first)
+
+    private void setFull(boolean on) {
+        if (full == on || topBar == null) return;
+        full = on;
+        topBar.setVisibility(on ? View.GONE : View.VISIBLE);
+        bottomBar.setVisibility(on ? View.GONE : View.VISIBLE);
+        if (on) {
+            InputMethodManager im = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (im != null) im.hideSoftInputFromWindow(input.getWindowToken(), 0);
+        }
+        immersive(on);
+        try { send(json("full").put("on", on)); } catch (Exception ignored) {}
+        fitSoon();
+        if (on) Toast.makeText(this, "⛶ బయటికి రావడానికి: ⤡ లేదా వెనక్కి (back)", Toast.LENGTH_SHORT).show();
+    }
+
+    /** 🔄 Sideways and back: the screen follows the phone again when he taps it a second time. */
+    private void turn() {
+        boolean side = getRequestedOrientation() == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+        setRequestedOrientation(side ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        turnLook(!side);
+        fitSoon();
+    }
+
+    private void turnLook(boolean side) {
+        if (turnBtn == null) return;
+        turnBtn.setBackground(side ? Ui.round(this, 0x2216303F, Ui.CYAN_DIM, 999) : null);
+        turnBtn.setContentDescription(side ? "మళ్ళీ మామూలుగా (నిలువుగా)" : "అడ్డంగా తిప్పు");
+    }
+
+    private boolean wide() { return getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE; }
+
+    /** The page fits the board / drawing to its new size once the screen has settled. */
+    private void fitSoon() { ui.postDelayed(() -> { if (!destroyed) send(json("fit")); }, 350); }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        if (full) immersive(true);
+        refresh();
+        fitSoon();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void immersive(boolean on) {
+        View d = getWindow().getDecorView();
+        d.setSystemUiVisibility(on ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN : 0);
+    }
+
+    // ================================================================ 📐 → ⚡ a board for a saved drawing (no photo needed)
+
+    private void makeBoardAsk() {
+        if (job != null) { Toast.makeText(this, "ముందు ఇది పూర్తవనివ్వండి (లేదా ⏹)", Toast.LENGTH_SHORT).show(); return; }
+        JSONObject b = board;
+        if (!CircuitLab.hasSld(b) || CircuitLab.partCount(b) > 0) return;
+        final JSONObject sld = b.optJSONObject("sld");
+        final String t = title == null || title.isEmpty() ? "📐 బొమ్మ" : title;
+        String est = estimate(CircuitLab.MODE_FROM_SLD, sld.toString().length(), false);
+        new AlertDialog.Builder(this).setTitle("⚡ ఈ 📐 బొమ్మకి నడిచే బోర్డ్ చేయాలా?")
+                .setMessage("దాచిన బొమ్మ నుంచే (ఫోటో మళ్ళీ అక్కర్లేదు) AI బోర్డ్ కట్టి, బొమ్మలోని VCB లు, మోటార్లు, మీటర్లు దానికి కలుపుతుంది. "
+                        + "తర్వాత VCB తాకితే ఆన్ / ఆఫ్ అవుతుంది, రంగులు, A / kV మారతాయి. " + est + ".")
+                .setPositiveButton("⚡ చెయ్", (d, w) -> askMode(t, null, null, CircuitLab.MODE_FROM_SLD, sld, null))
+                .setNegativeButton("వద్దు", (d, w) -> setStatus("సరే Sir, చేయలేదు · ఖర్చు ₹0")).show();
+    }
+
+    // ================================================================ 📷 a circuit drawn on paper, or a single-line diagram (SCADA) photo
 
     private void photoAsk() {
         if (job != null) { Toast.makeText(this, "ముందు ఇది పూర్తవనివ్వండి (లేదా ⏹)", Toast.LENGTH_SHORT).show(); return; }
-        new AlertDialog.Builder(this).setTitle("📷 కాగితం మీద సర్క్యూట్")
-                .setMessage("కాగితం మీద గీసిన సర్క్యూట్ / వైరింగ్ బొమ్మ ఫోటో AI కి వెళ్తుంది, బోర్డ్‌గా గీస్తుంది (" + estimate(false, true) + "). ఫోటో ఎక్కడా దాచను.")
+        new AlertDialog.Builder(this).setTitle("📷 సర్క్యూట్ ఫోటో")
+                .setMessage("కాగితం మీద గీసిన సర్క్యూట్, వైరింగ్ బొమ్మ లేదా SCADA / సింగిల్ లైన్ డయాగ్రామ్ స్క్రీన్ ఫోటో AI కి వెళ్తుంది. "
+                        + "ఫోటో తర్వాత ఏమి చేయాలో (⚡ బోర్డ్ / ⚡ + 📐 రెండూ / 📐 ఫోటో లాగా) మీరే ఎంచుకుంటారు; ఒక్కోదాని ఖర్చు అక్కడ చూపిస్తాను. ఫోటో ఎక్కడా దాచను.")
                 .setPositiveButton("📷 ఫోటో తీయి", (d, w) -> openCam())
                 .setNeutralButton("🖼️ గ్యాలరీ", (d, w) -> openGallery())
                 .setNegativeButton("వద్దు", null).show();
@@ -925,18 +1061,38 @@ public class CircuitLabActivity extends Activity {
         words.setHint("ఏమైనా చెప్పాలా? ఉదా: బ్యాటరీ 12V (ఖాళీ అయినా సరే)");
         words.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         box.addView(words);
-        new AlertDialog.Builder(this).setTitle("⚡ ఈ ఫోటోని బోర్డ్‌గా గీయాలా?").setView(box)
-                .setPositiveButton("⚡ గీయి (" + estimate(false, true) + ")", (d, w) -> {
-                    String said = words.getText().toString().trim();
-                    ask(said.isEmpty() ? "ఫోటోలోని సర్క్యూట్" : said, said, b64, null, false);
-                })
+        final AlertDialog[] dlg = new AlertDialog[1];
+        String[][] choices = {
+                {CircuitLab.MODE_BOARD, "⚡ బోర్డ్ మాత్రమే", "నడిచే బోర్డ్ (తక్కువ ఖర్చు)"},
+                {CircuitLab.MODE_BOTH, "⚡ + 📐 రెండూ", "బోర్డ్ + ఫోటో లాగా బొమ్మ, ఒకే ఖర్చులో: VCB తాకితే ఆన్ / ఆఫ్, రంగులు, A / kV మారతాయి"},
+                {CircuitLab.MODE_SLD, "📐 ఫోటో లాగా మాత్రమే", "చూడటానికి; తర్వాత \"⚡ బోర్డ్ కూడా చెయ్\" తో నడిపించవచ్చు (ఫోటో మళ్ళీ అక్కర్లేదు)"}};
+        for (String[] c : choices) {
+            LinearLayout b = new LinearLayout(this);
+            b.setOrientation(LinearLayout.VERTICAL);
+            b.setPadding(dp(12), dp(9), dp(12), dp(9));
+            b.setBackground(Ui.round(this, CircuitLab.MODE_BOTH.equals(c[0]) ? 0x2216303F : 0x0FFFFFFF, CircuitLab.MODE_BOTH.equals(c[0]) ? Ui.CYAN_DIM : Ui.LINE2, 12));
+            b.addView(Ui.text(this, c[1] + " · " + estimate(c[0], 0, true), 15f, Ui.TEXT));
+            b.addView(Ui.text(this, c[2], 12f, Ui.MUTED));
+            b.setOnClickListener(v -> {
+                if (dlg[0] != null) dlg[0].dismiss();
+                String said = words.getText().toString().trim();
+                if (CircuitLab.MODE_BOARD.equals(c[0])) ask(said.isEmpty() ? "ఫోటోలోని సర్క్యూట్" : said, said, b64, null, false);
+                else askMode(said.isEmpty() ? (CircuitLab.MODE_SLD.equals(c[0]) ? "ఫోటో లాగా బొమ్మ" : "ఫోటోలోని సర్క్యూట్") : said, said, b64, c[0], null, null);
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.topMargin = dp(8);
+            box.addView(b, lp);
+        }
+        ScrollView sv = new ScrollView(this);
+        sv.addView(box);
+        dlg[0] = new AlertDialog.Builder(this).setTitle("⚡ ఈ ఫోటోతో ఏమి చేయాలి?").setView(sv)
                 .setNegativeButton("వద్దు", (d, w) -> setStatus("సరే Sir, ఫోటో పంపలేదు · ఖర్చు ₹0")).show();
     }
 
     // ================================================================ 📂 the shelf, 💾 save
 
     private void saveAsk() {
-        if (CircuitLab.partCount(board) == 0) { Toast.makeText(this, "బోర్డ్ ఖాళీగా ఉంది", Toast.LENGTH_SHORT).show(); return; }
+        if (CircuitLab.empty(board)) { Toast.makeText(this, "బోర్డ్ ఖాళీగా ఉంది", Toast.LENGTH_SHORT).show(); return; }
         EditText name = new EditText(this);
         name.setText(title == null || title.isEmpty() ? "నా సర్క్యూట్" : title);
         name.setSelectAllOnFocus(true);
@@ -1010,7 +1166,9 @@ public class CircuitLabActivity extends Activity {
             tt.setMaxLines(2);
             tt.setPadding(dp(2), dp(4), dp(2), 0);
             tile.addView(tt);
-            tile.addView(Ui.text(this, f.format(new java.util.Date(g.optLong("at"))) + " · " + CircuitLab.partCount(g.optJSONObject("board")) + " భాగాలు"
+            JSONObject gb = g.optJSONObject("board");
+            int np = CircuitLab.partCount(gb);
+            tile.addView(Ui.text(this, f.format(new java.util.Date(g.optLong("at"))) + " · " + (np == 0 && CircuitLab.hasSld(gb) ? "📐 బొమ్మ మాత్రమే" : np + " భాగాలు" + (CircuitLab.hasSld(gb) ? " · 📐" : ""))
                     + (g.optBoolean("ai") ? " · AI " + Workshop.money(g.optDouble("cost", 0)) : g.optBoolean("auto") ? " · ఆటో" : " · ✋"), 11f, Ui.MUTED));
             tile.setOnClickListener(v -> { if (dlg[0] != null) dlg[0].dismiss(); open(g); });
             tile.setOnLongClickListener(v -> {
@@ -1055,14 +1213,14 @@ public class CircuitLabActivity extends Activity {
     // ================================================================ 📤 a picture or a PDF report (he picks where it goes)
 
     private void shareAsk() {
-        if (CircuitLab.partCount(board) == 0) { Toast.makeText(this, "బోర్డ్ ఖాళీగా ఉంది", Toast.LENGTH_SHORT).show(); return; }
+        if (CircuitLab.empty(board)) { Toast.makeText(this, "బోర్డ్ ఖాళీగా ఉంది", Toast.LENGTH_SHORT).show(); return; }
         new AlertDialog.Builder(this).setTitle("📤 షేర్")
                 .setItems(new String[]{"🖼️ బోర్డ్ బొమ్మ (PNG)", "📄 రిపోర్ట్ (PDF): బొమ్మ + లెక్కలు + సేఫ్టీ"}, (d, w) -> share(w == 0 ? "png" : "pdf"))
                 .setNegativeButton("వద్దు", null).show();
     }
 
     private void share(String kind) {
-        if (CircuitLab.partCount(board) == 0) { setStatus("బోర్డ్ ఖాళీగా ఉంది Sir."); return; }
+        if (CircuitLab.empty(board)) { setStatus("బోర్డ్ ఖాళీగా ఉంది Sir."); return; }
         String req = "s" + (++seq);
         reqs.put(req, kind);
         setStatus(kind.equals("pdf") ? "📄 రిపోర్ట్ తయారు చేస్తున్నాను…" : "🖼️ బొమ్మ తయారు చేస్తున్నాను…");
@@ -1165,6 +1323,7 @@ public class CircuitLabActivity extends Activity {
         showChip();
         refresh();
         front = true;
+        if (full) immersive(true);
         WakeService.workshopWake = wakeR; // (🎙️ "Jarvis" here: the lab hears him, no panel over it)
         JarvisAccessibility.bubbleAside(true);
     }

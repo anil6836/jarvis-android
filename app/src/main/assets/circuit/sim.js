@@ -26,6 +26,8 @@
     inverter: { te: 'ఇన్వర్టర్', emoji: '🔌', cat: 'src', terms: ['b+', 'b-', 'in-l', 'in-n', 'out-l', 'out-n'], bridge: true,
       props: { va: 900, v: 12, eff: 0.85, charge: 10 },
       info: 'కరెంట్ ఉన్నప్పుడు ఇంటి కరెంట్‌ని ఇంటికి పంపి బ్యాటరీని నింపుతుంది. కరెంట్ పోతే బ్యాటరీ DC ని 230V AC గా మార్చి ఇస్తుంది. VA కంటే ఎక్కువ లోడ్ పెడితే ఆగిపోతుంది.' },
+    transformer: { te: 'ట్రాన్స్‌ఫార్మర్', emoji: '🔁', cat: 'src', terms: ['p1', 'p2', 's1', 's2'], bridge: true, props: { kva: 1000, v1: 11000, v2: 433 },
+      info: 'AC వోల్టేజ్‌ని మారుస్తుంది: P1 P2 (ప్రైమరీ) కి v1 వస్తే S1 S2 (సెకండరీ) నుంచి v2 ఇస్తుంది. ఊర్లో స్తంభం మీది ట్రాన్స్‌ఫార్మర్ 11 kV ని 433 V (ఇంటికి 230 V) గా; ప్లాంట్‌లో 33 kV ని 6.6 kV గా. kVA కంటే ఎక్కువ లోడ్ పెడితే వేడెక్కుతుంది.' },
     charger: { te: 'ఛార్జర్', emoji: '🔌', cat: 'src', terms: ['in-l', 'in-n', '+', '-'], bridge: true, props: { v: 5, w: 20 },
       info: 'ఇంటి కరెంట్ (230V AC) ని తక్కువ DC గా మారుస్తుంది: ఫోన్‌కి 5V, బైక్ బ్యాటరీకి ఎక్కువ. W ఎంత ఎక్కువైతే అంత వేగంగా ఛార్జ్ అవుతుంది.' },
 
@@ -127,8 +129,11 @@
         o[k] = v;
       }
     }
-    if (o.v != null) o.v = Math.max(0.5, Math.min(1000, o.v));
-    if (o.w != null) o.w = Math.max(0, Math.min(20000, o.w));
+    if (o.v != null) o.v = Math.max(0.5, Math.min(50000, o.v));
+    if (o.w != null) o.w = Math.max(0, Math.min(5e6, o.w));
+    if (o.v1 != null) o.v1 = Math.max(1, Math.min(50000, o.v1));
+    if (o.v2 != null) o.v2 = Math.max(1, Math.min(50000, o.v2));
+    if (o.kva != null) o.kva = Math.max(0.1, Math.min(200000, o.kva));
     if (o.amp != null) o.amp = Math.max(0.1, Math.min(200, o.amp));
     if (o.ohm != null) o.ohm = Math.max(0.1, Math.min(1e7, o.ohm));
     if (o.ah != null) o.ah = Math.max(1, Math.min(2000, o.ah));
@@ -308,6 +313,7 @@
       if (p.type === 'inverter') { uf.union(T(p.id, 'b+'), T(p.id, 'b-')); uf.union(T(p.id, 'in-l'), T(p.id, 'in-n')); uf.union(T(p.id, 'out-l'), T(p.id, 'out-n')); uf.union(T(p.id, 'in-l'), T(p.id, 'out-l')); continue; }
       if (p.type === 'charger') { uf.union(T(p.id, 'in-l'), T(p.id, 'in-n')); uf.union(T(p.id, '+'), T(p.id, '-')); continue; }
       if (p.type === 'relay') { uf.union(T(p.id, 'c1'), T(p.id, 'c2')); uf.union(T(p.id, 'com'), T(p.id, 'no')); uf.union(T(p.id, 'com'), T(p.id, 'nc')); continue; }
+      if (p.type === 'transformer') { uf.union(T(p.id, 'p1'), T(p.id, 'p2')); uf.union(T(p.id, 's1'), T(p.id, 's2')); continue; }
       for (let i = 1; i < d.terms.length; i++) uf.union(T(p.id, d.terms[0]), T(p.id, d.terms[i]));
     }
     const kind = new Map();
@@ -318,6 +324,7 @@
       if (d.dc) mark(T(p.id, '+'), 'dc', p.id);
       if (p.type === 'inverter') { mark(T(p.id, 'b+'), 'dc', p.id); mark(T(p.id, 'out-l'), 'ac', p.id); }
       if (p.type === 'charger') { mark(T(p.id, 'in-l'), 'ac', p.id); mark(T(p.id, '+'), 'dc', p.id); }
+      if (p.type === 'transformer') { mark(T(p.id, 'p1'), 'ac', p.id); mark(T(p.id, 's1'), 'ac', p.id); }
     }
     for (const m of kind.values()) {
       if (m.ac.length && m.dc.length)
@@ -353,6 +360,17 @@
     // the AC side first: which inverters see mains on their input
     const acOn = (tl, tn) => board.parts.some((q) => q.type === 'mains' && props(q).on && !(st[q.id] || {}).short
       && node(T(q.id, 'l')) === node(tl) && node(T(q.id, 'n')) === node(tn));
+    // transformers fed from mains, or from another transformer that is fed (a chain, outwards)
+    const acPairs = board.parts.filter((q) => q.type === 'mains' && props(q).on).map((q) => [node(T(q.id, 'l')), node(T(q.id, 'n'))]);
+    const xfOn = new Set();
+    for (let more = true; more;) {
+      more = false;
+      for (const q of board.parts) {
+        if (q.type !== 'transformer' || xfOn.has(q.id) || (st[q.id] || {}).burnt) continue;
+        const a = node(T(q.id, 'p1')), c = node(T(q.id, 'p2'));
+        if (a !== c && acPairs.some(([l, n]) => (l === a && n === c) || (l === c && n === a))) { xfOn.add(q.id); acPairs.push([node(T(q.id, 's1')), node(T(q.id, 's2'))]); more = true; }
+      }
+    }
     for (const p of board.parts) {
       const o = props(p), s = st[p.id];
       const d = def(p.type);
@@ -383,6 +401,12 @@
           invMode[p.id] = 'battery';
           sources.push({ id: p.id, plus: T(p.id, 'out-l'), minus: T(p.id, 'out-n'), v: 230, r: 0.1, kind: 'inv', needsDc: true });
           if (invDraw[p.id]) sinks.push({ id: p.id + ':dc', plus: T(p.id, 'b+'), minus: T(p.id, 'b-'), I: invDraw[p.id] / Math.max(1, o.v) });
+        }
+      } else if (p.type === 'transformer') {
+        if (xfOn.has(p.id)) {
+          const r = Math.max(0.001, 0.06 * o.v2 * o.v2 / (o.kva * 1000)); // (6 % impedance)
+          sources.push({ id: p.id, plus: T(p.id, 's1'), minus: T(p.id, 's2'), v: o.v2, r, kind: 'xf' });
+          if (invDraw[p.id]) sinks.push({ id: p.id + ':in', plus: T(p.id, 'p1'), minus: T(p.id, 'p2'), I: invDraw[p.id] / o.v1 });
         }
       } else if (p.type === 'charger') {
         if (acOn(T(p.id, 'in-l'), T(p.id, 'in-n')) || board.parts.some((q) => q.type === 'inverter' && invMode[q.id] && invMode[q.id] !== 'overload'
@@ -479,6 +503,7 @@
       if (s.kind === 'inv') { invOut[s.id] = Math.max(0, r.p) / Math.max(0.3, props(board.parts.find((q) => q.id === s.id)).eff); }
       if (s.kind === 'chg') invOut[s.id] = Math.max(0, r.p);
       if (s.kind === 'reg') { invOut[s.id] = Math.max(0, cur) + REG_Q; r.vin = V(T(s.id, 'in')) - V(T(s.id, 'gnd')); }
+      if (s.kind === 'xf') { invOut[s.id] = Math.max(0, r.p) / 0.99; r.vin = V(T(s.id, 'p1')) - V(T(s.id, 'p2')); r.pct = r.p / (props(board.parts.find((q) => q.id === s.id)).kva * 1000); }
     }
     for (const k of sinks) {
       add(k.plus, -k.I); add(k.minus, k.I);
@@ -542,6 +567,7 @@
         if (s.burnt) { r.state = 'burnt'; r.on = false; }
       } else if (p.type === 'diode') { r.on = r.i > 0.001; if (s.burnt) { r.state = 'burnt'; r.on = false; } }
       else if (p.type === 'pushbtn') r.on = !!s.pressed;
+      else if (p.type === 'transformer') { r.on = xfOn.has(p.id) && !s.burnt; if (!r.on) r.vin = V(T(p.id, 'p1')) - V(T(p.id, 'p2')); if (s.burnt) r.state = 'burnt'; }
     }
     for (const p of board.parts) {
       const r = parts[p.id], d = def(p.type), o = props(p), s = st[p.id];
@@ -588,7 +614,16 @@
       else if (l.contact) { const r = parts[l.ref]; r.contactI = Math.abs(linkI[k]); r.flow = linkI[k]; }
       else { const r = parts[l.ref]; r.i = Math.abs(linkI[k]); r.flow = linkI[k]; }
     });
-    return { parts, wires, invOut, V: (t) => V(t), node, shorted: shorted.map((s) => s.id), links: L, linkI, ledBack };
+    const hotN = new Map();
+    for (const s of live) {
+      if (shorted.includes(s)) continue;
+      const vv = Math.abs(V(s.plus) - V(s.minus));
+      if (vv < 0.05 * s.v) continue;
+      const k = node(s.plus);
+      hotN.set(k, Math.max(hotN.get(k) || 0, vv));
+    }
+    const hot = (t) => { try { return hotN.get(node(t)) || 0; } catch (e) { return 0; } };
+    return { parts, wires, invOut, V: (t) => V(t), node, hot, shorted: shorted.map((s) => s.id), links: L, linkI, ledBack };
   }
 
   /** Each node's links form a graph; a BFS tree carries its terminals' currents to the root. + = from l.a to l.b. */
@@ -642,6 +677,8 @@
           te: r.v < -1.5 ? 'కెపాసిటర్ ఉబ్బి పేలిపోయింది: + − తిప్పి కలిపారు.' : 'కెపాసిటర్ ఉబ్బి పేలిపోయింది: ' + Math.round(r.v) + ' V వచ్చింది, ఇది ' + o.v + ' V దాకానే.' });
       if (p.type === 'relay' && !s.burnt && r.v > o.v * 1.6)
         cand.push({ id: p.id, over: r.v / o.v, set: () => { s.burnt = true; }, te: 'రిలే కాయిల్ కాలిపోయింది: ' + Math.round(r.v) + ' V వచ్చింది, ఇది ' + o.v + ' V రిలే.' });
+      if (p.type === 'transformer' && !s.burnt && r.p > o.kva * 1000 * 1.5)
+        cand.push({ id: p.id, over: r.p / (o.kva * 1000), set: () => { s.burnt = true; }, te: 'ట్రాన్స్‌ఫార్మర్ ఓవర్‌లోడ్: ' + Math.round(r.p / 1000) + ' kW, ఇది ' + o.kva + ' kVA ది. వేడెక్కి కాలిపోయింది.' });
       if (p.type === 'regulator' && !s.burnt && r.i > REG_MAX)
         cand.push({ id: p.id, over: r.i / REG_MAX, set: () => { s.burnt = true; }, te: 'రెగ్యులేటర్ వేడెక్కి కాలిపోయింది: ' + amps(r.i) + ' అడిగారు, ఇది ' + REG_MAX + ' A దాకానే.' });
       if (p.type === 'led' && !s.burnt && r.i > LED_BURN)
@@ -724,7 +761,7 @@
         const ratedW = d.load ? (p.type === 'fan' ? o.w * (0.35 + 0.65 * o.speed / 5) : o.w) : 0.04;
         const units = ratedW * h * 30 / 1000;
         out.loads.push({ id: p.id, te: p.label || d.te, w, ratedW, hours: h, units, rupees: units * rate });
-        if (o.v >= 100) { out.unitsMonth += units; out.billMonth += units * rate; }
+        if (o.v >= 100 && o.v <= 1000) { out.unitsMonth += units; out.billMonth += units * rate; }
       }
       if (p.type === 'battery') {
         const draw = Math.max(0, (r.i || 0) * (r.v || o.v));

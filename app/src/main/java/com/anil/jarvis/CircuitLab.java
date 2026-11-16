@@ -32,6 +32,16 @@ final class CircuitLab {
     static final String DIR = "circuits";
     /** One answer writes at most this many tokens (a full board of 60 parts fits in about 4,000). */
     static final int MAX_OUT = 6000;
+    /** 📐 (G2.1) What a photo is made into: a board only, the board and the drawing like the photo, the drawing only; or a board for a saved drawing. */
+    static final String MODE_BOARD = "board", MODE_BOTH = "both", MODE_SLD = "sld", MODE_FROM_SLD = "fromSld";
+
+    /** The most one answer may write: a drawing of up to 400 items needs more room than a board. */
+    static int maxOut(String mode) {
+        if (MODE_BOTH.equals(mode)) return 12000;
+        if (MODE_SLD.equals(mode)) return 9000;
+        if (MODE_FROM_SLD.equals(mode)) return 7000;
+        return MAX_OUT;
+    }
     private static final int KEEP = 60;
     static final String PREFS = "jarvis_circuit";
     /** What the page may keep between visits (his home's items, stars, the unit rate, hours, his solar / charge numbers). */
@@ -46,10 +56,21 @@ final class CircuitLab {
     }
 
     /** About what one answer costs on this model: a new board, a change to a board of this size, or a photo. "₹2–9". */
-    static String aboutMoney(String model, int boardChars, boolean photo) {
-        long in = Math.round(SYSTEM.length() / 3.2) + 200 + Math.round(boardChars / 3.0) + (photo ? 1600 : 0);
-        double lo = Workshop.rupees(model, in, 0, 600), hi = Workshop.rupees(model, in, 0, boardChars > 0 || photo ? 4500 : 3500);
-        return "₹" + Math.max(1, (int) Math.floor(lo)) + "–" + Math.max(2, (int) Math.ceil(hi));
+    static String aboutMoney(String model, int boardChars, boolean photo) { return aboutMoney(model, MODE_BOARD, boardChars, photo); }
+
+    /**
+     * 📐 The same per mode: "both" and "sld" write the drawing too (a few thousand more tokens), "fromSld" reads the saved drawing
+     * (chars = its size) and writes a board and the links.
+     */
+    static String aboutMoney(String model, String mode, int chars, boolean photo) {
+        long in = Math.round(SYSTEM.length() / 3.2) + 200 + (photo ? 1600 : 0);
+        int lo = 600, hi;
+        if (MODE_BOTH.equals(mode)) { in += Math.round((SLD_FORMAT.length() + SLD_LINKS.length()) / 3.2); lo = 2000; hi = 8000; }
+        else if (MODE_SLD.equals(mode)) { in += Math.round(SLD_FORMAT.length() / 3.2); lo = 1500; hi = 6000; }
+        else if (MODE_FROM_SLD.equals(mode)) { in += Math.round(SLD_LINKS.length() / 3.2) + Math.round(chars / 2.7); lo = 1200; hi = 4500; }
+        else { in += Math.round(chars / 3.0); hi = chars > 0 || photo ? 4500 : 3500; }
+        double a = Workshop.rupees(model, in, 0, lo), b = Workshop.rupees(model, in, 0, hi);
+        return "₹" + Math.max(1, (int) Math.floor(a)) + "–" + Math.max(2, (int) Math.ceil(b));
     }
 
     static String overLimit(Context c, Prefs p) {
@@ -107,6 +128,9 @@ final class CircuitLab {
             "  pushbtn (a b)                   (joined only while he holds it, like a doorbell button)",
             "  relay (c1 c2 com no nc) v 12    (coil c1 c2 at its v: com joins no; otherwise com joins nc. The coil side may be a",
             "                                  battery and the contact side 230 V mains: they never join)",
+            "Power:",
+            "  transformer (p1 p2 s1 s2) kva 1000, v1 11000, v2 433   (a power transformer: p1 p2 the primary at v1 volts, s1 s2 the",
+            "                                  secondary at v2 volts; the two sides never join. 33 kV to 6.6 kV: v1 33000, v2 6600)",
             "",
             "A WIRE: {\"a\": \"<id>.<terminal>\", \"b\": \"<id>.<terminal>\"}, e.g. {\"a\": \"bat1.+\", \"b\": \"fus1.a\"}. A wire joins two terminals;",
             "several wires may meet at one terminal (that is how parallel branches are made).",
@@ -118,6 +142,11 @@ final class CircuitLab {
             "  the loads in parallel between live and neutral. A battery circuit: a fuse right after the battery's +.",
             "- Real Indian values: 230 V house supply, a 12 V 100-200 Ah inverter battery, a 12 V 35-65 Ah car battery, real appliance watts,",
             "  a fuse / MCB a little above the current it protects.",
+            "- A high-voltage plant (a substation, a pump house, a single-line diagram or a SCADA screen): mains with its real volts (v 33000",
+            "  for 33 kV, 11000, 6600), every VCB / breaker a switch (on as shown), each power transformer a transformer with its kVA and volts,",
+            "  big motors a motor with their real w and v (800 kW at 6.6 kV: w 800000, v 6600), a bus coupler a switch between the two bus",
+            "  sections. Every circuit needs its return: mains n to the transformer's p2; each transformer's s2 to the b of every load on its",
+            "  side. Leave at least 2 empty cells between parts so their names never overlap.",
             "- At most 60 parts and 150 wires; only the types above. AC (mains, the inverter's in / out, a charger's in) and DC (batteries,",
             "  cells, solar, the inverter's b+ b-, a charger's + -) never join directly: only through an inverter or a charger.",
             "- Make what he asked, simply and correctly. If what he asks has a mistake (a short, no fuse, too big a load for the inverter),",
@@ -163,12 +192,131 @@ final class CircuitLab {
         return "Draw the circuit in this photo as a board." + (w.isEmpty() ? "" : "\nAnil says: " + w);
     }
 
+    // ================================================================ 📐 the drawing like the photo (a single-line diagram), G2.1
+
+    /** How the drawing is written (sent only with the photo jobs that make one, so a plain board costs no more). */
+    static final String SLD_FORMAT = String.join("\n",
+            "THE DRAWING (\"sld\"): the single-line diagram drawn just like the photo, as DATA (the phone draws it with its own symbols):",
+            "{\"w\": 100, \"h\": <the sheet's height in the photo's proportions, e.g. 58 for a wide screen>, \"phase3\": <true for a three-phase plant>,",
+            " \"items\": [ ... ]}   x goes right from 0 to w, y goes down from 0 to h, in sheet units (a line of text is about 0.7 high).",
+            "ITEMS (\"k\" is the kind):",
+            "  {\"k\": \"bus\", \"x1\": , \"y1\": , \"x2\": , \"y2\": }      a bus bar (a thick bar, usually across)",
+            "  {\"k\": \"line\", \"pts\": [[x, y], [x, y], ...]}      a connection (up to 40 points, straight pieces)",
+            "  {\"k\": \"breaker\", \"x\": , \"y\": , \"len\": 4, \"dir\": \"v\" | \"h\", \"on\": true, \"l1\": \"L M\", \"l2\": \"VCB\"}",
+            "        a VCB / breaker from (x, y) down (\"v\") or to the right (\"h\") by len; l1 is written on its left, l2 on its right",
+            "  {\"k\": \"transformer\", \"x\": , \"y\": , \"label\": \"\"}   centred at (x, y), about 5 wide and 4.5 high; the label goes on its left",
+            "  {\"k\": \"motor\", \"x\": , \"y\": , \"label\": \"M1\", \"run\": true}   a motor's circle centred at (x, y), radius 1.6",
+            "  {\"k\": \"meter\", \"x\": , \"y\": , \"a\": \"73.58\", \"kv\": \"6.64\"}   the red-digit display, top-left at (x, y), 5.4 wide; a row for A, a row for kV",
+            "  {\"k\": \"device\", \"x\": , \"y\": }      a small relay / protection unit's picture, top-left at (x, y), 2.8 wide, 3.2 high",
+            "  {\"k\": \"arrow\", \"x\": , \"y\": , \"dir\": \"down\" | \"up\"}   a feeder's end arrow, its tip at (x, y)",
+            "  {\"k\": \"text\", \"x\": , \"y\": , \"s\": \"33KV INCOMER-1\", \"size\": 0.7, \"align\": \"left\" | \"center\" | \"right\"}",
+            "  {\"k\": \"box\", \"x\": , \"y\": , \"w\": , \"h\": , \"dash\": true}   a panel's dashed outline",
+            "Colours and states as the photo shows them: \"c\": \"r\" (red, live) or \"c\": \"g\" (green, dead) on a bus, line or arrow; a",
+            "breaker's \"on\"; a motor's \"run\"; a meter's \"a\" and \"kv\" as written on the photo.",
+            "Copy the photo's own words of the diagram (feeder names, voltages, VCB, L M, F1 ...) at the same places, at most 48 characters each.",
+            "Keep things apart: no two texts, meters or devices on top of each other (move a label a little rather than overlap it).",
+            "Leave out everything that is not the diagram: logos, company or brand names, the title or header bar, menus, buttons, tabs, the",
+            "window's own bars, the clock and date, the mouse pointer. At most 400 items.");
+
+    /** How the drawing's items are tied to the board (then a tap on a VCB opens / closes it, and the colours, A and kV are the simulation's). */
+    static final String SLD_LINKS = String.join("\n",
+            "LINKING THE DRAWING TO THE BOARD (a tap on a VCB then opens / closes it; the colours, A and kV come from the simulation):",
+            "  \"part\": the board part this item is (a breaker: its switch or mcb; a motor: its motor; a transformer: its transformer;",
+            "          a meter: the part whose current it shows)",
+            "  \"t\": a board terminal \"<id>.<terminal>\" this item is electrically on (a bus, a line, an arrow, a meter's kV, a breaker's",
+            "       upper side)",
+            "  \"sw\": on a motor, the switch that starts it",
+            "Link every item that has a match on the board; items with none (spare feeders, devices, texts, boxes) get no links.");
+
+    /** ⚡ + 📐 A photo of a single-line diagram: the board AND the drawing like the photo, linked. */
+    static String bothMessage(String words) {
+        String w = words == null ? "" : words.trim();
+        return "This photo is a single-line diagram (SLD) or a SCADA screen of an electrical plant. Make BOTH:\n"
+                + "1. \"board\": a working board of the same plant for the simulation (the types and rules above).\n"
+                + "2. \"sld\": the drawing just like the photo, its items linked to the board.\n"
+                + "Answer: {\"title\": \"...\", \"say\": \"...\", \"board\": {\"parts\": [...], \"wires\": [...]}, \"sld\": {...}}\n\n"
+                + SLD_FORMAT + "\n\n" + SLD_LINKS + (w.isEmpty() ? "" : "\n\nAnil says: " + w);
+    }
+
+    /** 📐 only: the drawing like the photo, to look at (no board, no links). */
+    static String sldMessage(String words) {
+        String w = words == null ? "" : words.trim();
+        return "This photo is a single-line diagram (SLD) or a SCADA screen of an electrical plant. Make ONLY the drawing just like the "
+                + "photo: no board and no links.\nAnswer: {\"title\": \"...\", \"say\": \"...\", \"sld\": {...}}\n\n"
+                + SLD_FORMAT + (w.isEmpty() ? "" : "\n\nAnil says: " + w);
+    }
+
+    /** ⚡ for a saved drawing (no photo needed): its items with their numbers; the answer is a board and the links. */
+    static String fromSldMessage(String title, JSONObject sld) {
+        return "Here is a saved drawing (a single-line diagram) \"" + (title == null ? "" : title.trim()) + "\" that has no board yet. "
+                + "Each item has its number \"i\":\n" + sldForAi(sld) + "\n\n"
+                + "Make \"board\": a working board of the same plant (the types and rules above), and \"links\": which drawing items are "
+                + "which board parts.\nAnswer: {\"title\": \"...\", \"say\": \"...\", \"board\": {\"parts\": [...], \"wires\": [...]}, "
+                + "\"links\": [{\"i\": <the item's number>, \"part\": \"<id>\", \"t\": \"<id>.<terminal>\", \"sw\": \"<id>\"}, ...]} "
+                + "(in each link only the fields that apply)\n\n" + SLD_LINKS;
+    }
+
+    /** The saved drawing for the AI: its items numbered, the old links left out (there is no board). */
+    static String sldForAi(JSONObject sld) {
+        try {
+            JSONObject o = new JSONObject().put("w", sld.optDouble("w", 100)).put("h", sld.optDouble("h", 60)).put("phase3", sld.optBoolean("phase3"));
+            JSONArray items = sld.optJSONArray("items"), out = new JSONArray();
+            for (int i = 0; items != null && i < items.length() && i < 400; i++) {
+                JSONObject it = items.optJSONObject(i);
+                if (it == null) continue;
+                JSONObject q = new JSONObject().put("i", i);
+                for (java.util.Iterator<String> k = it.keys(); k.hasNext(); ) {
+                    String key = k.next();
+                    if (!key.equals("part") && !key.equals("t") && !key.equals("sw")) q.put(key, it.get(key));
+                }
+                out.put(q);
+            }
+            return o.put("items", out).toString();
+        } catch (Exception e) { return "{}"; }
+    }
+
+    private static final Pattern ID = Pattern.compile("[A-Za-z0-9_-]{1,16}"), TERM = Pattern.compile("[A-Za-z0-9_-]{1,16}\\.[A-Za-z0-9+_-]{1,8}");
+
+    /** The AI's links ({i, part, t, sw}) put into a copy of the drawing's items (the page checks them again against the board). */
+    static JSONObject linkSld(JSONObject sld, JSONArray links) {
+        if (sld == null) return null;
+        try {
+            JSONObject out = new JSONObject(sld.toString());
+            JSONArray items = out.optJSONArray("items");
+            if (items == null || links == null) return out;
+            for (int k = 0; k < links.length() && k < 400; k++) {
+                JSONObject l = links.optJSONObject(k);
+                if (l == null || !l.has("i")) continue;
+                JSONObject it = items.optJSONObject(l.optInt("i", -1));
+                if (it == null) continue;
+                String part = l.optString("part", ""), sw = l.optString("sw", ""), t = l.optString("t", "");
+                if (ID.matcher(part).matches()) it.put("part", part);
+                if (ID.matcher(sw).matches()) it.put("sw", sw);
+                if (TERM.matcher(t).matches()) it.put("t", t);
+            }
+            return out;
+        } catch (Exception e) { return sld; }
+    }
+
+    /** Has this board a 📐 drawing? */
+    static boolean hasSld(JSONObject board) {
+        JSONObject d = board == null ? null : board.optJSONObject("sld");
+        JSONArray it = d == null ? null : d.optJSONArray("items");
+        return it != null && it.length() > 0;
+    }
+
+    /** Nothing on the screen: no parts and no drawing. */
+    static boolean empty(JSONObject board) { return partCount(board) == 0 && !hasSld(board); }
+
     // ================================================================ the answer
 
     static final class Answer {
         String title = "", say = "", refuse;
         /** The board as the AI wrote it (the page cleans it before it is used); null = no change. */
         JSONObject board;
+        /** 📐 The drawing like the photo (null = none), and the links for a saved drawing's items. */
+        JSONObject sld;
+        JSONArray links;
     }
 
     /** Reads the AI's answer: the one JSON object in it (a fence or words around it are skipped); null when there is none. */
@@ -188,7 +336,13 @@ final class CircuitLab {
             JSONArray ps = b.optJSONArray("parts");
             if (ps != null && ps.length() > 0) r.board = b;
         }
-        return r.board == null && r.say.isEmpty() ? null : r;
+        JSONObject d = o.optJSONObject("sld");
+        if (d == null && b != null) d = b.optJSONObject("sld"); // (written inside the board)
+        if (b != null) b.remove("sld");
+        JSONArray items = d == null ? null : d.optJSONArray("items");
+        if (items != null && items.length() > 0) r.sld = d;
+        r.links = o.optJSONArray("links");
+        return r.board == null && r.sld == null && r.say.isEmpty() ? null : r;
     }
 
     // ================================================================ ₹0 words (the Java side: the screen itself)
@@ -326,7 +480,8 @@ final class CircuitLab {
     static String shape(JSONObject board) {
         if (board == null) return "";
         JSONArray ps = board.optJSONArray("parts"), ws = board.optJSONArray("wires");
-        return (ps == null ? "[]" : ps.toString()) + (ws == null ? "[]" : ws.toString());
+        JSONObject d = board.optJSONObject("sld");
+        return (ps == null ? "[]" : ps.toString()) + (ws == null ? "[]" : ws.toString()) + (d == null ? "" : "#" + d.toString().hashCode());
     }
 
     static int partCount(JSONObject board) {
