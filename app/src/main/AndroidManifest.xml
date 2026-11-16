@@ -470,6 +470,17 @@
             android:windowSoftInputMode="adjustResize|stateHidden"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
 
+        <!-- 🎮 The game studio: the workshop's AI writes a small game part by part into a sealed stage; he plays it full
+             screen. Kept across rotation (a game turns to landscape while it is played). -->
+        <activity
+            android:name=".GameStudioActivity"
+            android:exported="false"
+            android:label="Jarvis గేమ్ స్టూడియో"
+            android:launchMode="singleTop"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+
         <activity
             android:name=".LookChooserActivity"
             android:exported="false"

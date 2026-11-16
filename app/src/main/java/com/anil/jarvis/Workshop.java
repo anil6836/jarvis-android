@@ -112,8 +112,34 @@ final class Workshop {
         boolean same = m.equals(s.getString("month", ""));
         e.putString("month", m)
                 .putFloat("spent", (same ? s.getFloat("spent", 0) : 0) + (float) Math.max(0, rupees))
-                .putInt("builds", (same ? s.getInt("builds", 0) : 0) + (aBuild ? 1 : 0))
+                .putInt("builds", (same ? s.getInt("builds", 0) : 0) + (aBuild ? 1 : 0));
+        if (!same) e.putFloat("g_spent", 0).putInt("g_builds", 0); // (🎮 the games' share starts again too)
+        e.apply();
+    }
+
+    /** 🎮 A game's cost: in the same monthly spend and limit as the workshop (his choice), kept apart for the split line. */
+    static synchronized void spendGame(Context c, double rupees, boolean aGame) {
+        SharedPreferences s = sp(c);
+        String m = month();
+        boolean same = m.equals(s.getString("month", ""));
+        float r = (float) Math.max(0, rupees);
+        s.edit().putString("month", m)
+                .putFloat("spent", (same ? s.getFloat("spent", 0) : 0) + r)
+                .putInt("builds", same ? s.getInt("builds", 0) : 0)
+                .putFloat("g_spent", (same ? s.getFloat("g_spent", 0) : 0) + r)
+                .putInt("g_builds", (same ? s.getInt("g_builds", 0) : 0) + (aGame ? 1 : 0))
                 .apply();
+    }
+
+    /** 🎮 This month's games spend, in rupees (part of {@link #spent}). */
+    static synchronized double gamesSpent(Context c) {
+        SharedPreferences s = sp(c);
+        return month().equals(s.getString("month", "")) ? s.getFloat("g_spent", 0) : 0;
+    }
+
+    static synchronized int games(Context c) {
+        SharedPreferences s = sp(c);
+        return month().equals(s.getString("month", "")) ? s.getInt("g_builds", 0) : 0;
     }
 
     /** Why no new build may start now (this month's limit reached), or null. */
@@ -130,8 +156,13 @@ final class Workshop {
 
     /** "ఈ నెల ₹156 వాడింది / హద్దు ₹300 · 2 బొమ్మలు" */
     static String spendLine(Context c, Prefs p) {
-        int n = builds(c);
-        return "ఈ నెల " + money(spent(c)) + " వాడింది / హద్దు ₹" + p.workshopLimit() + " · " + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు");
+        int n = builds(c), g = games(c);
+        double all = spent(c), gs = gamesSpent(c);
+        String head = "ఈ నెల " + money(all) + " వాడింది / హద్దు ₹" + p.workshopLimit() + " · ";
+        if (g == 0 && gs <= 0) return head + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు");
+        // (🎮 games share the same limit: each one's part shown)
+        return head + "🛠️ " + money(Math.max(0, all - gs)) + " · " + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు")
+                + " · 🎮 " + money(gs) + " · " + g + (g == 1 ? " గేమ్" : " గేమ్స్");
     }
 
     // ================================================================ the part stream

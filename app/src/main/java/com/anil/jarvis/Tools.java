@@ -389,10 +389,20 @@ final class Tools {
                         + "photo, STL print file, a 3D model from a photo or a floor plan, landscape, the how-it-works show, how to really make it, "
                         + "the model in his room on the camera, a colour or material for a part, the tape, the weight, the 2D drawing, the show's video, "
                         + "a second saved model beside it, hand signs in the air, the model at its real size on his floor) go to the workshop as he said them. "
-                        + "Not for websites, apps, code, food, pictures or scans.",
+                        + "Not for websites, apps, code, food, pictures, scans or games (games: game_studio).",
                 schema(new String[][]{{"action", "string", "build | open_last | cost | talk"},
                         {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used. "
                                 + "talk: his exact words, unchanged"}},
+                        "action")));
+        DEFS.add(new Def("game_studio",
+                "🎮 The game studio (phone only): build = the AI he chose for the workshop makes a small ORIGINAL phone game he describes (race, runner, "
+                        + "brick breaker, snake-style, puzzle, quiz, balloons, catch...) and he plays it inside Jarvis, full screen, offline, free; "
+                        + "play = open a saved game and start it (what = words of its name, empty = the last one); shelf = his saved games with best scores; "
+                        + "open_last = show the last game; cost = what the last game cost and this month's spend (shared with the workshop's limit). "
+                        + "Use this for games to play here; make_app only when he asks for a separate APK app.",
+                schema(new String[][]{{"action", "string", "build | play | shelf | open_last | cost"},
+                        {"what", "string", "build: the game in English with every detail he gave (how it plays, controls, look); keep Telugu names he used. "
+                                + "play: words of the saved game's name (or empty)"}},
                         "action")));
         DEFS.add(new Def("publish_website", "Put the last website online (GitHub Pages in his account) and give the link.", schema(new String[][]{})));
         DEFS.add(new Def("write_code",
@@ -401,7 +411,8 @@ final class Tools {
                         {"description", "string", "What the program must do, in English, all details"}}, "filename", "description")));
         DEFS.add(new Def("make_app",
                 "Make a real Android app (APK) for his phone: the app is written, built on his GitHub (3-5 minutes) and a notification lets him install it. "
-                        + "Good for calculators, to-do lists, games, trackers, quizzes, reference apps. Or change the last app (it is rebuilt).",
+                        + "Good for calculators, to-do lists, games, trackers, quizzes, reference apps. Or change the last app (it is rebuilt). "
+                        + "(A game to play inside Jarvis: game_studio; this only when he asks for an APK / a separate app.)",
                 schema(new String[][]{{"name", "string", "App name (short)"}, {"description", "string", "What the app must do, in English, all features"},
                         {"change", "string", "Changes to the last app (instead of name/description)"}})));
         DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
@@ -1136,6 +1147,7 @@ final class Tools {
             case "run_python": return "కోడ్ రాసి రన్ చేస్తున్నాను…";
             case "make_website": return "వెబ్‌సైట్ తయారు చేస్తున్నాను…";
             case "workshop": return "వర్క్‌షాప్ తెరుస్తున్నాను…";
+            case "game_studio": return "గేమ్ స్టూడియో తెరుస్తున్నాను…";
             case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
             case "write_code": return "కోడ్ రాస్తున్నాను…";
             case "make_app": return "యాప్ తయారు చేస్తున్నాను…";
@@ -1355,6 +1367,7 @@ final class Tools {
                 case "make_website": return makeWebsite(a.optString("description", ""), a.optString("change", ""));
                 case "publish_website": return publishWebsite();
                 case "workshop": return workshop(a.optString("action", "build"), a.optString("what", ""));
+                case "game_studio": return gameStudio(a.optString("action", "build"), a.optString("what", ""));
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app": return makeApp(a.optString("name", ""), a.optString("description", ""), a.optString("change", ""));
                 case "bank_balance": return bankBalance();
@@ -1655,6 +1668,42 @@ final class Tools {
                 .putExtra(WorkshopActivity.EXTRA_HEARD, heard == null ? what.trim() : heard).putExtra(WorkshopActivity.EXTRA_SAID, true)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
         return ok().put("next", "Say only: 'బెంచ్ మీద పెడుతున్నాను Sir.' The workshop screen shows each part and says the cost when it is done.").toString();
+    }
+
+    /**
+     * 🎮 The game studio: the same checks as the workshop (phone only, his AI chosen and its key there, this month's shared
+     * limit) so the reason is said at once; then the studio opens and makes the game (it says the cost when it is done).
+     */
+    private String gameStudio(String action, String what) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "The game studio is on his phone only (not the home tablet or the car box). Say so in one line.");
+        Prefs p = new Prefs(c);
+        int flags = Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT;
+        if ("cost".equals(action)) return ok().put("said", GameStudio.costSaid(c, p)).put("next", "Say this in Telugu, briefly.").toString();
+        if ("shelf".equals(action)) {
+            if (GameStudio.last(c) == null) return err("nothing_saved", "No game has been made yet. Say so and that he can say 'ఒక ___ గేమ్ తయారు చెయ్'.");
+            startIn(new Intent(c, GameStudioActivity.class).putExtra(GameStudioActivity.EXTRA_SHELF, true).addFlags(flags));
+            return ok().put("next", "Say in one short line that his saved games are on the screen (playing costs nothing).").toString();
+        }
+        if ("open_last".equals(action) || "play".equals(action)) {
+            JSONObject g = "play".equals(action) ? GameStudio.find(c, what) : GameStudio.last(c);
+            if (g == null) return err("nothing_saved", "No game has been made yet. Say so and that he can say 'ఒక ___ గేమ్ తయారు చెయ్'.");
+            Intent i = new Intent(c, GameStudioActivity.class).addFlags(flags);
+            if ("play".equals(action)) i.putExtra(GameStudioActivity.EXTRA_PLAY_AT, g.optLong("at")); else i.putExtra(GameStudioActivity.EXTRA_OPEN_LAST, true);
+            startIn(i);
+            return ok().put("game", g.optString("title")).put("next", "play".equals(action) ? "Say only: '" + g.optString("title") + " మొదలుపెడుతున్నాను Sir.'"
+                    : "Say in one short line that the last game is on the screen (playing costs nothing).").toString();
+        }
+        if (what.trim().isEmpty()) return err("what_missing", "Ask him in one short line what game he wants.");
+        Workshop.Engine e;
+        try { e = GameStudio.engine(p); }
+        catch (Workshop.Problem x) { return err("no_ai", x.getMessage() + " Say exactly this to him. Do not pick or suggest a different AI yourself."); }
+        String over = GameStudio.overLimit(c, p);
+        if (over != null) return err("limit_reached", over + " Say exactly this to him.");
+        startIn(new Intent(c, GameStudioActivity.class).putExtra(GameStudioActivity.EXTRA_WHAT, what.trim())
+                .putExtra(GameStudioActivity.EXTRA_HEARD, heard == null ? what.trim() : heard).putExtra(GameStudioActivity.EXTRA_SAID, true).addFlags(flags));
+        return ok().put("next", "Say only: 'ఆట తయారు చేస్తున్నాను Sir, సుమారు " + GameStudio.aboutMoney(e.model)
+                + " అవుతుంది.' The studio shows each part and says the cost when it is done.").toString();
     }
 
     /** When a job last opened a screen (an app, a page, the dialer): the panel then isn't "left" by him. */

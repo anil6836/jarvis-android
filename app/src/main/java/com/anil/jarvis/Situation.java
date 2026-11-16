@@ -37,6 +37,7 @@ final class Situation {
         try { mood(c, s); } catch (Throwable ignored) {}
         try { sight(s); } catch (Throwable ignored) {}
         try { workshop(s); } catch (Throwable ignored) {}
+        try { games(s); } catch (Throwable ignored) {}
         return s.toString();
     }
 
@@ -48,6 +49,15 @@ final class Situation {
         s.append("- 🛠️ The workshop screen is open, showing '").append(t).append("'. What he says about that model (change / add / remove a part, ")
                 .append("colour, size, pull apart, a view, light, undo, a question about it) -> workshop action=talk with his exact words; ")
                 .append("'ఒక <new object> తయారు చెయ్' -> action=build.\n");
+    }
+
+    /** 🎮 The game studio screen is open: a new game he asks for is made there. */
+    private static void games(StringBuilder s) {
+        String t = GameStudioActivity.openTitle();
+        if (t == null) return;
+        s.append("- 🎮 The game studio screen is open").append(t.isEmpty() ? "" : ", showing the game '" + t + "'")
+                .append(": 'ఒక <game> గేమ్ తయారు చెయ్' -> game_studio action=build (a new game; the one on the screen stays on his shelf); ")
+                .append("'ఆడు' / 'మళ్ళీ' / 'నా గేమ్స్' are handled by the studio itself.\n");
     }
 
     private static String inHours(Duration d) {

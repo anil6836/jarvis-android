@@ -502,7 +502,7 @@ public class SettingsActivity extends Activity {
         note("\"Jarvis, ఒక టేబుల్ ఫ్యాన్ తయారు చెయ్\" అంటే మీరు ఇక్కడ ఎంచుకున్న AI ఆ వస్తువుని డిజైన్ చేసి, భాగాలు ఒక్కొక్కటిగా 3D లో కట్టి చూపిస్తుంది. "
                 + "Fable 5.2 తో ఒక బొమ్మకి మామూలుగా ₹60–110 (ఎప్పటికీ ₹235 దాటదు); Opus 5.5 తో సగం. AI రాసిన కోడ్ ఇంటర్నెట్ లేని మూసిన గదిలో నడుస్తుంది; "
                 + "మీ keys దానికి కనిపించవు. దాచిన బొమ్మలు మళ్ళీ తెరవడానికి ఖర్చు లేదు. ఫోన్‌లో మాత్రమే.");
-        workshopModel = field("🛠️ బొమ్మలు తయారు చేసే AI (ఖాళీ = ఇంకా ఎంచుకోలేదు)", prefs.workshopModel(), false);
+        workshopModel = field("🛠️ బొమ్మలు, 🎮 ఆటలు తయారు చేసే AI (ఖాళీ = ఇంకా ఎంచుకోలేదు)", prefs.workshopModel(), false);
         LinearLayout wsPresets = new LinearLayout(this);
         TextView wsFable = Ui.text(this, "  Claude Fable 5.2  ", 14, Ui.CYAN);
         wsFable.setPadding(0, Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 8));
@@ -582,6 +582,14 @@ public class SettingsActivity extends Activity {
         wsOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         wsOpen.setOnClickListener(v -> { autosave(); WorkshopActivity.open(this, null, null, false); });
         box.addView(wsOpen);
+        // 🎮 the game studio uses this same AI and this same monthly limit (his choice, 16 Nov)
+        note("🎮 గేమ్ స్టూడియో కూడా ఇదే AI తో ఆటలు తయారు చేస్తుంది; ఖర్చు ఇదే నెల హద్దులో కలుస్తుంది (పైన 🛠️ / 🎮 విడివిడిగా కనిపిస్తాయి). "
+                + "ఒక ఆట ఖర్చు మొదలుపెట్టే ముందే చూపిస్తుంది (Fable 5.2 లో సుమారు ₹15–55; చౌక మోడల్ అయితే తక్కువ). "
+                + "తయారయ్యాక ఆడటానికి ఖర్చు లేదు, నెట్ అక్కర్లేదు.");
+        TextView gsOpen = Ui.text(this, "🎮 గేమ్ స్టూడియో తెరువు →", 15, accent);
+        gsOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        gsOpen.setOnClickListener(v -> { autosave(); GameStudioActivity.open(this, null, null, false); });
+        box.addView(gsOpen);
         }
 
         // ---- voice
