@@ -273,6 +273,11 @@
     const board = clone(S.normalise(boardIn));
     board.parts.forEach((p, i) => { const orig = boardIn.parts.find((q) => q.id === p.id); if (orig) Object.assign(p, { x: orig.x, y: orig.y, rot: orig.rot, label: orig.label }); });
     const N = names(board);
+    // (a whole new circuit, or a long sentence naming many things, is not a small edit: the AI draws it)
+    if (/(కొత్త|\bnew\b)/.test(text) && /(సర్క్యూట్|బోర్డ్|బోర్డు|circuit|board)/.test(text)) return null;
+    const fams = new Set();
+    for (const [fw, ws] of WORDS) for (const w of ws) if (text.includes(w)) fams.add(fw);
+    if (fams.size >= 3 || text.trim().split(' ').length > 9) return null;
     const mains = board.parts.filter((p) => p.type === 'mains');
     if (CUT.test(text) && mains.length) { mains.forEach((p) => { p.props = Object.assign({}, p.props, { on: false }); }); return { board, said: '⚡ కరెంట్ పోయింది (బొమ్మలో).' }; }
     if (BACK.test(text) && mains.length) { mains.forEach((p) => { p.props = Object.assign({}, p.props, { on: true }); }); return { board, said: '⚡ కరెంట్ వచ్చింది.' }; }
