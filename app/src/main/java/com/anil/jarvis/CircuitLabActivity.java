@@ -367,6 +367,12 @@ public class CircuitLabActivity extends Activity {
     }
 
     /** 📐 The estimate for one of the photo's choices, or for a board made from the saved drawing (chars = its size). */
+    /** " (ఎక్కువలో ఎక్కువ ₹50)": the most one answer can cost, when a model is chosen. */
+    private String most(String mode, int chars, boolean photo) {
+        String m = p.workshopModel().trim();
+        return m.isEmpty() ? "" : " (ఎక్కువలో ఎక్కువ " + CircuitLab.mostMoney(m, mode, chars, photo) + ")";
+    }
+
     private String estimate(String mode, int chars, boolean photo) {
         String m = p.workshopModel().trim();
         if (m.isEmpty()) return "ఎంచుకోలేదు (⚙️ → 🛠️)";
@@ -853,11 +859,14 @@ public class CircuitLabActivity extends Activity {
         // 📐 what goes on the screen: the board (not for "the drawing only"), and the drawing (the photo's, or the saved one with its links)
         JSONObject newBoard = a == null || sldOnly ? null : a.board;
         JSONObject drawing = a == null ? null : fromSld ? (a.board != null ? CircuitLab.linkSld(j.sld, a.links) : null) : both || sldOnly ? a.sld : null;
+        boolean capped = bill.out >= CircuitLab.maxOut(j.mode) - 20; // (written to its limit: the answer's end is missing)
         String said, line;
         if ("stopped".equals(failure)) { said = "ఆపేశాను Sir. ఇప్పటిదాకా ఖర్చు " + cost + "."; line = "⏹ " + said; }
         else if (failure != null) { said = "సర్క్యూట్ రాలేదు Sir: " + failure; line = "✗ " + failure + " · " + cost; }
+        else if (a == null && capped) { said = "AI జవాబు చాలా పొడవై హద్దు దగ్గర మధ్యలోనే ఆగిపోయింది Sir, పూర్తిగా ఏదీ రాలేదు. ఖర్చు " + cost + "."; line = "✗ " + said; }
         else if (a == null) { said = "AI జవాబు సరిగా రాలేదు Sir, ఇంకోసారి కొంచెం వేరేగా చెప్పండి. ఖర్చు " + cost + "."; line = "✗ " + said; }
         else if (a.refuse != null) { said = a.refuse; line = "🚫 " + a.refuse; }
+        else if (a.cut && j.current != null) { said = "మార్పు జవాబు మధ్యలోనే ఆగిపోయింది Sir, అందుకే బోర్డ్ మార్చలేదు. ఖర్చు " + cost + "."; line = "✗ " + said; }
         else if (newBoard == null && drawing == null && (both || sldOnly || fromSld)) {
             said = (fromSld ? "బోర్డ్ రాలేదు Sir" : sldOnly ? "📐 బొమ్మ రాలేదు Sir" : "బోర్డ్, బొమ్మ రెండూ రాలేదు Sir") + ", ఇంకోసారి ప్రయత్నించండి. ఖర్చు " + cost + ".";
             line = "✗ " + said;
@@ -880,6 +889,7 @@ public class CircuitLabActivity extends Activity {
             } catch (Exception ignored) {}
             String part = both && drawing == null ? " (📐 బొమ్మ రాలేదు, బోర్డ్ మాత్రమే వచ్చింది.)"
                     : both && newBoard == null ? " (⚡ బోర్డ్ రాలేదు, 📐 బొమ్మ మాత్రమే వచ్చింది: పైన \"⚡ బోర్డ్ కూడా చెయ్\" తో తర్వాత చేయొచ్చు.)" : "";
+            if (a.cut) part += " ⚠️ జవాబు హద్దు దగ్గర మధ్యలో ఆగిపోయింది: వచ్చినంత వరకు చూపిస్తున్నాను, కొన్ని భాగాలు లేకపోవచ్చు.";
             said = (a.say.isEmpty() ? (sldOnly ? "📐 బొమ్మ రెడీ Sir." : "బోర్డ్ రెడీ Sir.") : a.say) + part + " ఖర్చు " + cost + ".";
             line = "✓ " + said;
         }
@@ -980,7 +990,7 @@ public class CircuitLabActivity extends Activity {
         String est = estimate(CircuitLab.MODE_FROM_SLD, sld.toString().length(), false);
         new AlertDialog.Builder(this).setTitle("⚡ ఈ 📐 బొమ్మకి నడిచే బోర్డ్ చేయాలా?")
                 .setMessage("దాచిన బొమ్మ నుంచే (ఫోటో మళ్ళీ అక్కర్లేదు) AI బోర్డ్ కట్టి, బొమ్మలోని VCB లు, మోటార్లు, మీటర్లు దానికి కలుపుతుంది. "
-                        + "తర్వాత VCB తాకితే ఆన్ / ఆఫ్ అవుతుంది, రంగులు, A / kV మారతాయి. " + est + ".")
+                        + "తర్వాత VCB తాకితే ఆన్ / ఆఫ్ అవుతుంది, రంగులు, A / kV మారతాయి. " + est + most(CircuitLab.MODE_FROM_SLD, sld.toString().length(), false) + ".")
                 .setPositiveButton("⚡ చెయ్", (d, w) -> askMode(t, null, null, CircuitLab.MODE_FROM_SLD, sld, null))
                 .setNegativeButton("వద్దు", (d, w) -> setStatus("సరే Sir, చేయలేదు · ఖర్చు ₹0")).show();
     }
@@ -1071,7 +1081,7 @@ public class CircuitLabActivity extends Activity {
             b.setOrientation(LinearLayout.VERTICAL);
             b.setPadding(dp(12), dp(9), dp(12), dp(9));
             b.setBackground(Ui.round(this, CircuitLab.MODE_BOTH.equals(c[0]) ? 0x2216303F : 0x0FFFFFFF, CircuitLab.MODE_BOTH.equals(c[0]) ? Ui.CYAN_DIM : Ui.LINE2, 12));
-            b.addView(Ui.text(this, c[1] + " · " + estimate(c[0], 0, true), 15f, Ui.TEXT));
+            b.addView(Ui.text(this, c[1] + " · " + estimate(c[0], 0, true) + most(c[0], 0, true), 15f, Ui.TEXT));
             b.addView(Ui.text(this, c[2], 12f, Ui.MUTED));
             b.setOnClickListener(v -> {
                 if (dlg[0] != null) dlg[0].dismiss();

@@ -88,7 +88,8 @@ final class CircuitLab {
             "or shows a photo of one; you answer with the circuit as JSON DATA only. His phone draws it and simulates it with its own code",
             "(currents, glowing bulbs, fuses and MCBs tripping, battery backup hours, the monthly bill). You never write code.",
             "",
-            "ANSWER: one JSON object and nothing else (no markdown fences, no words before or after it):",
+            "ANSWER: one JSON object and nothing else (no markdown fences, no words before or after it), written compact: no line",
+            "breaks, no indentation, no spaces after : or , (a long answer must not run out of room):",
             "{\"title\": \"<the circuit's name in simple Telugu, at most 30 characters>\",",
             " \"say\": \"<one or two short, simple Telugu lines Jarvis speaks: what you made or changed, or the answer; call him Sir>\",",
             " \"board\": {\"parts\": [ ... ], \"wires\": [ ... ]}}",
@@ -216,7 +217,10 @@ final class CircuitLab {
             "Copy the photo's own words of the diagram (feeder names, voltages, VCB, L M, F1 ...) at the same places, at most 48 characters each.",
             "Keep things apart: no two texts, meters or devices on top of each other (move a label a little rather than overlap it).",
             "Leave out everything that is not the diagram: logos, company or brand names, the title or header bar, menus, buttons, tabs, the",
-            "window's own bars, the clock and date, the mouse pointer. At most 400 items.");
+            "window's own bars, the clock and date, the mouse pointer.",
+            "KEEP IT SHORT (the answer has a size limit; a cut-off answer loses its end): about 250 items, at most 300; one line item",
+            "for a whole run (its pts may turn corners) rather than many short pieces; numbers with at most one decimal; compact JSON",
+            "(no line breaks, no spaces); \"board\" written before \"sld\".");
 
     /** How the drawing's items are tied to the board (then a tap on a VCB opens / closes it, and the colours, A and kV are the simulation's). */
     static final String SLD_LINKS = String.join("\n",
@@ -298,6 +302,51 @@ final class CircuitLab {
         } catch (Exception e) { return sld; }
     }
 
+    /**
+     * A JSON answer cut off part-way (its size limit reached): closed right after the last whole object or list inside it, so
+     * the parts that came whole are still used. Null when nothing whole came (or it was not cut).
+     */
+    static String mend(String t) {
+        java.util.ArrayDeque<Character> st = new java.util.ArrayDeque<>();
+        boolean str = false, esc = false;
+        int cutAt = -1;
+        String closers = null;
+        char prev = 0; // (the last character outside a string, spaces skipped)
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
+            if (str) {
+                if (esc) esc = false;
+                else if (c == '\\') esc = true;
+                else if (c == '"') { str = false; prev = '"'; }
+                continue;
+            }
+            if (c == '"') { str = true; continue; }
+            if (c == '{' || c == '[') st.push(c);
+            else if (c == '}' || c == ']') {
+                if (st.isEmpty()) return null;
+                st.pop();
+                if (st.isEmpty()) return null; // (whole: nothing to mend)
+            } else if (c == ',' && !st.isEmpty() && (prev == '}' || prev == ']')) {
+                cutAt = i;
+                StringBuilder b = new StringBuilder();
+                for (char open : st) b.append(open == '{' ? '}' : ']');
+                closers = b.toString();
+            }
+            if (!Character.isWhitespace(c)) prev = c;
+        }
+        return cutAt < 0 ? null : t.substring(0, cutAt) + closers;
+    }
+
+    /** The most one answer of this mode can cost (written to its limit), said with the estimate: "₹50". */
+    static String mostMoney(String model, String mode, int chars, boolean photo) {
+        long in = Math.round(SYSTEM.length() / 3.2) + 200 + (photo ? 1600 : 0);
+        if (MODE_BOTH.equals(mode)) in += Math.round((SLD_FORMAT.length() + SLD_LINKS.length()) / 3.2);
+        else if (MODE_SLD.equals(mode)) in += Math.round(SLD_FORMAT.length() / 3.2);
+        else if (MODE_FROM_SLD.equals(mode)) in += Math.round(SLD_LINKS.length() / 3.2) + Math.round(chars / 2.7);
+        else in += Math.round(chars / 3.0);
+        return "₹" + (int) Math.ceil(Workshop.rupees(model, in, 0, maxOut(mode)));
+    }
+
     /** Has this board a 📐 drawing? */
     static boolean hasSld(JSONObject board) {
         JSONObject d = board == null ? null : board.optJSONObject("sld");
@@ -317,16 +366,25 @@ final class CircuitLab {
         /** 📐 The drawing like the photo (null = none), and the links for a saved drawing's items. */
         JSONObject sld;
         JSONArray links;
+        /** The answer was cut off part-way (its limit reached): closed after its last whole element; what came is used. */
+        boolean cut;
     }
 
     /** Reads the AI's answer: the one JSON object in it (a fence or words around it are skipped); null when there is none. */
     static Answer parse(String text) {
         if (text == null) return null;
         int a = text.indexOf('{'), z = text.lastIndexOf('}');
-        if (a < 0 || z <= a) return null;
-        JSONObject o;
-        try { o = new JSONObject(text.substring(a, z + 1)); } catch (Exception e) { return null; }
+        if (a < 0) return null;
+        JSONObject o = null;
+        boolean cut = false;
+        if (z > a) { try { o = new JSONObject(text.substring(a, z + 1)); } catch (Exception ignored) {} }
+        if (o == null) { // (cut off part-way: closed after its last whole element)
+            String m = mend(text.substring(a));
+            if (m != null) { try { o = new JSONObject(m); cut = true; } catch (Exception ignored) {} }
+        }
+        if (o == null) return null;
         Answer r = new Answer();
+        r.cut = cut;
         String ref = o.optString("refuse", "").trim();
         if (!ref.isEmpty()) { r.refuse = Workshop.cap(ref, 240); return r; }
         r.title = Workshop.cap(o.optString("title", "").trim(), 40);
