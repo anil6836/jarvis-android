@@ -1313,6 +1313,17 @@
   const RED = '#d62828', GREEN = '#2b9a3e', INK = '#26323c', SHEET = '#e8ebee';
   function hasSld() { return !!(board.sld && board.sld.items && board.sld.items.length); }
 
+  /** How much of the drawing is tied to the board: VCBs that open / close on a tap, motors that follow the simulation. */
+  function linkStats() {
+    const has = (id, types) => { const p = id ? board.parts.find((q) => q.id === id) : null; return !!p && (!types || types.includes(p.type)); };
+    let b = 0, bOk = 0, m = 0, mOk = 0;
+    for (const it of board.sld.items) {
+      if (it.k === 'breaker') { b++; if (has(it.part, ['switch', 'mcb'])) bOk++; }
+      else if (it.k === 'motor') { m++; if (has(it.part) || has(it.sw, ['switch', 'mcb'])) mOk++; }
+    }
+    return { b, bOk, m, mOk };
+  }
+
   function setView(mode) {
     if (mode === 'sld' && !hasSld()) mode = 'board';
     if (mode === viewMode) return;
@@ -1605,6 +1616,13 @@
         exitChallenge(true);
         setBoard(m.board || {}, { title: typeof m.title === 'string' ? m.title : undefined, spread: !!m.spread, view: m.view });
         if (typeof m.note === 'string' && m.note) hint(m.note);
+        if (hasSld() && board.parts.length) { // 📐 how much of the drawing works: said once, after it loads
+          const k = linkStats();
+          if (k.b || k.m) {
+            const all = k.bOk === k.b && k.mOk === k.m;
+            toast('📐 బోర్డ్‌తో కలిసినవి: VCB ' + k.bOk + ' / ' + k.b + (k.m ? ' · మోటార్లు ' + k.mOk + ' / ' + k.m : '') + (all ? ' ✓' : ' (కలవనివి తాకితే చూడటానికి మాత్రమే)'), all ? 'good' : '');
+          }
+        }
         break;
       case 'aiedit':
         setBoard(Object.assign({}, m.board, { state: st }, !(m.board && m.board.sld) && board.sld ? { sld: board.sld } : {}), { title: board.title, fit: false, keepState: true });
@@ -1657,5 +1675,5 @@
   strip();
   kick();
   // (desk tests reach in here)
-  window.__lab = { get board() { return board; }, get res() { return res; }, get st() { return st; }, onJarvis, setBoard, showTab, tap, fit, view, get store() { return store; }, K, S, picture, open3d, tap3d };
+  window.__lab = { linkStats: () => linkStats(), get board() { return board; }, get res() { return res; }, get st() { return st; }, onJarvis, setBoard, showTab, tap, fit, view, get store() { return store; }, K, S, picture, open3d, tap3d };
 })();

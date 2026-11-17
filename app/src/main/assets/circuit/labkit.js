@@ -541,7 +541,7 @@
     if (!boardIn || typeof boardIn !== 'object') return b;
     if (typeof boardIn.title === 'string') b.title = boardIn.title.slice(0, 60);
     const seen = new Set();
-    for (const p0 of (Array.isArray(boardIn.parts) ? boardIn.parts : []).slice(0, 80)) {
+    for (const p0 of (Array.isArray(boardIn.parts) ? boardIn.parts : []).slice(0, 150)) { // (a plant from a single-line diagram: up to 140)
       if (!p0 || typeof p0 !== 'object' || !S.def(p0.type)) continue;
       let id = String(p0.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 16) || newId({ parts: b.parts }, p0.type);
       while (seen.has(id)) id += 'x';

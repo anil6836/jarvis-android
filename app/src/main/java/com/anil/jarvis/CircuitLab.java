@@ -37,9 +37,9 @@ final class CircuitLab {
 
     /** The most one answer may write: a drawing of up to 400 items needs more room than a board. */
     static int maxOut(String mode) {
-        if (MODE_BOTH.equals(mode)) return 12000;
-        if (MODE_SLD.equals(mode)) return 9000;
-        if (MODE_FROM_SLD.equals(mode)) return 7000;
+        if (MODE_BOTH.equals(mode)) return 20000;
+        if (MODE_SLD.equals(mode)) return 16000;
+        if (MODE_FROM_SLD.equals(mode)) return 9000;
         return MAX_OUT;
     }
     private static final int KEEP = 60;
@@ -65,9 +65,9 @@ final class CircuitLab {
     static String aboutMoney(String model, String mode, int chars, boolean photo) {
         long in = Math.round(SYSTEM.length() / 3.2) + 200 + (photo ? 1600 : 0);
         int lo = 600, hi;
-        if (MODE_BOTH.equals(mode)) { in += Math.round((SLD_FORMAT.length() + SLD_LINKS.length()) / 3.2); lo = 2000; hi = 8000; }
-        else if (MODE_SLD.equals(mode)) { in += Math.round(SLD_FORMAT.length() / 3.2); lo = 1500; hi = 6000; }
-        else if (MODE_FROM_SLD.equals(mode)) { in += Math.round(SLD_LINKS.length() / 3.2) + Math.round(chars / 2.7); lo = 1200; hi = 4500; }
+        if (MODE_BOTH.equals(mode)) { in += Math.round((SLD_FORMAT.length() + SLD_LINKS.length()) / 3.2); lo = 2000; hi = 10000; }
+        else if (MODE_SLD.equals(mode)) { in += Math.round(SLD_FORMAT.length() / 3.2); lo = 1500; hi = 8000; }
+        else if (MODE_FROM_SLD.equals(mode)) { in += Math.round(SLD_LINKS.length() / 3.2) + Math.round(chars / 2.7); lo = 1200; hi = 6000; }
         else { in += Math.round(chars / 3.0); hi = chars > 0 || photo ? 4500 : 3500; }
         double a = Workshop.rupees(model, in, 0, lo), b = Workshop.rupees(model, in, 0, hi);
         return "₹" + Math.max(1, (int) Math.floor(a)) + "–" + Math.max(2, (int) Math.ceil(b));
@@ -148,7 +148,8 @@ final class CircuitLab {
             "  big motors a motor with their real w and v (800 kW at 6.6 kV: w 800000, v 6600), a bus coupler a switch between the two bus",
             "  sections. Every circuit needs its return: mains n to the transformer's p2; each transformer's s2 to the b of every load on its",
             "  side. Leave at least 2 empty cells between parts so their names never overlap.",
-            "- At most 60 parts and 150 wires; only the types above. AC (mains, the inverter's in / out, a charger's in) and DC (batteries,",
+            "- At most 60 parts and 150 wires (a high-voltage plant from a single-line diagram: up to 140 parts and 300 wires, so every",
+            "  feeder fits); only the types above. AC (mains, the inverter's in / out, a charger's in) and DC (batteries,",
             "  cells, solar, the inverter's b+ b-, a charger's + -) never join directly: only through an inverter or a charger.",
             "- Make what he asked, simply and correctly. If what he asks has a mistake (a short, no fuse, too big a load for the inverter),",
             "  build it as he said and tell him in \"say\" what will happen: the phone's simulation shows the spark, the blown fuse or the",
@@ -218,7 +219,7 @@ final class CircuitLab {
             "Keep things apart: no two texts, meters or devices on top of each other (move a label a little rather than overlap it).",
             "Leave out everything that is not the diagram: logos, company or brand names, the title or header bar, menus, buttons, tabs, the",
             "window's own bars, the clock and date, the mouse pointer.",
-            "KEEP IT SHORT (the answer has a size limit; a cut-off answer loses its end): about 250 items, at most 300; one line item",
+            "SIZE: draw everything the photo's diagram shows, the lowest rows too, and nothing extra; at most 400 items. One line item",
             "for a whole run (its pts may turn corners) rather than many short pieces; numbers with at most one decimal; compact JSON",
             "(no line breaks, no spaces); \"board\" written before \"sld\".");
 
@@ -230,7 +231,9 @@ final class CircuitLab {
             "  \"t\": a board terminal \"<id>.<terminal>\" this item is electrically on (a bus, a line, an arrow, a meter's kV, a breaker's",
             "       upper side)",
             "  \"sw\": on a motor, the switch that starts it",
-            "Link every item that has a match on the board; items with none (spare feeders, devices, texts, boxes) get no links.");
+            "The board must have EVERY feeder of the drawing, the lowest rows too (never stop part-way): each breaker a switch (a",
+            "spare feeder's breaker too, with nothing after it), each motor a motor, each transformer a transformer. Link every",
+            "breaker, motor, transformer and meter; only devices, texts and boxes get no links.");
 
     /** ⚡ + 📐 A photo of a single-line diagram: the board AND the drawing like the photo, linked. */
     static String bothMessage(String words) {
