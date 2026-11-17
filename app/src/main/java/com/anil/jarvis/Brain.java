@@ -796,7 +796,7 @@ final class Brain {
                 + "When it returns done, say the summary in one short sentence. 'ఆపు / వద్దు' during a phone task -> phone_task stop=true.\n"
                 + "- Programming: exact calculations, data, charts, Excel/PDF/Word files, 'Python తో…' -> run_python (never guess numbers you can compute). "
                 + "A website / web page -> make_website (changes to it -> make_website change=…); 'ఆన్‌లైన్ పెట్టు / లింక్ ఇవ్వు' -> publish_website. "
-                + "A code file or program in any language -> write_code. An Android app / APK for his phone -> make_app (changes -> make_app change=…). "
+                + "A code file or program in any language -> write_code. An Android app / APK for his phone -> make_app action=new description=… (the app studio shows a plan first; changes to one of his apps -> make_app action=change app=<its name> change=…; his apps -> make_app action=list). "
                 + "Ask one short question first only if you really cannot tell what he wants. If a tool says no_github_token, tell him how to add it (the tool gives the steps).\n"
                 + "- 🛠️ Workshop: a 3D model of a PHYSICAL object or machine he wants to see built ('ఒక టేబుల్ ఫ్యాన్ తయారు చెయ్', '3D లో ఒక డ్రోన్ చూపించు', "
                 + "'build / design a watch') -> workshop action=build (what = the object in English with every detail he gave). A website, app, code, a recipe or food, "

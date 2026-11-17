@@ -39,6 +39,7 @@ final class Situation {
         try { workshop(s); } catch (Throwable ignored) {}
         try { games(s); } catch (Throwable ignored) {}
         try { circuits(s); } catch (Throwable ignored) {}
+        try { apps(s); } catch (Throwable ignored) {}
         return s.toString();
     }
 
@@ -50,6 +51,15 @@ final class Situation {
         s.append("- 🛠️ The workshop screen is open, showing '").append(t).append("'. What he says about that model (change / add / remove a part, ")
                 .append("colour, size, pull apart, a view, light, undo, a question about it) -> workshop action=talk with his exact words; ")
                 .append("'ఒక <new object> తయారు చెయ్' -> action=build.\n");
+    }
+
+    /** 📱 The app studio screen is open: changes he asks for go to the app on the screen. */
+    private static void apps(StringBuilder s) {
+        String t = AppStudioActivity.openTitle();
+        if (t == null) return;
+        s.append("- 📱 The app studio screen is open").append(t.isEmpty() ? "" : ", showing '" + t + "'")
+                .append(": a change he asks for -> make_app action=change app='").append(t).append("' change=<his words in English>; a new app -> make_app action=new; ")
+                .append("'తయారు చేయి' / 'ఫోన్‌లో పెట్టు' / 'నా యాప్‌లు' are handled by the studio itself.\n");
     }
 
     /** 🎮 The game studio screen is open: a new game he asks for is made there. */

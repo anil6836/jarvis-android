@@ -481,6 +481,17 @@
             android:windowSoftInputMode="adjustResize|stateHidden"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
 
+        <!-- 📱 The app studio: a plan first, then the app written part by part into a sealed preview (the kit taps through it
+             by itself), then the APK built in the app's own private GitHub repo. -->
+        <activity
+            android:name=".AppStudioActivity"
+            android:exported="false"
+            android:label="Jarvis యాప్ స్టూడియో"
+            android:launchMode="singleTop"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+
         <!-- ⚡ The circuit lab: the board page (our own simulator) in a sealed WebView; the workshop's AI only turns his words
              or a photo into board data. Kept across rotation (the board stays as it is). -->
         <activity

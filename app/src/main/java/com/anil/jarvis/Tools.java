@@ -431,11 +431,18 @@ final class Tools {
                 schema(new String[][]{{"filename", "string", "File name with extension, e.g. calculator.py"},
                         {"description", "string", "What the program must do, in English, all details"}}, "filename", "description")));
         DEFS.add(new Def("make_app",
-                "Make a real Android app (APK) for his phone: the app is written, built on his GitHub (3-5 minutes) and a notification lets him install it. "
-                        + "Good for calculators, to-do lists, games, trackers, quizzes, reference apps. Or change the last app (it is rebuilt). "
-                        + "(A game to play inside Jarvis: game_studio; this only when he asks for an APK / a separate app.)",
-                schema(new String[][]{{"name", "string", "App name (short)"}, {"description", "string", "What the app must do, in English, all features"},
-                        {"change", "string", "Changes to the last app (instead of name/description)"}})));
+                "📱 The app studio (phone only): real Android apps (APK) for his phone. new = the workshop's AI first shows a short Telugu PLAN "
+                        + "with the cost; he approves it on the screen (\"ఇలాగే తయారు చేయి\"), then the app is written, tested by itself and shown in a "
+                        + "preview; \"📲 ఫోన్‌లో పెట్టు\" builds the APK in its own private GitHub repo. Good for trackers, lists, accounts, calculators, "
+                        + "quizzes, score boards, reference apps. change = change one of his apps (app = words of its name; empty = the last one); "
+                        + "list = his apps; open = open an app in the preview (app = words of its name); build = put that app on his phone (APK); "
+                        + "install = install its last build; cost = what the last app cost and this month's spend (the workshop's limit). "
+                        + "(A game to play inside Jarvis: game_studio; this only when he asks for an app / APK.)",
+                schema(new String[][]{{"action", "string", "new | change | list | open | build | install | cost"},
+                        {"description", "string", "new: what the app must do, in English, with every detail he gave; keep Telugu names he used"},
+                        {"change", "string", "change: the change he wants, in English, with every detail"},
+                        {"app", "string", "change / open / build / install: words of the app's name (empty = the last one)"},
+                        {"name", "string", "(old) the app's name"}})));
         DEFS.add(new Def("my_trips", "His upcoming bus / train / flight / hotel bookings (PNR, date, time, seat) from ticket SMS.", schema(new String[][]{})));
         DEFS.add(new Def("scan_document", "Open the document scanner: he photographs paper pages (bills, certificates, forms) and gets one clean PDF saved in Downloads/Jarvis/scans, to share or ask about.", schema(new String[][]{})));
         DEFS.add(new Def("api_usage", "How much Jarvis's own AI use (Gemini, OpenAI incl. Live and the natural voice, Claude) has cost this month, and what is left of the balance he entered. Use for 'API ఖర్చు ఎంత', 'Gemini credit ఎంత మిగిలింది'.", schema(new String[][]{})));
@@ -1394,7 +1401,7 @@ final class Tools {
                 case "circuit_lab": return circuitLab(a.optString("action", "open"), a.optString("what", ""));
                 case "room_measure": return roomMeasure(a.optString("action", "open"));
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
-                case "make_app": return makeApp(a.optString("name", ""), a.optString("description", ""), a.optString("change", ""));
+                case "make_app": return makeApp(a.optString("action", ""), a.optString("name", ""), a.optString("description", ""), a.optString("change", ""), a.optString("app", ""));
                 case "bank_balance": return bankBalance();
                 case "scan_document":
                     startIn(new Intent(act(), MainActivity.class).putExtra(MainActivity.EXTRA_SCAN, true)
@@ -6275,24 +6282,64 @@ final class Tools {
                 .put("next", "Tell him in one short Telugu sentence the code file is ready, shown on screen and saved in Downloads/Jarvis/code (he can share it). Do not read the code aloud.").toString();
     }
 
-    private String makeApp(String name, String description, String change) throws Exception {
-        if (prefs.githubToken().trim().isEmpty()) return err("no_github_token", "Making an Android app needs his GitHub token (the app is built there). " + GITHUB_HELP);
-        boolean changing = change != null && !change.trim().isEmpty();
-        if (!changing && (description == null || description.trim().isEmpty())) return err("missing", "What should the app do?");
-        JobProgress p = new JobProgress(act(), 7915, (changing ? prefs.lastAppName() : (name == null || name.trim().isEmpty() ? "యాప్" : name.trim())) + " యాప్");
-        JSONObject r;
-        try {
-            r = AppMaker.make(act(), prefs, name, description, change, p);
-        } catch (Exception e) {
-            p.end();
-            throw e;
+    /**
+     * 📱 The app studio: the same checks as the workshop for anything paid (phone only, his AI chosen and its key there, this
+     * month's shared limit) so the reason is said at once; then the studio opens and shows the plan, the change, the list.
+     * (An app made the old way, before the studio, is still changed the old way when no studio app exists.)
+     */
+    private String makeApp(String action, String name, String description, String change, String which) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "The app studio is on his phone only (not the home tablet or the car box). Say so in one line.");
+        Prefs p = new Prefs(c);
+        String act = action == null ? "" : action.trim().toLowerCase(java.util.Locale.ROOT);
+        if (act.isEmpty()) act = change != null && !change.trim().isEmpty() ? "change" : description != null && !description.trim().isEmpty() ? "new" : "list";
+        int flags = Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT;
+        if ("cost".equals(act)) return ok().put("said", AppStudio.costSaid(c, p)).put("next", "Say this in Telugu, briefly.").toString();
+        if ("list".equals(act)) {
+            startIn(new Intent(c, AppStudioActivity.class).putExtra(AppStudioActivity.EXTRA_ACTION, "list").addFlags(flags));
+            return ok().put("apps", AppStudio.list(c).size()).put("next", "Say in one short line that his apps are on the screen (opening, trying and installing cost nothing).").toString();
         }
-        p.leaveUi(); // the build goes on in the background: the notification (and the preview screen) show its progress
-        String app = r.optString("app"), preview = r.optString("preview");
-        onUi(() -> WebActivity.show(act(), WebActivity.KIND_APP, app + " · ప్రివ్యూ", preview, null, null));
-        return ok().put("app", app).put("repo", r.optString("repo"))
-                .put("next", "Tell him in 1-2 short Telugu sentences: the app's preview is on screen; the real app (APK) is being built on his GitHub and takes about "
-                        + "3-5 minutes; the notification bar shows how far it has got (%, time left), and when it is ready a notification '" + app + " యాప్ సిద్ధం' comes; tapping it installs it. He can say changes to rebuild.").toString();
+        if ("change".equals(act) && AppStudio.list(c).isEmpty() && !p.lastAppRepo().isEmpty()) { // (only an app made the old way: changed the old way)
+            if (p.githubToken().trim().isEmpty()) return err("no_github_token", "Making an Android app needs his GitHub token (the app is built there). " + GITHUB_HELP);
+            JobProgress jp = new JobProgress(c, 7915, p.lastAppName() + " యాప్");
+            JSONObject r;
+            try { r = AppMaker.make(c, p, "", "", change, jp); } catch (Exception e) { jp.end(); throw e; }
+            jp.leaveUi();
+            return ok().put("app", r.optString("app")).put("next", "Tell him in 1-2 short Telugu sentences: the change is being built on his GitHub (3-5 minutes); a notification comes when it is ready to install.").toString();
+        }
+        if ("open".equals(act) || "build".equals(act) || "install".equals(act) || "change".equals(act)) {
+            AppStudio.Made a = AppStudio.find(c, which == null || which.trim().isEmpty() ? name : which);
+            if (a == null) return err("no_apps", "He has no app made in the app studio yet. Say so and that he can say 'ఒక ___ యాప్ తయారు చెయ్'.");
+            Intent i = new Intent(c, AppStudioActivity.class).putExtra(AppStudioActivity.EXTRA_SLUG, a.slug).addFlags(flags);
+            if ("change".equals(act)) {
+                if (change == null || change.trim().isEmpty()) return err("change_missing", "Ask him in one short line what to change in '" + a.title + "'.");
+                try { AppStudio.engine(p); } catch (Workshop.Problem x) { return err("no_ai", x.getMessage() + " Say exactly this to him. Do not pick or suggest a different AI yourself."); }
+                String over = AppStudio.overLimit(c, p);
+                if (over != null) return err("limit_reached", over + " Say exactly this to him.");
+                i.putExtra(AppStudioActivity.EXTRA_CHANGE, change.trim()).putExtra(AppStudioActivity.EXTRA_SAID, true);
+                startIn(i);
+                return ok().put("app", a.title).put("next", "Say only: '" + a.title + " మారుస్తున్నాను Sir, సుమారు "
+                        + AppStudio.changeMoney(p.workshopModel().trim(), a.codeSize()) + ".' The studio shows each part and says the cost when it is done.").toString();
+            }
+            if (!"open".equals(act)) i.putExtra(AppStudioActivity.EXTRA_ACTION, act);
+            if ("build".equals(act) && p.githubToken().trim().isEmpty()) return err("no_github_token", "Putting the app on his phone needs his GitHub token (the APK is built there). " + GITHUB_HELP);
+            startIn(i);
+            return ok().put("app", a.title).put("next", "build".equals(act) ? "Say only: '" + a.title + " ఫోన్ యాప్‌గా తయారు చేస్తున్నాను Sir; 3-5 నిమిషాల్లో నోటిఫికేషన్ వస్తుంది.'"
+                    : "install".equals(act) ? "Say in one short line that the install is starting (Android asks 'Install?')."
+                    : "Say in one short line that '" + a.title + "' is open in the preview (trying it costs nothing).").toString();
+        }
+        String what = description == null ? "" : description.trim();
+        if (!name.trim().isEmpty() && !what.toLowerCase(java.util.Locale.ROOT).contains(name.trim().toLowerCase(java.util.Locale.ROOT))) what = name.trim() + ": " + what;
+        if (what.isEmpty()) return err("what_missing", "Ask him in one short line what app he wants.");
+        Workshop.Engine e;
+        try { e = AppStudio.engine(p); }
+        catch (Workshop.Problem x) { return err("no_ai", x.getMessage() + " Say exactly this to him. Do not pick or suggest a different AI yourself."); }
+        String over = AppStudio.overLimit(c, p);
+        if (over != null) return err("limit_reached", over + " Say exactly this to him.");
+        startIn(new Intent(c, AppStudioActivity.class).putExtra(AppStudioActivity.EXTRA_WHAT, what)
+                .putExtra(AppStudioActivity.EXTRA_HEARD, heard == null ? what : heard).putExtra(AppStudioActivity.EXTRA_SAID, true).addFlags(flags));
+        return ok().put("next", "Say only: 'ముందు ప్లాన్ చూపిస్తాను Sir, ప్లాన్‌కి సుమారు " + AppStudio.planMoney(e.model)
+                + ".' The studio shows the plan with the cost of making it; nothing is made until he approves it there.").toString();
     }
 
     // ================================================================ offline commands

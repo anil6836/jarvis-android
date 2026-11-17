@@ -494,7 +494,8 @@ public class SettingsActivity extends Activity {
         githubToken = field("GitHub token (వెబ్‌సైట్ ఆన్‌లైన్, యాప్‌లు తయారీ కోసం)", prefs.githubToken(), true);
         note("ఒక్కసారి: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → "
                 + "'repo', 'workflow' టిక్ చేసి Generate → వచ్చిన token ఇక్కడ పెట్టండి. ఇది మీ ఫోన్‌లో మాత్రమే ఉంటుంది. "
-                + "Jarvis మీ GitHub లో jarvis-sites (వెబ్‌సైట్లు), jarvis-app-… (యాప్‌లు) అనే పబ్లిక్ repos తయారు చేస్తుంది.");
+                + "Jarvis మీ GitHub లో jarvis-sites (వెబ్‌సైట్లు, పబ్లిక్), jarvis-app-… (యాప్‌లు; 18 Nov నుంచి మీకు మాత్రమే కనిపించే ప్రైవేట్ repos, "
+                + "ఒక్కో యాప్‌కి దాని సొంత సంతకం కీ ఆ repo లోనే) తయారు చేస్తుంది.");
 
         // ---- 🛠️ the workshop (3D models built live by the AI he picks): on the phone only
         if (Workshop.here(this)) {
@@ -597,6 +598,13 @@ public class SettingsActivity extends Activity {
         clOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         clOpen.setOnClickListener(v -> { autosave(); CircuitLabActivity.open(this, null, null, false); });
         box.addView(clOpen);
+        // 📱 the app studio: a plan first, this same AI and this same monthly limit (18 Nov)
+        note("📱 యాప్ స్టూడియో: మీరు చెప్పిన యాప్‌కి ముందు తెలుగులో ప్లాన్ (ఇదే AI, సుమారు ₹2–10), మీరు సరే అన్నాకే తయారీ (ఖర్చు ముందే చూపిస్తుంది; ఇదే నెల హద్దులో). "
+                + "తయారైన యాప్ తనంతట తానే పరీక్షించుకుంటుంది, ప్రివ్యూలో వాడి చూడొచ్చు; 📲 ఫోన్‌లో పెట్టడం (మీ GitHub లో ప్రైవేట్ repo లో APK) ₹0. ఏ యాప్ అయినా తర్వాత మార్చొచ్చు.");
+        TextView asOpen = Ui.text(this, "📱 యాప్ స్టూడియో తెరువు →", 15, accent);
+        asOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        asOpen.setOnClickListener(v -> { autosave(); AppStudioActivity.open(this, null, null, false); });
+        box.addView(asOpen);
         // 📐 room measuring: the camera (AR) and the numbers only, no AI (17 Nov)
         note("📐 ఇంటి కొలతలు: వెనక కెమెరా (AR) తో పొడవు, గది ప్లాన్ (విస్తీర్ణం, పెయింట్, టైల్స్, PDF), మంచం / బీరువా సరిపోతుందా. AI లేదు, ₹0; కెమెరా బొమ్మ ఎక్కడికీ వెళ్ళదు, దాచను.");
         TextView rmOpen = Ui.text(this, "📐 ఇంటి కొలతలు తెరువు →", 15, accent);

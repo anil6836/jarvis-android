@@ -113,7 +113,7 @@ final class Workshop {
         e.putString("month", m)
                 .putFloat("spent", (same ? s.getFloat("spent", 0) : 0) + (float) Math.max(0, rupees))
                 .putInt("builds", (same ? s.getInt("builds", 0) : 0) + (aBuild ? 1 : 0));
-        if (!same) e.putFloat("g_spent", 0).putInt("g_builds", 0).putFloat("c_spent", 0).putInt("c_builds", 0); // (🎮 / ⚡ their shares start again too)
+        if (!same) e.putFloat("g_spent", 0).putInt("g_builds", 0).putFloat("c_spent", 0).putInt("c_builds", 0).putFloat("a_spent", 0).putInt("a_builds", 0); // (🎮 / ⚡ / 📱 their shares start again too)
         e.apply();
     }
 
@@ -123,6 +123,9 @@ final class Workshop {
     /** ⚡ A circuit lab board's cost (same monthly spend and limit), kept apart for the split line. */
     static synchronized void spendLab(Context c, double rupees, boolean aBoard) { share(c, "c", rupees, aBoard); }
 
+    /** 📱 An app studio plan / app / change / repair (same monthly spend and limit), kept apart for the split line. */
+    static synchronized void spendApp(Context c, double rupees, boolean anApp) { share(c, "a", rupees, anApp); }
+
     private static void share(Context c, String k, double rupees, boolean one) {
         SharedPreferences s = sp(c);
         String m = month();
@@ -131,7 +134,7 @@ final class Workshop {
         SharedPreferences.Editor e = s.edit().putString("month", m)
                 .putFloat("spent", (same ? s.getFloat("spent", 0) : 0) + r)
                 .putInt("builds", same ? s.getInt("builds", 0) : 0);
-        if (!same) e.putFloat("g_spent", 0).putInt("g_builds", 0).putFloat("c_spent", 0).putInt("c_builds", 0);
+        if (!same) e.putFloat("g_spent", 0).putInt("g_builds", 0).putFloat("c_spent", 0).putInt("c_builds", 0).putFloat("a_spent", 0).putInt("a_builds", 0);
         e.putFloat(k + "_spent", (same ? s.getFloat(k + "_spent", 0) : 0) + r)
                 .putInt(k + "_builds", (same ? s.getInt(k + "_builds", 0) : 0) + (one ? 1 : 0))
                 .apply();
@@ -146,6 +149,17 @@ final class Workshop {
     static synchronized int labs(Context c) {
         SharedPreferences s = sp(c);
         return month().equals(s.getString("month", "")) ? s.getInt("c_builds", 0) : 0;
+    }
+
+    /** 📱 This month's app studio spend (part of {@link #spent}) and apps made. */
+    static synchronized double appsSpent(Context c) {
+        SharedPreferences s = sp(c);
+        return month().equals(s.getString("month", "")) ? s.getFloat("a_spent", 0) : 0;
+    }
+
+    static synchronized int apps(Context c) {
+        SharedPreferences s = sp(c);
+        return month().equals(s.getString("month", "")) ? s.getInt("a_builds", 0) : 0;
     }
 
     /** 🎮 This month's games spend, in rupees (part of {@link #spent}). */
@@ -173,15 +187,16 @@ final class Workshop {
 
     /** "ఈ నెల ₹156 వాడింది / హద్దు ₹300 · 2 బొమ్మలు" */
     static String spendLine(Context c, Prefs p) {
-        int n = builds(c), g = games(c), b = labs(c);
-        double all = spent(c), gs = gamesSpent(c), cs = labSpent(c);
+        int n = builds(c), g = games(c), b = labs(c), a = apps(c);
+        double all = spent(c), gs = gamesSpent(c), cs = labSpent(c), as = appsSpent(c);
         String head = "ఈ నెల " + money(all) + " వాడింది / హద్దు ₹" + p.workshopLimit() + " · ";
-        boolean games = g > 0 || gs > 0, lab = b > 0 || cs > 0;
-        if (!games && !lab) return head + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు");
-        // (🎮 games and ⚡ the circuit lab share the same limit: each one's part shown)
-        return head + "🛠️ " + money(Math.max(0, all - gs - cs)) + " · " + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు")
+        boolean games = g > 0 || gs > 0, lab = b > 0 || cs > 0, apps = a > 0 || as > 0;
+        if (!games && !lab && !apps) return head + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు");
+        // (🎮 games, ⚡ the circuit lab and 📱 the app studio share the same limit: each one's part shown)
+        return head + "🛠️ " + money(Math.max(0, all - gs - cs - as)) + " · " + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు")
                 + (games ? " · 🎮 " + money(gs) + " · " + g + (g == 1 ? " గేమ్" : " గేమ్స్") : "")
-                + (lab ? " · ⚡ " + money(cs) + " · " + b + (b == 1 ? " బోర్డ్" : " బోర్డులు") : "");
+                + (lab ? " · ⚡ " + money(cs) + " · " + b + (b == 1 ? " బోర్డ్" : " బోర్డులు") : "")
+                + (apps ? " · 📱 " + money(as) + " · " + a + (a == 1 ? " యాప్" : " యాప్‌లు") : "");
     }
 
     // ================================================================ the part stream
