@@ -12,7 +12,8 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: "Noto Sans Telugu", system-ui, "Noto Color Emoji", sans-serif;
                font-size: 15px; overflow: hidden; -webkit-user-select: none; user-select: none; }
-  body.cam, body.cam html { background: transparent; }
+  html { background: transparent !important; }  /* (the camera is drawn underneath: nothing here may paint over it) */
+  body.cam { background: transparent; }
   #top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px; background: rgba(14,20,28,.92); z-index: 5; }
   #top .t { font-size: 17px; font-weight: 600; flex: 1; }
   #top .x { font-size: 22px; padding: 0 6px; }
