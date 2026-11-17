@@ -587,6 +587,12 @@ final class CircuitLab {
 
     /** A4 pages: the title, the date, the board's picture, then the readings and the safety list; the learning note at the foot. */
     static byte[] pdf(String title, byte[] png, List<String> lines) throws Exception {
+        return pdf("⚡ ", title == null || title.isEmpty() ? "సర్క్యూట్" : title, png, 0xFF07080B, lines,
+                "Jarvis ⚡ సర్క్యూట్ ల్యాబ్ · ఇవి నేర్చుకోవడానికి అంచనాలు మాత్రమే. అసలు ఇంటి వైరింగ్ ఎప్పుడూ లైసెన్స్ ఉన్న ఎలక్ట్రీషియన్ తోనే, మెయిన్ ఆఫ్ చేసి.");
+    }
+
+    /** The same pages for another studio (📐 a room's plan on white): its icon, its picture's background, its note at the foot. */
+    static byte[] pdf(String icon, String title, byte[] png, int picBg, List<String> lines, String note) throws Exception {
         android.graphics.pdf.PdfDocument doc = new android.graphics.pdf.PdfDocument();
         final int W = 595, H = 842, M = 40;
         android.text.TextPaint head = new android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG);
@@ -599,7 +605,6 @@ final class CircuitLab {
         android.text.TextPaint foot = new android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG);
         foot.setColor(0xFF6B7C88);
         foot.setTextSize(8.5f);
-        String note = "Jarvis ⚡ సర్క్యూట్ ల్యాబ్ · ఇవి నేర్చుకోవడానికి అంచనాలు మాత్రమే. అసలు ఇంటి వైరింగ్ ఎప్పుడూ లైసెన్స్ ఉన్న ఎలక్ట్రీషియన్ తోనే, మెయిన్ ఆఫ్ చేసి.";
         int[] pageNo = {0};
         android.graphics.pdf.PdfDocument.Page[] page = new android.graphics.pdf.PdfDocument.Page[1];
         float[] y = {0};
@@ -611,7 +616,7 @@ final class CircuitLab {
         };
         newPage.run();
         android.graphics.Canvas cv = page[0].getCanvas();
-        y[0] += draw(cv, "⚡ " + (title == null || title.isEmpty() ? "సర్క్యూట్" : title), head, M, y[0], W - 2 * M) + 4;
+        y[0] += draw(cv, icon + (title == null ? "" : title), head, M, y[0], W - 2 * M) + 4;
         y[0] += draw(cv, new java.text.SimpleDateFormat("d MMM yyyy, h:mm a", Locale.ENGLISH).format(new java.util.Date()), foot, M, y[0], W - 2 * M) + 12;
         if (png != null && png.length > 0) {
             android.graphics.Bitmap bm = android.graphics.BitmapFactory.decodeByteArray(png, 0, png.length);
@@ -619,7 +624,7 @@ final class CircuitLab {
                 float s = Math.min((W - 2f * M) / bm.getWidth(), 430f / bm.getHeight());
                 float w = bm.getWidth() * s, h = bm.getHeight() * s;
                 android.graphics.Paint bg = new android.graphics.Paint();
-                bg.setColor(0xFF07080B);
+                bg.setColor(picBg);
                 cv.drawRoundRect(M, y[0], M + w, y[0] + h, 8, 8, bg);
                 cv.drawBitmap(bm, null, new android.graphics.RectF(M, y[0], M + w, y[0] + h), new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
                 y[0] += h + 16;

@@ -418,6 +418,13 @@ final class Tools {
                         {"what", "string", "build: the circuit in English with every detail he gave (parts, how many, ratings, how they connect); keep "
                                 + "Telugu names he used. change: his exact words. tab: home | calc | games | learn | board"}},
                         "action")));
+        DEFS.add(new Def("room_measure",
+                "📐 ఇంటి కొలతలు (phone only, free, no AI): the back camera (AR) measures a length between two points, a room's floor "
+                        + "(corners → plan with each wall, area, paint litres, tiles, PDF) and shows a bed / almirah / sofa / fridge at its real size "
+                        + "on his floor to see if it fits. open = the measuring screen; room = start a room's plan; fit = try furniture; "
+                        + "plan = the last room's plan, paint and tiles; saved = his kept rooms and lengths. Use for measuring with the camera, "
+                        + "'will the bed fit', paint / tile estimates for a room.",
+                schema(new String[][]{{"action", "string", "open | room | fit | plan | saved"}}, "action")));
         DEFS.add(new Def("publish_website", "Put the last website online (GitHub Pages in his account) and give the link.", schema(new String[][]{})));
         DEFS.add(new Def("write_code",
                 "Write a code file in any language (Python, Java, Kotlin, C, JavaScript, HTML...), save it in Downloads/Jarvis/code and show it.",
@@ -1163,6 +1170,7 @@ final class Tools {
             case "workshop": return "వర్క్‌షాప్ తెరుస్తున్నాను…";
             case "game_studio": return "గేమ్ స్టూడియో తెరుస్తున్నాను…";
             case "circuit_lab": return "సర్క్యూట్ ల్యాబ్ తెరుస్తున్నాను…";
+            case "room_measure": return "ఇంటి కొలతలు తెరుస్తున్నాను…";
             case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
             case "write_code": return "కోడ్ రాస్తున్నాను…";
             case "make_app": return "యాప్ తయారు చేస్తున్నాను…";
@@ -1384,6 +1392,7 @@ final class Tools {
                 case "workshop": return workshop(a.optString("action", "build"), a.optString("what", ""));
                 case "game_studio": return gameStudio(a.optString("action", "build"), a.optString("what", ""));
                 case "circuit_lab": return circuitLab(a.optString("action", "open"), a.optString("what", ""));
+                case "room_measure": return roomMeasure(a.optString("action", "open"));
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app": return makeApp(a.optString("name", ""), a.optString("description", ""), a.optString("change", ""));
                 case "bank_balance": return bankBalance();
@@ -1763,6 +1772,22 @@ final class Tools {
                 .putExtra(CircuitLabActivity.EXTRA_HEARD, heard == null ? what.trim() : heard).putExtra(CircuitLabActivity.EXTRA_SAID, true).addFlags(flags));
         return ok().put("next", "Say only: 'సర్క్యూట్ గీస్తున్నాను Sir, సుమారు " + CircuitLab.aboutMoney(e.model, 0, false)
                 + " అవుతుంది.' The lab shows it and says the cost when it is done.").toString();
+    }
+
+    /** 📐 The room measuring screen (phone only; free: the camera and the numbers stay on the phone). */
+    private String roomMeasure(String action) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "Room measuring is on his phone only (not the home tablet or the car box). Say so in one line.");
+        String a = action == null ? "open" : action.trim().toLowerCase(java.util.Locale.ROOT);
+        String tab = "room".equals(a) ? "room" : "fit".equals(a) ? "fit" : "plan".equals(a) ? "plan" : "saved".equals(a) ? "saved" : "measure";
+        if (("plan".equals(tab) || "saved".equals(tab)) && Rooms.list(c).isEmpty()) {
+            startIn(new Intent(c, RoomMeasureActivity.class).putExtra(RoomMeasureActivity.EXTRA_TAB, "room")
+                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+            return err("nothing_saved", "No room has been kept yet; the room tab is open. Say so in one line: put the + on each floor corner, ➕, then ✓.");
+        }
+        startIn(new Intent(c, RoomMeasureActivity.class).putExtra(RoomMeasureActivity.EXTRA_TAB, tab)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+        return ok().put("next", "Say in one short Telugu line what is on the screen now and what to do (free, nothing sent anywhere).").toString();
     }
 
     /** When a job last opened a screen (an app, a page, the dialer): the panel then isn't "left" by him. */

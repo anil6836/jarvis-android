@@ -484,6 +484,15 @@
         <!-- ⚡ The circuit lab: the board page (our own simulator) in a sealed WebView; the workshop's AI only turns his words
              or a photo into board data. Kept across rotation (the board stays as it is). -->
         <activity
+            android:name=".RoomMeasureActivity"
+            android:exported="false"
+            android:label="Jarvis ఇంటి కొలతలు"
+            android:launchMode="singleTop"
+            android:hardwareAccelerated="true"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+        <activity
             android:name=".CircuitLabActivity"
             android:exported="false"
             android:label="Jarvis సర్క్యూట్ ల్యాబ్"

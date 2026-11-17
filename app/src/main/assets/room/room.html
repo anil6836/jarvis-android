@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="te">
+<head>
+<meta charset="utf-8">
+<!-- 📐 Jarvis ఇంటి కొలతలు. Only these scripts run here; the camera is drawn by the phone underneath. No network, nothing sent. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+  :root { --bg: #07080b; --panel: #0e141c; --card: #121a24; --line: #233142; --text: #dceef5; --muted: #88a5b3; --faint: #557584;
+          --cyan: #74e4ff; --cyan2: #1e6a80; --gold: #f2b24c; --green: #6be3a4; --red: #ff6b6b; --amber: #ffc861; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: "Noto Sans Telugu", system-ui, "Noto Color Emoji", sans-serif;
+               font-size: 15px; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  body.cam, body.cam html { background: transparent; }
+  #top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px; background: rgba(14,20,28,.92); z-index: 5; }
+  #top .t { font-size: 17px; font-weight: 600; flex: 1; }
+  #top .x { font-size: 22px; padding: 0 6px; }
+  #tabs { position: absolute; left: 0; right: 0; top: 40px; display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; background: rgba(14,20,28,.92);
+          border-bottom: 1px solid var(--line); scrollbar-width: none; z-index: 5; }
+  #tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.05); font-size: 14px; white-space: nowrap; }
+  .tab.on { background: var(--cyan); color: #04131a; border-color: var(--cyan); font-weight: 600; }
+  main { position: absolute; top: 87px; left: 0; right: 0; bottom: 0; }
+  section { position: absolute; inset: 0; display: none; }
+  section.on { display: block; }
+  section.scroll { overflow-y: auto; padding: 10px 12px 90px; -webkit-overflow-scrolling: touch; }
+  #ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+  #cross { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; pointer-events: none; }
+  #cross::before, #cross::after { content: ""; position: absolute; background: #fff; box-shadow: 0 0 3px #000; }
+  #cross::before { left: 16px; top: 0; width: 2px; height: 34px; }
+  #cross::after { top: 16px; left: 0; height: 2px; width: 34px; }
+  #cross.off::before, #cross.off::after { background: rgba(255,255,255,.35); }
+  #live { position: absolute; left: 50%; top: 50%; transform: translate(-50%, 26px); background: rgba(7,8,11,.82); border: 1px solid var(--cyan2);
+          border-radius: 10px; padding: 4px 10px; font-size: 15px; font-weight: 600; display: none; white-space: nowrap; pointer-events: none; }
+  #hint { position: absolute; left: 10px; right: 10px; top: 8px; background: rgba(7,8,11,.82); border: 1px solid var(--line); border-radius: 12px;
+          padding: 7px 11px; font-size: 14px; line-height: 1.45; }
+  #fitline { position: absolute; left: 10px; right: 10px; top: 64px; display: none; background: rgba(7,8,11,.86); border-radius: 12px; padding: 6px 11px; font-size: 14px; }
+  #fitline.ok { display: block; border: 1px solid var(--green); color: var(--green); }
+  #fitline.bad { display: block; border: 1px solid var(--red); color: var(--red); }
+  #fitline.info { display: block; border: 1px solid var(--line); color: var(--text); }
+  #items { position: absolute; left: 0; right: 0; bottom: 92px; display: none; gap: 6px; padding: 0 8px; overflow-x: auto; scrollbar-width: none; }
+  #items::-webkit-scrollbar { display: none; }
+  #items .chip { flex: none; }
+  .chip { background: rgba(14,20,28,.9); border: 1px solid var(--line); border-radius: 999px; padding: 6px 11px; font-size: 13.5px; white-space: nowrap; }
+  .chip.on { border-color: var(--cyan); color: var(--cyan); }
+  #own { position: absolute; left: 10px; right: 10px; bottom: 136px; display: none; background: rgba(14,20,28,.94); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+  #own label { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; font-size: 13.5px; }
+  #own input { width: 58px; }
+  #bar { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; align-items: center; gap: 18px; }
+  .rb { width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--line); background: rgba(14,20,28,.9); color: var(--text); font-size: 22px;
+        display: flex; align-items: center; justify-content: center; }
+  .rb.big { width: 74px; height: 74px; font-size: 34px; background: var(--cyan); color: #04131a; border-color: var(--cyan); font-weight: 700; }
+  .rb.dim { opacity: .35; }
+  #sum { position: absolute; left: 10px; bottom: 100px; max-width: 62%; max-height: 32%; overflow-y: auto; background: rgba(7,8,11,.78); border-radius: 10px;
+         padding: 5px 9px; font-size: 13px; line-height: 1.5; display: none; }
+  #nocam { position: absolute; left: 12px; right: 12px; top: 40%; text-align: center; color: var(--muted); line-height: 1.6; display: none; }
+  h3 { margin: 14px 0 6px; font-size: 15px; color: var(--cyan); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 8px 0; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+  .row .k { color: var(--muted); font-size: 14px; }
+  input, select { background: #0b1118; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 15px; font-family: inherit; }
+  input[type=number] { width: 84px; text-align: right; }
+  #pname { width: 100%; font-size: 16px; }
+  #pc { width: 100%; height: 300px; display: block; background: #0b1118; border-radius: 12px; border: 1px solid var(--line); }
+  .big { font-size: 18px; font-weight: 600; }
+  .muted { color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .btn { padding: 9px 14px; border-radius: 999px; border: 1px solid var(--cyan2); background: rgba(22,48,63,.5); color: var(--text); font-size: 14.5px; }
+  .btn.main { background: var(--cyan); color: #04131a; border-color: var(--cyan); font-weight: 600; }
+  .item { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 8px 0; display: flex; gap: 10px; align-items: center; }
+  .item .w { flex: 1; }
+  .item .n { font-size: 15.5px; font-weight: 600; }
+  .item .del { font-size: 18px; padding: 4px 8px; }
+  .item .del.sure { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 4px 2px; border-bottom: 1px solid var(--line); }
+  td.num { text-align: right; white-space: nowrap; }
+  #toast { position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%); max-width: 90%; background: rgba(14,20,28,.96); border: 1px solid var(--gold);
+           border-radius: 12px; padding: 8px 13px; font-size: 14px; display: none; z-index: 9; text-align: center; }
+</style>
+</head>
+<body class="cam">
+<div id="top"><span class="t">📐 ఇంటి కొలతలు</span><span class="x" id="close">✕</span></div>
+<div id="tabs"></div>
+<main>
+  <section id="ar">
+    <canvas id="ov"></canvas>
+    <div id="cross" class="off"></div>
+    <div id="live"></div>
+    <div id="hint"></div>
+    <div id="fitline"></div>
+    <div id="sum"></div>
+    <div id="own">
+      <label>వెడల్పు <input id="ow" type="number" step="0.25" min="0.5" max="30"> ′</label>
+      <label>లోతు <input id="od" type="number" step="0.25" min="0.5" max="30"> ′</label>
+      <label>ఎత్తు <input id="oh" type="number" step="0.25" min="0.25" max="15"> ′</label>
+    </div>
+    <div id="items"></div>
+    <div id="bar">
+      <div class="rb" id="undo">↶</div>
+      <div class="rb big" id="add">+</div>
+      <div class="rb" id="extra">✓</div>
+      <div class="rb" id="extra2">🗑️</div>
+    </div>
+    <div id="nocam"></div>
+  </section>
+  <section id="plan" class="scroll"></section>
+  <section id="saved" class="scroll"></section>
+</main>
+<div id="toast"></div>
+<script src="roomkit.js"></script>
+<script src="room.js"></script>
+</body>
+</html>

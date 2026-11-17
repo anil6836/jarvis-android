@@ -597,6 +597,12 @@ public class SettingsActivity extends Activity {
         clOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         clOpen.setOnClickListener(v -> { autosave(); CircuitLabActivity.open(this, null, null, false); });
         box.addView(clOpen);
+        // 📐 room measuring: the camera (AR) and the numbers only, no AI (17 Nov)
+        note("📐 ఇంటి కొలతలు: వెనక కెమెరా (AR) తో పొడవు, గది ప్లాన్ (విస్తీర్ణం, పెయింట్, టైల్స్, PDF), మంచం / బీరువా సరిపోతుందా. AI లేదు, ₹0; కెమెరా బొమ్మ ఎక్కడికీ వెళ్ళదు, దాచను.");
+        TextView rmOpen = Ui.text(this, "📐 ఇంటి కొలతలు తెరువు →", 15, accent);
+        rmOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        rmOpen.setOnClickListener(v -> { autosave(); RoomMeasureActivity.open(this, null); });
+        box.addView(rmOpen);
         }
 
         // ---- voice
