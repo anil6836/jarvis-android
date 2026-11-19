@@ -437,8 +437,12 @@ final class Tools {
                         + "quizzes, score boards, reference apps. change = change one of his apps (app = words of its name; empty = the last one); "
                         + "list = his apps; open = open an app in the preview (app = words of its name); build = put that app on his phone (APK); "
                         + "install = install its last build; cost = what the last app cost and this month's spend (the workshop's limit). "
+                        + "tell = Jarvis writes into one of his apps on his phone (\"ఛార్జింగ్ లాగ్‌లో 4 యూనిట్లు ₹36 రాయి\"): call with app only to get its "
+                        + "commands and their fields, then again with command and data (a JSON object of those fields; leave out what he did not say). "
                         + "(A game to play inside Jarvis: game_studio; this only when he asks for an app / APK.)",
-                schema(new String[][]{{"action", "string", "new | change | list | open | build | install | cost"},
+                schema(new String[][]{{"action", "string", "new | change | list | open | build | install | cost | tell"},
+                        {"command", "string", "tell: the app's command id (from the first tell call)"},
+                        {"data", "string", "tell: a JSON object with that command's fields, e.g. {\"units\": 4, \"cost\": 36}"},
                         {"description", "string", "new: what the app must do, in English, with every detail he gave; keep Telugu names he used"},
                         {"change", "string", "change: the change he wants, in English, with every detail"},
                         {"app", "string", "change / open / build / install: words of the app's name (empty = the last one)"},
@@ -1401,7 +1405,9 @@ final class Tools {
                 case "circuit_lab": return circuitLab(a.optString("action", "open"), a.optString("what", ""));
                 case "room_measure": return roomMeasure(a.optString("action", "open"));
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
-                case "make_app": return makeApp(a.optString("action", ""), a.optString("name", ""), a.optString("description", ""), a.optString("change", ""), a.optString("app", ""));
+                case "make_app":
+                    if ("tell".equalsIgnoreCase(a.optString("action", "").trim())) return tellApp(a.optString("app", a.optString("name", "")), a.optString("command", ""), a.opt("data"));
+                    return makeApp(a.optString("action", ""), a.optString("name", ""), a.optString("description", ""), a.optString("change", ""), a.optString("app", ""));
                 case "bank_balance": return bankBalance();
                 case "scan_document":
                     startIn(new Intent(act(), MainActivity.class).putExtra(MainActivity.EXTRA_SCAN, true)
@@ -6340,6 +6346,44 @@ final class Tools {
                 .putExtra(AppStudioActivity.EXTRA_HEARD, heard == null ? what : heard).putExtra(AppStudioActivity.EXTRA_SAID, true).addFlags(flags));
         return ok().put("next", "Say only: 'ముందు ప్లాన్ చూపిస్తాను Sir, ప్లాన్‌కి సుమారు " + AppStudio.planMoney(e.model)
                 + ".' The studio shows the plan with the cost of making it; nothing is made until he approves it there.").toString();
+    }
+
+    /**
+     * 🗣️ Jarvis writes into one of his studio apps: the app opens on his phone with the command and its data (checked there
+     * against that app's own key), and the app's own code saves it. ₹0, no AI. Only apps built with this (stage 2) take it.
+     */
+    private String tellApp(String which, String command, Object data) throws Exception {
+        android.content.Context c = act();
+        java.util.List<AppStudio.Made> all = AppStudio.list(c);
+        if (all.isEmpty()) return err("no_apps", "He has no app made in the app studio yet. Say so in one line.");
+        AppStudio.Made a = AppStudio.find(c, which, true);
+        if (a == null) {
+            JSONArray names = new JSONArray();
+            for (AppStudio.Made m : all) names.put(m.title);
+            return err("which_app", "Which app? His apps: " + names + ". Ask him in one short line, then call again with app=<its name>.");
+        }
+        org.json.JSONArray cmds = a.plan == null ? new org.json.JSONArray() : AppStudio.cleanJarvis(a.plan.optJSONArray("jarvis"));
+        if (cmds.length() == 0 || !AppStudio.powers(a).contains("jarvis"))
+            return err("no_commands", "The app '" + a.title + "' takes nothing from Jarvis. Tell him in one line that he can ask the studio for it: \"" + a.title + " లో Jarvis తో రాయడం చేర్చు\".");
+        String cmd = command == null ? "" : Workshop.cleanId(command.trim());
+        JSONObject spec = null;
+        for (int i = 0; i < cmds.length(); i++) if (cmds.getJSONObject(i).optString("id").equals(cmd)) spec = cmds.getJSONObject(i);
+        if (command == null || command.trim().isEmpty() || spec == null)
+            return ok().put("app", a.title).put("commands", cmds).put("next", "Call make_app again with action=tell, app='" + a.title
+                    + "', command=<one id above> and data=<a JSON object of its fields from his words>. If his words fit none, tell him what this app takes.").toString();
+        if (!"ok".equals(a.buildState) || a.builtVersion < 1)
+            return err("not_installed", "'" + a.title + "' is not on his phone yet. Say: ముందు యాప్ స్టూడియోలో 📲 ఫోన్‌లో పెట్టండి Sir.");
+        JSONObject d;
+        try { d = data instanceof JSONObject ? (JSONObject) data : new JSONObject(data == null ? "{}" : String.valueOf(data)); } catch (Exception e) { d = new JSONObject(); }
+        JSONObject f = spec.optJSONObject("fields"), clean = new JSONObject();
+        if (f != null) for (java.util.Iterator<String> it = f.keys(); it.hasNext(); ) { String k = it.next(); if (d.has(k)) clean.put(k, d.get(k)); }
+        String pkg = AppMaker.packageName(a.slug);
+        Intent i = new Intent().setClassName(pkg, pkg + ".MainActivity").putExtra("jarvis_cmd", cmd).putExtra("jarvis_data", clean.toString())
+                .putExtra("jarvis_key", a.key).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        try { c.startActivity(i); }
+        catch (android.content.ActivityNotFoundException e) { return err("not_installed", "'" + a.title + "' is not installed on his phone. Say: ముందు ⬇️ ఇన్‌స్టాల్ చేయండి Sir."); }
+        return ok().put("app", a.title).put("command", spec.optString("what")).put("data", clean)
+                .put("next", "Say in one short Telugu line what you wrote into '" + a.title + "' (the app shows it). If this app was put on his phone before 20 Nov, it may need 📲 once more to take it.").toString();
     }
 
     // ================================================================ offline commands

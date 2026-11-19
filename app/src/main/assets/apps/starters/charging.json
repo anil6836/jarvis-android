@@ -1,0 +1,100 @@
+{
+ "plan": {
+  "title": "ఛార్జింగ్ లాగ్",
+  "name": "ఛార్జింగ్",
+  "slug": "charging-log",
+  "about": "బండి ఛార్జింగ్‌లు (యూనిట్లు, ఖర్చు, బ్యాటరీ %, km) రాసుకుని, నెల ఖర్చు, ఒక km కి ఖర్చు చూసే యాప్.",
+  "color": "#00897b",
+  "theme": "light",
+  "size": "small",
+  "internet": false,
+  "say": "ఛార్జింగ్ లాగ్ రెడీ Sir.",
+  "screens": [
+   {
+    "id": "home",
+    "name": "ఛార్జింగ్",
+    "what": "ఈ నెల ఖర్చు, యూనిట్లు; ఛార్జింగ్‌ల లిస్ట్",
+    "tab": true
+   },
+   {
+    "id": "add",
+    "name": "ఛార్జింగ్ రాయండి",
+    "what": "తేదీ, యూనిట్లు, ఖర్చు, బ్యాటరీ మొదలు/చివర %, ఓడోమీటర్",
+    "tab": false
+   },
+   {
+    "id": "stats",
+    "name": "లెక్కలు",
+    "what": "ఒక km కి ఖర్చు, నెలల వారీ చార్ట్, 📤 షేర్, 📄 PDF, 🔔 వారానికి ఒక గుర్తు",
+    "tab": true
+   }
+  ],
+  "saves": [
+   "ప్రతి ఛార్జింగ్: తేదీ, యూనిట్లు, ఖర్చు, బ్యాటరీ %, km"
+  ],
+  "extras": [
+   "ఒక km కి ఖర్చు దానంతట అదే",
+   "📲 విడ్జెట్‌లో ఈ నెల ఖర్చు"
+  ],
+  "later": [],
+  "powers": [
+   "remind",
+   "share",
+   "pdf",
+   "widget",
+   "jarvis"
+  ],
+  "icon": {
+   "bg": "#00897b",
+   "fg": "#ffffff",
+   "paths": [
+    {
+     "d": "M60,24 L34,60 H52 L46,84 L74,46 H56 Z",
+     "fill": "#ffffff"
+    }
+   ]
+  },
+  "jarvis": [
+   {
+    "id": "add",
+    "what": "ఒక ఛార్జింగ్ రాయడం",
+    "fields": {
+     "units": "number",
+     "cost": "number",
+     "date": "date",
+     "odo": "number"
+    }
+   }
+  ]
+ },
+ "parts": [
+  {
+   "css": "",
+   "js": "App.my.KEY = 'charges';\nApp.my.list = () => App.items(App.my.KEY).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.at - a.at);\nApp.my.month = (key) => App.items(App.my.KEY).filter((c) => App.monthKey(c.date) === key);\nApp.my.sum = (list, f) => list.reduce((s, c) => s + (Number(c[f]) || 0), 0);\nApp.my.perKm = () => {\n  const l = App.items(App.my.KEY).filter((c) => Number(c.odo) > 0).sort((a, b) => Number(a.odo) - Number(b.odo));\n  if (l.length < 2) return null;\n  const km = Number(l[l.length - 1].odo) - Number(l[0].odo);\n  const cost = App.my.sum(l.slice(1), 'cost');\n  return km > 0 ? cost / km : null;\n};\n\nApp.my.widget = async () => {\n  const now = App.my.month(App.monthKey(new Date()));\n  try { await App.widget('⚡ ఛార్జింగ్', ['ఈ నెల: ' + App.rs(App.my.sum(now, 'cost')), App.n(App.my.sum(now, 'units'), 1) + ' యూనిట్లు · ' + now.length + ' సార్లు']); } catch (e) { /* the widget only helps */ }\n};\nApp.onStart(() => { App.my.widget(); });\nApp.onJarvis('add', (d) => {\n  const units = Number(d.units), cost = Number(d.cost);\n  if (!(units > 0) && !(cost > 0)) return 'యూనిట్లు, ఖర్చు రెండూ లేవు; ఏమీ రాయలేదు';\n  const rec = { date: /^\\d{4}-\\d{2}-\\d{2}$/.test(String(d.date || '')) ? d.date : App.today(), units: units > 0 ? units : 0, cost: cost >= 0 ? cost : 0,\n    from: 0, to: 0, odo: Number(d.odo) > 0 ? Number(d.odo) : 0 };\n  App.add(App.my.KEY, rec);\n  App.my.widget();\n  return App.n(rec.units, 1) + ' యూనిట్లు ' + App.rs(rec.cost) + ' రాశాను';\n});\n",
+   "html": "",
+   "id": "data",
+   "status": "డేటా సిద్ధం చేస్తున్నాను"
+  },
+  {
+   "css": "#home .stat .v { color: var(--accent); }\n",
+   "js": "App.onShow('home', () => {\n  const now = App.my.month(App.monthKey(new Date()));\n  App.text('#home-month', App.rs(App.my.sum(now, 'cost')));\n  App.text('#home-units', App.n(App.my.sum(now, 'units'), 1));\n  const l = App.my.list();\n  App.set('#home-list', l.length ? '<div class=\"list\">' + l.map((c) => `\n    <div class=\"item\" data-id=\"${App.esc(c.id)}\">\n      <div class=\"ic\">⚡</div>\n      <div class=\"w\"><div class=\"t\">${App.esc(App.n(c.units, 1))} యూనిట్లు${c.from || c.to ? ' · ' + App.esc(c.from || 0) + '% → ' + App.esc(c.to || 0) + '%' : ''}</div>\n        <div class=\"s\">${App.date(c.date)}${c.odo ? ' · ' + App.esc(App.n(c.odo)) + ' km' : ''}</div></div>\n      <div class=\"r\">${App.rs(c.cost)}</div>\n    </div>`).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">🔌</div>ఇంకా ఛార్జింగ్ రాయలేదు. + నొక్కి రాయండి.</div>');\n});\nApp.click('#home-add', () => App.go('add'));\nApp.click('#home-list .item', (ev, el) => App.go('add', App.find(App.my.KEY, el.dataset.id)));\n",
+   "html": "<section class=\"screen\" id=\"home\" data-title=\"ఛార్జింగ్ లాగ్\" data-tab=\"⚡|ఛార్జింగ్\">\n  <div class=\"grid\">\n    <div class=\"stat\"><div class=\"v\" id=\"home-month\">₹0</div><div class=\"k\">ఈ నెల ఖర్చు</div></div>\n    <div class=\"stat\"><div class=\"v\" id=\"home-units\">0</div><div class=\"k\">ఈ నెల యూనిట్లు</div></div>\n  </div>\n  <div class=\"gap\"></div>\n  <div id=\"home-list\"></div>\n  <button class=\"fab\" id=\"home-add\" aria-label=\"కొత్త ఛార్జింగ్\">+</button>\n</section>\n",
+   "id": "home",
+   "status": "ఛార్జింగ్ లిస్ట్ గీస్తున్నాను"
+  },
+  {
+   "css": "",
+   "js": "App.onShow('add', (c) => {\n  App.my.editing = c && c.id ? c.id : null;\n  App.title(App.my.editing ? 'ఛార్జింగ్ మార్చండి' : 'ఛార్జింగ్ రాయండి');\n  App.val('#add-date', c && c.date ? c.date : App.today());\n  App.val('#add-units', c ? c.units : '');\n  App.val('#add-cost', c ? c.cost : '');\n  App.val('#add-from', c ? c.from : '');\n  App.val('#add-to', c ? c.to : '');\n  App.val('#add-odo', c ? c.odo : '');\n  App.show('#add-del', !!App.my.editing);\n});\nApp.click('#add-save', () => {\n  const units = Number(App.val('#add-units')), cost = Number(App.val('#add-cost'));\n  if (!(units > 0)) { App.toast('ఎన్ని యూనిట్లో రాయండి'); return; }\n  if (!(cost >= 0)) { App.toast('ఖర్చు సరిగా రాయండి'); return; }\n  const rec = { date: App.val('#add-date') || App.today(), units, cost, from: Number(App.val('#add-from')) || 0, to: Number(App.val('#add-to')) || 0, odo: Number(App.val('#add-odo')) || 0 };\n  if (App.my.editing) App.update(App.my.KEY, App.my.editing, rec); else App.add(App.my.KEY, rec);\n  App.my.widget();\n  App.beep('ok');\n  App.toast('దాచాను');\n  App.back();\n});\nApp.click('#add-del', async () => {\n  if (!App.my.editing) return;\n  if (await App.ask('ఈ ఛార్జింగ్ తీసేయాలా?', 'తీసేయి', 'వద్దు')) { App.del(App.my.KEY, App.my.editing); App.my.widget(); App.toast('తీసేశాను'); App.back(); }\n});\n",
+   "html": "<section class=\"screen\" id=\"add\" data-title=\"ఛార్జింగ్ రాయండి\">\n  <div class=\"field\"><label>తేదీ</label><input id=\"add-date\" type=\"date\"></div>\n  <div class=\"grid\">\n    <div class=\"field\"><label>యూనిట్లు (kWh)</label><input id=\"add-units\" type=\"number\" inputmode=\"decimal\"></div>\n    <div class=\"field\"><label>ఖర్చు (₹)</label><input id=\"add-cost\" type=\"number\" inputmode=\"decimal\"></div>\n  </div>\n  <div class=\"grid\">\n    <div class=\"field\"><label>బ్యాటరీ మొదలు %</label><input id=\"add-from\" type=\"number\"></div>\n    <div class=\"field\"><label>బ్యాటరీ చివర %</label><input id=\"add-to\" type=\"number\"></div>\n  </div>\n  <div class=\"field\"><label>ఓడోమీటర్ (km)</label><input id=\"add-odo\" type=\"number\"></div>\n  <button class=\"btn primary block\" id=\"add-save\">దాచు</button>\n  <div class=\"gap\"></div>\n  <button class=\"btn danger block\" id=\"add-del\" hidden>ఈ ఛార్జింగ్ తీసేయి</button>\n</section>\n",
+   "id": "add",
+   "status": "కొత్త ఛార్జింగ్ ఫారం"
+  },
+  {
+   "css": "",
+   "js": "App.onShow('stats', () => {\n  const pk = App.my.perKm();\n  App.text('#stats-km', pk == null ? '—' : App.rs(pk));\n  App.text('#stats-count', App.items(App.my.KEY).length + ' సార్లు');\n  const keys = [];\n  for (let i = 5; i >= 0; i--) { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); keys.push(App.monthKey(d)); }\n  App.chart('#stats-chart', { type: 'bar', labels: keys.map((k) => App.month(k + '-01').split(' ')[0]), values: keys.map((k) => App.my.sum(App.my.month(k), 'cost')), money: true });\n});\n\nApp.my.nextSunday = () => {\n  const d = new Date(); d.setHours(20, 0, 0, 0);\n  let add = (7 - d.getDay()) % 7;\n  if (add === 0 && d.getTime() < Date.now()) add = 7;\n  d.setDate(d.getDate() + add);\n  return d.getTime();\n};\nApp.my.drawRem = async () => {\n  let on = false;\n  try { on = (await App.reminders()).some((r) => r.id === 'weekly'); } catch (e) { /* */ }\n  App.my.remOn = on;\n  App.text('#stats-rem', on ? 'తీసేయి' : 'పెట్టు');\n  App.text('#stats-rem-s', on ? 'పెట్టారు: ప్రతి ఆదివారం రాత్రి 8 కి' : 'ఆదివారం రాత్రి 8 కి \"ఈ వారం ఛార్జింగ్‌లు రాశారా?\" అని');\n};\nApp.onShow('stats', () => { App.my.drawRem(); });\nApp.click('#stats-rem', async () => {\n  try {\n    if (App.my.remOn) { await App.unremind('weekly'); App.toast('రిమైండర్ తీసేశాను'); }\n    else {\n      await App.remind({ id: 'weekly', when: App.my.nextSunday(), every: 'week', title: '⚡ ఛార్జింగ్ లాగ్', text: 'ఈ వారం ఛార్జింగ్‌లు రాశారా?', screen: 'add' });\n      App.toast('ప్రతి ఆదివారం రాత్రి 8 కి గుర్తు చేస్తాను');\n    }\n  } catch (e) { App.toast('రిమైండర్ పెట్టలేకపోయాను'); }\n  App.my.drawRem();\n});\nApp.my.thisMonth = () => App.my.month(App.monthKey(new Date())).sort((a, b) => (a.date || '').localeCompare(b.date || ''));\nApp.click('#stats-share', async () => {\n  const l = App.my.thisMonth();\n  const t = '⚡ ' + App.month(App.today()) + ' ఛార్జింగ్: ' + l.length + ' సార్లు, ' + App.n(App.my.sum(l, 'units'), 1) + ' యూనిట్లు, ' + App.rs(App.my.sum(l, 'cost'))\n    + (App.my.perKm() != null ? '\\nఒక km కి: ' + App.rs(App.my.perKm()) : '');\n  try { await App.share(t); } catch (e) { App.toast('షేర్ కాలేదు'); }\n});\nApp.click('#stats-pdf', async () => {\n  const l = App.my.thisMonth();\n  const rows = l.map((c) => `<tr><td>${App.date(c.date, 'short')}</td><td class=\"n\">${App.n(c.units, 1)}</td><td class=\"n\">${App.rs(c.cost)}</td><td class=\"n\">${c.from || c.to ? App.esc(c.from || 0) + '% → ' + App.esc(c.to || 0) + '%' : ''}</td><td class=\"n\">${c.odo ? App.n(c.odo) : ''}</td></tr>`).join('');\n  const html = `<h2>${App.esc(App.month(App.today()))} ఛార్జింగ్</h2><p>${l.length} సార్లు · ${App.n(App.my.sum(l, 'units'), 1)} యూనిట్లు · <b>${App.rs(App.my.sum(l, 'cost'))}</b></p>`\n    + `<table><tr><th>తేదీ</th><th>యూనిట్లు</th><th>ఖర్చు</th><th>బ్యాటరీ</th><th>km</th></tr>${rows}</table>`;\n  try { await App.pdf('ఛార్జింగ్ ' + App.monthKey(new Date()), html); } catch (e) { App.toast('PDF కాలేదు'); }\n});\n",
+   "html": "\n<section class=\"screen\" id=\"stats\" data-title=\"లెక్కలు\" data-tab=\"📊|లెక్కలు\">\n  <div class=\"card\"><div class=\"row\"><div><div class=\"muted\">ఒక km కి ఖర్చు</div><div class=\"big\" id=\"stats-km\">—</div></div><div class=\"right muted\" id=\"stats-count\"></div></div></div>\n  <div class=\"card\"><h3>నెలల వారీ ఖర్చు</h3><div id=\"stats-chart\"></div></div>\n  <div class=\"btns\"><button class=\"btn\" id=\"stats-share\">📤 ఈ నెల షేర్</button><button class=\"btn\" id=\"stats-pdf\">📄 ఈ నెల PDF</button></div>\n  <div class=\"card\"><div class=\"row\"><div><b>🔔 వారానికి ఒకసారి గుర్తు</b><div class=\"muted\" id=\"stats-rem-s\"></div></div><button class=\"btn small\" id=\"stats-rem\">పెట్టు</button></div></div>\n</section>\n",
+   "id": "stats",
+   "status": "నెల లెక్కలు, చార్ట్"
+  }
+ ]
+}

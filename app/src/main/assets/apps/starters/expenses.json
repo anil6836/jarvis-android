@@ -1,0 +1,110 @@
+{
+ "plan": {
+  "title": "ఖర్చుల లెక్క",
+  "name": "ఖర్చులు",
+  "slug": "expenses",
+  "about": "రోజూ ఖర్చులు రాసుకుని, ఈ నెల మొత్తం, రకాల వారీ లెక్క, నెలల వారీ చార్ట్ చూసే యాప్.",
+  "color": "#ef6c00",
+  "theme": "light",
+  "size": "small",
+  "internet": false,
+  "say": "ఖర్చుల లెక్క రెడీ Sir.",
+  "screens": [
+   {
+    "id": "home",
+    "name": "ఖర్చులు",
+    "what": "ఈ నెల, ఈ రోజు మొత్తం; ఖర్చుల లిస్ట్ (నొక్కితే మార్చొచ్చు)",
+    "tab": true
+   },
+   {
+    "id": "add",
+    "name": "కొత్త ఖర్చు",
+    "what": "ఎంత, దేనికి, రకం, తేదీ",
+    "tab": false
+   },
+   {
+    "id": "summary",
+    "name": "లెక్క",
+    "what": "నెల ఎంచుకుని: రకాల వారీ పై చార్ట్, 6 నెలల బార్ చార్ట్, 📤 షేర్, 📄 PDF",
+    "tab": true
+   }
+  ],
+  "saves": [
+   "ప్రతి ఖర్చు: ఎంత, దేనికి, రకం, తేదీ"
+  ],
+  "extras": [
+   "దేనికి అన్న మాట నుంచి రకం దానంతట అదే",
+   "📲 విడ్జెట్‌లో ఈ నెల, ఈ రోజు మొత్తం"
+  ],
+  "later": [],
+  "powers": [
+   "share",
+   "pdf",
+   "widget",
+   "jarvis"
+  ],
+  "icon": {
+   "bg": "#ef6c00",
+   "fg": "#ffffff",
+   "paths": [
+    {
+     "d": "M32,36 H76 A6,6 0 0 1 82,42 V70 A6,6 0 0 1 76,76 H32 A6,6 0 0 1 26,70 V42 A6,6 0 0 1 32,36 Z",
+     "fill": "#ffffff"
+    },
+    {
+     "d": "M60,48 H82 V64 H60 A8,8 0 0 1 60,48 Z",
+     "fill": "#ffe0b2"
+    },
+    {
+     "d": "M62,56 A3,3 0 1 0 68,56 A3,3 0 1 0 62,56 Z",
+     "fill": "#ef6c00"
+    },
+    {
+     "d": "M34,30 L66,24 L70,36 H40 Z",
+     "fill": "#ffcc80"
+    }
+   ]
+  },
+  "jarvis": [
+   {
+    "id": "add",
+    "what": "ఒక ఖర్చు రాయడం",
+    "fields": {
+     "amount": "number",
+     "what": "text",
+     "date": "date"
+    }
+   }
+  ]
+ },
+ "parts": [
+  {
+   "id": "data",
+   "status": "ఖర్చుల డేటా సిద్ధం",
+   "html": "",
+   "css": "",
+   "js": "App.my.KEY = 'expenses';\nApp.my.CATS = ['🏠 ఇల్లు', '⛽ పెట్రోల్', '🍛 భోజనం', '🛒 సరుకులు', '💊 మందులు', '🚌 ప్రయాణం', '📦 ఇతర'];\nApp.my.list = () => App.items(App.my.KEY).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.at - a.at);\nApp.my.inMonth = (key) => App.items(App.my.KEY).filter((e) => App.monthKey(e.date) === key);\nApp.my.sum = (l) => l.reduce((s, e) => s + (Number(e.amount) || 0), 0);\nApp.my.guess = (w) => {\n  const t = String(w || '').toLowerCase();\n  const map = [[/పెట్రోల్|డీజిల్|petrol|diesel|fuel/, 1], [/భోజన|టిఫిన్|హోటల్|టీ|కాఫీ|food|hotel|tea/, 2],\n    [/సరుకు|కూరగాయ|పాలు|బియ్యం|grocery|vegetable|milk/, 3], [/మందు|డాక్టర్|హాస్పిటల్|medicine|doctor/, 4],\n    [/బస్|ఆటో|ట్రైన్|టికెట్|bus|auto|train|ticket/, 5], [/అద్దె|కరెంట్|రెంట్|rent|current|bill/, 0]];\n  for (const [re, i] of map) if (re.test(t)) return App.my.CATS[i];\n  return App.my.CATS[6];\n};\nApp.my.widget = async () => {\n  const month = App.my.sum(App.my.inMonth(App.monthKey(new Date())));\n  const today = App.my.sum(App.items(App.my.KEY).filter((e) => e.date === App.today()));\n  try { await App.widget('💰 ఖర్చులు', ['ఈ నెల: ' + App.rs(month), 'ఈ రోజు: ' + App.rs(today)]); } catch (e) { /* the widget only helps */ }\n};\nApp.onStart(() => { App.my.widget(); });\nApp.onJarvis('add', (d) => {\n  const amount = Number(d.amount);\n  if (!(amount > 0)) return 'ఎంతో చెప్పలేదు, ఏమీ రాయలేదు';\n  const what = String(d.what || '').trim().slice(0, 80);\n  const date = /^\\d{4}-\\d{2}-\\d{2}$/.test(String(d.date || '')) ? d.date : App.today();\n  App.add(App.my.KEY, { amount, what, cat: App.my.guess(what), date });\n  App.my.widget();\n  return App.rs(amount) + (what ? ' ' + what : '') + ' ఖర్చు రాశాను';\n});"
+  },
+  {
+   "id": "home",
+   "status": "ఖర్చుల లిస్ట్ గీస్తున్నాను",
+   "html": "<section class=\"screen\" id=\"home\" data-title=\"ఖర్చుల లెక్క\" data-tab=\"💰|ఖర్చులు\">\n  <div class=\"grid\">\n    <div class=\"stat\"><div class=\"v\" id=\"home-month\">₹0</div><div class=\"k\">ఈ నెల</div></div>\n    <div class=\"stat\"><div class=\"v\" id=\"home-today\">₹0</div><div class=\"k\">ఈ రోజు</div></div>\n  </div>\n  <div class=\"gap\"></div>\n  <div id=\"home-list\"></div>\n  <button class=\"fab\" id=\"home-add\" aria-label=\"కొత్త ఖర్చు\">+</button>\n</section>",
+   "css": "#home .stat .v { color: var(--accent); }",
+   "js": "App.onShow('home', () => {\n  App.text('#home-month', App.rs(App.my.sum(App.my.inMonth(App.monthKey(new Date())))));\n  App.text('#home-today', App.rs(App.my.sum(App.items(App.my.KEY).filter((e) => e.date === App.today()))));\n  const l = App.my.list().slice(0, 200);\n  App.set('#home-list', l.length ? '<div class=\"list\">' + l.map((e) => `\n    <div class=\"item\" data-id=\"${App.esc(e.id)}\">\n      <div class=\"ic\">${App.esc(String(e.cat || '📦').split(' ')[0])}</div>\n      <div class=\"w\"><div class=\"t\">${App.esc(e.what || String(e.cat || 'ఖర్చు').split(' ').slice(1).join(' ') || 'ఖర్చు')}</div><div class=\"s\">${App.date(e.date)}</div></div>\n      <div class=\"r\">${App.rs(e.amount)}</div>\n    </div>`).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">🧾</div>ఇంకా ఖర్చులు లేవు. + నొక్కి రాయండి.<div class=\"faint\">Jarvis తో: \"ఖర్చుల లెక్కలో 200 పెట్రోల్ రాయి\"</div></div>');\n});\nApp.click('#home-add', () => App.go('add'));\nApp.click('#home-list .item', (ev, el) => App.go('add', App.find(App.my.KEY, el.dataset.id)));"
+  },
+  {
+   "id": "add",
+   "status": "ఖర్చు రాసే ఫారం",
+   "html": "<section class=\"screen\" id=\"add\" data-title=\"కొత్త ఖర్చు\">\n  <div class=\"field\"><label>ఎంత (₹)</label><input id=\"add-amt\" type=\"number\" inputmode=\"decimal\"></div>\n  <div class=\"field\"><label>దేనికి</label><input id=\"add-what\" type=\"text\"></div>\n  <div class=\"field\"><label>రకం</label><select id=\"add-cat\"></select></div>\n  <div class=\"field\"><label>తేదీ</label><input id=\"add-date\" type=\"date\"></div>\n  <button class=\"btn primary block\" id=\"add-save\">దాచు</button>\n  <div class=\"gap\"></div>\n  <button class=\"btn danger block\" id=\"add-del\" hidden>ఈ ఖర్చు తీసేయి</button>\n</section>",
+   "css": "",
+   "js": "App.onShow('add', (e) => {\n  App.my.editing = e && e.id ? e.id : null;\n  App.title(App.my.editing ? 'ఖర్చు మార్చండి' : 'కొత్త ఖర్చు');\n  App.set('#add-cat', App.my.CATS.map((c) => `<option>${App.esc(c)}</option>`).join(''));\n  App.val('#add-amt', e && e.amount != null ? e.amount : '');\n  App.val('#add-what', e && e.what ? e.what : '');\n  App.val('#add-cat', e && e.cat ? e.cat : App.my.CATS[6]);\n  App.val('#add-date', e && e.date ? e.date : App.today());\n  App.show('#add-del', !!App.my.editing);\n});\nApp.on('#add-what', 'change', () => {\n  const g = App.my.guess(App.val('#add-what'));\n  if (!App.my.editing && g !== App.my.CATS[6]) App.val('#add-cat', g);\n});\nApp.click('#add-save', () => {\n  const amount = Number(App.val('#add-amt'));\n  if (!(amount > 0)) { App.toast('ఎంత అయిందో రాయండి'); return; }\n  const rec = { amount, what: App.val('#add-what').slice(0, 80), cat: App.val('#add-cat') || App.my.CATS[6], date: App.val('#add-date') || App.today() };\n  if (App.my.editing) App.update(App.my.KEY, App.my.editing, rec); else App.add(App.my.KEY, rec);\n  App.my.widget();\n  App.beep('ok');\n  App.toast('దాచాను');\n  App.back();\n});\nApp.click('#add-del', async () => {\n  if (!App.my.editing) return;\n  if (await App.ask('ఈ ఖర్చు తీసేయాలా?', 'తీసేయి', 'వద్దు')) { App.del(App.my.KEY, App.my.editing); App.my.widget(); App.toast('తీసేశాను'); App.back(); }\n});"
+  },
+  {
+   "id": "summary",
+   "status": "నెల లెక్క, చార్ట్‌లు, PDF",
+   "html": "<section class=\"screen\" id=\"summary\" data-title=\"నెల లెక్క\" data-tab=\"📊|లెక్క\">\n  <div class=\"field\"><label>నెల</label><select id=\"sum-month\"></select></div>\n  <div class=\"card\"><div class=\"row\"><div><div class=\"muted\">ఆ నెల మొత్తం</div><div class=\"big\" id=\"sum-total\">₹0</div></div><div class=\"right muted\" id=\"sum-count\"></div></div></div>\n  <div class=\"card\"><h3>రకాల వారీగా</h3><div id=\"sum-pie\"></div></div>\n  <div class=\"card\"><h3>నెలల వారీగా</h3><div id=\"sum-bars\"></div></div>\n  <div class=\"btns\"><button class=\"btn\" id=\"sum-share\">📤 షేర్</button><button class=\"btn\" id=\"sum-pdf\">📄 PDF</button></div>\n</section>",
+   "css": "",
+   "js": "App.my.months = () => { const out = []; for (let i = 0; i < 6; i++) { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); out.push(App.monthKey(d)); } return out; };\nApp.my.byCat = (l) => { const by = {}; for (const e of l) { const c = e.cat || App.my.CATS[6]; by[c] = (by[c] || 0) + (Number(e.amount) || 0); } return by; };\nApp.my.key = () => App.val('#sum-month') || App.monthKey(new Date());\nApp.my.drawSum = () => {\n  const key = App.my.key(), l = App.my.inMonth(key), by = App.my.byCat(l);\n  App.text('#sum-total', App.rs(App.my.sum(l)));\n  App.text('#sum-count', l.length + ' ఖర్చులు');\n  if (l.length) App.chart('#sum-pie', { type: 'pie', labels: Object.keys(by), values: Object.values(by), money: true });\n  else App.set('#sum-pie', '<div class=\"muted\">ఈ నెల ఖర్చులు లేవు</div>');\n  const ms = App.my.months().reverse();\n  App.chart('#sum-bars', { type: 'bar', labels: ms.map((m) => App.month(m + '-01').split(' ')[0]), values: ms.map((m) => App.my.sum(App.my.inMonth(m))), money: true });\n};\nApp.onShow('summary', () => {\n  const keep = App.val('#sum-month'), ms = App.my.months();\n  App.set('#sum-month', ms.map((k) => `<option value=\"${k}\">${App.esc(App.month(k + '-01'))}</option>`).join(''));\n  App.val('#sum-month', ms.includes(keep) ? keep : ms[0]);\n  App.my.drawSum();\n});\nApp.on('#sum-month', 'change', () => App.my.drawSum());\nApp.click('#sum-share', async () => {\n  const key = App.my.key(), l = App.my.inMonth(key), by = App.my.byCat(l);\n  const lines = ['💰 ' + App.month(key + '-01') + ' ఖర్చులు: ' + App.rs(App.my.sum(l))].concat(Object.keys(by).map((c) => c + ': ' + App.rs(by[c])));\n  try { await App.share(lines.join('\\n')); } catch (e) { App.toast('షేర్ కాలేదు'); }\n});\nApp.click('#sum-pdf', async () => {\n  const key = App.my.key(), l = App.my.inMonth(key).sort((a, b) => (a.date || '').localeCompare(b.date || ''));\n  const rows = l.map((e) => `<tr><td>${App.date(e.date, 'short')}</td><td>${App.esc(e.what || '')}</td><td>${App.esc(e.cat || '')}</td><td class=\"n\">${App.rs(e.amount)}</td></tr>`).join('');\n  const html = `<h2>${App.esc(App.month(key + '-01'))} ఖర్చులు</h2><p>మొత్తం: <b>${App.rs(App.my.sum(l))}</b> (${l.length} ఖర్చులు)</p>`\n    + `<table><tr><th>తేదీ</th><th>దేనికి</th><th>రకం</th><th>ఎంత</th></tr>${rows}</table>`;\n  try { await App.pdf('ఖర్చులు ' + key, html); } catch (e) { App.toast('PDF కాలేదు'); }\n});"
+  }
+ ]
+}

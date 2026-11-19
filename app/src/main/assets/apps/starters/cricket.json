@@ -1,0 +1,98 @@
+{
+ "plan": {
+  "title": "క్రికెట్ స్కోర్",
+  "name": "స్కోర్",
+  "slug": "cricket-score",
+  "about": "గల్లీ / గ్రౌండ్ మ్యాచ్‌కి స్కోర్: పరుగులు, వికెట్లు, ఓవర్లు, వైడ్, నో బాల్, టార్గెట్, ఫలితం. స్క్రీన్ ఆరదు.",
+  "color": "#2e7d32",
+  "theme": "light",
+  "size": "small",
+  "internet": false,
+  "say": "క్రికెట్ స్కోర్ రెడీ Sir.",
+  "screens": [
+   {
+    "id": "home",
+    "name": "మ్యాచ్",
+    "what": "కొత్త మ్యాచ్ (జట్లు, ఓవర్లు, ఆటగాళ్లు, ముందు బ్యాటింగ్), జరుగుతున్నది కొనసాగించు",
+    "tab": true
+   },
+   {
+    "id": "score",
+    "name": "స్కోర్",
+    "what": "స్కోర్, ఓవర్లు, రన్ రేట్, టార్గెట్; 0 1 2 3 4 6, ఔట్, వైడ్, నో బాల్; ↩️ వెనక్కి; 🔊 📤",
+    "tab": false
+   },
+   {
+    "id": "history",
+    "name": "పాతవి",
+    "what": "అయిపోయిన మ్యాచ్‌లు, ఫలితాలు",
+    "tab": true
+   }
+  ],
+  "saves": [
+   "జరుగుతున్న మ్యాచ్ (ప్రతి బంతి)",
+   "అయిపోయిన మ్యాచ్‌ల ఫలితాలు"
+  ],
+  "extras": [
+   "ఇన్నింగ్స్ అయితే టార్గెట్ చదివి చెబుతుంది",
+   "స్కోర్ స్క్రీన్‌లో స్క్రీన్ ఆరదు"
+  ],
+  "later": [
+   "ఒక్కో ఆటగాడి స్కోర్ (బ్యాట్స్‌మన్ వారీ) తర్వాత"
+  ],
+  "powers": [
+   "awake",
+   "say",
+   "share"
+  ],
+  "icon": {
+   "bg": "#2e7d32",
+   "fg": "#ffffff",
+   "paths": [
+    {
+     "d": "M54,30 A24,24 0 1 1 54,78 A24,24 0 1 1 54,30 Z",
+     "fill": "#e53935"
+    },
+    {
+     "d": "M46,33 Q39,54 46,75 L49,74 Q43,54 49,34 Z",
+     "fill": "#ffffff"
+    },
+    {
+     "d": "M62,33 Q69,54 62,75 L59,74 Q65,54 59,34 Z",
+     "fill": "#ffffff"
+    }
+   ]
+  },
+  "jarvis": []
+ },
+ "parts": [
+  {
+   "id": "data",
+   "status": "మ్యాచ్ లెక్కలు సిద్ధం",
+   "html": "",
+   "css": "",
+   "js": "App.my.m = () => App.load('match', null);\nApp.my.setM = (m) => App.save('match', m);\nApp.my.inn = (m, k) => {\n  const balls = ((m.inn || [])[k] || { balls: [] }).balls;\n  let runs = 0, wk = 0, legal = 0, extras = 0;\n  for (const b of balls) {\n    runs += (Number(b.r) || 0) + (b.x ? 1 : 0);\n    if (b.x) extras++;\n    if (b.w) wk++;\n    if (!b.x) legal++;\n  }\n  return { runs, wk, legal, extras, balls };\n};\nApp.my.ov = (legal) => Math.floor(legal / 6) + '.' + (legal % 6);\nApp.my.maxW = (m) => Math.max(1, (Number(m.players) || 11) - 1);\nApp.my.bat = (m, k) => (k === 0 ? m.first : m.first === m.a ? m.b : m.a);\nApp.my.innDone = (m, k) => {\n  const s = App.my.inn(m, k);\n  if (s.legal >= m.overs * 6 || s.wk >= App.my.maxW(m)) return true;\n  return k === 1 && s.runs > App.my.inn(m, 0).runs;\n};\nApp.my.result = (m) => {\n  const a = App.my.inn(m, 0), b = App.my.inn(m, 1);\n  if (b.runs > a.runs) return App.my.bat(m, 1) + ' ' + (App.my.maxW(m) - b.wk) + ' వికెట్ల తేడాతో గెలిచింది';\n  if (b.runs === a.runs) return 'టై! రెండు జట్లూ సమానం';\n  return App.my.bat(m, 0) + ' ' + (a.runs - b.runs) + ' పరుగుల తేడాతో గెలిచింది';\n};\nApp.my.innLine = (m, k) => { const s = App.my.inn(m, k); return App.my.bat(m, k) + ' ' + s.runs + '/' + s.wk + ' (' + App.my.ov(s.legal) + ' ఓవర్లు)'; };\nApp.my.line = (m) => {\n  const k = m.cur, s = App.my.inn(m, k);\n  let t = App.my.innLine(m, k);\n  if (k === 1 && !m.done) { const need = App.my.inn(m, 0).runs + 1 - s.runs; t += '. ఇంకా ' + Math.max(0, need) + ' పరుగులు, ' + (m.overs * 6 - s.legal) + ' బంతుల్లో'; }\n  if (m.done) t += '. ' + App.my.result(m);\n  return t;\n};\nApp.my.full = (m) => [App.my.innLine(m, 0)].concat(m.cur === 1 || m.done ? [App.my.innLine(m, 1)] : []).concat(m.done ? ['🏆 ' + App.my.result(m)] : []).join('\\n');"
+  },
+  {
+   "id": "home",
+   "status": "కొత్త మ్యాచ్ స్క్రీన్",
+   "html": "<section class=\"screen\" id=\"home\" data-title=\"క్రికెట్ స్కోర్\" data-tab=\"🏏|మ్యాచ్\">\n  <div class=\"card\" id=\"home-on\" hidden>\n    <div class=\"muted\">జరుగుతున్న మ్యాచ్</div>\n    <p id=\"home-on-line\"></p>\n    <button class=\"btn primary block\" id=\"home-continue\">▶️ స్కోర్ కొనసాగించు</button>\n  </div>\n  <div class=\"card\">\n    <h3>కొత్త మ్యాచ్</h3>\n    <div class=\"grid\">\n      <div class=\"field\"><label>జట్టు 1</label><input id=\"home-a\" type=\"text\"></div>\n      <div class=\"field\"><label>జట్టు 2</label><input id=\"home-b\" type=\"text\"></div>\n    </div>\n    <div class=\"grid\">\n      <div class=\"field\"><label>ఓవర్లు</label><input id=\"home-overs\" type=\"number\" inputmode=\"numeric\"></div>\n      <div class=\"field\"><label>ఒక్కో జట్టులో ఆటగాళ్లు</label><input id=\"home-players\" type=\"number\" inputmode=\"numeric\"></div>\n    </div>\n    <div class=\"field\"><label>ముందు బ్యాటింగ్</label><select id=\"home-first\"><option value=\"a\">జట్టు 1</option><option value=\"b\">జట్టు 2</option></select></div>\n    <button class=\"btn primary block\" id=\"home-start\">🏏 మ్యాచ్ మొదలు</button>\n  </div>\n</section>",
+   "css": "",
+   "js": "App.onShow('home', () => {\n  App.awake(false).catch(() => {});\n  const m = App.my.m(), on = !!(m && !m.done);\n  App.show('#home-on', on);\n  if (on) App.text('#home-on-line', App.my.line(m));\n  if (!App.val('#home-a')) App.val('#home-a', App.load('lastA', 'జట్టు A'));\n  if (!App.val('#home-b')) App.val('#home-b', App.load('lastB', 'జట్టు B'));\n  if (!App.val('#home-overs')) App.val('#home-overs', App.load('lastOvers', 6));\n  if (!App.val('#home-players')) App.val('#home-players', App.load('lastPlayers', 11));\n});\nApp.click('#home-continue', () => App.go('score'));\nApp.click('#home-start', async () => {\n  const a = App.val('#home-a').slice(0, 30) || 'జట్టు A';\n  let b = App.val('#home-b').slice(0, 30) || 'జట్టు B';\n  if (a === b) b = b + ' 2';\n  const overs = Math.round(Number(App.val('#home-overs'))), players = Math.round(Number(App.val('#home-players')));\n  if (!(overs >= 1 && overs <= 50)) { App.toast('ఓవర్లు 1 నుంచి 50 లోపు రాయండి'); return; }\n  if (!(players >= 2 && players <= 15)) { App.toast('ఆటగాళ్లు 2 నుంచి 15 లోపు రాయండి'); return; }\n  const old = App.my.m();\n  if (old && !old.done && !(await App.ask('జరుగుతున్న మ్యాచ్ వదిలేసి కొత్తది మొదలుపెట్టాలా?', 'కొత్తది', 'వద్దు'))) return;\n  App.save('lastA', a); App.save('lastB', b); App.save('lastOvers', overs); App.save('lastPlayers', players);\n  App.my.setM({ id: App.uid(), a, b, overs, players, first: App.val('#home-first') === 'b' ? b : a, inn: [{ balls: [] }, { balls: [] }], cur: 0, done: false, date: App.today() });\n  App.beep('ok');\n  App.go('score');\n});"
+  },
+  {
+   "id": "score",
+   "status": "స్కోర్ బోర్డ్, బటన్లు",
+   "html": "<section class=\"screen\" id=\"score\" data-title=\"స్కోర్\">\n  <div class=\"empty\" id=\"sc-none\" hidden><div class=\"e\">🏏</div>మ్యాచ్ ఇంకా మొదలు కాలేదు. \"మ్యాచ్\" ట్యాబ్‌లో మొదలుపెట్టండి.</div>\n  <div id=\"sc-main\">\n    <div class=\"card center\">\n      <div class=\"muted\" id=\"sc-team\"></div>\n      <div class=\"big\" id=\"sc-runs\">0/0</div>\n      <div class=\"muted\" id=\"sc-overs\"></div>\n      <div class=\"accent\" id=\"sc-need\"></div>\n    </div>\n    <div class=\"card\"><div class=\"muted\">ఈ ఓవర్</div><div class=\"chips\" id=\"sc-over\"></div></div>\n    <div class=\"grid3\" id=\"sc-pad\">\n      <button class=\"btn run\" data-r=\"0\">0</button><button class=\"btn run\" data-r=\"1\">1</button><button class=\"btn run\" data-r=\"2\">2</button>\n      <button class=\"btn run\" data-r=\"3\">3</button><button class=\"btn run primary\" data-r=\"4\">4</button><button class=\"btn run primary\" data-r=\"6\">6</button>\n      <button class=\"btn run danger\" data-w=\"1\">ఔట్ (W)</button><button class=\"btn run\" data-x=\"wd\">వైడ్</button><button class=\"btn run\" data-x=\"nb\">నో బాల్</button>\n    </div>\n    <div class=\"card\" id=\"sc-done\" hidden><h3 id=\"sc-result\"></h3><button class=\"btn primary block\" id=\"sc-close\">👍 సరే</button></div>\n    <div class=\"btns\"><button class=\"btn ghost\" id=\"sc-undo\">↩️ చివరి బంతి వెనక్కి</button><button class=\"btn ghost\" id=\"sc-say\">🔊</button><button class=\"btn ghost\" id=\"sc-share\">📤</button></div>\n  </div>\n</section>",
+   "css": "#sc-runs { font-size: 56px; line-height: 1.1; }\n#sc-pad .btn { min-height: 56px; font-size: 20px; }\n#sc-over .chip { min-width: 34px; text-align: center; }",
+   "js": "App.my.ballText = (b) => (b.w ? 'W' : b.x === 'wd' ? 'వై' + (b.r ? '+' + b.r : '') : b.x === 'nb' ? 'నో' + (b.r ? '+' + b.r : '') : String(b.r));\nApp.my.thisOver = (balls) => {\n  const groups = [[]];\n  let legal = 0;\n  for (const b of balls) { groups[groups.length - 1].push(b); if (!b.x) { legal++; if (legal % 6 === 0) groups.push([]); } }\n  const last = groups[groups.length - 1];\n  return last.length || groups.length < 2 ? last : groups[groups.length - 2];\n};\nApp.onShow('score', () => {\n  const m = App.my.m();\n  App.show('#sc-none', !m);\n  App.show('#sc-main', !!m);\n  if (!m) { App.title('స్కోర్'); return; }\n  App.awake(!m.done).catch(() => {});\n  const k = m.cur, s = App.my.inn(m, k);\n  App.title(m.a + ' vs ' + m.b);\n  App.text('#sc-team', App.my.bat(m, k) + (k === 0 ? ' బ్యాటింగ్' : ' బ్యాటింగ్ (2వ ఇన్నింగ్స్)'));\n  App.text('#sc-runs', s.runs + '/' + s.wk);\n  App.text('#sc-overs', App.my.ov(s.legal) + ' / ' + m.overs + ' ఓవర్లు' + (s.legal ? ' · రన్ రేట్ ' + App.n(s.runs * 6 / s.legal, 2) : '') + (s.extras ? ' · ఎక్స్‌ట్రాలు ' + s.extras : ''));\n  const target = App.my.inn(m, 0).runs + 1;\n  App.text('#sc-need', m.done ? '' : k === 1 ? 'టార్గెట్ ' + target + ' · ఇంకా ' + Math.max(0, target - s.runs) + ' పరుగులు, ' + (m.overs * 6 - s.legal) + ' బంతుల్లో' : '');\n  const over = App.my.thisOver(s.balls);\n  App.set('#sc-over', over.length ? over.map((b) => `<span class=\"chip${b.w ? ' on' : ''}\">${App.esc(App.my.ballText(b))}</span>`).join('') : '<span class=\"faint\">ఇంకా బంతి వేయలేదు</span>');\n  App.show('#sc-pad', !m.done);\n  App.show('#sc-done', !!m.done);\n  if (m.done) App.text('#sc-result', '🏆 ' + App.my.result(m));\n});\nApp.my.ball = async (b) => {\n  const m = App.my.m();\n  if (!m || m.done) return;\n  m.inn[m.cur].balls.push(b);\n  let say = '';\n  if (App.my.innDone(m, m.cur)) {\n    if (m.cur === 0) { m.cur = 1; say = 'ఇన్నింగ్స్ అయిపోయింది. ' + App.my.bat(m, 1) + ' టార్గెట్ ' + (App.my.inn(m, 0).runs + 1); }\n    else {\n      m.done = true;\n      say = App.my.result(m);\n      App.add('history', { mid: m.id, date: m.date, a: m.a, b: m.b, overs: m.overs, line1: App.my.innLine(m, 0), line2: App.my.innLine(m, 1), result: say });\n    }\n  }\n  App.my.setM(m);\n  App.beep(b.w ? 'err' : b.r === 4 || b.r === 6 ? 'done' : 'tap');\n  App.refresh();\n  if (say) { App.toast(say, 4); try { await App.say(say); } catch (e) { /* the toast says it too */ } }\n};\nApp.click('#sc-pad .run', async (ev, el) => {\n  if (el.dataset.w) return App.my.ball({ r: 0, w: true, x: '' });\n  if (el.dataset.x) {\n    const i = await App.pick(el.dataset.x === 'wd' ? 'వైడ్ మీద అదనంగా ఎన్ని పరుగులు?' : 'నో బాల్ మీద ఎన్ని పరుగులు కొట్టారు?', ['0', '1', '2', '3', '4', '6']);\n    if (i < 0) return;\n    return App.my.ball({ r: [0, 1, 2, 3, 4, 6][i], w: false, x: el.dataset.x });\n  }\n  return App.my.ball({ r: Number(el.dataset.r) || 0, w: false, x: '' });\n});\nApp.click('#sc-undo', async () => {\n  const m = App.my.m();\n  if (!m) return;\n  if (m.done) {\n    if (!(await App.ask('మ్యాచ్ అయిపోయింది. చివరి బంతి వెనక్కి తీసుకోవాలా?', 'వెనక్కి', 'వద్దు'))) return;\n    m.done = false;\n    for (const h of App.items('history').filter((x) => x.mid === m.id)) App.del('history', h.id);\n  }\n  if (m.cur === 1 && !m.inn[1].balls.length) m.cur = 0;\n  const b = m.inn[m.cur].balls.pop();\n  if (!b) { App.toast('వెనక్కి తీసుకోవడానికి బంతి లేదు'); return; }\n  App.my.setM(m);\n  App.toast('చివరి బంతి (' + App.my.ballText(b) + ') తీసేశాను');\n  App.refresh();\n});\nApp.click('#sc-say', async () => { const m = App.my.m(); if (!m) return; try { await App.say(App.my.line(m)); } catch (e) { App.toast('చదవలేకపోయాను'); } });\nApp.click('#sc-share', async () => { const m = App.my.m(); if (!m) return; try { await App.share('🏏 ' + m.a + ' vs ' + m.b + '\\n' + App.my.full(m)); } catch (e) { App.toast('షేర్ కాలేదు'); } });\nApp.click('#sc-close', () => { App.awake(false).catch(() => {}); App.back(); });"
+  },
+  {
+   "id": "history",
+   "status": "పాత మ్యాచ్‌ల లిస్ట్",
+   "html": "<section class=\"screen\" id=\"history\" data-title=\"పాత మ్యాచ్‌లు\" data-tab=\"📜|పాతవి\">\n  <div id=\"hist-list\"></div>\n</section>",
+   "css": "",
+   "js": "App.onShow('history', () => {\n  App.awake(false).catch(() => {});\n  const h = App.items('history').slice().sort((a, b) => b.at - a.at);\n  App.set('#hist-list', h.length ? '<div class=\"list\">' + h.map((x) => `\n    <div class=\"item\" data-id=\"${App.esc(x.id)}\"><div class=\"ic\">🏆</div>\n      <div class=\"w\"><div class=\"t\">${App.esc(x.a)} vs ${App.esc(x.b)}</div><div class=\"s\">${App.esc(x.result)}</div>\n        <div class=\"s\">${App.date(x.date, 'short')} · ${App.esc(x.line1)} · ${App.esc(x.line2)}</div></div></div>`).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">📜</div>అయిపోయిన మ్యాచ్‌లు ఇక్కడ ఉంటాయి.</div>');\n});\nApp.click('#hist-list .item', async (ev, el) => {\n  const x = App.find('history', el.dataset.id);\n  if (!x) return;\n  const i = await App.pick(x.a + ' vs ' + x.b, ['📤 షేర్', '🗑️ తీసేయి']);\n  if (i === 0) { try { await App.share('🏏 ' + x.a + ' vs ' + x.b + '\\n' + x.line1 + '\\n' + x.line2 + '\\n🏆 ' + x.result); } catch (e) { App.toast('షేర్ కాలేదు'); } }\n  if (i === 1 && await App.ask('ఈ మ్యాచ్ తీసేయాలా?', 'తీసేయి', 'వద్దు')) { App.del('history', x.id); App.refresh(); }\n});"
+  }
+ ]
+}

@@ -65,6 +65,9 @@ import java.util.concurrent.CancellationException;
  * everything like the game studio's: only the studio's own files load, the app runs in a sandboxed frame with no network
  * and no storage, keys never reach it, and one message port carries "setup / part / start / test" in and "ok / error /
  * tested" out. Phone only.
+ * (20 Nov, stages 2 and 3) 📸 a photo of an app or a paper drawing can start a plan (the photo goes only to his AI for that
+ * plan, never kept); 📦 an idea with a ready starter makes the app for ₹0; ↩️ every version is kept and any can come back;
+ * 📤 a built app's APK can be sent to family from the share screen, on his tap.
  */
 public class AppStudioActivity extends Activity {
     static final String EXTRA_WHAT = "what", EXTRA_HEARD = "heard", EXTRA_SAID = "said", EXTRA_ACTION = "action", EXTRA_SLUG = "slug",
@@ -98,7 +101,9 @@ public class AppStudioActivity extends Activity {
     private WebMessagePort port;
     private final List<String> outbox = new ArrayList<>();
     private boolean destroyed;
-    private TextView titleView, chip, status, go, micBtn, cancelBtn, stopBtn, listBtn, newBtn, buildBtn, installBtn, fixBtn;
+    private TextView titleView, chip, status, go, micBtn, cancelBtn, stopBtn, listBtn, newBtn, buildBtn, installBtn, fixBtn, versionsBtn, sendBtn;
+    private int versionCount;
+    private static final int REQ_CAM = 41, REQ_GAL = 42, REQ_CAM_PERM = 43;
     private LinearLayout list;
     private ScrollView listScroll;
     private HorizontalScrollView ideas;
@@ -135,7 +140,7 @@ public class AppStudioActivity extends Activity {
         final Http.Cancel cancel = new Http.Cancel();
         final Workshop.Engine engine;
         volatile boolean stopped;
-        String say, refused, badId, problem, failure;
+        String say, refused, badId, problem, failure, photo;
         /** Why the answer stopped early (cut at its size, or the connection), when the parts that came are still used. */
         String note;
         /** The app being made or changed (a working copy: the saved one changes only when this one works). */
@@ -296,14 +301,8 @@ public class AppStudioActivity extends Activity {
         LinearLayout ideaRow = new LinearLayout(this);
         ideaRow.setOrientation(LinearLayout.HORIZONTAL);
         ideaRow.setPadding(0, dp(4), 0, dp(2));
-        for (String[] idea : IDEAS) {
-            ideaRow.addView(pill(idea[0], v -> {
-                input.setText(idea[1]);
-                input.setSelection(input.getText().length());
-                input.requestFocus();
-                setStatus("✏️ కావాలంటే మార్చి, 🧠 ప్లాన్ చూపించు నొక్కండి · ప్లాన్‌కి " + planEstimate());
-            }));
-        }
+        ideaRow.addView(pill("📸 ఫోటో నుంచి", v -> photoPick()));
+        for (String[] idea : IDEAS) ideaRow.addView(pill(idea[0], v -> ideaTapped(idea)));
         ideas = new HorizontalScrollView(this);
         ideas.setHorizontalScrollBarEnabled(false);
         ideas.addView(ideaRow);
@@ -320,7 +319,9 @@ public class AppStudioActivity extends Activity {
         listBtn = pill("📱 నా యాప్‌లు", v -> showList());
         TextView cost = pill("💰 ఖర్చు", v -> { String s = AppStudio.costSaid(this, p); setStatus(s); speak(s, false); });
         newBtn = pill("🆕 కొత్తది", v -> command("new", false));
-        for (TextView t : new TextView[]{cancelBtn, stopBtn, buildBtn, installBtn, fixBtn, listBtn, cost, newBtn}) actions.addView(t);
+        versionsBtn = pill("↩️ వెర్షన్లు", v -> showVersions());
+        sendBtn = pill("📤 పంపు", v -> sendApp());
+        for (TextView t : new TextView[]{cancelBtn, stopBtn, buildBtn, installBtn, fixBtn, listBtn, versionsBtn, sendBtn, cost, newBtn}) actions.addView(t);
         buildBtn.setBackground(Ui.round(this, Ui.CYAN, Ui.CYAN, 999));
         buildBtn.setTextColor(0xFF04131A);
         fixBtn.setTextColor(Ui.GOLD);
@@ -404,6 +405,8 @@ public class AppStudioActivity extends Activity {
         installBtn.setVisibility(hasApp && !busy && "ok".equals(app.buildState) && !app.repo.isEmpty() ? View.VISIBLE : View.GONE);
         String m = p.workshopModel().trim();
         fixBtn.setVisibility(hasApp && !busy && app.brokenId != null ? View.VISIBLE : View.GONE);
+        versionsBtn.setVisibility(hasApp && !busy && versionCount >= 2 ? View.VISIBLE : View.GONE);
+        sendBtn.setVisibility(hasApp && !busy && "ok".equals(app.buildState) && !app.repo.isEmpty() ? View.VISIBLE : View.GONE);
         if (hasApp && app.brokenId != null) fixBtn.setText("🔧 సరిచేయి" + (m.isEmpty() ? "" : " (" + AppStudio.repairMoney(m, app.codeSize()) + ")"));
         go.setText(hasPlan ? "✏️ ప్లాన్ మార్చు" : hasApp ? "✏️ మార్చు" : "🧠 ప్లాన్ చూపించు");
         input.setHint(hasPlan ? "ప్లాన్‌లో మార్పు? ఉదా: ఇంకో స్క్రీన్ కావాలి" : hasApp ? "ఈ యాప్‌లో మార్పు? ఉదా: ఒక సెర్చ్ బాక్స్ పెట్టు"
@@ -446,6 +449,8 @@ public class AppStudioActivity extends Activity {
             case "cost": { String s = AppStudio.costSaid(this, p); setStatus(s); speak(s, byVoice); return; }
             case "build": publish(); return;
             case "fix": fix(byVoice); return;
+            case "versions": showVersions(); return;
+            case "send": sendApp(); return;
             case "go":
                 if (plan == null) { say0(app != null ? "ఈ యాప్ ఇప్పటికే తయారైంది Sir. ఫోన్‌లో కావాలంటే 📲 ఫోన్‌లో పెట్టు అనండి." : "ముందు ఏ యాప్ కావాలో చెప్పండి Sir.", byVoice); return; }
                 if (byVoice) waitThen("ఇలాగే తయారు చేయి", this::startMake); else startMake();
@@ -839,7 +844,11 @@ public class AppStudioActivity extends Activity {
             }
         }
         if (!stageReady) { ui.post(this::killStage); return new String[]{"", "the preview page did not open"}; }
-        try { send(json("setup").put("name", a.title).put("color", a.color).put("theme", a.theme)); } catch (Exception ignored) {}
+        try {
+            JSONObject su = json("setup").put("name", a.title).put("color", a.color).put("theme", a.theme);
+            if (a.plan != null) { JSONObject ic = AppStudio.cleanIcon(a.plan.optJSONObject("icon")); if (ic != null) su.put("icon", ic); su.put("jarvis", AppStudio.cleanJarvis(a.plan.optJSONArray("jarvis"))); }
+            send(su);
+        } catch (Exception ignored) {}
         List<AppStudio.Part> ps = new ArrayList<>(a.parts.values());
         for (AppStudio.Part pt : ps) {
             try { send(json("part").put("id", pt.id).put("css", pt.css).put("html", pt.html).put("js", pt.js)); } catch (Exception ignored) {}
@@ -942,6 +951,7 @@ public class AppStudioActivity extends Activity {
     /** Opens a saved app in the preview (₹0). */
     private void show(AppStudio.Made a) {
         app = a;
+        versionCount = AppStudio.versions(this, a.slug).size();
         plan = null;
         openTitle = a.title;
         hideOverlay();
@@ -951,6 +961,191 @@ public class AppStudioActivity extends Activity {
         refresh();
         setStatus("ప్రివ్యూ సిద్ధం చేస్తున్నాను…");
         loadPreviewLater();
+    }
+
+    // ================================================================ 📦 ideas and ready starters (₹0), 📸 a photo to plan from
+
+    /** An idea chip: with a ready starter, the choice of ₹0 now or a new plan by the AI; else its words go into the box. */
+    private void ideaTapped(String[] idea) {
+        String starter = null;
+        for (String[] s : AppStudio.STARTERS) if (s[1].equals(idea[0])) { starter = s[0]; break; }
+        Runnable words = () -> {
+            input.setText(idea[1]);
+            input.setSelection(input.getText().length());
+            input.requestFocus();
+            setStatus("✏️ కావాలంటే మార్చి, 🧠 ప్లాన్ చూపించు నొక్కండి · ప్లాన్‌కి " + planEstimate());
+        };
+        if (starter == null) { words.run(); return; }
+        String id = starter;
+        new AlertDialog.Builder(this).setTitle(idea[0])
+                .setItems(new String[]{"📦 రెడీగా ఉన్నది తెరువు (₹0, వెంటనే)", "🧠 AI తో కొత్తగా ప్లాన్ (" + planEstimate() + ")"}, (d, w) -> {
+                    if (w == 0) openStarter(id); else words.run();
+                }).setNegativeButton("వద్దు", null).show();
+    }
+
+    private void openStarter(String id) {
+        if (job != null) return;
+        AppStudio.Made a;
+        try { a = AppStudio.starter(asset("apps/starters/" + id + ".json"), AppStudio.slugs(this)); }
+        catch (Exception e) { a = null; }
+        if (a == null) { setStatus("ఆ రెడీ యాప్ తెరవలేకపోయాను Sir."); return; }
+        AppStudio.save(this, a);
+        AppStudio.saveVersion(this, a);
+        show(a);
+        setStatus("📦 \"" + a.title + "\" రెడీ (₹0). ఉచితంగా పరీక్షిస్తున్నాను… తర్వాత ప్రివ్యూలో వాడి చూడండి; ఏమైనా మార్చాలంటే కింద రాయండి.");
+        speak(a.title + " రెడీ Sir, ఖర్చు లేదు.", false);
+    }
+
+    private void photoPick() {
+        if (job != null) return;
+        new AlertDialog.Builder(this).setTitle("📸 ఏ యాప్ లాంటిది?")
+                .setMessage("ఒక యాప్ స్క్రీన్‌షాట్, లేదా పేపర్ మీద మీరు గీసిన యాప్ బొమ్మ. ఫోటో ఈ ప్లాన్ కోసం మీ AI కి మాత్రమే వెళ్తుంది; ఎక్కడా దాచను. "
+                        + "యాప్ మన సొంత డిజైన్‌లో వస్తుంది (వాళ్ళ పేరు, లోగో, మాటలు కాపీ చేయదు).")
+                .setPositiveButton("📷 కెమెరా", (d, w) -> camPick()).setNeutralButton("🖼️ గ్యాలరీ", (d, w) -> galPick()).setNegativeButton("వద్దు", null).show();
+    }
+
+    private void camPick() {
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_CAM_PERM);
+            return;
+        }
+        java.io.File f = PhotoProvider.file(this);
+        if (f.exists()) //noinspection ResultOfMethodCallIgnored
+            f.delete();
+        Uri out = PhotoProvider.uri();
+        Intent i = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT, out);
+        i.setClipData(android.content.ClipData.newRawUri("photo", out));
+        i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try { startActivityForResult(i, REQ_CAM); } catch (Exception e) { setStatus("కెమెరా తెరవలేకపోయాను Sir; గ్యాలరీ నుంచి ఎంచుకోండి."); }
+    }
+
+    private void galPick() {
+        Intent i = new Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE);
+        try { startActivityForResult(Intent.createChooser(i, "ఫోటో ఎంచుకోండి"), REQ_GAL); } catch (Exception e) { setStatus("గ్యాలరీ తెరవలేకపోయాను Sir."); }
+    }
+
+    @Override public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req != REQ_CAM_PERM) return;
+        if (res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) camPick();
+        else setStatus("📷 కెమెరా అనుమతి లేకుండా ఫోటో తీయలేను Sir. 🖼️ గ్యాలరీ నుంచి ఎంచుకోవచ్చు.");
+    }
+
+    @Override protected void onActivityResult(int req, int result, Intent data) {
+        super.onActivityResult(req, result, data);
+        if (req != REQ_CAM && req != REQ_GAL) return;
+        if (result != RESULT_OK) { if (req == REQ_CAM) //noinspection ResultOfMethodCallIgnored
+            PhotoProvider.file(this).delete(); return; }
+        Uri u = req == REQ_CAM ? PhotoProvider.uri() : data != null ? data.getData() : null;
+        if (u == null) return;
+        new Thread(() -> {
+            android.graphics.Bitmap bm = FacePhotos.upright(this, u, 1600);
+            if (req == REQ_CAM) //noinspection ResultOfMethodCallIgnored
+                PhotoProvider.file(this).delete(); // (his photo is not kept here)
+            if (bm == null) { ui.post(() -> setStatus("ఫోటో తెరవలేకపోయాను Sir.")); return; }
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out);
+            final String b64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP);
+            int side = Math.max(bm.getWidth(), bm.getHeight());
+            final android.graphics.Bitmap thumb = android.graphics.Bitmap.createScaledBitmap(bm, Math.max(1, bm.getWidth() * 480 / side), Math.max(1, bm.getHeight() * 480 / side), true);
+            ui.post(() -> { if (!destroyed) photoReady(b64, thumb); });
+        }, "jarvis-app-photo").start();
+    }
+
+    /** The photo, his words (optional), and his tap: the photo goes to his AI with the plan request, and is not kept. */
+    private void photoReady(String b64, android.graphics.Bitmap thumb) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(8), dp(16), 0);
+        android.widget.ImageView iv = new android.widget.ImageView(this);
+        iv.setImageBitmap(thumb);
+        iv.setAdjustViewBounds(true);
+        iv.setMaxHeight(dp(240));
+        box.addView(iv);
+        EditText words = new EditText(this);
+        words.setHint("ఏమైనా చెప్పాలా? ఉదా: ఇలాంటి పాల లెక్క యాప్ (ఖాళీ అయినా సరే)");
+        words.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        box.addView(words);
+        String m = p.workshopModel().trim();
+        new AlertDialog.Builder(this).setTitle("📸 ఈ ఫోటోతో ప్లాన్")
+                .setView(box)
+                .setPositiveButton("🧠 ప్లాన్ చూపించు" + (m.isEmpty() ? "" : " (" + AppStudio.planMoney(m, true) + ")"), (d, w) -> {
+                    String s = words.getText().toString().trim();
+                    startPlan(s, s, false, b64);
+                }).setNegativeButton("వద్దు", null).show();
+    }
+
+    // ================================================================ ↩️ versions, 📤 send to family
+
+    private void showVersions() {
+        AppStudio.Made a = app;
+        if (a == null || job != null) return;
+        List<AppStudio.Made> vs = AppStudio.versions(this, a.slug);
+        if (vs.size() < 2) { setStatus("ఈ యాప్‌కి ఇంకా ఒక్క వెర్షనే ఉంది Sir."); return; }
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM, h:mm a", new java.util.Locale("te", "IN"));
+        String[] items = new String[vs.size()];
+        for (int i = 0; i < vs.size(); i++) {
+            AppStudio.Made v = vs.get(i);
+            items[i] = "v" + v.version + " · " + f.format(new java.util.Date(v.changedAt)) + " · " + v.parts.size() + " భాగాలు" + (v.version == a.version ? "  (ఇప్పుడు ఇదే)" : "");
+        }
+        new AlertDialog.Builder(this).setTitle("↩️ \"" + a.title + "\" వెర్షన్లు").setItems(items, (d, w) -> {
+            AppStudio.Made v = vs.get(w);
+            if (v.version == a.version) return;
+            new AlertDialog.Builder(this).setTitle("v" + v.version + " కి తిరిగి వెళ్ళాలా?")
+                    .setMessage("ఇప్పటి v" + a.version + " కూడా దాచి ఉంటుంది; కావాలంటే మళ్ళీ దానికి రావచ్చు. ఖర్చు ₹0. ఫోన్‌లో కావాలంటే తర్వాత 📲 నొక్కండి.")
+                    .setPositiveButton("↩️ తిరిగి వెళ్ళు", (d2, w2) -> restore(a, v)).setNegativeButton("వద్దు", null).show();
+        }).setNegativeButton("మూసేయి", null).show();
+    }
+
+    /** An old version comes back as the newest one (its parts, plan and look; this app's build state, repo and key stay). */
+    private void restore(AppStudio.Made now, AppStudio.Made old) {
+        AppStudio.Made r = copyOf(old);
+        r.version = now.version + 1;
+        r.changedAt = System.currentTimeMillis();
+        r.cost = now.cost;
+        r.estimated = now.estimated;
+        r.repo = now.repo;
+        r.builtCommit = now.builtCommit;
+        r.buildState = now.buildState;
+        r.builtVersion = now.builtVersion;
+        r.buildAt = now.buildAt;
+        r.key = now.key;
+        AppStudio.save(this, r);
+        AppStudio.saveVersion(this, r);
+        show(r);
+        setStatus("↩️ v" + old.version + " ని తిరిగి తెచ్చాను (ఇప్పుడు v" + r.version + "). ఫోన్‌లో కావాలంటే 📲 ఫోన్‌లో పెట్టు.");
+    }
+
+    /** 📤 The app's latest APK to family (WhatsApp etc.), from the share screen: only on his tap, after he says yes. */
+    private void sendApp() {
+        AppStudio.Made a = app;
+        if (a == null || a.repo.isEmpty() || !"ok".equals(a.buildState)) { setStatus("ముందు 📲 ఫోన్‌లో పెట్టు; బిల్డ్ అయ్యాక పంపొచ్చు Sir."); return; }
+        new AlertDialog.Builder(this).setTitle("📤 \"" + a.title + "\" పంపాలా?")
+                .setMessage("యాప్ ఫైల్ (APK) Downloads/Jarvis/apps లో సేవ్ చేసి, మీరు ఎంచుకున్న చోటికి (WhatsApp…) పంపుతాను. "
+                        + "అందుకున్నవాళ్ళు \"Install\" నొక్కాలి. వాళ్ళ డేటా వాళ్ళ ఫోన్‌లోనే ఉంటుంది; మీ డేటా వెళ్ళదు.")
+                .setPositiveButton("📤 పంపు", (d, w) -> {
+                    setStatus("📤 యాప్ ఫైల్ తెస్తున్నాను…");
+                    Context c = getApplicationContext();
+                    new Thread(() -> {
+                        try {
+                            byte[] apk = AppMaker.apkBytes(c, a.repo);
+                            String name = (a.name == null || a.name.isEmpty() ? a.slug : a.name).replaceAll("[\\\\/:*?\"<>|]", " ").trim() + ".apk";
+                            Coder.Made m = Coder.save(c, "Jarvis/apps", name, "application/vnd.android.package-archive", apk);
+                            ui.post(() -> {
+                                if (destroyed) return;
+                                setStatus("💾 సేవ్ అయింది: " + m.where);
+                                if (m.uri == null) return;
+                                try {
+                                    Intent s = new Intent(Intent.ACTION_SEND).setType("application/vnd.android.package-archive").putExtra(Intent.EXTRA_STREAM, m.uri)
+                                            .putExtra(Intent.EXTRA_TEXT, "📱 " + a.title + " (Jarvis చేసిన యాప్)").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                    startActivity(Intent.createChooser(s, "ఎక్కడికి పంపాలి?"));
+                                } catch (Exception e) { setStatus("💾 సేవ్ అయింది: " + m.where + " (షేర్ తెరవలేకపోయాను)"); }
+                            });
+                        } catch (Exception e) {
+                            ui.post(() -> setStatus("📤 యాప్ ఫైల్ తేలేకపోయాను Sir: " + e.getMessage()));
+                        }
+                    }, "jarvis-app-send").start();
+                }).setNegativeButton("వద్దు", null).show();
     }
 
     // ================================================================ the paid jobs: a plan, an app, a change, a repair
@@ -967,7 +1162,10 @@ public class AppStudioActivity extends Activity {
         }
     }
 
-    private void startPlan(String what, String heard, boolean saidAlready) {
+    private void startPlan(String what, String heard, boolean saidAlready) { startPlan(what, heard, saidAlready, null); }
+
+    /** (with {@code photo}: a JPEG, base64, of an app's screen or a paper drawing: sent only with this plan, never kept) */
+    private void startPlan(String what, String heard, boolean saidAlready, String photo) {
         if (job != null) { setStatus("ఒక పని ఇంకా జరుగుతోంది Sir."); return; }
         Workshop.Engine e = engineOrSay(true);
         if (e == null) return;
@@ -976,9 +1174,11 @@ public class AppStudioActivity extends Activity {
         planWhat = what;
         planHeard = heard;
         begin(j, "🧠 " + WorkshopActivity.label(e.model) + " ప్లాన్ రాస్తోంది… · " + AppStudio.planMoney(e.model));
-        titleView.setText(what.length() > 34 ? what.substring(0, 34) + "…" : what);
+        String shown = what.isEmpty() && photo != null ? "📸 ఫోటో లాంటి యాప్" : what;
+        titleView.setText(shown.length() > 34 ? shown.substring(0, 34) + "…" : shown);
         if (!saidAlready) speak("ముందు ప్లాన్ చూపిస్తాను Sir.", false);
-        new Thread(() -> runPlan(j, AppStudio.planMessage(what, heard)), "jarvis-app-plan").start();
+        j.photo = photo;
+        new Thread(() -> runPlan(j, AppStudio.planMessage(what, heard, photo != null)), "jarvis-app-plan").start();
     }
 
     private void startReplan(String change) {
@@ -1021,7 +1221,7 @@ public class AppStudioActivity extends Activity {
         Workshop.Bill b = new Workshop.Bill();
         String failure = null;
         try {
-            Workshop.stream(j.engine, AppStudio.PLAN_SYSTEM, message, AppStudio.PLAN_OUT, new Workshop.Sink() {
+            Workshop.stream(j.engine, AppStudio.PLAN_SYSTEM, message, j.photo, AppStudio.PLAN_OUT, new Workshop.Sink() {
                 @Override public void text(String s) { got.append(s); }
             }, b);
         } catch (CancellationException x) {
@@ -1137,6 +1337,23 @@ public class AppStudioActivity extends Activity {
             @Override public void remove(String id) { if (j.work.parts.remove(id) != null) { j.removed.add(id); ui.post(() -> row(id, "🗑️ " + id + " తీసేశాను", Ui.MUTED)); } }
             @Override public void say(String s) { j.say = s; }
             @Override public void refuse(String s) { j.refused = s; }
+            @Override public void icon(String json) {
+                try {
+                    JSONObject ic = AppStudio.cleanIcon(new JSONObject(json));
+                    if (ic == null) return;
+                    if (j.work.plan == null) j.work.plan = new JSONObject();
+                    j.work.plan.put("icon", ic);
+                    j.changed.add("(icon)");
+                    ui.post(() -> row("(icon)", "🎨 కొత్త ఐకాన్", Ui.OK));
+                } catch (Exception ignored) {}
+            }
+            @Override public void jarvis(String json) {
+                try {
+                    if (j.work.plan == null) j.work.plan = new JSONObject();
+                    j.work.plan.put("jarvis", AppStudio.cleanJarvis(new org.json.JSONArray(json)));
+                    j.changed.add("(jarvis)");
+                } catch (Exception ignored) {}
+            }
         });
     }
 
@@ -1316,6 +1533,7 @@ public class AppStudioActivity extends Activity {
             if (!isNew) a.version++;
             if (j.kind.equals("make") && a.what == null) a.what = j.what;
             AppStudio.save(this, a);
+            AppStudio.saveVersion(this, a);
         }
         // (a cut answer: the plan's screens that never came, said plainly; "<name> స్క్రీన్ చేర్చు" adds one as a change)
         List<String> missing = new ArrayList<>();
@@ -1354,6 +1572,7 @@ public class AppStudioActivity extends Activity {
             if (keep) {
                 if (isNew) plan = null;
                 app = a;
+                versionCount = AppStudio.versions(this, a.slug).size();
                 openTitle = a.title;
                 titleView.setText(a.title);
             }

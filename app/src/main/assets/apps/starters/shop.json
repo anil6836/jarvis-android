@@ -1,0 +1,127 @@
+{
+ "plan": {
+  "title": "షాప్ బిల్లు",
+  "name": "బిల్లు",
+  "slug": "shop-bill",
+  "about": "చిన్న షాప్ కోసం: సరుకులు, ఎన్ని, ధర రాసి బిల్లు చేసి, షేర్ / PDF చేసే యాప్. ఈ రోజు, ఈ నెల అమ్మకం కూడా.",
+  "color": "#6d4c41",
+  "theme": "light",
+  "size": "small",
+  "internet": false,
+  "say": "షాప్ బిల్లు రెడీ Sir.",
+  "screens": [
+   {
+    "id": "home",
+    "name": "బిల్లులు",
+    "what": "ఈ రోజు / ఈ నెల అమ్మకం, దాచిన బిల్లుల లిస్ట్, ➕ కొత్త బిల్లు",
+    "tab": true
+   },
+   {
+    "id": "bill",
+    "name": "కొత్త బిల్లు",
+    "what": "సరుకు, ఎన్ని, ధర; త్వరగా చేర్చే బటన్లు; మొత్తం; 💾 📤 📄",
+    "tab": false
+   },
+   {
+    "id": "view",
+    "name": "బిల్లు",
+    "what": "దాచిన బిల్లు, 📤 షేర్, 📄 PDF, 📋 కాపీ, తీసేయి",
+    "tab": false
+   },
+   {
+    "id": "goods",
+    "name": "ధరలు",
+    "what": "తరచూ అమ్మే సరుకులు, ధరలు",
+    "tab": true
+   }
+  ],
+  "saves": [
+   "బిల్లులు: నంబర్, ఎవరికి, సరుకులు, తేదీ",
+   "సరుకుల ధరల లిస్ట్",
+   "సగం రాసిన బిల్లు"
+  ],
+  "extras": [
+   "బిల్లు నంబర్లు దానంతట అవే",
+   "ధరల లిస్ట్‌లోని సరుకు ఒక్క నొక్కుతో"
+  ],
+  "later": [
+   "డబ్బులు తీసుకోవడం / UPI ఈ యాప్‌లో ఉండదు"
+  ],
+  "powers": [
+   "share",
+   "pdf",
+   "copy",
+   "jarvis"
+  ],
+  "icon": {
+   "bg": "#6d4c41",
+   "fg": "#ffffff",
+   "paths": [
+    {
+     "d": "M34,26 H74 V82 L68,77 L62,82 L56,77 L50,82 L44,77 L38,82 L34,78 Z",
+     "fill": "#ffffff"
+    },
+    {
+     "d": "M42,38 H66 V43 H42 Z",
+     "fill": "#6d4c41"
+    },
+    {
+     "d": "M42,50 H66 V55 H42 Z",
+     "fill": "#6d4c41"
+    },
+    {
+     "d": "M42,62 H58 V67 H42 Z",
+     "fill": "#6d4c41"
+    }
+   ]
+  },
+  "jarvis": [
+   {
+    "id": "add-item",
+    "what": "తెరిచిన బిల్లులో ఒక సరుకు చేర్చడం",
+    "fields": {
+     "name": "text",
+     "qty": "number",
+     "price": "number"
+    }
+   }
+  ]
+ },
+ "parts": [
+  {
+   "id": "data",
+   "status": "బిల్లుల డేటా సిద్ధం",
+   "html": "",
+   "css": "",
+   "js": "App.my.BILLS = 'bills';\nApp.my.GOODS = 'goods';\nApp.my.cur = () => { const b = App.load('current', null); return b && Array.isArray(b.lines) ? b : { who: '', lines: [] }; };\nApp.my.setCur = (b) => App.save('current', b);\nApp.my.total = (b) => (b.lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0);\nApp.my.q = (x) => (Number.isInteger(Number(x)) ? App.n(x) : App.n(x, 2));\nApp.my.text = (b) => ['🧾 బిల్లు' + (b.no ? ' #' + b.no : '') + (b.who ? ' · ' + b.who : ''), App.date(b.date || App.today())]\n  .concat((b.lines || []).map((l) => l.name + '  ' + App.my.q(l.qty) + ' × ' + App.rs(l.price) + ' = ' + App.rs(l.qty * l.price)))\n  .concat(['మొత్తం: ' + App.rs(App.my.total(b))]).join('\\n');\nApp.my.html = (b) => `<h2>బిల్లు${b.no ? ' #' + b.no : ''}</h2><p>${b.who ? App.esc(b.who) + ' · ' : ''}${App.date(b.date || App.today())}</p>`\n  + '<table><tr><th>సరుకు</th><th>ఎన్ని</th><th>ధర</th><th>మొత్తం</th></tr>'\n  + (b.lines || []).map((l) => `<tr><td>${App.esc(l.name)}</td><td class=\"n\">${App.my.q(l.qty)}</td><td class=\"n\">${App.rs(l.price)}</td><td class=\"n\">${App.rs(l.qty * l.price)}</td></tr>`).join('')\n  + `<tr><th colspan=\"3\">మొత్తం</th><th class=\"n\">${App.rs(App.my.total(b))}</th></tr></table>`;\nApp.my.share = async (b) => { try { await App.share(App.my.text(b)); } catch (e) { App.toast('షేర్ కాలేదు'); } };\nApp.my.pdf = async (b) => { try { await App.pdf('బిల్లు' + (b.no ? ' ' + b.no : ''), App.my.html(b)); } catch (e) { App.toast('PDF కాలేదు'); } };\nApp.my.addLine = (name, qty, price) => {\n  const b = App.my.cur();\n  b.lines.push({ name: String(name).slice(0, 60), qty, price });\n  App.my.setCur(b);\n  if (App.my.drawBill) App.my.drawBill();\n};\nApp.onJarvis('add-item', (d) => {\n  const name = String(d.name || '').trim().slice(0, 60);\n  if (!name) return 'సరుకు పేరు లేదు; ఏమీ చేర్చలేదు';\n  const g = App.items(App.my.GOODS).find((x) => String(x.name).toLowerCase() === name.toLowerCase());\n  const qty = Number(d.qty) > 0 ? Number(d.qty) : 1;\n  const price = d.price != null && d.price !== '' && Number(d.price) >= 0 ? Number(d.price) : g ? Number(g.price) : NaN;\n  if (!(price >= 0)) return name + ' ధర తెలియదు; ధరతో చెప్పండి';\n  App.my.addLine(name, qty, price);\n  return name + ' ' + App.my.q(qty) + ' × ' + App.rs(price) + ' బిల్లులో చేర్చాను';\n});"
+  },
+  {
+   "id": "home",
+   "status": "బిల్లుల లిస్ట్ గీస్తున్నాను",
+   "html": "<section class=\"screen\" id=\"home\" data-title=\"షాప్ బిల్లు\" data-tab=\"🧾|బిల్లులు\">\n  <div class=\"grid\">\n    <div class=\"stat\"><div class=\"v\" id=\"home-today\">₹0</div><div class=\"k\">ఈ రోజు అమ్మకం</div></div>\n    <div class=\"stat\"><div class=\"v\" id=\"home-month\">₹0</div><div class=\"k\">ఈ నెల</div></div>\n  </div>\n  <div class=\"gap\"></div>\n  <button class=\"btn primary block\" id=\"home-new\">➕ కొత్త బిల్లు</button>\n  <div class=\"gap\"></div>\n  <div id=\"home-list\"></div>\n</section>",
+   "css": "#home .stat .v { color: var(--accent); }",
+   "js": "App.onShow('home', () => {\n  const all = App.items(App.my.BILLS).slice().sort((a, b) => b.at - a.at), today = App.today(), mk = App.monthKey(new Date());\n  App.text('#home-today', App.rs(all.filter((b) => b.date === today).reduce((s, b) => s + App.my.total(b), 0)));\n  App.text('#home-month', App.rs(all.filter((b) => App.monthKey(b.date) === mk).reduce((s, b) => s + App.my.total(b), 0)));\n  const c = App.my.cur();\n  App.text('#home-new', c.lines.length ? '✏️ సగం బిల్లు కొనసాగించు (' + c.lines.length + ' సరుకులు)' : '➕ కొత్త బిల్లు');\n  App.set('#home-list', all.length ? '<div class=\"list\">' + all.slice(0, 100).map((b) => `\n    <div class=\"item\" data-id=\"${App.esc(b.id)}\"><div class=\"ic\">🧾</div>\n      <div class=\"w\"><div class=\"t\">#${App.esc(b.no)} ${App.esc(b.who || '')}</div><div class=\"s\">${App.date(b.date, 'short')} · ${(b.lines || []).length} సరుకులు</div></div>\n      <div class=\"r\">${App.rs(App.my.total(b))}</div></div>`).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">🧾</div>ఇంకా బిల్లులు లేవు. ➕ నొక్కి మొదలుపెట్టండి.</div>');\n});\nApp.click('#home-new', () => App.go('bill'));\nApp.click('#home-list .item', (ev, el) => App.go('view', App.find(App.my.BILLS, el.dataset.id)));"
+  },
+  {
+   "id": "bill",
+   "status": "బిల్లు రాసే స్క్రీన్",
+   "html": "<section class=\"screen\" id=\"bill\" data-title=\"కొత్త బిల్లు\">\n  <div class=\"field\"><label>ఎవరికి (పేరు, ఇష్టమైతే)</label><input id=\"bill-who\" type=\"text\"></div>\n  <div class=\"card\">\n    <div class=\"field\"><label>సరుకు</label><input id=\"bill-name\" type=\"text\" list=\"bill-goods\"></div>\n    <div class=\"grid\">\n      <div class=\"field\"><label>ఎన్ని</label><input id=\"bill-qty\" type=\"number\" inputmode=\"decimal\" placeholder=\"1\"></div>\n      <div class=\"field\"><label>ఒక్కటి ధర (₹)</label><input id=\"bill-price\" type=\"number\" inputmode=\"decimal\"></div>\n    </div>\n    <button class=\"btn block\" id=\"bill-add\">➕ చేర్చు</button>\n  </div>\n  <div id=\"bill-quick\" class=\"chips\"></div>\n  <div id=\"bill-lines\"></div>\n  <div class=\"card\"><div class=\"row\"><div class=\"muted\">మొత్తం</div><div class=\"big\" id=\"bill-total\">₹0</div></div></div>\n  <div class=\"btns\"><button class=\"btn primary\" id=\"bill-save\">💾 దాచు</button><button class=\"btn\" id=\"bill-share\">📤 షేర్</button><button class=\"btn\" id=\"bill-pdf\">📄 PDF</button></div>\n  <datalist id=\"bill-goods\"></datalist>\n</section>",
+   "css": "",
+   "js": "App.my.drawBill = () => {\n  const b = App.my.cur();\n  App.set('#bill-lines', b.lines.length ? '<div class=\"list\">' + b.lines.map((l, i) => `\n    <div class=\"item\" data-i=\"${i}\"><div class=\"w\"><div class=\"t\">${App.esc(l.name)}</div><div class=\"s\">${App.my.q(l.qty)} × ${App.rs(l.price)}</div></div>\n      <div class=\"r\">${App.rs(l.qty * l.price)}</div></div>`).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">🛒</div>పైన సరుకు రాసి ➕ నొక్కండి.</div>');\n  App.text('#bill-total', App.rs(App.my.total(b)));\n};\nApp.onShow('bill', () => {\n  const b = App.my.cur(), goods = App.items(App.my.GOODS);\n  App.val('#bill-who', b.who || '');\n  App.set('#bill-goods', goods.map((g) => `<option value=\"${App.esc(g.name)}\"></option>`).join(''));\n  App.set('#bill-quick', goods.slice(0, 12).map((g) => `<button class=\"chip\" data-id=\"${App.esc(g.id)}\">${App.esc(g.name)} ${App.rs(g.price)}</button>`).join(''));\n  App.my.drawBill();\n});\nApp.on('#bill-who', 'change', () => { const b = App.my.cur(); b.who = App.val('#bill-who').slice(0, 60); App.my.setCur(b); });\nApp.on('#bill-name', 'change', () => {\n  const g = App.items(App.my.GOODS).find((x) => x.name === App.val('#bill-name'));\n  if (g && !App.val('#bill-price')) App.val('#bill-price', g.price);\n});\nApp.click('#bill-add', () => {\n  const name = App.val('#bill-name'), qty = Number(App.val('#bill-qty') || 1), price = Number(App.val('#bill-price'));\n  if (!name) { App.toast('సరుకు పేరు రాయండి'); return; }\n  if (!(qty > 0)) { App.toast('ఎన్ని అనేది సరిగా రాయండి'); return; }\n  if (App.val('#bill-price') === '' || !(price >= 0)) { App.toast('ధర రాయండి'); return; }\n  App.my.addLine(name, qty, price);\n  App.beep('tap');\n  App.val('#bill-name', ''); App.val('#bill-qty', ''); App.val('#bill-price', '');\n});\nApp.click('#bill-quick .chip', (ev, el) => {\n  const g = App.find(App.my.GOODS, el.dataset.id);\n  if (g) { App.my.addLine(g.name, 1, Number(g.price) || 0); App.beep('tap'); }\n});\nApp.click('#bill-lines .item', async (ev, el) => {\n  const b = App.my.cur(), i = Number(el.dataset.i), l = b.lines[i];\n  if (!l) return;\n  if (await App.ask(l.name + ' బిల్లులోంచి తీసేయాలా?', 'తీసేయి', 'వద్దు')) { b.lines.splice(i, 1); App.my.setCur(b); App.my.drawBill(); }\n});\nApp.click('#bill-save', () => {\n  const b = App.my.cur();\n  if (!b.lines.length) { App.toast('బిల్లులో సరుకులు లేవు'); return; }\n  const no = (Number(App.load('billNo', 0)) || 0) + 1;\n  App.save('billNo', no);\n  const saved = App.add(App.my.BILLS, { no, who: b.who || '', lines: b.lines, date: App.today() });\n  App.my.setCur({ who: '', lines: [] });\n  App.beep('done');\n  App.toast('బిల్లు #' + no + ' దాచాను');\n  App.back();\n  App.go('view', saved);\n});\nApp.click('#bill-share', () => { const b = App.my.cur(); if (!b.lines.length) { App.toast('బిల్లులో సరుకులు లేవు'); return; } App.my.share(b); });\nApp.click('#bill-pdf', () => { const b = App.my.cur(); if (!b.lines.length) { App.toast('బిల్లులో సరుకులు లేవు'); return; } App.my.pdf(b); });"
+  },
+  {
+   "id": "view",
+   "status": "దాచిన బిల్లు చూపడం",
+   "html": "<section class=\"screen\" id=\"view\" data-title=\"బిల్లు\">\n  <div class=\"card\" id=\"view-body\"></div>\n  <div class=\"btns\"><button class=\"btn\" id=\"view-share\">📤 షేర్</button><button class=\"btn\" id=\"view-pdf\">📄 PDF</button><button class=\"btn\" id=\"view-copy\">📋 కాపీ</button></div>\n  <div class=\"gap\"></div>\n  <button class=\"btn danger block\" id=\"view-del\">ఈ బిల్లు తీసేయి</button>\n</section>",
+   "css": "",
+   "js": "App.onShow('view', (b) => {\n  App.my.viewing = b && b.id ? b.id : null;\n  if (!App.my.viewing) { App.set('#view-body', '<div class=\"muted\">ఏ బిల్లూ ఎంచుకోలేదు</div>'); return; }\n  App.title('బిల్లు #' + b.no);\n  App.set('#view-body', App.my.html(b));\n});\nconst shown = () => (App.my.viewing ? App.find(App.my.BILLS, App.my.viewing) : null);\nApp.click('#view-share', () => { const b = shown(); if (b) App.my.share(b); });\nApp.click('#view-pdf', () => { const b = shown(); if (b) App.my.pdf(b); });\nApp.click('#view-copy', async () => { const b = shown(); if (!b) return; try { await App.copy(App.my.text(b)); } catch (e) { App.toast('కాపీ కాలేదు'); } });\nApp.click('#view-del', async () => {\n  const b = shown();\n  if (!b) return;\n  if (await App.ask('బిల్లు #' + b.no + ' తీసేయాలా?', 'తీసేయి', 'వద్దు')) { App.del(App.my.BILLS, b.id); App.my.viewing = null; App.toast('తీసేశాను'); App.back(); }\n});"
+  },
+  {
+   "id": "goods",
+   "status": "సరుకుల ధరల లిస్ట్",
+   "html": "<section class=\"screen\" id=\"goods\" data-title=\"సరుకుల ధరలు\" data-tab=\"📦|ధరలు\">\n  <p class=\"muted\">తరచూ అమ్మే సరుకులు, ధరలు ఇక్కడ రాస్తే బిల్లులో ఒక్క నొక్కుతో చేరుతాయి.</p>\n  <div id=\"goods-list\"></div>\n  <button class=\"fab\" id=\"goods-add\" aria-label=\"కొత్త సరుకు\">+</button>\n</section>",
+   "css": "",
+   "js": "App.onShow('goods', () => {\n  const g = App.items(App.my.GOODS).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));\n  App.set('#goods-list', g.length ? '<div class=\"list\">' + g.map((x) => `\n    <div class=\"item\" data-id=\"${App.esc(x.id)}\"><div class=\"ic\">📦</div><div class=\"w\"><div class=\"t\">${App.esc(x.name)}</div></div><div class=\"r\">${App.rs(x.price)}</div></div>`).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">📦</div>ఇంకా సరుకులు లేవు. + నొక్కి రాయండి.</div>');\n});\nApp.my.editGood = async (x) => {\n  const f = await App.form(x ? 'సరుకు మార్చండి' : 'కొత్త సరుకు', [\n    { key: 'name', label: 'పేరు', need: true, value: x ? x.name : '' },\n    { key: 'price', label: 'ధర (₹)', type: 'number', need: true, value: x ? x.price : '' }], 'దాచు');\n  if (!f) return;\n  if (!(f.price >= 0)) { App.toast('ధర సరిగా రాయండి'); return; }\n  const rec = { name: String(f.name).slice(0, 60), price: f.price };\n  if (x) App.update(App.my.GOODS, x.id, rec); else App.add(App.my.GOODS, rec);\n  App.toast('దాచాను');\n  App.refresh();\n};\nApp.click('#goods-add', () => App.my.editGood(null));\nApp.click('#goods-list .item', async (ev, el) => {\n  const x = App.find(App.my.GOODS, el.dataset.id);\n  if (!x) return;\n  const i = await App.pick(x.name, ['✏️ మార్చు', '🗑️ తీసేయి']);\n  if (i === 0) await App.my.editGood(x);\n  if (i === 1 && await App.ask(x.name + ' తీసేయాలా?', 'తీసేయి', 'వద్దు')) { App.del(App.my.GOODS, x.id); App.refresh(); }\n});"
+  }
+ ]
+}

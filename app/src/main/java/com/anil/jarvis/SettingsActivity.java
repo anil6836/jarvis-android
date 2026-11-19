@@ -600,7 +600,9 @@ public class SettingsActivity extends Activity {
         box.addView(clOpen);
         // 📱 the app studio: a plan first, this same AI and this same monthly limit (18 Nov)
         note("📱 యాప్ స్టూడియో: మీరు చెప్పిన యాప్‌కి ముందు తెలుగులో ప్లాన్ (ఇదే AI, సుమారు ₹2–10), మీరు సరే అన్నాకే తయారీ (ఖర్చు ముందే చూపిస్తుంది; ఇదే నెల హద్దులో). "
-                + "తయారైన యాప్ తనంతట తానే పరీక్షించుకుంటుంది, ప్రివ్యూలో వాడి చూడొచ్చు; 📲 ఫోన్‌లో పెట్టడం (మీ GitHub లో ప్రైవేట్ repo లో APK) ₹0. ఏ యాప్ అయినా తర్వాత మార్చొచ్చు.");
+                + "తయారైన యాప్ తనంతట తానే పరీక్షించుకుంటుంది, ప్రివ్యూలో వాడి చూడొచ్చు; 📲 ఫోన్‌లో పెట్టడం (మీ GitHub లో ప్రైవేట్ repo లో APK) ₹0. ఏ యాప్ అయినా తర్వాత మార్చొచ్చు. "
+                + "📦 5 రెడీ యాప్‌లు ₹0; యాప్‌లకు 🔔 రిమైండర్, 📷 ఫోటో, 📍 చోటు, 📤 షేర్, 📄 PDF, 🗣️ మాట, 📲 విడ్జెట్ (వాడిన వాటికే అనుమతి); "
+                + "🗣️ Jarvis తో యాప్‌లో రాయడం; ↩️ పాత వెర్షన్లు; 📤 కుటుంబానికి APK (మీరు నొక్కితేనే).");
         TextView asOpen = Ui.text(this, "📱 యాప్ స్టూడియో తెరువు →", 15, accent);
         asOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         asOpen.setOnClickListener(v -> { autosave(); AppStudioActivity.open(this, null, null, false); });

@@ -106,7 +106,12 @@ final class AppMaker {
         JSONArray tree = new JSONArray();
         int hue = Math.abs(appName.hashCode()) % 360;
         String color = String.format(Locale.ROOT, "#%06X", android.graphics.Color.HSVToColor(new float[]{hue, 0.65f, 0.85f}) & 0xFFFFFF);
-        for (String[] f : files(pkg, appName, html, color, true, legacy, true)) tree.put(new JSONObject().put("path", f[0]).put("mode", "100644").put("type", "blob").put("content", f[1]));
+        Shell sh = new Shell(pkg, appName, html);
+        sh.color = color;
+        sh.internet = true;
+        sh.legacyKey = legacy;
+        sh.dark = true;
+        for (String[] f : files(sh, n -> assetText(c, n))) tree.put(new JSONObject().put("path", f[0]).put("mode", "100644").put("type", "blob").put("content", f[1]));
         if (legacy) {
             byte[] ks = readAsset(c, "jarvis-apps.keystore");
             String ksBlob = request("POST", api + "/git/blobs", new JSONObject().put("content", Base64.encodeToString(ks, Base64.NO_WRAP)).put("encoding", "base64"), auth).getString("sha");
@@ -148,7 +153,14 @@ final class AppMaker {
         String parent = ref.getJSONObject("object").getString("sha");
         String baseTree = request("GET", api + "/git/commits/" + parent, null, auth).getJSONObject("tree").getString("sha");
         JSONArray tree = new JSONArray();
-        for (String[] f : files(pkg, a.name == null || a.name.isEmpty() ? a.title : a.name, html, a.color, a.internet, false, "dark".equals(a.theme)))
+        Shell sh = new Shell(pkg, a.name == null || a.name.isEmpty() ? a.title : a.name, html);
+        sh.color = a.color;
+        sh.internet = a.internet;
+        sh.dark = "dark".equals(a.theme);
+        sh.powers.addAll(AppStudio.powers(a));
+        sh.iconXml = AppStudio.iconXml(a.plan == null ? null : a.plan.optJSONObject("icon"));
+        sh.key = a.key;
+        for (String[] f : files(sh, n -> assetText(c, n)))
             tree.put(new JSONObject().put("path", f[0]).put("mode", "100644").put("type", "blob").put("content", f[1]));
         String treeSha = request("POST", api + "/git/trees", new JSONObject().put("base_tree", baseTree).put("tree", tree), auth).getString("sha");
         String commit = request("POST", api + "/git/commits", new JSONObject().put("message", "Jarvis app studio: " + a.title + " v" + a.version)
@@ -350,24 +362,42 @@ final class AppMaker {
 
     // ------------------------------------------------------------------ the project
 
+    /** What the Android project around an app's page needs: its names, look, signing and the phone's powers its code uses. */
+    static final class Shell {
+        final String pkg, name, html;
+        String color = "#1E88E5", iconXml, key;
+        boolean internet, legacyKey, dark;
+        final java.util.Set<String> powers = new java.util.HashSet<>();
+        Shell(String pkg, String name, String html) { this.pkg = pkg; this.name = name; this.html = html; }
+    }
+
+    /** One of the shell's template files (assets/apps/shell/…) as text. */
+    static String assetText(Context c, String name) {
+        try { return new String(readAsset(c, "apps/shell/" + name), java.nio.charset.StandardCharsets.UTF_8); }
+        catch (Exception e) { throw new IllegalStateException("shell file " + name + " missing"); }
+    }
+
     /**
      * The whole Android project around the app's page: the shell (a full-screen WebView; the back button asks the page
-     * first), the icon in the app's colour, the manifest (INTERNET only when the app uses it), the build and its signing:
-     * {@code legacyKey} = the old shared key (apps made before the studio), else the app's own key, made on GitHub by the
-     * build the first time and kept only in the app's private repo.
+     * first; window.JarvisPhone gives the page the phone's powers), the icon (the app's own, or a star in its colour), the
+     * manifest with ONLY the permissions and parts the app's code uses (INTERNET only when planned), the build and its
+     * signing: {@code legacyKey} = the old shared key (apps made before the studio), else the app's own key, made on GitHub
+     * by the build the first time and kept only in the app's private repo. {@code asset} reads assets/apps/shell/<name>.
      */
-    static String[][] files(String pkg, String appName, String html, String color, boolean internet, boolean legacyKey, boolean dark) {
+    static String[][] files(Shell s, java.util.function.Function<String, String> asset) {
+        String pkg = s.pkg, appName = s.name;
         String path = pkg.replace('.', '/');
         String xmlName = appName.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("'", "\\'").replace("\"", "\\\"");
         if (xmlName.startsWith("@") || xmlName.startsWith("?")) xmlName = "\\" + xmlName; // not a resource reference
-        String col = color != null && color.matches("#[0-9a-fA-F]{6}") ? color.toUpperCase(Locale.ROOT) : "#1E88E5";
-        String bg = dark ? "0xFF0F1318" : "0xFFF4F6F9";
-        String signing = legacyKey
+        String col = s.color != null && s.color.matches("#[0-9a-fA-F]{6}") ? s.color.toUpperCase(Locale.ROOT) : "#1E88E5";
+        java.util.Set<String> pw = s.powers;
+        boolean remind = pw.contains("remind"), photo = pw.contains("photo"), where = pw.contains("where"), widget = pw.contains("widget"), qr = pw.contains("qr");
+        String signing = s.legacyKey
                 ? "    signingConfigs {\n        jarvis {\n            storeFile file('jarvis-apps.keystore')\n            storePassword 'jarvisapps'\n            keyAlias 'jarvisapps'\n            keyPassword 'jarvisapps'\n        }\n    }\n\n"
                 : "    // this app's own key: made by the build the first time, kept only in this private repo\n"
                 + "    def pass = file('keystore.pass').exists() ? file('keystore.pass').text.trim() : ''\n"
                 + "    signingConfigs {\n        jarvis {\n            storeFile file('app.keystore')\n            storePassword pass\n            keyAlias 'app'\n            keyPassword pass\n            storeType 'pkcs12'\n        }\n    }\n\n";
-        String keyStep = legacyKey ? "" : "      - name: Signing key (made once, kept only in this private repo)\n        run: |\n"
+        String keyStep = s.legacyKey ? "" : "      - name: Signing key (made once, kept only in this private repo)\n        run: |\n"
                 + "          set -e\n"
                 + "          export GIT_AUTHOR_NAME=Jarvis GIT_AUTHOR_EMAIL=jarvis@users.noreply.github.com GIT_COMMITTER_NAME=Jarvis GIT_COMMITTER_EMAIL=jarvis@users.noreply.github.com\n"
                 + "          take() { git show origin/main:app/app.keystore > app/app.keystore; git show origin/main:app/keystore.pass > app/keystore.pass; }\n"
@@ -389,12 +419,42 @@ final class AppMaker {
                 + "            if git cat-file -e origin/main:app/app.keystore 2>/dev/null; then take; echo 'the key is here'; exit 0; fi\n"
                 + "          done\n"
                 + "          echo 'could not keep the signing key'; exit 1\n\n";
-        return new String[][]{
+        // the manifest: only what this app's code uses
+        StringBuilder perms = new StringBuilder();
+        if (s.internet) perms.append("    <uses-permission android:name=\"android.permission.INTERNET\" />\n");
+        perms.append("    <uses-permission android:name=\"android.permission.VIBRATE\" />\n");
+        if (remind) perms.append("    <uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\" />\n")
+                .append("    <uses-permission android:name=\"android.permission.RECEIVE_BOOT_COMPLETED\" />\n")
+                .append("    <uses-permission android:name=\"android.permission.USE_EXACT_ALARM\" />\n")
+                .append("    <uses-permission android:name=\"android.permission.SCHEDULE_EXACT_ALARM\" android:maxSdkVersion=\"32\" />\n");
+        if (where) perms.append("    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />\n")
+                .append("    <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />\n");
+        StringBuilder queries = new StringBuilder();
+        if (pw.contains("say")) queries.append("        <intent><action android:name=\"android.intent.action.TTS_SERVICE\" /></intent>\n");
+        if (pw.contains("listen")) queries.append("        <intent><action android:name=\"android.speech.action.RECOGNIZE_SPEECH\" /></intent>\n");
+        if (photo) queries.append("        <intent><action android:name=\"android.media.action.IMAGE_CAPTURE\" /></intent>\n");
+        StringBuilder parts = new StringBuilder();
+        if (remind) parts.append("        <receiver android:name=\".Reminders\" android:exported=\"true\">\n            <intent-filter>\n")
+                .append("                <action android:name=\"android.intent.action.BOOT_COMPLETED\" />\n")
+                .append("                <action android:name=\"android.intent.action.MY_PACKAGE_REPLACED\" />\n            </intent-filter>\n        </receiver>\n");
+        if (photo) parts.append("        <provider android:name=\".PhotoFiles\" android:authorities=\"").append(pkg).append(".photos\"\n")
+                .append("            android:exported=\"false\" android:grantUriPermissions=\"true\" />\n");
+        if (widget) parts.append("        <receiver android:name=\".Widget\" android:exported=\"true\" android:label=\"@string/app_name\">\n")
+                .append("            <intent-filter><action android:name=\"android.appwidget.action.APPWIDGET_UPDATE\" /></intent-filter>\n")
+                .append("            <meta-data android:name=\"android.appwidget.provider\" android:resource=\"@xml/widget_info\" />\n        </receiver>\n");
+        String icon = s.iconXml != null ? s.iconXml : "<vector xmlns:android=\"http://schemas.android.com/apk/res/android\"\n"
+                + "    android:width=\"108dp\" android:height=\"108dp\" android:viewportWidth=\"108\" android:viewportHeight=\"108\">\n"
+                + "    <path android:fillColor=\"" + col + "\" android:pathData=\"M54,4a50,50 0,1 1,0 100a50,50 0,1 1,0 -100z\"/>\n"
+                + "    <path android:fillColor=\"#FFFFFF\" android:pathData=\"M54,26l7.6,17.4l18.9,1.6l-14.4,12.4l4.4,18.5l-16.5,-10l-16.5,10l4.4,-18.5l-14.4,-12.4l18.9,-1.6z\"/>\n"
+                + "</vector>\n";
+        String bg = s.dark ? "0xFF0F1318" : "0xFFF4F6F9";
+        java.util.function.Function<String, String> code = n -> asset.apply(n).replace("__PKG__", pkg).replace("__BG__", bg).replace("__LIGHT__", s.dark ? "false" : "true");
+        java.util.List<String[]> out = new java.util.ArrayList<>(java.util.Arrays.asList(new String[][]{
                 {"settings.gradle", "pluginManagement {\n    repositories {\n        google()\n        mavenCentral()\n        gradlePluginPortal()\n    }\n}\n"
                         + "dependencyResolutionManagement {\n    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)\n    repositories {\n        google()\n        mavenCentral()\n    }\n}\n"
                         + "rootProject.name = \"App\"\ninclude ':app'\n"},
                 {"build.gradle", "plugins {\n    id 'com.android.application' version '8.7.3' apply false\n}\n"},
-                {"gradle.properties", "org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8\nandroid.nonTransitiveRClass=true\n"},
+                {"gradle.properties", "org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8\nandroid.nonTransitiveRClass=true\n" + (qr ? "android.useAndroidX=true\n" : "")},
                 {"app/build.gradle", "plugins {\n    id 'com.android.application'\n}\n\n"
                         + "def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()\n\n"
                         + "android {\n    namespace '" + pkg + "'\n    compileSdk 34\n\n"
@@ -402,50 +462,33 @@ final class AppMaker {
                         + signing
                         + "    buildTypes {\n        release {\n            minifyEnabled false\n            signingConfig signingConfigs.jarvis\n        }\n    }\n\n"
                         + "    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }\n\n"
-                        + "    lint {\n        abortOnError false\n        checkReleaseBuilds false\n    }\n}\n"},
+                        + "    lint {\n        abortOnError false\n        checkReleaseBuilds false\n    }\n}\n"
+                        + (qr ? "\ndependencies {\n    implementation 'com.google.android.gms:play-services-code-scanner:16.1.0'\n}\n" : "")},
                 {"app/src/main/AndroidManifest.xml", "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
                         + "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n"
-                        + (internet ? "    <uses-permission android:name=\"android.permission.INTERNET\" />\n" : "")
-                        + "    <uses-permission android:name=\"android.permission.VIBRATE\" />\n"
+                        + perms
+                        + (queries.length() > 0 ? "    <queries>\n" + queries + "    </queries>\n" : "")
                         + "    <application\n        android:label=\"@string/app_name\"\n        android:icon=\"@drawable/ic_launcher\"\n"
-                        + "        android:roundIcon=\"@drawable/ic_launcher\"\n        android:theme=\"@android:style/Theme.DeviceDefault" + (dark ? "" : ".Light") + ".NoActionBar\"\n"
+                        + "        android:roundIcon=\"@drawable/ic_launcher\"\n        android:theme=\"@android:style/Theme.DeviceDefault" + (s.dark ? "" : ".Light") + ".NoActionBar\"\n"
                         + "        android:allowBackup=\"true\"\n        android:hardwareAccelerated=\"true\">\n"
-                        + "        <activity\n            android:name=\".MainActivity\"\n            android:exported=\"true\"\n"
+                        + "        <activity\n            android:name=\".MainActivity\"\n            android:exported=\"true\"\n            android:launchMode=\"singleTop\"\n"
                         + "            android:windowSoftInputMode=\"adjustResize\"\n"
                         + "            android:configChanges=\"orientation|screenSize|keyboardHidden|screenLayout|uiMode\">\n"
                         + "            <intent-filter>\n                <action android:name=\"android.intent.action.MAIN\" />\n"
                         + "                <category android:name=\"android.intent.category.LAUNCHER\" />\n            </intent-filter>\n"
-                        + "        </activity>\n    </application>\n</manifest>\n"},
-                {"app/src/main/java/" + path + "/MainActivity.java", "package " + pkg + ";\n\n"
-                        + "import android.app.Activity;\nimport android.net.Uri;\nimport android.os.Build;\nimport android.os.Bundle;\nimport android.view.View;\n"
-                        + "import android.webkit.WebChromeClient;\nimport android.webkit.WebResourceRequest;\nimport android.webkit.WebSettings;\n"
-                        + "import android.webkit.WebView;\nimport android.webkit.WebViewClient;\n\n"
-                        + "/** Made by Jarvis: the app is the page in assets/index.html (one page; the back button asks it first). */\n"
-                        + "public class MainActivity extends Activity {\n    private static final int BG = " + bg + ";\n    private WebView web;\n\n"
-                        + "    @Override protected void onCreate(Bundle state) {\n        super.onCreate(state);\n"
-                        + "        getWindow().setStatusBarColor(BG);\n        getWindow().setNavigationBarColor(BG);\n"
-                        + (dark ? "" : "        int ui = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;\n        if (Build.VERSION.SDK_INT >= 26) ui |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;\n"
-                        + "        getWindow().getDecorView().setSystemUiVisibility(ui);\n")
-                        + "        web = new WebView(this);\n        web.setBackgroundColor(BG);\n"
-                        + "        WebSettings s = web.getSettings();\n        s.setJavaScriptEnabled(true);\n        s.setDomStorageEnabled(true);\n"
-                        + "        s.setDatabaseEnabled(true);\n        s.setMediaPlaybackRequiresUserGesture(false);\n"
-                        + "        web.setWebChromeClient(new WebChromeClient());\n"
-                        + "        web.setWebViewClient(new WebViewClient() {\n"
-                        + "            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {\n"
-                        + "                Uri u = r.getUrl();\n                return !(u != null && \"file\".equals(u.getScheme()) && String.valueOf(u.getPath()).startsWith(\"/android_asset/\"));\n"
-                        + "            }\n        });\n        setContentView(web);\n"
-                        + "        if (state != null) web.restoreState(state); else web.loadUrl(\"file:///android_asset/index.html\");\n    }\n\n"
-                        + "    @Override protected void onSaveInstanceState(Bundle out) {\n        super.onSaveInstanceState(out);\n        web.saveState(out);\n    }\n\n"
-                        + "    @Override @SuppressWarnings(\"deprecation\") public void onBackPressed() {\n"
-                        + "        web.evaluateJavascript(\"(function(){try{return !!(window.App&&App.back&&App.back())}catch(e){return false}})()\", v -> {\n"
-                        + "            if (\"true\".equals(v)) return;\n            if (web.canGoBack()) web.goBack(); else finish();\n        });\n    }\n}\n"},
+                        + "        </activity>\n" + parts + "    </application>\n</manifest>\n"},
+                {"app/src/main/java/" + path + "/MainActivity.java", code.apply("MainActivity.java")},
+                {"app/src/main/java/" + path + "/Reminders.java", code.apply("Reminders.java")},
+                {"app/src/main/java/" + path + "/Widget.java", code.apply("Widget.java")},
+                {"app/src/main/java/" + path + "/PhotoFiles.java", code.apply("PhotoFiles.java")},
+                {"app/src/main/java/" + path + "/Qr.java", code.apply(qr ? "Qr.java" : "QrNone.java")},
                 {"app/src/main/res/values/strings.xml", "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n    <string name=\"app_name\">" + xmlName + "</string>\n</resources>\n"},
-                {"app/src/main/res/drawable/ic_launcher.xml", "<vector xmlns:android=\"http://schemas.android.com/apk/res/android\"\n"
-                        + "    android:width=\"108dp\" android:height=\"108dp\" android:viewportWidth=\"108\" android:viewportHeight=\"108\">\n"
-                        + "    <path android:fillColor=\"" + col + "\" android:pathData=\"M54,4a50,50 0,1 1,0 100a50,50 0,1 1,0 -100z\"/>\n"
-                        + "    <path android:fillColor=\"#FFFFFF\" android:pathData=\"M54,26l7.6,17.4l18.9,1.6l-14.4,12.4l4.4,18.5l-16.5,-10l-16.5,10l4.4,-18.5l-14.4,-12.4l18.9,-1.6z\"/>\n"
-                        + "</vector>\n"},
-                {"app/src/main/assets/index.html", html},
+                {"app/src/main/res/drawable/ic_launcher.xml", icon},
+                {"app/src/main/res/drawable/ic_bell.xml", asset.apply("ic_bell.xml")},
+                {"app/src/main/res/drawable/widget_bg.xml", asset.apply("widget_bg.xml").replace("__COLOR__", col)},
+                {"app/src/main/res/layout/widget.xml", asset.apply("widget_layout.xml")},
+                {"app/src/main/res/xml/widget_info.xml", asset.apply("widget_info.xml")},
+                {"app/src/main/assets/index.html", s.html},
                 {".github/workflows/build.yml", "name: Build APK\n\non:\n  push:\n  workflow_dispatch:\n\npermissions:\n  contents: write\n\n"
                         + "concurrency:\n  group: build-apk\n  cancel-in-progress: false\n\n"
                         + "jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n\n"
@@ -457,8 +500,10 @@ final class AppMaker {
                         + "      - name: Publish release\n        uses: softprops/action-gh-release@v2\n        with:\n"
                         + "          tag_name: v${{ github.run_number }}\n          name: Build ${{ github.run_number }}\n          files: app.apk\n          make_latest: true\n"},
                 {"README.md", "# " + appName + "\n\nAndroid app made by Jarvis. The newest APK is in Releases.\n"
-                        + (legacyKey ? "" : "\nThis repo is private: it holds this app's own signing key (app/app.keystore). Keep it private.\n")},
-        };
+                        + (s.legacyKey ? "" : "\nThis repo is private: it holds this app's own signing key (app/app.keystore). Keep it private.\n")},
+        }));
+        if (s.key != null && s.key.length() >= 16) out.add(new String[]{"app/src/main/assets/jarvis.key", s.key});
+        return out.toArray(new String[0][]);
     }
 
     // ------------------------------------------------------------------ helpers
@@ -535,6 +580,18 @@ final class AppMaker {
             return text.trim().isEmpty() ? new JSONObject() : new JSONObject(text);
         } finally {
             h.disconnect();
+        }
+    }
+
+    /** 📤 The newest app.apk of his app's repo, as bytes (to send to family from the share screen). */
+    static byte[] apkBytes(Context c, String repo) throws Exception {
+        File f = new File(c.getCacheDir(), "send-app.apk");
+        try {
+            downloadApk(c, repo, f);
+            return java.nio.file.Files.readAllBytes(f.toPath());
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            f.delete();
         }
     }
 

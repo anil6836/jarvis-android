@@ -3,12 +3,14 @@
 // them screens with a top bar and the back button, bottom tabs, saving, dialogs, Indian money / Telugu dates, charts and a
 // little sound, and it knows which part every error came from (so only that part goes back to the AI for repair). The
 // self-test taps through every screen by itself before an app is built. Nothing here talks to the network unless the app
-// was planned with the internet (App.get).
+// was planned with the internet (App.get). (20 Nov, stage 2) The phone's powers: reminders, photos, where I am, share, PDF,
+// speaking and listening, a home-screen widget, torch / awake / landscape / copy, QR, and Jarvis writing into the app. In
+// the APK they go through the shell's window.JarvisPhone; in the sealed preview every power answers with a sample.
 (function () {
   'use strict';
   if (window.App && window.App.__kit) return;
 
-  const HOST = { error: null, store: null, net: false, testing: false };
+  const HOST = { error: null, store: null, net: false, testing: false, icon: null, jarvis: [] };
   const App = { __kit: 1, my: {}, name: 'App', color: '#1e88e5' };
   window.App = App;
   const LINE0 = 2; // (a part's first line, as the browser counts it inside the function made from it)
@@ -527,6 +529,150 @@
     return opts && opts.text ? r.text() : r.json();
   };
 
+  // ------------------------------------------------------------------ App: the phone's powers (stage 2)
+
+  const waiting = new Map();
+  let callN = 0;
+  const bridge = () => (window.JarvisPhone && typeof window.JarvisPhone.call === 'function' ? window.JarvisPhone : null);
+  /** One power: through the APK's shell (it answers by App.__reply), or a sample in the preview. */
+  function phone(name, args) {
+    const b = bridge();
+    if (!b) { try { return Promise.resolve(previewAnswer(name, args || {})); } catch (e) { return Promise.reject(e); } }
+    return new Promise((res, rej) => {
+      const id = 'c' + (++callN);
+      waiting.set(id, { res, rej });
+      try { b.call(id, name, JSON.stringify(args || {})); } catch (e) { waiting.delete(id); rej(e); }
+    });
+  }
+  App.__reply = (id, ok, value) => {
+    const w = waiting.get(id);
+    if (!w) return;
+    waiting.delete(id);
+    if (ok) w.res(value === undefined ? null : value); else w.rej(new Error(String(value || 'error')));
+  };
+
+  const previewRem = new Map(), previewPhotos = new Map();
+  let samplePics = 0, widgetNoted = false;
+  const note = (text) => { if (!HOST.testing) App.toast(text, 2.6); };
+  function samplePic(n) {
+    const hue = (n * 67) % 360;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" fill="hsl(${hue},45%,82%)"/>`
+      + `<circle cx="118" cy="34" r="14" fill="hsl(${hue},70%,60%)"/><path d="M0 120 L52 58 L84 92 L104 72 L160 120 Z" fill="hsl(${hue},35%,45%)"/>`
+      + `<text x="8" y="18" font-size="12" font-family="sans-serif" fill="#333">నమూనా ${n}</text></svg>`;
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  const EVERY = { day: 'రోజూ', week: 'ప్రతి వారం', month: 'ప్రతి నెల', year: 'ప్రతి ఏడాది' };
+  const whenText = (r) => App.date(r.at, 'short') + ' ' + App.time(r.at) + (r.every ? ' · ' + EVERY[r.every] : '');
+  function previewAnswer(name, a) {
+    switch (name) {
+      case 'remind': previewRem.set(a.id, a); note('🔔 రిమైండర్: ' + a.title + ' · ' + whenText(a) + ' (ప్రివ్యూలో నోటిఫికేషన్ రాదు)'); return a.id;
+      case 'unremind': previewRem.delete(a.id); return true;
+      case 'reminders': return Array.from(previewRem.values());
+      case 'photo': { samplePics++; const id = 'p' + Date.now().toString(36) + samplePics; previewPhotos.set(id, samplePic(samplePics)); note('📷 ప్రివ్యూలో నమూనా బొమ్మ'); return id; }
+      case 'unphoto': previewPhotos.delete(a.id); return true;
+      case 'where': note('📍 ప్రివ్యూలో నమూనా చోటు'); return { lat: 20.5937, lon: 78.9629, accuracy: 25, sample: true };
+      case 'scan': note('▦ ప్రివ్యూలో నమూనా QR'); return 'SAMPLE-QR-123';
+      case 'listen': note('🎙️ ప్రివ్యూలో నమూనా మాట'); return 'పరీక్ష మాట';
+      case 'share': case 'sharePhoto': note('📤 ప్రివ్యూలో ఎక్కడికీ పంపదు: ' + String(a.text || '').slice(0, 60)); return true;
+      case 'pdf': note('📄 ఫోన్ యాప్‌లో ఇక్కడ PDF స్క్రీన్ తెరుచుకుంటుంది'); return true;
+      case 'say': note('🗣️ ' + String(a.text || '').slice(0, 80)); return true;
+      case 'widget': if (!widgetNoted) { widgetNoted = true; note('📲 విడ్జెట్: ' + a.title + (a.lines.length ? ' · ' + a.lines[0] : '')); } return true;
+      case 'torch': note(a.on ? '🔦 టార్చ్ ఆన్ (ఫోన్ యాప్‌లో)' : '🔦 టార్చ్ ఆఫ్'); return true;
+      case 'awake': case 'landscape': case 'openMap': return true;
+      case 'copy': return true;
+      default: throw new Error('no such power: ' + name);
+    }
+  }
+
+  const WHEN = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})$/;
+  function whenMs(w) {
+    if (typeof w === 'number' && isFinite(w)) return w;
+    const m = WHEN.exec(String(w == null ? '' : w).trim());
+    if (!m) throw new Error('App.remind: when must be "YYYY-MM-DD HH:MM" (or a time in ms), got ' + JSON.stringify(w));
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime();
+  }
+  /** 🔔 A reminder (a notification at that time, even when the app is closed; again every day / week / month / year). */
+  App.remind = async (o) => {
+    const r = Object.assign({}, o || {});
+    r.id = cleanId(r.id || App.uid());
+    r.at = whenMs(r.when != null ? r.when : r.at);
+    r.every = Object.prototype.hasOwnProperty.call(EVERY, r.every) ? r.every : null;
+    if (!r.every && r.at < Date.now() - 60000) throw new Error('App.remind: that time has already passed');
+    r.title = String(r.title || App.name).slice(0, 80);
+    r.text = String(r.text || '').slice(0, 240);
+    r.screen = r.screen ? String(r.screen).slice(0, 40) : '';
+    delete r.when;
+    await phone('remind', r);
+    return r.id;
+  };
+  App.unremind = (id) => phone('unremind', { id: cleanId(id) });
+  App.reminders = async () => { const l = await phone('reminders', {}); return Array.isArray(l) ? l : []; };
+  /** 📷 A photo from the camera or the gallery, kept inside this app: its id (show it with App.photoUrl), or null. */
+  App.photo = async (from) => { const id = await phone('photo', { from: from === 'gallery' ? 'gallery' : 'camera' }); return id ? String(id) : null; };
+  App.photoUrl = (id) => {
+    const s = String(id == null ? '' : id);
+    if (!/^p[a-z0-9]{2,40}$/.test(s)) return '';
+    return bridge() ? 'https://app.photos/' + s + '.jpg' : (previewPhotos.get(s) || samplePic(1));
+  };
+  App.unphoto = (id) => phone('unphoto', { id: String(id == null ? '' : id) });
+  /** 📍 Where the phone is now (asked only when he taps): {lat, lon, accuracy}. Never in the background. */
+  App.where = () => phone('where', {});
+  App.openMap = (lat, lon, label) => phone('openMap', { lat: Number(lat), lon: Number(lon), label: String(label || '') });
+  /** 📤 To WhatsApp or anywhere he picks (Android's share screen); 📄 a page of HTML as a PDF (Android's print / PDF screen). */
+  App.share = (text) => phone('share', { text: String(text == null ? '' : text).slice(0, 20000) });
+  App.sharePhoto = (id, text) => phone('sharePhoto', { id: String(id == null ? '' : id), text: String(text == null ? '' : text).slice(0, 2000) });
+  App.pdf = (title, html) => phone('pdf', { title: String(title || App.name).slice(0, 80), html: String(html == null ? '' : html) });
+  /** 🗣️ Read aloud (Telugu); 🎙️ what he says, as text (or null). */
+  App.say = (text) => phone('say', { text: String(text == null ? '' : text).slice(0, 3000) });
+  App.listen = async (prompt) => { const t = await phone('listen', { prompt: String(prompt || '') }); return t ? String(t) : null; };
+  /** 📲 The home-screen widget's words: a title and up to 3 short lines. */
+  App.widget = (title, lines) => phone('widget', { title: String(title || App.name).slice(0, 40),
+    lines: (Array.isArray(lines) ? lines : [lines]).filter((x) => x != null).slice(0, 3).map((x) => String(x).slice(0, 60)) });
+  App.torch = (on) => phone('torch', { on: on !== false });
+  App.awake = (on) => phone('awake', { on: on !== false });
+  App.landscape = (on) => phone('landscape', { on: on !== false });
+  App.copy = (text) => phone('copy', { text: String(text == null ? '' : text).slice(0, 20000) }).then(() => { App.toast('కాపీ చేశాను'); return true; });
+  /** ▦ A QR / bar code read with the camera: its text, or null. */
+  App.scan = async () => { const t = await phone('scan', {}); return t ? String(t) : null; };
+
+  // 🗣️ Jarvis writes into this app ("Jarvis, ఛార్జింగ్ లాగ్‌లో 4 యూనిట్లు ₹36 రాయి"): the app opens and the handler gets the data.
+  const jarvisHooks = {};
+  App.onJarvis = (command, fn) => { jarvisHooks[cleanId(command)] = wrap(fn, owner()); };
+  App.__jarvis = (command, data) => {
+    const h = jarvisHooks[cleanId(command)];
+    if (!h) { App.toast('ఈ యాప్‌కి ఆ పని తెలియదు: ' + command, 3); return false; }
+    Promise.resolve(h(data && typeof data === 'object' ? data : {})).then((line) => {
+      App.toast('✓ ' + (line ? String(line) : 'Jarvis రాశాడు'), 3);
+      try { App.refresh(); } catch (e) { fail(e, null); }
+    });
+    return true;
+  };
+  /** (a reminder was tapped) its screen. */
+  App.__open = (screen) => { try { if (screen && byId(String(screen))) App.go(String(screen)); } catch (e) { fail(e, null); } };
+
+  // 🎨 The app's own icon (drawn by the AI as a few paths on a 108 x 108 square): the APK's launcher icon, and the splash.
+  const PATH_OK = /^[MmLlHhVvCcSsQqTtAaZz0-9eE.,\s+-]{1,1500}$/;
+  const COLOR_OK = /^#[0-9a-fA-F]{6}$/;
+  function iconSvg(ic, px) {
+    if (!ic || !Array.isArray(ic.paths) || !ic.paths.length) return '';
+    const bg = COLOR_OK.test(ic.bg || '') ? ic.bg : App.color, fg = COLOR_OK.test(ic.fg || '') ? ic.fg : '#ffffff';
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="${px}" height="${px}"><circle cx="54" cy="54" r="54" fill="${bg}"/>`;
+    for (const p of ic.paths.slice(0, 8)) {
+      const d = typeof p === 'string' ? p : p && p.d, f = p && COLOR_OK.test(p.fill || '') ? p.fill : fg;
+      if (typeof d === 'string' && PATH_OK.test(d)) s += `<path d="${d}" fill="${f}"/>`;
+    }
+    return s + '</svg>';
+  }
+  App.icon = (px) => iconSvg(HOST.icon, px || 72);
+  function splash(ms) {
+    const svg = iconSvg(HOST.icon, 104);
+    if (!svg || HOST.testing) return;
+    const sp = el('div', { id: 'kit-splash' });
+    sp.innerHTML = svg + '<div class="n">' + App.esc(App.name) + '</div>';
+    document.body.append(sp);
+    rawTimeout(() => { sp.classList.add('off'); rawTimeout(() => sp.remove(), 320); }, ms);
+  }
+
   // ------------------------------------------------------------------ the host's side: setting up, parts, start, self-test
 
   function setup(o) {
@@ -538,6 +684,8 @@
     HOST.net = !!opt.net;
     HOST.error = opt.error || null;
     HOST.store = opt.store || memoryStore();
+    HOST.icon = opt.icon && typeof opt.icon === 'object' ? opt.icon : null;
+    HOST.jarvis = Array.isArray(opt.jarvis) ? opt.jarvis.slice(0, 8) : [];
     frame();
     titleEl.textContent = App.name;
   }
@@ -590,6 +738,8 @@
     if (!f) throw new Error('the app has no screen (a <section class="screen" id="..."> in some part\'s HTML)');
     stack = [f];
     show(f, undefined);
+    App.__started = true;
+    splash(bridge() ? 750 : 450);
   }
 
   const visible = (e) => !!(e && e.isConnected && (e.offsetWidth || e.offsetHeight || e.getClientRects().length) && !e.closest('[hidden]'));
@@ -660,6 +810,18 @@
         }
         if (!first && k < ids.length && root && !root.textContent.trim() && !root.querySelector('svg, canvas, img, input'))
           first = { id: root.getAttribute('data-part'), msg: 'the screen "' + id + '" shows nothing at all', screen: id };
+      }
+      // 🗣️ every command Jarvis can send: once, with sample data of the right kinds
+      for (const cmd of Object.keys(jarvisHooks)) {
+        if (first || Date.now() - t0 > limit) break;
+        const spec = HOST.jarvis.find((j) => j && cleanId(j.id) === cmd);
+        const data = {};
+        for (const [k, kind] of Object.entries((spec && spec.fields) || {})) {
+          const t = String(kind || '').replace('?', '');
+          data[k] = t === 'number' ? 5 : t === 'date' ? App.today() : t === 'time' ? '09:30' : t === 'bool' ? true : 'పరీక్ష';
+        }
+        try { App.__jarvis(cmd, data); } catch (e) { fail(e, null); }
+        await sleep(60);
       }
       for (let i = 0; i < 6 && !first; i++) { try { if (!App.back()) break; } catch (e) { fail(e, null); } await sleep(20); }
       await sleep(80);

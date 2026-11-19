@@ -3,7 +3,7 @@
 // says which part an error came from. {t:'start'} shows the app; {t:'test'} has the kit tap through every screen by itself
 // and answers {t:'tested'} or the first error. While he tries the preview, an error is sent as {t:'err', state:'run'}
 // (🔧 can repair that part). No network, no storage, no way out: this page lives in a sandboxed frame and only talks to
-// its parent page.
+// its parent page. (Stage 2: no phone here either: every power answers with a sample, see kit.js.)
 'use strict';
 
 (function () {
@@ -29,7 +29,7 @@
     if (!m || typeof m !== 'object' || typeof m.t !== 'string') return;
     switch (m.t) {
       case 'setup':
-        then(() => { kit.setup({ name: m.name, color: m.color, theme: m.theme, net: false, error: report }); });
+        then(() => { kit.setup({ name: m.name, color: m.color, theme: m.theme, net: false, error: report, icon: m.icon, jarvis: m.jarvis }); });
         break;
       case 'part':
         then(async () => {

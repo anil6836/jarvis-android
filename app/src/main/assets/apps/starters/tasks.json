@@ -1,0 +1,104 @@
+{
+ "plan": {
+  "title": "పనుల లిస్ట్",
+  "name": "పనులు",
+  "slug": "tasks",
+  "about": "చేయాల్సిన పనులు తేదీ, సమయంతో రాసుకుని, సమయానికి 🔔 గుర్తు చేసే యాప్. మాటతోనూ రాయొచ్చు.",
+  "color": "#3949ab",
+  "theme": "light",
+  "size": "small",
+  "internet": false,
+  "say": "పనుల లిస్ట్ రెడీ Sir.",
+  "screens": [
+   {
+    "id": "home",
+    "name": "పనులు",
+    "what": "చేయాల్సిన పనులు (⬜ నొక్కితే అయింది), 🔊 చదువు, 📤 షేర్",
+    "tab": true
+   },
+   {
+    "id": "add",
+    "name": "కొత్త పని",
+    "what": "పని (🎙️ మాటతో), తేదీ, సమయం, 🔔 గుర్తు, వివరాలు",
+    "tab": false
+   },
+   {
+    "id": "done",
+    "name": "అయినవి",
+    "what": "అయిన పనులు, 🗑️ అన్నీ తీసేయి",
+    "tab": true
+   }
+  ],
+  "saves": [
+   "ప్రతి పని: పేరు, తేదీ, సమయం, గుర్తు చేయాలా, వివరాలు, అయిందా"
+  ],
+  "extras": [
+   "ఆలస్యమైన పనులు ఎరుపులో",
+   "📲 విడ్జెట్‌లో మిగిలిన పనులు"
+  ],
+  "later": [],
+  "powers": [
+   "remind",
+   "listen",
+   "say",
+   "share",
+   "widget",
+   "jarvis"
+  ],
+  "icon": {
+   "bg": "#3949ab",
+   "fg": "#ffffff",
+   "paths": [
+    {
+     "d": "M32,28 H76 A4,4 0 0 1 80,32 V76 A4,4 0 0 1 76,80 H32 A4,4 0 0 1 28,76 V32 A4,4 0 0 1 32,28 Z",
+     "fill": "#ffffff"
+    },
+    {
+     "d": "M38,55 L44,49 L51,56 L66,41 L72,47 L51,68 Z",
+     "fill": "#3949ab"
+    }
+   ]
+  },
+  "jarvis": [
+   {
+    "id": "add",
+    "what": "ఒక పని రాయడం (తేదీ, సమయం ఉంటే గుర్తు కూడా)",
+    "fields": {
+     "title": "text",
+     "date": "date",
+     "time": "time"
+    }
+   }
+  ]
+ },
+ "parts": [
+  {
+   "id": "data",
+   "status": "పనుల డేటా సిద్ధం",
+   "html": "",
+   "css": "",
+   "js": "App.my.KEY = 'tasks';\nApp.my.open = () => App.items(App.my.KEY).filter((t) => !t.done)\n  .sort((a, b) => ((a.date || '9999') + (a.time || '')).localeCompare((b.date || '9999') + (b.time || '')) || a.at - b.at);\nApp.my.done = () => App.items(App.my.KEY).filter((t) => t.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));\nApp.my.when = (t) => [t.date ? App.date(t.date, 'short') : '', t.time || ''].filter(Boolean).join(' ');\nApp.my.widget = async () => {\n  const o = App.my.open();\n  const lines = o.length ? o.slice(0, 3).map((t) => '• ' + t.title + (t.date ? ' (' + App.date(t.date, 'short') + ')' : '')) : ['అన్ని పనులు అయిపోయాయి 🎉'];\n  try { await App.widget('✅ పనులు: ' + o.length, lines); } catch (e) { /* the widget only helps */ }\n};\n/** A reminder at the task's date and time (only when he asked, both are set and it is still to come): true when set. */\nApp.my.remind = async (t) => {\n  try { await App.unremind(t.id); } catch (e) { /* */ }\n  if (!t || t.done || !t.remind || !t.date || !t.time) return false;\n  try {\n    await App.remind({ id: t.id, when: t.date + ' ' + t.time, title: '✅ ' + t.title, text: 'ఈ పని సమయం అయింది', screen: 'home' });\n    return true;\n  } catch (e) { return false; }\n};\nApp.my.save = async (rec, id) => {\n  let t;\n  if (id) { App.update(App.my.KEY, id, rec); t = App.find(App.my.KEY, id); } else t = App.add(App.my.KEY, rec);\n  const rem = await App.my.remind(t);\n  App.my.widget();\n  return { t, rem };\n};\nApp.my.hhmm = (s) => { const m = /^(\\d{1,2}):(\\d{2})$/.exec(String(s || '').trim()); return m && +m[1] < 24 && +m[2] < 60 ? (m[1].length < 2 ? '0' : '') + m[1] + ':' + m[2] : ''; };\nApp.onStart(() => { App.my.widget(); });\nApp.onJarvis('add', async (d) => {\n  const title = String(d.title || '').trim().slice(0, 100);\n  if (!title) return 'పని పేరు లేదు; ఏమీ రాయలేదు';\n  const date = /^\\d{4}-\\d{2}-\\d{2}$/.test(String(d.date || '')) ? d.date : '', time = App.my.hhmm(d.time);\n  const { t, rem } = await App.my.save({ title, date, time, remind: !!(date && time), note: '', done: false });\n  return '\"' + title + '\" రాశాను' + (rem ? ', ' + App.my.when(t) + ' కి గుర్తు చేస్తాను' : '');\n});"
+  },
+  {
+   "id": "home",
+   "status": "పనుల లిస్ట్ గీస్తున్నాను",
+   "html": "<section class=\"screen\" id=\"home\" data-title=\"పనుల లిస్ట్\" data-tab=\"✅|పనులు\">\n  <div class=\"row\"><div class=\"muted\" id=\"home-count\"></div><button class=\"btn small ghost\" id=\"home-say\">🔊 చదువు</button></div>\n  <div id=\"home-list\"></div>\n  <button class=\"fab\" id=\"home-add\" aria-label=\"కొత్త పని\">+</button>\n</section>",
+   "css": ".tick { border: 0; background: transparent; font-size: 22px; cursor: pointer; }\n.late { color: var(--danger, #c62828); }",
+   "js": "App.my.row = (t) => {\n  const late = !t.done && t.date && t.date < App.today();\n  return `<div class=\"item ${t.done ? 'done' : ''}\" data-id=\"${App.esc(t.id)}\">\n    <button class=\"ic tick\" data-id=\"${App.esc(t.id)}\" aria-label=\"అయింది\">${t.done ? '✅' : '⬜'}</button>\n    <div class=\"w\"><div class=\"t\">${App.esc(t.title)}</div>\n      <div class=\"s ${late ? 'late' : ''}\">${App.esc(App.my.when(t) || 'తేదీ లేదు')}${t.remind && !t.done ? ' · 🔔' : ''}${late ? ' · ఆలస్యం' : ''}</div></div>\n  </div>`;\n};\nApp.onShow('home', () => {\n  const o = App.my.open();\n  App.text('#home-count', o.length ? o.length + ' పనులు మిగిలాయి' : 'అన్ని పనులు అయిపోయాయి 🎉');\n  App.set('#home-list', o.length ? '<div class=\"list\">' + o.map(App.my.row).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">✅</div>చేయాల్సిన పనులు లేవు. + నొక్కి రాయండి.<div class=\"faint\">Jarvis తో: \"పనుల లిస్ట్‌లో రేపు 10 కి బ్యాంక్ పని రాయి\"</div></div>');\n});\nApp.click('#home-add', () => App.go('add'));\nApp.click('.tick', async (ev, el) => {\n  const t = App.find(App.my.KEY, el.dataset.id);\n  if (!t) return;\n  await App.my.save({ done: !t.done, doneAt: t.done ? 0 : Date.now() }, t.id);\n  App.beep(t.done ? 'tap' : 'done');\n  App.toast(t.done ? 'మళ్ళీ చేయాల్సినవాటిలో పెట్టాను' : 'బాగుంది Sir, అయింది ✅');\n  App.refresh();\n});\nApp.click('#home-list .item', (ev, el) => { if (ev.target.closest('.tick')) return; App.go('add', App.find(App.my.KEY, el.dataset.id)); });\nApp.click('#home-say', async () => {\n  const o = App.my.open();\n  try { await App.say(o.length ? o.length + ' పనులు ఉన్నాయి. ' + o.slice(0, 5).map((t) => t.title).join('. ') : 'చేయాల్సిన పనులు ఏమీ లేవు'); }\n  catch (e) { App.toast('చదవలేకపోయాను'); }\n});\nApp.action('home', '📤', async () => {\n  const o = App.my.open();\n  const text = '✅ పనులు:\\n' + (o.length ? o.map((t) => '• ' + t.title + (t.date ? ' (' + App.my.when(t) + ')' : '')).join('\\n') : 'ఏమీ లేవు');\n  try { await App.share(text); } catch (e) { App.toast('షేర్ కాలేదు'); }\n}, 'షేర్');"
+  },
+  {
+   "id": "add",
+   "status": "పని రాసే ఫారం",
+   "html": "<section class=\"screen\" id=\"add\" data-title=\"కొత్త పని\">\n  <div class=\"field\"><label>పని</label><div class=\"row\"><input id=\"add-title\" type=\"text\"><button class=\"btn small\" id=\"add-mic\" aria-label=\"మాటతో చెప్పండి\">🎙️</button></div></div>\n  <div class=\"grid\">\n    <div class=\"field\"><label>తేదీ</label><input id=\"add-date\" type=\"date\"></div>\n    <div class=\"field\"><label>సమయం</label><input id=\"add-time\" type=\"time\"></div>\n  </div>\n  <div class=\"check\"><input id=\"add-rem\" type=\"checkbox\"><label for=\"add-rem\">🔔 ఆ సమయానికి గుర్తు చేయి</label></div>\n  <div class=\"field\"><label>వివరాలు (ఇష్టమైతే)</label><textarea id=\"add-note\"></textarea></div>\n  <button class=\"btn primary block\" id=\"add-save\">దాచు</button>\n  <div class=\"gap\"></div>\n  <button class=\"btn danger block\" id=\"add-del\" hidden>ఈ పని తీసేయి</button>\n</section>",
+   "css": "#add-title { flex: 1; min-width: 0; }",
+   "js": "App.onShow('add', (t) => {\n  App.my.editing = t && t.id ? t.id : null;\n  App.title(App.my.editing ? 'పని మార్చండి' : 'కొత్త పని');\n  App.val('#add-title', t && t.title ? t.title : '');\n  App.val('#add-date', t ? t.date || '' : App.today());\n  App.val('#add-time', t && t.time ? t.time : '');\n  App.val('#add-rem', t ? !!t.remind : true);\n  App.val('#add-note', t && t.note ? t.note : '');\n  App.show('#add-del', !!App.my.editing);\n});\nApp.click('#add-mic', async () => {\n  try { const s = await App.listen('ఏ పని?'); if (s) App.val('#add-title', s.slice(0, 100)); } catch (e) { App.toast('మాట వినలేకపోయాను'); }\n});\nApp.click('#add-save', async () => {\n  const title = App.val('#add-title');\n  if (!title) { App.toast('పని ఏమిటో రాయండి'); return; }\n  const rec = { title: title.slice(0, 100), date: App.val('#add-date'), time: App.my.hhmm(App.val('#add-time')), remind: App.val('#add-rem') === true, note: App.val('#add-note').slice(0, 500) };\n  if (!App.my.editing) rec.done = false;\n  const { rem } = await App.my.save(rec, App.my.editing);\n  App.beep('ok');\n  App.toast(rec.remind && !rem ? 'దాచాను (తేదీ, సమయం లేవు / దాటిపోయింది: రిమైండర్ పెట్టలేదు)' : rem ? 'దాచాను, 🔔 గుర్తు చేస్తాను' : 'దాచాను', 3);\n  App.back();\n});\nApp.click('#add-del', async () => {\n  if (!App.my.editing) return;\n  if (await App.ask('ఈ పని తీసేయాలా?', 'తీసేయి', 'వద్దు')) {\n    try { await App.unremind(App.my.editing); } catch (e) { /* */ }\n    App.del(App.my.KEY, App.my.editing); App.my.widget(); App.toast('తీసేశాను'); App.back();\n  }\n});"
+  },
+  {
+   "id": "done",
+   "status": "అయిన పనుల లిస్ట్",
+   "html": "<section class=\"screen\" id=\"done\" data-title=\"అయిన పనులు\" data-tab=\"🗂️|అయినవి\">\n  <div id=\"done-list\"></div>\n</section>",
+   "css": "",
+   "js": "App.onShow('done', () => {\n  const d = App.my.done();\n  App.set('#done-list', d.length ? '<div class=\"list\">' + d.slice(0, 100).map(App.my.row).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">🗂️</div>అయిన పనులు ఇక్కడ కనిపిస్తాయి.</div>');\n});\nApp.action('done', '🗑️', async () => {\n  const d = App.my.done();\n  if (!d.length) { App.toast('తీసేయడానికి ఏమీ లేవు'); return; }\n  if (await App.ask(d.length + ' అయిన పనులు తీసేయాలా?', 'తీసేయి', 'వద్దు')) { for (const t of d) App.del(App.my.KEY, t.id); App.toast('తీసేశాను'); App.refresh(); }\n}, 'అయినవి తీసేయి');"
+  }
+ ]
+}
