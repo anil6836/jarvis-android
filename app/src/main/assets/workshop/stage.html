@@ -46,6 +46,15 @@
   #tip { position: fixed; left: 0; top: 0; width: 18px; height: 18px; border-radius: 50%; display: none; pointer-events: none;
          background: radial-gradient(circle, #e9fbff 0%, #4fd2ff 45%, rgba(79, 210, 255, 0) 72%); }
   #tip.on { width: 28px; height: 28px; background: radial-gradient(circle, #ffffff 0%, #7fe6ff 40%, rgba(79, 210, 255, 0) 72%); }
+  /* 🚶 walking inside: the round pad for the left thumb, the place's name, ⏭ the next place, ✕ out */
+  #joy { position: fixed; left: 20px; bottom: 150px; width: 124px; height: 124px; border-radius: 50%; display: none; touch-action: none;
+         background: radial-gradient(circle, rgba(79, 210, 255, 0.10) 0%, rgba(8, 14, 20, 0.50) 70%); border: 1.5px solid rgba(79, 210, 255, 0.6); }
+  #joy i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; pointer-events: none;
+           background: radial-gradient(circle at 40% 35%, #d9f7ff 0%, #4fd2ff 55%, #1b7fa8 100%); box-shadow: 0 0 14px rgba(79, 210, 255, 0.55); }
+  #walkbar { position: fixed; right: 10px; top: 60px; display: none; align-items: center; gap: 6px; font: 600 12px/1.2 system-ui, "Noto Sans Telugu", sans-serif; color: #e8f4ff; }
+  #walkbar span { background: rgba(8, 14, 20, 0.78); border: 1px solid rgba(79, 210, 255, 0.45); border-radius: 14px; padding: 6px 10px; max-width: 46vw;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #walkbar b { background: rgba(8, 14, 20, 0.86); border: 1.5px solid rgba(79, 210, 255, 0.7); border-radius: 16px; padding: 6px 11px; font-weight: 700; user-select: none; }
 </style>
 </head>
 <body>
@@ -56,6 +65,8 @@
 <div id="heatTags"></div>
 <div id="hud"></div>
 <div id="tip"></div>
+<div id="joy"><i></i></div>
+<div id="walkbar"><span></span><b class="next">⏭</b><b class="out">✕</b></div>
 <script type="module" src="stage.js"></script>
 </body>
 </html>

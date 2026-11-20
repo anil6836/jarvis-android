@@ -1,0 +1,640 @@
+{
+"at": 1763700000001,
+"title": "థర్మల్ పవర్ స్టేషన్",
+"what": "500 MW బొగ్గు విద్యుత్ కేంద్రం: బొగ్గు రైలు, బాయిలర్, టర్బైన్, జనరేటర్, కూలింగ్ టవర్, చిమ్నీ, స్విచ్‌యార్డ్. 🕐 24 గంటల రోజు, 🚶 లోపల నడక",
+"model": "showpiece",
+"parts": [
+{
+"id": "site",
+"status": "ప్లాంట్ స్థలం సిద్ధం చేస్తున్నాను",
+"code": "// Coal (thermal) power station showpiece, hand-made. Units: cm, about real size (the distances between buildings are\n// shortened). Coal comes from the west (−X), the turbine's axis runs along X, the power leaves to the east (+X); the chimney\n// and the cooling tower stand behind (−Z). Outdoors: it has a sky and a 24-hour day (W.day). Helpers for later parts: W.store.\nconst S = W.store;\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.concrete = S.matte('#bdb7ab');\nS.dark = S.matte('#4a4f55', 0.8);\nS.lamps = []; // { m, k }: they light at dusk (W.env.dark)\nS.turn = [];  // { o, axis, k }: turn with the machines\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.axisLathe = (profile, seg = 48, phiStart = 0, phiLen = Math.PI * 2) => { // around the X axis: [r, x] points\n  const g = new THREE.LatheGeometry(profile.map((p) => new THREE.Vector2(Math.max(0.001, p[0]), p[1])), seg, phiStart, phiLen);\n  g.rotateZ(-Math.PI / 2);\n  return g;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with rows of windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.06)'; g.fillRect(x, 0, 3, 128); } // (the sheets' ribs)\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.16, y = r * rh + rh * (o.top || 0.22), w = cw * 0.68, h = rh * (o.h || 0.4);\n    g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  for (const t of [base.texture, glow.texture]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(o.rx || 1, o.ry || 1); }\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.6, metalness: 0.2 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit });\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4) => { const m = W.glow(c, 0); S.lamps.push({ m, k }); return m; };\n\nW.day({ start: 12, ground: '#6d7452', zoom: 0.8 });\nconst site = W.group();\nsite.add(W.mesh(W.box(39000, 20, 21000), S.matte('#a39d8f', 0.96), { at: [0, -9, -2200] })); // the plant's levelled ground\nconst asphalt = S.matte('#4f5357', 0.9);\nfor (const [x, z, w, d] of [[0, 5200, 39000, 700], [-1500, 1900, 600, 6000], [7000, -1500, 600, 8000], [-9000, 1500, 500, 7000], [3000, -4200, 14000, 500]]) {\n  site.add(W.mesh(W.box(w, 6, d), asphalt, { at: [x, 4, z] }));\n}\nconst pole = W.metal('#8d939a', { rough: 0.5 }), head = S.lamp('#ffe7b0', 3);\nfor (let x = -18000; x <= 18000; x += 3000) { // street lights along the main road\n  site.add(W.mesh(W.cyl(10, 14, 900, 8), pole, { at: [x, 450, 4750] }));\n  site.add(W.mesh(W.box(120, 14, 40), pole, { at: [x + 50, 895, 4750] }));\n  site.add(W.mesh(W.box(70, 8, 30), head, { at: [x + 90, 886, 4750] }));\n}\nsite.add(W.text('JARVIS · 500 MW థర్మల్ విద్యుత్ కేంద్రం', { size: 150, at: [-4000, 380, 5650], color: '#eef2f5', bg: '#2f5f8a' }));\nfor (const x of [-6600, -1400]) site.add(W.mesh(W.cyl(14, 14, 300, 8), pole, { at: [x, 150, 5640] }));\nW.add(site, { label: 'ప్లాంట్ స్థలం', ground: true });\n// the green belt: trees round the edge (a third of a plant's land is kept green)\nconst trees = W.group();\nconst crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), S.matte('#3f6b35', 0.95), 46);\nconst trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1.3, 1, 6), S.matte('#5a4632'), 46);\nconst M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3();\nfor (let i = 0; i < 46; i++) {\n  const side = i % 3, u = (i * 0.618) % 1;\n  const x = side === 0 ? -19000 + u * 38000 : side === 1 ? -19200 + (i % 2) * 600 : 19400 - (i % 2) * 500;\n  const z0 = side === 0 ? 7200 + (i % 2) * 500 : -12000 + u * 18000, z = side === 2 && Math.abs(z0) < 1600 ? z0 + 3200 : z0;\n  const s = 380 + ((i * 37) % 7) * 40;\n  M.compose(P.set(x, 260 + s * 0.7, z), Q, Z.set(s, s * 1.15, s)); crowns.setMatrixAt(i, M);\n  M.compose(P.set(x, 200, z), Q, Z.set(30, 400, 30)); trunks.setMatrixAt(i, M);\n}\ntrees.add(crowns, trunks);\nW.add(trees, { label: 'గ్రీన్ బెల్ట్ చెట్లు', ground: true });\n"
+},
+{
+"id": "coal",
+"status": "బొగ్గు యార్డ్, రైలు వేస్తున్నాను",
+"code": "const S = W.store;\nconst deg = (d) => d * 180 / Math.PI;\nconst yard = W.group();\nconst coalM = S.matte('#202022', 0.98);\nconst pile = (x, z, L, Wd, H) => { // a long stockpile: a stretched half-dome\n  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 14, 0, Math.PI * 2, 0, Math.PI / 2), coalM);\n  m.scale.set(L / 2, H, Wd / 2); m.position.set(x, 0, z);\n  return m;\n};\nyard.add(pile(-15000, -1500, 5600, 2000, 900), pile(-15000, 2500, 5600, 2000, 820), pile(-17800, 500, 1400, 1200, 500));\nW.add(yard, { label: 'బొగ్గు కుప్పలు', heat: [32, 38] });\n// the stacker-reclaimer between the piles: a boom with a turning bucket wheel, on rails\nconst sr = W.group();\nconst yellow = W.paint('#e2b52a', { metallic: 0.2, rough: 0.45 });\nsr.add(W.mesh(W.box(900, 260, 600), yellow, { at: [-14200, 330, 500] }));\nsr.add(W.mesh(W.box(700, 500, 500), yellow, { at: [-14200, 700, 500] }));\nconst boom = S.beam([-14200, 900, 500], [-16600, 650, 1300], 70, yellow, 8);\nsr.add(boom);\nconst wheelBase = W.group({ at: [-16700, 640, 1350], rot: [0, 30, 0] }), wheel = W.group();\nwheelBase.add(wheel);\nwheel.add(W.mesh(W.cyl(330, 330, 90, 24), W.metal('#7d6a3a', { rough: 0.5 }), { rot: [0, 0, 90] }));\nfor (let i = 0; i < 10; i++) {\n  const a = (i / 10) * Math.PI * 2;\n  wheel.add(W.mesh(W.box(110, 90, 130), W.metal('#4e4a44', { rough: 0.6 }), { at: [0, Math.sin(a) * 340, Math.cos(a) * 340], rot: [deg(a), 0, 0] }));\n}\nsr.add(wheelBase);\nS.turn.push({ o: wheel, axis: 'x', k: 0.4, by: 'run', conv: true });\nfor (const z of [200, 800]) sr.add(W.mesh(W.box(6000, 16, 18), W.metal('#7a7f86'), { at: [-15000, 9, z] })); // its rails\nW.add(sr, { label: 'స్టాకర్ రీక్లెయిమర్' });\n// the train of open wagons on the siding\nconst train = W.group();\nconst rail = W.metal('#8a8f96', { rough: 0.4 });\nfor (const z of [6880, 7120]) train.add(W.mesh(W.box(11000, 16, 10), rail, { at: [-13800, 18, z] }));\nconst sleepers = new THREE.InstancedMesh(W.box(28, 12, 340), S.matte('#6b6156'), 160);\nfor (let i = 0; i < 160; i++) sleepers.setMatrixAt(i, new THREE.Matrix4().makeTranslation(-19200 + i * 68, 6, 7000));\ntrain.add(sleepers);\nconst wagonM = W.paint('#5c3b2c', { metallic: 0.3, rough: 0.6 }), wheelM = W.metal('#3a3c40');\nfor (let i = 0; i < 9; i++) {\n  const x = -17800 + i * 1080;\n  train.add(W.mesh(W.box(1000, 280, 300), wagonM, { at: [x, 230, 7000] }));\n  train.add(W.mesh(W.box(980, 40, 280), coalM, { at: [x, 380, 7000] }));\n  for (const dx of [-330, 330]) for (const dz of [-115, 115]) train.add(W.mesh(W.cyl(45, 45, 20, 12), wheelM, { at: [x + dx, 60, 7000 + dz], rot: [90, 0, 0] }));\n}\nconst loco = W.group();\nloco.add(W.mesh(W.box(1700, 380, 310, 30), W.paint('#2f5a8a', { metallic: 0.3, rough: 0.4 }), { at: [-7900, 290, 7000] }));\nloco.add(W.mesh(W.box(300, 120, 300), W.paint('#e8e2d0'), { at: [-7200, 420, 7000] }));\ntrain.add(loco);\nW.add(train, { label: 'బొగ్గు రైలు' });\n// the main conveyor: from the transfer tower, up in an open gallery to the bunkers over the boiler's front\nconst cv = W.group();\nconst truss = W.metal('#9aa3ab', { rough: 0.5 });\ncv.add(W.mesh(W.box(900, 1700, 900), S.matte('#9fa6ad', 0.7), { at: [-11000, 850, 500] })); // the transfer tower\ncv.add(W.mesh(W.box(5600, 14, 140), W.rubber('#1d1e20'), { at: [-14200, 120, 500] })); // the yard belt\nS.cvA = [-10600, 1650, 600]; S.cvB = [-6300, 4350, 2650];\nconst A = new THREE.Vector3(...S.cvA), B = new THREE.Vector3(...S.cvB), D = B.clone().sub(A), L = D.length();\nconst gal = W.group();\ngal.position.copy(A).add(B).multiplyScalar(0.5);\ngal.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\ngal.add(W.mesh(W.box(L, 20, 260), W.rubber('#1b1c1e'), { at: [0, -40, 0] }));\ngal.add(W.mesh(W.box(L, 14, 300), truss, { at: [0, -70, 0] }));\nfor (const z of [-170, 170]) {\n  gal.add(W.mesh(W.box(L, 14, 14), truss, { at: [0, 150, z] }), W.mesh(W.box(L, 14, 14), truss, { at: [0, -70, z] }));\n  for (let x = -L / 2; x <= L / 2; x += 300) gal.add(W.mesh(W.box(12, 220, 12), truss, { at: [x, 40, z] }));\n}\nfor (let x = -L / 2; x <= L / 2; x += 600) gal.add(W.mesh(W.box(14, 14, 340), truss, { at: [x, 150, 0] }));\ngal.add(W.mesh(W.box(L, 8, 380), W.metal('#b9c0c6', { rough: 0.4 }), { at: [0, 170, 0] })); // its rain roof\ncv.add(gal);\nfor (let k = 0.18; k < 0.95; k += 0.2) { // trestles under it\n  const p = A.clone().lerp(B, k);\n  cv.add(W.mesh(W.box(60, p.y - 80, 60), truss, { at: [p.x, (p.y - 80) / 2, p.z - 140] }), W.mesh(W.box(60, p.y - 80, 60), truss, { at: [p.x, (p.y - 80) / 2, p.z + 140] }));\n}\nW.add(cv, { label: 'కన్వేయర్ బెల్ట్', heat: [32, 40] });\n"
+},
+{
+"id": "boiler",
+"status": "బాయిలర్ కడుతున్నాను",
+"code": "const S = W.store;\n// the boiler: a steel frame 60 m tall; inside, the furnace (its walls are water tubes), the fireball, the steam drum on top\nconst bx = -4000, bz = 0;\nconst frame = W.group();\nconst steel = W.paint('#5d6b78', { metallic: 0.4, rough: 0.55 });\nfor (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {\n  if (i > 0 && i < 4 && j > 0 && j < 4) continue;\n  frame.add(W.mesh(W.box(70, 6000, 70), steel, { at: [bx - 2000 + i * 1000, 3000, bz - 2000 + j * 1000] }));\n}\nfor (let y = 1000; y <= 6000; y += 1000) for (const s of [-1, 1]) {\n  frame.add(W.mesh(W.box(4000, 50, 50), steel, { at: [bx, y, bz + s * 2000] }), W.mesh(W.box(50, 50, 4000), steel, { at: [bx + s * 2000, y, bz] }));\n}\nW.add(frame, { label: 'బాయిలర్ స్టీల్ ఫ్రేమ్', layer: 3 });\nconst boil = W.group();\nconst tubes = W.canvasTex(256, 64);\n{ const g = tubes.ctx; for (let x = 0; x < 256; x += 8) { const gr = g.createLinearGradient(x, 0, x + 8, 0); gr.addColorStop(0, '#3a3e44'); gr.addColorStop(0.5, '#8d949c'); gr.addColorStop(1, '#3a3e44'); g.fillStyle = gr; g.fillRect(x, 0, 8, 64); } tubes.update(); tubes.texture.wrapS = THREE.RepeatWrapping; tubes.texture.repeat.set(10, 1); }\nconst wallM = new THREE.MeshStandardMaterial({ map: tubes.texture, roughness: 0.55, metalness: 0.6, side: THREE.DoubleSide });\nconst fx = bx - 700, fw = 1800, fh = 4600, fy = 600;\nfor (const [x, z, w, d] of [[fx, bz - fw / 2, fw, 30], [fx - fw / 2, bz, 30, fw], [fx + fw / 2, bz, 30, fw]]) boil.add(W.mesh(W.box(w, fh, d), wallM, { at: [x, fy + fh / 2, z] }));\nboil.add(W.mesh(W.box(fw, 40, fw), wallM, { at: [fx, fy + fh, bz] })); // (the front wall is left off: the fire shows)\nboil.add(W.mesh(new THREE.ConeGeometry(fw * 0.7, 500, 4, 1, true), wallM, { at: [fx, fy - 200, bz], rot: [180, 45, 0] })); // the ash hopper\nS.flames = [];\nconst flameM = new THREE.MeshStandardMaterial({ color: 0x1a0a04, emissive: 0xff7a1e, emissiveIntensity: 0, transparent: true, opacity: 0.85, depthWrite: false });\nconst coreM = new THREE.MeshStandardMaterial({ color: 0x1a0a04, emissive: 0xffd36a, emissiveIntensity: 0, transparent: true, opacity: 0.9, depthWrite: false });\nfor (const [y, r, m] of [[1500, 520, flameM], [2100, 640, flameM], [2700, 560, flameM], [2050, 330, coreM], [3300, 420, flameM]]) {\n  const f = W.mesh(W.sphere(r, 20), m, { at: [fx, y, bz] }); f.castShadow = false; boil.add(f); S.flames.push(f);\n}\nfor (const [x, z] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) for (const y of [1500, 1900, 2300]) { // the burners at the four corners\n  boil.add(W.mesh(W.cyl(45, 45, 140, 10), W.metal('#6a6f75'), { at: [fx + x * (fw / 2 - 20), y, bz + z * (fw / 2 - 20)], rot: [90, 45 * x * z, 0] }));\n}\nboil.add(W.mesh(W.box(1300, 3600, 1300), new THREE.MeshStandardMaterial({ map: tubes.texture, roughness: 0.6, metalness: 0.5 }), { at: [bx + 900, 3700, bz] })); // the back pass\nfor (let i = 0; i < 9; i++) boil.add(W.mesh(W.box(40, 900, 1500), W.metal('#9b6a52', { rough: 0.45 }), { at: [fx - 600 + i * 150, fy + fh - 650, bz] })); // superheater panels\nW.add(boil, { label: 'బాయిలర్', heat: [40, 1250], layer: 3 });\nconst drum = W.group();\ndrum.add(W.mesh(W.cyl(110, 110, 2000, 32), W.paint('#8a3b30', { metallic: 0.4, rough: 0.5 }), { at: [bx, 5650, bz], rot: [90, 0, 0] }));\nfor (const z of [-1000, 1000]) drum.add(W.mesh(W.sphere(110, 24), W.paint('#8a3b30', { metallic: 0.4, rough: 0.5 }), { at: [bx, 5650, bz + z] }));\nfor (const z of [-700, 0, 700]) drum.add(W.mesh(W.cyl(14, 14, 160, 10), W.metal('#d0d3d6'), { at: [bx, 5800, bz + z] })); // safety valves\nW.add(drum, { label: 'స్టీమ్ డ్రమ్', heat: [40, 360], layer: 3 });\n// the cladding round it all: lifts away to show the boiler (🧅)\nconst clad = W.group();\nconst sheet = S.wall(10, 2, { wall: '#c4ccd4', glass: '#9aa7b2', top: 0.1, h: 0.08, lit: 0.25, rx: 2, ry: 3 });\nfor (const [x, z, w, d] of [[bx, bz - 2050, 4100, 30], [bx, bz + 2050, 4100, 30], [bx - 2050, bz, 30, 4100], [bx + 2050, bz, 30, 4100]]) clad.add(W.mesh(W.box(w, 6100, d), sheet, { at: [x, 3050, z] }));\nclad.add(W.mesh(W.box(4200, 60, 4200), W.paint('#8d98a3', { metallic: 0.3, rough: 0.6 }), { at: [bx, 6120, bz] }));\nclad.add(W.mesh(W.box(4120, 500, 4120), W.paint('#2f6fa8', { metallic: 0.3, rough: 0.5 }), { at: [bx, 5800, bz] })); // the blue band at the top\nW.add(clad, { label: 'బాయిలర్ గోడలు', layer: 1, peelBy: [0, 7600, 0], explode: [0, 7600, 0] });\nclad.traverse((x) => { if (x.isMesh) x.castShadow = false; });\n// in front: the bunkers that hold the coal, the mills that grind it to powder, the pipes that blow it to the burners\nconst bay = W.group();\nconst bunM = W.paint('#77818b', { metallic: 0.4, rough: 0.55 });\nbay.add(W.mesh(W.box(4200, 400, 900), W.paint('#9aa3ab', { metallic: 0.3, rough: 0.6 }), { at: [bx, 4450, 2700] })); // the tripper gallery\nfor (let i = 0; i < 5; i++) {\n  const x = bx - 1600 + i * 800;\n  bay.add(W.mesh(W.cyl(330, 330, 1100, 20), bunM, { at: [x, 3700, 2700] }));\n  bay.add(W.mesh(W.cone(330, 500, 20), bunM, { at: [x, 2900, 2700], rot: [180, 0, 0] }));\n  for (const dx of [-300, 300]) bay.add(W.mesh(W.box(40, 2700, 40), W.paint('#5d6b78'), { at: [x + dx, 1350, 2400] }));\n}\nW.add(bay, { label: 'బొగ్గు బంకర్లు', heat: [32, 40] });\nconst mills = W.group();\nconst millM = W.paint('#3e6e5a', { metallic: 0.35, rough: 0.5 });\nfor (let i = 0; i < 5; i++) {\n  const x = bx - 1600 + i * 800;\n  mills.add(W.mesh(W.cyl(240, 280, 520, 24), millM, { at: [x, 260, 2900] }));\n  mills.add(W.mesh(W.cone(240, 260, 24), millM, { at: [x, 650, 2900] }));\n  const top = W.group({ at: [x, 820, 2900] });\n  top.add(W.mesh(W.cyl(90, 90, 80, 16), W.metal('#b0b5ba'), {}));\n  for (let k = 0; k < 4; k++) top.add(W.mesh(W.box(150, 30, 20), W.metal('#7a7f86'), { rot: [0, k * 45, 0] }));\n  mills.add(top);\n  S.turn.push({ o: top, axis: 'y', k: 0.9, by: 'run' });\n  mills.add(W.mesh(W.box(240, 200, 200), W.paint('#2f4f7a'), { at: [x, 120, 3300] })); // its motor\n  mills.add(W.mesh(W.tube([[x, 700, 2850], [x, 1300, 2500], [x - 150, 1900, 1500], [bx - 700 + (i - 2) * 300, 1700 + (i % 3) * 300, 950]], 40, 24), W.metal('#8b8f94', { rough: 0.5 })));\n}\nW.add(mills, { label: 'బొగ్గు మిల్లులు', heat: [45, 95] });\n"
+},
+{
+"id": "flue",
+"status": "పొగ దారి: ESP, ఫ్యాన్లు, చిమ్నీ కడుతున్నాను",
+"code": "const S = W.store;\nconst esp = W.group();\nconst espM = W.paint('#8f9aa4', { metallic: 0.35, rough: 0.6 });\nfor (const x of [-5000, -3000]) {\n  esp.add(W.mesh(W.box(1800, 2200, 2800), espM, { at: [x, 2300, -4300] }));\n  for (const z of [-5200, -4300, -3400]) esp.add(W.mesh(W.cone(500, 700, 4), W.paint('#6f7a84'), { at: [x, 850, z], rot: [180, 45, 0] }));\n  for (const dx of [-800, 800]) for (const dz of [-1300, 1300]) esp.add(W.mesh(W.box(60, 1200, 60), W.paint('#5d6b78'), { at: [x + dx, 600, -4300 + dz] }));\n  esp.add(W.mesh(W.box(1900, 100, 2900), W.paint('#6b7681'), { at: [x, 3450, -4300] }));\n}\nesp.add(W.mesh(W.box(3800, 900, 600), espM, { at: [-4000, 4300, -2500] })); // the duct from the boiler\nesp.add(W.mesh(W.box(600, 2400, 600), espM, { at: [-4000, 3300, -2600] }));\nW.add(esp, { label: 'ESP ఫిల్టర్', heat: [60, 145] });\nconst idf = W.group();\nfor (const x of [-4800, -3200]) {\n  idf.add(W.mesh(W.cyl(300, 300, 280, 28), W.paint('#4b6f8f', { metallic: 0.3, rough: 0.5 }), { at: [x, 350, -6500], rot: [0, 0, 90] }));\n  idf.add(W.mesh(W.box(500, 260, 300), W.paint('#2f4f7a'), { at: [x + 500, 150, -6500] }));\n  const cp = W.group({ at: [x + 220, 300, -6500] });\n  cp.add(W.mesh(W.cyl(60, 60, 60, 12), W.metal('#c0c4c8'), { rot: [0, 0, 90] }));\n  for (let k = 0; k < 6; k++) cp.add(W.mesh(W.box(20, 20, 20), W.metal('#6a6f75'), { at: [0, Math.sin(k) * 45, Math.cos(k) * 45] }));\n  idf.add(cp);\n  S.turn.push({ o: cp, axis: 'x', k: 2.5, by: 'run' });\n  idf.add(W.mesh(W.box(500, 500, 1400), W.paint('#8f9aa4', { metallic: 0.35, rough: 0.6 }), { at: [x, 350, -5700] }));\n}\nidf.add(W.mesh(W.box(2200, 600, 600), W.paint('#8f9aa4', { metallic: 0.35, rough: 0.6 }), { at: [-4000, 350, -7300] }));\nW.add(idf, { label: 'ID ఫ్యాన్లు', heat: [45, 140] });\nconst ch = W.group();\nconst prof = [];\nfor (let i = 0; i <= 12; i++) { const k = i / 12; prof.push([900 - 420 * k, 15000 * k]); }\nch.add(W.mesh(W.lathe([[0.01, 0]].concat(prof, [[0.01, 15000]]), 40), S.matte('#c9c3b8', 0.85), { at: [-4000, 0, -8800] }));\nconst red = S.matte('#c23a2e', 0.7), white = S.matte('#f2efe8', 0.7);\nfor (let i = 0; i < 5; i++) { // the red and white bands at the top (for aircraft)\n  const y0 = 12800 + i * 440, r0 = 900 - 420 * (y0 / 15000), r1 = 900 - 420 * ((y0 + 440) / 15000);\n  ch.add(W.mesh(W.cyl(r1 + 6, r0 + 6, 440, 40, true), i % 2 ? white : red, { at: [-4000, y0 + 220, -8800] }));\n}\nch.add(W.mesh(W.cyl(500, 500, 60, 40), W.metal('#55595e'), { at: [-4000, 15020, -8800] }));\nS.beacons = [];\nfor (const y of [7600, 14900]) for (let k = 0; k < 4; k++) {\n  const r = 900 - 420 * (y / 15000) + 30, a = k * Math.PI / 2;\n  const m = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2a1a, emissiveIntensity: 0 });\n  ch.add(W.mesh(W.sphere(45, 10), m, { at: [-4000 + Math.cos(a) * r, y, -8800 + Math.sin(a) * r] }));\n  S.beacons.push(m);\n}\nW.add(ch, { label: 'చిమ్నీ', heat: [40, 135] });\n"
+},
+{
+"id": "hall",
+"status": "టర్బైన్ హాల్ కడుతున్నాను",
+"code": "const S = W.store;\n// the turbine hall: 80 m × 30 m, 28 m high; the turbine deck 12 m above the floor; a crane under the roof\nconst hx0 = -1500, hx1 = 6500, hz = 1500, hh = 2800, cx = (hx0 + hx1) / 2;\nconst walls = W.group();\nconst longW = S.wall(16, 3, { rx: 1, ry: 1, top: 0.3, h: 0.28 });\nconst endW = S.wall(4, 3, { rx: 1, ry: 1, top: 0.3, h: 0.28 });\nwalls.add(W.mesh(W.box(hx1 - hx0, hh, 40), longW, { at: [cx, hh / 2, hz] }), W.mesh(W.box(hx1 - hx0, hh, 40), longW, { at: [cx, hh / 2, -hz] }));\nwalls.add(W.mesh(W.box(40, hh, 2 * hz), endW, { at: [hx0, hh / 2, 0] }), W.mesh(W.box(40, hh, 2 * hz), endW, { at: [hx1, hh / 2, 0] }));\nwalls.add(W.mesh(W.box(600, 700, 20), W.paint('#2f6fa8'), { at: [hx1 - 900, 350, hz + 25] })); // the big door\nW.add(walls, { label: 'టర్బైన్ హాల్', layer: 1, peelBy: [0, 3300, 0], explode: [0, 0, 4200], heat: [32, 40] });\nwalls.traverse((x) => { if (x.isMesh) x.castShadow = false; });\nconst roof = W.group();\nroof.add(W.mesh(W.box(hx1 - hx0 + 200, 60, 2 * hz + 200), W.paint('#8b97a3', { metallic: 0.3, rough: 0.55 }), { at: [cx, hh + 30, 0] }));\nfor (let x = hx0 + 600; x < hx1; x += 1200) roof.add(W.mesh(W.box(500, 120, 2 * hz - 400), W.paint('#a8b2bb'), { at: [x, hh + 120, 0] }));\nconst lampsM = S.lamp('#fff3dc', 2.2);\nS.lamps[S.lamps.length - 1].always = 0.35;\nfor (let x = hx0 + 700; x < hx1; x += 1100) for (const z of [-800, 800]) roof.add(W.mesh(W.box(160, 20, 70), lampsM, { at: [x, hh - 20, z] }));\nW.add(roof, { label: 'హాల్ పైకప్పు', layer: 0, peelBy: [0, 6200, 0], explode: [0, 6200, 0] });\nroof.traverse((x) => { if (x.isMesh) x.castShadow = false; });\nconst crane = W.group();\nconst cy = W.paint('#e0b324', { metallic: 0.3, rough: 0.45 });\nfor (const z of [-1450, 1450]) crane.add(W.mesh(W.box(hx1 - hx0, 60, 60), W.metal('#7d838b'), { at: [cx, 2350, z] }));\nfor (const dz of [-160, 160]) crane.add(W.mesh(W.box(160, 200, 2900), cy, { at: [3600 + dz, 2480, 0] }));\ncrane.add(W.mesh(W.box(500, 220, 500), cy, { at: [3600, 2640, 300] }));\ncrane.add(W.mesh(W.cyl(8, 8, 900, 6), W.metal('#2a2c30'), { at: [3600, 2080, 300] }));\ncrane.add(W.mesh(W.box(120, 160, 80), cy, { at: [3600, 1580, 300] }));\nW.add(crane, { label: 'హాల్ క్రేన్', layer: 2, peelBy: [0, 2400, 0] });\n"
+},
+{
+"id": "turbine",
+"status": "టర్బైన్, జనరేటర్ పెడుతున్నాను",
+"code": "const S = W.store;\n// the turbine set on its concrete deck: HP, IP, LP turbines and the generator on one shaft (3000 turns a minute)\nconst Y = 1460, DY = 1200;\nconst deck = W.group();\ndeck.add(W.mesh(W.box(7000, 120, 1600), S.concrete, { at: [2250, DY - 60, 0] }));\nfor (let x = -1000; x <= 5500; x += 1300) for (const z of [-650, 650]) deck.add(W.mesh(W.box(160, DY - 120, 160), S.concrete, { at: [x, (DY - 120) / 2, z] }));\ndeck.add(W.mesh(W.box(7000, 100, 30), W.paint('#e0b324'), { at: [2250, DY + 50, 800] }), W.mesh(W.box(7000, 100, 30), W.paint('#e0b324'), { at: [2250, DY + 50, -800] })); // railings\nconst hallLight = (x) => { const l = new THREE.PointLight(0xfff0d8, 2.2, 7000, 0); l.position.set(x, 2500, 0); deck.add(l); };\nhallLight(500); hallLight(4200);\nW.add(deck, { label: 'టర్బైన్ డెక్', heat: [32, 40] });\nconst tset = W.group();\nconst casing = W.paint('#7f8a94', { metallic: 0.5, rough: 0.4 });\nconst rotorG = W.group();\nconst bladeTex = W.canvasTex(128, 128);\n{ const g = bladeTex.ctx; g.fillStyle = '#5b6168'; g.fillRect(0, 0, 128, 128); g.translate(64, 64); for (let i = 0; i < 40; i++) { g.rotate(Math.PI * 2 / 40); g.fillStyle = i % 2 ? '#c9ced4' : '#8d949c'; g.fillRect(8, -2, 56, 4); } bladeTex.update(); }\nconst bladeM = new THREE.MeshStandardMaterial({ map: bladeTex.texture, metalness: 0.8, roughness: 0.35 });\nrotorG.add(W.mesh(W.cyl(30, 30, 4700, 16), W.metal('#c4c8cc'), { at: [2150, Y, 0], rot: [0, 0, 90] }));\nconst disc = (x, r) => rotorG.add(W.mesh(W.cyl(r, r, 30, 40), bladeM, { at: [x, Y, 0], rot: [0, 0, 90] }));\nfor (let i = 0; i < 8; i++) disc(60 + i * 65, 90 + i * 4);\nfor (let i = 0; i < 7; i++) disc(800 + i * 85, 115 + i * 7);\nfor (let i = 0; i < 5; i++) { disc(2150 - 70 - i * 95, 150 + i * 38); disc(2150 + 70 + i * 95, 150 + i * 38); }\nS.rotor = rotorG;\ntset.add(rotorG);\nconst lower = (x0, x1, r) => tset.add(W.mesh(S.axisLathe([[r * 0.35, x0], [r, x0 + 40], [r, x1 - 40], [r * 0.35, x1]], 40, 0, Math.PI), casing, { at: [0, Y, 0] }));\nlower(-30, 620, 160); lower(720, 1460, 190);\ntset.add(W.mesh(W.box(1000, 360, 920), casing, { at: [2150, Y - 180, 0] }));\nfor (const x of [-120, 670, 1560, 2750]) { // the bearing pedestals and the couplings that turn\n  tset.add(W.mesh(W.box(140, 260, 360), W.paint('#4f5a64', { metallic: 0.4, rough: 0.5 }), { at: [x, DY + 130, 0] }));\n  const cp = W.group({ at: [x, Y, 0] });\n  cp.add(W.mesh(W.cyl(55, 55, 70, 16), W.metal('#c9cdd2'), { rot: [0, 0, 90] }));\n  for (let k = 0; k < 8; k++) cp.add(W.mesh(W.cyl(8, 8, 76, 6), W.metal('#6a6f75'), { at: [0, Math.sin(k * Math.PI / 4) * 40, Math.cos(k * Math.PI / 4) * 40], rot: [0, 0, 90] }));\n  tset.add(cp);\n  S.turn.push({ o: cp, axis: 'x', k: 1, by: 'shaft' });\n}\nconst msp = W.metal('#a8524a', { rough: 0.35 });\nfor (const z of [-260, 260]) tset.add(W.mesh(W.tube([[-700, 2000, z], [-300, 1900, z], [-60, Y + 150, z * 0.6], [80, Y + 120, 0]], 34, 24), msp)); // steam in\ntset.add(W.mesh(W.tube([[620, Y + 120, 0], [700, Y + 320, 0], [1300, Y + 320, 0], [1700, Y + 250, 0]], 40, 24), W.metal('#b8a284', { rough: 0.35 }))); // the cross-over pipe\nW.add(tset, { label: 'స్టీమ్ టర్బైన్', heat: [40, 520], layer: 3 });\nconst covers = W.group();\nconst top = (x0, x1, r) => covers.add(W.mesh(S.axisLathe([[r * 0.35, x0], [r, x0 + 40], [r, x1 - 40], [r * 0.35, x1]], 40, Math.PI, Math.PI), casing, { at: [0, Y, 0] }));\ntop(-30, 620, 160); top(720, 1460, 190);\nconst lpTop = new THREE.Mesh(new THREE.CylinderGeometry(460, 460, 1000, 32, 1, false, 0, Math.PI), casing); // (the upper half)\nlpTop.rotation.z = Math.PI / 2; lpTop.position.set(2150, Y, 0);\ncovers.add(lpTop);\ncovers.add(W.text('HP', { size: 70, at: [300, Y + 30, 167], color: '#e8eef4' }), W.text('IP', { size: 70, at: [1090, Y + 30, 197], color: '#e8eef4' }), W.text('LP', { size: 90, at: [2150, Y + 90, 467], color: '#e8eef4' }));\nW.add(covers, { label: 'టర్బైన్ కవర్లు', layer: 2, peelBy: [0, 900, 0], explode: [0, 900, 0], heat: [40, 480] });\nconst gen = W.group();\nconst genM = W.paint('#3f7b74', { metallic: 0.35, rough: 0.4 });\ngen.add(W.mesh(W.cyl(200, 200, 1150, 40), genM, { at: [3400, Y, 0], rot: [0, 0, 90] }));\nfor (const x of [2830, 3970]) gen.add(W.mesh(W.cyl(170, 200, 60, 40), W.paint('#2f5f5a'), { at: [x, Y, 0], rot: [0, 0, 90] }));\ngen.add(W.mesh(W.box(1100, 140, 420), W.paint('#2f5f5a'), { at: [3400, DY + 70, 0] }));\ngen.add(W.mesh(W.cyl(110, 110, 300, 24), W.paint('#3f6e8f'), { at: [4250, Y, 0], rot: [0, 0, 90] })); // the exciter\ngen.add(W.text('500 MW · 21 kV', { size: 55, at: [3400, Y + 20, 204], color: '#eaf6f3' }));\nfor (const z of [-140, 0, 140]) gen.add(W.mesh(W.tube([[3600, DY - 30, z], [3600, 700, z], [5000, 700, z], [6450, 900, z], [7150, 900, z]], 34, 24), W.metal('#9aa2aa', { rough: 0.4 }))); // its bus ducts out\nW.add(gen, { label: 'జనరేటర్', heat: [40, 75], layer: 3 });\nconst cond = W.group();\ncond.add(W.mesh(W.box(1100, 800, 1200), W.paint('#5b7e96', { metallic: 0.35, rough: 0.5 }), { at: [2150, 600, 0] }));\ncond.add(W.mesh(W.box(260, 400, 260), W.paint('#5b7e96'), { at: [2150, 1000 + 40, 0] }));\nfor (const z of [-400, 400]) cond.add(W.mesh(W.cyl(110, 110, 900, 20), W.paint('#3a6e9e'), { at: [2150, 400, z - Math.sign(z) * 1050], rot: [90, 0, 0] }));\nW.add(cond, { label: 'కండెన్సర్', heat: [32, 46] });\nconst bfp = W.group();\nfor (const x of [4700, 5600]) {\n  bfp.add(W.mesh(W.cyl(110, 110, 500, 20), W.paint('#5a6e86'), { at: [x, 160, 1050], rot: [0, 0, 90] }));\n  bfp.add(W.mesh(W.cyl(130, 130, 400, 20), W.paint('#2f4f7a'), { at: [x + 470, 160, 1050], rot: [0, 0, 90] }));\n  bfp.add(W.mesh(W.box(1000, 40, 360), S.concrete, { at: [x + 200, 20, 1050] }));\n}\nbfp.add(W.mesh(W.tube([[5000, 280, 1050], [5000, 600, 1300], [1000, 600, 1350], [-1400, 600, 1300], [-2700, 900, 900]], 30, 30), W.metal('#9aa2aa')));\nW.add(bfp, { label: 'ఫీడ్ పంప్', heat: [40, 180] });\nconst sp = W.group();\nfor (const z of [-260, 260]) sp.add(W.mesh(W.tube([[-2600, 5650, z], [-2100, 5650, z], [-1800, 5400, z], [-1800, 2300, z], [-1600, 2050, z], [-700, 2000, z]], 34, 48), W.metal('#a8524a', { rough: 0.35 })));\nW.add(sp, { label: 'స్టీమ్ పైపులు', heat: [40, 540] });\n"
+},
+{
+"id": "cooling",
+"status": "కూలింగ్ టవర్ కడుతున్నాను",
+"code": "const S = W.store;\n// the cooling tower: a hyperbolic concrete shell 105 m tall on slanting legs; warm water rains inside, air rises, a cloud\nconst tx = 9500, tz = -8000;\nS.ctTop = [tx, 10500, tz];\nconst rAt = (y) => 2600 * Math.sqrt(1 + Math.pow((y - 7800) / 5518, 2));\nconst prof = [];\nfor (let y = 800; y <= 10500; y += 450) prof.push([rAt(y), y]);\nconst ct = W.group();\nconst shellM = new THREE.MeshStandardMaterial({ color: '#d2ccc0', roughness: 0.92, metalness: 0, side: THREE.DoubleSide });\nct.add(W.mesh(W.lathe(prof, 64), shellM, { at: [tx, 0, tz] }));\nct.add(W.mesh(W.torus(rAt(10500), 40, 64, 8), shellM, { at: [tx, 10500, tz], rot: [90, 0, 0] }));\nconst legs = new THREE.InstancedMesh(new THREE.CylinderGeometry(45, 45, 1, 6), S.concrete, 96);\n{\n  const r0 = rAt(800), Mx = new THREE.Matrix4(), Q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);\n  for (let i = 0; i < 96; i++) {\n    const a = (Math.floor(i / 2) / 48) * Math.PI * 2, s = i % 2 ? 1 : -1, a2 = a + s * 0.07;\n    const A = new THREE.Vector3(tx + Math.cos(a) * (r0 + 120), 0, tz + Math.sin(a) * (r0 + 120)), B = new THREE.Vector3(tx + Math.cos(a2) * r0, 820, tz + Math.sin(a2) * r0);\n    Q.setFromUnitVectors(up, B.clone().sub(A).normalize());\n    Mx.compose(A.clone().add(B).multiplyScalar(0.5), Q, new THREE.Vector3(1, A.distanceTo(B), 1));\n    legs.setMatrixAt(i, Mx);\n  }\n}\nct.add(legs);\nct.add(W.mesh(W.cyl(rAt(800) + 300, rAt(800) + 300, 120, 64), S.concrete, { at: [tx, 30, tz] }));\nconst water = new THREE.MeshStandardMaterial({ color: '#2f6f8f', roughness: 0.15, metalness: 0.2 });\nct.add(W.mesh(W.cyl(rAt(800) + 200, rAt(800) + 200, 20, 64), water, { at: [tx, 95, tz] }));\nct.add(W.mesh(W.cyl(rAt(1300) - 60, rAt(1300) - 60, 300, 48), S.matte('#7d7468'), { at: [tx, 1250, tz] })); // the fill pack\nW.add(ct, { label: 'కూలింగ్ టవర్', heat: [32, 42] });\nS.ctGroup = ct;\nconst cw = W.group();\ncw.add(W.mesh(W.tube([[2000, 200, -1600], [2000, 200, -3200], [6000, 200, -3600], [8200, 200, -4300], [8700, 1350, -6000]], 120, 48), W.paint('#b8743a', { metallic: 0.2, rough: 0.6 })));\ncw.add(W.mesh(W.tube([[8200, 160, -5300], [6200, 160, -2900], [2600, 160, -2700], [2400, 160, -1600]], 120, 48), W.paint('#3f78a8', { metallic: 0.2, rough: 0.6 })));\ncw.add(W.mesh(W.box(1400, 600, 900), S.matte('#a9b0b6', 0.7), { at: [7400, 300, -4700] })); // the CW pump house\nW.add(cw, { label: 'నీటి పైపులు', heat: [32, 42] });\n"
+},
+{
+"id": "switchyard",
+"status": "ట్రాన్స్‌ఫార్మర్, స్విచ్‌యార్డ్ కడుతున్నాను",
+"code": "const S = W.store;\nconst gt = W.group();\nconst tank = W.paint('#5f6b5e', { metallic: 0.35, rough: 0.55 });\ngt.add(W.mesh(W.box(1000, 60, 800), S.concrete, { at: [7700, 30, 0] }));\ngt.add(W.mesh(W.box(800, 650, 520), tank, { at: [7700, 390, 0] }));\nconst fins = new THREE.InstancedMesh(W.box(10, 520, 160), tank, 40);\nfor (let i = 0; i < 40; i++) fins.setMatrixAt(i, new THREE.Matrix4().makeTranslation(7340 + (i % 20) * 38, 380, i < 20 ? 360 : -360));\ngt.add(fins);\ngt.add(W.mesh(W.cyl(90, 90, 600, 20), tank, { at: [7700, 860, -220], rot: [0, 0, 90] })); // the oil conservator\nconst porc = S.matte('#7a4a32', 0.4);\nfor (const z of [-160, 0, 160]) {\n  for (let k = 0; k < 9; k++) gt.add(W.mesh(W.cyl(32, 32, 14, 16), porc, { at: [7900, 760 + k * 32, z] }));\n  gt.add(W.mesh(W.cyl(14, 14, 300, 10), W.metal('#c9cdd2'), { at: [7900, 900, z] }));\n}\ngt.add(W.text('21 kV → 400 kV', { size: 50, at: [7700, 680, 262], color: '#eef2f5' }));\nW.add(gt, { label: 'జనరేటర్ ట్రాన్స్‌ఫార్మర్', heat: [35, 78] });\nconst sw = W.group();\nsw.add(W.mesh(W.box(5600, 10, 5000), S.matte('#8b867d', 0.98), { at: [11800, 6, 0] }));\nconst gal = W.metal('#aab2ba', { rough: 0.45 });\nfor (const x of [9400, 11800, 14200]) { // the gantries the wires hang from\n  for (const z of [-1800, 1800]) sw.add(W.mesh(W.box(60, 1800, 60), gal, { at: [x, 900, z] }));\n  sw.add(W.mesh(W.box(60, 60, 3660), gal, { at: [x, 1800, 0] }));\n}\nfor (const x of [10200, 11000, 12600, 13400]) for (const z of [-600, 0, 600]) { // breakers and isolators on their stands\n  sw.add(W.mesh(W.box(30, 300, 30), gal, { at: [x, 150, z] }));\n  sw.add(W.mesh(W.cyl(30, 30, 260, 12), x % 1600 === 200 ? S.matte('#9aa1a8', 0.5) : S.matte('#7a4a32', 0.4), { at: [x, 430, z] }));\n}\nfor (const z of [-600, 0, 600]) sw.add(W.mesh(W.cyl(10, 10, 4800, 6), W.metal('#c9a24a'), { at: [11800, 700, z], rot: [0, 0, 90] })); // the bus bars\nfor (const z of [-600, 0, 600]) sw.add(W.mesh(W.tube([[7900, 1050, z * 0.3], [8600, 1500, z], [9400, 1780, z]], 6, 16), W.metal('#c9a24a')));\nW.add(sw, { label: 'స్విచ్‌యార్డ్', heat: [32, 48] });\nconst lines = W.group();\nconst tower = (x, z) => {\n  const t = W.group({ at: [x, 0, z] });\n  for (const [dx, dz] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) t.add(S.beam([dx * 260, 0, dz * 260], [dx * 60, 3200, dz * 60], 14, gal, 4));\n  for (let y = 600; y < 3200; y += 600) { const w = 260 - (200 * y) / 3200; t.add(W.mesh(W.box(w * 2, 14, 14), gal, { at: [0, y, w] }), W.mesh(W.box(w * 2, 14, 14), gal, { at: [0, y, -w] })); }\n  t.add(W.mesh(W.box(40, 40, 1600), gal, { at: [0, 2800, 0] }), W.mesh(W.box(40, 40, 1100), gal, { at: [0, 3300, 0] }));\n  t.add(W.mesh(W.cone(70, 500, 4), gal, { at: [0, 3450, 0] }));\n  return t;\n};\nlines.add(tower(16200, 0), tower(19000, 0));\nconst wireM = W.metal('#6c7076', { rough: 0.5 });\nfor (const z of [-700, 0, 700]) {\n  const y0 = z === 0 ? 3250 : 2750;\n  lines.add(W.mesh(W.tube([[14200, 1780, z * 0.8], [15200, y0 - 400, z], [16200, y0, z]], 7, 20), wireM));\n  lines.add(W.mesh(W.tube([[16200, y0, z], [17600, y0 - 450, z], [19000, y0, z]], 7, 20), wireM));\n}\nW.add(lines, { label: 'ట్రాన్స్‌మిషన్ లైన్లు', heat: [32, 55] });\n"
+},
+{
+"id": "control",
+"status": "కంట్రోల్ రూమ్ కడుతున్నాను",
+"code": "const S = W.store;\n// the control room: a low building in front of the hall; inside, the operators' desks and a big screen with live numbers\nconst cr = W.group();\nconst x0 = -200, x1 = 2200, z0 = 2200, z1 = 3600, H = 520;\nconst crWall = S.wall(6, 1, { wall: '#e4e1d9', glass: '#26425a', top: 0.25, h: 0.5, lit: 1.1 });\ncr.add(W.mesh(W.box(x1 - x0, H, 30), crWall, { at: [(x0 + x1) / 2, H / 2, z1] }));\ncr.add(W.mesh(W.box(x1 - x0, H, 30), S.matte('#e4e1d9', 0.8), { at: [(x0 + x1) / 2, H / 2, z0] }));\nfor (const x of [x0, x1]) cr.add(W.mesh(W.box(30, H, z1 - z0), S.matte('#e4e1d9', 0.8), { at: [x, H / 2, (z0 + z1) / 2] }));\ncr.add(W.mesh(W.box(x1 - x0, 20, z1 - z0), S.matte('#8b8f93', 0.7), { at: [(x0 + x1) / 2, 10, (z0 + z1) / 2] }));\nconst ceil = S.lamp('#fff6e6', 1.6);\nS.lamps[S.lamps.length - 1].always = 0.9;\nfor (let x = x0 + 400; x < x1; x += 600) cr.add(W.mesh(W.box(300, 8, 120), ceil, { at: [x, H - 40, (z0 + z1) / 2] }));\nS.wallScreen = W.canvasTex(512, 192);\nconst wsM = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: S.wallScreen.texture, emissiveIntensity: 1, map: S.wallScreen.texture });\ncr.add(W.mesh(new THREE.PlaneGeometry(960, 360), wsM, { at: [(x0 + x1) / 2, 290, z0 + 30] }));\nconst desk = W.paint('#3a3f46', { metallic: 0.2, rough: 0.5 });\nconst deskScreen = W.screen('#1d4f6e', 0.8);\nfor (let i = 0; i < 4; i++) {\n  const x = x0 + 500 + i * 470;\n  cr.add(W.mesh(W.box(380, 80, 120), desk, { at: [x, 75, 2900] }));\n  for (const dx of [-110, 110]) cr.add(W.mesh(W.box(150, 95, 8), deskScreen, { at: [x + dx, 175, 2870], rot: [-8, 0, 0] }));\n}\nconst crLight = new THREE.PointLight(0xfff4e0, 1.4, 2600, 0);\ncrLight.position.set(1000, 420, 2900);\ncr.add(crLight);\nW.add(cr, { label: 'కంట్రోల్ రూమ్', heat: [24, 26] });\nconst crRoof = W.group();\ncrRoof.add(W.mesh(W.box(x1 - x0 + 80, 50, z1 - z0 + 80), W.paint('#9aa3ab', { metallic: 0.2, rough: 0.6 }), { at: [(x0 + x1) / 2, H + 25, (z0 + z1) / 2] }));\nW.add(crRoof, { label: 'కంట్రోల్ రూమ్ పైకప్పు', layer: 0, peelBy: [0, 1600, 0], explode: [0, 1600, 0] });\ncrRoof.traverse((x) => { if (x.isMesh) x.castShadow = false; });\n"
+},
+{
+"id": "run",
+"status": "ప్లాంట్ స్టార్ట్‌కి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the load (MW) follows the power bar slowly (a coal plant takes its time); the shaft turns at 3000 a minute\n// whenever it is on the grid; fire, steam, smoke and the cooling tower's cloud follow the load; lamps at dusk.\n// the FD fans: they push fresh air into the boiler for the fire\nconst fd = W.group();\nfor (const z of [-1100, 1100]) {\n  fd.add(W.mesh(W.cyl(260, 260, 240, 28), W.paint('#4b6f8f', { metallic: 0.3, rough: 0.5 }), { at: [-7000, 330, z], rot: [90, 0, 0] }));\n  fd.add(W.mesh(W.box(420, 240, 300), W.paint('#2f4f7a'), { at: [-7000, 140, z + Math.sign(z) * 380] }));\n  const cp = W.group({ at: [-7000, 300, z + Math.sign(z) * 190] });\n  cp.add(W.mesh(W.cyl(55, 55, 50, 12), W.metal('#c0c4c8'), { rot: [90, 0, 0] }));\n  for (let k = 0; k < 6; k++) cp.add(W.mesh(W.box(18, 18, 18), W.metal('#6a6f75'), { at: [Math.sin(k) * 42, Math.cos(k) * 42, 0] }));\n  fd.add(cp);\n  S.turn.push({ o: cp, axis: 'z', k: 2.2, by: 'run' });\n  fd.add(W.mesh(W.tube([[-7000, 600, z], [-6700, 1200, z * 0.8], [-6200, 1500, z * 0.5]], 120, 20), W.paint('#8f9aa4', { metallic: 0.35, rough: 0.6 })));\n}\nW.add(fd, { label: 'FD ఫ్యాన్లు', heat: [32, 45] });\nW.stream([[-7600, 400, -1100], [-7000, 500, -1100], [-6700, 1200, -880], [-6000, 1500, -500], [-4700, 1700, 0]], { kind: 'cool', count: 20, size: 280, speed: 0.7 });\nW.stream([[-7600, 400, 1100], [-7000, 500, 1100], [-6700, 1200, 880], [-6000, 1500, 500], [-4700, 1700, 0]], { kind: 'cool', count: 20, size: 280, speed: 0.7 });\nW.throttle({ label: 'లోడ్', rise: 0.07, fall: 0.08, sound: 'plant' });\nW.sound({ kind: 'plant', label: 'బాయిలర్', gain: 0.45 });\nW.sound({ kind: 'hum', label: 'జనరేటర్', gain: 0.55, f0: 100 });\nW.sound({ kind: 'fans', label: 'ID ఫ్యాన్లు', gain: 0.4 });\nW.sound({ kind: 'water', label: 'కూలింగ్ టవర్', gain: 0.35 });\nW.sound({ kind: 'gear', label: 'బొగ్గు మిల్లులు', gain: 0.35, f0: 80 });\nconst puffGeo = new THREE.SphereGeometry(1, 12, 8);\nconst plume = (parent, at, o) => {\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]); m.scale.setScalar(1);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nconst ctPlume = plume(S.ctGroup, S.ctTop, { n: 26, life: 14, r: 2100, rise: 9000, drift: 3000, op: 0.55, color: '#ffffff' });\nconst smoke = plume(S.ctGroup, [-4000, 15100, -8800], { n: 18, life: 12, r: 520, rise: 4200, drift: 2600, op: 0.32, color: '#c9ccd0' });\nconst safety = plume(S.ctGroup, [-4000, 6200, 0], { n: 10, life: 3, r: 260, rise: 1800, drift: 300, op: 0.7, color: '#ffffff' });\nlet turnK = 0, hudT = 0, scrT = 0, mw = 0;\nW.onTick((t, dt) => {\n  const s = W.env.spool, on = s > 0.02, over = W.env.over;\n  const stopConv = W.faultOf('కన్వేయర్ బెల్ట్') === 'stop';\n  turnK += ((on ? 1 : 0) - turnK) * Math.min(1, dt * (on ? 0.35 : 0.2)); // (the turbine runs up to speed, then stays there)\n  if (S.rotor) S.rotor.rotation.x += dt * Math.PI * 2 * 1.6 * turnK;\n  for (const r of S.turn) {\n    const k = r.by === 'shaft' ? turnK : s;\n    if (r.conv && stopConv) continue;\n    r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.by === 'shaft' ? 1.6 : 1) * k;\n  }\n  const flick = 0.85 + 0.15 * Math.sin(t * 13) * Math.sin(t * 7.3);\n  for (const f of S.flames || []) f.material.emissiveIntensity = (W.env.heat ? 0 : 1) * (on ? (0.8 + 2.6 * s) * flick : 0);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n  const blink = Math.sin(t * 3.2) > 0.2 ? 1 : 0.08;\n  for (const b of S.beacons || []) b.emissiveIntensity = (1.2 + 2.8 * dk) * blink;\n  ctPlume(dt, on ? 0.25 + 0.75 * s : 0);\n  smoke(dt, on ? 0.2 + 0.8 * s : 0);\n  safety(dt, over ? 1 : 0);\n  mw += ((on ? 500 * Math.min(1.12, s) : 0) - mw) * Math.min(1, dt * 1.5);\n  if (t - hudT > 0.25) {\n    hudT = t;\n    const coal = mw * 0.7; // (about 0.7 kg of our coal for each unit of electricity)\n    W.hud({ 'విద్యుత్': Math.round(mw) + ' MW', 'బొగ్గు': Math.round(coal) + ' టన్నులు/గంట', 'ఆవిరి': on ? Math.round(170 * Math.min(1, 0.4 + s)) + ' bar · ' + Math.round(300 + 240 * Math.min(1, s * 1.4)) + '°C' : '—',\n      'టర్బైన్': Math.round(3000 * turnK) + ' rpm', 'ఫ్రీక్వెన్సీ': on && turnK > 0.98 ? '50.0 Hz' : '—' });\n    W.report({ power: s, mw, coal, rpm: 3000 * turnK });\n  }\n  if (S.wallScreen && t - scrT > 0.5) { // the big screen in the control room\n    scrT = t;\n    const g = S.wallScreen.ctx;\n    g.fillStyle = '#06121c'; g.fillRect(0, 0, 512, 192);\n    g.fillStyle = '#4fd2ff'; g.font = '700 22px system-ui, \"Noto Sans Telugu\", sans-serif';\n    g.fillText('యూనిట్ 1 · 500 MW', 18, 34);\n    g.fillStyle = '#ffffff'; g.font = '700 54px system-ui, sans-serif';\n    g.fillText(Math.round(mw) + ' MW', 18, 98);\n    g.font = '600 22px system-ui, \"Noto Sans Telugu\", sans-serif'; g.fillStyle = '#9fe6a0';\n    g.fillText((on && turnK > 0.98 ? '50.00 Hz' : '-- Hz') + '   ' + Math.round(3000 * turnK) + ' rpm', 18, 140);\n    g.fillStyle = '#ffcf6a'; g.fillText('బొగ్గు ' + Math.round(mw * 0.7) + ' t/h', 18, 174);\n    g.strokeStyle = '#2a5a7a'; g.strokeRect(300, 20, 196, 152);\n    g.fillStyle = '#4fd2ff'; g.fillRect(300, 172 - 150 * Math.min(1, mw / 560), 196, 150 * Math.min(1, mw / 560));\n    S.wallScreen.update();\n  }\n});\nconst convOk = () => W.faultOf('కన్వేయర్ బెల్ట్') !== 'stop';\nW.stream([[-17500, 160, 500], [-13000, 160, 500], [-11300, 1500, 560], ...[0.25, 0.5, 0.75, 1].map((k) => S.cvA.map((v, i) => v + (S.cvB[i] - v) * k + (i === 1 ? 60 : 0))), [-4000, 4400, 2700], [-4000, 1200, 2750], [-4000, 800, 2900], [-4300, 1600, 1600], [-4700, 2000, 600]],\n  { kind: 'coal', count: 80, size: 280, speed: 0.5, when: convOk });\nW.stream([[-4000, 5650, 0], [-2600, 5650, 260], [-1800, 5400, 260], [-1800, 2300, 260], [-700, 2000, 260], [80, 1580, 0], [600, 1580, 0], [700, 1780, 0], [1300, 1780, 0], [1700, 1700, 0], [2150, 1600, 0]],\n  { kind: 'steam', count: 60, size: 240, speed: 0.9 });\nW.stream([[2150, 1000, 0], [2150, 500, 0], [3500, 300, 900], [4800, 260, 1050], [5000, 600, 1300], [1000, 600, 1350], [-1400, 600, 1300], [-2700, 900, 900], [-4700, 700, 0], [-4700, 3000, -700], [-4000, 5600, 0]],\n  { kind: 'water', count: 60, size: 220, speed: 0.6 });\nW.stream([[2000, 300, -1600], [2000, 300, -3200], [6000, 300, -3600], [8200, 300, -4300], [8700, 1450, -6000], [9500, 1400, -8000]], { kind: 'warm', count: 40, size: 440, speed: 0.6 });\nW.stream([[9500, 200, -8000], [8200, 260, -5300], [6200, 260, -2900], [2600, 260, -2700], [2400, 260, -1600], [2150, 600, 0]], { kind: 'cool', count: 40, size: 440, speed: 0.6 });\nW.stream([[9500, 1250, -8000], [9500, 400, -8000]], { kind: 'water', count: 60, size: 360, speed: 1.3, spread: 3800 });\nW.stream([[-4000, 3000, 0], [-4000, 4300, -2000], [-4000, 4300, -2600], [-4000, 3000, -4300], [-4000, 1500, -5600], [-4000, 400, -6500], [-4000, 400, -7600], [-4000, 1500, -8800], [-4000, 9000, -8800], [-4000, 15200, -8800]],\n  { kind: 'smoke', count: 70, size: 440, speed: 0.6 });\nW.stream([[3400, 1460, 0], [3600, 700, 0], [5000, 760, 0], [6450, 960, 0], [7700, 950, 0], [8600, 1550, 0], [9400, 1780, 0], [14200, 1780, 0], [16200, 3250, 0], [19000, 3250, 0]],\n  { kind: 'power', count: 60, size: 320, speed: 1.2 });\nW.walk({ eye: 165, speed: 420, area: [-19000, -12500, 19000, 8000],\n  floor: (x, z) => (x > -1000 && x < 6000 && z > -800 && z < 800 ? 1200 : 0),\n  solid: [[-150, -380, 4500, 380], [-6050, -2050, -1950, 2050], [-5800, 2300, -2200, 3300], [-4900, -9700, -3100, -7900], [-6000, -5800, -2000, -2600],\n    [7100, -450, 8300, 450], [-17800, -2500, -12200, -500], [-17800, 1500, -12200, 3500]],\n  spots: [\n    { name: 'టర్బైన్ డెక్', at: [-850, 1200, 650], look: [3000, 1400, 0] },\n    { name: 'జనరేటర్ దగ్గర', at: [5500, 1200, 680], look: [2600, 1450, -100] },\n    { name: 'హాల్ కింది అంతస్తు', at: [3700, 0, 1350], look: [1800, 500, 0] },\n    { name: 'కంట్రోల్ రూమ్', at: [1000, 0, 3450], look: [1000, 260, 2200] },\n    { name: 'బాయిలర్ ముందు', at: [-2600, 0, 5000], look: [-4400, 2600, 1500] },\n    { name: 'బొగ్గు యార్డ్', at: [-10600, 0, 4700], look: [-15500, 500, 600] },\n    { name: 'కూలింగ్ టవర్ దగ్గర', at: [15600, 0, -1600], look: [9500, 5600, -8000] },\n    { name: 'స్విచ్‌యార్డ్', at: [10600, 0, 3200], look: [12600, 800, 0] },\n  ] });\n"
+}
+],
+"say": "థర్మల్ పవర్ స్టేషన్ రెడీ Sir. 'లోడ్ పెంచు' అనండి, లేదా 'టర్బైన్ డెక్‌కి వెళ్ళు' అని లోపల నడవండి.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"బొగ్గు నుంచి కరెంట్ ఎలా వస్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది 500 MW బొగ్గు విద్యుత్ కేంద్రం. బొగ్గు రైల్లో వస్తుంది, కరెంట్ తీగల్లో వెళ్తుంది. మధ్యలో ఏం జరుగుతుందో చూద్దాం.\", \"focus\": [], \"dim\": false, \"view\": \"iso\", \"secs\": 7}, {\"say\": \"రైలు తెచ్చిన బొగ్గు ఈ కుప్పల్లో నిల్వ ఉంటుంది. స్టాకర్ రీక్లెయిమర్ దాన్ని తవ్వి, పొడవైన కన్వేయర్ బెల్ట్ బాయిలర్ పైనున్న బంకర్లకి ఎక్కిస్తుంది.\", \"focus\": [{\"id\": \"coal\", \"piece\": \"బొగ్గు కుప్పలు\"}, {\"id\": \"coal\", \"piece\": \"కన్వేయర్ బెల్ట్\"}, {\"id\": \"coal\", \"piece\": \"బొగ్గు రైలు\"}], \"view\": \"front\", \"close\": true, \"flow\": [{\"from\": \"coal\", \"fromPiece\": \"బొగ్గు కుప్పలు\", \"to\": \"boiler\", \"toPiece\": \"బొగ్గు బంకర్లు\", \"kind\": \"coal\", \"count\": 8}], \"secs\": 10}, {\"say\": \"మిల్లులు బొగ్గుని పిండిలా రుబ్బుతాయి. ఆ పొడిని గాలితో బాయిలర్‌లోకి ఊదితే సుమారు 1,300°C మంట. గోడల్లోని నీటి గొట్టాలు ఆవిరి అవుతాయి.\", \"focus\": [{\"id\": \"boiler\", \"piece\": \"బొగ్గు మిల్లులు\"}, {\"id\": \"boiler\", \"piece\": \"బాయిలర్\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"boiler\", \"piece\": \"బాయిలర్ గోడలు\", \"by\": [0, 7600, 0], \"secs\": 1.5}], \"secs\": 10}, {\"say\": \"సుమారు 540°C ఆవిరి ఎర్ర పైపుల్లో టర్బైన్ హాల్‌కి వెళ్తుంది. అది బ్లేడ్లని తోసి షాఫ్ట్‌ని నిమిషానికి 3000 సార్లు తిప్పుతుంది.\", \"focus\": [{\"id\": \"turbine\", \"piece\": \"స్టీమ్ టర్బైన్\"}, {\"id\": \"turbine\", \"piece\": \"స్టీమ్ పైపులు\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"hall\", \"piece\": \"హాల్ పైకప్పు\", \"by\": [0, 6200, 0], \"secs\": 1.2}, {\"id\": \"hall\", \"piece\": \"టర్బైన్ హాల్\", \"by\": [0, 3300, 0], \"secs\": 1.2}, {\"id\": \"turbine\", \"piece\": \"టర్బైన్ కవర్లు\", \"by\": [0, 900, 0], \"secs\": 1.2}], \"flow\": [{\"from\": \"boiler\", \"fromPiece\": \"స్టీమ్ డ్రమ్\", \"to\": \"turbine\", \"toPiece\": \"స్టీమ్ టర్బైన్\", \"kind\": \"steam\", \"count\": 8}], \"secs\": 10}, {\"say\": \"అదే షాఫ్ట్ జనరేటర్‌ని తిప్పుతుంది: కరెంట్ పుట్టేది ఇక్కడే. పని అయిపోయిన ఆవిరి కింద కండెన్సర్‌లో మళ్ళీ నీరై, ఫీడ్ పంప్ ద్వారా బాయిలర్‌కి తిరిగి వెళ్తుంది.\", \"focus\": [{\"id\": \"turbine\", \"piece\": \"జనరేటర్\"}, {\"id\": \"turbine\", \"piece\": \"కండెన్సర్\"}, {\"id\": \"turbine\", \"piece\": \"ఫీడ్ పంప్\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"hall\", \"piece\": \"హాల్ పైకప్పు\", \"by\": [0, 6200, 0], \"secs\": 1}, {\"id\": \"hall\", \"piece\": \"టర్బైన్ హాల్\", \"by\": [0, 3300, 0], \"secs\": 1}], \"secs\": 10}, {\"say\": \"కండెన్సర్‌ని చల్లబరిచిన నీరు వేడెక్కి కూలింగ్ టవర్‌కి వెళ్తుంది. అక్కడ వర్షంలా పడుతూ గాలికి చల్లబడుతుంది. పైకి వచ్చేది పొగ కాదు, నీటి ఆవిరి మేఘం.\", \"focus\": [{\"id\": \"cooling\", \"piece\": \"కూలింగ్ టవర్\"}, {\"id\": \"cooling\", \"piece\": \"నీటి పైపులు\"}], \"view\": \"iso\", \"flow\": [{\"from\": \"turbine\", \"fromPiece\": \"కండెన్సర్\", \"to\": \"cooling\", \"toPiece\": \"కూలింగ్ టవర్\", \"kind\": \"warm\", \"count\": 8}], \"secs\": 10}, {\"say\": \"పొగ ముందు ESP ఫిల్టర్ గుండా వెళ్తుంది: సుమారు 99.9% బూడిద అక్కడే ఆగుతుంది. ID ఫ్యాన్లు శుభ్రమైన పొగని ఎత్తైన చిమ్నీలోకి తోస్తాయి.\", \"focus\": [{\"id\": \"flue\", \"piece\": \"ESP ఫిల్టర్\"}, {\"id\": \"flue\", \"piece\": \"ID ఫ్యాన్లు\"}, {\"id\": \"flue\", \"piece\": \"చిమ్నీ\"}], \"view\": \"back\", \"flow\": [{\"from\": \"boiler\", \"fromPiece\": \"బాయిలర్\", \"to\": \"flue\", \"toPiece\": \"చిమ్నీ\", \"kind\": \"smoke\", \"count\": 8}], \"secs\": 10}, {\"say\": \"చివరగా: జనరేటర్ ట్రాన్స్‌ఫార్మర్ 21 kV ని 400 kV కి పెంచుతుంది, స్విచ్‌యార్డ్ దాటి టవర్ తీగల్లో కరెంట్ ఊళ్ళకి వెళ్తుంది. అంతే Sir: బొగ్గు → వేడి → ఆవిరి → తిరుగుడు → కరెంట్.\", \"focus\": [{\"id\": \"switchyard\", \"piece\": \"జనరేటర్ ట్రాన్స్‌ఫార్మర్\"}, {\"id\": \"switchyard\", \"piece\": \"స్విచ్‌యార్డ్\"}, {\"id\": \"switchyard\", \"piece\": \"ట్రాన్స్‌మిషన్ లైన్లు\"}], \"view\": \"iso\", \"flow\": [{\"from\": \"turbine\", \"fromPiece\": \"జనరేటర్\", \"to\": \"switchyard\", \"toPiece\": \"ట్రాన్స్‌మిషన్ లైన్లు\", \"kind\": \"power\", \"count\": 8}], \"secs\": 10}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"థర్మల్ పవర్ స్టేషన్",
+"థర్మల్ విద్యుత్ కేంద్రం",
+"థర్మల్ పవర్ ప్లాంట్",
+"థర్మల్ ప్లాంట్",
+"బొగ్గు విద్యుత్ కేంద్రం",
+"బొగ్గు పవర్ ప్లాంట్",
+"కోల్ పవర్ ప్లాంట్",
+"పవర్ ప్లాంట్",
+"విద్యుత్ కేంద్రం",
+"thermal power station",
+"thermal power plant",
+"coal power plant",
+"thermal plant",
+"power plant"
+],
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"powerName": "🏭 లోడ్",
+"outdoor": true,
+"prefer": [
+"స్టీమ్ టర్బైన్",
+"జనరేటర్"
+],
+"walk": [
+"టర్బైన్ డెక్",
+"జనరేటర్ దగ్గర",
+"హాల్ కింది అంతస్తు",
+"కంట్రోల్ రూమ్",
+"బాయిలర్ ముందు",
+"బొగ్గు యార్డ్",
+"కూలింగ్ టవర్ దగ్గర",
+"స్విచ్‌యార్డ్"
+],
+"power": {
+"start": "యూనిట్ మొదలుపెట్టాను Sir: బర్నర్లు మండుతున్నాయి, టర్బైన్ వేగం పుంజుకుంటోంది. థర్మల్ నెమ్మదిగా పెరుగుతుంది.",
+"full": "ఫుల్ లోడ్ Sir: 500 MW వైపు పెరుగుతోంది. బొగ్గు, ఆవిరి, కూలింగ్ టవర్ మేఘం అన్నీ పెరుగుతాయి.",
+"half": "సగం లోడ్ Sir, సుమారు 250 MW.",
+"stop": "యూనిట్ ఆపుతున్నాను Sir: బర్నర్లు ఆరిపోయాయి, టర్బైన్ నెమ్మదిగా ఆగుతుంది.",
+"over": "హద్దు దాటింది Sir! బాయిలర్ ఒత్తిడి పెరిగింది. సేఫ్టీ వాల్వ్‌లు ఆవిరి వదిలాయి, గవర్నర్ లోడ్ తగ్గిస్తోంది.",
+"cut": "రక్షణ పనిచేసింది Sir: సేఫ్టీ వాల్వ్‌లు ఒత్తిడి తగ్గించాయి, లోడ్ 85% కి వచ్చింది. ఏదీ పాడవలేదు."
+},
+"info": {
+"స్టీమ్ టర్బైన్": {
+"simple": "ఇది స్టీమ్ టర్బైన్. బాయిలర్ నుంచి వచ్చిన ఆవిరి దీని బ్లేడ్లని తోసి షాఫ్ట్‌ని తిప్పుతుంది. గాలి గాలిమరని తిప్పినట్టే, ఇక్కడ ఆవిరి.",
+"deep": "మూడు భాగాలు ఒకే షాఫ్ట్ మీద: HP (హై ప్రెషర్, చిన్న బ్లేడ్లు), IP (మధ్య), LP (లో ప్రెషర్, పెద్ద బ్లేడ్లు). ఆవిరి ఒత్తిడి తగ్గే కొద్దీ అది పెద్దదవుతుంది, అందుకే చివరి బ్లేడ్లు సుమారు 1 m పొడవు. షాఫ్ట్ నిమిషానికి 3000 సార్లు తిరుగుతుంది.",
+"specs": {
+"వేగం": "నిమిషానికి 3000 సార్లు",
+"ఆవిరి లోపలికి": "సుమారు 540°C, 170 bar",
+"ఆవిరి బయటికి": "సుమారు 45°C (కండెన్సర్‌లోకి)",
+"భాగాలు": "HP, IP, LP"
+}
+},
+"ప్లాంట్ స్థలం": {
+"simple": "ఇది విద్యుత్ కేంద్రం స్థలం: రోడ్లు, వీధి దీపాలు, అన్ని భవనాలు దీని మీదే.",
+"deep": "ఒక 500 MW యూనిట్‌కి బొగ్గు యార్డ్, బూడిద చెరువు, నీటి రిజర్వాయర్, పచ్చదనంతో కలిపి వందల ఎకరాల స్థలం కావాలి. బొమ్మలో భవనాల మధ్య దూరాలు తగ్గించాను.",
+"specs": {
+"యూనిట్": "500 MW (ఒకటి)",
+"బొమ్మ పొడవు": "సుమారు 390 m"
+}
+},
+"గ్రీన్ బెల్ట్ చెట్లు": {
+"simple": "ప్లాంట్ చుట్టూ చెట్లు: దుమ్ము, శబ్దం తగ్గిస్తాయి, గాలి శుభ్రం చేస్తాయి.",
+"deep": "మన దేశంలో పెద్ద పరిశ్రమలు తమ స్థలంలో సుమారు మూడో వంతు పచ్చదనం (గ్రీన్ బెల్ట్) పెంచాలి. చెట్ల వరుస బొగ్గు దుమ్ముని ఊరి వైపు వెళ్ళనివ్వదు.",
+"specs": {
+"పని": "దుమ్ము, శబ్దం అడ్డుకోవడం"
+}
+},
+"బొగ్గు కుప్పలు": {
+"simple": "ఇవి బొగ్గు కుప్పలు. రైళ్ళు తెచ్చిన బొగ్గుని ఇక్కడ నిల్వ ఉంచుతారు, కొన్ని రోజులకి సరిపడా.",
+"deep": "ఒక 500 MW యూనిట్ ఫుల్ లోడ్‌లో రోజుకి సుమారు 8,000 టన్నుల బొగ్గు తింటుంది. కుప్పలు ఎక్కువ రోజులు ఉంటే లోపల వేడెక్కి తనంతట తానే అంటుకోవచ్చు, అందుకే నీళ్ళు చల్లుతారు, బుల్డోజర్‌తో గట్టిగా నొక్కుతారు.",
+"specs": {
+"రోజుకి": "సుమారు 8,000 టన్నులు",
+"మన బొగ్గులో బూడిద": "సుమారు 30–40%"
+}
+},
+"స్టాకర్ రీక్లెయిమర్": {
+"simple": "ఇది స్టాకర్ రీక్లెయిమర్. దీని తిరిగే బకెట్ చక్రం కుప్ప నుంచి బొగ్గు తవ్వి బెల్ట్ మీద వేస్తుంది, అవసరమైతే కుప్ప కూడా పోస్తుంది.",
+"deep": "పట్టాల మీద కదిలే పెద్ద యంత్రం: బూమ్ చివర బకెట్ వీల్ తిరుగుతూ గంటకి వేల టన్నులు తీస్తుంది. 'స్టాక్' అంటే కుప్ప పోయడం, 'రీక్లెయిమ్' అంటే తిరిగి తీయడం.",
+"specs": {
+"పని": "కుప్ప పోయడం, తీయడం",
+"కదలిక": "పట్టాల మీద"
+}
+},
+"బొగ్గు రైలు": {
+"simple": "బొగ్గు గనుల నుంచి బొగ్గు ఈ రైళ్ళలో వస్తుంది. తెరిచిన వ్యాగన్లలో నిండా బొగ్గు.",
+"deep": "ఒక రైలు (రేక్)లో సుమారు 58 వ్యాగన్లు, మొత్తం సుమారు 3,500–4,000 టన్నులు. ఫుల్ లోడ్‌లో ఈ యూనిట్‌కి రోజుకి 2–3 రైళ్ళు కావాలి. వ్యాగన్ టిప్లర్ వ్యాగన్‌ని తలకిందులు చేసి బొగ్గు కింద పోస్తుంది.",
+"specs": {
+"ఒక రైలు": "సుమారు 58 వ్యాగన్లు, 3,500–4,000 టన్నులు",
+"రోజుకి": "2–3 రైళ్ళు"
+}
+},
+"కన్వేయర్ బెల్ట్": {
+"simple": "ఈ పొడవైన బెల్ట్ బొగ్గుని కుప్పల నుంచి బాయిలర్ పైనున్న బంకర్లకి ఎక్కిస్తుంది.",
+"deep": "రబ్బరు బెల్ట్, కింద రోలర్లు, ఎత్తుకి వాలుగా వెళ్ళే గ్యాలరీ. బెల్ట్ పక్కన 'పుల్ కార్డ్' తాడు ఉంటుంది: ఎవరైనా లాగితే బెల్ట్ వెంటనే ఆగుతుంది (భద్రత కోసం).",
+"specs": {
+"వేగం": "సెకనుకి సుమారు 2–3 m",
+"సామర్థ్యం": "గంటకి సుమారు 1,000+ టన్నులు"
+}
+},
+"బాయిలర్ స్టీల్ ఫ్రేమ్": {
+"simple": "బాయిలర్‌ని పట్టుకునే స్టీల్ ఫ్రేమ్. ఆశ్చర్యం: పెద్ద బాయిలర్ కింద నిలబడదు, పై నుంచి వేలాడుతుంది.",
+"deep": "బాయిలర్ వేడెక్కితే కొన్ని సెంటీమీటర్లు కిందికి సాగుతుంది. అందుకే దాన్ని పై దూలాల నుంచి వేలాడదీస్తారు, కింద స్వేచ్ఛగా సాగే చోటు వదులుతారు.",
+"specs": {
+"ఎత్తు": "బొమ్మలో 60 m (నిజంలో 80 m పైనే)"
+}
+},
+"బాయిలర్": {
+"simple": "ఇది బాయిలర్. బొగ్గు పొడి ఇక్కడ మండి, గోడల్లోని నీటి గొట్టాల్ని వేడి చేసి ఆవిరి చేస్తుంది. పెద్ద కుక్కర్ లాంటిది.",
+"deep": "ఫర్నెస్ గోడలన్నీ పక్కపక్కనే నీటి గొట్టాలు (వాటర్ వాల్స్). నాలుగు మూలల బర్నర్లు మంటని గిరగిరా తిప్పుతాయి (మధ్యలో ఫైర్‌బాల్, సుమారు 1,300°C). పైన సూపర్‌హీటర్ ఆవిరిని ఇంకా వేడి చేసి సుమారు 540°C చేస్తుంది. ముందు గోడ తీసేసి మంట కనిపించేలా చేశాను.",
+"specs": {
+"మంట": "సుమారు 1,300°C",
+"ఆవిరి": "సుమారు 540°C, 170 bar",
+"ఆవిరి ఎంత": "గంటకి సుమారు 1,500 టన్నులు"
+}
+},
+"స్టీమ్ డ్రమ్": {
+"simple": "ఇది స్టీమ్ డ్రమ్: నీరు, ఆవిరి కలిసి ఇక్కడికి వస్తాయి; ఆవిరి పైకి వేరై వెళ్తుంది, నీరు మళ్ళీ కిందికి.",
+"deep": "మందమైన ఉక్కు డ్రమ్. పైన సేఫ్టీ వాల్వ్‌లు: ఒత్తిడి హద్దు దాటితే అవే తెరుచుకుని ఆవిరి బయటికి వదిలి బాయిలర్‌ని కాపాడతాయి (కుక్కర్ విజిల్ లాగే).",
+"specs": {
+"పని": "ఆవిరి, నీరు వేరు చేయడం",
+"రక్షణ": "సేఫ్టీ వాల్వ్‌లు"
+}
+},
+"బాయిలర్ గోడలు": {
+"simple": "బాయిలర్ చుట్టూ ఉన్న గోడ షీట్లు: ఎండ, వాన నుంచి కాపాడతాయి. 'పొర తీయి' అంటే ఇవి పైకి లేస్తాయి.",
+"deep": "లోపల బాయిలర్ చుట్టూ వేడి బయటికి పోకుండా ఇన్సులేషన్ ఉంటుంది; ఈ షీట్లు దాని మీద వాతావరణ కవచం.",
+"specs": {
+"పని": "ఎండ, వాన కవచం"
+}
+},
+"బొగ్గు బంకర్లు": {
+"simple": "ఇవి బొగ్గు బంకర్లు: కొన్ని గంటలకి సరిపడా బొగ్గు పట్టే పెద్ద గరాటులు. కింద మిల్లులకి బొగ్గు జారుతుంది.",
+"deep": "బెల్ట్ పై గ్యాలరీలో 'ట్రిప్పర్' ఏ బంకర్ నింపాలో అక్కడ బొగ్గు పోస్తుంది. బంకర్ కింద ఫీడర్ ఎంత బొగ్గు మిల్‌కి వెళ్ళాలో కొలుస్తుంది.",
+"specs": {
+"సంఖ్య": "5 బంకర్లు",
+"నిల్వ": "సుమారు 10–12 గంటలు"
+}
+},
+"బొగ్గు మిల్లులు": {
+"simple": "ఈ మిల్లులు బొగ్గుని పిండి కంటే సన్నని పొడిగా రుబ్బుతాయి. ఆ పొడిని గాలితో బాయిలర్‌లోకి ఊదుతారు.",
+"deep": "లోపల తిరిగే గిన్నె మీద బరువైన రోలర్లు బొగ్గుని నలుపుతాయి. వేడి గాలి పొడిని ఆరబెట్టి పైపుల ద్వారా బర్నర్లకి తీసుకెళ్తుంది. పొడి సన్నగా ఉంటే బాగా, పూర్తిగా మండుతుంది.",
+"specs": {
+"సంఖ్య": "5 మిల్లులు",
+"పొడి": "సుమారు 70% 75 మైక్రాన్ల కంటే సన్నగా"
+}
+},
+"ESP ఫిల్టర్": {
+"simple": "ఇది ESP ఫిల్టర్. పొగలో ఉన్న బూడిదని కరెంట్ శక్తితో పట్టుకుంటుంది. శుభ్రమైన పొగ మాత్రమే చిమ్నీకి వెళ్తుంది.",
+"deep": "ఎలక్ట్రోస్టాటిక్ ప్రెసిపిటేటర్: సన్నని తీగలకి చాలా ఎక్కువ వోల్టేజ్ ఇస్తే బూడిద కణాలకి చార్జ్ వస్తుంది, అవి పెద్ద ప్లేట్లకి అతుక్కుంటాయి. ప్లేట్లని తడితే బూడిద కింద గరాటుల్లో పడుతుంది. సుమారు 99.9% బూడిద పట్టుకుంటుంది; ఆ బూడిద ఇటుకలు, సిమెంట్‌కి వెళ్తుంది.",
+"specs": {
+"పట్టుకునేది": "సుమారు 99.9% బూడిద",
+"వోల్టేజ్": "సుమారు 70–100 kV"
+}
+},
+"ID ఫ్యాన్లు": {
+"simple": "ఈ పెద్ద ఫ్యాన్లు బాయిలర్ నుంచి పొగని లాగి చిమ్నీలోకి తోస్తాయి.",
+"deep": "ఇండ్యూస్డ్ డ్రాఫ్ట్ (ID) ఫ్యాన్లు బాయిలర్ లోపల ఒత్తిడిని బయటి గాలి కంటే కొంచెం తక్కువగా ఉంచుతాయి, అప్పుడు మంట, పొగ బయటికి రావు. ఒక్కో ఫ్యాన్ మోటార్ కొన్ని MW.",
+"specs": {
+"సంఖ్య": "2",
+"మోటార్": "ఒక్కోటి కొన్ని MW"
+}
+},
+"FD ఫ్యాన్లు": {
+"simple": "ఈ ఫ్యాన్లు బయటి గాలిని బాయిలర్‌లోకి తోస్తాయి: మంటకి గాలి కావాలి.",
+"deep": "ఫోర్స్‌డ్ డ్రాఫ్ట్ (FD) ఫ్యాన్లు. గాలి ముందు పొగ వేడితో వేడెక్కి (ఎయిర్ ప్రీహీటర్) తర్వాత బర్నర్లకి వెళ్తుంది, అలా కొంచెం బొగ్గు ఆదా.",
+"specs": {
+"సంఖ్య": "2",
+"పని": "మంటకి గాలి"
+}
+},
+"చిమ్నీ": {
+"simple": "ఇది చిమ్నీ. శుభ్రం చేసిన పొగని చాలా ఎత్తులో గాలిలోకి వదులుతుంది, ఊరి మీద పడకుండా.",
+"deep": "ఎత్తులో గాలి వేగంగా ఉంటుంది, పొగ దూరంగా పలుచబడుతుంది. మన దేశంలో 500 MW యూనిట్లకి చిమ్నీలు సుమారు 220–275 m; బొమ్మలో 150 m. పైన ఎరుపు, తెలుపు రంగులు, ఎర్ర లైట్లు విమానాల కోసం.",
+"specs": {
+"ఎత్తు": "బొమ్మలో 150 m (నిజంలో 220–275 m)",
+"పొగ వేడి": "సుమారు 130–140°C"
+}
+},
+"టర్బైన్ హాల్": {
+"simple": "ఇది టర్బైన్ హాల్: టర్బైన్, జనరేటర్ ఉండే పెద్ద భవనం. 'పొర తీయి' అంటే పైకప్పు, గోడలు లేస్తాయి.",
+"deep": "సుమారు 80 m పొడవు, 28 m ఎత్తు. టర్బైన్ 12 m ఎత్తు కాంక్రీట్ డెక్ మీద ఉంటుంది; కింద కండెన్సర్, పంపులు. 🚶 'లోపల నడువు' అంటే డెక్ మీద నడవొచ్చు.",
+"specs": {
+"పొడవు": "సుమారు 80 m",
+"ఎత్తు": "సుమారు 28 m"
+}
+},
+"హాల్ పైకప్పు": {
+"simple": "టర్బైన్ హాల్ పైకప్పు. దాని కింద లైట్లు, క్రేన్ పట్టాలు.",
+"deep": "పైన గాలి వెళ్ళే వెంటిలేటర్లు: యంత్రాల వేడి బయటికి పోతుంది.",
+"specs": {
+"పని": "కవచం, వెలుతురు"
+}
+},
+"హాల్ క్రేన్": {
+"simple": "ఈ పసుపు క్రేన్ హాల్ పై భాగంలో పట్టాల మీద కదులుతుంది. సర్వీస్ అప్పుడు టర్బైన్ కవర్లు ఎత్తుతుంది.",
+"deep": "EOT (ఎలక్ట్రిక్ ఓవర్‌హెడ్ ట్రావెలింగ్) క్రేన్: జనరేటర్ రోటర్ లాంటి వందల టన్నుల భాగాలు ఎత్తగలదు.",
+"specs": {
+"బరువు": "వందల టన్నులు ఎత్తగలదు"
+}
+},
+"టర్బైన్ డెక్": {
+"simple": "టర్బైన్ కూర్చునే కాంక్రీట్ డెక్, 12 m ఎత్తులో. కింద స్తంభాల మధ్య కండెన్సర్, పంపులు.",
+"deep": "టర్బైన్ ప్రకంపనలు (వైబ్రేషన్) భవనానికి పోకుండా వేరే పునాది మీద కడతారు. పసుపు రెయిలింగ్ నడిచే వాళ్ళ భద్రత కోసం.",
+"specs": {
+"ఎత్తు": "సుమారు 12 m"
+}
+},
+"టర్బైన్ కవర్లు": {
+"simple": "టర్బైన్ పై కవర్లు (కేసింగ్). 'పొర తీయి' అంటే ఇవి లేచి లోపలి బ్లేడ్లు కనిపిస్తాయి.",
+"deep": "మందమైన ఉక్కు కేసింగ్‌లు సగం సగం బోల్టులతో కలుపుతారు. సర్వీస్‌లో క్రేన్ పై సగం ఎత్తుతుంది.",
+"specs": {
+"HP కవర్": "సుమారు 500°C దాకా వేడి"
+}
+},
+"జనరేటర్": {
+"simple": "ఇది జనరేటర్. టర్బైన్ తిప్పే శక్తిని కరెంట్‌గా మారుస్తుంది. సైకిల్ డైనమో లాంటిదే, కానీ 500 MW.",
+"deep": "లోపల రోటర్ ఒక పెద్ద అయస్కాంతం (ఎక్సైటర్ దానికి DC కరెంట్ ఇస్తుంది), చుట్టూ స్టేటర్ రాగి తీగలు. రోటర్ సెకనుకి 50 సార్లు తిరిగితే 50 Hz కరెంట్. లోపల హైడ్రోజన్ వాయువుతో చల్లబరుస్తారు.",
+"specs": {
+"శక్తి": "500 MW",
+"వోల్టేజ్": "సుమారు 21 kV",
+"వేగం": "నిమిషానికి 3000",
+"చల్లదనం": "హైడ్రోజన్, నీరు"
+}
+},
+"కండెన్సర్": {
+"simple": "ఇది కండెన్సర్. టర్బైన్ నుంచి వచ్చిన ఆవిరిని చల్లని నీటి గొట్టాల మీద మళ్ళీ నీరుగా మారుస్తుంది. ఆ నీరు మళ్ళీ బాయిలర్‌కి.",
+"deep": "వేలాది సన్నని గొట్టాల్లో కూలింగ్ టవర్ నీరు ప్రవహిస్తుంది. ఆవిరి నీరైతే చోటు చాలా తగ్గి లోపల వాక్యూమ్ (శూన్యం) వస్తుంది; అది టర్బైన్ ఆవిరిని ఇంకా బలంగా లాగుతుంది.",
+"specs": {
+"లోపల": "వాక్యూమ్, సుమారు 45°C",
+"చల్ల నీరు": "గంటకి సుమారు 60,000 m³"
+}
+},
+"ఫీడ్ పంప్": {
+"simple": "ఈ పంపులు నీటిని చాలా ఎక్కువ ఒత్తిడితో మళ్ళీ బాయిలర్‌లోకి తోస్తాయి.",
+"deep": "బాయిలర్ ఫీడ్ పంప్ (BFP): బాయిలర్ ఒత్తిడి కంటే ఎక్కువ, సుమారు 200 bar తో తోయాలి. ప్లాంట్‌లో అతి పెద్ద మోటార్లలో ఇవి ఒకటి (కొన్నిసార్లు చిన్న టర్బైన్‌తో నడుపుతారు).",
+"specs": {
+"ఒత్తిడి": "సుమారు 200 bar",
+"సంఖ్య": "2 (ఒకటి నడుస్తుంది, ఒకటి సిద్ధం)"
+}
+},
+"స్టీమ్ పైపులు": {
+"simple": "ఈ ఎర్ర పైపుల్లో అతి వేడి ఆవిరి బాయిలర్ నుంచి టర్బైన్‌కి వెళ్తుంది.",
+"deep": "మెయిన్ స్టీమ్ పైపులు: సుమారు 540°C, 170 bar. చాలా మందమైన ప్రత్యేక ఉక్కు, పైన మందమైన ఇన్సులేషన్. వేడికి సాగుతాయి కాబట్టి వంపులతో వేస్తారు.",
+"specs": {
+"ఆవిరి": "సుమారు 540°C, 170 bar"
+}
+},
+"కూలింగ్ టవర్": {
+"simple": "ఇది కూలింగ్ టవర్. కండెన్సర్ నుంచి వచ్చిన వేడి నీటిని చల్లబరుస్తుంది. పైకి వచ్చేది పొగ కాదు, నీటి ఆవిరి మేఘం.",
+"deep": "వేడి నీరు లోపల వర్షంలా కిందికి పడుతుంది; కింది తెరిచిన కాళ్ళ నుంచి గాలి లోపలికి వచ్చి సహజంగా పైకి లేస్తుంది (ఆకారమే చిమ్నీలా పనిచేస్తుంది). కొంచెం నీరు ఆవిరై పోతుంది, మిగతా నీరు చల్లబడుతుంది. బొమ్మలో 105 m; నిజంలో సుమారు 140 m.",
+"specs": {
+"ఎత్తు": "బొమ్మలో 105 m (నిజంలో సుమారు 140 m)",
+"నీరు": "సుమారు 8–10°C చల్లబడుతుంది",
+"ఆవిరైపోయేది": "గంటకి సుమారు 15 లక్షల లీటర్లు నింపాలి"
+}
+},
+"నీటి పైపులు": {
+"simple": "ఈ పెద్ద పైపుల్లో నీరు కండెన్సర్‌కి, కూలింగ్ టవర్‌కి తిరుగుతుంది: నారింజ వేడి నీరు, నీలం చల్ల నీరు.",
+"deep": "సర్క్యులేటింగ్ వాటర్ (CW): పంప్ హౌస్‌లోని పెద్ద పంపులు సెకనుకి సుమారు 16–17 టన్నుల నీరు తిప్పుతాయి.",
+"specs": {
+"ప్రవాహం": "గంటకి సుమారు 60,000 m³"
+}
+},
+"జనరేటర్ ట్రాన్స్‌ఫార్మర్": {
+"simple": "ఇది జనరేటర్ ట్రాన్స్‌ఫార్మర్. 21 kV కరెంట్‌ని 400 kV కి పెంచుతుంది, దూరం పంపడానికి.",
+"deep": "వోల్టేజ్ పెంచితే అదే శక్తికి కరెంట్ (ఆంపియర్లు) తగ్గుతుంది, తీగల్లో వేడిగా పోయే నష్టం తగ్గుతుంది. లోపల ఆయిల్ చల్లబరుస్తుంది; పక్కన రెక్కలు (రేడియేటర్లు) ఆయిల్ వేడిని గాలికి వదులుతాయి.",
+"specs": {
+"వోల్టేజ్": "21 kV → 400 kV",
+"చల్లదనం": "ఆయిల్ + రేడియేటర్లు"
+}
+},
+"స్విచ్‌యార్డ్": {
+"simple": "ఇది స్విచ్‌యార్డ్. కరెంట్‌ని ఏ లైన్‌కి పంపాలో ఇక్కడే మారుస్తారు; ప్రమాదం వస్తే క్షణంలో కట్ చేస్తారు.",
+"deep": "సర్క్యూట్ బ్రేకర్లు (SF6 వాయువుతో) షార్ట్ సర్క్యూట్ వస్తే మిల్లీ సెకన్లలో కరెంట్ ఆపుతాయి. ఐసొలేటర్లు పని ముందు కనిపించేలా తెరుస్తారు. బస్ బార్లు అన్ని లైన్లని కలుపుతాయి.",
+"specs": {
+"వోల్టేజ్": "400 kV",
+"రక్షణ": "బ్రేకర్లు, రిలేలు"
+}
+},
+"ట్రాన్స్‌మిషన్ లైన్లు": {
+"simple": "ఈ టవర్ల తీగలు కరెంట్‌ని వందల కిలోమీటర్ల దూరం ఊళ్ళకి, ఫ్యాక్టరీలకి తీసుకెళ్తాయి.",
+"deep": "400 kV లైన్: మూడు ఫేజ్‌లు (మూడు తీగల గుంపులు), పైన ఎర్త్ వైర్ పిడుగు నుంచి కాపాడుతుంది. ఈ తీగలు దగ్గరికి వెళ్ళకూడదు: తాకకపోయినా కరెంట్ దూకుతుంది.",
+"specs": {
+"వోల్టేజ్": "400 kV",
+"టవర్ ఎత్తు": "బొమ్మలో 32–35 m"
+}
+},
+"కంట్రోల్ రూమ్": {
+"simple": "ఇది కంట్రోల్ రూమ్. ఇక్కడ నుంచి ఇంజనీర్లు స్క్రీన్ల మీద మొత్తం ప్లాంట్ చూసి నడుపుతారు.",
+"deep": "DCS (కంప్యూటర్ కంట్రోల్) వేల సెన్సార్లు చదువుతుంది: ఒత్తిడి, వేడి, MW, ఫ్రీక్వెన్సీ. పెద్ద స్క్రీన్‌లో లైవ్ నంబర్లు. 🚶 'కంట్రోల్ రూమ్‌కి వెళ్ళు' అంటే లోపల నడవొచ్చు.",
+"specs": {
+"పని": "24 గంటలు షిఫ్టుల్లో"
+}
+},
+"కంట్రోల్ రూమ్ పైకప్పు": {
+"simple": "కంట్రోల్ రూమ్ పైకప్పు. 'పొర తీయి' అంటే లేస్తుంది, లోపల కనిపిస్తుంది.",
+"deep": "చల్లదనం కోసం ఇన్సులేషన్ ఉన్న పైకప్పు.",
+"specs": {
+"పని": "కవచం"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎన్ని ఇళ్ళ",
+"ఎంత కరెంట్",
+"ఎన్ని మెగావాట్లు",
+"how many homes",
+"how much power",
+"megawatt",
+"ఎంత విద్యుత్"
+],
+"a": "ఈ యూనిట్ ఫుల్ లోడ్‌లో 500 MW Sir. ఒక్కో ఇల్లు ఒకే సమయంలో సుమారు 1 kW వాడితే, సుమారు 5 లక్షల ఇళ్ళకి సరిపోతుంది. రోజుకి సుమారు 1.2 కోట్ల యూనిట్లు."
+},
+{
+"k": [
+"ఎంత బొగ్గు",
+"బొగ్గు ఎంత",
+"how much coal",
+"ఎన్ని టన్నులు",
+"రోజుకి ఎంత బొగ్గు"
+],
+"a": "ఫుల్ లోడ్‌లో గంటకి సుమారు 350 టన్నులు, రోజుకి సుమారు 8,400 టన్నులు Sir. ఒక రైలు సుమారు 3,500–4,000 టన్నులు, అంటే రోజుకి 2–3 రైళ్ళు."
+},
+{
+"k": [
+"ఒక యూనిట్",
+"యూనిట్‌కి ఎంత బొగ్గు",
+"per unit",
+"kg per unit",
+"ఒక యూనిట్ కరెంట్"
+],
+"a": "ఒక యూనిట్ (1 kWh) కరెంట్‌కి సుమారు 0.7 kg మన బొగ్గు Sir. మన బొగ్గులో బూడిద ఎక్కువ (30–40%), అందుకే కొంచెం ఎక్కువ కావాలి."
+},
+{
+"k": [
+"సామర్థ్యం",
+"ఎఫిషియెన్సీ",
+"efficiency",
+"ఎంత వేస్ట్",
+"ఎంత వృథా"
+],
+"a": "సుమారు 35–38% Sir: బొగ్గు వేడిలో మూడో వంతు మాత్రమే కరెంట్ అవుతుంది. మిగతా వేడి ఎక్కువగా కూలింగ్ టవర్ నీటి ద్వారా, కొంత చిమ్నీ పొగ ద్వారా పోతుంది."
+},
+{
+"k": [
+"3000",
+"ఎందుకు 3000",
+"rpm",
+"50 hz",
+"ఫ్రీక్వెన్సీ ఎందుకు",
+"ఎంత వేగంగా తిరుగుతుంది"
+],
+"a": "మన గ్రిడ్ 50 Hz Sir. ఈ జనరేటర్‌కి రెండు ధ్రువాలు (N, S) ఉన్నాయి కాబట్టి సెకనుకి 50 సార్లు, అంటే నిమిషానికి 3000 సార్లు తిరగాలి. లోడ్ పెరిగినా వేగం అదే; ఎక్కువ ఆవిరి మాత్రమే వస్తుంది."
+},
+{
+"k": [
+"ఆవిరి ఎంత వేడి",
+"ఎంత ఒత్తిడి",
+"steam pressure",
+"steam temperature",
+"ఆవిరి ఒత్తిడి"
+],
+"a": "టర్బైన్‌కి వెళ్ళే ఆవిరి సుమారు 540°C, 170 bar Sir. ఇంట్లో కుక్కర్ సుమారు 1 bar; ఇది దానికి సుమారు 170 రెట్లు."
+},
+{
+"k": [
+"కూలింగ్ టవర్ పొగ",
+"మేఘం",
+"అది పొగా",
+"is it smoke",
+"తెల్లని పొగ"
+],
+"a": "కూలింగ్ టవర్ నుంచి వచ్చేది పొగ కాదు Sir, శుభ్రమైన నీటి ఆవిరి మేఘం. అసలు పొగ సన్నని చిమ్నీ నుంచి వస్తుంది, అదీ ESP ఫిల్టర్ బూడిద పట్టుకున్నాక."
+},
+{
+"k": [
+"చిమ్నీ ఎందుకు ఎత్తు",
+"ఎంత ఎత్తు",
+"చిమ్నీ ఎత్తు",
+"chimney height",
+"why tall"
+],
+"a": "ఎత్తులో గాలి వేగంగా వీస్తుంది Sir, పొగ దూరంగా పలుచబడుతుంది, ఊరి మీద పడదు. మన దేశంలో 500 MW యూనిట్ చిమ్నీలు సుమారు 220–275 m; ఈ బొమ్మలో 150 m."
+},
+{
+"k": [
+"స్టార్ట్ చేయడానికి ఎంత సమయం",
+"ఎంతసేపు",
+"start time",
+"how long to start",
+"త్వరగా పెంచొచ్చా"
+],
+"a": "చల్లగా ఉన్న యూనిట్ మొదలుపెట్టి ఫుల్ లోడ్‌కి సుమారు 6–8 గంటలు పడుతుంది Sir. అందుకే థర్మల్ రోజంతా స్థిరంగా నడుస్తుంది; సాయంత్రం పీక్‌కి హైడల్‌ని కొన్ని నిమిషాల్లో పెంచుతారు. (బొమ్మలో లోడ్ కొన్ని సెకన్లలో పెరుగుతుంది.)"
+},
+{
+"k": [
+"నీరు ఎంత",
+"how much water",
+"ఎన్ని లీటర్లు",
+"నీటి వాడకం"
+],
+"a": "కూలింగ్ టవర్‌లో ఆవిరై పోయే నీటిని నింపడానికి గంటకి సుమారు 15 లక్షల లీటర్లు Sir. కండెన్సర్ గుండా తిరిగే నీరు గంటకి సుమారు 6 కోట్ల లీటర్లు, కానీ అది మళ్ళీ మళ్ళీ తిరుగుతుంది."
+},
+{
+"k": [
+"బూడిద",
+"ash",
+"బూడిద ఏం చేస్తారు",
+"fly ash"
+],
+"a": "మన బొగ్గులో 30–40% బూడిద Sir: రోజుకి సుమారు 3,000 టన్నులు. ESP పట్టుకున్న సన్నని బూడిద (ఫ్లై యాష్)తో ఇటుకలు, సిమెంట్ తయారు చేస్తారు; మిగతాది బూడిద చెరువుకి."
+},
+{
+"k": [
+"co2",
+"కాలుష్యం",
+"pollution",
+"కార్బన్"
+],
+"a": "ఒక యూనిట్ కరెంట్‌కి సుమారు 0.9–1 kg CO₂ Sir. బూడిదని ESP పట్టుకుంటుంది; కొత్త ప్లాంట్లలో సల్ఫర్ వాయువు కోసం FGD అనే ఇంకో శుద్ధి యంత్రం కూడా పెడతారు."
+},
+{
+"k": [
+"మన దగ్గర",
+"తెలంగాణలో",
+"ఎక్కడ ఉన్నాయి",
+"రామగుండం",
+"india"
+],
+"a": "తెలంగాణలో రామగుండం (NTPC, సుమారు 2,600 MW), కొత్తగూడెం లాంటి చోట్ల పెద్ద థర్మల్ కేంద్రాలు ఉన్నాయి Sir. మన దేశంలో కరెంట్‌లో సగం పైగా ఇప్పటికీ బొగ్గు నుంచే."
+}
+],
+"quiz": [
+{
+"q": "బొగ్గుని సన్నని పొడిగా రుబ్బేది ఏది?",
+"a": "బొగ్గు మిల్లులు",
+"opts": [
+"బొగ్గు మిల్లులు",
+"ESP ఫిల్టర్",
+"కండెన్సర్"
+]
+},
+{
+"q": "ఆవిరి శక్తిని తిరిగే శక్తిగా మార్చేది ఏది?",
+"a": "స్టీమ్ టర్బైన్",
+"opts": [
+"జనరేటర్",
+"స్టీమ్ టర్బైన్",
+"బాయిలర్"
+]
+},
+{
+"q": "తిరిగే శక్తిని కరెంట్‌గా మార్చేది ఏది?",
+"a": "జనరేటర్",
+"opts": [
+"జనరేటర్",
+"జనరేటర్ ట్రాన్స్‌ఫార్మర్",
+"FD ఫ్యాన్లు"
+]
+},
+{
+"q": "పొగలోని బూడిదని పట్టుకునేది ఏది?",
+"a": "ESP ఫిల్టర్",
+"opts": [
+"చిమ్నీ",
+"ESP ఫిల్టర్",
+"కూలింగ్ టవర్"
+]
+},
+{
+"q": "టర్బైన్ నుంచి వచ్చిన ఆవిరిని మళ్ళీ నీరుగా మార్చేది ఏది?",
+"a": "కండెన్సర్",
+"opts": [
+"కండెన్సర్",
+"స్టీమ్ డ్రమ్",
+"ఫీడ్ పంప్"
+]
+},
+{
+"q": "21 kV కరెంట్‌ని 400 kV కి పెంచేది ఏది?",
+"a": "జనరేటర్ ట్రాన్స్‌ఫార్మర్",
+"opts": [
+"స్విచ్‌యార్డ్",
+"జనరేటర్ ట్రాన్స్‌ఫార్మర్",
+"జనరేటర్"
+]
+}
+],
+"faults": [
+{
+"label": "ID ఫ్యాన్లు",
+"kind": "noise",
+"clue": "శబ్దం జాగ్రత్తగా వినండి Sir: గరగర ఎక్కడి నుంచి? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "ఒక ID ఫ్యాన్ బేరింగ్ అరిగిపోయింది. ఆపరేటర్లు ఆ ఫ్యాన్ లోడ్ రెండోదానికి మార్చి, దీన్ని ఆపి బేరింగ్ మారుస్తారు. అప్పటిదాకా యూనిట్ సగం లోడ్‌లో."
+},
+{
+"label": "బొగ్గు మిల్లులు",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: మామూలు కంటే వేడిగా ఉన్నది ఏది?",
+"why": "ఒక బొగ్గు మిల్ లోపల వేడి పెరిగింది: బొగ్గు పొడి అంటుకునే ప్రమాదం. ఆ మిల్ ఆపి, లోపలికి ఆవిరి లేదా నీరు పంపి చల్లబరుస్తారు; బొగ్గు మిగతా మిల్లుల నుంచి."
+},
+{
+"label": "కన్వేయర్ బెల్ట్",
+"kind": "stop",
+"clue": "బొగ్గు దారి చూడండి Sir: ఏది కదలట్లేదు? 〰️ ప్రవాహాలు ఆన్ చేస్తే బాగా కనిపిస్తుంది.",
+"why": "కన్వేయర్ బెల్ట్ ఆగిపోయింది (ఎవరో పుల్ కార్డ్ లాగారు, లేదా బెల్ట్ జారింది). బంకర్లలో కొన్ని గంటల బొగ్గు ఉంది కాబట్టి యూనిట్ వెంటనే ఆగదు; ఆలోపు బెల్ట్ సరిచేస్తారు."
+},
+{
+"label": "ఫీడ్ పంప్",
+"kind": "loose",
+"clue": "ఏ యంత్రం వణుకుతోంది Sir? హాల్ కింది అంతస్తు చూడండి.",
+"why": "ఫీడ్ పంప్ పునాది బోల్టులు వదులయ్యాయి, పంప్ వణుకుతోంది. సిద్ధంగా ఉన్న రెండో పంప్ మొదలుపెట్టి, దీన్ని ఆపి బోల్టులు బిగించి, అమరిక (అలైన్‌మెంట్) సరిచేస్తారు."
+}
+],
+"inside": {
+"స్టీమ్ టర్బైన్": {
+"say": "టర్బైన్ లోపల Sir, కేసింగ్‌లు తీసేస్తే: ఒకే షాఫ్ట్ మీద బ్లేడ్ల వరుసలు. ఎర్రని వేడి ఆవిరి ఎడమ వైపు చిన్న HP బ్లేడ్లలోకి వెళ్ళి, IP దాటి, మధ్యలో రెండుగా విడిపోయి పెద్ద LP బ్లేడ్ల గుండా నీలంగా చల్లబడి బయటికి వెళ్తుంది. బూడిద రంగు వరుసలు కదలవు: అవి ఆవిరిని తర్వాతి బ్లేడ్ల మీదికి తిప్పుతాయి.",
+"code": "// Inside the steam turbine, its casings taken off: one long shaft with rings of blades. Hot steam (red) enters the small\n// HP blades, goes on to the IP, then splits both ways through the big LP blades and leaves cool (blue) for the condenser.\n// Between the turning rings sit rings that do not turn (grey): they point the steam onto the next ring.\nconst Mx = new THREE.Matrix4(), Rx = new THREE.Matrix4();\nconst ring = (grp, x, r0, len, n, w, mat, twist) => { // n blades round the shaft at x, from radius r0 out by len, each turned by twist\n  const m = new THREE.InstancedMesh(new THREE.BoxGeometry(w * 0.18, len, w), mat, n);\n  const up = new THREE.Matrix4().makeTranslation(0, r0 + len / 2, 0), tw = new THREE.Matrix4().makeRotationY(twist), at = new THREE.Matrix4().makeTranslation(x, 0, 0);\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, Mx.copy(at).multiply(Rx.makeRotationX((i / n) * Math.PI * 2)).multiply(up).multiply(tw));\n  grp.add(m);\n  return m;\n};\nconst blade = W.metal('#c9ced4', { rough: 0.28 }), bladeLP = W.metal('#b9c0c8', { rough: 0.3 }), vane = W.metal('#6f767e', { rough: 0.45 });\nconst shaft = W.group();\nshaft.add(W.mesh(W.cyl(28, 28, 1250, 32), W.metal('#d4d8dc', { rough: 0.25 }), { at: [560, 0, 0], rot: [0, 0, 90] }));\nW.add(shaft, { label: 'షాఫ్ట్' });\nconst hp = W.group(), ip = W.group(), lp = W.group(), fixed = W.group();\nhp.add(W.mesh(W.cyl(62, 62, 300, 32), W.metal('#a9b0b7', { rough: 0.3 }), { at: [80, 0, 0], rot: [0, 0, 90] }));\nfor (let i = 0; i < 7; i++) { ring(hp, -40 + i * 40, 60, 16 + i * 2, 60, 14, blade, 0.6); ring(fixed, -20 + i * 40, 60, 16 + i * 2, 54, 14, vane, -0.6); }\nip.add(W.mesh(W.cyl(70, 70, 320, 32), W.metal('#a9b0b7', { rough: 0.3 }), { at: [430, 0, 0], rot: [0, 0, 90] }));\nfor (let i = 0; i < 6; i++) { ring(ip, 300 + i * 50, 68, 26 + i * 5, 60, 18, blade, 0.55); ring(fixed, 325 + i * 50, 68, 26 + i * 5, 54, 18, vane, -0.55); }\nlp.add(W.mesh(W.cyl(85, 85, 560, 32), W.metal('#a9b0b7', { rough: 0.3 }), { at: [930, 0, 0], rot: [0, 0, 90] }));\nfor (let i = 0; i < 5; i++) for (const sd of [-1, 1]) {\n  const x = 930 + sd * (50 + i * 50), len = 30 + i * i * 9;\n  ring(lp, x, 82, len, 64, 22 + i * 3, bladeLP, sd * (0.45 + i * 0.12));\n  ring(fixed, x - sd * 25, 82, len * 0.92, 56, 20 + i * 3, vane, -sd * 0.5);\n}\nW.add(hp, { label: 'HP రోటర్' });\nW.add(ip, { label: 'IP రోటర్' });\nW.add(lp, { label: 'LP రోటర్' });\nW.add(fixed, { label: 'కదలని బ్లేడ్లు' });\nlet a = 0;\nW.onTick((t, dt) => {\n  a += dt * (0.4 + 4.2 * Math.max(0.1, W.env.spool));\n  for (const g of [hp, ip, lp, shaft]) g.rotation.x = a;\n});\nW.stream([[-120, 90, 0], [-60, 82, 10], [80, 80, 20], [230, 84, 0], [240, 140, 0], [300, 160, 0], [300, 100, 0], [430, 110, 10], [580, 120, 0], [620, 220, 0], [930, 230, 0], [930, 140, 0]], { kind: 'steam', count: 40, size: 22, speed: 0.7, always: true });\nW.stream([[930, 140, 0], [1020, 160, 40], [1150, 230, 60], [1190, 330, 0]], { kind: 'cool', count: 16, size: 26, speed: 0.7, always: true });\nW.stream([[930, 140, 0], [840, 160, -40], [710, 230, -60], [670, 330, 0]], { kind: 'cool', count: 16, size: 26, speed: 0.7, always: true });\n"
+}
+},
+"film": [
+"🏭 500 MW థర్మల్ పవర్ స్టేషన్",
+"లోడ్ పెంచుతున్నాను: బొగ్గు, మంట, ఆవిరి పెరుగుతున్నాయి",
+"🌡️ వేడి: బాయిలర్ మంట, ఆవిరి పైపులు",
+"〰️ బొగ్గు → ఆవిరి → నీరు → పొగ → కరెంట్",
+"పైకప్పులు, గోడలు లేపితే లోపల",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"challenge": null,
+"service": {
+"title": "🛠️ ఏటా సర్వీస్ (ఓవర్‌హాల్): ఏం చేస్తారు",
+"safety": "ఇవి ట్రైనింగ్, అనుమతి ఉన్న ప్లాంట్ ఇంజనీర్ల పనులు Sir; ప్లాంట్‌లో ఏదీ మనం తాకకూడదు. ప్రతి పనికి ముందు 'పర్మిట్ టు వర్క్': కరెంట్ బ్రేకర్లు, ఆవిరి వాల్వ్‌లు మూసి తాళం వేసి (లాకౌట్), బోర్డు పెడతారు.",
+"steps": [
+{
+"say": "యూనిట్ ఆపి కొన్ని రోజులు చల్లబరుస్తారు. బాయిలర్ లోపల పరంజా (స్కాఫోల్డింగ్) కట్టి, నీటి గొట్టాల మందం కొలిచి, సన్నబడిన వాటిని మారుస్తారు.",
+"label": "బాయిలర్"
+},
+{
+"say": "క్రేన్‌తో టర్బైన్ పై కవర్లు ఎత్తి, బ్లేడ్లకి పగుళ్ళు, అరుగుదల చూస్తారు; బేరింగ్‌లు తనిఖీ చేస్తారు.",
+"label": "టర్బైన్ కవర్లు"
+},
+{
+"say": "జనరేటర్ తీగల ఇన్సులేషన్ పరీక్షలు, హైడ్రోజన్ సీల్‌లు చూస్తారు.",
+"label": "జనరేటర్"
+},
+{
+"say": "ESP ప్లేట్లు, తీగలు శుభ్రం చేసి, విరిగిన తీగలు మారుస్తారు.",
+"label": "ESP ఫిల్టర్"
+},
+{
+"say": "మిల్లుల అరిగిన రోలర్లు, గిన్నె లైనింగ్ మారుస్తారు.",
+"label": "బొగ్గు మిల్లులు"
+},
+{
+"say": "ట్రాన్స్‌ఫార్మర్ ఆయిల్ నమూనా పరీక్షిస్తారు; రేడియేటర్ రెక్కలు శుభ్రం చేస్తారు.",
+"label": "జనరేటర్ ట్రాన్స్‌ఫార్మర్"
+},
+{
+"say": "కూలింగ్ టవర్ ఫిల్ (లోపలి జల్లెడ) పాచి, చెత్త శుభ్రం చేస్తారు.",
+"label": "కూలింగ్ టవర్"
+}
+]
+},
+"scene": "",
+"id": "thermal"
+}
+}

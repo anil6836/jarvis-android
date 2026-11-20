@@ -1,0 +1,409 @@
+{
+"at": 1763700000003,
+"title": "సోలార్ పవర్ స్టేషన్",
+"what": "50 MW సోలార్ ఫారం: సూర్యుడితో తిరిగే ట్రాకర్లు, ఇన్వర్టర్, సబ్‌స్టేషన్, దుమ్ము తుడిచే రోబో. 🕐 24 గంటల రోజు, 🚶 వరుసల మధ్య నడక",
+"model": "showpiece",
+"parts": [
+{
+"id": "site",
+"status": "సోలార్ ఫారం నేల సిద్ధం చేస్తున్నాను",
+"code": "// Solar power station showpiece, hand-made. Units: cm, real size. One 2.5 MW block in full detail (16 rows of single-axis\n// trackers that turn east → west with the sun), five more blocks around it simplified; the inverter, transformer, the\n// pooling substation and its line in front (+Z). The trackers' rows run north–south (Z); the sun rises in the east (+X).\nconst S = W.store;\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = [];\nS.lamp = (c = '#ffe2a8', k = 2.4) => { const m = W.glow(c, 0); S.lamps.push({ m, k }); return m; };\nS.ROWS = []; for (let i = 0; i < 16; i++) S.ROWS.push(-4875 + i * 650);\nS.ROWLEN = 6000; S.AXIS = 260;\nS.BLOCKS = [[-11500, 0], [11500, 0], [-11500, -11500], [0, -11500], [11500, -11500]];\nW.day({ start: 11, ground: '#9b8a6a', zoom: 0.7 });\nconst site = W.group();\nsite.add(W.mesh(W.box(36000, 10, 30000), S.matte('#a8977a', 0.98), { at: [0, -4, -3500] }));\nconst road = S.matte('#7d7468', 0.95);\nfor (const [x, z, w, d] of [[0, 5200, 36000, 500], [-5750, -3000, 400, 17000], [5750, -3000, 400, 17000], [0, -5750, 36000, 400], [0, 8000, 500, 6000]]) site.add(W.mesh(W.box(w, 6, d), road, { at: [x, 2, z] }));\nsite.add(W.text('JARVIS సోలార్ పవర్ స్టేషన్ · 50 MW', { size: 140, at: [0, 300, 11650], color: '#fff8e8', bg: '#c27a1e' }));\nfor (const x of [-2300, 2300]) site.add(W.mesh(W.cyl(12, 12, 300, 8), W.metal('#8d939a'), { at: [x, 150, 11640] }));\nW.add(site, { label: 'సోలార్ ఫారం నేల', ground: true });\nconst fence = W.group();\nconst fm = W.metal('#9aa2aa', { rough: 0.5 });\nconst fx0 = -17800, fx1 = 17800, fz0 = -17800, fz1 = 11400;\nfor (const [a, b] of [[[fx0, fz0], [fx1, fz0]], [[fx1, fz0], [fx1, fz1]], [[fx0, fz1], [fx1, fz1]], [[fx0, fz0], [fx0, fz1]]]) {\n  const L = Math.hypot(b[0] - a[0], b[1] - a[1]), alongX = a[1] === b[1];\n  fence.add(W.mesh(W.box(alongX ? L : 6, 180, alongX ? 6 : L), new THREE.MeshStandardMaterial({ color: '#8f989f', metalness: 0.6, roughness: 0.5, transparent: true, opacity: 0.35, depthWrite: false }), { at: [(a[0] + b[0]) / 2, 90, (a[1] + b[1]) / 2] }));\n  const n = Math.floor(L / 600);\n  for (let i = 0; i <= n; i++) fence.add(W.mesh(W.box(10, 220, 10), fm, { at: [a[0] + (b[0] - a[0]) * i / n, 110, a[1] + (b[1] - a[1]) * i / n] }));\n}\nW.add(fence, { label: 'కంచె', ground: true });\n"
+},
+{
+"id": "rows",
+"status": "సోలార్ ప్యానెళ్ళ వరుసలు పెడుతున్నాను",
+"code": "const S = W.store;\n// a panel: 2.3 m × 1.1 m, 72 blue cells in a white frame; two panels side by side across each tracker's tube\nconst cellTex = W.canvasTex(256, 512);\n{\n  const g = cellTex.ctx;\n  g.fillStyle = '#e8ecef'; g.fillRect(0, 0, 256, 512);\n  for (let r = 0; r < 12; r++) for (let c = 0; c < 6; c++) {\n    const x = 8 + c * 40.5, y = 8 + r * 41.5;\n    const gr = g.createLinearGradient(x, y, x + 38, y + 39); gr.addColorStop(0, '#1d3d7a'); gr.addColorStop(1, '#13295a');\n    g.fillStyle = gr; g.fillRect(x, y, 38, 39);\n    g.fillStyle = 'rgba(210,220,235,0.55)'; for (const fy of [13, 26]) g.fillRect(x, y + fy, 38, 1.4);\n  }\n  cellTex.update();\n}\nS.panelM = new THREE.MeshPhysicalMaterial({ map: cellTex.texture, roughness: 0.38, metalness: 0.05, clearcoat: 0.35, clearcoatRoughness: 0.2, envMapIntensity: 0.45 });\nS.dustC = new THREE.Color('#c7a982');\nconst panels = W.group(), trackers = W.group();\nS.rowGroups = [];\nconst pgRot = new THREE.BoxGeometry(230, 4, 113); // (across the tube: the long side across)\nconst Mx = new THREE.Matrix4();\nfor (const x of S.ROWS) {\n  const row = W.group({ at: [x, S.AXIS, 0] });\n  const n = 52, im = new THREE.InstancedMesh(pgRot, S.panelM, n * 2);\n  let k = 0;\n  for (let i = 0; i < n; i++) for (const s of [-1, 1]) im.setMatrixAt(k++, Mx.makeTranslation(s * 117, 14, -S.ROWLEN / 2 + 57 + i * (S.ROWLEN - 113) / (n - 1)));\n  row.add(im);\n  panels.add(row);\n  S.rowGroups.push(row);\n  trackers.add(W.mesh(W.cyl(7, 7, S.ROWLEN, 10), W.metal('#b9c0c6', { rough: 0.4 }), { at: [x, S.AXIS, 0], rot: [90, 0, 0] }));\n  for (let z = -S.ROWLEN / 2 + 300; z <= S.ROWLEN / 2 - 300; z += 700) trackers.add(W.mesh(W.box(14, S.AXIS, 10), W.metal('#9aa2aa'), { at: [x, S.AXIS / 2, z] }));\n  trackers.add(W.mesh(W.box(40, 50, 60), W.paint('#3a3f46'), { at: [x, S.AXIS - 40, 50] })); // its drive motor\n}\nW.add(panels, { label: 'సోలార్ ప్యానెళ్ళు', heat: [30, 62] });\nW.add(trackers, { label: 'ట్రాకర్లు', heat: [30, 45] });\n// the other blocks, simpler: each row one long strip that turns the same way\nconst far = W.group();\nconst stripTex = cellTex.texture.clone(); stripTex.needsUpdate = true; stripTex.wrapS = stripTex.wrapT = THREE.RepeatWrapping; stripTex.repeat.set(2, 26);\nS.farM = new THREE.MeshPhysicalMaterial({ map: stripTex, roughness: 0.4, metalness: 0.05, clearcoat: 0.3, envMapIntensity: 0.45 });\nconst nFar = S.BLOCKS.length * 16;\nS.far = new THREE.InstancedMesh(new THREE.BoxGeometry(460, 6, S.ROWLEN), S.farM, nFar);\nS.farAt = [];\nfor (const [bx, bz] of S.BLOCKS) for (const x of S.ROWS) S.farAt.push([bx + x, S.AXIS, bz]);\nS.farAt.forEach((p, i) => S.far.setMatrixAt(i, Mx.makeTranslation(p[0], p[1], p[2])));\nfar.add(S.far);\nfor (const [bx, bz] of S.BLOCKS) far.add(W.mesh(W.box(500, 260, 240), W.paint('#eef1f3', { metallic: 0.2, rough: 0.5 }), { at: [bx + 5750, 130, bz] }));\nW.add(far, { label: 'మిగతా సోలార్ బ్లాకులు', heat: [30, 62] });\n"
+},
+{
+"id": "power",
+"status": "ఇన్వర్టర్, ట్రాన్స్‌ఫార్మర్ పెడుతున్నాను",
+"code": "const S = W.store;\nconst cb = W.group();\nfor (let i = 0; i < 16; i += 2) cb.add(W.mesh(W.box(80, 100, 40), W.paint('#dfe3e6', { metallic: 0.2, rough: 0.5 }), { at: [(S.ROWS[i] + S.ROWS[i + 1]) / 2, 120, 3150] }));\ncb.add(W.mesh(W.box(5300, 8, 30), W.rubber('#2a2b2e'), { at: [0, 6, 3300] }));\nW.add(cb, { label: 'కంబైనర్ బాక్సులు', heat: [32, 50] });\nconst inv = W.group();\nconst white = W.paint('#eef1f3', { metallic: 0.2, rough: 0.5 });\ninv.add(W.mesh(W.box(1200, 270, 250), white, { at: [6500, 145, 1200] }));\ninv.add(W.mesh(W.box(1220, 20, 270), S.matte('#9aa1a8'), { at: [6500, 10, 1200] }));\nconst louv = W.canvasTex(128, 64);\n{ const g = louv.ctx; g.fillStyle = '#d6dbdf'; g.fillRect(0, 0, 128, 64); for (let y = 4; y < 64; y += 6) { g.fillStyle = '#9aa3ab'; g.fillRect(4, y, 120, 2); } louv.update(); }\nfor (const x of [6100, 6500, 6900]) inv.add(W.mesh(new THREE.PlaneGeometry(300, 180), new THREE.MeshStandardMaterial({ map: louv.texture, roughness: 0.6 }), { at: [x, 150, 1326] }));\ninv.add(W.text('ఇన్వర్టర్ · DC → AC', { size: 34, at: [6500, 255, 1327], color: '#2f5f8a' }));\nW.add(inv, { label: 'ఇన్వర్టర్', heat: [32, 58] });\nconst tr = W.group();\nconst tank = W.paint('#5f6b5e', { metallic: 0.35, rough: 0.55 });\ntr.add(W.mesh(W.box(500, 40, 400), S.matte('#bdb7ab'), { at: [6500, 20, -400] }));\ntr.add(W.mesh(W.box(320, 260, 240), tank, { at: [6500, 170, -400] }));\nfor (let i = 0; i < 8; i++) tr.add(W.mesh(W.box(8, 200, 80), tank, { at: [6360 + i * 40, 160, -560] }));\nfor (let k = 0; k < 3; k++) tr.add(W.mesh(W.cyl(12, 16, 110, 10), S.matte('#7a4a32', 0.4), { at: [6420 + k * 80, 350, -400] }));\nW.add(tr, { label: 'ట్రాన్స్‌ఫార్మర్', heat: [32, 70] });\nconst ss = W.group();\nconst gal = W.metal('#aab2ba', { rough: 0.45 });\nss.add(W.mesh(W.box(4000, 10, 2400), S.matte('#8b867d', 0.98), { at: [-3000, 5, 8600] }));\nss.add(W.mesh(W.box(700, 420, 500), tank, { at: [-3800, 240, 8600] }));\nfor (let i = 0; i < 10; i++) ss.add(W.mesh(W.box(10, 340, 140), tank, { at: [-4100 + i * 64, 230, 8920] }));\nfor (let k = 0; k < 3; k++) ss.add(W.mesh(W.cyl(18, 26, 220, 10), S.matte('#7a4a32', 0.4), { at: [-3950 + k * 150, 560, 8600] }));\nfor (const x of [-2600, -1400]) { for (const z of [7700, 9500]) ss.add(W.mesh(W.box(50, 1500, 50), gal, { at: [x, 750, z] })); ss.add(W.mesh(W.box(50, 50, 1850), gal, { at: [x, 1500, 8600] })); }\nfor (const z of [8200, 8600, 9000]) {\n  ss.add(W.mesh(W.cyl(22, 22, 220, 10), S.matte('#9aa1a8', 0.5), { at: [-2000, 330, z] }));\n  ss.add(W.mesh(W.box(22, 220, 22), gal, { at: [-2000, 110, z] }));\n}\nss.add(W.text('33 kV → 132 kV', { size: 60, at: [-3800, 380, 8852], color: '#eef2f5' }));\nW.add(ss, { label: 'సబ్‌స్టేషన్', heat: [30, 66] });\nconst line = W.group();\nfor (const [x, z] of [[2600, 11000], [9000, 13800]]) {\n  const t = W.group({ at: [x, 0, z] });\n  for (const [dx, dz] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {\n    const A = new THREE.Vector3(dx * 200, 0, dz * 200), B = new THREE.Vector3(dx * 40, 2600, dz * 40);\n    const m = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, A.distanceTo(B), 4), gal);\n    m.position.copy(A).add(B).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n    t.add(m);\n  }\n  t.add(W.mesh(W.box(1300, 36, 36), gal, { at: [0, 2300, 0], rot: [0, 25, 0] }), W.mesh(W.cone(50, 360, 4), gal, { at: [0, 2780, 0] }));\n  line.add(t);\n}\nfor (const d of [-500, 0, 500]) line.add(W.mesh(W.tube([[-1400, 1480, 8600 + d], [700, 1900, 9800 + d], [2600 + d * 0.9, 2300, 11000 + d * 0.4], [5800, 1900, 12400 + d * 0.4], [9000 + d * 0.9, 2300, 13800 + d * 0.4]], 6, 24), W.metal('#6c7076')));\nW.add(line, { label: 'ట్రాన్స్‌మిషన్ లైన్', heat: [28, 45] });\n"
+},
+{
+"id": "run",
+"status": "సూర్యుడి కోసం ఎదురుచూస్తున్నాను",
+"code": "const S = W.store;\n// the control room and the weather mast; then running: the trackers follow the sun (they lie flat at night and in a storm);\n// the power follows the sun's height × the power bar (☀️ how clear the sky is) × the heat (hot panels give less);\n// 🚩 \"dust\": a dusty film cuts the power until the cleaning robot runs along the rows\nconst cr = W.group();\ncr.add(W.mesh(W.box(1400, 420, 800), S.matte('#ece6da', 0.8), { at: [-8000, 210, 8400] }));\ncr.add(W.mesh(W.box(1440, 40, 840), W.paint('#c27a1e'), { at: [-8000, 440, 8400] }));\ncr.add(W.mesh(W.box(1100, 140, 20), S.lamp('#bfe6ff', 1.2), { at: [-8000, 260, 8810] }));\nS.lamps[S.lamps.length - 1].always = 0.6;\nconst mast = W.group({ at: [-6600, 0, 7600] });\nmast.add(W.mesh(W.cyl(8, 10, 900, 8), W.metal('#c9cdd2')));\nmast.position.y = 0;\nmast.children[0].position.y = 450;\nmast.add(W.mesh(W.cyl(18, 18, 14, 16), S.matte('#f4f4f2', 0.3), { at: [60, 860, 0] }), W.mesh(W.sphere(9, 12), W.glass({ tint: '#e8f4ff' }), { at: [60, 872, 0] }));\nconst cups = W.group({ at: [0, 920, 0] });\nfor (let k = 0; k < 3; k++) cups.add(W.mesh(W.sphere(12, 10), W.metal('#c9cdd2'), { at: [Math.cos(k * 2.094) * 45, 0, Math.sin(k * 2.094) * 45] }), W.mesh(W.box(90, 4, 4), W.metal('#c9cdd2'), { at: [Math.cos(k * 2.094) * 22, 0, Math.sin(k * 2.094) * 22], rot: [0, -k * 120, 0] }));\nmast.add(cups);\ncr.add(mast);\nW.add(cr, { label: 'కంట్రోల్ రూమ్', heat: [24, 26] });\nconst bot = W.group({ at: [S.ROWS[8], S.AXIS + 40, -2900] });\nbot.add(W.mesh(W.box(500, 40, 120), W.paint('#e0b324', { metallic: 0.2, rough: 0.45 })));\nbot.add(W.mesh(W.cyl(18, 18, 480, 16), W.rubber('#3b3f45'), { at: [0, -10, 60], rot: [0, 0, 90] }));\nW.add(bot, { label: 'క్లీనింగ్ రోబో' });\nW.throttle({ label: 'ఎండ', rise: 0.5, fall: 0.5, start: 1 });\nconst invV = W.sound({ kind: 'hum', label: 'ఇన్వర్టర్', gain: 0.45, f0: 100 });\nconst fanV = W.sound({ kind: 'fans', label: 'ట్రాన్స్‌ఫార్మర్', gain: 0.3 });\nconst hum = W.sound({ kind: 'hum', label: 'సబ్‌స్టేషన్', gain: 0.25, f0: 100 });\nlet tilt = 0, hudT = 0, mw = 0, dust = 0, clean = 1, wasDust = false, cupA = 0;\nconst Mx = new THREE.Matrix4(), Q = new THREE.Quaternion(), Z = new THREE.Vector3(0, 0, 1), P = new THREE.Vector3(), Sc = new THREE.Vector3(1, 1, 1);\nconst base = S.panelM.color.clone();\nW.onTick((t, dt) => {\n  const s = Math.min(1, W.env.spool), h = W.env.hour, a = ((h - 6) / 12) * Math.PI, up = Math.sin(a);\n  const storm = W.env.over;\n  let want = up > 0.02 ? Math.atan2(-Math.cos(a), up) : 0;\n  want = storm ? 0 : Math.max(-0.96, Math.min(0.96, want));\n  tilt += (want - tilt) * Math.min(1, dt * 0.8);\n  const stuck = W.faultOf('ట్రాకర్లు') === 'stop';\n  S.rowGroups.forEach((r, i) => { r.rotation.z = stuck && i === 5 ? 0 : tilt; });\n  Q.setFromAxisAngle(Z, tilt);\n  S.farAt.forEach((p, i) => S.far.setMatrixAt(i, Mx.compose(P.set(p[0], p[1], p[2]), Q, Sc)));\n  S.far.instanceMatrix.needsUpdate = true;\n  const d = W.env.flag('dust');\n  if (d) { dust = Math.min(1, dust + dt * 0.8); clean = 0; } else if (wasDust || clean < 1) { clean = Math.min(1, clean + dt / 7); dust = Math.max(0, dust - dt / 6); }\n  wasDust = d;\n  bot.position.z = clean < 1 ? -2900 + 5800 * Math.sin(clean * Math.PI) : -2900;\n  S.panelM.color.copy(base).lerp(S.dustC, dust * 0.65);\n  S.farM.color.copy(base).lerp(S.dustC, dust * 0.65);\n  cupA += dt * (1 + 3 * s); cups.rotation.y = cupA;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, W.env.dark);\n  const T = W.env.ambient + 25 * W.env.sun;\n  const kTemp = 1 - 0.004 * Math.max(0, T - 25), kTrack = stuck ? 0.97 : 1;\n  const pv = Math.pow(Math.max(0, Math.min(1, up / 0.45)), 0.9); // (a tracker keeps facing the sun: low sun, still a fair share)\n  const out = 50 * pv * s * kTemp * (1 - 0.22 * dust) * kTrack;\n  mw += (Math.min(50, out) - mw) * Math.min(1, dt * 2);\n  const lev = mw / 50;\n  fanV.set(lev); hum.set(lev); invV.set(lev);\n  if (t - hudT > 0.25) {\n    hudT = t;\n    W.hud({ 'విద్యుత్': mw.toFixed(1) + ' MW', 'ఎండ బలం': Math.round(1000 * Math.max(0, up) * s) + ' W/m²', 'ప్యానెల్ వేడి': Math.round(T) + '°C', 'ట్రాకర్ వాలు': Math.round(-tilt * 57.3) + '°',\n      'దుమ్ము': d ? (dust > 0.5 ? 'ఉంది (−22%)' : 'పడుతోంది') : clean < 1 ? 'శుభ్రం చేస్తోంది' : 'శుభ్రం' });\n    W.report({ power: s, mw, sun: W.env.sun, temp: T });\n  }\n});\nfor (let i = 0; i < 16; i += 3) W.stream([[S.ROWS[i], 3500, -2000], [S.ROWS[i], 1200, -1000], [S.ROWS[i], S.AXIS + 30, 0]], { kind: 'sun', count: 12, size: 90, speed: 0.6, when: (e) => e.sun > 0.05 });\nW.stream([[S.ROWS[1], 300, -2500], [S.ROWS[1], 300, 3150], [0, 120, 3300], [5800, 120, 3300], [6500, 200, 1200]], { kind: 'power', count: 30, size: 70, speed: 0.8, when: (e) => e.sun > 0.05 });\nW.stream([[6500, 200, 1200], [6500, 200, -400], [6000, 100, 4500], [0, 100, 5200], [-3800, 300, 8600], [-2000, 1480, 8600], [2600, 2300, 11000], [9000, 2300, 13800]], { kind: 'power', count: 40, size: 110, speed: 1, when: (e) => e.sun > 0.05 });\nW.walk({ eye: 165, speed: 300, area: [-17600, -17600, 17600, 11200],\n  solid: S.ROWS.map((x) => [x - 245, -3000, x + 245, 3000]).concat([[5900, 1075, 7100, 1325], [6250, -600, 6750, -200], [-8700, 8000, -7300, 8800], [-4150, 8350, -3450, 8850]]),\n  spots: [\n    { name: 'ప్యానెళ్ళ వరుసల మధ్య', at: [(S.ROWS[7] + S.ROWS[8]) / 2, 0, -3600], look: [(S.ROWS[7] + S.ROWS[8]) / 2, 120, 2000] },\n    { name: 'ఇన్వర్టర్ దగ్గర', at: [5000, 0, 2600], look: [6500, 150, 1000] },\n    { name: 'సబ్‌స్టేషన్', at: [-600, 0, 10800], look: [-3000, 500, 8600] },\n    { name: 'ఫారం అంచున', at: [4800, 0, 4400], look: [-2500, 200, -4000] },\n  ] });\n"
+}
+],
+"say": "సోలార్ పవర్ స్టేషన్ రెడీ Sir. 'రోజు మొత్తం చూపించు' అంటే ఉదయం నుంచి రాత్రి దాకా, 'దుమ్ము' అంటే దుమ్ము పడుతుంది.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"ఎండ నుంచి కరెంట్ ఎలా వస్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది 50 MW సోలార్ పవర్ స్టేషన్. ముందున్న ఒక్క బ్లాక్ వివరంగా, మిగతావి సింపుల్‌గా. ఇక్కడ తిరిగే టర్బైన్ లేదు, శబ్దం లేదు.\", \"focus\": [{\"id\": \"rows\", \"piece\": \"సోలార్ ప్యానెళ్ళు\"}, {\"id\": \"rows\", \"piece\": \"మిగతా సోలార్ బ్లాకులు\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"ఎండ ఈ నీలి సెల్స్ మీద పడితే లోపలి ఎలక్ట్రాన్లు కదులుతాయి: అదే కరెంట్. నేరుగా, ఏ ఇంధనం లేకుండా.\", \"focus\": [{\"id\": \"rows\", \"piece\": \"సోలార్ ప్యానెళ్ళు\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}, {\"say\": \"ట్రాకర్లు ప్యానెళ్ళని ఉదయం తూర్పు వైపు, మధ్యాహ్నం పైకి, సాయంత్రం పడమర వైపు తిప్పుతాయి. ఎండ నేరుగా పడితే ఎక్కువ కరెంట్.\", \"focus\": [{\"id\": \"rows\", \"piece\": \"ట్రాకర్లు\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}, {\"say\": \"ప్యానెళ్ళ DC కరెంట్ కంబైనర్ బాక్సుల ద్వారా ఇన్వర్టర్‌కి. ఇన్వర్టర్ దాన్ని 50 Hz AC చేస్తుంది, ట్రాన్స్‌ఫార్మర్ 33 kV కి పెంచుతుంది.\", \"focus\": [{\"id\": \"power\", \"piece\": \"కంబైనర్ బాక్సులు\"}, {\"id\": \"power\", \"piece\": \"ఇన్వర్టర్\"}, {\"id\": \"power\", \"piece\": \"ట్రాన్స్‌ఫార్మర్\"}], \"view\": \"iso\", \"close\": true, \"flow\": [{\"from\": \"rows\", \"fromPiece\": \"సోలార్ ప్యానెళ్ళు\", \"to\": \"power\", \"toPiece\": \"ఇన్వర్టర్\", \"kind\": \"power\", \"count\": 8}], \"secs\": 10}, {\"say\": \"అన్ని బ్లాకుల కరెంట్ సబ్‌స్టేషన్‌లో కలిసి 132 kV కి పెరిగి లైన్ ద్వారా గ్రిడ్‌కి వెళ్తుంది.\", \"focus\": [{\"id\": \"power\", \"piece\": \"సబ్‌స్టేషన్\"}, {\"id\": \"power\", \"piece\": \"ట్రాన్స్‌మిషన్ లైన్\"}], \"view\": \"iso\", \"flow\": [{\"from\": \"power\", \"fromPiece\": \"ఇన్వర్టర్\", \"to\": \"power\", \"toPiece\": \"ట్రాన్స్‌మిషన్ లైన్\", \"kind\": \"power\", \"count\": 8}], \"secs\": 9}, {\"say\": \"సోలార్ రహస్యం: మధ్యాహ్నం ఎక్కువ, సాయంత్రం తగ్గి రాత్రి సున్నా. '🕐 రోజు మొత్తం చూపించు' అంటే ట్రాకర్లు సూర్యుడితో తిరగడం, కరెంట్ పెరిగి తగ్గడం చూడొచ్చు.\", \"focus\": [{\"id\": \"run\", \"piece\": \"కంట్రోల్ రూమ్\"}, {\"id\": \"rows\", \"piece\": \"సోలార్ ప్యానెళ్ళు\"}], \"view\": \"iso\", \"secs\": 9}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"సోలార్ పవర్ స్టేషన్",
+"సోలార్ పవర్ ప్లాంట్",
+"సోలార్ ఫారం",
+"సోలార్ పార్క్",
+"సౌర విద్యుత్ కేంద్రం",
+"సోలార్ ప్లాంట్",
+"సోలార్",
+"solar power station",
+"solar power plant",
+"solar farm",
+"solar plant",
+"solar park",
+"solar"
+],
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"powerName": "☀️ ఎండ",
+"outdoor": true,
+"walk": [
+"ప్యానెళ్ళ వరుసల మధ్య",
+"ఇన్వర్టర్ దగ్గర",
+"సబ్‌స్టేషన్",
+"ఫారం అంచున"
+],
+"switches": [
+{
+"id": "dust",
+"menu": "🟫 దుమ్ము / 🧽 శుభ్రం",
+"words": [
+"దుమ్ము",
+"ప్యానెళ్ళ మీద దుమ్ము",
+"దుమ్ము పడింది",
+"దుమ్ము వేయి",
+"దుమ్ము పడని",
+"dust",
+"dusty",
+"dusty panels"
+],
+"offWords": [
+"శుభ్రం చేయి",
+"ప్యానెళ్ళు శుభ్రం చేయి",
+"ప్యానెళ్ళు కడుగు",
+"రోబో పంపు",
+"క్లీన్",
+"క్లీన్ చేయి",
+"clean",
+"clean panels",
+"దుమ్ము తీసేయి",
+"దుమ్ము తుడువు"
+],
+"on": "🟫 ప్యానెళ్ళ మీద దుమ్ము పడింది Sir: ఎండ సెల్స్‌కి తక్కువగా చేరుతోంది, కరెంట్ సుమారు 22% తగ్గింది.",
+"off": "🧽 క్లీనింగ్ రోబో నడుస్తోంది Sir: వరుస వెంట దుమ్ము తుడుస్తోంది. కరెంట్ మళ్ళీ పెరుగుతుంది."
+}
+],
+"power": {
+"start": "మబ్బులు కొంచెం తొలిగాయి Sir: ఎండ పడుతోంది, కరెంట్ మొదలైంది.",
+"full": "నిర్మలమైన ఆకాశం Sir: పూర్తి ఎండ. సూర్యుడు ఎంత ఎత్తులో ఉంటే అంత కరెంట్.",
+"half": "సగం మబ్బులు Sir: కరెంట్ కూడా సగం.",
+"stop": "దట్టమైన మబ్బులు Sir: ఎండ దాదాపు లేదు, కరెంట్ కూడా లేదు.",
+"over": "తుఫాను గాలి వస్తోంది Sir! ట్రాకర్లు ప్యానెళ్ళని చదునుగా పెడుతున్నాయి (స్టో), గాలి వాటిని ఎగరేయకుండా.",
+"cut": "తుఫాను దాటింది Sir: ట్రాకర్లు మళ్ళీ సూర్యుడి వైపు. ఏదీ పాడవలేదు."
+},
+"info": {
+"సోలార్ ప్యానెళ్ళు": {
+"simple": "ఇవి సోలార్ ప్యానెళ్ళు. ఎండ పడితే వీటిలోని సిలికాన్ సెల్స్ నేరుగా కరెంట్ ఇస్తాయి: తిరిగేది ఏమీ లేదు, శబ్దం లేదు.",
+"deep": "ఒక్కో ప్యానెల్ సుమారు 2.3 m × 1.1 m, 72 (లేదా 144 సగం) సెల్స్, సుమారు 550 W. సెల్ సామర్థ్యం సుమారు 21–22%: ఎండలో ఐదో వంతు కరెంట్ అవుతుంది. ఎండ పడితే సెల్‌లోని ఎలక్ట్రాన్లు కదిలి DC కరెంట్ వస్తుంది.",
+"specs": {
+"ఒక్క ప్యానెల్": "సుమారు 550 W",
+"సైజు": "సుమారు 2.3 × 1.1 m",
+"సామర్థ్యం": "సుమారు 21–22%",
+"ఈ బ్లాక్‌లో": "1,664 ప్యానెళ్ళు"
+}
+},
+"సోలార్ ఫారం నేల": {
+"simple": "సోలార్ ఫారం నేల: బంజరు, ఎండ బాగా పడే చదునైన భూమి.",
+"deep": "50 MW కి సుమారు 200–250 ఎకరాలు కావాలి. వరుసల మధ్య దారులు శుభ్రం చేయడానికి, నీడ పడకుండా.",
+"specs": {
+"స్థలం": "సుమారు 200–250 ఎకరాలు (50 MW)"
+}
+},
+"కంచె": {
+"simple": "ఫారం చుట్టూ కంచె: జంతువులు, మనుషులు లోపలికి రాకుండా.",
+"deep": "లోపల ఎక్కువ వోల్టేజ్ DC కేబుల్స్ ఉంటాయి, అందుకే అనుమతి లేనివాళ్ళు రాకూడదు.",
+"specs": {
+"పని": "భద్రత"
+}
+},
+"ట్రాకర్లు": {
+"simple": "ఇవి ట్రాకర్లు: ఉదయం తూర్పు వైపు, మధ్యాహ్నం పైకి, సాయంత్రం పడమర వైపు ప్యానెళ్ళని తిప్పుతాయి. పువ్వు సూర్యుడి వైపు తిరిగినట్టు.",
+"deep": "సింగిల్ యాక్సిస్ ట్రాకర్: ఉత్తరం–దక్షిణం వెళ్ళే గొట్టం మీద ప్యానెళ్ళు, చిన్న మోటార్ దాన్ని సుమారు ±55° తిప్పుతుంది. కదలని ప్యానెళ్ళ కంటే సుమారు 15–20% ఎక్కువ కరెంట్. రాత్రి, తుఫానులో చదునుగా (స్టో) పెడతాయి.",
+"specs": {
+"తిరుగుడు": "సుమారు ±55°",
+"లాభం": "సుమారు 15–20% ఎక్కువ"
+}
+},
+"మిగతా సోలార్ బ్లాకులు": {
+"simple": "మిగతా సోలార్ బ్లాకులు: ఇవి కూడా అదే లాగే, ఇక్కడ సింపుల్‌గా చూపించాను.",
+"deep": "ఒక్కో బ్లాక్ సుమారు 2.5 MW, దాని ఇన్వర్టర్ పెట్టెతో. 20 బ్లాకులు కలిస్తే 50 MW.",
+"specs": {
+"ఒక్కో బ్లాక్": "సుమారు 2.5 MW"
+}
+},
+"కంబైనర్ బాక్సులు": {
+"simple": "కంబైనర్ బాక్సులు: చాలా వరుసల DC తీగల్ని ఒక పెద్ద కేబుల్‌గా కలుపుతాయి.",
+"deep": "లోపల ఫ్యూజులు: ఒక తీగలో తప్పు వస్తే అదే కట్ అవుతుంది. DC సుమారు 1,500 V వరకు.",
+"specs": {
+"వోల్టేజ్": "DC 1,500 V వరకు"
+}
+},
+"ఇన్వర్టర్": {
+"simple": "ఇది ఇన్వర్టర్: ప్యానెళ్ళ DC కరెంట్‌ని గ్రిడ్‌కి కావాల్సిన AC కరెంట్‌గా మారుస్తుంది. ఇంట్లో UPS ఇన్వర్టర్ లాంటిదే, చాలా పెద్దది.",
+"deep": "పవర్ ఎలక్ట్రానిక్స్ సెకనుకి వేల సార్లు స్విచ్ అవుతూ 50 Hz AC తయారు చేస్తాయి. ఎండ మారే కొద్దీ ఎక్కువ కరెంట్ వచ్చే వోల్టేజ్ వెతుకుతుంది (MPPT). ఫ్యాన్లు, ఫిల్టర్లతో చల్లబడుతుంది.",
+"specs": {
+"శక్తి": "సుమారు 2.5 MW",
+"లోపలికి": "DC",
+"బయటికి": "AC, 50 Hz",
+"సామర్థ్యం": "సుమారు 98–99%"
+}
+},
+"ట్రాన్స్‌ఫార్మర్": {
+"simple": "ఈ ట్రాన్స్‌ఫార్మర్ ఇన్వర్టర్ AC వోల్టేజ్‌ని 33 kV కి పెంచుతుంది.",
+"deep": "బ్లాక్ ట్రాన్స్‌ఫార్మర్: అన్ని బ్లాకుల 33 kV కేబుల్స్ సబ్‌స్టేషన్‌కి వెళ్తాయి.",
+"specs": {
+"వోల్టేజ్": "సుమారు 0.6 kV → 33 kV"
+}
+},
+"సబ్‌స్టేషన్": {
+"simple": "ఇది సబ్‌స్టేషన్: అన్ని బ్లాకుల కరెంట్‌ని కలిపి 132 kV కి పెంచి లైన్‌కి పంపుతుంది.",
+"deep": "పెద్ద ట్రాన్స్‌ఫార్మర్, బ్రేకర్లు, మీటర్లు: గ్రిడ్‌కి ఎంత ఇచ్చామో ఇక్కడే కొలుస్తారు.",
+"specs": {
+"వోల్టేజ్": "33 kV → 132 kV"
+}
+},
+"ట్రాన్స్‌మిషన్ లైన్": {
+"simple": "ఈ లైన్ సోలార్ కరెంట్‌ని గ్రిడ్‌కి తీసుకెళ్తుంది.",
+"deep": "132 kV లైన్: మూడు ఫేజ్‌లు.",
+"specs": {
+"వోల్టేజ్": "132 kV"
+}
+},
+"కంట్రోల్ రూమ్": {
+"simple": "కంట్రోల్ రూమ్, పక్కన వాతావరణ స్తంభం: ఎండ బలం, గాలి వేగం కొలుస్తుంది.",
+"deep": "పైరనోమీటర్ (గాజు గుమ్మటం) ఎండ బలం కొలుస్తుంది; కప్పులు గాలి వేగం. ఆ లెక్కతో ఫారం సరిగ్గా పనిచేస్తోందో చూస్తారు.",
+"specs": {
+"కొలిచేవి": "ఎండ బలం, గాలి, వేడి"
+}
+},
+"క్లీనింగ్ రోబో": {
+"simple": "ఈ పసుపు రోబో ప్యానెళ్ళ వరుస మీద నడుస్తూ దుమ్ము తుడుస్తుంది, నీరు లేకుండా.",
+"deep": "మన దేశంలో దుమ్ము వల్ల రోజుకి సుమారు 0.5–1% కరెంట్ తగ్గొచ్చు. రోబోలు రాత్రిపూట తిరిగే బ్రష్‌లతో శుభ్రం చేస్తాయి. 'దుమ్ము' అంటే దుమ్ము పడుతుంది, 'శుభ్రం చేయి' అంటే రోబో నడుస్తుంది.",
+"specs": {
+"పని": "నీరు లేకుండా శుభ్రం"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎన్ని ఇళ్ళ",
+"ఎంత కరెంట్",
+"ఎన్ని మెగావాట్లు",
+"how many homes",
+"how much power",
+"megawatt"
+],
+"a": "మధ్యాహ్నం ఎండలో 50 MW వరకు Sir. కానీ రాత్రి సున్నా, ఉదయం సాయంత్రం తక్కువ: రోజు మొత్తం సగటు సుమారు 11–12 MW. మంచి ఎండ రోజుకి సుమారు 2.5 లక్షల యూనిట్లు."
+},
+{
+"k": [
+"రాత్రి",
+"night",
+"రాత్రి కరెంట్",
+"చీకట్లో"
+],
+"a": "రాత్రి సోలార్ కరెంట్ సున్నా Sir. అప్పుడు థర్మల్, హైడల్, గాలి ఇస్తాయి. కొన్ని కొత్త ఫారాల్లో పెద్ద బ్యాటరీలు మధ్యాహ్నం కరెంట్ దాచి సాయంత్రం ఇస్తాయి. '🕐 రాత్రి 8' అంటే చూడండి."
+},
+{
+"k": [
+"ఎన్ని ప్యానెళ్ళు",
+"how many panels",
+"ప్యానెళ్ళు ఎన్ని"
+],
+"a": "50 MW కి 550 W ప్యానెళ్ళు సుమారు 90,000 పైనే Sir. ఈ వివరంగా చూపిన ఒక్క బ్లాక్‌లో 1,664."
+},
+{
+"k": [
+"ఎండ ఎక్కువైతే",
+"వేడి రోజు",
+"hot day",
+"వేసవిలో",
+"temperature"
+],
+"a": "వింతగా, చాలా వేడిగా ఉంటే సోలార్ కరెంట్ తగ్గుతుంది Sir: ప్యానెల్ 25°C కంటే ఒక్కో డిగ్రీ ఎక్కువైతే సుమారు 0.4% తక్కువ. 65°C ప్యానెల్ అంటే సుమారు 16% తక్కువ. చల్లని ఎండ రోజు బెస్ట్."
+},
+{
+"k": [
+"దుమ్ము",
+"dust",
+"శుభ్రం",
+"cleaning"
+],
+"a": "దుమ్ము పడితే ఎండ సెల్స్‌కి చేరదు Sir: మన దగ్గర కొన్ని రోజుల్లోనే 5–10% తగ్గొచ్చు. అందుకే రోబోలు లేదా నీటితో వారానికి ఒకసారైనా శుభ్రం చేస్తారు. 'దుమ్ము' అని చెప్పి చూడండి."
+},
+{
+"k": [
+"ఇంటి మీద",
+"రూఫ్‌టాప్",
+"rooftop",
+"మా ఇంటికి",
+"3 kw",
+"ఇంటికి సోలార్"
+],
+"a": "మన దగ్గర 1 kW ప్యానెళ్ళు రోజుకి సుమారు 4 యూనిట్లు ఇస్తాయి Sir. 3 kW ఇంటి మీద పెడితే రోజుకి సుమారు 12 యూనిట్లు, నెలకి సుమారు 350. దానికి సుమారు 20–25 m² నీడ పడని పైకప్పు కావాలి."
+},
+{
+"k": [
+"ట్రాకర్ ఎందుకు",
+"ఎందుకు తిరుగుతాయి",
+"why turn",
+"tracker"
+],
+"a": "ఎండ ప్యానెల్ మీద నేరుగా పడితే ఎక్కువ కరెంట్ Sir. ట్రాకర్లు ఉదయం తూర్పు, సాయంత్రం పడమర వైపు తిరిగి కదలని ప్యానెళ్ళ కంటే సుమారు 15–20% ఎక్కువ కరెంట్ ఇస్తాయి."
+},
+{
+"k": [
+"సామర్థ్యం",
+"ఎఫిషియెన్సీ",
+"efficiency"
+],
+"a": "ఒక సెల్ ఎండ శక్తిలో సుమారు 21–22% ని కరెంట్‌గా మారుస్తుంది Sir. ఇన్వర్టర్ దానిలో 98–99% ని AC గా ఇస్తుంది."
+},
+{
+"k": [
+"మన దగ్గర",
+"తెలంగాణ",
+"రామగుండం",
+"ఎక్కడ ఉన్నాయి",
+"india",
+"అతి పెద్ద"
+],
+"a": "రాజస్థాన్‌లోని భడ్లా సోలార్ పార్క్ (సుమారు 2,245 MW) ప్రపంచంలో అతి పెద్ద వాటిలో ఒకటి Sir. తెలంగాణలో రామగుండంలో రిజర్వాయర్ నీటి మీద తేలే సోలార్ (సుమారు 100 MW) ఉంది."
+},
+{
+"k": [
+"పొగ",
+"కాలుష్యం",
+"pollution",
+"co2"
+],
+"a": "నడిచేటప్పుడు సోలార్‌కి పొగ, శబ్దం, CO₂ లేవు Sir. ప్యానెళ్ళు తయారు చేసేటప్పుడు మాత్రం కొంత శక్తి పడుతుంది; అది సుమారు 1–2 ఏళ్ళలో తిరిగి వస్తుంది. ప్యానెళ్ళు సుమారు 25–30 ఏళ్ళు పనిచేస్తాయి."
+}
+],
+"quiz": [
+{
+"q": "ఎండని నేరుగా కరెంట్‌గా మార్చేది ఏది?",
+"a": "సోలార్ ప్యానెళ్ళు",
+"opts": [
+"సోలార్ ప్యానెళ్ళు",
+"ఇన్వర్టర్",
+"ట్రాన్స్‌ఫార్మర్"
+]
+},
+{
+"q": "DC కరెంట్‌ని AC కరెంట్‌గా మార్చేది ఏది?",
+"a": "ఇన్వర్టర్",
+"opts": [
+"కంబైనర్ బాక్సులు",
+"ఇన్వర్టర్",
+"సబ్‌స్టేషన్"
+]
+},
+{
+"q": "ప్యానెళ్ళని సూర్యుడి వైపు తిప్పేవి ఏవి?",
+"a": "ట్రాకర్లు",
+"opts": [
+"ట్రాకర్లు",
+"క్లీనింగ్ రోబో",
+"కంచె"
+]
+},
+{
+"q": "ప్యానెళ్ళ మీద దుమ్ము తుడిచేది ఏది?",
+"a": "క్లీనింగ్ రోబో",
+"opts": [
+"కంట్రోల్ రూమ్",
+"క్లీనింగ్ రోబో",
+"ట్రాన్స్‌మిషన్ లైన్"
+]
+},
+{
+"q": "33 kV ని 132 kV కి పెంచి లైన్‌కి పంపేది ఏది?",
+"a": "సబ్‌స్టేషన్",
+"opts": [
+"సబ్‌స్టేషన్",
+"ఇన్వర్టర్",
+"కంబైనర్ బాక్సులు"
+]
+}
+],
+"faults": [
+{
+"label": "ట్రాకర్లు",
+"kind": "stop",
+"clue": "ప్యానెళ్ళ వరుసలు చూడండి Sir: అన్నీ ఒకేలా సూర్యుడి వైపు తిరిగాయా?",
+"why": "ఒక వరుస ట్రాకర్ మోటార్ ఆగింది, అది చదునుగానే ఉండిపోయింది. ఆ వరుస కొంచెం తక్కువ కరెంట్ ఇస్తుంది. టెక్నీషియన్ మోటార్ లేదా దాని కంట్రోలర్ మారుస్తాడు."
+},
+{
+"label": "ఇన్వర్టర్",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: మామూలు కంటే వేడిగా ఉన్నది ఏది?",
+"why": "ఇన్వర్టర్ గాలి ఫిల్టర్లు దుమ్ముతో మూసుకుపోయాయి, లోపల వేడెక్కుతోంది. అది తనంతట తానే పవర్ తగ్గిస్తుంది (డీరేట్). ఫిల్టర్లు శుభ్రం చేస్తే సరి."
+},
+{
+"label": "ట్రాన్స్‌ఫార్మర్",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: మామూలు హమ్ కంటే గరగర ఎక్కడ? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "ట్రాన్స్‌ఫార్మర్ కూలింగ్ ఫ్యాన్ బేరింగ్ అరిగింది. ఆయిల్ వేడి కూడా చూస్తారు; ఫ్యాన్ మారుస్తారు."
+}
+],
+"inside": {
+"సోలార్ ప్యానెళ్ళు": {
+"say": "సోలార్ ప్యానెల్ లోపల Sir, పొరలుగా విడదీస్తే: పైన గాజు, తర్వాత పారదర్శక జిగురు పొర, మధ్యలో నీలి సిలికాన్ సెల్స్, కింద ఇంకో పొర, తెల్లని బ్యాక్‌షీట్, చుట్టూ అల్యూమినియం ఫ్రేమ్. పసుపు చుక్కలు ఎండ; బంగారు చుక్కలు ఎలక్ట్రాన్లు: వెండి గీతల వెంట జంక్షన్ బాక్స్‌కి వెళ్తాయి.",
+"code": "// Inside a solar panel, its layers pulled apart (a corner, 60 cm across): glass on top, a clear glue film (EVA), the blue\n// silicon cells with thin silver lines, another film, the white back sheet, the aluminium frame. Sunlight (yellow) goes in;\n// each cell pushes electrons (gold) along its silver lines to the busbars and out to the junction box.\nconst L = 60;\nconst gl = W.group();\ngl.add(W.mesh(W.box(L, 0.8, L), W.glass({ tint: '#eaf6ff' }), { at: [0, 40, 0] }));\nW.add(gl, { label: 'గ్లాస్' });\nconst eva = new THREE.MeshStandardMaterial({ color: '#f4f7f9', transparent: true, opacity: 0.35, roughness: 0.4, depthWrite: false });\nconst e1 = W.group(); e1.add(W.mesh(W.box(L, 0.5, L), eva, { at: [0, 30, 0] })); W.add(e1, { label: 'EVA పొర' });\nconst cells = W.group();\nconst cellM = W.paint('#1b3a78', { metallic: 0.2, rough: 0.35 }), silver = W.metal('#d8dde2', { rough: 0.25 });\nfor (const cx of [-15, 15]) for (const cz of [-15, 15]) {\n  cells.add(W.mesh(W.box(15.6, 0.4, 15.6), cellM, { at: [cx, 20, cz] }));\n  for (let i = -7; i <= 7; i++) cells.add(W.mesh(W.box(15.4, 0.12, 0.12), silver, { at: [cx, 20.25, cz + i]}));\n  for (const bz of [-5, 0, 5]) cells.add(W.mesh(W.box(0.5, 0.18, 15.6), silver, { at: [cx + bz, 20.3, cz] }));\n}\nW.add(cells, { label: 'సిలికాన్ సెల్స్' });\nconst e2 = W.group(); e2.add(W.mesh(W.box(L, 0.5, L), eva, { at: [0, 10, 0] })); W.add(e2, { label: 'EVA పొర కింది' });\nconst back = W.group(); back.add(W.mesh(W.box(L, 0.6, L), W.plastic('#f2f2ee'), { at: [0, 0, 0] })); W.add(back, { label: 'బ్యాక్‌షీట్' });\nconst fr = W.group();\nfor (const [x, z, w, d] of [[0, -L / 2 - 1, L + 4, 2], [0, L / 2 + 1, L + 4, 2], [-L / 2 - 1, 0, 2, L], [L / 2 + 1, 0, 2, L]]) fr.add(W.mesh(W.box(w, 4, d), W.metal('aluminium'), { at: [x, -8, z] }));\nW.add(fr, { label: 'ఫ్రేమ్' });\nconst jb = W.group(); jb.add(W.mesh(W.box(10, 3, 8), W.plastic('#2a2c30'), { at: [18, -5, 18] }));\njb.add(W.mesh(W.tube([[23, -5, 18], [32, -6, 20], [40, -9, 26]], 0.5, 16), W.rubber('#c23a2e')), W.mesh(W.tube([[23, -5, 16], [32, -6, 12], [40, -9, 8]], 0.5, 16), W.rubber('#1d1e20')));\nW.add(jb, { label: 'జంక్షన్ బాక్స్' });\nfor (const [x, z] of [[-15, -15], [15, 15], [-15, 15], [15, -15]]) W.stream([[x - 8, 70, z - 8], [x - 2, 45, z - 2], [x, 21, z]], { kind: 'sun', count: 10, size: 0.9, speed: 0.7, always: true, when: (e) => e.sun > 0.05 });\nfor (const cz of [-15, 15]) W.stream([[-22, 20.6, cz], [-15, 20.6, cz], [-8, 20.6, cz], [8, 20.6, cz], [15, 20.6, cz], [22, 20.6, cz], [29, 20.6, cz + 4], [31, 14, 20], [20, -4, 18]], { kind: 'power', count: 16, size: 0.6, speed: 0.6, always: true, when: (e) => e.sun > 0.05 });\n"
+}
+},
+"film": [
+"☀️ 50 MW సోలార్ పవర్ స్టేషన్",
+"ట్రాకర్లు సూర్యుడితో తిరుగుతున్నాయి",
+"🌡️ వేడి: ఎండలో ప్యానెళ్ళు, ఇన్వర్టర్",
+"〰️ ఎండ → ప్యానెల్ → ఇన్వర్టర్ → గ్రిడ్",
+"విడదీస్తే ప్రతి భాగం",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"challenge": null,
+"service": {
+"title": "🛠️ సోలార్ ఫారం సర్వీస్",
+"safety": "ఎండ ఉన్నంతసేపు ప్యానెళ్ళు కరెంట్ ఇస్తూనే ఉంటాయి Sir: స్విచ్ ఆపినా ప్యానెల్ తీగల్లో DC వోల్టేజ్ ఉంటుంది. DC కనెక్టర్లు, ఇన్వర్టర్ పనులు ట్రైనింగ్ ఉన్న టెక్నీషియన్లే, ఇన్సులేటెడ్ గ్లవ్స్‌తో చేయాలి.",
+"steps": [
+{
+"say": "ప్యానెళ్ళని రోబో లేదా మెత్తని బ్రష్, నీటితో శుభ్రం చేస్తారు; గట్టిగా గీకితే గాజు మీద పూత పాడవుతుంది.",
+"label": "సోలార్ ప్యానెళ్ళు"
+},
+{
+"say": "థర్మల్ కెమెరా డ్రోన్‌తో ఫారం మీద ఎగిరి, వేడిగా ఉన్న (పాడైన) సెల్స్ కనిపెడతారు.",
+"label": "సోలార్ ప్యానెళ్ళు"
+},
+{
+"say": "ట్రాకర్ మోటార్లు, బోల్టులు, గొట్టం బేరింగ్‌లు తనిఖీ చేస్తారు.",
+"label": "ట్రాకర్లు"
+},
+{
+"say": "కంబైనర్ బాక్సుల ఫ్యూజులు, కనెక్షన్ బిగుతు చూస్తారు.",
+"label": "కంబైనర్ బాక్సులు"
+},
+{
+"say": "ఇన్వర్టర్ గాలి ఫిల్టర్లు శుభ్రం చేస్తారు.",
+"label": "ఇన్వర్టర్"
+},
+{
+"say": "వరుసల మధ్య గడ్డి కోస్తారు: నీడ పడితే కరెంట్ తగ్గుతుంది.",
+"label": "సోలార్ ఫారం నేల"
+}
+]
+},
+"scene": "",
+"id": "solar"
+}
+}

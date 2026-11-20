@@ -1995,7 +1995,7 @@ public class WorkshopActivity extends Activity {
                 .setPositiveButton("మూసేయి", (d, w) -> { stopJob(j); finish(); }).setNegativeButton("ఉండు", null).show();
     }
 
-    @Override public void onBackPressed() { if (fullOn) fullScreen(false); else leave(); }
+    @Override public void onBackPressed() { if (show != null && show.walking()) show.walkOff(); else if (fullOn) fullScreen(false); else leave(); } // (🚶 walking: back comes out of it first)
 
     // ================================================================ saved builds (no AI, no money)
 

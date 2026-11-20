@@ -342,7 +342,7 @@ async function runPart(m) {
   const nums = [box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z];
   if (box.isEmpty() || nums.some((v) => !isFinite(v))) { fail(id, 'the geometry has no size or has NaN numbers'); return; }
   const span = box.getSize(new THREE.Vector3()).length();
-  if (span > 20000) { fail(id, 'far too big (' + Math.round(span) + ' cm): units are centimetres'); return; }
+  if (span > (day.on ? 90000 : 20000)) { fail(id, 'far too big (' + Math.round(span) + ' cm): units are centimetres'); return; } // (🕐 outdoors: a whole plant, a town)
   rec.tris = triangles(rec.group);
   if (totalTris() > MAX_TRIS) { fail(id, 'too many triangles (' + rec.tris + ' in this part): use fewer segments'); return; }
   rec.box = box;
@@ -417,7 +417,7 @@ function modelBox() {
     const k = ease(explodeGoal);
     for (const u of tour.units) for (const pc of u.pcs) if (pc.box) b.union(pc.box.clone().translate(pc.explode.clone().multiplyScalar(pc.home ? 0 : k)));
     if (!b.isEmpty()) {
-      const want = tour.size * 0.5, have = b.getSize(new THREE.Vector3()).length();
+      const want = tour.size * (day.on ? 0.1 : 0.5), have = b.getSize(new THREE.Vector3()).length(); // (outdoors: a nacelle on a 100 m tower can be looked at closely)
       if (have < want) b.expandByScalar((want - have) / 3.4);
       return b;
     }
@@ -619,6 +619,7 @@ function sideOfTravel() {
 const DAY = { env: 1, key: 2.4, rim: 1.5, hemi: 0.3, exp: 1.0, bg: '' };
 function light(mode) {
   const night = mode === 'night';
+  if (day.on) { day.hour = night ? 21 : 12; day.skyT = -99; return; } // (🕐 a build with its own sky: night is 9 pm there)
   scene.environmentIntensity = night ? 0.16 : DAY.env;
   key.intensity = night ? 0.55 : DAY.key;
   rim.intensity = night ? 0.7 : DAY.rim;
@@ -646,7 +647,7 @@ function applyInset() {
 }
 
 function frameAll(now) {
-  if (xr.on) return;
+  if (xr.on || walk.on) return; // (📏 the phone's AR, 🚶 his own eyes: they keep their lens)
   const b = modelBox();
   if (b.isEmpty()) return;
   const c = b.getCenter(new THREE.Vector3());
@@ -749,6 +750,15 @@ function tick(now) {
     for (const r of parts.values()) placePieces(r, e);
   }
   extrasStep(now, dtS);
+  dayStep(dt);
+  if (walk.on && !xr.on) { // 🚶 his eyes, his thumb: nothing glides, nothing turns by itself
+    walkStep(dt);
+    renderer.render(scene, camera);
+    recFrame();
+    drawLabels();
+    tapeDraw();
+    return;
+  }
   if (xr.on) { // 📏 on the real floor: the phone's AR moves the camera, nothing glides
     xrPlaceModel();
     renderer.render(scene, camera);
@@ -916,7 +926,7 @@ canvas.addEventListener('pointerdown', (e) => {
   downs++;
   downAt = downs === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
   clearTimeout(holdTimer);
-  if (downs === 1 && !xr.on && !tape.on) holdTimer = setTimeout(() => { if (downAt) startGrab(downAt.x, downAt.y); }, 450); // ✋ a hold grabs
+  if (downs === 1 && !xr.on && !tape.on && !walk.on) holdTimer = setTimeout(() => { if (downAt) startGrab(downAt.x, downAt.y); }, 450); // ✋ a hold grabs
 });
 let xrLastX = null;
 canvas.addEventListener('pointermove', (e) => {
@@ -1037,7 +1047,7 @@ function look() {
       pc.obj.traverse((x) => {
         if (!x.isMesh || x.userData.isEdge) return;
         if (x.userData.m0 === undefined) { x.userData.m0 = x.material; x.userData.v0 = x.visible; x.userData.s0 = x.castShadow; }
-        let solid = sf ? !tour.dim || sf.has(x) : iso ? iso.has(x) : !xray || (pick && pick.has(x));
+        let solid = sf ? !tour.dim || sf.has(x) || !!pc.obj.userData.ground : iso ? iso.has(x) : !xray || (pick && pick.has(x)); // (🎓 the ground stays ground)
         if ((pc.peelGoal || 0) > 0 || hxSet.has(pc)) solid = false; // (🧅 peeled off, 🖐️ under his hand's window: see-through)
         const gone = (iso && !iso.has(x) && isolated.mode === 'hide') || (x === pc.obj && hid) || (env.tl >= 0 && tlHidden(r, pc))
           || (x.userData.isText && !solid);
@@ -2398,14 +2408,16 @@ try { // (no sound file can be played either: an <audio> made any other way stay
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const numOr = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
 const env = { goal: 0, spool: 0, over: 0, overT: 0, ts: 1, simT: 0, heat: false, flow: false, ambient: 30, slope: 0, gear: 1,
-  clutch: 0, brake: 0, rate: 8, scene: '', fault: null, holo: false, rgb: '', hx: null, peel: 0, tl: -1, gaugeUntil: 0 };
+  clutch: 0, brake: 0, rate: 8, scene: '', fault: null, holo: false, rgb: '', hx: null, peel: 0, tl: -1, gaugeUntil: 0, game: '' };
 const thr = { on: false, label: '', rise: 0.45, fall: 0.25, sound: '', rec: '' };
 const envView = Object.freeze({
   get power() { return env.goal; }, get spool() { return env.spool; }, get over() { return env.over; },
   get heat() { return env.heat ? 1 : 0; }, get flow() { return env.flow ? 1 : 0; }, get ambient() { return env.ambient; },
   get slope() { return env.slope; }, get gear() { return env.gear; }, get clutch() { return env.clutch; }, get brake() { return env.brake; },
   get rate() { return env.rate; }, get time() { return env.simT; }, get scene() { return env.scene; }, get slow() { return env.ts; },
-  get exploded() { return explodeK; } });
+  get exploded() { return explodeK; },
+  get hour() { return day.on ? day.hour : 12; }, get sun() { return day.on ? day.sunK : 1; }, get dark() { return day.on ? day.dark : 0; },
+  get game() { return env.game || ''; }, flag: (id) => flags.has(String(id)), get walking() { return walk.on ? 1 : 0; } });
 
 kit.store = {}; // (the parts of one build share helpers here: W.store.metal = …)
 
@@ -2459,6 +2471,8 @@ function extendAdd(obj, o) {
   const h = heatSpec(o.heat);
   if (h) obj.userData.heat = h;
   if (o.layer != null && isFinite(+o.layer)) obj.userData.layer = Math.max(0, Math.min(20, Math.round(+o.layer)));
+  if (o.ground) obj.userData.ground = true; // (🕐 the land under an outdoor build: never turned to glass by the show)
+  if (Array.isArray(o.peelBy) && o.peelBy.length === 3) obj.userData.peelBy = o.peelBy.map((v) => numOr(+v, -1e6, 1e6, 0)); // (🧅 a roof lifts just this far)
 }
 
 function extendKit(w, rec) {
@@ -2491,6 +2505,8 @@ function extendKit(w, rec) {
     reportWant = o;
   };
   w.explodeView = (name) => { if (VIEWS[String(name)]) { apartView.view = String(name); apartView.id = rec.id; } };
+  w.day = (o = {}) => dayStart(rec, o || {}); // 🕐 this build stands outdoors: the sky, the sun, the hours
+  w.walk = (o = {}) => walkDefine(rec, o || {}); // 🚶 places he can walk to, at a person's height
 }
 
 // ---- power: the throttle, the spool, over the limit
@@ -2614,7 +2630,8 @@ const streamGroup = new THREE.Group();
 model.add(streamGroup);
 const streams = [];
 const STREAM_COL = { cool: [0x63ccff, 0x63ccff], air: [0x63ccff, 0xff9840], warm: [0xffb84a, 0xff5a1f], hot: [0xffa848, 0xff3a14],
-  gas: [0xffd27a, 0xff4a18], water: [0x3aa6ff, 0x7fd8ff], fuel: [0xb48cff, 0xd6b8ff], power: [0xffd84d, 0xfff2a8], regen: [0x7dff9b, 0x2fd8a0] };
+  gas: [0xffd27a, 0xff4a18], water: [0x3aa6ff, 0x7fd8ff], fuel: [0xb48cff, 0xd6b8ff], power: [0xffd84d, 0xfff2a8], regen: [0x7dff9b, 0x2fd8a0],
+  coal: [0xc9a27a, 0x8f7a66], smoke: [0xb8c0c8, 0x8a929c], steam: [0xff5a2a, 0xffc08a], sun: [0xfff2a8, 0xffb43a] }; // (🏭 coal, flue gas, steam, sunlight)
 const streamGeo = new THREE.CylinderGeometry(0.16, 0.16, 2.4, 5, 1, true).rotateX(Math.PI / 2);
 const ZAX = new THREE.Vector3(0, 0, 1);
 function addStream(rec, points, o = {}) {
@@ -2697,7 +2714,7 @@ function noiseSrc() { const s = snd.ctx.createBufferSource(); s.buffer = snd.noi
 function filt(type, f, q) { const x = snd.ctx.createBiquadFilter(); x.type = type; x.frequency.value = f; x.Q.value = q; return x; }
 function osc(type, f) { const o = snd.ctx.createOscillator(); o.type = type; o.frequency.value = f; o.start(); return o; }
 function gainNode(v) { const g = snd.ctx.createGain(); g.gain.value = v; return g; }
-const VOICE_KINDS = ['air', 'fans', 'jet', 'motor', 'pump', 'gear', 'chain', 'plant', 'water', 'rattle', 'hum'];
+const VOICE_KINDS = ['air', 'fans', 'jet', 'motor', 'pump', 'gear', 'chain', 'plant', 'water', 'rattle', 'hum', 'swoosh'];
 /** One sound (a fan's air, a motor's whine…), tied to a piece's name for the 🩺 stethoscope; its numbers follow the spool. */
 function addVoice(rec, o) {
   const kind = VOICE_KINDS.includes(o.kind) ? o.kind : 'air';
@@ -2734,6 +2751,10 @@ function buildVoice(v) {
     nd.n = noiseSrc(); nd.bp = filt('bandpass', k === 'chain' ? 1900 : 900, 2.5); nd.am = gainNode(0); nd.ng = gainNode(0);
     nd.n.connect(nd.bp).connect(nd.am).connect(nd.ng).connect(out);
     nd.lfo = osc('square', 8); nd.lfog = gainNode(0.5); nd.lfo.connect(nd.lfog).connect(nd.am.gain);
+  } else if (k === 'swoosh') { // (a big rotor's blades going past the tower: air that swells and fades)
+    nd.n = noiseSrc(); nd.bp = filt('bandpass', 420, 0.8); nd.am = gainNode(0.4); nd.ng = gainNode(0);
+    nd.n.connect(nd.bp).connect(nd.am).connect(nd.ng).connect(out);
+    nd.lfo = osc('sine', 0.7); nd.lfog = gainNode(0.34); nd.lfo.connect(nd.lfog).connect(nd.am.gain);
   } else { // plant, water
     nd.n = noiseSrc(); nd.lp = filt(k === 'water' ? 'bandpass' : 'lowpass', k === 'water' ? 900 : 220, 0.6); nd.ng = gainNode(0); nd.n.connect(nd.lp).connect(nd.ng).connect(out);
     nd.o = osc('sine', 50); nd.og = gainNode(0); nd.o.connect(nd.og).connect(out);
@@ -2785,6 +2806,9 @@ function soundStep(now) {
         ramp(n.ng.gain, 0.06 * sp * g, t0, 0.1); break;
       case 'gear':
         ramp(n.o.frequency, P((v.f0 || 120) + 900 * sp), t0, 0.06); ramp(n.og.gain, 0.035 * Math.min(1, sp * 2) * g, t0, 0.08); break;
+      case 'swoosh':
+        ramp(n.lfo.frequency, Math.max(0.05, (v.f0 || 0.75) * sp * pitch), t0, 0.2); ramp(n.bp.frequency, P(300 + 520 * sp), t0, 0.2);
+        ramp(n.ng.gain, 0.9 * Math.pow(sp, 1.2) * g, t0, 0.2); break;
       case 'chain': case 'rattle':
         ramp(n.lfo.frequency, 3 + 38 * sp, t0, 0.1); ramp(n.ng.gain, (v.kind === 'rattle' ? 0.35 : 0.08) * sp * g, t0, 0.1); break;
       default:
@@ -2862,15 +2886,18 @@ let reportWant = null;
 function envData() { // (what Jarvis is told about the running machine: its live numbers, short)
   const rows = {};
   if (hudWant) for (const [k, v] of Object.entries(hudWant).slice(0, 8)) rows[String(k).slice(0, 30)] = String(v).slice(0, 30);
-  return JSON.stringify({ rows, nums: reportWant || {}, audio: snd.ctx ? snd.ctx.state : (snd.voices.length ? 'none' : 'quiet'), level: soundLevel(), gear: env.gear, clutch: env.clutch, brake: env.brake, over: env.over ? 1 : 0, slow: env.ts });
+  if (day.on) rows['సమయం'] = hourText(day.hour);
+  return JSON.stringify({ rows, nums: Object.assign({}, reportWant || {}, day.on ? { hour: Math.round(day.hour * 100) / 100, play: day.play ? 1 : 0 } : {}), walk: walk.on ? 1 : 0, sky: day.on ? 1 : 0, audio: snd.ctx ? snd.ctx.state : (snd.voices.length ? 'none' : 'quiet'), level: soundLevel(), gear: env.gear, clutch: env.clutch, brake: env.brake, over: env.over ? 1 : 0, slow: env.ts });
 }
 function hudStep(now) {
   if (!hudEl || now - hudT < 200) return;
   hudT = now;
   hudEl.style.top = Math.round(inset.top * window.innerHeight + 10) + 'px';
   if (gaugeEl) gaugeEl.style.top = Math.round(window.innerHeight * (inset.top + (1 - inset.top - inset.bottom) * 0.22)) + 'px';
-  if (!hudWant || insideOn) { if (hudEl.style.display !== 'none') hudEl.style.display = 'none'; return; }
-  const html = Object.entries(hudWant).slice(0, 6).map(([k, v]) => '<div><span>' + escH(k) + '</span><b>' + escH(v) + '</b></div>').join('');
+  if ((!hudWant && !day.on) || insideOn) { if (hudEl.style.display !== 'none') hudEl.style.display = 'none'; return; }
+  const rowsNow = Object.entries(hudWant || {}).slice(0, 6);
+  if (day.on) rowsNow.unshift(['🕐 సమయం', hourText(day.hour) + (day.play ? ' ▶' : '')]);
+  const html = rowsNow.map(([k, v]) => '<div><span>' + escH(k) + '</span><b>' + escH(v) + '</b></div>').join('');
   if (hudEl.innerHTML !== html) hudEl.innerHTML = html;
   hudEl.style.display = 'block';
 }
@@ -2912,7 +2939,8 @@ function peelStep(dt) {
       pc.peelK = g > k ? Math.min(g, k + dt / 0.9) : Math.max(g, k - dt / 0.7);
       const e = ease(pc.peelK);
       const dir = pc.explode.lengthSq() > 1e-6 ? pc.explode.clone().normalize() : (pc.box ? pc.box.getCenter(new THREE.Vector3()).sub(goal.target).setY(0).normalize() : new THREE.Vector3(1, 0, 0));
-      pc.peelOff = dir.multiplyScalar(goal.radius * 0.95 * e).add(new THREE.Vector3(0, goal.radius * 0.35 * e, 0));
+      const by = pc.obj.userData.peelBy;
+      pc.peelOff = by ? new THREE.Vector3(by[0] * e, by[1] * e, by[2] * e) : dir.multiplyScalar(goal.radius * 0.95 * e).add(new THREE.Vector3(0, goal.radius * 0.35 * e, 0));
       any = true;
     }
     if (any) { placePieces(r, ease(explodeK)); moved = true; }
@@ -3067,6 +3095,262 @@ function setEnv(m) {
     }
   }
 }
+
+// ---- 🕐 (Build 2) the 24-hour day: the sun rises in the east, crosses a little to the south and sets in the west; the sky's
+// colours follow it, stars come out, lamps come on at dusk (the build reads W.env.dark). Only a build that asks (W.day: a
+// power station, a town) gets the sky; the machines keep their studio. 🚩 Its own switches (W.env.flag) and 🎮 a game kind.
+const day = { on: false, rec: '', hour: 12, play: false, rate: 1 / 3, skyT: -99, floorWas: null, sunK: 1, dark: 0, elev: 1 };
+const sunDir = new THREE.Vector3(0, 1, 0), moonDir = new THREE.Vector3(0, 1, 0);
+const skyGroup = new THREE.Group();
+skyGroup.visible = false;
+scene.add(skyGroup);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false,
+  uniforms: { uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uLow: { value: new THREE.Color() } },
+  vertexShader: 'varying vec3 vP;\nvoid main() { vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uHor; uniform vec3 uLow; varying vec3 vP;\nvoid main() {\n  float y = vP.y;\n'
+    + '  vec3 c = y > 0.0 ? mix(mix(uHor, uMid, smoothstep(0.0, 0.2, y)), uTop, smoothstep(0.2, 0.8, y)) : mix(uHor, uLow, smoothstep(0.0, 0.12, -y));\n'
+    + '  gl_FragColor = vec4(c, 1.0);\n  #include <colorspace_fragment>\n}' });
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), skyMat);
+skyDome.renderOrder = -3;
+skyDome.raycast = () => {};
+skyGroup.add(skyDome);
+const sunBall = new THREE.Mesh(new THREE.SphereGeometry(0.014, 24, 16), new THREE.MeshBasicMaterial({ color: 0xfff1c4, toneMapped: false, fog: false }));
+const moonBall = new THREE.Mesh(new THREE.SphereGeometry(0.01, 24, 16), new THREE.MeshBasicMaterial({ color: 0xdfe8ff, toneMapped: false, fog: false, transparent: true }));
+sunBall.raycast = moonBall.raycast = () => {};
+skyGroup.add(sunBall, moonBall);
+const starGeo = new THREE.BufferGeometry();
+{
+  const p = [];
+  for (let i = 0; i < 520; i++) { // (the same stars every night: a fixed little pattern)
+    const u = ((i * 0.618034) % 1), v = ((i * 0.414214 + 0.17) % 1);
+    const th = u * Math.PI * 2, y = 0.08 + 0.92 * v, rr = Math.sqrt(1 - y * y);
+    p.push(Math.cos(th) * rr * 0.97, y * 0.97, Math.sin(th) * rr * 0.97);
+  }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+}
+const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+stars.raycast = () => {};
+skyGroup.add(stars);
+const SKY = { // [top, mid, horizon, below]: the night, the dawn / dusk, the day
+  night: ['#04070f', '#0a1326', '#17233b', '#0b0f16'], twi: ['#27416e', '#7d6a8e', '#ff9b57', '#3a3330'], noon: ['#2f77cf', '#78b2ea', '#cde6f8', '#8fa58a'] };
+const skyC = (i, t1, t2) => new THREE.Color(SKY.night[i]).lerp(new THREE.Color(SKY.twi[i]), t1).lerp(new THREE.Color(SKY.noon[i]), t2);
+const smooth = (a, b, x) => { const k = clamp01((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+
+function hourText(h) {
+  const H = Math.floor(h) % 24, M = Math.floor(((h - Math.floor(h)) * 60) / 5) * 5;
+  const part = H < 4 ? 'రాత్రి' : H < 12 ? 'ఉదయం' : H < 16 ? 'మధ్యాహ్నం' : H < 20 ? 'సాయంత్రం' : 'రాత్రి';
+  return (((H + 11) % 12) + 1) + ':' + String(M).padStart(2, '0') + ' ' + part;
+}
+function dayStart(rec, o) {
+  day.on = true;
+  day.rec = rec.id;
+  day.hour = ((numOr(+o.start, 0, 24, 12) % 24) + 24) % 24;
+  day.play = false;
+  day.rate = 1 / 3;
+  day.skyT = -99;
+  if (!day.floorWas) day.floorWas = { c: floor.material.color.clone(), m: floor.material.metalness, r: floor.material.roughness, e: floor.material.envMapIntensity };
+  floor.material.color.copy(colour(o.ground, '#56654a'));
+  floor.material.metalness = 0;
+  floor.material.roughness = 0.96;
+  floor.material.envMapIntensity = 0.25;
+  controls.maxPolarAngle = Math.PI / 2 - 0.03; // (outdoors: never under the ground)
+  if (o.zoom != null) goal.zoom = numOr(+o.zoom, 0.3, 3, 1); // (a wide town: start a little closer to its middle)
+  goal.dir = new THREE.Vector3().fromArray(VIEWS.iso).normalize();
+}
+function dayOff() {
+  if (!day.on) return;
+  day.on = false;
+  day.play = false;
+  day.rec = '';
+  skyGroup.visible = false;
+  if (day.floorWas) {
+    floor.material.color.copy(day.floorWas.c); floor.material.metalness = day.floorWas.m;
+    floor.material.roughness = day.floorWas.r; floor.material.envMapIntensity = day.floorWas.e;
+    day.floorWas = null;
+  }
+  controls.maxPolarAngle = Math.PI;
+  key.color.set(0xffffff);
+  hemi.color.set(0xdfe8ff);
+  hemi.groundColor.set(0x0b0b0c);
+  light(nightOn ? 'night' : 'day');
+  frameAll(false);
+}
+function setDay(m) {
+  if (!day.on) { post({ t: 'day', id: '', label: 'none', x: -1, n: 0 }); return; }
+  if (m.hour != null && isFinite(+m.hour)) day.hour = ((+m.hour % 24) + 24) % 24;
+  if (m.rate != null) day.rate = numOr(+m.rate, 0.02, 6, 1 / 3);
+  if (m.play != null) day.play = !!m.play;
+  day.skyT = -99;
+  post({ t: 'day', id: day.rec, label: hourText(day.hour), x: day.hour, n: day.play ? 1 : 0 });
+}
+function dayStep(dt) {
+  if (!day.on) return;
+  if (day.play) day.hour = (day.hour + day.rate * dt) % 24;
+  const a = ((day.hour - 6) / 12) * Math.PI; // (6 am: the east, noon: high and a little south, 6 pm: the west)
+  sunDir.set(Math.cos(a), Math.sin(a), -0.3).normalize();
+  moonDir.set(-Math.cos(a) * 0.8, -Math.sin(a), -0.25).normalize();
+  day.elev = sunDir.y;
+  day.sunK = smooth(-0.04, 0.26, day.elev);
+  day.dark = 1 - smooth(-0.1, 0.1, day.elev);
+  const show = !arOn && !xr.on;
+  skyGroup.visible = show;
+  if (!walk.on && !goal.dir && camera.position.y < goal.floorY + goal.radius * 0.08) goal.dir = new THREE.Vector3().fromArray(VIEWS.iso).normalize(); // (the ground is never seen from below)
+  const R = walk.on ? camera.far * 0.8 : Math.max(10, goal.radius * 22);
+  skyGroup.position.copy(walk.on ? camera.position : controls.target);
+  skyGroup.scale.setScalar(R);
+  sunBall.position.copy(sunDir).multiplyScalar(0.94);
+  sunBall.visible = day.elev > -0.06;
+  sunBall.material.color.set(day.elev < 0.2 ? 0xffb066 : 0xfff1c4);
+  moonBall.position.copy(moonDir).multiplyScalar(0.94);
+  moonBall.visible = moonDir.y > -0.02;
+  moonBall.material.opacity = 0.25 + 0.75 * day.dark;
+  stars.material.opacity = 0.9 * day.dark;
+  // the light: the sun (warm when low), or the moon (faint, blue)
+  const byMoon = day.sunK < 0.02;
+  const dir = byMoon ? moonDir : sunDir;
+  key.position.copy(goal.target).addScaledVector(dir, goal.radius * 3);
+  key.target.position.copy(goal.target);
+  key.color.set(byMoon ? 0x9fb4ff : 0xffffff).lerp(new THREE.Color(byMoon ? 0x9fb4ff : 0xffad66), byMoon ? 0 : 1 - smooth(0.04, 0.42, day.elev));
+  key.intensity = byMoon ? 0.32 * Math.max(0, moonDir.y) + 0.06 : 2.7 * day.sunK;
+  hemi.color.set(0xbcd6ff);
+  hemi.groundColor.set(0x3a3a2c);
+  hemi.intensity = 0.07 + 0.5 * day.sunK;
+  rim.intensity = 0.15 + 0.5 * day.sunK;
+  scene.environmentIntensity = 0.1 + 0.85 * day.sunK;
+  renderer.toneMappingExposure = 1.0;
+  if (Math.abs(day.hour - day.skyT) > 0.04) {
+    day.skyT = day.hour;
+    const t1 = smooth(-0.2, 0.02, day.elev), t2 = smooth(0.04, 0.38, day.elev);
+    skyMat.uniforms.uTop.value.copy(skyC(0, t1, t2));
+    skyMat.uniforms.uMid.value.copy(skyC(1, t1, t2));
+    skyMat.uniforms.uHor.value.copy(skyC(2, t1, t2));
+    skyMat.uniforms.uLow.value.copy(skyC(3, t1, t2));
+  }
+}
+const flags = new Set();
+
+// ---- 🚶 (Build 2) walk inside: the camera at a person's eyes, the left thumb walks (the round pad), one finger looks around
+// (or 📱 tilt the phone); never through what the build marks solid, never out of its area. ⏭ the next place, ✕ out.
+const walk = { can: null, rec: '', on: false, pos: new THREE.Vector3(), level: 0, yaw: 0, pitch: 0, jx: 0, jy: 0, spot: 0, keep: null, dist: 0, lx: null, ly: null };
+const joyEl = document.getElementById('joy'), joyKnob = joyEl ? joyEl.querySelector('i') : null, walkBar = document.getElementById('walkbar');
+const v3 = (a) => (Array.isArray(a) && a.length >= 3 ? new THREE.Vector3(+a[0] || 0, +a[1] || 0, +a[2] || 0) : null);
+function walkDefine(rec, o) {
+  const spots = (Array.isArray(o.spots) ? o.spots : []).slice(0, 12)
+    .map((s) => ({ name: te(String((s && s.name) || '')).slice(0, 30), at: v3(s && s.at), look: v3(s && s.look) })).filter((s) => s.at);
+  if (!spots.length) throw new Error('W.walk needs spots: [{ name, at: [x, y, z], look: [x, y, z] }]');
+  walk.can = { eye: numOr(o.eye, 20, 1000, 165), speed: numOr(o.speed, 10, 50000, 170), spots,
+    area: Array.isArray(o.area) && o.area.length === 4 ? o.area.map((v) => +v || 0) : null, floor: typeof o.floor === 'function' ? o.floor : null,
+    solid: (Array.isArray(o.solid) ? o.solid : []).slice(0, 300).filter((b) => Array.isArray(b) && b.length === 4).map((b) => b.map((v) => +v || 0)) };
+  walk.rec = rec.id;
+}
+function walkGo(i) {
+  const c = walk.can;
+  const n = c.spots.length;
+  walk.spot = ((i % n) + n) % n;
+  const s = c.spots[walk.spot];
+  walk.pos.copy(s.at);
+  walk.level = s.at.y;
+  if (c.floor) { try { const f = +c.floor(s.at.x, s.at.z); if (isFinite(f)) { walk.pos.y = f; walk.level = f; } } catch (e) { c.floor = null; } }
+  if (s.look) {
+    const d = s.look.clone().sub(new THREE.Vector3(walk.pos.x, walk.pos.y + c.eye, walk.pos.z));
+    walk.yaw = Math.atan2(d.x, -d.z);
+    walk.pitch = Math.max(-1.2, Math.min(1.2, Math.atan2(d.y, Math.hypot(d.x, d.z))));
+  }
+  if (walkBar) { const nm = walkBar.querySelector('span'); if (nm) nm.textContent = '🚶 ' + (s.name || ''); }
+  post({ t: 'walk', id: walk.rec, label: s.name || '', n: 1, x: walk.spot });
+}
+function walkStart(m) {
+  if (!walk.can) { post({ t: 'walk', id: '', label: 'none', n: 0 }); return; }
+  let i = 0;
+  if (typeof m.spot === 'string' && m.spot) { const want = te(m.spot); const k = walk.can.spots.findIndex((s) => s.name === want || s.name.includes(want) || want.includes(s.name)); if (k >= 0) i = k; }
+  else if (m.spot != null && isFinite(+m.spot)) i = +m.spot;
+  else if (walk.on) i = walk.spot + 1;
+  if (!walk.on) {
+    if (explodeGoal > 0) { explodeGoal = 0; labelsDirty = true; }
+    walk.keep = { pos: camera.position.clone(), target: controls.target.clone(), labels: labelsOn, fov: camera.fov };
+    walk.on = true;
+    labelsOn = false;
+    controls.enabled = false;
+    controls.autoRotate = false;
+    camera.near = Math.max(1, walk.can.eye * 0.06);
+    camera.far = Math.max(camera.near * 1000, walk.can.eye * 2600); // (about 4 km: enough, and no flicker where the ground meets a road)
+    camera.fov = 62; // (a person's wide eyes, not the turntable's long lens)
+    camera.updateProjectionMatrix();
+    walk.jx = walk.jy = 0;
+    if (joyEl) { joyEl.style.display = 'block'; joyEl.style.bottom = Math.round(inset.bottom * window.innerHeight + 18) + 'px'; }
+    if (walkBar) { walkBar.style.display = 'flex'; walkBar.style.top = Math.round(inset.top * window.innerHeight + 10) + 'px'; }
+  }
+  walkGo(i);
+}
+function walkStop(byTap) {
+  if (!walk.on) return;
+  walk.on = false;
+  walk.jx = walk.jy = 0;
+  if (joyEl) joyEl.style.display = 'none';
+  if (walkBar) walkBar.style.display = 'none';
+  controls.enabled = true;
+  if (walk.keep) { camera.position.copy(walk.keep.pos); controls.target.copy(walk.keep.target); labelsOn = walk.keep.labels; camera.fov = walk.keep.fov; camera.updateProjectionMatrix(); walk.keep = null; }
+  controls.autoRotate = spinWanted;
+  frameAll(false);
+  post({ t: 'walk', id: '', label: '', n: 0, x: byTap ? 1 : 0 });
+}
+function walkBlocked(x, z) {
+  const c = walk.can;
+  if (c.area && (x < c.area[0] || z < c.area[1] || x > c.area[2] || z > c.area[3])) return true;
+  const pad = c.eye * 0.15;
+  for (const b of c.solid) if (x > b[0] - pad && x < b[2] + pad && z > b[1] - pad && z < b[3] + pad) return true;
+  return false;
+}
+function walkStep(dt) {
+  const c = walk.can;
+  if (!c) return;
+  const len = Math.hypot(walk.jx, walk.jy);
+  if (len > 0.05) {
+    const step = c.speed * dt * Math.min(1, len) * (len > 0.92 ? 1.8 : 1); // (pushed to the edge: a jog)
+    const fx = Math.sin(walk.yaw), fz = -Math.cos(walk.yaw);
+    const dx = (fx * walk.jy + -fz * walk.jx) * step / Math.max(1, len), dz = (fz * walk.jy + fx * walk.jx) * step / Math.max(1, len);
+    if (!walkBlocked(walk.pos.x + dx, walk.pos.z)) walk.pos.x += dx;
+    if (!walkBlocked(walk.pos.x, walk.pos.z + dz)) walk.pos.z += dz;
+    walk.dist += Math.hypot(dx, dz);
+  }
+  let feet = walk.level;
+  if (c.floor) { try { const f = +c.floor(walk.pos.x, walk.pos.z); if (isFinite(f)) feet = f; } catch (e) { c.floor = null; } }
+  walk.pos.y += (feet - walk.pos.y) * Math.min(1, dt * 7);
+  const yaw = walk.yaw - (tilt.on ? tilt.x * 1.15 : 0), pitch = Math.max(-1.3, Math.min(1.3, walk.pitch + (tilt.on ? tilt.y * 1.2 : 0)));
+  const bob = len > 0.05 ? Math.sin(walk.dist / c.eye * 7) * c.eye * 0.008 : 0;
+  camera.position.set(walk.pos.x, walk.pos.y + c.eye + bob, walk.pos.z);
+  camera.lookAt(walk.pos.x + Math.sin(yaw) * Math.cos(pitch) * 100, walk.pos.y + c.eye + bob + Math.sin(pitch) * 100, walk.pos.z - Math.cos(yaw) * Math.cos(pitch) * 100);
+}
+if (joyEl && joyKnob) {
+  const joyAt = (e) => {
+    const b = joyEl.getBoundingClientRect(), R = b.width / 2;
+    let x = (e.clientX - b.left - R) / R, y = (e.clientY - b.top - R) / R;
+    const l = Math.hypot(x, y);
+    if (l > 1) { x /= l; y /= l; }
+    walk.jx = x; walk.jy = -y;
+    joyKnob.style.transform = 'translate(' + Math.round(x * R * 0.62) + 'px,' + Math.round(y * R * 0.62) + 'px)';
+  };
+  const joyOff = () => { walk.jx = walk.jy = 0; joyKnob.style.transform = ''; };
+  joyEl.addEventListener('pointerdown', (e) => { try { joyEl.setPointerCapture(e.pointerId); } catch (x) { /* */ } joyAt(e); e.preventDefault(); });
+  joyEl.addEventListener('pointermove', (e) => { if (e.buttons || e.pressure > 0) joyAt(e); });
+  joyEl.addEventListener('pointerup', joyOff);
+  joyEl.addEventListener('pointercancel', joyOff);
+}
+if (walkBar) {
+  const nx = walkBar.querySelector('.next'), out = walkBar.querySelector('.out');
+  if (nx) nx.addEventListener('click', () => { if (walk.on) walkGo(walk.spot + 1); });
+  if (out) out.addEventListener('click', () => walkStop(true));
+}
+canvas.addEventListener('pointermove', (e) => { // (one finger looks around while walking)
+  if (!walk.on || !downAt || downs !== 1 || grabbed) { walk.lx = null; return; }
+  if (walk.lx != null) {
+    walk.yaw += (e.clientX - walk.lx) * 0.0058;
+    walk.pitch = Math.max(-1.2, Math.min(1.2, walk.pitch - (e.clientY - walk.ly) * 0.0048));
+  }
+  walk.lx = e.clientX; walk.ly = e.clientY;
+});
+canvas.addEventListener('pointerup', () => { walk.lx = null; });
 
 // ---- 🖼️ a poster (pulled apart, every name), 📸 a clean photo: bigger than the screen, into his gallery on his tap
 function bigRender(scaleK) {
@@ -3291,6 +3575,8 @@ function dropExtras(id) {
   const r = parts.get(id);
   if (r) for (const pc of r.pieces) if (pc.heatMat) { pc.heatMat.dispose(); pc.heatMat = null; }
   if (thr.rec === id && id !== 'inside') { thr.on = false; thr.started = false; thr.rec = ''; env.goal = env.spool = 0; env.over = 0; }
+  if (day.rec === id) dayOff();
+  if (walk.rec === id) { walkStop(false); walk.can = null; walk.rec = ''; }
 }
 
 function resetExtras() {
@@ -3302,6 +3588,9 @@ function resetExtras() {
   setHud(null); reportWant = null;
   setBuddy('');
   if (env.scene) setEnv({ scene: '' });
+  dayOff();
+  walkStop(false); walk.can = null; walk.rec = '';
+  flags.clear(); env.game = '';
   kit.store = {};
 }
 
@@ -3360,6 +3649,10 @@ function extrasMessage(m) {
     case 'hand': handMsg(m); break;
     case 'scatter': scatter(); break;
     case 'hint': hint(); break;
+    case 'day': setDay(m); break;
+    case 'walk': if (m.on === false) walkStop(false); else walkStart(m); break;
+    case 'flag': if (typeof m.id === 'string' && m.id) { if (m.on) flags.add(m.id.slice(0, 24)); else flags.delete(m.id.slice(0, 24)); } break;
+    case 'game': env.game = typeof m.kind === 'string' ? m.kind.slice(0, 12) : ''; break;
     case 'envask': post({ t: 'env', id: '', label: thr.label, x: env.spool, n: thr.on ? 1 : 0, data: envData() }); break;
     default: break;
   }

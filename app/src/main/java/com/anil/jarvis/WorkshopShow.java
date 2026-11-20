@@ -55,6 +55,9 @@ final class WorkshopShow {
     private Showpiece.Faults faults;
     private Showpiece.Challenge chal;
     private boolean puzzleOn, listenNext, controlsShown = true, timelineOn, speaking, calling, hasPower = true;
+    /** 🚶 walking inside now (the stage said so); he asked for it (then the place is said aloud). */
+    private boolean walking, walkAsked;
+    private long hintAt;
     private long puzzleT0;
     private double power, rate;
     private int gear = 1;
@@ -66,7 +69,7 @@ final class WorkshopShow {
     private TextView stripText;
     private String stripLabel;
     private SeekBar powerBar;
-    private TextView powerName, powerVal, gearView, clutchBtn, brakeBtn;
+    private TextView powerName, powerVal, gearView, clutchBtn, brakeBtn, clockChip, walkChip;
     private boolean dragging;
 
     WorkshopShow(Host h) {
@@ -107,6 +110,7 @@ final class WorkshopShow {
         ui.removeCallbacks(tick);
         chainLeft.clear();
         timelineOn = false;
+        walking = false;
         stripLabel = null;
         if (strip != null) strip.setVisibility(View.GONE);
         refreshPanel();
@@ -173,6 +177,7 @@ final class WorkshopShow {
         if (chain != null) { runChain(chain, byVoice); return true; }
         Showpiece.Act a = sp.parse(text);
         if (a != null && strict && !forStage(a, t)) a = null;
+        if (a != null && !sp.outdoor() && OUTDOOR.contains(a.k)) a = null; // (a machine in the studio has no sky: "రాత్రి" is the workshop's night light)
         if (a != null) { run(a, byVoice); return true; }
         if (strict && !sp.named(t)) return false;
         String raw = text.toLowerCase(Locale.ROOT);
@@ -191,6 +196,13 @@ final class WorkshopShow {
         if (live2 != null) { sayLive(live2, byVoice); return true; }
         return false;
     }
+
+    private static final java.util.Set<String> OUTDOOR = new java.util.HashSet<>(java.util.Arrays.asList("day_play", "day_stop", "hour", "walk", "walk_off", "walk_next"));
+
+    /** 🚶 Walking inside now: the back key comes out of it first. */
+    boolean walking() { return sp != null && walking; }
+
+    void walkOff() { try { h.send(new JSONObject().put("t", "walk").put("on", false)); } catch (Exception ignored) {} }
 
     /** Heard by voice: lights and the AC are the stage's only when said so ("rgb", "40 డిగ్రీలు", "ఏసీ గది"). */
     private static boolean forStage(Showpiece.Act a, String t) {
@@ -215,6 +227,7 @@ final class WorkshopShow {
             Runnable r = () -> {
                 if (sp == null) return;
                 Showpiece.Act a = sp.parse(one);
+                if (a != null && !sp.outdoor() && OUTDOOR.contains(a.k)) a = null; // (no sky here: the workshop's own words)
                 if (a != null) run(a, false);
                 else { String c = Workshop.command(one); if (c != null) h.command(c, false); }
             };
@@ -331,6 +344,18 @@ final class WorkshopShow {
                     break;
                 }
                 case "menu": menu(); break;
+                case "day_play": h.send(new JSONObject().put("t", "day").put("play", true).put("rate", 1 / 3.0)); say("🕐 రోజు మొత్తం Sir: 72 సెకన్లలో 24 గంటలు. 'టైమ్ ఆపు' అంటే ఆగుతుంది.", byVoice); break;
+                case "day_stop": h.send(new JSONObject().put("t", "day").put("play", false)); say("🕐 సమయం ఆపాను Sir.", byVoice); break;
+                case "hour": h.send(new JSONObject().put("t", "day").put("hour", a.v).put("play", false)); say("🕐 " + Showpiece.hourText(a.v) + " Sir.", byVoice); break;
+                case "walk": walkAsked = true; h.send(new JSONObject().put("t", "walk").put("on", true).put("spot", a.s)); break;
+                case "walk_off": walkOff(); break;
+                case "walk_next": walkAsked = true; h.send(new JSONObject().put("t", "walk").put("on", true)); break;
+                case "switch": {
+                    boolean on = a.v > 0;
+                    h.send(new JSONObject().put("t", "flag").put("id", a.s).put("on", on));
+                    for (String[] sw : sp.switches()) if (sw[0].equals(a.s)) { say(on ? sw[2] : sw[3], byVoice); break; }
+                    break;
+                }
                 default: break;
             }
         } catch (Exception ignored) {}
@@ -424,13 +449,23 @@ final class WorkshopShow {
 
     // ================================================================ 🎮 games
 
+    private void endGrid() {
+        if (chal == null || !"grid".equals(chal.kind)) return;
+        try {
+            h.send(new JSONObject().put("t", "game").put("kind", ""));
+            h.send(new JSONObject().put("t", "day").put("play", false));
+        } catch (Exception ignored) {}
+    }
+
     private void endGames(boolean said) {
         boolean any = quiz != null || faults != null || puzzleOn || chal != null;
+        endGrid();
         quiz = null;
         if (faults != null) { try { h.send(new JSONObject().put("t", "fault")); } catch (Exception ignored) {} }
         faults = null;
         puzzleOn = false;
         chal = null;
+        refreshPanel();
         if (said && any) { h.status("ఆట ఆపాను Sir."); h.speak("సరే Sir, ఆట ఆపాను.", false); }
     }
 
@@ -518,9 +553,28 @@ final class WorkshopShow {
         endGames(false);
         chal = new Showpiece.Challenge(c);
         if ("takeoff".equals(chal.kind)) setPower(0, false, false);
+        if ("grid".equals(chal.kind)) { // ⚡ the evening peak: the clock runs from 5 pm, the power bar is his hydel
+            h.send(new JSONObject().put("t", "game").put("kind", "grid"));
+            h.send(new JSONObject().put("t", "day").put("hour", chal.start).put("play", true).put("rate", chal.rate));
+            setPower(chal.power, false, false);
+            hintAt = System.currentTimeMillis() + 8000;
+            refreshPanel();
+        }
         h.answer(chal.title, chal.rules, null);
         h.status(chal.title + " · మొదలు");
         h.speak(chal.title + ". " + chal.rules, true);
+    }
+
+    /** ⚡ A nudge in the evening game: the frequency far off its band for a while (spoken at most every 12 s). */
+    private void gridHint(JSONObject n) {
+        double f = n.optDouble("freq", 50);
+        String hr = Showpiece.hourText(n.optDouble("hour", 17));
+        String line = f < 49.85 ? "⬆️ " + hr + " · ఫ్రీక్వెన్సీ " + String.format(Locale.ENGLISH, "%.2f", f) + " Hz: కరెంట్ తక్కువ, హైడల్ పెంచండి"
+                : f > 50.15 ? "⬇️ " + hr + " · ఫ్రీక్వెన్సీ " + String.format(Locale.ENGLISH, "%.2f", f) + " Hz: కరెంట్ ఎక్కువ, హైడల్ తగ్గించండి"
+                : "✅ " + hr + " · " + String.format(Locale.ENGLISH, "%.2f", f) + " Hz: సరిగ్గా ఉంది";
+        h.status(line);
+        long now = System.currentTimeMillis();
+        if (now > hintAt && (f < 49.8 || f > 50.2)) { hintAt = now + 12000; h.speak(f < 50 ? "హైడల్ పెంచండి Sir." : "హైడల్ తగ్గించండి Sir.", false); }
     }
 
     private void service() {
@@ -562,6 +616,24 @@ final class WorkshopShow {
                 return true;
             }
             case "timeline": h.status("⏪ " + m.optString("label")); return true;
+            case "day": {
+                if ("none".equals(m.optString("label"))) h.status("ఈ బొమ్మకి ఆకాశం, సమయం లేవు Sir.");
+                else h.status("🕐 " + m.optString("label") + (m.optInt("n") == 1 ? " ▶" : ""));
+                return true;
+            }
+            case "walk": {
+                String lb = m.optString("label");
+                if ("none".equals(lb)) { walking = false; h.status("ఈ బొమ్మలో నడిచే చోటు లేదు Sir."); refreshPanel(); return true; }
+                boolean was = walking;
+                walking = m.optInt("n") == 1;
+                if (walking) {
+                    h.status("🚶 " + lb + " · ఎడమ కింది గుండ్రని ప్యాడ్‌తో నడవండి, ఒక వేలితో చుట్టూ చూడండి · ⏭ వేరే చోటు · ✕ బయటికి");
+                    if (walkAsked || !was) h.speak("🚶 " + lb + " Sir." + (was ? "" : " ఎడమ కింద గుండ్రని ప్యాడ్‌తో నడవండి, ఒక వేలితో చుట్టూ చూడండి."), false);
+                } else h.status("🚶 నడక ఆపాను · మళ్ళీ బయటి నుంచి");
+                walkAsked = false;
+                refreshPanel();
+                return true;
+            }
             case "inside": if ("failed".equals(m.optString("label"))) h.status("🔬 లోపలి చూపు రాలేదు Sir."); else if (m.optString("id").isEmpty()) h.status("🔬 మళ్ళీ బొమ్మ బయటి నుంచి"); return true;
             case "buddy": return true;
             case "rgb": return true;
@@ -579,7 +651,8 @@ final class WorkshopShow {
                     if (!dragging) { power = Math.min(1, m.optDouble("x", power)); if (powerBar != null) powerBar.setProgress((int) Math.round(power * 100)); if (powerVal != null) powerVal.setText(Math.round(power * 100) + "%"); }
                     if (chal != null && nums != null && nums.length() > 0) {
                         Object[] r = chal.step(nums, System.currentTimeMillis());
-                        if (r != null) { String s = (String) r[1]; chal = null; h.answer("🎮 ఛాలెంజ్", s, null); h.status(((Boolean) r[0] ? "🏆 " : "🔁 ") + s); h.speak(s, false); }
+                        if (r != null) { String s = (String) r[1]; endGrid(); chal = null; refreshPanel(); h.answer("🎮 ఛాలెంజ్", s, null); h.status(((Boolean) r[0] ? "🏆 " : "🔁 ") + s); h.speak(s, false); }
+                        else if ("grid".equals(chal.kind)) gridHint(nums);
                     }
                 } catch (Exception ignored) {}
                 return true;
@@ -698,6 +771,12 @@ final class WorkshopShow {
         powerVal = Ui.text(a, "0%", 13f, Ui.TEXT);
         powerVal.setMinWidth(dp(40));
         row.addView(powerVal);
+        clockChip = chip("🕐", v -> clockMenu());
+        clockChip.setContentDescription("సమయం");
+        row.addView(clockChip);
+        walkChip = chip("🚶", v -> { if (walking) walkOff(); else walkMenu(); });
+        walkChip.setContentDescription("లోపల నడక");
+        row.addView(walkChip);
         TextView dots = chip("⋯", v -> menu());
         dots.setContentDescription("షోపీస్ ఫీచర్లు");
         row.addView(dots);
@@ -756,12 +835,38 @@ final class WorkshopShow {
         if (!on) return;
         powerRow.setVisibility(controlsShown ? View.VISIBLE : View.GONE);
         bikeRow.setVisibility(controlsShown && sp.bike() && !timelineOn ? View.VISIBLE : View.GONE);
-        powerName.setText(timelineOn ? "⏪" : sp.bike() ? "🏍️ గ్రిప్" : "⚡ పవర్");
+        powerName.setText(timelineOn ? "⏪" : sp.bike() ? "🏍️ గ్రిప్" : chal != null && "grid".equals(chal.kind) ? "💧 హైడల్" : sp.sp.optString("powerName", "⚡ పవర్"));
+        boolean out = sp.outdoor() && !timelineOn;
+        if (clockChip != null) clockChip.setVisibility(out ? View.VISIBLE : View.GONE);
+        if (walkChip != null) { walkChip.setVisibility(out ? View.VISIBLE : View.GONE); walkChip.setText(walking ? "🚶✕" : "🚶"); }
         powerVal.setText(timelineOn ? "✕" : Math.round(power * 100) + "%");
         powerVal.setOnClickListener(timelineOn ? v -> timeline(false) : null);
         if (timelineOn) powerBar.setProgress(100);
         else powerBar.setProgress((int) Math.round(power * 100));
         if (gearView != null) gearView.setText(gear == 0 ? "N" : String.valueOf(gear));
+    }
+
+    /** 🕐 The hour of the day (outdoor showpieces). */
+    private void clockMenu() {
+        if (sp == null) return;
+        final String[] names = {"▶️ రోజు మొత్తం (72 సెకన్లు)", "⏸ సమయం ఆపు", "🌅 ఉదయం 6", "☀️ మధ్యాహ్నం 12", "🌇 సాయంత్రం 6", "🌆 సాయంత్రం 7:30 (పీక్)", "🌙 రాత్రి 9", "🌌 అర్ధరాత్రి 12"};
+        final double[] hrs = {-1, -2, 6, 12, 18, 19.5, 21, 0};
+        new AlertDialog.Builder(h.screen()).setTitle("🕐 సమయం · " + sp.title).setItems(names, (d, i) -> {
+            if (hrs[i] == -1) run(new Showpiece.Act("day_play", Double.NaN, ""), false);
+            else if (hrs[i] == -2) run(new Showpiece.Act("day_stop", Double.NaN, ""), false);
+            else run(new Showpiece.Act("hour", hrs[i], ""), false);
+        }).setNegativeButton("వద్దు", null).show();
+    }
+
+    /** 🚶 Where to walk (outdoor showpieces). */
+    private void walkMenu() {
+        if (sp == null) return;
+        final List<String> spots = sp.walkSpots();
+        if (spots.isEmpty()) { h.status("ఈ బొమ్మలో నడిచే చోటు లేదు Sir."); return; }
+        List<String> names = new ArrayList<>();
+        for (String s0 : spots) names.add("🚶 " + s0);
+        new AlertDialog.Builder(h.screen()).setTitle("🚶 ఎక్కడ నడవాలి?").setItems(names.toArray(new String[0]),
+                (d, i) -> run(new Showpiece.Act("walk", Double.NaN, spots.get(i)), false)).setNegativeButton("వద్దు", null).show();
     }
 
     /** ⋯ Every feature of the showpiece, by name (₹0). */
@@ -777,6 +882,13 @@ final class WorkshopShow {
                 {"📸 ఫోటో మోడ్", "photomode"}, {"🎬 ఒక్క నొక్కుతో ఫిల్మ్", "film"}, {"⌚ వాచ్ బెజెల్‌తో పవర్", "bezel"}, {"🎛️ కంట్రోల్స్ దాచు / చూపు", "controls"}};
         List<String> names = new ArrayList<>();
         List<String> keys = new ArrayList<>();
+        if (sp.outdoor()) { // 🕐 🚶 🧅 and its own switches first
+            names.add("🕐 24 గంటల రోజు / సమయం"); keys.add("clock");
+            names.add(walking ? "🚶 నడక ఆపు" : "🚶 లోపల నడువు"); keys.add(walking ? "walk_off" : "walkmenu");
+            names.add("🧅 పైకప్పు, గోడలు తీయి"); keys.add("peel");
+            names.add("🧅 అన్నీ తిరిగి పెట్టు"); keys.add("peel0");
+            for (String[] sw : sp.switches()) { names.add(sw[1] + " · ఆన్"); keys.add("sw1:" + sw[0]); names.add(sw[1] + " · ఆఫ్"); keys.add("sw0:" + sw[0]); }
+        }
         for (String[] it : items) {
             if ("swap".equals(it[1]) && sp.sp.optJSONObject("variants") == null) continue;
             if ("challenge".equals(it[1]) && sp.sp.optJSONObject("challenge") == null) continue;
@@ -809,7 +921,12 @@ final class WorkshopShow {
             case "mode": run(new Showpiece.Act("mode", Double.NaN, sp.deep ? "simple" : "deep"), false); return;
             case "hx": run(new Showpiece.Act("hx", 1, ""), false); return;
             case "inside": run(new Showpiece.Act("inside", Double.NaN, ""), false); return;
-            default: run(new Showpiece.Act(k, Double.NaN, ""), false);
+            case "clock": clockMenu(); return;
+            case "walkmenu": walkMenu(); return;
+            case "peel0": run(new Showpiece.Act("peel", 0, ""), false); return;
+            default:
+                if (k.startsWith("sw1:") || k.startsWith("sw0:")) { run(new Showpiece.Act("switch", k.startsWith("sw1:") ? 1 : 0, k.substring(4)), false); return; }
+                run(new Showpiece.Act(k, Double.NaN, ""), false);
         }
     }
 

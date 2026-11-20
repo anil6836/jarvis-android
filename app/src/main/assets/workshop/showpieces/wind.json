@@ -1,0 +1,414 @@
+{
+"at": 1763700000004,
+"title": "గాలి మర (విండ్ టర్బైన్)",
+"what": "3 MW గాలి మర: 100 m టవర్, 63 m బ్లేడ్లు, నాసెల్ లోపల గేర్‌బాక్స్, జనరేటర్; చిన్న విండ్ ఫారం. 🕐 24 గంటల రోజు, 🚶 నాసెల్ పైన నడక",
+"model": "showpiece",
+"parts": [
+{
+"id": "ground",
+"status": "గాలి మరల నేల సిద్ధం చేస్తున్నాను",
+"code": "// Wind turbine showpiece, hand-made. Units: cm, real size: a 3 MW turbine, its hub 100 m up, its rotor 130 m across. Two\n// more turbines stand behind it (a small wind farm). The wind blows from +Z; the nacelle turns to face it. Helpers: W.store.\nconst S = W.store;\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.white = W.paint('#f1f3f4', { metallic: 0.15, rough: 0.35 });\nS.HUB = 10000; S.R = 6450;\nS.beacons = [];\nS.blade = (o) => { // one blade: span along +Y from y = 0, chord along X, thickness along Z, twisted along its length\n  const ns = o.ns || 14, nc = o.nc || 9, span = o.span, ring = nc * 2;\n  const pos = [], idx = [];\n  for (let i = 0; i <= ns; i++) {\n    const s = i / ns;\n    const c = s < 0.06 ? o.root : s < 0.22 ? o.root + (o.max - o.root) * (s - 0.06) / 0.16 : o.max + (o.tip - o.max) * Math.pow((s - 0.22) / 0.78, 0.9);\n    const th = s < 0.15 ? 0.42 - 2 * s : Math.max(0.1, 0.18 - 0.08 * s), tw = (o.twist || 0) * (1 - s) * Math.PI / 180;\n    const round = s < 0.06 ? 1 : 0, y = span * s, ca = Math.cos(tw), sa = Math.sin(tw);\n    for (let side = 0; side < 2; side++) for (let j = 0; j < nc; j++) {\n      const u = side === 0 ? j / (nc - 1) : 1 - j / (nc - 1);\n      let x, z;\n      if (round) { const a = (side === 0 ? 1 : -1) * Math.PI * u; x = Math.cos(a) * c / 2; z = Math.sin(a) * c / 2; }\n      else {\n        const t = 5 * th * (0.2969 * Math.sqrt(u) - 0.126 * u - 0.3516 * u * u + 0.2843 * u * u * u - 0.1036 * u * u * u * u);\n        x = (u - 0.35) * c; z = (0.04 * 4 * u * (1 - u) + (side === 0 ? t : -t)) * c;\n      }\n      pos.push(x * ca - z * sa, y, x * sa + z * ca);\n    }\n  }\n  for (let i = 0; i < ns; i++) for (let j = 0; j < ring; j++) {\n    const a = i * ring + j, b = i * ring + (j + 1) % ring, cc = (i + 1) * ring + j, d = (i + 1) * ring + (j + 1) % ring;\n    idx.push(a, cc, b, b, cc, d);\n  }\n  const tip = ns * ring;\n  for (let j = 1; j < ring - 1; j++) idx.push(tip, tip + j, tip + j + 1);\n  const g = new THREE.BufferGeometry();\n  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));\n  g.setIndex(idx);\n  g.computeVertexNormals();\n  return g;\n};\nW.day({ start: 15, ground: '#6f8550' });\nconst gr = W.group();\ngr.add(W.mesh(W.box(52000, 10, 42000), S.matte('#748b52', 0.98), { at: [0, -5, -9000] }));\nconst dirt = S.matte('#a08c6a', 0.97);\ngr.add(W.mesh(W.box(500, 6, 20000), dirt, { at: [0, 3, 9000] }), W.mesh(W.box(19000, 6, 500), dirt, { at: [-9000, 3, -15000] }), W.mesh(W.box(500, 6, 16000), dirt, { at: [0, 3, -7000] }), W.mesh(W.box(17500, 6, 500), dirt, { at: [8500, 3, -15000] }));\nconst trees = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), S.matte('#3f6b35', 0.95), 40);\n{\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3();\n  for (let i = 0; i < 40; i++) {\n    const x = ((i * 0.618034) % 1) * 46000 - 23000, z = ((i * 0.381966 + 0.2) % 1) * 36000 - 27000;\n    const far = Math.hypot(x, z) < 4000 || Math.hypot(x + 18000, z + 16000) < 3000 || Math.hypot(x - 17000, z + 20000) < 3000 ? 9000 : 0;\n    const s = 280 + (i % 4) * 60;\n    M.compose(P.set(x + far, s * 0.8, z), Q, Z.set(s, s * 1.2, s));\n    trees.setMatrixAt(i, M);\n  }\n}\ngr.add(trees);\nW.add(gr, { label: 'పొలాలు', ground: true });\n"
+},
+{
+"id": "tower",
+"status": "టవర్ నిలబెడుతున్నాను",
+"code": "const S = W.store;\nconst tw = W.group();\nconst prof = [[0.01, 0], [230, 0], [230, 300]];\nfor (let i = 1; i <= 10; i++) { const k = i / 10; prof.push([230 - 95 * k, 300 + (S.HUB - 500) * k]); }\nprof.push([0.01, S.HUB - 200]);\ntw.add(W.mesh(W.lathe(prof, 48), S.white));\nfor (const y of [3300, 6600]) tw.add(W.mesh(W.torus(230 - 95 * (y - 300) / (S.HUB - 500) + 4, 8, 48, 6), W.metal('#c9cdd2'), { at: [0, y, 0], rot: [90, 0, 0] }));\ntw.add(W.mesh(W.box(100, 220, 20), W.paint('#8d98a3'), { at: [0, 420, 228] }));\ntw.add(W.mesh(W.box(160, 10, 60), W.metal('#9aa2aa'), { at: [0, 300, 270] }));\nfor (let k = 0; k < 3; k++) tw.add(W.mesh(W.box(120, 20, 60), W.metal('#9aa2aa'), { at: [0, 60 + k * 80, 300 + k * 20] }));\nW.add(tw, { label: 'టవర్', heat: [28, 32] });\nconst fd = W.group();\nfd.add(W.mesh(W.cyl(950, 1000, 120, 8), S.matte('#b9b3a7', 0.9), { at: [0, 30, 0] }));\nfd.add(W.mesh(W.box(260, 200, 200), W.paint('#d9dde0'), { at: [600, 100, 500] })); // the transformer box at its foot\nW.add(fd, { label: 'టవర్ పునాది', heat: [28, 55] });\n"
+},
+{
+"id": "nacelle",
+"status": "నాసెల్ పెడుతున్నాను",
+"code": "const S = W.store;\n// on top: the nacelle turns (yaw) to face the wind. Inside: the main shaft, the gearbox (slow → fast), the brake, the\n// generator, the converter; on its roof the wind meters and a red light. Its cover lifts away (🧅). Each piece turns with\n// the yaw on its own (S.onYaw), none inside another.\nS.onYaw = []; S.spins = []; S.fastParts = [];\nconst AT = [0, S.HUB - 200, 0];\nconst onYaw = () => { const g = W.group({ at: AT }); S.onYaw.push(g); return g; };\nconst steel = W.paint('#5d6b78', { metallic: 0.45, rough: 0.5 });\nconst inner = onYaw();\ninner.add(W.mesh(W.box(380, 50, 1250), steel, { at: [0, 30, -250] }));\ninner.add(W.mesh(W.box(200, 200, 160), steel, { at: [0, 200, 380] }));\nconst shaft = W.group({ at: [0, 200, 330] });\nshaft.add(W.mesh(W.cyl(45, 55, 700, 24), W.metal('#c9cdd2'), { rot: [90, 0, 0] }));\nfor (let k = 0; k < 6; k++) shaft.add(W.mesh(W.box(14, 14, 40), W.metal('#6a6f75'), { at: [Math.cos(k) * 52, Math.sin(k) * 52, -200] }));\ninner.add(shaft);\nS.spins.push(shaft);\nW.add(inner, { label: 'మెయిన్ షాఫ్ట్', heat: [30, 45], layer: 2 });\nconst gb = onYaw();\ngb.add(W.mesh(W.cyl(170, 170, 330, 32), W.paint('#3e6e8f', { metallic: 0.4, rough: 0.45 }), { at: [0, 200, -60], rot: [90, 0, 0] }));\ngb.add(W.mesh(W.box(300, 260, 200), W.paint('#3e6e8f', { metallic: 0.4, rough: 0.45 }), { at: [0, 160, -300] }));\nconst disc = W.group({ at: [0, 140, -470] });\ndisc.add(W.mesh(W.cyl(85, 85, 14, 32), W.metal('#b6463a', { rough: 0.35 }), { rot: [90, 0, 0] }));\nfor (let k = 0; k < 8; k++) disc.add(W.mesh(W.box(12, 30, 16), W.metal('#6a6f75'), { at: [Math.cos(k * Math.PI / 4) * 60, Math.sin(k * Math.PI / 4) * 60, 0] }));\ngb.add(disc);\nS.fastParts.push(disc);\ngb.add(W.mesh(W.box(60, 50, 40), W.paint('#e0b324'), { at: [0, 225, -470] })); // the brake calliper\nW.add(gb, { label: 'గేర్‌బాక్స్', heat: [35, 78], layer: 1 });\nconst gen = onYaw();\ngen.add(W.mesh(W.cyl(130, 130, 420, 32), W.paint('#2f6f6a', { metallic: 0.35, rough: 0.4 }), { at: [0, 140, -760], rot: [90, 0, 0] }));\ngen.add(W.mesh(W.box(160, 240, 260), W.paint('#8d98a3'), { at: [110, 170, -1080] })); // the converter cabinet\nW.add(gen, { label: 'జనరేటర్', heat: [35, 85], layer: 1 });\nconst yawM = onYaw();\nyawM.add(W.mesh(W.torus(170, 22, 40, 8), W.metal('#9aa2aa'), { at: [0, 6, 0], rot: [90, 0, 0] }));\nfor (let k = 0; k < 4; k++) yawM.add(W.mesh(W.cyl(26, 26, 110, 12), W.paint('#3a4a5a'), { at: [Math.cos(k * 1.57 + 0.78) * 150, 70, Math.sin(k * 1.57 + 0.78) * 150] }));\nW.add(yawM, { label: 'యా మోటార్లు', layer: 1 });\nconst cover = onYaw();\ncover.add(W.mesh(W.box(440, 440, 1400, 60), S.white, { at: [0, 230, -260] }));\ncover.add(W.mesh(W.box(300, 160, 40), W.paint('#c9cdd2'), { at: [0, 300, -970] })); // the cooler at the back\ncover.add(W.text('JARVIS · 3 MW', { size: 50, at: [221, 250, -300], rot: [0, 90, 0], color: '#2f5f8a' }));\nW.add(cover, { label: 'నాసెల్ కవర్', layer: 0, peelBy: [0, 900, 0], explode: [0, 900, 0] });\nconst meters = onYaw();\nmeters.add(W.mesh(W.cyl(5, 5, 160, 8), W.metal('#c9cdd2'), { at: [0, 530, -820] }));\nS.cups = W.group({ at: [-40, 620, -820] });\nfor (let k = 0; k < 3; k++) S.cups.add(W.mesh(W.sphere(10, 10), W.metal('#c9cdd2'), { at: [Math.cos(k * 2.094) * 32, 0, Math.sin(k * 2.094) * 32] }));\nmeters.add(S.cups);\nmeters.add(W.mesh(W.box(4, 30, 70), W.metal('#c9cdd2'), { at: [40, 620, -850] }));\nconst bm = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2a1a, emissiveIntensity: 0 });\nmeters.add(W.mesh(W.sphere(16, 10), bm, { at: [0, 470, -600] }));\nS.beacons.push(bm);\nW.add(meters, { label: 'గాలి కొలిచే పరికరాలు', layer: 1 });\n"
+},
+{
+"id": "rotor",
+"status": "బ్లేడ్లు బిగిస్తున్నాను",
+"code": "const S = W.store;\n// the rotor: a hub with three 63 m blades; each blade turns about its own length (pitch) to take more or less wind\nconst AT = [0, S.HUB - 200, 0];\nconst hubP = W.group({ at: AT }), hubSpin = W.group({ at: [0, 200, 700] });\nhubP.add(hubSpin);\nhubSpin.add(W.mesh(W.sphere(190, 32), S.white, { at: [0, 0, 60], scale: [1, 1, 1.4] }));\nhubSpin.add(W.mesh(W.cyl(200, 200, 160, 32), S.white, { rot: [90, 0, 0] }));\nS.onYaw.push(hubP); S.spins.push(hubSpin);\nW.add(hubP, { label: 'హబ్', heat: [30, 40] });\nconst bladesP = W.group({ at: AT }), spin = W.group({ at: [0, 200, 700] });\nbladesP.add(spin);\nS.pitch = [];\nconst bg = S.blade({ span: S.R - 200, root: 260, max: 420, tip: 70, twist: 14 });\nconst bladeM = W.paint('#f4f5f6', { metallic: 0.05, rough: 0.35 });\nfor (let i = 0; i < 3; i++) {\n  const arm = W.group({ rot: [0, 0, i * 120] });\n  const p = W.group({ at: [0, 200, 0] });\n  p.add(new THREE.Mesh(bg, bladeM));\n  p.add(W.mesh(W.box(40, 300, 30), W.paint('#c23a2e'), { at: [-4, S.R - 420, 0] })); // (red tip for aircraft)\n  arm.add(p);\n  spin.add(arm);\n  S.pitch.push(p);\n}\nS.onYaw.push(bladesP); S.spins.push(spin);\nW.add(bladesP, { label: 'రోటర్ బ్లేడ్లు', heat: [28, 32] });\n"
+},
+{
+"id": "farm",
+"status": "మిగతా గాలి మరలు పెడుతున్నాను",
+"code": "const S = W.store;\nconst farm = W.group();\nS.farRotors = [];\nconst fb = S.blade({ span: S.R - 200, root: 240, max: 380, tip: 70, twist: 12, ns: 8, nc: 6 });\nfor (const [x, z, yaw] of [[-18000, -16000, 0.15], [17000, -20000, -0.1]]) {\n  const t = W.group({ at: [x, 0, z] });\n  const prof = [[0.01, 0], [220, 0]];\n  for (let i = 1; i <= 6; i++) { const k = i / 6; prof.push([220 - 90 * k, (S.HUB - 300) * k]); }\n  prof.push([0.01, S.HUB - 300]);\n  t.add(W.mesh(W.lathe(prof, 24), S.white));\n  const y = W.group({ at: [0, S.HUB - 200, 0], rot: [0, yaw * 57.3, 0] });\n  y.add(W.mesh(W.box(420, 420, 1300, 50), S.white, { at: [0, 220, -250] }));\n  const r = W.group({ at: [0, 200, 700] });\n  r.add(W.mesh(W.sphere(190, 16), S.white, { scale: [1, 1, 1.4] }));\n  for (let i = 0; i < 3; i++) { const a = W.group({ rot: [0, 0, i * 120 + 40] }); a.add(W.mesh(fb, S.white, { at: [0, 200, 0] })); r.add(a); }\n  y.add(r);\n  const bm = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2a1a, emissiveIntensity: 0 });\n  y.add(W.mesh(W.sphere(16, 8), bm, { at: [0, 470, -600] }));\n  S.beacons.push(bm);\n  t.add(y);\n  farm.add(t);\n  S.farRotors.push(r);\n}\nW.add(farm, { label: 'మిగతా గాలి మరలు', heat: [28, 32] });\n"
+},
+{
+"id": "run",
+"status": "గాలి కోసం ఎదురుచూస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is the wind speed (0–20 m/s; past the limit a storm, 28 m/s). Below 3 m/s nothing; up to 12 m/s\n// the power grows fast (with the wind's cube); then 3 MW and the blades pitch to spill the extra; in a storm (over 25 m/s)\n// they feather and the brake stops the rotor. 🚩 \"yaw\": the wind turns 90° and the nacelle follows it.\nconst ss = W.group();\nconst tank = W.paint('#5f6b5e', { metallic: 0.35, rough: 0.55 }), gal = W.metal('#aab2ba', { rough: 0.45 });\nss.add(W.mesh(W.box(2600, 10, 1800), S.matte('#8b867d', 0.98), { at: [7000, 5, 9000] }));\nss.add(W.mesh(W.box(500, 360, 380), tank, { at: [6400, 200, 9000] }));\nfor (let k = 0; k < 3; k++) ss.add(W.mesh(W.cyl(16, 22, 180, 10), S.matte('#7a4a32', 0.4), { at: [6280 + k * 120, 470, 9000] }));\nfor (const z of [8300, 9700]) ss.add(W.mesh(W.box(40, 1300, 40), gal, { at: [7800, 650, z] }));\nss.add(W.mesh(W.box(40, 40, 1440), gal, { at: [7800, 1300, 9000] }));\nW.add(ss, { label: 'సబ్‌స్టేషన్', heat: [28, 60] });\nW.throttle({ label: 'గాలి', rise: 0.25, fall: 0.2, start: 0.5 });\nconst sw = W.sound({ kind: 'swoosh', label: 'రోటర్ బ్లేడ్లు', gain: 1.3 });\nconst gearV = W.sound({ kind: 'gear', label: 'గేర్‌బాక్స్', gain: 0.6, f0: 260 });\nconst genV = W.sound({ kind: 'hum', label: 'జనరేటర్', gain: 0.4, f0: 100 });\nW.sound({ kind: 'air', label: 'టవర్', gain: 0.35 });\nlet rpm = 0, ang = 0, fast = 0, pitch = 0, yaw = 0, hudT = 0, mw = 0, farA = 0;\nW.onTick((t, dt) => {\n  const v = W.env.over ? 28 : 20 * Math.min(1, W.env.spool);\n  const storm = v > 25, braked = W.faultOf('గేర్‌బాక్స్') === 'stop';\n  const wantRpm = storm || v < 3 || braked ? 0 : Math.min(14, 6 + (v - 3) * 8 / 7);\n  rpm += (wantRpm - rpm) * Math.min(1, dt * (wantRpm < rpm ? 0.35 : 0.25));\n  ang += dt * rpm * Math.PI * 2 / 60;\n  for (const g of S.spins) g.rotation.z = -ang;\n  fast += dt * rpm * 107 * Math.PI * 2 / 60 / 12; // (the gearbox: about 107 × faster; shown slower so it can be seen)\n  for (const f of S.fastParts) f.rotation.z = fast;\n  const wantPitch = storm ? 88 : v > 12 ? Math.min(28, (v - 12) * 2.1) : 0;\n  pitch += (wantPitch - pitch) * Math.min(1, dt * 0.8);\n  for (const p of S.pitch) p.rotation.y = pitch * Math.PI / 180;\n  const windDir = W.env.flag('yaw') ? Math.PI / 2 : 0;\n  yaw += Math.sign(windDir - yaw) * Math.min(Math.abs(windDir - yaw), dt * 0.16);\n  for (const g of S.onYaw) g.rotation.y = yaw;\n  farA += dt * rpm * Math.PI * 2 / 60 * 0.95;\n  S.farRotors.forEach((r, i) => { r.rotation.z = -farA - i * 0.7; });\n  S.cups.rotation.y += dt * (0.5 + v * 0.6);\n  const blink = Math.sin(t * 3.2) > 0.2 ? 1 : 0.06;\n  for (const b of S.beacons) b.emissiveIntensity = (0.8 + 3 * W.env.dark) * blink;\n  const p = storm || braked || rpm < 0.5 ? 0 : v < 3 ? 0 : v < 12 ? 3 * Math.pow((v - 3) / 9, 3) : 3;\n  mw += (p * Math.min(1, rpm / 13.9 + 0.02) - mw) * Math.min(1, dt * 1.5);\n  const lev = rpm / 14;\n  sw.set(lev); gearV.set(lev); genV.set(mw / 3);\n  if (t - hudT > 0.25) {\n    hudT = t;\n    W.hud({ 'గాలి వేగం': v.toFixed(1) + ' m/s (' + Math.round(v * 3.6) + ' km/h)', 'విద్యుత్': mw.toFixed(2) + ' MW', 'రోటర్': rpm.toFixed(1) + ' rpm',\n      'బ్లేడ్ వాలు': Math.round(pitch) + '°', 'స్థితి': storm ? 'తుఫాను: ఆపాను' : v < 3 ? 'గాలి తక్కువ' : v > 12 ? 'ఫుల్ (3 MW)' : 'నడుస్తోంది' });\n    W.report({ power: W.env.spool, wind: v, mw, rpm });\n  }\n});\nfor (const [x, y] of [[-3000, 12500], [0, 9000], [3000, 13000], [-1500, 6500], [2000, 7500], [0, 15500]]) {\n  W.stream([[x, y, 9000], [x * 0.95, y, 2000], [x * 0.9, y, -2000], [x * 0.85, y - 200, -9000]], { kind: 'cool', count: 18, size: 260, speed: 1.4, spread: 600 });\n}\nW.stream([[0, 9900, -700], [0, 9000, 0], [0, 300, 0], [600, 100, 500], [3000, 40, 6000], [6400, 200, 9000], [7800, 1300, 9000]], { kind: 'power', count: 30, size: 110, speed: 1 });\nW.walk({ eye: 165, speed: 380, area: [-25000, -29000, 25000, 12000],\n  solid: [[-300, -300, 300, 300], [-18300, -16300, -17700, -15700], [16700, -20300, 17300, -19700]],\n  spots: [\n    { name: 'టవర్ కింద', at: [900, 0, 1700], look: [0, 6000, 0] },\n    { name: 'నాసెల్ పైన', at: [60, S.HUB + 250, -350], look: [0, S.HUB + 60, 3000] },\n    { name: 'పొలంలో', at: [6000, 0, 11000], look: [0, 7000, 0] },\n    { name: 'సబ్‌స్టేషన్', at: [5200, 0, 10600], look: [6800, 400, 9000] },\n  ] });\n"
+}
+],
+"say": "గాలి మర రెడీ Sir. 'ఫుల్ పవర్' అంటే బలమైన గాలి, 'గాలి దిశ మార్చు' అంటే నాసెల్ తిరుగుతుంది, 'నాసెల్ పైకి వెళ్ళు' అంటే 100 m ఎత్తులో నిలబడొచ్చు.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"గాలి నుంచి కరెంట్ ఎలా వస్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది 3 MW గాలి మర, 100 m టవర్ మీద 130 m వెడల్పు రోటర్. వెనక ఇంకో రెండు: కలిసి చిన్న విండ్ ఫారం.\", \"focus\": [{\"id\": \"tower\", \"piece\": \"టవర్\"}, {\"id\": \"rotor\", \"piece\": \"రోటర్ బ్లేడ్లు\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"గాలి బ్లేడ్ల మీదుగా వెళ్తే విమానం రెక్క లాగే లాగుతుంది: రోటర్ తిరుగుతుంది. గాలి రెట్టింపైతే శక్తి 8 రెట్లు.\", \"focus\": [{\"id\": \"rotor\", \"piece\": \"రోటర్ బ్లేడ్లు\"}, {\"id\": \"rotor\", \"piece\": \"హబ్\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}, {\"say\": \"నాసెల్ కవర్ తీస్తే: మెయిన్ షాఫ్ట్, గేర్‌బాక్స్ నెమ్మది తిరుగుడుని సుమారు 100 రెట్లు వేగంగా చేసి జనరేటర్‌కి ఇస్తుంది.\", \"focus\": [{\"id\": \"nacelle\", \"piece\": \"గేర్‌బాక్స్\"}, {\"id\": \"nacelle\", \"piece\": \"జనరేటర్\"}, {\"id\": \"nacelle\", \"piece\": \"మెయిన్ షాఫ్ట్\"}], \"view\": \"side\", \"close\": true, \"move\": [{\"id\": \"nacelle\", \"piece\": \"నాసెల్ కవర్\", \"by\": [0, 900, 0], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"పైన కప్పులు గాలి వేగం, రెక్క గాలి దిశ కొలుస్తాయి. యా మోటార్లు నాసెల్‌ని గాలి వైపు తిప్పుతాయి, బ్లేడ్లు గాలికి తగినట్టు వంగుతాయి.\", \"focus\": [{\"id\": \"nacelle\", \"piece\": \"గాలి కొలిచే పరికరాలు\"}, {\"id\": \"nacelle\", \"piece\": \"యా మోటార్లు\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"nacelle\", \"piece\": \"నాసెల్ కవర్\", \"by\": [0, 900, 0], \"secs\": 1}], \"secs\": 9}, {\"say\": \"కరెంట్ టవర్ లోపలి కేబుల్స్ ద్వారా కిందికి, పునాది పక్కన ట్రాన్స్‌ఫార్మర్, తర్వాత సబ్‌స్టేషన్ నుంచి గ్రిడ్‌కి.\", \"focus\": [{\"id\": \"tower\", \"piece\": \"టవర్ పునాది\"}, {\"id\": \"run\", \"piece\": \"సబ్‌స్టేషన్\"}], \"view\": \"iso\", \"flow\": [{\"from\": \"nacelle\", \"fromPiece\": \"జనరేటర్\", \"to\": \"run\", \"toPiece\": \"సబ్‌స్టేషన్\", \"kind\": \"power\", \"count\": 8}], \"secs\": 9}, {\"say\": \"తుఫాను వస్తే (25 m/s పైన) బ్లేడ్లు అంచు చూపించి, బ్రేక్ వేసి ఆగుతుంది. 'హద్దు దాటించు' అంటే చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"rotor\", \"piece\": \"రోటర్ బ్లేడ్లు\"}], \"view\": \"front\", \"secs\": 8}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"విండ్ టర్బైన్",
+"గాలి మర",
+"గాలిమర",
+"గాలి మరలు",
+"విండ్ మిల్",
+"విండ్‌మిల్",
+"విండ్ ఫారం",
+"పవన విద్యుత్",
+"wind turbine",
+"windmill",
+"wind mill",
+"wind farm",
+"wind power"
+],
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"powerName": "💨 గాలి",
+"outdoor": true,
+"walk": [
+"టవర్ కింద",
+"నాసెల్ పైన",
+"పొలంలో",
+"సబ్‌స్టేషన్"
+],
+"switches": [
+{
+"id": "yaw",
+"menu": "🧭 గాలి దిశ మార్చు",
+"words": [
+"గాలి దిశ మార్చు",
+"గాలి దిశ మారింది",
+"గాలి పక్క నుంచి",
+"నాసెల్ తిప్పు",
+"wind direction",
+"change wind direction",
+"గాలి దిశ"
+],
+"offWords": [
+"గాలి దిశ మామూలు",
+"గాలి ముందు నుంచి",
+"నాసెల్ వెనక్కి తిప్పు",
+"wind back",
+"గాలి దిశ వెనక్కి"
+],
+"on": "🧭 గాలి దిశ 90° మారింది Sir: గాలి కొలిచే రెక్క చూసి, యా మోటార్లు నాసెల్‌ని నెమ్మదిగా కొత్త దిశకి తిప్పుతున్నాయి.",
+"off": "🧭 గాలి మళ్ళీ ముందు నుంచి Sir: నాసెల్ వెనక్కి తిరుగుతోంది."
+}
+],
+"power": {
+"start": "కొంచెం గాలి Sir, సుమారు 6 m/s: రోటర్ నెమ్మదిగా తిరుగుతోంది, కొంచెం కరెంట్.",
+"full": "బలమైన గాలి Sir, 20 m/s: ఫుల్ 3 MW. అదనపు గాలి వదలడానికి బ్లేడ్లు కొంచెం వంగాయి.",
+"half": "మధ్యస్థ గాలి Sir, 10 m/s: సుమారు 1.4 MW.",
+"stop": "గాలి ఆగింది Sir: 3 m/s కంటే తక్కువ, రోటర్ నెమ్మదిగా ఆగుతుంది.",
+"over": "తుఫాను Sir! 28 m/s. బ్లేడ్లు గాలికి అంచు చూపించేలా తిరిగాయి (ఫెదర్), రోటర్ ఆగుతోంది.",
+"cut": "తుఫాను తగ్గింది Sir: సుమారు 17 m/s. బ్లేడ్లు మళ్ళీ తిరిగి టర్బైన్ మొదలైంది. ఏదీ పాడవలేదు."
+},
+"info": {
+"రోటర్ బ్లేడ్లు": {
+"simple": "ఈ మూడు పొడవైన బ్లేడ్లు గాలిని పట్టుకుని తిరుగుతాయి. ఒక్కో బ్లేడ్ సుమారు 63 m: ఒక 20 అంతస్తుల భవనం అంత.",
+"deep": "విమానం రెక్క లాంటి ఆకారం: గాలి బ్లేడ్ మీదుగా వెళ్తే ఒక వైపు ఒత్తిడి తగ్గి బ్లేడ్ లాగబడుతుంది (లిఫ్ట్). ప్రతి బ్లేడ్ తన పొడవు చుట్టూ తిరుగుతుంది (పిచ్): గాలి ఎక్కువైతే అంచు చూపించి అదనపు గాలి వదిలేస్తుంది. గాజు ఫైబర్‌తో తేలికగా, గట్టిగా చేస్తారు. చివర ఎర్ర రంగు విమానాల కోసం.",
+"specs": {
+"పొడవు": "సుమారు 63 m",
+"రోటర్ వెడల్పు": "సుమారు 130 m",
+"చివరి వేగం": "గంటకి సుమారు 340 km",
+"పదార్థం": "గాజు ఫైబర్"
+}
+},
+"పొలాలు": {
+"simple": "గాలి మరలు పొలాల మధ్య: కింద వ్యవసాయం యథావిధిగా సాగుతుంది.",
+"deep": "ఒక టర్బైన్‌కి కింద కొంచెం స్థలమే; మధ్య దూరం ఎక్కువ (గాలి నీడ పడకుండా రోటర్ వెడల్పుకి 4–7 రెట్లు). బొమ్మలో దూరం తగ్గించాను.",
+"specs": {
+"పని": "చుట్టూ పొలాలు"
+}
+},
+"టవర్": {
+"simple": "ఇది టవర్: 100 m ఎత్తైన ఉక్కు గొట్టం. ఎత్తులో గాలి బలంగా, నిలకడగా ఉంటుంది.",
+"deep": "మూడు ముక్కలు బోల్టులతో కలుపుతారు. లోపల నిచ్చెన, చిన్న లిఫ్ట్, కేబుల్స్. కింద చిన్న తలుపు.",
+"specs": {
+"ఎత్తు": "సుమారు 100 m",
+"కింద వెడల్పు": "సుమారు 4.6 m"
+}
+},
+"టవర్ పునాది": {
+"simple": "టవర్ పునాది, పక్కన చిన్న ట్రాన్స్‌ఫార్మర్ పెట్టె.",
+"deep": "పునాది కింద వందల టన్నుల కాంక్రీట్, ఉక్కు: గాలి టవర్‌ని తోసినా పడకుండా. ట్రాన్స్‌ఫార్మర్ జనరేటర్ వోల్టేజ్‌ని 33 kV కి పెంచుతుంది.",
+"specs": {
+"పని": "బరువు, 33 kV"
+}
+},
+"మెయిన్ షాఫ్ట్": {
+"simple": "ఇది మెయిన్ షాఫ్ట్: హబ్ తిరుగుడుని గేర్‌బాక్స్‌కి తీసుకెళ్తుంది.",
+"deep": "పెద్ద బేరింగ్ మీద తిరుగుతుంది: మొత్తం రోటర్ బరువు (సుమారు 70+ టన్నులు) పట్టుకుంటుంది.",
+"specs": {
+"వేగం": "నిమిషానికి సుమారు 14 దాకా"
+}
+},
+"గేర్‌బాక్స్": {
+"simple": "ఇది గేర్‌బాక్స్: బ్లేడ్ల నెమ్మది తిరుగుడుని (నిమిషానికి 14) జనరేటర్‌కి కావాల్సిన వేగానికి (నిమిషానికి 1,500) పెంచుతుంది. సైకిల్ గేర్ల లాగే.",
+"deep": "మూడు దశలు: ఒక ప్లానెటరీ దశ, రెండు సమాంతర దశలు, మొత్తం సుమారు 100 రెట్లు. వెనక ఎర్రని డిస్క్ బ్రేక్. 'గేర్‌బాక్స్ లోపల' అంటే గేర్లు తిరగడం చూపిస్తాను.",
+"specs": {
+"నిష్పత్తి": "సుమారు 1 : 100",
+"లోపలికి": "నిమిషానికి సుమారు 14",
+"బయటికి": "నిమిషానికి సుమారు 1,500"
+}
+},
+"జనరేటర్": {
+"simple": "ఇది జనరేటర్: గేర్‌బాక్స్ తిప్పితే కరెంట్ ఇస్తుంది. పక్కన కన్వర్టర్ పెట్టె.",
+"deep": "గాలి మారే కొద్దీ వేగం మారుతుంది; కన్వర్టర్ ఆ కరెంట్‌ని గ్రిడ్ 50 Hz కి సరిచేస్తుంది.",
+"specs": {
+"శక్తి": "3 MW",
+"వోల్టేజ్": "సుమారు 690 V"
+}
+},
+"యా మోటార్లు": {
+"simple": "ఈ యా మోటార్లు నాసెల్‌ని గాలి వచ్చే వైపు తిప్పుతాయి.",
+"deep": "టవర్ పై ఉన్న పెద్ద గేర్ రింగ్ మీద చిన్న మోటార్లు నెమ్మదిగా తిప్పుతాయి (సెకనుకి సుమారు అర డిగ్రీ). 'గాలి దిశ మార్చు' అంటే చూపిస్తాను.",
+"specs": {
+"సంఖ్య": "4",
+"వేగం": "నెమ్మదిగా"
+}
+},
+"నాసెల్ కవర్": {
+"simple": "నాసెల్ కవర్: టవర్ పైనున్న పెట్టె, లోపల యంత్రాలు. 'పొర తీయి' అంటే లేస్తుంది.",
+"deep": "ఒక బస్సు అంత పెద్దది; లోపల టెక్నీషియన్లు నిలబడి పని చేయొచ్చు. వెనక కూలర్.",
+"specs": {
+"సైజు": "సుమారు 14 m × 4.4 m"
+}
+},
+"గాలి కొలిచే పరికరాలు": {
+"simple": "గాలి కొలిచే పరికరాలు: కప్పులు గాలి వేగం, రెక్క గాలి దిశ కొలుస్తాయి. ఎర్ర లైట్ విమానాల కోసం.",
+"deep": "కంప్యూటర్ ఈ లెక్కలతో నాసెల్‌ని తిప్పుతుంది, బ్లేడ్లు వంచుతుంది. విండ్ ఫారంలో అన్ని ఎర్ర లైట్లు ఒకేసారి మెరుస్తాయి.",
+"specs": {
+"కొలిచేవి": "గాలి వేగం, దిశ"
+}
+},
+"హబ్": {
+"simple": "హబ్: మూడు బ్లేడ్లు బిగించే ముక్కు. లోపల బ్లేడ్లని తిప్పే పిచ్ మోటార్లు.",
+"deep": "ముందు నునుపైన కవర్ (స్పిన్నర్). తుఫానులో బ్లేడ్లు ఫెదర్ చేయడానికి లోపల బ్యాటరీ బ్యాకప్ ఉంటుంది.",
+"specs": {
+"పని": "బ్లేడ్లు పట్టుకోవడం, తిప్పడం"
+}
+},
+"మిగతా గాలి మరలు": {
+"simple": "మిగతా గాలి మరలు: కలిసి విండ్ ఫారం.",
+"deep": "ఒకదాని గాలి నీడ ఇంకోదాని మీద పడకుండా దూరంగా పెడతారు. అన్నిటి కరెంట్ సబ్‌స్టేషన్‌కి.",
+"specs": {
+"ఒక్కోటి": "3 MW"
+}
+},
+"సబ్‌స్టేషన్": {
+"simple": "సబ్‌స్టేషన్: అన్ని టర్బైన్ల కరెంట్ కలిపి వోల్టేజ్ పెంచి గ్రిడ్‌కి పంపుతుంది.",
+"deep": "33 kV ని 132 kV కి పెంచుతుంది.",
+"specs": {
+"వోల్టేజ్": "33 kV → 132 kV"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎన్ని ఇళ్ళ",
+"ఎంత కరెంట్",
+"ఎన్ని మెగావాట్లు",
+"how many homes",
+"how much power"
+],
+"a": "బలమైన గాలిలో (12 m/s పైన) 3 MW Sir. కానీ గాలి ఎప్పుడూ ఒకేలా ఉండదు: సగటున రోజుకి సుమారు 20,000 యూనిట్లు, అంటే రోజుకి 4 యూనిట్లు వాడే సుమారు 5,000 ఇళ్ళకి."
+},
+{
+"k": [
+"ఎంత గాలి",
+"ఏ వేగంలో",
+"కట్ ఇన్",
+"cut in",
+"wind speed",
+"ఎప్పుడు మొదలవుతుంది"
+],
+"a": "గాలి సెకనుకి 3 m (గంటకి సుమారు 11 km) దాటితే తిరగడం మొదలు Sir; 12 m/s కి ఫుల్ 3 MW; 25 m/s (గంటకి 90 km) దాటితే తుఫాను: బ్లేడ్లు ఫెదర్ చేసి ఆగుతుంది."
+},
+{
+"k": [
+"రెట్టింపు గాలి",
+"గాలి క్యూబ్",
+"double wind",
+"ఎందుకు ఎక్కువ"
+],
+"a": "గాలి శక్తి దాని వేగానికి క్యూబ్ Sir: గాలి రెట్టింపైతే శక్తి 8 రెట్లు (2×2×2). అందుకే కొంచెం బలమైన గాలి ఉన్న చోట్ల పెడతారు."
+},
+{
+"k": [
+"మూడు బ్లేడ్లు",
+"ఎందుకు మూడు",
+"three blades",
+"బ్లేడ్లు ఎన్ని"
+],
+"a": "మూడు బ్లేడ్లు బరువు సమంగా పంచుతాయి, తిరుగుడు నునుపుగా, శబ్దం తక్కువ Sir. రెండు అయితే ఊగుతుంది, నాలుగు అయితే ఖర్చు ఎక్కువ, లాభం తక్కువ."
+},
+{
+"k": [
+"బ్లేడ్ వేగం",
+"చివర వేగం",
+"tip speed",
+"ఎంత వేగంగా తిరుగుతుంది",
+"rpm"
+],
+"a": "రోటర్ నిమిషానికి 14 సార్లు మాత్రమే Sir, నెమ్మదిగా కనిపిస్తుంది. కానీ 63 m బ్లేడ్ చివర గంటకి సుమారు 340 km వేగం!"
+},
+{
+"k": [
+"ఎందుకు ఎత్తు",
+"టవర్ ఎత్తు",
+"why tall",
+"ఎంత ఎత్తు"
+],
+"a": "నేల దగ్గర చెట్లు, భవనాలు గాలిని ఆపుతాయి Sir. 100 m ఎత్తులో గాలి బలంగా, నిలకడగా ఉంటుంది. బ్లేడ్ పైకి వెళ్ళినప్పుడు మొత్తం ఎత్తు సుమారు 165 m."
+},
+{
+"k": [
+"మన దగ్గర",
+"ఎక్కడ ఉన్నాయి",
+"తమిళనాడు",
+"గుజరాత్",
+"india"
+],
+"a": "మన దేశంలో తమిళనాడు, గుజరాత్, కర్ణాటక, రాజస్థాన్‌లో ఎక్కువ గాలి మరలు ఉన్నాయి Sir. వర్షాకాలం (జూన్–సెప్టెంబర్) నెలల్లో గాలి బలంగా ఉండి ఎక్కువ కరెంట్ వస్తుంది."
+},
+{
+"k": [
+"ఎర్ర లైట్",
+"red light",
+"లైట్లు ఎందుకు"
+],
+"a": "విమానాలకి కనిపించడానికి Sir. విండ్ ఫారంలో అన్ని టర్బైన్ల ఎర్ర లైట్లు ఒకేసారి మెరుస్తాయి. '🕐 రాత్రి' అంటే చూడండి."
+},
+{
+"k": [
+"పొగ",
+"కాలుష్యం",
+"pollution",
+"co2",
+"పక్షులు"
+],
+"a": "నడిచేటప్పుడు పొగ, CO₂ లేవు Sir. కొంచెం శబ్దం (గాలి ఊపు) ఉంటుంది, అందుకే ఇళ్ళకి దూరంగా పెడతారు; పక్షుల దారుల నుంచి దూరంగా ఉండేలా ముందే చూసి స్థలం ఎంచుకుంటారు."
+}
+],
+"quiz": [
+{
+"q": "గాలిని పట్టుకుని తిరిగేవి ఏవి?",
+"a": "రోటర్ బ్లేడ్లు",
+"opts": [
+"రోటర్ బ్లేడ్లు",
+"టవర్",
+"సబ్‌స్టేషన్"
+]
+},
+{
+"q": "నెమ్మది తిరుగుడుని వేగంగా మార్చేది ఏది?",
+"a": "గేర్‌బాక్స్",
+"opts": [
+"జనరేటర్",
+"గేర్‌బాక్స్",
+"యా మోటార్లు"
+]
+},
+{
+"q": "నాసెల్‌ని గాలి వైపు తిప్పేవి ఏవి?",
+"a": "యా మోటార్లు",
+"opts": [
+"యా మోటార్లు",
+"హబ్",
+"గాలి కొలిచే పరికరాలు"
+]
+},
+{
+"q": "గాలి వేగం, దిశ కొలిచేవి ఏవి?",
+"a": "గాలి కొలిచే పరికరాలు",
+"opts": [
+"నాసెల్ కవర్",
+"గాలి కొలిచే పరికరాలు",
+"జనరేటర్"
+]
+},
+{
+"q": "తిరుగుడుని కరెంట్‌గా మార్చేది ఏది?",
+"a": "జనరేటర్",
+"opts": [
+"జనరేటర్",
+"గేర్‌బాక్స్",
+"టవర్"
+]
+}
+],
+"faults": [
+{
+"label": "గేర్‌బాక్స్",
+"kind": "stop",
+"clue": "గాలి బాగానే ఉంది Sir, కానీ బ్లేడ్లు తిరగట్లేదు. నాసెల్ లోపల ఏది ఆపింది?",
+"why": "గేర్‌బాక్స్ ఆయిల్ వేడి హద్దు దాటింది: కంప్యూటర్ బ్లేడ్లు ఫెదర్ చేసి, బ్రేక్ వేసి టర్బైన్‌ని తానే ఆపింది. టెక్నీషియన్ పైకెక్కి ఆయిల్ కూలర్, ఫిల్టర్ చూస్తాడు."
+},
+{
+"label": "జనరేటర్",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: మామూలు కంటే వేడిగా ఉన్నది ఏది?",
+"why": "జనరేటర్ కూలింగ్ ఫ్యాన్ ఆగింది, వేడెక్కుతోంది. కంప్యూటర్ పవర్ తగ్గిస్తుంది; ఫ్యాన్ మారుస్తారు."
+},
+{
+"label": "రోటర్ బ్లేడ్లు",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: మామూలు ఊపు కంటే వేరే ఈల శబ్దం ఎక్కడి నుంచి? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "ఒక బ్లేడ్ ముందు అంచు వర్షం, దుమ్ముతో అరిగిపోయింది (ఎరోజన్), ఈల శబ్దం వస్తోంది, కరెంట్ కొంచెం తగ్గుతుంది. తాళ్ళతో వేలాడుతూ టెక్నీషియన్లు అంచు మళ్ళీ పూత పూస్తారు."
+},
+{
+"label": "యా మోటార్లు",
+"kind": "loose",
+"clue": "నాసెల్ దగ్గర ఏది వణుకుతోంది Sir?",
+"why": "యా మోటార్ల బోల్టులు వదులయ్యాయి, నాసెల్ కొంచెం ఊగుతోంది. బోల్టులు సరైన బలంతో (టార్క్ రెంచ్) బిగిస్తారు."
+}
+],
+"inside": {
+"గేర్‌బాక్స్": {
+"say": "గేర్‌బాక్స్ లోపల Sir: పైన మందమైన ఇన్‌పుట్ షాఫ్ట్ నెమ్మదిగా తిరుగుతూ మూడు బంగారు ప్లానెట్ గేర్లని తిప్పుతుంది; అవి మధ్యలో చిన్న సన్ గేర్‌ని 5 రెట్లు వేగంగా తిప్పుతాయి. కింద పెద్ద గేర్ చిన్న పినియన్‌ని ఇంకో 4 రెట్లు వేగంగా: అది జనరేటర్‌ని తిప్పుతుంది. నిజమైన వాటిలో మూడు దశలు, సుమారు 100 రెట్లు.",
+"code": "// Inside the gearbox, its case off: the blades turn the big input shaft slowly (about 14 a minute). Its carrier swings\n// three planet gears round a small sun gear inside a fixed ring: the sun turns 5 times faster. On the sun's shaft a big gear\n// drives a small pinion 4 times faster again, and that turns the generator. (Real ones have three stages: about 100 × faster.)\nconst steel = W.metal('#b8bec5', { rough: 0.3 }), dark = W.metal('#6f767e', { rough: 0.4 }), gold = W.metal('#c9a24a', { rough: 0.32 });\nconst inp = W.group();\ninp.add(W.mesh(W.cyl(10, 10, 90, 32), steel, { at: [0, 92, 0] }));\nconst carrier = W.group({ at: [0, 44, 0] });\ncarrier.add(W.mesh(W.cyl(38, 38, 6, 48), dark));\ninp.add(carrier);\nW.add(inp, { label: 'ఇన్‌పుట్ షాఫ్ట్' });\nconst ring = W.group();\nring.add(W.mesh(W.ring(52, 62, 12, 64), dark, { at: [0, 30, 0] }));\nfor (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; ring.add(W.mesh(W.box(3, 12, 4), dark, { at: [Math.cos(a) * 51, 30, Math.sin(a) * 51], rot: [0, -a * 57.3, 0] })); }\nW.add(ring, { label: 'రింగ్ గేర్' });\nconst planets = W.group(), pl = [];\nfor (let i = 0; i < 3; i++) {\n  const a = (i / 3) * Math.PI * 2;\n  const p = W.group({ at: [Math.cos(a) * 32, 30, Math.sin(a) * 32] });\n  p.add(W.mesh(W.gear({ teeth: 18, r: 18.5, depth: 10, hole: 4 }), gold));\n  p.add(W.mesh(W.cyl(4, 4, 18, 12), steel, { at: [0, 6, 0] }));\n  planets.add(p); pl.push(p);\n}\nW.add(planets, { label: 'ప్లానెటరీ గేర్లు' });\nconst sun = W.group();\nsun.add(W.mesh(W.gear({ teeth: 12, r: 13.5, depth: 10, hole: 0 }), steel, { at: [0, 30, 0] }));\nsun.add(W.mesh(W.cyl(6, 6, 40, 16), steel, { at: [0, 12, 0] }));\nconst big = W.group();\nbig.add(W.mesh(W.gear({ teeth: 60, r: 48, depth: 8, hole: 6 }), gold, { at: [0, -4, 0] }));\nW.add(sun, { label: 'సన్ గేర్' });\nW.add(big, { label: 'పెద్ద గేర్' });\nconst pin = W.group({ at: [60.5, 0, 0] });\npin.add(W.mesh(W.gear({ teeth: 15, r: 12.5, depth: 8, hole: 0 }), steel, { at: [0, -4, 0] }));\npin.add(W.mesh(W.cyl(4.5, 4.5, 70, 16), steel, { at: [0, -40, 0] }));\nW.add(pin, { label: 'చిన్న పినియన్' });\nconst gen = W.group();\ngen.add(W.mesh(W.cyl(22, 22, 50, 32), W.paint('#2f6f6a', { metallic: 0.35, rough: 0.4 }), { at: [60.5, -95, 0] }));\nW.add(gen, { label: 'జనరేటర్ వైపు' });\nlet a = 0;\nW.onTick((t, dt) => {\n  a += dt * (0.25 + 0.9 * Math.max(0.1, W.env.spool));\n  inp.rotation.y = a;\n  pl.forEach((p, i) => { const k = a + (i / 3) * Math.PI * 2; p.position.set(Math.cos(k) * 32, 30, Math.sin(k) * 32); p.rotation.y = -a * 2.1; });\n  sun.rotation.y = a * 5; big.rotation.y = a * 5;\n  pin.rotation.y = -a * 20;\n});\nW.stream([[60.5, -130, 0], [90, -140, 20], [140, -150, 40]], { kind: 'power', count: 10, size: 2.4, speed: 0.8, always: true });\n"
+}
+},
+"film": [
+"💨 3 MW గాలి మర",
+"గాలి పెరుగుతోంది: రోటర్ వేగం పెరుగుతోంది",
+"🌡️ వేడి: గేర్‌బాక్స్, జనరేటర్",
+"〰️ గాలి రోటర్ గుండా, కరెంట్ కిందికి",
+"నాసెల్ కవర్ తీస్తే లోపల",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"challenge": null,
+"service": {
+"title": "🛠️ గాలి మర సర్వీస్",
+"safety": "ఇది ఎత్తు పని Sir: ట్రైనింగ్, హార్నెస్, హెల్మెట్ ఉన్న టెక్నీషియన్లే ఎక్కాలి. గాలి తక్కువగా ఉన్నప్పుడే; పైకి వెళ్ళే ముందు టర్బైన్ ఆపి, రోటర్ లాక్ పిన్ వేసి, కరెంట్ ఆపి తాళం వేస్తారు.",
+"steps": [
+{
+"say": "గేర్‌బాక్స్ ఆయిల్ నమూనా తీసి పరీక్షిస్తారు, ఫిల్టర్ మారుస్తారు; చిన్న కెమెరాతో గేర్ పళ్ళు చూస్తారు.",
+"label": "గేర్‌బాక్స్"
+},
+{
+"say": "బ్లేడ్లని డ్రోన్ ఫోటోలు, లేదా తాళ్ళతో దిగి దగ్గరగా చూస్తారు: పగుళ్ళు, అంచు అరుగుదల, పిడుగు గుర్తులు.",
+"label": "రోటర్ బ్లేడ్లు"
+},
+{
+"say": "టవర్ ముక్కల బోల్టులు, బ్లేడ్ బోల్టులు టార్క్ రెంచ్‌తో మళ్ళీ బిగిస్తారు.",
+"label": "టవర్"
+},
+{
+"say": "యా రింగ్‌కి, పిచ్ బేరింగ్‌లకి గ్రీజ్ పెడతారు.",
+"label": "యా మోటార్లు"
+},
+{
+"say": "గాలి కొలిచే కప్పులు, రెక్క సరిగ్గా తిరుగుతున్నాయో చూస్తారు.",
+"label": "గాలి కొలిచే పరికరాలు"
+}
+]
+},
+"scene": "",
+"id": "wind"
+}
+}

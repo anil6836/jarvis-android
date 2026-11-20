@@ -184,17 +184,22 @@ final class Showpiece {
         List<String> all = labels();
         JSONObject va = sp.optJSONObject("variants");
         if (va != null && !variant.isEmpty()) all.add(va.optString("label").replace("{v}", variant));
+        JSONArray pref = sp.optJSONArray("prefer");
         for (String lab : all) {
             String[] toks = low(lab).split(" ");
             int hit = 0, chars = 0, n = 0;
             for (String w : toks) {
                 if (w.length() < 2) continue;
                 n++;
-                if (w.length() <= 3 ? t.contains(" " + w + " ") : t.contains(w)) { hit++; chars += w.length(); }
+                if (w.length() <= 3 ? t.contains(" " + w + " ") : t.contains(w)) { hit++; chars += w.length(); continue; }
+                String stem = w.endsWith("ళ్ళు") ? w.substring(0, w.length() - 4) : w.endsWith("లు") ? w.substring(0, w.length() - 2) : null; // ("టర్బైన్" names "టర్బైన్లు")
+                if (stem != null && stem.length() >= 4 && t.contains(stem)) { hit++; chars += stem.length(); }
             }
             if (n == 0 || hit == 0) continue;
             double cover = (double) hit / n;
-            if (chars > bestChars || (chars == bestChars && cover > bestCover)) { best = lab; bestCover = cover; bestChars = chars; }
+            boolean preferred = false;
+            for (int i = 0; pref != null && i < pref.length(); i++) if (lab.equals(pref.optString(i))) preferred = true;
+            if (chars > bestChars || (chars == bestChars && cover > bestCover) || (chars == bestChars && cover == bestCover && preferred)) { best = lab; bestCover = cover; bestChars = chars; }
         }
         return best;
     }
@@ -297,7 +302,7 @@ final class Showpiece {
             {act("heat", 1), "వేడి", "హీట్", "heat", "heat view", "థర్మల్", "thermal", "వేడి వ్యూ", "వేడి రంగులు", "టెంపరేచర్ వ్యూ"},
             {act("heat", 0), "వేడి ఆపు", "వేడి తీసేయ్", "హీట్ ఆఫ్", "heat off", "వేడి వ్యూ ఆపు", "వేడి వద్దు"},
             {act("flow", 1), "గాలి", "గాలి దారి", "గాలి ప్రవాహం", "airflow", "air flow", "flow", "flow view", "కరెంట్ దారి", "ప్రవాహం", "ప్రవాహాలు", "దారులు", "కూలెంట్ దారి"},
-            {act("flow", 0), "గాలి ఆపు", "గాలి వద్దు", "flow off", "ప్రవాహం ఆపు", "దారులు ఆపు"},
+            {act("flow", 0), "గాలి ఆపు", "గాలి వద్దు", "flow off", "ప్రవాహం ఆపు", "దారులు ఆపు", "ప్రవాహాలు ఆపు", "ప్రవాహాలు వద్దు"},
             {act("sound", 1), "శబ్దం", "సౌండ్", "sound", "sound on", "సౌండ్ ఆన్", "శబ్దం వినిపించు", "శబ్దం ఆన్"},
             {act("sound", 0), "శబ్దం ఆపు", "సౌండ్ ఆఫ్", "సౌండ్ ఆపు", "mute", "sound off", "నిశ్శబ్దం", "శబ్దం వద్దు", "మ్యూట్"},
             {act("listen"), "స్టెతస్కోప్", "stethoscope", "శబ్దం ఎక్కడ", "ఎక్కడి నుంచి శబ్దం", "విను", "వినిపించు", "listen", "దీని శబ్దం"},
@@ -348,7 +353,114 @@ final class Showpiece {
             {act("card"), "స్పెక్స్", "specs", "spec card", "వివరాలు", "స్పెక్ కార్డ్", "నంబర్లు"},
             {act("bezel"), "వాచ్ బెజెల్", "వాచ్‌తో పవర్", "watch bezel", "వాచ్ తో పవర్", "బెజెల్"},
             {act("menu"), "షోపీస్ మెనూ", "అన్ని ఫీచర్లు", "ఏమేమి చేయొచ్చు", "what can i do", "features", "ఫీచర్లు", "మెనూ"},
+            // 🕐 (Build 2) the 24-hour day, 🚶 walking inside, 🧅 roofs and walls (outdoor showpieces: power stations, the town)
+            {act("day_play"), "రోజు మొత్తం", "24 గంటలు", "ఇరవై నాలుగు గంటలు", "రోజంతా", "రోజు మొత్తం నడిపించు", "full day", "day cycle", "24 hours", "టైమ్ నడిపించు",
+                    "సమయం నడిపించు", "రోజు నడిపించు", "టైమ్ ప్లే", "time play", "గడియారం నడిపించు", "సమయం కదిలించు"},
+            {act("day_stop"), "టైమ్ ఆపు", "సమయం ఆపు", "రోజు ఆపు", "గడియారం ఆపు", "stop time", "time stop", "pause time", "టైమ్ ఆగు", "సమయం ఆగు"},
+            {act("hour", 6), "ఉదయం", "పొద్దున", "పొద్దున్నే", "సూర్యోదయం", "morning", "sunrise", "ఉదయం చేయి"},
+            {act("hour", 12), "మధ్యాహ్నం", "మిట్ట మధ్యాహ్నం", "noon", "afternoon", "పగలు"},
+            {act("hour", 18), "సాయంత్రం", "సూర్యాస్తమయం", "evening", "sunset"},
+            {act("hour", 21), "రాత్రి", "night", "రాత్రి పూట", "రాత్రి చేయి"},
+            {act("hour", 0), "అర్ధరాత్రి", "midnight"},
+            {act("walk", ""), "లోపల నడువు", "లోపల నడవాలి", "నడువు", "నడవాలి", "నడక", "నడిచి", "walk", "walk inside", "నడుద్దాం", "లోపలికి నడువు", "లోపల నడక",
+                    "నడవనివ్వు", "నడిచి చూడాలి", "లోపల తిరుగు", "లోపలికి నడిచి", "నడిచి వెళ్ళు"},
+            {act("walk_off"), "నడక ఆపు", "నడవడం ఆపు", "నడక చాలు", "stop walking", "walk off", "బయటి నుంచి", "నడక వద్దు", "నడక నుంచి బయటికి"},
+            {act("walk_next"), "తర్వాతి చోటు", "వేరే చోటు", "ఇంకో చోటు", "next place", "next spot", "ఇంకో చోటుకి"},
+            {act("peel", 1), "పైకప్పు తీయి", "పైకప్పు తీయ్", "పైకప్పు లేపు", "రూఫ్ తీయి", "రూఫ్ తీయ్", "కవర్ తీయి", "కవర్ తీయ్", "గోడలు తీయి", "గోడలు తీయ్",
+                    "roof off", "remove roof", "పైకప్పు తీసేయి", "పైకప్పు తీసేయ్", "పైకప్పు ఎత్తు", "గోడలు లేపు"},
+            {act("peel", -1), "పైకప్పు పెట్టు", "రూఫ్ పెట్టు", "గోడలు పెట్టు", "కవర్ పెట్టు", "roof on"},
+            {act("peel", 0), "అన్ని పొరలు పెట్టు", "పొరలన్నీ పెట్టు", "అన్నీ మూసేయి", "all layers back", "పైకప్పులన్నీ పెట్టు"},
     };
+
+    /** 🕐 "సాయంత్రం 7", "రాత్రి 9 గంటలు", "6:30 am", "టైమ్ 18": an hour of the day (a part of the day, a marker or minutes is needed). */
+    private static final Pattern HOUR = Pattern.compile("^(?:(టైమ్|సమయం|time|గడియారం)\\s*)?(ఉదయం|పొద్దున|తెల్లవారుజాము|మధ్యాహ్నం|సాయంత్రం|రాత్రి|morning|afternoon|evening|night)?\\s*"
+            + "(\\d{1,2})(?:[:.\\s](\\d{2}))?\\s*(గంటలు|గంటలకి|గంటకి|గంటల|గం|am|pm|a m|p m|o'clock|oclock)?"
+            + "(?:\\s*(?:కి|కు|కి పెట్టు|పెట్టు|కి మార్చు|కి వెళ్ళు|అవ్వనివ్వు|చేసి))?$");
+    /** 🚶 words that take him somewhere ("టర్బైన్ డెక్‌కి వెళ్ళు", "నాసెల్ పైకి తీసుకెళ్ళు"). */
+    private static final String[] GO = {"వెళ్ళు", "వెళ్లు", "వెళ్దాం", "వెళ్ళాలి", "వెళ్లాలి", "తీసుకెళ్ళు", "తీసుకెళ్లు", "తీసుకువెళ్ళు", "నడువు", "నడవాలి", "నడిచి", "go to",
+            "take me", "walk to", "నిలబడు", "నిలబెట్టు", "నిలబడాలి"};
+
+    /** The hour his words name, or −1. */
+    static double hourOf(String t) {
+        Matcher m = HOUR.matcher(t == null ? "" : t.trim());
+        if (!m.find()) return -1;
+        String pre = m.group(1), part = m.group(2), mm = m.group(4), mark = m.group(5);
+        if (pre == null && part == null && mm == null && mark == null) return -1; // (a bare number is not a time)
+        int h = Integer.parseInt(m.group(3));
+        int min = mm == null ? 0 : Integer.parseInt(mm);
+        if (h > 24 || min > 59) return -1;
+        String p = part == null ? "" : part, k = mark == null ? "" : mark;
+        if (k.startsWith("p") || p.equals("సాయంత్రం") || p.equals("evening")) { if (h < 12) h += 12; }
+        else if (k.startsWith("a") || p.equals("ఉదయం") || p.equals("పొద్దున") || p.equals("తెల్లవారుజాము") || p.equals("morning")) { if (h == 12) h = 0; }
+        else if (p.equals("మధ్యాహ్నం") || p.equals("afternoon")) { if (h >= 1 && h <= 6) h += 12; }
+        else if (p.equals("రాత్రి") || p.equals("night")) { if (h >= 6 && h < 12) h += 12; else if (h == 12) h = 0; }
+        return (h % 24) + min / 60.0;
+    }
+
+    /** "6:30 సాయంత్రం": the hour as he reads it (the stage's clock says it the same way). */
+    static String hourText(double hr) {
+        int H = ((int) Math.floor(hr)) % 24, M = (int) Math.floor((hr - Math.floor(hr)) * 60 / 5) * 5;
+        String part = H < 4 ? "రాత్రి" : H < 12 ? "ఉదయం" : H < 16 ? "మధ్యాహ్నం" : H < 20 ? "సాయంత్రం" : "రాత్రి";
+        return ((H + 11) % 12 + 1) + ":" + (M < 10 ? "0" : "") + M + " " + part;
+    }
+
+    /** 🕐 🚶 It stands outdoors: a sky, the hours, places to walk. */
+    boolean outdoor() { return sp.optBoolean("outdoor"); }
+
+    /** 🚶 The places he can walk to (their names). */
+    List<String> walkSpots() {
+        List<String> l = new ArrayList<>();
+        JSONArray w = sp.optJSONArray("walk");
+        for (int i = 0; w != null && i < w.length(); i++) if (!w.optString(i).isEmpty()) l.add(w.optString(i));
+        return l;
+    }
+
+    /** 🚶 The walking place his words name ("టర్బైన్ డెక్‌కి వెళ్ళు" → "టర్బైన్ డెక్"), or null. */
+    String walkSpot(String text) {
+        String t = " " + low(text) + " ";
+        String best = null;
+        int bestChars = 0;
+        double bestCover = 0;
+        for (String spot : walkSpots()) {
+            int hit = 0, chars = 0, n = 0;
+            for (String w : low(spot).split(" ")) {
+                if (w.length() < 2) continue;
+                n++;
+                if (w.length() <= 3 ? t.contains(" " + w + " ") : t.contains(w)) { hit++; chars += w.length(); }
+            }
+            if (n == 0 || hit == 0) continue;
+            double cover = (double) hit / n;
+            if (chars > bestChars || (chars == bestChars && cover > bestCover)) { best = spot; bestChars = chars; bestCover = cover; }
+        }
+        return best;
+    }
+
+    /** 🚩 Its own switches (a dam's flood gates, dust on the panels…): {id, menu, on-line, off-line}. */
+    List<String[]> switches() {
+        List<String[]> l = new ArrayList<>();
+        JSONArray a = sp.optJSONArray("switches");
+        for (int i = 0; a != null && i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            if (o != null && !o.optString("id").isEmpty()) l.add(new String[]{o.optString("id"), o.optString("menu"), o.optString("on"), o.optString("off")});
+        }
+        return l;
+    }
+
+    private Act switchIn(String t, String alt, String alt2) {
+        JSONArray a = sp.optJSONArray("switches");
+        for (int i = 0; a != null && i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            if (o == null) continue;
+            for (String key : new String[]{"offWords", "words"}) {
+                JSONArray ws = o.optJSONArray(key);
+                for (int j = 0; ws != null && j < ws.length(); j++) {
+                    String w = Workshop.norm(ws.optString(j));
+                    if (w != null && !w.isEmpty() && (t.equals(w) || alt.equals(w) || alt2.equals(w))) return new Act("switch", "words".equals(key) ? 1 : 0, o.optString("id"));
+                }
+            }
+        }
+        return null;
+    }
 
     private static final String GEAR_TAIL = "(?:\\s*(?:లో పెట్టు|లో పెట్టండి|కి మార్చు|కి మార్చండి|వేయి|వేయ్|వెయ్|వెయ్యి|వేయండి|లోకి|లో|కి|పెట్టు))?$";
     private static final Pattern PCT = Pattern.compile("^(?:(?:పవర్|power|లోడ్|load|గ్రిప్|grip|త్రోటిల్|throttle)\\s*)?(\\d{1,3})\\s*(?:%|శాతం|శాతానికి|percent)(?:\\s*(?:పవర్|power|లోడ్|load|గ్రిప్))?$"),
@@ -374,7 +486,20 @@ final class Showpiece {
         if (t == null || t.isEmpty()) return null;
         t = t.replace("ఈ ", "").replace("ఆ ", "").trim();
         String alt = t.replaceAll("యి(?= |$)", "య్"), alt2 = t.replaceAll("య్(?= |$)", "యి"); // ("తీయి" / "తీయ్": both spellings)
+        Act sw = switchIn(t, alt, alt2); // (🚩 its own switches first: "స్పిల్‌వే", "దుమ్ము", "మబ్బులు")
+        if (sw != null) return sw;
         for (Object[] row : WORDS) for (int i = 1; i < row.length; i++) if (t.equals(row[i]) || alt.equals(row[i]) || alt2.equals(row[i])) return (Act) row[0];
+        if (outdoor()) { // 🕐 an hour; 🚶 a place to walk to
+            double hr = hourOf(t);
+            if (hr >= 0) return act("hour", hr);
+            boolean go = false;
+            for (String g : GO) if (t.contains(g)) { go = true; break; }
+            if (go) {
+                String spot = walkSpot(t);
+                if (spot != null) return act("walk", spot);
+                if (t.contains("లోపల") || t.contains("నడ") || t.contains("walk")) return act("walk", "");
+            }
+        }
         Matcher m = PCT.matcher(t);
         if (!m.find()) m = PCT2.matcher(t);
         else m.reset();
@@ -517,10 +642,11 @@ final class Showpiece {
     /** 🎮 (Y) A challenge from its live numbers: 🛫 takeoff (power to the goal in time, the exhaust under its limit), 🌱 eco ride (a distance under a Wh/km). */
     static final class Challenge {
         final String kind, title, rules;
-        final double goal, limit, km;
+        final double goal, limit, km, start, end, rate, power;
         final int secs;
         double startKm = -1, startWh, worst;
         long t0 = -1;
+        int inBand, samples, shedMost;
 
         Challenge(JSONObject c) {
             kind = c.optString("kind");
@@ -530,6 +656,10 @@ final class Showpiece {
             limit = c.optDouble("limit", 0);
             km = c.optDouble("km", 1);
             secs = c.optInt("secs", 12);
+            start = c.optDouble("start", 17);
+            end = c.optDouble("end", 22);
+            rate = c.optDouble("rate", 0.1);
+            power = c.optDouble("power", 0.35);
         }
 
         /** The live numbers now (nums from the stage) at ms → null (going on), or {won?, the line to say}. */
@@ -544,6 +674,21 @@ final class Showpiece {
                 if (p >= goal) return new Object[]{true, "🛫 టేకాఫ్! " + String.format(Locale.ENGLISH, "%.1f", secsNow) + " సెకన్లలో " + Math.round(goal * 100) + "% పవర్, గరిష్ట వేడి " + Math.round(worst) + "°C. బాగా చేశారు Sir!"};
                 if (secsNow > secs) return new Object[]{false, secs + " సెకన్లు అయిపోయాయి Sir, పవర్ " + Math.round(p * 100) + "% దగ్గరే ఉంది. మళ్ళీ ప్రయత్నించండి."};
                 return null;
+            }
+            if ("grid".equals(kind)) { // ⚡ the evening peak: his hydel keeps the frequency in its band till 10 pm
+                double f = nums.optDouble("freq", 50), hr = nums.optDouble("hour", -1);
+                if (hr >= 0 && hr < start - 0.3) return null; // (the clock is not on its first hour yet)
+                samples++;
+                if (f >= 49.9 && f <= 50.1) inBand++;
+                shedMost = Math.max(shedMost, nums.optInt("shed", 0));
+                if (hr < end - 0.02 && secsNow <= secs) return null;
+                double share = (double) inBand / Math.max(1, samples);
+                boolean won = share >= goal;
+                String pct = Math.round(share * 100) + "%";
+                return new Object[]{won, (won ? "⚡ గెలిచారు Sir! " : "అయ్యో Sir, ") + "సాయంత్రం 5 నుంచి రాత్రి 10 దాకా " + pct + " సమయం ఫ్రీక్వెన్సీ 49.9–50.1 Hz లో ఉంచారు"
+                        + (won ? " (కావాల్సింది " + Math.round(goal * 100) + "%). ఇక మీరే గ్రిడ్ ఆపరేటర్!"
+                        : " (కావాల్సింది " + Math.round(goal * 100) + "%). సూర్యుడు అస్తమిస్తున్నప్పుడే (6–8) హైడల్ ముందే పెంచి మళ్ళీ ప్రయత్నించండి.")
+                        + (shedMost > 0 ? " మధ్యలో " + shedMost + " కాలనీలు కొద్దిసేపు ఆగాయి." : "")};
             }
             if ("eco".equals(kind)) {
                 double d = nums.optDouble("km", 0) - startKm, wh = nums.optDouble("wh", 0) - startWh;
