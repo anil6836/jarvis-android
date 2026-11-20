@@ -1,0 +1,469 @@
+{
+"at": 1763700000018,
+"title": "ఎలక్ట్రిక్ రైలు ఇంజన్",
+"what": "6,000 HP ఎలక్ట్రిక్ రైలు ఇంజన్ (మా సొంత డిజైన్): 25 kV వైర్, పాంటోగ్రాఫ్, ట్రాన్స్‌ఫార్మర్, కన్వర్టర్లు, 6 ట్రాక్షన్ మోటార్లు, రీజనరేటివ్ బ్రేక్. 🕐 🚶 క్యాబ్",
+"model": "showpiece",
+"parts": [
+{
+"id": "track",
+"status": "పట్టాలు, కరెంట్ తీగలు వేస్తున్నాను",
+"code": "// Electric locomotive showpiece, hand-made: our own design (no railway's name, number or colours), a six-axle, 6,000 HP\n// three-phase engine under a 25,000 V overhead wire. Units: cm, real size (20 m long). It stands along X, its front to +X;\n// the sleepers and the masts pass under and beside it while its wheels turn. Rail top is y = 20.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 16, ground: '#7d8a52', zoom: 0.5 });\nconst tk = W.group();\ntk.add(W.mesh(W.box(6400, 10, 3400), S.land('soil', '#9a8f78', 400), { at: [0, -5, 0] }));\nconst bal = S.land('gravel', '#77726a', 70);\ntk.add(W.mesh(W.box(6400, 16, 420), bal, { at: [0, -2, 0] }), W.mesh(W.box(6400, 10, 330), bal, { at: [0, 6, 0] }));\nconst rail = S.sf('metal', '#6f6a66', { rough: 0.5, metallic: 0.5, world: true, tile: 200 });\nfor (const z of [-84, 84]) tk.add(W.mesh(W.box(6400, 15, 7), rail, { at: [0, 12.5, z] }), W.mesh(W.box(6400, 2.4, 7.4), S.sf('metal', '#c9cdd2', { rough: 0.25, metallic: 0.6 }), { at: [0, 20, z] }), W.mesh(W.box(6400, 2, 14), rail, { at: [0, 6, z] }));\nS.sleepers = new THREE.InstancedMesh(W.box(26, 14, 275), S.land('concrete', '#b9b5ab', 120), 108);\ntk.add(S.sleepers);\nW.add(tk, { label: 'రైలు పట్టాలు', ground: true });\n// the overhead equipment: masts, a carrying wire above, the contact wire the pantograph rubs on hung from it\nconst oh = W.group();\nconst gal = S.sf('metal', '#9aa2aa', { rough: 0.55, metallic: 0.3 }), ins = S.matte('#7a4a32', 0.4), wire = S.matte('#5a4a3a', 0.5);\nS.masts = [];\nfor (let i = 0; i < 4; i++) {\n  const m = W.group();\n  m.add(W.mesh(W.box(22, 760, 26), gal, { at: [0, 380, -330] }), W.mesh(W.box(60, 30, 60), S.sf('concrete', '#b9b5ab'), { at: [0, 15, -330] }));\n  m.add(S.beam([0, 700, -318], [0, 690, -20], 3, gal), S.beam([0, 560, -318], [0, 690, -150], 3, gal), S.beam([0, 620, -318], [0, 556, 10], 2.4, gal));\n  for (const y of [700, 560, 620]) m.add(W.mesh(W.cyl(6, 6, 30, 8), ins, { at: [0, y, -300], rot: [90, 0, 0] }));\n  oh.add(m); S.masts.push(m);\n}\noh.add(S.beam([-3200, 550, 0], [3200, 550, 0], 0.9, S.matte('#b06a3a', 0.4), 5)); // the contact wire (hard copper)\noh.add(S.beam([-3200, 690, -20], [3200, 690, -20], 0.8, wire, 5));                // the carrying (catenary) wire\nconst dr = new THREE.InstancedMesh(W.box(0.8, 140, 0.8), wire, 22), M = new THREE.Matrix4();\nfor (let i = 0; i < 22; i++) dr.setMatrixAt(i, M.makeTranslation(-3150 + i * 300, 620, -10));\noh.add(dr);\nW.add(oh, { label: 'ఓవర్‌హెడ్ వైర్', heat: [30, 45] });\nconst side = W.group();\nside.add(S.trees(10, -3000, -1900, 3000, -1100, null));\nS.posts = new THREE.InstancedMesh(W.box(16, 70, 10), S.matte('#f1eee6', 0.8), 4);\nside.add(S.posts);\nW.add(side, { label: 'దారి పక్కన', ground: true });\n"
+},
+{
+"id": "bogies",
+"status": "బోగీలు, చక్రాలు పెడుతున్నాను",
+"code": "const S = W.store;\n// two bogies, three axles each. Every axle has its own traction motor hung beside it, turning it through a gear.\nS.iron = S.sf('paint', '#3d4248', { tile: 90 }); S.steel = S.sf('metal', '#aab2ba', { rough: 0.45, tile: 60 });\nS.wheels = [];\nconst bf = W.group(), wh = W.group(), tm = W.group();\nconst wm = S.sf('metal', '#5a5450', { rough: 0.6, metallic: 0.4, tile: 60 }), tread = S.sf('metal', '#c9cdd2', { rough: 0.25, metallic: 0.6 });\nS.AX = [];\nfor (const bx of [-600, 600]) {\n  for (const sz of [-1, 1]) { bf.add(W.mesh(W.box(470, 24, 16), S.iron, { at: [bx, 96, sz * 112] })); for (const dx of [-190, 0, 190]) bf.add(W.mesh(W.box(36, 40, 22), S.iron, { at: [bx + dx, 74, sz * 112] }), W.mesh(W.cyl(9, 9, 34, 10), S.sf('paint', '#b6463a', { tile: 30 }), { at: [bx + dx + 30, 110, sz * 112] })); }\n  for (const dx of [-95, 95]) bf.add(W.mesh(W.box(22, 26, 220), S.iron, { at: [bx + dx, 96, 0] }));\n  for (const sz of [-1, 1]) for (const dx of [-120, 120]) bf.add(W.mesh(W.cyl(13, 13, 44, 12), S.sf('paint', '#d9a92a', { tile: 30 }), { at: [bx + dx, 130, sz * 96] })); // the springs the body rides on\n  bf.add(W.mesh(W.box(40, 30, 40), S.iron, { at: [bx, 124, 0] })); // the centre pivot\n  for (const dx of [-190, 0, 190]) {\n    const x = bx + dx, w = W.group({ at: [x, 74.5, 0] });\n    w.add(W.mesh(W.cyl(9, 9, 200, 12), S.steel, { rot: [90, 0, 0] }));\n    for (const sz of [-1, 1]) { w.add(W.mesh(W.cyl(54.5, 54.5, 13, 36), tread, { at: [0, 0, sz * 84], rot: [90, 0, 0] }), W.mesh(W.cyl(58, 58, 3, 36), tread, { at: [0, 0, sz * 76], rot: [90, 0, 0] }), W.mesh(W.cyl(46, 46, 14, 28), wm, { at: [0, 0, sz * 84.4], rot: [90, 0, 0] }));\n      for (let k = 0; k < 4; k++) w.add(W.mesh(W.cyl(5, 5, 15, 8), S.iron, { at: [Math.cos(k * 1.571) * 30, Math.sin(k * 1.571) * 30, sz * 84.6], rot: [90, 0, 0] })); }\n    w.add(W.mesh(W.cyl(30, 30, 10, 20), S.steel, { at: [0, 0, 58], rot: [90, 0, 0] })); // the big gear on the axle\n    wh.add(w); S.wheels.push(w); S.AX.push(x);\n    const dir = dx < 0 || (dx === 0 && bx < 0) ? 1 : -1;\n    tm.add(W.mesh(W.cyl(34, 34, 96, 20), S.sf('paint', '#5d7f6a', { tile: 80 }), { at: [x + dir * 62, 72, -6], rot: [90, 0, 0] }), W.mesh(W.cyl(20, 20, 10, 16), S.steel, { at: [x + dir * 62, 72, 50], rot: [90, 0, 0] }), W.mesh(W.box(70, 76, 14), S.iron, { at: [x + dir * 28, 74, 60] }));\n  }\n}\nW.add(bf, { label: 'బోగీ ఫ్రేమ్‌లు', heat: [30, 55], explode: [0, -30, 220] });\nW.add(wh, { label: 'చక్రాలు', heat: [30, 70], explode: [0, -40, 0] });\nW.add(tm, { label: 'ట్రాక్షన్ మోటార్లు', heat: [35, 120], explode: [0, -30, -200] });\n"
+},
+{
+"id": "underframe",
+"status": "ట్రాన్స్‌ఫార్మర్, కింది పరికరాలు బిగిస్తున్నాను",
+"code": "const S = W.store;\nconst uf = W.group();\nuf.add(W.mesh(W.box(1960, 26, 300), S.iron, { at: [0, 152, 0] }));\nfor (const sx of [-1, 1]) {\n  uf.add(W.mesh(W.box(30, 60, 300), S.iron, { at: [sx * 985, 150, 0] }));\n  for (const sz of [-1, 1]) uf.add(W.mesh(W.cyl(8, 8, 46, 12), S.steel, { at: [sx * 1020, 120, sz * 98], rot: [0, 0, 90] }), W.mesh(W.cyl(23, 23, 8, 20), S.steel, { at: [sx * 1046, 120, sz * 98], rot: [0, 0, 90] })); // the buffers\n  uf.add(W.mesh(W.box(70, 30, 34), S.iron, { at: [sx * 1030, 108, 0] }), W.mesh(W.box(24, 40, 46, 6), S.steel, { at: [sx * 1070, 108, 0] })); // the coupler\n  uf.add(W.mesh(W.box(8, 60, 290), S.sf('paint', '#d9a92a', { tile: 60 }), { at: [sx * 1010, 60, 0], rot: [0, 0, sx * -14] })); // the rail guard\n}\nW.add(uf, { label: 'అండర్‌ఫ్రేమ్ కప్లర్లు', explode: [0, -20, 0] });\nconst tr = W.group();\ntr.add(W.mesh(W.box(330, 104, 250, 8), S.sf('paint', '#5a6068', { tile: 120 }), { at: [0, 88, 0] }));\nfor (const sz of [-1, 1]) for (let k = 0; k < 9; k++) tr.add(W.mesh(W.box(3, 84, 20), S.sf('paint', '#5a6068', { tile: 120 }), { at: [-120 + k * 30, 88, sz * 136] }));\ntr.add(W.mesh(W.cyl(14, 22, 60, 12), S.matte('#7a4a32', 0.4), { at: [-60, 170, -60] }));\nW.add(tr, { label: 'మెయిన్ ట్రాన్స్‌ఫార్మర్', heat: [40, 95], explode: [0, -60, 0] });\nconst ux = W.group();\nfor (const z of [-118, -76]) ux.add(W.mesh(W.cyl(22, 22, 170, 16), S.sf('paint', '#3b6a94', { tile: 80 }), { at: [300, 112, z], rot: [0, 0, 90] })); // the air reservoirs\nux.add(W.mesh(W.box(140, 60, 70, 4), S.sf('paint', '#2a2c30', { tile: 80 }), { at: [-300, 108, 110] })); // the battery box\nux.add(W.mesh(W.box(120, 56, 60, 4), S.sf('paint', '#6b7f90', { tile: 80 }), { at: [300, 108, 110] }), W.mesh(W.cyl(20, 20, 60, 14), S.sf('paint', '#6b7f90', { tile: 80 }), { at: [-300, 110, -100], rot: [0, 0, 90] })); // the compressor\nW.add(ux, { label: 'కంప్రెసర్ ఎయిర్ ట్యాంకులు', heat: [35, 80], explode: [0, -40, 160] });\n"
+},
+{
+"id": "body",
+"status": "బాడీ, క్యాబ్‌లు బిగిస్తున్నాను",
+"code": "const S = W.store;\nS.body = S.sf('paint', '#34597a', { tile: 160 }); S.cream = S.sf('paint', '#e9e2cf', { tile: 160 });\nconst glass = new THREE.MeshStandardMaterial({ color: 0x9fc4dc, roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.3 });\n// inside the machine room: the converters that turn the transformer's power into three-phase power for the motors\nconst cv = W.group();\nfor (const x of [-360, 360]) { cv.add(W.mesh(W.box(240, 200, 96, 4), S.sf('paint', '#c9cdd2', { tile: 100 }), { at: [x, 268, -96] })); for (let k = 0; k < 3; k++) cv.add(W.mesh(W.box(60, 150, 3), S.sf('paint', '#8f979e', { tile: 100 }), { at: [x - 72 + k * 72, 262, -47] })); }\nW.add(cv, { label: 'ట్రాక్షన్ కన్వర్టర్లు', heat: [35, 85], layer: 2, explode: [0, 120, -160] });\nconst ax = W.group();\nfor (const x of [-360, 360]) ax.add(W.mesh(W.box(200, 180, 80, 4), S.sf('paint', '#d9d5ca', { tile: 100 }), { at: [x, 258, 104] }));\nax.add(W.mesh(W.box(180, 190, 80, 4), S.sf('paint', '#8fb2cc', { tile: 100 }), { at: [0, 262, 104] }), W.mesh(W.box(180, 160, 90, 4), S.sf('paint', '#6b7f90', { tile: 100 }), { at: [0, 248, -98] }));\nW.add(ax, { label: 'ఆక్సిలరీ కన్వర్టర్', heat: [35, 70], layer: 2, explode: [0, 120, 160] });\nconst bl = W.group();\nS.blow = [];\nfor (const x of [-620, 620]) { bl.add(W.mesh(W.cyl(46, 46, 150, 20), S.sf('paint', '#5d7f6a', { tile: 80 }), { at: [x, 245, 0] })); const f = W.group({ at: [x, 324, 0] }); for (let k = 0; k < 6; k++) f.add(W.mesh(W.box(40, 3, 12), S.steel, { at: [Math.cos(k * 1.047) * 22, 0, Math.sin(k * 1.047) * 22], rot: [0, -k * 60, 12] })); bl.add(f); S.blow.push(f); }\nW.add(bl, { label: 'కూలింగ్ బ్లోయర్లు', heat: [35, 60], layer: 2, explode: [0, 160, 0] });\nconst sh = W.group();\nfor (const sz of [-1, 1]) {\n  sh.add(W.mesh(W.box(1540, 236, 6), S.body, { at: [0, 284, sz * 153] }), W.mesh(W.box(1540, 18, 7), S.cream, { at: [0, 224, sz * 153.4] }));\n  for (const x of [-560, -200, 200, 560]) sh.add(W.mesh(W.box(150, 90, 4), S.sf('metal', '#2c3036', { rough: 0.7, tile: 6 }), { at: [x, 330, sz * 155.6] })); // the air louvres\n}\nsh.add(W.mesh(W.box(1540, 20, 300, 9), S.sf('paint', '#8c98a3', { tile: 160 }), { at: [0, 410, 0] }));\nW.add(sh, { label: 'బాడీ షెల్', layer: 0, peelBy: [0, 380, 0], explode: [0, 380, 0] });\nconst cab = W.group();\nS.head = S.lamp('#fff3cf', 5, 0.5); S.red = S.lamp('#ff3a2a', 2, 0.3);\nfor (const sx of [-1, 1]) {\n  const c = W.group({ at: [sx * 870, 0, 0], rot: [0, sx > 0 ? 0 : 180, 0] });\n  c.add(W.mesh(W.box(200, 6, 306), S.sf('tile', '#6a6d70', { tile: 60 }), { at: [0, 167, 0] }));                         // its floor\n  c.add(W.mesh(W.box(8, 130, 306), S.body, { at: [100, 232, 0] }), W.mesh(W.box(9, 70, 300), S.sf('paint', '#d9a92a', { tile: 80 }), { at: [100.4, 208, 0] })); // the nose\n  for (const z of [-150, 0, 150]) c.add(W.mesh(W.box(9, 104, 10), S.body, { at: [92, 348, z], rot: [0, 0, 9] }));\n  for (const z of [-75, 75]) c.add(W.mesh(W.box(4, 100, 140), glass, { at: [92, 348, z], rot: [0, 0, 9] }));              // the windscreens\n  for (const sz of [-1, 1]) { c.add(W.mesh(W.box(200, 130, 6), S.body, { at: [0, 232, sz * 153] }), W.mesh(W.box(200, 18, 7), S.cream, { at: [0, 224, sz * 153.4] }), W.mesh(W.box(110, 100, 4), glass, { at: [20, 348, sz * 153] }), W.mesh(W.box(40, 104, 6), S.body, { at: [-80, 348, sz * 153] }), W.mesh(W.box(64, 104, 6), S.body, { at: [-78, 348, sz * 153] })); }\n  c.add(W.mesh(W.box(196, 20, 306, 9), S.sf('paint', '#8c98a3', { tile: 160 }), { at: [-6, 408, 0] }), W.mesh(W.box(6, 236, 300), S.sf('paint', '#c9cdd2', { tile: 100 }), { at: [-100, 284, 0] }));\n  c.add(W.mesh(W.box(46, 60, 250, 6), S.sf('paint', '#2c3036', { tile: 60 }), { at: [66, 232, 0], rot: [0, 0, -10] }));  // the driving desk\n  c.add(W.mesh(W.box(4, 26, 5), S.steel, { at: [50, 276, -50], rot: [0, 0, 20] }), W.mesh(W.sphere(4, 8), S.matte('#c23a2e', 0.4), { at: [46, 290, -50] })); // the master controller\n  c.add(W.mesh(W.box(34, 20, 60), W.screen('#0a1a26', 0.6), { at: [72, 268, 40], rot: [0, 0, -40] }));\n  for (const z of [-70, 70]) c.add(W.mesh(W.box(40, 10, 44, 4), W.rubber('#23262a'), { at: [-10, 216, z] }), W.mesh(W.box(8, 50, 44, 4), W.rubber('#23262a'), { at: [-30, 246, z] }), W.mesh(W.cyl(4, 4, 46, 8), S.steel, { at: [-10, 190, z] }));\n  c.add(W.mesh(W.cyl(13, 13, 6, 16), S.head, { at: [103, 420, 0], rot: [0, 0, 90] }));\n  for (const z of [-110, 110]) c.add(W.mesh(W.cyl(7, 7, 4, 12), S.head, { at: [105, 200, z], rot: [0, 0, 90] }), W.mesh(W.cyl(5, 5, 4, 10), S.red, { at: [105, 200, z + (z > 0 ? -18 : 18)], rot: [0, 0, 90] }));\n  cab.add(c);\n}\nW.add(cab, { label: 'డ్రైవర్ క్యాబ్‌లు', layer: 1, peelBy: [0, 0, 0] });\n"
+},
+{
+"id": "roof",
+"status": "పాంటోగ్రాఫ్ బిగిస్తున్నాను",
+"code": "const S = W.store;\n// on the roof: the pantograph (a sprung arm that presses a carbon strip up against the wire), the main switch (VCB),\n// the bar that carries 25,000 V to the transformer below\nconst ins = S.matte('#7a4a32', 0.4), red = S.sf('paint', '#b6463a', { tile: 60 });\nconst rg = W.group();\nrg.add(S.beam([560, 452, 0], [150, 452, 0], 2.4, S.sf('metal', '#b08a3a', { rough: 0.4 })), S.beam([-560, 452, 0], [150, 452, 0], 2.4, S.sf('metal', '#b08a3a', { rough: 0.4 })));\nfor (const x of [380, -200, -400]) rg.add(W.mesh(W.cyl(6, 9, 30, 10), ins, { at: [x, 436, 0] }));\nrg.add(W.mesh(W.cyl(8, 11, 40, 12), ins, { at: [150, 440, 0] }), W.mesh(W.cyl(9, 9, 70, 12), S.matte('#d9d5ca', 0.4), { at: [150, 470, 30], rot: [90, 0, 0] }), W.mesh(W.box(40, 22, 40), S.sf('paint', '#8c98a3'), { at: [150, 432, 60] })); // the VCB\nrg.add(W.mesh(W.cyl(7, 10, 60, 12), ins, { at: [-60, 450, -60] }), S.beam([150, 452, 0], [-60, 478, -60], 2, S.sf('metal', '#b08a3a', { rough: 0.4 })));\nW.add(rg, { label: 'రూఫ్ పరికరాలు', heat: [30, 50], explode: [0, 120, 0] });\nconst pg = W.group();\nS.pan = [];\nfor (const x of [560, -560]) {\n  for (const sx of [-1, 1]) for (const sz of [-1, 1]) pg.add(W.mesh(W.cyl(5, 7, 26, 10), ins, { at: [x + sx * 50, 433, sz * 40] }));\n  pg.add(W.mesh(W.box(120, 6, 96), red, { at: [x, 449, 0] }));\n  const p = { x, low: [], up: [], head: W.group(), k: 0 };\n  for (const z of [-30, 30]) { const a = W.mesh(W.cyl(2.6, 2.6, 1, 8), red), b = W.mesh(W.cyl(2, 2, 1, 8), red); pg.add(a, b); p.low.push({ m: a, z }); p.up.push({ m: b, z }); }\n  p.head.add(W.mesh(W.box(26, 4, 170), S.sf('metal', '#3d4248', { rough: 0.6 })), W.mesh(W.box(8, 3, 150), S.matte('#1b1c1e', 0.6), { at: [-7, 3, 0] }), W.mesh(W.box(8, 3, 150), S.matte('#1b1c1e', 0.6), { at: [7, 3, 0] }));\n  for (const z of [-84, 84]) p.head.add(W.mesh(W.box(26, 4, 30), S.sf('metal', '#3d4248', { rough: 0.6 }), { at: [0, -5, z + (z > 0 ? 10 : -10)], rot: [z > 0 ? 24 : -24, 0, 0] }));\n  pg.add(p.head); S.pan.push(p);\n}\nW.add(pg, { label: 'పాంటోగ్రాఫ్', heat: [30, 60], explode: [0, 60, 0] });\n"
+},
+{
+"id": "run",
+"status": "ఇంజన్ స్టార్ట్‌కి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is the driver's notch (0 to full). The wheels turn, the sleepers and masts pass. 🚩 \"down\": the\n// pantograph is lowered: no power, it coasts. 🚩 \"regen\": the motors work as generators: they brake the train and send\n// the power back up into the wire. Over the limit the wheels begin to slip: the control cuts the pull and drops sand.\nconst sg = W.group();\nsg.add(W.mesh(W.box(14, 520, 14), S.sf('metal', '#9aa2aa', { rough: 0.55 }), { at: [2600, 260, 330] }), W.mesh(W.box(40, 110, 30), S.matte('#1b1c1e', 0.7), { at: [2600, 470, 330] }));\nS.sigG = new THREE.MeshStandardMaterial({ color: 0x102010, emissive: 0x3aff6a, emissiveIntensity: 2.5 });\nsg.add(W.mesh(W.cyl(10, 10, 4, 14), S.sigG, { at: [2579, 440, 330], rot: [0, 0, 90] }));\nW.add(sg, { label: 'సిగ్నల్', ground: true });\nW.throttle({ label: 'నాచ్', rise: 0.5, fall: 0.5, start: 0.5 });\nconst mot = W.sound({ kind: 'motor', label: 'ట్రాక్షన్ మోటార్లు', gain: 0.5, f0: 60 });\nconst blw = W.sound({ kind: 'fans', label: 'కూలింగ్ బ్లోయర్లు', gain: 0.4 });\nconst whl = W.sound({ kind: 'chain', label: 'చక్రాలు', gain: 0.35 });\nW.sound({ kind: 'hum', label: 'మెయిన్ ట్రాన్స్‌ఫార్మర్', gain: 0.4, f0: 100 });\nconst up = new THREE.Vector3(0, 1, 0), V = (x, y, z) => new THREE.Vector3(x, y, z);\nconst link = (m, a, b) => { m.position.copy(a).add(b).multiplyScalar(0.5); m.scale.set(1, a.distanceTo(b), 1); m.quaternion.setFromUnitVectors(up, b.clone().sub(a).normalize()); };\nconst M = new THREE.Matrix4();\nlet v = 0, x = 0, wa = 0, hudT = 0, pk = 1, slip = 0;\nW.onTick((t, dt) => {\n  const s = W.env.spool, down = W.env.flag('down'), regen = W.env.flag('regen') && !down, over = W.env.over, dead = W.faultOf('పాంటోగ్రాఫ్') === 'stop';\n  pk += ((down || dead ? 0 : 1) - pk) * Math.min(1, dt * 0.9);\n  const live = pk > 0.92, kmh = v * 3.6 / 100;\n  // the pull: all it can at low speed (458 kN), then as much as its power allows; the train behind it resists\n  const P = live && !regen ? 4500 * s : 0, te = P > 0 ? Math.min(458 * s, P / Math.max(1, kmh / 3.6)) : 0, brake = regen ? Math.min(260, 4500 / Math.max(6, kmh / 3.6)) * (kmh > 3 ? 1 : 0) : 0;\n  slip += ((over && live ? 1 : 0) - slip) * Math.min(1, dt * 2);\n  const acc = (te * (1 - 0.6 * slip) - brake - (18 + 0.012 * kmh * kmh) - (te === 0 ? 4 : 0)) * 0.9; // (cm/s² for our notional train)\n  v = Math.max(0, Math.min(3056, v + acc * dt));\n  const vis = Math.min(v, 520); // (the passing sleepers are shown slower above this, or the eye sees them stand still)\n  x += vis * dt; wa += dt * vis / 54.5 * (1 + 2.5 * slip);\n  for (const w of S.wheels) w.rotation.z = -wa;\n  for (let i = 0; i < 108; i++) S.sleepers.setMatrixAt(i, M.makeTranslation(-3210 + i * 60 - (x % 60), 13, 0));\n  S.sleepers.instanceMatrix.needsUpdate = true;\n  S.masts.forEach((m, i) => { m.position.x = ((i * 1600 - x) % 6400 + 6400) % 6400 - 3200; });\n  for (let i = 0; i < 4; i++) S.posts.setMatrixAt(i, M.makeTranslation(((i * 1600 + 700 - x) % 6400 + 6400) % 6400 - 3200, 35, 300));\n  S.posts.instanceMatrix.needsUpdate = true;\n  for (const f of S.blow) f.rotation.y += dt * (live ? 26 : 2);\n  S.pan.forEach((p, i) => { // the rear one works; the front one stays down\n    const k = i === 0 ? 0 : pk, h = 14 + 84 * k, L = 62, d = Math.sqrt(Math.max(1, L * L - (h / 2) * (h / 2)));\n    for (const a of p.low) link(a.m, V(p.x + 30, 452, a.z), V(p.x + 30 - d, 452 + h / 2, a.z * 0.6));\n    for (const b of p.up) link(b.m, V(p.x + 30 - d, 452 + h / 2, b.z * 0.6), V(p.x + 30, 452 + h, b.z * 0.4));\n    p.head.position.set(p.x + 30, 452 + h + 2, 0);\n  });\n  S.sigG.emissiveIntensity = 2.5;\n  mot.set(Math.min(1, kmh / 110) * (P > 0 || regen ? 1 : 0.3)); blw.set(live ? 0.7 : 0.05); whl.set(Math.min(1, kmh / 110));\n  S.step(t, dt, 1);\n  if (t - hudT > 0.25) {\n    hudT = t;\n    const kw = regen ? -brake * kmh / 3.6 : te * kmh / 3.6;\n    W.hud({ 'వేగం': Math.round(kmh) + ' km/h', 'లాగే బలం': regen ? 'బ్రేక్ ' + Math.round(brake) + ' kN' : Math.round(te * (1 - 0.6 * slip)) + ' kN' + (slip > 0.3 ? ' ⚠️ చక్రాలు జారుతున్నాయి' : ''), 'పవర్': regen ? 'వైర్‌లోకి తిరిగి ' + Math.round(-kw) + ' kW ♻️' : Math.round(kw) + ' kW',\n      'లైన్': live ? '25 kV · ' + Math.round(Math.abs(kw) / 25 / 0.95) + ' A' : 'కరెంట్ లేదు', 'పాంటోగ్రాఫ్': down || dead ? 'కిందికి (VCB ఓపెన్)' : live ? 'పైకి ✅' : 'లేస్తోంది', 'మోటార్లు': '6 × ' + Math.round(Math.min(1, kmh / 110) * 132) + ' Hz' });\n    W.report({ power: s, kmh, pullKn: te, kw });\n  }\n});\nconst liveOn = (e) => !e.flag('down'), pull = (e) => !e.flag('down') && !e.flag('regen'), back = (e) => e.flag('regen') && !e.flag('down');\nconst P1 = [[-2400, 550, 0], [-530, 550, 0], [-530, 452, 0], [150, 452, 0], [-60, 478, -60], [-60, 200, -60], [0, 100, 0]];\nW.stream(P1, { kind: 'power', count: 40, size: 14, speed: 1.4, when: pull });\nW.stream(P1, { kind: 'regen', count: 40, size: 14, speed: 1.4, when: back, reverse: true });\nfor (const sx of [-1, 1]) {\n  W.stream([[0, 100, 0], [sx * 200, 200, -96], [sx * 360, 268, -96]], { kind: 'power', count: 8, size: 10, speed: 1.2, when: pull });\n  for (const dx of [-190, 0, 190]) W.stream([[sx * 360, 200, -96], [sx * 600 + dx, 150, -40], [sx * 600 + dx, 76, 0]], { kind: 'fuel', count: 6, size: 9, speed: 1.2, when: liveOn });\n}\nfor (const xx of [-620, 620]) W.stream([[xx, 420, 0], [xx, 330, 0], [xx, 180, 0], [xx, 80, 0]], { kind: 'cool', count: 8, size: 12, speed: 1.2, when: liveOn });\nW.walk({ eye: 160, speed: 260, area: [-3000, -1000, 3000, 1650],\n  floor: (x, z) => (x > 775 && x < 965 && Math.abs(z) < 145 ? 170 : 0),\n  solid: [[-1080, -170, 770, 170], [-3200, -340, 3200, -320]],\n  spots: [\n    { name: 'ఇంజన్ పక్కన', at: [700, 0, 1550], look: [0, 240, 0] },\n    { name: 'డ్రైవర్ క్యాబ్‌లో', at: [800, 170, -30], look: [2600, 330, 60] },\n    { name: 'బోగీ దగ్గర', at: [1000, 0, 640], look: [600, 90, 80] },\n    { name: 'ముందు నుంచి', at: [1750, 0, 330], look: [900, 300, 0] },\n    { name: 'పాంటోగ్రాఫ్ కింద', at: [-1100, 0, 1000], look: [-530, 480, 0] },\n  ] });\n"
+}
+],
+"say": "ఎలక్ట్రిక్ రైలు ఇంజన్ రెడీ Sir. 'ఫుల్ పవర్' అంటే వేగం పెరుగుతుంది, 'రీజనరేటివ్ బ్రేక్' అంటే కరెంట్ తిరిగి వైర్‌లోకి, 'డ్రైవర్ క్యాబ్‌లోకి వెళ్ళు' అంటే పైలట్ సీట్ నుంచి చూడొచ్చు.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"ఎలక్ట్రిక్ రైలు ఇంజన్ ఎలా పనిచేస్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది 6,000 HP ఎలక్ట్రిక్ రైలు ఇంజన్, 20 m పొడవు, 123 టన్నులు. మా సొంత డిజైన్: ఏ రైల్వే పేరూ లేదు.\", \"focus\": [{\"id\": \"body\", \"piece\": \"బాడీ షెల్\"}, {\"id\": \"body\", \"piece\": \"డ్రైవర్ క్యాబ్‌లు\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 9}, {\"say\": \"పైన 25,000 వోల్టుల వైర్. పాంటోగ్రాఫ్ కార్బన్ పట్టీని వైర్‌కి అదిమి కరెంట్ తీసుకుంటుంది; VCB మెయిన్ స్విచ్.\", \"focus\": [{\"id\": \"roof\", \"piece\": \"పాంటోగ్రాఫ్\"}, {\"id\": \"roof\", \"piece\": \"రూఫ్ పరికరాలు\"}, {\"id\": \"track\", \"piece\": \"ఓవర్‌హెడ్ వైర్\"}], \"view\": \"side\", \"close\": true, \"secs\": 10}, {\"say\": \"కరెంట్ కిందికి మెయిన్ ట్రాన్స్‌ఫార్మర్‌కి: అది వోల్టేజ్ తగ్గిస్తుంది. బోగీల మధ్య కింద వేలాడుతుంది.\", \"focus\": [{\"id\": \"underframe\", \"piece\": \"మెయిన్ ట్రాన్స్‌ఫార్మర్\"}], \"view\": \"side\", \"close\": true, \"flow\": [{\"from\": \"roof\", \"fromPiece\": \"పాంటోగ్రాఫ్\", \"to\": \"underframe\", \"toPiece\": \"మెయిన్ ట్రాన్స్‌ఫార్మర్\", \"kind\": \"power\", \"count\": 8}], \"secs\": 9}, {\"say\": \"బాడీ తీస్తే: కన్వర్టర్లు కరెంట్‌ని మూడు ఫేజ్‌లుగా మారుస్తాయి; బ్లోయర్లు అన్నిటినీ చల్లబరుస్తాయి.\", \"focus\": [{\"id\": \"body\", \"piece\": \"ట్రాక్షన్ కన్వర్టర్లు\"}, {\"id\": \"body\", \"piece\": \"ఆక్సిలరీ కన్వర్టర్\"}, {\"id\": \"body\", \"piece\": \"కూలింగ్ బ్లోయర్లు\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"body\", \"piece\": \"బాడీ షెల్\", \"by\": [0, 380, 0], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"ప్రతి ఇరుసు పక్కన ఒక ట్రాక్షన్ మోటార్: ఆరు మోటార్లు గేర్ల ద్వారా పన్నెండు చక్రాలని తిప్పుతాయి.\", \"focus\": [{\"id\": \"bogies\", \"piece\": \"ట్రాక్షన్ మోటార్లు\"}, {\"id\": \"bogies\", \"piece\": \"చక్రాలు\"}, {\"id\": \"bogies\", \"piece\": \"బోగీ ఫ్రేమ్‌లు\"}], \"view\": \"side\", \"close\": true, \"secs\": 10}, {\"say\": \"'రీజనరేటివ్ బ్రేక్' అంటే మోటార్లు కరెంట్‌ని వైర్‌లోకి తిరిగి పంపడం, 'పాంటోగ్రాఫ్ దించు' అంటే కరెంట్ లేకుండా దొర్లడం చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"roof\", \"piece\": \"పాంటోగ్రాఫ్\"}, {\"id\": \"bogies\", \"piece\": \"ట్రాక్షన్ మోటార్లు\"}], \"view\": \"iso\", \"secs\": 9}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"రైలు ఇంజన్",
+"ఎలక్ట్రిక్ రైలు",
+"ఎలక్ట్రిక్ లోకో",
+"లోకోమోటివ్",
+"రైల్ ఇంజన్",
+"ట్రైన్ ఇంజన్",
+"రైలు",
+"locomotive",
+"electric loco",
+"train engine",
+"electric train",
+"rail engine"
+],
+"powerName": "🚆 నాచ్",
+"outdoor": true,
+"walk": [
+"ఇంజన్ పక్కన",
+"డ్రైవర్ క్యాబ్‌లో",
+"బోగీ దగ్గర",
+"ముందు నుంచి",
+"పాంటోగ్రాఫ్ కింద"
+],
+"switches": [
+{
+"id": "regen",
+"menu": "♻️ రీజనరేటివ్ బ్రేక్",
+"words": [
+"రీజనరేటివ్ బ్రేక్",
+"రీజెన్ బ్రేక్",
+"బ్రేక్ వేయి",
+"కరెంట్ తిరిగి ఇవ్వు",
+"regen",
+"regenerative brake",
+"brake"
+],
+"offWords": [
+"బ్రేక్ వదులు",
+"రీజెన్ ఆపు",
+"బ్రేక్ తీయి",
+"regen off",
+"release brake"
+],
+"on": "♻️ రీజనరేటివ్ బ్రేక్ Sir: మోటార్లు ఇప్పుడు జనరేటర్లు. రైలు కదలిక శక్తి కరెంట్‌గా మారి పాంటోగ్రాఫ్ ద్వారా వైర్‌లోకి తిరిగి వెళ్తోంది (పచ్చ ప్రవాహం), వేగం తగ్గుతోంది.",
+"off": "బ్రేక్ వదిలాను Sir: మోటార్లు మళ్ళీ లాగుతున్నాయి."
+},
+{
+"id": "down",
+"menu": "⬇️ పాంటోగ్రాఫ్ దించు",
+"words": [
+"పాంటోగ్రాఫ్ దించు",
+"పాంటో దించు",
+"కరెంట్ ఆపు",
+"pantograph down",
+"panto down",
+"lower pantograph"
+],
+"offWords": [
+"పాంటోగ్రాఫ్ ఎత్తు",
+"పాంటో ఎత్తు",
+"pantograph up",
+"panto up",
+"raise pantograph"
+],
+"on": "⬇️ VCB తెరిచి పాంటోగ్రాఫ్ దించాను Sir: ఇంజన్‌కి కరెంట్ లేదు, బ్లోయర్లు ఆగాయి. రైలు తన వేగంతో దొర్లుతూ నెమ్మదిగా తగ్గుతోంది.",
+"off": "⬆️ పాంటోగ్రాఫ్ లేచి వైర్‌ని తాకింది Sir, VCB మూసుకుంది: 25,000 వోల్టులు మళ్ళీ లోపలికి."
+}
+],
+"power": {
+"start": "నాచ్ ఇచ్చాను Sir: ఇంజన్ నెమ్మదిగా కదులుతోంది. మొదట్లో లాగే బలం ఎక్కువ.",
+"full": "ఫుల్ నాచ్ Sir: 4,500 kW. వేగం పెరిగే కొద్దీ లాగే బలం తగ్గుతుంది (శక్తి = బలం × వేగం); సుమారు 105 km/h దగ్గర నిలుస్తుంది.",
+"half": "సగం నాచ్ Sir: సుమారు 2,250 kW.",
+"stop": "నాచ్ సున్నా Sir: మోటార్లు లాగడం ఆపాయి, రైలు దొర్లుతూ నెమ్మదిస్తోంది.",
+"over": "ఎక్కువ బలం ఇచ్చాం Sir: చక్రాలు పట్టా మీద జారుతున్నాయి! కంప్యూటర్ లాగే బలం తగ్గించి, పట్టా మీద ఇసుక చల్లుతోంది.",
+"cut": "బలం తగ్గించాను Sir: చక్రాలు మళ్ళీ పట్టు పట్టాయి."
+},
+"info": {
+"రైలు పట్టాలు": {
+"simple": "రైలు పట్టాలు: ఉక్కు పట్టాలు, కాంక్రీట్ స్లీపర్లు, కింద కంకర. పట్టాల మధ్య దూరం 1.676 m (బ్రాడ్ గేజ్).",
+"deep": "కంకర బరువుని పంచుతుంది, వాన నీటిని పోనిస్తుంది, కుదుపులని పీల్చుకుంటుంది. ఉక్కు చక్రం ఉక్కు పట్టా మీద చాలా తక్కువ రాపిడితో దొర్లుతుంది: అందుకే రైలు తక్కువ శక్తితో ఎక్కువ బరువు లాగుతుంది. పట్టాలే కరెంట్‌కి తిరుగు దారి కూడా.",
+"specs": {
+"గేజ్": "1,676 mm",
+"పట్టా": "మీటర్‌కి సుమారు 60 kg"
+}
+},
+"ఓవర్‌హెడ్ వైర్": {
+"simple": "ఓవర్‌హెడ్ వైర్: పట్టాల మీద 5.5 m ఎత్తులో రాగి తీగ, అందులో 25,000 వోల్టులు. చాలా ప్రమాదం: దగ్గరికి వెళ్ళకూడదు.",
+"deep": "పై తీగ (కేటనరీ) బరువు మోస్తుంది, కింది కాంటాక్ట్ వైర్ సమంగా వేలాడుతుంది. తీగ కొంచెం జిగ్‌జాగ్‌గా ఉంటుంది: పాంటోగ్రాఫ్ పట్టీ ఒకే చోట అరగకుండా. రైలు పెట్టెల మీద ఎక్కడం, వైర్ కింద పొడవైన కర్రలు, గాలిపటాలు: ప్రాణాపాయం.",
+"specs": {
+"వోల్టేజ్": "25,000 V AC",
+"ఎత్తు": "సుమారు 5.5 m"
+}
+},
+"దారి పక్కన": {
+"simple": "దారి పక్కన చెట్లు, కిలోమీటర్ రాళ్ళు: ఇంజన్ నడుస్తుంటే వెనక్కి వెళ్తాయి.",
+"deep": "ఎక్కువ వేగంలో వీటిని కొంచెం నెమ్మదిగా చూపిస్తున్నాను, లేకపోతే కంటికి ఆగినట్టు కనిపిస్తాయి. నిజమైన వేగం పైన అంకెల్లో.",
+"specs": {
+"చూడండి": "పైన ఎడమ అంకెలు"
+}
+},
+"బోగీ ఫ్రేమ్‌లు": {
+"simple": "బోగీ ఫ్రేమ్‌లు: ఒక్కో బోగీలో మూడు ఇరుసులు. ఇంజన్ బాడీ వీటి మీద స్ప్రింగ్‌లతో కూర్చుంటుంది.",
+"deep": "బోగీ మధ్య పిన్ మీద తిరుగుతుంది: అందుకే 20 m ఇంజన్ మలుపులు తిరగగలదు. పసుపు స్ప్రింగ్‌లు, ఎర్ర డ్యాంపర్లు కుదుపులు తగ్గిస్తాయి.",
+"specs": {
+"బోగీలు": "2",
+"ఇరుసులు": "6 (Co-Co)"
+}
+},
+"చక్రాలు": {
+"simple": "చక్రాలు: 12 ఉక్కు చక్రాలు, ప్రతి ఇరుసుకి ఒక మోటార్. చక్రం లోపలి అంచు (ఫ్లాంజ్) పట్టా మీద నుంచి జారకుండా ఆపుతుంది.",
+"deep": "మొత్తం ఇంజన్ బరువు 123 టన్నులు ఈ చక్రాల మీదే: బరువు ఎక్కువైతేనే ఉక్కు మీద ఉక్కు జారకుండా లాగగలదు. జారితే ఇసుక చల్లుతారు.",
+"specs": {
+"వ్యాసం": "సుమారు 1.09 m",
+"ఇంజన్ బరువు": "సుమారు 123 టన్నులు"
+}
+},
+"ట్రాక్షన్ మోటార్లు": {
+"simple": "ఇవి ట్రాక్షన్ మోటార్లు: ఆరు, ప్రతి ఇరుసు పక్కన ఒకటి. గేర్ ద్వారా చక్రాలని తిప్పుతాయి.",
+"deep": "మూడు ఫేజ్‌ల ఇండక్షన్ మోటార్లు: బ్రష్‌లు లేవు, నిర్వహణ తక్కువ. బ్రేక్ వేసేటప్పుడు ఇవే జనరేటర్లుగా మారి కరెంట్ తిరిగి ఇస్తాయి. 'మోటార్ లోపల చూపించు' అంటే చూపిస్తాను.",
+"specs": {
+"సంఖ్య": "6",
+"ఒక్కోటి": "సుమారు 850 kW",
+"మొత్తం": "సుమారు 6,000 HP"
+}
+},
+"అండర్‌ఫ్రేమ్ కప్లర్లు": {
+"simple": "అండర్‌ఫ్రేమ్: ఇంజన్ వెన్నెముక. చివర్లలో కప్లర్ (పెట్టెలని కలిపేది), బఫర్లు, పట్టా గార్డ్.",
+"deep": "కప్లర్ మొత్తం రైలుని లాగే బలాన్ని మోస్తుంది: 58 పెట్టెల గూడ్స్ రైలు బరువు 5,000 టన్నుల పైన.",
+"specs": {
+"లాగగలది": "5,000+ టన్నుల రైలు"
+}
+},
+"మెయిన్ ట్రాన్స్‌ఫార్మర్": {
+"simple": "ఇది మెయిన్ ట్రాన్స్‌ఫార్మర్: వైర్ నుంచి వచ్చే 25,000 వోల్టులని మోటార్లకి తగిన తక్కువ వోల్టేజ్‌కి తగ్గిస్తుంది. బోగీల మధ్య కింద వేలాడుతుంది.",
+"deep": "ఇంజన్‌లో అతి బరువైన భాగం (సుమారు 9 టన్నులు): కింద ఉంచితే ఇంజన్ స్థిరంగా ఉంటుంది. నూనె, రెక్కలు, బ్లోయర్ చల్లబరుస్తాయి.",
+"specs": {
+"లోపలికి": "25,000 V",
+"శక్తి": "సుమారు 6,500 kVA"
+}
+},
+"కంప్రెసర్ ఎయిర్ ట్యాంకులు": {
+"simple": "కంప్రెసర్, ఎయిర్ ట్యాంకులు, బ్యాటరీ: గాలి ఒత్తిడితోనే మొత్తం రైలు బ్రేకులు పనిచేస్తాయి.",
+"deep": "ఇంజన్ నుంచి చివరి పెట్టె దాకా గాలి పైపు ఉంటుంది. పైపు తెగితే, గాలి పోతే బ్రేకులు తామే పడతాయి: అందుకే రైలు బ్రేకులు సురక్షితం (ఫెయిల్ సేఫ్). పాంటోగ్రాఫ్‌ని పైకి ఎత్తేది కూడా గాలే.",
+"specs": {
+"గాలి ఒత్తిడి": "సుమారు 10 bar"
+}
+},
+"ట్రాక్షన్ కన్వర్టర్లు": {
+"simple": "ట్రాక్షన్ కన్వర్టర్లు: ట్రాన్స్‌ఫార్మర్ కరెంట్‌ని మోటార్లకి కావాల్సిన మూడు ఫేజ్‌ల కరెంట్‌గా మారుస్తాయి.",
+"deep": "వైర్ కరెంట్ ఒక ఫేజ్, 50 Hz. కన్వర్టర్ దాన్ని ముందు DC గా, తర్వాత కావాల్సిన ఫ్రీక్వెన్సీ (0–132 Hz) మూడు ఫేజ్‌లుగా మారుస్తుంది: ఫ్రీక్వెన్సీ పెంచితే మోటార్ వేగం పెరుగుతుంది. డ్రైవర్ నాచ్ ఇదే.",
+"specs": {
+"బయటికి": "3 ఫేజ్, 0–132 Hz"
+}
+},
+"ఆక్సిలరీ కన్వర్టర్": {
+"simple": "ఆక్సిలరీ కన్వర్టర్, కంట్రోల్ క్యాబినెట్లు: బ్లోయర్లు, కంప్రెసర్, లైట్లు, కంప్యూటర్‌లకి కరెంట్.",
+"deep": "ఇంజన్ కంప్యూటర్ ప్రతి చక్రం వేగం చూస్తుంది: ఒకటి జారితే క్షణంలో దాని మోటార్ బలం తగ్గిస్తుంది.",
+"specs": {
+"పని": "సహాయక కరెంట్, నియంత్రణ"
+}
+},
+"కూలింగ్ బ్లోయర్లు": {
+"simple": "కూలింగ్ బ్లోయర్లు: మోటార్లు, ట్రాన్స్‌ఫార్మర్, కన్వర్టర్లని గాలితో చల్లబరిచే పెద్ద ఫ్యాన్లు.",
+"deep": "స్టేషన్‌లో ఆగిన ఇంజన్ నుంచి వచ్చే హోరు ఇవే. పక్క గోడల జాలీల గుండా గాలి లోపలికి వస్తుంది.",
+"specs": {
+"పని": "చల్లదనం"
+}
+},
+"బాడీ షెల్": {
+"simple": "బాడీ షెల్: యంత్రాల గదిని కప్పే గోడలు, పైకప్పు. 'పైకప్పు తీయి' అంటే లేచి లోపల కనిపిస్తుంది.",
+"deep": "మా సొంత డిజైన్, రంగులు: ఏ రైల్వే పేరూ, నంబరూ లేదు. మధ్యలో సన్నని నడక దారి, రెండు వైపులా క్యాబినెట్లు.",
+"specs": {
+"పొడవు": "సుమారు 20 m",
+"డిజైన్": "మా సొంతం"
+}
+},
+"డ్రైవర్ క్యాబ్‌లు": {
+"simple": "డ్రైవర్ క్యాబ్‌లు: రెండు చివర్లా ఒక్కోటి, ఇంజన్‌ని తిప్పాల్సిన అవసరం లేదు. '🚶 డ్రైవర్ క్యాబ్‌లో' అంటే లోపల నుంచి చూడొచ్చు.",
+"deep": "లోకో పైలట్, అసిస్టెంట్ కూర్చుంటారు. డెస్క్ మీద మాస్టర్ కంట్రోలర్ (ఎర్ర గుబ్బ), బ్రేక్ హ్యాండిల్‌లు, స్క్రీన్. పైలట్ నిర్ణీత సమయంలో ఒక పెడల్ నొక్కుతూ ఉండాలి: లేకపోతే రైలు తానే ఆగుతుంది (విజిలెన్స్).",
+"specs": {
+"క్యాబ్‌లు": "2"
+}
+},
+"రూఫ్ పరికరాలు": {
+"simple": "రూఫ్ పరికరాలు: VCB (మెయిన్ స్విచ్), ఇన్సులేటర్లు, రాగి కడ్డీ. 25,000 వోల్టులని పాంటోగ్రాఫ్ నుంచి ట్రాన్స్‌ఫార్మర్‌కి తీసుకెళ్తాయి.",
+"deep": "VCB (వాక్యూమ్ సర్క్యూట్ బ్రేకర్) ఏదైనా తప్పు జరిగితే క్షణంలో కరెంట్ ఆపుతుంది. రెండు వేర్వేరు సబ్‌స్టేషన్ల తీగల మధ్య చిన్న 'న్యూట్రల్' ముక్క దాటేటప్పుడు పైలట్ VCB తెరుస్తాడు.",
+"specs": {
+"VCB": "మెయిన్ స్విచ్"
+}
+},
+"పాంటోగ్రాఫ్": {
+"simple": "ఇది పాంటోగ్రాఫ్: పైకప్పు మీద మడత చేయి. స్ప్రింగ్, గాలి ఒత్తిడితో పైకి లేచి కార్బన్ పట్టీని వైర్‌కి అదుముతుంది: కరెంట్ ఇక్కడి నుంచే లోపలికి వస్తుంది.",
+"deep": "రెండు ఉంటాయి, వెనక ఉన్నదే వాడతారు (ముందుది పాడైతే ముక్కలు వెనక దానిమీద పడకుండా). గంటకి 100 km వేగంలో కూడా వైర్‌ని వదలకూడదు: వదిలితే మెరుపులు (ఆర్క్). 'పాంటోగ్రాఫ్ దించు' అంటే చూపిస్తాను.",
+"specs": {
+"వైర్ మీద ఒత్తిడి": "సుమారు 7 kg",
+"పట్టీ": "కార్బన్"
+}
+},
+"సిగ్నల్": {
+"simple": "సిగ్నల్: పచ్చ లైట్: ముందుకి వెళ్ళొచ్చు.",
+"deep": "పచ్చ: వెళ్ళు; పసుపు: తర్వాతి సిగ్నల్ దగ్గర ఆగడానికి సిద్ధం; ఎరుపు: ఆగు.",
+"specs": {
+"పచ్చ": "వెళ్ళు"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎన్ని hp",
+"ఎంత శక్తి",
+"horse power",
+"how powerful",
+"హార్స్ పవర్"
+],
+"a": "సుమారు 6,000 HP (4,500 kW) Sir: ఆరు మోటార్లు, ఒక్కోటి 850 kW. మన ట్రాక్టర్ కంటే 130 రెట్లు. 5,000 టన్నుల గూడ్స్ రైలుని లాగగలదు."
+},
+{
+"k": [
+"కరెంట్ ఎలా",
+"ఎలా నడుస్తుంది",
+"how does it work",
+"ఎలా పనిచేస్తుంది"
+],
+"a": "వైర్‌లోని 25,000 వోల్టులు పాంటోగ్రాఫ్ ద్వారా లోపలికి వస్తాయి Sir; ట్రాన్స్‌ఫార్మర్ వోల్టేజ్ తగ్గిస్తుంది; కన్వర్టర్లు దాన్ని మూడు ఫేజ్‌ల కరెంట్‌గా మార్చి ఆరు మోటార్లకి ఇస్తాయి; మోటార్లు గేర్ల ద్వారా చక్రాలని తిప్పుతాయి. కరెంట్ పట్టాల ద్వారా తిరిగి వెళ్తుంది."
+},
+{
+"k": [
+"రీజనరేటివ్",
+"regen",
+"బ్రేక్ వేస్తే కరెంట్",
+"కరెంట్ తిరిగి"
+],
+"a": "బ్రేక్ వేసేటప్పుడు మోటార్లు జనరేటర్లుగా మారతాయి Sir: రైలు కదలిక శక్తి కరెంట్‌గా మారి వైర్‌లోకి తిరిగి వెళ్తుంది, వేరే రైళ్ళు వాడుకుంటాయి. సుమారు 15–20% కరెంట్ ఆదా, బ్రేక్ బ్లాక్‌లు కూడా అరగవు. 'రీజనరేటివ్ బ్రేక్' అంటే చూపిస్తాను."
+},
+{
+"k": [
+"25000",
+"ఎందుకు అంత వోల్టేజ్",
+"why 25 kv",
+"షాక్"
+],
+"a": "ఎక్కువ వోల్టేజ్‌లో తక్కువ కరెంట్‌తోనే ఎక్కువ శక్తి పంపొచ్చు Sir, సన్నని తీగ సరిపోతుంది, నష్టం తక్కువ. కానీ 25,000 V దగ్గరికి వెళ్ళినా (ముట్టుకోకుండానే, 2 m లోపు) కరెంట్ దూకుతుంది. పెట్టెల మీద ఎక్కడం, వైర్ దగ్గర కర్రలు, సెల్ఫీలు: ప్రాణాపాయం."
+},
+{
+"k": [
+"చక్రాలు జారితే",
+"ఇసుక",
+"sand",
+"wheel slip",
+"జారుతాయా"
+],
+"a": "ఉక్కు మీద ఉక్కు, వాన పడితే జారుతుంది Sir. కంప్యూటర్ జారే చక్రం మోటార్ బలాన్ని క్షణంలో తగ్గిస్తుంది, పట్టా మీద ఇసుక చల్లుతుంది: పట్టు పెరుగుతుంది. 'హద్దు దాటించు' అంటే చూపిస్తాను."
+},
+{
+"k": [
+"ఎంత వేగం",
+"స్పీడ్",
+"top speed",
+"వేగం ఎంత"
+],
+"a": "ఈ రకం ఇంజన్లు గూడ్స్ రైళ్ళతో గంటకి 100 km, ప్యాసింజర్ రకాలు 130–160 km Sir. బొమ్మలో ఫుల్ నాచ్‌లో సుమారు 105 km/h చేరుతుంది."
+},
+{
+"k": [
+"డీజిల్ ఇంజన్ తేడా",
+"ఎలక్ట్రిక్ ఎందుకు",
+"diesel",
+"లాభం"
+],
+"a": "ఎలక్ట్రిక్ ఇంజన్ ఇంధనం మోయదు Sir: తేలిక, శక్తి ఎక్కువ, పొగ లేదు, నిర్వహణ తక్కువ, బ్రేక్‌లో కరెంట్ తిరిగి ఇస్తుంది. డీజిల్ ఇంజన్ నిజానికి డీజిల్-ఎలక్ట్రిక్: డీజిల్ జనరేటర్ తిప్పి, మోటార్లు చక్రాలు తిప్పుతాయి. మన రైల్వే దాదాపు పూర్తిగా విద్యుదీకరణ అయింది."
+},
+{
+"k": [
+"బ్రేక్ ఎలా",
+"ఎయిర్ బ్రేక్",
+"ఎలా ఆగుతుంది",
+"brake"
+],
+"a": "ఇంజన్ నుంచి చివరి పెట్టె దాకా గాలి పైపు Sir. పైపులో ఒత్తిడి తగ్గిస్తే ప్రతి పెట్టె బ్రేకులు పడతాయి. పైపు తెగినా బ్రేకులు తామే పడతాయి. 100 km వేగంలో గూడ్స్ రైలు ఆగడానికి కిలోమీటర్ పైన పడుతుంది: అందుకే పట్టాల మీద నడవకూడదు."
+},
+{
+"k": [
+"పాంటోగ్రాఫ్ ఎందుకు",
+"pantograph",
+"పైన చేయి"
+],
+"a": "కదిలే రైలుకి నిలకడగా ఉన్న వైర్ నుంచి కరెంట్ అందించే చేయి అది Sir. కార్బన్ పట్టీ వైర్‌ని రాసుకుంటూ వెళ్తుంది; వైర్ జిగ్‌జాగ్‌గా ఉండటం వల్ల పట్టీ సమంగా అరుగుతుంది."
+}
+],
+"quiz": [
+{
+"q": "వైర్ నుంచి కరెంట్ తీసుకునేది ఏది?",
+"a": "పాంటోగ్రాఫ్",
+"opts": [
+"పాంటోగ్రాఫ్",
+"రూఫ్ పరికరాలు",
+"డ్రైవర్ క్యాబ్‌లు"
+]
+},
+{
+"q": "25,000 వోల్టులని తగ్గించేది ఏది?",
+"a": "మెయిన్ ట్రాన్స్‌ఫార్మర్",
+"opts": [
+"ట్రాక్షన్ కన్వర్టర్లు",
+"మెయిన్ ట్రాన్స్‌ఫార్మర్",
+"ఆక్సిలరీ కన్వర్టర్"
+]
+},
+{
+"q": "చక్రాలని తిప్పేవి ఏవి?",
+"a": "ట్రాక్షన్ మోటార్లు",
+"opts": [
+"ట్రాక్షన్ మోటార్లు",
+"కూలింగ్ బ్లోయర్లు",
+"బోగీ ఫ్రేమ్‌లు"
+]
+},
+{
+"q": "కరెంట్‌ని మూడు ఫేజ్‌లుగా, కావాల్సిన ఫ్రీక్వెన్సీకి మార్చేవి ఏవి?",
+"a": "ట్రాక్షన్ కన్వర్టర్లు",
+"opts": [
+"మెయిన్ ట్రాన్స్‌ఫార్మర్",
+"ట్రాక్షన్ కన్వర్టర్లు",
+"కంప్రెసర్ ఎయిర్ ట్యాంకులు"
+]
+},
+{
+"q": "బ్రేకులకి గాలి ఒత్తిడి ఇచ్చేది ఏది?",
+"a": "కంప్రెసర్ ఎయిర్ ట్యాంకులు",
+"opts": [
+"కంప్రెసర్ ఎయిర్ ట్యాంకులు",
+"కూలింగ్ బ్లోయర్లు",
+"అండర్‌ఫ్రేమ్ కప్లర్లు"
+]
+},
+{
+"q": "25,000 వోల్టులు ఉన్న తీగ ఏది?",
+"a": "ఓవర్‌హెడ్ వైర్",
+"opts": [
+"రైలు పట్టాలు",
+"ఓవర్‌హెడ్ వైర్",
+"సిగ్నల్"
+]
+}
+],
+"faults": [
+{
+"label": "పాంటోగ్రాఫ్",
+"kind": "stop",
+"clue": "నాచ్ ఇచ్చాం Sir, కానీ ఇంజన్‌కి కరెంట్ లేదు, వేగం తగ్గుతోంది. ఏది పనిచేయట్లేదు?",
+"why": "పాంటోగ్రాఫ్ కార్బన్ పట్టీ పగిలింది: సెన్సార్ గాలిని వదిలేసి పాంటోగ్రాఫ్‌ని తానే దించింది (వైర్ తెగకుండా). పైలట్ ముందు పాంటోగ్రాఫ్ ఎత్తి ప్రయాణం కొనసాగిస్తాడు; షెడ్‌లో పట్టీ మారుస్తారు."
+},
+{
+"label": "ట్రాక్షన్ మోటార్లు",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: ఏది మామూలు కంటే వేడిగా ఉంది?",
+"why": "ఒక ట్రాక్షన్ మోటార్ బ్లోయర్ గాలి దారి మూసుకుపోయింది. కంప్యూటర్ ఆ మోటార్‌ని ఆపేసి (ఐసోలేట్) మిగతా ఐదింటితో నడుపుతుంది."
+},
+{
+"label": "చక్రాలు",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: ఎక్కడి నుంచి టకటక చప్పుడు? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "ఒక చక్రం మీద చదును మచ్చ (ఫ్లాట్) పడింది: బ్రేక్ బిగుసుకుని చక్రం జారినప్పుడు వస్తుంది. షెడ్‌లో చక్రాన్ని లేత్ మీద తిరిగి గుండ్రంగా చెక్కుతారు."
+},
+{
+"label": "కూలింగ్ బ్లోయర్లు",
+"kind": "loose",
+"clue": "లోపల ఏది వణుకుతోంది Sir?",
+"why": "కూలింగ్ బ్లోయర్ రెక్కకి దుమ్ము పేరుకుని బరువు సమం తప్పింది. షెడ్‌లో శుభ్రం చేసి, బోల్టులు బిగిస్తారు."
+}
+],
+"inside": {
+"ట్రాక్షన్ మోటార్లు": {
+"say": "ట్రాక్షన్ మోటార్ లోపల Sir: బయటి వలయం స్టేటర్, దానిలో కాయిల్స్. కన్వర్టర్ ఇచ్చే మూడు ఫేజ్‌ల కరెంట్‌తో ఎరుపు, పసుపు, నీలం కాయిల్స్ ఒకదాని తర్వాత ఒకటి వెలుగుతాయి: అయస్కాంత లాగుడు గుండ్రంగా తిరుగుతుంది (పచ్చ కడ్డీ). అది లోపలి రోటర్ బార్ల పంజరాన్ని తనతో లాక్కెళ్తుంది. బ్రష్‌లు లేవు, ఏదీ రాసుకోదు. కరెంట్ ఫ్రీక్వెన్సీ పెంచితే వేగం పెరుగుతుంది.",
+"code": "// Inside a traction motor (a three-phase induction motor), its end cover off. The outer ring (the stator) holds coils fed\n// with three-phase current from the converter: red, yellow, blue light up one after another, so a magnetic pull runs round\n// and round. It drags the bar cage inside (the rotor) round with it: no brushes, nothing rubs. The converter changes the\n// current's frequency to change the speed.\nconst iron = W.metal('#6f767e', { rough: 0.5 }), cu = W.metal('copper', { rough: 0.35 }), alu = W.metal('#d5d8dc', { rough: 0.35 });\nconst st = W.group();\nst.add(W.mesh(W.ring(52, 66, 60, 48), iron, { rot: [90, 0, 0] }));\nW.add(st, { label: 'స్టేటర్' });\nconst coils = W.group(), mats = [];\nconst COL = [0xff4a3a, 0xffd23a, 0x3a8aff];\nfor (let k = 0; k < 12; k++) {\n  const a = k * Math.PI / 6, m = new THREE.MeshStandardMaterial({ color: 0x5a3a2a, emissive: COL[k % 3], emissiveIntensity: 0.2, roughness: 0.5 });\n  coils.add(W.mesh(W.box(16, 9, 70), m, { at: [Math.cos(a) * 47, Math.sin(a) * 47, 0], rot: [0, 0, a * 57.3 + 90] }));\n  mats.push(m);\n}\nW.add(coils, { label: 'స్టేటర్ కాయిల్స్ (3 ఫేజ్)' });\nconst rot = W.group();\nrot.add(W.mesh(W.cyl(34, 34, 58, 32), iron, { rot: [90, 0, 0] }), W.mesh(W.cyl(9, 9, 130, 16), W.metal('#c2c8cd'), { rot: [90, 0, 0] }));\nfor (let k = 0; k < 16; k++) { const a = k * Math.PI / 8; rot.add(W.mesh(W.box(4, 4, 62), alu, { at: [Math.cos(a) * 34.5, Math.sin(a) * 34.5, 0] })); }\nfor (const z of [-31, 31]) rot.add(W.mesh(W.ring(27, 36, 4, 32), alu, { at: [0, 0, z], rot: [90, 0, 0] }));\nW.add(rot, { label: 'రోటర్ (బార్ కేజ్)' });\nconst pin = W.group();\npin.add(W.mesh(W.gear({ teeth: 16, r: 14, depth: 10 }), cu, { at: [0, 0, 66], rot: [90, 0, 0] }));\nW.add(pin, { label: 'పినియన్' });\nconst field = W.group();\nconst arrow = W.mesh(W.box(70, 5, 5), W.glow('#7dff9b', 2.5), { at: [0, 0, 40] });\nfield.add(arrow);\nW.add(field, { label: 'తిరిగే అయస్కాంత క్షేత్రం' });\nlet a = 0, r = 0;\nW.onTick((t, dt) => {\n  const w = 1.2 + 5 * Math.max(0.1, W.env.spool);\n  a += dt * w; r += dt * w * 0.94; // (the rotor runs a little slower than the field: that \"slip\" is what makes it pull)\n  arrow.rotation.z = a;\n  rot.rotation.z = r; pin.rotation.z = r;\n  for (let k = 0; k < 12; k++) mats[k].emissiveIntensity = 0.15 + 2.2 * Math.max(0, Math.cos(a * 2 - (k % 3) * 2.094 - Math.floor(k / 3) * 0));\n});\nW.stream([[-110, 60, 0], [-70, 50, 0], [-48, 30, 0]], { kind: 'fuel', count: 8, size: 4, speed: 1, always: true });\n"
+}
+},
+"film": [
+"🚆 ఎలక్ట్రిక్ రైలు ఇంజన్ · 6,000 HP",
+"25,000 V వైర్ → పాంటోగ్రాఫ్",
+"ట్రాన్స్‌ఫార్మర్ → కన్వర్టర్లు",
+"6 ట్రాక్షన్ మోటార్లు → 12 చక్రాలు",
+"♻️ బ్రేక్‌లో కరెంట్ తిరిగి వైర్‌లోకి",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ ఎలక్ట్రిక్ ఇంజన్ షెడ్ సర్వీస్",
+"safety": "ఇది రైల్వే లోకో షెడ్ సిబ్బంది పని Sir. పైకప్పు మీద పనికి ముందు ఓవర్‌హెడ్ వైర్ కరెంట్ ఆపి, ఎర్త్ రాడ్ తగిలించి, తాళం వేస్తారు. మనం పట్టాల మీద నడవకూడదు, పెట్టెల మీద ఎక్కకూడదు, వైర్ కింద పొడవైన వస్తువులు ఎత్తకూడదు.",
+"steps": [
+{
+"say": "పాంటోగ్రాఫ్ కార్బన్ పట్టీ మందం కొలుస్తారు: అరిగితే మారుస్తారు; స్ప్రింగ్ ఒత్తిడి సరిచూస్తారు.",
+"label": "పాంటోగ్రాఫ్"
+},
+{
+"say": "చక్రాల ఆకారం (ప్రొఫైల్), అరుగుదల గేజ్‌తో కొలుస్తారు; అవసరమైతే లేత్ మీద చెక్కుతారు.",
+"label": "చక్రాలు"
+},
+{
+"say": "ట్రాన్స్‌ఫార్మర్ నూనె నమూనా పరీక్ష, నూనె మట్టం.",
+"label": "మెయిన్ ట్రాన్స్‌ఫార్మర్"
+},
+{
+"say": "మోటార్ బేరింగ్ గ్రీజ్, గేర్ కేస్ ఆయిల్; బ్లోయర్ ఫిల్టర్లు శుభ్రం.",
+"label": "ట్రాక్షన్ మోటార్లు"
+},
+{
+"say": "కంప్రెసర్ ఆయిల్, ఎయిర్ డ్రయర్, బ్రేక్ పరీక్ష: గాలి ఒత్తిడి నిలుస్తోందా.",
+"label": "కంప్రెసర్ ఎయిర్ ట్యాంకులు"
+}
+]
+},
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"id": "loco"
+}
+}

@@ -1,0 +1,468 @@
+{
+"at": 1763700000020,
+"title": "సెల్ టవర్",
+"what": "40 m సెల్ టవర్: 3 సెక్టార్ యాంటెనాలు, రేడియో యూనిట్లు, మైక్రోవేవ్ డిష్, BBU, 48 V పవర్, బ్యాటరీ బ్యాంక్, జనరేటర్, ఫైబర్; ఊరి ఫోన్లకి సిగ్నల్. 🕐 🚶 టవర్ పైన",
+"model": "showpiece",
+"parts": [
+{
+"id": "land",
+"status": "ఊరి అంచు సిద్ధం చేస్తున్నాను",
+"code": "// Mobile (cell) tower showpiece, hand-made (no operator's name). Units: cm, real size: a 40 m four-legged steel tower. At\n// its top three pairs of panel antennas face three directions (sectors of 120°), each with its radio unit; a dish links\n// it to the next tower. At its foot: the baseband cabinet (fibre in), the power cabinet, the battery bank and a diesel\n// generator for long power cuts. The phones are in the houses around.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 17, ground: '#7d8a52', zoom: 0.7 });\nconst land = W.group();\nland.add(W.mesh(W.box(6400, 20, 5200), S.land('soil', '#a3906e', 500), { at: [0, -9, 0] }));\nland.add(W.mesh(W.box(6400, 6, 420), S.land('asphalt', '#5d6064', 400), { at: [0, 4, 1500] }), S.dashes(-3200, 3200, 1500));\nland.add(W.mesh(W.box(1300, 8, 1100), S.land('gravel', '#a9a59a', 200), { at: [0, 5, 0] }));\nW.add(land, { label: 'ఊరి అంచు', ground: true });\nconst tr = W.group();\ntr.add(S.trees(14, -3100, -2500, 3100, 1100, (x, z) => Math.hypot(x, z) > 1500 && (z < -1800 || Math.abs(x) > 2400)));\nW.add(tr, { label: 'చెట్లు', ground: true });\nconst hs = W.group();\nconst pl = [S.sf('plaster', '#e3d9c0'), S.sf('plaster', '#d9e2d6'), S.sf('plaster', '#e6d2c0'), S.sf('plaster', '#d6dbe6')], conc = S.sf('concrete', '#bdb8ac');\nS.HOMES = [[-2300, 600], [-1900, -1300], [2100, -900], [2400, 500], [1500, 2200], [-1300, 2300]];\nS.phones = [];\nS.HOMES.forEach(([x, z], i) => {\n  const h = 300 + (i % 2) * 280;\n  hs.add(W.mesh(W.box(600, h, 500), pl[i % 4], { at: [x, h / 2, z] }), W.mesh(W.box(640, 16, 540), conc, { at: [x, h + 8, z] }));\n  hs.add(W.mesh(W.box(90, 190, 6), S.sf('wood', '#7a5a3c', { tile: 100 }), { at: [x - 150, 95, z + 253] }), W.mesh(W.box(120, 90, 6), S.matte('#33495c', 0.3), { at: [x + 120, 170, z + 253] }));\n  const m = W.glow('#6fd6ff', 0); hs.add(W.mesh(W.box(16, 30, 4), m, { at: [x + 120, 170, z + 258] })); S.phones.push(m);\n});\nW.add(hs, { label: 'ఊరి ఇళ్ళు', heat: [26, 32] });\n"
+},
+{
+"id": "mast",
+"status": "టవర్ నిలబెడుతున్నాను",
+"code": "const S = W.store;\n// the tower: four legs of angle steel tied by cross braces, 5 m square at the foot, 1.3 m at the top; galvanised (zinc\n// coated) so it does not rust\nconst gal = S.sf('metal', '#b9c0c6', { rough: 0.55, metallic: 0.3, tile: 200 });\nconst H = 4000, B = 250, T = 65, half = (y) => B + (T - B) * y / H;\nconst bars = [];\nconst C = (y) => { const h = half(y); return [[-h, y, -h], [h, y, -h], [h, y, h], [-h, y, h]]; };\nconst N = 12;\nfor (let k = 0; k < N; k++) {\n  const y0 = (k / N) * H, y1 = ((k + 1) / N) * H, a = C(y0), b = C(y1);\n  for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; bars.push([a[i], b[i], 7], [b[i], b[j], 4], [a[i], b[j], 3.4], [a[j], b[i], 3.4]); }\n}\nconst im = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 5), gal, bars.length), M = new THREE.Matrix4(), Q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);\nbars.forEach(([p, q, r], i) => { const A = new THREE.Vector3(...p), Bv = new THREE.Vector3(...q), d = Bv.clone().sub(A); M.compose(A.clone().add(Bv).multiplyScalar(0.5), Q.setFromUnitVectors(up, d.clone().normalize()), new THREE.Vector3(r, d.length(), r)); im.setMatrixAt(i, M); });\nconst tw = W.group(); tw.add(im);\nW.add(tw, { label: 'టవర్', heat: [28, 34] });\nconst fd = W.group();\nfor (const [x, y, z] of C(0)) fd.add(W.mesh(W.box(90, 60, 90), S.sf('concrete', '#bdb8ac'), { at: [x, 24, z] }));\nW.add(fd, { label: 'టవర్ పునాది' });\nconst pf = W.group();\npf.add(W.mesh(W.box(260, 8, 260), S.sf('metal', '#8f979e', { rough: 0.6 }), { at: [0, 3500, 0] }));\nfor (const [a, b] of [[[-130, -130], [130, -130]], [[130, -130], [130, 130]], [[130, 130], [-130, 130]], [[-130, 130], [-130, -130]]]) pf.add(S.rail(a, b, 3504));\nW.add(pf, { label: 'ప్లాట్‌ఫారం' });\nconst ld = W.group();\nld.add(S.ladder(0, 60, 3500, -half(1700) - 6, 'z', -1));\nld.add(W.mesh(W.box(40, 3900, 6), S.sf('metal', '#8f979e', { rough: 0.6 }), { at: [60, 1960, 0], rot: [0, 0, 0] }));\nfor (let k = 0; k < 5; k++) ld.add(W.mesh(W.cyl(2.2, 2.2, 3860, 6), k < 3 ? W.rubber('#17181a') : S.matte('#e8872a', 0.6), { at: [46 + k * 7, 1950, 6] })); // power cables (black), fibre (orange)\nW.add(ld, { label: 'నిచ్చెన కేబుల్స్' });\nconst top = W.group();\ntop.add(W.mesh(W.cyl(2.4, 0.6, 300, 8), S.sf('metal', '#b08a3a', { rough: 0.4 }), { at: [0, 4150, 0] }));\nS.beacon = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2a1a, emissiveIntensity: 0 });\ntop.add(W.mesh(W.sphere(12, 12), S.beacon, { at: [40, 4020, 40] }), W.mesh(W.cyl(4, 4, 30, 8), gal, { at: [40, 4000, 40] }));\nW.add(top, { label: 'మెరుపు కడ్డీ లైట్' });\n"
+},
+{
+"id": "radio",
+"status": "యాంటెనాలు, రేడియోలు బిగిస్తున్నాను",
+"code": "const S = W.store;\nconst white = S.sf('paint', '#eef1f3', { tile: 300, rough: 0.5 }), grey = S.sf('paint', '#aab2ba', { tile: 100 }), gal = S.sf('metal', '#b9c0c6', { rough: 0.55, metallic: 0.3 });\nconst an = W.group(), rr = W.group();\nS.SEC = [90, 210, 330]; // (the three sectors' directions, degrees from +X)\nfor (const deg of S.SEC) {\n  const a = deg * Math.PI / 180, s = W.group({ at: [Math.cos(a) * 130, 3780, -Math.sin(a) * 130], rot: [0, deg, 0] }), r = W.group({ at: [Math.cos(a) * 130, 3780, -Math.sin(a) * 130], rot: [0, deg, 0] });\n  for (const dz of [-34, 34]) {\n    s.add(W.mesh(W.cyl(4, 4, 320, 8), gal, { at: [10, 0, dz] }));\n    s.add(W.mesh(W.box(14, 240, 34, 5), white, { at: [34, 20, dz], rot: [0, 0, -5] }));     // the panel antenna, tilted 5° down\n    r.add(W.mesh(W.box(16, 50, 30, 3), grey, { at: [-8, -130, dz] }));                       // its radio unit\n    for (let k = 0; k < 6; k++) r.add(W.mesh(W.box(4, 46, 1.6), grey, { at: [-18, -130, dz - 12 + k * 4.8] }));\n    r.add(S.pipe([[2, -106, dz], [18, -90, dz], [30, -98, dz]], 1.4, W.rubber('#17181a'), 10));\n  }\n  an.add(s); rr.add(r);\n}\nW.add(an, { label: 'సెక్టార్ యాంటెనాలు', heat: [30, 44] });\nW.add(rr, { label: 'రేడియో యూనిట్లు', heat: [32, 62] });\nconst mw = W.group();\nconst dish = W.group({ at: [-70, 3250, 96], rot: [0, -55, 0] });\ndish.add(W.mesh(W.cyl(46, 46, 14, 28), white, { rot: [0, 0, 90] }), W.mesh(W.sphere(46, 24), white, { at: [7, 0, 0], scale: [0.25, 1, 1] }), W.mesh(W.box(20, 24, 20), grey, { at: [-18, 0, 0] }));\nmw.add(dish);\nW.add(mw, { label: 'మైక్రోవేవ్ డిష్', heat: [30, 44] });\nconst far = W.group();\nfar.add(W.mesh(W.cyl(8, 26, 3600, 4), gal, { at: [-2900, 1800, 2380] }), W.mesh(W.cyl(46, 46, 14, 20), white, { at: [-2880, 3250, 2366], rot: [0, 35, 90] }));\nW.add(far, { label: 'పక్క టవర్', ground: true });\n"
+},
+{
+"id": "base",
+"status": "కింది క్యాబినెట్లు, జనరేటర్ పెడుతున్నాను",
+"code": "const S = W.store;\nconst cab = S.sf('paint', '#e9ecee', { tile: 120 }), cm = S.sf('concrete', '#bdb8ac'), gal = S.sf('metal', '#b9c0c6', { rough: 0.55, metallic: 0.3 });\nconst bb = W.group();\nbb.add(W.mesh(W.box(80, 170, 70, 4), cab, { at: [380, 105, -100] }), W.mesh(W.box(100, 20, 90), cm, { at: [380, 10, -100] }));\nS.led = [];\nfor (let k = 0; k < 6; k++) { const m = W.glow(k % 2 ? '#7dff9b' : '#6fd6ff', 0); bb.add(W.mesh(W.box(3, 3, 2), m, { at: [356 + (k % 3) * 8, 150 - Math.floor(k / 3) * 10, -64] })); S.led.push(m); }\nW.add(bb, { label: 'BBU క్యాబినెట్', heat: [30, 55] });\nconst pw = W.group();\npw.add(W.mesh(W.box(80, 170, 70, 4), cab, { at: [380, 105, 20] }), W.mesh(W.box(100, 20, 90), cm, { at: [380, 10, 20] }), W.mesh(W.box(40, 26, 2), W.screen('#0a1a26', 0.6), { at: [380, 150, 56] }));\nW.add(pw, { label: 'పవర్ క్యాబినెట్', heat: [30, 52] });\nconst bt = W.group();\nbt.add(W.mesh(W.box(110, 150, 70, 4), S.sf('paint', '#d9d5ca', { tile: 120 }), { at: [380, 95, 150] }), W.mesh(W.box(130, 20, 90), cm, { at: [380, 10, 150] }));\nS.batBar = W.mesh(W.box(8, 1, 2), W.glow('#7dff9b', 1.8), { at: [420, 40, 186.4] });\nbt.add(W.mesh(W.box(12, 104, 1.6), S.matte('#101418', 0.4), { at: [420, 90, 185.6] }), S.batBar);\nW.add(bt, { label: 'బ్యాటరీ బ్యాంక్', heat: [28, 40] });\nconst dg = W.group();\ndg.add(W.mesh(W.box(240, 130, 110, 6), S.sf('paint', '#3f7d6e', { tile: 160 }), { at: [-380, 95, 60] }), W.mesh(W.box(260, 30, 130), cm, { at: [-380, 15, 60] }));\ndg.add(W.mesh(W.box(70, 60, 3), S.sf('metal', '#2c3036', { rough: 0.7, tile: 5 }), { at: [-440, 100, 116] }), W.mesh(W.cyl(6, 6, 90, 10), S.sf('rust', '#5a4a42', { tile: 30 }), { at: [-290, 205, 40] }));\ndg.add(W.mesh(W.cyl(30, 30, 120, 16), S.sf('paint', '#b6463a', { tile: 80 }), { at: [-380, 60, -80], rot: [0, 0, 90] })); // the diesel tank\nS.dgGroup = dg; S.dgTop = [-290, 252, 40];\nW.add(dg, { label: 'డీజిల్ జనరేటర్', heat: [30, 95] });\nconst mt = W.group();\nmt.add(W.mesh(W.box(18, 700, 22), S.sf('concrete', '#c9c5bb', { tile: 200 }), { at: [560, 350, 480] }), W.mesh(W.box(40, 50, 20), S.sf('paint', '#8f979e', { tile: 60 }), { at: [560, 150, 464] }));\nfor (let k = 0; k < 2; k++) mt.add(S.beam([560, 680 - k * 40, 480], [3200, 700 - k * 40, 1000], 1.8, S.matte('#3a3d42', 0.6), 4), S.beam([560, 150, 470], [400, 60, 60], 1.6, W.rubber('#17181a'), 4));\nW.add(mt, { label: 'కరెంట్ మీటర్ స్తంభం', heat: [30, 40] });\nconst fn = W.group();\nconst post = new THREE.InstancedMesh(W.box(6, 200, 6), gal, 20), M = new THREE.Matrix4();\nlet n = 0;\nfor (let k = 0; k <= 5; k++) { post.setMatrixAt(n++, M.makeTranslation(-600 + k * 240, 100, -500)); post.setMatrixAt(n++, M.makeTranslation(-600 + k * 240, 100, 500)); }\nfor (let k = 1; k < 5; k++) { post.setMatrixAt(n++, M.makeTranslation(-600, 100, -500 + k * 200)); post.setMatrixAt(n++, M.makeTranslation(600, 100, -500 + k * 200)); }\nfn.add(post);\nconst mesh = new THREE.MeshStandardMaterial({ color: 0xb9c0c6, roughness: 0.6, transparent: true, opacity: 0.28, side: THREE.DoubleSide });\nfn.add(W.mesh(W.box(1200, 180, 1), mesh, { at: [0, 100, -500] }), W.mesh(W.box(1, 180, 1000), mesh, { at: [-600, 100, 0] }), W.mesh(W.box(1, 180, 1000), mesh, { at: [600, 100, 0] }), W.mesh(W.box(500, 180, 1), mesh, { at: [-350, 100, 500] }), W.mesh(W.box(500, 180, 1), mesh, { at: [350, 100, 500] }));\nfn.add(W.mesh(W.box(70, 50, 2), S.matte('#e8c62a', 0.7), { at: [350, 130, 502] }));\nW.add(fn, { label: 'కంచె' });\nconst fb = W.group();\nfb.add(S.pipe([[380, 30, -140], [300, 4, -300], [200, 4, 900], [150, 4, 1280]], 3, S.matte('#e8872a', 0.6), 30), W.mesh(W.box(70, 10, 70), S.sf('concrete', '#a9a59b'), { at: [150, 5, 1280] }));\nfb.add(S.pipe([[150, 4, 1280], [-1500, 4, 1290], [-3200, 4, 1290]], 3, S.matte('#e8872a', 0.6), 20));\nW.add(fb, { label: 'ఫైబర్ కేబుల్' });\nconst ep = W.group();\nfor (const [x, z] of [[-330, -330], [330, -330]]) ep.add(W.mesh(W.box(40, 12, 40), S.sf('concrete', '#b9b5ab'), { at: [x, 6, z] }), W.mesh(W.cyl(2.4, 2.4, 40, 8), S.sf('metal', '#b08a3a'), { at: [x, 20, z] }), S.beam([x, 30, z], [x * 0.76, 40, x < 0 ? -250 : -250], 1.6, S.matte('#2f9a4a', 0.6), 4));\nW.add(ep, { label: 'ఎర్తింగ్' });\n"
+},
+{
+"id": "run",
+"status": "టవర్ ఆన్ చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is how busy the network is (phones calling, using data). 🚩 \"cut\": a power cut: the battery\n// bank carries the tower; when it runs low the diesel generator starts by itself. Over the limit: too many phones, the\n// tower makes new calls wait and slows the data (it never breaks).\nconst rd = W.group();\nconst bus = S.lorry('#c9d2d8', S.sf('paint', '#3f7d9a', { tile: 300 })); bus.position.set(-900, 0, 1500);\nrd.add(bus);\nW.add(rd, { label: 'రోడ్డు మీద బండి', ground: true });\nW.throttle({ label: 'నెట్‌వర్క్ వాడకం', rise: 0.6, fall: 0.6, start: 0.5 });\nW.sound({ kind: 'fans', label: 'BBU క్యాబినెట్', gain: 0.3 });\nW.sound({ kind: 'hum', label: 'పవర్ క్యాబినెట్', gain: 0.25, f0: 100 });\nconst dgv = W.sound({ kind: 'motor', label: 'డీజిల్ జనరేటర్', gain: 0.6, f0: 45 });\nconst smoke = S.plume(S.dgGroup, S.dgTop, { n: 8, life: 2.4, r: 14, rise: 150, drift: 160, op: 0.4, color: '#6a6a6a' });\nlet hudT = 0, bat = 0.9, dgOn = 0, dgK = 0, bx = 0;\nW.onTick((t, dt) => {\n  const s = W.env.spool, cut = W.env.flag('cut'), over = W.env.over, dead = W.faultOf('పవర్ క్యాబినెట్') === 'stop';\n  const load = 1.5 + 3.5 * Math.min(1, s);\n  if (!cut) dgOn = 0; else if (bat < 0.4) dgOn = 1; else if (bat > 0.92) dgOn = 0;\n  dgK += (dgOn - dgK) * Math.min(1, dt * 1.5);\n  bat = Math.max(0, Math.min(1, bat + dt * ((!cut || dgOn ? 0.03 : 0) - (cut && !dgOn ? load * 0.012 : 0))));\n  const live = !dead && (bat > 0.02 || !cut);\n  S.batBar.scale.y = 1 + 98 * bat; S.batBar.position.y = 40 + 49 * bat;\n  smoke(dt, dgK); dgv.set(dgK * 0.8);\n  S.beacon.emissiveIntensity = (0.8 + 3 * W.env.dark) * (Math.sin(t * 3.2) > 0.2 ? 1 : 0.08);\n  S.led.forEach((m, i) => { m.emissiveIntensity = live ? (Math.sin(t * (6 + i * 2.3) * (0.5 + s)) > 0 ? 2.4 : 0.3) : 0; });\n  S.phones.forEach((m, i) => { m.emissiveIntensity = live && s > (i + 0.5) / 12 ? 1.6 + Math.sin(t * 5 + i) : 0; });\n  bx = (bx + dt * 260) % 6000; rd.position.x = bx - 2400;\n  S.step(t, dt, 1);\n  if (t - hudT > 0.3) {\n    hudT = t;\n    const users = live ? Math.round(1200 * s) : 0, mbps = live ? Math.round(900 * s * (over ? 0.5 : 1)) : 0;\n    W.hud({ 'ఫోన్లు': users + (over ? ' ⚠️ రద్దీ: కొత్త కాల్స్ వేచి ఉన్నాయి' : ''), 'డేటా': mbps + ' Mbps · 3 సెక్టార్లు', 'టవర్ వాడకం': live ? load.toFixed(1) + ' kW · 48 V DC' : '0',\n      'కరెంట్ మూలం': dead ? 'పవర్ క్యాబినెట్ లోపం ⚠️' : !cut ? 'గ్రిడ్ ✅' : dgOn ? 'డీజిల్ జనరేటర్ ⛽' : 'బ్యాటరీ 🔋', 'బ్యాటరీ బ్యాంక్': Math.round(bat * 100) + '%' + (!cut || dgOn ? ' (ఛార్జ్ అవుతోంది)' : ''), 'లింక్': 'ఫైబర్ ✅ · మైక్రోవేవ్ సిద్ధం' });\n    W.report({ power: s, users, mbps, battery: bat * 100, dg: dgOn });\n  }\n});\nconst liveS = (e) => true;\nS.SEC.forEach((deg, k) => {\n  const a = deg * Math.PI / 180, ax = Math.cos(a) * 170, az = -Math.sin(a) * 170;\n  S.HOMES.forEach(([hx, hz], i) => {\n    const ha = Math.atan2(-hz, hx) * 180 / Math.PI, d = Math.abs(((ha - deg + 540) % 360) - 180);\n    if (d > 60) return; // (each house is served by the sector that faces it)\n    W.stream([[ax, 3790, az], [(ax + hx) / 2, 2100, (az + hz) / 2], [hx + 120, 190, hz + 262]], { kind: 'signal', count: 14, size: 22, speed: 1.4, when: (e) => e.spool > (i + 0.5) / 12 });\n    W.stream([[hx + 120, 190, hz + 262], [(ax + hx) / 2, 1900, (az + hz) / 2], [ax, 3760, az]], { kind: 'signal', count: 8, size: 16, speed: 1.4, when: (e) => e.spool > (i + 0.5) / 12, warm: false });\n  });\n});\nW.stream([[-3200, 4, 1290], [-1500, 4, 1290], [150, 4, 1280], [200, 4, 900], [300, 4, -300], [380, 100, -100], [70, 100, 6], [70, 3600, 6], [100, 3700, 60]], { kind: 'fuel', count: 60, size: 12, speed: 1.6 });\nW.stream([[3200, 700, 1000], [560, 680, 480], [560, 150, 470], [400, 60, 60], [380, 100, 20]], { kind: 'power', count: 24, size: 10, speed: 1.2, when: (e) => !e.flag('cut') });\nW.stream([[380, 90, 150], [380, 60, 90], [380, 100, 20]], { kind: 'regen', count: 6, size: 9, speed: 1, when: (e) => e.flag('cut') });\nW.stream([[-380, 95, 60], [0, 20, 60], [380, 60, 20]], { kind: 'power', count: 10, size: 9, speed: 1, when: (e) => e.flag('cut') });\nW.stream([[380, 150, 20], [200, 40, 0], [50, 100, 6], [50, 3600, 6], [0, 3650, -100]], { kind: 'power', count: 40, size: 8, speed: 1.2 });\nW.stream([[-110, 3250, 130], [-1500, 3250, 1250], [-2880, 3250, 2366]], { kind: 'signal', count: 14, size: 18, speed: 1.6 });\nW.walk({ eye: 160, speed: 300, area: [-3100, -2500, 3100, 2500],\n  floor: (x, z) => (Math.abs(x) < 125 && Math.abs(z) < 125 ? 3504 : 0),\n  solid: [[330, -150, 440, 200], [-510, -10, -250, 130], [-2620, 340, -1980, 860], [-2220, -1560, -1580, -1040], [1780, -1160, 2420, -640], [2080, 240, 2720, 760], [1180, 1940, 1820, 2460], [-1620, 2040, -980, 2560]],\n  spots: [\n    { name: 'టవర్ కింద', at: [-520, 0, 900], look: [0, 2400, 0] },\n    { name: 'టవర్ పైన', at: [-95, 3504, 95], look: [-3000, 3050, 1400] },\n    { name: 'క్యాబినెట్ల దగ్గర', at: [-90, 0, 440], look: [380, 100, 30] },\n    { name: 'జనరేటర్ దగ్గర', at: [120, 0, 460], look: [-380, 90, 60] },\n    { name: 'ఊరి వీధిలో', at: [-1500, 0, 1100], look: [0, 2600, 0] },\n  ] });\n"
+}
+],
+"say": "సెల్ టవర్ రెడీ Sir. ఊదా రంగు గీతలు ఫోన్లకి వెళ్ళే సిగ్నల్. 'కరెంట్ కట్' అంటే బ్యాటరీ, జనరేటర్ పని; 'టవర్ పైకి వెళ్ళు' అంటే 35 m ఎత్తు నుంచి ఊరు చూడొచ్చు.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"మీ ఫోన్ కాల్ టవర్ గుండా ఎలా వెళ్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది 40 m సెల్ టవర్. ఉక్కు జాలీ కట్టడం యాంటెనాలని ఎత్తులో పట్టుకుంటుంది: అంతే దాని పని.\", \"focus\": [{\"id\": \"mast\", \"piece\": \"టవర్\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"పైన మూడు దిశల్లో తెల్లని సెక్టార్ యాంటెనాలు: ఊరి ఫోన్లతో రేడియో తరంగాలతో మాట్లాడతాయి. వెనక బూడిద పెట్టెలు రేడియో యూనిట్లు.\", \"focus\": [{\"id\": \"radio\", \"piece\": \"సెక్టార్ యాంటెనాలు\"}, {\"id\": \"radio\", \"piece\": \"రేడియో యూనిట్లు\"}], \"view\": \"iso\", \"close\": true, \"secs\": 10}, {\"say\": \"ఫోన్ సిగ్నల్ యాంటెనాకి, అక్కడి నుంచి నారింజ ఫైబర్‌లో కిందికి BBU క్యాబినెట్‌కి: టవర్ మెదడు.\", \"focus\": [{\"id\": \"mast\", \"piece\": \"నిచ్చెన కేబుల్స్\"}, {\"id\": \"base\", \"piece\": \"BBU క్యాబినెట్\"}], \"view\": \"iso\", \"flow\": [{\"from\": \"land\", \"fromPiece\": \"ఊరి ఇళ్ళు\", \"to\": \"radio\", \"toPiece\": \"సెక్టార్ యాంటెనాలు\", \"kind\": \"#b08cff\", \"count\": 8}, {\"from\": \"radio\", \"fromPiece\": \"సెక్టార్ యాంటెనాలు\", \"to\": \"base\", \"toPiece\": \"BBU క్యాబినెట్\", \"kind\": \"fuel\", \"count\": 8}], \"secs\": 10}, {\"say\": \"BBU నుంచి భూమి కింది ఫైబర్ కేబుల్ ప్రపంచానికి. ఫైబర్ తెగితే మైక్రోవేవ్ డిష్ పక్క టవర్ ద్వారా దారి ఇస్తుంది.\", \"focus\": [{\"id\": \"base\", \"piece\": \"ఫైబర్ కేబుల్\"}, {\"id\": \"radio\", \"piece\": \"మైక్రోవేవ్ డిష్\"}], \"view\": \"iso\", \"secs\": 9}, {\"say\": \"కరెంట్: పవర్ క్యాబినెట్ 48 వోల్టుల DC ఇస్తుంది. కరెంట్ పోతే బ్యాటరీ బ్యాంక్, ఆ తర్వాత డీజిల్ జనరేటర్.\", \"focus\": [{\"id\": \"base\", \"piece\": \"పవర్ క్యాబినెట్\"}, {\"id\": \"base\", \"piece\": \"బ్యాటరీ బ్యాంక్\"}, {\"id\": \"base\", \"piece\": \"డీజిల్ జనరేటర్\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}, {\"say\": \"పైన మెరుపు కడ్డీ, ఎర్ర లైట్. 'కరెంట్ కట్' అంటే బ్యాటరీ, జనరేటర్ పని చూపిస్తాను; 'టవర్ పైకి వెళ్ళు' అంటే పై నుంచి ఊరు చూడొచ్చు Sir.\", \"focus\": [{\"id\": \"mast\", \"piece\": \"మెరుపు కడ్డీ లైట్\"}, {\"id\": \"mast\", \"piece\": \"ప్లాట్‌ఫారం\"}], \"view\": \"iso\", \"close\": true, \"secs\": 9}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"సెల్ టవర్",
+"మొబైల్ టవర్",
+"ఫోన్ టవర్",
+"నెట్‌వర్క్ టవర్",
+"సిగ్నల్ టవర్",
+"cell tower",
+"mobile tower",
+"phone tower",
+"network tower",
+"bts"
+],
+"powerName": "📶 నెట్‌వర్క్ వాడకం",
+"outdoor": true,
+"walk": [
+"టవర్ కింద",
+"టవర్ పైన",
+"క్యాబినెట్ల దగ్గర",
+"జనరేటర్ దగ్గర",
+"ఊరి వీధిలో"
+],
+"switches": [
+{
+"id": "cut",
+"menu": "⚡ కరెంట్ కట్",
+"words": [
+"కరెంట్ కట్",
+"కరెంట్ పోతే",
+"పవర్ కట్",
+"గ్రిడ్ ఆపు",
+"power cut",
+"grid off",
+"కరెంట్ పోయింది"
+],
+"offWords": [
+"కరెంట్ వచ్చింది",
+"గ్రిడ్ వేయి",
+"పవర్ వచ్చింది",
+"power back",
+"grid on"
+],
+"on": "⚡ కరెంట్ పోయింది Sir. టవర్ ఒక్క క్షణం కూడా ఆగలేదు: బ్యాటరీ బ్యాంక్ నడుపుతోంది, దాని మట్టం తగ్గడం చూడండి. 40% కి వస్తే డీజిల్ జనరేటర్ తానే స్టార్ట్ అవుతుంది.",
+"off": "✅ కరెంట్ వచ్చింది Sir: జనరేటర్ ఆగింది, బ్యాటరీ బ్యాంక్ మళ్ళీ ఛార్జ్ అవుతోంది."
+}
+],
+"power": {
+"start": "సగం వాడకం Sir: సుమారు 600 ఫోన్లు.",
+"full": "సాయంత్రం రద్దీ Sir: 1,200 ఫోన్లు, 900 Mbps, టవర్ వాడకం 5 kW.",
+"half": "సగం వాడకం Sir: సుమారు 600 ఫోన్లు, 450 Mbps.",
+"stop": "అర్ధరాత్రి Sir: దాదాపు ఎవరూ వాడట్లేదు. టవర్ మాత్రం ఎప్పుడూ ఆన్‌లోనే: కాల్ ఎప్పుడైనా రావచ్చు.",
+"over": "పండగ రద్దీ Sir: టవర్ సామర్థ్యం కంటే ఎక్కువ ఫోన్లు! టవర్ పాడవదు: కొత్త కాల్స్‌ని కాసేపు వేచి ఉంచుతుంది, ప్రతి ఒక్కరి డేటా వేగం తగ్గిస్తుంది.",
+"cut": "రద్దీ తగ్గింది Sir: అందరికీ మళ్ళీ పూర్తి వేగం."
+},
+"info": {
+"ఊరి అంచు": {
+"simple": "ఊరి అంచున సెల్ టవర్: చుట్టూ ఇళ్ళు, ముందు రోడ్డు.",
+"deep": "ఒక టవర్ పరిధిని 'సెల్' అంటారు: అందుకే సెల్ ఫోన్. ఊళ్ళలో ఒక టవర్ 2–5 km దాకా, నగరాల్లో అర కిలోమీటర్ లోపే (జనం ఎక్కువ కాబట్టి టవర్లు దగ్గరగా).",
+"specs": {
+"పరిధి": "ఊళ్ళలో సుమారు 2–5 km"
+}
+},
+"చెట్లు": {
+"simple": "టవర్ చుట్టూ చెట్లు.",
+"deep": "ఎత్తైన చెట్లు, భవనాలు సిగ్నల్‌ని అడ్డుకుంటాయి: అందుకే టవర్ వాటి కంటే ఎత్తు.",
+"specs": {
+"టవర్ ఎత్తు": "40 m"
+}
+},
+"ఊరి ఇళ్ళు": {
+"simple": "ఊరి ఇళ్ళు: కిటికీల దగ్గర మెరిసే నీలి చుక్కలు ఫోన్లు. పవర్ బార్ పెంచితే ఎక్కువ ఫోన్లు వాడుకలోకి వస్తాయి.",
+"deep": "ఫోన్ కూడా ఒక చిన్న రేడియో: టవర్ మాట వింటుంది, తిరిగి జవాబిస్తుంది. టవర్ దూరంగా ఉంటే ఫోన్ ఎక్కువ బలంతో పంపాలి: బ్యాటరీ త్వరగా అయిపోతుంది.",
+"specs": {
+"ఫోన్ శక్తి": "సుమారు 0.2 W"
+}
+},
+"టవర్": {
+"simple": "ఇది టవర్: 40 m ఎత్తైన ఉక్కు జాలీ కట్టడం. యాంటెనాలని ఎత్తులో పెట్టడమే దాని పని.",
+"deep": "నాలుగు కాళ్ళు, మధ్యలో అడ్డ, ఐమూల కడ్డీలు: తక్కువ ఉక్కుతో ఎక్కువ బలం, గాలి సందుల్లోంచి పోతుంది (తుఫాను గాలి తట్టుకుంటుంది). జింక్ పూత వల్ల తుప్పు పట్టదు. టవర్ సిగ్నల్ పంపదు: పైనున్న యాంటెనాలే పంపుతాయి.",
+"specs": {
+"ఎత్తు": "40 m",
+"కింద వెడల్పు": "5 m",
+"పూత": "జింక్ (గాల్వనైజ్డ్)"
+}
+},
+"టవర్ పునాది": {
+"simple": "టవర్ పునాది: ప్రతి కాలు కింద లోతైన కాంక్రీట్ దిమ్మె.",
+"deep": "గాలి టవర్‌ని తోసినప్పుడు ఒక వైపు కాళ్ళు పైకి లాగబడతాయి: పునాది బరువు వాటిని పట్టి ఉంచుతుంది.",
+"specs": {
+"లోతు": "సుమారు 3 m"
+}
+},
+"ప్లాట్‌ఫారం": {
+"simple": "ప్లాట్‌ఫారం: యాంటెనాల దగ్గర టెక్నీషియన్ నిలబడే చోటు. '🚶 టవర్ పైన' అంటే ఇక్కడి నుంచి ఊరు చూడొచ్చు.",
+"deep": "హార్నెస్, హెల్మెట్ ఉన్న శిక్షణ పొందిన టెక్నీషియన్లు మాత్రమే ఎక్కుతారు.",
+"specs": {
+"ఎత్తు": "35 m"
+}
+},
+"నిచ్చెన కేబుల్స్": {
+"simple": "నిచ్చెన, కేబుల్స్: పసుపు నిచ్చెన పైకి ఎక్కడానికి; పక్కన నల్ల కరెంట్ కేబుల్స్, నారింజ ఫైబర్ కేబుల్స్ పైకి వెళ్తాయి.",
+"deep": "పాత టవర్లలో లావు రాగి కేబుల్స్ సిగ్నల్‌ని పైకి మోసేవి (సగం దారిలోనే పోయేది). ఇప్పుడు రేడియోని పైనే పెట్టి, సన్నని ఫైబర్‌లో వెలుతురుగా పంపుతారు: నష్టం లేదు.",
+"specs": {
+"పైకి వెళ్ళేవి": "48 V కరెంట్, ఫైబర్"
+}
+},
+"మెరుపు కడ్డీ లైట్": {
+"simple": "మెరుపు కడ్డీ, ఎర్ర లైట్: అన్నిటికంటే పైన. పిడుగు పడితే కడ్డీ దాన్ని పట్టి, టవర్ ఉక్కు ద్వారా భూమిలోకి పంపుతుంది.",
+"deep": "ఎర్ర లైట్ రాత్రి విమానాలకి, హెలికాప్టర్లకి హెచ్చరిక. '🕐 రాత్రి' అంటే మెరవడం చూడండి.",
+"specs": {
+"పని": "పిడుగు రక్షణ, విమాన హెచ్చరిక"
+}
+},
+"సెక్టార్ యాంటెనాలు": {
+"simple": "ఇవి సెక్టార్ యాంటెనాలు: తెల్లని పొడవైన పలకలు. మూడు దిశల్లో (ఒక్కోటి 120°) సిగ్నల్ పంపుతాయి, ఫోన్ల సిగ్నల్ వింటాయి.",
+"deep": "సిగ్నల్ టార్చ్ లైట్ లాగా ముందుకి, సన్నని పొరగా వెళ్తుంది (కిందికి 5° వంచి): టవర్ సరిగ్గా కింద చాలా తక్కువ. మూడు సెక్టార్లు కలిపి చుట్టూ 360°. 'యాంటెనా లోపల చూపించు' అంటే లోపలి ఎలిమెంట్లు చూపిస్తాను.",
+"specs": {
+"సెక్టార్లు": "3 × 120°",
+"వంపు": "కిందికి సుమారు 5°",
+"శక్తి": "సెక్టార్‌కి సుమారు 40–80 W"
+}
+},
+"రేడియో యూనిట్లు": {
+"simple": "రేడియో యూనిట్లు: యాంటెనా వెనక బూడిద పెట్టెలు. ఫైబర్‌లో వచ్చే డేటాని రేడియో తరంగాలుగా మారుస్తాయి.",
+"deep": "వేడి వదలడానికి రెక్కలు (ఫ్యాన్ లేదు). 4G, 5G కి వేర్వేరు యూనిట్లు, వేర్వేరు ఫ్రీక్వెన్సీలు (700 MHz నుంచి 3500 MHz).",
+"specs": {
+"ఫ్రీక్వెన్సీలు": "700–3500 MHz"
+}
+},
+"మైక్రోవేవ్ డిష్": {
+"simple": "మైక్రోవేవ్ డిష్: పక్క టవర్‌కి నేరుగా చూసే గుండ్రని యాంటెనా. ఫైబర్ తెగితే ఇదే దారి.",
+"deep": "రెండు డిష్‌లు ఒకదానికొకటి సరిగ్గా ఎదురుగా ఉండాలి (లైన్ ఆఫ్ సైట్): మధ్యలో కొండ, భవనం ఉండకూడదు.",
+"specs": {
+"దూరం": "సుమారు 10–30 km"
+}
+},
+"పక్క టవర్": {
+"simple": "పక్క టవర్: మైక్రోవేవ్ లింక్ అవతలి చివర.",
+"deep": "టవర్లు గొలుసులా కలిసి ఉంటాయి; మీరు ప్రయాణిస్తుంటే ఫోన్ ఒక టవర్ నుంచి ఇంకోదానికి మారుతుంది (హ్యాండోవర్), కాల్ తెగదు.",
+"specs": {
+"పని": "లింక్, హ్యాండోవర్"
+}
+},
+"BBU క్యాబినెట్": {
+"simple": "BBU క్యాబినెట్: టవర్ మెదడు. ఫైబర్‌లో వచ్చే కాల్స్, డేటాని ఏ ఫోన్‌కి ఏది అని పంచుతుంది. లైట్లు మెరవడం చూడండి.",
+"deep": "బేస్‌బ్యాండ్ యూనిట్: ప్రతి ఫోన్‌కి ఒక క్షణంలో వెయ్యో వంతు చొప్పున సమయం, ఫ్రీక్వెన్సీ ముక్కలు కేటాయిస్తుంది. రద్దీ ఎక్కువైతే ఒక్కొక్కరికి వంతు తగ్గి నెట్ నెమ్మదిస్తుంది.",
+"specs": {
+"పని": "కాల్స్, డేటా పంపకం"
+}
+},
+"పవర్ క్యాబినెట్": {
+"simple": "పవర్ క్యాబినెట్: గ్రిడ్ AC ని టవర్ పరికరాలు వాడే 48 V DC గా మారుస్తుంది, బ్యాటరీలని ఛార్జ్ చేస్తుంది.",
+"deep": "కరెంట్ పోతే బ్యాటరీకి, బ్యాటరీ తగ్గితే జనరేటర్‌కి తానే మారుస్తుంది: ఒక్క క్షణం కూడా ఆగకుండా.",
+"specs": {
+"బయటికి": "48 V DC"
+}
+},
+"బ్యాటరీ బ్యాంక్": {
+"simple": "బ్యాటరీ బ్యాంక్: కరెంట్ పోతే టవర్‌ని కొన్ని గంటలు నడుపుతుంది. పచ్చ కడ్డీ దాని మట్టం.",
+"deep": "లిథియం లేదా లెడ్ యాసిడ్ బ్యాటరీలు, 48 V. అందుకే కరెంట్ పోయినా మీ ఫోన్ నెట్‌వర్క్ పనిచేస్తుంది. 'కరెంట్ కట్' అంటే చూపిస్తాను.",
+"specs": {
+"వోల్టేజ్": "48 V",
+"నిలిచే సమయం": "సుమారు 4–6 గంటలు"
+}
+},
+"డీజిల్ జనరేటర్": {
+"simple": "డీజిల్ జనరేటర్: కరెంట్ చాలా సేపు రాకపోతే, బ్యాటరీ తగ్గగానే తానే స్టార్ట్ అవుతుంది.",
+"deep": "శబ్దం తగ్గించే పెట్టెలో ఉంటుంది. ఇప్పుడు చాలా టవర్లు డీజిల్ తగ్గించడానికి సోలార్ ప్యానెళ్ళు, పెద్ద లిథియం బ్యాటరీలు వాడుతున్నాయి.",
+"specs": {
+"శక్తి": "సుమారు 15 kVA"
+}
+},
+"కరెంట్ మీటర్ స్తంభం": {
+"simple": "కరెంట్ మీటర్ స్తంభం: గ్రిడ్ కరెంట్ ఇక్కడి నుంచి వస్తుంది.",
+"deep": "ఒక టవర్ 24 గంటలూ సుమారు 2–5 kW వాడుతుంది: ఐదారు ఇళ్ళంత.",
+"specs": {
+"వాడకం": "సుమారు 2–5 kW"
+}
+},
+"కంచె": {
+"simple": "కంచె: అనుమతి లేనివారు లోపలికి రాకుండా. పసుపు హెచ్చరిక బోర్డ్.",
+"deep": "టవర్ ఎక్కడం ప్రాణాపాయం: ఎత్తు, కరెంట్, యాంటెనాల ముందు దగ్గరగా ఎక్కువ రేడియో శక్తి.",
+"specs": {
+"జాగ్రత్త": "ఎక్కకూడదు"
+}
+},
+"ఫైబర్ కేబుల్": {
+"simple": "ఫైబర్ కేబుల్: నారింజ గొట్టంలో వెంట్రుక అంత సన్నని గాజు దారాలు. టవర్‌ని ప్రపంచంతో కలుపుతుంది.",
+"deep": "మీ కాల్, వీడియో వెలుతురు మెరుపులుగా ఈ గాజు దారంలో వెళ్తాయి. ఫోన్ నుంచి టవర్ దాకా మాత్రమే గాలిలో: ఆ తర్వాత అంతా భూమి కింద, సముద్రం కింద ఫైబర్‌లోనే.",
+"specs": {
+"వేగం": "ఒక్క దారంలో వేల Mbps"
+}
+},
+"ఎర్తింగ్": {
+"simple": "ఎర్తింగ్: పిడుగు, లీక్ కరెంట్‌ని భూమిలోకి పంపే రాగి కడ్డీలు.",
+"deep": "టవర్ ఎత్తుగా ఉంటుంది కాబట్టి పిడుగులు తరచూ పడతాయి: మంచి ఎర్తింగ్ పరికరాలని కాపాడుతుంది.",
+"specs": {
+"పని": "పిడుగు రక్షణ"
+}
+},
+"రోడ్డు మీద బండి": {
+"simple": "రోడ్డు మీద బండి: అందులోని ఫోన్లు కదులుతూ కూడా టవర్‌తో మాట్లాడతాయి.",
+"deep": "బండి ఈ టవర్ పరిధి దాటగానే ఫోన్ తర్వాతి టవర్‌కి మారుతుంది: మీకు తెలియకుండానే.",
+"specs": {
+"పేరు": "హ్యాండోవర్"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎలా పనిచేస్తుంది",
+"ఫోన్ ఎలా",
+"how does",
+"కాల్ ఎలా వెళ్తుంది"
+],
+"a": "మీ ఫోన్ రేడియో తరంగాలతో దగ్గరి టవర్ యాంటెనాతో మాట్లాడుతుంది Sir. రేడియో యూనిట్ దాన్ని డేటాగా మార్చి, BBU క్యాబినెట్ ద్వారా ఫైబర్ కేబుల్‌లోకి పంపుతుంది. అక్కడి నుంచి వెలుతురు వేగంతో అవతలి వ్యక్తి దగ్గరి టవర్‌కి, అక్కడ మళ్ళీ రేడియోగా వారి ఫోన్‌కి."
+},
+{
+"k": [
+"రేడియేషన్",
+"హానికరమా",
+"radiation",
+"ప్రమాదమా",
+"ఆరోగ్యం"
+],
+"a": "టవర్ యాంటెనాలు పంపేది రేడియో తరంగాలు Sir: X-రే లాంటివి కావు (కణాలని విరగ్గొట్టే శక్తి లేదు). సిగ్నల్ ముందుకి సన్నని పొరగా వెళ్తుంది, దూరంతో వేగంగా తగ్గుతుంది; నేల మీద ఇళ్ళ దగ్గర అనుమతించిన హద్దు కంటే చాలా రెట్లు తక్కువ. మన దేశ హద్దు అంతర్జాతీయ హద్దులో పదో వంతు. ఇప్పటి దాకా ఈ హద్దుల లోపు హాని రుజువు కాలేదు; పరిశోధన కొనసాగుతోంది. యాంటెనా ముందు దగ్గరగా (టవర్ మీద) మాత్రం నిలబడకూడదు."
+},
+{
+"k": [
+"ఎందుకు మూడు",
+"సెక్టార్",
+"sector",
+"మూడు యాంటెనాలు"
+],
+"a": "ఒక్కో యాంటెనా 120° వెడల్పు చూస్తుంది Sir: మూడు కలిపి 360°. అలా ఒకే టవర్ మూడు వేర్వేరు 'సెల్‌లు' నడుపుతుంది, మూడు రెట్లు ఎక్కువ ఫోన్లకి సేవ ఇస్తుంది."
+},
+{
+"k": [
+"4g 5g",
+"5g అంటే",
+"తేడా",
+"5జీ",
+"4జీ"
+],
+"a": "5G లో ఎక్కువ వెడల్పు ఫ్రీక్వెన్సీలు, ఒకే పలకలో డజన్ల కొద్దీ చిన్న యాంటెనాలు (ఒక్కో ఫోన్ వైపు వేరే కిరణం) Sir: వేగం 4G కంటే 10 రెట్ల దాకా, ఆలస్యం తక్కువ. కానీ ఎక్కువ ఫ్రీక్వెన్సీ తక్కువ దూరం వెళ్తుంది: టవర్లు దగ్గరగా కావాలి."
+},
+{
+"k": [
+"సిగ్నల్ ఎందుకు తగ్గుతుంది",
+"నెట్ స్లో",
+"రద్దీ",
+"slow",
+"సిగ్నల్ లేదు"
+],
+"a": "రెండు కారణాలు Sir: దూరం, అడ్డంకులు (గోడలు, కొండలు) సిగ్నల్ బలాన్ని తగ్గిస్తాయి; లేదా ఒకే టవర్‌ని చాలా మంది వాడుతుంటే (రద్దీ) ప్రతి ఒక్కరికి వంతు తగ్గుతుంది. సిగ్నల్ కడ్డీలు నిండుగా ఉన్నా నెట్ నెమ్మదిగా ఉండటానికి కారణం రెండోదే."
+},
+{
+"k": [
+"కరెంట్ పోతే",
+"బ్యాటరీ",
+"జనరేటర్",
+"power cut",
+"కరెంట్ కట్"
+],
+"a": "కరెంట్ పోగానే బ్యాటరీ బ్యాంక్ క్షణం ఆగకుండా టవర్‌ని నడుపుతుంది Sir (4–6 గంటలు). అది 40% కి తగ్గితే డీజిల్ జనరేటర్ తానే స్టార్ట్ అవుతుంది. 'కరెంట్ కట్' అంటే చూపిస్తాను."
+},
+{
+"k": [
+"ఫైబర్",
+"fibre",
+"fiber",
+"ఇంటర్నెట్ ఎక్కడి నుంచి"
+],
+"a": "టవర్ వెనక నారింజ గొట్టంలో ఫైబర్ కేబుల్ ఉంటుంది Sir: గాజు దారంలో వెలుతురు మెరుపులుగా డేటా వెళ్తుంది. 'వైర్‌లెస్' అనేది ఫోన్ నుంచి టవర్ దాకా మాత్రమే; మిగతా దారంతా ఫైబర్."
+},
+{
+"k": [
+"పిడుగు",
+"lightning",
+"ఎర్ర లైట్",
+"red light"
+],
+"a": "పైన మెరుపు కడ్డీ పిడుగుని పట్టి ఉక్కు టవర్, ఎర్తింగ్ ద్వారా భూమిలోకి పంపుతుంది Sir. ఎర్ర లైట్ రాత్రి విమానాలకి హెచ్చరిక. పిడుగుల సమయంలో టవర్ దగ్గర, ఏ ఎత్తైన కట్టడం దగ్గరా నిలబడకూడదు."
+},
+{
+"k": [
+"ఎంత దూరం",
+"పరిధి",
+"range",
+"కవరేజ్"
+],
+"a": "ఊళ్ళలో ఒక టవర్ సుమారు 2–5 km Sir; తక్కువ ఫ్రీక్వెన్సీ (700 MHz) ఎక్కువ దూరం, గోడల లోపలికి బాగా వెళ్తుంది. నగరాల్లో జనం ఎక్కువ కాబట్టి ప్రతి 300–500 m కి ఒక టవర్."
+}
+],
+"quiz": [
+{
+"q": "మూడు దిశల్లో సిగ్నల్ పంపే తెల్ల పలకలు ఏవి?",
+"a": "సెక్టార్ యాంటెనాలు",
+"opts": [
+"సెక్టార్ యాంటెనాలు",
+"మైక్రోవేవ్ డిష్",
+"రేడియో యూనిట్లు"
+]
+},
+{
+"q": "టవర్‌ని ప్రపంచంతో కలిపే గాజు దారాలు ఏవి?",
+"a": "ఫైబర్ కేబుల్",
+"opts": [
+"నిచ్చెన కేబుల్స్",
+"ఫైబర్ కేబుల్",
+"ఎర్తింగ్"
+]
+},
+{
+"q": "కరెంట్ పోతే టవర్‌ని వెంటనే నడిపేది ఏది?",
+"a": "బ్యాటరీ బ్యాంక్",
+"opts": [
+"డీజిల్ జనరేటర్",
+"బ్యాటరీ బ్యాంక్",
+"కరెంట్ మీటర్ స్తంభం"
+]
+},
+{
+"q": "కాల్స్, డేటాని ఫోన్లకి పంచే మెదడు ఏది?",
+"a": "BBU క్యాబినెట్",
+"opts": [
+"BBU క్యాబినెట్",
+"పవర్ క్యాబినెట్",
+"రేడియో యూనిట్లు"
+]
+},
+{
+"q": "పక్క టవర్‌కి నేరుగా లింక్ ఇచ్చేది ఏది?",
+"a": "మైక్రోవేవ్ డిష్",
+"opts": [
+"సెక్టార్ యాంటెనాలు",
+"మెరుపు కడ్డీ లైట్",
+"మైక్రోవేవ్ డిష్"
+]
+},
+{
+"q": "పిడుగుని పట్టి భూమిలోకి పంపేది ఏది?",
+"a": "మెరుపు కడ్డీ లైట్",
+"opts": [
+"మెరుపు కడ్డీ లైట్",
+"ప్లాట్‌ఫారం",
+"కంచె"
+]
+}
+],
+"faults": [
+{
+"label": "పవర్ క్యాబినెట్",
+"kind": "stop",
+"clue": "ఊరంతా నెట్‌వర్క్ పోయింది Sir! టవర్ పరికరాలకి కరెంట్ అందట్లేదు. ఏది ఆగింది?",
+"why": "పవర్ క్యాబినెట్ రెక్టిఫైయర్ కాలిపోయింది: గ్రిడ్ ఉన్నా 48 V DC రావట్లేదు. నెట్‌వర్క్ కేంద్రానికి అలారం వెళ్తుంది; టెక్నీషియన్ వచ్చి రెక్టిఫైయర్ మాడ్యూల్ మారుస్తాడు."
+},
+{
+"label": "రేడియో యూనిట్లు",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: పైన ఏది మామూలు కంటే వేడిగా ఉంది?",
+"why": "ఒక రేడియో యూనిట్ ఎండలో, ఫుల్ లోడ్‌లో వేడెక్కింది: అది తన శక్తి తానే తగ్గించుకుంటుంది (ఆ సెక్టార్‌లో నెట్ కొంచెం నెమ్మదిస్తుంది). రెక్కల మీది దుమ్ము, పక్షి గూళ్ళు శుభ్రం చేస్తారు."
+},
+{
+"label": "డీజిల్ జనరేటర్",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: కింద ఎక్కడి నుంచి వేరే చప్పుడు? 🩺 స్టెతస్కోప్ వాడొచ్చు. (ముందు 'కరెంట్ కట్' అనండి.)",
+"why": "డీజిల్ జనరేటర్ ఎయిర్ ఫిల్టర్ మూసుకుపోయింది, ఫ్యాన్ బెల్ట్ వదులైంది. సర్వీస్‌లో ఫిల్టర్, బెల్ట్, ఆయిల్ మారుస్తారు."
+},
+{
+"label": "మైక్రోవేవ్ డిష్",
+"kind": "loose",
+"clue": "పైన ఏది వదులై ఊగుతోంది Sir?",
+"why": "గాలి వానకి మైక్రోవేవ్ డిష్ బిగింపు వదులైంది: డిష్ దిశ కొంచెం తప్పినా లింక్ తెగిపోతుంది. టెక్నీషియన్ ఎక్కి దిశ సరిచేసి బిగిస్తాడు."
+}
+],
+"inside": {
+"సెక్టార్ యాంటెనాలు": {
+"say": "యాంటెనా లోపల Sir, తెల్లని మూత తీసి చూపిస్తున్నాను: వెనక పొడవైన లోహపు పలక (రిఫ్లెక్టర్), దాని ముందు వరుసగా ఎనిమిది చిన్న X ఆకారపు ఇత్తడి ముక్కలు (డైపోల్‌లు). ప్రతిదీ అదే తరంగాన్ని పంపుతుంది; అన్నీ కలిసి ఒక సన్నని, వెడల్పాటి కిరణం అవుతాయి: విసనకర్ర లాగా, కొంచెం కిందికి వంగి. పలక వెనక్కి వెళ్ళే తరంగాన్ని ముందుకే తిప్పుతుంది. ఇవే ముక్కలు ఫోన్ల నుంచి వచ్చే బలహీన సిగ్నల్‌ని వింటాయి కూడా.",
+"code": "// Inside a panel antenna, its white cover (radome) off: a tall metal back plate (the reflector) and a column of small\n// crossed metal strips (dipoles). Each one sends the same radio wave; added together they make one flat, wide beam, like a\n// fan of light pointed at the horizon and tilted a few degrees down toward the houses. The same strips also listen.\nconst plate = W.metal('#c9cdd2', { rough: 0.4 }), cu = W.metal('brass', { rough: 0.3 }), pcb = W.plastic('#2f6f4a', { rough: 0.6 });\nconst rf = W.group();\nrf.add(W.mesh(W.box(4, 230, 44), plate), W.mesh(W.box(10, 230, 3), plate, { at: [5, 0, 22] }), W.mesh(W.box(10, 230, 3), plate, { at: [5, 0, -22] }));\nW.add(rf, { label: 'రిఫ్లెక్టర్ ప్లేట్' });\nconst dp = W.group();\nfor (let k = 0; k < 8; k++) { const y = -98 + k * 28; for (const a of [45, -45]) dp.add(W.mesh(W.box(1.6, 22, 3), cu, { at: [12, y, 0], rot: [a, 0, 0] })); dp.add(W.mesh(W.cyl(1.4, 1.4, 10, 8), cu, { at: [7, y, 0], rot: [0, 0, 90] })); }\nW.add(dp, { label: 'డైపోల్ ఎలిమెంట్లు' });\nconst fd = W.group();\nfd.add(W.mesh(W.box(2, 215, 10), pcb, { at: [-4, 0, 0] }), W.mesh(W.box(8, 24, 20), W.metal('#8d959c'), { at: [-8, -124, 0] }));\nfor (const z of [-6, 6]) fd.add(W.mesh(W.cyl(3, 3, 12, 10), cu, { at: [-8, -140, z] }));\nW.add(fd, { label: 'ఫీడ్ బోర్డ్, టిల్ట్ మోటార్' });\nfor (let k = 0; k < 8; k++) { const y = -98 + k * 28; W.stream([[14, y, 0], [120, y - 8, (k - 3.5) * 2], [300, y * 0.4 - 26, (k - 3.5) * 5]], { kind: 'signal', count: 7, size: 4, speed: 1.4, always: true }); }\nfor (const z of [-90, 90]) W.stream([[14, 0, 0], [140, -10, z * 0.5], [300, -26, z]], { kind: 'signal', count: 6, size: 3, speed: 1.4, always: true });\n"
+}
+},
+"film": [
+"📶 సెల్ టవర్ · 40 m",
+"3 సెక్టార్ యాంటెనాలు → ఊరి ఫోన్లు",
+"ఫైబర్ కేబుల్: వెలుతురులో డేటా",
+"కరెంట్ పోతే: బ్యాటరీ → జనరేటర్",
+"మెరుపు కడ్డీ, ఎర్ర లైట్",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ సెల్ టవర్ నిర్వహణ",
+"safety": "టవర్ ఎక్కడం శిక్షణ, హార్నెస్, హెల్మెట్ ఉన్న టెక్నీషియన్ల పని మాత్రమే Sir; యాంటెనా ముందు పని చేసేటప్పుడు ఆ సెక్టార్ ఆపుతారు. మనం కంచె లోపలికి వెళ్ళకూడదు; పిడుగుల సమయంలో టవర్‌కి దూరంగా ఉండాలి.",
+"steps": [
+{
+"say": "బ్యాటరీ బ్యాంక్ వోల్టేజ్, టెర్మినల్ తుప్పు, బ్యాకప్ సమయం పరీక్ష.",
+"label": "బ్యాటరీ బ్యాంక్"
+},
+{
+"say": "డీజిల్ జనరేటర్‌ని వారానికోసారి కాసేపు నడిపి చూస్తారు; డీజిల్, ఆయిల్, ఫిల్టర్.",
+"label": "డీజిల్ జనరేటర్"
+},
+{
+"say": "టవర్ బోల్టులు, జింక్ పూత, పునాది పగుళ్ళు ఏడాదికోసారి; తుఫాను తర్వాత వెంటనే.",
+"label": "టవర్"
+},
+{
+"say": "యాంటెనా వంపు (టిల్ట్), దిశ; కేబుల్ జాయింట్లలో నీరు చొరబడిందా.",
+"label": "సెక్టార్ యాంటెనాలు"
+},
+{
+"say": "ఎర్తింగ్ నిరోధం కొలత: పిడుగుల కాలానికి ముందు.",
+"label": "ఎర్తింగ్"
+}
+]
+},
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"id": "tower"
+}
+}

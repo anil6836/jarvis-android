@@ -1,0 +1,497 @@
+{
+"at": 1763700000012,
+"title": "బోర్‌వెల్ సబ్‌మెర్సిబుల్ పంప్",
+"what": "భూమిని కోసి చూపించే బోర్‌వెల్: రాయి పగుళ్ళలో నీరు, కేసింగ్, 5 HP సబ్‌మెర్సిబుల్ పంప్ (మోటార్, 10 స్టేజ్‌లు), స్టార్టర్, తొట్టి, ఇంకుడు గుంట. 🕐 🚶",
+"model": "showpiece",
+"parts": [
+{
+"id": "earth",
+"status": "భూమి పొరలు కోసి చూపిస్తున్నాను",
+"code": "// Borewell with a submersible pump, hand-made: the earth cut open like a slice of cake. Units: cm; the pipes and the pump\n// are real size (a 6.5 inch bore, a 5 HP pump set), the depth is shortened: a real bore here is 60 to 150 m deep, the\n// model shows the top and the bottom and marks the missing middle. Ground level is y = 0; the cut face looks to +Z.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 10, ground: '#6f6a58', zoom: 0.9 });\nS.BOT = -2200; S.WT = -900; S.PUMP = -2050;\nconst top = W.group();\ntop.add(W.mesh(W.box(2200, 12, 800), S.land('soil', '#a98f6c', 300), { at: [0, -6, -400] }));\ntop.add(W.mesh(W.box(700, 4, 420), S.land('grass', '#7f9a55', 300), { at: [-730, 2, -560] }));\nW.add(top, { label: 'భూమి పైభాగం', ground: true });\nconst soil = W.group();\nsoil.add(W.mesh(W.box(2200, 138, 800), S.sf('soil', '#8a6a48', { tile: 260 }), { at: [0, -81, -400] }));\nW.add(soil, { label: 'పై మట్టి', ground: true });\nconst wr = W.group();\nwr.add(W.mesh(W.box(2200, 550, 800), S.sf('gravel', '#b9a274', { tile: 240 }), { at: [0, -425, -400] }));\nW.add(wr, { label: 'వదులు రాయి పొర', ground: true });\nconst hr = W.group();\nhr.add(W.mesh(W.box(2200, 1500, 800), S.sf('asphalt', '#a3a5aa', { tile: 320 }), { at: [0, -1450, -400] }));\nconst crack = S.matte('#27405c', 0.6);\nfor (const [x, y, len, a] of [[-380, -1010, 900, 9], [330, -1420, 1100, -7], [-250, -1700, 800, 5], [420, -1930, 700, 12], [-520, -2080, 620, -4], [100, -860, 500, -14]]) {\n  hr.add(W.mesh(W.box(len, 7, 4), crack, { at: [x, y, 1], rot: [0, 0, a] }));\n}\n// the missing middle: a torn band and its note\nhr.add(W.mesh(W.box(2200, 54, 6), S.matte('#f1eee6', 0.8), { at: [0, -1210, 2] }));\nfor (let k = 0; k < 22; k++) hr.add(W.mesh(W.box(72, 6, 7), S.matte('#3a3d42', 0.8), { at: [-1050 + k * 100, -1210 + (k % 2 ? 14 : -14), 3], rot: [0, 0, k % 2 ? 20 : -20] }));\nhr.add(W.text('≈ ఇక్కడ ఇంకా 60–100 m (బొమ్మలో కుదించాను)', { size: 36, at: [560, -1212, 8], color: '#2a2c30' }));\nW.add(hr, { label: 'గట్టి రాయి', ground: true });\n// ground water: it fills the cracks of the rock below the water level\nconst gw = W.group();\nS.water = W.mesh(W.box(2200, 1, 5), new THREE.MeshStandardMaterial({ color: 0x3a8ad9, transparent: true, opacity: 0.3, roughness: 0.2, depthWrite: false }), { at: [0, 0, 5] });\ngw.add(S.water);\nS.wline = W.mesh(W.box(2200, 5, 6), S.matte('#2f7fd0', 0.4));\ngw.add(S.wline);\nW.add(gw, { label: 'భూగర్భ జలం', ground: true });\nconst rp = W.group(); // a recharge pit: rain water from the roof and the field soaks back into the ground through it\nrp.add(W.mesh(W.box(200, 60, 6), S.sf('gravel', '#d2cdbf', { tile: 60 }), { at: [820, -210, 3] }), W.mesh(W.box(200, 60, 6), S.sf('gravel', '#8f8a7c', { tile: 30 }), { at: [820, -150, 3] }), W.mesh(W.box(200, 60, 6), S.sf('soil', '#d9c08a', { tile: 40 }), { at: [820, -90, 3] }), W.mesh(W.box(200, 60, 6), S.matte('#5aa0d9', 0.3), { at: [820, -30, 3] }));\nfor (const sx of [-1, 1]) rp.add(W.mesh(W.box(14, 250, 8), S.sf('brick', '#b8644a', { tile: 80 }), { at: [820 + sx * 107, -120, 3] }));\nrp.add(S.pipe([[1060, 30, -200], [960, 20, -60], [860, 6, -4], [840, -20, 4]], 5, S.matte('#d9d5ca', 0.5)));\nW.add(rp, { label: 'ఇంకుడు గుంట', ground: true });\n"
+},
+{
+"id": "bore",
+"status": "బోర్ రంధ్రం, పైపులు దించుతున్నాను",
+"code": "const S = W.store;\nconst halfTube = (r, y0, y1, mat) => { const g = new THREE.CylinderGeometry(r, r, y1 - y0, 24, 1, true, Math.PI / 2, Math.PI); const m = new THREE.Mesh(g, mat); m.position.y = (y0 + y1) / 2; return m; };\nconst hole = W.group();\nconst hm = new THREE.MeshStandardMaterial({ color: 0x3a3833, roughness: 0.95, side: THREE.DoubleSide });\nhole.add(halfTube(8.3, S.BOT + 40, -700, hm));\nW.add(hole, { label: 'బోర్ రంధ్రం' });\nconst cas = W.group();\nconst pvc = new THREE.MeshStandardMaterial({ color: 0x3f6fb0, roughness: 0.5, side: THREE.DoubleSide });\ncas.add(halfTube(9.2, -720, 40, pvc));\ncas.add(W.mesh(W.cyl(9.6, 9.6, 34, 24), new THREE.MeshStandardMaterial({ color: 0x3f6fb0, roughness: 0.5 }), { at: [0, 57, 0] }));\nW.add(cas, { label: 'కేసింగ్ పైపు' });\nconst col = W.group();\ncol.add(W.mesh(W.cyl(3.8, 3.8, 82 - (S.PUMP + 196), 14), S.matte('#1f2226', 0.55), { at: [0, (82 + S.PUMP + 196) / 2, 0] }));\nfor (let y = S.PUMP + 500; y < 40; y += 600) col.add(W.mesh(W.cyl(4.8, 4.8, 12, 14), S.sf('metal', '#aab2ba'), { at: [0, y, 0] })); // the pipe joints\nW.add(col, { label: 'కాలమ్ పైపు' });\nconst cab = W.group();\ncab.add(W.mesh(W.box(2.6, 96 - (S.PUMP + 20), 1.2), S.matte('#101114', 0.6), { at: [5.2, (96 + S.PUMP + 20) / 2, 0] }));\nfor (let y = S.PUMP + 260; y < 40; y += 300) cab.add(W.mesh(W.box(11, 2.4, 9), S.matte('#d9d5ca', 0.6), { at: [1.6, y, 0] })); // the ties that hold it to the pipe\ncab.add(S.pipe([[5.2, 96, 0], [5, 120, -20], [-60, 30, -120], [-330, 6, -235], [-400, 60, -246], [-400, 120, -246]], 1.6, S.matte('#101114', 0.6), 40));\nW.add(cab, { label: 'కేబుల్' });\nconst rope = W.group();\nrope.add(W.mesh(W.cyl(0.5, 0.5, 60 - (S.PUMP + 190), 5), S.matte('#d9a521', 0.8), { at: [-5.6, (60 + S.PUMP + 190) / 2, 0] }));\nW.add(rope, { label: 'సేఫ్టీ తాడు' });\n"
+},
+{
+"id": "pumpset",
+"status": "పంప్ సెట్ దించుతున్నాను",
+"code": "const S = W.store;\n// the pump set hangs at the bottom, under water: the motor lowest (the water around it cools it), then the strainer\n// where the water enters, then the stack of stages (each one adds pressure), then the check valve\nconst ss = S.sf('metal', '#c2c8cd', { rough: 0.35, tile: 40 }), P = S.PUMP;\nconst mo = W.group();\nmo.add(W.mesh(W.cyl(7.1, 7.1, 78, 24), ss, { at: [0, P + 39, 0] }), W.mesh(W.cyl(7.1, 5.4, 5, 24), ss, { at: [0, P - 2.5, 0] }));\nmo.add(W.mesh(W.cyl(7.3, 7.3, 6, 24), S.sf('metal', '#6f767e', { rough: 0.5 }), { at: [0, P + 78, 0] }));\nW.add(mo, { label: 'సబ్‌మెర్సిబుల్ మోటార్', heat: [28, 62] });\nconst sn = W.group();\nsn.add(W.mesh(W.cyl(6.6, 6.6, 15, 24), S.matte('#2a2c30', 0.6), { at: [0, P + 89, 0] }));\nfor (let k = 0; k < 16; k++) sn.add(W.mesh(W.box(0.9, 13, 0.9), ss, { at: [Math.cos(k * 0.3927) * 6.8, P + 89, Math.sin(k * 0.3927) * 6.8] }));\nW.add(sn, { label: 'స్ట్రైనర్', heat: [28, 30] });\nconst st = W.group();\nfor (let k = 0; k < 10; k++) { st.add(W.mesh(W.cyl(7.1, 7.1, 7.4, 24), ss, { at: [0, P + 100.5 + k * 8.2, 0] })); st.add(W.mesh(W.cyl(7.3, 7.3, 0.9, 24), S.sf('metal', '#8d959c'), { at: [0, P + 104.6 + k * 8.2, 0] })); }\nst.add(W.text('10 స్టేజ్‌లు', { size: 4.6, at: [0, P + 140, 7.3], color: '#22303c' }));\nW.add(st, { label: 'పంప్ స్టేజ్‌లు', heat: [28, 36] });\nconst nr = W.group();\nnr.add(W.mesh(W.cyl(4.6, 7.1, 8, 20), ss, { at: [0, P + 183, 0] }), W.mesh(W.cyl(4.6, 4.6, 9, 16), S.sf('metal', '#b08a3a', { rough: 0.4 }), { at: [0, P + 191.5, 0] }));\nW.add(nr, { label: 'చెక్ వాల్వ్', heat: [28, 30] });\nS.inWater = W.group();\nconst wc = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 1, 20, 1, false, Math.PI / 2, Math.PI), new THREE.MeshStandardMaterial({ color: 0x3a8ad9, transparent: true, opacity: 0.35, roughness: 0.2, depthWrite: false, side: THREE.DoubleSide }));\nS.inWater.add(wc); S.boreWater = wc;\nW.add(S.inWater, { label: 'బోర్‌లో నీరు' });\n"
+},
+{
+"id": "surface",
+"status": "పైన తొట్టి, స్టార్టర్ పెడుతున్నాను",
+"code": "const S = W.store;\nconst gi = S.sf('metal', '#aab2ba', { rough: 0.5, tile: 60 });\nconst hd = W.group();\nhd.add(W.mesh(W.cyl(11.5, 11.5, 2.4, 24), gi, { at: [0, 75, 0] }));\nfor (let k = 0; k < 4; k++) hd.add(W.mesh(W.cyl(1, 1, 5, 6), S.sf('metal', '#6f767e'), { at: [Math.cos(k * 1.571 + 0.78) * 9.4, 77, Math.sin(k * 1.571 + 0.78) * 9.4] }));\nW.add(hd, { label: 'బోర్ క్యాప్' });\nconst dl = W.group();\ndl.add(S.pipe([[0, 76, 0], [0, 104, 0], [6, 112, -6], [40, 112, -40], [300, 112, -300], [470, 112, -330], [520, 124, -335]], 3.8, gi, 60));\ndl.add(W.mesh(W.cyl(6.4, 6.4, 9, 14), S.sf('paint', '#3b6a94', { tile: 30 }), { at: [120, 112, -120], rot: [90, 0, 45] })); // the valve\ndl.add(W.mesh(W.cyl(1, 1, 16, 8), gi, { at: [120, 122, -120] }), W.mesh(W.cyl(7.5, 7.5, 1.4, 16), S.sf('paint', '#b6463a', { tile: 30 }), { at: [120, 130, -120] }));\ndl.add(W.mesh(W.cyl(4.6, 4.6, 2.4, 16), S.matte('#f2f2ee', 0.4), { at: [70, 126, -70], rot: [90, 0, 0] }), W.mesh(W.cyl(0.8, 0.8, 10, 6), gi, { at: [70, 118, -70] })); // the pressure gauge\nfor (const d of [200, 400]) dl.add(W.mesh(W.box(6, 110, 6), S.sf('concrete', '#b9b5ab', { tile: 80 }), { at: [d, 55, d < 300 ? -d : -322] }));\nW.add(dl, { label: 'డెలివరీ పైపు' });\nconst tk = W.group();\ntk.add(W.mesh(W.ring(150, 162, 110, 40), S.sf('concrete', '#bdb8ac', { tile: 160 }), { at: [640, 55, -360] }));\ntk.add(W.mesh(W.cyl(150, 150, 6, 40), S.sf('concrete', '#a9a59b', { tile: 160 }), { at: [640, 3, -360] }));\nS.tankWater = W.mesh(W.cyl(149, 149, 1, 40), new THREE.MeshStandardMaterial({ color: 0x3f8fd0, transparent: true, opacity: 0.8, roughness: 0.08, metalness: 0.2 }), { at: [640, 8, -360] });\ntk.add(S.tankWater);\ntk.add(S.pipe([[790, 20, -400], [860, 14, -460], [900, 8, -600]], 4.4, S.matte('#d9d5ca', 0.5)));\nW.add(tk, { label: 'నీళ్ళ తొట్టి' });\nconst fd = W.group();\nfd.add(W.mesh(W.box(700, 5, 26), S.matte('#4a86c0', 0.3), { at: [-730, 5, -345] }));\nconst crop = new THREE.InstancedMesh(new THREE.ConeGeometry(9, 34, 5), S.matte('#4f8a3a', 0.9), 120), M = new THREE.Matrix4();\nfor (let i = 0; i < 120; i++) crop.setMatrixAt(i, M.makeTranslation(-1060 + (i % 20) * 35, 20, -400 - Math.floor(i / 20) * 60));\nfd.add(crop);\nW.add(fd, { label: 'పొలం' });\nconst pn = W.group();\nfor (const dx of [-22, 22]) pn.add(W.mesh(W.box(4, 150, 4), gi, { at: [-400 + dx, 75, -250] }));\npn.add(W.mesh(W.box(56, 66, 22), S.sf('paint', '#8f979e', { tile: 60 }), { at: [-400, 128, -246] }), W.mesh(W.box(70, 4, 40), gi, { at: [-400, 166, -240], rot: [14, 0, 0] }));\nS.pilot = new THREE.MeshStandardMaterial({ color: 0x102010, emissive: 0x3aff6a, emissiveIntensity: 0 });\nS.trip = new THREE.MeshStandardMaterial({ color: 0x201010, emissive: 0xff3a2a, emissiveIntensity: 0 });\npn.add(W.mesh(W.cyl(2.6, 2.6, 3, 10), S.pilot, { at: [-412, 146, -234], rot: [90, 0, 0] }), W.mesh(W.cyl(2.6, 2.6, 3, 10), S.trip, { at: [-388, 146, -234], rot: [90, 0, 0] }));\npn.add(W.mesh(W.box(9, 9, 4), S.matte('#3aa05a', 0.5), { at: [-412, 122, -234] }), W.mesh(W.box(9, 9, 4), S.matte('#c23a2e', 0.5), { at: [-388, 122, -234] }));\npn.add(W.mesh(W.box(30, 12, 3), W.screen('#0a1420', 0.5), { at: [-400, 104, -234.5] }));\nW.add(pn, { label: 'స్టార్టర్ ప్యానెల్', heat: [30, 46] });\nconst pl = W.group();\npl.add(W.mesh(W.box(18, 760, 22), S.sf('concrete', '#c9c5bb', { tile: 200 }), { at: [-880, 380, -640] }));\nfor (let k = 0; k < 4; k++) pl.add(W.mesh(W.cyl(5, 7, 14, 8), S.matte('#7a4a32', 0.4), { at: [-880, 740 - k * 30, -626] }));\nfor (let k = 0; k < 4; k++) pl.add(S.beam([-880, 745 - k * 30, -626], [-1100, 748 - k * 30, -700], 1.6, S.matte('#3a3d42', 0.6), 4));\nfor (let k = 0; k < 3; k++) pl.add(S.beam([-880, 745 - k * 30, -626], [-400, 164, -254 + k * 4], 1.6, S.matte('#1d1e20', 0.6), 4));\nW.add(pl, { label: 'కరెంట్ స్తంభం', heat: [30, 36] });\n"
+},
+{
+"id": "run",
+"status": "పంప్ స్టార్ట్‌కి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is the delivery valve (0 = the pump off). The water level in the bore falls a little while it\n// pumps (drawdown) and comes back when it rests. 🚩 \"summer\": the ground water falls below the pump: the dry-run\n// protection in the starter stops the motor before it burns (water is what cools it).\nconst mark = W.group();\nmark.add(W.text('నీటి మట్టం', { size: 26, at: [-760, 0, 9], color: '#eaf4ff', bg: '#2f6fb0' }));\nW.add(mark, { label: 'నీటి మట్టం గుర్తు' });\nW.throttle({ label: 'పంప్', rise: 0.5, fall: 0.5, start: 0.7 });\nW.sound({ kind: 'pump', label: 'సబ్‌మెర్సిబుల్ మోటార్', gain: 0.5, f0: 100 });\nW.sound({ kind: 'water', label: 'నీళ్ళ తొట్టి', gain: 0.6 });\nW.sound({ kind: 'hum', label: 'స్టార్టర్ ప్యానెల్', gain: 0.2, f0: 50 });\nlet hudT = 0, lvl = S.WT, bore = S.WT, run = 0, fill = 0.3;\nW.onTick((t, dt) => {\n  const s = W.env.spool, summer = W.env.flag('summer'), stopped = W.faultOf('సబ్‌మెర్సిబుల్ మోటార్') === 'stop';\n  lvl += ((summer ? S.PUMP + 20 : S.WT) - lvl) * Math.min(1, dt * 0.6);\n  const dry = lvl < S.PUMP + 110, want = s > 0.03 && !dry && !stopped && !W.env.over;\n  run += ((want ? 1 : 0) - run) * Math.min(1, dt * 2);\n  bore += ((lvl - (run > 0.5 ? 150 * s : 0)) - bore) * Math.min(1, dt * 0.35);\n  const h = Math.max(1, lvl - S.BOT);\n  S.water.scale.y = h; S.water.position.y = S.BOT + h / 2; S.wline.position.set(0, lvl, 6);\n  mark.position.y = lvl + 34;\n  const bh = Math.max(1, bore - (S.BOT + 40));\n  S.boreWater.scale.y = bh; S.boreWater.position.y = S.BOT + 40 + bh / 2;\n  fill += dt * (run * s * 0.05 - 0.012); fill = Math.max(0.05, Math.min(1, fill));\n  S.tankWater.scale.y = 100 * fill; S.tankWater.position.y = 6 + 50 * fill;\n  S.pilot.emissiveIntensity = run > 0.5 ? 2.4 : 0.1;\n  S.trip.emissiveIntensity = (s > 0.03 && (dry || W.env.over)) ? 2.6 * (Math.sin(t * 8) > 0 ? 1 : 0.2) : 0;\n  S.step(t, dt, run);\n  if (t - hudT > 0.25) {\n    hudT = t;\n    const lpm = Math.round(180 * s * run), depth = (v) => (v > -1150 ? -v / 100 * 2.2 : 26 + (-1250 - v) / 950 * 64); // (the model's centimetres → the real metres it stands for)\n    W.hud({ 'నీరు': lpm + ' లీటర్లు/నిమిషం', 'బోర్‌లో నీటి మట్టం': Math.round(depth(bore)) + ' m లోతు', 'మోటార్': run > 0.5 ? (2.6 + 1.4 * s).toFixed(1) + ' kW · ' + (6 + 3 * s).toFixed(1) + ' A' : 'ఆఫ్',\n      'ఒత్తిడి': run > 0.5 ? (9.5 - 2.5 * s).toFixed(1) + ' bar' : '0', 'తొట్టి': Math.round(fill * 100) + '%',\n      'స్థితి': s > 0.03 && dry ? 'డ్రై రన్ ప్రొటెక్షన్ ⚠️' : W.env.over && s > 0.03 ? 'ఓవర్‌లోడ్ ట్రిప్ ⚠️' : run > 0.5 ? 'నడుస్తోంది ✅' : 'ఆగింది' });\n    W.report({ power: s, lpm, waterDepthM: depth(bore), tank: fill * 100 });\n  }\n});\nconst P = S.PUMP, on = (e) => e.spool > 0.03 && !e.over && !e.flag('summer');\nW.stream([[-600, -1010, 4], [-150, -1035, 4], [-9, -1040, 2], [-7.6, P + 400, 2], [-7.6, P + 95, 2], [0, P + 95, 5]], { kind: 'water', count: 22, size: 5, speed: 0.5, when: on });\nW.stream([[700, -1460, 4], [200, -1420, 4], [9, -1400, 2], [7.6, P + 300, 2], [7.6, P + 92, 2], [0, P + 90, 5]], { kind: 'water', count: 22, size: 5, speed: 0.5, when: on });\nW.stream([[0, P + 96, 0], [0, P + 190, 0], [0, -1200, 0], [0, -400, 0], [0, 100, 0], [40, 112, -40], [300, 112, -300], [470, 112, -330], [530, 124, -336], [575, 90, -345], [600, 30, -350]], { kind: 'water', count: 70, size: 6, speed: 1.1, when: on });\nW.stream([[790, 20, -400], [860, 14, -460], [900, 8, -600], [-300, 8, -345], [-1060, 8, -345]], { kind: 'water', count: 24, size: 6, speed: 0.6, when: on });\nW.stream([[-1100, 748, -700], [-880, 745, -626], [-400, 164, -254], [-400, 110, -246], [-330, 6, -235], [-60, 30, -120], [5, 110, -10], [5.2, 60, 0], [5.2, -1000, 0], [5.2, P + 30, 0]], { kind: 'power', count: 46, size: 5, speed: 1.4, when: (e) => e.spool > 0.03 });\nW.walk({ eye: 160, speed: 260, area: [-1080, -780, 1080, 700],\n  floor: (x, z) => (z > 0 ? S.BOT : 0),\n  solid: [[-1100, -12, 1100, 12], [470, -530, 810, -190], [-430, -262, -370, -234]],\n  spots: [\n    { name: 'బోర్ దగ్గర', at: [-150, 0, -330], look: [20, 95, 0] },\n    { name: 'పంప్ దగ్గర', at: [150, S.BOT, 330], look: [0, S.PUMP + 110, 0] },\n    { name: 'నీటి మట్టం దగ్గర', at: [-200, S.BOT, 620], look: [-100, S.WT - 200, 0] },\n    { name: 'తొట్టి దగ్గర', at: [330, 0, -560], look: [620, 100, -350] },\n    { name: 'స్టార్టర్ దగ్గర', at: [-390, 0, -60], look: [-400, 128, -246] },\n  ] });\n"
+}
+],
+"say": "బోర్‌వెల్ రెడీ Sir. 'పంప్ దగ్గరికి వెళ్ళు' అంటే అడుగున పంప్ పక్కన నిలబడొచ్చు; 'ఎండాకాలం' అంటే నీటి మట్టం పడిపోవడం చూపిస్తాను; 'పంప్ లోపల చూపించు' అంటే ఇంపెల్లర్లు.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"భూమి లోపలి నీరు పొలానికి ఎలా వస్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది బోర్‌వెల్. భూమిని కోసి చూపిస్తున్నాను: పైన మట్టి, వదులు రాయి, కింద గట్టి రాయి. నీలి భాగం భూగర్భ జలం.\", \"focus\": [{\"id\": \"earth\", \"piece\": \"గట్టి రాయి\"}, {\"id\": \"earth\", \"piece\": \"భూగర్భ జలం\"}], \"dim\": false, \"view\": \"front\", \"secs\": 9}, {\"say\": \"రిగ్ యంత్రం రాయిని తొలిచి రంధ్రం చేస్తుంది. పై వదులు పొర కూలకుండా నీలి కేసింగ్ పైపు వేస్తారు.\", \"focus\": [{\"id\": \"bore\", \"piece\": \"కేసింగ్ పైపు\"}, {\"id\": \"bore\", \"piece\": \"బోర్ రంధ్రం\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}, {\"say\": \"అడుగున పంప్ సెట్: అన్నిటికంటే కింద మోటార్, దాని పైన జల్లెడ (స్ట్రైనర్), ఆ పైన 10 స్టేజ్‌లు, చెక్ వాల్వ్.\", \"focus\": [{\"id\": \"pumpset\", \"piece\": \"సబ్‌మెర్సిబుల్ మోటార్\"}, {\"id\": \"pumpset\", \"piece\": \"స్ట్రైనర్\"}, {\"id\": \"pumpset\", \"piece\": \"పంప్ స్టేజ్‌లు\"}, {\"id\": \"pumpset\", \"piece\": \"చెక్ వాల్వ్\"}], \"view\": \"front\", \"close\": true, \"secs\": 10}, {\"say\": \"రాయి పగుళ్ళ నుంచి నీరు బోర్‌లోకి ఊరుతుంది. మోటార్ పక్కగా పైకి వచ్చి (మోటార్ చల్లబడుతుంది) జల్లెడలోకి వెళ్తుంది; స్టేజ్‌లు దాన్ని కాలమ్ పైపులో పైకి నెడతాయి.\", \"focus\": [{\"id\": \"pumpset\", \"piece\": \"పంప్ స్టేజ్‌లు\"}, {\"id\": \"bore\", \"piece\": \"కాలమ్ పైపు\"}], \"view\": \"front\", \"close\": true, \"flow\": [{\"from\": \"pumpset\", \"fromPiece\": \"పంప్ స్టేజ్‌లు\", \"to\": \"surface\", \"toPiece\": \"బోర్ క్యాప్\", \"kind\": \"water\", \"count\": 10}], \"secs\": 10}, {\"say\": \"పైన: బోర్ క్యాప్, వాల్వ్, ఒత్తిడి గేజ్, తొట్టి. స్టార్టర్ ప్యానెల్ మోటార్‌ని ఆన్ చేస్తుంది, కాపాడుతుంది.\", \"focus\": [{\"id\": \"surface\", \"piece\": \"బోర్ క్యాప్\"}, {\"id\": \"surface\", \"piece\": \"డెలివరీ పైపు\"}, {\"id\": \"surface\", \"piece\": \"నీళ్ళ తొట్టి\"}, {\"id\": \"surface\", \"piece\": \"స్టార్టర్ ప్యానెల్\"}], \"view\": \"iso\", \"close\": true, \"secs\": 9}, {\"say\": \"కుడి వైపు ఇంకుడు గుంట: వాన నీరు తిరిగి భూమిలోకి. 'ఎండాకాలం' అంటే నీటి మట్టం పడిపోయి డ్రై రన్ ప్రొటెక్షన్ పని చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"earth\", \"piece\": \"ఇంకుడు గుంట\"}, {\"id\": \"earth\", \"piece\": \"భూగర్భ జలం\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"బోర్‌వెల్",
+"బోర్ వెల్",
+"బోరు బావి",
+"బోర్ పంప్",
+"బోరు పంపు",
+"సబ్‌మెర్సిబుల్",
+"సబ్ మెర్సిబుల్",
+"బోర్ మోటార్",
+"borewell",
+"bore well",
+"submersible",
+"borewell pump"
+],
+"powerName": "💧 వాల్వ్",
+"outdoor": true,
+"walk": [
+"బోర్ దగ్గర",
+"పంప్ దగ్గర",
+"నీటి మట్టం దగ్గర",
+"తొట్టి దగ్గర",
+"స్టార్టర్ దగ్గర"
+],
+"switches": [
+{
+"id": "summer",
+"menu": "☀️ ఎండాకాలం (నీటి మట్టం పడిపోతుంది)",
+"words": [
+"ఎండాకాలం",
+"వేసవి",
+"నీటి మట్టం తగ్గించు",
+"బోర్ ఎండిపోతే",
+"summer",
+"డ్రై రన్ చూపించు",
+"నీరు తగ్గితే"
+],
+"offWords": [
+"వానాకాలం",
+"వాన పడింది",
+"నీటి మట్టం పెంచు",
+"మట్టం మామూలు",
+"monsoon",
+"rainy season",
+"నీరు వచ్చింది"
+],
+"on": "☀️ ఎండాకాలం Sir: చుట్టుపక్కల బోర్లు ఎక్కువ తోడాయి, నీటి మట్టం పంప్ కంటే కిందికి పడిపోతోంది. పంప్‌కి నీరు అందకపోగానే స్టార్టర్‌లోని డ్రై రన్ ప్రొటెక్షన్ మోటార్‌ని ఆపుతుంది (ఎర్ర లైట్): మోటార్ కాలదు.",
+"off": "🌧️ వానలు పడ్డాయి Sir, ఇంకుడు గుంట ద్వారా నీరు ఇంకింది: నీటి మట్టం మళ్ళీ పైకి వచ్చింది, పంప్ నడుస్తోంది."
+}
+],
+"power": {
+"start": "పంప్ ఆన్ Sir: వాల్వ్ సగం తెరిచాను, నిమిషానికి సుమారు 100 లీటర్లు.",
+"full": "వాల్వ్ పూర్తిగా తెరిచాను Sir: నిమిషానికి సుమారు 180 లీటర్లు. బోర్‌లో నీటి మట్టం కొంచెం దిగింది (డ్రాడౌన్).",
+"half": "వాల్వ్ సగం Sir: నిమిషానికి సుమారు 90 లీటర్లు, ఒత్తిడి ఎక్కువ.",
+"stop": "పంప్ ఆపాను Sir. చెక్ వాల్వ్ మూసుకుంది: పైపులోని నీరు వెనక్కి పడదు. బోర్‌లో నీటి మట్టం మళ్ళీ పెరుగుతోంది.",
+"over": "మోటార్ హద్దు దాటి కరెంట్ లాగుతోంది Sir: స్టార్టర్ ఓవర్‌లోడ్ రిలే ట్రిప్ చేసి ఆపింది.",
+"cut": "లోడ్ తగ్గించి రిలే రీసెట్ చేశాను Sir: పంప్ మళ్ళీ నడుస్తోంది. మోటార్ కాలలేదు."
+},
+"info": {
+"భూమి పైభాగం": {
+"simple": "భూమి పైభాగం: పొలం, తొట్టి, స్టార్టర్. కింద భూమిని కేక్ ముక్కలా కోసి చూపిస్తున్నాను.",
+"deep": "బొమ్మలో పైపులు, పంప్ నిజమైన సైజు; లోతు మాత్రం కుదించాను. నిజమైన బోర్ 60 నుంచి 150 m లోతు.",
+"specs": {
+"నిజమైన లోతు": "సుమారు 60–150 m"
+}
+},
+"పై మట్టి": {
+"simple": "పై మట్టి: పంటలు పెరిగే పొర, ఒకటి రెండు మీటర్లు.",
+"deep": "వాన నీరు ఈ పొర గుండా ఇంకి కిందికి వెళ్తుంది. గట్టిగా దమ్ము చేసిన, సిమెంట్ వేసిన నేలలో నీరు ఇంకదు.",
+"specs": {
+"మందం": "సుమారు 1–3 m"
+}
+},
+"వదులు రాయి పొర": {
+"simple": "వదులు రాయి పొర: పగిలి, మట్టిగా మారుతున్న రాయి. ఇది కూలకుండా కేసింగ్ పైపు వేస్తారు.",
+"deep": "ఈ పొరలో కొంత నీరు నిల్వ ఉంటుంది; పాత చేద బావులు ఈ పొర నీటినే వాడేవి.",
+"specs": {
+"మందం": "సుమారు 5–20 m"
+}
+},
+"గట్టి రాయి": {
+"simple": "గట్టి రాయి (గ్రానైట్ లాంటిది). నీరు రాయిలో కాదు, దాని పగుళ్ళలో (నీలి గీతలు) ఉంటుంది.",
+"deep": "బోర్ ఎన్ని నీటి పగుళ్ళని దాటితే అంత నీరు. అందుకే పక్కపక్కనే ఉన్న రెండు బోర్లలో ఒకదానిలో నీరు పడి ఇంకోదానిలో పడకపోవచ్చు.",
+"specs": {
+"నీరు": "పగుళ్ళలో"
+}
+},
+"భూగర్భ జలం": {
+"simple": "భూగర్భ జలం: నీలి రంగు భాగం. నీలి గీత నీటి మట్టం.",
+"deep": "వానాకాలంలో పైకి, ఎండాకాలంలో, ఎక్కువ బోర్లు తోడితే కిందికి పోతుంది. 'ఎండాకాలం' అంటే చూపిస్తాను.",
+"specs": {
+"మట్టం": "కాలాన్ని బట్టి మారుతుంది"
+}
+},
+"ఇంకుడు గుంట": {
+"simple": "ఇది ఇంకుడు గుంట: వాన నీరు ఇందులో పడి కంకర, ఇసుక పొరల గుండా వడకట్టబడి భూమిలోకి ఇంకుతుంది.",
+"deep": "మనం తోడిన నీటిని భూమికి తిరిగి ఇచ్చే మార్గం. ఇంటి పైకప్పు నీరు, పొలం వాన నీరు దీనిలోకి మళ్ళిస్తే బోర్ ఎక్కువ కాలం నీరిస్తుంది.",
+"specs": {
+"పొరలు": "కంకర, చిన్న రాళ్ళు, ఇసుక"
+}
+},
+"బోర్ రంధ్రం": {
+"simple": "బోర్ రంధ్రం: రిగ్ యంత్రం గట్టి రాయిని తొలిచిన గుండ్రని రంధ్రం. 6.5 అంగుళాలు (సుమారు 16.5 cm) వెడల్పు.",
+"deep": "రిగ్ గాలి ఒత్తిడితో సుత్తిలా కొడుతూ తిరిగే బిట్‌తో రాయిని పొడి చేస్తుంది (DTH). గట్టి రాయి కూలదు కాబట్టి ఇక్కడ పైపు అక్కర్లేదు.",
+"specs": {
+"వెడల్పు": "6.5 అంగుళాలు"
+}
+},
+"కేసింగ్ పైపు": {
+"simple": "కేసింగ్ పైపు (నీలి PVC): పై వదులు పొర కూలి రంధ్రం మూసుకుపోకుండా ఆపుతుంది.",
+"deep": "గట్టి రాయి మొదలయ్యే దాకా మాత్రమే వేస్తారు. పైన భూమి మీద కొంచెం ఎత్తు ఉంచి మూత పెడతారు: మురికి నీరు లోపలికి పోకుండా.",
+"specs": {
+"పదార్థం": "PVC",
+"లోతు": "గట్టి రాయి దాకా"
+}
+},
+"కాలమ్ పైపు": {
+"simple": "కాలమ్ పైపు: పంప్ నుంచి నీటిని పైకి తెచ్చే పైపు. పంప్ దీనికే వేలాడుతుంది.",
+"deep": "HDPE (నల్ల ప్లాస్టిక్) లేదా GI పైపులు, 2 నుంచి 2.5 అంగుళాలు. ముక్కలు జాయింట్లతో కలుపుతారు.",
+"specs": {
+"సైజు": "సుమారు 2.5 అంగుళాలు"
+}
+},
+"కేబుల్": {
+"simple": "కేబుల్: స్టార్టర్ నుంచి కింద మోటార్ దాకా కరెంట్ తీసుకెళ్తుంది. పైపుకి కట్టి ఉంటుంది.",
+"deep": "నీటిలో ఉండే ప్రత్యేక ఫ్లాట్ కేబుల్, 3 తీగలు. జాయింట్ సరిగ్గా లేకపోతే నీరు చొరబడి మోటార్ కాలుతుంది.",
+"specs": {
+"తీగలు": "3",
+"రకం": "నీటిలో ఉండే ఫ్లాట్ కేబుల్"
+}
+},
+"సేఫ్టీ తాడు": {
+"simple": "సేఫ్టీ తాడు: పైపు విరిగినా పంప్ బోర్‌లో పడిపోకుండా పట్టుకుంటుంది.",
+"deep": "నైలాన్ లేదా స్టీల్ తాడు. పంప్ లోపల పడిపోతే తీయడం చాలా కష్టం, ఒక్కోసారి బోర్‌నే వదిలేయాలి.",
+"specs": {
+"పని": "పంప్ పడకుండా"
+}
+},
+"సబ్‌మెర్సిబుల్ మోటార్": {
+"simple": "ఇది సబ్‌మెర్సిబుల్ మోటార్: నీటిలో మునిగి పనిచేసే మోటార్. అన్నిటికంటే కింద ఉంటుంది.",
+"deep": "చుట్టూ ప్రవహించే నీరే దీన్ని చల్లబరుస్తుంది: నీరు లేకుండా నడిస్తే (డ్రై రన్) నిమిషాల్లో కాలిపోతుంది. లోపల నీరు లేదా నూనె నింపి సీల్ చేస్తారు.",
+"specs": {
+"శక్తి": "5 HP (3.7 kW)",
+"వేగం": "నిమిషానికి సుమారు 2,900",
+"సరఫరా": "3 ఫేజ్, 415 V"
+}
+},
+"స్ట్రైనర్": {
+"simple": "స్ట్రైనర్: నీరు పంప్‌లోకి వెళ్ళే జల్లెడ. ఇసుక, రాళ్ళ ముక్కలు ఆపుతుంది.",
+"deep": "మోటార్‌కి, పంప్‌కి మధ్యలో ఉంటుంది: నీరు మోటార్ పక్కగా పైకి వచ్చి ఇక్కడ లోపలికి వెళ్తుంది, అలా మోటార్ చల్లబడుతుంది.",
+"specs": {
+"పని": "నీరు లోపలికి, ఇసుక బయట"
+}
+},
+"పంప్ స్టేజ్‌లు": {
+"simple": "ఇవి పంప్ స్టేజ్‌లు: ఒకదాని మీద ఒకటి 10 చక్రాలు (ఇంపెల్లర్లు). ప్రతి స్టేజ్ నీటిని ఇంకొంచెం పైకి నెడుతుంది.",
+"deep": "ఒక్కో స్టేజ్ సుమారు 9 m ఎత్తు; 10 స్టేజ్‌లు = 90 m. లోతైన బోర్‌కి ఎక్కువ స్టేజ్‌ల పంప్. 'పంప్ లోపల చూపించు' అంటే ఇంపెల్లర్లు తిరగడం చూపిస్తాను.",
+"specs": {
+"స్టేజ్‌లు": "10",
+"ఒక్కోటి": "సుమారు 9 m ఎత్తు"
+}
+},
+"చెక్ వాల్వ్": {
+"simple": "చెక్ వాల్వ్: నీరు పైకి మాత్రమే వెళ్ళనిస్తుంది. పంప్ ఆగినప్పుడు పైపులోని నీరు వెనక్కి పడదు.",
+"deep": "ఇది లేకపోతే ఆగిన ప్రతిసారీ 80 m నీటి బరువు వెనక్కి పడి పంప్‌ని తిరగేసి తిప్పుతుంది, మళ్ళీ స్టార్ట్‌లో షాఫ్ట్ విరగొచ్చు.",
+"specs": {
+"పని": "ఒకే వైపు ప్రవాహం"
+}
+},
+"బోర్‌లో నీరు": {
+"simple": "బోర్‌లో నిలిచిన నీరు. పంప్ నడుస్తున్నప్పుడు ఈ మట్టం కొంచెం దిగుతుంది, ఆపితే మళ్ళీ పెరుగుతుంది.",
+"deep": "దిగడాన్ని 'డ్రాడౌన్' అంటారు. పగుళ్ళ నుంచి నీరు ఎంత వేగంగా వస్తుందో దాన్ని బట్టి బోర్ 'యీల్డ్' లెక్కిస్తారు.",
+"specs": {
+"డ్రాడౌన్": "పంప్ నడిస్తే దిగుతుంది"
+}
+},
+"బోర్ క్యాప్": {
+"simple": "బోర్ క్యాప్: బోర్ నోటిని మూసే ఇనుప మూత. చాలా ముఖ్యం.",
+"deep": "తెరిచి వదిలేసిన బోర్లలో చిన్న పిల్లలు పడిపోయిన ఘటనలు ఉన్నాయి. వాడే బోర్‌కి గట్టి మూత, వదిలేసిన బోర్‌ని మట్టి, రాళ్ళతో పూర్తిగా పూడ్చడం చట్టప్రకారం తప్పనిసరి.",
+"specs": {
+"జాగ్రత్త": "బోర్ ఎప్పుడూ తెరిచి ఉంచకూడదు"
+}
+},
+"డెలివరీ పైపు": {
+"simple": "డెలివరీ పైపు: నీటిని తొట్టికి తీసుకెళ్తుంది. దాని మీద వాల్వ్ (ఎర్ర చక్రం), ఒత్తిడి గేజ్.",
+"deep": "వాల్వ్ కొంచెం మూస్తే నీరు తగ్గి ఒత్తిడి పెరుగుతుంది: డ్రిప్, స్ప్రింక్లర్‌లకి సరిపడా ఒత్తిడి సెట్ చేస్తారు. పవర్ బార్ ఈ వాల్వే.",
+"specs": {
+"పవర్ బార్": "ఈ వాల్వ్"
+}
+},
+"నీళ్ళ తొట్టి": {
+"simple": "నీళ్ళ తొట్టి: బోర్ నీరు ముందు ఇక్కడ పడుతుంది, తర్వాత కాలువలో పొలానికి.",
+"deep": "తొట్టిలో నిల్వ ఉంటే కరెంట్ లేని సమయంలో కూడా పొలానికి నీరు పెట్టొచ్చు.",
+"specs": {
+"వెడల్పు": "సుమారు 3 m"
+}
+},
+"పొలం": {
+"simple": "పొలం: కాలువ నీటితో పంట.",
+"deep": "కాలువ పారకం కంటే డ్రిప్ పద్ధతిలో సగం నీటితో అదే పంట: బోర్ ఎక్కువ కాలం బతుకుతుంది.",
+"specs": {
+"సలహా": "డ్రిప్‌తో సగం నీరు"
+}
+},
+"స్టార్టర్ ప్యానెల్": {
+"simple": "స్టార్టర్ ప్యానెల్: పచ్చ బటన్ ఆన్, ఎర్ర బటన్ ఆఫ్. మోటార్‌ని కాపాడే రక్షణలు ఇందులోనే.",
+"deep": "ఓవర్‌లోడ్, ఫేజ్ పోవడం, తక్కువ వోల్టేజ్, డ్రై రన్ (నీరు లేకపోవడం): ఏది జరిగినా మోటార్‌ని ఆపుతుంది. తడి చేతులతో ముట్టుకోకూడదు; లోపలి పని ఎలక్ట్రీషియన్‌దే.",
+"specs": {
+"రక్షణలు": "ఓవర్‌లోడ్, ఫేజ్ ఫెయిల్, డ్రై రన్"
+}
+},
+"కరెంట్ స్తంభం": {
+"simple": "కరెంట్ స్తంభం: పొలానికి 3 ఫేజ్ కరెంట్ తెస్తుంది.",
+"deep": "వ్యవసాయ బోర్లకి వేరే ఫీడర్ ఉంటుంది. వోల్టేజ్ తక్కువగా ఉంటే మోటార్ ఎక్కువ కరెంట్ లాగి వేడెక్కుతుంది.",
+"specs": {
+"సరఫరా": "3 ఫేజ్, 415 V"
+}
+},
+"నీటి మట్టం గుర్తు": {
+"simple": "నీటి మట్టం గుర్తు: నీలి గీత ఎక్కడుందో చూపిస్తుంది.",
+"deep": "పైన ఎడమ అంకెల్లో 'బోర్‌లో నీటి మట్టం' నిజమైన మీటర్లలో చూపిస్తున్నాను.",
+"specs": {
+"చూడండి": "పైన ఎడమ అంకెలు"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎంత లోతు",
+"ఎన్ని అడుగులు",
+"how deep",
+"లోతు ఎంత"
+],
+"a": "మన ప్రాంతంలో బోర్లు సాధారణంగా 60 నుంచి 150 m (200–500 అడుగులు) Sir; కొన్ని చోట్ల ఇంకా లోతు. బొమ్మలో లోతు కుదించాను: పైన అంకెల్లో నిజమైన మీటర్లు చూపిస్తున్నాను."
+},
+{
+"k": [
+"ఎందుకు కింద",
+"పంప్ ఎందుకు లోపల",
+"పైన పెట్టొచ్చుగా",
+"why submersible",
+"suction"
+],
+"a": "పైన పెట్టిన పంప్ నీటిని పీల్చి 7–8 m కంటే ఎక్కువ ఎత్తలేదు Sir (గాలి ఒత్తిడి అంతే నెట్టగలదు). కానీ కింద నుంచి నెడితే ఎంత ఎత్తైనా నెట్టొచ్చు. అందుకే పంప్‌ని నీటిలోనే, కింద దించుతారు."
+},
+{
+"k": [
+"స్టేజ్ అంటే",
+"ఎన్ని స్టేజ్‌లు",
+"stages",
+"స్టేజ్"
+],
+"a": "ఒక్కో స్టేజ్ ఒక ఇంపెల్లర్ చక్రం Sir, సుమారు 9 m ఎత్తు నెడుతుంది. ఒకదాని మీద ఒకటి పెడితే ఒత్తిడి కలుస్తుంది: 10 స్టేజ్‌లు = సుమారు 90 m. లోతైన బోర్‌కి ఎక్కువ స్టేజ్‌లు."
+},
+{
+"k": [
+"ఎంత నీరు",
+"ఎన్ని లీటర్లు",
+"how much water",
+"డిశ్చార్జ్",
+"ఇంచుల నీరు"
+],
+"a": "ఈ 5 HP పంప్ ఫుల్‌లో నిమిషానికి సుమారు 180 లీటర్లు Sir (గంటకి 10,000 లీటర్ల పైన). లోతు పెరిగే కొద్దీ అదే పంప్ ఇచ్చే నీరు తగ్గుతుంది."
+},
+{
+"k": [
+"డ్రై రన్",
+"నీరు లేకుండా",
+"dry run",
+"మోటార్ కాలిపోయింది",
+"ఎందుకు కాలుతుంది"
+],
+"a": "మోటార్‌ని చల్లబరిచేది దాని చుట్టూ ప్రవహించే నీరే Sir. నీటి మట్టం పంప్ కంటే కిందికి పోతే మోటార్ నిమిషాల్లో వేడెక్కి కాలుతుంది. అందుకే స్టార్టర్‌లో డ్రై రన్ ప్రొటెక్షన్: నీరు లేదని కరెంట్ తగ్గడం చూసి ఆపేస్తుంది."
+},
+{
+"k": [
+"నీరు ఎక్కడి నుంచి",
+"భూగర్భ జలం",
+"ground water",
+"రాయిలో నీరు"
+],
+"a": "వాన నీరు మట్టిలో ఇంకి, రాయి పగుళ్ళలో నిల్వ ఉంటుంది Sir (బొమ్మలో నీలి గీతలు). బోర్ ఆ పగుళ్ళని దాటితే నీరు బోర్‌లోకి ఊరుతుంది. భూమి కింద నది, చెరువు ఉండవు: పగుళ్ళలోనే నీరు."
+},
+{
+"k": [
+"బోర్ ఎండిపోతే",
+"నీరు తగ్గితే",
+"ఇంకుడు గుంట",
+"recharge",
+"రీఛార్జ్",
+"ఎండిపోయింది"
+],
+"a": "తోడే నీటి కంటే ఇంకే నీరు తక్కువైతే మట్టం పడిపోతుంది Sir. ఇంకుడు గుంటలు, చెరువుల పూడిక తీయడం, డ్రిప్ వాడకం సహాయపడతాయి. ఒక ఇంటి పైకప్పు మీద ఏడాదికి పడే వాన లక్ష లీటర్ల దాకా ఉంటుంది."
+},
+{
+"k": [
+"పిల్లలు",
+"బోర్ మూత",
+"open borewell",
+"తెరిచిన బోర్",
+"వదిలేసిన బోర్"
+],
+"a": "బోర్‌ని ఎప్పుడూ తెరిచి ఉంచకూడదు Sir. వాడే బోర్‌కి గట్టి ఇనుప మూత; నీరు పడని, వదిలేసిన బోర్‌ని మట్టి, రాళ్ళతో పూర్తిగా పూడ్చాలి. ఇది చట్టం కూడా: చిన్న పిల్లల ప్రాణాల కోసం."
+},
+{
+"k": [
+"hp",
+"హార్స్ పవర్",
+"ఎన్ని hp",
+"ఏ పంప్"
+],
+"a": "లోతు, కావాల్సిన నీటిని బట్టి Sir: ఇళ్ళకి 1–1.5 HP, పొలాలకి 5–7.5 HP సాధారణం. బోర్ యీల్డ్ కంటే పెద్ద పంప్ పెడితే బోర్ త్వరగా ఖాళీ అయి డ్రై రన్ అవుతుంది."
+},
+{
+"k": [
+"కరెంట్ ఎంత",
+"ఎన్ని యూనిట్లు",
+"unit",
+"బిల్లు"
+],
+"a": "5 HP మోటార్ గంటకి సుమారు 4 యూనిట్లు Sir. రోజుకి 6 గంటలు నడిస్తే సుమారు 24 యూనిట్లు."
+}
+],
+"quiz": [
+{
+"q": "నీటిలో మునిగి, అన్నిటికంటే కింద ఉండి తిప్పేది ఏది?",
+"a": "సబ్‌మెర్సిబుల్ మోటార్",
+"opts": [
+"సబ్‌మెర్సిబుల్ మోటార్",
+"పంప్ స్టేజ్‌లు",
+"స్టార్టర్ ప్యానెల్"
+]
+},
+{
+"q": "ఒక్కో చక్రంతో నీటిని ఇంకొంచెం పైకి నెట్టేవి ఏవి?",
+"a": "పంప్ స్టేజ్‌లు",
+"opts": [
+"స్ట్రైనర్",
+"పంప్ స్టేజ్‌లు",
+"చెక్ వాల్వ్"
+]
+},
+{
+"q": "పంప్ ఆగినప్పుడు నీరు వెనక్కి పడకుండా ఆపేది ఏది?",
+"a": "చెక్ వాల్వ్",
+"opts": [
+"చెక్ వాల్వ్",
+"బోర్ క్యాప్",
+"కేసింగ్ పైపు"
+]
+},
+{
+"q": "వదులు పొర కూలకుండా ఆపే నీలి పైపు ఏది?",
+"a": "కేసింగ్ పైపు",
+"opts": [
+"కాలమ్ పైపు",
+"కేసింగ్ పైపు",
+"డెలివరీ పైపు"
+]
+},
+{
+"q": "వాన నీటిని భూమిలోకి ఇంకించేది ఏది?",
+"a": "ఇంకుడు గుంట",
+"opts": [
+"నీళ్ళ తొట్టి",
+"ఇంకుడు గుంట",
+"పొలం"
+]
+},
+{
+"q": "నీరు లేకపోతే మోటార్‌ని ఆపి కాపాడేది ఎక్కడ ఉంది?",
+"a": "స్టార్టర్ ప్యానెల్",
+"opts": [
+"స్టార్టర్ ప్యానెల్",
+"కరెంట్ స్తంభం",
+"సేఫ్టీ తాడు"
+]
+}
+],
+"faults": [
+{
+"label": "సబ్‌మెర్సిబుల్ మోటార్",
+"kind": "stop",
+"clue": "స్టార్టర్ ఆన్ చేశాం Sir, కానీ నీరు రావట్లేదు. కింద ఏది తిరగట్లేదు?",
+"why": "మోటార్ వైండింగ్ కాలిపోయింది (తక్కువ వోల్టేజ్‌లో చాలా సేపు నడిచింది). పంప్ సెట్‌ని పైపులతో సహా పైకి లాగి, మోటార్ రీవైండింగ్ చేయించాలి: ఇది బోర్ మెకానిక్ పని."
+},
+{
+"label": "పంప్ స్టేజ్‌లు",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: కింద ఎక్కడి నుంచి గరగర చప్పుడు? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "బోర్ నీటిలో ఇసుక వస్తోంది: ఇంపెల్లర్లు, బుష్‌లు అరిగిపోయాయి, నీరు తగ్గింది. అరిగిన స్టేజ్‌లు మార్చాలి; పంప్‌ని కొంచెం పైకి జరిపితే ఇసుక తగ్గుతుంది."
+},
+{
+"label": "స్టార్టర్ ప్యానెల్",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: పైన ఏది మామూలు కంటే వేడిగా ఉంది?",
+"why": "స్టార్టర్ కాంటాక్టర్ పాయింట్లు నల్లబడి వేడెక్కుతున్నాయి (ఒక ఫేజ్ సరిగ్గా అందట్లేదు). ఎలక్ట్రీషియన్ కాంటాక్టర్ మారుస్తాడు."
+},
+{
+"label": "డెలివరీ పైపు",
+"kind": "loose",
+"clue": "పైన ఏది వణుకుతోంది Sir?",
+"why": "డెలివరీ పైపు బెండ్ జాయింట్ వదులైంది, నీరు కారుతోంది. పంప్ ఆపి జాయింట్ బిగిస్తారు."
+}
+],
+"inside": {
+"పంప్ స్టేజ్‌లు": {
+"say": "పంప్ లోపల Sir, మూడు స్టేజ్‌లు కోసి చూపిస్తున్నాను: మధ్యలో మోటార్ షాఫ్ట్, దానికి బిగించిన ఇత్తడి ఇంపెల్లర్ చక్రాలు నిమిషానికి 2,900 సార్లు తిరుగుతాయి. ప్రతి చక్రం నీటిని బయటికి విసురుతుంది; చుట్టూ ఉన్న కదలని బౌల్ ఆ వేగాన్ని ఒత్తిడిగా మార్చి పై చక్రంలోకి పంపుతుంది. అలా ప్రతి స్టేజ్ సుమారు 9 m ఎత్తు కలుపుతుంది.",
+"code": "// Inside the pump, three of its stages cut open: one shaft from the motor turns every impeller (the bronze wheels, 2,900\n// turns a minute). Each impeller throws the water outward, the still bowl around it turns that speed into pressure and\n// leads the water up into the next impeller: every stage adds about 9 m of lift, so ten stages lift about 90 m.\nconst ss = W.metal('#c2c8cd', { rough: 0.35 }), br = W.metal('brass', { rough: 0.35 });\nconst shell = W.metal('#aeb5bb', { rough: 0.4 }); shell.side = THREE.DoubleSide;\nconst sh = W.group();\nsh.add(W.mesh(W.cyl(4, 4, 190, 16), ss, { at: [0, 0, 0] }));\nW.add(sh, { label: 'షాఫ్ట్' });\nconst bowls = W.group(), imps = W.group(), spin = [];\nfor (let k = 0; k < 3; k++) {\n  const y = -60 + k * 60;\n  const g = new THREE.CylinderGeometry(40, 40, 56, 32, 1, true, Math.PI / 2, Math.PI);\n  const b = new THREE.Mesh(g, shell); b.position.y = y; bowls.add(b);\n  const cone = new THREE.Mesh(new THREE.CylinderGeometry(12, 39, 22, 32, 1, true, Math.PI / 2, Math.PI), shell); cone.position.y = y + 17; bowls.add(cone);\n  const im = W.group({ at: [0, y - 12, 0] });\n  im.add(W.mesh(W.cyl(30, 30, 3, 32), br, { at: [0, -6, 0] }), W.mesh(W.cyl(11, 30, 5, 32), br, { at: [0, 7, 0] }));\n  for (let j = 0; j < 6; j++) { const a = j * Math.PI / 3; im.add(W.mesh(W.box(22, 10, 2.4), br, { at: [Math.cos(a) * 18, 0, Math.sin(a) * 18], rot: [0, -a * 57.3 + 35, 0] })); }\n  imps.add(im); spin.push(im);\n}\nW.add(bowls, { label: 'బౌల్ (డిఫ్యూజర్)' });\nW.add(imps, { label: 'ఇంపెల్లర్లు' });\nW.onTick((t, dt) => { for (const s of spin) s.rotation.y += dt * (3 + 14 * Math.max(0.15, W.env.spool)); });\nconst path = [];\nfor (let i = 0; i <= 40; i++) { const u = i / 40, k = (u * 3) % 1, r = 8 + 26 * Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5) * (k < 0.62 ? 1 : (1 - k) / 0.38); path.push([Math.cos(u * 22) * r, -92 + u * 184, Math.sin(u * 22) * r + 2]); }\nW.stream(path, { kind: 'water', count: 44, size: 3, speed: 0.8, always: true });\n"
+}
+},
+"film": [
+"💧 బోర్‌వెల్ సబ్‌మెర్సిబుల్ పంప్",
+"భూమి పొరలు: మట్టి, వదులు రాయి, గట్టి రాయి",
+"రాయి పగుళ్ళలో నీరు → బోర్",
+"మోటార్ → 10 స్టేజ్‌లు → పైకి",
+"తొట్టి, పొలం, ఇంకుడు గుంట",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ బోర్ పంప్ నిర్వహణ",
+"safety": "పంప్ దించడం, లాగడం బోర్ మెకానిక్ పని (ట్రైపాడ్, చైన్ పుల్లీ కావాలి) Sir. స్టార్టర్ లోపలి పని ఎలక్ట్రీషియన్‌దే. ఏ పని ముందైనా మెయిన్ ఆఫ్ చేయాలి. బోర్ నోరు ఒక్క నిమిషం కూడా తెరిచి వదలకూడదు.",
+"steps": [
+{
+"say": "స్టార్టర్‌లో వోల్టేజ్, కరెంట్ (ఆంపియర్లు) గమనించాలి: కరెంట్ మామూలు కంటే తగ్గితే నీరు తగ్గుతోంది, పెరిగితే పంప్‌లో ఇసుక లేదా బేరింగ్ సమస్య.",
+"label": "స్టార్టర్ ప్యానెల్"
+},
+{
+"say": "ఒత్తిడి గేజ్, వచ్చే నీరు తగ్గితే: ఇంపెల్లర్లు అరిగాయి, లేదా పైపు జాయింట్ కారుతోంది.",
+"label": "డెలివరీ పైపు"
+},
+{
+"say": "కొన్నేళ్ళకోసారి పంప్ పైకి లాగి అరిగిన ఇంపెల్లర్లు, బుష్‌లు మారుస్తారు.",
+"label": "పంప్ స్టేజ్‌లు"
+},
+{
+"say": "కేబుల్ జాయింట్ ఇన్సులేషన్ టెస్ట్ (మెగ్గర్) చేస్తారు: నీరు చొరబడితే మోటార్ కాలుతుంది.",
+"label": "కేబుల్"
+},
+{
+"say": "వానాకాలం ముందు ఇంకుడు గుంటలో పై ఇసుక పొర శుభ్రం చేస్తే నీరు బాగా ఇంకుతుంది.",
+"label": "ఇంకుడు గుంట"
+}
+]
+},
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"id": "pump"
+}
+}

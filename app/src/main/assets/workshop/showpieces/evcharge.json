@@ -1,0 +1,494 @@
+{
+"at": 1763700000019,
+"title": "EV ఛార్జింగ్ స్టేషన్",
+"what": "EV ఛార్జింగ్ స్టేషన్: 11 kV → ట్రాన్స్‌ఫార్మర్ → పవర్ క్యాబినెట్లు (AC → DC) → 60 kW ఫాస్ట్ ఛార్జర్లు; సోలార్ కెనొపీ, బ్యాటరీ నిల్వ; బ్యాటరీ % పెరగడం. 🕐 🚶",
+"model": "showpiece",
+"parts": [
+{
+"id": "plaza",
+"status": "ఛార్జింగ్ స్టేషన్ స్థలం సిద్ధం చేస్తున్నాను",
+"code": "// EV charging station showpiece, hand-made (no company names; the cars are our own plain shapes, no maker's badge). Units:\n// cm, real size. Front (+Z): the road. Middle: four bays under a solar canopy, three DC fast chargers and one AC charger.\n// Behind (−Z): the 11 kV supply → transformer → LT panel → power cabinets (they make DC) → the chargers; a battery\n// container that stores solar power and helps at busy hours.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 11, ground: '#7d8a52', zoom: 0.62 });\nconst pz = W.group();\npz.add(W.mesh(W.box(5600, 16, 3400), S.land('concrete', '#b9b5ab', 500), { at: [0, -8, -100] }));\npz.add(W.mesh(W.box(5600, 6, 620), S.land('asphalt', '#55585c', 400), { at: [0, 3, 1500] }), S.dashes(-2800, 2800, 1500));\npz.add(W.mesh(W.box(2700, 5, 1100), S.land('asphalt', '#4f5357', 300), { at: [0, 3, 300] }));\nconst white = S.matte('#e8e6dc', 0.8), green = S.matte('#3aa86a', 0.7);\nfor (let k = 0; k <= 4; k++) pz.add(W.mesh(W.box(10, 2, 520), white, { at: [-1200 + k * 600, 7, 240] }));\nfor (let k = 0; k < 4; k++) pz.add(W.mesh(W.box(540, 2, 500), green, { at: [-900 + k * 600, 6.4, 240] }), W.mesh(W.box(90, 2.4, 130), white, { at: [-900 + k * 600, 7, 330] })); // (green bays, an \"EV\" mark)\nW.add(pz, { label: 'ఛార్జింగ్ ప్లాజా', ground: true });\nconst tr = W.group();\ntr.add(S.trees(12, -2800, -1700, 2800, 1100, (x, z) => z < -1400 || x < -2500 || x > 2500));\nW.add(tr, { label: 'చెట్లు', ground: true });\nS.car = (col) => { // a plain electric hatchback, 4.1 m long along X, its nose to +X (no badge, no grille: it needs none)\n  const g = W.group(), p = S.sf('paint', col, { tile: 400, rough: 0.35, metallic: 0.3 }), dk = S.matte('#1d1f22', 0.5), gl = new THREE.MeshStandardMaterial({ color: 0x22303a, roughness: 0.1, metalness: 0.4 });\n  g.add(W.mesh(W.box(410, 62, 176, 26), p, { at: [0, 62, 0] }), W.mesh(W.box(230, 58, 160, 24), p, { at: [-28, 116, 0] }), W.mesh(W.box(226, 40, 164, 14), gl, { at: [-28, 118, 0] }));\n  g.add(W.mesh(W.box(160, 6, 150, 3), p, { at: [-28, 146, 0] }), W.mesh(W.box(404, 14, 180, 6), dk, { at: [0, 34, 0] }));\n  for (const x of [128, -128]) for (const z of [-80, 80]) g.add(W.mesh(W.cyl(32, 32, 22, 24), W.rubber('#1b1c1e'), { at: [x, 32, z], rot: [90, 0, 0] }), W.mesh(W.cyl(19, 19, 23, 16), S.sf('metal', '#c9cdd2', { rough: 0.3 }), { at: [x, 32, z], rot: [90, 0, 0] }));\n  const hl = S.lamp('#eef6ff', 2.5, 0.25), tl = S.lamp('#ff3a2a', 1.5, 0.15);\n  for (const z of [-62, 62]) g.add(W.mesh(W.box(6, 9, 38, 3), hl, { at: [203, 74, z] }), W.mesh(W.box(6, 9, 38, 3), tl, { at: [-203, 78, z] }));\n  g.add(W.mesh(W.box(22, 16, 3), dk, { at: [150, 78, 88.4] })); // the open charging flap on the front wing\n  return g;\n};\n"
+},
+{
+"id": "supply",
+"status": "కరెంట్ సరఫరా, ట్రాన్స్‌ఫార్మర్ పెడుతున్నాను",
+"code": "const S = W.store;\nconst cm = S.sf('concrete', '#c9c5bb', { tile: 200 }), gal = S.sf('metal', '#aab2ba', { rough: 0.5 }), ins = S.matte('#7a4a32', 0.4), wire = S.matte('#3a3d42', 0.6);\nconst ht = W.group();\nfor (const x of [-2500, -1500]) { ht.add(W.mesh(W.box(22, 900, 26), cm, { at: [x, 450, -1500] }), W.mesh(W.box(12, 10, 220), gal, { at: [x, 880, -1500] })); for (const dz of [-95, 0, 95]) ht.add(W.mesh(W.cyl(7, 10, 26, 8), ins, { at: [x, 900, -1500 + dz] })); }\nfor (const dz of [-95, 0, 95]) ht.add(S.beam([-2800, 914, -1500 + dz], [-1500, 914, -1500 + dz], 2.2, wire, 4), S.beam([-1500, 914, -1500 + dz], [-1320, 330, -1250 + dz * 0.3], 2.2, S.matte('#1d1e20', 0.6), 4));\nW.add(ht, { label: '11 kV లైన్', heat: [30, 40] });\nconst tf = W.group();\ntf.add(W.mesh(W.box(520, 20, 420), cm, { at: [-1200, 10, -1200] }));\ntf.add(W.mesh(W.box(230, 200, 170, 6), S.sf('paint', '#6b776a', { tile: 120 }), { at: [-1200, 130, -1200] }));\nfor (const sz of [-1, 1]) for (let k = 0; k < 8; k++) tf.add(W.mesh(W.box(3, 150, 34), S.sf('paint', '#6b776a', { tile: 120 }), { at: [-1290 + k * 26, 125, -1200 + sz * 100] }));\nfor (const dz of [-50, 0, 50]) tf.add(W.mesh(W.cyl(10, 14, 70, 10), ins, { at: [-1260, 265, -1200 + dz] }), W.mesh(W.cyl(6, 8, 30, 8), S.matte('#d9d5ca', 0.5), { at: [-1140, 245, -1200 + dz] }));\ntf.add(W.mesh(W.cyl(26, 26, 150, 14), S.sf('paint', '#6b776a', { tile: 120 }), { at: [-1200, 270, -1290], rot: [0, 0, 90] }));\nfor (const [x, z] of [[-1460, -1410], [-940, -1410], [-1460, -990], [-940, -990]]) tf.add(W.mesh(W.box(6, 180, 6), gal, { at: [x, 90, z] }));\nfor (const z of [-1410, -990]) for (const y of [60, 120, 176]) tf.add(W.mesh(W.box(520, 3, 3), gal, { at: [-1200, y, z] }));\nfor (const x of [-1460, -940]) for (const y of [60, 120, 176]) tf.add(W.mesh(W.box(3, 3, 420), gal, { at: [x, y, -1200] }));\ntf.add(W.mesh(W.box(70, 50, 3), S.matte('#e8c62a', 0.7), { at: [-1200, 120, -988] }));\nW.add(tf, { label: 'ట్రాన్స్‌ఫార్మర్', heat: [35, 80] });\nconst lt = W.group();\nlt.add(W.mesh(W.box(160, 200, 70, 4), S.sf('paint', '#8f979e', { tile: 100 }), { at: [-760, 110, -1200] }), W.mesh(W.box(180, 10, 90), cm, { at: [-760, 5, -1200] }));\nfor (let k = 0; k < 4; k++) lt.add(W.mesh(W.box(26, 14, 3), S.matte('#2a2c30', 0.5), { at: [-805 + k * 30, 150, -1163] }));\nW.add(lt, { label: 'LT ప్యానెల్', heat: [30, 50] });\n// the power cabinets: here the AC becomes DC (a car's battery can only store DC); fans cool the power modules\nconst pc = W.group();\nS.fans = [];\nfor (const x of [-420, -200]) {\n  pc.add(W.mesh(W.box(150, 220, 90, 5), S.sf('paint', '#e9ecee', { tile: 120 }), { at: [x, 122, -1200] }), W.mesh(W.box(170, 12, 110), cm, { at: [x, 6, -1200] }));\n  pc.add(W.mesh(W.box(120, 60, 3), S.sf('metal', '#2c3036', { rough: 0.7, tile: 5 }), { at: [x, 60, -1154] }));\n  const f = W.group({ at: [x, 190, -1152] }); f.add(W.mesh(W.cyl(26, 26, 3, 16), S.matte('#2a2c30', 0.6), { rot: [90, 0, 0] })); for (let k = 0; k < 5; k++) f.add(W.mesh(W.box(24, 5, 1.6), S.matte('#8f979e', 0.5), { at: [Math.cos(k * 1.257) * 13, Math.sin(k * 1.257) * 13, 2], rot: [0, 0, k * 72] }));\n  pc.add(f); S.fans.push(f);\n}\nW.add(pc, { label: 'పవర్ క్యాబినెట్లు', heat: [35, 70] });\nconst bs = W.group();\nbs.add(W.mesh(W.box(600, 250, 240, 4), S.sf('sheet', '#eef1f3', { tile: 30, metallic: 0.1 }), { at: [600, 137, -1250] }), W.mesh(W.box(620, 12, 260), cm, { at: [600, 6, -1250] }));\nbs.add(W.mesh(W.box(90, 130, 30, 4), S.sf('paint', '#8f979e', { tile: 100 }), { at: [830, 150, -1116] }), W.mesh(W.box(110, 180, 3), S.matte('#3d4248', 0.6), { at: [460, 110, -1128] }));\nS.bessBar = W.mesh(W.box(30, 1, 3), W.glow('#7dff9b', 1.6), { at: [700, 60, -1127] });\nbs.add(W.mesh(W.box(36, 126, 2), S.matte('#101418', 0.4), { at: [700, 120, -1128.6] }), S.bessBar);\nbs.add(W.text('బ్యాటరీ నిల్వ · 200 kWh', { size: 18, at: [560, 220, -1128], color: '#22303c' }));\nW.add(bs, { label: 'బ్యాటరీ నిల్వ', heat: [26, 38] });\nconst iv = W.group();\niv.add(W.mesh(W.box(70, 90, 30, 4), S.sf('paint', '#d9d5ca', { tile: 80 }), { at: [1100, 120, -1210] }), W.mesh(W.box(8, 150, 8), gal, { at: [1100, 75, -1230] }));\nW.add(iv, { label: 'సోలార్ ఇన్వర్టర్', heat: [30, 55] });\n"
+},
+{
+"id": "chargers",
+"status": "ఛార్జర్లు, కెనొపీ పెడుతున్నాను",
+"code": "const S = W.store;\n// the chargers: each stands between two bays; its screen shows the battery's %, its gun plugs into the car\nconst dc = W.group();\nS.DX = [-600, 0, 600]; S.scr = [];\nfor (const x of S.DX) {\n  dc.add(W.mesh(W.box(70, 196, 46, 6), S.sf('paint', '#f1f3f4', { tile: 200 }), { at: [x, 104, -330] }), W.mesh(W.box(90, 8, 66), S.sf('concrete', '#a9a59b'), { at: [x, 4, -330] }));\n  dc.add(W.mesh(W.box(72, 30, 48, 6), S.sf('paint', '#2f9a8a', { tile: 200 }), { at: [x, 196, -330] }));\n  const sc = W.canvasTex(128, 96); S.scr.push(sc);\n  dc.add(W.mesh(W.box(42, 31, 2), new THREE.MeshBasicMaterial({ map: sc.texture, toneMapped: false }), { at: [x, 140, -306] }));\n  dc.add(W.mesh(W.box(12, 24, 14, 3), S.matte('#1d1f22', 0.5), { at: [x + 40, 104, -318] })); // the gun's holder\n  for (const sx of [-1, 1]) dc.add(W.mesh(W.cyl(5, 5, 90, 10), S.matte('#e8c62a', 0.6), { at: [x + sx * 70, 45, -250] })); // the guard posts\n}\nW.add(dc, { label: 'DC ఫాస్ట్ ఛార్జర్లు', heat: [30, 55] });\nconst cb = W.group();\nconst cab = W.rubber('#17181a');\nS.cable = (x, cx) => S.pipe([[x + 34, 170, -326], [x + 80, 60, -250], [cx - 60, 30, -100], [cx - 96, 60, 30], [cx - 89, 78, 96]], 2.6, cab, 40);\nS.cables = [S.cable(-600, -300), S.cable(0, 300), S.cable(600, 900)];\nfor (const c of S.cables) cb.add(c);\nS.guns = [];\nfor (const cx of [-300, 300, 900]) { const g = W.mesh(W.box(9, 14, 22, 3), S.matte('#1d1f22', 0.5), { at: [cx - 89.6, 78, 104] }); cb.add(g); S.guns.push(g); }\nW.add(cb, { label: 'ఛార్జింగ్ గన్', heat: [30, 48] });\nconst ac = W.group();\nac.add(W.mesh(W.box(12, 130, 12), S.sf('metal', '#8f979e', { rough: 0.6 }), { at: [-1210, 65, -330] }), W.mesh(W.box(34, 46, 16, 5), S.sf('paint', '#f1f3f4', { tile: 100 }), { at: [-1210, 128, -322] }), W.mesh(W.cyl(3, 3, 3, 10), W.glow('#7dff9b', 2), { at: [-1210, 140, -313], rot: [90, 0, 0] }));\nac.add(S.pipe([[-1210, 110, -316], [-1180, 40, -200], [-1150, 30, 40], [-1120, 60, 150]], 1.8, cab, 30));\nW.add(ac, { label: 'AC ఛార్జర్', heat: [30, 42] });\nconst cols = W.group();\nconst st = S.sf('paint', '#eef1f3', { tile: 200 });\nfor (const x of [-1250, 1250]) { cols.add(W.mesh(W.box(26, 330, 26), st, { at: [x, 165, -330] })); cols.add(S.beam([x, 300, -330], [x, 372, 380], 10, st, 8)); }\ncols.add(W.mesh(W.box(2540, 20, 20), st, { at: [0, 318, -330] }));\nS.canLamp = S.lamp('#fff7df', 3);\nfor (const x of [-900, -300, 300, 900]) cols.add(W.mesh(W.box(120, 4, 14), S.canLamp, { at: [x, 300, 100] }), W.mesh(W.box(8, 8, 760), st, { at: [x, 330, 20], rot: [5.6, 0, 0] }));\nW.add(cols, { label: 'కెనొపీ స్తంభాలు' });\nconst cn = W.group();\nconst top = W.group({ at: [0, 344, 20], rot: [5.6, 0, 0] });\ntop.add(W.mesh(W.box(2620, 8, 800), S.sf('metal', '#c9cdd2', { rough: 0.5 })));\nconst pv = new THREE.MeshStandardMaterial({ color: 0x16284a, roughness: 0.18, metalness: 0.55 });\nconst pan = new THREE.InstancedMesh(W.box(198, 3, 100), pv, 91), fr = new THREE.InstancedMesh(W.box(200, 2.4, 2), S.matte('#c9cdd2', 0.5), 91), M = new THREE.Matrix4();\nfor (let i = 0; i < 91; i++) { const x = -1206 + (i % 13) * 201, z = -348 + Math.floor(i / 13) * 104; pan.setMatrixAt(i, M.makeTranslation(x, 6, z)); fr.setMatrixAt(i, M.makeTranslation(x, 7.4, z - 51)); }\ntop.add(pan, fr);\ncn.add(top);\nW.add(cn, { label: 'సోలార్ కెనొపీ', layer: 0, peelBy: [0, 520, 0], explode: [0, 520, 0], heat: [30, 62] });\n"
+},
+{
+"id": "cars",
+"status": "కార్లు, బైక్ పెడుతున్నాను",
+"code": "const S = W.store;\nS.cars = [];\n[['#c9d2d8', -300], ['#b8452f', 300], ['#2f5f8a', 900]].forEach(([c, x], i) => {\n  const g = W.group();\n  const car = S.car(c); car.position.set(x, 0, 250); car.rotation.y = Math.PI / 2; g.add(car);\n  W.add(g, { label: 'కార్ ' + (i + 1), heat: [30, 44] });\n  S.cars.push(g);\n});\nconst bk = W.group(); // a plain electric motorcycle on the AC point (no maker's name)\nconst bm = S.sf('paint', '#2f6f8a', { tile: 200, rough: 0.35 }), dk = S.matte('#1d1f22', 0.5);\nconst bike = W.group({ at: [-1080, 0, 230], rot: [0, 90, 0] });\nfor (const x of [-68, 68]) bike.add(W.mesh(W.cyl(30, 30, 11, 22), W.rubber('#1b1c1e'), { at: [x, 30, 0], rot: [90, 0, 0] }), W.mesh(W.cyl(18, 18, 12, 14), S.sf('metal', '#c9cdd2', { rough: 0.3 }), { at: [x, 30, 0], rot: [90, 0, 0] }));\nbike.add(W.mesh(W.box(70, 38, 24, 8), dk, { at: [0, 52, 0] }), W.mesh(W.box(58, 26, 26, 9), bm, { at: [12, 84, 0] }), W.mesh(W.box(56, 9, 22, 4), dk, { at: [-40, 86, 0] }));\nbike.add(S.beam([68, 30, 0], [44, 108, 0], 3.4, S.sf('metal', '#c9cdd2', { rough: 0.3 })), W.mesh(W.box(4, 4, 62), dk, { at: [42, 110, 0] }), W.mesh(W.box(10, 16, 16, 4), S.lamp('#eef6ff', 2.5, 0.2), { at: [52, 96, 0] }));\nbike.add(S.beam([-68, 30, 0], [-10, 50, 0], 3, dk), W.mesh(W.box(4, 30, 4), dk, { at: [-6, 16, 16], rot: [14, 0, 0] }));\nbk.add(bike);\nW.add(bk, { label: 'EV బైక్', heat: [30, 40] });\nconst ks = S.shed([-2000, 0, 200], 900, 300, 700, { color: '#e8e4da', door: 260, doorH: 240, rise: 40, wall: S.wall(3, 1, { wall: '#e9e4d6', ribs: false, top: 0.26, h: 0.4 }), roof: S.sf('concrete', '#b9b4a8') });\nconst kg = W.group(); kg.add(ks.floor, ks.walls, ks.roof);\nkg.add(W.text('☕ విశ్రాంతి', { size: 46, at: [-2000, 262, 556], color: '#3a2a10', bg: '#f1e6c8' }));\nW.add(kg, { label: 'విశ్రాంతి గది', heat: [24, 28] });\nconst sn = W.group();\nsn.add(W.mesh(W.box(26, 560, 26), S.sf('paint', '#eef1f3', { tile: 200 }), { at: [2300, 280, 900] }), W.mesh(W.box(220, 150, 30, 6), S.sf('paint', '#2f9a8a', { tile: 200 }), { at: [2300, 520, 900] }));\nsn.add(W.text('⚡ EV ఛార్జింగ్', { size: 44, at: [2300, 540, 916.4], color: '#ffffff' }), W.text('JARVIS', { size: 30, at: [2300, 486, 916.4], color: '#d9f4ee' }));\nW.add(sn, { label: 'సైన్ బోర్డ్' });\n"
+},
+{
+"id": "run",
+"status": "ఛార్జింగ్ మొదలుపెడుతున్నాను",
+"code": "const S = W.store;\n// running: the power bar is the charger's power limit (60 kW at full). Car 1's battery fills (fast up to 80 %, then slower:\n// that is how every lithium battery is charged). 🚩 \"three\": three cars at once: the station shares its power, the battery\n// container helps. 🚩 \"cut\": a power cut: the sun and the battery container carry on alone, slower.\nconst cone = W.group();\nfor (const x of [-1500, 1500]) cone.add(W.mesh(W.cone(16, 46, 12), S.matte('#e8672a', 0.6), { at: [x, 23, 900] }), W.mesh(W.box(40, 4, 40), S.matte('#1d1f22', 0.6), { at: [x, 2, 900] }));\nW.add(cone, { label: 'దారి శంకువులు', ground: true });\nW.throttle({ label: 'ఛార్జింగ్ పవర్', rise: 0.6, fall: 0.6, start: 1 });\nW.sound({ kind: 'fans', label: 'పవర్ క్యాబినెట్లు', gain: 0.45 });\nW.sound({ kind: 'hum', label: 'ట్రాన్స్‌ఫార్మర్', gain: 0.4, f0: 100 });\nW.sound({ kind: 'hum', label: 'DC ఫాస్ట్ ఛార్జర్లు', gain: 0.2, f0: 200 });\nconst soc = [0.2, 0.45, 0.6], kw = [0, 0, 0];\nlet hudT = 0, scrT = 0, bess = 0.7, units = 0, three = 0;\nconst taper = (x) => (x < 0.8 ? 1 : Math.max(0.12, 1 - (x - 0.8) / 0.2 * 0.88));\nW.onTick((t, dt) => {\n  const s = W.env.spool, cut = W.env.flag('cut'), many = W.env.flag('three'), fail = W.faultOf('పవర్ క్యాబినెట్లు') === 'stop';\n  three += ((many ? 1 : 0) - three) * Math.min(1, dt * 3);\n  S.cars[1].visible = S.cars[2].visible = S.cables[1].visible = S.cables[2].visible = S.guns[1].visible = S.guns[2].visible = many;\n  const H = W.env.hour, solar = 22 * Math.max(0, Math.sin((H - 6) / 12 * Math.PI)) * (H > 6 && H < 18 ? 1 : 0);\n  const n = many ? 3 : 1, want = [];\n  for (let i = 0; i < 3; i++) want.push(i < n && !fail ? 60 * s * taper(soc[i]) : 0);\n  const need = want[0] + want[1] + want[2];\n  // where the power comes from: the grid up to its sanctioned 120 kW, the sun, and the battery container for the rest\n  const grid = cut ? 0 : Math.min(120, Math.max(0, need - solar)), fromB = Math.max(0, Math.min(bess > 0.03 ? 60 : 0, need - solar - grid)), have = grid + solar + fromB, k = need > 0 ? Math.min(1, have / need) : 0;\n  const spare = Math.max(0, solar - need) + (cut ? 0 : 0);\n  bess = Math.max(0, Math.min(1, bess + dt * (spare * 0.004 - fromB * 0.0012 + (!cut && need < 60 && bess < 0.9 ? 0.004 : 0))));\n  for (let i = 0; i < 3; i++) {\n    kw[i] = want[i] * k;\n    soc[i] += dt * kw[i] / 60 * 0.022; // (shown about 50 times faster than real)\n    if (soc[i] >= 1) soc[i] = 0.12 + 0.1 * i; // (a full car leaves, the next one comes in)\n  }\n  units += dt * (kw[0] + kw[1] + kw[2]) / 60 * 0.9;\n  for (const f of S.fans) f.rotation.z += dt * (2 + 22 * Math.min(1, need / 120));\n  S.bessBar.scale.y = 1 + 118 * bess; S.bessBar.position.y = 60 + 59 * bess;\n  S.step(t, dt, 1);\n  if (t - scrT > 0.4) {\n    scrT = t;\n    S.scr.forEach((sc, i) => {\n      const g = sc.ctx, onI = i < n;\n      g.fillStyle = '#071419'; g.fillRect(0, 0, 128, 96);\n      if (!onI) { g.fillStyle = '#7dff9b'; g.font = '700 20px system-ui, \"Noto Sans Telugu\", sans-serif'; g.fillText('ఖాళీ ✓', 30, 54); sc.update(); return; }\n      g.fillStyle = '#9fe6a0'; g.font = '700 38px system-ui, sans-serif'; g.fillText(Math.round(soc[i] * 100) + '%', 8, 42);\n      g.fillStyle = '#ffffff'; g.font = '700 18px system-ui, sans-serif'; g.fillText(kw[i].toFixed(0) + ' kW', 8, 66);\n      g.strokeStyle = '#3a6a7a'; g.strokeRect(8, 74, 112, 14); g.fillStyle = '#2fd8a0'; g.fillRect(9, 75, 110 * soc[i], 12);\n      sc.update();\n    });\n  }\n  if (t - hudT > 0.3) {\n    hudT = t;\n    const left = kw[0] > 1 ? Math.round((1 - soc[0]) * 40 / kw[0] * 60 * 1.35) : 0;\n    W.hud({ 'కార్ 1 బ్యాటరీ': Math.round(soc[0] * 100) + '%' + (soc[0] > 0.8 ? ' (నెమ్మదిగా)' : ''), 'ఛార్జింగ్': kw[0].toFixed(0) + ' kW · ' + Math.round(360 + 50 * soc[0]) + ' V · ' + Math.round(kw[0] * 1000 / (360 + 50 * soc[0])) + ' A',\n      'మిగిలిన సమయం': fail ? 'ఛార్జర్ లోపం ⚠️' : left ? 'సుమారు ' + left + ' నిమిషాలు' : '—', 'సోలార్ · బ్యాటరీ నిల్వ': solar.toFixed(0) + ' kW · ' + Math.round(bess * 100) + '%',\n      'గ్రిడ్ నుంచి': cut ? 'కరెంట్ పోయింది ⚠️' : grid.toFixed(0) + ' kW' + (many ? ' (3 కార్లు)' : ''), 'ఇప్పటి దాకా': units.toFixed(1) + ' యూనిట్లు · సుమారు ₹' + Math.round(units * 18) });\n    W.report({ power: s, soc: soc[0] * 100, kw: kw[0], solar, grid, bess: bess * 100 });\n  }\n});\nconst gridOn = (e) => !e.flag('cut'), many = (e) => e.flag('three');\nW.stream([[-2800, 914, -1500], [-1500, 914, -1500], [-1320, 330, -1250], [-1260, 290, -1200], [-1200, 130, -1200], [-1140, 250, -1200], [-900, 30, -1200], [-760, 110, -1200], [-420, 60, -1200], [-200, 60, -1200]], { kind: 'power', count: 40, size: 12, speed: 1.2, when: gridOn });\nW.stream([[-310, 40, -1150], [-450, 6, -700], [-600, 10, -360], [-600, 150, -330], [-520, 60, -250], [-360, 30, -100], [-396, 60, 30], [-389, 78, 96]], { kind: 'regen', count: 30, size: 9, speed: 1.3 });\nW.stream([[-310, 40, -1150], [-100, 6, -700], [0, 10, -360], [0, 150, -330], [80, 60, -250], [240, 30, -100], [204, 60, 30], [211, 78, 96]], { kind: 'regen', count: 24, size: 9, speed: 1.3, when: many });\nW.stream([[-200, 40, -1150], [300, 6, -700], [600, 10, -360], [600, 150, -330], [680, 60, -250], [840, 30, -100], [804, 60, 30], [811, 78, 96]], { kind: 'regen', count: 24, size: 9, speed: 1.3, when: many });\nW.stream([[0, 352, 20], [900, 352, -200], [1100, 300, -900], [1100, 130, -1200], [860, 40, -1160], [640, 100, -1140]], { kind: 'sun', count: 22, size: 9, speed: 0.9, when: (e) => e.hour > 6.5 && e.hour < 17.5 });\nW.stream([[600, 60, -1130], [300, 6, -1160], [-200, 40, -1160]], { kind: 'power', count: 12, size: 10, speed: 1, when: (e) => e.flag('cut') || e.flag('three') });\nW.stream([[-760, 60, -1160], [-1000, 6, -700], [-1210, 10, -340], [-1210, 110, -316], [-1150, 30, 40], [-1120, 60, 150]], { kind: 'power', count: 14, size: 6, speed: 0.9, when: gridOn });\nW.walk({ eye: 160, speed: 280, area: [-2700, -1650, 2700, 1750],\n  solid: [[-480, 40, -120, 460], [-1470, -1420, -930, -980], [300, -1380, 900, -1120], [-640, -360, -560, -300], [-40, -360, 40, -300], [560, -360, 640, -300], [-500, -1250, -120, -1150]],\n  spots: [\n    { name: 'ఛార్జర్ దగ్గర', at: [-560, 0, 120], look: [-600, 135, -320] },\n    { name: 'కార్ పక్కన', at: [-760, 0, 620], look: [-320, 80, 200] },\n    { name: 'ట్రాన్స్‌ఫార్మర్ దగ్గర', at: [-1350, 0, -420], look: [-1200, 150, -1200] },\n    { name: 'బ్యాటరీ కంటైనర్ దగ్గర', at: [250, 0, -480], look: [600, 130, -1250] },\n    { name: 'రోడ్డు మీద నుంచి', at: [700, 0, 1650], look: [0, 200, 0] },\n    { name: 'బైక్ దగ్గర', at: [-1450, 0, 520], look: [-1090, 70, 230] },\n  ] });\n"
+}
+],
+"say": "EV ఛార్జింగ్ స్టేషన్ రెడీ Sir. కార్ 1 బ్యాటరీ నిండుతోంది: 80% తర్వాత నెమ్మదించడం చూడండి. 'మూడు కార్లు' అంటే పవర్ పంచుకోవడం, 'కరెంట్ కట్' అంటే సోలార్, బ్యాటరీ పని చూపిస్తాను.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"కరెంట్ కారు బ్యాటరీలోకి ఎలా వెళ్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది EV ఛార్జింగ్ స్టేషన్: సోలార్ కెనొపీ కింద నాలుగు బేలు, మూడు ఫాస్ట్ ఛార్జర్లు. వెనక కరెంట్ సరఫరా.\", \"focus\": [{\"id\": \"chargers\", \"piece\": \"సోలార్ కెనొపీ\"}, {\"id\": \"chargers\", \"piece\": \"DC ఫాస్ట్ ఛార్జర్లు\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"11,000 వోల్టుల లైన్ నుంచి కరెంట్ వస్తుంది. ట్రాన్స్‌ఫార్మర్ దాన్ని 415 వోల్టులకి తగ్గిస్తుంది; LT ప్యానెల్‌లో స్విచ్‌లు, మీటర్.\", \"focus\": [{\"id\": \"supply\", \"piece\": \"11 kV లైన్\"}, {\"id\": \"supply\", \"piece\": \"ట్రాన్స్‌ఫార్మర్\"}, {\"id\": \"supply\", \"piece\": \"LT ప్యానెల్\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}, {\"say\": \"పవర్ క్యాబినెట్లు AC ని DC గా మారుస్తాయి: బ్యాటరీ DC మాత్రమే తీసుకుంటుంది. ఫ్యాన్లు వాటిని చల్లబరుస్తాయి.\", \"focus\": [{\"id\": \"supply\", \"piece\": \"పవర్ క్యాబినెట్లు\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}, {\"say\": \"నేల కింది కేబుల్‌లో DC ఛార్జర్‌కి, అక్కడి నుంచి గన్ ద్వారా కారుకి. స్క్రీన్ మీద బ్యాటరీ శాతం పెరగడం చూడండి.\", \"focus\": [{\"id\": \"chargers\", \"piece\": \"DC ఫాస్ట్ ఛార్జర్లు\"}, {\"id\": \"chargers\", \"piece\": \"ఛార్జింగ్ గన్\"}, {\"id\": \"cars\", \"piece\": \"కార్ 1\"}], \"view\": \"iso\", \"close\": true, \"flow\": [{\"from\": \"supply\", \"fromPiece\": \"పవర్ క్యాబినెట్లు\", \"to\": \"cars\", \"toPiece\": \"కార్ 1\", \"kind\": \"regen\", \"count\": 8}], \"move\": [{\"id\": \"chargers\", \"piece\": \"సోలార్ కెనొపీ\", \"by\": [0, 520, 0], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"కెనొపీ సోలార్ ప్యానెళ్ళు కరెంట్ ఇస్తాయి; బ్యాటరీ నిల్వ కంటైనర్ దాన్ని దాచి రద్దీ సమయంలో సహాయం చేస్తుంది.\", \"focus\": [{\"id\": \"chargers\", \"piece\": \"సోలార్ కెనొపీ\"}, {\"id\": \"supply\", \"piece\": \"బ్యాటరీ నిల్వ\"}, {\"id\": \"supply\", \"piece\": \"సోలార్ ఇన్వర్టర్\"}], \"view\": \"iso\", \"secs\": 9}, {\"say\": \"'మూడు కార్లు' అంటే పవర్ పంచుకోవడం, 'కరెంట్ కట్' అంటే సోలార్, బ్యాటరీతో నడవడం చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"chargers\", \"piece\": \"DC ఫాస్ట్ ఛార్జర్లు\"}, {\"id\": \"supply\", \"piece\": \"బ్యాటరీ నిల్వ\"}], \"view\": \"iso\", \"secs\": 8}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"ఛార్జింగ్ స్టేషన్",
+"ev ఛార్జింగ్",
+"ఈవీ ఛార్జింగ్",
+"ఛార్జింగ్ పాయింట్",
+"కార్ ఛార్జింగ్",
+"ఫాస్ట్ ఛార్జర్",
+"ev charging",
+"charging station",
+"ev charger",
+"fast charger",
+"ev station"
+],
+"powerName": "🔌 ఛార్జింగ్ పవర్",
+"outdoor": true,
+"walk": [
+"ఛార్జర్ దగ్గర",
+"కార్ పక్కన",
+"ట్రాన్స్‌ఫార్మర్ దగ్గర",
+"బ్యాటరీ కంటైనర్ దగ్గర",
+"రోడ్డు మీద నుంచి",
+"బైక్ దగ్గర"
+],
+"switches": [
+{
+"id": "three",
+"menu": "🚗 మూడు కార్లు ఒకేసారి",
+"words": [
+"మూడు కార్లు",
+"మూడు కార్లు ఒకేసారి",
+"రద్దీ",
+"ఇంకో రెండు కార్లు",
+"three cars",
+"busy hour",
+"కార్లు పెంచు"
+],
+"offWords": [
+"ఒక్క కారు",
+"ఒకటే కారు",
+"రద్దీ తగ్గింది",
+"one car",
+"కార్లు తగ్గించు"
+],
+"on": "🚗 మూడు కార్లు ఒకేసారి Sir: ప్రతి కారు 60 kW అడుగుతోంది, కానీ గ్రిడ్ అనుమతి 120 kW. సోలార్, బ్యాటరీ నిల్వ ఆ లోటు పూడుస్తున్నాయి: పైన అంకెలు చూడండి.",
+"off": "ఒక్క కారే ఉంది Sir: మిగతా రెండు బేలు ఖాళీ. బ్యాటరీ నిల్వ మళ్ళీ నిండుతోంది."
+},
+{
+"id": "cut",
+"menu": "⚡ కరెంట్ కట్",
+"words": [
+"కరెంట్ కట్",
+"కరెంట్ పోతే",
+"పవర్ కట్",
+"గ్రిడ్ ఆపు",
+"power cut",
+"grid off",
+"కరెంట్ పోయింది"
+],
+"offWords": [
+"కరెంట్ వచ్చింది",
+"గ్రిడ్ వేయి",
+"పవర్ వచ్చింది",
+"power back",
+"grid on"
+],
+"on": "⚡ గ్రిడ్ కరెంట్ పోయింది Sir. సోలార్ కెనొపీ, బ్యాటరీ నిల్వ కంటైనర్ కలిసి ఛార్జింగ్ కొనసాగిస్తున్నాయి: కొంచెం నెమ్మదిగా. నిల్వ మట్టం తగ్గడం చూడండి.",
+"off": "✅ గ్రిడ్ కరెంట్ వచ్చింది Sir: ఛార్జర్లు మళ్ళీ ఫుల్ పవర్, బ్యాటరీ నిల్వ తిరిగి నిండుతోంది."
+}
+],
+"power": {
+"start": "ఛార్జింగ్ మొదలైంది Sir: కారు, ఛార్జర్ మాట్లాడుకున్నాయి, కరెంట్ ప్రవహిస్తోంది.",
+"full": "ఫుల్ పవర్ Sir: 60 kW, సుమారు 150 A. 20 నుంచి 80 శాతానికి సుమారు అరగంట (బొమ్మలో 50 రెట్లు వేగంగా చూపిస్తున్నాను).",
+"half": "సగం పవర్ Sir: 30 kW: సమయం రెట్టింపు, కానీ బ్యాటరీకి మెత్తగా.",
+"stop": "ఛార్జింగ్ ఆపాను Sir: కరెంట్ సున్నా అయ్యాకే గన్ లాక్ వదులుతుంది.",
+"over": "ఛార్జర్ హద్దు కంటే ఎక్కువ అడిగాం Sir: అది ఇవ్వదు. కారు బ్యాటరీ కంప్యూటర్ (BMS) ఎంత తీసుకోగలదో చెప్తుంది, ఛార్జర్ అంతే ఇస్తుంది: ఇద్దరిలో ఎవరు తక్కువ చెప్తే అది.",
+"cut": "మామూలు పవర్‌కి వచ్చాను Sir."
+},
+"info": {
+"ఛార్జింగ్ ప్లాజా": {
+"simple": "EV ఛార్జింగ్ ప్లాజా: నాలుగు పచ్చ బేలు, మూడు DC ఫాస్ట్ ఛార్జర్లు, ఒక AC ఛార్జర్. వెనక కరెంట్ సరఫరా.",
+"deep": "పచ్చ రంగు బేలు EV లకి మాత్రమే. హైవేల మీద ప్రతి 25–50 km కి ఇలాంటి స్టేషన్లు వస్తున్నాయి.",
+"specs": {
+"బేలు": "4"
+}
+},
+"చెట్లు": {
+"simple": "స్టేషన్ చుట్టూ చెట్లు.",
+"deep": "ఛార్జింగ్ సమయంలో (అరగంట) నీడ, విశ్రాంతి ముఖ్యం.",
+"specs": {
+"పని": "నీడ"
+}
+},
+"11 kV లైన్": {
+"simple": "11 kV లైన్: స్టేషన్‌కి కరెంట్ తెచ్చే హై వోల్టేజ్ లైన్. దగ్గరికి వెళ్ళకూడదు.",
+"deep": "మూడు ఫాస్ట్ ఛార్జర్లు కలిపి ఒక చిన్న అపార్ట్‌మెంట్ అంత కరెంట్ లాగుతాయి: అందుకే మామూలు ఇంటి కనెక్షన్ చాలదు, సొంత ట్రాన్స్‌ఫార్మర్ కావాలి.",
+"specs": {
+"వోల్టేజ్": "11,000 V"
+}
+},
+"ట్రాన్స్‌ఫార్మర్": {
+"simple": "ట్రాన్స్‌ఫార్మర్: 11,000 వోల్టులని 415 వోల్టులకి తగ్గిస్తుంది. చుట్టూ కంచె: ముట్టుకోకూడదు.",
+"deep": "నూనెతో చల్లబడుతుంది, పక్కల రెక్కలు వేడి వదులుతాయి. ఎక్కువ కార్లు ఒకేసారి ఛార్జ్ అయితే ఇది వేడెక్కుతుంది: బ్యాటరీ నిల్వ సహాయం చేస్తుంది.",
+"specs": {
+"లోపలికి": "11,000 V",
+"బయటికి": "415 V",
+"సైజు": "సుమారు 250 kVA"
+}
+},
+"LT ప్యానెల్": {
+"simple": "LT ప్యానెల్: మెయిన్ స్విచ్‌లు, మీటర్, రక్షణ బ్రేకర్లు.",
+"deep": "ప్రతి ఛార్జర్‌కి వేరే బ్రేకర్, ఎర్త్ లీకేజ్ రక్షణ. స్టేషన్ ఎంత కరెంట్ అమ్మిందో మీటర్ లెక్కిస్తుంది.",
+"specs": {
+"పని": "స్విచ్‌లు, మీటర్, రక్షణ"
+}
+},
+"పవర్ క్యాబినెట్లు": {
+"simple": "ఇవి పవర్ క్యాబినెట్లు: గ్రిడ్ AC కరెంట్‌ని బ్యాటరీకి కావాల్సిన DC గా మారుస్తాయి. ఫాస్ట్ ఛార్జింగ్ గుండె ఇదే.",
+"deep": "లోపల 30 kW పవర్ మాడ్యూల్‌లు (రెక్టిఫైయర్లు). కారు అడిగిన వోల్టేజ్, కరెంట్ ప్రకారం సర్దుబాటు చేస్తాయి. చాలా వేడి పుడుతుంది: ఫ్యాన్లు తిరుగుతూ చల్లబరుస్తాయి.",
+"specs": {
+"మార్పు": "AC 415 V → DC 200–1000 V",
+"మాడ్యూల్": "30 kW ముక్కలు"
+}
+},
+"బ్యాటరీ నిల్వ": {
+"simple": "బ్యాటరీ నిల్వ కంటైనర్: సోలార్ కరెంట్, రాత్రి చౌక కరెంట్ దాచుకుని, రద్దీ సమయంలో ఛార్జర్లకి ఇస్తుంది. పచ్చ కడ్డీ దాని మట్టం.",
+"deep": "పాత EV బ్యాటరీలని ఇక్కడ రెండో జీవితంగా వాడొచ్చు. కరెంట్ పోయినా కాసేపు ఛార్జింగ్ ఆగదు. 'కరెంట్ కట్' అంటే చూపిస్తాను.",
+"specs": {
+"నిల్వ": "సుమారు 200 kWh",
+"పని": "రద్దీలో సహాయం"
+}
+},
+"సోలార్ ఇన్వర్టర్": {
+"simple": "సోలార్ ఇన్వర్టర్: కెనొపీ ప్యానెళ్ళ DC ని స్టేషన్ వాడే AC గా మారుస్తుంది.",
+"deep": "ఎండ ఉన్నప్పుడు స్టేషన్ లైట్లు, కొంత ఛార్జింగ్ సూర్యుడితోనే.",
+"specs": {
+"శక్తి": "సుమారు 22 kW"
+}
+},
+"DC ఫాస్ట్ ఛార్జర్లు": {
+"simple": "ఇవి DC ఫాస్ట్ ఛార్జర్లు: స్క్రీన్ మీద బ్యాటరీ శాతం, kW కనిపిస్తాయి. అరగంటలో 20 నుంచి 80 శాతం.",
+"deep": "ఇది నిజానికి 'డిస్పెన్సర్': అసలు మార్పిడి వెనక పవర్ క్యాబినెట్లలో జరుగుతుంది. యాప్ / కార్డ్‌తో మొదలుపెడతారు. కారు, ఛార్జర్ మాట్లాడుకున్నాకే కరెంట్ వస్తుంది.",
+"specs": {
+"శక్తి": "ఒక్కోటి 60 kW",
+"20 → 80%": "సుమారు 30 నిమిషాలు"
+}
+},
+"ఛార్జింగ్ గన్": {
+"simple": "ఛార్జింగ్ గన్, కేబుల్: కారుకి తగిలించే ప్లగ్ (CCS2 రకం). లాక్ పడ్డాకే కరెంట్ వస్తుంది; ఛార్జింగ్‌లో లాగినా రాదు.",
+"deep": "వేలు లోపలికి పోని ఆకారం, వాన తగిలినా సురక్షితం. 'గన్ లోపల చూపించు' అంటే పిన్నులు ఏవి ఏ పని చేస్తాయో చూపిస్తాను.",
+"specs": {
+"రకం": "CCS2",
+"కరెంట్": "150 A దాకా"
+}
+},
+"AC ఛార్జర్": {
+"simple": "AC ఛార్జర్: నెమ్మది ఛార్జింగ్ (7 kW). కారులోని సొంత ఛార్జర్ AC ని DC గా మారుస్తుంది. బైక్ కూడా ఇక్కడే.",
+"deep": "ఇంట్లో రాత్రంతా పెట్టేది ఇలాంటిదే. నెమ్మది ఛార్జింగ్ బ్యాటరీ ఆయుష్షుకి మంచిది.",
+"specs": {
+"శక్తి": "సుమారు 7 kW",
+"కారు ఫుల్": "సుమారు 6 గంటలు"
+}
+},
+"కెనొపీ స్తంభాలు": {
+"simple": "కెనొపీ స్తంభాలు, లైట్లు.",
+"deep": "రాత్రి లైట్లు వెలుగుతాయి. '🕐 రాత్రి' అంటే చూడండి.",
+"specs": {
+"పని": "కప్పు మోయడం"
+}
+},
+"సోలార్ కెనొపీ": {
+"simple": "సోలార్ కెనొపీ: కార్లకి నీడ, పైన సోలార్ ప్యానెళ్ళు కరెంట్ తయారు చేస్తాయి. 'పైకప్పు తీయి' అంటే లేస్తుంది.",
+"deep": "91 ప్యానెళ్ళు, మధ్యాహ్నం సుమారు 22 kW. రోజంతా కలిపి సుమారు 100 యూనిట్లు: రెండు మూడు కార్ల ఫుల్ ఛార్జ్.",
+"specs": {
+"ప్యానెళ్ళు": "91",
+"మధ్యాహ్నం": "సుమారు 22 kW"
+}
+},
+"కార్ 1": {
+"simple": "కార్ 1: మా సొంత ఆకారం ఎలక్ట్రిక్ కార్ (ఏ కంపెనీ గుర్తూ లేదు). ముందు రెక్క మీది మూత తెరిచి గన్ పెడతారు.",
+"deep": "కారు నేల కింద బ్యాటరీ ప్యాక్ (సుమారు 40 kWh): ఒక ఇల్లు నాలుగైదు రోజులు వాడే కరెంట్. బ్యాటరీ DC మాత్రమే నిల్వ చేస్తుంది.",
+"specs": {
+"బ్యాటరీ": "సుమారు 40 kWh",
+"దూరం": "ఫుల్ ఛార్జ్‌కి సుమారు 300 km"
+}
+},
+"కార్ 2": {
+"simple": "కార్ 2: మా సొంత ఆకారం ఎలక్ట్రిక్ కార్ (ఏ కంపెనీ గుర్తూ లేదు). ముందు రెక్క మీది మూత తెరిచి గన్ పెడతారు.",
+"deep": "కారు నేల కింద బ్యాటరీ ప్యాక్ (సుమారు 40 kWh): ఒక ఇల్లు నాలుగైదు రోజులు వాడే కరెంట్. బ్యాటరీ DC మాత్రమే నిల్వ చేస్తుంది.",
+"specs": {
+"బ్యాటరీ": "సుమారు 40 kWh",
+"దూరం": "ఫుల్ ఛార్జ్‌కి సుమారు 300 km"
+}
+},
+"కార్ 3": {
+"simple": "కార్ 3: మా సొంత ఆకారం ఎలక్ట్రిక్ కార్ (ఏ కంపెనీ గుర్తూ లేదు). ముందు రెక్క మీది మూత తెరిచి గన్ పెడతారు.",
+"deep": "కారు నేల కింద బ్యాటరీ ప్యాక్ (సుమారు 40 kWh): ఒక ఇల్లు నాలుగైదు రోజులు వాడే కరెంట్. బ్యాటరీ DC మాత్రమే నిల్వ చేస్తుంది.",
+"specs": {
+"బ్యాటరీ": "సుమారు 40 kWh",
+"దూరం": "ఫుల్ ఛార్జ్‌కి సుమారు 300 km"
+}
+},
+"EV బైక్": {
+"simple": "EV బైక్: AC పాయింట్ దగ్గర ఛార్జ్ అవుతోంది. మా సొంత ఆకారం, ఏ కంపెనీ పేరూ లేదు.",
+"deep": "బైక్ బ్యాటరీ చిన్నది (సుమారు 5 kWh): మామూలు 15 A సాకెట్ నుంచే 4–5 గంటల్లో నిండుతుంది.",
+"specs": {
+"బ్యాటరీ": "సుమారు 5 kWh"
+}
+},
+"విశ్రాంతి గది": {
+"simple": "విశ్రాంతి గది: ఛార్జింగ్ అయ్యే అరగంట టీ, విశ్రాంతి.",
+"deep": "ఛార్జింగ్ ఆగడం డ్రైవర్‌కి కూడా మంచిదే: ప్రతి రెండు గంటలకి విరామం.",
+"specs": {
+"సమయం": "సుమారు 30 నిమిషాలు"
+}
+},
+"సైన్ బోర్డ్": {
+"simple": "సైన్ బోర్డ్: దూరం నుంచి కనిపిస్తుంది.",
+"deep": "మా సొంత పేరు: ఏ కంపెనీదీ కాదు.",
+"specs": {
+"పేరు": "మా సొంతం"
+}
+},
+"దారి శంకువులు": {
+"simple": "దారి శంకువులు: లోపలికి, బయటికి దారి చూపిస్తాయి.",
+"deep": "రాత్రి మెరిసే పట్టీలు.",
+"specs": {
+"పని": "దారి"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎంత సేపు",
+"ఎన్ని నిమిషాలు",
+"how long",
+"ఛార్జ్ టైం",
+"సమయం ఎంత"
+],
+"a": "60 kW ఫాస్ట్ ఛార్జర్‌తో 20 నుంచి 80 శాతం సుమారు 30 నిమిషాలు Sir. 80 నుంచి 100 ఇంకో 25–30 నిమిషాలు (నెమ్మదిస్తుంది). ఇంటి AC ఛార్జర్‌తో ఫుల్ సుమారు 6 గంటలు."
+},
+{
+"k": [
+"80 తర్వాత",
+"ఎందుకు నెమ్మది",
+"why slow",
+"80 శాతం",
+"నెమ్మదిగా ఎందుకు"
+],
+"a": "ఖాళీ సీసాలో నీళ్ళు వేగంగా పోయొచ్చు, నిండే కొద్దీ పొంగకుండా నెమ్మదించాలి Sir. బ్యాటరీ సెల్‌ల వోల్టేజ్ హద్దుకి దగ్గరైతే కరెంట్ తగ్గించాలి, లేకపోతే సెల్‌లు పాడవుతాయి, వేడెక్కుతాయి. అందుకే హైవే మీద 80% దగ్గర ఆపి బయలుదేరడం తెలివైన పని."
+},
+{
+"k": [
+"ac dc తేడా",
+"ఫాస్ట్ ఛార్జర్ తేడా",
+"ac charger",
+"dc charger",
+"తేడా ఏంటి"
+],
+"a": "బ్యాటరీ DC మాత్రమే తీసుకుంటుంది Sir. AC ఛార్జర్‌లో కారు లోపలి చిన్న ఛార్జర్ మారుస్తుంది (7 kW: నెమ్మది). DC ఫాస్ట్ ఛార్జర్‌లో బయటి పెద్ద క్యాబినెట్ మార్చి నేరుగా బ్యాటరీకి ఇస్తుంది (60 kW పైన: వేగం)."
+},
+{
+"k": [
+"ఎంత ఖర్చు",
+"యూనిట్ ధర",
+"km కి",
+"cost",
+"రూపాయలు"
+],
+"a": "ఫాస్ట్ ఛార్జింగ్ యూనిట్‌కి సుమారు ₹15–22 Sir (బొమ్మలో ₹18 లెక్క); ఇంట్లో ₹7–9. కారు యూనిట్‌కి సుమారు 6–7 km వెళ్తుంది: ఫాస్ట్ ఛార్జ్‌తో km కి సుమారు ₹3, ఇంటి ఛార్జ్‌తో ₹1.2. ఇవి సుమారు లెక్కలు, ఊరు ఊరికి మారతాయి."
+},
+{
+"k": [
+"షాక్",
+"వాన",
+"safe",
+"సురక్షితమా",
+"rain"
+],
+"a": "సురక్షితం Sir. గన్ లాక్ పడి, కారు 'సిద్ధం' అని చెప్పాకే పిన్నులకి కరెంట్ వస్తుంది; ముందు ఎర్త్ పిన్ తగులుతుంది; లీకేజ్ ఉంటే క్షణంలో ఆగుతుంది. వానలో కూడా ఛార్జ్ చేయొచ్చు. తెగిన కేబుల్, పగిలిన గన్ మాత్రం వాడకూడదు."
+},
+{
+"k": [
+"బ్యాటరీ ఆయుష్షు",
+"battery life",
+"ఫాస్ట్ ఛార్జింగ్ పాడు",
+"ఎన్నేళ్ళు",
+"బ్యాటరీ పాడవుతుందా"
+],
+"a": "రోజూ 20–80% మధ్య ఉంచితే బ్యాటరీ ఎక్కువ కాలం (8–10 ఏళ్ళు, లక్షన్నర km పైన) Sir. రోజూ ఫాస్ట్ ఛార్జింగ్, ఎప్పుడూ 100% లో ఉంచడం, పూర్తిగా ఖాళీ చేయడం ఆయుష్షు తగ్గిస్తాయి. ప్రయాణాల్లో ఫాస్ట్ ఛార్జ్ వాడటంలో తప్పు లేదు."
+},
+{
+"k": [
+"సోలార్ తోనే",
+"సోలార్ సరిపోతుందా",
+"solar",
+"కెనొపీ ఎంత"
+],
+"a": "కెనొపీ మధ్యాహ్నం 22 kW ఇస్తుంది Sir: ఒక ఫాస్ట్ ఛార్జర్‌లో మూడో వంతు. రోజంతా సుమారు 100 యూనిట్లు: 2–3 కార్ల ఫుల్ ఛార్జ్. మిగతాది గ్రిడ్ నుంచి; బ్యాటరీ నిల్వ ఎండ కరెంట్‌ని దాచి రద్దీలో ఇస్తుంది."
+},
+{
+"k": [
+"ccs",
+"గన్ రకాలు",
+"ప్లగ్ రకం",
+"connector",
+"type 2"
+],
+"a": "మన కార్లలో ఎక్కువగా CCS2 Sir: పైన గుండ్రని భాగం AC కి (టైప్ 2), కింద రెండు లావు పిన్నులు DC కి. బైక్‌లు, స్కూటర్లు ఎక్కువగా మామూలు 15 A సాకెట్ లేదా వాటి సొంత చిన్న కనెక్టర్ వాడతాయి. 'గన్ లోపల చూపించు' అంటే పిన్నులు చూపిస్తాను."
+},
+{
+"k": [
+"మూడు కార్లు",
+"ఒకేసారి",
+"load sharing",
+"పవర్ పంచు"
+],
+"a": "స్టేషన్‌కి గ్రిడ్ నుంచి 120 kW అనుమతి Sir. మూడు కార్లు 60 kW చొప్పున అడిగితే 180 kW: సోలార్, బ్యాటరీ నిల్వ ఆ లోటు పూడుస్తాయి; అవీ చాలకపోతే ప్రతి కారుకి కొంచెం తగ్గిస్తుంది. 'మూడు కార్లు' అంటే చూపిస్తాను."
+}
+],
+"quiz": [
+{
+"q": "AC కరెంట్‌ని బ్యాటరీకి కావాల్సిన DC గా మార్చేవి ఏవి?",
+"a": "పవర్ క్యాబినెట్లు",
+"opts": [
+"పవర్ క్యాబినెట్లు",
+"LT ప్యానెల్",
+"సోలార్ ఇన్వర్టర్"
+]
+},
+{
+"q": "11,000 వోల్టులని 415 వోల్టులకి తగ్గించేది ఏది?",
+"a": "ట్రాన్స్‌ఫార్మర్",
+"opts": [
+"బ్యాటరీ నిల్వ",
+"ట్రాన్స్‌ఫార్మర్",
+"DC ఫాస్ట్ ఛార్జర్లు"
+]
+},
+{
+"q": "కారుకి తగిలించే ప్లగ్ ఏది?",
+"a": "ఛార్జింగ్ గన్",
+"opts": [
+"ఛార్జింగ్ గన్",
+"AC ఛార్జర్",
+"కెనొపీ స్తంభాలు"
+]
+},
+{
+"q": "నీడ ఇస్తూ కరెంట్ తయారు చేసేది ఏది?",
+"a": "సోలార్ కెనొపీ",
+"opts": [
+"సైన్ బోర్డ్",
+"సోలార్ కెనొపీ",
+"విశ్రాంతి గది"
+]
+},
+{
+"q": "కరెంట్ దాచుకుని రద్దీలో సహాయం చేసేది ఏది?",
+"a": "బ్యాటరీ నిల్వ",
+"opts": [
+"బ్యాటరీ నిల్వ",
+"ట్రాన్స్‌ఫార్మర్",
+"పవర్ క్యాబినెట్లు"
+]
+},
+{
+"q": "నెమ్మదిగా, 7 kW తో ఛార్జ్ చేసేది ఏది?",
+"a": "AC ఛార్జర్",
+"opts": [
+"DC ఫాస్ట్ ఛార్జర్లు",
+"AC ఛార్జర్",
+"ఛార్జింగ్ గన్"
+]
+}
+],
+"faults": [
+{
+"label": "పవర్ క్యాబినెట్లు",
+"kind": "stop",
+"clue": "గన్ పెట్టాం Sir, కానీ ఛార్జింగ్ మొదలవట్లేదు: 0 kW. వెనక ఏది పనిచేయట్లేదు?",
+"why": "పవర్ క్యాబినెట్‌లో ఒక మాడ్యూల్ లోపం చూపించి మొత్తం ఆగింది (రక్షణ). టెక్నీషియన్ ఆ మాడ్యూల్‌ని బయటికి లాగి కొత్తది పెడతాడు: మిగతావి పనిచేస్తూనే ఉండేలా డిజైన్."
+},
+{
+"label": "ట్రాన్స్‌ఫార్మర్",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: ఏది మామూలు కంటే వేడిగా ఉంది?",
+"why": "మూడు కార్లు చాలా సేపు ఫుల్ పవర్‌లో: ట్రాన్స్‌ఫార్మర్ ఓవర్‌లోడ్. స్టేషన్ ప్రతి ఛార్జర్ పవర్ తగ్గిస్తుంది; బ్యాటరీ నిల్వ లోడ్ పంచుకుంటుంది."
+},
+{
+"label": "ఛార్జింగ్ గన్",
+"kind": "loose",
+"clue": "ఏది సరిగ్గా కూర్చోక ఊగుతోంది Sir?",
+"why": "ఛార్జింగ్ గన్ లాక్ పడలేదు (మూతలో మట్టి). లాక్ పడకపోతే కరెంట్ రాదు: అది రక్షణ. తీసి, శుభ్రం చేసి, 'క్లిక్' అనే దాకా నెట్టాలి."
+},
+{
+"label": "పవర్ క్యాబినెట్లు",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: ఎక్కడి నుంచి గరగర చప్పుడు? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "పవర్ క్యాబినెట్ కూలింగ్ ఫ్యాన్ బేరింగ్ అరిగింది, ఫిల్టర్‌లో దుమ్ము. ఫ్యాన్ మార్చి ఫిల్టర్ శుభ్రం చేస్తారు: వేడెక్కితే పవర్ తగ్గిపోతుంది."
+}
+],
+"inside": {
+"ఛార్జింగ్ గన్": {
+"say": "ఛార్జింగ్ గన్ ముఖం Sir, పెద్దది చేసి చూపిస్తున్నాను. పైన గుండ్రని భాగంలో AC పిన్నులు: DC ఫాస్ట్ ఛార్జింగ్‌లో వాటిలో మూడే పని చేస్తాయి: ఇత్తడి రంగు ఎర్త్ పిన్ (అన్నిటికంటే పొడవు, ముందు తగులుతుంది), పైన రెండు చిన్న పసుపు పిన్నులు (కారు, ఛార్జర్ మాట్లాడుకునేవి). కింద రెండు లావు DC పిన్నులు. క్రమం చూడండి: లాక్ పడుతుంది, పసుపు పిన్నులు మెరుస్తూ మాట్లాడుకుంటాయి, ఆ తర్వాతే DC పిన్నులు వెలుగుతాయి: కరెంట్ ప్రవహిస్తుంది.",
+"code": "// The face of the charging gun (the CCS2 kind, the usual one on Indian cars), made large. Top, the round part: the pins of\n// ordinary AC charging. For DC fast charging only three of them work: the earth pin (PE, the longest: it touches first) and\n// the two small pins the car and the charger talk through (CP, PP). Bottom: the two thick DC pins that carry the power.\n// Nothing is live until the gun is locked in and the car has said \"ready\".\nconst body = W.plastic('#1d1f22', { rough: 0.5 }), brass = W.metal('brass', { rough: 0.3 }), off = W.plastic('#4a4f56', { rough: 0.6 });\nconst sh = W.group();\nsh.add(W.mesh(W.cyl(46, 46, 30, 40), body, { at: [0, 34, 0], rot: [90, 0, 0] }), W.mesh(W.box(96, 56, 30, 14), body, { at: [0, -34, 0] }), W.mesh(W.box(70, 30, 120, 10), body, { at: [0, 0, -74] }));\nW.add(sh, { label: 'గన్ బాడీ' });\nconst pin = (x, y, r, m, len = 26) => W.mesh(W.cyl(r, r, len, 20), m, { at: [x, y, 16 + (len - 26) / 2], rot: [90, 0, 0] });\nconst ac = W.group();\nfor (const [x, y] of [[-22, 30], [22, 30], [0, 8]]) ac.add(pin(x, y, 6, off));\nac.add(pin(0, 30, 6, off));\nW.add(ac, { label: 'AC పిన్నులు (DC లో వాడరు)' });\nconst pe = W.group();\npe.add(pin(-22, 8, 6.4, brass, 32));\nW.add(pe, { label: 'ఎర్త్ పిన్ (PE)' });\nconst sig = W.group();\nconst cpM = W.metal('#e8c62a', { rough: 0.3 });\nsig.add(pin(-12, 52, 3.6, cpM), pin(12, 52, 3.6, cpM));\nW.add(sig, { label: 'మాట్లాడే పిన్నులు (CP, PP)' });\nconst dc = W.group();\nconst hot = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 1, roughness: 0.3, emissive: 0xff8a2a, emissiveIntensity: 0 });\ndc.add(pin(-24, -34, 11, hot, 30), pin(24, -34, 11, hot, 30));\ndc.add(W.text('DC +', { size: 9, at: [-24, -58, 16], color: '#ff8a6a' }), W.text('DC −', { size: 9, at: [24, -58, 16], color: '#8ab8ff' }));\nW.add(dc, { label: 'DC పిన్నులు' });\nconst lock = W.group();\nlock.add(W.mesh(W.box(10, 8, 20), W.metal('#c9cdd2'), { at: [0, 84, 4] }));\nW.add(lock, { label: 'లాక్' });\nW.onTick((t) => { const k = (t % 6) / 6; hot.emissiveIntensity = k > 0.45 ? 1.6 : 0; cpM.emissive = cpM.emissive || new THREE.Color(0); cpM.emissive.set(k > 0.2 ? 0x7dff9b : 0x000000); cpM.emissiveIntensity = k > 0.2 && k < 0.45 ? 1.5 * (Math.sin(t * 20) > 0 ? 1 : 0.2) : k >= 0.45 ? 0.6 : 0; lock.position.y = k > 0.08 ? -6 : 0; });\nW.stream([[-24, -34, -120], [-24, -34, -20], [-24, -34, 40]], { kind: 'power', count: 8, size: 5, speed: 1.2, always: true });\nW.stream([[24, -34, 40], [24, -34, -20], [24, -34, -120]], { kind: 'cool', count: 8, size: 5, speed: 1.2, always: true });\n"
+}
+},
+"film": [
+"🔌 EV ఛార్జింగ్ స్టేషన్",
+"11 kV → ట్రాన్స్‌ఫార్మర్ → AC ని DC గా",
+"60 kW: 20 → 80% అరగంటలో",
+"☀️ సోలార్ కెనొపీ + బ్యాటరీ నిల్వ",
+"80% తర్వాత నెమ్మదిగా",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ ఛార్జింగ్ స్టేషన్ నిర్వహణ",
+"safety": "ఛార్జర్ లోపల 1000 వోల్టుల దాకా DC ఉంటుంది Sir: క్యాబినెట్ తెరవడం శిక్షణ ఉన్న టెక్నీషియన్‌దే. మనం: పగిలిన గన్, తెగిన కేబుల్ వాడకూడదు; గన్‌ని నేల మీద పడేయకూడదు; ఛార్జింగ్ అయ్యాక హోల్డర్‌లో పెట్టాలి.",
+"steps": [
+{
+"say": "గన్ పిన్నులు, రబ్బర్ సీల్, కేబుల్ రోజూ కంటితో చూస్తారు: నల్లబడిన పిన్ అంటే వేడెక్కుతోంది, మార్చాలి.",
+"label": "ఛార్జింగ్ గన్"
+},
+{
+"say": "పవర్ క్యాబినెట్ గాలి ఫిల్టర్లు నెలకోసారి శుభ్రం: దుమ్ము పడితే వేడెక్కి పవర్ తగ్గుతుంది.",
+"label": "పవర్ క్యాబినెట్లు"
+},
+{
+"say": "సోలార్ ప్యానెళ్ళ దుమ్ము కడగడం: దుమ్ము 20% కరెంట్ తగ్గిస్తుంది.",
+"label": "సోలార్ కెనొపీ"
+},
+{
+"say": "ట్రాన్స్‌ఫార్మర్ నూనె మట్టం, ఎర్తింగ్ నిరోధం ఆరు నెలలకోసారి.",
+"label": "ట్రాన్స్‌ఫార్మర్"
+},
+{
+"say": "బ్యాటరీ నిల్వ కంటైనర్ AC, సెల్ వేడి, అగ్ని రక్షణ వ్యవస్థ పరీక్ష.",
+"label": "బ్యాటరీ నిల్వ"
+}
+]
+},
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"id": "evcharge"
+}
+}

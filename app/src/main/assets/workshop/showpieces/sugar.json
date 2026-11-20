@@ -1,0 +1,515 @@
+{
+"at": 1763700000014,
+"title": "చక్కెర ఫ్యాక్టరీ",
+"what": "చెరకు నుంచి చక్కెర: మిల్ రోలర్లు, క్లారిఫైయర్, 4 ఎవాపరేటర్లు, వాక్యూమ్ పాన్‌లు, సెంట్రిఫ్యూజ్‌లు; బగాస్ బాయిలర్, సొంత కరెంట్. 🕐 🚶",
+"model": "showpiece",
+"parts": [
+{
+"id": "site",
+"status": "ఫ్యాక్టరీ స్థలం సిద్ధం చేస్తున్నాను",
+"code": "// Sugar factory showpiece, hand-made. Units: cm, about real size (distances shortened). Cane comes in at the west (−X):\n// cane yard → cane carrier → knives and shredder → four mills (the juice is squeezed out) → clarifier → evaporators →\n// vacuum pans → crystallizers → centrifuges → dryer → bags (+X). The squeezed fibre (bagasse) burns in the boiler behind\n// (−Z): its steam turns a turbine (the factory's own electricity, the extra goes to the grid) and then boils the juice.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 9, ground: '#7c8a55', zoom: 0.62 });\nconst site = W.group();\nsite.add(W.mesh(W.box(26400, 20, 10400), S.land('gravel', '#b0a892', 500), { at: [600, -9, -400] }));\nsite.add(W.mesh(W.box(26400, 6, 600), S.land('asphalt', '#5d6064', 500), { at: [600, 4, 4400] }), S.dashes(-12600, 13800, 4400));\nsite.add(W.mesh(W.box(4600, 5, 3600), S.land('soil', '#9a8a68', 500), { at: [-10600, 3, 600] }));\nconst pole = W.metal('#8d939a', { rough: 0.5 }), head = S.lamp('#ffe7b0', 3);\nfor (let x = -12000; x <= 13000; x += 3600) site.add(W.mesh(W.cyl(10, 14, 800, 8), pole, { at: [x, 400, 4000] }), W.mesh(W.box(60, 8, 28), head, { at: [x, 792, 4040] }));\nsite.add(W.text('JARVIS · చక్కెర ఫ్యాక్టరీ', { size: 150, at: [-2000, 330, 4760], color: '#eef2f5', bg: '#2f7a4a' }));\nW.add(site, { label: 'ఫ్యాక్టరీ స్థలం', ground: true });\nconst green = W.group();\ngreen.add(S.trees(40, -12600, -5600, 13800, 5200, (x, z) => z < -5000 || x < -12300 || x > 13400));\nconst cane = new THREE.InstancedMesh(new THREE.ConeGeometry(34, 300, 5), S.matte('#6f9a46', 0.9), 400), M = new THREE.Matrix4();\nfor (let i = 0; i < 400; i++) cane.setMatrixAt(i, M.makeTranslation(-12500 + (i % 40) * 620 + ((i * 7) % 5) * 30, 150, 5400 + Math.floor(i / 40) * 90));\ngreen.add(cane); // (a cane field across the road)\nW.add(green, { label: 'చెరకు తోట', ground: true });\n"
+},
+{
+"id": "yard",
+"status": "చెరకు యార్డ్, క్యారియర్ పెడుతున్నాను",
+"code": "const S = W.store;\nconst yd = W.group();\nconst caneM = S.sf('wood', '#8f9a52', { tile: 70, rough: 0.9 });\nfor (const [x, z, r] of [[-11800, 1500, 0], [-10900, 1700, 8], [-11500, -600, -6]]) { const l = S.lorry('#b8562f', caneM); l.position.set(x, 0, z); l.rotation.y = r * 0.0174; yd.add(l); }\nyd.add(W.mesh(W.box(900, 14, 360), S.sf('metal', '#70777d', { rough: 0.7 }), { at: [-9700, 7, 1900] })); // the weighbridge\nconst yel = S.sf('paint', '#d9a92a');\nfor (const x of [-11300, -9900]) for (const z of [-400, 700]) yd.add(W.mesh(W.box(40, 900, 40), yel, { at: [x, 450, z] }));\nfor (const z of [-400, 700]) yd.add(W.mesh(W.box(1500, 50, 50), yel, { at: [-10600, 900, z] }));\nyd.add(W.mesh(W.box(70, 60, 1200), yel, { at: [-10600, 940, 150] }), W.mesh(W.box(120, 90, 160), S.sf('paint', '#3b6a94'), { at: [-10600, 880, 150] }));\nyd.add(S.beam([-10600, 840, 150], [-10600, 520, 150], 3, S.sf('metal', '#3d4248')), S.heap(-10600, 150, 420, 240, 380, caneM));\nW.add(yd, { label: 'చెరకు యార్డ్', heat: [30, 36] });\nconst cc = W.group();\ncc.add(S.belt([-10200, 90, 150], [-8300, 470, 150], 220, { color: '#5a5f52', mark: '#8f9a52' }));\ncc.add(W.mesh(W.box(520, 420, 300), S.sf('paint', '#6b7f90'), { at: [-8500, 640, 150] }));\nconst kn = W.group({ at: [-8500, 560, 150] });\nkn.add(W.mesh(W.cyl(40, 40, 240, 12), S.sf('metal', '#8d959c'), { rot: [90, 0, 0] }));\nfor (let k = 0; k < 16; k++) kn.add(W.mesh(W.box(150, 8, 5), S.sf('metal', '#c9cdd2'), { at: [0, 0, -105 + k * 14], rot: [0, 0, k * 34] }));\ncc.add(kn); S.turn.push({ o: kn, axis: 'z', k: 2.5 });\nW.add(cc, { label: 'కేన్ క్యారియర్', heat: [30, 50] });\n"
+},
+{
+"id": "mills",
+"status": "మిల్ హౌస్ కడుతున్నాను",
+"code": "const S = W.store;\n// the mill tandem: four mills in a row, each of three heavy rollers; the crushed cane passes from mill to mill, hot water\n// is sprayed on it before the last one to wash out the last of the sugar\nconst sh = S.shed([-6500, 0, 150], 4300, 1050, 1900, { color: '#cfd4d0', door: 1100, doorX: 1200 });\nconst ml = W.group();\nml.add(sh.floor);\nconst frm = S.sf('paint', '#3f7d6e'), rol = S.sf('rust', '#8a7f78', { tile: 60 });\nS.rollers = [];\nfor (let k = 0; k < 4; k++) {\n  const x = -7750 + k * 760;\n  for (const z of [-140, 140]) { ml.add(W.mesh(W.box(260, 360, 40), frm, { at: [x, 200, 150 + z] })); ml.add(W.mesh(W.box(120, 90, 46), frm, { at: [x, 420, 150 + z] })); }\n  for (const [dx, y, dir] of [[0, 300, 1], [-62, 190, -1], [62, 190, -1]]) {\n    const r = W.group({ at: [x + dx, y, 150] });\n    r.add(W.mesh(W.cyl(54, 54, 230, 24), rol, { rot: [90, 0, 0] }));\n    for (let j = 0; j < 8; j++) r.add(W.mesh(W.box(4, 4, 228), S.matte('#5a504a', 0.8), { at: [Math.cos(j * 0.785) * 54, Math.sin(j * 0.785) * 54, 0] }));\n    ml.add(r); S.rollers.push({ o: r, dir });\n  }\n  ml.add(W.mesh(W.box(300, 30, 260), S.sf('metal', '#8d959c', { rough: 0.6 }), { at: [x, 60, 150] })); // the juice tray under it\n  const g = S.motor(200, 55, '#3b6a94'); g.position.set(x, 300, -230); g.rotation.y = Math.PI / 2; ml.add(g);\n  if (k < 3) ml.add(S.belt([x + 130, 230, 150], [x + 630, 330, 150], 200, { color: '#5a5f52', mark: '#b9a878', legs: false }));\n}\nml.add(S.pipe([[-5350, 520, 150], [-5350, 520, -300], [-5600, 520, -300]], 12, S.sf('metal', '#aab2ba')));\nW.add(ml, { label: 'మిల్ రోలర్లు', heat: [35, 70], layer: 2 });\nconst jt = W.group();\njt.add(S.tank(260, 360, S.sf('metal', '#b4bac0', { rough: 0.5 }), { at: [-6600, 0, 800], dome: 0.12 }));\njt.add(S.pipe([[-7750, 60, 290], [-7750, 40, 700], [-6860, 60, 800]], 14, S.sf('metal', '#aab2ba')));\nW.add(jt, { label: 'రసం ట్యాంక్', heat: [35, 45], layer: 2 });\nW.add(sh.walls, { label: 'మిల్ హౌస్ గోడలు', layer: 1, peelBy: [0, 2600, 0], explode: [0, 0, 2600] });\nW.add(sh.roof, { label: 'మిల్ హౌస్ పైకప్పు', layer: 0, peelBy: [0, 3000, 0], explode: [0, 3000, 0] });\nconst bc = W.group();\nbc.add(S.belt([-4950, 330, 150], [-4000, 420, 150], 200, { color: '#5a5f52', mark: '#b9a878' }));\nbc.add(S.belt([-3950, 400, 100], [-2800, 1700, -2200], 200, { color: '#5a5f52', mark: '#b9a878' }));\nW.add(bc, { label: 'బగాస్ కన్వేయర్', heat: [32, 45] });\n"
+},
+{
+"id": "steam",
+"status": "బాయిలర్, పవర్ హౌస్ కడుతున్నాను",
+"code": "const S = W.store;\nconst bo = W.group();\nconst cl = S.sf('sheet', '#b4bcc3', { tile: 240 }), fm = S.sf('paint', '#8c98a3');\nbo.add(W.mesh(W.box(1300, 1900, 1200), cl, { at: [-2400, 1150, -2700] }));\nfor (const sx of [-1, 1]) for (const sz of [-1, 1]) bo.add(W.mesh(W.box(60, 2300, 60), fm, { at: [-2400 + sx * 700, 1150, -2700 + sz * 650] }));\nbo.add(W.mesh(W.cyl(110, 110, 1100, 20), S.sf('metal', '#c2c8cd', { rough: 0.5 }), { at: [-2400, 2180, -2500], rot: [0, 0, 90] }));\nbo.add(W.mesh(W.cyl(260, 90, 320, 4), S.sf('paint', '#6b7f90'), { at: [-2400, 1800, -2060], rot: [0, 45, 0] }));\nS.fire = new THREE.MeshStandardMaterial({ color: 0x331000, emissive: 0xff7a2a, emissiveIntensity: 0 });\nbo.add(W.mesh(W.box(300, 200, 10), S.fire, { at: [-2400, 480, -2096] }));\nbo.add(S.stairs([-1640, 0, -2200], [-1640, 1200, -3200], 90), S.rail([-3100, -2050], [-1700, -2050], 2200));\nbo.add(S.pipe([[-3050, 1500, -2700], [-3400, 1300, -2900], [-3700, 600, -3100]], 120, cl));\nbo.add(W.mesh(W.cyl(300, 300, 900, 20), cl, { at: [-3800, 450, -3200] })); // the wet scrubber\nW.add(bo, { label: 'బాయిలర్', heat: [45, 420] });\nconst ch = W.group();\nch.add(W.mesh(W.cyl(110, 170, 5200, 24), S.sf('concrete', '#cfcbc0', { tile: 500 }), { at: [-4700, 2600, -3300] }));\nfor (const y of [4000, 4800]) ch.add(W.mesh(W.cyl(118 + (5200 - y) * 0.0115 + 3, 118 + (5200 - y) * 0.0115 + 12, 300, 24), S.matte('#c0453a', 0.8), { at: [-4700, y, -3300] }));\nch.add(S.ladder(-4700, 0, 5000, -3300 + 160, 'z', 1), S.pipe([[-4100, 500, -3200], [-4400, 420, -3250], [-4600, 500, -3300]], 110, cl));\nS.chGroup = ch; S.chTop = [-4700, 5250, -3300];\nW.add(ch, { label: 'చిమ్నీ', heat: [40, 140] });\nconst bh = W.group();\nbh.add(S.heap(-600, -4300, 900, 420, 600, S.land('gravel', '#c9b98a', 80)));\nW.add(bh, { label: 'బగాస్ కుప్ప', heat: [30, 36] });\nconst ph = S.shed([700, 0, -2700], 1700, 720, 1200, { color: '#d6d9dc', door: 700 });\nconst tg = W.group();\ntg.add(ph.floor, ph.walls, ph.roof);\ntg.add(W.mesh(W.cyl(150, 110, 420, 24), S.sf('paint', '#6b7f90'), { at: [350, 260, -2700], rot: [0, 0, 90] }));\ntg.add(W.mesh(W.cyl(170, 170, 520, 24), S.sf('paint', '#2f6f6a'), { at: [950, 260, -2700], rot: [0, 0, 90] }));\ntg.add(W.mesh(W.box(1300, 90, 500), S.sf('concrete', '#bdb8ac'), { at: [650, 45, -2700] }));\ntg.add(S.pipe([[-2400, 2180, -2500], [-1600, 2100, -2600], [-400, 900, -2700], [130, 300, -2700]], 34, S.sf('sheet', '#c9cdd2', { tile: 120 }), 40));\nW.add(tg, { label: 'టర్బైన్ జనరేటర్', heat: [40, 260] });\nconst sy = W.group();\nsy.add(W.mesh(W.box(1400, 12, 1100), S.land('gravel', '#9d988c', 200), { at: [2700, 6, -4300] }));\nsy.add(W.mesh(W.box(400, 320, 320), S.sf('paint', '#6b776a'), { at: [2400, 170, -4300] }));\nfor (let k = 0; k < 3; k++) sy.add(W.mesh(W.cyl(14, 20, 150, 10), S.matte('#7a4a32', 0.4), { at: [2300 + k * 100, 405, -4300] }));\nconst gal = S.sf('metal', '#aab2ba', { rough: 0.5 });\nfor (const z of [-4700, -3900]) sy.add(W.mesh(W.box(30, 1000, 30), gal, { at: [3100, 500, z] }));\nsy.add(W.mesh(W.box(30, 30, 840), gal, { at: [3100, 1000, -4300] }));\nfor (const dz of [-250, 0, 250]) sy.add(S.beam([3100, 1000, -4300 + dz], [6500, 1300, -5600 + dz], 3, S.matte('#3a3d42', 0.6), 4));\nW.add(sy, { label: 'స్విచ్‌యార్డ్', heat: [30, 60] });\n"
+},
+{
+"id": "boiling",
+"status": "బాయిలింగ్ హౌస్ కడుతున్నాను",
+"code": "const S = W.store;\n// the boiling house: the juice is cleaned, boiled down to syrup in four evaporators (each boils with the vapour of the one\n// before: the steam is used four times), then grown into crystals in the vacuum pans, and spun dry in the centrifuges\nconst sh = S.shed([4400, 0, 400], 6600, 1750, 2500, { color: '#d3d6d9', door: 1400, doorX: -2000, doorH: 600 });\nconst ss = S.sf('metal', '#c2c8cd', { rough: 0.45, tile: 160 }), fm = S.sf('paint', '#8c98a3'), pp = S.sf('sheet', '#c9cdd2', { tile: 120 });\nconst clr = W.group();\nclr.add(sh.floor);\nclr.add(W.mesh(W.cyl(560, 560, 500, 40), S.sf('paint', '#8fb2cc', { tile: 200 }), { at: [1300, 250, 3000] }), W.mesh(W.cyl(570, 570, 20, 40), fm, { at: [1300, 505, 3000] }));\nS.rake = W.group({ at: [1300, 530, 3000] });\nS.rake.add(W.mesh(W.box(1100, 26, 40), fm), W.mesh(W.cyl(30, 30, 160, 12), S.sf('paint', '#3b6a94'), { at: [0, 80, 0] }));\nclr.add(S.rake); S.turn.push({ o: S.rake, axis: 'y', k: 0.03 });\nclr.add(S.ringRail(1300, 510, 3000, 560, 18), S.stairs([2050, 0, 3000], [1880, 515, 3000], 80));\nclr.add(S.pipe([[-6600, 300, 800], [-4000, 200, 2400], [0, 200, 3000], [740, 300, 3000]], 14, pp, 40));\nW.add(clr, { label: 'క్లారిఫైయర్', heat: [40, 100] });\nconst ev = W.group();\nS.EV = [2000, 2700, 3400, 4100];\nfor (let k = 0; k < 4; k++) {\n  ev.add(S.tank(250, 950, ss, { at: [S.EV[k], 0, 200], legs: 320, cone: 160, legMat: fm }));\n  if (k < 3) ev.add(S.pipe([[S.EV[k], 1530, 200], [S.EV[k] + 200, 1620, 200], [S.EV[k] + 440, 1100, 200], [S.EV[k] + 460, 700, 200]], 40, pp, 24));\n}\nev.add(S.pipe([[1300, 500, 3000], [1500, 620, 1800], [1740, 700, 200]], 14, pp));\nW.add(ev, { label: 'ఎవాపరేటర్లు', heat: [55, 115], layer: 2 });\nconst pf = W.group(); // the pan floor: a deck 6 m up\npf.add(W.mesh(W.box(2500, 24, 1500), S.sf('metal', '#8f979e', { rough: 0.6 }), { at: [6100, 600, 150] }));\nfor (const sx of [-1, 1]) for (const sz of [-1, 1]) pf.add(W.mesh(W.box(50, 600, 50), fm, { at: [6100 + sx * 1200, 300, 150 + sz * 700] }));\npf.add(S.rail([4850, 900], [7350, 900], 612), S.stairs([4700, 0, 1300], [4860, 612, 600], 90));\nW.add(pf, { label: 'పాన్ ఫ్లోర్', layer: 2 });\nconst vp = W.group();\nS.PAN = [5350, 6100, 6850];\nfor (const x of S.PAN) { vp.add(S.tank(280, 520, ss, { at: [x, 0, 0], legs: 760, cone: 150, neck: 60, legMat: fm })); vp.add(W.mesh(W.cyl(44, 44, 8, 16), S.matte('#9fc4dc', 0.2), { at: [x, 1000, 284], rot: [90, 0, 0] })); }\nvp.add(S.pipe([[4100, 480, 200], [4500, 300, 300], [4900, 900, 100], [5100, 1000, 0]], 16, pp));\nW.add(vp, { label: 'వాక్యూమ్ పాన్‌లు', heat: [50, 75], layer: 2 });\nconst cr = W.group();\nS.stir = [];\nconst um = S.sf('paint', '#6b7f90'); um.side = THREE.DoubleSide;\nfor (const x of S.PAN) {\n  const g = new THREE.CylinderGeometry(190, 190, 560, 20, 1, false, Math.PI / 2, Math.PI); g.rotateZ(Math.PI / 2);\n  const u = new THREE.Mesh(g, um); u.position.set(x, 330, 0); u.rotation.x = -Math.PI / 2; cr.add(u);\n  const s = W.group({ at: [x, 330, 0] });\n  s.add(W.mesh(W.cyl(10, 10, 540, 8), fm, { rot: [0, 0, 90] }));\n  for (let j = 0; j < 5; j++) s.add(W.mesh(W.box(8, 300, 30), fm, { at: [-220 + j * 110, 0, 0], rot: [j * 36, 0, 0] }));\n  cr.add(s); S.stir.push(s);\n  for (const dx of [-240, 240]) cr.add(W.mesh(W.box(20, 330, 300), fm, { at: [x + dx, 165, 0] }));\n}\nW.add(cr, { label: 'క్రిస్టలైజర్లు', heat: [40, 60], layer: 2 });\nconst cf = W.group();\nS.baskets = [];\nfor (let k = 0; k < 4; k++) {\n  const x = 5200 + k * 520;\n  cf.add(W.mesh(W.cyl(120, 120, 190, 24), S.sf('paint', '#d9d5ca'), { at: [x, 190, 1150] }));\n  for (let j = 0; j < 3; j++) cf.add(W.mesh(W.box(16, 100, 16), fm, { at: [x + Math.cos(j * 2.094) * 110, 50, 1150 + Math.sin(j * 2.094) * 110] }));\n  const b = W.group({ at: [x, 300, 1150] });\n  b.add(W.mesh(W.cyl(40, 40, 30, 16), S.sf('paint', '#3b6a94')), W.mesh(W.box(70, 10, 10), S.sf('metal', '#c9cdd2'), { at: [0, 18, 0] }));\n  cf.add(b); S.baskets.push(b);\n  cf.add(W.mesh(W.cyl(50, 50, 120, 16), S.sf('paint', '#3b6a94'), { at: [x, 370, 1150] }));\n}\ncf.add(S.belt([5000, 70, 1500], [7500, 90, 1500], 90, { color: '#e9e6dc', mark: '#ffffff' }));\nW.add(cf, { label: 'సెంట్రిఫ్యూజ్‌లు', heat: [35, 60], layer: 2 });\nW.add(sh.walls, { label: 'బాయిలింగ్ హౌస్ గోడలు', layer: 1, peelBy: [0, 3600, 0], explode: [0, 0, 3600] });\nW.add(sh.roof, { label: 'బాయిలింగ్ హౌస్ పైకప్పు', layer: 0, peelBy: [0, 4200, 0], explode: [0, 4200, 0] });\n"
+},
+{
+"id": "store",
+"status": "డ్రయర్, గోడౌన్ కడుతున్నాను",
+"code": "const S = W.store;\nconst dr = W.group();\nconst dd = W.group({ at: [8500, 330, 1500], rot: [0, 0, -4] }), ds = W.group();\nds.add(W.mesh(W.cyl(120, 120, 1100, 24), S.sf('paint', '#8fb2cc', { tile: 200 }), { rot: [0, 0, 90] }));\nfor (const x of [-350, 350]) ds.add(W.mesh(W.cyl(135, 135, 50, 24), S.sf('metal', '#8d959c'), { at: [x, 0, 0], rot: [0, 0, 90] }));\nfor (let j = 0; j < 6; j++) ds.add(W.mesh(W.box(1080, 6, 16), S.sf('metal', '#6f767e'), { at: [0, Math.cos(j * 1.047) * 121, Math.sin(j * 1.047) * 121], rot: [j * 60, 0, 0] }));\ndd.add(ds); dr.add(dd); S.turn.push({ o: ds, axis: 'x', k: 0.12 });\nfor (const x of [8150, 8850]) dr.add(W.mesh(W.box(120, 200, 340), S.sf('concrete', '#bdb8ac'), { at: [x, 100, 1500] }));\ndr.add(W.mesh(W.box(110, 900, 110), S.sf('sheet', '#c9cdd2', { tile: 120 }), { at: [9250, 450, 1500] }), S.belt([9300, 860, 1500], [9900, 700, 1200], 80, { color: '#e9e6dc', mark: '#ffffff' }));\nW.add(dr, { label: 'చక్కెర డ్రయర్', heat: [35, 70] });\nconst gd = S.shed([11200, 0, 900], 3000, 820, 2100, { color: '#d9dcd6', door: 1000 });\nconst go = W.group();\ngo.add(gd.floor, gd.walls, gd.roof);\nconst bag = S.sf('wood', '#efe9d6', { tile: 60, rough: 0.9 });\nconst st = new THREE.InstancedMesh(W.box(90, 27, 56), bag, 360), M = new THREE.Matrix4();\nfor (let i = 0; i < 360; i++) { const l = Math.floor(i / 60), r = i % 60; st.setMatrixAt(i, M.makeTranslation(10300 + (r % 10) * 94 + (l % 2) * 20, 30 + l * 29, 250 + Math.floor(r / 10) * 60)); }\ngo.add(st);\ngo.add(W.mesh(W.cyl(100, 30, 150, 4), S.sf('paint', '#6b7f90'), { at: [10000, 620, 1150], rot: [0, 45, 0] }), W.mesh(W.box(100, 14, 100), S.sf('metal', '#4a8a5a', { rough: 0.6 }), { at: [10000, 20, 1150] }), W.mesh(W.box(56, 90, 36, 12), bag, { at: [10000, 72, 1150] }));\nconst l = S.lorry('#3d6f9a', bag); l.position.set(11300, 0, 2500); go.add(l);\nW.add(go, { label: 'చక్కెర గోడౌన్', heat: [30, 36] });\nconst mo = W.group();\nmo.add(S.tank(650, 820, S.sf('paint', '#2a2c30', { tile: 300 }), { at: [6600, 0, -2900], dome: 0.1, seg: 36 }), S.ringRail(6600, 820, -2900, 640, 18), S.ladder(6600, 0, 820, -2900 + 655, 'z', 1));\nmo.add(S.pipe([[6240, 100, 1150], [6400, 60, 0], [6500, 60, -1600], [6600, 200, -2250]], 14, S.sf('metal', '#3d4248')));\nW.add(mo, { label: 'మొలాసిస్ ట్యాంక్', heat: [30, 45] });\nconst sp = W.group();\nsp.add(W.mesh(W.box(2800, 30, 1500), S.sf('concrete', '#a9a59b'), { at: [3300, 5, -3600] }));\nsp.add(W.mesh(W.box(2700, 6, 1400), new THREE.MeshStandardMaterial({ color: 0x4a8fc0, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.85 }), { at: [3300, 22, -3600] }));\nconst jets = new THREE.InstancedMesh(new THREE.ConeGeometry(60, 110, 8, 1, true), new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, roughness: 1, depthWrite: false, side: THREE.DoubleSide }), 18);\nfor (let i = 0; i < 18; i++) jets.setMatrixAt(i, M.makeRotationX(Math.PI).setPosition(2150 + (i % 6) * 460, 80, -4050 + Math.floor(i / 6) * 450));\nsp.add(jets); S.jets = jets;\nW.add(sp, { label: 'స్ప్రే పాండ్', heat: [30, 42] });\n"
+},
+{
+"id": "run",
+"status": "ఫ్యాక్టరీ స్టార్ట్‌కి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is the crushing rate (3,500 tonnes of cane a day at full). 🚩 \"export\": the spare electricity\n// goes to the grid (on to begin with: off shows the factory running on its own power alone).\nconst lab = W.group();\nlab.add(W.mesh(W.box(700, 300, 500), S.sf('plaster', '#e3d9c0'), { at: [-9300, 150, 3300] }), W.mesh(W.box(760, 20, 560), S.sf('concrete', '#b9b4a8'), { at: [-9300, 310, 3300] }));\nlab.add(W.text('తూకం · ల్యాబ్', { size: 60, at: [-9300, 240, 3552], color: '#22303c' }));\nW.add(lab, { label: 'తూకం ల్యాబ్', heat: [28, 30] });\nW.throttle({ label: 'క్రషింగ్', rise: 0.15, fall: 0.15, start: 0.6, sound: 'plant' });\nW.sound({ kind: 'gear', label: 'మిల్ రోలర్లు', gain: 0.45, f0: 55 });\nW.sound({ kind: 'plant', label: 'బాయిలర్', gain: 0.45 });\nW.sound({ kind: 'hum', label: 'టర్బైన్ జనరేటర్', gain: 0.45, f0: 100 });\nW.sound({ kind: 'motor', label: 'సెంట్రిఫ్యూజ్‌లు', gain: 0.3, f0: 90 });\nW.sound({ kind: 'water', label: 'స్ప్రే పాండ్', gain: 0.3 });\nW.sound({ kind: 'chain', label: 'కేన్ క్యారియర్', gain: 0.35 });\nconst smoke = S.plume(S.chGroup, S.chTop, { n: 14, life: 10, r: 380, rise: 3000, drift: 2200, op: 0.3, color: '#e9e9e4' });\nlet hudT = 0, run = 0, cyc = 0;\nW.onTick((t, dt) => {\n  const s = W.env.spool, on = s > 0.02, over = W.env.over, noExport = W.env.flag('island');\n  const millStop = W.faultOf('మిల్ రోలర్లు') === 'stop';\n  run += ((on ? 0.35 + 0.65 * s : 0) - run) * Math.min(1, dt * 0.8);\n  S.step(t, dt, run);\n  if (!millStop) for (const r of S.rollers) r.o.rotation.z += dt * 0.5 * r.dir * run;\n  for (const st of S.stir) st.rotation.x += dt * 0.25 * run;\n  cyc += dt * 0.35 * run; // the centrifuges work in batches: they spin up, hold, slow down\n  S.baskets.forEach((b, i) => { const ph = (cyc + i * 0.25) % 1; b.rotation.y += dt * 40 * run * Math.max(0, Math.sin(ph * Math.PI)); });\n  S.fire.emissiveIntensity = on ? (1.2 + 2.5 * s) * (0.85 + 0.15 * Math.sin(t * 11) * Math.sin(t * 6.3)) : 0;\n  S.jets.visible = on;\n  smoke(dt, on ? 0.3 + 0.6 * s : 0);\n  if (t - hudT > 0.25) {\n    hudT = t;\n    const tch = on && !millStop ? 146 * Math.min(1.06, s) : 0, mw = on ? 20 * Math.min(1, 0.25 + 0.75 * s) : 0, own = on ? 3 + 5 * s : 0;\n    W.hud({ 'చెరకు': Math.round(tch) + ' టన్నులు/గంట', 'చక్కెర': (tch * 0.105).toFixed(1) + ' టన్నులు/గంట', 'బగాస్ · మొలాసిస్': Math.round(tch * 0.3) + ' · ' + (tch * 0.045).toFixed(1) + ' t/h',\n      'సొంత కరెంట్': mw.toFixed(1) + ' MW', 'గ్రిడ్‌కి': noExport ? 'ఆపారు (సొంతానికే)' : Math.max(0, mw - own).toFixed(1) + ' MW ⚡', 'ఆవిరి': over ? 'సేఫ్టీ వాల్వ్ తెరుచుకుంది ⚠️' : on ? '45 bar · 440°C' : '—' });\n    W.report({ power: s, caneTph: tch, sugarTph: tch * 0.105, mw, exportMw: noExport ? 0 : Math.max(0, mw - own) });\n  }\n});\nconst E = S.EV, P = S.PAN;\nW.stream([[-11800, 260, 1500], [-10600, 300, 150], [-10200, 120, 150], [-8300, 500, 150], [-7750, 330, 150], [-6990, 330, 150], [-6230, 330, 150], [-5470, 330, 150]], { kind: 'cane', count: 60, size: 60, speed: 0.6 });\nW.stream([[-5470, 330, 150], [-4950, 350, 150], [-4000, 440, 150], [-2800, 1720, -2200], [-2400, 1800, -2060], [-2400, 600, -2500]], { kind: 'coal', count: 50, size: 60, speed: 0.6 });\nW.stream([[-7750, 100, 150], [-7750, 40, 700], [-6860, 60, 800], [-6600, 300, 800], [-4000, 200, 2400], [0, 200, 3000], [740, 300, 3000], [1300, 400, 3000], [1500, 620, 1800], [E[0], 700, 200], [E[1], 600, 200], [E[2], 600, 200], [E[3], 600, 200], [4500, 300, 300], [4900, 900, 100], [P[0], 1000, 0], [P[1], 1000, 0], [P[2], 1000, 0]],\n  { kind: 'juice', count: 110, size: 44, speed: 0.5 });\nW.stream([[P[1], 700, 0], [P[1], 330, 0], [P[1], 200, 500], [5460, 250, 1150], [5980, 250, 1150], [6500, 250, 1150]], { kind: 'juice', count: 26, size: 40, speed: 0.4 });\nW.stream([[5200, 110, 1150], [5200, 90, 1500], [7500, 110, 1500], [8000, 380, 1500], [9000, 300, 1500], [9250, 300, 1500], [9250, 880, 1500], [9900, 720, 1200], [10000, 600, 1150], [10000, 120, 1150]], { kind: 'milk', count: 60, size: 40, speed: 0.6 });\nW.stream([[6240, 110, 1150], [6400, 60, 0], [6500, 60, -1600], [6600, 200, -2250]], { kind: 'coal', count: 16, size: 34, speed: 0.3 });\nW.stream([[-2400, 2180, -2500], [-1600, 2100, -2600], [-400, 900, -2700], [130, 300, -2700], [600, 300, -2700], [800, 700, -2000], [1400, 1500, -600], [E[0], 1300, 200]], { kind: 'steam', count: 50, size: 60, speed: 0.9 });\nfor (let k = 0; k < 3; k++) W.stream([[E[k], 1530, 200], [E[k] + 200, 1620, 200], [E[k] + 440, 1100, 200], [E[k] + 460, 700, 200]], { kind: 'warm', count: 8, size: 44, speed: 0.7 });\nW.stream([[950, 300, -2700], [1600, 200, -3600], [2400, 300, -4300], [3100, 1000, -4300], [6500, 1300, -5600]], { kind: 'power', count: 30, size: 60, speed: 1.2, when: (e) => !e.flag('island') });\nW.stream([[950, 300, -2700], [-1000, 200, -1500], [-5000, 200, -600], [-7750, 300, -230]], { kind: 'power', count: 30, size: 50, speed: 1.1 });\nW.stream([[-2400, 2000, -2700], [-3050, 1500, -2700], [-3700, 600, -3100], [-3800, 300, -3200], [-4600, 500, -3300], [-4700, 5200, -3300]], { kind: 'smoke', count: 40, size: 90, speed: 0.6 });\nW.walk({ eye: 165, speed: 420, area: [-12500, -5400, 13700, 5000],\n  floor: (x, z) => (x > 4860 && x < 7340 && z > -590 && z < 890 ? 612 : 0),\n  solid: [[-7900, -40, -5300, 340], [-3100, -3350, -1700, -2050], [-4900, -3500, -4500, -3100], [740, 2440, 1860, 3560], [1750, -50, 4350, 450], [5950, -3550, 7250, -2250], [8000, 1330, 9000, 1670], [5080, 1030, 6900, 1270]],\n  spots: [\n    { name: 'మిల్ హౌస్ లోపల', at: [-5650, 0, 950], look: [-7000, 240, 150] },\n    { name: 'చెరకు యార్డ్', at: [-9800, 0, 2700], look: [-10700, 400, 300] },\n    { name: 'బాయిలింగ్ హౌస్ లోపల', at: [1650, 0, 1560], look: [3300, 700, 200] },\n    { name: 'పాన్ ఫ్లోర్ పైన', at: [4950, 612, 820], look: [6300, 880, 0] },\n    { name: 'సెంట్రిఫ్యూజ్‌ల దగ్గర', at: [7350, 0, 1580], look: [5700, 230, 1150] },\n    { name: 'బాయిలర్ దగ్గర', at: [-1500, 0, -600], look: [-2500, 1200, -2700] },\n    { name: 'గోడౌన్ లోపల', at: [11600, 0, 1500], look: [10700, 150, 500] },\n  ] });\n"
+}
+],
+"say": "చక్కెర ఫ్యాక్టరీ రెడీ Sir. 'ఫుల్ పవర్' అంటే పూర్తి క్రషింగ్, 'పైకప్పు తీయి' అంటే మిల్ హౌస్, బాయిలింగ్ హౌస్ లోపల కనిపిస్తాయి, 'పాన్ ఫ్లోర్ పైకి వెళ్ళు' అంటే ఎక్కొచ్చు.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"చెరకు నుంచి చక్కెర దాకా\", \"steps\": [{\"say\": \"Sir, ఇది చక్కెర ఫ్యాక్టరీ. ఎడమ వైపు చెరకు వస్తుంది, కుడి వైపు చక్కెర సంచులు; వెనక బాయిలర్, చిమ్నీ.\", \"focus\": [{\"id\": \"mills\", \"piece\": \"మిల్ హౌస్ గోడలు\"}, {\"id\": \"boiling\", \"piece\": \"బాయిలింగ్ హౌస్ గోడలు\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 9}, {\"say\": \"యార్డ్‌లో చెరకు దిగుతుంది. క్యారియర్ మీద కత్తులు ముక్కలు చేస్తాయి; నాలుగు మిల్లుల రోలర్లు రసం పిండుతాయి.\", \"focus\": [{\"id\": \"yard\", \"piece\": \"చెరకు యార్డ్\"}, {\"id\": \"yard\", \"piece\": \"కేన్ క్యారియర్\"}, {\"id\": \"mills\", \"piece\": \"మిల్ రోలర్లు\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"mills\", \"piece\": \"మిల్ హౌస్ పైకప్పు\", \"by\": [0, 3000, 0], \"secs\": 1.2}, {\"id\": \"mills\", \"piece\": \"మిల్ హౌస్ గోడలు\", \"by\": [0, 2600, 0], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"మిగిలిన పీచు (బగాస్) బాయిలర్‌లో మండుతుంది. ఆవిరి టర్బైన్ తిప్పి కరెంట్ ఇస్తుంది: ఫ్యాక్టరీకి, మిగతాది గ్రిడ్‌కి.\", \"focus\": [{\"id\": \"mills\", \"piece\": \"బగాస్ కన్వేయర్\"}, {\"id\": \"steam\", \"piece\": \"బాయిలర్\"}, {\"id\": \"steam\", \"piece\": \"టర్బైన్ జనరేటర్\"}, {\"id\": \"steam\", \"piece\": \"స్విచ్‌యార్డ్\"}], \"view\": \"iso\", \"close\": true, \"flow\": [{\"from\": \"mills\", \"fromPiece\": \"మిల్ రోలర్లు\", \"to\": \"steam\", \"toPiece\": \"బాయిలర్\", \"kind\": \"#c9b98a\", \"count\": 8}, {\"from\": \"steam\", \"fromPiece\": \"టర్బైన్ జనరేటర్\", \"to\": \"steam\", \"toPiece\": \"స్విచ్‌యార్డ్\", \"kind\": \"power\", \"count\": 8}], \"secs\": 10}, {\"say\": \"రసం క్లారిఫైయర్‌లో సున్నంతో తేరుతుంది. తర్వాత నాలుగు ఎవాపరేటర్లు నీటిని మరిగించి చిక్కని పాకం చేస్తాయి: ఒకే ఆవిరి నాలుగు సార్లు పని చేస్తుంది.\", \"focus\": [{\"id\": \"boiling\", \"piece\": \"క్లారిఫైయర్\"}, {\"id\": \"boiling\", \"piece\": \"ఎవాపరేటర్లు\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"boiling\", \"piece\": \"బాయిలింగ్ హౌస్ పైకప్పు\", \"by\": [0, 4200, 0], \"secs\": 1.2}, {\"id\": \"boiling\", \"piece\": \"బాయిలింగ్ హౌస్ గోడలు\", \"by\": [0, 3600, 0], \"secs\": 1.2}], \"secs\": 11}, {\"say\": \"వాక్యూమ్ పాన్‌లలో పాకం 65 డిగ్రీల్లోనే మరిగి చక్కెర గింజలు పెరుగుతాయి. కింద క్రిస్టలైజర్లలో చల్లారుతుంది.\", \"focus\": [{\"id\": \"boiling\", \"piece\": \"వాక్యూమ్ పాన్‌లు\"}, {\"id\": \"boiling\", \"piece\": \"క్రిస్టలైజర్లు\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"boiling\", \"piece\": \"బాయిలింగ్ హౌస్ పైకప్పు\", \"by\": [0, 4200, 0], \"secs\": 1}, {\"id\": \"boiling\", \"piece\": \"బాయిలింగ్ హౌస్ గోడలు\", \"by\": [0, 3600, 0], \"secs\": 1}], \"secs\": 10}, {\"say\": \"సెంట్రిఫ్యూజ్‌లు వేగంగా తిరిగి తెల్ల గింజలని నల్ల మొలాసిస్ నుంచి వేరు చేస్తాయి. చక్కెర డ్రయర్‌లో ఆరి గోడౌన్‌కి; మొలాసిస్ ట్యాంక్‌కి.\", \"focus\": [{\"id\": \"boiling\", \"piece\": \"సెంట్రిఫ్యూజ్‌లు\"}, {\"id\": \"store\", \"piece\": \"చక్కెర డ్రయర్\"}, {\"id\": \"store\", \"piece\": \"చక్కెర గోడౌన్\"}, {\"id\": \"store\", \"piece\": \"మొలాసిస్ ట్యాంక్\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"boiling\", \"piece\": \"బాయిలింగ్ హౌస్ పైకప్పు\", \"by\": [0, 4200, 0], \"secs\": 1}, {\"id\": \"boiling\", \"piece\": \"బాయిలింగ్ హౌస్ గోడలు\", \"by\": [0, 3600, 0], \"secs\": 1}], \"secs\": 10}, {\"say\": \"చెరకులో ఏదీ వృథా కాదు Sir: రసం చక్కెర, పీచు కరెంట్, మొలాసిస్ ఇథనాల్, మురికి ఎరువు.\", \"focus\": [{\"id\": \"steam\", \"piece\": \"బగాస్ కుప్ప\"}, {\"id\": \"store\", \"piece\": \"మొలాసిస్ ట్యాంక్\"}], \"view\": \"iso\", \"secs\": 8}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"చక్కెర ఫ్యాక్టరీ",
+"షుగర్ ఫ్యాక్టరీ",
+"చక్కెర మిల్",
+"షుగర్ మిల్",
+"పంచదార ఫ్యాక్టరీ",
+"చెరకు ఫ్యాక్టరీ",
+"sugar factory",
+"sugar mill",
+"sugar plant"
+],
+"powerName": "🎋 క్రషింగ్",
+"outdoor": true,
+"walk": [
+"మిల్ హౌస్ లోపల",
+"చెరకు యార్డ్",
+"బాయిలింగ్ హౌస్ లోపల",
+"పాన్ ఫ్లోర్ పైన",
+"సెంట్రిఫ్యూజ్‌ల దగ్గర",
+"బాయిలర్ దగ్గర",
+"గోడౌన్ లోపల"
+],
+"switches": [
+{
+"id": "island",
+"menu": "🔌 గ్రిడ్‌కి కరెంట్ ఆపు",
+"words": [
+"గ్రిడ్‌కి కరెంట్ ఆపు",
+"కరెంట్ అమ్మడం ఆపు",
+"గ్రిడ్ ఆపు",
+"సొంత కరెంట్ మాత్రమే",
+"export off",
+"stop export"
+],
+"offWords": [
+"గ్రిడ్‌కి కరెంట్ పంపు",
+"కరెంట్ అమ్ము",
+"గ్రిడ్ వేయి",
+"export on",
+"start export",
+"గ్రిడ్‌కి పంపు"
+],
+"on": "🔌 గ్రిడ్ లైన్ ఆపాను Sir: ఫ్యాక్టరీ తన బగాస్ కరెంట్‌తోనే నడుస్తోంది (ఐలాండ్ మోడ్). మిగులు ఆవిరి వృథా కాకుండా టర్బైన్ లోడ్ తగ్గించారు.",
+"off": "⚡ మిగులు కరెంట్ మళ్ళీ గ్రిడ్‌కి వెళ్తోంది Sir: సుమారు 10 MW, చుట్టుపక్కల ఊళ్ళకి."
+}
+],
+"power": {
+"start": "క్రషింగ్ మొదలైంది Sir: గంటకి సుమారు 90 టన్నుల చెరకు.",
+"full": "ఫుల్ క్రషింగ్ Sir: గంటకి 146 టన్నుల చెరకు (రోజుకి 3,500), గంటకి సుమారు 15 టన్నుల చక్కెర, 20 MW కరెంట్.",
+"half": "సగం క్రషింగ్ Sir: గంటకి సుమారు 75 టన్నులు.",
+"stop": "క్రషింగ్ ఆపాను Sir. పాన్‌లలో ఉన్న పాకాన్ని మాత్రం పూర్తి చేయాలి, లేకపోతే గట్టిపడిపోతుంది.",
+"over": "బాయిలర్ ఒత్తిడి హద్దు దాటింది Sir: సేఫ్టీ వాల్వ్ తెరుచుకుని అదనపు ఆవిరి వదులుతోంది.",
+"cut": "బగాస్ ఫీడ్ తగ్గించాను Sir: ఒత్తిడి మామూలైంది, సేఫ్టీ వాల్వ్ మూసుకుంది."
+},
+"info": {
+"ఫ్యాక్టరీ స్థలం": {
+"simple": "చక్కెర ఫ్యాక్టరీ స్థలం: ఎడమ వైపు చెరకు వస్తుంది, కుడి వైపు చక్కెర సంచులు వెళ్తాయి.",
+"deep": "చెరకు కోసిన 24 గంటల్లో ఆడాలి, లేకపోతే చక్కెర తగ్గిపోతుంది. అందుకే ఫ్యాక్టరీలు చెరకు పొలాల మధ్యే ఉంటాయి, సీజన్‌లో (నవంబర్–ఏప్రిల్) రాత్రింబవళ్ళు నడుస్తాయి.",
+"specs": {
+"సీజన్": "సుమారు నవంబర్–ఏప్రిల్"
+}
+},
+"చెరకు తోట": {
+"simple": "రోడ్డు అవతల చెరకు తోట.",
+"deep": "చెరకు పంట 10–12 నెలలు. ఎకరానికి సుమారు 30–40 టన్నులు. చెరకు రసంలో సుమారు 12–14% చక్కెర.",
+"specs": {
+"పంట కాలం": "10–12 నెలలు"
+}
+},
+"చెరకు యార్డ్": {
+"simple": "చెరకు యార్డ్: లారీలు, ట్రాక్టర్ల చెరకు ఇక్కడ దిగుతుంది. పసుపు క్రేన్ కట్టలని ఎత్తి క్యారియర్ మీద వేస్తుంది.",
+"deep": "ప్రతి లోడ్ ముందు తూకం వంతెన మీద తూస్తారు: రైతుకి డబ్బు బరువు ప్రకారం.",
+"specs": {
+"రోజుకి": "సుమారు 3,500 టన్నులు"
+}
+},
+"కేన్ క్యారియర్": {
+"simple": "కేన్ క్యారియర్: చెరకుని మిల్ లోపలికి మోసే బెల్ట్. దారిలో తిరిగే కత్తులు ముక్కలు చేస్తాయి.",
+"deep": "కత్తులు, ష్రెడ్డర్ చెరకుని పీచు పీచుగా చేస్తాయి: అప్పుడే రోలర్లు రసం బాగా పిండగలవు.",
+"specs": {
+"కత్తుల వేగం": "నిమిషానికి సుమారు 600"
+}
+},
+"మిల్ రోలర్లు": {
+"simple": "ఇవి మిల్ రోలర్లు: నాలుగు మిల్లులు, ఒక్కోదానిలో మూడు బరువైన రోలర్లు. చెరకుని నలిపి రసం పిండుతాయి.",
+"deep": "చెరకు బండిలో చూసే రసం యంత్రమే, చాలా పెద్దది. చివరి మిల్‌కి ముందు వేడి నీళ్ళు చల్లి పీచులో మిగిలిన చక్కెరనీ కడిగేస్తారు. మొత్తం చక్కెరలో 96% రసంలోకి వస్తుంది.",
+"specs": {
+"మిల్లులు": "4 × 3 రోలర్లు",
+"రోలర్ వేగం": "నిమిషానికి సుమారు 5"
+}
+},
+"రసం ట్యాంక్": {
+"simple": "రసం ట్యాంక్: పిండిన పచ్చి రసం. ఆకుపచ్చ-బూడిద రంగులో మురికిగా ఉంటుంది.",
+"deep": "ఇందులో మట్టి, పీచు, మైనం ఉంటాయి. తూకం వేసి, వడకట్టి, క్లారిఫైయర్‌కి పంపుతారు.",
+"specs": {
+"చక్కెర": "రసంలో సుమారు 12–14%"
+}
+},
+"మిల్ హౌస్ గోడలు": {
+"simple": "మిల్ హౌస్ గోడలు: లోపలి యంత్రాలని ఎండ, వాన, దుమ్ము నుంచి కాపాడతాయి. 'పైకప్పు తీయి' రెండు సార్లు అంటే ఇవీ లేస్తాయి.",
+"deep": "ఉక్కు స్తంభాల మీద రేకుల గోడలు; కిటికీలు వెలుతురు, గాలి కోసం. రాత్రి కిటికీల్లో లైట్లు కనిపిస్తాయి.",
+"specs": {
+"పని": "రక్షణ"
+}
+},
+"మిల్ హౌస్ పైకప్పు": {
+"simple": "మిల్ హౌస్ పైకప్పు. 'పైకప్పు తీయి' అంటే లేచి లోపల కనిపిస్తుంది.",
+"deep": "వాలు రేకుల పైకప్పు: వాన నీరు జారిపోతుంది. నిజమైన ఫ్యాక్టరీల్లో పైన గాలి పోయే వెంట్లు ఉంటాయి.",
+"specs": {
+"పని": "నీడ, రక్షణ"
+}
+},
+"బగాస్ కన్వేయర్": {
+"simple": "బగాస్ కన్వేయర్: రసం పిండాక మిగిలిన పీచు (బగాస్) ని బాయిలర్‌కి మోస్తుంది.",
+"deep": "బగాస్‌లో సగం తేమ ఉన్నా బాగా మండుతుంది. చక్కెర ఫ్యాక్టరీకి బయటి ఇంధనం అక్కర్లేదు: చెరకే దాని ఇంధనం.",
+"specs": {
+"బగాస్": "చెరకులో సుమారు 30%"
+}
+},
+"బాయిలర్": {
+"simple": "ఇది బాయిలర్: బగాస్‌ని మండించి నీటిని ఆవిరి చేస్తుంది. కిటికీలో మంట కనిపిస్తుంది.",
+"deep": "ఆవిరి రెండు పనులు చేస్తుంది: ముందు టర్బైన్ తిప్పి కరెంట్, తర్వాత అదే ఆవిరి రసాన్ని మరిగిస్తుంది (కో-జనరేషన్). పక్కన వెట్ స్క్రబ్బర్ పొగలోని బూడిదని నీటితో కడుగుతుంది.",
+"specs": {
+"ఆవిరి": "సుమారు 45 bar, 440°C",
+"ఇంధనం": "బగాస్"
+}
+},
+"చిమ్నీ": {
+"simple": "చిమ్నీ: కడిగిన పొగని ఎత్తులో వదులుతుంది.",
+"deep": "బగాస్ మండితే వచ్చే CO₂ ని వచ్చే ఏడాది చెరకు పంట తిరిగి పీల్చుకుంటుంది: అందుకే ఇది పునరుత్పాదక ఇంధనం.",
+"specs": {
+"ఎత్తు": "సుమారు 52 m"
+}
+},
+"బగాస్ కుప్ప": {
+"simple": "బగాస్ కుప్ప: మిగిలిన బగాస్ నిల్వ.",
+"deep": "సీజన్ తర్వాత కూడా కరెంట్ తయారీకి, లేదా పేపర్ మిల్లులకి అమ్ముతారు (బగాస్‌తో కాగితం, ప్లేట్లు చేస్తారు).",
+"specs": {
+"వాడకం": "ఇంధనం, కాగితం"
+}
+},
+"టర్బైన్ జనరేటర్": {
+"simple": "టర్బైన్, జనరేటర్: బాయిలర్ ఆవిరి టర్బైన్‌ని తిప్పి కరెంట్ తయారు చేస్తుంది.",
+"deep": "ఫ్యాక్టరీకి కావాల్సింది సుమారు 8 MW; మిగతాది గ్రిడ్‌కి అమ్ముతారు. టర్బైన్ నుంచి బయటికి వచ్చే తక్కువ ఒత్తిడి ఆవిరి వృథా కాదు: ఎవాపరేటర్లకి వెళ్తుంది.",
+"specs": {
+"శక్తి": "సుమారు 20 MW",
+"ఫ్యాక్టరీ వాడకం": "సుమారు 8 MW"
+}
+},
+"స్విచ్‌యార్డ్": {
+"simple": "స్విచ్‌యార్డ్: మిగులు కరెంట్‌ని వోల్టేజ్ పెంచి గ్రిడ్‌కి పంపుతుంది.",
+"deep": "'గ్రిడ్‌కి కరెంట్ ఆపు' అంటే ఫ్యాక్టరీ తన సొంత కరెంట్‌తోనే నడవడం చూపిస్తాను.",
+"specs": {
+"గ్రిడ్‌కి": "సుమారు 10–12 MW"
+}
+},
+"క్లారిఫైయర్": {
+"simple": "ఇది క్లారిఫైయర్: మురికి రసాన్ని తేరుస్తుంది. సున్నం కలిపి వేడి చేస్తే మురికి అడుగుకి చేరుతుంది, పైన తేట రసం.",
+"deep": "సున్నం, సల్ఫర్ వాయువు (సల్ఫిటేషన్) రసాన్ని శుభ్రం చేసి తెల్లగా చేస్తాయి. నెమ్మదిగా తిరిగే చేయి అడుగు మురికిని మధ్యకి తోస్తుంది; ఆ మురికి (ప్రెస్ మడ్) పొలాలకి మంచి ఎరువు.",
+"specs": {
+"వేడి": "సుమారు 100°C",
+"మురికి": "ప్రెస్ మడ్ → ఎరువు"
+}
+},
+"ఎవాపరేటర్లు": {
+"simple": "ఇవి ఎవాపరేటర్లు: నాలుగు పొడవైన పాత్రలు. తేట రసంలోని నీటిని మరిగించి చిక్కని పాకం (సిరప్) చేస్తాయి.",
+"deep": "తెలివైన పద్ధతి: మొదటి పాత్రలో ఆవిరితో మరిగిస్తారు; దాని నుంచి వచ్చే ఆవిరితో రెండోది, అలా నాలుగు. ఒకే ఆవిరి నాలుగు సార్లు పని చేస్తుంది. రసంలో 85% నీరు ఇక్కడే పోతుంది.",
+"specs": {
+"పాత్రలు": "4",
+"రసం": "15% → 65% చక్కెర"
+}
+},
+"పాన్ ఫ్లోర్": {
+"simple": "పాన్ ఫ్లోర్: వాక్యూమ్ పాన్‌ల దగ్గరి ఎత్తైన అంతస్తు. '🚶 పాన్ ఫ్లోర్ పైన' అంటే ఎక్కొచ్చు.",
+"deep": "పాన్ బాయిలర్ (అనుభవజ్ఞుడైన కార్మికుడు) ఇక్కడి అద్దం గుండా స్ఫటికాలు పెరగడం చూస్తూ నియంత్రిస్తాడు.",
+"specs": {
+"ఎత్తు": "సుమారు 6 m"
+}
+},
+"వాక్యూమ్ పాన్‌లు": {
+"simple": "ఇవి వాక్యూమ్ పాన్‌లు: పాకాన్ని ఇంకా మరిగించి చక్కెర స్ఫటికాలు (గింజలు) పెంచుతాయి.",
+"deep": "లోపల గాలి తీసేసి (వాక్యూమ్) మరిగిస్తారు: అప్పుడు పాకం 65°C కే మరుగుతుంది, చక్కెర మాడదు. చిన్న విత్తన స్ఫటికాలు వేస్తే వాటి చుట్టూ చక్కెర పేరుకుని గింజలు పెరుగుతాయి.",
+"specs": {
+"మరిగే వేడి": "సుమారు 65°C (వాక్యూమ్‌లో)"
+}
+},
+"క్రిస్టలైజర్లు": {
+"simple": "క్రిస్టలైజర్లు: U ఆకారపు తొట్లు. నెమ్మదిగా కలుపుతూ చల్లారిస్తే స్ఫటికాలు ఇంకా పెరుగుతాయి.",
+"deep": "ఇక్కడి మిశ్రమాన్ని 'మాస్‌క్యూట్' అంటారు: చక్కెర గింజలు + చిక్కని తేనె రంగు ద్రవం (మొలాసిస్).",
+"specs": {
+"సమయం": "కొన్ని గంటలు"
+}
+},
+"సెంట్రిఫ్యూజ్‌లు": {
+"simple": "ఇవి సెంట్రిఫ్యూజ్‌లు: వాషింగ్ మెషీన్ డ్రయర్ లాగా వేగంగా తిరిగి చక్కెర గింజలని మొలాసిస్ నుంచి వేరు చేస్తాయి.",
+"deep": "జల్లెడ బుట్ట నిమిషానికి 1,000 పైన తిరుగుతుంది: ద్రవం రంధ్రాల గుండా బయటికి, తెల్ల గింజలు లోపల. ఒక్కో బ్యాచ్ కొన్ని నిమిషాలు.",
+"specs": {
+"వేగం": "నిమిషానికి సుమారు 1,200"
+}
+},
+"బాయిలింగ్ హౌస్ గోడలు": {
+"simple": "బాయిలింగ్ హౌస్ గోడలు: లోపలి యంత్రాలని ఎండ, వాన, దుమ్ము నుంచి కాపాడతాయి. 'పైకప్పు తీయి' రెండు సార్లు అంటే ఇవీ లేస్తాయి.",
+"deep": "ఉక్కు స్తంభాల మీద రేకుల గోడలు; కిటికీలు వెలుతురు, గాలి కోసం. రాత్రి కిటికీల్లో లైట్లు కనిపిస్తాయి.",
+"specs": {
+"పని": "రక్షణ"
+}
+},
+"బాయిలింగ్ హౌస్ పైకప్పు": {
+"simple": "బాయిలింగ్ హౌస్ పైకప్పు. 'పైకప్పు తీయి' అంటే లేచి లోపల కనిపిస్తుంది.",
+"deep": "వాలు రేకుల పైకప్పు: వాన నీరు జారిపోతుంది. నిజమైన ఫ్యాక్టరీల్లో పైన గాలి పోయే వెంట్లు ఉంటాయి.",
+"specs": {
+"పని": "నీడ, రక్షణ"
+}
+},
+"చక్కెర డ్రయర్": {
+"simple": "చక్కెర డ్రయర్: తిరిగే డ్రమ్‌లో వేడి గాలితో తడి చక్కెరని ఆరబెడుతుంది.",
+"deep": "తర్వాత జల్లెడలు గింజ సైజు ప్రకారం (S, M, L) వేరు చేస్తాయి.",
+"specs": {
+"తేమ": "0.05% కంటే తక్కువ"
+}
+},
+"చక్కెర గోడౌన్": {
+"simple": "చక్కెర గోడౌన్: 50 kg సంచుల్లో చక్కెర నిల్వ, లారీల్లో బయటికి.",
+"deep": "100 kg చెరకు నుంచి సుమారు 10–11 kg చక్కెర. గోడౌన్ పొడిగా ఉండాలి: చక్కెర తేమ పీల్చి గడ్డ కడుతుంది.",
+"specs": {
+"100 kg చెరకు": "సుమారు 10.5 kg చక్కెర"
+}
+},
+"మొలాసిస్ ట్యాంక్": {
+"simple": "మొలాసిస్ ట్యాంక్: చక్కెర తీశాక మిగిలిన నల్లని చిక్కని పాకం.",
+"deep": "ఇందులో ఇంకా చక్కెర ఉంటుంది కానీ స్ఫటికం కాదు. దీన్ని పులియబెట్టి ఇథనాల్ చేస్తారు (పెట్రోల్‌లో కలిపేది), పశువుల దాణాలో కూడా.",
+"specs": {
+"మొలాసిస్": "చెరకులో సుమారు 4.5%",
+"వాడకం": "ఇథనాల్, దాణా"
+}
+},
+"స్ప్రే పాండ్": {
+"simple": "స్ప్రే పాండ్: వేడి నీటిని గాలిలోకి చిమ్మి చల్లబరుస్తుంది.",
+"deep": "ఎవాపరేటర్ల, పాన్‌ల ఆవిరిని తిరిగి నీరుగా మార్చే కండెన్సర్లకి చల్లని నీరు ఇక్కడి నుంచే. అదే నీరు మళ్ళీ మళ్ళీ తిరుగుతుంది.",
+"specs": {
+"పని": "నీటిని చల్లబరచడం"
+}
+},
+"తూకం ల్యాబ్": {
+"simple": "తూకం, ల్యాబ్: చెరకు బరువు, రసంలో చక్కెర శాతం ఇక్కడ కొలుస్తారు.",
+"deep": "రసంలో చక్కెర శాతాన్ని 'రికవరీ' అంటారు: 10% పైన ఉంటే మంచిది. చల్లని రాత్రులు, ఎండ పగళ్ళు ఉన్న నెలల్లో ఎక్కువ.",
+"specs": {
+"రికవరీ": "సుమారు 10–11%"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎంత చక్కెర",
+"100 కిలోల చెరకు",
+"టన్ను చెరకు",
+"how much sugar",
+"రికవరీ"
+],
+"a": "100 kg చెరకు నుంచి సుమారు 10–11 kg చక్కెర Sir, 30 kg బగాస్ (పీచు), 4.5 kg మొలాసిస్, 3–4 kg ప్రెస్ మడ్; మిగతాది నీరు, ఆవిరై పోతుంది."
+},
+{
+"k": [
+"చక్కెర ఎలా",
+"ఎలా తయారు",
+"how is sugar made",
+"తయారీ"
+],
+"a": "చెరకుని రోలర్లతో పిండి రసం తీస్తారు Sir; సున్నంతో శుభ్రం చేస్తారు; ఎవాపరేటర్లలో నీరు మరిగించి పాకం చేస్తారు; వాక్యూమ్ పాన్‌లలో స్ఫటికాలు పెంచుతారు; సెంట్రిఫ్యూజ్‌లో గింజలని వేరు చేసి ఆరబెడతారు."
+},
+{
+"k": [
+"బగాస్",
+"bagasse",
+"పీచు ఏం చేస్తారు",
+"ఇంధనం"
+],
+"a": "బగాస్ అంటే రసం పిండాక మిగిలిన చెరకు పీచు Sir. దాన్నే బాయిలర్‌లో మండించి ఆవిరి, కరెంట్ తయారు చేస్తారు: ఫ్యాక్టరీకి బయటి ఇంధనం అక్కర్లేదు, మిగులు కరెంట్ గ్రిడ్‌కి అమ్ముతారు. కాగితం, ప్లేట్లు కూడా బగాస్‌తో చేస్తారు."
+},
+{
+"k": [
+"మొలాసిస్",
+"molasses",
+"ఇథనాల్",
+"ethanol"
+],
+"a": "మొలాసిస్ అంటే చక్కెర గింజలు తీశాక మిగిలిన నల్లని పాకం Sir. దాన్ని పులియబెట్టి ఇథనాల్ చేస్తారు: మన పెట్రోల్‌లో కలిపే ఇథనాల్ ఎక్కువగా ఇదే."
+},
+{
+"k": [
+"ఎందుకు తెల్లగా",
+"తెల్ల చక్కెర",
+"బెల్లం",
+"jaggery",
+"బెల్లం తేడా"
+],
+"a": "బెల్లం అంటే రసాన్ని అలాగే మరిగించి గడ్డ కట్టించడం Sir: మొలాసిస్, ఖనిజాలు అందులోనే ఉంటాయి, అందుకే గోధుమ రంగు. చక్కెరలో రసాన్ని సున్నం, సల్ఫర్‌తో శుభ్రం చేసి, గింజలని మొలాసిస్ నుంచి వేరు చేస్తారు: అందుకే తెల్లగా."
+},
+{
+"k": [
+"వాక్యూమ్ ఎందుకు",
+"why vacuum",
+"65 డిగ్రీలు",
+"మాడదా"
+],
+"a": "మామూలుగా పాకం 110°C పైన మరుగుతుంది, అప్పుడు చక్కెర మాడి గోధుమ రంగు అవుతుంది Sir. గాలి తీసేస్తే (వాక్యూమ్) 65°C కే మరుగుతుంది: చక్కెర తెల్లగానే ఉంటుంది, ఆవిరి కూడా తక్కువ కావాలి."
+},
+{
+"k": [
+"ఎప్పుడు నడుస్తుంది",
+"సీజన్",
+"season",
+"ఎన్ని నెలలు"
+],
+"a": "చెరకు కోత కాలంలోనే Sir: సుమారు నవంబర్ నుంచి ఏప్రిల్. ఆ 5–6 నెలలు రాత్రింబవళ్ళు ఆగకుండా నడుస్తుంది; మిగతా నెలల్లో మరమ్మతులు."
+},
+{
+"k": [
+"24 గంటలు",
+"ఎందుకు త్వరగా",
+"చెరకు ఎండిపోతే",
+"కోసిన తర్వాత"
+],
+"a": "చెరకు కోసిన వెంటనే లోపలి చక్కెర విడిపోవడం మొదలవుతుంది Sir. 24 గంటల్లో ఆడకపోతే రికవరీ తగ్గుతుంది. అందుకే కోత, రవాణా, క్రషింగ్ అన్నీ టైం ప్రకారం."
+},
+{
+"k": [
+"ప్రెస్ మడ్",
+"press mud",
+"మురికి ఏం చేస్తారు",
+"ఎరువు"
+],
+"a": "క్లారిఫైయర్ అడుగున చేరే మురికిని వడకట్టితే ప్రెస్ మడ్ వస్తుంది Sir. అది మంచి సేంద్రియ ఎరువు: తిరిగి చెరకు పొలాలకే వెళ్తుంది. చక్కెర ఫ్యాక్టరీలో దాదాపు ఏదీ వృథా కాదు."
+}
+],
+"quiz": [
+{
+"q": "చెరకుని నలిపి రసం పిండేవి ఏవి?",
+"a": "మిల్ రోలర్లు",
+"opts": [
+"మిల్ రోలర్లు",
+"సెంట్రిఫ్యూజ్‌లు",
+"ఎవాపరేటర్లు"
+]
+},
+{
+"q": "మురికి రసాన్ని తేర్చేది ఏది?",
+"a": "క్లారిఫైయర్",
+"opts": [
+"రసం ట్యాంక్",
+"క్లారిఫైయర్",
+"స్ప్రే పాండ్"
+]
+},
+{
+"q": "ఒకే ఆవిరిని నాలుగు సార్లు వాడి రసాన్ని పాకం చేసేవి ఏవి?",
+"a": "ఎవాపరేటర్లు",
+"opts": [
+"వాక్యూమ్ పాన్‌లు",
+"ఎవాపరేటర్లు",
+"క్రిస్టలైజర్లు"
+]
+},
+{
+"q": "వేగంగా తిరిగి చక్కెర గింజలని మొలాసిస్ నుంచి వేరు చేసేవి ఏవి?",
+"a": "సెంట్రిఫ్యూజ్‌లు",
+"opts": [
+"సెంట్రిఫ్యూజ్‌లు",
+"చక్కెర డ్రయర్",
+"మిల్ రోలర్లు"
+]
+},
+{
+"q": "బగాస్‌ని మండించి ఆవిరి చేసేది ఏది?",
+"a": "బాయిలర్",
+"opts": [
+"టర్బైన్ జనరేటర్",
+"చిమ్నీ",
+"బాయిలర్"
+]
+},
+{
+"q": "ఇథనాల్ తయారీకి వాడే నల్ల పాకం ఎందులో నిల్వ ఉంటుంది?",
+"a": "మొలాసిస్ ట్యాంక్",
+"opts": [
+"మొలాసిస్ ట్యాంక్",
+"రసం ట్యాంక్",
+"చక్కెర గోడౌన్"
+]
+}
+],
+"faults": [
+{
+"label": "మిల్ రోలర్లు",
+"kind": "stop",
+"clue": "చెరకు వస్తోంది Sir, కానీ రసం రావట్లేదు. ఏది ఆగింది?",
+"why": "చెరకుతో పాటు ఒక ఇనుప ముక్క వచ్చి రోలర్ల మధ్య ఇరుక్కుంది: రక్షణ కోసం మిల్ డ్రైవ్ ట్రిప్ అయింది. క్యారియర్ మీది అయస్కాంతం ఇలాంటివి పట్టాలి; ఆపి ముక్క తీసి మళ్ళీ స్టార్ట్ చేస్తారు."
+},
+{
+"label": "టర్బైన్ జనరేటర్",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: ఏది మామూలు కంటే వేడిగా ఉంది?",
+"why": "టర్బైన్ బేరింగ్ ఆయిల్ కూలర్ మూసుకుపోయింది. బేరింగ్ వేడి హద్దు దాటితే టర్బైన్ తానే ట్రిప్ అవుతుంది; కూలర్ శుభ్రం చేస్తారు."
+},
+{
+"label": "సెంట్రిఫ్యూజ్‌లు",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: ఎక్కడి నుంచి వేరే చప్పుడు? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "ఒక సెంట్రిఫ్యూజ్ బుట్టలో చక్కెర ఒక వైపే పేరుకుంది (బరువు సమం తప్పింది). వెంటనే ఆపి, సమంగా నింపి మళ్ళీ తిప్పుతారు."
+},
+{
+"label": "కేన్ క్యారియర్",
+"kind": "loose",
+"clue": "ఏది వణుకుతోంది Sir?",
+"why": "కేన్ క్యారియర్ కత్తుల్లో ఒకటి విరిగి బరువు సమం తప్పింది. ఆపి కత్తి మారుస్తారు."
+}
+],
+"film": [
+"🎋 చక్కెర ఫ్యాక్టరీ",
+"చెరకు → రోలర్లు → రసం",
+"బగాస్ → బాయిలర్ → కరెంట్",
+"ఎవాపరేటర్లు → వాక్యూమ్ పాన్‌లు",
+"సెంట్రిఫ్యూజ్ → తెల్ల చక్కెర",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ చక్కెర ఫ్యాక్టరీ నిర్వహణ",
+"safety": "ఇది ట్రైనింగ్ ఉన్న ఫ్యాక్టరీ సిబ్బంది పని Sir. ఆవిరి పైపులు, వేడి పాత్రలు ముట్టుకోకూడదు; యంత్రం ఆపి, కరెంట్ ఆపి తాళం వేశాకే లోపలి పని. ఎక్కువ మరమ్మతులు సీజన్ తర్వాతి నెలల్లో చేస్తారు.",
+"steps": [
+{
+"say": "మిల్ రోలర్ల గాడులు అరిగితే రసం తగ్గుతుంది: సీజన్ తర్వాత మళ్ళీ గాడులు చెక్కుతారు, వెల్డింగ్‌తో గరుకు చేస్తారు.",
+"label": "మిల్ రోలర్లు"
+},
+{
+"say": "ఎవాపరేటర్ గొట్టాల లోపల పొర (స్కేల్) కడుతుంది: కొన్ని వారాలకోసారి రసాయనాలతో కడుగుతారు.",
+"label": "ఎవాపరేటర్లు"
+},
+{
+"say": "బాయిలర్ గొట్టాల మసి ఊదుతారు (సూట్ బ్లోయింగ్), నీటి నాణ్యత రోజూ పరీక్షిస్తారు.",
+"label": "బాయిలర్"
+},
+{
+"say": "సెంట్రిఫ్యూజ్ జల్లెడ స్క్రీన్‌లు చిరిగితే చక్కెర మొలాసిస్‌లోకి పోతుంది: మారుస్తారు.",
+"label": "సెంట్రిఫ్యూజ్‌లు"
+},
+{
+"say": "టర్బైన్ ఆయిల్, వైబ్రేషన్ రోజూ గమనిస్తారు.",
+"label": "టర్బైన్ జనరేటర్"
+}
+]
+},
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"inside": {},
+"id": "sugar"
+}
+}

@@ -1,0 +1,520 @@
+{
+"at": 1763700000016,
+"title": "తాగు నీటి శుద్ధి కేంద్రం",
+"what": "నది నీరు → కుళాయి నీరు: ఇన్‌టేక్, ఏరేటర్, పటిక, క్లారిఫ్లోక్యులేటర్, ఇసుక ఫిల్టర్లు, క్లోరిన్, ఓవర్‌హెడ్ ట్యాంక్, ఊరి కుళాయి. 🕐 🚶",
+"model": "showpiece",
+"parts": [
+{
+"id": "site",
+"status": "నీటి శుద్ధి కేంద్రం స్థలం సిద్ధం చేస్తున్నాను",
+"code": "// Drinking water treatment plant, hand-made. Units: cm, about real size (20 million litres a day, the distances shortened).\n// The river is at the west (−X): intake → raw water pumps → aerator (the cascade) → alum mixing → clariflocculator (the big\n// round tank: the mud settles) → rapid sand filters → chlorine → clear water tank → pumps → the overhead tank → the town's taps.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 9, ground: '#7c8a55', zoom: 0.62 });\nS.waterMat = (c, o = 0.86) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.08, metalness: 0.25, transparent: true, opacity: o });\nS.conc = S.sf('concrete', '#c9c5bb'); S.concW = S.sf('concrete', '#c9c5bb', { world: true });\nconst site = W.group();\nsite.add(W.mesh(W.box(14600, 20, 9000), S.land('grass', '#86a05a', 700), { at: [800, -9, -400] }));\nsite.add(W.mesh(W.box(14000, 5, 400), S.land('asphalt', '#6a6d70', 400), { at: [900, 3, 2600] }), W.mesh(W.box(400, 5, 3200), S.land('asphalt', '#6a6d70', 400), { at: [4300, 3, -2600] }));\nsite.add(W.text('JARVIS · నీటి శుద్ధి కేంద్రం · 20 MLD', { size: 120, at: [600, 280, 2960], color: '#eef2f5', bg: '#2f6fa8' }));\nW.add(site, { label: 'కేంద్రం స్థలం', ground: true });\nconst rv = W.group();\nrv.add(W.mesh(W.box(2600, 60, 9000), S.land('soil', '#8f7a58', 500), { at: [-7800, -40, -400] }));\nS.river = S.waterMat('#4f8a86', 0.95);\nrv.add(W.mesh(W.box(2500, 8, 9000), S.river, { at: [-7850, -4, -400] }));\nW.add(rv, { label: 'నది', ground: true });\nconst tr = W.group();\ntr.add(S.trees(30, -6200, -4700, 8000, 4000, (x, z) => z < -4200 || z > 3200 || x > 7700));\nW.add(tr, { label: 'చెట్లు', ground: true });\n"
+},
+{
+"id": "intake",
+"status": "ఇన్‌టేక్, ఏరేటర్ కడుతున్నాను",
+"code": "const S = W.store;\nconst blue = S.sf('paint', '#3f7fb8', { tile: 120 }), fm = S.sf('paint', '#8c98a3');\nconst iw = W.group();\niw.add(W.mesh(W.cyl(220, 240, 700, 24), S.conc, { at: [-7300, 250, 0] }), W.mesh(W.cyl(260, 260, 24, 24), S.conc, { at: [-7300, 610, 0] }), S.ringRail(-7300, 622, 0, 250, 14));\niw.add(W.mesh(W.box(1100, 20, 160), S.conc, { at: [-6650, 600, 0] }), S.rail([-7100, -80], [-6100, -80], 610), S.rail([-7100, 80], [-6100, 80], 610));\nfor (const x of [-6700, -6300]) iw.add(W.mesh(W.box(40, 600, 120), S.conc, { at: [x, 300, 0] }));\nfor (let k = 0; k < 3; k++) iw.add(W.mesh(W.box(8, 200, 160), S.sf('metal', '#5a5f63', { rough: 0.7 }), { at: [-7530, 60, -30 + k * 30], rot: [0, 12, 0] })); // the trash screen\nW.add(iw, { label: 'ఇన్‌టేక్ బావి', heat: [24, 28] });\nconst rp = S.shed([-5600, 0, 0], 1000, 420, 800, { color: '#d9dcd6', door: 300, doorH: 300 });\nconst rg = W.group();\nrg.add(rp.floor, rp.walls, rp.roof);\nfor (const z of [-200, 200]) { const m = S.motor(160, 42, '#3b6a94'); m.position.set(-5700, 60, z); rg.add(m); rg.add(W.mesh(W.cyl(50, 50, 40, 18), blue, { at: [-5560, 60, z], rot: [0, 0, 90] })); }\nrg.add(S.pipe([[-7300, 80, 0], [-6500, 40, 0], [-5900, 50, 0], [-5560, 60, -200]], 30, blue, 30), S.pipe([[-5540, 80, 0], [-5000, 60, 0], [-4500, 60, 0], [-4300, 120, 0]], 30, blue, 30));\nW.add(rg, { label: 'రా వాటర్ పంప్ హౌస్', heat: [28, 50] });\nconst ae = W.group();\nS.w1 = S.waterMat('#8a9468'); // (raw water)\nfor (let k = 0; k < 4; k++) {\n  const r = 560 - k * 130, y = 70 + k * 80;\n  ae.add(W.mesh(W.cyl(r, r, 80, 36), S.conc, { at: [-4300, y - 30, 0] }), W.mesh(W.ring(r - 60, r, 18, 36), S.conc, { at: [-4300, y + 16, 0] }));\n  ae.add(W.mesh(W.cyl(r - 60, r - 60, 4, 36), S.w1, { at: [-4300, y + 18, 0] }));\n}\nae.add(W.mesh(W.cyl(40, 40, 120, 14), blue, { at: [-4300, 380, 0] }));\nae.add(W.mesh(W.ring(620, 700, 60, 36), S.conc, { at: [-4300, 30, 0] }), W.mesh(W.cyl(620, 620, 4, 36), S.w1, { at: [-4300, 40, 0] }));\nW.add(ae, { label: 'ఏరేటర్', heat: [24, 28] });\nconst al = S.shed([-2900, 0, -1300], 900, 380, 700, { color: '#e8e4da', door: 200, doorH: 260, rise: 60, wall: S.wall(3, 1, { wall: '#e4dfd2', ribs: false, top: 0.3, h: 0.34 }), roof: S.sf('concrete', '#b9b4a8') });\nconst ag = W.group();\nag.add(al.floor, al.walls, al.roof);\nfor (const x of [-3150, -2900]) ag.add(S.tank(90, 220, S.sf('paint', '#d9d5ca', { tile: 100 }), { at: [x, 0, -750], legs: 40, dome: 0.1 }));\nag.add(W.mesh(W.box(260, 200, 260), S.conc, { at: [-2900, 100, 0] }), W.mesh(W.box(220, 6, 220), S.w1, { at: [-2900, 196, 0] })); // the flash mixer\nS.mixer = W.group({ at: [-2900, 230, 0] });\nS.mixer.add(W.mesh(W.cyl(6, 6, 120, 8), fm), W.mesh(W.box(120, 10, 16), fm, { at: [0, -50, 0] }), W.mesh(W.cyl(30, 30, 50, 14), S.sf('paint', '#3b6a94'), { at: [0, 80, 0] }));\nag.add(S.mixer, S.pipe([[-2900, 140, -750], [-2900, 260, -400], [-2900, 240, -100]], 6, S.sf('paint', '#d9a92a', { tile: 60 })));\nag.add(W.mesh(W.box(1300, 60, 160), S.conc, { at: [-3640, 60, 0] }), W.mesh(W.box(1300, 4, 110), S.w1, { at: [-3640, 88, 0] }));\nW.add(ag, { label: 'ఆలమ్ డోసింగ్', heat: [24, 30] });\n"
+},
+{
+"id": "clarifier",
+"status": "క్లారిఫ్లోక్యులేటర్ కడుతున్నాను",
+"code": "const S = W.store;\n// the clariflocculator: in the middle slow paddles stir gently so the tiny mud specks stick together into flakes (floc);\n// in the wide outer ring the water is still: the flakes sink, clear water flows over the rim into a channel\nconst CX = -700, CZ = 0, fm = S.sf('paint', '#8c98a3');\nconst ck = W.group();\nck.add(W.mesh(W.ring(1100, 1130, 330, 56), S.conc, { at: [CX, 165, CZ] }), W.mesh(W.cyl(1100, 1100, 10, 56), S.conc, { at: [CX, 5, CZ] }));\nck.add(W.mesh(W.ring(1130, 1250, 12, 56), S.sf('metal', '#8f979e', { rough: 0.6 }), { at: [CX, 296, CZ] }), S.ringRail(CX, 302, CZ, 1245, 30), S.stairs([CX + 1700, 0, 300], [CX + 1250, 300, 300], 100));\nck.add(W.mesh(W.ring(400, 414, 300, 40), S.conc, { at: [CX, 160, CZ] }), W.mesh(W.cyl(50, 60, 360, 16), S.conc, { at: [CX, 180, CZ] }));\nS.w2 = S.waterMat('#8a9a78'); S.w2in = S.waterMat('#8a9468');\nck.add(W.mesh(W.ring(414, 1040, 6, 56), S.w2, { at: [CX, 296, CZ] }), W.mesh(W.cyl(400, 400, 6, 40), S.w2in, { at: [CX, 296, CZ] }));\nS.w3 = S.waterMat('#86aab8');\nck.add(W.mesh(W.ring(1040, 1052, 40, 56), S.sf('metal', '#70777d', { rough: 0.6 }), { at: [CX, 296, CZ] }), W.mesh(W.ring(1052, 1100, 6, 56), S.w3, { at: [CX, 286, CZ] }));\nck.add(S.pipe([[-2900, 100, 0], [-2300, 40, 0], [-1400, 30, 0], [CX, 100, CZ]], 34, S.sf('paint', '#3f7fb8', { tile: 120 }), 30));\nW.add(ck, { label: 'క్లారిఫ్లోక్యులేటర్', heat: [24, 28] });\nconst br = W.group();\nS.bridge = W.group({ at: [CX, 0, CZ] });\nS.bridge.add(W.mesh(W.box(1150, 26, 100), S.sf('metal', '#8f979e', { rough: 0.6 }), { at: [575, 372, 0] }));\nfor (const z of [-48, 48]) { S.bridge.add(W.mesh(W.box(1150, 4, 4), S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), { at: [575, 480, z] })); for (let k = 0; k <= 6; k++) S.bridge.add(W.mesh(W.box(4, 100, 4), S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), { at: [k * 190, 430, z] })); }\nS.bridge.add(W.mesh(W.box(120, 110, 120), S.sf('paint', '#3b6a94'), { at: [1140, 345, 0] }), W.mesh(W.cyl(26, 26, 30, 14), W.rubber('#1b1c1e'), { at: [1140, 310, 0], rot: [90, 0, 0] })); // its drive, running on the rim\nfor (const x of [600, 900]) S.bridge.add(W.mesh(W.box(10, 300, 10), fm, { at: [x, 210, 0] }));\nS.bridge.add(W.mesh(W.box(600, 12, 30), fm, { at: [760, 66, 0], rot: [0, 20, 0] })); // the scraper on the floor\nbr.add(S.bridge);\nS.paddles = W.group({ at: [CX, 0, CZ] });\nS.paddles.add(W.mesh(W.cyl(40, 40, 60, 14), S.sf('paint', '#3b6a94'), { at: [0, 410, 0] }));\nfor (let k = 0; k < 4; k++) { const a = k * 1.571; S.paddles.add(W.mesh(W.box(8, 250, 8), fm, { at: [Math.cos(a) * 250, 180, Math.sin(a) * 250] }), W.mesh(W.box(260, 8, 8), fm, { at: [Math.cos(a) * 125, 300, Math.sin(a) * 125], rot: [0, -a * 57.3, 0] }), W.mesh(W.box(8, 200, 90), fm, { at: [Math.cos(a) * 250, 170, Math.sin(a) * 250], rot: [0, -a * 57.3, 0] })); }\nbr.add(S.paddles);\nW.add(br, { label: 'తిరిగే వంతెన', heat: [26, 40] });\nconst sb = W.group();\nfor (let k = 0; k < 4; k++) {\n  sb.add(W.mesh(W.box(700, 40, 500), S.conc, { at: [-1700 + k * 760, 20, -2900] }), W.mesh(W.box(660, 8, 460), S.land('soil', ['#6f6250', '#7d6f5a', '#8f7f66', '#a39378'][k], 200), { at: [-1700 + k * 760, 42, -2900] }));\n}\nsb.add(S.pipe([[CX, 20, CZ], [CX, 16, -1500], [-600, 40, -2640]], 16, S.sf('metal', '#5a5f63', { rough: 0.7 })));\nW.add(sb, { label: 'బురద ఆరబెట్టే బెడ్లు', heat: [28, 36] });\n"
+},
+{
+"id": "filters",
+"status": "ఇసుక ఫిల్టర్లు కడుతున్నాను",
+"code": "const S = W.store;\n// rapid sand filters: the water sinks through a metre of sand and gravel, the last fine specks stay in the sand. Once a\n// day each bed is washed backwards (air, then clean water from below): the dirt lifts off and flows away.\nconst fb = W.group();\nS.FX = [1400, 2200, 3000, 3800];\nS.w4 = S.waterMat('#7fb0c4'); S.wash = [];\nfor (const x of S.FX) {\n  for (const sz of [-1, 1]) fb.add(W.mesh(W.box(740, 260, 24), S.conc, { at: [x, 130, 400 + sz * 440] }));\n  for (const sx of [-1, 1]) fb.add(W.mesh(W.box(24, 260, 900), S.conc, { at: [x + sx * 358, 130, 400] }));\n  fb.add(W.mesh(W.box(700, 90, 860), S.land('soil', '#d9c89a', 60), { at: [x, 75, 400] })); // the sand\n  const m = S.waterMat('#7fb0c4', 0.8), w = W.mesh(W.box(700, 6, 860), m, { at: [x, 220, 400] });\n  fb.add(w); S.wash.push({ m, w });\n  for (let k = 0; k < 2; k++) fb.add(W.mesh(W.box(40, 40, 860), S.sf('metal', '#8f979e', { rough: 0.6 }), { at: [x - 170 + k * 340, 190, 400] })); // the wash water troughs\n}\nfb.add(W.mesh(W.box(3500, 60, 200), S.conc, { at: [2600, 240, 980] }), W.mesh(W.box(3460, 4, 150), S.w4, { at: [2600, 266, 980] })); // the inlet channel\nW.add(fb, { label: 'ఇసుక ఫిల్టర్ బెడ్లు', heat: [24, 28], layer: 2 });\nconst gl = W.group();\ngl.add(W.mesh(W.box(3500, 14, 360), S.sf('tile', '#b9b6ad', { world: true }), { at: [2600, 7, -300] }));\nconst pc = [S.sf('paint', '#3f7fb8', { tile: 120 }), S.sf('paint', '#3f9a6a', { tile: 120 }), S.sf('paint', '#8a5a3a', { tile: 120 })];\nfor (let k = 0; k < 3; k++) { gl.add(W.mesh(W.cyl(22, 22, 3400, 12), pc[k], { at: [2600, 60 + k * 70, -220 - k * 60], rot: [0, 0, 90] })); for (const x of S.FX) gl.add(W.mesh(W.cyl(12, 12, 200 + k * 60, 10), pc[k], { at: [x - 60 + k * 60, 60 + k * 70, -120 - k * 30], rot: [90, 0, 0] }), W.mesh(W.cyl(20, 20, 10, 12), S.sf('paint', '#b6463a', { tile: 40 }), { at: [x - 60 + k * 60, 100 + k * 70, -100], rot: [0, 0, 0] })); }\nW.add(gl, { label: 'పైపు గ్యాలరీ', heat: [24, 30], layer: 2 });\nconst rf = W.group();\nrf.add(W.mesh(W.box(3700, 16, 2000), S.sf('sheet', '#9fb0bc', { tile: 240 }), { at: [2600, 640, 300], rot: [4, 0, 0] }));\nW.add(rf, { label: 'ఫిల్టర్ హౌస్ పైకప్పు', layer: 0, peelBy: [0, 2200, 0], explode: [0, 2200, 0] });\nconst cl = W.group();\nfor (const x of [860, 2600, 4340]) for (const z of [-600, 1200]) cl.add(W.mesh(W.box(34, 640, 34), S.sf('paint', '#8c98a3'), { at: [x, 320, z] }));\ncl.add(S.stairs([700, 0, 700], [1000, 262, 700], 90), W.mesh(W.box(3500, 10, 110), S.sf('metal', '#8f979e', { rough: 0.6 }), { at: [2600, 262, -110] }), S.rail([850, -160], [4350, -160], 266));\nW.add(cl, { label: 'ఫిల్టర్ హౌస్ స్తంభాలు', layer: 1, peelBy: [0, 0, 0] });\nconst ch = S.shed([4300, 0, -1500], 800, 360, 600, { color: '#e8e4da', door: 200, doorH: 250, rise: 50, wall: S.wall(3, 1, { wall: '#dfe6d8', ribs: false, top: 0.3, h: 0.34 }), roof: S.sf('concrete', '#b9b4a8') });\nconst cg = W.group();\ncg.add(ch.floor, ch.walls, ch.roof);\nfor (let k = 0; k < 3; k++) cg.add(W.mesh(W.cyl(40, 40, 200, 16), S.sf('paint', '#d9c72a', { tile: 80 }), { at: [4100 + k * 110, 44, -900], rot: [0, 0, 90] }));\ncg.add(S.pipe([[4300, 200, -1250], [4400, 120, -600], [4500, 60, 0], [4600, 120, 400]], 5, S.sf('paint', '#d9c72a', { tile: 40 })));\ncg.add(W.text('క్లోరిన్', { size: 60, at: [4300, 300, -1190], color: '#2a2c30', bg: '#d9c72a' }));\nW.add(cg, { label: 'క్లోరిన్ గది', heat: [24, 28] });\n"
+},
+{
+"id": "clear",
+"status": "శుద్ధ నీటి ట్యాంక్, పంప్ హౌస్ కడుతున్నాను",
+"code": "const S = W.store;\nconst cw = W.group();\nfor (const sz of [-1, 1]) cw.add(W.mesh(W.box(1700, 300, 26), S.conc, { at: [5500, 110, 500 + sz * 660] }));\nfor (const sx of [-1, 1]) cw.add(W.mesh(W.box(26, 300, 1340), S.conc, { at: [5500 + sx * 850, 110, 500] }));\nS.w5 = S.waterMat('#4aa0d9', 0.85);\ncw.add(W.mesh(W.box(1670, 8, 1300), S.w5, { at: [5500, 200, 500] }));\nfor (const x of [5100, 5900]) for (const z of [100, 900]) cw.add(W.mesh(W.box(30, 260, 30), S.conc, { at: [x, 120, z] }));\ncw.add(S.pipe([[4200, 60, -300], [4400, 40, 0], [4600, 120, 400], [4680, 200, 500]], 30, S.sf('paint', '#3f9a6a', { tile: 120 }), 30));\nW.add(cw, { label: 'శుద్ధ నీటి ట్యాంక్', heat: [22, 26] });\nconst lid = W.group();\nlid.add(W.mesh(W.box(1760, 20, 1400), S.conc, { at: [5500, 272, 500] }));\nfor (const x of [5100, 5900]) lid.add(W.mesh(W.cyl(14, 14, 60, 10), S.sf('metal', '#aab2ba'), { at: [x, 312, 500] }), W.mesh(W.cyl(24, 24, 10, 10), S.sf('metal', '#aab2ba'), { at: [x, 346, 500] }));\nlid.add(W.mesh(W.box(90, 8, 90), S.sf('metal', '#5a5f63', { rough: 0.7 }), { at: [6200, 286, 900] }));\nW.add(lid, { label: 'ట్యాంక్ మూత', layer: 0, peelBy: [0, 1200, 0], explode: [0, 1200, 0] });\nconst ph = S.shed([7000, 0, 500], 1000, 460, 900, { color: '#d9dcd6', door: 320, doorH: 320 });\nconst pg = W.group();\npg.add(ph.floor);\nconst green = S.sf('paint', '#3f9a6a', { tile: 120 });\nS.pumpSpin = [];\nfor (let k = 0; k < 3; k++) {\n  const z = 220 + k * 280;\n  const m = S.motor(170, 46, '#3b6a94'); m.position.set(6850, 70, z); pg.add(m);\n  pg.add(W.mesh(W.cyl(58, 58, 44, 20), green, { at: [7010, 70, z], rot: [0, 0, 90] }), W.mesh(W.cyl(18, 18, 200, 12), green, { at: [7010, 170, z] }));\n  const c = W.group({ at: [6950, 70, z] }); c.add(W.mesh(W.cyl(14, 14, 30, 6), S.sf('metal', '#d9a92a'), { rot: [0, 0, 90] })); pg.add(c); S.pumpSpin.push(c);\n}\npg.add(W.mesh(W.cyl(26, 26, 700, 12), green, { at: [7010, 270, 500], rot: [90, 0, 0] }), S.pipe([[6350, 100, 500], [6600, 50, 500], [6900, 40, 500], [7010, 70, 500]], 26, green, 24));\npg.add(S.pipe([[7010, 270, 160], [7100, 300, -400], [6700, 60, -1500], [6300, 60, -2600]], 26, green, 40));\nW.add(pg, { label: 'పంపులు', heat: [28, 60], layer: 2 });\nW.add(ph.walls, { label: 'పంప్ హౌస్ గోడలు', layer: 1, peelBy: [0, 1500, 0], explode: [0, 0, 1500] });\nW.add(ph.roof, { label: 'పంప్ హౌస్ పైకప్పు', layer: 0, peelBy: [0, 1800, 0], explode: [0, 1800, 0] });\n// the overhead tank: 20 m up, so the water reaches every tap by its own weight\nconst oh = W.group();\nconst OX = 6300, OZ = -2600;\nfor (let k = 0; k < 8; k++) oh.add(W.mesh(W.box(46, 1950, 46), S.conc, { at: [OX + Math.cos(k * 0.785) * 380, 975, OZ + Math.sin(k * 0.785) * 380] }));\nfor (const y of [650, 1300, 1930]) oh.add(W.mesh(W.torus(380, 22, 8, 4), S.conc, { at: [OX, y, OZ], rot: [90, 0, 22.5] }));\noh.add(W.mesh(W.cyl(520, 380, 260, 32), S.conc, { at: [OX, 2080, OZ] }), W.mesh(W.cyl(520, 520, 460, 32), S.conc, { at: [OX, 2440, OZ] }), W.mesh(W.sphere(520, 32), S.conc, { at: [OX, 2670, OZ], scale: [1, 0.22, 1] }));\noh.add(W.mesh(W.cyl(70, 70, 1950, 14), S.conc, { at: [OX, 975, OZ] }), S.ringRail(OX, 2670, OZ, 500, 18));\nfor (let k = 0; k < 6; k++) oh.add(S.stairs([OX + (k % 2 ? 300 : -300), k * 325, OZ + 470], [OX + (k % 2 ? -300 : 300), (k + 1) * 325, OZ + 470], 80));\noh.add(S.ladder(OX, 1950, 2670, OZ + 525, 'z', 1));\noh.add(W.text('20 లక్షల లీటర్లు', { size: 90, at: [OX, 2440, OZ + 524], color: '#2f6fa8' }));\nW.add(oh, { label: 'ఓవర్‌హెడ్ ట్యాంక్', heat: [24, 30] });\nconst tn = W.group();\nconst pl = [S.sf('plaster', '#e3d9c0'), S.sf('plaster', '#d9e2d6'), S.sf('plaster', '#e6d2c0')];\n[[2000, -3700], [2800, -3900], [3500, -3600], [5000, -3900], [5200, -3200], [3000, -3000]].forEach(([x, z], i) => {\n  tn.add(W.mesh(W.box(560, 300 + (i % 2) * 280, 480), pl[i % 3], { at: [x, 150 + (i % 2) * 140, z] }), W.mesh(W.box(600, 16, 520), S.conc, { at: [x, 308 + (i % 2) * 280, z] }));\n  tn.add(W.mesh(W.box(90, 190, 6), S.sf('wood', '#7a5a3c', { tile: 100 }), { at: [x - 120, 95, z + 243] }), W.mesh(W.box(110, 90, 6), S.matte('#33495c', 0.3), { at: [x + 110, 170, z + 243] }));\n});\ntn.add(W.mesh(W.box(90, 20, 90), S.conc, { at: [4000, 10, -3250] }), W.mesh(W.cyl(4, 4, 110, 8), S.sf('metal', '#aab2ba'), { at: [4000, 70, -3270] }), W.mesh(W.box(5, 5, 26), S.sf('metal', '#b08a3a'), { at: [4000, 116, -3258] }));\ntn.add(W.mesh(W.cyl(20, 14, 40, 14), S.sf('metal', '#b98a5a', { rough: 0.4 }), { at: [4000, 40, -3240] })); // a pot under the tap\nW.add(tn, { label: 'ఊరి ఇళ్ళు', heat: [26, 32] });\n"
+},
+{
+"id": "run",
+"status": "కేంద్రం స్టార్ట్‌కి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is the flow (20 million litres a day at full). 🚩 \"backwash\": one sand filter is washed\n// backwards. 🚩 \"monsoon\": the river is in flood and muddy: more alum is dosed, the clarifier works harder.\nconst lab = S.shed([200, 0, 1900], 1100, 340, 600, { color: '#e8e4da', door: 180, doorH: 240, rise: 50, wall: S.wall(4, 1, { wall: '#e4dfd2', ribs: false, top: 0.3, h: 0.34 }), roof: S.sf('concrete', '#b9b4a8') });\nconst lg = W.group(); lg.add(lab.floor, lab.walls, lab.roof);\nW.add(lg, { label: 'ల్యాబ్', heat: [24, 28] });\nW.throttle({ label: 'నీటి ప్రవాహం', rise: 0.25, fall: 0.25, start: 0.6 });\nW.sound({ kind: 'water', label: 'ఏరేటర్', gain: 0.7 });\nW.sound({ kind: 'pump', label: 'పంపులు', gain: 0.4, f0: 90 });\nW.sound({ kind: 'hum', label: 'రా వాటర్ పంప్ హౌస్', gain: 0.3, f0: 80 });\nW.sound({ kind: 'gear', label: 'తిరిగే వంతెన', gain: 0.15, f0: 40 });\nconst C = (h) => new THREE.Color(h), mud = C('#8a6a3a'), cols = { river: [C('#4f8a86'), mud], w1: [C('#8a9468'), C('#8f6f3f')], w2in: [C('#8a9468'), C('#8f6f3f')], w2: [C('#8a9a78'), C('#8f8558')], w3: [C('#86aab8'), C('#8aa8a8')] };\nconst bub = S.plume(S.bridge.parent, [S.FX[1], 226, 400], { n: 12, life: 1.6, r: 60, rise: 30, drift: 300, op: 0.5, color: '#f4f7fa' });\nlet hudT = 0, run = 0, mk = 0, bw = 0, lvl = 0.6;\nW.onTick((t, dt) => {\n  const s = W.env.spool, on = s > 0.02, mons = W.env.flag('monsoon'), wash = W.env.flag('backwash'), over = W.env.over;\n  const pumpStop = W.faultOf('పంపులు') === 'stop';\n  run += ((on ? 0.3 + 0.7 * s : 0) - run) * Math.min(1, dt * 1.0);\n  mk += ((mons ? 1 : 0) - mk) * Math.min(1, dt * 0.5); bw += ((wash ? 1 : 0) - bw) * Math.min(1, dt * 0.8);\n  S.river.color.copy(cols.river[0]).lerp(cols.river[1], mk); S.w1.color.copy(cols.w1[0]).lerp(cols.w1[1], mk); S.w2in.color.copy(cols.w2in[0]).lerp(cols.w2in[1], mk);\n  S.w2.color.copy(cols.w2[0]).lerp(cols.w2[1], mk); S.w3.color.copy(cols.w3[0]).lerp(cols.w3[1], mk * 0.5);\n  S.wash[1].m.color.set('#7fb0c4').lerp(mud, bw); S.wash[1].w.position.y = 220 + 26 * bw;\n  bub(dt, bw);\n  S.step(t, dt, run);\n  S.bridge.rotation.y += dt * 0.035 * (on ? 1 : 0); S.paddles.rotation.y -= dt * 0.25 * run;\n  S.mixer.rotation.y += dt * 9 * run;\n  for (const c of S.pumpSpin) c.rotation.x += dt * 24 * (pumpStop ? 0 : run);\n  lvl += dt * ((pumpStop ? 0 : run * 0.03) - 0.016); lvl = Math.max(0.1, Math.min(1, lvl));\n  if (t - hudT > 0.3) {\n    hudT = t;\n    const mld = on ? 20 * Math.min(1.1, s) : 0, raw = mons ? 400 : 60, alum = mons ? 60 : 20;\n    W.hud({ 'ప్రవాహం': mld.toFixed(1) + ' MLD · ' + (mld * 100000 / 24 / 100000).toFixed(1) + ' లక్షల లీ/గంట', 'బురద: నది → క్లారిఫైయర్': raw + ' → ' + (over ? 25 : mons ? 12 : 8) + ' NTU' + (mons ? ' (వరద)' : ''), 'ఫిల్టర్ తర్వాత': (over ? '2.5 NTU ⚠️' : '0.4 NTU ✅') + (wash ? ' · 2వ బెడ్ కడుగుతోంది 🫧' : ''),\n      'ఆలమ్ · క్లోరిన్': alum + ' mg/L · 0.5 ppm', 'ఓవర్‌హెడ్ ట్యాంక్': Math.round(lvl * 100) + '%', 'సరిపోయే జనం': Math.round(mld / 0.135 / 1000) + ' వేల మంది' });\n    W.report({ power: s, mld, rawNtu: raw, outNtu: over ? 2.5 : 0.4, tank: lvl * 100 });\n  }\n});\nconst F = S.FX;\nW.stream([[-7500, 20, 0], [-7300, 80, 0], [-6500, 40, 0], [-5560, 60, -200], [-5540, 80, 0], [-4500, 60, 0], [-4300, 120, 0], [-4300, 420, 0]], { kind: 'coal', count: 50, size: 60, speed: 0.7 });\nfor (let k = 0; k < 6; k++) { const a = k * 1.047; W.stream([[-4300, 400, 0], [-4300 + Math.cos(a) * 200, 330, Math.sin(a) * 200], [-4300 + Math.cos(a) * 330, 250, Math.sin(a) * 330], [-4300 + Math.cos(a) * 460, 170, Math.sin(a) * 460], [-4300 + Math.cos(a) * 600, 60, Math.sin(a) * 600]], { kind: 'water', count: 12, size: 34, speed: 1.2 }); }\nW.stream([[-4000, 90, 0], [-3640, 92, 0], [-2900, 200, 0], [-2300, 40, 0], [-1400, 30, 0], [-700, 100, 0], [-700, 280, 0], [-500, 300, 250], [-200, 300, 700], [200, 296, 880], [352, 290, 0]], { kind: 'coal', count: 60, size: 50, speed: 0.5 });\nW.stream([[-2900, 140, -750], [-2900, 260, -400], [-2900, 240, -100], [-2900, 200, 0]], { kind: 'powder', count: 8, size: 16, speed: 0.6 });\nW.stream([[390, 290, 0], [700, 200, 500], [860, 266, 980], [F[0], 266, 980], [F[3], 266, 980]], { kind: 'water', count: 40, size: 44, speed: 0.6 });\nfor (const x of F) W.stream([[x, 266, 980], [x, 230, 600], [x, 120, 400], [x, 40, 100], [x, 60, -220]], { kind: 'water', count: 12, size: 36, speed: 0.5, when: (e) => !(e.flag('backwash') && x === F[1]) });\nW.stream([[F[1] + 60, 200, -340], [F[1], 40, 0], [F[1], 60, 400], [F[1], 250, 400], [F[1] + 170, 200, 400], [F[1] + 170, 200, 900], [F[1] + 400, 30, 1200]], { kind: 'coal', count: 30, size: 40, speed: 1, when: (e) => e.flag('backwash') });\nW.stream([[F[0], 130, -280], [F[3], 130, -280], [4200, 60, -300], [4600, 120, 400], [4680, 200, 500], [5500, 210, 500], [6350, 100, 500], [7010, 70, 500], [7010, 270, 160], [7100, 300, -400], [6700, 60, -1500], [6300, 60, -2600], [6300, 2300, -2600]], { kind: 'water', count: 90, size: 46, speed: 0.8 });\nW.stream([[4300, 200, -1250], [4400, 120, -600], [4500, 60, 0], [4600, 120, 400]], { kind: 'regen', count: 8, size: 16, speed: 0.6 });\nW.stream([[6300, 2000, -2600], [6300, 40, -2600], [5200, 20, -3000], [4000, 20, -3270], [4000, 116, -3262], [4000, 60, -3240]], { kind: 'water', count: 40, size: 30, speed: 0.9, always: true });\nW.stream([[-700, 20, 0], [-700, 16, -1500], [-600, 40, -2640]], { kind: 'coal', count: 8, size: 30, speed: 0.2 });\nW.walk({ eye: 165, speed: 380, area: [-6400, -4500, 7900, 3300],\n  floor: (x, z) => { const d = Math.hypot(x + 700, z); if (d > 1125 && d < 1255) return 302; if (x > 850 && x < 4350 && z > -165 && z < -55) return 268; if (Math.hypot(x - 6300, z + 2600) < 500) return 2685; return 0; },\n  solid: [[-4900, -600, -3700, 600], [1030, -40, 4170, 850], [4640, -170, 6360, 1170], [5880, -3020, 6720, -2180]],\n  spots: [\n    { name: 'నది ఒడ్డున', at: [-6200, 0, 900], look: [-7300, 300, 0] },\n    { name: 'ఏరేటర్ దగ్గర', at: [-4300, 0, 1500], look: [-4300, 200, 0] },\n    { name: 'క్లారిఫైయర్ అంచున', at: [-700, 302, 1190], look: [-700, 300, 0] },\n    { name: 'ఫిల్టర్ గ్యాలరీలో', at: [900, 268, -110], look: [2600, 230, 300] },\n    { name: 'పంప్ హౌస్ లోపల', at: [7300, 0, 820], look: [6900, 80, 400] },\n    { name: 'ఓవర్‌హెడ్ ట్యాంక్ పైన', at: [6300, 2685, -2300], look: [0, 200, 0] },\n    { name: 'వీధి కుళాయి దగ్గర', at: [4300, 0, -2800], look: [4000, 90, -3260] },\n  ] });\n"
+}
+],
+"say": "నీటి శుద్ధి కేంద్రం రెడీ Sir. 'వానాకాలం వరద' అంటే బురద నీరు వస్తుంది, 'ఫిల్టర్ కడుగు' అంటే బ్యాక్‌వాష్, 'ఓవర్‌హెడ్ ట్యాంక్ పైకి వెళ్ళు' అంటే పై నుంచి చూడొచ్చు.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"నది నీరు కుళాయి నీరు ఎలా అవుతుంది\", \"steps\": [{\"say\": \"Sir, ఇది తాగు నీటి శుద్ధి కేంద్రం. ఎడమ వైపు నది; నీరు ఎడమ నుంచి కుడికి ఒక్కో దశ దాటుతూ శుభ్రమవుతుంది.\", \"focus\": [{\"id\": \"clarifier\", \"piece\": \"క్లారిఫ్లోక్యులేటర్\"}, {\"id\": \"clear\", \"piece\": \"ఓవర్‌హెడ్ ట్యాంక్\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 9}, {\"say\": \"ఇన్‌టేక్ బావి జల్లెడ చెత్తని ఆపుతుంది. పంపులు నీటిని ఏరేటర్ పైకి ఎత్తుతాయి: మెట్ల మీద పడుతూ గాలి కలుస్తుంది.\", \"focus\": [{\"id\": \"intake\", \"piece\": \"ఇన్‌టేక్ బావి\"}, {\"id\": \"intake\", \"piece\": \"ఏరేటర్\"}], \"view\": \"iso\", \"close\": true, \"secs\": 9}, {\"say\": \"పటిక కలుపుతారు. ఈ పెద్ద గుండ్రని ట్యాంక్‌లో మట్టి ముద్దలై అడుగుకి చేరుతుంది; తేట నీరు అంచు మీదుగా పొర్లుతుంది. వంతెన నెమ్మదిగా తిరుగుతూ బురదని తోస్తుంది.\", \"focus\": [{\"id\": \"intake\", \"piece\": \"ఆలమ్ డోసింగ్\"}, {\"id\": \"clarifier\", \"piece\": \"క్లారిఫ్లోక్యులేటర్\"}, {\"id\": \"clarifier\", \"piece\": \"తిరిగే వంతెన\"}], \"view\": \"iso\", \"close\": true, \"secs\": 11}, {\"say\": \"తర్వాత ఇసుక ఫిల్టర్లు: నీరు మీటర్ మందం ఇసుక గుండా ఇంకి, మిగిలిన రేణువులు ఆగిపోతాయి.\", \"focus\": [{\"id\": \"filters\", \"piece\": \"ఇసుక ఫిల్టర్ బెడ్లు\"}, {\"id\": \"filters\", \"piece\": \"పైపు గ్యాలరీ\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"filters\", \"piece\": \"ఫిల్టర్ హౌస్ పైకప్పు\", \"by\": [0, 2200, 0], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"క్లోరిన్ కలిపి క్రిములు చంపుతారు. శుద్ధ నీటి ట్యాంక్‌లో తేట నీలం నీరు.\", \"focus\": [{\"id\": \"filters\", \"piece\": \"క్లోరిన్ గది\"}, {\"id\": \"clear\", \"piece\": \"శుద్ధ నీటి ట్యాంక్\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"clear\", \"piece\": \"ట్యాంక్ మూత\", \"by\": [0, 1200, 0], \"secs\": 1.2}], \"secs\": 9}, {\"say\": \"పంపులు నీటిని 20 m ఎత్తైన ఓవర్‌హెడ్ ట్యాంక్‌కి ఎత్తుతాయి. అక్కడి నుంచి తన బరువుతోనే ఊరి కుళాయిలకి.\", \"focus\": [{\"id\": \"clear\", \"piece\": \"పంపులు\"}, {\"id\": \"clear\", \"piece\": \"ఓవర్‌హెడ్ ట్యాంక్\"}, {\"id\": \"clear\", \"piece\": \"ఊరి ఇళ్ళు\"}], \"view\": \"iso\", \"close\": true, \"flow\": [{\"from\": \"clear\", \"fromPiece\": \"ఓవర్‌హెడ్ ట్యాంక్\", \"to\": \"clear\", \"toPiece\": \"ఊరి ఇళ్ళు\", \"kind\": \"water\", \"count\": 8}], \"secs\": 10}, {\"say\": \"'వానాకాలం వరద' అంటే బురద నీరు, 'ఫిల్టర్ కడుగు' అంటే ఇసుక బెడ్ వెనక్కి కడగడం చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"site\", \"piece\": \"నది\"}, {\"id\": \"filters\", \"piece\": \"ఇసుక ఫిల్టర్ బెడ్లు\"}], \"view\": \"iso\", \"secs\": 8}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"నీటి శుద్ధి కేంద్రం",
+"నీటి శుద్ధి",
+"వాటర్ ట్రీట్‌మెంట్",
+"వాటర్ ప్లాంట్",
+"తాగు నీటి కేంద్రం",
+"ఫిల్టర్ బెడ్",
+"water treatment",
+"water plant",
+"wtp",
+"water works"
+],
+"powerName": "🚰 నీటి ప్రవాహం",
+"outdoor": true,
+"walk": [
+"నది ఒడ్డున",
+"ఏరేటర్ దగ్గర",
+"క్లారిఫైయర్ అంచున",
+"ఫిల్టర్ గ్యాలరీలో",
+"పంప్ హౌస్ లోపల",
+"ఓవర్‌హెడ్ ట్యాంక్ పైన",
+"వీధి కుళాయి దగ్గర"
+],
+"switches": [
+{
+"id": "monsoon",
+"menu": "🌧️ వానాకాలం వరద (బురద నీరు)",
+"words": [
+"వానాకాలం వరద",
+"వరద",
+"బురద నీరు",
+"వానాకాలం",
+"monsoon",
+"flood",
+"నది వరద"
+],
+"offWords": [
+"వరద తగ్గింది",
+"మామూలు నీరు",
+"ఎండాకాలం నీరు",
+"వరద ఆపు",
+"monsoon off",
+"flood over"
+],
+"on": "🌧️ నదికి వరద Sir: నీరు గోధుమ రంగు, బురద 400 NTU. పటిక మోతాదు 20 నుంచి 60 కి పెంచారు; క్లారిఫైయర్ ఎక్కువ పని చేస్తోంది, అయినా ఫిల్టర్ తర్వాత నీరు 0.4 NTU: తాగడానికి సురక్షితం.",
+"off": "☀️ వరద తగ్గింది Sir: నది నీరు మళ్ళీ 60 NTU, పటిక మోతాదు తగ్గించారు."
+},
+{
+"id": "backwash",
+"menu": "🫧 ఫిల్టర్ కడుగు (బ్యాక్‌వాష్)",
+"words": [
+"ఫిల్టర్ కడుగు",
+"బ్యాక్‌వాష్",
+"ఇసుక కడుగు",
+"ఫిల్టర్ శుభ్రం",
+"backwash",
+"filter wash"
+],
+"offWords": [
+"కడగడం ఆపు",
+"బ్యాక్‌వాష్ ఆపు",
+"ఫిల్టర్ మళ్ళీ వేయి",
+"backwash off",
+"wash over"
+],
+"on": "🫧 రెండో ఇసుక బెడ్‌ని వెనక్కి కడుగుతున్నాను Sir: కింద నుంచి గాలి, శుద్ధ నీరు పైకి వస్తున్నాయి; మురికి లేచి గోధుమ నీరుగా కాలువలో వెళ్తోంది. మిగతా మూడు బెడ్లు పని చేస్తూనే ఉన్నాయి.",
+"off": "✅ బెడ్ శుభ్రమైంది Sir: మళ్ళీ వడకడుతోంది."
+}
+],
+"power": {
+"start": "నీటి ప్రవాహం మొదలైంది Sir: రోజుకి సుమారు 12 MLD లెక్కన.",
+"full": "ఫుల్ ప్రవాహం Sir: 20 MLD, గంటకి 8 లక్షల లీటర్లు, లక్షన్నర మందికి.",
+"half": "సగం ప్రవాహం Sir: సుమారు 10 MLD.",
+"stop": "ప్రవాహం ఆపాను Sir. ఓవర్‌హెడ్ ట్యాంక్ నిల్వతో ఊరికి కొన్ని గంటలు నీరు వస్తుంది.",
+"over": "కేంద్రం సామర్థ్యం కంటే ఎక్కువ నీరు పంపాం Sir: క్లారిఫైయర్‌లో బురద కూర్చోడానికి సమయం చాలక ఫిల్టర్ తర్వాత 2.5 NTU. ల్యాబ్ హెచ్చరించింది: ప్రవాహం తగ్గించాలి.",
+"cut": "ప్రవాహం తగ్గించాను Sir: మళ్ళీ 0.4 NTU, సురక్షితం."
+},
+"info": {
+"కేంద్రం స్థలం": {
+"simple": "నీటి శుద్ధి కేంద్రం: ఎడమ వైపు నది నీరు వస్తుంది, కుడి వైపు తాగే నీరు ఊరికి వెళ్తుంది.",
+"deep": "రోజుకి 2 కోట్ల లీటర్లు (20 MLD): సుమారు లక్షన్నర మందికి సరిపోతుంది. నీరు ఎక్కువ దూరం తన వాలులోనే ప్రవహించేలా కేంద్రం కడతారు.",
+"specs": {
+"సామర్థ్యం": "20 MLD (రోజుకి 2 కోట్ల లీటర్లు)"
+}
+},
+"నది": {
+"simple": "నది: కేంద్రానికి నీరు ఇక్కడి నుంచే. ఇందులో మట్టి, ఆకులు, క్రిములు ఉంటాయి.",
+"deep": "'వానాకాలం వరద' అంటే నీరు బురదగా మారి కేంద్రం ఎలా తట్టుకుంటుందో చూపిస్తాను.",
+"specs": {
+"బురద": "మామూలుగా 60, వరదలో 400+ NTU"
+}
+},
+"చెట్లు": {
+"simple": "కేంద్రం చుట్టూ చెట్లు, పచ్చిక.",
+"deep": "పచ్చిక దుమ్ము లేవకుండా ఆపుతుంది: తెరిచిన ట్యాంకుల్లో దుమ్ము పడకూడదు.",
+"specs": {
+"పని": "దుమ్ము తగ్గింపు"
+}
+},
+"ఇన్‌టేక్ బావి": {
+"simple": "ఇన్‌టేక్ బావి: నదిలో నిలబడిన టవర్. ఇనుప జల్లెడ గుండా నీరు లోపలికి వస్తుంది; చెత్త, చేపలు బయటే.",
+"deep": "వేర్వేరు ఎత్తుల్లో గేట్లు: పై పొర నీరు శుభ్రంగా ఉంటే పైది, వేసవిలో నీరు తగ్గితే కిందిది తెరుస్తారు.",
+"specs": {
+"జల్లెడ": "ఇనుప కడ్డీలు"
+}
+},
+"రా వాటర్ పంప్ హౌస్": {
+"simple": "రా వాటర్ పంప్ హౌస్: నది నీటిని కేంద్రం పైకి ఎత్తే పంపులు.",
+"deep": "ఒకటి నడుస్తుంది, ఒకటి సిద్ధంగా ఉంటుంది (స్టాండ్‌బై).",
+"specs": {
+"పంపులు": "2 (1 స్టాండ్‌బై)"
+}
+},
+"ఏరేటర్": {
+"simple": "ఇది ఏరేటర్: నీరు మెట్ల మీదుగా జలపాతంలా పడుతుంది. గాలి కలిసి చెడు వాసన, వాయువులు పోతాయి.",
+"deep": "నీటిలో కరిగిన ఇనుము గాలిలోని ఆక్సిజన్‌తో కలిసి తుప్పు రేణువులవుతుంది: తర్వాత ఫిల్టర్‌లో ఆగిపోతుంది. ఆక్సిజన్ కలిస్తే నీటి రుచి బాగుంటుంది.",
+"specs": {
+"మెట్లు": "4",
+"పని": "వాసన, ఇనుము తొలగింపు"
+}
+},
+"ఆలమ్ డోసింగ్": {
+"simple": "ఆలమ్ డోసింగ్: పటిక (ఆలమ్) ద్రావణం కలిపి, వేగంగా తిరిగే మిక్సర్‌తో క్షణాల్లో నీటంతా కలుపుతారు.",
+"deep": "మట్టి రేణువులు చాలా చిన్నవి, రోజుల తరబడి తేలుతూనే ఉంటాయి. పటిక వాటిని ఒకదానికొకటి అతికిస్తుంది (కోయాగులేషన్). అమ్మమ్మలు బిందె నీటిలో పటిక తిప్పేవారు: అదే పద్ధతి.",
+"specs": {
+"మోతాదు": "లీటర్‌కి సుమారు 20–60 mg"
+}
+},
+"క్లారిఫ్లోక్యులేటర్": {
+"simple": "ఇది క్లారిఫ్లోక్యులేటర్: 22 m వెడల్పు గుండ్రని ట్యాంక్. మధ్యలో నెమ్మదిగా కలిపితే మట్టి పెద్ద ముద్దలవుతుంది; బయటి వలయంలో నీరు నిలకడగా ఉండి ముద్దలు అడుగుకి చేరతాయి.",
+"deep": "తేట నీరు అంచు మీదుగా పొర్లి కాలువలోకి వెళ్తుంది. నీరు ఇందులో సుమారు 2–3 గంటలు ఉంటుంది. 90% బురద ఇక్కడే పోతుంది.",
+"specs": {
+"వెడల్పు": "సుమారు 22 m",
+"సమయం": "2–3 గంటలు",
+"బురద తగ్గింపు": "60 → 8 NTU"
+}
+},
+"తిరిగే వంతెన": {
+"simple": "తిరిగే వంతెన: గంటకి రెండు మూడు చుట్లు మాత్రమే. దాని కింది స్క్రేపర్ అడుగున చేరిన బురదని మధ్యకి తోస్తుంది.",
+"deep": "వంతెన చివర చక్రం ట్యాంక్ అంచు మీద నడుస్తుంది. మధ్యలో ప్యాడిల్‌లు నెమ్మదిగా తిరుగుతాయి: వేగంగా తిప్పితే ముద్దలు విరిగిపోతాయి.",
+"specs": {
+"వేగం": "గంటకి 2–3 చుట్లు"
+}
+},
+"బురద ఆరబెట్టే బెడ్లు": {
+"simple": "బురద ఆరబెట్టే బెడ్లు: క్లారిఫైయర్ అడుగు బురదని ఎండలో ఆరబెడతారు.",
+"deep": "ఆరిన బురదని గుంతలు పూడ్చడానికి, ఇటుకల తయారీలో వాడతారు. నీటిని తిరిగి నదిలోకి వదలకుండా మళ్ళీ కేంద్రంలోకే తీసుకుంటారు.",
+"specs": {
+"ఆరడానికి": "1–2 వారాలు"
+}
+},
+"ఇసుక ఫిల్టర్ బెడ్లు": {
+"simple": "ఇవి ఇసుక ఫిల్టర్ బెడ్లు: నీరు మీటర్ మందం ఇసుక, కంకర గుండా కిందికి ఇంకుతుంది. మిగిలిన సన్నని రేణువులు ఇసుకలో ఆగిపోతాయి.",
+"deep": "ఇసుక మురికితో నిండితే వెనక్కి కడుగుతారు: కింద నుంచి గాలి, తర్వాత శుద్ధ నీరు పైకి నెట్టి మురికిని లేపి కాలువలో పంపేస్తారు. 'ఫిల్టర్ కడుగు' అంటే చూపిస్తాను.",
+"specs": {
+"బెడ్లు": "4",
+"ఇసుక": "సుమారు 75 cm + కంకర",
+"బురద": "8 → 0.4 NTU"
+}
+},
+"పైపు గ్యాలరీ": {
+"simple": "పైపు గ్యాలరీ: నీలం పైపు లోపలికి వచ్చే నీరు, పచ్చది వడకట్టిన నీరు, గోధుమది కడిగిన మురికి నీరు.",
+"deep": "ప్రతి బెడ్‌కి వాల్వ్‌లు: ఒక బెడ్ కడుగుతున్నప్పుడు మిగతా మూడు పని చేస్తూనే ఉంటాయి.",
+"specs": {
+"రంగులు": "నీలం, పచ్చ, గోధుమ"
+}
+},
+"ఫిల్టర్ హౌస్ పైకప్పు": {
+"simple": "ఫిల్టర్ హౌస్ పైకప్పు: ఎండ తగిలితే నీటిలో నాచు పెరుగుతుంది, అందుకే నీడ. 'పైకప్పు తీయి' అంటే లేస్తుంది.",
+"deep": "పక్షుల రెట్టలు, ఆకులు పడకుండా కూడా.",
+"specs": {
+"పని": "నీడ: నాచు పెరగకుండా"
+}
+},
+"ఫిల్టర్ హౌస్ స్తంభాలు": {
+"simple": "ఫిల్టర్ హౌస్ స్తంభాలు, నడక దారి, మెట్లు.",
+"deep": "ఆపరేటర్ ఈ దారిలో నడుస్తూ ప్రతి బెడ్ నీటి మట్టం, వాల్వ్‌లు చూస్తాడు.",
+"specs": {
+"పని": "నడక దారి"
+}
+},
+"క్లోరిన్ గది": {
+"simple": "క్లోరిన్ గది: వడకట్టిన నీటిలో కొద్దిగా క్లోరిన్ కలిపి మిగిలిన క్రిములని చంపుతారు.",
+"deep": "క్లోరిన్ కొంత నీటిలోనే మిగిలి ఉండాలి (మీ కుళాయి దగ్గర 0.2 ppm): పైపుల్లో దారిలో క్రిములు చేరినా చంపుతుంది. క్లోరిన్ వాయువు విషం: ఈ గదికి శిక్షణ ఉన్నవారే వెళ్తారు.",
+"specs": {
+"మోతాదు": "సుమారు 0.5–1 ppm",
+"కుళాయి దగ్గర": "0.2 ppm"
+}
+},
+"శుద్ధ నీటి ట్యాంక్": {
+"simple": "శుద్ధ నీటి ట్యాంక్: తాగడానికి సిద్ధమైన నీటి నిల్వ. క్లోరిన్ పని చేయడానికి ఇక్కడ అరగంట సమయం దొరుకుతుంది.",
+"deep": "మూత తీస్తే తేట నీలం నీరు కనిపిస్తుంది. నిల్వ ఉంటే కరెంట్ పోయినా కొన్ని గంటలు సరఫరా ఆగదు.",
+"specs": {
+"నిల్వ": "కొన్ని గంటలది"
+}
+},
+"ట్యాంక్ మూత": {
+"simple": "ట్యాంక్ మూత: శుద్ధ నీటిలో దుమ్ము, ఎండ, దోమలు పడకుండా. 'పైకప్పు తీయి' అంటే లేస్తుంది.",
+"deep": "గాలి గొట్టాలకి వల ఉంటుంది. మీ ఇంటి ట్యాంక్‌కి కూడా గట్టి మూత ముఖ్యం.",
+"specs": {
+"పని": "శుభ్రత"
+}
+},
+"పంపులు": {
+"simple": "పంపులు: శుద్ధ నీటిని ఓవర్‌హెడ్ ట్యాంక్ పైకి ఎత్తుతాయి.",
+"deep": "మూడు పంపులు: రెండు నడుస్తాయి, ఒకటి స్టాండ్‌బై. కేంద్రం కరెంట్ బిల్లులో ఎక్కువ భాగం పంపింగ్‌దే.",
+"specs": {
+"పంపులు": "3",
+"ఎత్తు": "సుమారు 25 m"
+}
+},
+"పంప్ హౌస్ గోడలు": {
+"simple": "పంప్ హౌస్ గోడలు: లోపలి యంత్రాలని ఎండ, వాన, దుమ్ము నుంచి కాపాడతాయి. 'పైకప్పు తీయి' రెండు సార్లు అంటే ఇవీ లేస్తాయి.",
+"deep": "ఉక్కు స్తంభాల మీద రేకుల గోడలు; కిటికీలు వెలుతురు, గాలి కోసం. రాత్రి కిటికీల్లో లైట్లు కనిపిస్తాయి.",
+"specs": {
+"పని": "రక్షణ"
+}
+},
+"పంప్ హౌస్ పైకప్పు": {
+"simple": "పంప్ హౌస్ పైకప్పు. 'పైకప్పు తీయి' అంటే లేచి లోపల కనిపిస్తుంది.",
+"deep": "వాలు రేకుల పైకప్పు: వాన నీరు జారిపోతుంది. నిజమైన ఫ్యాక్టరీల్లో పైన గాలి పోయే వెంట్లు ఉంటాయి.",
+"specs": {
+"పని": "నీడ, రక్షణ"
+}
+},
+"ఓవర్‌హెడ్ ట్యాంక్": {
+"simple": "ఇది ఓవర్‌హెడ్ ట్యాంక్: 20 m ఎత్తులో నీరు. ఎత్తు వల్ల నీరు తన బరువుతోనే ప్రతి ఇంటి కుళాయికి చేరుతుంది.",
+"deep": "ప్రతి 10 m ఎత్తుకి 1 bar ఒత్తిడి. ట్యాంక్ ఎత్తు కంటే ఎత్తైన అంతస్తులకి నీరు ఎక్కదు: అందుకే అపార్ట్‌మెంట్లలో సంప్, మోటార్. '🚶 ఓవర్‌హెడ్ ట్యాంక్ పైన' అంటే పైకి ఎక్కి మొత్తం కేంద్రం చూడొచ్చు.",
+"specs": {
+"ఎత్తు": "సుమారు 20 m",
+"నిల్వ": "20 లక్షల లీటర్లు",
+"ఒత్తిడి": "సుమారు 2 bar"
+}
+},
+"ఊరి ఇళ్ళు": {
+"simple": "ఊరి ఇళ్ళు, వీధి కుళాయి: శుద్ధి చేసిన నీరు పైపుల్లో ఇక్కడికి వస్తుంది.",
+"deep": "ఒక మనిషికి రోజుకి సుమారు 135 లీటర్లు లెక్క (తాగడం, వంట, స్నానం, బట్టలు). దారిలో పైపు లీకుల వల్ల చాలా నీరు వృథా అవుతుంది.",
+"specs": {
+"ఒక మనిషికి": "రోజుకి సుమారు 135 లీటర్లు"
+}
+},
+"ల్యాబ్": {
+"simple": "ల్యాబ్: ప్రతి గంటకి నీటి నమూనాలు పరీక్షిస్తారు.",
+"deep": "బురద (NTU), pH, మిగిలిన క్లోరిన్ ప్రతి గంటకి; క్రిముల పరీక్ష రోజూ. తాగే నీటి బురద 1 NTU లోపు ఉండాలి.",
+"specs": {
+"ప్రమాణం": "1 NTU లోపు"
+}
+}
+},
+"facts": [
+{
+"k": [
+"నీరు ఎలా శుద్ధి",
+"ఎలా శుభ్రం",
+"how is water",
+"శుద్ధి ఎలా",
+"దశలు"
+],
+"a": "ఐదు దశలు Sir: ఏరేటర్‌లో గాలి కలపడం; పటిక కలిపి క్లారిఫైయర్‌లో బురద అడుగుకి చేర్చడం; ఇసుక ఫిల్టర్‌లో వడకట్టడం; క్లోరిన్‌తో క్రిములు చంపడం; ఓవర్‌హెడ్ ట్యాంక్ నుంచి ఊరికి."
+},
+{
+"k": [
+"పటిక ఎందుకు",
+"ఆలమ్",
+"alum",
+"పటిక"
+],
+"a": "మట్టి రేణువులు చాలా చిన్నవి, వాటంతట అవి అడుగుకి చేరవు Sir. పటిక వాటిని ఒకదానికొకటి అతికించి పెద్ద ముద్దలు చేస్తుంది: అవి బరువై క్లారిఫైయర్ అడుగుకి చేరతాయి. పటిక కూడా ఆ బురదతోనే వెళ్ళిపోతుంది."
+},
+{
+"k": [
+"క్లోరిన్ ఎందుకు",
+"క్లోరిన్ వాసన",
+"chlorine",
+"బ్లీచింగ్"
+],
+"a": "క్లోరిన్ కలరా, టైఫాయిడ్ లాంటి జబ్బుల క్రిములని చంపుతుంది Sir. కుళాయి నీటిలో కొద్దిగా క్లోరిన్ వాసన వస్తే అది మంచి గుర్తు: దారిలో పైపుల్లో కూడా నీరు రక్షణలో ఉందని. ఆ మోతాదు (0.2 ppm) ఆరోగ్యానికి హాని లేదు; గిన్నెలో కాసేపు ఉంచితే వాసన పోతుంది."
+},
+{
+"k": [
+"ntu",
+"బురద అంటే",
+"turbidity",
+"ఎన్ టీ యూ"
+],
+"a": "NTU అంటే నీరు ఎంత మసకగా ఉందో కొలత Sir. నది నీరు 60, వరదలో 400 పైన; క్లారిఫైయర్ తర్వాత 8; ఇసుక ఫిల్టర్ తర్వాత 0.4. తాగే నీరు 1 లోపు ఉండాలి."
+},
+{
+"k": [
+"ఎంత మందికి",
+"ఎన్ని లీటర్లు",
+"135",
+"ఒక మనిషికి",
+"how many people"
+],
+"a": "ఒక మనిషికి రోజుకి సుమారు 135 లీటర్లు లెక్క Sir. ఈ కేంద్రం 2 కోట్ల లీటర్లు (20 MLD): సుమారు లక్షన్నర మందికి."
+},
+{
+"k": [
+"ట్యాంక్ ఎందుకు ఎత్తు",
+"ఓవర్‌హెడ్ ఎందుకు",
+"why overhead",
+"ఒత్తిడి ఎలా",
+"పైకి ఎందుకు"
+],
+"a": "ఎత్తులో ఉన్న నీరు తన బరువుతోనే పైపుల్లో ఒత్తిడి ఇస్తుంది Sir: ప్రతి 10 m కి 1 bar. అలా పంప్ లేకుండానే ప్రతి ఇంటికి చేరుతుంది, కరెంట్ పోయినా నీరు వస్తుంది."
+},
+{
+"k": [
+"కాచి తాగాలా",
+"ఫిల్టర్ కావాలా",
+"ro",
+"ఆర్వో",
+"సురక్షితమా",
+"safe"
+],
+"a": "కేంద్రం నుంచి బయలుదేరే నీరు తాగడానికి సురక్షితం Sir. కానీ దారిలో పాత పైపు లీకులు, మీ ఇంటి సంప్, ట్యాంక్ శుభ్రంగా లేకపోతే మళ్ళీ మురికి చేరొచ్చు. అందుకే ట్యాంక్‌ని ఆరు నెలలకోసారి కడగాలి; అనుమానం ఉంటే కాచి తాగడం మంచిది."
+},
+{
+"k": [
+"ఫిల్టర్ ఎలా కడుగుతారు",
+"బ్యాక్‌వాష్",
+"backwash",
+"ఇసుక మార్చాలా"
+],
+"a": "ఇసుకని మార్చరు Sir, వెనక్కి కడుగుతారు: కింద నుంచి గాలి ఊది ఇసుకని కదిలిస్తారు, తర్వాత శుద్ధ నీటిని కింద నుంచి పైకి నెడతారు. మురికి లేచి కాలువలో వెళ్ళిపోతుంది. రోజుకోసారి, పది నిమిషాలు."
+},
+{
+"k": [
+"ఏరేటర్ ఎందుకు",
+"జలపాతం ఎందుకు",
+"aerator",
+"గాలి ఎందుకు"
+],
+"a": "నీరు మెట్ల మీద పడేటప్పుడు గాలి కలుస్తుంది Sir: కుళ్ళిన వాసన వాయువులు బయటికి పోతాయి, కరిగిన ఇనుము తుప్పు రేణువులై తర్వాత ఫిల్టర్‌లో ఆగుతుంది, రుచి బాగుపడుతుంది."
+},
+{
+"k": [
+"నీరు ఆదా",
+"వృథా",
+"save water",
+"లీకేజీ"
+],
+"a": "శుద్ధి చేసిన ప్రతి లీటర్‌కి కరెంట్, రసాయనాలు, శ్రమ ఖర్చవుతాయి Sir. చుక్కలు కారే ఒక కుళాయి రోజుకి 20–30 లీటర్లు వృథా చేస్తుంది. లీకులు బాగు చేయడం, ట్యాంక్ పొంగకుండా చూడటం పెద్ద ఆదా."
+}
+],
+"quiz": [
+{
+"q": "జలపాతంలా నీటిలో గాలి కలిపేది ఏది?",
+"a": "ఏరేటర్",
+"opts": [
+"ఏరేటర్",
+"క్లారిఫ్లోక్యులేటర్",
+"ఓవర్‌హెడ్ ట్యాంక్"
+]
+},
+{
+"q": "బురద అడుగుకి చేరే పెద్ద గుండ్రని ట్యాంక్ ఏది?",
+"a": "క్లారిఫ్లోక్యులేటర్",
+"opts": [
+"శుద్ధ నీటి ట్యాంక్",
+"క్లారిఫ్లోక్యులేటర్",
+"ఇసుక ఫిల్టర్ బెడ్లు"
+]
+},
+{
+"q": "మిగిలిన సన్నని రేణువులని ఇసుకతో వడకట్టేవి ఏవి?",
+"a": "ఇసుక ఫిల్టర్ బెడ్లు",
+"opts": [
+"ఇసుక ఫిల్టర్ బెడ్లు",
+"బురద ఆరబెట్టే బెడ్లు",
+"పైపు గ్యాలరీ"
+]
+},
+{
+"q": "క్రిములని చంపే మందు ఎక్కడి నుంచి కలుస్తుంది?",
+"a": "క్లోరిన్ గది",
+"opts": [
+"ఆలమ్ డోసింగ్",
+"ల్యాబ్",
+"క్లోరిన్ గది"
+]
+},
+{
+"q": "ఎత్తు వల్ల ప్రతి కుళాయికి ఒత్తిడి ఇచ్చేది ఏది?",
+"a": "ఓవర్‌హెడ్ ట్యాంక్",
+"opts": [
+"ఓవర్‌హెడ్ ట్యాంక్",
+"పంపులు",
+"ఇన్‌టేక్ బావి"
+]
+},
+{
+"q": "మట్టి రేణువులని అతికించే పటిక ఎక్కడ కలుస్తుంది?",
+"a": "ఆలమ్ డోసింగ్",
+"opts": [
+"ఏరేటర్",
+"ఆలమ్ డోసింగ్",
+"రా వాటర్ పంప్ హౌస్"
+]
+}
+],
+"faults": [
+{
+"label": "పంపులు",
+"kind": "stop",
+"clue": "శుద్ధ నీటి ట్యాంక్ నిండుగా ఉంది Sir, కానీ ఓవర్‌హెడ్ ట్యాంక్ మట్టం పడిపోతోంది. ఏది ఆగింది?",
+"why": "పంప్ మోటార్ ఓవర్‌లోడ్‌లో ట్రిప్ అయింది (బేరింగ్ జామ్). స్టాండ్‌బై పంప్ వెంటనే ఆన్ చేస్తారు; పాడైన దాని బేరింగ్ మారుస్తారు."
+},
+{
+"label": "రా వాటర్ పంప్ హౌస్",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: ఏది మామూలు కంటే వేడిగా ఉంది?",
+"why": "రా వాటర్ పంప్ జల్లెడలో చెత్త ఇరుక్కుని నీరు తక్కువ వస్తోంది, మోటార్ వేడెక్కుతోంది. ఆపి జల్లెడ శుభ్రం చేస్తారు."
+},
+{
+"label": "తిరిగే వంతెన",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: ఎక్కడి నుంచి కీచు చప్పుడు? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "తిరిగే వంతెన చక్రం బేరింగ్‌కి గ్రీజ్ అయిపోయింది. వంతెన ఆగితే బురద పేరుకుని నీరు మళ్ళీ మసకబారుతుంది: గ్రీజ్ పెట్టి, బేరింగ్ చూస్తారు."
+},
+{
+"label": "ఆలమ్ డోసింగ్",
+"kind": "loose",
+"clue": "ఏది వణుకుతోంది Sir?",
+"why": "ఫ్లాష్ మిక్సర్ రెక్క ఒకటి వదులైంది. పటిక సరిగ్గా కలవకపోతే క్లారిఫైయర్‌లో బురద కూర్చోదు: ఆపి బిగిస్తారు."
+}
+],
+"film": [
+"🚰 తాగు నీటి శుద్ధి కేంద్రం",
+"నది → ఏరేటర్ → పటిక",
+"క్లారిఫైయర్: బురద అడుగుకి",
+"ఇసుక ఫిల్టర్ → క్లోరిన్",
+"ఓవర్‌హెడ్ ట్యాంక్ → కుళాయి",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ నీటి శుద్ధి కేంద్రం నిర్వహణ",
+"safety": "క్లోరిన్ వాయువు విషం Sir: ఆ గదికి మాస్క్, శిక్షణ ఉన్నవారే. తెరిచిన ట్యాంకుల దగ్గర రెయిలింగ్ దాటకూడదు. తాగే నీటి పని కాబట్టి శుభ్రత మొదటిది.",
+"steps": [
+{
+"say": "ప్రతి గంటకి నీటి నమూనా: బురద, pH, మిగిలిన క్లోరిన్. నది నీరు మారితే పటిక మోతాదు మారుస్తారు (జార్ టెస్ట్).",
+"label": "ల్యాబ్"
+},
+{
+"say": "ఇసుక ఫిల్టర్ బెడ్‌ని రోజుకోసారి వెనక్కి కడుగుతారు; నీరు నెమ్మదిగా ఇంకుతుంటే ముందే.",
+"label": "ఇసుక ఫిల్టర్ బెడ్లు"
+},
+{
+"say": "క్లారిఫైయర్ అడుగు బురదని రోజూ బురద బెడ్లకి వదులుతారు.",
+"label": "క్లారిఫ్లోక్యులేటర్"
+},
+{
+"say": "వంతెన చక్రాలు, ప్యాడిల్ గేర్‌బాక్స్‌లకి గ్రీజ్, ఆయిల్.",
+"label": "తిరిగే వంతెన"
+},
+{
+"say": "శుద్ధ నీటి ట్యాంక్, ఓవర్‌హెడ్ ట్యాంక్‌ని ఏడాదికి రెండు సార్లు ఖాళీ చేసి కడిగి, క్లోరిన్‌తో శుభ్రం చేస్తారు. మీ ఇంటి ట్యాంక్‌కి కూడా ఇదే.",
+"label": "ఓవర్‌హెడ్ ట్యాంక్"
+}
+]
+},
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"inside": {},
+"id": "water"
+}
+}

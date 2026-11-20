@@ -379,6 +379,8 @@ final class Workshop {
             "  W.day({start: hour 0..24, ground: '#colour'}) a sky with the 24-hour sun; read W.env.hour, W.env.dark (0..1, lamps on at dusk)",
             "  W.walk({eye: 165, speed: cm per second, spots: [{name: 'Telugu place', at: [x, floorY, z], look: [x, y, z]}], solid: [[x0, z0, x1, z1]]})",
             "    places he can walk to at a person's height; W.add(roof, {layer: 0, peelBy: [0, lift cm, 0]}) a roof that lifts away",
+            "  W.surface('concrete' | 'sheet' | 'plaster' | 'brick' | 'asphalt' | 'gravel' | 'soil' | 'grass' | 'wood' | 'rust', {color, world: true for land})",
+            "    a weathered real surface for its walls, roofs, roads and land (never flat toy colours on a building)",
             "",
             "HOW TO BUILD:",
             "- One part per real component (base, frame, motor, board, battery, blades, guard, lens, dial...), 8 to 14 parts, in the order a person",

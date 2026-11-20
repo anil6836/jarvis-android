@@ -91,6 +91,7 @@ const floor = new THREE.Mesh(new THREE.CircleGeometry(1, 96),
   new THREE.MeshStandardMaterial({ color: 0x0f1218, metalness: 0.5, roughness: 0.4, envMapIntensity: 0.45, transparent: true, alphaMap: fade(), depthWrite: false }));
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
+floor.material.userData.lay = true; // (🌾 outdoors its picture is laid by place: see surfLay)
 floor.renderOrder = -1;
 scene.add(floor);
 
@@ -2460,6 +2461,150 @@ kit.canvasTex = function (w = 256, h = 256) {
   return { texture: tex, ctx: c.getContext('2d'), w: c.width, h: c.height, update() { tex.needsUpdate = true; } };
 };
 
+// ---- 🧱 (Build 3) real surfaces: concrete with stains, ribbed sheets with rust streaks, worn paint, brick, soil, asphalt…
+// drawn here once each (no pictures come in from outside), and laid over a piece by where each point is (three sides,
+// blended), so a wall and a silo get the same grain at the same size without the part doing anything.
+const surfTex = new Map();
+function surfRand(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+function surfDraw(kind) {
+  const N = 256, c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d'), R = surfRand(kind.length * 7919 + kind.charCodeAt(0) * 131 + kind.charCodeAt(kind.length - 1));
+  const blot = (n, rMin, rMax, col, aMax) => { // soft blotches, wrapped round the edges so the tile repeats without a seam
+    for (let i = 0; i < n; i++) {
+      const x = R() * N, y = R() * N, r = rMin + R() * (rMax - rMin), a = aMax * (0.3 + 0.7 * R());
+      for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) {
+        if (x + dx + r < 0 || x + dx - r > N || y + dy + r < 0 || y + dy - r > N) continue;
+        const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+        gr.addColorStop(0, 'rgba(' + col + ',' + a + ')'); gr.addColorStop(1, 'rgba(' + col + ',0)');
+        g.fillStyle = gr; g.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
+      }
+    }
+  };
+  const speck = (n, col, aMax, sMax = 2) => { for (let i = 0; i < n; i++) { g.fillStyle = 'rgba(' + col + ',' + (aMax * R()) + ')'; const s = 1 + R() * (sMax - 1); g.fillRect(R() * N, R() * N, s, s); } };
+  const streaks = (n, col, aMax, wMax, lMin, lMax) => { // runs down a wall: rain, rust, oil
+    for (let i = 0; i < n; i++) {
+      const x = R() * N, y = R() * N, w = 1 + R() * wMax, l = lMin + R() * (lMax - lMin);
+      const gr = g.createLinearGradient(0, y, 0, y + l);
+      gr.addColorStop(0, 'rgba(' + col + ',' + (aMax * (0.4 + 0.6 * R())) + ')'); gr.addColorStop(1, 'rgba(' + col + ',0)');
+      g.fillStyle = gr; g.fillRect(x, y, w, l); if (y + l > N) g.fillRect(x, y - N, w, l);
+    }
+  };
+  g.fillStyle = '#e9e9e9'; g.fillRect(0, 0, N, N);
+  switch (kind) {
+    case 'concrete':
+      blot(60, 14, 70, '120,116,108', 0.16); blot(30, 10, 40, '255,255,250', 0.14); speck(5200, '60,58,54', 0.22); speck(1800, '255,255,255', 0.2);
+      streaks(26, '70,62,50', 0.28, 5, 40, 150);
+      g.fillStyle = 'rgba(40,38,36,0.2)'; for (const y of [0, 128]) g.fillRect(0, y, N, 1.5); // (the lines the casting boards leave)
+      for (let i = 0; i < 16; i++) { g.fillStyle = 'rgba(40,38,36,0.3)'; g.beginPath(); g.arc(8 + i * 16, 64, 1.6, 0, 6.3); g.fill(); g.beginPath(); g.arc(8 + i * 16, 192, 1.6, 0, 6.3); g.fill(); }
+      break;
+    case 'sheet': // ribbed steel sheets: light on each rib's crown, shade in each valley; rust runs from the laps
+      for (let x = 0; x < N; x += 16) {
+        const gr = g.createLinearGradient(x, 0, x + 16, 0);
+        gr.addColorStop(0, '#9a9a9a'); gr.addColorStop(0.3, '#f6f6f6'); gr.addColorStop(0.55, '#e2e2e2'); gr.addColorStop(0.8, '#a8a8a8'); gr.addColorStop(1, '#9a9a9a');
+        g.fillStyle = gr; g.fillRect(x, 0, 16, N);
+      }
+      blot(24, 20, 70, '110,104,96', 0.14);
+      g.fillStyle = 'rgba(30,28,26,0.4)'; g.fillRect(0, 0, N, 2);
+      streaks(34, '128,74,38', 0.4, 4, 30, 140); streaks(20, '60,52,44', 0.25, 6, 60, 200); speck(900, '120,70,40', 0.3);
+      break;
+    case 'rust':
+      blot(70, 10, 60, '150,84,40', 0.4); blot(50, 6, 30, '92,50,28', 0.4); blot(26, 10, 46, '210,200,190', 0.2); speck(4200, '70,36,20', 0.4); speck(1200, '230,160,90', 0.3);
+      streaks(22, '110,58,28', 0.4, 4, 30, 120);
+      break;
+    case 'paint': // a machine's paint after years of work: chips at the edges, oil runs, dust
+      blot(40, 20, 80, '90,90,90', 0.1); blot(26, 2, 7, '70,64,58', 0.5); blot(18, 1.5, 5, '225,225,220', 0.6); speck(1500, '50,50,50', 0.2);
+      streaks(16, '40,34,28', 0.3, 4, 40, 160); streaks(8, '130,78,40', 0.3, 3, 20, 90);
+      break;
+    case 'plaster': // a painted wall: damp at the foot, rain marks under the top
+      blot(46, 20, 90, '140,136,126', 0.12); blot(30, 10, 50, '255,255,255', 0.12); speck(2600, '90,88,80', 0.14);
+      streaks(22, '90,84,70', 0.22, 7, 40, 170);
+      { const gr = g.createLinearGradient(0, N - 46, 0, N); gr.addColorStop(0, 'rgba(84,90,70,0)'); gr.addColorStop(1, 'rgba(84,90,70,0.34)'); g.fillStyle = gr; g.fillRect(0, N - 46, N, 46); }
+      break;
+    case 'brick': {
+      g.fillStyle = '#b9b3a8'; g.fillRect(0, 0, N, N);
+      const bw = 32, bh = 16;
+      for (let r = 0; r < N / bh; r++) for (let k = -1; k < N / bw; k++) {
+        const x = k * bw + (r % 2 ? bw / 2 : 0), v = 150 + Math.floor(R() * 90);
+        g.fillStyle = 'rgb(' + v + ',' + Math.floor(v * 0.86) + ',' + Math.floor(v * 0.8) + ')';
+        g.fillRect(x + 1.5, r * bh + 1.5, bw - 3, bh - 3); if (x + bw > N) g.fillRect(x - N + 1.5, r * bh + 1.5, bw - 3, bh - 3);
+      }
+      speck(2600, '40,30,26', 0.25); blot(24, 14, 50, '60,56,50', 0.16); streaks(10, '230,228,220', 0.25, 5, 30, 90);
+      break;
+    }
+    case 'asphalt':
+      g.fillStyle = '#d2d2d2'; g.fillRect(0, 0, N, N);
+      speck(9000, '30,30,32', 0.5); speck(4200, '255,255,255', 0.36); blot(22, 20, 70, '60,60,64', 0.2); blot(12, 16, 50, '235,230,220', 0.14);
+      g.strokeStyle = 'rgba(20,20,22,0.5)'; g.lineWidth = 1;
+      for (let i = 0; i < 5; i++) { g.beginPath(); let x = R() * N, y = R() * N; g.moveTo(x, y); for (let k = 0; k < 7; k++) { x += (R() - 0.5) * 40; y += (R() - 0.3) * 30; g.lineTo(x, y); } g.stroke(); }
+      break;
+    case 'gravel':
+      g.fillStyle = '#cfcfcf'; g.fillRect(0, 0, N, N);
+      for (let i = 0; i < 2600; i++) { const v = 120 + Math.floor(R() * 135); g.fillStyle = 'rgb(' + v + ',' + (v - 4) + ',' + (v - 10) + ')'; g.beginPath(); g.arc(R() * N, R() * N, 0.8 + R() * 2.4, 0, 6.3); g.fill(); }
+      blot(18, 20, 60, '70,66,58', 0.16);
+      break;
+    case 'soil':
+      blot(70, 12, 70, '120,96,70', 0.22); blot(40, 10, 50, '255,244,224', 0.16); speck(5200, '70,54,40', 0.3); speck(1600, '255,250,240', 0.24, 3);
+      for (let i = 0; i < 120; i++) { g.fillStyle = 'rgba(90,84,76,' + (0.3 + 0.4 * R()) + ')'; g.beginPath(); g.arc(R() * N, R() * N, 0.8 + R() * 2, 0, 6.3); g.fill(); }
+      break;
+    case 'grass':
+      g.fillStyle = '#dcdcdc'; g.fillRect(0, 0, N, N);
+      blot(90, 10, 60, '70,96,48', 0.3); blot(60, 8, 44, '250,244,170', 0.2); blot(26, 10, 50, '150,120,84', 0.22);
+      for (let i = 0; i < 5200; i++) { g.strokeStyle = 'rgba(' + (R() < 0.5 ? '50,84,36' : '236,244,170') + ',' + (0.3 * R()) + ')'; const x = R() * N, y = R() * N; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (R() - 0.5) * 3, y - 2 - R() * 3); g.stroke(); }
+      break;
+    case 'wood':
+      for (let x = 0; x < N; x += 32) { const v = 200 + Math.floor(R() * 50); g.fillStyle = 'rgb(' + v + ',' + (v - 8) + ',' + (v - 20) + ')'; g.fillRect(x, 0, 31, N); g.fillStyle = 'rgba(40,26,14,0.5)'; g.fillRect(x + 31, 0, 1, N); }
+      for (let i = 0; i < 520; i++) { g.strokeStyle = 'rgba(70,44,22,' + (0.26 * R()) + ')'; const x = R() * N, y = R() * N, l = 20 + R() * 90; g.beginPath(); g.moveTo(x, y); g.bezierCurveTo(x + 1.5, y + l / 3, x - 1.5, y + 2 * l / 3, x + (R() - 0.5) * 2, y + l); g.stroke(); }
+      blot(10, 3, 7, '60,36,18', 0.4);
+      break;
+    case 'tile': // a factory floor: worn paint, tyre marks, joints
+      blot(40, 20, 80, '100,100,96', 0.14); speck(3200, '60,60,58', 0.2); blot(18, 4, 14, '40,36,30', 0.3);
+      g.fillStyle = 'rgba(40,40,40,0.34)'; g.fillRect(0, 0, N, 1.5); g.fillRect(0, 0, 1.5, N);
+      break;
+    default: // 'metal': bare steel plate, a little stained
+      blot(40, 16, 70, '110,110,116', 0.16); speck(2200, '80,80,84', 0.2); streaks(14, '70,66,60', 0.2, 4, 30, 130); blot(12, 6, 20, '150,96,52', 0.2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+const SURF = { concrete: ['#c9c5bb', 0.9, 0, 400], sheet: ['#aab7c2', 0.58, 0.2, 300], rust: ['#b98a6a', 0.78, 0.15, 300], paint: ['#3f6e9a', 0.5, 0.18, 300],
+  plaster: ['#e6e1d4', 0.88, 0, 400], brick: ['#b8644a', 0.88, 0, 240], asphalt: ['#5a5d61', 0.92, 0, 500], gravel: ['#a9a59a', 0.95, 0, 400],
+  soil: ['#9a7f5e', 0.96, 0, 600], grass: ['#6f8a4c', 0.96, 0, 700], wood: ['#9a6a3c', 0.72, 0, 240], tile: ['#b9b6ad', 0.8, 0, 400], metal: ['#b4bac0', 0.5, 0.35, 300] };
+/** Lays a material's picture over a piece by where each point is (not by the mesh's own UVs): three sides blended, and the
+ *  same picture again much larger and fainter over it, so the eye finds no repeating tiles on a long wall or a wide land. */
+function surfLay(m, per, world) {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTile = { value: per };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vTriP;\nvarying vec3 vTriN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + (world
+        ? 'vec4 triW = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\ntriW = instanceMatrix * triW;\n#endif\nvTriP = (modelMatrix * triW).xyz;\nvTriN = normalize(mat3(modelMatrix) * objectNormal);'
+        : 'vTriP = transformed;\nvTriN = objectNormal;'));
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vTriP;\nvarying vec3 vTriN;\nuniform float uTile;')
+      .replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\n#ifdef USE_MAP\nvec3 triTex(vec3 q, vec3 b) { return texture2D(map, vec2(q.z, -q.y)).rgb * b.x + texture2D(map, q.xz).rgb * b.y + texture2D(map, vec2(q.x, -q.y)).rgb * b.z; }\n#endif')
+      .replace('#include <map_fragment>', '#ifdef USE_MAP\nvec3 triB = pow(abs(normalize(vTriN)), vec3(8.0));\ntriB /= (triB.x + triB.y + triB.z);\nvec3 triQ = vTriP * uTile;\n'
+        + 'vec3 triC = triTex(triQ, triB);\nfloat triL = dot(triTex(triQ * 0.137 + 0.31, triB), vec3(0.333));\n'
+        + (world ? 'triL *= 0.55 + 0.55 * dot(triTex(triQ * 0.023 + 0.67, triB), vec3(0.333));\n' : '')
+        + 'diffuseColor.rgb *= triC * (0.62 + 0.46 * triL);\n#endif');
+  };
+  m.customProgramCacheKey = () => (world ? 'surf-w' : 'surf-o');
+}
+/** A real surface: W.surface('concrete' | 'sheet' | 'rust' | 'paint' | 'plaster' | 'brick' | 'asphalt' | 'gravel' | 'soil' | 'grass' | 'wood' | 'tile' | 'metal',
+ *  { color, tile (cm of one repeat), rough, metallic, world (true: for land and for pieces whose mesh is scaled) }). */
+kit.surface = function (kind = 'concrete', o = {}) {
+  const k = SURF[String(kind)] ? String(kind) : 'metal', d = SURF[k];
+  if (!surfTex.has(k)) surfTex.set(k, surfDraw(k));
+  const m = new THREE.MeshStandardMaterial({ color: colour(o.color, d[0]), map: surfTex.get(k), roughness: numOr(o.rough, 0, 1, d[1]),
+    metalness: numOr(o.metallic, 0, 1, d[2]), envMapIntensity: 0.9 });
+  surfLay(m, 1 / numOr(o.tile, 0.01, 100000, d[3]), !!o.world);
+  m.userData.kind = 'surface ' + k;
+  return m;
+};
+
+surfLay(floor.material, 1 / 900, true);
+
 const heatSpec = (s) => {
   if (Array.isArray(s)) return { idle: +s[0] || 30, full: +s[1] || +s[0] || 30 };
   if (s && typeof s === 'object') return { idle: numOr(s.idle, -40, 1500, 30), full: numOr(s.full, -40, 1500, numOr(s.idle, -40, 1500, 30)) };
@@ -2631,7 +2776,9 @@ model.add(streamGroup);
 const streams = [];
 const STREAM_COL = { cool: [0x63ccff, 0x63ccff], air: [0x63ccff, 0xff9840], warm: [0xffb84a, 0xff5a1f], hot: [0xffa848, 0xff3a14],
   gas: [0xffd27a, 0xff4a18], water: [0x3aa6ff, 0x7fd8ff], fuel: [0xb48cff, 0xd6b8ff], power: [0xffd84d, 0xfff2a8], regen: [0x7dff9b, 0x2fd8a0],
-  coal: [0xc9a27a, 0x8f7a66], smoke: [0xb8c0c8, 0x8a929c], steam: [0xff5a2a, 0xffc08a], sun: [0xfff2a8, 0xffb43a] }; // (🏭 coal, flue gas, steam, sunlight)
+  coal: [0xc9a27a, 0x8f7a66], smoke: [0xb8c0c8, 0x8a929c], steam: [0xff5a2a, 0xffc08a], sun: [0xfff2a8, 0xffb43a], // (🏭 coal, flue gas, steam, sunlight)
+  grain: [0xf0cf6e, 0xd9a441], cane: [0xa6d66e, 0x7fae4a], powder: [0xd9dce0, 0xa9aeb5], milk: [0xffffff, 0xeaf2ff], oil: [0xf6c62e, 0xe09a16],
+  juice: [0xc9e36a, 0xe0b23a], signal: [0xb08cff, 0x6fd6ff] }; // (🏭 factories: grain, sugar cane, cement powder, milk, oil, cane juice; 📶 radio)
 const streamGeo = new THREE.CylinderGeometry(0.16, 0.16, 2.4, 5, 1, true).rotateX(Math.PI / 2);
 const ZAX = new THREE.Vector3(0, 0, 1);
 function addStream(rec, points, o = {}) {
@@ -2640,7 +2787,7 @@ function addStream(rec, points, o = {}) {
   const curve = new THREE.CatmullRomCurve3(pts, !!o.loop);
   const len = Math.max(0.01, curve.getLength());
   const n = Math.max(4, Math.min(220, Math.round(o.count || 36)));
-  const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false });
   const mesh = new THREE.InstancedMesh(streamGeo, mat, n);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false;
@@ -3106,10 +3253,16 @@ skyGroup.visible = false;
 scene.add(skyGroup);
 const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false,
-  uniforms: { uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uLow: { value: new THREE.Color() } },
+  uniforms: { uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uLow: { value: new THREE.Color() },
+    uCloud: { value: new THREE.Color() }, uT: { value: 0 }, uCover: { value: 0.55 } }, // (☁️ Build 3: drifting clouds, lit by the hour)
   vertexShader: 'varying vec3 vP;\nvoid main() { vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: 'uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uHor; uniform vec3 uLow; varying vec3 vP;\nvoid main() {\n  float y = vP.y;\n'
+  fragmentShader: 'uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uHor; uniform vec3 uLow; uniform vec3 uCloud; uniform float uT; uniform float uCover; varying vec3 vP;\n'
+    + 'float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n'
+    + 'float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + vec2(1.0, 1.0)), f.x), f.y); }\n'
+    + 'float fbm(vec2 p) { float a = 0.5, s = 0.0; for (int k = 0; k < 4; k++) { s += a * n2(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }\n'
+    + 'void main() {\n  float y = normalize(vP).y;\n'
     + '  vec3 c = y > 0.0 ? mix(mix(uHor, uMid, smoothstep(0.0, 0.2, y)), uTop, smoothstep(0.2, 0.8, y)) : mix(uHor, uLow, smoothstep(0.0, 0.12, -y));\n'
+    + '  if (y > 0.0) { vec3 d = normalize(vP); vec2 q = d.xz / (y + 0.16) * 1.3 + vec2(uT, uT * 0.4); float cl = smoothstep(1.0 - uCover, 1.22 - uCover, fbm(q)) * smoothstep(0.015, 0.22, y); c = mix(c, uCloud, cl * 0.82); }\n'
     + '  gl_FragColor = vec4(c, 1.0);\n  #include <colorspace_fragment>\n}' });
 const skyDome = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), skyMat);
 skyDome.renderOrder = -3;
@@ -3129,7 +3282,7 @@ const starGeo = new THREE.BufferGeometry();
   }
   starGeo.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
 }
-const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, fog: false }));
 stars.raycast = () => {};
 skyGroup.add(stars);
 const SKY = { // [top, mid, horizon, below]: the night, the dawn / dusk, the day
@@ -3154,6 +3307,9 @@ function dayStart(rec, o) {
   floor.material.metalness = 0;
   floor.material.roughness = 0.96;
   floor.material.envMapIntensity = 0.25;
+  if (!surfTex.has('grass')) surfTex.set('grass', surfDraw('grass'));
+  floor.material.map = surfTex.get('grass'); floor.material.needsUpdate = true; // (🌾 Build 3: the land has a grain, not one flat colour)
+  if (!day.fog) day.fog = new THREE.Fog(0xcde6f8, 1, 1000);
   controls.maxPolarAngle = Math.PI / 2 - 0.03; // (outdoors: never under the ground)
   if (o.zoom != null) goal.zoom = numOr(+o.zoom, 0.3, 3, 1); // (a wide town: start a little closer to its middle)
   goal.dir = new THREE.Vector3().fromArray(VIEWS.iso).normalize();
@@ -3167,8 +3323,10 @@ function dayOff() {
   if (day.floorWas) {
     floor.material.color.copy(day.floorWas.c); floor.material.metalness = day.floorWas.m;
     floor.material.roughness = day.floorWas.r; floor.material.envMapIntensity = day.floorWas.e;
+    floor.material.map = null; floor.material.needsUpdate = true;
     day.floorWas = null;
   }
+  scene.fog = null;
   controls.maxPolarAngle = Math.PI;
   key.color.set(0xffffff);
   hemi.color.set(0xdfe8ff);
@@ -3188,8 +3346,8 @@ function dayStep(dt) {
   if (!day.on) return;
   if (day.play) day.hour = (day.hour + day.rate * dt) % 24;
   const a = ((day.hour - 6) / 12) * Math.PI; // (6 am: the east, noon: high and a little south, 6 pm: the west)
-  sunDir.set(Math.cos(a), Math.sin(a), -0.3).normalize();
-  moonDir.set(-Math.cos(a) * 0.8, -Math.sin(a), -0.25).normalize();
+  sunDir.set(Math.cos(a), Math.sin(a), 0.32).normalize(); // (the sides he looks at from the front are the sunny ones)
+  moonDir.set(-Math.cos(a) * 0.8, -Math.sin(a), 0.25).normalize();
   day.elev = sunDir.y;
   day.sunK = smooth(-0.04, 0.26, day.elev);
   day.dark = 1 - smooth(-0.1, 0.1, day.elev);
@@ -3212,13 +3370,13 @@ function dayStep(dt) {
   key.position.copy(goal.target).addScaledVector(dir, goal.radius * 3);
   key.target.position.copy(goal.target);
   key.color.set(byMoon ? 0x9fb4ff : 0xffffff).lerp(new THREE.Color(byMoon ? 0x9fb4ff : 0xffad66), byMoon ? 0 : 1 - smooth(0.04, 0.42, day.elev));
-  key.intensity = byMoon ? 0.32 * Math.max(0, moonDir.y) + 0.06 : 2.7 * day.sunK;
+  key.intensity = byMoon ? 0.5 * Math.max(0, moonDir.y) + 0.12 : 2.7 * day.sunK; // (a moonlit night: dim and blue, but the plant can still be made out)
   hemi.color.set(0xbcd6ff);
   hemi.groundColor.set(0x3a3a2c);
-  hemi.intensity = 0.07 + 0.5 * day.sunK;
+  hemi.intensity = 0.07 + 0.1 * day.dark + (walk.on ? 0.8 : 0.62) * day.sunK; // (walking: the eye gets used to the shade under a roof)
   rim.intensity = 0.15 + 0.5 * day.sunK;
-  scene.environmentIntensity = 0.1 + 0.85 * day.sunK;
-  renderer.toneMappingExposure = 1.0;
+  scene.environmentIntensity = 0.1 + 0.08 * day.dark + 0.85 * day.sunK;
+  renderer.toneMappingExposure = walk.on ? 1.05 : 1.0;
   if (Math.abs(day.hour - day.skyT) > 0.04) {
     day.skyT = day.hour;
     const t1 = smooth(-0.2, 0.02, day.elev), t2 = smooth(0.04, 0.38, day.elev);
@@ -3226,7 +3384,16 @@ function dayStep(dt) {
     skyMat.uniforms.uMid.value.copy(skyC(1, t1, t2));
     skyMat.uniforms.uHor.value.copy(skyC(2, t1, t2));
     skyMat.uniforms.uLow.value.copy(skyC(3, t1, t2));
+    skyMat.uniforms.uCloud.value.set('#27324a').lerp(new THREE.Color('#ffb690'), t1).lerp(new THREE.Color('#ffffff'), t2);
+    if (day.fog) day.fog.color.copy(skyMat.uniforms.uHor.value).lerp(skyMat.uniforms.uMid.value, 0.25);
   }
+  skyMat.uniforms.uT.value = (performance.now() / 1000) * 0.004;
+  // 🌫️ the air: far things fade a little toward the sky's colour (more when walking: a plant 300 m away is hazy)
+  if (day.fog && show && !insideOn) {
+    scene.fog = day.fog;
+    if (walk.on) { day.fog.near = 2500; day.fog.far = 110000; }
+    else { const d = camera.position.distanceTo(controls.target); day.fog.near = d * 0.75; day.fog.far = d * 0.75 + Math.max(goal.radius * 11, 4000); }
+  } else scene.fog = null;
 }
 const flags = new Set();
 

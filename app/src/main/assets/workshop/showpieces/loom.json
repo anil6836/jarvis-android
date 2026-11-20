@@ -1,0 +1,452 @@
+{
+"at": 1763700000021,
+"title": "చేనేత మగ్గం",
+"what": "ఫ్లై షటిల్ చేనేత మగ్గం: పడుగు దూలం, అచ్చులు, కాలి పలకలు, పన్నె, నాడె; దారం దారం బట్ట అవడం. బయట చరఖా, రంగు నూలు, వీధి పడుగు. 🕐 🚶",
+"model": "showpiece",
+"parts": [
+{
+"id": "yard",
+"status": "నేతగాడి వాకిలి సిద్ధం చేస్తున్నాను",
+"code": "// Handloom showpiece, hand-made: a fly-shuttle frame loom in a weaver's shed, the way it stands in our weaving villages.\n// Units: cm, real size. The warp (the long threads) runs along X: from the warp beam at the back (−X) through the two\n// heald frames and the reed to the cloth, which rolls up on the cloth beam in front of the weaver's bench (+X).\n// Outside: the bobbin-winding wheel, dyed yarn drying, the dye pots, and a warp stretched in the street.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 9, ground: '#8a8456', zoom: 0.55 });\nS.wood = S.sf('wood', '#7a5a3c', { tile: 70 }); S.woodD = S.sf('wood', '#5f452e', { tile: 70 }); S.woodL = S.sf('wood', '#a8845a', { tile: 70 });\nconst yd = W.group();\nyd.add(W.mesh(W.box(1900, 12, 1700), S.land('soil', '#b39a74', 300), { at: [150, -6, 250] }));\nyd.add(W.mesh(W.box(560, 6, 460), S.land('plaster', '#b8a488', 200), { at: [0, 3, 0] })); // the shed's mud floor, smeared smooth\nW.add(yd, { label: 'వాకిలి', ground: true });\nconst tr = W.group();\ntr.add(S.trees(3, -700, -900, 1100, -520, null));\nW.add(tr, { label: 'చెట్లు', ground: true });\nconst ps = W.group();\nfor (const x of [-270, 0, 270]) for (const z of [-220, 220]) ps.add(W.mesh(W.cyl(7, 8, 230 + (z < 0 ? 0 : 0), 8), S.woodD, { at: [x, 115, z] }));\nfor (const x of [-270, 0, 270]) ps.add(W.mesh(W.cyl(7, 8, 310, 8), S.woodD, { at: [x, 155, 0] }));\nfor (const z of [-220, 0, 220]) ps.add(W.mesh(W.cyl(6, 6, 600, 8), S.woodD, { at: [0, z === 0 ? 312 : 232, z], rot: [0, 0, 90] }));\nps.add(W.mesh(W.box(540, 110, 14), S.sf('plaster', '#c9b594', { tile: 200 }), { at: [0, 55, -226] })); // a low mud wall at the back\nW.add(ps, { label: 'పాక గుంజలు', ground: true });\nconst rf = W.group();\nconst tile = S.sf('brick', '#b0603e', { tile: 90, rough: 0.9 });\nfor (const sz of [-1, 1]) rf.add(W.mesh(W.box(640, 8, 262), tile, { at: [0, 278, sz * 122], rot: [sz * 19.5, 0, 0] }));\nW.add(rf, { label: 'పాక పైకప్పు', layer: 0, peelBy: [0, 420, 0], explode: [0, 420, 0] });\n"
+},
+{
+"id": "loom",
+"status": "మగ్గం నిలబెడుతున్నాను",
+"code": "const S = W.store;\nconst wd = S.wood, wl = S.woodL;\nconst fr = W.group();\nfor (const x of [-105, 105]) for (const z of [-92, 92]) fr.add(W.mesh(W.box(8, 196, 8), wd, { at: [x, 98, z] }));\nfor (const z of [-92, 92]) fr.add(W.mesh(W.box(218, 8, 8), wd, { at: [0, 192, z] }), W.mesh(W.box(218, 7, 7), wd, { at: [0, 40, z] }));\nfor (const x of [-105, 105]) fr.add(W.mesh(W.box(8, 8, 192), wd, { at: [x, 192, 0] }));\nfr.add(W.mesh(W.cyl(4, 4, 190, 10), wl, { at: [-8, 190, 0], rot: [90, 0, 0] })); // the roller the heald cords run over\nfr.add(W.mesh(W.cyl(5, 5, 176, 10), wl, { at: [-98, 100, 0], rot: [90, 0, 0] }), W.mesh(W.cyl(5, 5, 176, 10), wl, { at: [88, 96, 0], rot: [90, 0, 0] })); // the back rest, the breast beam\nW.add(fr, { label: 'మగ్గం ఫ్రేమ్' });\nconst wb = W.group();\nS.warpBeam = W.group({ at: [-100, 62, 0] });\nS.warpBeam.add(W.mesh(W.cyl(6, 6, 180, 10), wl, { rot: [90, 0, 0] }), W.mesh(W.cyl(15, 15, 124, 20), S.matte('#e9dcc0', 0.9), { rot: [90, 0, 0] }));\nfor (const z of [-66, 66]) { S.warpBeam.add(W.mesh(W.cyl(22, 22, 4, 16), wd, { at: [0, 0, z], rot: [90, 0, 0] })); for (let k = 0; k < 4; k++) S.warpBeam.add(W.mesh(W.box(40, 3, 3), wd, { at: [0, 0, z * 1.04], rot: [0, 0, k * 45] })); }\nwb.add(S.warpBeam);\nW.add(wb, { label: 'పడుగు దూలం' });\nconst wp = W.group();\nS.NT = 64;\nS.threads = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }), S.NT * 3);\nS.threads.frustumCulled = false;\nwp.add(S.threads);\nfor (const x of [-70, -58]) wp.add(W.mesh(W.cyl(1.6, 1.6, 140, 8), wl, { at: [x, 100, 0], rot: [90, 0, 0] })); // the lease rods keep the threads in order\nW.add(wp, { label: 'పడుగు దారాలు' });\nconst hf = W.group();\nS.healds = [];\nfor (const x of [-16, -4]) {\n  const h = W.group({ at: [x, 100, 0] });\n  for (const y of [-22, 22]) h.add(W.mesh(W.box(3, 4, 136), wl, { at: [0, y, 0] }));\n  const wires = new THREE.InstancedMesh(W.box(0.5, 42, 0.5), S.sf('metal', '#c9cdd2', { rough: 0.4 }), 32), M = new THREE.Matrix4();\n  for (let i = 0; i < 32; i++) wires.setMatrixAt(i, M.makeTranslation(0, 0, -62 + i * 4 + (x === -4 ? 2 : 0)));\n  h.add(wires);\n  hf.add(h); S.healds.push(h);\n}\nS.cords = [];\nfor (let k = 0; k < 4; k++) { const c = W.mesh(W.cyl(0.5, 0.5, 1, 5), S.matte('#d9d0b8', 0.9)); hf.add(c); S.cords.push(c); }\nW.add(hf, { label: 'అచ్చులు' });\nconst td = W.group();\nS.treadles = [];\nfor (const z of [-16, 16]) { const t = W.group({ at: [-60, 12, z] }); t.add(W.mesh(W.box(150, 4, 12), wd, { at: [75, 0, 0] })); td.add(t); S.treadles.push(t); }\ntd.add(W.mesh(W.cyl(3, 3, 60, 8), wl, { at: [-60, 12, 0], rot: [90, 0, 0] }));\nW.add(td, { label: 'కాలి పలకలు' });\n// the sley: it swings from the top; it carries the reed (a comb that keeps the warp threads spaced and beats each new\n// thread home) and the board the shuttle flies along, with a box at each end that catches and throws it\nconst sl = W.group();\nS.sley = W.group({ at: [22, 192, 0] });\nfor (const z of [-84, 84]) S.sley.add(W.mesh(W.box(4, 108, 5), wd, { at: [0, -54, z] }));\nS.sley.add(W.mesh(W.box(9, 6, 196), wd, { at: [3, -104, 0] }), W.mesh(W.box(4, 5, 134), wl, { at: [-2, -74, 0] }), W.mesh(W.box(4, 5, 134), wl, { at: [-2, -100, 0] }));\nconst dents = new THREE.InstancedMesh(W.box(1.2, 26, 0.5), S.sf('metal', '#b9bfc5', { rough: 0.4 }), 66), M = new THREE.Matrix4();\nfor (let i = 0; i < 66; i++) dents.setMatrixAt(i, M.makeTranslation(-2, -87, -65 + i * 2));\nS.sley.add(dents);\nfor (const z of [-86, 86]) S.sley.add(W.mesh(W.box(10, 9, 24), wl, { at: [4, -97, z] }));\nS.sley.add(W.mesh(W.box(3, 3, 60), wl, { at: [4, -40, 0] })); // the picking handle: one pull throws the shuttle\nsl.add(S.sley);\nW.add(sl, { label: 'పన్నె' });\nconst sh = W.group();\nS.shuttle = W.group();\nS.shuttle.add(W.mesh(W.box(4.6, 3.4, 30, 1.6), S.sf('wood', '#3a2a1c', { tile: 30 })), W.mesh(W.cyl(1.2, 1.2, 18, 8), S.matte('#e8c62a', 0.8), { at: [0, 1.2, 0], rot: [90, 0, 0] }));\nfor (const z of [-15, 15]) S.shuttle.add(W.mesh(W.cone(1.6, 5, 8), S.sf('metal', '#c9cdd2'), { at: [0, 0, z + Math.sign(z) * 2], rot: [Math.sign(z) * 90, 0, 0] }));\nsh.add(S.shuttle);\nS.weft = W.mesh(new THREE.BoxGeometry(1, 1, 1), S.matte('#e8c62a', 0.8));\nsh.add(S.weft);\nW.add(sh, { label: 'నాడె' });\nconst cl = W.group();\nS.clothTex = W.canvasTex(256, 256);\nS.clothTex.texture.wrapS = S.clothTex.texture.wrapT = THREE.RepeatWrapping;\nconst cm = new THREE.MeshStandardMaterial({ map: S.clothTex.texture, roughness: 0.95, side: THREE.DoubleSide });\ncl.add(W.mesh(new THREE.PlaneGeometry(43, 124), cm, { at: [66.5, 98.2, 0], rot: [-90, 0, 0] }));\n{ const g = new THREE.PlaneGeometry(36, 124); g.rotateZ(Math.PI / 2); cl.add(W.mesh(g, cm, { at: [89, 79, 0], rot: [0, 90, 0] })); }\nW.add(cl, { label: 'నేసిన బట్ట' });\nconst cb = W.group();\nS.clothBeam = W.group({ at: [92, 60, 0] });\nS.clothBeam.add(W.mesh(W.cyl(5, 5, 180, 10), wl, { rot: [90, 0, 0] }), W.mesh(W.cyl(10, 10, 126, 20), cm, { rot: [90, 0, 0] }));\nS.clothBeam.add(W.mesh(W.gear({ teeth: 18, r: 13, depth: 3 }), S.sf('metal', '#6f767e'), { at: [0, 0, 80], rot: [90, 0, 0] }));\ncb.add(S.clothBeam);\nW.add(cb, { label: 'బట్ట దూలం' });\nconst bn = W.group();\nbn.add(W.mesh(W.box(34, 5, 130), wd, { at: [128, 52, 0] }));\nfor (const z of [-56, 56]) bn.add(W.mesh(W.box(30, 50, 5), wd, { at: [128, 25, z] }));\nW.add(bn, { label: 'నేతగాడి బల్ల' });\n"
+},
+{
+"id": "outside",
+"status": "చరఖా, నూలు, వీధి పడుగు పెడుతున్నాను",
+"code": "const S = W.store;\nconst wd = S.wood, wl = S.woodL, COL = ['#b8302f', '#2f5f9a', '#e8b62a', '#2f8a5a', '#8a3a8a', '#f1eee6'];\n// the charkha: its big wheel turns the small spindle fast and winds the weft thread onto the little bobbins (pirns) that\n// go into the shuttle\nconst ck = W.group();\nck.add(W.mesh(W.box(120, 6, 30), wd, { at: [470, 8, 250] }), W.mesh(W.box(6, 70, 6), wd, { at: [440, 40, 262] }), W.mesh(W.box(6, 70, 6), wd, { at: [440, 40, 238] }), W.mesh(W.box(5, 26, 5), wd, { at: [520, 22, 250] }));\nS.charkha = W.group({ at: [440, 66, 250] });\nS.charkha.add(W.mesh(W.torus(36, 2.2, 28, 6), wl), W.mesh(W.cyl(4, 4, 26, 10), wl, { rot: [90, 0, 0] }));\nfor (let k = 0; k < 6; k++) S.charkha.add(W.mesh(W.box(70, 2.4, 2.4), wl, { rot: [0, 0, k * 30] }));\nck.add(S.charkha);\nS.spindle = W.group({ at: [520, 36, 250] });\nS.spindle.add(W.mesh(W.cyl(0.8, 0.8, 34, 6), S.sf('metal', '#c9cdd2'), { rot: [90, 0, 0] }), W.mesh(W.cyl(3.4, 2.2, 14, 10), S.matte(COL[2], 0.9), { at: [0, 0, 6], rot: [90, 0, 0] }));\nck.add(S.spindle, S.beam([440, 102, 250], [520, 37, 250], 0.4, S.matte('#d9d0b8', 0.9), 4), S.beam([440, 30, 250], [520, 35, 250], 0.4, S.matte('#d9d0b8', 0.9), 4));\nck.add(W.mesh(W.cyl(9, 7, 6, 12), S.sf('wood', '#a8845a', { tile: 20 }), { at: [560, 4, 290] }));\nfor (let k = 0; k < 7; k++) ck.add(W.mesh(W.cyl(2.6, 1.8, 11, 8), S.matte(COL[k % 6], 0.9), { at: [552 + (k % 3) * 8, 10, 284 + Math.floor(k / 3) * 7], rot: [0, 0, 80] }));\nW.add(ck, { label: 'చరఖా' });\nconst hk = W.group();\nfor (const x of [520, 820]) hk.add(W.mesh(W.cyl(4, 5, 190, 8), S.woodD, { at: [x, 95, -330] }));\nhk.add(W.mesh(W.cyl(3, 3, 330, 8), wl, { at: [670, 186, -330], rot: [0, 0, 90] }));\nfor (let k = 0; k < 9; k++) hk.add(W.mesh(W.torus(30, 7, 16, 8), S.matte(COL[k % 5], 0.95), { at: [545 + k * 31, 152, -330], rot: [0, 90, 0], scale: [1, 1.25, 0.5] }));\nW.add(hk, { label: 'రంగు నూలు చిలపలు' });\nconst dy = W.group();\n[[620, -120, COL[0]], [710, -150, COL[1]], [800, -110, COL[2]]].forEach(([x, z, c]) => {\n  dy.add(W.mesh(W.lathe([[0.1, 0], [20, 0], [32, 18], [34, 38], [26, 52], [28, 56]], 20), S.sf('metal', '#8a6a4a', { rough: 0.6, metallic: 0.3, tile: 40 }), { at: [x, 0, z] }), W.mesh(W.cyl(26, 26, 2, 20), new THREE.MeshStandardMaterial({ color: c, roughness: 0.2 }), { at: [x, 46, z] }));\n});\ndy.add(W.mesh(W.box(60, 16, 40), S.sf('brick', '#8a5a44', { tile: 40 }), { at: [710, 8, -210] }));\nW.add(dy, { label: 'రంగు కుండలు' });\n// the street warp: before it goes on the loom the whole warp is stretched out, brushed with rice starch and dried\nconst sw = W.group();\nfor (const x of [-520, -40, 440]) for (const z of [560, 700]) sw.add(W.mesh(W.cyl(3, 4, 110, 8), S.woodD, { at: [x, 55, z] }));\nfor (const x of [-520, -40, 440]) sw.add(W.mesh(W.cyl(2.4, 2.4, 170, 8), wl, { at: [x, 100, 630], rot: [90, 0, 0] }));\nconst strands = new THREE.InstancedMesh(W.box(960, 0.5, 0.9), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }), 60), M = new THREE.Matrix4(), C = new THREE.Color();\nfor (let i = 0; i < 60; i++) { strands.setMatrixAt(i, M.makeTranslation(-40, 102.6, 572 + i * 2)); strands.setColorAt(i, C.set(i < 6 || i > 53 ? COL[2] : (Math.floor(i / 6) % 2 ? COL[0] : COL[1]))); }\nsw.add(strands);\nW.add(sw, { label: 'వీధి పడుగు' });\nconst sr = W.group();\nsr.add(W.mesh(W.box(110, 6, 44), wd, { at: [-200, 70, -200] }), W.mesh(W.box(6, 70, 40), wd, { at: [-250, 35, -200] }), W.mesh(W.box(6, 70, 40), wd, { at: [-150, 35, -200] }));\nfor (let k = 0; k < 6; k++) sr.add(W.mesh(W.box(46, 5, 34, 2), S.matte(COL[k % 5], 0.9), { at: [-225 + (k % 2) * 50, 76 + Math.floor(k / 2) * 5.4, -200] }), W.mesh(W.box(47, 1.2, 4), S.matte('#e8c62a', 0.7), { at: [-225 + (k % 2) * 50, 78.4 + Math.floor(k / 2) * 5.4, -184] }));\nW.add(sr, { label: 'నేసిన చీరలు' });\n"
+},
+{
+"id": "run",
+"status": "మగ్గం మొదలుపెడుతున్నాను",
+"code": "const S = W.store;\n// running: the power bar is how fast the weaver works (20 to 80 throws of the shuttle a minute). One throw: the feet\n// press a treadle (one heald frame up, one down: half the warp threads rise), the hand jerks the cord (the shuttle flies\n// through the gap, leaving one cross thread), the sley is pulled (the reed beats that thread tight). 🚩 \"checks\": a\n// second weft colour: checks instead of stripes.\nconst lamp = W.group();\nlamp.add(W.mesh(W.sphere(5, 10), S.lamp('#fff1c8', 3.2), { at: [40, 222, 0] }), W.mesh(W.cyl(0.5, 0.5, 86, 5), S.matte('#2a2c30', 0.6), { at: [40, 268, 0] }));\nW.add(lamp, { label: 'బల్బ్' });\nW.throttle({ label: 'నేత వేగం', rise: 0.8, fall: 0.8, start: 0.5 });\nconst clack = W.sound({ kind: 'chain', label: 'పన్నె', gain: 0.9 });\nconst whir = W.sound({ kind: 'gear', label: 'చరఖా', gain: 0.25, f0: 60 });\nconst WC = ['#b8302f', '#2f5f9a'], BORDER = '#e8b62a';\nconst colOf = (i) => (i < 6 || i >= S.NT - 6 ? BORDER : (Math.floor((i - 6) / 13) % 2 ? WC[0] : WC[1]));\nconst paint = (checks) => { // the cloth's picture: the warp stripes show; with a second weft colour, checks\n  const g = S.clothTex.ctx;\n  for (let i = 0; i < S.NT; i++) { g.fillStyle = colOf(i); g.fillRect(0, i * 4, 256, 4); }\n  for (let x = 0; x < 256; x += 2) { const band = checks && Math.floor(x / 26) % 2; g.fillStyle = band ? 'rgba(232,182,42,0.5)' : 'rgba(255,255,255,0.12)'; g.fillRect(x, 0, 1, 256); }\n  S.clothTex.update();\n};\npaint(false);\n{ const C = new THREE.Color(); for (let i = 0; i < S.NT; i++) for (let k = 0; k < 3; k++) S.threads.setColorAt(i * 3 + k, C.set(colOf(i))); S.threads.instanceColor.needsUpdate = true; }\nconst M = new THREE.Matrix4(), Q = new THREE.Quaternion(), XA = new THREE.Vector3(1, 0, 0), A = new THREE.Vector3(), B = new THREE.Vector3(), D = new THREE.Vector3(), SC = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);\nconst seg = (im, idx, ax, ay, az, bx, by, bz, th) => { A.set(ax, ay, az); B.set(bx, by, bz); D.copy(B).sub(A); const L = D.length(); M.compose(A.add(B).multiplyScalar(0.5), Q.setFromUnitVectors(XA, D.normalize()), SC.set(L, th, th)); im.setMatrixAt(idx, M); };\nconst link = (m, a, b) => { m.position.copy(a).add(b).multiplyScalar(0.5); m.scale.set(1, a.distanceTo(b), 1); m.quaternion.setFromUnitVectors(up, D.copy(b).sub(a).normalize()); };\nlet ph = 0, picks = 0, hudT = 0, was = false, woven = 0, lift = 0, side = 1, beat = 0;\nW.onTick((t, dt) => {\n  const s = W.env.spool, checks = W.env.flag('checks'), jam = W.faultOf('నాడె') === 'stop', over = W.env.over;\n  if (checks !== was) { was = checks; paint(checks); }\n  const ppm = s > 0.03 && !jam && !over ? 20 + 60 * s : 0;\n  ph += dt * ppm / 60;\n  if (ph >= 1) { ph -= 1; picks++; side = -side; woven += 1 / 24; }\n  const odd = picks % 2 === 0 ? 1 : -1;\n  const open = ph < 0.3 ? ph / 0.3 : ph < 0.7 ? 1 : ph < 0.85 ? 1 - (ph - 0.7) / 0.15 : 0;      // how far the shed is open\n  lift += (open * odd - lift) * Math.min(1, dt * 30);\n  const fly = Math.min(1, Math.max(0, (ph - 0.3) / 0.3));                                        // the shuttle's flight\n  const bk = ph > 0.68 && ph < 0.86 ? Math.sin((ph - 0.68) / 0.18 * Math.PI) : 0;\n  beat += (bk - beat) * Math.min(1, dt * 40);\n  const hy = [100 + 9 * lift, 100 - 9 * lift];\n  S.healds[0].position.y = hy[0]; S.healds[1].position.y = hy[1];\n  S.treadles[0].rotation.z = 0.08 * Math.max(0, -lift) - 0.02; S.treadles[1].rotation.z = 0.08 * Math.max(0, lift) - 0.02;\n  S.sley.rotation.z = 0.02 + 0.2 * beat; // (it swings about the top rail: forward to the cloth's edge)\n  const fell = 45;\n  for (let i = 0; i < S.NT; i++) {\n    const z = -63 + i * 2, a = i % 2, y = hy[a], hx = a ? -4 : -16;\n    seg(S.threads, i * 3, -98, 105, z, hx, y, z, 0.32);\n    seg(S.threads, i * 3 + 1, hx, y, z, fell, 98.4, z, 0.32);\n    seg(S.threads, i * 3 + 2, -98, 105, z, -100 + 12, 72, z, 0.32);\n  }\n  S.threads.instanceMatrix.needsUpdate = true;\n  const sx = 22 + Math.sin(S.sley.rotation.z) * 97 + 9, sy = 192 - Math.cos(S.sley.rotation.z) * 97 + 4;\n  const zz = side * (-86 + 172 * fly);\n  S.shuttle.position.set(sx, sy, ppm > 0 ? zz : side * -86);\n  if (ppm > 0 && fly > 0.02 && fly < 1) { S.weft.visible = true; seg({ setMatrixAt: (i, m) => { S.weft.matrix.copy(m); } }, 0, fell + 1, 98.6, side * -62, sx, sy, zz - side * 14, 0.4); S.weft.matrixAutoUpdate = false; } else S.weft.visible = false;\n  S.weft.material.color.set(checks && Math.floor(picks / 14) % 2 ? '#e8b62a' : '#f1eee6');\n  const top = new THREE.Vector3(-8, 190, 0);\n  S.cords.forEach((c, k) => { const h = k < 2 ? 0 : 1, z = k % 2 ? 50 : -50; link(c, new THREE.Vector3(h ? -4 : -16, hy[h] + 24, z), new THREE.Vector3(-8 + (h ? 4 : -4), 190, z)); });\n  S.clothTex.texture.offset.x = -(woven % 1);\n  S.clothBeam.rotation.z = -woven * 0.6; S.warpBeam.rotation.z = -woven * 0.4;\n  S.charkha.rotation.z += dt * 2.2; S.spindle.rotation.z += dt * 40;\n  clack.set(ppm > 0 ? (bk > 0.3 || (fly > 0.9 && fly < 1) ? 0.9 : 0.08) : 0);\n  S.step(t, dt, 1);\n  if (t - hudT > 0.3) {\n    hudT = t;\n    W.hud({ 'నాడె విసుర్లు': Math.round(ppm) + ' /నిమిషం', 'ఇప్పటి దాకా నేసింది': (woven).toFixed(1) + ' cm', 'డిజైన్': checks ? 'చెక్కులు (రెండు పేక రంగులు)' : 'చారలు, జరీ అంచు',\n      'పడుగు దారాలు': S.NT + ' (నిజమైన చీరలో సుమారు 4,000)', 'ఒక చీరకి (6.5 m)': ppm > 0 ? 'సుమారు ' + (650 * 24 / ppm / 60).toFixed(1) + ' గంటల నేత' : '—', 'స్థితి': jam ? 'నాడె ఇరుక్కుంది ⚠️' : over ? 'దారం తెగింది: ముడి వేయాలి ✋' : ppm > 0 ? 'నేస్తోంది' : 'ఆగింది' });\n    W.report({ power: s, picksPerMin: ppm, wovenCm: woven });\n  }\n});\nW.walk({ eye: 150, speed: 160, area: [-760, -560, 1060, 1060],\n  solid: [[-112, -100, 112, 100], [112, -70, 146, 70], [420, 230, 540, 270], [590, -180, 830, -90], [-560, 550, 480, 710]],\n  spots: [\n    { name: 'నేతగాడి చోటు', at: [190, 0, 0], look: [40, 96, 0] },\n    { name: 'మగ్గం పక్కన', at: [10, 0, 215], look: [0, 105, 0] },\n    { name: 'పడుగు దూలం వెనక', at: [-215, 0, 40], look: [0, 100, 0] },\n    { name: 'చరఖా దగ్గర', at: [560, 0, 420], look: [470, 50, 250] },\n    { name: 'రంగు నూలు దగ్గర', at: [640, 0, 40], look: [680, 120, -330] },\n    { name: 'వీధి పడుగు దగ్గర', at: [300, 0, 880], look: [-40, 100, 630] },\n  ] });\n"
+}
+],
+"say": "చేనేత మగ్గం రెడీ Sir. నాడె ఎగరడం, పన్నె కొట్టడం చూడండి. 'నెమ్మదిగా' అంటే ప్రతి అడుగూ కనిపిస్తుంది; 'చెక్కుల డిజైన్' అంటే డిజైన్ మారుతుంది; 'నేతగాడి చోటుకి వెళ్ళు' అంటే ఆయన చోటు నుంచి చూడొచ్చు.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"దారం బట్ట ఎలా అవుతుంది\", \"steps\": [{\"say\": \"Sir, ఇది చేనేత మగ్గం, నేతగాడి పాకలో. బయట చరఖా, రంగు నూలు, వీధిలో సాగదీసిన పడుగు.\", \"focus\": [{\"id\": \"loom\", \"piece\": \"మగ్గం ఫ్రేమ్\"}, {\"id\": \"yard\", \"piece\": \"పాక పైకప్పు\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"వెనక పడుగు దూలం: నిలువు దారాలన్నీ దీని మీద చుట్టి ఉంటాయి. దారాలు ముందుకి సాగి రెండు అచ్చుల గుండా వెళ్తాయి.\", \"focus\": [{\"id\": \"loom\", \"piece\": \"పడుగు దూలం\"}, {\"id\": \"loom\", \"piece\": \"పడుగు దారాలు\"}, {\"id\": \"loom\", \"piece\": \"అచ్చులు\"}], \"view\": \"side\", \"close\": true, \"move\": [{\"id\": \"yard\", \"piece\": \"పాక పైకప్పు\", \"by\": [0, 420, 0], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"కాలి పలక తొక్కితే ఒక అచ్చు పైకి, ఇంకోటి కిందికి: సగం దారాలు లేచి మధ్యలో సందు ఏర్పడుతుంది.\", \"focus\": [{\"id\": \"loom\", \"piece\": \"కాలి పలకలు\"}, {\"id\": \"loom\", \"piece\": \"అచ్చులు\"}], \"view\": \"side\", \"close\": true, \"move\": [{\"id\": \"yard\", \"piece\": \"పాక పైకప్పు\", \"by\": [0, 420, 0], \"secs\": 1}], \"secs\": 9}, {\"say\": \"నాడె ఆ సందులోంచి ఎగిరి ఒక పేక దారం వేస్తుంది. పన్నె ముందుకి ఊగి ఆ దారాన్ని బట్ట అంచుకి కొడుతుంది: టక్!\", \"focus\": [{\"id\": \"loom\", \"piece\": \"నాడె\"}, {\"id\": \"loom\", \"piece\": \"పన్నె\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"yard\", \"piece\": \"పాక పైకప్పు\", \"by\": [0, 420, 0], \"secs\": 1}], \"secs\": 10}, {\"say\": \"నేసిన బట్ట ముందు దూలం మీద చుట్టుకుంటుంది. నేతగాడు ఈ బల్ల మీద కూర్చుని రోజంతా ఇదే లయలో నేస్తాడు.\", \"focus\": [{\"id\": \"loom\", \"piece\": \"నేసిన బట్ట\"}, {\"id\": \"loom\", \"piece\": \"బట్ట దూలం\"}, {\"id\": \"loom\", \"piece\": \"నేతగాడి బల్ల\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"yard\", \"piece\": \"పాక పైకప్పు\", \"by\": [0, 420, 0], \"secs\": 1}], \"secs\": 9}, {\"say\": \"బయట: రంగు కుండల్లో నూలుకి రంగు, గడ మీద ఆరబెట్టడం, చరఖాతో కండెలు చుట్టడం, వీధిలో పడుగుకి గంజి. 'చెక్కుల డిజైన్' అంటే రెండో రంగు పేకతో చెక్కులు చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"outside\", \"piece\": \"రంగు కుండలు\"}, {\"id\": \"outside\", \"piece\": \"రంగు నూలు చిలపలు\"}, {\"id\": \"outside\", \"piece\": \"చరఖా\"}, {\"id\": \"outside\", \"piece\": \"వీధి పడుగు\"}], \"view\": \"iso\", \"secs\": 11}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"చేనేత మగ్గం",
+"మగ్గం",
+"చేనేత",
+"నేత మగ్గం",
+"హ్యాండ్‌లూమ్",
+"handloom",
+"hand loom",
+"loom",
+"weaving"
+],
+"powerName": "🧵 నేత వేగం",
+"outdoor": true,
+"walk": [
+"నేతగాడి చోటు",
+"మగ్గం పక్కన",
+"పడుగు దూలం వెనక",
+"చరఖా దగ్గర",
+"రంగు నూలు దగ్గర",
+"వీధి పడుగు దగ్గర"
+],
+"switches": [
+{
+"id": "checks",
+"menu": "🟨 చెక్కుల డిజైన్",
+"words": [
+"చెక్కుల డిజైన్",
+"చెక్కులు",
+"డిజైన్ మార్చు",
+"రెండు రంగుల పేక",
+"checks",
+"change design",
+"చెక్స్"
+],
+"offWords": [
+"చారల డిజైన్",
+"చారలు",
+"సాదా డిజైన్",
+"stripes",
+"plain design",
+"ఒకే రంగు పేక"
+],
+"on": "🟨 చెక్కుల డిజైన్ Sir: నేతగాడు ఇప్పుడు రెండు నాడెలు మార్చి మార్చి వాడుతున్నాడు: కొన్ని విసుర్లు తెల్ల పేక, కొన్ని పసుపు. నిలువు చారల మీద అడ్డ పట్టీలు పడి చెక్కులు అవుతున్నాయి.",
+"off": "చారల డిజైన్ Sir: ఒకే రంగు పేక; పడుగు రంగులే చారలుగా కనిపిస్తాయి, అంచున జరీ."
+}
+],
+"power": {
+"start": "నేత మొదలైంది Sir: నిమిషానికి సుమారు 50 విసుర్లు.",
+"full": "అనుభవజ్ఞుడైన నేతగాడి వేగం Sir: నిమిషానికి 80 విసుర్లు. కాళ్ళు, చేతులు, కళ్ళు ఒకే లయలో.",
+"half": "నిమిషానికి సుమారు 50 విసుర్లు Sir.",
+"stop": "నేత ఆపాను Sir. అచ్చులు, నాడె, పన్నె నిలిచాయి: ఇప్పుడు ప్రతి భాగం తాకి చూడొచ్చు.",
+"over": "చాలా వేగంగా నేశాం Sir: ఒక పడుగు దారం తెగింది! నేతగాడు ఆగి, ముడి వేసి, దారాన్ని మళ్ళీ అచ్చు, పన్నె గుండా దూర్చాలి.",
+"cut": "ముడి వేశాను Sir: మళ్ళీ నేత మొదలైంది."
+},
+"info": {
+"వాకిలి": {
+"simple": "నేతగాడి వాకిలి: మధ్యలో మగ్గం పాక, చుట్టూ నూలు పనులు.",
+"deep": "చేనేత కుటుంబ వృత్తి: నూలు చుట్టడం, రంగులు, గంజి పెట్టడం, నేయడం: ఇంటిల్లిపాదీ చేస్తారు.",
+"specs": {
+"పని": "కుటుంబ వృత్తి"
+}
+},
+"చెట్లు": {
+"simple": "వాకిట్లో వేప చెట్ల నీడ.",
+"deep": "నూలుకి కొద్దిగా తేమ ఉన్న గాలి మంచిది: పొడి గాలిలో దారాలు తెగుతాయి. అందుకే మగ్గం గుంటలో, నీడలో పెడతారు.",
+"specs": {
+"మంచి వాతావరణం": "కొద్ది తేమ"
+}
+},
+"పాక గుంజలు": {
+"simple": "పాక గుంజలు, వెనక మట్టి గోడ.",
+"deep": "పక్కలు తెరిచి ఉంటే వెలుతురు బాగా పడుతుంది: సన్నని దారాలు కనిపించాలి.",
+"specs": {
+"పని": "నీడ, వెలుతురు"
+}
+},
+"పాక పైకప్పు": {
+"simple": "పాక పైకప్పు: మంగళూరు పెంకులు. 'పైకప్పు తీయి' అంటే లేచి మగ్గం పై నుంచి కనిపిస్తుంది.",
+"deep": "పెంకుల కప్పు వేసవిలో చల్లగా ఉంటుంది.",
+"specs": {
+"పని": "నీడ"
+}
+},
+"మగ్గం ఫ్రేమ్": {
+"simple": "మగ్గం ఫ్రేమ్: నాలుగు గుంజలు, అడ్డ కర్రలు. మిగతా భాగాలన్నీ దీనికే తగిలి ఉంటాయి.",
+"deep": "టేకు, వేప లాంటి గట్టి కర్ర. పన్నె కొట్టే ప్రతి దెబ్బనీ తట్టుకోవాలి, కదలకూడదు: కదిలితే బట్ట అంచులు వంకర పోతాయి.",
+"specs": {
+"కొలత": "సుమారు 2.2 m × 1.9 m × 2 m"
+}
+},
+"పడుగు దూలం": {
+"simple": "పడుగు దూలం: నిలువు దారాలన్నీ (పడుగు) చుట్టి ఉన్న రోలు. నేసే కొద్దీ నెమ్మదిగా విడుదలవుతుంది.",
+"deep": "ఒక దూలం మీద నాలుగైదు చీరలకి సరిపడా పడుగు (30 m పైన) ఉంటుంది. దారాలన్నీ ఒకే బిగువులో ఉండాలి.",
+"specs": {
+"పొడవు": "సుమారు 30 m పడుగు"
+}
+},
+"పడుగు దారాలు": {
+"simple": "ఇవి పడుగు దారాలు: బట్ట పొడవునా వెళ్ళే నిలువు దారాలు. సగం పైకి, సగం కిందికి మారుతూ ఉంటాయి.",
+"deep": "మధ్యలో రెండు కర్రలు (లీజ్ కర్రలు) దారాలని క్రమంలో ఉంచుతాయి. బొమ్మలో 64 దారాలు చూపిస్తున్నాను; నిజమైన చీరలో సుమారు 4,000.",
+"specs": {
+"నిజంగా": "సుమారు 4,000 దారాలు"
+}
+},
+"అచ్చులు": {
+"simple": "అచ్చులు (హెల్డ్ ఫ్రేమ్‌లు): రెండు ఫ్రేమ్‌లు. ప్రతి పడుగు దారం ఒక అచ్చు కన్నులోంచి వెళ్తుంది: ఒకటి, మూడు, ఐదో దారాలు మొదటి ఫ్రేమ్‌లో; రెండు, నాలుగు, ఆరో దారాలు రెండో దాంట్లో.",
+"deep": "ఒక ఫ్రేమ్ పైకి లేస్తే సగం దారాలు లేస్తాయి: మధ్యలో ఒక సందు (షెడ్) ఏర్పడుతుంది. నాడె ఆ సందులోంచి వెళ్తుంది. ఎక్కువ ఫ్రేమ్‌లు ఉంటే క్లిష్టమైన డిజైన్లు.",
+"specs": {
+"ఫ్రేమ్‌లు": "2 (సాదా నేత)"
+}
+},
+"కాలి పలకలు": {
+"simple": "కాలి పలకలు (ట్రెడిల్‌లు): నేతగాడు కాళ్ళతో తొక్కుతాడు. ఒకటి తొక్కితే ఒక అచ్చు పైకి, ఇంకోటి కిందికి.",
+"deep": "తాళ్ళు పైన రోలర్ మీదుగా వెళ్ళి రెండు అచ్చులని కలుపుతాయి: ఒకటి దిగితే ఇంకోటి లేస్తుంది. చేతులు, కాళ్ళు ఒక లయలో పని చేయాలి.",
+"specs": {
+"పని": "అచ్చులు మార్చడం"
+}
+},
+"పన్నె": {
+"simple": "ఇది పన్నె (రీడ్, స్లే): పై నుంచి వేలాడే ఊయల. దువ్వెన లాంటి పన్నె ప్రతి పేక దారాన్ని బట్ట అంచుకి గట్టిగా కొడుతుంది.",
+"deep": "పన్నె పళ్ళ మధ్య నుంచి పడుగు దారాలు వెళ్తాయి: అది బట్ట వెడల్పుని, దారాల దూరాన్ని నిర్ణయిస్తుంది. కింది పలక మీద నాడె పరుగెడుతుంది; రెండు చివర్ల పెట్టెలు దాన్ని పట్టి మళ్ళీ విసురుతాయి.",
+"specs": {
+"పని": "కొట్టడం (బీట్ అప్)"
+}
+},
+"నాడె": {
+"simple": "ఇది నాడె (షటిల్): పడవ ఆకారపు కర్ర ముక్క, లోపల పేక దారం కండె. సందులోంచి ఒక వైపు నుంచి ఇంకో వైపుకి ఎగురుతుంది.",
+"deep": "ఫ్లై షటిల్: తాడు లాగితే పెట్టెలోని కర్ర నాడెని విసురుతుంది: చేత్తో అందించే పాత పద్ధతి కంటే రెండు రెట్లు వేగం, వెడల్పు బట్ట ఒక్కరే నేయొచ్చు.",
+"specs": {
+"వేగం": "నిమిషానికి 60–80 విసుర్లు"
+}
+},
+"నేసిన బట్ట": {
+"simple": "నేసిన బట్ట: పడుగు, పేక దారాలు ఒకదాని మీద ఒకటి, కింద ఒకటి అల్లుకుని బట్ట అవుతుంది.",
+"deep": "24 విసుర్లకి సుమారు 1 cm. 'బట్ట లోపల చూపించు' అంటే దారాలు ఎలా అల్లుకుంటాయో పెద్దది చేసి చూపిస్తాను.",
+"specs": {
+"1 cm": "సుమారు 24 పేక దారాలు"
+}
+},
+"బట్ట దూలం": {
+"simple": "బట్ట దూలం: నేసిన బట్ట చుట్టుకునే రోలు. పక్కన పళ్ళ చక్రం వెనక్కి తిరగకుండా ఆపుతుంది.",
+"deep": "కొంచెం నేశాక నేతగాడు దీన్ని తిప్పి బట్ట చుట్టి, పడుగు దూలం నుంచి కొత్త దారం వదులుతాడు.",
+"specs": {
+"పని": "బట్ట చుట్టడం"
+}
+},
+"నేతగాడి బల్ల": {
+"simple": "నేతగాడి బల్ల: ఇక్కడ కూర్చుని రోజుకి 8–10 గంటలు నేస్తారు. '🚶 నేతగాడి చోటు' అంటే ఇక్కడి నుంచి చూడొచ్చు.",
+"deep": "చాలా ఊళ్ళలో గుంట మగ్గం: నేతగాడు నేల గుంటలో కాళ్ళు పెట్టి కూర్చుంటాడు.",
+"specs": {
+"పని వేళలు": "రోజుకి 8–10 గంటలు"
+}
+},
+"చరఖా": {
+"simple": "చరఖా: పెద్ద చక్రం చిన్న కదురుని వేగంగా తిప్పుతుంది. పేక దారాన్ని నాడెలో పట్టే చిన్న కండెల మీద చుడుతుంది.",
+"deep": "ఈ పని సాధారణంగా ఇంట్లో పెద్దవాళ్ళు, ఆడవాళ్ళు చేస్తారు. ఒక చీరకి వందల కండెలు.",
+"specs": {
+"పని": "కండెలు చుట్టడం"
+}
+},
+"రంగు నూలు చిలపలు": {
+"simple": "రంగు నూలు చిలపలు: రంగు వేసిన నూలు గడ మీద ఆరుతోంది.",
+"deep": "నూలు సన్నదనాన్ని 'నంబర్' తో చెప్తారు: 40, 60, 80, 100: నంబర్ పెరిగితే దారం సన్నం, బట్ట మెత్తగా, ఖరీదుగా.",
+"specs": {
+"నూలు నంబర్లు": "40 నుంచి 100"
+}
+},
+"రంగు కుండలు": {
+"simple": "రంగు కుండలు: నూలుని రంగు నీటిలో ముంచి, ఉడికించి రంగు పట్టిస్తారు.",
+"deep": "ఇక్కత్ (పోచంపల్లి) పద్ధతిలో నేయడానికి ముందే దారాలకి కట్లు కట్టి రంగు వేస్తారు: కట్టిన చోట రంగు పట్టదు; నేసేటప్పుడు ఆ మచ్చలు కలిసి డిజైన్ అవుతాయి.",
+"specs": {
+"పద్ధతి": "కట్టి రంగు వేయడం (ఇక్కత్)"
+}
+},
+"వీధి పడుగు": {
+"simple": "వీధి పడుగు: మగ్గం ఎక్కించే ముందు మొత్తం పడుగుని వీధిలో సాగదీసి, గంజి పూసి, దువ్వి ఆరబెడతారు.",
+"deep": "బియ్యం గంజి దారాన్ని గట్టిగా, నునుపుగా చేస్తుంది: నేతలో తెగదు. చేనేత ఊళ్ళలో ఉదయాన్నే వీధుల నిండా ఇలాంటి పడుగులే.",
+"specs": {
+"గంజి": "బియ్యం గంజి"
+}
+},
+"నేసిన చీరలు": {
+"simple": "నేసిన చీరలు: మడిచి పేర్చినవి, జరీ అంచుతో.",
+"deep": "సాదా నూలు చీరకి 2–3 రోజులు; పట్టు, ఇక్కత్, జరీ బుటాల చీరకి వారాలు. ప్రతి చేనేత చీర ఒక్కోటీ వేరు.",
+"specs": {
+"ఒక చీర": "6.5 m (రవికతో)"
+}
+},
+"బల్బ్": {
+"simple": "బల్బ్: సాయంత్రం పని కోసం.",
+"deep": "'🕐 రాత్రి' అంటే వెలుగుతుంది.",
+"specs": {
+"పని": "వెలుతురు"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎలా నేస్తారు",
+"బట్ట ఎలా",
+"how to weave",
+"నేత ఎలా",
+"ఎలా పనిచేస్తుంది"
+],
+"a": "మూడు పనులు, మళ్ళీ మళ్ళీ Sir: కాలితో పలక తొక్కితే సగం పడుగు దారాలు పైకి లేస్తాయి (సందు); నాడె ఆ సందులోంచి ఎగిరి ఒక పేక దారం వేస్తుంది; పన్నె ఆ దారాన్ని బట్ట అంచుకి కొడుతుంది. తర్వాత వేరే సగం లేస్తుంది. నిమిషానికి 60–80 సార్లు."
+},
+{
+"k": [
+"పడుగు పేక",
+"పడుగు అంటే",
+"పేక అంటే",
+"warp",
+"weft"
+],
+"a": "పడుగు అంటే బట్ట పొడవునా వెళ్ళే నిలువు దారాలు Sir (మగ్గం మీద ముందే బిగించి ఉంటాయి). పేక అంటే నాడె వేసే అడ్డ దారం. రెండూ ఒకదాని పైన, కింద అల్లుకుంటేనే బట్ట."
+},
+{
+"k": [
+"ఎన్ని రోజులు",
+"ఒక చీరకి",
+"how long",
+"ఎంత సమయం"
+],
+"a": "సాదా నూలు చీర నేయడానికి 2–3 రోజులు Sir (నూలు సిద్ధం చేయడం కాకుండా). ఇక్కత్, జరీ, బుటాల చీరకి వారం నుంచి నెల దాకా. బొమ్మలో ఆగకుండా నేస్తే పట్టే గంటలు చూపిస్తున్నాను; నిజంగా మధ్యలో దారాలు తెగడం, కండెలు మార్చడం ఉంటాయి."
+},
+{
+"k": [
+"చేనేత మరమగ్గం",
+"పవర్‌లూమ్",
+"powerloom",
+"తేడా",
+"మర మగ్గం"
+],
+"a": "మరమగ్గం కరెంట్‌తో నడుస్తుంది Sir: వేగం పది రెట్లు, ఖర్చు తక్కువ, బట్ట ఒకేలా గట్టిగా ఉంటుంది. చేనేతలో ప్రతి దారాన్ని మనిషి చేయి నియంత్రిస్తుంది: బట్ట మెత్తగా, గాలి ఆడేలా ఉంటుంది, క్లిష్టమైన డిజైన్లు సాధ్యం. అంచుల్లో చిన్న అసమానతలు చేనేత గుర్తు."
+},
+{
+"k": [
+"ఇక్కత్",
+"పోచంపల్లి",
+"ikat",
+"కట్టి రంగు"
+],
+"a": "ఇక్కత్‌లో డిజైన్‌ని నేతకి ముందే దారాల మీద వేస్తారు Sir: దారాలకి రబ్బర్ కట్లు కట్టి రంగులో ముంచుతారు, కట్టిన చోట రంగు పట్టదు. మగ్గం మీద ఆ దారాలని సరిగ్గా అమర్చితే డిజైన్ కొంచెం మసకగా, అందంగా వస్తుంది. పోచంపల్లి దీనికి ప్రసిద్ధి."
+},
+{
+"k": [
+"ఎక్కడ నేస్తారు",
+"మన దగ్గర",
+"ఏ ఊళ్ళు",
+"ప్రసిద్ధ",
+"famous"
+],
+"a": "తెలుగు నేలలో చేనేత ఊళ్ళు చాలా Sir: పోచంపల్లి (ఇక్కత్), గద్వాల, నారాయణపేట, సిద్దిపేట, వెంకటగిరి, మంగళగిరి, ధర్మవరం (పట్టు), ఉప్పాడ (జాందానీ), పొందూరు (ఖాదీ). ప్రతి ఊరికి దాని నేత, అంచు, రంగులు."
+},
+{
+"k": [
+"గంజి ఎందుకు",
+"వీధిలో ఎందుకు",
+"sizing",
+"starch"
+],
+"a": "పడుగు దారం నేతలో వేల సార్లు అచ్చులు, పన్నె మధ్య రాసుకుంటుంది Sir. బియ్యం గంజి పూస్తే దారం గట్టిగా, నునుపుగా అవుతుంది: తెగదు, పీచు లేవదు. అందుకే పడుగుని వీధిలో సాగదీసి గంజి పూసి ఆరబెడతారు."
+},
+{
+"k": [
+"ఫ్లై షటిల్",
+"నాడె ఎలా",
+"fly shuttle",
+"తాడు లాగితే"
+],
+"a": "పాత పద్ధతిలో నాడెని ఒక చేత్తో విసిరి ఇంకో చేత్తో పట్టుకునేవారు Sir. ఫ్లై షటిల్‌లో ఒక తాడు లాగితే పెట్టెలోని కర్ర నాడెని కొట్టి అవతలి పెట్టెలోకి పంపుతుంది: వేగం రెట్టింపు, ఒక చేయి పన్నె కొట్టడానికి ఖాళీ."
+},
+{
+"k": [
+"దారం తెగితే",
+"తెగింది",
+"thread break",
+"ముడి"
+],
+"a": "పడుగు దారం తెగితే నేతగాడు వెంటనే ఆగి, తెగిన రెండు చివర్లకి చిన్న ముడి (నేత ముడి) వేసి, అచ్చు కన్ను, పన్నె పన్ను గుండా మళ్ళీ దూర్చాలి Sir. ఆగకపోతే బట్టలో పొడవైన గీత (లోపం) పడుతుంది."
+}
+],
+"quiz": [
+{
+"q": "పేక దారాన్ని మోస్తూ సందులోంచి ఎగిరేది ఏది?",
+"a": "నాడె",
+"opts": [
+"నాడె",
+"పన్నె",
+"కాలి పలకలు"
+]
+},
+{
+"q": "సగం పడుగు దారాలని పైకి లేపేవి ఏవి?",
+"a": "అచ్చులు",
+"opts": [
+"పడుగు దూలం",
+"అచ్చులు",
+"బట్ట దూలం"
+]
+},
+{
+"q": "ప్రతి పేక దారాన్ని బట్ట అంచుకి కొట్టేది ఏది?",
+"a": "పన్నె",
+"opts": [
+"పన్నె",
+"నాడె",
+"మగ్గం ఫ్రేమ్"
+]
+},
+{
+"q": "నేతగాడు కాళ్ళతో తొక్కేవి ఏవి?",
+"a": "కాలి పలకలు",
+"opts": [
+"నేతగాడి బల్ల",
+"కాలి పలకలు",
+"అచ్చులు"
+]
+},
+{
+"q": "పేక దారాన్ని కండెల మీద చుట్టేది ఏది?",
+"a": "చరఖా",
+"opts": [
+"చరఖా",
+"రంగు కుండలు",
+"వీధి పడుగు"
+]
+},
+{
+"q": "నిలువు దారాలన్నీ చుట్టి ఉన్న రోలు ఏది?",
+"a": "పడుగు దూలం",
+"opts": [
+"బట్ట దూలం",
+"పడుగు దూలం",
+"నేసిన చీరలు"
+]
+}
+],
+"faults": [
+{
+"label": "నాడె",
+"kind": "stop",
+"clue": "నేత ఆగింది Sir! నాడె అవతలి వైపు చేరట్లేదు. ఏది ఇరుక్కుంది?",
+"why": "నాడె సందులో ఇరుక్కుంది: ఒక పడుగు దారం వదులై సందు సరిగ్గా తెరుచుకోలేదు. నేతగాడు నాడెని చేత్తో తీసి, వదులు దారాన్ని బిగించి మళ్ళీ మొదలుపెడతాడు. బలవంతంగా కొడితే దారాలు తెగుతాయి."
+},
+{
+"label": "పన్నె",
+"kind": "loose",
+"clue": "ఏది మామూలు కంటే ఎక్కువ ఊగుతోంది Sir?",
+"why": "పన్నె ఊయల పై మేకు వదులైంది: కొట్టే దెబ్బ సమంగా పడక బట్టలో గీతలు (ఎక్కువ తక్కువ చిక్కదనం) వస్తున్నాయి. మేకులు బిగిస్తారు."
+},
+{
+"label": "కాలి పలకలు",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: మామూలు టకటక కాకుండా కీచు చప్పుడు ఎక్కడి నుంచి? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "కాలి పలకల ఇరుసుకి నూనె అయిపోయింది, తాళ్ళు అరిగాయి. ఆముదం / నూనె చుక్క వేసి, అరిగిన తాళ్ళు మారుస్తారు."
+},
+{
+"label": "చరఖా",
+"kind": "loose",
+"clue": "బయట ఏది వణుకుతోంది Sir?",
+"why": "చరఖా చక్రం ఇరుసు వదులైంది: కదురు తాడు జారుతోంది, కండెలు వదులుగా చుట్టుకుంటున్నాయి (నాడెలో చిక్కుపడతాయి). ఇరుసు చీల బిగిస్తారు."
+}
+],
+"inside": {
+"నేసిన బట్ట": {
+"say": "బట్ట లోపల Sir, చాలా పెద్దది చేసి చూపిస్తున్నాను: నీలి దారాలు పడుగు (నిలువు), పసుపు దారాలు పేక (అడ్డం). ప్రతి పేక దారం ఒక పడుగు దారం పైన, తర్వాతి దాని కింద, మళ్ళీ పైన వెళ్తుంది; పక్క పేక దారం సరిగ్గా వ్యతిరేకంగా. దీన్నే సాదా నేత అంటారు. ఏ ముడీ, జిగురూ లేదు: దారాల వంపులే ఒకదాన్నొకటి పట్టి ఉంచుతాయి. మెరుస్తున్నది నాడె ఇప్పుడే వేసిన దారం: పన్నె దాన్ని దగ్గరికి కొడుతోంది.",
+"code": "// The cloth made very large: the long threads (the warp, blue) and the cross threads (the weft, yellow) go over and\n// under each other in turn: the plain weave. Nothing ties them: each thread is held only by the bends of the others,\n// and that is the whole strength of cloth. The bright thread is the one the shuttle has just laid.\nconst warpM = W.fabric('#2f5f9a'), weftM = W.fabric('#e8c62a'), newM = new THREE.MeshStandardMaterial({ color: 0xfff1a8, emissive: 0xffd23a, emissiveIntensity: 1.2, roughness: 0.8 });\nconst N = 7, P = 26, R = 6.5;\nconst wave = (i, along, phase) => { const pts = []; for (let k = 0; k <= 28; k++) { const u = -P * N / 2 + (k / 28) * P * N, h = Math.cos((u / P + 0.5) * Math.PI) * R * 1.05 * phase; pts.push(along === 'x' ? [u, h, (i - (N - 1) / 2) * P] : [(i - (N - 1) / 2) * P, h, u]); } return pts; };\nconst wp = W.group(), wf = W.group(), nw = W.group();\nfor (let i = 0; i < N; i++) wp.add(W.mesh(W.tube(wave(i, 'x', i % 2 ? 1 : -1), R, 60), warpM));\nfor (let i = 0; i < N - 1; i++) wf.add(W.mesh(W.tube(wave(i, 'z', i % 2 ? -1 : 1), R, 60), weftM));\nconst last = W.mesh(W.tube(wave(N - 1, 'z', (N - 1) % 2 ? -1 : 1), R, 60), newM);\nnw.add(last);\nW.add(wp, { label: 'పడుగు (నిలువు దారాలు)' });\nW.add(wf, { label: 'పేక (అడ్డ దారాలు)' });\nW.add(nw, { label: 'ఇప్పుడే వేసిన పేక' });\nW.onTick((t) => { const k = (t % 3) / 3; last.position.x = (1 - Math.min(1, k * 2.2)) * 60; newM.emissiveIntensity = 0.5 + 1.2 * Math.abs(Math.sin(t * 3)); });\n"
+}
+},
+"film": [
+"🧵 చేనేత మగ్గం",
+"పడుగు: నిలువు దారాలు",
+"అచ్చులు లేస్తాయి → నాడె ఎగురుతుంది",
+"పన్నె కొడుతుంది: టక్!",
+"దారం దారం → బట్ట",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ మగ్గం సంరక్షణ",
+"safety": "మగ్గంలో కరెంట్ భాగాలు లేవు Sir, కానీ పన్నె కొట్టే చోట, నాడె దారిలో వేళ్ళు పెట్టకూడదు. గంటల తరబడి ఒకే భంగిమ: మధ్యలో లేచి నడవడం, కళ్ళకి విశ్రాంతి ముఖ్యం. రంగుల పనికి చేతి తొడుగులు.",
+"steps": [
+{
+"say": "పన్నె పళ్ళు వంగాయా, వాటి మధ్య పీచు పేరుకుందా చూసి బ్రష్‌తో శుభ్రం చేస్తారు.",
+"label": "పన్నె"
+},
+{
+"say": "అచ్చుల తాళ్ళు, కాలి పలకల తాళ్ళు అరిగితే మారుస్తారు; రెండు అచ్చులు సమంగా లేస్తున్నాయా చూస్తారు.",
+"label": "అచ్చులు"
+},
+{
+"say": "నాడె మొనలు, అడుగు నునుపుగా ఉండాలి: గరుకు ఉంటే పడుగు దారాలు తెగుతాయి. మైనం రుద్దుతారు.",
+"label": "నాడె"
+},
+{
+"say": "పడుగు బిగువు సమంగా ఉందా: ఒక వైపు వదులైతే బట్ట అంచు అలలుగా వస్తుంది.",
+"label": "పడుగు దూలం"
+},
+{
+"say": "కొత్త పడుగు ఎక్కించడం పెద్ద పని: 4,000 దారాలని ఒక్కొక్కటిగా పాత దారాలకి ముడి వేస్తారు, రోజంతా పడుతుంది.",
+"label": "పడుగు దారాలు"
+}
+]
+},
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"id": "loom"
+}
+}

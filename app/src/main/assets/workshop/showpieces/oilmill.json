@@ -1,0 +1,474 @@
+{
+"at": 1763700000017,
+"title": "వేరుశనగ నూనె మిల్",
+"what": "ఊరి నూనె మిల్: డీకార్టికేటర్, స్టీమ్ కెటిల్, ఎక్స్‌పెల్లర్ (స్క్రూ ప్రెస్), ఫిల్టర్ ప్రెస్, నూనె డబ్బాలు + పాత చెక్క గానుగ. 🕐 🚶",
+"model": "showpiece",
+"parts": [
+{
+"id": "land",
+"status": "మిల్ స్థలం సిద్ధం చేస్తున్నాను",
+"code": "// Groundnut oil mill, hand-made. Units: cm, real size (a village mill: about 300 kg of kernels an hour). The pods come in at\n// the left: decorticator (the shells come off) → elevator → steam kettle (the kernels are warmed) → expeller (a screw\n// squeezes the oil out) → settling tank → filter press → oil tanks → tins. The pressed cake is cattle feed; the shells fire\n// the small boiler. At the right, under a thatch, the old way: a wooden ghani.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 10, ground: '#7d8a52', zoom: 0.72 });\nconst land = W.group();\nland.add(W.mesh(W.box(7600, 20, 5200), S.land('soil', '#a98f6c', 500), { at: [300, -9, 200] }));\nland.add(W.mesh(W.box(7600, 6, 460), S.land('asphalt', '#5d6064', 400), { at: [300, 4, 2500] }), S.dashes(-3500, 4100, 2500));\nland.add(W.mesh(W.box(1700, 8, 1000), S.land('concrete', '#c2bdb0', 300), { at: [-700, 5, 1500] }));\nW.add(land, { label: 'మిల్ స్థలం', ground: true });\nconst tr = W.group();\ntr.add(S.trees(16, -3500, -2400, 4100, 2300, (x, z) => z < -1900 || x < -3000 || x > 3500));\nW.add(tr, { label: 'చెట్లు', ground: true });\n"
+},
+{
+"id": "mill",
+"status": "మిల్ షెడ్, యంత్రాలు పెడుతున్నాను",
+"code": "const S = W.store;\nconst sh = S.shed([0, 0, 0], 2700, 620, 1400, { color: '#cfd4cc', door: 760, doorX: -700, doorH: 440 });\nS.pm = S.sf('paint', '#4d7a62', { tile: 140 }); S.dk = S.sf('metal', '#70777d', { rough: 0.6 }); S.oilM = new THREE.MeshStandardMaterial({ color: 0xe0a81e, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.9 });\nconst pm = S.pm, dk = S.dk;\nconst dc = W.group();\ndc.add(sh.floor);\nfor (const dx of [-70, 70]) for (const dz of [-55, 55]) dc.add(W.mesh(W.box(8, 150, 8), dk, { at: [-1000 + dx, 75, -200 + dz] }));\ndc.add(W.mesh(W.box(170, 150, 130), S.sf('paint', '#b8562f', { tile: 140 }), { at: [-1000, 220, -200] }), W.mesh(W.cyl(100, 30, 100, 4), dk, { at: [-1000, 350, -200], rot: [0, 45, 0] }));\nS.beater = W.group({ at: [-1000, 220, -130] });\nS.beater.add(W.mesh(W.cyl(46, 46, 12, 16), S.sf('metal', '#3d4248'), { rot: [90, 0, 0] }));\nfor (let k = 0; k < 4; k++) S.beater.add(W.mesh(W.box(80, 10, 14), S.sf('metal', '#8d959c'), { rot: [0, 0, k * 45] }));\ndc.add(S.beater);\ndc.add(W.mesh(W.cyl(46, 46, 50, 16), pm, { at: [-1000, 120, -300], rot: [90, 0, 0] })); // its fan\ndc.add(S.pipe([[-1000, 120, -330], [-1000, 200, -480], [-1000, 420, -620], [-1000, 380, -800], [-1000, 260, -1000]], 20, dk, 30));\nW.add(dc, { label: 'డీకార్టికేటర్', heat: [30, 48], layer: 2 });\nconst el = W.group();\nel.add(W.mesh(W.box(46, 520, 36), pm, { at: [-640, 280, -430] }), W.mesh(W.box(64, 60, 56), pm, { at: [-640, 570, -430] }), W.mesh(W.box(64, 50, 56), pm, { at: [-640, 30, -430] }));\nel.add(S.beam([-930, 150, -200], [-660, 40, -400], 10, dk), S.beam([-620, 560, -420], [-290, 520, -220], 10, dk));\nW.add(el, { label: 'ఎలివేటర్', heat: [30, 40], layer: 2 });\n// the kettle: three steam-heated pans one over another: the warm, slightly moist kernels give up their oil more easily\nconst kt = W.group();\nfor (let k = 0; k < 3; k++) kt.add(W.mesh(W.cyl(62, 62, 56, 24), S.sf('metal', '#c2c8cd', { rough: 0.45, tile: 80 }), { at: [-250, 330 + k * 62, -200] }), W.mesh(W.cyl(66, 66, 6, 24), dk, { at: [-250, 360 + k * 62, -200] }));\nS.stir = W.group({ at: [-250, 540, -200] });\nS.stir.add(W.mesh(W.cyl(20, 20, 40, 12), S.sf('paint', '#3b6a94')), W.mesh(W.box(60, 6, 8), dk, { at: [0, 26, 0] }));\nkt.add(S.stir);\nfor (const dx of [-60, 60]) for (const dz of [-50, 50]) kt.add(W.mesh(W.box(8, 300, 8), dk, { at: [-250 + dx, 150, -200 + dz] }));\nW.add(kt, { label: 'స్టీమ్ కెటిల్', heat: [40, 95], layer: 2 });\n// the expeller: a worm (a thick screw) turns slowly inside a cage of steel bars; the kernels are squeezed harder and\n// harder toward the far end: the oil runs out between the bars, the dry cake comes out at the end\nconst ex = W.group();\nex.add(W.mesh(W.box(700, 60, 150), S.sf('paint', '#5a6068', { tile: 120 }), { at: [-50, 60, -200] }));\nconst cage = new THREE.InstancedMesh(W.box(440, 7, 5), S.sf('metal', '#8d959c', { rough: 0.5 }), 26), M = new THREE.Matrix4(), Q = new THREE.Quaternion();\nfor (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2; M.compose(new THREE.Vector3(30, 160 + Math.cos(a) * 46, -200 + Math.sin(a) * 46), Q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), a), new THREE.Vector3(1, 1, 1)); cage.setMatrixAt(i, M); }\nex.add(cage);\nfor (const x of [-190, -40, 110, 250]) ex.add(W.mesh(W.ring(47, 58, 14, 24), S.sf('paint', '#5a6068', { tile: 120 }), { at: [x, 160, -200], rot: [0, 0, 90] }));\nS.worm = W.group({ at: [30, 160, -200] });\nS.worm.add(W.mesh(W.cyl(26, 34, 440, 16), S.sf('metal', '#b9bfc5', { rough: 0.4 }), { rot: [0, 0, 90] }));\nfor (let k = 0; k < 9; k++) S.worm.add(W.mesh(W.cyl(43, 43, 7, 20), S.sf('metal', '#b9bfc5', { rough: 0.4 }), { at: [-200 + k * 50, 0, 0], rot: [0, 12, 90] }));\nex.add(S.worm);\nex.add(W.mesh(W.cyl(46, 26, 70, 4), dk, { at: [-250, 250, -200], rot: [0, 45, 0] })); // the feed hopper under the kettle\nex.add(W.mesh(W.cyl(34, 56, 40, 20), S.sf('metal', '#6f767e'), { at: [275, 160, -200], rot: [0, 0, -90] })); // the choke cone at the cake end\nex.add(W.mesh(W.box(520, 8, 120), dk, { at: [30, 96, -200], rot: [4, 0, 0] })); // the oil tray under the cage\nW.add(ex, { label: 'ఎక్స్‌పెల్లర్', heat: [40, 110], layer: 2 });\nconst gb = W.group();\ngb.add(W.mesh(W.box(150, 170, 150, 6), S.sf('paint', '#3f7d6e', { tile: 120 }), { at: [-320, 165, -200] }));\nconst mo = S.motor(170, 46, '#3b6a94'); mo.position.set(-520, 70, -200); gb.add(mo);\nS.pulley = W.group({ at: [-410, 160, -120] });\nS.pulley.add(W.mesh(W.cyl(50, 50, 16, 20), S.sf('metal', '#3d4248'), { rot: [90, 0, 0] }), W.mesh(W.box(90, 10, 18), S.sf('metal', '#8d959c')));\ngb.add(S.pulley);\nW.add(gb, { label: 'గేర్‌బాక్స్ మోటార్', heat: [35, 75], layer: 2 });\nconst ck = W.group();\nck.add(S.heap(430, 200, 170, 80, 150, S.land('gravel', '#8a6a48', 40)));\nconst cb = new THREE.InstancedMesh(W.box(74, 26, 46, 8), S.sf('wood', '#b89a6a', { tile: 60, rough: 0.95 }), 12);\nfor (let i = 0; i < 12; i++) cb.setMatrixAt(i, M.makeTranslation(330 + (i % 3) * 78, 26 + Math.floor(i / 6) * 28, 420 + (Math.floor(i / 3) % 2) * 50));\nck.add(cb);\nW.add(ck, { label: 'వేరుశనగ చెక్క', heat: [35, 60], layer: 2 });\nconst st = W.group();\nst.add(W.mesh(W.box(240, 90, 150), S.sf('metal', '#aab2ba', { rough: 0.5 }), { at: [30, 45, 120] }), W.mesh(W.box(226, 4, 136), S.oilM, { at: [30, 82, 120] }));\nst.add(S.pipe([[30, 96, -150], [30, 70, -40], [30, 92, 60]], 5, dk), S.pipe([[150, 30, 120], [400, 20, -80], [640, 60, -250]], 5, dk, 24));\nconst pp = S.motor(70, 20, '#3b6a94'); pp.position.set(260, 26, 60); st.add(pp);\nW.add(st, { label: 'నూనె తొట్టి', heat: [35, 60], layer: 2 });\n// the filter press: the oil is pumped through many cloths held between plates: the fine bits of nut stay on the cloth\nconst fp = W.group();\nfor (const x of [640, 960]) fp.add(W.mesh(W.box(16, 150, 110), S.sf('paint', '#3b6a94', { tile: 100 }), { at: [x, 95, -250] }), W.mesh(W.box(20, 30, 130), dk, { at: [x, 15, -250] }));\nconst plates = new THREE.InstancedMesh(W.box(7, 100, 100), S.sf('paint', '#d9d5ca', { tile: 60 }), 26), cloth = new THREE.InstancedMesh(W.box(3, 108, 108), S.matte('#c9b98a', 0.95), 26);\nfor (let i = 0; i < 26; i++) { plates.setMatrixAt(i, M.makeTranslation(664 + i * 10.6, 105, -250)); cloth.setMatrixAt(i, M.makeTranslation(669 + i * 10.6, 105, -250)); }\nfp.add(plates, cloth);\nfor (const z of [-50, 50]) fp.add(W.mesh(W.cyl(4, 4, 330, 8), S.sf('metal', '#c9cdd2'), { at: [800, 110, -250 + z], rot: [0, 0, 90] }));\nfp.add(W.mesh(W.box(300, 8, 130), dk, { at: [800, 40, -250], rot: [3, 0, 0] }), S.pipe([[800, 40, -190], [900, 30, -150], [1010, 60, -150]], 5, dk));\nW.add(fp, { label: 'ఫిల్టర్ ప్రెస్', heat: [35, 55], layer: 2 });\nconst ot = W.group();\nfor (const z of [-430, -150]) { ot.add(S.tank(110, 300, S.sf('metal', '#c2c8cd', { rough: 0.45, tile: 120 }), { at: [1130, 0, z], legs: 50, dome: 0.14, legMat: dk })); ot.add(W.mesh(W.box(4, 200, 10), S.oilM, { at: [1018, 200, z] })); }\not.add(S.pipe([[1130, 60, -150], [1050, 30, 100], [960, 150, 330]], 5, dk, 24));\nW.add(ot, { label: 'నూనె ట్యాంకులు', heat: [32, 40], layer: 2 });\nconst tn = W.group();\ntn.add(W.mesh(W.box(260, 8, 90), S.sf('wood', '#8a6a48', { tile: 80 }), { at: [960, 76, 380] }));\nfor (const dx of [-115, 115]) for (const dz of [-35, 35]) tn.add(W.mesh(W.box(8, 74, 8), dk, { at: [960 + dx, 37, 380 + dz] }));\nconst tinM = S.sf('metal', '#d9c06a', { rough: 0.35, metallic: 0.5, tile: 40 });\nconst tins = new THREE.InstancedMesh(W.box(24, 35, 24), tinM, 34);\nfor (let i = 0; i < 4; i++) tins.setMatrixAt(i, M.makeTranslation(870 + i * 60, 98, 380));\nfor (let i = 4; i < 34; i++) { const j = i - 4; tins.setMatrixAt(i, M.makeTranslation(1150 + (j % 5) * 27, 18 + Math.floor(j / 10) * 36, 300 + (Math.floor(j / 5) % 2) * 27)); }\ntn.add(tins, W.mesh(W.cyl(3, 3, 60, 8), dk, { at: [960, 150, 350] }), W.mesh(W.box(40, 8, 40), S.sf('metal', '#4a8a5a', { rough: 0.6 }), { at: [1050, 84, 380] }));\nW.add(tn, { label: 'నూనె డబ్బాలు', heat: [30, 36], layer: 2 });\nconst pn = W.group();\npn.add(W.mesh(W.box(16, 150, 130), S.sf('paint', '#8f979e', { tile: 100 }), { at: [-1326, 230, 300] }));\nS.pilot = [];\nfor (let k = 0; k < 4; k++) { const m = new THREE.MeshStandardMaterial({ color: 0x102010, emissive: 0x3aff6a, emissiveIntensity: 0 }); pn.add(W.mesh(W.cyl(5, 5, 6, 10), m, { at: [-1316, 270, 260 + k * 26], rot: [0, 0, 90] })); S.pilot.push(m); }\nW.add(pn, { label: 'స్విచ్‌బోర్డ్', heat: [30, 46], layer: 2 });\nW.add(sh.walls, { label: 'మిల్ గోడలు', layer: 1, peelBy: [0, 1900, 0], explode: [0, 0, 1900] });\nW.add(sh.roof, { label: 'మిల్ పైకప్పు', layer: 0, peelBy: [0, 2300, 0], explode: [0, 2300, 0] });\n"
+},
+{
+"id": "yard",
+"status": "కాయల కుప్ప, బాయిలర్, గానుగ పెడుతున్నాను",
+"code": "const S = W.store;\nconst dk = S.dk, M = new THREE.Matrix4();\nconst pd = W.group();\npd.add(S.heap(-900, 1450, 330, 130, 270, S.land('gravel', '#c9a878', 50)));\nconst sack = S.sf('wood', '#c9b98a', { tile: 60, rough: 0.95 });\nconst bg = new THREE.InstancedMesh(W.box(90, 28, 54, 9), sack, 20);\nfor (let i = 0; i < 20; i++) bg.setMatrixAt(i, M.makeTranslation(-300 + (i % 4) * 94, 18 + Math.floor(i / 8) * 29, 1300 + (Math.floor(i / 4) % 2) * 58));\npd.add(bg);\nW.add(pd, { label: 'వేరుశనగ కాయలు', heat: [30, 36] });\nconst sl = W.group();\nsl.add(S.heap(-1000, -1250, 420, 200, 320, S.land('gravel', '#b89a72', 40)));\nW.add(sl, { label: 'తొక్కల కుప్ప', heat: [30, 36] });\nconst bo = W.group();\nbo.add(W.mesh(W.cyl(90, 90, 300, 24), S.sf('paint', '#3b6a94', { tile: 160 }), { at: [300, 190, -1250] }), W.mesh(W.cyl(100, 100, 40, 24), S.sf('rust', '#6a5a50'), { at: [300, 20, -1250] }));\nS.fire = new THREE.MeshStandardMaterial({ color: 0x331000, emissive: 0xff7a2a, emissiveIntensity: 0 });\nbo.add(W.mesh(W.box(50, 40, 6), S.fire, { at: [300, 70, -1158] }));\nbo.add(W.mesh(W.cyl(18, 22, 900, 14), S.sf('rust', '#8a7f78', { tile: 120 }), { at: [300, 790, -1250] }));\nbo.add(S.pipe([[300, 340, -1250], [200, 420, -1000], [-150, 480, -720], [-250, 440, -260]], 6, S.sf('sheet', '#c9cdd2', { tile: 60 }), 40));\nS.chGroup = bo; S.chTop = [300, 1245, -1250];\nW.add(bo, { label: 'బాయిలర్', heat: [40, 160] });\n// the ghani: a wooden mortar and a heavy pestle that leans and goes round: the old way (once turned by a bullock)\nconst gh = W.group();\nconst wood = S.sf('wood', '#7a5a3c', { tile: 70 }), GX = 2300, GZ = 900;\ngh.add(W.mesh(W.lathe([[0.1, 0], [70, 0], [62, 40], [78, 100], [86, 112], [60, 112], [30, 60], [0.1, 56]], 28), wood, { at: [GX, 0, GZ] }));\ngh.add(W.mesh(W.cyl(100, 110, 14, 24), S.sf('concrete', '#b9b5ab'), { at: [GX, 7, GZ] }));\nS.ghani = W.group({ at: [GX, 0, GZ] });\nS.ghani.add(S.beam([0, 62, 0], [58, 250, 0], 13, wood, 10));                // the pestle, leaning\nS.ghani.add(S.beam([58, 250, 0], [240, 120, 0], 8, wood, 8), S.beam([70, 30, 0], [240, 40, 0], 8, wood, 8), S.beam([240, 120, 0], [240, 34, 0], 6, wood, 8)); // the beam that carries the load round\nS.ghani.add(W.mesh(W.box(50, 30, 40), S.sf('concrete', '#8f8a80'), { at: [215, 56, 0] })); // the stone weight\ngh.add(S.ghani);\ngh.add(W.mesh(W.cyl(16, 12, 22, 14), S.sf('metal', '#b98a5a', { rough: 0.4 }), { at: [GX, 11, GZ + 100] }));\nconst gm = S.motor(70, 20, '#3b6a94'); gm.position.set(GX - 150, 26, GZ - 120); gh.add(gm);\nW.add(gh, { label: 'గానుగ', heat: [30, 45] });\nconst th = W.group();\nth.add(W.mesh(W.cone(430, 190, 4), S.sf('wood', '#b8a468', { tile: 50, rough: 0.95 }), { at: [GX, 395, GZ], rot: [0, 45, 0] }));\nW.add(th, { label: 'గానుగ పాక', layer: 0, peelBy: [0, 900, 0], explode: [0, 900, 0] });\nconst posts = W.group();\nfor (const sx of [-1, 1]) for (const sz of [-1, 1]) posts.add(W.mesh(W.cyl(8, 9, 300, 8), S.sf('wood', '#6f5a48', { tile: 60 }), { at: [GX + sx * 280, 150, GZ + sz * 280] }));\nW.add(posts, { label: 'పాక గుంజలు', ground: true });\n"
+},
+{
+"id": "run",
+"status": "మిల్ స్టార్ట్‌కి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is the press speed (300 kg of kernels an hour at full). Over the limit the expeller chokes: its\n// overload relay trips the motor (a protection). 🚩 \"ghani\": the wooden ghani turns too (slow, cold-pressed oil).\nconst sign = W.group();\nsign.add(W.text('JARVIS · వేరుశనగ నూనె మిల్', { size: 90, at: [0, 560, 712], color: '#3a2a10', bg: '#e8c62a' }));\nW.add(sign, { label: 'మిల్ బోర్డ్' });\nW.throttle({ label: 'ప్రెస్ వేగం', rise: 0.3, fall: 0.3, start: 0.6 });\nW.sound({ kind: 'gear', label: 'ఎక్స్‌పెల్లర్', gain: 0.45, f0: 50 });\nW.sound({ kind: 'chain', label: 'డీకార్టికేటర్', gain: 0.45 });\nW.sound({ kind: 'motor', label: 'గేర్‌బాక్స్ మోటార్', gain: 0.35, f0: 50 });\nW.sound({ kind: 'hum', label: 'బాయిలర్', gain: 0.2, f0: 70 });\nconst gv = W.sound({ kind: 'gear', label: 'గానుగ', gain: 0.3, f0: 30 });\nconst smoke = S.plume(S.chGroup, S.chTop, { n: 8, life: 6, r: 80, rise: 600, drift: 500, op: 0.3, color: '#d9d5cc' });\nlet hudT = 0, run = 0, ga = 0, gk = 0;\nW.onTick((t, dt) => {\n  const s = W.env.spool, over = W.env.over, on = s > 0.03 && !over, ghani = W.env.flag('ghani');\n  const jam = W.faultOf('ఎక్స్‌పెల్లర్') === 'stop';\n  run += ((on && !jam ? 0.4 + 0.6 * s : 0) - run) * Math.min(1, dt * 1.2);\n  S.step(t, dt, run);\n  S.worm.rotation.x += dt * 1.6 * run; S.pulley.rotation.z += dt * 12 * run; S.beater.rotation.z += dt * 16 * run; S.stir.rotation.y += dt * 2 * run;\n  gk += ((ghani ? 1 : 0) - gk) * Math.min(1, dt * 0.8); ga += dt * 0.9 * gk; S.ghani.rotation.y = ga; gv.set(gk * 0.6);\n  S.fire.emissiveIntensity = on ? 2.4 * (0.85 + 0.15 * Math.sin(t * 9)) : 0.15;\n  smoke(dt, on ? 0.6 : 0);\n  S.pilot.forEach((m) => { m.emissive.set(over ? 0xff3a2a : 0x3aff6a); m.emissiveIntensity = on || over ? 2.2 : 0.2; });\n  if (t - hudT > 0.3) {\n    hudT = t;\n    const kg = Math.round(300 * (run > 0.05 ? s : 0));\n    W.hud({ 'కాయలు → గింజలు': Math.round(kg / 0.7) + ' → ' + kg + ' kg/గంట', 'నూనె': Math.round(kg * 0.42) + ' kg/గంట', 'చెక్క': Math.round(kg * 0.55) + ' kg/గంట',\n      'కెటిల్ · ప్రెస్': on ? '90°C · ' + Math.round(70 + 40 * s) + '°C' : '—', 'మోటార్': over ? 'ఓవర్‌లోడ్ ట్రిప్ ⚠️ (ప్రెస్ ఇరుక్కుంది)' : Math.round(22 * run) + ' kW', 'గానుగ': ghani ? 'తిరుగుతోంది · గంటకి 5 kg నూనె' : 'ఆగి ఉంది' });\n    W.report({ power: s, kernelsKg: kg, oilKg: kg * 0.42, cakeKg: kg * 0.55 });\n  }\n});\nconst go = (e) => !e.over && e.spool > 0.03;\nW.stream([[-900, 130, 1450], [-1000, 200, 700], [-1000, 420, -100], [-1000, 300, -200]], { kind: 'grain', count: 20, size: 9, speed: 0.6, when: go });\nW.stream([[-1000, 120, -330], [-1000, 420, -620], [-1000, 380, -800], [-1000, 260, -1000], [-1000, 150, -1200]], { kind: 'coal', count: 20, size: 9, speed: 0.9, when: go });\nW.stream([[-930, 150, -200], [-660, 40, -400], [-640, 570, -430], [-290, 520, -220], [-250, 460, -200], [-250, 250, -200], [-180, 160, -200], [250, 160, -200]], { kind: 'grain', count: 46, size: 9, speed: 0.5, when: go });\nW.stream([[280, 160, -200], [340, 120, 0], [430, 80, 200]], { kind: 'coal', count: 10, size: 9, speed: 0.4, when: go });\nW.stream([[30, 110, -200], [30, 96, -150], [30, 92, 60], [150, 60, 120], [400, 20, -80], [640, 60, -250], [800, 105, -250], [800, 40, -190], [1010, 60, -150], [1130, 200, -150], [1050, 30, 100], [960, 150, 330], [960, 110, 380]], { kind: 'oil', count: 70, size: 7, speed: 0.5, when: go });\nfor (const x of [-120, 30, 180]) W.stream([[x, 130, -200], [x, 100, -200]], { kind: 'oil', count: 4, size: 5, speed: 1.2, when: go });\nW.stream([[300, 340, -1250], [200, 420, -1000], [-150, 480, -720], [-250, 440, -260], [-250, 380, -200]], { kind: 'steam', count: 16, size: 8, speed: 0.8, when: go });\nW.stream([[-1000, 100, -1250], [-300, 60, -1300], [200, 60, -1200], [300, 60, -1160]], { kind: 'coal', count: 10, size: 8, speed: 0.3, when: go });\nW.stream([[2300, 60, 900], [2300, 40, 960], [2300, 24, 1000]], { kind: 'oil', count: 4, size: 5, speed: 0.4, when: (e) => e.flag('ghani') });\nW.walk({ eye: 160, speed: 300, area: [-3300, -2200, 3900, 2300],\n  solid: [[-1090, -270, -910, -130], [-420, -290, 320, -110], [620, -320, 980, -180], [1010, -550, 1250, -40], [-1320, -720, 1320, -690], [200, -1350, 400, -1150], [2200, 800, 2400, 1000]],\n  spots: [\n    { name: 'మిల్ లోపల', at: [-700, 0, 430], look: [0, 200, -220] },\n    { name: 'ఎక్స్‌పెల్లర్ దగ్గర', at: [120, 0, 420], look: [0, 150, -200] },\n    { name: 'ఫిల్టర్ ప్రెస్ దగ్గర', at: [680, 0, 300], look: [820, 110, -260] },\n    { name: 'గానుగ దగ్గర', at: [2000, 0, 1500], look: [2300, 120, 900] },\n    { name: 'కాయల కుప్ప దగ్గర', at: [-500, 0, 2150], look: [-500, 220, 300] },\n    { name: 'బాయిలర్ దగ్గర', at: [800, 0, -1900], look: [300, 300, -1250] },\n  ] });\n"
+}
+],
+"say": "నూనె మిల్ రెడీ Sir. 'పైకప్పు తీయి' అంటే లోపల కనిపిస్తుంది, 'గానుగ తిప్పు' అంటే పాత పద్ధతి, 'ఎక్స్‌పెల్లర్ లోపల చూపించు' అంటే స్క్రూ పని చూపిస్తాను.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"వేరుశనగ కాయ నుంచి నూనె డబ్బా దాకా\", \"steps\": [{\"say\": \"Sir, ఇది ఊరి వేరుశనగ నూనె మిల్. ఎడమ వైపు కాయల కుప్ప, మధ్యలో మిల్ షెడ్, కుడి చివర పాత గానుగ.\", \"focus\": [{\"id\": \"mill\", \"piece\": \"మిల్ గోడలు\"}, {\"id\": \"yard\", \"piece\": \"వేరుశనగ కాయలు\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"డీకార్టికేటర్ కాయల తొక్క పగలగొడుతుంది; ఫ్యాన్ తొక్కలని వెనక కుప్పకి ఊదుతుంది. గింజలు ఎలివేటర్‌లో పైకి.\", \"focus\": [{\"id\": \"mill\", \"piece\": \"డీకార్టికేటర్\"}, {\"id\": \"mill\", \"piece\": \"ఎలివేటర్\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"mill\", \"piece\": \"మిల్ పైకప్పు\", \"by\": [0, 2300, 0], \"secs\": 1.2}, {\"id\": \"mill\", \"piece\": \"మిల్ గోడలు\", \"by\": [0, 1900, 0], \"secs\": 1.2}], \"secs\": 9}, {\"say\": \"స్టీమ్ కెటిల్ గింజలని 90 డిగ్రీలకి వేడి చేస్తుంది. కింద ఎక్స్‌పెల్లర్: లావు స్క్రూ గింజలని నలిపి నూనె పిండుతుంది, చివర గట్టి చెక్క వస్తుంది.\", \"focus\": [{\"id\": \"mill\", \"piece\": \"స్టీమ్ కెటిల్\"}, {\"id\": \"mill\", \"piece\": \"ఎక్స్‌పెల్లర్\"}, {\"id\": \"mill\", \"piece\": \"గేర్‌బాక్స్ మోటార్\"}, {\"id\": \"mill\", \"piece\": \"వేరుశనగ చెక్క\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"mill\", \"piece\": \"మిల్ పైకప్పు\", \"by\": [0, 2300, 0], \"secs\": 1}, {\"id\": \"mill\", \"piece\": \"మిల్ గోడలు\", \"by\": [0, 1900, 0], \"secs\": 1}], \"secs\": 11}, {\"say\": \"నూనె తొట్టిలో మడ్డి అడుగుకి చేరుతుంది. ఫిల్టర్ ప్రెస్ గుడ్డలు మిగిలిన పొడిని ఆపుతాయి: తేట బంగారు నూనె.\", \"focus\": [{\"id\": \"mill\", \"piece\": \"నూనె తొట్టి\"}, {\"id\": \"mill\", \"piece\": \"ఫిల్టర్ ప్రెస్\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"mill\", \"piece\": \"మిల్ పైకప్పు\", \"by\": [0, 2300, 0], \"secs\": 1}, {\"id\": \"mill\", \"piece\": \"మిల్ గోడలు\", \"by\": [0, 1900, 0], \"secs\": 1}], \"secs\": 9}, {\"say\": \"ట్యాంకుల్లో నిల్వ, 15 కిలోల డబ్బాల్లో నింపకం.\", \"focus\": [{\"id\": \"mill\", \"piece\": \"నూనె ట్యాంకులు\"}, {\"id\": \"mill\", \"piece\": \"నూనె డబ్బాలు\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"mill\", \"piece\": \"మిల్ పైకప్పు\", \"by\": [0, 2300, 0], \"secs\": 1}, {\"id\": \"mill\", \"piece\": \"మిల్ గోడలు\", \"by\": [0, 1900, 0], \"secs\": 1}], \"secs\": 8}, {\"say\": \"ఇది గానుగ: చెక్క రోలు, రోకలి. నెమ్మదిగా, వేడి లేకుండా నూనె తీసే పాత పద్ధతి. 'గానుగ తిప్పు' అంటే తిప్పి చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"yard\", \"piece\": \"గానుగ\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"yard\", \"piece\": \"గానుగ పాక\", \"by\": [0, 900, 0], \"secs\": 1.2}], \"secs\": 9}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"నూనె మిల్",
+"నూనె మిల్లు",
+"ఆయిల్ మిల్",
+"వేరుశనగ నూనె",
+"పల్లీ నూనె",
+"గానుగ",
+"నూనె గానుగ",
+"oil mill",
+"groundnut oil",
+"peanut oil",
+"ghani",
+"expeller"
+],
+"powerName": "🥜 ప్రెస్ వేగం",
+"outdoor": true,
+"walk": [
+"మిల్ లోపల",
+"ఎక్స్‌పెల్లర్ దగ్గర",
+"ఫిల్టర్ ప్రెస్ దగ్గర",
+"గానుగ దగ్గర",
+"కాయల కుప్ప దగ్గర",
+"బాయిలర్ దగ్గర"
+],
+"switches": [
+{
+"id": "ghani",
+"menu": "🪵 గానుగ తిప్పు",
+"words": [
+"గానుగ తిప్పు",
+"గానుగ నడుపు",
+"గానుగ వేయి",
+"కట్టె గానుగ",
+"ghani on",
+"start ghani",
+"కోల్డ్ ప్రెస్ చూపించు"
+],
+"offWords": [
+"గానుగ ఆపు",
+"గానుగ నిలుపు",
+"ghani off",
+"stop ghani"
+],
+"on": "🪵 గానుగ తిరుగుతోంది Sir: బరువైన రోకలి చెక్క రోలులో వాలుగా తిరుగుతూ గింజలని నలుపుతోంది. నిమిషానికి పది పన్నెండు చుట్లే: వేడి పుట్టదు, నూనె చుక్క చుక్కగా కింది పాత్రలోకి. గంటకి సుమారు 5 kg.",
+"off": "గానుగ ఆపాను Sir."
+}
+],
+"power": {
+"start": "మిల్ మొదలైంది Sir: గంటకి సుమారు 180 kg గింజలు.",
+"full": "ఫుల్ వేగం Sir: గంటకి 300 kg గింజలు, సుమారు 126 kg నూనె, 165 kg చెక్క.",
+"half": "సగం వేగం Sir: గంటకి సుమారు 150 kg గింజలు.",
+"stop": "మిల్ ఆపాను Sir.",
+"over": "ఎక్కువ గింజలు వేశాం Sir: ఎక్స్‌పెల్లర్ ఇరుక్కుంది, మోటార్ హద్దు దాటి కరెంట్ లాగింది, ఓవర్‌లోడ్ రిలే ట్రిప్ చేసింది. ఎర్ర లైట్లు చూడండి.",
+"cut": "ఫీడ్ తగ్గించి రిలే రీసెట్ చేశాను Sir: ఎక్స్‌పెల్లర్ మళ్ళీ తిరుగుతోంది. ఏదీ పాడవలేదు."
+},
+"info": {
+"మిల్ స్థలం": {
+"simple": "ఊరి నూనె మిల్: ఎడమ వైపు వేరుశనగ కాయలు వస్తాయి, కుడి వైపు నూనె డబ్బాలు. కుడి చివర పాత పద్ధతి గానుగ.",
+"deep": "ఇలాంటి చిన్న మిల్లులు రైతుల పంటని దగ్గరలోనే నూనెగా మారుస్తాయి. గంటకి సుమారు 300 kg గింజలు.",
+"specs": {
+"సామర్థ్యం": "గంటకి సుమారు 300 kg గింజలు"
+}
+},
+"చెట్లు": {
+"simple": "మిల్ చుట్టూ చెట్లు.",
+"deep": "వేరుశనగ కాయలు ఎండలో బాగా ఆరాకే మిల్‌కి తేవాలి: తడి కాయల్లో బూజు (అఫ్లాటాక్సిన్) వచ్చే ప్రమాదం.",
+"specs": {
+"కాయల తేమ": "8% లోపు"
+}
+},
+"డీకార్టికేటర్": {
+"simple": "ఇది డీకార్టికేటర్: వేరుశనగ కాయల తొక్క పగలగొట్టి గింజలని వేరు చేస్తుంది.",
+"deep": "తిరిగే రబ్బర్ / ఇనుప బీటర్లు కాయలని జల్లెడ మీద రుద్దుతాయి: తొక్క పగులుతుంది, గింజ కింద పడుతుంది. ఫ్యాన్ తేలికైన తొక్కలని వెనక కుప్పకి ఊదుతుంది.",
+"specs": {
+"100 kg కాయలు": "సుమారు 70 kg గింజలు, 30 kg తొక్కలు"
+}
+},
+"ఎలివేటర్": {
+"simple": "ఎలివేటర్: గింజలని కెటిల్ పైకి ఎత్తుతుంది.",
+"deep": "బెల్ట్ మీద చిన్న బకెట్లు.",
+"specs": {
+"ఎత్తు": "సుమారు 5.5 m"
+}
+},
+"స్టీమ్ కెటిల్": {
+"simple": "స్టీమ్ కెటిల్: మూడు అంతస్తుల పాత్ర. ఆవిరి వేడితో గింజలని సుమారు 90°C కి వేడి చేస్తుంది.",
+"deep": "వేడి, కొద్ది తేమ గింజలోని నూనె కణాలని పగలగొడతాయి: నూనె సులభంగా, ఎక్కువగా వస్తుంది. లోపల తిరిగే చేతులు గింజలని కలుపుతూ కింది అంతస్తుకి తోస్తాయి.",
+"specs": {
+"వేడి": "సుమారు 90°C",
+"అంతస్తులు": "3"
+}
+},
+"ఎక్స్‌పెల్లర్": {
+"simple": "ఇది ఎక్స్‌పెల్లర్: మిల్ గుండె. లోపల లావు స్క్రూ (వార్మ్) నెమ్మదిగా తిరుగుతూ గింజలని నలిపి నూనె పిండుతుంది.",
+"deep": "స్క్రూ చుట్టూ ఉక్కు కడ్డీల పంజరం (కేజ్). చివరికి వెళ్ళే కొద్దీ చోటు తగ్గి ఒత్తిడి పెరుగుతుంది: నూనె కడ్డీల సందుల్లోంచి కారుతుంది, గట్టి చెక్క చివర బయటికి వస్తుంది. రాపిడి వల్ల వేడెక్కుతుంది. 'ఎక్స్‌పెల్లర్ లోపల చూపించు' అంటే చూపిస్తాను.",
+"specs": {
+"స్క్రూ వేగం": "నిమిషానికి సుమారు 30",
+"నూనె": "గింజల్లో సుమారు 42% వస్తుంది"
+}
+},
+"గేర్‌బాక్స్ మోటార్": {
+"simple": "గేర్‌బాక్స్, మోటార్: మోటార్ వేగాన్ని తగ్గించి స్క్రూకి చాలా బలం (టార్క్) ఇస్తాయి.",
+"deep": "మోటార్ నిమిషానికి 1,450; స్క్రూ 30: గేర్‌బాక్స్ సుమారు 50 రెట్లు నెమ్మది చేసి, అంతే రెట్లు బలం పెంచుతుంది.",
+"specs": {
+"మోటార్": "సుమారు 22 kW"
+}
+},
+"వేరుశనగ చెక్క": {
+"simple": "వేరుశనగ చెక్క (పిండి): నూనె పిండాక మిగిలిన గట్టి పొర.",
+"deep": "ఇందులో ప్రొటీన్ చాలా ఎక్కువ (45%): పశువుల దాణాకి, ఎరువుకి మంచి ధర. ఇంకా 6–8% నూనె మిగిలి ఉంటుంది.",
+"specs": {
+"ప్రొటీన్": "సుమారు 45%",
+"మిగిలిన నూనె": "6–8%"
+}
+},
+"నూనె తొట్టి": {
+"simple": "నూనె తొట్టి: పచ్చి నూనె ఇక్కడ కాసేపు నిలిస్తే గింజ పొడి అడుగుకి చేరుతుంది.",
+"deep": "పచ్చి నూనె మసకగా ఉంటుంది. పైన తేరిన నూనెని పంప్ ఫిల్టర్ ప్రెస్‌కి పంపుతుంది.",
+"specs": {
+"పని": "మడ్డి అడుగుకి"
+}
+},
+"ఫిల్టర్ ప్రెస్": {
+"simple": "ఇది ఫిల్టర్ ప్రెస్: చాలా గుడ్డల గుండా నూనెని ఒత్తిడితో పంపుతుంది. సన్నని పొడి గుడ్డ మీద ఆగి, తేట బంగారు నూనె వస్తుంది.",
+"deep": "ప్లేట్ల మధ్య గుడ్డలు; నిండితే ప్లేట్లు విప్పి గుడ్డల మీది మడ్డి తీస్తారు (అది మళ్ళీ ఎక్స్‌పెల్లర్‌కి). రసాయనాలు లేవు: ఇదే 'ఫిల్టర్డ్' నూనె.",
+"specs": {
+"ప్లేట్లు": "సుమారు 26",
+"పద్ధతి": "గుడ్డ వడపోత, రసాయనాలు లేవు"
+}
+},
+"నూనె ట్యాంకులు": {
+"simple": "నూనె ట్యాంకులు: వడకట్టిన నూనె నిల్వ. పక్కన గాజు గొట్టంలో నూనె మట్టం కనిపిస్తుంది.",
+"deep": "నూనెని వెలుతురు, గాలి, వేడికి దూరంగా ఉంచాలి: లేకపోతే ముక్కిపోతుంది (రాన్సిడ్).",
+"specs": {
+"ఒక్కోటి": "సుమారు 1,000 లీటర్లు"
+}
+},
+"నూనె డబ్బాలు": {
+"simple": "నూనె డబ్బాలు: 15 kg డబ్బాల్లో నింపి, తూకం వేసి, మూత సీల్ చేస్తారు.",
+"deep": "ఒక డబ్బా 15 kg, సుమారు 16.5 లీటర్లు (నూనె నీటి కంటే తేలిక).",
+"specs": {
+"డబ్బా": "15 kg"
+}
+},
+"స్విచ్‌బోర్డ్": {
+"simple": "స్విచ్‌బోర్డ్: మోటార్ల స్టార్టర్లు. ప్రెస్ ఇరుక్కుంటే ఓవర్‌లోడ్ రిలే మోటార్‌ని ఆపుతుంది.",
+"deep": "'హద్దు దాటించు' అంటే చూపిస్తాను. బోర్డ్ లోపలి పని ఎలక్ట్రీషియన్‌దే.",
+"specs": {
+"సరఫరా": "3 ఫేజ్, 415 V"
+}
+},
+"మిల్ గోడలు": {
+"simple": "మిల్ గోడలు: లోపలి యంత్రాలని ఎండ, వాన, దుమ్ము నుంచి కాపాడతాయి. 'పైకప్పు తీయి' రెండు సార్లు అంటే ఇవీ లేస్తాయి.",
+"deep": "ఉక్కు స్తంభాల మీద రేకుల గోడలు; కిటికీలు వెలుతురు, గాలి కోసం. రాత్రి కిటికీల్లో లైట్లు కనిపిస్తాయి.",
+"specs": {
+"పని": "రక్షణ"
+}
+},
+"మిల్ పైకప్పు": {
+"simple": "మిల్ పైకప్పు. 'పైకప్పు తీయి' అంటే లేచి లోపల కనిపిస్తుంది.",
+"deep": "వాలు రేకుల పైకప్పు: వాన నీరు జారిపోతుంది. నిజమైన ఫ్యాక్టరీల్లో పైన గాలి పోయే వెంట్లు ఉంటాయి.",
+"specs": {
+"పని": "నీడ, రక్షణ"
+}
+},
+"వేరుశనగ కాయలు": {
+"simple": "వేరుశనగ కాయలు: కుప్ప, గోనె సంచులు.",
+"deep": "వేరుశనగ మన ప్రాంతంలో ముఖ్యమైన నూనె పంట: అనంతపురం, కర్నూలు, మహబూబ్‌నగర్, నల్గొండ జిల్లాల్లో ఎక్కువ.",
+"specs": {
+"గింజలో నూనె": "సుమారు 45–50%"
+}
+},
+"తొక్కల కుప్ప": {
+"simple": "తొక్కల కుప్ప: కాయల పై పెంకులు.",
+"deep": "బాయిలర్‌లో ఇంధనం, ఇటుక బట్టీలు, కోళ్ళ ఫారం పరుపు, పార్టికల్ బోర్డ్: వృథా కాదు.",
+"specs": {
+"వాడకం": "ఇంధనం"
+}
+},
+"బాయిలర్": {
+"simple": "బాయిలర్: తొక్కలని మండించి కెటిల్‌కి ఆవిరి ఇస్తుంది.",
+"deep": "మిల్ తన వ్యర్థాన్నే ఇంధనంగా వాడుతుంది.",
+"specs": {
+"ఇంధనం": "వేరుశనగ తొక్కలు"
+}
+},
+"గానుగ": {
+"simple": "ఇది గానుగ: పాత పద్ధతి. చెక్క రోలులో బరువైన రోకలి వాలుగా తిరుగుతూ గింజలని నలిపి నూనె తీస్తుంది.",
+"deep": "ఒకప్పుడు ఎద్దు తిప్పేది, ఇప్పుడు చిన్న మోటార్. చాలా నెమ్మది, వేడి పుట్టదు: అందుకే 'కోల్డ్ ప్రెస్డ్' నూనె, వాసన, రుచి ఎక్కువ. కానీ నూనె తక్కువ వస్తుంది, ఖరీదు ఎక్కువ.",
+"specs": {
+"వేగం": "నిమిషానికి సుమారు 10–14 చుట్లు",
+"నూనె": "గంటకి సుమారు 5 kg"
+}
+},
+"గానుగ పాక": {
+"simple": "గానుగ పాక: గడ్డి కప్పు. 'పైకప్పు తీయి' అంటే లేస్తుంది.",
+"deep": "నీడలో చల్లగా ఉంటే నూనె నాణ్యత బాగుంటుంది.",
+"specs": {
+"పని": "నీడ"
+}
+},
+"పాక గుంజలు": {
+"simple": "పాక గుంజలు: కప్పుని మోసే కర్ర స్తంభాలు.",
+"deep": "వేప, తుమ్మ లాంటి గట్టి కర్ర.",
+"specs": {
+"సంఖ్య": "4"
+}
+},
+"మిల్ బోర్డ్": {
+"simple": "మిల్ బోర్డ్.",
+"deep": "మా సొంత పేరు: ఏ కంపెనీదీ కాదు.",
+"specs": {
+"పేరు": "మా సొంతం"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎంత నూనె",
+"100 కిలోల",
+"క్వింటాల్",
+"how much oil",
+"ఎన్ని లీటర్లు"
+],
+"a": "100 kg కాయల నుంచి సుమారు 70 kg గింజలు Sir, వాటి నుంచి సుమారు 28–30 kg నూనె, 38 kg చెక్క. అంటే కాయల బరువులో సుమారు 28% నూనె."
+},
+{
+"k": [
+"నూనె ఎలా",
+"ఎలా తీస్తారు",
+"how is oil",
+"తయారీ"
+],
+"a": "కాయల తొక్క తీసి, గింజలని ఆవిరితో వేడి చేసి, ఎక్స్‌పెల్లర్ స్క్రూతో బలంగా నలుపుతారు Sir: నూనె కారుతుంది. దాన్ని గుడ్డల ఫిల్టర్ ప్రెస్‌లో వడకట్టి డబ్బాల్లో నింపుతారు."
+},
+{
+"k": [
+"ఫిల్టర్డ్",
+"రిఫైండ్",
+"refined",
+"filtered",
+"తేడా ఏంటి"
+],
+"a": "ఫిల్టర్డ్ నూనె అంటే గుడ్డతో వడకట్టడం మాత్రమే Sir: వేరుశనగ వాసన, రుచి, విటమిన్ E ఉంటాయి. రిఫైండ్ నూనెని పెద్ద ఫ్యాక్టరీల్లో రసాయనాలతో కడిగి, రంగు, వాసన తీసేస్తారు: తేటగా, వాసన లేకుండా, ఎక్కువ రోజులు నిల్వ. ఏది వాడాలన్నది మీ ఇష్టం, వంట బట్టి."
+},
+{
+"k": [
+"గానుగ నూనె",
+"కోల్డ్ ప్రెస్",
+"cold press",
+"కట్టె గానుగ",
+"గానుగ"
+],
+"a": "గానుగ చాలా నెమ్మదిగా తిరుగుతుంది Sir, వేడి పుట్టదు (45°C లోపు): నూనె సహజ వాసన, రుచి, పోషకాలు అలాగే ఉంటాయి. కానీ గింజలో నూనె కొంత చెక్కలోనే మిగిలిపోతుంది, రోజుకి తక్కువే వస్తుంది: అందుకే ఖరీదు ఎక్కువ. 'గానుగ తిప్పు' అంటే చూపిస్తాను."
+},
+{
+"k": [
+"చెక్క ఏం చేస్తారు",
+"పిండి",
+"cake",
+"పశువుల దాణా"
+],
+"a": "వేరుశనగ చెక్కలో సుమారు 45% ప్రొటీన్ Sir: పాడి పశువులకి అద్భుతమైన దాణా, పొలానికి ఎరువు. మిల్ ఆదాయంలో మంచి భాగం చెక్క అమ్మకమే."
+},
+{
+"k": [
+"ఎందుకు వేడి",
+"కెటిల్ ఎందుకు",
+"ఆవిరి ఎందుకు",
+"why heat"
+],
+"a": "వేడి, కొద్ది తేమ గింజలోని నూనె కణాల గోడలని పగలగొడతాయి, నూనె పలుచబడుతుంది Sir: ఎక్కువ నూనె, తక్కువ శ్రమతో వస్తుంది. వేడి చేయకపోతే (కోల్డ్ ప్రెస్) నూనె తక్కువ, రుచి ఎక్కువ."
+},
+{
+"k": [
+"నిల్వ",
+"ముక్కిపోతుంది",
+"ఎన్ని రోజులు",
+"shelf",
+"ఎలా దాచాలి"
+],
+"a": "ఫిల్టర్డ్ నూనె సుమారు 4–6 నెలలు Sir. వెలుతురు, గాలి, వేడి దాన్ని ముక్కిపోయేలా చేస్తాయి: గట్టి మూత ఉన్న స్టీల్ / ముదురు రంగు పాత్రలో, పొయ్యికి దూరంగా ఉంచాలి."
+},
+{
+"k": [
+"బూజు",
+"అఫ్లాటాక్సిన్",
+"aflatoxin",
+"తడి కాయలు",
+"చేదు గింజలు"
+],
+"a": "తడిగా నిల్వ చేసిన వేరుశనగలో బూజు పట్టి అఫ్లాటాక్సిన్ అనే విషం తయారవుతుంది Sir. అందుకే కాయలని బాగా ఎండబెట్టాలి; బూజు పట్టిన, నల్లబడిన, చేదు గింజలని తినకూడదు, నూనెకి వాడకూడదు."
+},
+{
+"k": [
+"ఇంకా ఏ నూనెలు",
+"నువ్వులు",
+"పొద్దుతిరుగుడు",
+"ఇతర గింజలు",
+"other oils"
+],
+"a": "ఇదే ఎక్స్‌పెల్లర్‌లో నువ్వులు, పొద్దుతిరుగుడు, కుసుమ, ఆవాలు, కొబ్బరి కూడా ఆడొచ్చు Sir: స్క్రూ, చోక్ సెట్టింగ్ మారుస్తారు. నువ్వుల్లో సుమారు 45–50%, పొద్దుతిరుగుడులో 35–40% నూనె."
+}
+],
+"quiz": [
+{
+"q": "కాయల తొక్క పగలగొట్టి గింజలు వేరు చేసేది ఏది?",
+"a": "డీకార్టికేటర్",
+"opts": [
+"డీకార్టికేటర్",
+"ఎక్స్‌పెల్లర్",
+"ఫిల్టర్ ప్రెస్"
+]
+},
+{
+"q": "స్క్రూతో గింజలని నలిపి నూనె పిండేది ఏది?",
+"a": "ఎక్స్‌పెల్లర్",
+"opts": [
+"స్టీమ్ కెటిల్",
+"ఎక్స్‌పెల్లర్",
+"గానుగ"
+]
+},
+{
+"q": "గుడ్డల గుండా నూనెని వడకట్టేది ఏది?",
+"a": "ఫిల్టర్ ప్రెస్",
+"opts": [
+"ఫిల్టర్ ప్రెస్",
+"నూనె తొట్టి",
+"నూనె ట్యాంకులు"
+]
+},
+{
+"q": "గింజలని ఆవిరితో వేడి చేసేది ఏది?",
+"a": "స్టీమ్ కెటిల్",
+"opts": [
+"బాయిలర్",
+"స్టీమ్ కెటిల్",
+"డీకార్టికేటర్"
+]
+},
+{
+"q": "చెక్క రోలు, రోకలితో నెమ్మదిగా నూనె తీసే పాత పద్ధతి ఏది?",
+"a": "గానుగ",
+"opts": [
+"గానుగ",
+"గేర్‌బాక్స్ మోటార్",
+"నూనె డబ్బాలు"
+]
+},
+{
+"q": "నూనె పిండాక మిగిలేది, పశువుల దాణాకి వాడేది ఏది?",
+"a": "వేరుశనగ చెక్క",
+"opts": [
+"తొక్కల కుప్ప",
+"వేరుశనగ చెక్క",
+"వేరుశనగ కాయలు"
+]
+}
+],
+"faults": [
+{
+"label": "ఎక్స్‌పెల్లర్",
+"kind": "stop",
+"clue": "గింజలు పడుతున్నాయి Sir, కానీ నూనె, చెక్క రావట్లేదు. ఏది ఆగింది?",
+"why": "ఎక్స్‌పెల్లర్‌లో గింజలతో పాటు చిన్న రాయి వచ్చి స్క్రూ ఇరుక్కుంది: ఓవర్‌లోడ్ రిలే మోటార్‌ని ఆపింది. స్క్రూని వెనక్కి తిప్పి, కేజ్ విప్పి రాయి తీస్తారు. అందుకే ముందు గింజలని శుభ్రం చేయాలి."
+},
+{
+"label": "గేర్‌బాక్స్ మోటార్",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: ఏది మామూలు కంటే వేడిగా ఉంది?",
+"why": "గేర్‌బాక్స్ ఆయిల్ తగ్గింది: గేర్లు రాసుకుని వేడెక్కుతున్నాయి. ఆపి ఆయిల్ నింపుతారు, లీక్ చూస్తారు."
+},
+{
+"label": "డీకార్టికేటర్",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: ఎక్కడి నుంచి వేరే చప్పుడు? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "డీకార్టికేటర్ బీటర్ రబ్బర్ అరిగి ఇనుము జల్లెడకి తగులుతోంది: గింజలు కూడా విరుగుతున్నాయి. రబ్బర్ ప్యాడ్‌లు మారుస్తారు."
+},
+{
+"label": "ఫిల్టర్ ప్రెస్",
+"kind": "loose",
+"clue": "ఏది వణుకుతోంది Sir?",
+"why": "ఫిల్టర్ ప్రెస్ ప్లేట్లని బిగించే స్క్రూ వదులైంది: ప్లేట్ల మధ్య నుంచి నూనె కారుతోంది. పంప్ ఆపి బిగిస్తారు."
+}
+],
+"inside": {
+"ఎక్స్‌పెల్లర్": {
+"say": "ఎక్స్‌పెల్లర్ లోపల Sir, పంజరం కోసి చూపిస్తున్నాను: మధ్యలో లావు స్క్రూ (వార్మ్) నెమ్మదిగా తిరుగుతుంది. ఎడమ వైపు గింజలు లోపలికి వస్తాయి; కుడి వైపు వెళ్ళే కొద్దీ చోటు తగ్గి ఒత్తిడి పెరుగుతుంది, గింజలు నలిగి ముదురు చెక్కగా మారతాయి. నూనె కింద కడ్డీల సందుల్లోంచి బంగారు చుక్కలుగా కారుతుంది. చివర చోక్ కోన్ దారిని ఇరుకు చేసి ఒత్తిడి పెంచుతుంది.",
+"code": "// Inside the expeller, the cage cut open: the worm turns slowly (about 30 a minute). Its thread gets shallower toward the\n// far end, so the kernels are squeezed harder and harder (up to hundreds of bar): the oil runs out between the cage bars,\n// the hard dry cake is pushed out past the choke cone at the end.\nconst steel = W.metal('#b9bfc5', { rough: 0.4 }), dark = W.metal('#6f767e', { rough: 0.5 });\nconst cage = W.group();\nfor (let i = 0; i < 13; i++) { const a = Math.PI + (i / 12) * Math.PI; cage.add(W.mesh(W.box(260, 5, 3), dark, { at: [0, Math.sin(a) * 37, Math.cos(a) * 37], rot: [-a * 57.3, 0, 0] })); }\nfor (const x of [-110, 0, 110]) { const g = new THREE.TorusGeometry(40, 4, 8, 20, Math.PI); const m = new THREE.Mesh(g, dark); m.rotation.set(0, Math.PI / 2, 0); m.rotation.x = Math.PI; m.position.set(x, 0, 0); cage.add(m); }\nW.add(cage, { label: 'కేజ్ బార్లు' });\nconst worm = W.group();\nworm.add(W.mesh(W.cyl(26, 16, 260, 20), steel, { rot: [0, 0, 90] }));\nfor (let k = 0; k < 9; k++) { const u = k / 8; worm.add(W.mesh(W.cyl(34, 34, 5, 24), steel, { at: [-118 + u * 236 * (0.55 + 0.45 * u) / 1 * 1 + (1 - u) * 0, 0, 0], rot: [0, 14 - 6 * u, 90] })); }\nW.add(worm, { label: 'వార్మ్ షాఫ్ట్' });\nconst choke = W.group();\nchoke.add(W.mesh(W.cyl(22, 34, 26, 20), W.metal('#8d959c'), { at: [146, 0, 0], rot: [0, 0, -90] }));\nW.add(choke, { label: 'చోక్ కోన్' });\nconst N = 80, seeds = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 }), N);\nconst sg = W.group(); sg.add(seeds);\nW.add(sg, { label: 'గింజలు → చెక్క' });\nconst u = Array.from({ length: N }, (_, i) => i / N), ph = Array.from({ length: N }, (_, i) => (i * 0.618) % 1);\nconst M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color();\nW.onTick((t, dt) => {\n  const k = 0.3 + 0.9 * Math.max(0.1, W.env.spool);\n  worm.rotation.x += dt * 1.4 * k;\n  for (let i = 0; i < N; i++) {\n    u[i] = (u[i] + dt * 0.05 * k) % 1;\n    const a = ph[i] * 6.28 + t * 1.4 * k, r = 31 - 3 * u[i], s = 3.4 - 1.9 * u[i];\n    M.compose(P.set(-125 + 260 * u[i], Math.sin(a) * r, Math.cos(a) * r), Q, Z.set(s, s * (1 - 0.5 * u[i]), s));\n    seeds.setMatrixAt(i, M);\n    seeds.setColorAt(i, C.setHSL(0.08, 0.5, 0.62 - 0.3 * u[i]));\n  }\n  seeds.instanceMatrix.needsUpdate = true; if (seeds.instanceColor) seeds.instanceColor.needsUpdate = true;\n});\nfor (const x of [-40, 30, 100]) W.stream([[x, -36, 0], [x, -60, 0], [x, -90, 0]], { kind: 'oil', count: 6, size: 3, speed: 0.8, always: true });\nW.stream([[-150, 40, 0], [-125, 20, 0], [-60, 30, 0]], { kind: 'grain', count: 8, size: 3, speed: 0.6, always: true });\n"
+}
+},
+"film": [
+"🥜 వేరుశనగ నూనె మిల్",
+"కాయలు → తొక్క తీయడం → గింజలు",
+"ఆవిరి కెటిల్ → ఎక్స్‌పెల్లర్ స్క్రూ",
+"ఫిల్టర్ ప్రెస్ → బంగారు నూనె",
+"పాత పద్ధతి: చెక్క గానుగ",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ నూనె మిల్ నిర్వహణ",
+"safety": "తిరిగే స్క్రూ, బెల్ట్‌ల దగ్గర చేతులు, వదులు బట్టలు పెట్టకూడదు Sir. యంత్రం శుభ్రం చేసే ముందు స్విచ్‌బోర్డ్‌లో ఆఫ్ చేయాలి. ఎక్స్‌పెల్లర్, కెటిల్ వేడిగా ఉంటాయి. ఆహార పదార్థం కాబట్టి శుభ్రత ముఖ్యం.",
+"steps": [
+{
+"say": "ఎక్స్‌పెల్లర్ వార్మ్, కేజ్ బార్లు అరిగితే నూనె తగ్గి చెక్కలో ఎక్కువ మిగులుతుంది: అరిగిన భాగాలకి వెల్డింగ్ / మార్పు.",
+"label": "ఎక్స్‌పెల్లర్"
+},
+{
+"say": "ఫిల్టర్ ప్రెస్ గుడ్డలు నిండగానే విప్పి మడ్డి తీస్తారు; గుడ్డలు ఉతికి మళ్ళీ వేస్తారు.",
+"label": "ఫిల్టర్ ప్రెస్"
+},
+{
+"say": "గేర్‌బాక్స్ ఆయిల్ మట్టం, బెల్ట్ బిగువు వారానికోసారి.",
+"label": "గేర్‌బాక్స్ మోటార్"
+},
+{
+"say": "డీకార్టికేటర్ జల్లెడ, బీటర్ రబ్బర్ చూస్తారు.",
+"label": "డీకార్టికేటర్"
+},
+{
+"say": "నూనె తొట్టి, ట్యాంకుల అడుగు మడ్డి క్రమం తప్పకుండా తీస్తారు: పాత మడ్డి కొత్త నూనెని ముక్కిపోయేలా చేస్తుంది.",
+"label": "నూనె ట్యాంకులు"
+}
+]
+},
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"id": "oilmill"
+}
+}
