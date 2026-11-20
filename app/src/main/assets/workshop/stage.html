@@ -27,12 +27,35 @@
   #binN:empty { display: none; }
   /* 📏 the tape's number */
   .lb.tape { position: fixed; pointer-events: none; font-size: 13px; font-weight: 600; color: #fff3c4; border-color: rgba(255, 211, 77, 0.75); max-width: none; }
+  /* ⚡ the power gauge, 🌡️ the hottest parts, 🧾 live numbers, ✋ his fingertip */
+  #gauge { position: fixed; left: 12px; top: 30%; width: 58px; display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0;
+           transition: opacity 0.4s; pointer-events: none; font: 600 11px/1.25 system-ui, "Noto Sans Telugu", sans-serif; color: #e8f4ff; }
+  #gauge .bar { position: relative; width: 14px; height: 116px; border-radius: 8px; background: rgba(8, 14, 20, 0.72); border: 1px solid rgba(79, 210, 255, 0.45); overflow: hidden; }
+  #gauge i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(to top, #2aa8ff, #8fe9ff); }
+  #gauge u { position: absolute; left: 0; right: 0; height: 2px; background: #ffffff; }
+  #gauge.over i { background: linear-gradient(to top, #ff7a2b, #ff2d2d); }
+  #gauge.over b { color: #ff8a6a; }
+  #gauge em { font-style: normal; max-width: 74px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #heatTags { position: fixed; inset: 0; pointer-events: none; }
+  .ht { position: absolute; left: 0; top: 0; white-space: nowrap; font: 600 11px/1.3 system-ui, "Noto Sans Telugu", sans-serif; color: #fff;
+        background: rgba(24, 9, 4, 0.74); border: 1px solid rgba(255, 138, 61, 0.75); border-radius: 7px; padding: 1px 6px; }
+  #hud { position: fixed; left: 10px; top: 60px; display: none; pointer-events: none; font: 500 11px/1.5 system-ui, "Noto Sans Telugu", sans-serif;
+         color: #e8f4ff; background: rgba(8, 14, 20, 0.74); border: 1px solid rgba(79, 210, 255, 0.35); border-radius: 9px; padding: 5px 9px; min-width: 128px; }
+  #hud div { display: flex; justify-content: space-between; gap: 12px; }
+  #hud span { color: #9fb8c8; }
+  #tip { position: fixed; left: 0; top: 0; width: 18px; height: 18px; border-radius: 50%; display: none; pointer-events: none;
+         background: radial-gradient(circle, #e9fbff 0%, #4fd2ff 45%, rgba(79, 210, 255, 0) 72%); }
+  #tip.on { width: 28px; height: 28px; background: radial-gradient(circle, #ffffff 0%, #7fe6ff 40%, rgba(79, 210, 255, 0) 72%); }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="labels"><svg id="lines"></svg></div>
 <div id="bin">🗑️<b id="binN"></b></div>
+<div id="gauge"><em>⚡</em><div class="bar"><i></i><u></u></div><b>0%</b></div>
+<div id="heatTags"></div>
+<div id="hud"></div>
+<div id="tip"></div>
 <script type="module" src="stage.js"></script>
 </body>
 </html>

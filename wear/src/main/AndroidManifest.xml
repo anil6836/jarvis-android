@@ -196,6 +196,13 @@
             android:taskAffinity=""
             android:launchMode="singleTop" />
 
+        <!-- the workshop showpiece's power on the bezel -->
+        <activity
+            android:name=".Bezel"
+            android:exported="false"
+            android:taskAffinity=""
+            android:launchMode="singleTop" />
+
         <!-- W54: pictures from the phone -->
         <activity
             android:name=".Photos"

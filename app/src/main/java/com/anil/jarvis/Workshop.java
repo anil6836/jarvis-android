@@ -368,6 +368,13 @@ final class Workshop {
             "Movement:",
             "  W.spin(object, 'x' | 'y' | 'z', turnsPerSecond)    W.onTick((t, dt) => { ... }) t and dt in seconds, keep it light",
             "  W.deg(degrees) → radians",
+            "A machine that runs (only when it really has a motor, an engine, a pump or a fan; one throttle per build):",
+            "  W.throttle({label: 'Telugu name of its control', start: 0..1}) its power; read it in W.onTick as W.env.spool (0..1, smoothed)",
+            "  W.add(object, {..., heat: [°C idle, °C full], layer: n}) how hot a piece gets (the 🌡️ heat view colours it), layer 0 = outermost cover",
+            "  W.stream([[x, y, z], ...], {kind: 'air' | 'cool' | 'water' | 'power' | 'fuel' | 'hot', count, size}) moving dots along a path (airflow, coolant, current)",
+            "  W.sound({kind: 'air' | 'fans' | 'motor' | 'pump' | 'gear' | 'chain' | 'water' | 'hum', label: the piece's Telugu name}) its sound, from W.env.spool",
+            "  W.hud({'Telugu name': 'value with unit', ...}) up to 6 live numbers on the screen (update a few times a second, not every frame)",
+            "  W.rgb([glow materials]) lights he can recolour    W.store: one object shared by this build's parts (helpers, materials)",
             "",
             "HOW TO BUILD:",
             "- One part per real component (base, frame, motor, board, battery, blades, guard, lens, dial...), 8 to 14 parts, in the order a person",
@@ -1144,13 +1151,19 @@ final class Workshop {
 
     /** (A2) What he said in the workshop that the screen does at once, with no AI and no cost; null = the AI decides. */
     static String command(String text) {
-        if (text == null) return null;
-        String t = " " + hintless(text).toLowerCase(Locale.ROOT).replaceAll("[\\p{Punct}।॥“”‘’]+", " ").replaceAll("\\s+", " ").trim() + " ";
-        for (int round = 0; round < 2; round++) for (String f : FILLERS) t = t.replace(" " + f + " ", " "); // (twice: fillers side by side)
-        t = t.replaceAll("\\s+", " ").trim();
-        if (t.isEmpty()) return null;
+        String t = norm(text);
+        if (t == null || t.isEmpty()) return null;
         for (String[] c : COMMANDS) for (int i = 1; i < c.length; i++) if (t.equals(c[i])) return c[0];
         return null;
+    }
+
+    /** His words, plain: small letters, no punctuation (but % and digits stay), the fillers ("Jarvis", "ఒకసారి", "చూపించు"…) taken out. */
+    static String norm(String text) {
+        if (text == null) return null;
+        String t = " " + hintless(text).toLowerCase(Locale.ROOT).replaceAll("[\\p{Punct}।॥“”‘’&&[^%.]]+", " ").replaceAll("(?<!\\d)\\.|\\.(?!\\d)", " ")
+                .replaceAll("\\s+", " ").trim() + " ";
+        for (int round = 0; round < 2; round++) for (String f : FILLERS) t = t.replace(" " + f + " ", " "); // (twice: fillers side by side)
+        return t.replaceAll("\\s+", " ").trim();
     }
 
     private static final String[] FILLERS = {"jarvis", "జార్విస్", "జార్వీస్", "sir", "సార్", "please", "ప్లీజ్", "ఒకసారి", "కొంచెం", "ఇంకా", "మళ్ళీ", "మళ్లీ",

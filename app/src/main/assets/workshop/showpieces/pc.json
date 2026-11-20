@@ -1,0 +1,548 @@
+{
+"at": 1763600000002,
+"title": "గేమింగ్ PC",
+"what": "తెల్లని గేమింగ్ PC: RTX 5090, Ryzen 7 9800X3D, NZXT Kraken లిక్విడ్ కూలర్, పక్క గ్లాస్ తీసేసి లోపల కనిపించేలా",
+"model": "showpiece",
+"parts": [
+{
+"id": "case",
+"status": "కేస్ పెడుతున్నాను",
+"code": "// Gaming PC showpiece, hand-made: real parts at their real sizes, their names printed as plain lettering (no logos). Units: cm.\n// X: the case's depth (its glass front at +X, the back at -X), Y: up (floor 0), Z: its width; the side panel is off, the open side faces +Z.\n// The motherboard hangs on the wall between the two chambers (z ≈ -5.9); the power supply and the cables live behind it.\nconst S = W.store;\nS.white = W.paint('#e8ebee', { metallic: 0.15, rough: 0.38 });\nS.whiteP = W.plastic('#eef0f2', { rough: 0.42 });\nS.pcb = new THREE.MeshPhysicalMaterial({ color: 0x15191e, roughness: 0.55, metalness: 0.15, clearcoat: 0.4 });\nS.silver = W.metal('#c6cacf', { rough: 0.26 });\nS.gold = W.metal('gold', { rough: 0.3 });\nS.rgbs = [];\nS.fans = []; // the rotors that turn with the load: {rotor, k, label}\nS.fan = (o = {}) => { // one 120 mm fan facing +Z: a frame, nine see-through blades, a light ring\n  const g = W.group();\n  const frame = new THREE.Shape();\n  frame.moveTo(-6, -6); frame.lineTo(6, -6); frame.lineTo(6, 6); frame.lineTo(-6, 6); frame.lineTo(-6, -6);\n  const hole = new THREE.Path(); hole.absarc(0, 0, 5.75, 0, Math.PI * 2, true); frame.holes.push(hole);\n  g.add(new THREE.Mesh(new THREE.ExtrudeGeometry(frame, { depth: 2.3, bevelEnabled: true, bevelSize: 0.25, bevelThickness: 0.1, bevelSegments: 2, curveSegments: 32 }).translate(0, 0, -1.15), S.whiteP));\n  const rotor = W.group();\n  rotor.add(W.mesh(W.cyl(2, 2, 2.2, 32), S.whiteP, { rot: [90, 0, 0] }));\n  const bs = new THREE.Shape();\n  bs.moveTo(1.8, -0.9); bs.quadraticCurveTo(4.2, -1.8, 5.5, -0.4); bs.quadraticCurveTo(5.0, 1.4, 1.8, 1.0); bs.lineTo(1.8, -0.9);\n  const bg = new THREE.ExtrudeGeometry(bs, { depth: 0.12, bevelEnabled: false, curveSegments: 10 }).translate(0, 0, -0.06);\n  const bm = new THREE.MeshPhysicalMaterial({ color: 0xe9eef3, roughness: 0.35, transmission: 0.35, transparent: true, opacity: 0.9 });\n  for (let i = 0; i < 9; i++) { const b = new THREE.Mesh(bg, bm); b.rotation.set(0.32, 0, (i / 9) * Math.PI * 2); rotor.add(b); }\n  g.add(rotor);\n  const glow = W.glow(o.light || '#5ab8ff', 1.8);\n  g.add(W.mesh(W.torus(5.85, 0.17, 64, 6), glow, { at: [0, 0, 1.1] }));\n  g.add(W.mesh(W.torus(5.85, 0.17, 64, 6), glow, { at: [0, 0, -1.1] }));\n  S.rgbs.push(glow);\n  S.fans.push({ rotor, k: o.k || 1, label: o.label || '' });\n  return g;\n};\n// a flat strip along a path (the riser's ribbon cable), wide along `across`\nS.ribbon = (pts, width, mat, across = [1, 0, 0]) => {\n  const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p[0], p[1], p[2])));\n  const n = 48, pos = [], idx = [];\n  const sd = new THREE.Vector3(across[0], across[1], across[2]).normalize().multiplyScalar(width / 2);\n  for (let i = 0; i <= n; i++) {\n    const p = curve.getPoint(i / n);\n    pos.push(p.x - sd.x, p.y - sd.y, p.z - sd.z, p.x + sd.x, p.y + sd.y, p.z + sd.z);\n    if (i < n) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }\n  }\n  const g = new THREE.BufferGeometry();\n  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();\n  mat.side = THREE.DoubleSide;\n  return new THREE.Mesh(g, mat);\n};\n\nconst c = W.group();\nconst box = (w, h, d, x, y, z, m) => { const b = W.mesh(W.box(w, h, d, 0.2), m || S.white, { at: [x, y, z] }); c.add(b); return b; };\nconst roofless = []; // (the walls and the roof don't throw a shadow inside: the parts stay lit)\nbox(46.5, 1, 29, 0, 0.5, 0);                                         // the floor\nconst top = W.canvasTex(256, 64);\n{ const g = top.ctx; g.fillStyle = '#e6e9ec'; g.fillRect(0, 0, 256, 64); g.fillStyle = '#9ba1a8';\n  for (let y = 4; y < 64; y += 6) for (let x = (y / 6) % 2 ? 3 : 0; x < 256; x += 6) { g.beginPath(); g.arc(x, y, 1.9, 0, 6.283); g.fill(); } top.update(); }\ntop.texture.wrapS = top.texture.wrapT = THREE.RepeatWrapping; top.texture.repeat.set(4, 2);\nconst roof = W.mesh(W.box(46.5, 0.8, 29, 0.2), new THREE.MeshStandardMaterial({ map: top.texture, roughness: 0.55, metalness: 0.2 }), { at: [0, 45.5, 0] });\nc.add(roof); roofless.push(roof);\nroofless.push(box(0.8, 45, 29, -22.85, 22.9, 0));                                  // the back wall\nroofless.push(box(46.5, 45, 0.4, 0, 22.9, -14.25));                                 // the rear chamber's outer panel\nroofless.push(box(44, 44, 0.3, -0.5, 23, -5.85, W.paint('#dfe3e7', { metallic: 0.1, rough: 0.5 }))); // the wall between the chambers\nfor (const [x, z] of [[21.5, 13.4], [21.5, -13.4], [-21.5, 13.4], [-21.5, -13.4]]) roofless.push(box(1.4, 45, 1.4, x, 22.9, z));\nconst glass = W.glass({ tint: '#dfeeff', thickness: 0.4 });\nconst front = W.mesh(W.box(0.4, 43.6, 26, 0.1), glass, { at: [23.05, 23, 0] });   // the front glass\nc.add(front); roofless.push(front);\nfor (const [x, z] of [[19, 11.5], [19, -11.5], [-19, 11.5], [-19, -11.5]]) c.add(W.mesh(W.cyl(1.6, 2, 1.4, 20), W.rubber(), { at: [x, -0.6, z] }));\nconst brand = W.text('LIAN LI', { size: 1.1, color: '#6b7178', spacing: 6 });\nbrand.position.set(0, 1.05, 14.52);\nc.add(brand);\n// a soft light inside, the way a lit build glows on a desk\nconst lamp = new THREE.PointLight(0xe4eeff, 900, 0, 2);\nlamp.position.set(4, 36, 9);\nc.add(lamp);\nW.add(c, { label: 'కేస్ O11 Dynamic EVO', heat: [27, 33] });\nfor (const m of roofless) m.castShadow = false;\nW.explodeView('front');\n"
+},
+{
+"id": "board",
+"status": "మదర్‌బోర్డ్ బిగిస్తున్నాను",
+"code": "const S = W.store;\n// ROG Strix X870E-E (ATX 30.5 × 24.4 cm) on the middle wall; its back-panel ports at the back (-X), the processor socket high up\nconst b = W.group({ at: [-9.2, 24.65, -5.62] });\nb.add(W.mesh(W.box(24.4, 30.5, 0.16, 0.05), S.pcb));\nconst dark = W.metal('#23262b', { rough: 0.4 }), steel = W.metal('#9ea4ab', { rough: 0.3 });\nb.add(W.mesh(W.box(4.6, 12, 3.4, 0.8), W.metal('#30343a', { rough: 0.35 }), { at: [-10.2, 7.8, 1.8] }));  // the back-panel cover\nconst strix = W.text('ROG STRIX', { size: 0.9, color: '#d8dce1', spacing: 2 });\nstrix.position.set(-10.2, 7.5, 3.55); strix.rotation.z = Math.PI / 2;\nb.add(strix);\nb.add(W.mesh(W.box(3.2, 8, 1.6, 0.5), dark, { at: [-6.6, 9.8, 0.9] }));          // power-stage heatsink, left of the socket\nb.add(W.mesh(W.box(11, 2.6, 1.6, 0.5), dark, { at: [-1.4, 13.4, 0.9] }));        // power-stage heatsink, above the socket\nb.add(W.mesh(W.box(2.4, 1, 1.2, 0.15), W.plastic('#15171a'), { at: [-7, 14.7, 0.65] })); // the processor's 8-pin power socket\nfor (const x of [6.4, 7.4, 8.4, 9.4]) b.add(W.mesh(W.box(0.6, 13.6, 0.7), W.plastic('#2b2f35'), { at: [x, 4.5, 0.4] })); // four memory slots\nb.add(W.mesh(W.box(9.4, 1.2, 1.2, 0.2), steel, { at: [-3.2, -4.4, 0.6] }));      // the steel-armoured graphics slot\nb.add(W.mesh(W.box(8.6, 5.6, 1.4, 0.6), dark, { at: [3.5, -8.4, 0.8] }));         // chipset heatsink\nb.add(W.mesh(W.box(9.5, 5.2, 0.5, 0.3), dark, { at: [-3.4, -10.6, 0.35] }));      // lower M.2 covers\nb.add(W.mesh(W.box(2.6, 5.4, 1.2, 0.2), W.plastic('#1b1d21'), { at: [11.2, 8, 0.6] })); // 24-pin socket\nb.add(W.mesh(W.box(4.4, 4.4, 0.4, 0.1), W.plastic('#2d3036'), { at: [-1, 9, 0.25] }));   // the AM5 socket frame\nb.add(W.mesh(W.box(8.6, 0.8, 0.3), W.plastic('#2d3036'), { at: [-2, 1.35, 0.2] }));        // the M.2 slot under the SSD\nW.add(b, { label: 'మదర్‌బోర్డ్ ROG Strix X870E', explode: [-2, 0, 6], heat: [38, 62], layer: 3 });\n"
+},
+{
+"id": "cpu",
+"status": "ప్రాసెసర్ కూర్చోబెడుతున్నాను",
+"code": "const S = W.store;\n// Ryzen 7 9800X3D: its metal lid (4 × 4 cm) with the name on it, in the AM5 socket; the cooler's pump sits on it\nconst cpu = W.group({ at: [-10.2, 33.65, -5.1] });\ncpu.add(W.mesh(W.box(4, 4, 0.25, 0.05), W.plastic('#1f7a3a')));\nconst lid = new THREE.Shape();\nlid.moveTo(-1.7, -1.45); lid.lineTo(-1.45, -1.7); lid.lineTo(1.45, -1.7); lid.lineTo(1.7, -1.45); lid.lineTo(1.7, 1.45); lid.lineTo(1.45, 1.7);\nlid.lineTo(-1.45, 1.7); lid.lineTo(-1.7, 1.45); lid.lineTo(-1.7, -1.45);\ncpu.add(new THREE.Mesh(new THREE.ExtrudeGeometry(lid, { depth: 0.35, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.05 }).translate(0, 0, 0.1), S.silver));\nconst name = W.text('AMD RYZEN 7 9800X3D', { size: 0.3, color: '#3a3d42' });\nname.position.set(0, 0.2, 0.53);\ncpu.add(name);\nW.add(cpu, { label: 'ప్రాసెసర్ Ryzen 7 9800X3D', explode: [-24, -6, 16], heat: [40, 78], layer: 3 });\n"
+},
+{
+"id": "memory",
+"status": "మెమరీ పెడుతున్నాను",
+"code": "const S = W.store;\n// two G.Skill Trident Z5 RGB DDR5 sticks (13.3 × 4.4 cm), a light bar along the top of each\nconst mem = W.group();\nfor (const x of [-1.8, 0.2]) {\n  const s = W.group({ at: [x, 29.15, -3.5] });\n  s.add(W.mesh(W.box(0.75, 13.3, 3.6, 0.2), W.metal('#2c2f34', { rough: 0.3 })));\n  s.add(W.mesh(W.box(0.8, 12, 0.6, 0.2), W.metal('#b6bbc1', { rough: 0.22 }), { at: [0, 0, 1] }));\n  const bar = W.glow('#b87dff', 1.8);\n  s.add(W.mesh(W.box(0.7, 12.8, 0.8, 0.3), bar, { at: [0, 0, 2.15] }));\n  S.rgbs.push(bar);\n  const t = W.text('TRIDENT Z5', { size: 0.5, color: '#e6e9ed', spacing: 2 });\n  t.position.set(0.42, 0, -0.2); t.rotation.set(0, Math.PI / 2, Math.PI / 2);\n  s.add(t);\n  mem.add(s);\n}\nW.add(mem, { label: 'మెమరీ Trident Z5 DDR5', explode: [14, 8, 14], heat: [34, 52], layer: 2 });\n"
+},
+{
+"id": "ssd",
+"status": "SSD పెడుతున్నాను",
+"code": "const S = W.store;\n// Samsung 990 PRO: an M.2 2280 stick (8 × 2.2 cm) in the slot under the processor\nconst d = W.group({ at: [-10.2, 26, -5.35] });\nd.add(W.mesh(W.box(8, 2.2, 0.12, 0.03), W.plastic('#14161a')));\nd.add(W.mesh(W.box(2.2, 1.5, 0.15, 0.03), W.plastic('#2b2f35'), { at: [-1.5, 0, 0.1] }));\nd.add(W.mesh(W.box(1.4, 1.4, 0.15, 0.03), W.plastic('#2b2f35'), { at: [1.6, 0, 0.1] }));\nconst sticker = W.text('SAMSUNG 990 PRO', { size: 0.34, color: '#e8eaee', bg: '#20232a' });\nsticker.position.set(0.4, 0, 0.2);\nd.add(sticker);\nd.add(W.mesh(W.box(0.5, 2.2, 0.15), S.gold, { at: [-4.1, 0, 0] }));\nW.add(d, { label: 'SSD Samsung 990 PRO', explode: [-24, -8, 14], heat: [34, 58], layer: 2 });\n"
+},
+{
+"id": "gpu",
+"status": "గ్రాఫిక్స్ కార్డ్ నిలబెడుతున్నాను",
+"code": "const S = W.store;\nconst VARIANT = '5090';\n// the card stands upright on its bracket, its two fans facing the open side; sizes of the Founders Edition cards\nconst SPEC = { 5090: { l: 30.4, h: 13.7, t: 4.8, w: 575, hot: 76 },\n  5080: { l: 30.4, h: 13.7, t: 4.8, w: 360, hot: 70 },\n  5070: { l: 24.2, h: 11.2, t: 4.2, w: 250, hot: 68 } }[VARIANT];\nS.gpu = { name: 'RTX ' + VARIANT, watts: SPEC.w };\nS.fans = (S.fans || []).filter((f) => !f.gpu); // (another card swapped in: the old card's fans leave with it)\nconst LABEL = 'గ్రాఫిక్స్ కార్డ్ RTX ' + VARIANT;\nconst cx = -12.1 + 0.2 * SPEC.l, cy = 3.6 + SPEC.h / 2; // (its slot fingers stay over the bracket whatever its length)\nconst card = W.group({ at: [cx, cy, 5.6] });\nconst shell = W.metal('#c3c7cc', { rough: 0.24 }), core = W.metal('#1c1e22', { rough: 0.38 });\ncard.add(W.mesh(W.box(SPEC.l, SPEC.h, SPEC.t * 0.5, 0.6), core));                                  // the dark middle body\nfor (const y of [-1, 1]) card.add(W.mesh(W.box(SPEC.l, 1.1, SPEC.t, 0.5), shell, { at: [0, y * (SPEC.h / 2 - 0.55), 0] }));\nfor (const x of [-1, 1]) card.add(W.mesh(W.box(1.1, SPEC.h, SPEC.t, 0.5), shell, { at: [x * (SPEC.l / 2 - 0.55), 0, 0] }));\nconst fr = SPEC.h * 0.36;\nfor (const x of [-SPEC.l * 0.29, SPEC.l * 0.29]) { // two fans, one at each end: air goes straight through the card\n  const f = W.group({ at: [x, 0, SPEC.t / 2 - 0.4] });\n  f.add(W.mesh(W.ring(fr, fr + 0.45, 0.6, 64), shell, { rot: [90, 0, 0] }));\n  const r = W.group();\n  const bs = new THREE.Shape();\n  bs.moveTo(fr * 0.28, -0.6); bs.quadraticCurveTo(fr * 0.7, -1.4, fr * 0.98, -0.3); bs.quadraticCurveTo(fr * 0.8, 0.9, fr * 0.28, 0.7); bs.lineTo(fr * 0.28, -0.6);\n  const bg = new THREE.ExtrudeGeometry(bs, { depth: 0.1, bevelEnabled: false });\n  const bm = W.plastic('#24272c', { rough: 0.5 });\n  for (let i = 0; i < 7; i++) { const m = new THREE.Mesh(bg, bm); m.rotation.set(0.35, 0, i / 7 * Math.PI * 2); r.add(m); }\n  r.add(W.mesh(W.cyl(fr * 0.28, fr * 0.28, 0.5, 32), core, { rot: [90, 0, 0] }));\n  f.add(r);\n  S.fans.push({ rotor: r, k: 0.8, label: LABEL, gpu: true });\n  card.add(f);\n}\nconst lt = W.text('GEFORCE RTX ' + VARIANT, { size: 0.75, color: '#e9edf1', spacing: 3 });\nlt.position.set(0, SPEC.h / 2 + 0.01, 0); lt.rotation.x = -Math.PI / 2;\ncard.add(lt);\nconst lt2 = W.text('RTX ' + VARIANT, { size: 0.9, color: '#e9edf1', spacing: 2 });\nlt2.position.set(0, -SPEC.h * 0.36, SPEC.t / 2 + 0.01);\ncard.add(lt2);\ncard.add(W.mesh(W.box(1.8, 0.7, 1.2, 0.1), W.plastic('#15171a'), { at: [SPEC.l * 0.12, SPEC.h / 2 + 0.3, -0.6] })); // the 12V-2x6 socket\ncard.add(W.mesh(W.box(SPEC.l * 0.3, 0.6, 0.15), S.gold, { at: [-SPEC.l * 0.2, -SPEC.h / 2 - 0.3, -SPEC.t / 2 + 0.6] }));\nW.add(card, { label: LABEL, explode: [10, -4, 22], heat: [34, SPEC.hot], layer: 1 });\nW.sound({ kind: 'air', label: LABEL, gain: 0.7, f0: 900 });\n// its 16-pin power cable, from the power supply behind the wall, up into the socket on the card's top edge\nconst px = cx + SPEC.l * 0.12, py = cy + SPEC.h / 2 + 0.7;\nconst pw = W.group();\nconst black = W.fabric('#1d1f23');\nfor (let i = 0; i < 4; i++) {\n  const o = (i - 1.5) * 0.36;\n  pw.add(W.mesh(W.tube([[px - 4 + o, 6, -9], [px - 1 + o, 5.5, -6.6], [px + o, 7, -2], [px + 1.6 + o, py + 2.2, 1.5], [px + o, py + 1.4, 4.4], [px + o, py, 5.0]], 0.19, 40), black));\n}\nW.add(pw, { label: 'GPU పవర్ కేబుల్ 12V-2x6', explode: [10, 2, 16], layer: 2 });\n"
+},
+{
+"id": "riser",
+"status": "రైజర్ కేబుల్ వేస్తున్నాను",
+"code": "const S = W.store;\n// the card's bracket on the floor, and the flat riser cable from the board's graphics slot down to it\nconst r = W.group();\nr.add(W.mesh(W.box(10.5, 1.6, 2.2, 0.2), W.plastic('#2a2d33'), { at: [-12.1, 2.6, 4.1] }));\nr.add(S.ribbon([[-12.4, 20.2, -4.6], [-12.4, 19.2, -2.4], [-12.8, 13, -1.0], [-12.6, 5, 0.2], [-12.2, 2.6, 2.4]], 6.4, W.plastic('#2a2d33', { rough: 0.6 })));\nW.add(r, { label: 'రైజర్ కేబుల్', explode: [-8, 0, 12], layer: 2 });\n"
+},
+{
+"id": "cooler",
+"status": "లిక్విడ్ కూలర్ అమరుస్తున్నాను",
+"code": "const S = W.store;\n// NZXT Kraken Elite 360: the pump head with its round 2.72\" screen on the processor, two sleeved tubes, the 401 mm radiator on the roof\nconst pump = W.group({ at: [-10.2, 33.65, 0] });\npump.add(W.mesh(W.cyl(3.0, 3.0, 1.2, 48), W.metal('#2a2d32', { rough: 0.35 }), { at: [0, 0, -4.3], rot: [90, 0, 0] }));\npump.add(W.mesh(W.cyl(3.95, 3.95, 3.6, 64), S.white, { at: [0, 0, -1.8], rot: [90, 0, 0] }));\nconst scr = W.canvasTex(256, 256);\nconst lcdMat = new THREE.MeshStandardMaterial({ map: scr.texture, emissiveMap: scr.texture, emissive: 0xffffff, emissiveIntensity: 1.1, roughness: 0.15 });\npump.add(W.mesh(new THREE.CircleGeometry(3.3, 64), lcdMat, { at: [0, 0, 0.03] }));\nconst rim = W.glow('#5ab8ff', 1.4);\npump.add(W.mesh(W.torus(3.62, 0.14, 64, 8), rim, { at: [0, 0, 0.02] }));\nS.rgbs.push(rim);\nS.lcd = (temp, warn) => { // the screen shows the processor's temperature: a ring that fills with it\n  const g = scr.ctx;\n  g.fillStyle = '#05070a'; g.fillRect(0, 0, 256, 256);\n  g.lineWidth = 16; g.lineCap = 'round';\n  g.strokeStyle = 'rgba(255,255,255,0.08)'; g.beginPath(); g.arc(128, 128, 104, 0.75 * Math.PI, 2.25 * Math.PI); g.stroke();\n  const k = Math.max(0, Math.min(1, (temp - 25) / 70));\n  const col = warn || temp > 85 ? '#ff5a3c' : temp > 70 ? '#ffb23c' : '#5ab8ff';\n  g.strokeStyle = col; g.beginPath(); g.arc(128, 128, 104, 0.75 * Math.PI, (0.75 + 1.5 * k) * Math.PI); g.stroke();\n  g.fillStyle = '#f2f6fa'; g.font = '700 92px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';\n  g.fillText(Math.round(temp) + '°', 136, 124);\n  g.fillStyle = col; g.font = '600 26px system-ui, sans-serif'; g.fillText(warn ? '! FAN' : 'CPU', 128, 190);\n  scr.update();\n};\nS.lcd(38);\nW.add(pump, { label: 'కూలర్ పంప్ NZXT Kraken', explode: [-14, 8, 22], heat: [32, 48], layer: 1 });\nconst tubes = W.group();\nconst sleeve = W.fabric('#e3e6e9');\ntubes.add(W.mesh(W.tube([[-11.6, 37.2, -1.8], [-13, 39.4, 0.5], [-16.5, 41, 1.6], [-18.1, 42.2, 2.2]], 0.6, 40), sleeve));\ntubes.add(W.mesh(W.tube([[-8.8, 37.2, -1.8], [-9.5, 40, 2.4], [-14.5, 41.2, 6.4], [-18.1, 42.2, 6.8]], 0.6, 40), sleeve));\nW.add(tubes, { label: 'కూలర్ పైపులు', explode: [-6, 10, 12], heat: [32, 46], layer: 1 });\nconst rad = W.group({ at: [1.5, 43.7, 4.5] });\nrad.add(W.mesh(W.box(40.1, 2.7, 12, 0.3), S.white));\nconst fins = W.canvasTex(256, 32);\n{ const g = fins.ctx; for (let x = 0; x < 256; x += 2) { g.fillStyle = x % 4 ? '#c9ced3' : '#f2f4f6'; g.fillRect(x, 0, 2, 32); } fins.update(); }\nfins.texture.wrapS = THREE.RepeatWrapping; fins.texture.repeat.set(10, 1);\nrad.add(W.mesh(W.box(35.6, 2.75, 11.4), new THREE.MeshStandardMaterial({ map: fins.texture, roughness: 0.6, metalness: 0.3 }), { at: [1.6, 0, 0] }));\nconst nz = W.text('NZXT', { size: 1.3, color: '#2a2e33', spacing: 8 });\nnz.position.set(15, 0, 6.02);\nrad.add(nz);\nW.add(rad, { label: 'రేడియేటర్', explode: [0, 14, 6], heat: [30, 47], layer: 0 });\n"
+},
+{
+"id": "fans",
+"status": "ఏడు ఫ్యాన్లు పెడుతున్నాను",
+"code": "const S = W.store;\n// three under the radiator (blow out through the roof), three on the front side (pull fresh air in), one at the back (blows out)\nconst topF = W.group(), sideF = W.group(), rearF = W.group();\nfor (let i = 0; i < 3; i++) {\n  const f = S.fan({ label: 'పై ఫ్యాన్లు' }); f.position.set(-10.9 + i * 12.4, 40.7, 4.5); f.rotation.x = Math.PI / 2; topF.add(f);\n  const s = S.fan({ label: 'పక్క ఫ్యాన్లు' }); s.position.set(20.6, 8 + i * 12.4, 4.5); s.rotation.y = -Math.PI / 2; sideF.add(s);\n}\nconst rf = S.fan({ label: 'వెనక ఫ్యాన్' }); rf.position.set(-21.6, 35, 4.5); rf.rotation.y = Math.PI / 2; rearF.add(rf);\nW.add(topF, { label: 'పై ఫ్యాన్లు', explode: [0, 7, 6], heat: [30, 40], layer: 0 });\nW.add(sideF, { label: 'పక్క ఫ్యాన్లు', explode: [16, 0, 4], heat: [28, 32], layer: 0 });\nW.add(rearF, { label: 'వెనక ఫ్యాన్', explode: [-12, 2, 4], heat: [30, 42], layer: 0 });\n"
+},
+{
+"id": "psu",
+"status": "పవర్ సప్లై పెడుతున్నాను",
+"code": "const S = W.store;\n// Corsair RM1000x (150 × 86 × 160 mm), standing on its side behind the middle wall; its cables come through the wall\nconst p = W.group({ at: [-13.5, 9.6, -10.05] });\np.add(W.mesh(W.box(16, 15, 8.0, 0.4), W.paint('#1b1d21', { metallic: 0.3, rough: 0.6 })));\nconst grill = W.group({ at: [0, 0, 4.02] });\ngrill.add(W.mesh(W.ring(5.2, 5.8, 0.2, 48), W.metal('#3a3e44'), { rot: [90, 0, 0] }));\nfor (let i = 0; i < 4; i++) grill.add(W.mesh(W.box(11.6, 0.25, 0.2), W.metal('#3a3e44'), { rot: [0, 0, i * 45] }));\np.add(grill);\nconst pl = W.text('CORSAIR RM1000x', { size: 0.8, color: '#e8eaee', spacing: 2 });\npl.position.set(0, -6.1, 4.03);\np.add(pl);\nW.add(p, { label: 'పవర్ సప్లై Corsair RM1000x', explode: [-22, -4, 24], heat: [34, 52], layer: 4 });\nconst cab = W.group();\nconst white = W.fabric('#eceef0'), black = W.fabric('#1d1f23');\nfor (let i = 0; i < 8; i++) { // the 24-pin bundle: up behind the wall, out through the hole by the board's edge, into its socket\n  const o = i * 0.62;\n  cab.add(W.mesh(W.tube([[-7, 12 + o * 0.3, -9.4], [1, 19 + o * 0.6, -8.6], [5.2, 30.4 + o, -7], [5.0, 30.4 + o, -5.2], [3.4, 30.4 + o, -4.4], [2.6, 30.5 + o, -4.6]], 0.21, 40), white));\n}\nfor (let i = 0; i < 3; i++) { // the processor's 8-pin: up the back corner, over the top of the board\n  const o = i * 0.5;\n  cab.add(W.mesh(W.tube([[-15 - o, 12, -9.6], [-19.5, 26, -9], [-20, 37, -8], [-18.8 + o * 0.6, 41.2, -6.2], [-17 + o, 40.6, -4.8], [-17 + o, 40.0, -4.6]], 0.2, 40), black));\n}\nW.add(cab, { label: 'కేబుల్స్', explode: [-10, 0, 10], layer: 2 });\n"
+},
+{
+"id": "run",
+"status": "PC ఆన్ చేస్తున్నాను",
+"code": "const S = W.store;\n// the power button on the roof; then the load (a game is running when it arrives), the fans and lights, temperatures, the screen, the air\nconst btn = W.group({ at: [19.2, 46.0, 10.6] });\nbtn.add(W.mesh(W.cyl(0.75, 0.75, 0.35, 32), S.silver));\nconst ring = W.glow('#5ab8ff', 2);\nbtn.add(W.mesh(W.torus(0.62, 0.07, 32, 6), ring, { at: [0, 0.19, 0], rot: [90, 0, 0] }));\nS.rgbs.push(ring);\nW.add(btn, { label: 'పవర్ బటన్', explode: [6, 6, 4] });\nW.rgb(S.rgbs);\nW.throttle({ label: 'గేమ్ లోడ్', start: 0.25, rise: 0.9, fall: 0.6, sound: 'fans' });\nW.sound({ kind: 'pump', label: 'కూలర్ పంప్ NZXT Kraken', gain: 0.8, f0: 95 });\nconst CPU = 'ప్రాసెసర్ Ryzen 7 9800X3D';\nlet lcdT = 0, hudT = 0, last = -1, extra = 0;\nW.onTick((t, dt) => {\n  const s = W.env.spool;\n  const rpm = 6 + 24 * s;\n  for (const f of S.fans) if (!(f.label && W.faultOf(f.label) === 'stop')) f.rotor.rotation.z += dt * rpm * f.k;\n  // (fans on the roof stopped: the radiator can't throw the heat away, the processor climbs)\n  const want = W.faultOf('పై ఫ్యాన్లు') === 'stop' ? 8 + 16 * s : 0;\n  extra += (want - extra) * Math.min(1, dt * 0.4);\n  const cpuT = W.tempOf(CPU) + extra + (W.env.over ? 6 : 0), gpuT = W.tempOf('గ్రాఫిక్స్ కార్డ్ ' + S.gpu.name) + (W.env.over ? 5 : 0);\n  if (t - lcdT > 0.5 && Math.round(cpuT) !== last) { lcdT = t; last = Math.round(cpuT); S.lcd(cpuT, extra > 6); }\n  if (t - hudT > 0.3) {\n    hudT = t;\n    const watts = Math.round(85 + (S.gpu.watts + 180) * Math.pow(s, 1.15));\n    const rows = { 'CPU': Math.round(cpuT) + '°C', ['GPU ' + S.gpu.name]: Math.round(gpuT) + '°C', 'కరెంట్': watts + ' W',\n      'ఫ్యాన్లు': Math.round(500 + 1300 * s) + ' RPM' };\n    if (W.env.over) rows['రక్షణ'] = 'వేగం తగ్గిస్తోంది';\n    W.hud(rows);\n  }\n});\n// the air: cool in through the front side fans, across the card and the board, warm out through the roof and the back\nfor (const z of [1.5, 4.5, 7.5]) {\n  W.stream([[30, 8, z], [19, 8.5, z], [8, 10, z], [-4, 16, z], [-12, 26, z], [-17, 33, z], [-30, 35, z]], { kind: 'air', count: 16, size: 0.6, speed: 1.2 });\n  W.stream([[30, 20.4, z], [19, 20.4, z], [6, 24, z], [-6, 33, z], [-10, 40, z], [-10, 52, z]], { kind: 'air', count: 16, size: 0.6, speed: 1.2 });\n  W.stream([[30, 32.8, z], [19, 32.8, z], [10, 36, z], [5, 40, z], [4, 52, z]], { kind: 'air', count: 14, size: 0.6, speed: 1.2 });\n}\n// through the card: in at its fans, out of its back towards the board, then up\nfor (const x of [-15, 2.5]) W.stream([[x, 10, 14], [x, 10, 7], [x, 11, 1], [x + 1, 18, -1.5], [x + 2, 30, 0.5], [x + 3, 41, 3], [x + 3, 52, 4]], { kind: 'air', count: 12, size: 0.55, speed: 1.0 });\n"
+}
+],
+"say": "గేమింగ్ PC రెడీ Sir. 'ఫుల్ లోడ్' అనండి, లేదా 'గ్రాఫిక్స్ కార్డ్ మార్చు' అనండి.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"గేమింగ్ PC ఎలా పనిచేస్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది గేమింగ్ PC. పక్క గ్లాస్ తీసేశాను, లోపల అన్నీ కనిపిస్తాయి. దీనిలో 7 కేస్ ఫ్యాన్లు, ఒక లిక్విడ్ కూలర్ ఉన్నాయి.\", \"focus\": [{\"id\": \"case\", \"piece\": \"\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 7}, {\"say\": \"ఇది ప్రాసెసర్ Ryzen 7 9800X3D, PC మెదడు. పంప్‌ని కొంచెం పక్కకి జరిపాను. 8 కోర్లు ఒకేసారి 16 పనులు చేస్తాయి.\", \"focus\": [{\"id\": \"cpu\", \"piece\": \"\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"cooler\", \"piece\": \"కూలర్ పంప్ NZXT Kraken\", \"by\": [0, 6, 12], \"secs\": 1.2}], \"secs\": 8}, {\"say\": \"ప్రాసెసర్ వేడిని ఈ పంప్ నీటితో తీసుకుని, పైపుల ద్వారా పైనున్న రేడియేటర్‌కి పంపుతుంది. పంప్ స్క్రీన్ మీద ప్రాసెసర్ వేడి కనిపిస్తోంది.\", \"focus\": [{\"id\": \"cooler\", \"piece\": \"కూలర్ పంప్ NZXT Kraken\"}, {\"id\": \"cooler\", \"piece\": \"కూలర్ పైపులు\"}, {\"id\": \"cooler\", \"piece\": \"రేడియేటర్\"}], \"view\": \"front\", \"flow\": [{\"from\": \"cooler\", \"fromPiece\": \"కూలర్ పంప్ NZXT Kraken\", \"to\": \"cooler\", \"toPiece\": \"రేడియేటర్\", \"kind\": \"water\", \"count\": 6}], \"secs\": 9}, {\"say\": \"ఈ రెండు కర్రలు మెమరీ: ఆట నడుస్తున్నప్పుడు వాడే వేగమైన జ్ఞాపకం. కింద ఉన్న చిన్న SSD లో ఆటలు శాశ్వతంగా ఉంటాయి.\", \"focus\": [{\"id\": \"memory\", \"piece\": \"\"}, {\"id\": \"ssd\", \"piece\": \"\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"cooler\", \"piece\": \"కూలర్ పంప్ NZXT Kraken\", \"by\": [0, 6, 12], \"secs\": 1.0}], \"secs\": 8}, {\"say\": \"ఇది గ్రాఫిక్స్ కార్డ్ RTX 5090. ఆటలో ప్రతి బొమ్మ ఇదే గీస్తుంది, సెకనుకి వందల బొమ్మలు. ఫుల్ లోడ్‌లో ఇదొక్కటే సుమారు 575 W తీసుకుంటుంది.\", \"focus\": [{\"id\": \"gpu\", \"piece\": \"\"}], \"view\": \"iso\", \"close\": true, \"secs\": 9}, {\"say\": \"వెనక గదిలో పవర్ సప్లై: గోడ కరెంట్ 230V ని 12V గా మార్చి, కేబుల్స్ ద్వారా బోర్డ్‌కి, కార్డ్‌కి ఇస్తుంది.\", \"focus\": [{\"id\": \"psu\", \"piece\": \"\"}], \"view\": \"iso\", \"flow\": [{\"from\": \"psu\", \"fromPiece\": \"పవర్ సప్లై Corsair RM1000x\", \"to\": \"board\", \"kind\": \"power\", \"count\": 6}, {\"from\": \"psu\", \"fromPiece\": \"పవర్ సప్లై Corsair RM1000x\", \"to\": \"gpu\", \"kind\": \"power\", \"count\": 6}], \"secs\": 8}, {\"say\": \"గాలి దారి: ముందు 3 ఫ్యాన్లు చల్ల గాలిని లోపలికి లాగుతాయి. పై 3 ఫ్యాన్లు, వెనక ఫ్యాన్ వేడి గాలిని బయటికి తోస్తాయి. అందుకే అన్నీ చల్లగా ఉంటాయి.\", \"focus\": [{\"id\": \"fans\", \"piece\": \"\"}], \"dim\": false, \"view\": \"front\", \"flow\": [{\"from\": [32, 20, 4], \"to\": [-2, 22, 4], \"kind\": \"air\", \"count\": 6}, {\"from\": [2, 40, 4], \"to\": [2, 60, 4], \"kind\": \"heat\", \"count\": 6}, {\"from\": [-18, 35, 4], \"to\": [-36, 35, 4], \"kind\": \"heat\", \"count\": 5}], \"secs\": 9}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"గేమింగ్ PC",
+"గేమింగ్ పీసీ",
+"గేమింగ్ కంప్యూటర్",
+"కంప్యూటర్",
+"పీసీ",
+"PC",
+"gaming pc",
+"gaming computer",
+"computer",
+"pc build"
+],
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0",
+"power": {
+"start": "PC ఆన్ Sir, ఆట మొదలైంది.",
+"full": "ఫుల్ లోడ్ Sir: పెద్ద ఆట నడుస్తోంది. కార్డ్, ప్రాసెసర్ వేడెక్కుతున్నాయి, ఫ్యాన్లు వేగం పెంచాయి.",
+"half": "సగం లోడ్ Sir.",
+"stop": "ఆట ఆపాను Sir. PC ఖాళీగా ఉంది, ఫ్యాన్లు నెమ్మదిస్తాయి.",
+"over": "హద్దు దాటింది Sir! ఓవర్‌క్లాక్ ఎక్కువైంది. ప్రాసెసర్, కార్డ్ తమని తాము కాపాడుకుంటాయి.",
+"cut": "రక్షణ పనిచేసింది Sir: వేగం కొంచెం తగ్గించి (థ్రాటిల్), వేడి హద్దులోకి వచ్చింది. ఏదీ పాడవలేదు."
+},
+"info": {
+"కేస్ O11 Dynamic EVO": {
+"simple": "ఇది PC ఇల్లు. అన్ని భాగాలు దీనిలో బిగిస్తారు. ముందు గ్లాస్, పక్క గ్లాస్ నుంచి లోపల కనిపిస్తుంది.",
+"deep": "Lian Li O11 Dynamic EVO: రెండు గదుల కేస్. ముందు గదిలో బోర్డ్, కార్డ్, కూలర్; వెనక గదిలో పవర్ సప్లై, కేబుల్స్. అందుకే లోపల శుభ్రంగా కనిపిస్తుంది.",
+"specs": {
+"సైజు": "సుమారు 46.5 × 28.5 × 45.9 cm",
+"ఫ్యాన్లు": "10 వరకు",
+"రేడియేటర్": "360 mm మూడు చోట్ల",
+"కార్డ్ పొడవు": "42.6 cm వరకు"
+}
+},
+"మదర్‌బోర్డ్ ROG Strix X870E": {
+"simple": "ఇది మదర్‌బోర్డ్. అన్ని భాగాలను కలిపే పెద్ద బోర్డ్. ప్రాసెసర్, మెమరీ, SSD, కార్డ్ అన్నీ దీనికే కలుస్తాయి.",
+"deep": "ASUS ROG Strix X870E-E Gaming WiFi: AM5 సాకెట్, DDR5 మెమరీ కోసం 4 స్లాట్లు, PCIe 5.0 గ్రాఫిక్స్ స్లాట్, చాలా M.2 స్లాట్లు. ప్రాసెసర్ పక్కన ఉన్న నల్ల హీట్‌సింక్‌ల కింద పవర్ స్టేజీలు ఉంటాయి, అవి 12V ని ప్రాసెసర్‌కి కావాల్సిన 1V దగ్గరకి తగ్గిస్తాయి.",
+"specs": {
+"సైజు": "ATX, 30.5 × 24.4 cm",
+"సాకెట్": "AM5",
+"మెమరీ స్లాట్లు": "4 (DDR5)",
+"గ్రాఫిక్స్ స్లాట్": "PCIe 5.0 x16"
+}
+},
+"ప్రాసెసర్ Ryzen 7 9800X3D": {
+"simple": "ఇది ప్రాసెసర్, PC మెదడు. ఆటలో లెక్కలన్నీ, ఎవరు ఎటు కదలాలో ఇదే నిర్ణయిస్తుంది.",
+"deep": "AMD Ryzen 7 9800X3D: 8 కోర్లు, 16 థ్రెడ్లు. కోర్ల కింద అదనంగా 64 MB క్యాష్ (3D V-Cache) పేర్చారు, మొత్తం 96 MB. ఆటలకి కావాల్సిన డేటా దగ్గరే ఉంటుంది కాబట్టి ఆటలు వేగంగా నడుస్తాయి.",
+"specs": {
+"కోర్లు": "8 కోర్లు / 16 థ్రెడ్లు",
+"వేగం": "4.7 నుంచి 5.2 GHz",
+"క్యాష్": "96 MB L3",
+"పవర్": "120 W (TDP)",
+"గరిష్ట వేడి": "95°C"
+}
+},
+"మెమరీ Trident Z5 DDR5": {
+"simple": "ఇది మెమరీ (RAM). ఆట నడుస్తున్నప్పుడు వాడే వేగమైన జ్ఞాపకం. PC ఆపేస్తే దీనిలోది మరిచిపోతుంది.",
+"deep": "G.Skill Trident Z5 RGB DDR5: రెండు కర్రలు, 16 GB చొప్పున మొత్తం 32 GB. పై భాగంలో రంగు లైట్ బార్. ప్రాసెసర్ SSD కంటే చాలా రెట్లు వేగంగా దీని నుంచి చదువుతుంది.",
+"specs": {
+"సైజు": "32 GB (2 × 16 GB)",
+"రకం": "DDR5",
+"వేగం": "సుమారు 6000 MT/s",
+"ఎత్తు": "44 mm"
+}
+},
+"SSD Samsung 990 PRO": {
+"simple": "ఇది SSD. ఆటలు, ఫోటోలు, Windows అన్నీ ఇక్కడే శాశ్వతంగా ఉంటాయి. PC ఆపినా మరిచిపోదు.",
+"deep": "Samsung 990 PRO: చూయింగ్ గమ్ సైజు M.2 2280 కర్ర. కదిలే భాగాలు లేవు, చిప్స్ మాత్రమే. పాత హార్డ్ డిస్క్ కంటే సుమారు 50 రెట్లు వేగం.",
+"specs": {
+"సైజు": "M.2 2280 (8 × 2.2 cm)",
+"చదివే వేగం": "సెకనుకి 7,450 MB వరకు",
+"రకం": "PCIe 4.0 NVMe"
+}
+},
+"గ్రాఫిక్స్ కార్డ్ RTX 5090": {
+"simple": "ఇది గ్రాఫిక్స్ కార్డ్. ఆటలో ప్రతి బొమ్మ ఇదే గీస్తుంది, సెకనుకి వందల బొమ్మలు. PC లో అత్యంత శక్తివంతమైన, వేడైన భాగం.",
+"deep": "NVIDIA GeForce RTX 5090 Founders Edition: GB202 చిప్‌లో 21,760 CUDA కోర్లు, 32 GB GDDR7 మెమరీ. రెండు ఫ్యాన్లు గాలిని కార్డ్ గుండా నేరుగా తోస్తాయి. ఫుల్ లోడ్‌లో సుమారు 575 W తీసుకుంటుంది.",
+"specs": {
+"కోర్లు": "21,760 CUDA",
+"మెమరీ": "32 GB GDDR7",
+"పవర్": "575 W",
+"పొడవు": "30.4 cm, 2 స్లాట్లు",
+"కనెక్టర్": "16-pin 12V-2x6"
+}
+},
+"GPU పవర్ కేబుల్ 12V-2x6": {
+"simple": "ఈ కేబుల్ గ్రాఫిక్స్ కార్డ్‌కి కరెంట్ ఇస్తుంది. పూర్తిగా లోపలికి నొక్కి పెట్టాలి.",
+"deep": "12V-2x6 (16-pin) కనెక్టర్: ఒక్క కేబుల్‌తో 600 W వరకు. సగం పెడితే వేడెక్కి కరిగిపోవచ్చు, అందుకే పూర్తిగా 'క్లిక్' అయ్యేదాకా నొక్కాలి, ప్లగ్ దగ్గర గట్టిగా వంచకూడదు.",
+"specs": {
+"పిన్లు": "12 కరెంట్ + 4 సిగ్నల్",
+"గరిష్టం": "600 W",
+"వోల్టేజ్": "12 V"
+}
+},
+"రైజర్ కేబుల్": {
+"simple": "కార్డ్‌ని నిలబెట్టి పెట్టడానికి ఈ చదునైన కేబుల్ బోర్డ్ స్లాట్‌ని కార్డ్‌కి కలుపుతుంది.",
+"deep": "PCIe రైజర్: బోర్డ్ స్లాట్ సిగ్నల్స్‌ని కార్డ్ బ్రాకెట్ దాకా తీసుకెళ్తుంది. అప్పుడు కార్డ్ ఫ్యాన్లు గ్లాస్ వైపు అందంగా కనిపిస్తాయి.",
+"specs": {
+"రకం": "PCIe x16 రైజర్"
+}
+},
+"కూలర్ పంప్ NZXT Kraken": {
+"simple": "ఇది కూలర్ పంప్. ప్రాసెసర్ మీద కూర్చుని దాని వేడిని నీటిలోకి తీసుకుంటుంది. పైన గుండ్రని స్క్రీన్‌లో ప్రాసెసర్ వేడి కనిపిస్తుంది.",
+"deep": "NZXT Kraken Elite 360: రాగి అడుగు ప్రాసెసర్ వేడిని తీసుకుంటుంది, పంప్ ఆ వేడి నీటిని పైపుల ద్వారా రేడియేటర్‌కి పంపుతుంది. పైన 2.72 అంగుళాల గుండ్రని LCD స్క్రీన్.",
+"specs": {
+"స్క్రీన్": "2.72\" 640 × 640",
+"పంప్ వేగం": "నిమిషానికి 1200 నుంచి 2800"
+}
+},
+"కూలర్ పైపులు": {
+"simple": "ఈ రెండు పైపుల్లో నీరు తిరుగుతుంది: ఒకటి వేడి నీటిని పైకి, ఇంకొకటి చల్ల నీటిని పంప్‌కి.",
+"deep": "అల్లిన తొడుగు ఉన్న రబ్బరు పైపులు, సుమారు 42 cm పొడవు. లోపల నీరు + కొంచెం యాంటీ-ఫ్రీజ్ ద్రవం, ఎప్పటికీ మూసి ఉంటుంది.",
+"specs": {
+"పొడవు": "సుమారు 42 cm",
+"ద్రవం": "మూసి ఉన్న నీటి మిశ్రమం"
+}
+},
+"రేడియేటర్": {
+"simple": "ఇది రేడియేటర్. వేడి నీరు దీని సన్నని రెక్కల గుండా వెళ్తూ చల్లబడుతుంది, కింద ఫ్యాన్లు ఆ వేడిని బయటికి తోస్తాయి.",
+"deep": "360 mm అల్యూమినియం రేడియేటర్ (40.1 × 12 × 2.7 cm). బైక్ రేడియేటర్ లాగే: సన్నని గొట్టాలు, మధ్యలో పలుచని రెక్కలు, వాటి గుండా గాలి.",
+"specs": {
+"సైజు": "40.1 × 12 × 2.7 cm",
+"లోహం": "అల్యూమినియం",
+"ఫ్యాన్లు": "3 × 120 mm"
+}
+},
+"పై ఫ్యాన్లు": {
+"simple": "ఈ మూడు ఫ్యాన్లు రేడియేటర్ గుండా వేడి గాలిని పై నుంచి బయటికి తోస్తాయి.",
+"deep": "120 mm ఫ్యాన్లు, బయటికి తోసే దిశలో. వేడి గాలి సహజంగా పైకి వెళ్తుంది, అందుకే పై ఫ్యాన్లు బయటికి తోస్తాయి.",
+"specs": {
+"సైజు": "120 mm",
+"వేగం": "నిమిషానికి 500 నుంచి 1800"
+}
+},
+"పక్క ఫ్యాన్లు": {
+"simple": "ఈ మూడు ఫ్యాన్లు బయటి చల్ల గాలిని లోపలికి లాగుతాయి.",
+"deep": "ముందు వైపు ఉన్న ఫ్యాన్లు చల్ల గాలిని కార్డ్, బోర్డ్ మీదుగా పంపుతాయి. లోపలికి వచ్చే గాలి, బయటికి వెళ్ళే గాలి దాదాపు సమానంగా ఉంటే దుమ్ము తక్కువ.",
+"specs": {
+"సైజు": "120 mm",
+"దిశ": "లోపలికి"
+}
+},
+"వెనక ఫ్యాన్": {
+"simple": "వెనక ఫ్యాన్ వేడి గాలిని వెనక నుంచి బయటికి తోస్తుంది.",
+"deep": "ప్రాసెసర్ చుట్టూ పేరుకునే వేడి గాలిని వెనక నుంచి బయటికి పంపుతుంది.",
+"specs": {
+"సైజు": "120 mm",
+"దిశ": "బయటికి"
+}
+},
+"పవర్ సప్లై Corsair RM1000x": {
+"simple": "ఇది పవర్ సప్లై. గోడ కరెంట్ (230V) ని PC కి కావాల్సిన 12V గా మార్చి అన్ని భాగాలకి ఇస్తుంది.",
+"deep": "Corsair RM1000x: 1000 W, 80 PLUS Gold, అంటే గోడ నుంచి తీసుకున్న కరెంట్‌లో 90% దాకా PC కి వస్తుంది. లోపల పెద్ద కెపాసిటర్లు కరెంట్ నిల్వ ఉంచుకుంటాయి, అందుకే దీన్ని ఎప్పుడూ తెరవకూడదు.",
+"specs": {
+"శక్తి": "1000 W",
+"సామర్థ్యం": "80 PLUS Gold",
+"సైజు": "15 × 8.6 × 16 cm",
+"బయటికి": "12 V, 5 V, 3.3 V"
+}
+},
+"కేబుల్స్": {
+"simple": "ఈ కేబుల్స్ పవర్ సప్లై నుంచి బోర్డ్‌కి, ప్రాసెసర్‌కి కరెంట్ తీసుకెళ్తాయి.",
+"deep": "తెల్ల కట్ట 24-pin బోర్డ్‌కి, నల్ల 8-pin ప్రాసెసర్‌కి. అవి మధ్య గోడ రంధ్రాల గుండా వెనక గది నుంచి వస్తాయి.",
+"specs": {
+"24-pin": "మదర్‌బోర్డ్",
+"8-pin": "ప్రాసెసర్ (EPS)"
+}
+},
+"పవర్ బటన్": {
+"simple": "PC ఆన్ చేసే బటన్. దాని చుట్టూ లైట్ వెలుగుతుంది.",
+"deep": "నొక్కితే బోర్డ్‌కి ఒక చిన్న సిగ్నల్ వెళ్తుంది, బోర్డ్ పవర్ సప్లైని 'ఆన్' అంటుంది. ఆగిపోయిన PC ని 5 సెకన్లు నొక్కి పట్టుకుంటే బలవంతంగా ఆఫ్ అవుతుంది.",
+"specs": {
+"పని": "ఆన్ / ఆఫ్"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎంత కరెంట్",
+"కరెంట్ ఎంత",
+"ఎన్ని వాట్లు",
+"how much power",
+"watts",
+"యూనిట్లు"
+],
+"a": "ఫుల్ లోడ్‌లో మొత్తం PC సుమారు 750 నుంచి 850 W తీసుకుంటుంది Sir, ఖాళీగా ఉంటే సుమారు 80–100 W. ఒక గంట పెద్ద ఆట అంటే సుమారు 0.8 యూనిట్."
+},
+{
+"k": [
+"ఎన్ని కోర్లు",
+"కోర్లు ఎన్ని",
+"cores",
+"how many cores"
+],
+"a": "ప్రాసెసర్‌లో 8 కోర్లు, 16 థ్రెడ్లు Sir. గ్రాఫిక్స్ కార్డ్‌లో 21,760 చిన్న CUDA కోర్లు, అవి కలిసి బొమ్మలు గీస్తాయి."
+},
+{
+"k": [
+"ఎంత వేగం",
+"ghz",
+"స్పీడ్ ఎంత",
+"how fast"
+],
+"a": "ప్రాసెసర్ సెకనుకి 5.2 బిలియన్ సార్లు (5.2 GHz) వరకు టిక్ అవుతుంది Sir. గ్రాఫిక్స్ కార్డ్ సుమారు 2.4 GHz."
+},
+{
+"k": [
+"ఎంత మెమరీ",
+"ram ఎంత",
+"ర్యామ్ ఎంత",
+"how much ram",
+"memory"
+],
+"a": "ఈ PC లో 32 GB DDR5 మెమరీ (రెండు 16 GB కర్రలు) Sir. గ్రాఫిక్స్ కార్డ్‌కి వేరేగా 32 GB GDDR7 ఉంది."
+},
+{
+"k": [
+"ssd వేగం",
+"ఎస్ఎస్డీ",
+"storage",
+"ఎంత వేగంగా చదువుతుంది"
+],
+"a": "Samsung 990 PRO సెకనుకి 7,450 MB వరకు చదువుతుంది Sir. అంటే 5 GB సినిమా ఒక సెకను కంటే కొంచెం ఎక్కువలో."
+},
+{
+"k": [
+"ఎంత వేడి",
+"సేఫ్ టెంపరేచర్",
+"ఎంత వేడి సేఫ్",
+"temperature",
+"safe temperature"
+],
+"a": "ఆటలో ప్రాసెసర్ 60–80°C, కార్డ్ 65–80°C మామూలే Sir. ప్రాసెసర్ 95°C చేరితే తనంతట తానే వేగం తగ్గించుకుని కాపాడుకుంటుంది."
+},
+{
+"k": [
+"ఎన్ని ఫ్యాన్లు",
+"ఫ్యాన్లు ఎన్ని",
+"how many fans"
+],
+"a": "కేస్‌లో 7 ఫ్యాన్లు Sir: పైన 3, ముందు పక్కన 3, వెనక 1. గ్రాఫిక్స్ కార్డ్ మీద ఇంకో 2. కూలర్‌లో ఒక పంప్."
+},
+{
+"k": [
+"v-cache",
+"వి కాష్",
+"3d cache",
+"క్యాష్ అంటే",
+"x3d"
+],
+"a": "X3D అంటే కోర్ల కింద 64 MB అదనపు క్యాష్ చిప్ పేర్చారు Sir. మొత్తం 96 MB. ఆటకి కావాల్సిన డేటా ప్రాసెసర్ పక్కనే ఉంటుంది కాబట్టి ఆటలు వేగంగా నడుస్తాయి."
+},
+{
+"k": [
+"ధర",
+"ఎంత ఖర్చు",
+"price",
+"cost"
+],
+"a": "RTX 5090 విడుదల ధర అమెరికాలో $1,999 Sir. మన దగ్గర ధరలు రోజూ మారుతుంటాయి, కొనే ముందు షాప్‌లో చూడండి."
+},
+{
+"k": [
+"ఎందుకు నీరు",
+"లిక్విడ్ కూలర్ ఎందుకు",
+"నీరు ఎందుకు",
+"water cooling"
+],
+"a": "గాలి కంటే నీరు వేడిని చాలా బాగా మోస్తుంది Sir. అందుకే ప్రాసెసర్ వేడిని నీటితో పైనున్న పెద్ద రేడియేటర్‌కి తీసుకెళ్ళి, అక్కడ ఫ్యాన్లతో బయటికి వదులుతుంది."
+}
+],
+"quiz": [
+{
+"q": "ఆటలో బొమ్మలన్నీ గీసేది ఏ భాగం?",
+"a": "గ్రాఫిక్స్ కార్డ్ RTX 5090",
+"opts": [
+"పవర్ సప్లై Corsair RM1000x",
+"గ్రాఫిక్స్ కార్డ్ RTX 5090",
+"మెమరీ Trident Z5 DDR5"
+]
+},
+{
+"q": "PC మెదడు, లెక్కలన్నీ చేసేది ఏది?",
+"a": "ప్రాసెసర్ Ryzen 7 9800X3D",
+"opts": [
+"ప్రాసెసర్ Ryzen 7 9800X3D",
+"SSD Samsung 990 PRO",
+"రేడియేటర్"
+]
+},
+{
+"q": "PC ఆపేస్తే మరిచిపోయే వేగమైన జ్ఞాపకం ఏది?",
+"a": "మెమరీ Trident Z5 DDR5",
+"opts": [
+"SSD Samsung 990 PRO",
+"మెమరీ Trident Z5 DDR5",
+"మదర్‌బోర్డ్ ROG Strix X870E"
+]
+},
+{
+"q": "ఆటలు, ఫోటోలు శాశ్వతంగా దాచేది ఏది?",
+"a": "SSD Samsung 990 PRO",
+"opts": [
+"మెమరీ Trident Z5 DDR5",
+"కూలర్ పంప్ NZXT Kraken",
+"SSD Samsung 990 PRO"
+]
+},
+{
+"q": "గోడ కరెంట్ 230V ని PC కి కావాల్సిన 12V గా మార్చేది ఏది?",
+"a": "పవర్ సప్లై Corsair RM1000x",
+"opts": [
+"పవర్ సప్లై Corsair RM1000x",
+"మదర్‌బోర్డ్ ROG Strix X870E",
+"GPU పవర్ కేబుల్ 12V-2x6"
+]
+},
+{
+"q": "ప్రాసెసర్ వేడిని నీటి నుంచి గాలిలోకి వదిలేది ఏది?",
+"a": "రేడియేటర్",
+"opts": [
+"రేడియేటర్",
+"కేస్ O11 Dynamic EVO",
+"రైజర్ కేబుల్"
+]
+}
+],
+"faults": [
+{
+"label": "గ్రాఫిక్స్ కార్డ్ RTX 5090",
+"kind": "noise",
+"clue": "శబ్దం జాగ్రత్తగా వినండి Sir: గరగర శబ్దం ఎక్కడి నుంచి? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "గ్రాఫిక్స్ కార్డ్ ఫ్యాన్ బేరింగ్ అరిగిపోయింది. అందుకే గరగర శబ్దం. వారంటీ ఉంటే సర్వీస్ సెంటర్‌కి, లేదా అదే మోడల్ ఫ్యాన్ మారుస్తారు."
+},
+{
+"label": "ప్రాసెసర్ Ryzen 7 9800X3D",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: మామూలు కంటే ఎక్కువ వేడిగా ఉన్నది ఏది?",
+"why": "ప్రాసెసర్‌కి, పంప్‌కి మధ్య థర్మల్ పేస్ట్ ఎండిపోయింది. వేడి సరిగ్గా వెళ్ళట్లేదు. PC ఆపి, ప్లగ్ తీసి, పాత పేస్ట్ తుడిచి కొత్తది బఠాణీ గింజంత పెడతారు."
+},
+{
+"label": "పై ఫ్యాన్లు",
+"kind": "stop",
+"clue": "ఫ్యాన్లన్నీ చూడండి Sir: ఏవి తిరగట్లేదు? పంప్ స్క్రీన్ కూడా చూడండి.",
+"why": "పై ఫ్యాన్ల కేబుల్ బోర్డ్ నుంచి ఊడిపోయింది. రేడియేటర్ వేడిని బయటికి వదలలేక ప్రాసెసర్ వేడెక్కుతోంది. PC ఆపి, ప్లగ్ తీసి, ఫ్యాన్ కేబుల్ మళ్ళీ పెడతారు."
+},
+{
+"label": "మెమరీ Trident Z5 DDR5",
+"kind": "loose",
+"clue": "ఏ భాగం వణుకుతోంది Sir? కదులుతున్నది ఏది?",
+"why": "మెమరీ కర్ర స్లాట్‌లో పూర్తిగా కూర్చోలేదు. అలా ఉంటే PC ఆన్ అవ్వదు, లేదా మధ్యలో రీస్టార్ట్ అవుతుంది. PC ఆపి, ప్లగ్ తీసి, రెండు చివర్లా 'క్లిక్' అయ్యేదాకా నొక్కుతారు."
+}
+],
+"inside": {
+"ప్రాసెసర్ Ryzen 7 9800X3D": {
+"say": "ప్రాసెసర్ లోపల Sir, 10 రెట్లు పెద్దగా: కుడి వైపు 8 కోర్ల డై, దాని కిందే 64 MB అదనపు క్యాష్ డై. ఎడమ వైపు I/O డై మెమరీతో, బోర్డ్‌తో మాట్లాడుతుంది. పసుపు చుక్కలు కరెంట్, ఆకుపచ్చ చుక్కలు డేటా.",
+"code": "// Inside the Ryzen 7 9800X3D, its lid lifted off, drawn 10 times bigger: the green base, the I/O die, and the die with\n// the 8 cores standing on the extra cache die (3D V-Cache). Electricity and data run between the two dies.\nconst base = W.group();\nbase.add(W.mesh(W.box(40, 40, 1.2, 0.4), W.plastic('#1f6b36', { rough: 0.5 })));\nfor (let i = 0; i < 24; i++) {\n  const a = (i / 24) * Math.PI * 2;\n  base.add(W.mesh(W.box(1.4, 0.8, 0.2, 0.1), W.metal('gold'), { at: [Math.cos(a) * 17, Math.sin(a) * 17, 0.7] }));\n}\nfor (let i = 0; i < 40; i++) base.add(W.mesh(W.box(0.35, 0.35, 0.12), W.metal('#c9a24a'), { at: [-17 + (i % 8) * 4.8, -17 + Math.floor(i / 8) * 1.1, 0.65] }));\nW.add(base, { label: 'బేస్ బోర్డ్' });\nconst si = (c) => new THREE.MeshPhysicalMaterial({ color: c, metalness: 0.6, roughness: 0.22, clearcoat: 1, iridescence: 0.6, iridescenceIOR: 1.4 });\nconst io = W.group({ at: [-9, -5, 1.0] });\nio.add(W.mesh(W.box(12.2, 10.2, 0.8, 0.15), si('#5a6270')));\nconst ioT = W.text('I/O', { size: 1.6, color: '#d8dee6' });\nioT.position.set(0, 0, 0.45);\nio.add(ioT);\nW.add(io, { label: 'I/O డై', explode: [-6, -4, 4] });\nconst cache = W.group({ at: [9, 6, 0.95] });\ncache.add(W.mesh(W.box(8.4, 8.4, 0.7, 0.1), si('#7b5ea7')));\nconst cT = W.text('64 MB CACHE', { size: 0.9, color: '#efe6ff' });\ncT.position.set(0, -3.4, 0.38);\ncache.add(cT);\nW.add(cache, { label: '3D V-Cache 64 MB', explode: [3, 3, 5] });\nconst ccd = W.group({ at: [9, 6, 1.7] });\nccd.add(W.mesh(W.box(8.4, 8.4, 0.6, 0.1), si('#4b5563')));\nconst cores = [];\nfor (let i = 0; i < 8; i++) {\n  const m = W.glow('#ffb347', 0.4);\n  ccd.add(W.mesh(W.box(3.4, 1.6, 0.12, 0.05), m, { at: [-1.9 + (i % 2) * 3.8, -2.85 + Math.floor(i / 2) * 1.9, 0.33] }));\n  cores.push(m);\n}\nconst kT = W.text('8 CORES', { size: 0.8, color: '#ffe2b8' });\nkT.position.set(0, 3.6, 0.36);\nccd.add(kT);\nW.add(ccd, { label: '8 కోర్ల డై', explode: [3, 3, 11] });\nW.onTick((t) => { // (each core lights up as it gets work: a game keeps them all busy)\n  const s = Math.max(0.15, W.env.spool);\n  cores.forEach((m, i) => { m.emissiveIntensity = 0.3 + 2.2 * s * (0.55 + 0.45 * Math.sin(t * (3 + i * 0.7) + i)); });\n});\nW.stream([[-3, -5, 1.6], [2, -1, 2.0], [6, 3, 2.4]], { kind: 'power', count: 14, size: 0.25, speed: 0.6, always: true });\nW.stream([[6, 8, 2.4], [1, 2, 2.0], [-4, -3, 1.6]], { kind: 'regen', count: 14, size: 0.25, speed: 0.6, always: true });\n"
+},
+"గ్రాఫిక్స్ కార్డ్ RTX 5090": {
+"say": "గ్రాఫిక్స్ కార్డ్ లోపల Sir, కూలర్ తీసేస్తే: మధ్యలో పెద్ద GB202 చిప్, దానిలో 170 చిన్న బ్లాకులు, ఒక్కోదానిలో 128 కోర్లు. చుట్టూ 16 GDDR7 మెమరీ చిప్స్, కుడి వైపు పవర్ స్టేజీలు కరెంట్ ఇస్తాయి.",
+"code": "// Inside the graphics card, its cooler lifted off, at real size: the big GB202 chip (170 small blocks, 128 cores each),\n// 16 GDDR7 memory chips around it, and the power stages that feed it.\nconst board = W.group();\nboard.add(W.mesh(W.box(16, 12, 0.16, 0.05), new THREE.MeshPhysicalMaterial({ color: 0x14181d, roughness: 0.5, clearcoat: 0.5 })));\nW.add(board, { label: 'బోర్డ్' });\nconst pkg = W.group({ at: [-1.5, 0, 0.12] });\npkg.add(W.mesh(W.box(5.6, 5.6, 0.2, 0.05), W.plastic('#2a6b3e')));\nconst tex = W.canvasTex(256, 256);\nconst draw = (lit) => { // 170 blocks (SMs) in rows: the lit ones are at work\n  const g = tex.ctx;\n  g.fillStyle = '#20252c'; g.fillRect(0, 0, 256, 256);\n  let n = 0;\n  for (let r = 0; r < 12; r++) for (let c = 0; c < 15 && n < 170; c++, n++) {\n    const on = (n * 37 % 100) / 100 < lit;\n    g.fillStyle = on ? '#7dffb0' : '#3a4350';\n    g.fillRect(8 + c * 16.2, 10 + r * 19.5, 13, 16);\n  }\n  tex.update();\n};\ndraw(0.3);\nconst die = W.mesh(W.box(2.7, 2.8, 0.12, 0.02), new THREE.MeshStandardMaterial({ map: tex.texture, emissiveMap: tex.texture, emissive: 0xffffff, emissiveIntensity: 0.7, roughness: 0.2, metalness: 0.4 }), { at: [0, 0, 0.17] });\npkg.add(die);\nconst dT = W.text('GB202', { size: 0.45, color: '#e6ebf0' });\ndT.position.set(0, -2.15, 0.12);\npkg.add(dT);\nW.add(pkg, { label: 'GB202 చిప్', explode: [0, 0, 4] });\nconst mem = W.group();\nconst mm = W.plastic('#15171a', { rough: 0.4 });\nfor (let i = 0; i < 16; i++) { // four on each side of the chip, like a frame\n  const side = Math.floor(i / 4), k = (i % 4) - 1.5;\n  const at = side === 0 ? [-1.5 + k * 1.45, 4.3, 0.18] : side === 1 ? [-1.5 + k * 1.45, -4.3, 0.18] : side === 2 ? [-5.7, k * 1.45 * 0.8, 0.18] : [2.7, k * 1.45 * 0.8, 0.18];\n  mem.add(W.mesh(W.box(side < 2 ? 1.2 : 1.4, side < 2 ? 1.4 : 1.1, 0.12, 0.03), mm, { at }));\n}\nW.add(mem, { label: 'GDDR7 మెమరీ 16 చిప్స్', explode: [0, 0, 2.5] });\nconst pw = W.group();\nfor (let i = 0; i < 10; i++) {\n  pw.add(W.mesh(W.box(0.7, 0.7, 0.5, 0.05), W.metal('#7d8288'), { at: [6.2, -4.5 + i, 0.33] }));\n  pw.add(W.mesh(W.box(0.45, 0.45, 0.12, 0.03), W.plastic('#0e0f11'), { at: [7.2, -4.5 + i, 0.15] }));\n}\nW.add(pw, { label: 'పవర్ స్టేజీలు', explode: [3, 0, 2] });\nlet dt0 = 0;\nW.onTick((t) => { if (t - dt0 > 0.4) { dt0 = t; draw(0.25 + 0.75 * W.env.spool * (0.85 + 0.15 * Math.sin(t))); } });\nfor (const y of [-3, 0, 3]) W.stream([[6.4, y, 0.9], [3.5, y * 0.5, 0.9], [0.5, y * 0.2, 0.6]], { kind: 'power', count: 8, size: 0.08, speed: 0.5, always: true });\nfor (const [x, y] of [[-1.5, 4.3], [-1.5, -4.3], [-5.7, 0]]) W.stream([[x, y, 0.5], [(x - 1.5) / 2, y / 2, 0.6], [-1.5, 0, 0.5]], { kind: 'regen', count: 8, size: 0.08, speed: 0.5, always: true });\n"
+}
+},
+"film": [
+"🎮 గేమింగ్ PC · RTX 5090",
+"లోడ్ పెంచుతున్నాను: ఆట మొదలు, ఫ్యాన్లు వేగం పెంచాయి",
+"🌡️ వేడి: గ్రాఫిక్స్ కార్డ్, ప్రాసెసర్ ఎక్కువ వేడి",
+"〰️ గాలి: ముందు నుంచి చల్ల గాలి లోపలికి, పై నుంచి వేడి గాలి బయటికి",
+"విడదీస్తే ప్రతి భాగం",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"challenge": null,
+"service": {
+"title": "🛠️ PC శుభ్రం, సర్వీస్ గైడ్",
+"safety": "ముందు: PC షట్‌డౌన్ చేసి, వెనక పవర్ సప్లై స్విచ్ ఆఫ్ చేసి, ప్లగ్ తీసేయండి Sir. తర్వాత పవర్ బటన్ 5 సెకన్లు నొక్కి పట్టుకోండి, మిగిలిన కరెంట్ పోతుంది.",
+"steps": [
+{
+"say": "ముందు కేస్ మెటల్ భాగాన్ని ఒకసారి తాకండి Sir. ఒంట్లోని స్టాటిక్ కరెంట్ పోతుంది, చిప్స్ పాడవవు.",
+"label": "కేస్ O11 Dynamic EVO"
+},
+{
+"say": "దుమ్ము: ఫ్యాన్లని వేలితో పట్టుకుని, మెత్తని బ్రష్ లేదా గాలి డబ్బాతో దుమ్ము తీయండి. ఫ్యాన్‌ని గాలికి గిరగిరా తిరగనివ్వకండి.",
+"label": "పక్క ఫ్యాన్లు"
+},
+{
+"say": "రేడియేటర్ రెక్కల మధ్య దుమ్ము పేరుకుంటుంది. పై నుంచి కిందికి నెమ్మదిగా గాలి ఊదండి, రెక్కలు వంచకండి.",
+"label": "రేడియేటర్"
+},
+{
+"say": "మెమరీ: స్లాట్ చివర క్లిప్పులు తెరిచి, కర్ర గాటు స్లాట్ గాటుతో సరిపోయేలా పెట్టి, రెండు చివర్లా 'క్లిక్' అయ్యేదాకా నొక్కండి.",
+"label": "మెమరీ Trident Z5 DDR5"
+},
+{
+"say": "SSD: ఒక వైపు వాలుగా స్లాట్‌లోకి దూర్చి, కిందికి నొక్కి, చిన్న స్క్రూ లేదా లాచ్‌తో బిగించండి.",
+"label": "SSD Samsung 990 PRO"
+},
+{
+"say": "గ్రాఫిక్స్ కార్డ్ పవర్ కేబుల్ పూర్తిగా లోపలికి నొక్కి ఉందో చూడండి. ప్లగ్ దగ్గర గట్టిగా వంచకండి, సగం పెడితే వేడెక్కుతుంది.",
+"label": "GPU పవర్ కేబుల్ 12V-2x6"
+},
+{
+"say": "పవర్ సప్లైని ఎప్పుడూ తెరవకండి Sir. లోపల కెపాసిటర్లు ప్లగ్ తీశాక కూడా కరెంట్ పట్టుకుని ఉంటాయి. పాడైతే మొత్తం మార్చాలి లేదా సర్వీస్ సెంటర్.",
+"label": "పవర్ సప్లై Corsair RM1000x"
+}
+]
+},
+"scene": "",
+"variants": {
+"part": "gpu",
+"line": "const VARIANT = '5090';",
+"pattern": "const VARIANT = '{v}';",
+"label": "గ్రాఫిక్స్ కార్డ్ RTX {v}",
+"default": "5090",
+"words": {
+"5090": [
+"5090",
+"ఫిఫ్టీ నైంటీ"
+],
+"5080": [
+"5080",
+"ఫిఫ్టీ ఎయిటీ"
+],
+"5070": [
+"5070",
+"ఫిఫ్టీ సెవెంటీ"
+]
+},
+"options": {
+"5090": {
+"say": "RTX 5090 పెట్టాను Sir. అత్యంత శక్తివంతమైనది: 575 W, 32 GB మెమరీ.",
+"info": {
+"simple": "ఇది గ్రాఫిక్స్ కార్డ్. ఆటలో ప్రతి బొమ్మ ఇదే గీస్తుంది, సెకనుకి వందల బొమ్మలు. PC లో అత్యంత శక్తివంతమైన, వేడైన భాగం.",
+"deep": "NVIDIA GeForce RTX 5090 Founders Edition: GB202 చిప్‌లో 21,760 CUDA కోర్లు, 32 GB GDDR7 మెమరీ. రెండు ఫ్యాన్లు గాలిని కార్డ్ గుండా నేరుగా తోస్తాయి. ఫుల్ లోడ్‌లో సుమారు 575 W తీసుకుంటుంది.",
+"specs": {
+"కోర్లు": "21,760 CUDA",
+"మెమరీ": "32 GB GDDR7",
+"పవర్": "575 W",
+"పొడవు": "30.4 cm, 2 స్లాట్లు",
+"కనెక్టర్": "16-pin 12V-2x6"
+}
+}
+},
+"5080": {
+"say": "RTX 5080 పెట్టాను Sir. పొడవు అంతే, కానీ పవర్ 360 W, మెమరీ 16 GB. వేడి, కరెంట్ బిల్ తగ్గుతాయి.",
+"info": {
+"simple": "ఇది RTX 5080 గ్రాఫిక్స్ కార్డ్. 5090 కంటే కొంచెం తక్కువ శక్తి, కానీ తక్కువ కరెంట్, తక్కువ వేడి.",
+"deep": "NVIDIA GeForce RTX 5080 Founders Edition: సుమారు 10,752 CUDA కోర్లు, 16 GB GDDR7. 5090 లాంటిదే రెండు ఫ్యాన్ల బాడీ.",
+"specs": {
+"కోర్లు": "సుమారు 10,752 CUDA",
+"మెమరీ": "16 GB GDDR7",
+"పవర్": "సుమారు 360 W",
+"పొడవు": "30.4 cm, 2 స్లాట్లు"
+}
+}
+},
+"5070": {
+"say": "RTX 5070 పెట్టాను Sir. చిన్నది: 24.2 cm, 250 W, 12 GB మెమరీ.",
+"info": {
+"simple": "ఇది RTX 5070 గ్రాఫిక్స్ కార్డ్. చిన్నది, తక్కువ కరెంట్. మామూలు ఆటలకి సరిపోతుంది.",
+"deep": "NVIDIA GeForce RTX 5070 Founders Edition: 6,144 CUDA కోర్లు, 12 GB GDDR7 (192-bit, సెకనుకి 672 GB). పొడవు 24.2 cm.",
+"specs": {
+"కోర్లు": "6,144 CUDA",
+"మెమరీ": "12 GB GDDR7",
+"పవర్": "250 W",
+"పొడవు": "24.2 cm, 2 స్లాట్లు"
+}
+}
+}
+}
+},
+"id": "pc"
+}
+}

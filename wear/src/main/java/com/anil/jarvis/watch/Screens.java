@@ -28,6 +28,7 @@ final class Screens {
                 case "photos": launch(c, new Intent(c, Photos.class), "🖼️ ఫోటో వచ్చింది", false); break;
                 case "reps": launch(c, new Intent(c, Reps.class), "🏋️ రెప్స్", false); break;
                 case "record": launch(c, new Intent(c, Recorder.class), "🎙️ రికార్డ్", false); break;
+                case "bezel": launch(c, new Intent(c, Bezel.class).putExtra(Bezel.EXTRA_ID, t), "⚡ పవర్ డయల్", false); break; // (the workshop's showpiece)
                 default: if (!s.isEmpty()) launch(c, new Intent(c, Panel.class).putExtra(Panel.EXTRA_KIND, s), "⌚ Jarvis", false);
             }
         } catch (Exception ignored) {}

@@ -389,8 +389,10 @@ final class Tools {
                         + "photo, STL print file, a 3D model from a photo or a floor plan, landscape, the how-it-works show, how to really make it, "
                         + "the model in his room on the camera, a colour or material for a part, the tape, the weight, the 2D drawing, the show's video, "
                         + "a second saved model beside it, hand signs in the air, the model at its real size on his floor) go to the workshop as he said them. "
+                        + "showpiece = open one of the hand-made 🏆 showpieces that ship with the app (a turbofan jet engine, a gaming PC, a geared electric "
+                        + "motorcycle; free, no AI) by its name, or the showpiece shelf when no name is given. "
                         + "Not for websites, apps, code, food, pictures, scans, games (game_studio) or electric circuits (circuit_lab).",
-                schema(new String[][]{{"action", "string", "build | open_last | cost | talk"},
+                schema(new String[][]{{"action", "string", "build | open_last | cost | talk | showpiece"},
                         {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used. "
                                 + "talk: his exact words, unchanged"}},
                         "action")));
@@ -1691,6 +1693,20 @@ final class Tools {
                 return err("nothing_open", "No model is open or saved yet. Ask what he wants built ('ఒక ___ తయారు చెయ్').");
             startIn(new Intent(c, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_TALK, words).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
             return ok().put("next", "Say only: 'సరే Sir.' The workshop answers or makes the change itself and says what it cost.").toString();
+        }
+        if ("showpiece".equals(action)) { // 🏆 hand-made, inside the app: ₹0, no AI
+            java.util.List<org.json.JSONObject> shelf = Showpiece.shelf(c);
+            String words = (what + " " + (heard == null ? "" : heard)).trim();
+            String id = Showpiece.match(shelf, words);
+            Intent i = new Intent(c, WorkshopActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            if (id == null) {
+                StringBuilder names = new StringBuilder();
+                for (org.json.JSONObject b : shelf) names.append(names.length() == 0 ? "" : ", ").append(b.optString("title"));
+                startIn(i.putExtra(WorkshopActivity.EXTRA_SHELF, true));
+                return ok().put("showpieces", names.toString()).put("next", "Say in one short Telugu line that the showpiece shelf is open, naming these showpieces.").toString();
+            }
+            startIn(i.putExtra(WorkshopActivity.EXTRA_SHOWPIECE, id));
+            return ok().put("next", "Say only: 'బెంచ్ మీద పెట్టాను Sir, ఖర్చు లేదు.'").toString();
         }
         if ("open_last".equals(action)) {
             if (Workshop.last(c) == null) return err("nothing_saved", "No build has been saved yet. Say so and that he can say 'ఒక ___ తయారు చెయ్'.");

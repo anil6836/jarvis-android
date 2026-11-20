@@ -805,6 +805,7 @@ final class Brain {
                 + "that model ('రెక్కలు ఎరుపు చెయ్', 'ఈ భాగం ఏం చేస్తుంది', 'విడదీయి', 'పై నుంచి చూపించు', 'ఇది ఒక్కటే చూపించు', 'ఎక్స్ రే', "
                 + "'లోపల చూపించు', 'పైకప్పు తీసేయి', 'కొలతలు', 'స్టూడియో ఫోటో', 'ప్రింట్ ఫైల్') -> workshop talk with his exact words. "
                 + "'ఫోటో నుంచి 3D' / 'ఇంటి ప్లాన్ నుంచి 3D' -> workshop talk with his words (the workshop asks for the photo). "
+                + "'జెట్ ఇంజన్ / గేమింగ్ PC / ఎలక్ట్రిక్ బైక్ షోపీస్ చూపించు', 'షోపీస్‌లు చూపించు' -> workshop action=showpiece what=his words (hand-made, free). "
                 + "Never choose or change the workshop's AI yourself.\n"
                 + "- Scanning a paper -> open_app CamScanner or iScanner; to read a paper aloud right now, use the live camera; a scan open on screen -> read_screen read.\n"
                 + "- His own routines: 'X అంటే ఇవి చెయ్' -> routine save; when he says a saved routine's name ('ఆఫీస్ మోడ్') -> routine run, then do the steps.\n"

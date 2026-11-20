@@ -1,0 +1,539 @@
+{
+"at": 1763600000003,
+"title": "గేర్ల ఎలక్ట్రిక్ బైక్",
+"what": "4 గేర్లు, క్లచ్ ఉన్న ఎలక్ట్రిక్ మోటార్‌సైకిల్ (మా సొంత డిజైన్, ఏ కంపెనీ పేరు లేదు), బాడీ లేకుండా రోలర్ టెస్ట్ బెంచ్ మీద",
+"model": "showpiece",
+"parts": [
+{
+"id": "bench",
+"status": "టెస్ట్ బెంచ్ పెడుతున్నాను",
+"code": "// An electric motorcycle with a 4-speed gearbox and a clutch, without its body panels, on a roller test bench (our own design, no\n// maker's name or badge). Units: cm. X: forward (the front wheel at +X), Y: up (the bench top at 0), Z: the rider's right (+Z).\n// The chain, the gear lever and the clutch lever are on the left (-Z); the throttle grip, the front brake lever and the clutch cover on the right (+Z).\nconst S = W.store;\nS.alloy = W.metal('#c3cad1', { rough: 0.3 });\nS.dark = W.metal('#2b3036', { rough: 0.38 });\nS.black = W.paint('#1b1e22', { metallic: 0.3, rough: 0.45 });\nS.rub = W.rubber('#17181a');\nS.hv = W.plastic('#ff7a1a', { rough: 0.5 });     // (high voltage cables are orange on every EV)\nS.cyan = W.glow('#4fd2ff', 1.4);\nS.st = { v: 0, rpm: 0, free: 0, wh: 4000, km: 0, used: 0, avg: 38, inst: 0, p: 0, regen: 0, gear: 1, shiftT: -9, engaged: true, ang: 0, chain: 0, last: 1 };\nconst b = W.group();\nb.add(W.mesh(W.box(190, 10, 70, 1), W.paint('#3a3f46', { metallic: 0.2, rough: 0.6 }), { at: [0, -5, 0] }));\nfor (const x of [-66.5, -46.5]) b.add(W.mesh(W.cyl(7, 7, 40, 40), W.metal('#8c939b', { rough: 0.35 }), { at: [x, -1.47, 0], rot: [90, 0, 0] })); // two rollers under the back wheel\nb.add(W.mesh(W.box(36, 0.4, 44, 0.1), W.metal('#15171a'), { at: [-56.5, 0.05, 0] }));          // the pit the rollers turn in\nb.add(W.mesh(W.box(34, 4.2, 22, 0.8), W.paint('#4a5058', { metallic: 0.2, rough: 0.6 }), { at: [76, 2.1, 0] }));  // the front wheel's plate\nfor (const z of [-34, 34]) b.add(W.mesh(W.box(186, 0.6, 1.2), W.glow('#ffc14a', 0.8), { at: [0, 0.3, z] }));\nS.rollers = [];\nW.add(b, { label: 'టెస్ట్ బెంచ్' });\nS.rollerGroup = b;\n// a wheel: a tyre, a black rim with five spokes, a hub; axis Z\nS.wheel = (rOut, w, rim) => {\n  const g = W.group();\n  const t = (rOut - rim) / 2;\n  const tyre = W.mesh(W.torus(rim + t, t, 72, 18), S.rub);\n  tyre.scale.z = (w / 2) / t;\n  g.add(tyre);\n  for (let i = 0; i < 36; i++) { // tread blocks\n    const a = (i / 36) * Math.PI * 2;\n    g.add(W.mesh(W.box(2.4, 0.5, w * 0.6), S.rub, { at: [Math.cos(a) * (rOut - 0.1), Math.sin(a) * (rOut - 0.1), 0], rot: [0, 0, a * 180 / Math.PI + 90] }));\n  }\n  g.add(W.mesh(W.ring(rim - 1.8, rim + 0.2, w * 0.62, 72), S.black, { rot: [90, 0, 0] }));\n  for (let i = 0; i < 5; i++) {\n    const a = (i / 5) * Math.PI * 2;\n    for (const d of [-0.16, 0.16]) g.add(W.mesh(W.box(rim - 5, 1.5, 1.2, 0.4), S.black, { at: [Math.cos(a + d) * (rim / 2 + 1.5), Math.sin(a + d) * (rim / 2 + 1.5), 0], rot: [0, 0, (a + d) * 180 / Math.PI] }));\n  }\n  g.add(W.mesh(W.cyl(5, 5, w * 0.85, 32), S.alloy, { rot: [90, 0, 0] }));\n  const blur = new THREE.Mesh(new THREE.CircleGeometry(rim - 1.8, 48), new THREE.MeshBasicMaterial({ color: 0x0c0d0f, transparent: true, opacity: 0, depthWrite: false }));\n  for (const z of [-w * 0.32, w * 0.32]) { const m = blur.clone(); m.position.z = z; g.add(m); }\n  g.userData.blur = blur.material;\n  return g;\n};\n// a toothed sprocket, axis Z\nS.sprocket = (teeth, r, mat) => W.mesh(W.gear({ teeth, r, depth: 0.6, hole: r * 0.35 }), mat, { rot: [90, 0, 0] });\n// a brake disc with holes, axis Z\nS.disc = (rIn, rOut) => {\n  const g = W.group();\n  g.add(W.mesh(W.ring(rIn, rOut, 0.5, 64), W.metal('#b9bec4', { rough: 0.28 }), { rot: [90, 0, 0] }));\n  for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2; g.add(W.mesh(W.cyl(0.45, 0.45, 0.62, 10), S.dark, { at: [Math.cos(a) * (rIn + rOut) / 2, Math.sin(a) * (rIn + rOut) / 2, 0], rot: [90, 0, 0] })); }\n  return g;\n};\n"
+},
+{
+"id": "wheels",
+"status": "చక్రాలు పెడుతున్నాను",
+"code": "const S = W.store;\n// the back wheel (17\", 140 mm tyre) on the rollers, with its 44-tooth sprocket (left) and brake disc (right); the front wheel (17\", 100 mm) in its chock\nconst rear = W.group({ at: [-56.5, 31.4 + 4.2, 0] });\nconst rw = S.wheel(31.4, 14, 21.6);\nrear.add(rw);\nconst rs = S.sprocket(44, 10.5, W.metal('#9aa1a8', { rough: 0.3 })); rs.position.z = -8.6; rw.add(rs);\nconst rd = S.disc(7, 11); rd.position.z = 8.2; rw.add(rd);\nW.add(rear, { label: 'వెనక చక్రం', explode: [-50, 0, -10], heat: [30, 36], layer: 1 });\nS.rearWheel = rw;\nconst front = W.group({ at: [76, 29.6 + 4.2, 0] });\nconst fw = S.wheel(29.6, 10.5, 21.6);\nfront.add(fw);\nconst fd = S.disc(10, 15); fd.position.z = 5.6; fw.add(fd);\nfront.add(W.mesh(W.box(5, 7, 3.2, 0.6), W.metal('#c9a24a', { rough: 0.35 }), { at: [-4, 12, 5.6] }));  // the brake caliper\nW.add(front, { label: 'ముందు చక్రం', explode: [48, 0, -10], layer: 1 });\nS.frontWheel = fw;\n"
+},
+{
+"id": "frame",
+"status": "ఫ్రేమ్ వేస్తున్నాను",
+"code": "const S = W.store;\nconst Y = 4.2; // (everything sits on the bench)\nconst f = W.group({ at: [0, Y, 0] });\nconst fm = W.paint('#8f99a3', { metallic: 0.5, rough: 0.35 });\nconst tube = (pts, r = 1.4) => f.add(W.mesh(W.tube(pts, r, 48), fm));\nfor (const z of [-1, 1]) {\n  tube([[50, 92, z * 6], [30, 86, z * 11], [5, 80, z * 12.5], [-12, 74, z * 12.5]]);                 // top rails over the battery\n  tube([[50, 86, z * 5], [44, 66, z * 11], [36, 44, z * 12.5], [24, 22, z * 12.5]]);                 // down rails in front of it\n  tube([[24, 22, z * 12.5], [4, 18, z * 12.5], [-16, 22, z * 12.5], [-26, 40, z * 12.5]], 1.3);     // the cradle under the motor\n  tube([[-12, 74, z * 12.5], [-24, 60, z * 12.5], [-26, 40, z * 12.5]]);                            // down to the swingarm pivot\n  tube([[-12, 74, z * 10], [-40, 82, z * 9], [-66, 86, z * 7]], 1.1);                               // the seat's subframe\n  tube([[-26, 46, z * 11], [-46, 70, z * 9], [-60, 84, z * 7.5]], 1.0);\n}\nf.add(W.mesh(W.cyl(3.2, 3.2, 14, 32), fm, { at: [49, 91, 0], rot: [0, 0, 20] }));  // the steering head\nf.add(W.mesh(W.cyl(2.2, 2.2, 28, 24), S.alloy, { at: [-26, 40, 0], rot: [90, 0, 0] })); // the swingarm pivot bolt\nW.add(f, { label: 'ఫ్రేమ్', explode: [0, 30, -8], heat: [30, 34], layer: 0 });\nconst seat = W.group({ at: [0, Y, 0] });\nconst ss = new THREE.Shape();\nss.moveTo(-68, 0); ss.quadraticCurveTo(-70, 5, -64, 7); ss.lineTo(-30, 6); ss.quadraticCurveTo(-14, 6, -8, 2); ss.lineTo(-8, 0); ss.lineTo(-68, 0);\nseat.add(W.mesh(new THREE.ExtrudeGeometry(ss, { depth: 24, bevelEnabled: true, bevelSize: 1.5, bevelThickness: 1.5, bevelSegments: 3 }).translate(0, 0, -12), W.fabric('#222428'), { at: [0, 83.5, 0] }));\nW.add(seat, { label: 'సీటు', explode: [-6, 52, -8], layer: 0 });\n"
+},
+{
+"id": "front",
+"status": "ఫోర్క్, హ్యాండిల్ బార్ పెడుతున్నాను",
+"code": "const S = W.store;\nconst Y = 4.2;\n// the fork from the steering head down to the front axle; the handlebar with the grips, the levers and the screen\nconst fk = W.group({ at: [0, Y, 0] });\nfor (const z of [-9, 9]) {\n  fk.add(W.mesh(W.tube([[48, 97, z], [76, 29.6, z]], 2.6, 8), W.metal('#d9b45a', { rough: 0.3 })));      // gold fork legs\n  fk.add(W.mesh(W.tube([[52.5, 86, z], [62, 63, z]], 3.4, 8), S.dark));                                   // the upper tubes\n}\nfor (const y of [97, 87]) fk.add(W.mesh(W.box(9, 2.4, 24, 0.6), S.alloy, { at: [48 + (97 - y) * 0.36, y, 0] }));\nfk.add(W.mesh(W.cyl(1, 1, 22, 12), S.alloy, { at: [76, 29.6, 0], rot: [90, 0, 0] }));\nW.add(fk, { label: 'ముందు ఫోర్క్', explode: [44, 6, -10], layer: 1 });\nconst h = W.group({ at: [0, Y, 0] });\nh.add(W.mesh(W.tube([[44, 101, -36], [46, 102, -20], [47, 100, 0], [46, 102, 20], [44, 101, 36]], 1.1, 40), W.metal('#2b2f35', { rough: 0.3 })));\nconst grip = (z) => { const g = W.group({ at: [44, 101, z] }); g.add(W.mesh(W.cyl(1.7, 1.7, 12, 24), S.rub, { rot: [90, 0, 0] })); return g; };\nconst gl = grip(-30), gr = grip(30);\ngr.add(W.mesh(W.box(0.6, 0.5, 11, 0.1), W.plastic('#f2f2f2'), { at: [0, 1.75, 0] }));   // a white line: see the grip turn\nh.add(gl, gr);\nconst lever = (z, side) => { const p = W.group({ at: [47, 102, z] }); p.add(W.mesh(W.box(1.2, 0.8, 16, 0.3), S.alloy, { at: [2.5, -0.8, side * 8] })); return p; };\nconst cl = lever(-22, -1), bl = lever(22, 1);   // clutch lever (left), front brake lever (right)\nh.add(cl, bl);\n// the screen: speed, gear, battery, range\nconst dash = W.canvasTex(256, 160);\nconst dm = new THREE.MeshStandardMaterial({ map: dash.texture, emissiveMap: dash.texture, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.2 });\nconst dh = W.group({ at: [43, 106, 0], rot: [0, -90, 0] });\ndh.add(W.mesh(W.box(19, 13, 2.4, 0.8), S.black, { at: [0, 0, -1.3] }));\ndh.add(W.mesh(new THREE.PlaneGeometry(17, 10.6), dm));\ndh.rotation.x = 0; dh.rotateX(-0.45);\nh.add(dh);\nS.dashDraw = (st, warn) => {\n  const g = dash.ctx;\n  g.fillStyle = '#05080b'; g.fillRect(0, 0, 256, 160);\n  g.textAlign = 'center'; g.textBaseline = 'middle';\n  g.fillStyle = '#f1f5f9'; g.font = '700 74px system-ui, sans-serif'; g.fillText(String(Math.round(st.v)), 104, 70);\n  g.fillStyle = '#8aa0b4'; g.font = '600 18px system-ui, sans-serif'; g.fillText('km/h', 104, 116);\n  g.strokeStyle = '#4fd2ff'; g.lineWidth = 3; g.strokeRect(198, 22, 46, 54);\n  g.fillStyle = '#4fd2ff'; g.font = '700 40px system-ui, sans-serif'; g.fillText(st.gear >= 1 && st.gear <= 4 ? String(st.gear) : 'N', 221, 50);\n  const soc = Math.max(0, Math.min(1, st.wh / 5000));\n  g.fillStyle = '#1c2630'; g.fillRect(16, 136, 160, 12);\n  g.fillStyle = soc < 0.2 ? '#ff5a3c' : '#5ee38f'; g.fillRect(16, 136, 160 * soc, 12);\n  g.fillStyle = '#cfd8e1'; g.font = '600 16px system-ui, sans-serif'; g.textAlign = 'left';\n  g.fillText(Math.round(soc * 100) + '%', 182, 142);\n  g.textAlign = 'center'; g.fillText(Math.round(st.range) + ' km', 221, 100);\n  if (st.regen > 1) { g.fillStyle = '#5ee38f'; g.font = '700 16px system-ui, sans-serif'; g.fillText('REGEN', 40, 18); }\n  if (warn) { g.fillStyle = '#ff5a3c'; g.font = '700 16px system-ui, sans-serif'; g.fillText('HOT', 120, 18); }\n  dash.update();\n};\nS.dashDraw({ v: 0, gear: 1, wh: 4000, range: 105, regen: 0 }, false);\nW.add(h, { label: 'హ్యాండిల్ బార్', explode: [24, 42, -10], layer: 0 });\nS.grip = gr; S.clutchLever = cl; S.brakeLever = bl;\nconst hl = W.group({ at: [57, 88 + Y, 0], rot: [0, 0, -8] });\nhl.add(W.mesh(W.cyl(8, 9, 6, 48), S.black, { rot: [0, 0, 90] }));\nhl.add(W.mesh(W.cyl(7.2, 7.2, 0.4, 48), W.glow('#eaf6ff', 2.2), { at: [3.1, 0, 0], rot: [0, 0, 90] }));\nhl.add(W.mesh(W.torus(7.4, 0.35, 48, 6), S.cyan, { at: [3.2, 0, 0], rot: [0, 90, 0] }));\nW.add(hl, { label: 'హెడ్‌లైట్', explode: [44, 22, -6], layer: 0 });\n"
+},
+{
+"id": "battery",
+"status": "బ్యాటరీ ప్యాక్ పెడుతున్నాను",
+"code": "const S = W.store;\nconst Y = 4.2;\n// the 5 kWh pack between the frame rails, cooled by liquid through a plate under it; the BMS board on top; the charging port in front\nconst bt = W.group({ at: [12, 61 + Y, 0] });\nbt.add(W.mesh(W.box(44, 28, 23, 2), W.paint('#20262d', { metallic: 0.4, rough: 0.4 })));\nfor (let i = 0; i < 9; i++) bt.add(W.mesh(W.box(40, 0.8, 23.4, 0.3), S.dark, { at: [0, -12 + i * 3, 0] }));  // cooling ribs\nconst t1 = W.text('5 kWh · LIQUID COOLED', { size: 1.5, color: '#9fe6ff', spacing: 2 });\nt1.position.set(0, 4, 11.75);\nbt.add(t1);\nconst t2 = t1.clone(); t2.position.z = -11.75; t2.rotation.y = Math.PI; bt.add(t2);\nbt.add(W.mesh(W.box(46, 1.6, 25, 0.6), W.metal('#7d8790', { rough: 0.35 }), { at: [0, -14.6, 0] }));   // the cold plate\nW.add(bt, { label: 'బ్యాటరీ ప్యాక్ 5 kWh', explode: [0, 62, -34], heat: [30, 44], layer: 1 });\nconst bm = W.group({ at: [8, 76.5 + Y, 0] });\nbm.add(W.mesh(W.box(16, 2.4, 11, 0.5), W.plastic('#14532d', { rough: 0.5 })));\nfor (let i = 0; i < 6; i++) bm.add(W.mesh(W.box(1.4, 0.8, 1.4, 0.2), W.plastic('#0e0f11'), { at: [-5 + i * 2, 1.4, -2] }));\nconst led = W.glow('#5ee38f', 2);\nbm.add(W.mesh(W.sphere(0.5, 12), led, { at: [6, 1.5, 3] }));\nW.add(bm, { label: 'BMS బోర్డ్', explode: [0, 84, -34], heat: [30, 40], layer: 1 });\nS.bmsLed = led;\nconst cp = W.group({ at: [32, 77 + Y, 0], rot: [0, 0, 12] });\ncp.add(W.mesh(W.cyl(3.4, 3.8, 3, 40), S.black));\ncp.add(W.mesh(W.torus(2.6, 0.3, 40, 8), S.cyan, { at: [0, 1.55, 0], rot: [90, 0, 0] }));\nfor (let i = 0; i < 5; i++) cp.add(W.mesh(W.cyl(0.35, 0.35, 0.6, 10), S.alloy, { at: [Math.cos(i * 1.256) * 1.3, 1.6, Math.sin(i * 1.256) * 1.3] }));\nW.add(cp, { label: 'చార్జింగ్ పోర్ట్', explode: [26, 74, -20], layer: 0 });\n"
+},
+{
+"id": "drive",
+"status": "మోటార్, గేర్‌బాక్స్ అమరుస్తున్నాను",
+"code": "const S = W.store;\nconst Y = 4.2;\n// the motor (its cover, the copper stator, the magnet rotor), the clutch, the 4-speed gearbox with its gears, the 14-tooth front sprocket\nconst mo = W.group({ at: [6, 34 + Y, 0] });\nmo.add(W.mesh(W.cyl(11, 11, 15, 64), W.metal('#3a4048', { rough: 0.32 }), { rot: [90, 0, 0] }));\nfor (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; mo.add(W.mesh(W.box(1, 1, 15.4, 0.2), S.dark, { at: [Math.cos(a) * 11, Math.sin(a) * 11, 0] })); }\nconst mt = W.text('MOTOR · 10 kW', { size: 1.2, color: '#d6dde4', spacing: 2 });\nmt.position.set(0, 0, 7.55);\nmo.add(mt);\nW.add(mo, { label: 'మోటార్', explode: [14, -16, 26], heat: [32, 72], layer: 0 });\nconst stt = W.group({ at: [6, 34 + Y, 0] });\nstt.add(W.mesh(W.ring(6.4, 9.8, 12, 64), W.metal('#6b7178'), { rot: [90, 0, 0] }));\nfor (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; stt.add(W.mesh(W.box(2.6, 2.2, 13, 0.6), W.metal('copper', { rough: 0.3 }), { at: [Math.cos(a) * 7.6, Math.sin(a) * 7.6, 0], rot: [0, 0, a * 180 / Math.PI] })); }\nW.add(stt, { label: 'మోటార్ స్టేటర్', explode: [34, -16, 30], heat: [35, 92], layer: 1 });\nconst rot = W.group({ at: [6, 34 + Y, 0] });\nconst rr = W.group();\nrr.add(W.mesh(W.cyl(5.8, 5.8, 12, 48), W.metal('#9aa1a8', { rough: 0.3 }), { rot: [90, 0, 0] }));\nfor (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; rr.add(W.mesh(W.box(2.8, 0.7, 11.6, 0.15), W.paint(i % 2 ? '#d64545' : '#3b6fd6', { metallic: 0.4 }), { at: [Math.cos(a) * 5.9, Math.sin(a) * 5.9, 0], rot: [0, 0, a * 180 / Math.PI + 90] })); }\nrr.add(W.mesh(W.cyl(1.2, 1.2, 22, 16), S.alloy, { rot: [90, 0, 0] }));\nrot.add(rr);\nW.add(rot, { label: 'మోటార్ రోటర్', explode: [54, -16, 34], heat: [35, 80], layer: 2 });\nS.rotor = rr;\nconst gb = W.group({ at: [-12, 36 + Y, 0] });\nconst gbx = new THREE.Shape();\ngbx.moveTo(-10, -8); gbx.lineTo(8, -9); gbx.quadraticCurveTo(13, 0, 8, 9); gbx.lineTo(-8, 9); gbx.quadraticCurveTo(-13, 0, -10, -8);\ngb.add(W.mesh(new THREE.ExtrudeGeometry(gbx, { depth: 15, bevelEnabled: true, bevelSize: 0.8, bevelThickness: 0.8, bevelSegments: 2 }).translate(0, 0, -7.5), W.metal('#b5bcc3', { rough: 0.4 })));\nconst fs = S.sprocket(14, 3.9, W.metal('#9aa1a8', { rough: 0.3 })); fs.position.set(-7, 1, -9.2); gb.add(fs);\nS.frontSprocket = fs;\nconst gt = W.text('4-SPEED', { size: 1.1, color: '#2b3036', spacing: 2 });\ngt.position.set(0, 4, 8.35);\ngb.add(gt);\nW.add(gb, { label: 'గేర్‌బాక్స్ 4 స్పీడ్', explode: [-16, -18, 26], heat: [30, 56], layer: 0 });\nconst gears = W.group({ at: [-12, 36 + Y, 0] });\nS.gearSet = [];\nconst gm = W.metal('#d0d5da', { rough: 0.25 });\nfor (let i = 0; i < 4; i++) { // input shaft (top) and output shaft (bottom): four pairs, one pair per gear\n  const z = -5 + i * 3.2, ri = 2 + i * 0.8, ro = 6.6 - i * 0.8;\n  const a = W.mesh(W.gear({ teeth: 10 + i * 4, r: ri, depth: 1.6 }), gm, { at: [3, 3.6, z], rot: [90, 0, 0] });\n  const c = W.mesh(W.gear({ teeth: 34 - i * 4, r: ro, depth: 1.6 }), gm, { at: [3 - (ri + ro) * 0.0, 3.6 - (ri + ro) + 0.4, z], rot: [90, 0, 0] });\n  gears.add(a, c);\n  S.gearSet.push({ a, c, k: ri / ro });\n}\ngears.add(W.mesh(W.cyl(0.8, 0.8, 17, 12), S.alloy, { at: [3, 3.6, 0], rot: [90, 0, 0] }));\nW.add(gears, { label: 'గేర్లు', explode: [-36, -18, 30], heat: [30, 60], layer: 1 });\nconst cc = W.group({ at: [-4, 38 + Y, 9.2] });\ncc.add(W.mesh(W.cyl(7.2, 7.6, 3, 56), W.metal('#c9ced3', { rough: 0.3 }), { rot: [90, 0, 0] }));\nfor (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; cc.add(W.mesh(W.cyl(0.5, 0.5, 0.6, 10), S.dark, { at: [Math.cos(a) * 6.2, Math.sin(a) * 6.2, 1.6], rot: [90, 0, 0] })); }\nconst ct = W.text('CLUTCH', { size: 1, color: '#2b3036', spacing: 2 });\nct.position.set(0, 0, 1.55);\ncc.add(ct);\nW.add(cc, { label: 'క్లచ్', explode: [-4, -30, 40], heat: [30, 50], layer: 0 });\nconst lv = W.group({ at: [-14, 26 + Y, -13] });\nconst lvr = W.group();\nlvr.add(W.mesh(W.box(16, 1.2, 1.2, 0.3), S.dark, { at: [7, 0, 0] }));\nlvr.add(W.mesh(W.cyl(0.8, 0.8, 4, 12), S.rub, { at: [15, 0, -1.6], rot: [90, 0, 0] }));\nlv.add(lvr);\nW.add(lv, { label: 'గేర్ లివర్', explode: [0, -26, 30], layer: 0 });\nS.shiftLever = lvr;\n"
+},
+{
+"id": "chassis",
+"status": "స్వింగ్ ఆర్మ్, చైన్ వేస్తున్నాను",
+"code": "const S = W.store;\nconst Y = 4.2;\n// the swingarm from the pivot to the back axle, the shock absorber, and the chain around the two sprockets (it moves with the wheel)\nconst sa = W.group({ at: [0, Y, 0] });\nfor (const z of [-12.5, 12.5]) sa.add(W.mesh(W.tube([[-26, 40, z], [-40, 36.5, z * 1.05], [-56.5, 31.4, z]], 1.9, 24), S.alloy));\nsa.add(W.mesh(W.box(4, 4, 24, 0.8), S.alloy, { at: [-34, 38, 0] }));\nsa.add(W.mesh(W.cyl(1.1, 1.1, 27, 12), S.alloy, { at: [-56.5, 31.4, 0], rot: [90, 0, 0] }));\nW.add(sa, { label: 'స్వింగ్ ఆర్మ్', explode: [-30, -12, -14], layer: 1 });\nconst sh = W.group({ at: [0, Y, 0] });\nconst from = new THREE.Vector3(-36, 39, 0), to = new THREE.Vector3(-22, 74, 0);\nconst mid = from.clone().add(to).multiplyScalar(0.5), len = from.distanceTo(to);\nconst ang = Math.atan2(to.y - from.y, to.x - from.x) - Math.PI / 2;\nconst body = W.group({ at: [mid.x, mid.y, 0], rot: [0, 0, ang * 180 / Math.PI] });\nbody.add(W.mesh(W.cyl(1.6, 1.6, len * 0.62, 20), W.metal('#2b2f35'), { at: [0, len * 0.12, 0] }));\nconst coil = []; for (let i = 0; i <= 120; i++) { const a = i / 120 * Math.PI * 2 * 9; coil.push([Math.cos(a) * 2.8, -len * 0.38 + (i / 120) * len * 0.62, Math.sin(a) * 2.8]); }\nbody.add(W.mesh(W.tube(coil, 0.42, 220), W.paint('#4fd2ff', { metallic: 0.3 })));\nsh.add(body);\nW.add(sh, { label: 'వెనక షాక్', explode: [-22, 34, -14], layer: 1 });\n// the chain: links on the loop around the 14-tooth (front) and 44-tooth (back) sprockets, on the left side\nconst F = { x: -19, y: 37 + Y }, R = { x: -56.5, y: 31.4 + 4.2 }, r1 = 4.3, r2 = 10.9, Z = -9.2;\nconst dx = R.x - F.x, dy = R.y - F.y, L = Math.hypot(dx, dy), a0 = Math.atan2(dy, dx), be = Math.acos((r1 - r2) / L);\nconst pts = [];\nconst arc = (c, r, s, e, n) => { for (let i = 0; i <= n; i++) { const t = s + (e - s) * i / n; pts.push([c.x + Math.cos(t) * r, c.y + Math.sin(t) * r]); } };\narc(R, r2, a0 + be, a0 - be, 40);            // round the back sprocket (the far side)\narc(F, r1, a0 - be, a0 + be - Math.PI * 2, 24); // round the front sprocket\nconst cum = [0];\nfor (let i = 1; i <= pts.length; i++) { const p = pts[i % pts.length], q = pts[i - 1]; cum.push(cum[i - 1] + Math.hypot(p[0] - q[0], p[1] - q[1])); }\nconst total = cum[cum.length - 1];\nconst at = (d) => { d = ((d % total) + total) % total; let i = 1; while (cum[i] < d) i++; const p = pts[(i - 1) % pts.length], q = pts[i % pts.length], k = (d - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]); return [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k, Math.atan2(q[1] - p[1], q[0] - p[0])]; };\nconst pitch = 1.27, n = Math.floor(total / pitch);\nconst links = new THREE.InstancedMesh(W.box(1.35, 0.75, 1.3, 0.12), W.metal('#7c838b', { rough: 0.35 }), n);\nlinks.instanceMatrix.setUsage(THREE.DynamicDrawUsage);\nlinks.frustumCulled = false; // (its links move: never hidden by the camera's box test)\nconst ch = W.group();\nch.add(links);\nconst M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Sc = new THREE.Vector3(1, 1, 1), ZA = new THREE.Vector3(0, 0, 1);\nS.chainSet = (off) => {\n  for (let i = 0; i < n; i++) { const [x, y, a] = at(i * (total / n) + off); P.set(x, y, Z); Q.setFromAxisAngle(ZA, a); M.compose(P, Q, Sc); links.setMatrixAt(i, M); }\n  links.instanceMatrix.needsUpdate = true;\n};\nS.chainSet(0);\nW.add(ch, { label: 'చైన్', explode: [-10, -28, 36], heat: [30, 38], layer: 0 });\n"
+},
+{
+"id": "cooling",
+"status": "కూలింగ్ అమరుస్తున్నాను",
+"code": "const S = W.store;\nconst Y = 4.2;\n// the radiator in front of the motor, the coolant pump, the pipes (cold blue, warm orange); the controller under the seat; the DC-DC; the orange high-voltage cables\nconst ra = W.group({ at: [30, 34 + Y, 0], rot: [0, 0, -12] });\nra.add(W.mesh(W.box(3.2, 22, 22, 0.6), W.metal('#2b3036', { rough: 0.5 })));\nconst fin = W.canvasTex(64, 128);\n{ const g = fin.ctx; for (let y = 0; y < 128; y += 2) { g.fillStyle = y % 4 ? '#3a4048' : '#8b949d'; g.fillRect(0, y, 64, 2); } fin.update(); }\nfor (const x of [1.65, -1.65]) { const m = W.mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshStandardMaterial({ map: fin.texture, roughness: 0.6, metalness: 0.5, side: THREE.DoubleSide }), { at: [x, 0, 0], rot: [0, 90, 0] }); ra.add(m); }\nW.add(ra, { label: 'రేడియేటర్', explode: [34, -8, -22], heat: [30, 48], layer: 0 });\nconst pu = W.group({ at: [22, 18 + Y, -8] });\npu.add(W.mesh(W.cyl(2.6, 2.6, 5, 24), S.black, { rot: [90, 0, 0] }));\npu.add(W.mesh(W.cyl(1.8, 1.8, 3, 20), W.metal('#9aa1a8'), { at: [0, 0, -3.2], rot: [90, 0, 0] }));\nW.add(pu, { label: 'కూలెంట్ పంప్', explode: [28, -24, 30], heat: [30, 44], layer: 0 });\nconst pp = W.group({ at: [0, Y, 0] });\nconst cold = W.plastic('#2f6fd6', { rough: 0.5 }), warm = W.plastic('#e8742c', { rough: 0.5 });\npp.add(W.mesh(W.tube([[29, 24, -4], [26, 19, -8], [22, 18, -8]], 0.9, 20), cold));                    // radiator → pump\npp.add(W.mesh(W.tube([[22, 18, -10.5], [20, 30, -13], [18, 44, -12], [12, 46, -11]], 0.9, 30), cold));  // pump → battery plate\npp.add(W.mesh(W.tube([[-8, 46, -11], [-14, 52, -12], [-18, 66, -9], [-20, 70, -6]], 0.9, 30), warm));   // plate → controller\npp.add(W.mesh(W.tube([[-20, 70, 6], [-10, 60, 12], [2, 44, 10], [6, 34, 8]], 0.9, 30), warm));         // controller → motor\npp.add(W.mesh(W.tube([[12, 26, 6], [20, 24, 8], [27, 36, 6], [30, 44, 4]], 0.9, 30), warm));           // motor → radiator\nW.add(pp, { label: 'కూలెంట్ పైపులు', explode: [8, -10, 44], heat: [30, 46], layer: 0 });\nconst co = W.group({ at: [-24, 70 + Y, 0], rot: [0, 0, 8] });\nco.add(W.mesh(W.box(18, 7, 14, 1), W.metal('#4a525c', { rough: 0.35 })));\nfor (let i = 0; i < 7; i++) co.add(W.mesh(W.box(16, 0.4, 0.8), S.dark, { at: [0, 3.7, -5.4 + i * 1.8] }));\nconst ctx = W.text('CONTROLLER', { size: 1, color: '#d6dde4', spacing: 2 });\nctx.position.set(0, 0, 7.05);\nco.add(ctx);\nW.add(co, { label: 'మోటార్ కంట్రోలర్', explode: [-26, 40, -24], heat: [32, 68], layer: 1 });\nconst dc = W.group({ at: [-42, 75 + Y, 0] });\ndc.add(W.mesh(W.box(9, 5, 9, 0.6), W.metal('#59616b', { rough: 0.4 })));\ndc.add(W.mesh(W.box(7, 6, 5, 0.4), W.plastic('#1b1d21'), { at: [0, 0, 7.5] }));   // the small 12 V battery for the lights\nW.add(dc, { label: '12V కన్వర్టర్', explode: [-46, 46, -20], heat: [30, 48], layer: 1 });\nconst hvc = W.group({ at: [0, Y, 0] });\nfor (let i = 0; i < 2; i++) hvc.add(W.mesh(W.tube([[-10 - i * 0, 60, 4 + i * 2.4], [-14, 64, 5 + i * 2.4], [-18, 68, 5 + i * 2.4], [-20, 70, 4 + i * 2.4]], 0.75, 24), S.hv)); // battery → controller (+, -)\nfor (let i = 0; i < 3; i++) hvc.add(W.mesh(W.tube([[-28, 67, 3 + i * 2], [-26, 56, 8 + i * 1.5], [-6, 46, 10 + i * 1.2], [0, 40, 8.2 + i * 0.4]], 0.6, 30), S.hv)); // three phases → motor\nW.add(hvc, { label: 'హై-వోల్టేజ్ కేబుల్స్', explode: [-6, 16, 40], layer: 1 });\n"
+},
+{
+"id": "run",
+"status": "బైక్ రెడీ చేస్తున్నాను",
+"code": "const S = W.store;\n// the grip opens the motor; the gear and the clutch tie it to the back wheel; letting go of the grip brings the energy back (regen)\nconst st = S.st;\nconst pegs = W.group({ at: [0, 4.2, 0] }); // (the foot rests, both sides)\nfor (const z of [-1, 1]) {\n  pegs.add(W.mesh(W.box(4, 2, 4, 0.4), S.alloy, { at: [-20, 28, z * 12] }));\n  pegs.add(W.mesh(W.cyl(1.1, 1.1, 10, 16), S.rub, { at: [-20, 28, z * 18], rot: [90, 0, 0] }));\n}\nW.add(pegs, { label: 'ఫుట్ రెస్ట్', explode: [-6, -14, 24], layer: 0 });\nW.throttle({ label: 'యాక్సిలరేటర్ గ్రిప్', start: 0, rise: 1.1, fall: 1.6, sound: 'motor' });\nconst motorV = W.sound({ kind: 'motor', label: 'మోటార్', gain: 0.9, f0: 90 });\nconst chainV = W.sound({ kind: 'chain', label: 'చైన్', gain: 0.8 });\nconst gearV = W.sound({ kind: 'gear', label: 'గేర్‌బాక్స్ 4 స్పీడ్', gain: 0.7, f0: 160 });\nW.explodeView('iso');\nconst VMAX = [0, 45, 68, 88, 106], FMAX = [0, 900, 650, 480, 380], MASS = 239, RPM = 9000;\nlet hudT = 0, dashT = 0, pumpHot = 0;\nW.onTick((t, dt) => {\n  if (!(dt > 0)) return;\n  dt = Math.min(dt, 0.1);\n  const e = W.env;\n  const g = Math.round(e.gear);\n  if (g !== st.gear) { st.shiftT = t; st.gear = g; }\n  const shifting = t - st.shiftT < 0.3;               // (a short cut in the pull while the gear changes)\n  const engaged = g >= 1 && g <= 4 && e.clutch < 0.5 && !shifting;\n  const pumpStop = W.faultOf('కూలెంట్ పంప్') === 'stop';\n  pumpHot += ((pumpStop ? 1 : 0) - pumpHot) * Math.min(1, dt * 0.25);\n  const derate = (pumpHot > 0.5 ? 0.5 : 1) * (e.over ? 0.75 : 1);\n  const s = e.spool * derate;\n  let vms = st.v / 3.6, F = 0, Rg = 0;\n  if (engaged) {\n    if (!st.engaged) { const want = st.free / RPM * VMAX[g] / 3.6; if (want > vms) vms += Math.min(2.8, (want - vms) * 0.35); } // (clutch let out at high revs: a kick)\n    st.rpm = Math.min(RPM, vms * 3.6 / VMAX[g] * RPM);\n    F = st.rpm >= RPM - 5 ? 0 : s * Math.min(FMAX[g], 10500 / Math.max(vms, 1));\n    if (s < 0.03 && vms > 1.4) Rg = Math.min(220, 2600 / Math.max(vms, 1));        // (grip closed: the motor turns into a dynamo)\n    st.free = st.rpm;\n  } else {\n    st.free += (s * RPM - st.free) * Math.min(1, dt * 3);\n    st.rpm = st.free;\n  }\n  st.engaged = engaged;\n  const drag = 0.36 * vms * vms + (vms > 0.05 ? 35 : 0) + MASS * 9.8 * e.slope;\n  const brake = vms > 0.05 ? e.brake * 3600 : 0;\n  vms = Math.max(0, vms + (F - Rg - drag - brake) / MASS * dt);\n  if (vms < 0.05 && F <= 0) vms = 0;\n  st.v = vms * 3.6;\n  // energy: what the motor draws (88% of it reaches the wheel), what regen puts back (about 65%), 40 W for the lights and the screen\n  const pOut = F * vms / 0.88 + 40, pIn = Rg * vms * 0.65;\n  st.p = pOut - pIn; st.regen = pIn;\n  const dkm = vms * dt / 1000;\n  st.wh = Math.max(0, Math.min(5000, st.wh - st.p * dt / 3600));\n  st.km += dkm; st.used += st.p * dt / 3600;\n  st.inst = st.v > 3 ? st.p / st.v : st.inst;\n  if (dkm > 0) st.avg += (Math.max(5, Math.min(200, st.inst)) - st.avg) * Math.min(1, dkm / 2);\n  st.range = Math.max(0, (st.wh - 250) / Math.max(10, st.avg));\n  const rupees = st.avg * 100 / 1000 * e.rate;\n  // the moving things: the back wheel, the chain, the sprockets, the rotor, the gears, the grip, the levers, the gear lever\n  const w = Math.min(18, vms / 0.314);                 // (shown at most ~3 turns a second: faster only blurs)\n  st.ang -= w * dt;\n  S.rearWheel.rotation.z = st.ang;\n  S.rearWheel.userData.blur.opacity = Math.min(0.55, Math.max(0, (vms - 4) / 18));\n  st.chain += w * 10.9 * dt;\n  S.chainSet(st.chain);\n  S.frontSprocket.rotation.y = st.chain / 4.3;\n  S.rotor.rotation.z -= Math.min(30, st.rpm / RPM * 30) * dt;\n  for (const gs of S.gearSet) { gs.a.rotation.y = S.rotor.rotation.z; gs.c.rotation.y = -S.rotor.rotation.z * gs.k; }\n  for (const r of S.rollerGroup.children.slice(1, 3)) r.rotation.y += w * (31.4 / 7) * dt * 0.2;\n  S.grip.rotation.z = -e.spool * 1.1;\n  S.clutchLever.rotation.y = e.clutch * 0.42;\n  S.brakeLever.rotation.y = -e.brake * 0.42;\n  S.shiftLever.rotation.z = shifting ? (g > st.last ? 0.22 : -0.22) : 0;\n  if (!shifting) st.last = g;\n  S.bmsLed.emissive.set(pIn > 1 ? '#5ee38f' : st.p > 3000 ? '#ffb23c' : '#4fd2ff');\n  motorV.set(st.rpm / RPM); chainV.set(Math.min(1, st.v / 90)); gearV.set(engaged ? st.rpm / RPM : 0);\n  if (t - dashT > 0.15) { dashT = t; S.dashDraw(st, pumpHot > 0.5); }\n  if (t - hudT > 0.3) {\n    hudT = t;\n    const kw = st.p / 1000;\n    const rows = { 'వేగం': Math.round(st.v) + ' km/h', 'గేర్': g >= 1 && g <= 4 ? String(g) + (e.clutch >= 0.5 ? ' (క్లచ్)' : '') : 'N',\n      'పవర్': (kw < -0.05 ? '↩ ' + Math.abs(kw).toFixed(1) + ' kW రీజెన్' : kw.toFixed(1) + ' kW'), 'Wh/km': String(Math.round(st.avg)),\n      'రేంజ్': 'సుమారు ' + Math.round(st.range) + ' km', '₹/100 km': 'సుమారు ₹' + Math.round(rupees) };\n    if (e.over || pumpHot > 0.5) rows['పవర్'] += ' · తగ్గించింది';\n    W.hud(rows);\n    W.report({ speed: st.v, rpm: st.rpm, gear: g, km: st.km, wh: st.used, whkm: st.avg, range: st.range, rupees: rupees, battery: st.wh / 50, regen: pIn });\n  }\n});\n// the flows: electricity battery → controller → motor (yellow), regen back (green), the coolant loop, air through the radiator\nconst Y = 4.2;\nW.stream([[0, 60 + Y, 6], [-14, 64 + Y, 6], [-22, 70 + Y, 5], [-26, 58 + Y, 9], [-6, 46 + Y, 11], [4, 40 + Y, 9]], { kind: 'power', count: 18, size: 0.5, speed: 1.4, when: () => st.p > 300 });\nW.stream([[4, 40 + Y, 9], [-6, 46 + Y, 11], [-26, 58 + Y, 9], [-22, 70 + Y, 5], [-14, 64 + Y, 6], [0, 60 + Y, 6]], { kind: 'regen', count: 18, size: 0.5, speed: 1.4, when: () => st.regen > 30 });\nW.stream([[29, 24 + Y, -4], [22, 18 + Y, -9], [20, 30 + Y, -13], [12, 46 + Y, -11], [-8, 46 + Y, -11], [-18, 66 + Y, -9], [-20, 70 + Y, 0], [-10, 60 + Y, 12], [6, 34 + Y, 8], [20, 24 + Y, 8], [30, 44 + Y, 4]],\n  { kind: 'water', count: 30, size: 0.45, speed: 0.8, when: () => W.faultOf('కూలెంట్ పంప్') !== 'stop' });\nfor (const y of [26, 34, 42]) W.stream([[60, y + Y, 0], [40, y + Y + 1, 0], [28, y + Y + 4, 0], [14, y + Y + 8, 0]], { kind: 'air', count: 10, size: 0.5, speed: 1.2, when: () => st.v > 5 });\n"
+}
+],
+"say": "ఎలక్ట్రిక్ బైక్ రెడీ Sir. 1వ గేర్‌లో ఉంది. 'గ్రిప్ తిప్పు' లేదా 'ఫుల్ పవర్' అనండి.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"గేర్ల ఎలక్ట్రిక్ బైక్ ఎలా పనిచేస్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది గేర్లు ఉన్న ఎలక్ట్రిక్ బైక్, బాడీ ప్యానెల్స్ తీసేసి రోలర్ బెంచ్ మీద పెట్టాను. వెనక చక్రం రోలర్ల మీద తిరుగుతుంది, బైక్ ఎక్కడికీ కదలదు.\", \"focus\": [{\"id\": \"bench\", \"piece\": \"\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"ఇది 5 kWh బ్యాటరీ ప్యాక్, బైక్ పెట్రోల్ ట్యాంక్ లాంటిది. లోపల వందల సెల్స్. పైన BMS బోర్డ్ ప్రతి సెల్‌కి కాపలా కాస్తుంది.\", \"focus\": [{\"id\": \"battery\", \"piece\": \"బ్యాటరీ ప్యాక్ 5 kWh\"}, {\"id\": \"battery\", \"piece\": \"BMS బోర్డ్\"}], \"view\": \"iso\", \"close\": true, \"secs\": 9}, {\"say\": \"గ్రిప్ తిప్పితే సీటు కింద ఉన్న కంట్రోలర్ బ్యాటరీ కరెంట్‌ని మోటార్‌కి మూడు దశలుగా పంపుతుంది. ఆరెంజ్ కేబుల్స్ హై వోల్టేజ్, ఎప్పుడూ ముట్టుకోకూడదు.\", \"focus\": [{\"id\": \"cooling\", \"piece\": \"మోటార్ కంట్రోలర్\"}, {\"id\": \"cooling\", \"piece\": \"హై-వోల్టేజ్ కేబుల్స్\"}], \"view\": \"iso\", \"flow\": [{\"from\": \"battery\", \"fromPiece\": \"బ్యాటరీ ప్యాక్ 5 kWh\", \"to\": \"cooling\", \"toPiece\": \"మోటార్ కంట్రోలర్\", \"kind\": \"power\", \"count\": 6}, {\"from\": \"cooling\", \"fromPiece\": \"మోటార్ కంట్రోలర్\", \"to\": \"drive\", \"toPiece\": \"మోటార్\", \"kind\": \"power\", \"count\": 6}], \"secs\": 10}, {\"say\": \"ఇది మోటార్. బయట రాగి కాయిల్స్ తిరిగే అయస్కాంత క్షేత్రం చేస్తాయి, లోపలి మాగ్నెట్ల రోటర్ దాన్ని వెంటాడుతూ తిరుగుతుంది. ఆగి ఉన్నప్పుడే పూర్తి లాగుడు.\", \"focus\": [{\"id\": \"drive\", \"piece\": \"మోటార్\"}, {\"id\": \"drive\", \"piece\": \"మోటార్ స్టేటర్\"}, {\"id\": \"drive\", \"piece\": \"మోటార్ రోటర్\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"drive\", \"piece\": \"మోటార్\", \"by\": [0, 0, 18], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"తర్వాత క్లచ్, 4 స్పీడ్ గేర్‌బాక్స్: మామూలు బైక్ లాగే. 1వ గేర్‌లో ఎక్కువ లాగుడు, 4వ గేర్‌లో ఎక్కువ వేగం. గేర్ ఎడమ కాలితో మారుస్తారు.\", \"focus\": [{\"id\": \"drive\", \"piece\": \"క్లచ్\"}, {\"id\": \"drive\", \"piece\": \"గేర్‌బాక్స్ 4 స్పీడ్\"}, {\"id\": \"drive\", \"piece\": \"గేర్ లివర్\"}], \"view\": \"iso\", \"close\": true, \"secs\": 9}, {\"say\": \"ఎడమ వైపు చిన్న 14 పళ్ళ స్ప్రాకెట్ నుంచి చైన్ వెనక 44 పళ్ళ స్ప్రాకెట్‌ని తిప్పుతుంది. అది వెనక చక్రాన్ని తిప్పుతుంది.\", \"focus\": [{\"id\": \"chassis\", \"piece\": \"చైన్\"}, {\"id\": \"wheels\", \"piece\": \"వెనక చక్రం\"}], \"view\": \"back\", \"secs\": 9}, {\"say\": \"బ్యాటరీ, కంట్రోలర్, మోటార్ — మూడూ నీటితో చల్లబడతాయి. పంప్ కూలెంట్‌ని తిప్పుతుంది, ముందున్న రేడియేటర్ ఆ వేడిని గాలిలోకి వదులుతుంది.\", \"focus\": [{\"id\": \"cooling\", \"piece\": \"రేడియేటర్\"}, {\"id\": \"cooling\", \"piece\": \"కూలెంట్ పంప్\"}, {\"id\": \"cooling\", \"piece\": \"కూలెంట్ పైపులు\"}], \"view\": \"iso\", \"flow\": [{\"from\": \"cooling\", \"fromPiece\": \"కూలెంట్ పంప్\", \"to\": \"battery\", \"toPiece\": \"బ్యాటరీ ప్యాక్ 5 kWh\", \"kind\": \"water\", \"count\": 6}, {\"from\": \"drive\", \"fromPiece\": \"మోటార్\", \"to\": \"cooling\", \"toPiece\": \"రేడియేటర్\", \"kind\": \"heat\", \"count\": 6}], \"secs\": 10}, {\"say\": \"గ్రిప్ వదిలితే మోటార్ డైనమోలా మారి, కొంచెం కరెంట్‌ని బ్యాటరీకి తిరిగి పంపుతుంది. దీన్నే రీజెన్ అంటారు Sir.\", \"focus\": [{\"id\": \"drive\", \"piece\": \"మోటార్\"}, {\"id\": \"battery\", \"piece\": \"బ్యాటరీ ప్యాక్ 5 kWh\"}], \"view\": \"iso\", \"flow\": [{\"from\": \"drive\", \"fromPiece\": \"మోటార్\", \"to\": \"battery\", \"toPiece\": \"బ్యాటరీ ప్యాక్ 5 kWh\", \"kind\": \"#5ee38f\", \"count\": 8}], \"secs\": 9}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"ఎలక్ట్రిక్ బైక్",
+"ev బైక్",
+"ఈవీ బైక్",
+"బైక్",
+"మోటార్ సైకిల్",
+"గేర్ల బైక్",
+"ఎలక్ట్రిక్ మోటార్ సైకిల్",
+"ev bike",
+"electric bike",
+"electric motorcycle",
+"bike"
+],
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0",
+"power": {
+"start": "గ్రిప్ కొంచెం తిప్పాను Sir, 1వ గేర్‌లో వెనక చక్రం తిరుగుతోంది.",
+"full": "ఫుల్ గ్రిప్ Sir! వేగం పెరుగుతోంది. పై గేర్ కావాలంటే 'గేర్ 2' అనండి.",
+"half": "సగం గ్రిప్ Sir.",
+"stop": "గ్రిప్ వదిలాను Sir. రీజెన్ కొంచెం కరెంట్‌ని తిరిగి బ్యాటరీకి పంపుతోంది.",
+"over": "హద్దు దాటింది Sir! మోటార్, బ్యాటరీ బాగా వేడెక్కితే కంట్రోలర్ పవర్ తగ్గిస్తుంది.",
+"cut": "రక్షణ పనిచేసింది Sir: కంట్రోలర్ పవర్ తగ్గించింది, వేడి హద్దులోకి వచ్చింది."
+},
+"controls": "bike",
+"info": {
+"టెస్ట్ బెంచ్": {
+"simple": "ఇది రోలర్ టెస్ట్ బెంచ్. వెనక చక్రం రెండు రోలర్ల మీద తిరుగుతుంది, బైక్ ఎక్కడికీ కదలదు. షోరూమ్‌లలో, సర్వీస్ సెంటర్లలో ఇలాగే టెస్ట్ చేస్తారు.",
+"deep": "రోలర్ల మీద చక్రం తిరిగినప్పుడు వేగం, పవర్ కొలుస్తారు. ఇక్కడ రోడ్డు గాలి, కొండ ఎత్తు లెక్కలోకి తీసుకుని వేగం చూపిస్తాను.",
+"specs": {
+"పని": "వేగం, పవర్ టెస్ట్"
+}
+},
+"వెనక చక్రం": {
+"simple": "ఇది వెనక చక్రం. చైన్ దీన్ని తిప్పుతుంది, ఇదే బైక్‌ని ముందుకు తోస్తుంది.",
+"deep": "17 అంగుళాల రిమ్, 140 mm వెడల్పు టైర్. ఎడమ వైపు 44 పళ్ళ స్ప్రాకెట్, కుడి వైపు బ్రేక్ డిస్క్.",
+"specs": {
+"రిమ్": "17 అంగుళాలు",
+"టైర్": "సుమారు 140 mm",
+"స్ప్రాకెట్": "44 పళ్ళు"
+}
+},
+"ముందు చక్రం": {
+"simple": "ఇది ముందు చక్రం. స్టీరింగ్‌తో తిరుగుతుంది, ముందు బ్రేక్ దీనిదే.",
+"deep": "17 అంగుళాల రిమ్, సుమారు 100 mm టైర్. బ్రేక్ వేసినప్పుడు బరువు ముందుకు వస్తుంది, అందుకే ముందు డిస్క్ పెద్దది.",
+"specs": {
+"రిమ్": "17 అంగుళాలు",
+"టైర్": "సుమారు 100 mm"
+}
+},
+"ఫ్రేమ్": {
+"simple": "ఇది ఫ్రేమ్, బైక్ ఎముకల గూడు. అన్ని భాగాలు దీనికే బిగిస్తారు.",
+"deep": "ఉక్కు గొట్టాల ఫ్రేమ్: పై రెయిల్స్ బ్యాటరీ మీదుగా, కింద తొట్టి మోటార్‌ని మోస్తుంది, వెనక స్వింగ్ ఆర్మ్ పివట్.",
+"specs": {
+"రకం": "ఉక్కు గొట్టాలు"
+}
+},
+"సీటు": {
+"simple": "ఇది సీటు.",
+"deep": "సీటు కింద కంట్రోలర్, 12V కన్వర్టర్ దాగి ఉంటాయి.",
+"specs": {
+"కింద": "కంట్రోలర్, 12V కన్వర్టర్"
+}
+},
+"ముందు ఫోర్క్": {
+"simple": "ముందు ఫోర్క్ ముందు చక్రాన్ని పట్టుకుంటుంది, గుంతల దెబ్బలు తీసుకుంటుంది.",
+"deep": "టెలిస్కోపిక్ ఫోర్క్: లోపల స్ప్రింగ్, ఆయిల్. గుంతలో చక్రం పైకి వెళ్ళినా హ్యాండిల్ నిలకడగా ఉంటుంది.",
+"specs": {
+"రకం": "టెలిస్కోపిక్"
+}
+},
+"హ్యాండిల్ బార్": {
+"simple": "హ్యాండిల్ బార్: కుడి గ్రిప్ తిప్పితే వేగం, ఎడమ లివర్ క్లచ్, కుడి లివర్ ముందు బ్రేక్. మధ్యలో స్క్రీన్‌లో వేగం, గేర్, బ్యాటరీ.",
+"deep": "కుడి గ్రిప్ ఒక సెన్సార్ మాత్రమే: ఎంత తిప్పారో కంట్రోలర్‌కి చెప్తుంది. పెట్రోల్ బైక్ లాగా కేబుల్ లాగదు.",
+"specs": {
+"కుడి": "యాక్సిలరేటర్ గ్రిప్, ముందు బ్రేక్",
+"ఎడమ": "క్లచ్ లివర్",
+"స్క్రీన్": "వేగం, గేర్, బ్యాటరీ %, రేంజ్"
+}
+},
+"హెడ్‌లైట్": {
+"simple": "హెడ్‌లైట్: LED లైట్, తక్కువ కరెంట్‌తో ఎక్కువ వెలుగు.",
+"deep": "LED లైట్లకి 12V కావాలి, అది 12V కన్వర్టర్ ఇస్తుంది.",
+"specs": {
+"రకం": "LED"
+}
+},
+"బ్యాటరీ ప్యాక్ 5 kWh": {
+"simple": "ఇది బ్యాటరీ ప్యాక్, బైక్ 'పెట్రోల్ ట్యాంక్'. 5 kWh అంటే ఫుల్ ఛార్జ్‌లో సుమారు 5 యూనిట్ల కరెంట్ దాచుకుంటుంది.",
+"deep": "లోపల వందల చిన్న లిథియం-అయాన్ సెల్స్ వరుసగా, కింద నీటితో చల్లబడే ప్లేట్. బరువైనది కాబట్టి మధ్యలో కిందగా పెడతారు: బైక్ బ్యాలెన్స్ బాగుంటుంది. హై వోల్టేజ్: ఎప్పుడూ తెరవకూడదు, సర్వీస్ సెంటర్ మాత్రమే.",
+"specs": {
+"సామర్థ్యం": "సుమారు 5 kWh",
+"సెల్స్": "సుమారు 280 చిన్న సెల్స్",
+"చల్లబడటం": "నీటి ప్లేట్"
+}
+},
+"BMS బోర్డ్": {
+"simple": "BMS బ్యాటరీకి కాపలాదారు. ప్రతి సెల్ వోల్టేజ్, వేడి చూస్తూ ఉంటుంది.",
+"deep": "ఏదైనా సెల్ ఎక్కువ నిండినా, ఖాళీ అయినా, వేడెక్కినా వెంటనే కరెంట్ తగ్గిస్తుంది లేదా ఆపేస్తుంది. బ్యాటరీ % లెక్కపెట్టేది కూడా ఇదే.",
+"specs": {
+"చూసేది": "ప్రతి సెల్ వోల్టేజ్, వేడి",
+"పని": "కాపాడటం, % లెక్క"
+}
+},
+"చార్జింగ్ పోర్ట్": {
+"simple": "చార్జింగ్ పోర్ట్: పెట్రోల్ మూత ఉండే చోటే ఛార్జర్ ప్లగ్ పెడతారు.",
+"deep": "ఛార్జర్ ఇంటి AC కరెంట్‌ని బ్యాటరీకి కావాల్సిన DC గా మారుస్తుంది. BMS ఎంత వేగంగా నింపాలో చెప్తుంది.",
+"specs": {
+"ఛార్జింగ్": "ఇంటి ప్లగ్ / ఛార్జింగ్ స్టేషన్"
+}
+},
+"మోటార్": {
+"simple": "ఇది మోటార్. కరెంట్‌ని తిరిగే శక్తిగా మారుస్తుంది. పెట్రోల్ ఇంజన్ స్థానంలో ఇది.",
+"deep": "ఆగి ఉన్నప్పుడే పూర్తి లాగుడు ఇస్తుంది, అందుకే EV బైక్ వేగంగా పుంజుకుంటుంది. చుట్టూ నీటి జాకెట్ చల్లబరుస్తుంది. హై వోల్టేజ్ భాగం.",
+"specs": {
+"పవర్": "సుమారు 10 kW (14 హార్స్‌పవర్ దగ్గర)",
+"గరిష్ట వేగం": "నిమిషానికి సుమారు 9,000",
+"చల్లబడటం": "నీటితో"
+}
+},
+"మోటార్ స్టేటర్": {
+"simple": "స్టేటర్: మోటార్ లోపల కదలని రాగి కాయిల్స్. వాటిలో కరెంట్ ఒకదాని తర్వాత ఒకటి వెళ్తే తిరిగే అయస్కాంత క్షేత్రం పుడుతుంది.",
+"deep": "మూడు దశలు (U, V, W): కంట్రోలర్ వాటికి వంతుల వారీగా కరెంట్ ఇస్తుంది. మోటార్‌లో ఎక్కువ వేడి పుట్టేది ఇక్కడే.",
+"specs": {
+"దశలు": "3 (U, V, W)",
+"లోహం": "రాగి"
+}
+},
+"మోటార్ రోటర్": {
+"simple": "రోటర్: మధ్యలో తిరిగే భాగం, చుట్టూ బలమైన అయస్కాంతాలు. స్టేటర్ క్షేత్రాన్ని వెంటాడుతూ తిరుగుతుంది.",
+"deep": "N, S అయస్కాంతాలు వంతుగా. రోటర్ షాఫ్ట్ క్లచ్‌కి, గేర్‌బాక్స్‌కి కలుస్తుంది.",
+"specs": {
+"మాగ్నెట్లు": "8 (N, S వంతుగా)"
+}
+},
+"గేర్‌బాక్స్ 4 స్పీడ్": {
+"simple": "గేర్‌బాక్స్: 4 గేర్లు. 1వ గేర్‌లో ఎక్కువ లాగుడు (కొండ, బరువు), 4వ గేర్‌లో ఎక్కువ వేగం.",
+"deep": "మామూలు బైక్ లాగే కాలితో గేర్ మార్చాలి: 1 కిందికి, 2-3-4 పైకి. EV లో గేర్లు చాలా అరుదు, ఇది నడిపే అనుభూతి కోసం, కొండల కోసం.",
+"specs": {
+"గేర్లు": "4 + న్యూట్రల్",
+"మార్చేది": "ఎడమ కాలు, క్లచ్‌తో"
+}
+},
+"గేర్లు": {
+"simple": "గేర్‌బాక్స్ లోపలి చక్రాలు. చిన్నది పెద్దదాన్ని తిప్పితే వేగం తగ్గి బలం పెరుగుతుంది.",
+"deep": "పై షాఫ్ట్ మోటార్‌ది, కింద షాఫ్ట్ చైన్‌ది. ప్రతి గేర్‌కి ఒక జత. ఆయిల్‌లో తిరుగుతాయి.",
+"specs": {
+"జతలు": "4"
+}
+},
+"క్లచ్": {
+"simple": "క్లచ్: ఎడమ లివర్ నొక్కితే మోటార్‌ని చక్రం నుంచి కాసేపు విడదీస్తుంది. గేర్ మార్చేటప్పుడు వాడతారు.",
+"deep": "ఆయిల్‌లో తిరిగే పలుచని ప్లేట్ల గుత్తి. లివర్ వదిలితే ప్లేట్లు నొక్కుకుని మళ్ళీ కలుస్తాయి.",
+"specs": {
+"రకం": "ఆయిల్‌లో ప్లేట్లు"
+}
+},
+"గేర్ లివర్": {
+"simple": "గేర్ లివర్: ఎడమ కాలితో నొక్కితే 1వ గేర్, ఎత్తితే 2, 3, 4.",
+"deep": "ప్రతి సారి ఒక గేర్ మాత్రమే మారుతుంది. 1 కి 2 కి మధ్య న్యూట్రల్.",
+"specs": {
+"క్రమం": "1 కిందికి, N, 2-3-4 పైకి"
+}
+},
+"స్వింగ్ ఆర్మ్": {
+"simple": "స్వింగ్ ఆర్మ్: వెనక చక్రాన్ని ఫ్రేమ్‌కి కలిపే చేయి. గుంతల్లో పైకి కిందికి ఊగుతుంది.",
+"deep": "ముందు భాగం ఫ్రేమ్ పివట్ బోల్ట్ మీద తిరుగుతుంది, వెనక చివర చక్రం ఇరుసు. చైన్ బిగుతు ఇక్కడే సరిచేస్తారు.",
+"specs": {
+"పని": "వెనక సస్పెన్షన్"
+}
+},
+"వెనక షాక్": {
+"simple": "వెనక షాక్: స్ప్రింగ్ + ఆయిల్. దెబ్బల్ని మెత్తగా చేస్తుంది.",
+"deep": "ఒకే షాక్ (మోనో-షాక్): స్ప్రింగ్ దెబ్బని తీసుకుంటుంది, లోపలి ఆయిల్ ఊపుని ఆపుతుంది.",
+"specs": {
+"రకం": "మోనో-షాక్"
+}
+},
+"చైన్": {
+"simple": "చైన్: మోటార్ వైపు చిన్న స్ప్రాకెట్ నుంచి వెనక చక్రం పెద్ద స్ప్రాకెట్‌కి శక్తి తీసుకెళ్తుంది.",
+"deep": "14 పళ్ళు → 44 పళ్ళు: చక్రం మోటార్ కంటే సుమారు 3 రెట్లు నెమ్మదిగా, 3 రెట్లు బలంగా తిరుగుతుంది. కొంచెం ఆట (వదులు) ఉండాలి, ఆయిల్ కావాలి.",
+"specs": {
+"స్ప్రాకెట్లు": "14 → 44 పళ్ళు",
+"ఆట": "సుమారు 2–3 cm"
+}
+},
+"రేడియేటర్": {
+"simple": "రేడియేటర్: వేడి కూలెంట్ దీని సన్నని రెక్కల గుండా వెళ్తుంటే ఎదురు గాలి చల్లబరుస్తుంది.",
+"deep": "బ్యాటరీ, కంట్రోలర్, మోటార్ — మూడింటి వేడి ఇక్కడికే వస్తుంది. బైక్ ఆగి ఉన్నప్పుడు గాలి తక్కువ, అందుకే ట్రాఫిక్‌లో కొంచెం వేడెక్కుతుంది.",
+"specs": {
+"చల్లబరిచేది": "బ్యాటరీ, కంట్రోలర్, మోటార్"
+}
+},
+"కూలెంట్ పంప్": {
+"simple": "కూలెంట్ పంప్: కూలెంట్ నీటిని చుట్టూ తిప్పే చిన్న ఎలక్ట్రిక్ పంప్.",
+"deep": "ఆగిపోతే బ్యాటరీ, మోటార్ వేడెక్కుతాయి, కంట్రోలర్ పవర్ తగ్గించి కాపాడుతుంది, స్క్రీన్‌లో హెచ్చరిక వస్తుంది.",
+"specs": {
+"నడిచేది": "12V"
+}
+},
+"కూలెంట్ పైపులు": {
+"simple": "కూలెంట్ పైపులు: నీలం = చల్ల నీరు, ఆరెంజ్ = వేడి నీరు.",
+"deep": "దారి: రేడియేటర్ → పంప్ → బ్యాటరీ ప్లేట్ → కంట్రోలర్ → మోటార్ → మళ్ళీ రేడియేటర్.",
+"specs": {
+"దారి": "రేడియేటర్ → పంప్ → బ్యాటరీ → కంట్రోలర్ → మోటార్"
+}
+},
+"మోటార్ కంట్రోలర్": {
+"simple": "మోటార్ కంట్రోలర్: గ్రిప్ మాట విని, బ్యాటరీ కరెంట్‌ని మోటార్‌కి ఎంత కావాలో అంత ఇస్తుంది.",
+"deep": "బ్యాటరీ DC కరెంట్‌ని మూడు దశల AC గా మారుస్తుంది, సెకనుకి వేల సార్లు ఆన్-ఆఫ్ చేస్తూ. రీజెన్‌లో దారి తిప్పి కరెంట్‌ని బ్యాటరీకి పంపుతుంది. హై వోల్టేజ్: సర్వీస్ సెంటర్ మాత్రమే.",
+"specs": {
+"లోపల": "DC → 3 దశల AC",
+"రీజెన్": "అవును"
+}
+},
+"12V కన్వర్టర్": {
+"simple": "12V కన్వర్టర్: పెద్ద బ్యాటరీ హై వోల్టేజ్‌ని లైట్లు, హారన్, స్క్రీన్‌కి కావాల్సిన 12V గా తగ్గిస్తుంది.",
+"deep": "పక్కనే చిన్న 12V బ్యాటరీ: బైక్ ఆన్ చేసే ముందు స్క్రీన్, లాక్‌కి కరెంట్ ఇస్తుంది.",
+"specs": {
+"బయటికి": "12 V"
+}
+},
+"హై-వోల్టేజ్ కేబుల్స్": {
+"simple": "ఆరెంజ్ కేబుల్స్ = హై వోల్టేజ్. ఎప్పుడూ ముట్టుకోకూడదు, తెరవకూడదు.",
+"deep": "రెండు బ్యాటరీ నుంచి కంట్రోలర్‌కి (+, −), మూడు కంట్రోలర్ నుంచి మోటార్‌కి (U, V, W దశలు). ప్రతి EV లో ఈ రంగే.",
+"specs": {
+"రంగు": "ఆరెంజ్ = ప్రమాదం",
+"సంఖ్య": "2 + 3"
+}
+},
+"ఫుట్ రెస్ట్": {
+"simple": "ఫుట్ రెస్ట్: కాళ్ళు పెట్టుకునే చోట్లు.",
+"deep": "ఎడమ కాలి ముందు గేర్ లివర్ ఉంటుంది.",
+"specs": {
+"వైపులు": "రెండు"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎంత దూరం",
+"రేంజ్ ఎంత",
+"ఒక్క ఛార్జ్",
+"how far",
+"range"
+],
+"a": "ఫుల్ ఛార్జ్‌లో సుమారు 100 నుంచి 125 km Sir: వేగం, బరువు, ట్రాఫిక్, ఎండని బట్టి మారుతుంది. మెల్లగా, ఎకోగా నడిపితే ఎక్కువ."
+},
+{
+"k": [
+"టాప్ స్పీడ్",
+"గరిష్ట వేగం",
+"ఎంత స్పీడ్",
+"top speed"
+],
+"a": "సుమారు 105 km/h Sir, 4వ గేర్‌లో."
+},
+{
+"k": [
+"ఎన్ని యూనిట్లు",
+"బ్యాటరీ ఎంత",
+"kwh",
+"battery size"
+],
+"a": "బ్యాటరీ సుమారు 5 kWh Sir, అంటే 5 యూనిట్లు. ఛార్జింగ్‌లో కొంచెం నష్టం కలిపి ఫుల్ ఛార్జ్‌కి సుమారు 5.5–6 యూనిట్లు పడతాయి."
+},
+{
+"k": [
+"ఎంత ఖర్చు",
+"కిలోమీటర్ కి ఎంత",
+"పెట్రోల్ తో పోలిస్తే",
+"cost per km",
+"ఖర్చు"
+],
+"a": "యూనిట్ ₹8 అనుకుంటే 100 km కి సుమారు ₹30–40 Sir. పెట్రోల్ బైక్ 100 km కి సుమారు ₹200 పైనే. మీ యూనిట్ ధర చెప్తే ఆ లెక్కతో చూపిస్తాను."
+},
+{
+"k": [
+"ev లో గేర్లు ఎందుకు",
+"గేర్లు ఎందుకు",
+"why gears"
+],
+"a": "1వ గేర్‌లో ఎక్కువ లాగుడు: కొండలు, ఇద్దరు కూర్చున్నప్పుడు. 4వ గేర్‌లో మోటార్ తక్కువ వేగంతోనే బైక్ ఎక్కువ వేగం. ఇంకా మామూలు బైక్ లాంటి నడిపే మజా Sir."
+},
+{
+"k": [
+"రీజెన్ అంటే",
+"regen",
+"రీజెన్",
+"బ్రేక్ వేస్తే కరెంట్"
+],
+"a": "గ్రిప్ వదిలినప్పుడు మోటార్ డైనమోలా మారి, బైక్ కదలికను కొంచెం కరెంట్‌గా మార్చి బ్యాటరీకి పంపుతుంది Sir. బైక్ కొంచెం నెమ్మదిస్తుంది కూడా. ట్రాఫిక్‌లో ఎక్కువ ఉపయోగం."
+},
+{
+"k": [
+"నీటితో ఎందుకు",
+"లిక్విడ్ కూలింగ్",
+"కూలెంట్ ఎందుకు",
+"liquid cooling"
+],
+"a": "బ్యాటరీ, మోటార్ చల్లగా ఉంటే ఎక్కువ కాలం మన్నుతాయి, వేసవిలో కూడా పవర్ తగ్గదు Sir. గాలి కంటే నీరు వేడిని బాగా మోస్తుంది."
+},
+{
+"k": [
+"ఆరెంజ్ కేబుల్",
+"orange cable",
+"హై వోల్టేజ్"
+],
+"a": "ఆరెంజ్ రంగు కేబుల్స్ హై వోల్టేజ్ Sir. ఎప్పుడూ ముట్టుకోకూడదు, తెరవకూడదు. వాటి పని సర్వీస్ సెంటర్‌లోనే."
+},
+{
+"k": [
+"ఎంత పవర్",
+"హార్స్ పవర్",
+"kw",
+"power"
+],
+"a": "మోటార్ సుమారు 10 kW Sir, అంటే సుమారు 14 హార్స్‌పవర్. ఆగి ఉన్నప్పుడే పూర్తి లాగుడు ఇస్తుంది."
+},
+{
+"k": [
+"ఛార్జింగ్ టైమ్",
+"ఎంత సేపు ఛార్జ్",
+"charging time"
+],
+"a": "ఛార్జర్ రకం, బ్యాటరీ ఎంత ఖాళీగా ఉందో బట్టి కొన్ని గంటలు పడుతుంది Sir. మీ బైక్ మాన్యువల్‌లో, యాప్‌లో కచ్చితమైన సమయం ఉంటుంది."
+}
+],
+"quiz": [
+{
+"q": "బైక్ శక్తిని దాచి ఉంచేది ఏది?",
+"a": "బ్యాటరీ ప్యాక్ 5 kWh",
+"opts": [
+"బ్యాటరీ ప్యాక్ 5 kWh",
+"రేడియేటర్",
+"మోటార్ కంట్రోలర్"
+]
+},
+{
+"q": "గ్రిప్ మాట విని మోటార్‌కి కరెంట్ ఇచ్చేది ఏది?",
+"a": "మోటార్ కంట్రోలర్",
+"opts": [
+"12V కన్వర్టర్",
+"మోటార్ కంట్రోలర్",
+"BMS బోర్డ్"
+]
+},
+{
+"q": "బ్యాటరీలో ప్రతి సెల్‌కి కాపలా కాసేది ఏది?",
+"a": "BMS బోర్డ్",
+"opts": [
+"BMS బోర్డ్",
+"చార్జింగ్ పోర్ట్",
+"కూలెంట్ పంప్"
+]
+},
+{
+"q": "మోటార్ నుంచి వెనక చక్రానికి శక్తి తీసుకెళ్ళేది ఏది?",
+"a": "చైన్",
+"opts": [
+"వెనక షాక్",
+"చైన్",
+"స్వింగ్ ఆర్మ్"
+]
+},
+{
+"q": "గేర్ మార్చేటప్పుడు మోటార్‌ని చక్రం నుంచి కాసేపు విడదీసేది ఏది?",
+"a": "క్లచ్",
+"opts": [
+"క్లచ్",
+"గేర్లు",
+"గేర్ లివర్"
+]
+},
+{
+"q": "బ్యాటరీ, మోటార్ వేడిని గాలిలోకి వదిలేది ఏది?",
+"a": "రేడియేటర్",
+"opts": [
+"కూలెంట్ పైపులు",
+"రేడియేటర్",
+"ఫ్రేమ్"
+]
+}
+],
+"faults": [
+{
+"label": "చైన్",
+"kind": "loose",
+"clue": "ఏ భాగం ఊగుతోంది Sir? దగ్గరగా చూడండి.",
+"why": "చైన్ వదులైంది. ఎక్కువ వదులైతే జారి పడొచ్చు, స్ప్రాకెట్ పళ్ళు అరిగిపోతాయి. సర్వీస్‌లో వెనక చక్రం కొంచెం వెనక్కి జరిపి బిగుతు సరిచేస్తారు (సుమారు 2–3 cm ఆట ఉంచి)."
+},
+{
+"label": "కూలెంట్ పంప్",
+"kind": "stop",
+"clue": "స్క్రీన్ మీద ఏం హెచ్చరిక వచ్చింది Sir? 〰️ గాలి/ద్రవం దారి వ్యూ చూడండి: ఏది తిరగట్లేదు?",
+"why": "కూలెంట్ పంప్ ఆగిపోయింది. బ్యాటరీ, మోటార్ వేడెక్కుతాయి, కంట్రోలర్ పవర్ సగానికి తగ్గించి కాపాడుతుంది. బైక్ ఆపి, సర్వీస్ సెంటర్‌కి చూపించాలి."
+},
+{
+"label": "గేర్‌బాక్స్ 4 స్పీడ్",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: గర్ గర్ ఎక్కడి నుంచి? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "గేర్‌బాక్స్ ఆయిల్ తక్కువైంది లేదా పాతదైంది. గేర్ల పళ్ళు రాసుకుని శబ్దం. సర్వీస్ సెంటర్‌లో ఆయిల్ మారుస్తారు."
+},
+{
+"label": "వెనక చక్రం",
+"kind": "noise",
+"clue": "శబ్దం జాగ్రత్తగా వినండి Sir: కీచు కీచు ఎక్కడ?",
+"why": "వెనక బ్రేక్ ప్యాడ్ అరిగిపోయింది, లోహం డిస్క్‌కి రాసుకుంటోంది. ప్యాడ్స్ మార్చాలి, లేదంటే డిస్క్ పాడవుతుంది."
+}
+],
+"inside": {
+"మోటార్": {
+"say": "మోటార్ లోపల Sir: బయట 12 రాగి కాయిల్స్ వంతుల వారీగా వెలుగుతున్నాయి, అదే తిరిగే అయస్కాంత క్షేత్రం. లోపలి మాగ్నెట్ల రోటర్ దాన్ని వెంటాడుతూ తిరుగుతుంది. గ్రిప్ తిప్పితే వేగం పెరుగుతుంది.",
+"code": "// Inside the motor, its cover off: 12 copper coils (three sets: U, V, W) light up one after another and make a field that turns;\n// the rotor's magnets (red N, blue S) follow it round. Faster grip: faster turning.\nconst st = W.group();\nst.add(W.mesh(W.ring(17.6, 20.5, 14, 72), W.metal('#6b7178', { rough: 0.35 }), { rot: [90, 0, 0] })); // (the iron ring; the coils sit on its teeth inside)\nconst coils = [];\nconst COL = ['#ff8a3c', '#ffd84d', '#5ec8ff'];\nfor (let i = 0; i < 12; i++) {\n  const a = i / 12 * Math.PI * 2;\n  const m = W.glow(COL[i % 3], 0.2);\n  const c = W.group({ at: [Math.cos(a) * 15.4, Math.sin(a) * 15.4, 0], rot: [0, 0, a * 180 / Math.PI] });\n  c.add(W.mesh(W.box(4.6, 4.2, 15, 1.2), W.metal('copper', { rough: 0.3 })));\n  c.add(W.mesh(W.box(4.8, 4.4, 0.6, 0.2), m, { at: [0, 0, 7.6] }));\n  st.add(c);\n  coils.push({ m, ph: i % 3 });\n}\nW.add(st, { label: 'స్టేటర్ కాయిల్స్' });\nconst ro = W.group();\nro.add(W.mesh(W.cyl(11.6, 11.6, 13, 64), W.metal('#9aa1a8', { rough: 0.3 }), { rot: [90, 0, 0] }));\nfor (let i = 0; i < 8; i++) {\n  const a = i / 8 * Math.PI * 2;\n  ro.add(W.mesh(W.box(7.8, 1.6, 12.6, 0.3), W.paint(i % 2 ? '#d64545' : '#3b6fd6', { metallic: 0.4 }), { at: [Math.cos(a) * 11.8, Math.sin(a) * 11.8, 0], rot: [0, 0, a * 180 / Math.PI + 90] }));\n  const t = W.text(i % 2 ? 'N' : 'S', { size: 1.6, color: '#ffffff' });\n  t.position.set(Math.cos(a) * 11.8, Math.sin(a) * 11.8, 6.4); ro.add(t);\n}\nW.add(ro, { label: 'రోటర్ మాగ్నెట్లు' });\nconst sh = W.mesh(W.cyl(2.4, 2.4, 40, 24), W.metal('#c3cad1'), { rot: [90, 0, 0] });\nW.add(sh, { label: 'షాఫ్ట్' });\nlet ang = 0;\nW.onTick((t, dt) => {\n  const s = Math.max(0.12, W.env.spool);\n  ang += dt * (0.6 + 3.4 * s);\n  ro.rotation.z = ang; sh.rotation.y = ang;\n  for (const c of coils) c.m.emissiveIntensity = 0.15 + 2.6 * Math.max(0, Math.cos(ang * 2 - c.ph * 2.094));\n});\nW.stream([[-30, 18, 0], [-20, 16, 2], [-14, 15, 7]], { kind: 'power', count: 10, size: 0.5, speed: 0.8, always: true });\n"
+},
+"బ్యాటరీ ప్యాక్ 5 kWh": {
+"say": "బ్యాటరీ లోపల Sir: సుమారు 280 చిన్న గుండ్రని సెల్స్ వరుసగా, పైన రాగి పట్టీలు వాటిని కలుపుతాయి. కింద ప్లేట్‌లో కూలెంట్ పాము లాగా తిరుగుతుంది. రంగు వైర్లు BMS కి ప్రతి గుంపు వోల్టేజ్ చెప్తాయి.",
+"code": "// Inside the 5 kWh pack, its lid off: about 280 small round cells (the size of a thumb) standing in rows, joined by metal strips;\n// a cooling plate under them with the coolant running through; thin BMS wires that watch every group of cells.\nconst cells = W.group();\nconst nx = 20, nz = 14, n = nx * nz;\nconst cell = new THREE.InstancedMesh(W.cyl(1.05, 1.05, 7, 20), W.plastic('#2f6fd6', { rough: 0.4 }), n);\nconst tops = new THREE.InstancedMesh(W.cyl(0.6, 0.6, 0.2, 14), W.metal('#c9ced3'), n);\nconst M = new THREE.Matrix4();\nlet i = 0;\nfor (let x = 0; x < nx; x++) for (let z = 0; z < nz; z++, i++) {\n  const px = -20 + x * 2.12 + (z % 2) * 1.06, pz = -13.8 + z * 2.0;\n  M.makeTranslation(px, 3.5, pz); cell.setMatrixAt(i, M);\n  M.makeTranslation(px, 7.1, pz); tops.setMatrixAt(i, M);\n}\ncell.frustumCulled = tops.frustumCulled = false;\ncells.add(cell, tops);\nW.add(cells, { label: 'సెల్స్' });\nconst bars = W.group();\nfor (let z = 0; z < nz; z += 2) bars.add(W.mesh(W.box(42.4, 0.25, 3.2, 0.1), W.metal('#b87333', { rough: 0.3 }), { at: [0.5, 7.3, -12.8 + z * 2.0] }));\nW.add(bars, { label: 'బస్‌బార్లు' });\nconst plate = W.group();\nplate.add(W.mesh(W.box(46, 1.6, 31, 0.4), W.glass({ tint: '#a9bccb', frost: 0.35, thickness: 1.6 }), { at: [0, -0.8, 0] })); // (see-through: the channel inside shows)\nconst path = [];\nfor (let k = 0; k < 6; k++) { const z = -12.5 + k * 5; path.push(k % 2 ? [21, -0.9, z] : [-21, -0.9, z], k % 2 ? [-21, -0.9, z] : [21, -0.9, z]); }\nplate.add(W.mesh(W.tube(path, 0.9, 120), W.plastic('#3aa6ff', { rough: 0.3 })));\nW.add(plate, { label: 'కూలింగ్ ప్లేట్' });\nconst wires = W.group();\nfor (let k = 0; k < 7; k++) wires.add(W.mesh(W.tube([[-21 + k * 6.6, 7.4, -14.6], [-21 + k * 6.6, 9, -16], [18, 10, -17], [22, 9, -17]], 0.16, 30), W.plastic(['#f2f2f2', '#ffd84d', '#ff8a3c', '#5ec8ff', '#5ee38f', '#d64545', '#b87dff'][k])));\nwires.add(W.mesh(W.box(9, 1.6, 5, 0.4), W.plastic('#14532d'), { at: [24, 9.5, -17] }));\nW.add(wires, { label: 'BMS వైర్లు' });\nW.stream(path, { kind: 'water', count: 30, size: 0.45, speed: 0.7, always: true });\n"
+}
+},
+"film": [
+"⚡ గేర్ల ఎలక్ట్రిక్ బైక్",
+"గ్రిప్ తిప్పాను: మోటార్ వేగం పెరుగుతోంది",
+"🌡️ వేడి: మోటార్, కంట్రోలర్ ఎక్కువ",
+"〰️ కరెంట్, కూలెంట్ దారులు",
+"విడదీస్తే ప్రతి భాగం",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"challenge": {
+"kind": "eco",
+"title": "🌱 ఎకో రైడ్ ఛాలెంజ్",
+"rules": "1 km దూరం వెళ్ళాలి, సగటు 30 Wh/km కంటే తక్కువతో. మెల్లగా గ్రిప్ పెంచండి, పై గేర్లు వాడండి, ఆపేటప్పుడు గ్రిప్ వదలండి (రీజెన్).",
+"km": 1,
+"limit": 30,
+"secs": 240
+},
+"service": {
+"title": "🛠️ బైక్ చూసుకునే గైడ్",
+"safety": "ముందు: బైక్ ఆఫ్ చేసి కీ తీసేయండి, ఛార్జర్ ప్లగ్ తీసేయండి Sir. బ్యాటరీ, కంట్రోలర్, మోటార్, ఆరెంజ్ కేబుల్స్ హై వోల్టేజ్ — ఎప్పుడూ తెరవకండి, సర్వీస్ సెంటర్ మాత్రమే.",
+"steps": [
+{
+"say": "చైన్: మధ్యలో పైకి కిందికి నొక్కి చూడండి, సుమారు 2–3 cm ఆట ఉండాలి. ఎక్కువైనా, బిగుతైనా సర్వీస్‌లో సరిచేయించండి.",
+"label": "చైన్"
+},
+{
+"say": "చైన్ ఆయిల్: సుమారు ప్రతి 500 km కి, వర్షంలో తడిసిన తర్వాత కూడా. చక్రం నెమ్మదిగా తిప్పుతూ లోపలి వైపు స్ప్రే చేసి, ఎక్కువైనది తుడవండి.",
+"label": "చైన్"
+},
+{
+"say": "టైర్ గాలి: చల్లగా ఉన్నప్పుడు చెక్ చేయండి. ఎంత ఉండాలో బైక్ మీద స్టిక్కర్‌లో, మాన్యువల్‌లో ఉంటుంది.",
+"label": "వెనక చక్రం"
+},
+{
+"say": "బ్రేక్: ప్యాడ్ మందం చూడండి, కీచు శబ్దం వస్తే వెంటనే మార్చండి.",
+"label": "ముందు చక్రం"
+},
+{
+"say": "కూలెంట్: రిజర్వాయర్‌లో లెవెల్ బయటి నుంచి చూడటం మాత్రమే. బైక్ వేడిగా ఉన్నప్పుడు మూత ఎప్పుడూ తెరవకండి. నింపడం సర్వీస్ సెంటర్‌లో.",
+"label": "రేడియేటర్"
+},
+{
+"say": "గేర్‌బాక్స్ ఆయిల్: సర్వీస్ షెడ్యూల్ ప్రకారం సర్వీస్ సెంటర్‌లో మారుస్తారు.",
+"label": "గేర్‌బాక్స్ 4 స్పీడ్"
+},
+{
+"say": "బ్యాటరీ, కంట్రోలర్, మోటార్: మీరు చేయాల్సింది ఏమీ లేదు Sir. తెరవకండి, నీళ్ళతో ప్రెషర్ వాష్ చేయకండి. ఏ సమస్య వచ్చినా సర్వీస్ సెంటర్.",
+"label": "బ్యాటరీ ప్యాక్ 5 kWh"
+}
+]
+},
+"scene": "",
+"id": "bike"
+}
+}

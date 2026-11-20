@@ -138,6 +138,7 @@ final class WatchDo {
     private static void run(Context app, JSONObject o) throws Exception {
         String what = o.optString("what");
         switch (what) {
+            case "sp_power": WorkshopShow.watchPower(o.optDouble("v", 0)); return; // ⌚ (I) the bezel turned: a showpiece's power
             case "morning": {
                 WatchHub.state(app, "thinking", null, null, "☀️ ఈరోజు సంగతులు చూస్తున్నాను…"); // (the watch knows it is coming)
                 String t = Morning.text(app);

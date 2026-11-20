@@ -1,0 +1,411 @@
+{
+"at": 1763600000001,
+"title": "టర్బోఫ్యాన్ జెట్ ఇంజన్",
+"what": "రెండు స్పూల్‌ల హై-బైపాస్ టర్బోఫ్యాన్ జెట్ ఇంజన్, సర్వీస్ స్టాండ్ మీద, షాఫ్ట్ వెంట విడిపోతుంది",
+"model": "showpiece",
+"parts": [
+{
+"id": "stand",
+"status": "స్టాండ్ పెడుతున్నాను",
+"code": "// Turbofan showpiece, hand-made. Units: cm. The engine's axis is X (the fan faces +X), its centre line at y = 120 on a\n// maintenance stand. Shared helpers for every later part live on W.store.\nconst S = W.store;\nconst deg = (d) => d * Math.PI / 180;\nS.Y = 120;\nS.axisLathe = (profile, seg = 96, phiStart = 0, phiLen = Math.PI * 2) => { // a lathe around the X axis: [r, x] points\n  const g = new THREE.LatheGeometry(profile.map((p) => new THREE.Vector2(Math.max(0.001, p[0]), p[1])), seg, phiStart, phiLen);\n  g.rotateZ(-Math.PI / 2);\n  return g;\n};\nS.blade = (o) => { // one aerofoil blade: span along +Y from y = 0, chord along X, twisted about its span\n  const ns = o.ns || 10, nc = o.nc || 8, span = o.span, c0 = o.root, c1 = o.tip == null ? o.root : o.tip;\n  const tw = deg(o.twist || 0), p0 = deg(o.pitch || 0), th = o.thick || 0.06, cam = o.camber == null ? 0.07 : o.camber;\n  const pos = [], idx = [], col = [], ring = nc * 2;\n  const c3 = new THREE.Color();\n  for (let i = 0; i <= ns; i++) {\n    const s = i / ns, c = c0 + (c1 - c0) * Math.pow(s, 0.85), a = p0 + tw * s;\n    const x0 = (o.sweep || 0) * Math.pow(s, 1.5), z0 = (o.lean || 0) * s, y = span * s, ca = Math.cos(a), sa = Math.sin(a);\n    if (o.colors) { const k = o.colors(s); c3.set(k); }\n    for (let side = 0; side < 2; side++) {\n      for (let j = 0; j < nc; j++) {\n        const u = side === 0 ? j / (nc - 1) : 1 - j / (nc - 1);\n        const t = 5 * th * (0.2969 * Math.sqrt(u) - 0.126 * u - 0.3516 * u * u + 0.2843 * u * u * u - 0.1036 * u * u * u * u);\n        const zc = cam * 4 * u * (1 - u), x = (u - 0.4) * c, z = (zc + (side === 0 ? t : -t)) * c;\n        pos.push(x0 + x * ca - z * sa, y, z0 + x * sa + z * ca);\n        if (o.colors) col.push(c3.r, c3.g, c3.b);\n      }\n    }\n  }\n  for (let i = 0; i < ns; i++) for (let j = 0; j < ring; j++) {\n    const a = i * ring + j, b = i * ring + (j + 1) % ring, c = (i + 1) * ring + j, d = (i + 1) * ring + (j + 1) % ring;\n    idx.push(a, c, b, b, c, d);\n  }\n  const tip = ns * ring;\n  for (let j = 1; j < ring - 1; j++) idx.push(tip, tip + j, tip + j + 1);\n  const g = new THREE.BufferGeometry();\n  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));\n  if (o.colors) g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));\n  g.setIndex(idx);\n  g.computeVertexNormals();\n  return g;\n};\nS.ring = (geo, mat, n, r, x, o = {}) => { // n copies around the X axis, roots at radius r, at axial station x\n  const m = new THREE.InstancedMesh(geo, mat, n);\n  const M = new THREE.Matrix4(), R = new THREE.Matrix4(), T = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) {\n    const a = (i / n) * Math.PI * 2 + (o.phase || 0);\n    R.makeRotationX(a);\n    T.makeTranslation(x, r, 0);\n    M.multiplyMatrices(R, T);\n    m.setMatrixAt(i, M);\n  }\n  m.castShadow = true;\n  m.receiveShadow = true;\n  return m;\n};\nS.bolts = (n, r, x, size, mat) => { // a row of bolt heads around the axis\n  const g = new THREE.CylinderGeometry(size, size, size * 0.9, 6);\n  return S.ring(g, mat, n, r, x);\n};\nS.mTi = W.metal('#a7acb3', { rough: 0.24 });\nS.mSteel = W.metal('brushed', { rough: 0.38 });\nS.mDark = W.metal('#5d636b', { rough: 0.42 });\nS.mNickel = W.metal('#9b958c', { rough: 0.33 });\nS.mBolt = W.metal('#c9cdd2', { rough: 0.3 });\nS.heatTint = (s) => (s < 0.3 ? '#c9a46a' : s < 0.65 ? '#6f6fa8' : '#8a6a4a'); // straw at the root, blue, bronze at the tip\nS.hot = []; // (materials that glow with the power)\nS.lp = []; // the low-pressure spool: the fan, the booster, its turbine (turn slower)\nS.hp = []; // the high-pressure spool (turns fast)\n\n// the stand: welded box-section steel, two cradles, feet on castors\nconst paint = W.paint('#2a2f36', { metallic: 0.5, rough: 0.5 });\nconst st = W.group();\nconst tube = (len, along, x, y, z) => {\n  const g = along === 'x' ? W.box(len, 8, 8, 0.6) : along === 'y' ? W.box(8, len, 8, 0.6) : W.box(8, 8, len, 0.6);\n  st.add(W.mesh(g, paint, { at: [x, y, z] }));\n};\ntube(300, 'x', -15, 14, 62); tube(300, 'x', -15, 14, -62);\nfor (const x of [-150, -60, 40, 120]) tube(124, 'z', x, 14, 0);\nfor (const [x, r] of [[40, 40.5], [-60, 46.5]]) { // the cradles: a saddle that holds the casing, on two posts\n  const top = S.Y - r - 4;\n  for (const z of [-46, 46]) tube(top - 18, 'y', x, 18 + (top - 18) / 2, z);\n  tube(100, 'z', x, top, 0);\n  const saddle = new THREE.Mesh(new THREE.TorusGeometry(r + 1.8, 3.4, 10, 40, Math.PI * 0.62), paint);\n  saddle.rotation.set(0, Math.PI / 2, Math.PI + Math.PI * 0.19);\n  saddle.position.set(x, S.Y, 0);\n  st.add(saddle);\n  for (const z of [-1, 1]) st.add(W.mesh(W.box(8, top - S.Y + r + 6, 5, 1), paint, { at: [x, (top + S.Y - r + 2) / 2, z * r * 0.62] }));\n}\nfor (const x of [-160, 130]) for (const z of [-62, 62]) { // castors\n  st.add(W.mesh(W.box(12, 4, 12, 1), S.mDark, { at: [x, 8, z] }));\n  st.add(W.mesh(W.cyl(5, 5, 4, 24), W.rubber(), { at: [x, 5, z], rot: [90, 0, 0] }));\n}\nst.add(W.text('JARVIS WORKSHOP · ENGINE STAND', { size: 2.2, at: [-15, 14, 66.2], color: '#d9dde3' }));\nW.add(st, { label: 'స్టాండ్' });\n"
+},
+{
+"id": "shafts",
+"status": "రెండు షాఫ్టులు వేస్తున్నాను",
+"code": "const S = W.store;\nconst lpShaft = W.group();\nlpShaft.add(W.mesh(W.cyl(5.5, 5.5, 262, 40), W.metal('#b8bcc2', { rough: 0.28 }), { at: [-12, S.Y, 0], rot: [0, 0, 90] }));\nfor (const x of [-120, -60, 40, 100]) lpShaft.add(W.mesh(W.cyl(7, 7, 3, 32), S.mDark, { at: [x, S.Y, 0], rot: [0, 0, 90] }));\nW.add(lpShaft, { label: 'లో-ప్రెషర్ షాఫ్ట్', heat: [40, 120] });\nS.lp.push(lpShaft.children[0]);\nconst hpShaft = W.group();\nhpShaft.add(W.mesh(S.axisLathe([[9.5, -48], [10.5, -48], [10.5, 52], [9.5, 52], [9.5, -48]], 48), W.metal('#c4b28e', { rough: 0.3 })));\nhpShaft.children[0].position.y = S.Y;\nW.add(hpShaft, { label: 'హై-ప్రెషర్ షాఫ్ట్', heat: [60, 260] });\n"
+},
+{
+"id": "fan-case",
+"status": "ఫ్యాన్ కేస్ కడుతున్నాను",
+"code": "const S = W.store;\nconst fc = W.group();\n// the case: polished lip at the front, a composite band, fastener rings, guide vanes behind the fan\nconst shell = S.axisLathe([[78, 70], [78, 124], [79.5, 128.5], [82.5, 130], [86, 128], [86.5, 120], [85.5, 72], [84, 70], [78, 70]], 120);\nconst caseMat = W.metal('#b9bec5', { rough: 0.3 });\nconst sh = new THREE.Mesh(shell, caseMat);\nsh.position.y = S.Y;\nfc.add(sh);\nconst lip = new THREE.Mesh(new THREE.TorusGeometry(81.5, 3.2, 16, 120), W.metal('chrome', { rough: 0.08 }));\nlip.rotation.y = Math.PI / 2;\nlip.position.set(127.5, S.Y, 0);\nfc.add(lip);\nconst weave = W.canvasTex(256, 256);\n{\n  const g = weave.ctx;\n  g.fillStyle = '#1b1d21'; g.fillRect(0, 0, 256, 256);\n  for (let y = 0; y < 256; y += 16) for (let x = 0; x < 256; x += 16) {\n    const odd = ((x + y) / 16) % 2;\n    const gr = g.createLinearGradient(x, y, x + 16, y + 16);\n    gr.addColorStop(0, odd ? '#2c3036' : '#24272c'); gr.addColorStop(1, odd ? '#15171a' : '#30343a');\n    g.fillStyle = gr; g.fillRect(x + 1, y + 1, 14, 14);\n  }\n  weave.update();\n  weave.texture.wrapS = weave.texture.wrapT = THREE.RepeatWrapping;\n  weave.texture.repeat.set(40, 3);\n}\nconst band = new THREE.Mesh(S.axisLathe([[86.8, 82], [86.8, 116]], 120), new THREE.MeshPhysicalMaterial({ map: weave.texture, roughness: 0.38,\n  metalness: 0.25, clearcoat: 0.8, clearcoatRoughness: 0.2, side: THREE.DoubleSide }));\nband.position.y = S.Y;\nfc.add(band);\nfor (const x of [74, 121]) { const b = S.bolts(64, 86.6, x, 0.9, S.mBolt); b.position.y = S.Y; b.rotation.z = 0; fc.add(b); }\n// guide vanes (outlet guide vanes): still, they straighten the fan's air\nconst ogv = S.blade({ span: 33, root: 9, tip: 10, twist: 6, pitch: 8, thick: 0.08, camber: 0.05, ns: 4, nc: 6 });\nconst vanes = S.ring(ogv, W.metal('#8f949b', { rough: 0.35 }), 40, 45.5, 76);\nvanes.position.y = S.Y;\nfc.add(vanes);\nconst plate = W.group({ at: [100, S.Y + 54, 66], rot: [0, 0, 0] });\nplate.add(W.mesh(W.box(30, 7, 0.6, 0.3), W.metal('#d8dade', { rough: 0.2 })));\nplate.add(W.text('TURBOFAN · JARVIS WORKSHOP', { size: 1.6, at: [0, 0, 0.4], color: '#2a2f36' }));\nplate.lookAt(new THREE.Vector3(100, S.Y + 54 + 54, 66 + 66));\nfc.add(plate);\nW.add(fc, { label: 'ఫ్యాన్ కేస్', explode: [110, 0, 0], heat: [25, 34], layer: 0 });\n"
+},
+{
+"id": "fan",
+"status": "ఫ్యాన్ బ్లేడ్లు అమరుస్తున్నాను",
+"code": "const S = W.store;\n// 22 wide-chord, swept titanium blades with real twist, on a disc; the spinner with its painted spiral in front\nconst fan = W.group();\nconst rotor = W.group({ at: [106, S.Y, 0] });\nconst bl = S.blade({ span: 54, root: 17, tip: 31, twist: 34, pitch: 28, thick: 0.045, camber: 0.07, sweep: -7, lean: 3, ns: 16, nc: 12 });\nconst blades = S.ring(bl, W.metal('#b4b9bf', { rough: 0.2 }), 22, 21.5, 0);\nrotor.add(blades);\nrotor.add(W.mesh(S.axisLathe([[10, -14], [23, -14], [23.5, -10], [23.5, 10], [21, 13], [10, 13]], 64), S.mTi));\nfan.add(rotor);\nS.lp.push(rotor);\nS.fanRotor = rotor;\nW.add(fan, { label: 'ఫ్యాన్ బ్లేడ్లు', explode: [165, 0, 0], heat: [24, 32], layer: 1 });\n// the spinner: an ogive cone, a white spiral painted on it (it tells the ground crew the fan is turning)\nconst spin = W.group();\nconst tex = W.canvasTex(512, 512);\n{\n  const g = tex.ctx;\n  g.fillStyle = '#1d2024'; g.fillRect(0, 0, 512, 512);\n  g.strokeStyle = '#f4f6f8'; g.lineWidth = 34; g.lineCap = 'round';\n  g.beginPath(); g.moveTo(0, 512); g.lineTo(512, 40); g.stroke();\n  tex.update();\n}\nconst prof = [];\nfor (let i = 0; i <= 16; i++) { const s = i / 16; prof.push([22 * Math.sqrt(1 - s * s * 0.98) * (1 - s * 0.15), s * 38]); }\nprof.push([0.01, 38]);\nconst cone = new THREE.Mesh(S.axisLathe(prof, 64), new THREE.MeshPhysicalMaterial({ map: tex.texture, metalness: 0.35, roughness: 0.25, clearcoat: 1 }));\ncone.position.set(119, S.Y, 0);\nspin.add(cone);\nW.add(spin, { label: 'స్పిన్నర్', explode: [212, 0, 0], layer: 1 });\nS.lp.push(cone);\n"
+},
+{
+"id": "booster",
+"status": "లో-ప్రెషర్ కంప్రెసర్ వేస్తున్నాను",
+"code": "const S = W.store;\nconst bo = W.group();\nconst rot = W.group({ at: [0, S.Y, 0] });\nconst still = W.group({ at: [0, S.Y, 0] });\nrot.add(W.mesh(S.axisLathe([[22, 58], [27, 60], [26, 90], [21, 93], [22, 58]], 64), S.mTi));\nconst stage = (x, n, hub, tip, chord) => {\n  rot.add(S.ring(S.blade({ span: tip - hub, root: chord, tip: chord * 0.9, twist: 22, pitch: 38, thick: 0.07, ns: 5, nc: 6 }), S.mTi, n, hub, x));\n};\nstage(86, 46, 26, 41, 5); stage(77, 50, 25.5, 39.5, 4.6); stage(68, 54, 25, 38, 4.2);\nfor (const x of [81.5, 72.5, 63.5]) still.add(S.ring(S.blade({ span: 14, root: 3.6, twist: 4, pitch: -24, thick: 0.08, ns: 3, nc: 5 }), S.mDark, 60, 26, x));\nbo.add(rot, still);\nS.lp.push(rot);\nW.add(bo, { label: 'లో-ప్రెషర్ కంప్రెసర్', explode: [68, 0, 0], heat: [30, 95], layer: 2 });\n"
+},
+{
+"id": "hpc",
+"status": "హై-ప్రెషర్ కంప్రెసర్ వేస్తున్నాను",
+"code": "const S = W.store;\n// nine stages: the drum widens, the blades get shorter toward the back, so the air is squeezed into a smaller ring\nconst hpc = W.group();\nconst rot = W.group({ at: [0, S.Y, 0] });\nconst still = W.group({ at: [0, S.Y, 0] });\nrot.add(W.mesh(S.axisLathe([[18, 2], [23, 4], [19, 50], [14, 52], [18, 2]], 64), W.metal('#b7b2a6', { rough: 0.28 })));\nfor (let i = 0; i < 9; i++) {\n  const k = i / 8, x = 47 - i * 5.3, hub = 19 + k * 3.6, tip = 31 - k * 4.4, n = Math.round(38 + k * 30);\n  rot.add(S.ring(S.blade({ span: tip - hub, root: 3.4 - k * 1.3, tip: 3.0 - k * 1.1, twist: 14, pitch: 42, thick: 0.08, ns: 3, nc: 5 }),\n    W.metal(k < 0.5 ? '#b9bcc0' : '#b6a98f', { rough: 0.27 }), n, hub, x));\n  if (i < 8) still.add(S.ring(S.blade({ span: tip - hub - 0.6, root: 2.4 - k * 0.8, twist: 3, pitch: -30, thick: 0.09, ns: 2, nc: 5 }), S.mDark, n + 6, hub + 0.3, x - 2.65));\n}\nhpc.add(rot, still);\nS.hp.push(rot);\nW.add(hpc, { label: 'హై-ప్రెషర్ కంప్రెసర్', heat: [70, 560], layer: 3 });\n"
+},
+{
+"id": "combustor",
+"status": "దహన గది తయారు చేస్తున్నాను",
+"code": "const S = W.store;\n// an annular liner with rows of dilution holes and a ring of fuel nozzles; the fire inside glows with the power\nconst cb = W.group();\nconst liner = new THREE.Mesh(S.axisLathe([[24, -32], [21.5, -20], [22, -4], [25, 0.5], [30, 1.5], [35, 0], [36.5, -6], [35.5, -20], [33, -32], [24, -32]], 96),\n  W.metal('#a29a8e', { rough: 0.36 }));\nliner.position.y = S.Y;\ncb.add(liner);\nconst hole = new THREE.CylinderGeometry(0.85, 0.85, 0.5, 12);\nconst holeMat = new THREE.MeshStandardMaterial({ color: 0x120c08, emissive: 0xff7a1a, emissiveIntensity: 0 });\nS.hot.push({ m: holeMat, k: 2.6 });\nfor (const [x, r, n] of [[-8, 36.2, 30], [-16, 35.8, 30], [-24, 34.6, 26]]) {\n  const h = new THREE.InstancedMesh(hole, holeMat, n);\n  const M = new THREE.Matrix4(), R = new THREE.Matrix4(), T = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { R.makeRotationX((i + (x === -16 ? 0.5 : 0)) / n * Math.PI * 2); T.makeTranslation(x, r, 0); M.multiplyMatrices(R, T); h.setMatrixAt(i, M); }\n  h.position.y = S.Y;\n  cb.add(h);\n}\nconst fire = new THREE.Mesh(S.axisLathe([[26, -30], [24, -6], [27, -1], [33, -1], [34, -6], [32, -30], [26, -30]], 64),\n  new THREE.MeshStandardMaterial({ color: 0x220a02, emissive: 0xff8a2a, emissiveIntensity: 0, side: THREE.BackSide }));\nfire.position.y = S.Y;\nfire.scale.set(0.98, 0.95, 0.95);\ncb.add(fire);\nS.hot.push({ m: fire.material, k: 3.2 });\n// twenty fuel nozzles reach in through the casing to the front of the liner\nconst nz = new THREE.Group();\nconst stem = W.cyl(1.2, 1.2, 12, 12), head = W.sphere(1.9, 14);\nconst nzMat = W.metal('#c8b98f', { rough: 0.3 });\nfor (let i = 0; i < 20; i++) {\n  const a = (i / 20) * Math.PI * 2, g = new THREE.Group();\n  g.add(W.mesh(stem, nzMat, { at: [0, 41, 0] }));\n  g.add(W.mesh(head, nzMat, { at: [0, 35.5, 0] }));\n  g.add(W.mesh(W.box(3, 2, 3, 0.4), nzMat, { at: [0, 47, 0] }));\n  g.position.set(2.5, 0, 0);\n  g.rotation.x = a;\n  nz.add(g);\n}\nnz.position.y = S.Y;\ncb.add(nz);\nW.add(cb, { label: 'దహన గది', explode: [-30, 0, 0], heat: [520, 1450], layer: 3 });\n"
+},
+{
+"id": "hpt",
+"status": "హై-ప్రెషర్ టర్బైన్ వేస్తున్నాను",
+"code": "const S = W.store;\nconst ht = W.group();\nconst rot = W.group({ at: [0, S.Y, 0] });\nconst still = W.group({ at: [0, S.Y, 0] });\nconst tint = S.blade({ span: 9.5, root: 3.6, tip: 3.3, twist: 18, pitch: -48, thick: 0.14, camber: 0.14, ns: 5, nc: 6, colors: S.heatTint });\nconst tMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, metalness: 1, roughness: 0.3, emissive: 0xff3c10, emissiveIntensity: 0 });\nS.hot.push({ m: tMat, k: 0.5 });\nrot.add(S.ring(tint, tMat, 72, 24.5, -41));\nrot.add(W.mesh(S.axisLathe([[8, -44], [24.8, -44], [24.8, -38], [8, -38]], 64), W.metal('#8d8478', { rough: 0.35 })));\nstill.add(S.ring(S.blade({ span: 9.6, root: 4, twist: 6, pitch: 52, thick: 0.18, camber: 0.18, ns: 3, nc: 6, colors: S.heatTint }), tMat, 40, 24.4, -35));\nht.add(rot, still);\nS.hp.push(rot);\nW.add(ht, { label: 'హై-ప్రెషర్ టర్బైన్', explode: [-62, 0, 0], heat: [480, 1050], layer: 3 });\n"
+},
+{
+"id": "lpt",
+"status": "లో-ప్రెషర్ టర్బైన్ వేస్తున్నాను",
+"code": "const S = W.store;\nconst lt = W.group();\nconst rot = W.group({ at: [0, S.Y, 0] });\nconst still = W.group({ at: [0, S.Y, 0] });\nconst lMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, metalness: 1, roughness: 0.32, emissive: 0xff4a14, emissiveIntensity: 0 });\nS.hot.push({ m: lMat, k: 0.35 });\nfor (let i = 0; i < 4; i++) {\n  const k = i / 3, x = -52 - i * 12, hub = 24.5 + k * 4, tip = 35 + k * 9;\n  rot.add(S.ring(S.blade({ span: tip - hub, root: 3.4 + k * 0.6, tip: 3.0 + k * 0.5, twist: 26, pitch: -50, thick: 0.11, camber: 0.12, ns: 5, nc: 6,\n    colors: (s) => (s < 0.5 ? '#9a7a55' : '#7b6a8e') }), lMat, 84 + i * 8, hub, x));\n  rot.add(W.mesh(S.axisLathe([[9, x - 2], [hub + 0.3, x - 2], [hub + 0.3, x + 2], [9, x + 2]], 64), W.metal('#8a8176', { rough: 0.35 })));\n  still.add(S.ring(S.blade({ span: tip - hub - 0.6, root: 3.4, twist: 5, pitch: 46, thick: 0.13, camber: 0.14, ns: 3, nc: 5 }), S.mNickel, 70 + i * 6, hub + 0.3, x + 6));\n}\nlt.add(rot, still);\nS.lp.push(rot);\nW.add(lt, { label: 'లో-ప్రెషర్ టర్బైన్', explode: [-102, 0, 0], heat: [380, 760], layer: 3 });\n"
+},
+{
+"id": "exhaust",
+"status": "ఎగ్జాస్ట్ అమరుస్తున్నాను",
+"code": "const S = W.store;\nconst ex = W.group();\nconst noz = new THREE.Mesh(S.axisLathe([[47.5, -98], [44, -128], [41.5, -136], [43.5, -136], [46.5, -128], [50.5, -98], [47.5, -98]], 120),\n  W.metal('#a8a29a', { rough: 0.3 }));\nnoz.position.y = S.Y;\nex.add(noz);\nconst inner = new THREE.Mesh(S.axisLathe([[47.2, -98.5], [43.7, -128], [41.6, -135.5]], 120),\n  new THREE.MeshStandardMaterial({ color: 0x2a1a12, metalness: 0.6, roughness: 0.5, emissive: 0xff5a1a, emissiveIntensity: 0, side: THREE.BackSide }));\ninner.position.y = S.Y;\nex.add(inner);\nS.hot.push({ m: inner.material, k: 0.9 });\nconst b = S.bolts(60, 51, -100, 0.8, S.mBolt); b.position.y = S.Y; ex.add(b);\nW.add(ex, { label: 'ఎగ్జాస్ట్ నాజిల్', explode: [-145, 0, 0], heat: [280, 640], layer: 0 });\nconst plug = W.group();\nconst prof = [];\nfor (let i = 0; i <= 14; i++) { const s = i / 14; prof.push([24 * (1 - Math.pow(s, 1.6)) + 0.01, -98 - s * 58]); }\nconst pm = new THREE.MeshPhysicalMaterial({ color: 0x5b5651, metalness: 1, roughness: 0.34, emissive: 0xff5a1a, emissiveIntensity: 0 });\nconst pl = new THREE.Mesh(S.axisLathe(prof, 64), pm);\npl.position.y = S.Y;\nplug.add(pl);\nS.hot.push({ m: pm, k: 0.45 });\nW.add(plug, { label: 'ఎగ్జాస్ట్ కోన్', explode: [-190, 0, 0], heat: [300, 620], layer: 0 });\n"
+},
+{
+"id": "casing",
+"status": "కోర్ కేసింగ్ మూస్తున్నాను",
+"code": "const S = W.store;\n// the core's casing, split along its length: the upper half lifts away when the engine opens, the lower half stays\nconst prof = [[45, 70], [44, 58], [39, 50], [36, 30], [36, 4], [41, -2], [42, -34], [40, -44], [42, -52], [49, -96], [49, -98]];\nconst outer = prof.map(([r, x]) => [r + 1.6, x]).reverse();\nconst shape = prof.concat(outer, [prof[0]]);\nconst cMat = W.metal('#9fa5ac', { rough: 0.36 });\nconst half = (up) => {\n  const g = W.group();\n  const m = new THREE.Mesh(S.axisLathe(shape, 64, up ? Math.PI : 0, Math.PI), cMat);\n  m.position.y = S.Y;\n  g.add(m);\n  for (const [x, r] of [[58, 45.8], [4, 38.3], [-34, 44], [-52, 44.3]]) { // flanges with bolts\n    const fl = new THREE.Mesh(S.axisLathe([[r, x - 1.2], [r + 2.2, x - 1.2], [r + 2.2, x + 1.2], [r, x + 1.2]], 64, up ? Math.PI : 0, Math.PI), S.mDark);\n    fl.position.y = S.Y;\n    g.add(fl);\n  }\n  for (const side of [-1, 1]) { // the split line: a flat flange along its length with a row of bolts\n    const bar = W.mesh(W.box(150, 1.6, 3, 0.4), S.mDark, { at: [-12, S.Y + (up ? 0.8 : -0.8), side * 41] });\n    g.add(bar);\n    for (let x = -80; x <= 56; x += 8) g.add(W.mesh(W.cyl(0.7, 0.7, 1.4, 6), S.mBolt, { at: [x, S.Y + (up ? 2 : -2), side * 41] }));\n  }\n  if (up) { // pipes and wires that run along the top\n    g.add(W.mesh(W.tube([[50, S.Y + 44, 10], [20, S.Y + 41, 14], [-20, S.Y + 46, 12], [-60, S.Y + 48, 16]], 1.1, 40), W.metal('#b98a4e', { rough: 0.3 })));\n    g.add(W.mesh(W.tube([[45, S.Y + 45, -14], [0, S.Y + 41, -18], [-50, S.Y + 49, -14]], 0.8, 32), W.metal('#c9cdd2', { rough: 0.3 })));\n    g.add(W.mesh(W.tube([[30, S.Y + 40, -4], [-10, S.Y + 41, -2], [-45, S.Y + 46, -4]], 0.6, 24), W.rubber('#2a2d31')));\n  }\n  return g;\n};\nW.add(half(true), { label: 'పై కేసింగ్', explode: [0, 92, 0], heat: [70, 280], layer: 0 });\nW.add(half(false), { label: 'కింది కేసింగ్', heat: [70, 280], layer: 4 });\n"
+},
+{
+"id": "gearbox",
+"status": "గేర్‌బాక్స్, పైపులు పెడుతున్నాను",
+"code": "const S = W.store;\nconst gb = W.group();\nconst body = W.mesh(W.box(52, 16, 26, 4), W.metal('#7d838b', { rough: 0.45 }), { at: [28, S.Y - 58, 0] });\ngb.add(body);\nfor (const [x, z, r] of [[10, 13, 5], [26, 13, 6.5], [44, 13, 4.5], [18, -13, 4], [36, -13, 5.5]]) {\n  gb.add(W.mesh(W.cyl(r, r, 3, 24), W.metal('#9aa0a7', { rough: 0.3 }), { at: [x, S.Y - 58, z + Math.sign(z) * 1.5], rot: [90, 0, 0] }));\n}\ngb.add(W.mesh(W.tube([[22, S.Y - 50, 0], [20, S.Y - 44, 0], [14, S.Y - 38, 0]], 2.4, 20), S.mDark)); // the drive shaft up into the core\ngb.add(W.mesh(W.tube([[46, S.Y - 52, 8], [56, S.Y - 46, 18], [60, S.Y - 30, 34], [56, S.Y - 10, 44]], 1.2, 40), W.metal('#b98a4e', { rough: 0.3 })));\ngb.add(W.mesh(W.tube([[8, S.Y - 52, -8], [-4, S.Y - 46, -20], [-6, S.Y - 30, -36], [-2, S.Y - 12, -42]], 1.0, 40), W.metal('#c9cdd2', { rough: 0.3 })));\nW.add(gb, { label: 'యాక్సెసరీ గేర్‌బాక్స్', explode: [0, -55, 0], heat: [45, 95], layer: 1 });\n"
+},
+{
+"id": "run",
+"status": "ఇంజన్ స్టార్ట్‌కి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// the fuel lines from the gearbox's pump to the nozzle ring; then the engine itself: power, spools, glow, sound, the numbers\nconst fl = W.group();\nconst fm = W.metal('#c8a35a', { rough: 0.3 });\nconst ringPipe = new THREE.Mesh(new THREE.TorusGeometry(44, 0.9, 8, 96), fm);\nringPipe.rotation.y = Math.PI / 2;\nringPipe.position.set(2.5, S.Y, 0);\nfl.add(ringPipe);\nfl.add(W.mesh(W.tube([[40, S.Y - 50, -4], [30, S.Y - 47, -10], [10, S.Y - 44, -16], [3, S.Y - 42, -10]], 0.9, 30), fm));\nW.add(fl, { label: 'ఇంధన పైపులు', explode: [-20, -30, 0], heat: [30, 60], layer: 1 });\n\nW.throttle({ label: 'త్రోటిల్', rise: 0.16, fall: 0.1, sound: 'jet' });\nW.sound({ kind: 'jet', label: 'ఫ్యాన్ బ్లేడ్లు', gain: 0.35 });\nW.sound({ kind: 'gear', label: 'యాక్సెసరీ గేర్‌బాక్స్', gain: 0.6, f0: 140 });\nlet n1 = 0, n2 = 0, hudT = 0;\nW.onTick((t, dt) => {\n  const s = W.env.spool;\n  const lpStop = W.faultOf('ఫ్యాన్ బ్లేడ్లు') === 'stop';\n  n1 += dt * Math.PI * 2 * 1.5 * s * (lpStop ? 0 : 1);\n  n2 += dt * Math.PI * 2 * 3.4 * Math.min(1, s * 1.1);\n  for (const o of S.lp) o.rotation.x = n1;\n  for (const o of S.hp) o.rotation.x = n2;\n  const heat = Math.pow(Math.max(0, s - 0.08) / 0.92, 1.4);\n  for (const h of S.hot) h.m.emissiveIntensity = h.k * heat * (W.env.heat ? 0 : 1);\n  if (t - hudT > 0.25) {\n    hudT = t;\n    const egt = s > 0.01 ? Math.round(20 + 880 * Math.pow(s, 0.8) + (W.env.over ? 85 : 0)) : 30;\n    W.hud({ 'N1 (ఫ్యాన్)': Math.round(100 * s) + '%', 'N2 (కోర్)': (s > 0.01 ? Math.round(55 + 45 * s) : 0) + '%',\n      'ఎగ్జాస్ట్ వేడి': egt.toLocaleString('en-IN') + '°C', 'థ్రస్ట్': Math.round(121 * Math.pow(s, 1.7)) + ' kN' });\n    W.report({ power: s, n1: 100 * s, egt, thrust: 121 * Math.pow(s, 1.7) }); // (🛫 the takeoff challenge reads these)\n  }\n});\n// the air: most of it goes round the core (cool, blue), some goes through it and leaves hot\nconst Y = S.Y;\nfor (const a of [30, 90, 150, 210, 270, 330]) {\n  const r = (x, rr) => [x, Y + rr * Math.sin(a * Math.PI / 180), rr * Math.cos(a * Math.PI / 180)];\n  W.stream([r(190, 64), r(135, 64), r(100, 62), r(72, 60), r(30, 54), r(-30, 52), r(-90, 58)], { kind: 'cool', count: 26, size: 3.2, speed: 1.1 });\n}\nfor (const a of [0, 120, 240]) {\n  const r = (x, rr) => [x, Y + rr * Math.sin(a * Math.PI / 180), rr * Math.cos(a * Math.PI / 180)];\n  W.stream([r(190, 30), r(120, 33), r(88, 33), r(60, 30), r(30, 26), r(4, 24), r(-16, 29), r(-44, 30), r(-80, 36), r(-120, 33), r(-170, 26), r(-230, 22)],\n    { kind: 'air', count: 34, size: 2.8, speed: 1 });\n}\nW.stream([[40, Y - 50, -4], [20, Y - 46, -12], [3, Y - 42, -10], [2.5, Y - 30, -30], [2.5, Y + 10, -43]], { kind: 'fuel', count: 10, size: 1.6, speed: 0.6 });\n"
+}
+],
+"say": "జెట్ ఇంజన్ రెడీ Sir. 'ఫుల్ పవర్' అనండి.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"జెట్ ఇంజన్ ఎలా పనిచేస్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది టర్బోఫ్యాన్ జెట్ ఇంజన్. ముందున్న పెద్ద ఫ్యాన్ గాలిని లోపలికి లాగుతుంది.\", \"focus\": [{\"id\": \"fan\", \"piece\": \"ఫ్యాన్ బ్లేడ్లు\"}], \"view\": \"iso\", \"spin\": [{\"id\": \"fan\", \"piece\": \"ఫ్యాన్ బ్లేడ్లు\", \"axis\": \"x\", \"speed\": 1.5}], \"flow\": [{\"from\": [260, 120, 0], \"to\": \"fan\", \"kind\": \"air\", \"count\": 8}]}, {\"say\": \"లోపలికి వచ్చిన గాలిలో ఎక్కువ భాగం కోర్ చుట్టూ బయటి నుంచే వెనక్కి వెళ్తుంది. విమానాన్ని ఎక్కువగా తోసేది ఈ గాలే.\", \"focus\": [{\"id\": \"fan-case\", \"piece\": \"\"}], \"view\": \"front\", \"flow\": [{\"from\": [220, 182, 0], \"to\": [-80, 176, 0], \"kind\": \"air\", \"count\": 8}, {\"from\": [220, 58, 0], \"to\": [-80, 64, 0], \"kind\": \"air\", \"count\": 8}]}, {\"say\": \"మిగతా కొంచెం గాలి లోపలికి వెళ్తుంది. కంప్రెసర్ బ్లేడ్ల వరుసలు దాన్ని గట్టిగా నొక్కి చిన్నదిగా చేస్తాయి.\", \"focus\": [{\"id\": \"booster\", \"piece\": \"\"}, {\"id\": \"hpc\", \"piece\": \"\"}], \"explode\": true, \"view\": \"front\", \"spin\": [{\"id\": \"hpc\", \"piece\": \"\", \"axis\": \"x\", \"speed\": 3}, {\"id\": \"booster\", \"piece\": \"\", \"axis\": \"x\", \"speed\": 1.5}], \"flow\": [{\"from\": \"booster\", \"to\": \"hpc\", \"kind\": \"air\", \"count\": 6}]}, {\"say\": \"దహన గదిలో ఆ నొక్కిన గాలిలో ఇంధనం చల్లి మండిస్తారు. ఇక్కడ మంట దాదాపు 2,000 డిగ్రీలు.\", \"focus\": [{\"id\": \"combustor\", \"piece\": \"\"}], \"close\": true, \"flow\": [{\"from\": \"gearbox\", \"to\": \"combustor\", \"kind\": \"fuel\", \"count\": 5}, {\"from\": \"hpc\", \"to\": \"combustor\", \"kind\": \"air\", \"count\": 5}]}, {\"say\": \"మండిన వేడి గాలి టర్బైన్లను తిప్పుతుంది. హై-ప్రెషర్ టర్బైన్ కంప్రెసర్‌ని, లో-ప్రెషర్ టర్బైన్ షాఫ్ట్ ద్వారా ముందున్న ఫ్యాన్‌ని తిప్పుతాయి.\", \"focus\": [{\"id\": \"hpt\", \"piece\": \"\"}, {\"id\": \"lpt\", \"piece\": \"\"}, {\"id\": \"shafts\", \"piece\": \"లో-ప్రెషర్ షాఫ్ట్\"}], \"spin\": [{\"id\": \"hpt\", \"piece\": \"\", \"axis\": \"x\", \"speed\": 3}, {\"id\": \"lpt\", \"piece\": \"\", \"axis\": \"x\", \"speed\": 1.5}], \"flow\": [{\"from\": \"combustor\", \"to\": \"lpt\", \"kind\": \"heat\", \"count\": 6}]}, {\"say\": \"చివరికి వేడి గాలి ఎగ్జాస్ట్ నుంచి వేగంగా వెనక్కి బయటికి వెళ్తుంది.\", \"focus\": [{\"id\": \"exhaust\", \"piece\": \"ఎగ్జాస్ట్ నాజిల్\"}, {\"id\": \"exhaust\", \"piece\": \"ఎగ్జాస్ట్ కోన్\"}], \"explode\": false, \"view\": \"front\", \"flow\": [{\"from\": \"exhaust\", \"to\": [-330, 120, 0], \"kind\": \"heat\", \"count\": 8}]}, {\"say\": \"అంతా కలిసి: గాలి లోపలికి, నొక్కడం, మండటం, తిరగడం, బయటికి. దీన్నే 'లాగు, నొక్కు, మండించు, వదులు' అంటారు.\", \"view\": \"iso\", \"dim\": false, \"spin\": [{\"id\": \"fan\", \"piece\": \"ఫ్యాన్ బ్లేడ్లు\", \"axis\": \"x\", \"speed\": 1.5}], \"flow\": [{\"from\": [260, 120, 0], \"to\": \"fan\", \"kind\": \"air\", \"count\": 6}, {\"from\": \"exhaust\", \"to\": [-330, 120, 0], \"kind\": \"heat\", \"count\": 6}]}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"జెట్ ఇంజన్",
+"జెట్ ఇంజిన్",
+"జెట్",
+"టర్బోఫ్యాన్",
+"విమానం ఇంజన్",
+"విమాన ఇంజన్",
+"jet engine",
+"jet",
+"turbofan",
+"aircraft engine"
+],
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0",
+"power": {
+"start": "స్టార్ట్ చేశాను Sir, ఇంజన్ నెమ్మదిగా తిరుగుతోంది.",
+"full": "ఫుల్ పవర్ Sir. ఫ్యాన్ వేగం పెరుగుతోంది, వెనక భాగం వేడెక్కుతోంది.",
+"half": "సగం పవర్ Sir.",
+"stop": "ఇంజన్ ఆపుతున్నాను Sir, నెమ్మదిగా ఆగుతుంది.",
+"over": "హద్దు దాటింది Sir! ఇంజన్ కంప్యూటర్ (FADEC) ఇప్పుడు ఇంధనం తగ్గించి కాపాడుతుంది.",
+"cut": "రక్షణ పనిచేసింది Sir: పవర్ 85% కి తగ్గింది, వేడి మళ్ళీ హద్దులోకి వచ్చింది."
+},
+"info": {
+"ఫ్యాన్ బ్లేడ్లు": {
+"simple": "ఇది ఫ్యాన్. ముందు నుంచి గాలిని లాగి వెనక్కి తోస్తుంది. విమానాన్ని ఎక్కువగా తోసేది ఇదే.",
+"deep": "22 వెడల్పాటి, వంకరగా తిరిగిన టైటానియం బ్లేడ్లు. వేరు నుంచి చివరి వరకు బ్లేడ్ మలుపు మారుతుంది, ఎందుకంటే చివర వేగం ఎక్కువ. ఇంజన్ తోపుడులో దాదాపు 80% ఈ ఫ్యాన్ గాలిదే.",
+"specs": {
+"బ్లేడ్లు": "22",
+"వ్యాసం": "సుమారు 1.55 m",
+"లోహం": "టైటానియం",
+"వేగం": "నిమిషానికి సుమారు 5,000"
+}
+},
+"స్పిన్నర్": {
+"simple": "ఇది ఫ్యాన్ ముందు ఉండే ముక్కు. గాలిని నున్నగా లోపలికి పంపుతుంది.",
+"deep": "దీని మీద తెల్ల సుడి గీత ఉంటుంది: ఫ్యాన్ తిరుగుతుందో లేదో గ్రౌండ్ సిబ్బందికి దూరం నుంచే తెలుస్తుంది, దగ్గరికి రాకుండా జాగ్రత్త పడతారు.",
+"specs": {
+"పని": "గాలి నున్నగా లోపలికి",
+"గుర్తు": "తెల్ల సుడి గీత"
+}
+},
+"ఫ్యాన్ కేస్": {
+"simple": "ఫ్యాన్ చుట్టూ ఉండే గట్టి గూడు. ఫ్యాన్ గాలిని దారిలో ఉంచుతుంది.",
+"deep": "కార్బన్ కాంపోజిట్ పట్టీతో బలంగా చేస్తారు: ఒక బ్లేడ్ విరిగినా బయటికి ఎగిరిపోకుండా ఇదే ఆపుతుంది. వెనక ఉన్న గైడ్ వేన్లు తిరుగుతున్న గాలిని నేరుగా చేస్తాయి.",
+"specs": {
+"లోపలి వ్యాసం": "సుమారు 1.56 m",
+"పట్టీ": "కార్బన్ కాంపోజిట్"
+}
+},
+"లో-ప్రెషర్ కంప్రెసర్": {
+"simple": "ఫ్యాన్ వెనకే ఉండే చిన్న బ్లేడ్ల వరుసలు. లోపలికి వచ్చిన గాలిని మొదట కొంచెం నొక్కుతాయి.",
+"deep": "దీన్ని బూస్టర్ అంటారు. ఫ్యాన్‌తో పాటు ఒకే షాఫ్ట్ మీద తిరుగుతుంది. 3 వరుసలు తిరిగే బ్లేడ్లు, మధ్యలో కదలని వేన్లు.",
+"specs": {
+"వరుసలు": "3",
+"షాఫ్ట్": "లో-ప్రెషర్ (ఫ్యాన్‌తో)"
+}
+},
+"హై-ప్రెషర్ కంప్రెసర్": {
+"simple": "9 వరుసల చిన్న బ్లేడ్లు. గాలిని గట్టిగా, చాలా చిన్న స్థలంలోకి నొక్కుతాయి.",
+"deep": "ప్రతి వరుసకి గాలి ఒత్తిడి పెరుగుతుంది. చివరికి బయటి గాలి కంటే సుమారు 30 రెట్లు ఒత్తిడి, సుమారు 550°C వేడి. బ్లేడ్లు వెనక్కి వెళ్ళే కొద్దీ చిన్నవి.",
+"specs": {
+"వరుసలు": "9",
+"ఒత్తిడి": "సుమారు 30 రెట్లు",
+"వేగం": "నిమిషానికి సుమారు 15,000"
+}
+},
+"దహన గది": {
+"simple": "ఇక్కడ నొక్కిన గాలిలో ఇంధనం కలిపి మండిస్తారు. ఇంజన్‌కి శక్తి ఇక్కడే వస్తుంది.",
+"deep": "20 ఇంధన నాజిల్స్ సన్నని పొగమంచులా ఇంధనం చల్లుతాయి. మంట సుమారు 2,000°C. గోడలోని రంధ్రాల నుంచి చల్ల గాలి వచ్చి గోడని కాపాడుతుంది, మంటని సరిగ్గా చల్లబరుస్తుంది.",
+"specs": {
+"మంట": "సుమారు 2,000°C",
+"నాజిల్స్": "20",
+"ఆకారం": "ఉంగరం లాంటి గది"
+}
+},
+"హై-ప్రెషర్ టర్బైన్": {
+"simple": "మండిన వేడి గాలి ఈ చక్రాన్ని తిప్పుతుంది. ఇది కంప్రెసర్‌ని తిప్పుతుంది.",
+"deep": "ఇంజన్‌లో అన్నిటికంటే కష్టమైన పని దీనిది: తన కరిగే వేడి కంటే ఎక్కువ వేడి గాలిలో తిరుగుతుంది. బ్లేడ్ల లోపల సన్నని దారులు, ఉపరితలం మీద చిన్న రంధ్రాల నుంచి చల్ల గాలి వచ్చి కాపాడుతుంది. రంగు (గడ్డి రంగు, నీలం, కంచు) వేడి వల్ల వచ్చినదే.",
+"specs": {
+"వేడి": "సుమారు 1,000°C+",
+"లోహం": "నికెల్ సూపర్-అల్లాయ్",
+"షాఫ్ట్": "హై-ప్రెషర్"
+}
+},
+"లో-ప్రెషర్ టర్బైన్": {
+"simple": "4 వరుసల పెద్ద టర్బైన్. మిగిలిన వేడి గాలి శక్తితో ముందున్న ఫ్యాన్‌ని తిప్పుతుంది.",
+"deep": "లోపలి సన్నని షాఫ్ట్ ద్వారా ఫ్యాన్‌కి కలిసి ఉంటుంది. వెనక్కి వెళ్ళే కొద్దీ బ్లేడ్లు పెద్దవి, ఎందుకంటే గాలి విస్తరిస్తుంది.",
+"specs": {
+"వరుసలు": "4",
+"షాఫ్ట్": "లో-ప్రెషర్ (ఫ్యాన్‌కి)"
+}
+},
+"ఎగ్జాస్ట్ నాజిల్": {
+"simple": "వేడి గాలి బయటికి వెళ్ళే దారి. గాలిని వేగంగా వెనక్కి వదులుతుంది.",
+"deep": "చివర కొంచెం సన్నగా ఉంటుంది కాబట్టి గాలి వేగం పెరుగుతుంది. ఫుల్ పవర్‌లో లోపల ఎర్రగా కనిపిస్తుంది.",
+"specs": {
+"వేడి": "సుమారు 600°C"
+}
+},
+"ఎగ్జాస్ట్ కోన్": {
+"simple": "నాజిల్ మధ్యలో ఉండే మొన. వేడి గాలిని నున్నగా బయటికి పంపుతుంది.",
+"deep": "దీన్ని ప్లగ్ అంటారు. గాలి సుడులు తిరగకుండా, శబ్దం కొంచెం తగ్గేలా సహాయపడుతుంది.",
+"specs": {
+"పని": "గాలి నున్నగా బయటికి"
+}
+},
+"పై కేసింగ్": {
+"simple": "లోపలి కోర్ మీద ఉండే పై సగం గూడు. విప్పితే లోపల తిరిగే భాగాలు కనిపిస్తాయి.",
+"deep": "రెండు సగాలుగా ఉంటుంది, పొడవునా బోల్టులతో బిగిస్తారు. పైన ఇంధన, నూనె పైపులు, వైర్లు నడుస్తాయి.",
+"specs": {
+"భాగాలు": "రెండు సగాలు"
+}
+},
+"కింది కేసింగ్": {
+"simple": "కోర్ కింది సగం గూడు. ఇంజన్ బరువు స్టాండ్ మీద దీని ద్వారానే.",
+"deep": "పై సగం తీసినా ఇది ఉంటుంది కాబట్టి తిరిగే భాగాలు దీని లోపల కనిపిస్తాయి.",
+"specs": {
+"భాగాలు": "రెండు సగాలు"
+}
+},
+"లో-ప్రెషర్ షాఫ్ట్": {
+"simple": "మధ్యలో పొడవైన సన్నని కడ్డీ. వెనక టర్బైన్ శక్తిని ముందున్న ఫ్యాన్‌కి చేరుస్తుంది.",
+"deep": "హై-ప్రెషర్ షాఫ్ట్ లోపలి నుంచి వెళ్తుంది. రెండూ వేర్వేరు వేగాల్లో తిరుగుతాయి, అందుకే 'రెండు స్పూల్‌ల' ఇంజన్.",
+"specs": {
+"తిరిగేది": "ఫ్యాన్ వేగంతో"
+}
+},
+"హై-ప్రెషర్ షాఫ్ట్": {
+"simple": "లావాటి గొట్టం లాంటి షాఫ్ట్. హై-ప్రెషర్ టర్బైన్ శక్తిని కంప్రెసర్‌కి చేరుస్తుంది.",
+"deep": "లో-ప్రెషర్ షాఫ్ట్ దీని లోపల నుంచి వెళ్తుంది. ఇది చాలా వేగంగా తిరుగుతుంది.",
+"specs": {
+"తిరిగేది": "నిమిషానికి సుమారు 15,000"
+}
+},
+"యాక్సెసరీ గేర్‌బాక్స్": {
+"simple": "ఇంజన్ కింద ఉండే పెట్టె. ఇంధన పంప్, నూనె పంప్, కరెంట్ జనరేటర్‌ని తిప్పుతుంది.",
+"deep": "కోర్ షాఫ్ట్ నుంచి ఒక చిన్న షాఫ్ట్ కిందికి వచ్చి దీన్ని తిప్పుతుంది. ఇంజన్ స్టార్ట్ చేసేటప్పుడు స్టార్టర్ కూడా దీని ద్వారానే తిప్పుతుంది.",
+"specs": {
+"తిప్పేవి": "ఇంధన పంప్, నూనె పంప్, జనరేటర్"
+}
+},
+"ఇంధన పైపులు": {
+"simple": "పంప్ నుంచి ఇంధనాన్ని దహన గది నాజిల్స్‌కి తీసుకెళ్ళే పైపులు.",
+"deep": "దహన గది చుట్టూ ఒక ఉంగరం పైపు ఉంటుంది, దాని నుంచి 20 నాజిల్స్‌కి ఇంధనం సమానంగా వెళ్తుంది.",
+"specs": {}
+},
+"స్టాండ్": {
+"simple": "సర్వీస్ చేసేటప్పుడు ఇంజన్‌ని పట్టుకుని ఉంచే ఇనుప స్టాండ్.",
+"deep": "చక్రాలు ఉంటాయి కాబట్టి హ్యాంగర్‌లో తోసుకెళ్ళొచ్చు. రెండు ఉయ్యాల లాంటి పట్టులు కేసింగ్‌ని పట్టుకుంటాయి.",
+"specs": {}
+}
+},
+"facts": [
+{
+"k": [
+"ఎన్ని బ్లేడ్లు",
+"బ్లేడ్లు ఎన్ని",
+"బ్లేడ్స్ ఎన్ని",
+"how many blades",
+"blades"
+],
+"a": "ఈ ఫ్యాన్‌లో 22 వెడల్పాటి బ్లేడ్లు ఉన్నాయి Sir. ఇలాంటి పెద్ద ఇంజన్లలో సాధారణంగా 18 నుంచి 24 వరకు ఉంటాయి."
+},
+{
+"k": [
+"ఎంత పెద్దది",
+"సైజు ఎంత",
+"పొడవు ఎంత",
+"వ్యాసం",
+"how big"
+],
+"a": "ఫ్యాన్ సుమారు 1.6 మీటర్లు అడ్డంగా, ఇంజన్ సుమారు 3 మీటర్ల పొడవు Sir."
+},
+{
+"k": [
+"ఎంత వేడి",
+"వేడి ఎంత",
+"ఉష్ణోగ్రత",
+"how hot",
+"temperature"
+],
+"a": "దహన గదిలో మంట సుమారు 2,000°C Sir. టర్బైన్ బ్లేడ్లని లోపలి నుంచి చల్ల గాలితో కాపాడుతారు, లేకపోతే కరిగిపోతాయి."
+},
+{
+"k": [
+"థ్రస్ట్",
+"ఎంత బలం",
+"తోపుడు",
+"ఎంత శక్తి",
+"thrust",
+"how strong"
+],
+"a": "ఇలాంటి ఇంజన్ టేకాఫ్‌లో సుమారు 120 కిలోన్యూటన్లు, అంటే దాదాపు 12 టన్నుల బరువును తోసేంత బలం Sir."
+},
+{
+"k": [
+"ఎంత వేగంగా తిరుగుతుంది",
+"ఆర్పీఎం",
+"rpm",
+"how fast"
+],
+"a": "ఫ్యాన్ నిమిషానికి సుమారు 5,000 సార్లు, లోపలి కోర్ సుమారు 15,000 సార్లు తిరుగుతాయి Sir."
+},
+{
+"k": [
+"ఏ ఇంధనం",
+"ఇంధనం ఏది",
+"ఫ్యూయల్",
+"fuel"
+],
+"a": "జెట్ ఇంధనం Sir (కిరోసిన్ లాంటిది). టేకాఫ్‌లో ఒక్క సెకనుకి సుమారు ఒక కిలో మండుతుంది."
+},
+{
+"k": [
+"బైపాస్",
+"bypass"
+],
+"a": "ఫ్యాన్ లాగిన గాలిలో సుమారు 5 భాగాలు కోర్ బయటి నుంచి, 1 భాగం లోపలి నుంచి వెళ్తుంది Sir. అందుకే దీన్ని హై-బైపాస్ టర్బోఫ్యాన్ అంటారు."
+},
+{
+"k": [
+"బరువు ఎంత",
+"ఎంత బరువు",
+"weight"
+],
+"a": "ఇలాంటి ఇంజన్ బరువు సుమారు 2.4 టన్నులు Sir."
+}
+],
+"quiz": [
+{
+"q": "ఇంధనం ఏ భాగంలో మండుతుంది?",
+"a": "దహన గది",
+"opts": [
+"దహన గది",
+"ఫ్యాన్ కేస్",
+"లో-ప్రెషర్ కంప్రెసర్"
+]
+},
+{
+"q": "విమానాన్ని ఎక్కువగా తోసే గాలిని ఇచ్చేది ఏది?",
+"a": "ఫ్యాన్ బ్లేడ్లు",
+"opts": [
+"ఎగ్జాస్ట్ కోన్",
+"ఫ్యాన్ బ్లేడ్లు",
+"యాక్సెసరీ గేర్‌బాక్స్"
+]
+},
+{
+"q": "ముందున్న ఫ్యాన్‌ని తిప్పేది ఏది?",
+"a": "లో-ప్రెషర్ టర్బైన్",
+"opts": [
+"హై-ప్రెషర్ టర్బైన్",
+"లో-ప్రెషర్ టర్బైన్",
+"దహన గది"
+]
+},
+{
+"q": "గాలిని గట్టిగా నొక్కి చిన్నదిగా చేసేది ఏది?",
+"a": "హై-ప్రెషర్ కంప్రెసర్",
+"opts": [
+"హై-ప్రెషర్ కంప్రెసర్",
+"ఎగ్జాస్ట్ నాజిల్",
+"స్పిన్నర్"
+]
+},
+{
+"q": "తిరిగే భాగాల్లో అన్నిటికంటే వేడిగా ఉండేది ఏది?",
+"a": "హై-ప్రెషర్ టర్బైన్",
+"opts": [
+"ఫ్యాన్ బ్లేడ్లు",
+"లో-ప్రెషర్ కంప్రెసర్",
+"హై-ప్రెషర్ టర్బైన్"
+]
+}
+],
+"faults": [
+{
+"label": "ఫ్యాన్ బ్లేడ్లు",
+"kind": "noise",
+"clue": "శబ్దం జాగ్రత్తగా వినండి Sir: గడగడ శబ్దం ఎక్కడి నుంచి వస్తోంది? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "ఫ్యాన్ బ్లేడ్ మీద పక్షి తగిలి చిన్న సొట్ట పడింది. అందుకే వణుకు, గడగడ శబ్దం. ఇంజనీర్లు ఆ బ్లేడ్‌ని చూసి సరిచేస్తారు లేదా మారుస్తారు."
+},
+{
+"label": "హై-ప్రెషర్ టర్బైన్",
+"kind": "hot",
+"clue": "🌡️ వేడి వ్యూ చూడండి Sir: మామూలు కంటే ఎక్కువ వేడిగా ఉన్న భాగం ఏది?",
+"why": "టర్బైన్ బ్లేడ్లకి వచ్చే చల్ల గాలి దారి మూసుకుపోయింది. అందుకే అది ఎక్కువ వేడెక్కింది. ఇది ప్రమాదం, వెంటనే పవర్ తగ్గించి చెక్ చేయాలి."
+},
+{
+"label": "ఎగ్జాస్ట్ నాజిల్",
+"kind": "loose",
+"clue": "బాగా దగ్గరగా చూడండి Sir: ఏ భాగం వణుకుతోంది?",
+"why": "ఎగ్జాస్ట్ నాజిల్ బోల్టులు వదులయ్యాయి. అందుకే వణుకుతోంది. బోల్టులు సరైన బలంతో బిగించాలి."
+}
+],
+"inside": {
+"దహన గది": {
+"say": "దహన గది లోపల Sir: ముందు నాజిల్ ఇంధనం చల్లుతుంది, చుట్టూ సుడి తిరిగే గాలితో కలిసి మండుతుంది. గోడ రంధ్రాల నుంచి చల్ల గాలి వస్తుంది.",
+"code": "const g = W.group();\nconst wall = W.metal('#9b938a', { rough: 0.4 });\nfor (const z of [-9, 9]) g.add(W.mesh(W.box(40, 22, 1.2, 0.3), wall, { at: [0, 0, z] }));\ng.add(W.mesh(W.box(40, 1.2, 19, 0.3), wall, { at: [0, -11, 0] }));\nconst sw = W.group({ at: [-19, 0, 0] });\nfor (let i = 0; i < 12; i++) sw.add(W.mesh(W.box(1.2, 6, 0.6), W.metal('#c8b98f'), { at: [0, Math.sin(i / 12 * 6.283) * 4, Math.cos(i / 12 * 6.283) * 4], rot: [i * 30, 0, 35] }));\nsw.add(W.mesh(W.cyl(1.6, 1.6, 8, 20), W.metal('#c8b98f'), { at: [-4, 0, 0], rot: [0, 0, 90] }));\ng.add(sw);\nconst flame = W.mesh(W.cone(7, 26, 32), W.glow('#ff8a2a', 3), { at: [-3, 0, 0], rot: [0, 0, -90] });\nflame.scale.set(1, 1, 0.8);\ng.add(flame);\nW.add(sw, { label: 'సుడి తిప్పే రెక్కలు (స్విర్లర్)' });\nW.add(g, { label: 'మంట, గోడ' });\nW.onTick((t) => { flame.scale.y = 1 + 0.06 * Math.sin(t * 23); sw.rotation.x = t * 0.5; });\nW.stream([[-30, 8, 0], [-15, 6, 2], [0, 3, 0], [20, 0, 0]], { kind: 'air', count: 30, size: 0.6, always: true });\nW.stream([[-25, 0, 0], [-19, 0, 0], [-8, 0, 0]], { kind: 'fuel', count: 14, size: 0.5, always: true });"
+},
+"హై-ప్రెషర్ టర్బైన్": {
+"say": "ఒక టర్బైన్ బ్లేడ్ లోపల Sir: లోపల సన్నని దారుల్లో చల్ల గాలి తిరిగి, ఉపరితలం మీద రంధ్రాల నుంచి బయటికి వచ్చి బ్లేడ్ చుట్టూ ఒక చల్లని పొరలా ఉంటుంది.",
+"code": "const g = W.group();\nconst m = W.metal('#b39a6a', { rough: 0.3 });\nconst sh = new THREE.Shape();\nsh.moveTo(-10, 0); sh.quadraticCurveTo(-4, 5, 8, 2); sh.quadraticCurveTo(10, 1, 10, 0); sh.quadraticCurveTo(0, 1.5, -10, 0);\nconst blade = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 30, bevelEnabled: false }), m);\nblade.rotation.x = -Math.PI / 2;\ng.add(blade);\ng.add(W.mesh(W.box(24, 6, 10, 0.6), W.metal('#8d8478'), { at: [0, -3, 0] }));\nW.add(g, { label: 'బ్లేడ్' });\nconst holes = W.group();\nfor (let i = 0; i < 18; i++) holes.add(W.mesh(W.sphere(0.45, 10), W.glow('#7fd8ff', 1.5), { at: [-6 + (i % 6) * 2.6, 6 + Math.floor(i / 6) * 8, 2.6] }));\nW.add(holes, { label: 'చల్ల గాలి రంధ్రాలు' });\nfor (const x of [-6, 0, 6]) W.stream([[x, -5, 0], [x, 6, 0.6], [x, 18, 0.8], [x, 28, 0.6]], { kind: 'cool', count: 16, size: 0.6, always: true });"
+}
+},
+"film": [
+"🛫 టర్బోఫ్యాన్ జెట్ ఇంజన్",
+"పవర్ పెంచుతున్నాను: ఫ్యాన్, కోర్ వేగం పెరుగుతోంది",
+"🌡️ వేడి: దహన గది, టర్బైన్లు దాదాపు 1,000°C పైనే",
+"〰️ గాలి: ఎక్కువ భాగం బయటి నుంచి, కొంచెం లోపలి నుంచి మండి",
+"షాఫ్ట్ వెంట విడదీస్తే ప్రతి భాగం",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"challenge": {
+"kind": "takeoff",
+"title": "🛫 టేకాఫ్ ఛాలెంజ్",
+"rules": "12 సెకన్లలో పవర్ 95% చేర్చాలి, కానీ ఎగ్జాస్ట్ వేడి 950°C దాటకూడదు. 'పవర్ పెంచు' / 'ఫుల్ పవర్' అనండి, లేదా పిడికిలి పైకి ఎత్తండి.",
+"goal": 0.95,
+"secs": 12,
+"limit": 950
+},
+"service": null,
+"scene": "runway",
+"id": "jet"
+}
+}

@@ -122,6 +122,10 @@ public class WorkshopActivity extends Activity {
     private int hiddenCount;
     /** The picture / print file asked of the stage (its one-time id) and what it is for: photo, stl, studio, mini. */
     private String fileReq, fileFor;
+    /** 🏆 the showpiece on the stage (its power bar, words, games); 🤏 pinches in the air. */
+    private WorkshopShow show;
+    private final Pinch pinch = new Pinch();
+    static final String EXTRA_SHOWPIECE = "showpiece", EXTRA_SHELF = "shelf";
     private android.hardware.SensorManager sensors;
     private android.hardware.SensorEventListener tiltL;
     private float[] tilt0;
@@ -192,9 +196,12 @@ public class WorkshopActivity extends Activity {
         int tourAt = -1, guideAt = -1;
         /** (1) 🎨 his own colours / materials: {part id, piece name ("" = the whole part), kind, colour}; the newest last. */
         final List<String[]> paints = new ArrayList<>();
+        /** 🏆 a showpiece's own words (JSON text), null for his builds. */
+        String showpiece;
 
         Shown copy() {
             Shown c = new Shown();
+            c.showpiece = showpiece;
             c.at = at; c.title = title; c.what = what; c.model = model; c.say = say; c.cost = cost; c.estimated = estimated;
             c.changes = changes; c.repairs = repairs; c.seconds = seconds; c.firstPart = firstPart;
             c.tour = tour; c.tourAt = tourAt; c.guide = guide; c.guideAt = guideAt;
@@ -220,7 +227,7 @@ public class WorkshopActivity extends Activity {
                     .put("parts", ps).put("say", say == null ? "" : say).put("cost", cost).put("estimated", estimated).put("repairs", repairs)
                     .put("changes", changes).put("seconds", seconds).put("first_part_seconds", firstPart).put("gone", gs)
                     .put("tour", tour == null ? "" : tour).put("tour_at", tourAt).put("guide", guide == null ? "" : guide).put("guide_at", guideAt)
-                    .put("paints", paintsJson());
+                    .put("paints", paintsJson()).put("showpiece", showpiece == null ? JSONObject.NULL : new JSONObject(showpiece));
         }
 
         JSONArray paintsJson() {
@@ -236,6 +243,8 @@ public class WorkshopActivity extends Activity {
             s.what = b.optString("what");
             s.model = b.optString("model");
             s.say = b.optString("say");
+            JSONObject spx = b.optJSONObject("showpiece");
+            s.showpiece = spx == null ? null : spx.toString();
             s.cost = b.optDouble("cost", 0);
             s.estimated = b.optBoolean("estimated");
             s.changes = b.optInt("changes", 0);
@@ -365,6 +374,13 @@ public class WorkshopActivity extends Activity {
             if (front && ear != null && ear.voiceFlow) waitThen(w0, () -> start(w0, h0, s0)); // (asked by voice here: ✋ 3 seconds)
             else start(w0, h0, s0);
             return;
+        }
+        if (i.getBooleanExtra(EXTRA_SHELF, false) && job == null) { i.removeExtra(EXTRA_SHELF); ui.post(this::shelf); return; } // 🏆
+        String spId = i.getStringExtra(EXTRA_SHOWPIECE);
+        if (spId != null && job == null) { // 🏆 "జెట్ ఇంజన్ చూపించు" said to Jarvis: the hand-made one, ₹0
+            i.removeExtra(EXTRA_SHOWPIECE);
+            JSONObject b = Showpiece.load(this, spId);
+            if (b != null) { show(b); return; }
         }
         if (job != null) return;
         if (i.getBooleanExtra(EXTRA_OPEN_LAST, false) || onStage.isEmpty()) {
@@ -513,6 +529,7 @@ public class WorkshopActivity extends Activity {
         actions.addView(replayBtn);
         actions.addView(tiltBtn);
         actions.addView(fromPhoto);
+        actions.addView(pill("🏆 షోపీస్‌లు", v -> shelf()));
         actions.addView(saved);
         actions.addView(cost);
         actions.addView(spinBtn);
@@ -537,6 +554,8 @@ public class WorkshopActivity extends Activity {
         cutRow.addView(Ui.text(this, "వెనుక", 12.5f, Ui.MUTED));
         cutRow.setVisibility(View.GONE);
         bottom.addView(cutRow);
+        show = new WorkshopShow(showHost());
+        bottom.addView(show.panel());
         HorizontalScrollView hs = new HorizontalScrollView(this);
         hs.setHorizontalScrollBarEnabled(false);
         hs.addView(actions);
@@ -722,6 +741,7 @@ public class WorkshopActivity extends Activity {
     /** A view / light / pull-apart / undo word: done at once, no AI. Anything else: a new build, or a change to the model on the stage. */
     private void said(String text, boolean byVoice) {
         if (tourSteps != null && Workshop.isCancel(text)) { stopTourSaid(byVoice); return; } // (🎓 "ఆపు" during the show: the show stops, nothing is asked)
+        if (job == null && show != null && show.said(text, byVoice)) return; // 🏆 a showpiece's own words (₹0)
         String cmd = Workshop.command(text);
         if (cmd != null) { command(cmd, byVoice); return; }
         if (tourSteps != null) endTour(false); // (a question or a change: the show makes way)
@@ -800,6 +820,7 @@ public class WorkshopActivity extends Activity {
     private boolean tookByVoice(String words) {
         if (tourSteps != null && Workshop.isCancel(words)) { stopTourSaid(true); return true; }
         if (readState == READ_PLAYING && Workshop.isCancel(words)) { readPause(); return true; } // (🔊 "ఆపు" while the guide is read: ⏸)
+        if (job == null && show != null && show.said(words, true, true)) return true; // 🏆 (strict: else Jarvis's brain hears it)
         String cmd = Workshop.command(words);
         if (cmd != null) { command(cmd, true); return true; }
         boolean has = shown != null && !shown.parts.isEmpty();
@@ -821,6 +842,7 @@ public class WorkshopActivity extends Activity {
     }
 
     private void micLook(int state) {
+        if (show != null) show.voiceState(state == WorkshopVoice.LISTENING || state == WorkshopVoice.SPEAKING);
         if (micBtn == null) return;
         int bg = state == WorkshopVoice.LISTENING ? Ui.CYAN : state == WorkshopVoice.THINKING ? 0x33F5C451 : state == WorkshopVoice.SPEAKING ? 0x334FD2FF : 0x1AFFFFFF;
         micBtn.setBackground(Ui.round(this, bg, state == WorkshopVoice.LISTENING ? Ui.CYAN : Ui.LINE2, 999));
@@ -933,6 +955,7 @@ public class WorkshopActivity extends Activity {
             case "new":
                 if (job != null) { said = "ఒక పని ఇంకా జరుగుతోంది Sir."; break; }
                 shown = null;
+                if (show != null) show.stop();
                 undo.clear();
                 exploded = false;
                 onStage.clear();
@@ -1150,6 +1173,12 @@ public class WorkshopActivity extends Activity {
         sendPaints(sh);
         titleView.setText(sh.title);
         if (sh.model != null && !sh.model.isEmpty()) chip.setText(label(sh.model));
+        if (show != null) { // 🏆
+            Showpiece s = Showpiece.of(sh.showpiece, sh.title);
+            if (s == null) show.stop();
+            else if (show.sp == null || !show.sp.id.equals(s.id)) show.start(s);
+            else show.start(show.sp); // (the stage started over: its settings again)
+        }
         refreshButtons();
     }
 
@@ -1189,7 +1218,7 @@ public class WorkshopActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setGeolocationEnabled(false);
-        s.setMediaPlaybackRequiresUserGesture(true);
+        s.setMediaPlaybackRequiresUserGesture(false); // (🏆 a showpiece's own made-up sounds start with it; the page itself can make none: the stage takes the sound maker away from parts)
         s.setSupportMultipleWindows(false);
         s.setJavaScriptCanOpenWindowsAutomatically(false);
         s.setSupportZoom(false);
@@ -1297,7 +1326,8 @@ public class WorkshopActivity extends Activity {
         JSONObject m;
         try { m = new JSONObject(data); } catch (Exception e) { return; }
         String t = m.optString("t"), id = m.optString("id");
-        if ("pick".equals(t)) { picked(id, m.optString("label")); return; }
+        if (show != null && show.fromStage(m)) return; // 🏆
+        if ("pick".equals(t)) { picked(id, m.optString("label")); if (show != null) show.picked(id, m.optString("label"), m.optInt("x") == 1); return; }
         if ("view".equals(t)) {
             if (id.isEmpty()) { isolatedOn = false; if ("nothing-picked".equals(m.optString("label"))) setStatus("ముందు బొమ్మలో ఒక భాగం తాకండి Sir."); }
             else { isolatedOn = true; setStatus("🔍 " + m.optString("label") + " ఒక్కటే · \"అన్నీ చూపించు\" అంటే మొత్తం బొమ్మ"); }
@@ -1328,7 +1358,9 @@ public class WorkshopActivity extends Activity {
         if ("file".equals(t)) { gotFile(m); return; }
         if ("grab".equals(t) && "guest".equals(id)) { feel("grab", 18); setStatus("✋ " + guestTitle + " · వదిలిన చోట ఉంటుంది"); return; }
         if ("moved".equals(t) && "guest".equals(id)) { guestTop = false; setStatus("✋ " + guestTitle + " అక్కడే పెట్టాను · 🔝 పైన పెట్టు / ↔️ పక్కన పెట్టు"); refreshButtons(); return; }
+        if ("grab".equals(t) && id.isEmpty()) { pinch.caught(false); return; } // (🤏 nothing under his fingers: the pinch turns the view)
         if ("grab".equals(t)) { // ✋ a piece in his hand
+            pinch.caught(true);
             feel("grab", 18);
             setStatus("✋ " + m.optString("label") + " · 🗑️ మీదకి లాగి వదిలితే బిన్‌లో; వేరే చోట వదిలితే అక్కడే" + (exploded ? "; దాని చోటికి తెస్తే అతుక్కుంటుంది" : ""));
             return;
@@ -1495,6 +1527,7 @@ public class WorkshopActivity extends Activity {
         j.photoKind = kind;
         job = j;
         shown = null;
+        if (show != null) show.stop();
         undo.clear();
         exploded = false;
         forgetPick();
@@ -1940,12 +1973,73 @@ public class WorkshopActivity extends Activity {
         shown = Shown.of(b);
         undo.clear();
         putOnStage(shown);
+        if (shown.showpiece != null && show != null && show.sp != null) { // 🏆 a showpiece: no saved picture, its own hello
+            setStatus("🏆 " + shown.title + " · చేత్తో తయారు చేసింది · ₹0 · కింద ⋯ లో అన్ని ఫీచర్లు");
+            speak(show.sp.say(), true);
+            return;
+        }
         if (!Workshop.thumb(this, shown.at).isFile()) { ui.removeCallbacks(thumbR); ui.postDelayed(thumbR, 4500); } // (🖼️ an older save gets its picture)
         setStatus("📂 దాచిన బొమ్మ (మళ్ళీ తెరవడానికి ఖర్చు లేదు) · తయారైనప్పుడు " + Workshop.money(b.optDouble("cost", 0))
                 + (b.optBoolean("estimated") ? " (సుమారు)" : ""));
     }
 
     private void savedList() { gallery(false); }
+
+    // ================================================================ 🏆 the showpieces (inside the app: ₹0)
+
+    /** 🏆 The hand-made showpieces: a tap puts one on the stage (no AI, no money). */
+    private void shelf() {
+        if (job != null) { Toast.makeText(this, "ముందు ఈ బొమ్మ పూర్తవనివ్వండి (లేదా ⏹)", Toast.LENGTH_SHORT).show(); return; }
+        List<JSONObject> l = Showpiece.shelf(this);
+        if (l.isEmpty()) { Toast.makeText(this, "షోపీస్‌లు దొరకలేదు", Toast.LENGTH_SHORT).show(); return; }
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(14), dp(6), dp(14), dp(6));
+        final AlertDialog[] dlg = new AlertDialog[1];
+        for (JSONObject b : l) {
+            LinearLayout tile = new LinearLayout(this);
+            tile.setOrientation(LinearLayout.VERTICAL);
+            tile.setPadding(dp(14), dp(12), dp(14), dp(12));
+            tile.setBackground(Ui.round(this, 0xFF111720, Ui.LINE2, 12));
+            tile.addView(Ui.text(this, "🏆 " + b.optString("title"), 16f, Ui.TEXT));
+            TextView w = Ui.text(this, b.optString("what"), 12.5f, Ui.MUTED);
+            w.setPadding(0, dp(3), 0, 0);
+            tile.addView(w);
+            tile.setOnClickListener(v -> { if (dlg[0] != null) dlg[0].dismiss(); show(b); });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.bottomMargin = dp(8);
+            col.addView(tile, lp);
+        }
+        ScrollView sv = new ScrollView(this);
+        sv.addView(col);
+        dlg[0] = new AlertDialog.Builder(this).setTitle("🏆 షోపీస్‌లు · చేత్తో చేసినవి · తెరవడానికి ఖర్చు లేదు").setView(sv).setNegativeButton("వద్దు", null).show();
+    }
+
+    private WorkshopShow.Host showHost() {
+        return new WorkshopShow.Host() {
+            @Override public Activity screen() { return WorkshopActivity.this; }
+            @Override public void send(JSONObject m) { WorkshopActivity.this.send(m); }
+            @Override public void speak(String s, boolean thenListen) { WorkshopActivity.this.speak(s, thenListen); }
+            @Override public void status(String s) { setStatus(s); }
+            @Override public void answer(String title, String text, String aboutId) { showAnswer(title, text, aboutId); }
+            @Override public void card(String title, String text) { textCard(title, text); }
+            @Override public void command(String cmd, boolean byVoice) { WorkshopActivity.this.command(cmd, byVoice); }
+            @Override public String partCode(String id) { String[] x = shown == null ? null : shown.parts.get(id); return x == null ? null : x[1]; }
+            @Override public void replacePart(String id, String code) { // 🔁 (S) a variant swapped in: on the stage, not saved (the showpiece stays as it came)
+                if (shown == null || !shown.parts.containsKey(id)) return;
+                shown.parts.put(id, new String[]{shown.parts.get(id)[0], code});
+                onStage.put(id, code);
+                sendPart(id, code);
+            }
+            @Override public String picked() { return pickedId == null ? null : pickedName; }
+            @Override public void askFile(String what, JSONObject msg) {
+                fileReq = Long.toHexString(System.nanoTime()) + Integer.toHexString((int) (Math.random() * 0xFFFF));
+                fileFor = what;
+                try { WorkshopActivity.this.send(msg.put("req", fileReq)); } catch (Exception ignored) {}
+            }
+            @Override public boolean handsOn() { return handsOn; }
+        };
+    }
 
     /** 📂 The saved models as small pictures (₹0): a tap opens one, or (🔀) puts it beside the one on the stage. */
     private void gallery(boolean asGuest) {
@@ -2423,10 +2517,28 @@ public class WorkshopActivity extends Activity {
     /** One camera picture's hands → the model turns, grows, bursts apart, comes together. */
     private void sawHands(List<HandSigns.Hand> hands, long ms, int w, int h) {
         if (!handsOn || destroyed || signs == null) return;
-        List<HandSigns.Act> acts = signs.step(hands, ms, h > 0 ? w / (double) h : 0.75, exploded, tourSteps != null);
+        double aspect = h > 0 ? w / (double) h : 0.75;
+        for (Pinch.Msg pm : pinch.step(hands, ms, aspect, show != null && show.open() ? show.power() : Double.NaN, tourSteps != null)) { // 🤏
+            try {
+                switch (pm.k) {
+                    case "turn":
+                        if (spinning) { spinning = false; send(json("spin").put("on", false)); refreshButtons(); }
+                        send(json("nudge").put("az", pm.x).put("el", pm.y));
+                        break;
+                    case "power": if (show != null) show.handPower(pm.v); break;
+                    case "reset": feel("back", 15); command("center", false); break;
+                    case "explodek": exploded = pm.v > 0.5; send(json("explodek").put("k", pm.v)); break;
+                    default:
+                        if ("down".equals(pm.k)) feel("grab", 12);
+                        send(json("hand").put("k", pm.k).put("x", pm.x).put("y", pm.y).put("v", pm.v));
+                }
+            } catch (Exception ignored) {}
+        }
+        List<HandSigns.Hand> forSigns = pinch.busy(ms) ? new ArrayList<>() : hands; // (a pinch or the fist's throttle: the old signs rest - never a "burst")
+        List<HandSigns.Act> acts = signs.step(forSigns, ms, aspect, exploded, tourSteps != null);
         if (holo != null) {
             if (w != holoW || h != holoH) placeHolo(w, h);
-            holo.show(hands, signs.label);
+            holo.show(hands, pinch.label.isEmpty() ? signs.label : pinch.label);
         }
         for (HandSigns.Act a : acts) {
             try {
@@ -2705,6 +2817,7 @@ public class WorkshopActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        if (show != null) show.stop();
         openTitle = null;
         if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
         if (front) { front = false; JarvisAccessibility.bubbleAside(false); }
@@ -2899,6 +3012,17 @@ public class WorkshopActivity extends Activity {
                     Coder.Made made = Workshop.saveVideo(this, Workshop.fileName(title, "show-" + System.currentTimeMillis() % 1000000 + (mp4 ? ".mp4" : ".webm")), mp4 ? "video/mp4" : "video/webm", b);
                     line = "🎞️ గ్యాలరీలో దాచాను: " + made.where + " · మాటలు అక్షరాలుగా (గొంతు లేదు)";
                     said = "షో వీడియో గ్యాలరీలో దాచాను Sir.";
+                } else if ("poster".equals(what)) { // 🖼️ (R) the poster: a picture in the gallery and an A4 PDF in Downloads
+                    if (!"jpg".equals(kind) || !Workshop.jpegOk(b)) throw new IllegalStateException("పోస్టర్ సరిగ్గా రాలేదు");
+                    Coder.Made pic = Workshop.savePicture(this, Workshop.fileName(title, "poster-" + System.currentTimeMillis() % 1000000 + ".jpg"), "image/jpeg", b);
+                    Coder.Made pdf = Coder.save(this, "Jarvis/workshop", Workshop.fileName(title, "poster.pdf"), "application/pdf", WorkshopShow.posterPdf(b, title));
+                    line = "🖼️ పోస్టర్: గ్యాలరీలో " + pic.where + " · PDF " + pdf.where;
+                    said = "పోస్టర్ గ్యాలరీలో, PDF Downloads లో దాచాను Sir. పంపాలంటే మీరే అక్కడి నుంచి పంపండి.";
+                } else if ("photomode".equals(what)) { // 📸 (AA) a clean, big picture
+                    if (!"jpg".equals(kind) || !Workshop.jpegOk(b)) throw new IllegalStateException("ఫోటో సరిగ్గా రాలేదు");
+                    Coder.Made made = Workshop.savePicture(this, Workshop.fileName(title, "photo-" + System.currentTimeMillis() % 1000000 + ".jpg"), "image/jpeg", b);
+                    line = "📸 గ్యాలరీలో దాచాను: " + made.where;
+                    said = "అందమైన ఫోటో గ్యాలరీలో దాచాను Sir.";
                 } else if ("photo".equals(what)) {
                     if (!"jpg".equals(kind) || !Workshop.jpegOk(b)) throw new IllegalStateException("ఫోటో సరిగ్గా రాలేదు");
                     Coder.Made made = Workshop.savePicture(this, Workshop.fileName(title, System.currentTimeMillis() % 1000000 + ".jpg"), "image/jpeg", b);
