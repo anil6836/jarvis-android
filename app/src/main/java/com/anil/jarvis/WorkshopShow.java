@@ -691,6 +691,9 @@ final class WorkshopShow {
         return t;
     }
 
+    /** The power bar as the showpiece wants it (after ⛶ full screen gave the bars back). */
+    void refresh() { refreshPanel(); }
+
     private void refreshPanel() {
         if (panel == null) return;
         boolean on = sp != null && controlsShown;
@@ -709,7 +712,7 @@ final class WorkshopShow {
     void menu() {
         if (sp == null) return;
         final String[][] items = {
-                {"🎓 ఎలా పనిచేస్తుంది (షో)", "show_how"}, {"🌡️ వేడి", "heat"}, {"〰️ ప్రవాహాలు", "flow"}, {"🐢 స్లో మోషన్", "slow"}, {"⏸ ఆపి చూపు / ▶️ మామూలు", "freeze"},
+                {"🎓 ఎలా పనిచేస్తుంది (షో)", "show_how"}, {"⛶ ఫుల్ స్క్రీన్", "full_on"}, {"🌡️ వేడి", "heat"}, {"〰️ ప్రవాహాలు", "flow"}, {"🐢 స్లో మోషన్", "slow"}, {"⏸ ఆపి చూపు / ▶️ మామూలు", "freeze"},
                 {"🔊 / 🔇 శబ్దం", "sound"}, {"🩺 స్టెతస్కోప్", "listen"}, {"🧅 ఒక పొర తీయి", "peel"}, {"🧅 పొర పెట్టు", "unpeel"}, {"⏪ ఎలా కట్టారో (టైమ్‌లైన్)", "timeline"},
                 {"🔬 లోపల చూపు", "inside"}, {"🖐️ చేతి ఎక్స్‌రే", "hx"}, {"🧍 మనిషితో సైజు పోలిక", "person"}, {"🪙 నాణెంతో పోలిక", "coin"},
                 {"💠 హోలోగ్రామ్", "holo"}, {"🎨 రెయిన్‌బో లైట్లు", "rgb"}, {"🌞 ఎండాకాలం 40°", "hot"}, {"❄️ ఏసీ గది 24°", "ac"}, {"⛰️ ఘాట్ రోడ్డు", "hill"}, {"🌃 రాత్రి రన్‌వే", "runway"},
@@ -735,6 +738,7 @@ final class WorkshopShow {
     private void menuPick(String k) {
         switch (k) {
             case "show_how": h.command("show_how", false); return;
+            case "full_on": h.command("full_on", false); return;
             case "heat": heatOn = !heatOn; run(new Showpiece.Act("heat", heatOn ? 1 : 0, ""), false); return;
             case "flow": flowOn = !flowOn; run(new Showpiece.Act("flow", flowOn ? 1 : 0, ""), false); return;
             case "holo": holoOn = !holoOn; run(new Showpiece.Act("holo", holoOn ? 1 : 0, ""), false); return;

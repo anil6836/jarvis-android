@@ -119,6 +119,10 @@ public class WorkshopActivity extends Activity {
     private TextView isoBtn, xrayBtn, cutBtn, hideBtn, allBtn, sizeBtn, snapBtn, studioBtn, stlBtn, replayBtn, tiltBtn, rotBtn;
     private LinearLayout cutRow;
     private boolean isolatedOn, xrayOn, cutOn, tiltOn, landscape;
+    /** ⛶ the stage alone on the whole screen (bars and the phone's own bars away; a showpiece keeps its power bar). */
+    private boolean fullOn;
+    private LinearLayout fullChips;
+    private final java.util.Map<View, Integer> fullWas = new java.util.HashMap<>();
     private int hiddenCount;
     /** The picture / print file asked of the stage (its one-time id) and what it is for: photo, stl, studio, mini. */
     private String fileReq, fileFor;
@@ -423,6 +427,11 @@ public class WorkshopActivity extends Activity {
         rotBtn.setContentDescription("అడ్డంగా / నిలువుగా");
         rotBtn.setOnClickListener(v -> turnScreen(!landscape));
         top.addView(rotBtn);
+        TextView fullBtn = Ui.text(this, "⛶", 21, Ui.TEXT);
+        fullBtn.setPadding(dp(14), dp(6), dp(4), dp(6));
+        fullBtn.setContentDescription("ఫుల్ స్క్రీన్");
+        fullBtn.setOnClickListener(v -> fullScreen(true));
+        top.addView(fullBtn);
         TextView close = Ui.text(this, "✕", 22, Ui.TEXT);
         close.setPadding(dp(16), dp(6), dp(8), dp(6));
         close.setContentDescription("మూసేయి");
@@ -627,17 +636,36 @@ public class WorkshopActivity extends Activity {
         acl.leftMargin = acl.rightMargin = dp(12);
         acl.topMargin = dp(84);
         root.addView(answerCard, acl);
+        // ⛶ in full screen: only these two small buttons (and a showpiece's power bar) stay
+        fullChips = new LinearLayout(this);
+        fullChips.setOrientation(LinearLayout.HORIZONTAL);
+        TextView fMic = Ui.pill(this, "🎙️");
+        fMic.setContentDescription("మాట్లాడండి");
+        fMic.setOnClickListener(v -> { if (ear != null) ear.tap(); });
+        TextView fOut = Ui.pill(this, "⛶ బయటికి");
+        fOut.setContentDescription("ఫుల్ స్క్రీన్ నుంచి బయటికి");
+        fOut.setOnClickListener(v -> fullScreen(false));
+        LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-2, -2);
+        fl.leftMargin = dp(8);
+        fullChips.addView(fMic);
+        fullChips.addView(fOut, fl);
+        fullChips.setAlpha(0.85f);
+        fullChips.setVisibility(View.GONE);
+        FrameLayout.LayoutParams fcl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        fcl.topMargin = dp(10);
+        fcl.rightMargin = dp(10);
+        root.addView(fullChips, fcl);
         setContentView(root);
         // the stage frames the model in the space the bars leave (they are see-through at their soft edges: a little less)
         root.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
             int h = root.getHeight();
             if (h <= 0 || topBar == null || bottomBar == null) return;
-            float t = Math.max(0, topBar.getHeight() - dp(16)) / (float) h, bt = Math.max(0, bottomBar.getHeight() - dp(20)) / (float) h;
+            float t = Math.max(0, barH(topBar) - dp(16)) / (float) h, bt = Math.max(0, barH(bottomBar) - dp(20)) / (float) h;
             if (Math.abs(t - sentTop) < 0.01f && Math.abs(bt - sentBottom) < 0.01f) return;
             sentTop = t;
             sentBottom = bt;
             FrameLayout.LayoutParams cl = (FrameLayout.LayoutParams) answerCard.getLayoutParams();
-            int want = Math.max(dp(40), topBar.getHeight() - dp(12));
+            int want = Math.max(dp(fullOn ? 58 : 40), barH(topBar) - dp(12)); // (⛶ below the small corner buttons)
             if (cl.topMargin != want) { cl.topMargin = want; answerCard.setLayoutParams(cl); }
             try { send(json("inset").put("top", t).put("bottom", bt)); } catch (Exception ignored) {}
         });
@@ -1034,6 +1062,7 @@ public class WorkshopActivity extends Activity {
             case "fromphoto": photoChoice(); break;
             case "plan": photoKind = Workshop.PLAN; pickPhoto(Workshop.PLAN); break;
             case "landscape": case "portrait": turnScreen("landscape".equals(cmd)); break;
+            case "full_on": case "full_off": fullScreen("full_on".equals(cmd)); said = "full_on".equals(cmd) ? "ఫుల్ స్క్రీన్ Sir. బయటికి రావాలంటే పైన ⛶ బయటికి, లేదా వెనక్కి." : null; break;
             // ---- (A5) the names, the bin
             case "labels_off": case "labels_on":
                 labelsOn = "labels_on".equals(cmd);
@@ -1964,7 +1993,7 @@ public class WorkshopActivity extends Activity {
                 .setPositiveButton("మూసేయి", (d, w) -> { stopJob(j); finish(); }).setNegativeButton("ఉండు", null).show();
     }
 
-    @Override public void onBackPressed() { leave(); }
+    @Override public void onBackPressed() { if (fullOn) fullScreen(false); else leave(); }
 
     // ================================================================ saved builds (no AI, no money)
 
@@ -2507,7 +2536,7 @@ public class WorkshopActivity extends Activity {
         holoH = h;
         int bw = w >= h ? dp(150) : dp(112), bh = Math.round(bw * (float) h / w) + dp(30);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(bw, bh, android.view.Gravity.TOP | android.view.Gravity.END);
-        lp.topMargin = (topBar == null ? 0 : topBar.getHeight()) + dp(8);
+        lp.topMargin = (topBar == null ? 0 : barH(topBar)) + dp(8);
         lp.rightMargin = dp(8);
         FrameLayout.LayoutParams old = (FrameLayout.LayoutParams) holo.getLayoutParams();
         if (old != null && old.width == lp.width && old.height == lp.height && old.topMargin == lp.topMargin && old.gravity == lp.gravity) return;
@@ -2714,7 +2743,7 @@ public class WorkshopActivity extends Activity {
         final String data = m.optString("data", ""), kind = m.optString("kind");
         if (bg == null || !"png".equals(kind) || data.isEmpty()) { setStatus("✗ ఫోటో రాలేదు Sir."); return; }
         final int h = rootView.getHeight();
-        final int top = topBar == null ? 0 : topBar.getHeight(), bottom = h - (bottomBar == null ? 0 : bottomBar.getHeight());
+        final int top = topBar == null ? 0 : barH(topBar), bottom = h - (bottomBar == null ? 0 : barH(bottomBar));
         final String title = shown != null ? shown.title : "model";
         new Thread(() -> {
             String line, said;
@@ -3211,6 +3240,45 @@ public class WorkshopActivity extends Activity {
                 .setNegativeButton("వద్దు", null).show();
     }
 
+    /**
+     * ⛶ The stage on the whole screen: the top and bottom bars and the phone's own bars go away (a showpiece keeps its power
+     * bar, a bike its grip, gears, clutch, brake); a 🎙️ and "⛶ బయటికి" stay small in the corner. Back, or the words, come out.
+     */
+    @SuppressWarnings("deprecation")
+    private void fullScreen(boolean on) {
+        if (on == fullOn || topBar == null || bottomBar == null) return;
+        fullOn = on;
+        View keep = show != null && show.open() ? show.panel() : null;
+        if (on) {
+            fullWas.clear();
+            topBar.setVisibility(View.GONE);
+            ViewGroup b = (ViewGroup) bottomBar;
+            boolean any = false;
+            for (int i = 0; i < b.getChildCount(); i++) {
+                View c = b.getChildAt(i);
+                fullWas.put(c, c.getVisibility());
+                if (c != keep) c.setVisibility(View.GONE);
+                else any = c.getVisibility() == View.VISIBLE;
+            }
+            if (!any) bottomBar.setVisibility(View.GONE);
+            fullChips.setVisibility(View.VISIBLE);
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        } else {
+            topBar.setVisibility(View.VISIBLE);
+            bottomBar.setVisibility(View.VISIBLE);
+            for (java.util.Map.Entry<View, Integer> e : fullWas.entrySet()) e.getKey().setVisibility(e.getValue());
+            fullWas.clear();
+            if (show != null) show.refresh(); // (the power bar as the showpiece wants it)
+            fullChips.setVisibility(View.GONE);
+            getWindow().getDecorView().setSystemUiVisibility(0);
+        }
+        feel("back", 12);
+    }
+
+    /** A bar's height as the stage sees it (⛶ a hidden bar keeps its old height in Android: it counts as none). */
+    private static int barH(View bar) { return bar == null || bar.getVisibility() != View.VISIBLE ? 0 : bar.getHeight(); }
+
     /** 🔄 Across (landscape) or upright, remembered for next time. */
     private void turnScreen(boolean across) {
         landscape = across;
@@ -3243,7 +3311,7 @@ public class WorkshopActivity extends Activity {
     // ================================================================ (E) 🎓 how it works: a show written once by his AI, then free
 
     /** What he may ask while a show plays without stopping it. */
-    private static final Set<String> TOUR_KEEPS = new HashSet<>(Arrays.asList("zoom_in", "zoom_out", "night", "day", "cost", "center",
+    private static final Set<String> TOUR_KEEPS = new HashSet<>(Arrays.asList("full_on", "full_off", "zoom_in", "zoom_out", "night", "day", "cost", "center",
             "show_how", "show_next", "show_stop", "labels_on", "labels_off", "ar_on", "ar_off", "photo", "spin_on", "spin_off",
             "hands_on", "hands_off", "show_video"));
 
@@ -3735,7 +3803,7 @@ public class WorkshopActivity extends Activity {
         View root = rootView;
         int w = root.getWidth(), h = root.getHeight();
         if (w <= 0 || h <= 0) return;
-        int top = topBar == null ? 0 : topBar.getHeight(), bottom = h - (bottomBar == null ? 0 : bottomBar.getHeight());
+        int top = topBar == null ? 0 : barH(topBar), bottom = h - (bottomBar == null ? 0 : barH(bottomBar));
         if (bottom - top < h / 4) { top = 0; bottom = h; }
         int[] at = new int[2];
         root.getLocationInWindow(at);
