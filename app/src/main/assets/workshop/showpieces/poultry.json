@@ -1,0 +1,508 @@
+{
+"at": 1763700000024,
+"title": "గుడ్ల కోళ్ళ ఫారం",
+"what": "లేయర్ కోళ్ళ ఫారం: A ఆకార కేజ్‌లు, సుమారు 10,000 కోళ్ళు, టన్నెల్ ఫ్యాన్లు, కూలింగ్ ప్యాడ్‌లు, మేత ట్రాలీ, నిపుల్ డ్రింకర్లు, గుడ్ల బెల్ట్‌లు, సైలో, మేత మిల్. 🕐 🚶",
+"model": "showpiece",
+"parts": [
+{
+"id": "land",
+"status": "ఫారం నేల సిద్ధం చేస్తున్నాను",
+"code": "// Layer (egg) poultry farm, hand-made, like the farms in the Godavari districts. Units: cm, real size. One long shed (60 m ×\n// 15 m) with three rows of three-tier A-frame cages: about 10,000 white hens (drawn: about a thousand). Tunnel ventilation:\n// big fans in the far end pull the air the whole length of the shed, in through wet cooling pads at the near end. Feed\n// trolleys run over the rows, nipple drinkers give water, the eggs roll forward onto belts that carry them to the egg room.\n// Outside: the feed silo and feed mill, the water tank, the generator, a foot bath at the gate (no germs come in).\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 8, ground: '#7d8a52', zoom: 0.62 });\nconst land = W.group();\nland.add(W.mesh(W.box(17000, 20, 12000), S.land('soil', '#a99572', 700), { at: [-500, -10, 600] }));\nland.add(W.mesh(W.box(17000, 6, 600), S.land('asphalt', '#5d6064', 400), { at: [-500, 3, 3300] }), S.dashes(-8900, 7900, 3300));\nland.add(W.mesh(W.box(700, 6, 1100), S.land('gravel', '#a69e8e', 400), { at: [-1000, 4, 2550] }));\nW.add(land, { label: 'ఫారం నేల', ground: true });\nconst tr = W.group();\ntr.add(S.trees(14, -8800, -4800, 7800, 2700, (x, z) => (Math.abs(x) > 4600 || z < -2700 || (z > 1900 && Math.abs(x + 1000) > 900)) && !(x > -6200 && x < -4200 && z > 1100 && z < 2600) && !(x > 1300 && x < 2700 && z < -1700 && z > -3000)));\nW.add(tr, { label: 'చెట్లు', ground: true });\n"
+},
+{
+"id": "shed",
+"status": "షెడ్, కేజ్‌లు కడుతున్నాను",
+"code": "const S = W.store;\n// The shed: a low brick wall, wire mesh above it and closed curtains (the air must come in only through the pads), a\n// sheet roof with a ridge vent. Inside: three rows of A-frame cages, three tiers on each side, the lower tiers sticking\n// out further (the droppings fall clear). The cage floors slope forward: an egg rolls out onto the belt in front.\nS.ROWS = [-470, 0, 470]; S.L = 5400; S.X0 = -2700;\nconst sh = S.shed([0, 0, 0], 6000, 300, 1500, { color: '#d9d4c6', door: 0, rise: 220, wall: S.sf('brick', '#b8644a', { tile: 160 }) });\nconst shf = W.group(); shf.add(sh.floor);\nW.add(shf, { label: 'షెడ్ నేల', ground: true });\n// the long walls are closed brick (the air must come in only through the pads); the two ends: the pads at −X, a wall\n// round the six fans at +X (the shed kit's plain end walls are taken out)\nsh.walls.remove(sh.walls.children[1], sh.walls.children[2]);\nconst es = S.sf('sheet', '#d9d4c6');\nfor (const [z0, z1] of [[-750, -550], [-410, -70], [70, 410], [550, 750]]) sh.walls.add(W.mesh(W.box(16, 300, z1 - z0), es, { at: [3000, 150, (z0 + z1) / 2] }));\nsh.walls.add(W.mesh(W.box(16, 20, 1500), es, { at: [3000, 10, 0] }));\nfor (const [y0, y1] of [[0, 35], [285, 300]]) sh.walls.add(W.mesh(W.box(16, y1 - y0, 1500), es, { at: [-3000, (y0 + y1) / 2, 0] }));\nW.add(sh.walls, { label: 'షెడ్ గోడలు', layer: 1, peelBy: [0, 900, 0], explode: [0, 0, 1200] });\nsh.roof.add(W.mesh(W.box(6000, 40, 120), S.sf('sheet', '#9fb0bc', { tile: 240 }), { at: [0, 300 + 220 + 50, 0] }));\nW.add(sh.roof, { label: 'షెడ్ పైకప్పు', layer: 0, peelBy: [0, 1300, 0], explode: [0, 1300, 0] });\nconst wire = W.canvasTex(64, 64); // (the cage wire: a fine grid, see-through)\nwire.ctx.clearRect(0, 0, 64, 64); wire.ctx.strokeStyle = 'rgba(200,205,210,1)'; wire.ctx.lineWidth = 2;\nfor (let i = 0; i <= 64; i += 16) { wire.ctx.beginPath(); wire.ctx.moveTo(i, 0); wire.ctx.lineTo(i, 64); wire.ctx.stroke(); wire.ctx.beginPath(); wire.ctx.moveTo(0, i); wire.ctx.lineTo(64, i); wire.ctx.stroke(); }\nwire.update(); wire.texture.wrapS = wire.texture.wrapT = THREE.RepeatWrapping; wire.texture.repeat.set(S.L / 20, 3);\nconst wm = new THREE.MeshStandardMaterial({ map: wire.texture, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide, metalness: 0.5, roughness: 0.5 });\nS.tiers = []; // [row z, side, tier, front z, floor y]\nfor (const zr of S.ROWS) for (const s of [-1, 1]) for (let t = 0; t < 3; t++) { const fz = zr + s * (115 - t * 28), y = 45 + t * 58; S.tiers.push({ zr, s, t, fz, cz: fz - s * 30, y }); }\nconst cg = W.group(), N = S.tiers.length, M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3();\nconst cages = new THREE.InstancedMesh(W.box(1, 1, 1), wm, N), frames = new THREE.InstancedMesh(W.box(1, 1, 1), S.sf('metal', '#9aa3ab'), S.ROWS.length * 14);\nS.tiers.forEach((c, i) => cages.setMatrixAt(i, M.compose(P.set(0, c.y + 22, c.cz), Q, Z.set(S.L, 45, 60))));\nlet nf = 0;\nfor (const zr of S.ROWS) for (let k = 0; k < 14; k++) frames.setMatrixAt(nf++, M.compose(P.set(S.X0 + k * (S.L / 13), 120, zr), Q, Z.set(6, 240, 240)));\ncg.add(cages, frames);\nW.add(cg, { label: 'కేజ్‌లు', heat: [28, 32], layer: 2 });\n// the hens: a white body, a small head, a red comb, looking out to the feed trough\nconst hb = new THREE.IcosahedronGeometry(1, 0), hh = new THREE.BoxGeometry(1, 1, 1);\nS.HPER = 40; const NH = N * S.HPER;\nS.henBody = new THREE.InstancedMesh(hb, S.matte('#f2efe6', 0.85), NH); S.henHead = new THREE.InstancedMesh(hh, S.matte('#eeeae0', 0.85), NH); S.henComb = new THREE.InstancedMesh(hh, S.matte('#c8322a', 0.6), NH);\nS.henHead.instanceMatrix.setUsage(THREE.DynamicDrawUsage); S.henComb.instanceMatrix.setUsage(THREE.DynamicDrawUsage);\nS.hen = [];\nS.tiers.forEach((c, ci) => { for (let k = 0; k < S.HPER; k++) {\n  const i = ci * S.HPER + k, x = S.X0 + (k + 0.5) * (S.L / S.HPER) + ((k * 37) % 7 - 3) * 3, y = c.y + 13, z = c.cz + c.s * 2;\n  S.henBody.setMatrixAt(i, M.compose(P.set(x, y, z), Q.setFromAxisAngle(Z.set(0, 1, 0), ((k * 13) % 9 - 4) * 0.08), Z.set(11, 11, 15)));\n  S.hen.push({ x, y, z: z + c.s * 16, s: c.s, ph: (k * 0.618 + ci) % 1 });\n} });\nconst hg = W.group(); hg.add(S.henBody, S.henHead, S.henComb);\nW.add(hg, { label: 'కోళ్ళు', heat: [40, 42], layer: 2 });\nS.henBody.castShadow = S.henHead.castShadow = S.henComb.castShadow = false; // (a lighter frame for the phone)\n// feed troughs and egg belts along every tier's front, the nipple drinker lines inside, the droppings below\nconst lines = (geo, mat, f) => { const im = new THREE.InstancedMesh(geo, mat, N); S.tiers.forEach((c, i) => im.setMatrixAt(i, f(c))); return im; };\nconst tf = W.group();\ntf.add(lines(W.box(1, 1, 1), S.sf('paint', '#d9a92a'), (c) => M.compose(P.set(0, c.y + 18, c.fz + c.s * 12), Q, Z.set(S.L, 12, 16)).clone()));\nW.add(tf, { label: 'మేత తొట్లు', heat: [28, 30], layer: 2 });\nconst nd = W.group();\nnd.add(lines(new THREE.CylinderGeometry(1, 1, 1, 6).rotateZ(Math.PI / 2), S.sf('paint', '#c94a2a'), (c) => M.compose(P.set(0, c.y + 42, c.cz), Q, Z.set(S.L, 2.5, 2.5)).clone()));\nW.add(nd, { label: 'నిపుల్ డ్రింకర్లు', heat: [27, 29], layer: 2 });\nconst eb = W.group();\neb.add(lines(W.box(1, 1, 1), S.matte('#e9e4d4', 0.7), (c) => M.compose(P.set(0, c.y - 3, c.fz + c.s * 5), Q, Z.set(S.L, 4, 11)).clone()));\nS.NE = 16; S.eggs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), S.matte('#f4ead8', 0.5), N * S.NE);\nS.eggs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);\nS.eggU = Array.from({ length: N * S.NE }, (_, i) => ((i % S.NE) + ((i * 0.618) % 1) * 0.8) / S.NE);\neb.add(S.eggs);\neb.add(W.mesh(W.box(40, 10, 1300), S.matte('#e9e4d4', 0.7), { at: [2800, 70, -100] })); // (the cross belt to the egg room)\nW.add(eb, { label: 'గుడ్ల బెల్ట్‌లు', heat: [28, 30], layer: 2 });\nS.eggs.castShadow = false;\nconst mn = W.group();\nfor (const zr of S.ROWS) mn.add(W.mesh(W.box(S.L, 6, 200), S.sf('soil', '#6a5038', { tile: 200 }), { at: [0, 15, zr] }));\nW.add(mn, { label: 'ఎరువు', heat: [30, 34], layer: 2 });\n// the feed trolleys: one over each row, it runs the length and fills all six troughs on the way\nconst ft = W.group(); S.trolleys = [];\nfor (const zr of S.ROWS) {\n  const g = W.group({ at: [S.X0, 0, 0] });\n  g.add(W.mesh(W.box(70, 60, 300), S.sf('paint', '#3a6ea5'), { at: [0, 250, zr] }));\n  for (const sz of [-1, 1]) for (let t = 0; t < 3; t++) g.add(W.mesh(W.box(16, 250 - (45 + t * 58), 16), S.sf('metal', '#9aa3ab'), { at: [0, (45 + t * 58 + 250) / 2, zr + sz * (128 - t * 28)] }));\n  ft.add(g); S.trolleys.push(g);\n}\nfor (const zr of S.ROWS) ft.add(W.mesh(W.box(S.L + 200, 6, 8), S.sf('metal', '#c1c6ca'), { at: [0, 282, zr] }));\nW.add(ft, { label: 'మేత ట్రాలీ', heat: [28, 36], layer: 2 });\n"
+},
+{
+"id": "air",
+"status": "ఫ్యాన్లు, కూలింగ్ ప్యాడ్‌లు పెడుతున్నాను",
+"code": "const S = W.store;\n// Tunnel ventilation: six 1.4 m fans in the far end wall (+X) pull the air out; it comes in at the near end (−X) through the\n// cooling pads: thick honeycomb paper kept wet by a pipe on top; the dry hot air gives up its heat to dry the water, and\n// comes in several degrees cooler. Foggers under the roof add a fine mist on the hottest days. A controller runs it all.\nconst ef = W.group(), frm = S.sf('paint', '#8c949b');\nS.fans = [];\nfor (const z of [-480, 0, 480]) for (const y of [90, 230]) {\n  for (const [dy, dz, h, d] of [[64, 0, 12, 140], [-64, 0, 12, 140], [0, 64, 140, 12], [0, -64, 140, 12]]) ef.add(W.mesh(W.box(46, h, d), frm, { at: [3030, y + dy, z + dz] })); // (its square frame)\n  ef.add(W.mesh(W.cyl(66, 66, 8, 24), S.matte('#2c3036', 0.6), { at: [3008, y, z], rot: [0, 0, 90] }));\n  const bl = W.group({ at: [3000, y, z] });\n  for (let k = 0; k < 3; k++) bl.add(W.mesh(W.box(4, 120, 26), S.sf('metal', '#c1c6ca'), { at: [0, 0, 0], rot: [k * 120, 0, 0] }));\n  bl.add(W.mesh(W.cyl(10, 10, 14, 10), S.sf('metal', '#6f767e'), { rot: [0, 0, 90] }));\n  ef.add(bl); S.fans.push(bl);\n  ef.add(W.mesh(W.box(4, 140, 140), new THREE.MeshStandardMaterial({ color: 0x9aa3ab, transparent: true, opacity: 0.25, metalness: 0.6 }), { at: [3055, y, z] }));\n}\nW.add(ef, { label: 'ఎగ్జాస్ట్ ఫ్యాన్లు', heat: [30, 45] });\nconst pt = W.canvasTex(128, 128), pc = pt.ctx; // (the pad's honeycomb: crossing fluted layers)\npc.fillStyle = '#b8874a'; pc.fillRect(0, 0, 128, 128);\nfor (let i = -128; i < 256; i += 8) { pc.strokeStyle = 'rgba(80,50,20,0.45)'; pc.lineWidth = 2; pc.beginPath(); pc.moveTo(i, 0); pc.lineTo(i + 64, 128); pc.stroke(); pc.strokeStyle = 'rgba(255,230,180,0.25)'; pc.beginPath(); pc.moveTo(i + 64, 0); pc.lineTo(i, 128); pc.stroke(); }\npt.update(); pt.texture.wrapS = pt.texture.wrapT = THREE.RepeatWrapping; pt.texture.repeat.set(10, 2);\nS.padTex = pt.texture; S.padM = new THREE.MeshStandardMaterial({ map: pt.texture, roughness: 0.95, color: 0xffffff });\nconst cp = W.group();\ncp.add(W.mesh(W.box(16, 250, 1500), S.padM, { at: [-3000, 160, 0] }));\ncp.add(S.pipe([[-3010, 292, -760], [-3010, 292, 760]], 6, S.sf('paint', '#3a6ea5'), 4), W.mesh(W.box(40, 16, 1520), S.sf('metal', '#9aa3ab'), { at: [-3010, 30, 0] }));\ncp.add(W.mesh(W.box(200, 120, 160), S.sf('concrete', '#b8b2a6'), { at: [-3200, 60, 900] }), S.motor(60, 18, '#2f6a46'));\ncp.children[cp.children.length - 1].position.set(-3200, 140, 900);\nW.add(cp, { label: 'కూలింగ్ ప్యాడ్‌లు', heat: [24, 30] });\nconst fo = W.group();\nfor (const z of [-235, 235]) fo.add(W.mesh(W.cyl(2, 2, 5600, 6), S.sf('metal', '#c1c6ca'), { at: [0, 285, z], rot: [0, 0, 90] }));\nW.add(fo, { label: 'ఫాగర్లు', layer: 2 });\nconst ctl = W.group();\nctl.add(W.mesh(W.box(80, 120, 20), S.sf('paint', '#d6d9dc'), { at: [-2900, 160, 735] }));\nS.ctlScreen = W.mesh(W.box(56, 34, 3), W.screen('#0a2a1a', 1.2), { at: [-2900, 185, 724] }); ctl.add(S.ctlScreen);\nW.add(ctl, { label: 'కంట్రోలర్', heat: [28, 34] });\n"
+},
+{
+"id": "yard",
+"status": "మేత సైలో, మేత మిల్, గుడ్ల గది పెడుతున్నాను",
+"code": "const S = W.store;\n// The egg room (trays, the cross belt comes in), the feed silo with its auger into the shed, the small feed mill (maize,\n// soya, stone grit for the shells, all ground and mixed here), the water tank on its stand, the generator, the gate's foot bath.\nconst pl = S.sf('plaster', '#ece6da');\nconst er = W.group();\ner.add(W.mesh(W.box(800, 300, 700), pl, { at: [2600, 150, -1100] }), W.mesh(W.box(880, 20, 780), S.sf('concrete', '#b8b2a6'), { at: [2600, 310, -1100] }));\ner.add(W.mesh(W.box(160, 230, 6), S.sf('paint', '#3a5a7a'), { at: [2400, 115, -1453] }), W.mesh(W.box(200, 120, 6), W.glass({ tint: '#9fc4dc' }), { at: [2800, 180, -1453] }));\nconst trays = new THREE.InstancedMesh(W.box(30, 5, 30), S.matte('#d8c9a4', 0.8), 40);\nfor (let i = 0; i < 40; i++) trays.setMatrixAt(i, new THREE.Matrix4().makeTranslation(2330 + (i % 4) * 34, 10 + Math.floor(i / 4) * 6, -1350));\ner.add(trays);\nW.add(er, { label: 'గుడ్ల గది', heat: [24, 28] });\nconst si = W.group();\nsi.add(S.tank(150, 450, S.sf('metal', '#c8ccd0', { tile: 200 }), { at: [-3700, 0, 1250], legs: 320, cone: 200, dome: 0.35 }));\nsi.add(S.pipe([[-3700, 140, 1250], [-3200, 220, 1000], [-2900, 280, 760], [-2700, 282, 470]], 12, S.sf('paint', '#8c949b'), 20));\nsi.add(S.ladder(-3550, 320, 900, 1250, 'x', 1));\nW.add(si, { label: 'మేత సైలో', heat: [30, 34] });\nconst fm = S.shed([-5200, 0, 1800], 1300, 420, 800, { color: '#d6d2c4', door: 500 });\nconst mill = W.group(); mill.add(fm.floor);\nmill.add(W.mesh(W.cyl(60, 60, 200, 18), S.sf('paint', '#3a6ea5'), { at: [-5500, 100, 1700] }), S.motor(90, 30, '#2f6a46'));\nmill.children[mill.children.length - 1].position.set(-5400, 60, 1900);\nmill.add(W.mesh(W.cyl(90, 90, 260, 18), S.sf('paint', '#5f6b5e'), { at: [-4900, 230, 1700] }), W.mesh(W.cyl(90, 20, 90, 18), S.sf('paint', '#5f6b5e'), { at: [-4900, 55, 1700] }));\nconst fb = new THREE.InstancedMesh(W.box(80, 20, 50), W.fabric('#d8cfb4'), 30);\nfor (let i = 0; i < 30; i++) fb.setMatrixAt(i, new THREE.Matrix4().makeTranslation(-5650 + (i % 5) * 84, 30 + Math.floor(i / 10) * 21, 2000 + Math.floor((i % 10) / 5) * 56));\nmill.add(fb);\nW.add(mill, { label: 'మేత మిల్', heat: [30, 55] });\nW.add(fm.walls, { label: 'మిల్ గోడలు', layer: 1, peelBy: [0, 800, 0] });\nW.add(fm.roof, { label: 'మిల్ పైకప్పు', layer: 0, peelBy: [0, 1000, 0] });\nconst wt = W.group();\nwt.add(S.tank(130, 260, S.sf('paint', '#2c3036'), { at: [-3800, 0, -1400], legs: 420, dome: 0.15 }));\nwt.add(S.pipe([[-3800, 420, -1400], [-3400, 300, -1200], [-3050, 280, -700]], 6, S.sf('paint', '#3a6ea5'), 16));\nW.add(wt, { label: 'నీటి ట్యాంక్', heat: [27, 29] });\nconst gn = W.group();\ngn.add(W.mesh(W.box(500, 20, 400), S.sf('concrete', '#b8b2a6'), { at: [3900, 10, 1400] }), W.mesh(W.box(360, 190, 170), S.sf('paint', '#3f7a52'), { at: [3900, 115, 1400] }));\nS.genAt = [3780, 230, 1400];\ngn.add(W.mesh(W.cyl(7, 7, 60, 8), S.sf('metal', '#6f767e'), { at: [3780, 230, 1400] }));\nS.genG = gn;\nW.add(gn, { label: 'జనరేటర్', heat: [30, 85] });\nconst ftb = W.group();\nftb.add(W.mesh(W.box(320, 12, 220), S.sf('concrete', '#c4bfb3'), { at: [-1000, 6, 2350] }), W.mesh(W.box(290, 4, 190), new THREE.MeshStandardMaterial({ color: 0x5a7fa8, roughness: 0.2 }), { at: [-1000, 12, 2350] }));\nfor (const sx of [-1, 1]) ftb.add(W.mesh(W.box(20, 220, 20), S.sf('paint', '#d6d9dc'), { at: [-1000 + sx * 350, 110, 2250] }));\nftb.add(W.mesh(W.box(720, 20, 20), S.sf('paint', '#d6d9dc'), { at: [-1000, 220, 2250] }));\nftb.add(W.text('ఫుట్ బాత్ · బూట్లు ముంచి రండి', { size: 34, at: [-1000, 250, 2262], color: '#1f3a5a', bg: '#e8e2d0' }));\nW.add(ftb, { label: 'ఫుట్ బాత్' });\nconst mh = W.group(); mh.add(S.heap(400, -2700, 420, 150, 300, S.sf('soil', '#5f4a34', { tile: 160 })));\nW.add(mh, { label: 'ఎరువు కుప్ప', ground: true });\n"
+},
+{
+"id": "run",
+"status": "ఫ్యాన్లు నడపడానికి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is how many of the six fans run. Inside temperature = outside + the hens' own heat (less with\n// more air), minus the pads' cooling (when the fans pull air through them on a hot day). Hens are best at 21–27 °C; above\n// 30 they pant, eat less, lay fewer eggs. Over the limit (all six at full, belts tight): two fans' overload relays trip.\n// 🚩 \"summer\": a hot dry day (outside up to 42 °C): the pads and the foggers work hard. 🚩 \"collect\": the egg belts run.\nconst sign = W.group();\nsign.add(W.text('JARVIS · లేయర్ కోళ్ళ ఫారం', { size: 70, at: [-3017, 380, 0], color: '#1f3a5a', bg: '#e8e2d0', rot: [0, -90, 0] }));\nW.add(sign, { label: 'ఫారం బోర్డ్' });\nW.throttle({ label: 'ఫ్యాన్లు', rise: 0.35, fall: 0.35, start: 0.5 });\nconst fv = W.sound({ kind: 'fans', label: 'ఎగ్జాస్ట్ ఫ్యాన్లు', gain: 0.9 });\nconst bv = W.sound({ kind: 'chain', label: 'గుడ్ల బెల్ట్‌లు', gain: 0.35 });\nconst pv = W.sound({ kind: 'water', label: 'కూలింగ్ ప్యాడ్‌లు', gain: 0.25 });\nconst hv = W.sound({ kind: 'swoosh', label: 'కోళ్ళు', gain: 0.18, f0: 3 });\nconst M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);\nlet hudT = 0, headT = 0, fk = 0, tin = 26, collected = 0, n = 0;\nS.st = { air: 0, pads: 0, fog: 0, belt: 0 };\nconst sm = (a, b, v) => { const x = Math.min(1, Math.max(0, (v - a) / (b - a))); return x * x * (3 - 2 * x); };\nW.onTick((t, dt) => {\n  const s = W.env.spool, over = W.env.over, summer = W.env.flag('summer'), collect = W.env.flag('collect'), hr = W.env.hour == null ? 12 : W.env.hour;\n  n = s > 0.02 ? Math.max(1, Math.round(6 * Math.min(1, s))) : 0;\n  if (over) n = Math.min(n, 4);\n  fk += (n / 6 - fk) * Math.min(1, dt * 1.2);\n  S.fans.forEach((f, i) => { f.rotation.x += dt * 20 * (i < n ? 1 : 0); });\n  const sun = Math.max(0, Math.sin(((hr - 6) / 12) * Math.PI)), tout = summer ? 31 + 11 * sun : 24 + 8 * sun;\n  const pads = fk > 0.3 && tout > 28 ? 1 : 0, fog = summer && tin > 31 ? 1 : 0;\n  const target = tout + 8 * Math.pow(1 - fk, 1.5) - pads * 0.55 * (tout - 21) * fk - fog * 2;\n  tin += (target - tin) * Math.min(1, dt * 0.4);\n  S.st.air = fk; S.st.pads = pads; S.st.fog = fog; S.st.belt = collect ? 1 : 0;\n  S.padTex.offset.y -= dt * 0.05 * pads; S.padM.color.setRGB(1 - 0.25 * pads, 1 - 0.2 * pads, 1 - 0.1 * pads);\n  S.ctlScreen.material.emissive.set(tin > 30 ? 0xff5a3a : 0x3aff8a);\n  // the egg belts: the eggs move along to the end when collecting, and drop onto the cross belt\n  const laid = 9000 * sm(5, 12, hr) * (tin > 30 ? 0.8 : 1);\n  if (collect) collected = Math.min(laid, collected + dt * 160);\n  const show = Math.max(0, Math.min(1, (laid - collected) / 3000 + 0.25));\n  S.tiers.forEach((c, ti) => { for (let k = 0; k < S.NE; k++) {\n    const i = ti * S.NE + k;\n    if (collect) S.eggU[i] = (S.eggU[i] + dt * 0.03) % 1;\n    const vis = ((i * 0.37) % 1) < show ? 1 : 0;\n    S.eggs.setMatrixAt(i, M.compose(P.set(S.X0 + S.eggU[i] * S.L, c.y + 2, c.fz + c.s * 5), Q.setFromAxisAngle(Y, 1.57), Z.set(2.3 * vis, 2.9 * vis, 2.3 * vis)));\n  } });\n  S.eggs.instanceMatrix.needsUpdate = true;\n  S.trolleys.forEach((g, i) => { g.position.x = S.X0 + S.L * (0.5 + 0.5 * Math.sin(t * 0.04 + i * 2)); });\n  if (t - headT > 0.07) { // the hens peck now and then; in the heat they hold their heads up, beaks open\n    headT = t;\n    S.hen.forEach((h, i) => {\n      const peck = tin > 30 ? 0 : Math.max(0, Math.sin(t * 3 + h.ph * 40)) * 9;\n      S.henHead.setMatrixAt(i, M.compose(P.set(h.x, h.y + 10 - peck, h.z + h.s * peck * 0.4), Q.identity(), Z.set(7, 9, 9)));\n      S.henComb.setMatrixAt(i, M.compose(P.set(h.x, h.y + 17 - peck, h.z + h.s * peck * 0.4 - h.s * 1), Q, Z.set(2, 6, 7)));\n    });\n    S.henHead.instanceMatrix.needsUpdate = true; S.henComb.instanceMatrix.needsUpdate = true;\n  }\n  fv.set(fk); bv.set(collect ? 0.6 : 0); pv.set(pads * 0.6); hv.set(0.5 + 0.5 * Math.min(1, Math.max(0, (tin - 27) / 5)));\n  S.step(t, dt, fk);\n  if (t - hudT > 0.3) {\n    hudT = t;\n    W.hud({ 'లోపలి వేడి': tin.toFixed(1) + '°C ' + (tin > 30 ? '⚠️ వేడి' : tin < 27.5 ? '✅' : ''), 'బయటి వేడి': tout.toFixed(1) + '°C' + (pads ? ' · ప్యాడ్‌లు తడి' : ''),\n      'ఫ్యాన్లు': n + ' / 6 · గాలి ' + (2.6 * fk).toFixed(1) + ' m/s', 'గుడ్లు ఈ రోజు': Math.round(laid).toLocaleString('en-IN') + (collect ? ' · సేకరించినవి ' + Math.round(collected).toLocaleString('en-IN') : ''),\n      'మేత · నీరు': 'రోజుకి 1,100 kg · ' + (tin > 30 ? '3,500' : '2,200') + ' లీటర్లు',\n      'స్థితి': over ? '2 ఫ్యాన్లు ఓవర్‌లోడ్ ట్రిప్ ⚠️' : tin > 32 ? 'హీట్ అలారం ⚠️ ఫాగర్లు ఆన్' : tin > 30 ? 'కోళ్ళు ఆయాసపడుతున్నాయి ⚠️ ఫ్యాన్లు పెంచండి' : 'సాధారణం ✅' });\n    W.report({ power: s, fans: n, inside: tin, outside: tout, eggs: laid });\n  }\n});\nfor (const z of [-560, -235, 235, 560]) for (const y of [150, 260]) W.stream([[-3100, y, z], [-2900, y, z], [0, y - 10, z * 0.95], [2950, y, z], [3100, y, z]], { kind: 'air', count: 26, size: 9, speed: 0.6, when: () => S.st.air > 0.05 });\nfor (const z of [-235, 235]) for (let k = 0; k < 6; k++) { const x = -2400 + k * 950; W.stream([[x, 282, z], [x + 20, 200, z + 20], [x + 40, 120, z + 40]], { kind: 'cool', count: 5, size: 5, speed: 0.4, when: () => S.st.fog > 0 }); }\nW.stream([[-3010, 290, -700], [-3010, 160, -700], [-3010, 30, -700]], { kind: 'water', count: 6, size: 6, speed: 0.4, when: () => S.st.pads > 0 });\nW.stream([[-3010, 290, 600], [-3010, 160, 600], [-3010, 30, 600]], { kind: 'water', count: 6, size: 6, speed: 0.4, when: () => S.st.pads > 0 });\nW.stream([[2800, 76, 560], [2800, 76, -720], [2650, 60, -900], [2500, 40, -1150]], { kind: 'milk', count: 16, size: 7, speed: 0.5, when: () => S.st.belt > 0 });\nW.stream([[-3700, 140, 1250], [-3200, 220, 1000], [-2900, 280, 760], [-2700, 282, 470]], { kind: 'grain', count: 12, size: 7, speed: 0.4 });\nW.walk({ eye: 160, speed: 260, area: [-8600, -4600, 7600, 3500],\n  solid: [[-3020, -770, 3020, -740], [-3020, 740, 3020, 770], [-2750, -630, 2750, -310], [-2750, -160, 2750, 160], [-2750, 310, 2750, 630], [2200, -1450, 3000, -750], [-5850, 1400, -4550, 2200]],\n  spots: [\n    { name: 'షెడ్ లోపల', at: [-2550, 0, 235], look: [2000, 130, 235] },\n    { name: 'కూలింగ్ ప్యాడ్ దగ్గర', at: [-4200, 0, -300], look: [-3010, 160, 0] },\n    { name: 'ఫ్యాన్ల దగ్గర', at: [4300, 0, -400], look: [3030, 160, 0] },\n    { name: 'గుడ్ల గది దగ్గర', at: [2400, 0, -2500], look: [2600, 150, -1100] },\n    { name: 'మేత మిల్ దగ్గర', at: [-5200, 0, 3000], look: [-5100, 160, 1800] },\n    { name: 'ఫారం గేట్', at: [-1000, 0, 3150], look: [-500, 200, 0] },\n  ] });\n"
+}
+],
+"say": "కోళ్ళ ఫారం రెడీ Sir. పవర్ బార్ అంటే ఎన్ని ఫ్యాన్లు: పైన లోపలి వేడి చూడండి. 'ఎండాకాలం' అంటే వేడి రోజు, 'గుడ్లు సేకరించు' అంటే బెల్ట్‌లు నడుస్తాయి, 'షెడ్ లోపలికి వెళ్ళు' అంటే కేజ్‌ల మధ్య నడవొచ్చు.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"గుడ్ల ఫారం ఎలా నడుస్తుంది\", \"steps\": [{\"say\": \"Sir, ఇది లేయర్ కోళ్ళ ఫారం: 60 m పొడవైన షెడ్‌లో సుమారు 10,000 తెల్ల కోళ్ళు, రోజుకి సుమారు 9,000 గుడ్లు.\", \"focus\": [{\"id\": \"shed\", \"piece\": \"షెడ్ పైకప్పు\"}, {\"id\": \"yard\", \"piece\": \"మేత సైలో\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"లోపల మూడు వరుసల కేజ్‌లు, రెండు వైపులా మూడు అంతస్తులు. ముందు పసుపు మేత తొట్లు, పైన మేత ట్రాలీ.\", \"focus\": [{\"id\": \"shed\", \"piece\": \"కేజ్‌లు\"}, {\"id\": \"shed\", \"piece\": \"కోళ్ళు\"}, {\"id\": \"shed\", \"piece\": \"మేత ట్రాలీ\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"shed\", \"piece\": \"షెడ్ పైకప్పు\", \"by\": [0, 1300, 0], \"secs\": 1.2}, {\"id\": \"shed\", \"piece\": \"షెడ్ గోడలు\", \"by\": [0, 900, 0], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"చివరి గోడలో ఆరు ఫ్యాన్లు గాలిని బయటికి లాగుతాయి; ఆ గాలి మొదటి చివర తడి ప్యాడ్‌ల గుండా చల్లగా లోపలికి వస్తుంది.\", \"focus\": [{\"id\": \"air\", \"piece\": \"ఎగ్జాస్ట్ ఫ్యాన్లు\"}, {\"id\": \"air\", \"piece\": \"కూలింగ్ ప్యాడ్‌లు\"}], \"view\": \"side\", \"secs\": 10}, {\"say\": \"గుడ్డు వాలు కేజ్ నేల మీద దొర్లి ముందు బెల్ట్ మీదికి, బెల్ట్ నుంచి గుడ్ల గదికి. 'గుడ్లు సేకరించు' అంటే నడుస్తాయి.\", \"focus\": [{\"id\": \"shed\", \"piece\": \"గుడ్ల బెల్ట్‌లు\"}, {\"id\": \"yard\", \"piece\": \"గుడ్ల గది\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"shed\", \"piece\": \"షెడ్ పైకప్పు\", \"by\": [0, 1300, 0], \"secs\": 1}], \"secs\": 9}, {\"say\": \"బయట మేత సైలో, మేత మిల్, ఎత్తైన నీటి ట్యాంక్, జనరేటర్.\", \"focus\": [{\"id\": \"yard\", \"piece\": \"మేత సైలో\"}, {\"id\": \"yard\", \"piece\": \"మేత మిల్\"}, {\"id\": \"yard\", \"piece\": \"నీటి ట్యాంక్\"}, {\"id\": \"yard\", \"piece\": \"జనరేటర్\"}], \"view\": \"iso\", \"secs\": 9}, {\"say\": \"గేటు దగ్గర ఫుట్ బాత్: రోగాలు బయటే ఆగాలి. 'ఎండాకాలం' అంటే వేడి రోజు ఫారం ఎలా పోరాడుతుందో చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"yard\", \"piece\": \"ఫుట్ బాత్\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"కోళ్ళ ఫారం",
+"కోళ్ళ ఫారమ్",
+"పౌల్ట్రీ",
+"పౌల్ట్రీ ఫారం",
+"గుడ్ల ఫారం",
+"లేయర్ ఫారం",
+"కోడి ఫారం",
+"కోళ్ళ షెడ్",
+"poultry",
+"poultry farm",
+"egg farm",
+"layer farm",
+"chicken farm"
+],
+"powerName": "🌀 ఫ్యాన్లు",
+"outdoor": true,
+"walk": [
+"షెడ్ లోపల",
+"కూలింగ్ ప్యాడ్ దగ్గర",
+"ఫ్యాన్ల దగ్గర",
+"గుడ్ల గది దగ్గర",
+"మేత మిల్ దగ్గర",
+"ఫారం గేట్"
+],
+"switches": [
+{
+"id": "summer",
+"menu": "☀️ ఎండాకాలం (వడగాలి)",
+"words": [
+"ఎండాకాలం",
+"వేసవి",
+"వడగాలి",
+"వడ గాలి",
+"heat wave"
+],
+"offWords": [
+"మామూలు రోజు",
+"వేసవి అయిపోయింది",
+"చల్లబడింది",
+"normal day"
+],
+"on": "☀️ వడగాలి రోజు Sir: బయట మధ్యాహ్నం 42°C దాకా. ఫ్యాన్లన్నీ నడపండి: తడి ప్యాడ్‌లు గాలిని చల్లబరుస్తాయి, లోపల 31°C దాటితే ఫాగర్లు మంచు చల్లుతాయి. కోళ్ళు ఎక్కువ నీరు తాగుతాయి.",
+"off": "మామూలు రోజు Sir: బయట వేడి తగ్గింది."
+},
+{
+"id": "collect",
+"menu": "🥚 గుడ్లు సేకరించు",
+"words": [
+"గుడ్లు సేకరించు",
+"గుడ్లు తీయి",
+"గుడ్ల బెల్ట్ నడుపు",
+"ఎగ్ బెల్ట్",
+"collect eggs"
+],
+"offWords": [
+"బెల్ట్ ఆపు",
+"గుడ్ల బెల్ట్ ఆపు",
+"సేకరణ ఆపు",
+"stop belts"
+],
+"on": "🥚 గుడ్ల బెల్ట్‌లు నడుస్తున్నాయి Sir: పద్దెనిమిది బెల్ట్‌ల మీద గుడ్లు షెడ్ చివరికి, అక్కడ అడ్డ బెల్ట్ మీద గుడ్ల గదికి. పైన 'సేకరించినవి' పెరగడం చూడండి.",
+"off": "బెల్ట్‌లు ఆపాను Sir."
+}
+],
+"power": {
+"start": "ఫ్యాన్లు మొదలయ్యాయి Sir.",
+"full": "ఆరు ఫ్యాన్లూ Sir: షెడ్‌లో గాలి సెకనుకి సుమారు 2.6 m వేగంతో ప్రవహిస్తోంది.",
+"half": "మూడు ఫ్యాన్లు Sir.",
+"stop": "ఫ్యాన్లు ఆపాను Sir: లోపలి వేడి నెమ్మదిగా పెరగడం చూడండి.",
+"over": "ఫ్యాన్లన్నీ హద్దు దాటి నడిపాం Sir: రెండు ఫ్యాన్ మోటార్ల బెల్ట్‌లు బిగుసుకుని ఎక్కువ కరెంట్ లాగాయి, ఓవర్‌లోడ్ రిలేలు ట్రిప్ అయ్యాయి. కంట్రోలర్ అలారం ఇచ్చింది.",
+"cut": "ఓవర్‌లోడ్ రిలేలు రీసెట్ చేశారు Sir: ఆరు ఫ్యాన్లూ మళ్ళీ."
+},
+"info": {
+"ఫారం నేల": {
+"simple": "ఫారం స్థలం: ఊరికి కొంచెం దూరంగా, చుట్టూ చెట్లు.",
+"deep": "కోళ్ళ ఫారాలు ఇళ్ళకి, ఇతర ఫారాలకి దూరంగా కడతారు: రోగాలు ఒక చోటు నుంచి ఇంకో చోటుకి వ్యాపించకుండా.",
+"specs": {
+"పని": "స్థలం"
+}
+},
+"చెట్లు": {
+"simple": "చెట్లు: నీడ, గాలి అడ్డు.",
+"deep": "షెడ్ చుట్టూ చెట్లు ఎండ వేడిని కొంచెం తగ్గిస్తాయి.",
+"specs": {
+"పని": "నీడ"
+}
+},
+"షెడ్ నేల": {
+"simple": "షెడ్ నేల: సిమెంట్, శుభ్రం చేయడానికి సులువు.",
+"deep": "ప్రతి బ్యాచ్ తర్వాత నేల, కేజ్‌లు కడిగి క్రిమిసంహారకం చల్లుతారు.",
+"specs": {
+"పని": "శుభ్రత"
+}
+},
+"షెడ్ గోడలు": {
+"simple": "షెడ్ గోడలు: లోపలి యంత్రాలని ఎండ, వాన, దుమ్ము నుంచి కాపాడతాయి. 'పైకప్పు తీయి' రెండు సార్లు అంటే ఇవీ లేస్తాయి.",
+"deep": "ఉక్కు స్తంభాల మీద రేకుల గోడలు; కిటికీలు వెలుతురు, గాలి కోసం. రాత్రి కిటికీల్లో లైట్లు కనిపిస్తాయి.",
+"specs": {
+"పని": "రక్షణ"
+}
+},
+"షెడ్ పైకప్పు": {
+"simple": "షెడ్ పైకప్పు. 'పైకప్పు తీయి' అంటే లేచి లోపల కనిపిస్తుంది.",
+"deep": "వాలు రేకుల పైకప్పు: వాన నీరు జారిపోతుంది. నిజమైన ఫ్యాక్టరీల్లో పైన గాలి పోయే వెంట్లు ఉంటాయి.",
+"specs": {
+"పని": "నీడ, రక్షణ"
+}
+},
+"కేజ్‌లు": {
+"simple": "కేజ్‌లు: మూడు వరుసలు, ప్రతి వరుసకి రెండు వైపులా మూడు అంతస్తులు (A ఆకారం). కింది అంతస్తులు బయటికి ఎక్కువ: పై రెట్టలు కింది కోళ్ళ మీద పడవు.",
+"deep": "కేజ్ నేల కొంచెం ముందుకి వాలుగా ఉంటుంది: పెట్టిన గుడ్డు దొర్లి ముందు బెల్ట్ మీదికి వస్తుంది, కోడి తొక్కదు.",
+"specs": {
+"ఒక్కో కేజ్‌లో": "సుమారు 3–4 కోళ్ళు"
+}
+},
+"కోళ్ళు": {
+"simple": "కోళ్ళు: తెల్ల లేయర్ కోళ్ళు, సుమారు 10,000 (బొమ్మలో వెయ్యి చూపిస్తున్నాను). రోజుకి 100 కోళ్ళలో సుమారు 90 గుడ్లు పెడతాయి.",
+"deep": "కోళ్ళకి 21–27°C హాయి. 30°C దాటితే ఆయాసపడతాయి, తక్కువ తింటాయి, గుడ్లు తగ్గుతాయి, పెంకు పలచబడుతుంది. ఒక కోడి సుమారు 18 వారాల వయసు నుంచి 80 వారాల దాకా గుడ్లు పెడుతుంది.",
+"specs": {
+"సంఖ్య": "సుమారు 10,000",
+"గుడ్ల రేటు": "సుమారు 90%"
+}
+},
+"మేత తొట్లు": {
+"simple": "మేత తొట్లు: కేజ్‌ల ముందు పసుపు తొట్లు, కోళ్ళు తల బయటికి పెట్టి తింటాయి.",
+"deep": "ఒక కోడి రోజుకి సుమారు 110 గ్రాముల మేత: మొక్కజొన్న, సోయా, సున్నపురాయి పొడి (పెంకు కోసం), విటమిన్లు.",
+"specs": {
+"రోజుకి": "సుమారు 1,100 kg"
+}
+},
+"నిపుల్ డ్రింకర్లు": {
+"simple": "నిపుల్ డ్రింకర్లు: కేజ్‌ల లోపల ఎర్ర పైపు, దానికి చిన్న చిన్న ముక్కులు. కోడి ముక్కుతో తాకితే చుక్క నీరు.",
+"deep": "తెరిచిన తొట్టిలా నీరు మురికి కాదు, వృథా కాదు. వేడిలో కోళ్ళు రెట్టింపు నీరు తాగుతాయి: ఒక్క లైన్ ఆగినా ప్రమాదం.",
+"specs": {
+"రోజుకి": "సుమారు 2,200 లీటర్లు"
+}
+},
+"గుడ్ల బెల్ట్‌లు": {
+"simple": "గుడ్ల బెల్ట్‌లు: ప్రతి అంతస్తు ముందు ఒక సన్నని బెల్ట్. గుడ్లు దొర్లి దాని మీదికి వస్తాయి.",
+"deep": "'గుడ్లు సేకరించు' అంటే బెల్ట్‌లు నడిచి గుడ్లని చివరికి, అక్కడి నుంచి అడ్డ బెల్ట్ మీద గుడ్ల గదికి తీసుకెళ్తాయి. మనిషి ప్రతి కేజ్ దగ్గరికి వెళ్ళక్కర్లేదు.",
+"specs": {
+"పని": "గుడ్ల సేకరణ"
+}
+},
+"ఎరువు": {
+"simple": "ఎరువు: కేజ్‌ల కింద పడే రెట్టలు.",
+"deep": "రోజూ లేదా కొన్ని రోజులకి ఒకసారి తీసేస్తారు: లేకపోతే అమ్మోనియా వాసన కోళ్ళ ఊపిరితిత్తులకి, కళ్ళకి హాని. ఎండబెట్టి పొలాలకి మంచి ఎరువుగా అమ్ముతారు.",
+"specs": {
+"పని": "పొలాలకి ఎరువు"
+}
+},
+"మేత ట్రాలీ": {
+"simple": "మేత ట్రాలీ: ప్రతి వరుస మీద పట్టాలపై కదిలే నీలి డబ్బా, ఆరు తొట్లకీ ఒకేసారి మేత వేస్తుంది.",
+"deep": "రోజుకి మూడు నాలుగు సార్లు తిరుగుతుంది. మేత కదిలినప్పుడల్లా కోళ్ళు తినడానికి వస్తాయి.",
+"specs": {
+"పని": "మేత వేయడం"
+}
+},
+"ఎగ్జాస్ట్ ఫ్యాన్లు": {
+"simple": "ఎగ్జాస్ట్ ఫ్యాన్లు: చివరి గోడలో ఆరు పెద్ద ఫ్యాన్లు, ఒక్కోటి 1.4 m. షెడ్ లోపలి గాలిని బయటికి లాగుతాయి.",
+"deep": "అవి లాగితే గాలి రెండో చివరి ప్యాడ్‌ల గుండా లోపలికి వచ్చి షెడ్ పొడవునా సొరంగంలా ప్రవహిస్తుంది (టన్నెల్ వెంటిలేషన్): కోళ్ళ వేడి, తేమ, వాసన బయటికి.",
+"specs": {
+"ఒక్కోటి": "సుమారు 1.4 m, 1 HP"
+}
+},
+"కూలింగ్ ప్యాడ్‌లు": {
+"simple": "కూలింగ్ ప్యాడ్‌లు: మొదటి చివర గోడంతా తేనెతుట్టె లాంటి కాగితం పలకలు, పైన పైపు వాటిని తడిగా ఉంచుతుంది.",
+"deep": "వేడి పొడి గాలి తడి ప్యాడ్ గుండా వెళ్తే నీరు ఆవిరై ఆ వేడిని తీసుకుంటుంది: గాలి 6–10°C చల్లబడుతుంది. 'కూలింగ్ ప్యాడ్ లోపల చూపించు' అంటే చూపిస్తాను.",
+"specs": {
+"చల్లదనం": "6–10°C (పొడి గాలిలో ఎక్కువ)"
+}
+},
+"ఫాగర్లు": {
+"simple": "ఫాగర్లు: పైకప్పు కింద సన్నని పైపులు, చిన్న ముక్కుల నుంచి పొగమంచు లాంటి నీటి తుంపర.",
+"deep": "బాగా వేడి రోజుల్లో ప్యాడ్‌లకి తోడుగా. కోళ్ళ మీద నీరు పడకూడదు, మంచులా గాలిలోనే ఆవిరవ్వాలి.",
+"specs": {
+"పని": "అదనపు చల్లదనం"
+}
+},
+"కంట్రోలర్": {
+"simple": "కంట్రోలర్: లోపలి వేడి చూసి ఎన్ని ఫ్యాన్లు, ప్యాడ్ పంప్, ఫాగర్లు నడపాలో తానే నిర్ణయిస్తుంది. పచ్చ తెర సాధారణం, ఎర్ర తెర వేడి.",
+"deep": "వేడి హద్దు దాటినా, కరెంట్ పోయినా అలారం మోగుతుంది, యజమాని ఫోన్‌కి సందేశం వెళ్తుంది.",
+"specs": {
+"పని": "ఆటోమేటిక్ నియంత్రణ"
+}
+},
+"గుడ్ల గది": {
+"simple": "గుడ్ల గది: బెల్ట్‌ల నుంచి వచ్చిన గుడ్లని ట్రేలలో (30 గుడ్లు) పేర్చే గది.",
+"deep": "పగిలినవి, మురికి ఉన్నవి వేరు చేస్తారు. చల్లని చోట నిల్వ చేసి రోజూ లారీలో పంపుతారు.",
+"specs": {
+"ఒక ట్రే": "30 గుడ్లు"
+}
+},
+"మేత సైలో": {
+"simple": "మేత సైలో: పెద్ద లోహపు డబ్బా, కింద గరాటు. పైపులో తిరిగే స్క్రూ (ఆగర్) మేతని షెడ్‌లోకి తీసుకెళ్తుంది.",
+"deep": "సంచులు మోయక్కర్లేదు, మేత పొడిగా, ఎలుకలకి అందకుండా ఉంటుంది.",
+"specs": {
+"నిల్వ": "సుమారు 10 టన్నులు"
+}
+},
+"మేత మిల్": {
+"simple": "మేత మిల్: గింజలు పొడి చేసే గ్రైండర్, అన్నీ కలిపే మిక్సర్, సంచులు.",
+"deep": "మొక్కజొన్న, సోయా పిండి, సున్నపురాయి పొడి, ఖనిజాలు సరైన లెక్కలో కలపాలి: పెంకు గట్టిగా ఉండటానికి కాల్షియం ముఖ్యం.",
+"specs": {
+"పని": "మేత తయారీ"
+}
+},
+"మిల్ గోడలు": {
+"simple": "మేత మిల్ గోడలు: లోపలి యంత్రాలని ఎండ, వాన, దుమ్ము నుంచి కాపాడతాయి. 'పైకప్పు తీయి' రెండు సార్లు అంటే ఇవీ లేస్తాయి.",
+"deep": "ఉక్కు స్తంభాల మీద రేకుల గోడలు; కిటికీలు వెలుతురు, గాలి కోసం. రాత్రి కిటికీల్లో లైట్లు కనిపిస్తాయి.",
+"specs": {
+"పని": "రక్షణ"
+}
+},
+"మిల్ పైకప్పు": {
+"simple": "మేత మిల్ పైకప్పు. 'పైకప్పు తీయి' అంటే లేచి లోపల కనిపిస్తుంది.",
+"deep": "వాలు రేకుల పైకప్పు: వాన నీరు జారిపోతుంది. నిజమైన ఫ్యాక్టరీల్లో పైన గాలి పోయే వెంట్లు ఉంటాయి.",
+"specs": {
+"పని": "నీడ, రక్షణ"
+}
+},
+"నీటి ట్యాంక్": {
+"simple": "నీటి ట్యాంక్: ఎత్తైన స్టాండ్ మీద, అక్కడి నుంచి నిపుల్ లైన్లకి.",
+"deep": "అవసరమైతే విటమిన్లు, టీకాలు ఈ నీటిలోనే కలుపుతారు.",
+"specs": {
+"నిల్వ": "సుమారు 5,000 లీటర్లు"
+}
+},
+"జనరేటర్": {
+"simple": "జనరేటర్: కరెంట్ పోతే ఫ్యాన్లు, పంపులు నడపడానికి.",
+"deep": "వేసవి మధ్యాహ్నం మూసిన షెడ్‌లో ఫ్యాన్లు అరగంట ఆగినా వేడి ప్రమాదకరంగా పెరుగుతుంది: అందుకే జనరేటర్ తప్పనిసరి.",
+"specs": {
+"శక్తి": "సుమారు 25 kVA"
+}
+},
+"ఫుట్ బాత్": {
+"simple": "ఫుట్ బాత్: గేటు దగ్గర క్రిమిసంహారక నీటి తొట్టి. లోపలికి వచ్చే ప్రతి ఒక్కరూ బూట్లు ముంచి రావాలి.",
+"deep": "రోగాలు బూట్లు, చక్రాల ద్వారా వస్తాయి. ఇదే బయోసెక్యూరిటీ: బయటి వాళ్ళని షెడ్‌లోకి రానివ్వరు.",
+"specs": {
+"పని": "రోగాల నుంచి రక్షణ"
+}
+},
+"ఎరువు కుప్ప": {
+"simple": "ఎరువు కుప్ప: షెడ్ నుంచి తీసిన రెట్టలు ఎండబెడుతున్నారు.",
+"deep": "కోళ్ళ ఎరువులో నత్రజని, భాస్వరం ఎక్కువ: పొలాలకి మంచి సేంద్రియ ఎరువు.",
+"specs": {
+"పని": "ఎరువు"
+}
+},
+"ఫారం బోర్డ్": {
+"simple": "ఫారం బోర్డ్.",
+"deep": "బయటి వాహనాలు ఫారం లోపలికి రావు: గుడ్ల లారీ గేటు బయటే నిలుస్తుంది.",
+"specs": {
+"పని": "పేరు"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎన్ని గుడ్లు",
+"రోజుకి ఎన్ని",
+"గుడ్లు ఎంత",
+"how many eggs"
+],
+"a": "10,000 కోళ్ళు రోజుకి సుమారు 9,000 గుడ్లు పెడతాయి Sir, ఎక్కువగా ఉదయం 6 నుంచి 11 మధ్య. వేడి 30°C దాటితే 10–20 శాతం తగ్గుతాయి. పైన 'గుడ్లు ఈ రోజు' చూడండి: సమయం మారిస్తే మారుతుంది."
+},
+{
+"k": [
+"ఫ్యాన్లు ఎందుకు",
+"టన్నెల్",
+"ఎలా చల్లబడుతుంది",
+"ఎలా పనిచేస్తుంది",
+"వేడి ఎలా తగ్గుతుంది"
+],
+"a": "పది వేల కోళ్ళు ఒక్కోటి చిన్న హీటర్ లాంటివి Sir: షెడ్ త్వరగా వేడెక్కుతుంది. చివరి గోడ ఫ్యాన్లు గాలిని బయటికి లాగుతాయి; కొత్త గాలి మొదటి చివరి తడి ప్యాడ్‌ల గుండా వచ్చి చల్లబడుతుంది, షెడ్ పొడవునా సొరంగంలా ప్రవహిస్తుంది. గాలి వేగం కూడా కోళ్ళకి చల్లగా అనిపిస్తుంది, మనకి ఫ్యాన్ లాగే."
+},
+{
+"k": [
+"ఎంత వేడి",
+"ఎంత ఉండాలి",
+"కోళ్ళకి వేడి",
+"హీట్ స్ట్రెస్",
+"ఆయాసం"
+],
+"a": "లేయర్ కోళ్ళకి 21–27°C హాయి Sir. 30 దాటితే ముక్కు తెరిచి ఆయాసపడతాయి, రెక్కలు ఎత్తి పట్టుకుంటాయి, తక్కువ తింటాయి, ఎక్కువ నీరు తాగుతాయి. 35 దాటితే ప్రమాదం. అందుకే వేసవిలో ఫ్యాన్లు, ప్యాడ్‌లు, ఫాగర్లు, చల్లని నీరు."
+},
+{
+"k": [
+"ఎంత మేత",
+"మేత ఎంత",
+"ఏం తింటాయి",
+"feed"
+],
+"a": "ఒక కోడి రోజుకి సుమారు 110 గ్రాములు Sir: మొక్కజొన్న (శక్తి), సోయా పిండి (ప్రోటీన్), సున్నపురాయి లేదా గుల్ల పొడి (పెంకుకి కాల్షియం), విటమిన్లు, ఖనిజాలు. ఈ ఫారానికి రోజుకి సుమారు 1,100 kg. సుమారు 2 kg మేతకి ఒక డజను గుడ్లు."
+},
+{
+"k": [
+"ఒక్క గుడ్డుకి ఎంత సమయం",
+"గుడ్డు ఎలా తయారవుతుంది",
+"రోజూ గుడ్డు పెడుతుందా"
+],
+"a": "ఒక గుడ్డు కోడి లోపల తయారవడానికి సుమారు 24–26 గంటలు పడుతుంది Sir: అందుకే ఒక కోడి దాదాపు రోజుకి ఒకటి పెడుతుంది, మధ్యలో ఒక్కో రోజు విరామం. పెంకు తయారవడానికే సుమారు 20 గంటలు: దానికే కాల్షియం కావాలి."
+},
+{
+"k": [
+"ఫుట్ బాత్ ఎందుకు",
+"బయోసెక్యూరిటీ",
+"రోగాలు ఎలా వస్తాయి",
+"బయటి వాళ్ళు"
+],
+"a": "కోళ్ళ రోగాలు బూట్లు, బట్టలు, వాహనాల చక్రాలు, అడవి పక్షుల ద్వారా వస్తాయి Sir. అందుకే గేటు దగ్గర ఫుట్ బాత్, వాహనాలకి మందు స్ప్రే, బయటి వాళ్ళకి లోపలికి అనుమతి లేదు, షెడ్‌కి పక్షులు దూరకుండా జాలీ. టీకాలు సమయానికి వేస్తారు."
+},
+{
+"k": [
+"కరెంట్ పోతే",
+"జనరేటర్ ఎందుకు",
+"ఫ్యాన్లు ఆగితే"
+],
+"a": "మూసిన షెడ్‌లో వేసవి మధ్యాహ్నం ఫ్యాన్లు ఆగితే లోపలి వేడి కొన్ని నిమిషాల్లోనే పెరుగుతుంది Sir. అందుకే జనరేటర్, అలారం, అత్యవసరంలో తెరవడానికి పక్క తలుపులు ఉంటాయి."
+},
+{
+"k": [
+"కోళ్ళ ఎరువు",
+"రెట్టలు",
+"ఎరువు ఏమి చేస్తారు"
+],
+"a": "రెట్టలు ఎండబెట్టి పొలాలకి సేంద్రియ ఎరువుగా అమ్ముతారు Sir: నత్రజని, భాస్వరం, పొటాష్ ఉంటాయి. తడిగా వదిలేస్తే అమ్మోనియా వాసన, ఈగలు: అందుకే త్వరగా తీసేయాలి."
+}
+],
+"quiz": [
+{
+"q": "షెడ్ లోపలి గాలిని బయటికి లాగేవి ఏవి?",
+"a": "ఎగ్జాస్ట్ ఫ్యాన్లు",
+"opts": [
+"ఎగ్జాస్ట్ ఫ్యాన్లు",
+"కూలింగ్ ప్యాడ్‌లు",
+"ఫాగర్లు"
+]
+},
+{
+"q": "లోపలికి వచ్చే గాలిని తడితో చల్లబరిచేవి ఏవి?",
+"a": "కూలింగ్ ప్యాడ్‌లు",
+"opts": [
+"నిపుల్ డ్రింకర్లు",
+"కూలింగ్ ప్యాడ్‌లు",
+"మేత తొట్లు"
+]
+},
+{
+"q": "గుడ్లని గుడ్ల గదికి తీసుకెళ్ళేవి ఏవి?",
+"a": "గుడ్ల బెల్ట్‌లు",
+"opts": [
+"మేత ట్రాలీ",
+"గుడ్ల బెల్ట్‌లు",
+"మేత సైలో"
+]
+},
+{
+"q": "కోళ్ళకి చుక్క చుక్క నీరు ఇచ్చేవి ఏవి?",
+"a": "నిపుల్ డ్రింకర్లు",
+"opts": [
+"నిపుల్ డ్రింకర్లు",
+"ఫాగర్లు",
+"నీటి ట్యాంక్"
+]
+},
+{
+"q": "గేటు దగ్గర బూట్లు ముంచే తొట్టి ఏది?",
+"a": "ఫుట్ బాత్",
+"opts": [
+"గుడ్ల గది",
+"ఫుట్ బాత్",
+"ఎరువు కుప్ప"
+]
+},
+{
+"q": "ఎన్ని ఫ్యాన్లు నడపాలో తానే నిర్ణయించేది ఏది?",
+"a": "కంట్రోలర్",
+"opts": [
+"జనరేటర్",
+"కంట్రోలర్",
+"మేత మిల్"
+]
+}
+],
+"faults": [
+{
+"label": "ఎగ్జాస్ట్ ఫ్యాన్లు",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: ఫ్యాన్ల దగ్గర కీచు అరుపు. ఏ భాగం? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "ఒక ఫ్యాన్ బెల్ట్ వదులై జారుతోంది (కీచు), దాని పుల్లీకి దుమ్ము, ఈకలు పేరుకున్నాయి: ఆ ఫ్యాన్ తక్కువ గాలి లాగుతోంది. కరెంట్ ఆపి, శుభ్రం చేసి, బెల్ట్ బిగిస్తారు."
+},
+{
+"label": "కూలింగ్ ప్యాడ్‌లు",
+"kind": "hot",
+"clue": "🌡️ వేడి చూపించు అనండి Sir: మొదటి చివర ఏది వేడిగా ఉంది?",
+"why": "కూలింగ్ ప్యాడ్ పంప్ ఆగిపోయింది, ప్యాడ్‌లు ఎండిపోయాయి: గాలి చల్లబడకుండానే లోపలికి వస్తోంది. పంప్ జాలీ శుభ్రం చేసి, నీటి తొట్టి నింపుతారు; ప్యాడ్ మీద పాచి, ఉప్పు పేరుకుంటే కడుగుతారు."
+},
+{
+"label": "నిపుల్ డ్రింకర్లు",
+"kind": "stop",
+"clue": "ఒక వరుస కోళ్ళు ఆయాసపడుతున్నాయి, తినట్లేదు Sir. ఏది ఆగింది?",
+"why": "ఆ వరుస నిపుల్ లైన్‌లో ఫిల్టర్ మూసుకుంది: నీరు రావట్లేదు. ఫిల్టర్ శుభ్రం చేసి, లైన్ ఫ్లష్ చేస్తారు; ప్రతి లైన్ చివర నీరు వస్తోందా రోజూ చూస్తారు."
+},
+{
+"label": "మేత ట్రాలీ",
+"kind": "loose",
+"clue": "షెడ్ పైభాగంలో ఏది ఊగుతోంది Sir?",
+"why": "ఒక మేత ట్రాలీ చక్రం అరిగి పట్టా మీద వణుకుతోంది: మేత సరిగ్గా పడట్లేదు. చక్రం మార్చి, పట్టా బోల్టులు బిగిస్తారు."
+}
+],
+"inside": {
+"కూలింగ్ ప్యాడ్‌లు": {
+"say": "కూలింగ్ ప్యాడ్ లోపల Sir, చాలా పెద్దది చేసి చూపిస్తున్నాను: వాలుగా ముడతలు పెట్టిన కాగితం పొరలు ఒకదానికొకటి అడ్డంగా. పైపు నుంచి నీరు పొరల మీదుగా సన్నని పొరలా జారుతుంది. ఫ్యాన్లు లాగే వేడి గాలి (నారింజ) ఈ తడి దారుల గుండా వెళ్తూ కొంచెం నీటిని ఆవిరి చేస్తుంది: ఆ ఆవిరికి వేడి కావాలి, అది గాలి నుంచే తీసుకుంటుంది. అవతలి వైపు గాలి చల్లగా (నీలం) వస్తుంది. తడి చేతి మీద గాలి వీస్తే చల్లగా అనిపించేది ఇదే.",
+"code": "// Inside a cooling pad, much larger than life: thin paper sheets with slanted flutes, crossing each other (a honeycomb).\n// A pipe on top keeps them wet; the water runs down the flutes as a thin film. The fans pull the hot outside air through:\n// it gives its heat to dry a little of the water (evaporation), so it comes out the other side several degrees cooler,\n// a little damper. The same thing cools you when wind blows on wet skin.\nconst paper = W.plastic('#b8874a', { rough: 0.95 }), wet = new THREE.MeshStandardMaterial({ color: 0x9c6c3a, roughness: 0.3, metalness: 0 });\nconst sheets = W.group();\nfor (let i = 0; i < 7; i++) {\n  const g = W.group({ at: [0, 0, -150 + i * 50] });\n  for (let k = -6; k <= 6; k++) g.add(W.mesh(W.box(4, 360, 30), i % 2 ? paper : wet, { at: [k * 40, 0, 0], rot: [0, 0, (i % 2 ? 1 : -1) * 30] }));\n  g.add(W.mesh(W.box(560, 380, 2), new THREE.MeshStandardMaterial({ color: 0xc89a5a, roughness: 0.95, transparent: true, opacity: 0.25, side: THREE.DoubleSide }), { at: [0, 0, 22] }));\n  sheets.add(g);\n}\nW.add(sheets, { label: 'తేమ కాగితం పొరలు' });\nconst top = W.group();\ntop.add(W.mesh(W.cyl(14, 14, 380, 12), W.paint('#3a6ea5'), { at: [0, 210, 0], rot: [90, 0, 0] }));\nW.add(top, { label: 'నీటి పైపు' });\nconst NW = 70, drops = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 6, 4), new THREE.MeshStandardMaterial({ color: 0x4fb3ff, roughness: 0.1, transparent: true, opacity: 0.85 }), NW);\nconst dg = W.group(); dg.add(drops); W.add(dg, { label: 'నీటి పొర' });\nconst NA = 110, air = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, transparent: true, opacity: 0.8 }), NA);\nconst ag = W.group(); ag.add(air); W.add(ag, { label: 'గాలి' });\nconst M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color();\nconst du = Array.from({ length: NW }, (_, i) => i / NW), au = Array.from({ length: NA }, (_, i) => i / NA);\nW.onTick((t, dt) => {\n  const k = Math.max(0.2, W.env.spool);\n  for (let i = 0; i < NW; i++) {\n    du[i] = (du[i] + dt * 0.25) % 1;\n    const col = (i % 13) - 6, sl = (i % 7) - 3;\n    P.set(col * 40 + (sl % 2 ? 1 : -1) * Math.tan(0.52) * (190 - du[i] * 380) * 0.3, 190 - du[i] * 380, sl * 50 + 22);\n    drops.setMatrixAt(i, M.compose(P, Q, Z.set(3, 5, 3)));\n  }\n  drops.instanceMatrix.needsUpdate = true;\n  for (let i = 0; i < NA; i++) {\n    au[i] = (au[i] + dt * 0.12 * k) % 1;\n    const u = au[i], s = (i * 0.618) % 1;\n    P.set((s - 0.5) * 480, -160 + ((i * 0.37) % 1) * 320, -420 + u * 840);\n    air.setMatrixAt(i, M.compose(P, Q, Z.setScalar(6)));\n    air.setColorAt(i, C.set(u < 0.35 ? '#ff7a2a' : u > 0.65 ? '#5ab8ff' : '#ffd08a').lerp(new THREE.Color(u < 0.35 ? '#ff7a2a' : '#5ab8ff'), 0.3));\n  }\n  air.instanceMatrix.needsUpdate = true; if (air.instanceColor) air.instanceColor.needsUpdate = true;\n});\n"
+}
+},
+"film": [
+"🐔 కోళ్ళ ఫారం",
+"10,000 కోళ్ళు · 9,000 గుడ్లు",
+"ఫ్యాన్లు గాలిని లాగుతాయి",
+"తడి ప్యాడ్‌లు చల్లబరుస్తాయి",
+"బెల్ట్‌ల మీద గుడ్లు",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ కోళ్ళ షెడ్ సంరక్షణ",
+"safety": "షెడ్‌లోకి వెళ్ళే ముందు ఫుట్ బాత్, శుభ్రమైన బట్టలు. ఫ్యాన్ల దగ్గర పని: కరెంట్ ఆపి, ఆ ఫ్యాన్ స్విచ్ బోర్డ్‌కి తాళం. రెట్టల అమ్మోనియా వాసనలో ఎక్కువసేపు మాస్క్ లేకుండా ఉండకూడదు.",
+"steps": [
+{
+"say": "నిపుల్ లైన్ల చివర నీరు వస్తోందా రోజూ చూడాలి; ఫిల్టర్లు వారానికి ఒకసారి.",
+"label": "నిపుల్ డ్రింకర్లు"
+},
+{
+"say": "ఫ్యాన్ జాలీలు, బెల్ట్‌లు, పుల్లీలు: ఈకలు, దుమ్ము వారానికి ఒకసారి తీయాలి.",
+"label": "ఎగ్జాస్ట్ ఫ్యాన్లు"
+},
+{
+"say": "కూలింగ్ ప్యాడ్ నీటి తొట్టి, పంప్ జాలీ శుభ్రం; ప్యాడ్ మీద పాచి రాకుండా.",
+"label": "కూలింగ్ ప్యాడ్‌లు"
+},
+{
+"say": "రెట్టలు కొన్ని రోజులకి ఒకసారి తీసేయాలి; షెడ్ నేల పొడిగా.",
+"label": "ఎరువు"
+},
+{
+"say": "గుడ్ల బెల్ట్‌లు సాఫీగా నడుస్తున్నాయా, పగిలిన గుడ్లు ఎక్కడ ఎక్కువో చూసి ఆ కేజ్ సరిచేయాలి.",
+"label": "గుడ్ల బెల్ట్‌లు"
+}
+]
+},
+"prefer": [
+"కోళ్ళు"
+],
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"id": "poultry"
+}
+}

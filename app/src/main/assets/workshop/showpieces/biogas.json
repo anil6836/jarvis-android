@@ -1,0 +1,467 @@
+{
+"at": 1763700000027,
+"title": "బయోగ్యాస్ ప్లాంట్",
+"what": "ఇంటి బయోగ్యాస్ ప్లాంట్: పశువుల పాక, మిక్సింగ్ ట్యాంక్, నేల కింద ఇటుక డోమ్ (కోసి చూపిస్తూ), అవుట్‌లెట్ చాంబర్, స్లర్రీ ఎరువు, గ్యాస్ పైపు, వంటగది స్టవ్, దీపం. 🕐 🚶",
+"model": "showpiece",
+"parts": [
+{
+"id": "land",
+"status": "ఇంటి ఆవరణ, నేల వేస్తున్నాను",
+"code": "// A family biogas plant (బయోగ్యాస్ ప్లాంట్), hand-made, the fixed-dome kind built in many villages. Units: cm, real size.\n// The cows' dung, mixed with as much water, goes into a brick dome under the ground (about 8 m³). There, without air,\n// bacteria slowly eat it and give off gas (about 60 % methane): it gathers under the dome and goes by pipe to the kitchen\n// stove and a lamp. As gas gathers its pressure pushes slurry out into the outlet chamber; used up, the slurry runs back.\n// The spent slurry is a rich manure for the vegetable patch. The ground over the dome lifts away to show it, cut open.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 7, ground: '#7d8a52', zoom: 0.9 });\nS.R = 160; S.B = -280; // (the dome's radius and its floor)\nconst soil = S.sf('soil', '#9c8462', { world: true, tile: 500 }), grass = S.land('grass', '#7f8f50', 600), D = -330;\n// the land, cut open like a model: a pit round the dome, and a section through the ground in front of it down to its floor\nconst land = W.group(), X0 = -2700, X1 = 3100, Z0 = -2700, Z1 = 1500, PX0 = -260, PX1 = 480, PZ0 = -220, PZ1 = 220;\nS.CUT = [PX0, PX1, PZ0, Z1];\nconst slab = (x0, x1, z0, z1) => { land.add(W.mesh(W.box(x1 - x0, -D - 4, z1 - z0), soil, { at: [(x0 + x1) / 2, (D - 4) / 2, (z0 + z1) / 2] }), W.mesh(W.box(x1 - x0, 4, z1 - z0), grass, { at: [(x0 + x1) / 2, -2, (z0 + z1) / 2] })); };\nslab(X0, X1, Z0, PZ0); slab(X0, PX0, PZ0, Z1); slab(PX1, X1, PZ0, Z1);\nland.add(W.mesh(W.box(PX1 - PX0, 20, Z1 - PZ0), soil, { at: [(PX0 + PX1) / 2, D + 10, (PZ0 + Z1) / 2] }));\nland.add(W.mesh(W.box(2000, 6, 1300), S.land('soil', '#b39f7a', 400), { at: [-1350, 3, 600] })); // (the swept yard)\nW.add(land, { label: 'నేల', ground: true });\nconst cov = W.group(); // the earth over the dome and in front of it: it lifts away ('పైకప్పు తీయి') to show the cut\ncov.add(W.mesh(W.box(PX1 - PX0, 60, PZ1 - PZ0), S.sf('soil', '#8f7a58', { world: true, tile: 300 }), { at: [(PX0 + PX1) / 2, -26, 0] }));\ncov.add(W.mesh(W.box(PX1 - PX0, -D, Z1 - PZ1), S.sf('soil', '#8f7a58', { world: true, tile: 300 }), { at: [(PX0 + PX1) / 2, D / 2, (PZ1 + Z1) / 2] }));\ncov.add(W.mesh(W.box(PX1 - PX0, 4, Z1 - PZ0), grass, { at: [(PX0 + PX1) / 2, 2, (PZ0 + Z1) / 2] }));\nW.add(cov, { label: 'మట్టి మూత', layer: 0, peelBy: [0, 700, 0], explode: [0, 700, 0], ground: true });\nconst tr = W.group();\ntr.add(S.trees(10, -2600, -2600, 3000, 1400, (x, z) => (x < -2300 || x > 2850 || z < -2450) && !(x > -1300 && x < 1300 && z < -1700)));\nW.add(tr, { label: 'చెట్లు', ground: true });\n"
+},
+{
+"id": "plant",
+"status": "డైజెస్టర్ డోమ్ కడుతున్నాను",
+"code": "const S = W.store;\n// The digester: a brick dome on a concrete floor, cut open in front so its inside shows: the slurry (dung and water) and\n// the gas above it. The inlet pipe slopes in from the mixing tank; at the right, low down, an opening into the outlet\n// (displacement) chamber; from that, an overflow to the slurry pit. The gas pipe leaves from the dome's top.\nconst brick = S.sf('brick', '#a85e44', { tile: 120 }), conc = S.sf('concrete', '#b8b2a6'), R = S.R, B = S.B;\nconst dm = W.group();\ndm.add(W.mesh(new THREE.SphereGeometry(R, 40, 16, Math.PI, Math.PI, 0, Math.PI / 2), Object.assign(W.surface('brick', { color: '#a85e44', tile: 120 }), { side: THREE.DoubleSide }), { at: [0, B, 0] }));\ndm.add(W.mesh(new THREE.RingGeometry(R - 14, R, 40, 1, 0, Math.PI), brick, { at: [0, B, 1] }));\ndm.add(W.mesh(W.cyl(R + 20, R + 20, 16, 40), conc, { at: [0, B - 8, 0] }));\ndm.add(W.mesh(W.cyl(18, 18, 40, 12), conc, { at: [0, B + R + 10, -10] }));\nW.add(dm, { label: 'డైజెస్టర్ డోమ్', heat: [28, 36] });\n// the slurry inside: its top (a half disc) and its cut face; both follow the level\nconst sl = W.group();\nS.slTop = W.mesh(new THREE.CircleGeometry(1, 40, 0, Math.PI).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x5a4a30, roughness: 0.4, side: THREE.DoubleSide }));\nS.slFaceM = new THREE.MeshStandardMaterial({ color: 0x4e3e28, roughness: 0.8, side: THREE.DoubleSide });\nS.slFace = new THREE.Mesh(new THREE.BufferGeometry(), S.slFaceM); S.slFace.position.set(0, B, 2);\nsl.add(S.slTop, S.slFace);\nS.setLevel = (h) => { // h: the slurry's height above the floor (cm)\n  const r = Math.sqrt(Math.max(0, (R - 14) * (R - 14) - h * h));\n  S.slTop.position.set(0, B + h, 0); S.slTop.scale.set(r, 1, r);\n  const sh = new THREE.Shape(), n = 16;\n  sh.moveTo(-(R - 14), 0); sh.lineTo(R - 14, 0);\n  for (let i = 1; i <= n; i++) { const y = h * i / n; sh.lineTo(Math.sqrt(Math.max(0, (R - 14) * (R - 14) - y * y)), y); }\n  for (let i = n; i >= 0; i--) { const y = h * i / n; sh.lineTo(-Math.sqrt(Math.max(0, (R - 14) * (R - 14) - y * y)), y); }\n  S.slFace.geometry.dispose(); S.slFace.geometry = new THREE.ShapeGeometry(sh);\n};\nS.setLevel(110);\nW.add(sl, { label: 'స్లర్రీ', heat: [30, 36] });\nconst gs = W.group();\nS.gasM = new THREE.MeshStandardMaterial({ color: 0xd8c2ff, roughness: 0.2, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide });\ngs.add(W.mesh(new THREE.SphereGeometry(R - 16, 32, 10, Math.PI, Math.PI, 0, 0.75), S.gasM, { at: [0, B, 0] }));\nW.add(gs, { label: 'గ్యాస్', heat: [30, 34] });\n// the mixing tank and inlet pipe; the outlet chamber (front wall left out), its slurry, the overflow to the pit\nconst mt = W.group();\nmt.add(W.mesh(W.cyl(55, 55, 70, 20), brick, { at: [-560, 35, 0] }), W.mesh(W.cyl(47, 47, 6, 20), new THREE.MeshStandardMaterial({ color: 0x6a5434, roughness: 0.5 }), { at: [-560, 50, 0] }));\nS.mixer = W.group({ at: [-560, 60, 0] }); S.mixer.add(W.mesh(W.box(6, 120, 6), S.sf('wood', '#8a6a44'), { at: [0, 30, 0] }), W.mesh(W.box(70, 6, 6), S.sf('wood', '#8a6a44'), { at: [0, 90, 0] }));\nmt.add(S.mixer);\nW.add(mt, { label: 'మిక్సింగ్ ట్యాంక్', heat: [28, 32] });\nconst ip = W.group();\nip.add(S.pipe([[-560, 10, 0], [-420, -60, 0], [-230, -190, 0], [-120, -240, 0]], 9, S.matte('#d9d4c6', 0.5), 16));\nW.add(ip, { label: 'ఇన్‌లెట్ పైపు' });\nconst oc = W.group();\noc.add(W.mesh(W.box(16, -B, 200), brick, { at: [244, B / 2, 0] }), W.mesh(W.box(16, -B, 200), brick, { at: [456, B / 2, 0] }), W.mesh(W.box(228, -B, 16), brick, { at: [350, B / 2, -108] }));\noc.add(W.mesh(W.box(228, 14, 216), conc, { at: [350, B - 7, 0] }));\noc.add(W.mesh(W.box(110, 50, 60), new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 1 }), { at: [180, B + 25, 0] })); // (the opening from the dome)\nS.ocSlurry = W.mesh(W.box(196, 4, 184), new THREE.MeshStandardMaterial({ color: 0x5a4a30, roughness: 0.4 }), { at: [350, B + 60, 0] }); oc.add(S.ocSlurry);\noc.add(S.pipe([[456, -40, 0], [560, -30, 0], [700, -10, 300]], 7, S.matte('#d9d4c6', 0.5), 10));\nW.add(oc, { label: 'అవుట్‌లెట్ చాంబర్', heat: [28, 32] });\nconst sp = W.group();\nsp.add(W.mesh(W.box(380, 20, 300), conc, { at: [800, 2, 420] }), W.mesh(W.box(340, 6, 260), new THREE.MeshStandardMaterial({ color: 0x4e3e28, roughness: 0.5 }), { at: [800, 8, 420] }));\nsp.add(S.heap(1250, 650, 220, 90, 160, S.sf('soil', '#4f3e2a', { tile: 120 })));\nW.add(sp, { label: 'స్లర్రీ గుంట', heat: [28, 32] });\n"
+},
+{
+"id": "home",
+"status": "ఇల్లు, వంటగది, గ్యాస్ పైపు వేస్తున్నాను",
+"code": "const S = W.store;\n// The family's house with its kitchen (a two-burner biogas stove on the platform) and a gas lamp on the veranda; the gas\n// pipe from the dome's top: the main valve, a water trap at the lowest point (the gas is wet: the water must drain out).\nconst pl = S.sf('plaster', '#ede3cc'), tile = S.sf('brick', '#b4573a', { tile: 80 });\nconst hw = W.group();\nhw.add(W.mesh(W.box(1400, 300, 20), pl, { at: [-1500, 150, -1200] }));\nfor (const x of [-2200, -800]) hw.add(W.mesh(W.box(20, 300, 1000), pl, { at: [x, 150, -700] }));\nhw.add(W.mesh(W.box(460, 300, 20), pl, { at: [-1970, 150, -200] }), W.mesh(W.box(700, 300, 20), pl, { at: [-1150, 150, -200] }), W.mesh(W.box(240, 70, 20), pl, { at: [-1620, 265, -200] }));\nhw.add(W.mesh(W.box(20, 300, 600), pl, { at: [-1500, 150, -900] })); // (the kitchen's wall)\nhw.add(W.mesh(W.box(160, 110, 6), W.glass({ tint: '#9fc4dc' }), { at: [-1100, 180, -188] }));\nhw.add(W.mesh(W.box(1440, 30, 1040), S.sf('concrete', '#c4bfb3'), { at: [-1500, 15, -700] }));\nW.add(hw, { label: 'ఇంటి గోడలు', layer: 1, peelBy: [0, 800, 0], explode: [0, 0, 900] });\nconst hr = W.group();\nfor (const sz of [-1, 1]) hr.add(W.mesh(W.box(1560, 12, 640), tile, { at: [-1500, 360, -700 + sz * 280], rot: [sz * 22, 0, 0] }));\nhr.add(W.mesh(W.box(1500, 12, 320), S.sf('sheet', '#9fb0bc', { tile: 200 }), { at: [-1500, 270, -40], rot: [-12, 0, 0] }));\nfor (const x of [-2150, -1500, -850]) hr.add(W.mesh(W.box(16, 260, 16), S.sf('wood', '#7a5a3a'), { at: [x, 130, 110] }));\nW.add(hr, { label: 'ఇంటి పైకప్పు', layer: 0, peelBy: [0, 1000, 0], explode: [0, 1000, 0] });\nconst kt = W.group();\nkt.add(W.mesh(W.box(500, 80, 70), S.sf('concrete', '#d6d0c2'), { at: [-1900, 70, -1140] }));\nkt.add(W.mesh(W.box(70, 16, 40), S.matte('#2c3036', 0.4), { at: [-1940, 118, -1140] }));\nS.flames = [];\nfor (const dx of [-30, 30]) {\n  kt.add(W.mesh(W.cyl(10, 10, 6, 14), S.matte('#1b1c1e'), { at: [-1940 + dx, 130, -1140] }));\n  const f = W.mesh(W.cone(9, 12, 12), new THREE.MeshStandardMaterial({ color: 0x1a2a6a, emissive: 0x3a6aff, emissiveIntensity: 0, transparent: true, opacity: 0.85, depthWrite: false }), { at: [-1940 + dx, 140, -1140] });\n  kt.add(f); S.flames.push(f);\n}\nkt.add(W.mesh(W.cyl(20, 16, 22, 16), S.sf('metal', '#b9bfc5'), { at: [-1970, 150, -1140] }));\nW.add(kt, { label: 'బయోగ్యాస్ స్టవ్', heat: [30, 80], layer: 2 });\nconst lp = W.group();\nlp.add(W.mesh(W.box(8, 40, 8), S.sf('metal', '#6f767e'), { at: [-1500, 230, -180] }));\nS.lampM = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff1c8, emissiveIntensity: 0, transparent: true, opacity: 0.9 });\nlp.add(W.mesh(W.sphere(14, 14), S.lampM, { at: [-1500, 200, -180] }));\nW.add(lp, { label: 'గ్యాస్ లైట్' });\nconst gp = W.group(), gi = S.sf('metal', '#9aa3ab');\ngp.add(S.pipe([[0, S.B + S.R + 20, -10], [0, 40, -10], [0, 60, -10], [-300, 40, -150], [-650, 15, -250], [-900, 40, -350], [-1300, 60, -900], [-1800, 120, -1150], [-1940, 118, -1150]], 3.5, gi, 60));\nW.add(gp, { label: 'గ్యాస్ పైపు' });\nconst gv = W.group();\ngv.add(W.mesh(W.cyl(10, 10, 24, 10), S.sf('paint', '#b3261e'), { at: [0, 60, -10], rot: [0, 0, 90] }), W.mesh(W.box(30, 4, 6), S.sf('paint', '#b3261e'), { at: [0, 76, -10] }));\nW.add(gv, { label: 'గ్యాస్ వాల్వ్' });\nconst wt = W.group();\nwt.add(W.mesh(W.box(50, 40, 40), S.sf('concrete', '#c4bfb3'), { at: [-650, 0, -250] }), W.mesh(W.cyl(8, 8, 30, 10), S.sf('paint', '#3a6ea5'), { at: [-650, 25, -250] }));\nW.add(wt, { label: 'వాటర్ ట్రాప్' });\n"
+},
+{
+"id": "farm",
+"status": "పశువుల పాక, తోట వేస్తున్నాను",
+"code": "const S = W.store;\n// The cattle shed with four white cows (plain, original drawing) and their manger; the dung heap by the mixing tank; the\n// vegetable patch behind, fed with the slurry manure; a compost heap.\nconst ps = W.group(), wood = S.sf('wood', '#7a5a3a');\nfor (const [x, z] of [[1100, -1400], [2700, -1400], [1100, -500], [2700, -500]]) ps.add(W.mesh(W.box(18, 260, 18), wood, { at: [x, 130, z] }));\nps.add(W.mesh(W.box(1800, 10, 1150), S.sf('sheet', '#8c9aa4', { tile: 200 }), { at: [1900, 265, -950], rot: [-8, 0, 0] }));\nps.add(W.mesh(W.box(1600, 50, 70), S.sf('concrete', '#b8b2a6'), { at: [1900, 25, -1330] }));\nps.add(W.mesh(W.box(1700, 8, 1050), S.sf('concrete', '#a9a59b', { world: true }), { at: [1900, 4, -950] }));\nW.add(ps, { label: 'పశువుల పాక' });\nconst cw = W.group(), white = S.matte('#ece6da', 0.85), dark = S.matte('#3a332c', 0.8), horn = S.matte('#5a4a3a', 0.6);\nconst cow = (x, z, a) => {\n  const g = W.group({ at: [x, 0, z] }); g.rotation.y = a;\n  g.add(W.mesh(W.box(150, 75, 55, 18), white, { at: [0, 110, 0] }), W.mesh(W.box(40, 30, 40, 10), white, { at: [45, 160, 0] })); // (body, hump)\n  g.add(W.mesh(W.box(46, 34, 30, 8), white, { at: [95, 130, 0], rot: [0, 0, 25] }), W.mesh(W.box(40, 26, 26, 8), white, { at: [118, 110, 0], rot: [0, 0, -40] }));\n  g.add(W.mesh(W.box(14, 12, 20), dark, { at: [134, 96, 0] }));\n  for (const sz of [-1, 1]) g.add(W.mesh(W.cone(4, 26, 6), horn, { at: [114, 136, sz * 10], rot: [sz * 25, 0, -15] }), W.mesh(W.box(16, 6, 10), white, { at: [112, 122, sz * 18] }));\n  for (const [dx, dz] of [[-55, -18], [-55, 18], [50, -18], [50, 18]]) g.add(W.mesh(W.cyl(7, 6, 80, 8), white, { at: [dx, 40, dz] }), W.mesh(W.cyl(7, 7, 8, 8), dark, { at: [dx, 4, dz] }));\n  g.add(W.mesh(W.cyl(3, 2, 70, 6), white, { at: [-80, 95, 0], rot: [0, 0, 15] }), W.mesh(W.box(8, 16, 8), dark, { at: [-90, 60, 0] }));\n  cw.add(g); return g;\n};\nS.cows = [cow(1400, -1100, -Math.PI / 2), cow(1800, -1100, -Math.PI / 2), cow(2200, -1100, -Math.PI / 2), cow(2550, -1050, -Math.PI / 2 - 0.2)];\nW.add(cw, { label: 'ఆవులు', heat: [38, 39] });\nconst dh = W.group(); dh.add(S.heap(-700, 400, 160, 70, 120, S.sf('soil', '#5a4630', { tile: 100 })));\nW.add(dh, { label: 'పేడ కుప్ప', heat: [30, 34] });\nconst vg = W.group();\nvg.add(W.mesh(W.box(2400, 10, 800), S.land('soil', '#6a5438', 300), { at: [0, 5, -2050] }));\nconst plants = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), S.matte('#4f8a34', 0.8), 8 * 16);\nlet np = 0;\nfor (let r = 0; r < 8; r++) { vg.add(W.mesh(W.box(2300, 16, 40), S.sf('soil', '#5a4630'), { at: [0, 14, -2400 + r * 96] })); for (let c = 0; c < 16; c++) plants.setMatrixAt(np++, new THREE.Matrix4().compose(new THREE.Vector3(-1100 + c * 146 + (r % 2) * 50, 40, -2400 + r * 96), new THREE.Quaternion(), new THREE.Vector3(30 + (c % 3) * 6, 26, 30))); }\nvg.add(plants);\nW.add(vg, { label: 'కూరగాయల తోట', ground: true });\n"
+},
+{
+"id": "run",
+"status": "గ్యాస్ తయారీకి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is how much dung goes in each day (0–80 kg; four or five cows give about 60). A kilo of fresh dung\n// gives about 40 litres of gas, slowly (the slurry stays about 40 days inside). Shown fast: one day in a minute. As gas\n// gathers, the slurry inside is pushed down and out into the outlet chamber (it rises there); when the dome is full the\n// extra bubbles out through the outlet (a fixed dome's own safety). Over the limit (too much dung at once): the bacteria\n// can't keep up, the slurry turns sour, gas falls (and the overflow runs thick).\n// 🚩 \"cook\": the stove burns: gas is used, the slurry flows back. 🚩 \"winter\": cold slows the bacteria: less gas.\nconst sign = W.group();\nsign.add(W.text('JARVIS · బయోగ్యాస్ ప్లాంట్', { size: 40, at: [-1970, 245, -187], color: '#1f3a5a', bg: '#e8e2d0' }));\nW.add(sign, { label: 'బోర్డ్' });\nW.throttle({ label: 'పేడ', rise: 0.4, fall: 0.4, start: 0.75 });\nconst fv = W.sound({ kind: 'air', label: 'బయోగ్యాస్ స్టవ్', gain: 0.35 });\nconst bv = W.sound({ kind: 'water', label: 'అవుట్‌లెట్ చాంబర్', gain: 0.25 });\nconst cv = W.sound({ kind: 'swoosh', label: 'ఆవులు', gain: 0.12, f0: 0.3 });\nconst mv = W.sound({ kind: 'swoosh', label: 'మిక్సింగ్ ట్యాంక్', gain: 0.6, f0: 0.8 });\nlet hudT = 0, G = 1.2, sour = 0, mix = 0;\nconst CAP = 2.0;\nS.st = { feed: 0, cook: 0, full: 0, gas: 0 };\nW.onTick((t, dt) => {\n  const s = W.env.spool, over = W.env.over, cook = W.env.flag('cook'), winter = W.env.flag('winter'), dark = W.env.dark || 0;\n  const dung = 80 * Math.min(1, s);\n  sour += ((over ? 1 : 0) - sour) * Math.min(1, dt * 0.3);\n  const P = 0.04 * dung * (winter ? 0.6 : 1) * (1 - 0.6 * sour); // m³ a day\n  const use = (cook ? 0.35 : 0) + (dark > 0.5 && G > 0.1 ? 0.12 : 0); // m³ an hour\n  G += dt * (P / 60 - use / 2.5);\n  const full = G >= CAP;\n  G = Math.max(0, Math.min(CAP, G));\n  S.st.feed = dung; S.st.cook = cook && G > 0.02 ? 1 : 0; S.st.full = full ? 1 : 0; S.st.gas = P;\n  const u = G / CAP;\n  S.setLevel(125 - 45 * u);\n  S.ocSlurry.position.y = S.B + 40 + 200 * u;\n  S.gasM.opacity = 0.08 + 0.22 * u;\n  S.flames.forEach((f, i) => { const on = S.st.cook; f.material.emissiveIntensity = on ? 2.5 * (0.85 + 0.15 * Math.sin(t * 17 + i)) : 0; f.visible = !!on; f.scale.y = 0.9 + 0.2 * Math.sin(t * 13 + i); });\n  S.lampM.emissiveIntensity = dark > 0.5 && G > 0.1 ? 2.2 : 0;\n  mix += dt * (dung > 5 ? 1.5 : 0); S.mixer.rotation.y = mix;\n  S.cows.forEach((c, i) => { c.children[2].rotation.z = 0.44 + 0.1 * Math.sin(t * 0.8 + i * 2); });\n  fv.set(S.st.cook ? 0.6 : 0); bv.set(full ? 0.5 : 0.1); cv.set(0.3); mv.set(dung / 80); // (the slurry sloshes as it is mixed and poured)\n  S.step(t, dt, Math.min(1, s));\n  if (t - hudT > 0.3) {\n    hudT = t;\n    const cyl = P * 30 * 0.43 / 14.2;\n    W.hud({ 'పేడ': Math.round(dung) + ' kg/రోజు · సుమారు ' + Math.round(dung / 12) + ' ఆవులు', 'గ్యాస్ తయారీ': P.toFixed(1) + ' m³/రోజు (60% మీథేన్)',\n      'నిల్వ': G.toFixed(2) + ' / ' + CAP.toFixed(1) + ' m³ ' + (full ? '· నిండింది' : ''), 'స్టవ్': S.st.cook ? 'వెలుగుతోంది 🔥' : 'రోజుకి సుమారు ' + (P / 0.35).toFixed(1) + ' గంటల వంట',\n      'ఆదా': 'నెలకి సుమారు ' + cyl.toFixed(1) + ' LPG సిలిండర్లు',\n      'స్థితి': over ? 'ఎక్కువ పేడ ⚠️ స్లర్రీ పుల్లబడింది, గ్యాస్ తగ్గింది' : full ? 'డోమ్ నిండింది: అదనపు గ్యాస్ అవుట్‌లెట్ గుండా బయటికి' : winter ? 'చలి: బ్యాక్టీరియా నెమ్మది' : 'సాధారణం ✅' });\n    W.report({ power: s, dungKg: dung, gasM3day: P, storedM3: G });\n  }\n});\nW.stream([[-700, 60, 400], [-650, 60, 200], [-560, 70, 0], [-560, 10, 0]], { kind: 'coal', count: 8, size: 9, speed: 0.3, when: () => S.st.feed > 5 });\nW.stream([[-560, 10, 0], [-420, -60, 0], [-230, -190, 0], [-120, -240, 0], [-60, -240, -40]], { kind: 'coal', count: 12, size: 8, speed: 0.25, when: () => S.st.feed > 5 });\nfor (const x of [-90, -30, 40, 100]) W.stream([[x, S.B + 20, -60], [x * 0.9, S.B + 100, -50], [x * 0.5, S.B + 150, -30]], { kind: 'fuel', count: 5, size: 6, speed: 0.25, when: () => S.st.gas > 0.2 });\nW.stream([[0, S.B + S.R + 20, -10], [0, 60, -10], [-300, 40, -150], [-650, 15, -250], [-900, 40, -350], [-1300, 60, -900], [-1800, 120, -1150], [-1940, 120, -1140]], { kind: 'fuel', count: 26, size: 7, speed: 0.6, when: () => S.st.cook > 0 });\nW.stream([[180, S.B + 25, 0], [300, S.B + 40, 0], [350, S.B + 120, 0]], { kind: 'coal', count: 8, size: 8, speed: 0.2, when: () => S.st.gas > 0.2 });\nW.stream([[350, -60, 0], [456, -40, 0], [560, -30, 0], [700, -10, 300], [800, 10, 420]], { kind: 'coal', count: 10, size: 8, speed: 0.3, when: () => S.st.full > 0 || S.st.feed > 30 });\nW.stream([[300, S.B + 200, -40], [320, 30, -40], [330, 160, -40]], { kind: 'fuel', count: 6, size: 6, speed: 0.5, when: () => S.st.full > 0 });\nW.walk({ eye: 160, speed: 250, area: [-2600, -2600, 3000, 1400],\n  solid: [[-270, -230, 490, 230], [1000, -1500, 2800, -1250], [-2220, -1220, -780, -1180], [-2220, -1220, -2180, -180], [-820, -1220, -780, -180]],\n  spots: [\n    { name: 'పశువుల పాక', at: [1900, 0, 300], look: [1900, 120, -1100] },\n    { name: 'మిక్సింగ్ ట్యాంక్ దగ్గర', at: [-1400, 0, 250], look: [-560, 50, 0] },\n    { name: 'డోమ్ దగ్గర', at: [110, -310, 1250], look: [60, -170, 0] },\n    { name: 'స్లర్రీ గుంట దగ్గర', at: [1500, 0, 1250], look: [800, 0, 420] },\n    { name: 'వంటగది లోపల', at: [-1700, 30, -500], look: [-1940, 110, -1140] },\n    { name: 'కూరగాయల తోట', at: [1600, 0, -1500], look: [-300, 40, -2200] },\n  ] });\n"
+}
+],
+"say": "బయోగ్యాస్ ప్లాంట్ రెడీ Sir. పవర్ బార్ అంటే రోజుకి ఎంత పేడ. 'పైకప్పు తీయి' అంటే మట్టి లేచి డోమ్ లోపల కనిపిస్తుంది, 'వంట మొదలుపెట్టు' అంటే స్టవ్ వెలుగుతుంది, 'డైజెస్టర్ లోపల చూపించు' అంటే బ్యాక్టీరియా.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"పేడ నుంచి వంట గ్యాస్\", \"steps\": [{\"say\": \"Sir, ఇది ఇంటి బయోగ్యాస్ ప్లాంట్: కుడి వైపు పశువుల పాక, ఎడమ వైపు ఇల్లు, మధ్యలో నేల కింద ఇటుక డోమ్.\", \"focus\": [{\"id\": \"farm\", \"piece\": \"ఆవులు\"}, {\"id\": \"home\", \"piece\": \"ఇంటి గోడలు\"}, {\"id\": \"plant\", \"piece\": \"డైజెస్టర్ డోమ్\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"పేడని సమానంగా నీటితో మిక్సింగ్ ట్యాంక్‌లో కలిపి వదిలితే పైపు ద్వారా డోమ్ అడుగుకి.\", \"focus\": [{\"id\": \"farm\", \"piece\": \"పేడ కుప్ప\"}, {\"id\": \"plant\", \"piece\": \"మిక్సింగ్ ట్యాంక్\"}, {\"id\": \"plant\", \"piece\": \"ఇన్‌లెట్ పైపు\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}, {\"say\": \"మట్టి తీసి డోమ్ కోసి చూపిస్తున్నాను: కింద స్లర్రీ, పైన గ్యాస్. గాలి లేని ఈ చీకటిలో బ్యాక్టీరియా పేడని గ్యాస్‌గా మారుస్తాయి.\", \"focus\": [{\"id\": \"plant\", \"piece\": \"డైజెస్టర్ డోమ్\"}, {\"id\": \"plant\", \"piece\": \"స్లర్రీ\"}, {\"id\": \"plant\", \"piece\": \"గ్యాస్\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"land\", \"piece\": \"మట్టి మూత\", \"by\": [0, 600, 0], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"గ్యాస్ పోగయ్యే కొద్దీ స్లర్రీ పక్క గదిలోకి నెట్టబడుతుంది, అక్కడ మట్టం పెరుగుతుంది; పొంగినది గుంటలోకి: మంచి ఎరువు.\", \"focus\": [{\"id\": \"plant\", \"piece\": \"అవుట్‌లెట్ చాంబర్\"}, {\"id\": \"plant\", \"piece\": \"స్లర్రీ గుంట\"}], \"view\": \"front\", \"close\": true, \"move\": [{\"id\": \"land\", \"piece\": \"మట్టి మూత\", \"by\": [0, 600, 0], \"secs\": 1}], \"secs\": 9}, {\"say\": \"డోమ్ పైనుంచి పైపు వాల్వ్, వాటర్ ట్రాప్ దాటి వంటగది స్టవ్‌కి, వరండా దీపానికి.\", \"focus\": [{\"id\": \"home\", \"piece\": \"గ్యాస్ పైపు\"}, {\"id\": \"home\", \"piece\": \"వాటర్ ట్రాప్\"}, {\"id\": \"home\", \"piece\": \"బయోగ్యాస్ స్టవ్\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"home\", \"piece\": \"ఇంటి పైకప్పు\", \"by\": [0, 1000, 0], \"secs\": 1}], \"secs\": 9}, {\"say\": \"'వంట మొదలుపెట్టు' అంటే నీలి మంట, నిల్వ తగ్గడం; 'చలికాలం' అంటే గ్యాస్ తగ్గడం చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"home\", \"piece\": \"బయోగ్యాస్ స్టవ్\"}, {\"id\": \"farm\", \"piece\": \"కూరగాయల తోట\"}], \"view\": \"iso\", \"secs\": 9}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"బయోగ్యాస్ ప్లాంట్",
+"బయోగ్యాస్",
+"బయో గ్యాస్",
+"గోబర్ గ్యాస్",
+"గోబర్ గ్యాస్ ప్లాంట్",
+"పేడ గ్యాస్",
+"biogas",
+"biogas plant",
+"bio gas",
+"gobar gas"
+],
+"powerName": "🐄 పేడ",
+"outdoor": true,
+"walk": [
+"పశువుల పాక",
+"మిక్సింగ్ ట్యాంక్ దగ్గర",
+"డోమ్ దగ్గర",
+"స్లర్రీ గుంట దగ్గర",
+"వంటగది లోపల",
+"కూరగాయల తోట"
+],
+"switches": [
+{
+"id": "cook",
+"menu": "🔥 వంట మొదలుపెట్టు",
+"words": [
+"వంట మొదలుపెట్టు",
+"స్టవ్ వెలిగించు",
+"స్టవ్ వెలిగించండి",
+"వంట చేయి",
+"light the stove"
+],
+"offWords": [
+"స్టవ్ ఆపు",
+"వంట అయిపోయింది",
+"స్టవ్ ఆర్పు",
+"stop cooking"
+],
+"on": "🔥 స్టవ్ వెలిగింది Sir: నీలి మంట. గ్యాస్ పైపులో వెళ్తోంది, డోమ్‌లో నిల్వ తగ్గుతోంది: అవుట్‌లెట్ చాంబర్ స్లర్రీ వెనక్కి డోమ్‌లోకి వస్తోంది చూడండి.",
+"off": "స్టవ్ ఆపాను Sir: గ్యాస్ మళ్ళీ పోగవుతుంది."
+},
+{
+"id": "winter",
+"menu": "❄️ చలికాలం",
+"words": [
+"చలికాలం",
+"చలి కాలం",
+"చలి రోజులు",
+"winter"
+],
+"offWords": [
+"వేసవి వచ్చింది",
+"చలి పోయింది",
+"వెచ్చగా ఉంది",
+"summer"
+],
+"on": "❄️ చలికాలం Sir: డోమ్ లోపల చల్లబడింది, బ్యాక్టీరియా నెమ్మదించాయి: అదే పేడకి గ్యాస్ సుమారు 40% తక్కువ.",
+"off": "వెచ్చని రోజులు Sir: గ్యాస్ మళ్ళీ పూర్తిగా."
+}
+],
+"power": {
+"start": "పేడ వేయడం మొదలైంది Sir.",
+"full": "రోజుకి 80 kg పేడ Sir (సుమారు 6–7 పశువులు): రోజుకి సుమారు 3.2 m³ గ్యాస్.",
+"half": "రోజుకి 40 kg Sir: సుమారు 1.6 m³ గ్యాస్.",
+"stop": "పేడ వేయడం ఆపాను Sir: లోపల ఉన్నది కొన్ని రోజులు గ్యాస్ ఇస్తూనే ఉంటుంది.",
+"over": "ఒకేసారి చాలా ఎక్కువ పేడ వేశాం Sir: బ్యాక్టీరియా తట్టుకోలేక స్లర్రీ పుల్లబడింది, గ్యాస్ తగ్గింది. కొన్ని రోజులు మోతాదు తగ్గించి సరైన మోతాదే వేయాలి.",
+"cut": "మోతాదు సరిచేశాం Sir: బ్యాక్టీరియా కోలుకుని గ్యాస్ మళ్ళీ పెరుగుతోంది."
+},
+"info": {
+"నేల": {
+"simple": "ఇంటి ఆవరణ: ఇల్లు, పశువుల పాక, మధ్యలో నేల కింద బయోగ్యాస్ ప్లాంట్.",
+"deep": "ప్లాంట్ ఇంటికి, పాకకి దగ్గరగా కడతారు: పేడ మోయడం సులువు, గ్యాస్ పైపు చిన్నది.",
+"specs": {
+"పని": "ఆవరణ"
+}
+},
+"మట్టి మూత": {
+"simple": "మట్టి మూత: డోమ్ మీద మట్టి. 'పైకప్పు తీయి' అంటే లేచి కోసిన డోమ్ లోపల కనిపిస్తుంది.",
+"deep": "డోమ్ మీద మట్టి చలిని ఆపుతుంది, డోమ్‌ని గ్యాస్ ఒత్తిడికి పైకి లేవకుండా బరువుగా నొక్కుతుంది.",
+"specs": {
+"మందం": "సుమారు 50 cm"
+}
+},
+"చెట్లు": {
+"simple": "చెట్లు.",
+"deep": "చెట్ల నీడ ఇంటిని చల్లగా ఉంచుతుంది; ప్లాంట్ మీద మాత్రం ఎండ పడటం మంచిది (వెచ్చదనం).",
+"specs": {
+"పని": "నీడ"
+}
+},
+"డైజెస్టర్ డోమ్": {
+"simple": "డైజెస్టర్ డోమ్: నేల కింద ఇటుక గుమ్మటం, సుమారు 8 m³. ముందు భాగం కోసి లోపల చూపిస్తున్నాను.",
+"deep": "లోపల గాలి ఉండదు: అక్కడి బ్యాక్టీరియా పేడని తిని గ్యాస్ ఇస్తాయి. గుమ్మటం ఆకారం ఒత్తిడిని సమానంగా తట్టుకుంటుంది, లీక్ కాకుండా లోపల ప్లాస్టరింగ్. 'డైజెస్టర్ లోపల చూపించు' అంటే బ్యాక్టీరియాని చూపిస్తాను.",
+"specs": {
+"పరిమాణం": "సుమారు 8 m³",
+"లోపల వేడి": "30–35°C మంచిది"
+}
+},
+"స్లర్రీ": {
+"simple": "స్లర్రీ: పేడ, నీరు సమానంగా కలిపిన చిక్కటి ద్రవం. డోమ్ కింది భాగమంతా ఇదే.",
+"deep": "ఒక రోజు వేసిన పేడ సుమారు 40 రోజులు లోపల ఉంటుంది, నెమ్మదిగా గ్యాస్ అవుతుంది. గ్యాస్ పోగయ్యే కొద్దీ ఇది కిందికి నెట్టబడి అవుట్‌లెట్ చాంబర్‌లోకి వెళ్తుంది.",
+"specs": {
+"లోపల ఉండే కాలం": "సుమారు 40 రోజులు"
+}
+},
+"గ్యాస్": {
+"simple": "గ్యాస్: స్లర్రీ పైన డోమ్‌లో పోగయ్యే బయోగ్యాస్ (లేత ఊదా రంగులో చూపిస్తున్నాను; నిజంగా రంగు, పెద్ద వాసన ఉండదు).",
+"deep": "సుమారు 60% మీథేన్ (మండేది), 40% కార్బన్ డయాక్సైడ్, కొంచెం హైడ్రోజన్ సల్ఫైడ్ (కుళ్ళిన గుడ్డు వాసన). LPG కంటే నెమ్మదిగా మండుతుంది, నీలి మంట.",
+"specs": {
+"మీథేన్": "సుమారు 60%"
+}
+},
+"మిక్సింగ్ ట్యాంక్": {
+"simple": "మిక్సింగ్ ట్యాంక్: పేడ, నీరు సమానంగా కలిపే చిన్న తొట్టి. కర్రతో కలిపి వదిలితే పైపు ద్వారా డోమ్‌లోకి.",
+"deep": "రాళ్ళు, గడ్డి, మట్టి లోపలికి వెళ్ళకూడదు: అడుగున పేరుకుని స్థలం తగ్గిస్తాయి.",
+"specs": {
+"నిష్పత్తి": "పేడ 1 : నీరు 1"
+}
+},
+"ఇన్‌లెట్ పైపు": {
+"simple": "ఇన్‌లెట్ పైపు: మిక్సింగ్ ట్యాంక్ నుంచి వాలుగా డోమ్ అడుగుకి.",
+"deep": "కొత్త స్లర్రీ అడుగుకి వెళ్తుంది, పాతది నెమ్మదిగా ముందుకి జరుగుతుంది.",
+"specs": {
+"వెడల్పు": "సుమారు 10 cm"
+}
+},
+"అవుట్‌లెట్ చాంబర్": {
+"simple": "అవుట్‌లెట్ చాంబర్: డోమ్ పక్కన ఇటుక గది, కింద డోమ్‌తో కలిసి ఉంటుంది (ముందు గోడ తీసి చూపిస్తున్నాను).",
+"deep": "గ్యాస్ పోగైనప్పుడు దాని ఒత్తిడి స్లర్రీని ఇక్కడికి నెడుతుంది: ఇక్కడ మట్టం పెరుగుతుంది. గ్యాస్ వాడితే స్లర్రీ వెనక్కి. డోమ్ పూర్తిగా నిండితే అదనపు గ్యాస్ ఇక్కడి నుంచి బుడగలుగా బయటికి: ఇదే దీని సహజ రక్షణ.",
+"specs": {
+"పని": "ఒత్తిడి, నిల్వ"
+}
+},
+"స్లర్రీ గుంట": {
+"simple": "స్లర్రీ గుంట: అవుట్‌లెట్ నుంచి పొంగిన స్లర్రీ ఇక్కడ ఆరుతుంది, పక్కన ఎరువు కుప్ప.",
+"deep": "ఈ ఎరువు పేడ కంటే మంచిది: నత్రజని నష్టం తక్కువ, కలుపు గింజలు, క్రిములు చాలా వరకు నశిస్తాయి, వాసన తక్కువ.",
+"specs": {
+"రోజుకి": "సుమారు 100 kg తడి స్లర్రీ"
+}
+},
+"ఇంటి గోడలు": {
+"simple": "ఇంటి గోడలు: లోపలి యంత్రాలని ఎండ, వాన, దుమ్ము నుంచి కాపాడతాయి. 'పైకప్పు తీయి' రెండు సార్లు అంటే ఇవీ లేస్తాయి.",
+"deep": "ఉక్కు స్తంభాల మీద రేకుల గోడలు; కిటికీలు వెలుతురు, గాలి కోసం. రాత్రి కిటికీల్లో లైట్లు కనిపిస్తాయి.",
+"specs": {
+"పని": "రక్షణ"
+}
+},
+"ఇంటి పైకప్పు": {
+"simple": "ఇంటి పైకప్పు. 'పైకప్పు తీయి' అంటే లేచి లోపల కనిపిస్తుంది.",
+"deep": "వాలు రేకుల పైకప్పు: వాన నీరు జారిపోతుంది. నిజమైన ఫ్యాక్టరీల్లో పైన గాలి పోయే వెంట్లు ఉంటాయి.",
+"specs": {
+"పని": "నీడ, రక్షణ"
+}
+},
+"బయోగ్యాస్ స్టవ్": {
+"simple": "బయోగ్యాస్ స్టవ్: రెండు బర్నర్లు. 'వంట మొదలుపెట్టు' అంటే నీలి మంట.",
+"deep": "బయోగ్యాస్ స్టవ్ బర్నర్ రంధ్రాలు LPG స్టవ్ కంటే పెద్దవి: ఈ గ్యాస్ ఒత్తిడి తక్కువ, శక్తి తక్కువ. ఒక బర్నర్ గంటకి సుమారు 0.35 m³.",
+"specs": {
+"వాడకం": "గంటకి సుమారు 0.35 m³"
+}
+},
+"గ్యాస్ లైట్": {
+"simple": "గ్యాస్ లైట్: వరండాలో మాంటిల్ దీపం, చీకటి పడితే వెలుగుతుంది.",
+"deep": "కరెంట్ లేని రోజుల్లో ఊళ్ళలో ఇదే వెలుగు. గంటకి సుమారు 0.12 m³.",
+"specs": {
+"వాడకం": "గంటకి సుమారు 0.12 m³"
+}
+},
+"గ్యాస్ పైపు": {
+"simple": "గ్యాస్ పైపు: డోమ్ పైభాగం నుంచి వంటగది దాకా.",
+"deep": "పైపు ఒకే వైపు వాలుగా, అతి తక్కువ చోట వాటర్ ట్రాప్: గ్యాస్‌లోని తేమ నీరుగా మారి పైపు మూసుకోకుండా.",
+"specs": {
+"పని": "గ్యాస్ రవాణా"
+}
+},
+"గ్యాస్ వాల్వ్": {
+"simple": "గ్యాస్ వాల్వ్: డోమ్ పైన ప్రధాన వాల్వ్ (ఎరుపు).",
+"deep": "రిపేర్, లీక్ అనుమానం వస్తే ముందు ఇదే మూయాలి.",
+"specs": {
+"పని": "గ్యాస్ ఆపడం"
+}
+},
+"వాటర్ ట్రాప్": {
+"simple": "వాటర్ ట్రాప్: పైపులో అతి తక్కువ చోట చిన్న పెట్టె, అక్కడ చేరిన నీటిని వదలడానికి.",
+"deep": "నెలకి ఒకసారి నీరు వదలకపోతే గ్యాస్ మంట చిన్నగా, ఆగుతూ వస్తుంది.",
+"specs": {
+"పని": "నీరు వేరు"
+}
+},
+"పశువుల పాక": {
+"simple": "పశువుల పాక: రేకుల పైకప్పు, కాంక్రీట్ నేల, తొట్టి.",
+"deep": "కాంక్రీట్ నేల మీద పేడ సేకరించడం సులువు; మూత్రం కూడా కలిపితే ఇంకా ఎక్కువ గ్యాస్.",
+"specs": {
+"పని": "పశువులకి నీడ"
+}
+},
+"ఆవులు": {
+"simple": "ఆవులు: నాలుగు తెల్ల ఆవులు (మామూలు డిజైన్).",
+"deep": "ఒక ఆవు/ఎద్దు రోజుకి సుమారు 10–15 kg పేడ. 4–5 పశువులు ఒక కుటుంబం వంటకి సరిపడా గ్యాస్ ఇస్తాయి.",
+"specs": {
+"పేడ": "రోజుకి సుమారు 12 kg ఒక్కోటి"
+}
+},
+"పేడ కుప్ప": {
+"simple": "పేడ కుప్ప: ఈ రోజు సేకరించిన తాజా పేడ.",
+"deep": "తాజా పేడ ఎక్కువ గ్యాస్ ఇస్తుంది; ఎండిన పేడ (పిడకలు) పనికిరాదు.",
+"specs": {
+"పని": "ముడి సరుకు"
+}
+},
+"కూరగాయల తోట": {
+"simple": "కూరగాయల తోట: స్లర్రీ ఎరువుతో పెరుగుతున్న కూరగాయలు.",
+"deep": "స్లర్రీ ఎరువు వేస్తే రసాయన ఎరువు తగ్గించొచ్చు: నేల మెత్తబడుతుంది, నీరు పట్టుకుంటుంది.",
+"specs": {
+"పని": "ఎరువు వాడకం"
+}
+},
+"బోర్డ్": {
+"simple": "బోర్డ్.",
+"deep": "ప్లాంట్ దగ్గర 'నిప్పు దూరం' అని రాస్తారు.",
+"specs": {
+"పని": "పేరు"
+}
+}
+},
+"facts": [
+{
+"k": [
+"బయోగ్యాస్ అంటే",
+"ఎలా పనిచేస్తుంది",
+"గ్యాస్ ఎలా వస్తుంది",
+"పేడ నుంచి గ్యాస్"
+],
+"a": "పేడని నీటితో కలిపి గాలి లేని డోమ్‌లో వేస్తే అక్కడి బ్యాక్టీరియా దాన్ని నెమ్మదిగా తింటాయి Sir: ఆ క్రమంలో మీథేన్ గ్యాస్ వస్తుంది (ఆవు కడుపులో జరిగేదే). గ్యాస్ డోమ్ పైభాగంలో పోగై పైపు ద్వారా స్టవ్‌కి. మిగిలిన స్లర్రీ మంచి ఎరువు. 'డైజెస్టర్ లోపల చూపించు' అంటే బ్యాక్టీరియాని చూపిస్తాను."
+},
+{
+"k": [
+"ఎంత గ్యాస్",
+"ఎన్ని ఆవులు",
+"ఎంత పేడ",
+"రోజుకి ఎంత"
+],
+"a": "ఒక kg తాజా పేడకి సుమారు 40 లీటర్ల గ్యాస్ Sir. 4–5 పశువుల పేడ (సుమారు 60 kg) రోజుకి సుమారు 2.4 m³ ఇస్తుంది: 5–6 మంది కుటుంబానికి రోజంతా వంట (సుమారు 6–7 గంటల బర్నర్). పవర్ బార్ పెంచి చూడండి."
+},
+{
+"k": [
+"ఎంత ఆదా",
+"సిలిండర్",
+"lpg",
+"డబ్బు ఆదా"
+],
+"a": "రోజుకి 2.4 m³ బయోగ్యాస్ సుమారు 1 kg LPG కి సమానం Sir: నెలకి సుమారు రెండు LPG సిలిండర్లు. దానికి తోడు ఎరువు ఉచితం, వంటగదిలో పొగ లేదు (కట్టెల పొయ్యి పొగ కళ్ళకి, ఊపిరితిత్తులకి హాని)."
+},
+{
+"k": [
+"చలికాలం",
+"చలిలో",
+"గ్యాస్ తగ్గింది ఎందుకు",
+"winter"
+],
+"a": "బ్యాక్టీరియాకి 30–35°C ఇష్టం Sir. చలికాలంలో అవి నెమ్మదిస్తాయి: గ్యాస్ 30–40 శాతం తగ్గవచ్చు. డోమ్ మీద మట్టి, ఎండ పడేలా చోటు, వెచ్చని నీటితో కలపడం సాయం చేస్తాయి. 'చలికాలం' అంటే చూపిస్తాను."
+},
+{
+"k": [
+"పేలుతుందా",
+"ప్రమాదమా",
+"సురక్షితమా",
+"భయం"
+],
+"a": "సరిగ్గా కట్టిన ప్లాంట్ సురక్షితం Sir: ఒత్తిడి తక్కువ, డోమ్ నిండితే అదనపు గ్యాస్ అవుట్‌లెట్ నుంచి బుడగలుగా తానే బయటికి పోతుంది. కానీ ప్లాంట్ దగ్గర, పైపుల దగ్గర నిప్పు పెట్టకూడదు; లీక్ అనుమానం వస్తే సబ్బు నీరు పూసి బుడగలు చూడాలి (అగ్గిపుల్లతో కాదు). డోమ్, ట్యాంకుల లోపలికి ఎప్పుడూ దిగకూడదు: లోపలి గాలి ఊపిరాడనివ్వదు."
+},
+{
+"k": [
+"ఎరువు ఎంత మంచిది",
+"స్లర్రీ ఎరువు",
+"స్లర్రీ ఏం చేస్తారు"
+],
+"a": "స్లర్రీ ఎరువు పేడ కంటే మంచిది Sir: గ్యాస్ అయ్యేది కార్బన్ మాత్రమే, నత్రజని, భాస్వరం, పొటాష్ అలాగే ఉంటాయి, ఇంకా మొక్కలకి సులువుగా అందే రూపంలో. కలుపు గింజలు, క్రిములు చాలా వరకు నశిస్తాయి, ఈగలు, వాసన తక్కువ."
+},
+{
+"k": [
+"ఎక్కువ పేడ వేస్తే",
+"ఎంత వేయాలి",
+"రోజూ వేయాలా"
+],
+"a": "రోజూ ఒకే మోతాదు వేయాలి Sir: ప్లాంట్ పరిమాణానికి తగినంత. ఒకేసారి చాలా ఎక్కువ వేస్తే బ్యాక్టీరియా తట్టుకోలేవు, స్లర్రీ పుల్లబడి గ్యాస్ తగ్గుతుంది, కోలుకోవడానికి వారాలు పడతాయి. 'హద్దు దాటించు' అంటే చూపిస్తాను."
+}
+],
+"quiz": [
+{
+"q": "పేడ నుంచి గ్యాస్ తయారయ్యేది ఎక్కడ?",
+"a": "డైజెస్టర్ డోమ్",
+"opts": [
+"డైజెస్టర్ డోమ్",
+"మిక్సింగ్ ట్యాంక్",
+"స్లర్రీ గుంట"
+]
+},
+{
+"q": "గ్యాస్ పోగైనప్పుడు స్లర్రీ నెట్టబడి వెళ్ళే గది ఏది?",
+"a": "అవుట్‌లెట్ చాంబర్",
+"opts": [
+"అవుట్‌లెట్ చాంబర్",
+"వాటర్ ట్రాప్",
+"పశువుల పాక"
+]
+},
+{
+"q": "పైపులోని నీటిని వదలడానికి ఉండేది ఏది?",
+"a": "వాటర్ ట్రాప్",
+"opts": [
+"గ్యాస్ వాల్వ్",
+"వాటర్ ట్రాప్",
+"ఇన్‌లెట్ పైపు"
+]
+},
+{
+"q": "పేడ, నీరు కలిపే తొట్టి ఏది?",
+"a": "మిక్సింగ్ ట్యాంక్",
+"opts": [
+"స్లర్రీ గుంట",
+"మిక్సింగ్ ట్యాంక్",
+"అవుట్‌లెట్ చాంబర్"
+]
+},
+{
+"q": "లీక్ అనుమానం వస్తే ముందు మూయాల్సింది ఏది?",
+"a": "గ్యాస్ వాల్వ్",
+"opts": [
+"గ్యాస్ వాల్వ్",
+"గ్యాస్ లైట్",
+"బయోగ్యాస్ స్టవ్"
+]
+},
+{
+"q": "ప్లాంట్ నుంచి వచ్చిన ఎరువు ఎక్కడ ఆరుతుంది?",
+"a": "స్లర్రీ గుంట",
+"opts": [
+"కూరగాయల తోట",
+"స్లర్రీ గుంట",
+"పేడ కుప్ప"
+]
+}
+],
+"faults": [
+{
+"label": "వాటర్ ట్రాప్",
+"kind": "stop",
+"clue": "స్టవ్ మంట చిన్నగా, ఆగుతూ వస్తోంది Sir, డోమ్‌లో గ్యాస్ ఉన్నా. ఏది ఆపుతోంది?",
+"why": "వాటర్ ట్రాప్‌లో నీరు నిండి పైపు దాదాపు మూసుకుంది. ట్రాప్ మూత తీసి నీరు వదిలి మళ్ళీ మూయాలి: నెలకి ఒకసారి చేయాలి."
+},
+{
+"label": "గ్యాస్ పైపు",
+"kind": "loose",
+"clue": "ఏ భాగం వదులుగా ఊగుతోంది, కుళ్ళిన గుడ్డు వాసన వస్తోంది Sir?",
+"why": "గ్యాస్ పైపు జాయింట్ వదులై గ్యాస్ లీక్ అవుతోంది. ప్రధాన వాల్వ్ మూసి, జాయింట్ బిగించి, సబ్బు నీటితో పరీక్షించాలి (నిప్పుతో కాదు). లీక్ అయిన చోట నిప్పు దగ్గరికి రాకూడదు."
+},
+{
+"label": "ఇన్‌లెట్ పైపు",
+"kind": "stop",
+"clue": "మిక్సింగ్ ట్యాంక్ నుంచి స్లర్రీ కిందికి వెళ్ళట్లేదు Sir. ఏది మూసుకుంది?",
+"why": "ఇన్‌లెట్ పైపులో గడ్డి, రాళ్ళు చిక్కుకున్నాయి. పొడవైన వెదురు కర్రతో బయటి నుంచే తోస్తారు; పేడలో గడ్డి, రాళ్ళు లేకుండా కలపాలి."
+},
+{
+"label": "బయోగ్యాస్ స్టవ్",
+"kind": "hot",
+"clue": "🌡️ వేడి చూపించు అనండి Sir: మంట పసుపు రంగులో, గిన్నె నల్లబడుతోంది. ఏది?",
+"why": "స్టవ్ బర్నర్ గాలి రంధ్రాలు మూసుకున్నాయి: గ్యాస్‌కి సరిపడా గాలి అందక పసుపు మంట, మసి. బర్నర్ కడిగి, గాలి షట్టర్ సరిచేస్తే నీలి మంట."
+}
+],
+"inside": {
+"డైజెస్టర్ డోమ్": {
+"say": "స్లర్రీ లోపల Sir, వేల రెట్లు పెద్దది చేసి: ఇక్కడ గాలి లేదు. గోధుమ రంగు పేడ పీచు ముక్కలు నెమ్మదిగా చిన్నవవుతున్నాయి: పచ్చ, ఊదా రంగు బ్యాక్టీరియా వాటిని తింటున్నాయి. కొన్ని రకాలు పీచుని చిన్న ముక్కలుగా, ఇంకొన్ని ఆమ్లాలుగా, చివరి రకం వాటిని మీథేన్, కార్బన్ డయాక్సైడ్ బుడగలుగా మారుస్తాయి: అవి పైకి లేచి డోమ్‌లో పోగవుతాయి. పవర్ బార్ తగ్గిస్తే పని నెమ్మదిస్తుంది.",
+"code": "// Inside the slurry, enlarged thousands of times: no air here. Tiny living things (bacteria, of a few kinds working one\n// after another) break the dung's fibres into smaller pieces, then into acids, and the last kind turns those acids into\n// methane and carbon dioxide: the bubbles that rise to the dome. They work best at 30–38 °C; cold slows them down.\nconst sl = new THREE.MeshStandardMaterial({ color: 0x5a4a30, roughness: 0.6, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });\nconst box = W.group(); box.add(W.mesh(W.box(800, 500, 500), sl)); W.add(box, { label: 'స్లర్రీ' });\nconst NF = 26, fib = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 6), W.plastic('#8a6a3a', { rough: 0.9 }), NF);\nconst fg = W.group(); fg.add(fib); W.add(fg, { label: 'పేడ ముక్కలు' });\nconst NB = 60, rods = new THREE.InstancedMesh(new THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(1, 3, 4, 8) : new THREE.CylinderGeometry(1, 1, 4, 8), W.plastic('#7fbf5a', { rough: 0.5 }), NB);\nconst balls = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), W.plastic('#c86ad8', { rough: 0.5 }), NB);\nconst bg = W.group(); bg.add(rods, balls); W.add(bg, { label: 'బ్యాక్టీరియా' });\nconst NU = 70, bub = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd8c2ff, roughness: 0.1, transparent: true, opacity: 0.75 }), NU);\nconst ug = W.group(); ug.add(bub); W.add(ug, { label: 'గ్యాస్ బుడగలు' });\nconst M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), E = new THREE.Euler();\nconst rnd = (i, k) => ((Math.sin(i * 12.9898 + k * 78.233) * 43758.5453) % 1 + 1) % 1;\nconst bu = Array.from({ length: NU }, (_, i) => rnd(i, 3));\nW.onTick((t, dt) => {\n  const k = Math.max(0.15, W.env.spool) * (W.env.flag && W.env.flag('winter') ? 0.5 : 1);\n  for (let i = 0; i < NF; i++) {\n    const s = 1 - ((t * 0.02 * k + rnd(i, 1)) % 1) * 0.7;\n    M.compose(P.set(-350 + rnd(i, 2) * 700, -200 + rnd(i, 4) * 400, -200 + rnd(i, 5) * 400), Q.setFromEuler(E.set(rnd(i, 6) * 3, rnd(i, 7) * 3, t * 0.05)), Z.set(14 * s, 140 * s, 14 * s));\n    fib.setMatrixAt(i, M);\n  }\n  fib.instanceMatrix.needsUpdate = true;\n  for (let i = 0; i < NB; i++) {\n    const a = t * (0.3 + rnd(i, 8)) * k + i;\n    M.compose(P.set(-350 + rnd(i, 9) * 700 + Math.sin(a) * 20, -220 + rnd(i, 10) * 440 + Math.cos(a * 1.3) * 15, -200 + rnd(i, 11) * 400), Q.setFromEuler(E.set(a, a * 0.7, 0)), Z.setScalar(5));\n    rods.setMatrixAt(i, M);\n    M.compose(P.set(-350 + rnd(i, 12) * 700 + Math.cos(a) * 18, -220 + rnd(i, 13) * 440, -200 + rnd(i, 14) * 400), Q, Z.setScalar(4 + 2 * rnd(i, 15)));\n    balls.setMatrixAt(i, M);\n  }\n  rods.instanceMatrix.needsUpdate = true; balls.instanceMatrix.needsUpdate = true;\n  for (let i = 0; i < NU; i++) {\n    bu[i] = (bu[i] + dt * (0.05 + 0.08 * rnd(i, 16)) * k) % 1;\n    const s = 3 + 6 * bu[i] * rnd(i, 17);\n    M.compose(P.set(-350 + rnd(i, 18) * 700 + Math.sin(t + i) * 8, -240 + bu[i] * 480, -200 + rnd(i, 19) * 400), Q, Z.setScalar(s));\n    bub.setMatrixAt(i, M);\n  }\n  bub.instanceMatrix.needsUpdate = true;\n});\n"
+}
+},
+"film": [
+"🐄 బయోగ్యాస్ ప్లాంట్",
+"పేడ + నీరు → డోమ్",
+"బ్యాక్టీరియా → మీథేన్",
+"నీలి మంట, పొగ లేని వంటగది",
+"మిగిలింది మంచి ఎరువు",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ బయోగ్యాస్ ప్లాంట్ సంరక్షణ",
+"safety": "డోమ్, అవుట్‌లెట్ చాంబర్, ట్యాంకుల లోపలికి ఎవరూ దిగకూడదు: లోపలి గ్యాస్ ఊపిరాడనివ్వదు, ప్రాణాంతకం. ప్లాంట్, పైపుల దగ్గర నిప్పు, బీడీ, సిగరెట్ వద్దు. లీక్ పరీక్ష సబ్బు నీటితో మాత్రమే. స్లర్రీ గుంట, చాంబర్‌కి మూత లేదా కంచె: పిల్లలు, పశువులు పడకూడదు.",
+"steps": [
+{
+"say": "రోజూ ఒకే మోతాదులో పేడ, నీరు సమానంగా కలిపి వేయాలి; రాళ్ళు, గడ్డి లేకుండా.",
+"label": "మిక్సింగ్ ట్యాంక్"
+},
+{
+"say": "వాటర్ ట్రాప్‌లో నీరు నెలకి ఒకసారి వదలాలి.",
+"label": "వాటర్ ట్రాప్"
+},
+{
+"say": "పైపు జాయింట్లు, వాల్వ్ సబ్బు నీటితో లీక్ పరీక్ష.",
+"label": "గ్యాస్ పైపు"
+},
+{
+"say": "స్టవ్ బర్నర్ రంధ్రాలు శుభ్రం: నీలి మంట రావాలి.",
+"label": "బయోగ్యాస్ స్టవ్"
+},
+{
+"say": "అవుట్‌లెట్ నుంచి పొంగిన స్లర్రీ గుంటలో ఆరబెట్టి, ఎరువుగా పొలానికి.",
+"label": "స్లర్రీ గుంట"
+}
+]
+},
+"prefer": [
+"డైజెస్టర్ డోమ్",
+"బయోగ్యాస్ స్టవ్"
+],
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"id": "biogas"
+}
+}

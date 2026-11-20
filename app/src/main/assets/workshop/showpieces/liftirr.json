@@ -1,0 +1,532 @@
+{
+"at": 1763700000022,
+"title": "ఎత్తిపోతల పథకం",
+"what": "నది నుంచి పంపులతో 25 m కొండ పైకి నీరు: సంప్, ట్రాష్ రాక్, నాలుగు పంపులు, ప్రెషర్ మెయిన్‌లు, డెలివరీ సిస్టర్న్, కాలువ, తూములు, వరి పొలాలు. 🕐 🚶",
+"model": "showpiece",
+"parts": [
+{
+"id": "land",
+"status": "నది, కొండ నేల వేస్తున్నాను",
+"code": "// Lift irrigation scheme (ఎత్తిపోతల పథకం), hand-made. Units: cm, real size. The river runs along X in front (+Z); a pump\n// house on its bank lifts the water 25 m up the hill behind (−Z) through two big pressure mains into a delivery cistern;\n// from there a canal runs along the hill top both ways and sluices feed the paddy fields. This is one lift (one stage):\n// big schemes have several such stages one after another. No scheme's name anywhere: a generic one.\nconst S = W.store;\n// ---- helpers the later parts use (kept in W.store): materials, sheds whose roof and walls lift, moving belts, tanks,\n// pipes, trees, a lorry, smoke, lamps that light at dusk\nS.matte = (c, r = 0.92) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });\nS.lamps = []; S.belts = []; S.turn = []; S.sfs = {};\nS.sf = (kind, color, o = {}) => { // a real surface (W.surface), made once for each kind and colour\n  const k = kind + '|' + (color || '') + '|' + (o.tile || '') + (o.world ? 'w' : '') + (o.rough == null ? '' : o.rough) + (o.metallic == null ? '' : 'm' + o.metallic);\n  if (!S.sfs[k]) S.sfs[k] = W.surface(kind, Object.assign({ color }, o));\n  return S.sfs[k];\n};\nS.land = (kind, color, tile) => S.sf(kind, color, { world: true, tile });\nS.heap = (x, z, rx, h, rz, mat) => { // a heap of loose stuff on the ground\n  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;\n  for (let i = 0; i < p.count; i++) { const k = 1 + 0.07 * Math.sin(p.getX(i) * 9 + p.getZ(i) * 5) + 0.05 * Math.sin(p.getZ(i) * 13); p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.9 + 0.1 * Math.sin(p.getX(i) * 7)), p.getZ(i) * k); }\n  g.computeVertexNormals();\n  const m = new THREE.Mesh(g, mat); m.scale.set(rx, h, rz); m.position.set(x, 0, z);\n  return m;\n};\nS.ladder = (x, y0, y1, z, ax = 'z', side = 1) => { // a steel ladder up a wall or a tank (rails, rungs, safety hoops)\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 }), h = y1 - y0, n = Math.max(2, Math.floor(h / 32));\n  const off = (d, o) => (ax === 'z' ? [x + d, 0, z + o * side] : [x + o * side, 0, z + d]);\n  for (const d of [-24, 24]) { const p = off(d, 10); g.add(W.mesh(W.box(5, h, 5), m, { at: [p[0], y0 + h / 2, p[2]] })); }\n  const rungs = new THREE.InstancedMesh(ax === 'z' ? W.box(48, 3, 3) : W.box(3, 3, 48), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) { const p = off(0, 10); rungs.setMatrixAt(i, M.makeTranslation(p[0], y0 + 16 + i * 32, p[2])); }\n  g.add(rungs);\n  const hn = Math.floor((h - 250) / 110);\n  if (hn > 0) {\n    const hoops = new THREE.InstancedMesh(new THREE.TorusGeometry(36, 2.5, 5, 14, Math.PI * 1.25), m, hn), Q = new THREE.Quaternion(), E = new THREE.Euler();\n    for (let i = 0; i < hn; i++) {\n      const p = off(0, 44);\n      E.set(Math.PI / 2, (ax === 'z' ? (side > 0 ? 22.5 : -157.5) : (side > 0 ? 112.5 : -67.5)) * Math.PI / 180, 0, 'YXZ'); // (the hoop's open side to the wall)\n      M.compose(new THREE.Vector3(p[0], y0 + 250 + i * 110, p[2]), Q.setFromEuler(E), new THREE.Vector3(1, 1, 1));\n      hoops.setMatrixAt(i, M);\n    }\n    g.add(hoops);\n  }\n  return g;\n};\nS.ringRail = (x, y, z, r, n = 14) => { // the hand rail round a tank's top\n  const g = W.group({ at: [x, y, z] }), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  for (const h of [55, 110]) g.add(W.mesh(W.torus(r, 2.6, 40, 5), m, { at: [0, h, 0], rot: [90, 0, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(Math.cos(i / n * 6.283) * r, 55, Math.sin(i / n * 6.283) * r));\n  g.add(posts);\n  return g;\n};\nS.rail = (a, b, y) => { // a straight hand rail from [x, z] to [x, z] at floor height y\n  const g = W.group(), m = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz), ang = -Math.atan2(dz, dx) * 180 / Math.PI, n = Math.max(2, Math.round(L / 150) + 1);\n  for (const h of [55, 110]) g.add(W.mesh(W.box(L, 4, 4), m, { at: [(a[0] + b[0]) / 2, y + h, (a[1] + b[1]) / 2], rot: [0, ang, 0] }));\n  const posts = new THREE.InstancedMesh(W.box(4, 110, 4), m, n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) posts.setMatrixAt(i, M.makeTranslation(a[0] + dx * i / (n - 1), y + 55, a[1] + dz * i / (n - 1)));\n  g.add(posts);\n  return g;\n};\nS.stairs = (a, b, w = 90) => { // a flight of steel stairs from a to b ([x, y, z]), with its rails\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group(), m = S.sf('metal', '#8f979e', { rough: 0.6, metallic: 0.3 }), ym = S.sf('metal', '#c4a23a', { rough: 0.6, metallic: 0.25 });\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  for (const z of [-1, 1]) { run.add(W.mesh(W.box(L, 16, 5), m, { at: [0, 0, z * w / 2] })); run.add(W.mesh(W.box(L, 4, 4), ym, { at: [0, 100, z * w / 2] })); }\n  g.add(run);\n  const n = Math.max(2, Math.round(Math.abs(D.y) / 20)), steps = new THREE.InstancedMesh(W.box(26, 3, w), m, n), M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(D.z, D.x));\n  for (let i = 0; i < n; i++) { const p = A.clone().lerp(B, (i + 0.5) / n); M.compose(p, Q, new THREE.Vector3(1, 1, 1)); steps.setMatrixAt(i, M); }\n  g.add(steps);\n  return g;\n};\nS.dashes = (x0, x1, z, y = 8) => { // the white dashes down the middle of a road along X\n  const n = Math.floor((x1 - x0) / 600), m = new THREE.InstancedMesh(W.box(300, 2, 14), S.matte('#e8e6dc', 0.8), n), M = new THREE.Matrix4();\n  for (let i = 0; i < n; i++) m.setMatrixAt(i, M.makeTranslation(x0 + 300 + i * 600, y, z));\n  return m;\n};\nS.lamp = (c = '#ffe2a8', k = 2.4, always = 0) => { const m = W.glow(c, 0); S.lamps.push({ m, k, always }); return m; };\nS.beam = (a, b, r, mat, seg = 6) => { // a round member from a to b\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]);\n  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg), mat);\n  m.position.copy(A).add(B).multiplyScalar(0.5);\n  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());\n  return m;\n};\nS.wall = (cols, rows, o = {}) => { // a wall's sheeting with windows; at night the windows glow\n  const base = W.canvasTex(256, 128), glow = W.canvasTex(256, 128);\n  const g = base.ctx, e = glow.ctx;\n  g.fillStyle = o.wall || '#d3d6d9'; g.fillRect(0, 0, 256, 128);\n  if (o.ribs !== false) for (let x = 0; x < 256; x += 8) { g.fillStyle = 'rgba(0,0,0,0.1)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(x + 3, 0, 2, 128); }\n  for (let i = 0; i < 46; i++) { // rain and rust marks, a dusty foot\n    const x = (i * 97) % 256, y = (i * 53) % 60, l = 30 + (i * 31) % 70, gr = g.createLinearGradient(0, y, 0, y + l);\n    gr.addColorStop(0, i % 3 ? 'rgba(70,62,52,0.22)' : 'rgba(128,74,38,0.3)'); gr.addColorStop(1, 'rgba(70,62,52,0)');\n    g.fillStyle = gr; g.fillRect(x, y, 2 + (i % 4), l);\n  }\n  { const gr = g.createLinearGradient(0, 100, 0, 128); gr.addColorStop(0, 'rgba(90,80,62,0)'); gr.addColorStop(1, 'rgba(90,80,62,0.4)'); g.fillStyle = gr; g.fillRect(0, 100, 256, 28); }\n  e.fillStyle = '#000'; e.fillRect(0, 0, 256, 128);\n  const cw = 256 / cols, rh = 128 / rows;\n  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {\n    const x = c * cw + cw * 0.2, y = r * rh + rh * (o.top || 0.22), w = cw * 0.6, h = rh * (o.h || 0.3);\n    g.fillStyle = '#5a5f63'; g.fillRect(x - 1.5, y - 1.5, w + 3, h + 3); g.fillStyle = o.glass || '#33495c'; g.fillRect(x, y, w, h);\n    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(x, y, w, h * 0.3); g.fillStyle = '#5a5f63'; g.fillRect(x + w / 2 - 0.6, y, 1.2, h);\n    e.fillStyle = (r * 7 + c * 3) % 5 === 0 ? '#3a2a10' : '#ffd9a0'; e.fillRect(x, y, w, h);\n  }\n  base.update(); glow.update();\n  const m = new THREE.MeshStandardMaterial({ map: base.texture, emissiveMap: glow.texture, emissive: new THREE.Color('#ffc977'), emissiveIntensity: 0, roughness: 0.7, metalness: 0.1 });\n  S.lamps.push({ m, k: o.lit == null ? 0.9 : o.lit, always: 0 });\n  return m;\n};\nS.shed = (at, w, h, d, o = {}) => { // a shed about its floor's middle: walls (a wide doorway in front, +Z), a ridged sheet roof, a floor\n  const walls = W.group({ at }), roof = W.group({ at });\n  const col = o.color || '#d6d9dc', t = 16, rise = o.rise || d * 0.16;\n  const wm = o.wall || S.wall(Math.max(2, Math.round(w / 600)), 1, { wall: col, top: 0.2, h: 0.28 });\n  const sm = S.sf('sheet', col);\n  const dw = o.door == null ? Math.min(w * 0.4, 900) : o.door, dh = Math.min(h - 60, o.doorH || 480), dx = o.doorX || 0;\n  walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, -d / 2] }));\n  for (const sx of [-1, 1]) walls.add(W.mesh(W.box(t, h, d), sm, { at: [sx * w / 2, h / 2, 0] }));\n  if (dw > 0) {\n    const l = w / 2 + dx - dw / 2, r = w / 2 - dx - dw / 2;\n    if (l > 1) walls.add(W.mesh(W.box(l, h, t), sm, { at: [-w / 2 + l / 2, h / 2, d / 2] }));\n    if (r > 1) walls.add(W.mesh(W.box(r, h, t), sm, { at: [w / 2 - r / 2, h / 2, d / 2] }));\n    walls.add(W.mesh(W.box(dw, h - dh, t), sm, { at: [dx, dh + (h - dh) / 2, d / 2] }));\n  } else walls.add(W.mesh(W.box(w, h, t), wm, { at: [0, h / 2, d / 2] }));\n  walls.add(W.mesh(W.box(w * 0.7, 8, 30), S.lamp('#fff1c8', 3), { at: [0, h - 30, 0] })); // (its lights inside)\n  const rm = o.roof || S.sf('sheet', '#9fb0bc', { tile: 240 });\n  const sl = Math.hypot(d / 2 + 50, rise * (1 + 100 / d)), ang = Math.atan2(rise, d / 2) * 180 / Math.PI;\n  for (const sz of [-1, 1]) roof.add(W.mesh(W.box(w + 100, 10, sl), rm, { at: [0, h + rise / 2 + 6, sz * d / 4], rot: [sz * ang, 0, 0] }));\n  for (const sx of [-1, 1]) roof.add(W.mesh(W.extrude([[-d / 2, 0], [d / 2, 0], [0, rise]], t), sm, { at: [sx * w / 2, h, 0], rot: [0, 90, 0] }));\n  walls.add(W.mesh(W.box(w + 30, 40, d + 30), S.sf('concrete', '#a9a59b'), { at: [0, 20, 0] })); // (the plinth)\n  const floor = W.mesh(W.box(w + 160, 12, d + 160), S.sf('tile', o.floor || '#b9b5ab', { world: true }), { at: [at[0], 6, at[2]] });\n  return { walls, roof, floor, top: h + rise };\n};\nS.belt = (a, b, w = 100, o = {}) => { // a conveyor from a to b: the belt moves (S.belts), side rails, legs to the ground\n  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), D = B.clone().sub(A), L = D.length();\n  const g = W.group(), run = W.group();\n  run.position.copy(A).add(B).multiplyScalar(0.5);\n  run.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), D.clone().normalize());\n  const ct = W.canvasTex(64, 16), c = ct.ctx;\n  c.fillStyle = o.color || '#26282b'; c.fillRect(0, 0, 64, 16);\n  c.fillStyle = o.mark || '#454a50'; c.fillRect(0, 0, 9, 16); c.fillRect(32, 0, 9, 16);\n  ct.update();\n  ct.texture.wrapS = ct.texture.wrapT = THREE.RepeatWrapping;\n  ct.texture.repeat.set(Math.max(1, Math.round(L / 160)), 1);\n  run.add(W.mesh(W.box(L, 8, w), new THREE.MeshStandardMaterial({ map: ct.texture, roughness: 0.9 })));\n  S.belts.push({ t: ct.texture, k: (o.speed || 1) * 0.6, id: o.id || '' });\n  const fr = o.frame || S.sf('paint', '#7d8a94');\n  for (const z of [-1, 1]) run.add(W.mesh(W.box(L, 20, 8), fr, { at: [0, 2, z * (w / 2 + 5)] }));\n  g.add(run);\n  if (o.legs !== false) {\n    const N = new THREE.Vector3(-D.z, 0, D.x).normalize(), n = Math.max(1, Math.round(L / 450)), y0 = o.floor || 0;\n    for (let i = 0; i <= n; i++) {\n      const p = A.clone().lerp(B, i / n);\n      if (p.y - y0 < 30) continue;\n      for (const s of [-1, 1]) g.add(W.mesh(W.box(8, p.y - y0, 8), fr, { at: [p.x + N.x * s * w / 2, y0 + (p.y - y0) / 2, p.z + N.z * s * w / 2] }));\n    }\n  }\n  return g;\n};\nS.tank = (r, h, mat, o = {}) => { // a round tank standing on the ground or on legs (a cone under it: a hopper)\n  const g = W.group({ at: o.at || [0, 0, 0] }), y0 = o.legs || 0, seg = o.seg || 24;\n  g.add(W.mesh(W.cyl(r, r, h, seg), mat, { at: [0, y0 + h / 2, 0] }));\n  if (o.dome !== 0) g.add(W.mesh(W.sphere(r, seg), mat, { at: [0, y0 + h, 0], scale: [1, o.dome || 0.28, 1] }));\n  if (o.cone) g.add(W.mesh(W.cyl(r, o.neck || r * 0.15, o.cone, seg), mat, { at: [0, y0 - o.cone / 2, 0] }));\n  if (y0) for (let k = 0; k < 4; k++) g.add(W.mesh(W.box(r * 0.1, y0, r * 0.1), o.legMat || S.sf('paint', '#7d858c'), { at: [Math.cos(k * 1.571 + 0.785) * r * 0.92, y0 / 2, Math.sin(k * 1.571 + 0.785) * r * 0.92] }));\n  return g;\n};\nS.pipe = (pts, r, mat, seg) => W.mesh(W.tube(pts, r, seg || Math.max(8, pts.length * 5)), mat);\nS.trees = (n, x0, z0, x1, z1, keep, col = '#3f6b35') => { // trees over a land (a trunk, a ragged crown of three clumps, each its own green), none where keep(x, z) says no\n  const cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.sf('wood', '#6f5a48', { world: true, tile: 80 }), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  let c = 0;\n  for (let i = 0; i < n * 6 && c < n; i++) {\n    const x = x0 + ((i * 0.618034) % 1) * (x1 - x0), z = z0 + ((i * 0.381966 + 0.21) % 1) * (z1 - z0);\n    if (keep && !keep(x, z)) continue;\n    const h = 420 + (i % 5) * 70, r = h * 0.36;\n    trunks.setMatrixAt(c, M.compose(P.set(x, h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(c * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(c * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n    c++;\n  }\n  crowns.count = c * 3; trunks.count = c;\n  g.add(trunks, crowns);\n  return g;\n};\nS.lorry = (col = '#3d6f9a', load) => { // a plain lorry (no name on it), 7 m long along X, its nose to +X\n  const g = W.group(), dark = S.matte('#2a2c30', 0.8), wh = W.rubber('#1b1c1e'), body = S.sf('paint', col, { tile: 200 });\n  g.add(W.mesh(W.box(700, 30, 220), dark, { at: [0, 95, 0] }));\n  g.add(W.mesh(W.box(170, 190, 230, 14), body, { at: [265, 200, 0] }));\n  g.add(W.mesh(W.box(8, 80, 190), S.matte('#9fc4dc', 0.2), { at: [351, 235, 0] }));\n  g.add(W.mesh(W.box(500, 110, 230), S.sf('rust', '#8f8a7c'), { at: [-90, 165, 0] }));\n  if (load) g.add(W.mesh(W.box(480, 90, 210), load, { at: [-90, 250, 0] }));\n  for (const x of [250, -150, -260]) for (const z of [-105, 105]) g.add(W.mesh(W.cyl(50, 50, 30, 14), wh, { at: [x, 50, z], rot: [90, 0, 0] }));\n  return g;\n};\nS.puffGeo = new THREE.SphereGeometry(1, 10, 7);\nS.plume = (parent, at, o) => { // smoke / steam / dust rising from a point: returns step(dt, k)\n  const ps = [];\n  for (let i = 0; i < o.n; i++) {\n    const m = new THREE.Mesh(S.puffGeo, new THREE.MeshStandardMaterial({ color: o.color, roughness: 1, metalness: 0, transparent: true, opacity: 0, depthWrite: false }));\n    m.userData.isEdge = true; m.raycast = () => {}; m.castShadow = false; m.receiveShadow = false;\n    m.position.set(at[0], at[1], at[2]);\n    parent.add(m);\n    ps.push({ m, age: (i / o.n) * o.life, s: (i * 0.618) % 1 });\n  }\n  return (dt, k) => {\n    for (const p of ps) {\n      p.age += dt * (0.55 + 0.6 * k);\n      if (p.age > o.life) { p.age -= o.life; p.s = Math.random(); }\n      const u = p.age / o.life;\n      p.m.position.set(at[0] + o.drift * u + (p.s - 0.5) * o.r * 0.5, at[1] + o.rise * Math.pow(u, 0.8), at[2] - o.drift * 0.3 * u + (p.s - 0.5) * o.r * 0.3);\n      p.m.scale.setScalar(o.r * (0.45 + 1.7 * u));\n      p.m.material.opacity = o.op * k * Math.min(1, u * 5) * (1 - u);\n      p.m.visible = k > 0.01;\n    }\n  };\n};\nS.motor = (l, r, col = '#3a6ea5') => { // an electric motor lying along X, its shaft to +X\n  const g = W.group(), m = S.sf('paint', col, { tile: 160 });\n  g.add(W.mesh(W.cyl(r, r, l, 20), m, { rot: [0, 0, 90] }));\n  g.add(W.mesh(W.cyl(r * 1.08, r * 1.08, l * 0.12, 20), S.matte('#2c3036', 0.7), { at: [-l * 0.46, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.3, r * 0.5, r * 0.8), m, { at: [0, r * 1.05, 0] }));\n  g.add(W.mesh(W.cyl(r * 0.2, r * 0.2, l * 0.3, 10), W.metal('#c9cdd2'), { at: [l * 0.62, 0, 0], rot: [0, 0, 90] }));\n  g.add(W.mesh(W.box(l * 0.8, r * 0.25, r * 2.1), S.matte('#3a3d42', 0.8), { at: [0, -r * 1.05, 0] }));\n  return g;\n};\nS.step = (t, dt, k) => { // each frame: the belts run, the wheels turn (k: how fast, 0..1), the lamps light at dusk\n  for (const b of S.belts) b.t.offset.x -= dt * b.k * (b.stop ? 0 : k);\n  for (const r of S.turn) r.o.rotation[r.axis] += dt * Math.PI * 2 * r.k * (r.free ? 1 : r.stop ? 0 : k);\n  const dk = W.env.dark;\n  for (const l of S.lamps) l.m.emissiveIntensity = l.k * Math.max(l.always || 0, dk);\n};\nW.day({ start: 9, ground: '#6f7f4c', zoom: 0.5 });\nconst sm = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };\nS.sm = sm;\nS.TOP = 2500; S.BED = -520;\nS.h = (x, z) => { // the land: the river bed in front, the flat bank, the slope, the hill top\n  if (Math.abs(x) < 1500 && z > 1400) return S.BED; // (the intake channel and the sump, cut into the bank)\n  const n = (70 * Math.sin(x * 0.0009 + 1.3) + 50 * Math.sin(z * 0.0013 - x * 0.0004)) * sm(900, 1700, Math.abs(x)) * (sm(-1300, -2600, z) - sm(-5000, -5900, z));\n  return -350 * sm(2250, 2650, z) + S.TOP * sm(-1300, -5900, z) + n;\n};\nS.waters = [];\nS.water = (w, d, col, rep = 700, op = 0.9) => { // a water surface with ripples that move (S.waters)\n  const ct = W.canvasTex(256, 256), cx = ct.ctx;\n  cx.fillStyle = col; cx.fillRect(0, 0, 256, 256);\n  for (let i = 0; i < 80; i++) {\n    const y = (i * 37) % 256, x = (i * 91) % 256, l = 30 + (i * 13) % 60;\n    cx.strokeStyle = 'rgba(255,255,255,' + (0.05 + (i % 5) * 0.025) + ')'; cx.lineWidth = 1 + (i % 3);\n    for (const ox of [0, -256]) { cx.beginPath(); cx.moveTo(x + ox, y); cx.quadraticCurveTo(x + ox + l / 2, y - 4, x + ox + l, y); cx.stroke(); }\n  }\n  ct.update();\n  const t = ct.texture; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(w / rep, d / rep);\n  S.waters.push(t);\n  return new THREE.MeshStandardMaterial({ map: t, roughness: 0.12, metalness: 0.2, transparent: op < 1, opacity: op });\n};\nS.grove = (pts, col = '#3f6b35') => { // trees at [x, y, z, height]: a trunk, a ragged crown of three clumps\n  const n = pts.length, cg = new THREE.IcosahedronGeometry(1, 2), cp = cg.attributes.position;\n  for (let i = 0; i < cp.count; i++) { const k = 1 + 0.16 * Math.sin(cp.getX(i) * 5.1 + cp.getY(i) * 3.3) * Math.cos(cp.getZ(i) * 4.7 + cp.getY(i) * 2.1); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }\n  cg.computeVertexNormals();\n  const g = W.group(), crowns = new THREE.InstancedMesh(cg, S.matte('#ffffff', 0.95), n * 3), trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 7), S.matte('#5f4c3a'), n);\n  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color(), base = new THREE.Color(col);\n  pts.forEach(([x, y, z, h], i) => {\n    const r = h * 0.36;\n    trunks.setMatrixAt(i, M.compose(P.set(x, y + h * 0.3, z), Q, Z.set(16 + h * 0.012, h * 0.6, 16 + h * 0.012)));\n    for (let k = 0; k < 3; k++) {\n      const a = i * 2.4 + k * 2.1, rr = r * (k === 0 ? 1 : 0.72);\n      crowns.setMatrixAt(i * 3 + k, M.compose(P.set(x + (k ? Math.cos(a) * r * 0.55 : 0), y + h * (k === 0 ? 0.92 : 0.72), z + (k ? Math.sin(a) * r * 0.55 : 0)), Q, Z.set(rr, rr * 0.82, rr)));\n      crowns.setColorAt(i * 3 + k, C.copy(base).offsetHSL(((i * 7 + k * 3) % 9 - 4) * 0.006, 0, ((i * 5 + k * 11) % 9 - 4) * 0.014));\n    }\n  });\n  g.add(crowns, trunks);\n  return g;\n};\n// the land itself: one sheet bent to the river, the bank, the slope and the hill top; its cut sides like a model's\nconst X0 = -7000, X1 = 7000, Z0 = -10400, Z1 = 5000;\nconst g = new THREE.PlaneGeometry(X1 - X0, Z1 - Z0, 70, 77);\ng.rotateX(-Math.PI / 2); g.translate((X0 + X1) / 2, 0, (Z0 + Z1) / 2);\nconst pos = g.attributes.position, col = [], c = new THREE.Color();\nconst cBed = new THREE.Color('#7d6a52'), cBank = new THREE.Color('#b39f78'), cDry = new THREE.Color('#9a9260'), cTop = new THREE.Color('#86985a');\nfor (let i = 0; i < pos.count; i++) {\n  const x = pos.getX(i), z = pos.getZ(i), y = S.h(x, z);\n  pos.setY(i, y);\n  if (y < -100) c.copy(cBed); else c.copy(cBank).lerp(cDry, sm(0, 500, y)).lerp(cTop, sm(1700, 2500, y));\n  col.push(c.r, c.g, c.b);\n}\ng.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));\ng.computeVertexNormals();\nconst land = W.group();\nland.add(new THREE.Mesh(g, Object.assign(W.surface('soil', { color: '#ffffff', world: true, tile: 1500, rough: 0.96 }), { vertexColors: true })));\nconst cut = W.surface('soil', { color: '#8a7458', world: true, tile: 600 }); cut.side = THREE.DoubleSide;\nconst skirt = (pts) => { // a cut face of the land, down to the river bed's level\n  const p = [], idx = [];\n  pts.forEach(([x, z], i) => { p.push(x, S.h(x, z), z, x, S.BED - 6, z); if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } });\n  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); sg.setIndex(idx); sg.computeVertexNormals();\n  return new THREE.Mesh(sg, cut);\n};\nconst ex = [], ez = [];\nfor (let x = X0; x <= X1; x += 200) ex.push(x);\nfor (let z = Z0; z <= Z1; z += 200) ez.push(z);\nland.add(skirt(ex.map((x) => [x, Z1])), skirt(ex.map((x) => [x, Z0])), skirt(ez.map((z) => [X0, z])), skirt(ez.map((z) => [X1, z])));\nW.add(land, { label: 'కొండ', ground: true });\nconst river = W.group();\nriver.add(W.mesh(new THREE.PlaneGeometry(X1 - X0, Z1 - 2400).rotateX(-Math.PI / 2), S.water(X1 - X0, Z1 - 2400, '#3f7f86', 900), { at: [0, -150, (Z1 + 2400) / 2] }));\nW.add(river, { label: 'నది', heat: [26, 28], ground: true });\n// trees: on the bank either side of the pump house, along the hill top's front edge, by the canal\nconst pts = [];\nfor (let i = 0; i < 260 && pts.length < 70; i++) {\n  const x = X0 + 300 + ((i * 0.618034) % 1) * (X1 - X0 - 600), z = Z0 + 300 + ((i * 0.381966 + 0.17) % 1) * (Z1 - Z0 - 600), y = S.h(x, z);\n  const bank = z > -1200 && z < 2000 && Math.abs(x) > 2300 && !(x > 2200 && x < 4000 && z > -400 && z < 1500) && !(x > -3600 && x < -1800 && z > -100 && z < 1200);\n  const slope = z < -1500 && z > -5600 && Math.abs(x) > 1600 && (i % 3 === 0);\n  const top = z < -5900 && z > -7050 && Math.abs(x) > 1700;\n  if (bank || slope || top) pts.push([x, y - 20, z, 520 + (i % 5) * 120]);\n}\nconst tr = W.group(); tr.add(S.grove(pts));\nW.add(tr, { label: 'చెట్లు', ground: true });\n"
+},
+{
+"id": "intake",
+"status": "సంప్, ట్రాష్ రాక్ కడుతున్నాను",
+"code": "const S = W.store;\n// The intake: the river comes in through a channel cut into the bank, past a trash rack (steel bars that keep out floating\n// weeds and rubbish) into the sump, a deep concrete pit in front of the pump house; the pumps' suction pipes dip into it.\nconst conc = S.sf('concrete', '#bdb8ad'), steel = S.sf('paint', '#5f6f7d'), yel = S.sf('paint', '#d9a92a');\nconst sump = W.group();\nfor (const sx of [-1, 1]) sump.add(W.mesh(W.box(200, 580, 1400), conc, { at: [sx * 1530, -230, 2000] }));\nsump.add(W.mesh(W.box(3260, 580, 200), conc, { at: [0, -230, 1400] }));\nsump.add(W.mesh(W.box(3060, 40, 1400), conc, { at: [0, -540, 2000] }));\nfor (const sx of [-1, 1]) sump.add(S.rail([sx * 1480, 1320], [sx * 1480, 2680], 60));\nsump.add(W.mesh(new THREE.PlaneGeometry(2860, 900).rotateX(-Math.PI / 2), S.water(2860, 900, '#3d7a80', 600), { at: [0, -150, 1950] }));\nW.add(sump, { label: 'సంప్', heat: [26, 28] });\nconst rack = W.group();\nconst bars = new THREE.InstancedMesh(W.box(8, 620, 30), steel, 70);\nfor (let i = 0; i < 70; i++) bars.setMatrixAt(i, new THREE.Matrix4().makeTranslation(-1380 + i * 40, -210, 2350));\nrack.add(bars, W.mesh(W.box(2860, 40, 60), steel, { at: [0, 80, 2350] }), W.mesh(W.box(2860, 40, 60), steel, { at: [0, -500, 2350] }));\nW.add(rack, { label: 'ట్రాష్ రాక్' });\n// the rack cleaner: a walkway over the rack, a trolley that runs along it, a rake that goes down and lifts the weeds out\nconst cl = W.group();\ncl.add(W.mesh(W.box(3300, 30, 280), S.sf('metal', '#8b949c'), { at: [0, 95, 2530] }));\ncl.add(S.rail([-1640, 2665], [1640, 2665], 110));\nfor (const z of [2410, 2650]) cl.add(W.mesh(W.box(3260, 14, 14), S.sf('metal', '#c1c6ca'), { at: [0, 117, z] }));\nS.trolley = W.group({ at: [1350, 0, 0] });\nS.trolley.add(W.mesh(W.box(320, 200, 300), yel, { at: [0, 225, 2530] }), W.mesh(W.box(220, 60, 60), S.matte('#2c3036', 0.7), { at: [0, 350, 2530] }));\nS.trolley.add(W.mesh(W.box(16, 16, 16), S.lamp('#ff8a2a', 3, 0), { at: [0, 390, 2530] }));\nS.beacon = S.lamps[S.lamps.length - 1];\nS.rake = W.group();\nfor (const sx of [-1, 1]) S.rake.add(W.mesh(W.box(14, 620, 14), steel, { at: [sx * 120, -190, 2420] }));\nS.rake.add(W.mesh(W.box(340, 30, 50), yel, { at: [0, -500, 2430] }));\nfor (let i = 0; i < 12; i++) S.rake.add(W.mesh(W.box(6, 50, 6), steel, { at: [-150 + i * 27, -525, 2410] }));\nS.trolley.add(S.rake);\ncl.add(S.trolley);\ncl.add(W.mesh(W.box(500, 120, 300), S.sf('rust', '#7f8a6a'), { at: [2100, 60, 2900] })); // (the weeds' trolley bin on the bank)\nW.add(cl, { label: 'ర్యాక్ క్లీనర్', heat: [28, 40] });\n// water hyacinth (గుర్రపుడెక్క): floating green clumps; they come only with the 🚩 switch\nconst wg = new THREE.IcosahedronGeometry(1, 1), wp = wg.attributes.position;\nfor (let i = 0; i < wp.count; i++) wp.setY(i, wp.getY(i) * 0.35 + 0.08 * Math.sin(wp.getX(i) * 7));\nwg.computeVertexNormals();\nS.weeds = new THREE.InstancedMesh(wg, S.matte('#4f8a3a', 0.85), 48);\nS.weeds.instanceMatrix.setUsage(THREE.DynamicDrawUsage);\nfor (let i = 0; i < 48; i++) S.weeds.setMatrixAt(i, new THREE.Matrix4().makeScale(0.001, 0.001, 0.001));\nconst wgp = W.group(); wgp.add(S.weeds);\nW.add(wgp, { label: 'గుర్రపుడెక్క' });\n"
+},
+{
+"id": "pumphouse",
+"status": "పంప్ హౌస్, పంపులు, మోటార్లు పెడుతున్నాను",
+"code": "const S = W.store;\n// Four pumps in a row (each about 2.5 m³ of water a second against 25 m of lift), each with its motor behind it. Suction\n// from the sump in front; the delivery goes up, through a non-return valve (NRV: water may go forward only) and a sluice\n// valve, into a header that feeds the two pressure mains out of the back wall.\nconst sh = S.shed([0, 0, 300], 3400, 950, 2000, { color: '#d8d4c8', door: 0, rise: 300 });\nconst blue = S.sf('paint', '#2f5f8f'), pm = S.sf('paint', '#4e6577'), dark = S.sf('paint', '#3d4248'), red = S.sf('paint', '#a8382c'), yel = S.sf('paint', '#d9a92a');\nS.PX = [-1100, -370, 370, 1100];\nconst pumps = W.group(), motors = W.group(), valves = W.group(), pipes = W.group();\npumps.add(sh.floor);\nS.coup = [];\nfor (const x of S.PX) {\n  pumps.add(W.mesh(W.box(260, 60, 1100), dark, { at: [x, 30, 290] }));\n  pumps.add(W.mesh(W.cyl(130, 130, 110, 32), blue, { at: [x, 150, 690], rot: [90, 0, 0] }));\n  pumps.add(W.mesh(W.cyl(150, 150, 30, 32), blue, { at: [x, 150, 620], rot: [90, 0, 0] }));\n  pumps.add(W.mesh(W.cyl(70, 60, 110, 20), blue, { at: [x, 290, 690] }));\n  pumps.add(W.mesh(W.cyl(60, 45, 120, 20), blue, { at: [x, 150, 800], rot: [90, 0, 0] }));\n  pumps.add(W.mesh(W.box(120, 90, 160), blue, { at: [x, 105, 540] }));\n  pumps.add(W.mesh(W.cyl(30, 30, 6, 16), W.ceramic('#f4f4f2'), { at: [x + 80, 300, 690], rot: [0, 0, 90] })); // (its pressure gauge)\n  const cp = W.group({ at: [x, 150, 450] });\n  cp.add(W.mesh(W.cyl(42, 42, 70, 16), S.sf('metal', '#c3c8cc'), { rot: [90, 0, 0] }));\n  for (let k = 0; k < 4; k++) cp.add(W.mesh(W.box(12, 12, 74), dark, { at: [Math.cos(k * 1.571) * 34, Math.sin(k * 1.571) * 34, 0] }));\n  pumps.add(cp); S.coup.push(cp);\n  const m = S.motor(480, 105, '#2e6a46'); m.position.set(x, 150, 120); m.rotation.y = -Math.PI / 2; motors.add(m);\n  // suction from the sump; delivery up and back over the motor\n  pipes.add(S.pipe([[x, 150, 840], [x, 150, 1300], [x, 150, 1640], [x, 90, 1770], [x, -60, 1800], [x, -330, 1800]], 55, pm, 40));\n  pipes.add(W.mesh(W.cyl(110, 58, 80, 24), pm, { at: [x, -380, 1800] }));\n  pipes.add(S.pipe([[x, 330, 690], [x, 470, 670], [x, 470, 300], [x, 470, -250], [x, 330, -440]], 60, pm, 40));\n  valves.add(W.mesh(W.box(170, 170, 220, 20), red, { at: [x, 470, 300] }), W.mesh(W.sphere(70, 16), red, { at: [x, 560, 300], scale: [1, 0.5, 1] }));\n  valves.add(W.mesh(W.cyl(95, 95, 50, 24), dark, { at: [x, 470, 20], rot: [90, 0, 0] }));\n  valves.add(W.mesh(W.torus(48, 6, 24, 8), yel, { at: [x + 130, 470, 20], rot: [0, 90, 0] }), W.mesh(W.cyl(8, 8, 90, 8), S.sf('metal', '#c3c8cc'), { at: [x + 85, 470, 20], rot: [0, 0, 90] }));\n}\npipes.add(S.pipe([[-1350, 300, -450], [1350, 300, -450]], 85, pm, 8));\nfor (const sx of [-1, 1]) pipes.add(W.mesh(W.sphere(85, 16), pm, { at: [sx * 1350, 300, -450] }));\nW.add(pumps, { label: 'పంపులు', heat: [30, 55], layer: 2 });\nW.add(motors, { label: 'మోటార్లు', heat: [35, 85], layer: 2 });\nW.add(valves, { label: 'వాల్వ్‌లు', heat: [28, 34], layer: 2 });\nW.add(pipes, { label: 'పంప్ పైపులు', heat: [27, 30], layer: 2 });\n// the crane over the pumps (to lift a pump or a motor out for repair), the starter panels, the walls and the roof\nconst cr = W.group();\nfor (const z of [-620, 1220]) cr.add(W.mesh(W.box(3300, 30, 30), dark, { at: [0, 820, z] }));\nS.crane = W.group({ at: [-600, 0, 0] });\nS.crane.add(W.mesh(W.box(110, 90, 1900), yel, { at: [0, 860, 300] }), W.mesh(W.box(160, 90, 140), yel, { at: [0, 780, 300] }));\nS.crane.add(W.mesh(W.cyl(4, 4, 260, 6), S.matte('#2c3036'), { at: [0, 600, 300] }), W.mesh(W.torus(24, 7, 16, 8), dark, { at: [0, 460, 300] }));\ncr.add(S.crane);\nW.add(cr, { label: 'EOT క్రేన్', layer: 2 });\nconst pn = W.group();\nS.pilot = [];\nfor (let i = 0; i < 4; i++) {\n  pn.add(W.mesh(W.box(110, 230, 300), S.sf('paint', '#c9ccc7'), { at: [-1600, 115, -300 + i * 340] }));\n  const l = W.mesh(W.sphere(10, 10), new THREE.MeshStandardMaterial({ color: 0x113311, emissive: 0x3aff6a, emissiveIntensity: 0.2 }), { at: [-1540, 190, -300 + i * 340] });\n  pn.add(l); S.pilot.push(l.material);\n  pn.add(W.mesh(W.box(4, 50, 70), W.screen('#0a1a12', 0.6), { at: [-1543, 130, -300 + i * 340] }));\n}\nW.add(pn, { label: 'స్టార్టర్ ప్యానెల్', heat: [30, 45], layer: 2 });\nW.add(sh.walls, { label: 'పంప్ హౌస్ గోడలు', layer: 1, peelBy: [0, 1500, 0], explode: [0, 0, 1800] });\nW.add(sh.roof, { label: 'పంప్ హౌస్ పైకప్పు', layer: 0, peelBy: [0, 2100, 0], explode: [0, 2100, 0] });\n// the substation (11 kV in from the line, the transformer, breakers) and the line on its poles\nconst ss = W.group(), gal = S.sf('metal', '#aab2ba'), porc = S.matte('#7a4a32', 0.4);\nss.add(W.mesh(W.box(1500, 20, 1500), W.surface('gravel', { color: '#a8a39a' }), { at: [3000, 10, 600] }));\nss.add(W.mesh(W.box(420, 300, 300), S.sf('paint', '#5f6b5e'), { at: [3000, 170, 600] }));\nfor (let k = 0; k < 6; k++) for (const z of [420, 780]) ss.add(W.mesh(W.box(14, 230, 70), S.sf('paint', '#5f6b5e'), { at: [2830 + k * 68, 170, z] })); // (its radiator fins)\nfor (let k = 0; k < 3; k++) ss.add(W.mesh(W.cyl(12, 18, 120, 10), porc, { at: [2880 + k * 120, 380, 600] }));\nfor (const x of [2500, 3500]) { ss.add(W.mesh(W.box(30, 600, 30), gal, { at: [x, 300, 1100] })); }\nss.add(W.mesh(W.box(1030, 30, 30), gal, { at: [3000, 600, 1100] }));\nfor (const [a, b] of [[[2300, -100], [3700, -100]], [[3700, -100], [3700, 1300]], [[3700, 1300], [2300, 1300]], [[2300, 1300], [2300, -100]]]) ss.add(S.rail(a, b, 0));\nconst line = W.group();\nfor (const x of [4900, 6800]) { line.add(W.mesh(W.box(36, 1000, 36), S.sf('concrete', '#c9c4b8'), { at: [x, 500, 1100] }), W.mesh(W.box(36, 36, 260), gal, { at: [x, 960, 1100] })); }\nfor (const dz of [-110, 0, 110]) line.add(S.beam([3500, 590, 1100 + dz], [4900, 960, 1100 + dz], 3, S.matte('#2c3036')), S.beam([4900, 960, 1100 + dz], [6800, 960, 1100 + dz], 3, S.matte('#2c3036')));\nss.add(line);\nss.add(S.pipe([[2780, 120, 450], [2200, 60, 300], [1720, 60, 100]], 10, S.matte('#2c3036'), 12)); // (the cable to the panels)\nW.add(ss, { label: 'సబ్‌స్టేషన్', heat: [35, 70] });\nconst crm = W.group(), pl = S.sf('plaster', '#ece6da');\ncrm.add(W.mesh(W.box(1200, 420, 800), pl, { at: [-2700, 210, 450] }), W.mesh(W.box(1300, 30, 900), S.sf('concrete', '#b8b2a6'), { at: [-2700, 435, 450] }));\ncrm.add(W.mesh(W.box(180, 260, 6), S.sf('paint', '#6a4a30'), { at: [-2950, 130, 852] }), W.mesh(W.box(420, 150, 6), S.wall(1, 1, { wall: '#33495c', ribs: false, top: 0.05, h: 0.9 }), { at: [-2450, 260, 852] }));\ncrm.add(W.text('కంట్రోల్ రూమ్', { size: 50, at: [-2700, 380, 856], color: '#2a3a4a', bg: '#ece6da' }));\nW.add(crm, { label: 'కంట్రోల్ రూమ్', heat: [28, 32] });\n"
+},
+{
+"id": "mains",
+"status": "ప్రెషర్ మెయిన్‌లు, డెలివరీ సిస్టర్న్ కడుతున్నాను",
+"code": "const S = W.store;\n// Two steel pressure mains, 1.8 m across, from the header up the slope to the delivery cistern on the hill top, resting on\n// concrete saddles, held at the bends by anchor blocks; air valves on top let trapped air out (and air in after a stop); a\n// surge vessel by the pump house softens the water hammer when the pumps stop suddenly. A stepped path runs between them.\nconst pm = S.sf('paint', '#4e6577'), conc = S.sf('concrete', '#bdb8ad'), T = S.TOP;\nS.MX = [-420, 420];\nS.mainPts = (x) => {\n  const p = [[x, 300, -450], [x, 240, -800], [x, 170, -1250]];\n  for (let z = -1500; z >= -5900; z -= 400) p.push([x, S.h(x, z) + 170, z]);\n  p.push([x, T + 160, -6250], [x, T + 150, -6450], [x, T + 230, -6560], [x, T + 330, -6575]);\n  return p;\n};\nconst mains = W.group();\nfor (const x of S.MX) mains.add(S.pipe(S.mainPts(x), 90, pm, 140));\nconst sad = new THREE.InstancedMesh(W.box(320, 1, 260), conc, 2 * 12);\nlet ns = 0;\nfor (const x of S.MX) for (let z = -1500; z >= -5900; z -= 400) {\n  const y = S.h(x, z), M = new THREE.Matrix4().compose(new THREE.Vector3(x, y + 40, z), new THREE.Quaternion(), new THREE.Vector3(1, 120, 1));\n  if (ns < 24) sad.setMatrixAt(ns++, M);\n}\nsad.count = ns;\nmains.add(sad);\nfor (const z of [-1250, -5950]) mains.add(W.mesh(W.box(1300, 420, 700), conc, { at: [0, S.h(0, z) + 120, z] })); // (the anchor blocks at the bends)\nconst step = new THREE.InstancedMesh(W.box(150, 1, 46), conc, 80);\nlet nst = 0;\nfor (let z = -1300; z >= -5900 && nst < 80; z -= 60) step.setMatrixAt(nst++, new THREE.Matrix4().compose(new THREE.Vector3(0, S.h(0, z) + 10, z), new THREE.Quaternion(), new THREE.Vector3(1, 28, 1)));\nstep.count = nst;\nconst path = W.group(); path.add(step);\nfor (const sx of [-1, 1]) path.add(S.pipe([-1300, -2300, -3300, -4300, -5300, -5900].map((z) => [sx * 110, S.h(0, z) + 100, z]), 4, S.sf('metal', '#c1c6ca'), 40));\nW.add(path, { label: 'మెట్ల దారి', ground: true });\nW.add(mains, { label: 'ప్రెషర్ మెయిన్‌లు', heat: [26, 30] });\nconst av = W.group();\nS.avAt = [];\nfor (const x of S.MX) for (const z of [-3100, -5300]) {\n  const y = S.h(x, z) + 170 + 90;\n  av.add(W.mesh(W.cyl(26, 26, 70, 12), S.sf('paint', '#a8382c'), { at: [x, y + 30, z] }), W.mesh(W.cyl(40, 40, 18, 12), S.sf('paint', '#a8382c'), { at: [x, y + 70, z] }));\n  S.avAt.push([x, y + 90, z]);\n}\nW.add(av, { label: 'ఎయిర్ వాల్వ్‌లు', heat: [26, 30] });\nconst sv = W.group();\nsv.add(S.tank(170, 520, S.sf('paint', '#6d7b86'), { at: [1300, 0, -1150], legs: 0 }));\nsv.add(S.pipe([[1300, 100, -1000], [700, 160, -1000], [500, 220, -1000]], 22, pm, 12));\nsv.add(S.ladder(1300, 0, 600, -1320, 'z', -1));\nW.add(sv, { label: 'సర్జ్ వెసెల్', heat: [26, 30] });\n// the delivery cistern: a concrete box on the hill top; the mains open upward in it; out of its back the water goes to the canal\nconst cis = W.group(), cz = -6700, H = 520;\ncis.add(W.mesh(W.box(2200, 40, 1200), conc, { at: [0, T + 20, cz] }));\ncis.add(W.mesh(W.box(2200, H, 60), conc, { at: [0, T + H / 2, cz + 600] }));\nfor (const sx of [-1, 1]) cis.add(W.mesh(W.box(60, H, 1200), conc, { at: [sx * 1100, T + H / 2, cz] }), W.mesh(W.box(750, H, 60), conc, { at: [sx * 725, T + H / 2, cz - 600] }));\ncis.add(S.rail([-1100, cz + 650], [1100, cz + 650], T + H));\ncis.add(W.mesh(W.box(320, 20, 320), S.sf('metal', '#8b949c'), { at: [1290, T + H - 10, -6000] }), S.stairs([2150, T, -6000], [1450, T + H, -6000], 90)); // (a landing to look in)\nS.cisW = W.mesh(new THREE.PlaneGeometry(2140, 1140).rotateX(-Math.PI / 2), S.water(2140, 1140, '#4d8f93', 500), { at: [0, T + 200, cz] });\ncis.add(S.cisW);\nS.foam = [];\nfor (const x of S.MX) { const f = W.mesh(W.sphere(140, 20), new THREE.MeshStandardMaterial({ color: 0xf2f8f8, roughness: 0.9, transparent: true, opacity: 0.75, depthWrite: false }), { at: [x, T + 330, -6575], scale: [1, 0.3, 1] }); cis.add(f); S.foam.push(f); }\nfor (const sx of [-1, 1]) cis.add(W.mesh(W.box(60, 300, 380), conc, { at: [sx * 380, T + 150, cz - 790] }));\ncis.add(W.mesh(W.box(820, 30, 380), conc, { at: [0, T + 10, cz - 790] }));\nW.add(cis, { label: 'డెలివరీ సిస్టర్న్', heat: [26, 28] });\n"
+},
+{
+"id": "canal",
+"status": "కాలువ, తూములు, వరి పొలాలు వేస్తున్నాను",
+"code": "const S = W.store;\n// The main canal runs along the hill top both ways from the cistern (lined with concrete, earth banks, a service road on\n// one bank). Sluices (తూములు) in its back bank open into field channels; between them the paddy fields, divided by bunds.\nconst T = S.TOP, CZ = -7650, L = 14000, conc = S.sf('concrete', '#c4bfb3');\nconst sec = (pts, mat) => W.mesh(W.extrude(pts, L), mat, { at: [0, T, CZ], rot: [0, 90, 0] });\nconst can = W.group();\ncan.add(sec([[-500, 220], [-250, 0], [250, 0], [500, 220], [560, 220], [290, -30], [-290, -30], [-560, 220]], conc));\nconst bank = S.sf('soil', '#a08a62', { world: true, tile: 700 });\ncan.add(sec([[-1300, -5], [-900, 230], [-540, 230], [-260, -5]], bank), sec([[1300, -5], [900, 230], [540, 230], [260, -5]], bank));\ncan.add(W.mesh(W.box(L, 6, 330), W.surface('gravel', { color: '#a59f92', world: true }), { at: [0, T + 233, CZ + 720] }));\nS.canW = W.mesh(new THREE.PlaneGeometry(L, 1).rotateX(-Math.PI / 2), S.water(L, 700, '#4d8f93', 700), { at: [0, T + 60, CZ] });\ncan.add(S.canW);\nW.add(can, { label: 'ప్రధాన కాలువ', heat: [26, 28] });\nS.XS = [-4800, -1600, 1600, 4800];\nconst sl = W.group(), fc = W.group(), wood = S.sf('paint', '#6d7b86');\nS.gates = [];\nfor (const x of S.XS) {\n  sl.add(W.mesh(W.box(260, 330, 120), conc, { at: [x, T + 150, CZ - 560] }));\n  const gt = W.mesh(W.box(120, 180, 16), wood, { at: [x, T + 120, CZ - 500] }); sl.add(gt); S.gates.push(gt);\n  sl.add(W.mesh(W.cyl(6, 6, 200, 8), S.sf('metal', '#c1c6ca'), { at: [x, T + 360, CZ - 500] }), W.mesh(W.torus(30, 4, 16, 6), S.sf('paint', '#d9a92a'), { at: [x, T + 450, CZ - 500], rot: [90, 0, 0] }));\n  fc.add(W.mesh(W.box(120, 60, 2000), conc, { at: [x, T + 20, -9300] }));\n  fc.add(W.mesh(new THREE.PlaneGeometry(80, 1950).rotateX(-Math.PI / 2), S.water(80, 1950, '#4d8f93', 300), { at: [x, T + 42, -9300] }));\n}\nW.add(sl, { label: 'తూములు', heat: [26, 28] });\nW.add(fc, { label: 'పొలం కాలువలు', ground: true });\n// the paddy fields: plots between the bunds, each a little different (some newly planted, some fuller, one turning gold)\nconst fl = W.group(), tints = ['#6fae3c', '#7fbb48', '#5f9e36', '#8cbf55', '#77b142', '#b9b24e'];\nlet k = 0;\nfor (let x = -6800; x < 6800; x += 1700) for (const z of [-8850, -9850]) {\n  if (S.XS.some((xs) => Math.abs(xs - (x + 850)) < 120)) { k++; continue; }\n  fl.add(W.mesh(W.box(1580, 24, 880), W.surface('grass', { color: tints[k++ % tints.length], world: true, tile: 260 }), { at: [x + 850, T + 12, z] }));\n}\nconst bund = S.sf('soil', '#9a8460', { world: true, tile: 500 });\nfor (const z of [-8350, -9350, -10330]) fl.add(W.mesh(W.box(13800, 34, 70), bund, { at: [0, T + 17, z] }));\nfor (let x = -6800; x <= 6800; x += 1700) fl.add(W.mesh(W.box(70, 34, 2000), bund, { at: [x, T + 17, -9350] }));\nW.add(fl, { label: 'వరి పొలాలు', ground: true });\n"
+},
+{
+"id": "run",
+"status": "పంపులు నడపడానికి సిద్ధం చేస్తున్నాను",
+"code": "const S = W.store;\n// running: the power bar is how many pumps run (one to four, started one at a time). Over the limit the sump's water falls\n// below its lowest safe level (a whirlpool could suck air into a pump): the low-level protection stops one pump.\n// 🚩 \"cut\": the power fails: all four stop at once, the NRVs slam shut (the water in the mains tries to run back), the air\n// valves breathe, the surge vessel takes the shock; the canal keeps flowing a while from what is in it, then slows.\n// 🚩 \"weeds\": water hyacinth comes down the river and piles on the trash rack: less water reaches the sump, the rack cleaner works.\nconst T = S.TOP;\nconst sign = W.group();\nsign.add(W.text('JARVIS · ఎత్తిపోతల పథకం · దశ 1', { size: 80, at: [0, 860, 1312], color: '#1f3a5a', bg: '#e8e2d0' }));\nW.add(sign, { label: 'పథకం బోర్డ్' });\nW.throttle({ label: 'పంపులు', rise: 0.18, fall: 0.25, start: 0.5 });\nconst mv = W.sound({ kind: 'motor', label: 'మోటార్లు', gain: 0.45, f0: 50 });\nconst pv = W.sound({ kind: 'pump', label: 'పంపులు', gain: 0.45, f0: 90 });\nconst wv = W.sound({ kind: 'water', label: 'డెలివరీ సిస్టర్న్', gain: 0.55 });\nW.sound({ kind: 'hum', label: 'సబ్‌స్టేషన్', gain: 0.25, f0: 100 });\nconst rv = W.sound({ kind: 'chain', label: 'ర్యాక్ క్లీనర్', gain: 0.6 });\nconst puff = S.avAt.map((p) => S.plume(S.cisW.parent, p, { n: 5, life: 2.5, r: 40, rise: 260, drift: 60, op: 0.45, color: '#eef2f4' }));\nconst runK = [0, 0, 0, 0], wd = [];\nfor (let i = 0; i < 48; i++) wd.push({ x: -1300 + ((i * 0.618) % 1) * 2600, p: -((i * 0.37) % 1) * 1.4 });\nconst M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3();\nlet hudT = 0, flow = 0, canal = 0, wk = 0, cutT = 99, n = 0;\nS.st = { flow: 0, canal: 0 };\nW.onTick((t, dt) => {\n  const s = W.env.spool, over = W.env.over, cut = W.env.flag('cut'), weeds = W.env.flag('weeds');\n  n = s > 0.03 ? Math.min(4, Math.max(1, Math.ceil(s * 4 - 0.02))) : 0;\n  if (over) n = 3;\n  if (W.faultOf('పంపులు') === 'stop') n = Math.min(n, 3);\n  if (cut) n = 0;\n  cutT = cut ? cutT + dt : 0;\n  for (let i = 0; i < 4; i++) {\n    runK[i] += ((i < n ? 1 : 0) - runK[i]) * Math.min(1, dt * (i < n ? 0.7 : 2.5));\n    S.coup[i].rotation.z += dt * 30 * runK[i];\n    S.pilot[i].emissive.set(cut || (over && i === 3) ? 0xff3a2a : 0x3aff6a);\n    S.pilot[i].emissiveIntensity = runK[i] > 0.5 || cut || (over && i === 3) ? 2.2 : 0.15;\n  }\n  wk += ((weeds ? 1 : 0) - wk) * Math.min(1, dt * 0.6);\n  const k = (runK[0] + runK[1] + runK[2] + runK[3]) / 4 * (1 - 0.3 * wk);\n  flow += (k - flow) * Math.min(1, dt * (cut ? 3 : 0.6));\n  canal += (flow - canal) * Math.min(1, dt * 0.12);\n  S.st.flow = flow; S.st.canal = canal;\n  S.cisW.position.y = T + 70 + 300 * Math.max(flow, canal * 0.5);\n  S.canW.position.y = T + 25 + 150 * canal; S.canW.scale.z = 520 + 380 * canal;\n  for (const f of S.foam) { f.scale.set(0.4 + 0.8 * flow, 0.05 + 0.5 * flow * (0.9 + 0.1 * Math.sin(t * 9)), 0.4 + 0.8 * flow); f.visible = flow > 0.03; f.position.y = S.cisW.position.y + 10; }\n  const jam = W.faultOf('తూములు') === 'stop';\n  S.gates.forEach((g, i) => { g.position.y = T + 120 + (jam && i === 1 ? 0 : 160 * Math.min(1, canal * 1.5)); });\n  S.waters.forEach((tx, i) => { tx.offset.x += dt * (i === 0 ? 0.015 : 0.01 + 0.04 * flow); tx.offset.y += dt * 0.006; });\n  puff.forEach((p) => p(dt, cut && cutT < 6 ? 1 : 0));\n  S.crane.position.x = -600 + 400 * Math.sin(t * 0.05);\n  // the rack cleaner: works while weeds come; the rake goes down, sweeps up, the trolley moves along the rack\n  const rx = wk > 0.02 ? 1250 * Math.sin(t * 0.22) : 1350, ph = (t % 7) / 7, down = wk > 0.02 ? (ph < 0.4 ? ph / 0.4 : ph < 0.55 ? 1 : 1 - (ph - 0.55) / 0.45) : 0;\n  S.trolley.position.x += (rx - S.trolley.position.x) * Math.min(1, dt * 1.5);\n  S.rake.position.y = (1 - down) * 600;\n  rv.set(wk > 0.02 ? 0.7 : 0);\n  S.beacon.m.emissiveIntensity = wk > 0.02 ? 3 * (Math.sin(t * 8) > 0 ? 1 : 0.1) : 0;\n  for (let i = 0; i < 48; i++) {\n    const w = wd[i];\n    if (weeds) w.p = Math.min(1, w.p + dt * 0.09);\n    if (w.p >= 1 && down > 0.95 && Math.abs(w.x - S.trolley.position.x) < 220) w.p = -0.4; // (taken out by the rake; more keep coming)\n    const u = Math.max(0, Math.min(1, w.p)), sc = wk * (w.p > 0 ? 1 : 0) * (60 + (i % 4) * 14);\n    M.compose(P.set(w.x + (1 - u) * 260 * Math.sin(i * 1.7 + t * 0.2), -145, 4300 - 1860 * u + (u >= 1 ? (i % 3) * 55 : 0)), Q.setFromAxisAngle(Z.set(0, 1, 0), i), Z.set(sc, sc, sc));\n    S.weeds.setMatrixAt(i, M);\n  }\n  S.weeds.instanceMatrix.needsUpdate = true;\n  mv.set(k); pv.set(k); wv.set(Math.max(flow, canal * 0.5));\n  S.step(t, dt, k);\n  if (t - hudT > 0.3) {\n    hudT = t;\n    const q = 10 * flow;\n    W.hud({ 'పంపులు': n + ' / 4 నడుస్తున్నాయి', 'నీరు': q.toFixed(1) + ' m³/s · సెకనుకి ' + Math.round(q * 1000).toLocaleString('en-IN') + ' లీటర్లు',\n      'ఎత్తు': '25 m (నది → కొండ పైకి)', 'కరెంట్': (q * 0.34).toFixed(1) + ' MW',\n      'సాగు': 'సుమారు ' + (Math.round(10 * canal * 1800 / 100) * 100).toLocaleString('en-IN') + ' ఎకరాల వరి',\n      'స్థితి': cut ? (cutT < 6 ? 'కరెంట్ పోయింది ⚠️ NRV లు మూసుకున్నాయి' : 'కరెంట్ లేదు · కాలువలో మిగిలిన నీరే') : over ? 'సంప్ మట్టం తక్కువ ⚠️ ఒక పంప్ ఆగింది'\n        : weeds ? 'గుర్రపుడెక్క ⚠️ ర్యాక్ క్లీనర్ పనిలో' : n ? 'సాధారణం ✅' : 'ఆగి ఉంది' });\n    W.report({ power: s, pumps: n, flow: q, canal: canal });\n  }\n});\nconst on = () => S.st.flow > 0.08, cn = () => S.st.canal > 0.08;\nfor (const z of [3300, 3900, 4500]) W.stream([[-7000, -140, z], [7000, -140, z]], { kind: 'water', count: 26, size: 12, speed: 0.25 });\nfor (const x of [-900, 0, 900]) W.stream([[x, -140, 3400], [x, -150, 2600], [x * 0.9, -170, 2100], [x * 0.6, -230, 1850]], { kind: 'water', count: 10, size: 11, speed: 0.5, when: on });\nfor (const x of S.PX) {\n  W.stream([[x, -330, 1800], [x, -60, 1800], [x, 150, 1640], [x, 150, 1300], [x, 150, 850]], { kind: 'water', count: 10, size: 10, speed: 0.8, when: on });\n  W.stream([[x, 330, 690], [x, 470, 670], [x, 470, 0], [x, 470, -250], [x, 330, -440]], { kind: 'water', count: 9, size: 10, speed: 0.8, when: on });\n}\nfor (const x of S.MX) W.stream(S.mainPts(x), { kind: 'water', count: 60, size: 15, speed: 0.7, when: on });\nW.stream([[0, T + 300, -6800], [0, T + 160, -7350], [0, T + 110, -7600]], { kind: 'water', count: 12, size: 12, speed: 0.5, when: cn });\nfor (const sx of [-1, 1]) W.stream([[0, T + 110, -7650], [sx * 7000, T + 110, -7650]], { kind: 'water', count: 44, size: 12, speed: 0.4, when: cn });\nS.XS.forEach((x, i) => W.stream([[x, T + 100, -7900], [x, T + 60, -8300], [x, T + 50, -10300]], { kind: 'water', count: 14, size: 9, speed: 0.4, when: () => cn() && !(i === 1 && W.faultOf('తూములు') === 'stop') }));\nW.walk({ eye: 160, speed: 320, area: [-6800, -10300, 6800, 4800],\n  solid: [[-1640, 1300, 1640, 2700], [-1240, -60, -960, 870], [-510, -60, -230, 870], [230, -60, 510, 870], [960, -60, 1240, 870], [-1100, -7300, 1100, -6100], [-7000, -8000, 7000, -7300], [2300, -100, 3700, 1300], [-3300, 50, -2100, 850]],\n  spots: [\n    { name: 'పంప్ హౌస్ లోపల', at: [1520, 0, 1080], look: [-1400, 220, 350] },\n    { name: 'సంప్ దగ్గర', at: [1950, 0, 1900], look: [0, -250, 2100] },\n    { name: 'నది ఒడ్డున', at: [-3400, 0, 2150], look: [0, 100, 1500] },\n    { name: 'పైపుల పక్కన', at: [1500, S.h(1500, -3400), -3400], look: [-300, 150, 700] },\n    { name: 'సిస్టర్న్ దగ్గర', at: [1280, T + 520, -6000], look: [-200, T + 200, -6750] },\n    { name: 'కాలువ గట్టు మీద', at: [2600, T + 230, -6930], look: [5600, T + 80, -7650] },\n    { name: 'పొలాల్లో', at: [-3300, T + 24, -9300], look: [-400, T + 300, -6800] },\n  ] });\n"
+}
+],
+"say": "ఎత్తిపోతల పథకం రెడీ Sir. పవర్ బార్ అంటే ఎన్ని పంపులు నడుస్తాయో. 'పైకప్పు తీయి' అంటే పంపులు కనిపిస్తాయి, 'కరెంట్ కట్' అంటే రక్షణలు, 'సిస్టర్న్ దగ్గరికి వెళ్ళు' అంటే కొండ మీద నుంచి చూడొచ్చు.",
+"cost": 0,
+"estimated": false,
+"repairs": 0,
+"changes": 0,
+"seconds": -1,
+"first_part_seconds": -1,
+"gone": [],
+"tour": "{\"title\": \"నది నీరు కొండ ఎలా ఎక్కుతుంది\", \"steps\": [{\"say\": \"Sir, ఇది ఎత్తిపోతల పథకం: ముందు నది, ఒడ్డున పంప్ హౌస్, వెనక 25 m ఎత్తైన కొండ, దాని మీద కాలువ, వరి పొలాలు.\", \"focus\": [{\"id\": \"pumphouse\", \"piece\": \"పంప్ హౌస్ గోడలు\"}, {\"id\": \"mains\", \"piece\": \"ప్రెషర్ మెయిన్‌లు\"}, {\"id\": \"canal\", \"piece\": \"వరి పొలాలు\"}], \"dim\": false, \"view\": \"iso\", \"secs\": 8}, {\"say\": \"నది నీరు కాలువ ద్వారా ట్రాష్ రాక్ దాటి సంప్‌లోకి వస్తుంది. ర్యాక్ కలుపుని, చెత్తని ఆపుతుంది.\", \"focus\": [{\"id\": \"intake\", \"piece\": \"ట్రాష్ రాక్\"}, {\"id\": \"intake\", \"piece\": \"సంప్\"}, {\"id\": \"land\", \"piece\": \"నది\"}], \"view\": \"front\", \"close\": true, \"secs\": 9}, {\"say\": \"పంప్ హౌస్ లోపల నాలుగు పంపులు, వెనక వాటి మోటార్లు. ఒక్కో పంపు సెకనుకి సుమారు 2,500 లీటర్లు పైకి నెడుతుంది.\", \"focus\": [{\"id\": \"pumphouse\", \"piece\": \"పంపులు\"}, {\"id\": \"pumphouse\", \"piece\": \"మోటార్లు\"}, {\"id\": \"pumphouse\", \"piece\": \"వాల్వ్‌లు\"}], \"view\": \"iso\", \"close\": true, \"move\": [{\"id\": \"pumphouse\", \"piece\": \"పంప్ హౌస్ పైకప్పు\", \"by\": [0, 2100, 0], \"secs\": 1.2}, {\"id\": \"pumphouse\", \"piece\": \"పంప్ హౌస్ గోడలు\", \"by\": [0, 1500, 0], \"secs\": 1.2}], \"secs\": 10}, {\"say\": \"నీరు రెండు పెద్ద పైపుల్లో కొండ ఎక్కుతుంది. ఎర్ర టోపీలు ఎయిర్ వాల్వ్‌లు, పక్కన నిలువు ట్యాంక్ సర్జ్ వెసెల్.\", \"focus\": [{\"id\": \"mains\", \"piece\": \"ప్రెషర్ మెయిన్‌లు\"}, {\"id\": \"mains\", \"piece\": \"ఎయిర్ వాల్వ్‌లు\"}, {\"id\": \"mains\", \"piece\": \"సర్జ్ వెసెల్\"}], \"view\": \"side\", \"secs\": 9}, {\"say\": \"కొండ మీద సిస్టర్న్‌లో పైపులు నీటిని పైకి కుమ్మరిస్తాయి. అక్కడి నుంచి కాలువ రెండు వైపులా, ఇక వాలుతోనే.\", \"focus\": [{\"id\": \"mains\", \"piece\": \"డెలివరీ సిస్టర్న్\"}, {\"id\": \"canal\", \"piece\": \"ప్రధాన కాలువ\"}], \"view\": \"iso\", \"close\": true, \"secs\": 9}, {\"say\": \"తూములు తెరిస్తే నీరు పొలం కాలువల్లోకి, వరి మడుల్లోకి. 'కరెంట్ కట్', 'గుర్రపుడెక్క' అంటే ఏమవుతుందో చూపిస్తాను Sir.\", \"focus\": [{\"id\": \"canal\", \"piece\": \"తూములు\"}, {\"id\": \"canal\", \"piece\": \"పొలం కాలువలు\"}, {\"id\": \"canal\", \"piece\": \"వరి పొలాలు\"}], \"view\": \"iso\", \"secs\": 10}]}",
+"tour_at": 0,
+"guide": "",
+"guide_at": -1,
+"paints": [],
+"showpiece": {
+"names": [
+"ఎత్తిపోతల పథకం",
+"ఎత్తిపోతల",
+"ఎత్తిపోత",
+"లిఫ్ట్ ఇరిగేషన్",
+"లిఫ్ట్ స్కీమ్",
+"నీటి ఎత్తిపోత",
+"పంపింగ్ స్టేషన్",
+"lift irrigation",
+"lift scheme",
+"pumping station",
+"irrigation"
+],
+"powerName": "💧 పంపులు",
+"outdoor": true,
+"walk": [
+"పంప్ హౌస్ లోపల",
+"సంప్ దగ్గర",
+"నది ఒడ్డున",
+"పైపుల పక్కన",
+"సిస్టర్న్ దగ్గర",
+"కాలువ గట్టు మీద",
+"పొలాల్లో"
+],
+"switches": [
+{
+"id": "cut",
+"menu": "⚡ కరెంట్ కట్ (వాటర్ హామర్)",
+"words": [
+"కరెంట్ కట్",
+"కరెంట్ పోతే",
+"పవర్ కట్",
+"కరెంట్ పోయింది",
+"power cut"
+],
+"offWords": [
+"కరెంట్ వచ్చింది",
+"కరెంట్ వేయి",
+"పవర్ వచ్చింది",
+"power back"
+],
+"on": "⚡ కరెంట్ పోయింది Sir: నాలుగు పంపులు ఒక్కసారిగా ఆగాయి. కొండ మీది పైపుల్లోని నీరు వెనక్కి రావాలని చూస్తోంది: ఎర్ర NRV లు వెంటనే మూసుకున్నాయి, సర్జ్ వెసెల్ దెబ్బని తట్టుకుంది, ఎయిర్ వాల్వ్‌లు గాలి తీసుకుంటున్నాయి. కాలువలో ఉన్న నీరు కాసేపు పారి తర్వాత తగ్గుతుంది.",
+"off": "కరెంట్ వచ్చింది Sir: పంపులు మళ్ళీ ఒక్కొక్కటిగా మొదలవుతున్నాయి."
+},
+{
+"id": "weeds",
+"menu": "🌿 గుర్రపుడెక్క వచ్చింది",
+"words": [
+"గుర్రపుడెక్క",
+"గుర్రపు డెక్క",
+"కలుపు వచ్చింది",
+"చెత్త వచ్చింది",
+"ర్యాక్ మూసుకుపోయింది"
+],
+"offWords": [
+"గుర్రపుడెక్క తీసేయి",
+"ర్యాక్ శుభ్రం చేయి",
+"కలుపు తీసేయి",
+"చెత్త తీసేయి"
+],
+"on": "🌿 నదిలో గుర్రపుడెక్క కొట్టుకొస్తోంది Sir: ట్రాష్ రాక్ దగ్గర పోగుపడుతోంది, సంప్‌లోకి నీరు తగ్గింది (సుమారు 30%). ర్యాక్ క్లీనర్ రేక్ దిగి కలుపుని పైకి లాగుతోంది: పసుపు లైట్ చూడండి.",
+"off": "ర్యాక్ శుభ్రం Sir: నీరు మళ్ళీ పూర్తిగా వస్తోంది."
+}
+],
+"power": {
+"start": "మొదటి పంపు మొదలైంది Sir: ఒక్కొక్కటిగా మొదలుపెడతాను.",
+"full": "నాలుగు పంపులూ నడుస్తున్నాయి Sir: సెకనుకి సుమారు 10,000 లీటర్లు 25 m పైకి, సుమారు 3.4 MW కరెంట్.",
+"half": "రెండు పంపులు Sir: సెకనుకి సుమారు 5,000 లీటర్లు.",
+"stop": "పంపులు ఆపాను Sir. కాలువలో మిగిలిన నీరు కాసేపు పారుతుంది.",
+"over": "నాలుగు పంపులు పూర్తి వేగంతో నది ఇచ్చే దానికంటే ఎక్కువ లాగుతున్నాయి Sir: సంప్ మట్టం కనీస హద్దుకి పడిపోయింది, సుడి గాలిని లాగే ప్రమాదం. లో లెవెల్ రక్షణ ఒక పంపుని ఆపింది.",
+"cut": "సంప్ మట్టం మళ్ళీ పెరిగింది Sir: నాలుగో పంపు మళ్ళీ మొదలైంది."
+},
+"info": {
+"కొండ": {
+"simple": "ఈ కొండ నది కంటే 25 m ఎత్తు. పొలాలు కొండ పైన ఉన్నాయి: నది నీరు తనంతట తాను పైకి వెళ్ళదు, అందుకే పంపులు.",
+"deep": "గ్రావిటీ కాలువ నీటిని కిందికి మాత్రమే తీసుకెళ్తుంది. నది కంటే ఎత్తులో ఉన్న భూమికి నీరు కావాలంటే ఎత్తిపోయాలి: అదే ఎత్తిపోతల పథకం.",
+"specs": {
+"ఎత్తు": "25 m (ఈ ఒక్క దశ)"
+}
+},
+"నది": {
+"simple": "నది: పథకానికి నీరు ఇక్కడి నుంచే. వర్షాకాలంలో నది నిండుగా పారుతున్నప్పుడు ఎక్కువగా ఎత్తిపోస్తారు.",
+"deep": "నది మట్టం తగ్గితే సంప్‌లోకి సరిపడా నీరు రాదు. అందుకే చాలా పథకాలు నదిపై బ్యారేజ్ కట్టి నీటిని నిలబెడతాయి.",
+"specs": {
+"ప్రవాహం": "కాలాన్ని బట్టి మారుతుంది"
+}
+},
+"చెట్లు": {
+"simple": "గట్ల మీద, కొండ అంచున చెట్లు.",
+"deep": "చెట్ల వేర్లు కొండ వాలు మట్టి కొట్టుకుపోకుండా పట్టి ఉంచుతాయి.",
+"specs": {
+"పని": "నీడ, మట్టి రక్షణ"
+}
+},
+"సంప్": {
+"simple": "సంప్: పంప్ హౌస్ ముందు లోతైన కాంక్రీట్ గుంట. నది నీరు కాలువ ద్వారా ఇందులోకి వస్తుంది, పంపుల సక్షన్ పైపులు ఇందులో మునిగి ఉంటాయి.",
+"deep": "సంప్ నీరు నిశ్శబ్దంగా, సుడి లేకుండా ఉండాలి. మట్టం కనీస హద్దు కంటే తగ్గితే సుడిగుండం (వోర్టెక్స్) గాలిని పంప్‌లోకి లాగుతుంది: అందుకే లో లెవెల్ రక్షణ పంపుని ఆపుతుంది.",
+"specs": {
+"లోతు": "సుమారు 5 m"
+}
+},
+"ట్రాష్ రాక్": {
+"simple": "ట్రాష్ రాక్: నిలువు ఉక్కు కడ్డీల జాలీ. నదిలో తేలే కలుపు, కొమ్మలు, చెత్త సంప్‌లోకి రాకుండా ఆపుతుంది.",
+"deep": "చెత్త పంప్‌లోకి వెళ్తే ఇంపెల్లర్ పాడవుతుంది. కానీ ర్యాక్ మూసుకుపోతే నీరు తక్కువగా వస్తుంది: అందుకే దాన్ని రోజూ శుభ్రం చేయాలి.",
+"specs": {
+"కడ్డీల మధ్య": "సుమారు 4 cm"
+}
+},
+"ర్యాక్ క్లీనర్": {
+"simple": "ర్యాక్ క్లీనర్: ర్యాక్ పైన తిరిగే ట్రాలీ, దాని రేక్ (దువ్వెన) కిందికి దిగి కలుపును పైకి లాగి బిన్‌లో వేస్తుంది.",
+"deep": "'గుర్రపుడెక్క' అంటే అది పని చేయడం చూపిస్తాను. పాత పథకాల్లో ఈ పని మనుషులే పొడవైన రేక్‌లతో చేసేవారు.",
+"specs": {
+"పని": "ర్యాక్ శుభ్రం"
+}
+},
+"గుర్రపుడెక్క": {
+"simple": "గుర్రపుడెక్క: నదుల్లో, చెరువుల్లో తేలుతూ వేగంగా పెరిగే కలుపు మొక్క.",
+"deep": "ఇది కాలువలు, ర్యాక్‌లను మూసేస్తుంది, నీటిలో ఆక్సిజన్ తగ్గిస్తుంది. 'గుర్రపుడెక్క' అంటే అది ర్యాక్ దగ్గర పోగుపడటం, నీరు తగ్గడం చూపిస్తాను.",
+"specs": {
+"పెరుగుదల": "కొన్ని వారాల్లో రెట్టింపు"
+}
+},
+"పంపులు": {
+"simple": "ఇవి పంపులు: నాలుగు పెద్ద సెంట్రిఫ్యూగల్ పంపులు. ఒక్కోటి సెకనుకి సుమారు 2,500 లీటర్ల నీటిని 25 m పైకి నెడుతుంది.",
+"deep": "లోపల ఇంపెల్లర్ (వంపు రెక్కల చక్రం) వేగంగా తిరిగి నీటిని బయటికి విసురుతుంది; చుట్టూ ఉన్న వాల్యూట్ ఆ వేగాన్ని ఒత్తిడిగా మారుస్తుంది. 'పంపు లోపల చూపించు' అంటే చూపిస్తాను.",
+"specs": {
+"ఒక్కోటి": "సుమారు 2.5 m³/s"
+}
+},
+"మోటార్లు": {
+"simple": "ఇవి మోటార్లు: ఒక్కో పంపుకి ఒక్కో పెద్ద ఎలక్ట్రిక్ మోటార్, సుమారు 1 MW (1,300 HP కి పైగా).",
+"deep": "ఇంత పెద్ద మోటార్లు సాధారణంగా 11 kV లేదా అంతకంటే ఎక్కువ వోల్టేజ్‌తో నడుస్తాయి. మొదలుపెట్టేటప్పుడు ఎక్కువ కరెంట్ లాగుతాయి: అందుకే ఒక్కొక్కటిగా స్టార్ట్ చేస్తారు.",
+"specs": {
+"శక్తి": "సుమారు 1 MW ఒక్కోటి"
+}
+},
+"వాల్వ్‌లు": {
+"simple": "వాల్వ్‌లు: ప్రతి పంప్ డెలివరీ మీద ఎర్ర NRV (నీరు ముందుకే వెళ్ళనిచ్చే వాల్వ్), తర్వాత చక్రం ఉన్న మూసే వాల్వ్.",
+"deep": "కరెంట్ పోతే కొండ మీది పైపుల్లోని నీరు వెనక్కి పరుగెత్తి పంపుని ఉల్టా తిప్పాలని చూస్తుంది: NRV వెంటనే మూసుకుని ఆపుతుంది. రిపేర్ చేసేటప్పుడు చక్రం వాల్వ్ మూస్తారు.",
+"specs": {
+"రకాలు": "NRV, స్లూయిస్ వాల్వ్"
+}
+},
+"పంప్ పైపులు": {
+"simple": "పంప్ పైపులు: ముందు సంప్ నుంచి నీరు లాగే సక్షన్ పైపులు, పైకి వెళ్ళే డెలివరీ పైపులు, అన్నీ కలిసే హెడర్.",
+"deep": "సక్షన్ పైపు చివర గంట ఆకారం (బెల్ మౌత్): నీరు నెమ్మదిగా, సుడి లేకుండా లోపలికి వెళ్తుంది.",
+"specs": {
+"పని": "నీటి దారి"
+}
+},
+"EOT క్రేన్": {
+"simple": "EOT క్రేన్: పైకప్పు కింద పట్టాల మీద కదిలే క్రేన్. పంపు లేదా మోటార్ రిపేర్‌కి ఎత్తడానికి.",
+"deep": "ఒక్కో మోటార్ కొన్ని టన్నుల బరువు ఉంటుంది: మనుషులు ఎత్తలేరు.",
+"specs": {
+"పని": "బరువులు ఎత్తడం"
+}
+},
+"స్టార్టర్ ప్యానెల్": {
+"simple": "స్టార్టర్ ప్యానెల్: ఒక్కో పంపుకి ఒక్కో ప్యానెల్, పచ్చ లైట్ అంటే నడుస్తోంది, ఎర్ర లైట్ అంటే ట్రిప్.",
+"deep": "లోపల బ్రేకర్, రక్షణ రిలేలు: ఓవర్‌లోడ్, తక్కువ వోల్టేజ్, సంప్ మట్టం తక్కువ, మోటార్ వేడి: ఏది జరిగినా పంపుని ఆపుతాయి.",
+"specs": {
+"లైట్లు": "పచ్చ నడక, ఎర్ర ట్రిప్"
+}
+},
+"పంప్ హౌస్ గోడలు": {
+"simple": "పంప్ హౌస్ గోడలు: లోపలి యంత్రాలని ఎండ, వాన, దుమ్ము నుంచి కాపాడతాయి. 'పైకప్పు తీయి' రెండు సార్లు అంటే ఇవీ లేస్తాయి.",
+"deep": "ఉక్కు స్తంభాల మీద రేకుల గోడలు; కిటికీలు వెలుతురు, గాలి కోసం. రాత్రి కిటికీల్లో లైట్లు కనిపిస్తాయి.",
+"specs": {
+"పని": "రక్షణ"
+}
+},
+"పంప్ హౌస్ పైకప్పు": {
+"simple": "పంప్ హౌస్ పైకప్పు. 'పైకప్పు తీయి' అంటే లేచి లోపల కనిపిస్తుంది.",
+"deep": "వాలు రేకుల పైకప్పు: వాన నీరు జారిపోతుంది. నిజమైన ఫ్యాక్టరీల్లో పైన గాలి పోయే వెంట్లు ఉంటాయి.",
+"specs": {
+"పని": "నీడ, రక్షణ"
+}
+},
+"సబ్‌స్టేషన్": {
+"simple": "సబ్‌స్టేషన్: కరెంట్ లైన్ నుంచి వచ్చే కరెంట్‌ని ట్రాన్స్‌ఫార్మర్ ద్వారా మోటార్లకి సరిపడా వోల్టేజ్‌కి మారుస్తుంది.",
+"deep": "పెద్ద పథకాల్లో 132 kV, 220 kV, 400 kV సబ్‌స్టేషన్లు కూడా ఉంటాయి: అంత కరెంట్ కావాలి.",
+"specs": {
+"ఈ బొమ్మలో": "సుమారు 4 MW"
+}
+},
+"కంట్రోల్ రూమ్": {
+"simple": "కంట్రోల్ రూమ్: ఇక్కడి నుంచే పంపులు నడుపుతారు, సంప్, సిస్టర్న్ మట్టాలు, కరెంట్ చూస్తారు.",
+"deep": "కాలువ చివర ఎంత నీరు కావాలో రైతుల నుంచి, అధికారుల నుంచి సమాచారం వస్తుంది: దాన్ని బట్టి ఎన్ని పంపులు నడపాలో నిర్ణయిస్తారు.",
+"specs": {
+"పని": "నియంత్రణ"
+}
+},
+"మెట్ల దారి": {
+"simple": "మెట్ల దారి: పైపుల మధ్య కొండ ఎక్కే మెట్లు, తనిఖీ కోసం.",
+"deep": "ఆపరేటర్లు రోజూ పైపుల వెంట నడిచి లీకులు, ఎయిర్ వాల్వ్‌లు చూస్తారు.",
+"specs": {
+"పని": "తనిఖీ"
+}
+},
+"ప్రెషర్ మెయిన్‌లు": {
+"simple": "ప్రెషర్ మెయిన్‌లు: రెండు పెద్ద ఉక్కు పైపులు, ఒక్కోటి 1.8 m వెడల్పు. కొండ వాలు మీదుగా నీటిని సిస్టర్న్ దాకా తీసుకెళ్తాయి.",
+"deep": "కాంక్రీట్ దిమ్మల (సాడిల్స్) మీద కూర్చుంటాయి; వంపుల దగ్గర పెద్ద యాంకర్ బ్లాకులు పైపు జారకుండా పట్టుకుంటాయి. లోపల ఒత్తిడి సుమారు 3 బార్.",
+"specs": {
+"వెడల్పు": "1.8 m",
+"పొడవు": "సుమారు 60 m"
+}
+},
+"ఎయిర్ వాల్వ్‌లు": {
+"simple": "ఎయిర్ వాల్వ్‌లు: పైపుల మీద ఎర్ర టోపీలు. పైపులో చిక్కుకున్న గాలిని బయటికి వదులుతాయి.",
+"deep": "పంప్ ఆగినప్పుడు పైపులో ఖాళీ (వాక్యూమ్) రాకుండా గాలిని లోపలికి కూడా తీసుకుంటాయి: లేదంటే పైపు నొక్కుకుపోవచ్చు. 'కరెంట్ కట్' అంటే అవి గాలి వదలడం చూపిస్తాను.",
+"specs": {
+"పని": "గాలి బయటికి, లోపలికి"
+}
+},
+"సర్జ్ వెసెల్": {
+"simple": "సర్జ్ వెసెల్: పంప్ హౌస్ వెనక నిలువు ట్యాంక్, సగం నీరు సగం గాలి.",
+"deep": "పంపులు ఒక్కసారిగా ఆగితే పైపుల్లోని నీరు సుత్తిలా కొడుతుంది (వాటర్ హామర్). ఈ ట్యాంక్‌లోని గాలి స్ప్రింగ్‌లా ఆ దెబ్బని తట్టుకుంటుంది.",
+"specs": {
+"పని": "వాటర్ హామర్ నుంచి రక్షణ"
+}
+},
+"డెలివరీ సిస్టర్న్": {
+"simple": "డెలివరీ సిస్టర్న్: కొండ మీద కాంక్రీట్ తొట్టి. పైపులు ఇక్కడ పైకి తెరుచుకుని నీటిని కుమ్మరిస్తాయి; వెనక నుంచి కాలువలోకి.",
+"deep": "సిస్టర్న్ నీటి వేగాన్ని తగ్గించి, కాలువలోకి నెమ్మదిగా పంపుతుంది. పైపుల పైకి తెరుచుకున్న మూతలు నీరు వెనక్కి పోకుండా కూడా సాయం చేస్తాయి.",
+"specs": {
+"కొలత": "22 m × 12 m"
+}
+},
+"ప్రధాన కాలువ": {
+"simple": "ప్రధాన కాలువ: సిస్టర్న్ నుంచి కొండ పైన రెండు వైపులా వెళ్తుంది. కాంక్రీట్ లైనింగ్ ఉంది, ఒక గట్టు మీద సర్వీస్ రోడ్డు.",
+"deep": "లైనింగ్ లేకపోతే చాలా నీరు నేలలోకి ఇంకిపోతుంది. ఇక్కడి నుంచి నీరు మళ్ళీ గ్రావిటీతోనే (వాలుతో) పొలాలకి వెళ్తుంది: ఇక ఎత్తిపోయక్కర్లేదు.",
+"specs": {
+"వాలు": "చాలా కొంచెం, సుమారు 10 km కి 1 m"
+}
+},
+"తూములు": {
+"simple": "తూములు: కాలువ గట్టులో చిన్న గేట్లు, పైన చక్రం. తిప్పితే గేటు లేచి నీరు పొలం కాలువలోకి.",
+"deep": "ఎవరి వంతు ఎప్పుడో (వారబంది) ముందే నిర్ణయిస్తారు: కాలువ చివరి రైతులకి కూడా నీరు అందాలి.",
+"specs": {
+"పని": "నీటి పంపకం"
+}
+},
+"పొలం కాలువలు": {
+"simple": "పొలం కాలువలు: తూముల నుంచి పొలాల మధ్య చిన్న కాలువలు.",
+"deep": "రైతులు గట్టు కొంచెం తెంపి నీరు తమ మడిలోకి తీసుకుంటారు, నిండాక మళ్ళీ మూస్తారు.",
+"specs": {
+"పని": "మడులకి నీరు"
+}
+},
+"పథకం బోర్డ్": {
+"simple": "పథకం బోర్డ్: ఇది ఈ పథకంలో మొదటి దశ అని చెప్తుంది.",
+"deep": "పెద్ద పథకాల్లో దశ 1 నీటిని ఇంకో పంప్ హౌస్‌కి, అది ఇంకా ఎత్తుకి: ఇలా చాలా దశల్లో వందల మీటర్లు ఎక్కిస్తారు.",
+"specs": {
+"దశ": "1"
+}
+},
+"వరి పొలాలు": {
+"simple": "వరి పొలాలు: గట్ల మధ్య మడులు, కొన్ని కొత్తగా నాటినవి, కొన్ని పెరిగినవి, ఒకటి కోతకి సిద్ధం.",
+"deep": "వరికి చాలా నీరు కావాలి: ఒక ఎకరానికి ఒక పంటకి సుమారు 50 లక్షల లీటర్లు. ఆరుతడి పంటలకి (వేరుశనగ, జొన్న) చాలా తక్కువ.",
+"specs": {
+"1 m³/s తో": "సుమారు 1,800 ఎకరాల వరి"
+}
+}
+},
+"facts": [
+{
+"k": [
+"ఎత్తిపోతల అంటే",
+"ఎత్తిపోతల పథకం అంటే",
+"lift irrigation అంటే",
+"ఎందుకు పంపులు",
+"ఎలా పనిచేస్తుంది"
+],
+"a": "నది కిందన ఉంది, పొలాలు కొండ పైన ఉన్నాయి Sir. నీరు తనంతట తాను పైకి వెళ్ళదు: పంపులు నదిలోంచి నీటిని పైపుల ద్వారా 25 m పైకి నెట్టి కొండ మీది తొట్టిలో పోస్తాయి. అక్కడి నుంచి కాలువ వాలుతో పొలాలకి. పెద్ద పథకాల్లో ఇలాంటి దశలు ఒకదాని తర్వాత ఒకటి చాలా ఉంటాయి."
+},
+{
+"k": [
+"ఎంత కరెంట్",
+"కరెంట్ ఎంత",
+"ఖర్చు ఎంత",
+"power",
+"ఎన్ని మెగావాట్లు"
+],
+"a": "సెకనుకి 1,000 లీటర్లని 25 m పైకి ఎత్తడానికి సుమారు 0.34 MW కావాలి Sir. ఈ బొమ్మలో నాలుగు పంపులకి సుమారు 3.4 MW: ఒక చిన్న ఊరి కరెంట్ అంత. ఎత్తు రెట్టింపైతే కరెంట్ కూడా రెట్టింపు. అందుకే ఎత్తిపోతల పథకాలు నడపడం ఖరీదు, ఎక్కువగా నదిలో వరద ఉన్న నెలల్లో నడుపుతారు."
+},
+{
+"k": [
+"వాటర్ హామర్",
+"water hammer",
+"కరెంట్ పోతే ఏమవుతుంది",
+"nrv ఎందుకు",
+"ఎన్ఆర్వీ"
+],
+"a": "కరెంట్ ఒక్కసారిగా పోతే పైపుల్లోని వేల టన్నుల నీరు ఆగి వెనక్కి పరుగెత్తాలని చూస్తుంది Sir: సుత్తి కొట్టినట్టు ఒత్తిడి దెబ్బ (వాటర్ హామర్). NRV లు మూసుకుంటాయి, సర్జ్ వెసెల్‌లోని గాలి దెబ్బని తట్టుకుంటుంది, ఎయిర్ వాల్వ్‌లు గాలిని లోపలికి తీసుకుంటాయి. 'కరెంట్ కట్' అంటే చూపిస్తాను."
+},
+{
+"k": [
+"ఎన్ని ఎకరాలు",
+"ఎంత పొలం",
+"ఎకరాలకి",
+"how many acres"
+],
+"a": "సుమారుగా Sir: సెకనుకి 1,000 లీటర్లు (1 m³/s) వరికి సుమారు 1,800 ఎకరాలకి సరిపోతుంది. నాలుగు పంపులు (10 m³/s) నడిస్తే సుమారు 18,000 ఎకరాల వరి. ఆరుతడి పంటలకి (వేరుశనగ, మొక్కజొన్న) అదే నీటితో మూడు నాలుగు రెట్లు ఎక్కువ పొలం."
+},
+{
+"k": [
+"ఒక్కొక్కటిగా",
+"ఒకేసారి ఎందుకు స్టార్ట్ చేయరు",
+"స్టార్టింగ్",
+"starting current"
+],
+"a": "పెద్ద మోటార్ మొదలయ్యే క్షణంలో మామూలు కంటే 5–6 రెట్లు కరెంట్ లాగుతుంది Sir. నాలుగూ ఒకేసారి మొదలుపెడితే లైన్ వోల్టేజ్ పడిపోతుంది, బ్రేకర్లు ట్రిప్ అవుతాయి. అందుకే ఒక పంపు నిలదొక్కుకున్నాక తర్వాతిది; వాల్వ్‌లు కూడా నెమ్మదిగా తెరుస్తారు."
+},
+{
+"k": [
+"గుర్రపుడెక్క ఎందుకు",
+"కలుపు",
+"ట్రాష్ రాక్ ఎందుకు",
+"చెత్త"
+],
+"a": "నదిలో తేలే గుర్రపుడెక్క, కొమ్మలు పంపులోకి వెళ్తే ఇంపెల్లర్ విరుగుతుంది Sir. ర్యాక్ వాటిని ఆపుతుంది, కానీ పోగుపడితే నీరు తక్కువగా వస్తుంది, సంప్ మట్టం పడిపోతుంది. అందుకే ర్యాక్ క్లీనర్ రోజూ శుభ్రం చేస్తుంది."
+},
+{
+"k": [
+"ఎప్పుడు నడుపుతారు",
+"ఏ నెలల్లో",
+"ఎండాకాలం నడుస్తుందా",
+"season"
+],
+"a": "నదిలో నీరు ఉన్నప్పుడే Sir: ఎక్కువగా వర్షాకాలం, వరద నెలల్లో (సుమారు జూలై నుంచి అక్టోబర్). ఆ నీటిని రిజర్వాయర్లలో నిల్వ చేసి ఎండాకాలంలో వాడతారు. నది ఎండిపోతే పంపులు ఏమీ చేయలేవు."
+},
+{
+"k": [
+"కాలువ ఎందుకు లైనింగ్",
+"లైనింగ్",
+"నీరు ఇంకిపోతుందా",
+"కాంక్రీట్ కాలువ"
+],
+"a": "మట్టి కాలువలో చాలా నీరు నేలలోకి ఇంకిపోతుంది Sir: మూడో వంతు దాకా దారిలోనే పోవచ్చు. కాంక్రీట్ లైనింగ్ ఆ నష్టం తగ్గిస్తుంది. ఎత్తిపోసిన నీటికి కరెంట్ ఖర్చు అయింది కాబట్టి ప్రతి లీటర్ విలువైనది."
+},
+{
+"k": [
+"గ్రావిటీ కాలువ",
+"తేడా",
+"ఆనకట్ట కాలువ",
+"gravity"
+],
+"a": "గ్రావిటీ కాలువ నది పైభాగంలో ఎత్తైన చోటు నుంచి మొదలై వాలుతో కిందికి పొలాలకి వెళ్తుంది Sir: కరెంట్ అక్కర్లేదు. కానీ నది కంటే ఎత్తైన భూములకి అది చేరదు; వాటికి ఎత్తిపోతలే దారి. ఒకసారి కట్టాక గ్రావిటీ చౌక, ఎత్తిపోతల ప్రతి ఏటా కరెంట్ ఖర్చు."
+}
+],
+"quiz": [
+{
+"q": "నదిలోని చెత్త, కలుపు సంప్‌లోకి రాకుండా ఆపేది ఏది?",
+"a": "ట్రాష్ రాక్",
+"opts": [
+"ట్రాష్ రాక్",
+"వాల్వ్‌లు",
+"డెలివరీ సిస్టర్న్"
+]
+},
+{
+"q": "కరెంట్ పోయినప్పుడు నీరు వెనక్కి రాకుండా వెంటనే మూసుకునేవి ఏవి?",
+"a": "వాల్వ్‌లు",
+"opts": [
+"తూములు",
+"వాల్వ్‌లు",
+"ఎయిర్ వాల్వ్‌లు"
+]
+},
+{
+"q": "వాటర్ హామర్ దెబ్బని గాలితో తట్టుకునేది ఏది?",
+"a": "సర్జ్ వెసెల్",
+"opts": [
+"సర్జ్ వెసెల్",
+"సంప్",
+"స్టార్టర్ ప్యానెల్"
+]
+},
+{
+"q": "కొండ మీద పైపుల నుంచి నీరు ముందుగా పడేది ఎక్కడ?",
+"a": "డెలివరీ సిస్టర్న్",
+"opts": [
+"ప్రధాన కాలువ",
+"డెలివరీ సిస్టర్న్",
+"వరి పొలాలు"
+]
+},
+{
+"q": "కాలువ నుంచి పొలం కాలువలోకి నీరు వదిలేవి ఏవి?",
+"a": "తూములు",
+"opts": [
+"తూములు",
+"ఎయిర్ వాల్వ్‌లు",
+"ట్రాష్ రాక్"
+]
+},
+{
+"q": "పంపు లేదా మోటార్‌ని రిపేర్‌కి ఎత్తేది ఏది?",
+"a": "EOT క్రేన్",
+"opts": [
+"ర్యాక్ క్లీనర్",
+"EOT క్రేన్",
+"మెట్ల దారి"
+]
+}
+],
+"faults": [
+{
+"label": "పంపులు",
+"kind": "noise",
+"clue": "శబ్దం వినండి Sir: పంపుల దగ్గర లోపల గులకరాళ్ళు కొట్టుకుంటున్నట్టు చప్పుడు. ఏ భాగం? 🩺 స్టెతస్కోప్ వాడొచ్చు.",
+"why": "కావిటేషన్: సక్షన్ వైపు ఒత్తిడి బాగా తగ్గి నీటిలో ఆవిరి బుడగలు పుట్టి, ఇంపెల్లర్ దగ్గర పగులుతున్నాయి. ఇవి లోహాన్ని తినేస్తాయి. కారణం: సంప్ మట్టం తక్కువ, ర్యాక్ మూసుకుపోవడం, లేదా సక్షన్ పైపులో గాలి లీక్. మట్టం పెంచి, ర్యాక్ శుభ్రం చేసి, లీక్ సరిచేస్తారు."
+},
+{
+"label": "మోటార్లు",
+"kind": "hot",
+"clue": "🌡️ వేడి చూపించు అనండి Sir: ఏ భాగం మామూలు కంటే వేడిగా ఉంది?",
+"why": "ఒక మోటార్ బేరింగ్‌కి గ్రీజ్ తగ్గింది, దాని కూలింగ్ ఫ్యాన్ జాలీ దుమ్ముతో మూసుకుంది. వేడి హద్దు దాటితే రక్షణ రిలే ఆపుతుంది. గ్రీజ్ వేసి, జాలీ శుభ్రం చేస్తారు; వోల్టేజ్ కూడా చూస్తారు."
+},
+{
+"label": "ఎయిర్ వాల్వ్‌లు",
+"kind": "loose",
+"clue": "కొండ మీద పైపుల దగ్గర ఏది వణుకుతోంది, నీరు చిమ్ముతోంది Sir?",
+"why": "ఒక ఎయిర్ వాల్వ్ బోల్టులు వదులై, దాని రబ్బర్ గాస్కెట్ అరిగింది: నీరు చిమ్ముతోంది. దాని కింది వాల్వ్ మూసి, గాస్కెట్ మార్చి, బోల్టులు సమంగా బిగిస్తారు."
+},
+{
+"label": "తూములు",
+"kind": "stop",
+"clue": "ఒక పొలం కాలువకి నీరు రావట్లేదు Sir. ఏది ఆగిపోయింది?",
+"why": "రెండో తూము గేటు కింద బురద, ఇసుక పేరుకుపోయింది, స్క్రూ తుప్పు పట్టింది: గేటు లేవట్లేదు. బురద తీసి, స్క్రూకి గ్రీజ్ వేసి, మళ్ళీ తిప్పుతారు."
+}
+],
+"inside": {
+"పంపులు": {
+"say": "పంపు లోపల Sir, కేసింగ్ సగం కోసి చూపిస్తున్నాను. నీరు మధ్యలోని కన్ను (ఐ) నుంచి లోపలికి వస్తుంది. కంచు ఇంపెల్లర్ నిమిషానికి సుమారు వెయ్యి సార్లు తిరుగుతుంది (ఇక్కడ నెమ్మదిగా చూపిస్తున్నాను): దాని వంపు రెక్కలు నీటిని బయటి అంచుకి విసురుతాయి. చుట్టూ గుండ్రంగా వెడల్పయ్యే వాల్యూట్ ఆ నీటిని సేకరించి, వేగాన్ని ఒత్తిడిగా మారుస్తుంది. ఆ ఒత్తిడితోనే నీరు పైపులో 25 m కొండ ఎక్కుతుంది.",
+"code": "// Inside one pump, its casing cut open: the impeller (curved vanes) turns about 1,000 times a minute (shown slowed). The\n// water comes in at the eye (the middle), the vanes fling it outward, the spiral casing (the volute) gathers it, slows it\n// and turns its speed into pressure: up the outlet it goes, strong enough to climb 25 m of hill.\nconst blue = W.paint('#2f5f8f', { metallic: 0.3, rough: 0.5 }), bronze = W.metal('#b0874a', { rough: 0.35 }), steel = W.metal('#c3c8cc', { rough: 0.35 });\nconst glassy = new THREE.MeshStandardMaterial({ color: 0x9fc6e0, roughness: 0.2, metalness: 0, transparent: true, opacity: 0.18, depthWrite: false });\nconst vol = W.group();\nvol.add(W.mesh(W.cyl(190, 190, 10, 48), blue, { at: [0, 0, -45], rot: [90, 0, 0] }));\nconst spiral = [];\nfor (let i = 0; i <= 48; i++) { const a = (i / 48) * Math.PI * 2, r = 128 + 52 * (i / 48); spiral.push([Math.cos(a) * (r + 10), Math.sin(a) * (r + 10)]); }\nfor (let i = 48; i >= 0; i--) { const a = (i / 48) * Math.PI * 2, r = 128 + 52 * (i / 48); spiral.push([Math.cos(a) * r, Math.sin(a) * r]); }\nvol.add(W.mesh(W.extrude(spiral, 80), blue, { at: [0, 0, 0] }));\nvol.add(W.mesh(W.box(62, 230, 80), blue, { at: [216, 105, 0] }), W.mesh(W.box(10, 230, 80), blue, { at: [148, 125, 0] }));\nvol.add(W.mesh(W.cyl(190, 190, 6, 48), glassy, { at: [0, 0, 45], rot: [90, 0, 0] }));\nW.add(vol, { label: 'వాల్యూట్ కేసింగ్' });\nconst imp = W.group();\nimp.add(W.mesh(W.cyl(34, 40, 70, 24), bronze, { rot: [90, 0, 0] }), W.mesh(W.cyl(118, 118, 6, 40), bronze, { at: [0, 0, -34], rot: [90, 0, 0] }));\nfor (let k = 0; k < 6; k++) {\n  const vane = [];\n  for (let i = 0; i <= 10; i++) { const u = i / 10, r = 40 + 76 * u, a = -u * 1.1; vane.push([Math.cos(a) * r, Math.sin(a) * r]); }\n  for (let i = 10; i >= 0; i--) { const u = i / 10, r = 40 + 76 * u, a = -u * 1.1 + 0.12; vane.push([Math.cos(a) * r, Math.sin(a) * r]); }\n  const m = W.mesh(W.extrude(vane, 60), bronze, { at: [0, 0, -2] }); m.rotation.z = (k / 6) * Math.PI * 2; imp.add(m);\n}\nW.add(imp, { label: 'ఇంపెల్లర్' });\nconst sh = W.group();\nsh.add(W.mesh(W.cyl(22, 22, 260, 20), steel, { at: [0, 0, -170], rot: [90, 0, 0] }));\nW.add(sh, { label: 'షాఫ్ట్' });\nconst N = 140, drops = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }), N);\nconst dg = W.group(); dg.add(drops);\nW.add(dg, { label: 'నీరు' });\nconst u = Array.from({ length: N }, (_, i) => i / N), ph = Array.from({ length: N }, (_, i) => (i * 0.618) % 1);\nconst M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), Z = new THREE.Vector3(), C = new THREE.Color();\nlet spin = 0;\nW.onTick((t, dt) => {\n  const k = 0.35 + 0.65 * Math.max(0.15, W.env.spool);\n  spin += dt * 2.2 * k; imp.rotation.z = -spin;\n  for (let i = 0; i < N; i++) {\n    u[i] = (u[i] + dt * 0.16 * k) % 1;\n    const v = u[i], a0 = ph[i] * Math.PI * 2;\n    if (v < 0.2) P.set(Math.cos(a0) * 20, Math.sin(a0) * 20, 200 - 900 * v); // (in at the eye, from the front)\n    else if (v < 0.5) { const w = (v - 0.2) / 0.3, a = a0 - spin * 0.6 - w * 1.4, r = 30 + 90 * w; P.set(Math.cos(a) * r, Math.sin(a) * r, 0); } // (flung out by the vanes)\n    else if (v < 0.85) { const w = (v - 0.5) / 0.35, a = -w * Math.PI * 1.6 + a0 * 0.2, r = 135 + 35 * w; P.set(Math.cos(a) * r, Math.sin(a) * r, (ph[i] - 0.5) * 50); } // (round the volute)\n    else { const w = (v - 0.85) / 0.15; P.set(205 + (ph[i] - 0.5) * 30, 10 + 230 * w, (ph[i] - 0.5) * 50); } // (up the outlet)\n    M.compose(P, Q, Z.setScalar(5 + 3 * Math.min(1, v * 2)));\n    drops.setMatrixAt(i, M);\n    drops.setColorAt(i, C.setHSL(0.55, 0.7, 0.75 - 0.35 * v));\n  }\n  drops.instanceMatrix.needsUpdate = true;\n  if (drops.instanceColor) drops.instanceColor.needsUpdate = true;\n});\n"
+}
+},
+"film": [
+"💧 ఎత్తిపోతల పథకం",
+"నది → సంప్ → పంపులు",
+"పైపుల్లో 25 m కొండ పైకి",
+"సిస్టర్న్ → కాలువ → తూములు",
+"వరి పొలాలకి నీరు",
+"Jarvis వర్క్‌షాప్ · చేత్తో చేసిన షోపీస్"
+],
+"service": {
+"title": "🛠️ పంప్ హౌస్ సంరక్షణ",
+"safety": "పంప్ దగ్గర పని చేసే ముందు: ప్యానెల్ బ్రేకర్ ఆఫ్ చేసి తాళం వేసి, 'పని జరుగుతోంది' బోర్డ్ తగిలించాలి; డెలివరీ వాల్వ్ మూయాలి. హై వోల్టేజ్ సబ్‌స్టేషన్ లోపలికి లైసెన్స్ ఉన్న సిబ్బంది మాత్రమే. సంప్‌లోకి దిగడం: పక్కన మనిషి, లైఫ్ జాకెట్, తాడు తప్పనిసరి.",
+"steps": [
+{
+"say": "ట్రాష్ రాక్ రోజూ శుభ్రం: పోగుపడిన కలుపు తీసేయకపోతే సంప్ మట్టం పడిపోతుంది.",
+"label": "ట్రాష్ రాక్"
+},
+{
+"say": "పంప్ గ్లాండ్ నుంచి నిమిషానికి కొన్ని చుక్కలు కారడం మామూలే (చల్లబరుస్తుంది); ధారగా కారితే ప్యాకింగ్ మారుస్తారు.",
+"label": "పంపులు"
+},
+{
+"say": "మోటార్ బేరింగ్‌లకి నిర్ణీత సమయానికి గ్రీజ్; సీజన్ ముందు వైండింగ్ ఇన్సులేషన్ టెస్ట్ (మెగ్గర్).",
+"label": "మోటార్లు"
+},
+{
+"say": "NRV లు, వాల్వ్‌లు సీజన్ ముందు తెరిచి మూసి చూస్తారు; NRV సరిగ్గా మూసుకోకపోతే కరెంట్ పోయినప్పుడు పంప్ ఉల్టా తిరుగుతుంది.",
+"label": "వాల్వ్‌లు"
+},
+{
+"say": "ఎయిర్ వాల్వ్‌ల ఫ్లోట్లు, గాస్కెట్లు; సర్జ్ వెసెల్‌లో గాలి మట్టం సరిగ్గా ఉందా.",
+"label": "సర్జ్ వెసెల్"
+}
+]
+},
+"prefer": [
+"పంపులు"
+],
+"line": "🏆 షోపీస్ · చేత్తో తయారు చేసింది · ₹0 · 🕐 🚶",
+"challenge": null,
+"scene": "",
+"id": "liftirr"
+}
+}

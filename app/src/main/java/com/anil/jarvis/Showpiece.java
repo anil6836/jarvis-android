@@ -106,7 +106,8 @@ final class Showpiece {
     }
 
     private static String low(String s) {
-        return s == null ? "" : s.toLowerCase(Locale.ROOT).replaceAll("[\\p{Punct}।॥“”‘’&&[^%.]]+", " ").replaceAll("\\s+", " ").trim();
+        return s == null ? "" : s.toLowerCase(Locale.ROOT).replace("\u200c", "").replace("\u200d", "") // ("ప్యాడ్‌లు" and "ప్యాడ్లు" are one word)
+                .replaceAll("[\\p{Punct}।॥“”‘’&&[^%.]]+", " ").replaceAll("\\s+", " ").trim();
     }
 
     // ================================================================ its words
@@ -193,7 +194,11 @@ final class Showpiece {
                 n++;
                 if (w.length() <= 3 ? t.contains(" " + w + " ") : t.contains(w)) { hit++; chars += w.length(); continue; }
                 String stem = w.endsWith("ళ్ళు") ? w.substring(0, w.length() - 4) : w.endsWith("లు") ? w.substring(0, w.length() - 2) : null; // ("టర్బైన్" names "టర్బైన్లు")
-                if (stem != null && stem.length() >= 4 && t.contains(stem)) { hit++; chars += stem.length(); }
+                if (stem != null && stem.length() >= 4) {
+                    String alt = stem.endsWith("ు") ? stem.substring(0, stem.length() - 1) + "్" : null; // ("పంపులు" is named by "పంప్" too)
+                    if (t.contains(stem)) { hit++; chars += stem.length(); }
+                    else if (alt != null && t.contains(alt)) { hit++; chars += alt.length(); }
+                }
             }
             if (n == 0 || hit == 0) continue;
             double cover = (double) hit / n;
