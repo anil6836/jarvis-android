@@ -62,7 +62,9 @@ final class WorkshopShow {
     private final List<Runnable> chainLeft = new ArrayList<>();
 
     // the panel
-    private LinearLayout panel, bikeRow;
+    private LinearLayout panel, bikeRow, powerRow, strip;
+    private TextView stripText;
+    private String stripLabel;
     private SeekBar powerBar;
     private TextView powerName, powerVal, gearView, clutchBtn, brakeBtn;
     private boolean dragging;
@@ -105,6 +107,8 @@ final class WorkshopShow {
         ui.removeCallbacks(tick);
         chainLeft.clear();
         timelineOn = false;
+        stripLabel = null;
+        if (strip != null) strip.setVisibility(View.GONE);
         refreshPanel();
     }
 
@@ -603,16 +607,41 @@ final class WorkshopShow {
 
     /** A piece was tapped (or double-pinched): the games' answer, the 🩺, its card quietly; explained only for a double pinch. */
     void picked(String id, String label, boolean dbl) {
-        if (sp == null || label == null || label.isEmpty()) return;
+        if (sp == null) return;
+        if (label == null || label.isEmpty()) { tipOff(); return; } // (a tap on empty space: the strip goes too)
         try {
             if (quiz != null) { Object[] r = quiz.check(null, label); if (r != null) { quizAnswered(r, false); return; } }
             if (faults != null) { String g = faults.guess(null, label); if (g != null) { faultGuessed(g, false); return; } }
             if (listenNext) { listenNext = false; h.send(new JSONObject().put("t", "listen").put("label", label)); return; }
         } catch (Exception ignored) {}
-        String c = sp.card(label);
-        if (c == null) return;
-        h.answer(label, c, null);
+        if (sp.card(label) == null) return;
+        tip(label); // (B: a one-line strip by the power bar, never over the model; ▸ opens the whole card)
         if (dbl) { String e = sp.explain(label); if (e != null) h.speak(e, true); }
+    }
+
+    /** 📖 (B) The tapped piece in one line above the power bar: its name and its first sentence; ▸ the whole card. */
+    void tip(String label) {
+        if (strip == null || sp == null) return;
+        JSONObject x = sp.info(label);
+        String first = x == null ? "" : x.optString("simple");
+        int dot = first.indexOf(". ");
+        if (dot > 0) first = first.substring(0, dot + 1);
+        stripLabel = label;
+        stripText.setText("📖 " + label + (first.isEmpty() ? "" : " · " + first));
+        strip.setVisibility(View.VISIBLE);
+        refreshPanel();
+    }
+
+    private void tipOff() {
+        stripLabel = null;
+        if (strip != null) strip.setVisibility(View.GONE);
+        refreshPanel();
+    }
+
+    private void tipOpen() {
+        if (sp == null || stripLabel == null) return;
+        String c = sp.card(stripLabel);
+        if (c != null) h.answer(stripLabel, c, null);
     }
 
     // ================================================================ the panel: power (a bike's grip, clutch, gears, brake), ⋯
@@ -623,7 +652,32 @@ final class WorkshopShow {
         panel = new LinearLayout(a);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(0, 0, 0, dp(6));
+        strip = new LinearLayout(a); // 📖 (B) the tapped piece, one line
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        strip.setGravity(Gravity.CENTER_VERTICAL);
+        strip.setBackground(Ui.round(a, 0xCC0B1118, Ui.CYAN_DIM, 12));
+        strip.setPadding(dp(12), dp(6), dp(4), dp(6));
+        stripText = Ui.text(a, "", 13.5f, Ui.TEXT);
+        stripText.setSingleLine(true);
+        stripText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        strip.addView(stripText, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView more = Ui.text(a, "▸", 20f, Ui.CYAN);
+        more.setPadding(dp(10), 0, dp(8), 0);
+        more.setContentDescription("పూర్తి వివరాలు");
+        strip.addView(more);
+        TextView shut = Ui.text(a, "✕", 16f, Ui.MUTED);
+        shut.setPadding(dp(8), 0, dp(8), 0);
+        shut.setContentDescription("మూసేయి");
+        shut.setOnClickListener(v -> tipOff());
+        strip.addView(shut);
+        strip.setOnClickListener(v -> tipOpen());
+        more.setOnClickListener(v -> tipOpen());
+        strip.setVisibility(View.GONE);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, -2);
+        sl.bottomMargin = dp(6);
+        panel.addView(strip, sl);
         LinearLayout row = new LinearLayout(a);
+        powerRow = row;
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         powerName = Ui.text(a, "⚡", 13f, Ui.MUTED);
@@ -644,9 +698,9 @@ final class WorkshopShow {
         powerVal = Ui.text(a, "0%", 13f, Ui.TEXT);
         powerVal.setMinWidth(dp(40));
         row.addView(powerVal);
-        TextView more = chip("⋯", v -> menu());
-        more.setContentDescription("షోపీస్ ఫీచర్లు");
-        row.addView(more);
+        TextView dots = chip("⋯", v -> menu());
+        dots.setContentDescription("షోపీస్ ఫీచర్లు");
+        row.addView(dots);
         panel.addView(row);
         bikeRow = new LinearLayout(a);
         bikeRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -696,10 +750,12 @@ final class WorkshopShow {
 
     private void refreshPanel() {
         if (panel == null) return;
-        boolean on = sp != null && controlsShown;
+        boolean tipOn = sp != null && strip != null && strip.getVisibility() == View.VISIBLE;
+        boolean on = sp != null && (controlsShown || tipOn);
         panel.setVisibility(on ? View.VISIBLE : View.GONE);
         if (!on) return;
-        bikeRow.setVisibility(sp.bike() && !timelineOn ? View.VISIBLE : View.GONE);
+        powerRow.setVisibility(controlsShown ? View.VISIBLE : View.GONE);
+        bikeRow.setVisibility(controlsShown && sp.bike() && !timelineOn ? View.VISIBLE : View.GONE);
         powerName.setText(timelineOn ? "⏪" : sp.bike() ? "🏍️ గ్రిప్" : "⚡ పవర్");
         powerVal.setText(timelineOn ? "✕" : Math.round(power * 100) + "%");
         powerVal.setOnClickListener(timelineOn ? v -> timeline(false) : null);

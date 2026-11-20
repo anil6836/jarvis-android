@@ -660,7 +660,8 @@ public class WorkshopActivity extends Activity {
         root.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
             int h = root.getHeight();
             if (h <= 0 || topBar == null || bottomBar == null) return;
-            float t = Math.max(0, barH(topBar) - dp(16)) / (float) h, bt = Math.max(0, barH(bottomBar) - dp(20)) / (float) h;
+            int cardB = answerCard != null && answerCard.getVisibility() == View.VISIBLE ? answerCard.getBottom() + dp(6) : 0; // (a card open: the model below it)
+            float t = Math.max(0, Math.max(barH(topBar) - dp(16), cardB)) / (float) h, bt = Math.max(0, barH(bottomBar) - dp(20)) / (float) h;
             if (Math.abs(t - sentTop) < 0.01f && Math.abs(bt - sentBottom) < 0.01f) return;
             sentTop = t;
             sentBottom = bt;
@@ -983,7 +984,7 @@ public class WorkshopActivity extends Activity {
             case "new":
                 if (job != null) { said = "ఒక పని ఇంకా జరుగుతోంది Sir."; break; }
                 shown = null;
-                if (show != null) show.stop();
+                if (show != null) { show.stop(); listLook(); }
                 undo.clear();
                 exploded = false;
                 onStage.clear();
@@ -1207,6 +1208,7 @@ public class WorkshopActivity extends Activity {
             if (s == null) show.stop();
             else if (show.sp == null || !show.sp.id.equals(s.id)) show.start(s);
             else show.start(show.sp); // (the stage started over: its settings again)
+            listLook();
         }
         refreshButtons();
     }
@@ -1556,7 +1558,7 @@ public class WorkshopActivity extends Activity {
         j.photoKind = kind;
         job = j;
         shown = null;
-        if (show != null) show.stop();
+        if (show != null) { show.stop(); listLook(); }
         undo.clear();
         exploded = false;
         forgetPick();
@@ -3300,10 +3302,19 @@ public class WorkshopActivity extends Activity {
         if (holo != null && handsOn && holoW > 0) placeHolo(holoW, holoH);
     }
 
+    private boolean wideNow;
+
+    /** The parts' list with its ticks: away when across, and (🏆 D) for a showpiece: it came ready, the stage gets the room. */
+    private void listLook() {
+        if (listScroll == null || fullOn) return;
+        listScroll.setVisibility(wideNow || (show != null && show.open()) ? View.GONE : View.VISIBLE);
+    }
+
     private void fit(android.content.res.Configuration c) {
         boolean wide = c.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
         // across: the stage keeps most of the height (the part list folds away; a row of it still opens its part)
-        if (listScroll != null) listScroll.setVisibility(wide ? View.GONE : View.VISIBLE);
+        wideNow = wide;
+        listLook();
         if (status != null) status.setMaxLines(wide ? 2 : 6);
         if (answerBody != null) answerBody.setMaxLines(wide ? 6 : 40);
     }
