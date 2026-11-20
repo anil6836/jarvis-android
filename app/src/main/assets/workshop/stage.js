@@ -2197,7 +2197,7 @@ function recStart(m) {
   try { stream = cv.captureStream(30); } catch (e) { stream = null; }
   if (stream && m.audio && snd.ctx && snd.on && snd.voices.length) { // (🎬 the machine's own sound in the film)
     try {
-      if (!snd.dest) { snd.dest = snd.ctx.createMediaStreamDestination(); snd.master.connect(snd.dest); }
+      if (!snd.dest) { snd.dest = snd.ctx.createMediaStreamDestination(); (snd.comp || snd.master).connect(snd.dest); }
       for (const tr of snd.dest.stream.getAudioTracks()) stream.addTrack(tr);
       withSound = true;
     } catch (e) { withSound = false; }
@@ -2673,14 +2673,19 @@ function streamsStep(dtS) {
 }
 
 // ---- 🔊 the machine's own sound, made here: filtered noise for air, tones for motors, all following the spool
-const snd = { ctx: null, master: null, dest: null, on: true, duck: 1, voices: [], listen: null, listenUntil: 0, noise: null, t: 0 };
+const snd = { ctx: null, master: null, comp: null, meter: null, dest: null, on: true, duck: 1, voices: [], listen: null, listenUntil: 0, noise: null, t: 0 };
 function audio() {
   if (snd.ctx || !AC) return snd.ctx;
   try {
     snd.ctx = new AC();
     snd.master = snd.ctx.createGain();
     snd.master.gain.value = 0;
-    snd.master.connect(snd.ctx.destination);
+    snd.comp = snd.ctx.createDynamicsCompressor(); // (louder on a phone's small speaker, never clipping)
+    snd.comp.threshold.value = -22; snd.comp.knee.value = 12; snd.comp.ratio.value = 4; snd.comp.attack.value = 0.01; snd.comp.release.value = 0.25;
+    snd.meter = snd.ctx.createAnalyser();
+    snd.meter.fftSize = 1024;
+    snd.master.connect(snd.comp).connect(snd.ctx.destination);
+    snd.comp.connect(snd.meter);
     const n = Math.round(snd.ctx.sampleRate * 2.5), b = snd.ctx.createBuffer(1, n, snd.ctx.sampleRate), d = b.getChannelData(0);
     let br = 0;
     for (let i = 0; i < n; i++) { const w = Math.random() * 2 - 1; br = (br + 0.025 * w) / 1.025; d[i] = w * 0.55 + br * 2.2; }
@@ -2703,7 +2708,7 @@ function addVoice(rec, o) {
 }
 function buildVoice(v) {
   const c = snd.ctx;
-  const out = gainNode(0);
+  const out = gainNode(1); // (open: each voice's own gains below follow the machine)
   out.connect(snd.master);
   const nd = { out };
   const k = v.kind;
@@ -2752,7 +2757,7 @@ function soundStep(now) {
   const c = snd.ctx, t0 = c.currentTime;
   const s = clamp01(env.spool), ts = env.ts, pitch = 0.35 + 0.65 * ts, alive = ts > 0.01 ? 1 : 0;
   const lis = snd.listen && now < snd.listenUntil ? snd.listen : null;
-  ramp(snd.master.gain, snd.on ? 0.26 * snd.duck * alive * (insideOn ? 0.5 : 1) : 0, t0, 0.12);
+  ramp(snd.master.gain, snd.on ? 0.7 * snd.duck * alive * (insideOn ? 0.5 : 1) : 0, t0, 0.12);
   for (const v of snd.voices) {
     if (!v.nodes) buildVoice(v);
     const n = v.nodes, f0 = v.f0 || 1, g = v.gain * (lis ? (lis === v ? 2.8 : 0.3) : 1) * (v.rec.group.visible ? 1 : 0);
@@ -2788,6 +2793,15 @@ function soundStep(now) {
   }
 }
 function labelHere(label) { return te(String(label || '')); }
+/** How loud the machine is now (0..1, what leaves for the speaker): Jarvis can tell "no sound" from "quiet". */
+function soundLevel() {
+  if (!snd.meter) return 0;
+  const a = new Float32Array(snd.meter.fftSize);
+  snd.meter.getFloatTimeDomainData(a);
+  let e = 0;
+  for (const x of a) e += x * x;
+  return Math.round(Math.sqrt(e / a.length) * 1000) / 1000;
+}
 /** 🩺 the stethoscope: the piece nearest his finger / hand is heard louder for a moment. */
 /** 🩺 the stethoscope on a named piece (his tapped piece): its own sound, louder, the rest quiet, for 6 seconds. */
 function listenLabel(label) {
@@ -2848,7 +2862,7 @@ let reportWant = null;
 function envData() { // (what Jarvis is told about the running machine: its live numbers, short)
   const rows = {};
   if (hudWant) for (const [k, v] of Object.entries(hudWant).slice(0, 8)) rows[String(k).slice(0, 30)] = String(v).slice(0, 30);
-  return JSON.stringify({ rows, nums: reportWant || {}, gear: env.gear, clutch: env.clutch, brake: env.brake, over: env.over ? 1 : 0, slow: env.ts });
+  return JSON.stringify({ rows, nums: reportWant || {}, audio: snd.ctx ? snd.ctx.state : (snd.voices.length ? 'none' : 'quiet'), level: soundLevel(), gear: env.gear, clutch: env.clutch, brake: env.brake, over: env.over ? 1 : 0, slow: env.ts });
 }
 function hudStep(now) {
   if (!hudEl || now - hudT < 200) return;
